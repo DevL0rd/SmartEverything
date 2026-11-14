@@ -5,15 +5,16 @@ import { controlHitSlop } from '../../design/tokens';
 
 export interface Band {
   readonly slop: number | undefined;
+  readonly compact: boolean;
 }
 
 const InBand = createContext<Band | null>(null);
 
 export const BandMember = InBand;
 
-export function useBandValue(): Band {
+export function useBandValue(compact: boolean): Band {
   const slop = controlHitSlop(useIdiom(), useThemeSetting('density'));
-  return { slop: slop > 0 ? slop : undefined };
+  return { slop: slop > 0 ? slop : undefined, compact };
 }
 
 export function useBand(): Band | null {
@@ -22,6 +23,10 @@ export function useBand(): Band | null {
 
 export function useInActionBand(): boolean {
   return useBand() !== null;
+}
+
+export function useCompactBand(): boolean {
+  return useBand()?.compact === true;
 }
 
 export function bandHitSlop(band: Band | null, controlHeight: boolean): number | undefined {

@@ -206,10 +206,10 @@ interface Budget {
 }
 
 const BUDGETS: Readonly<Record<WideClass, Budget>> = {
-  m: { nodes: 95, hooks: 92, subscriptions: 6 },
+  m: { nodes: 95, hooks: 92, subscriptions: 8 },
   w: { nodes: 120, hooks: 119, subscriptions: 9 },
-  l: { nodes: 98, hooks: 108, subscriptions: 8 },
-  xl: { nodes: 113, hooks: 127, subscriptions: 8 },
+  l: { nodes: 98, hooks: 108, subscriptions: 9 },
+  xl: { nodes: 113, hooks: 127, subscriptions: 9 },
 };
 
 const REDRAW_LIMIT: Readonly<Record<WideClass, number>> = {

@@ -102,7 +102,7 @@ function Item({ entry, edge, wide }: AgendaItemProps): ReactNode {
         <View className="mx-3 h-hairline bg-outline-variant" />
       ) : null}
       <Interactive
-        href={href.planner.item(entry.occurrence.item_id)}
+        href={href.planner.item(entry.occurrence.item_id, entry.occurrence.occurrence_key)}
         label={entry.spoken}
         className="min-h-12 flex-row items-center gap-3 px-3 py-2"
         layerClassName={FRAME[edge]}

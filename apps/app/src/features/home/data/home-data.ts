@@ -11,6 +11,7 @@ import { useCameraEntries, type CameraEntry } from '../../cameras';
 import { useComfortReadings, type ComfortMetric } from '../../climate';
 import { DEVICE_GROUP_TYPE } from '../../device-groups';
 import { useMyPhone } from '../../phone';
+import { PLANNER_HOME_WIDGETS } from '../../planner';
 import { useHasScale } from '../../profiles';
 import { TALK_WIDGETS } from '../../talk';
 import { useMyWatch } from '../../watches';
@@ -220,5 +221,6 @@ export function availableWidgets(data: HomeView): ReadonlySet<string> {
     DEVICE_GROUP_TYPE,
     ...entries.filter(([, shown]) => shown).map(([type]) => type),
     ...TALK_WIDGETS.map((definition) => definition.type),
+    ...PLANNER_HOME_WIDGETS.map((definition) => definition.type),
   ]);
 }

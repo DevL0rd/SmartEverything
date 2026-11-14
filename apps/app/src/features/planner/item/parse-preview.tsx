@@ -7,8 +7,7 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { zonedDateFormat } from '../../../format/locale';
-import { clock, duration, localDayKey, longDate, shiftDay } from '../../../format/time';
+import { clock, clock24, duration, localDayKey, longDate, shiftDay } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { usePlannerTools, type PlannerPerson, type PlannerTools } from '../data';
 import type { QuickAddTarget } from '../frame/quick-add-bar';
@@ -17,7 +16,7 @@ import { LIST_DOT, timerReadingOf, type TimerReading, type TokenReading } from '
 export type ComposerKind = 'task' | 'event' | 'alarm' | 'timer';
 
 export const COMPOSER_KINDS: Readonly<Record<QuickAddTarget, readonly ComposerKind[]>> = {
-  planner: ['task', 'event', 'alarm', 'timer'],
+  planner: ['task', 'event'],
   clock: ['alarm', 'timer'],
 };
 
@@ -36,8 +35,6 @@ export type ComposerPlan =
   | { readonly kind: 'timer'; readonly body: TimerReading }
   | { readonly kind: 'missing'; readonly reason: string };
 
-const HHMM = zonedDateFormat({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }, 'en-GB');
-
 const WEEKDAY_INDEX: Readonly<Record<string, number>> = {
   SU: 0,
   MO: 1,
@@ -51,7 +48,7 @@ const WEEKDAY_INDEX: Readonly<Record<string, number>> = {
 const NEEDS_TIME: ComposerPlan = { kind: 'missing', reason: 'Add a time, like 06:30' };
 
 function hhmmOf(moment: string, timeZone: string): string {
-  return HHMM(timeZone).format(new Date(moment));
+  return clock24(moment, timeZone);
 }
 
 function eventTiming(draft: Draft, timeZone: string): Partial<Draft> | null {

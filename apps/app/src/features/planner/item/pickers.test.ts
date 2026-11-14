@@ -3,6 +3,7 @@ import {
   type DeviceFamily,
   type PlannerAttachment,
   type PlannerCompletion,
+  type PlannerSignalCompletion,
 } from '@smarteverything/domain';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -34,7 +35,6 @@ import {
   withMinutes,
   withWindow,
   type RuleDevice,
-  type SignalCompletion,
 } from './completion-rule-row';
 
 vi.mock('react-native', async (importOriginal) => ({
@@ -66,7 +66,7 @@ function signal(
   subject: string,
   match: Readonly<Record<string, string>>,
   window: 'occurrence' | 'day',
-): SignalCompletion {
+): PlannerSignalCompletion {
   const parsed = PLANNER_COMPLETION.parse({
     kind: 'signal',
     matcher: { source: 'event', kind: 'activity', subject, match },

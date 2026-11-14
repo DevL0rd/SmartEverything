@@ -8,7 +8,6 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { href } from '../../../app-shell/hrefs';
 import { EmptyState } from '../../../components/empty-state';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
@@ -22,6 +21,7 @@ import { usePlannerCollections, usePlannerWrites } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
+import { useItemPress } from '../item/item-menu-host';
 import type { TaskEntry, TaskFilter } from './task-grouping';
 import {
   BAR_SIZES,
@@ -220,6 +220,7 @@ interface RowViewProps {
 
 const RowView = memo(function RowView({ row, geometry, now }: RowViewProps): ReactNode {
   const { entry, collection } = row;
+  const press = useItemPress(entry.item.id, entry.occurrenceKey);
   return (
     <View
       className={cn(
@@ -228,7 +229,9 @@ const RowView = memo(function RowView({ row, geometry, now }: RowViewProps): Rea
       )}
     >
       <Interactive
-        href={href.planner.item(entry.item.id)}
+        {...press.open}
+        onLongPress={press.onLongPress}
+        onContextMenu={press.onContextMenu}
         label={entry.item.title}
         className={cn(
           'flex-row items-center gap-2 px-3',
@@ -251,6 +254,7 @@ const RowView = memo(function RowView({ row, geometry, now }: RowViewProps): Rea
         >
           {entry.item.title}
         </Text>
+        {press.menu}
       </Interactive>
       <View className="relative flex-1">
         {geometry.width === 0 ? null : (

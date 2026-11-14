@@ -1,9 +1,8 @@
-import type { ReactNode } from 'react';
-import { View, type ViewStyle } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { Sparkline } from '../../../components/charts';
 import { Text } from '../../../components/text';
-import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useColour } from '../../../design/colour';
 import { clock } from '../../../format/time';
 import { useDeviceSeries } from '../../../queries/history';
@@ -178,6 +177,13 @@ function Plot({
   );
 }
 
+interface PlotRoom {
+  readonly width: number;
+  readonly height: number;
+}
+
+const NO_ROOM: PlotRoom = { width: 0, height: 0 };
+
 export function BatteryChart({
   deviceId,
   low,
@@ -189,14 +195,28 @@ export function BatteryChart({
   readonly stale: boolean;
   readonly height: number;
 }): ReactNode {
-  const { width, onLayout } = useMeasuredWidth();
+  const [room, setRoom] = useState<PlotRoom>(NO_ROOM);
+  const onLayout = (event: LayoutChangeEvent): void => {
+    const next = event.nativeEvent.layout;
+    setRoom((last) =>
+      last.width === next.width && last.height === next.height
+        ? last
+        : { width: next.width, height: next.height },
+    );
+  };
   return (
-    <View className="min-w-0 flex-1 gap-1" onLayout={onLayout} pointerEvents="none">
-      {width > 0 ? (
-        <Plot width={width} height={height} deviceId={deviceId} low={low} stale={stale} />
-      ) : (
-        <View style={heightOf(height, false)} />
-      )}
+    <View className="min-w-0 flex-1 gap-1" pointerEvents="none">
+      <View className="min-h-0 shrink" style={heightOf(height, false)} onLayout={onLayout}>
+        {room.width > 0 && room.height > 0 ? (
+          <Plot
+            width={room.width}
+            height={Math.min(height, room.height)}
+            deviceId={deviceId}
+            low={low}
+            stale={stale}
+          />
+        ) : null}
+      </View>
       <View className="flex-row justify-between" aria-hidden>
         {AXIS.map((label) => (
           <Text key={label} variant="caption" tone="variant" className="tabular">

@@ -30,7 +30,7 @@ export function OccurrenceList({
           icon={occurrence.kind === 'event' ? 'calendar' : 'circleCheck'}
           title={occurrence.title}
           subtitle={occurrenceWhenOf(occurrence, timeZone)}
-          href={href.planner.item(occurrence.item_id)}
+          href={href.planner.item(occurrence.item_id, occurrence.occurrence_key)}
           chevron
         />
       ))}

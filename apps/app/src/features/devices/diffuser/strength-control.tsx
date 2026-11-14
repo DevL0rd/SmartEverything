@@ -102,7 +102,7 @@ function StrengthMenu({
       <Button
         label={`Strength: ${word}`}
         variant="tonal"
-        icon="droplet"
+        icon="sliders-horizontal"
         disabled={!device.online}
         onPress={open}
       />

@@ -1,10 +1,13 @@
-export class ClockTextNotRead extends Error {
-  constructor() {
-    super('Alarms and timers can’t be added from text yet.');
-  }
-}
+import type { ComposerKind } from '../../planner/item/parse-preview';
+import type { ClockSection } from '../model/section-routes';
 
-export function addClockText(text: string): Promise<boolean> {
-  if (text.trim() === '') return Promise.resolve(false);
-  return Promise.reject(new ClockTextNotRead());
+const CLOCK_SECTION_KIND: Readonly<Record<ClockSection, ComposerKind>> = {
+  index: 'alarm',
+  timers: 'timer',
+  stopwatch: 'timer',
+  world: 'alarm',
+};
+
+export function clockComposerKindOf(section: ClockSection): ComposerKind {
+  return CLOCK_SECTION_KIND[section];
 }

@@ -7,7 +7,8 @@ import type { BoardWidget, WidgetDefinition } from '../../components/widget-boar
 import { allSizes } from '../../components/widget-board/all-sizes';
 import { useHubOffline } from '../clock';
 import { PlannerFrameContext } from './frame/frame-context';
-import { PlannerAlarmWidget, PlannerTimerWidget } from './widgets/clock-cards';
+import { ClockHomeWidget, PlannerAlarmWidget, PlannerTimerWidget } from './widgets/clock-cards';
+import { UpNextWidget } from './widgets/home-cards';
 import { PlannerDayWidget, PlannerItemWidget } from './widgets/planner-cards';
 
 function openPlanner(): void {
@@ -90,5 +91,26 @@ export const PLANNER_WIDGETS: readonly WidgetDefinition[] = [
         <PlannerTimerWidget id={idOf(options, 'timer')} />
       </Scope>
     ),
+  },
+];
+
+const BOARD_SIZE = { sizes: allSizes('W', 'XL'), defaultSize: 'W' } as const;
+
+export const PLANNER_HOME_WIDGETS: readonly WidgetDefinition[] = [
+  {
+    type: 'planner-up-next',
+    title: 'Up next',
+    icon: 'calendar',
+    group: 'Planner',
+    ...BOARD_SIZE,
+    render: () => <UpNextWidget />,
+  },
+  {
+    type: 'planner-clock',
+    title: 'Clock',
+    icon: 'alarmClock',
+    group: 'Planner',
+    ...BOARD_SIZE,
+    render: () => <ClockHomeWidget />,
   },
 ];

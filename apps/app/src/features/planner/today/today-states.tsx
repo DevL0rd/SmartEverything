@@ -1,5 +1,4 @@
 import type { PlannerDay } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
@@ -9,18 +8,18 @@ import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
-import { notify } from '../../../components/toast-store';
 import { plural } from '../../../format/text';
 import { useGoogleAccount, usePlannerAlarms } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { usePlannerQuickAdd } from '../frame/quick-add';
+import { useComposerControl } from '../frame/quick-add';
+import { QuickAddComposer } from '../frame/quick-add-bar';
 
 const TASK_STARTERS: readonly string[] = [
   'Brush teeth every day 07:30 and 22:00',
   'Walk 20 min on the treadmill',
 ];
 
-const GOOGLE_SETTINGS = href.settings.page('connections');
+const GOOGLE_SETTINGS = href.settings.page('connections/google');
 
 export function isOpenDay(day: PlannerDay): boolean {
   return (
@@ -82,28 +81,26 @@ function StartRows(): ReactNode {
 
 function StarterIdeas(): ReactNode {
   const { person, offline } = usePlannerFrame();
-  const add = usePlannerQuickAdd(person);
+  const composer = useComposerControl();
   const start = (text: string) => (): void => {
-    background(
-      add(text).catch((error: unknown) => {
-        notify({ message: 'Couldn’t add that to the Planner', error, tone: 'critical' });
-      }),
-      'planner.starter_failed',
-    );
+    composer.open({ text, kind: 'task' });
   };
   return (
-    <List title="Starter ideas" caption="Tap one to add it">
-      {TASK_STARTERS.map((text) => (
-        <ListRow key={text} icon="plus" title={text} onPress={start(text)} disabled={offline} />
-      ))}
-      <ListRow
-        icon="alarmClock"
-        title="Wake up 07:00 on weekdays"
-        subtitle="Opens Clock"
-        href={href.clock.alarms()}
-        chevron
-      />
-    </List>
+    <>
+      <List title="Starter ideas" caption="Tap one to add it">
+        {TASK_STARTERS.map((text) => (
+          <ListRow key={text} icon="plus" title={text} onPress={start(text)} disabled={offline} />
+        ))}
+        <ListRow
+          icon="alarmClock"
+          title="Wake up 07:00 on weekdays"
+          subtitle="Opens Clock"
+          href={href.clock.alarms()}
+          chevron
+        />
+      </List>
+      <QuickAddComposer control={composer} target="planner" person={person} disabled={offline} />
+    </>
   );
 }
 
@@ -113,7 +110,7 @@ export function OpenDay(): ReactNode {
       <EmptyState
         icon="sun"
         title="Your day is open"
-        body="Add a task, an event or an alarm. Things you add from chat or Google show up here too."
+        body="Add a task or an event. Things you add from chat or Google show up here too."
       />
       <StartRows />
       <StarterIdeas />

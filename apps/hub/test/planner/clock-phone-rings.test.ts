@@ -204,11 +204,31 @@ describe('pushing the desired set', () => {
     ).toEqual(['Gym', 'Work']);
   });
 
-  it('ignores a client that is not a phone', () => {
+  it('gives a desktop client its own ring set', () => {
     const desktop = test.store.clients.create({
       name: 'Desk',
       platform: 'desktop',
       kind: 'computer',
+      role: 'member',
+      tokenHash: hashClientToken(createClientToken()),
+      profileId: owner.profileId,
+    });
+    test.store.plannerAlarms.insert(
+      alarmInput({ targets: [{ kind: 'client', clientId: desktop.id }] }),
+    );
+    expect(sent.map((entry) => entry.clientId)).toEqual([desktop.id]);
+    expect(rings.desired(desktop.id).alarms).toHaveLength(1);
+    expect(rings.desired(owner.client.id).alarms).toHaveLength(0);
+    sent.length = 0;
+    rings.connected(desktop.id);
+    expect(sent.map((entry) => entry.clientId)).toEqual([desktop.id]);
+  });
+
+  it('ignores a browser client', () => {
+    const desktop = test.store.clients.create({
+      name: 'Tab',
+      platform: 'web',
+      kind: 'browser',
       role: 'member',
       tokenHash: hashClientToken(createClientToken()),
       profileId: owner.profileId,

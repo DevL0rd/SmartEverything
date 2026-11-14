@@ -4,6 +4,7 @@ import {
   FIREWALL_STATUS,
   MCP_TOKEN_ROW,
   OAUTH_CLIENT_ROW,
+  PLANNER_ALARM_ROW,
   PROFILE_ROW,
   PROVIDER_LINK_ROW,
   SESSION,
@@ -13,6 +14,7 @@ import {
   type FirewallStatus,
   type McpTokenRow,
   type OAuthClientRow,
+  type PlannerAlarmRow,
   type ProfileRow,
   type ProviderLinkRow,
   type SettingsRow,
@@ -97,6 +99,7 @@ function token(n: number, revoked: boolean): McpTokenRow {
   return MCP_TOKEN_ROW.parse({
     id: ID(n),
     name: `Token ${String(n)}`,
+    access: 'control',
     created_at: MOMENT,
     last_used_at: null,
     revoked_at: revoked ? MOMENT : null,
@@ -144,6 +147,7 @@ interface Parts {
   readonly firewall?: StoreState['firewall'];
   readonly role?: 'owner' | 'member' | null;
   readonly profileId?: string | null;
+  readonly alarms?: readonly PlannerAlarmRow[];
 }
 
 function oauthClient(id: string): OAuthClientRow {
@@ -168,6 +172,31 @@ function sessionOf(role: 'owner' | 'member' | null, profileId: string | null): S
   });
 }
 
+function alarm(n: number, targets: readonly unknown[]): PlannerAlarmRow {
+  return PLANNER_ALARM_ROW.parse({
+    id: ID(n),
+    profile_id: ID(1),
+    label: null,
+    time: '07:00',
+    days: [],
+    once_on: null,
+    skip_on: null,
+    enabled: true,
+    sound: 'default',
+    ramp_seconds: 30,
+    vibrate: true,
+    snooze_minutes: 10,
+    smart_minutes: null,
+    wake_scene_id: null,
+    wake_lead_minutes: null,
+    targets,
+    watch: [],
+    source: 'planner',
+    created_at: MOMENT,
+    updated_at: MOMENT,
+  });
+}
+
 function linkTable(rows: readonly ProviderLinkRow[]): Table<ProviderLinkRow> {
   const ids = rows.map((_, index) => String(index));
   return makeTable(Object.fromEntries(rows.map((row, index) => [String(index), row])), ids, 1);
@@ -185,6 +214,7 @@ function stateWith(given: Parts): StoreState {
     links: [],
     tokens: [],
     oauth: [],
+    alarms: [],
     ...given,
   } satisfies Parts;
   const base = emptyState();
@@ -201,6 +231,7 @@ function stateWith(given: Parts): StoreState {
       provider_links: linkTable(parts.links),
       mcp_tokens: tableOf(parts.tokens),
       oauth_clients: tableOf(parts.oauth.map(oauthClient)),
+      planner_alarms: tableOf(parts.alarms),
     },
   };
 }
@@ -325,5 +356,27 @@ describe('the setup facts read from the store', () => {
       false,
     );
     expect(storeFactsOf(stateWith({ profiles: [bare] })).fitnessReady).toBeNull();
+  });
+
+  it('knows alarms ring here when an alarm targets this client or the phone device of this client', () => {
+    const here = { kind: 'client', clientId: ID(90) };
+    const elsewhere = { kind: 'client', clientId: ID(91) };
+    const phone = deviceFixture(5, {
+      id: ID(50),
+      kind: 'phone',
+      details: { clientId: ID(90) },
+    });
+    const other = deviceFixture(6, { id: ID(60), kind: 'phone', details: { clientId: ID(91) } });
+    const ringsHere = (given: Parts): boolean => storeFactsOf(stateWith(given)).ringsHere;
+    expect(ringsHere({ alarms: [alarm(1, [here])] })).toBe(true);
+    expect(ringsHere({ alarms: [alarm(1, [elsewhere])] })).toBe(false);
+    expect(ringsHere({ alarms: [] })).toBe(false);
+    expect(
+      ringsHere({ devices: [phone], alarms: [alarm(1, [{ kind: 'device', deviceId: ID(50) }])] }),
+    ).toBe(true);
+    expect(
+      ringsHere({ devices: [other], alarms: [alarm(1, [{ kind: 'device', deviceId: ID(60) }])] }),
+    ).toBe(false);
+    expect(ringsHere({ role: null, alarms: [alarm(1, [here])] })).toBe(false);
   });
 });

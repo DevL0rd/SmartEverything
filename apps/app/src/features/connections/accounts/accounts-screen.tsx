@@ -6,10 +6,11 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
-import { useRows } from '../../../store/selectors';
+import { useIsOwner, useRows } from '../../../store/selectors';
 import { PROVIDER_BRAND } from '../model/brands';
 import { isAccount, linkSummary } from '../model/problems';
 import { SettingsFrame } from '../../../settings/settings-frame';
+import { ServicesSection } from '../google/services-section';
 import { useAccountBackFocus } from './use-account-back-focus';
 
 const ADD = href.settings.page('connections/add');
@@ -28,7 +29,7 @@ function AccountRows(): ReactNode {
     );
   }
   return (
-    <List inset>
+    <List inset title="Device accounts" caption="owner only">
       {[
         ...accounts.map((row) => {
           const summary = linkSummary(row);
@@ -64,7 +65,8 @@ function AccountRows(): ReactNode {
 export function AccountsScreen(): ReactNode {
   return (
     <SettingsFrame page="connections">
-      <AccountRows />
+      {useIsOwner() ? <AccountRows /> : null}
+      <ServicesSection />
     </SettingsFrame>
   );
 }

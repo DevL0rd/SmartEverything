@@ -36,7 +36,7 @@ class AlarmScheduler(
     val before = store.load()
     val unchanged = set.rings.filter { ring -> before.rings.any { it == ring } }.map { it.ringKey }.toSet()
     val keys = set.rings.map { it.ringKey }.toSet()
-    before.rings.map { it.ringKey }.filter { it !in keys }.forEach(arming::cancel)
+    before.rings.map { it.ringKey }.filter { it !in keys }.forEach { cancelAll(it) }
     val state = RingState(
       clientId,
       set.hash,
@@ -46,6 +46,21 @@ class AlarmScheduler(
     )
     store.save(reconcile(state, reportOverdue = false))
     reports.acknowledge(clientId, set.hash)
+  }
+
+  fun ringOf(ringKey: String): PhoneRing? = store.load().rings.firstOrNull { it.ringKey == ringKey }
+
+  fun snooze(ring: PhoneRing, minutes: Int) = synchronized(LOCK) {
+    arming.arm(RingSnooze.ringOf(ring, clock(), minutes), clock().plusSeconds(minutes * SECONDS_PER_MINUTE))
+  }
+
+  fun cancelSnooze(ringKey: String) = synchronized(LOCK) {
+    arming.cancel(RingKeys.snoozeOf(ringKey))
+  }
+
+  private fun cancelAll(ringKey: String) {
+    arming.cancel(ringKey)
+    arming.cancel(RingKeys.snoozeOf(ringKey))
   }
 
   fun rearm() = synchronized(LOCK) {
@@ -100,6 +115,7 @@ class AlarmScheduler(
     const val ACK_PATH = "/api/planner/phone-rings/ack"
     const val MISSED_PATH = "/api/planner/phone-rings/missed"
     const val MISSED_REASON = "phone_off"
+    private const val SECONDS_PER_MINUTE = 60L
     private val LOCK = Any()
 
     fun of(context: Context): AlarmScheduler {

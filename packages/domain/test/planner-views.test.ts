@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { SIGNAL_INPUT } from '../src/signals';
 import { PLANNER_DAY } from '../src/planner/day';
 import { PLANNER_OCCURRENCE_VIEW, PLANNER_RANGE } from '../src/planner/range';
-import { PLANNER_RING_NOTICE, PLANNER_SIGNAL, PLANNER_SIGNAL_KINDS } from '../src/planner/signals';
+import {
+  PLANNER_PHONE_RINGS_NOTICE,
+  PLANNER_RING_NOTICE,
+  PLANNER_SIGNAL,
+  PLANNER_SIGNAL_KINDS,
+} from '../src/planner/signals';
 import { PLANNER_STATS } from '../src/planner/stats';
 import { PLANNER_SUMMARY_NOTICE } from '../src/planner/summary';
 
@@ -181,6 +186,16 @@ describe('planner signals and notices', () => {
       false,
     );
     expect(PLANNER_SIGNAL.safeParse({ ...signal('task_done'), data: task }).success).toBe(false);
+  });
+
+  it('reads the phone ring set notice and nothing else', () => {
+    expect(PLANNER_PHONE_RINGS_NOTICE.safeParse({ type: 'planner_phone_rings' }).success).toBe(
+      true,
+    );
+    expect(
+      PLANNER_PHONE_RINGS_NOTICE.safeParse({ type: 'planner_phone_rings', clientId: ITEM }).success,
+    ).toBe(false);
+    expect(PLANNER_PHONE_RINGS_NOTICE.safeParse({ type: 'planner_ring' }).success).toBe(false);
   });
 
   it('reads the ring and summary notices', () => {

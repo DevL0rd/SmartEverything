@@ -15,6 +15,11 @@ import type { GroupControls } from './use-group-controls';
 import type { GroupData } from './use-group-data';
 
 const CHIP_BOX = { width: CHIP_METRICS.width } as const;
+const FULL_CHIP_BOX = {
+  flexGrow: 1,
+  flexBasis: CHIP_METRICS.width,
+  minWidth: CHIP_METRICS.width,
+} as const;
 const STRIP_GAP = { gap: CHIP_METRICS.gap } as const;
 
 export function useControlHeight(): number {
@@ -94,7 +99,7 @@ export function ChipStrip({
       style={STRIP_GAP}
     >
       {data.members.slice(0, shown).map((member) => (
-        <View key={member.id} style={CHIP_BOX}>
+        <View key={member.id} style={shown < data.members.length ? FULL_CHIP_BOX : CHIP_BOX}>
           <DeviceFace deviceId={member.id} face="chip" context="nested" />
         </View>
       ))}

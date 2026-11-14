@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import type {
+  DesktopGoogleAnswer,
+  DesktopGoogleAuthorize,
+  DesktopGoogleLink,
+  DesktopGoogleOpened,
+} from './desktop-google';
+import type {
   DesktopPhotos,
   DesktopPhotoLibrary,
   DESKTOP_PHOTO_HASH,
@@ -148,6 +154,7 @@ export type DesktopOverlayHelper =
 
 export interface SmartEverythingDesktop {
   readonly photos?: DesktopPhotos;
+  readonly googleLink?: DesktopGoogleLink;
   readonly browser?: DesktopBrowser;
   readonly clipboard?: DesktopClipboard;
   readonly htmlPreview?: NativeHtmlPreview;
@@ -208,6 +215,18 @@ export interface DesktopInvokeChannels {
   readonly 'desktop:photos-hash': {
     readonly request: z.infer<typeof DESKTOP_PHOTO_HASH_REQUEST>;
     readonly response: z.infer<typeof DESKTOP_PHOTO_HASH>;
+  };
+  readonly 'desktop:google-link-open': {
+    readonly request: undefined;
+    readonly response: DesktopGoogleOpened;
+  };
+  readonly 'desktop:google-link-authorize': {
+    readonly request: DesktopGoogleAuthorize;
+    readonly response: DesktopGoogleAnswer;
+  };
+  readonly 'desktop:google-link-cancel': {
+    readonly request: undefined;
+    readonly response: undefined;
   };
   readonly 'desktop:photos-cancel': { readonly request: string; readonly response: undefined };
   readonly 'desktop:photos-charging': { readonly request: undefined; readonly response: boolean };

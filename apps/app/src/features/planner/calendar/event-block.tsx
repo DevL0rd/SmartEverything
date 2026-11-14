@@ -1,11 +1,12 @@
 import type { PlannerColourKey } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { percentOf } from '../../../format/percent';
+import { useItemPress } from '../item/item-menu-host';
 import { yOf, type AllDayEntry, type GridBlock } from './time-grid-layout';
 
 const EVENT_TINT: Readonly<Record<PlannerColourKey, string>> = {
@@ -54,8 +55,8 @@ function placeOf(block: GridBlock, hourHeight: number, minHeight: number): Place
   return {
     top,
     height,
-    left: `${(block.lane / block.lanes) * 100}%`,
-    width: `${(block.width / block.lanes) * 100}%`,
+    left: percentOf(block.lane / block.lanes),
+    width: percentOf(block.width / block.lanes),
   };
 }
 
@@ -73,11 +74,13 @@ export function EventBlock({
   const place = placeOf(block, hourHeight, minHeight);
   const title = block.occurrence.title;
   const subtitle = block.proposed ? 'Proposed' : block.time;
+  const press = useItemPress(block.occurrence.item_id, block.occurrence.occurrence_key);
   return (
     <View style={place} className={cn('absolute pb-px', compact ? 'px-0.5' : 'px-1')}>
       <View className="flex-1 rounded-sm bg-surface-1">
         <Interactive
-          href={href.planner.item(block.occurrence.item_id)}
+          {...press.open}
+          onContextMenu={press.onContextMenu}
           label={eventLabel(block, title)}
           className={cn(
             'flex-1 overflow-hidden rounded-sm',
@@ -96,6 +99,7 @@ export function EventBlock({
               {subtitle}
             </Text>
           ) : null}
+          {press.menu}
         </Interactive>
       </View>
     </View>
@@ -104,9 +108,12 @@ export function EventBlock({
 
 export function AllDayChip({ entry }: { readonly entry: AllDayEntry }): ReactNode {
   const title = entry.occurrence.title;
+  const press = useItemPress(entry.occurrence.item_id, entry.occurrence.occurrence_key);
   return (
     <Interactive
-      href={href.planner.item(entry.occurrence.item_id)}
+      {...press.open}
+      onLongPress={press.onLongPress}
+      onContextMenu={press.onContextMenu}
       label={eventLabel({ time: 'all day', proposed: false, readOnly: entry.readOnly }, title)}
       className={cn(
         'flex-row items-center gap-1 rounded-xs px-1.5 py-0.5',
@@ -117,6 +124,7 @@ export function AllDayChip({ entry }: { readonly entry: AllDayEntry }): ReactNod
         {title}
       </Text>
       <Lock shown={entry.readOnly} />
+      {press.menu}
     </Interactive>
   );
 }

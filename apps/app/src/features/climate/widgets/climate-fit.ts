@@ -89,7 +89,7 @@ const ROOM_COLUMN_GAP = 12;
 
 const READING_GAP = 8;
 
-const READING_FIGURE = 64;
+const READING_FIGURE = 84;
 
 const READING_COLUMN_GAP = 12;
 
@@ -108,10 +108,28 @@ export function roomRowHeight(idiom: Idiom): number {
   return 2 * ROOM_PAD_Y + TYPE_SCALE[idiom].body[1] + ROOM_TEXT_GAP + ROOM_WELL;
 }
 
-export function roomGridFit({ width, height, idiom }: BodyBox, count: number): GridFit {
+export interface RoomGridFit extends GridFit {
+  readonly wells: boolean;
+}
+
+function readingsFit(width: number, readings: number, well: number): boolean {
+  const line = readings * (well + READING_FIGURE) + (readings - 1) * READING_COLUMN_GAP;
+  return line <= width - 2 * ROOM_PAD_X;
+}
+
+export function roomGridFit(
+  { width, height, idiom }: BodyBox,
+  count: number,
+  readings: number,
+): RoomGridFit {
   const columns = clampedColumns(width, ROOM_MIN_WIDTH, ROOM_COLUMN_GAP, count);
   const rows = Math.max(1, fittedCount(height, roomRowHeight(idiom), ROOM_GAP));
-  return { columns, shown: Math.min(count, rows * columns) };
+  const room = (width - (columns - 1) * ROOM_COLUMN_GAP) / columns;
+  return {
+    columns,
+    shown: Math.min(count, rows * columns),
+    wells: readingsFit(room, readings, ROOM_WELL + READING_GAP),
+  };
 }
 
 export interface OutdoorFit extends GridFit {

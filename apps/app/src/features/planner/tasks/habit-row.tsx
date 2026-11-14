@@ -1,7 +1,6 @@
 import type { PlannerOccurrenceRow } from '@smarteverything/domain';
 import { memo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
 import { Card } from '../../../components/card';
 import { CalendarHeatmap } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
@@ -14,6 +13,7 @@ import { daysBetween, localDayKey, shortDate, startOfDayKey } from '../../../for
 import { useRow } from '../../../store/selectors';
 import { usePlannerOccurrences } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
+import { useItemPress } from '../item/item-menu-host';
 import {
   habitEntriesOf,
   habitHeatOf,
@@ -55,6 +55,7 @@ function HabitHead({
   const streak = habitStreakOf(occurrences);
   const repeat = entry.item.rrule === null ? 'Repeats' : repeatWordsOf(entry.item.rrule);
   const subtitle = device === null ? repeat : `${repeat} · ${device}`;
+  const press = useItemPress(entry.item.id, entry.occurrenceKey);
   return (
     <View className="flex-row items-center gap-3">
       <Icon
@@ -63,7 +64,9 @@ function HabitHead({
         tone="variant"
       />
       <Interactive
-        href={href.planner.item(entry.item.id)}
+        {...press.open}
+        onLongPress={press.onLongPress}
+        onContextMenu={press.onContextMenu}
         label={entry.item.title}
         className="min-w-0 flex-1 rounded-sm"
         layerClassName="rounded-sm"
@@ -74,6 +77,7 @@ function HabitHead({
         <Text variant="caption" tone="variant" numberOfLines={1}>
           {subtitle}
         </Text>
+        {press.menu}
       </Interactive>
       <View
         accessible

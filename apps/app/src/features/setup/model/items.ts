@@ -10,6 +10,7 @@ export const SETUP_AREAS = [
   'accounts',
   'assistants',
   'fitness',
+  'clock',
 ] as const;
 
 export type SetupArea = (typeof SETUP_AREAS)[number];
@@ -21,6 +22,7 @@ export const AREA_TITLES: Readonly<Record<SetupArea, string>> = {
   accounts: 'Accounts and devices',
   assistants: 'AI assistants',
   fitness: 'Fitness',
+  clock: 'Alarms',
 };
 
 export type SetupPriority = 'required' | 'recommended' | 'optional';
@@ -37,9 +39,17 @@ export type SetupItemId =
   | 'accounts.linked'
   | 'accounts.rooms'
   | 'assistants.connected'
-  | 'fitness.about';
+  | 'fitness.about'
+  | 'clock.full_screen'
+  | 'clock.background';
 
 export type RawState = 'done' | 'todo' | 'not_applicable';
+
+export type SystemSetting = 'full_screen_alarms' | 'background_alarms';
+
+export type SetupGo =
+  | { readonly kind: 'page'; readonly href: AppHref }
+  | { readonly kind: 'system'; readonly setting: SystemSetting };
 
 export interface SetupItem {
   readonly id: SetupItemId;
@@ -51,11 +61,19 @@ export interface SetupItem {
   readonly doneText: string;
   readonly todoText: string;
   readonly action: string;
-  readonly go: AppHref;
+  readonly go: SetupGo;
   readonly stateOf: (facts: SetupFacts) => RawState;
 }
 
 const done = (ready: boolean): RawState => (ready ? 'done' : 'todo');
+
+const page = (target: AppHref): SetupGo => ({ kind: 'page', href: target });
+
+const system = (setting: SystemSetting): SetupGo => ({ kind: 'system', setting });
+
+function alarmPhoneState(facts: SetupFacts, allowed: boolean | null): RawState {
+  return !facts.ringsHere || allowed === null ? 'not_applicable' : done(allowed);
+}
 
 function firewallState(facts: SetupFacts): RawState {
   if (facts.firewall === 'none' || facts.firewall === 'unchecked') return 'not_applicable';
@@ -77,7 +95,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'Everything your home needs is open on this network.',
     todoText: 'The firewall on your server blocks phones, cameras or devices.',
     action: 'Open the network setup',
-    go: href.setupNetwork(),
+    go: page(href.setupNetwork()),
     stateOf: firewallState,
   },
   {
@@ -90,7 +108,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'Your devices are in your home.',
     todoText: 'Connect the account your devices use, or add a device by its address.',
     action: 'Connect an account',
-    go: href.settings.page('connections/add'),
+    go: page(href.settings.page('connections/add')),
     stateOf: (facts) => done(facts.linkedAccounts > 0 || facts.devices > 0),
   },
   {
@@ -103,7 +121,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'Your home has its own name.',
     todoText: 'Give your home its own name.',
     action: 'Name your home',
-    go: href.settings.page('home'),
+    go: page(href.settings.page('home')),
     stateOf: (facts) => done(facts.homeNamed),
   },
   {
@@ -116,7 +134,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'Your profile has your name.',
     todoText: 'Your profile is still called Me. Add your name.',
     action: 'Open profiles',
-    go: href.settings.page('profiles'),
+    go: page(href.settings.page('profiles')),
     stateOf: (facts) => done(facts.ownerNamed),
   },
   {
@@ -129,7 +147,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'Your public address answers.',
     todoText: 'Set an address that works from outside so phones and assistants can reach you.',
     action: 'Open the network setup',
-    go: href.setupNetwork(),
+    go: page(href.setupNetwork()),
     stateOf: remoteState,
   },
   {
@@ -143,7 +161,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     todoText:
       'Add your own Firebase key so doorbell, call and alarm alerts arrive when the app is closed.',
     action: 'Set up alerts',
-    go: href.settings.page('notifications/push-service'),
+    go: page(href.settings.page('notifications/push-service')),
     stateOf: (facts) => done(facts.pushConfigured),
   },
   {
@@ -156,7 +174,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'A phone is paired.',
     todoText: 'Show a pairing code and scan it on the phone you carry.',
     action: 'Pair a phone',
-    go: href.pairPhone(),
+    go: page(href.pairPhone()),
     stateOf: (facts) => done(facts.phonePaired),
   },
   {
@@ -169,7 +187,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'Every device is in a room.',
     todoText: 'Some devices are not in a room yet.',
     action: 'Open rooms',
-    go: href.settings.page('home/rooms'),
+    go: page(href.settings.page('home/rooms')),
     stateOf: (facts) => (facts.devices === 0 ? 'not_applicable' : done(facts.unroomed === 0)),
   },
   {
@@ -183,8 +201,34 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     todoText:
       'Your height, birthday and sex make body composition, calories and heart-rate zones right.',
     action: 'Set up Fitness',
-    go: href.fitnessSetup(),
+    go: page(href.fitnessSetup()),
     stateOf: (facts) => (facts.fitnessReady === null ? 'not_applicable' : done(facts.fitnessReady)),
+  },
+  {
+    id: 'clock.full_screen',
+    area: 'clock',
+    priority: 'recommended',
+    owner: false,
+    icon: 'alarmClock',
+    title: 'Let alarms use the full screen',
+    doneText: 'A ringing alarm fills the screen, even when this phone is locked.',
+    todoText: 'Without it a ringing alarm only shows as a notification on the lock screen.',
+    action: 'Allow full-screen alarms',
+    go: system('full_screen_alarms'),
+    stateOf: (facts) => alarmPhoneState(facts, facts.alarmPhone.fullScreen),
+  },
+  {
+    id: 'clock.background',
+    area: 'clock',
+    priority: 'recommended',
+    owner: false,
+    icon: 'battery',
+    title: 'Allow alarms in the background',
+    doneText: 'Battery saver cannot hold back an alarm on this phone.',
+    todoText: 'Set the app to Unrestricted so battery saver cannot delay or stop an alarm.',
+    action: 'Open battery settings',
+    go: system('background_alarms'),
+    stateOf: (facts) => alarmPhoneState(facts, facts.alarmPhone.unrestricted),
   },
   {
     id: 'home.location',
@@ -196,7 +240,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'Sunrise, weather and travel time use your location.',
     todoText: 'Add where you live for sunrise, weather and travel time.',
     action: 'Add a location',
-    go: href.settings.page('home/location'),
+    go: page(href.settings.page('home/location')),
     stateOf: (facts) => done(facts.located),
   },
   {
@@ -209,7 +253,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'More than one person is in your home.',
     todoText: 'Give everyone their own profile, chats and fitness.',
     action: 'Open profiles',
-    go: href.settings.page('profiles'),
+    go: page(href.settings.page('profiles')),
     stateOf: (facts) => done(facts.people > 1),
   },
   {
@@ -222,7 +266,7 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     doneText: 'An assistant can use your home.',
     todoText: 'Let an outside assistant see and control your home.',
     action: 'Open integrations',
-    go: href.settings.page('assistant/integrations'),
+    go: page(href.settings.page('assistant/integrations')),
     stateOf: (facts) => done(facts.assistants > 0),
   },
 ];

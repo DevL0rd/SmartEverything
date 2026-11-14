@@ -182,11 +182,17 @@ export function LightCard({ device }: { readonly device: Device }): ReactNode {
   );
 }
 
-function Stacked({ light }: { readonly light: LightView }): ReactNode {
+function Stacked({
+  light,
+  narrow,
+}: {
+  readonly light: LightView;
+  readonly narrow: boolean;
+}): ReactNode {
   return (
     <View className="gap-2" pointerEvents="box-none">
       <Dimmer light={light} shape="bar" />
-      <White light={light} />
+      <White light={light} compact={narrow} />
       <LightColourStrip light={light} density="full" />
     </View>
   );
@@ -198,7 +204,7 @@ export function LightPanel({ device }: { readonly device: Device }): ReactNode {
     <Shell light={light} cls="l">
       <Head light={light} lines={2} />
       {light.state.online ? null : <OfflineReason />}
-      <Stacked light={light} />
+      <Stacked light={light} narrow />
       <Band light={light} />
     </Shell>
   );
@@ -247,7 +253,7 @@ export function LightHeroCard({ device }: { readonly device: Device }): ReactNod
           {light.state.online ? null : <OfflineReason />}
         </View>
         <View className="min-w-0 flex-2" pointerEvents="box-none">
-          <Stacked light={light} />
+          <Stacked light={light} narrow={false} />
         </View>
       </View>
       <Band light={light} />

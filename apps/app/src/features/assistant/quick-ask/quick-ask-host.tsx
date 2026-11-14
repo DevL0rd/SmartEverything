@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ValueStore, useValue } from '../../../design/external-store';
 import { useActiveProfile } from '../../../store/people';
 import { appChatHistoryOnly } from '../chats/chat-visibility';
@@ -12,6 +12,12 @@ import { chosenTarget, continueLabel, latestChat, type QuickAskChoice } from './
 import { TargetLine } from './quick-ask-target-line';
 
 const open = new ValueStore(false);
+
+const hosts = new ValueStore(0);
+
+export function quickAskHosted(): boolean {
+  return hosts.get() > 0;
+}
 
 export function openQuickAsk(): void {
   open.set(true);
@@ -53,5 +59,11 @@ function QuickAskDialog(): ReactNode {
 }
 
 export function QuickAskHost(): ReactNode {
+  useEffect(() => {
+    hosts.update((count) => count + 1);
+    return (): void => {
+      hosts.update((count) => count - 1);
+    };
+  }, []);
   return useValue(open) ? <QuickAskDialog /> : null;
 }

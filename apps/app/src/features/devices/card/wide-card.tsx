@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react';
+import { useState, type ReactNode, type RefObject } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import type { FrameClass } from '../../../components/widget-board';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
@@ -155,6 +155,8 @@ export function WideArt({
   );
 }
 
+const ROUNDING_PX = 0.5;
+
 function Graph({
   graph,
   beside,
@@ -164,14 +166,54 @@ function Graph({
   readonly beside: boolean;
   readonly onLayout?: ((event: LayoutChangeEvent) => void) | undefined;
 }): ReactNode {
-  return graph === undefined || graph === null ? null : (
+  const [room, setRoom] = useState<number | null>(null);
+  const [need, setNeed] = useState<number | null>(null);
+  if (graph === undefined || graph === null) {
+    return null;
+  }
+  const fits = room !== null && need !== null && need <= room + ROUNDING_PX;
+  return (
     <View
-      className={cn('min-h-0 min-w-0 flex-1 justify-end', beside && 'self-stretch')}
+      className={cn('min-h-0 min-w-0 flex-1 overflow-hidden', beside && 'self-stretch')}
       aria-hidden
       pointerEvents="none"
-      onLayout={onLayout}
+      onLayout={(event) => {
+        setRoom(heightOf(event));
+        onLayout?.(event);
+      }}
     >
-      {graph}
+      <View
+        className={cn('shrink-0 grow justify-end pt-1.5', !fits && 'opacity-0')}
+        onLayout={(event) => {
+          setNeed(heightOf(event));
+        }}
+      >
+        {graph}
+      </View>
+    </View>
+  );
+}
+
+function TickerSlot({ ticker }: { readonly ticker: ReactNode }): ReactNode {
+  const [room, setRoom] = useState<number | null>(null);
+  const [need, setNeed] = useState<number | null>(null);
+  const fits = room !== null && need !== null && need <= room + ROUNDING_PX;
+  return (
+    <View
+      className="min-h-0 shrink overflow-hidden"
+      pointerEvents="none"
+      onLayout={(event) => {
+        setRoom(heightOf(event));
+      }}
+    >
+      <View
+        className={cn('shrink-0 pt-1.5', !fits && 'opacity-0')}
+        onLayout={(event) => {
+          setNeed(heightOf(event));
+        }}
+      >
+        {ticker}
+      </View>
     </View>
   );
 }
@@ -236,7 +278,7 @@ function Content(props: WideCardProps): ReactNode {
     <>
       {cls === 'w' ? <Beside {...props} fit={measured} /> : <Stacked {...props} fit={measured} />}
       {logged ? <LogSlot log={log} fit={fit} /> : null}
-      {ticker === undefined || ticker === null ? null : <View pointerEvents="none">{ticker}</View>}
+      {ticker === undefined || ticker === null ? null : <TickerSlot ticker={ticker} />}
     </>
   );
 }
@@ -251,8 +293,9 @@ export function WideCard(props: WideCardProps): ReactNode {
       pointerEvents="box-none"
     >
       <WideArt cls={cls}>{props.visual}</WideArt>
-      <View className="min-w-0 flex-1 gap-1.5" pointerEvents="box-none">
+      <View className="min-w-0 flex-1" pointerEvents="box-none">
         <Content {...props} />
+        <View className="h-1.5" />
         <ActionBand>{props.actions}</ActionBand>
       </View>
     </View>

@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { useAreaWidth } from '../../../design/size-class';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
+import { useMoveProgress } from '../../fitness';
 import { usePlannerDay } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { PlannerFrame } from '../frame/planner-frame';
@@ -17,8 +18,6 @@ import { NowLens } from './now-lens';
 import { TodaySideColumn } from './side-column';
 import { TodayRingsLine, useTodayRings } from './today-rings';
 import { GoogleAttention, OpenDay, TodaySkeleton, isOpenDay } from './today-states';
-
-const MOVE: number | null = null;
 
 interface DayProps {
   readonly day: PlannerDay;
@@ -46,7 +45,7 @@ function MainColumn({ day, savedAt }: DayProps): ReactNode {
 }
 
 function CompactDay({ day, savedAt }: DayProps): ReactNode {
-  const rings = useTodayRings(day, MOVE);
+  const rings = useTodayRings(day, useMoveProgress());
   return (
     <View className="gap-4">
       {isOpenDay(day) ? null : (
@@ -60,6 +59,7 @@ function CompactDay({ day, savedAt }: DayProps): ReactNode {
 }
 
 function Day({ day, savedAt }: DayProps): ReactNode {
+  const move = useMoveProgress();
   const layout = frameLayoutOf(useAreaWidth());
   if (layout === 'compact') return <CompactDay day={day} savedAt={savedAt} />;
   const wide = layout === 'wide';
@@ -68,7 +68,7 @@ function Day({ day, savedAt }: DayProps): ReactNode {
       <DayStripCard day={day} compact={false} />
       <View className={wide ? 'flex-row items-start gap-4' : 'gap-4'}>
         <MainColumn day={day} savedAt={savedAt} />
-        <TodaySideColumn day={day} move={MOVE} layout={wide ? 'column' : 'grid'} />
+        <TodaySideColumn day={day} move={move} layout={wide ? 'column' : 'grid'} />
       </View>
     </View>
   );

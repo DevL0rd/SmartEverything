@@ -177,6 +177,15 @@ describe('alarm sync', () => {
     expect(saves()).toHaveLength(1);
   });
 
+  it('keeps an alarm waiting until the phone near the watch answers', async () => {
+    answer = { ok: false, reason: 'unanswered', detail: 'The phone did not answer within 25 s.' };
+    test.store.plannerAlarms.insert(alarmInput());
+    await settle();
+    expect(alarms()[0]?.watch).toMatchObject([
+      { state: 'pending', detail: 'Saves when the phone is near the watch.' },
+    ]);
+  });
+
   it('keeps the reason of a failed save and does not retry on its own', async () => {
     answer = { ok: false, reason: 'refused', detail: 'The watch is not connected.' };
     test.store.plannerAlarms.insert(alarmInput());

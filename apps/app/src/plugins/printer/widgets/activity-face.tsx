@@ -55,32 +55,35 @@ function Strip({
   const primary = useColour('primary');
   const quiet = useColour('surface-3');
   return (
-    <Svg
+    <View
       accessible
       accessibilityRole="image"
       accessibilityLabel="Pages printed on each of the last 28 days"
-      width="100%"
-      height={height}
-      viewBox={`0 0 ${String(recent.length * STRIP_STEP)} ${String(height)}`}
-      preserveAspectRatio="none"
     >
-      {recent.map((day, index) => {
-        const bar = Math.min(height, Math.max(SHORTEST_BAR, (day.pages / top) * height));
-        return (
-          <Path
-            key={day.day}
-            d={rounded({
-              x: index * STRIP_STEP,
-              y: height - bar,
-              w: STRIP_STEP - 2,
-              h: bar,
-              r: 2,
-            })}
-            fill={day.covered ? primary : quiet}
-          />
-        );
-      })}
-    </Svg>
+      <Svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${String(recent.length * STRIP_STEP)} ${String(height)}`}
+        preserveAspectRatio="none"
+      >
+        {recent.map((day, index) => {
+          const bar = Math.min(height, Math.max(SHORTEST_BAR, (day.pages / top) * height));
+          return (
+            <Path
+              key={day.day}
+              d={rounded({
+                x: index * STRIP_STEP,
+                y: height - bar,
+                w: STRIP_STEP - 2,
+                h: bar,
+                r: 2,
+              })}
+              fill={day.covered ? primary : quiet}
+            />
+          );
+        })}
+      </Svg>
+    </View>
   );
 }
 

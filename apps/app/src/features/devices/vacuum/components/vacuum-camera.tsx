@@ -208,6 +208,7 @@ function Body({
           media={media}
           muted={!video.listening}
           onWheel={null}
+          fit="contain"
           onFrame={(): void => undefined}
           onSoundBlocked={(): void => {
             video.setListening(false);

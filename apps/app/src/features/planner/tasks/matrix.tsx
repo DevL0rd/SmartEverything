@@ -1,6 +1,5 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
 import { Card } from '../../../components/card';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
@@ -9,6 +8,7 @@ import { cn } from '../../../design/cn';
 import { useAreaWidth } from '../../../design/size-class';
 import { useMinuteOf } from '../../../store/clock';
 import { frameLayoutOf } from '../frame/sections';
+import { useItemPress } from '../item/item-menu-host';
 import { matrixOf, type QuadrantKey, type QuadrantModel } from './matrix-model';
 import { TaskCheck, useTaskActions } from './task-card';
 import { dueLabelOf, isOverdue, type TaskEntry, type TaskFilter } from './task-grouping';
@@ -36,11 +36,14 @@ const MatrixTask = memo(function MatrixTask({
 }): ReactNode {
   const actions = useTaskActions(entry);
   const overdue = useMinuteOf((now) => isOverdue(entry, now, today));
+  const press = useItemPress(entry.item.id, entry.occurrenceKey);
   return (
     <View className="flex-row items-start gap-1.5">
       <TaskCheck entry={entry} onDone={actions.done} />
       <Interactive
-        href={href.planner.item(entry.item.id)}
+        {...press.open}
+        onLongPress={press.onLongPress}
+        onContextMenu={press.onContextMenu}
         label={entry.item.title}
         className="min-h-7 min-w-0 flex-1 justify-center rounded-sm py-0.5"
         layerClassName="rounded-sm"
@@ -51,6 +54,7 @@ const MatrixTask = memo(function MatrixTask({
         <Text variant="caption" tone={overdue ? 'critical' : 'variant'} className="tabular">
           {dueLabelOf(entry, today)}
         </Text>
+        {press.menu}
       </Interactive>
     </View>
   );

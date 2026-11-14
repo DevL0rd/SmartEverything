@@ -55,6 +55,8 @@ function presented(key: string): PresentedCapability {
   return found;
 }
 
+const STEPPER = 144;
+
 describe('slider labels', () => {
   it('treats a wide numeric range as a slider and a dial range as a stepper', () => {
     expect(isSliderControl(presented('brightness'))).toBe(true);
@@ -62,15 +64,22 @@ describe('slider labels', () => {
   });
 
   it('keeps the label inline while the track keeps its minimum length', () => {
-    expect(labelModeOf(presented('brightness'), 'inline', 326)).toBe('inline');
+    expect(labelModeOf(presented('brightness'), 'inline', 326, STEPPER)).toBe('inline');
   });
 
   it('moves the label above the slider when the track would get too short', () => {
-    expect(labelModeOf(presented('brightness'), 'inline', 200)).toBe('caption');
+    expect(labelModeOf(presented('brightness'), 'inline', 200, STEPPER)).toBe('caption');
   });
 
-  it('never changes a caption request or a control that is not a slider', () => {
-    expect(labelModeOf(presented('brightness'), 'caption', 1000)).toBe('caption');
-    expect(labelModeOf(presented('target_temperature'), 'inline', 100)).toBe('inline');
+  it('never changes a caption request', () => {
+    expect(labelModeOf(presented('brightness'), 'caption', 1000, STEPPER)).toBe('caption');
+  });
+
+  it('keeps a stepper label inline while the stepper fits beside it', () => {
+    expect(labelModeOf(presented('target_temperature'), 'inline', 326, STEPPER)).toBe('inline');
+  });
+
+  it('moves a stepper label above the stepper when the stepper would not fit beside it', () => {
+    expect(labelModeOf(presented('target_temperature'), 'inline', 182, STEPPER)).toBe('caption');
   });
 });

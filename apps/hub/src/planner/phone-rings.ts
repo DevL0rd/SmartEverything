@@ -127,7 +127,7 @@ export class PhoneRings {
   }
 
   connected(clientId: string): void {
-    if (this.isPhone(clientId)) {
+    if (this.hasRings(clientId)) {
       this.push(clientId, true);
     }
   }
@@ -165,7 +165,7 @@ export class PhoneRings {
     for (const row of rows) {
       for (const target of row?.targets ?? []) {
         const clientId = this.clientOf(target);
-        if (clientId !== null && this.isPhone(clientId)) {
+        if (clientId !== null && this.hasRings(clientId)) {
           clients.add(clientId);
         }
       }
@@ -211,7 +211,8 @@ export class PhoneRings {
     return device?.kind === 'phone' ? clientIdOfPhone(device.external_id) : null;
   }
 
-  private isPhone(clientId: string): boolean {
-    return this.options.store.clients.find(clientId)?.platform === 'android';
+  private hasRings(clientId: string): boolean {
+    const platform = this.options.store.clients.find(clientId)?.platform;
+    return platform === 'android' || platform === 'desktop';
   }
 }

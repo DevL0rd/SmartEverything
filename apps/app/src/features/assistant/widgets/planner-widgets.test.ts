@@ -12,7 +12,11 @@ vi.mock('../../planner/widgets/planner-cards', () => ({
   PlannerItemWidget: ({ id }: { readonly id: string }): ReactNode =>
     createElement('p', {}, `item:${id}`),
 }));
+vi.mock('../../planner/widgets/home-cards', () => ({
+  UpNextWidget: (): ReactNode => createElement('p', {}, 'up-next'),
+}));
 vi.mock('../../planner/widgets/clock-cards', () => ({
+  ClockHomeWidget: (): ReactNode => createElement('p', {}, 'clock-home'),
   PlannerAlarmWidget: ({ id }: { readonly id: string }): ReactNode =>
     createElement('p', {}, `alarm:${id}`),
   PlannerTimerWidget: ({ id }: { readonly id: string }): ReactNode =>
@@ -37,6 +41,8 @@ vi.mock('./board-sources', () => ({
 }));
 
 const { resolveWidget } = await import('./widget-sources');
+const { PLANNER_HOME_WIDGETS } = await import('../../planner/widgets');
+const { WIDGET_TYPE } = await import('@smarteverything/domain');
 const ID = '11111111-1111-4111-8111-111111111111';
 const FRAME = { width: 380, height: 180, idiom: 'touch' } as const;
 
@@ -71,5 +77,29 @@ describe('Planner chat widgets', () => {
     expect(
       resolveWidget('planner', { kind: 'planner', view: 'day' }, () => null, []).definition.type,
     ).toBe('planner-day');
+  });
+});
+
+describe('Planner home board widgets', () => {
+  it('offers Up next and Clock double wide with no id, apart from the id-bound chat widgets', () => {
+    expect(PLANNER_HOME_WIDGETS.map((widget) => widget.type)).toEqual([
+      'planner-up-next',
+      'planner-clock',
+    ]);
+    for (const widget of PLANNER_HOME_WIDGETS) {
+      expect(WIDGET_TYPE.safeParse(widget.type).success).toBe(true);
+      expect(widget.group).toBe('Planner');
+      expect(widget.defaultSize).toBe('W');
+      for (const sizes of Object.values(widget.sizes)) expect(sizes).toEqual(['W', 'XL']);
+    }
+  });
+
+  it('renders each home widget without options', () => {
+    const shown = PLANNER_HOME_WIDGETS.map((widget) =>
+      renderToStaticMarkup(
+        widget.render({ options: undefined, size: 'W', editing: false, frame: FRAME }),
+      ),
+    );
+    expect(shown).toEqual(['<p>up-next</p>', '<p>clock-home</p>']);
   });
 });

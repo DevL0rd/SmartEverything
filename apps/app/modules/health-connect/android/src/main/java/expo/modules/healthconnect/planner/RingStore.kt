@@ -26,9 +26,11 @@ class PhoneRing(
   val rampSeconds: Int,
   val vibrate: Boolean,
   val label: String?,
-  val rule: AlarmRule?
+  val rule: AlarmRule?,
+  val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES
 ) {
   init {
+    require(snoozeMinutes > 0) { "a ring snoozes for a positive number of minutes, got $snoozeMinutes" }
     require((kind == RingKind.ALARM) == (rule != null)) { "an alarm ring carries its rule and a timer ring does not" }
   }
 
@@ -47,6 +49,7 @@ class PhoneRing(
     .put("rampSeconds", rampSeconds)
     .put("vibrate", vibrate)
     .put("label", label ?: JSONObject.NULL)
+    .put("snoozeMinutes", snoozeMinutes)
     .also { json -> rule?.let { json.put("rule", ruleJson(it)) } }
 
   companion object {
@@ -59,8 +62,11 @@ class PhoneRing(
       json.getInt("rampSeconds"),
       json.getBoolean("vibrate"),
       if (json.isNull("label")) null else json.getString("label"),
-      json.optJSONObject("rule")?.let(::ruleOf)
+      json.optJSONObject("rule")?.let(::ruleOf),
+      json.optInt("snoozeMinutes", DEFAULT_SNOOZE_MINUTES)
     )
+
+    const val DEFAULT_SNOOZE_MINUTES = 9
 
     private fun ruleJson(rule: AlarmRule): JSONObject = JSONObject()
       .put("time", rule.time.toString())

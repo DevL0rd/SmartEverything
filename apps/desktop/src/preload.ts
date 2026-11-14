@@ -1,4 +1,5 @@
 import electron from 'electron';
+import { googleLink } from './google/preload';
 import { photos } from './photos/preload';
 import { z } from 'zod';
 import {
@@ -207,6 +208,7 @@ const clipboardBridge: DesktopClipboard = {
 
 const desktop: SmartEverythingDesktop = {
   photos,
+  googleLink,
   browser,
   clipboard: clipboardBridge,
   computerIdentity: hubPreload.computerIdentity,

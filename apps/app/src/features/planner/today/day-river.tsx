@@ -1,7 +1,6 @@
 import type { PlannerColourKey, PlannerDay } from '@smarteverything/domain';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { SwipeRow, type SwipeAction } from '../../../components/swipe-row';
@@ -15,6 +14,7 @@ import {
 } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { LIST_DOT } from '../item/composer-tokens';
+import { useItemPress } from '../item/item-menu-host';
 import { bookedMinutesOf } from './day-strip-model';
 import { useHiddenKeys, useOccurrenceActions, type OccurrenceActions } from './now-lens';
 import {
@@ -169,10 +169,13 @@ interface RowProps {
 
 function RiverItem({ row, step, actions }: RowProps): ReactNode {
   const { offline } = usePlannerFrame();
+  const press = useItemPress(row.occurrence.item_id, row.occurrence.occurrence_key);
   return (
     <SwipeRow {...swipesOf(row, actions, offline)}>
       <Interactive
-        href={href.planner.item(row.occurrence.item_id)}
+        {...press.open}
+        onLongPress={press.onLongPress}
+        onContextMenu={press.onContextMenu}
         label={row.spoken}
         className={cn('flex-row gap-3 rounded-sm', ROW_HEIGHT[step])}
         layerClassName="rounded-sm"
@@ -181,6 +184,7 @@ function RiverItem({ row, step, actions }: RowProps): ReactNode {
         <TimeColumn row={row} step={step} />
         <Spine row={row} step={step} />
         <Body row={row} step={step} />
+        {press.menu}
       </Interactive>
     </SwipeRow>
   );

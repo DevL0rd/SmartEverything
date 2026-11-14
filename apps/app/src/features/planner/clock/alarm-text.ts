@@ -32,7 +32,8 @@ export interface NextRing {
 }
 
 export interface WatchLine {
-  readonly text: string;
+  readonly title: string;
+  readonly detail: string | null;
   readonly tone: Tone;
 }
 
@@ -213,21 +214,18 @@ export function wakeRoutineTimeOf(alarm: PlannerAlarmRow): string | null {
   return clockOfMinutes(minuteOfClock(alarm.time) - alarm.wake_lead_minutes);
 }
 
-function withDetail(title: string, detail: string | null): string {
-  return detail === null ? title : `${title}. ${detail}`;
-}
-
 export function watchLineOf(link: PlannerWatchLink, watch: string): WatchLine {
   const tone = WATCH_TONE[link.state];
+  const detail = link.detail;
   switch (link.state) {
     case 'synced':
-      return { text: `${watch} · synced`, tone };
+      return { title: `${watch} · synced`, detail, tone };
     case 'pending':
-      return { text: withDetail(`${watch} · waiting for the phone`, link.detail), tone };
+      return { title: `${watch} · waiting for the phone`, detail, tone };
     case 'failed':
-      return { text: withDetail(`${watch} · not saved`, link.detail), tone };
+      return { title: `${watch} · not saved`, detail, tone };
     case 'not_on_watch':
-      return { text: withDetail(`Not on ${watch}`, link.detail), tone };
+      return { title: `Not on ${watch}`, detail, tone };
   }
 }
 

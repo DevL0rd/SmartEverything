@@ -20,6 +20,7 @@ import { APP_UPDATE_PAGES } from './tree-app-updates';
 import { DRIVE_PAGES } from './tree-drive';
 import { PHOTOS_PAGES } from './tree-photos';
 import { PLANNER_PAGES } from './tree-planner';
+import { CONNECTION_PAGES } from './tree-connections';
 import type { SettingEnv, SettingsPageDefinition } from './types';
 
 const THEME_LABELS = { system: 'System theme', light: 'Light', dark: 'Dark' } as const;
@@ -129,24 +130,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     group: null,
     keywords: ['tv', 'link account'],
   },
-  {
-    id: 'connections',
-    title: 'Accounts',
-    icon: 'link',
-    parent: null,
-    group: 'Connections',
-    keywords: ['xiaomi', 'tuya', 'smart life', 'smartthings', 'providers', 'integrations'],
-    visible: ownerOnly,
-  },
-  {
-    id: 'connections/add',
-    title: 'Add account',
-    icon: 'plus',
-    parent: 'connections',
-    group: null,
-    keywords: ['provider'],
-    visible: ownerOnly,
-  },
+  ...CONNECTION_PAGES,
   ...PLUGIN_PAGES,
   ...ASSISTANT_PAGES,
   {

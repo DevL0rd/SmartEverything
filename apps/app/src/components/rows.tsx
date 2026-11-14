@@ -20,6 +20,7 @@ interface RowBase {
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
   readonly disabled?: boolean;
+  readonly compact?: boolean;
 }
 
 export function SwitchRow({
@@ -33,7 +34,6 @@ export function SwitchRow({
   readonly onChange: (value: boolean) => void;
   readonly mixed?: boolean;
   readonly label?: string;
-  readonly compact?: boolean;
 }): ReactNode {
   return (
     <ListRow

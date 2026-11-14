@@ -126,7 +126,7 @@ function Card({ entry, today }: { readonly entry: TaskEntry; readonly today: str
       <View className="flex-row items-start gap-2">
         <TaskCheck entry={entry} onDone={actions.done} />
         <Interactive
-          href={href.planner.item(entry.item.id)}
+          href={href.planner.item(entry.item.id, entry.occurrenceKey)}
           label={entry.item.title}
           className="min-h-7 min-w-0 flex-1 justify-center rounded-sm"
           layerClassName="rounded-sm"

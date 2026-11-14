@@ -4,7 +4,7 @@ import { DEVICE_GROUP_WIDGET } from '../device-groups';
 import { APP_PLUGINS } from '../../plugins/registry';
 import { CAMERA_WIDGETS } from '../cameras';
 import { CLIMATE_WIDGETS } from '../climate';
-import { PHOTOS_WIDGETS } from '../photos';
+import { PLANNER_HOME_WIDGETS } from '../planner';
 import { HOME_WIDGET_SIZES, type HomeSizedType } from './model/widget-sizes';
 import { nutritionWidgets, useTodayKey } from '../nutrition';
 import { BODY_WIDGET } from '../fitness';
@@ -150,7 +150,7 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
   ...TALK_WIDGETS,
   { ...PHONE_WIDGET, group: 'Devices' },
   ...CLIMATE_WIDGETS,
-  ...PHOTOS_WIDGETS,
+  ...PLANNER_HOME_WIDGETS,
   ...APP_PLUGINS.filter((plugin) => plugin.home !== undefined).flatMap((plugin) => plugin.widgets),
 ];
 

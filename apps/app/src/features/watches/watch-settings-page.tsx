@@ -5,6 +5,7 @@ import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
 import type { Device } from '../../store/state';
+import { usePlannerPreferences } from '../planner/data';
 import { WatchAlarms } from './watch-alarm-rows';
 import { configOf, useWatchCommand, type WatchOutcome } from './watch-config';
 import { WatchFaces } from './watch-face-rows';
@@ -20,6 +21,7 @@ function Failure({ outcome }: { readonly outcome: WatchOutcome | null }): ReactN
 function Configured({ watch }: { readonly watch: Device }): ReactNode {
   const command = useWatchCommand(watch);
   const state = configOf(watch);
+  const synced = usePlannerPreferences(null).data?.watch.watch_alarm_sync ?? null;
   if (state.kind === 'invalid') {
     return (
       <Banner tone="critical" title="The watch’s settings can’t be shown" body={state.reason} />
@@ -51,7 +53,7 @@ function Configured({ watch }: { readonly watch: Device }): ReactNode {
         goals={state.config.goals}
         command={command}
       />
-      <WatchAlarms alarms={state.config.alarms} command={command} />
+      <WatchAlarms alarms={state.config.alarms} command={command} synced={synced} />
       <WatchFaces faces={state.config.faces} command={command} />
     </View>
   );

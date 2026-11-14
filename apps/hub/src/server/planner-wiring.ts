@@ -46,10 +46,7 @@ function plannerChannels(context: ServerContext): PlannerChannels {
   const { live } = context;
   return {
     phone: {
-      send: (clientId) =>
-        Promise.resolve(
-          live.connectedClients().has(clientId) || live.backgroundClients().has(clientId),
-        ),
+      send: async (clientId) => (await live.deliver(clientId, { type: 'planner_phone_rings' })) > 0,
     },
     watch: { send: (deviceId, action) => sendToWatch(context, deviceId, action) },
     profileOfWatch: (deviceId) => profileOfWatch(context, deviceId),

@@ -35,6 +35,7 @@ export interface SignalSource {
 interface SignalRule {
   readonly matcher: SignalMatcher;
   readonly window: 'occurrence' | 'day';
+  readonly minSeconds: number | null;
 }
 
 interface Completed {
@@ -51,6 +52,8 @@ interface Day {
 
 const OPEN_STATUSES: ReadonlySet<PlannerOccurrenceView['status']> = new Set(['open', 'missed']);
 
+const LENGTH_FIELDS = ['durationS', 'duration_s', 'durationSeconds'] as const;
+
 function textOf(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
@@ -58,8 +61,26 @@ function textOf(value: unknown): string | null {
 function ruleOf(item: PlannerItemRow): SignalRule | null {
   const { completion } = item;
   return completion.kind === 'signal'
-    ? { matcher: completion.matcher, window: completion.window }
+    ? {
+        matcher: completion.matcher,
+        window: completion.window,
+        minSeconds: completion.minSeconds ?? null,
+      }
     : null;
+}
+
+function lengthOf(signal: SignalInput): number | null {
+  for (const field of LENGTH_FIELDS) {
+    const value = signal.data[field];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function longEnough(rule: SignalRule, signal: SignalInput): boolean {
+  if (rule.minSeconds === null) return true;
+  const length = lengthOf(signal);
+  return length !== null && length >= rule.minSeconds;
 }
 
 function ownerOf(signal: SignalInput): string | null {
@@ -128,7 +149,9 @@ export class CompletionWatcher {
       .flatMap((id) => plannerItems.list(id, { statuses: ['open'] }))
       .filter((item) => {
         const rule = ruleOf(item);
-        return rule !== null && signalMatchesMatcher(rule.matcher, signal);
+        return (
+          rule !== null && signalMatchesMatcher(rule.matcher, signal) && longEnough(rule, signal)
+        );
       });
   }
 

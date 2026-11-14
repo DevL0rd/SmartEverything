@@ -5,15 +5,12 @@ import {
   type JsonValue,
   type PlannerCompletion,
   type PlannerCompletionWindow,
+  type PlannerSignalCompletion,
 } from '@smarteverything/domain';
 import type { ReactNode, Ref } from 'react';
 import type { View } from 'react-native';
 import { ListRow } from '../../../components/list-row';
 import { useRow } from '../../../store/selectors';
-
-export type SignalCompletion = Extract<PlannerCompletion, { readonly kind: 'signal' }> & {
-  readonly minSeconds?: number;
-};
 
 export interface RuleDevice {
   readonly id: string;
@@ -51,22 +48,22 @@ function bottleTextOf(activity: string): string {
   return BOTTLE_TEXT[activity] ?? `reports ${activity.replaceAll('_', ' ')}`;
 }
 
-function fact(completion: SignalCompletion, key: string): string | null {
+function fact(completion: PlannerSignalCompletion, key: string): string | null {
   const value = completion.matcher.match?.[key];
   return typeof value === 'string' ? value : null;
 }
 
-function minutesOf(completion: SignalCompletion): string {
+function minutesOf(completion: PlannerSignalCompletion): string {
   const seconds = completion.minSeconds;
   return seconds === undefined ? '' : ` of ${String(Math.round(seconds / 60))} min or more`;
 }
 
-function treadmillNoun(completion: SignalCompletion): string {
+function treadmillNoun(completion: PlannerSignalCompletion): string {
   const kind = fact(completion, 'kind');
   return kind === null ? 'treadmill session' : (SESSION_NOUNS[kind] ?? 'treadmill session');
 }
 
-type Sentence = (completion: SignalCompletion, label: string) => string;
+type Sentence = (completion: PlannerSignalCompletion, label: string) => string;
 
 const SENTENCES: Readonly<Partial<Record<DeviceFamily, Sentence>>> = {
   treadmill: (completion) => `a ${treadmillNoun(completion)}${minutesOf(completion)} ends`,
@@ -75,7 +72,7 @@ const SENTENCES: Readonly<Partial<Record<DeviceFamily, Sentence>>> = {
     `${label} ${bottleTextOf(fact(completion, 'activity') ?? 'drink')}`,
 };
 
-function sentenceOf(completion: SignalCompletion, device: RuleDevice | null): string {
+function sentenceOf(completion: PlannerSignalCompletion, device: RuleDevice | null): string {
   if (device === null) return `a device that was removed reports ${completion.matcher.kind}`;
   const sentence = SENTENCES[device.family];
   return sentence === undefined
@@ -88,12 +85,12 @@ export function ruleTitleOf(completion: PlannerCompletion, device: RuleDevice | 
   return `Done when ${sentenceOf(completion, device)}`;
 }
 
-function pluralOf(completion: SignalCompletion, family: DeviceFamily): string {
+function pluralOf(completion: PlannerSignalCompletion, family: DeviceFamily): string {
   return family === 'treadmill' ? `${treadmillNoun(completion)}s` : 'brushing sessions';
 }
 
 export function whoseTextOf(
-  completion: SignalCompletion,
+  completion: PlannerSignalCompletion,
   device: RuleDevice | null,
   personName: string,
 ): string | null {
@@ -120,21 +117,21 @@ export function ruleMinutesOf(device: RuleDevice | null): readonly number[] {
 }
 
 export function withWindow(
-  completion: SignalCompletion,
+  completion: PlannerSignalCompletion,
   window: PlannerCompletionWindow,
-): SignalCompletion {
+): PlannerSignalCompletion {
   return { ...completion, window };
 }
 
 export function withMinutes(
-  completion: SignalCompletion,
+  completion: PlannerSignalCompletion,
   minutes: number | null,
-): SignalCompletion {
+): PlannerSignalCompletion {
   const base = { kind: completion.kind, matcher: completion.matcher, window: completion.window };
   return minutes === null ? base : { ...base, minSeconds: minutes * 60 };
 }
 
-function matchOf(completion: SignalCompletion): JsonValue {
+function matchOf(completion: PlannerSignalCompletion): JsonValue {
   return completion.matcher.match ?? {};
 }
 

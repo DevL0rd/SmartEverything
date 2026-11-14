@@ -218,9 +218,9 @@ describe('the wide card geometry', () => {
 
   it('places the graph beside the info in the wide class and below it elsewhere', () => {
     const wide = treeOf(html('w', { graph: mark('graph') }));
-    expect(classOf(parentOf(parentOf(slot(wide, 'graph'))))).toContain('flex-row');
+    expect(classOf(parentOf(parentOf(parentOf(slot(wide, 'graph')))))).toContain('flex-row');
     const medium = treeOf(html('m', { graph: mark('graph') }));
-    const holder = parentOf(slot(medium, 'graph'));
+    const holder = parentOf(parentOf(slot(medium, 'graph')));
     expect(parentOf(holder)).toBe(lane(medium));
     expect(classOf(holder)).toContain('flex-1');
   });

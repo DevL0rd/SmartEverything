@@ -241,6 +241,11 @@ describe('planner collections, completion and attachments', () => {
     expect(PLANNER_COMPLETION.safeParse(signal).success).toBe(true);
     expect(PLANNER_COMPLETION.safeParse({ ...signal, window: 'week' }).success).toBe(false);
     expect(PLANNER_COMPLETION.safeParse({ kind: 'signal', window: 'day' }).success).toBe(false);
+    expect(PLANNER_COMPLETION.safeParse({ ...signal, minSeconds: 600 }).success).toBe(true);
+    expect(PLANNER_COMPLETION.safeParse({ ...signal, minSeconds: 0 }).success).toBe(false);
+    expect(PLANNER_COMPLETION.safeParse({ ...signal, minSeconds: 1.5 }).success).toBe(false);
+    expect(PLANNER_COMPLETION.safeParse({ ...signal, minSeconds: -60 }).success).toBe(false);
+    expect(PLANNER_COMPLETION.safeParse({ kind: 'manual', minSeconds: 60 }).success).toBe(false);
   });
 
   it('parses the five attachment kinds', () => {

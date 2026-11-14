@@ -1,58 +1,39 @@
-import type {
-  PlannerAlarmRow,
-  PlannerDay,
-  PlannerMissedReason,
-  PlannerOccurrenceView,
-  PlannerRingRow,
-} from '@smarteverything/domain';
+import type { PlannerDay, PlannerOccurrenceView } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition, ZoomOut } from 'react-native-reanimated';
 import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
+import type { AppHref } from '../../../components/app-href';
 import { Card } from '../../../components/card';
 import type { IconName } from '../../../components/icon';
 import { IconWell } from '../../../components/icon-well';
+import { Interactive } from '../../../components/interactive';
 import { SwipeRow, type SwipeAction } from '../../../components/swipe-row';
 import { Text } from '../../../components/text';
 import { entering, exiting, useMotion } from '../../../design/motion';
 import { useAreaWidth } from '../../../design/size-class';
-import { clock } from '../../../format/time';
 import { useRow } from '../../../store/selectors';
-import { openQuickAskWith } from '../../assistant';
+import { askAssistantWith } from '../../assistant';
 import { usePlannerAlarms } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { occurrenceWhenOf } from '../frame/occurrence-list';
 import { frameLayoutOf } from '../frame/sections';
-import { byTime } from './done-ribbon';
+import { useItemPress } from '../item/item-menu-host';
+import type { ItemOpen } from '../item/selection';
+import {
+  catchUpCardsOf,
+  fitPromptOf,
+  ghostStackOf,
+  missedAlarmTitleOf,
+  missedReasonOf,
+  type AlarmCard,
+  type CatchUpCard,
+  type GhostStack,
+  type ItemCard,
+} from './catch-up-model';
 import { useHiddenKeys, useOccurrenceActions, type OccurrenceActions } from './now-lens';
-
-export type CatchUpCard =
-  | {
-      readonly kind: 'item';
-      readonly key: string;
-      readonly at: number;
-      readonly occurrence: PlannerOccurrenceView;
-    }
-  | {
-      readonly kind: 'alarm';
-      readonly key: string;
-      readonly at: number;
-      readonly ring: PlannerRingRow;
-      readonly alarm: PlannerAlarmRow | null;
-    };
-
-type ItemCard = Extract<CatchUpCard, { readonly kind: 'item' }>;
-type AlarmCard = Extract<CatchUpCard, { readonly kind: 'alarm' }>;
-
-const MISSED_REASON: Readonly<Record<PlannerMissedReason, string>> = {
-  hub_down: 'hub was off',
-  phone_off: 'phone was off',
-  computer_asleep: 'computer was asleep',
-};
-
-const GHOST = { inset: 12, offset: 7, spread: 96 } as const;
 
 const DECK_BUTTONS: readonly {
   readonly action: keyof OccurrenceActions;
@@ -72,79 +53,6 @@ const SWIPES = {
 
 const DECK_MS = 220;
 const DONE_MS = 260;
-
-function missedAt(occurrence: PlannerOccurrenceView): number {
-  const at = occurrence.start ?? occurrence.due_at;
-  return at === null ? Number.POSITIVE_INFINITY : Date.parse(at);
-}
-
-function missedAlarm(ring: PlannerRingRow): boolean {
-  return ring.kind === 'alarm' && ring.outcome === 'missed';
-}
-
-export function catchUpCardsOf(
-  day: PlannerDay,
-  alarms: readonly PlannerAlarmRow[],
-  hidden: ReadonlySet<string>,
-): readonly CatchUpCard[] {
-  const alarmById = new Map(alarms.map((alarm) => [alarm.id, alarm]));
-  const cards: CatchUpCard[] = [
-    ...day.missed.map((occurrence) => ({
-      kind: 'item' as const,
-      key: `item:${occurrence.item_id}:${occurrence.occurrence_key}`,
-      at: missedAt(occurrence),
-      occurrence,
-    })),
-    ...day.rings.filter(missedAlarm).map((ring) => ({
-      kind: 'alarm' as const,
-      key: `alarm:${ring.id}`,
-      at: Date.parse(ring.due_at),
-      ring,
-      alarm: alarmById.get(ring.ref_id) ?? null,
-    })),
-  ];
-  return cards.filter((card) => !hidden.has(card.key)).sort(byTime);
-}
-
-export interface GhostCard {
-  readonly left: number;
-  readonly right: number;
-  readonly bottom: number;
-}
-
-export interface GhostStack {
-  readonly ghosts: readonly GhostCard[];
-  readonly pad: { readonly paddingBottom: number };
-}
-
-export function ghostStackOf(count: number): GhostStack {
-  const ghosts = Math.max(0, count - 1);
-  const room = Math.max(1, ghosts);
-  const inset = Math.min(GHOST.inset, GHOST.spread / room);
-  const offset = Math.min(GHOST.offset, GHOST.spread / 2 / room);
-  return {
-    ghosts: Array.from({ length: ghosts }, (_, index) => ({
-      left: inset * (index + 1),
-      right: inset * (index + 1),
-      bottom: offset * (ghosts - 1 - index),
-    })),
-    pad: { paddingBottom: offset * ghosts },
-  };
-}
-
-export function fitPromptOf(cards: readonly CatchUpCard[]): string | null {
-  const titles = cards.flatMap((card) => (card.kind === 'item' ? [card.occurrence.title] : []));
-  if (titles.length === 0) return null;
-  return `Fit what I missed into the rest of today: ${titles.join(', ')}.`;
-}
-
-export function missedAlarmTitleOf(card: AlarmCard, timeZone: string): string {
-  return `Missed alarm ${clock(card.ring.due_at, timeZone)}`;
-}
-
-export function missedReasonOf(ring: PlannerRingRow): string {
-  return ring.missed_reason === null ? 'did not ring' : MISSED_REASON[ring.missed_reason];
-}
 
 function useDeviceNameOf(occurrence: PlannerOccurrenceView): string | null {
   const attached = occurrence.attachments.find((attachment) => attachment.kind === 'device');
@@ -181,16 +89,20 @@ function DeckButtons({
   );
 }
 
+type FaceOpen = { readonly href: AppHref } | { readonly onPress: () => void };
+
 function ItemFace({
   card,
   timeZone,
   actions,
   compact,
+  open,
 }: {
   readonly card: ItemCard;
   readonly timeZone: string;
   readonly actions: OccurrenceActions;
   readonly compact: boolean;
+  readonly open: FaceOpen;
 }): ReactNode {
   const device = useDeviceNameOf(card.occurrence);
   const subtitle = [occurrenceWhenOf(card.occurrence, timeZone), device, card.occurrence.location]
@@ -198,7 +110,12 @@ function ItemFace({
     .join(' · ');
   return (
     <View className={compact ? 'gap-3' : 'flex-row items-center gap-3'}>
-      <View className="min-w-0 flex-1 flex-row items-center gap-3">
+      <Interactive
+        {...open}
+        label={card.occurrence.title}
+        className="min-h-12 min-w-0 flex-1 flex-row items-center gap-3 rounded-sm"
+        layerClassName="rounded-sm"
+      >
         <IconWell
           icon={card.occurrence.kind === 'event' ? 'calendar' : 'circleCheck'}
           colour="critical"
@@ -211,7 +128,7 @@ function ItemFace({
             {subtitle}
           </Text>
         </View>
-      </View>
+      </Interactive>
       <DeckButtons card={card} actions={actions} compact={compact} />
     </View>
   );
@@ -253,15 +170,20 @@ interface CardProps {
   readonly onPress: (() => void) | undefined;
 }
 
-function DeckCard({ card, day, actions, compact, onPress }: CardProps): ReactNode {
+function faceOpenOf(onFan: (() => void) | undefined, open: ItemOpen): FaceOpen {
+  if (onFan !== undefined) return { onPress: onFan };
+  return 'href' in open ? { href: open.href } : { onPress: open.onPress };
+}
+
+function ItemDeckCard({
+  card,
+  day,
+  actions,
+  compact,
+  onPress,
+}: CardProps & { readonly card: ItemCard }): ReactNode {
   const { offline } = usePlannerFrame();
-  if (card.kind === 'alarm') {
-    return (
-      <Card tone="critical">
-        <AlarmFace card={card} timeZone={day.time_zone} />
-      </Card>
-    );
-  }
+  const press = useItemPress(card.occurrence.item_id, card.occurrence.occurrence_key);
   const swipe = (action: 'done' | 'skip'): SwipeAction | undefined =>
     offline
       ? undefined
@@ -271,18 +193,32 @@ function DeckCard({ card, day, actions, compact, onPress }: CardProps): ReactNod
             actions[action](card.key, card.occurrence);
           },
         };
+  const open = faceOpenOf(onPress, press.open);
   return (
     <SwipeRow surface="bg" leading={swipe('done')} trailing={swipe('skip')}>
-      <Card
-        label={card.occurrence.title}
-        {...(onPress === undefined
-          ? { href: href.planner.item(card.occurrence.item_id) }
-          : { onPress })}
-      >
-        <ItemFace card={card} timeZone={day.time_zone} actions={actions} compact={compact} />
+      <Card>
+        <ItemFace
+          card={card}
+          timeZone={day.time_zone}
+          actions={actions}
+          compact={compact}
+          open={open}
+        />
       </Card>
     </SwipeRow>
   );
+}
+
+function DeckCard(props: CardProps): ReactNode {
+  const { card } = props;
+  if (card.kind === 'alarm') {
+    return (
+      <Card tone="critical">
+        <AlarmFace card={card} timeZone={props.day.time_zone} />
+      </Card>
+    );
+  }
+  return <ItemDeckCard {...props} card={card} />;
 }
 
 function Ghosts({ stack }: { readonly stack: GhostStack }): ReactNode {
@@ -315,7 +251,7 @@ function Header({ cards }: { readonly cards: readonly CatchUpCard[] }): ReactNod
           variant="tonal"
           disabled={offline}
           onPress={() => {
-            openQuickAskWith(prompt);
+            askAssistantWith(prompt);
           }}
         />
       )}

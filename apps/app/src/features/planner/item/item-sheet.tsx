@@ -5,18 +5,13 @@ import type {
   PlannerItemScope,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
-import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { QuickRow, type MenuItem } from '../../../components/menu-rows';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
-import { useIdiom } from '../../../design/platform';
 import { useMinute } from '../../../store/clock';
 import { useRows, useSettings } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
@@ -40,7 +35,9 @@ import {
   useGoogleChoice,
   whenCaptionOf,
 } from './google-captions';
+import { ItemActions, reported } from './item-actions';
 import { ItemFields } from './item-fields';
+import { ItemTitle } from './item-title';
 import {
   ItemHistory,
   itemHistoryOf,
@@ -178,73 +175,6 @@ function ItemMeta({
   );
 }
 
-interface ActionProps {
-  readonly item: PlannerItemRow;
-  readonly target: ItemTarget;
-  readonly disabled: boolean;
-  readonly onClose: () => void;
-}
-
-function useItemActions({ item, target, disabled }: ActionProps): readonly MenuItem[] {
-  const writes = usePlannerWrites(target.person);
-  const key = item.rrule === null ? 'single' : target.occurrenceKey;
-  const blocked = disabled || key === null;
-  return [
-    {
-      id: 'done',
-      label: 'Done',
-      icon: 'check',
-      disabled: blocked,
-      onPress: (): void => {
-        reported(
-          writes.completeItem(item.id, { occurrence_key: key ?? 'single' }),
-          'Couldn’t mark that done',
-        );
-      },
-    },
-    {
-      id: 'skip',
-      label: 'Skip',
-      icon: 'skipForward',
-      disabled: blocked,
-      onPress: (): void => {
-        reported(writes.skipItem(item.id, key ?? 'single'), 'Couldn’t skip that');
-      },
-    },
-    {
-      id: 'ask',
-      label: 'Ask AI',
-      icon: 'sparkles',
-      onPress: (): void => {
-        router.push(href.assistantChat());
-      },
-    },
-  ];
-}
-
-function ItemActions(props: ActionProps): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  const actions = useItemActions(props);
-  if (!pointer) return <QuickRow items={actions} close={props.onClose} subpages={false} />;
-  return (
-    <View className="flex-row flex-wrap items-center gap-2">
-      {actions.map((action, index) => (
-        <Button
-          key={action.id ?? action.label}
-          label={action.label}
-          {...(action.icon === undefined ? {} : { icon: action.icon })}
-          variant={index === 0 ? 'tonal' : 'outlined'}
-          disabled={action.disabled === true}
-          onPress={() => {
-            action.onPress();
-            if (index < 2) props.onClose();
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
 export interface ItemBodyProps {
   readonly item: PlannerItemRow;
   readonly editor: ItemEditor;
@@ -281,15 +211,6 @@ function useBodyData(item: PlannerItemRow, person: PlannerPerson): BodyData {
   };
 }
 
-function reported(work: Promise<unknown>, message: string): void {
-  background(
-    work.catch((error: unknown) => {
-      notify({ message, error, tone: 'critical' });
-    }),
-    'planner.item_action_failed',
-  );
-}
-
 interface StepActions {
   readonly onDone: (step: StepView) => void;
   readonly onAdd: (title: string) => void;
@@ -319,6 +240,12 @@ export function ItemBody({ item, editor, target, offline, onClose }: ItemBodyPro
   const disabled = offline || editor.busy;
   return (
     <View className="gap-4 pb-2 pt-2">
+      <ItemTitle
+        key={shown.title}
+        title={shown.title}
+        disabled={disabled}
+        onChange={editor.change}
+      />
       <View className="gap-2">
         <ItemMeta item={shown} collection={collectionIn(data.collections, shown.collection_id)} />
         <GoogleTitleLine caption={titleCaptionOf(item, data.choice)} />
@@ -375,9 +302,12 @@ function OpenItemSheet(props: ItemSheetProps & { readonly item: PlannerItemRow }
   );
 }
 
+export function itemIn(items: readonly PlannerItemRow[], itemId: string): PlannerItemRow | null {
+  return items.find((item) => item.id === itemId && item.deleted_at === null) ?? null;
+}
+
 export function ItemSheet(props: ItemSheetProps): ReactNode {
-  const items = usePlannerItems(props.person);
-  const item = items.find((row) => row.id === props.itemId && row.deleted_at === null) ?? null;
+  const item = itemIn(usePlannerItems(props.person), props.itemId);
   if (item === null) {
     return (
       <Sheet open={props.open} onClose={props.onClose} label="Planner item" detents={['fit']}>

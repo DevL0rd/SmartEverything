@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { background } from '@smarteverything/logging';
 import { Badge, type BadgeTone } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { openSystemSetting } from '../data/alarm-phone';
 import { skipSetupItem, unskipSetupItem } from '../data/use-readiness';
+import type { SetupItem } from '../model/items';
 import type { ReadinessEntry, SetupState } from '../model/readiness';
 
 const BADGE: Readonly<Record<SetupState, { readonly label: string; readonly tone: BadgeTone }>> = {
@@ -42,6 +45,23 @@ function Marker({
   );
 }
 
+function GoButton({ item, next }: { readonly item: SetupItem; readonly next: boolean }): ReactNode {
+  const variant = next ? 'filled' : 'tonal';
+  const { go } = item;
+  if (go.kind === 'page') return <Button label={item.action} variant={variant} href={go.href} />;
+  return (
+    <Button
+      label={item.action}
+      variant={variant}
+      onPress={() => {
+        background(openSystemSetting(go.setting), 'setup.system_setting_failed', {
+          setting: go.setting,
+        });
+      }}
+    />
+  );
+}
+
 function Actions({
   entry,
   next,
@@ -53,7 +73,7 @@ function Actions({
   if (entry.state === 'done') return null;
   return (
     <View className="flex-row flex-wrap gap-2 medium:pl-13">
-      <Button label={item.action} variant={next ? 'filled' : 'tonal'} href={item.go} />
+      <GoButton item={item} next={next} />
       {entry.state === 'skipped' ? (
         <Button
           label="Ask me again"

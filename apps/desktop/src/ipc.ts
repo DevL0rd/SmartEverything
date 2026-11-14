@@ -21,6 +21,7 @@ import {
 } from '@smarteverything/domain';
 import type { DisplayCapture } from './display-capture.js';
 import { registerClipboardIpc } from './clipboard-ipc.js';
+import { registerGoogleIpc } from './google/ipc.js';
 import { registerPhotosIpc } from './photos/ipc.js';
 import { isAppOrigin } from './origin.js';
 import { ManagedByStableAppError, type ServiceController } from './service/controller.js';
@@ -195,6 +196,7 @@ export function registerDesktopIpc(services: IpcServices): void {
   });
   registerClipboardIpc(handle);
   registerPhotosIpc(handle);
+  registerGoogleIpc(handle);
   registerServiceIpc(services, handle);
   registerOwnerIpc(services, handle);
   registerTalkIpc(services.talk, handle);

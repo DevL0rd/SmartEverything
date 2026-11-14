@@ -3,7 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
-import { useBandHitSlop } from './widget-board/band-context';
+import { useBandHitSlop, useCompactBand } from './widget-board/band-context';
 import { Icon, type IconName } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
@@ -88,6 +88,43 @@ function frameOf({ look, size, pointer, grow, wrap, disabled }: FrameInput): str
   );
 }
 
+function iconFrameOf(look: Look, pointer: boolean, disabled: boolean): string {
+  return cn(
+    'size-control-h items-center justify-center',
+    radiusOf(pointer),
+    disabled ? look.off : look.frame,
+  );
+}
+
+function shapedFrameOf(iconOnly: boolean, input: FrameInput): string {
+  return iconOnly ? iconFrameOf(input.look, input.pointer, input.disabled) : frameOf(input);
+}
+
+function LabelSlot({
+  show,
+  label,
+  look,
+  disabled,
+  wrap,
+}: {
+  readonly show: boolean;
+  readonly label: string;
+  readonly look: Look;
+  readonly disabled: boolean;
+  readonly wrap: boolean;
+}): ReactNode {
+  return show ? <ButtonLabel label={label} look={look} disabled={disabled} wrap={wrap} /> : null;
+}
+
+function useButtonShape(
+  hasIcon: boolean,
+  size: FrameInput['size'],
+  wrap: boolean,
+): { readonly iconOnly: boolean; readonly hitSlop: ReturnType<typeof useBandHitSlop> } {
+  const iconOnly = useCompactBand() && hasIcon;
+  return { iconOnly, hitSlop: useBandHitSlop(iconOnly || controlShaped(size, wrap)) };
+}
+
 function Leading({
   icon,
   loading,
@@ -166,7 +203,7 @@ export function Button({
 }: ButtonProps): ReactNode {
   const look = LOOK[variant];
   const pointer = useIdiom() === 'pointer';
-  const hitSlop = useBandHitSlop(controlShaped(size, wrap));
+  const { iconOnly, hitSlop } = useButtonShape(icon !== undefined, size, wrap);
   return (
     <Interactive
       ref={ref}
@@ -177,11 +214,11 @@ export function Button({
       label={spoken ?? label}
       hint={hint}
       onTone={variant === 'filled' ? 'primary' : 'surface'}
-      className={frameOf({ look, size, pointer, grow, wrap, disabled })}
+      className={shapedFrameOf(iconOnly, { look, size, pointer, grow, wrap, disabled })}
       layerClassName={radiusOf(pointer)}
     >
       <Leading icon={icon} loading={loading} look={look} pointer={pointer} disabled={disabled} />
-      <ButtonLabel label={label} look={look} disabled={disabled} wrap={wrap} />
+      <LabelSlot show={!iconOnly} label={label} look={look} disabled={disabled} wrap={wrap} />
     </Interactive>
   );
 }

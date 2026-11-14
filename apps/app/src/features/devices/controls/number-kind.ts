@@ -38,9 +38,16 @@ export function labelModeOf(
   presented: PresentedCapability,
   requested: LabelMode,
   width: number,
+  stepperPx: number,
 ): LabelMode {
-  if (requested === 'caption' || !isSliderControl(presented)) {
+  if (requested === 'caption') {
     return requested;
   }
-  return sliderLabelMode(width, INLINE_LABEL_SHARE, LABEL_GAP);
+  if (isSliderControl(presented)) {
+    return sliderLabelMode(width, INLINE_LABEL_SHARE, LABEL_GAP);
+  }
+  const stepperRoom = width * (1 - INLINE_LABEL_SHARE) - LABEL_GAP;
+  return presented.capability.value.kind === 'number' && stepperRoom < stepperPx
+    ? 'caption'
+    : requested;
 }

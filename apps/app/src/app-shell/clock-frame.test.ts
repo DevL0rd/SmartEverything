@@ -1,13 +1,16 @@
-import type {
-  PlannerStopwatchRow,
-  PlannerTimerRow,
-  PlannerPreferences,
+import type { PlannerParse } from '../api/planner';
+import {
+  PLANNER_ALARM_ROW,
+  type PlannerAlarmRow,
+  type PlannerStopwatchRow,
+  type PlannerTimerRow,
+  type PlannerPreferences,
 } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { CLOCK_SECTION_ROUTES } from '../features/clock/model/section-routes';
 import { isHubOffline } from '../features/clock/frame/hub-status';
 import { openClockSection } from '../features/clock/frame/open-section';
-import { addClockText, ClockTextNotRead } from '../features/clock/frame/quick-add';
+import { clockComposerKindOf } from '../features/clock/frame/quick-add';
 import {
   alarmSummaryOf,
   cityOf,
@@ -25,7 +28,7 @@ import {
   clockTitleOf,
   railWidthOf,
 } from '../features/clock/frame/sections';
-import { clock } from '../format/time';
+import { clock24 } from '../format/time';
 import { href } from './hrefs';
 
 const pushed = vi.hoisted(() => {
@@ -44,10 +47,124 @@ vi.mock('expo-router', async (importOriginal) => ({
 
 const { clockMenu } = await import('../features/clock/frame/clock-menu');
 const { PLANNER_CLOCK_SETTING } = await import('../features/planner/settings');
+const { addPlan, shownKindOf } = await import('../features/planner/item/composer');
+const { composerPlanOf } = await import('../features/planner/item/parse-preview');
 
 type WorldClock = PlannerPreferences['clock']['world_clocks'][number];
 
 const AT = '2026-11-07T10:00:00.000Z';
+
+const ZONE = 'Europe/London';
+
+const PARSED: Readonly<Record<string, PlannerParse>> = {
+  'wake me 06:30 weekdays': parsedTask({
+    title: 'wake me',
+    start_local: '2026-11-16T06:30:00',
+    time_zone: ZONE,
+    rrule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR',
+  }),
+  'pasta 10 min': parsedTask({
+    title: 'pasta',
+    due_date: '2026-11-14',
+    due_at: '2026-11-14T17:10:00.000Z',
+  }),
+};
+
+function parsedTask(patch: Partial<PlannerParse['draft']>): PlannerParse {
+  return {
+    draft: {
+      collection_id: '00000000-0000-4000-8000-000000000020',
+      kind: 'task',
+      title: '',
+      parent_id: null,
+      notes: '',
+      location: null,
+      priority: null,
+      tags: [],
+      estimate_minutes: null,
+      start_local: null,
+      end_local: null,
+      time_zone: null,
+      all_day: false,
+      due_date: null,
+      due_at: null,
+      rrule: null,
+      exdates: [],
+      completion: { kind: 'manual' },
+      attachments: [],
+      reminders: [],
+      ...patch,
+    },
+    next_occurrences: [],
+    repeat_text: null,
+  };
+}
+
+type ComposerPorts = Parameters<typeof addPlan>[2];
+
+interface RecordedPorts {
+  readonly alarms: unknown[];
+  readonly timers: unknown[];
+  readonly ports: ComposerPorts;
+}
+
+function alarmRow(body: Parameters<ComposerPorts['items']['createAlarm']>[0]): PlannerAlarmRow {
+  return PLANNER_ALARM_ROW.parse({
+    id: '00000000-0000-4000-8000-000000000030',
+    profile_id: '00000000-0000-4000-8000-000000000002',
+    label: body.label,
+    time: body.time,
+    days: body.days,
+    once_on: body.once_on,
+    skip_on: null,
+    enabled: true,
+    sound: 'Morning light',
+    ramp_seconds: 60,
+    vibrate: true,
+    snooze_minutes: 9,
+    smart_minutes: null,
+    wake_scene_id: null,
+    wake_lead_minutes: null,
+    targets: [],
+    watch: [],
+    source: 'planner',
+    created_at: AT,
+    updated_at: AT,
+  });
+}
+
+function composerPorts(): RecordedPorts {
+  const alarms: unknown[] = [];
+  const timers: unknown[] = [];
+  const ports: ComposerPorts = {
+    items: {
+      createItem: () => Promise.reject(new Error('The Clock never adds Planner items.')),
+      createAlarm: (body) => {
+        alarms.push(body);
+        return Promise.resolve(alarmRow(body));
+      },
+    },
+    clock: {
+      startTimer: (body) => {
+        timers.push(body);
+        return Promise.resolve(timer({ label: body.label ?? null, duration_ms: body.duration_ms }));
+      },
+    },
+  };
+  return { alarms, timers, ports };
+}
+
+async function addFromClock(
+  section: Parameters<typeof clockComposerKindOf>[0],
+  text: string,
+  ports: ComposerPorts,
+): Promise<void> {
+  const parsed = PARSED[text] ?? null;
+  const kind = shownKindOf('clock', clockComposerKindOf(section), parsed?.draft.kind ?? null);
+  const plan = composerPlanOf({ kind, text, parsed, timeZone: ZONE });
+  if (plan === null) throw new Error(`The composer had no plan for ${text}.`);
+  await addPlan(plan, null, ports);
+}
 
 function timer(patch: Partial<PlannerTimerRow>): PlannerTimerRow {
   return {
@@ -105,9 +222,21 @@ describe('the clock sections', () => {
     expect(clockSectionOf('world').hint).toBe('New alarm or timer. Try: wake me 06:30 weekdays');
   });
 
-  it('never adds empty text and says out loud that alarm and timer text is not read yet', async () => {
-    await expect(addClockText('   ')).resolves.toBe(false);
-    await expect(addClockText('pasta 10 min')).rejects.toBeInstanceOf(ClockTextNotRead);
+  it('opens the composer as an alarm on Alarms and World, and as a timer on Timers and Stopwatch', () => {
+    expect(clockComposerKindOf('index')).toBe('alarm');
+    expect(clockComposerKindOf('world')).toBe('alarm');
+    expect(clockComposerKindOf('timers')).toBe('timer');
+    expect(clockComposerKindOf('stopwatch')).toBe('timer');
+  });
+
+  it('adds the Alarms hint as weekday alarms and the Timers hint as a running timer', async () => {
+    const recorded = composerPorts();
+    await addFromClock('index', 'wake me 06:30 weekdays', recorded.ports);
+    await addFromClock('timers', 'pasta 10 min', recorded.ports);
+    expect(recorded.alarms).toEqual([
+      { time: '06:30', label: 'wake me', days: [1, 2, 3, 4, 5], once_on: null },
+    ]);
+    expect(recorded.timers).toEqual([{ duration_ms: 600_000, label: 'pasta' }]);
   });
 
   it('title the page Clock on phone and at 884, and by its section on desktop', () => {
@@ -130,8 +259,8 @@ describe('the clock rail summaries', () => {
     expect(alarmSummaryOf(null, now)).toBeNull();
     const today = new Date(2026, 10, 7, 18, 30).toISOString();
     const tomorrow = new Date(2026, 10, 8, 7, 0).toISOString();
-    expect(alarmSummaryOf(today, now)).toBe(`${clock(today)} today`);
-    expect(alarmSummaryOf(tomorrow, now)).toBe(`${clock(tomorrow)} tomorrow`);
+    expect(alarmSummaryOf(today, now)).toBe('18:30 today');
+    expect(alarmSummaryOf(tomorrow, now)).toBe('07:00 tomorrow');
   });
 
   it('count down the soonest running timer, then show the paused ones', () => {
@@ -169,7 +298,8 @@ describe('the clock rail summaries', () => {
     expect(cityOf(tokyo)).toBe('Tokyo');
     expect(cityOf({ time_zone: 'America/New_York', label: null })).toBe('New York');
     expect(cityOf({ time_zone: 'Asia/Tokyo', label: 'Office' })).toBe('Office');
-    expect(worldSummaryOf([tokyo], now)).toBe(`Tokyo ${clock(now, 'Asia/Tokyo')}`);
+    expect(worldSummaryOf([tokyo], now)).toBe(`Tokyo ${clock24(now, 'Asia/Tokyo')}`);
+    expect(worldSummaryOf([tokyo], Date.parse('2026-11-07T23:05:00Z'))).toBe('Tokyo 08:05');
   });
 });
 

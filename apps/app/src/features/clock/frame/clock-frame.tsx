@@ -7,13 +7,14 @@ import { Screen } from '../../../components/screen';
 import { CompactBody, WideBody, type FrameWidth } from '../../../components/section-body';
 import { useAreaWidth } from '../../../design/size-class';
 import { usePlannerReload } from '../../planner/data';
-import { QuickAddBar, ScrollAwayBar } from '../../planner/frame/quick-add-bar';
+import { useComposerControl } from '../../planner/frame/quick-add';
+import { QuickAddBar, QuickAddComposer, ScrollAwayBar } from '../../planner/frame/quick-add-bar';
 import type { ClockSection } from '../model/section-routes';
 import { clockMenu } from './clock-menu';
 import { ClockRail } from './clock-rail';
 import { ClockStrip } from './clock-strip';
 import { useHubOffline } from './hub-status';
-import { addClockText } from './quick-add';
+import { clockComposerKindOf } from './quick-add';
 import {
   CLOCK_QUICK_ADD_TARGET,
   clockSectionOf,
@@ -60,14 +61,15 @@ function useRefresh(): { readonly refreshing: boolean; readonly onRefresh: () =>
 interface QuickAddSlot {
   readonly section: ClockSection;
   readonly offline: boolean;
+  readonly onOpen: () => void;
 }
 
-function ClockQuickAdd({ section, offline }: QuickAddSlot): ReactNode {
+function ClockQuickAdd({ section, offline, onOpen }: QuickAddSlot): ReactNode {
   return (
     <QuickAddBar
       target={CLOCK_QUICK_ADD_TARGET}
       hint={clockSectionOf(section).hint}
-      onAdd={addClockText}
+      onOpen={onOpen}
       disabled={offline}
     />
   );
@@ -135,7 +137,11 @@ export function ClockFrame({
   const compact = frameLayoutOf(area) === 'compact';
   const offline = useHubOffline();
   const { refreshing, onRefresh } = useRefresh();
-  const quickAdd = <ClockQuickAdd section={section} offline={offline} />;
+  const composer = useComposerControl();
+  const openComposer = (): void => {
+    composer.open({ text: '', kind: clockComposerKindOf(section) });
+  };
+  const quickAdd = <ClockQuickAdd section={section} offline={offline} onOpen={openComposer} />;
   return (
     <Screen
       maxWidth={compact ? width : 'full'}
@@ -158,6 +164,12 @@ export function ClockFrame({
       <FrameBody section={section} scroll={scroll} width={width} quickAdd={quickAdd}>
         {children}
       </FrameBody>
+      <QuickAddComposer
+        control={composer}
+        target={CLOCK_QUICK_ADD_TARGET}
+        person={null}
+        disabled={offline}
+      />
     </Screen>
   );
 }

@@ -1,11 +1,8 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
-import { EmptyState } from '../../../../../src/components/empty-state';
+import { useLocalSearchParams } from 'expo-router';
+import { ItemScreen } from '../../../../../src/features/planner/item';
 
 export default function Route(): ReactNode {
-  return (
-    <View className="flex-1 justify-center">
-      <EmptyState icon="calendar" title="Planner item" body="This item will be here." />
-    </View>
-  );
+  const { itemId, occurrence } = useLocalSearchParams<{ itemId: string; occurrence?: string }>();
+  return <ItemScreen itemId={itemId} occurrenceKey={occurrence ?? null} />;
 }

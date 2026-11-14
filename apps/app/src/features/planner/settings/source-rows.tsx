@@ -31,7 +31,7 @@ export function GoogleRow(): ReactNode {
     <NavRow
       title="Google"
       icon="link"
-      href={href.settings.connections()}
+      href={href.settings.page('connections/google')}
       subtitle={googleRowText(view)}
       subtitleTone={view.needsAttention ? 'critical' : 'variant'}
     />

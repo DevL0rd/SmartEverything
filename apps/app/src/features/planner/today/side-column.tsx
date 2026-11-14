@@ -29,7 +29,7 @@ import {
   playTime,
 } from '../../../format/time';
 import { useMinute, useSecondOf } from '../../../store/clock';
-import { openQuickAskWith } from '../../assistant';
+import { askAssistantWith } from '../../assistant';
 import { useWeather } from '../../weather';
 import { conditionIcon, degrees } from '../../weather/model/present';
 import {
@@ -300,7 +300,7 @@ function PlanCard({ day, grid }: { readonly day: PlannerDay; readonly grid: bool
   const prompt = planPromptOf(day, now);
   if (prompt === null || hidden) return null;
   const ask = (): void => {
-    openQuickAskWith(
+    askAssistantWith(
       `Plan the rest of today: propose times for my ${String(prompt.tasks)} open tasks in my free slots before ${clock(prompt.until, day.time_zone)}. Only propose; don't book anything until I accept.`,
     );
   };

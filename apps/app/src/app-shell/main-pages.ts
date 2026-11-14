@@ -1,5 +1,6 @@
 import type { PageSettingsLink } from '../components/page-settings-button';
 import { settingsPage } from '../settings/tree';
+import type { SettingsPageDefinition } from '../settings/types';
 import { href } from './hrefs';
 
 export const MAIN_PAGES = [
@@ -36,4 +37,12 @@ export function mainPageSettings(tab: MainPageKey): PageSettingsLink {
     throw new Error(`The settings page ${page.settings} is not in the settings tree.`);
   }
   return { href: href.settings.page(settings.id), label: settings.title };
+}
+
+export function mainSettingsFirst(
+  pages: readonly SettingsPageDefinition[],
+): readonly SettingsPageDefinition[] {
+  const mainIds = new Set<string>(MAIN_PAGES.map((main) => main.settings));
+  const ordered = [...mainIds].flatMap((id) => pages.filter((page) => page.id === id));
+  return [...ordered, ...pages.filter((page) => !ordered.includes(page))];
 }

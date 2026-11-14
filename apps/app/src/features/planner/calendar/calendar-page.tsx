@@ -33,6 +33,7 @@ import { PREVIOUS, TimeContent, bookedLineOf, eventTextOf } from './calendar-sta
 import { CalendarsSheet, shownCalendarsOf } from './calendars-sheet';
 import type { MinuteSpan } from './grid-gestures';
 import { MonthGrid } from './month-grid';
+import { openingViewOf } from './opening-view';
 import { addDays, dayLabelOf, monthOf, shiftMonth } from './month-model';
 import { PeopleTimeline } from './people-timeline';
 import { daysFrom } from './time-grid-layout';
@@ -147,13 +148,12 @@ interface CalendarState {
   readonly toToday: () => void;
 }
 
-function useCalendarState(prefs: Prefs): CalendarState {
+function useCalendarState(prefs: Prefs, compact: boolean): CalendarState {
   const views = viewsFor(useIsOwner());
   const today = useMinuteOf(dayKeyOf);
   const [chosen, setView] = useState<CalendarView | null>(null);
   const [picked, setDay] = useState<string | null>(null);
-  const preferred = prefs.calendar.default_view;
-  const view = chosen ?? (views.includes(preferred) ? preferred : 'week');
+  const view = chosen ?? openingViewOf(prefs.calendar.default_view, views, compact);
   const day = picked ?? today;
   const step = (by: number): void => {
     setDay(steppedDay(view, day, by));
@@ -363,10 +363,10 @@ function useCalendarData(state: CalendarState, prefs: Prefs): CalendarData {
 }
 
 function CalendarFrame({ prefs }: { readonly prefs: Prefs }): ReactNode {
-  const state = useCalendarState(prefs);
+  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const state = useCalendarState(prefs, compact);
   const [sheet, setSheet] = useState(false);
   const [composer, setComposer] = useState<string | null>(null);
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
   const { calendars, days, range, subtitle, time } = useCalendarData(state, prefs);
   const openers = {
     openSheet: (): void => {

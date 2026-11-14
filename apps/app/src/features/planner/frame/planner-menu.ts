@@ -45,7 +45,14 @@ export function plannerMenu({
     ...people.map(personItem),
     ...(insights ? [link('insights', 'Insights', 'trendUp', href.planner.insights())] : []),
     ...(googleNeedsAttention
-      ? [link('google', 'Google needs attention', 'warning', href.settings.page('connections'))]
+      ? [
+          link(
+            'google',
+            'Google needs attention',
+            'warning',
+            href.settings.page('connections/google'),
+          ),
+        ]
       : []),
     link('settings', settings.label, 'settings', settings.href),
   ];

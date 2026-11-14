@@ -12,7 +12,8 @@
       "expo.modules.healthconnect.listening.ListeningModule",
       "expo.modules.healthconnect.treadmill.TreadmillModule",
       "expo.modules.healthconnect.larq.LarqModule",
-      "expo.modules.healthconnect.toothbrush.BrushModule"
+      "expo.modules.healthconnect.toothbrush.BrushModule",
+      "expo.modules.healthconnect.planner.PlannerModule"
     ]
   }
 }

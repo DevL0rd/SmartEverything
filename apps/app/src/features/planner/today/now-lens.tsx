@@ -1,12 +1,8 @@
-import {
-  SIGNAL_SOURCES,
-  baseNameOf,
-  describeTrigger,
-  triggerLookup,
-  type PlannerCompletion,
-  type PlannerDay,
-  type PlannerItemRow,
-  type PlannerOccurrenceView,
+import type {
+  PlannerCompletion,
+  PlannerDay,
+  PlannerItemRow,
+  PlannerOccurrenceView,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { useRef, useState, type ComponentProps, type ReactNode } from 'react';
@@ -20,8 +16,6 @@ import { notify } from '../../../components/toast-store';
 import { useAreaWidth } from '../../../design/size-class';
 import { plural } from '../../../format/text';
 import { clock, dayBoundsOf } from '../../../format/time';
-import { useRow } from '../../../store/selectors';
-import type { Device } from '../../../store/state';
 import { DeviceFace } from '../../devices';
 import {
   usePlannerCollections,
@@ -34,6 +28,7 @@ import {
 } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { frameLayoutOf } from '../frame/sections';
+import { MANUAL, ruleTitleOf, useRuleDevice, type RuleDevice } from '../item/completion-rule-row';
 import { MarkChip } from './happened-chip';
 
 type FaceName = ComponentProps<typeof DeviceFace>['face'];
@@ -111,15 +106,11 @@ export function lensPillOf(timing: LensTiming | null): string {
   return timing.minutes === 0 ? 'Now' : `Now · ${plural(timing.minutes, 'min', 'min')} left`;
 }
 
-export function ruleSentenceOf(
+export function lensRuleOf(
   completion: PlannerCompletion,
-  device: Device | null,
+  device: RuleDevice | null,
 ): string | null {
-  if (completion.kind !== 'signal') return null;
-  const devices =
-    device === null ? [] : [{ ...device, name: baseNameOf(device), roomId: device.room_id }];
-  const lookup = triggerLookup(SIGNAL_SOURCES, { devices, rooms: [], people: [], chats: [] });
-  return `Done when ${describeTrigger(completion.matcher, lookup)}`;
+  return completion.kind === 'signal' ? ruleTitleOf(completion, device) : null;
 }
 
 function faceOf(face: string | null): FaceName {
@@ -232,10 +223,8 @@ function Countdown({ timing }: { readonly timing: LensTiming | null }): ReactNod
 }
 
 function RuleChip({ item }: { readonly item: PlannerItemRow | undefined }): ReactNode {
-  const completion = item?.completion ?? null;
-  const subject = completion?.kind === 'signal' ? (completion.matcher.subject ?? null) : null;
-  const device = useRow('devices', subject);
-  const sentence = completion === null ? null : ruleSentenceOf(completion, device);
+  const completion = item?.completion ?? MANUAL;
+  const sentence = lensRuleOf(completion, useRuleDevice(completion));
   if (sentence === null) return null;
   return <MarkChip icon="zap" label={sentence} dashed />;
 }

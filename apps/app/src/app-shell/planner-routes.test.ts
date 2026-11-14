@@ -74,9 +74,13 @@ describe('planner entry points', () => {
     expect(href.planner.tasks()).toBe('/planner/tasks');
     expect(href.planner.calendar()).toBe('/planner/calendar');
     expect(href.planner.insights()).toBe('/planner/insights');
-    expect(href.planner.item('i1')).toStrictEqual({
+    expect(href.planner.item('i1', null)).toStrictEqual({
       pathname: '/planner/item/[itemId]',
       params: { itemId: 'i1' },
+    });
+    expect(href.planner.item('i1', '2026-11-14')).toStrictEqual({
+      pathname: '/planner/item/[itemId]',
+      params: { itemId: 'i1', occurrence: '2026-11-14' },
     });
   });
 });

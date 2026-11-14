@@ -12,10 +12,18 @@ import { metricColour, metricIcon, metricShort } from '../model/metric-look';
 import { comfortDialFit, roomGridFit, rowsOf, type ComfortDialFit } from './climate-fit';
 import { useClimateBody } from './use-body-box';
 
-function Line({ reading }: { readonly reading: MetricReading }): ReactNode {
+function Line({
+  reading,
+  well,
+}: {
+  readonly reading: MetricReading;
+  readonly well: boolean;
+}): ReactNode {
   return (
     <View className="min-w-0 flex-1 flex-row items-center gap-2">
-      <IconWell icon={metricIcon(reading.metric)} colour={metricColour(reading)} size="s" />
+      {well ? (
+        <IconWell icon={metricIcon(reading.metric)} colour={metricColour(reading)} size="s" />
+      ) : null}
       <Figure
         value={reading.value}
         size="s"
@@ -65,7 +73,13 @@ function Single({ readings }: { readonly readings: readonly MetricReading[] }): 
   );
 }
 
-function RoomRow({ room }: { readonly room: RoomComfort }): ReactNode {
+function RoomRow({
+  room,
+  wells,
+}: {
+  readonly room: RoomComfort;
+  readonly wells: boolean;
+}): ReactNode {
   return (
     <View className="min-w-0 flex-1 gap-1 rounded-md bg-surface-2 px-3 py-2">
       <Text variant="body-strong" numberOfLines={1}>
@@ -73,7 +87,7 @@ function RoomRow({ room }: { readonly room: RoomComfort }): ReactNode {
       </Text>
       <View className="flex-row gap-3">
         {room.readings.map((reading) => (
-          <Line key={reading.metric} reading={reading} />
+          <Line key={reading.metric} reading={reading} well={wells} />
         ))}
       </View>
     </View>
@@ -85,13 +99,14 @@ function roomKey(room: RoomComfort): string {
 }
 
 function Rooms({ rooms }: { readonly rooms: readonly RoomComfort[] }): ReactNode {
-  const fit = roomGridFit(useClimateBody().box, rooms.length);
+  const readings = Math.max(0, ...rooms.map((entry) => entry.readings.length));
+  const fit = roomGridFit(useClimateBody().box, rooms.length, readings);
   return (
     <View className="flex-1 gap-2">
       {rowsOf(rooms.slice(0, fit.shown), fit.columns).map((row) => (
         <View key={row.map(roomKey).join()} className="flex-row gap-3">
           {row.map((entry) => (
-            <RoomRow key={roomKey(entry)} room={entry} />
+            <RoomRow key={roomKey(entry)} room={entry} wells={fit.wells} />
           ))}
           {Array.from({ length: fit.columns - row.length }, (_, index) => (
             <View key={`gap-${String(index)}`} className="flex-1" />

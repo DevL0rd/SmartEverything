@@ -7,7 +7,7 @@ import type {
   PlannerPreferences,
 } from '@smarteverything/domain';
 import { plural } from '../../../format/text';
-import { MINUTE_MS, clock, hoursMinutes } from '../../../format/time';
+import { MINUTE_MS, clock24, hoursMinutes } from '../../../format/time';
 
 export type FadeStrength = PlannerPreferences['day_planner']['fade'];
 
@@ -82,7 +82,7 @@ function durationOf(minutes: number): string {
 export function riverTimeOf(occurrence: PlannerOccurrenceView, timeZone: string): string {
   if (occurrence.all_day) return 'All day';
   const at = occurrence.start ?? occurrence.due_at;
-  return at === null ? 'Any time' : clock(at, timeZone);
+  return at === null ? 'Any time' : clock24(at, timeZone);
 }
 
 export function riverSubtitleOf(
@@ -94,9 +94,9 @@ export function riverSubtitleOf(
   const parts = [
     occurrence.end === null || occurrence.all_day
       ? null
-      : `Until ${clock(occurrence.end, timeZone)}`,
+      : `Until ${clock24(occurrence.end, timeZone)}`,
     occurrence.start !== null && occurrence.due_at !== null
-      ? `Due ${clock(occurrence.due_at, timeZone)}`
+      ? `Due ${clock24(occurrence.due_at, timeZone)}`
       : null,
     occurrence.end === null && estimate !== null ? durationOf(estimate) : null,
     occurrence.location,
@@ -183,7 +183,7 @@ export function riverCaptionOf(input: {
   readonly savedAt: number | null;
   readonly timeZone: string;
 }): string {
-  if (input.savedAt !== null) return `as saved ${clock(input.savedAt, input.timeZone)}`;
+  if (input.savedAt !== null) return `as saved ${clock24(input.savedAt, input.timeZone)}`;
   const left = `${String(input.left)} left`;
   return input.bookedMinutes > 0 ? `${left} · ${hoursMinutes(input.bookedMinutes)} booked` : left;
 }

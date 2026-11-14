@@ -35,6 +35,7 @@ export interface HeaderAction {
   readonly selected?: boolean;
   readonly shortcut?: string;
   readonly iconOnly?: boolean;
+  readonly disabled?: boolean;
 }
 
 export interface HeaderEditing {
@@ -86,6 +87,7 @@ function overflowItems(
     ...actions.map((action) => ({
       label: action.label,
       icon: action.icon,
+      disabled: action.disabled ?? false,
       onPress: action.onPress ?? ((): void => undefined),
     })),
     ...overflow,
@@ -160,6 +162,7 @@ function TouchActions({
           icon={action.icon}
           label={action.label}
           selected={action.selected ?? false}
+          disabled={action.disabled ?? false}
           {...(action.onPress === undefined ? {} : { onPress: action.onPress })}
           {...(action.href === undefined ? {} : { href: action.href })}
         />
@@ -177,6 +180,7 @@ function PointerAction({
   readonly compact: boolean;
 }): ReactNode {
   const press = {
+    disabled: action.disabled ?? false,
     ...(action.onPress === undefined ? {} : { onPress: action.onPress }),
     ...(action.href === undefined ? {} : { href: action.href }),
   };

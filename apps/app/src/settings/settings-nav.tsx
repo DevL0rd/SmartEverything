@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useNavigation, usePathname, useRouter } from 'expo-router';
 import type { AppHref } from '../components/app-href';
 import { StackActions, useRoute } from 'expo-router/react-navigation';
-import { MAIN_PAGES } from '../app-shell/main-pages';
+import { mainSettingsFirst } from '../app-shell/main-pages';
 import { href } from '../app-shell/hrefs';
 import { useSizeClass } from '../design/size-class';
 import { NavRow } from '../components/rows';
@@ -74,9 +74,7 @@ function orderedGroupPages(
   pages: readonly SettingsPageDefinition[],
   group: string,
 ): readonly SettingsPageDefinition[] {
-  if (group !== 'App') return pages;
-  const ordered = MAIN_PAGES.flatMap((main) => pages.filter((page) => page.id === main.settings));
-  return [...ordered, ...pages.filter((page) => !ordered.includes(page))];
+  return group === 'App' ? mainSettingsFirst(pages) : pages;
 }
 
 function Groups({

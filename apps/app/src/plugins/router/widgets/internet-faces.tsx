@@ -140,18 +140,9 @@ function History({ tests }: { readonly tests: readonly SpeedTestResult[] }): Rea
           No speed tests yet
         </Text>
       ) : (
-        <GraphFill>
-          {(height) => (
-            <View aria-hidden>
-              <Bars
-                bars={testBars(tests)}
-                colour="viz-1"
-                label="Download of the last 6 tests"
-                height={height}
-              />
-            </View>
-          )}
-        </GraphFill>
+        <View aria-hidden className="min-h-0 flex-1">
+          <Bars bars={testBars(tests)} colour="viz-1" label="Download of the last 6 tests" fit />
+        </View>
       )}
     </View>
   );

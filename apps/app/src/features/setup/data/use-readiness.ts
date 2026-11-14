@@ -4,6 +4,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import { sameStoreFacts, storeFactsOf, type SetupFacts } from '../model/facts';
 import { SETUP_ITEMS, type SetupItemId } from '../model/items';
 import { readinessOf, type Readiness } from '../model/readiness';
+import { useAlarmPhone } from './alarm-phone';
 
 function knownIds(stored: readonly string[]): readonly SetupItemId[] {
   return SETUP_ITEMS.map((item) => item.id).filter((id) => stored.includes(id));
@@ -12,7 +13,11 @@ function knownIds(stored: readonly string[]): readonly SetupItemId[] {
 export function useSetupFacts(): SetupFacts {
   const facts = useStoreSelector(storeFactsOf, sameStoreFacts);
   const reach = useLocalPref('setupReach');
-  return useMemo(() => ({ ...facts, homeOnly: reach === 'home' }), [facts, reach]);
+  const alarmPhone = useAlarmPhone();
+  return useMemo(
+    () => ({ ...facts, homeOnly: reach === 'home', alarmPhone }),
+    [facts, reach, alarmPhone],
+  );
 }
 
 export function useReadiness(): Readiness {

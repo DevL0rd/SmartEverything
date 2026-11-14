@@ -195,7 +195,7 @@ function PriorityRow({ item, disabled, onChange }: ItemFieldsProps): ReactNode {
   );
 }
 
-function TagChips({ item, onChange }: ItemFieldsProps): ReactNode {
+function TagChips({ item, disabled, onChange }: ItemFieldsProps): ReactNode {
   if (item.tags.length === 0) return null;
   return (
     <View className="flex-row flex-wrap gap-2 px-4">
@@ -206,6 +206,7 @@ function TagChips({ item, onChange }: ItemFieldsProps): ReactNode {
           value={`#${tag}`}
           active
           affordance="remove"
+          disabled={disabled}
           onPress={() => {
             onChange({ tags: item.tags.filter((other) => other !== tag) });
           }}

@@ -20,8 +20,8 @@ function unreachable(name: string, outcomes: readonly PushCommandOutcome[]): str
     outcome.outcome === 'sent' ? [] : [outcome.reason],
   );
   return reasons.length === 0
-    ? `No phone of ${name}’s person has signed up for push messages yet; open SmartEverything on the phone once.`
-    : `${name}’s phone could not be reached: ${reasons.join('; ')}`;
+    ? `No phone can pass messages to ${name} yet. Open SmartEverything once on the phone it is paired with.`
+    : `The phone ${name} is paired with could not be reached (${reasons.join('; ')}).`;
 }
 
 export function phonesOf(

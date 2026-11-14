@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import type { WatchAlarm } from '@smarteverything/domain';
+import { href } from '../../app-shell/hrefs';
 import { Button } from '../../components/button';
 import { Figure } from '../../components/figure';
 import { ListRow } from '../../components/list-row';
-import { SwitchRow } from '../../components/rows';
+import { NavRow, SwitchRow } from '../../components/rows';
 import { List } from '../../components/section';
 import { Segmented } from '../../components/segmented';
 import { Sheet } from '../../components/sheet';
@@ -190,7 +191,49 @@ function AlarmRow({
   );
 }
 
-export function WatchAlarms({
+export type AlarmEditor = 'watch' | 'clock';
+
+export function alarmEditorOf(synced: boolean | null): AlarmEditor {
+  return synced === false ? 'watch' : 'clock';
+}
+
+export function clockLinkTextOf(synced: boolean | null): string | null {
+  if (synced === null) return null;
+  return synced
+    ? 'Synced both ways, change them in Clock'
+    : 'Not synced, the watch keeps its own alarms';
+}
+
+function ClockAlarmsRow({ synced }: { readonly synced: boolean | null }): ReactNode {
+  const subtitle = clockLinkTextOf(synced);
+  return (
+    <NavRow
+      title="Alarms in Clock"
+      icon="alarmClock"
+      {...(subtitle === null ? {} : { subtitle, wrapSubtitle: true })}
+      href={href.clock.alarms()}
+    />
+  );
+}
+
+export function shownStateOf(alarm: Pick<WatchAlarm, 'enabled' | 'smart'>): string {
+  const state = alarm.enabled ? 'On' : 'Off';
+  return alarm.smart ? `${state} · Smart wake` : state;
+}
+
+function ShownAlarmRow({ alarm }: { readonly alarm: WatchAlarm }): ReactNode {
+  return (
+    <ListRow
+      leading={
+        <Figure value={timeLabel(alarm.time)} size="l" tone={alarm.enabled ? 'default' : 'faint'} />
+      }
+      title={daysText(alarm.days)}
+      subtitle={shownStateOf(alarm)}
+    />
+  );
+}
+
+function EditableAlarms({
   alarms,
   command,
 }: {
@@ -199,7 +242,7 @@ export function WatchAlarms({
 }): ReactNode {
   const [editing, setEditing] = useState<WatchAlarm | 'new' | null>(null);
   return (
-    <List inset title="Alarms">
+    <>
       {alarms.map((alarm, index) => (
         <AlarmRow
           key={alarmKey(alarm, index)}
@@ -228,6 +271,27 @@ export function WatchAlarms({
           }}
         />
       )}
+    </>
+  );
+}
+
+export function WatchAlarms({
+  alarms,
+  command,
+  synced,
+}: {
+  readonly alarms: readonly WatchAlarm[];
+  readonly command: WatchCommand;
+  readonly synced: boolean | null;
+}): ReactNode {
+  return (
+    <List inset title="Alarms">
+      {alarmEditorOf(synced) === 'watch' ? (
+        <EditableAlarms alarms={alarms} command={command} />
+      ) : (
+        alarms.map((alarm, index) => <ShownAlarmRow key={alarmKey(alarm, index)} alarm={alarm} />)
+      )}
+      <ClockAlarmsRow synced={synced} />
     </List>
   );
 }

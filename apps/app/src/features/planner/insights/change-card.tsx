@@ -6,7 +6,7 @@ import { Card } from '../../../components/card';
 import type { DonutSlice } from '../../../components/charts';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { openQuickAskWith } from '../../assistant';
+import { askAssistantWith } from '../../assistant';
 import { changeFactsOf, changePromptOf, changeTitleOf } from './summary-model';
 
 export function ChangeCard({
@@ -17,7 +17,7 @@ export function ChangeCard({
   readonly slices: readonly DonutSlice[];
 }): ReactNode {
   const ask = (): void => {
-    openQuickAskWith(changePromptOf(stats));
+    askAssistantWith(changePromptOf(stats));
   };
   return (
     <Card className="bg-primary-container/40">

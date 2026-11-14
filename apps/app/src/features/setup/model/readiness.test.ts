@@ -18,7 +18,9 @@ const NOTHING: SetupFacts = {
   unroomed: 0,
   assistants: 0,
   fitnessReady: false,
+  ringsHere: false,
   homeOnly: false,
+  alarmPhone: { fullScreen: null, unrestricted: null },
 };
 
 const EVERYTHING: SetupFacts = {
@@ -36,7 +38,9 @@ const EVERYTHING: SetupFacts = {
   unroomed: 0,
   assistants: 1,
   fitnessReady: true,
+  ringsHere: true,
   homeOnly: false,
+  alarmPhone: { fullScreen: true, unrestricted: true },
 };
 
 function stateOf(facts: SetupFacts, id: SetupItemId): string | undefined {
@@ -121,5 +125,39 @@ describe('the setup readiness', () => {
   it('shows a member only the items that are theirs', () => {
     const ids = readinessOf({ ...NOTHING, owner: false }, []).entries.map((entry) => entry.item.id);
     expect(ids).toEqual(['fitness.about']);
+  });
+
+  it('asks for full-screen and background alarms only on a phone that alarms ring on', () => {
+    const blocked = { fullScreen: false, unrestricted: false };
+    const ringing = { ...EVERYTHING, alarmPhone: blocked };
+    expect(stateOf(ringing, 'clock.full_screen')).toBe('todo');
+    expect(stateOf(ringing, 'clock.background')).toBe('todo');
+    expect(stateOf({ ...ringing, ringsHere: false }, 'clock.full_screen')).toBeUndefined();
+    expect(stateOf({ ...ringing, ringsHere: false }, 'clock.background')).toBeUndefined();
+  });
+
+  it('leaves out an alarm step this phone cannot answer, such as without the alarm module', () => {
+    const unknown = { ...EVERYTHING, alarmPhone: { fullScreen: null, unrestricted: true } };
+    expect(stateOf(unknown, 'clock.full_screen')).toBeUndefined();
+    expect(stateOf(unknown, 'clock.background')).toBe('done');
+  });
+
+  it('counts the alarm steps as recommended and opens their system settings', () => {
+    const blocked = { ...EVERYTHING, alarmPhone: { fullScreen: false, unrestricted: true } };
+    const readiness = readinessOf(blocked, []);
+    expect(readiness.ready).toBe(false);
+    expect(readiness.next?.item.id).toBe('clock.full_screen');
+    expect(readiness.next?.item.go).toEqual({ kind: 'system', setting: 'full_screen_alarms' });
+    expect(
+      readinessOf({ ...blocked, alarmPhone: { fullScreen: true, unrestricted: false } }, []).next
+        ?.item.go,
+    ).toEqual({ kind: 'system', setting: 'background_alarms' });
+  });
+
+  it('shows a member the alarm steps for their own phone', () => {
+    const member = { ...NOTHING, owner: false, ringsHere: true };
+    const facts = { ...member, alarmPhone: { fullScreen: false, unrestricted: false } };
+    const ids = readinessOf(facts, []).entries.map((entry) => entry.item.id);
+    expect(ids).toEqual(['fitness.about', 'clock.full_screen', 'clock.background']);
   });
 });

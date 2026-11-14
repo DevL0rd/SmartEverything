@@ -53,7 +53,7 @@ function Panel({
   return (
     <View className="min-h-0 min-w-0 flex-1 gap-2" pointerEvents="box-none">
       <Summary data={data} compact={pointer} />
-      <View className="min-h-16 flex-1" pointerEvents="none">
+      <View className="min-h-0 flex-1" pointerEvents="none">
         <BatteryChart
           deviceId={device.id}
           low={isLow(readings)}

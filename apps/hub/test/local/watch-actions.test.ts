@@ -124,7 +124,8 @@ describe('WatchActionBroker', () => {
     }
     await expect(broker.run(target, { type: 'sync' }, 'Alex')).resolves.toEqual({
       ok: false,
-      detail: 'Fit Watch’s phone could not be reached: no push token; no push token',
+      detail:
+        'The phone Fit Watch is paired with could not be reached (no push token; no push token).',
     });
   });
 
@@ -132,7 +133,7 @@ describe('WatchActionBroker', () => {
     await expect(broker.run(target, { type: 'sync' }, 'Alex')).resolves.toEqual({
       ok: false,
       detail:
-        'No phone of Fit Watch’s person has signed up for push messages yet; open SmartEverything on the phone once.',
+        'No phone can pass messages to Fit Watch yet. Open SmartEverything once on the phone it is paired with.',
     });
   });
 

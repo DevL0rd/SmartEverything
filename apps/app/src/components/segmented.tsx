@@ -28,7 +28,9 @@ export interface SegmentedProps<T extends string> {
 }
 
 function touchPadding(compact: boolean): string {
-  return compact ? 'h-12 rounded-full px-2' : 'h-12 rounded-full px-2 medium:px-4';
+  return compact
+    ? 'h-12 min-w-touch-min rounded-full px-2'
+    : 'h-12 min-w-touch-min rounded-full px-2 medium:px-4';
 }
 
 function pointerHeight(size: ControlSize): string {
@@ -47,9 +49,9 @@ function segmentClass(
   { fill, compact, size }: SegmentLook,
 ): string {
   return cn(
-    'min-w-0 shrink flex-row items-center justify-center gap-1.5',
+    'shrink flex-row items-center justify-center gap-1.5',
     fill && 'flex-auto',
-    pointer ? cn(pointerHeight(size), 'rounded-xs px-3') : touchPadding(compact),
+    pointer ? cn(pointerHeight(size), 'min-w-0 rounded-xs px-3') : touchPadding(compact),
     selected ? 'border border-primary bg-primary-container' : 'border border-transparent',
   );
 }

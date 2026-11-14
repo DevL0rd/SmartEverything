@@ -64,14 +64,18 @@ describe('roomGridFit', () => {
   });
 
   it('shows the whole rooms that fit the body', () => {
-    expect(roomGridFit(PHONE_M, 4)).toEqual({ columns: 1, shown: 1 });
-    expect(roomGridFit(DESKTOP_M, 3)).toEqual({ columns: 1, shown: 1 });
-    expect(roomGridFit(PHONE_XL, 5)).toEqual({ columns: 1, shown: 3 });
+    expect(roomGridFit(PHONE_M, 4, 3)).toEqual({ columns: 1, shown: 1, wells: false });
+    expect(roomGridFit(DESKTOP_M, 3, 3)).toEqual({ columns: 1, shown: 1, wells: true });
+    expect(roomGridFit(PHONE_XL, 5, 3)).toEqual({ columns: 1, shown: 3, wells: false });
+  });
+
+  it('keeps the reading icons while every reading fits on one line', () => {
+    expect(roomGridFit(PHONE_XL, 5, 2).wells).toBe(true);
   });
 
   it('adds columns on wide bodies', () => {
-    expect(roomGridFit(WIDE_XL, 5)).toEqual({ columns: 3, shown: 5 });
-    expect(roomGridFit(WIDE_XL, 2)).toEqual({ columns: 2, shown: 2 });
+    expect(roomGridFit(WIDE_XL, 5, 3)).toEqual({ columns: 2, shown: 5, wells: true });
+    expect(roomGridFit(WIDE_XL, 2, 3)).toEqual({ columns: 2, shown: 2, wells: true });
   });
 });
 

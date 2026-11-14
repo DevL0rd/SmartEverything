@@ -14,6 +14,7 @@ export interface FilterChipProps {
   readonly affordance?: 'menu' | 'remove' | undefined;
   readonly singleChoice?: boolean;
   readonly expanded?: boolean | undefined;
+  readonly disabled?: boolean | undefined;
   readonly onPress: () => void;
   readonly anchorRef?: RefObject<View | null>;
   readonly pressRef?: Ref<View>;
@@ -28,6 +29,7 @@ export function FilterChip({
   active,
   affordance,
   expanded,
+  disabled,
   singleChoice = false,
   onPress,
   anchorRef,
@@ -44,6 +46,7 @@ export function FilterChip({
         count={count}
         active={active}
         expanded={expanded}
+        disabled={disabled}
         menu={affordance === 'menu'}
         role={affordance === undefined ? (singleChoice ? 'radio' : 'checkbox') : 'button'}
         trailing={

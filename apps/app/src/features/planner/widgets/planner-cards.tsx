@@ -2,6 +2,7 @@ import type { PlannerDay } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
+import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
 import { useDayKey } from '../../../store/clock';
@@ -14,7 +15,7 @@ import { taskEntriesOf } from '../tasks/task-grouping';
 import { DayStripCard } from '../today/day-strip';
 import { isOpenDay } from '../today/today-states';
 
-function DayCards({ day }: { readonly day: PlannerDay }): ReactNode {
+function DayCards({ day, open }: { readonly day: PlannerDay; readonly open: string }): ReactNode {
   return (
     <View className="gap-3">
       <DayStripCard day={day} compact />
@@ -30,6 +31,9 @@ function DayCards({ day }: { readonly day: PlannerDay }): ReactNode {
       <OccurrenceList title="Now" occurrences={day.current} timeZone={day.time_zone} />
       <OccurrenceList title="Next" occurrences={day.upcoming} timeZone={day.time_zone} />
       <OccurrenceList title="Done" occurrences={day.done} timeZone={day.time_zone} />
+      <View className="flex-row justify-end">
+        <Button label={open} href={href.planner.index()} variant="tonal" />
+      </View>
     </View>
   );
 }
@@ -37,7 +41,8 @@ function DayCards({ day }: { readonly day: PlannerDay }): ReactNode {
 export function PlannerDayWidget({ day }: { readonly day?: string }): ReactNode {
   const today = useDayKey();
   const query = usePlannerDay(null, day ?? today);
-  return <QueryBody query={query}>{(value) => <DayCards day={value} />}</QueryBody>;
+  const open = day === undefined || day === today ? 'Open Today' : 'Open Planner';
+  return <QueryBody query={query}>{(value) => <DayCards day={value} open={open} />}</QueryBody>;
 }
 
 export function PlannerItemWidget({ id }: { readonly id: string }): ReactNode {
@@ -63,7 +68,7 @@ export function PlannerItemWidget({ id }: { readonly id: string }): ReactNode {
       title={item.title}
       subtitle={item.notes}
       icon={item.kind === 'event' ? 'calendar' : 'circleCheck'}
-      href={href.planner.item(id)}
+      href={href.planner.item(id, null)}
       chevron
     />
   ) : (

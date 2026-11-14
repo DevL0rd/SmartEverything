@@ -19,6 +19,7 @@ import {
 } from './options';
 import { PrefMinutesRow } from './rows';
 import { GoogleRow, WakeSceneRow } from './source-rows';
+import { WatchSettingsRow } from './watch-row';
 
 function shownCalendars(state: StoreState): string {
   const me = state.session?.client.profile_id ?? null;
@@ -180,6 +181,10 @@ export const WATCH_AND_AI: readonly SettingDefinition[] = [
     },
     ['watch', 'events', 'calendar'],
   ),
+  custom('watch.settings', at('Watch'), ['watch', 'settings', 'alarms', 'sync', 'band'], {
+    title: 'Watch settings',
+    render: () => createElement(WatchSettingsRow),
+  }),
   custom('accounts.google', at('Accounts'), ['google', 'calendar', 'tasks', 'link'], {
     title: 'Google',
     render: () => createElement(GoogleRow),

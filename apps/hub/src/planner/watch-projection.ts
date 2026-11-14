@@ -148,6 +148,8 @@ export function changed(
   return unchanged && Object.keys(fields).length === 0 ? null : { link: next, fields };
 }
 
+const NEAR_WATCH = 'Saves when the phone is near the watch.';
+
 const FULL: WatchOutcome = {
   ok: false,
   reason: 'refused',
@@ -226,7 +228,7 @@ export class DevicePass {
       alarmId: link?.alarmId ?? null,
       hash: link?.hash ?? null,
       state: !outcome.ok && outcome.reason === 'refused' ? 'failed' : 'pending',
-      detail: outcome.detail,
+      detail: !outcome.ok && outcome.reason === 'unanswered' ? NEAR_WATCH : outcome.detail,
     };
   }
 

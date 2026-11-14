@@ -77,6 +77,7 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   photos_progress: ignoreNotice,
   planner_ring: ignoreNotice,
   planner_summary: ignoreNotice,
+  planner_phone_rings: ignoreNotice,
   chat_activity: (store, message) => {
     store.update((state) => ({ ...state, turns: withSnapshot(state.turns, message) }));
   },

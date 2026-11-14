@@ -5,4 +5,4 @@ export { usePlannerFrame, type PlannerFrameValue } from './frame/frame-context';
 export { QuickAddBar, type QuickAddBarProps, type QuickAddTarget } from './frame/quick-add-bar';
 export { usePlannerShownPerson } from './frame/person';
 export { usePlannerMissedCount } from './frame/missed-count';
-export { PLANNER_WIDGETS } from './widgets';
+export { PLANNER_HOME_WIDGETS, PLANNER_WIDGETS } from './widgets';

@@ -39,6 +39,7 @@ import {
   handleComputerPairingCommand,
   pairComputer,
 } from './service/pair-computer.js';
+import { startPlannerRings } from './planner/register.js';
 import { OverlayDesktop } from './overlay/overlay-desktop.js';
 import { registerOverlayIpc } from './overlay/overlay-ipc.js';
 import { TalkDesktop } from './talk/talk-desktop.js';
@@ -214,6 +215,7 @@ class DesktopShell {
       { server: () => service.controller.server(), lease: network.updateLease },
       network.onRouteReady,
     );
+    startPlannerRings(service.controller, network);
     this.#registerIpc(platform, service, { updates, web });
     this.#closeOverlayIpc = registerOverlayIpc(this.#overlay.controller, variant.startUrl);
     if (variant.managedBy === undefined) {

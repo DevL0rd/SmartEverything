@@ -8,6 +8,7 @@ import { Select } from '../../../components/select';
 import { Slider } from '../../../components/slider';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
+import { useCompactBand, useInActionBand } from '../../../components/widget-board/band-context';
 import { useIdiom } from '../../../design/platform';
 import { useThemeSetting } from '../../../design/theme';
 import { SEMANTIC_SIZES } from '../../../design/tokens';
@@ -55,6 +56,11 @@ interface Props {
 
 export type { LabelMode };
 
+function useStepperWidth(): number {
+  const touchMin = SEMANTIC_SIZES[useIdiom()][useThemeSetting('density')].touchMin;
+  return 2 * (touchMin + STEPPER_GAP) + STEPPER_VALUE_WIDTH;
+}
+
 function Labelled({
   presented,
   labels,
@@ -68,15 +74,17 @@ function Labelled({
   readonly inlineLabel: string | undefined;
   readonly children: ReactNode;
 }): ReactNode {
-  const idiom = useIdiom();
-  const touchMin = SEMANTIC_SIZES[idiom][useThemeSetting('density')].touchMin;
-  const stepperWidth = 2 * (touchMin + STEPPER_GAP) + STEPPER_VALUE_WIDTH;
-  if (labels === 'caption') {
+  const stepperWidth = useStepperWidth();
+  const compact = useCompactBand();
+  if (labels === 'caption' || compact) {
     return children;
   }
   return (
     <View
-      className={cn('min-h-touch-min flex-row items-center', inlineLabelWrap ? 'gap-2' : 'gap-3')}
+      className={cn(
+        'min-h-touch-min max-w-full flex-row items-center',
+        inlineLabelWrap ? 'gap-2' : 'gap-3',
+      )}
     >
       <Text
         variant="callout"
@@ -205,8 +213,9 @@ function NumberControl(props: Props & { readonly descriptor: NumberDescriptor })
     background(control.set(next), 'control.set_failed');
   };
   const stepper = !isSliderControl(presented);
+  const banded = useInActionBand();
   return (
-    <View className="w-full gap-1.5">
+    <View className={cn('gap-1.5', !(stepper && banded) && 'w-full')}>
       <NumberCaption presented={presented} control={control} labels={labels} stepper={stepper} />
       {stepper ? (
         <NumberStepper
@@ -295,7 +304,9 @@ export function CompactControl({
 }): ReactNode {
   const control = useDeviceControl(device, presented);
   const kind = presented.capability.value.kind;
-  const labels = labelModeOf(presented, requested, width);
+  const stepperWidth = useStepperWidth();
+  const compact = useCompactBand();
+  const labels = compact ? 'inline' : labelModeOf(presented, requested, width, stepperWidth);
   const inline = labels === 'inline' && kind !== 'boolean' && kind !== 'action';
   return (
     <Guard reason={reason}>

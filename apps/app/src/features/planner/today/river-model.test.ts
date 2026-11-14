@@ -8,7 +8,7 @@ import {
   type PlannerOccurrenceView,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { clock } from '../../../format/time';
+import { clock24 } from '../../../format/time';
 import {
   FADE_FROM_MINUTES,
   fadeStepsOf,
@@ -230,7 +230,7 @@ describe('riverRowsOf', () => {
     const rows = riverRowsOf(input(dayOf()));
     const recycling = rows.find((row) => row.title === 'Take out the recycling');
     expect(recycling?.spoken).toBe(
-      `${clock('2026-11-07T16:00:00.000Z', ZONE)}, Take out the recycling, Home, from Google, sending to Google`,
+      `${clock24('2026-11-07T16:00:00.000Z', ZONE)}, Take out the recycling, Home, from Google, sending to Google`,
     );
   });
 
@@ -247,17 +247,20 @@ describe('riverRowsOf', () => {
 
 describe('riverTimeOf and riverSubtitleOf', () => {
   it('shows the start, all day or any time in the time column', () => {
-    expect(riverTimeOf(DENTIST_VIEW, ZONE)).toBe(clock('2026-11-07T14:30:00.000Z', ZONE));
+    expect(riverTimeOf(DENTIST_VIEW, ZONE)).toBe('15:30');
+    expect(
+      riverTimeOf(view(COOK, 'Cook', null, { due_at: '2026-11-07T07:05:00.000Z' }), ZONE),
+    ).toBe('08:05');
     expect(riverTimeOf(BIRTHDAY_VIEW, ZONE)).toBe('All day');
     expect(riverTimeOf(ANYTIME_VIEW, ZONE)).toBe('Any time');
     expect(
       riverTimeOf(view(COOK, 'Cook', null, { due_at: '2026-11-07T17:00:00.000Z' }), ZONE),
-    ).toBe(clock('2026-11-07T17:00:00.000Z', ZONE));
+    ).toBe(clock24('2026-11-07T17:00:00.000Z', ZONE));
   });
 
   it('says until when, the estimate and the place', () => {
     expect(riverSubtitleOf(DENTIST_VIEW, undefined, ZONE)).toBe(
-      `Until ${clock('2026-11-07T15:15:00.000Z', ZONE)} · Smile Dental`,
+      `Until ${clock24('2026-11-07T15:15:00.000Z', ZONE)} · Smile Dental`,
     );
     expect(riverSubtitleOf(COOK_VIEW, item(COOK, 45), ZONE)).toBe('45 min');
     expect(riverSubtitleOf(COOK_VIEW, item(COOK, 90), ZONE)).toBe('1h 30m');
@@ -313,7 +316,7 @@ describe('riverCaptionOf', () => {
 
   it('says when the day was saved while the hub is offline', () => {
     expect(riverCaptionOf({ left: 3, bookedMinutes: 90, savedAt: NOW, timeZone: ZONE })).toBe(
-      `as saved ${clock(NOW, ZONE)}`,
+      `as saved ${clock24(NOW, ZONE)}`,
     );
   });
 });

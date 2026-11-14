@@ -1,5 +1,4 @@
 import {
-  PLANNER_ITEM_CREATE,
   type PlannerDay,
   type PlannerItemRow,
   type PlannerOccurrenceView,
@@ -12,7 +11,7 @@ import { clock } from '../../../format/time';
 import { PLANNER_SECTION_ROUTES } from '../model/section-routes';
 import { openPlannerSection } from './open-section';
 import { personChoicesOf, shownPersonFor } from './person';
-import { addPlannerText } from './quick-add';
+import { opensComposer, plannerComposerKindOf } from './quick-add';
 import {
   calendarSummaryOf,
   insightsSummaryOf,
@@ -312,6 +311,9 @@ describe('the planner menu', () => {
     expect(quiet.map((item) => item.label)).toEqual(['Planner settings']);
     const loud = plannerMenu({ people: [], insights: false, googleNeedsAttention: true });
     expect(loud.map((item) => item.label)).toEqual(['Google needs attention', 'Planner settings']);
+    pushed.hrefs.length = 0;
+    loud[0]?.onPress();
+    expect(pushed.hrefs).toEqual([href.settings.page('connections/google')]);
   });
 });
 
@@ -347,28 +349,21 @@ describe('the planner frame', () => {
     expect(navigated).toEqual([href.planner.insights()]);
   });
 
-  it('adds quick add text through the hub parser, and ignores blank text', async () => {
-    const parsed: unknown[] = [];
-    const created: unknown[] = [];
-    const draft = PLANNER_ITEM_CREATE.parse({
-      collection_id: '00000000-0000-4000-8000-000000000020',
-      kind: 'task',
-      title: 'Dentist',
-    });
-    const ports = {
-      parse: vi.fn((body: { readonly text: string }) => {
-        parsed.push(body);
-        return Promise.resolve({ draft, next_occurrences: [], repeat_text: null });
-      }),
-      create: vi.fn((body: unknown) => {
-        created.push(body);
-        return Promise.resolve(task({}));
-      }),
-    };
-    await expect(addPlannerText('  dentist Tue 15:30  ', ports)).resolves.toBe(true);
-    expect(parsed).toEqual([{ text: 'dentist Tue 15:30' }]);
-    expect(created).toEqual([draft]);
-    await expect(addPlannerText('   ', ports)).resolves.toBe(false);
-    expect(ports.parse).toHaveBeenCalledTimes(1);
+  it('opens the composer on each section with the kind that section adds', () => {
+    expect(plannerComposerKindOf('index')).toBeNull();
+    expect(plannerComposerKindOf('tasks')).toBe('task');
+    expect(plannerComposerKindOf('calendar')).toBe('event');
+    expect(plannerComposerKindOf('insights')).toBeNull();
+  });
+
+  it('opens the composer on a plain N, never while typing or with a modifier', () => {
+    const press = { key: 'n', ctrlKey: false, metaKey: false, altKey: false };
+    expect(opensComposer(press, false)).toBe(true);
+    expect(opensComposer({ ...press, key: 'N' }, false)).toBe(true);
+    expect(opensComposer(press, true)).toBe(false);
+    expect(opensComposer({ ...press, ctrlKey: true }, false)).toBe(false);
+    expect(opensComposer({ ...press, metaKey: true }, false)).toBe(false);
+    expect(opensComposer({ ...press, altKey: true }, false)).toBe(false);
+    expect(opensComposer({ ...press, key: 'm' }, false)).toBe(false);
   });
 });

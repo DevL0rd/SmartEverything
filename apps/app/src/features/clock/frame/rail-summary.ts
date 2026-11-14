@@ -4,7 +4,7 @@ import type {
   PlannerTimerRow,
 } from '@smarteverything/domain';
 import {
-  clock,
+  clock24,
   dayKeyOf,
   localDayKey,
   playTime,
@@ -16,7 +16,7 @@ type WorldClock = PlannerPreferences['clock']['world_clocks'][number];
 
 export function alarmSummaryOf(nextAlarmAt: string | null, now: number): string | null {
   if (nextAlarmAt === null) return null;
-  const time = clock(nextAlarmAt);
+  const time = clock24(nextAlarmAt);
   const day = localDayKey(nextAlarmAt);
   const today = dayKeyOf(now);
   if (day === today) return `${time} today`;
@@ -96,5 +96,5 @@ export function cityOf(world: WorldClock): string {
 export function worldSummaryOf(clocks: readonly WorldClock[], now: number): string | null {
   const [first] = clocks;
   if (first === undefined) return null;
-  return `${cityOf(first)} ${clock(now, first.time_zone)}`;
+  return `${cityOf(first)} ${clock24(now, first.time_zone)}`;
 }

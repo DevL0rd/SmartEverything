@@ -2,6 +2,7 @@ import type {
   PlannerCompletion,
   PlannerCompletionWindow,
   PlannerItemRow,
+  PlannerSignalCompletion,
 } from '@smarteverything/domain';
 import { keepPreviousData } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
@@ -27,7 +28,6 @@ import {
   withMinutes,
   withWindow,
   type RuleDevice,
-  type SignalCompletion,
 } from './completion-rule-row';
 import type { ItemChanges } from './repeat-scope-bar';
 
@@ -103,7 +103,7 @@ export function ruleChoicesOf(
 
 export function minuteOptionsOf(
   device: RuleDevice | null,
-  completion: SignalCompletion,
+  completion: PlannerSignalCompletion,
 ): readonly SegmentedOption<string>[] {
   const presets = ruleMinutesOf(device);
   if (presets.length === 0) return [];
@@ -117,7 +117,7 @@ export function minuteOptionsOf(
   ];
 }
 
-function minuteValueOf(completion: SignalCompletion): string {
+function minuteValueOf(completion: PlannerSignalCompletion): string {
   return completion.minSeconds === undefined ? ANY : String(completion.minSeconds / 60);
 }
 
@@ -138,7 +138,7 @@ function useSuggestions(person: PlannerPerson, item: PlannerItemRow): readonly P
 }
 
 interface TuningProps {
-  readonly completion: SignalCompletion;
+  readonly completion: PlannerSignalCompletion;
   readonly device: RuleDevice | null;
   readonly personName: string;
   readonly disabled: boolean;

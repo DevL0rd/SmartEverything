@@ -82,3 +82,9 @@ export const PLANNER_RING_NOTICE = z.strictObject({
 });
 
 export type PlannerRingNotice = z.infer<typeof PLANNER_RING_NOTICE>;
+
+export const PLANNER_PHONE_RINGS_NOTICE = z.strictObject({
+  type: z.literal('planner_phone_rings'),
+});
+
+export type PlannerPhoneRingsNotice = z.infer<typeof PLANNER_PHONE_RINGS_NOTICE>;

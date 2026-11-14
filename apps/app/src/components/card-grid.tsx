@@ -10,6 +10,15 @@ export function rowsOfCards<T>(items: readonly T[], columns: number): readonly (
   return rows;
 }
 
+export function emptySlotsOf(filled: number, columns: number): readonly number[] {
+  return Array.from({ length: Math.max(0, columns - filled) }, (_, slot) => filled + slot);
+}
+
+export function evenColumnsOf(count: number, most: number): number {
+  if (count <= most) return most;
+  return Math.ceil(count / Math.ceil(count / most));
+}
+
 export function CardGrid<T>({
   items,
   columns,
@@ -30,7 +39,9 @@ export function CardGrid<T>({
               {render(item)}
             </View>
           ))}
-          {row.length < columns ? <View className="min-w-0 flex-1" /> : null}
+          {emptySlotsOf(row.length, columns).map((slot) => (
+            <View key={`empty-${String(slot)}`} className="min-w-0 flex-1" />
+          ))}
         </View>
       ))}
     </View>

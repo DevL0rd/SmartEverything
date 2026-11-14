@@ -1,6 +1,7 @@
 import { NAV_SECTIONS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { MAIN_PAGES, mainPageSettings } from './main-pages';
+import { settingsPage } from '../settings/tree';
+import { MAIN_PAGES, mainPageSettings, mainSettingsFirst } from './main-pages';
 
 describe('the settings link of each main page', () => {
   it('opens the settings index from Home', () => {
@@ -25,5 +26,20 @@ describe('the settings link of each main page', () => {
 describe('the default navigation order', () => {
   it('lists the same pages as the domain navigation sections', () => {
     expect(MAIN_PAGES.map((page) => page.tab)).toEqual([...NAV_SECTIONS]);
+  });
+});
+
+describe('the App settings group', () => {
+  it('lists each main page settings page once, in navigation order, before the rest', () => {
+    const pages = ['assistant', 'planner', 'home', 'appearance'].flatMap((id) => {
+      const page = settingsPage(id);
+      return page === undefined ? [] : [page];
+    });
+    expect(mainSettingsFirst(pages).map((page) => page.id)).toEqual([
+      'home',
+      'planner',
+      'assistant',
+      'appearance',
+    ]);
   });
 });

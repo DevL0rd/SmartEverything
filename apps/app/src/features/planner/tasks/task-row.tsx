@@ -1,7 +1,6 @@
 import { background } from '@smarteverything/logging';
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { SwipeRow, type SwipeAction } from '../../../components/swipe-row';
@@ -13,6 +12,7 @@ import { useMinuteOf } from '../../../store/clock';
 import { useRow } from '../../../store/selectors';
 import { usePlannerWrites } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
+import { useItemPress } from '../item/item-menu-host';
 import { PRIORITY_RING, PriorityFlag, priorityOf } from './priority-flag';
 import { dueLabelOf, isOverdue, stepsLabelOf, type RowEdge, type TaskEntry } from './task-grouping';
 
@@ -146,13 +146,17 @@ function TaskMeta({ entry, today, overdue }: ShownTask): ReactNode {
 function TaskBody(props: ShownTask): ReactNode {
   const { entry } = props;
   const priority = priorityOf(entry.item.priority);
+  const press = useItemPress(entry.item.id, entry.occurrenceKey);
   return (
     <Interactive
-      href={href.planner.item(entry.item.id)}
+      {...press.open}
+      onLongPress={press.onLongPress}
+      onContextMenu={press.onContextMenu}
       label={entry.item.title}
       className="min-w-0 flex-1 gap-0.5 rounded-sm py-0.5"
       layerClassName="rounded-sm"
     >
+      {press.menu}
       <View className="min-w-0 flex-row items-center gap-2">
         <Text
           variant="label"

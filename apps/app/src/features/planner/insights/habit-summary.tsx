@@ -23,7 +23,7 @@ function HabitHead({ habit }: { readonly habit: HabitView }): ReactNode {
     <View className="flex-row items-center gap-3">
       <Icon name={item.completion.kind === 'signal' ? 'zap' : 'repeat'} size={18} tone="variant" />
       <Interactive
-        href={href.planner.item(item.id)}
+        href={href.planner.item(item.id, null)}
         label={item.title}
         className="min-w-0 flex-1 rounded-sm"
         layerClassName="rounded-sm"

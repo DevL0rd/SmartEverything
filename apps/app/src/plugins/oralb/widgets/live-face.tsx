@@ -1,5 +1,5 @@
 import type { BrushLiveFrame, BrushStateView, BrushingSession } from '@smarteverything/domain';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Rings } from '../../../components/charts';
 import { Text } from '../../../components/text';
@@ -67,7 +67,7 @@ function BrushingInfo({
   readonly inline: boolean;
 }): ReactNode {
   return (
-    <View className="min-w-0 flex-1 gap-2">
+    <View className="min-w-0 gap-2">
       <ModeChip brand="oralb" mode={frame.mode} />
       <View className={cn('gap-2', inline && 'flex-row flex-wrap items-center')}>
         <Text variant="footnote" tone="variant" numberOfLines={1}>
@@ -111,6 +111,20 @@ function Stage({
   );
 }
 
+function ColumnStage({ frame }: { readonly frame: BrushLiveFrame }): ReactNode {
+  const [room, setRoom] = useState(0);
+  return (
+    <View
+      className="min-h-0 flex-1 items-center justify-center"
+      onLayout={(event) => {
+        setRoom(event.nativeEvent.layout.height);
+      }}
+    >
+      {room > 0 ? <TimerRing frame={frame} size={ringPxOf(Math.min(COLUMN_ROW_PX, room))} /> : null}
+    </View>
+  );
+}
+
 function Brushing({
   device,
   view,
@@ -123,9 +137,13 @@ function Brushing({
   const column = layout === 'column';
   return (
     <View className={cn('min-w-0 flex-1 gap-4', !column && 'flex-row')}>
-      <Stage view={view} frame={frame} layout={layout} body={body} />
-      <View className="min-w-0 flex-1 gap-3">
-        <BrushingInfo view={view} frame={frame} inline={row} />
+      {column ? (
+        <ColumnStage frame={frame} />
+      ) : (
+        <Stage view={view} frame={frame} layout={layout} body={body} />
+      )}
+      <View className={cn('min-w-0 gap-3', !column && 'flex-1')}>
+        <BrushingInfo view={view} frame={frame} inline={row || column} />
         {row || column ? <QuarterBar quarters={quarters} /> : null}
         {column ? <Trace frame={frame} view={view} deviceId={device.id} /> : null}
       </View>

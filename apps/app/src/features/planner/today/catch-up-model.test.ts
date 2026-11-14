@@ -7,13 +7,13 @@ import type {
 import { describe, expect, it, vi } from 'vitest';
 import { clock } from '../../../format/time';
 
-vi.mock('../../assistant', () => ({ openQuickAskWith: vi.fn() }));
+vi.mock('../../assistant', () => ({ askAssistantWith: vi.fn() }));
 vi.mock('../../devices', () => ({ DeviceFace: (): null => null }));
 
 const { catchUpCardsOf, fitPromptOf, ghostStackOf, missedAlarmTitleOf, missedReasonOf } =
-  await import('./catch-up-deck');
+  await import('./catch-up-model');
 const { ribbonLabelOf, ribbonMarksOf } = await import('./done-ribbon');
-const { lensKeyOf, lensOf, lensPillOf, lensTimingOf, ruleSentenceOf } = await import('./now-lens');
+const { lensKeyOf, lensOf, lensPillOf, lensTimingOf, lensRuleOf } = await import('./now-lens');
 
 const ME = '00000000-0000-4000-8000-000000000001';
 const ZONE = 'Europe/Berlin';
@@ -240,23 +240,24 @@ describe('the now lens', () => {
     expect(lensTimingOf(occurrence('34', 'Any time'), day({}), 0)).toBeNull();
   });
 
-  it('words a device completion rule and none for a manual one', () => {
-    expect(ruleSentenceOf({ kind: 'manual' }, null)).toBeNull();
-    const sentence = ruleSentenceOf(
-      {
-        kind: 'signal',
-        window: 'day',
-        matcher: {
-          source: 'event',
-          kind: 'activity',
-          subject: '00000000-0000-4000-8000-000000000050',
-          match: { phase: 'finished' },
-        },
+  it('words the up next rule like the editor, minimum length included', () => {
+    expect(lensRuleOf({ kind: 'manual' }, null)).toBeNull();
+    const rule = {
+      kind: 'signal',
+      window: 'day',
+      minSeconds: 1200,
+      matcher: {
+        source: 'event',
+        kind: 'session_end',
+        subject: '00000000-0000-4000-8000-000000000050',
+        match: { kind: 'walk' },
       },
-      null,
-    );
-    expect(sentence).toBe(
-      'Done when Device activity for a removed device matching What the treadmill is doing: finished',
-    );
+    } as const;
+    const treadmill = {
+      id: '00000000-0000-4000-8000-000000000050',
+      label: 'Treadmill',
+      family: 'treadmill',
+    } as const;
+    expect(lensRuleOf(rule, treadmill)).toBe('Done when a walk of 20 min or more ends');
   });
 });

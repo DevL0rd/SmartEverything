@@ -127,4 +127,35 @@ class AlarmSchedulerTest {
     assertEquals(set.rings, reloaded.rings)
     assertEquals("client", reloaded.clientId)
   }
+
+  @Test fun snoozingArmsAOneOffTriggerAfterTheRingsOwnMinutes() {
+    val ring = alarm("a", everyDay)
+    scheduler.install(RingSet("h1", listOf(ring)), "client")
+    scheduler.snooze(ring, 9)
+    assertEquals(now.plusSeconds(540), arming.armed["a#snooze"])
+    assertEquals(Instant.parse("2026-11-08T07:00:00Z"), arming.armed["a"])
+  }
+
+  @Test fun stoppingCancelsAPendingSnooze() {
+    val ring = alarm("a", everyDay)
+    scheduler.install(RingSet("h1", listOf(ring)), "client")
+    scheduler.snooze(ring, 9)
+    scheduler.cancelSnooze("a")
+    assertFalse("a#snooze" in arming.armed)
+    assertTrue("a#snooze" in arming.cancelled)
+  }
+
+  @Test fun aRingDroppedFromTheSetAlsoLosesItsSnooze() {
+    val ring = alarm("a", everyDay)
+    scheduler.install(RingSet("h1", listOf(ring)), "client")
+    scheduler.snooze(ring, 9)
+    scheduler.install(RingSet("h2", emptyList()), "client")
+    assertFalse("a#snooze" in arming.armed)
+  }
+
+  @Test fun theStoredRingsAreFoundByKey() {
+    scheduler.install(RingSet("h1", listOf(alarm("a", everyDay))), "client")
+    assertEquals("a", scheduler.ringOf("a")?.ringKey)
+    assertEquals(null, scheduler.ringOf("missing"))
+  }
 }

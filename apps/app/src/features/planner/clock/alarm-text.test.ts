@@ -229,17 +229,27 @@ describe('wakeRoutineTimeOf', () => {
 
 describe('watchLineOf', () => {
   it('words every watch state with its tone', () => {
-    expect(watchLineOf(linkOf({}), 'Watch')).toEqual({ text: 'Watch · synced', tone: 'positive' });
-    expect(watchLineOf(linkOf({ state: 'pending' }), 'Watch')).toEqual({
-      text: 'Watch · waiting for the phone',
+    expect(watchLineOf(linkOf({}), 'Watch')).toEqual({
+      title: 'Watch · synced',
+      detail: null,
+      tone: 'positive',
+    });
+    expect(
+      watchLineOf(
+        linkOf({ state: 'pending', detail: 'Saves when the phone is near the watch.' }),
+        'Watch',
+      ),
+    ).toEqual({
+      title: 'Watch · waiting for the phone',
+      detail: 'Saves when the phone is near the watch.',
       tone: 'warning',
     });
     expect(
       watchLineOf(linkOf({ state: 'failed', detail: 'The watch list is full.' }), 'Watch'),
-    ).toEqual({ text: 'Watch · not saved. The watch list is full.', tone: 'critical' });
+    ).toEqual({ title: 'Watch · not saved', detail: 'The watch list is full.', tone: 'critical' });
     expect(
       watchLineOf(linkOf({ state: 'not_on_watch', detail: 'Repeats every second week.' }), 'Watch'),
-    ).toEqual({ text: 'Not on Watch. Repeats every second week.', tone: 'faint' });
+    ).toEqual({ title: 'Not on Watch', detail: 'Repeats every second week.', tone: 'faint' });
   });
 
   it('puts a dot on the chip for every state but not on watch', () => {

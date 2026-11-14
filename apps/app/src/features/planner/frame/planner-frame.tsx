@@ -1,10 +1,11 @@
 import { background } from '@smarteverything/logging';
-import { useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ScrollView, View, type TextInput } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { ScrollView, View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
+import { cn } from '../../../design/cn';
 import { CompactBody, WideBody, type FrameWidth } from '../../../components/section-body';
 import { useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
@@ -17,6 +18,8 @@ import {
   usePlannerSummary,
   usePlannerSyncOnVisible,
 } from '../data';
+import { PlannerItemPanel } from '../item/side-panel';
+import { usePlannerSelection } from '../item/selection';
 import type { PlannerSection } from '../model/section-routes';
 import { PlannerFrameContext, type PlannerFrameValue } from './frame-context';
 import { usePersonChoices, usePlannerShownPerson, type PersonChoice } from './person';
@@ -24,8 +27,8 @@ import { PersonPicker } from './person-picker';
 import { plannerMenu } from './planner-menu';
 import { PlannerRail } from './planner-rail';
 import { PlannerTabs } from './planner-tabs';
-import { QuickAddBar, ScrollAwayBar } from './quick-add-bar';
-import { usePlannerQuickAdd } from './quick-add';
+import { QuickAddBar, QuickAddComposer, ScrollAwayBar } from './quick-add-bar';
+import { plannerComposerKindOf, useComposerControl, type ComposerControl } from './quick-add';
 import { plannerSubtitleOf, todaySummaryOf } from './rail-summary';
 import {
   PLANNER_QUICK_ADD_TARGET,
@@ -83,19 +86,25 @@ function useSubtitle(section: PlannerSection, subtitle: string | undefined): str
 interface QuickAddSlot {
   readonly section: PlannerSection;
   readonly frame: PlannerFrameValue;
-  readonly inputRef: RefObject<TextInput | null>;
 }
 
-function PlannerQuickAdd({ section, frame, inputRef }: QuickAddSlot): ReactNode {
-  const add = usePlannerQuickAdd(frame.person);
+function PlannerQuickAdd({ section, frame }: QuickAddSlot): ReactNode {
   return (
     <QuickAddBar
       target={PLANNER_QUICK_ADD_TARGET}
       hint={plannerSectionOf(section).hint}
-      onAdd={add}
+      onOpen={frame.focusQuickAdd}
       disabled={frame.offline}
-      inputRef={inputRef}
     />
+  );
+}
+
+function PanelSlot(): ReactNode {
+  const selected = usePlannerSelection() !== null;
+  return (
+    <View className={cn(selected && 'pb-section-gap pr-gutter pt-2')}>
+      <PlannerItemPanel />
+    </View>
   );
 }
 
@@ -141,16 +150,19 @@ function FrameBody({ section, scroll, width, quickAdd, children }: BodyProps): R
   }
   const railWidth = railWidthOf(area);
   return (
-    <WideBody
-      scroll={false}
-      width={width}
-      rail={<PlannerRail active={section} width={railWidth} />}
-      railWidth={railWidth}
-    >
-      <WideColumn scroll={scroll} quickAdd={quickAdd}>
-        {children}
-      </WideColumn>
-    </WideBody>
+    <View className="w-full flex-1 flex-row">
+      <WideBody
+        scroll={false}
+        width={width}
+        rail={<PlannerRail active={section} width={railWidth} />}
+        railWidth={railWidth}
+      >
+        <WideColumn scroll={scroll} quickAdd={quickAdd}>
+          {children}
+        </WideColumn>
+      </WideBody>
+      <PanelSlot />
+    </View>
   );
 }
 
@@ -177,18 +189,19 @@ function headerBelow(
   );
 }
 
-function useFrameValue(inputRef: RefObject<TextInput | null>): PlannerFrameValue {
+function useFrameValue(section: PlannerSection, composer: ComposerControl): PlannerFrameValue {
   const person = usePlannerShownPerson();
   const offline = useHubOffline();
+  const { open } = composer;
   return useMemo(
     () => ({
       person,
       offline,
       focusQuickAdd: (): void => {
-        inputRef.current?.focus();
+        open({ text: '', kind: plannerComposerKindOf(section) });
       },
     }),
-    [person, offline, inputRef],
+    [person, offline, open, section],
   );
 }
 
@@ -232,10 +245,10 @@ export function PlannerFrame({
 }: PlannerFrameProps): ReactNode {
   usePlannerSyncOnVisible();
   const compact = frameLayoutOf(useAreaWidth()) === 'compact';
-  const inputRef = useRef<TextInput>(null);
-  const frame = useFrameValue(inputRef);
+  const composer = useComposerControl();
+  const frame = useFrameValue(section, composer);
   const { refreshing, onRefresh } = useRefresh();
-  const quickAdd = <PlannerQuickAdd section={section} frame={frame} inputRef={inputRef} />;
+  const quickAdd = <PlannerQuickAdd section={section} frame={frame} />;
   return (
     <PlannerFrameContext value={frame}>
       <Screen
@@ -252,6 +265,12 @@ export function PlannerFrame({
         <FrameBody section={section} scroll={scroll} width={width} quickAdd={quickAdd}>
           {children}
         </FrameBody>
+        <QuickAddComposer
+          control={composer}
+          target={PLANNER_QUICK_ADD_TARGET}
+          person={frame.person}
+          disabled={frame.offline}
+        />
       </Screen>
     </PlannerFrameContext>
   );

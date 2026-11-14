@@ -96,7 +96,9 @@ export function LogSlot({
       aria-hidden={probing}
       onLayout={probing ? undefined : fit.onGot}
     >
-      <View onLayout={fit.onNeed}>{log}</View>
+      <View className="pt-1.5" onLayout={fit.onNeed}>
+        {log}
+      </View>
     </View>
   );
 }

@@ -27,10 +27,19 @@ export interface StoreFacts {
   readonly unroomed: number;
   readonly assistants: number;
   readonly fitnessReady: boolean | null;
+  readonly ringsHere: boolean;
 }
+
+export interface AlarmPhoneFacts {
+  readonly fullScreen: boolean | null;
+  readonly unrestricted: boolean | null;
+}
+
+export const UNKNOWN_ALARM_PHONE: AlarmPhoneFacts = { fullScreen: null, unrestricted: null };
 
 export interface SetupFacts extends StoreFacts {
   readonly homeOnly: boolean;
+  readonly alarmPhone: AlarmPhoneFacts;
 }
 
 function firewallFact(state: StoreState): FirewallFact {
@@ -68,6 +77,21 @@ function homeFacts(
   };
 }
 
+function ringsHere(state: StoreState): boolean {
+  const clientId = state.session?.client.id;
+  if (clientId === undefined) return false;
+  const phones = new Set(
+    rowsOf(state.tables.devices)
+      .filter((device) => device.kind === 'phone' && device.details['clientId'] === clientId)
+      .map((device) => device.id),
+  );
+  return rowsOf(state.tables.planner_alarms).some((alarm) =>
+    alarm.targets.some((target) =>
+      target.kind === 'client' ? target.clientId === clientId : phones.has(target.deviceId),
+    ),
+  );
+}
+
 export function storeFactsOf(state: StoreState): StoreFacts {
   const settings = state.settings;
   const devices = rowsOf(state.tables.devices).filter((device) => !device.hidden);
@@ -90,6 +114,7 @@ export function storeFactsOf(state: StoreState): StoreFacts {
       state.tables.oauth_clients.ids.length +
       rowsOf(state.tables.mcp_tokens).filter((token) => token.revoked_at === null).length,
     fitnessReady: profile === null ? null : fitnessReady(profile),
+    ringsHere: ringsHere(state),
   };
 }
 

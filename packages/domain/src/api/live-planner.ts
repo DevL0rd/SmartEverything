@@ -3,7 +3,7 @@ import { PLANNER_ALARM_ROW } from '../planner/alarms';
 import { PLANNER_COLLECTION_ROW } from '../planner/collections';
 import { PLANNER_ITEM_ROW } from '../planner/items';
 import { PLANNER_OCCURRENCE_ROW } from '../planner/occurrences';
-import { PLANNER_RING_NOTICE } from '../planner/signals';
+import { PLANNER_PHONE_RINGS_NOTICE, PLANNER_RING_NOTICE } from '../planner/signals';
 import { PLANNER_STOPWATCH_ROW } from '../planner/stopwatch';
 import { PLANNER_SUMMARY_NOTICE } from '../planner/summary';
 import { PLANNER_TIMER_ROW } from '../planner/timers';
@@ -18,4 +18,8 @@ export const PLANNER_TABLE_ROWS = {
   google_accounts: GOOGLE_ACCOUNT_ROW,
 } as const;
 
-export const PLANNER_LIVE_NOTICES = [PLANNER_RING_NOTICE, PLANNER_SUMMARY_NOTICE] as const;
+export const PLANNER_LIVE_NOTICES = [
+  PLANNER_RING_NOTICE,
+  PLANNER_SUMMARY_NOTICE,
+  PLANNER_PHONE_RINGS_NOTICE,
+] as const;

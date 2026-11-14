@@ -88,11 +88,13 @@ function signalRule(
   subject: string,
   match: Readonly<Record<string, string>>,
   window: 'occurrence' | 'day',
+  minSeconds?: number,
 ): PlannerItemInput['completion'] {
   return {
     kind: 'signal',
     matcher: { source: 'event', kind: 'activity', subject, match },
     window,
+    ...(minSeconds === undefined ? {} : { minSeconds }),
   };
 }
 
@@ -228,6 +230,67 @@ describe('completing from a device signal', () => {
     add(ann, {});
     add(ann, { completion: signalRule(TREADMILL, { brushing: 'finished' }, 'occurrence') });
     expect(watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'))).toEqual([]);
+  });
+});
+
+describe('the minimum session length', () => {
+  function needing(
+    minSeconds: number,
+    subject = BRUSH,
+    match: Readonly<Record<string, string>> = { brushing: 'finished' },
+  ): PlannerItemRow {
+    return add(ann, {
+      completion: signalRule(subject, match, 'day', minSeconds),
+    });
+  }
+
+  it('completes when the brushing session is long enough', () => {
+    needing(120);
+    const saved = watcher.handle(
+      signal(BRUSH, { brushing: 'finished', durationS: 120 }, '2026-11-07T07:38:00.000Z'),
+    );
+    expect(saved).toHaveLength(1);
+  });
+
+  it('stays open when the session is shorter than the minimum', () => {
+    const teeth = needing(120);
+    const saved = watcher.handle(
+      signal(BRUSH, { brushing: 'finished', durationS: 119 }, '2026-11-07T07:38:00.000Z'),
+    );
+    expect(saved).toHaveLength(0);
+    expect(test.store.plannerItems.byId(teeth.id, ann.profileId).status).toBe('open');
+  });
+
+  it('stays open when the signal states no length', () => {
+    needing(120);
+    const saved = watcher.handle(
+      signal(BRUSH, { brushing: 'finished' }, '2026-11-07T07:38:00.000Z'),
+    );
+    expect(saved).toHaveLength(0);
+  });
+
+  it('reads the treadmill length from duration_s', () => {
+    needing(600, TREADMILL, { phase: 'finished' });
+    const short = signal(
+      TREADMILL,
+      { phase: 'finished', duration_s: 599 },
+      '2026-11-07T07:38:00.000Z',
+    );
+    const long = signal(
+      TREADMILL,
+      { phase: 'finished', duration_s: 600 },
+      '2026-11-07T07:39:00.000Z',
+    );
+    expect(watcher.handle(short)).toHaveLength(0);
+    expect(watcher.handle(long)).toHaveLength(1);
+  });
+
+  it('ignores the length when the rule sets no minimum', () => {
+    add(ann, { completion: signalRule(BRUSH, { brushing: 'finished' }, 'day') });
+    const saved = watcher.handle(
+      signal(BRUSH, { brushing: 'finished', durationS: 5 }, '2026-11-07T07:38:00.000Z'),
+    );
+    expect(saved).toHaveLength(1);
   });
 });
 

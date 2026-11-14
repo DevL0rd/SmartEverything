@@ -25,7 +25,7 @@ import { DraftIntro } from './draft-intro';
 import { ModelChip } from './model-chip';
 import { PermissionControl } from './permission-control';
 
-const DRAFT_KEY = 'new-chat';
+export const NEW_CHAT_DRAFT_KEY = 'new-chat';
 
 interface DraftScreen {
   readonly engine: Engine;
@@ -65,8 +65,8 @@ function useDraftScreen(onStarted: (chatId: string) => void): DraftScreen {
     runtimeStopped: readiness.runtimeStopped,
     needsKey: keyNeeded && ready,
     run,
-    draftChat: useDraftChatStart(DRAFT_KEY, engine, actions),
-    sender: useDraftSender(DRAFT_KEY, run.host, actions),
+    draftChat: useDraftChatStart(NEW_CHAT_DRAFT_KEY, engine, actions),
+    sender: useDraftSender(NEW_CHAT_DRAFT_KEY, run.host, actions),
   };
 }
 
@@ -132,7 +132,7 @@ function DraftFooter({ screen }: { readonly screen: DraftScreen }): ReactNode {
           reason={screen.status}
           fixes={{ engine: fixesFor(screen) }}
           placeholder={`Message ${name}`}
-          draftKey={DRAFT_KEY}
+          draftKey={NEW_CHAT_DRAFT_KEY}
           send={sender.send}
           focusOnMount
           shortcuts

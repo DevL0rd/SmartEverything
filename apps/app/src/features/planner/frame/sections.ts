@@ -45,7 +45,7 @@ export const PLANNER_SECTION_DEFS: readonly PlannerSectionDef[] = [
     label: 'Insights',
     icon: 'trendUp',
     href: href.planner.insights(),
-    hint: 'Add a task, event or alarm. Try: brush teeth every day 07:30 #health',
+    hint: 'Add a task or an event. Try: brush teeth every day 07:30 #health',
     phoneTab: false,
   },
 ];

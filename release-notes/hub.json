@@ -1,4 +1,4 @@
 {
-  "from": "629c58ceab7d4056df5b399766152d6563899d4f",
-  "notes": "Every person gets one private drive, and the home gets one shared Drive.\n\n- My Drive is private to its owner; share files and folders with chosen people.\n- The Shared Drive is open to the whole home; stars are kept per person.\n- Folders you pick on a computer sync like Syncthing; linked folders and volumes are gone.\n- Photos now read the same access rule; Memories are removed from the Hub.\n- Update the app and Desktop together with this release."
+  "from": "6bd57c5fcf617bedfab5b57f411a0cad932d9ac6",
+  "notes": "Planner and Clock are live: your day, tasks, calendar, alarms and rings in one place.\n\n- Planner opens on your day with tasks, events, habits and a catch-up deck; Calendar opens on three days on phones.\n- Clock has alarms, timers, stopwatch, a world clock and a full-screen ring with snooze and dismiss.\n- Alarms ring on the phone through a new foreground service and on the Desktop; the Hub schedules them.\n- Link your Google account from Settings, Connections, Google to sync calendar and tasks.\n- Setup lists the battery and full-screen alarm steps your phone still needs.\n- The move ring on Fitness and the Planner widgets on Home use your live data.\n- Install the new Android app once so the alarm service and Planner module are available."
 }
