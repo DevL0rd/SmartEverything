@@ -255,9 +255,6 @@ export class ReleaseQueue {
   }
 }
 
-function replaced(
-  steps: readonly UpdateRevisionStep[],
-  next: UpdateRevisionStep,
-): readonly UpdateRevisionStep[] {
+function replaced(steps: UpdateRevisionStep[], next: UpdateRevisionStep): UpdateRevisionStep[] {
   return steps.map((entry) => (entry.component === next.component ? next : entry));
 }

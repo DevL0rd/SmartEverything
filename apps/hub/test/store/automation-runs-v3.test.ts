@@ -40,7 +40,7 @@ import { AutomationRunRecordsRepository } from '../../src/store/repositories/aut
 
 interface Published {
   readonly operation: RowOperation;
-  readonly record: AutomationRunSummary;
+  readonly record: AutomationRunSummary | null;
   readonly oldRecord: AutomationRunSummary | null;
 }
 
@@ -144,7 +144,7 @@ describe('automation run records', () => {
       wake_at: null,
       waiting_on: null,
     });
-    expect(published.at(-1)?.record.status).toBe('running');
+    expect(published.at(-1)?.record?.status).toBe('running');
   });
 
   it('finds parked runs that are due', () => {
@@ -177,13 +177,16 @@ describe('automation run records', () => {
     expect(runs.summaries(null, 1)).toHaveLength(1);
   });
 
-  it('forgets finished runs of an automation and keeps active ones', () => {
+  it('forgets every run of a removed automation, active ones included, and publishes the deletes', () => {
     const done = start();
     const live = start();
     runs.update(done, { status: 'succeeded', finished_at: NOW });
-    expect(runs.forget(AUTOMATION)).toBe(1);
+    published = [];
+    expect(runs.forget(AUTOMATION)).toBe(2);
     expect(() => runs.byId(done)).toThrow();
-    expect(runs.byId(live).status).toBe('running');
+    expect(() => runs.byId(live)).toThrow();
+    expect(published.map((change) => change.operation)).toStrictEqual(['DELETE', 'DELETE']);
+    expect(published.every((change) => change.record === null)).toBe(true);
   });
 
   it('rolls back the row and publishes nothing when the write fails', () => {

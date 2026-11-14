@@ -39,7 +39,7 @@ const RULES: readonly Rule[] = [
 ];
 
 export interface ReleasePlan {
-  readonly components: readonly PipelineComponent[];
+  readonly components: PipelineComponent[];
 }
 
 function componentsOf(path: string): readonly PipelineComponent[] {

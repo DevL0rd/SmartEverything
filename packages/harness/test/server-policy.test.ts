@@ -113,7 +113,7 @@ describe('the server tool policy against the registered tools', () => {
         ...(native ? [] : MEMBER_ONLY_MACHINE_TOOLS),
       ].sort();
       expect(dropped.sort()).toStrictEqual(expected.filter((name) => registered.includes(name)));
-      expect(registered).toStrictEqual(expect.arrayContaining(WITHHELD_FROM_SERVERS));
+      expect(registered).toStrictEqual(expect.arrayContaining([...WITHHELD_FROM_SERVERS]));
     },
   );
 });
