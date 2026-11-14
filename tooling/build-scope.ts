@@ -21,7 +21,7 @@ export const MINIMUM_BUILD_MEMORY_BYTES = 2 * GIB;
 export const TYPE_CHECK_HEAP_BYTES = 6 * GIB;
 export const BUILD_OOM_SCORE_ADJUST = 1000;
 export const HUB_HIGH_WATER_FILE = 'hub-memory-high-water.json';
-export const GRADLE_CLIENT_METASPACE = '512m';
+export const GRADLE_CLIENT_METASPACE = '2g';
 export const BYTES_PER_GRADLE_WORKER = 3 * GIB;
 
 interface Plan {

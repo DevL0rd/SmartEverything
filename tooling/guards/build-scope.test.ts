@@ -136,7 +136,7 @@ describe('the memory settings inside the scope', () => {
     expect(args).toEqual([
       '--no-daemon',
       '--max-workers=3',
-      `-Dorg.gradle.jvmargs=-Xmx${String(gradleHeapMiB(limit))}m -XX:MaxMetaspaceSize=512m`,
+      `-Dorg.gradle.jvmargs=-Xmx${String(gradleHeapMiB(limit))}m -XX:MaxMetaspaceSize=2g`,
       '-Pkotlin.compiler.execution.strategy=in-process',
     ]);
     expect(gradleHeapMiB(limit)).toBeLessThan((limit * 0.35) / MIB);
