@@ -81,7 +81,7 @@ export const PRIVACY_SECTIONS: readonly PrivacySection[] = [
   {
     title: MEDIA,
     paragraphs: [
-      'With your permission the Android app reads the photos, videos and audio files on your phone that you allow, so you can see them in Drive and Photos and back them up. Backed up files are stored on your server.',
+      'With your permission the Android app reads the photos, videos and audio files on your phone that you allow, so you can see them in Drive and Photos and back them up. Backed up files are stored on your server. The app can also read the place where a photo was taken, so backed up photos keep it.',
     ],
   },
   {
@@ -159,6 +159,7 @@ export const PRIVACY_PERMISSION_TOPICS: Readonly<Record<string, string>> = {
   'android.permission.READ_MEDIA_VIDEO': MEDIA,
   'android.permission.READ_MEDIA_AUDIO': MEDIA,
   'android.permission.READ_MEDIA_VISUAL_USER_SELECTED': MEDIA,
+  'android.permission.ACCESS_MEDIA_LOCATION': MEDIA,
   'android.permission.USE_EXACT_ALARM': BACKGROUND,
   'android.permission.READ_EXTERNAL_STORAGE': BACKGROUND,
   'android.permission.WRITE_EXTERNAL_STORAGE': BACKGROUND,
