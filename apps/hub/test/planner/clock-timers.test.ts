@@ -14,7 +14,7 @@ import { StopwatchService } from '../../src/planner/stopwatch';
 import { TimerService } from '../../src/planner/timers';
 import { openStore, type Store } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import { testStore, type TestStore, unusedDrivePath } from '../support/store';
 
 const START = '2026-11-07T08:00:00.000Z';
 
@@ -225,7 +225,13 @@ describe('survives a reload', () => {
     const directory = await mkdtemp(join(tmpdir(), 'planner-reload-'));
     const path = join(directory, 'reload.db');
     const open = (): Store =>
-      openStore({ path, log: testLogger('store'), now: clock.now, systemTimeZone: 'UTC' });
+      openStore({
+        path,
+        log: testLogger('store'),
+        now: clock.now,
+        systemTimeZone: 'UTC',
+        drivePathOf: unusedDrivePath,
+      });
     const first = open();
     const owner = first.profiles.create({ name: 'Ann' }).id;
     const laps = new StopwatchService({ store: first, clock });
