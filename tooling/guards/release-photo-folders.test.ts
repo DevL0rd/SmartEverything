@@ -24,6 +24,7 @@ let backup = '';
 let original = '';
 let moved = '';
 let receipt = '';
+const driveOf = (): string => root;
 
 beforeEach(() => {
   scratch = mkdtempSync(join(tmpdir(), 'photo-release-'));
@@ -54,9 +55,11 @@ beforeEach(() => {
   );
   const database = new DatabaseSync(backup);
   database.exec(
-    `create table drive_roots(id text, path text, kind text default 'managed', scope text default 'person'); create table drive_items(id text, root_id text, rel_path text)`,
+    `create table drive_roots(id text, owner_profile_id text, scope text); create table drive_items(id text, root_id text, rel_path text)`,
   );
-  database.prepare('insert into drive_roots(id, path) values(?, ?)').run(ROOT, root);
+  database
+    .prepare('insert into drive_roots(id, owner_profile_id, scope) values(?, ?, ?)')
+    .run(ROOT, 'owner', 'person');
   database
     .prepare('insert into drive_items values(?, ?, ?)')
     .run(ITEM, ROOT, 'Camera Roll/owner/video.mp4');
@@ -72,13 +75,13 @@ describe('filesystem migration rollback', () => {
   it('restores the original video bytes and inode without copying or deleting recovery receipts', () => {
     const inode = statSync(moved).ino;
     rmSync(join(root, 'Camera Roll'), { recursive: true });
-    restorePhotoFolders(backup);
+    restorePhotoFolders(backup, driveOf);
     expect(readFileSync(original, 'utf8')).toBe('original video bytes');
     expect(statSync(original).ino).toBe(inode);
     expect(existsSync(moved)).toBe(false);
     expect(existsSync(receipt)).toBe(true);
-    restorePhotoFolders(backup);
-    clearPhotoFolderReceipts(backup);
+    restorePhotoFolders(backup, driveOf);
+    clearPhotoFolderReceipts(backup, driveOf);
     expect(existsSync(receipt)).toBe(false);
   });
 
@@ -86,7 +89,7 @@ describe('filesystem migration rollback', () => {
     const database = new DatabaseSync(backup);
     database.prepare('update drive_items set rel_path=? where id=?').run('Photos/video.mp4', ITEM);
     database.close();
-    restorePhotoFolders(backup);
+    restorePhotoFolders(backup, driveOf);
     expect(readFileSync(moved, 'utf8')).toBe('original video bytes');
     expect(existsSync(original)).toBe(false);
     expect(existsSync(receipt)).toBe(true);
@@ -94,14 +97,14 @@ describe('filesystem migration rollback', () => {
 
   it('resumes a crash between no-clobber linking and removing the moved path', () => {
     linkSync(moved, original);
-    restorePhotoFolders(backup);
+    restorePhotoFolders(backup, driveOf);
     expect(readFileSync(original, 'utf8')).toBe('original video bytes');
     expect(existsSync(moved)).toBe(false);
   });
 
   it('preserves both files and the receipt if the original path was reused', () => {
     writeFileSync(original, 'different file');
-    expect(() => restorePhotoFolders(backup)).toThrow('different file');
+    expect(() => restorePhotoFolders(backup, driveOf)).toThrow('different file');
     expect(readFileSync(original, 'utf8')).toBe('different file');
     expect(readFileSync(moved, 'utf8')).toBe('original video bytes');
     expect(existsSync(receipt)).toBe(true);
@@ -109,7 +112,7 @@ describe('filesystem migration rollback', () => {
 
   it('refuses changed moved bytes instead of restoring an unverified file', () => {
     writeFileSync(moved, 'changed video');
-    expect(() => restorePhotoFolders(backup)).toThrow('cannot be verified');
+    expect(() => restorePhotoFolders(backup, driveOf)).toThrow('cannot be verified');
     expect(existsSync(original)).toBe(false);
     expect(existsSync(receipt)).toBe(true);
   });
@@ -178,13 +181,13 @@ describe('filesystem migration rollback', () => {
         addedByProfileId: null,
       }),
     );
-    restorePhotoFolders(backup);
+    restorePhotoFolders(backup, driveOf);
     expect(statSync(join(root, 'old-empty')).isDirectory()).toBe(true);
     expect(JSON.parse(readFileSync(`${trash}.json`, 'utf8'))).toMatchObject({
       originalRelPath: 'Camera Roll/owner/deleted.jpg',
       bytes: 7,
     });
     expect(readFileSync(trash, 'utf8')).toBe('deleted');
-    restorePhotoFolders(backup);
+    restorePhotoFolders(backup, driveOf);
   });
 });

@@ -39,7 +39,10 @@ export function describe(cause: unknown): string {
 }
 
 export function finishRelease(target: ReleaseTarget, name: string): void {
-  clearPhotoFolderReceipts(target.data.system.database.file);
+  clearPhotoFolderReceipts(
+    target.data.system.database.file,
+    (profileId) => target.data.person(profileId).drive,
+  );
   rmSync(`${target.install.service}.old-${name}`, { recursive: true, force: true });
   pruneReleaseLeftovers(target, null);
   const removed = pruneBackups(target.data);

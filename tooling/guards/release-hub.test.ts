@@ -570,7 +570,8 @@ function photoRelocation(): {
 } {
   const rootId = '11111111-1111-4111-8111-111111111111';
   const itemId = '22222222-2222-4222-8222-222222222222';
-  const root = join(scratch, 'personal-drive');
+  const owner = '33333333-3333-4333-8333-333333333333';
+  const root = data.person(owner).drive;
   const original = join(root, 'Camera Roll', 'owner', 'video.mp4');
   const moved = join(root, 'Photos', 'video.mp4');
   mkdirSync(dirname(original), { recursive: true });
@@ -578,11 +579,9 @@ function photoRelocation(): {
   writeFileSync(original, 'original video bytes');
   const database = new DatabaseSync(data.system.database.file);
   database.exec(`delete from schema_version; insert into schema_version values (201, 'photos', 'now');
-    create table drive_roots(id text, path text, kind text, scope text);
+    create table drive_roots(id text, owner_profile_id text, scope text);
     create table drive_items(id text, root_id text, rel_path text);`);
-  database
-    .prepare('insert into drive_roots values(?, ?, ?, ?)')
-    .run(rootId, root, 'managed', 'person');
+  database.prepare('insert into drive_roots values(?, ?, ?)').run(rootId, owner, 'person');
   database
     .prepare('insert into drive_items values(?, ?, ?)')
     .run(itemId, rootId, 'Camera Roll/owner/video.mp4');

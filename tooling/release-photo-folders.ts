@@ -19,11 +19,13 @@ import {
 } from '../apps/hub/src/photos/folder-receipts.ts';
 import { restorePhotoTrash } from './release-photo-trash.ts';
 
-const ROOT = z.object({ id: z.string(), path: z.string() });
+const ROOT = z.object({ id: z.string(), owner_profile_id: z.string() });
+const PROFILE_ROOT = z.object({ id: z.string(), path: z.string() });
+export type DriveOf = (profileId: string) => string;
 const ITEM = z.object({ rel_path: z.string() });
-type Root = z.output<typeof ROOT>;
+type Root = z.output<typeof PROFILE_ROOT>;
 
-function photoRoots(database: DatabaseSync): readonly Root[] {
+function photoRoots(database: DatabaseSync, driveOf: DriveOf): readonly Root[] {
   const table = database
     .prepare("select name from sqlite_master where type='table' and name='drive_roots'")
     .get();
@@ -34,10 +36,11 @@ function photoRoots(database: DatabaseSync): readonly Root[] {
         .parse(
           database
             .prepare(
-              "select id, path from drive_roots where path is not null and kind='managed' and scope='person'",
+              "select id, owner_profile_id from drive_roots where scope='person' and owner_profile_id is not null",
             )
             .all(),
-        );
+        )
+        .map((root) => PROFILE_ROOT.parse({ id: root.id, path: driveOf(root.owner_profile_id) }));
 }
 
 function receipts(root: Root): readonly PhotoFolderReceipt[] {
@@ -107,11 +110,11 @@ function restoreReceipt(database: DatabaseSync, root: Root, receipt: PhotoFolder
   }
 }
 
-export function restorePhotoFolders(backupDatabase: string): boolean {
+export function restorePhotoFolders(backupDatabase: string, driveOf: DriveOf): boolean {
   let restored = false;
   const database = new DatabaseSync(backupDatabase, { readOnly: true });
   try {
-    for (const root of photoRoots(database)) {
+    for (const root of photoRoots(database, driveOf)) {
       const entries = receipts(root);
       restored ||= entries.length > 0;
       for (const receipt of entries.filter((entry) => entry.kind === 'folder'))
@@ -125,10 +128,10 @@ export function restorePhotoFolders(backupDatabase: string): boolean {
   return restored;
 }
 
-export function clearPhotoFolderReceipts(backupDatabase: string): void {
+export function clearPhotoFolderReceipts(backupDatabase: string, driveOf: DriveOf): void {
   const database = new DatabaseSync(backupDatabase, { readOnly: true });
   try {
-    for (const root of photoRoots(database)) {
+    for (const root of photoRoots(database, driveOf)) {
       receipts(root);
       rmSync(withinRoot(root.path, PHOTO_FOLDER_RECEIPTS), { recursive: true, force: true });
     }

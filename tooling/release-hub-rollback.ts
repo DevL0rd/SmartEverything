@@ -39,7 +39,9 @@ export async function rollbackWith(options: RollbackOptions): Promise<void> {
   const restoration = await withHubDataLock(target.data.root, async () => {
     const restored = scene.undo ? await undoV1(data.root, scene.backup, environment) : scene.backup;
     const savedDatabase = join(restored, 'smarteverything.db');
-    const movedFiles = existsSync(savedDatabase) && restorePhotoFolders(savedDatabase);
+    const movedFiles =
+      existsSync(savedDatabase) &&
+      restorePhotoFolders(savedDatabase, (profileId) => data.person(profileId).drive);
     const restoreSavedDatabase = withDatabase || movedFiles;
     restoreService(install, restored, stamp);
     if (restoreSavedDatabase) restoreDatabase(data, restored, stamp);
@@ -61,7 +63,10 @@ export async function rollbackWith(options: RollbackOptions): Promise<void> {
       failed.map((check) => check.detail).join('; '),
     );
   markBackup(restored, 'rolled-back');
-  clearPhotoFolderReceipts(join(restored, 'smarteverything.db'));
+  clearPhotoFolderReceipts(
+    join(restored, 'smarteverything.db'),
+    (profileId) => data.person(profileId).drive,
+  );
   finishRelease({ install, data }, stamp);
   log.info('release.rolled_back', { backup: restored, withDatabase: restoreSavedDatabase });
 }
