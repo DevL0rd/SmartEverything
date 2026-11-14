@@ -6,12 +6,13 @@ import {
   type HubEndpoint,
   type HubDiscoveryCandidate,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { HubPolicies, HubTransportError } from './policy';
 import type { HubLease } from './lease';
 import { NodeRouteStore } from './route-store';
 import {
   bootstrapNodeTrust,
+  withLearnedEndpoints,
   canonicalEndpoint,
   NodeEnrollmentRefusedError,
   type NodeRouteIdentity,
@@ -44,6 +45,7 @@ export class NodeRouteAuthority {
   private pending = false;
   private stopped = false;
   private writing: Promise<void> = Promise.resolve();
+  private trusting = false;
   constructor(
     private readonly options: NodeRouteIdentity & {
       readonly directory: string;
@@ -206,10 +208,54 @@ export class NodeRouteAuthority {
           ? 'No enrolled hub endpoint is reachable.'
           : 'Independently enrolled route selected.',
       );
-      if (chosen?.kind !== 'lan') this.events.discover();
+      this.afterSelect(chosen, configuration);
     } finally {
       await Promise.all(answers);
     }
+  }
+  private afterSelect(
+    chosen: HubEndpoint | null,
+    configuration: NativeHubRouteConfiguration,
+  ): void {
+    if (chosen?.kind !== 'lan') this.events.discover();
+    if (chosen !== null) background(this.refreshTrust(configuration), 'route.trust_refresh_failed');
+  }
+  private async refreshTrust(known: NativeHubRouteConfiguration): Promise<void> {
+    if (this.trusting) return;
+    this.trusting = true;
+    try {
+      const fresh = await bootstrapNodeTrust(this.options);
+      if (fresh === null || this.stopped || this.configuration !== known) return;
+      if (fresh.trust.identity.id !== known.trust.identity.id) {
+        this.options.log.warn('route.trust_refresh_other_hub', {});
+        return;
+      }
+      const updated = withLearnedEndpoints(known, fresh);
+      if (updated === null) return;
+      this.persist(this.configure(updated));
+      this.options.log.info('route.trust_refreshed', {});
+    } catch (cause) {
+      if (cause instanceof NodeEnrollmentRefusedError) await this.withdrawEnrollment();
+      else
+        this.options.log.warn('route.trust_refresh_failed', {
+          error_name: cause instanceof Error ? cause.name : 'unknown',
+        });
+    } finally {
+      this.trusting = false;
+    }
+  }
+  private persist(configured: NativeHubRouteConfiguration): void {
+    if (this.batch !== null) this.pending = true;
+    this.writing = this.writing
+      .then(async (): Promise<void> => {
+        if (this.configuration === configured) await this.store.write(configured);
+      })
+      .catch((cause: unknown) => {
+        this.options.log.error('route.persistence_failed', cause);
+      });
+    void this.refresh().catch((cause: unknown) => {
+      this.options.log.error('route.refresh_failed', cause);
+    });
   }
   private candidates(configuration: NativeHubRouteConfiguration): readonly HubEndpoint[] {
     const locals = configuration.trust.endpoints
@@ -296,18 +342,7 @@ export class NodeRouteAuthority {
         lanAddresses: [...new Set([...configuration.trust.lanAddresses, address])],
       },
     });
-    const configured = this.configure(updated);
-    if (this.batch !== null) this.pending = true;
-    this.writing = this.writing
-      .then(async (): Promise<void> => {
-        if (this.configuration === configured) await this.store.write(configured);
-      })
-      .catch((cause: unknown) => {
-        this.options.log.error('route.persistence_failed', cause);
-      });
-    void this.refresh().catch((cause: unknown) => {
-      this.options.log.error('route.refresh_failed', cause);
-    });
+    this.persist(this.configure(updated));
   }
   ownsCredential(value: unknown): boolean {
     return value === undefined || value === null || value === `Bearer ${this.options.token}`;

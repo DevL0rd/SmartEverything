@@ -86,7 +86,8 @@ export class ActiveHubRoute {
   scopeId = randomUUID();
   private stopped = false;
   private metadataTask: Promise<HubConnectionMetadata> | null = null;
-  private syncedUrl: string | null = null;
+  private inventoryTask: Promise<void> | null = null;
+  private inventoryAgain = false;
   private readonly canonical: HubEndpoint;
   private authority: RouteAuthority;
 
@@ -132,7 +133,8 @@ export class ActiveHubRoute {
     });
     if (this.stopped) {
       this.scopeId = randomUUID();
-      this.syncedUrl = null;
+      this.inventoryTask = null;
+      this.inventoryAgain = false;
       this.state.set({ ...this.state.get(), endpoint: this.canonical });
       this.authority = this.createAuthority();
     }
@@ -271,12 +273,26 @@ export class ActiveHubRoute {
   }
 
   private syncInventory(endpoint: HubEndpoint): void {
-    if (this.stopped || endpoint.url === this.syncedUrl) return;
-    this.syncedUrl = endpoint.url;
-    this.refreshInventory().catch((error: unknown) => {
-      if (this.syncedUrl === endpoint.url) this.syncedUrl = null;
-      log.warn('route.inventory_refresh_failed', failureFacts(error));
-    });
+    if (this.stopped) return;
+    if (this.inventoryTask !== null) {
+      this.inventoryAgain = true;
+      return;
+    }
+    const scopeId = this.scopeId;
+    this.inventoryTask = this.refreshInventory()
+      .catch((error: unknown) => {
+        log.warn('route.inventory_refresh_failed', {
+          routeKind: endpoint.kind,
+          ...failureFacts(error),
+        });
+      })
+      .finally(() => {
+        if (scopeId !== this.scopeId) return;
+        const again = this.inventoryAgain;
+        this.inventoryTask = null;
+        this.inventoryAgain = false;
+        if (again) this.syncInventory(endpoint);
+      });
   }
 
   private async refreshInventory(): Promise<void> {

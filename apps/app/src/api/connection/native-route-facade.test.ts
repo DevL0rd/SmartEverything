@@ -29,6 +29,7 @@ let activation: Promise<void> = Promise.resolve();
 const listeners: ((state: NativeHubRouteSnapshot) => void)[] = [];
 const configurations: NativeHubRouteConfiguration[] = [];
 let refreshedGeneration = 1;
+let configured: Promise<void> = Promise.resolve();
 
 function snapshot(routeGeneration: number, endpoint: HubEndpoint): NativeHubRouteSnapshot {
   return {
@@ -47,7 +48,7 @@ const authority: NativeHubRouteAuthority = {
   configure: (configuration) => {
     order.push('configure');
     configurations.push(configuration);
-    return Promise.resolve(snapshot(configurations.length, LAN));
+    return configured.then(() => snapshot(configurations.length, LAN));
   },
   clear: () => Promise.resolve(),
   refresh: () => {
@@ -116,6 +117,7 @@ beforeEach(() => {
   configurations.length = 0;
   activation = Promise.resolve();
   refreshedGeneration = 1;
+  configured = Promise.resolve();
 });
 
 describe('the native route authority', () => {
@@ -131,6 +133,44 @@ describe('the native route authority', () => {
     release();
     await ready;
     expect(order).toEqual(['activated', 'configure']);
+  });
+
+  it('waits for native configuration before refreshing a newly enrolled scope', async () => {
+    let release: () => void = () => undefined;
+    configured = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const facade = nativeRouteFacade(host().host);
+    const ready = facade?.ready();
+    await vi.waitFor(() => {
+      expect(order).toContain('configure');
+    });
+    facade?.refresh();
+    facade?.refresh();
+    expect(order).not.toContain('refresh');
+    release();
+    await ready;
+    await vi.waitFor(() => {
+      expect(order).toEqual(['activated', 'configure', 'refresh']);
+    });
+  });
+
+  it('discards a refresh queued during configuration if its scope stops', async () => {
+    let release: () => void = () => undefined;
+    configured = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const facade = nativeRouteFacade(host().host);
+    const ready = facade?.ready();
+    const settled = expect(ready).rejects.toThrow();
+    await vi.waitFor(() => {
+      expect(order).toContain('configure');
+    });
+    facade?.refresh();
+    facade?.stop();
+    release();
+    await settled;
+    expect(order).not.toContain('refresh');
   });
 
   it('keeps leases and the last endpoint through a new route generation or a pause', async () => {

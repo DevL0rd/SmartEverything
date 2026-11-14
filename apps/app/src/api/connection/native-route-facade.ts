@@ -9,7 +9,6 @@ import { Logger } from '@smarteverything/logging';
 import type { HubRouteLease, RouteAuthority, RouteHost } from './active-route';
 import { hubNetwork, nativeServerActivated, pinnedFetch } from './route-platform';
 import { trustOf, HubRouteUnavailableError, StaleHubRouteError } from './route-policy';
-
 import { countEvent, failureFacts, nowMs } from './request-log';
 import {
   noteNativeRouteChange,
@@ -19,6 +18,8 @@ import {
   noteNativeWait,
   noteNativeStateAccepted,
   noteNativeStateIgnored,
+  noteNativeRefreshFinished,
+  noteNativeRefreshStarted,
 } from './native-route-diagnostics';
 
 const log = new Logger('app.hub-route');
@@ -304,24 +305,23 @@ export class NativeRouteFacade implements RouteAuthority {
     const run = this.operation;
     const binding = this.binding;
     const startedAt = nowMs();
-    log.debug('route.refresh_started', () => ({
-      scopeId: this.scopeId(),
-      operation: run,
-      routeGeneration: this.current?.routeGeneration ?? null,
-    }));
-    this.refreshing = this.authority
-      .refresh(this.host.scopeId)
+    noteNativeRefreshStarted(this.scopeId(), run, this.current?.routeGeneration ?? null);
+    const refresh = (): Promise<NativeHubRouteSnapshot | null> =>
+      this.currentOperation(run, binding)
+        ? this.authority.refresh(this.host.scopeId)
+        : Promise.resolve(null);
+    const pending = this.readyTask;
+    const request = this.configuring && pending !== null ? pending.then(refresh) : refresh();
+    this.refreshing = request
       .then((state) => {
+        if (state === null) return;
         const applied = this.currentOperation(run, binding) && !this.configuring;
-        log.debug('route.refresh_finished', () => ({
-          scopeId: this.scopeId(),
+        noteNativeRefreshFinished(this.scopeId(), state, {
           applied,
           configuring: this.configuring,
-          readiness: state.readiness,
-          routeGeneration: state.routeGeneration,
           coalesced: this.coalescedRefreshes,
           elapsedMs: nowMs() - startedAt,
-        }));
+        });
         if (applied) this.accept(state);
       })
       .catch((error: unknown) => {

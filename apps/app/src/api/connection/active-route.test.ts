@@ -119,15 +119,46 @@ describe('the saved hub address list', () => {
     route.stop();
   });
 
-  it('is fetched once per endpoint and left alone when nothing changed', async () => {
+  it('is fetched again on every connect to the same endpoint', async () => {
     new ActiveHubRoute(CONNECTION);
-    authority().host.connected(LAN);
     authority().host.connected(LAN);
     await vi.waitFor(() => {
       expect(fetched).toHaveLength(1);
     });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    authority().host.connected(LAN);
+    await vi.waitFor(() => {
+      expect(fetched).toHaveLength(2);
+    });
     expect(authority().updated).toEqual([]);
     expect(saved.size).toBe(0);
+  });
+
+  it('learns an address the hub gained while the same endpoint stayed healthy', async () => {
+    new ActiveHubRoute(CONNECTION);
+    authority().host.connected(REMOTE);
+    await vi.waitFor(() => {
+      expect(fetched).toHaveLength(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    served = metadataOf('a'.repeat(64), [LAN, MOVED, REMOTE]);
+    authority().host.connected(REMOTE);
+    await vi.waitFor(() => {
+      expect(authority().updated).toEqual([served]);
+    });
+    expect(saved.size).toBe(1);
+  });
+
+  it('runs one more check after a connect that arrives during a running check', async () => {
+    new ActiveHubRoute(CONNECTION);
+    authority().host.connected(LAN);
+    authority().host.connected(LAN);
+    authority().host.connected(LAN);
+    await vi.waitFor(() => {
+      expect(fetched).toHaveLength(2);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetched).toHaveLength(2);
   });
 
   it('is not replaced by the answer of a different hub', async () => {

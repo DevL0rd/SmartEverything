@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   HUB_IDENTITY_PATH,
+  NODE_CONNECTION_PATH,
   NATIVE_HUB_ROUTE_CONFIGURATION,
   type NativeHubRouteConfiguration,
 } from '@smarteverything/domain';
@@ -274,5 +275,60 @@ describe('node enrollment bootstrap', () => {
     expect(authority.view.trust).not.toBeNull();
     expect(await store.read()).not.toBeNull();
     expect(lease.signal.aborted).toBe(false);
+  });
+});
+
+describe('node trust refresh', () => {
+  it('learns an address the hub gained while the canonical route stayed reachable', async () => {
+    const hubServer = await listenRemote((request, response) => {
+      response.end(
+        request.url === HUB_IDENTITY_PATH
+          ? JSON.stringify({ service: 'smarteverything', identity: IDENTITY })
+          : '',
+      );
+    });
+    closers.push(hubServer.close);
+    const origin = hubServer.url;
+    const gained = { kind: 'lan', url: 'https://192.0.2.77:7880' } as const;
+    let endpoints: readonly { kind: string; url: string }[] = [];
+    vi.stubGlobal('fetch', (input: URL | string) => {
+      if (new URL(String(input)).pathname !== NODE_CONNECTION_PATH)
+        return Promise.resolve(new Response('', { status: 404 }));
+      return Promise.resolve(
+        Response.json({
+          device_id: DEVICE,
+          connection: {
+            identity: IDENTITY,
+            endpoints,
+            remoteAvailable: true,
+            discovery: { state: 'disabled', detail: '' },
+          },
+        }),
+      );
+    });
+    const path = await directory(configurationFor(origin));
+    const authority = new NodeRouteAuthority({
+      hubUrl: origin,
+      deviceId: DEVICE,
+      token: TOKEN,
+      directory: path,
+      log: testLogger('node-route'),
+      bus: fakeBus().bus,
+      mdns: new MemoryNetwork().host('192.0.2.10'),
+    });
+    closers.push(() => authority.stop());
+    await authority.start();
+    expect(authority.view.trust?.endpoints.map((endpoint) => endpoint.url)).not.toContain(
+      gained.url,
+    );
+    endpoints = [{ kind: 'remote', url: origin }, gained];
+    authority.failed(authority.state.routeGeneration);
+    await vi.waitFor(() => {
+      expect(authority.view.trust?.endpoints.map((endpoint) => endpoint.url)).toContain(gained.url);
+    });
+    await vi.waitFor(async () => {
+      const stored = await new NodeRouteStore(path, TOKEN).read();
+      expect(stored?.trust.lanAddresses).toContain('192.0.2.77');
+    });
   });
 });

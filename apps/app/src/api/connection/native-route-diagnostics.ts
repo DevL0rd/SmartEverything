@@ -182,3 +182,29 @@ export function configureStepLogger(
     }));
   };
 }
+
+export function noteNativeRefreshFinished(
+  scopeId: string,
+  state: NativeHubRouteSnapshot,
+  facts: {
+    readonly applied: boolean;
+    readonly configuring: boolean;
+    readonly coalesced: number;
+    readonly elapsedMs: number;
+  },
+): void {
+  log.debug('route.refresh_finished', () => ({
+    scopeId,
+    ...facts,
+    readiness: state.readiness,
+    routeGeneration: state.routeGeneration,
+  }));
+}
+
+export function noteNativeRefreshStarted(
+  scopeId: string,
+  operation: number,
+  routeGeneration: number | null,
+): void {
+  log.debug('route.refresh_started', () => ({ scopeId, operation, routeGeneration }));
+}

@@ -92,3 +92,21 @@ export function routeConfiguration(
     ],
   });
 }
+export function withLearnedEndpoints(
+  known: NativeHubRouteConfiguration,
+  fresh: NativeHubRouteConfiguration,
+): NativeHubRouteConfiguration | null {
+  const origins = new Set(known.trust.endpoints.map((endpoint) => new URL(endpoint.url).origin));
+  const added = fresh.trust.endpoints.filter(
+    (endpoint) => !origins.has(new URL(endpoint.url).origin),
+  );
+  if (added.length === 0) return null;
+  return NATIVE_HUB_ROUTE_CONFIGURATION.parse({
+    ...known,
+    trust: {
+      ...known.trust,
+      endpoints: [...known.trust.endpoints, ...added],
+      lanAddresses: [...new Set([...known.trust.lanAddresses, ...fresh.trust.lanAddresses])],
+    },
+  });
+}

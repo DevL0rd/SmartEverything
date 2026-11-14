@@ -294,6 +294,6 @@ export function deviceValuesOf(state: StoreState, deviceId: string): DeviceValue
   return values;
 }
 
-export function rowsOf<R>(table: Table<R> | undefined): readonly R[] {
-  return table?.rows ?? [];
+export function rowsOf<R>(table: Table<R>): readonly R[] {
+  return table.rows;
 }
