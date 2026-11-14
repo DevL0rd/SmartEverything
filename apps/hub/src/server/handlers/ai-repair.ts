@@ -14,6 +14,7 @@ import {
   type RepairDispatch,
 } from '../../assistant/repair-dispatch';
 import { sealRepairSource } from '../../assistant/repair-source';
+import type { HubLayout } from '../../data-layout';
 import type { Store } from '../../store/store';
 import { directClient, profileIdOf, type Caller } from '../auth';
 import { bound, type Routes } from '../router';
@@ -72,9 +73,14 @@ async function proposePatch(
   repair: RepairPort | undefined,
   caller: Caller,
   {
+    layout,
     fingerprint,
     request,
-  }: { readonly fingerprint: string; readonly request: AiRepairPatchRequest },
+  }: {
+    readonly layout: HubLayout;
+    readonly fingerprint: string;
+    readonly request: AiRepairPatchRequest;
+  },
 ): Promise<AiRepairAdmission> {
   requireOwnerApp(caller);
   if (repair?.existingPatch === undefined) throw new ApiError('conflict', 'AI repair is starting.');
@@ -83,7 +89,7 @@ async function proposePatch(
   const existing = repair.existingPatch(id, profileId, request);
   if (existing !== undefined) return existing;
   const error = retainedError(store, fingerprint, profileId);
-  const patch = await sealRepairSource(request);
+  const patch = await sealRepairSource(layout, request);
   return (
     repair.existingPatch(id, profileId, request) ??
     repair.admit({
@@ -99,17 +105,25 @@ async function proposePatch(
   );
 }
 
-export function aiRepairRoutes(store: Store, repair?: RepairPort): Routes<RepairRoute> {
+function saveRepairSettings<T extends { readonly enabled: boolean }>(store: Store, body: T): T {
+  store.write(() => {
+    if (body.enabled && !readAiRepairSettings(store).enabled)
+      store.settingsKv.save(ENABLED_AT, { at: store.now().toISOString() });
+    store.settingsKv.save(SETTING, body);
+  });
+  return body;
+}
+
+export function aiRepairRoutes(
+  store: Store,
+  layout: HubLayout,
+  repair?: RepairPort,
+): Routes<RepairRoute> {
   return {
     readAiRepairSettings: bound(E.readAiRepairSettings, () => readAiRepairSettings(store)),
     updateAiRepairSettings: bound(E.updateAiRepairSettings, ({ body, caller }) => {
       requireOwnerApp(caller);
-      store.write(() => {
-        if (body.enabled && !readAiRepairSettings(store).enabled)
-          store.settingsKv.save(ENABLED_AT, { at: store.now().toISOString() });
-        store.settingsKv.save(SETTING, body);
-      });
-      return body;
+      return saveRepairSettings(store, body);
     }),
     listAiRepairGroups: bound(E.listAiRepairGroups, ({ query, caller }): AiRepairPage => {
       const page = store.aiRepairInbox.list(query);
@@ -139,7 +153,11 @@ export function aiRepairRoutes(store: Store, repair?: RepairPort): Routes<Repair
       });
     }),
     proposeAiRepairPatch: bound(E.proposeAiRepairPatch, ({ params, body, caller }) =>
-      proposePatch(store, repair, caller, { fingerprint: params.fingerprint, request: body }),
+      proposePatch(store, repair, caller, {
+        layout,
+        fingerprint: params.fingerprint,
+        request: body,
+      }),
     ),
   };
 }

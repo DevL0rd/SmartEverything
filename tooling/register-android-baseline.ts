@@ -23,10 +23,10 @@ async function main(): Promise<void> {
   const data = dataLayoutOf(await dataRootOf(input.data, env));
   const path = E.readAndroidAppBuild.path.replace(':clientId', input.client);
   const readObservation = async (): Promise<AndroidAppObservation | null> =>
-    E.readAndroidAppBuild.response.parse(await readAndroidUpdateHome(data.root, path));
+    E.readAndroidAppBuild.response.parse(await readAndroidUpdateHome(data, path));
   const [observation, settings] = await Promise.all([
     readObservation(),
-    readAndroidUpdateHome(data.root, E.readSettings.path).then((reply) =>
+    readAndroidUpdateHome(data, E.readSettings.path).then((reply) =>
       E.readSettings.response.parse(reply),
     ),
   ]);

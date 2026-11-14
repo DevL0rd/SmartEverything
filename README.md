@@ -94,16 +94,34 @@ node --import tsx tooling/build-headless-hub.ts --target "$target" --out "$out/s
 node --import tsx tooling/release-headless.ts --target "$target" --service "$out/service" --node "$node_bundle" --out "$out"
 ```
 
-For a fresh installation, extract the resulting `smarteverything-hub-<version>-<target>.tar.gz`
-on the target machine. From the extracted directory, run `./install.sh` as the Hub user.
-It installs the Hub and its bundled Node runtime in `~/.local/opt/SmartEverything-Hub`, stores
-Hub data in `~/.config/SmartEverything`, and starts the `smarteverything.service` user unit.
-Pass `--data <absolute folder>` to keep the Hub data elsewhere, for example on a data disk; the
-installer refuses a folder that holds another data folder's marker. A small pointer file in
+For a fresh installation as the Hub user:
+
+1. Clone this repository into `~/Github/SmartEverything` and give its checkout an upstream branch
+   (`git branch --set-upstream-to`), since the Hub's update source is that checkout's upstream.
+2. Extract the resulting `smarteverything-hub-<version>-<target>.tar.gz` on the target machine.
+3. Install the dependencies with the bundled Node runtime, from the checkout:
+   `PATH="<extracted directory>/node/bin:$PATH" npx --yes pnpm@11.3.0 install --frozen-lockfile`.
+4. From the extracted directory, run `./install.sh --update-source ~/Github/SmartEverything`
+   (add `--data <absolute folder>` to keep the Hub data elsewhere). The installer stores the
+   checkout as the Hub's update source, installs the Hub and its bundled Node runtime in
+   `~/.local/opt/SmartEverything-Hub`, keeps Hub data in `~/.config/SmartEverything` and starts the
+   `smarteverything.service` user unit. A failure rolls the whole installation back.
+5. Provision the build tools from the checkout, without root:
+   `~/.local/opt/SmartEverything-Hub/node/bin/node --import tsx tooling/provision-build-host.ts --accept-android-sdk-licenses`.
+   It installs pinned zip and unzip, a JDK and the Android SDK under the Hub data folder and
+   reports anything still missing. Without `--accept-android-sdk-licenses` it stops and names the
+   Android SDK licences it would accept. If it reports `apps/app/google-services.json` missing, copy
+   that file from the development PC into the checkout.
+
+`--data` can point at a folder on another disk; the installer refuses a folder that holds another
+data folder's marker. A small pointer file in
 `~/.config/SmartEverything-Hub` (or `$XDG_CONFIG_HOME/SmartEverything-Hub`) records the chosen
 folder. `SMARTEVERYTHING_HUB_HOME` names a different pointer folder for containers and custom
 launches; unset it for the systemd install. The data folder can be moved later in Settings.
 Run `loginctl enable-linger "$(id -un)"` to start the Hub at boot without signing in.
+
+The Hub publishes its own releases from that checkout. The `self_update` actions `ui`, `app` and
+`desktop` build the pushed `main` tip, so the checkout must be clean and pushed before publishing.
 
 The owner’s production Hub runs on the NAS (`ssh nas`, `192.168.50.254`), at
 `https://smarteverything.devl0rd.com`. This desktop’s Hub stays disabled by default; start a test Hub only on demand with isolated scratch data.

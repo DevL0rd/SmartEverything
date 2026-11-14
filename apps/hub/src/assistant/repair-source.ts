@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { isAbsolute } from 'node:path';
 import { env } from 'node:process';
 import { promisify } from 'node:util';
 import {
@@ -10,6 +9,8 @@ import {
   type AiRepairPatchRequest,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { HubLayout } from '../data-layout';
+import { findUpdateSource } from '../self-update/update-source';
 
 const git = promisify(execFile);
 const SOURCE_BYTES = 12 * 1024;
@@ -44,14 +45,14 @@ export function repairSourceDigest(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-function checkoutRoot(): string {
-  const root = env['SMARTEVERYTHING_SELF_UPDATE_ROOT'];
-  if (root === undefined || !isAbsolute(root))
+function checkoutRoot(layout: HubLayout): string {
+  const source = findUpdateSource(layout);
+  if (source === undefined)
     throw new ApiError(
       'conflict',
       'Configure a source checkout on the hub before proposing a patch.',
     );
-  return root;
+  return source.checkout;
 }
 
 async function readGit(root: string, args: readonly string[]): Promise<string> {
@@ -100,8 +101,11 @@ async function readSource(root: string, revision: string, path: string): Promise
   return { path, digest: repairSourceDigest(text), text };
 }
 
-export async function sealRepairSource(request: AiRepairPatchRequest): Promise<RepairPatch> {
-  const root = checkoutRoot();
+export async function sealRepairSource(
+  layout: HubLayout,
+  request: AiRepairPatchRequest,
+): Promise<RepairPatch> {
+  const root = checkoutRoot(layout);
   const { revision, paths } = request;
   if ((await readGit(root, ['cat-file', '-t', revision])).trim() !== 'commit')
     throw new ApiError('invalid_request', 'Choose the full ID of a Git commit.');

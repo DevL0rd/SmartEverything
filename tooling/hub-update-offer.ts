@@ -1,21 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { env } from 'node:process';
-import { HUB_UPDATE_SOURCE_CHECK, SELF_UPDATE_ROOT } from '@smarteverything/domain';
+import { SELF_UPDATE_ROOT } from '@smarteverything/domain';
 import { z } from 'zod';
+import { findUpdateSource } from '../apps/hub/src/self-update/update-source.ts';
 import { hubPendingIdentity } from './hub-update-candidate.ts';
+import { dataLayoutOf } from './release-hub-files.ts';
 import {
   HUB_SOURCE_OFFER,
   HubSourceError,
   type HubUpdateSource,
   type SourceOffer,
 } from './hub-update-source.ts';
-
-const SETTINGS = z.strictObject({
-  remote: HUB_UPDATE_SOURCE_CHECK.shape.remote,
-  branch: HUB_UPDATE_SOURCE_CHECK.shape.branch,
-});
 
 export const REVIEWED_OFFER = z.strictObject({
   offerId: z.uuid(),
@@ -26,18 +22,14 @@ export const REVIEWED_OFFER = z.strictObject({
 
 type ReviewedOffer = z.infer<typeof REVIEWED_OFFER>;
 
-export function configuredHubSource(folder: string): HubUpdateSource {
-  return {
-    folder,
-    ...SETTINGS.parse({
-      remote: env['SMARTEVERYTHING_SELF_UPDATE_REMOTE'],
-      branch: env['SMARTEVERYTHING_SELF_UPDATE_BRANCH'],
-    }),
-  };
-}
-
-export function remoteApplyEnabled(): boolean {
-  return env['SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE'] === '1';
+export function configuredHubSource(data: string): HubUpdateSource {
+  const source = findUpdateSource(dataLayoutOf(data));
+  if (source === undefined)
+    throw new HubSourceError(
+      'git',
+      'This hub has no update source configured. Run tooling/configure-update-source.ts from the SmartEverything checkout.',
+    );
+  return { folder: source.checkout, remote: source.remote, branch: source.branch };
 }
 
 function readOffer(file: string): ReviewedOffer | undefined {
@@ -81,12 +73,10 @@ export function reviewedHubSourceOffer(
   ownerClient: string,
   id: string,
 ): ReviewedOffer {
-  if (!remoteApplyEnabled())
-    throw new HubSourceError('git', 'Remote hub updates are disabled on this hub.');
   const recorded = readOffer(offerFile(data, ownerClient));
   if (recorded?.offerId !== id || recorded.ownerClient !== ownerClient)
     throw new HubSourceError('changed', 'This update offer changed. Check for updates again.');
-  const trusted = configuredHubSource(process.cwd());
+  const trusted = configuredHubSource(data);
   const { source } = recorded.offer;
   if (
     trusted.folder !== source.folder ||

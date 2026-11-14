@@ -1,19 +1,25 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { env } from 'node:process';
 import { z } from 'zod';
+import { BuildHostError } from './build-host.ts';
 
 const OPTIONAL_ENV = z.string().optional();
 const CAPTURED_TEXT = z.string({ error: 'the command produced no captured text' });
 
-const RELEASE_JAVA_HOME = '/usr/lib/jvm/java-21-openjdk';
+function requiredHome(name: 'ANDROID_HOME' | 'JAVA_HOME'): string {
+  const value = OPTIONAL_ENV.parse(env[name]);
+  if (value === undefined || value === '')
+    throw new BuildHostError([
+      `${name} is not set: provision the build host with tooling/provision-build-host.ts, or export ${name} on a development machine`,
+    ]);
+  return value;
+}
 
 export function androidHome(): string {
-  return OPTIONAL_ENV.parse(env['ANDROID_HOME']) ?? join(homedir(), 'Android', 'Sdk');
+  return requiredHome('ANDROID_HOME');
 }
 
 export function javaHome(): string {
-  return OPTIONAL_ENV.parse(env['JAVA_HOME']) ?? RELEASE_JAVA_HOME;
+  return requiredHome('JAVA_HOME');
 }
 
 export function releaseServer(): string | undefined {

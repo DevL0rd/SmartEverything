@@ -1,6 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import type { AppUpdateEntry } from '@smarteverything/domain';
+import { pnpmProgram } from './build-host.ts';
 import { releaseOptions } from './publish-app-update-android.ts';
 import {
   contentTypeOf,
@@ -23,7 +24,7 @@ const BUNDLE_FILE = 'bundle.json';
 export function webExportCommand(server: string): Command {
   return {
     title: 'export the desktop web bundle',
-    program: 'pnpm',
+    program: pnpmProgram(),
     args: ['--filter', '@smarteverything/app', 'run', 'export:web'],
     cwd: ROOT,
     environment: buildEnvironment(releaseOptions(server)),

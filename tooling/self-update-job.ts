@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { HUB_UPDATE_CHECK, type HubUpdateCheck } from '@smarteverything/domain';
 import { z } from 'zod';
 
-export const JOB_ACTIONS = ['hub', 'app', 'ui', 'file'] as const;
+export const JOB_ACTIONS = ['hub', 'app', 'ui', 'desktop', 'file'] as const;
 
 export type JobAction = (typeof JOB_ACTIONS)[number];
 

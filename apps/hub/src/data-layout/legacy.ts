@@ -76,6 +76,7 @@ export const LEGACY_NAMES: LayoutNames = {
     voiceSamples: 'voice-samples',
     smartthingsCapabilities: 'providers/smartthings/capabilities',
     codexInputs: 'codex/inputs',
+    buildHost: 'build-host',
   },
   backups: { releases: 'release-backups', manual: 'backups', legacyDatabase: '' },
   provider: (id) => `providers/${id}`,

@@ -136,6 +136,22 @@ if [ "$2" = enable ] && [ "$FIXTURE_MODE" = enable-fails ]; then exit 57; fi
   return { home, desktop, installed, data, bootstrap, unit, install };
 }
 
+function updateSourceCheckout(mode: 'configure' | 'fail'): string {
+  const checkout = join(scratch, `checkout-${mode}`);
+  mkdirSync(join(checkout, 'tooling'), { recursive: true });
+  symlinkSync(
+    join(import.meta.dirname, '..', '..', 'node_modules'),
+    join(checkout, 'node_modules'),
+  );
+  writeFileSync(
+    join(checkout, 'tooling', 'configure-update-source.ts'),
+    mode === 'fail'
+      ? 'process.exit(1);\n'
+      : "import { writeFileSync } from 'node:fs';\nwriteFileSync(`${process.env['HOME']}/configured.json`, JSON.stringify(process.argv.slice(2)));\n",
+  );
+  return checkout;
+}
+
 describe('the systemd unit', () => {
   it('starts the service bundle with the bundled Node, not with Electron', () => {
     const unit = unitFile();
@@ -176,7 +192,9 @@ describe('the systemd unit', () => {
     });
     const layout = dataLayoutOf(data);
     expect(layout.system.config.service).toBe(config);
-    expect(layout.system.database.file).toBe(join(data, 'system', 'database', 'smarteverything.db'));
+    expect(layout.system.database.file).toBe(
+      join(data, 'system', 'database', 'smarteverything.db'),
+    );
     expect(layout.backups.releases).toBe(join(data, 'backups', 'releases'));
     for (const directory of ['system/database', 'system/keys', 'system/run', 'tmp'])
       expect(statSync(join(data, directory)).isDirectory()).toBe(true);
@@ -264,6 +282,43 @@ describe('the systemd unit', () => {
     expect(result.status).toBe(1);
     expect(existsSync(join(bootstrap, 'location.json'))).toBe(false);
     expect(install().status).toBe(0);
+  });
+
+  it('configures the update source of a checkout during install and passes it the data folder', () => {
+    const { home, data, installed, install } = installFixture();
+    const checkout = updateSourceCheckout('configure');
+    expect(install(undefined, ['--update-source', checkout]).status).toBe(0);
+    expect(JSON.parse(readFileSync(join(home, 'configured.json'), 'utf8'))).toEqual([
+      '--data',
+      data,
+      '--checkout',
+      checkout,
+    ]);
+    expect(existsSync(installed)).toBe(true);
+  });
+
+  it('removes everything the install created when configuring the update source fails', () => {
+    const { home, data, installed, unit, bootstrap, install } = installFixture();
+    const checkout = updateSourceCheckout('fail');
+    expect(install(undefined, ['--update-source', checkout]).status).toBe(1);
+    expect(
+      [
+        installed,
+        unit,
+        join(bootstrap, 'location.json'),
+        join(data, 'layout.json'),
+        join(data, 'system', 'config', 'service.json'),
+        join(home, 'systemctl.log'),
+      ].some((file) => existsSync(file)),
+    ).toBe(false);
+  });
+
+  it('refuses an update source that is not an absolute existing folder', () => {
+    const { installed, install } = installFixture();
+    expect(install(undefined, ['--update-source', 'relative/checkout']).status).toBe(1);
+    expect(install(undefined, ['--update-source', join(scratch, 'missing')]).status).toBe(1);
+    expect(install(undefined, ['--update-source']).status).toBe(1);
+    expect(existsSync(installed)).toBe(false);
   });
 
   it('refuses a hub that systemd has already loaded from outside the install directory', () => {

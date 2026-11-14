@@ -22,6 +22,8 @@ import {
 } from '../publish-app-update-shared.ts';
 import type { Command } from '../release-android.ts';
 import { readReleaseVersion } from '../release-version.ts';
+import { useBuildHost } from './build-host-fixture.ts';
+import { pnpmProgram } from '../build-host.ts';
 import {
   useWorkspace,
   workspace,
@@ -35,6 +37,7 @@ import {
 } from './publish-app-update-fixture.ts';
 
 useWorkspace();
+useBuildHost();
 
 function parse(argv: readonly string[], defaults: Defaults = DEFAULTS): Arguments {
   return parseArgs([...CLI_TARGET, ...argv], defaults);
@@ -90,7 +93,7 @@ const REQUEST = { server: SERVER, channel: 'dev', notes: 'desktop words' } as co
 describe('webExportCommand', () => {
   it('runs the app web export in the release environment', () => {
     const command = webExportCommand(SERVER);
-    expect(command.program).toBe('pnpm');
+    expect(command.program).toBe(pnpmProgram());
     expect(command.args).toEqual(['--filter', '@smarteverything/app', 'run', 'export:web']);
     expect(command.environment).toMatchObject({
       NODE_ENV: 'production',
@@ -182,8 +185,8 @@ describe('parseArgs for the other commands', () => {
   });
 
   it('reads promote, withdraw, rollback and prune', () => {
-    const endpoint = ['--hub', 'https://remote.test', '--token-file', '/remote.token'];
-    const expected = { hub: 'https://remote.test', tokenFile: '/remote.token' };
+    const endpoint = ['--data', '/remote-data'];
+    const expected = { data: '/remote-data' };
     const promote = parse(['promote', '--id', ID, '--channel', 'release', ...endpoint]);
     expect(promote).toMatchObject({ command: 'promote', id: ID, channel: 'release', ...expected });
     const withdraw = parse(['withdraw', '--id', ID, '--reason', ' bad ', ...endpoint]);

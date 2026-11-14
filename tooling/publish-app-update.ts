@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { env } from 'node:process';
 import { parseArgs as parseNodeArgs } from 'node:util';
 import {
@@ -18,10 +19,14 @@ import {
   rollbackUpdates,
   withdrawUpdate,
 } from './app-update-store.ts';
-import { publisherTarget, type PublisherTarget } from './machine-update-client.ts';
+import { applyBuildHost, requireBuildHost } from './build-host.ts';
+import { dataRootOf } from './data-root.ts';
+import { localHub } from './local-hub.ts';
+import type { PublisherTarget } from './machine-update-client.ts';
 import { ANDROID_EXPORT, publishAndroid } from './publish-app-update-android.ts';
 import { DESKTOP_DIRECTORY, WEB_EXPORT, publishDesktop } from './publish-app-update-desktop.ts';
 import { runCommand, type Dependencies } from './publish-app-update-shared.ts';
+import { dataLayoutOf } from './release-hub-files.ts';
 import { desktopWebRuntime } from '../apps/desktop/packaging/web-runtime.ts';
 
 const log = new Logger('tool.publish-app-update');
@@ -35,9 +40,7 @@ export const USAGE = [
   '  list',
   '  prune',
   'options',
-  '  --hub <https url>      address of the hub that stores the updates (every command)',
-  '  --token-file <file>    file holding one publisher client token (every command)',
-  '  --pin <sha256>         certificate pin when the hub uses a LAN certificate (every command)',
+  '  --data <folder>        hub data folder, default the one the data folder pointer names (every command)',
   `  --notes <text>        full release notes, including line breaks (1 to ${String(RELEASE_NOTES_MAX_LENGTH)} characters, publish)`,
   '  --server <https url>   public hub address for the build, default EXPO_PUBLIC_SERVER_URL (publish)',
   '  --launch-file <file>   publish a .js crash fixture instead of an export (publish, android, dev only)',
@@ -54,11 +57,7 @@ export class PublishUsageError extends Error {
 const CHANNEL = z.enum(APP_UPDATE_CHANNELS);
 const REASON = z.string().trim().min(1);
 
-const HUB = {
-  hub: z.url({ protocol: /^https$/u }),
-  pin: z.string().min(1).optional(),
-  tokenFile: z.string().min(1),
-} as const;
+const HUB = { data: z.string().min(1).optional() } as const;
 
 const PUBLISH_ARGUMENTS = z.strictObject({
   command: z.literal('publish'),
@@ -101,9 +100,7 @@ const FLAGS = {
   id: { type: 'string' },
   reason: { type: 'string' },
   'to-embedded': { type: 'boolean' },
-  hub: { type: 'string' },
-  pin: { type: 'string' },
-  'token-file': { type: 'string' },
+  data: { type: 'string' },
   server: { type: 'string' },
   'launch-file': { type: 'string' },
 } as const;
@@ -128,9 +125,7 @@ export function parseArgs(argv: readonly string[], defaults: Defaults): Argument
     id: values.id,
     reason: values.reason,
     toEmbedded: values['to-embedded'] ?? (positionals[0] === 'rollback' ? false : undefined),
-    hub: values.hub,
-    pin: values.pin,
-    tokenFile: values['token-file'],
+    data: values.data,
     server: values.server ?? (positionals[0] === 'publish' ? defaults.server : undefined),
     launchFile: values['launch-file'],
   }).filter(([, value]) => value !== undefined);
@@ -252,12 +247,13 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2), {
     server: HOST.parse(env).EXPO_PUBLIC_SERVER_URL,
   });
-  const target = await publisherTarget({
-    hub: args.hub,
-    pin: args.pin,
-    tokenFile: args.tokenFile,
-  });
-  const lines = await execute(args, target, {
+  const layout = dataLayoutOf(await dataRootOf(args.data, env));
+  if (args.command === 'publish') {
+    const root = join(import.meta.dirname, '..');
+    applyBuildHost(layout, root);
+    requireBuildHost(layout, root, args.platform === 'desktop' ? 'ui' : 'app');
+  }
+  const lines = await execute(args, await localHub(layout), {
     run: runCommand,
     exportDirectory: ANDROID_EXPORT,
     webDirectory: WEB_EXPORT,

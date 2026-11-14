@@ -145,12 +145,14 @@ describe('the shell hub update banner', () => {
     const blocked: HubUpdateSourceCheck = {
       ...source,
       availableUpdate: 'running_behind',
-      applyBlockedBy: 'remote_apply_disabled',
+      applyBlockedBy: 'unsupported_host',
     };
     hooks.useHubUpdateSource.mockReturnValue({ data: blocked });
     const html = banner();
     expect(html).toContain('Hub update available');
-    expect(html).toContain('Installing updates from Git is turned off on this hub.');
+    expect(html).toContain(
+      'Installing Hub updates requires a Linux hub with a systemd user service.',
+    );
     expect(html).toContain('Review');
     expect(html).not.toContain('Details');
     expect(hooks.useUpdateDetails.mock.lastCall?.[0]).toBeNull();

@@ -45,7 +45,7 @@ beforeEach(async () => {
     { name: 'Member', platform: 'android', role: 'member', tokenHash: 'b'.repeat(64) },
     false,
   );
-  routes = aiRepairRoutes(opened.store);
+  routes = aiRepairRoutes(opened.store, hubLayout(opened.directory, {}));
 });
 
 afterEach(async () => {
@@ -233,7 +233,7 @@ it('answers a repeated manual request even after its log evidence is purged', as
   const chatId = randomUUID();
   const existing = vi.fn(() => ({ kind: 'existing', eventId, chatId }) as const);
   const admit = vi.fn();
-  const { diagnoseAiRepairGroup } = aiRepairRoutes(store, {
+  const { diagnoseAiRepairGroup } = aiRepairRoutes(store, hubLayout(opened.directory, {}), {
     admit,
     existing,
     available: () => true,

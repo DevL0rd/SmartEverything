@@ -1,0 +1,40 @@
+{
+  "jdkMajor": 21,
+  "cmake": "3.22.1",
+  "jdk": {
+    "x64": {
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.13_9.tar.gz",
+      "sha256": "d7f5d5cf865a2902b70ff549b97586a7d3f234e016f041ab447ea740c7d66d1c"
+    },
+    "arm64": {
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.13_9.tar.gz",
+      "sha256": "e3522e707fc7dbe2a72c30746b1e7068301a0213ecd213d4491f35a14eb55578"
+    }
+  },
+  "androidCommandLineTools": {
+    "url": "https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip",
+    "sha256": "0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8"
+  },
+  "debian": {
+    "zip": {
+      "x64": {
+        "url": "https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-13_amd64.deb",
+        "sha256": "8877a360e455c7b9b6d448503eeaacc6b9a1325b548f3fb7eef69a87ab558b96"
+      },
+      "arm64": {
+        "url": "https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-13_arm64.deb",
+        "sha256": "466ba35ece2f7b2dbdae389a36b6b5c7a92cb2de426ec2921682ddec399379f1"
+      }
+    },
+    "unzip": {
+      "x64": {
+        "url": "https://deb.debian.org/debian/pool/main/u/unzip/unzip_6.0-28_amd64.deb",
+        "sha256": "b3d9529c34382cc8d2e6cc8299a18536504edbc284b9133ffbe522704865068e"
+      },
+      "arm64": {
+        "url": "https://deb.debian.org/debian/pool/main/u/unzip/unzip_6.0-28_arm64.deb",
+        "sha256": "2ab1b850b61f4c5666903827f04e6c6297363868354d0a6c1ff2f5edb106d243"
+      }
+    }
+  }
+}

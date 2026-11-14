@@ -52,7 +52,6 @@ const SOURCE_BLOCKED: Readonly<
 > = {
   owner_required: 'Only the owner can install this hub update.',
   unsupported_host: 'Installing Hub updates requires a Linux hub with a systemd user service.',
-  remote_apply_disabled: 'Installing updates from Git is turned off on this hub.',
   checkout_conflicts: 'Resolve the conflicting files in the hub checkout before updating.',
   checkout_not_ancestor: 'The hub checkout has commits outside the configured branch.',
   tracked_branch_required: 'Switch the hub checkout to its configured branch before updating.',

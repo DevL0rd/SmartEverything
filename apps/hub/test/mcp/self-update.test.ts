@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { partCallOf, toolNamed } from '../../src/extensions/mcp/tools';
 import {
@@ -62,6 +64,7 @@ describe('the self-update tool', () => {
       'hub',
       'app',
       'ui',
+      'desktop',
       'recover',
       'file',
       'claim',
@@ -84,11 +87,24 @@ describe('the self-update tool', () => {
       name: 'self_update_ui',
       args: test,
     });
+    const desktop = { runId: id, notes: 'Desktop update', arches: ['x64', 'arm64'] };
+    expect(partCallOf('self_update', { ...desktop, action: 'desktop' })).toEqual({
+      name: 'self_update_desktop',
+      args: desktop,
+    });
     const release = { runId: id, notes: 'Native update' };
     expect(partCallOf('self_update', { ...release, action: 'app' })).toEqual({
       name: 'self_update_app',
       args: release,
     });
+  });
+
+  it('has no environment switch that disables app, ui or desktop publishing', () => {
+    const source = readFileSync(
+      join(import.meta.dirname, '../../src/extensions/mcp/tools/self-update.ts'),
+      'utf8',
+    );
+    expect(source).not.toMatch(/ALLOW_APP|process\.env|from 'node:process'/u);
   });
 
   it('refuses automatic repair service authority for an otherwise eligible owner chat', () => {

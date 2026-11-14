@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { useBuildHost } from './build-host-fixture.ts';
 import { join } from 'node:path';
 import {
   APP_UPDATE_ENTRY,
@@ -41,6 +42,7 @@ import {
   publisher,
 } from './publish-app-update-fixture.ts';
 
+useBuildHost();
 useWorkspace();
 
 function parse(argv: readonly string[], defaults: Defaults = DEFAULTS): Arguments {
@@ -78,23 +80,15 @@ describe('parseArgs', () => {
         'release',
         '--notes',
         'n',
-        '--hub',
-        'https://other-hub.test',
-        '--token-file',
-        '/other.token',
-        '--pin',
-        'a'.repeat(64),
+        '--data',
+        '/other-data',
         '--server',
         'https://other.test',
       ],
       DEFAULTS,
     );
     expect(parsed).toMatchObject({ server: 'https://other.test', channel: 'release' });
-    expect(parsed).toMatchObject({
-      hub: 'https://other-hub.test',
-      tokenFile: '/other.token',
-      pin: 'a'.repeat(64),
-    });
+    expect(parsed).toMatchObject({ data: '/other-data' });
   });
 
   it('reads a launch file for an Android publish and refuses it for other commands', () => {
@@ -107,16 +101,16 @@ describe('parseArgs', () => {
     );
   });
 
-  it('reads list with a remote publisher and no build server', () => {
+  it('reads list with the local hub and no build server', () => {
     const parsed = parse(['list'], { server: undefined });
     expect(parsed.command).toBe('list');
     expect(parsed).toMatchObject(REMOTE);
   });
 
-  it('requires the remote hub and publisher token file', () => {
-    expect(() => parseArgs(['list'], DEFAULTS)).toThrow(/hub/u);
-    expect(() => parseArgs(['list', '--hub', SERVER], DEFAULTS)).toThrow(/tokenFile/u);
-    expect(() => parseArgs(['list', '--data', '/d'], DEFAULTS)).toThrow(/Unknown option/u);
+  it('takes no hub address, token file or pin', () => {
+    expect(parseArgs(['list'], DEFAULTS)).toMatchObject({ command: 'list' });
+    for (const option of ['--hub', '--token-file', '--pin'])
+      expect(() => parseArgs(['list', option, 'x'], DEFAULTS)).toThrow(/Unknown option/u);
   });
 
   it('refuses a missing channel, missing notes, a non https server and no server', () => {
@@ -162,6 +156,7 @@ describe('commands', () => {
       expect(command.cwd.endsWith(join('apps', 'app'))).toBe(true);
     }
     expect(commands[0]?.args).toEqual([
+      'exec',
       'expo',
       'export',
       '--platform',
@@ -171,12 +166,13 @@ describe('commands', () => {
       '--clear',
     ]);
     expect(commands[1]?.args).toEqual([
+      'exec',
       'expo-updates',
       'runtimeversion:resolve',
       '--platform',
       'android',
     ]);
-    expect(commands[2]?.args).toEqual(['expo', 'config', '--type', 'public', '--json']);
+    expect(commands[2]?.args).toEqual(['exec', 'expo', 'config', '--type', 'public', '--json']);
   });
 });
 

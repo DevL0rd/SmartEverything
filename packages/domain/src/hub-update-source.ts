@@ -19,7 +19,6 @@ export const HUB_UPDATE_SOURCE_CHECK = z.strictObject({
     .enum([
       'owner_required',
       'unsupported_host',
-      'remote_apply_disabled',
       'checkout_conflicts',
       'checkout_not_ancestor',
       'tracked_branch_required',

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { RELEASE_NOTES_MAX_LENGTH } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { checkConfiguredSource } from '../hub-update-source-command.ts';
 import { gitSource, gitSourceText } from '../hub-update-source.ts';
 
@@ -63,13 +63,11 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
   rmSync(scratch, { recursive: true, force: true });
 });
 
 describe('authored Hub release notes', () => {
   it('returns the reviewed tip notes to a direct owner without reading local or commit message text', async () => {
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     const tip = await publishNotes(JSON.stringify({ from: base, notes: NOTES }));
     mkdirSync(join(source, NOTES_DIRECTORY));
     writeFileSync(join(source, NOTES_FILE), 'private pending notes');
@@ -163,14 +161,14 @@ describe('authored Hub release notes', () => {
   });
 
   it.each([
-    { reason: 'malformed', content: () => 'unstructured private data' },
+    { reason: 'malformed', content: (): string => 'unstructured private data' },
     {
       reason: 'outside the declared range',
-      content: () => JSON.stringify({ from: '0'.repeat(40), notes: NOTES }),
+      content: (): string => JSON.stringify({ from: '0'.repeat(40), notes: NOTES }),
     },
     {
       reason: 'oversized',
-      content: () =>
+      content: (): string =>
         JSON.stringify({ from: base, notes: 'x'.repeat(RELEASE_NOTES_MAX_LENGTH * 8) }),
     },
   ])('keeps the update available when notes are $reason', async ({ content }) => {

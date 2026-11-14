@@ -251,6 +251,24 @@ describe('target-scoped app publication', () => {
 });
 
 describe('Android and desktop UI publication', () => {
+  it('records the refusal detail as the reason', async () => {
+    const result = await runAppPublication(INPUT, {
+      store,
+      observations: observationsOf,
+      publish: () =>
+        Promise.reject(
+          new AppPublicationRefused('preflight', 'apps/app/google-services.json is missing'),
+        ),
+      inspect: () => Promise.resolve(null),
+    });
+    expect(result).toEqual({
+      status: 'refused',
+      runId: RUN,
+      reason: 'preflight: apps/app/google-services.json is missing',
+    });
+    expect(readJob(store, RUN)?.detail).toBe('preflight: apps/app/google-services.json is missing');
+  });
+
   it('retains partial receipts when desktop preflight fails after Android was offered', async () => {
     const android = { ...PUBLISHED, versionCode: null };
     const input = { ...INPUT, action: 'ui' as const };

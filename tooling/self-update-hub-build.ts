@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { z } from 'zod';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
+import { nodeToolCommand, pnpmProgram } from './build-host.ts';
 import { commitOf, gitSourceText, HubSourceError } from './hub-update-source.ts';
 import {
   checkMigrations,
@@ -45,34 +46,46 @@ const BUILD_FAILURE_TAIL = 2000;
 function request(
   root: string,
   name: string,
-  args: string[],
-  kind: 'tsc' | null = null,
+  program: string,
+  args: readonly string[],
 ): StepRequest {
   return {
     tag: 'self-update hub',
     environment: {},
-    steps: [{ name, cwd: root, program: 'pnpm', args, kind }],
+    steps: [{ name, cwd: root, program, args: [...args] }],
   };
 }
 
+function toolRequest(
+  root: string,
+  name: string,
+  script: string,
+  args: readonly string[],
+): StepRequest {
+  const tool = nodeToolCommand(script);
+  return request(root, name, tool.program, [...tool.args, ...args]);
+}
+
+function typeScriptRequest(root: string, args: readonly string[]): StepRequest {
+  return request(root, 'check hub types', process.execPath, [
+    join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
+    ...args,
+  ]);
+}
+
 function localTypeErrors(root: string, run: RunSteps): number {
-  const result = run(
-    request(root, 'check hub types', ['exec', 'tsc', '-p', 'apps/hub', '--noEmit'], 'tsc'),
-  );
+  const result = run(typeScriptRequest(root, ['-p', 'apps/hub', '--noEmit']));
   if (result.status === 0) return 0;
   const count = countHubTypeErrors(result.output);
-  if (count === 0) throw new Error('The hub type check did not complete successfully.');
+  if (count === 0)
+    throw new Error(
+      `The hub type check did not complete successfully: ${result.output.slice(-BUILD_FAILURE_TAIL)}`,
+    );
   return count;
 }
 
 function serviceBuild(root: string, output: string): StepRequest {
-  return request(root, 'build service', [
-    'exec',
-    'tsx',
-    'tooling/build-service.ts',
-    '--out',
-    output,
-  ]);
+  return toolRequest(root, 'build service', 'tooling/build-service.ts', ['--out', output]);
 }
 
 async function headOf(root: string): Promise<string> {
@@ -171,10 +184,7 @@ function checkCandidateMigrations(
     mkdirSync(dirname(copy), { recursive: true });
     vacuumInto(layout.system.database.file, copy);
     const from = schemaVersionOf(copy);
-    const step = request(root, 'check candidate migrations', [
-      'exec',
-      'tsx',
-      'tooling/release-hub.ts',
+    const step = toolRequest(root, 'check candidate migrations', 'tooling/release-hub.ts', [
       'check',
       '--data',
       scratch,
@@ -198,17 +208,14 @@ export function approvedRemoteHubBuild(
       await verifyCandidate(candidate);
       candidateStep(
         run,
-        request(root, 'install frozen dependencies', [
+        request(root, 'install frozen dependencies', pnpmProgram(), [
           'install',
           '--frozen-lockfile',
           '--prefer-offline',
         ]),
       );
       await verifyCandidate(candidate);
-      candidateStep(
-        run,
-        request(root, 'check hub types', ['exec', 'tsc', '-b', 'apps/hub'], 'tsc'),
-      );
+      candidateStep(run, typeScriptRequest(root, ['-b', 'apps/hub']));
       await verifyCandidate(candidate);
       return 0;
     },

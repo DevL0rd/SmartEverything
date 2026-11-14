@@ -7,6 +7,7 @@ import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { env } from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { extractFile, uncache } from '@electron/asar';
@@ -24,8 +25,11 @@ import { z } from 'zod';
 
 import { desktopPackageResources } from '../apps/desktop/src/package-layout.ts';
 import { DESKTOP_VARIANTS } from '../apps/desktop/src/variant.ts';
+import { applyBuildHost } from './build-host.ts';
+import { dataRootOf } from './data-root.ts';
+import { localHub, type LocalHubLayout } from './local-hub.ts';
+import { dataLayoutOf } from './release-hub-files.ts';
 import {
-  publisherTarget,
   publishUploaded,
   rollbackRelease,
   uploadArtifact,
@@ -59,7 +63,7 @@ class ReleaseArgumentsError extends Error {
 
   constructor() {
     super(
-      'Provide --hub, --token-file, and either --rollback, --withdraw, or --version, --notes and at least one --file. Add --pin when the hub uses a LAN certificate. Use --notes=<text> if the notes start with a dash.',
+      'Provide either --rollback, --withdraw, or --version, --notes and at least one --file. Add --data <hub data folder> when no data folder pointer exists. Use --notes=<text> if the notes start with a dash.',
     );
   }
 }
@@ -264,12 +268,19 @@ export async function publishMachineUpdate(
   return publishUploaded(target, manifest, metadata.runtimeVersion);
 }
 
+export async function publishLocalDesktop(
+  layout: LocalHubLayout,
+  version: string,
+  files: readonly ReleaseFile[],
+  metadata: { readonly notes: string; readonly runtimeVersion?: string | undefined },
+): Promise<MachineUpdateManifest> {
+  return publishMachineUpdate(await localHub(layout), version, files, metadata);
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
-      hub: { type: 'string' },
-      pin: { type: 'string' },
-      'token-file': { type: 'string' },
+      data: { type: 'string' },
       version: { type: 'string' },
       file: { type: 'string', multiple: true },
       notes: { type: 'string' },
@@ -278,27 +289,21 @@ async function main(): Promise<void> {
       withdraw: { type: 'boolean' },
     },
   });
-  if (values.hub === undefined || values['token-file'] === undefined) {
-    throw new ReleaseArgumentsError();
-  }
-  const target = await publisherTarget({
-    hub: values.hub,
-    pin: values.pin,
-    tokenFile: values['token-file'],
-  });
+  const layout = dataLayoutOf(await dataRootOf(values.data, env));
+  applyBuildHost(layout, join(import.meta.dirname, '..'));
   if (values.withdraw === true) {
-    await withdrawRelease(target);
+    await withdrawRelease(await localHub(layout));
     return;
   }
   if (values.rollback === true) {
-    report(await rollbackRelease(target));
+    report(await rollbackRelease(await localHub(layout)));
     return;
   }
   if (values.version === undefined || values.file === undefined || values.notes === undefined) {
     throw new ReleaseArgumentsError();
   }
   report(
-    await publishMachineUpdate(target, values.version, values.file.map(releaseFileOf), {
+    await publishLocalDesktop(layout, values.version, values.file.map(releaseFileOf), {
       notes: values.notes,
       runtimeVersion: values['web-runtime'],
     }),

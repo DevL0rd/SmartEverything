@@ -8,15 +8,16 @@ import {
   startAppUpdateHub,
   type AppUpdateHub,
 } from '../../apps/hub/test/support/app-update-hub.ts';
-import { publisherTarget, type PublisherTarget } from '../machine-update-client.ts';
+import type { PublisherTarget } from '../machine-update-client.ts';
+import { announceHub } from './local-hub-fixture.ts';
 import type { Command } from '../release-android.ts';
 import type { Dependencies, PublishRequest } from '../publish-app-update-shared.ts';
 
 export const SERVER = 'https://hub.example.test';
 export const ID = '3f1c2a7e-8f44-4b8d-9f0e-0a2f6a1b7c11';
 export const DEFAULTS = { server: SERVER };
-export const REMOTE = { hub: SERVER, tokenFile: '/publisher.token' };
-export const CLI_TARGET = ['--hub', REMOTE.hub, '--token-file', REMOTE.tokenFile];
+export const REMOTE = { data: '/hub-data' };
+export const CLI_TARGET = ['--data', REMOTE.data];
 
 const BUNDLE = '_expo/static/js/android/entry-1.hbc';
 const MAGIC = Buffer.from('c61fbc03c103191f', 'hex');
@@ -47,15 +48,9 @@ export function publisher(): PublisherTarget {
 export function useWorkspace(): void {
   beforeEach(async () => {
     workspace.base = mkdtempSync(join(tmpdir(), 'publish-app-update-'));
-    remote.hub = await startAppUpdateHub({ tls: true });
+    remote.hub = await startAppUpdateHub({ tls: false });
     remote.hub.setNow(new Date('2026-10-25T11:12:13.000Z'));
-    const tokenFile = join(workspace.base, 'publisher.token');
-    writeFileSync(tokenFile, `${remote.hub.tokenFor('owner')}\n`, { mode: 0o600 });
-    remote.target = await publisherTarget({
-      hub: remote.hub.url.href,
-      pin: remote.hub.pin,
-      tokenFile,
-    });
+    remote.target = await announceHub(remote.hub, 'owner');
     workspace.data = remote.hub.layout;
     workspace.exportDirectory = join(workspace.base, 'export');
   });

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ANDROID_APP_BUILD } from './app-updates';
 import { HUB_UPDATE_COMMIT } from './hub-update-source';
+import { MACHINE_UPDATE_ARCHES, MACHINE_UPDATE_MANIFEST } from './machine-updates';
 import { RELEASE_NOTES } from './release-notes';
 import { REPAIR_WORK_CLAIM_INPUT } from './repair-work-claim';
 
@@ -15,6 +16,7 @@ export const SELF_UPDATE_ACTIONS = [
   'hub',
   'app',
   'ui',
+  'desktop',
   'file',
   'recover',
   'claim',
@@ -22,13 +24,15 @@ export const SELF_UPDATE_ACTIONS = [
 
 export type SelfUpdateAction = (typeof SELF_UPDATE_ACTIONS)[number];
 
-export const SELF_UPDATE_CHANGE = z.strictObject({ action: z.enum(['hub', 'app', 'ui']) });
+export const SELF_UPDATE_CHANGE = z.strictObject({
+  action: z.enum(['hub', 'app', 'ui', 'desktop']),
+});
 
 export const SELF_UPDATE_INPUT = z.discriminatedUnion('action', [
   z.strictObject({
     action: z.literal('status'),
     id: ID.optional().describe(
-      'The hub or app publication run to check; omit for the latest hub release',
+      'The hub, app, ui or desktop run to check; omit for the latest hub release',
     ),
   }),
   z.strictObject({
@@ -61,6 +65,20 @@ export const SELF_UPDATE_INPUT = z.discriminatedUnion('action', [
       .default('release')
       .describe(
         'Use release for all current devices; dev is only for moving a specific older Test installation to the current feed',
+      ),
+  }),
+  z.strictObject({
+    action: z.literal('desktop'),
+    runId: ID.describe('A unique request ID; reuse it to check an interrupted release'),
+    notes: RELEASE_NOTES.describe('What the desktop release changes'),
+    arches: z
+      .array(z.enum(MACHINE_UPDATE_ARCHES))
+      .min(1)
+      .refine((arches) => new Set(arches).size === arches.length, {
+        message: 'each architecture may be listed once',
+      })
+      .describe(
+        'Every Linux architecture to keep offering; the release replaces the previous one, so list x64 and arm64 together when both stay available',
       ),
   }),
   z.strictObject({
@@ -99,8 +117,9 @@ export type SelfUpdateInput = z.infer<typeof SELF_UPDATE_INPUT>;
 export const SELF_UPDATE_HUB_INPUT = SELF_UPDATE_INPUT.options[1];
 export const SELF_UPDATE_APP_INPUT = SELF_UPDATE_INPUT.options[2];
 export const SELF_UPDATE_UI_INPUT = SELF_UPDATE_INPUT.options[3];
-export const SELF_UPDATE_RECOVER_INPUT = SELF_UPDATE_INPUT.options[4];
-export const SELF_UPDATE_FILE_INPUT = SELF_UPDATE_INPUT.options[5];
+export const SELF_UPDATE_DESKTOP_INPUT = SELF_UPDATE_INPUT.options[4];
+export const SELF_UPDATE_RECOVER_INPUT = SELF_UPDATE_INPUT.options[5];
+export const SELF_UPDATE_FILE_INPUT = SELF_UPDATE_INPUT.options[6];
 
 export const APP_PUBLICATION_INPUT = z.discriminatedUnion('action', [
   SELF_UPDATE_APP_INPUT,
@@ -136,6 +155,27 @@ export type AppPublicationResult = z.infer<typeof APP_PUBLICATION_RESULT>;
 
 export const APP_PUBLICATION_STATUS = z.strictObject({
   publication: APP_PUBLICATION_RESULT.nullable(),
+});
+
+export type DesktopReleaseInput = z.infer<typeof SELF_UPDATE_DESKTOP_INPUT>;
+
+export const DESKTOP_RELEASE = z.strictObject({
+  commit: HUB_UPDATE_COMMIT,
+  manifest: MACHINE_UPDATE_MANIFEST,
+});
+
+export type DesktopRelease = z.infer<typeof DESKTOP_RELEASE>;
+
+export const DESKTOP_RELEASE_RESULT = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.literal('published'), runId: ID, release: DESKTOP_RELEASE }),
+  z.strictObject({ status: z.literal('refused'), ...APP_PUBLICATION_END }),
+  z.strictObject({ status: z.literal('failed'), ...APP_PUBLICATION_END }),
+]);
+
+export type DesktopReleaseResult = z.infer<typeof DESKTOP_RELEASE_RESULT>;
+
+export const DESKTOP_RELEASE_STATUS = z.strictObject({
+  desktop: DESKTOP_RELEASE_RESULT.nullable(),
 });
 
 export const SELF_UPDATE_REFUSALS = [

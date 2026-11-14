@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SELF_UPDATE_ROOT } from '@smarteverything/domain';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { checkConfiguredSource } from '../hub-update-source-command.ts';
 import {
   commit,
@@ -16,7 +16,6 @@ useHubSourceFixture();
 
 describe('preparing an update from a configured Git fork', () => {
   it('offers a newly advanced branch on the next owner check and reuses an unchanged offer', async () => {
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     const reviewer = { data: fixture.scratch, client: REVIEWER_ID };
     const { folder, remote, branch } = fixture.source;
     const settings = { remote, branch };
@@ -45,7 +44,6 @@ describe('preparing an update from a configured Git fork', () => {
   });
 
   it('does not record a new offer when the advertised tip is already running', async () => {
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     write(fixture.upstream, 'shared.txt', 'running upstream content');
     await commit(fixture.upstream, 'running release');
     const runningTip = (await git(fixture.upstream, 'rev-parse', 'HEAD')).trim();
@@ -58,7 +56,6 @@ describe('preparing an update from a configured Git fork', () => {
   });
 
   it('does not offer a remote tip when the recorded running commit cannot be compared', async () => {
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     await git(fixture.upstream, 'switch', '-c', 'retired');
     write(fixture.upstream, 'shared.txt', 'running content from a retired history');
     await commit(fixture.upstream, 'running release');
@@ -76,7 +73,6 @@ describe('preparing an update from a configured Git fork', () => {
   });
 
   it('reports a newer release without making an offer on an unsupported host', async () => {
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     const { folder, remote, branch } = fixture.source;
     const runningTip = (await git(folder, 'rev-parse', 'HEAD')).trim();
     write(fixture.upstream, 'shared.txt', 'newer than the running release');
@@ -105,15 +101,6 @@ describe('preparing an update from a configured Git fork', () => {
     write(fixture.upstream, 'shared.txt', 'next upstream release');
     await commit(fixture.upstream, 'advance the configured branch');
 
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '0');
-    const disabled = await checkConfiguredSource(folder, { remote, branch }, reviewer);
-    expect(disabled).toMatchObject({
-      availableUpdate: 'source_ahead',
-      applyBlockedBy: 'remote_apply_disabled',
-    });
-    expect(disabled).not.toHaveProperty('offerId');
-
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     await git(folder, 'switch', '--detach');
     const detached = await checkConfiguredSource(folder, { remote, branch }, reviewer);
     expect(detached).toMatchObject({
@@ -125,7 +112,6 @@ describe('preparing an update from a configured Git fork', () => {
   });
 
   it('offers an already-pulled update when its tip descends from the running release', async () => {
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     const { folder, remote, branch } = fixture.source;
     const reviewer = { data: fixture.scratch, client: REVIEWER_ID };
     const runningTip = (await git(folder, 'rev-parse', 'HEAD')).trim();
@@ -146,7 +132,6 @@ describe('preparing an update from a configured Git fork', () => {
   });
 
   it('reports a newer deployed source comparison but blocks a diverged checkout', async () => {
-    vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
     const { folder, remote, branch } = fixture.source;
     const reviewer = { data: fixture.scratch, client: REVIEWER_ID };
     const runningTip = (await git(folder, 'rev-parse', 'HEAD')).trim();

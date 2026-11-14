@@ -9,7 +9,8 @@ import {
   startMachineUpdateHub,
   type MachineUpdateHub,
 } from '../../apps/hub/test/support/machine-update-hub.ts';
-import { publisherTarget, type PublisherTarget } from '../machine-update-client.ts';
+import type { PublisherTarget } from '../machine-update-client.ts';
+import { announceHub } from './local-hub-fixture.ts';
 
 export interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -32,7 +33,6 @@ export const workspace = { base: '' };
 export interface ReleaseHub {
   readonly hub: MachineUpdateHub;
   readonly target: PublisherTarget;
-  readonly tokenFile: string;
 }
 
 class ReleaseHubMissingError extends Error {
@@ -54,15 +54,12 @@ export async function publisherFor(
   hub: MachineUpdateHub,
   role: 'owner' | 'member',
 ): Promise<ReleaseHub> {
-  const tokenFile = join(workspace.base, `${role}.token`);
-  await writeFile(tokenFile, `${hub.tokenFor(role)}\n`, { mode: 0o600 });
-  const target = await publisherTarget({ hub: hub.url.href, pin: hub.pin, tokenFile });
-  return { hub, target, tokenFile };
+  return { hub, target: await announceHub(hub, role) };
 }
 
 export function useReleaseHub(): void {
   beforeEach(async () => {
-    const hub = await startMachineUpdateHub({ tls: true });
+    const hub = await startMachineUpdateHub({ tls: false });
     started.current = await publisherFor(hub, 'owner');
   });
 

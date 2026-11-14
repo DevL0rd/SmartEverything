@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
+import { applyDeveloperHost, nodeToolCommand, pnpmProgram } from './build-host.ts';
 import {
   apkProblems,
   readApk,
@@ -90,8 +91,7 @@ export function gradleTask(options: BuildOptions): string {
 export function licenceCommand(): Command {
   return {
     title: 'write the licence list and notices',
-    program: 'npx',
-    args: ['tsx', join(ROOT, 'tooling', 'generate-licenses.ts')],
+    ...nodeToolCommand(join(ROOT, 'tooling', 'generate-licenses.ts')),
     cwd: ROOT,
     environment: {},
   };
@@ -100,8 +100,8 @@ export function licenceCommand(): Command {
 export function prebuildCommand(options: BuildOptions): Command {
   return {
     title: `generate the ${options.variant} Android project`,
-    program: 'npx',
-    args: ['expo', 'prebuild', '--platform', 'android', '--no-install', '--clean'],
+    program: pnpmProgram(),
+    args: ['exec', 'expo', 'prebuild', '--platform', 'android', '--no-install', '--clean'],
     cwd: APP,
     environment: buildEnvironment(options),
   };
@@ -110,11 +110,8 @@ export function prebuildCommand(options: BuildOptions): Command {
 export function gradleCommand(options: BuildOptions): Command {
   return {
     title: `build ${gradleTask(options)} for ${options.abi}`,
-    program: join(ROOT, 'tmp', 'lockrun.sh'),
+    program: join(ANDROID, 'gradlew'),
     args: [
-      'gradle',
-      '1',
-      './gradlew',
       gradleTask(options),
       ...(options.online === true ? [] : ['--offline']),
       `-PreactNativeArchitectures=${options.abi === 'universal' ? ANDROID_APK_ABIS.join(',') : options.abi}`,
@@ -230,6 +227,7 @@ function collect(options: BuildOptions, apk: string, versionName: string): strin
 }
 
 async function main(): Promise<void> {
+  applyDeveloperHost();
   const options = parsedOptions();
   const problems = preflightProblems(readAppIdentity().applicationId);
   if (problems.length > 0) throw new ReleasePreflightError(problems);

@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
-import { env } from 'node:process';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
@@ -32,15 +31,16 @@ const SOURCE_RESPONSE_MARGIN_MS = 1000;
 const SOURCE_CHECK_TIMEOUT_MS = HUB_REQUEST_TIMEOUT_MS - SOURCE_RESPONSE_MARGIN_MS;
 
 async function runSourceCommand(
-  { tsx, entry, root: cwd }: Awaited<ReturnType<typeof configuredUpdateEntry>>,
+  { entry, root: cwd }: Awaited<ReturnType<typeof configuredUpdateEntry>>,
   args: readonly string[],
   signal?: AbortSignal,
 ): Promise<unknown> {
   const seconds = `${String(SOURCE_CHECK_TIMEOUT_MS / 1000)}s`;
+  const program = [process.execPath, '--import', 'tsx', entry, ...args];
   const { stdout } =
     process.platform === 'linux'
-      ? await execute('timeout', ['--signal=KILL', seconds, tsx, entry, ...args], { cwd, signal })
-      : await execute(tsx, [entry, ...args], {
+      ? await execute('timeout', ['--signal=KILL', seconds, ...program], { cwd, signal })
+      : await execute(process.execPath, program.slice(1), {
           cwd,
           signal,
           timeout: SOURCE_CHECK_TIMEOUT_MS,
@@ -68,24 +68,10 @@ async function runSourceCheck(
   }
 }
 
-function hasConfiguredSourceBranch(): boolean {
-  return (
-    HUB_UPDATE_SOURCE_CHECK.shape.remote.safeParse(env['SMARTEVERYTHING_SELF_UPDATE_REMOTE'])
-      .success &&
-    HUB_UPDATE_SOURCE_CHECK.shape.branch.safeParse(env['SMARTEVERYTHING_SELF_UPDATE_BRANCH'])
-      .success
-  );
-}
-
-export function hasConfiguredSourceCheckout(): boolean {
-  const root = env['SMARTEVERYTHING_SELF_UPDATE_ROOT'];
-  return root !== undefined && isAbsolute(root) && hasConfiguredSourceBranch();
-}
-
-export async function configuredSourceTip(signal: AbortSignal): Promise<string> {
+export async function configuredSourceTip(layout: HubLayout, signal: AbortSignal): Promise<string> {
   try {
-    const command = await configuredUpdateEntry('hub-update-tip-command.ts');
-    return HUB_UPDATE_COMMIT.parse(await runSourceCommand(command, [], signal));
+    const command = await configuredUpdateEntry(layout, 'hub-update-tip-command.ts');
+    return HUB_UPDATE_COMMIT.parse(await runSourceCommand(command, [layout.root], signal));
   } catch (cause) {
     throw sourceCheckError(cause);
   }
@@ -106,10 +92,7 @@ export async function configuredSourceCheck(
   bootRunId?: string,
 ): Promise<HubUpdateSourceCheck> {
   try {
-    if (!hasConfiguredSourceBranch()) {
-      throw new UpdateUnavailableError('Set the trusted Git remote and branch on the hub first.');
-    }
-    const command = await configuredUpdateEntry('hub-update-source-command.ts');
+    const command = await configuredUpdateEntry(layout, 'hub-update-source-command.ts');
     const bootRelease = bootRunId === undefined ? null : await readHubUpdate(layout, bootRunId);
     return await runSourceCheck(command, {
       layout,

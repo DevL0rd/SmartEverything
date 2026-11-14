@@ -122,6 +122,10 @@ describe('legacy names', () => {
     );
   });
 
+  it('keeps the build host toolchain beside the other caches', () => {
+    expect(layout.cache.buildHost).toBe(join(ROOT, 'build-host'));
+  });
+
   it('uses the vendor homes from the environment', () => {
     expect(layout.system.ai.claudeHome).toBe(ENVIRONMENT.CLAUDE_CONFIG_DIR);
     expect(layout.system.ai.codexHome).toBe(ENVIRONMENT.CODEX_HOME);
@@ -143,6 +147,7 @@ describe('v1 names', () => {
     );
     expect(layout.system.ai.claudeHome).toBe(join(ROOT, 'system', 'ai', 'claude-home'));
     expect(layout.cache.derived('ab12cd')).toBe(join(ROOT, 'cache', 'drive-derived', 'ab'));
+    expect(layout.cache.buildHost).toBe(join(ROOT, 'cache', 'build-host'));
   });
 });
 

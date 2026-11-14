@@ -19,6 +19,7 @@ import {
   releaseNeedsRecovery,
   withHubReleaseLock,
 } from '../apps/hub/src/self-update/release-lock.ts';
+import { applyBuildHost, requireBuildHost } from './build-host.ts';
 import { HUB_NODE_EXECUTABLE } from './hub-install-layout.ts';
 import { assertStandaloneHubUnit } from './release-hub-verify.ts';
 import { dataLayoutOf, hubInstall } from './release-hub-files.ts';
@@ -64,6 +65,7 @@ function environment(data: string, url: string): HubEnvironment {
   const install = INSTALL_PATH.parse(env['SMARTEVERYTHING_SELF_UPDATE_INSTALL']);
   assertStandaloneHubUnit(install);
   const layout = dataLayoutOf(data);
+  applyBuildHost(layout, root);
   const paths = selfUpdatePaths(layout);
   const node = join(install, HUB_NODE_EXECUTABLE);
   const jobs = jobsOf(paths.work);
@@ -125,6 +127,7 @@ async function command(
   const ledger = readLedger(paths.ledger);
   if (input.action === 'recover') return recover(data, input, ledger);
   const latest = ledger.releases.at(-1);
+  requireBuildHost(dataLayoutOf(data), process.cwd(), 'hub');
   if (input.action === 'prepare_remote') return await runPreparation(data, input.runId, latest);
   if (input.action === 'remote') {
     const previous = previousRemoteRun(jobsOf(paths.work), input, ledger);

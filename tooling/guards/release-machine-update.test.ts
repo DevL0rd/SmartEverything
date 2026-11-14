@@ -8,17 +8,10 @@ import {
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { watchMachineUpdates } from '../../apps/hub/src/updates/machine-update-watch';
-import { startMachineUpdateHub } from '../../apps/hub/test/support/machine-update-hub';
-import {
-  PublisherAddressError,
-  PublisherPinError,
-  PublisherTokenError,
-  publisherTarget,
-  rollbackRelease,
-  withdrawRelease,
-} from '../machine-update-client.ts';
+import { rollbackRelease, withdrawRelease } from '../machine-update-client.ts';
 import {
   ReleaseFileArgumentError,
+  publishLocalDesktop,
   publishMachineUpdate,
   releaseFileOf,
 } from '../release-machine-update.ts';
@@ -33,7 +26,6 @@ import {
   releaseHub,
   useReleaseHub,
   useReleaseWorkspace,
-  workspace,
 } from './release-machine-update-fixture.ts';
 
 useReleaseWorkspace();
@@ -247,6 +239,16 @@ describe('publishing a desktop release to a hub over the network', () => {
 });
 
 describe('the publisher client', () => {
+  it('publishes through the local hub found from the data layout alone', async () => {
+    const { hub } = releaseHub();
+    const path = await built('desktop-0.4.2.zip', '0.4.2');
+    const manifest = await publishLocalDesktop(hub.layout, '0.4.2', [{ ...LINUX, path }], {
+      notes: NOTES,
+    });
+    expect(manifest.version).toBe('0.4.2');
+    expect(await offered()).toBe('0.4.2');
+  });
+
   it('is refused by the hub when its token belongs to a member', async () => {
     const { hub } = releaseHub();
     const member = await publisherFor(hub, 'member');
@@ -255,45 +257,6 @@ describe('the publisher client', () => {
       publishMachineUpdate(member.target, '0.4.2', [{ ...LINUX, path }], PUBLICATION),
     ).rejects.toMatchObject({ code: 'forbidden' });
     expect(await offered()).toBeUndefined();
-  });
-
-  it('refuses a hub certificate that does not match the pin, without sending the token', async () => {
-    const { hub, tokenFile } = releaseHub();
-    const wrong = await publisherTarget({
-      hub: hub.url.href,
-      pin: '0'.repeat(64),
-      tokenFile,
-    });
-    const failure = await rollbackRelease(wrong).catch((cause: unknown) => cause);
-    expect(failure).toBeInstanceOf(PublisherPinError);
-    expect(String(failure)).not.toContain(wrong.token);
-  });
-
-  it('refuses a plain http address and a token file that holds anything else', async () => {
-    const { hub, tokenFile } = releaseHub();
-    await expect(
-      publisherTarget({ hub: 'http://127.0.0.1:7880', pin: undefined, tokenFile }),
-    ).rejects.toThrow(PublisherAddressError);
-    const other = join(workspace.base, 'other.token');
-    await writeFile(other, 'not a token');
-    await expect(
-      publisherTarget({ hub: hub.url.href, pin: hub.pin, tokenFile: other }),
-    ).rejects.toThrow(PublisherTokenError);
-  });
-
-  it('refuses an untrusted certificate when no pin is given', async () => {
-    const plain = await startMachineUpdateHub({ tls: true });
-    try {
-      const unpinned = await publisherFor(plain, 'owner');
-      const target = await publisherTarget({
-        hub: plain.url.href,
-        pin: undefined,
-        tokenFile: unpinned.tokenFile,
-      });
-      await expect(rollbackRelease(target)).rejects.toThrow(/self[- ]signed/u);
-    } finally {
-      await plain.close();
-    }
   });
 });
 

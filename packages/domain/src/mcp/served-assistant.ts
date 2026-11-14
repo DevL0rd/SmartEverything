@@ -123,21 +123,25 @@ export const SERVED_ASSISTANT = [
     area: 'system',
     access: 'control',
     title: 'Update SmartEverything itself',
-    line: 'Update the hub, Android app and desktop UI, or share a file',
+    line: 'Update the hub, Android app, desktop UI and desktop app, or share a file',
     description:
-      'For the owner’s own chat or its trusted automatic repair chat. Check status before updating the hub. Hub returns a run ID and posts its verified result later; recover resumes an interrupted hub update. When enabled, app offers a signed Android installer for native changes; ui publishes compatible Android and desktop UI offers. Desktop native changes require the canonical machine release workflow. Test requires a paired Android device. Release offers target compatible devices on that channel. Check status with the publication run ID after interruption; partial means a platform is missing and can be resumed with that same request. Historical Android-only UI publications remain partial without replay. Published means offered, never installed. File attaches privately in this chat by default.',
+      'For the owner’s own chat or its trusted automatic repair chat. Hub returns a run ID and posts its result later; recover resumes an interrupted update. App builds and offers a signed Android installer for native changes; ui publishes compatible Android and desktop UI offers; desktop builds and publishes the Desktop native release (app and Computer service) for the listed Linux architectures, replacing the previous release, and needs a higher version in apps/desktop/package.json. App, ui and desktop build the pushed branch tip on the hub machine and return a result when done. Test needs a paired Android device. Check status with the run ID after interruption; partial means a platform is missing and can be resumed with the same request. Published means offered, never installed. File attaches privately in this chat by default.',
     route: {
       key: 'action',
       branches: {
         status: {
           part: 'self_update_status',
-          line: 'Read a hub or app publication outcome by run ID',
+          line: 'Read a hub, app, ui or desktop outcome by run ID',
         },
         hub: { part: 'self_update_hub', line: 'Prepare a hub release with automatic recovery' },
-        app: { part: 'self_update_app', line: 'Offer a signed Android installer when enabled' },
+        app: { part: 'self_update_app', line: 'Build and offer a signed Android installer' },
         ui: {
           part: 'self_update_ui',
-          line: 'Offer compatible Android and desktop UI updates when enabled',
+          line: 'Offer compatible Android and desktop UI updates',
+        },
+        desktop: {
+          part: 'self_update_desktop',
+          line: 'Build and publish the Desktop native release',
         },
         recover: { part: 'recover_hub_update', line: 'Resume an interrupted hub update' },
         file: { part: 'send_chat_file', line: 'Send a file as an attachment in this chat' },

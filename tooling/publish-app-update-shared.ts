@@ -21,9 +21,18 @@ export class PublishCommandError extends Error {
   constructor(
     readonly title: string,
     readonly status: number | null,
+    readonly tail = '',
   ) {
-    super(`${title} failed with exit code ${String(status)}`);
+    const base = `${title} failed with exit code ${String(status)}`;
+    super(tail === '' ? base : `${base}:\n${tail}`);
   }
+}
+
+const TAIL_LINES = 20;
+const TAIL_CHARACTERS = 3000;
+
+export function outputTail(output: string): string {
+  return output.trimEnd().split('\n').slice(-TAIL_LINES).join('\n').slice(-TAIL_CHARACTERS);
 }
 
 export class PublishOutputError extends Error {
@@ -63,13 +72,21 @@ export function runCommand(command: Command): string {
   process.stderr.write(`${command.title}\n`);
   const result = spawnSync(command.program, [...command.args], {
     cwd: command.cwd,
-    stdio: ['ignore', command.captureOutput === true ? 'pipe' : 2, 'inherit'],
+    stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
     maxBuffer: 1024 * 1024 * 1024,
     env: releaseCommandEnvironment(command.environment),
   });
-  if (result.status !== 0) throw new PublishCommandError(command.title, result.status);
-  return command.captureOutput === true ? capturedText(result.stdout) : '';
+  if (result.error !== undefined)
+    throw new PublishCommandError(command.title, result.status, result.error.message);
+  const captured = command.captureOutput === true;
+  const stdout = result.stdout;
+  const stderr = result.stderr;
+  if (!captured) process.stderr.write(stdout);
+  process.stderr.write(stderr);
+  if (result.status !== 0)
+    throw new PublishCommandError(command.title, result.status, outputTail(`${stdout}${stderr}`));
+  return captured ? capturedText(stdout) : '';
 }
 
 const ASSET_TYPES: Readonly<Record<string, string>> = {

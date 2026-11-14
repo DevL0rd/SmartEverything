@@ -54,6 +54,7 @@ export const MCP_CORE_TOOL_NAMES = [
   'self_update_hub',
   'self_update_app',
   'self_update_ui',
+  'self_update_desktop',
   'send_chat_file',
   'recover_hub_update',
   'claim_repair_work',

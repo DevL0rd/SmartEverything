@@ -14,6 +14,7 @@ function main(): void {
       maxBuffer: 256 * 1024 * 1024,
       env: environment,
     });
+    if (result.error !== undefined) throw result.error;
     process.stdout.write(capturedText(result.stdout));
     process.stderr.write(capturedText(result.stderr));
     if (result.status !== 0) {

@@ -24,6 +24,8 @@ import {
   type ApkFacts,
 } from '../release-apk.ts';
 import { SMOKE_STEPS, stepsCovered } from '../release-smoke.ts';
+import { pnpmProgram } from '../build-host.ts';
+import { useBuildHost } from './build-host-fixture.ts';
 
 const APP_SIGNER = 'fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c';
 const OTHER_SIGNER = '0'.repeat(64);
@@ -344,9 +346,13 @@ describe('the code signing certificate of the app', () => {
   });
 });
 
+useBuildHost();
+
 describe('the Android build commands', () => {
   it('builds the release with a clean project and production mode', () => {
     const prebuild = prebuildCommand(RELEASE);
+    expect(prebuild.program).toBe(pnpmProgram());
+    expect(prebuild.args.slice(0, 3)).toEqual(['exec', 'expo', 'prebuild']);
     expect(prebuild.args).toContain('--clean');
     expect(prebuild.environment['NODE_ENV']).toBe('production');
     expect(prebuild.environment['EXPO_PUBLIC_SERVER_URL']).toBe('https://hub.example.test');
@@ -367,11 +373,14 @@ describe('the Android build commands', () => {
     );
   });
 
-  it('runs gradle for one architecture, offline, through the shared build runner', () => {
+  it('runs the gradle wrapper directly for one architecture and offline unless told to go online', () => {
     const gradle = gradleCommand(RELEASE);
-    expect(gradle.program).toBe(join(import.meta.dirname, '..', '..', 'tmp', 'lockrun.sh'));
-    expect(gradle.args.slice(0, 4)).toEqual(['gradle', '1', './gradlew', 'assembleRelease']);
+    expect(gradle.program).toBe(
+      join(import.meta.dirname, '..', '..', 'apps', 'app', 'android', 'gradlew'),
+    );
+    expect(gradle.args[0]).toBe('assembleRelease');
     expect(gradle.args).toContain('--offline');
+    expect(gradleCommand({ ...RELEASE, online: true }).args).not.toContain('--offline');
     expect(gradle.args).toContain('-PreactNativeArchitectures=arm64-v8a');
     expect(gradleCommand({ ...RELEASE, abi: 'x86_64' }).args).toContain(
       '-PreactNativeArchitectures=x86_64',

@@ -1,5 +1,3 @@
-import { env } from 'node:process';
-
 import type { HubLayout } from '../data-layout';
 import type { LiveHub } from '../server/live';
 import {
@@ -9,10 +7,10 @@ import {
 import {
   configuredSourceCheck,
   configuredSourceTip,
-  hasConfiguredSourceCheckout,
   saveConfiguredSource,
   startConfiguredSource,
 } from './source';
+import { findUpdateSource } from './update-source';
 import { watchHubUpdateSource, watchSourceCheckout } from './source-watch';
 
 export function hubUpdateSourceWiring(
@@ -34,15 +32,15 @@ export function hubUpdateSourceWiring(
   return {
     routes,
     watch: (live): (() => Promise<void>) => {
-      const root = env['SMARTEVERYTHING_SELF_UPDATE_ROOT'];
-      if (!hasConfiguredSourceCheckout() || root === undefined) return () => Promise.resolve();
+      const configured = findUpdateSource(layout);
+      if (configured === undefined) return () => Promise.resolve();
       const source = watchHubUpdateSource({
-        probe: configuredSourceTip,
+        probe: (signal) => configuredSourceTip(layout, signal),
         changed: async (signal) => {
           await settleChecks();
           if (!signal.aborted) live.announce({ type: 'hub_update_source_changed' }, 'owners');
         },
-        events: (request) => watchSourceCheckout(root, request),
+        events: (request) => watchSourceCheckout(configured.checkout, request),
       });
       refresh = source.refresh;
       return source.stop;

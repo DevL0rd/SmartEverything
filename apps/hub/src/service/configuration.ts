@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import { HUB_UPDATE_SOURCE_CHECK } from '@smarteverything/domain';
 import { LOG_LEVELS, messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
 
@@ -24,6 +25,14 @@ const PORT = z.int().min(1).max(65_535);
 
 const SERVICE_ENVIRONMENT = z.object({ [DATA_DIRECTORY_VARIABLE]: ABSOLUTE_PATH });
 
+export const UPDATE_SOURCE = z.strictObject({
+  checkout: ABSOLUTE_PATH,
+  remote: HUB_UPDATE_SOURCE_CHECK.shape.remote,
+  branch: HUB_UPDATE_SOURCE_CHECK.shape.branch,
+});
+
+export type UpdateSource = z.infer<typeof UPDATE_SOURCE>;
+
 const HUB_SERVICE_CONFIG = z.strictObject({
   lan: z
     .strictObject({
@@ -41,6 +50,7 @@ const HUB_SERVICE_CONFIG = z.strictObject({
   allowedOrigins: z.array(z.url()).min(1).optional(),
   codex_executable: ABSOLUTE_PATH.optional(),
   codex_control_socket: ABSOLUTE_PATH.optional(),
+  updateSource: UPDATE_SOURCE.optional(),
 });
 
 export type HubServiceConfig = z.infer<typeof HUB_SERVICE_CONFIG>;

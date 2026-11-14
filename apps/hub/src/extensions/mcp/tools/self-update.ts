@@ -1,10 +1,12 @@
-import { env } from 'node:process';
 import {
   APP_PUBLICATION_RESULT,
   APP_PUBLICATION_STATUS,
+  DESKTOP_RELEASE_RESULT,
+  DESKTOP_RELEASE_STATUS,
   HUB_UPDATE_ACCEPTANCE,
   REPAIR_WORK_CLAIM_INPUT,
   SELF_UPDATE_APP_INPUT,
+  SELF_UPDATE_DESKTOP_INPUT,
   SELF_UPDATE_FILE_INPUT,
   SELF_UPDATE_HUB_INPUT,
   SELF_UPDATE_INPUT,
@@ -13,6 +15,7 @@ import {
   hubUpdateOutcome,
   type AiChatRow,
   type AppPublicationInput,
+  type DesktopReleaseInput,
   type RepairWorkComponent,
   type SelfUpdateInput,
 } from '@smarteverything/domain';
@@ -69,54 +72,84 @@ async function update(context: ToolContext, input: Update): Promise<ToolOutput> 
   }
 }
 
-async function publishApp(context: ToolContext, input: AppPublicationInput): Promise<ToolOutput> {
-  const layout = layoutOf(context);
-  if (env['SMARTEVERYTHING_SELF_UPDATE_ALLOW_APP'] !== '1')
-    throw new ToolError('App update publishing is disabled on this hub.', 'unavailable');
+function publicServer(context: ToolContext): string {
   const settings = context.store.settings.read();
   const server = settings.public_url_verified_at === null ? null : settings.public_url;
   if (server === null || new URL(server).protocol !== 'https:')
     throw new ToolError(
-      'Set and verify the hub’s public HTTPS address before publishing an app update.',
+      'Set and verify the hub’s public HTTPS address before publishing an update.',
       'unavailable',
     );
+  return server;
+}
+
+async function publication(
+  context: ToolContext,
+  script: 'self-update-app-command.ts' | 'self-update-desktop-command.ts',
+  input: AppPublicationInput | DesktopReleaseInput,
+): Promise<Readonly<Record<string, unknown>>> {
+  const layout = layoutOf(context);
   try {
-    const result = await runConfiguredUpdateCommand('self-update-app-command.ts', layout, {
+    return await runConfiguredUpdateCommand(script, layout, {
       input,
-      server,
+      server: publicServer(context),
     });
-    return { structured: APP_PUBLICATION_RESULT.parse(result) };
   } catch (cause) {
     if (cause instanceof UpdateBusyError)
       throw new ToolError(
-        'An app update is being prepared. Check its request ID in status before retrying.',
+        'An update is being prepared. Check its request ID in status before retrying.',
         'busy',
       );
     updateError(cause);
   }
 }
 
-async function appStatus(layout: HubLayout, runId: string): Promise<ToolOutput> {
+async function publishApp(context: ToolContext, input: AppPublicationInput): Promise<ToolOutput> {
+  const result = await publication(context, 'self-update-app-command.ts', input);
+  return { structured: APP_PUBLICATION_RESULT.parse(result) };
+}
+
+async function publishDesktop(
+  context: ToolContext,
+  input: DesktopReleaseInput,
+): Promise<ToolOutput> {
+  const result = await publication(context, 'self-update-desktop-command.ts', input);
+  return { structured: DESKTOP_RELEASE_RESULT.parse(result) };
+}
+
+async function runStatus(
+  layout: HubLayout,
+  script: 'self-update-app-command.ts' | 'self-update-desktop-command.ts',
+  runId: string,
+): Promise<Readonly<Record<string, unknown>>> {
   try {
-    const result = await runConfiguredUpdateCommand('self-update-app-command.ts', layout, {
-      runId,
-    });
-    return { structured: { release: null, ...APP_PUBLICATION_STATUS.parse(result) } };
+    return await runConfiguredUpdateCommand(script, layout, { runId });
   } catch (cause) {
     if (cause instanceof UpdateBusyError)
       throw new ToolError(
-        'An app update is still being prepared. Its outcome is not known yet.',
+        'An update is still being prepared. Its outcome is not known yet.',
         'busy',
       );
     updateError(cause);
   }
+}
+
+async function runStatusOutput(layout: HubLayout, runId: string): Promise<ToolOutput> {
+  const app = APP_PUBLICATION_STATUS.parse(
+    await runStatus(layout, 'self-update-app-command.ts', runId),
+  );
+  if (app.publication !== null) return { structured: { release: null, ...app } };
+  const desktop = DESKTOP_RELEASE_STATUS.parse(
+    await runStatus(layout, 'self-update-desktop-command.ts', runId),
+  );
+  return { structured: { release: null, ...(desktop.desktop === null ? app : desktop) } };
 }
 
 async function status(context: ToolContext, runId: string | undefined): Promise<ToolOutput> {
   const layout = layoutOf(context);
   const release = await readHubUpdate(layout, runId);
   if (release === null)
-    return runId === undefined ? { structured: { release: null } } : appStatus(layout, runId);
+    return runId === undefined ? { structured: { release: null } } : runStatusOutput(layout, runId);
   return {
     structured: {
       release: {
@@ -217,6 +250,13 @@ export const SELF_UPDATE_TOOLS: readonly Tool[] = [
     annotations: PHYSICAL,
     answer: true,
     run: (context, input) => publishApp(context, { ...input, action: 'ui' }),
+  }),
+  defineTool({
+    name: 'self_update_desktop',
+    input: SELF_UPDATE_DESKTOP_INPUT.omit({ action: true }),
+    annotations: PHYSICAL,
+    answer: true,
+    run: (context, input) => publishDesktop(context, { ...input, action: 'desktop' }),
   }),
   defineTool({
     name: 'send_chat_file',

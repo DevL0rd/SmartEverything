@@ -39,8 +39,11 @@ export interface PublicationPorts {
 export class AppPublicationRefused extends Error {
   override readonly name = 'AppPublicationRefused';
 
-  constructor(readonly reason: Refusal) {
-    super(reason);
+  constructor(
+    readonly reason: Refusal,
+    detail: string | null = null,
+  ) {
+    super(detail === null ? reason : `${reason}: ${detail}`);
   }
 }
 
@@ -164,7 +167,7 @@ async function publish(
     if (!(error instanceof AppPublicationRefused)) throw error;
     if (input.action === 'ui' && (await ports.inspect(input)) !== null)
       return reconcile(ports, running, input);
-    return refusal(ports.store, running, error.reason);
+    return refusal(ports.store, running, error.message);
   }
   return await reconcile(ports, running, input);
 }

@@ -11,7 +11,6 @@ const RUN = {
   program: process.execPath,
   args: ['-e', "process.stdout.write(process.env['RELEASE_STEP_FIXTURE']);"],
   cwd: ROOT,
-  kind: null,
 } as const;
 
 describe('running release commands', () => {
@@ -41,9 +40,24 @@ describe('running release commands', () => {
 
   it('reports an unavailable launcher without inventing output', () => {
     const missingNode = join(import.meta.dirname, 'missing-node-executable');
-    expect(
-      runStep(missingNode, STEP_FILE, ROOT, { tag: 'self-update', environment: {}, steps: [] }),
-    ).toEqual({ status: 1, output: '' });
+    const outcome = runStep(missingNode, STEP_FILE, ROOT, {
+      tag: 'self-update',
+      environment: {},
+      steps: [],
+    });
+    expect(outcome.status).toBe(1);
+    expect(outcome.output).toContain('ENOENT');
+  });
+
+  it('names the program that could not start instead of failing without output', () => {
+    const request: StepRequest = {
+      tag: 'self-update',
+      environment: {},
+      steps: [{ ...RUN, program: join(ROOT, 'missing-program'), args: [] }],
+    };
+    const result = runStep(process.execPath, STEP_FILE, ROOT, request);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('missing-program');
   });
 
   it('rejects a malformed request before launching its first command', () => {

@@ -162,13 +162,18 @@ mv -T -n "$stage" "$install"
 test ! -d "$stage"
 published=yes`;
 
+const CONFIGURE_SOURCE = `if [ -n "$update_source" ]; then
+  (cd "$update_source" && "$here/node/bin/node" --import tsx tooling/configure-update-source.ts --data "$data" --checkout "$update_source")
+fi`;
+
 const CHOSEN_FOLDER = `usage() {
-  echo "Usage: ./install.sh [--data <absolute path of the hub data folder>]" >&2
+  echo "Usage: ./install.sh [--data <absolute path of the hub data folder>] [--update-source <absolute path of a SmartEverything checkout>]" >&2
   exit 1
 }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --data) [ "$#" -ge 2 ] || usage; data="$2"; shift 2 ;;
+    --update-source) [ "$#" -ge 2 ] || usage; update_source="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
@@ -176,6 +181,13 @@ case "$data" in
   /*) ;;
   *) echo "Give the hub data folder as an absolute path." >&2; exit 1 ;;
 esac
+if [ -n "$update_source" ]; then
+  case "$update_source" in
+    /*) ;;
+    *) echo "Give the update source checkout as an absolute path." >&2; exit 1 ;;
+  esac
+  [ -d "$update_source" ] || { echo "$update_source is not a directory." >&2; exit 1; }
+fi
 if [ -n "\${SMARTEVERYTHING_HUB_HOME:-}" ]; then
   echo "Unset SMARTEVERYTHING_HUB_HOME: the hub service always uses the default bootstrap folder." >&2
   exit 1
@@ -189,6 +201,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 install="$HOME/${HUB_INSTALL_DIRECTORY}"
 default_data="$HOME/${DATA_DIRECTORY}"
 data="$default_data"
+update_source=
 case "\${XDG_CONFIG_HOME:-}" in
   /*) config_home="$XDG_CONFIG_HOME" ;;
   *) config_home="$HOME/.config" ;;
@@ -213,6 +226,7 @@ enabled=no
 ${INSTALL_ROLLBACK}
 trap clean_up EXIT
 "$here/node/bin/node" "$here/${INSTALL_DATA_FILE}" "$bootstrap" "$data" "$default_data" "$install/resources/go2rtc/go2rtc" "$manifest"
+${CONFIGURE_SOURCE}
 ${PUBLISH_INSTALL}
 unit_stage=$(mktemp "$units/.smarteverything.XXXXXX")
 cat "$here/${HUB_UNIT}" > "$unit_stage"

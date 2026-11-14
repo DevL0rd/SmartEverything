@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { APP_UPDATE_FILE_PATH, type AppUpdateEntry } from '@smarteverything/domain';
 import { z } from 'zod';
+import { pnpmProgram } from './build-host.ts';
 import type { SourceFile } from './app-update-store.ts';
 import {
   PublishOutputError,
@@ -51,8 +52,8 @@ export function releaseOptions(server: string): EnvironmentOptions {
 function inApp(title: string, args: readonly string[], server: string): Command {
   return {
     title,
-    program: 'npx',
-    args,
+    program: pnpmProgram(),
+    args: ['exec', ...args],
     cwd: APP,
     environment: buildEnvironment(releaseOptions(server)),
   };

@@ -25,7 +25,10 @@ import {
   publishAndroidForTarget,
   publishDesktopLocally,
 } from './app-update-local.ts';
+import { applyBuildHost, BuildHostError, requireBuildHost } from './build-host.ts';
+import { HubSourceError } from './hub-update-source.ts';
 import { PublishCommandError, runCommand } from './publish-app-update-shared.ts';
+import { SyncedCheckoutError, syncedCheckout } from './self-update-checkout.ts';
 import { desktopWebRuntime } from '../apps/desktop/packaging/web-runtime.ts';
 import { WEB_EXPORT } from './publish-app-update-desktop.ts';
 import { readAppIdentity } from './release-apk.ts';
@@ -41,6 +44,19 @@ const COMMAND = z.union([
   z.strictObject({ runId: z.uuid() }),
 ]);
 const now = (): Date => new Date();
+
+const PREFLIGHT_FAILURES: readonly (abstract new (...args: never[]) => Error)[] = [
+  AndroidApkPublicationError,
+  AppUpdateCandidateError,
+  PublishCommandError,
+  BuildHostError,
+  SyncedCheckoutError,
+  HubSourceError,
+];
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 interface PublicationFiles {
   readonly data: string;
@@ -58,18 +74,18 @@ class AppPublicationSetupError extends Error {
   override readonly name = 'AppPublicationSetupError';
 }
 
-async function observations(
-  data: string,
+export async function observations(
+  layout: HubLayout,
   clientId?: string,
 ): Promise<readonly PairedAndroidBuild[]> {
   const app = readAppIdentity().applicationId;
   if (clientId !== undefined) {
     const endpoint = API_ENDPOINTS.readAndroidAppBuild;
     const path = endpoint.path.replace(':clientId', clientId);
-    const observation = endpoint.response.parse(await readAndroidUpdateHome(data, path));
+    const observation = endpoint.response.parse(await readAndroidUpdateHome(layout, path));
     return observation?.applicationId === app ? [{ clientId, observation }] : [];
   }
-  const reply = await readAndroidUpdateHome(data, API_ENDPOINTS.readAndroidAppBuilds.path);
+  const reply = await readAndroidUpdateHome(layout, API_ENDPOINTS.readAndroidAppBuilds.path);
   return z
     .array(PAIRED_ANDROID_BUILD)
     .parse(reply)
@@ -94,6 +110,7 @@ async function builtApk(
       scratch,
       '--abi',
       'universal',
+      '--online',
       '--above',
       above.versionCode,
     ],
@@ -182,6 +199,9 @@ async function publish(
 ): Promise<void> {
   const scratch = await mkdtemp(join(environment.work, 'publication-'));
   try {
+    requireBuildHost(environment.layout, environment.root, input.action);
+    const commit = await syncedCheckout(environment.layout, environment.root);
+    process.stderr.write(`publishing commit ${commit}\n`);
     if (input.action === 'app') {
       const reference = async (): Promise<AndroidAppObservation> =>
         highestVersion(await readTargets());
@@ -199,12 +219,8 @@ async function publish(
       });
     } else await publishUi(environment, input, scratch, readTargets);
   } catch (error) {
-    if (
-      error instanceof AndroidApkPublicationError ||
-      error instanceof AppUpdateCandidateError ||
-      error instanceof PublishCommandError
-    )
-      throw new AppPublicationRefused('preflight');
+    if (PREFLIGHT_FAILURES.some((failure) => error instanceof failure))
+      throw new AppPublicationRefused('preflight', errorText(error));
     throw error;
   } finally {
     await rm(scratch, { recursive: true, force: true });
@@ -279,10 +295,12 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify({ publication })}\n`);
     return;
   }
-  const environment = { ...files, server: command.server, work, root: process.cwd() };
+  const root = process.cwd();
+  applyBuildHost(layout, root);
+  const environment = { ...files, server: command.server, work, root };
   const result = await runAppPublication(command.input, {
     ...ports,
-    observations: (clientId) => observations(data, clientId),
+    observations: (clientId) => observations(layout, clientId),
     publish: (request, readTargets) => publish(environment, request, readTargets),
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);

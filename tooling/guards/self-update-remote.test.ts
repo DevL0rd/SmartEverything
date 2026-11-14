@@ -5,6 +5,7 @@ import { HUB_UPDATE_BOOT_RECEIPT_FILE } from '@smarteverything/domain';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { hubInstall } from '../release-hub-files.ts';
 import { testLayout } from '../../apps/hub/test/support/test-layout.ts';
+import { writeUpdateSource } from './update-source-fixture.ts';
 import { readLedger, selfUpdatePaths } from '../self-update-files.ts';
 import { admitRemoteSnapshot, previousRemoteRun } from '../self-update-remote.ts';
 import { startRemotePreparation } from '../self-update-remote-start.ts';
@@ -41,6 +42,7 @@ function writeOffer(work: string, ownerClient: string, offerId: string): void {
 
 async function environment(): Promise<Parameters<typeof admitRemoteSnapshot>[0]> {
   const layout = await testLayout(join(scratch, 'data'));
+  writeUpdateSource(layout.root, { checkout: process.cwd() });
   const data = layout.root;
   const install = join(scratch, 'install');
   const paths = selfUpdatePaths(layout);
@@ -67,14 +69,10 @@ async function environment(): Promise<Parameters<typeof admitRemoteSnapshot>[0]>
 
 beforeEach(() => {
   scratch = mkdtempSync(join(tmpdir(), 'hub-remote-admission-'));
-  vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_ALLOW_REMOTE', '1');
-  vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_REMOTE', 'origin');
-  vi.stubEnv('SMARTEVERYTHING_SELF_UPDATE_BRANCH', 'main');
   vi.mocked(startRemotePreparation).mockReset();
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
   rmSync(scratch, { recursive: true, force: true });
 });
 

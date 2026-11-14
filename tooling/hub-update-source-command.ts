@@ -6,11 +6,7 @@ import {
   type HubUpdateSourceCheck,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import {
-  configuredHubSource,
-  recordHubSourceOffer,
-  remoteApplyEnabled,
-} from './hub-update-offer.ts';
+import { configuredHubSource, recordHubSourceOffer } from './hub-update-offer.ts';
 import { sourceRelations } from './hub-update-source-relation.ts';
 import {
   branchRef,
@@ -66,7 +62,6 @@ async function applyBlockOf(
 ): Promise<HubUpdateSourceCheck['applyBlockedBy']> {
   if (!hasReviewer) return 'owner_required';
   if (process.platform !== HUB_UPDATE_HOST_PLATFORM) return 'unsupported_host';
-  if (!remoteApplyEnabled()) return 'remote_apply_disabled';
   if (hasConflicts) return 'checkout_conflicts';
   if (relation !== 'remote_ahead' && relation !== 'same') return 'checkout_not_ancestor';
   const branch = await gitSource(offer.source.folder, ['symbolic-ref', 'HEAD']);
@@ -111,10 +106,10 @@ export async function checkConfiguredSource(
 }
 
 if (import.meta.main) {
-  const { folder, remote, branch } = configuredHubSource(process.cwd());
   const { data, ownerClient, ...context } = CHECK_REQUEST.parse(
     JSON.parse(z.string().parse(process.argv[2])),
   );
+  const { folder, remote, branch } = configuredHubSource(data);
   const check = await checkConfiguredSource(
     folder,
     { remote, branch },

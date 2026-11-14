@@ -13,6 +13,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { pnpmProgram } from '../build-host.ts';
+import { useBuildHost } from './build-host-fixture.ts';
 import { gitSourceText } from '../hub-update-source.ts';
 import { hubLayout } from '../../apps/hub/src/data-layout/index.ts';
 import { testLayout } from '../../apps/hub/test/support/test-layout.ts';
@@ -35,6 +37,8 @@ const { version: to } = db.prepare('select max(version) as version from schema_v
 db.close();
 process.stdout.write(JSON.stringify({ from, to }) + '\\n');
 `;
+
+useBuildHost();
 
 let scratch: string;
 let candidate: string;
@@ -143,6 +147,14 @@ describe('preparing the exact approved remote checkout', () => {
 
     await expect(build.typeErrors()).resolves.toBe(0);
     expect(requests).toHaveLength(2);
+    expect(requests[0]?.steps[0]?.program).toBe(pnpmProgram());
+    expect(requests[0]?.steps[0]?.args).toEqual([
+      'install',
+      '--frozen-lockfile',
+      '--prefer-offline',
+    ]);
+    expect(requests[1]?.steps[0]?.program).toBe(process.execPath);
+    expect(requests[1]?.steps[0]?.args.slice(1)).toEqual(['-b', 'apps/hub']);
   });
 
   it('builds a candidate into a stage that carries no compatibility stamp', async () => {
@@ -194,10 +206,36 @@ describe('preparing the local checkout', () => {
     await expect(build.typeErrors()).resolves.toBe(0);
     await build.build(output);
     expect(requests.map(({ steps }) => steps[0]?.cwd)).toEqual([candidate, candidate]);
-    expect(requests[0]?.steps[0]?.kind).toBe('tsc');
+    expect(requests[0]?.steps[0]?.program).toBe(process.execPath);
+    expect(requests[0]?.steps[0]?.args).toEqual([
+      join(candidate, 'node_modules', 'typescript', 'bin', 'tsc'),
+      '-p',
+      'apps/hub',
+      '--noEmit',
+    ]);
     expect(requests[1]?.steps[0]?.args.at(-1)).toBe(output);
     expect(readFileSync(pending, 'utf8')).toBe('export const pending = true;');
     expect(readFileSync(tracked, 'utf8')).toBe(`${MIGRATIONS}\n`);
+  });
+
+  it('reports the output of a type check that failed without counting an error', async () => {
+    const build = localHubBuild(candidate, () => ({ status: 1, output: 'spawn tsc ENOENT' }));
+    await expect(build.typeErrors()).rejects.toThrow('spawn tsc ENOENT');
+  });
+
+  it('runs the service build through the running node with tsx', async () => {
+    const requests: StepRequest[] = [];
+    const build = localHubBuild(candidate, (request) => {
+      requests.push(request);
+      return { status: 0, output: '' };
+    });
+    await build.build(join(scratch, 'service'));
+    expect(requests[0]?.steps[0]?.program).toBe(process.execPath);
+    expect(requests[0]?.steps[0]?.args.slice(0, 3)).toEqual([
+      '--import',
+      'tsx',
+      'tooling/build-service.ts',
+    ]);
   });
 
   it('refuses to build after an untracked file changed since the type check', async () => {
