@@ -1,6 +1,6 @@
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { SELF_UPDATE_DESKTOP_INPUT } from '@smarteverything/domain';
+import { UPDATE_DESKTOP_INPUT } from '@smarteverything/domain';
 import { z } from 'zod';
 import { loadRelease } from '../apps/hub/src/updates/release-folder.ts';
 import { desktopWebRuntime } from '../apps/desktop/packaging/web-runtime.ts';
@@ -22,7 +22,7 @@ import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
 import type { Command } from './release-android.ts';
 
 const COMMAND = z.union([
-  z.strictObject({ input: SELF_UPDATE_DESKTOP_INPUT, server: z.url({ protocol: /^https$/u }) }),
+  z.strictObject({ input: UPDATE_DESKTOP_INPUT, server: z.url({ protocol: /^https$/u }) }),
   z.strictObject({ runId: z.uuid() }),
 ]);
 const now = (): Date => new Date();

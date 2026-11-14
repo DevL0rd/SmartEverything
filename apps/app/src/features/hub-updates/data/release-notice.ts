@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { SelfUpdateRecoveryStatus } from '@smarteverything/domain';
+import type { HubUpdateRecoveryStatus } from '@smarteverything/domain';
 import { localPref, setLocalPref } from '../../../store/local-prefs';
 import { releaseNoticeOf, releaseOutcomeOf, type ReleaseNotice } from '../model/update-copy';
 
@@ -45,7 +45,7 @@ function useOutcomePresentation(
 
 interface ReleaseNoticeInput {
   readonly home: string;
-  readonly release: SelfUpdateRecoveryStatus['release'] | undefined;
+  readonly release: HubUpdateRecoveryStatus['release'] | undefined;
   readonly starting: boolean;
   readonly live: boolean;
   readonly foreground: boolean;

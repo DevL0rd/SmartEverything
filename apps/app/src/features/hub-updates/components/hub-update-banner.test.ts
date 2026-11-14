@@ -1,4 +1,4 @@
-import type { HubUpdateSourceCheck, SelfUpdateRecoveryStatus } from '@smarteverything/domain';
+import type { HubUpdateSourceCheck, HubUpdateRecoveryStatus } from '@smarteverything/domain';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -68,7 +68,7 @@ const SOURCE: HubUpdateSourceCheck = {
   pending: { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 },
   offerId: OFFER_ID,
 };
-const RUN: NonNullable<SelfUpdateRecoveryStatus['release']> = {
+const RUN: NonNullable<HubUpdateRecoveryStatus['release']> = {
   runId: 'd589fc4f-9cce-4033-ae3f-b838a0694bc8',
   phase: 'restarting',
   interrupted: false,

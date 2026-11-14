@@ -72,6 +72,10 @@ describe('the configured update source', () => {
     });
   });
 
+  it('treats a missing service configuration as no source', () => {
+    expect(findUpdateSource(layout)).toBeUndefined();
+  });
+
   it('names the configure tool when no source is configured', () => {
     writeConfig({});
     expect(findUpdateSource(layout)).toBeUndefined();

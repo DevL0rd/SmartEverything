@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HUB_UPDATE_RELEASE, SELF_UPDATE_RECOVER_INPUT } from './self-update';
+import { HUB_UPDATE_RELEASE, UPDATE_RECOVER_INPUT } from './self-update';
 
 export const HUB_UPDATE_LEDGER_FILE = 'hub-update.json';
 
@@ -19,8 +19,8 @@ export const RECOVERY_STATUS = z.strictObject({
 });
 
 export const RECOVERY_REQUEST = z.strictObject({
-  runId: SELF_UPDATE_RECOVER_INPUT.shape.id,
-  holdSeconds: SELF_UPDATE_RECOVER_INPUT.shape.holdSeconds,
+  runId: UPDATE_RECOVER_INPUT.shape.id,
+  holdSeconds: UPDATE_RECOVER_INPUT.shape.holdSeconds,
 });
 
 export const RECOVERY_RESULT = z.discriminatedUnion('status', [
@@ -31,5 +31,5 @@ export const RECOVERY_RESULT = z.discriminatedUnion('status', [
   }),
 ]);
 
-export type SelfUpdateRecoveryStatus = z.infer<typeof RECOVERY_STATUS>;
-export type SelfUpdateRecoveryResult = z.infer<typeof RECOVERY_RESULT>;
+export type HubUpdateRecoveryStatus = z.infer<typeof RECOVERY_STATUS>;
+export type HubUpdateRecoveryResult = z.infer<typeof RECOVERY_RESULT>;

@@ -119,38 +119,53 @@ export const SERVED_ASSISTANT = [
     },
   },
   {
-    name: 'self_update',
+    name: 'update_control',
     area: 'system',
     access: 'control',
-    title: 'Update SmartEverything itself',
-    line: 'Update the hub, Android app, desktop UI and desktop app, or share a file',
+    title: 'Update SmartEverything',
+    line: 'Release and recover hub, app and desktop updates',
     description:
-      'For the owner’s own chat or its trusted automatic repair chat. Hub returns a run ID and posts its result later; recover resumes an interrupted update. App builds and offers a signed Android installer for native changes; ui publishes compatible Android and desktop UI offers; desktop builds and publishes the Desktop native release (app and Computer service) for the listed Linux architectures, replacing the previous release, and needs a higher version in apps/desktop/package.json. App, ui and desktop build the pushed branch tip on the hub machine and return a result when done. Test needs a paired Android device. Check status with the run ID after interruption; partial means a platform is missing and can be resumed with the same request. Published means offered, never installed. File attaches privately in this chat by default.',
+      'Updates and releases of this SmartEverything installation, for the owner’s AI chats and for the owner’s remote MCP clients such as Claude Code on a paired computer. Hub returns a run ID; its result is posted in the requesting chat, and an MCP client reads it with status. Recover resumes an interrupted hub update. App builds and offers a signed Android installer for native changes; ui publishes compatible Android and desktop UI offers; desktop builds and publishes the Desktop native release (app and Computer service) for the listed Linux architectures, replacing the previous release, and needs a higher version in apps/desktop/package.json. App, ui and desktop build the pushed branch tip on the hub machine and return a result when done. Test needs a paired Android device. Check status with the run ID after interruption; partial means a platform is missing and can be resumed with the same request. Published means offered, never installed.',
     route: {
       key: 'action',
       branches: {
         status: {
-          part: 'self_update_status',
+          part: 'update_status',
           line: 'Read a hub, app, ui or desktop outcome by run ID',
         },
-        hub: { part: 'self_update_hub', line: 'Prepare a hub release with automatic recovery' },
-        app: { part: 'self_update_app', line: 'Build and offer a signed Android installer' },
+        hub: { part: 'update_hub', line: 'Prepare a hub release with automatic recovery' },
+        app: { part: 'update_app', line: 'Build and offer a signed Android installer' },
         ui: {
-          part: 'self_update_ui',
+          part: 'update_ui',
           line: 'Offer compatible Android and desktop UI updates',
         },
         desktop: {
-          part: 'self_update_desktop',
+          part: 'update_desktop',
           line: 'Build and publish the Desktop native release',
         },
-        recover: { part: 'recover_hub_update', line: 'Resume an interrupted hub update' },
-        file: { part: 'send_chat_file', line: 'Send a file as an attachment in this chat' },
-        claim: {
-          part: 'claim_repair_work',
-          line: 'Route repair alerts for a component to this chat',
-        },
+        recover: { part: 'update_recover', line: 'Resume an interrupted hub update' },
       },
     },
+  },
+  {
+    name: 'chat_file_send',
+    area: 'assistant',
+    access: 'control',
+    title: 'Send a file to the owner’s chat',
+    line: 'A hub file as an attachment or a download link',
+    description:
+      'Sends a file from the computer running the hub into the owner’s chat: the chat the owner’s assistant is in, or for an owner MCP client the owner’s conversation chat. It attaches privately by default; link posts a public four-hour download link instead. The file must sit in that chat’s workspace or be a staged release artifact. Once the tool confirms delivery, the file is already visible.',
+    route: { part: 'chat_file_send' },
+  },
+  {
+    name: 'repair_claim',
+    area: 'assistant',
+    access: 'control',
+    title: 'Claim repair work',
+    line: 'Route repair alerts for a component to the owner’s chat',
+    description:
+      'Marks a component (hub.service, hub.go2rtc or an exact plugin, node, app or desktop source ID from logs) as being worked on, so its repair alerts reach the owner’s chat for one day: the chat the owner’s assistant is in, or for an owner MCP client the owner’s conversation chat. Renew it when resuming work. It never moves automatic repair messages out of the dedicated AI repair chat.',
+    route: { part: 'repair_claim' },
   },
   {
     name: 'model_read',

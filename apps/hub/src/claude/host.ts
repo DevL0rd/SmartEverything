@@ -23,6 +23,7 @@ import { executeLive, isLiveRequest } from './host-live';
 import { ClaudeNotReadyError } from './errors';
 import { traceHostCall } from '../node/host-trace';
 import { HostLog } from './host-log';
+import { linkWanted } from './link-policy';
 import { claudeCapabilities } from './host-capabilities';
 import { NativeOperations, isNativeOperation } from './native-operations';
 import { messageOf } from '@smarteverything/logging';
@@ -200,12 +201,7 @@ class ClaudeHost implements ComputerAiHost {
       this.options.plane.streams.stop();
     }
     this.publish({ kind: 'capabilities', capabilities: this.capabilities() });
-    if (
-      this.settings.control.enabled &&
-      this.settings.control.auto_link &&
-      !previous.control.auto_link
-    )
-      await this.options.service.installLink();
+    if (linkWanted(this.settings)) await this.options.service.installLink();
     return { operation: 'configure', value: this.settings };
   }
 

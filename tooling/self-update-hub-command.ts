@@ -5,11 +5,11 @@ import { env } from 'node:process';
 import {
   HUB_UPDATE_ORIGIN,
   releaseOf,
-  SELF_UPDATE_INPUT,
+  UPDATE_INPUT,
   type HubUpdateLedger,
   type HubUpdateOrigin,
   type HubUpdateRelease,
-  type SelfUpdateInput,
+  type UpdateInput,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { SERVICE_READY } from '../apps/hub/src/service/configuration.ts';
@@ -40,9 +40,9 @@ import {
 import { remotePreparationRunning } from './self-update-remote-start.ts';
 import { watchdogRunning } from './self-update-watchdog-start.ts';
 
-const COMMAND = z.union([SELF_UPDATE_INPUT, REMOTE_UPDATE, REMOTE_PREPARATION]);
+const COMMAND = z.union([UPDATE_INPUT, REMOTE_UPDATE, REMOTE_PREPARATION]);
 type Command =
-  | Extract<SelfUpdateInput, { action: 'hub' | 'recover' }>
+  | Extract<UpdateInput, { action: 'hub' | 'recover' }>
   | z.infer<typeof REMOTE_UPDATE>
   | z.infer<typeof REMOTE_PREPARATION>;
 

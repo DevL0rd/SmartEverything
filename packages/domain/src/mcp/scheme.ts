@@ -40,6 +40,7 @@ export const MCP_TOOL_DOMAINS = [
   'browser',
   'image',
   'chat',
+  'chat_file',
   'subagent',
   'widget',
   'app',
@@ -63,7 +64,8 @@ export const MCP_TOOL_DOMAINS = [
   'file',
   'claude',
   'plugin',
-  'self',
+  'update',
+  'repair',
 ] as const;
 
 export const MCP_TOOL_VERBS = [
@@ -94,6 +96,7 @@ export const MCP_TOOL_VERBS = [
   'set',
   'capture',
   'update',
+  'claim',
 ] as const;
 
 const DOMAIN_SET: ReadonlySet<string> = new Set(MCP_TOOL_DOMAINS);

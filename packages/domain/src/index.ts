@@ -282,6 +282,7 @@ export * from './chat-widgets';
 export * from './chat-action-file';
 export * from './self-update';
 export * from './repair-work-claim';
+export * from './chat-file-send';
 export * from './hub-update-source';
 export * from './self-update-recovery';
 export * from './client-failures';

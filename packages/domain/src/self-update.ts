@@ -3,7 +3,6 @@ import { ANDROID_APP_BUILD } from './app-updates';
 import { HUB_UPDATE_COMMIT } from './hub-update-source';
 import { MACHINE_UPDATE_ARCHES, MACHINE_UPDATE_MANIFEST } from './machine-updates';
 import { RELEASE_NOTES } from './release-notes';
-import { REPAIR_WORK_CLAIM_INPUT } from './repair-work-claim';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
@@ -11,24 +10,11 @@ const PATH = z.string().refine((path) => path.startsWith('/') && !path.includes(
   message: 'must be an absolute path',
 });
 
-export const SELF_UPDATE_ACTIONS = [
-  'status',
-  'hub',
-  'app',
-  'ui',
-  'desktop',
-  'file',
-  'recover',
-  'claim',
-] as const;
+export const UPDATE_ACTIONS = ['status', 'hub', 'app', 'ui', 'desktop', 'recover'] as const;
 
-export type SelfUpdateAction = (typeof SELF_UPDATE_ACTIONS)[number];
+export type UpdateAction = (typeof UPDATE_ACTIONS)[number];
 
-export const SELF_UPDATE_CHANGE = z.strictObject({
-  action: z.enum(['hub', 'app', 'ui', 'desktop']),
-});
-
-export const SELF_UPDATE_INPUT = z.discriminatedUnion('action', [
+export const UPDATE_INPUT = z.discriminatedUnion('action', [
   z.strictObject({
     action: z.literal('status'),
     id: ID.optional().describe(
@@ -91,39 +77,20 @@ export const SELF_UPDATE_INPUT = z.discriminatedUnion('action', [
       .default(120)
       .describe('How long the recovered watchdog stands ready to undo the release if the hub dies'),
   }),
-  z.strictObject({
-    action: z.literal('file'),
-    path: PATH.describe('The absolute path of the file to send, on the computer running the hub'),
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(200)
-      .optional()
-      .describe('The name people see when they download it; the file’s own name when left out'),
-    what: z.string().trim().min(1).max(300).describe('A sentence saying what the file is'),
-    link: z
-      .boolean()
-      .optional()
-      .describe(
-        'Use a public four-hour download link for explicit external sharing or large files; otherwise attach privately in this chat',
-      ),
-  }),
-  REPAIR_WORK_CLAIM_INPUT.extend({ action: z.literal('claim') }),
 ]);
 
-export type SelfUpdateInput = z.infer<typeof SELF_UPDATE_INPUT>;
+export type UpdateInput = z.infer<typeof UPDATE_INPUT>;
 
-export const SELF_UPDATE_HUB_INPUT = SELF_UPDATE_INPUT.options[1];
-export const SELF_UPDATE_APP_INPUT = SELF_UPDATE_INPUT.options[2];
-export const SELF_UPDATE_UI_INPUT = SELF_UPDATE_INPUT.options[3];
-export const SELF_UPDATE_DESKTOP_INPUT = SELF_UPDATE_INPUT.options[4];
-export const SELF_UPDATE_RECOVER_INPUT = SELF_UPDATE_INPUT.options[5];
-export const SELF_UPDATE_FILE_INPUT = SELF_UPDATE_INPUT.options[6];
+export const UPDATE_STATUS_INPUT = UPDATE_INPUT.options[0];
+export const UPDATE_HUB_INPUT = UPDATE_INPUT.options[1];
+export const UPDATE_APP_INPUT = UPDATE_INPUT.options[2];
+export const UPDATE_UI_INPUT = UPDATE_INPUT.options[3];
+export const UPDATE_DESKTOP_INPUT = UPDATE_INPUT.options[4];
+export const UPDATE_RECOVER_INPUT = UPDATE_INPUT.options[5];
 
 export const APP_PUBLICATION_INPUT = z.discriminatedUnion('action', [
-  SELF_UPDATE_APP_INPUT,
-  SELF_UPDATE_UI_INPUT,
+  UPDATE_APP_INPUT,
+  UPDATE_UI_INPUT,
 ]);
 
 export type AppPublicationInput = z.infer<typeof APP_PUBLICATION_INPUT>;
@@ -157,7 +124,7 @@ export const APP_PUBLICATION_STATUS = z.strictObject({
   publication: APP_PUBLICATION_RESULT.nullable(),
 });
 
-export type DesktopReleaseInput = z.infer<typeof SELF_UPDATE_DESKTOP_INPUT>;
+export type DesktopReleaseInput = z.infer<typeof UPDATE_DESKTOP_INPUT>;
 
 export const DESKTOP_RELEASE = z.strictObject({
   commit: HUB_UPDATE_COMMIT,
@@ -178,7 +145,7 @@ export const DESKTOP_RELEASE_STATUS = z.strictObject({
   desktop: DESKTOP_RELEASE_RESULT.nullable(),
 });
 
-export const SELF_UPDATE_REFUSALS = [
+export const UPDATE_REFUSALS = [
   'not_owner',
   'identity_same',
   'foreign_app',
@@ -188,7 +155,7 @@ export const SELF_UPDATE_REFUSALS = [
   'failed',
 ] as const;
 
-export type SelfUpdateRefusal = (typeof SELF_UPDATE_REFUSALS)[number];
+export type UpdateRefusal = (typeof UPDATE_REFUSALS)[number];
 
 export const HUB_UPDATE_PHASES = [
   'planned',

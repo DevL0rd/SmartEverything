@@ -5,7 +5,7 @@ import {
   hubUpdateOutcome,
   type ClientRow,
   type HubUpdateRelease,
-  type SelfUpdateRecoveryResult,
+  type HubUpdateRecoveryResult,
 } from '@smarteverything/domain';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { hubUpdateStatus, readHubUpdate } from '../../src/self-update/recovery';
@@ -41,7 +41,7 @@ beforeAll(async () => {
   );
   routes = selfUpdateRecoveryRoutes({
     status: () => hubUpdateStatus(opened.layout),
-    recover: (id, seconds): Promise<SelfUpdateRecoveryResult> => {
+    recover: (id, seconds): Promise<HubUpdateRecoveryResult> => {
       calls.push([id, seconds]);
       return Promise.resolve({ status: 'started', runId: id });
     },

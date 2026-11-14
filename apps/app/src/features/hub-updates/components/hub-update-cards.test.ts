@@ -1,4 +1,4 @@
-import type { HubUpdateSourceCheck, SelfUpdateRecoveryStatus } from '@smarteverything/domain';
+import type { HubUpdateSourceCheck, HubUpdateRecoveryStatus } from '@smarteverything/domain';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -41,7 +41,7 @@ const SOURCE: HubUpdateSourceCheck = {
   offerId: '87db8f33-398c-46ab-bea0-5cf25cb0ae58',
   pending: { staged: 1, unstaged: 0, untracked: 0, conflicts: 0 },
 };
-const RUN: NonNullable<SelfUpdateRecoveryStatus['release']> = {
+const RUN: NonNullable<HubUpdateRecoveryStatus['release']> = {
   runId: 'd589fc4f-9cce-4033-ae3e-b838a0694bc8',
   phase: 'verifying',
   interrupted: false,

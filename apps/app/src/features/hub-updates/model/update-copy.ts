@@ -3,12 +3,12 @@ import {
   type HubUpdateAcceptance,
   type HubUpdateSourceCheck,
   type HubUpdateSourceStart,
-  type SelfUpdateRecoveryResult,
-  type SelfUpdateRecoveryStatus,
+  type HubUpdateRecoveryResult,
+  type HubUpdateRecoveryStatus,
 } from '@smarteverything/domain';
 
-type Release = NonNullable<SelfUpdateRecoveryStatus['release']>;
-type Refusal = Extract<SelfUpdateRecoveryResult, { status: 'refused' }>['refusal'];
+type Release = NonNullable<HubUpdateRecoveryStatus['release']>;
+type Refusal = Extract<HubUpdateRecoveryResult, { status: 'refused' }>['refusal'];
 
 export const PHASE_LABEL: Readonly<Record<Release['phase'], string>> = {
   planned: 'Preparing the hub update',

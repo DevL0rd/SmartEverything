@@ -1,13 +1,13 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { HubUpdateSourceCheck, SelfUpdateRecoveryStatus } from '@smarteverything/domain';
+import type { HubUpdateSourceCheck, HubUpdateRecoveryStatus } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UpdateNoticeProps } from '../../../components/update-notice';
 import { localPref, setLocalPref } from '../../../store/local-prefs';
 import { releaseOutcomeOf } from '../model/update-copy';
 import { HubUpdateBanner } from './hub-update-banner';
 
-type Release = NonNullable<SelfUpdateRecoveryStatus['release']>;
+type Release = NonNullable<HubUpdateRecoveryStatus['release']>;
 
 interface OutcomeObservation {
   notice: UpdateNoticeProps | null;

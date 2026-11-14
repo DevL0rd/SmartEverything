@@ -7,7 +7,7 @@ import {
   releaseOf,
   type HubUpdateLedger,
   type HubUpdateRelease,
-  type SelfUpdateRecoveryStatus,
+  type HubUpdateRecoveryStatus,
 } from '@smarteverything/domain';
 
 async function ledgerText(path: string): Promise<string | null> {
@@ -32,13 +32,13 @@ export async function readHubUpdate(
   return (runId === undefined ? ledger.releases.at(-1) : releaseOf(ledger, runId)) ?? null;
 }
 
-export function hubUpdateStatusOf(release: HubUpdateRelease | undefined): SelfUpdateRecoveryStatus {
+export function hubUpdateStatusOf(release: HubUpdateRelease | undefined): HubUpdateRecoveryStatus {
   if (release === undefined) return { release: null };
   const { runId, phase, interrupted, startedAt, updatedAt, finishedAt } = release;
   return { release: { runId, phase, interrupted, startedAt, updatedAt, finishedAt } };
 }
 
-export async function hubUpdateStatus(layout: HubLayout): Promise<SelfUpdateRecoveryStatus> {
+export async function hubUpdateStatus(layout: HubLayout): Promise<HubUpdateRecoveryStatus> {
   const { releases } = await readHubUpdateLedger(layout);
   return hubUpdateStatusOf(releases.at(-1));
 }

@@ -6,7 +6,7 @@ import {
   type HubUpdateSourceSave,
   type HubUpdateSourceSaved,
   type HubUpdateSourceStart,
-  type SelfUpdateRecoveryStatus,
+  type HubUpdateRecoveryStatus,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import {
@@ -34,8 +34,8 @@ function startKey(home: string | null, id: string | null): readonly unknown[] {
 }
 
 export function refreshSourceAfterRelease(
-  previous: SelfUpdateRecoveryStatus | undefined,
-  current: SelfUpdateRecoveryStatus,
+  previous: HubUpdateRecoveryStatus | undefined,
+  current: HubUpdateRecoveryStatus,
   client: QueryClient,
   queryKey: ReturnType<typeof sourceKey>,
 ): void {
@@ -79,7 +79,7 @@ export function useHubUpdateSource(automatic = false): UseQueryResult<HubUpdateS
   });
 }
 
-export function useHubUpdateStatus(automatic = true): UseQueryResult<SelfUpdateRecoveryStatus> {
+export function useHubUpdateStatus(automatic = true): UseQueryResult<HubUpdateRecoveryStatus> {
   const { home, id, owner } = useUpdateScope();
   const client = useQueryClient();
   const queryKey = [...RECOVERY_KEY, home, id];
@@ -94,7 +94,7 @@ export function useHubUpdateStatus(automatic = true): UseQueryResult<SelfUpdateR
       const status = await api().call(E.readHubUpdateRecovery, {}, { signal });
       if (!signal.aborted)
         refreshSourceAfterRelease(
-          client.getQueryData<SelfUpdateRecoveryStatus>(queryKey),
+          client.getQueryData<HubUpdateRecoveryStatus>(queryKey),
           status,
           client,
           sourceKey(home, id),

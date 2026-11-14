@@ -18,7 +18,7 @@ import { call, temporaryDirectory } from '../support/server';
 import { RPC_ERROR, callTool, initialize, messageOf, resultOf, rpc } from './client';
 
 function listedToExternalMcp(name: string): boolean {
-  return name !== 'self_update' && !PLUGIN_ONLY_TOOLS.has(name);
+  return !PLUGIN_ONLY_TOOLS.has(name);
 }
 
 describe('the served tool catalogue', () => {
@@ -266,7 +266,7 @@ describe('the MCP endpoint', () => {
       );
     const names = tools.map((tool) => tool.name);
     expect(names).toStrictEqual(MCP_TOOLS.map((tool) => tool.name).filter(listedToExternalMcp));
-    expect(names).not.toContain('self_update');
+    expect(names).toContain('update_control');
     expect(
       tools.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name),
     ).toStrictEqual([
@@ -288,6 +288,7 @@ describe('the MCP endpoint', () => {
       'planner_edit',
       'project_edit',
       'chat_edit',
+      'update_control',
       'process_control',
       'computer_system_set',
       'computer_use',
@@ -319,11 +320,8 @@ describe('the MCP endpoint', () => {
     const refused = await callTool(booted.base, token, 'inbox_post', {});
     expect(refused.isError).toBe(true);
     expect(JSON.stringify(refused.content)).toContain('forbidden: inbox_post is only for a plugin');
-    const update = await callTool(booted.base, token, 'self_update', { action: 'status' });
-    expect(update.isError).toBe(true);
-    expect(JSON.stringify(update.content)).toContain(
-      'forbidden: Only the owner’s own AI chat can use self_update.',
-    );
+    const update = await callTool(booted.base, token, 'update_control', { action: 'status' });
+    expect(update.isError).toBe(false);
   });
 
   it('refuses a revoked personal token', async () => {

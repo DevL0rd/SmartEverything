@@ -94,7 +94,7 @@ async function runLocked(
     if (code === 0) return stdout;
     if (code === LOCK_BUSY)
       throw new UpdateBusyError(
-        'Another update is being prepared. Check self_update status before retrying.',
+        'Another update is being prepared. Check update_control status before retrying.',
       );
     const tail = logFile === undefined ? '' : await logTail(logFile);
     throw new UpdateCommandError(
@@ -188,7 +188,7 @@ export async function runConfiguredUpdateCommand(
   const last = stdout.trim().split('\n').at(-1);
   if (last === undefined || last.length === 0)
     throw new Error(
-      'The update process exited without a result. Check self_update status before retrying.',
+      'The update process exited without a result. Check update_control status before retrying.',
     );
   return REPLY.parse(JSON.parse(last));
 }

@@ -1,10 +1,21 @@
+import { AI_CHAT_ROW, type AiChatRow } from '@smarteverything/domain';
 import { REPAIR_CHAT_SOURCE } from '../../../assistant/chat-directory';
 import type { ConversationAuthority } from '../../../harness/authority-contract';
+import { operate } from './acting';
 import { ToolError, type ToolActor, type ToolContext } from './registry';
 
-export const OWNER_CHAT_UPDATE_TOOL = 'self_update';
+export const OWNER_UPDATE_TOOLS: ReadonlySet<string> = new Set([
+  'update_control',
+  'chat_file_send',
+  'repair_claim',
+]);
 
 type Caller = Pick<ToolContext, 'actor' | 'caller' | 'store'>;
+
+export interface UpdateRequester {
+  readonly profileId: string;
+  readonly chatId: string | null;
+}
 
 function directOwner(actor: ToolActor): boolean {
   const authority = actor.authority;
@@ -98,9 +109,47 @@ export function ownerUpdateChat(context: Caller): string | null {
   return chat?.profile_id === actor.profileId && chat.kind === 'chat' ? chat.id : null;
 }
 
-export function requireUpdateChat(context: Caller): string {
+function plainOwner(actor: ToolActor): boolean {
+  const authority = actor.authority;
+  return (
+    actor.role === 'owner' &&
+    actor.pluginId === undefined &&
+    actor.pluginRequester === undefined &&
+    (authority === undefined ||
+      (authority.role === 'owner' && authority.plugin_id === null && authority.requester === null))
+  );
+}
+
+function ownerConnection(context: Caller): string | null {
+  const { actor, caller, store } = context;
+  if (caller === null || caller.via === 'plugin') return null;
+  if (actor !== null && !plainOwner(actor)) return null;
+  const owners = store.personAccess.ownerIds();
+  if (owners.length === 0) return null;
+  const profileId = actor?.profileId ?? store.personAccess.homeOwner();
+  return owners.includes(profileId) ? profileId : null;
+}
+
+export function ownerUpdateRequester(context: Caller): UpdateRequester | null {
   const chatId = ownerUpdateChat(context);
-  if (chatId === null)
-    throw new ToolError('Only the owner’s own AI chat can use self_update.', 'forbidden');
-  return chatId;
+  if (chatId !== null) return { profileId: context.store.aiChats.chat(chatId).profile_id, chatId };
+  const profileId = ownerConnection(context);
+  return profileId === null ? null : { profileId, chatId: null };
+}
+
+export function requireUpdateRequester(context: Caller): UpdateRequester {
+  const requester = ownerUpdateRequester(context);
+  if (requester === null)
+    throw new ToolError(
+      'Only the owner’s own AI chat or an owner MCP connection can use the update tools.',
+      'forbidden',
+    );
+  return requester;
+}
+
+export async function requesterChat(context: ToolContext): Promise<AiChatRow> {
+  const { chatId } = requireUpdateRequester(context);
+  if (chatId !== null) return context.store.aiChats.chat(chatId);
+  const conversation = AI_CHAT_ROW.parse(await operate(context, 'openConversationChat', {}));
+  return context.store.aiChats.chat(conversation.id);
 }

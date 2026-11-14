@@ -1,4 +1,4 @@
-import { HUB_UPDATE_STATUS_CHANGED, type SelfUpdateRecoveryStatus } from '@smarteverything/domain';
+import { HUB_UPDATE_STATUS_CHANGED, type HubUpdateRecoveryStatus } from '@smarteverything/domain';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { expect, it, vi } from 'vitest';
 import { EntityStore } from '../../../store/entity-store';
@@ -7,7 +7,7 @@ import { noticeRouter } from '../../../store/notice-registry';
 import { refreshSourceAfterRelease } from './update-queries';
 
 const RECOVERY_QUERY_KEY = ['hub-updates', 'recovery', 'test-hub', 'test-owner'] as const;
-const RESTARTING: SelfUpdateRecoveryStatus = {
+const RESTARTING: HubUpdateRecoveryStatus = {
   release: {
     runId: 'd589fc4f-9cce-4033-ae3e-b838a0694bc8',
     phase: 'restarting',
@@ -34,12 +34,12 @@ function deferred<T>(): Deferred<T> {
 it('refreshes recovery status when a live notice arrives during the first read', async () => {
   const client = new QueryClient();
   const route = noticeRouter(FEATURE_NOTICES, { client, store: new EntityStore() });
-  const first = deferred<SelfUpdateRecoveryStatus>();
+  const first = deferred<HubUpdateRecoveryStatus>();
   const secondStarted = deferred<null>();
-  const second = deferred<SelfUpdateRecoveryStatus>();
-  const received = deferred<SelfUpdateRecoveryStatus>();
+  const second = deferred<HubUpdateRecoveryStatus>();
+  const received = deferred<HubUpdateRecoveryStatus>();
   const queryFn = vi
-    .fn<() => Promise<SelfUpdateRecoveryStatus>>()
+    .fn<() => Promise<HubUpdateRecoveryStatus>>()
     .mockReturnValueOnce(first.promise)
     .mockImplementationOnce(() => {
       secondStarted.resolve(null);
@@ -67,7 +67,7 @@ it('refreshes recovery status when a live notice arrives during the first read',
 
 const SOURCE_QUERY_KEY = ['hub-updates', 'source', 'test-hub', 'test-owner'] as const;
 const OTHER_SOURCE_QUERY_KEY = ['hub-updates', 'source', 'other-hub', 'test-owner'] as const;
-const DONE: SelfUpdateRecoveryStatus = {
+const DONE: HubUpdateRecoveryStatus = {
   release: {
     runId: 'd589fc4f-9cce-4033-ae3e-b838a0694bc8',
     phase: 'done',

@@ -1,13 +1,13 @@
 import {
   API_ENDPOINTS as E,
-  type SelfUpdateRecoveryResult,
-  type SelfUpdateRecoveryStatus,
+  type HubUpdateRecoveryResult,
+  type HubUpdateRecoveryStatus,
 } from '@smarteverything/domain';
 import { bound, type Routes } from '../router';
 
 export interface HubUpdateRecovery {
-  readonly status: () => Promise<SelfUpdateRecoveryStatus>;
-  readonly recover: (runId: string, holdSeconds: number) => Promise<SelfUpdateRecoveryResult>;
+  readonly status: () => Promise<HubUpdateRecoveryStatus>;
+  readonly recover: (runId: string, holdSeconds: number) => Promise<HubUpdateRecoveryResult>;
 }
 
 export function selfUpdateRecoveryRoutes(

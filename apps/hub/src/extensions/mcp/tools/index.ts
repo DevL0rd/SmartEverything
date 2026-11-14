@@ -35,7 +35,8 @@ import { REMOTE_TOOLS } from './remotes';
 import { SEARCH_TOOL } from './search';
 import { SEE_TOOL } from './see';
 import { SETTINGS_TOOLS } from './settings';
-import { SELF_UPDATE_TOOLS } from './self-update';
+import { OWNER_CHAT_TOOLS } from './owner-chat';
+import { UPDATE_TOOLS } from './update';
 import { SHOW_IN_APP_TOOLS } from './show-in-app';
 import { WEATHER_TOOLS } from './weather';
 
@@ -60,7 +61,8 @@ const PARTS: readonly Tool[] = [
   ...AI_USAGE_TOOLS,
   ...AI_MODEL_TOOLS,
   ...SHOW_IN_APP_TOOLS,
-  ...SELF_UPDATE_TOOLS,
+  ...UPDATE_TOOLS,
+  ...OWNER_CHAT_TOOLS,
   ...COMPUTER_READ_TOOLS,
   ...COMPUTER_PROGRAM_TOOLS,
   ...COMPUTER_CONTROL_TOOLS,

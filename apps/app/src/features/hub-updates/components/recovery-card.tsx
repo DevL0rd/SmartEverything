@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import {
   API_ENDPOINTS as E,
-  type SelfUpdateRecoveryResult,
-  type SelfUpdateRecoveryStatus,
+  type HubUpdateRecoveryResult,
+  type HubUpdateRecoveryStatus,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { useMutation } from '@tanstack/react-query';
@@ -16,7 +16,7 @@ import { clock, shortDate } from '../../../format/time';
 import type { useHubUpdateStatus } from '../data/update-queries';
 import { PHASE_LABEL, RECOVERY_REFUSAL } from '../model/update-copy';
 
-type Release = NonNullable<SelfUpdateRecoveryStatus['release']>;
+type Release = NonNullable<HubUpdateRecoveryStatus['release']>;
 const RECOVERY_HOLD_SECONDS = 120;
 
 function ReleaseSummary({ release }: { readonly release: Release }): ReactNode {
@@ -80,7 +80,7 @@ function RecoveryMessage({
   result,
   failed,
 }: {
-  readonly result: SelfUpdateRecoveryResult | undefined;
+  readonly result: HubUpdateRecoveryResult | undefined;
   readonly failed: boolean;
 }): ReactNode {
   if (result === undefined && !failed) return null;

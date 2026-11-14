@@ -1,4 +1,4 @@
-import { RECOVERY_RESULT, type SelfUpdateRecoveryResult } from '@smarteverything/domain';
+import { RECOVERY_RESULT, type HubUpdateRecoveryResult } from '@smarteverything/domain';
 import type { HubLayout } from '../data-layout';
 import { runUpdateCommand, UpdateBusyError, UpdateUnavailableError } from './command';
 
@@ -6,7 +6,7 @@ export async function recoverHubUpdate(
   layout: HubLayout,
   runId: string,
   holdSeconds: number,
-): Promise<SelfUpdateRecoveryResult> {
+): Promise<HubUpdateRecoveryResult> {
   try {
     return RECOVERY_RESULT.parse(
       await runUpdateCommand(layout, { action: 'recover', id: runId, holdSeconds }),

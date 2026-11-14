@@ -351,7 +351,7 @@ describe('repair through the selected chat engine', () => {
     expect(queuedEvent().text).toContain('smarteverything-coding-process');
     expect(queuedEvent().text).toContain('smarteverything-coding-checks');
     expect(queuedEvent().text).toContain('smarteverything-coding-review');
-    expect(queuedEvent().text).toContain('smarteverything-self-update');
+    expect(queuedEvent().text).toContain('smarteverything-updates');
     expect(queuedEvent().text).toContain('commit and push the accepted SmartEverything fix');
     expect(queuedEvent().text).toContain('fetching and pulling/merging remote main');
     expect(queuedEvent().text).toContain('resolving conflicts');

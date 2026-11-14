@@ -120,8 +120,9 @@ folder. `SMARTEVERYTHING_HUB_HOME` names a different pointer folder for containe
 launches; unset it for the systemd install. The data folder can be moved later in Settings.
 Run `loginctl enable-linger "$(id -un)"` to start the Hub at boot without signing in.
 
-The Hub publishes its own releases from that checkout. The `self_update` actions `ui`, `app` and
+The Hub publishes its own releases from that checkout. The `update_control` actions `ui`, `app` and
 `desktop` build the pushed `main` tip, so the checkout must be clean and pushed before publishing.
+The owner’s assistant and any owner MCP client, such as Claude Code on a paired computer, can call them.
 
 The owner’s production Hub runs on the NAS (`ssh nas`, `192.168.50.254`), at
 `https://smarteverything.devl0rd.com`. This desktop’s Hub stays disabled by default; start a test Hub only on demand with isolated scratch data.
@@ -173,7 +174,7 @@ Camera previews open faster and reconnect automatically.
 - For a managed Desktop installer, pass `--notes="$(cat "$release_notes_file")"` to
   `tooling/release-machine-update.ts` with the version and package.
 - For a UI OTA, pass the same multiline `--notes` argument to `tooling/publish-app-update.ts publish`
-  or set the `notes` input of `self_update` action `ui`. For a signed Android APK, set the multiline
+  or set the `notes` input of `update_control` action `ui`. For a signed Android APK, set the multiline
   `notes` input of action `app`.
 - For a Hub Git update, include `release-notes/hub.json` in the published tip with exactly the
   fields shown below. Use the full SHA of the exact comparison base for `from` and the full

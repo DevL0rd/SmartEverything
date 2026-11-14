@@ -1,6 +1,6 @@
 import {
   DESKTOP_RELEASE,
-  SELF_UPDATE_DESKTOP_INPUT,
+  UPDATE_DESKTOP_INPUT,
   isNewerVersion,
   type DesktopReleaseInput,
   type DesktopReleaseResult,
@@ -175,13 +175,13 @@ export async function runDesktopRelease(
   input: DesktopReleaseInput,
   ports: DesktopReleasePorts,
 ): Promise<DesktopReleaseResult> {
-  const checked = SELF_UPDATE_DESKTOP_INPUT.parse(input);
+  const checked = UPDATE_DESKTOP_INPUT.parse(input);
   const existing = readJob(ports.store, checked.runId);
   if (existing === null)
     return execute(ports, startJob(ports.store, 'desktop', checked, null), checked);
   if (
     existing.action !== 'desktop' ||
-    !sameRequest(SELF_UPDATE_DESKTOP_INPUT.parse(existing.input), checked)
+    !sameRequest(UPDATE_DESKTOP_INPUT.parse(existing.input), checked)
   )
     throw new DesktopReleaseConflict('This request ID is already in use for a different update.');
   return settled(ports.store, existing);

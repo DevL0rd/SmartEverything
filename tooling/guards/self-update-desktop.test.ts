@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  SELF_UPDATE_DESKTOP_INPUT,
+  UPDATE_DESKTOP_INPUT,
   type MachineUpdateManifest,
   type DesktopReleaseInput,
 } from '@smarteverything/domain';
@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 function inputOf(arches: DesktopReleaseInput['arches'] = ['x64']): DesktopReleaseInput {
-  return SELF_UPDATE_DESKTOP_INPUT.parse({
+  return UPDATE_DESKTOP_INPUT.parse({
     action: 'desktop',
     runId: randomUUID(),
     notes: 'Planner and Clock',

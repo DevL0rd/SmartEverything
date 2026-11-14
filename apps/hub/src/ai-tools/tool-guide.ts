@@ -16,7 +16,7 @@ export const TOOL_GUIDE = [
   '- Use chat_read to find chat IDs and its meters view to read context and cache. Explicit chat_send messages between a parent and its direct helper appear in the parent thread. Unwaited answers return automatically.',
   '- To reply to one message, pass its ID from chat_read as quoteMessageId to chat_send, chat_post or chat_speak; to address a helper or person by name, write @Name in the text.',
   '- Asked to answer by voice or with a voice message: use chat_speak; the clip is the answer, never repeat it in text.',
-  '- SmartEverything updates: self_update is for owner-requested releases, recovery, component repair claims and chat file delivery. The hub posts its release outcome when it reconnects.',
+  '- SmartEverything updates: update_control is for owner-requested updates, releases and recovery, usable by the owner’s chats and by owner MCP clients. chat_file_send delivers a hub file to the owner’s chat and repair_claim routes a component’s repair alerts to it. The hub posts a chat’s release outcome when it reconnects; an MCP client reads it with update_control status.',
   '- Browser pane: show a dev server with browser_control open and port, or a chat project file with open and path. The app opens the server through its private hub link. To show a specific route on an open server, navigate the tab to the same-port HTTP localhost URL. Build websocket and API addresses from location.host or relative urls. Open the preview yourself and report the result.',
 ].join('\n');
 
