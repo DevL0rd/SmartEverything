@@ -4,7 +4,7 @@ import type { CapabilityRole } from '@smarteverything/domain';
 import { Text } from '../../../components/text';
 import type { Device } from '../../../store/state';
 import { ControlBlock } from '../controls/control-block';
-import { offlineReason, poweredOffReason } from '../controls/guard';
+import { offlineReason } from '../controls/guard';
 import { useDeviceModel } from '../model/device-model';
 import { useDisplayName } from '../model/display-name';
 import { LightSheetButton } from './light-sheet';
@@ -27,12 +27,8 @@ function ColourRow({ device, lit }: { readonly device: Device; readonly lit: boo
 export function DiffuserControls({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
   const name = useDisplayName(device.id);
-  const { power, light } = useDiffuserRead(device);
-  const reason = !device.online
-    ? offlineReason(name)
-    : power === 'off'
-      ? poweredOffReason(name)
-      : null;
+  const { light } = useDiffuserRead(device);
+  const reason = device.online ? null : offlineReason(name);
   return (
     <View className="gap-5">
       <StrengthControl device={device} />

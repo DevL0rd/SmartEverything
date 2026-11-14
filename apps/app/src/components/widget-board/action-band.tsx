@@ -1,9 +1,18 @@
 import { Children, createContext, use, useReducer, type ReactNode } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
+import { cn } from '../../design/cn';
+import { useIdiom } from '../../design/platform';
 import { useThemeSetting } from '../../design/theme';
 import { SEMANTIC_SIZES } from '../../design/tokens';
-import { BandMember, useBandValue } from './band-context';
-import { BAND_FIT_START, bandFitAfter, isCompact, oneRowBand } from './band-fit';
+import { BandMember, bandValueOf } from './band-context';
+import {
+  BAND_FIT_START,
+  bandFitAfter,
+  isCompact,
+  oneRowBand,
+  type BandFit,
+  type BandLayout,
+} from './band-fit';
 import { frameClassOf } from './frame-class';
 import { useWidgetFrame } from './widget-scope';
 
@@ -19,32 +28,37 @@ export function ActionBandTail({
   return <Tail value={tail}>{children}</Tail>;
 }
 
-function useRowLimit(): { readonly oneRow: boolean; readonly row: number } {
-  const frame = useWidgetFrame();
-  const density = useThemeSetting('density');
-  if (frame === null) {
-    return { oneRow: false, row: 0 };
-  }
-  const sizes = SEMANTIC_SIZES[frame.idiom][density];
-  return {
-    oneRow: oneRowBand(frameClassOf(frame)),
-    row: Math.max(sizes.touchMin, sizes.controlH),
-  };
+export interface BandFitting {
+  readonly oneRow: boolean;
+  readonly fit: BandFit;
+  readonly measure: (layout: BandLayout) => void;
 }
 
-function Band({ items, tail }: { readonly items: ReactNode; readonly tail: ReactNode }): ReactNode {
-  const { oneRow, row } = useRowLimit();
-  const [fit, measure] = useReducer(bandFitAfter, BAND_FIT_START);
-  const band = useBandValue(oneRow && isCompact(fit));
+function Band({
+  items,
+  tail,
+  fitting,
+  lead,
+}: {
+  readonly items: ReactNode;
+  readonly tail: ReactNode;
+  readonly fitting: BandFitting;
+  readonly lead: 'mt-auto' | 'mt-1.5';
+}): ReactNode {
+  const idiom = useIdiom();
+  const density = useThemeSetting('density');
+  const { oneRow, fit, measure } = fitting;
+  const band = bandValueOf(idiom, density, oneRow && isCompact(fit));
   const onLayout = oneRow
     ? (event: LayoutChangeEvent): void => {
         const { width, height } = event.nativeEvent.layout;
-        measure({ width, height, row });
+        const sizes = SEMANTIC_SIZES[idiom][density];
+        measure({ width, height, row: Math.max(sizes.touchMin, sizes.controlH) });
       }
     : undefined;
   return (
     <View
-      className="mt-auto flex-row flex-wrap items-center justify-end gap-2"
+      className={cn(lead, 'flex-row flex-wrap items-center justify-end gap-2')}
       pointerEvents="box-none"
       onLayout={onLayout}
     >
@@ -58,11 +72,62 @@ function Band({ items, tail }: { readonly items: ReactNode; readonly tail: React
   );
 }
 
-export function ActionBand({ children }: { readonly children?: ReactNode }): ReactNode {
+function OwnBand({
+  items,
+  tail,
+}: {
+  readonly items: ReactNode;
+  readonly tail: ReactNode;
+}): ReactNode {
+  const frame = useWidgetFrame();
+  const [fit, measure] = useReducer(bandFitAfter, BAND_FIT_START);
+  const oneRow = oneRowBand(frame === null ? null : frameClassOf(frame));
+  return <Band items={items} tail={tail} fitting={{ oneRow, fit, measure }} lead="mt-auto" />;
+}
+
+function useBandItems(children: ReactNode): {
+  readonly items: ReactNode;
+  readonly tail: ReactNode;
+  readonly empty: boolean;
+} {
   const tail = use(Tail);
   const items = Children.toArray(children);
-  if (items.length === 0 && (tail === null || tail === undefined || tail === false)) {
-    return null;
+  return {
+    items,
+    tail,
+    empty: items.length === 0 && (tail === null || tail === undefined || tail === false),
+  };
+}
+
+export function ActionBand({ children }: { readonly children?: ReactNode }): ReactNode {
+  const { items, tail, empty } = useBandItems(children);
+  return empty ? null : <OwnBand items={items} tail={tail} />;
+}
+
+function Lead(): ReactNode {
+  return <View className="h-1.5" />;
+}
+
+export function FittedActionBand({
+  fitting,
+  filled,
+  children,
+}: {
+  readonly fitting: BandFitting;
+  readonly filled: boolean;
+  readonly children?: ReactNode;
+}): ReactNode {
+  const { items, tail, empty } = useBandItems(children);
+  if (empty) {
+    return <Lead />;
   }
-  return <Band items={items} tail={tail} />;
+  if (filled) {
+    return <Band items={items} tail={tail} fitting={fitting} lead="mt-1.5" />;
+  }
+  return (
+    <>
+      <Lead />
+      <Band items={items} tail={tail} fitting={fitting} lead="mt-auto" />
+    </>
+  );
 }

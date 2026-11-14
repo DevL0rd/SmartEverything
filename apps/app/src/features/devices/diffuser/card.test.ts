@@ -52,7 +52,6 @@ vi.mock('./light-sheet', () => ({ LightSheetButton: stub('LightSheetButton') }))
 vi.mock('./rhythm-strip', () => ({ RhythmStrip: stub('RhythmStrip') }));
 vi.mock('./spray-button', () => ({ SprayButton: stub('SprayButton') }));
 vi.mock('./strength-control', () => ({ StrengthMenuButton: stub('StrengthMenuButton') }));
-vi.mock('./turn-on-button', () => ({ TurnOnButton: stub('TurnOnButton') }));
 vi.mock('./use-diffuser', () => ({
   useDiffuserRead: (): DiffuserRead | null => world.read,
   useDiffuserSchedule: (): null => null,
@@ -115,8 +114,16 @@ describe('the Diffuser card keeps one composition at every tier', () => {
     expect(renderToStaticMarkup(createElement('b', null, card.ticker))).toContain('ReasonLine');
   });
 
-  it('turns on from the band when off and offers power when faulted', () => {
-    expect(kindsOf(render({ ...ON, power: 'off' }, 'm').actions)).toEqual(['TurnOnButton']);
+  it.each(['m', 'xl'] as const)('keeps every scenting action while off at %s', (cls) => {
+    expect(kindsOf(render({ ...ON, power: 'off' }, cls).actions)).toEqual([
+      'SprayButton',
+      'StrengthMenuButton',
+      'LightSheetButton',
+      'PowerToggle',
+    ]);
+  });
+
+  it('offers power when faulted', () => {
     expect(kindsOf(render({ ...ON, fault: true }, 'w').actions)).toEqual(['PowerToggle']);
   });
 

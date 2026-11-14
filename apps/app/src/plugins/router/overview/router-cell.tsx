@@ -6,7 +6,7 @@ import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
 import { useMinute } from '../../../store/clock';
 import type { Device } from '../../../store/state';
-import { WideCard, WideFigure, type WideClass } from '../../../features/devices';
+import { WideCard, WideFigure, type WideClass, type WideFrame } from '../../../features/devices';
 import { CellGate, type CellCopy } from '../../shared/cell-gate';
 import { CellGraphSlot } from '../../shared/cell-graph';
 import { LiveCell } from '../../shared/cell-live';
@@ -165,9 +165,19 @@ interface CellBodyProps {
   readonly last: SpeedTestResult | null;
   readonly live: boolean;
   readonly owner: boolean;
+  readonly frame: WideFrame;
 }
 
-function CellBody({ device, cls, snapshot, run, last, live, owner }: CellBodyProps): ReactNode {
+function CellBody({
+  device,
+  cls,
+  snapshot,
+  run,
+  last,
+  live,
+  owner,
+  frame,
+}: CellBodyProps): ReactNode {
   const now = useMinute();
   const cell = routerCellOf(snapshot, run, last, now);
   const actions = useCellActions({ device, cls, cell, owner });
@@ -180,6 +190,7 @@ function CellBody({ device, cls, snapshot, run, last, live, owner }: CellBodyPro
   );
   return (
     <WideCard
+      frame={frame}
       cls={cls}
       summary={cell.spoken}
       title={device.label}
@@ -223,7 +234,7 @@ export function RouterCellFace({
     >
       {(snapshot, owner) => (
         <LiveCell>
-          {(live) => (
+          {(live, frame) => (
             <>
               {live ? <RouterHold device={device} snapshot={snapshot} /> : null}
               <CellBody
@@ -234,6 +245,7 @@ export function RouterCellFace({
                 last={last}
                 live={live}
                 owner={owner}
+                frame={frame}
               />
             </>
           )}

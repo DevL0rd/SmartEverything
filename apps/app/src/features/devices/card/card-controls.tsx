@@ -22,7 +22,7 @@ import { poweredOffReason } from '../controls/guard';
 import { primaryControlsOf } from '../controls/primary-controls';
 import { LEVEL_ROLES, cardControls, settingControls } from '../model/card-facts';
 import { columnCount, controlColumnMin } from '../model/control-columns';
-import { powerStateOf, useDeviceModel } from '../model/device-model';
+import { powerGatesCommands, powerStateOf, useDeviceModel } from '../model/device-model';
 import { useRemotes } from '../remote/remote-section';
 import { LevelControl } from '../faces/level-control';
 import { Facts } from './card-parts';
@@ -177,7 +177,7 @@ export function useControlCandidates(device: Device): ControlCandidates {
   const read = useDeviceDerived(
     device.id,
     (values): PlanRead => ({
-      off: powerStateOf(model, values) === 'off',
+      off: powerGatesCommands(model) && powerStateOf(model, values) === 'off',
       primary: primaryControlsOf(model, values, NONE),
     }),
     [model],

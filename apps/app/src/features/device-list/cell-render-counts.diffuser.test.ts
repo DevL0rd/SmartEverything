@@ -92,10 +92,14 @@ describe('scent diffuser states', () => {
     mounted.unmount();
   });
 
-  it('offers Turn on when it is off and keeps the setting it will use', () => {
+  it('keeps Spray now and the strength while it is off', () => {
     const mounted = mountFace(OFF, 'M');
     const tree = mounted.tree();
-    expect(tree).toContain('accessibilityLabel="Turn on"');
+    expect(tree).toContain(
+      'accessibilityLabel="Spray now" accessibilityRole="button" accessibilityState={disabled:false}',
+    );
+    expect(tree).toContain('accessibilityLabel="Strength: Medium"');
+    expect(tree).toContain('accessibilityLabel="Turn on Device 0"');
     expect(tree).toContain('Off. Medium · every 15 min · 4 s.');
     mounted.unmount();
   });

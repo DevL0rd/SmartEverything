@@ -66,17 +66,17 @@ function Labelled({
   labels,
   inlineLabelWrap,
   inlineLabel,
+  stepperWidth,
   children,
 }: {
   readonly presented: PresentedCapability;
   readonly labels: LabelMode;
   readonly inlineLabelWrap: boolean;
   readonly inlineLabel: string | undefined;
+  readonly stepperWidth: number;
   readonly children: ReactNode;
 }): ReactNode {
-  const stepperWidth = useStepperWidth();
-  const compact = useCompactBand();
-  if (labels === 'caption' || compact) {
+  if (labels === 'caption') {
     return children;
   }
   return (
@@ -312,9 +312,10 @@ export function CompactControl({
     <Guard reason={reason}>
       <Labelled
         presented={presented}
-        labels={inline ? 'inline' : 'caption'}
+        labels={inline && !compact ? 'inline' : 'caption'}
         inlineLabelWrap={inlineLabelWrap}
         inlineLabel={inlineLabel}
+        stepperWidth={stepperWidth}
       >
         <Body
           device={device}

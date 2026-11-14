@@ -2,7 +2,7 @@ import type { SyncthingSnapshot } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../components/text';
-import { WideCard, WideFigure, type WideClass } from '../../../features/devices';
+import { WideCard, WideFigure, type WideClass, type WideFrame } from '../../../features/devices';
 import { decimal } from '../../../format/number';
 import { useMinute } from '../../../store/clock';
 import type { Device } from '../../../store/state';
@@ -138,6 +138,7 @@ interface BodyProps {
   readonly snapshot: SyncthingSnapshot;
   readonly live: boolean;
   readonly owner: boolean;
+  readonly frame: WideFrame;
 }
 
 function Medallion({
@@ -198,7 +199,7 @@ function StateLine({ cell }: { readonly cell: SyncCell }): ReactNode {
   );
 }
 
-function CellBody({ device, cls, snapshot, live, owner }: BodyProps): ReactNode {
+function CellBody({ device, cls, snapshot, live, owner, frame }: BodyProps): ReactNode {
   const now = useMinute();
   const activity = useSyncActivity();
   const cell = syncCellOf(snapshot, now);
@@ -206,6 +207,7 @@ function CellBody({ device, cls, snapshot, live, owner }: BodyProps): ReactNode 
   const file = activity.state === 'ready' ? lastFileLine(activity.value, now) : null;
   return (
     <WideCard
+      frame={frame}
       cls={cls}
       summary={cell.spoken}
       title={device.label}
@@ -246,10 +248,17 @@ export function SyncCellFace({
     >
       {(snapshot, owner) => (
         <LiveCell>
-          {(live) => (
+          {(live, frame) => (
             <>
               {live ? <SyncHold device={device} snapshot={snapshot} /> : null}
-              <CellBody device={device} cls={cls} snapshot={snapshot} live={live} owner={owner} />
+              <CellBody
+                device={device}
+                cls={cls}
+                snapshot={snapshot}
+                live={live}
+                owner={owner}
+                frame={frame}
+              />
             </>
           )}
         </LiveCell>

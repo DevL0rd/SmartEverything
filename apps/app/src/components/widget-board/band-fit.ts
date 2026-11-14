@@ -9,6 +9,12 @@ export interface BandFit {
   readonly compactBelow: number | null;
 }
 
+export interface BandLayout {
+  readonly width: number;
+  readonly height: number;
+  readonly row: number;
+}
+
 export const BAND_FIT_START: BandFit = { width: 0, compactBelow: null };
 
 export function oneRowBand(cls: FrameClass | null): boolean {
@@ -19,14 +25,11 @@ export function isCompact(fit: BandFit): boolean {
   return fit.compactBelow !== null && fit.width < fit.compactBelow;
 }
 
-export function bandFitAfter(
-  fit: BandFit,
-  layout: { readonly width: number; readonly height: number; readonly row: number },
-): BandFit {
+export function bandFitAfter(fit: BandFit, layout: BandLayout): BandFit {
   const wraps = layout.height > layout.row + BAND_GAP_PX;
   const next = { ...fit, width: layout.width };
   if (!isCompact(next) && wraps) {
     return { width: layout.width, compactBelow: layout.width + 1 };
   }
-  return next.width === fit.width ? fit : next;
+  return fit.compactBelow === null || next.width === fit.width ? fit : next;
 }

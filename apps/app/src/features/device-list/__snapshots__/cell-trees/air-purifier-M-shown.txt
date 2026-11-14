@@ -2,7 +2,7 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
   View className="flex-1 flex-row gap-3" onLayout=undefined pointerEvents="box-none" ref={current:null}
     View className="shrink-0 items-center justify-center self-start" pointerEvents="none" style={width:96,height:96}
       View aria-hidden=true className="shrink-0 size-24" pointerEvents="none"
-    View className="min-w-0 flex-1 gap-1.5" pointerEvents="box-none"
+    View className="min-w-0 flex-1" pointerEvents="box-none"
       View accessibilityLabel="Device 0, Room 0. Moderate air. PM2.5 40. Filter 70 percent" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
         Text className="font-sans-medium text-body text-on-surface text-left min-w-0" numberOfLines=1 selectable=false
         Text className="font-sans text-footnote text-warning text-left" numberOfLines=1 selectable=false
@@ -12,22 +12,24 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
               Svg.Path d="M40 0H42A4 4 0 0 1 46 4V4A4 4 0 0 1 42 8H40A4 4 0 0 1 36 4V4A4 4 0 0 1 40 0Z" fill="#1ad8bd"
               Svg.Path d="M4 0H6A4 4 0 0 1 10 4V4A4 4 0 0 1 6 8H4A4 4 0 0 1 0 4V4A4 4 0 0 1 4 0ZM16 0H18A4 4 0 0 1 22 4V4A4 4 0 0 1 18 8H16A4 4 0 0 1 12 4V4A4 4 0 0 1 16 0ZM28 0H30A4 4 0 0 1 34 4V4A4 4 0 0 1 30 8H28A4 4 0 0 1 24 4V4A4 4 0 0 1 28 0Z" fill="#8dfa7a"
             Text className="font-sans-medium text-caption text-on-surface-variant text-left tabular" selectable=false
-      View aria-hidden=true className="min-h-0 min-w-0 flex-1 justify-end" onLayout=undefined pointerEvents="none"
-        View className="min-h-0 flex-1 justify-end" onLayout=fn
-          View className="flex-row items-center gap-3"
-            View accessibilityLabel="PM2.5 40" accessibilityRole="image" accessible=true className="items-center justify-center" style={width:52,height:52}
-              Svg.default height=52 pointerEvents="none" style={position:"absolute",left:0,right:0,top:0,bottom:0} width=52
-                Svg.Path d="M9.03 42.97 A24 24 0 0 1 3.97 35.53" fill="none" stroke="#85db67" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
-                Svg.Path d="M3.97 35.53 A24 24 0 0 1 3.27 18.30" fill="none" stroke="#27360c" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
-                Svg.Path d="M3.27 18.30 A24 24 0 0 1 12.14 6.41" fill="none" stroke="#7b0f77" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
-                Svg.Path d="M12.14 6.41 A24 24 0 0 1 42.97 42.97" fill="none" stroke="#2275b6" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
-                Anim.created animatedProps={} d="M9.03 42.97 A24 24 0 1 1 42.97 42.97" fill="none" stroke="#85db67" strokeDasharray="113.09733552923254 113.09733552923254" strokeLinecap="round" strokeWidth=4
-              Text className="font-sans-medium text-body text-on-surface text-left" selectable=false
-            View className="min-w-0 flex-1"
-              View aria-hidden=true className="w-full items-center justify-center" style={height:32}
-                View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
-                Text className="font-sans-medium text-caption text-on-surface-variant text-left rounded-xs bg-surface-1 px-2" numberOfLines=1 selectable=false
-      View pointerEvents="none"
-      View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" pointerEvents="box-none"
+      View className="min-h-0 min-w-0 flex-1 overflow-hidden" onLayout=fn pointerEvents="none"
+        View aria-hidden=true className="shrink-0 grow justify-end pt-1.5 opacity-0" onLayout=fn
+          View className="min-h-0 flex-1 justify-end" onLayout=fn
+            View className="flex-row items-center gap-3"
+              View accessibilityLabel="PM2.5 40" accessibilityRole="image" accessible=true className="items-center justify-center" style={width:52,height:52}
+                Svg.default height=52 pointerEvents="none" style={position:"absolute",left:0,right:0,top:0,bottom:0} width=52
+                  Svg.Path d="M9.03 42.97 A24 24 0 0 1 3.97 35.53" fill="none" stroke="#85db67" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
+                  Svg.Path d="M3.97 35.53 A24 24 0 0 1 3.27 18.30" fill="none" stroke="#27360c" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
+                  Svg.Path d="M3.27 18.30 A24 24 0 0 1 12.14 6.41" fill="none" stroke="#7b0f77" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
+                  Svg.Path d="M12.14 6.41 A24 24 0 0 1 42.97 42.97" fill="none" stroke="#2275b6" strokeLinecap="butt" strokeOpacity=0.28 strokeWidth=4
+                  Anim.created animatedProps={} d="M9.03 42.97 A24 24 0 1 1 42.97 42.97" fill="none" stroke="#85db67" strokeDasharray="113.09733552923254 113.09733552923254" strokeLinecap="round" strokeWidth=4
+                Text className="font-sans-medium text-body text-on-surface text-left" selectable=false
+              View className="min-w-0 flex-1"
+                View aria-hidden=true className="w-full items-center justify-center" style={height:32}
+                  View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
+                  Text className="font-sans-medium text-caption text-on-surface-variant text-left rounded-xs bg-surface-1 px-2" numberOfLines=1 selectable=false
+      View className="min-h-0 shrink overflow-hidden" onLayout=fn pointerEvents="none"
+        View className="shrink-0 pt-1.5 opacity-0" onLayout=fn
+      View className="mt-1.5 flex-row flex-wrap items-center justify-end gap-2" onLayout=fn pointerEvents="box-none"
         Pressable accessibilityHint=undefined accessibilityLabel="Turn off Device 0" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#33d8e7",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 size-control-h items-center justify-center rounded-full bg-primary" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn ref=undefined
         Pressable accessibilityHint="Purifier mode" accessibilityLabel="Auto" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full bg-primary-container" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn ref={current:null}

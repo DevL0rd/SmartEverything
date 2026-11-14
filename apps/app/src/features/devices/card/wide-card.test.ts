@@ -211,9 +211,26 @@ describe('the wide card geometry', () => {
     expect(parentOf(band)).toBe(content);
     expect(content.children.at(-1)).toBe(band);
     expect(band.children).toHaveLength(9);
-    for (const name of ['mt-auto', 'justify-end', 'flex-wrap', 'flex-row']) {
+    for (const name of ['mt-1.5', 'justify-end', 'flex-wrap', 'flex-row']) {
       expect(classOf(band)).toContain(name);
     }
+    expect(content.children.some((child) => classOf(child).split(' ').includes('flex-1'))).toBe(
+      true,
+    );
+  });
+
+  it('pushes the band down with a lead when nothing above it fills the lane', () => {
+    const root = treeOf(html('m', { actions: [mark('action-0')] }));
+    const band = parentOf(slot(root, 'action-0'));
+    const content = lane(root);
+    expect(classOf(band)).toContain('mt-auto');
+    expect(classOf(content.children.at(-2) ?? band)).toBe('h-1.5');
+    expect(content.children.at(-1)).toBe(band);
+  });
+
+  it('keeps the lead below the content when there are no actions', () => {
+    const content = lane(treeOf(html('m', { graph: mark('graph') })));
+    expect(classOf(content.children.at(-1) ?? content)).toBe('h-1.5');
   });
 
   it('places the graph beside the info in the wide class and below it elsewhere', () => {

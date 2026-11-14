@@ -30,6 +30,12 @@ function powerOf(presentation: DevicePresentation): PresentedCapability | null {
     : null;
 }
 
+const POWER_INDEPENDENT: ReadonlySet<DeviceFamily> = new Set(['diffuser']);
+
+export function powerGatesCommands(model: DeviceModel): boolean {
+  return !POWER_INDEPENDENT.has(model.family);
+}
+
 const models = new WeakMap<Device, DeviceModel>();
 
 export function deviceModelOf(device: Device): DeviceModel {

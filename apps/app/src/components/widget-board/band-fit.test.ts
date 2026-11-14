@@ -20,6 +20,10 @@ describe('bandFitAfter', () => {
     expect(isCompact(fit)).toBe(false);
   });
 
+  it('keeps the same fit while the band has never wrapped', () => {
+    expect(bandFitAfter(BAND_FIT_START, { width: 240, height: 48, row: ROW })).toBe(BAND_FIT_START);
+  });
+
   it('turns compact when the full band wraps onto a second row', () => {
     const fit = bandFitAfter(BAND_FIT_START, { width: 240, height: 104, row: ROW });
     expect(isCompact(fit)).toBe(true);

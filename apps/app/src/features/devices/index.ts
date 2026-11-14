@@ -54,6 +54,7 @@ export {
   useWideArt,
   wideClassOf,
   type WideClass,
+  type WideFrame,
 } from './card/wide-card';
 export { AddApplianceScreen } from './appliance/add-appliance-screen';
 export { SETTINGS as DEVICE_SETTINGS } from './settings';

@@ -1,14 +1,15 @@
-import { useState, type ReactNode, type RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import type { FrameClass } from '../../../components/widget-board';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
-import { ActionBand } from '../../../components/widget-board/action-band';
+import { FittedActionBand } from '../../../components/widget-board/action-band';
 import { FigureText } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { cn } from '../../../design/cn';
 import type { VisualPx } from '../../device-visuals';
-import { LogSlot, useLogFit, type LogFit } from './wide-log';
+import { useCardFit, type CardFitting, type SlotFit } from './card-fit';
+import { LogSlot, type LogFit } from './wide-log';
 
 export type WideClass = 'm' | 'w' | 'l' | 'xl';
 
@@ -155,86 +156,98 @@ export function WideArt({
   );
 }
 
-const ROUNDING_PX = 0.5;
+function shown(node: ReactNode): boolean {
+  return node !== undefined && node !== null;
+}
+
+function GraphBody({
+  graph,
+  slot,
+}: {
+  readonly graph: ReactNode;
+  readonly slot: SlotFit;
+}): ReactNode {
+  return (
+    <View
+      className={cn('shrink-0 grow justify-end pt-1.5', !slot.fits && 'opacity-0')}
+      aria-hidden
+      onLayout={slot.onNeed}
+    >
+      {graph}
+    </View>
+  );
+}
+
+function TickerBody({
+  ticker,
+  slot,
+}: {
+  readonly ticker: ReactNode;
+  readonly slot: SlotFit;
+}): ReactNode {
+  return (
+    <View className={cn('shrink-0 pt-1.5', !slot.fits && 'opacity-0')} onLayout={slot.onNeed}>
+      {ticker}
+    </View>
+  );
+}
 
 function Graph({
   graph,
   beside,
+  slot,
   onLayout,
 }: {
   readonly graph: ReactNode;
   readonly beside: boolean;
+  readonly slot: SlotFit;
   readonly onLayout?: ((event: LayoutChangeEvent) => void) | undefined;
 }): ReactNode {
-  const [room, setRoom] = useState<number | null>(null);
-  const [need, setNeed] = useState<number | null>(null);
-  if (graph === undefined || graph === null) {
+  if (!shown(graph)) {
     return null;
   }
-  const fits = room !== null && need !== null && need <= room + ROUNDING_PX;
   return (
     <View
       className={cn('min-h-0 min-w-0 flex-1 overflow-hidden', beside && 'self-stretch')}
-      aria-hidden
       pointerEvents="none"
       onLayout={(event) => {
-        setRoom(heightOf(event));
+        slot.onRoom(event);
         onLayout?.(event);
       }}
     >
-      <View
-        className={cn('shrink-0 grow justify-end pt-1.5', !fits && 'opacity-0')}
-        onLayout={(event) => {
-          setNeed(heightOf(event));
-        }}
-      >
-        {graph}
-      </View>
+      <GraphBody graph={graph} slot={slot} />
     </View>
   );
 }
 
-function TickerSlot({ ticker }: { readonly ticker: ReactNode }): ReactNode {
-  const [room, setRoom] = useState<number | null>(null);
-  const [need, setNeed] = useState<number | null>(null);
-  const fits = room !== null && need !== null && need <= room + ROUNDING_PX;
+function TickerSlot({
+  ticker,
+  slot,
+}: {
+  readonly ticker: ReactNode;
+  readonly slot: SlotFit;
+}): ReactNode {
   return (
-    <View
-      className="min-h-0 shrink overflow-hidden"
-      pointerEvents="none"
-      onLayout={(event) => {
-        setRoom(heightOf(event));
-      }}
-    >
-      <View
-        className={cn('shrink-0 pt-1.5', !fits && 'opacity-0')}
-        onLayout={(event) => {
-          setNeed(heightOf(event));
-        }}
-      >
-        {ticker}
-      </View>
+    <View className="min-h-0 shrink overflow-hidden" pointerEvents="none" onLayout={slot.onRoom}>
+      <TickerBody ticker={ticker} slot={slot} />
     </View>
   );
-}
-
-function heightOf(event: LayoutChangeEvent): number {
-  return event.nativeEvent.layout.height;
 }
 
 interface Measured {
   readonly fit: LogFit | undefined;
+  readonly slot: SlotFit;
 }
 
 function roomOf(fit: LogFit | undefined): ((event: LayoutChangeEvent) => void) | undefined {
   return fit === undefined
     ? undefined
     : (event): void => {
-        fit.onSlack(heightOf(event));
+        fit.onSlack(event.nativeEvent.layout.height);
       };
 }
 
-function Spare({ fit }: Measured): ReactNode {
+function Spare({ fit }: Pick<Measured, 'fit'>): ReactNode {
   const room = roomOf(fit);
   return room === undefined ? null : <View className="min-h-0 flex-1" onLayout={room} />;
 }
@@ -246,14 +259,14 @@ function Beside(props: WideCardProps & Measured): ReactNode {
         <Info {...props} />
         <Spare fit={props.fit} />
       </View>
-      <Graph graph={props.graph} beside />
+      <Graph graph={props.graph} beside slot={props.slot} />
     </View>
   );
 }
 
 function Stacked(props: WideCardProps & Measured): ReactNode {
-  const { graph, fit } = props;
-  if (graph === undefined || graph === null) {
+  const { graph, fit, slot } = props;
+  if (!shown(graph)) {
     return (
       <>
         <Info {...props} />
@@ -264,27 +277,32 @@ function Stacked(props: WideCardProps & Measured): ReactNode {
   return (
     <>
       <Info {...props} />
-      <Graph graph={graph} beside={false} onLayout={roomOf(fit)} />
+      <Graph graph={graph} beside={false} slot={slot} onLayout={roomOf(fit)} />
     </>
   );
 }
 
-function Content(props: WideCardProps): ReactNode {
-  const { cls, log, ticker } = props;
-  const fit = useLogFit();
-  const logged = log !== undefined && log !== null;
-  const measured = logged ? fit : undefined;
+function Content(props: WideCardProps & { readonly fitting: CardFitting }): ReactNode {
+  const { cls, log, ticker, fitting } = props;
+  const logged = shown(log);
+  const measured = logged ? fitting.log : undefined;
   return (
     <>
-      {cls === 'w' ? <Beside {...props} fit={measured} /> : <Stacked {...props} fit={measured} />}
-      {logged ? <LogSlot log={log} fit={fit} /> : null}
-      {ticker === undefined || ticker === null ? null : <TickerSlot ticker={ticker} />}
+      {cls === 'w' ? (
+        <Beside {...props} fit={measured} slot={fitting.graph} />
+      ) : (
+        <Stacked {...props} fit={measured} slot={fitting.graph} />
+      )}
+      {logged ? <LogSlot log={log} fit={fitting.log} /> : null}
+      {shown(ticker) ? <TickerSlot ticker={ticker} slot={fitting.ticker} /> : null}
     </>
   );
 }
 
 export function WideCard(props: WideCardProps): ReactNode {
   const { cls, frame } = props;
+  const fitting = useCardFit(cls);
+  const filled = cls === 'w' || shown(props.graph) || shown(props.log);
   return (
     <View
       ref={frame?.ref}
@@ -294,9 +312,10 @@ export function WideCard(props: WideCardProps): ReactNode {
     >
       <WideArt cls={cls}>{props.visual}</WideArt>
       <View className="min-w-0 flex-1" pointerEvents="box-none">
-        <Content {...props} />
-        <View className="h-1.5" />
-        <ActionBand>{props.actions}</ActionBand>
+        <Content {...props} fitting={fitting} />
+        <FittedActionBand fitting={fitting.band} filled={filled}>
+          {props.actions}
+        </FittedActionBand>
       </View>
     </View>
   );

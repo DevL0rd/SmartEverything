@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import { useAnchoredMenu } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
-import { WideCard, WideFigure, type WideClass } from '../../../features/devices';
+import { WideCard, WideFigure, type WideClass, type WideFrame } from '../../../features/devices';
 import { count } from '../../../format/number';
 import { useMinute } from '../../../store/clock';
 import type { Device } from '../../../store/state';
@@ -137,6 +137,7 @@ interface BodyProps {
   readonly snapshot: AdGuardSnapshot;
   readonly live: boolean;
   readonly owner: boolean;
+  readonly frame: WideFrame;
 }
 
 function figuresOf(cell: AdGuardCell, device: Device, live: boolean): readonly ReactNode[] {
@@ -240,12 +241,13 @@ function StateLine({ cell }: { readonly cell: AdGuardCell }): ReactNode {
   );
 }
 
-function CellBody({ device, cls, snapshot, live, owner }: BodyProps): ReactNode {
+function CellBody({ device, cls, snapshot, live, owner, frame }: BodyProps): ReactNode {
   const now = useMinute();
   const cell = adguardCellOf(snapshot, now);
   const actions = useCellActions(device, cls, cell, owner);
   return (
     <WideCard
+      frame={frame}
       cls={cls}
       summary={cell.spoken}
       title={device.label}
@@ -287,10 +289,17 @@ export function AdGuardCellFace({
     >
       {(snapshot, owner) => (
         <LiveCell>
-          {(live) => (
+          {(live, frame) => (
             <>
               {live ? <AdGuardHold device={device} snapshot={snapshot} /> : null}
-              <CellBody device={device} cls={cls} snapshot={snapshot} live={live} owner={owner} />
+              <CellBody
+                device={device}
+                cls={cls}
+                snapshot={snapshot}
+                live={live}
+                owner={owner}
+                frame={frame}
+              />
             </>
           )}
         </LiveCell>

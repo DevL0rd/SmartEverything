@@ -1,4 +1,4 @@
-import { useReducer, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 
 const ROUNDING_PX = 0.5;
@@ -58,22 +58,6 @@ export interface LogFit {
   readonly onSlack: (px: number) => void;
   readonly onNeed: (event: LayoutChangeEvent) => void;
   readonly onGot: (event: LayoutChangeEvent) => void;
-}
-
-export function useLogFit(): LogFit {
-  const [room, measure] = useReducer(logRoomAfter, LOG_ROOM_START);
-  return {
-    stage: room.stage,
-    onSlack: (px): void => {
-      measure({ kind: 'slack', px });
-    },
-    onNeed: (event): void => {
-      measure({ kind: 'need', px: event.nativeEvent.layout.height });
-    },
-    onGot: (event): void => {
-      measure({ kind: 'got', px: event.nativeEvent.layout.height });
-    },
-  };
 }
 
 const PROBE = { height: 0 } as const;

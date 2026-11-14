@@ -3,7 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
-import { useBandHitSlop, useCompactBand } from './widget-board/band-context';
+import { bandHitSlop, useBand } from './widget-board/band-context';
 import { Icon, type IconName } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
@@ -120,9 +120,10 @@ function useButtonShape(
   hasIcon: boolean,
   size: FrameInput['size'],
   wrap: boolean,
-): { readonly iconOnly: boolean; readonly hitSlop: ReturnType<typeof useBandHitSlop> } {
-  const iconOnly = useCompactBand() && hasIcon;
-  return { iconOnly, hitSlop: useBandHitSlop(iconOnly || controlShaped(size, wrap)) };
+): { readonly iconOnly: boolean; readonly hitSlop: number | undefined } {
+  const band = useBand();
+  const iconOnly = band?.compact === true && hasIcon;
+  return { iconOnly, hitSlop: bandHitSlop(band, iconOnly || controlShaped(size, wrap)) };
 }
 
 function Leading({

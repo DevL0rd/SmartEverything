@@ -1,23 +1,19 @@
 import { useRef, type ReactNode } from 'react';
-import { View } from 'react-native';
+import type { View } from 'react-native';
 import { useVisibleLive } from '../../design/use-visible-live';
+import type { WideFrame } from '../../features/devices';
+
+function useLiveFrame(): { readonly live: boolean; readonly frame: WideFrame } {
+  const ref = useRef<View>(null);
+  const { live, onLayout } = useVisibleLive(ref);
+  return { live, frame: { ref, onLayout } };
+}
 
 export function LiveCell({
   children,
 }: {
-  readonly children: (live: boolean) => ReactNode;
+  readonly children: (live: boolean, frame: WideFrame) => ReactNode;
 }): ReactNode {
-  const frame = useRef<View>(null);
-  const { live, onLayout } = useVisibleLive(frame);
-  return (
-    <View
-      ref={frame}
-      onLayout={onLayout}
-      collapsable={false}
-      className="flex-1"
-      pointerEvents="box-none"
-    >
-      {children(live)}
-    </View>
-  );
+  const { live, frame } = useLiveFrame();
+  return children(live, frame);
 }

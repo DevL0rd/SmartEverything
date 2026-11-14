@@ -29,7 +29,6 @@ import { LightSheetButton } from './light-sheet';
 import { RhythmStrip } from './rhythm-strip';
 import { SprayButton } from './spray-button';
 import { StrengthMenuButton } from './strength-control';
-import { TurnOnButton } from './turn-on-button';
 import { useDiffuserRead, useDiffuserSchedule, useHoursSinceRefill } from './use-diffuser';
 
 const STRIP_PX: Readonly<Record<WideClass, number>> = { m: 16, w: 28, l: 48, xl: 48 };
@@ -40,9 +39,6 @@ function actionsOf(device: Device, read: DiffuserRead): readonly ReactNode[] {
   }
   if (read.fault) {
     return [<PowerToggle key="power" device={device} />];
-  }
-  if (read.power === 'off') {
-    return [<TurnOnButton key="on" device={device} />];
   }
   return [
     <SprayButton key="spray" device={device} />,

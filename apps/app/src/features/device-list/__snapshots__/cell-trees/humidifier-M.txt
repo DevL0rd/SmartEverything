@@ -2,7 +2,7 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
   View className="flex-1 flex-row gap-3" onLayout=undefined pointerEvents="box-none" ref={current:null}
     View className="shrink-0 items-center justify-center self-start" pointerEvents="none" style={width:96,height:96}
       View aria-hidden=true className="shrink-0 size-24" pointerEvents="none"
-    View className="min-w-0 flex-1 gap-1.5" pointerEvents="box-none"
+    View className="min-w-0 flex-1" pointerEvents="box-none"
       View accessibilityLabel="Device 0, Room 0. 40 % humidity · target 55 %. Water 70 percent" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
         Text className="font-sans-medium text-body text-on-surface text-left min-w-0" numberOfLines=1 selectable=false
         Text className="font-sans text-footnote text-primary text-left" numberOfLines=1 selectable=false
@@ -12,27 +12,28 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
               Svg.Path d="M40 0H42A4 4 0 0 1 46 4V4A4 4 0 0 1 42 8H40A4 4 0 0 1 36 4V4A4 4 0 0 1 40 0Z" fill="#1ad8bd"
               Svg.Path d="M4 0H6A4 4 0 0 1 10 4V4A4 4 0 0 1 6 8H4A4 4 0 0 1 0 4V4A4 4 0 0 1 4 0ZM16 0H18A4 4 0 0 1 22 4V4A4 4 0 0 1 18 8H16A4 4 0 0 1 12 4V4A4 4 0 0 1 16 0ZM28 0H30A4 4 0 0 1 34 4V4A4 4 0 0 1 30 8H28A4 4 0 0 1 24 4V4A4 4 0 0 1 28 0Z" fill="#8dfa7a"
             Text className="font-sans-medium text-caption text-on-surface-variant text-left tabular" selectable=false
-      View aria-hidden=true className="min-h-0 min-w-0 flex-1 justify-end" onLayout=undefined pointerEvents="none"
-        View className="min-h-0 flex-1 justify-end" onLayout=fn
-          View className="flex-row items-center gap-3"
-            View accessibilityLabel="Humidity 40 %" accessibilityRole="image" accessible=true className="items-center justify-center" style={width:52,height:52}
-              Svg.default aria-hidden=true height=52 pointerEvents="none" style={position:"absolute",left:0,right:0,top:0,bottom:0} width=52
-                Svg.Path d="M26.00 3.00 A23 23 0 1 1 26.00 49.00 A23 23 0 1 1 26.00 3.00" fill="none" stroke="#07b490" strokeLinecap="round" strokeOpacity=1 strokeWidth=6
-                Anim.created animatedProps={} d="M26.00 3.00 A23 23 0 1 1 26.00 49.00 A23 23 0 1 1 26.00 3.00" fill="none" stroke="#c5b9a0" strokeDasharray="144.51326206513048 144.51326206513048" strokeLinecap="round" strokeWidth=6
-                Svg.Path d="M19.85 48.16 A23 23 0 0 1 17.95 47.54" fill="none" stroke="#ce9792" strokeLinecap="round" strokeOpacity=1 strokeWidth=10
-              Text className="font-sans-medium text-label text-on-surface text-left" selectable=false
-            View className="min-w-0 flex-1"
-              View aria-hidden=true className="w-full items-center justify-center" style={height:32}
-                View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
-                Text className="font-sans-medium text-caption text-on-surface-variant text-left rounded-xs bg-surface-1 px-2" numberOfLines=1 selectable=false
-      View pointerEvents="none"
-      View className="mt-auto flex-row flex-wrap items-center justify-end gap-2" pointerEvents="box-none"
+      View className="min-h-0 min-w-0 flex-1 overflow-hidden" onLayout=fn pointerEvents="none"
+        View aria-hidden=true className="shrink-0 grow justify-end pt-1.5 opacity-0" onLayout=fn
+          View className="min-h-0 flex-1 justify-end" onLayout=fn
+            View className="flex-row items-center gap-3"
+              View accessibilityLabel="Humidity 40 %" accessibilityRole="image" accessible=true className="items-center justify-center" style={width:52,height:52}
+                Svg.default aria-hidden=true height=52 pointerEvents="none" style={position:"absolute",left:0,right:0,top:0,bottom:0} width=52
+                  Svg.Path d="M26.00 3.00 A23 23 0 1 1 26.00 49.00 A23 23 0 1 1 26.00 3.00" fill="none" stroke="#07b490" strokeLinecap="round" strokeOpacity=1 strokeWidth=6
+                  Anim.created animatedProps={} d="M26.00 3.00 A23 23 0 1 1 26.00 49.00 A23 23 0 1 1 26.00 3.00" fill="none" stroke="#c5b9a0" strokeDasharray="144.51326206513048 144.51326206513048" strokeLinecap="round" strokeWidth=6
+                  Svg.Path d="M19.85 48.16 A23 23 0 0 1 17.95 47.54" fill="none" stroke="#ce9792" strokeLinecap="round" strokeOpacity=1 strokeWidth=10
+                Text className="font-sans-medium text-label text-on-surface text-left" selectable=false
+              View className="min-w-0 flex-1"
+                View aria-hidden=true className="w-full items-center justify-center" style={height:32}
+                  View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
+                  Text className="font-sans-medium text-caption text-on-surface-variant text-left rounded-xs bg-surface-1 px-2" numberOfLines=1 selectable=false
+      View className="min-h-0 shrink overflow-hidden" onLayout=fn pointerEvents="none"
+        View className="shrink-0 pt-1.5 opacity-0" onLayout=fn
+      View className="mt-1.5 flex-row flex-wrap items-center justify-end gap-2" onLayout=fn pointerEvents="box-none"
         Pressable accessibilityHint=undefined accessibilityLabel="Turn off Device 0" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#33d8e7",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 size-control-h items-center justify-center rounded-full bg-primary" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn ref=undefined
-        View className="min-h-touch-min flex-row items-center gap-3"
-          Text className="font-sans text-callout text-on-surface-variant text-left shrink w-2/5" numberOfLines=1 selectable=false
-          View className="min-w-0 items-end flex-1" style=undefined
-            View className="w-full gap-1.5"
-              View accessibilityActions=[{name:"increment"},{name:"decrement"}] accessibilityLabel="Target humidity" accessibilityRole="adjustable" accessibilityState={disabled:false} accessibilityValue={min:0,max:100,now:55,text:"55%"} accessible=true aria-valuenow=55 aria-valuetext="55%" className="max-w-full flex-row items-center gap-1 self-start rounded-full bg-surface-2" onAccessibilityAction=fn
-                Pressable accessibilityHint=undefined accessibilityLabel="Decrease Target humidity" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 size-control-h items-center justify-center rounded-full" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn ref=undefined
-                Text className="font-sans-medium text-body text-on-surface text-center min-w-10 shrink tabular" numberOfLines=1 selectable=false
-                Pressable accessibilityHint=undefined accessibilityLabel="Increase Target humidity" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 size-control-h items-center justify-center rounded-full" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn ref=undefined
+        View className="gap-1.5"
+          View className="flex-row items-center justify-between gap-3"
+            Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+          View accessibilityActions=[{name:"increment"},{name:"decrement"}] accessibilityLabel="Target humidity" accessibilityRole="adjustable" accessibilityState={disabled:false} accessibilityValue={min:0,max:100,now:55,text:"55%"} accessible=true aria-valuenow=55 aria-valuetext="55%" className="max-w-full flex-row items-center gap-1 self-start rounded-full bg-surface-2" onAccessibilityAction=fn
+            Pressable accessibilityHint=undefined accessibilityLabel="Decrease Target humidity" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 size-control-h items-center justify-center rounded-full" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn ref=undefined
+            Text className="font-sans-medium text-body text-on-surface text-center min-w-10 shrink tabular" numberOfLines=1 selectable=false
+            Pressable accessibilityHint=undefined accessibilityLabel="Increase Target humidity" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#ce9792",foreground:true} aria-checked=undefined aria-controls=undefined aria-expanded=undefined aria-selected=undefined className="overflow-hidden native:focus:outline-2 native:focus:outline-focus web:focus-visible:outline-2 web:focus-visible:outline-focus native:focus:outline-offset-2 web:focus-visible:outline-offset-2 size-control-h items-center justify-center rounded-full" disabled=false hitSlop=undefined onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn ref=undefined

@@ -1,7 +1,5 @@
 import { createContext, use } from 'react';
-import { useIdiom } from '../../design/platform';
-import { useThemeSetting } from '../../design/theme';
-import { controlHitSlop } from '../../design/tokens';
+import { controlHitSlop, type Density, type Idiom } from '../../design/tokens';
 
 export interface Band {
   readonly slop: number | undefined;
@@ -12,8 +10,8 @@ const InBand = createContext<Band | null>(null);
 
 export const BandMember = InBand;
 
-export function useBandValue(compact: boolean): Band {
-  const slop = controlHitSlop(useIdiom(), useThemeSetting('density'));
+export function bandValueOf(idiom: Idiom, density: Density, compact: boolean): Band {
+  const slop = controlHitSlop(idiom, density);
   return { slop: slop > 0 ? slop : undefined, compact };
 }
 
