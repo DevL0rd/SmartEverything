@@ -4,6 +4,7 @@ import type { Store } from '../../store/store';
 import { bound, type Routes } from '../router';
 import { driveAlbumRoutes } from './drive-albums';
 import { refusing } from './drive-errors';
+import { driveGrantRoutes } from './drive-grants';
 import { driveLibraryRoutes } from './drive-library';
 import { actorOf, callerOf, type DriveServices } from './drive-services';
 import { driveStorageRoutes } from './drive-storage';
@@ -42,11 +43,13 @@ export function driveRoutes(
 ): ReturnType<typeof driveReadRoutes> &
   ReturnType<typeof driveLibraryRoutes> &
   ReturnType<typeof driveAlbumRoutes> &
+  ReturnType<typeof driveGrantRoutes> &
   ReturnType<typeof driveStorageRoutes> {
   return {
     ...driveReadRoutes(store, services),
     ...driveLibraryRoutes(store, services),
     ...driveAlbumRoutes(store, services),
+    ...driveGrantRoutes(store, services.grants),
     ...driveStorageRoutes(store, services),
   };
 }

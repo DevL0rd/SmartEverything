@@ -2,15 +2,16 @@ import { z } from 'zod';
 import { DRIVE_ALBUM, DRIVE_ALBUM_SCOPES, DRIVE_ALBUM_SURFACES } from '../drive/album';
 import { DRIVE_CHANGE, DRIVE_CHANGE_RESULT } from '../drive/change';
 import {
-  DRIVE_HOST_FOLDERS,
-  DRIVE_HOST_FOLDERS_QUERY,
-  DRIVE_VOLUME_ENTRY,
-} from '../drive/host-folders';
+  DRIVE_GRANT,
+  DRIVE_GRANT_SET,
+  DRIVE_SHARED_BY_ME_ENTRY,
+  DRIVE_SHARED_WITH_ME_ENTRY,
+} from '../drive/grant';
 import { DRIVE_ITEM } from '../drive/item';
 import { DRIVE_PLACEMENT, DRIVE_PLACEMENT_SET } from '../drive/placement';
 import { DRIVE_QUERY, DRIVE_QUERY_PAGE, DRIVE_SORT_FIELDS } from '../drive/query';
 import { DRIVE_RECENT_FILTERS, DRIVE_RECENT_PAGE } from '../drive/recent';
-import { DRIVE_ROOT, DRIVE_ROOT_SCOPES } from '../drive/root';
+import { DRIVE_ROOT } from '../drive/root';
 import { SMART_RULE } from '../drive/smart-rule';
 import { DRIVE_STATS } from '../drive/stats';
 import { DRIVE_TRASH_ENTRY } from '../drive/trash';
@@ -45,49 +46,10 @@ const TITLE = z.string().trim().min(1);
 
 const PATTERNS = z.array(z.string().min(1)).readonly();
 
-export const DRIVE_ROOT_ADD = z
-  .strictObject({
-    kind: z.enum(['folder', 'volume']),
-    path: z.string().min(1),
-    label: TITLE,
-    scope: z.enum(DRIVE_ROOT_SCOPES),
-    ownerProfileId: ID.nullable(),
-    readOnly: z.boolean(),
-    versions: z.boolean(),
-    inPhotos: z.boolean(),
-    skipPatterns: PATTERNS,
-    includeHidden: z.boolean(),
-  })
-  .superRefine((root, context) => {
-    if ((root.scope === 'person') !== (root.ownerProfileId !== null)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'a person root needs an owner and a home root has none',
-        path: ['ownerProfileId'],
-      });
-    }
-    if (root.readOnly && root.versions) {
-      context.addIssue({
-        code: 'custom',
-        message: 'a read-only root keeps no versions because the hub never writes there',
-        path: ['versions'],
-      });
-    }
-  })
-  .readonly();
-
-export type DriveRootAdd = z.infer<typeof DRIVE_ROOT_ADD>;
-
 export const DRIVE_ROOT_CHANGE = somethingToChange({
-  label: TITLE,
-  readOnly: z.boolean(),
   versions: z.boolean(),
-  inPhotos: z.boolean(),
   skipPatterns: PATTERNS,
   includeHidden: z.boolean(),
-  synced: z.boolean(),
-  ignorePatterns: PATTERNS,
-  conflictCopies: z.boolean(),
 });
 
 export type DriveRootChange = z.infer<typeof DRIVE_ROOT_CHANGE>;
@@ -164,6 +126,7 @@ export const DRIVE_ALBUM_CHANGE = somethingToChange({
 export type DriveAlbumChange = z.infer<typeof DRIVE_ALBUM_CHANGE>;
 
 const ROOT_PARAMS = z.strictObject({ rootId: ID });
+const GRANT_PARAMS = z.strictObject({ grantId: ID });
 
 const PLACEMENT_PARAMS = z.strictObject({ placementId: ID });
 export const DRIVE_ITEM_PARAMS = z.strictObject({ itemId: ID });
@@ -179,77 +142,39 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/roots',
     access: 'member',
-    summary: 'Every library folder the caller may see, with its state, size and health',
+    summary:
+      'The drives the caller can open: their own and the Shared Drive, with state, size and health',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
     response: z.array(DRIVE_ROOT),
   }),
-  addRoot: endpoint({
-    method: 'POST',
-    path: '/api/drive/roots',
-    access: 'owner',
-    summary: 'Add a folder or disk on the hub as a library folder',
-    params: NOTHING,
-    query: NOTHING,
-    body: DRIVE_ROOT_ADD,
-    response: DRIVE_ROOT,
-  }),
   updateRoot: endpoint({
     method: 'PATCH',
     path: '/api/drive/roots/:rootId',
-    access: 'owner',
-    summary: 'Change a library folder: label, read-only, versions, Photos, skip and sync patterns',
+    access: 'member',
+    summary: 'Change a drive: versions, skip patterns and whether hidden files are indexed',
     params: ROOT_PARAMS,
     query: NOTHING,
     body: DRIVE_ROOT_CHANGE,
     response: DRIVE_ROOT,
   }),
-  removeRoot: endpoint({
-    method: 'DELETE',
-    path: '/api/drive/roots/:rootId',
-    access: 'owner',
-    summary: 'Stop indexing a library folder; the files on disk stay',
-    params: ROOT_PARAMS,
-    query: NOTHING,
-    body: NO_BODY,
-    response: DONE,
-  }),
   scanRoot: endpoint({
     method: 'POST',
     path: '/api/drive/roots/:rootId/scan',
-    access: 'owner',
-    summary: 'Re-read a library folder from disk now',
+    access: 'member',
+    summary: 'Re-read a drive from disk now',
     params: ROOT_PARAMS,
     query: NOTHING,
     body: NO_BODY,
     response: DONE,
-  }),
-  listVolumes: endpoint({
-    method: 'GET',
-    path: '/api/drive/volumes',
-    access: 'owner',
-    summary: 'The disks mounted on the hub with their size and free space',
-    params: NOTHING,
-    query: NOTHING,
-    body: NO_BODY,
-    response: z.array(DRIVE_VOLUME_ENTRY),
-  }),
-  listHostFolders: endpoint({
-    method: 'GET',
-    path: '/api/drive/host-folders',
-    access: 'owner',
-    summary: 'The folders inside the hub host disks, one level at a time; no path lists the disks',
-    params: NOTHING,
-    query: DRIVE_HOST_FOLDERS_QUERY,
-    body: NO_BODY,
-    response: DRIVE_HOST_FOLDERS,
   }),
   listPlacements: endpoint({
     method: 'GET',
     path: '/api/drive/placements',
     access: 'member',
-    summary: 'The folders placed on computers, each synced or mounted only, with live status',
+    summary:
+      'The folders of drives placed on the caller’s computers, each synced or mounted, with live status',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -260,7 +185,7 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     path: '/api/drive/placements',
     access: 'member',
     summary:
-      'Place a library folder or one of its folders on a computer, or change its mode, path or enabled',
+      'Place a drive or one of its folders on a computer, synced or mounted, or change its mode, path, enabled state or sync settings',
     params: NOTHING,
     query: NOTHING,
     body: DRIVE_PLACEMENT_SET,
@@ -280,7 +205,7 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/browse',
     access: 'member',
-    summary: 'One page of the files and folders inside a library folder or one of its folders',
+    summary: 'One page of the files and folders inside a drive or one of its folders',
     params: NOTHING,
     query: DRIVE_BROWSE_QUERY,
     body: NO_BODY,
@@ -344,7 +269,8 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/stats',
     access: 'member',
-    summary: 'How much the library holds by kind, folder and disk, and how it grows',
+    summary:
+      'How much the caller’s drives hold by kind and folder, the data disk space, and how it grows',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -359,6 +285,58 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     query: DRIVE_ROOT_PAGE_QUERY,
     body: NO_BODY,
     response: pageOf(DRIVE_DUPLICATE_GROUP),
+  }),
+  listGrants: endpoint({
+    method: 'GET',
+    path: '/api/drive/items/:itemId/grants',
+    access: 'member',
+    summary: 'The people a file or folder is shared with, and what each may do',
+    params: DRIVE_ITEM_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: z.array(DRIVE_GRANT),
+  }),
+  setGrant: endpoint({
+    method: 'PUT',
+    path: '/api/drive/grants',
+    access: 'member',
+    summary:
+      'Share a file or folder of the caller’s drive with a person to view or edit, or change that',
+    params: NOTHING,
+    query: NOTHING,
+    body: DRIVE_GRANT_SET,
+    response: DRIVE_GRANT,
+  }),
+  removeGrant: endpoint({
+    method: 'DELETE',
+    path: '/api/drive/grants/:grantId',
+    access: 'member',
+    summary: 'Stop sharing a file or folder with a person',
+    params: GRANT_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: DONE,
+  }),
+  listSharedWithMe: endpoint({
+    method: 'GET',
+    path: '/api/drive/shared-with-me',
+    access: 'member',
+    summary:
+      'Files and folders other people shared with the caller, with the role and who shared, one page at a time',
+    params: NOTHING,
+    query: CURSOR_QUERY,
+    body: NO_BODY,
+    response: pageOf(DRIVE_SHARED_WITH_ME_ENTRY),
+  }),
+  listSharedByMe: endpoint({
+    method: 'GET',
+    path: '/api/drive/shared-by-me',
+    access: 'member',
+    summary: 'Files and folders the caller shared, with their people and links, one page at a time',
+    params: NOTHING,
+    query: CURSOR_QUERY,
+    body: NO_BODY,
+    response: pageOf(DRIVE_SHARED_BY_ME_ENTRY),
   }),
   listAlbums: endpoint({
     method: 'GET',

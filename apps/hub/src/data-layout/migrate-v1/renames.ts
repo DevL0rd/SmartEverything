@@ -93,7 +93,6 @@ const NAMED_MOVES: readonly (readonly [string, string])[] = [
   [parentOf(L.recordings), parentOf(V.recordings)],
   [parentOf(L.provider), parentOf(V.provider)],
   [parentOf(L.plugin), parentOf(V.plugin)],
-  [parentOf(L.driveMeta), parentOf(V.driveMeta)],
   [L.backups.releases, V.backups.releases],
 ];
 

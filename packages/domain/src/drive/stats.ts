@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DRIVE_DATA_SPACE } from './root';
 import { SMART_RULE_ITEM_KINDS } from './smart-rule';
 
 const ID = z.uuid();
@@ -37,20 +38,6 @@ export const DRIVE_STATS_DAY = z
   .strictObject({ day: DAY, items: COUNT, bytes: COUNT, added: COUNT, removed: COUNT })
   .readonly();
 
-export const DRIVE_STATS_VOLUME = z
-  .strictObject({
-    mountId: z.string().min(1),
-    rootIds: z.array(ID).min(1).readonly(),
-    totalBytes: COUNT,
-    freeBytes: COUNT,
-    fullInMonths: z.number().nonnegative().nullable(),
-  })
-  .refine((volume) => volume.freeBytes <= volume.totalBytes, {
-    message: 'free space cannot exceed the volume size',
-    path: ['freeBytes'],
-  })
-  .readonly();
-
 export const DRIVE_STATS_PURGE = z
   .strictObject({ month: MONTH, trashBytes: COUNT, versionBytes: COUNT })
   .readonly();
@@ -65,7 +52,8 @@ export const DRIVE_STATS = z
     trashBytes: COUNT,
     kinds: z.array(DRIVE_STATS_KIND).readonly(),
     roots: z.array(DRIVE_STATS_ROOT).readonly(),
-    volumes: z.array(DRIVE_STATS_VOLUME).readonly(),
+    space: DRIVE_DATA_SPACE,
+    fullInMonths: z.number().nonnegative().nullable(),
     purges: z.array(DRIVE_STATS_PURGE).readonly(),
     growth: z.array(DRIVE_STATS_DAY).readonly().nullable(),
   })

@@ -1,8 +1,8 @@
 import { assertPhotosFolderPrepared } from '../../photos/folder-migration';
-import type { DriveRoot } from '@smarteverything/domain';
 import { finishCommitFromDisk } from '../../drive/changes';
-import { physicalRoot, recoverIntents } from '../../drive/intents';
-import { ensureManagedRoots } from '../../drive/managed-roots';
+import { recoverIntents } from '../../drive/intents';
+import { ensureDrives } from '../../drive/spaces';
+import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { sweepOrphanVersionsAtStart } from '../../drive/versions';
 import type { RawRoute } from '../http-server';
 import { driveRoutes } from './drive';
@@ -17,10 +17,10 @@ export interface RunningDrive {
   readonly stop: () => Promise<void>;
 }
 
-async function onlineWritable(deps: DriveDeps, runtime: DriveRuntime): Promise<DriveRoot[]> {
-  const online: DriveRoot[] = [];
+async function onlineDrives(deps: DriveDeps, runtime: DriveRuntime): Promise<StoredDrive[]> {
+  const online: StoredDrive[] = [];
   for (const root of deps.store.driveRoots.list()) {
-    if (root.path !== null && !root.readOnly && (await runtime.availability(root)) === 'online') {
+    if ((await runtime.availability(root)) === 'online') {
       online.push(root);
     }
   }
@@ -28,7 +28,7 @@ async function onlineWritable(deps: DriveDeps, runtime: DriveRuntime): Promise<D
 }
 
 async function recoverFiles(deps: DriveDeps, runtime: DriveRuntime): Promise<void> {
-  const roots = (await onlineWritable(deps, runtime)).map(physicalRoot);
+  const roots = await onlineDrives(deps, runtime);
   const report = await recoverIntents(
     { ...runtime.env, finishCommit: finishCommitFromDisk(runtime.env) },
     roots,
@@ -49,8 +49,8 @@ class RootFollower {
     private readonly runtime: DriveRuntime,
   ) {}
 
-  async watch(root: DriveRoot): Promise<void> {
-    if (root.path === null || this.watched.has(root.id)) return;
+  async watch(root: StoredDrive): Promise<void> {
+    if (this.watched.has(root.id)) return;
     this.watched.add(root.id);
     if ((await this.runtime.availability(root)) === 'online') this.runtime.watchers.start(root);
     else this.runtime.queue.enqueue({ kind: 'scan', rootId: root.id });
@@ -64,12 +64,8 @@ class RootFollower {
     const { store } = this.deps;
     return store.feed.subscribe((change) => {
       if (change.table === 'profiles' && change.operation !== 'DELETE') {
-        this.later('drive.managed_roots_failed', () => this.ensureManaged());
+        this.later('drive.spaces_failed', () => this.ensureSpaces());
       } else if (change.table === 'drive_roots') {
-        if (change.operation === 'INSERT' && change.record?.kind !== 'managed') {
-          const { record } = change;
-          if (record !== null) this.later('drive.root_watch_failed', () => this.watch(record));
-        }
         if (change.operation === 'DELETE' && change.oldRecord !== null) {
           this.watched.delete(change.oldRecord.id);
           this.runtime.watchers.stop(change.oldRecord.id);
@@ -78,9 +74,9 @@ class RootFollower {
     });
   }
 
-  async ensureManaged(): Promise<void> {
+  async ensureSpaces(): Promise<void> {
     const { store, layout } = this.deps;
-    for (const root of await ensureManagedRoots(store, layout, store.profiles.list())) {
+    for (const root of await ensureDrives(store, layout, store.profiles.list())) {
       await this.watch(root);
     }
   }
@@ -100,7 +96,7 @@ export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
   assertPhotosFolderPrepared(deps.store.context.sql);
   const runtime = createDrive(deps);
   const follower = new RootFollower(deps, runtime);
-  await ensureManagedRoots(deps.store, deps.layout, deps.store.profiles.list());
+  await ensureDrives(deps.store, deps.layout, deps.store.profiles.list());
   await recoverFiles(deps, runtime);
   runtime.media.start();
   runtime.purge.start();

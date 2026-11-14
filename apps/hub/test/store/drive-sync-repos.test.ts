@@ -1,4 +1,4 @@
-import type { DriveRoot } from '@smarteverything/domain';
+import type { DrivePlacementStatus } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StoreContext, StoreNotFoundError } from '../../src/store/context';
@@ -9,12 +9,11 @@ import {
   driveRepositories,
   type DriveRepositories,
 } from '../../src/store/repositories/areas/drive';
-import { ClientsRepository } from '../../src/store/repositories/clients';
 import { blockHashAt, packBlockHashes } from '../../src/store/repositories/drive-blocks';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql, StoreConflictError } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { drivePathOf, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -26,44 +25,9 @@ let context: StoreContext;
 let repositories: DriveRepositories;
 let clock = NOW;
 let robin: string;
-let phone: string;
-let laptop: string;
 
 function id(index: number): string {
   return `0f000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
-}
-
-function root(): DriveRoot {
-  return {
-    id: ROOT,
-    kind: 'folder',
-    label: 'Home',
-    scope: 'home',
-    ownerProfileId: null,
-    path: '/srv/home',
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: 'index-home',
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
 }
 
 function addItem(index: number, sha256: string | null): string {
@@ -83,6 +47,7 @@ function addItem(index: number, sha256: string | null): string {
       modifiedAt: NOW,
       addedAt: NOW,
       starred: false,
+      shared: false,
       outside: false,
       addedByProfileId: null,
       remoteId: null,
@@ -99,23 +64,15 @@ beforeEach(() => {
   const log = testLogger();
   context = new StoreContext(new Sql(database), new ChangeFeed(log), () => new Date(clock));
   migrate(new Sql(database), MIGRATIONS, NOW, log);
-  repositories = driveRepositories(context);
+  repositories = driveRepositories(context, drivePathOf);
   robin = new ProfilesRepository(context).create({ name: 'Robin' }).id;
-  const clients = new ClientsRepository(context);
-  phone = clients.create({ name: 'Phone', platform: 'android', role: 'member', tokenHash: 'p' }).id;
-  laptop = clients.create({
-    name: 'Laptop',
-    platform: 'desktop',
-    role: 'member',
-    tokenHash: 'l',
-  }).id;
   database
     .prepare(
       `insert into devices (id, provider, external_id, kind, name, model, manufacturer, created_at, updated_at)
         values (?, 'xiaomi', 'e1', 'light', 'Lamp', 'm', 'v', ?, ?)`,
     )
     .run(DEVICE, NOW, NOW);
-  repositories.driveRoots.insert(root());
+  repositories.driveRoots.insert(sharedDriveRoot(ROOT));
 });
 
 afterEach(() => {
@@ -278,99 +235,225 @@ describe('blocks', () => {
   });
 });
 
-describe('sync clients', () => {
-  const owner = (): { deviceId: string; profileId: string } => ({
+const PLACEMENT = '0c000000-0000-4000-8000-0000000000a1';
+const OTHER_PLACEMENT = '0c000000-0000-4000-8000-0000000000a2';
+
+function status(fields: Partial<DrivePlacementStatus> = {}): DrivePlacementStatus {
+  return {
+    state: 'starting',
+    tier: null,
+    basicLimits: null,
+    readOnly: false,
+    route: null,
+    cacheBytes: 0,
+    pinnedBytes: 0,
+    openFiles: 0,
+    pendingUploads: 0,
+    needBytes: 0,
+    lastSyncedAt: null,
+    errors: [],
+    reason: null,
+    reportedAt: NOW,
+    ...fields,
+  };
+}
+
+describe('placements', () => {
+  const synced = {
+    id: PLACEMENT,
     deviceId: DEVICE,
-    profileId: robin,
-  });
+    rootId: ROOT,
+    folderItemId: null,
+    mode: 'synced',
+    localPath: '/home/robin/Drive',
+    enabled: true,
+    createdBy: '',
+    excluded: ['Videos'],
+    ignorePatterns: ['*.tmp'],
+    conflictCopies: true,
+    status: status(),
+  } as const;
 
-  it('creates a client row and updates only its choices afterwards', () => {
-    const clients = repositories.driveSyncClients;
-    const created = clients.set(
-      { clientId: phone, rootId: ROOT, enabled: true, selected: ['Photos'] },
-      owner(),
-    );
+  it('stores sync settings on a synced placement and none on a mounted one', () => {
+    const placements = repositories.drivePlacements;
+    const created = placements.insert({ ...synced, createdBy: robin });
     expect(created).toMatchObject({
-      enabled: true,
-      selected: ['Photos'],
-      lastSeq: 0,
-      lastSeenAt: null,
-      needBytes: 0,
-      errors: [],
+      mode: 'synced',
+      folderItemId: null,
+      excluded: ['Videos'],
+      ignorePatterns: ['*.tmp'],
+      conflictCopies: true,
     });
-    clients.report(phone, ROOT, { lastSeq: 7, needBytes: 99, errors: [] });
-    const changed = clients.set(
-      { clientId: phone, rootId: ROOT, enabled: false, selected: [] },
-      owner(),
-    );
-    expect(changed).toMatchObject({ enabled: false, selected: [], lastSeq: 7, needBytes: 99 });
+    const folder = addItem(1, null);
+    const mounted = placements.insert({
+      id: OTHER_PLACEMENT,
+      deviceId: DEVICE,
+      rootId: ROOT,
+      folderItemId: folder,
+      mode: 'mounted',
+      localPath: '/mnt/folder',
+      enabled: true,
+      createdBy: robin,
+      status: status(),
+    });
+    expect(mounted).not.toHaveProperty('excluded');
+    expect(mounted).not.toHaveProperty('conflictCopies');
   });
 
-  it('records the reported state with the time it was seen', () => {
-    const clients = repositories.driveSyncClients;
-    clients.set({ clientId: phone, rootId: ROOT, enabled: true, selected: [] }, owner());
-    clock = '2026-11-07T02:00:00.000Z';
-    const error = { relPath: 'a.txt', message: 'disk full', at: clock };
-    const reported = clients.report(phone, ROOT, { lastSeq: 3, needBytes: 5, errors: [error] });
-    expect(reported).toMatchObject({
-      lastSeq: 3,
-      needBytes: 5,
-      lastSeenAt: clock,
+  it('lets a synced placement point at one folder of the drive', () => {
+    const folder = addItem(1, null);
+    const created = repositories.drivePlacements.insert({
+      ...synced,
+      createdBy: robin,
+      folderItemId: folder,
+    });
+    expect(created.folderItemId).toBe(folder);
+    expect(repositories.drivePlacements.forFolder(folder)).toHaveLength(1);
+  });
+
+  it('refuses sync settings on a mounted placement and none on a synced one', () => {
+    const placements = repositories.drivePlacements;
+    expect(() => placements.insert({ ...synced, createdBy: robin, mode: 'mounted' })).toThrow(
+      StoreConflictError,
+    );
+    expect(() =>
+      placements.insert({
+        id: PLACEMENT,
+        deviceId: DEVICE,
+        rootId: ROOT,
+        folderItemId: null,
+        mode: 'synced',
+        localPath: '/home/robin/Drive',
+        enabled: true,
+        createdBy: robin,
+        status: status(),
+      }),
+    ).toThrow(StoreConflictError);
+  });
+
+  it('keeps one whole-drive placement per computer and drive', () => {
+    const placements = repositories.drivePlacements;
+    placements.insert({ ...synced, createdBy: robin });
+    expect(() =>
+      placements.insert({ ...synced, id: OTHER_PLACEMENT, createdBy: robin, localPath: '/other' }),
+    ).toThrow(StoreConflictError);
+  });
+
+  it('retargets between modes and replaces the sync settings', () => {
+    const placements = repositories.drivePlacements;
+    placements.insert({ ...synced, createdBy: robin });
+    const mounted = placements.retarget(PLACEMENT, {
+      mode: 'mounted',
+      localPath: '/mnt/drive',
+      enabled: true,
+      readOnly: true,
+    });
+    expect(mounted).not.toHaveProperty('excluded');
+    expect(mounted.status.readOnly).toBe(true);
+    const back = placements.retarget(PLACEMENT, {
+      mode: 'synced',
+      localPath: '/home/robin/Drive',
+      enabled: false,
+      readOnly: false,
+      excluded: [],
+      ignorePatterns: ['*.bak'],
+      conflictCopies: false,
+    });
+    expect(back).toMatchObject({
+      enabled: false,
+      excluded: [],
+      ignorePatterns: ['*.bak'],
+      conflictCopies: false,
+    });
+  });
+
+  it('records the sync numbers the computer reports', () => {
+    const placements = repositories.drivePlacements;
+    placements.insert({ ...synced, createdBy: robin });
+    const error = { relPath: 'a.txt', message: 'disk full', at: NOW };
+    const reported = placements.writeStatus(
+      PLACEMENT,
+      status({
+        state: 'syncing',
+        needBytes: 99,
+        lastSyncedAt: '2026-11-07T02:00:00.000Z',
+        errors: [error],
+      }),
+    );
+    expect(reported.status).toMatchObject({
+      state: 'syncing',
+      needBytes: 99,
+      lastSyncedAt: '2026-11-07T02:00:00.000Z',
       errors: [error],
     });
     expect(() =>
-      clients.report(phone, ROOT, {
-        lastSeq: 4,
-        needBytes: 0,
-        errors: [{ relPath: null, message: '', at: clock }],
-      }),
+      placements.writeStatus(
+        PLACEMENT,
+        status({ errors: [{ relPath: null, message: '', at: NOW }] }),
+      ),
     ).toThrow();
   });
 
-  it('lists by root and by client and removes one', () => {
-    const clients = repositories.driveSyncClients;
-    clients.set({ clientId: phone, rootId: ROOT, enabled: true, selected: [] }, owner());
-    clients.set({ clientId: laptop, rootId: ROOT, enabled: true, selected: [] }, owner());
-    expect(clients.forRoot(ROOT)).toHaveLength(2);
-    expect(clients.forClient(laptop).map((row) => row.clientId)).toEqual([laptop]);
-    clients.remove(laptop, ROOT);
-    expect(clients.find(laptop, ROOT)).toBeUndefined();
-    expect(() => {
-      clients.remove(laptop, ROOT);
-    }).toThrow(StoreNotFoundError);
-    expect(() => clients.report(laptop, ROOT, { lastSeq: 1, needBytes: 0, errors: [] })).toThrow(
-      StoreNotFoundError,
-    );
-  });
-
-  it('goes with its client or root', () => {
-    const clients = repositories.driveSyncClients;
-    clients.set({ clientId: phone, rootId: ROOT, enabled: true, selected: [] }, owner());
-    database.prepare('delete from clients where id = ?').run(phone);
-    expect(clients.forRoot(ROOT)).toEqual([]);
+  it('goes with its drive and takes its sync operations along', () => {
+    repositories.drivePlacements.insert({ ...synced, createdBy: robin });
+    repositories.driveSyncOps.remember(PLACEMENT, 'op-1', { status: 'accepted' });
+    database.prepare('delete from drive_roots where id = ?').run(ROOT);
+    expect(repositories.drivePlacements.find(PLACEMENT)).toBeUndefined();
+    expect(repositories.driveSyncOps.recall(PLACEMENT, 'op-1')).toBeUndefined();
   });
 });
 
 describe('sync operations', () => {
+  beforeEach(() => {
+    repositories.drivePlacements.insert({
+      id: PLACEMENT,
+      deviceId: DEVICE,
+      rootId: ROOT,
+      folderItemId: null,
+      mode: 'synced',
+      localPath: '/home/robin/Drive',
+      enabled: true,
+      createdBy: robin,
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: true,
+      status: status(),
+    });
+    repositories.drivePlacements.insert({
+      id: OTHER_PLACEMENT,
+      deviceId: DEVICE,
+      rootId: ROOT,
+      folderItemId: addItem(1, null),
+      mode: 'synced',
+      localPath: '/home/robin/Folder',
+      enabled: true,
+      createdBy: robin,
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: true,
+      status: status(),
+    });
+  });
+
   it('recalls a remembered result so a retry never applies twice', () => {
     const ops = repositories.driveSyncOps;
-    expect(ops.recall(phone, 'op-1')).toBeUndefined();
-    ops.remember(phone, 'op-1', { status: 'accepted', rev: 4 });
-    expect(ops.recall(phone, 'op-1')).toEqual({ status: 'accepted', rev: 4 });
-    expect(ops.recall(laptop, 'op-1')).toBeUndefined();
+    expect(ops.recall(PLACEMENT, 'op-1')).toBeUndefined();
+    ops.remember(PLACEMENT, 'op-1', { status: 'accepted', rev: 4 });
+    expect(ops.recall(PLACEMENT, 'op-1')).toEqual({ status: 'accepted', rev: 4 });
+    expect(ops.recall(OTHER_PLACEMENT, 'op-1')).toBeUndefined();
     expect(() => {
-      ops.remember(phone, 'op-1', { status: 'accepted', rev: 5 });
+      ops.remember(PLACEMENT, 'op-1', { status: 'accepted', rev: 5 });
     }).toThrow(StoreConflictError);
-    expect(ops.recall(phone, 'op-1')).toEqual({ status: 'accepted', rev: 4 });
+    expect(ops.recall(PLACEMENT, 'op-1')).toEqual({ status: 'accepted', rev: 4 });
   });
 
   it('forgets only operations older than the cutoff', () => {
     const ops = repositories.driveSyncOps;
-    ops.remember(phone, 'old', { status: 'accepted' });
+    ops.remember(PLACEMENT, 'old', { status: 'accepted' });
     clock = '2026-11-20T00:00:00.000Z';
-    ops.remember(phone, 'new', { status: 'accepted' });
+    ops.remember(PLACEMENT, 'new', { status: 'accepted' });
     expect(ops.forgetBefore('2026-11-10T00:00:00.000Z')).toBe(1);
-    expect(ops.recall(phone, 'old')).toBeUndefined();
-    expect(ops.recall(phone, 'new')).toBeDefined();
+    expect(ops.recall(PLACEMENT, 'old')).toBeUndefined();
+    expect(ops.recall(PLACEMENT, 'new')).toBeDefined();
   });
 });

@@ -5,9 +5,11 @@ import {
   type SmartRule,
 } from '@smarteverything/domain';
 import type { DriveAlbumsRepository } from '../store/repositories/drive-albums';
+import type { DriveGrantsRepository } from '../store/repositories/drive-grants';
 import type { DriveItemsRepository } from '../store/repositories/drive-items';
 import type { DriveRootsRepository } from '../store/repositories/drive-roots';
 import type { SqlParameters } from '../store/sql';
+import { albumVisibleTo, canRead, itemAccess, type DriveActor } from './access';
 import { compileSmartRule, SMART_ORDER_KEY } from './smart-sql-compile';
 
 export interface SmartStatement {
@@ -23,11 +25,6 @@ export interface SmartMemberRow {
 export interface SmartQueryRunner {
   rows(statement: SmartStatement): readonly SmartMemberRow[];
   count(statement: SmartStatement): number;
-}
-
-export interface AlbumViewer {
-  readonly profileId: string;
-  readonly owner: boolean;
 }
 
 export type AlbumCursor =
@@ -78,43 +75,49 @@ export interface DriveAlbumsDeps {
   readonly albums: DriveAlbumsRepository;
   readonly items: DriveItemsRepository;
   readonly roots: DriveRootsRepository;
+  readonly grants: DriveGrantsRepository;
   readonly runner: SmartQueryRunner;
   readonly newId: () => string;
   readonly now: () => string;
   readonly timeZone: string;
 }
 
-function reaches(album: DriveAlbum, viewer: AlbumViewer): boolean {
-  return viewer.owner || album.scope === 'home' || album.ownerProfileId === viewer.profileId;
-}
-
 function smartStatements(
   rule: SmartRule,
   album: DriveAlbum,
+  viewer: DriveActor | null,
   timeZone: string,
 ): { readonly where: string; readonly parameters: SqlParameters } {
-  const filter = compileSmartRule(rule, { ownerProfileId: album.ownerProfileId, timeZone });
+  const filter = compileSmartRule(rule, {
+    reachProfileId: album.scope === 'home' ? null : album.ownerProfileId,
+    starViewerId: viewer?.profileId ?? album.ownerProfileId,
+    timeZone,
+  });
   return { where: filter.text, parameters: filter.parameters };
+}
+
+function hasStarRule(rule: SmartRule): boolean {
+  return rule.rules.some((leaf) => leaf.kind === 'starred');
 }
 
 export class DriveAlbumsService {
   constructor(private readonly deps: DriveAlbumsDeps) {}
 
-  list(viewer: AlbumViewer, surface: DriveAlbumSurface): DriveAlbum[] {
-    return viewer.owner
-      ? this.deps.albums.list(surface)
-      : this.deps.albums.listVisibleTo(viewer.profileId, surface);
+  list(viewer: DriveActor, surface: DriveAlbumSurface): DriveAlbum[] {
+    return this.deps.albums
+      .listVisibleTo(viewer.profileId, surface)
+      .map((album) => this.viewedBy(album, viewer));
   }
 
-  get(id: string, viewer: AlbumViewer): DriveAlbum {
+  get(id: string, viewer: DriveActor): DriveAlbum {
     const album = this.deps.albums.byId(id);
-    if (!reaches(album, viewer)) {
+    if (!albumVisibleTo(viewer, album)) {
       throw new DriveAlbumAccessError(id);
     }
-    return album;
+    return this.viewedBy(album, viewer);
   }
 
-  create(input: NewAlbum, viewer: AlbumViewer): DriveAlbum {
+  create(input: NewAlbum, viewer: DriveActor): DriveAlbum {
     const now = this.deps.now();
     const base = {
       id: this.deps.newId(),
@@ -130,42 +133,42 @@ export class DriveAlbumsService {
         : { ...base, kind: input.kind };
     DRIVE_ALBUM.parse({ ...draft, itemCount: 0, createdAt: now, updatedAt: now });
     const created = this.deps.albums.insert(draft);
-    return created.kind === 'smart' ? this.refresh(created.id) : created;
+    return created.kind === 'smart' ? this.viewedBy(this.refresh(created.id), viewer) : created;
   }
 
-  rename(id: string, title: string, viewer: AlbumViewer): DriveAlbum {
+  rename(id: string, title: string, viewer: DriveActor): DriveAlbum {
     this.get(id, viewer);
     return this.deps.albums.update(id, { title });
   }
 
-  setRule(id: string, rule: SmartRule, viewer: AlbumViewer): DriveAlbum {
+  setRule(id: string, rule: SmartRule, viewer: DriveActor): DriveAlbum {
     this.get(id, viewer);
     this.deps.albums.update(id, { rule });
-    return this.refresh(id);
+    return this.viewedBy(this.refresh(id), viewer);
   }
 
-  setCover(id: string, itemId: string | null, viewer: AlbumViewer): DriveAlbum {
+  setCover(id: string, itemId: string | null, viewer: DriveActor): DriveAlbum {
     const album = this.get(id, viewer);
     if (itemId !== null) {
-      this.assertJoinable(album, itemId);
+      this.assertJoinable(album, itemId, viewer);
     }
     return this.deps.albums.update(id, { coverItemId: itemId });
   }
 
-  remove(id: string, viewer: AlbumViewer): void {
+  remove(id: string, viewer: DriveActor): void {
     this.get(id, viewer);
     this.deps.albums.remove(id);
   }
 
-  addItems(id: string, itemIds: readonly string[], viewer: AlbumViewer): DriveAlbum {
+  addItems(id: string, itemIds: readonly string[], viewer: DriveActor): DriveAlbum {
     const album = this.get(id, viewer);
     for (const itemId of itemIds) {
-      this.assertJoinable(album, itemId);
+      this.assertJoinable(album, itemId, viewer);
     }
     return this.deps.albums.addItems(id, itemIds);
   }
 
-  removeItems(id: string, itemIds: readonly string[], viewer: AlbumViewer): DriveAlbum {
+  removeItems(id: string, itemIds: readonly string[], viewer: DriveActor): DriveAlbum {
     this.get(id, viewer);
     return this.deps.albums.removeItems(id, itemIds);
   }
@@ -174,16 +177,16 @@ export class DriveAlbumsService {
     id: string,
     itemId: string,
     between: { readonly before: string | null; readonly after: string | null },
-    viewer: AlbumViewer,
+    viewer: DriveActor,
   ): DriveAlbum {
     this.get(id, viewer);
     return this.deps.albums.moveItem(id, itemId, between);
   }
 
-  members(id: string, viewer: AlbumViewer, cursor: AlbumCursor | null, limit: number): AlbumPage {
+  members(id: string, viewer: DriveActor, cursor: AlbumCursor | null, limit: number): AlbumPage {
     const album = this.get(id, viewer);
     return album.kind === 'smart'
-      ? this.smartMembers(album, album.rule, cursor, limit)
+      ? this.smartMembers(album, album.rule, viewer, { cursor, limit })
       : this.manualMembers(album, cursor, limit);
   }
 
@@ -202,8 +205,15 @@ export class DriveAlbumsService {
     }
   }
 
-  private count(album: DriveAlbum, rule: SmartRule): number {
-    const { where, parameters } = smartStatements(rule, album, this.deps.timeZone);
+  private viewedBy(album: DriveAlbum, viewer: DriveActor): DriveAlbum {
+    if (album.kind !== 'smart' || album.scope !== 'home' || !hasStarRule(album.rule)) {
+      return album;
+    }
+    return { ...album, itemCount: this.count(album, album.rule, viewer) };
+  }
+
+  private count(album: DriveAlbum, rule: SmartRule, viewer: DriveActor | null = null): number {
+    const { where, parameters } = smartStatements(rule, album, viewer, this.deps.timeZone);
     return this.deps.runner.count({
       text: `select count(*) as total from drive_items where ${where}`,
       parameters,
@@ -224,13 +234,14 @@ export class DriveAlbumsService {
   private smartMembers(
     album: DriveAlbum,
     rule: SmartRule,
-    cursor: AlbumCursor | null,
-    limit: number,
+    viewer: DriveActor,
+    page: { readonly cursor: AlbumCursor | null; readonly limit: number },
   ): AlbumPage {
+    const { cursor, limit } = page;
     if (cursor !== null && cursor.kind !== 'smart') {
       throw new DriveAlbumCursorError(album.id);
     }
-    const { where, parameters } = smartStatements(rule, album, this.deps.timeZone);
+    const { where, parameters } = smartStatements(rule, album, viewer, this.deps.timeZone);
     const after = cursor === null ? '' : `and (${SMART_ORDER_KEY}, id) < ($afterAt, $afterId)`;
     const rows = this.deps.runner.rows({
       text: `select id, ${SMART_ORDER_KEY} as at from drive_items
@@ -251,8 +262,8 @@ export class DriveAlbumsService {
     };
   }
 
-  private assertJoinable(album: DriveAlbum, itemId: string): void {
-    const item = this.deps.items.find(itemId);
+  private assertJoinable(album: DriveAlbum, itemId: string, viewer: DriveActor): void {
+    const item = this.deps.items.find(itemId, viewer.profileId);
     if (item === undefined) {
       throw new DriveAlbumItemError(itemId, 'missing');
     }
@@ -262,7 +273,15 @@ export class DriveAlbumsService {
     const root = this.deps.roots.byId(item.rootId);
     const reachable =
       root.scope === 'home' ||
-      (album.scope === 'person' && root.ownerProfileId === album.ownerProfileId);
+      (album.scope === 'person' &&
+        canRead(
+          itemAccess(
+            { driveGrants: this.deps.grants, driveItems: this.deps.items },
+            viewer,
+            root,
+            item,
+          ),
+        ));
     if (!reachable) {
       throw new DriveAlbumItemError(itemId, 'out-of-reach');
     }

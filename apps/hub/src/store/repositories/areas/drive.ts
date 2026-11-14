@@ -12,10 +12,12 @@ import { DriveIntentsRepository } from '../drive-intents';
 import { DriveItemsRepository } from '../drive-items';
 import { DrivePlacementsRepository } from '../drive-placements';
 import { DriveQuotasRepository } from '../drive-quotas';
-import { DriveRootsRepository } from '../drive-roots';
+import { DriveGrantsRepository } from '../drive-grants';
+import { DriveRootsRepository, type DrivePathOf } from '../drive-roots';
+import { DriveStarsRepository } from '../drive-stars';
 import { DriveScrubRepository } from '../drive-scrub';
 import { DriveSharesRepository } from '../drive-shares';
-import { DriveSyncClientsRepository, DriveSyncOpsRepository } from '../drive-sync';
+import { DriveSyncOpsRepository } from '../drive-sync';
 import { DriveTrashRepository } from '../drive-trash';
 import { DriveUploadsRepository } from '../drive-uploads';
 import { DriveVersionsRepository } from '../drive-versions';
@@ -37,16 +39,20 @@ export interface DriveRepositories {
   readonly driveBlocks: DriveBlocksRepository;
   readonly driveConflicts: DriveConflictsRepository;
   readonly drivePlacements: DrivePlacementsRepository;
-  readonly driveSyncClients: DriveSyncClientsRepository;
+  readonly driveGrants: DriveGrantsRepository;
+  readonly driveStars: DriveStarsRepository;
   readonly driveSyncOps: DriveSyncOpsRepository;
   readonly driveSearch: DriveSearch;
   readonly driveRecent: DriveRecentReader;
   readonly driveStats: DriveStatsReader;
 }
 
-export function driveRepositories(context: StoreContext): DriveRepositories {
+export function driveRepositories(
+  context: StoreContext,
+  drivePathOf: DrivePathOf,
+): DriveRepositories {
   return {
-    driveRoots: new DriveRootsRepository(context),
+    driveRoots: new DriveRootsRepository(context, drivePathOf),
     driveItems: new DriveItemsRepository(context),
     driveAlbums: new DriveAlbumsRepository(context),
     driveTrash: new DriveTrashRepository(context),
@@ -62,7 +68,8 @@ export function driveRepositories(context: StoreContext): DriveRepositories {
     driveBlocks: new DriveBlocksRepository(context),
     driveConflicts: new DriveConflictsRepository(context),
     drivePlacements: new DrivePlacementsRepository(context),
-    driveSyncClients: new DriveSyncClientsRepository(context),
+    driveGrants: new DriveGrantsRepository(context),
+    driveStars: new DriveStarsRepository(context),
     driveSyncOps: new DriveSyncOpsRepository(context),
     driveSearch: new DriveSearch(context),
     driveRecent: new DriveRecentReader(context),

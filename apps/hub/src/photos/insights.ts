@@ -4,7 +4,7 @@ import {
   type PhotoInsights,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
-import type { DriveActor } from '../drive/service-read';
+import type { DriveActor } from '../drive/access';
 import type { StoreContext } from '../store/context';
 import {
   CAMERA_ROW,
@@ -32,7 +32,6 @@ import {
   weekdayByHour,
   type InsightsContext,
 } from './insights-shapes';
-import type { Statement } from './timeline';
 import {
   FILTER_SQL,
   LOCAL_DAY,
@@ -42,7 +41,8 @@ import {
   PHOTO_SHOWN,
   dayRange,
   visibility,
-} from './timeline';
+  type Statement,
+} from './library';
 
 export const RAW_EXTENSIONS = [
   'dng',
@@ -176,7 +176,7 @@ export class InsightsReader {
            coalesce(sum(i.kind = 'video'), 0) as videos,
            coalesce(sum(case when i.kind = 'image' then i.bytes else 0 end), 0) as photo_bytes,
            coalesce(sum(case when i.kind = 'video' then i.bytes else 0 end), 0) as video_bytes
-         from ${PHOTO_FROM} where ${scope.where} group by r.id order by r.label, r.id`,
+         from ${PHOTO_FROM} where ${scope.where} group by r.id, r.scope order by r.scope, r.id`,
         scope.parameters,
       )
       .map((row) => ({

@@ -11,13 +11,10 @@ import {
   type DriveRoot,
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
+import type { StoredDrive } from '../store/repositories/drive-roots';
+import { canRead, driveAccess, itemAccess, type DriveActor } from './access';
 
 export const DRIVE_PAGE_SIZE = 200;
-
-export interface DriveActor {
-  readonly profileId: string;
-  readonly owner: boolean;
-}
 
 export interface BrowseRequest {
   readonly rootId: string;
@@ -38,7 +35,10 @@ export interface RecentRequest {
   readonly cursor?: string | undefined;
 }
 
-type ReadStore = Pick<Store, 'driveRoots' | 'driveItems' | 'driveAlbums' | 'driveFeed'>;
+type ReadStore = Pick<
+  Store,
+  'driveRoots' | 'driveItems' | 'driveAlbums' | 'driveFeed' | 'driveGrants'
+>;
 
 const ADDED_OPS: readonly DriveFeedOp[] = ['create'];
 const CHANGED_OPS: readonly DriveFeedOp[] = ['update', 'rename', 'move', 'restore'];
@@ -71,64 +71,77 @@ function cursorOf(cursor: string | undefined): number | null {
   return seq;
 }
 
-function rootHidden(): ApiError {
-  return new ApiError('not_found', 'There is no such library folder for this person.');
+function driveHidden(): ApiError {
+  return new ApiError('not_found', 'There is no such drive for this person.');
 }
 
-export function rootVisibleTo(actor: DriveActor, root: DriveRoot): boolean {
-  return actor.owner || root.scope === 'home' || root.ownerProfileId === actor.profileId;
+function itemHidden(): ApiError {
+  return new ApiError('not_found', 'There is no such file or folder.');
 }
 
-export function albumVisibleTo(actor: DriveActor, album: DriveAlbum): boolean {
-  return actor.owner || album.scope === 'home' || album.ownerProfileId === actor.profileId;
+function clientDrive(drive: StoredDrive): DriveRoot {
+  const { path: _path, ...root } = drive;
+  return root;
 }
 
 export class DriveReadService {
   constructor(private readonly store: ReadStore) {}
 
   listRoots(actor: DriveActor): DriveRoot[] {
-    return this.store.driveRoots.list().filter((root) => rootVisibleTo(actor, root));
+    return this.store.driveRoots
+      .list()
+      .filter((drive) => driveAccess(actor, drive) !== 'none')
+      .map(clientDrive);
   }
 
-  rootFor(actor: DriveActor, rootId: string): DriveRoot {
-    const root = this.store.driveRoots.find(rootId);
-    if (root === undefined || !rootVisibleTo(actor, root)) {
-      throw rootHidden();
+  rootFor(actor: DriveActor, rootId: string): StoredDrive {
+    const drive = this.store.driveRoots.find(rootId);
+    if (drive === undefined || driveAccess(actor, drive) === 'none') {
+      throw driveHidden();
     }
-    return root;
+    return drive;
+  }
+
+  rootOfItem(actor: DriveActor, item: DriveItem): StoredDrive {
+    const drive = this.store.driveRoots.find(item.rootId);
+    if (drive === undefined || !canRead(itemAccess(this.store, actor, drive, item))) {
+      throw itemHidden();
+    }
+    return drive;
   }
 
   readItem(actor: DriveActor, itemId: string): DriveItem {
-    const item = this.store.driveItems.find(itemId);
+    const item = this.store.driveItems.find(itemId, actor.profileId);
     if (item === undefined) {
-      throw new ApiError('not_found', 'There is no such file or folder.');
+      throw itemHidden();
     }
-    this.rootFor(actor, item.rootId);
+    this.rootOfItem(actor, item);
     return item;
   }
 
   browseFolder(actor: DriveActor, request: BrowseRequest): BrowsePage {
-    this.rootFor(actor, request.rootId);
     if (request.sortField !== undefined && !this.namedAscending(request)) {
       throw new ApiError(
         'invalid_request',
         'Folders can only be listed by name, ascending, for now.',
       );
     }
-    const folder = request.folderId === undefined ? null : this.folderOf(request);
-    const window = this.store.driveItems.children(
-      request.rootId,
-      folder?.id ?? null,
-      request.cursor ?? null,
-      DRIVE_PAGE_SIZE,
-    );
+    const folder = request.folderId === undefined ? null : this.folderOf(actor, request);
+    if (folder === null) {
+      this.rootFor(actor, request.rootId);
+    }
+    const window = this.store.driveItems.children({
+      rootId: request.rootId,
+      parentId: folder?.id ?? null,
+      after: request.cursor ?? null,
+      limit: DRIVE_PAGE_SIZE,
+      viewer: actor.profileId,
+    });
     return { folder, items: window.entries.map((entry) => entry.item), next: window.next };
   }
 
   listAlbums(actor: DriveActor, surface: DriveAlbumSurface): DriveAlbum[] {
-    return actor.owner
-      ? this.store.driveAlbums.list(surface)
-      : this.store.driveAlbums.listVisibleTo(actor.profileId, surface);
+    return this.store.driveAlbums.listVisibleTo(actor.profileId, surface);
   }
 
   readRecent(actor: DriveActor, request: RecentRequest): DriveRecentPage {
@@ -138,9 +151,13 @@ export class DriveReadService {
       DRIVE_PAGE_SIZE,
     );
     const entries = window.rows.flatMap((row): DriveRecentEntry[] => {
-      const item = this.store.driveItems.find(row.itemId);
-      const root = this.store.driveRoots.find(row.rootId);
-      if (item === undefined || root === undefined || !rootVisibleTo(actor, root)) {
+      const item = this.store.driveItems.find(row.itemId, actor.profileId);
+      const drive = this.store.driveRoots.find(row.rootId);
+      if (
+        item === undefined ||
+        drive === undefined ||
+        !canRead(itemAccess(this.store, actor, drive, item))
+      ) {
         return [];
       }
       return [
@@ -168,7 +185,7 @@ export class DriveReadService {
       limit: DRIVE_PAGE_SIZE,
     });
     const items = window.rows.map((row): DriveActivityEntry => {
-      const item = this.store.driveItems.find(row.itemId);
+      const item = this.store.driveItems.find(row.itemId, actor.profileId);
       return {
         row,
         item:
@@ -189,12 +206,15 @@ export class DriveReadService {
     return request.sortField === 'name' && request.sortDirection === 'asc';
   }
 
-  private folderOf(request: BrowseRequest): DriveItem {
+  private folderOf(actor: DriveActor, request: BrowseRequest): DriveItem {
     const folder =
-      request.folderId === undefined ? undefined : this.store.driveItems.find(request.folderId);
+      request.folderId === undefined
+        ? undefined
+        : this.store.driveItems.find(request.folderId, actor.profileId);
     if (folder?.kind !== 'folder' || folder.rootId !== request.rootId) {
-      throw new ApiError('not_found', 'There is no such folder in this library folder.');
+      throw new ApiError('not_found', 'There is no such folder in this drive.');
     }
+    this.rootOfItem(actor, folder);
     return folder;
   }
 }

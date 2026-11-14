@@ -1,10 +1,11 @@
-import type { DriveRoot } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DRIVE_PAGE_SIZE, DriveReadService, type DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
+import { DRIVE_PAGE_SIZE, DriveReadService } from '../../src/drive/service-read';
 import { readDriveSettings, updateDriveSettings } from '../../src/drive/settings';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { captureLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const HOME_ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -22,45 +23,11 @@ let ownerProfile: string;
 let memberProfile: string;
 let otherProfile: string;
 
-const health = {
-  hashedShare: 0,
-  verifiedShare: 0,
-  corrupt: 0,
-  lastScrubAt: null,
-  lastBackupAt: null,
-} as const;
-
-function managed(id: string, label: string, owner: string | null): DriveRoot {
-  return {
-    id,
-    kind: 'managed',
-    label,
-    scope: owner === null ? 'home' : 'person',
-    ownerProfileId: owner,
-    path: `/srv/${label}`,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${label}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health,
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
-
 const COMMON = {
   modifiedAt: NOW,
   addedAt: NOW,
   starred: false,
+  shared: false,
   outside: false,
   remoteId: null,
   remoteRev: null,
@@ -105,20 +72,20 @@ function document(id: string, rootId: string, name: string, parentId: string | n
   });
 }
 
-const asOwner = (): DriveActor => ({ profileId: ownerProfile, owner: true });
-const asMember = (): DriveActor => ({ profileId: memberProfile, owner: false });
+const asOwner = (): DriveActor => ({ profileId: ownerProfile });
+const asMember = (): DriveActor => ({ profileId: memberProfile });
 
 beforeEach(async () => {
   captureLogs();
-  opened = await testStore();
+  opened = await driveTestStore();
   const { store } = opened;
   ownerProfile = store.profiles.first().id;
   memberProfile = store.profiles.create({ name: 'Robin' }).id;
   otherProfile = store.profiles.create({ name: 'Ida' }).id;
-  store.driveRoots.insert(managed(HOME_ROOT, 'Shared', null));
-  store.driveRoots.insert(managed(OWNER_ROOT, 'Owner', ownerProfile));
-  store.driveRoots.insert(managed(MEMBER_ROOT, 'Robin', memberProfile));
-  store.driveRoots.insert(managed(OTHER_ROOT, 'Ida', otherProfile));
+  store.driveRoots.insert(sharedDriveRoot(HOME_ROOT));
+  store.driveRoots.insert(personalDriveRoot(OWNER_ROOT, ownerProfile));
+  store.driveRoots.insert(personalDriveRoot(MEMBER_ROOT, memberProfile));
+  store.driveRoots.insert(personalDriveRoot(OTHER_ROOT, otherProfile));
   folder(FOLDER, HOME_ROOT, 'Saved', null);
   document(FILE, HOME_ROOT, 'readme.txt', null);
   document(NESTED, HOME_ROOT, 'inside.txt', FOLDER);
@@ -131,24 +98,29 @@ afterEach(async () => {
 });
 
 describe('roots and items by scope', () => {
-  it('shows the owner every root', () => {
-    expect(service.listRoots(asOwner()).map((root) => root.label)).toEqual([
-      'Ida',
-      'Owner',
-      'Robin',
-      'Shared',
-    ]);
+  it('shows the hub owner their own drive and the Shared Drive only, without any path', () => {
+    const roots = service.listRoots(asOwner());
+    expect(roots.map((root) => root.id).sort()).toEqual([HOME_ROOT, OWNER_ROOT].sort());
+    for (const root of roots) expect(root).not.toHaveProperty('path');
   });
 
-  it('shows a member the home root and their own root only', () => {
-    expect(service.listRoots(asMember()).map((root) => root.label)).toEqual(['Robin', 'Shared']);
+  it('shows a member their own drive and the Shared Drive only', () => {
+    expect(
+      service
+        .listRoots(asMember())
+        .map((root) => root.id)
+        .sort(),
+    ).toEqual([HOME_ROOT, MEMBER_ROOT].sort());
   });
 
-  it('refuses a member another member’s root, folder and item', () => {
-    expect(() => service.browseFolder(asMember(), { rootId: OTHER_ROOT })).toThrow(/no such/);
-    expect(() => service.readItem(asMember(), OTHER_FILE)).toThrow(/no such/);
-    expect(service.readItem(asOwner(), OTHER_FILE).id).toBe(OTHER_FILE);
+  it('refuses anyone, the hub owner included, another person’s drive, folder and item', () => {
+    for (const actor of [asMember(), asOwner()]) {
+      expect(() => service.browseFolder(actor, { rootId: OTHER_ROOT })).toThrow(/no such/);
+      expect(() => service.readItem(actor, OTHER_FILE)).toThrow(/no such/);
+      expect(() => service.rootFor(actor, OTHER_ROOT)).toThrow(/no such/);
+    }
     expect(service.readItem(asMember(), FILE).id).toBe(FILE);
+    expect(service.rootFor(asOwner(), OWNER_ROOT).path).toContain(ownerProfile);
   });
 
   it('refuses an unknown item', () => {
@@ -170,7 +142,7 @@ describe('browsing a folder', () => {
   });
 
   it('refuses a folder of another root and a file used as a folder', () => {
-    expect(() => service.browseFolder(asOwner(), { rootId: OTHER_ROOT, folderId: FOLDER })).toThrow(
+    expect(() => service.browseFolder(asOwner(), { rootId: OWNER_ROOT, folderId: FOLDER })).toThrow(
       /no such folder/,
     );
     expect(() => service.browseFolder(asOwner(), { rootId: HOME_ROOT, folderId: FILE })).toThrow(
@@ -249,7 +221,9 @@ describe('albums', () => {
       'Holidays',
       'Mine',
     ]);
-    expect(service.listAlbums(asOwner(), 'photos')).toHaveLength(3);
+    expect(service.listAlbums(asOwner(), 'photos').map((album) => album.title)).toEqual([
+      'Holidays',
+    ]);
   });
 });
 
@@ -274,13 +248,10 @@ describe('recent files', () => {
 
   it('answers added, changed and everything, newest first', () => {
     const added = service.readRecent(asOwner(), { filter: 'added' });
-    expect(added.entries.map((entry) => [entry.kind, entry.item.id])).toEqual([
-      ['added', OTHER_FILE],
-      ['added', FILE],
-    ]);
+    expect(added.entries.map((entry) => [entry.kind, entry.item.id])).toEqual([['added', FILE]]);
     const changed = service.readRecent(asOwner(), { filter: 'changed' });
     expect(changed.entries.map((entry) => entry.kind)).toEqual(['changed']);
-    expect(service.readRecent(asOwner(), { filter: 'everything' }).entries).toHaveLength(3);
+    expect(service.readRecent(asOwner(), { filter: 'everything' }).entries).toHaveLength(2);
   });
 
   it('hides other members’ files from a member', () => {

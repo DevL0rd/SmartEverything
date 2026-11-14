@@ -9,7 +9,6 @@ import { DRIVE_RECENT_ENTRY, DRIVE_RECENT_QUERY } from '../../src/drive/recent';
 import { DRIVE_SETTINGS, DRIVE_SETTINGS_UPDATE } from '../../src/drive/settings';
 import { DRIVE_SHARE, DRIVE_SHARE_CREATE, DRIVE_SHARE_CREATED } from '../../src/drive/share';
 import { DRIVE_STATS, driveHistoryShown } from '../../src/drive/stats';
-import { DRIVE_SYNC_CLIENT, DRIVE_SYNC_CLIENT_UPDATE } from '../../src/drive/sync-client';
 import { DRIVE_UPLOAD } from '../../src/drive/upload';
 import { DRIVE_USAGE } from '../../src/drive/usage';
 import { DRIVE_VERSION } from '../../src/drive/version';
@@ -31,9 +30,11 @@ const ITEM = {
   addedAt: AT,
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 1,
   etag: '1-abc',
   outside: false,
+  addedByProfileId: null,
   remoteId: null,
   remoteRev: null,
   kind: 'document',
@@ -313,7 +314,8 @@ describe('DRIVE_STATS', () => {
     trashBytes: 5,
     kinds: [{ kind: 'image', items: 4, bytes: 60 }],
     roots: [{ rootId: A, items: 10, folders: 2, bytes: 100 }],
-    volumes: [{ mountId: '1', rootIds: [A], totalBytes: 1000, freeBytes: 400, fullInMonths: null }],
+    space: { totalBytes: 1000, freeBytes: 400, fsType: 'btrfs' },
+    fullInMonths: null,
     purges: [{ month: '2027-03', trashBytes: 5, versionBytes: 0 }],
     growth: null,
   };
@@ -334,13 +336,11 @@ describe('DRIVE_STATS', () => {
     ).toBe(false);
   });
 
-  it('refuses free space above the volume size and a bad purge month', () => {
+  it('refuses free space above the data disk size and a bad purge month', () => {
     expect(
       DRIVE_STATS.safeParse({
         ...stats,
-        volumes: [
-          { mountId: '1', rootIds: [A], totalBytes: 10, freeBytes: 11, fullInMonths: null },
-        ],
+        space: { totalBytes: 10, freeBytes: 11, fsType: 'btrfs' },
       }).success,
     ).toBe(false);
     expect(
@@ -436,12 +436,20 @@ describe('DRIVE_QUOTA and DRIVE_USAGE', () => {
   });
 
   it('counts live, versions and trash for a person or for unattributed files', () => {
-    expect(DRIVE_USAGE.safeParse({ profileId: A, live: 1, versions: 2, trash: 3 }).success).toBe(
-      true,
-    );
-    expect(DRIVE_USAGE.safeParse({ profileId: null, live: 1, versions: 0, trash: 0 }).success).toBe(
-      true,
-    );
+    expect(
+      DRIVE_USAGE.safeParse({ profileId: A, items: 4, folders: 1, live: 1, versions: 2, trash: 3 })
+        .success,
+    ).toBe(true);
+    expect(
+      DRIVE_USAGE.safeParse({
+        profileId: null,
+        items: 0,
+        folders: 0,
+        live: 1,
+        versions: 0,
+        trash: 0,
+      }).success,
+    ).toBe(true);
     expect(DRIVE_USAGE.safeParse({ profileId: A, live: 1, versions: 2 }).success).toBe(false);
   });
 });
@@ -517,14 +525,14 @@ describe('health', () => {
       verifiedShare: 0.25,
       corrupt: 1,
       rootsTotal: 3,
-      rootsOffline: 1,
+      rootsUnavailable: 1,
       watcher: 'watching',
-      freeBytes: 100,
+      space: { totalBytes: 1000, freeBytes: 100, fsType: 'btrfs' },
       scrub: { state: 'idle', lastFinishedAt: null, corrupt: 1 },
       backup: DRIVE_BACKUP_STATUS.parse({ last: null, lastOkAt: null }),
     };
     expect(DRIVE_HEALTH.safeParse(health).success).toBe(true);
-    expect(DRIVE_HEALTH.safeParse({ ...health, rootsOffline: 4 }).success).toBe(false);
+    expect(DRIVE_HEALTH.safeParse({ ...health, rootsUnavailable: 4 }).success).toBe(false);
     expect(DRIVE_HEALTH.safeParse({ ...health, verifiedShare: 1.5 }).success).toBe(false);
     expect(DRIVE_HEALTH.safeParse({ ...health, watcher: 'asleep' }).success).toBe(false);
   });
@@ -536,35 +544,6 @@ describe('health', () => {
         lastOkAt: null,
       }).success,
     ).toBe(true);
-  });
-});
-
-describe('DRIVE_SYNC_CLIENT', () => {
-  const client = {
-    clientId: A,
-    rootId: B,
-    deviceId: C,
-    profileId: A,
-    enabled: true,
-    selected: ['Photos', 'Docs/Taxes'],
-    lastSeq: 40,
-    lastSeenAt: AT,
-    needBytes: 1024,
-    errors: [{ relPath: 'a.txt', message: 'disk full', at: AT }],
-  };
-
-  it('accepts the live row and refuses a missing field', () => {
-    expect(DRIVE_SYNC_CLIENT.safeParse(client).success).toBe(true);
-    expect(DRIVE_SYNC_CLIENT.safeParse({ ...client, lastSeenAt: null }).success).toBe(true);
-    const { needBytes: _need, ...without } = client;
-    expect(DRIVE_SYNC_CLIENT.safeParse(without).success).toBe(false);
-    expect(DRIVE_SYNC_CLIENT.safeParse({ ...client, extra: 1 }).success).toBe(false);
-  });
-
-  it('updates enabled and the selected paths only', () => {
-    const update = { clientId: A, rootId: B, enabled: false, selected: [] };
-    expect(DRIVE_SYNC_CLIENT_UPDATE.safeParse(update).success).toBe(true);
-    expect(DRIVE_SYNC_CLIENT_UPDATE.safeParse({ ...update, lastSeq: 1 }).success).toBe(false);
   });
 });
 

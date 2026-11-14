@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { ApiError, STACK } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
 import { BURST_GAP_MS, StacksService } from '../../src/photos/stacks';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
@@ -9,6 +9,7 @@ import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { DriveStacksRepository } from '../../src/store/repositories/drive-stacks';
+import { insertDriveRow, recordLibraryRow } from './photo-rows';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
@@ -48,12 +49,11 @@ beforeEach(() => {
   migrate(context.sql, MIGRATIONS, NOW, log);
   const profiles = new ProfilesRepository(context);
   const aliceId = profiles.create({ name: 'Alice' }).id;
-  alice = { profileId: aliceId, owner: false };
-  bob = { profileId: profiles.create({ name: 'Bob' }).id, owner: false };
-  insertRoot(HOME_ROOT, 'home', null, 1);
-  insertRoot(OTHER_ROOT, 'home', null, 1);
-  insertRoot(ALICE_ROOT, 'person', aliceId, 1);
-  insertRoot(HIDDEN_ROOT, 'home', null, 0);
+  alice = { profileId: aliceId };
+  bob = { profileId: profiles.create({ name: 'Bob' }).id };
+  insertRoot(HOME_ROOT, 'home', null);
+  insertRoot(OTHER_ROOT, 'person', profiles.create({ name: 'Carol' }).id);
+  insertRoot(ALICE_ROOT, 'person', aliceId);
   service = new StacksService(context);
   media = new DriveMediaRepository(context);
   stacks = new DriveStacksRepository(context);
@@ -72,31 +72,17 @@ function insert(table: string, fields: Fields): void {
     .run(...Object.values(fields));
 }
 
-function insertRoot(id: string, scope: string, ownerId: string | null, inPhotos: number): void {
-  insert('drive_roots', {
-    id,
-    kind: 'folder',
-    label: `Root ${id.slice(-1)}`,
-    scope,
-    owner_profile_id: ownerId,
-    path: `/srv/${id}`,
-    read_only: 0,
-    versions: 1,
-    synced: 0,
-    index_id: 'index-1',
-    state: 'ready',
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    hashed_share: 0,
-    verified_share: 0,
-    corrupt: 0,
-    in_photos: inPhotos,
-    skip_patterns: '[]',
-    include_hidden: 0,
-    created_at: NOW,
-    updated_at: NOW,
-  });
+function insertRoot(id: string, scope: string, ownerId: string | null): void {
+  insertDriveRow(database, { id, scope, ownerId });
+}
+
+function placed(root: string | undefined): {
+  readonly rootId: string;
+  readonly inLibrary: boolean;
+} {
+  return root === HIDDEN_ROOT
+    ? { rootId: HOME_ROOT, inLibrary: false }
+    : { rootId: root ?? HOME_ROOT, inLibrary: true };
 }
 
 function itemId(n: number): string {
@@ -108,7 +94,7 @@ function seed(item: Seed): string {
   const kind = item.kind ?? 'image';
   insert('drive_items', {
     id,
-    root_id: item.root ?? HOME_ROOT,
+    root_id: placed(item.root).rootId,
     rel_path: `${String(item.n)}.bin`,
     name: `${String(item.n)}.bin`,
     kind,
@@ -117,12 +103,18 @@ function seed(item: Seed): string {
     integrity: 'unknown',
     modified_at: NOW,
     added_at: NOW,
-    starred: 0,
     rev: 1,
     etag: `etag-${String(item.n)}`,
     outside: 0,
     thumb_state: 'none',
     taken_at: item.at === null ? null : new Date(BASE + item.at).toISOString(),
+  });
+  recordLibraryRow(database, {
+    id,
+    rootId: placed(item.root).rootId,
+    kind,
+    starred: false,
+    inLibrary: placed(item.root).inLibrary,
   });
   media.save({
     item_id: id,
@@ -334,13 +326,12 @@ describe('reading and choosing a cover', () => {
     expect(service.read(alice, id).itemIds).toHaveLength(3);
     expect(() => service.read(bob, id)).toThrow(ApiError);
     expect(() => service.makeCover(bob, id, itemId(1))).toThrow(ApiError);
-    expect(service.read({ ...bob, owner: true }, id).itemIds).toHaveLength(3);
   });
 
   it('does not show stacks of folders that are not in Photos', () => {
     const id = burst(HIDDEN_ROOT);
-    expect(() => service.read({ ...alice, owner: true }, id)).toThrow(ApiError);
-    expect(service.list({ ...alice, owner: true }, undefined).items).toEqual([]);
+    expect(() => service.read(alice, id)).toThrow(ApiError);
+    expect(service.list(alice, undefined).items).toEqual([]);
   });
 
   it('falls back to the first photo when the cover photo is gone', () => {

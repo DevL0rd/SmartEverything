@@ -8,22 +8,15 @@ export const PHOTOS_GROUPINGS = ['day', 'month'] as const;
 export const PHOTOS_PREF = z.strictObject({
   showCameras: z.boolean().describe('Show camera recordings and snapshots in Photos'),
   showAi: z.boolean().describe('Show images made by the assistant in Photos'),
-  timelineZoom: z.enum(PHOTOS_ZOOMS).describe('The zoom level the Photos timeline opens at'),
-  timelineGroup: z
+  libraryZoom: z.enum(PHOTOS_ZOOMS).describe('The zoom level the Photos library opens at'),
+  libraryGroup: z
     .enum(PHOTOS_GROUPINGS)
-    .describe('Whether the timeline groups items by day or month'),
-  showVideos: z.boolean().describe('Show videos in the timeline'),
+    .describe('Whether the library groups items by day or month'),
+  showVideos: z.boolean().describe('Show videos in the library'),
   showNotBackedUp: z
     .boolean()
     .describe('Show items that are still only on a phone, marked as not backed up'),
-  memories: z.boolean().describe('Suggest on this day, trips and days out'),
-  tripDistanceKm: z
-    .number()
-    .int()
-    .positive()
-    .describe('How many kilometres from home a trip starts'),
-  yearInReview: z.boolean().describe('Offer a year in review'),
-  excludedAlbumIds: z.array(z.uuid()).describe('Albums left out of the timeline, memories and map'),
+  excludedAlbumIds: z.array(z.uuid()).describe('Albums left out of the library and the map'),
   map: z.boolean().describe('Show where photos were taken'),
   removeLocationOutside: z
     .boolean()
@@ -46,17 +39,14 @@ export const PHOTOS_CLIENT_PREFS = {
   photos: clientPref({
     storageKey: 'photos',
     scope: 'profile',
-    version: 1,
+    version: 2,
     defaultValue: {
       showCameras: true,
       showAi: true,
-      timelineZoom: 'days',
-      timelineGroup: 'day',
+      libraryZoom: 'days',
+      libraryGroup: 'day',
       showVideos: true,
       showNotBackedUp: true,
-      memories: true,
-      tripDistanceKm: 50,
-      yearInReview: true,
       excludedAlbumIds: [],
       map: true,
       removeLocationOutside: true,

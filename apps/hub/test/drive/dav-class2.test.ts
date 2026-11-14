@@ -3,20 +3,20 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { createServer, request as httpRequest, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createClientToken, hashClientToken, type DriveRoot } from '@smarteverything/domain';
+import { createClientToken, hashClientToken } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
 import { Readable } from 'node:stream';
 import { commitContent } from '../../src/drive/changes';
-import { physicalRoot } from '../../src/drive/intents';
 import { DriveReadService } from '../../src/drive/service-read';
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
 import type { DavDeps } from '../../src/server/dav/dav-auth';
 import { CLASS2_METHODS, createDavHandler, parseIf } from '../../src/server/dav/index';
 import { SERVER_LOCK_SECONDS } from '../../src/server/dav/locks';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
-import { folderRoot } from './drive-fixture';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore, putItem } from './spaces-fixture';
 
 const START = new Date('2026-11-07T00:00:00.000Z');
 const LOCK_BODY =
@@ -96,7 +96,7 @@ function send(method: string, path: string, options: Send = {}): Promise<Reply> 
 }
 
 const url = (rootId: string, path = ''): string => `/dav/${rootId}/${path}`;
-const own = (path: string): string => join(base, 'member', path);
+const own = (path: string): string => join(opened.layout.person(memberProfile).drive, path);
 const at = (method: string, path: string, headers: Record<string, string> = {}): Promise<Reply> =>
   send(method, url(memberRoot, path), { headers });
 const put = (path: string, body: string, headers: Record<string, string> = {}): Promise<Reply> =>
@@ -124,13 +124,8 @@ const tokenOf = (reply: Reply): string =>
 const holding = (token: string, path: string | null = null): Record<string, string> => ({
   if: `${path === null ? '' : `<${url(memberRoot, path)}> `}(<${token}>)`,
 });
-function writableRoot(): ReturnType<typeof physicalRoot> {
-  return physicalRoot(
-    new DriveReadService(opened.store).rootFor(
-      { profileId: memberProfile, owner: false },
-      memberRoot,
-    ),
-  );
+function writableRoot(): ReturnType<DriveReadService['rootFor']> {
+  return new DriveReadService(opened.store).rootFor({ profileId: memberProfile }, memberRoot);
 }
 const exists = (path: string): Promise<boolean> =>
   stat(own(path)).then(
@@ -154,25 +149,29 @@ async function startServer(deps: DavDeps): Promise<void> {
   port = address.port;
 }
 
-function addRoot(
-  id: string,
-  name: string,
-  fields: Partial<Extract<DriveRoot, { kind: 'folder' }>>,
-): void {
+async function addDrive(id: string, owner: string | null): Promise<string> {
+  const dir = owner === null ? opened.layout.home.drive : opened.layout.person(owner).drive;
+  await mkdir(dir, { recursive: true });
   opened.store.driveRoots.insert(
-    folderRoot(id, join(base, name), {
-      readOnly: false,
-      versions: true,
-      scope: 'person',
-      ...fields,
-    }),
+    owner === null ? sharedDriveRoot(id) : personalDriveRoot(id, owner),
+  );
+  return dir;
+}
+
+async function addLockedFolder(rootId: string, dir: string): Promise<void> {
+  const id = randomUUID();
+  await mkdir(join(dir, 'Locked'));
+  putItem(opened.store, { rootId, id, relPath: 'Locked', kind: 'folder' });
+  opened.store.driveGrants.set(
+    { itemId: id, profileId: memberProfile, role: 'view' },
+    ownerProfile,
   );
 }
 
 beforeEach(async () => {
   captureLogs();
   clock = START;
-  opened = await testStore();
+  opened = await driveTestStore();
   const { store } = opened;
   ownerProfile = store.profiles.first().id;
   memberProfile = store.profiles.create({ name: 'Robin' }).id;
@@ -192,11 +191,10 @@ beforeEach(async () => {
     tokenHash: hashClientToken(ownerToken),
   });
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-dav2-')));
-  for (const name of ['member', 'other', 'locked']) await mkdir(join(base, name));
   [memberRoot, otherRoot, lockedRoot] = [randomUUID(), randomUUID(), randomUUID()];
-  addRoot(memberRoot, 'member', { ownerProfileId: memberProfile });
-  addRoot(otherRoot, 'other', { ownerProfileId: memberProfile });
-  addRoot(lockedRoot, 'locked', { ownerProfileId: memberProfile, readOnly: true, versions: false });
+  await addDrive(memberRoot, memberProfile);
+  await addDrive(otherRoot, null);
+  await addLockedFolder(lockedRoot, await addDrive(lockedRoot, ownerProfile));
   await startServer(depsOf());
 });
 
@@ -245,7 +243,7 @@ describe('COPY', () => {
     expect(await readFile(own('b.txt'), 'utf8')).toBe('hello');
     const got = await at('GET', 'b.txt');
     expect(got.body).toBe('hello');
-    expect(opened.store.driveItems.byPath(memberRoot, 'b.txt')?.bytes).toBe(5);
+    expect(opened.store.driveItems.byPath(memberRoot, 'b.txt', null)?.bytes).toBe(5);
   });
 
   it('replaces an existing destination with 204 and refuses it when Overwrite is F', async () => {
@@ -266,7 +264,7 @@ describe('COPY', () => {
     expect(await readFile(own('clone/one.txt'), 'utf8')).toBe('1');
     expect(await readFile(own('clone/sub/two.txt'), 'utf8')).toBe('22');
     expect(await exists('dir/sub/two.txt')).toBe(true);
-    expect(opened.store.driveItems.byPath(memberRoot, 'clone/sub/two.txt')?.bytes).toBe(2);
+    expect(opened.store.driveItems.byPath(memberRoot, 'clone/sub/two.txt', null)?.bytes).toBe(2);
   });
 
   it('copies only the collection itself with Depth 0', async () => {
@@ -319,7 +317,7 @@ describe('MOVE', () => {
     expect((await move('dir', 'renamed')).status).toBe(201);
     expect(await exists('dir')).toBe(false);
     expect((await at('GET', 'renamed/one.txt')).body).toBe('1');
-    expect(opened.store.driveItems.byPath(memberRoot, 'dir/one.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(memberRoot, 'dir/one.txt', null)).toBeUndefined();
   });
 
   it('moves a file into another collection and replaces an existing destination', async () => {
@@ -395,7 +393,7 @@ describe('Destination handling', () => {
   });
 
   it('refuses a copy into a read-only root', async () => {
-    const reply = await at('COPY', 'a.txt', destination('b.txt', lockedRoot));
+    const reply = await at('COPY', 'a.txt', destination('Locked/b.txt', lockedRoot));
     expect(reply.status).toBe(403);
   });
 });
@@ -603,7 +601,7 @@ describe('If header', () => {
 
   it('answers 412 when no list holds and applies the write when one does', async () => {
     await put('a.txt', 'x');
-    const etag = opened.store.driveItems.byPath(memberRoot, 'a.txt')?.etag ?? '';
+    const etag = opened.store.driveItems.byPath(memberRoot, 'a.txt', null)?.etag ?? '';
     expect((await put('a.txt', 'y', { if: '(["stale"])' })).status).toBe(412);
     expect((await put('a.txt', 'y', { if: `(["${etag}"])` })).status).toBe(204);
     expect((await put('a.txt', 'z', { if: '(Not <DAV:no-lock>)' })).status).toBe(204);

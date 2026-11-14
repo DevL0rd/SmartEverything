@@ -6,6 +6,7 @@ import {
   DRIVE_PLACEMENT_ROUTES,
   DRIVE_PLACEMENT_STATE,
   DRIVE_PLACEMENT_TIERS,
+  DRIVE_SYNC_ERROR,
   type DrivePlacement,
   type DrivePlacementHold,
   type DrivePlacementMode,
@@ -17,8 +18,9 @@ import { found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 
 const COLUMNS = `id, device_id, root_id, folder_item_id, mode, local_path, enabled, hold, created_by,
-  created_at, state, tier, basic_limits, read_only, route, cache_bytes, pinned_bytes, open_files,
-  pending_uploads, reason, reported_at`;
+  created_at, excluded, ignore_patterns, conflict_copies, state, tier, basic_limits, read_only,
+  route, cache_bytes, pinned_bytes, open_files, pending_uploads, need_bytes, last_synced_at, errors,
+  reason, reported_at`;
 
 const PLACEMENT_COLUMNS = z.strictObject({
   id: z.string(),
@@ -31,6 +33,9 @@ const PLACEMENT_COLUMNS = z.strictObject({
   hold: DRIVE_PLACEMENT_HOLD.nullable(),
   created_by: z.string(),
   created_at: z.string(),
+  excluded: z.array(z.string()).nullable(),
+  ignore_patterns: z.array(z.string()).nullable(),
+  conflict_copies: z.boolean().nullable(),
   state: DRIVE_PLACEMENT_STATE,
   tier: z.enum(DRIVE_PLACEMENT_TIERS).nullable(),
   basic_limits: DRIVE_PLACEMENT_BASIC_LIMITS.nullable(),
@@ -40,9 +45,22 @@ const PLACEMENT_COLUMNS = z.strictObject({
   pinned_bytes: z.number(),
   open_files: z.number(),
   pending_uploads: z.number(),
+  need_bytes: z.number(),
+  last_synced_at: z.string().nullable(),
+  errors: z.array(z.unknown()),
   reason: z.string().nullable(),
   reported_at: z.string(),
 });
+
+function syncSettingsOf(row: z.output<typeof PLACEMENT_COLUMNS>): Record<string, unknown> {
+  return row.mode === 'synced'
+    ? {
+        excluded: row.excluded,
+        ignorePatterns: row.ignore_patterns,
+        conflictCopies: row.conflict_copies,
+      }
+    : {};
+}
 
 const STORED_PLACEMENT = storedRow(
   PLACEMENT_COLUMNS.transform((row): DrivePlacement =>
@@ -57,6 +75,7 @@ const STORED_PLACEMENT = storedRow(
       hold: row.hold,
       createdBy: row.created_by,
       createdAt: row.created_at,
+      ...syncSettingsOf(row),
       status: {
         state: row.state,
         tier: row.tier,
@@ -67,12 +86,19 @@ const STORED_PLACEMENT = storedRow(
         pinnedBytes: row.pinned_bytes,
         openFiles: row.open_files,
         pendingUploads: row.pending_uploads,
+        needBytes: row.need_bytes,
+        lastSyncedAt: row.last_synced_at,
+        errors: row.errors,
         reason: row.reason,
         reportedAt: row.reported_at,
       },
     }),
   ),
-  { flags: ['enabled', 'read_only'], json: ['basic_limits'] },
+  {
+    flags: ['enabled', 'read_only'],
+    nullableFlags: ['conflict_copies'],
+    json: ['basic_limits', 'excluded', 'ignore_patterns', 'errors'],
+  },
 );
 
 export interface DrivePlacementInsert {
@@ -84,6 +110,9 @@ export interface DrivePlacementInsert {
   readonly localPath: string;
   readonly enabled: boolean;
   readonly createdBy: string;
+  readonly excluded?: readonly string[];
+  readonly ignorePatterns?: readonly string[];
+  readonly conflictCopies?: boolean;
   readonly status: DrivePlacementStatus;
 }
 
@@ -92,6 +121,20 @@ export interface DrivePlacementTarget {
   readonly localPath: string;
   readonly enabled: boolean;
   readonly readOnly: boolean;
+  readonly excluded?: readonly string[];
+  readonly ignorePatterns?: readonly string[];
+  readonly conflictCopies?: boolean;
+}
+
+function settingsParameters(
+  settings: Pick<DrivePlacementTarget, 'excluded' | 'ignorePatterns' | 'conflictCopies'>,
+): Record<string, string | number | null> {
+  return {
+    excluded: settings.excluded === undefined ? null : jsonText(settings.excluded),
+    ignorePatterns:
+      settings.ignorePatterns === undefined ? null : jsonText(settings.ignorePatterns),
+    conflictCopies: settings.conflictCopies === undefined ? null : settings.conflictCopies ? 1 : 0,
+  };
 }
 
 export class DrivePlacementsRepository {
@@ -147,8 +190,9 @@ export class DrivePlacementsRepository {
       this.context.sql.run(
         'create the drive placement',
         `insert into drive_placements (${COLUMNS}) values ($id, $deviceId, $rootId, $folderItemId,
-          $mode, $localPath, $enabled, null, $createdBy, $now, $state, $tier, $basicLimits,
-          $readOnly, $route, $cacheBytes, $pinnedBytes, $openFiles, $pendingUploads, $reason,
+          $mode, $localPath, $enabled, null, $createdBy, $now, $excluded, $ignorePatterns,
+          $conflictCopies, $state, $tier, $basicLimits, $readOnly, $route, $cacheBytes,
+          $pinnedBytes, $openFiles, $pendingUploads, $needBytes, $lastSyncedAt, $errors, $reason,
           $reportedAt)`,
         {
           id: placement.id,
@@ -160,6 +204,7 @@ export class DrivePlacementsRepository {
           enabled: placement.enabled ? 1 : 0,
           createdBy: placement.createdBy,
           now: this.context.now(),
+          ...settingsParameters(placement),
           ...statusParameters(status),
         },
       );
@@ -175,9 +220,11 @@ export class DrivePlacementsRepository {
       this.context.sql.run(
         'change the drive placement',
         `update drive_placements set mode = $mode, local_path = $localPath, enabled = $enabled,
-          read_only = $readOnly where id = $id`,
+          read_only = $readOnly, excluded = $excluded, ignore_patterns = $ignorePatterns,
+          conflict_copies = $conflictCopies where id = $id`,
         {
           id,
+          ...settingsParameters(target),
           mode: target.mode,
           localPath: target.localPath,
           enabled: target.enabled ? 1 : 0,
@@ -208,8 +255,9 @@ export class DrivePlacementsRepository {
         `update drive_placements set state = $state, tier = $tier, basic_limits = $basicLimits,
           read_only = $readOnly, route = $route, cache_bytes = $cacheBytes,
           pinned_bytes = $pinnedBytes, open_files = $openFiles,
-          pending_uploads = $pendingUploads, reason = $reason, reported_at = $reportedAt
-          where id = $id`,
+          pending_uploads = $pendingUploads, need_bytes = $needBytes,
+          last_synced_at = $lastSyncedAt, errors = $errors, reason = $reason,
+          reported_at = $reportedAt where id = $id`,
         { id, ...statusParameters(status) },
       );
       return this.emit(id, before);
@@ -246,6 +294,9 @@ function statusParameters(status: DrivePlacementStatus): Record<string, string |
     pinnedBytes: status.pinnedBytes,
     openFiles: status.openFiles,
     pendingUploads: status.pendingUploads,
+    needBytes: status.needBytes,
+    lastSyncedAt: status.lastSyncedAt,
+    errors: jsonText(z.array(DRIVE_SYNC_ERROR).parse(status.errors)),
     reason: status.reason,
     reportedAt: status.reportedAt,
   };

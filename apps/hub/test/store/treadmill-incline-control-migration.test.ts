@@ -9,6 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
+import { unusedDrivePath } from '../support/store';
 
 const NOW = '2026-10-19T10:07:01.388Z';
 const VERSION =
@@ -54,7 +55,13 @@ describe('removing the stored one-time incline check result', () => {
   it('drops inclineControl and keeps the other treadmill settings', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     const database = new DatabaseSync(path);
     const row = STORED.parse(

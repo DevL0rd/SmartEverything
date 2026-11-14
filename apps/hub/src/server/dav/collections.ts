@@ -1,13 +1,10 @@
 import type { IncomingMessage } from 'node:http';
-import type { DriveItem, DriveRoot } from '@smarteverything/domain';
+import { dirname } from 'node:path';
+import type { DriveItem } from '@smarteverything/domain';
+import type { StoredDrive } from '../../store/repositories/drive-roots';
+import { canWrite, driveAccess, itemAccess, type ItemAccess } from '../../drive/access';
 import { folderDraft, identityOf, isoOf, parentOf, recordItem } from '../../drive/changes';
-import {
-  assertWritable,
-  DriveWriteError,
-  locate,
-  physicalRoot,
-  type DriveWriteRoot,
-} from '../../drive/intents';
+import { DriveWriteError, locate } from '../../drive/intents';
 import { DrivePathError, normalizeRelativePath } from '../../drive/paths';
 import { MARKER_DIRECTORY } from '../../drive/root-marker';
 import {
@@ -22,9 +19,10 @@ import {
 export const DAV_PREFIX = '/dav/';
 
 export interface DavTarget {
-  readonly root: DriveRoot;
+  readonly root: StoredDrive;
   readonly relPath: string;
   readonly item: DriveItem | undefined;
+  readonly access: ItemAccess;
 }
 
 const ABSOLUTE_FORM = /^https?:\/\/[^/]+(\/.*)$/u;
@@ -66,23 +64,54 @@ export function locationOf(request: IncomingMessage): DavLocation {
   if (relPath === MARKER_DIRECTORY || relPath.startsWith(`${MARKER_DIRECTORY}/`)) {
     throw new DavError(
       403,
-      'The hub keeps its own files in this folder; they are not part of the library.',
+      'The hub keeps its own files in this folder; they are not part of the drive.',
     );
   }
   return { rootId: decodeSegment(rootPart), relPath };
 }
 
-export function targetOf(deps: DavDeps, caller: DavCaller, request: IncomingMessage): DavTarget {
-  const { rootId, relPath } = locationOf(request);
-  const root = deps.read.rootFor(caller.actor, rootId);
-  const item = relPath === '' ? undefined : deps.store.driveItems.byPath(root.id, relPath);
-  return { root, relPath, item };
+function accessOf(
+  deps: DavDeps,
+  caller: DavCaller,
+  root: StoredDrive,
+  relPath: string,
+): ItemAccess {
+  const whole = driveAccess(caller.actor, root);
+  if (whole !== 'none') return whole;
+  for (let path = relPath; path !== ''; path = dirname(path) === '.' ? '' : dirname(path)) {
+    const item = deps.store.driveItems.byPath(root.id, path, null);
+    if (item !== undefined) return itemAccess(deps.store, caller.actor, root, item);
+  }
+  return 'none';
 }
 
-export function writableOf(root: DriveRoot): DriveWriteRoot {
-  const writable = physicalRoot(root);
-  assertWritable(writable);
-  return writable;
+export function targetIn(
+  deps: DavDeps,
+  caller: DavCaller,
+  location: { readonly rootId: string; readonly relPath: string },
+): DavTarget {
+  const { rootId, relPath } = location;
+  const root = deps.store.driveRoots.find(rootId);
+  const access = root === undefined ? 'none' : accessOf(deps, caller, root, relPath);
+  if (root === undefined || access === 'none') {
+    throw new DavError(404, 'There is no such drive or folder for this person.');
+  }
+  const item =
+    relPath === ''
+      ? undefined
+      : deps.store.driveItems.byPath(root.id, relPath, caller.actor.profileId);
+  return { root, relPath, item, access };
+}
+
+export function targetOf(deps: DavDeps, caller: DavCaller, request: IncomingMessage): DavTarget {
+  return targetIn(deps, caller, locationOf(request));
+}
+
+export function writableOf(target: DavTarget): StoredDrive {
+  if (!canWrite(target.access)) {
+    throw new DavError(403, 'You can only view this; you cannot change it.');
+  }
+  return target.root;
 }
 
 export function headerOf(request: IncomingMessage, name: string): string | undefined {
@@ -99,7 +128,7 @@ function hasBody(request: IncomingMessage): boolean {
 
 async function makeFolder(deps: DavDeps, caller: DavCaller, target: DavTarget): Promise<void> {
   const { env } = deps;
-  const root = writableOf(target.root);
+  const root = writableOf(target);
   const parent = parentOf(env, root.id, target.relPath);
   const path = await locate(root, target.relPath);
   if ((await env.files.stamp(path)) !== null) {

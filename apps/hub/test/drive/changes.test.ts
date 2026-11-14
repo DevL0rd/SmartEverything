@@ -3,11 +3,7 @@ import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import {
-  type DriveConflict,
-  type DriveConflictResolution,
-  type DriveRoot,
-} from '@smarteverything/domain';
+import { type DriveConflict, type DriveConflictResolution } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   commitContent,
@@ -35,9 +31,10 @@ import {
 } from '../../src/drive/trash-purge';
 import { commitBytes, nodeFiles, stageBytes } from '../../src/drive/versions';
 import { isMissing } from '../../src/fs-util';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const DAY_MS = 86_400_000;
 const START = new Date('2026-11-07T00:00:00.000Z');
@@ -60,54 +57,6 @@ function actor(via: ChangeActor['via'] = 'app'): ChangeActor {
   return via === 'sync' || via === 'mount'
     ? { actorProfileId: person, via, deviceId: randomUUID() }
     : { actorProfileId: person, via, deviceId: null };
-}
-
-function rootRow(id: string, path: string): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: 'Changes root',
-    scope: 'home',
-    ownerProfileId: null,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
-
-function aiImagesRoot(root: DriveRoot): Extract<DriveRoot, { kind: 'ai_images' }> {
-  if (root.kind !== 'folder') {
-    throw new Error('this test builds its virtual root from a folder root');
-  }
-  return {
-    ...root,
-    kind: 'ai_images',
-    path: null,
-    readOnly: true,
-    versions: false,
-    synced: false,
-    sync: null,
-  };
 }
 
 function env(now: () => Date = () => START): ChangeEnv {
@@ -193,12 +142,12 @@ async function reconcile(relPath: string): Promise<void> {
 
 beforeEach(async () => {
   captureLogs();
-  opened = await testStore();
+  opened = await driveTestStore();
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-changes-')));
-  dir = join(base, 'root');
-  await mkdir(dir);
-  root = { id: randomUUID(), path: dir, readOnly: false, versions: true };
-  opened.store.driveRoots.insert(rootRow(root.id, dir));
+  dir = opened.layout.home.drive;
+  await mkdir(dir, { recursive: true });
+  root = { id: randomUUID(), path: dir, versions: true };
+  opened.store.driveRoots.insert(sharedDriveRoot(root.id));
   person = opened.store.profiles.first().id;
   notices = [];
   purgeCalls = 0;
@@ -284,7 +233,7 @@ describe('committing bytes', () => {
         },
       }),
     ).rejects.toThrow('record failed');
-    expect(opened.store.driveItems.byPath(root.id, 'a.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 'a.txt', null)).toBeUndefined();
     expect(opened.store.driveFeed.latestSeq()).toBe(0);
   });
 });
@@ -294,10 +243,16 @@ describe('own writes are not changes', () => {
     const created = await write('hello', 'a.txt');
     await reconcile('a.txt');
     await reconcile('a.txt');
-    expect(opened.store.driveItems.byId(created.item.id)).toMatchObject({ rev: 1, outside: false });
+    expect(opened.store.driveItems.byId(created.item.id, null)).toMatchObject({
+      rev: 1,
+      outside: false,
+    });
     await write('hello again', 'a.txt');
     await reconcile('a.txt');
-    expect(opened.store.driveItems.byId(created.item.id)).toMatchObject({ rev: 2, outside: false });
+    expect(opened.store.driveItems.byId(created.item.id, null)).toMatchObject({
+      rev: 2,
+      outside: false,
+    });
     expect(opened.store.driveFeed.sinceInRoot(root.id, 0, 10).rows).toHaveLength(2);
   });
 
@@ -305,22 +260,25 @@ describe('own writes are not changes', () => {
     const created = await write('hello', 'a.txt');
     await writeFile(join(dir, 'a.txt'), 'changed outside');
     await reconcile('a.txt');
-    expect(opened.store.driveItems.byId(created.item.id)).toMatchObject({ rev: 2, outside: true });
+    expect(opened.store.driveItems.byId(created.item.id, null)).toMatchObject({
+      rev: 2,
+      outside: true,
+    });
   });
 });
 
 describe('metadata changes', () => {
-  it('records a star with its feed row and notice', async () => {
+  it('records a metadata change with its feed row and notice', async () => {
     const created = await write('hello', 'a.txt');
     const identity = opened.store.driveItems.identityOf(created.item.id);
     if (identity === null) throw new Error('identity');
-    const starred = recordItem(env(), {
-      draft: { ...created.item, starred: true },
+    const touched = recordItem(env(), {
+      draft: { ...created.item, modifiedAt: '2026-11-08T00:00:00.000Z' },
       identity,
-      op: 'star',
+      op: 'update',
       actor: actor('automation'),
     });
-    expect(starred.rev).toBe(2);
+    expect(touched.rev).toBe(2);
     expect(opened.store.driveFeed.latestSeq()).toBe(2);
     expect(notices).toHaveLength(2);
   });
@@ -332,7 +290,7 @@ describe('trash and restore', () => {
     purgeCalls = 0;
     await commitTrash(env(), root, created.item.id, actor());
     expect(await text('a.txt')).toBeNull();
-    expect(opened.store.driveItems.find(created.item.id)).toBeUndefined();
+    expect(opened.store.driveItems.find(created.item.id, null)).toBeUndefined();
     expect(opened.store.driveTrash.byId(created.item.id).purgeAt).toBe('2027-11-07T00:00:00.000Z');
     const last = opened.store.driveFeed.ofItem(created.item.id, 0, 10).rows.at(-1);
     expect(last).toMatchObject({ op: 'trash', rev: 2 });
@@ -366,13 +324,13 @@ describe('finishing a commit after a crash', () => {
     const report = await recoverIntents({ ...e, finishCommit: finishCommitFromDisk(e) }, [root]);
     expect(report).toMatchObject({ completed: 1, rolledBack: 0, failed: 0 });
     expect(opened.store.driveIntents.all()).toEqual([]);
-    const item = opened.store.driveItems.byId(created.item.id);
+    const item = opened.store.driveItems.byId(created.item.id, null);
     expect(item).toMatchObject({ rev: 2, bytes: 10, outside: true, integrity: 'unknown' });
     expect(opened.store.driveVersions.findRev(created.item.id, 1)).toBeDefined();
     const last = opened.store.driveFeed.ofItem(created.item.id, 0, 10).rows.at(-1);
     expect(last).toMatchObject({ op: 'update', via: 'outside', actorProfileId: null });
     await reconcile('a.txt');
-    expect(opened.store.driveItems.byId(created.item.id).rev).toBe(2);
+    expect(opened.store.driveItems.byId(created.item.id, null).rev).toBe(2);
   });
 });
 
@@ -407,7 +365,7 @@ describe('conflicts', () => {
     );
     expect(await text('a.txt')).toBe('hub bytes');
     expect(await text(conflict.conflictRelPath)).toBe('client bytes');
-    expect(opened.store.driveItems.byId(conflict.conflictItemId).relPath).toBe(
+    expect(opened.store.driveItems.byId(conflict.conflictItemId, null).relPath).toBe(
       conflict.conflictRelPath,
     );
     expect(conflict).toMatchObject({ itemId: hubId, hubRev: 1, baseRev: 1, resolution: null });
@@ -436,7 +394,7 @@ describe('conflicts', () => {
     );
     expect(await text('a.txt')).toBe('client bytes');
     expect(await text(conflict.conflictRelPath)).toBeNull();
-    expect(opened.store.driveItems.byId(hubId).rev).toBe(2);
+    expect(opened.store.driveItems.byId(hubId, null).rev).toBe(2);
     expect(opened.store.driveVersions.findRev(hubId, 1)).toBeDefined();
   });
 
@@ -566,7 +524,7 @@ describe('the purge timer', () => {
     await vi.advanceTimersByTimeAsync(365 * DAY_MS);
     await timer.settled();
     expect(opened.store.driveVersions.findRev(made.item.id, 1)).toBeUndefined();
-    expect(opened.store.driveItems.find(made.item.id)).toBeDefined();
+    expect(opened.store.driveItems.find(made.item.id, null)).toBeDefined();
     timer.stop();
   });
 
@@ -580,31 +538,5 @@ describe('the purge timer', () => {
     expect(tally).toMatchObject({ trash: 1, failed: 0 });
     expect(opened.store.driveVersions.forItem(made.item.id, null, 10).versions).toEqual([]);
     await expect(stat(join(dir, '.smarteverything/versions'))).resolves.toBeDefined();
-  });
-
-  it('does not loop on an entry it cannot purge', async () => {
-    const { timer } = clocked();
-    const virtual = randomUUID();
-    opened.store.driveRoots.insert(aiImagesRoot(rootRow(virtual, dir)));
-    const id = randomUUID();
-    opened.store.driveTrash.insert({
-      itemId: id,
-      rootId: virtual,
-      name: 'x.png',
-      originalRelPath: 'x.png',
-      trashRelPath: `.smarteverything/trash/${id}`,
-      isFolder: false,
-      bytes: 1,
-      deletedAt: START.toISOString(),
-      purgeAt: new Date(START.getTime() + DAY_MS).toISOString(),
-      deletedBy: null,
-      addedByProfileId: null,
-    });
-    vi.setSystemTime(new Date(START.getTime() + 2 * DAY_MS));
-    timer.start();
-    await vi.advanceTimersByTimeAsync(1);
-    await timer.settled();
-    expect(opened.store.driveTrash.find(id)).toBeDefined();
-    expect(vi.getTimerCount()).toBe(0);
   });
 });

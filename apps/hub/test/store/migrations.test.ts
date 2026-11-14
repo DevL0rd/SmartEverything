@@ -12,6 +12,7 @@ import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { TEST_ENGINE } from '../support/engine';
+import { unusedDrivePath } from '../support/store';
 
 const SESSION = '0d000000-0000-4000-8000-000000000001';
 const NOW = '2026-10-16T09:00:00.000Z';
@@ -83,7 +84,13 @@ function tableCounts(database: DatabaseSync, skip: readonly string[]): Record<st
 }
 
 function open(): ReturnType<typeof openStore> {
-  return openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' });
+  return openStore({
+    path,
+    log: testLogger(),
+    now: () => new Date(NOW),
+    systemTimeZone: 'UTC',
+    drivePathOf: unusedDrivePath,
+  });
 }
 
 describe('migrating a live schema-80 database', () => {

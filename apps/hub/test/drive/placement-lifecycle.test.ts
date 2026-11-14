@@ -1,130 +1,35 @@
-import { randomBytes } from 'node:crypto';
-import {
-  DRIVE_PLACEMENT_SET,
-  type DrivePlacement,
-  type DrivePlacementSet,
-  type DriveTrashEntry,
-} from '@smarteverything/domain';
+import type { DrivePlacement, DriveTrashEntry } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { HOLD_REASONS, PlacementLifecycle } from '../../src/drive/placement-lifecycle';
-import { DrivePlacements } from '../../src/drive/placements';
-import type { DriveActor } from '../../src/drive/service-read';
-import { ComputerNodesRepository } from '../../src/store/repositories/computer-nodes';
-import { DevicesRepository } from '../../src/store/repositories/devices';
-import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
-import { DrivePlacementsRepository } from '../../src/store/repositories/drive-placements';
-import { ProfilesRepository } from '../../src/store/repositories/profiles';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { testLogger } from '../support/logs';
-import { folderRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import { putItem } from './spaces-fixture';
+import {
+  HOME_DRIVE,
+  IDA_DRIVE,
+  MUSIC,
+  ROBIN_DRIVE,
+  ROBIN_TRIP,
+  ROBIN_TRIP_DEEP,
+  ROMS,
+  ROMS_INNER,
+  openPlacementWorld,
+  place,
+  type PlacementWorld,
+} from './placement-fixture';
 
-const HOME_ROOT = '0d000000-0000-4000-8000-000000000001';
-const SYNCED_ROOT = '0d000000-0000-4000-8000-000000000002';
-const OTHER_ROOT = '0d000000-0000-4000-8000-000000000003';
-const PERSON_ROOT = '0d000000-0000-4000-8000-000000000004';
-const ROMS = '0f000000-0000-4000-8000-000000000001';
-const SNES = '0f000000-0000-4000-8000-000000000002';
-const MUSIC = '0f000000-0000-4000-8000-000000000003';
-const OTHER_FOLDER = '0f000000-0000-4000-8000-000000000005';
-const COPY = '0f000000-0000-4000-8000-000000000007';
+const COPY = '0f000000-0000-4000-8000-0000000000c1';
+const NOW = '2026-11-07T00:00:00.000Z';
 
-let fixture: DriveFixture;
-let placements: DrivePlacements;
-let repository: DrivePlacementsRepository;
-let trash: DriveTrashRepository;
-let nodes: ComputerNodesRepository;
-let devices: DevicesRepository;
-let owner: DriveActor;
-let idaId: string;
-let robinId: string;
-let ownerDesk: string;
-let idaDesk: string;
-let idaActsAs: string;
+let world: PlacementWorld;
 let lifecycle: PlacementLifecycle;
 let stop: () => void;
-let idCounter = 0;
-let nodeCount = 0;
-
-function newId(): string {
-  idCounter += 1;
-  return `0a000000-0000-4000-8000-${idCounter.toString(16).padStart(12, '0')}`;
-}
-
-function pair(profileId: string): string {
-  nodeCount += 1;
-  const [device] = devices.upsert([
-    {
-      provider: 'local',
-      externalId: `computer:lifecycle:${String(nodeCount)}`,
-      parentId: null,
-      kind: 'computer',
-      name: `Desk ${String(nodeCount)}`,
-      model: 'model',
-      manufacturer: 'Maker',
-      providerRoom: null,
-      roomId: null,
-      online: true,
-      capabilities: [],
-      details: {},
-    },
-  ]);
-  if (device === undefined) throw new Error('the device was not stored');
-  nodes.bind({
-    deviceId: device.id,
-    machineId: nodeCount.toString(16).padStart(32, '0'),
-    tokenHash: randomBytes(32).toString('hex'),
-    hubUrl: 'http://hub.test',
-    windowClientId: null,
-    profileId,
-  });
-  return device.id;
-}
-
-function folder(id: string, rootId: string, name: string, parentId: string | null): void {
-  fixture.items.write({
-    item: {
-      modifiedAt: NOW,
-      addedAt: NOW,
-      starred: false,
-      outside: false,
-      remoteId: null,
-      remoteRev: null,
-      id,
-      rootId,
-      parentId,
-      relPath: name,
-      name,
-      kind: 'folder',
-      childCount: 0,
-      bytes: 0,
-      addedByProfileId: null,
-    },
-    identity: { dev: '1', ino: id.slice(-4) },
-  });
-}
-
-function request(deviceId: string, fields: Partial<DrivePlacementSet> = {}): DrivePlacementSet {
-  return DRIVE_PLACEMENT_SET.parse({
-    deviceId,
-    rootId: HOME_ROOT,
-    folderItemId: null,
-    mode: 'mounted',
-    localPath: '/home/robin/Games',
-    enabled: true,
-    ...fields,
-  });
-}
-
-function place(deviceId: string, fields: Partial<DrivePlacementSet> = {}): DrivePlacement {
-  return placements.set(owner, request(deviceId, fields));
-}
 
 function current(id: string): DrivePlacement {
-  return repository.byId(id);
+  return world.store.drivePlacements.byId(id);
 }
 
 function announce(...rootIds: string[]): void {
-  fixture.feed.notice({
+  world.store.feed.notice({
     type: 'drive_changed',
     rootIds,
     folderIds: [],
@@ -134,12 +39,12 @@ function announce(...rootIds: string[]): void {
   });
 }
 
-function entryOf(itemId: string, rootId: string): DriveTrashEntry {
+function entryOf(itemId: string, rootId: string, relPath: string): DriveTrashEntry {
   return {
     itemId,
     rootId,
-    name: 'Roms',
-    originalRelPath: 'Roms',
+    name: relPath,
+    originalRelPath: relPath,
     trashRelPath: `.trash/${itemId}`,
     isFolder: true,
     bytes: 0,
@@ -150,113 +55,58 @@ function entryOf(itemId: string, rootId: string): DriveTrashEntry {
   };
 }
 
-function trashFolder(itemId: string, rootId: string): void {
-  fixture.context.write(() => {
-    trash.insert(entryOf(itemId, rootId));
-    fixture.items.remove(itemId);
+function trashFolder(itemId: string, rootId: string, relPath: string): void {
+  world.store.context.write(() => {
+    world.store.driveTrash.insert(entryOf(itemId, rootId, relPath));
+    world.store.driveItems.remove(itemId);
     announce(rootId);
   });
 }
 
-function restoreFolder(itemId: string, rootId: string, name: string): void {
-  fixture.context.write(() => {
-    trash.remove(itemId);
-    folder(itemId, rootId, name, null);
+function restoreFolder(itemId: string, rootId: string, relPath: string): void {
+  world.store.context.write(() => {
+    world.store.driveTrash.remove(itemId);
+    putItem(world.store, { rootId, id: itemId, relPath, kind: 'folder' });
     announce(rootId);
   });
 }
 
 function purgeFolder(itemId: string): void {
-  fixture.context.write(() => {
-    trash.remove(itemId);
-    announce(HOME_ROOT, SYNCED_ROOT, OTHER_ROOT, PERSON_ROOT);
+  world.store.context.write(() => {
+    world.store.driveTrash.remove(itemId);
+    announce(HOME_DRIVE, ROBIN_DRIVE, IDA_DRIVE);
   });
 }
 
-beforeEach(() => {
-  fixture = openDriveFixture();
-  const { context } = fixture;
-  const profiles = new ProfilesRepository(context);
-  devices = new DevicesRepository(context);
-  nodes = new ComputerNodesRepository(context);
-  repository = new DrivePlacementsRepository(context);
-  trash = new DriveTrashRepository(context);
-  const ownerId = profiles.first().id;
-  robinId = profiles.create({ name: 'Robin' }).id;
-  idaId = profiles.create({ name: 'Ida' }).id;
-  idaActsAs = idaId;
-  owner = { profileId: ownerId, owner: true };
-  ownerDesk = pair(ownerId);
-  idaDesk = pair(idaId);
-  fixture.roots.insert(folderRoot(HOME_ROOT, '/srv/home', { readOnly: false, label: 'Shared' }));
-  fixture.roots.insert(
-    folderRoot(SYNCED_ROOT, '/srv/synced', {
-      readOnly: false,
-      label: 'Docs',
-      synced: true,
-      sync: UNSYNCED,
-    }),
-  );
-  fixture.roots.insert(folderRoot(OTHER_ROOT, '/srv/other', { label: 'Archive' }));
-  fixture.roots.insert(
-    folderRoot(PERSON_ROOT, '/srv/person', {
-      label: 'Ida',
-      scope: 'person',
-      ownerProfileId: idaId,
-      readOnly: false,
-    }),
-  );
-  folder(ROMS, HOME_ROOT, 'Roms', null);
-  folder(SNES, HOME_ROOT, 'Snes', ROMS);
-  folder(MUSIC, HOME_ROOT, 'Music', null);
-  folder(OTHER_FOLDER, OTHER_ROOT, 'Old', null);
-  idCounter = 0;
-  const nodeActor = (deviceId: string): DriveActor => {
-    if (deviceId === idaDesk) return { profileId: idaActsAs, owner: false };
-    return owner;
-  };
-  placements = new DrivePlacements({
-    store: {
-      drivePlacements: repository,
-      driveRoots: fixture.roots,
-      driveItems: fixture.items,
-      computerNodes: nodes,
-    },
-    context,
-    nodeActor,
-    newId,
-  });
+function share(itemId: string, profileId: string, role: 'view' | 'edit'): void {
+  world.store.driveGrants.set({ itemId, profileId, role }, world.robin.profileId);
+}
+
+beforeEach(async () => {
+  world = await openPlacementWorld();
   lifecycle = new PlacementLifecycle({
-    store: {
-      drivePlacements: repository,
-      driveRoots: fixture.roots,
-      driveItems: fixture.items,
-      driveTrash: trash,
-      computerNodes: nodes,
-      feed: fixture.feed,
-    },
-    placements,
-    nodeActor,
+    store: world.store,
+    placements: world.placements,
     now: (): string => NOW,
     log: testLogger('placement-lifecycle'),
   });
   stop = lifecycle.start();
 });
 
-afterEach(() => {
+afterEach(async () => {
   stop();
-  fixture.database.close();
+  await world.close();
 });
 
 describe('trash', () => {
   it('holds a placement whose folder is trashed and clears the hold on restore', () => {
-    const placed = place(ownerDesk, { folderItemId: ROMS });
-    trashFolder(ROMS, HOME_ROOT);
+    const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
+    trashFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(current(placed.id)).toMatchObject({
       hold: 'trashed',
       status: { state: 'stopped', reason: 'Folder is in the trash' },
     });
-    restoreFolder(ROMS, HOME_ROOT, 'Roms');
+    restoreFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(current(placed.id)).toMatchObject({
       hold: null,
       status: { state: 'starting', reason: null },
@@ -264,125 +114,149 @@ describe('trash', () => {
   });
 
   it('holds a placement whose ancestor is trashed', () => {
-    const placed = place(ownerDesk, { folderItemId: SNES });
-    trashFolder(ROMS, HOME_ROOT);
-    expect(fixture.items.find(SNES)).toBeUndefined();
+    const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS_INNER });
+    trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    expect(world.store.driveItems.find(ROMS_INNER, null)).toBeUndefined();
     expect(current(placed.id)).toMatchObject({ hold: 'trashed' });
     expect(current(placed.id).status.reason).toBe(HOLD_REASONS.trashed);
   });
 
-  it('keeps the other placements of the root untouched', () => {
-    const music = place(ownerDesk, { folderItemId: MUSIC, localPath: '/home/robin/Music' });
-    place(ownerDesk, { folderItemId: ROMS });
-    trashFolder(ROMS, HOME_ROOT);
+  it('keeps the other placements of the drive untouched', () => {
+    const music = place(world, world.owner, world.ownerDesk, {
+      folderItemId: MUSIC,
+      localPath: '/home/owner/Music',
+    });
+    place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
+    trashFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(current(music.id).hold).toBeNull();
   });
 });
 
-describe('purge and removal', () => {
+describe('purge', () => {
   it('removes the row of a placement whose folder was purged from the trash', () => {
-    const placed = place(ownerDesk, { folderItemId: ROMS });
-    trashFolder(ROMS, HOME_ROOT);
+    const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
+    trashFolder(ROMS, HOME_DRIVE, 'Roms');
     purgeFolder(ROMS);
-    expect(repository.find(placed.id)).toBeUndefined();
+    expect(world.store.drivePlacements.find(placed.id)).toBeUndefined();
   });
 
   it('removes the row of a nested placement when its trashed ancestor is purged', () => {
-    const placed = place(ownerDesk, { folderItemId: SNES });
-    trashFolder(ROMS, HOME_ROOT);
+    const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS_INNER });
+    trashFolder(ROMS, HOME_DRIVE, 'Roms');
     purgeFolder(ROMS);
-    expect(repository.find(placed.id)).toBeUndefined();
-  });
-
-  it('removes the rows of a removed root and publishes the deletion', () => {
-    const placed = place(ownerDesk);
-    const other = place(ownerDesk, { rootId: OTHER_ROOT, localPath: '/home/robin/Old' });
-    const deletions: string[] = [];
-    fixture.feed.subscribe((change) => {
-      if (change.table === 'drive_placements' && change.operation === 'DELETE') {
-        deletions.push(change.oldRecord?.id ?? '');
-      }
-    });
-    fixture.roots.remove(HOME_ROOT);
-    expect(repository.find(placed.id)).toBeUndefined();
-    expect(deletions).toEqual([placed.id]);
-    expect(repository.find(other.id)).toBeDefined();
+    expect(world.store.drivePlacements.find(placed.id)).toBeUndefined();
   });
 });
 
 describe('access', () => {
-  it('holds a placement when the root is no longer visible to the person and releases it when access is back', () => {
-    const placed = placements.set(
-      owner,
-      request(idaDesk, { rootId: PERSON_ROOT, localPath: '/home/ida/Private' }),
-    );
-    idaActsAs = robinId;
-    fixture.roots.update(PERSON_ROOT, { label: 'Ida private' });
+  it('holds a placement when a grant is removed and releases it when access is back', () => {
+    share(ROBIN_TRIP, world.ida.profileId, 'edit');
+    const placed = place(world, world.ida, world.idaDesk, {
+      rootId: ROBIN_DRIVE,
+      folderItemId: ROBIN_TRIP,
+      localPath: '/home/ida/Trip',
+    });
+    const grant = world.store.driveGrants.forPerson(ROBIN_TRIP, world.ida.profileId);
+    world.store.driveGrants.remove(grant?.id ?? '');
     expect(current(placed.id)).toMatchObject({
       hold: 'no_access',
       status: { state: 'stopped', reason: 'No access to this folder any more' },
     });
-    idaActsAs = idaId;
-    fixture.roots.update(PERSON_ROOT, { label: 'Ida' });
+    share(ROBIN_TRIP, world.ida.profileId, 'edit');
     expect(current(placed.id)).toMatchObject({ hold: null, status: { state: 'starting' } });
+  });
+
+  it('holds a placement on an item moved out of the shared folder', () => {
+    share(ROBIN_TRIP, world.ida.profileId, 'view');
+    const placed = place(world, world.ida, world.idaDesk, {
+      rootId: ROBIN_DRIVE,
+      folderItemId: ROBIN_TRIP_DEEP,
+      localPath: '/home/ida/Photos',
+    });
+    expect(placed.status.readOnly).toBe(true);
+    world.store.context.write(() => {
+      world.store.driveItems.remove(ROBIN_TRIP_DEEP);
+      putItem(world.store, {
+        rootId: ROBIN_DRIVE,
+        id: ROBIN_TRIP_DEEP,
+        relPath: 'Photos',
+        kind: 'folder',
+      });
+      announce(ROBIN_DRIVE);
+    });
+    expect(current(placed.id)).toMatchObject({ hold: 'no_access' });
   });
 });
 
-describe('sync switch', () => {
-  it('holds only the synced placements of a root whose sync turned off, and releases them on sync on', () => {
-    const synced = place(ownerDesk, {
-      rootId: SYNCED_ROOT,
-      mode: 'synced',
-      localPath: '/home/robin/Docs',
+describe('read only', () => {
+  it('follows a grant changing from edit to view and back', () => {
+    share(ROBIN_TRIP, world.ida.profileId, 'edit');
+    const placed = place(world, world.ida, world.idaDesk, {
+      rootId: ROBIN_DRIVE,
+      folderItemId: ROBIN_TRIP,
+      localPath: '/home/ida/Trip',
     });
-    const mounted = place(idaDesk, {
-      rootId: SYNCED_ROOT,
-      mode: 'mounted',
-      localPath: '/home/ida/Docs',
+    expect(current(placed.id).status.readOnly).toBe(false);
+    share(ROBIN_TRIP, world.ida.profileId, 'view');
+    expect(current(placed.id).status.readOnly).toBe(true);
+    share(ROBIN_TRIP, world.ida.profileId, 'edit');
+    expect(current(placed.id).status.readOnly).toBe(false);
+  });
+
+  it('sends the computer the new placement when the access changes', () => {
+    share(ROBIN_TRIP, world.ida.profileId, 'edit');
+    place(world, world.ida, world.idaDesk, {
+      rootId: ROBIN_DRIVE,
+      folderItemId: ROBIN_TRIP,
+      localPath: '/home/ida/Trip',
     });
-    fixture.roots.update(SYNCED_ROOT, { sync: null });
-    expect(current(synced.id)).toMatchObject({
-      hold: 'sync_off',
-      status: { state: 'stopped', reason: 'Sync is off for this folder' },
+    const heard: (readonly string[])[] = [];
+    world.placements.onDeviceChanged((deviceIds) => heard.push(deviceIds));
+    share(ROBIN_TRIP, world.ida.profileId, 'view');
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        expect(heard).toEqual([[world.idaDesk]]);
+        resolve();
+      }, 0);
     });
-    expect(current(mounted.id).hold).toBeNull();
-    fixture.roots.update(SYNCED_ROOT, { sync: UNSYNCED });
-    expect(current(synced.id)).toMatchObject({ hold: null });
   });
 });
 
 describe('computer', () => {
   it('removes the rows of an unpaired computer and keeps the others', () => {
-    const gone = place(ownerDesk);
-    const kept = placements.set(
-      owner,
-      request(idaDesk, { rootId: PERSON_ROOT, localPath: '/home/ida/Private' }),
-    );
-    nodes.revoke(ownerDesk);
-    lifecycle.deviceUnpaired(ownerDesk);
-    expect(repository.find(gone.id)).toBeUndefined();
-    expect(repository.find(kept.id)).toBeDefined();
+    const gone = place(world, world.owner, world.ownerDesk);
+    const kept = place(world, world.ida, world.idaDesk, { rootId: IDA_DRIVE });
+    world.store.computerNodes.revoke(world.ownerDesk);
+    lifecycle.deviceUnpaired(world.ownerDesk);
+    expect(world.store.drivePlacements.find(gone.id)).toBeUndefined();
+    expect(world.store.drivePlacements.find(kept.id)).toBeDefined();
   });
 });
 
 describe('copies', () => {
-  it('leaves the placement on the original when a copy appears in another root', () => {
-    const placed = place(ownerDesk, { folderItemId: ROMS });
-    folder(COPY, OTHER_ROOT, 'Roms', null);
-    announce(HOME_ROOT, OTHER_ROOT);
-    expect(current(placed.id)).toMatchObject({ rootId: HOME_ROOT, folderItemId: ROMS, hold: null });
-    expect(repository.forFolder(COPY)).toEqual([]);
+  it('leaves the placement on the original when a copy appears in another drive', () => {
+    const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
+    putItem(world.store, { rootId: ROBIN_DRIVE, id: COPY, relPath: 'Roms', kind: 'folder' });
+    announce(HOME_DRIVE, ROBIN_DRIVE);
+    expect(current(placed.id)).toMatchObject({
+      rootId: HOME_DRIVE,
+      folderItemId: ROMS,
+      hold: null,
+    });
+    expect(world.store.drivePlacements.forFolder(COPY)).toEqual([]);
   });
 });
 
 describe('held rows', () => {
   it('are not in activeFor while held and return when released', () => {
-    const placed = place(ownerDesk, { folderItemId: ROMS });
-    expect(placements.activeFor(ownerDesk).map((one) => one.id)).toEqual([placed.id]);
-    trashFolder(ROMS, HOME_ROOT);
-    expect(placements.activeFor(ownerDesk)).toEqual([]);
-    expect(repository.forDevice(ownerDesk).map((one) => one.id)).toEqual([placed.id]);
-    restoreFolder(ROMS, HOME_ROOT, 'Roms');
-    expect(placements.activeFor(ownerDesk).map((one) => one.id)).toEqual([placed.id]);
+    const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
+    expect(world.placements.activeFor(world.ownerDesk).map((one) => one.id)).toEqual([placed.id]);
+    trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    expect(world.placements.activeFor(world.ownerDesk)).toEqual([]);
+    expect(world.store.drivePlacements.forDevice(world.ownerDesk).map((one) => one.id)).toEqual([
+      placed.id,
+    ]);
+    restoreFolder(ROMS, HOME_DRIVE, 'Roms');
+    expect(world.placements.activeFor(world.ownerDesk).map((one) => one.id)).toEqual([placed.id]);
   });
 });

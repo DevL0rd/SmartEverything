@@ -2,12 +2,15 @@ import { PhotoPipeline } from '../../photos/pipeline/runtime';
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
+import type { DriveDataSpace } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { HubLayout } from '../../data-layout';
 import { DriveAlbumsService, type SmartMemberRow, type SmartQueryRunner } from '../../drive/albums';
 import { DriveBackups } from '../../drive/backups';
 import { hashRequested, type HashResponse } from '../../drive/blocks';
 import type { ConflictEnv, DriveConflictStore } from '../../drive/conflicts';
+import { readDataSpace, type DataSpaceProbe } from '../../drive/data-space';
+import { DriveGrants } from '../../drive/grants';
 import { DriveHealthReader } from '../../drive/health';
 import { BUNDLED_HASH_WORKER, BUNDLED_SCANNER_WORKER, type DriveJob } from '../../drive/jobs';
 import { nodeCaller } from '../../drive/node-caller';
@@ -18,7 +21,6 @@ import { DriveShares, shareOriginOf, type ShareOrigin } from '../../drive/shares
 import { PurgeTimer } from '../../drive/trash-purge';
 import { TusUploads, type TusEnv } from '../../drive/uploads-tus';
 import { fileEnv } from '../../drive/versions';
-import type { VolumeProbe } from '../../drive/volumes';
 import { DriveWatchers, systemWatch } from '../../drive/watcher';
 import { WorkQueue, defaultConcurrency } from '../../drive/work-queue';
 import type { ComputerNodeAccess } from '../../computers/node-access';
@@ -37,18 +39,17 @@ export interface DriveParts {
   readonly conflicts: DriveConflictStore;
   readonly listings: DriveListings;
   readonly removeLocationOutside: (sharedBy: string) => boolean;
-  readonly notifyOwner: (corruption: ScrubCorruption) => void;
+  readonly notifyCorruption: (corruption: ScrubCorruption) => void;
 }
 
 export interface DriveDeps {
   readonly store: Store;
   readonly parts: DriveParts;
   readonly layout: HubLayout;
-  readonly installDirectory: string;
   readonly localUrl: () => string;
   readonly links: MediaLinks;
   readonly nodes: ComputerNodeAccess;
-  readonly probe: VolumeProbe;
+  readonly probe: DataSpaceProbe;
   readonly now: () => Date;
   readonly log: Logger;
   readonly watchSettleMs: number;
@@ -114,7 +115,7 @@ function scrubberOf(deps: DriveDeps, availability: DriveRuntime['availability'])
       driveRoots: store.driveRoots,
       driveScrub: store.driveScrub,
       driveItems: {
-        find: (id) => store.driveItems.find(id),
+        find: (id) => store.driveItems.find(id, null),
         identityOf: (id) => store.driveItems.identityOf(id),
         setIntegrity: (id, integrity): void => {
           parts.context.sql.run(
@@ -127,7 +128,7 @@ function scrubberOf(deps: DriveDeps, availability: DriveRuntime['availability'])
     },
     availability,
     openHasher: inProcessHasher(),
-    notifyOwner: parts.notifyOwner,
+    notifyOwner: parts.notifyCorruption,
     log: log.forArea('hub.drive-scrub'),
   });
 }
@@ -190,6 +191,7 @@ function albumsOf(deps: DriveDeps): DriveAlbumsService {
     albums: store.driveAlbums,
     items: store.driveItems,
     roots: store.driveRoots,
+    grants: store.driveGrants,
     runner: smartRunnerOf(deps.parts.context),
     newId: randomUUID,
     now: (): string => deps.now().toISOString(),
@@ -222,14 +224,14 @@ function writeOf(
     scrub: core.scrubber,
     backups: core.backups,
     guard: { status: (profileId) => store.driveQuotas.status(profileId), space: probe.space },
-    probe,
-    layout: deps.layout,
-    installDirectory: deps.installDirectory,
-    newId: randomUUID,
     scan: (rootId): void => {
       core.queue.enqueue({ kind: 'scan', rootId });
     },
   });
+}
+
+function dataSpaceOf(deps: DriveDeps): () => Promise<DriveDataSpace> {
+  return () => readDataSpace(deps.probe, deps.layout.root);
 }
 
 function healthOf(deps: DriveDeps, core: Core): DriveHealthReader {
@@ -239,7 +241,7 @@ function healthOf(deps: DriveDeps, core: Core): DriveHealthReader {
     watcher: (rootId) => core.watchers.status(rootId),
     scrub: () => core.scrubber.state(),
     backup: () => core.backups.status(),
-    space: deps.probe.space,
+    space: dataSpaceOf(deps),
   });
 }
 
@@ -265,7 +267,9 @@ function servicesOf(deps: DriveDeps, core: Core): DriveServices {
       },
       now: deps.now,
     },
+    grants: new DriveGrants({ store }),
     probe: deps.probe,
+    dataSpace: dataSpaceOf(deps),
     listings: deps.parts.listings,
   };
 }
@@ -285,10 +289,7 @@ function uploadsOf(deps: DriveDeps, env: ConflictEnv): TusUploads {
 }
 
 export function createDrive(deps: DriveDeps): DriveRuntime {
-  const availability = availabilityOf({
-    layout: deps.layout,
-    probe: deps.probe,
-  });
+  const availability = availabilityOf();
   const purge: PurgeTimer = new PurgeTimer(
     conflictEnvOf(deps, (): void => {
       purge.rearm();

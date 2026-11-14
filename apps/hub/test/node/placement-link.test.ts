@@ -29,6 +29,9 @@ const STATUS = {
   pinnedBytes: 0,
   openFiles: 0,
   pendingUploads: 0,
+  needBytes: 0,
+  lastSyncedAt: null,
+  errors: [],
   reason: null,
   reportedAt: '2026-11-07T10:00:00.000Z',
 } as const;

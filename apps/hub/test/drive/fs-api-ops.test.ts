@@ -86,7 +86,7 @@ async function seedFolder(root: DriveRoot, relPath: string): Promise<DriveItem> 
   if (stamp === null) throw new Error('missing');
   const slash = relPath.lastIndexOf('/');
   const parent =
-    slash < 0 ? undefined : opened.store.driveItems.byPath(root.id, relPath.slice(0, slash));
+    slash < 0 ? undefined : opened.store.driveItems.byPath(root.id, relPath.slice(0, slash), null);
   return recordItem(changeEnv(), {
     draft: folderDraft(
       {
@@ -213,7 +213,7 @@ describe('op ids', () => {
     const second = await api.rename(owner(), root.id, input);
     expect(second).toEqual(first);
     expect(second.name).toBe('b.txt');
-    expect(opened.store.driveItems.byId(file.id).rev).toBe(first.rev);
+    expect(opened.store.driveItems.byId(file.id, null).rev).toBe(first.rev);
   });
 
   it('answers a repeated unlink and rmdir that already took effect', async () => {
@@ -245,7 +245,7 @@ describe('op ids', () => {
     const root = await addRoot('docs');
     const id = op();
     await api.mkdir(owner(), root.id, { opId: id, parentId: null, name: 'x' });
-    const folder = opened.store.driveItems.byPath(root.id, 'x');
+    const folder = opened.store.driveItems.byPath(root.id, 'x', null);
     const itemId = folder?.id ?? '';
     expect((await refusal(() => api.rmdir(owner(), root.id, { opId: id, itemId }))).code).toBe(
       'conflict',
@@ -304,8 +304,8 @@ describe('subtree roots', () => {
 
   it('refuses items outside the subtree', async () => {
     const { root, base } = await mounted();
-    const outside = opened.store.driveItems.byPath(root.id, 'other.txt');
-    const parent = opened.store.driveItems.byPath(root.id, 'roms');
+    const outside = opened.store.driveItems.byPath(root.id, 'other.txt', null);
+    const parent = opened.store.driveItems.byPath(root.id, 'roms', null);
     const ids = [outside?.id ?? '', parent?.id ?? '', base.id];
     for (const folder of ids.slice(0, 2)) {
       expect(
@@ -323,7 +323,7 @@ describe('subtree roots', () => {
 
   it('refuses a base that is not a folder of this library folder', async () => {
     const { root } = await mounted();
-    const file = opened.store.driveItems.byPath(root.id, 'roms/snes/mario.sfc');
+    const file = opened.store.driveItems.byPath(root.id, 'roms/snes/mario.sfc', null);
     const other = await addRoot('second');
     const foreign = await seedFolder(other, 'x');
     for (const base of [file?.id ?? '', foreign.id]) {
@@ -355,8 +355,8 @@ describe('subtree roots', () => {
       name: 'fresh',
     });
     expect(made.parentId).toBeNull();
-    expect(opened.store.driveItems.byId(made.id).relPath).toBe('roms/snes/fresh');
-    const file = opened.store.driveItems.byPath(root.id, 'roms/snes/mario.sfc');
+    expect(opened.store.driveItems.byId(made.id, null).relPath).toBe('roms/snes/fresh');
+    const file = opened.store.driveItems.byPath(root.id, 'roms/snes/mario.sfc', null);
     const moved = await api.rename(owner(), root.id, {
       opId: op(),
       base: base.id,
@@ -365,13 +365,13 @@ describe('subtree roots', () => {
       name: 'mario.sfc',
     });
     expect(moved.parentId).toBe(made.id);
-    expect(opened.store.driveItems.byId(moved.id).relPath).toBe('roms/snes/fresh/mario.sfc');
+    expect(opened.store.driveItems.byId(moved.id, null).relPath).toBe('roms/snes/fresh/mario.sfc');
   });
 
   it('refuses a move out of the subtree', async () => {
     const { root, base } = await mounted();
-    const outside = opened.store.driveItems.byPath(root.id, 'roms');
-    const file = opened.store.driveItems.byPath(root.id, 'roms/snes/mario.sfc');
+    const outside = opened.store.driveItems.byPath(root.id, 'roms', null);
+    const file = opened.store.driveItems.byPath(root.id, 'roms/snes/mario.sfc', null);
     const rename = {
       opId: op(),
       base: base.id,

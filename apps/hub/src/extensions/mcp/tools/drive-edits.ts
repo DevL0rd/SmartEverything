@@ -4,16 +4,17 @@ import {
   DRIVE_ALBUM_CREATE,
   DRIVE_CONFLICT_RESOLUTIONS,
   DRIVE_EDIT_ACTIONS,
-  DRIVE_ROOT_ADD,
+  DRIVE_GRANT_ROLES,
+  DRIVE_PLACEMENT_SET,
+  DRIVE_ROOT_CHANGE,
   DRIVE_SHARE_CREATE,
-  DRIVE_SYNC_CLIENT_UPDATE,
   PHOTO_SOURCES,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { operate, type ActingAs, type OperatingContext } from './acting';
+import { operate } from './acting';
 import { attachToChat } from './drive-attach';
-import { DRIVE_FIELDS } from './drive-reads';
-import { PERSON, WRITES } from './registry';
+import { DRIVE_FIELDS, PERSON, ownDrive } from './drive-reads';
+import { ToolError, WRITES } from './registry';
 import { selection, type SelectedToolDefinition, type Selection } from './selected-tool';
 
 const ITEM_IDS = z.array(z.uuid()).min(1);
@@ -22,8 +23,10 @@ const NAME = z.string().trim().min(1);
 export const DRIVE_EDIT_INPUT = z.strictObject({
   action: z.enum(DRIVE_EDIT_ACTIONS).describe('What to change'),
   personId: PERSON,
-  root: DRIVE_ROOT_ADD.optional().describe('The folder or disk to add, for action add_root'),
-  rootId: DRIVE_FIELDS.rootId.optional().describe('The library folder to scan'),
+  rootId: DRIVE_FIELDS.rootId.optional().describe('A drive id from drive_read view drives'),
+  driveChanges: DRIVE_ROOT_CHANGE.optional().describe(
+    'The drive settings to change, for action configure',
+  ),
   parentId: DRIVE_FIELDS.folderId.optional().describe('The folder to make a folder in'),
   name: NAME.optional().describe('The new name for new_folder and rename'),
   itemId: DRIVE_FIELDS.itemId.optional().describe('One file or folder id from drive_read'),
@@ -36,15 +39,21 @@ export const DRIVE_EDIT_INPUT = z.strictObject({
   albumId: DRIVE_FIELDS.albumId.optional().describe('An album id from drive_read view albums'),
   album: DRIVE_ALBUM_CREATE.optional().describe('The new album, for action album_create'),
   changes: DRIVE_ALBUM_CHANGE.optional().describe('The album fields to change, for album_update'),
-  memoryId: DRIVE_FIELDS.memoryId.optional().describe('A memory id, for make_memory_album'),
-  title: NAME.optional().describe('The album title, for make_memory_album'),
   source: z.enum(PHOTO_SOURCES).optional().describe('cameras or ai, for action keep'),
   versionId: z.uuid().optional().describe('A version id from drive_read view versions'),
   share: DRIVE_SHARE_CREATE.optional().describe('The link to make, for action share_create'),
   shareId: z.uuid().optional().describe('A share id from drive_read view shares'),
   conflictId: z.uuid().optional().describe('A conflict id from drive_read view conflicts'),
   resolution: z.enum(DRIVE_CONFLICT_RESOLUTIONS).optional().describe('Which copy to keep'),
-  sync: DRIVE_SYNC_CLIENT_UPDATE.optional().describe('The device sync setting, for sync_set'),
+  recipientId: z.uuid().optional().describe('The person to share with, for action share_people'),
+  role: z
+    .enum([...DRIVE_GRANT_ROLES, 'none'])
+    .optional()
+    .describe('view or edit to share with that person, none to stop sharing, for share_people'),
+  placement: DRIVE_PLACEMENT_SET.optional().describe(
+    'The folder placement on one of your computers, for action placement_set',
+  ),
+  placementId: z.uuid().optional().describe('A placement id from drive_read view placements'),
 });
 
 function change(name: string, shape: z.ZodRawShape): Selection {
@@ -68,14 +77,54 @@ function star(): Selection {
   });
 }
 
-function bodied(
-  name: 'addRoot' | 'createAlbum' | 'updateSyncClient',
-  key: string,
-  field: z.ZodType,
-): Selection {
+function bodied(name: 'createAlbum' | 'setPlacement', key: string, field: z.ZodType): Selection {
   return selection({
     input: z.strictObject({ [key]: field }),
     run: (context, input, as) => operate(context, name, { body: input[key] }, as),
+  });
+}
+
+function driveUpdate(): Selection {
+  return selection({
+    input: z.strictObject({ rootId: DRIVE_FIELDS.rootId, driveChanges: DRIVE_ROOT_CHANGE }),
+    run: (context, input, as) =>
+      operate(
+        context,
+        'updateRoot',
+        { params: { rootId: input.rootId }, body: input.driveChanges },
+        as,
+      ),
+  });
+}
+
+function sharePeople(): Selection {
+  return selection({
+    input: z.strictObject({
+      itemId: DRIVE_FIELDS.itemId,
+      recipientId: z.uuid(),
+      role: z.enum([...DRIVE_GRANT_ROLES, 'none']),
+    }),
+    run: async (context, { itemId, recipientId, role }, as) => {
+      if (role !== 'none') {
+        return operate(context, 'setGrant', { body: { itemId, profileId: recipientId, role } }, as);
+      }
+      const grants = E.listGrants.response.parse(
+        await operate(context, 'listGrants', { params: { itemId } }, as),
+      );
+      const grant = grants.find((entry) => entry.profileId === recipientId);
+      if (grant === undefined) {
+        throw new ToolError('This item is not shared with that person.');
+      }
+      return operate(context, 'removeGrant', { params: { grantId: grant.id } }, as);
+    },
+  });
+}
+
+function placementRemove(): Selection {
+  return selection({
+    input: z.strictObject({ placementId: z.uuid() }),
+    run: (context, input, as) =>
+      operate(context, 'removePlacement', { params: { placementId: input.placementId } }, as),
   });
 }
 
@@ -95,49 +144,6 @@ function albumUpdate(): Selection {
         context,
         'updateAlbum',
         { params: { albumId: input.albumId }, body: input.changes },
-        as,
-      ),
-  });
-}
-
-async function memoryItemIds(
-  context: OperatingContext,
-  memoryId: string,
-  as: ActingAs,
-): Promise<string[]> {
-  const ids: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = E.listMemoryItems.response.parse(
-      await operate(
-        context,
-        'listMemoryItems',
-        { params: { memoryId }, query: cursor === undefined ? {} : { cursor } },
-        as,
-      ),
-    );
-    ids.push(...page.items.map((item) => item.id));
-    cursor = page.next ?? undefined;
-  } while (cursor !== undefined);
-  return ids;
-}
-
-function memoryAlbum(): Selection {
-  return selection({
-    input: z.strictObject({ memoryId: DRIVE_FIELDS.memoryId, title: NAME }),
-    run: async (context, input, as) =>
-      operate(
-        context,
-        'createAlbum',
-        {
-          body: {
-            kind: 'manual',
-            title: input.title,
-            surface: 'photos',
-            scope: 'person',
-            itemIds: await memoryItemIds(context, input.memoryId, as),
-          },
-        },
         as,
       ),
   });
@@ -205,8 +211,8 @@ export const DRIVE_EDIT: SelectedToolDefinition = {
   input: DRIVE_EDIT_INPUT,
   annotations: WRITES,
   action: true,
-  selections: {
-    add_root: bodied('addRoot', 'root', DRIVE_ROOT_ADD),
+  selections: ownDrive({
+    configure: driveUpdate(),
     scan: scan(),
     new_folder: change('new_folder', { parentId: DRIVE_FIELDS.folderId, name: NAME }),
     rename: change('rename', { itemId: DRIVE_FIELDS.itemId, name: NAME }),
@@ -219,14 +225,15 @@ export const DRIVE_EDIT: SelectedToolDefinition = {
     album_update: albumUpdate(),
     album_add: change('album_add', { albumId: DRIVE_FIELDS.albumId, itemIds: ITEM_IDS }),
     album_remove: change('album_remove', { albumId: DRIVE_FIELDS.albumId, itemIds: ITEM_IDS }),
-    make_memory_album: memoryAlbum(),
     keep: keep(),
     attach_to_chat: attachToChat(),
     version_restore: versionRestore(),
     share_create: shareCreate(),
     share_revoke: shareRevoke(),
+    share_people: sharePeople(),
     conflict_resolve: conflictResolve(),
-    sync_set: bodied('updateSyncClient', 'sync', DRIVE_SYNC_CLIENT_UPDATE),
+    placement_set: bodied('setPlacement', 'placement', DRIVE_PLACEMENT_SET),
+    placement_remove: placementRemove(),
     scrub_start: scrubStart(),
-  },
+  }),
 };

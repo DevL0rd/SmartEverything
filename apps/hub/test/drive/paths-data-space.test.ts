@@ -10,36 +10,29 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  checkRootPlacement,
   decodeRequestPath,
   DrivePathError,
   normalizeRelativePath,
   openResolved,
   resolveInRoot,
-  RootPlacementError,
 } from '../../src/drive/paths';
-import { hubLayout, type HubLayout } from '../../src/data-layout';
 import {
-  linkedRootAvailability,
   readRootMarker,
   RootMarkerError,
   verifyRootMarker,
-  writeLinkedRecord,
   writeRootMarker,
 } from '../../src/drive/root-marker';
 import {
+  DataSpaceError,
   findMount,
   parseMountInfo,
-  rootAvailability,
-  sameVolume,
-  systemProbe,
-  VolumeError,
-  volumeOf,
-  type VolumeProbe,
-} from '../../src/drive/volumes';
+  readDataSpace,
+  systemDataSpace,
+  type DataSpaceProbe,
+} from '../../src/drive/data-space';
 
 let base = '';
 
@@ -218,130 +211,12 @@ describe('opening under a root', () => {
   });
 });
 
-describe('root placement', () => {
-  async function layout(): Promise<{ data: string; install: string; existing: string }> {
-    const data = await directory('config', 'SmartEverything');
-    const install = await directory('opt', 'Hub');
-    const existing = await directory('nas', 'photos');
-    return { data, install, existing };
-  }
-
-  async function place(candidate: string, existing: readonly string[] = []): Promise<string> {
-    const { data, install } = await layout();
-    return checkRootPlacement({
-      candidate,
-      layout: hubLayout(data, {}),
-      hubInstallDirectory: install,
-      existingRoots: existing,
-    });
-  }
-
-  it('accepts an unrelated directory and returns its real path', async () => {
-    const free = await directory('nas', 'free');
-    expect(await place(free)).toBe(free);
-  });
-
-  it('resolves a symlinked candidate before checking it', async () => {
-    const { data } = await layout();
-    await symlink(data, join(base, 'sneaky'));
-    expect(await failureOf(place(join(base, 'sneaky')))).toMatchObject({
-      reason: 'inside-hub-data',
-    });
-  });
-
-  it('refuses a directory inside the hub data directory', async () => {
-    const { data } = await layout();
-    const inside = await directory('config', 'SmartEverything', 'elsewhere');
-    expect(await failureOf(place(inside))).toMatchObject({ reason: 'inside-hub-data' });
-    expect(await failureOf(place(data))).toBeInstanceOf(RootPlacementError);
-  });
-
-  it('refuses a directory that contains the hub data directory', async () => {
-    expect(await failureOf(place(join(base, 'config')))).toMatchObject({
-      reason: 'contains-hub-data',
-    });
-  });
-
-  async function managedFolder(path: (hub: HubLayout) => string): Promise<string> {
-    const { data } = await layout();
-    const folder = path(hubLayout(data, {}));
-    await mkdir(folder, { recursive: true });
-    return folder;
-  }
-
-  it('allows the home drive and a person drive inside the hub data directory', async () => {
-    const home = await managedFolder((hub) => hub.home.drive);
-    const person = await managedFolder((hub) => hub.person('p1').drive);
-    expect(await place(home)).toBe(home);
-    expect(await place(person)).toBe(person);
-  });
-
-  it('refuses any other folder inside the hub data directory', async () => {
-    const people = await managedFolder((hub) => dirname(hub.person('p1').drive));
-    const below = await managedFolder((hub) => join(hub.home.drive, 'sub'));
-    expect(await failureOf(place(people))).toMatchObject({ reason: 'inside-hub-data' });
-    expect(await failureOf(place(below))).toMatchObject({ reason: 'inside-hub-data' });
-  });
-
-  it('refuses a directory inside or containing the install directory', async () => {
-    const inside = await directory('opt', 'Hub', 'lib');
-    expect(await failureOf(place(inside))).toMatchObject({ reason: 'inside-install' });
-    expect(await failureOf(place(join(base, 'opt')))).toMatchObject({ reason: 'contains-install' });
-  });
-
-  it('refuses a nested, containing or identical root', async () => {
-    const { existing } = await layout();
-    const inside = await directory('nas', 'photos', 'raw');
-    expect(await failureOf(place(inside, [existing]))).toMatchObject({ reason: 'inside-existing' });
-    expect(await failureOf(place(join(base, 'nas'), [existing]))).toMatchObject({
-      reason: 'contains-existing',
-    });
-    expect(await failureOf(place(existing, [existing]))).toMatchObject({
-      reason: 'same-as-existing',
-    });
-  });
-
-  it('applies the nesting rule to managed roots too', async () => {
-    const managed = await managedFolder((hub) => hub.home.drive);
-    const person = await managedFolder((hub) => hub.person('p1').drive);
-    expect(await failureOf(place(managed, [managed]))).toMatchObject({
-      reason: 'same-as-existing',
-    });
-    expect(await place(person, [managed])).toBe(person);
-  });
-
-  it('refuses a candidate that is not a directory', async () => {
-    await layout();
-    await writeFile(join(base, 'file'), 'x');
-    expect(await failureOf(place(join(base, 'file')))).toMatchObject({ failure: 'not-directory' });
-    expect(await failureOf(place(join(base, 'gone')))).toMatchObject({ failure: 'missing' });
-  });
-});
-
 const MOUNTINFO = [
   '24 1 259:2 / / rw,relatime shared:1 - ext4 /dev/nvme0n1p2 rw',
   '30 24 8:17 / /mnt/nas\\040disk rw,relatime shared:5 - ext4 /dev/sdb1 rw',
   '31 24 0:40 / /mnt/share rw,relatime - nfs4 server:/export rw',
   '32 30 8:18 / /mnt/nas\\040disk/inner rw - xfs /dev/sdc1 rw',
 ].join('\n');
-
-interface FakeDisk {
-  readonly mountinfo: string;
-  readonly uuids: Readonly<Record<string, string>>;
-  readonly inode: bigint;
-  readonly stat?: (path: string) => Promise<{ dev: bigint; ino: bigint }>;
-}
-
-function fakeProbe(disk: FakeDisk): VolumeProbe {
-  return {
-    readMountInfo: () => Promise.resolve(disk.mountinfo),
-    stat:
-      disk.stat ??
-      ((): Promise<{ dev: bigint; ino: bigint }> => Promise.resolve({ dev: 77n, ino: disk.inode })),
-    space: () => Promise.resolve({ totalBytes: 1000, freeBytes: 400 }),
-    fsUuid: (source) => Promise.resolve(disk.uuids[source] ?? null),
-  };
-}
 
 describe('mount table', () => {
   it('parses fields, optional fields and escapes', () => {
@@ -357,7 +232,7 @@ describe('mount table', () => {
   });
 
   it('refuses a malformed line', () => {
-    expect(() => parseMountInfo('24 1 259:2 / / rw')).toThrow(VolumeError);
+    expect(() => parseMountInfo('24 1 259:2 / / rw')).toThrow(DataSpaceError);
   });
 
   it('finds the deepest mount containing a path', () => {
@@ -372,89 +247,27 @@ describe('mount table', () => {
   });
 });
 
-describe('volume identity', () => {
-  const disk: FakeDisk = {
-    mountinfo: MOUNTINFO,
-    uuids: { '/dev/sdb1': 'uuid-b' },
-    inode: 5n,
+describe('data space', () => {
+  const probe: DataSpaceProbe = {
+    readMountInfo: () => Promise.resolve(MOUNTINFO),
+    space: () => Promise.resolve({ totalBytes: 1000, freeBytes: 400 }),
   };
 
-  it('describes a volume with its space and uuid', async () => {
-    const info = await volumeOf('/mnt/nas disk/photos', fakeProbe(disk));
-    expect(info.identity).toEqual({
-      fsUuid: 'uuid-b',
-      source: '/dev/sdb1',
+  it('reports the disk space and filesystem of the data folder', async () => {
+    const folder = await directory('data');
+    expect(await readDataSpace(probe, folder)).toEqual({
+      totalBytes: 1000,
+      freeBytes: 400,
       fsType: 'ext4',
-      mountPoint: '/mnt/nas disk',
-      rootDev: '77',
-      rootIno: '5',
     });
-    expect(info.totalBytes).toBe(1000);
-    expect(info.freeBytes).toBe(400);
   });
 
   it('reads the real mount table and statfs of this machine', async () => {
-    const info = await volumeOf(base, systemProbe);
-    expect(info.totalBytes).toBeGreaterThan(0);
-    expect(info.identity.mountPoint.startsWith('/')).toBe(true);
-    expect(info.identity.rootIno).toMatch(/^\d+$/);
-  });
-
-  it('is online when the same disk is mounted', async () => {
-    const { identity } = await volumeOf('/mnt/nas disk/photos', fakeProbe(disk));
-    expect(await rootAvailability(identity, '/mnt/nas disk/photos', fakeProbe(disk))).toBe(
-      'online',
-    );
-  });
-
-  it('refuses a different disk mounted at the same path', async () => {
-    const { identity } = await volumeOf('/mnt/nas disk/photos', fakeProbe(disk));
-    const swapped = fakeProbe({ ...disk, uuids: { '/dev/sdb1': 'uuid-other' } });
-    expect(await rootAvailability(identity, '/mnt/nas disk/photos', swapped)).toBe('different');
-    const sameUuidOtherRoot = fakeProbe({ ...disk, inode: 9n });
-    expect(await rootAvailability(identity, '/mnt/nas disk/photos', sameUuidOtherRoot)).toBe(
-      'different',
-    );
-  });
-
-  it('matches by source and type when there is no uuid', () => {
-    const left = {
-      fsUuid: null,
-      source: 'server:/export',
-      fsType: 'nfs4',
-      mountPoint: '/mnt/share',
-      rootDev: '1',
-      rootIno: '2',
-    };
-    expect(sameVolume(left, { ...left, rootDev: '9' })).toBe(true);
-    expect(sameVolume(left, { ...left, source: 'other:/export' })).toBe(false);
-  });
-
-  it('is offline when the volume is unmounted and keeps reporting it without error', async () => {
-    const { identity } = await volumeOf('/mnt/nas disk/photos', fakeProbe(disk));
-    const unmounted = fakeProbe({
-      ...disk,
-      mountinfo: MOUNTINFO.split('\n')
-        .filter((line) => !line.includes('/mnt/nas'))
-        .join('\n'),
-    });
-    expect(await rootAvailability(identity, '/mnt/nas disk/photos', unmounted)).toBe('offline');
-    expect(await rootAvailability(identity, '/mnt/nas disk/photos', unmounted)).toBe('offline');
-  });
-
-  it('is offline for a dead network mount and missing for a deleted directory', async () => {
-    const { identity } = await volumeOf('/mnt/nas disk/photos', fakeProbe(disk));
-    const failing = (code: string): VolumeProbe =>
-      fakeProbe({
-        ...disk,
-        stat: () => Promise.reject(Object.assign(new Error(code), { code })),
-      });
-    expect(await rootAvailability(identity, '/mnt/nas disk/photos', failing('ESTALE'))).toBe(
-      'offline',
-    );
-    expect(await rootAvailability(identity, '/mnt/nas disk/photos', failing('ENOENT'))).toBe(
-      'missing',
-    );
+    const folder = await directory('data');
+    const space = await readDataSpace(systemDataSpace, folder);
+    expect(space.totalBytes).toBeGreaterThan(0);
+    expect(space.freeBytes).toBeLessThanOrEqual(space.totalBytes);
+    expect(space.fsType).not.toBe('');
   });
 });
 
@@ -523,44 +336,5 @@ describe('root marker', () => {
   it('refuses a root id that is not a plain identifier', async () => {
     const root = await directory('root');
     await expect(writeRootMarker(root, '../evil')).rejects.toThrow();
-  });
-});
-
-describe('linked root record', () => {
-  const data = (): HubLayout => hubLayout(join(base, 'data'), {});
-  const disk: FakeDisk = { mountinfo: MOUNTINFO, uuids: { '/dev/sdb1': 'uuid-b' }, inode: 5n };
-
-  it('records the identity outside the root and writes nothing into it', async () => {
-    const root = await directory('linked');
-    const record = await writeLinkedRecord(
-      data(),
-      'root-1',
-      root,
-      fakeProbe({ ...disk, mountinfo: '1 0 1:1 / / rw - ext4 /dev/sdb1 rw' }),
-    );
-    expect(record.volume.fsUuid).toBe('uuid-b');
-    expect(await readdir(root)).toEqual([]);
-    expect(await readdir(data().system.driveMeta('root-1'))).toEqual(['root.json']);
-  });
-
-  it('reports availability from the stored record', async () => {
-    const root = await directory('linked');
-    const mounted = fakeProbe({ ...disk, mountinfo: '1 0 1:1 / / rw - ext4 /dev/sdb1 rw' });
-    await writeLinkedRecord(data(), 'root-1', root, mounted);
-    expect(await linkedRootAvailability(data(), 'root-1', root, mounted)).toBe('online');
-    const swapped = fakeProbe({
-      ...disk,
-      mountinfo: '1 0 1:1 / / rw - ext4 /dev/sdb1 rw',
-      uuids: { '/dev/sdb1': 'uuid-new' },
-    });
-    expect(await linkedRootAvailability(data(), 'root-1', root, swapped)).toBe('different');
-  });
-
-  it('refuses a missing record and an unsafe id', async () => {
-    const root = await directory('linked');
-    expect(await failureOf(linkedRootAvailability(data(), 'nope', root))).toMatchObject({
-      failure: 'missing',
-    });
-    await expect(linkedRootAvailability(data(), '../x', root)).rejects.toThrow();
   });
 });

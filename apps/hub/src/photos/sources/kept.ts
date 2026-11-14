@@ -39,7 +39,7 @@ export function keptHashes(
         HASH_ROW,
         `select distinct i.sha256 from drive_items i join drive_roots r on r.id = i.root_id
           where ${filter.text} and i.kind <> 'folder' and i.integrity = 'ok'
-            and r.kind = 'managed' and (r.scope = 'home' or r.owner_profile_id = $profileId)`,
+            and (r.scope = 'home' or r.owner_profile_id = $profileId)`,
         { ...filter.parameters, profileId },
       )
       .map((row) => row.sha256),

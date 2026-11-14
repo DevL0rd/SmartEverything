@@ -5,6 +5,7 @@ import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DRIVE_MIGRATION } from '../../src/store/migrations/drive';
+import { DRIVE_SPACES_MIGRATION } from '../../src/store/migrations/drive-spaces';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
@@ -31,7 +32,12 @@ beforeEach(() => {
     log,
   );
   person = new ProfilesRepository(context).create({ name: 'Robin' }).id;
-  migrate(context.sql, MIGRATIONS, NOW, log);
+  migrate(
+    context.sql,
+    MIGRATIONS.filter((migration) => migration.version < DRIVE_SPACES_MIGRATION.version),
+    NOW,
+    log,
+  );
 });
 
 afterEach(() => {

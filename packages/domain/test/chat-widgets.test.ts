@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHAT_WIDGETS_MAX,
+  PHOTOS_WIDGET_VIEWS,
   SHOW_WIDGETS_INPUT,
   SHOW_WIDGETS_TEXT,
   chatWidgetKey,
@@ -31,6 +32,11 @@ const SAMPLES: readonly [ChatWidget, string][] = [
 describe('chat widgets', () => {
   it.each(SAMPLES)('keys %j as %s', (widget, key) => {
     expect(chatWidgetKey(widget)).toBe(key);
+  });
+
+  it('offers item, album and month for photos and no memory', () => {
+    expect(PHOTOS_WIDGET_VIEWS).toStrictEqual(['item', 'album', 'month']);
+    expect(chatWidgetsOf([{ kind: 'photos', view: 'memory', id: 'm1' }])).toEqual([]);
   });
 
   it('keeps only the embeds that are widgets', () => {

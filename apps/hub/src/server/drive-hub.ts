@@ -1,13 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { ApiError, PHOTOS_CLIENT_PREFS, type DriveChange } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { PlacementLifecycle } from '../drive/placement-lifecycle';
 import { DrivePlacements } from '../drive/placements';
-import { DriveReadService, type DriveActor } from '../drive/service-read';
+import type { DriveActor } from '../drive/access';
+import type { ScrubCorruption } from '../drive/scrub';
+import type { OwnerAlert } from '../extensions/owner-alerts';
+import { DriveReadService } from '../drive/service-read';
 import type { DriveWriteService } from '../drive/service-write';
-import { systemProbe } from '../drive/volumes';
+import { systemDataSpace } from '../drive/data-space';
 import { DuplicatesService } from '../photos/duplicates';
 import type { Store } from '../store/store';
 import type { BuildOptions } from './build';
@@ -19,8 +21,6 @@ import { createDriveSurfaces } from './handlers/drive-surface-routes';
 import type { DriveDeps } from './handlers/drive-wiring';
 import { photoHubRoutes, type PhotoHubRoutes } from './handlers/photos-hub';
 import type { RawRoute } from './http-server';
-
-const HUB_INSTALL_DIRECTORY = fileURLToPath(new URL('.', import.meta.url));
 
 const WATCH_SETTLE_MS = 500;
 
@@ -35,14 +35,36 @@ class DriveNotStartedError extends Error {
 class WriteSlot {
   private write: DriveWriteService | null = null;
 
+  constructor(private readonly store: Pick<Store, 'personAccess'>) {}
+
   attach(write: DriveWriteService): void {
     this.write = write;
   }
 
   async change(actor: DriveActor, change: DriveChange): Promise<void> {
     if (this.write === null) throw new DriveNotStartedError();
-    await this.write.change({ ...actor, via: 'app', deviceId: null }, change);
+    const standing = this.store.personAccess.standing(actor.profileId);
+    const owner = standing.known && standing.role === 'owner';
+    await this.write.change({ ...actor, owner, via: 'app', deviceId: null }, change);
   }
+}
+
+function corruptionAlert(store: Store, corruption: ScrubCorruption): OwnerAlert {
+  const drive = store.driveRoots.byId(corruption.rootId);
+  const data = { rootId: corruption.rootId, itemId: corruption.itemId };
+  if (drive.scope === 'home') {
+    return {
+      title: 'A Shared Drive file changed on disk',
+      body: `${corruption.relPath} no longer matches the copy the hub checked.`,
+      data,
+    };
+  }
+  return {
+    title: 'A drive file changed on disk',
+    body: 'A file no longer matches the copy the hub checked. Open the drive health page to see which.',
+    data,
+    ...(drive.ownerProfileId === null ? {} : { person: drive.ownerProfileId }),
+  };
 }
 
 function lanUrlOf(context: ServerContext): string {
@@ -66,17 +88,6 @@ function removesLocation(store: Store, sharedBy: string): boolean {
   return read.value.removeLocationOutside;
 }
 
-function nodeActorOf(store: Store): (deviceId: string) => DriveActor {
-  return (deviceId) => {
-    const profileId = store.computerNodes.personOf(deviceId);
-    if (profileId === null) {
-      throw new ApiError('forbidden', 'This computer is not paired for a person.');
-    }
-    const standing = store.personAccess.standing(profileId);
-    return { profileId, owner: standing.known && standing.role === 'owner' };
-  };
-}
-
 function depsOf(
   options: BuildOptions,
   context: ServerContext,
@@ -91,20 +102,15 @@ function depsOf(
       conflicts: store.driveConflicts,
       listings: driveListings({ store, read: new DriveReadService(store), duplicates }),
       removeLocationOutside: (sharedBy) => removesLocation(store, sharedBy),
-      notifyOwner: (corruption): void => {
-        options.alerts.raise({
-          title: 'A library file changed on disk',
-          body: `${corruption.relPath} no longer matches the copy the hub checked.`,
-          data: { rootId: corruption.rootId, itemId: corruption.itemId },
-        });
+      notifyCorruption: (corruption): void => {
+        options.alerts.raise(corruptionAlert(store, corruption));
       },
     },
     layout: options.layout,
-    installDirectory: HUB_INSTALL_DIRECTORY,
     localUrl: () => lanUrlOf(context),
     links: context.links,
     nodes: context.computerNodes,
-    probe: systemProbe,
+    probe: systemDataSpace,
     now: options.clock.now,
     log: options.log.forArea('hub.drive'),
     watchSettleMs: WATCH_SETTLE_MS,
@@ -117,17 +123,14 @@ interface StartedPlacements {
 }
 
 function placementsOf(store: Store, log: Logger): StartedPlacements {
-  const nodeActor = nodeActorOf(store);
   const placements = new DrivePlacements({
     store,
     context: store.context,
-    nodeActor,
     newId: randomUUID,
   });
   const lifecycle = new PlacementLifecycle({
     store,
     placements,
-    nodeActor,
     now: (): string => store.now().toISOString(),
     log,
   });
@@ -161,7 +164,7 @@ export async function startDriveHub(
   context: ServerContext,
 ): Promise<RunningDriveHub> {
   const { store } = options;
-  const slot = new WriteSlot();
+  const slot = new WriteSlot(store);
   const duplicates = duplicatesOf(store, slot);
   const drive = await startDrive(depsOf(options, context, duplicates));
   slot.attach(drive.runtime.services.write);

@@ -1,4 +1,4 @@
-import type { DriveRoot, DriveTrashEntry } from '@smarteverything/domain';
+import type { DriveTrashEntry } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StoreContext } from '../../src/store/context';
@@ -12,11 +12,12 @@ import {
 import { DriveDaysRepository } from '../../src/store/repositories/drive-days';
 import { DriveFeedRepository } from '../../src/store/repositories/drive-feed';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
-import { DriveRootsRepository, UNSYNCED } from '../../src/store/repositories/drive-roots';
+import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql, StoreConflictError } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -35,41 +36,6 @@ let items: DriveItemsRepository;
 let profile: string;
 let changes: { table: string; operation: string }[];
 let clock: Date;
-
-const health = {
-  hashedShare: 0,
-  verifiedShare: 0,
-  corrupt: 0,
-  lastScrubAt: null,
-  lastBackupAt: null,
-} as const;
-
-function root(id: string, path: string): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: path,
-    scope: 'home',
-    ownerProfileId: null,
-    path,
-    readOnly: false,
-    versions: false,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health,
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
 
 function itemId(index: number): string {
   return `0d000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -93,6 +59,7 @@ function addItem(index: number): string {
       modifiedAt: NOW,
       addedAt: NOW,
       starred: false,
+      shared: false,
       outside: false,
       addedByProfileId: profile,
       remoteId: null,
@@ -127,15 +94,15 @@ beforeEach(() => {
   clock = new Date(NOW);
   context = new StoreContext(new Sql(database), changeFeed, () => clock);
   migrate(new Sql(database), MIGRATIONS, NOW, log);
-  const roots = new DriveRootsRepository(context);
+  const roots = new DriveRootsRepository(context, drivePathOf);
   items = new DriveItemsRepository(context);
   albums = new DriveAlbumsRepository(context);
   trash = new DriveTrashRepository(context);
   days = new DriveDaysRepository(context);
   feed = new DriveFeedRepository(context);
   profile = new ProfilesRepository(context).create({ name: 'Robin' }).id;
-  roots.insert(root(ROOT, '/srv/a'));
-  roots.insert(root(OTHER_ROOT, '/srv/b'));
+  roots.insert(sharedDriveRoot(ROOT));
+  roots.insert(personalDriveRoot(OTHER_ROOT, profile));
   changes = [];
   changeFeed.subscribe((change) => {
     changes.push({ table: change.table, operation: change.operation });
@@ -432,10 +399,9 @@ describe('feed', () => {
   });
 
   it('keeps feed rows after the item is gone and ends them with the root', () => {
-    const roots = new DriveRootsRepository(context);
     feed.append({ ...base, itemId: itemId(9), op: 'delete', rev: 3 });
     expect(feed.ofItem(itemId(9), 0, 10).rows).toHaveLength(1);
-    roots.remove(ROOT);
+    database.prepare('delete from drive_roots where id = ?').run(ROOT);
     expect(feed.latestSeq()).toBe(0);
   });
 });

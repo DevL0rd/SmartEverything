@@ -16,13 +16,7 @@ import {
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { updateDriveSettings } from '../../src/drive/settings';
 import { testLogger } from '../support/logs';
-import {
-  bundleWorker,
-  folderRoot,
-  NOW,
-  openDriveFixture,
-  type DriveFixture,
-} from './drive-fixture';
+import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 
@@ -52,12 +46,8 @@ afterAll(() => {
 });
 
 function useRoot(synced: boolean): void {
-  roots.insert(
-    folderRoot(ROOT, tree, {
-      synced,
-      ...(synced ? { sync: { ignorePatterns: [], conflictCopies: true, clients: [] } } : {}),
-    }),
-  );
+  fixture.addDrive(driveRoot(ROOT), tree);
+  if (synced) fixture.syncRoot(ROOT);
 }
 
 beforeEach(() => {
@@ -84,7 +74,7 @@ function put(path: string, content: string | Buffer = 'x'): void {
 }
 
 function indexed(path: string): DriveItem {
-  const item = items.byPath(ROOT, path);
+  const item = items.byPath(ROOT, path, null);
   if (item === undefined) throw new Error(`${path} is not indexed`);
   return item;
 }
@@ -116,6 +106,7 @@ function hashEnvironment(): HashEnvironment {
       driveRoots: roots,
       driveItems: items,
       driveBlocks: blocks,
+      drivePlacements: fixture.placements,
       settingsKv: settings,
       feed,
       write: (work) => context.write(work),
@@ -265,7 +256,7 @@ describe('the hash job', () => {
       { duplicatesHashing: false },
     );
     await hash();
-    expect(items.byPath(ROOT, 'a.txt')).toMatchObject({ sha256: null });
+    expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ sha256: null });
     updateDriveSettings(
       { settingsKv: settings, write: (work) => context.write(work) },
       { duplicatesHashing: true },
@@ -285,7 +276,7 @@ describe('the hash job', () => {
       { indexingPaused: true },
     );
     await hash();
-    expect(items.byPath(ROOT, 'a.txt')).toMatchObject({ sha256: null });
+    expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ sha256: null });
   });
 
   it('drops a digest when the file changed after the scan and leaves the rev alone', async () => {
@@ -300,7 +291,7 @@ describe('the hash job', () => {
       new Date('2030-01-01T00:00:00Z'),
     );
     await hash();
-    expect(items.byPath(ROOT, 'a.txt')).toEqual(before);
+    expect(items.byPath(ROOT, 'a.txt', null)).toEqual(before);
     expect(blocksOf(before)).toBeUndefined();
   });
 
@@ -311,7 +302,7 @@ describe('the hash job', () => {
     await hash();
     const settled = indexed('a.txt');
     await hash();
-    expect(items.byPath(ROOT, 'a.txt')).toEqual(settled);
+    expect(items.byPath(ROOT, 'a.txt', null)).toEqual(settled);
   });
 
   it('keeps the digest across a rescan of an unchanged file', async () => {
@@ -321,7 +312,7 @@ describe('the hash job', () => {
     await hash();
     const settled = indexed('a.txt');
     await scan();
-    expect(items.byPath(ROOT, 'a.txt')).toEqual(settled);
+    expect(items.byPath(ROOT, 'a.txt', null)).toEqual(settled);
   });
 
   it('clears the digest when the file changes, so it is hashed again', async () => {
@@ -336,9 +327,9 @@ describe('the hash job', () => {
       new Date('2031-01-01T00:00:00Z'),
     );
     await scan();
-    expect(items.byPath(ROOT, 'a.txt')).toMatchObject({ sha256: null });
+    expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ sha256: null });
     await hash();
-    expect(items.byPath(ROOT, 'a.txt')).toMatchObject({ sha256: sha('changed!') });
+    expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ sha256: sha('changed!') });
   });
 
   it('stops hashing when cancelled', async () => {
@@ -348,7 +339,7 @@ describe('the hash job', () => {
     const controller = new AbortController();
     controller.abort();
     await hash(controller.signal);
-    expect(items.byPath(ROOT, 'a.txt')).toMatchObject({ sha256: null });
+    expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ sha256: null });
   });
 });
 
@@ -363,7 +354,10 @@ describe('the backlog order', () => {
     const idOf = (path: string): string => indexed(path).id;
     items.markOpened(idOf('opened-old.bin'), '2026-01-01T00:00:00.000Z');
     items.markOpened(idOf('opened-new.bin'), '2026-06-01T00:00:00.000Z');
-    const backlog = collectBacklog({ driveItems: items, driveBlocks: blocks }, roots.byId(ROOT));
+    const backlog = collectBacklog(
+      { driveItems: items, driveBlocks: blocks, drivePlacements: fixture.placements },
+      roots.byId(ROOT),
+    );
     expect(backlog.candidates.map((candidate) => candidate.relPath)).toEqual([
       'opened-new.bin',
       'opened-old.bin',

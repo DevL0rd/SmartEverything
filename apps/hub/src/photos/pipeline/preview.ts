@@ -186,7 +186,7 @@ export class PreviewHandler implements JobHandler {
   }
 
   private current(job: DriveMediaJob): Extract<DriveItem, { readonly kind: 'image' }> | undefined {
-    const item = this.env.store.driveItems.find(job.item_id);
+    const item = this.env.store.driveItems.find(job.item_id, null);
     if (
       item?.kind !== 'image' ||
       item.rev !== job.rev ||

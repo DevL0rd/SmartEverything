@@ -19,7 +19,7 @@ import {
 import type { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { DriveScrubRepository } from '../../src/store/repositories/drive-scrub';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
-import { folderRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import { driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
 const HOME = '0d000000-0000-4000-8000-000000000001';
 const ROBIN_ROOT = '0d000000-0000-4000-8000-000000000002';
@@ -54,6 +54,7 @@ function file(
       modifiedAt: NOW,
       addedAt: NOW,
       starred: false,
+      shared: false,
       outside: false,
       addedByProfileId: addedBy,
       remoteId: null,
@@ -97,8 +98,8 @@ function trash(itemId: string, rootId: string, addedBy: string | null, bytes: nu
     .run(itemId, rootId, bytes, NOW, '2027-01-01T00:00:00.000Z', addedBy);
 }
 
-function root(id: string, fields: Partial<Extract<DriveRoot, { kind: 'folder' }>> = {}): DriveRoot {
-  return folderRoot(id, `/srv/${id.slice(-4)}`, { readOnly: false, ...fields });
+function addRoot(id: string, fields: Partial<DriveRoot> = {}): void {
+  fixture.addDrive(driveRoot(id, { versions: true, ...fields }), `/srv/${id.slice(-4)}`);
 }
 
 beforeEach(() => {
@@ -110,9 +111,9 @@ beforeEach(() => {
   const profiles = new ProfilesRepository(fixture.context);
   robin = profiles.create({ name: 'Robin' }).id;
   sam = profiles.create({ name: 'Sam' }).id;
-  roots.insert(root(HOME));
-  roots.insert(root(ROBIN_ROOT, { scope: 'person', ownerProfileId: robin }));
-  roots.insert(root(SAM_ROOT, { scope: 'person', ownerProfileId: sam }));
+  addRoot(HOME);
+  addRoot(ROBIN_ROOT, { scope: 'person', ownerProfileId: robin });
+  addRoot(SAM_ROOT, { scope: 'person', ownerProfileId: sam });
 });
 
 afterEach(() => {

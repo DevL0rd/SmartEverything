@@ -2,7 +2,6 @@ import { constants } from 'node:fs';
 import { lstat, open, realpath, stat } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
-import type { HubLayout } from '../data-layout';
 import { fsCode } from '../fs-code';
 import { isMissing } from '../fs-util';
 
@@ -18,26 +17,6 @@ export class DrivePathError extends Error {
     cause?: unknown,
   ) {
     super(message, { cause });
-  }
-}
-
-export type RootPlacementFailure =
-  | 'inside-hub-data'
-  | 'contains-hub-data'
-  | 'inside-install'
-  | 'contains-install'
-  | 'same-as-existing'
-  | 'inside-existing'
-  | 'contains-existing';
-
-export class RootPlacementError extends Error {
-  override readonly name = 'RootPlacementError';
-
-  constructor(
-    readonly reason: RootPlacementFailure,
-    message: string,
-  ) {
-    super(message);
   }
 }
 
@@ -185,105 +164,4 @@ export async function openResolved(resolved: ResolvedPath, mode: OpenMode): Prom
     throw cause;
   }
   return handle;
-}
-
-export interface RootPlacementInput {
-  readonly candidate: string;
-  readonly layout: HubLayout;
-  readonly hubInstallDirectory: string;
-  readonly existingRoots: readonly string[];
-}
-
-async function realDirectory(path: string): Promise<string> {
-  const real = await realpath(path).catch((cause: unknown) => {
-    if (fsCode(cause) === 'ENOENT') {
-      throw new DrivePathError('missing', `The directory ${path} does not exist.`);
-    }
-    throw cause;
-  });
-  if (!(await stat(real)).isDirectory()) {
-    throw new DrivePathError('not-directory', `${path} is not a directory.`);
-  }
-  return real;
-}
-
-function existingRootFailure(
-  candidate: string,
-  existing: readonly string[],
-): RootPlacementFailure | null {
-  for (const root of existing) {
-    if (candidate === root) {
-      return 'same-as-existing';
-    }
-    if (isInside(root, candidate)) {
-      return 'inside-existing';
-    }
-    if (isInside(candidate, root)) {
-      return 'contains-existing';
-    }
-  }
-  return null;
-}
-
-const PEOPLE_PROBE_PROFILE = 'profile';
-
-function isManagedRoot(layout: HubLayout, data: string, candidate: string): boolean {
-  const rebase = (path: string): string => join(data, relative(layout.root, path));
-  if (candidate === rebase(layout.home.drive)) {
-    return true;
-  }
-  const people = rebase(dirname(layout.person(PEOPLE_PROBE_PROFILE).root));
-  const [profile] = relative(people, candidate).split(sep);
-  return (
-    isInside(people, candidate) &&
-    profile !== undefined &&
-    profile !== '' &&
-    candidate === rebase(layout.person(profile).drive)
-  );
-}
-
-function placementFailure(
-  candidate: string,
-  place: { readonly layout: HubLayout; readonly data: string; readonly install: string },
-  existing: readonly string[],
-): RootPlacementFailure | null {
-  const { layout, data, install } = place;
-  if (!isManagedRoot(layout, data, candidate) && isInside(data, candidate)) {
-    return 'inside-hub-data';
-  }
-  if (isInside(candidate, data)) {
-    return 'contains-hub-data';
-  }
-  if (isInside(install, candidate)) {
-    return 'inside-install';
-  }
-  if (isInside(candidate, install)) {
-    return 'contains-install';
-  }
-  return existingRootFailure(candidate, existing);
-}
-
-const PLACEMENT_MESSAGES: Readonly<Record<RootPlacementFailure, string>> = {
-  'inside-hub-data': 'A root cannot be inside the hub data directory.',
-  'contains-hub-data': 'A root cannot contain the hub data directory.',
-  'inside-install': 'A root cannot be inside the hub install directory.',
-  'contains-install': 'A root cannot contain the hub install directory.',
-  'same-as-existing': 'This directory is already a root.',
-  'inside-existing': 'A root cannot be inside another root.',
-  'contains-existing': 'A root cannot contain another root.',
-};
-
-export async function checkRootPlacement(input: RootPlacementInput): Promise<string> {
-  const candidate = await realDirectory(input.candidate);
-  const data = await realDirectory(input.layout.root);
-  const install = await realDirectory(input.hubInstallDirectory);
-  const failure = placementFailure(
-    candidate,
-    { layout: input.layout, data, install },
-    input.existingRoots,
-  );
-  if (failure !== null) {
-    throw new RootPlacementError(failure, PLACEMENT_MESSAGES[failure]);
-  }
-  return candidate;
 }

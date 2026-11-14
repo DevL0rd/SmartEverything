@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { API_ENDPOINTS as E, type DriveItem } from '@smarteverything/domain';
 import { decodeCursor, encodeCursor } from '../../drive/search';
-import { DRIVE_PAGE_SIZE, type DriveActor } from '../../drive/service-read';
+import type { DriveActor } from '../../drive/access';
+import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import type { Store } from '../../store/store';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
@@ -34,7 +35,7 @@ function membersOf(
     DRIVE_PAGE_SIZE,
   );
   return {
-    items: page.itemIds.map((itemId) => store.driveItems.byId(itemId)),
+    items: page.itemIds.map((itemId) => store.driveItems.byId(itemId, actor.profileId)),
     next: page.next === null ? null : encodeCursor(page.next),
   };
 }

@@ -2,16 +2,14 @@ import {
   DRIVE_STATS,
   SMART_RULE_ITEM_KINDS,
   driveHistoryShown,
-  type DriveRoot,
+  type DriveDataSpace,
   type DriveStats,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { StoreContext } from '../store/context';
 import { DriveDaysRepository, type DriveDay } from '../store/repositories/drive-days';
-import { DriveRootsRepository } from '../store/repositories/drive-roots';
 import { inList } from '../store/sql';
-import type { DriveViewer } from './search';
-import type { VolumeProbe } from './volumes';
+import { driveFilter, type DriveActor } from './access';
 
 const DAY_MS = 86_400_000;
 
@@ -21,9 +19,16 @@ const FIRST_DAY = '0000-01-01';
 
 const LAST_DAY = '9999-12-31';
 
-const PROBED_STATES: readonly DriveRoot['state'][] = ['ready', 'scanning'];
-
 const KIND_ROW = z.object({ kind: z.string(), items: z.number(), bytes: z.number() });
+
+const ROOT_ROW = z.object({
+  id: z.string(),
+  scope: z.enum(['home', 'person']),
+  owner_profile_id: z.string().nullable(),
+  items: z.number(),
+  folders: z.number(),
+  bytes: z.number(),
+});
 
 const BYTES_ROW = z.object({ bytes: z.number() });
 
@@ -32,12 +37,6 @@ const MONTH_ROW = z.object({ month: z.string(), bytes: z.number() });
 interface Purge {
   trashBytes: number;
   versionBytes: number;
-}
-
-export function driveRootVisible(viewer: DriveViewer, root: DriveRoot): boolean {
-  return (
-    viewer.role === 'owner' || root.scope === 'home' || root.ownerProfileId === viewer.profileId
-  );
 }
 
 export function paceBytesPerMonth(days: readonly DriveDay[]): number {
@@ -149,16 +148,14 @@ export function purgesOf(
 }
 
 export class DriveStatsReader {
-  private readonly roots: DriveRootsRepository;
   private readonly days: DriveDaysRepository;
 
   constructor(private readonly context: StoreContext) {
-    this.roots = new DriveRootsRepository(context);
     this.days = new DriveDaysRepository(context);
   }
 
-  async read(viewer: DriveViewer, space: VolumeProbe['space']): Promise<DriveStats> {
-    const roots = this.roots.list().filter((root) => driveRootVisible(viewer, root));
+  async read(actor: DriveActor, probe: () => Promise<DriveDataSpace>): Promise<DriveStats> {
+    const roots = this.openable(actor);
     const ids = roots.map((root) => root.id);
     const series = new Map(
       roots.map((root) => [root.id, this.days.range(root.id, FIRST_DAY, LAST_DAY)]),
@@ -166,6 +163,7 @@ export class DriveStatsReader {
     const liveBytes = roots.reduce((sum, root) => sum + root.bytes, 0);
     const versionBytes = this.versionBytes(ids);
     const trashBytes = this.trashBytes(ids);
+    const space = await probe();
     return DRIVE_STATS.parse({
       items: roots.reduce((sum, root) => sum + root.items, 0),
       folders: roots.reduce((sum, root) => sum + root.folders, 0),
@@ -180,10 +178,21 @@ export class DriveStatsReader {
         folders: root.folders,
         bytes: root.bytes,
       })),
-      volumes: await this.volumes(roots, series, space),
+      space,
+      fullInMonths: fullInMonths([...series.values()], space.freeBytes),
       purges: this.purges(ids),
       growth: growthOf([...series.values()]),
     });
+  }
+
+  private openable(actor: DriveActor): z.output<typeof ROOT_ROW>[] {
+    const filter = driveFilter(actor);
+    return this.context.sql.all(
+      ROOT_ROW,
+      `select r.id, r.scope, r.owner_profile_id, r.items, r.folders, r.bytes from drive_roots r
+        where ${filter.text} order by r.scope, r.owner_profile_id, r.id`,
+      filter.parameters,
+    );
   }
 
   private kinds(ids: readonly string[]): DriveStats['kinds'] {
@@ -239,36 +248,5 @@ export class DriveStatsReader {
       filter.parameters,
     );
     return purgesOf(trash, versions, this.context.now().slice(0, 7));
-  }
-
-  private async volumes(
-    roots: readonly DriveRoot[],
-    series: ReadonlyMap<string, readonly DriveDay[]>,
-    space: VolumeProbe['space'],
-  ): Promise<DriveStats['volumes']> {
-    const groups = new Map<string, { path: string; ids: string[] }>();
-    for (const root of roots) {
-      const volume = 'volume' in root ? root.volume : null;
-      if (volume !== null && root.path !== null && PROBED_STATES.includes(root.state)) {
-        const group = groups.get(volume.mountId) ?? { path: root.path, ids: [] };
-        group.ids.push(root.id);
-        groups.set(volume.mountId, group);
-      }
-    }
-    return Promise.all(
-      [...groups.entries()].map(async ([mountId, group]) => {
-        const { totalBytes, freeBytes } = await space(group.path);
-        return {
-          mountId,
-          rootIds: group.ids,
-          totalBytes,
-          freeBytes,
-          fullInMonths: fullInMonths(
-            group.ids.map((id) => series.get(id) ?? []),
-            freeBytes,
-          ),
-        };
-      }),
-    );
   }
 }

@@ -2,13 +2,13 @@ import type { ComputerNodeRow } from '@smarteverything/domain';
 import { SYNC_HUB_MESSAGE, type SyncHubMessage } from '@smarteverything/domain/drive-sync';
 import type { WebSocket } from 'ws';
 import { ComputerConnection } from '../../server/computer-socket';
-import type { DriveActor } from '../service-read';
+import type { DriveActor } from '../access';
 
 export type SyncMode = 'sync' | 'subscribe';
 
 export interface SyncSession {
   readonly mode: SyncMode;
-  readonly clientId: string;
+  readonly placementId: string;
   readonly rootId: string;
   readonly deviceId: string;
   readonly profileId: string;
@@ -120,5 +120,11 @@ export class SyncRegistry {
 
   of(rootId: string): readonly SyncConnection[] {
     return [...(this.byRoot.get(rootId) ?? [])];
+  }
+
+  ofPlacement(placementId: string): readonly SyncConnection[] {
+    return [...this.byRoot.values()]
+      .flatMap((set) => [...set])
+      .filter((connection) => connection.session?.placementId === placementId);
   }
 }

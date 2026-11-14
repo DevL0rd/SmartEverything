@@ -20,6 +20,7 @@ import type { ProgramEnv } from '../../../src/automations/service-programs-analy
 import { PluginTurnRefusedError } from '../../../src/ai-tools/plugin-turn';
 import type { Caller } from '../../../src/server/auth';
 import { Ledger } from '../../../src/ledger/ledger';
+import { unusedDrivePath } from '../../support/store';
 import { StoreContext } from '../../../src/store/context';
 import { ChangeFeed } from '../../../src/store/feed';
 import { migrate } from '../../../src/store/migrate';
@@ -85,7 +86,7 @@ function composeStore(context: StoreContext, feed: ChangeFeed, database: Databas
     now: () => NOW,
     ...homeRepositories(context, log),
     ...computerRepositories(context),
-    ...driveRepositories(context),
+    ...driveRepositories(context, unusedDrivePath),
     ...automationRepositories(context),
     ...healthRepositories(context),
     ...plannerRepositories(context),

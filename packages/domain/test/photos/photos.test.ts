@@ -3,18 +3,24 @@ import {
   API_ENDPOINTS,
   BACKUP_HAVE,
   BACKUP_REGISTER,
+  BACKUP_STATE,
+  LIBRARY_BUCKET,
+  LIBRARY_PAGE,
+  LIBRARY_PAGE_QUERY,
+  LIBRARY_SCOPE,
   DUPLICATE_GROUP,
   DUPLICATE_KEEP_BEST,
   MEDIA_INFO,
   MEDIA_JOB,
-  MEMORY,
   PHOTOS_ENDPOINTS,
   PHOTO_FLAGS,
+  PHOTOS_CLIENT_PREFS,
+  PHOTOS_PREF,
   PHOTO_INSIGHTS,
+  SOURCE_QUERY,
   PLACE_CLUSTER_QUERY,
   STACK,
-  TIMELINE_BUCKET,
-  TIMELINE_PAGE,
+  TRIP,
   endpointAccessArea,
   hasPhotoFlag,
   mcpOperationArea,
@@ -40,20 +46,20 @@ const PAGE = {
   next: null,
 };
 
-describe('the timeline columns', () => {
+describe('the library columns', () => {
   it('accepts a month whose columns all hold one value per item', () => {
-    expect(TIMELINE_PAGE.safeParse(PAGE).success).toBe(true);
+    expect(LIBRARY_PAGE.safeParse(PAGE).success).toBe(true);
   });
 
   it('refuses a column that is shorter than the ids', () => {
-    expect(TIMELINE_PAGE.safeParse({ ...PAGE, aspect: [1.5] }).success).toBe(false);
-    expect(TIMELINE_PAGE.safeParse({ ...PAGE, thumbhash: [null] }).success).toBe(false);
+    expect(LIBRARY_PAGE.safeParse({ ...PAGE, aspect: [1.5] }).success).toBe(false);
+    expect(LIBRARY_PAGE.safeParse({ ...PAGE, thumbhash: [null] }).success).toBe(false);
   });
 
   it('refuses unknown flag bits, a flat aspect and extra fields', () => {
-    expect(TIMELINE_PAGE.safeParse({ ...PAGE, flags: [64, 0] }).success).toBe(false);
-    expect(TIMELINE_PAGE.safeParse({ ...PAGE, aspect: [0, 1] }).success).toBe(false);
-    expect(TIMELINE_PAGE.safeParse({ ...PAGE, extra: 1 }).success).toBe(false);
+    expect(LIBRARY_PAGE.safeParse({ ...PAGE, flags: [64, 0] }).success).toBe(false);
+    expect(LIBRARY_PAGE.safeParse({ ...PAGE, aspect: [0, 1] }).success).toBe(false);
+    expect(LIBRARY_PAGE.safeParse({ ...PAGE, extra: 1 }).success).toBe(false);
   });
 
   it('packs and reads flags without confusing them', () => {
@@ -65,9 +71,9 @@ describe('the timeline columns', () => {
   });
 
   it('keeps empty months out of the buckets', () => {
-    expect(TIMELINE_BUCKET.safeParse({ month: '2026-07', count: 3 }).success).toBe(true);
-    expect(TIMELINE_BUCKET.safeParse({ month: '2026-07', count: 0 }).success).toBe(false);
-    expect(TIMELINE_BUCKET.safeParse({ month: '2026-13', count: 3 }).success).toBe(false);
+    expect(LIBRARY_BUCKET.safeParse({ month: '2026-07', count: 3 }).success).toBe(true);
+    expect(LIBRARY_BUCKET.safeParse({ month: '2026-07', count: 0 }).success).toBe(false);
+    expect(LIBRARY_BUCKET.safeParse({ month: '2026-13', count: 3 }).success).toBe(false);
   });
 });
 
@@ -114,56 +120,74 @@ describe('the media info', () => {
   });
 });
 
-describe('the memories', () => {
-  const BASE = { id: 'm1', from: '2025-07-01', to: '2025-07-02', count: 4, coverItemId: A };
+describe('trips', () => {
+  const TRIP_BASE = {
+    id: 't1',
+    from: '2025-07-01',
+    to: '2025-07-02',
+    count: 4,
+    coverItemId: A,
+    kind: 'trip',
+    placeId: null,
+    placeName: null,
+    distanceFromHomeKm: null,
+    places: 1,
+    perDay: [{ day: '2025-07-01', count: 4 }],
+  };
 
-  it('accepts every kind with its own fields', () => {
-    expect(MEMORY.safeParse({ ...BASE, kind: 'on_this_day', yearsAgo: 1 }).success).toBe(true);
-    expect(MEMORY.safeParse({ ...BASE, kind: 'this_week' }).success).toBe(true);
-    expect(
-      MEMORY.safeParse({ ...BASE, kind: 'day_out', placeId: null, placeName: null }).success,
-    ).toBe(true);
-    expect(MEMORY.safeParse({ ...BASE, kind: 'burst', stackId: B }).success).toBe(true);
-    expect(
-      MEMORY.safeParse({
-        ...BASE,
-        kind: 'trip',
-        placeId: 3,
-        placeName: 'Lisbon',
-        distanceFromHomeKm: 1650.5,
-        places: 2,
-        perDay: [{ day: '2025-07-01', count: 1 }],
-      }).success,
-    ).toBe(true);
+  it('accepts a trip with its days and refuses an unknown field or no days', () => {
+    expect(TRIP.safeParse(TRIP_BASE).success).toBe(true);
+    expect(TRIP.safeParse({ ...TRIP_BASE, perDay: [] }).success).toBe(false);
+    expect(TRIP.safeParse({ ...TRIP_BASE, kind: 'burst' }).success).toBe(false);
+    expect(TRIP.safeParse({ ...TRIP_BASE, extra: 1 }).success).toBe(false);
   });
+});
 
-  it('refuses fields of another kind, an unknown kind and a backwards range', () => {
-    expect(MEMORY.safeParse({ ...BASE, kind: 'this_week', stackId: B }).success).toBe(false);
-    expect(MEMORY.safeParse({ ...BASE, kind: 'party' }).success).toBe(false);
-    expect(MEMORY.safeParse({ ...BASE, kind: 'this_week', from: '2025-08-01' }).success).toBe(
-      false,
-    );
-  });
-
-  it('holds a year in review with exactly twelve months', () => {
-    const month = (n: number): { month: string; count: number } => ({
-      month: `2025-${String(n).padStart(2, '0')}`,
-      count: n,
-    });
-    const review = {
-      year: 2025,
-      perMonth: Array.from({ length: 12 }, (_, index) => month(index + 1)),
-      topPlaces: [{ placeId: 3, name: 'Lisbon', count: 40 }],
-      topCameras: [{ name: 'Pixel 9', count: 900 }],
-      mostFavouritedMonth: '2025-07',
-      longestDayOut: { day: '2025-07-04', count: 120 },
+describe('the library scope', () => {
+  it('takes every narrowing and refuses unknown fields', () => {
+    const scope = {
+      filter: 'videos',
+      placeId: 4,
+      countryCode: 'PT',
+      camera: 'Google Pixel 9',
+      albumId: A,
+      text: 'beach',
+      from: '2026-01-01',
+      to: '2026-02-01',
     };
-    const year = { ...BASE, kind: 'year', review };
-    expect(MEMORY.safeParse(year).success).toBe(true);
+    expect(LIBRARY_SCOPE.safeParse(scope).success).toBe(true);
+    expect(LIBRARY_SCOPE.safeParse({ ...scope, tab: 'videos' }).success).toBe(false);
+    expect(LIBRARY_SCOPE.safeParse({ filter: 'memories' }).success).toBe(false);
+  });
+
+  it('refuses a range that ends before it starts, in the scope and in a page query', () => {
+    const range = { filter: 'all', from: '2026-03-01', to: '2026-02-01' };
+    expect(LIBRARY_SCOPE.safeParse(range).success).toBe(false);
+    expect(LIBRARY_PAGE_QUERY.safeParse({ ...range, cursor: 'c' }).success).toBe(false);
+    expect(LIBRARY_PAGE_QUERY.safeParse({ filter: 'all', from: '2026-03-01' }).success).toBe(true);
+  });
+
+  it('carries the source text and dates and refuses a backwards range', () => {
     expect(
-      MEMORY.safeParse({ ...year, review: { ...review, perMonth: review.perMonth.slice(1) } })
-        .success,
-    ).toBe(false);
+      SOURCE_QUERY.safeParse({ text: 'door', from: '2026-01-01', to: '2026-01-02' }).success,
+    ).toBe(true);
+    expect(SOURCE_QUERY.safeParse({ from: '2026-02-01', to: '2026-01-02' }).success).toBe(false);
+  });
+});
+
+describe('the backup state', () => {
+  it('holds the bytes left and the folder once for all devices', () => {
+    expect(
+      BACKUP_STATE.safeParse({ devices: [], bytesLeft: 0, targetFolder: 'Photos' }).success,
+    ).toBe(true);
+    expect(BACKUP_STATE.safeParse([]).success).toBe(false);
+    expect(BACKUP_STATE.safeParse({ devices: [], bytesLeft: 0 }).success).toBe(false);
+  });
+
+  it('keeps the photos preference on its second version without the memories fields', () => {
+    expect(PHOTOS_CLIENT_PREFS.photos.version).toBe(2);
+    expect(Object.keys(PHOTOS_PREF.shape)).not.toContain('memories');
+    expect(Object.keys(PHOTOS_PREF.shape)).toContain('libraryZoom');
   });
 });
 
@@ -286,9 +310,12 @@ describe('the Photos endpoints', () => {
   const entries = Object.entries(PHOTOS_ENDPOINTS);
 
   it('reuse no name or method and path of an existing endpoint', () => {
-    const taken = new Set(Object.values(API_ENDPOINTS).map((e) => `${e.method} ${e.path}`));
+    const taken = new Set(
+      Object.entries(API_ENDPOINTS)
+        .filter(([name]) => !(name in PHOTOS_ENDPOINTS))
+        .map(([, e]) => `${e.method} ${e.path}`),
+    );
     for (const [name, endpoint] of entries) {
-      expect(name in API_ENDPOINTS, name).toBe(false);
       expect(taken.has(`${endpoint.method} ${endpoint.path}`), name).toBe(false);
     }
     expect(new Set(entries.map(([, e]) => `${e.method} ${e.path}`)).size).toBe(entries.length);
@@ -299,7 +326,6 @@ describe('the Photos endpoints', () => {
       const sample = endpoint.path
         .replace(':month', '2026-07')
         .replace(':placeId', '4')
-        .replace(':memoryId', 'm1')
         .replace(':source', 'ai')
         .replace(/:\w+/g, A);
       const hits = entries.filter(
@@ -322,14 +348,14 @@ describe('the Photos endpoints', () => {
   });
 
   it('reads the month from the path and numbers from the query string', () => {
-    expect(PHOTOS_ENDPOINTS.readTimelinePage.params.safeParse({ month: '2026-07' }).success).toBe(
+    expect(PHOTOS_ENDPOINTS.readLibraryPage.params.safeParse({ month: '2026-07' }).success).toBe(
       true,
     );
-    expect(PHOTOS_ENDPOINTS.readTimelinePage.params.safeParse({ month: 'July' }).success).toBe(
+    expect(PHOTOS_ENDPOINTS.readLibraryPage.params.safeParse({ month: 'July' }).success).toBe(
       false,
     );
     expect(
-      PHOTOS_ENDPOINTS.readTimelineBuckets.query.parse({ filter: 'videos', placeId: '12' }),
+      PHOTOS_ENDPOINTS.readLibraryBuckets.query.parse({ filter: 'videos', placeId: '12' }),
     ).toStrictEqual({ filter: 'videos', placeId: 12 });
     expect(PHOTOS_ENDPOINTS.listPhotoSource.params.safeParse({ source: 'tv' }).success).toBe(false);
   });

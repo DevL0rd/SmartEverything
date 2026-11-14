@@ -105,7 +105,7 @@ async function seedFolder(root: DriveRoot, relPath: string): Promise<DriveItem> 
   if (stamp === null) throw new Error('missing');
   const slash = relPath.lastIndexOf('/');
   const parent =
-    slash < 0 ? undefined : opened.store.driveItems.byPath(root.id, relPath.slice(0, slash));
+    slash < 0 ? undefined : opened.store.driveItems.byPath(root.id, relPath.slice(0, slash), null);
   return recordItem(changeEnv(), {
     draft: folderDraft(
       {
@@ -295,7 +295,7 @@ describe('mkdir', () => {
       name: 'inner',
     });
     expect(inner.parentId).toBe(top.id);
-    expect(opened.store.driveItems.byPath(root.id, 'top/inner')?.id).toBe(inner.id);
+    expect(opened.store.driveItems.byPath(root.id, 'top/inner', null)?.id).toBe(inner.id);
   });
 
   it('refuses a name already taken, a file parent and a read-only root', async () => {
@@ -356,7 +356,7 @@ describe('rename', () => {
     });
     expect(moved.parentId).toBe(to.id);
     expect(lastFeed()).toMatchObject({ op: 'move', via: 'mount', deviceId: node });
-    expect(opened.store.driveItems.byId(file.id).relPath).toBe('to/inside/a.txt');
+    expect(opened.store.driveItems.byId(file.id, null).relPath).toBe('to/inside/a.txt');
     await api.rename(owner(), root.id, {
       opId: op(),
       itemId: file.id,
@@ -364,7 +364,7 @@ describe('rename', () => {
       name: 'a.txt',
     });
     expect(await readFile(join(pathOf(root), 'a.txt'), 'utf8')).toBe('hello');
-    expect(opened.store.driveItems.byId(file.id).parentId).toBeNull();
+    expect(opened.store.driveItems.byId(file.id, null).parentId).toBeNull();
   });
 
   it('refuses a clash, a folder into itself and an item of another root', async () => {
@@ -419,7 +419,7 @@ describe('unlink and rmdir', () => {
       (await refusal(() => api.unlink(owner(), root.id, { opId: op(), itemId: folder.id }))).code,
     ).toBe('invalid_request');
     await api.unlink(owner(), root.id, { opId: op(), itemId: file.id });
-    expect(opened.store.driveItems.find(file.id)).toBeUndefined();
+    expect(opened.store.driveItems.find(file.id, null)).toBeUndefined();
     expect(await exists(join(pathOf(root), 'a.txt'))).toBe(false);
     expect(opened.store.driveTrash.find(file.id)).toBeDefined();
   });
@@ -436,7 +436,7 @@ describe('unlink and rmdir', () => {
       (await refusal(() => api.rmdir(owner(), root.id, { opId: op(), itemId: file.id }))).code,
     ).toBe('invalid_request');
     await api.rmdir(owner(), root.id, { opId: op(), itemId: empty.id });
-    expect(opened.store.driveItems.find(empty.id)).toBeUndefined();
+    expect(opened.store.driveItems.find(empty.id, null)).toBeUndefined();
     expect(await exists(join(pathOf(root), 'empty'))).toBe(false);
   });
 
@@ -469,7 +469,7 @@ describe('utimens', () => {
     expect(entry.rev).toBe(file.rev + 1);
     expect((await stat(join(pathOf(root), 'a.txt'))).mtime.toISOString()).toBe(at);
     expect(lastFeed()).toMatchObject({ op: 'update', via: 'mount', deviceId: node });
-    expect(opened.store.driveItems.byId(file.id).bytes).toBe(5);
+    expect(opened.store.driveItems.byId(file.id, null).bytes).toBe(5);
   });
 
   it('records no change when the time is already that time', async () => {

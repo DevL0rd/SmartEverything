@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   API_ENDPOINTS,
@@ -30,7 +29,10 @@ import {
 import type { Caller } from '../../src/server/auth';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
-import { folderRoot } from './drive-fixture';
+import { DriveReadService } from '../../src/drive/service-read';
+import { readDriveUsage } from '../../src/drive/usage';
+import { actorOf, usageViewerOf } from '../../src/server/handlers/drive-services';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 
 interface Call {
   readonly name: EndpointName;
@@ -47,7 +49,6 @@ const ALBUM = randomUUID();
 const NOW = '2026-11-07T00:00:00.000Z';
 
 let opened: TestStore;
-let directory: string;
 let calls: Call[];
 let answers: Partial<Record<EndpointName, (call: Call) => unknown>>;
 let owner: ClientRow;
@@ -112,6 +113,7 @@ function image(fields: Partial<Extract<DriveItem, { kind: 'image' }>> = {}): Dri
     addedAt: NOW,
     openedAt: null,
     starred: false,
+    shared: false,
     rev: 1,
     etag: 'e1',
     outside: false,
@@ -149,7 +151,6 @@ function memberContext(hash: string): OperatingContext {
 beforeEach(async () => {
   captureLogs();
   opened = await testStore();
-  directory = await mkdtemp(join(tmpdir(), 'drive-tools-'));
   calls = [];
   answers = {};
   ownerProfile = opened.store.profiles.first();
@@ -164,7 +165,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await opened.close();
-  await rm(directory, { recursive: true, force: true });
 });
 
 describe('the drive tool pair', () => {
@@ -187,11 +187,18 @@ describe('the drive tool pair', () => {
     expect(DRIVE_EDIT.input.safeParse({ action: 'delete_now' }).success).toBe(false);
   });
 
-  it('describes sharing, revoking and that nothing is deleted for good', () => {
+  it('describes sharing, revoking, drives and that nothing is deleted for good', () => {
     const editing = MCP_TOOLS.find((tool) => tool.name === 'drive_edit')?.description ?? '';
     expect(editing).toContain('share_create');
     expect(editing).toContain('revoke');
     expect(editing).toContain('never deleted for good');
+    expect(editing).toContain('share_people');
+    expect(editing).toContain('Shared Drive');
+    expect(editing).toContain('the owner’s AI included');
+    const reading = MCP_TOOLS.find((tool) => tool.name === 'drive_read')?.description ?? '';
+    expect(reading).toContain('Shared Drive');
+    expect(reading).toContain('per-person space totals');
+    expect(`${reading} ${editing}`.toLowerCase()).not.toContain('library folder');
   });
 
   it('points the library settings at drive_edit from settings_read', () => {
@@ -215,13 +222,14 @@ describe('the chat photos widget', () => {
 
 describe('drive_read', () => {
   it.each([
-    ['roots', 'listRoots'],
+    ['drives', 'listRoots'],
+    ['shared_with_me', 'listSharedWithMe'],
+    ['shared_by_me', 'listSharedByMe'],
     ['stats', 'readDriveStats'],
     ['usage', 'readUsage'],
     ['health', 'readHealth'],
-    ['sync', 'listSyncClients'],
+    ['placements', 'listPlacements'],
     ['backup', 'readBackupState'],
-    ['memories', 'listMemories'],
     ['places', 'listPlaces'],
   ] as const)('reads view %s through %s', async (view, name) => {
     await read(view);
@@ -248,7 +256,7 @@ describe('drive_read', () => {
     });
   });
 
-  it('refuses a sort field without a direction and a folder without a library folder', () => {
+  it('refuses a sort field without a direction and a folder without a drive', () => {
     const folder = selected(DRIVE_READ, 'folder');
     expect(folder.issues({ rootId: ROOT, sortField: 'name' })).toContain('sortDirection');
     expect(folder.issues({})).toContain('rootId');
@@ -272,37 +280,42 @@ describe('drive_read', () => {
     });
   });
 
-  it('reads the photo months, or one month when asked', async () => {
-    await read('timeline', { filter: 'videos', placeId: 3 });
-    expect(onlyCall()).toMatchObject({
-      name: 'readTimelineBuckets',
-      query: { filter: 'videos', placeId: 3 },
-    });
-    calls = [];
-    await read('timeline', { month: '2026-07' });
-    expect(onlyCall()).toMatchObject({
-      name: 'readTimelinePage',
-      params: { month: '2026-07' },
-      query: { filter: 'all' },
-    });
-  });
-
-  it('reads one item, album, memory, place, stack and version list by id', async () => {
+  it('reads one item, album, place, stack and version list by id', async () => {
     await read('item', { itemId: ITEM });
     await read('album', { albumId: ALBUM, cursor: 'n' });
-    await read('memories', { memoryId: 'on-this-day' });
     await read('places', { placeId: 7 });
     await read('stacks', { stackId: FOLDER });
     await read('versions', { itemId: ITEM });
     expect(calls.map((call) => [call.name, call.params])).toEqual([
       ['readItem', { itemId: ITEM }],
       ['listAlbumItems', { albumId: ALBUM }],
-      ['listMemoryItems', { memoryId: 'on-this-day' }],
       ['readPlace', { placeId: '7' }],
       ['readStack', { stackId: FOLDER }],
       ['listVersions', { itemId: ITEM }],
     ]);
     expect(calls[1]?.query).toEqual({ cursor: 'n' });
+  });
+
+  it('reads the Photos Library by month with its scope, and one month with the same scope', async () => {
+    await read('library', { text: 'beach', libraryFilter: 'videos', countryCode: 'NZ' });
+    await read('library', { month: '2026-07', from: '2026-07-01', camera: 'Pixel', cursor: 'n' });
+    await read('library');
+    expect(calls.map((call) => [call.name, call.params, call.query])).toEqual([
+      ['readLibraryBuckets', {}, { filter: 'videos', text: 'beach', countryCode: 'NZ' }],
+      [
+        'readLibraryPage',
+        { month: '2026-07' },
+        { filter: 'all', from: '2026-07-01', camera: 'Pixel', cursor: 'n' },
+      ],
+      ['readLibraryBuckets', {}, { filter: 'all' }],
+    ]);
+  });
+
+  it('refuses a malformed Library month and a removed view', () => {
+    expect(() => selected(DRIVE_READ, 'library').issues({ month: '2026-13' })).not.toThrow();
+    expect(selected(DRIVE_READ, 'library').issues({ month: '2026-13' })).not.toBeNull();
+    expect(Object.keys(DRIVE_READ.selections)).not.toContain('memories');
+    expect(Object.keys(DRIVE_READ.selections)).not.toContain('timeline');
   });
 
   it('lists albums of one surface, recent files and conflicts', async () => {
@@ -318,12 +331,12 @@ describe('drive_read', () => {
 
   it('acts as the asking member and refuses acting for someone else', async () => {
     const own = memberContext('b');
-    await selected(DRIVE_READ, 'roots').run(own, {}, {});
+    await selected(DRIVE_READ, 'drives').run(own, {}, {});
     const [first] = calls;
     expect(first?.caller.kind === 'client' ? first.caller.client.role : null).toBe('member');
-    expect(() => selected(DRIVE_READ, 'roots').run(own, {}, { personId: ownerProfile.id })).toThrow(
-      /Only an owner may act for another person/u,
-    );
+    expect(() =>
+      selected(DRIVE_READ, 'drives').run(own, {}, { personId: ownerProfile.id }),
+    ).toThrow(/another person’s drive/u);
   });
 });
 
@@ -361,27 +374,6 @@ describe('drive_edit', () => {
     expect(selected(DRIVE_EDIT, 'move').issues({ itemIds: [], toFolderId: FOLDER })).toContain(
       'itemIds',
     );
-  });
-
-  it('makes a manual album from every page of a memory', async () => {
-    const [first, second, third] = [randomUUID(), randomUUID(), randomUUID()];
-    answers.listMemoryItems = (call): unknown =>
-      call.query['cursor'] === undefined
-        ? { items: [image({ id: first }), image({ id: second })], next: 'p2' }
-        : { items: [image({ id: third })], next: null };
-    await edit('make_memory_album', { memoryId: 'day-out', title: 'Beach day' });
-    expect(calls.map((call) => call.name)).toEqual([
-      'listMemoryItems',
-      'listMemoryItems',
-      'createAlbum',
-    ]);
-    expect(calls[2]?.body).toEqual({
-      kind: 'manual',
-      title: 'Beach day',
-      surface: 'photos',
-      scope: 'person',
-      itemIds: [first, second, third],
-    });
   });
 
   it('keeps camera or AI pictures in the library', async () => {
@@ -424,59 +416,111 @@ describe('drive_edit', () => {
     expect(calls[1]).toMatchObject({ name: 'revokeShare', params: { shareId } });
   });
 
-  it('restores a version, settles a conflict, sets sync and starts a scrub', async () => {
+  it('restores a version, settles a conflict and starts a scrub', async () => {
     const versionId = randomUUID();
     await edit('version_restore', { itemId: ITEM, versionId });
     await edit('conflict_resolve', { conflictId: randomUUID(), resolution: 'keep_both' });
-    await edit('sync_set', {
-      sync: { clientId: randomUUID(), rootId: ROOT, enabled: true, selected: [] },
-    });
     await edit('scrub_start');
     expect(calls.map((call) => call.name)).toEqual([
       'restoreVersion',
       'resolveConflict',
-      'updateSyncClient',
       'startScrub',
     ]);
     expect(calls[0]?.params).toEqual({ itemId: ITEM, versionId });
   });
 
-  it('adds and scans library folders and makes and changes albums', async () => {
-    await edit('add_root', {
-      root: {
-        kind: 'folder',
-        path: directory,
-        label: 'Photos',
-        scope: 'home',
-        ownerProfileId: null,
-        readOnly: true,
-        versions: false,
-        inPhotos: true,
-        skipPatterns: [],
-        includeHidden: false,
+  it('places and unplaces a drive folder on a computer', async () => {
+    const placement = {
+      deviceId: randomUUID(),
+      rootId: ROOT,
+      folderItemId: FOLDER,
+      mode: 'synced',
+      localPath: '/home/robin/Trips',
+      enabled: true,
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: true,
+    };
+    await edit('placement_set', { placement });
+    const placementId = randomUUID();
+    await edit('placement_remove', { placementId });
+    expect(calls.map((call) => call.name)).toEqual(['setPlacement', 'removePlacement']);
+    expect(calls[0]?.body).toEqual(placement);
+    expect(calls[1]?.params).toEqual({ placementId });
+  });
+
+  it('shares with a person, changes the role and stops sharing', async () => {
+    const profileId = randomUUID();
+    const grantId = randomUUID();
+    await edit('share_people', { itemId: ITEM, recipientId: profileId, role: 'edit' });
+    expect(onlyCall()).toMatchObject({
+      name: 'setGrant',
+      body: { itemId: ITEM, profileId, role: 'edit' },
+    });
+    calls = [];
+    answers.listGrants = (): unknown => [
+      {
+        id: grantId,
+        itemId: ITEM,
+        profileId,
+        role: 'edit',
+        grantedBy: ownerProfile.id,
+        createdAt: NOW,
       },
+    ];
+    await edit('share_people', { itemId: ITEM, recipientId: profileId, role: 'none' });
+    expect(calls.map((call) => call.name)).toEqual(['listGrants', 'removeGrant']);
+    expect(calls[1]?.params).toEqual({ grantId });
+    await expect(
+      edit('share_people', { itemId: ITEM, recipientId: randomUUID(), role: 'none' }),
+    ).rejects.toThrow(/not shared with that person/u);
+  });
+
+  it('changes a drive and scans it, and has no way to add a folder or disk', async () => {
+    await edit('configure', {
+      rootId: ROOT,
+      driveChanges: { versions: false, skipPatterns: ['*.tmp'] },
     });
     await edit('scan', { rootId: ROOT });
+    expect(calls.map((call) => [call.name, call.params])).toEqual([
+      ['updateRoot', { rootId: ROOT }],
+      ['scanRoot', { rootId: ROOT }],
+    ]);
+    expect(calls[0]?.body).toEqual({ versions: false, skipPatterns: ['*.tmp'] });
+    expect(DRIVE_EDIT_ACTIONS).not.toContain('add_root');
+    expect(DRIVE_EDIT_ACTIONS).not.toContain('sync_set');
+    expect(DRIVE_READ_VIEWS).not.toContain('sync');
+  });
+
+  it('makes and changes albums', async () => {
     await edit('album_create', {
       album: { kind: 'manual', title: 'Trip', surface: 'photos', scope: 'person', itemIds: [ITEM] },
     });
     await edit('album_update', { albumId: ALBUM, changes: { title: 'Trip 2' } });
-    expect(calls.map((call) => call.name)).toEqual([
-      'addRoot',
-      'scanRoot',
-      'createAlbum',
-      'updateAlbum',
-    ]);
-    expect(calls[3]).toMatchObject({ params: { albumId: ALBUM }, body: { title: 'Trip 2' } });
+    expect(calls.map((call) => call.name)).toEqual(['createAlbum', 'updateAlbum']);
+    expect(calls[1]).toMatchObject({ params: { albumId: ALBUM }, body: { title: 'Trip 2' } });
   });
 
-  it('refuses a member the owner-only actions before any operation runs', () => {
+  it('refuses acting on another person’s drive, even for the owner’s AI', () => {
+    const other = opened.store.profiles.create({ name: 'Sam' });
+    expect(() =>
+      selected(DRIVE_READ, 'folder').run(context, { rootId: ROOT }, { personId: other.id }),
+    ).toThrow(/nobody, the owner included/u);
+    expect(() =>
+      selected(DRIVE_EDIT, 'trash').run(context, { itemIds: [ITEM] }, { personId: other.id }),
+    ).toThrow(/nobody, the owner included/u);
+    expect(calls).toEqual([]);
+  });
+
+  it('acts for the asking person when the person is named as themselves', async () => {
+    await selected(DRIVE_READ, 'drives').run(context, {}, { personId: ownerProfile.id });
+    expect(onlyCall().name).toBe('listRoots');
+  });
+
+  it('refuses a member the owner-only action before any operation runs', () => {
     const own = memberContext('c');
     expect(() => selected(DRIVE_EDIT, 'scrub_start').run(own, {}, {})).toThrow(
       /Only an owner may use startScrub/u,
-    );
-    expect(() => selected(DRIVE_EDIT, 'scan').run(own, { rootId: ROOT }, {})).toThrow(
-      /Only an owner may use scanRoot/u,
     );
     expect(calls).toEqual([]);
   });
@@ -484,8 +528,9 @@ describe('drive_edit', () => {
 
 describe('drive_edit attach_to_chat', () => {
   async function stored(name: string, bytes: Buffer): Promise<void> {
-    await writeFile(join(directory, name), bytes);
-    opened.store.driveRoots.insert(folderRoot(ROOT, directory));
+    await mkdir(opened.layout.home.drive, { recursive: true });
+    await writeFile(join(opened.layout.home.drive, name), bytes);
+    opened.store.driveRoots.insert(sharedDriveRoot(ROOT));
   }
 
   it('hands the picture over so the AI can look at it', async () => {
@@ -511,5 +556,94 @@ describe('drive_edit attach_to_chat', () => {
     await expect(edit('attach_to_chat', { itemId: ITEM })).rejects.toThrow(
       /not available on disk/u,
     );
+  });
+});
+
+describe('the owner’s AI follows the access rule of every drive', () => {
+  const SAM_DRIVE = randomUUID();
+  const SAM_FILE = randomUUID();
+  const SHARED_FILE = randomUUID();
+  const HOME_DRIVE = randomUUID();
+  let sam: ProfileRow;
+
+  function real(client: ClientRow, profile: ProfileRow): OperatingContext {
+    const reads = new DriveReadService(opened.store);
+    const base = operating(client, profile);
+    return {
+      ...base,
+      operations: {
+        run: (name, caller): Promise<unknown> => {
+          const actor = actorOf(opened.store, caller);
+          if (name === 'readItem') return Promise.resolve(reads.readItem(actor, SAM_FILE));
+          if (name === 'listRoots') return Promise.resolve(reads.listRoots(actor));
+          return Promise.resolve(
+            readDriveUsage(opened.store.driveQuotas, usageViewerOf(opened.store, caller)),
+          );
+        },
+      },
+    };
+  }
+
+  function put(rootId: string, id: string, name: string): void {
+    opened.store.driveItems.write({
+      item: {
+        id,
+        rootId,
+        parentId: null,
+        relPath: name,
+        name,
+        modifiedAt: NOW,
+        addedAt: NOW,
+        starred: false,
+        shared: false,
+        outside: false,
+        addedByProfileId: rootId === SAM_DRIVE ? sam.id : null,
+        remoteId: null,
+        remoteRev: null,
+        kind: 'document',
+        mime: 'text/plain',
+        bytes: 10,
+        sha256: null,
+        integrity: 'unknown',
+        thumb: { state: 'none' },
+      },
+      identity: { dev: '1', ino: id.slice(-8) },
+    });
+  }
+
+  beforeEach(() => {
+    sam = opened.store.profiles.create({ name: 'Sam' });
+    opened.store.driveRoots.insert(sharedDriveRoot(HOME_DRIVE));
+    opened.store.driveRoots.insert(personalDriveRoot(randomUUID(), ownerProfile.id));
+    opened.store.driveRoots.insert(personalDriveRoot(SAM_DRIVE, sam.id));
+    put(SAM_DRIVE, SAM_FILE, 'diary.txt');
+    put(HOME_DRIVE, SHARED_FILE, 'recipes.txt');
+  });
+
+  it('lists only the owner’s drive and the Shared Drive, never a member’s', async () => {
+    const roots = API_ENDPOINTS.listRoots.response.parse(
+      await selected(DRIVE_READ, 'drives').run(real(owner, ownerProfile), {}, {}),
+    );
+    expect(roots.map((root) => root.id)).toContain(HOME_DRIVE);
+    expect(roots.map((root) => root.id)).not.toContain(SAM_DRIVE);
+    expect(roots).toHaveLength(2);
+  });
+
+  it('refuses the owner’s AI on a member’s unshared item', () => {
+    expect(() =>
+      selected(DRIVE_READ, 'item').run(real(owner, ownerProfile), { itemId: SAM_FILE }, {}),
+    ).toThrow();
+  });
+
+  it('gives the owner’s AI per-person totals through usage and the member only their own', async () => {
+    const totals = API_ENDPOINTS.readUsage.response.parse(
+      await selected(DRIVE_READ, 'usage').run(real(owner, ownerProfile), {}, {}),
+    );
+    expect(totals.map((row) => row.profileId)).toContain(sam.id);
+    const own = { ...memberContext('d'), operations: real(owner, ownerProfile).operations };
+    const mine = API_ENDPOINTS.readUsage.response.parse(
+      await selected(DRIVE_READ, 'usage').run(own, {}, {}),
+    );
+    expect(mine).toHaveLength(1);
   });
 });

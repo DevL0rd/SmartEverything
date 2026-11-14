@@ -5,14 +5,15 @@ import {
   type DriveAlbum,
   type DrivePlacement,
   type DriveChangedNotice,
+  type DriveGrant,
   type DriveProgressNotice,
   type DriveRoot,
-  type DriveSyncClient,
   type LiveChange,
   type LiveMessage,
   type LiveTable,
   type TalkFloorsNotice,
 } from '@smarteverything/domain';
+import { albumVisibleTo, canRead, driveAccess, itemAccess, type DriveActor } from '../drive/access';
 import type { Store } from '../store/store';
 import { channelHidden, deviceIdReachable, presenceInScope, scopesOfClient } from './person-scope';
 import { sceneDeviceIds } from './snapshot-reach';
@@ -118,41 +119,30 @@ export function floorsSeenBy(
 
 export type DriveStore = Pick<
   Store,
-  'driveRoots' | 'driveAlbums' | 'driveItems' | 'profiles' | 'computerNodes'
+  'driveRoots' | 'driveAlbums' | 'driveItems' | 'driveGrants' | 'profiles' | 'computerNodes'
 >;
 
-interface DriveScoped {
-  readonly scope: 'home' | 'person';
-  readonly ownerProfileId: string | null;
-}
-
-export function driveScopeVisible(
-  role: ClientRow['role'],
-  profileId: string,
-  row: DriveScoped,
-): boolean {
-  return role === 'owner' || row.scope === 'home' || row.ownerProfileId === profileId;
+function actorOf(hearer: Pick<Hearer, 'client'>, store: DriveStore): DriveActor {
+  return { profileId: store.profiles.activeOf(hearer.client.id).id };
 }
 
 function rootShown(hearer: Pick<Hearer, 'client'>, rootId: string, store: DriveStore): boolean {
   const root = store.driveRoots.find(rootId);
-  return (
-    root !== undefined &&
-    driveScopeVisible(hearer.client.role, store.profiles.activeOf(hearer.client.id).id, root)
-  );
+  return root !== undefined && driveAccess(actorOf(hearer, store), root) !== 'none';
 }
 
 function albumShown(hearer: Pick<Hearer, 'client'>, albumId: string, store: DriveStore): boolean {
   const album = store.driveAlbums.find(albumId);
-  return (
-    album !== undefined &&
-    driveScopeVisible(hearer.client.role, store.profiles.activeOf(hearer.client.id).id, album)
-  );
+  return album !== undefined && albumVisibleTo(actorOf(hearer, store), album);
 }
 
 function folderShown(hearer: Pick<Hearer, 'client'>, folderId: string, store: DriveStore): boolean {
-  const folder = store.driveItems.find(folderId);
-  return folder !== undefined && rootShown(hearer, folder.rootId, store);
+  const actor = actorOf(hearer, store);
+  const folder = store.driveItems.find(folderId, actor.profileId);
+  const root = folder === undefined ? undefined : store.driveRoots.find(folder.rootId);
+  return (
+    folder !== undefined && root !== undefined && canRead(itemAccess(store, actor, root, folder))
+  );
 }
 
 function changedSeenBy(
@@ -173,7 +163,6 @@ export function driveNoticeSeenBy(
   notice: DriveChangedNotice | DriveProgressNotice,
   store: DriveStore,
 ): LiveMessage | null {
-  if (hearer.client.role === 'owner') return notice;
   if (notice.type === 'drive_progress') {
     return rootShown(hearer, notice.rootId, store) ? notice : null;
   }
@@ -182,19 +171,19 @@ export function driveNoticeSeenBy(
 
 export type DriveChange = Extract<
   LiveChange,
-  { table: 'drive_roots' | 'drive_albums' | 'drive_sync_clients' | 'drive_placements' }
+  { table: 'drive_roots' | 'drive_albums' | 'drive_grants' | 'drive_placements' }
 >;
 
 export function driveChange(change: LiveChange): change is DriveChange {
   return (
     change.table === 'drive_roots' ||
     change.table === 'drive_albums' ||
-    change.table === 'drive_sync_clients' ||
+    change.table === 'drive_grants' ||
     change.table === 'drive_placements'
   );
 }
 
-export type DriveRow = DriveRoot | DriveAlbum | DriveSyncClient | DrivePlacement;
+export type DriveRow = DriveRoot | DriveAlbum | DriveGrant | DrivePlacement;
 
 export function driveRowVisible(
   hearer: Pick<Hearer, 'client'>,
@@ -202,12 +191,17 @@ export function driveRowVisible(
   profileOf: (clientId: string) => string,
   personOfDevice: (deviceId: string) => string | null,
 ): boolean {
-  const profileId = profileOf(hearer.client.id);
+  const actor: DriveActor = { profileId: profileOf(hearer.client.id) };
   if ('localPath' in row) {
-    return hearer.client.role === 'owner' || personOfDevice(row.deviceId) === profileId;
+    return personOfDevice(row.deviceId) === actor.profileId;
   }
-  if ('clientId' in row) return hearer.client.role === 'owner' || row.profileId === profileId;
-  return driveScopeVisible(hearer.client.role, profileId, row);
+  if ('grantedBy' in row) {
+    return row.grantedBy === actor.profileId || row.profileId === actor.profileId;
+  }
+  if ('title' in row) {
+    return albumVisibleTo(actor, row);
+  }
+  return driveAccess(actor, row) !== 'none';
 }
 
 export function driveChangeVisible(

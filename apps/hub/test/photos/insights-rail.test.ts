@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PHOTOS_ENDPOINTS, PHOTO_RAIL_COUNTS } from '@smarteverything/domain';
-import { TimelineReader } from '../../src/photos/timeline';
+import { LibraryReader } from '../../src/photos/library';
 import {
-  AT,
-  CAMERA_ROOT,
   HOME_ROOT,
   NOW,
   alice,
@@ -13,7 +11,6 @@ import {
   insert,
   insertPhone,
   itemId,
-  owner,
   rail,
   seed,
   setup,
@@ -25,7 +22,7 @@ beforeEach(setup);
 afterEach(teardown);
 
 describe('rail counts', () => {
-  it('counts every section from the same photos the timeline shows', () => {
+  it('counts every section from the same photos the library shows', () => {
     seed({
       n: 1,
       takenAt: '2026-03-01T10:00:00.000Z',
@@ -36,37 +33,35 @@ describe('rail counts', () => {
     seed({ n: 2, takenAt: '2026-03-02T10:00:00.000Z', sha: 'a'.repeat(64), placeId: '1001' });
     seed({ n: 3, takenAt: '2026-03-03T10:00:00.000Z', name: 'Screenshot_2.png' });
     seed({ n: 4, takenAt: '2026-03-04T10:00:00.000Z', kind: 'video', placeId: '1003' });
-    seed({ n: 5, takenAt: '2026-03-05T10:00:00.000Z', root: CAMERA_ROOT });
     insertPhone(alice.profileId, 'Pixel', []);
     insertPhone(alice.profileId, 'Galaxy', []);
-    const counts = PHOTO_RAIL_COUNTS.parse(rail.read(owner, AT));
+    const counts = PHOTO_RAIL_COUNTS.parse(rail.read(alice));
     expect(counts).toMatchObject({
-      timeline: 4,
+      library: 4,
       favourites: 1,
       videos: 1,
       screenshots: 1,
       places: 2,
-      cameras: 1,
-      ai: 0,
       albums: 0,
       duplicates: 1,
-      backupPhones: 2,
+      backupDevices: 2,
       deleted: 0,
     });
-    const timeline = new TimelineReader(context)
-      .buckets(owner, { filter: 'all' })
+    const library = new LibraryReader(context, () => 'UTC')
+      .buckets(alice, { filter: 'all' })
       .reduce((sum, bucket) => sum + bucket.count, 0);
-    expect(counts.timeline).toBe(timeline);
+    expect(counts.library).toBe(library);
   });
 
-  it('hides Duplicates from members and keeps their own phones', () => {
+  it('counts duplicates for every person over what they can see and keeps their own phones', () => {
     seed({ n: 1, takenAt: '2026-03-01T10:00:00.000Z', sha: 'b'.repeat(64) });
     seed({ n: 2, takenAt: '2026-03-02T10:00:00.000Z', sha: 'b'.repeat(64) });
     insertPhone(bob.profileId, 'Galaxy', []);
-    const counts = rail.read(alice, AT);
-    expect(counts.duplicates).toBeNull();
-    expect(counts.backupPhones).toBe(0);
-    expect(rail.read(bob, AT).backupPhones).toBe(1);
+    const counts = rail.read(alice);
+    expect(counts.duplicates).toBe(1);
+    expect(counts.backupDevices).toBe(0);
+    expect(rail.read(bob).backupDevices).toBe(1);
+    expect(rail.read(bob).duplicates).toBe(1);
   });
 
   it('counts albums a person can see and photos in the trash', () => {
@@ -91,6 +86,7 @@ describe('rail counts', () => {
       created_at: NOW,
       updated_at: NOW,
     });
+    insert('drive_photo_library', { item_id: itemId(1), root_id: HOME_ROOT });
     insert('drive_trash', {
       item_id: itemId(1),
       root_id: HOME_ROOT,
@@ -102,9 +98,8 @@ describe('rail counts', () => {
       deleted_at: NOW,
       purge_at: '2027-11-07T00:00:00.000Z',
     });
-    expect(rail.read(alice, AT)).toMatchObject({ albums: 1, deleted: 1 });
-    expect(rail.read(bob, AT)).toMatchObject({ albums: 2, deleted: 1 });
-    expect(rail.read(owner, AT).albums).toBe(2);
+    expect(rail.read(alice)).toMatchObject({ albums: 1, deleted: 1 });
+    expect(rail.read(bob)).toMatchObject({ albums: 2, deleted: 1 });
   });
 
   it('serves the counts on a member endpoint', () => {

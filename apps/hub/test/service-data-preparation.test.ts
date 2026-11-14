@@ -3,10 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { z } from 'zod';
 import { hubLayout, writeMarker, type HubLayout } from '../src/data-layout';
 import { lockDataDirectory } from '../src/data-lock';
 import { fileDraft, identityOf, isoOf } from '../src/drive/changes';
-import { ensureManagedRoots } from '../src/drive/managed-roots';
+import { readRootMarker, writeRootMarker } from '../src/drive/root-marker';
+import { ensureDrives } from '../src/drive/spaces';
 import { nodeFiles } from '../src/drive/versions';
 import { assertPhotosFolderPrepared } from '../src/photos/folder-migration';
 import { PHOTO_FOLDER_RECEIPTS } from '../src/photos/folder-receipts';
@@ -24,6 +26,8 @@ function opened(layout: HubLayout): Store {
     log,
     now: () => new Date(NOW),
     systemTimeZone: 'UTC',
+    drivePathOf: (scope, ownerProfileId) =>
+      scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
   });
 }
 
@@ -40,9 +44,9 @@ async function fixture(): Promise<{
   const store = opened(layout);
   try {
     const person = store.profiles.create({ name: 'Alice' });
-    const roots = await ensureManagedRoots(store, layout, store.profiles.list());
+    const roots = await ensureDrives(store, layout, store.profiles.list());
     const root = roots.find((candidate) => candidate.ownerProfileId === person.id);
-    if (root?.path === undefined || root.path === null) throw new Error('fixture root missing');
+    if (root === undefined) throw new Error('fixture root missing');
     const original = join(root.path, 'Camera roll/Alice/2026/2026-11/a.jpg');
     await mkdir(dirname(original), { recursive: true });
     await writeFile(original, 'image');
@@ -96,7 +100,7 @@ it('finishes lossless offline preparation before the normal Drive readiness chec
     expect(() => {
       assertPhotosFolderPrepared(store.context.sql);
     }).not.toThrow();
-    expect(store.driveItems.byId(target.itemId).relPath).toBe('Photos/a.jpg');
+    expect(store.driveItems.byId(target.itemId, null).relPath).toBe('Photos/a.jpg');
     expect(await readFile(join(target.rootPath, 'Photos/a.jpg'), 'utf8')).toBe('image');
     expect(await nodeFiles.stamp(target.original)).toBeNull();
     expect(
@@ -196,4 +200,72 @@ it('rejects a mismatched active data-root identity before opening or changing it
   expect(await readFile(target.layout.system.database.file)).toEqual(before);
   expect(await readFile(target.original, 'utf8')).toBe('image');
   expect(await nodeFiles.stamp(target.layout.lock)).toBeNull();
+});
+
+it('releases the unlinked folders recorded by the drive migration and leaves the files of the person', async () => {
+  const target = await fixture();
+  const writable = join(target.layout.root, 'elsewhere', 'writable');
+  const readOnly = join(target.layout.root, 'elsewhere', 'read-only');
+  await mkdir(writable, { recursive: true });
+  await mkdir(readOnly, { recursive: true });
+  await writeFile(join(writable, 'mine.txt'), 'kept');
+  await writeFile(join(readOnly, 'mine.txt'), 'kept');
+  const writableId = randomUUID();
+  const readOnlyId = randomUUID();
+  await writeRootMarker(writable, writableId);
+  const records = [readOnlyId, writableId].map((id) => join(target.layout.root, 'drive-meta', id));
+  for (const record of records) {
+    await mkdir(record, { recursive: true });
+    await writeFile(join(record, 'root.json'), '{}');
+  }
+  const store = opened(target.layout);
+  try {
+    for (const [id, path, flag] of [
+      [writableId, writable, 0],
+      [readOnlyId, readOnly, 1],
+    ] as const) {
+      store.context.sql.run(
+        'record the unlinked folder',
+        'insert into drive_unlinked_folders(root_id, path, read_only) values ($id, $path, $flag)',
+        { id, path, flag },
+      );
+    }
+  } finally {
+    store.close();
+  }
+  await prepareHubData(target.layout, log);
+  const after = opened(target.layout);
+  try {
+    expect(
+      after.context.sql.all(
+        z.strictObject({ root_id: z.string() }),
+        'select root_id from drive_unlinked_folders',
+      ),
+    ).toEqual([]);
+  } finally {
+    after.close();
+  }
+  await expect(readRootMarker(writable)).rejects.toMatchObject({ failure: 'missing' });
+  expect(await readFile(join(writable, 'mine.txt'), 'utf8')).toBe('kept');
+  expect(await readFile(join(readOnly, 'mine.txt'), 'utf8')).toBe('kept');
+  for (const record of records) expect(await nodeFiles.stamp(record)).toBeNull();
+});
+
+it('leaves a folder alone whose marker belongs to another drive', async () => {
+  const target = await fixture();
+  const folder = join(target.layout.root, 'elsewhere', 'other');
+  await mkdir(folder, { recursive: true });
+  await writeRootMarker(folder, randomUUID());
+  const store = opened(target.layout);
+  try {
+    store.context.sql.run(
+      'record the unlinked folder',
+      'insert into drive_unlinked_folders(root_id, path, read_only) values ($id, $path, 0)',
+      { id: randomUUID(), path: folder },
+    );
+  } finally {
+    store.close();
+  }
+  await prepareHubData(target.layout, log);
+  expect((await readRootMarker(folder)).id).toBeDefined();
 });

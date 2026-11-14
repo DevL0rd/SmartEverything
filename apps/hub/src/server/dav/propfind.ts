@@ -1,7 +1,8 @@
 import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import type { DriveItem, DriveRoot } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
+import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import { authenticateDav, DavError, guarded, type DavDeps, type DavExchange } from './dav-auth';
 import { DAV_PREFIX, headerOf, targetOf, type DavTarget } from './collections';
@@ -173,11 +174,11 @@ export function hrefOf(rootId: string, relPath: string, collection: boolean): st
   return collection ? `${base}${path}/` : `${base}${path}`;
 }
 
-function rootResource(root: DriveRoot): Resource {
+function rootResource(root: StoredDrive): Resource {
   return {
     href: hrefOf(root.id, '', true),
     collection: true,
-    displayName: root.label,
+    displayName: root.scope === 'home' ? 'Shared Drive' : 'My Drive',
     modified: root.scannedAt,
     created: null,
     bytes: null,
@@ -238,9 +239,9 @@ function describe(resource: Resource, selection: Selection): string {
 function* multistatus(
   deps: DavDeps,
   target: DavTarget,
-  selection: Selection,
-  depth: 0 | 1,
+  view: { readonly selection: Selection; readonly depth: 0 | 1; readonly viewer: string },
 ): Generator<string> {
+  const { selection, depth, viewer } = view;
   yield '<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">';
   const parent = target.item;
   yield describe(
@@ -250,12 +251,13 @@ function* multistatus(
   if (depth === 1 && (parent === undefined || parent.kind === 'folder')) {
     let after: string | null = null;
     do {
-      const window = deps.store.driveItems.children(
-        target.root.id,
-        parent?.id ?? null,
+      const window = deps.store.driveItems.children({
+        rootId: target.root.id,
+        parentId: parent?.id ?? null,
         after,
-        DRIVE_PAGE_SIZE,
-      );
+        limit: DRIVE_PAGE_SIZE,
+        viewer,
+      });
       for (const { item } of window.entries) yield describe(itemResource(item), selection);
       after = window.next;
     } while (after !== null);
@@ -277,6 +279,11 @@ export function handlePropfind(deps: DavDeps, exchange: DavExchange): Promise<vo
       'content-type': 'application/xml; charset=utf-8',
       'cache-control': 'no-store',
     });
-    await pipeline(Readable.from(multistatus(deps, target, selection, depth)), response);
+    await pipeline(
+      Readable.from(
+        multistatus(deps, target, { selection, depth, viewer: caller.actor.profileId }),
+      ),
+      response,
+    );
   });
 }

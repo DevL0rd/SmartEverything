@@ -2,33 +2,36 @@ import {
   ApiError,
   DRIVE_PLACEMENT_STATUS,
   type DriveItem,
-  type DriveRoot,
   type DrivePlacement,
   type DrivePlacementHold,
   type DrivePlacementSet,
   type DrivePlacementStatus,
 } from '@smarteverything/domain';
 import type { StoreContext } from '../store/context';
+import type { DrivePlacementTarget } from '../store/repositories/drive-placements';
 import type { Store } from '../store/store';
-import { rootVisibleTo, type DriveActor } from './service-read';
+import { canRead, type DriveActor, type ItemAccess } from './access';
+import { targetAccess, type PlacementAccessStore } from './placement-access';
 
-export type PlacementStore = Pick<
-  Store,
-  'drivePlacements' | 'driveRoots' | 'driveItems' | 'computerNodes'
->;
+export type PlacementStore = PlacementAccessStore & Pick<Store, 'drivePlacements'>;
 
 export type DeviceChangeListener = (deviceIds: readonly string[]) => void;
 
 export interface DrivePlacementsDeps {
   readonly store: PlacementStore;
   readonly context: StoreContext;
-  readonly nodeActor: (deviceId: string) => DriveActor;
   readonly newId: () => string;
 }
 
-interface PlacementTarget {
+interface PlacementSpot {
   readonly rootId: string;
   readonly folderItemId: string | null;
+}
+
+interface SyncSettings {
+  readonly excluded?: readonly string[] | undefined;
+  readonly ignorePatterns?: readonly string[] | undefined;
+  readonly conflictCopies?: boolean | undefined;
 }
 
 function noComputer(): ApiError {
@@ -36,7 +39,7 @@ function noComputer(): ApiError {
 }
 
 function noFolder(): ApiError {
-  return new ApiError('not_found', 'There is no such library folder on that computer.');
+  return new ApiError('not_found', 'There is no such folder you can open on that computer.');
 }
 
 function conflicting(message: string): ApiError {
@@ -55,6 +58,10 @@ function signatureOf(placements: readonly DrivePlacement[]): string {
       placement.folderItemId,
       placement.mode,
       placement.localPath,
+      placement.status.readOnly,
+      placement.excluded ?? null,
+      placement.ignorePatterns ?? null,
+      placement.conflictCopies ?? null,
     ]),
   );
 }
@@ -84,15 +91,19 @@ export class DrivePlacements {
 
   set(actor: DriveActor, input: DrivePlacementSet): DrivePlacement {
     this.requireComputer(actor, input.deviceId);
-    const root = this.visibleRoot(input);
-    const readOnly = root.readOnly;
+    const readOnly = this.verify(actor, input) === 'view';
     return this.mutate(input.deviceId, () => {
-      this.verify(root, input);
       const existing = this.deps.store.drivePlacements
         .forDevice(input.deviceId)
-        .find((placement) => sameTarget(placement, input));
-      this.refuseOverlap(input, existing?.id ?? null);
-      const target = { mode: input.mode, localPath: input.localPath, enabled: input.enabled };
+        .find((placement) => sameSpot(placement, input));
+      this.refuseNesting(input, existing?.id ?? null);
+      const settings = syncSettingsOf(input);
+      const target = {
+        mode: input.mode,
+        localPath: input.localPath,
+        enabled: input.enabled,
+        ...settings,
+      };
       if (existing !== undefined) {
         return this.deps.store.drivePlacements.retarget(existing.id, { ...target, readOnly });
       }
@@ -130,6 +141,19 @@ export class DrivePlacements {
     );
   }
 
+  setReadOnly(placementId: string, readOnly: boolean): DrivePlacement {
+    const placement = this.deps.store.drivePlacements.byId(placementId);
+    return this.mutate(placement.deviceId, () =>
+      this.deps.store.drivePlacements.retarget(placementId, {
+        mode: placement.mode,
+        localPath: placement.localPath,
+        enabled: placement.enabled,
+        readOnly,
+        ...syncSettingsOf(placement),
+      }),
+    );
+  }
+
   writeStatus(deviceId: string, placementId: string, status: DrivePlacementStatus): DrivePlacement {
     const placement = this.deps.store.drivePlacements.find(placementId);
     if (placement === undefined)
@@ -148,46 +172,44 @@ export class DrivePlacements {
   }
 
   private mayManage(actor: DriveActor, deviceId: string): boolean {
-    if (actor.owner) return true;
     return this.deps.store.computerNodes.personOf(deviceId) === actor.profileId;
   }
 
   private requireComputer(actor: DriveActor, deviceId: string): void {
-    if (this.deps.store.computerNodes.personOf(deviceId) === null) throw noComputer();
     if (!this.mayManage(actor, deviceId)) throw noComputer();
   }
 
-  private visibleRoot(input: DrivePlacementSet): DriveRoot {
-    const root = this.deps.store.driveRoots.find(input.rootId);
-    if (root === undefined) throw noFolder();
-    if (!rootVisibleTo(this.deps.nodeActor(input.deviceId), root)) throw noFolder();
-    return root;
-  }
-
-  private verify(root: DriveRoot, input: DrivePlacementSet): void {
-    if (input.mode === 'synced' && !root.synced) {
-      throw invalid('Sync is off for this library folder, so it cannot be placed as synced.');
+  private verify(actor: DriveActor, input: DrivePlacementSet): ItemAccess {
+    const access = targetAccess(this.deps.store, actor, input);
+    if (!canRead(access)) throw noFolder();
+    if (input.folderItemId !== null) {
+      const folder = this.deps.store.driveItems.find(input.folderItemId, null);
+      if (folder?.kind !== 'folder') throw invalid('A placement needs a folder, not a file.');
     }
-    if (input.folderItemId === null) return;
-    const folder = this.deps.store.driveItems.find(input.folderItemId);
-    if (folder?.rootId !== input.rootId) throw noFolder();
-    if (folder.kind !== 'folder') throw invalid('A placement needs a folder, not a file.');
+    for (const excluded of input.excluded ?? []) refuseExclusion(excluded);
+    return access;
   }
 
-  private refuseOverlap(target: DrivePlacementSet, ownId: string | null): void {
+  private refuseNesting(target: DrivePlacementSet, ownId: string | null): void {
+    if (target.mode !== 'synced') return;
     const others = this.deps.store.drivePlacements
       .forDevice(target.deviceId)
-      .filter((placement) => placement.rootId === target.rootId && placement.id !== ownId);
+      .filter(
+        (placement) =>
+          placement.rootId === target.rootId &&
+          placement.id !== ownId &&
+          placement.mode === 'synced',
+      );
     for (const other of others) {
-      if (this.overlaps(target, other)) {
+      if (this.nests(target, other)) {
         throw conflicting(
-          'That folder and a folder already placed on this computer contain one another.',
+          `That folder and the synced folder at ${other.localPath} on this computer contain one another.`,
         );
       }
     }
   }
 
-  private overlaps(target: PlacementTarget, other: DrivePlacement): boolean {
+  private nests(target: PlacementSpot, other: DrivePlacement): boolean {
     if (target.folderItemId === null || other.folderItemId === null) return true;
     return (
       this.lineage(target.folderItemId).has(other.folderItemId) ||
@@ -197,11 +219,13 @@ export class DrivePlacements {
 
   private lineage(folderId: string): ReadonlySet<string> {
     const seen = new Set<string>();
-    let current: DriveItem | undefined = this.deps.store.driveItems.find(folderId);
+    let current: DriveItem | undefined = this.deps.store.driveItems.find(folderId, null);
     while (current !== undefined && !seen.has(current.id)) {
       seen.add(current.id);
       current =
-        current.parentId === null ? undefined : this.deps.store.driveItems.find(current.parentId);
+        current.parentId === null
+          ? undefined
+          : this.deps.store.driveItems.find(current.parentId, null);
     }
     return seen;
   }
@@ -235,8 +259,29 @@ function isActive(placement: DrivePlacement): boolean {
   return placement.enabled && placement.hold === null;
 }
 
-function sameTarget(placement: DrivePlacement, target: PlacementTarget): boolean {
+function sameSpot(placement: DrivePlacement, target: PlacementSpot): boolean {
   return placement.rootId === target.rootId && placement.folderItemId === target.folderItemId;
+}
+
+function syncSettingsOf(
+  input: SyncSettings,
+): Pick<DrivePlacementTarget, 'excluded' | 'ignorePatterns' | 'conflictCopies'> {
+  const settings: {
+    excluded?: readonly string[];
+    ignorePatterns?: readonly string[];
+    conflictCopies?: boolean;
+  } = {};
+  if (input.excluded !== undefined) settings.excluded = input.excluded;
+  if (input.ignorePatterns !== undefined) settings.ignorePatterns = input.ignorePatterns;
+  if (input.conflictCopies !== undefined) settings.conflictCopies = input.conflictCopies;
+  return settings;
+}
+
+function refuseExclusion(path: string): void {
+  const segments = path.split('/');
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
+    throw invalid(`An excluded folder is a path inside the placed folder, not "${path}".`);
+  }
 }
 
 function startingStatus(reportedAt: string, readOnly: boolean): DrivePlacementStatus {
@@ -250,6 +295,9 @@ function startingStatus(reportedAt: string, readOnly: boolean): DrivePlacementSt
     pinnedBytes: 0,
     openFiles: 0,
     pendingUploads: 0,
+    needBytes: 0,
+    lastSyncedAt: null,
+    errors: [],
     reason: null,
     reportedAt,
   };

@@ -9,6 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
+import { unusedDrivePath } from '../support/store';
 
 const NOW = '2026-10-19T10:07:01.388Z';
 const PROFILE = '0e000000-0000-4000-8000-0000000000f2';
@@ -105,7 +106,13 @@ function storedStages(id: string): Stage[] {
 }
 
 function openAt(): void {
-  openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+  openStore({
+    path,
+    log: testLogger(),
+    now: () => new Date(NOW),
+    systemTimeZone: 'UTC',
+    drivePathOf: unusedDrivePath,
+  }).close();
 }
 
 describe('removing sleep stages the watch parser stored twice', () => {

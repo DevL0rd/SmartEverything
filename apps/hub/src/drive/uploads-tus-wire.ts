@@ -12,7 +12,7 @@ import { fsCode } from '../fs-code';
 import type { ChangeActor } from './changes';
 import { DriveWriteError, TMP_DIRECTORY, type DriveWriteFailure } from './intents';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from './quotas';
-import type { DriveActor } from './service-read';
+import type { DriveActor } from './access';
 
 export const UPLOADS_PATH = '/drive/uploads';
 export const TUS_VERSION = '1.0.0';
@@ -45,8 +45,6 @@ export interface Reply {
 }
 
 const WRITE_STATUS: Readonly<Record<DriveWriteFailure, number>> = {
-  'read-only': 403,
-  'no-physical-root': 403,
   exists: 409,
   missing: 404,
   corrupt: 500,

@@ -12,6 +12,7 @@ import { node, programOf, trigger } from '../../support/automation-fixture';
 import { captureLogs, testLogger } from '../../support/logs';
 import { temporaryDirectory } from '../../support/server';
 import { graphAutomation } from '../../automations-v3/support/graph-of';
+import { unusedDrivePath } from '../../support/store';
 
 const HEAVY_MS = 30_000;
 
@@ -32,6 +33,7 @@ function whileStopped<T>(work: (store: Store) => T): T {
     log: testLogger('store'),
     now: () => new Date('2026-10-08T10:00:00.000Z'),
     systemTimeZone: 'UTC',
+    drivePathOf: unusedDrivePath,
   });
   try {
     return work(store);

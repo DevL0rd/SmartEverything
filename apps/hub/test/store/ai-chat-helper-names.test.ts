@@ -6,7 +6,7 @@ import type { NewChat } from '../../src/store/repositories/ai-chat-input';
 import { openStore } from '../../src/store/store';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import { testStore, type TestStore, unusedDrivePath } from '../support/store';
 
 const NOW = '2026-11-05T00:00:00.000Z';
 const MORE_THAN_THE_NAME_POOL = 17;
@@ -66,6 +66,7 @@ it('keeps distinct helper names separate from task titles and engine families ac
     log: testLogger('store'),
     now: () => new Date(NOW),
     systemTimeZone: 'UTC',
+    drivePathOf: unusedDrivePath,
   });
   try {
     for (const helper of helpers) {

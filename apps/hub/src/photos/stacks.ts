@@ -1,11 +1,12 @@
 import { ApiError, type Stack, type StackKind } from '@smarteverything/domain';
 import { z } from 'zod';
-import { DRIVE_PAGE_SIZE, type DriveActor } from '../drive/service-read';
+import type { DriveActor } from '../drive/access';
+import { DRIVE_PAGE_SIZE } from '../drive/service-read';
 import type { StoreContext } from '../store/context';
 import { DriveMediaRepository } from '../store/repositories/drive-media';
 import { DriveStacksRepository, type DriveStackKind } from '../store/repositories/drive-stacks';
-import { jsonText, type SqlParameters } from '../store/sql';
-import { PHOTO_VISIBLE } from './membership';
+import { jsonText } from '../store/sql';
+import { PHOTO_VISIBLE, photoVisible } from './membership';
 
 export const BURST_GAP_MS = 1000;
 
@@ -92,7 +93,7 @@ export class StacksService {
          join drive_roots r on r.id = i.root_id
        where ${PHOTO_VISIBLE} and ($after is null or s.id > $after)
        group by s.id having count(*) >= 2 order by s.id limit $limit`,
-      { ...this.visibility(actor), after: cursor ?? null, limit: DRIVE_PAGE_SIZE },
+      { ...photoVisible(actor).parameters, after: cursor ?? null, limit: DRIVE_PAGE_SIZE },
     );
     const last = ids.at(-1);
     return {
@@ -229,11 +230,7 @@ export class StacksService {
          join drive_roots r on r.id = i.root_id
        where m.stack_id = $stackId and ${PHOTO_VISIBLE}
        order by i.taken_at is null, i.taken_at, i.id`,
-      { ...this.visibility(actor), stackId },
+      { ...photoVisible(actor).parameters, stackId },
     );
-  }
-
-  private visibility(actor: DriveActor): SqlParameters {
-    return { owner: actor.owner ? 1 : 0, profile: actor.profileId };
   }
 }

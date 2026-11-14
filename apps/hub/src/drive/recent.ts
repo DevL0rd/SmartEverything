@@ -9,7 +9,8 @@ import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
 import type { StoreContext } from '../store/context';
 import { DriveItemsRepository } from '../store/repositories/drive-items';
-import { decodeCursor, encodeCursor, rootScope, type DriveViewer } from './search';
+import { accessFilter, type DriveActor } from './access';
+import { decodeCursor, encodeCursor } from './search';
 
 export const DRIVE_CHANGED_OPS = ['update', 'rename', 'move', 'restore'] as const;
 
@@ -87,11 +88,11 @@ export interface DriveRecentStatement {
 }
 
 export function driveRecentStatement(
-  viewer: DriveViewer,
+  actor: DriveActor,
   query: DriveRecentQuery,
   limit: number,
 ): DriveRecentStatement {
-  const scope = rootScope(viewer);
+  const scope = accessFilter(actor);
   const cursor = query.cursor === null ? null : decodeCursor(CURSOR, query.cursor);
   const arms = KINDS[query.filter].map((kind) =>
     armOf(kind, { scope: scope.text, cursored: cursor !== null }),
@@ -120,13 +121,13 @@ export class DriveRecentReader {
     this.items = new DriveItemsRepository(context);
   }
 
-  read(viewer: DriveViewer, query: DriveRecentQuery, limit: number): DriveRecentPage {
-    const statement = driveRecentStatement(viewer, query, limit);
+  read(actor: DriveActor, query: DriveRecentQuery, limit: number): DriveRecentPage {
+    const statement = driveRecentStatement(actor, query, limit);
     const rows = this.context.sql.all(ROW, statement.text, statement.parameters);
     const shown = rows.slice(0, limit);
     const last = shown.at(-1);
     return {
-      entries: shown.map((row) => this.entryOf(row)),
+      entries: shown.map((row) => this.entryOf(row, actor)),
       next:
         rows.length > limit && last !== undefined
           ? encodeCursor({ at: last.at, rank: last.rank, tie: last.tie })
@@ -134,8 +135,8 @@ export class DriveRecentReader {
     };
   }
 
-  private entryOf(row: z.output<typeof ROW>): DriveRecentEntry {
-    const item = this.items.byId(row.item_id);
+  private entryOf(row: z.output<typeof ROW>, actor: DriveActor): DriveRecentEntry {
+    const item = this.items.byId(row.item_id, actor.profileId);
     return DRIVE_RECENT_ENTRY.parse(
       row.kind === 'opened'
         ? { kind: 'opened', item, at: row.at }

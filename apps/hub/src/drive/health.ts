@@ -1,6 +1,7 @@
 import {
   DRIVE_HEALTH,
   type DriveBackupStatus,
+  type DriveDataSpace,
   type DriveHealth,
   type DriveRoot,
   type DriveScrubState,
@@ -9,12 +10,10 @@ import {
 import { z } from 'zod';
 import type { StoreContext } from '../store/context';
 import { inList } from '../store/sql';
-import { driveRootVisible } from './stats';
-import type { DriveViewer } from './search';
-import type { VolumeProbe } from './volumes';
+import { driveAccess, type DriveActor } from './access';
 import type { WatchStatus } from './watcher';
 
-const OFFLINE_STATES: readonly DriveRoot['state'][] = ['offline', 'unresponsive'];
+const UNAVAILABLE_STATES: readonly DriveRoot['state'][] = ['unresponsive', 'error'];
 
 const PROBED_STATES: readonly DriveRoot['state'][] = ['ready', 'scanning'];
 
@@ -27,7 +26,7 @@ export interface DriveHealthSources {
   readonly watcher: (rootId: string) => WatchStatus;
   readonly scrub: () => DriveScrubState;
   readonly backup: () => DriveBackupStatus;
-  readonly space: VolumeProbe['space'];
+  readonly space: () => Promise<DriveDataSpace>;
 }
 
 function share(part: number, whole: number): number {
@@ -38,7 +37,7 @@ export function watcherState(
   roots: readonly DriveRoot[],
   watcher: DriveHealthSources['watcher'],
 ): DriveWatcherState {
-  const watched = roots.filter((root) => root.path !== null && PROBED_STATES.includes(root.state));
+  const watched = roots.filter((root) => PROBED_STATES.includes(root.state));
   if (watched.some((root) => !watcher(root.id).watching)) {
     return 'unavailable';
   }
@@ -51,8 +50,8 @@ export class DriveHealthReader {
     private readonly sources: DriveHealthSources,
   ) {}
 
-  async read(viewer: DriveViewer): Promise<DriveHealth> {
-    const roots = this.sources.roots().filter((root) => driveRootVisible(viewer, root));
+  async read(actor: DriveActor): Promise<DriveHealth> {
+    const roots = this.sources.roots().filter((root) => driveAccess(actor, root) !== 'none');
     const ids = roots.map((root) => root.id);
     const { files, hashed } = this.counts(ids);
     const { verified, corrupt } = this.verified(ids);
@@ -61,9 +60,9 @@ export class DriveHealthReader {
       verifiedShare: share(verified, hashed),
       corrupt,
       rootsTotal: roots.length,
-      rootsOffline: roots.filter((root) => OFFLINE_STATES.includes(root.state)).length,
+      rootsUnavailable: roots.filter((root) => UNAVAILABLE_STATES.includes(root.state)).length,
       watcher: watcherState(roots, this.sources.watcher),
-      freeBytes: await this.freeBytes(roots),
+      space: await this.sources.space(),
       scrub: this.sources.scrub(),
       backup: this.sources.backup(),
     });
@@ -92,19 +91,5 @@ export class DriveHealthReader {
         filter.parameters,
       ) ?? { verified: 0, corrupt: 0 }
     );
-  }
-
-  private async freeBytes(roots: readonly DriveRoot[]): Promise<number | null> {
-    const groups = new Map<string, string>();
-    for (const root of roots) {
-      const mountId = 'volume' in root && root.volume !== null ? root.volume.mountId : root.id;
-      if (root.path !== null && PROBED_STATES.includes(root.state) && !groups.has(mountId)) {
-        groups.set(mountId, root.path);
-      }
-    }
-    const free = await Promise.all(
-      [...groups.values()].map(async (path) => (await this.sources.space(path)).freeBytes),
-    );
-    return free.length === 0 ? null : Math.min(...free);
   }
 }

@@ -16,6 +16,8 @@ const QUOTA_COLUMNS = z
 const USAGE_COLUMNS = z
   .strictObject({
     profile_id: z.string().nullable(),
+    items: z.number(),
+    folders: z.number(),
     live: z.number(),
     versions: z.number(),
     trash: z.number(),
@@ -23,6 +25,8 @@ const USAGE_COLUMNS = z
   .transform((row): DriveUsage =>
     DRIVE_USAGE.parse({
       profileId: row.profile_id,
+      items: row.items,
+      folders: row.folders,
       live: row.live,
       versions: row.versions,
       trash: row.trash,
@@ -30,21 +34,24 @@ const USAGE_COLUMNS = z
   );
 
 function usageQuery(itemFilter: string, adderFilter: string): string {
-  return `select profile_id, sum(live) as live, sum(versions) as versions, sum(trash) as trash from (
-    select added_by_profile_id as profile_id, sum(bytes) as live, 0 as versions, 0 as trash
+  return `select profile_id, sum(items) as items, sum(folders) as folders, sum(live) as live,
+    sum(versions) as versions, sum(trash) as trash from (
+    select added_by_profile_id as profile_id, sum(kind <> 'folder') as items,
+      sum(kind = 'folder') as folders,
+      sum(case when kind <> 'folder' then bytes else 0 end) as live, 0 as versions, 0 as trash
       from drive_items ${itemFilter} group by added_by_profile_id
     union all
-    select added_by_profile_id, 0, sum(bytes), 0 from drive_versions ${adderFilter}
+    select added_by_profile_id, 0, 0, 0, sum(bytes), 0 from drive_versions ${adderFilter}
       group by added_by_profile_id
     union all
-    select added_by_profile_id, 0, 0, sum(bytes) from drive_trash ${adderFilter}
+    select added_by_profile_id, 0, 0, 0, 0, sum(bytes) from drive_trash ${adderFilter}
       group by added_by_profile_id
   ) group by profile_id order by profile_id`;
 }
 
-const ALL_USAGE = usageQuery("where kind <> 'folder'", '');
+const ALL_USAGE = usageQuery('', '');
 const ONE_USAGE = usageQuery(
-  "where kind <> 'folder' and added_by_profile_id is $profileId",
+  'where added_by_profile_id is $profileId',
   'where added_by_profile_id is $profileId',
 );
 
@@ -94,7 +101,7 @@ export class DriveQuotasRepository {
   usage(profileId: string | null): DriveUsage {
     return (
       this.context.sql.get(USAGE_COLUMNS, ONE_USAGE, { profileId }) ??
-      DRIVE_USAGE.parse({ profileId, live: 0, versions: 0, trash: 0 })
+      DRIVE_USAGE.parse({ profileId, items: 0, folders: 0, live: 0, versions: 0, trash: 0 })
     );
   }
 

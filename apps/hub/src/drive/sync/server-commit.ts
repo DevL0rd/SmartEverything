@@ -19,15 +19,16 @@ import {
   type ChangeActor,
 } from '../changes';
 import { commitConflictCopy, type ConflictEnv } from '../conflicts';
-import {
-  assertWritable,
-  DriveWriteError,
-  locate,
-  physicalRoot,
-  type DriveWriteRoot,
-} from '../intents';
+import { DriveWriteError, locate, type DriveWriteRoot } from '../intents';
 import { checkDriveWrite } from '../quotas';
 import type { StagedBytes } from '../versions';
+import {
+  assertWritable,
+  inScope,
+  resolveScope,
+  toWirePath,
+  type SyncScope,
+} from './placement-scope';
 import {
   contentToken,
   guarded,
@@ -118,7 +119,7 @@ export async function ensureFolders(
   let prefix = '';
   for (const part of folder === '.' ? [] : folder.split('/')) {
     prefix = prefix === '' ? part : `${prefix}/${part}`;
-    if (env.store.driveItems.byPath(root.id, prefix) === undefined) {
+    if (env.store.driveItems.byPath(root.id, prefix, null) === undefined) {
       await makeFolder(env, root, prefix, actor);
     }
   }
@@ -128,7 +129,7 @@ export async function discardTxn(env: SyncEnv, txns: SyncTxns, txn: SyncTxn): Pr
   txns.drop(txn);
   const row = env.store.driveRoots.find(txn.spec.rootId);
   if (row === undefined) return;
-  await env.files.remove(await locate(physicalRoot(row), txn.spec.tmpRel));
+  await env.files.remove(await locate(row, txn.spec.tmpRel));
 }
 
 function carryBlocks(env: SyncEnv, spec: TxnSpec): (item: DriveItem) => void {
@@ -151,7 +152,7 @@ function copyEnv(env: SyncEnv, spec: TxnSpec): ConflictEnv {
     conflicts: {
       insert: (conflict): void => {
         env.conflicts.insert(conflict);
-        carry(env.store.driveItems.byId(conflict.conflictItemId));
+        carry(env.store.driveItems.byId(conflict.conflictItemId, null));
       },
       find: (id) => env.conflicts.find(id),
       resolve: (id, resolution, at) => env.conflicts.resolve(id, resolution, at),
@@ -224,10 +225,13 @@ export class SyncCommitter {
 
   private async apply(txn: SyncTxn): Promise<AcceptMessage | ConflictMessage> {
     const { spec } = txn;
-    const row = this.env.store.driveRoots.byId(spec.rootId);
-    const root = physicalRoot(row);
-    assertWritable(root);
-    const existing = this.env.store.driveItems.byPath(spec.rootId, spec.relPath);
+    const scope = resolveScope(this.env.store, spec.placementId, spec.deviceId, 'sync');
+    assertWritable(scope);
+    const root = scope.drive;
+    if (!inScope(scope, spec.relPath)) {
+      return conflictOf(spec.opId, 'path', 0, null);
+    }
+    const existing = this.env.store.driveItems.byPath(spec.rootId, spec.relPath, null);
     const file = existing === undefined ? null : fileOf(existing);
     if (existing !== undefined && file === null) {
       return conflictOf(spec.opId, 'exists', existing.rev, null);
@@ -236,10 +240,10 @@ export class SyncCommitter {
     if (plan.kind === 'noop') return acceptOf(this.env, spec.rootId, spec.opId, plan.rev);
     const assembled = await verifyAssembled(root, txn);
     if (plan.kind === 'replace') return this.replace(txn, root, plan.file, assembled);
-    if (!row.synced || !row.sync.conflictCopies) {
+    if (scope.placement.conflictCopies !== true) {
       return conflictOf(spec.opId, 'stale', plan.hub.rev, null);
     }
-    return this.copy(txn, root, plan.hub, assembled);
+    return this.copy(txn, scope, plan.hub, assembled);
   }
 
   private async admit(
@@ -296,11 +300,12 @@ export class SyncCommitter {
 
   private async copy(
     txn: SyncTxn,
-    root: DriveWriteRoot,
+    scope: SyncScope,
     hub: FileItem,
     assembled: Assembled,
   ): Promise<ConflictMessage> {
     const { spec } = txn;
+    const root = scope.drive;
     await this.admit(root, spec, assembled, 0);
     const conflict = await commitConflictCopy(copyEnv(this.env, spec), {
       hub,
@@ -309,6 +314,6 @@ export class SyncCommitter {
       deviceId: spec.deviceId,
       actor: syncActor(spec),
     });
-    return conflictOf(spec.opId, 'stale', hub.rev, conflict.conflictRelPath);
+    return conflictOf(spec.opId, 'stale', hub.rev, toWirePath(scope, conflict.conflictRelPath));
   }
 }

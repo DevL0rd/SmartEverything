@@ -275,7 +275,7 @@ async function makeEmptyFile(
 
 async function createLock(call: LockCall, target: DavTarget, info: LockInfo): Promise<void> {
   const { deps, locks, caller, submitted, exchange } = call;
-  const root = writableOf(target.root);
+  const root = writableOf(target);
   const creating = target.item === undefined && target.relPath !== '';
   if (creating) {
     locks.assertWritable(root.id, target.relPath, {

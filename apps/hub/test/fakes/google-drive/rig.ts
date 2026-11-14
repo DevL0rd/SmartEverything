@@ -75,7 +75,13 @@ function holds(
   sha256: string,
   parentId: string | null,
 ): boolean {
-  const { entries } = opened.store.driveItems.children(rootId, parentId, null, 10_000);
+  const { entries } = opened.store.driveItems.children({
+    rootId: rootId,
+    parentId: parentId,
+    after: null,
+    limit: 10_000,
+    viewer: null,
+  });
   return entries.some(({ item }) =>
     item.kind === 'folder' ? holds(opened, rootId, sha256, item.id) : item.sha256 === sha256,
   );

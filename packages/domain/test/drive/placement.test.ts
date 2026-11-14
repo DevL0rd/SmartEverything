@@ -19,6 +19,9 @@ const STATUS = {
   pinnedBytes: 0,
   openFiles: 1,
   pendingUploads: 0,
+  needBytes: 0,
+  lastSyncedAt: null,
+  errors: [],
   reason: null,
   reportedAt: AT,
 } as const;
@@ -46,13 +49,45 @@ describe('drive placement', () => {
     expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, folderItemId: null }).success).toBe(true);
   });
 
-  it('allows a synced placement of a whole root', () => {
-    const synced = { ...PLACEMENT, mode: 'synced', folderItemId: null };
-    expect(DRIVE_PLACEMENT.safeParse(synced).success).toBe(true);
+  const SYNCED = {
+    ...PLACEMENT,
+    mode: 'synced',
+    excluded: ['Videos'],
+    ignorePatterns: ['*.tmp'],
+    conflictCopies: true,
+  } as const;
+
+  it('allows a synced placement of a whole drive or of one folder', () => {
+    expect(DRIVE_PLACEMENT.safeParse({ ...SYNCED, folderItemId: null }).success).toBe(true);
+    expect(DRIVE_PLACEMENT.safeParse(SYNCED).success).toBe(true);
   });
 
-  it('refuses a synced placement with a folder', () => {
-    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, mode: 'synced' }).success).toBe(false);
+  it('carries the sync settings only on a synced placement', () => {
+    const { excluded: _excluded, ...missing } = SYNCED;
+    expect(DRIVE_PLACEMENT.safeParse(missing).success).toBe(false);
+    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, conflictCopies: true }).success).toBe(false);
+    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, excluded: [] }).success).toBe(false);
+    expect(DRIVE_PLACEMENT.safeParse({ ...SYNCED, ignorePatterns: [''] }).success).toBe(false);
+  });
+
+  it('reports the sync numbers in the status and refuses a bad error entry', () => {
+    const status = {
+      ...STATUS,
+      state: 'syncing',
+      needBytes: 2048,
+      lastSyncedAt: AT,
+      errors: [{ relPath: 'a.txt', message: 'disk full', at: AT }],
+    };
+    expect(DRIVE_PLACEMENT.safeParse({ ...SYNCED, status }).success).toBe(true);
+    expect(
+      DRIVE_PLACEMENT.safeParse({ ...SYNCED, status: { ...status, needBytes: -1 } }).success,
+    ).toBe(false);
+    expect(
+      DRIVE_PLACEMENT.safeParse({ ...SYNCED, status: { ...status, errors: [{ message: 'x' }] } })
+        .success,
+    ).toBe(false);
+    const { needBytes: _need, ...without } = status;
+    expect(DRIVE_PLACEMENT.safeParse({ ...SYNCED, status: without }).success).toBe(false);
   });
 
   it('requires the root and refuses unknown fields', () => {
@@ -62,7 +97,7 @@ describe('drive placement', () => {
   });
 
   it('refuses unknown holds, states and a Basic limit claiming offline', () => {
-    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, hold: 'paused' }).success).toBe(false);
+    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, hold: 'on_hold' }).success).toBe(false);
     expect(
       DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, status: { ...STATUS, state: 'gone' } }).success,
     ).toBe(false);
@@ -100,11 +135,17 @@ describe('setPlacement input', () => {
     expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, status: STATUS }).success).toBe(false);
   });
 
-  it('refuses synced with a folder', () => {
+  it('allows a synced folder with its sync settings and refuses synced without them', () => {
+    const settings = { excluded: [], ignorePatterns: [], conflictCopies: false };
     expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced' }).success).toBe(false);
+    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced', ...settings }).success).toBe(
+      true,
+    );
     expect(
-      DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced', folderItemId: null }).success,
+      DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced', folderItemId: null, ...settings })
+        .success,
     ).toBe(true);
+    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, ...settings }).success).toBe(false);
   });
 });
 

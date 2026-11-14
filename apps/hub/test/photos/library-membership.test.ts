@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TimelineReader } from '../../src/photos/timeline';
+import { LibraryReader } from '../../src/photos/library';
 import { DuplicatesService } from '../../src/photos/duplicates';
 import { DriveBackupRepository } from '../../src/store/repositories/drive-backup';
 import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
 import { PHOTOS_LIBRARY_MIGRATION } from '../../src/store/migrations/photos-library';
 import {
-  AT,
   BOB_ROOT,
   HOME_ROOT,
   NOW,
@@ -16,18 +15,22 @@ import {
   database,
   insert,
   insertPhone,
-  owner,
   rail,
-  seed,
+  seed as seedItem,
   setup,
   teardown,
 } from './insights-fixture';
 
 beforeEach(() => {
   setup();
-  database.exec('update drive_roots set in_photos = 0');
 });
 afterEach(teardown);
+
+function seed(input: Parameters<typeof seedItem>[0]): string {
+  const id = seedItem(input);
+  database.prepare('delete from drive_photo_library where item_id = ?').run(id);
+  return id;
+}
 
 function backup(itemId: string, state = 'verified', localId = randomUUID()): string {
   const device = insertPhone(alice.profileId, 'Phone', []);
@@ -42,8 +45,8 @@ function backup(itemId: string, state = 'verified', localId = randomUUID()): str
   return device;
 }
 
-function visible(actor = owner): readonly string[] {
-  return new TimelineReader(context).page(actor, '2026-03', { filter: 'all' }).ids;
+function visible(actor = alice): readonly string[] {
+  return new LibraryReader(context, () => 'UTC').page(actor, '2026-03', { filter: 'all' }).ids;
 }
 
 describe('backup Photos membership', () => {
@@ -58,20 +61,19 @@ describe('backup Photos membership', () => {
     backup(video);
     backup(pending, 'uploaded');
     expect(visible()).toEqual([video, photo]);
-    expect(new TimelineReader(context).buckets(owner, { filter: 'all' })).toEqual([
+    expect(new LibraryReader(context, () => 'UTC').buckets(alice, { filter: 'all' })).toEqual([
       { month: '2026-03', count: 2 },
     ]);
-    expect(rail.read(owner, AT)).toMatchObject({ timeline: 2, favourites: 1, videos: 1 });
+    expect(rail.read(alice)).toMatchObject({ library: 2, favourites: 1, videos: 1 });
   });
 
-  it('retains root actor scope for backed-up items', () => {
+  it('keeps a backed-up item with the person whose drive holds it', () => {
     const shared = seed({ n: 1, takenAt: '2026-03-01T10:00:00.000Z' });
     const privatePhoto = seed({ n: 2, takenAt: '2026-03-02T10:00:00.000Z', root: BOB_ROOT });
     backup(shared);
     backup(privatePhoto);
     expect(visible(alice)).toEqual([shared]);
     expect(visible(bob)).toEqual([privatePhoto, shared]);
-    expect(visible(owner)).toEqual([privatePhoto, shared]);
   });
 
   it('retains a backed-up photo after the source phone is removed', () => {
@@ -91,7 +93,7 @@ describe('backup Photos membership', () => {
       trash: (): Promise<void> => Promise.resolve(),
       star: (): Promise<void> => Promise.resolve(),
     });
-    expect(duplicates.stats(owner, { media: true })).toMatchObject({ groups: 1, extraCopies: 1 });
+    expect(duplicates.stats(alice, { media: true })).toMatchObject({ groups: 1, extraCopies: 1 });
   });
 
   it('preserves membership through trash and restore', () => {
@@ -112,7 +114,7 @@ describe('backup Photos membership', () => {
     });
     database.prepare('delete from drive_items where id = ?').run(photo);
     expect(visible()).toEqual([]);
-    expect(rail.read(owner, AT).deleted).toBe(1);
+    expect(rail.read(alice).deleted).toBe(1);
     new DriveTrashRepository(context).remove(photo);
     const columns = Object.keys(item);
     database

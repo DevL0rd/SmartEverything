@@ -32,7 +32,7 @@ const push = {
 };
 
 const valid = [
-  { type: 'hello', clientId: ID, rootId: OTHER, indexId: null, afterSeq: 0 },
+  { type: 'hello', placementId: ID, indexId: null, afterSeq: 0 },
   {
     type: 'index',
     indexId: ID,

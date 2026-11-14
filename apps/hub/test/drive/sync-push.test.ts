@@ -5,11 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import {
-  hashClientToken,
   type ComputerNodeRow,
   type DriveConflict,
   type DriveItem,
-  type DriveRoot,
+  type DrivePlacement,
 } from '@smarteverything/domain';
 import {
   packedToBytes,
@@ -19,15 +18,18 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { commitContent } from '../../src/drive/changes';
-import { physicalRoot, TMP_DIRECTORY } from '../../src/drive/intents';
+import { TMP_DIRECTORY } from '../../src/drive/intents';
 import { createDriveSync, type DriveSyncParts } from '../../src/drive/sync/server-push';
 import { syncAuthentication, type SyncEnv } from '../../src/drive/sync/server-ops';
 import type { SyncOperation, SyncSession } from '../../src/drive/sync/server-socket';
 import { commitTrash } from '../../src/drive/trash-purge';
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
-import { folderRoot } from './drive-fixture';
+import type { StoredDrive } from '../../src/store/repositories/drive-roots';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import type { TestStore } from '../support/store';
+import { status } from './placement-fixture';
+import { driveTestStore, putItem } from './spaces-fixture';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const BLOCK = 128 * 1024;
@@ -39,9 +41,9 @@ type Typed<T extends SyncHubMessage['type']> = Extract<SyncHubMessage, { type: T
 interface Peer {
   readonly token: string;
   readonly row: ComputerNodeRow;
-  readonly clientId: string;
   readonly profileId: string;
   readonly sent: SyncHubMessage[];
+  readonly placements: Map<string, string>;
   readonly session: (rootId: string) => SyncSession;
 }
 
@@ -103,19 +105,6 @@ function listen(): Promise<void> {
   });
 }
 
-function clientRow(profileId: string): string {
-  return opened.store.clients.create(
-    {
-      name: `Desktop ${profileId.slice(0, 4)}`,
-      platform: 'desktop',
-      role: 'member',
-      tokenHash: hashClientToken(`set_${randomBytes(32).toString('hex')}`),
-      profileId,
-    },
-    false,
-  ).id;
-}
-
 function peerFor(profileId: string, os = 'CachyOS'): Peer {
   nodeCount += 1;
   const [device] = opened.store.devices.upsert([
@@ -147,31 +136,32 @@ function peerFor(profileId: string, os = 'CachyOS'): Peer {
   });
   const row = opened.store.computerNodes.byToken(tokenHash);
   if (row === undefined) throw new Error('the node was not stored');
-  const clientId = clientRow(profileId);
   const sent: SyncHubMessage[] = [];
-  return {
+  const placements = new Map<string, string>();
+  const peer: Peer = {
     token,
     row,
-    clientId,
     profileId,
     sent,
+    placements,
     session: (rootId) => ({
       mode: 'sync',
-      clientId,
+      placementId: placements.get(rootId) ?? enroll(peer, rootId).id,
       rootId,
       deviceId: row.device_id,
       profileId,
-      actor: { profileId, owner: profileId === ownerId },
+      actor: { profileId },
       send: (message): Promise<void> => {
         sent.push(SYNC_HUB_MESSAGE.parse(message));
         return Promise.resolve();
       },
     }),
   };
+  return peer;
 }
 
 beforeEach(async () => {
-  opened = await testStore(() => NOW);
+  opened = await driveTestStore(() => NOW);
   directory = await mkdtemp(join(tmpdir(), 'drive-sync-push-'));
   ownerId = opened.store.profiles.first().id;
   samId = opened.store.profiles.create({ name: 'Sam' }).id;
@@ -215,28 +205,41 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-async function syncedRoot(
-  fields: Partial<Extract<DriveRoot, { kind: 'folder' }>> = {},
-): Promise<DriveRoot> {
-  const path = join(directory, randomUUID());
-  await mkdir(path, { recursive: true });
-  return opened.store.driveRoots.insert(
-    folderRoot(randomUUID(), path, {
-      readOnly: false,
-      versions: true,
-      synced: true,
-      indexId: randomUUID(),
-      sync: { ignorePatterns: [], conflictCopies: true, clients: [] },
-      ...fields,
-    }),
-  );
+interface RootFields {
+  readonly ownerProfileId?: string;
 }
 
-function enroll(peer: Peer, root: DriveRoot): void {
-  opened.store.driveSyncClients.set(
-    { clientId: peer.clientId, rootId: root.id, enabled: true, selected: [] },
-    { deviceId: peer.row.device_id, profileId: peer.profileId },
-  );
+async function syncedRoot(fields: RootFields = {}): Promise<StoredDrive> {
+  const drive =
+    fields.ownerProfileId === undefined
+      ? opened.store.driveRoots.insert(sharedDriveRoot(randomUUID()))
+      : opened.store.driveRoots.insert(personalDriveRoot(randomUUID(), fields.ownerProfileId));
+  await mkdir(drive.path, { recursive: true });
+  return drive;
+}
+
+function enroll(
+  peer: Peer,
+  root: Pick<StoredDrive, 'id'> | string,
+  settings: { readonly conflictCopies: boolean } = { conflictCopies: true },
+): DrivePlacement {
+  const rootId = typeof root === 'string' ? root : root.id;
+  const placed = opened.store.drivePlacements.insert({
+    id: randomUUID(),
+    deviceId: peer.row.device_id,
+    rootId,
+    folderItemId: null,
+    mode: 'synced',
+    localPath: `/sync/${rootId}`,
+    enabled: true,
+    createdBy: peer.profileId,
+    excluded: [],
+    ignorePatterns: [],
+    conflictCopies: settings.conflictCopies,
+    status: status({ state: 'starting', tier: null, route: null }),
+  });
+  peer.placements.set(rootId, placed.id);
+  return placed;
 }
 
 function bytesOf(blocks: number, fill: string): Buffer {
@@ -303,13 +306,13 @@ async function upload(peer: Peer, need: Typed<'need_blocks'>, bytes: Buffer): Pr
   }
 }
 
-async function open(peer: Peer, root: DriveRoot, message: Push): Promise<void> {
+async function open(peer: Peer, root: StoredDrive, message: Push): Promise<void> {
   await sync.operations.handle(peer.session(root.id), message);
 }
 
 async function transfer(
   peer: Peer,
-  root: DriveRoot,
+  root: StoredDrive,
   message: Push,
   bytes: Buffer,
 ): Promise<SyncHubMessage> {
@@ -325,28 +328,27 @@ async function transfer(
   return last(peer);
 }
 
-function item(root: DriveRoot, relPath: string): DriveItem {
-  const found = opened.store.driveItems.byPath(root.id, relPath);
+function item(root: StoredDrive, relPath: string): DriveItem {
+  const found = opened.store.driveItems.byPath(root.id, relPath, null);
   if (found === undefined) throw new Error(`${relPath} is not indexed`);
   return found;
 }
 
-async function onDisk(root: DriveRoot, relPath: string): Promise<Buffer> {
-  return readFile(join(root.path ?? '', relPath));
+async function onDisk(root: StoredDrive, relPath: string): Promise<Buffer> {
+  return readFile(join(root.path, relPath));
 }
 
-async function hubWrite(root: DriveRoot, relPath: string, bytes: Buffer): Promise<DriveItem> {
-  const writable = physicalRoot(root);
-  const staged = await stageBytes(env, writable, Readable.from([bytes]));
-  const written = await commitContent(env, { root: writable, staged, relPath, actor: HUB_ACTOR });
+async function hubWrite(root: StoredDrive, relPath: string, bytes: Buffer): Promise<DriveItem> {
+  const staged = await stageBytes(env, root, Readable.from([bytes]));
+  const written = await commitContent(env, { root, staged, relPath, actor: HUB_ACTOR });
   return written.item;
 }
 
-async function tmpFiles(root: DriveRoot): Promise<readonly string[]> {
-  return readdir(join(root.path ?? '', TMP_DIRECTORY));
+async function tmpFiles(root: StoredDrive): Promise<readonly string[]> {
+  return readdir(join(root.path, TMP_DIRECTORY));
 }
 
-function feedRevs(root: DriveRoot, relPath: string): readonly number[] {
+function feedRevs(root: StoredDrive, relPath: string): readonly number[] {
   const id = item(root, relPath).id;
   return opened.store.driveFeed
     .sinceInRoot(root.id, 0, 1000)
@@ -371,7 +373,7 @@ describe('pushing a file', () => {
     const stored = item(root, 'docs/a.txt');
     expect(accepted).toMatchObject({ opId: 'op-1', rev: stored.rev });
     expect(await onDisk(root, 'docs/a.txt')).toEqual(bytes);
-    expect((await stat(join(root.path ?? '', 'docs/a.txt'))).mtime.toISOString()).toBe(
+    expect((await stat(join(root.path, 'docs/a.txt'))).mtime.toISOString()).toBe(
       '2026-01-02T03:04:05.000Z',
     );
     expect(item(root, 'docs').kind).toBe('folder');
@@ -454,7 +456,7 @@ describe('what a push may not do', () => {
       await open(laptop, root, pushOf(`op-${String(at)}`, path, null, bytes));
       expect(lastOf(laptop, 'conflict')).toMatchObject({ reason: 'path', conflictPath: null });
     }
-    expect(opened.store.driveItems.byPath(root.id, 'out.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 'out.txt', null)).toBeUndefined();
   });
 
   it('refuses Windows reserved names and case collisions only where a Windows computer syncs', async () => {
@@ -465,8 +467,7 @@ describe('what a push may not do', () => {
     expect(lastOf(laptop, 'need_blocks').indexes).toEqual([0]);
     await open(laptop, root, pushOf('op-3', 'CON.txt', null, bytes));
     expect(lastOf(laptop, 'need_blocks').indexes).toEqual([0]);
-    const windows = peerFor(ownerId, 'Windows 11');
-    enroll(windows, root);
+    enroll(peerFor(ownerId, 'Windows 11'), root);
     await open(laptop, root, pushOf('op-4', 'Photo.JPG', null, bytes));
     expect(lastOf(laptop, 'conflict').reason).toBe('path');
     await open(laptop, root, pushOf('op-5', 'CON.txt', null, bytes));
@@ -487,14 +488,35 @@ describe('what a push may not do', () => {
     expect(lastOf(laptop, 'conflict').reason).toBe('exists');
   });
 
-  it('refuses a push into a read-only root', async () => {
-    const readOnly = await syncedRoot({ readOnly: true, versions: false });
+  it('refuses a push into a receive only folder and into a folder outside the placement', async () => {
+    const root = await syncedRoot({ ownerProfileId: samId });
+    putItem(opened.store, { rootId: root.id, id: randomUUID(), relPath: 'shared', kind: 'folder' });
+    const folder = item(root, 'shared');
+    opened.store.driveGrants.set({ itemId: folder.id, profileId: ownerId, role: 'view' }, samId);
+    const placed = opened.store.drivePlacements.insert({
+      id: randomUUID(),
+      deviceId: laptop.row.device_id,
+      rootId: root.id,
+      folderItemId: folder.id,
+      mode: 'synced',
+      localPath: '/sync/shared',
+      enabled: true,
+      createdBy: ownerId,
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: true,
+      status: status({ state: 'starting', tier: null, route: null, readOnly: true }),
+    });
+    laptop.placements.set(root.id, placed.id);
     await expect(
       sync.operations.handle(
-        laptop.session(readOnly.id),
+        laptop.session(root.id),
         pushOf('op-1', 'a.txt', null, bytesOf(1, 'a')),
       ),
     ).rejects.toMatchObject({ code: 'forbidden' });
+    opened.store.driveGrants.set({ itemId: folder.id, profileId: ownerId, role: 'edit' }, samId);
+    await open(laptop, root, pushOf('op-2', 'new.txt', null, bytesOf(1, 'n')));
+    expect(lastOf(laptop, 'need_blocks').indexes).toEqual([0]);
   });
 
   it('refuses a block list that does not match its checksum', async () => {
@@ -548,7 +570,7 @@ describe('blocks over HTTP', () => {
       txn: need.txn,
     });
     expect(lastOf(laptop, 'need_blocks').indexes).toEqual([1]);
-    expect(opened.store.driveItems.byPath(root.id, 'm.bin')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 'm.bin', null)).toBeUndefined();
     await upload(laptop, { ...need, indexes: [1] }, bytes);
     await sync.operations.handle(laptop.session(root.id), {
       type: 'commit',
@@ -560,8 +582,8 @@ describe('blocks over HTTP', () => {
   });
 
   it('serves a block of a file and refuses another person root', async () => {
-    const mine = await syncedRoot({ scope: 'person', ownerProfileId: samId });
-    const theirs = await syncedRoot({ scope: 'person', ownerProfileId: ownerId });
+    const mine = await syncedRoot({ ownerProfileId: samId });
+    const theirs = await syncedRoot({ ownerProfileId: ownerId });
     const bytes = bytesOf(2, 'q');
     await hubWrite(mine, 'mine.bin', bytes);
     await hubWrite(theirs, 'theirs.bin', bytes);
@@ -656,9 +678,8 @@ describe('conflicts', () => {
   });
 
   it('answers a stale push without a copy when the folder keeps no conflict copies', async () => {
-    const root = await syncedRoot({
-      sync: { ignorePatterns: [], conflictCopies: false, clients: [] },
-    });
+    const root = await syncedRoot();
+    enroll(laptop, root, { conflictCopies: false });
     const first = bytesOf(1, 'a');
     await transfer(laptop, root, pushOf('op-1', 'n.txt', null, first), first);
     const stale = bytesOf(1, 'z');
@@ -691,7 +712,7 @@ describe('conflicts', () => {
     const first = bytesOf(1, 'a');
     await transfer(laptop, root, pushOf('op-1', 'd.txt', null, first), first);
     const stored = item(root, 'd.txt');
-    await commitTrash(env, physicalRoot(root), stored.id, HUB_ACTOR);
+    await commitTrash(env, root, stored.id, HUB_ACTOR);
     const edited = bytesOf(1, 'e');
     const reply = await transfer(laptop, root, pushOf('op-2', 'd.txt', stored.rev, edited), edited);
     expect(reply.type).toBe('accept');
@@ -742,7 +763,7 @@ describe('the per-root push queue', () => {
     const replies = [last(laptop).type, last(owner).type].sort();
     expect(replies).toEqual(['accept', 'conflict']);
     expect(item(root, 'x.txt').rev).toBe(1);
-    const names = (await readdir(root.path ?? '')).filter((name) => name.startsWith('x'));
+    const names = (await readdir(root.path)).filter((name) => name.startsWith('x'));
     expect(names).toHaveLength(2);
   });
 });
@@ -791,7 +812,7 @@ describe('quota and space', () => {
     await expect(
       sync.operations.handle(sam.session(root.id), { type: 'commit', opId: 'op-1', txn: need.txn }),
     ).rejects.toMatchObject({ code: 'payload_too_large' });
-    expect(opened.store.driveItems.byPath(root.id, 'big.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 'big.txt', null)).toBeUndefined();
     expect(await tmpFiles(root)).toEqual([]);
   });
 
@@ -845,7 +866,7 @@ describe('moves and deletes', () => {
     const moved = item(root, 'b/c/new.txt');
     expect(moved.id).toBe(stored.id);
     expect(reply.rev).toBe(moved.rev);
-    expect(opened.store.driveItems.byPath(root.id, 'a/old.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 'a/old.txt', null)).toBeUndefined();
     expect(opened.store.driveBlocks.find(moved.id, moved.rev)?.hashes.length).toBe(2 * 32);
     expect(await onDisk(root, 'b/c/new.txt')).toEqual(bytes);
   });
@@ -884,7 +905,7 @@ describe('moves and deletes', () => {
     expect(lastOf(laptop, 'conflict').reason).toBe('exists');
     await move('m4', 'dir', 'dir/inner', item(root, 'dir').rev);
     expect(lastOf(laptop, 'conflict').reason).toBe('path');
-    await writeFile(join(root.path ?? '', 'loose.txt'), 'outside');
+    await writeFile(join(root.path, 'loose.txt'), 'outside');
     await move('m5', 'a.txt', 'loose.txt', stored.rev);
     expect(lastOf(laptop, 'conflict').reason).toBe('exists');
     expect(await onDisk(root, 'a.txt')).toEqual(bytes);
@@ -907,7 +928,7 @@ describe('moves and deletes', () => {
     expect(item(root, 't.txt').id).toBe(stored.id);
     await handle('t2', stored.rev);
     expect(lastOf(laptop, 'accept').rev).toBe(stored.rev + 1);
-    expect(opened.store.driveItems.byPath(root.id, 't.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 't.txt', null)).toBeUndefined();
     expect(opened.store.driveTrash.find(stored.id)).toBeDefined();
     await handle('t3', stored.rev);
     expect(lastOf(laptop, 'accept').opId).toBe('t3');
@@ -926,5 +947,136 @@ describe('moves and deletes', () => {
     });
     expect(lastOf(laptop, 'conflict').reason).toBe('stale');
     expect(item(root, 'dir/a.txt').kind).not.toBe('folder');
+  });
+});
+
+describe('a folder placed on a computer', () => {
+  async function placedFolder(
+    excluded: readonly string[],
+  ): Promise<{ readonly root: StoredDrive; readonly folder: DriveItem }> {
+    const root = await syncedRoot({ ownerProfileId: ownerId });
+    await mkdir(join(root.path, 'docs'));
+    putItem(opened.store, { rootId: root.id, id: randomUUID(), relPath: 'docs', kind: 'folder' });
+    const folder = item(root, 'docs');
+    const placed = opened.store.drivePlacements.insert({
+      id: randomUUID(),
+      deviceId: laptop.row.device_id,
+      rootId: root.id,
+      folderItemId: folder.id,
+      mode: 'synced',
+      localPath: '/sync/docs',
+      enabled: true,
+      createdBy: ownerId,
+      excluded,
+      ignorePatterns: [],
+      conflictCopies: true,
+      status: status({ state: 'starting', tier: null, route: null }),
+    });
+    laptop.placements.set(root.id, placed.id);
+    return { root, folder };
+  }
+
+  it('lands a push under the folder and answers with the relative path', async () => {
+    const { root } = await placedFolder([]);
+    const bytes = bytesOf(1, 'a');
+    const reply = await transfer(laptop, root, pushOf('op-1', 'sub/a.txt', null, bytes), bytes);
+    expect(reply.type).toBe('accept');
+    expect(await onDisk(root, 'docs/sub/a.txt')).toEqual(bytes);
+    expect(opened.store.driveItems.byPath(root.id, 'sub/a.txt', null)).toBeUndefined();
+    expect(item(root, 'docs/sub').kind).toBe('folder');
+  });
+
+  it('refuses a push into an excluded folder and one that is the excluded folder', async () => {
+    const { root } = await placedFolder(['cache']);
+    const bytes = bytesOf(1, 'a');
+    await open(laptop, root, pushOf('op-1', 'cache/a.txt', null, bytes));
+    expect(lastOf(laptop, 'conflict').reason).toBe('path');
+    await open(laptop, root, pushOf('op-2', 'cache', null, bytes));
+    expect(lastOf(laptop, 'conflict').reason).toBe('path');
+    await open(laptop, root, pushOf('op-3', 'caches/a.txt', null, bytes));
+    expect(lastOf(laptop, 'need_blocks').indexes).toEqual([0]);
+  });
+
+  it('names a conflict copy relative to the placed folder', async () => {
+    const { root } = await placedFolder([]);
+    const first = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'c.txt', null, first), first);
+    const base1 = item(root, 'docs/c.txt');
+    const hub = bytesOf(1, 'b');
+    await hubWrite(root, 'docs/c.txt', hub);
+    const stale = bytesOf(1, 'c');
+    const reply = await transfer(laptop, root, pushOf('op-2', 'c.txt', base1.rev, stale), stale);
+    if (reply.type !== 'conflict') throw new Error('expected a conflict');
+    expect(reply.conflictPath).toMatch(/^c\.sync-conflict-\d{8}-\d{6}-[0-9a-f]{8}\.txt$/u);
+    expect(await onDisk(root, `docs/${reply.conflictPath ?? ''}`)).toEqual(stale);
+  });
+
+  it('moves and deletes inside the folder and refuses both on an excluded path', async () => {
+    const { root } = await placedFolder(['cache']);
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'a.txt', null, bytes), bytes);
+    const stored = item(root, 'docs/a.txt');
+    const handle = sync.operations.handle.bind(sync.operations);
+    await handle(laptop.session(root.id), {
+      type: 'move',
+      opId: 'm1',
+      from: 'a.txt',
+      to: 'cache/a.txt',
+      baseRev: stored.rev,
+    });
+    expect(lastOf(laptop, 'conflict').reason).toBe('path');
+    await handle(laptop.session(root.id), {
+      type: 'tombstone',
+      opId: 't1',
+      relPath: 'cache/a.txt',
+      baseRev: 1,
+    });
+    expect(lastOf(laptop, 'conflict').reason).toBe('path');
+    await handle(laptop.session(root.id), {
+      type: 'move',
+      opId: 'm2',
+      from: 'a.txt',
+      to: 'b.txt',
+      baseRev: stored.rev,
+    });
+    expect(lastOf(laptop, 'accept').opId).toBe('m2');
+    expect(item(root, 'docs/b.txt').id).toBe(stored.id);
+    await handle(laptop.session(root.id), {
+      type: 'tombstone',
+      opId: 't2',
+      relPath: 'b.txt',
+      baseRev: item(root, 'docs/b.txt').rev,
+    });
+    expect(lastOf(laptop, 'accept').opId).toBe('t2');
+    expect(opened.store.driveTrash.find(stored.id)).toBeDefined();
+  });
+
+  it('refuses a push once the placement is held, switched off or its access ends', async () => {
+    const { root, folder } = await placedFolder([]);
+    const placementId = laptop.placements.get(root.id) ?? '';
+    const message = pushOf('op-1', 'a.txt', null, bytesOf(1, 'a'));
+    opened.store.drivePlacements.setHold(placementId, 'trashed');
+    await expect(sync.operations.handle(laptop.session(root.id), message)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+    opened.store.drivePlacements.setHold(placementId, null);
+    await open(laptop, root, message);
+    expect(lastOf(laptop, 'need_blocks').indexes).toEqual([0]);
+    opened.store.driveItems.remove(folder.id);
+    await expect(
+      sync.operations.handle(laptop.session(root.id), { ...message, opId: 'op-2' }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('refuses a computer that does not own the placement', async () => {
+    const { root } = await placedFolder([]);
+    const stolen = laptop.placements.get(root.id) ?? '';
+    owner.placements.set(root.id, stolen);
+    await expect(
+      sync.operations.handle(
+        owner.session(root.id),
+        pushOf('op-1', 'a.txt', null, bytesOf(1, 'a')),
+      ),
+    ).rejects.toMatchObject({ code: 'forbidden' });
   });
 });

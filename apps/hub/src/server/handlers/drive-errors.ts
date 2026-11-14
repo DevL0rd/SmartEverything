@@ -8,17 +8,15 @@ import {
 } from '../../drive/albums';
 import { ConflictError } from '../../drive/conflicts';
 import { DriveWriteError, type DriveWriteFailure } from '../../drive/intents';
-import { DrivePathError, RootPlacementError, type DrivePathFailure } from '../../drive/paths';
+import { DrivePathError, type DrivePathFailure } from '../../drive/paths';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from '../../drive/quotas';
 import { RootMarkerError } from '../../drive/root-marker';
 import { DriveCursorError, DriveFolderRequiredError } from '../../drive/search';
-import { VolumeError } from '../../drive/volumes';
+import { DataSpaceError } from '../../drive/data-space';
 
 type ErrorClass = abstract new (...args: never) => Error;
 
 const WRITE_CODES: Readonly<Record<DriveWriteFailure, ApiErrorCode>> = {
-  'read-only': 'forbidden',
-  'no-physical-root': 'forbidden',
   exists: 'conflict',
   missing: 'not_found',
   corrupt: 'internal',
@@ -46,9 +44,8 @@ const CODES: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [DriveAlbumKindError, 'invalid_request'],
   [DriveCursorError, 'invalid_request'],
   [DriveFolderRequiredError, 'invalid_request'],
-  [RootPlacementError, 'invalid_request'],
   [RootMarkerError, 'conflict'],
-  [VolumeError, 'invalid_request'],
+  [DataSpaceError, 'invalid_request'],
   [DriveQuotaExceededError, 'command_refused'],
   [DriveFreeSpaceError, 'command_refused'],
 ];

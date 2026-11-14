@@ -14,8 +14,11 @@ import {
 } from './fs-api-write';
 import { isInside, normalizeRelativePath } from './paths';
 import type { ChangeEnv } from './changes';
-import type { DriveActor, DriveReadService } from './service-read';
-import { writableRoot } from './service-write-support';
+import type { Store } from '../store/store';
+import type { DriveActor } from './access';
+import type { DriveReadService } from './service-read';
+import { writableItemRoot, writableRoot } from './service-write-support';
+import type { DriveWriteRoot } from './intents';
 import type { DriveWriteService } from './service-write';
 
 const NAME = z
@@ -82,6 +85,7 @@ export interface FsCaller extends DriveActor {
 
 export interface FsEnv {
   readonly env: ChangeEnv;
+  readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants' | 'drivePlacements'>;
   readonly read: DriveReadService;
   readonly write: Pick<DriveWriteService, 'change'>;
   readonly ops: FsOpMemory;
@@ -118,84 +122,120 @@ export class DriveFsApi {
     if (relPath === '') {
       return null;
     }
-    const item = this.deps.env.store.driveItems.byPath(rootId, joined(base, relPath));
+    const item = this.deps.env.store.driveItems.byPath(
+      rootId,
+      joined(base, relPath),
+      actor.profileId,
+    );
     if (item === undefined) {
       throw new ApiError('not_found', 'There is no such file or folder.');
     }
     return entryOf(item, base);
   }
 
-  mkdir(caller: FsCaller, rootId: string, input: FsMkdir): Promise<FsEntry> {
-    return this.ops.entry(caller.nodeId, { id: input.opId, action: 'mkdir' }, () =>
-      this.guarded(async () => {
-        const base = this.baseIn(caller, rootId, input.base);
-        const root = writableRoot(this.deps.read, mount(caller), rootId);
-        const parent = this.parentIn(caller, rootId, input.parentId, base);
-        return entryOf(
-          await makeFolder(this.deps.env, caller, { root, parent, name: input.name }),
-          base,
-        );
-      }),
+  async mkdir(caller: FsCaller, rootId: string, input: FsMkdir): Promise<FsEntry> {
+    return await this.ops.entry(
+      this.mountOf(caller, rootId, input.base),
+      { id: input.opId, action: 'mkdir' },
+      () =>
+        this.guarded(async () => {
+          const base = this.baseIn(caller, rootId, input.base);
+          const parent = this.parentIn(caller, rootId, input.parentId, base);
+          const root = this.writableIn(caller, rootId, parent);
+          return entryOf(
+            await makeFolder(this.deps.env, caller, { root, parent, name: input.name }),
+            base,
+          );
+        }),
     );
   }
 
-  rename(caller: FsCaller, rootId: string, input: FsRename): Promise<FsEntry> {
-    return this.ops.entry(caller.nodeId, { id: input.opId, action: 'rename' }, () =>
-      this.guarded(async () => {
-        const base = this.baseIn(caller, rootId, input.base);
-        const item = this.itemIn(caller, rootId, input.itemId, base);
-        const parent = this.parentIn(caller, rootId, input.parentId, base);
-        if (item.kind === 'folder' && parent !== null && isInside(item.relPath, parent.relPath)) {
-          throw new ApiError('invalid_request', 'A folder cannot move into itself.');
-        }
-        const root = writableRoot(this.deps.read, mount(caller), rootId);
-        await relocate(this.deps.env, caller, { root, item, parent, name: input.name });
-        return entryOf(this.deps.env.store.driveItems.byId(item.id), base);
-      }),
+  async rename(caller: FsCaller, rootId: string, input: FsRename): Promise<FsEntry> {
+    return await this.ops.entry(
+      this.mountOf(caller, rootId, input.base),
+      { id: input.opId, action: 'rename' },
+      () =>
+        this.guarded(async () => {
+          const base = this.baseIn(caller, rootId, input.base);
+          const item = this.itemIn(caller, rootId, input.itemId, base);
+          const parent = this.parentIn(caller, rootId, input.parentId, base);
+          if (item.kind === 'folder' && parent !== null && isInside(item.relPath, parent.relPath)) {
+            throw new ApiError('invalid_request', 'A folder cannot move into itself.');
+          }
+          this.writableIn(caller, rootId, parent);
+          const root = this.writableIn(caller, rootId, item);
+          const over = this.deps.env.store.driveItems.byPath(
+            rootId,
+            joined(parent, input.name),
+            null,
+          );
+          if (over !== undefined && over.id !== item.id) this.writableIn(caller, rootId, over);
+          const kept = await relocate(this.deps.env, caller, {
+            root,
+            item,
+            parent,
+            name: input.name,
+          });
+          return entryOf(this.deps.env.store.driveItems.byId(kept.id, caller.profileId), base);
+        }),
     );
   }
 
-  unlink(caller: FsCaller, rootId: string, input: FsRemove): Promise<void> {
-    return this.ops.done(caller.nodeId, { id: input.opId, action: 'unlink' }, () =>
-      this.guarded(async () => {
-        const item = this.itemIn(
-          caller,
-          rootId,
-          input.itemId,
-          this.baseIn(caller, rootId, input.base),
-        );
-        if (item.kind === 'folder') {
-          throw new ApiError('invalid_request', 'That is a folder; remove it with rmdir.');
-        }
-        await this.trash(caller, rootId, item);
-      }),
+  async unlink(caller: FsCaller, rootId: string, input: FsRemove): Promise<void> {
+    await this.ops.done(
+      this.mountOf(caller, rootId, input.base),
+      { id: input.opId, action: 'unlink' },
+      () =>
+        this.guarded(async () => {
+          const item = this.itemIn(
+            caller,
+            rootId,
+            input.itemId,
+            this.baseIn(caller, rootId, input.base),
+          );
+          if (item.kind === 'folder') {
+            throw new ApiError('invalid_request', 'That is a folder; remove it with rmdir.');
+          }
+          await this.trash(caller, item);
+        }),
     );
   }
 
-  rmdir(caller: FsCaller, rootId: string, input: FsRemove): Promise<void> {
-    return this.ops.done(caller.nodeId, { id: input.opId, action: 'rmdir' }, () =>
-      this.guarded(async () => {
-        const item = this.itemIn(
-          caller,
-          rootId,
-          input.itemId,
-          this.baseIn(caller, rootId, input.base),
-        );
-        if (item.kind !== 'folder') {
-          throw new ApiError('invalid_request', 'That is a file; remove it with unlink.');
-        }
-        const children = this.deps.env.store.driveItems.children(rootId, item.id, null, 1);
-        if (children.entries.length > 0) {
-          throw new ApiError('conflict', 'The folder is not empty.');
-        }
-        await this.trash(caller, rootId, item);
-      }),
+  async rmdir(caller: FsCaller, rootId: string, input: FsRemove): Promise<void> {
+    await this.ops.done(
+      this.mountOf(caller, rootId, input.base),
+      { id: input.opId, action: 'rmdir' },
+      () =>
+        this.guarded(async () => {
+          const item = this.itemIn(
+            caller,
+            rootId,
+            input.itemId,
+            this.baseIn(caller, rootId, input.base),
+          );
+          if (item.kind !== 'folder') {
+            throw new ApiError('invalid_request', 'That is a file; remove it with unlink.');
+          }
+          const children = this.deps.env.store.driveItems.children({
+            rootId,
+            parentId: item.id,
+            after: null,
+            limit: 1,
+            viewer: caller.profileId,
+          });
+          if (children.entries.length > 0) {
+            throw new ApiError('conflict', 'The folder is not empty.');
+          }
+          await this.trash(caller, item);
+        }),
     );
   }
 
-  utimens(caller: FsCaller, rootId: string, input: FsUtimens): Promise<FsEntry> {
-    return this.ops.entry(caller.nodeId, { id: input.opId, action: 'utimens' }, () =>
-      this.guarded(() => this.stamped(caller, rootId, input)),
+  async utimens(caller: FsCaller, rootId: string, input: FsUtimens): Promise<FsEntry> {
+    return await this.ops.entry(
+      this.mountOf(caller, rootId, input.base),
+      { id: input.opId, action: 'utimens' },
+      () => this.guarded(() => this.stamped(caller, rootId, input)),
     );
   }
 
@@ -212,6 +252,21 @@ export class DriveFsApi {
     return item;
   }
 
+  private mountOf(caller: FsCaller, rootId: string, baseId: string | undefined): string {
+    const mounted = this.deps.store.drivePlacements
+      .forDevice(caller.nodeId)
+      .find(
+        (placement) =>
+          placement.mode === 'mounted' &&
+          placement.rootId === rootId &&
+          placement.folderItemId === (baseId ?? null),
+      );
+    if (mounted === undefined) {
+      throw new ApiError('forbidden', 'This computer has no mount of that drive or folder.');
+    }
+    return mounted.id;
+  }
+
   private async guarded<T>(operation: () => Promise<T> | T): Promise<T> {
     try {
       return await operation();
@@ -221,13 +276,13 @@ export class DriveFsApi {
   }
 
   private baseIn(actor: DriveActor, rootId: string, baseId: string | undefined): DriveItem | null {
-    this.deps.read.rootFor(actor, rootId);
     if (baseId === undefined) {
+      this.deps.read.rootFor(actor, rootId);
       return null;
     }
     const folder = this.deps.read.readItem(actor, baseId);
     if (folder.rootId !== rootId || folder.kind !== 'folder') {
-      throw new ApiError('not_found', 'There is no such folder in this library folder.');
+      throw new ApiError('not_found', 'There is no such folder in this drive.');
     }
     return folder;
   }
@@ -243,7 +298,7 @@ export class DriveFsApi {
       item.rootId !== rootId ||
       (base !== null && (item.id === base.id || !isInside(base.relPath, item.relPath)));
     if (outside) {
-      throw new ApiError('not_found', 'There is no such file or folder in this library folder.');
+      throw new ApiError('not_found', 'There is no such file or folder in this drive.');
     }
     return item;
   }
@@ -267,13 +322,18 @@ export class DriveFsApi {
   private async stamped(caller: FsCaller, rootId: string, input: FsUtimens): Promise<FsEntry> {
     const base = this.baseIn(caller, rootId, input.base);
     const item = this.itemIn(caller, rootId, input.itemId, base);
-    const root = writableRoot(this.deps.read, mount(caller), rootId);
+    const root = this.writableIn(caller, rootId, item);
     const { modifiedAt } = input;
     return entryOf(await stampItem(this.deps.env, caller, { root, item, modifiedAt }), base);
   }
 
-  private async trash(caller: FsCaller, rootId: string, item: DriveItem): Promise<void> {
-    writableRoot(this.deps.read, mount(caller), rootId);
+  private writableIn(caller: FsCaller, rootId: string, anchor: DriveItem | null): DriveWriteRoot {
+    return anchor === null
+      ? writableRoot(this.deps.read, mount(caller), rootId)
+      : writableItemRoot(this.deps.store, mount(caller), anchor);
+  }
+
+  private async trash(caller: FsCaller, item: DriveItem): Promise<void> {
     settled(await this.deps.write.change(mount(caller), { action: 'trash', itemIds: [item.id] }));
   }
 }

@@ -51,8 +51,6 @@ export const PREFLIGHT_REFUSALS = [
   'contains-install',
   'inside-bootstrap',
   'contains-bootstrap',
-  'inside-linked-drive',
-  'contains-linked-drive',
   'not-a-folder',
   'not-empty',
   'not-writable',
@@ -93,7 +91,6 @@ export interface PreflightInput {
   readonly moveId: string;
   readonly installDirectory: string;
   readonly bootstrapDirectory: string;
-  readonly linkedDriveRoots: readonly string[];
   readonly bytesToCopy: number;
 }
 
@@ -198,7 +195,6 @@ function refuseRelated(target: string, related: Related): void {
 }
 
 async function refuseOverlaps(input: PreflightInput, target: string): Promise<void> {
-  const linked = await Promise.all(input.linkedDriveRoots.map(canonicalPath));
   const related: readonly Related[] = [
     {
       path: await canonicalPath(input.oldRoot),
@@ -218,12 +214,6 @@ async function refuseOverlaps(input: PreflightInput, target: string): Promise<vo
       contains: 'contains-bootstrap',
       label: 'the hub bootstrap folder',
     },
-    ...linked.map((path): Related => ({
-      path,
-      inside: 'inside-linked-drive',
-      contains: 'contains-linked-drive',
-      label: 'the linked Drive folder',
-    })),
   ];
   for (const entry of related) {
     refuseRelated(target, entry);

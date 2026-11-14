@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import { testStore, type TestStore, unusedDrivePath } from '../support/store';
 
 let opened: TestStore;
 
@@ -27,6 +27,7 @@ describe('openStore', () => {
       log: testLogger('store'),
       now: () => new Date('2026-10-09T10:00:00.000Z'),
       systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
     });
     expect(again.weather.read()).toStrictEqual(before);
     again.close();

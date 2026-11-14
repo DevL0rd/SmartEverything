@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { CLIENT_ROW, type DriveRoot } from '@smarteverything/domain';
+import { CLIENT_ROW } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fileDraft } from '../../src/drive/changes';
 import { nodeFiles } from '../../src/drive/versions';
@@ -18,11 +18,12 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { driveRepositories } from '../../src/store/repositories/areas/drive';
 import { CamerasRepository } from '../../src/store/repositories/cameras';
 import { DevicesRepository } from '../../src/store/repositories/devices';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from '../drive/spaces-fixture';
 
 const NOW = '2026-11-07T08:00:00.000Z';
 const PAGE = 200;
@@ -48,36 +49,13 @@ let nextIno = 1;
 
 const sha = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 
-function rootRow(
-  id: string,
-  path: string,
-  scope: 'person' | 'home',
-  owner: string | null,
-): DriveRoot {
-  return {
-    id,
-    kind: 'managed',
-    label: 'Managed',
-    scope,
-    ownerProfileId: owner,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: { hashedShare: 0, verifiedShare: 0, corrupt: 0, lastScrubAt: null, lastBackupAt: null },
-    inPhotos: true,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
+const drivePaths = new Map<string, string>();
+
+function drivePathOf(scope: 'person' | 'home', owner: string | null): string {
+  const path = drivePaths.get(`${scope}:${String(owner)}`);
+  if (path === undefined)
+    throw new Error(`The test drive ${scope}:${String(owner)} has no folder.`);
+  return path;
 }
 
 async function addRoot(
@@ -88,7 +66,8 @@ async function addRoot(
   const id = randomUUID();
   const path = join(base, name);
   await mkdir(path, { recursive: true });
-  store.driveRoots.insert(rootRow(id, path, scope, owner));
+  drivePaths.set(`${scope}:${String(owner)}`, path);
+  store.driveRoots.insert(owner === null ? sharedDriveRoot(id) : personalDriveRoot(id, owner));
   return id;
 }
 
@@ -226,7 +205,7 @@ beforeEach(async () => {
   devices = new DevicesRepository(context);
   cameras = new CamerasRepository(context);
   store = {
-    ...driveRepositories(context),
+    ...driveRepositories(context, drivePathOf),
     feed,
     write: <T>(work: () => T): T => context.write(work),
     devices,
@@ -296,6 +275,30 @@ describe('cameras source', () => {
     expect(page.next).toBeNull();
     const only = cameraSource.page(owner(alice), { chipId: garage });
     expect(only.items.map((item) => item.itemId)).toEqual([second]);
+  });
+
+  it('narrows items and chip counts by the camera name, the file name and a range of days', async () => {
+    const first = await recording({
+      deviceId: living,
+      kind: 'snapshot',
+      startedAt: '2026-11-01T10:00:00.000Z',
+    });
+    const second = await recording({
+      deviceId: garage,
+      kind: 'clip',
+      startedAt: '2026-11-02T10:00:00.000Z',
+    });
+    const byName = cameraSource.page(owner(alice), { text: 'GARAGE' });
+    expect(byName.items.map((item) => item.itemId)).toEqual([second]);
+    expect(byName.chips).toEqual([
+      { id: garage, name: 'Garage', count: 1 },
+      { id: living, name: 'Living room', count: 0 },
+    ]);
+    const byFile = cameraSource.page(owner(alice), { text: first });
+    expect(byFile.items.map((item) => item.itemId)).toEqual([first]);
+    const byDays = cameraSource.page(owner(alice), { from: '2026-11-02', to: '2026-11-02' });
+    expect(byDays.items.map((item) => item.itemId)).toEqual([second]);
+    expect(cameraSource.page(owner(alice), { from: '2026-11-03' }).items).toEqual([]);
   });
 
   it('never shows a camera that is blocked, its recordings or its chip', async () => {
@@ -368,7 +371,13 @@ describe('cameras source', () => {
     const page = cameraSource.page(owner(alice), {});
     expect(page.items).toEqual([]);
     expect(page.chips.find((chip) => chip.id === living)?.count).toBe(0);
-    const kept = store.driveItems.children(homeRoot, null, null, 10);
+    const kept = store.driveItems.children({
+      rootId: homeRoot,
+      parentId: null,
+      after: null,
+      limit: 10,
+      viewer: null,
+    });
     expect(JSON.stringify(kept)).toContain('Saved');
     const files = await readdir(join(base, 'home', 'Saved', 'Cameras', 'Living room'));
     expect(files).toHaveLength(1);
@@ -386,7 +395,7 @@ describe('keep from cameras', () => {
     const result = await cameraSource.keep(owner(alice), [id]);
     expect(result).toBe(1);
     const name = '2026-11-03 10.15.30 ' + id + '.mp4';
-    const item = store.driveItems.byPath(homeRoot, `Saved/Cameras/Living room/${name}`);
+    const item = store.driveItems.byPath(homeRoot, `Saved/Cameras/Living room/${name}`, null);
     expect(item).toMatchObject({
       kind: 'video',
       bytes: 10,
@@ -397,7 +406,7 @@ describe('keep from cameras', () => {
     ).toBe('clip bytes');
     expect(
       ['Saved', 'Saved/Cameras', 'Saved/Cameras/Living room'].map(
-        (path) => store.driveItems.byPath(homeRoot, path)?.kind,
+        (path) => store.driveItems.byPath(homeRoot, path, null)?.kind,
       ),
     ).toEqual(['folder', 'folder', 'folder']);
     expect(cameraSource.page(owner(alice), {}).items[0]?.kept).toBe(true);
@@ -467,10 +476,10 @@ describe('keep from cameras', () => {
       /no longer there/,
     );
     await expect(cameraSource.keep(owner(alice), [lost])).rejects.toThrow(/no longer on the hub/);
-    expect(store.driveItems.byPath(homeRoot, 'Saved')).toBeUndefined();
+    expect(store.driveItems.byPath(homeRoot, 'Saved', null)).toBeUndefined();
   });
 
-  it('says so when the hub has no SmartEverything folder', async () => {
+  it('says so when the hub has no Shared Drive', async () => {
     const id = await recording({
       deviceId: living,
       kind: 'snapshot',
@@ -478,7 +487,7 @@ describe('keep from cameras', () => {
     });
     database.prepare('delete from drive_roots where id = ?').run(homeRoot);
     await expect(cameraSource.keep(owner(alice), [id])).rejects.toThrow(
-      /no SmartEverything folder/,
+      /Shared Drive does not exist/,
     );
   });
 });
@@ -542,6 +551,34 @@ describe('made with ai source', () => {
     expect(aiSource.page(owner(bob), {}).items).toHaveLength(1);
   });
 
+  it('narrows images and chip counts by the chat title, the file name and a range of days', async () => {
+    const sunset = chat(alice, 'Sunset');
+    const logo = chat(alice, 'Logo');
+    const first = await image({
+      profileId: alice,
+      chatId: sunset,
+      name: 'a.png',
+      content: 'a',
+      createdAt: '2026-11-01T10:00:00.000Z',
+    });
+    const second = await image({
+      profileId: alice,
+      chatId: logo,
+      name: 'wordmark.png',
+      content: 'b',
+      createdAt: '2026-11-02T10:00:00.000Z',
+    });
+    const ids = (query: Parameters<AiImageSource['page']>[1]): string[] =>
+      aiSource.page(owner(alice), query).items.map((item) => item.itemId);
+    expect(ids({ text: 'sunSET' })).toEqual([first]);
+    expect(ids({ text: 'wordmark' })).toEqual([second]);
+    expect(ids({ from: '2026-11-02' })).toEqual([second]);
+    expect(ids({ to: '2026-11-01' })).toEqual([first]);
+    expect(aiSource.page(owner(alice), { text: 'sunset' }).chips).toEqual([
+      { id: sunset, name: 'Sunset', count: 1 },
+    ]);
+  });
+
   it('gives the owner only their own images too', async () => {
     const theirs = chat(bob, 'Bobs');
     await image({
@@ -565,7 +602,7 @@ describe('made with ai source', () => {
     });
     await expect(aiSource.keep(owner(alice), [id])).resolves.toBe(1);
     const name = `sunset ${id.slice(0, 8)}.png`;
-    expect(store.driveItems.byPath(aliceRoot, `Made with AI/${name}`)).toMatchObject({
+    expect(store.driveItems.byPath(aliceRoot, `Made with AI/${name}`, null)).toMatchObject({
       kind: 'image',
       sha256: sha(Buffer.from('pixels')),
     });
@@ -601,10 +638,10 @@ describe('made with ai source', () => {
     });
     expect(aiSource.page(owner(alice), {}).items[0]?.kept).toBe(true);
     await expect(aiSource.keep(owner(alice), [id])).resolves.toBe(0);
-    expect(store.driveItems.byPath(aliceRoot, 'Made with AI')).toBeUndefined();
+    expect(store.driveItems.byPath(aliceRoot, 'Made with AI', null)).toBeUndefined();
   });
 
-  it('refuses an image of someone else, an upload and a person without a library folder', async () => {
+  it('refuses an image of someone else, an upload and a person without a drive', async () => {
     const theirs = chat(bob, 'Bobs');
     const other = await image({
       profileId: bob,
@@ -622,7 +659,7 @@ describe('made with ai source', () => {
       createdAt: '2026-11-05T11:00:00.000Z',
     });
     await expect(aiSource.keep(owner(alice), [other])).rejects.toThrow(/not one of yours/);
-    await expect(aiSource.keep(owner(bob), [own])).rejects.toThrow(/no library folder/);
+    await expect(aiSource.keep(owner(bob), [own])).rejects.toThrow(/has no drive yet/);
   });
 });
 
@@ -630,7 +667,7 @@ describe('routes', () => {
   let opened: TestStore;
 
   beforeEach(async () => {
-    opened = await testStore();
+    opened = await driveTestStore();
   });
 
   afterEach(async () => {

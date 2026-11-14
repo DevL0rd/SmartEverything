@@ -1,5 +1,5 @@
 import type { DriveQuotaStatus } from '../store/repositories/drive-quotas';
-import type { VolumeProbe } from './volumes';
+import type { DataSpaceProbe } from './data-space';
 
 export type DriveQuotaSource = (profileId: string) => DriveQuotaStatus;
 
@@ -54,7 +54,7 @@ export function checkDriveQuota(status: DriveQuotaSource, request: DriveWriteReq
 }
 
 export async function checkDriveFreeSpace(
-  space: VolumeProbe['space'],
+  space: DataSpaceProbe['space'],
   path: string,
   bytes: number,
 ): Promise<void> {
@@ -70,7 +70,7 @@ export interface DriveWriteCheck extends DriveWriteRequest {
 
 export interface DriveWriteGuard {
   readonly status: DriveQuotaSource;
-  readonly space: VolumeProbe['space'];
+  readonly space: DataSpaceProbe['space'];
 }
 
 export async function checkDriveWrite(

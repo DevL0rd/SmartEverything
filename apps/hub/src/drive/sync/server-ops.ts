@@ -4,7 +4,7 @@ import type { SyncFileMeta, SyncHubMessage } from '@smarteverything/domain/drive
 import { SYNC_HUB_MESSAGE } from '@smarteverything/domain/drive-sync';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import { fsCode } from '../../fs-code';
-import { profileIdOf, roleOfCaller } from '../../server/auth';
+import { profileIdOf } from '../../server/auth';
 import { bearerOf } from '../../server/http';
 import type { Store } from '../../store/store';
 import type { ChangeActor, ChangeEnv } from '../changes';
@@ -13,8 +13,8 @@ import { DriveWriteError } from '../intents';
 import { nodeCaller } from '../node-caller';
 import { DrivePathError } from '../paths';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from '../quotas';
-import type { DriveActor } from '../service-read';
-import type { VolumeProbe } from '../volumes';
+import type { DriveActor } from '../access';
+import type { DataSpaceProbe } from '../data-space';
 
 export interface SyncNode {
   readonly deviceId: string;
@@ -24,8 +24,18 @@ export interface SyncNode {
 
 export interface SyncEnv extends ConflictEnv {
   readonly store: ChangeEnv['store'] &
-    Pick<Store, 'driveBlocks' | 'driveSyncOps' | 'driveSyncClients' | 'driveQuotas' | 'devices'>;
-  readonly space: VolumeProbe['space'];
+    Pick<
+      Store,
+      | 'driveBlocks'
+      | 'driveSyncOps'
+      | 'drivePlacements'
+      | 'driveRoots'
+      | 'driveGrants'
+      | 'computerNodes'
+      | 'driveQuotas'
+      | 'devices'
+    >;
+  readonly space: DataSpaceProbe['space'];
   readonly authenticate: (request: IncomingMessage) => SyncNode | null;
 }
 
@@ -43,7 +53,7 @@ export function syncAuthentication(
       return {
         deviceId: identity.device_id,
         profileId,
-        actor: { profileId, owner: roleOfCaller(caller) === 'owner' },
+        actor: { profileId },
       };
     } catch (cause) {
       if (cause instanceof ApiError) return null;
@@ -58,7 +68,7 @@ export type NeedBlocksMessage = Extract<SyncHubMessage, { readonly type: 'need_b
 export type ConflictReason = ConflictMessage['reason'];
 
 export interface Origin {
-  readonly clientId: string;
+  readonly placementId: string;
   readonly deviceId: string;
   readonly profileId: string;
 }
@@ -87,18 +97,18 @@ export function conflictOf(
 
 export function remember(
   env: SyncEnv,
-  origin: Pick<Origin, 'clientId'>,
+  origin: Pick<Origin, 'placementId'>,
   message: AcceptMessage | ConflictMessage,
 ): void {
-  env.store.driveSyncOps.remember(origin.clientId, message.opId, message);
+  env.store.driveSyncOps.remember(origin.placementId, message.opId, message);
 }
 
 export function recall(
   env: SyncEnv,
-  origin: Pick<Origin, 'clientId'>,
+  origin: Pick<Origin, 'placementId'>,
   opId: string,
 ): AcceptMessage | ConflictMessage | null {
-  const stored = env.store.driveSyncOps.recall(origin.clientId, opId);
+  const stored = env.store.driveSyncOps.recall(origin.placementId, opId);
   if (stored === undefined) return null;
   const message = SYNC_HUB_MESSAGE.parse(stored);
   if (message.type !== 'accept' && message.type !== 'conflict') {

@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { PHOTO_INSIGHTS, type PhotoInsights } from '@smarteverything/domain';
-import type { DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
+import { insertDriveRow, recordLibraryRow } from './photo-rows';
 import { InsightsReader } from '../../src/photos/insights';
 import { RailCountsReader } from '../../src/photos/insights-rail';
-import { MemoriesReader } from '../../src/photos/memories';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
@@ -17,7 +17,6 @@ export const NOW = '2026-11-07T00:00:00.000Z';
 export const AT = { today: '2026-11-07', home: null } as const;
 export const HOME_ROOT = '0f000000-0000-4000-8000-000000000001';
 export const BOB_ROOT = '0f000000-0000-4000-8000-000000000003';
-export const CAMERA_ROOT = '0f000000-0000-4000-8000-000000000004';
 
 export type Fields = Record<string, string | number | null>;
 
@@ -44,7 +43,6 @@ export let reader: InsightsReader;
 export let rail: RailCountsReader;
 export let alice: DriveActor;
 export let bob: DriveActor;
-export let owner: DriveActor;
 
 export function insert(table: string, fields: Fields): void {
   const columns = Object.keys(fields);
@@ -55,36 +53,8 @@ export function insert(table: string, fields: Fields): void {
     .run(...Object.values(fields));
 }
 
-export function insertRoot(
-  id: string,
-  scope: string,
-  ownerId: string | null,
-  kind = 'folder',
-): void {
-  insert('drive_roots', {
-    id,
-    kind,
-    label: `Root ${id.slice(-1)}`,
-    scope,
-    owner_profile_id: ownerId,
-    path: kind === 'folder' ? `/srv/${id}` : null,
-    read_only: kind === 'folder' ? 0 : 1,
-    versions: kind === 'folder' ? 1 : 0,
-    synced: 0,
-    index_id: 'index-1',
-    state: 'ready',
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    hashed_share: 0,
-    verified_share: 0,
-    corrupt: 0,
-    in_photos: kind === 'folder' ? 1 : 0,
-    skip_patterns: '[]',
-    include_hidden: 0,
-    created_at: NOW,
-    updated_at: NOW,
-  });
+export function insertRoot(id: string, scope: string, ownerId: string | null): void {
+  insertDriveRow(database, { id, scope, ownerId });
 }
 
 export function itemId(n: number): string {
@@ -119,7 +89,6 @@ function itemFields(input: Seed, id: string): Fields {
     integrity: 'unknown',
     modified_at: NOW,
     added_at: NOW,
-    starred: item.starred ? 1 : 0,
     rev: 1,
     etag: `etag-${String(item.n)}`,
     outside: 0,
@@ -137,6 +106,13 @@ function itemFields(input: Seed, id: string): Fields {
 export function seed(input: Seed): string {
   const id = itemId(input.n);
   insert('drive_items', itemFields(input, id));
+  recordLibraryRow(database, {
+    id,
+    rootId: input.root ?? HOME_ROOT,
+    kind: input.kind ?? 'image',
+    starred: input.starred === true,
+    inLibrary: true,
+  });
   insert('drive_media', {
     item_id: id,
     time_source: 'metadata',
@@ -188,7 +164,7 @@ export function insertPhone(profileId: string, name: string, states: readonly st
 
 export function read(
   range: 'this_year' | 'last_12_months' | 'all_time',
-  actor = owner,
+  actor = alice,
 ): PhotoInsights {
   return PHOTO_INSIGHTS.parse(reader.read(actor, range, AT));
 }
@@ -201,12 +177,10 @@ export function setup(): void {
   const profiles = new ProfilesRepository(context);
   const aliceId = profiles.create({ name: 'Alice' }).id;
   const bobId = profiles.create({ name: 'Bob' }).id;
-  alice = { profileId: aliceId, owner: false };
-  bob = { profileId: bobId, owner: false };
-  owner = { profileId: aliceId, owner: true };
+  alice = { profileId: aliceId };
+  bob = { profileId: bobId };
   insertRoot(HOME_ROOT, 'home', null);
   insertRoot(BOB_ROOT, 'person', bobId);
-  insertRoot(CAMERA_ROOT, 'home', null, 'cameras');
   insert('drive_places', {
     id: '1001',
     name: 'Lisbon',
@@ -232,7 +206,7 @@ export function setup(): void {
     lon: 139.7,
   });
   reader = new InsightsReader(context);
-  rail = new RailCountsReader(context, new MemoriesReader(context));
+  rail = new RailCountsReader(context);
 }
 
 export function teardown(): void {

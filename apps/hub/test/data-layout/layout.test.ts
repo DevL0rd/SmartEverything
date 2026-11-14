@@ -34,7 +34,6 @@ function allPaths(layout: HubLayout): readonly string[] {
     layout.person('p1').attachment('a1', 'photo.png'),
     layout.system.providers('xiaomi'),
     layout.system.plugins('aibi'),
-    layout.system.driveMeta('root-1'),
     layout.system.journalCursor('dev-1'),
     layout.home.recordings('cam-1'),
     layout.cache.derived('item-1'),
@@ -86,7 +85,6 @@ describe.each(TABLES)('hubLayout %s names', (_name, names) => {
       expect(() => layout.person('p1').attachment(bad, 'x')).toThrow();
       expect(() => layout.person('p1').attachment('a', bad)).toThrow();
       expect(() => layout.home.recordings(bad)).toThrow();
-      expect(() => layout.system.driveMeta(bad)).toThrow();
       expect(() => layout.system.providers(bad)).toThrow();
       expect(() => layout.system.plugins(bad)).toThrow();
       expect(() => layout.system.journalCursor(bad)).toThrow();

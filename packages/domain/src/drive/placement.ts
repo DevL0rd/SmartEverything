@@ -45,6 +45,16 @@ export const DRIVE_PLACEMENT_BASIC_LIMITS = z
 
 export type DrivePlacementBasicLimits = z.infer<typeof DRIVE_PLACEMENT_BASIC_LIMITS>;
 
+export const DRIVE_SYNC_ERROR = z
+  .strictObject({
+    relPath: z.string().min(1).nullable(),
+    message: z.string().min(1),
+    at: MOMENT,
+  })
+  .readonly();
+
+export type DriveSyncError = z.infer<typeof DRIVE_SYNC_ERROR>;
+
 export const DRIVE_PLACEMENT_STATUS_FIELDS = {
   state: DRIVE_PLACEMENT_STATE,
   tier: z.enum(DRIVE_PLACEMENT_TIERS).nullable(),
@@ -55,6 +65,9 @@ export const DRIVE_PLACEMENT_STATUS_FIELDS = {
   pinnedBytes: COUNT,
   openFiles: COUNT,
   pendingUploads: COUNT,
+  needBytes: COUNT,
+  lastSyncedAt: MOMENT.nullable(),
+  errors: z.array(DRIVE_SYNC_ERROR).readonly(),
   reason: z.string().min(1).nullable(),
   reportedAt: MOMENT,
 } as const;
@@ -71,15 +84,32 @@ export const DRIVE_PLACEMENT_TARGET_FIELDS = {
   enabled: z.boolean(),
 } as const;
 
-function refuseSyncedFolder(
-  placement: { readonly mode: DrivePlacementMode; readonly folderItemId: string | null },
+const SYNC_SETTING_FIELDS = {
+  excluded: z.array(z.string().min(1)).readonly().optional(),
+  ignorePatterns: z.array(z.string().min(1)).readonly().optional(),
+  conflictCopies: z.boolean().optional(),
+} as const;
+
+function syncSettingsMatchMode(
+  placement: {
+    readonly mode: DrivePlacementMode;
+    readonly excluded?: readonly string[] | undefined;
+    readonly ignorePatterns?: readonly string[] | undefined;
+    readonly conflictCopies?: boolean | undefined;
+  },
   context: z.RefinementCtx,
 ): void {
-  if (placement.mode === 'synced' && placement.folderItemId !== null) {
+  const present = [placement.excluded, placement.ignorePatterns, placement.conflictCopies].map(
+    (value) => value !== undefined,
+  );
+  const expected = placement.mode === 'synced';
+  if (present.some((isPresent) => isPresent !== expected)) {
     context.addIssue({
       code: 'custom',
-      message: 'a synced placement is a whole library folder; sync a subfolder with selective sync',
-      path: ['folderItemId'],
+      message: expected
+        ? 'a synced placement carries excluded, ignorePatterns and conflictCopies'
+        : 'only a synced placement carries excluded, ignorePatterns and conflictCopies',
+      path: ['mode'],
     });
   }
 }
@@ -89,19 +119,20 @@ export const DRIVE_PLACEMENT = z
     id: ID,
     deviceId: ID,
     ...DRIVE_PLACEMENT_TARGET_FIELDS,
+    ...SYNC_SETTING_FIELDS,
     hold: DRIVE_PLACEMENT_HOLD.nullable(),
     createdBy: ID,
     createdAt: MOMENT,
     status: DRIVE_PLACEMENT_STATUS,
   })
-  .superRefine(refuseSyncedFolder)
+  .superRefine(syncSettingsMatchMode)
   .readonly();
 
 export type DrivePlacement = z.infer<typeof DRIVE_PLACEMENT>;
 
 export const DRIVE_PLACEMENT_SET = z
-  .strictObject({ deviceId: ID, ...DRIVE_PLACEMENT_TARGET_FIELDS })
-  .superRefine(refuseSyncedFolder)
+  .strictObject({ deviceId: ID, ...DRIVE_PLACEMENT_TARGET_FIELDS, ...SYNC_SETTING_FIELDS })
+  .superRefine(syncSettingsMatchMode)
   .readonly();
 
 export type DrivePlacementSet = z.infer<typeof DRIVE_PLACEMENT_SET>;

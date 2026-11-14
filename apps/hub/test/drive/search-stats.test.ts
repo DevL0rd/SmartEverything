@@ -3,12 +3,12 @@ import {
   DRIVE_DURATION_BUCKETS,
   type DriveItem,
   type DriveQuery,
-  type DriveRoot,
   type DriveRecentFilter,
   type DriveRecentPage,
 } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { DriveActor } from '../../src/drive/access';
 import { driveHits } from '../../src/drive/search-provider';
 import {
   DriveCursorError,
@@ -17,7 +17,6 @@ import {
   driveMatchOf,
   driveSearchDocument,
   driveSearchStatement,
-  type DriveViewer,
 } from '../../src/drive/search';
 import { DriveRecentReader } from '../../src/drive/recent';
 import { DriveStatsReader, fullInMonths, paceBytesPerMonth } from '../../src/drive/stats';
@@ -31,10 +30,13 @@ import {
   DriveItemsRepository,
   type DriveItemDraft,
 } from '../../src/store/repositories/drive-items';
-import { DriveRootsRepository, UNSYNCED } from '../../src/store/repositories/drive-roots';
+import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
+import { DriveGrantsRepository } from '../../src/store/repositories/drive-grants';
+import { DriveStarsRepository } from '../../src/store/repositories/drive-stars';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { drivePathOf, personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const HOME = '0d000000-0000-4000-8000-000000000001';
@@ -51,47 +53,14 @@ let items: DriveItemsRepository;
 let feed: DriveFeedRepository;
 let days: DriveDaysRepository;
 let roots: DriveRootsRepository;
+let stars: DriveStarsRepository;
 let search: DriveSearch;
 let robin: string;
 let sam: string;
+let grants: DriveGrantsRepository;
 
-const owner: DriveViewer = { role: 'owner' };
-
-const health = {
-  hashedShare: 0,
-  verifiedShare: 0,
-  corrupt: 0,
-  lastScrubAt: null,
-  lastBackupAt: null,
-} as const;
-
-function rootRow(id: string, fields: Partial<Extract<DriveRoot, { kind: 'folder' }>>): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: id.slice(-4),
-    scope: 'home',
-    ownerProfileId: null,
-    path: `/srv/${id.slice(-4)}`,
-    readOnly: false,
-    versions: false,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health,
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-    ...fields,
-  };
-}
+let owner: DriveActor;
+let member: DriveActor;
 
 function id(index: number): string {
   return `0e000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -108,6 +77,7 @@ interface Common {
   readonly modifiedAt: string;
   readonly addedAt: string;
   readonly starred: boolean;
+  readonly shared: boolean;
   readonly outside: boolean;
   readonly addedByProfileId: string | null;
   readonly remoteId: string | null;
@@ -128,6 +98,7 @@ function common(
     modifiedAt: NOW,
     addedAt: NOW,
     starred: false,
+    shared: false,
     outside: false,
     addedByProfileId: null,
     remoteId: null,
@@ -239,7 +210,7 @@ function query(fields: Partial<DriveQuery> = {}): DriveQuery {
   };
 }
 
-function names(viewer: DriveViewer, fields: Partial<DriveQuery> = {}): string[] {
+function names(viewer: DriveActor, fields: Partial<DriveQuery> = {}): string[] {
   return search.search(viewer, query(fields), 100).items.map((item) => item.name);
 }
 
@@ -252,14 +223,18 @@ beforeEach(() => {
   items = new DriveItemsRepository(context);
   feed = new DriveFeedRepository(context);
   days = new DriveDaysRepository(context);
-  roots = new DriveRootsRepository(context);
+  roots = new DriveRootsRepository(context, drivePathOf);
+  stars = new DriveStarsRepository(context);
+  grants = new DriveGrantsRepository(context);
   search = new DriveSearch(context);
   const profiles = new ProfilesRepository(context);
   robin = profiles.create({ name: 'Robin' }).id;
   sam = profiles.create({ name: 'Sam' }).id;
-  roots.insert(rootRow(HOME, {}));
-  roots.insert(rootRow(ROBIN_ROOT, { scope: 'person', ownerProfileId: robin }));
-  roots.insert(rootRow(SAM_ROOT, { scope: 'person', ownerProfileId: sam }));
+  owner = { profileId: robin };
+  member = { profileId: sam };
+  roots.insert(sharedDriveRoot(HOME));
+  roots.insert(personalDriveRoot(ROBIN_ROOT, robin));
+  roots.insert(personalDriveRoot(SAM_ROOT, sam));
 });
 
 afterEach(() => {
@@ -301,33 +276,35 @@ describe('search scope', () => {
     put(document(3, 'sam plan.txt', { rootId: SAM_ROOT }));
   });
 
-  it('shows the owner everything', () => {
+  it('shows the hub owner only their own drive and the Shared Drive', () => {
+    expect(names(owner, { text: 'plan' })).toEqual(['robin plan.txt', 'shared plan.txt']);
+  });
+
+  it('shows each person their own drive and the Shared Drive only', () => {
+    expect(names(member, { text: 'plan' })).toEqual(['sam plan.txt', 'shared plan.txt']);
+  });
+
+  it('keeps the scope when the query names another person drive', () => {
+    expect(names(owner, { rootId: SAM_ROOT })).toEqual([]);
+  });
+
+  it('finds an item shared with the person and what is inside a shared folder only', () => {
+    const folderItem = put(folder(20, 'trip', { rootId: SAM_ROOT }));
+    put(document(21, 'trip plan.txt', { rootId: SAM_ROOT, relPath: 'trip/trip plan.txt' }));
+    put(document(22, 'tripod plan.txt', { rootId: SAM_ROOT, relPath: 'tripod/tripod plan.txt' }));
+    grants.set({ itemId: folderItem.id, profileId: robin, role: 'view' }, sam);
     expect(names(owner, { text: 'plan' })).toEqual([
       'robin plan.txt',
-      'sam plan.txt',
       'shared plan.txt',
+      'trip plan.txt',
     ]);
-  });
-
-  it('shows a member the home root and their own person root only', () => {
-    expect(names({ role: 'member', profileId: robin }, { text: 'plan' })).toEqual([
-      'robin plan.txt',
-      'shared plan.txt',
-    ]);
-    expect(names({ role: 'member', profileId: sam }, { text: 'plan' })).toEqual([
-      'sam plan.txt',
-      'shared plan.txt',
-    ]);
-  });
-
-  it('keeps the scope when the query names another person root', () => {
-    expect(names({ role: 'member', profileId: robin }, { rootId: SAM_ROOT })).toEqual([]);
   });
 });
 
 describe('search filters', () => {
   it('filters by kind, star, root and taken day range', () => {
-    put(photo(1, 'a.jpg', { starred: true }));
+    put(photo(1, 'a.jpg'));
+    stars.star(robin, id(1));
     put(photo(2, 'b.jpg', { takenAt: '2026-08-01T00:00:00.000Z' }));
     put(document(3, 'c.txt', { rootId: ROBIN_ROOT }));
     expect(names(owner, { kinds: ['image'] })).toEqual(['a.jpg', 'b.jpg']);
@@ -479,9 +456,26 @@ describe('drive hits for home_search', () => {
     for (let index = 1; index <= 4; index += 1) put(document(index, `note ${String(index)}.txt`));
     put(document(9, 'note private.txt', { rootId: SAM_ROOT }));
     expect(driveHits(search, owner, { query: 'note', limit: 3 })).toHaveLength(3);
+    expect(driveHits(search, owner, { query: 'private', limit: 10 })).toEqual([]);
+  });
+
+  it('finds what a person shared with the searcher and nothing else of theirs', () => {
+    const shared = put(folder(30, 'shared trip', { rootId: SAM_ROOT }));
+    put(
+      document(31, 'shared trip map.txt', {
+        rootId: SAM_ROOT,
+        relPath: 'shared trip/shared trip map.txt',
+        parentId: shared.id,
+      }),
+    );
+    put(document(32, 'shared secret.txt', { rootId: SAM_ROOT }));
+    expect(driveHits(search, owner, { query: 'shared', limit: 10 })).toEqual([]);
+    grants.set({ itemId: shared.id, profileId: robin, role: 'view' }, sam);
     expect(
-      driveHits(search, { role: 'member', profileId: robin }, { query: 'private', limit: 10 }),
-    ).toEqual([]);
+      driveHits(search, owner, { query: 'shared', limit: 10 })
+        .map((hit) => hit.name)
+        .sort(),
+    ).toEqual(['shared trip', 'shared trip map.txt']);
   });
 });
 
@@ -508,7 +502,7 @@ describe('recent', () => {
 
   function read(
     filter: DriveRecentFilter,
-    viewer: DriveViewer = owner,
+    viewer: DriveActor = owner,
     cursor: string | null = null,
   ): DriveRecentPage {
     return reader().read(viewer, { filter, cursor }, 50);
@@ -573,7 +567,7 @@ describe('recent', () => {
     expect(seen[0]).toBe('opened:one.txt');
   });
 
-  it('drops entries whose item is gone and entries in roots the member cannot see', () => {
+  it('drops entries whose item is gone and entries in drives the person cannot open', () => {
     put(document(1, 'gone.txt'));
     put(document(2, 'sam.txt', { rootId: SAM_ROOT }));
     put(document(3, 'robin.txt', { rootId: ROBIN_ROOT }));
@@ -581,10 +575,8 @@ describe('recent', () => {
     append(id(2), 'create', { rootId: SAM_ROOT });
     append(id(3), 'create', { rootId: ROBIN_ROOT });
     items.remove(id(1));
-    expect(read('added').entries.map((entry) => entry.item.name)).toEqual(['robin.txt', 'sam.txt']);
-    expect(
-      read('added', { role: 'member', profileId: robin }).entries.map((entry) => entry.item.name),
-    ).toEqual(['robin.txt']);
+    expect(read('added').entries.map((entry) => entry.item.name)).toEqual(['robin.txt']);
+    expect(read('added', member).entries.map((entry) => entry.item.name)).toEqual(['sam.txt']);
   });
 
   it('refuses a cursor it did not issue', () => {
@@ -593,16 +585,8 @@ describe('recent', () => {
 });
 
 describe('stats', () => {
-  const probe = (path: string): Promise<{ totalBytes: number; freeBytes: number }> =>
-    Promise.resolve(
-      path === '/srv/0001'
-        ? { totalBytes: 1000, freeBytes: 400 }
-        : { totalBytes: 500, freeBytes: 100 },
-    );
-
-  function setVolume(rootId: string, mountId: string, state: DriveRoot['state'] = 'ready'): void {
-    roots.update(rootId, { volume: { mountId, fsType: 'ext4', network: false }, state });
-  }
+  const probe = (): Promise<{ totalBytes: number; freeBytes: number; fsType: string }> =>
+    Promise.resolve({ totalBytes: 1000, freeBytes: 400, fsType: 'ext4' });
 
   function version(
     item: string,
@@ -685,12 +669,11 @@ describe('stats', () => {
   });
 
   it('shows growth and a full date only once the library spans two months', async () => {
-    setVolume(HOME, 'm1');
     days.record({ rootId: HOME, day: '2026-09-05', items: 1, bytes: 100, added: 1, removed: 0 });
     days.record({ rootId: HOME, day: '2026-10-09', items: 2, bytes: 200, added: 1, removed: 0 });
     let stats = await new DriveStatsReader(context).read(owner, probe);
     expect(stats.growth).toBeNull();
-    expect(stats.volumes[0]?.fullInMonths).toBeNull();
+    expect(stats.fullInMonths).toBeNull();
     days.record({ rootId: HOME, day: '2026-11-07', items: 4, bytes: 400, added: 2, removed: 0 });
     stats = await new DriveStatsReader(context).read(owner, probe);
     expect(stats.growth).toEqual([
@@ -698,7 +681,7 @@ describe('stats', () => {
       { day: '2026-10-09', items: 2, bytes: 200, added: 1, removed: 0 },
       { day: '2026-11-07', items: 4, bytes: 400, added: 2, removed: 0 },
     ]);
-    const months = stats.volumes[0]?.fullInMonths ?? 0;
+    const months = stats.fullInMonths ?? 0;
     expect(months).toBeCloseTo(400 / ((300 / 63) * 30.4375), 6);
   });
 
@@ -741,36 +724,22 @@ describe('stats', () => {
     expect(paceBytesPerMonth([row('2026-08-01', 5)])).toBe(0);
   });
 
-  it('groups roots by volume, probes each volume once and skips volumes that are offline', async () => {
-    setVolume(HOME, 'm1');
-    setVolume(ROBIN_ROOT, 'm1');
-    setVolume(SAM_ROOT, 'm2', 'offline');
-    const probed: string[] = [];
-    const stats = await new DriveStatsReader(context).read(owner, (path) => {
-      probed.push(path);
-      return probe(path);
+  it('probes the data folder disk once and reports its space', async () => {
+    let probed = 0;
+    const stats = await new DriveStatsReader(context).read(owner, () => {
+      probed += 1;
+      return probe();
     });
-    expect(probed).toEqual(['/srv/0001']);
-    expect(stats.volumes).toEqual([
-      {
-        mountId: 'm1',
-        rootIds: [HOME, ROBIN_ROOT],
-        totalBytes: 1000,
-        freeBytes: 400,
-        fullInMonths: null,
-      },
-    ]);
+    expect(probed).toBe(1);
+    expect(stats.space).toEqual({ totalBytes: 1000, freeBytes: 400, fsType: 'ext4' });
   });
 
-  it('counts only the roots a member can see', async () => {
+  it('counts only the drives the person can open', async () => {
     roots.update(HOME, { items: 1, bytes: 10 });
     roots.update(ROBIN_ROOT, { items: 2, bytes: 20 });
     roots.update(SAM_ROOT, { items: 4, bytes: 40 });
     trash(id(8), SAM_ROOT, 99, '2026-12-01T00:00:00.000Z');
-    const stats = await new DriveStatsReader(context).read(
-      { role: 'member', profileId: robin },
-      probe,
-    );
+    const stats = await new DriveStatsReader(context).read(owner, probe);
     expect(stats).toMatchObject({ items: 3, liveBytes: 30, trashBytes: 0 });
     expect(stats.roots.map((row) => row.rootId).sort()).toEqual([HOME, ROBIN_ROOT]);
     expect(stats.purges).toEqual([]);

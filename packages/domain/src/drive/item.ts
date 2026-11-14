@@ -54,6 +54,7 @@ const BASE = {
   addedAt: MOMENT,
   openedAt: MOMENT.nullable(),
   starred: z.boolean(),
+  shared: z.boolean(),
   rev: z.int().positive(),
   etag: z.string().min(1),
   outside: z.boolean(),

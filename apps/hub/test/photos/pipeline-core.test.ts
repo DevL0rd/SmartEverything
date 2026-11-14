@@ -39,6 +39,7 @@ import {
 } from '../../src/store/repositories/drive-media-jobs';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { insertDriveRow } from './photo-rows';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const ROOT = '0f000000-0000-4000-8000-000000000001';
@@ -79,7 +80,6 @@ function seedItem(n: number, fields: Fields = {}, withMedia = true): string {
     integrity: 'unknown',
     modified_at: NOW,
     added_at: NOW,
-    starred: 0,
     rev: 1,
     etag: `etag-${String(n)}`,
     outside: 0,
@@ -121,30 +121,7 @@ beforeEach(async () => {
   items = new DriveItemsRepository(context);
   media = new DriveMediaRepository(context);
   jobs = new DriveMediaJobsRepository(context);
-  insert('drive_roots', {
-    id: ROOT,
-    kind: 'folder',
-    label: 'Root',
-    scope: 'home',
-    owner_profile_id: null,
-    path: '/srv/root',
-    read_only: 0,
-    versions: 1,
-    synced: 0,
-    index_id: 'index-1',
-    state: 'ready',
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    hashed_share: 0,
-    verified_share: 0,
-    corrupt: 0,
-    in_photos: 1,
-    skip_patterns: '[]',
-    include_hidden: 0,
-    created_at: NOW,
-    updated_at: NOW,
-  });
+  insertDriveRow(database, { id: ROOT, scope: 'home', ownerId: null });
   directory = await mkdtemp(join(tmpdir(), 'pipeline-core-'));
   layout = hubLayout(directory, {});
 });
@@ -422,7 +399,7 @@ describe('job runner', () => {
     await runner.idle();
 
     database.prepare('update drive_items set rev = 2 where id = ?').run(interrupted.item_id);
-    const changed = items.byId(interrupted.item_id);
+    const changed = items.byId(interrupted.item_id, null);
     runner.itemChanged(changed);
 
     expect(jobs.forItem(interrupted.item_id)).toEqual([]);

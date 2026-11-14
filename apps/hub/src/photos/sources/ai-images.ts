@@ -1,7 +1,7 @@
 import { extname } from 'node:path';
-import { ApiError, type DriveRoot, type PhotoSource } from '@smarteverything/domain';
+import { ApiError, type PhotoSource } from '@smarteverything/domain';
 import { z } from 'zod';
-import { physicalRoot } from '../../drive/intents';
+import { personalDrive } from '../../drive/spaces';
 import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import { inList } from '../../store/sql';
 import { Keeper, safeName } from './keeper';
@@ -9,6 +9,7 @@ import { keptHashes } from './kept';
 import {
   decodeCursor,
   encodeCursor,
+  sourceNarrowing,
   type SourcePage,
   type SourceQuery,
   type SourceService,
@@ -43,6 +44,12 @@ const FROM = `from image_artifacts a
   join ai_chats c on c.id = o.chat_id
   where f.profile_id = $profileId and f.mime like 'image/%'`;
 
+const COLUMNS = {
+  name: 'f.name',
+  chipName: `coalesce(nullif(trim(c.title), ''), 'Untitled chat')`,
+  at: 'f.created_at',
+};
+
 export interface AiImageSourceOptions {
   readonly env: SourcesEnv;
   readonly attachmentPath: (storagePath: string) => string;
@@ -64,7 +71,8 @@ export class AiImageSource implements SourceService {
 
   page(viewer: SourceViewer, query: SourceQuery): SourcePage {
     const after = decodeCursor(query.cursor);
-    const filter = query.chipId === undefined ? '' : ' and o.chat_id = $chatId';
+    const narrowing = sourceNarrowing(query, COLUMNS);
+    const filter = `${query.chipId === undefined ? '' : ' and o.chat_id = $chatId'}${narrowing.text}`;
     const rows = this.options.env.sql.all(
       IMAGE_ROW,
       `select f.id, o.chat_id, f.name, f.mime, f.bytes, f.sha256, f.storage_path, f.created_at ${FROM}${filter}
@@ -72,6 +80,7 @@ export class AiImageSource implements SourceService {
         order by f.created_at desc, f.id desc limit $limit`,
       {
         profileId: viewer.profileId,
+        ...narrowing.parameters,
         ...(query.chipId === undefined ? {} : { chatId: query.chipId }),
         afterAt: after?.at ?? null,
         afterId: after?.id ?? null,
@@ -86,7 +95,7 @@ export class AiImageSource implements SourceService {
       shown.map((row) => row.sha256),
     );
     return {
-      chips: this.chips(viewer.profileId),
+      chips: this.chips(viewer.profileId, query),
       items: shown.map((row) => ({
         itemId: row.id,
         chipId: row.chat_id,
@@ -107,12 +116,12 @@ export class AiImageSource implements SourceService {
   async keep(viewer: SourceViewer, itemIds: readonly string[]): Promise<number> {
     const images = this.images(viewer.profileId, itemIds);
     return await this.keeper.serialized(async () => {
-      const root = this.personRoot(viewer.profileId);
+      const root = personalDrive(this.options.env.store, viewer.profileId);
       let copied = 0;
       for (const image of images) {
         if (keptHashes(this.options.env.sql, viewer.profileId, [image.sha256]).size > 0) continue;
         await this.keeper.copy({
-          root: physicalRoot(root),
+          root,
           folders: [MADE_WITH_AI],
           name: safeName(keptFileName(image), image.id),
           source: this.options.attachmentPath(image.storage_path),
@@ -124,14 +133,15 @@ export class AiImageSource implements SourceService {
     });
   }
 
-  private chips(profileId: string): SourcePage['chips'] {
+  private chips(profileId: string, query: SourceQuery): SourcePage['chips'] {
+    const narrowing = sourceNarrowing(query, COLUMNS);
     return this.options.env.sql
       .all(
         CHIP_ROW,
         `select o.chat_id as id, coalesce(nullif(trim(c.title), ''), 'Untitled chat') as name,
-                count(*) as total ${FROM}
+                count(*) as total ${FROM}${narrowing.text}
           group by o.chat_id order by max(f.created_at) desc, o.chat_id`,
-        { profileId },
+        { profileId, ...narrowing.parameters },
       )
       .map((row) => ({ id: row.id, name: row.name, count: row.total }));
   }
@@ -148,20 +158,5 @@ export class AiImageSource implements SourceService {
       throw new ApiError('not_found', 'An image is not one of yours or is no longer there.');
     }
     return rows;
-  }
-
-  private personRoot(profileId: string): DriveRoot {
-    const root = this.options.env.store.driveRoots
-      .list()
-      .find(
-        (candidate) =>
-          candidate.kind === 'managed' &&
-          candidate.scope === 'person' &&
-          candidate.ownerProfileId === profileId,
-      );
-    if (root === undefined) {
-      throw new ApiError('not_found', 'This person has no library folder to keep images in.');
-    }
-    return root;
   }
 }

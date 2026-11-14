@@ -1,10 +1,12 @@
 import type { DriveStats, DriveUsage } from '@smarteverything/domain';
-import type { DriveViewer } from './search';
 
 export interface DriveUsageSource {
   readonly usage: (profileId: string | null) => DriveUsage;
   readonly usageByProfile: () => DriveUsage[];
 }
+
+export type DriveUsageViewer =
+  { readonly role: 'owner' } | { readonly role: 'member'; readonly profileId: string };
 
 export const PURGE_FORECAST_MONTHS = 12;
 
@@ -15,7 +17,7 @@ function monthAfter(month: string): string {
     : `${String(year).padStart(4, '0')}-${String(number + 1).padStart(2, '0')}`;
 }
 
-export function readDriveUsage(source: DriveUsageSource, viewer: DriveViewer): DriveUsage[] {
+export function readDriveUsage(source: DriveUsageSource, viewer: DriveUsageViewer): DriveUsage[] {
   return viewer.role === 'owner' ? source.usageByProfile() : [source.usage(viewer.profileId)];
 }
 

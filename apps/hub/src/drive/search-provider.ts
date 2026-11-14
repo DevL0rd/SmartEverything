@@ -1,5 +1,6 @@
 import type { DriveItem, DriveQuery, NavTarget } from '@smarteverything/domain';
-import type { DriveSearch, DriveViewer } from './search';
+import type { DriveActor } from './access';
+import type { DriveSearch } from './search';
 
 export interface DriveHit {
   readonly id: string;
@@ -45,7 +46,7 @@ function hitOf(item: DriveItem): DriveHit {
 
 export function driveHits(
   search: Pick<DriveSearch, 'search'>,
-  viewer: DriveViewer,
+  viewer: DriveActor,
   { query, limit }: DriveHitInput,
 ): DriveHit[] {
   const request: DriveQuery = {

@@ -12,7 +12,6 @@ import { DRIVE_CONFLICT, DRIVE_CONFLICT_RESOLVE } from '../drive/conflict';
 import { DRIVE_QUOTA, DRIVE_QUOTA_SET } from '../drive/quota';
 import { DRIVE_SETTINGS, DRIVE_SETTINGS_UPDATE } from '../drive/settings';
 import { DRIVE_SHARE, DRIVE_SHARE_CREATE, DRIVE_SHARE_CREATED } from '../drive/share';
-import { DRIVE_SYNC_CLIENT, DRIVE_SYNC_CLIENT_UPDATE } from '../drive/sync-client';
 import { DRIVE_USAGE } from '../drive/usage';
 import { DRIVE_VERSION } from '../drive/version';
 import { DRIVE_ITEM } from '../drive/item';
@@ -79,7 +78,7 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/activity',
     access: 'member',
-    summary: 'The changes to visible library folders since a date, newest first',
+    summary: 'The changes to visible drives since a date, newest first',
     params: NOTHING,
     query: z.strictObject({
       from: z.iso.datetime({ offset: true }),
@@ -152,7 +151,8 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/usage',
     access: 'member',
-    summary: 'Space used by each person in files, versions and trash; a member sees their own',
+    summary:
+      'Totals of space used in files, versions and trash: the owner sees one row per person and the Shared Drive without names, a member sees their own',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -182,7 +182,8 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/health',
     access: 'member',
-    summary: 'Whether the library is intact: hashed, verified, corrupt files, disks and backup',
+    summary:
+      'Whether the drives are intact: hashed, verified, corrupt files, data disk space and backup',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -202,7 +203,7 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     method: 'POST',
     path: '/api/drive/backups',
     access: 'owner',
-    summary: 'Record the outcome of a backup an outside tool made of the library',
+    summary: 'Record the outcome of a backup an outside tool made of a drive',
     params: NOTHING,
     query: NOTHING,
     body: DRIVE_BACKUP_REPORT_INPUT,
@@ -238,31 +239,11 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     body: DRIVE_CONFLICT_RESOLVE,
     response: DRIVE_CONFLICT,
   }),
-  listSyncClients: endpoint({
-    method: 'GET',
-    path: '/api/drive/sync/clients',
-    access: 'member',
-    summary: 'The devices that sync a library folder, with progress and errors',
-    params: NOTHING,
-    query: NOTHING,
-    body: NO_BODY,
-    response: z.array(DRIVE_SYNC_CLIENT),
-  }),
-  updateSyncClient: endpoint({
-    method: 'PATCH',
-    path: '/api/drive/sync/clients',
-    access: 'member',
-    summary: 'Turn syncing on or off for a device and choose which folders it keeps',
-    params: NOTHING,
-    query: NOTHING,
-    body: DRIVE_SYNC_CLIENT_UPDATE,
-    response: DRIVE_SYNC_CLIENT,
-  }),
   readDriveSettings: endpoint({
     method: 'GET',
     path: '/api/drive/settings',
     access: 'member',
-    summary: 'The library settings: upload expiry, member sharing, duplicate hashing and indexing',
+    summary: 'The drive settings: upload expiry, member sharing, duplicate hashing and indexing',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -272,7 +253,7 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     method: 'PATCH',
     path: '/api/drive/settings',
     access: 'owner',
-    summary: 'Change the library settings',
+    summary: 'Change the drive settings',
     params: NOTHING,
     query: NOTHING,
     body: DRIVE_SETTINGS_UPDATE,

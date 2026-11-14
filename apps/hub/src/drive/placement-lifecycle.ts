@@ -1,5 +1,6 @@
 import type {
   CommittedNotice,
+  DriveGrant,
   DrivePlacement,
   DrivePlacementHold,
   DrivePlacementStatus,
@@ -7,30 +8,34 @@ import type {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
+import { placementAccess } from './placement-access';
 import type { DrivePlacements } from './placements';
-import { rootVisibleTo, type DriveActor } from './service-read';
 
 export type LifecycleStore = Pick<
   Store,
-  'drivePlacements' | 'driveRoots' | 'driveItems' | 'driveTrash' | 'computerNodes' | 'feed'
+  | 'drivePlacements'
+  | 'driveRoots'
+  | 'driveItems'
+  | 'driveGrants'
+  | 'driveTrash'
+  | 'computerNodes'
+  | 'feed'
 >;
 
 export interface PlacementLifecycleDeps {
   readonly store: LifecycleStore;
   readonly placements: DrivePlacements;
-  readonly nodeActor: (deviceId: string) => DriveActor;
   readonly now: () => string;
   readonly log: Logger;
 }
 
 type Verdict =
-  | { readonly kind: 'live' }
+  | { readonly kind: 'live'; readonly readOnly: boolean }
   | { readonly kind: 'gone' }
   | { readonly kind: 'held'; readonly hold: DrivePlacementHold };
 
 type FolderState = 'live' | 'trashed' | 'gone';
 
-const LIVE: Verdict = { kind: 'live' };
 const GONE: Verdict = { kind: 'gone' };
 
 export const HOLD_REASONS: Readonly<Record<DrivePlacementHold, string>> = {
@@ -38,6 +43,10 @@ export const HOLD_REASONS: Readonly<Record<DrivePlacementHold, string>> = {
   no_access: 'No access to this folder any more',
   sync_off: 'Sync is off for this folder',
 };
+
+function live(readOnly: boolean): Verdict {
+  return { kind: 'live', readOnly };
+}
 
 function held(hold: DrivePlacementHold): Verdict {
   return { kind: 'held', hold };
@@ -79,11 +88,19 @@ export class PlacementLifecycle {
     if (change.table === 'drive_roots') {
       const root = change.record ?? change.oldRecord;
       if (root !== null) this.reconcile(drivePlacements.forRoot(root.id));
+    } else if (change.table === 'drive_grants') {
+      this.onGrant(change.record ?? change.oldRecord);
     } else if (change.table === 'profiles') {
       if (change.operation !== 'INSERT') this.reconcile(drivePlacements.list());
     } else {
       this.onDeviceOrPlacement(change);
     }
+  }
+
+  private onGrant(grant: DriveGrant | null): void {
+    if (grant === null) return;
+    const item = this.deps.store.driveItems.find(grant.itemId, null);
+    if (item !== undefined) this.reconcile(this.deps.store.drivePlacements.forRoot(item.rootId));
   }
 
   private onDeviceOrPlacement(change: LiveChange): void {
@@ -119,16 +136,16 @@ export class PlacementLifecycle {
     const { driveItems } = this.deps.store;
     if (placement.folderItemId === null) return;
     const lineage: string[] = [];
-    let current = driveItems.find(placement.folderItemId);
+    let current = driveItems.find(placement.folderItemId, null);
     while (current !== undefined && !lineage.includes(current.id)) {
       lineage.push(current.id);
-      current = current.parentId === null ? undefined : driveItems.find(current.parentId);
+      current = current.parentId === null ? undefined : driveItems.find(current.parentId, null);
     }
     if (lineage.length > 0) this.lineages.set(placement.id, lineage);
   }
 
   private verdict(placement: DrivePlacement): Verdict {
-    const { store, nodeActor } = this.deps;
+    const { store } = this.deps;
     const root = store.driveRoots.find(placement.rootId);
     if (root === undefined || store.computerNodes.personOf(placement.deviceId) === null) {
       return GONE;
@@ -136,15 +153,15 @@ export class PlacementLifecycle {
     const folder = this.folderState(placement);
     if (folder === 'gone') return GONE;
     if (folder === 'trashed') return held('trashed');
-    if (!rootVisibleTo(nodeActor(placement.deviceId), root)) return held('no_access');
-    if (placement.mode === 'synced' && !root.synced) return held('sync_off');
-    return LIVE;
+    const access = placementAccess(store, placement);
+    if (access === 'none') return held('no_access');
+    return live(access === 'view');
   }
 
   private folderState(placement: DrivePlacement): FolderState {
     const { store } = this.deps;
     if (placement.folderItemId === null) return 'live';
-    if (store.driveItems.find(placement.folderItemId) !== undefined) return 'live';
+    if (store.driveItems.find(placement.folderItemId, null) !== undefined) return 'live';
     const lineage = this.lineages.get(placement.id);
     if (lineage === undefined) {
       const remembered = placement.hold === 'trashed' && this.rootHoldsTrash(placement.rootId);
@@ -158,17 +175,27 @@ export class PlacementLifecycle {
   }
 
   private apply(placement: DrivePlacement, verdict: Verdict): void {
-    const { placements, now } = this.deps;
+    const { placements } = this.deps;
     if (verdict.kind === 'gone') {
       this.lineages.delete(placement.id);
       placements.remove(placement.id);
     } else if (verdict.kind === 'live') {
-      if (placement.hold === null) return;
-      placements.setHold(placement.id, null);
-      placements.writeStatus(placement.deviceId, placement.id, restarting(placement.status, now()));
+      this.release(placement, verdict.readOnly);
     } else {
       this.hold(placement, verdict.hold);
     }
+  }
+
+  private release(placement: DrivePlacement, readOnly: boolean): void {
+    const { placements, now } = this.deps;
+    if (placement.status.readOnly !== readOnly) placements.setReadOnly(placement.id, readOnly);
+    if (placement.hold === null) return;
+    placements.setHold(placement.id, null);
+    placements.writeStatus(
+      placement.deviceId,
+      placement.id,
+      restarting({ ...placement.status, readOnly }, now()),
+    );
   }
 
   private hold(placement: DrivePlacement, hold: DrivePlacementHold): void {

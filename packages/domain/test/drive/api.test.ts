@@ -5,7 +5,6 @@ import {
   DRIVE_BROWSE_QUERY,
   DRIVE_CHANGED_NOTICE,
   DRIVE_PROGRESS_NOTICE,
-  DRIVE_ROOT_ADD,
   DRIVE_ROOT_CHANGE,
   DRIVE_SHARE_UNLOCK,
   LIVE_CLIENT_MESSAGE,
@@ -30,12 +29,8 @@ const B = '22222222-2222-4222-8222-222222222222';
 
 const DRIVE_NAMES = [
   'listRoots',
-  'addRoot',
   'updateRoot',
-  'removeRoot',
   'scanRoot',
-  'listVolumes',
-  'listHostFolders',
   'browseFolder',
   'readItem',
   'itemLinks',
@@ -66,39 +61,23 @@ const DRIVE_NAMES = [
   'readBackupStatus',
   'listConflicts',
   'resolveConflict',
-  'listSyncClients',
-  'updateSyncClient',
+  'listGrants',
+  'setGrant',
+  'removeGrant',
+  'listSharedWithMe',
+  'listSharedByMe',
   'readDriveSettings',
   'updateDriveSettings',
 ] as const;
 
 const OWNER_ONLY = [
-  'addRoot',
-  'updateRoot',
-  'removeRoot',
-  'scanRoot',
-  'listVolumes',
   'listQuotas',
-  'listHostFolders',
   'setQuota',
   'startScrub',
   'reportBackup',
   'readBackupStatus',
   'updateDriveSettings',
 ];
-
-const ROOT = {
-  kind: 'folder',
-  path: '/data/photos',
-  label: 'Photos',
-  scope: 'home',
-  ownerProfileId: null,
-  readOnly: false,
-  versions: true,
-  inPhotos: true,
-  skipPatterns: [],
-  includeHidden: false,
-};
 
 describe('the drive endpoints', () => {
   it('registers every endpoint of the plan under /api/drive with the right access', () => {
@@ -109,6 +88,32 @@ describe('the drive endpoints', () => {
       const expected = outside ? 'public' : OWNER_ONLY.includes(name) ? 'owner' : 'member';
       expect(endpoint.access, name).toBe(expected);
     }
+  });
+
+  it('lets a member share and change their own drive and leaves quotas to the owner', () => {
+    for (const name of ['updateRoot', 'scanRoot', 'setGrant', 'removeGrant'] as const) {
+      expect(API_ENDPOINTS[name].access, name).toBe('member');
+    }
+    for (const name of ['addRoot', 'removeRoot', 'listVolumes', 'listHostFolders'] as const) {
+      expect(name in API_ENDPOINTS, name).toBe(false);
+    }
+  });
+
+  it('shares an item with a person by role and refuses an unknown role', () => {
+    expect(
+      API_ENDPOINTS.setGrant.body.safeParse({ itemId: A, profileId: B, role: 'view' }).success,
+    ).toBe(true);
+    expect(
+      API_ENDPOINTS.setGrant.body.safeParse({ itemId: A, profileId: B, role: 'owner' }).success,
+    ).toBe(false);
+    expect(
+      API_ENDPOINTS.setGrant.body.safeParse({ itemId: A, profileId: B, role: 'edit', extra: 1 })
+        .success,
+    ).toBe(false);
+    expect(API_ENDPOINTS.listGrants.params.safeParse({ itemId: A }).success).toBe(true);
+    expect(API_ENDPOINTS.removeGrant.params.safeParse({ grantId: A }).success).toBe(true);
+    expect(API_ENDPOINTS.listSharedWithMe.query.safeParse({ cursor: 'c' }).success).toBe(true);
+    expect(API_ENDPOINTS.listSharedByMe.query.safeParse({}).success).toBe(true);
   });
 
   it('lets a member read the drive settings and only the owner change them', () => {
@@ -163,24 +168,15 @@ describe('the drive endpoints', () => {
 });
 
 describe('the drive request bodies', () => {
-  it('adds a folder or a disk and refuses a root that contradicts itself', () => {
-    expect(DRIVE_ROOT_ADD.safeParse(ROOT).success).toBe(true);
-    expect(DRIVE_ROOT_ADD.safeParse({ ...ROOT, kind: 'cameras' }).success).toBe(false);
-    expect(DRIVE_ROOT_ADD.safeParse({ ...ROOT, scope: 'person' }).success).toBe(false);
-    expect(DRIVE_ROOT_ADD.safeParse({ ...ROOT, scope: 'person', ownerProfileId: A }).success).toBe(
-      true,
-    );
-    expect(DRIVE_ROOT_ADD.safeParse({ ...ROOT, ownerProfileId: A }).success).toBe(false);
-    expect(DRIVE_ROOT_ADD.safeParse({ ...ROOT, readOnly: true, versions: true }).success).toBe(
-      false,
-    );
-    expect(DRIVE_ROOT_ADD.safeParse({ ...ROOT, extra: 1 }).success).toBe(false);
-  });
-
   it('changes a root only by naming something to change', () => {
     expect(DRIVE_ROOT_CHANGE.safeParse({}).success).toBe(false);
-    expect(DRIVE_ROOT_CHANGE.safeParse({ label: 'Family', synced: true }).success).toBe(true);
-    expect(DRIVE_ROOT_CHANGE.safeParse({ label: ' ' }).success).toBe(false);
+    expect(DRIVE_ROOT_CHANGE.safeParse({ versions: false, skipPatterns: ['*.tmp'] }).success).toBe(
+      true,
+    );
+    expect(DRIVE_ROOT_CHANGE.safeParse({ includeHidden: true }).success).toBe(true);
+    expect(DRIVE_ROOT_CHANGE.safeParse({ label: 'Family' }).success).toBe(false);
+    expect(DRIVE_ROOT_CHANGE.safeParse({ readOnly: true }).success).toBe(false);
+    expect(DRIVE_ROOT_CHANGE.safeParse({ synced: true }).success).toBe(false);
   });
 
   it('browses with a sort field and a direction together or neither', () => {
@@ -254,36 +250,40 @@ describe('the drive request bodies', () => {
 });
 
 describe('the drive live tables and notices', () => {
-  it('lists the three tables and gives each its row schema', () => {
-    for (const table of ['drive_roots', 'drive_albums', 'drive_sync_clients'] as const) {
+  it('lists the four tables and gives each its row schema', () => {
+    for (const table of [
+      'drive_roots',
+      'drive_albums',
+      'drive_grants',
+      'drive_placements',
+    ] as const) {
       expect(LIVE_TABLES).toContain(table);
       expect(TABLE_ROWS[table]).toBeDefined();
     }
     expect(LIVE_TABLES).not.toContain('drive_items');
   });
 
-  it('carries a sync client row change through the live protocol', () => {
+  it('carries a grant row change through the live protocol', () => {
     const record = {
-      clientId: A,
-      rootId: B,
-      deviceId: A,
-      profileId: B,
-      enabled: true,
-      selected: [],
-      lastSeq: 0,
-      lastSeenAt: null,
-      needBytes: 0,
-      errors: [],
+      id: A,
+      itemId: B,
+      profileId: A,
+      role: 'edit',
+      grantedBy: B,
+      createdAt: '2026-11-07T10:00:00.000Z',
     };
     const change = {
       type: 'change',
-      table: 'drive_sync_clients',
+      table: 'drive_grants',
       operation: 'INSERT',
       record,
       oldRecord: null,
     };
     expect(ROW_CHANGE.parse(change)).toStrictEqual(change);
     expect(ROW_CHANGE.safeParse({ ...change, record: { ...record, extra: 1 } }).success).toBe(
+      false,
+    );
+    expect(ROW_CHANGE.safeParse({ ...change, record: { ...record, role: 'owner' } }).success).toBe(
       false,
     );
     const message = LIVE_CLIENT_MESSAGE.parse({

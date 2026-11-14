@@ -80,7 +80,6 @@ export const LEGACY_NAMES: LayoutNames = {
   backups: { releases: 'release-backups', manual: 'backups', legacyDatabase: '' },
   provider: (id) => `providers/${id}`,
   plugin: (id) => `plugins/${id}`,
-  driveMeta: (rootId) => `drive-meta/${rootId}`,
   journalCursor: (deviceId) => `startup-journal-${deviceId}.cursor`,
   recordings: (deviceId) => `recordings/${deviceId}`,
   derived: (itemId) => `drive-derived/${derivedShard(itemId)}`,

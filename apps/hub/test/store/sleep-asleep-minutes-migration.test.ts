@@ -9,6 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
+import { unusedDrivePath } from '../support/store';
 
 const NOW = '2026-10-17T09:00:00.000Z';
 const PROFILE = '0e000000-0000-4000-8000-0000000000f1';
@@ -125,7 +126,13 @@ describe('migrating daily sleep from time in bed to time asleep', () => {
   it('recomputes each stored sleep day from its sessions, awake stages left out', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     expect(rows('sleep')).toEqual({ '2026-10-08': 120 + 270 + 30, '2026-10-09': 360 });
   });
@@ -133,7 +140,13 @@ describe('migrating daily sleep from time in bed to time asleep', () => {
   it('leaves every other metric alone', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     expect(rows('steps')).toEqual({ '2026-10-08': 4000 });
   });

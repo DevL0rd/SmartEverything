@@ -89,7 +89,7 @@ export function handlePut(deps: DavDeps, exchange: DavExchange): Promise<void> {
     const caller = authenticateDav(deps, request);
     const target = targetOf(deps, caller, request);
     assertWritableFile(request, target);
-    const root = writableOf(target.root);
+    const root = writableOf(target);
     parentOf(deps.env, root.id, target.relPath);
     const staged = await stageUpload(deps, { caller, request, target, root });
     try {
@@ -118,7 +118,7 @@ export function handleDelete(deps: DavDeps, exchange: DavExchange): Promise<void
     const caller = authenticateDav(deps, request);
     const target = targetOf(deps, caller, request);
     if (target.relPath === '') {
-      throw new DavError(403, 'The top folder of a library folder cannot be deleted.');
+      throw new DavError(403, 'The top folder of a drive cannot be deleted.');
     }
     if (target.item === undefined) {
       throw new DavError(404, 'There is nothing at that address.');
@@ -128,7 +128,7 @@ export function handleDelete(deps: DavDeps, exchange: DavExchange): Promise<void
       throw new DavError(400, 'A collection is deleted with Depth infinity.');
     }
     assertIfMatch(request, target.item);
-    await commitTrash(deps.env, writableOf(target.root), target.item.id, caller.change);
+    await commitTrash(deps.env, writableOf(target), target.item.id, caller.change);
     response.writeHead(204, { 'content-length': 0, 'cache-control': 'no-store' });
     response.end();
   });

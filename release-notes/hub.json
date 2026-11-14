@@ -1,0 +1,4 @@
+{
+  "from": "629c58ceab7d4056df5b399766152d6563899d4f",
+  "notes": "Every person gets one private drive, and the home gets one shared Drive.\n\n- My Drive is private to its owner; share files and folders with chosen people.\n- The Shared Drive is open to the whole home; stars are kept per person.\n- Folders you pick on a computer sync like Syncthing; linked folders and volumes are gone.\n- Photos now read the same access rule; Memories are removed from the Hub.\n- Update the app and Desktop together with this release."
+}

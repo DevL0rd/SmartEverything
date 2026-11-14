@@ -1,9 +1,11 @@
-import { API_ENDPOINTS, DRIVE_FEED_OPS, type DriveRoot } from '@smarteverything/domain';
+import { API_ENDPOINTS, DRIVE_FEED_OPS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DRIVE_PAGE_SIZE, DriveReadService, type DriveActor } from '../../src/drive/service-read';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
+import type { DriveActor } from '../../src/drive/access';
+import { DRIVE_PAGE_SIZE, DriveReadService } from '../../src/drive/service-read';
 import { captureLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const HOME_ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -21,45 +23,11 @@ let ownerProfile: string;
 let memberProfile: string;
 let otherProfile: string;
 
-const health = {
-  hashedShare: 0,
-  verifiedShare: 0,
-  corrupt: 0,
-  lastScrubAt: null,
-  lastBackupAt: null,
-} as const;
-
-function managed(id: string, label: string, owner: string | null): DriveRoot {
-  return {
-    id,
-    kind: 'managed',
-    label,
-    scope: owner === null ? 'home' : 'person',
-    ownerProfileId: owner,
-    path: `/srv/${label}`,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${label}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health,
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
-
 const COMMON = {
   modifiedAt: NOW,
   addedAt: NOW,
   starred: false,
+  shared: false,
   outside: false,
   remoteId: null,
   remoteRev: null,
@@ -104,20 +72,20 @@ function document(id: string, rootId: string, name: string, parentId: string | n
   });
 }
 
-const asOwner = (): DriveActor => ({ profileId: ownerProfile, owner: true });
-const asMember = (): DriveActor => ({ profileId: memberProfile, owner: false });
+const asOwner = (): DriveActor => ({ profileId: ownerProfile });
+const asMember = (): DriveActor => ({ profileId: memberProfile });
 
 beforeEach(async () => {
   captureLogs();
-  opened = await testStore();
+  opened = await driveTestStore();
   const { store } = opened;
   ownerProfile = store.profiles.first().id;
   memberProfile = store.profiles.create({ name: 'Robin' }).id;
   otherProfile = store.profiles.create({ name: 'Ida' }).id;
-  store.driveRoots.insert(managed(HOME_ROOT, 'Shared', null));
-  store.driveRoots.insert(managed(OWNER_ROOT, 'Owner', ownerProfile));
-  store.driveRoots.insert(managed(MEMBER_ROOT, 'Robin', memberProfile));
-  store.driveRoots.insert(managed(OTHER_ROOT, 'Ida', otherProfile));
+  store.driveRoots.insert(sharedDriveRoot(HOME_ROOT));
+  store.driveRoots.insert(personalDriveRoot(OWNER_ROOT, ownerProfile));
+  store.driveRoots.insert(personalDriveRoot(MEMBER_ROOT, memberProfile));
+  store.driveRoots.insert(personalDriveRoot(OTHER_ROOT, otherProfile));
   folder(FOLDER, HOME_ROOT, 'Saved', null);
   document(FILE, HOME_ROOT, 'readme.txt', null);
   document(NESTED, HOME_ROOT, 'inside.txt', FOLDER);
@@ -194,7 +162,7 @@ describe('global Drive activity', () => {
       service
         .readActivity(asOwner(), { from: '2026-10-01T00:00:00Z' })
         .items.some((entry) => entry.row.rootId === OTHER_ROOT),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('preserves records after their file metadata is removed', () => {
@@ -209,9 +177,9 @@ describe('global Drive activity', () => {
 
   it('filters the requested date and rejects a malformed cursor', () => {
     append(FILE, HOME_ROOT, 1);
-    expect(service.readActivity(asMember(), { from: '2026-10-09T00:00:00Z' }).items).toEqual([]);
+    expect(service.readActivity(asMember(), { from: '2026-11-08T00:00:00Z' }).items).toEqual([]);
     expect(
-      service.readActivity(asMember(), { from: '2026-10-08T12:00:00+02:00' }).items,
+      service.readActivity(asMember(), { from: '2026-11-07T01:00:00+02:00' }).items,
     ).toHaveLength(1);
     expect(() =>
       service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z', cursor: 'abc' }),

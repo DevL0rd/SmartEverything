@@ -125,13 +125,11 @@ const PHOTOS_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 function photosKnown(store: Store, widget: Extract<ChatWidget, { kind: 'photos' }>): boolean {
   switch (widget.view) {
     case 'item':
-      return store.driveItems.find(widget.id) !== undefined;
+      return store.driveItems.find(widget.id, null) !== undefined;
     case 'album':
       return store.driveAlbums.find(widget.id) !== undefined;
     case 'month':
       return PHOTOS_MONTH.test(widget.id);
-    case 'memory':
-      return true;
   }
 }
 

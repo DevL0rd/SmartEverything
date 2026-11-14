@@ -47,9 +47,6 @@ export function handleRead(deps: DavDeps, exchange: DavExchange): Promise<void> 
     if (item === undefined || item.kind === 'folder') {
       throw new DavError(405, 'A collection has no bytes to download; list it with PROPFIND.');
     }
-    if (root.path === null) {
-      throw new DavError(404, 'The file is not on this machine.');
-    }
     const resolved = await resolveInRoot(root.path, relPath).catch(unreadable);
     const handle = await openResolved(resolved, 'read').catch(unreadable);
     try {

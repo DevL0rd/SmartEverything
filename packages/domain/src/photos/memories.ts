@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { COUNT, DAY, ID, MONTH, NAME, PLACE_ID } from './shared';
+import { TRIP } from './trips';
 
 export const MEMORY_KINDS = [
   'on_this_day',
@@ -24,8 +25,6 @@ const NAMED_COUNT = z.strictObject({ name: NAME, count: COUNT }).readonly();
 
 const PLACE_COUNT = z.strictObject({ placeId: PLACE_ID, name: NAME, count: COUNT }).readonly();
 
-const DAY_COUNT = z.strictObject({ day: DAY, count: COUNT }).readonly();
-
 export const YEAR_IN_REVIEW = z
   .strictObject({
     year: z.int().min(1900).max(9999),
@@ -41,20 +40,6 @@ export const YEAR_IN_REVIEW = z
   .readonly();
 
 export type YearInReview = z.infer<typeof YEAR_IN_REVIEW>;
-
-export const TRIP = z
-  .strictObject({
-    ...BASE,
-    kind: z.literal('trip'),
-    placeId: PLACE_ID.nullable(),
-    placeName: NAME.nullable(),
-    distanceFromHomeKm: z.number().nonnegative().nullable(),
-    places: COUNT,
-    perDay: z.array(DAY_COUNT).min(1).readonly(),
-  })
-  .readonly();
-
-export type Trip = z.infer<typeof TRIP>;
 
 export const MEMORY = z
   .discriminatedUnion('kind', [

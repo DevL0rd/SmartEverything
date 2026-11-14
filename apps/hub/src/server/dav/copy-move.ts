@@ -20,6 +20,7 @@ import { stageBytes } from '../../drive/versions';
 import {
   DAV_PREFIX,
   headerOf,
+  targetIn,
   targetOf,
   writableOf,
   type DavLocation,
@@ -67,7 +68,7 @@ export function locationOfHref(request: IncomingMessage, href: string): DavLocat
   if (relPath === MARKER_DIRECTORY || relPath.startsWith(`${MARKER_DIRECTORY}/`)) {
     throw new DavError(
       403,
-      'The hub keeps its own files in this folder; they are not part of the library.',
+      'The hub keeps its own files in this folder; they are not part of the drive.',
     );
   }
   return { rootId: decodeSegment(rootPart), relPath };
@@ -79,10 +80,7 @@ export function targetOfHref(
   request: IncomingMessage,
   href: string,
 ): DavTarget {
-  const { rootId, relPath } = locationOfHref(request, href);
-  const root = deps.read.rootFor(caller.actor, rootId);
-  const item = relPath === '' ? undefined : deps.store.driveItems.byPath(root.id, relPath);
-  return { root, relPath, item };
+  return targetIn(deps, caller, locationOfHref(request, href));
 }
 
 export function destinationOf(
@@ -127,14 +125,14 @@ function shallowOf(request: IncomingMessage, move: boolean): boolean {
 
 function sourceOf(source: DavTarget): DriveItem {
   if (source.relPath === '')
-    throw new DavError(403, 'The top folder of a library folder cannot be copied or moved.');
+    throw new DavError(403, 'The top folder of a drive cannot be copied or moved.');
   if (source.item === undefined) throw new DavError(404, 'There is nothing at that address.');
   return source.item;
 }
 
 function assertPlace(item: DriveItem, source: DavTarget, destination: DavTarget): void {
   if (destination.root.id !== source.root.id) {
-    throw new DavError(403, 'A copy or move stays inside one library folder.');
+    throw new DavError(403, 'A copy or move stays inside one drive.');
   }
   const overlapping =
     destination.relPath === '' ||
@@ -152,7 +150,7 @@ function planOf(deps: DavDeps, caller: DavCaller, request: IncomingMessage, move
   assertPlace(item, source, destination);
   const overwrite = overwriteOf(request);
   const shallow = shallowOf(request, move);
-  const root = writableOf(destination.root);
+  const root = writableOf(destination);
   const parent = parentOf(deps.env, root.id, destination.relPath);
   if (destination.item !== undefined && !overwrite) {
     throw new DavError(412, 'The destination exists and Overwrite is F.');
@@ -247,12 +245,13 @@ async function copyChildren(
 ): Promise<void> {
   let after: string | null = null;
   do {
-    const window = plan.deps.store.driveItems.children(
-      folder.rootId,
-      folder.id,
+    const window = plan.deps.store.driveItems.children({
+      rootId: folder.rootId,
+      parentId: folder.id,
       after,
-      DRIVE_PAGE_SIZE,
-    );
+      limit: DRIVE_PAGE_SIZE,
+      viewer: plan.caller.actor.profileId,
+    });
     for (const { item } of window.entries) {
       await copyNode(plan, item, `${relPath}/${item.name}`, made);
     }

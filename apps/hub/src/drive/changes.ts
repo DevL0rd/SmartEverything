@@ -28,7 +28,8 @@ export interface PurgeSchedule {
   readonly rearm: () => void;
 }
 
-export type ChangeStore = DriveFileStore & Pick<Store, 'driveItems' | 'driveFeed' | 'feed'>;
+export type ChangeStore = DriveFileStore &
+  Pick<Store, 'driveItems' | 'driveFeed' | 'driveGrants' | 'feed'>;
 
 export interface ChangeEnv extends FileEnv {
   readonly store: ChangeStore;
@@ -84,7 +85,8 @@ interface Common {
   readonly name: string;
   readonly modifiedAt: string;
   readonly addedAt: string;
-  readonly starred: boolean;
+  readonly starred: false;
+  readonly shared: false;
   readonly outside: boolean;
   readonly addedByProfileId: string | null;
   readonly remoteId: null;
@@ -122,6 +124,7 @@ function commonOf(item: NewItem): Common {
     modifiedAt: item.modifiedAt,
     addedAt: item.addedAt,
     starred: false,
+    shared: false,
     outside: item.outside,
     addedByProfileId: item.addedByProfileId,
     remoteId: null,
@@ -167,7 +170,7 @@ export function parentOf(env: ChangeEnv, rootId: string, relPath: string): Drive
   if (folder === '.') {
     return null;
   }
-  const parent = env.store.driveItems.byPath(rootId, folder);
+  const parent = env.store.driveItems.byPath(rootId, folder, null);
   if (parent?.kind !== 'folder') {
     throw new DriveWriteError('missing', 'The folder is not in the index.');
   }
@@ -293,7 +296,7 @@ function settleContent(settle: Settle): ContentResult {
 export async function commitContent(env: ChangeEnv, write: ContentWrite): Promise<ContentResult> {
   const { root, relPath } = write;
   const before = await env.files.stamp(await locate(root, relPath));
-  const existing = env.store.driveItems.byPath(root.id, relPath);
+  const existing = env.store.driveItems.byPath(root.id, relPath, null);
   if (existing === undefined && before !== null) {
     throw new DriveWriteError('exists', 'The file is not in the index yet; scan the root first.');
   }
@@ -366,7 +369,7 @@ export function finishCommitFromDisk(
 ): (intent: DriveIntent, root: DriveWriteRoot) => void {
   return (intent, root) => {
     const stamp = statLive(root, intent.toPath);
-    const existing = env.store.driveItems.byPath(root.id, intent.toPath);
+    const existing = env.store.driveItems.byPath(root.id, intent.toPath, null);
     env.store.write(() => {
       if (intent.versionPath !== null && existing !== undefined && existing.kind !== 'folder') {
         const sha256 = shaOfVersionPath(intent.versionPath);

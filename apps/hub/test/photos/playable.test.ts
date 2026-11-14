@@ -35,6 +35,7 @@ import {
 } from '../../src/store/repositories/drive-media-jobs';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { insertDriveRow } from './photo-rows';
 
 const run = promisify(execFile);
 const NOW = '2026-11-07T00:00:00.000Z';
@@ -76,7 +77,6 @@ function seed(n: number, name: string, mime = 'video/mp4'): string {
     integrity: 'unknown',
     modified_at: NOW,
     added_at: NOW,
-    starred: 0,
     rev: 1,
     etag: `etag-${String(n)}`,
     outside: 0,
@@ -164,30 +164,7 @@ beforeEach(async () => {
   media = new DriveMediaRepository(context);
   jobs = new DriveMediaJobsRepository(context);
   requests = [];
-  insert('drive_roots', {
-    id: ROOT,
-    kind: 'folder',
-    label: 'Root',
-    scope: 'home',
-    owner_profile_id: null,
-    path: '/srv/root',
-    read_only: 0,
-    versions: 1,
-    synced: 0,
-    index_id: 'index-1',
-    state: 'ready',
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    hashed_share: 0,
-    verified_share: 0,
-    corrupt: 0,
-    in_photos: 1,
-    skip_patterns: '[]',
-    include_hidden: 0,
-    created_at: NOW,
-    updated_at: NOW,
-  });
+  insertDriveRow(database, { id: ROOT, scope: 'home', ownerId: null });
   directory = await mkdtemp(join(tmpdir(), 'playable-'));
   layout = hubLayout(directory, {});
 });

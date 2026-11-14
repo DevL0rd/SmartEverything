@@ -4,15 +4,41 @@ import {
   DRIVE_READ_VIEWS,
   DRIVE_RECENT_FILTERS,
   DRIVE_SORT_FIELDS,
-  PHOTO_TIMELINE_FILTERS,
+  LIBRARY_FILTERS,
   type EndpointName,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { operate } from './acting';
-import { PERSON, READS } from './registry';
+import { operate, profileFor } from './acting';
+import { PERSON as ANY_PERSON, READS, ToolError } from './registry';
 import { selection, type SelectedToolDefinition, type Selection } from './selected-tool';
 
 const DAY = z.iso.date();
+
+export const PERSON = ANY_PERSON.describe(
+  'You: the person asking. A drive is never read or changed for another person, the owner included.',
+);
+
+export function ownDrive(
+  selections: Readonly<Record<string, Selection>>,
+): Record<string, Selection> {
+  return Object.fromEntries(
+    Object.entries(selections).map(([key, chosen]) => [
+      key,
+      {
+        issues: chosen.issues,
+        run: (context, fields, as): unknown => {
+          if (as.personId !== undefined && as.personId !== profileFor(context, {})) {
+            throw new ToolError(
+              'A drive is read and changed only for the person asking; nobody, the owner included, reaches another person’s drive. The owner sees per-person space totals in view usage.',
+              'forbidden',
+            );
+          }
+          return chosen.run(context, fields, as);
+        },
+      },
+    ]),
+  );
+}
 
 export const DRIVE_FIELDS = {
   rootId: z.uuid(),
@@ -25,23 +51,22 @@ export const DRIVE_FIELDS = {
   kinds: z.array(z.enum(DRIVE_ITEM_KINDS)).min(1),
   sortField: z.enum(DRIVE_SORT_FIELDS),
   sortDirection: z.enum(['asc', 'desc']),
-  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
-  timelineFilter: z.enum(PHOTO_TIMELINE_FILTERS),
   recentFilter: z.enum(DRIVE_RECENT_FILTERS),
   surface: z.enum(DRIVE_ALBUM_SURFACES),
-  memoryId: z.string().min(1),
   placeId: z.int().positive(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  countryCode: z.string().length(2),
+  camera: z.string().trim().min(1),
 } as const;
 
 export const DRIVE_READ_INPUT = z.strictObject({
   view: z.enum(DRIVE_READ_VIEWS).describe('What to read'),
   personId: PERSON,
-  rootId: DRIVE_FIELDS.rootId.optional().describe('A library folder id from view roots'),
+  rootId: DRIVE_FIELDS.rootId.optional().describe('A drive id from view drives'),
   folderId: DRIVE_FIELDS.folderId.optional().describe('A folder id from view folder or search'),
   itemId: DRIVE_FIELDS.itemId.optional().describe('A file or folder id, for item and versions'),
   albumId: DRIVE_FIELDS.albumId.optional().describe('An album id from view albums'),
   stackId: DRIVE_FIELDS.stackId.optional().describe('A stack id from view stacks'),
-  memoryId: DRIVE_FIELDS.memoryId.optional().describe('A memory id from view memories'),
   placeId: DRIVE_FIELDS.placeId.optional().describe('A place id from view places'),
   cursor: DRIVE_FIELDS.cursor.optional().describe('The next value of the previous page'),
   text: DRIVE_FIELDS.text.optional().describe('Words in the name, for view search'),
@@ -51,14 +76,21 @@ export const DRIVE_READ_INPUT = z.strictObject({
   to: DAY.optional().describe('Last day taken, for view search (YYYY-MM-DD)'),
   sortField: DRIVE_FIELDS.sortField.optional().describe('Sort field for view folder and search'),
   sortDirection: DRIVE_FIELDS.sortDirection.optional().describe('asc or desc, with sortField'),
-  month: DRIVE_FIELDS.month.optional().describe('A month as YYYY-MM, for view timeline'),
-  filter: z
-    .enum([...PHOTO_TIMELINE_FILTERS, ...DRIVE_RECENT_FILTERS])
+  filter: DRIVE_FIELDS.recentFilter
     .optional()
-    .describe(
-      'For view timeline: all, favourites, videos or screenshots; for recent: everything, opened, added or changed',
-    ),
+    .describe('For view recent: everything, opened, added or changed'),
   surface: DRIVE_FIELDS.surface.optional().describe('photos or drive albums, for view albums'),
+  month: DRIVE_FIELDS.month
+    .optional()
+    .describe('One month of the Photos Library, for view library'),
+  libraryFilter: z
+    .enum(LIBRARY_FILTERS)
+    .optional()
+    .describe('For view library: all, favourites, videos or screenshots (default all)'),
+  countryCode: DRIVE_FIELDS.countryCode
+    .optional()
+    .describe('Two-letter country code, for view library'),
+  camera: DRIVE_FIELDS.camera.optional().describe('Camera make and model text, for view library'),
 });
 
 function plain(name: EndpointName): Selection {
@@ -151,21 +183,6 @@ function search(): Selection {
   });
 }
 
-function timeline(): Selection {
-  return selection({
-    input: z.strictObject({
-      filter: DRIVE_FIELDS.timelineFilter.default('all'),
-      placeId: DRIVE_FIELDS.placeId.optional(),
-      month: DRIVE_FIELDS.month.optional(),
-      cursor: DRIVE_FIELDS.cursor.optional(),
-    }),
-    run: (context, { month, ...query }, as) =>
-      month === undefined
-        ? operate(context, 'readTimelineBuckets', { query }, as)
-        : operate(context, 'readTimelinePage', { params: { month }, query }, as),
-  });
-}
-
 function places(): Selection {
   return selection({
     input: z.strictObject({ placeId: DRIVE_FIELDS.placeId.optional() }),
@@ -173,19 +190,6 @@ function places(): Selection {
       input.placeId === undefined
         ? operate(context, 'listPlaces', {}, as)
         : operate(context, 'readPlace', { params: { placeId: String(input.placeId) } }, as),
-  });
-}
-
-function memories(): Selection {
-  return selection({
-    input: z.strictObject({
-      memoryId: DRIVE_FIELDS.memoryId.optional(),
-      cursor: DRIVE_FIELDS.cursor.optional(),
-    }),
-    run: (context, { memoryId, ...query }, as) =>
-      memoryId === undefined
-        ? operate(context, 'listMemories', {}, as)
-        : operate(context, 'listMemoryItems', { params: { memoryId }, query }, as),
   });
 }
 
@@ -199,6 +203,45 @@ function stacks(): Selection {
       stackId === undefined
         ? operate(context, 'listStacks', { query }, as)
         : operate(context, 'readStack', { params: { stackId } }, as),
+  });
+}
+
+const LIBRARY = z.strictObject({
+  month: DRIVE_FIELDS.month.optional(),
+  libraryFilter: z.enum(LIBRARY_FILTERS).default('all'),
+  text: DRIVE_FIELDS.text.optional(),
+  from: DAY.optional(),
+  to: DAY.optional(),
+  placeId: DRIVE_FIELDS.placeId.optional(),
+  countryCode: DRIVE_FIELDS.countryCode.optional(),
+  camera: DRIVE_FIELDS.camera.optional(),
+  albumId: DRIVE_FIELDS.albumId.optional(),
+  cursor: DRIVE_FIELDS.cursor.optional(),
+});
+
+function libraryScope(input: z.output<typeof LIBRARY>): Record<string, unknown> {
+  const { month: _month, libraryFilter, cursor: _cursor, ...rest } = input;
+  return { filter: libraryFilter, ...rest };
+}
+
+function library(): Selection {
+  return selection({
+    input: LIBRARY,
+    run: (context, input, as) =>
+      input.month === undefined
+        ? operate(context, 'readLibraryBuckets', { query: libraryScope(input) }, as)
+        : operate(
+            context,
+            'readLibraryPage',
+            {
+              params: { month: input.month },
+              query: {
+                ...libraryScope(input),
+                ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+              },
+            },
+            as,
+          ),
   });
 }
 
@@ -251,18 +294,19 @@ export const DRIVE_READ: SelectedToolDefinition = {
   input: DRIVE_READ_INPUT,
   annotations: READS,
   action: false,
-  selections: {
-    roots: plain('listRoots'),
+  selections: ownDrive({
+    drives: plain('listRoots'),
+    shared_with_me: paged('listSharedWithMe'),
+    shared_by_me: paged('listSharedByMe'),
     folder: folder(),
-    timeline: timeline(),
     item: item(),
     search: search(),
+    library: library(),
     albums: albums(),
     album: album(),
     trash: rootPaged('listTrash'),
     stats: plain('readDriveStats'),
     duplicates: rootPaged('listDuplicates'),
-    memories: memories(),
     places: places(),
     stacks: stacks(),
     backup: plain('readBackupState'),
@@ -271,7 +315,7 @@ export const DRIVE_READ: SelectedToolDefinition = {
     shares: shares(),
     usage: plain('readUsage'),
     health: plain('readHealth'),
-    sync: plain('listSyncClients'),
+    placements: plain('listPlacements'),
     conflicts: rootPaged('listConflicts'),
-  },
+  }),
 };

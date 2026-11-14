@@ -21,7 +21,6 @@ let work: string;
 let oldRoot: string;
 let install: string;
 let bootstrap: string;
-let drive: string;
 
 const ample = { type: EXT4_MAGIC, blockSize: 4096, availableBlocks: 1_000_000 };
 
@@ -42,7 +41,6 @@ function input(newRoot: string, overrides: Partial<PreflightInput> = {}): Prefli
     moveId: MOVE_ID,
     installDirectory: install,
     bootstrapDirectory: bootstrap,
-    linkedDriveRoots: [drive],
     bytesToCopy: 1000,
     ...overrides,
   };
@@ -65,8 +63,7 @@ beforeEach(async () => {
   oldRoot = join(work, 'old');
   install = join(work, 'install');
   bootstrap = join(work, 'bootstrap');
-  drive = join(work, 'linked-drive');
-  for (const folder of [oldRoot, install, bootstrap, drive]) {
+  for (const folder of [oldRoot, install, bootstrap]) {
     await mkdir(folder, { recursive: true });
   }
   await writeFile(join(oldRoot, 'layout.json'), '{}');
@@ -87,28 +84,24 @@ describe('preflight', () => {
     expect((await runPreflight(input(join(work, 'empty')), operations())).resume).toBe(false);
   });
 
-  it.each([
-    'inside-old-root',
-    'contains-old-root',
-    'inside-install',
-    'inside-bootstrap',
-    'inside-linked-drive',
-  ] as const)('refuses %s', async (code) => {
-    const targets = {
-      'inside-old-root': join(oldRoot, 'sub'),
-      'contains-old-root': work,
-      'inside-install': join(install, 'sub'),
-      'inside-bootstrap': join(bootstrap, 'sub'),
-      'inside-linked-drive': join(drive, 'sub'),
-    };
-    expect(await refusal(input(targets[code]))).toBe(code);
-  });
+  it.each(['inside-old-root', 'contains-old-root', 'inside-install', 'inside-bootstrap'] as const)(
+    'refuses %s',
+    async (code) => {
+      const targets = {
+        'inside-old-root': join(oldRoot, 'sub'),
+        'contains-old-root': work,
+        'inside-install': join(install, 'sub'),
+        'inside-bootstrap': join(bootstrap, 'sub'),
+      };
+      expect(await refusal(input(targets[code]))).toBe(code);
+    },
+  );
 
   it('refuses the old root itself', async () => {
     expect(await refusal(input(oldRoot))).toBe('inside-old-root');
   });
 
-  it('refuses a folder that contains the install, the bootstrap folder or a linked drive', async () => {
+  it('refuses a folder that contains the install or the bootstrap folder', async () => {
     const nested = join(work, 'holder');
     const holderInstall = join(nested, 'install');
     await mkdir(holderInstall, { recursive: true });
@@ -119,11 +112,6 @@ describe('preflight', () => {
     await mkdir(holderBootstrap);
     expect(await refusal(input(nested, { bootstrapDirectory: holderBootstrap }))).toBe(
       'contains-bootstrap',
-    );
-    const holderDrive = join(nested, 'drive');
-    await mkdir(holderDrive);
-    expect(await refusal(input(nested, { linkedDriveRoots: [holderDrive] }))).toBe(
-      'contains-linked-drive',
     );
   });
 

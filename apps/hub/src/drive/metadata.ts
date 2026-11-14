@@ -1,5 +1,6 @@
 import type { FileHandle } from 'node:fs/promises';
-import type { DriveItem, DriveRoot } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
+import type { StoredDrive } from '../store/repositories/drive-roots';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
 import type { Store } from '../store/store';
@@ -17,7 +18,7 @@ import {
 } from './metadata-read';
 import { DrivePathError, openResolved, resolveInRoot } from './paths';
 import { readDriveSettings } from './settings';
-import type { RootAvailability } from './volumes';
+import type { RootAvailability } from './root-marker';
 
 type MediaItem = Extract<DriveItem, { readonly kind: 'image' | 'video' | 'audio' }>;
 
@@ -26,7 +27,7 @@ const WINDOW_ROWS = 1000;
 export interface MetadataEnvironment {
   readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'settingsKv' | 'write'>;
   readonly media: Pick<DriveMediaRepository, 'find' | 'save' | 'update'>;
-  readonly availability: (root: DriveRoot) => Promise<RootAvailability>;
+  readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly log: Logger;
 }
 
@@ -46,7 +47,13 @@ export function collectUnread(
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     let after: string | null = null;
     do {
-      const window = items.children(rootId, parent, after, WINDOW_ROWS);
+      const window = items.children({
+        rootId,
+        parentId: parent,
+        after,
+        limit: WINDOW_ROWS,
+        viewer: null,
+      });
       for (const { item, identity } of window.entries) {
         if (item.kind === 'folder') pending.push(item.id);
         else if (identity !== null && isMedia(item) && item.takenAt === null) {
@@ -99,8 +106,6 @@ interface Reading {
   readonly modifiedMs: number;
 }
 
-type PhysicalRoot = DriveRoot & { readonly path: string };
-
 const HEAD_BYTES = 12;
 
 function mediaRowFor(
@@ -133,7 +138,7 @@ class MetadataRun {
 
   constructor(
     private readonly env: MetadataEnvironment,
-    private readonly root: PhysicalRoot,
+    private readonly root: StoredDrive,
   ) {}
 
   get done(): number {
@@ -226,7 +231,7 @@ class MetadataRun {
 
   private record(candidate: Candidate, reading: Reading): boolean {
     return this.env.store.write(() => {
-      const current = this.env.store.driveItems.find(candidate.id);
+      const current = this.env.store.driveItems.find(candidate.id, null);
       if (
         current === undefined ||
         !isMedia(current) ||
@@ -257,19 +262,14 @@ class MetadataRun {
   }
 }
 
-function physical(root: DriveRoot): PhysicalRoot | null {
-  return root.path === null ? null : { ...root, path: root.path };
-}
-
 async function readRoot(
   env: MetadataEnvironment,
   rootId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const found = env.store.driveRoots.find(rootId);
-  const root = found === undefined ? null : physical(found);
-  if (root === null) {
-    env.log.warn('drive.metadata_skipped_root', { rootId, reason: 'no physical root' });
+  const root = env.store.driveRoots.find(rootId);
+  if (root === undefined) {
+    env.log.warn('drive.metadata_skipped_root', { rootId, reason: 'no such drive' });
     return;
   }
   if (readDriveSettings(env.store).indexingPaused) {

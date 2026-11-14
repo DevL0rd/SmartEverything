@@ -17,7 +17,6 @@ import { Readable } from 'node:stream';
 import {
   DRIVE_UPLOAD_METADATA,
   type DriveItem,
-  type DriveRoot,
   type DriveUploadTarget,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -35,9 +34,10 @@ import { isMissing } from '../../src/fs-util';
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
 import { BackupService } from '../../src/photos/backup';
 import { DriveBackupRepository } from '../../src/store/repositories/drive-backup';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const START = new Date('2026-11-07T00:00:00.000Z');
 const DAY_MS = 86_400_000;
@@ -61,39 +61,6 @@ const sha = (text: string): string =>
   Buffer.from(createHash('sha256').update(text).digest()).toString('base64');
 const b64 = (text: string): string => Buffer.from(text).toString('base64');
 
-function rootRow(id: string, path: string): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: 'Uploads root',
-    scope: 'home',
-    ownerProfileId: null,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
-
 function changeEnv(): ChangeEnv {
   return {
     files: nodeFiles,
@@ -105,7 +72,7 @@ function changeEnv(): ChangeEnv {
 }
 
 function caller(profileId: string, clientId: string): TusCaller {
-  return { profileId, owner: false, clientId, nodeId: null };
+  return { profileId, clientId, nodeId: null };
 }
 
 async function startServer(
@@ -246,17 +213,13 @@ async function interrupted(location: string, payload: Buffer, sent: number): Pro
 }
 
 function registeredBackup(): { readonly service: BackupService; readonly phoneId: string } {
+  opened.store.driveRoots.insert(personalDriveRoot(randomUUID(), robin));
   const backups = new DriveBackupRepository(opened.store.context);
   const service = new BackupService({
     ...changeEnv(),
     store: { ...opened.store, driveBackup: backups },
     sql: opened.store.context.sql,
   });
-  opened.store.context.sql.run(
-    'use managed storage',
-    "update drive_roots set kind = 'managed' where id = $id",
-    { id: root.id },
-  );
   const [phone] = opened.store.devices.upsert([
     {
       provider: 'local',
@@ -292,13 +255,13 @@ function registeredBackup(): { readonly service: BackupService; readonly phoneId
 beforeEach(async () => {
   captureLogs();
   clock = START;
-  opened = await testStore();
+  opened = await driveTestStore();
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-uploads-')));
-  dir = join(base, 'root');
+  dir = opened.layout.home.drive;
   await mkdir(join(dir, 'Uploads'), { recursive: true });
   const rootId = randomUUID();
-  root = { id: rootId, path: dir, readOnly: false, versions: true };
-  opened.store.driveRoots.insert(rootRow(rootId, dir));
+  root = { id: rootId, path: dir, versions: true };
+  opened.store.driveRoots.insert(sharedDriveRoot(rootId));
   owner = opened.store.profiles.first().id;
   robin = opened.store.profiles.create({ name: 'Robin' }).id;
   sam = opened.store.profiles.create({ name: 'Sam' }).id;
@@ -310,7 +273,7 @@ beforeEach(async () => {
       tokenHash: hash.repeat(64),
     }).id;
   callers = new Map([
-    ['owner', { profileId: owner, owner: true, clientId: client('Owner', 'a'), nodeId: null }],
+    ['owner', { profileId: owner, clientId: client('Owner', 'a'), nodeId: null }],
     ['robin', caller(robin, client('Robin tablet', 'b'))],
     ['robin-phone', caller(robin, client('Robin phone', 'c'))],
     ['sam', caller(sam, client('Sam phone', 'd'))],
@@ -372,7 +335,7 @@ describe('creating and completing an upload', () => {
     expect(response.status).toBe(204);
     expect(response.headers.get('upload-offset')).toBe('10');
     expect(await readFile(join(dir, 'Uploads', 'a.txt'), 'utf8')).toBe('0123456789');
-    const item = opened.store.driveItems.byPath(root.id, 'Uploads/a.txt');
+    const item = opened.store.driveItems.byPath(root.id, 'Uploads/a.txt', null);
     expect(item?.kind === 'folder' ? null : item?.bytes).toBe(10);
     expect(item?.addedByProfileId).toBe(robin);
     expect(response.headers.get('upload-item-id')).toBe(item?.id);
@@ -404,7 +367,7 @@ describe('creating and completing an upload', () => {
     expect(response.status).toBe(201);
     expect(await readFile(join(dir, 'Uploads', 'empty.txt'), 'utf8')).toBe('');
     expect(response.headers.get('upload-item-id')).toBe(
-      opened.store.driveItems.byPath(root.id, 'Uploads/empty.txt')?.id,
+      opened.store.driveItems.byPath(root.id, 'Uploads/empty.txt', null)?.id,
     );
     expect(opened.store.driveUploads.byId(idOf(response.headers.get('location') ?? '')).state).toBe(
       'complete',
@@ -507,7 +470,7 @@ describe('resuming', () => {
     const resumed = await head(location);
     expect(resumed.status).toBe(200);
     expect(resumed.headers.get('upload-offset')).toBe('3');
-    const item = opened.store.driveItems.byPath(root.id, 'Uploads/resumed.jpg');
+    const item = opened.store.driveItems.byPath(root.id, 'Uploads/resumed.jpg', null);
     expect(resumed.headers.get('upload-item-id')).toBe(item?.id);
     expect((await head(location)).headers.get('upload-item-id')).toBe(item?.id);
     expect(await readFile(join(dir, 'Uploads', 'resumed.jpg'), 'utf8')).toBe('abc');
@@ -539,7 +502,7 @@ describe('resuming', () => {
     expect(opened.store.driveUploads.expectedHash(idOf(location))).toBe(expected);
     await writeFile(join(dir, '.smarteverything', 'tmp', idOf(location)), 'other');
     expect((await head(location)).status).toBe(460);
-    expect(opened.store.driveItems.byPath(root.id, 'Uploads/resume.jpg')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 'Uploads/resume.jpg', null)).toBeUndefined();
     expect(opened.store.driveUploads.byId(idOf(location)).state).toBe('failed');
     expect(opened.store.driveUploads.result(idOf(location))).toBeUndefined();
   });
@@ -620,27 +583,12 @@ describe('ownership and scope', () => {
     expect((await head(location)).status).toBe(200);
   });
 
-  it('refuses a read-only root at creation and at commit', async () => {
-    await startServer();
-    const location = await open(3);
-    opened.store.driveRoots.update(root.id, { readOnly: true, versions: false });
-    expect((await patch(location, 0, 'abc')).status).toBe(403);
-    expect(opened.store.driveUploads.byId(idOf(location)).state).toBe('failed');
-    expect((await create(3)).status).toBe(403);
-    expect(await tmpFiles()).toEqual([]);
-  });
-
-  it('hides a person root and its folders from another profile', async () => {
-    await startServer();
+  async function personalFolder(): Promise<DriveItem> {
     const personal = randomUUID();
-    const personalDir = join(base, 'personal');
+    const personalDir = opened.layout.person(robin).drive;
     await mkdir(join(personalDir, 'Mine'), { recursive: true });
-    opened.store.driveRoots.insert({
-      ...rootRow(personal, personalDir),
-      scope: 'person',
-      ownerProfileId: robin,
-    });
-    const folder = recordItem(changeEnv(), {
+    opened.store.driveRoots.insert(personalDriveRoot(personal, robin));
+    return recordItem(changeEnv(), {
       draft: folderDraft(
         {
           rootId: personal,
@@ -657,16 +605,34 @@ describe('ownership and scope', () => {
       op: 'create',
       actor: { actorProfileId: null, via: 'app', deviceId: null },
     });
-    const into = (token: string): Promise<Response> =>
-      fetch(`${origin}/drive/uploads`, {
-        method: 'POST',
-        headers: headers(token, {
-          'Upload-Length': '3',
-          'Upload-Metadata': metadata('a.txt', folder.id),
-        }),
-      });
-    expect((await into('sam')).status).toBe(404);
-    expect((await into('robin')).status).toBe(201);
+  }
+
+  function uploadInto(token: string, folderId: string): Promise<Response> {
+    return fetch(`${origin}/drive/uploads`, {
+      method: 'POST',
+      headers: headers(token, {
+        'Upload-Length': '3',
+        'Upload-Metadata': metadata('a.txt', folderId),
+      }),
+    });
+  }
+
+  it('hides a personal drive and its folders from every other profile, the owner included', async () => {
+    await startServer();
+    const folder = await personalFolder();
+    expect((await uploadInto('sam', folder.id)).status).toBe(404);
+    expect((await uploadInto('owner', folder.id)).status).toBe(404);
+    expect((await uploadInto('robin', folder.id)).status).toBe(201);
+  });
+
+  it('lets an edit grant upload into the shared folder and refuses a view grant', async () => {
+    await startServer();
+    const folder = await personalFolder();
+    opened.store.driveGrants.set({ itemId: folder.id, profileId: sam, role: 'view' }, robin);
+    expect((await uploadInto('sam', folder.id)).status).toBe(403);
+    opened.store.driveGrants.set({ itemId: folder.id, profileId: sam, role: 'edit' }, robin);
+    expect((await uploadInto('sam', folder.id)).status).toBe(201);
+    expect((await uploadInto('owner', folder.id)).status).toBe(404);
   });
 
   it('refuses metadata that does not name a target', async () => {

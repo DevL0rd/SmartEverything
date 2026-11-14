@@ -11,13 +11,7 @@ import { momentOf, readStill, readTimed, routeOf, TimedProbe } from '../../src/d
 import { updateDriveSettings } from '../../src/drive/settings';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
-import {
-  bundleWorker,
-  folderRoot,
-  NOW,
-  openDriveFixture,
-  type DriveFixture,
-} from './drive-fixture';
+import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 
@@ -190,7 +184,7 @@ beforeEach(() => {
   tree = mkdtempSync(join(tmpdir(), 'metadata-tree-'));
   drive = openDriveFixture();
   media = new DriveMediaRepository(drive.context);
-  drive.roots.insert(folderRoot(ROOT, tree));
+  drive.addDrive(driveRoot(ROOT), tree);
 });
 
 afterEach(() => {
@@ -238,7 +232,7 @@ async function read(signal: AbortSignal = new AbortController().signal): Promise
 }
 
 function indexed(path: string): DriveItem {
-  const item = drive.items.byPath(ROOT, path);
+  const item = drive.items.byPath(ROOT, path, null);
   if (item === undefined) throw new Error(`${path} is not indexed`);
   return item;
 }
@@ -373,10 +367,10 @@ describe('the metadata job', () => {
     expect(collectUnread(drive.items, ROOT)).toEqual([]);
   });
 
-  it('reads nothing from a root that is offline', async () => {
+  it('reads nothing from a drive that is missing', async () => {
     place('exif-full.jpg');
     await scan();
-    await metadataHandler({ ...environment(), availability: () => Promise.resolve('offline') })(
+    await metadataHandler({ ...environment(), availability: () => Promise.resolve('missing') })(
       { kind: 'metadata', rootId: ROOT },
       new AbortController().signal,
     );

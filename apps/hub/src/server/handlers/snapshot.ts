@@ -9,6 +9,7 @@ import {
   type ClientRow,
   type EventRow,
   type OwnerSnapshotTables,
+  type DriveGrant,
   type DriveRoot,
   type SnapshotTables,
 } from '@smarteverything/domain';
@@ -22,7 +23,7 @@ import { bound } from '../router';
 import { channelHidden, presenceInScope, scopesOfClient } from '../person-scope';
 import { bodyTables } from '../person-privacy';
 import { reachableSnapshot } from '../snapshot-reach';
-import { driveScopeVisible } from '../live-access';
+import { driveAccess } from '../../drive/access';
 import { wireMessages } from '../../assistant/wire-message';
 import { DAY_MS } from '../../metrics/minute';
 
@@ -55,8 +56,20 @@ function homeTables(
   };
 }
 
-function visibleDriveRoots(store: Store, { client, profileId }: Viewer): DriveRoot[] {
-  return store.driveRoots.list().filter((root) => driveScopeVisible(client.role, profileId, root));
+function visibleDriveRoots(store: Store, { profileId }: Viewer): DriveRoot[] {
+  return store.driveRoots
+    .list()
+    .filter((root) => driveAccess({ profileId }, root) !== 'none')
+    .map(({ path: _path, ...root }) => root);
+}
+
+function visibleDriveGrants(store: Store, { profileId }: Viewer): DriveGrant[] {
+  const received = store.driveGrants.receivedBy(profileId);
+  const known = new Set(received.map((grant) => grant.id));
+  return [
+    ...received,
+    ...store.driveGrants.madeBy(profileId).filter((grant) => !known.has(grant.id)),
+  ];
 }
 
 interface Viewer {
@@ -150,6 +163,7 @@ function unfilteredTablesOf(
     plugin_streams: store.pluginData.streams(),
     plugin_ui: store.plugins.ui(),
     drive_roots: visibleDriveRoots(store, { client, profileId }),
+    drive_grants: visibleDriveGrants(store, { client, profileId }),
     model_assets: store.modelAssets.all(),
     model_catalog: store.modelCatalog.all(),
     model_overrides: store.modelOverrides.all(),

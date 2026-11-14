@@ -7,7 +7,7 @@ import { fsCode } from '../fs-code';
 import { announce, appendFeed, isoOf } from '../drive/changes';
 import { migratePhotoPending } from './folder-pending';
 import { repathItem } from '../drive/service-write-repath';
-import { DriveWriteError, locate, physicalRoot, type DriveWriteRoot } from '../drive/intents';
+import { DriveWriteError, locate, type DriveWriteRoot } from '../drive/intents';
 import { relPathOf } from '../drive/uploads-tus-target';
 import { syncPhotoDirectories, writePhotoFolderReceipt } from './folder-receipts';
 import { BackupService, type BackupEnv } from './backup';
@@ -76,14 +76,14 @@ async function relocateBytes(
 }
 
 async function relocate(env: BackupEnv, service: BackupService, row: Relocation): Promise<void> {
-  const item = env.store.driveItems.byId(row.item_id);
+  const item = env.store.driveItems.byId(row.item_id, null);
   const rootRow = env.store.driveRoots.byId(item.rootId);
   if (rootRow.scope !== 'person' || rootRow.ownerProfileId === null) {
     throw new DriveWriteError('corrupt', 'Photo relocation requires its original personal Drive.');
   }
-  const root = physicalRoot(rootRow);
+  const root = rootRow;
   const folder = await service.manualTarget(rootRow.ownerProfileId);
-  const parent = env.store.driveItems.byId(folder.folderId);
+  const parent = env.store.driveItems.byId(folder.folderId, null);
   const target =
     row.to_path ?? (await relPathOf(env, { root, folder: parent, item: null }, item.name));
   const mtimeNs = row.mtime_ns ?? (await verified({ env, root, item }, row.from_path, null));
@@ -148,7 +148,8 @@ async function removeOldFolders(env: BackupEnv): Promise<void> {
     `select f.item_id from drive_photo_old_folders f join drive_items i on i.id = f.item_id
       order by length(i.rel_path) desc, i.id`,
   );
-  for (const row of folders) await removeOldFolder(env, env.store.driveItems.byId(row.item_id));
+  for (const row of folders)
+    await removeOldFolder(env, env.store.driveItems.byId(row.item_id, null));
 }
 
 function retainOldFolder(env: BackupEnv, id: string): void {
@@ -160,8 +161,14 @@ function retainOldFolder(env: BackupEnv, id: string): void {
 }
 
 async function removeOldFolder(env: BackupEnv, item: DriveItem): Promise<void> {
-  const root = physicalRoot(env.store.driveRoots.byId(item.rootId));
-  const children = env.store.driveItems.children(root.id, item.id, null, 1);
+  const root = env.store.driveRoots.byId(item.rootId);
+  const children = env.store.driveItems.children({
+    rootId: root.id,
+    parentId: item.id,
+    after: null,
+    limit: 1,
+    viewer: null,
+  });
   const pending = env.sql.get(
     z.strictObject({ id: z.string() }),
     "select id from drive_uploads where target_kind = 'folder' and target_id = $id and state = 'open'",
@@ -195,6 +202,7 @@ async function removeOldFolder(env: BackupEnv, item: DriveItem): Promise<void> {
       deviceId: null,
     });
     env.store.driveItems.remove(item.id);
+    env.store.driveGrants.sweepOrphans();
     announce(env, item.rootId, item.parentId, []);
   });
 }

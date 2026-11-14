@@ -14,10 +14,9 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DRIVE_TRASH_ENTRY, type DriveRoot, type DriveTrashEntry } from '@smarteverything/domain';
+import { DRIVE_TRASH_ENTRY, type DriveTrashEntry } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  DriveWriteError,
   recoverIntents,
   TMP_DIRECTORY,
   TRASH_DIRECTORY,
@@ -41,9 +40,12 @@ import {
 } from '../../src/drive/versions';
 import { isMissing } from '../../src/fs-util';
 import type { DriveVersionEntry } from '../../src/store/repositories/drive-versions';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore, putItem } from './spaces-fixture';
+import { commitRestore, commitTrash } from '../../src/drive/trash-purge';
+import type { ChangeActor, ChangeEnv } from '../../src/drive/changes';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const OLD = 'old bytes';
@@ -62,44 +64,13 @@ interface Scenario {
   readonly root: DriveWriteRoot;
 }
 
-function rootRow(id: string, path: string, readOnly: boolean, versions: boolean): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: `Root ${id.slice(0, 4)}`,
-    scope: 'home',
-    ownerProfileId: null,
-    path,
-    readOnly,
-    versions,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
-
-async function scenario(readOnly = false, versions = true): Promise<Scenario> {
-  const dir = await realpath(await mkdtemp(join(base, 'root-')));
+async function scenario(versions = true): Promise<Scenario> {
+  const owner = opened.store.profiles.create({ name: `Person ${randomUUID().slice(0, 4)}` });
   const id = randomUUID();
-  opened.store.driveRoots.insert(rootRow(id, dir, readOnly, versions && !readOnly));
-  return { dir, root: { id, path: dir, readOnly, versions: versions && !readOnly } };
+  const dir = opened.layout.person(owner.id).drive;
+  await mkdir(dir, { recursive: true });
+  opened.store.driveRoots.insert(personalDriveRoot(id, owner.id, { versions }));
+  return { dir, root: { id, path: dir, versions } };
 }
 
 async function put(dir: string, rel: string, text: string): Promise<void> {
@@ -225,7 +196,7 @@ async function trashed(
 
 beforeEach(async () => {
   captureLogs();
-  opened = await testStore();
+  opened = await driveTestStore();
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-intents-')));
   finished = [];
 });
@@ -284,24 +255,6 @@ describe('trash', () => {
     expect(total).toBeGreaterThanOrEqual(4);
   });
 
-  it('refuses a read-only root and leaves no intent', async () => {
-    const made = await scenario(true);
-    await put(made.dir, 'a.txt', OLD);
-    await expect(
-      moveToTrash(env(), made.root, {
-        itemId: randomUUID(),
-        relPath: 'a.txt',
-        name: 'a.txt',
-        isFolder: false,
-        bytes: 9,
-        deletedBy: null,
-        addedByProfileId: null,
-      }),
-    ).rejects.toMatchObject({ failure: 'read-only' });
-    expect(await text(made.dir, 'a.txt')).toBe(OLD);
-    expect(opened.store.driveIntents.all()).toEqual([]);
-  });
-
   it('does not follow a symlink leaf out of the root', async () => {
     const made = await scenario();
     const outside = join(base, 'outside.txt');
@@ -315,6 +268,80 @@ describe('trash', () => {
 });
 
 describe('restore', () => {
+  describe('a trashed folder', () => {
+    const actor: ChangeActor = { actorProfileId: null, via: 'app', deviceId: null };
+
+    function changes(): ChangeEnv {
+      return { ...env(), store: opened.store, purge: { rearm: (): void => undefined } };
+    }
+
+    async function folderTree(made: Scenario): Promise<{
+      folder: string;
+      deep: string;
+      file: string;
+      person: string;
+    }> {
+      const ids = { folder: randomUUID(), deep: randomUUID(), file: randomUUID() };
+      await put(made.dir, 'trip/2026/a.txt', OLD);
+      const items = [
+        { id: ids.folder, relPath: 'trip', kind: 'folder' },
+        { id: ids.deep, relPath: 'trip/2026', kind: 'folder' },
+        { id: ids.file, relPath: 'trip/2026/a.txt', kind: 'document' },
+      ] as const;
+      for (const item of items) putItem(opened.store, { rootId: made.root.id, ...item });
+      const person = opened.store.profiles.create({ name: 'Starrer' }).id;
+      opened.store.driveStars.star(person, ids.file);
+      opened.store.database
+        .prepare('insert into drive_photo_library (item_id, root_id) values (?, ?)')
+        .run(ids.file, made.root.id);
+      return { ...ids, person };
+    }
+
+    it('comes back with its descendants under their original ids, stars and Photos membership', async () => {
+      const made = await scenario();
+      const tree = await folderTree(made);
+      await commitTrash(changes(), made.root, tree.folder, actor);
+      expect(opened.store.driveItems.find(tree.file, null)).toBeUndefined();
+      expect(opened.store.driveStars.isStarred(tree.person, tree.file)).toBe(false);
+      await put(made.dir, 'trip/other.txt', 'taken');
+      const restored = await commitRestore(changes(), made.root, tree.folder, actor);
+      expect(restored.item.relPath).toBe('trip (restored)');
+      expect(opened.store.driveItems.byId(tree.deep, null)).toMatchObject({
+        parentId: tree.folder,
+        relPath: 'trip (restored)/2026',
+      });
+      expect(opened.store.driveItems.byId(tree.file, null)).toMatchObject({
+        parentId: tree.deep,
+        relPath: 'trip (restored)/2026/a.txt',
+      });
+      expect(opened.store.driveStars.isStarred(tree.person, tree.file)).toBe(true);
+      expect(
+        opened.store.database
+          .prepare('select item_id from drive_photo_library where item_id = ?')
+          .get(tree.file),
+      ).toBeDefined();
+      expect(
+        opened.store.database.prepare('select count(*) as n from drive_trash_rows').get(),
+      ).toEqual({ n: 0 });
+    });
+
+    it('forgets the Photos membership of every descendant when it is permanently removed', async () => {
+      const made = await scenario();
+      const tree = await folderTree(made);
+      await commitTrash(changes(), made.root, tree.folder, actor);
+      const member = (): unknown =>
+        opened.store.database
+          .prepare('select item_id from drive_photo_library where item_id = ?')
+          .get(tree.file);
+      expect(member()).toBeDefined();
+      await removeTrashEntry(changes(), opened.store.driveTrash.byId(tree.folder));
+      expect(member()).toBeUndefined();
+      expect(
+        opened.store.database.prepare('select count(*) as n from drive_trash_rows').get(),
+      ).toEqual({ n: 0 });
+    });
+  });
+
   it('returns the item to its original path', async () => {
     const made = await scenario();
     await put(made.dir, 'docs/a.txt', OLD);
@@ -386,24 +413,6 @@ describe('restore', () => {
     );
     expect(total).toBeGreaterThanOrEqual(3);
   });
-
-  it('refuses a read-only root', async () => {
-    const made = await scenario(true);
-    const entry = {
-      itemId: randomUUID(),
-      rootId: made.root.id,
-      name: 'a.txt',
-      originalRelPath: 'a.txt',
-      trashRelPath: `${TRASH_DIRECTORY}/x`,
-      isFolder: false,
-      bytes: 1,
-      deletedAt: NOW.toISOString(),
-      purgeAt: '2027-11-07T00:00:00.000Z',
-      deletedBy: null,
-      addedByProfileId: null,
-    };
-    await expect(restoreFromTrash(env(), made.root, entry)).rejects.toBeInstanceOf(DriveWriteError);
-  });
 });
 
 describe('committing bytes', () => {
@@ -452,7 +461,7 @@ describe('committing bytes', () => {
     const fresh = await scenario();
     const created = await commit(fresh, nodeFiles);
     expect(created.captured).toBeNull();
-    const off = await scenario(false, false);
+    const off = await scenario(false);
     await put(off.dir, 'doc.txt', OLD);
     const replaced = await commit(off, nodeFiles);
     expect(replaced.captured).toBeNull();
@@ -544,14 +553,6 @@ describe('committing bytes', () => {
     await recoverIntents(recovery(), [made.root]);
     expect(await text(made.dir, 'doc.txt')).toBe(OLD);
     expect(await text(made.dir, versionRelPath(OLD_SHA))).toBe(OLD);
-  });
-
-  it('refuses a read-only root before staging anything', async () => {
-    const made = await scenario(true);
-    await expect(stageBytes(env(), made.root, source(NEW))).rejects.toMatchObject({
-      failure: 'read-only',
-    });
-    expect(await names(made.dir, TMP_DIRECTORY)).toEqual([]);
   });
 
   it('refuses a folder where the file should go', async () => {

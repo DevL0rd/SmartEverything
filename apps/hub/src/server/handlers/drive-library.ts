@@ -7,9 +7,9 @@ import {
   type DriveRoot,
   type DriveTrashEntry,
 } from '@smarteverything/domain';
-import { listHostFoldersOf } from '../../drive/host-folders';
 import { decodeCursor, encodeCursor } from '../../drive/search';
-import { DRIVE_PAGE_SIZE, type DriveActor } from '../../drive/service-read';
+import type { DriveActor } from '../../drive/access';
+import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import type { Store } from '../../store/store';
 import { driveFileLink } from '../drive-files';
 import { DONE_REPLY, bound, type Routes } from '../router';
@@ -17,20 +17,14 @@ import { refusing } from './drive-errors';
 import {
   actorOf,
   callerOf,
-  viewerOf,
   type DrivePage,
   type DriveServices,
   type RootPageQuery,
 } from './drive-services';
-import { listVolumes } from './drive-volumes';
 
 type DriveLibraryRoute =
-  | 'addRoot'
   | 'updateRoot'
-  | 'removeRoot'
   | 'scanRoot'
-  | 'listVolumes'
-  | 'listHostFolders'
   | 'itemLinks'
   | 'searchDrive'
   | 'changeDrive'
@@ -121,34 +115,14 @@ function trashPage(
   return { items, next: null };
 }
 
-function hostFoldersRoute(
-  store: Store,
-  services: DriveServices,
-): Routes<'listHostFolders'>['listHostFolders'] {
-  return bound(E.listHostFolders, ({ query }) =>
-    refusing(() =>
-      listHostFoldersOf(() => listVolumes(services.probe, store.driveRoots.list()), query.path),
-    ),
-  );
-}
-
 export function driveLibraryRoutes(
   store: Store,
   services: DriveServices,
 ): Routes<DriveLibraryRoute> {
   const { write } = services;
   return {
-    addRoot: bound(E.addRoot, ({ body, caller }) =>
-      refusing(() => write.addRoot(callerOf(store, caller), body)),
-    ),
     updateRoot: bound(E.updateRoot, ({ params, body, caller }) =>
       refusing(() => write.updateRoot(callerOf(store, caller), params.rootId, body)),
-    ),
-    removeRoot: bound(E.removeRoot, ({ params, caller }) =>
-      refusing(async () => {
-        await write.removeRoot(callerOf(store, caller), params.rootId);
-        return DONE_REPLY;
-      }),
     ),
     scanRoot: bound(E.scanRoot, ({ params, caller }) =>
       refusing(() => {
@@ -156,21 +130,17 @@ export function driveLibraryRoutes(
         return DONE_REPLY;
       }),
     ),
-    listVolumes: bound(E.listVolumes, () => listVolumes(services.probe, store.driveRoots.list())),
-    listHostFolders: hostFoldersRoute(store, services),
     itemLinks: bound(E.itemLinks, ({ body, caller }) =>
       refusing(() => linksOf(services, actorOf(store, caller), body.itemIds, store)),
     ),
     searchDrive: bound(E.searchDrive, ({ body, caller }) =>
-      refusing(() =>
-        store.driveSearch.search(viewerOf(actorOf(store, caller)), body, DRIVE_PAGE_SIZE),
-      ),
+      refusing(() => store.driveSearch.search(actorOf(store, caller), body, DRIVE_PAGE_SIZE)),
     ),
     changeDrive: bound(E.changeDrive, ({ body, caller }) =>
       refusing(() => write.change(callerOf(store, caller), body)),
     ),
     readDriveStats: bound(E.readDriveStats, ({ caller }) =>
-      store.driveStats.read(viewerOf(actorOf(store, caller)), services.probe.space),
+      store.driveStats.read(actorOf(store, caller), services.dataSpace),
     ),
     listDuplicates: bound(E.listDuplicates, ({ query, caller }) =>
       refusing(() => services.listings.duplicates(actorOf(store, caller), query)),

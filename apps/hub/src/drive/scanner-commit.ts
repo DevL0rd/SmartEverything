@@ -110,7 +110,8 @@ interface Common {
   readonly name: string;
   readonly modifiedAt: string;
   readonly addedAt: string;
-  readonly starred: boolean;
+  readonly starred: false;
+  readonly shared: false;
   readonly outside: boolean;
   readonly addedByProfileId: string | null;
   readonly remoteId: string | null;
@@ -235,7 +236,13 @@ export class ScanCommitter {
     const folders: string[] = [];
     let after: string | null = null;
     do {
-      const window = this.deps.items.children(this.root.id, parent, after, WALK_BATCH_ROWS);
+      const window = this.deps.items.children({
+        rootId: this.root.id,
+        parentId: parent,
+        after,
+        limit: WALK_BATCH_ROWS,
+        viewer: null,
+      });
       for (const entry of window.entries) {
         const indexed = indexedOf(entry);
         this.live.set(indexed.relPath, indexed);
@@ -291,7 +298,7 @@ export class ScanCommitter {
 
   private move(mover: Indexed, entry: WalkEntry, occupant: Indexed | undefined): void {
     if (occupant !== undefined) this.sweep(occupant);
-    const occupied = this.deps.items.byPath(this.root.id, entry.relPath);
+    const occupied = this.deps.items.byPath(this.root.id, entry.relPath, null);
     if (occupied !== undefined && occupied.id !== mover.id) this.evict(occupied.id, entry.relPath);
     this.live.delete(mover.relPath);
     this.save(mover, entry);
@@ -316,8 +323,8 @@ export class ScanCommitter {
 
   private base(previous: Indexed | null, entry: WalkEntry): DriveItem | null {
     return (
-      this.deps.items.byPath(this.root.id, entry.relPath) ??
-      (previous === null ? null : (this.deps.items.find(previous.id) ?? null))
+      this.deps.items.byPath(this.root.id, entry.relPath, null) ??
+      (previous === null ? null : (this.deps.items.find(previous.id, null) ?? null))
     );
   }
 
@@ -340,7 +347,8 @@ export class ScanCommitter {
       name: entry.name,
       modifiedAt: isoOf(entry),
       addedAt: base?.addedAt ?? this.deps.now().toISOString(),
-      starred: base?.starred ?? false,
+      starred: false,
+      shared: false,
       outside: this.known,
       ...ownersOf(base),
     };

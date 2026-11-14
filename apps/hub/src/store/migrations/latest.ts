@@ -1,3 +1,4 @@
+import { DRIVE_SPACES_MIGRATION } from './drive-spaces';
 import { PHOTOS_FOLDER_MIGRATION } from './photos-folder';
 import { PHOTOS_LIBRARY_MIGRATION } from './photos-library';
 import { PHOTOS_DESKTOP_BACKUP_MIGRATION } from './photos-desktop-backup';
@@ -145,4 +146,5 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   PHOTOS_DESKTOP_BACKUP_MIGRATION,
   PHOTOS_LIBRARY_MIGRATION,
   PHOTOS_FOLDER_MIGRATION,
+  DRIVE_SPACES_MIGRATION,
 ];

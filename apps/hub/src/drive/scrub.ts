@@ -1,4 +1,5 @@
-import type { DriveItem, DriveRoot, DriveScrubState } from '@smarteverything/domain';
+import type { DriveItem, DriveScrubState } from '@smarteverything/domain';
+import type { StoredDrive } from '../store/repositories/drive-roots';
 import { background, messageOf, type Logger } from '@smarteverything/logging';
 import type { DriveItemIdentity } from '../store/repositories/drive-items';
 import type { DriveRootsRepository } from '../store/repositories/drive-roots';
@@ -10,7 +11,7 @@ import type {
 import type { Store } from '../store/store';
 import type { HashRequest, HashResponse } from './blocks';
 import { modifiedIso } from './hasher';
-import type { RootAvailability } from './volumes';
+import type { RootAvailability } from './root-marker';
 
 const WINDOW_ROWS = 1000;
 
@@ -39,13 +40,11 @@ export interface ScrubEnvironment {
     readonly driveItems: ScrubItems;
     readonly driveScrub: DriveScrubRepository;
   };
-  readonly availability: (root: DriveRoot) => Promise<RootAvailability>;
+  readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly openHasher: () => FileHasher;
   readonly notifyOwner: (corruption: ScrubCorruption) => void;
   readonly log: Logger;
 }
-
-type PhysicalRoot = DriveRoot & { readonly path: string };
 
 interface Pass {
   readonly startedAt: string;
@@ -60,10 +59,6 @@ interface ActiveRun {
   readonly finished: Promise<void>;
 }
 
-function physical(root: DriveRoot): PhysicalRoot | null {
-  return root.path === null ? null : { ...root, path: root.path };
-}
-
 function shareOf(count: number, total: number): number {
   return total === 0 ? 1 : count / total;
 }
@@ -73,14 +68,14 @@ function strictlyAfter(moment: string, floor: string | null): string {
   return new Date(new Date(floor).getTime() + 1).toISOString();
 }
 
-function cutoffOf(root: DriveRoot): string {
+function cutoffOf(root: StoredDrive): string {
   return root.health.lastScrubAt ?? '';
 }
 
 class RootScrub {
   constructor(
     private readonly env: ScrubEnvironment,
-    private readonly root: PhysicalRoot,
+    private readonly root: StoredDrive,
     private readonly pass: Pass,
     private readonly hasher: FileHasher,
   ) {}
@@ -228,11 +223,8 @@ export class DriveScrubber {
     };
   }
 
-  private scrubbable(): PhysicalRoot[] {
-    return this.env.store.driveRoots.list().flatMap((root) => {
-      const found = physical(root);
-      return found === null ? [] : [found];
-    });
+  private scrubbable(): StoredDrive[] {
+    return this.env.store.driveRoots.list();
   }
 
   private latestFinish(): string | null {
@@ -286,9 +278,8 @@ export class DriveScrubber {
   private async walkRoots(pass: Pass, signal: AbortSignal, hasher: FileHasher): Promise<boolean> {
     for (const listed of this.scrubbable()) {
       if (signal.aborted) return false;
-      const root = this.env.store.driveRoots.find(listed.id);
-      const found = root === undefined ? null : physical(root);
-      if (found === null) continue;
+      const found = this.env.store.driveRoots.find(listed.id);
+      if (found === undefined) continue;
       const availability = await this.env.availability(found);
       if (availability !== 'online') {
         this.env.log.info('drive.scrub_unavailable', { rootId: found.id, availability });

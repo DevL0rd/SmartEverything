@@ -23,7 +23,7 @@ import type {
 import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import { testStore, type TestStore, unusedDrivePath } from '../support/store';
 
 const NOW = '2026-11-05T10:00:00.000Z';
 const EARLIER = '2026-11-05T09:59:00.000Z';
@@ -168,6 +168,7 @@ it('keeps its grouped evidence across an independent database open and clears re
     log,
     now: () => new Date(NOW),
     systemTimeZone: 'UTC',
+    drivePathOf: unusedDrivePath,
   });
   try {
     expect(reader.aiRepairInbox.list({ limit: 100 }).groups).toMatchObject([

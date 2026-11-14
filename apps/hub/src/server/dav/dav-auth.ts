@@ -9,7 +9,7 @@ import {
   DriveQuotaExceededError,
   type DriveWriteGuard,
 } from '../../drive/quotas';
-import type { DriveActor, DriveReadService } from '../../drive/service-read';
+import type { DriveActor } from '../../drive/access';
 import type { Store } from '../../store/store';
 import { authenticate, clientOf } from '../auth';
 import type { DriveFileNodes } from '../drive-files';
@@ -23,7 +23,6 @@ export const DAV_REALM = 'SmartEverything';
 export interface DavDeps {
   readonly store: Store;
   readonly env: ChangeEnv;
-  readonly read: Pick<DriveReadService, 'rootFor'>;
   readonly guard: DriveWriteGuard;
   readonly nodes: DriveFileNodes;
 }
@@ -80,11 +79,9 @@ const PATH_STATUS: Readonly<Record<DrivePathFailure, number>> = {
 };
 
 const WRITE_STATUS: Readonly<Record<DriveWriteFailure, number>> = {
-  'read-only': 403,
   exists: 409,
   missing: 409,
   corrupt: 500,
-  'no-physical-root': 409,
 };
 
 const INSUFFICIENT_STORAGE = 507;

@@ -3,12 +3,10 @@ import { DRIVE_TRASH_ENTRY, type DriveTrashEntry } from '@smarteverything/domain
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import {
   abandonIntent,
-  assertWritable,
   DriveWriteError,
   locate,
   manifestPath,
   moveWithin,
-  physicalRoot,
   purgeDeadline,
   TRASH_DIRECTORY,
   writeManifest,
@@ -46,7 +44,6 @@ export async function moveToTrash(
   root: DriveWriteRoot,
   request: TrashRequest,
 ): Promise<TrashMove> {
-  assertWritable(root);
   if ((await env.files.stamp(await locate(root, request.relPath))) === null) {
     throw new DriveWriteError('missing', 'The item to trash does not exist.');
   }
@@ -122,7 +119,6 @@ export async function restoreFromTrash(
   root: DriveWriteRoot,
   entry: DriveTrashEntry,
 ): Promise<RestoreMove> {
-  assertWritable(root);
   if ((await env.files.stamp(await locate(root, entry.trashRelPath))) === null) {
     throw new DriveWriteError('missing', 'The trashed item is missing from the trash folder.');
   }
@@ -145,10 +141,11 @@ export async function restoreFromTrash(
 }
 
 export async function removeTrashEntry(env: FileEnv, entry: DriveTrashEntry): Promise<void> {
-  const root = physicalRoot(env.store.driveRoots.byId(entry.rootId));
+  const root = env.store.driveRoots.byId(entry.rootId);
   const purged = env.store.write(() => {
-    env.store.driveTrash.remove(entry.itemId);
     env.store.driveTrash.forgetPhoto(entry.itemId);
+    env.store.driveTrash.remove(entry.itemId);
+    env.store.driveGrants.sweepOrphans();
     return env.store.driveVersions.purgeItem(entry.itemId);
   });
   await env.files.remove(await locate(root, entry.trashRelPath));

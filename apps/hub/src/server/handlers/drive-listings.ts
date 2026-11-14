@@ -1,5 +1,6 @@
 import { ApiError, type DriveConflict } from '@smarteverything/domain';
-import { DRIVE_PAGE_SIZE, type DriveActor, type DriveReadService } from '../../drive/service-read';
+import type { DriveActor } from '../../drive/access';
+import { DRIVE_PAGE_SIZE, type DriveReadService } from '../../drive/service-read';
 import type { DuplicatesService } from '../../photos/duplicates';
 import type { Store } from '../../store/store';
 import type { DriveDuplicateGroup, DriveListings, DrivePage } from './drive-services';

@@ -10,7 +10,7 @@ import { AndroidBuilds } from '../../src/app-updates/android-builds';
 import { bound } from '../../src/server/router';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import { testStore, type TestStore, unusedDrivePath } from '../support/store';
 
 const NOW = new Date('2026-11-05T10:00:00Z');
 const LATER = new Date('2026-11-05T10:01:00Z');
@@ -65,6 +65,7 @@ describe('reported Android builds', () => {
       log: testLogger('app-updates'),
       now: () => LATER,
       systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
     });
     try {
       expect(new AndroidBuilds(reopened.androidBuildObservations).read(client)).toEqual(expected);

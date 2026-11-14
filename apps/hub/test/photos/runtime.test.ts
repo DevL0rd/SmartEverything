@@ -17,6 +17,7 @@ import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { DriveMediaJobsRepository } from '../../src/store/repositories/drive-media-jobs';
 import { testStore, type TestStore } from '../support/store';
 import { testLogger } from '../support/logs';
+import { insertDriveRow } from './photo-rows';
 
 const ROOT = '0f000000-0000-4000-8000-000000000001';
 const PHOTO = '0f000000-0000-4000-8000-000000000002';
@@ -28,17 +29,9 @@ let source: string;
 
 beforeEach(async () => {
   opened = await testStore(() => new Date(NOW));
-  source = join(opened.directory, 'phone-backup');
-  await mkdir(source);
-  opened.store.database
-    .prepare(
-      `insert into drive_roots
-    (id, kind, label, scope, path, read_only, versions, synced, index_id, state, items,
-    folders, bytes, hashed_share, verified_share, corrupt, in_photos, skip_patterns,
-    include_hidden, created_at, updated_at) values (?, 'folder', 'Phone', 'home', ?, 0,
-    0, 0, 'phone', 'ready', 0, 0, 0, 0, 0, 0, 1, '[]', 0, ?, ?)`,
-    )
-    .run(ROOT, source, NOW, NOW);
+  source = opened.layout.home.drive;
+  await mkdir(source, { recursive: true });
+  insertDriveRow(opened.store.database, { id: ROOT, scope: 'home', ownerId: null });
   pipeline = new PhotoPipeline({
     store: opened.store,
     parts: { context: opened.store.context },
@@ -53,7 +46,7 @@ afterEach(async () => {
 });
 
 function thumbState(id: string): string {
-  const item = opened.store.driveItems.byId(id);
+  const item = opened.store.driveItems.byId(id, null);
   if (item.kind === 'folder') throw new Error('A folder has no thumbnail.');
   return item.thumb.state;
 }
@@ -63,8 +56,8 @@ function seed(id: string, kind: 'image' | 'video', name: string, mime: string): 
     .prepare(
       `insert into drive_items
     (id, root_id, rel_path, name, kind, mime, bytes, integrity, modified_at, added_at,
-    starred, rev, etag, outside, thumb_state, taken_at)
-    values (?, ?, ?, ?, ?, ?, 10, 'ok', ?, ?, 0, 1, 'phone-rev1', 0, 'none', ?)`,
+    rev, etag, outside, thumb_state, taken_at)
+    values (?, ?, ?, ?, ?, ?, 10, 'ok', ?, ?, 1, 'phone-rev1', 0, 'none', ?)`,
     )
     .run(id, ROOT, name, name, kind, mime, NOW, NOW, NOW);
   opened.store.database
@@ -258,11 +251,11 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
     [PHOTO, 'renamed.jpg'],
     [VIDEO, 'renamed.mp4'],
   ] as const) {
-    const before = opened.store.driveItems.byId(id);
+    const before = opened.store.driveItems.byId(id, null);
     await rename(join(source, before.name), join(source, name));
     const info = await stat(join(source, name));
     const write = (): void => {
-      const item = opened.store.driveItems.byId(id);
+      const item = opened.store.driveItems.byId(id, null);
       recordItem(env, {
         draft: {
           ...item,
@@ -277,7 +270,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
     };
     write();
     await pipeline.runner.idle();
-    const renamed = opened.store.driveItems.byId(id);
+    const renamed = opened.store.driveItems.byId(id, null);
     expect(renamed.rev).toBeGreaterThan(before.rev);
     expect(
       (
@@ -305,7 +298,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
     else await generateVideo(name, 'red');
     write();
     await pipeline.runner.idle();
-    const replaced = opened.store.driveItems.byId(id);
+    const replaced = opened.store.driveItems.byId(id, null);
     expect(replaced.rev).toBeGreaterThan(renamed.rev);
     expect(media.byId(id).preview_state).toBe('ready');
     expect(

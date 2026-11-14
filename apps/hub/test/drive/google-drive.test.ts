@@ -196,7 +196,9 @@ describe('copying Drive', () => {
     rig.fake.addFile({ name: 'big.txt', parentId: ATOP }, 'more than four bytes');
     const importId = await rig.run(DRIVE);
     expect(record(importId)).toMatchObject({ state: 'interrupted', failure: 'storage_full' });
-    expect(rig.store.store.driveItems.byPath(rig.rootId, 'Google Drive/big.txt')).toBeUndefined();
+    expect(
+      rig.store.store.driveItems.byPath(rig.rootId, 'Google Drive/big.txt', null),
+    ).toBeUndefined();
     expect(await readdir(join(rig.rootPath, TMP_DIRECTORY))).toEqual([]);
   });
 });

@@ -4,12 +4,12 @@ import {
   DRIVE_ITEM_KINDS,
   type DriveItem,
 } from '@smarteverything/domain';
-import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
 import { invalidateDerivedRevision } from './drive-media-revision';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
-import { flag } from '../sql';
+import { itemColumns, sameStored } from './drive-item-columns';
+import { starredBy } from './drive-stars';
 
 export interface DriveItemIdentity {
   readonly dev: string;
@@ -35,16 +35,31 @@ export interface DriveItemEntry {
   readonly identity: DriveItemIdentity | null;
 }
 
+export interface DriveChildrenQuery {
+  readonly rootId: string;
+  readonly parentId: string | null;
+  readonly after: string | null;
+  readonly limit: number;
+  readonly viewer: string | null;
+}
+
 export interface DriveItemWindow {
   readonly entries: readonly DriveItemEntry[];
   readonly next: string | null;
 }
 
 const COLUMNS = `id, root_id, parent_id, rel_path, name, kind, mime, bytes, child_count, sha256,
-  integrity, dev, ino, modified_at, added_at, opened_at, starred, rev, etag, outside,
+  integrity, dev, ino, modified_at, added_at, opened_at, rev, etag, outside,
   added_by_profile_id, remote_id, remote_rev, thumb_state, thumb_reason, taken_at, width, height,
   orientation, camera_make, camera_model, camera_lens, exposure_iso, exposure_aperture,
   exposure_shutter, exposure_focal, place_lat, place_lon, duration_ms`;
+
+const SHARED = `(exists (select 1 from drive_grants g where g.item_id = i.id)
+  or exists (select 1 from drive_shares s where s.item_id = i.id and s.revoked_at is null
+    and (s.expires_at is null or s.expires_at > $now)))`;
+
+const SELECT = `select ${COLUMNS}, ${starredBy('$viewer')} as starred, ${SHARED} as shared
+  from drive_items i`;
 
 const TEXT = z.string().nullable();
 const NUMBER = z.number().nullable();
@@ -67,6 +82,7 @@ const ITEM_COLUMNS = z.strictObject({
   added_at: z.string(),
   opened_at: TEXT,
   starred: z.boolean(),
+  shared: z.boolean(),
   rev: z.number(),
   etag: z.string(),
   outside: z.boolean(),
@@ -105,6 +121,7 @@ function baseOf(row: ItemColumns): Record<string, unknown> {
     addedAt: row.added_at,
     openedAt: row.opened_at,
     starred: row.starred,
+    shared: row.shared,
     rev: row.rev,
     etag: row.etag,
     outside: row.outside,
@@ -189,7 +206,7 @@ function storedItemOf(row: ItemColumns): DriveItemEntry {
 }
 
 const STORED_ITEM = storedRow(ITEM_COLUMNS.transform(storedItemOf), {
-  flags: ['starred', 'outside'],
+  flags: ['starred', 'shared', 'outside'],
 });
 
 export function driveEtag(rev: number, item: DriveItemDraft): string {
@@ -200,150 +217,41 @@ export function driveEtag(rev: number, item: DriveItemDraft): string {
   return `${String(rev)}-${content}`;
 }
 
-type Columns = Record<string, SQLInputValue>;
-
-type Visual = Extract<DriveItem, { readonly kind: 'image' | 'video' }>;
-
-const NO_VISUAL: Columns = Object.fromEntries(
-  [
-    'width',
-    'height',
-    'orientation',
-    'place_lat',
-    'place_lon',
-    'camera_make',
-    'camera_model',
-    'camera_lens',
-    'exposure_iso',
-    'exposure_aperture',
-    'exposure_shutter',
-    'exposure_focal',
-  ].map((column) => [column, null]),
-);
-
-function cameraColumns(camera: Visual['camera']): Columns {
-  return {
-    camera_make: camera?.make ?? null,
-    camera_model: camera?.model ?? null,
-    camera_lens: camera?.lens ?? null,
-  };
-}
-
-function exposureColumns(exposure: Visual['exposure']): Columns {
-  return {
-    exposure_iso: exposure?.iso ?? null,
-    exposure_aperture: exposure?.aperture ?? null,
-    exposure_shutter: exposure?.shutter ?? null,
-    exposure_focal: exposure?.focal ?? null,
-  };
-}
-
-function visualColumns(item: Visual): Columns {
-  return {
-    width: item.width,
-    height: item.height,
-    orientation: item.orientation,
-    place_lat: item.place?.lat ?? null,
-    place_lon: item.place?.lon ?? null,
-    ...cameraColumns(item.camera),
-    ...exposureColumns(item.exposure),
-  };
-}
-
-function mediaColumns(item: DriveItem): Columns {
-  return {
-    taken_at: 'takenAt' in item ? item.takenAt : null,
-    duration_ms: 'durationMs' in item ? item.durationMs : null,
-    ...(item.kind === 'image' || item.kind === 'video' ? visualColumns(item) : NO_VISUAL),
-  };
-}
-
-function contentColumns(item: DriveItem): Columns {
-  if (item.kind === 'folder') {
-    return {
-      mime: null,
-      child_count: item.childCount,
-      sha256: null,
-      integrity: 'unknown',
-      thumb_state: 'none',
-      thumb_reason: null,
-    };
-  }
-  return {
-    mime: item.mime,
-    child_count: null,
-    sha256: item.sha256,
-    integrity: item.integrity,
-    thumb_state: item.thumb.state,
-    thumb_reason: 'reason' in item.thumb ? item.thumb.reason : null,
-  };
-}
-
-function itemColumns(item: DriveItem, identity: DriveItemIdentity): Columns {
-  return {
-    id: item.id,
-    root_id: item.rootId,
-    parent_id: item.parentId,
-    rel_path: item.relPath,
-    name: item.name,
-    kind: item.kind,
-    bytes: item.bytes,
-    dev: identity.dev,
-    ino: identity.ino,
-    modified_at: item.modifiedAt,
-    added_at: item.addedAt,
-    starred: flag(item.starred),
-    rev: item.rev,
-    etag: item.etag,
-    outside: flag(item.outside),
-    added_by_profile_id: item.addedByProfileId,
-    remote_id: item.remoteId,
-    remote_rev: item.remoteRev,
-    ...contentColumns(item),
-    ...mediaColumns(item),
-  };
-}
-
-function sameStored(left: Columns, right: Columns): boolean {
-  return Object.keys(left).every((column) => left[column] === right[column]);
-}
-
 export class DriveItemsRepository {
   constructor(private readonly context: StoreContext) {}
 
-  find(id: string): DriveItem | undefined {
-    return this.stored(id)?.item;
+  find(id: string, viewer: string | null): DriveItem | undefined {
+    return this.stored(id, viewer)?.item;
   }
 
-  byId(id: string): DriveItem {
-    return found(this.find(id), 'drive item', id);
+  byId(id: string, viewer: string | null): DriveItem {
+    return found(this.find(id, viewer), 'drive item', id);
   }
 
   identityOf(id: string): DriveItemIdentity | null {
-    return found(this.stored(id), 'drive item', id).identity;
+    return found(this.stored(id, null), 'drive item', id).identity;
   }
 
-  byPath(rootId: string, relPath: string): DriveItem | undefined {
+  byPath(rootId: string, relPath: string, viewer: string | null): DriveItem | undefined {
     return this.context.sql.get(
       STORED_ITEM,
-      `select ${COLUMNS} from drive_items where root_id = $rootId and rel_path = $relPath`,
-      { rootId, relPath },
+      `${SELECT} where root_id = $rootId and rel_path = $relPath`,
+      { rootId, relPath, viewer, now: this.context.now() },
     )?.item;
   }
 
-  children(
-    rootId: string,
-    parentId: string | null,
-    after: string | null,
-    limit: number,
-  ): DriveItemWindow {
+  children(query: DriveChildrenQuery): DriveItemWindow {
+    const { rootId, parentId, after, limit, viewer } = query;
+    const now = this.context.now();
     const rows = this.context.sql.all(
       STORED_ITEM,
-      `select ${COLUMNS} from drive_items
+      `${SELECT}
         where root_id = $rootId and parent_id is $parentId
           ${after === null ? '' : 'and name > $after'}
         order by name limit $limit`,
-      after === null ? { rootId, parentId, limit } : { rootId, parentId, after, limit },
+      after === null
+        ? { rootId, parentId, limit, viewer, now }
+        : { rootId, parentId, after, limit, viewer, now },
     );
     const last = rows.at(-1);
     return {
@@ -354,11 +262,11 @@ export class DriveItemsRepository {
 
   write(input: DriveItemWrite): DriveItemWriteResult {
     return this.context.write(() => {
-      const existing = this.stored(input.item.id);
+      const existing = this.stored(input.item.id, null);
       if (existing === undefined) {
         const created = this.candidate(input, 1, null);
         this.save(true, created, input.identity);
-        return { item: this.byId(created.id), changed: true };
+        return { item: this.byId(created.id, null), changed: true };
       }
       const same = this.candidate(input, existing.item.rev, existing.item.openedAt);
       if (this.unchanged(existing, same, input.identity)) {
@@ -368,13 +276,13 @@ export class DriveItemsRepository {
       this.save(false, bumped, input.identity);
       if (bumped.kind === 'image' || bumped.kind === 'video')
         invalidateDerivedRevision(this.context, bumped.id);
-      return { item: this.byId(bumped.id), changed: true };
+      return { item: this.byId(bumped.id, null), changed: true };
     });
   }
 
   markOpened(id: string, at: string): void {
     this.context.write(() => {
-      this.byId(id);
+      this.byId(id, null);
       this.context.sql.run(
         'mark the drive item opened',
         'update drive_items set opened_at = $at where id = $id',
@@ -385,16 +293,18 @@ export class DriveItemsRepository {
 
   remove(id: string): void {
     this.context.write(() => {
-      this.byId(id);
+      this.byId(id, null);
       this.context.sql.run('remove the drive item', 'delete from drive_items where id = $id', {
         id,
       });
     });
   }
 
-  private stored(id: string): DriveItemEntry | undefined {
-    return this.context.sql.get(STORED_ITEM, `select ${COLUMNS} from drive_items where id = $id`, {
+  private stored(id: string, viewer: string | null): DriveItemEntry | undefined {
+    return this.context.sql.get(STORED_ITEM, `${SELECT} where id = $id`, {
       id,
+      viewer,
+      now: this.context.now(),
     });
   }
 

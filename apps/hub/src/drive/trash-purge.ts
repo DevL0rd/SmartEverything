@@ -22,7 +22,7 @@ export async function commitTrash(
   itemId: string,
   actor: ChangeActor,
 ): Promise<void> {
-  const item = env.store.driveItems.byId(itemId);
+  const item = env.store.driveItems.byId(itemId, null);
   const move = await moveToTrash(env, root, {
     itemId,
     relPath: item.relPath,
@@ -34,6 +34,7 @@ export async function commitTrash(
   });
   env.store.write(() => {
     env.store.driveTrash.insert(move.entry);
+    env.store.driveTrash.stash(itemId);
     appendFeed(env, { ...item, rev: item.rev + 1 }, 'trash', actor);
     env.store.driveItems.remove(itemId);
     env.store.driveIntents.clear(move.intent.id);
@@ -60,6 +61,7 @@ export async function commitRestore(
     throw new DriveWriteError('missing', 'The restored item is missing after the move.');
   }
   const item = env.store.write(() => {
+    const stashed = env.store.driveTrash.stashed(itemId);
     env.store.driveTrash.remove(itemId);
     const parent = parentOf(env, root.id, restored.relPath);
     const base = {
@@ -78,6 +80,7 @@ export async function commitRestore(
         : fileDraft(base, { bytes: stamp.size, sha256: null }),
       identity: identityOf(stamp),
     }).item;
+    env.store.driveTrash.reinstate(itemId, stashed, restored.relPath);
     appendFeed(env, written, 'restore', actor);
     env.store.driveIntents.clear(restored.intent.id);
     announce(env, root.id, parent?.id ?? null, [written]);

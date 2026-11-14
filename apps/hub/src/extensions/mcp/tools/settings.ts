@@ -37,7 +37,7 @@ export const CHANGED_BY = {
   preferences: 'settings_edit action preference',
   layouts: 'operation_call saveLayout (page = home, climate, fitness or cameras)',
   drive_settings:
-    'drive_edit for library folders, shares and sync; operation_call updateDriveSettings for upload expiry, member sharing, duplicate hashing and indexing',
+    'drive_edit for drive folders, shares and sync; operation_call updateDriveSettings for upload expiry, member sharing, duplicate hashing and indexing',
   rooms: 'room_edit',
   people: 'person_edit',
   devices:

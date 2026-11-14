@@ -1,13 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import {
-  ApiError,
-  type ComputerNodeRow,
-  type DriveItem,
-  type DriveRoot,
-} from '@smarteverything/domain';
+import { ApiError, type ComputerNodeRow, type DriveItem } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { DrivePathError, openResolved, resolveInRoot } from '../drive/paths';
-import { rootVisibleTo, type DriveActor } from '../drive/service-read';
+import { canRead, itemAccess, type DriveActor } from '../drive/access';
 import type { Store } from '../store/store';
 import { serveBytes } from './file-serve';
 import { bearerOf } from './http';
@@ -21,7 +16,7 @@ export interface DriveFileNodes {
 }
 
 export interface DriveFiles {
-  readonly store: Pick<Store, 'driveRoots' | 'driveItems'>;
+  readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants'>;
   readonly links: MediaLinks;
   readonly nodes: DriveFileNodes;
   readonly now: () => Date;
@@ -43,15 +38,13 @@ function hidden(): ApiError {
 }
 
 function locate(files: DriveFiles, itemId: string, actor: DriveActor | null): Located {
-  const item = files.store.driveItems.find(itemId);
-  const root: DriveRoot | undefined =
-    item === undefined ? undefined : files.store.driveRoots.find(item.rootId);
+  const item = files.store.driveItems.find(itemId, actor?.profileId ?? null);
+  const root = item === undefined ? undefined : files.store.driveRoots.find(item.rootId);
   if (item === undefined || root === undefined) throw hidden();
-  if (actor !== null && !rootVisibleTo(actor, root)) throw hidden();
+  if (actor !== null && !canRead(itemAccess(files.store, actor, root, item))) throw hidden();
   if (item.kind === 'folder') {
     throw new ApiError('invalid_request', 'A folder has no bytes to download.');
   }
-  if (root.path === null) throw hidden();
   return { item, rootPath: root.path };
 }
 

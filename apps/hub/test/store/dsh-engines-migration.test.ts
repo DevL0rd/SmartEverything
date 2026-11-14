@@ -11,6 +11,7 @@ import { meteredRouteId } from '../../src/openrouter/metered-engine';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
+import { unusedDrivePath } from '../support/store';
 
 const NOW = '2026-10-17T09:00:00.000Z';
 const PROFILE = '0e000000-0000-4000-8000-0000000000f1';
@@ -105,7 +106,13 @@ describe('migrating a database that still has chats on the retired hub engine', 
   it('turns every openrouter chat into an unopened native chat on the hub with the metered route', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     const stored = engines();
     for (const id of [FULL, NAMED_MODEL, PLAIN_MODEL]) {
@@ -122,7 +129,13 @@ describe('migrating a database that still has chats on the retired hub engine', 
   it('keeps the model the chat had and uses the default model for a chat without one', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     const stored = engines();
     expect(stored[NAMED_MODEL]).toMatchObject({ model: 'openai/gpt-5', effort: 'high' });
@@ -132,7 +145,13 @@ describe('migrating a database that still has chats on the retired hub engine', 
   it('drops the effort of a model that does not reason', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     expect(engines()[PLAIN_MODEL]).toMatchObject({ model: 'plain/model', effort: null });
   });
@@ -140,7 +159,13 @@ describe('migrating a database that still has chats on the retired hub engine', 
   it('tightens a stored permission no host offers and leaves an offered one alone', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     const stored = engines();
     expect(stored[UNOFFERED]).toMatchObject({
@@ -154,7 +179,13 @@ describe('migrating a database that still has chats on the retired hub engine', 
   it('leaves every stored engine, chats and the default, readable by the current schema with no openrouter kind', () => {
     seedBefore();
 
-    openStore({ path, log: testLogger(), now: () => new Date(NOW), systemTimeZone: 'UTC' }).close();
+    openStore({
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
+    }).close();
 
     const database = new DatabaseSync(path);
     const columns = z

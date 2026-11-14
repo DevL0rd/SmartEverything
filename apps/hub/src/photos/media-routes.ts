@@ -7,8 +7,9 @@ import {
   type MediaTimeSource,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { DriveActor, DriveReadService } from '../drive/service-read';
-import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
+import type { DriveActor } from '../drive/access';
+import type { DriveReadService } from '../drive/service-read';
+import { photoActor } from './actor';
 import { refusing } from '../server/handlers/drive-errors';
 import { bound, type Bound } from '../server/router';
 import type { StoreContext } from '../store/context';
@@ -156,7 +157,7 @@ export class PhotoMedia {
     const failed = this.jobs
       .failures()
       .filter((job) => {
-        const item = this.store.driveItems.find(job.item_id);
+        const item = this.store.driveItems.find(job.item_id, null);
         return item !== undefined && visible.has(item.rootId);
       })
       .map(jobOf);
@@ -171,17 +172,13 @@ export interface PhotoMediaRoutes {
   readonly readMediaProcessing: Bound<typeof E.readMediaProcessing>;
 }
 
-function actorOf(store: Store, caller: Caller): DriveActor {
-  return { profileId: profileIdOf(store, caller), owner: roleOfCaller(caller) === 'owner' };
-}
-
 export function photoMediaRoutes(store: Store, media: PhotoMedia): PhotoMediaRoutes {
   return {
     readMediaInfo: bound(E.readMediaInfo, ({ params, caller }) =>
-      refusing(() => media.info(actorOf(store, caller), params.itemId)),
+      refusing(() => media.info(photoActor(store, caller), params.itemId)),
     ),
     readMediaProcessing: bound(E.readMediaProcessing, ({ caller }) =>
-      media.processing(actorOf(store, caller)),
+      media.processing(photoActor(store, caller)),
     ),
   };
 }

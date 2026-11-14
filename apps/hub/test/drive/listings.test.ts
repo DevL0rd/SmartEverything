@@ -1,10 +1,12 @@
 import type { DriveConflict } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DRIVE_PAGE_SIZE, DriveReadService, type DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
+import { DRIVE_PAGE_SIZE, DriveReadService } from '../../src/drive/service-read';
 import { driveListings } from '../../src/server/handlers/drive-listings';
 import type { DriveListings } from '../../src/server/handlers/drive-services';
-import { testStore, type TestStore } from '../support/store';
-import { folderRoot } from './drive-fixture';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const HOME = '0e000000-0000-4000-8000-000000000001';
 const SAMS = '0e000000-0000-4000-8000-000000000002';
@@ -33,6 +35,7 @@ function file(rootId: string): string {
       modifiedAt: '2026-11-07T00:00:00.000Z',
       addedAt: '2026-11-07T00:00:00.000Z',
       starred: false,
+      shared: false,
       outside: false,
       remoteId: null,
       remoteRev: null,
@@ -85,18 +88,12 @@ function share(itemId: string, createdBy: string, createdAt: string): string {
 }
 
 beforeEach(async () => {
-  opened = await testStore();
+  opened = await driveTestStore();
   const { store } = opened;
-  owner = { profileId: store.profiles.first().id, owner: true };
-  sam = { profileId: store.profiles.create({ name: 'Sam' }).id, owner: false };
-  store.driveRoots.insert(folderRoot(HOME, '/library/home'));
-  store.driveRoots.insert(
-    folderRoot(SAMS, '/library/sam', {
-      scope: 'person',
-      ownerProfileId: sam.profileId,
-      indexId: 'index-2',
-    }),
-  );
+  owner = { profileId: store.profiles.first().id };
+  sam = { profileId: store.profiles.create({ name: 'Sam' }).id };
+  store.driveRoots.insert(sharedDriveRoot(HOME));
+  store.driveRoots.insert(personalDriveRoot(SAMS, sam.profileId));
   listings = driveListings({
     store,
     read: new DriveReadService(store),
@@ -136,9 +133,8 @@ describe('drive conflicts', () => {
     expect(second).toEqual({ items: [made[0]], next: null });
     expect(listings.conflicts(sam, { rootId: SAMS }).items).toEqual([hidden]);
     const outsider = opened.store.profiles.create({ name: 'Ann' }).id;
-    expect(() =>
-      listings.conflicts({ profileId: outsider, owner: false }, { rootId: SAMS }),
-    ).toThrow();
+    expect(() => listings.conflicts({ profileId: outsider }, { rootId: SAMS })).toThrow();
+    expect(() => listings.conflicts(owner, { rootId: SAMS })).toThrow();
     expect(() => listings.conflicts(sam, { rootId: HOME, cursor: hidden.id })).toThrow();
   });
 });

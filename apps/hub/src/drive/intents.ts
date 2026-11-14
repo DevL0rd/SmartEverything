@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
-import type { DriveRoot } from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import type { Store } from '../store/store';
@@ -18,7 +17,7 @@ export function purgeDeadline(at: string): string {
   return new Date(Date.parse(at) + RETENTION_DAYS * DAY_MS).toISOString();
 }
 
-export type DriveWriteFailure = 'read-only' | 'exists' | 'missing' | 'corrupt' | 'no-physical-root';
+export type DriveWriteFailure = 'exists' | 'missing' | 'corrupt';
 
 export class DriveWriteError extends Error {
   override readonly name = 'DriveWriteError';
@@ -34,14 +33,7 @@ export class DriveWriteError extends Error {
 export interface DriveWriteRoot {
   readonly id: string;
   readonly path: string;
-  readonly readOnly: boolean;
   readonly versions: boolean;
-}
-
-export function assertWritable(root: DriveWriteRoot): void {
-  if (root.readOnly) {
-    throw new DriveWriteError('read-only', 'The hub never writes in a read-only root.');
-  }
 }
 
 export interface FileStamp {
@@ -143,7 +135,13 @@ export async function moveWithin(
 
 export type DriveFileStore = Pick<
   Store,
-  'driveIntents' | 'driveVersions' | 'driveTrash' | 'driveRoots' | 'driveUploads' | 'write'
+  | 'driveGrants'
+  | 'driveIntents'
+  | 'driveVersions'
+  | 'driveTrash'
+  | 'driveRoots'
+  | 'driveUploads'
+  | 'write'
 >;
 
 export interface FileEnv {
@@ -151,13 +149,6 @@ export interface FileEnv {
   readonly store: DriveFileStore;
   readonly log: Logger;
   readonly now: () => Date;
-}
-
-export function physicalRoot(root: DriveRoot): DriveWriteRoot {
-  if (root.path === null) {
-    throw new DriveWriteError('no-physical-root', 'The root has no folder on this machine.');
-  }
-  return { id: root.id, path: root.path, readOnly: root.readOnly, versions: root.versions };
 }
 
 export interface RecoveryEnv extends FileEnv {

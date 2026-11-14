@@ -26,7 +26,7 @@ export async function serveDriveDerived(
   const { itemId } = target;
   const size = SIZE.parse(target.size);
   const link = deps.links.verifyDrive(exchange.url);
-  const item = deps.store.driveItems.byId(itemId);
+  const item = deps.store.driveItems.byId(itemId, null);
   if (item.rev !== link.rev)
     throw new ApiError('link_expired', 'This file changed; request a new link.');
   mediaPipeline.runner.prioritise(itemId);

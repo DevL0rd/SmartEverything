@@ -43,7 +43,6 @@ export const DUPLICATE_STATS = z
         z
           .strictObject({
             rootId: z.uuid(),
-            label: z.string(),
             copies: z.int().positive(),
             bytes: COUNT,
           })

@@ -74,7 +74,6 @@ export const HUB_ENTRIES: readonly LiveEntry[] = [
   { legacy: 'harness/cache/c1', v1: 'cache/harness/c1' },
   { legacy: 'plugins/aibi/photos/p.jpg', v1: 'system/plugins/aibi/photos/p.jpg' },
   { legacy: 'providers/xiaomi/miot-specs/a.json', v1: 'system/providers/xiaomi/miot-specs/a.json' },
-  { legacy: 'drive-meta/root1/m.json', v1: 'system/drive-meta/root1/m.json' },
   { legacy: 'watch-captures/w1.png', v1: 'system/developer/watch-captures/w1.png' },
   {
     legacy: 'app-updates/keys/private-key.pem',

@@ -62,12 +62,12 @@ export type PhotoHubRoutes = PhotoRoutes &
 export function photoHubRoutes(inputs: PhotoHubInputs): PhotoHubRoutes {
   const { store } = inputs;
   const { context } = store;
-  const readers = photoReaders(context);
+  const readers = photoReaders(context, () => store.settings.read().time_zone);
   return {
     ...photosRoutes(store, readers),
     ...photoInsightRoutes(store, {
       insights: new InsightsReader(context),
-      rail: new RailCountsReader(context, readers.memories),
+      rail: new RailCountsReader(context),
     }),
     ...photoDuplicateRoutes(store, inputs.duplicates, new StacksService(context)),
     ...photoPlaceRoutes(store, new PlaceQueries(context)),

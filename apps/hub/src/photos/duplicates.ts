@@ -7,14 +7,16 @@ import {
   type DuplicateKeepBest,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { DRIVE_PAGE_SIZE, albumVisibleTo, type DriveActor } from '../drive/service-read';
+import { albumVisibleTo, driveSql, type DriveActor } from '../drive/access';
+import { DRIVE_PAGE_SIZE } from '../drive/service-read';
 import { storedRow } from '../store/codec';
 import type { StoreContext } from '../store/context';
 import { DriveAlbumsRepository } from '../store/repositories/drive-albums';
 import { DriveItemsRepository } from '../store/repositories/drive-items';
 import { SettingsKvRepository } from '../store/repositories/settings-kv';
 import { inList, jsonText, type SqlParameters } from '../store/sql';
-import { photoMembership } from './membership';
+import { starredBy } from '../store/repositories/drive-stars';
+import { PHOTO_VISIBLE } from './membership';
 
 export interface DuplicateChanges {
   readonly trash: (itemIds: readonly string[], actor: DriveActor) => Promise<void>;
@@ -53,9 +55,8 @@ const MEMBER_ROW = storedRow(
     modified_at: z.string(),
     starred: z.boolean(),
     pixels: z.number(),
-    read_only: z.boolean(),
   }),
-  { flags: ['starred', 'read_only'] },
+  { flags: ['starred'] },
 );
 
 const STATS_ROW = z.strictObject({
@@ -66,18 +67,17 @@ const STATS_ROW = z.strictObject({
 
 const SOURCE_ROW = z.strictObject({
   root_id: z.string(),
-  label: z.string(),
   copies: z.number(),
   bytes: z.number(),
 });
 
 const CANDIDATES = `candidate as (
-  select i.id, i.root_id, r.label, r.read_only, i.sha256, i.bytes, i.modified_at, i.starred,
+  select i.id, i.root_id, i.sha256, i.bytes, i.modified_at, ${starredBy()} as starred,
          coalesce(i.width, 0) * coalesce(i.height, 0) as pixels
   from drive_items i join drive_roots r on r.id = i.root_id
   where i.sha256 is not null and i.kind <> 'folder'
-    and ($owner = 1 or r.scope = 'home' or r.owner_profile_id = $profile)
-    and (i.kind in ('image', 'video') and ${photoMembership('i.id')} or $media = 0)
+    and (($media = 1 and i.kind in ('image', 'video') and ${PHOTO_VISIBLE})
+      or ($media = 0 and ${driveSql()}))
     and ($media = 1 or $root is null or i.root_id = $root)
     and i.sha256 not in (select value from json_each($hidden))
 )`;
@@ -92,7 +92,6 @@ interface Member {
   readonly modifiedAt: string;
   readonly starred: boolean;
   readonly pixels: number;
-  readonly readOnly: boolean;
 }
 
 const compareText = (left: string, right: string): number =>
@@ -114,7 +113,6 @@ function memberOf(row: z.output<typeof MEMBER_ROW>): Member {
     modifiedAt: row.modified_at,
     starred: row.starred,
     pixels: row.pixels,
-    readOnly: row.read_only,
   };
 }
 
@@ -151,7 +149,9 @@ export class DuplicatesService {
       rows.map((row) => row.sha256),
     );
     return {
-      groups: rows.map((row) => this.groupOf(row.sha256, row.bytes, members.get(row.sha256) ?? [])),
+      groups: rows.map((row) =>
+        this.groupOf(actor, row.sha256, row.bytes, members.get(row.sha256) ?? []),
+      ),
       next: nextCursor(rows),
     };
   }
@@ -168,9 +168,9 @@ export class DuplicatesService {
     const sources = this.context.sql.all(
       SOURCE_ROW,
       `with ${GROUPS}
-       select c.root_id, c.label, count(*) as copies, sum(c.bytes) as bytes
+       select c.root_id, count(*) as copies, sum(c.bytes) as bytes
        from candidate c join dup d on d.sha256 = c.sha256
-       group by c.root_id, c.label order by bytes desc, c.root_id`,
+       group by c.root_id order by bytes desc, c.root_id`,
       parameters,
     );
     return DUPLICATE_STATS.parse({
@@ -179,7 +179,6 @@ export class DuplicatesService {
       bytesBack: totals?.back ?? 0,
       sources: sources.map((row) => ({
         rootId: row.root_id,
-        label: row.label,
         copies: row.copies,
         bytes: row.bytes,
       })),
@@ -195,8 +194,7 @@ export class DuplicatesService {
     let reclaimedBytes = 0;
     for (const hash of hashes) {
       const ranked = [...(members.get(hash) ?? [])].sort(bestFirst);
-      const [keeper, ...others] = ranked;
-      const losers = others.filter((member) => !member.readOnly);
+      const [keeper, ...losers] = ranked;
       if (keeper !== undefined && losers.length > 0) {
         await this.collapse(actor, keeper, losers);
         groups += 1;
@@ -274,7 +272,12 @@ export class DuplicatesService {
     return hashes;
   }
 
-  private groupOf(sha256: string, bytes: number, members: readonly Member[]): DuplicateGroup {
+  private groupOf(
+    actor: DriveActor,
+    sha256: string,
+    bytes: number,
+    members: readonly Member[],
+  ): DuplicateGroup {
     const ranked = [...members].sort(bestFirst);
     const [keeper] = ranked;
     if (keeper === undefined) {
@@ -285,12 +288,12 @@ export class DuplicatesService {
       bytes,
       keeperItemId: keeper.id,
       reclaimableBytes: bytes * (ranked.length - 1),
-      items: ranked.map((member) => this.item(member.id)),
+      items: ranked.map((member) => this.item(member.id, actor.profileId)),
     };
   }
 
-  private item(id: string): DriveItem {
-    return this.items.byId(id);
+  private item(id: string, viewer: string): DriveItem {
+    return this.items.byId(id, viewer);
   }
 
   private members(
@@ -302,7 +305,7 @@ export class DuplicatesService {
     const rows = this.context.sql.all(
       MEMBER_ROW,
       `with ${CANDIDATES}
-       select id, sha256, bytes, modified_at, starred, pixels, read_only from candidate
+       select id, sha256, bytes, modified_at, starred, pixels from candidate
        where ${filter.text}`,
       { ...this.parameters(actor, scope), ...filter.parameters },
     );
@@ -317,7 +320,6 @@ export class DuplicatesService {
 
   private parameters(actor: DriveActor, scope: DuplicateScope): SqlParameters {
     return {
-      owner: actor.owner ? 1 : 0,
       profile: actor.profileId,
       media: scope.media ? 1 : 0,
       root: scope.rootId ?? null,

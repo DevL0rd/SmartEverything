@@ -10,17 +10,40 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Duplex } from 'node:stream';
-import { matchPath, type DriveRoot } from '@smarteverything/domain';
+import {
+  API_ENDPOINTS,
+  DRIVE_LIBRARY_ENDPOINTS,
+  DRIVE_STORAGE_ENDPOINTS,
+  matchPath,
+  type DriveBackupReport,
+  type DriveBackupReportInput,
+  type DriveBackupStatus,
+  type DriveDataSpace,
+  type DriveRoot,
+  type DriveScrubState,
+} from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
+import type { DiskSpace } from '../../src/drive/data-space';
+import type { WatchStatus } from '../../src/drive/watcher';
+import { DriveAlbumsService } from '../../src/drive/albums';
+import { DriveGrants } from '../../src/drive/grants';
+import { DriveHealthReader } from '../../src/drive/health';
 import { nodeCaller } from '../../src/drive/node-caller';
+import { DrivePlacements } from '../../src/drive/placements';
+import { DriveShares } from '../../src/drive/shares';
+import { DriveWriteService } from '../../src/drive/service-write';
 import { DriveReadService } from '../../src/drive/service-read';
 import { DRIVE_SYNC_PROTOCOL } from '../../src/drive/sync/server-socket';
 import { nodeFiles } from '../../src/drive/versions';
 import { CLASS2_METHODS } from '../../src/server/dav';
 import { httpFailureOf } from '../../src/server/errors';
 import { sendError } from '../../src/server/http';
+import { driveRoutes } from '../../src/server/handlers/drive';
+import { driveListings } from '../../src/server/handlers/drive-listings';
+import { drivePlacementRoutes } from '../../src/server/handlers/drive-placements';
+import type { DriveServices } from '../../src/server/handlers/drive-services';
 import type { RawRoute } from '../../src/server/http-server';
 import {
   createDriveSurfaces,
@@ -35,7 +58,7 @@ import { actorOf } from '../../src/server/handlers/drive-services';
 import { MediaLinks } from '../../src/server/media-links';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
-import { folderRoot } from './drive-fixture';
+import { personalDriveRoot } from '../store/drive-roots-fixture';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const ROOT = randomUUID();
@@ -133,15 +156,12 @@ function pairNode(profileId: string | null): Node {
   return { token };
 }
 
-function syncedRoot(): DriveRoot {
-  return opened.store.driveRoots.insert(
-    folderRoot(ROOT, directory, {
-      readOnly: false,
-      synced: true,
-      indexId: randomUUID(),
-      sync: { ignorePatterns: [], conflictCopies: true, clients: [] },
-    }),
-  );
+function myDrive(): DriveRoot {
+  const { id, ...root } = personalDriveRoot(ROOT, opened.store.profiles.first().id, {
+    indexId: randomUUID(),
+  });
+  const { path: _path, ...stored } = opened.store.driveRoots.insert({ id, ...root });
+  return stored;
 }
 
 beforeEach(async () => {
@@ -297,6 +317,125 @@ const PERSON_PATHS: readonly Call[] = [
 
 const EVERY_PATH: readonly Call[] = [...SYNC_PATHS, ...PERSON_PATHS];
 
+const REMOVED = [
+  'addRoot',
+  'removeRoot',
+  'listVolumes',
+  'listHostFolders',
+  'listSyncClients',
+  'updateSyncClient',
+];
+
+function driveServices(): DriveServices {
+  const { store } = opened;
+  const read = new DriveReadService(store);
+  const nodes = new ComputerNodeAccess(store, () => NOW);
+  const env = {
+    files: nodeFiles,
+    store,
+    log: testLogger('drive'),
+    now: (): Date => NOW,
+    purge: { rearm: (): void => undefined },
+    conflicts: {
+      insert: (): void => undefined,
+      find: (): undefined => undefined,
+      resolve: (): never => {
+        throw new Error('unused');
+      },
+    },
+  };
+  const albums = new DriveAlbumsService({
+    albums: store.driveAlbums,
+    items: store.driveItems,
+    roots: store.driveRoots,
+    runner: { rows: (): [] => [], count: (): number => 0 },
+    newId: randomUUID,
+    now: (): string => NOW.toISOString(),
+    timeZone: 'UTC',
+  });
+  const shares = new DriveShares({
+    store,
+    origin: (): { url: string; public: boolean } => ({ url: 'http://hub.test', public: false }),
+    now: (): Date => NOW,
+  });
+  const space = (): Promise<DiskSpace> =>
+    Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 });
+  const dataSpace = (): Promise<DriveDataSpace> =>
+    Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12, fsType: 'ext4' });
+  const idle: DriveScrubState = { state: 'idle', lastFinishedAt: null, corrupt: 0 };
+  const scrub = { start: (): DriveScrubState => idle, state: (): DriveScrubState => idle };
+  const backups = {
+    report: (input: DriveBackupReportInput): DriveBackupReport => store.driveBackups.record(input),
+    status: (): DriveBackupStatus => store.driveBackups.status(),
+  };
+  return {
+    read,
+    write: new DriveWriteService({
+      env,
+      store,
+      read,
+      albums,
+      shares,
+      scrub,
+      backups,
+      guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
+      scan: (): void => undefined,
+    }),
+    albums,
+    shares,
+    scrub,
+    backups,
+    health: new DriveHealthReader(store.context, {
+      roots: () => store.driveRoots.list(),
+      watcher: (): WatchStatus => ({ watching: true, unreadable: [], problem: null }),
+      scrub: scrub.state,
+      backup: backups.status,
+      space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12, fsType: 'ext4' }),
+    }),
+    files: {
+      store,
+      links: new MediaLinks(() => NOW),
+      nodes: {
+        authenticate: (token) => nodes.authenticate(token),
+        actorOf: (node) => actorOf(store, nodeCaller(store, node)),
+      },
+      now: (): Date => NOW,
+    },
+    grants: new DriveGrants({ store }),
+    probe: { readMountInfo: (): Promise<string> => Promise.resolve(''), space },
+    dataSpace,
+    listings: driveListings({
+      store,
+      read,
+      duplicates: { groups: () => ({ groups: [], next: null }) },
+    }),
+  };
+}
+
+describe('Drive route table', () => {
+  it('has a handler for every Drive endpoint in the registry and routes no removed or unknown one', () => {
+    const { store } = opened;
+    const table = {
+      ...driveRoutes(store, driveServices()),
+      ...drivePlacementRoutes(
+        store,
+        new DrivePlacements({ store, context: store.context, newId: randomUUID }),
+      ),
+    };
+    const registered = [
+      ...Object.keys(DRIVE_LIBRARY_ENDPOINTS),
+      ...Object.keys(DRIVE_STORAGE_ENDPOINTS),
+    ];
+    const routed = Object.keys(table);
+    expect(registered.filter((name) => !routed.includes(name))).toEqual([]);
+    expect(routed.filter((name) => !registered.includes(name))).toEqual([]);
+    for (const name of REMOVED) {
+      expect(routed).not.toContain(name);
+      expect(Object.keys(API_ENDPOINTS)).not.toContain(name);
+    }
+  });
+});
+
 describe('Drive hub wiring', () => {
   it('registers each method and path once and gives WebDAV every class 2 verb', () => {
     const keys = surfaces.routes.map((route) => `${route.method} ${route.path}`);
@@ -307,7 +446,7 @@ describe('Drive hub wiring', () => {
   });
 
   it.each(EVERY_PATH)('answers $method $path with sign-in required', async ({ method, path }) => {
-    syncedRoot();
+    myDrive();
     const reply = await send(method, path);
     expect(reply.status).toBe(401);
     expect(writes).toBe(0);
@@ -321,7 +460,7 @@ describe('Drive hub wiring', () => {
   it.each(SYNC_PATHS)(
     'treats a computer that is not paired for a person as signed out on $method $path',
     async ({ method, path }) => {
-      syncedRoot();
+      myDrive();
       const reply = await send(method, path, pairNode(null).token);
       expect(reply.status).toBe(401);
     },
@@ -330,7 +469,7 @@ describe('Drive hub wiring', () => {
   it.each(PERSON_PATHS)(
     'refuses $method $path for a computer that is not paired for a person',
     async ({ method, path }) => {
-      syncedRoot();
+      myDrive();
       const reply = await send(method, path, pairNode(null).token);
       expect(reply.status).toBe(403);
       expect(writes).toBe(0);
@@ -349,15 +488,22 @@ describe('Drive hub wiring', () => {
   });
 
   it('lists a synced root through the mount API for a paired computer', async () => {
-    syncedRoot();
+    myDrive();
     const owner = opened.store.profiles.first().id;
     const reply = await send('GET', `/drive/fs/${ROOT}/list`, pairNode(owner).token);
     expect(reply.status).toBe(200);
     expect(JSON.parse(reply.body)).toMatchObject({ entries: [], next: null });
   });
 
+  it('hides a person’s drive from another person’s computer, the Hub owner included', async () => {
+    myDrive();
+    const other = opened.store.profiles.create({ name: 'Sam' }).id;
+    const reply = await send('GET', `/drive/fs/${ROOT}/list`, pairNode(other).token);
+    expect(reply.status).toBe(404);
+  });
+
   it('serves a DAV PROPFIND on a root for a paired computer', async () => {
-    syncedRoot();
+    myDrive();
     const owner = opened.store.profiles.first().id;
     const reply = await send('PROPFIND', `/dav/${ROOT}/`, pairNode(owner).token, { depth: '0' });
     expect(reply.status).toBe(207);

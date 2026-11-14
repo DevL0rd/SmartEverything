@@ -1,19 +1,14 @@
-import {
-  ApiError,
-  RECORDING_ROW,
-  deviceInScope,
-  type DriveRoot,
-  type PhotoSource,
-} from '@smarteverything/domain';
+import { ApiError, RECORDING_ROW, deviceInScope, type PhotoSource } from '@smarteverything/domain';
 import { z } from 'zod';
-import { physicalRoot } from '../../drive/intents';
 import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
+import { sharedDrive } from '../../drive/spaces';
 import { inList } from '../../store/sql';
 import { Keeper, safeName } from './keeper';
 import { keptNames } from './kept';
 import {
   decodeCursor,
   encodeCursor,
+  sourceNarrowing,
   type SourcePage,
   type SourceQuery,
   type SourceService,
@@ -49,6 +44,11 @@ const RECORDING = RECORDING_ROW.pick({
 
 type Recording = z.output<typeof RECORDING>;
 
+const SAVED_NAME = `replace(replace(substr(r.started_at, 1, 19), 'T', ' '), ':', '.') || ' ' || r.id
+  || case r.kind when 'snapshot' then '.jpg' else '.mp4' end`;
+
+const COLUMNS = { name: SAVED_NAME, chipName: 'd.name', at: 'r.started_at' };
+
 const CHIP_ROW = z.strictObject({ id: z.string(), total: z.int().nonnegative() });
 
 export interface CameraSourceOptions {
@@ -76,12 +76,12 @@ export class CameraSource implements SourceService {
       throw new ApiError('not_found', 'This camera is not one you can see.');
     }
     const ids = query.chipId === undefined ? [...cameras.keys()] : [query.chipId];
-    const rows = this.rows(ids, decodeCursor(query.cursor));
+    const rows = this.rows(ids, query, decodeCursor(query.cursor));
     const shown = rows.slice(0, DRIVE_PAGE_SIZE);
     const last = shown.at(-1);
     const kept = this.keptAmong(shown);
     return {
-      chips: this.chips(cameras),
+      chips: this.chips(cameras, query),
       items: shown.map((row) => ({
         itemId: row.id,
         chipId: row.device_id,
@@ -108,12 +108,12 @@ export class CameraSource implements SourceService {
       }
     }
     return await this.keeper.serialized(async () => {
-      const root = this.savedRoot();
+      const root = sharedDrive(this.options.env.store);
       let copied = 0;
       for (const recording of recordings) {
         if (this.keptAmong([recording]).has(savedName(recording))) continue;
         await this.keeper.copy({
-          root: physicalRoot(root),
+          root,
           folders: [
             SAVED,
             SAVED_CAMERAS,
@@ -146,14 +146,17 @@ export class CameraSource implements SourceService {
     return names;
   }
 
-  private chips(cameras: ReadonlyMap<string, string>): SourcePage['chips'] {
-    const filter = inList('device_id', 'devices', [...cameras.keys()]);
+  private chips(cameras: ReadonlyMap<string, string>, query: SourceQuery): SourcePage['chips'] {
+    const filter = inList('r.device_id', 'devices', [...cameras.keys()]);
+    const narrowing = sourceNarrowing(query, COLUMNS);
     const counts = new Map(
       this.options.env.sql
         .all(
           CHIP_ROW,
-          `select device_id as id, count(*) as total from recordings where ${filter.text} group by device_id`,
-          filter.parameters,
+          `select r.device_id as id, count(*) as total
+             from recordings r join devices d on d.id = r.device_id
+            where ${filter.text}${narrowing.text} group by r.device_id`,
+          { ...filter.parameters, ...narrowing.parameters },
         )
         .map((row) => [row.id, row.total] as const),
     );
@@ -164,16 +167,24 @@ export class CameraSource implements SourceService {
       );
   }
 
-  private rows(deviceIds: readonly string[], after: ReturnType<typeof decodeCursor>): Recording[] {
-    const filter = inList('device_id', 'devices', deviceIds);
+  private rows(
+    deviceIds: readonly string[],
+    query: SourceQuery,
+    after: ReturnType<typeof decodeCursor>,
+  ): Recording[] {
+    const filter = inList('r.device_id', 'devices', deviceIds);
+    const narrowing = sourceNarrowing(query, COLUMNS);
     return this.options.env.sql.all(
       RECORDING,
-      `select id, device_id, kind, storage_path, started_at, bytes, duration_ms from recordings
-        where ${filter.text}
-          and ($afterAt is null or started_at < $afterAt or (started_at = $afterAt and id < $afterId))
-        order by started_at desc, id desc limit $limit`,
+      `select r.id, r.device_id, r.kind, r.storage_path, r.started_at, r.bytes, r.duration_ms
+         from recordings r join devices d on d.id = r.device_id
+        where ${filter.text}${narrowing.text}
+          and ($afterAt is null or r.started_at < $afterAt
+            or (r.started_at = $afterAt and r.id < $afterId))
+        order by r.started_at desc, r.id desc limit $limit`,
       {
         ...filter.parameters,
+        ...narrowing.parameters,
         afterAt: after?.at ?? null,
         afterId: after?.id ?? null,
         limit: DRIVE_PAGE_SIZE + 1,
@@ -196,23 +207,11 @@ export class CameraSource implements SourceService {
   }
 
   private keptAmong(recordings: readonly Recording[]): ReadonlySet<string> {
-    const root = this.homeRoot();
-    return root === undefined
-      ? new Set()
-      : keptNames(this.options.env.sql, root.id, SAVED_PREFIX, recordings.map(savedName));
-  }
-
-  private homeRoot(): DriveRoot | undefined {
-    return this.options.env.store.driveRoots
-      .list()
-      .find((root) => root.kind === 'managed' && root.scope === 'home');
-  }
-
-  private savedRoot(): DriveRoot {
-    const root = this.homeRoot();
-    if (root === undefined) {
-      throw new ApiError('not_found', 'The hub has no SmartEverything folder to save into.');
-    }
-    return root;
+    return keptNames(
+      this.options.env.sql,
+      sharedDrive(this.options.env.store).id,
+      SAVED_PREFIX,
+      recordings.map(savedName),
+    );
   }
 }

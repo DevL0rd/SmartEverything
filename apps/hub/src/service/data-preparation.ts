@@ -15,11 +15,12 @@ import {
 } from '../data-layout';
 import { lockDataDirectory } from '../data-lock';
 import { finishCommitFromDisk } from '../drive/changes';
-import { physicalRoot, recoverIntents, type DriveFiles } from '../drive/intents';
+import { recoverIntents, type DriveFiles } from '../drive/intents';
 import { nodeFiles } from '../drive/versions';
 import { assertPhotosFolderPrepared, migratePhotosFolder } from '../photos/folder-migration';
 import { DriveBackupRepository } from '../store/repositories/drive-backup';
 import { openStore, type Store } from '../store/store';
+import { removeUnlinkedFolders } from './unlinked-folders';
 
 export const PREPARE_DATA_ARGUMENT = '--prepare-data';
 
@@ -44,7 +45,12 @@ interface PreparationOptions {
   readonly signal?: AbortSignal;
 }
 
-async function prepareStore(store: Store, log: Logger, options: PreparationOptions): Promise<void> {
+async function prepareStore(
+  store: Store,
+  layout: HubLayout,
+  log: Logger,
+  options: PreparationOptions,
+): Promise<void> {
   const env = {
     store: { ...store, driveBackup: new DriveBackupRepository(store.context) },
     sql: store.context.sql,
@@ -53,13 +59,11 @@ async function prepareStore(store: Store, log: Logger, options: PreparationOptio
     now: store.now,
     purge: { rearm: (): void => undefined },
   };
-  const roots = store.driveRoots
-    .list()
-    .filter((root) => root.kind === 'managed' && root.scope === 'person')
-    .map(physicalRoot);
+  const roots = store.driveRoots.list().filter((root) => root.scope === 'person');
   const recovery = await recoverIntents({ ...env, finishCommit: finishCommitFromDisk(env) }, roots);
   if (recovery.failed > 0)
     throw new Error('Drive intents could not be recovered before data preparation.');
+  await removeUnlinkedFolders(store.context.sql, layout, log);
   await migratePhotosFolder(env, options.signal);
   assertPhotosFolderPrepared(store.context.sql);
   options.signal?.throwIfAborted();
@@ -80,10 +84,12 @@ export async function prepareHubData(
       log,
       now: () => new Date(),
       systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      drivePathOf: (scope, ownerProfileId) =>
+        scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
     });
     try {
       log.info('service.data_preparation_started');
-      await prepareStore(store, log, options);
+      await prepareStore(store, layout, log, options);
       log.info('service.data_preparation_finished');
     } finally {
       store.close();

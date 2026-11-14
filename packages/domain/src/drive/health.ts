@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DRIVE_DATA_SPACE } from './root';
 
 const MOMENT = z.iso.datetime({ offset: true });
 const COUNT = z.int().nonnegative();
@@ -65,15 +66,15 @@ export const DRIVE_HEALTH = z
     verifiedShare: SHARE,
     corrupt: COUNT,
     rootsTotal: COUNT,
-    rootsOffline: COUNT,
+    rootsUnavailable: COUNT,
     watcher: z.enum(DRIVE_WATCHER_STATES),
-    freeBytes: COUNT.nullable(),
+    space: DRIVE_DATA_SPACE,
     scrub: DRIVE_SCRUB_STATE,
     backup: DRIVE_BACKUP_STATUS,
   })
-  .refine((health) => health.rootsOffline <= health.rootsTotal, {
-    message: 'offline roots cannot exceed all roots',
-    path: ['rootsOffline'],
+  .refine((health) => health.rootsUnavailable <= health.rootsTotal, {
+    message: 'unavailable drives cannot exceed all drives',
+    path: ['rootsUnavailable'],
   })
   .readonly();
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
 import type { WalkEntry } from '../../src/drive/scanner-walk';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
-import { folderRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import { driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
 const ROOT = '0d000000-0000-4000-8000-000000000021';
 const UPLOADED_AT = '2026-11-06T12:00:00.000Z';
@@ -25,7 +25,7 @@ let profileId = '';
 beforeEach(() => {
   fixture = openDriveFixture();
   ({ database, context, roots, items } = fixture);
-  roots.insert(folderRoot(ROOT, '/library'));
+  fixture.addDrive(driveRoot(ROOT), '/library');
   profileId = new ProfilesRepository(context).create({ name: 'Robin' }).id;
 });
 
@@ -102,7 +102,7 @@ function paths(): string[] {
 }
 
 function rowAt(relPath: string): DriveItem {
-  const row = items.byPath(ROOT, relPath);
+  const row = items.byPath(ROOT, relPath, null);
   if (row === undefined) throw new Error(`The row for ${relPath} is missing.`);
   return row;
 }
@@ -126,7 +126,8 @@ function uploadRow(
       thumb: { state: 'none' },
       modifiedAt: STALE_AT,
       addedAt: UPLOADED_AT,
-      starred: true,
+      starred: false,
+      shared: false,
       outside: false,
       addedByProfileId: profileId,
       remoteId: 'remote-42',
@@ -150,6 +151,7 @@ function folderRow(relPath: string): string {
       modifiedAt: STALE_AT,
       addedAt: UPLOADED_AT,
       starred: false,
+      shared: false,
       outside: false,
       addedByProfileId: null,
       remoteId: null,
@@ -170,14 +172,13 @@ describe('committing a scan over a changing index', () => {
     ]);
     const totals = racing.finish([]);
     expect(rowsAt('uploaded.txt')).toEqual([{ id: uploaded }]);
-    expect(items.byPath(ROOT, 'uploaded.txt')).toMatchObject({
+    expect(items.byPath(ROOT, 'uploaded.txt', null)).toMatchObject({
       id: uploaded,
       kind: 'document',
       mime: 'text/plain',
       bytes: 5,
       modifiedAt: DISK_AT,
       addedAt: UPLOADED_AT,
-      starred: true,
       addedByProfileId: profileId,
       remoteId: 'remote-42',
       remoteRev: 'rev-7',
@@ -196,13 +197,16 @@ describe('committing a scan over a changing index', () => {
     ]);
     const totals = racing.finish([]);
     expect(rowsAt('incoming')).toEqual([{ id: uploaded }]);
-    expect(items.byPath(ROOT, 'incoming')).toMatchObject({
+    expect(items.byPath(ROOT, 'incoming', null)).toMatchObject({
       id: uploaded,
       kind: 'folder',
       childCount: 1,
       bytes: 5,
     });
-    expect(items.byPath(ROOT, 'incoming/a.txt')).toMatchObject({ parentId: uploaded, bytes: 5 });
+    expect(items.byPath(ROOT, 'incoming/a.txt', null)).toMatchObject({
+      parentId: uploaded,
+      bytes: 5,
+    });
     expect(paths()).toEqual(['incoming', 'incoming/a.txt']);
     expect(totals).toEqual({ items: 1, folders: 1, bytes: 5 });
   });
@@ -220,8 +224,8 @@ describe('committing a scan over a changing index', () => {
     racing.finish([]);
     expect(rowsAt('a.txt')).toEqual([{ id: arriving }]);
     expect(paths()).toEqual(['a.txt', 'moved.txt']);
-    expect(items.byPath(ROOT, 'a.txt')?.id).toBe(arriving);
-    expect(items.byPath(ROOT, 'moved.txt')?.id).toBe(keeper.id);
+    expect(items.byPath(ROOT, 'a.txt', null)?.id).toBe(arriving);
+    expect(items.byPath(ROOT, 'moved.txt', null)?.id).toBe(keeper.id);
   });
 
   it('prefers the row at the path over a repathed row with the same identity', () => {
@@ -236,8 +240,8 @@ describe('committing a scan over a changing index', () => {
     racing.apply([fileEntry('a.txt', { ino: '1', bytes: 9 })]);
     racing.finish([]);
     expect(rowsAt('a.txt')).toEqual([{ id: occupant }]);
-    expect(items.byPath(ROOT, 'a.txt')).toMatchObject({ bytes: 9 });
-    expect(items.byPath(ROOT, 'b.txt')?.id).toBe(loaded.id);
+    expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ bytes: 9 });
+    expect(items.byPath(ROOT, 'b.txt', null)?.id).toBe(loaded.id);
     expect(paths()).toEqual(['a.txt', 'b.txt']);
   });
 
@@ -250,16 +254,16 @@ describe('committing a scan over a changing index', () => {
     racing.apply([fileEntry('a.txt', { ino: '1', bytes: 9 })]);
     racing.finish([]);
     expect(rowsAt('a.txt')).toEqual([{ id: occupant }]);
-    expect(items.byPath(ROOT, 'a.txt')).toMatchObject({ id: occupant, bytes: 9 });
+    expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ id: occupant, bytes: 9 });
   });
 
   it('leaves an unchanged path alone on a later scan', () => {
     scanned([fileEntry('keep.txt')]);
-    const before = items.byPath(ROOT, 'keep.txt');
+    const before = items.byPath(ROOT, 'keep.txt', null);
     const again = committer();
     expect(again.previous).toBe(1);
     again.apply([fileEntry('keep.txt')]);
-    expect(items.byPath(ROOT, 'keep.txt')).toEqual(before);
+    expect(items.byPath(ROOT, 'keep.txt', null)).toEqual(before);
     expect(again.finish([])).toEqual({ items: 1, folders: 0, bytes: 5 });
   });
 
@@ -272,8 +276,8 @@ describe('committing a scan over a changing index', () => {
     racing.apply([fileEntry('new.txt')]);
     const totals = racing.finish([]);
     expect(rowsAt('new.txt')).toEqual([{ id: mover.id }]);
-    expect(items.find(occupant)).toBeUndefined();
-    expect(items.byPath(ROOT, 'new.txt')).toMatchObject({ id: mover.id, relPath: 'new.txt' });
+    expect(items.find(occupant, null)).toBeUndefined();
+    expect(items.byPath(ROOT, 'new.txt', null)).toMatchObject({ id: mover.id, relPath: 'new.txt' });
     expect(paths()).toEqual(['new.txt']);
     expect(totals).toEqual({ items: 1, folders: 0, bytes: 5 });
   });
@@ -286,7 +290,7 @@ describe('committing a scan over a changing index', () => {
     again.apply([fileEntry('new.txt')]);
     expect(again.finish([])).toEqual({ items: 1, folders: 0, bytes: 5 });
     expect(paths()).toEqual(['new.txt']);
-    expect(items.byPath(ROOT, 'new.txt')).toMatchObject({ id: moved.id, relPath: 'new.txt' });
+    expect(items.byPath(ROOT, 'new.txt', null)).toMatchObject({ id: moved.id, relPath: 'new.txt' });
   });
 
   it('keeps the owning fields when a rescan writes changed facts', () => {
@@ -296,13 +300,12 @@ describe('committing a scan over a changing index', () => {
     const scan = committer();
     scan.apply([fileEntry('edited.txt')]);
     const totals = scan.finish([]);
-    expect(items.byPath(ROOT, 'edited.txt')).toMatchObject({
+    expect(items.byPath(ROOT, 'edited.txt', null)).toMatchObject({
       id: seeded.id,
       rev: 2,
       modifiedAt: DISK_AT,
       addedAt: UPLOADED_AT,
       openedAt: OPENED_AT,
-      starred: true,
       addedByProfileId: profileId,
       remoteId: 'remote-42',
       remoteRev: 'rev-7',

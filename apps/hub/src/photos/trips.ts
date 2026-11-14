@@ -1,17 +1,17 @@
-import type { GeoPoint, Trip, YearInReview } from '@smarteverything/domain';
+import type { GeoPoint, Trip } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { DriveActor } from '../drive/service-read';
+import type { DriveActor } from '../drive/access';
+import { starredBy } from '../store/repositories/drive-stars';
 import type { StoreContext } from '../store/context';
 import { DrivePlacesRepository } from '../store/repositories/drive-places';
 import {
   LOCAL_DAY,
-  LOCAL_SECONDS,
   PHOTO_FROM,
   PHOTO_SHOWN,
   dayRange,
   visibility,
   type Statement,
-} from './timeline';
+} from './library';
 
 export const TRIP_GAP_DAYS = 1;
 
@@ -21,8 +21,6 @@ export const AWAY_KM = 50;
 
 const DAY_MS = 86_400_000;
 
-const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
-
 const EARTH_RADIUS_KM = 6371;
 
 export interface DayStat {
@@ -31,9 +29,6 @@ export interface DayStat {
   readonly located: number;
   readonly lat: number | null;
   readonly lon: number | null;
-  readonly favourites: number;
-  readonly firstSeconds: number;
-  readonly lastSeconds: number;
   readonly coverItemId: string;
 }
 
@@ -54,9 +49,6 @@ const DAY_ROW = z.strictObject({
   located: z.int().nonnegative(),
   lat: z.number().nullable(),
   lon: z.number().nullable(),
-  favourites: z.int().nonnegative(),
-  first_seconds: z.number(),
-  last_seconds: z.number(),
   cover_item_id: z.string(),
 });
 
@@ -97,17 +89,15 @@ export function daysStatement(actor: DriveActor, range: DayRangeQuery): Statemen
   const window = dayRange(range.fromDay, range.toDay);
   return {
     text: `with shown as (
-         select i.id, i.starred, i.place_lat, i.place_lon, ${LOCAL_DAY} as day,
-           ${LOCAL_SECONDS} as seconds,
+         select i.id, i.place_lat, i.place_lon, ${LOCAL_DAY} as day,
            row_number() over (
-             partition by ${LOCAL_DAY} order by i.starred desc, i.taken_at, i.id
+             partition by ${LOCAL_DAY} order by ${starredBy()} desc, i.taken_at, i.id
            ) as rank
          from ${PHOTO_FROM}
          where ${PHOTO_SHOWN}${window.text}
        )
        select day, count(*) as count, count(place_lat) as located, avg(place_lat) as lat,
-         avg(place_lon) as lon, sum(starred) as favourites, min(seconds) as first_seconds,
-         max(seconds) as last_seconds, max(case when rank = 1 then id end) as cover_item_id
+         avg(place_lon) as lon, max(case when rank = 1 then id end) as cover_item_id
        from shown group by day order by day`,
     parameters: { ...visibility(actor), ...window.parameters },
   };
@@ -125,9 +115,6 @@ export function readDays(
     located: row.located,
     lat: row.lat,
     lon: row.lon,
-    favourites: row.favourites,
-    firstSeconds: row.first_seconds,
-    lastSeconds: row.last_seconds,
     coverItemId: row.cover_item_id,
   }));
 }
@@ -248,57 +235,6 @@ export function perDayOf(days: readonly DayStat[], from: string, to: string): Tr
 
 export function shiftDay(day: string, days: number): string {
   return new Date(Date.parse(day) + days * DAY_MS).toISOString().slice(0, 10);
-}
-
-export function sameDayYearsAgo(today: string, years: number): string | null {
-  const year = Number(today.slice(0, 4)) - years;
-  const target = `${String(year).padStart(4, '0')}${today.slice(4)}`;
-  return new Date(Date.parse(target)).toISOString().slice(0, 10) === target ? target : null;
-}
-
-export function perMonth(year: number, days: readonly DayStat[]): YearInReview['perMonth'] {
-  return MONTHS.map((month) => {
-    const key = `${String(year)}-${month}`;
-    return {
-      month: key,
-      count: days.filter((day) => day.day.startsWith(key)).reduce((sum, day) => sum + day.count, 0),
-    };
-  });
-}
-
-export function mostFavouritedMonth(year: number, days: readonly DayStat[]): string | null {
-  const totals = perMonth(year, days).map((entry) => ({
-    month: entry.month,
-    favourites: days
-      .filter((day) => day.day.startsWith(entry.month))
-      .reduce((sum, day) => sum + day.favourites, 0),
-  }));
-  const top = totals.sort(
-    (a, b) => b.favourites - a.favourites || a.month.localeCompare(b.month),
-  )[0];
-  return top !== undefined && top.favourites > 0 ? top.month : null;
-}
-
-export function longestDayOut(days: readonly DayStat[]): { day: string; count: number } | null {
-  const span = (day: DayStat): number => day.lastSeconds - day.firstSeconds;
-  const top = days
-    .filter((day) => day.located > 0)
-    .sort((a, b) => span(b) - span(a) || a.day.localeCompare(b.day))[0];
-  return top === undefined ? null : { day: top.day, count: top.count };
-}
-
-export function cameraName(make: string | null, model: string | null): string | null {
-  if (model === null) {
-    return make;
-  }
-  return make === null || model.startsWith(make) ? model : `${make} ${model}`;
-}
-
-export function bounds(days: readonly DayStat[]): { count: number; cover: string } | null {
-  const top = [...days].sort((a, b) => b.count - a.count || a.day.localeCompare(b.day))[0];
-  return top === undefined
-    ? null
-    : { count: days.reduce((sum, day) => sum + day.count, 0), cover: top.coverItemId };
 }
 
 export function tripId(from: string): string {

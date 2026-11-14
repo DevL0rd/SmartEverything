@@ -22,17 +22,14 @@ const CHANGED = {
 };
 
 const COUNTS = {
-  timeline: 10,
-  memories: 2,
+  library: 10,
   albums: 1,
   places: 3,
   favourites: 4,
   videos: 5,
   screenshots: 6,
-  cameras: 7,
-  ai: 8,
   duplicates: 9,
-  backupPhones: 2,
+  backupDevices: 2,
   deleted: 1,
 };
 
@@ -93,8 +90,8 @@ describe('the rail counts', () => {
     expect(PHOTOS_ENDPOINTS.readPhotoRailCounts.path).toBe('/api/drive/photos/rail-counts');
   });
 
-  it('leaves duplicates null for a member and refuses a missing or negative count', () => {
-    expect(PHOTO_RAIL_COUNTS.safeParse({ ...COUNTS, duplicates: null }).success).toBe(true);
+  it('refuses a null duplicate count and a missing or negative count', () => {
+    expect(PHOTO_RAIL_COUNTS.safeParse({ ...COUNTS, duplicates: null }).success).toBe(false);
     const without = Object.fromEntries(Object.entries(COUNTS).filter(([key]) => key !== 'deleted'));
     expect(PHOTO_RAIL_COUNTS.safeParse(without).success).toBe(false);
     expect(PHOTO_RAIL_COUNTS.safeParse({ ...COUNTS, videos: -1 }).success).toBe(false);

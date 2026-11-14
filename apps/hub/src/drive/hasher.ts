@@ -1,12 +1,13 @@
 import { Worker } from 'node:worker_threads';
-import type { DriveItem, DriveRoot } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { StoredDrive } from '../store/repositories/drive-roots';
 import type { Store } from '../store/store';
 import type { DriveItemEntry } from '../store/repositories/drive-items';
 import { HASH_RESPONSE, type HashRequest, type HashResponse } from './blocks';
 import type { DriveJobHandlers } from './jobs';
 import { readDriveSettings } from './settings';
-import type { RootAvailability } from './volumes';
+import type { RootAvailability } from './root-marker';
 
 const WINDOW_ROWS = 1000;
 
@@ -15,14 +16,18 @@ type HashedResponse = Extract<HashResponse, { readonly kind: 'hashed' }>;
 export interface HashEnvironment {
   readonly store: Pick<
     Store,
-    'driveRoots' | 'driveItems' | 'driveBlocks' | 'settingsKv' | 'feed' | 'write'
+    | 'driveRoots'
+    | 'driveItems'
+    | 'driveBlocks'
+    | 'drivePlacements'
+    | 'settingsKv'
+    | 'feed'
+    | 'write'
   >;
-  readonly availability: (root: DriveRoot) => Promise<RootAvailability>;
+  readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly workerScript: string;
   readonly log: Logger;
 }
-
-type PhysicalRoot = DriveRoot & { readonly path: string };
 
 export interface HashCandidate {
   readonly id: string;
@@ -68,10 +73,18 @@ function candidateOf(
   };
 }
 
+export function syncsBlocks(
+  store: Pick<HashEnvironment['store'], 'drivePlacements'>,
+  rootId: string,
+): boolean {
+  return store.drivePlacements.forRoot(rootId).some((placement) => placement.mode === 'synced');
+}
+
 export function collectBacklog(
-  store: Pick<HashEnvironment['store'], 'driveItems' | 'driveBlocks'>,
-  root: DriveRoot,
+  store: Pick<HashEnvironment['store'], 'driveItems' | 'driveBlocks' | 'drivePlacements'>,
+  root: StoredDrive,
 ): HashBacklog {
+  const synced = syncsBlocks(store, root.id);
   const candidates: HashCandidate[] = [];
   let files = 0;
   let hashed = 0;
@@ -79,7 +92,13 @@ export function collectBacklog(
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     let after: string | null = null;
     do {
-      const window = store.driveItems.children(root.id, parent, after, WINDOW_ROWS);
+      const window = store.driveItems.children({
+        rootId: root.id,
+        parentId: parent,
+        after,
+        limit: WINDOW_ROWS,
+        viewer: null,
+      });
       for (const entry of window.entries) {
         if (entry.item.kind === 'folder') {
           pending.push(entry.item.id);
@@ -87,8 +106,8 @@ export function collectBacklog(
         }
         files += 1;
         const hasBlocks =
-          !root.synced || store.driveBlocks.find(entry.item.id, entry.item.rev) !== undefined;
-        const found = candidateOf(entry, entry.item.sha256 === null || !hasBlocks, root.synced);
+          !synced || store.driveBlocks.find(entry.item.id, entry.item.rev) !== undefined;
+        const found = candidateOf(entry, entry.item.sha256 === null || !hasBlocks, synced);
         if (found === null) hashed += 1;
         else candidates.push(found);
       }
@@ -161,7 +180,7 @@ class HashRun {
 
   constructor(
     private readonly env: HashEnvironment,
-    private readonly root: PhysicalRoot,
+    private readonly root: StoredDrive,
     private readonly backlog: HashBacklog,
   ) {
     this.hashed = backlog.hashed;
@@ -221,11 +240,11 @@ class HashRun {
 
   private record(candidate: HashCandidate, response: HashedResponse): boolean {
     return this.env.store.write(() => {
-      const current = this.env.store.driveItems.find(candidate.id);
+      const current = this.env.store.driveItems.find(candidate.id, null);
       if (!this.stillValid(current, response)) return false;
       const written = this.hashItem(current, response.sha256);
       if (written === null) return false;
-      if (response.blocks !== null && this.root.synced) {
+      if (response.blocks !== null && syncsBlocks(this.env.store, this.root.id)) {
         this.env.store.driveBlocks.put({
           itemId: written.id,
           rev: written.rev,
@@ -274,24 +293,19 @@ class HashRun {
   }
 }
 
-function physical(root: DriveRoot): PhysicalRoot | null {
-  return root.path === null ? null : { ...root, path: root.path };
-}
-
-function wanted(env: HashEnvironment, root: DriveRoot): boolean {
+function wanted(env: HashEnvironment, root: StoredDrive): boolean {
   const settings = readDriveSettings(env.store);
   if (settings.indexingPaused) {
     env.log.info('drive.hash_paused', { rootId: root.id });
     return false;
   }
-  return root.synced || settings.duplicatesHashing;
+  return syncsBlocks(env.store, root.id) || settings.duplicatesHashing;
 }
 
 async function hashRoot(env: HashEnvironment, rootId: string, signal: AbortSignal): Promise<void> {
-  const found = env.store.driveRoots.find(rootId);
-  const root = found === undefined ? null : physical(found);
-  if (root === null) {
-    env.log.warn('drive.hash_skipped_root', { rootId, reason: 'no physical root' });
+  const root = env.store.driveRoots.find(rootId);
+  if (root === undefined) {
+    env.log.warn('drive.hash_skipped_root', { rootId, reason: 'no such drive' });
     return;
   }
   if (!wanted(env, root) || (await env.availability(root)) !== 'online') return;

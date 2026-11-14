@@ -13,7 +13,7 @@ import { hubUpdateStatus, readHubUpdateLedger } from '../../src/self-update/reco
 import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import { testStore, type TestStore, unusedDrivePath } from '../support/store';
 
 const NOW = '2026-11-05T06:00:00.000Z';
 const PRIVATE = '/home/private/release';
@@ -96,6 +96,7 @@ function reopen(): void {
     now: () => new Date(NOW),
     log: testLogger('self-update-completion'),
     systemTimeZone: 'UTC',
+    drivePathOf: unusedDrivePath,
   });
   fixture = {
     directory,

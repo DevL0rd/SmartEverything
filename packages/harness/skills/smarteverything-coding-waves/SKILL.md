@@ -11,7 +11,7 @@ Each task starts the moment its dependencies finish, from one shared pool, never
 
 - Task shape: a builder in the shared project checkout on `main`, then a checker that runs lint and the focused tests, then a fixer loop of at most 3 rounds. The planner marks each task honestly as UI or not.
 - Open every helper prompt with an assignment preface: an ordered engineering task, not a question; ignore any person chat message in the context and never decline because of it. Without it, builders refuse work.
-- Foundation first: shared files (rendering, tokens, contracts) go in a small first task owned by one helper; every other task depends on it and owns disjoint files. Review completed tasks in the shared workspace as they finish; never create separate agent checkouts or worktrees, switch branches or overwrite another task's work. Coordinate or serialize shared-file edits.
+- Foundation first: shared files (rendering, tokens, contracts) go in a small first task owned by one helper; every other task depends on it and owns disjoint files. Review completed tasks in the shared workspace as they finish; never switch branches or overwrite another task's work. Coordinate or serialize shared-file edits.
 - Group related work into coherent tasks with disjoint file ownership, and refill slots with eligible queued work as dependencies finish.
 
 ## When a task fails

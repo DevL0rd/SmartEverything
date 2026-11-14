@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COUNT, ID, MONTH, QUERY_PLACE_ID, THUMBHASH } from './shared';
+import { COUNT, DAY, ID, MONTH, NAME, QUERY_PLACE_ID, THUMBHASH } from './shared';
 
 export const PHOTO_FLAGS = {
   favourite: 1,
@@ -22,22 +22,43 @@ export function photoFlags(flags: readonly PhotoFlag[]): number {
   return flags.reduce((mask, flag) => mask | PHOTO_FLAGS[flag], 0);
 }
 
-export const PHOTO_TIMELINE_FILTERS = ['all', 'favourites', 'videos', 'screenshots'] as const;
+export const LIBRARY_FILTERS = ['all', 'favourites', 'videos', 'screenshots'] as const;
 
-export type PhotoTimelineFilter = (typeof PHOTO_TIMELINE_FILTERS)[number];
+export type LibraryFilter = (typeof LIBRARY_FILTERS)[number];
 
-export const TIMELINE_SCOPE = z
-  .strictObject({
-    filter: z.enum(PHOTO_TIMELINE_FILTERS),
-    placeId: QUERY_PLACE_ID.optional(),
-  })
+const SCOPE_FIELDS = {
+  filter: z.enum(LIBRARY_FILTERS),
+  placeId: QUERY_PLACE_ID.optional(),
+  countryCode: z.string().length(2).optional(),
+  camera: NAME.optional(),
+  albumId: ID.optional(),
+  text: NAME.optional(),
+  from: DAY.optional(),
+  to: DAY.optional(),
+};
+
+const DAYS_IN_ORDER = {
+  message: 'from must not be after to',
+  path: ['to'],
+};
+
+function daysInOrder(scope: {
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
+}): boolean {
+  return scope.from === undefined || scope.to === undefined || scope.from <= scope.to;
+}
+
+export const LIBRARY_SCOPE = z
+  .strictObject(SCOPE_FIELDS)
+  .refine(daysInOrder, DAYS_IN_ORDER)
   .readonly();
 
-export type TimelineScope = z.infer<typeof TIMELINE_SCOPE>;
+export type LibraryScope = z.infer<typeof LIBRARY_SCOPE>;
 
-export const TIMELINE_BUCKET = z.strictObject({ month: MONTH, count: COUNT.positive() }).readonly();
+export const LIBRARY_BUCKET = z.strictObject({ month: MONTH, count: COUNT.positive() }).readonly();
 
-export type TimelineBucket = z.infer<typeof TIMELINE_BUCKET>;
+export type LibraryBucket = z.infer<typeof LIBRARY_BUCKET>;
 
 const FLAG_VALUE = z.int().min(0).max(FLAGS_MASK);
 
@@ -52,7 +73,7 @@ const COLUMNS = {
   flags: z.array(FLAG_VALUE).readonly(),
 };
 
-export const TIMELINE_PAGE = z
+export const LIBRARY_PAGE = z
   .strictObject({
     month: MONTH,
     ...COLUMNS,
@@ -73,10 +94,8 @@ export const TIMELINE_PAGE = z
   )
   .readonly();
 
-export type TimelinePage = z.infer<typeof TIMELINE_PAGE>;
+export type LibraryPage = z.infer<typeof LIBRARY_PAGE>;
 
-export const TIMELINE_PAGE_QUERY = z.strictObject({
-  filter: z.enum(PHOTO_TIMELINE_FILTERS),
-  placeId: QUERY_PLACE_ID.optional(),
-  cursor: z.string().min(1).optional(),
-});
+export const LIBRARY_PAGE_QUERY = z
+  .strictObject({ ...SCOPE_FIELDS, cursor: z.string().min(1).optional() })
+  .refine(daysInOrder, DAYS_IN_ORDER);

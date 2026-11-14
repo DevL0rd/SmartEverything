@@ -2,18 +2,17 @@ import { mkdir, open, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { backup, DatabaseSync } from 'node:sqlite';
 import {
-  DRIVE_ROOT_KINDS,
+  DRIVE_ROOT_SCOPES,
   type DriveBackupReport,
   type DriveBackupReportInput,
   type DriveBackupStatus,
-  type DriveRoot,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { fsCode } from '../fs-code';
 import type { DriveBackupsRepository } from '../store/repositories/drive-backups';
 import type { DriveItemsRepository } from '../store/repositories/drive-items';
-import type { DriveRootsRepository } from '../store/repositories/drive-roots';
+import type { DriveRootsRepository, StoredDrive } from '../store/repositories/drive-roots';
 import type { DriveTrashRepository } from '../store/repositories/drive-trash';
 
 export const BACKUP_DATABASE_FILE = 'smarteverything.sqlite';
@@ -30,8 +29,8 @@ export const BACKUP_MANIFEST_LINE = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('root'),
     rootId: ID,
-    label: ID,
-    rootKind: z.enum(DRIVE_ROOT_KINDS),
+    scope: z.enum(DRIVE_ROOT_SCOPES),
+    ownerProfileId: ID.nullable(),
     indexId: ID,
   }),
   z.strictObject({
@@ -81,12 +80,6 @@ export class BackupCopyError extends Error {
   override readonly name = 'BackupCopyError';
 }
 
-type PhysicalRoot = DriveRoot & { readonly path: string };
-
-function physical(root: DriveRoot): PhysicalRoot | null {
-  return root.path === null ? null : { ...root, path: root.path };
-}
-
 function lineOf(line: BackupManifestLine): string {
   return `${JSON.stringify(BACKUP_MANIFEST_LINE.parse(line))}\n`;
 }
@@ -99,7 +92,13 @@ function* fileLines(
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     let after: string | null = null;
     do {
-      const window = items.children(rootId, parent, after, WINDOW_ROWS);
+      const window = items.children({
+        rootId,
+        parentId: parent,
+        after,
+        limit: WINDOW_ROWS,
+        viewer: null,
+      });
       const lines: BackupManifestLine[] = [];
       for (const { item } of window.entries) {
         if (item.kind === 'folder') pending.push(item.id);
@@ -198,10 +197,8 @@ export class DriveBackups {
     return this.env.store.driveBackups.status();
   }
 
-  unprotectedRoots(): readonly DriveRoot[] {
-    return this.env.store.driveRoots
-      .list()
-      .filter((root) => physical(root) !== null && root.health.lastBackupAt === null);
+  unprotectedRoots(): readonly StoredDrive[] {
+    return this.env.store.driveRoots.list().filter((root) => root.health.lastBackupAt === null);
   }
 
   private async copyDatabase(target: string): Promise<void> {
@@ -226,19 +223,17 @@ export class DriveBackups {
     let files = 0;
     try {
       for (const root of this.env.store.driveRoots.list()) {
-        const found = physical(root);
-        if (found === null) continue;
         await handle.write(
           lineOf({
             kind: 'root',
-            rootId: found.id,
-            label: found.label,
-            rootKind: found.kind,
-            indexId: found.indexId,
+            rootId: root.id,
+            scope: root.scope,
+            ownerProfileId: root.ownerProfileId,
+            indexId: root.indexId,
           }),
         );
-        files += await this.writeLines(handle, fileLines(this.env.store.driveItems, found.id));
-        await this.writeLines(handle, trashLines(this.env.store.driveTrash, found.id));
+        files += await this.writeLines(handle, fileLines(this.env.store.driveItems, root.id));
+        await this.writeLines(handle, trashLines(this.env.store.driveTrash, root.id));
       }
     } finally {
       await handle.close();

@@ -1,4 +1,4 @@
-import type { DriveRoot, DriveUpload, DriveVersion } from '@smarteverything/domain';
+import type { DriveUpload, DriveVersion } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StoreContext, StoreNotFoundError } from '../../src/store/context';
@@ -10,11 +10,11 @@ import {
   type DriveRepositories,
 } from '../../src/store/repositories/areas/drive';
 import { ClientsRepository } from '../../src/store/repositories/clients';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import type { DriveUploadOwner } from '../../src/store/repositories/drive-uploads';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql, StoreConflictError } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const LATER = '2027-11-07T00:00:00.000Z';
@@ -33,39 +33,6 @@ let laptop: string;
 
 function id(group: string, index: number): string {
   return `${group}000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
-}
-
-function root(rootId: string): DriveRoot {
-  return {
-    id: rootId,
-    kind: 'folder',
-    label: rootId,
-    scope: 'home',
-    ownerProfileId: null,
-    path: `/srv/${rootId}`,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${rootId}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
 }
 
 function version(index: number, fields: Partial<DriveVersion> = {}): DriveVersion {
@@ -121,6 +88,7 @@ function addItem(index: number, bytes: number, adder: string | null): void {
       modifiedAt: NOW,
       addedAt: NOW,
       starred: false,
+      shared: false,
       outside: false,
       addedByProfileId: adder,
       remoteId: null,
@@ -135,7 +103,7 @@ beforeEach(() => {
   const log = testLogger();
   context = new StoreContext(new Sql(database), new ChangeFeed(log), () => new Date(NOW));
   migrate(new Sql(database), MIGRATIONS, NOW, log);
-  repositories = driveRepositories(context);
+  repositories = driveRepositories(context, drivePathOf);
   const profiles = new ProfilesRepository(context);
   robin = profiles.create({ name: 'Robin' }).id;
   sam = profiles.create({ name: 'Sam' }).id;
@@ -147,8 +115,8 @@ beforeEach(() => {
     role: 'member',
     tokenHash: 'l',
   }).id;
-  repositories.driveRoots.insert(root(ROOT));
-  repositories.driveRoots.insert(root(OTHER_ROOT));
+  repositories.driveRoots.insert(sharedDriveRoot(ROOT));
+  repositories.driveRoots.insert(personalDriveRoot(OTHER_ROOT, robin));
 });
 
 afterEach(() => {
@@ -438,9 +406,30 @@ describe('quotas', () => {
       addedByProfileId: robin,
     });
     const quotas = repositories.driveQuotas;
-    expect(quotas.usage(robin)).toEqual({ profileId: robin, live: 30, versions: 100, trash: 1000 });
-    expect(quotas.usage(sam)).toEqual({ profileId: sam, live: 40, versions: 200, trash: 0 });
-    expect(quotas.usage(null)).toEqual({ profileId: null, live: 80, versions: 0, trash: 0 });
+    expect(quotas.usage(robin)).toEqual({
+      profileId: robin,
+      items: 2,
+      folders: 0,
+      live: 30,
+      versions: 100,
+      trash: 1000,
+    });
+    expect(quotas.usage(sam)).toEqual({
+      profileId: sam,
+      items: 1,
+      folders: 0,
+      live: 40,
+      versions: 200,
+      trash: 0,
+    });
+    expect(quotas.usage(null)).toEqual({
+      profileId: null,
+      items: 1,
+      folders: 0,
+      live: 80,
+      versions: 0,
+      trash: 0,
+    });
     expect(quotas.usageByProfile()).toHaveLength(3);
     expect(quotas.usageByProfile()).toContainEqual(quotas.usage(robin));
   });
@@ -449,7 +438,7 @@ describe('quotas', () => {
     repositories.driveQuotas.set(sam, 500);
     expect(repositories.driveQuotas.status(sam)).toEqual({
       quota: 500,
-      usage: { profileId: sam, live: 0, versions: 0, trash: 0 },
+      usage: { profileId: sam, items: 0, folders: 0, live: 0, versions: 0, trash: 0 },
     });
     expect(repositories.driveQuotas.status(robin).quota).toBeNull();
   });

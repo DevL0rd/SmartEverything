@@ -11,7 +11,6 @@ import type {
   DriveItem,
   DriveQuotaSet,
   DriveRoot,
-  DriveRootAdd,
   DriveRootChange,
   DriveScrubState,
   DriveSettings,
@@ -19,19 +18,15 @@ import type {
   DriveShare,
   DriveShareCreate,
   DriveShareCreated,
-  DriveSyncClient,
-  DriveSyncClientUpdate,
 } from '@smarteverything/domain';
-import type { HubLayout } from '../data-layout';
 import type { ConflictEnv } from './conflicts';
 import type { DriveWriteGuard } from './quotas';
 import type { DriveReadService } from './service-read';
 import { DriveAlbumWriter, type AlbumEditing } from './service-write-albums';
-import { DriveRootAdmin } from './service-write-roots';
+import { DriveAdmin } from './service-write-drives';
 import { DriveStorageWriter, type StorageDeps } from './service-write-storage';
 import type { DriveCaller, WriteStore } from './service-write-support';
 import { DriveTreeWriter } from './service-write-tree';
-import type { VolumeProbe } from './volumes';
 
 export interface DriveWriteDeps {
   readonly env: ConflictEnv;
@@ -42,48 +37,28 @@ export interface DriveWriteDeps {
   readonly scrub: StorageDeps['scrub'];
   readonly backups: StorageDeps['backups'];
   readonly guard: DriveWriteGuard;
-  readonly probe: VolumeProbe;
-  readonly layout: HubLayout;
-  readonly installDirectory: string;
-  readonly newId: () => string;
   readonly scan: (rootId: string) => void;
 }
 
 export class DriveWriteService {
-  private readonly rootAdmin: DriveRootAdmin;
+  private readonly drives: DriveAdmin;
   private readonly tree: DriveTreeWriter;
   private readonly albums: DriveAlbumWriter;
   private readonly storage: DriveStorageWriter;
 
   constructor(deps: DriveWriteDeps) {
-    this.rootAdmin = new DriveRootAdmin({
-      store: deps.store,
-      probe: deps.probe,
-      layout: deps.layout,
-      installDirectory: deps.installDirectory,
-      newId: deps.newId,
-      scan: deps.scan,
-      rearmPurge: deps.env.purge.rearm,
-    });
+    this.drives = new DriveAdmin({ store: deps.store, read: deps.read, scan: deps.scan });
     this.tree = new DriveTreeWriter(deps);
     this.albums = new DriveAlbumWriter(deps.albums);
     this.storage = new DriveStorageWriter(deps);
   }
 
-  addRoot(caller: DriveCaller, input: DriveRootAdd): Promise<DriveRoot> {
-    return this.rootAdmin.add(caller, input);
-  }
-
-  updateRoot(caller: DriveCaller, rootId: string, change: DriveRootChange): Promise<DriveRoot> {
-    return this.rootAdmin.update(caller, rootId, change);
-  }
-
-  removeRoot(caller: DriveCaller, rootId: string): Promise<void> {
-    return this.rootAdmin.remove(caller, rootId);
+  updateRoot(caller: DriveCaller, rootId: string, change: DriveRootChange): DriveRoot {
+    return this.drives.update(caller, rootId, change);
   }
 
   scanRoot(caller: DriveCaller, rootId: string): void {
-    this.rootAdmin.scan(caller, rootId);
+    this.drives.scan(caller, rootId);
   }
 
   change(caller: DriveCaller, change: DriveChange): Promise<DriveChangeResult> {
@@ -132,9 +107,5 @@ export class DriveWriteService {
 
   resolveConflict(caller: DriveCaller, request: DriveConflictResolve): Promise<DriveConflict> {
     return this.storage.resolveConflict(caller, request);
-  }
-
-  updateSyncClient(caller: DriveCaller, update: DriveSyncClientUpdate): DriveSyncClient {
-    return this.storage.updateSyncClient(caller, update);
   }
 }

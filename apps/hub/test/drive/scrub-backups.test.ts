@@ -31,6 +31,7 @@ import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveBackupsRepository } from '../../src/store/repositories/drive-backups';
+import { DrivePlacementsRepository } from '../../src/store/repositories/drive-placements';
 import { DriveBlocksRepository } from '../../src/store/repositories/drive-blocks';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
@@ -39,7 +40,7 @@ import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
 import { SettingsKvRepository } from '../../src/store/repositories/settings-kv';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { bundleWorker, folderRoot } from './drive-fixture';
+import { bundleWorker, driveRoot } from './drive-fixture';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 const START = Date.parse('2026-11-07T00:00:00.000Z');
@@ -86,12 +87,12 @@ beforeEach(() => {
   const sql = new Sql(database);
   context = new StoreContext(sql, feed, clock);
   migrate(sql, MIGRATIONS, new Date(START).toISOString(), log);
-  roots = new DriveRootsRepository(context);
+  roots = new DriveRootsRepository(context, () => tree);
   items = new DriveItemsRepository(context);
   scrubs = new DriveScrubRepository(context);
   backups = new DriveBackupsRepository(context);
   trash = new DriveTrashRepository(context);
-  roots.insert(folderRoot(ROOT, tree));
+  roots.insert(driveRoot(ROOT));
   corruptions = [];
   requests = [];
 });
@@ -128,6 +129,7 @@ async function indexAndHash(): Promise<void> {
       driveRoots: roots,
       driveItems: items,
       driveBlocks: new DriveBlocksRepository(context),
+      drivePlacements: new DrivePlacementsRepository(context),
       settingsKv: new SettingsKvRepository(context),
       feed,
       write: (w) => context.write(w),
@@ -159,7 +161,7 @@ function scrubber(
     store: {
       driveRoots: roots,
       driveItems: {
-        find: (id) => items.find(id),
+        find: (id: string, viewer: string | null) => items.find(id, viewer),
         identityOf: (id) => items.identityOf(id),
         setIntegrity: (id, integrity) => {
           database.prepare('update drive_items set integrity = $integrity where id = $id').run({
@@ -184,7 +186,7 @@ function scrubber(
 }
 
 function integrityOf(path: string): string {
-  const item = items.byPath(ROOT, path);
+  const item = items.byPath(ROOT, path, null);
   if (item === undefined || item.kind === 'folder') throw new Error(`${path} is not a file`);
   return item.integrity;
 }
@@ -231,7 +233,7 @@ describe('scrubbing hashed files', () => {
     await second.settled();
     expect(integrityOf('docs/b.txt')).toBe('corrupt');
     expect(integrityOf('a.txt')).toBe('ok');
-    expect(scrubs.find(items.byPath(ROOT, 'docs/b.txt')?.id ?? '')?.result).toBe('corrupt');
+    expect(scrubs.find(items.byPath(ROOT, 'docs/b.txt', null)?.id ?? '')?.result).toBe('corrupt');
     expect(corruptions).toHaveLength(1);
     expect(corruptions[0]).toMatchObject({ rootId: ROOT, relPath: 'docs/b.txt' });
     expect(corruptions[0]?.expected).not.toBe(corruptions[0]?.actual);
@@ -314,8 +316,8 @@ describe('scrubbing hashed files', () => {
     expect(requests).toHaveLength(3);
   });
 
-  it('leaves a root that is not mounted alone', async () => {
-    const run = scrubber(inProcessHasher(), () => Promise.resolve('offline'));
+  it('leaves a drive whose folder is missing alone', async () => {
+    const run = scrubber(inProcessHasher(), () => Promise.resolve('missing'));
     run.start();
     await run.settled();
     expect(requests).toEqual([]);

@@ -163,7 +163,7 @@ export class MotionHandler implements JobHandler {
   constructor(private readonly env: MotionEnvironment) {}
 
   async run(job: DriveMediaJob): Promise<void> {
-    const item = this.env.store.driveItems.find(job.item_id);
+    const item = this.env.store.driveItems.find(job.item_id, null);
     if (item?.rev !== job.rev || this.env.store.driveMedia.find(item.id) === undefined) {
       this.env.log.debug('photos.motion_skipped', { itemId: job.item_id, rev: job.rev });
       return;
@@ -201,7 +201,7 @@ export class MotionHandler implements JobHandler {
       this.env.store.driveMedia.update(itemId, { live_id: liveId });
       const rows = this.env.store.driveMedia.withLiveId(liveId);
       const kinds = new Map(
-        rows.map((row) => [row.item_id, this.env.store.driveItems.find(row.item_id)?.kind]),
+        rows.map((row) => [row.item_id, this.env.store.driveItems.find(row.item_id, null)?.kind]),
       );
       const clip = rows.find((row) => kinds.get(row.item_id) === 'video');
       if (clip === undefined) return;

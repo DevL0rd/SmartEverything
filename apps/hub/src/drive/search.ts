@@ -9,20 +9,9 @@ import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
 import { found, type StoreContext } from '../store/context';
 import { DriveItemsRepository } from '../store/repositories/drive-items';
-import { allOf, flag, inList, type SqlFilter } from '../store/sql';
-
-export type DriveViewer =
-  { readonly role: 'owner' } | { readonly role: 'member'; readonly profileId: string };
-
-export function rootScope(viewer: DriveViewer): SqlFilter {
-  if (viewer.role === 'owner') {
-    return { text: '1 = 1', parameters: {} };
-  }
-  return {
-    text: "(r.scope = 'home' or r.owner_profile_id = $viewer)",
-    parameters: { viewer: viewer.profileId },
-  };
-}
+import { starredBy } from '../store/repositories/drive-stars';
+import { allOf, inList, type SqlFilter } from '../store/sql';
+import { accessFilter, type DriveActor } from './access';
 
 export class DriveCursorError extends Error {
   override readonly name = 'DriveCursorError';
@@ -215,14 +204,14 @@ function plainFilters(query: DriveQuery): SqlFilter[] {
     ...(query.kinds === null ? [] : [inList('i.kind', 'kinds', query.kinds)]),
     ...(query.starred === null
       ? []
-      : [{ text: 'i.starred = $starred', parameters: { starred: flag(query.starred) } }]),
+      : [{ text: `${query.starred ? '' : 'not '}${starredBy()}`, parameters: {} }]),
     ...(query.duration === null ? [] : [durationFilter(query.duration)]),
     ...(query.taken === null ? [] : takenFilters(query.taken)),
   ];
 }
 
 export function driveSearchStatement(
-  viewer: DriveViewer,
+  actor: DriveActor,
   query: DriveQuery,
   folder: DriveItem | null,
   limit: number,
@@ -233,7 +222,7 @@ export function driveSearchStatement(
   }
   const filter = allOf([
     ...(match === null ? [] : [{ text: 'drive_items_search match $match', parameters: { match } }]),
-    rootScope(viewer),
+    accessFilter(actor),
     ...plainFilters(query),
     ...(folder === null ? [] : [folderFilter(folder)]),
     ...cursorFilter(query),
@@ -259,8 +248,8 @@ export class DriveSearch {
     this.items = new DriveItemsRepository(context);
   }
 
-  search(viewer: DriveViewer, query: DriveQuery, limit: number): DriveQueryPage {
-    const statement = driveSearchStatement(viewer, query, this.folderOf(query), limit);
+  search(actor: DriveActor, query: DriveQuery, limit: number): DriveQueryPage {
+    const statement = driveSearchStatement(actor, query, this.folderOf(actor, query), limit);
     if (statement === null) {
       return { items: [], next: null };
     }
@@ -268,7 +257,7 @@ export class DriveSearch {
     const shown = rows.slice(0, limit);
     const last = shown.at(-1);
     return {
-      items: shown.map((row) => this.items.byId(row.id)),
+      items: shown.map((row) => this.items.byId(row.id, actor.profileId)),
       next:
         rows.length > limit && last !== undefined
           ? encodeCursor({ v: last.sort_value, id: last.id })
@@ -276,11 +265,15 @@ export class DriveSearch {
     };
   }
 
-  private folderOf(query: DriveQuery): DriveItem | null {
+  private folderOf(actor: DriveActor, query: DriveQuery): DriveItem | null {
     if (query.folderId === null) {
       return null;
     }
-    const folder = found(this.items.find(query.folderId), 'drive folder', query.folderId);
+    const folder = found(
+      this.items.find(query.folderId, actor.profileId),
+      'drive folder',
+      query.folderId,
+    );
     if (folder.kind !== 'folder') {
       throw new DriveFolderRequiredError(folder.id);
     }

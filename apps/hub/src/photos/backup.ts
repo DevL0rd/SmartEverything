@@ -19,7 +19,8 @@ import {
   type ChangeEnv,
   type ChangeStore,
 } from '../drive/changes';
-import { DriveWriteError, locate, physicalRoot, type DriveWriteRoot } from '../drive/intents';
+import { DriveWriteError, locate, type DriveWriteRoot } from '../drive/intents';
+import { personalDrive } from '../drive/spaces';
 import type {
   DriveBackupDeviceRow,
   DriveBackupRepository,
@@ -27,9 +28,8 @@ import type {
 import type { DevicesRepository } from '../store/repositories/devices';
 import { inList, type Sql } from '../store/sql';
 
-import { LOCAL_MONTH } from './timeline';
-
-export const PHOTOS_FOLDER = 'Photos';
+import { LOCAL_MONTH } from './library';
+import { PHOTOS_FOLDER } from './membership';
 
 export interface BackupStore extends ChangeStore {
   readonly driveBackup: DriveBackupRepository;
@@ -165,7 +165,7 @@ export class BackupService {
       .filter((asset) => asset.state !== 'verified')
       .filter((asset) => {
         const owner = driveBackup.deviceById(asset.backup_device_id).profile_id;
-        return root?.kind === 'managed' && (root.scope === 'home' || root.ownerProfileId === owner);
+        return root !== undefined && (root.scope === 'home' || root.ownerProfileId === owner);
       });
     this.env.store.write(() => {
       for (const asset of waiting) {
@@ -179,9 +179,8 @@ export class BackupService {
     return waiting.length;
   }
 
-  state(profileId: string): BackupState[] {
-    const target = PHOTOS_FOLDER;
-    return this.env.store.driveBackup.devicesOf(profileId).map((row) => {
+  state(profileId: string): BackupState {
+    const devices = this.env.store.driveBackup.devicesOf(profileId).map((row) => {
       const counts = new Map(
         this.env.store.driveBackup.coverage(row.id).map((entry) => [entry.state, entry.total]),
       );
@@ -191,11 +190,10 @@ export class BackupService {
         pending: counts.get('uploaded') ?? 0,
         uploading: counts.get('uploading') ?? 0,
         failed: counts.get('failed') ?? 0,
-        bytesLeft: this.bytesLeft(profileId),
         lastBackupAt: this.lastBackupAt(row.id),
-        targetFolder: target,
       };
     });
+    return { devices, bytesLeft: this.bytesLeft(profileId), targetFolder: PHOTOS_FOLDER };
   }
 
   async backupTarget(profileId: string, deviceId: string): Promise<BackupTarget> {
@@ -216,17 +214,10 @@ export class BackupService {
        left join drive_media m on m.item_id = i.id where ${filter.text}`,
       filter.parameters,
     );
-    const roots = this.env.store.driveRoots
-      .list()
-      .filter(
-        (root) =>
-          root.kind === 'managed' && root.scope === 'person' && root.ownerProfileId === profileId,
-      );
+    const drive = personalDrive(this.env.store, profileId);
     this.env.store.feed.notice({
       type: 'drive_changed',
-      rootIds: [
-        ...new Set([...roots.map((root) => root.id), ...items.map((item) => item.root_id)]),
-      ],
+      rootIds: [...new Set([drive.id, ...items.map((item) => item.root_id)])],
       folderIds: [],
       albumIds: [],
       months: [
@@ -250,7 +241,7 @@ export class BackupService {
       HELD,
       `select i.id, i.sha256 from drive_items i join drive_roots r on r.id = i.root_id
        where ${filter.text} and i.kind <> 'folder' and i.integrity = 'ok'
-         and r.kind = 'managed' and (r.scope = 'home' or r.owner_profile_id = $profileId)
+         and (r.scope = 'home' or r.owner_profile_id = $profileId)
        order by i.added_at, i.id`,
       { ...filter.parameters, profileId },
     );
@@ -303,7 +294,7 @@ export class BackupService {
     profileId: string,
     segments: readonly [string, ...string[]],
   ): Promise<BackupTarget> {
-    const root = this.personRoot(profileId);
+    const root = personalDrive(this.env.store, profileId);
     const actor: ChangeActor = { actorProfileId: profileId, via: 'app', deviceId: null };
     const [head, ...rest] = segments;
     let folder = await this.ensureFolder(root, actor, null, head);
@@ -313,21 +304,6 @@ export class BackupService {
     return { folderId: folder.id, path: folder.relPath };
   }
 
-  private personRoot(profileId: string): DriveWriteRoot {
-    const root = this.env.store.driveRoots
-      .list()
-      .find(
-        (candidate) =>
-          candidate.kind === 'managed' &&
-          candidate.scope === 'person' &&
-          candidate.ownerProfileId === profileId,
-      );
-    if (root === undefined) {
-      throw new ApiError('not_found', 'This person has no library folder to put photos in.');
-    }
-    return physicalRoot(root);
-  }
-
   private async ensureFolder(
     root: DriveWriteRoot,
     actor: ChangeActor,
@@ -335,7 +311,7 @@ export class BackupService {
     relPath: string,
   ): Promise<DriveItem> {
     const { driveItems } = this.env.store;
-    const indexed = driveItems.byPath(root.id, relPath);
+    const indexed = driveItems.byPath(root.id, relPath, null);
     if (indexed !== undefined) {
       if (indexed.kind !== 'folder') {
         throw new ApiError('conflict', `A file named ${relPath} is in the way of the folder.`);

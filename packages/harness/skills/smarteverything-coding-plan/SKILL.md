@@ -36,11 +36,10 @@ Many tasks with ordering between them run as described in `smarteverything-codin
 
 For code holding the person's uncommitted changes (this hub too):
 
-1. All development workers and reviewers use the existing project checkout on `main`; never create separate agent checkouts or worktrees.
-2. Record the relevant starting state without staging it. Assign disjoint file ownership, coordinate or serialize shared-file edits, and preserve existing staged, unstaged and untracked work.
-3. Fix and check the assigned files in place. Never overwrite, reset, stash, switch branches or stage another task's changes.
-4. Report scoped changes and check evidence to the coordinator, who reviews the combined workspace and handles authorized commits, pushes and releases.
+1. Record the relevant starting state without staging it. Assign disjoint file ownership, coordinate or serialize shared-file edits, and preserve existing staged, unstaged and untracked work.
+2. Fix and check the assigned files in place. Never overwrite, reset, stash, switch branches or stage another task's changes.
+3. Report scoped changes and check evidence to the coordinator, who reviews the combined workspace and handles authorized commits, pushes and releases.
 
 For SmartEverything issue fixes and local development, follow the owner-authorized stable-point commit/push process in `docs/STANDARDS.md`, section “Git handoff and releases”. Fetch and pull/merge remote `main`, resolve conflicts and verify the combined work before committing and pushing; pull it on the other machine before continuing. NAS is production, the desktop is development/build/test. Workers never commit or push. Other projects require their own explicit authorization.
 
-A release of the owner's hub is never batched: each fix goes out alone with backup, migration check on a copy, build, release, verify, rollback on trouble. Nothing else touches live data.
+A release of the owner's hub is never batched: each fix goes out alone with a rollback backup of the production server, migration check on a copy, build, release, verify, rollback on trouble, and the backup is deleted once the release is verified. Nothing else touches live data.

@@ -328,7 +328,7 @@ export class PlayableHandler implements JobHandler {
   }
 
   private current(job: DriveMediaJob): PlayableVideo | undefined {
-    const item = this.env.store.driveItems.find(job.item_id);
+    const item = this.env.store.driveItems.find(job.item_id, null);
     if (
       item?.kind !== 'video' ||
       item.rev !== job.rev ||

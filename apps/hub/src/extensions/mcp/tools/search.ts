@@ -12,14 +12,14 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { driveHits, type DriveHit } from '../../../drive/search-provider';
-import type { DriveViewer } from '../../../drive/search';
+import type { DriveActor } from '../../../drive/access';
 import { deviceHidden, deviceIdReachable } from '../../../server/person-scope';
 import { sceneDeviceIds } from '../../../server/snapshot-reach';
 import { flatAutomation } from '../../../store/repositories/automation-trees';
 import type { Store } from '../../../store/store';
 import { profileFor, type ActingContext } from './acting';
 import { listedDevices } from './devices';
-import { deviceScopeOfActor, reachableAreas, scopesOfActor } from './person-reach';
+import { deviceScopeOfActor, reachableAreas } from './person-reach';
 import { READS, defineTool, matches, type Tool, type ToolContext } from './registry';
 
 const SEARCH = z.strictObject({
@@ -146,11 +146,8 @@ function appHits({ query, limit }: Search): Record<string, unknown> {
   };
 }
 
-function driveViewerOf(context: ToolContext): DriveViewer {
-  const actor = context.actor;
-  return actor === null || scopesOfActor(context) === null
-    ? { role: 'owner' }
-    : { role: 'member', profileId: actor.profileId };
+function driveActorOf(context: ToolContext): DriveActor {
+  return { profileId: profileFor(context, {}) };
 }
 
 function fileHits(context: ToolContext, { query, limit }: Search): DriveHit[] {
@@ -158,7 +155,7 @@ function fileHits(context: ToolContext, { query, limit }: Search): DriveHit[] {
   if (areas !== undefined && !areas.includes('drive')) {
     return [];
   }
-  return driveHits(context.store.driveSearch, driveViewerOf(context), { query, limit });
+  return driveHits(context.store.driveSearch, driveActorOf(context), { query, limit });
 }
 
 function plannerItemTarget(itemId: string): NavTarget {

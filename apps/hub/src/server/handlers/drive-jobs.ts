@@ -2,16 +2,16 @@ import type { Logger } from '@smarteverything/logging';
 import { hashHandler } from '../../drive/hasher';
 import { jobKey, runnerOf, scanHandler, type DriveJob } from '../../drive/jobs';
 import { metadataHandler } from '../../drive/metadata';
-import type { RootAvailability } from '../../drive/volumes';
+import type { RootAvailability } from '../../drive/root-marker';
 import type { StoreContext } from '../../store/context';
 import { DriveMediaRepository } from '../../store/repositories/drive-media';
 import type { Store } from '../../store/store';
-import type { DriveRoot } from '@smarteverything/domain';
+import type { StoredDrive } from '../../store/repositories/drive-roots';
 
 export interface DriveJobDeps {
   readonly store: Store;
   readonly context: StoreContext;
-  readonly availability: (root: DriveRoot) => Promise<RootAvailability>;
+  readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly log: Logger;
   readonly scannerScript: string;
   readonly hasherScript: string;

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { physicalRoot, writeManifest } from '../drive/intents';
+import { writeManifest } from '../drive/intents';
 import { classify } from '../drive/scanner-commit';
 import { writePhotoFolderReceipt } from './folder-receipts';
 import type { BackupService, BackupEnv } from './backup';
@@ -17,7 +17,7 @@ async function retargetUploads(env: BackupEnv, service: BackupService): Promise<
     PENDING_UPLOAD,
     `select u.id, u.name, r.owner_profile_id as owner from drive_uploads u
       join drive_items f on f.id = u.target_id join drive_roots r on r.id = f.root_id
-      where u.state = 'open' and u.target_kind = 'folder' and r.kind = 'managed'
+      where u.state = 'open' and u.target_kind = 'folder'
         and r.scope = 'person' and (f.rel_path in ('Camera roll', 'Uploads')
           or f.rel_path glob 'Camera roll/*' or f.rel_path glob 'Uploads/*')`,
   );
@@ -43,14 +43,14 @@ async function retargetTrash(env: BackupEnv, service: BackupService): Promise<vo
     if (photoOrVideo(entry.name) && root.ownerProfileId !== null) {
       const folder = await service.manualTarget(root.ownerProfileId);
       const originalRelPath = `${folder.path}/${entry.name}`;
-      await writePhotoFolderReceipt(env, physicalRoot(root), {
+      await writePhotoFolderReceipt(env, root, {
         kind: 'trash',
         rootId: root.id,
         itemId: entry.itemId,
         fromPath: entry.originalRelPath,
         toPath: originalRelPath,
       });
-      await writeManifest(env.files, physicalRoot(root), entry.trashRelPath, {
+      await writeManifest(env.files, root, entry.trashRelPath, {
         ...entry,
         originalRelPath,
       });

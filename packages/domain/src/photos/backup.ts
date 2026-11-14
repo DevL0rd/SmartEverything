@@ -67,15 +67,23 @@ export const BACKUP_HAVE_RESULT = z
 
 export type BackupHaveResult = z.infer<typeof BACKUP_HAVE_RESULT>;
 
-export const BACKUP_STATE = z
+export const BACKUP_DEVICE_STATE = z
   .strictObject({
     device: BACKUP_DEVICE,
     backedUp: COUNT,
     pending: COUNT,
     uploading: COUNT,
     failed: COUNT,
-    bytesLeft: COUNT,
     lastBackupAt: MOMENT.nullable(),
+  })
+  .readonly();
+
+export type BackupDeviceState = z.infer<typeof BACKUP_DEVICE_STATE>;
+
+export const BACKUP_STATE = z
+  .strictObject({
+    devices: z.array(BACKUP_DEVICE_STATE).readonly(),
+    bytesLeft: COUNT,
     targetFolder: z.string().min(1),
   })
   .readonly();

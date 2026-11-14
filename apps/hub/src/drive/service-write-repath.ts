@@ -47,7 +47,13 @@ function repathChildren(context: Repath, folder: DriveItem, folderRelPath: strin
   const { env } = context;
   let after: string | null = null;
   do {
-    const window = env.store.driveItems.children(folder.rootId, folder.id, after, DRIVE_PAGE_SIZE);
+    const window = env.store.driveItems.children({
+      rootId: folder.rootId,
+      parentId: folder.id,
+      after,
+      limit: DRIVE_PAGE_SIZE,
+      viewer: null,
+    });
     for (const entry of window.entries) {
       const relPath = `${folderRelPath}/${entry.item.name}`;
       const target = { parentId: folder.id, relPath, name: entry.item.name };

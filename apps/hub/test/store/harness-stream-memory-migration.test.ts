@@ -9,6 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
+import { unusedDrivePath } from '../support/store';
 
 const NOW = '2026-10-17T09:00:00.000Z';
 const PROFILE = '0e000000-0000-4000-8000-0000000000f1';
@@ -118,6 +119,7 @@ describe('migrating a schema-86 database to in-memory streaming', () => {
       log: testLogger(),
       now: () => new Date(NOW),
       systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
     }).close();
 
     const migrated = new DatabaseSync(path);

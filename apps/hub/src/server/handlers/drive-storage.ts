@@ -2,15 +2,15 @@ import {
   API_ENDPOINTS as E,
   ApiError,
   type DriveFeedRow,
-  type DriveSyncClient,
   type DriveVersion,
 } from '@smarteverything/domain';
-import { DRIVE_PAGE_SIZE, type DriveActor } from '../../drive/service-read';
+import type { DriveActor } from '../../drive/access';
+import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import { readDriveUsage } from '../../drive/usage';
 import type { Store } from '../../store/store';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
-import { actorOf, callerOf, viewerOf, type DriveServices } from './drive-services';
+import { actorOf, callerOf, usageViewerOf, type DriveServices } from './drive-services';
 
 type DriveShareRoute =
   | 'listVersions'
@@ -31,7 +31,7 @@ type DriveUpkeepRoute =
   | 'reportBackup'
   | 'readBackupStatus';
 
-type DriveSyncRoute = 'listConflicts' | 'resolveConflict' | 'listSyncClients' | 'updateSyncClient';
+type DriveSyncRoute = 'listConflicts' | 'resolveConflict';
 
 function revCursor(cursor: string | undefined): number | null {
   if (cursor === undefined) return null;
@@ -81,18 +81,6 @@ function activityPage(
     items: window.rows,
     next: window.next === null ? null : String(window.next),
   };
-}
-
-function syncClientsOf(
-  store: Store,
-  services: DriveServices,
-  actor: DriveActor,
-): DriveSyncClient[] {
-  return services.read
-    .listRoots(actor)
-    .filter((root) => root.synced)
-    .flatMap((root) => store.driveSyncClients.forRoot(root.id))
-    .filter((client) => actor.owner || client.profileId === actor.profileId);
 }
 
 function driveShareRoutes(store: Store, services: DriveServices): Routes<DriveShareRoute> {
@@ -149,7 +137,7 @@ function driveUpkeepRoutes(store: Store, services: DriveServices): Routes<DriveU
   const { write } = services;
   return {
     readUsage: bound(E.readUsage, ({ caller }) =>
-      readDriveUsage(store.driveQuotas, viewerOf(actorOf(store, caller))),
+      readDriveUsage(store.driveQuotas, usageViewerOf(store, caller)),
     ),
     listQuotas: bound(E.listQuotas, () => store.driveQuotas.all()),
     setQuota: bound(E.setQuota, ({ body, caller }) =>
@@ -158,9 +146,7 @@ function driveUpkeepRoutes(store: Store, services: DriveServices): Routes<DriveU
         return DONE_REPLY;
       }),
     ),
-    readHealth: bound(E.readHealth, ({ caller }) =>
-      services.health.read(viewerOf(actorOf(store, caller))),
-    ),
+    readHealth: bound(E.readHealth, ({ caller }) => services.health.read(actorOf(store, caller))),
     startScrub: bound(E.startScrub, ({ caller }) =>
       refusing(() => write.startScrub(callerOf(store, caller))),
     ),
@@ -179,12 +165,6 @@ function driveSyncRoutes(store: Store, services: DriveServices): Routes<DriveSyn
     ),
     resolveConflict: bound(E.resolveConflict, ({ body, caller }) =>
       refusing(() => write.resolveConflict(callerOf(store, caller), body)),
-    ),
-    listSyncClients: bound(E.listSyncClients, ({ caller }) =>
-      syncClientsOf(store, services, actorOf(store, caller)),
-    ),
-    updateSyncClient: bound(E.updateSyncClient, ({ body, caller }) =>
-      refusing(() => write.updateSyncClient(callerOf(store, caller), body)),
     ),
   };
 }

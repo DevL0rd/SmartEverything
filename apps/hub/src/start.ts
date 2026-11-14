@@ -199,6 +199,18 @@ async function openConnections(layout: HubLayout, store: Store): Promise<HubConn
   return new HubConnections(await openHubIdentity(layout.system.keys.tlsIdentity), store);
 }
 
+function openHubStore(options: ServerOptions, clock: Clock): Store {
+  const { layout } = options;
+  return openStore({
+    path: layout.system.database.file,
+    log: options.log,
+    now: clock.now,
+    systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    drivePathOf: (scope, ownerProfileId) =>
+      scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
+  });
+}
+
 async function boot(
   options: ServerOptions,
   clock: Clock,
@@ -208,12 +220,7 @@ async function boot(
   const lock = await lockDataDirectory(options.layout);
   undo.push(lock.release);
   const secrets = await openSecretStore(options.layout.system.keys, options.log);
-  const store = openStore({
-    path: options.layout.system.database.file,
-    log: options.log,
-    now: clock.now,
-    systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  });
+  const store = openHubStore(options, clock);
   undo.push(store.close);
   const outbound = options.fetch ?? fetch;
   const smartthings = smartThingsWiring({ secrets, fetch: outbound, now: clock.now });

@@ -12,7 +12,7 @@ import { aiChatRoutes } from '../../src/server/handlers/ai-chats';
 import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import { testStore, type TestStore, unusedDrivePath } from '../support/store';
 import { hubLayout } from '../../src/data-layout';
 
 const START = '2026-11-05T06:00:00.000Z';
@@ -86,6 +86,7 @@ describe('chat meter history', () => {
       log: testLogger('store'),
       now,
       systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
     });
     try {
       expect(reader.aiChats.meterHistory(chat.id)).toStrictEqual([

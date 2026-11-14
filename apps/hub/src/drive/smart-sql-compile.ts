@@ -1,9 +1,12 @@
 import type { SmartRule, SmartRuleLeaf } from '@smarteverything/domain';
 import { allOf, inList, type SqlFilter } from '../store/sql';
+import { starredBy } from '../store/repositories/drive-stars';
+import { accessSql } from './access';
 import { dayBounds } from './smart-sql-dates';
 
 export interface SmartScope {
-  readonly ownerProfileId: string | null;
+  readonly reachProfileId: string | null;
+  readonly starViewerId: string | null;
   readonly timeZone: string;
 }
 
@@ -98,6 +101,15 @@ function inFolder(leaf: Leaf<'in_folder'>, names: Parameters): SqlFilter {
   );
 }
 
+function starredLeaf(leaf: Leaf<'starred'>, scope: SmartScope, names: Parameters): SqlFilter {
+  if (scope.starViewerId === null) {
+    return { text: leaf.starred ? '0' : '1', parameters: {} };
+  }
+  const name = names.next();
+  const starred = starredBy(`$${name}`, 'drive_items.id');
+  return single(name, leaf.starred ? starred : `not ${starred}`, scope.starViewerId);
+}
+
 function compileLeaf(leaf: SmartRuleLeaf, scope: SmartScope, names: Parameters): SqlFilter {
   switch (leaf.kind) {
     case 'item_kind':
@@ -112,10 +124,8 @@ function compileLeaf(leaf: SmartRuleLeaf, scope: SmartScope, names: Parameters):
     }
     case 'in_folder':
       return inFolder(leaf, names);
-    case 'starred': {
-      const name = names.next();
-      return single(name, `starred = $${name}`, leaf.starred ? 1 : 0);
-    }
+    case 'starred':
+      return starredLeaf(leaf, scope, names);
     case 'size_range':
       return bounded(
         {
@@ -149,14 +159,15 @@ function joined(filters: readonly SqlFilter[], word: 'and' | 'or'): SqlFilter {
 }
 
 function reachable(names: Parameters, scope: SmartScope): SqlFilter {
-  if (scope.ownerProfileId === null) {
+  if (scope.reachProfileId === null) {
     return { text: "root_id in (select id from drive_roots where scope = 'home')", parameters: {} };
   }
   const name = names.next();
   return single(
     name,
-    `root_id in (select id from drive_roots where scope = 'home' or owner_profile_id = $${name})`,
-    scope.ownerProfileId,
+    `exists (select 1 from drive_roots r where r.id = drive_items.root_id
+      and ${accessSql('drive_items', 'r').replaceAll('$profile', `$${name}`)})`,
+    scope.reachProfileId,
   );
 }
 

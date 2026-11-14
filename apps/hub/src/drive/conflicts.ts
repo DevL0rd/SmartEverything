@@ -8,7 +8,7 @@ import {
   type DriveItem,
 } from '@smarteverything/domain';
 import { commitContent, type ChangeActor, type ChangeEnv } from './changes';
-import { locate, physicalRoot } from './intents';
+import { locate } from './intents';
 import { commitTrash } from './trash-purge';
 import { stageBytes, type StagedBytes } from './versions';
 
@@ -54,7 +54,7 @@ async function freeConflictPath(
   hub: DriveItem,
   deviceId: string,
 ): Promise<string> {
-  const root = physicalRoot(env.store.driveRoots.byId(rootId));
+  const root = env.store.driveRoots.byId(rootId);
   const folder = dirname(hub.relPath);
   for (let attempt = 0; ; attempt += 1) {
     const name = conflictName(hub.name, env.now(), deviceId, attempt);
@@ -78,7 +78,7 @@ export async function commitConflictCopy(
   copy: ConflictCopy,
 ): Promise<DriveConflict> {
   const { hub, actor } = copy;
-  const root = physicalRoot(env.store.driveRoots.byId(hub.rootId));
+  const root = env.store.driveRoots.byId(hub.rootId);
   const relPath = await freeConflictPath(env, hub.rootId, hub, copy.deviceId);
   const recorded: DriveConflict[] = [];
   await commitContent(env, {
@@ -118,8 +118,8 @@ async function keepClient(
   conflict: DriveConflict,
   actor: ChangeActor,
 ): Promise<void> {
-  const root = physicalRoot(env.store.driveRoots.byId(conflict.rootId));
-  const copy = env.store.driveItems.find(conflict.conflictItemId);
+  const root = env.store.driveRoots.byId(conflict.rootId);
+  const copy = env.store.driveItems.find(conflict.conflictItemId, null);
   if (copy === undefined) {
     throw new ConflictError('copy-missing', 'The conflict copy is no longer in the library.');
   }
@@ -133,10 +133,10 @@ async function keepHub(
   conflict: DriveConflict,
   actor: ChangeActor,
 ): Promise<void> {
-  if (env.store.driveItems.find(conflict.conflictItemId) === undefined) {
+  if (env.store.driveItems.find(conflict.conflictItemId, null) === undefined) {
     return;
   }
-  const root = physicalRoot(env.store.driveRoots.byId(conflict.rootId));
+  const root = env.store.driveRoots.byId(conflict.rootId);
   await commitTrash(env, root, conflict.conflictItemId, actor);
 }
 

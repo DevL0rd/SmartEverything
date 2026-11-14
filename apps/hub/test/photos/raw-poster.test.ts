@@ -36,6 +36,7 @@ import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { DriveMediaJobsRepository } from '../../src/store/repositories/drive-media-jobs';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { insertDriveRow } from './photo-rows';
 
 const run = promisify(execFile);
 const FIXTURES = resolve(import.meta.dirname, '../fixtures/photos');
@@ -168,7 +169,6 @@ function seed(n: number, kind: 'image' | 'video', name: string, mime: string): s
     integrity: 'unknown',
     modified_at: NOW,
     added_at: NOW,
-    starred: 0,
     rev: 1,
     etag: `etag-${String(n)}`,
     outside: 0,
@@ -219,30 +219,7 @@ beforeEach(async () => {
   items = new DriveItemsRepository(context);
   media = new DriveMediaRepository(context);
   jobs = new DriveMediaJobsRepository(context);
-  insert('drive_roots', {
-    id: ROOT,
-    kind: 'folder',
-    label: 'Root',
-    scope: 'home',
-    owner_profile_id: null,
-    path: '/srv/root',
-    read_only: 0,
-    versions: 1,
-    synced: 0,
-    index_id: 'index-1',
-    state: 'ready',
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    hashed_share: 0,
-    verified_share: 0,
-    corrupt: 0,
-    in_photos: 1,
-    skip_patterns: '[]',
-    include_hidden: 0,
-    created_at: NOW,
-    updated_at: NOW,
-  });
+  insertDriveRow(database, { id: ROOT, scope: 'home', ownerId: null });
   directory = await mkdtemp(join(tmpdir(), 'raw-poster-'));
   layout = hubLayout(directory, {});
 });
@@ -542,7 +519,7 @@ describe('video posters', () => {
 
     expect(media.byId(id)).toMatchObject({ preview_state: 'ready', poster_state: 'ready' });
     expect(media.byId(id).thumbhash).not.toBeNull();
-    expect(thumbOf(items.find(id))).toEqual({ state: 'ready' });
+    expect(thumbOf(items.find(id, null))).toEqual({ state: 'ready' });
     const preview = await readFile(derivedPath(layout, { itemId: id, rev: 1, size: 'preview' }));
     expect(await sharp(preview).metadata()).toMatchObject({
       format: 'webp',
@@ -603,7 +580,7 @@ describe('video posters', () => {
       poster_state: 'failed',
       preview_reason: 'the file is gone',
     });
-    expect(thumbOf(items.find(missing.id))).toEqual({ state: 'failed', reason: 'the file is gone' });
+    expect(thumbOf(items.find(missing.id, null))).toEqual({ state: 'failed', reason: 'the file is gone' });
   });
 
   it('skips a job for a changed revision', async () => {

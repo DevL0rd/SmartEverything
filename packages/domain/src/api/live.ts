@@ -283,7 +283,7 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('automation_plugin_kinds', TABLE_ROWS.automation_plugin_kinds),
   changeOf('drive_roots', TABLE_ROWS.drive_roots),
   changeOf('drive_albums', TABLE_ROWS.drive_albums),
-  changeOf('drive_sync_clients', TABLE_ROWS.drive_sync_clients),
+  changeOf('drive_grants', TABLE_ROWS.drive_grants),
   changeOf('drive_placements', TABLE_ROWS.drive_placements),
   changeOf('planner_collections', TABLE_ROWS.planner_collections),
   changeOf('planner_items', TABLE_ROWS.planner_items),

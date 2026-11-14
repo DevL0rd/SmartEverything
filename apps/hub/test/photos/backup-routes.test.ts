@@ -6,6 +6,7 @@ import { nodeFiles } from '../../src/drive/versions';
 import { BackupService } from '../../src/photos/backup';
 import { DriveBackupRepository } from '../../src/store/repositories/drive-backup';
 import { photoBackupRoutes } from '../../src/photos/backup-routes';
+import { insertDriveRow } from './photo-rows';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -23,6 +24,7 @@ function pairedDevice(kind: 'phone' | 'computer' = 'computer'): {
 } {
   const { store } = fixture;
   const profileId = store.profiles.create({ name: 'Desktop person' }).id;
+  insertDriveRow(store.database, { id: randomUUID(), scope: 'person', ownerId: profileId });
   const clientId = randomUUID();
   store.context.sql.run(
     'create fixture client',

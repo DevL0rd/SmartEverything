@@ -13,9 +13,9 @@ import { z } from 'zod';
 import { sendError } from '../../server/http';
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
 import { hashHandle } from '../blocks';
-import { DriveWriteError, locate, physicalRoot, type DriveWriteRoot } from '../intents';
+import { canRead, itemAccess } from '../access';
+import { DriveWriteError, locate, type DriveWriteRoot } from '../intents';
 import { openResolved, resolveInRoot } from '../paths';
-import { rootVisibleTo } from '../service-read';
 import { blocksHashOf } from './server-index';
 import {
   apiErrorOf,
@@ -310,7 +310,7 @@ export class SyncBlockRoutes {
     if (sha256Of(block) !== hashes[index]) {
       throw new ApiError('invalid_request', 'The block does not match its announced checksum.');
     }
-    const root = physicalRoot(this.env.store.driveRoots.byId(txn.spec.rootId));
+    const root = this.env.store.driveRoots.byId(txn.spec.rootId);
     const handle = await open(await locate(root, txn.spec.tmpRel), 'r+');
     try {
       await handle.write(block, 0, block.length, range.start);
@@ -327,14 +327,16 @@ export class SyncBlockRoutes {
   ): { readonly root: DriveWriteRoot; readonly item: FileItem } {
     const rootId = ID.safeParse(params['rootId']).data;
     const itemId = ID.safeParse(params['itemId']).data;
-    const row = rootId === undefined ? undefined : this.env.store.driveRoots.find(rootId);
-    if (row === undefined || !rootVisibleTo(node.actor, row)) {
-      throw new ApiError('not_found', 'There is no such library folder for this person.');
+    const drive = rootId === undefined ? undefined : this.env.store.driveRoots.find(rootId);
+    const found = itemId === undefined ? undefined : this.env.store.driveItems.find(itemId, null);
+    if (drive === undefined || found?.rootId !== drive.id) {
+      throw new ApiError('not_found', 'There is no such file for this person.');
     }
-    const found = itemId === undefined ? undefined : this.env.store.driveItems.find(itemId);
-    if (found?.rootId !== row.id) throw new ApiError('not_found', 'There is no such file.');
+    if (!canRead(itemAccess(this.env.store, node.actor, drive, found))) {
+      throw new ApiError('not_found', 'There is no such file for this person.');
+    }
     const item = fileOf(found);
     if (item === null) throw new ApiError('invalid_request', 'A folder has no blocks.');
-    return { root: physicalRoot(row), item };
+    return { root: drive, item };
   }
 }

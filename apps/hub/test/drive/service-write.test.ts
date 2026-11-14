@@ -127,7 +127,7 @@ async function seedFolder(root: DriveRoot, relPath: string): Promise<DriveItem> 
   if (stamp === null) throw new Error('folder missing');
   const slash = relPath.lastIndexOf('/');
   const parent =
-    slash < 0 ? undefined : opened.store.driveItems.byPath(root.id, relPath.slice(0, slash));
+    slash < 0 ? undefined : opened.store.driveItems.byPath(root.id, relPath.slice(0, slash), null);
   return recordItem(changeEnv(), {
     draft: folderDraft(
       {
@@ -370,7 +370,7 @@ describe('changes in the tree', () => {
       change({ action: 'new_folder', parentId: top.id, name: 'sub' }),
     );
     expect(made.failed).toEqual([]);
-    const created = opened.store.driveItems.byPath(root.id, 'top/sub');
+    const created = opened.store.driveItems.byPath(root.id, 'top/sub', null);
     expect(created).toMatchObject({ kind: 'folder', parentId: top.id, addedByProfileId: ownerId });
     expect(made.done).toEqual([{ itemId: top.id, resultItemId: created?.id }]);
     expect((await stat(join(pathOf(root), 'top', 'sub'))).isDirectory()).toBe(true);
@@ -391,16 +391,16 @@ describe('changes in the tree', () => {
       change({ action: 'rename', itemId: top.id, name: 'renamed' }),
     );
     expect(renamed.failed).toEqual([]);
-    expect(opened.store.driveItems.byId(top.id)).toMatchObject({
+    expect(opened.store.driveItems.byId(top.id, null)).toMatchObject({
       relPath: 'renamed',
       name: 'renamed',
       rev: 2,
     });
-    expect(opened.store.driveItems.byId(deep.id)).toMatchObject({
+    expect(opened.store.driveItems.byId(deep.id, null)).toMatchObject({
       relPath: 'renamed/deep',
       parentId: top.id,
     });
-    expect(opened.store.driveItems.byId(inside.id)).toMatchObject({
+    expect(opened.store.driveItems.byId(inside.id, null)).toMatchObject({
       relPath: 'renamed/deep/a.txt',
       rev: 2,
     });
@@ -410,7 +410,7 @@ describe('changes in the tree', () => {
     expect(rows).toEqual(['create', 'rename']);
     await service.change(owner(), change({ action: 'rename', itemId: inside.id, name: 'b.txt' }));
     expect(await textOf(root, 'renamed/deep/b.txt')).toBe('a');
-    expect(opened.store.driveItems.byId(inside.id).id).toBe(inside.id);
+    expect(opened.store.driveItems.byId(inside.id, null).id).toBe(inside.id);
   });
 
   it('reports a rename onto an existing name as a conflict and changes nothing', async () => {
@@ -462,7 +462,7 @@ describe('changes in the tree', () => {
       change({ action: 'copy', itemIds: [source.id], toFolderId: destination.id }),
     );
     expect(result.failed).toEqual([]);
-    const copied = opened.store.driveItems.byPath(root.id, 'dest/source/a.txt');
+    const copied = opened.store.driveItems.byPath(root.id, 'dest/source/a.txt', null);
     expect(copied).toMatchObject({ bytes: 5, addedByProfileId: memberId });
     expect(await textOf(root, 'dest/source/a.txt')).toBe('hello');
     expect(await textOf(root, 'source/a.txt')).toBe('hello');
@@ -484,7 +484,7 @@ describe('changes in the tree', () => {
     );
     expect(result.done).toEqual([]);
     expect(result.failed[0]?.reason).toMatch(/space limit/u);
-    expect(opened.store.driveItems.byPath(root.id, 'dest/big.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(root.id, 'dest/big.txt', null)).toBeUndefined();
     expect(await exists(join(pathOf(root), 'dest', 'big.txt'))).toBe(false);
   });
 
@@ -492,7 +492,7 @@ describe('changes in the tree', () => {
     const root = await addRoot('docs');
     const file = await seedFile(root, 'a.txt', 'a');
     await service.change(owner(), change({ action: 'star', itemIds: [file.id] }));
-    expect(opened.store.driveItems.byId(file.id).starred).toBe(true);
+    expect(opened.store.driveItems.byId(file.id, null).starred).toBe(true);
     await service.change(owner(), change({ action: 'unstar', itemIds: [file.id] }));
     expect(opened.store.driveFeed.ofItem(file.id, 0, 10).rows.map((row) => row.op)).toEqual([
       'create',
@@ -509,7 +509,7 @@ describe('changes in the tree', () => {
     const file = await seedFile(root, 'a.txt', 'a');
     const trashed = await service.change(owner(), change({ action: 'trash', itemIds: [file.id] }));
     expect(trashed.done).toHaveLength(1);
-    expect(opened.store.driveItems.find(file.id)).toBeUndefined();
+    expect(opened.store.driveItems.find(file.id, null)).toBeUndefined();
     expect(opened.store.driveTrash.find(file.id)).toBeDefined();
     const restored = await service.change(
       owner(),
@@ -548,7 +548,7 @@ describe('changes in the tree', () => {
     const result = await service.change(member(), change({ action: 'trash', itemIds: [file.id] }));
     expect(result.done).toEqual([]);
     expect(result.failed[0]?.reason).toMatch(/no such library folder/u);
-    expect(opened.store.driveItems.find(file.id)).toBeDefined();
+    expect(opened.store.driveItems.find(file.id, null)).toBeDefined();
   });
 
   it('adds files to a manual album and takes them out again', async () => {

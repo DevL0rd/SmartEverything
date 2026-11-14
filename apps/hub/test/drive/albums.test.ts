@@ -1,32 +1,24 @@
-import type { DriveRoot, SmartRule, SmartRuleLeaf } from '@smarteverything/domain';
+import type { SmartRule, SmartRuleLeaf } from '@smarteverything/domain';
 import fc from 'fast-check';
 import { DatabaseSync } from 'node:sqlite';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import type { DriveActor } from '../../src/drive/access';
 import {
   DriveAlbumAccessError,
   DriveAlbumCursorError,
   DriveAlbumItemError,
   DriveAlbumsService,
   type AlbumCursor,
-  type AlbumViewer,
   type SmartQueryRunner,
 } from '../../src/drive/albums';
 import { compileSmartRule } from '../../src/drive/smart-sql-compile';
 import { dayBounds, resolveDateWord } from '../../src/drive/smart-sql-dates';
-import { StoreContext } from '../../src/store/context';
-import { ChangeFeed } from '../../src/store/feed';
-import { migrate } from '../../src/store/migrate';
-import { MIGRATIONS } from '../../src/store/migrations';
-import { DriveAlbumsRepository } from '../../src/store/repositories/drive-albums';
-import {
-  DriveItemsRepository,
-  type DriveItemDraft,
-} from '../../src/store/repositories/drive-items';
-import { DriveRootsRepository, UNSYNCED } from '../../src/store/repositories/drive-roots';
-import { ProfilesRepository } from '../../src/store/repositories/profiles';
-import { Sql } from '../../src/store/sql';
-import { testLogger } from '../support/logs';
+import type { DriveItemDraft } from '../../src/store/repositories/drive-items';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import type { TestStore } from '../support/store';
+import { driveTestStore } from './spaces-fixture';
 
 const NOW = '2026-11-07T10:00:00.000Z';
 const HOME_ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -74,13 +66,13 @@ const FOLDER = spec({ kind: 'folder', name: 'Trips', bytes: 0, takenAt: null });
 const EXTRA_VIDEO = spec({ kind: 'video', name: 'extra.mp4', durationMs: 1000 });
 const PERSON_ITEM = spec({ name: 'private.jpg', rootId: PERSON_ROOT });
 
-let database: DatabaseSync;
-let items: DriveItemsRepository;
-let albumsRepository: DriveAlbumsRepository;
+let opened: TestStore;
+let reader: DatabaseSync;
 let service: DriveAlbumsService;
-let owner: AlbumViewer;
-let member: AlbumViewer;
+let owner: DriveActor;
+let member: DriveActor;
 let ids: string[];
+let names: Map<string, string>;
 let counter: number;
 
 const ROWS = z.array(z.object({ id: z.string(), at: z.number() }));
@@ -88,48 +80,12 @@ const TOTAL = z.object({ total: z.number() });
 const IDS = z.array(z.object({ id: z.string() }));
 
 const runner: SmartQueryRunner = {
-  rows: (statement) => ROWS.parse(database.prepare(statement.text).all(statement.parameters)),
-  count: (statement) =>
-    TOTAL.parse(database.prepare(statement.text).get(statement.parameters)).total,
+  rows: (statement) => ROWS.parse(reader.prepare(statement.text).all(statement.parameters)),
+  count: (statement) => TOTAL.parse(reader.prepare(statement.text).get(statement.parameters)).total,
 };
 
 function uuid(prefix: string, index: number): string {
   return `${prefix}000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
-}
-
-const HEALTH = {
-  hashedShare: 0,
-  verifiedShare: 0,
-  corrupt: 0,
-  lastScrubAt: null,
-  lastBackupAt: null,
-} as const;
-
-function root(id: string, scope: 'home' | 'person', ownerProfileId: string | null): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: id,
-    scope,
-    ownerProfileId,
-    path: `/srv/${id}`,
-    readOnly: false,
-    versions: false,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: HEALTH,
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
 }
 
 function draftOf(spec: Spec, id: string): DriveItemDraft {
@@ -141,7 +97,8 @@ function draftOf(spec: Spec, id: string): DriveItemDraft {
     name: spec.name,
     modifiedAt: NOW,
     addedAt: NOW,
-    starred: spec.starred,
+    starred: false,
+    shared: false,
     outside: false,
     addedByProfileId: null,
     remoteId: null,
@@ -179,33 +136,36 @@ function draftOf(spec: Spec, id: string): DriveItemDraft {
 function addItem(spec: Spec): string {
   counter += 1;
   const id = uuid('0f', counter);
-  items.write({ item: draftOf(spec, id), identity: { dev: '1', ino: String(counter) } });
+  opened.store.driveItems.write({
+    item: draftOf(spec, id),
+    identity: { dev: '1', ino: String(counter) },
+  });
+  if (spec.starred) {
+    opened.store.driveStars.star(owner.profileId, id);
+    opened.store.driveStars.star(member.profileId, id);
+  }
   ids.push(id);
+  names.set(id, spec.name);
   return id;
 }
 
-beforeEach(() => {
-  database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
-  const log = testLogger();
-  const context = new StoreContext(new Sql(database), new ChangeFeed(log), () => new Date(NOW));
-  migrate(new Sql(database), MIGRATIONS, NOW, log);
-  const profiles = new ProfilesRepository(context);
-  const first = profiles.create({ name: 'Robin' }).id;
-  const second = profiles.create({ name: 'Sam' }).id;
-  owner = { profileId: first, owner: true };
-  member = { profileId: second, owner: false };
-  const roots = new DriveRootsRepository(context);
-  roots.insert(root(HOME_ROOT, 'home', null));
-  roots.insert(root(PERSON_ROOT, 'person', first));
-  items = new DriveItemsRepository(context);
-  albumsRepository = new DriveAlbumsRepository(context);
+beforeEach(async () => {
+  opened = await driveTestStore(() => new Date(NOW));
+  reader = new DatabaseSync(join(opened.directory, 'test.db'), { readOnly: true });
+  const { store } = opened;
+  owner = { profileId: store.profiles.first().id };
+  member = { profileId: store.profiles.create({ name: 'Sam' }).id };
+  store.driveRoots.insert(sharedDriveRoot(HOME_ROOT));
+  store.driveRoots.insert(personalDriveRoot(PERSON_ROOT, owner.profileId));
   counter = 0;
   ids = [];
+  names = new Map();
   let albumCounter = 0;
   service = new DriveAlbumsService({
-    albums: albumsRepository,
-    items,
-    roots,
+    albums: store.driveAlbums,
+    items: store.driveItems,
+    roots: store.driveRoots,
+    grants: store.driveGrants,
     runner,
     newId: (): string => {
       albumCounter += 1;
@@ -221,8 +181,9 @@ beforeEach(() => {
   addItem(PERSON_ITEM);
 });
 
-afterEach(() => {
-  database.close();
+afterEach(async () => {
+  reader.close();
+  await opened.close();
 });
 
 const rule = (match: 'all' | 'any', ...rules: SmartRuleLeaf[]): SmartRule => ({ match, rules });
@@ -315,13 +276,14 @@ function expectedNames(smart: SmartRule): string[] {
     .sort();
 }
 
-function matchedNames(smart: SmartRule, ownerProfileId: string | null = null): string[] {
-  const filter = compileSmartRule(smart, { ownerProfileId, timeZone: 'UTC' });
+function matchedNames(
+  smart: SmartRule,
+  reachProfileId: string | null = null,
+  starViewerId: string | null = member.profileId,
+): string[] {
+  const filter = compileSmartRule(smart, { reachProfileId, starViewerId, timeZone: 'UTC' });
   const rows = IDS.parse(
-    database.prepare(`select id from drive_items where ${filter.text}`).all(filter.parameters),
-  );
-  const names = new Map(
-    ids.map((id, index) => [id, [...SPECS, FOLDER, PERSON_ITEM][index]?.name ?? '']),
+    reader.prepare(`select id from drive_items where ${filter.text}`).all(filter.parameters),
   );
   return rows.map((row) => names.get(row.id) ?? '').sort();
 }
@@ -381,7 +343,11 @@ describe('smart rule compiler', () => {
   it('binds every value and never writes user text into the statement', () => {
     fc.assert(
       fc.property(ruleArbitrary, fc.uuid(), (smart, profile) => {
-        const filter = compileSmartRule(smart, { ownerProfileId: profile, timeZone: 'UTC' });
+        const filter = compileSmartRule(smart, {
+          reachProfileId: profile,
+          starViewerId: profile,
+          timeZone: 'UTC',
+        });
         const used = [...filter.text.matchAll(/\$([a-z0-9]+)/g)].map((hit) => hit[1]);
         expect(new Set(used)).toEqual(new Set(Object.keys(filter.parameters)));
         expect(filter.text).not.toContain(profile);
@@ -391,7 +357,11 @@ describe('smart rule compiler', () => {
             leaf.kind === 'text' ? { ...leaf, contains: 'x' } : leaf,
           ),
         };
-        const reference = compileSmartRule(masked, { ownerProfileId: profile, timeZone: 'UTC' });
+        const reference = compileSmartRule(masked, {
+          reachProfileId: profile,
+          starViewerId: profile,
+          timeZone: 'UTC',
+        });
         expect(filter.text).toEqual(reference.text);
         for (const leaf of smart.rules) {
           if (leaf.kind === 'text') {
@@ -411,7 +381,7 @@ describe('smart rule compiler', () => {
     expect(matchedNames(rule('all', { kind: 'text', field: 'name', contains: '%' }))).toEqual(
       expectedNames(rule('all', { kind: 'text', field: 'name', contains: '%' })),
     );
-    expect(database.prepare('select count(*) as total from drive_items').get()).toEqual({
+    expect(reader.prepare('select count(*) as total from drive_items').get()).toEqual({
       total: SPECS.length + 2,
     });
   });
@@ -422,6 +392,26 @@ describe('smart rule compiler', () => {
     expect(matchedNames(starred, owner.profileId)).toContain('private.jpg');
     expect(matchedNames(starred, member.profileId)).not.toContain('private.jpg');
     expect(matchedNames(starred, owner.profileId)).not.toContain('Trips');
+  });
+
+  it('reads the starred rule for the viewer only', () => {
+    const starred = rule('all', { kind: 'starred', starred: true });
+    const lonely = addItem(spec({ name: 'lonely.jpg' }));
+    opened.store.driveStars.unstar(member.profileId, lonely);
+    expect(matchedNames(starred, null, owner.profileId)).toContain('lonely.jpg');
+    expect(matchedNames(starred, null, member.profileId)).not.toContain('lonely.jpg');
+    expect(matchedNames(starred, null, null)).toEqual([]);
+  });
+
+  it('reaches items another person shared through a grant on the item or its folder', () => {
+    const everything = rule('all', { kind: 'item_kind', itemKinds: ['image'] });
+    expect(matchedNames(everything, member.profileId)).not.toContain('private.jpg');
+    const privateId = ids[17] ?? '';
+    opened.store.driveGrants.set(
+      { itemId: privateId, profileId: member.profileId, role: 'view' },
+      owner.profileId,
+    );
+    expect(matchedNames(everything, member.profileId)).toContain('private.jpg');
   });
 });
 
@@ -435,6 +425,7 @@ describe('albums', () => {
     expect(service.addItems(album.id, [first, second], member).itemCount).toBe(2);
     expect(() => service.addItems(album.id, [ids[16] ?? ''], owner)).toThrow(DriveAlbumItemError);
     expect(() => service.addItems(album.id, [ids[17] ?? ''], owner)).toThrow(DriveAlbumItemError);
+    expect(() => service.addItems(album.id, [ids[17] ?? ''], member)).toThrow(DriveAlbumItemError);
     expect(() => service.addItems(album.id, [uuid('0f', 999)], owner)).toThrow(DriveAlbumItemError);
     expect(service.removeItems(album.id, [first], member).itemCount).toBe(1);
     const page = service.members(album.id, member, null, 10);
@@ -471,13 +462,49 @@ describe('albums', () => {
     const starredCount = SPECS.filter((spec) => spec.starred).length;
     expect(smart.itemCount).toBe(starredCount);
     addItem(EXTRA_VIDEO);
-    expect(service.refresh(smart.id).itemCount).toBe(starredCount + 1);
+    service.refresh(smart.id);
+    expect(service.get(smart.id, member).itemCount).toBe(starredCount + 1);
     service.refreshAll();
     expect(
       service.setRule(smart.id, rule('all', { kind: 'item_kind', itemKinds: ['video'] }), member)
         .itemCount,
     ).toBe(SPECS.filter((spec) => spec.kind === 'video').length + 1);
     expect(() => service.addItems(smart.id, [ids[0] ?? ''], member)).toThrow();
+  });
+
+  it('counts a home smart album with the stars of whoever looks', () => {
+    const smart = service.create(
+      {
+        kind: 'smart',
+        title: 'Starred',
+        surface: 'drive',
+        scope: 'home',
+        rule: rule('all', { kind: 'starred', starred: true }),
+      },
+      owner,
+    );
+    const starredCount = SPECS.filter((spec) => spec.starred).length;
+    expect(smart.itemCount).toBe(starredCount);
+    const mine = addItem(spec({ name: 'mine.jpg', starred: false }));
+    opened.store.driveStars.star(owner.profileId, mine);
+    expect(service.get(smart.id, owner).itemCount).toBe(starredCount + 1);
+    expect(service.get(smart.id, member).itemCount).toBe(starredCount);
+    expect(service.members(smart.id, owner, null, 100).itemIds).toContain(mine);
+    expect(service.members(smart.id, member, null, 100).itemIds).not.toContain(mine);
+  });
+
+  it('lets a person reach a granted file in a manual album of their own', () => {
+    const album = service.create(
+      { kind: 'manual', title: 'Theirs', surface: 'drive', scope: 'person' },
+      member,
+    );
+    const privateId = ids[17] ?? '';
+    expect(() => service.addItems(album.id, [privateId], member)).toThrow(DriveAlbumItemError);
+    opened.store.driveGrants.set(
+      { itemId: privateId, profileId: member.profileId, role: 'view' },
+      owner.profileId,
+    );
+    expect(service.addItems(album.id, [privateId], member).itemCount).toBe(1);
   });
 
   it('pages a smart album newest first with a keyset cursor', () => {

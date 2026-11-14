@@ -20,7 +20,6 @@ const CANDIDATE = z.strictObject({ id: z.string() });
 
 export async function locateMedia(deps: PhotoPipelineDeps, item: DriveItem): Promise<string> {
   const root = deps.store.driveRoots.byId(item.rootId);
-  if (root.path === null) throw new Error(`The media root ${root.id} has no local files.`);
   return (await resolveInRoot(root.path, item.relPath)).absolute;
 }
 
@@ -92,7 +91,7 @@ export class PhotoPipeline {
          (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'playable'))))`,
       );
       for (const { id } of candidates) {
-        const item = this.deps.store.driveItems.byId(id);
+        const item = this.deps.store.driveItems.byId(id, null);
         const media = this.media.byId(id);
         this.runner.itemChanged(item);
         if (item.kind === 'image' && media.preview_state === 'none') this.request(item, 'preview');
@@ -112,7 +111,7 @@ export class PhotoPipeline {
   }
 
   private writeThumb(itemId: string, thumb: DriveThumb): void {
-    const item = this.deps.store.driveItems.byId(itemId);
+    const item = this.deps.store.driveItems.byId(itemId, null);
     if (item.kind !== 'image' && item.kind !== 'video')
       throw new Error(`The derived media item ${itemId} is not an image or video.`);
     this.deps.parts.context.sql.run(

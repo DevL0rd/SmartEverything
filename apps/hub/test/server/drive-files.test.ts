@@ -1,26 +1,24 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
-import {
-  ApiError,
-  type ComputerNodeRow,
-  type DriveItem,
-  type DriveRoot,
-} from '@smarteverything/domain';
+import { ApiError, type ComputerNodeRow, type DriveItem } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
 import { serveDriveFile, driveFileLink, type DriveFiles } from '../../src/server/drive-files';
 import { LINK_LIFETIME_SECONDS, MediaLinks } from '../../src/server/media-links';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { captureLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from '../drive/spaces-fixture';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const STAMP = NOW.toISOString();
 const MEMBER_ROOT = '0d000000-0000-4000-8000-000000000003';
 const OTHER_ROOT = '0d000000-0000-4000-8000-000000000004';
+const OWNER_ROOT = '0d000000-0000-4000-8000-000000000005';
 const MEMBER_FILE = '0d000000-0000-4000-8000-0000000000f2';
 const OTHER_FILE = '0d000000-0000-4000-8000-0000000000f3';
+const OWNER_FILE = '0d000000-0000-4000-8000-0000000000f4';
 const BODY = 'the quick brown fox';
 const OWNER_TOKEN = 'owner-node';
 const MEMBER_TOKEN = 'member-node';
@@ -35,7 +33,6 @@ let files: DriveFiles;
 let ownerProfile: string;
 let memberProfile: string;
 let otherProfile: string;
-let rootDirectory: string;
 
 function node(deviceId: string): ComputerNodeRow {
   return {
@@ -56,9 +53,9 @@ const NODES: Readonly<Record<string, string>> = {
 function actorOf(row: ComputerNodeRow): DriveActor {
   switch (row.device_id) {
     case NODES[OWNER_TOKEN]:
-      return { profileId: ownerProfile, owner: true };
+      return { profileId: ownerProfile };
     case NODES[MEMBER_TOKEN]:
-      return { profileId: memberProfile, owner: false };
+      return { profileId: memberProfile };
     default:
       throw new ApiError('forbidden', 'computer_not_bound_to_person');
   }
@@ -68,39 +65,6 @@ function authenticate(token: string | null): ComputerNodeRow {
   const deviceId = token === null ? undefined : NODES[token];
   if (deviceId === undefined) throw new ApiError('unauthorized', 'unknown or revoked node token');
   return node(deviceId);
-}
-
-function root(id: string, owner: string, path: string): DriveRoot {
-  return {
-    id,
-    kind: 'managed',
-    label: id.slice(-1),
-    scope: 'person',
-    ownerProfileId: owner,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
 }
 
 function writeFileItem(id: string, rootId: string, bytes: number, name = 'note.txt'): DriveItem {
@@ -120,6 +84,7 @@ function writeFileItem(id: string, rootId: string, bytes: number, name = 'note.t
       modifiedAt: STAMP,
       addedAt: STAMP,
       starred: false,
+      shared: false,
       outside: false,
       remoteId: null,
       remoteRev: null,
@@ -136,20 +101,26 @@ function pathOf(url: string): string {
 beforeEach(async () => {
   captureLogs();
   now = NOW;
-  opened = await testStore();
+  opened = await driveTestStore();
   const { store } = opened;
   ownerProfile = store.profiles.first().id;
   memberProfile = store.profiles.create({ name: 'Robin' }).id;
   otherProfile = store.profiles.create({ name: 'Ida' }).id;
-  rootDirectory = join(opened.directory, 'roots');
-  await mkdir(join(rootDirectory, 'member'), { recursive: true });
-  await mkdir(join(rootDirectory, 'other'), { recursive: true });
-  await writeFile(join(rootDirectory, 'member', 'note.txt'), BODY);
-  await writeFile(join(rootDirectory, 'other', 'note.txt'), 'private to Ida');
-  store.driveRoots.insert(root(MEMBER_ROOT, memberProfile, join(rootDirectory, 'member')));
-  store.driveRoots.insert(root(OTHER_ROOT, otherProfile, join(rootDirectory, 'other')));
+  const memberDirectory = opened.layout.person(memberProfile).drive;
+  const otherDirectory = opened.layout.person(otherProfile).drive;
+  const ownerDirectory = opened.layout.person(ownerProfile).drive;
+  for (const directory of [memberDirectory, otherDirectory, ownerDirectory]) {
+    await mkdir(directory, { recursive: true });
+  }
+  await writeFile(join(memberDirectory, 'note.txt'), BODY);
+  await writeFile(join(otherDirectory, 'note.txt'), 'private to Ida');
+  await writeFile(join(ownerDirectory, 'note.txt'), 'private to Pat');
+  store.driveRoots.insert(personalDriveRoot(MEMBER_ROOT, memberProfile));
+  store.driveRoots.insert(personalDriveRoot(OTHER_ROOT, otherProfile));
+  store.driveRoots.insert(personalDriveRoot(OWNER_ROOT, ownerProfile));
   writeFileItem(MEMBER_FILE, MEMBER_ROOT, BODY.length);
   writeFileItem(OTHER_FILE, OTHER_ROOT, 14);
+  writeFileItem(OWNER_FILE, OWNER_ROOT, 14);
   links = new MediaLinks(() => now);
   files = { store, links, nodes: { authenticate, actorOf }, now: (): Date => now };
   server = createServer((request, response) => {
@@ -236,7 +207,7 @@ describe('signed driveFile links', () => {
 
   it('refuses a link for an earlier rev after the file changed', async () => {
     const stale = pathOf(links.driveFile(MEMBER_FILE, 1).url);
-    await writeFile(join(rootDirectory, 'member', 'note.txt'), `${BODY} jumps`);
+    await writeFile(join(opened.layout.person(memberProfile).drive, 'note.txt'), `${BODY} jumps`);
     const changed = writeFileItem(MEMBER_FILE, MEMBER_ROOT, BODY.length + 6);
     expect(changed.rev).toBeGreaterThan(1);
     expect((await fetch(stale)).status).toBe(410);
@@ -256,12 +227,13 @@ describe('signed driveFile links', () => {
     await response.arrayBuffer();
   });
 
-  it('gives the owner and a member links only to items they may see', () => {
-    const member: DriveActor = { profileId: memberProfile, owner: false };
-    const owner: DriveActor = { profileId: ownerProfile, owner: true };
+  it('gives every person links only to items they may see, the owner included', () => {
+    const member: DriveActor = { profileId: memberProfile };
+    const owner: DriveActor = { profileId: ownerProfile };
     expect(driveFileLink(files, member, MEMBER_FILE).url).toContain('/file?');
     expect(() => driveFileLink(files, member, OTHER_FILE)).toThrow(/no such file/);
-    expect(driveFileLink(files, owner, OTHER_FILE).url).toContain(OTHER_FILE);
+    expect(() => driveFileLink(files, owner, OTHER_FILE)).toThrow(/no such file/);
+    expect(driveFileLink(files, owner, OWNER_FILE).url).toContain(OWNER_FILE);
   });
 
   it('signs a thumb link with the rev and the size in the path', () => {
@@ -278,13 +250,20 @@ describe('driveFile with a computer node token', () => {
   });
   const route = `/media/drive/${MEMBER_FILE}/file`;
 
-  it('serves the owner node any item with Range', async () => {
-    const response = await fetch(`${base}/media/drive/${OTHER_FILE}/file`, {
+  it('serves the owner node the item of the owner with Range', async () => {
+    const response = await fetch(`${base}/media/drive/${OWNER_FILE}/file`, {
       headers: { ...bearer(OWNER_TOKEN), range: 'bytes=0-6' },
     });
     expect(response.status).toBe(206);
     expect(await response.text()).toBe('private');
     expect(response.headers.get('cache-control')).toBe('private, no-cache');
+  });
+
+  it('hides another person item from the owner node', async () => {
+    const response = await fetch(`${base}/media/drive/${OTHER_FILE}/file`, {
+      headers: bearer(OWNER_TOKEN),
+    });
+    expect(response.status).toBe(404);
   });
 
   it('serves a member node its own root', async () => {

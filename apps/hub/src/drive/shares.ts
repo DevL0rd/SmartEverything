@@ -22,7 +22,7 @@ import { LINK_LIFETIME_SECONDS } from '../server/media-links';
 import type { DriveItemWindow } from '../store/repositories/drive-items';
 import type { Store } from '../store/store';
 import { readDriveSettings } from './settings';
-import { rootVisibleTo, type DriveActor } from './service-read';
+import { canRead, canShare, itemAccess, type DriveActor, type ItemAccess } from './access';
 
 const log = new Logger('hub.drive');
 
@@ -52,8 +52,15 @@ export interface ShareOrigin {
   readonly public: boolean;
 }
 
+export interface ShareActor extends DriveActor {
+  readonly owner: boolean;
+}
+
 export interface SharesEnv {
-  readonly store: Pick<Store, 'driveShares' | 'driveItems' | 'driveRoots' | 'settingsKv'>;
+  readonly store: Pick<
+    Store,
+    'driveShares' | 'driveItems' | 'driveRoots' | 'driveGrants' | 'settingsKv'
+  >;
   readonly origin: () => ShareOrigin;
   readonly now: () => Date;
 }
@@ -128,8 +135,11 @@ export class DriveShares {
     this.limiter = new GuessLimiter(env.now);
   }
 
-  async create(actor: DriveActor, input: DriveShareCreate): Promise<DriveShareCreated> {
+  async create(actor: ShareActor, input: DriveShareCreate): Promise<DriveShareCreated> {
     const item = this.visibleItem(actor, input.itemId);
+    if (!canShare(this.accessTo(actor, item))) {
+      throw new ApiError('forbidden', 'Only the person whose drive this is can share it.');
+    }
     if (!actor.owner && !readDriveSettings(this.env.store).membersMayShare) {
       throw new ApiError('forbidden', 'The owner has not allowed members to share links.');
     }
@@ -164,15 +174,20 @@ export class DriveShares {
   }
 
   list(actor: DriveActor, itemId: string): DriveShare[] {
-    this.visibleItem(actor, itemId);
+    const item = this.visibleItem(actor, itemId);
+    const sharedDrive = this.env.store.driveRoots.byId(item.rootId).scope === 'home';
     return this.env.store.driveShares
       .forItem(itemId)
-      .filter((share) => actor.owner || share.createdBy === actor.profileId);
+      .filter((share) => sharedDrive || share.createdBy === actor.profileId);
   }
 
   revoke(actor: DriveActor, shareId: string): DriveShare {
     const share = this.env.store.driveShares.find(shareId);
-    if (share === undefined || (!actor.owner && share.createdBy !== actor.profileId)) {
+    const item =
+      share === undefined ? undefined : this.env.store.driveItems.find(share.itemId, null);
+    const sharedDrive =
+      item !== undefined && this.env.store.driveRoots.byId(item.rootId).scope === 'home';
+    if (share === undefined || !(sharedDrive || share.createdBy === actor.profileId)) {
       throw new ApiError('not_found', 'There is no such share link for this caller.');
     }
     const revoked = this.env.store.driveShares.revoke(share.id, this.env.now().toISOString());
@@ -187,9 +202,9 @@ export class DriveShares {
       : undefined;
     if (record === undefined) throw unavailable();
     const { share } = record;
-    const item = this.env.store.driveItems.find(share.itemId);
+    const item = this.env.store.driveItems.find(share.itemId, null);
     const root = item === undefined ? undefined : this.env.store.driveRoots.find(item.rootId);
-    if (this.lapsed(share) || item === undefined || root === undefined || root.path === null) {
+    if (this.lapsed(share) || item === undefined || root === undefined) {
       throw unavailable();
     }
     return { share, passwordHash: record.passwordHash, item, rootPath: root.path };
@@ -202,7 +217,7 @@ export class DriveShares {
 
   within(access: ShareAccess, itemId: string): DriveItem {
     if (itemId === access.item.id) return access.item;
-    const child = this.env.store.driveItems.find(itemId);
+    const child = this.env.store.driveItems.find(itemId, null);
     const inside =
       child !== undefined &&
       access.item.kind === 'folder' &&
@@ -213,7 +228,13 @@ export class DriveShares {
   }
 
   children(folder: DriveItem, after: string | null, limit: number): DriveItemWindow {
-    return this.env.store.driveItems.children(folder.rootId, folder.id, after, limit);
+    return this.env.store.driveItems.children({
+      rootId: folder.rootId,
+      parentId: folder.id,
+      after,
+      limit,
+      viewer: null,
+    });
   }
 
   async verifyPassword(access: ShareAccess, password: string): Promise<void> {
@@ -266,10 +287,13 @@ export class DriveShares {
     }
   }
 
+  private accessTo(actor: DriveActor, item: DriveItem): ItemAccess {
+    return itemAccess(this.env.store, actor, this.env.store.driveRoots.byId(item.rootId), item);
+  }
+
   private visibleItem(actor: DriveActor, itemId: string): DriveItem {
-    const item = this.env.store.driveItems.find(itemId);
-    const root = item === undefined ? undefined : this.env.store.driveRoots.find(item.rootId);
-    if (item === undefined || root === undefined || !rootVisibleTo(actor, root)) {
+    const item = this.env.store.driveItems.find(itemId, actor.profileId);
+    if (item === undefined || !canRead(this.accessTo(actor, item))) {
       throw new ApiError('not_found', 'There is no such file or folder for this caller.');
     }
     return item;

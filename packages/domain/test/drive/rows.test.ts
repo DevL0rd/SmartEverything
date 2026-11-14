@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DRIVE_ALBUM } from '../../src/drive/album';
 import { DRIVE_ITEM } from '../../src/drive/item';
-import { DRIVE_ROOT } from '../../src/drive/root';
+import { DRIVE_DATA_SPACE, DRIVE_ROOT } from '../../src/drive/root';
 import { SMART_RULE } from '../../src/drive/smart-rule';
 import { DRIVE_TRASH_ENTRY } from '../../src/drive/trash';
 
@@ -19,11 +19,8 @@ const HEALTH = {
   lastBackupAt: null,
 };
 
-const SYNC = { ignorePatterns: ['*.tmp'], conflictCopies: true, clients: [] };
-
-const COMMON_ROOT = {
+const ROOT = {
   id: A,
-  label: 'Photos',
   scope: 'home',
   ownerProfileId: null,
   indexId: 'idx',
@@ -34,30 +31,9 @@ const COMMON_ROOT = {
   bytes: 10,
   scannedAt: AT,
   health: HEALTH,
-  inPhotos: true,
+  versions: true,
   skipPatterns: [],
   includeHidden: false,
-};
-
-const FOLDER_ROOT = {
-  ...COMMON_ROOT,
-  kind: 'folder',
-  path: '/data/photos',
-  readOnly: true,
-  versions: false,
-  synced: false,
-  sync: SYNC,
-  volume: null,
-};
-
-const CAMERAS_ROOT = {
-  ...COMMON_ROOT,
-  kind: 'cameras',
-  path: null,
-  readOnly: true,
-  versions: false,
-  synced: false,
-  sync: null,
 };
 
 const BASE_ITEM = {
@@ -70,6 +46,7 @@ const BASE_ITEM = {
   addedAt: AT,
   openedAt: null,
   starred: false,
+  shared: false,
   rev: 1,
   etag: '1-abc',
   outside: false,
@@ -101,6 +78,12 @@ describe('DRIVE_ITEM', () => {
     expect(DRIVE_ITEM.safeParse({ ...IMAGE_ITEM, addedByProfileId: C }).success).toBe(true);
   });
 
+  it('says whether the item is shared and refuses a missing flag', () => {
+    expect(DRIVE_ITEM.safeParse({ ...IMAGE_ITEM, shared: true }).success).toBe(true);
+    const { shared: _omitted, ...without } = IMAGE_ITEM;
+    expect(DRIVE_ITEM.safeParse(without).success).toBe(false);
+  });
+
   it('requires addedByProfileId and refuses a non-uuid', () => {
     const { addedByProfileId: _omitted, ...without } = IMAGE_ITEM;
     expect(DRIVE_ITEM.safeParse(without).success).toBe(false);
@@ -109,62 +92,56 @@ describe('DRIVE_ITEM', () => {
 });
 
 describe('DRIVE_ROOT', () => {
-  it('accepts linked, managed and virtual roots', () => {
-    expect(DRIVE_ROOT.safeParse(FOLDER_ROOT).success).toBe(true);
-    expect(DRIVE_ROOT.safeParse(CAMERAS_ROOT).success).toBe(true);
-    expect(
-      DRIVE_ROOT.safeParse({
-        ...FOLDER_ROOT,
-        kind: 'managed',
-        readOnly: false,
-        versions: true,
-        synced: true,
-      }).success,
-    ).toBe(true);
-  });
-
-  it('requires volume details on a volume root', () => {
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, kind: 'volume' }).success).toBe(false);
-    expect(
-      DRIVE_ROOT.safeParse({
-        ...FOLDER_ROOT,
-        kind: 'volume',
-        volume: { mountId: '1', fsType: 'ext4', network: false },
-      }).success,
-    ).toBe(true);
-  });
-
-  it('refuses a read-only root that keeps versions', () => {
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, versions: true }).success).toBe(false);
-  });
-
-  it('refuses a managed root that is read-only', () => {
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, kind: 'managed', readOnly: true }).success).toBe(
-      false,
+  it('accepts the shared drive and a personal drive', () => {
+    expect(DRIVE_ROOT.safeParse(ROOT).success).toBe(true);
+    expect(DRIVE_ROOT.safeParse({ ...ROOT, scope: 'person', ownerProfileId: C }).success).toBe(
+      true,
     );
   });
 
-  it('refuses a virtual root with a path, sync or edits', () => {
-    expect(DRIVE_ROOT.safeParse({ ...CAMERAS_ROOT, path: '/x' }).success).toBe(false);
-    expect(DRIVE_ROOT.safeParse({ ...CAMERAS_ROOT, readOnly: false }).success).toBe(false);
-    expect(DRIVE_ROOT.safeParse({ ...CAMERAS_ROOT, synced: true }).success).toBe(false);
-  });
-
   it('ties the owner to the person scope', () => {
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, scope: 'person' }).success).toBe(false);
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, ownerProfileId: C }).success).toBe(false);
-    expect(
-      DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, scope: 'person', ownerProfileId: C }).success,
-    ).toBe(true);
+    expect(DRIVE_ROOT.safeParse({ ...ROOT, scope: 'person' }).success).toBe(false);
+    expect(DRIVE_ROOT.safeParse({ ...ROOT, ownerProfileId: C }).success).toBe(false);
   });
 
-  it('refuses unknown kinds, unknown fields and missing fields', () => {
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, kind: 'nfs' }).success).toBe(false);
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, kind: 'google_drive' }).success).toBe(false);
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, kind: 'google_photos' }).success).toBe(false);
-    expect(DRIVE_ROOT.safeParse({ ...FOLDER_ROOT, extra: 1 }).success).toBe(false);
-    const { includeHidden: _omitted, ...missing } = FOLDER_ROOT;
+  it('knows only the states scanning, ready, unresponsive and error', () => {
+    for (const state of ['scanning', 'ready', 'unresponsive', 'error']) {
+      expect(DRIVE_ROOT.safeParse({ ...ROOT, state }).success, state).toBe(true);
+    }
+    expect(DRIVE_ROOT.safeParse({ ...ROOT, state: 'offline' }).success).toBe(false);
+  });
+
+  it('carries no kind, label, path, read-only flag, sync, volume or Photos flag', () => {
+    for (const field of [
+      { kind: 'managed' },
+      { label: 'Photos' },
+      { path: '/data/drive' },
+      { readOnly: false },
+      { synced: false },
+      { sync: null },
+      { volume: null },
+      { inPhotos: true },
+    ]) {
+      expect(DRIVE_ROOT.safeParse({ ...ROOT, ...field }).success, Object.keys(field)[0]).toBe(
+        false,
+      );
+    }
+  });
+
+  it('refuses unknown fields and missing fields', () => {
+    expect(DRIVE_ROOT.safeParse({ ...ROOT, extra: 1 }).success).toBe(false);
+    const { includeHidden: _omitted, ...missing } = ROOT;
     expect(DRIVE_ROOT.safeParse(missing).success).toBe(false);
+  });
+});
+
+describe('DRIVE_DATA_SPACE', () => {
+  it('holds the data folder disk and refuses free space above its size', () => {
+    const space = { totalBytes: 100, freeBytes: 40, fsType: 'btrfs' };
+    expect(DRIVE_DATA_SPACE.safeParse(space).success).toBe(true);
+    expect(DRIVE_DATA_SPACE.safeParse({ ...space, freeBytes: 101 }).success).toBe(false);
+    expect(DRIVE_DATA_SPACE.safeParse({ ...space, fsType: '' }).success).toBe(false);
+    expect(DRIVE_DATA_SPACE.safeParse({ ...space, mountId: '1' }).success).toBe(false);
   });
 });
 

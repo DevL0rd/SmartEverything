@@ -8,11 +8,11 @@ import {
   createClientToken,
   hashClientToken,
   type ComputerNodeRow,
-  type DriveRoot,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
-import { DriveReadService, type DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
+import { DriveReadService } from '../../src/drive/service-read';
 import { nodeFiles } from '../../src/drive/versions';
 import { handleMkcol } from '../../src/server/dav/collections';
 import type { DavDeps } from '../../src/server/dav/dav-auth';
@@ -20,8 +20,9 @@ import { handlePropfind } from '../../src/server/dav/propfind';
 import { CLASS1_METHODS, handleRead, sendOptions } from '../../src/server/dav/read';
 import { handleDelete, handlePut } from '../../src/server/dav/write';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
-import { folderRoot } from './drive-fixture';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore, putItem } from './spaces-fixture';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const OWNER_NODE = `sen_${'a'.repeat(43)}`;
@@ -62,7 +63,6 @@ let ownerToken = '';
 let memberToken = '';
 let memberRoot = '';
 let otherRoot = '';
-let lockedRoot = '';
 let removals = 0;
 
 function nodeRow(deviceId: string): ComputerNodeRow {
@@ -105,8 +105,7 @@ function depsOf(): DavDeps {
         return nodeRow(deviceId);
       },
       actorOf: (node): DriveActor => {
-        if (node.device_id === NODE_IDS[OWNER_NODE])
-          return { profileId: ownerProfile, owner: true };
+        if (node.device_id === NODE_IDS[OWNER_NODE]) return { profileId: ownerProfile };
         throw new ApiError('forbidden', 'computer_not_bound_to_person');
       },
     },
@@ -135,7 +134,7 @@ function send(method: string, path: string, options: Send = {}): Promise<Reply> 
 }
 
 const url = (rootId: string, path = ''): string => `/dav/${rootId}/${path}`;
-const own = (path: string): string => join(base, 'member', path);
+const own = (path: string): string => join(opened.layout.person(memberProfile).drive, path);
 const put = (path: string, body: string, headers: Record<string, string> = {}): Promise<Reply> =>
   send('PUT', url(memberRoot, path), { body, headers });
 const at = (method: string, path: string, headers: Record<string, string> = {}): Promise<Reply> =>
@@ -164,25 +163,29 @@ async function startServer(deps: DavDeps): Promise<void> {
   port = address.port;
 }
 
-function addRoot(
-  id: string,
-  name: string,
-  fields: Partial<Extract<DriveRoot, { kind: 'folder' }>>,
-): void {
+async function addDrive(id: string, owner: string | null): Promise<string> {
+  const dir = owner === null ? opened.layout.home.drive : opened.layout.person(owner).drive;
+  await mkdir(dir, { recursive: true });
   opened.store.driveRoots.insert(
-    folderRoot(id, join(base, name), {
-      readOnly: false,
-      versions: true,
-      scope: 'person',
-      ...fields,
-    }),
+    owner === null ? sharedDriveRoot(id) : personalDriveRoot(id, owner),
+  );
+  return dir;
+}
+
+async function addLockedFolder(rootId: string, dir: string): Promise<void> {
+  const id = randomUUID();
+  await mkdir(join(dir, 'Locked'));
+  putItem(opened.store, { rootId, id, relPath: 'Locked', kind: 'folder' });
+  opened.store.driveGrants.set(
+    { itemId: id, profileId: memberProfile, role: 'view' },
+    ownerProfile,
   );
 }
 
 beforeEach(async () => {
   captureLogs();
   removals = 0;
-  opened = await testStore();
+  opened = await driveTestStore();
   const { store } = opened;
   ownerProfile = store.profiles.first().id;
   memberProfile = store.profiles.create({ name: 'Robin' }).id;
@@ -202,11 +205,9 @@ beforeEach(async () => {
     tokenHash: hashClientToken(ownerToken),
   });
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-dav-')));
-  for (const name of ['member', 'other', 'locked']) await mkdir(join(base, name));
-  [memberRoot, otherRoot, lockedRoot] = [randomUUID(), randomUUID(), randomUUID()];
-  addRoot(memberRoot, 'member', { ownerProfileId: memberProfile });
-  addRoot(otherRoot, 'other', { ownerProfileId: ownerProfile });
-  addRoot(lockedRoot, 'locked', { ownerProfileId: ownerProfile, readOnly: true, versions: false });
+  [memberRoot, otherRoot] = [randomUUID(), randomUUID()];
+  await addDrive(memberRoot, memberProfile);
+  await addLockedFolder(otherRoot, await addDrive(otherRoot, ownerProfile));
   await startServer(depsOf());
 });
 
@@ -251,18 +252,27 @@ describe('WebDAV discovery and authentication', () => {
 
   it('accepts the owner computer token and refuses one bound to nobody or unknown', async () => {
     const statusOf = async (token: string): Promise<number> =>
-      (await send('PROPFIND', url(memberRoot), { token, headers: { depth: '0' } })).status;
+      (await send('PROPFIND', url(otherRoot), { token, headers: { depth: '0' } })).status;
     expect(await statusOf(OWNER_NODE)).toBe(207);
     expect(await statusOf(UNBOUND_NODE)).toBe(403);
     expect(await statusOf(UNKNOWN_NODE)).toBe(401);
   });
 
-  it('hides another person root from a member and shows it to the owner', async () => {
+  it('hides a personal drive from every other person, the owner included', async () => {
     const headers = { depth: '0' };
     expect((await send('PROPFIND', url(otherRoot), { headers })).status).toBe(404);
     expect((await send('PROPFIND', url(otherRoot), { headers, token: ownerToken })).status).toBe(
       207,
     );
+    expect((await send('PROPFIND', url(memberRoot), { headers, token: ownerToken })).status).toBe(
+      404,
+    );
+  });
+
+  it('lets a view grant read the shared folder and nothing above it', async () => {
+    const headers = { depth: '1' };
+    expect((await send('PROPFIND', url(otherRoot, 'Locked'), { headers })).status).toBe(207);
+    expect((await send('PROPFIND', url(otherRoot), { headers })).status).toBe(404);
   });
 });
 
@@ -279,7 +289,7 @@ describe('WebDAV reads and writes', () => {
     ]);
     expect((await put('note.txt', 'second')).status).toBe(204);
     expect(await readFile(own('note.txt'), 'utf8')).toBe('second');
-    const item = opened.store.driveItems.byPath(memberRoot, 'note.txt');
+    const item = opened.store.driveItems.byPath(memberRoot, 'note.txt', null);
     expect(item?.rev).toBe(2);
     expect(opened.store.driveVersions.forItem(item?.id ?? '', null, 10).versions).toHaveLength(1);
   });
@@ -317,10 +327,10 @@ describe('WebDAV reads and writes', () => {
     expect(await readFile(own('a.txt'), 'utf8')).toBe('one');
   });
 
-  it('refuses writes in a read-only root and a partial PUT', async () => {
-    const locked = await send('PUT', url(lockedRoot, 'a.txt'), { body: 'x', token: ownerToken });
+  it('refuses writes under a view grant and a partial PUT', async () => {
+    const locked = await send('PUT', url(otherRoot, 'Locked/a.txt'), { body: 'x' });
     expect(locked.status).toBe(403);
-    expect(await readdir(join(base, 'locked'))).toEqual([]);
+    expect(await readdir(join(opened.layout.person(ownerProfile).drive, 'Locked'))).toEqual([]);
     expect((await put('a.txt', 'x', { 'content-range': 'bytes 0-0/1' })).status).toBe(400);
   });
 });
@@ -343,12 +353,12 @@ describe('WebDAV collections and deletion', () => {
     await at('MKCOL', 'docs');
     await put('docs/a.txt', 'a');
     await put('b.txt', 'b');
-    const file = opened.store.driveItems.byPath(memberRoot, 'b.txt');
+    const file = opened.store.driveItems.byPath(memberRoot, 'b.txt', null);
     expect((await at('DELETE', 'b.txt')).status).toBe(204);
     expect(opened.store.driveTrash.find(file?.id ?? '')).toBeDefined();
     expect((await at('GET', 'b.txt')).status).toBe(404);
     expect((await at('DELETE', 'docs')).status).toBe(204);
-    expect(opened.store.driveItems.byPath(memberRoot, 'docs/a.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(memberRoot, 'docs/a.txt', null)).toBeUndefined();
     expect((await at('DELETE', 'docs')).status).toBe(404);
     expect((await at('DELETE', '')).status).toBe(403);
   });
@@ -356,7 +366,7 @@ describe('WebDAV collections and deletion', () => {
   it('deletes only when If-Match names the current entity tag', async () => {
     await put('a.txt', 'one');
     expect((await at('DELETE', 'a.txt', { 'if-match': '"0-stale"' })).status).toBe(412);
-    expect(opened.store.driveItems.byPath(memberRoot, 'a.txt')).toBeDefined();
+    expect(opened.store.driveItems.byPath(memberRoot, 'a.txt', null)).toBeDefined();
   });
 });
 
@@ -429,7 +439,9 @@ describe('WebDAV path safety', () => {
       expect((await put(path, 'x')).status).toBe(400);
       expect((await propfind(path, '0')).status).toBe(400);
     }
-    await expect(stat(join(base, 'x.txt'))).rejects.toMatchObject(missing);
+    await expect(
+      stat(join(opened.layout.person(memberProfile).drive, '..', 'x.txt')),
+    ).rejects.toMatchObject(missing);
     await expect(stat(own('x.txt'))).rejects.toMatchObject(missing);
   });
 
@@ -443,13 +455,13 @@ describe('WebDAV path safety', () => {
   it('decodes once: a doubly encoded dot name is an ordinary file name', async () => {
     expect((await put('%252e%252e', 'x')).status).toBe(201);
     expect(await readFile(own('%2e%2e'), 'utf8')).toBe('x');
-    expect(opened.store.driveItems.byPath(memberRoot, '%2e%2e')).toBeDefined();
+    expect(opened.store.driveItems.byPath(memberRoot, '%2e%2e', null)).toBeDefined();
   });
 
   it('stores and finds a decomposed name in its composed form', async () => {
     const decomposed = encodeURIComponent('café.txt');
     expect((await put(decomposed, 'x')).status).toBe(201);
-    expect(opened.store.driveItems.byPath(memberRoot, 'café.txt')).toBeDefined();
+    expect(opened.store.driveItems.byPath(memberRoot, 'café.txt', null)).toBeDefined();
     expect((await at('GET', encodeURIComponent('café.txt'))).body).toBe('x');
     expect((await at('GET', decomposed)).body).toBe('x');
   });
@@ -479,7 +491,7 @@ describe('WebDAV quota', () => {
   it('refuses a declared length over the quota before storing anything', async () => {
     const reply = await put('big.txt', 'x'.repeat(11), { 'content-length': '11' });
     expect(reply.status).toBe(507);
-    expect(opened.store.driveItems.byPath(memberRoot, 'big.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(memberRoot, 'big.txt', null)).toBeUndefined();
     await expect(stat(own('big.txt'))).rejects.toMatchObject(missing);
   });
 
@@ -488,7 +500,7 @@ describe('WebDAV quota', () => {
       body: ['12345', '67890', '1'],
     });
     expect(reply.status).toBe(507);
-    expect(opened.store.driveItems.byPath(memberRoot, 'stream.txt')).toBeUndefined();
+    expect(opened.store.driveItems.byPath(memberRoot, 'stream.txt', null)).toBeUndefined();
     await expect(stat(own('stream.txt'))).rejects.toMatchObject(missing);
     expect(await readdir(own('.smarteverything/tmp'))).toEqual([]);
     expect(removals).toBeGreaterThan(0);

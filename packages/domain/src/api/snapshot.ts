@@ -11,6 +11,7 @@ import { TALK_CHANNEL_ROW, TALK_MEMBER_ROW, TALK_MESSAGE_ROW, TALK_PRESENCE } fr
 import { WEATHER_ROW } from '../weather/forecast';
 import { EXCHANGE_RATES_ROW } from '../exchange-rates';
 import { GOOGLE_ACCOUNT_ROW } from '../google-accounts';
+import { DRIVE_GRANT } from '../drive/grant';
 import { DRIVE_ROOT } from '../drive/root';
 import { PLANNER_ALARM_ROW } from '../planner/alarms';
 import { PLANNER_COLLECTION_ROW } from '../planner/collections';
@@ -102,6 +103,7 @@ export const SNAPSHOT_TABLES = z.object({
   model_catalog: z.array(MODEL_CATALOG_ROW).optional(),
   model_overrides: z.array(MODEL_OVERRIDE_ROW).optional(),
   drive_roots: z.array(DRIVE_ROOT).optional(),
+  drive_grants: z.array(DRIVE_GRANT).optional(),
   planner_collections: z.array(PLANNER_COLLECTION_ROW),
   planner_items: z.array(PLANNER_ITEM_ROW),
   planner_occurrences: z.array(PLANNER_OCCURRENCE_ROW),

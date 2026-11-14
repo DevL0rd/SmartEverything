@@ -10,11 +10,9 @@ import type { DriveVersionEntry, DriveVersionFile } from '../store/repositories/
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import {
   abandonIntent,
-  assertWritable,
   DriveWriteError,
   locate,
   moveWithin,
-  physicalRoot,
   purgeDeadline,
   TMP_DIRECTORY,
   tmpRelPath,
@@ -139,7 +137,6 @@ export async function stageBytes(
   root: DriveWriteRoot,
   source: AsyncIterable<Uint8Array>,
 ): Promise<StagedBytes> {
-  assertWritable(root);
   const relPath = tmpRelPath();
   const path = await locate(root, relPath);
   await env.files.mkdir(await locate(root, TMP_DIRECTORY));
@@ -158,6 +155,19 @@ async function hashOf(env: FileEnv, path: string): Promise<string> {
     hash.update(chunk);
   }
   return hash.digest('hex');
+}
+
+export async function stageInPlace(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  relPath: string,
+): Promise<StagedBytes> {
+  const path = await locate(root, relPath);
+  const stamp = await env.files.stamp(path);
+  if (stamp === null || stamp.directory) {
+    throw new DriveWriteError('missing', 'The file to put in place is missing from disk.');
+  }
+  return { relPath, bytes: stamp.size, sha256: await hashOf(env, path) };
 }
 
 export interface CommitRequest {
@@ -189,7 +199,6 @@ async function versionToCapture(env: FileEnv, request: CommitRequest): Promise<s
 
 export async function commitBytes(env: FileEnv, request: CommitRequest): Promise<CommittedBytes> {
   const { root, staged, relPath } = request;
-  assertWritable(root);
   const captured = await versionToCapture(env, request);
   const versionPath = captured === null ? null : versionRelPath(captured);
   const intent = env.store.driveIntents.open({
@@ -244,7 +253,6 @@ export async function captureVersion(
   relPath: string,
   sha256: string,
 ): Promise<{ readonly intent: DriveIntent; readonly versionPath: string }> {
-  assertWritable(root);
   const versionPath = versionRelPath(sha256);
   const intent = env.store.driveIntents.open({
     rootId: root.id,
@@ -281,7 +289,7 @@ export async function unlinkVersionFiles(
   files: readonly DriveVersionFile[],
 ): Promise<void> {
   for (const file of files) {
-    const root = physicalRoot(env.store.driveRoots.byId(file.rootId));
+    const root = env.store.driveRoots.byId(file.rootId);
     await env.files.remove(await locate(root, versionRelPath(file.sha256)));
   }
 }

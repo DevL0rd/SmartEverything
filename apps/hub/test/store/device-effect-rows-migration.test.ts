@@ -9,6 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
+import { unusedDrivePath } from '../support/store';
 
 const NOW = '2026-10-17T09:00:00.000Z';
 const LAMP = '0e000000-0000-4000-8000-0000000000d1';
@@ -80,6 +81,7 @@ describe('migrating a schema-90 database to temporary changes stored as rows', (
       log: testLogger(),
       now: () => new Date(NOW),
       systemTimeZone: 'UTC',
+      drivePathOf: unusedDrivePath,
     });
     const targets = store.deviceEffects.list();
     store.close();

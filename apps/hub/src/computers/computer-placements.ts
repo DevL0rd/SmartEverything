@@ -27,6 +27,9 @@ function statusOf(frame: PlacementStateFrame): DrivePlacementStatus {
     pinnedBytes: frame.pinnedBytes,
     openFiles: frame.openFiles,
     pendingUploads: frame.pendingUploads,
+    needBytes: frame.needBytes,
+    lastSyncedAt: frame.lastSyncedAt,
+    errors: frame.errors,
     reason: frame.reason,
     reportedAt: frame.reportedAt,
   };
@@ -39,6 +42,8 @@ function sameTransition(current: DrivePlacementStatus, next: DrivePlacementStatu
     current.readOnly === next.readOnly &&
     current.route === next.route &&
     current.reason === next.reason &&
+    current.lastSyncedAt === next.lastSyncedAt &&
+    JSON.stringify(current.errors) === JSON.stringify(next.errors) &&
     JSON.stringify(current.basicLimits) === JSON.stringify(next.basicLimits)
   );
 }

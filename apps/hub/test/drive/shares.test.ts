@@ -4,16 +4,16 @@ import { createServer, type Server } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { ApiError, matchPath, type DriveItem, type DriveRoot } from '@smarteverything/domain';
+import { ApiError, matchPath, type DriveItem } from '@smarteverything/domain';
 import { load } from 'exifreader';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { updateDriveSettings } from '../../src/drive/settings';
-import type { DriveActor } from '../../src/drive/service-read';
 import {
   DriveShares,
   GUESS_LIMIT,
   GUESS_WINDOW_MS,
   hashToken,
+  type ShareActor,
   type ShareOrigin,
 } from '../../src/drive/shares';
 import { ffmpegPath } from '../../src/media/ffmpeg-path';
@@ -21,14 +21,17 @@ import type { RawRoute } from '../../src/server/http-server';
 import { LINK_LIFETIME_SECONDS } from '../../src/server/media-links';
 import { shareRoutes } from '../../src/server/share-route';
 import type { DriveItemDraft } from '../../src/store/repositories/drive-items';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { captureLogs, type CapturedLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const run = promisify(execFile);
 const FIXTURES = resolve(import.meta.dirname, '../fixtures/photos');
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const ROOT = '0d000000-0000-4000-8000-000000000011';
+const PERSONAL = '0d000000-0000-4000-8000-000000000012';
+const PERSONAL_FILE = '0d000000-0000-4000-8000-0000000000c1';
 const FOLDER = '0d000000-0000-4000-8000-0000000000a1';
 const INSIDE = '0d000000-0000-4000-8000-0000000000a2';
 const OUTSIDE_FILE = '0d000000-0000-4000-8000-0000000000a3';
@@ -49,8 +52,8 @@ let now = NOW;
 let origin: ShareOrigin = { url: LOCAL, public: false };
 let removeLocation = true;
 let shares: DriveShares;
-let owner: DriveActor;
-let member: DriveActor;
+let owner: ShareActor;
+let member: ShareActor;
 let rootDirectory = '';
 
 function tokenOf(url: string): string {
@@ -82,6 +85,7 @@ function entryFor(
     modifiedAt: NOW.toISOString(),
     addedAt: NOW.toISOString(),
     starred: false,
+    shared: false,
     outside: false,
     remoteId: null,
     remoteRev: null,
@@ -117,35 +121,15 @@ function item(id: string, parentId: string | null, relPath: string, kind: DriveI
   });
 }
 
-function rootRow(path: string): DriveRoot {
-  return {
-    id: ROOT,
-    kind: 'managed',
-    label: 'Shared',
-    scope: 'home',
-    ownerProfileId: null,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: 'index-shared',
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: { hashedShare: 0, verifiedShare: 0, corrupt: 0, lastScrubAt: null, lastBackupAt: null },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
+function personalItem(id: string, relPath: string): void {
+  opened.store.driveItems.write({
+    item: { ...entryFor('document', id, null, relPath), rootId: PERSONAL },
+    identity: { dev: '1', ino: id.slice(-4) },
+  });
 }
 
 async function build(): Promise<void> {
-  rootDirectory = join(opened.directory, 'root');
+  rootDirectory = opened.layout.home.drive;
   await mkdir(join(rootDirectory, 'album', 'deep'), { recursive: true });
   await writeFile(join(rootDirectory, 'album', 'inside.txt'), BODY);
   await writeFile(join(rootDirectory, 'album', 'deep', 'nested.txt'), 'nested');
@@ -154,7 +138,9 @@ async function build(): Promise<void> {
   for (const name of ['exif-full.jpg', 'exif-full.heic', 'live-photo.mov']) {
     await copyFile(join(FIXTURES, name), join(rootDirectory, name));
   }
-  opened.store.driveRoots.insert(rootRow(rootDirectory));
+  opened.store.driveRoots.insert(sharedDriveRoot(ROOT));
+  opened.store.driveRoots.insert(personalDriveRoot(PERSONAL, member.profileId));
+  personalItem(PERSONAL_FILE, 'mine.txt');
   item(FOLDER, null, 'album', 'folder');
   item(INSIDE, FOLDER, 'album/inside.txt', 'document');
   item(NESTED, FOLDER, 'album/deep/nested.txt', 'document');
@@ -187,7 +173,7 @@ async function create(
     permission: 'view' | 'download';
     expiresAt: string | null;
     password: string | null;
-    actor: DriveActor;
+    actor: ShareActor;
   }> = {},
 ): Promise<{ url: string; token: string; id: string }> {
   const created = await shares.create(options.actor ?? owner, {
@@ -252,7 +238,7 @@ beforeEach(async () => {
   now = NOW;
   origin = { url: LOCAL, public: false };
   removeLocation = true;
-  opened = await testStore();
+  opened = await driveTestStore(() => now);
   const { store } = opened;
   owner = { profileId: store.profiles.first().id, owner: true };
   member = { profileId: store.profiles.create({ name: 'Robin' }).id, owner: false };
@@ -377,17 +363,44 @@ describe('opening links', () => {
     expect((await fetch(`${base}/s/${expiring.token}`)).status).toBe(404);
   });
 
-  it('revokes immediately and lets only the creator or the owner revoke', async () => {
+  it('revokes immediately and lets anyone revoke a link on the Shared Drive', async () => {
     updateDriveSettings(opened.store, { membersMayShare: true });
     const made = await create(INSIDE, { actor: member });
-    const stranger: DriveActor = {
+    const stranger: ShareActor = {
       profileId: opened.store.profiles.create({ name: 'Ida' }).id,
       owner: false,
     };
-    expect(() => shares.revoke(stranger, made.id)).toThrow(/no such share/u);
+    expect(shares.list(stranger, INSIDE)).toHaveLength(1);
     expect((await fetch(`${base}/s/${made.token}`)).status).toBe(200);
-    shares.revoke(owner, made.id);
+    shares.revoke(stranger, made.id);
     expect((await fetch(`${base}/s/${made.token}`)).status).toBe(404);
+  });
+
+  it('keeps links on a personal drive to the person, the Hub owner included', async () => {
+    updateDriveSettings(opened.store, { membersMayShare: true });
+    const personal = opened.layout.person(member.profileId).drive;
+    await mkdir(personal, { recursive: true });
+    await writeFile(join(personal, 'mine.txt'), BODY);
+    const made = await create(PERSONAL_FILE, { actor: member });
+    expect(shares.list(member, PERSONAL_FILE)).toHaveLength(1);
+    expect(() => shares.list(owner, PERSONAL_FILE)).toThrow(/no such file/u);
+    expect(() => shares.revoke(owner, made.id)).toThrow(/no such share/u);
+    await expect(create(PERSONAL_FILE, { actor: owner })).rejects.toThrow(/no such file/u);
+    expect((await fetch(`${base}/s/${made.token}`)).status).toBe(200);
+    shares.revoke(member, made.id);
+    expect((await fetch(`${base}/s/${made.token}`)).status).toBe(404);
+  });
+
+  it('lets a grantee read but not link, and ends with the grant', async () => {
+    updateDriveSettings(opened.store, { membersMayShare: true });
+    const made = await create(PERSONAL_FILE, { actor: member });
+    opened.store.driveGrants.set(
+      { itemId: PERSONAL_FILE, profileId: owner.profileId, role: 'edit' },
+      member.profileId,
+    );
+    expect(shares.list(owner, PERSONAL_FILE)).toEqual([]);
+    await expect(create(PERSONAL_FILE, { actor: owner })).rejects.toThrow(/whose drive/u);
+    expect(() => shares.revoke(owner, made.id)).toThrow(/no such share/u);
   });
 
   it('says a trashed item is no longer available', async () => {

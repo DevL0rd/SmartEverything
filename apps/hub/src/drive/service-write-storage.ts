@@ -12,8 +12,6 @@ import {
   type DriveShare,
   type DriveShareCreate,
   type DriveShareCreated,
-  type DriveSyncClient,
-  type DriveSyncClientUpdate,
 } from '@smarteverything/domain';
 import { commitContent } from './changes';
 import { resolveConflict, type ConflictEnv } from './conflicts';
@@ -25,6 +23,7 @@ import type { DriveReadService } from './service-read';
 import {
   changeActorOf,
   requireOwner,
+  writableItemRoot,
   writableRoot,
   type DriveCaller,
   type WriteStore,
@@ -57,7 +56,7 @@ export class DriveStorageWriter {
     ) {
       throw new ApiError('not_found', 'There is no such earlier version of this file.');
     }
-    const root = writableRoot(read, caller, item.rootId);
+    const root = writableItemRoot(store, caller, item);
     await checkDriveWrite(guard, {
       profileId: caller.profileId,
       addBytes: entry.version.bytes,
@@ -114,34 +113,8 @@ export class DriveStorageWriter {
     const { env, read } = this.deps;
     const conflict = env.conflicts.find(request.conflictId);
     if (conflict !== undefined) {
-      read.rootFor(caller, conflict.rootId);
+      writableRoot(read, caller, conflict.rootId);
     }
     return resolveConflict(env, request, changeActorOf(caller));
-  }
-
-  updateSyncClient(caller: DriveCaller, update: DriveSyncClientUpdate): DriveSyncClient {
-    const { store, read } = this.deps;
-    const root = read.rootFor(caller, update.rootId);
-    if (!root.synced) {
-      throw new ApiError('invalid_request', 'This library folder is not synced.');
-    }
-    const client = store.driveSyncClients.find(update.clientId, update.rootId);
-    if (client === undefined || (!caller.owner && client.profileId !== caller.profileId)) {
-      throw new ApiError('not_found', 'There is no such sync device for this person.');
-    }
-    return store.write(() => {
-      const saved = store.driveSyncClients.set(update, {
-        deviceId: client.deviceId,
-        profileId: client.profileId,
-      });
-      const others = root.sync.clients.filter((one) => one.clientId !== saved.clientId);
-      store.driveRoots.update(root.id, {
-        sync: {
-          ...root.sync,
-          clients: [...others, { clientId: saved.clientId, enabled: saved.enabled }],
-        },
-      });
-      return saved;
-    });
   }
 }

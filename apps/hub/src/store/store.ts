@@ -6,6 +6,7 @@ import type { Logger } from '@smarteverything/logging';
 import { StoreContext } from './context';
 import { ChangeFeed } from './feed';
 import { migrate } from './migrate';
+import type { DrivePathOf } from './repositories/drive-roots';
 import { repairPersonAccess } from './person-access-repair';
 import { MIGRATIONS } from './migrations';
 import { assistantRepositories } from './repositories/areas/assistant';
@@ -32,6 +33,7 @@ export interface StoreOptions {
   readonly log: Logger;
   readonly now: () => Date;
   readonly systemTimeZone: string;
+  readonly drivePathOf: DrivePathOf;
 }
 
 const BUSY_TIMEOUT_MS = 5000;
@@ -85,11 +87,11 @@ function startTimeZone(settings: SettingsRepository, options: StoreOptions): voi
   }
 }
 
-const repositoriesOf = (context: StoreContext, log: Logger) =>
+const repositoriesOf = (context: StoreContext, log: Logger, drivePathOf: DrivePathOf) =>
   ({
     ...homeRepositories(context, log),
     ...computerRepositories(context),
-    ...driveRepositories(context),
+    ...driveRepositories(context, drivePathOf),
     ...automationRepositories(context),
     ...healthRepositories(context),
     ...plannerRepositories(context),
@@ -167,7 +169,7 @@ export function openStore(options: StoreOptions): Store {
     database,
     feed,
     settings,
-    ...repositoriesOf(context, options.log),
+    ...repositoriesOf(context, options.log, options.drivePathOf),
     ledger: new Ledger(context, () => settings.read().time_zone),
     now: options.now,
     write: (work) => context.write(work),

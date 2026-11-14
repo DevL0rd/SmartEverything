@@ -139,7 +139,7 @@ export const SERVED_COMPUTERS = [
     title: 'Read computer files',
     line: 'Folders, files, search and downloads',
     description:
-      'Files on a computer, anywhere its user can read: a folder’s entries (cursor pages on), one file up to 5 MB, a search by name below a folder, one file’s details, or a download link of any size for the person (a folder or several items as one zip). Not for this chat’s project folder (project_read) or library folders and photos (drive_read).',
+      'Files on a computer, anywhere its user can read: a folder’s entries (cursor pages on), one file up to 5 MB, a search by name below a folder, one file’s details, or a download link of any size for the person (a folder or several items as one zip). Not for this chat’s project folder (project_read) or drive files and photos (drive_read).',
     route: {
       key: 'view',
       branches: {
@@ -158,7 +158,7 @@ export const SERVED_COMPUTERS = [
     title: 'Edit computer files',
     line: 'Folder, rename, move, copy, trash, save',
     description:
-      'Makes a folder, renames, moves, copies, moves to Trash, restores from Trash, or saves a chat attachment onto a computer. Not for library folders (drive_edit). Nothing is deleted for good and nothing is overwritten unless replace is true. Returns what was done and what failed.',
+      'Makes a folder, renames, moves, copies, moves to Trash, restores from Trash, or saves a chat attachment onto a computer. Not for drive files (drive_edit). Nothing is deleted for good and nothing is overwritten unless replace is true. Returns what was done and what failed.',
     route: { part: 'file_edit' },
   },
 ] as const satisfies readonly Served[];

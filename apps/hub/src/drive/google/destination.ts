@@ -118,7 +118,7 @@ export class Destination {
 
   private async ensureFolder(parent: DriveItem | null, name: string): Promise<DriveItem> {
     const relPath = parent === null ? name : `${parent.relPath}/${name}`;
-    const indexed = this.env.store.driveItems.byPath(this.root.id, relPath);
+    const indexed = this.env.store.driveItems.byPath(this.root.id, relPath, null);
     if (indexed !== undefined) {
       if (indexed.kind !== 'folder') {
         throw new DriveWriteError('exists', `A file named ${relPath} is in the way of the folder.`);
@@ -154,7 +154,7 @@ export class Destination {
     for (let attempt = 1; ; attempt += 1) {
       const candidate = freeNameAt(name, attempt);
       const relPath = folder === null ? candidate : `${folder.relPath}/${candidate}`;
-      const indexed = this.env.store.driveItems.byPath(this.root.id, relPath);
+      const indexed = this.env.store.driveItems.byPath(this.root.id, relPath, null);
       const onDisk = await this.env.files.stamp(await locate(this.root, relPath));
       if (indexed === undefined && onDisk === null) {
         return relPath;

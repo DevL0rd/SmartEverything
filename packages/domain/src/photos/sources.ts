@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COUNT, ID, MOMENT, NAME } from './shared';
+import { COUNT, DAY, ID, MOMENT, NAME } from './shared';
 
 export const PHOTO_SOURCES = ['cameras', 'ai'] as const;
 
@@ -34,10 +34,18 @@ export const SOURCE_PAGE = z
   })
   .readonly();
 
-export const SOURCE_QUERY = z.strictObject({
-  chipId: z.string().min(1).optional(),
-  cursor: z.string().min(1).optional(),
-});
+export const SOURCE_QUERY = z
+  .strictObject({
+    chipId: z.string().min(1).optional(),
+    text: NAME.optional(),
+    from: DAY.optional(),
+    to: DAY.optional(),
+    cursor: z.string().min(1).optional(),
+  })
+  .refine((query) => query.from === undefined || query.to === undefined || query.from <= query.to, {
+    message: 'from must not be after to',
+    path: ['to'],
+  });
 
 export const SOURCE_KEEP = z.strictObject({ itemIds: z.array(ID).min(1).readonly() }).readonly();
 

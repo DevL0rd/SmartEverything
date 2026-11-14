@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import type { DriveRoot } from '@smarteverything/domain';
+import type { StoredDrive } from '../store/repositories/drive-roots';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { MARKER_DIRECTORY } from './root-marker';
@@ -15,7 +15,7 @@ import {
   type WalkData,
   type WalkMessage,
 } from './scanner-walk';
-import type { RootAvailability } from './volumes';
+import type { RootAvailability } from './root-marker';
 
 export const BUNDLED_SCANNER_WORKER = fileURLToPath(
   new URL('./scanner-worker.mjs', import.meta.url),
@@ -62,7 +62,7 @@ export function runnerOf(
 
 export interface ScanEnvironment {
   readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'feed' | 'write' | 'now'>;
-  readonly availability: (root: DriveRoot) => Promise<RootAvailability>;
+  readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly workerScript: string;
   readonly log: Logger;
   readonly newId?: () => string;
@@ -75,9 +75,8 @@ interface WalkOutcome {
 }
 
 const UNAVAILABLE_REASON: Readonly<Record<Exclude<RootAvailability, 'online'>, string>> = {
-  offline: 'The storage is not mounted.',
-  missing: 'The folder is missing.',
-  different: 'A different disk is mounted at this path.',
+  missing: 'The drive folder is missing.',
+  different: 'The folder is not this drive; its identity marker does not match.',
 };
 
 export function watchHang(
@@ -112,7 +111,7 @@ class ScanRun {
 
   constructor(
     private readonly env: ScanEnvironment,
-    private readonly root: DriveRoot & { readonly path: string },
+    private readonly root: StoredDrive,
     private readonly committer: ScanCommitter,
   ) {}
 
@@ -229,21 +228,16 @@ class ScanRun {
   }
 }
 
-function physical(root: DriveRoot): (DriveRoot & { readonly path: string }) | null {
-  return root.path === null ? null : { ...root, path: root.path };
-}
-
 async function scanRoot(env: ScanEnvironment, rootId: string, signal: AbortSignal): Promise<void> {
-  const found = env.store.driveRoots.find(rootId);
-  const root = found === undefined ? null : physical(found);
-  if (root === null) {
-    env.log.warn('drive.scan_skipped', { rootId, reason: 'no physical root' });
+  const root = env.store.driveRoots.find(rootId);
+  if (root === undefined) {
+    env.log.warn('drive.scan_skipped', { rootId, reason: 'no such drive' });
     return;
   }
   const availability = await env.availability(root);
   if (availability !== 'online') {
     env.store.driveRoots.update(rootId, {
-      state: availability === 'offline' ? 'offline' : 'error',
+      state: 'error',
       stateReason: UNAVAILABLE_REASON[availability],
     });
     env.log.info('drive.scan_unavailable', { rootId, availability });
@@ -261,7 +255,7 @@ async function scanRoot(env: ScanEnvironment, rootId: string, signal: AbortSigna
 
 async function commitScan(
   env: ScanEnvironment,
-  root: DriveRoot & { readonly path: string },
+  root: StoredDrive,
   signal: AbortSignal,
   startedAt: number,
 ): Promise<void> {

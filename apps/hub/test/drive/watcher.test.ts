@@ -23,13 +23,7 @@ import {
 } from '../../src/drive/watcher';
 import { WorkQueue } from '../../src/drive/work-queue';
 import { testLogger } from '../support/logs';
-import {
-  bundleWorker,
-  folderRoot,
-  NOW,
-  openDriveFixture,
-  type DriveFixture,
-} from './drive-fixture';
+import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
 const ROOT = '0d000000-0000-4000-8000-000000000003';
 const SETTLE_MS = 40;
@@ -84,7 +78,7 @@ function watchersOver(
   enqueue: (rootId: string) => void = (rootId) => scans.push(rootId),
   skipPatterns: readonly string[] = [],
 ): DriveWatchers {
-  roots.insert(folderRoot(ROOT, folder, { skipPatterns }));
+  fixture.addDrive(driveRoot(ROOT, { skipPatterns }), folder);
   const environment: WatchEnvironment = {
     roots,
     enqueueScan: enqueue,
@@ -378,6 +372,7 @@ describe('a hub write seen again by the watcher', () => {
         modifiedAt: new Date(Number(stats.mtimeMs)).toISOString(),
         addedAt: NOW,
         starred: false,
+        shared: false,
         outside: false,
         addedByProfileId: null,
         remoteId: null,
@@ -386,10 +381,10 @@ describe('a hub write seen again by the watcher', () => {
     });
     await nextScan();
     await queue.idle();
-    expect(items.byPath(ROOT, 'doc.txt')).toMatchObject({ id, rev: 1, outside: false });
+    expect(items.byPath(ROOT, 'doc.txt', null)).toMatchObject({ id, rev: 1, outside: false });
     writeFileSync(file, 'hello world');
     await nextScan();
     await queue.idle();
-    expect(items.byPath(ROOT, 'doc.txt')).toMatchObject({ id, rev: 2, bytes: 11 });
+    expect(items.byPath(ROOT, 'doc.txt', null)).toMatchObject({ id, rev: 2, bytes: 11 });
   });
 });

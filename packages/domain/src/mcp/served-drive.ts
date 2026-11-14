@@ -1,17 +1,18 @@
 import type { Served } from './served-types';
 
 export const DRIVE_READ_VIEWS = [
-  'roots',
+  'drives',
+  'shared_with_me',
+  'shared_by_me',
   'folder',
-  'timeline',
   'item',
   'search',
+  'library',
   'albums',
   'album',
   'trash',
   'stats',
   'duplicates',
-  'memories',
   'places',
   'stacks',
   'backup',
@@ -20,12 +21,12 @@ export const DRIVE_READ_VIEWS = [
   'shares',
   'usage',
   'health',
-  'sync',
+  'placements',
   'conflicts',
 ] as const;
 
 export const DRIVE_EDIT_ACTIONS = [
-  'add_root',
+  'configure',
   'scan',
   'new_folder',
   'rename',
@@ -38,14 +39,15 @@ export const DRIVE_EDIT_ACTIONS = [
   'album_update',
   'album_add',
   'album_remove',
-  'make_memory_album',
   'keep',
   'attach_to_chat',
   'version_restore',
   'share_create',
   'share_revoke',
+  'share_people',
   'conflict_resolve',
-  'sync_set',
+  'placement_set',
+  'placement_remove',
   'scrub_start',
 ] as const;
 
@@ -55,9 +57,9 @@ export const SERVED_DRIVE = [
     area: 'drive',
     access: 'read',
     title: 'Read Photos and Drive',
-    line: 'Library folders, files, photos, albums and health',
+    line: 'Drives, files, photos, albums, sharing and health',
     description:
-      'The person’s library of files and photos (personId from person_read; you when left out): roots lists library folders, folder one folder’s files, timeline the photo months or one month, item one file, search files by name and filters, albums and album, trash, stats, duplicates, memories, places, stacks, backup (phones backing up), recent, versions of a file, shares (links), usage, health, sync (devices) and conflicts. Returns ids drive_edit takes.',
+      'The calling person’s drive: their own drive, the Shared Drive of the home, and what others shared with them (personId is you; no one’s AI, the owner’s included, reads another person’s drive; the owner sees only per-person space totals through usage). Views: drives, shared_with_me, shared_by_me, folder, item, search, library (the Photos Library by month, with optional filter, text, dates, place, country, camera and album), albums, album, trash, stats, duplicates, places, stacks, backup, recent, versions, shares, usage, health, placements (folders on computers, synced or mounted) and conflicts. Returns ids drive_edit takes.',
     route: { custom: true },
   },
   {
@@ -65,9 +67,9 @@ export const SERVED_DRIVE = [
     area: 'drive',
     access: 'control',
     title: 'Edit Photos and Drive',
-    line: 'Folders, files, albums, shares and sync',
+    line: 'Folders, files, albums, sharing and placements',
     description:
-      'Changes the person’s library (personId from person_read; you when left out): add_root or scan a library folder, new_folder, rename, move, copy, star, trash or restore files, create or change albums, album_add and album_remove, make_memory_album, keep camera or AI images, attach_to_chat to look at a photo, version_restore, share_create (answers with the link and how to revoke it) and share_revoke, conflict_resolve, sync_set and scrub_start. Files are never deleted for good here. Ids come from drive_read.',
+      'Changes the calling person’s drive or the Shared Drive (personId is you; nothing reaches another person’s drive, the owner’s AI included). Actions: configure and scan a drive, new_folder, rename, move, copy, star, trash and restore files, albums (create, update, add, remove), keep camera or AI images, attach_to_chat, version_restore, share_create and share_revoke, share_people (view or edit access for a person), conflict_resolve, placement_set and placement_remove (a folder on a computer, synced or mounted) and scrub_start. Files are never deleted for good here. Ids come from drive_read.',
     route: { custom: true },
   },
 ] as const satisfies readonly Served[];

@@ -7,7 +7,7 @@ import { syncAuthentication, type SyncEnv } from '../../drive/sync/server-ops';
 import { DriveSyncServer } from '../../drive/sync/server-socket';
 import type { DriveReadService } from '../../drive/service-read';
 import type { DriveWriteService } from '../../drive/service-write';
-import type { VolumeProbe } from '../../drive/volumes';
+import type { DataSpaceProbe } from '../../drive/data-space';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import type { Store } from '../../store/store';
 import { CLASS2_METHODS, createDavHandler } from '../dav';
@@ -26,7 +26,7 @@ export interface DriveSurfaceServices {
   readonly read: DriveReadService;
   readonly write: Pick<DriveWriteService, 'change'>;
   readonly files: DriveFiles;
-  readonly probe: Pick<VolumeProbe, 'space'>;
+  readonly probe: Pick<DataSpaceProbe, 'space'>;
 }
 
 export interface DriveSurfaceInputs {
@@ -58,7 +58,6 @@ function davDepsOf(inputs: DriveSurfaceInputs): DavDeps {
   return {
     store,
     env: inputs.env,
-    read: services.read,
     guard: {
       status: (profileId) => store.driveQuotas.status(profileId),
       space: services.probe.space,
@@ -119,6 +118,7 @@ export function createDriveSurfaces(inputs: DriveSurfaceInputs): DriveSurfaces {
   const server = new DriveSyncServer(store, inputs.nodes, parts.operations, inputs.log);
   const fs = new DriveFsApi({
     env: inputs.env,
+    store,
     read: services.read,
     write: services.write,
     ops: store.driveSyncOps,

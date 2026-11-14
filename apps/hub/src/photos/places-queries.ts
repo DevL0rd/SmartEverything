@@ -1,10 +1,11 @@
 import { appendTo } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { DriveActor } from '../drive/service-read';
+import type { DriveActor } from '../drive/access';
 import { found, type StoreContext } from '../store/context';
 import { DrivePlacesRepository, type DrivePlaceRow } from '../store/repositories/drive-places';
+import { starredBy } from '../store/repositories/drive-stars';
 import type { SqlParameters } from '../store/sql';
-import { PHOTO_VISIBLE } from './membership';
+import { PHOTO_VISIBLE, photoVisible } from './membership';
 import type {
   PhotoMapClusters,
   PhotoMapMonths,
@@ -107,10 +108,6 @@ export function visitsOf(days: readonly { day: string; count: number }[]): Photo
   return visits;
 }
 
-function visibility(actor: DriveActor): SqlParameters {
-  return { owner: actor.owner ? 1 : 0, profile: actor.profileId };
-}
-
 function placeOf(row: DrivePlaceRow): PhotoPlace {
   return {
     id: row.id,
@@ -190,7 +187,7 @@ export class PlaceQueries {
          max(case when newest = 1 then id end) as cover_item_id,
          max(case when newest = 1 then place_id end) as cover_place_id
        from ranked group by x, y order by total desc, x, y`,
-      { ...visibility(actor), ...filter.parameters, lonCells, latCells },
+      { ...photoVisible(actor).parameters, ...filter.parameters, lonCells, latCells },
     );
     const clusters = rows.map((row) => ({
       key: geohashOf(row.x, row.y, precision),
@@ -221,7 +218,7 @@ export class PlaceQueries {
          left join drive_media m on m.item_id = i.id
        where i.place_lat is not null and i.taken_at is not null and ${PHOTO_VISIBLE}
        group by month order by month`,
-      visibility(actor),
+      photoVisible(actor).parameters,
     );
     return { months: rows };
   }
@@ -242,7 +239,7 @@ export class PlaceQueries {
          max(case when newest = 1 then l.id end) as cover_item_id
        from located l join drive_places p on p.id = l.place_id
        group by p.id order by total desc, p.name, p.id`,
-      visibility(actor),
+      photoVisible(actor).parameters,
     );
     const byCountry = new Map<string, (typeof rows)[number][]>();
     for (const row of rows) appendTo(byCountry, row.country, row);
@@ -264,7 +261,7 @@ export class PlaceQueries {
 
   detail(actor: DriveActor, placeId: string): PhotoPlaceDetail {
     const place = this.places.byId(placeId);
-    const parameters = { ...visibility(actor), placeId };
+    const parameters = { ...photoVisible(actor).parameters, placeId };
     const totals = this.totals(parameters, placeId);
     const days = this.days(parameters);
     return {
@@ -286,7 +283,7 @@ export class PlaceQueries {
       this.context.sql.get(
         TOTALS_ROW,
         `with at_place as (
-           select i.id, i.kind, i.starred, i.taken_at,
+           select i.id, i.kind, ${starredBy()} as starred, i.taken_at,
              row_number() over (order by unixepoch(i.taken_at) desc nulls last, i.id) as newest,
              row_number() over (order by unixepoch(i.taken_at) asc nulls last, i.id) as oldest
            from drive_media m

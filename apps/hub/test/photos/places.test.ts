@@ -7,7 +7,7 @@ import { gzipSync } from 'node:zlib';
 import { PLACE_CLUSTER, PLACE_COUNTRY } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
 import {
   PlaceIndex,
   PlacesDatasetError,
@@ -37,6 +37,7 @@ import {
   DrivePlacesRepository,
   type DrivePlaceRow,
 } from '../../src/store/repositories/drive-places';
+import { insertDriveRow, recordLibraryRow } from './photo-rows';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger } from '../support/logs';
@@ -83,12 +84,11 @@ beforeEach(() => {
   const profiles = new ProfilesRepository(context);
   const aliceId = profiles.create({ name: 'Alice' }).id;
   const bobId = profiles.create({ name: 'Bob' }).id;
-  alice = { profileId: aliceId, owner: false };
-  bob = { profileId: bobId, owner: false };
-  owner = { profileId: aliceId, owner: true };
-  insertRoot(HOME_ROOT, 'home', null, 1);
-  insertRoot(ALICE_ROOT, 'person', aliceId, 1);
-  insertRoot(HIDDEN_ROOT, 'home', null, 0);
+  alice = { profileId: aliceId };
+  bob = { profileId: bobId };
+  owner = { profileId: aliceId };
+  insertRoot(HOME_ROOT, 'home', null);
+  insertRoot(ALICE_ROOT, 'person', aliceId);
 });
 
 afterEach(() => {
@@ -105,31 +105,17 @@ function insert(table: string, fields: Fields): void {
     .run(...Object.values(fields));
 }
 
-function insertRoot(id: string, scope: string, ownerId: string | null, inPhotos: number): void {
-  insert('drive_roots', {
-    id,
-    kind: 'folder',
-    label: `Root ${id.slice(-1)}`,
-    scope,
-    owner_profile_id: ownerId,
-    path: `/srv/${id}`,
-    read_only: 0,
-    versions: 1,
-    synced: 0,
-    index_id: 'index-1',
-    state: 'ready',
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    hashed_share: 0,
-    verified_share: 0,
-    corrupt: 0,
-    in_photos: inPhotos,
-    skip_patterns: '[]',
-    include_hidden: 0,
-    created_at: NOW,
-    updated_at: NOW,
-  });
+function insertRoot(id: string, scope: string, ownerId: string | null): void {
+  insertDriveRow(database, { id, scope, ownerId });
+}
+
+function placed(root: string | undefined): {
+  readonly rootId: string;
+  readonly inLibrary: boolean;
+} {
+  return root === HIDDEN_ROOT
+    ? { rootId: HOME_ROOT, inLibrary: false }
+    : { rootId: root ?? HOME_ROOT, inLibrary: true };
 }
 
 function itemId(n: number): string {
@@ -141,7 +127,7 @@ function seed(item: Seed): string {
   const kind = item.kind ?? 'image';
   insert('drive_items', {
     id,
-    root_id: item.root ?? HOME_ROOT,
+    root_id: placed(item.root).rootId,
     rel_path: `${String(item.n)}.bin`,
     name: `${String(item.n)}.bin`,
     kind,
@@ -150,7 +136,6 @@ function seed(item: Seed): string {
     integrity: 'unknown',
     modified_at: NOW,
     added_at: NOW,
-    starred: item.starred === true ? 1 : 0,
     rev: 1,
     etag: `etag-${String(item.n)}`,
     outside: 0,
@@ -158,6 +143,13 @@ function seed(item: Seed): string {
     taken_at: item.takenAt,
     place_lat: item.lat,
     place_lon: item.lat === null ? null : (item.lon ?? 0),
+  });
+  recordLibraryRow(database, {
+    id,
+    rootId: placed(item.root).rootId,
+    kind,
+    starred: item.starred === true,
+    inLibrary: placed(item.root).inLibrary,
   });
   new DriveMediaRepository(context).save({
     item_id: id,

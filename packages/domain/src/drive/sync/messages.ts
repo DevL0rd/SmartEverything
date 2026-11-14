@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DRIVE_SYNC_ERROR } from '../sync-client';
+import { DRIVE_SYNC_ERROR } from '../placement';
 import { isValidBlockSize, packedMatchesSize } from './blocks';
 
 const ID = z.uuid();
@@ -58,8 +58,7 @@ const ENTRIES = z.array(SYNC_INDEX_ENTRY).readonly();
 export const SYNC_HELLO = z
   .strictObject({
     type: z.literal('hello'),
-    clientId: ID,
-    rootId: ID,
+    placementId: ID,
     indexId: ID.nullable(),
     afterSeq: COUNT,
   })

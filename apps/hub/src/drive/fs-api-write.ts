@@ -2,6 +2,8 @@ import { stat, utimes } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { ApiError, type DriveChangeResult, type DriveItem } from '@smarteverything/domain';
 import {
+  announce,
+  commitContent,
   folderDraft,
   identityOf,
   isoOf,
@@ -13,17 +15,15 @@ import type { FsEntry } from './fs-api-ops';
 import { DriveWriteError, locate, moveWithin, type DriveWriteRoot } from './intents';
 import { DrivePathError, normalizeRelativePath } from './paths';
 import { repathItem } from './service-write-repath';
+import { stageInPlace } from './versions';
 import { changeActorOf, type DriveCaller } from './service-write-support';
 
 export interface FsWriter {
   readonly profileId: string;
-  readonly owner: boolean;
   readonly nodeId: string;
 }
 
 const WRITE_REFUSAL = {
-  'read-only': 'forbidden',
-  'no-physical-root': 'forbidden',
   exists: 'conflict',
   missing: 'not_found',
   corrupt: 'internal',
@@ -82,7 +82,7 @@ export function settled(result: DriveChangeResult): void {
 export function mount(caller: FsWriter): DriveCaller {
   return {
     profileId: caller.profileId,
-    owner: caller.owner,
+    owner: false,
     via: 'mount',
     deviceId: caller.nodeId,
   };
@@ -93,7 +93,7 @@ function actorOf(caller: FsWriter): ChangeActor {
 }
 
 function assertFree(env: ChangeEnv, rootId: string, relPath: string): void {
-  if (env.store.driveItems.byPath(rootId, relPath) !== undefined) {
+  if (env.store.driveItems.byPath(rootId, relPath, null) !== undefined) {
     throw new ApiError('conflict', `${basename(relPath)} already exists in that folder.`);
   }
 }
@@ -138,22 +138,39 @@ export async function makeFolder(
   });
 }
 
-export async function relocate(
+interface Relocation {
+  readonly root: DriveWriteRoot;
+  readonly item: DriveItem;
+  readonly parent: DriveItem | null;
+  readonly name: string;
+}
+
+async function replaceOnto(
   env: ChangeEnv,
   caller: FsWriter,
-  move: {
-    readonly root: DriveWriteRoot;
-    readonly item: DriveItem;
-    readonly parent: DriveItem | null;
-    readonly name: string;
-  },
-): Promise<void> {
-  const { root, item, parent } = move;
-  const relPath = joined(parent, move.name);
-  if (relPath === item.relPath) {
-    return;
-  }
-  assertFree(env, root.id, relPath);
+  target: { readonly root: DriveWriteRoot; readonly item: DriveItem; readonly relPath: string },
+): Promise<DriveItem> {
+  const { root, item, relPath } = target;
+  const staged = await stageInPlace(env, root, item.relPath);
+  const result = await commitContent(env, {
+    root,
+    staged,
+    relPath,
+    actor: actorOf(caller),
+    alongside: (): void => {
+      env.store.driveItems.remove(item.id);
+    },
+  });
+  announce(env, root.id, item.parentId, [item]);
+  return result.item;
+}
+
+async function moveOnDisk(
+  env: ChangeEnv,
+  caller: FsWriter,
+  move: Relocation & { readonly relPath: string },
+): Promise<DriveItem> {
+  const { root, item, parent, relPath } = move;
   await moveWithin(env.files, root, { from: item.relPath, to: relPath, mode: 'keep' });
   try {
     repathItem(
@@ -166,6 +183,27 @@ export async function relocate(
     await moveWithin(env.files, root, { from: relPath, to: item.relPath, mode: 'keep' });
     throw cause;
   }
+  return env.store.driveItems.byId(item.id, null);
+}
+
+export async function relocate(
+  env: ChangeEnv,
+  caller: FsWriter,
+  move: Relocation,
+): Promise<DriveItem> {
+  const { root, item, parent } = move;
+  const relPath = joined(parent, move.name);
+  if (relPath === item.relPath) {
+    return item;
+  }
+  const over = env.store.driveItems.byPath(root.id, relPath, null);
+  if (over === undefined) {
+    return moveOnDisk(env, caller, { ...move, relPath });
+  }
+  if (item.kind === 'folder' || over.kind === 'folder') {
+    throw new ApiError('conflict', `${basename(relPath)} already exists in that folder.`);
+  }
+  return replaceOnto(env, caller, { root, item, relPath });
 }
 
 export async function stampItem(

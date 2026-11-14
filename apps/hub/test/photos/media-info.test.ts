@@ -1,12 +1,14 @@
 import { MEDIA_INFO, MEDIA_PROCESSING } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DriveReadService, type DriveActor } from '../../src/drive/service-read';
+import type { DriveActor } from '../../src/drive/access';
+import { DriveReadService } from '../../src/drive/service-read';
 import { PhotoMedia } from '../../src/photos/media-routes';
 import { DriveMediaJobsRepository } from '../../src/store/repositories/drive-media-jobs';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { DrivePlacesRepository } from '../../src/store/repositories/drive-places';
-import { testStore, type TestStore } from '../support/store';
-import { folderRoot } from '../drive/drive-fixture';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from '../drive/spaces-fixture';
 
 const HOME = '0c000000-0000-4000-8000-000000000001';
 const SAMS = '0c000000-0000-4000-8000-000000000002';
@@ -31,6 +33,7 @@ function image(id: string, rootId: string): void {
       modifiedAt: '2026-11-07T00:00:00.000Z',
       addedAt: '2026-11-07T00:00:00.000Z',
       starred: false,
+      shared: false,
       outside: false,
       remoteId: null,
       remoteRev: null,
@@ -54,20 +57,13 @@ function image(id: string, rootId: string): void {
 }
 
 beforeEach(async () => {
-  opened = await testStore();
+  opened = await driveTestStore();
   const { store } = opened;
-  owner = { profileId: store.profiles.first().id, owner: true };
-  sam = { profileId: store.profiles.create({ name: 'Sam' }).id, owner: false };
-  ann = { profileId: store.profiles.create({ name: 'Ann' }).id, owner: false };
-  store.driveRoots.insert(folderRoot(HOME, '/library/home', { inPhotos: true }));
-  store.driveRoots.insert(
-    folderRoot(SAMS, '/library/sam', {
-      scope: 'person',
-      ownerProfileId: sam.profileId,
-      indexId: 'index-2',
-      inPhotos: true,
-    }),
-  );
+  owner = { profileId: store.profiles.first().id };
+  sam = { profileId: store.profiles.create({ name: 'Sam' }).id };
+  ann = { profileId: store.profiles.create({ name: 'Ann' }).id };
+  store.driveRoots.insert(sharedDriveRoot(HOME));
+  store.driveRoots.insert(personalDriveRoot(SAMS, sam.profileId));
   image(PHOTO, HOME);
   image(PRIVATE, SAMS);
   media = new PhotoMedia(store.context, new DriveReadService(store), store);

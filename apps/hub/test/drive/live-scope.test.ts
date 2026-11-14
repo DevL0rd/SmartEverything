@@ -3,21 +3,26 @@ import type {
   DriveChangedNotice,
   DriveProgressNotice,
   DriveRoot,
-  DriveSyncClient,
   LiveChange,
   LiveTable,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { driveNoticeSeenBy } from '../../src/server/live-access';
 import { driveRowVisible, seenBy, visible, type Hearing } from '../../src/server/live-visibility';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const NOW = '2026-11-07T10:00:00.000Z';
-const TABLES: readonly LiveTable[] = ['drive_roots', 'drive_albums', 'drive_sync_clients'];
+const TABLES: readonly LiveTable[] = [
+  'drive_roots',
+  'drive_albums',
+  'drive_grants',
+  'drive_placements',
+];
 const HOME_ROOT = '0d000000-0000-4000-8000-000000000001';
-const LINKED_ROOT = '0d000000-0000-4000-8000-000000000002';
+const OWNER_ROOT = '0d000000-0000-4000-8000-000000000002';
 const ANN_ROOT = '0d000000-0000-4000-8000-000000000003';
 const BOB_ROOT = '0d000000-0000-4000-8000-000000000004';
 const HOME_ALBUM = '0a000000-0000-4000-8000-000000000001';
@@ -25,52 +30,12 @@ const ANN_ALBUM = '0a000000-0000-4000-8000-000000000002';
 const BOB_ALBUM = '0a000000-0000-4000-8000-000000000003';
 const BOB_FOLDER = '0f000000-0000-4000-8000-000000000001';
 const HOME_FOLDER = '0f000000-0000-4000-8000-000000000002';
-const CLIENT_ID = '0c000000-0000-4000-8000-000000000001';
-const DEVICE_ID = '0e000000-0000-4000-8000-000000000001';
-const HEALTH = {
-  hashedShare: 0,
-  verifiedShare: 0,
-  corrupt: 0,
-  lastScrubAt: null,
-  lastBackupAt: null,
-} as const;
+const ANN_FOLDER = '0f000000-0000-4000-8000-000000000003';
 
 let test: TestStore;
 let owner: TestPerson;
 let ann: TestPerson;
 let bob: TestPerson;
-
-function rootOf(
-  id: string,
-  scope: 'home' | 'person',
-  ownerProfileId: string | null,
-  kind: 'managed' | 'folder' = 'managed',
-): DriveRoot {
-  return {
-    id,
-    kind,
-    label: id,
-    scope,
-    ownerProfileId,
-    path: `/srv/${id}`,
-    readOnly: false,
-    versions: false,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: HEALTH,
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
 
 function albumOf(
   id: string,
@@ -99,6 +64,7 @@ function folderIn(id: string, rootId: string): void {
       modifiedAt: NOW,
       addedAt: NOW,
       starred: false,
+      shared: false,
       outside: false,
       addedByProfileId: null,
       remoteId: null,
@@ -109,21 +75,6 @@ function folderIn(id: string, rootId: string): void {
     },
     identity: { dev: '1', ino: id.slice(-4) },
   });
-}
-
-function syncClientOf(profileId: string): DriveSyncClient {
-  return {
-    clientId: CLIENT_ID,
-    rootId: HOME_ROOT,
-    deviceId: DEVICE_ID,
-    profileId,
-    enabled: true,
-    selected: [],
-    lastSeq: 0,
-    lastSeenAt: null,
-    needBytes: 0,
-    errors: [],
-  };
 }
 
 function hearing(person: TestPerson): Hearing {
@@ -158,19 +109,20 @@ function changed(rootIds: string[], folderIds: string[], albumIds: string[]): Dr
 }
 
 beforeEach(async () => {
-  test = await testStore();
+  test = await driveTestStore();
   owner = addPerson(test, 'Robin', 'owner');
   ann = addPerson(test, 'Ann', 'member');
   bob = addPerson(test, 'Bob', 'member');
-  test.store.driveRoots.insert(rootOf(HOME_ROOT, 'home', null));
-  test.store.driveRoots.insert(rootOf(LINKED_ROOT, 'home', null, 'folder'));
-  test.store.driveRoots.insert(rootOf(ANN_ROOT, 'person', ann.profileId));
-  test.store.driveRoots.insert(rootOf(BOB_ROOT, 'person', bob.profileId));
+  test.store.driveRoots.insert(sharedDriveRoot(HOME_ROOT));
+  test.store.driveRoots.insert(personalDriveRoot(OWNER_ROOT, owner.profileId));
+  test.store.driveRoots.insert(personalDriveRoot(ANN_ROOT, ann.profileId));
+  test.store.driveRoots.insert(personalDriveRoot(BOB_ROOT, bob.profileId));
   test.store.driveAlbums.insert(albumOf(HOME_ALBUM, 'home', null));
   test.store.driveAlbums.insert(albumOf(ANN_ALBUM, 'person', ann.profileId));
   test.store.driveAlbums.insert(albumOf(BOB_ALBUM, 'person', bob.profileId));
   folderIn(HOME_FOLDER, HOME_ROOT);
   folderIn(BOB_FOLDER, BOB_ROOT);
+  folderIn(ANN_FOLDER, ANN_ROOT);
 });
 
 afterEach(async () => {
@@ -178,18 +130,18 @@ afterEach(async () => {
 });
 
 describe('drive roots in the live scope', () => {
-  it('shows a member the home root, the linked home roots and their own person root only', () => {
-    const seen = [HOME_ROOT, LINKED_ROOT, ANN_ROOT, BOB_ROOT].filter((id) =>
+  it('shows a member the Shared Drive and their own drive only', () => {
+    const seen = [HOME_ROOT, OWNER_ROOT, ANN_ROOT, BOB_ROOT].filter((id) =>
       shownTo(ann, test.store.driveRoots.byId(id)),
     );
-    expect(seen).toEqual([HOME_ROOT, LINKED_ROOT, ANN_ROOT]);
+    expect(seen).toEqual([HOME_ROOT, ANN_ROOT]);
   });
 
-  it('shows the owner every root including each member person root', () => {
-    const seen = [HOME_ROOT, LINKED_ROOT, ANN_ROOT, BOB_ROOT].filter((id) =>
+  it('shows the hub owner the Shared Drive and their own drive, never a member drive', () => {
+    const seen = [HOME_ROOT, OWNER_ROOT, ANN_ROOT, BOB_ROOT].filter((id) =>
       shownTo(owner, test.store.driveRoots.byId(id)),
     );
-    expect(seen).toEqual([HOME_ROOT, LINKED_ROOT, ANN_ROOT, BOB_ROOT]);
+    expect(seen).toEqual([HOME_ROOT, OWNER_ROOT]);
   });
 
   it('judges a deleted root by the old row', () => {
@@ -213,7 +165,7 @@ describe('drive roots in the live scope', () => {
   });
 });
 
-describe('drive albums and sync clients in the live scope', () => {
+describe('drive albums and grants in the live scope', () => {
   it('shows a member home albums and their own albums only', () => {
     const seen = [HOME_ALBUM, ANN_ALBUM, BOB_ALBUM].filter((id) =>
       driveRowVisible(hearing(ann), test.store.driveAlbums.byId(id), profileOf, personOfDevice),
@@ -221,19 +173,19 @@ describe('drive albums and sync clients in the live scope', () => {
     expect(seen).toEqual([HOME_ALBUM, ANN_ALBUM]);
   });
 
-  it('shows a member only their own sync clients and the owner all of them', () => {
-    expect(
-      driveRowVisible(hearing(ann), syncClientOf(ann.profileId), profileOf, personOfDevice),
-    ).toBe(true);
-    expect(
-      driveRowVisible(hearing(ann), syncClientOf(bob.profileId), profileOf, personOfDevice),
-    ).toBe(false);
-    expect(
-      driveRowVisible(hearing(owner), syncClientOf(bob.profileId), profileOf, personOfDevice),
-    ).toBe(true);
+  it('shows a grant to the person who made it and the person who received it only', () => {
+    const grant = test.store.driveGrants.set(
+      { itemId: BOB_FOLDER, profileId: ann.profileId, role: 'view' },
+      bob.profileId,
+    );
+    const shown = (person: TestPerson): boolean =>
+      driveRowVisible(hearing(person), grant, profileOf, personOfDevice);
+    expect(shown(ann)).toBe(true);
+    expect(shown(bob)).toBe(true);
+    expect(shown(owner)).toBe(false);
   });
 
-  it('applies the same rule to album and sync client changes', () => {
+  it('applies the same rule to album and grant changes, the grantee hearing their own', () => {
     const album: LiveChange = {
       type: 'change',
       seq: 3,
@@ -242,25 +194,48 @@ describe('drive albums and sync clients in the live scope', () => {
       record: test.store.driveAlbums.byId(BOB_ALBUM),
       oldRecord: null,
     };
-    const client: LiveChange = {
+    const grant: LiveChange = {
       type: 'change',
       seq: 4,
       operation: 'INSERT',
-      table: 'drive_sync_clients',
-      record: syncClientOf(bob.profileId),
+      table: 'drive_grants',
+      record: test.store.driveGrants.set(
+        { itemId: BOB_FOLDER, profileId: owner.profileId, role: 'edit' },
+        bob.profileId,
+      ),
       oldRecord: null,
     };
     expect(visible(hearing(ann), album, test.store)).toBe(false);
-    expect(visible(hearing(ann), client, test.store)).toBe(false);
+    expect(visible(hearing(ann), grant, test.store)).toBe(false);
+    expect(visible(hearing(owner), album, test.store)).toBe(false);
+    expect(visible(hearing(owner), grant, test.store)).toBe(true);
     expect(visible(hearing(bob), album, test.store)).toBe(true);
-    expect(visible(hearing(bob), client, test.store)).toBe(true);
+    expect(visible(hearing(bob), grant, test.store)).toBe(true);
   });
 });
 
 describe('drive notices in the live scope', () => {
-  it('passes every notice to the owner untouched', () => {
-    const notice = changed([BOB_ROOT], [BOB_FOLDER], [BOB_ALBUM]);
-    expect(driveNoticeSeenBy(hearing(owner), notice, test.store)).toEqual(notice);
+  it('gives the hub owner no notice about a member drive and keeps the rest', () => {
+    expect(
+      driveNoticeSeenBy(hearing(owner), changed([BOB_ROOT], [BOB_FOLDER], [BOB_ALBUM]), test.store),
+    ).toBeNull();
+    expect(
+      driveNoticeSeenBy(
+        hearing(owner),
+        changed([HOME_ROOT, BOB_ROOT], [HOME_FOLDER, BOB_FOLDER], [HOME_ALBUM, BOB_ALBUM]),
+        test.store,
+      ),
+    ).toEqual(changed([HOME_ROOT], [HOME_FOLDER], [HOME_ALBUM]));
+  });
+
+  it('lets a person hear about a folder shared with them and nothing else of that drive', () => {
+    test.store.driveGrants.set(
+      { itemId: BOB_FOLDER, profileId: ann.profileId, role: 'view' },
+      bob.profileId,
+    );
+    expect(
+      driveNoticeSeenBy(hearing(ann), changed([BOB_ROOT], [BOB_FOLDER], [BOB_ALBUM]), test.store),
+    ).toEqual(changed([], [BOB_FOLDER], []));
   });
 
   it('keeps only the roots, folders and albums a member may see', () => {
@@ -291,7 +266,7 @@ describe('drive notices in the live scope', () => {
     expect(seenBy(hearing(ann), progress(ANN_ROOT), test.store)).toEqual(progress(ANN_ROOT));
     expect(seenBy(hearing(ann), progress(HOME_ROOT), test.store)).toEqual(progress(HOME_ROOT));
     expect(seenBy(hearing(ann), progress(BOB_ROOT), test.store)).toBeNull();
-    expect(seenBy(hearing(owner), progress(BOB_ROOT), test.store)).toEqual(progress(BOB_ROOT));
+    expect(seenBy(hearing(owner), progress(BOB_ROOT), test.store)).toBeNull();
   });
 
   it('hides a notice about a root that no longer exists from a member', () => {

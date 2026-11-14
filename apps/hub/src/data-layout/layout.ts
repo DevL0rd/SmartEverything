@@ -9,7 +9,6 @@ import {
   PLUGIN_ID,
   PROFILE_ID,
   PROVIDER_ID,
-  ROOT_ID,
 } from './ids';
 import { derivedShard, LAYOUT_SOURCE, LEGACY_NAMES, type LayoutSource } from './legacy';
 
@@ -58,7 +57,6 @@ export interface LayoutNames {
   readonly backups: Paths<'releases' | 'manual' | 'legacyDatabase'>;
   readonly provider: (id: string) => string;
   readonly plugin: (id: string) => string;
-  readonly driveMeta: (rootId: string) => string;
   readonly journalCursor: (deviceId: string) => string;
   readonly recordings: (deviceId: string) => string;
   readonly derived: (itemId: string) => string;
@@ -147,7 +145,6 @@ export const V1_NAMES: LayoutNames = {
   },
   provider: (id) => `system/providers/${id}`,
   plugin: (id) => `system/plugins/${id}`,
-  driveMeta: (rootId) => `system/drive-meta/${rootId}`,
   journalCursor: (deviceId) => `system/journal/startup-journal-${deviceId}.cursor`,
   recordings: (deviceId) => `home/cameras/recordings/${deviceId}`,
   derived: (itemId) => `cache/drive-derived/${derivedShard(itemId)}`,
@@ -204,7 +201,6 @@ export interface HubLayout {
     readonly ai: LayoutNames['ai'];
     readonly providers: (providerId: string) => string;
     readonly plugins: (pluginId: string) => string;
-    readonly driveMeta: (rootId: string) => string;
     readonly developer: LayoutNames['developer'];
     readonly updates: LayoutNames['updates'];
     readonly migration: LayoutNames['migration'];
@@ -319,7 +315,6 @@ function systemOf(names: LayoutNames, at: At, environment: LayoutEnvironment): H
     ai: aiOf(names, at, environment),
     providers: (id) => at(names.provider(PROVIDER_ID.parse(id))),
     plugins: (id) => at(names.plugin(PLUGIN_ID.parse(id))),
-    driveMeta: (id) => at(names.driveMeta(ROOT_ID.parse(id))),
     developer: { watchCaptures: at(names.developer.watchCaptures) },
     updates: updatesOf(names, at),
     migration: {

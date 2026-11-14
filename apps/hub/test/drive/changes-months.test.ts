@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DriveRoot } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   fileDraft,
@@ -13,9 +12,10 @@ import {
 } from '../../src/drive/changes';
 import { takenMonths } from '../../src/drive/changes-months';
 import { nodeFiles } from '../../src/drive/versions';
-import { UNSYNCED } from '../../src/store/repositories/drive-roots';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { TestStore } from '../support/store';
+import { sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveTestStore } from './spaces-fixture';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const ACTOR: ChangeActor = { actorProfileId: null, via: 'app', deviceId: null };
@@ -24,39 +24,6 @@ let opened: TestStore;
 let base = '';
 let rootId = '';
 let months: (readonly string[])[] = [];
-
-function rootRow(id: string, path: string): DriveRoot {
-  return {
-    id,
-    kind: 'folder',
-    label: 'Months root',
-    scope: 'home',
-    ownerProfileId: null,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: {
-      hashedShare: 0,
-      verifiedShare: 0,
-      corrupt: 0,
-      lastScrubAt: null,
-      lastBackupAt: null,
-    },
-    inPhotos: false,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
-}
 
 function env(): ChangeEnv {
   return {
@@ -97,10 +64,10 @@ function taken(relPath: string, takenAt: string | null): ReturnType<typeof fileD
 
 beforeEach(async () => {
   captureLogs();
-  opened = await testStore();
+  opened = await driveTestStore();
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-months-')));
   rootId = randomUUID();
-  opened.store.driveRoots.insert(rootRow(rootId, base));
+  opened.store.driveRoots.insert(sharedDriveRoot(rootId));
   months = [];
   opened.store.feed.subscribeNotices((notice) => {
     if (notice.type === 'drive_changed') months.push(notice.months);

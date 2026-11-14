@@ -7,7 +7,7 @@ import type { DriveItem, DriveUpload } from '@smarteverything/domain';
 import type { DriveUploadOwner } from '../store/repositories/drive-uploads';
 import type { Store } from '../store/store';
 import { commitContent, type ChangeEnv } from './changes';
-import { locate, physicalRoot, TMP_DIRECTORY, type DriveWriteRoot } from './intents';
+import { locate, TMP_DIRECTORY, type DriveWriteRoot } from './intents';
 import { checkDriveFreeSpace, checkDriveQuota } from './quotas';
 import { readDriveSettings } from './settings';
 import { stagedUpload } from './uploads-tus-content';
@@ -36,11 +36,11 @@ import {
   type Reply,
   type TusCaller,
 } from './uploads-tus-wire';
-import type { VolumeProbe } from './volumes';
+import type { DataSpaceProbe } from './data-space';
 
 export interface TusEnv extends ChangeEnv {
   readonly store: ChangeEnv['store'] & Pick<Store, 'driveUploads' | 'driveQuotas' | 'settingsKv'>;
-  readonly space: VolumeProbe['space'];
+  readonly space: DataSpaceProbe['space'];
   readonly completed: (item: DriveItem) => void;
   readonly authenticate: (request: IncomingMessage) => TusCaller | null;
 }
@@ -280,7 +280,7 @@ export class TusUploads {
     if (root === undefined) {
       throw absent();
     }
-    return physicalRoot(root);
+    return root;
   }
 
   private async currentOffset(upload: DriveUpload): Promise<number> {
@@ -393,8 +393,8 @@ export class TusUploads {
 
   private async discard(upload: DriveUpload): Promise<void> {
     const root = this.env.store.driveRoots.find(upload.rootId);
-    if (root !== undefined && root.path !== null) {
-      await this.env.files.remove(await locate(physicalRoot(root), tmpPath(upload.id)));
+    if (root !== undefined) {
+      await this.env.files.remove(await locate(root, tmpPath(upload.id)));
     }
   }
 }

@@ -5,18 +5,13 @@ import {
   type PlaceCluster,
   type PlaceCountry,
 } from '@smarteverything/domain';
-import type { DriveActor } from '../drive/service-read';
-import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
+import { photoActor } from './actor';
 import { bound, type Bound } from '../server/router';
 import type { Store } from '../store/store';
 import type { PlaceQueries } from './places-queries';
 import type { PhotoMapClusters, PhotoPlace, PhotoPlaceList } from './places-schema';
 
 const E = PHOTOS_ENDPOINTS;
-
-function actorOf(store: Store, caller: Caller): DriveActor {
-  return { profileId: profileIdOf(store, caller), owner: roleOfCaller(caller) === 'owner' };
-}
 
 export function placeNumber(id: string): number {
   return PLACE_PARAMS.shape.placeId.parse(id);
@@ -70,14 +65,14 @@ export interface PhotoPlaceRoutes {
 export function photoPlaceRoutes(store: Store, queries: PlaceQueries): PhotoPlaceRoutes {
   return {
     listPlaces: bound(E.listPlaces, ({ caller }) =>
-      domainCountries(queries.list(actorOf(store, caller))),
+      domainCountries(queries.list(photoActor(store, caller))),
     ),
     readPlace: bound(E.readPlace, ({ params, caller }) => {
-      const detail = queries.detail(actorOf(store, caller), String(params.placeId));
+      const detail = queries.detail(photoActor(store, caller), String(params.placeId));
       return domainPlace(detail.place, detail.items, detail.coverItemId);
     }),
     listPlaceClusters: bound(E.listPlaceClusters, ({ query, caller }) =>
-      domainClusters(queries.clusters(actorOf(store, caller), query)),
+      domainClusters(queries.clusters(photoActor(store, caller), query)),
     ),
   };
 }

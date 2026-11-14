@@ -16,8 +16,8 @@ import {
   DUPLICATE_STATS,
 } from '../photos/duplicates';
 import { PHOTO_INSIGHTS, PHOTO_INSIGHTS_QUERY } from '../photos/insights';
+import { LIBRARY_BUCKET, LIBRARY_PAGE, LIBRARY_PAGE_QUERY, LIBRARY_SCOPE } from '../photos/library';
 import { MEDIA_INFO, MEDIA_PROCESSING } from '../photos/media';
-import { MEMORY, MEMORY_PARAMS, TRIP } from '../photos/memories';
 import {
   PHOTO_PLACE,
   PLACE_CLUSTER,
@@ -33,13 +33,7 @@ import {
   SOURCE_QUERY,
 } from '../photos/sources';
 import { STACK, STACK_COVER, STACK_PARAMS } from '../photos/stacks';
-import {
-  TIMELINE_BUCKET,
-  TIMELINE_PAGE,
-  TIMELINE_PAGE_QUERY,
-  TIMELINE_SCOPE,
-} from '../photos/timeline';
-import { DRIVE_QUERY_PAGE } from '../drive/query';
+import { TRIP } from '../photos/trips';
 import { NO_BODY, endpoint } from './endpoint';
 import { CURSOR_QUERY, DRIVE_ITEM_PARAMS, pageOf } from './endpoints-drive';
 import { COUNT, DONE, ID, NOTHING } from './primitives';
@@ -66,17 +60,14 @@ export type PhotosProgressNotice = z.infer<typeof PHOTOS_PROGRESS_NOTICE>;
 
 export const PHOTO_RAIL_COUNTS = z
   .strictObject({
-    timeline: COUNT,
-    memories: COUNT,
+    library: COUNT,
     albums: COUNT,
     places: COUNT,
     favourites: COUNT,
     videos: COUNT,
     screenshots: COUNT,
-    cameras: COUNT,
-    ai: COUNT,
-    duplicates: COUNT.nullable(),
-    backupPhones: COUNT,
+    duplicates: COUNT,
+    backupDevices: COUNT,
     deleted: COUNT,
   })
   .readonly();
@@ -104,26 +95,26 @@ export const PHOTOS_ENDPOINTS = {
     body: NO_BODY,
     response: PHOTO_RAIL_COUNTS,
   }),
-  readTimelineBuckets: endpoint({
+  readLibraryBuckets: endpoint({
     method: 'GET',
-    path: '/api/drive/photos/timeline',
+    path: '/api/drive/photos/library',
     access: 'member',
-    summary: 'The months of the Photos timeline with how many photos and videos each holds',
+    summary: 'The months of the Photos library with how many photos and videos each holds',
     params: NOTHING,
-    query: TIMELINE_SCOPE,
+    query: LIBRARY_SCOPE,
     body: NO_BODY,
-    response: z.array(TIMELINE_BUCKET),
+    response: z.array(LIBRARY_BUCKET),
   }),
-  readTimelinePage: endpoint({
+  readLibraryPage: endpoint({
     method: 'GET',
-    path: '/api/drive/photos/timeline/:month',
+    path: '/api/drive/photos/library/:month',
     access: 'member',
     summary:
-      'One month of the timeline as columns: ids, revisions, shapes, capture times, placeholders and flags',
+      'One month of the library as columns: ids, revisions, shapes, capture times, placeholders and flags',
     params: MONTH_PARAMS,
-    query: TIMELINE_PAGE_QUERY,
+    query: LIBRARY_PAGE_QUERY,
     body: NO_BODY,
-    response: TIMELINE_PAGE,
+    response: LIBRARY_PAGE,
   }),
   readMediaInfo: endpoint({
     method: 'GET',
@@ -144,26 +135,6 @@ export const PHOTOS_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: MEDIA_PROCESSING,
-  }),
-  listMemories: endpoint({
-    method: 'GET',
-    path: '/api/drive/photos/memories',
-    access: 'member',
-    summary: 'On this day, this week, days out, bursts, trips and the year in review',
-    params: NOTHING,
-    query: NOTHING,
-    body: NO_BODY,
-    response: z.array(MEMORY),
-  }),
-  listMemoryItems: endpoint({
-    method: 'GET',
-    path: '/api/drive/photos/memories/:memoryId/items',
-    access: 'member',
-    summary: 'The photos and videos of one memory, one page at a time',
-    params: MEMORY_PARAMS,
-    query: CURSOR_QUERY,
-    body: NO_BODY,
-    response: DRIVE_QUERY_PAGE,
   }),
   listTrips: endpoint({
     method: 'GET',
@@ -281,7 +252,7 @@ export const PHOTOS_ENDPOINTS = {
     method: 'POST',
     path: '/api/drive/photos/stacks/:stackId/cover',
     access: 'member',
-    summary: 'Choose which photo of a stack is shown on the timeline',
+    summary: 'Choose which photo of a stack is shown in the library',
     params: STACK_PARAMS,
     query: NOTHING,
     body: STACK_COVER,
@@ -342,10 +313,10 @@ export const PHOTOS_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/photos/backup/state',
     access: 'member',
-    summary: 'Backup progress for each of the caller’s devices',
+    summary: 'Backup progress for each of the caller’s devices and the bytes still to upload',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
-    response: z.array(BACKUP_STATE),
+    response: BACKUP_STATE,
   }),
 } as const;

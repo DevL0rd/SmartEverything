@@ -4,12 +4,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import {
-  ApiError,
-  hashClientToken,
-  type DriveConflict,
-  type DriveRoot,
-} from '@smarteverything/domain';
+import { ApiError, type DriveConflict } from '@smarteverything/domain';
 import {
   packedToBytes,
   SYNC_HUB_MESSAGE,
@@ -21,17 +16,24 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { commitContent } from '../../src/drive/changes';
-import { physicalRoot } from '../../src/drive/intents';
 import { syncAuthentication, type SyncEnv } from '../../src/drive/sync/server-ops';
-import { blocksHashOf } from '../../src/drive/sync/server-index';
+import { blocksHashOf, indexPages } from '../../src/drive/sync/server-index';
 import { createDriveSync, type DriveSyncParts } from '../../src/drive/sync/server-push';
-import { DRIVE_SYNC_PROTOCOL, DriveSyncServer } from '../../src/drive/sync/server-socket';
+import { resolveScope } from '../../src/drive/sync/placement-scope';
+import {
+  DRIVE_SYNC_PROTOCOL,
+  DriveSyncServer,
+  type SyncSession,
+} from '../../src/drive/sync/server-socket';
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
 import { packBlockHashes } from '../../src/store/repositories/drive-blocks';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
+import type { StoredDrive } from '../../src/store/repositories/drive-roots';
+import { sharedDriveRoot } from '../store/drive-roots-fixture';
+import type { TestStore } from '../support/store';
 import { until } from '../support/wait';
-import { folderRoot } from './drive-fixture';
+import { status } from './placement-fixture';
+import { driveTestStore, putItem } from './spaces-fixture';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 const BLOCK = 128 * 1024;
@@ -42,7 +44,8 @@ type Typed<T extends SyncHubMessage['type']> = Extract<SyncHubMessage, { type: T
 interface Identity {
   readonly name: string;
   readonly token: string;
-  readonly clientId: string;
+  readonly deviceId: string;
+  readonly placementId: string;
 }
 
 interface Client extends Identity {
@@ -58,7 +61,7 @@ let sync: DriveSyncParts;
 let env: SyncEnv;
 let base = '';
 let wsUrl = '';
-let root: DriveRoot;
+let root: StoredDrive;
 let ownerId = '';
 let nodeCount = 0;
 let conflictRows = new Map<string, DriveConflict>();
@@ -93,7 +96,7 @@ function route(request: IncomingMessage, response: ServerResponse): Promise<void
 }
 
 beforeEach(async () => {
-  opened = await testStore(() => NOW);
+  opened = await driveTestStore(() => NOW);
   directory = await mkdtemp(join(tmpdir(), 'drive-sync-two-'));
   ownerId = opened.store.profiles.first().id;
   conflictRows = new Map();
@@ -155,17 +158,8 @@ beforeEach(async () => {
   if (address === null || typeof address === 'string') throw new Error('no port');
   base = `http://127.0.0.1:${String(address.port)}`;
   wsUrl = `ws://127.0.0.1:${String(address.port)}`;
-  const path = join(directory, 'library');
-  await mkdir(path, { recursive: true });
-  root = opened.store.driveRoots.insert(
-    folderRoot(randomUUID(), path, {
-      readOnly: false,
-      versions: true,
-      synced: true,
-      indexId: randomUUID(),
-      sync: { ignorePatterns: [], conflictCopies: true, clients: [] },
-    }),
-  );
+  root = opened.store.driveRoots.insert(sharedDriveRoot(randomUUID()));
+  await mkdir(root.path, { recursive: true });
 });
 
 afterEach(async () => {
@@ -222,26 +216,33 @@ function pair(name: string): Identity {
     windowClientId: null,
     profileId: ownerId,
   });
-  const clientId = opened.store.clients.create(
-    {
-      name: name,
-      platform: 'desktop',
-      role: 'member',
-      tokenHash: hashClientToken(`set_${randomBytes(32).toString('hex')}`),
-      profileId: ownerId,
-    },
-    false,
-  ).id;
-  return { name, token, clientId };
+  const placed = placeFolder(device.id, null, name);
+  return { name, token, deviceId: device.id, placementId: placed };
 }
 
-async function connectAs(identity: Identity): Promise<Client> {
+function placeFolder(deviceId: string, folderItemId: string | null, localPath: string): string {
+  return opened.store.drivePlacements.insert({
+    id: randomUUID(),
+    deviceId,
+    rootId: root.id,
+    folderItemId,
+    mode: 'synced',
+    localPath: `/sync/${localPath}`,
+    enabled: true,
+    createdBy: ownerId,
+    excluded: [],
+    ignorePatterns: [],
+    conflictCopies: true,
+    status: status({ state: 'starting', tier: null, route: null }),
+  }).id;
+}
+
+async function connectAs(identity: Identity, placementId = identity.placementId): Promise<Client> {
   const client = await attach(identity);
   client.socket.send(
     JSON.stringify({
       type: 'hello',
-      clientId: client.clientId,
-      rootId: root.id,
+      placementId,
       indexId: null,
       afterSeq: 0,
     }),
@@ -303,7 +304,11 @@ async function answer<T extends SyncHubMessage['type']>(
   return message;
 }
 
-async function upload(client: Client, need: Typed<'need_blocks'>, bytes: Buffer): Promise<void> {
+async function upload(
+  client: Pick<Client, 'token'>,
+  need: Typed<'need_blocks'>,
+  bytes: Buffer,
+): Promise<void> {
   for (const index of need.indexes) {
     const response = await fetch(`${base}/drive/sync/${need.txn}/block/${String(index)}`, {
       method: 'PUT',
@@ -388,7 +393,7 @@ async function blockOf(client: Client, itemId: string, index: number): Promise<B
 }
 
 async function onDisk(relPath: string): Promise<Buffer> {
-  return readFile(join(root.path ?? '', relPath));
+  return readFile(join(root.path, relPath));
 }
 
 describe('two computers on one folder', () => {
@@ -464,10 +469,9 @@ describe('two computers on one folder', () => {
 
   it('keeps an edit based on a hub commit from turning into a false conflict', async () => {
     const hubBytes = bytesOf(1, 'h');
-    const writable = physicalRoot(root);
-    const staged = await stageBytes(env, writable, Readable.from([hubBytes]));
+    const staged = await stageBytes(env, root, Readable.from([hubBytes]));
     const written = await commitContent(env, {
-      root: writable,
+      root,
       staged,
       relPath: 'hub.txt',
       actor: { actorProfileId: ownerId, via: 'app', deviceId: null },
@@ -515,7 +519,7 @@ describe('two computers on one folder', () => {
     send(a, message);
     const replay = await answerFirst(a, 'op-1');
     expect(replay).toEqual(settled);
-    expect(opened.store.driveItems.byPath(root.id, 'retry.bin')?.rev).toBe(1);
+    expect(opened.store.driveItems.byPath(root.id, 'retry.bin', null)?.rev).toBe(1);
   });
 
   it('converges: both computers end with the same names, revs and bytes after interleaved work', async () => {
@@ -552,5 +556,60 @@ describe('two computers on one folder', () => {
       `p/one.txt@${String(one.rev + 1)}`,
       `p/two.txt@${String(two.rev)}`,
     ]);
+  });
+
+  it('syncs two folders of one drive on one computer independently', async () => {
+    const identity = pair('A');
+    const names = ['alpha', 'beta'] as const;
+    const placed = names.map((name) => {
+      const id = randomUUID();
+      putItem(opened.store, { rootId: root.id, id, relPath: name, kind: 'folder' });
+      return { name, folderId: id, placementId: placeFolder(identity.deviceId, id, name) };
+    });
+    await Promise.all(names.map((name) => mkdir(join(root.path, name))));
+    const sent = new Map<string, SyncHubMessage[]>();
+    const sessionOf = (placementId: string): SyncSession => {
+      const messages: SyncHubMessage[] = [];
+      sent.set(placementId, messages);
+      return {
+        mode: 'sync',
+        placementId,
+        rootId: root.id,
+        deviceId: identity.deviceId,
+        profileId: ownerId,
+        actor: { profileId: ownerId },
+        send: (message): Promise<void> => {
+          messages.push(SYNC_HUB_MESSAGE.parse(message));
+          return Promise.resolve();
+        },
+      };
+    };
+    const pushVia = async (placementId: string, opId: string, fill: string): Promise<void> => {
+      const bytes = bytesOf(1, fill);
+      const session = sessionOf(placementId);
+      await sync.operations.handle(session, pushOf(opId, 'note.txt', null, bytes));
+      const need = sent.get(placementId)?.at(-1);
+      if (need?.type !== 'need_blocks') throw new Error('expected need_blocks');
+      await upload(identity, need, bytes);
+      await sync.operations.handle(session, { type: 'commit', opId, txn: need.txn });
+      expect(sent.get(placementId)?.at(-1)?.type).toBe('accept');
+    };
+    for (const [at, one] of placed.entries())
+      await pushVia(one.placementId, `op-${String(at)}`, names[at] ?? '');
+    expect(await onDisk('alpha/note.txt')).toEqual(bytesOf(1, 'alpha'));
+    expect(await onDisk('beta/note.txt')).toEqual(bytesOf(1, 'beta'));
+    for (const one of placed) {
+      const scope = resolveScope(opened.store, one.placementId, identity.deviceId, 'sync');
+      const entries = [...indexPages(opened.store, scope)].flat();
+      expect(entries.map((entry) => entry.relPath)).toEqual(['note.txt']);
+      expect(entries[0]?.itemId).toBe(
+        opened.store.driveItems.byPath(root.id, `${one.name}/note.txt`, null)?.id,
+      );
+    }
+    const [alpha, beta] = placed.map((one) =>
+      resolveScope(opened.store, one.placementId, identity.deviceId, 'sync'),
+    );
+    if (alpha === undefined || beta === undefined) throw new Error('unreachable');
+    expect(alpha.indexId).not.toBe(beta.indexId);
   });
 });

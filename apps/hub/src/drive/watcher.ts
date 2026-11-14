@@ -1,6 +1,6 @@
 import { readdirSync, statSync, watch as fsWatch } from 'node:fs';
 import { join, matchesGlob } from 'node:path';
-import type { DriveRoot } from '@smarteverything/domain';
+import type { StoredDrive } from '../store/repositories/drive-roots';
 import type { Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
 import type { DriveRootsRepository } from '../store/repositories/drive-roots';
@@ -45,8 +45,6 @@ export interface WatchStatus {
   readonly problem: string | null;
 }
 
-type PhysicalRoot = DriveRoot & { readonly path: string };
-
 const EXHAUSTED = new Set(['ENOSPC', 'EMFILE', 'ENFILE']);
 
 const PROBLEM_TEXT: Readonly<Record<string, string>> = {
@@ -68,7 +66,7 @@ function childFolders(directory: string): readonly string[] {
     .map((entry) => join(directory, entry.name));
 }
 
-function ignoredByRoot(root: PhysicalRoot, relPath: string): boolean {
+function ignoredByRoot(root: StoredDrive, relPath: string): boolean {
   if (relPath === '') return false;
   if (relPath.split('/')[0] === MARKER_DIRECTORY) return true;
   const segments = relPath.split('/');
@@ -91,7 +89,7 @@ class RootWatch {
 
   constructor(
     private readonly env: WatchEnvironment,
-    private readonly root: PhysicalRoot,
+    private readonly root: StoredDrive,
     private readonly report: (reason: string | null) => void,
   ) {}
 
@@ -209,10 +207,9 @@ export class DriveWatchers {
 
   constructor(private readonly env: WatchEnvironment) {}
 
-  start(root: DriveRoot): void {
-    if (root.path === null) return;
+  start(root: StoredDrive): void {
     this.stop(root.id);
-    const watch = new RootWatch(this.env, { ...root, path: root.path }, (reason) => {
+    const watch = new RootWatch(this.env, root, (reason) => {
       this.show(root.id, reason);
     });
     this.watches.set(root.id, watch);

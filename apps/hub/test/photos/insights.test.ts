@@ -8,7 +8,7 @@ import {
   seasonOf,
   twelveMonthsFrom,
 } from '../../src/photos/insights-shapes';
-import { TimelineReader } from '../../src/photos/timeline';
+import { LibraryReader } from '../../src/photos/library';
 import {
   AT,
   BOB_ROOT,
@@ -18,7 +18,6 @@ import {
   context,
   insertPhone,
   itemId,
-  owner,
   read,
   reader,
   seed,
@@ -43,8 +42,8 @@ describe('kinds', () => {
       { kind: 'raw', items: 1, bytes: 300 },
       { kind: 'video', items: 1, bytes: 1000 },
     ]);
-    const timeline = new TimelineReader(context)
-      .buckets(owner, { filter: 'all' })
+    const timeline = new LibraryReader(context, () => 'UTC')
+      .buckets(alice, { filter: 'all' })
       .reduce((sum, bucket) => sum + bucket.count, 0);
     expect(insights.items).toBe(timeline);
     expect(insights.bytes).toBe(1450);
@@ -173,7 +172,7 @@ describe('cameras, lenses and folders', () => {
     seed({ n: 1, takenAt: '2026-03-01T10:00:00.000Z', bytes: 5 });
     seed({ n: 2, takenAt: '2026-03-02T10:00:00.000Z', kind: 'video', bytes: 70 });
     seed({ n: 3, takenAt: '2026-03-03T10:00:00.000Z', root: BOB_ROOT, bytes: 9 });
-    expect(read('all_time').roots).toEqual([
+    expect(read('all_time', bob).roots).toEqual([
       { rootId: HOME_ROOT, photos: 1, videos: 1, photoBytes: 5, videoBytes: 70 },
       { rootId: BOB_ROOT, photos: 1, videos: 0, photoBytes: 9, videoBytes: 0 },
     ]);
@@ -288,9 +287,9 @@ describe('days and clock', () => {
 
   it('counts photos by season and hour for the home hemisphere', () => {
     seed({ n: 1, takenAt: '2026-07-10T20:00:00.000Z' });
-    const north = reader.read(owner, 'all_time', AT).seasonByHour;
+    const north = reader.read(alice, 'all_time', AT).seasonByHour;
     expect(north.find((one) => one.items > 0)).toEqual({ season: 'summer', hour: 20, items: 1 });
-    const south = reader.read(owner, 'all_time', {
+    const south = reader.read(alice, 'all_time', {
       today: AT.today,
       home: { latitude: -30, longitude: 150 },
     }).seasonByHour;
@@ -336,6 +335,6 @@ describe('member scope', () => {
     expect(read('all_time', alice).items).toBe(1);
     expect(read('all_time', alice).cameras).toEqual([]);
     expect(read('all_time', bob).items).toBe(2);
-    expect(read('all_time', owner).items).toBe(2);
+    expect(read('all_time', alice).items).toBe(1);
   });
 });
