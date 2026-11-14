@@ -78,6 +78,7 @@ async function apply(flow: Flow, release: HubUpdateRelease): Promise<void> {
   flow.storage.removeAny(flow.options.health);
   flow.storage.replaceTree(release.build, flow.options.service);
   await flow.prepareData();
+  await flow.refreshUnit();
   transition(flow, 'restarting');
 }
 

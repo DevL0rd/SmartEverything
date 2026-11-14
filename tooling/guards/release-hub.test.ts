@@ -37,7 +37,8 @@ import {
   swapService,
   type ReleaseTarget,
 } from '../release-hub-files.ts';
-import type { TransitionEnvironment } from '../release-hub-transition.ts';
+import { hubUnitText, HUB_OOM_SCORE_ADJUST } from '../../apps/hub/src/data-layout/unit.ts';
+import { hubUnitSpec, type TransitionEnvironment } from '../release-hub-transition.ts';
 import { failedChecks, releasePlan, rollbackWith } from '../release-hub.ts';
 import {
   awaitHub,
@@ -463,6 +464,71 @@ describe('pruning after a release', () => {
     await plan[6]?.run();
     expect(readdirSync(data.backups.releases)).toEqual([]);
     expect(existsSync(`${target.install.service}.old-release18`)).toBe(false);
+  });
+});
+
+describe('the hub unit on release', () => {
+  it('rewrites the unit from the installer text and reloads systemd before the restart', async () => {
+    const calls: string[] = [];
+    const built = join(scratch, 'built');
+    writeService(built, 'new');
+    const plan = releasePlan({
+      environment: {
+        ...environment,
+        reload: (): Promise<void> => {
+          calls.push('reload');
+          return Promise.resolve();
+        },
+      },
+      transition: null,
+      target,
+      prepareData: () => {
+        calls.push('prepare');
+        return Promise.resolve();
+      },
+      units: fakeUnits(calls),
+      name: 'release18',
+      built,
+      url,
+      schema: 5,
+      epoch: 10,
+    });
+    await plan[0]?.run();
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
+    await plan[3]?.run();
+    calls.length = 0;
+    await plan[4]?.run();
+    const text = readFileSync(join(environment.unitDirectory, 'smarteverything.service'), 'utf8');
+    expect(text).toBe(hubUnitText(hubUnitSpec(target.install.directory)));
+    expect(text).toContain(`OOMScoreAdjust=${String(HUB_OOM_SCORE_ADJUST)}`);
+    expect(calls).toEqual(['reload', 'prepare', `start ${HUB_UNIT}`]);
+  });
+
+  it('rolls back when the unit cannot be reloaded', async () => {
+    const calls: string[] = [];
+    const built = join(scratch, 'built');
+    writeService(built, 'new');
+    const plan = releasePlan({
+      environment: {
+        ...environment,
+        reload: () => Promise.reject(new Error('reload refused')),
+      },
+      transition: null,
+      target,
+      units: fakeUnits(calls),
+      name: 'release18',
+      built,
+      url,
+      schema: 5,
+      epoch: 10,
+    });
+    await plan[0]?.run();
+    await plan.find((step) => step.title.startsWith('back up'))?.run();
+    await plan[3]?.run();
+    await expect(plan[4]?.run()).rejects.toThrow('reload refused');
+    expect(readFileSync(join(target.install.service, 'service.mjs'), 'utf8')).toBe(
+      'old service.mjs',
+    );
   });
 });
 

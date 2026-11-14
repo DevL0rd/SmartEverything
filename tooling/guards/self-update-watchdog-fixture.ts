@@ -48,6 +48,7 @@ interface Start {
 interface World {
   readonly flow: Flow;
   readonly actions: string[];
+  readonly refreshes: string[];
   readonly polls: () => number;
   readonly service: () => string;
   readonly database: () => string;
@@ -66,8 +67,15 @@ type Running = { readonly release: string; readonly since: number } | null;
 class Machine {
   constructor(public running: Running) {}
 
+  readonly refreshes: string[] = [];
+
   setHub(running: Running): void {
     this.running = running;
+  }
+
+  refresh(): Promise<void> {
+    this.refreshes.push(this.running === null ? 'stopped' : 'running');
+    return Promise.resolve();
   }
 }
 
@@ -308,6 +316,7 @@ export function world(start: Start): World {
       return Promise.resolve();
     },
     prepareData: () => Promise.resolve(),
+    refreshUnit: () => machine.refresh(),
     migrations: { restore: () => false, clear: () => undefined },
     note: () => undefined,
   };
@@ -315,6 +324,7 @@ export function world(start: Start): World {
   return {
     flow,
     actions,
+    refreshes: machine.refreshes,
     polls: () => polls,
     service: () => readFileSync(join(files.service, 'service.mjs'), 'utf8'),
     database: () => readFileSync(files.database, 'utf8'),

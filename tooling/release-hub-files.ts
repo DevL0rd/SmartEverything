@@ -29,11 +29,11 @@ import {
   defaultHubInstall,
   desktopPayloadIn,
   HUB_SERVICE_DIRECTORY,
-  HUB_NODE_EXECUTABLE,
   HUB_SERVICE_ENTRY,
 } from './hub-install-layout.ts';
 import {
   hasV1Marker,
+  hubUnitSpec,
   legacyLayoutOf,
   rollbackScene,
   writeBackupMeta,
@@ -62,6 +62,7 @@ const BACKUP_STATUS_FILE = 'status';
 export type BackupStatus = 'verified' | 'rolled-back';
 
 export interface HubInstall {
+  readonly directory: string;
   readonly service: string;
 }
 
@@ -82,7 +83,8 @@ export class ReleaseStepError extends Error {
 }
 
 export function hubInstall(install?: string): HubInstall {
-  return { service: join(install ?? defaultHubInstall(), HUB_SERVICE_DIRECTORY) };
+  const directory = install ?? defaultHubInstall();
+  return { directory, service: join(directory, HUB_SERVICE_DIRECTORY) };
 }
 
 export function dataLayoutOf(root: string): DataLayout {
@@ -100,14 +102,7 @@ export function releaseSceneOf(install: string, root: string): ReleaseScene {
     return { target: { install: hubInstall(install), data: after }, transition: null };
   return {
     target: { install: hubInstall(install), data: legacyLayoutOf(root) },
-    transition: {
-      after,
-      unit: {
-        install,
-        node: HUB_NODE_EXECUTABLE,
-        entry: `${HUB_SERVICE_DIRECTORY}/${HUB_SERVICE_ENTRY}`,
-      },
-    },
+    transition: { after, unit: hubUnitSpec(install) },
   };
 }
 

@@ -21,6 +21,7 @@ import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
 import { dataLayoutOf } from './release-hub-files.ts';
+import { environmentFrom, refreshHubUnit } from './release-hub-transition.ts';
 import { message, type Flow, type WatchdogOptions } from './self-update-watchdog-engine.ts';
 import { writeLedger } from './self-update-ledger.ts';
 
@@ -190,6 +191,7 @@ export function flowOf(options: WatchdogOptions): Flow {
         return Promise.resolve();
       }),
     prepareData: () => prepareHubData(options.install, options.data),
+    refreshUnit: () => refreshHubUnit(options.install, environmentFrom()),
     migrations: {
       restore: (database): boolean =>
         restorePhotoFolders(database, (profileId) => layout.person(profileId).drive),

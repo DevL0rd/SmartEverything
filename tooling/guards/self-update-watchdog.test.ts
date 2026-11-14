@@ -12,6 +12,12 @@ import { handle } from '../self-update-watchdog.ts';
 import { AT, OLD, NEW, EXPECTED, paths, write, world } from './self-update-watchdog-fixture.ts';
 
 describe('the hub update watchdog', { timeout: 60_000 }, () => {
+  it('rewrites the hub unit while the hub is stopped, before the new release starts', async () => {
+    const test = world({ phase: 'built', up: true });
+    await handle(test.flow);
+    expect(test.refreshes).toEqual(['stopped']);
+  });
+
   it('keeps a release that passes every health check and writes the healthy marker', async () => {
     const test = world({ phase: 'built', up: true });
     const release = await handle(test.flow);

@@ -70,6 +70,7 @@ export interface Flow {
   };
   readonly withDataLock: (work: () => void) => Promise<void>;
   readonly prepareData: () => Promise<void>;
+  readonly refreshUnit: () => Promise<void>;
   readonly migrations: {
     readonly restore: (database: string) => boolean;
     readonly clear: (database: string) => void;

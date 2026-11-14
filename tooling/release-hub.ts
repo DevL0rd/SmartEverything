@@ -32,6 +32,7 @@ import {
   environmentFrom,
   hasV1Marker,
   locateBackup,
+  refreshHubUnit,
   releaseRoot,
   saveTransition,
   type Transition,
@@ -126,6 +127,7 @@ async function restartRelease(options: ReleaseOptions, state: ReleaseState): Pro
   const { target, transition, environment, units, url } = options;
   try {
     if (transition !== null) await applyTransition(transition, environment, target.data.root);
+    else await refreshHubUnit(target.install.directory, environment);
     await (
       options.prepareData ??
       ((): Promise<void> => prepareHubData(join(target.install.service, '../..'), target.data.root))
@@ -186,7 +188,7 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
       },
     },
     {
-      title: `${transition === null ? '' : `write the pending-v1 pointer in ${environment.bootstrap}, the new hub unit in ${environment.unitDirectory} and reload systemd, then `}restart ${HUB_UNIT} and wait until it reports started and answers at ${url}`,
+      title: `${transition === null ? '' : `write the pending-v1 pointer in ${environment.bootstrap}, the new hub unit in ${environment.unitDirectory} and reload systemd, then `}restart ${HUB_UNIT}${transition === null ? ` with its unit in ${environment.unitDirectory} rewritten and systemd reloaded` : ''} and wait until it reports started and answers at ${url}`,
       run: () => restartRelease(options, state),
     },
     {

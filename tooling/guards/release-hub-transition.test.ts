@@ -178,7 +178,13 @@ beforeEach(async () => {
   };
   mkdirSync(environment.unitDirectory);
   writeFileSync(join(environment.unitDirectory, 'smarteverything.service'), OLD_UNIT);
-  target = { install: { service: join(scratch, 'install', 'resources', 'service') }, data: legacy };
+  target = {
+    install: {
+      directory: join(scratch, 'install'),
+      service: join(scratch, 'install', 'resources', 'service'),
+    },
+    data: legacy,
+  };
   transition = { after, unit: UNIT_SPEC };
   writeService(target.install.service, 'old');
   writeService(join(scratch, 'built'), 'new');

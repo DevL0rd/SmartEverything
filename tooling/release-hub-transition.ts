@@ -32,6 +32,11 @@ import {
   writeHubUnit,
   type HubUnitSpec,
 } from '../apps/hub/src/data-layout/unit.ts';
+import {
+  HUB_NODE_EXECUTABLE,
+  HUB_SERVICE_DIRECTORY,
+  HUB_SERVICE_ENTRY,
+} from './hub-install-layout.ts';
 import { journalFile } from '../apps/hub/src/data-layout/migrate-v1/journal.ts';
 import { reverseV1 } from '../apps/hub/src/data-layout/migrate-v1/reverse.ts';
 
@@ -115,6 +120,22 @@ export function saveTransition(backup: string, environment: TransitionEnvironmen
     ),
   };
   writeFileSync(join(directory, TRANSITION_FILE), JSON.stringify(saved));
+}
+
+export function hubUnitSpec(install: string): HubUnitSpec {
+  return {
+    install,
+    node: HUB_NODE_EXECUTABLE,
+    entry: `${HUB_SERVICE_DIRECTORY}/${HUB_SERVICE_ENTRY}`,
+  };
+}
+
+export async function refreshHubUnit(
+  install: string,
+  environment: TransitionEnvironment,
+): Promise<void> {
+  await writeHubUnit(environment.unitDirectory, hubUnitText(hubUnitSpec(install)));
+  await environment.reload();
 }
 
 export async function applyTransition(
