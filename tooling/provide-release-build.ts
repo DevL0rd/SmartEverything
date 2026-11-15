@@ -46,7 +46,7 @@ import {
 } from './service-target.ts';
 
 export const EXPO_CLIENT_FILE = 'expo-client.json';
-export const WEB_RUNTIME_FILE = 'web-runtime.txt';
+export const WEB_RUNTIME_FILE = 'runtime-version.txt';
 export const APK_FILE = 'app.apk';
 export const DESKTOP_BUILD_ARCHES = MACHINE_UPDATE_ARCHES;
 
@@ -245,8 +245,8 @@ export async function buildDesktop(
       throw new PublishOutputError(`the linux ${arch} package`, 'expected exactly one ZIP');
     const zip = join(directory, name);
     await artifactOf({ platform: 'linux', arch, kind: 'zip', path: zip }, version);
-    mkdirSync(request.files, { recursive: true });
-    renameSync(zip, join(request.files, name));
+    mkdirSync(join(request.files, arch), { recursive: true });
+    renameSync(zip, join(request.files, arch, name));
   }
   writeFileSync(join(request.files, WEB_RUNTIME_FILE), `${runtime}\n`);
   return {
