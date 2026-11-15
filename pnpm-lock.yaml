@@ -56,6 +56,9 @@ importers:
       '@smarteverything/domain':
         specifier: workspace:*
         version: link:packages/domain
+      '@smarteverything/flow':
+        specifier: workspace:*
+        version: link:packages/flow
       '@smarteverything/logging':
         specifier: workspace:*
         version: link:packages/logging
