@@ -7,7 +7,9 @@ import { offsetToHomeOf } from './world-time';
 export type WorldClock = PlannerPreferences['clock']['world_clocks'][number];
 
 export function cityOf(world: WorldClock): string {
-  return world.label ?? world.time_zone.split('/').at(-1)?.replaceAll('_', ' ') ?? world.time_zone;
+  return (
+    world.label ?? world.time_zone.slice(world.time_zone.lastIndexOf('/') + 1).replaceAll('_', ' ')
+  );
 }
 
 export interface WorldCity {
@@ -83,8 +85,19 @@ export function pickableZones(): readonly string[] {
   return knownZones;
 }
 
+const OCEANS: Readonly<Record<string, string>> = {
+  Atlantic: 'Atlantic Ocean',
+  Indian: 'Indian Ocean',
+  Pacific: 'Pacific Ocean',
+};
+
 function regionOf(zone: string): string {
-  return zone.split('/').slice(0, -1).join(' › ').replaceAll('_', ' ');
+  return zone
+    .split('/')
+    .slice(0, -1)
+    .map((part) => OCEANS[part] ?? part)
+    .join(' › ')
+    .replaceAll('_', ' ');
 }
 
 export function cityOptionsOf(

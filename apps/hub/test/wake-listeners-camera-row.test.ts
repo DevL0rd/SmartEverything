@@ -112,3 +112,66 @@ describe('WakeListeners camera row', () => {
     handlers?.packet(OPUS_SILENCE);
   });
 });
+
+describe('WakeListeners and the state of other devices', () => {
+  it('does not list the cameras again when a device that is not a camera changes state', async () => {
+    let listed = 0;
+    const [lamp] = opened.store.devices.upsert([
+      {
+        provider: 'xiaomi',
+        externalId: 'lamp-1',
+        parentId: null,
+        kind: 'light',
+        name: 'Desk lamp',
+        model: 'lamp',
+        manufacturer: 'Xiaomi',
+        providerRoom: null,
+        roomId: null,
+        online: true,
+        capabilities: [],
+        details: {},
+      },
+    ]);
+    if (lamp === undefined) throw new Error('The lamp was not stored.');
+    await listeners.stop();
+    listeners = new WakeListeners({
+      test: idleWakeTest,
+      store: opened.store,
+      rules: {
+        cameras: (): string[] => {
+          listed += 1;
+          return [camera];
+        },
+        wakeOff: (): string[] => [],
+        standbyOff: (): string[] => [],
+      },
+      health: { onChange: (): (() => void) => (): void => undefined },
+      microphones: {
+        open: (): Promise<OpenMicrophone> => Promise.resolve({ stop: () => undefined }),
+      },
+      speakers: { standby: (): (() => void) => (): void => undefined },
+      ears,
+      wake: (): Promise<void> => Promise.resolve(),
+      speech: (): void => undefined,
+      clock: { now: (): Date => new Date(), at: (): Cancel => (): void => undefined },
+      log: new Logger('hub.test'),
+    });
+    listeners.start();
+    const before = listed;
+    for (let step = 0; step < 5; step += 1) {
+      opened.store.state.write([
+        {
+          deviceId: lamp.id,
+          capability: 'brightness',
+          value: step * 10,
+          observedAt: new Date(Date.now() + step).toISOString(),
+        },
+      ]);
+    }
+    expect(listed).toBe(before);
+    opened.store.state.write([
+      { deviceId: camera, capability: 'power', value: true, observedAt: new Date().toISOString() },
+    ]);
+    await until(() => listed > before, 'the camera state to be considered');
+  });
+});

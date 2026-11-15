@@ -95,7 +95,7 @@ function BackupPill({
       disabled={backup.choice === null}
       fill
       onPress={() => {
-        backup.set(backupId, !on);
+        backup.set({ backupId, name: folder.name }, !on);
       }}
     />
   );

@@ -72,11 +72,13 @@ export function ColumnHeader<O>({
   readonly browser: FileBrowserHandle<O>;
 }): ReactNode {
   return (
-    <View className="flex-row items-center gap-3 border-b border-outline-variant bg-surface-2 pl-4 pr-1">
-      {browser.columns.map((column) => (
-        <ColumnButton key={column.field} column={column} browser={browser} />
-      ))}
-      <View className="w-10" />
+    <View className="flex-row items-center border-b border-outline-variant bg-surface-2 pl-4 pr-1">
+      <View className="min-w-0 flex-1 flex-row items-center gap-3">
+        {browser.columns.map((column) => (
+          <ColumnButton key={column.field} column={column} browser={browser} />
+        ))}
+      </View>
+      <View aria-hidden className="size-touch-min" />
     </View>
   );
 }
@@ -175,7 +177,7 @@ export function FileRowBody<O>({
         name={node.name}
         kind={node.kind === 'folder' ? 'folder' : 'file'}
         caption={look.caption === undefined ? captionOf(node) : look.caption}
-        size={node.kind === 'folder' ? null : node.size}
+        size={node.size}
         modifiedAt={node.modifiedAt}
         wide={wide}
         selecting={browser.picked.length > 0}
@@ -183,6 +185,7 @@ export function FileRowBody<O>({
         marks={markListOf(node.marks)}
         openLabel={openLabelOf(node)}
         menu={menu.items}
+        menuOptions={menu.options}
         thumbnail={<RowLeading node={node} source={browser.source} abilities={browser.abilities} />}
         nameHighlight={browser.filter.highlight(node.name)}
         {...(by ? { by: browser.host.byName?.(node.byProfileId) ?? null } : {})}
@@ -215,10 +218,16 @@ export function FileRow<O>(props: {
   );
 }
 
+export function detailsFocusOf<O>(browser: FileBrowserHandle<O>, node: FileNode<O>): boolean {
+  const { panels } = browser.state;
+  const open = panels.has('details') || panels.has('quickLook');
+  return open && browser.focused?.key === node.key;
+}
+
 function BrowserRow<O>(props: NodeViewProps<O> & { readonly wide: boolean }): ReactNode {
   const { node, browser, wide } = props;
   const { ref, hovering } = useNodeDrag(props);
-  const selected = browser.state.selection.keys.has(node.key);
+  const selected = browser.state.selection.keys.has(node.key) || detailsFocusOf(browser, node);
   return (
     <View
       ref={ref}
@@ -257,7 +266,7 @@ export function BrowserList<O>({
   return (
     <>
       {topped ? null : columns}
-      <View className={cn('min-h-0 flex-1', (listing.stale || browser.offline) && 'opacity-80')}>
+      <View className="min-h-0 flex-1">
         <FlashList
           ref={list}
           data={browser.visible}

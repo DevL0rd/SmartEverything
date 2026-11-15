@@ -7,8 +7,6 @@ import { railReadingsOf, railSummaryOf } from '../model/rail-summary';
 import { PHONE_SECTIONS, type PhoneSectionDef, type PhoneSectionId } from '../model/sections';
 import { phoneReadingsOf } from '../phone-values';
 
-const PHONE_TABS: readonly PhoneSectionId[] = ['overview', 'battery', 'screen', 'apps', 'activity'];
-
 export function usePhoneSummary(
   deviceId: string,
   id: PhoneSectionId,
@@ -40,7 +38,6 @@ export function phoneSectionsOf({
   return {
     label: 'Phone pages',
     active,
-    phoneTabs: PHONE_TABS,
     navigation: 'replace',
     hrefOf: (id) => href.settings.device(deviceId, id),
     groups: [

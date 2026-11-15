@@ -19,6 +19,7 @@ import { StoreProvider } from '../store/store-context';
 import { CommandLedger } from '../store/command-ledger';
 import { useLoaded, useSyncStatus } from '../store/selectors';
 import { screenPause } from './screen-pause';
+import { wired } from '../test-support/live-wire';
 
 const NOTICES = 500;
 const DEVICE = '00000000-0000-4000-8000-000000000001';
@@ -173,7 +174,7 @@ function flushFrames(): void {
 function sendNotices(store: EntityStore): void {
   for (let seq = 1; seq <= NOTICES; seq += 1) {
     act(() => {
-      if (seq % 3 === 0) store.apply([changeAt(seq)]);
+      if (seq % 3 === 0) store.apply(wired([changeAt(seq)]));
       else if (seq % 3 === 1) store.setSync({ status: 'live', problem: null });
       else store.appendLog([`line ${String(seq)}`]);
       flushFrames();

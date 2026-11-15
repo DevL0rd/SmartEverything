@@ -7,6 +7,7 @@ import {
   frameBodyWidthOf,
   frameLayoutMath,
   gridColumnsOf,
+  sectionRailOf,
   shellColumnOf,
   shellRailOf,
   twoFrameColumnsAt,
@@ -84,8 +85,8 @@ describe('page shell layout', () => {
     expect(Object.values(AUDIT).map((size) => size.area)).toEqual([412, 804, 1176, 1368]);
   });
 
-  it('shows tabs under 600, an icon rail to 900, a mid rail to 1024 and a wide rail above', () => {
-    expect([412, 599].map((area) => shellRailOf(area, 'sections'))).toEqual([null, null]);
+  it('shows a compact rail under 600, an icon rail to 900, a mid rail to 1024 and a wide rail above', () => {
+    expect([412, 599].map((area) => shellRailOf(area, 'sections'))).toEqual(['compact', 'compact']);
     expect([600, 804, 899].map((area) => shellRailOf(area, 'sections'))).toEqual([
       'icon',
       'icon',
@@ -102,11 +103,22 @@ describe('page shell layout', () => {
 
   it('keeps an icon rail at every width beside the body when the page asks for one', () => {
     expect([412, 804, 960, 1176].map((area) => shellRailOf(area, 'icon'))).toEqual([
-      null,
+      'compact',
       'icon',
       'icon',
       'icon',
     ]);
+  });
+
+  it('keeps the section rail on phones in its compact form, and none without sections', () => {
+    expect([412, 884, 1440].map((area) => sectionRailOf(true, area, 'sections'))).toEqual([
+      'compact',
+      'compact',
+      'compact',
+    ]);
+    expect(sectionRailOf(true, 412, 'icon')).toBe('compact');
+    expect(sectionRailOf(false, 884, 'sections')).toBe('icon');
+    expect(sectionRailOf(true, 412, null)).toBeNull();
   });
 
   it('places the body column one gutter in on a phone', () => {

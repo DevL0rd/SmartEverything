@@ -42,16 +42,11 @@ function Layers({ progress, colour, from, thick, width }: LayersProps): ReactNod
     }),
     [width, start],
   );
-  const dotted = useAnimatedStyle<ViewStyle>(() => ({ opacity: drawn.get() > 0 ? 0 : 1 }));
-  const dot = thick ? 'size-2.5' : 'size-1.5';
   return (
     <View className={cn('w-full flex-row items-center', thick ? 'h-2.5' : 'h-1.5')}>
       <View style={track} className="absolute inset-0 rounded-full" />
       {progress === null ? null : (
         <Animated.View style={[bar, grown]} className="absolute h-full rounded-full" />
-      )}
-      {progress === null || from !== undefined ? null : (
-        <Animated.View style={[bar, dotted]} className={cn('absolute left-0 rounded-full', dot)} />
       )}
     </View>
   );

@@ -47,6 +47,10 @@ export function leadOptions(current: number | null): readonly SelectOption<strin
   return minuteOptions(LEAD_MINUTES, current, leadText);
 }
 
+export function minutesText(minutes: number): string {
+  return `${String(minutes)} min`;
+}
+
 export function snoozeLimitText(limit: number): string {
   return limit === 0 ? 'Off' : plural(limit, 'time');
 }

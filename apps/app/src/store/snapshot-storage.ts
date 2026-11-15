@@ -1,4 +1,4 @@
-import { delMany, getMany, set } from 'idb-keyval';
+import { delMany, getMany, setMany } from 'idb-keyval';
 
 export async function readStored(keys: readonly string[]): Promise<ReadonlyMap<string, string>> {
   const values = await getMany<string>([...keys]);
@@ -10,8 +10,14 @@ export async function readStored(keys: readonly string[]): Promise<ReadonlyMap<s
   return texts;
 }
 
-export function writeStored(key: string, text: string): Promise<void> {
-  return set(key, text);
+export async function writeStored(
+  entries: readonly (readonly [string, string])[],
+  removed: readonly string[],
+): Promise<void> {
+  await Promise.all([
+    entries.length === 0 ? undefined : setMany(entries.map(([key, text]) => [key, text])),
+    removed.length === 0 ? undefined : delMany([...removed]),
+  ]);
 }
 
 export function removeStored(keys: readonly string[]): Promise<void> {

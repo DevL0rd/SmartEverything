@@ -5,7 +5,6 @@ import { NumberStepper } from '../../../../components/number-stepper';
 import { Segmented, type SegmentedOption } from '../../../../components/segmented';
 import { Select, type SelectOption } from '../../../../components/select';
 import { Text } from '../../../../components/text';
-import { TextField } from '../../../../components/text-field';
 import { TimeField } from '../../../../components/time-field';
 import { localDayKey } from '../../../../format/time';
 import {
@@ -27,7 +26,7 @@ export interface DateSectionProps {
   readonly shiftable: boolean;
 }
 
-const KEEP: SegmentedOption<DateMode> = { value: 'keep', label: 'Keep', icon: 'check' };
+const KEEP: SegmentedOption<DateMode> = { value: 'keep', label: 'Keep', icon: 'history' };
 const SET: SegmentedOption<DateMode> = { value: 'set', label: 'Set a date', icon: 'calendar' };
 const SHIFT: SegmentedOption<DateMode> = { value: 'shift', label: 'Shift by', icon: 'clock' };
 
@@ -85,12 +84,19 @@ function SetControls({
   );
 }
 
-function daysOf(text: string): number {
-  const value = Number(text.replaceAll(/\D/gu, ''));
-  return Number.isSafeInteger(value) ? value : 0;
+interface ShiftPart {
+  readonly key: 'days' | 'hours' | 'minutes';
+  readonly label: string;
+  readonly max: number;
 }
 
-function ClockSteppers({
+const SHIFT_PARTS: readonly ShiftPart[] = [
+  { key: 'days', label: 'Days', max: Number.MAX_SAFE_INTEGER },
+  { key: 'hours', label: 'Hours', max: 23 },
+  { key: 'minutes', label: 'Minutes', max: 59 },
+];
+
+function ShiftSteppers({
   shift,
   onShift,
 }: {
@@ -98,38 +104,25 @@ function ClockSteppers({
   readonly onShift: (shift: ShiftDraft) => void;
 }): ReactNode {
   return (
-    <>
-      <View className="gap-1">
-        <Text variant="footnote" tone="variant">
-          Hours
-        </Text>
-        <NumberStepper
-          label="Hours"
-          value={shift.hours}
-          min={0}
-          max={23}
-          step={1}
-          onChange={(hours) => {
-            onShift({ ...shift, hours });
-          }}
-        />
-      </View>
-      <View className="gap-1">
-        <Text variant="footnote" tone="variant">
-          Minutes
-        </Text>
-        <NumberStepper
-          label="Minutes"
-          value={shift.minutes}
-          min={0}
-          max={59}
-          step={1}
-          onChange={(minutes) => {
-            onShift({ ...shift, minutes });
-          }}
-        />
-      </View>
-    </>
+    <View className="gap-1">
+      {SHIFT_PARTS.map((part) => (
+        <View key={part.key} className="flex-row items-center justify-between gap-3">
+          <Text variant="callout" className="min-w-0 flex-1">
+            {part.label}
+          </Text>
+          <NumberStepper
+            label={part.label}
+            value={shift[part.key]}
+            min={0}
+            max={part.max}
+            step={1}
+            onChange={(value) => {
+              onShift({ ...shift, [part.key]: value });
+            }}
+          />
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -150,19 +143,7 @@ function ShiftControls({
           onShift({ ...shift, later: value === 'later' });
         }}
       />
-      <View className="flex-row flex-wrap items-end gap-3">
-        <View className="w-28">
-          <TextField
-            label="Days"
-            kind="number"
-            value={String(shift.days)}
-            onChange={(text) => {
-              onShift({ ...shift, days: daysOf(text) });
-            }}
-          />
-        </View>
-        <ClockSteppers shift={shift} onShift={onShift} />
-      </View>
+      <ShiftSteppers shift={shift} onShift={onShift} />
       <Text variant="footnote" tone="variant" className="tabular-nums">
         {shiftText(shift)}
       </Text>

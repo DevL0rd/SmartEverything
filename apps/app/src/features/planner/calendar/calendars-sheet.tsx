@@ -47,7 +47,7 @@ const EMPTY_ROW: Readonly<
 
 function SectionHead({ section }: { readonly section: CalendarSection }): ReactNode {
   return (
-    <View className="flex-row items-center gap-2 px-4 pb-1 pt-3">
+    <View className="flex-row items-center gap-2 pb-1 pt-3">
       <Icon name={section.icon} size={16} tone="variant" />
       <Text variant="caption" tone="variant" accessibilityRole="header" className="flex-1">
         {section.title}
@@ -71,14 +71,16 @@ function EmptySection({
   const row = EMPTY_ROW[section.key];
   if (row === undefined) return null;
   return (
-    <ListRow
-      icon="plus"
-      title={row.title}
-      onPress={() => {
-        if (row.kind === null) actions.addBirthdays();
-        else actions.add(row.kind);
-      }}
-    />
+    <View className="-mx-4">
+      <ListRow
+        icon="plus"
+        title={row.title}
+        onPress={() => {
+          if (row.kind === null) actions.addBirthdays();
+          else actions.add(row.kind);
+        }}
+      />
+    </View>
   );
 }
 
@@ -154,7 +156,7 @@ function AddMenu({
     'Add a calendar',
   );
   return (
-    <View ref={ref} collapsable={false} className="flex-row px-4">
+    <View ref={ref} collapsable={false} className="flex-row">
       <Button label="Add calendar" icon="plus" variant="tonal" onPress={open} />
       {menu}
     </View>
@@ -207,8 +209,8 @@ function SheetBody({ prefs }: { readonly prefs: Prefs }): ReactNode {
       {sections.map((section) => (
         <SectionBlock key={section.key} section={section} actions={sheets.actions} />
       ))}
-      <View className="mx-4 mt-1 h-hairline bg-outline-variant" />
-      <View className="gap-2 px-4">
+      <View className="mt-1 h-hairline bg-outline-variant" />
+      <View className="gap-2">
         <Text variant="caption" tone="variant">
           Show on the calendar
         </Text>

@@ -137,9 +137,19 @@ export class GuessLimiter {
   constructor(private readonly now: () => Date) {}
 
   check(key: string): void {
-    if (this.recent(key).length >= GUESS_LIMIT) {
-      throw new ApiError('rate_limited', 'Too many wrong attempts; try again later.');
-    }
+    const recent = this.recent(key);
+    const freeing = recent[recent.length - GUESS_LIMIT];
+    if (freeing === undefined) return;
+    const seconds = Math.max(
+      1,
+      Math.ceil((freeing + GUESS_WINDOW_MS - this.now().getTime()) / 1000),
+    );
+    throw new ApiError(
+      'rate_limited',
+      `Too many wrong attempts. Try again in ${String(Math.ceil(seconds / 60))} min.`,
+      null,
+      seconds,
+    );
   }
 
   fail(key: string): void {

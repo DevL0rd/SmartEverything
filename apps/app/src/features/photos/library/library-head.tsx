@@ -1,7 +1,6 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { FlatChoice } from '../../../components/flat-choice';
-import { ChipRow } from '../../../components/chip-row';
 import { ChoiceChip } from '../../../components/choice-chip';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
@@ -71,9 +70,10 @@ function TabChips({
 function useActiveReveal(
   active: LibraryTabId,
 ): readonly [RevealRange | null, (range: RevealRange) => void] {
-  const [held, setHeld] = useState<{ readonly tab: LibraryTabId; readonly range: RevealRange } | null>(
-    null,
-  );
+  const [held, setHeld] = useState<{
+    readonly tab: LibraryTabId;
+    readonly range: RevealRange;
+  } | null>(null);
   const range = held?.tab === active ? held.range : null;
   return [
     range,
@@ -94,20 +94,13 @@ function TabsRow({
   const tabs = (
     <TabChips chips={chips} active={active} onTab={onTab} onActiveLayout={onActiveLayout} />
   );
-  if (compact) {
-    return (
-      <View className="min-w-0 flex-1">
-        <ChipRow label="Library tabs" reveal={reveal}>
-          {tabs}
-          <BackupChip />
-        </ChipRow>
-      </View>
-    );
-  }
   return (
     <View className="min-w-0 flex-1">
       <HScroller label="Library tabs" fade reveal={reveal}>
-        <View className="flex-row items-center gap-2">{tabs}</View>
+        <View className="flex-row items-center gap-2">
+          {tabs}
+          {compact ? <BackupChip /> : null}
+        </View>
       </HScroller>
     </View>
   );

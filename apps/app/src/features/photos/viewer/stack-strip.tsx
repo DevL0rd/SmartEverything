@@ -2,10 +2,12 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { Stack } from '@smarteverything/domain';
+import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
 import { useDriveItem, useDriveLink } from '../../drive';
 import { usePhotoStack } from '../data/queries';
 import { isMediaItem, isRaw } from './info-model';
@@ -13,6 +15,30 @@ import { isMediaItem, isRaw } from './info-model';
 export function stackCaption(stack: Stack): string {
   const shots = `${String(stack.itemIds.length)} shots`;
   return stack.kind === 'raw_jpeg' ? `RAW and JPEG · ${shots}` : `Stack · ${shots}`;
+}
+
+export function thumbSize(compact: boolean, touch: boolean): string {
+  if (compact) return 'size-11';
+  return touch ? 'h-11 w-16' : 'h-10 w-14';
+}
+
+function CoverControl({
+  cover,
+  busy,
+  onMakeCover,
+}: {
+  readonly cover: boolean;
+  readonly busy: boolean;
+  readonly onMakeCover: () => void;
+}): ReactNode {
+  if (cover) {
+    return (
+      <View>
+        <Badge label="Cover photo" icon="check" />
+      </View>
+    );
+  }
+  return <Button label="Make cover" variant="outlined" disabled={busy} onPress={onMakeCover} />;
 }
 
 interface Shot {
@@ -40,6 +66,7 @@ function Thumb({
   readonly onOpen: (itemId: string) => void;
 }): ReactNode {
   const { name, url, raw } = useShot(itemId);
+  const touch = useIdiom() === 'touch';
   return (
     <Interactive
       label={name}
@@ -49,7 +76,7 @@ function Thumb({
       }}
       className={cn(
         'overflow-hidden rounded-sm bg-surface-3',
-        compact ? 'size-11' : 'h-10 w-14',
+        thumbSize(compact, touch),
         current ? 'border-2 border-on-surface' : 'opacity-80',
       )}
       layerClassName="rounded-sm"
@@ -108,11 +135,10 @@ export function StackStrip({
           onOpen={onOpen}
         />
       ))}
-      <Button
-        label={cover ? 'Cover' : 'Make cover'}
-        variant="outlined"
-        disabled={cover || busy}
-        onPress={() => {
+      <CoverControl
+        cover={cover}
+        busy={busy}
+        onMakeCover={() => {
           onMakeCover(stack.id, currentId);
         }}
       />

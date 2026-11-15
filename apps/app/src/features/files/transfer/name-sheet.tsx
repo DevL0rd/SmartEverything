@@ -8,6 +8,7 @@ export interface NameSheetProps {
   readonly title: string;
   readonly label: string;
   readonly initial: string;
+  readonly current: string | null;
   readonly helper: string;
   readonly confirmLabel: string;
   readonly taken: ReadonlySet<string>;
@@ -16,9 +17,9 @@ export interface NameSheetProps {
 }
 
 export function NameSheet(props: NameSheetProps): ReactNode {
-  const { initial, taken, onSubmit, onClose } = props;
+  const { initial, current, taken, onSubmit, onClose } = props;
   const [text, setText] = useState(initial);
-  const ready = nameReadyOf(text, initial, taken);
+  const ready = nameReadyOf(text, current, taken);
   const submit = (): void => {
     if (!ready) return;
     onSubmit(text.trim());
@@ -43,7 +44,7 @@ export function NameSheet(props: NameSheetProps): ReactNode {
         onChange={setText}
         onSubmit={submit}
         helper={props.helper}
-        error={nameProblemOf(text, initial, taken)}
+        error={nameProblemOf(text, current, taken)}
         focusOnMount
       />
     </Sheet>

@@ -21,7 +21,11 @@ const REPLY = z.record(z.string(), z.unknown());
 const OUTPUT_BYTES = 1024 * 1024;
 const LOCK_BUSY = 75;
 const LOG_TAIL_LINES = 20;
-const RUN_INPUT = z.object({ input: z.object({ runId: z.uuid() }) });
+const RUN_ID = z.uuid();
+const RUN_INPUT = z.union([
+  z.object({ input: z.object({ runId: RUN_ID }) }).transform((value) => value.input.runId),
+  z.object({ runId: RUN_ID }).transform((value) => value.runId),
+]);
 const TSX_IMPORT = ['--import', 'tsx'];
 const INSTALLED_HUB_COMMAND = fileURLToPath(new URL('./update/hub-command.mjs', import.meta.url));
 
@@ -133,11 +137,14 @@ function runChild(
   });
 }
 
-async function logTail(file: string): Promise<string> {
-  const text = await readFile(file, 'utf8').catch((cause: unknown) => {
-    if (isMissing(cause)) return '';
-    throw cause;
-  });
+async function logTail(file: string, from: number): Promise<string> {
+  const text = await readFile(file).then(
+    (bytes) => bytes.subarray(from).toString('utf8'),
+    (cause: unknown) => {
+      if (isMissing(cause)) return '';
+      throw cause;
+    },
+  );
   return text.trimEnd().split('\n').slice(-LOG_TAIL_LINES).join('\n');
 }
 
@@ -147,6 +154,7 @@ async function runLocked(
   logFile: string | undefined,
 ): Promise<string> {
   const handle = logFile === undefined ? undefined : await open(logFile, 'a', 0o600);
+  const from = handle === undefined ? 0 : (await handle.stat()).size;
   try {
     const { code, stdout } = await runChild('flock', locked, {
       cwd: root,
@@ -157,7 +165,7 @@ async function runLocked(
       throw new UpdateBusyError(
         'Another update is being prepared. Check update_control status before retrying.',
       );
-    const tail = logFile === undefined ? '' : await logTail(logFile);
+    const tail = logFile === undefined ? '' : await logTail(logFile, from);
     throw new UpdateCommandError(
       `The update process failed with exit code ${String(code)}.${tail.length === 0 ? '' : `\n${tail}`}`,
     );
@@ -168,7 +176,7 @@ async function runLocked(
 
 function runLogFile(work: string, input: unknown): string | undefined {
   const run = RUN_INPUT.safeParse(input);
-  return run.success ? join(work, 'jobs', `${run.data.input.runId}.log`) : undefined;
+  return run.success ? join(work, 'jobs', `${run.data}.log`) : undefined;
 }
 
 async function invoke(

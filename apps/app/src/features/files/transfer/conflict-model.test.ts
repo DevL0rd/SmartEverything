@@ -11,7 +11,6 @@ import {
   itemStateTextOf,
   sheetLineOf,
 } from './conflict-model';
-import { nameProblemOf, nameReadyOf } from './name-model';
 import { headActionOf, retryBodyOf, rowEndOf } from './strip-model';
 import { UploadQueue, type UploadItem } from './upload-queue';
 import { summaryOf } from './upload-summary';
@@ -129,18 +128,5 @@ describe('upload strip controls', () => {
     });
     expect(retryBodyOf(true)).toContain('pick up where they stopped');
     expect(retryBodyOf(false)).toContain('start again');
-  });
-});
-
-describe('names', () => {
-  it('refuses slashes, dot names and names already taken, but not the current name', () => {
-    const taken = new Set(['notes.txt', 'Projects']);
-    expect(nameProblemOf('a/b', '', taken)).toBe('A name can’t contain a slash.');
-    expect(nameProblemOf('..', '', taken)).toBe('That name isn’t allowed.');
-    expect(nameProblemOf('Projects', '', taken)).toBe('Something here already has that name.');
-    expect(nameProblemOf('notes.txt', 'notes.txt', taken)).toBeNull();
-    expect(nameReadyOf('notes.txt', 'notes.txt', taken)).toBe(false);
-    expect(nameReadyOf(' todo.txt ', 'notes.txt', taken)).toBe(true);
-    expect(nameReadyOf('   ', '', taken)).toBe(false);
   });
 });

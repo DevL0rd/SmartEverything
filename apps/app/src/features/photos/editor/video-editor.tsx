@@ -3,9 +3,6 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { MediaInfo, PhotoSaveMode } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
-import { IconButton } from '../../../components/icon-button';
-import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
@@ -18,7 +15,8 @@ import { editPhotoVideo } from './api';
 import { trackEditJob } from './queries';
 import { TrimBar, type FrameSource } from './trim-bar';
 import { frameCount, movedTrim, trimOf, trimSummary, videoEditOf, type Trim } from './trim-model';
-import { closeEditor } from './use-photo-editor';
+import { EditorShell, SplitSave } from './top-bar';
+import { closeEditor, useLeave, useLeaveHandler } from './use-photo-editor';
 import { FRAME_PX, VideoPreview } from './video-preview';
 
 export interface VideoEditorProps {
@@ -51,30 +49,6 @@ function useSave(item: MediaItem): {
       });
     },
   };
-}
-
-function SaveMenu({
-  onCopy,
-  disabled,
-}: {
-  readonly onCopy: () => void;
-  readonly disabled: boolean;
-}): ReactNode {
-  const items: readonly MenuItem[] = [
-    {
-      label: 'Save as copy',
-      description: 'Keeps this video as it is',
-      icon: 'copy',
-      onPress: onCopy,
-    },
-  ];
-  const { ref, open, menu } = useAnchoredMenu(items, 'More ways to save');
-  return (
-    <View ref={ref} collapsable={false}>
-      <IconButton icon="chevronDown" label="More ways to save" disabled={disabled} onPress={open} />
-      {menu}
-    </View>
-  );
 }
 
 function Poster({ item }: { readonly item: MediaItem }): ReactNode {
@@ -149,45 +123,33 @@ function useFallbackFrames(item: MediaItem, draft: Draft): readonly FrameSource[
   return Array.from({ length: frameCount(draft.barWidth, FRAME_PX) }, () => ({ uri: poster }));
 }
 
-function TopBar({
-  item,
+function SaveControl({
   draft,
   saving,
 }: {
-  readonly item: MediaItem;
   readonly draft: Draft;
   readonly saving: ReturnType<typeof useSave>;
 }): ReactNode {
   const nothing = videoEditOf(draft.trim, draft.stabilize, 'version') === null;
   return (
-    <View className="min-h-16 flex-row items-center gap-1 px-2 pt-safe">
-      <IconButton
-        icon="close"
-        label="Cancel"
-        shortcut="Esc"
-        onPress={() => {
-          closeEditor(item.id);
-        }}
-      />
-      <Text variant="label" numberOfLines={1} className="min-w-0 flex-1">
-        {item.name}
-      </Text>
-      <Button
-        label="Save"
-        variant="filled"
-        loading={saving.busy}
-        disabled={nothing || saving.busy}
-        onPress={() => {
-          saving.save(draft.trim, draft.stabilize, 'version');
-        }}
-      />
-      <SaveMenu
-        disabled={nothing || saving.busy}
-        onCopy={() => {
-          saving.save(draft.trim, draft.stabilize, 'copy');
-        }}
-      />
-    </View>
+    <SplitSave
+      label="Save"
+      saving={saving.busy}
+      disabled={nothing}
+      more={[
+        {
+          label: 'Save as copy',
+          description: 'Keeps this video as it is',
+          icon: 'copy',
+          onPress: (): void => {
+            saving.save(draft.trim, draft.stabilize, 'copy');
+          },
+        },
+      ]}
+      onSave={() => {
+        saving.save(draft.trim, draft.stabilize, 'version');
+      }}
+    />
   );
 }
 
@@ -221,13 +183,37 @@ export function VideoEditorView(props: VideoEditorProps): ReactNode {
   const [draft, change] = useDraft(props.item);
   const saving = useSave(props.item);
   const frames = useFallbackFrames(props.item, draft);
-  useEscape(true, () => {
-    closeEditor(props.item.id);
-  });
+  const edited = videoEditOf(draft.trim, draft.stabilize, 'version') !== null;
+  const leave = useLeave(props.item.id, edited, 'The video stays as it was.');
+  useEscape(true, leave);
+  useLeaveHandler(leave);
   return (
     <View className="flex-1 bg-black">
-      <TopBar item={props.item} draft={draft} saving={saving} />
-      <Stage video={props} draft={draft} change={change} />
+      <EditorShell
+        title={props.item.name}
+        onCancel={leave}
+        trailing={<SaveControl draft={draft} saving={saving} />}
+      >
+        <VideoBody video={props} draft={draft} change={change} frames={frames} />
+      </EditorShell>
+    </View>
+  );
+}
+
+function VideoBody({
+  video,
+  draft,
+  change,
+  frames,
+}: {
+  readonly video: VideoEditorProps;
+  readonly draft: Draft;
+  readonly change: Change;
+  readonly frames: readonly FrameSource[];
+}): ReactNode {
+  return (
+    <>
+      <Stage video={video} draft={draft} change={change} />
       <View className="gap-3 pb-safe-offset-3 pt-3">
         <TrimBar
           trim={draft.trim}
@@ -248,6 +234,6 @@ export function VideoEditorView(props: VideoEditorProps): ReactNode {
         </Text>
         <StabilizeRow draft={draft} change={change} />
       </View>
-    </View>
+    </>
   );
 }

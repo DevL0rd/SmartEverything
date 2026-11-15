@@ -121,9 +121,11 @@ function Day({ day, me }: { readonly day: ActivityDay; readonly me: string | nul
         <Text variant="footnote" tone="variant" accessibilityRole="header" numberOfLines={1}>
           {day.head.title}
         </Text>
-        <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-          {day.head.detail}
-        </Text>
+        {day.lines.length > 1 ? (
+          <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
+            {day.head.detail}
+          </Text>
+        ) : null}
       </View>
       <View
         role="list"
@@ -131,7 +133,7 @@ function Day({ day, me }: { readonly day: ActivityDay; readonly me: string | nul
       >
         {day.lines.map((line, index) => (
           <View key={line.key} className={index === 0 ? '' : 'border-t border-outline-variant'}>
-            <ActivityRow entry={line.entry} me={me} />
+            <ActivityRow entry={line.entry} me={me} itemless />
           </View>
         ))}
       </View>

@@ -40,6 +40,18 @@ describe('calendar cells', () => {
     expect(calendarBlocks(cells, 1)).toHaveLength(1);
   });
 
+  it('names the year when the weeks cross one and keeps month labels apart', () => {
+    const [block] = calendarBlocks(calendarCells(days('2025-10-27', 112), '2026-02-15'), 1);
+    expect(block?.labels.map((label) => label.text)).toEqual([
+      'Nov 2025',
+      'Dec',
+      'Jan 2026',
+      'Feb',
+    ]);
+    const [plain] = calendarBlocks(calendarCells(days('2026-03-02', 70), '2026-05-10'), 1);
+    expect(plain?.labels.map((label) => label.text)).toEqual(['Mar', 'Apr', 'May']);
+  });
+
   it('describes the year in words with the days that were not recorded', () => {
     expect(heatSummary(days('2026-10-01', 7), 'pages printed')).toBe(
       '3 days with pages printed, busiest 2026-10-01 with 5 pages printed, 1 days not recorded',

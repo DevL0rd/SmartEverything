@@ -103,6 +103,26 @@ describe('syncing camera streams', () => {
     expect(service.hasStream(second.id)).toBe(true);
   });
 
+  it('tells listeners about each stream as it is registered, once', async () => {
+    const devices = await cameras();
+    const second = devices[1];
+    if (second === undefined) throw new Error('The cameras were not stored.');
+    const refused = new Set([second.id]);
+    const service = serviceOf(client(refused, []));
+    const added: string[] = [];
+    const stop = service.onStreamAdded((deviceId) => {
+      added.push(deviceId);
+    });
+    await service.sync(devices);
+    expect(added).toEqual(devices.filter((device) => device.id !== second.id).map((d) => d.id));
+    refused.delete(second.id);
+    await service.sync(devices);
+    expect(added.slice(2)).toEqual([second.id]);
+    stop();
+    await service.resync(devices);
+    expect(added).toHaveLength(3);
+  });
+
   it('registers every camera at once instead of one after the other', async () => {
     const devices = await cameras();
     let inFlight = 0;

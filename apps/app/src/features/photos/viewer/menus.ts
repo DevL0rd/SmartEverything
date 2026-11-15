@@ -13,7 +13,7 @@ export interface MoreMenuInput {
 export function albumMenuItems(
   albums: readonly DriveAlbum[],
   onAdd: (albumId: string, title: string) => void,
-  onNew?: () => void,
+  onNew: () => void,
 ): readonly MenuItem[] {
   const manual = albums.filter((album) => album.kind === 'manual');
   const picks: readonly MenuItem[] = manual.map((album) => ({
@@ -24,13 +24,7 @@ export function albumMenuItems(
       onAdd(album.id, album.title);
     },
   }));
-  if (onNew !== undefined) {
-    return [...picks, { id: 'new-album', label: 'New album…', icon: 'plus', onPress: onNew }];
-  }
-  if (manual.length > 0) return picks;
-  return [
-    { label: 'No albums yet', icon: 'layers', disabled: true, onPress: (): void => undefined },
-  ];
+  return [...picks, { id: 'new-album', label: 'New album…', icon: 'plus', onPress: onNew }];
 }
 
 export function moreMenuItems(input: MoreMenuInput): readonly MenuItem[] {

@@ -9,6 +9,7 @@ import {
 import { createElement, act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { wired } from '../../../test-support/live-wire';
 
 const mocks = vi.hoisted(() => ({
   callBytes:
@@ -319,7 +320,12 @@ describe('the device model hooks', () => {
   it('loads the spec of the matched model, then follows an override set on the hub', async () => {
     const store = new EntityStore();
     store.apply(
-      [changeFor(BULB), changeFor(FAMILY_LIGHT)].map((change, at) => ({ ...change, seq: at + 1 })),
+      wired(
+        [changeFor(BULB), changeFor(FAMILY_LIGHT)].map((change, at) => ({
+          ...change,
+          seq: at + 1,
+        })),
+      ),
     );
     const latest = mount(store, () => useDeviceModel(LIGHT));
     expect(latest()?.source).toBe('plugin-identity');
@@ -329,14 +335,16 @@ describe('the device model hooks', () => {
     const first = latest()?.spec;
     expect(first?.status === 'ready' && first.value.id).toBe(BULB.id);
     await act(async () => {
-      store.apply([
-        {
-          ...overrideChange(
-            override({ target: LIGHT.id, model_id: FAMILY_LIGHT.id, finish: 'brass' }),
-          ),
-          seq: 9,
-        },
-      ]);
+      store.apply(
+        wired([
+          {
+            ...overrideChange(
+              override({ target: LIGHT.id, model_id: FAMILY_LIGHT.id, finish: 'brass' }),
+            ),
+            seq: 9,
+          },
+        ]),
+      );
       await Promise.resolve();
     });
     await until(() => {
@@ -355,19 +363,21 @@ describe('the device model hooks', () => {
     act(() => {
       root?.unmount();
     });
-    store.apply([
-      {
-        ...changeFor(row(BULB.id, { match: BULB.match, brands: ['Wiz'], spec_sha256: null })),
-        seq: 1,
-      },
-    ]);
+    store.apply(
+      wired([
+        {
+          ...changeFor(row(BULB.id, { match: BULB.match, brands: ['Wiz'], spec_sha256: null })),
+          seq: 1,
+        },
+      ]),
+    );
     const missing = mount(store, () => useDeviceModel(LIGHT));
     expect(missing()?.spec).toMatchObject({ status: 'failed' });
   });
 
   it('resolves a family with the family hook and loads the dock of a robot beside it', async () => {
     const store = new EntityStore();
-    store.apply([{ ...changeFor(FAMILY_LIGHT), seq: 1 }]);
+    store.apply(wired([{ ...changeFor(FAMILY_LIGHT), seq: 1 }]));
     const family = mount(store, () => useFamilyModel('light'));
     await until(() => {
       expect(family()?.spec.status).toBe('ready');
@@ -377,7 +387,9 @@ describe('the device model hooks', () => {
       root?.unmount();
     });
     const robotStore = new EntityStore();
-    robotStore.apply([ROBOT, STATION].map((record, at) => ({ ...changeFor(record), seq: at + 1 })));
+    robotStore.apply(
+      wired([ROBOT, STATION].map((record, at) => ({ ...changeFor(record), seq: at + 1 }))),
+    );
     const robot = mount(robotStore, () =>
       useDeviceModel(deviceFixture(1, { manufacturer: 'Xiaomi', model: 'robot.1' })),
     );

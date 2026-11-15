@@ -5,6 +5,11 @@ export interface SheetFrame {
   readonly body: string;
 }
 
+export interface SheetMeasurement {
+  readonly page: string | undefined;
+  readonly height: number;
+}
+
 export function sheetFrame(detents: readonly Detent[], full: number): SheetFrame {
   return detents.includes('fit')
     ? { sized: { maxHeight: full }, body: 'min-h-0 shrink' }

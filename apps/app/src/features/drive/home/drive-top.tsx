@@ -13,7 +13,7 @@ export function DriveTop({
   readonly use: DriveUse;
 }): ReactNode {
   return (
-    <View className="gap-3">
+    <View className="gap-4 pb-3">
       {root.scope === 'home' ? (
         <SharedDriveHero root={root} />
       ) : (

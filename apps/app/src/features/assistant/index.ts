@@ -1,7 +1,7 @@
 export { AssistantOrb } from './call/orb';
 export { CallAudioSync, startCall } from './call';
 export { QuickAskHost, openQuickAsk } from './quick-ask/quick-ask-host';
-export { askAssistantWith } from './quick-ask/ask-with';
+export { askAssistantWith, startChatWith } from './quick-ask/ask-with';
 export { AssistantPushHost } from './push/assistant-push';
 export { AiCallHost } from './reach/ai-call-host';
 export { AiSpeechHost } from './reach/ai-speech-host';

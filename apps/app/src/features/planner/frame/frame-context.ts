@@ -1,10 +1,15 @@
 import { createContext, use } from 'react';
 import type { PlannerPerson } from '../data';
 
+export interface QuickAddSeed {
+  readonly collectionId?: string;
+  readonly due?: 'today' | 'tomorrow';
+}
+
 export interface PlannerFrameValue {
   readonly person: PlannerPerson;
   readonly offline: boolean;
-  readonly focusQuickAdd: () => void;
+  readonly focusQuickAdd: (seed?: QuickAddSeed) => void;
 }
 
 export const PlannerFrameContext = createContext<PlannerFrameValue | null>(null);

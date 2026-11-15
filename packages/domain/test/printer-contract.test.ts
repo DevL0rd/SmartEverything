@@ -87,7 +87,7 @@ export const DETAILS: PrinterDetails = {
   lastSeen: '2026-10-18T10:00:00+00:00',
   gapOpen: false,
   wifiSsid: null,
-  uptimeSeconds: 1200,
+  bootedAt: '2026-10-18T09:40:00+00:00',
 };
 
 const JOB = {

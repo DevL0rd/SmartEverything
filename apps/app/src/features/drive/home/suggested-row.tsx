@@ -16,7 +16,7 @@ const PLACEHOLDERS = ['a', 'b', 'c'] as const;
 
 function SuggestedSkeleton(): ReactNode {
   return (
-    <View aria-busy className="flex-row gap-grid-gap overflow-hidden">
+    <View aria-busy className="flex-row gap-grid-gap overflow-hidden px-4">
       {PLACEHOLDERS.map((key) => (
         <Skeleton key={key} shape="tile" className="h-16 w-68" />
       ))}
@@ -34,7 +34,7 @@ function SuggestedBody({
   const nameOf = useByName();
   if (query.data !== undefined) {
     return (
-      <HScroller label="Suggested files" fade>
+      <HScroller label="Suggested files" fade inset>
         {suggestions.map((suggestion) => (
           <SuggestionCard
             key={suggestionKeyOf(suggestion)}
@@ -47,12 +47,14 @@ function SuggestedBody({
   }
   if (!query.isError) return <SuggestedSkeleton />;
   return (
-    <ErrorState
-      error={query.error}
-      retry={() => {
-        background(query.refetch(), 'drive.suggested_refetch_failed');
-      }}
-    />
+    <View className="px-4">
+      <ErrorState
+        error={query.error}
+        retry={() => {
+          background(query.refetch(), 'drive.suggested_refetch_failed');
+        }}
+      />
+    </View>
   );
 }
 

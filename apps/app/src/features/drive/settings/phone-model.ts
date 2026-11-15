@@ -1,8 +1,10 @@
 import type { DriveItem, DriveOfflineItem } from '@smarteverything/domain';
 import type { BarSegment } from '../../../components/charts';
+import type { IconName } from '../../../components/icon';
 import type { Tone } from '../../../components/tone';
 import type { ColourRole } from '../../../design/tokens';
 import { bytes, count } from '../../../format/number';
+import { KIND_LOOK } from '../recent/recent-model';
 
 export const FILES_APP_LINE =
   'SmartEverything shows in the Files app and in every file picker while this phone is paired with the Hub. Files kept here open without a connection.';
@@ -13,7 +15,7 @@ export const NOT_LINKED_LINE =
 export interface PhoneRowLine {
   readonly itemId: string;
   readonly name: string;
-  readonly folder: boolean;
+  readonly icon: IconName;
   readonly line: string;
   readonly tone: Tone;
 }
@@ -29,23 +31,23 @@ const SEGMENT_COLOURS: readonly ColourRole[] = [
 
 export function phoneRowLineOf(row: DriveOfflineItem, item: DriveItem | undefined): PhoneRowLine {
   const name = item?.name ?? 'A file you can no longer open';
-  const folder = item?.kind === 'folder';
+  const icon = item === undefined ? 'ban' : KIND_LOOK[item.kind].icon;
   switch (row.state) {
     case 'ready':
       return {
         itemId: row.itemId,
         name,
-        folder,
+        icon,
         line: `Kept · ${bytes(row.bytes)}`,
         tone: 'variant',
       };
     case 'waiting':
-      return { itemId: row.itemId, name, folder, line: 'Copying to this phone', tone: 'info' };
+      return { itemId: row.itemId, name, icon, line: 'Copying to this phone', tone: 'info' };
     case 'failed':
       return {
         itemId: row.itemId,
         name,
-        folder,
+        icon,
         line: `Not copied: ${row.error ?? 'the copy failed'}`,
         tone: 'critical',
       };

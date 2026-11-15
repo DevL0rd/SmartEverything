@@ -69,6 +69,44 @@ export function clusterQueryOf(
   return { zoom: view.zoom, ...boundsOf(mapBoxOf(view, frame)), ...window };
 }
 
+const FIT_ROOM = 1.4;
+export const FIT_ZOOM_MOST = 10;
+
+export function fillZoomOf(frame: FrameSize): number {
+  const needed = (spanOf(0) * GRID_PER_DEGREE * frame.height) / (frame.width * WORLD_VIEW.height);
+  return needed <= 1 ? 0 : Math.ceil(Math.log2(needed));
+}
+
+export interface WeightedPoint extends GeoPoint {
+  readonly count: number;
+}
+
+function weightedCentre(points: readonly WeightedPoint[]): GeoPoint {
+  const total = points.reduce((sum, point) => sum + point.count, 0);
+  return {
+    lat: points.reduce((sum, point) => sum + point.lat * point.count, 0) / total,
+    lon: points.reduce((sum, point) => sum + point.lon * point.count, 0) / total,
+  };
+}
+
+export function viewFitting(points: readonly WeightedPoint[], frame: FrameSize): MapView {
+  if (points.length === 0) throw new Error('The map has no places to fit');
+  const lats = points.map((point) => point.lat);
+  const lons = points.map((point) => point.lon);
+  const south = Math.min(...lats);
+  const north = Math.max(...lats);
+  const west = Math.min(...lons);
+  const east = Math.max(...lons);
+  const needed = Math.max(east - west, ((north - south) * frame.width) / frame.height) * FIT_ROOM;
+  const fits = needed === 0 ? FIT_ZOOM_MOST : Math.floor(Math.log2(WORLD_SPAN / needed));
+  const fill = fillZoomOf(frame);
+  const zoom = clamp(fits, fill, FIT_ZOOM_MOST);
+  if (zoom === 0) return WORLD_START;
+  const centre =
+    fits < fill ? weightedCentre(points) : { lat: (north + south) / 2, lon: (east + west) / 2 };
+  return { zoom, lat: clamp(centre.lat, -LAT_EDGE, LAT_EDGE), lon: centre.lon };
+}
+
 export function zoomedBy(view: MapView, by: number): MapView {
   return { ...view, zoom: clamp(view.zoom + by, 0, MAP_ZOOM_MAX) };
 }
@@ -112,8 +150,27 @@ export interface MapWheel {
 export function mapWheelOf(pending: number, pixels: number): MapWheel {
   const kept = Math.sign(pending) === Math.sign(-pixels) ? pending : 0;
   const total = kept - pixels;
-  const steps = Math.trunc(total / MAP_WHEEL_PIXELS_PER_STEP);
-  return { steps, pending: total - steps * MAP_WHEEL_PIXELS_PER_STEP };
+  const whole = Math.trunc(total / MAP_WHEEL_PIXELS_PER_STEP);
+  return {
+    steps: Math.sign(whole),
+    pending: total - whole * MAP_WHEEL_PIXELS_PER_STEP,
+  };
+}
+
+export interface WheelState {
+  readonly view: MapView;
+  readonly pending: number;
+}
+
+export function wheeledAt(
+  state: WheelState,
+  pixels: number,
+  at: MapPoint,
+  frame: FrameSize,
+): WheelState {
+  const next = mapWheelOf(state.pending, pixels);
+  const view = next.steps === 0 ? state.view : zoomedAt(state.view, next.steps, at, frame);
+  return { view, pending: next.pending };
 }
 
 export function pinchSteps(scale: number): number {

@@ -268,6 +268,35 @@ describe('completing, skipping and moving', () => {
     expect(test.store.plannerOccurrences.byKey(repeating.id, key).status).toBe('done');
   });
 
+  it('reopens a done single task and undoes a done occurrence of a repeating one', async () => {
+    const single = await task(ann);
+    await call(items.completePlannerItem, ann, { params: { itemId: single.id }, body: {} });
+    await call(items.reopenPlannerItem, ann, { params: { itemId: single.id }, body: {} });
+    expect(test.store.plannerItems.byId(single.id, ann.profileId).status).toBe('open');
+    expect(test.store.plannerOccurrences.find(single.id, 'single')).toBeUndefined();
+    const list = await calendar(ann, 'Habits');
+    const repeating = await item(
+      ann,
+      timed(list.id, {
+        kind: 'task',
+        start_local: '2026-11-07T07:30',
+        end_local: null,
+        rrule: 'FREQ=DAILY',
+      }),
+    );
+    const key = '2026-11-08T06:30:00Z';
+    await call(items.completePlannerItem, ann, {
+      params: { itemId: repeating.id },
+      body: { occurrence_key: key },
+    });
+    await call(items.reopenPlannerItem, ann, {
+      params: { itemId: repeating.id },
+      body: { occurrence_key: key },
+    });
+    expect(test.store.plannerOccurrences.find(repeating.id, key)).toBeUndefined();
+    expect(test.store.plannerItems.byId(repeating.id, ann.profileId).status).toBe('open');
+  });
+
   it('skips, refuses to skip a done occurrence and moves a missed one', async () => {
     const skipped = await task(ann);
     expect(

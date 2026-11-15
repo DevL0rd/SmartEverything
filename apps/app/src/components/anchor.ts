@@ -43,8 +43,13 @@ export const MARGIN = 8;
 export const GAP = 4;
 const ROOM_ENOUGH = 240;
 
+function startOf(anchor: Rect, width: number, window: WindowSize): number {
+  const overflows = anchor.x + width > window.width - MARGIN;
+  return overflows ? anchor.x + anchor.width - width : anchor.x;
+}
+
 function leftOf(anchor: Rect, width: number, window: WindowSize): number {
-  return Math.min(Math.max(MARGIN, anchor.x), window.width - width - MARGIN);
+  return Math.min(Math.max(MARGIN, startOf(anchor, width, window)), window.width - width - MARGIN);
 }
 
 export function placeBelow(anchor: Rect, width: number, window: WindowSize): Placement {

@@ -13,7 +13,6 @@ import type { MediaActions } from './use-media-actions';
 import { organiseMenuItems, useOrganiseActions } from '../organise/actions';
 import {
   SelectionActions,
-  SelectionDivider,
   SelectionGroup,
   SelectionSummary,
   SelectionSurface,
@@ -181,12 +180,9 @@ function SendGroup(input: PickedProps): ReactNode {
   const send = shown(sendActions(input));
   if (send.length === 0) return null;
   return (
-    <>
-      <SelectionDivider />
-      <SelectionGroup>
-        <ActionButtons actions={send} />
-      </SelectionGroup>
-    </>
+    <SelectionGroup>
+      <ActionButtons actions={send} />
+    </SelectionGroup>
   );
 }
 
@@ -202,7 +198,6 @@ function DeskActions({
       <LocalSelection picked={picked} />
       <KeepGroup media={media} picked={picked} onTrashed={onTrashed} />
       <SendGroup media={media} picked={picked} onTrashed={onTrashed} />
-      <SelectionDivider />
       <ManageGroup media={media} picked={picked} onTrashed={onTrashed} extras={extras} />
     </SelectionActions>
   );
@@ -247,4 +242,3 @@ export function selectionFrameOf(compact: boolean, props: LibrarySelectionProps)
     footer: compact && selection.ids.size > 0 ? <LibraryActionRow {...props} /> : null,
   };
 }
-

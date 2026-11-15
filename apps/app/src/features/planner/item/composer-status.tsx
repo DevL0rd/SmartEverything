@@ -125,12 +125,13 @@ export interface FallbackInput {
   readonly problem: string | null;
   readonly kind: ComposerKind;
   readonly text: string;
+  readonly collectionId?: string;
 }
 
 export function useFallbackPlan(input: FallbackInput): ComposerPlan | null {
   const preferred = usePlannerPreferences(input.person).data?.tasks.default_collection_id;
   const title = input.text.trim();
   if (input.problem === null || input.kind !== 'task' || title === '') return null;
-  const plain = plainCollectionOf(input.collections, preferred ?? null);
+  const plain = plainCollectionOf(input.collections, input.collectionId ?? preferred ?? null);
   return plain === null ? null : plainTaskOf(title, plain.id);
 }

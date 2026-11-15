@@ -1,6 +1,7 @@
 import {
   DESKTOP_PHOTO_HASH,
   DESKTOP_PHOTO_LIBRARY,
+  DESKTOP_PHOTO_TRASHED,
   type DesktopPhotoItem,
   type DesktopPhotos,
 } from '@smarteverything/domain';
@@ -8,7 +9,7 @@ import { background } from '@smarteverything/logging';
 import { assertUploadActive } from '../../../drive';
 import type { ServerConnection } from '../../../../api/connection/storage';
 import type { Conditions, MediaAccess, MediaRow, MediaScope, MediaStat } from '../model/types';
-import type { BackupPorts, MediaLibraryPort, NativeMediaPort } from './ports';
+import type { BackupPorts, LocalTrashPort, MediaLibraryPort, NativeMediaPort } from './ports';
 import { conditionsPort } from './network-conditions';
 import { createBackupUploadPort } from './native-adapters';
 
@@ -87,7 +88,7 @@ export function desktopBackupAdapters(
   photos: DesktopPhotos,
   connection: ServerConnection,
   key: string,
-): Pick<BackupPorts, 'media' | 'native' | 'conditions' | 'upload'> {
+): Pick<BackupPorts, 'media' | 'native' | 'trash' | 'conditions' | 'upload'> {
   const library = new DesktopLibrary(photos);
   let operation = 0;
   const network = conditionsPort({
@@ -101,6 +102,7 @@ export function desktopBackupAdapters(
       library.itemOf,
       () => `photos-desktop-${String(++operation)}`,
     ),
+    trash: desktopTrashPort(photos),
     conditions: {
       ...network,
       async read(): Promise<Conditions> {
@@ -111,6 +113,17 @@ export function desktopBackupAdapters(
     upload: createBackupUploadPort(connection, key, (id, offset, bytes, signal) =>
       readDesktopChunk(library.itemOf(id).uri, offset, bytes, signal),
     ),
+  };
+}
+
+export function desktopTrashPort(photos: Pick<DesktopPhotos, 'trash'>): LocalTrashPort {
+  return {
+    async trash(localIds): ReturnType<LocalTrashPort['trash']> {
+      const answer = DESKTOP_PHOTO_TRASHED.parse(await photos.trash(localIds));
+      return { outcome: 'done', localIds: answer.trashed };
+    },
+    untrash: (): ReturnType<LocalTrashPort['untrash']> =>
+      Promise.resolve({ outcome: 'unsupported', localIds: [] }),
   };
 }
 

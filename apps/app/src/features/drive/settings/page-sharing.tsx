@@ -11,7 +11,8 @@ import { useMutationState } from '../../../store/mutation';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { useDriveSettings } from '../data';
 import { DriveSettingsSection } from './page';
-import { SettingsQueryState, saveDriveSettings } from './page-indexing';
+import { saveDriveSettings } from './page-indexing';
+import { SettingsQueryState } from './settings-query-state';
 
 const WHOLE_NUMBER = /^\d+$/;
 
@@ -134,7 +135,12 @@ export function SharingSection(): ReactNode {
   return (
     <DriveSettingsSection>
       {settings.data === undefined ? (
-        <SettingsQueryState query={settings} event="drive_settings.sharing_refetch_failed" />
+        <SettingsQueryState
+          query={settings}
+          event="drive_settings.sharing_refetch_failed"
+          rows={2}
+          failed="The sharing settings could not be read"
+        />
       ) : (
         <SharingBody settings={settings.data} />
       )}

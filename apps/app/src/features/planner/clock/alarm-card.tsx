@@ -3,7 +3,6 @@ import { background } from '@smarteverything/logging';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
-import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Figure } from '../../../components/figure';
 import { Interactive } from '../../../components/interactive';
@@ -11,12 +10,7 @@ import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
-import {
-  usePlannerClockWrites,
-  usePlannerWrites,
-  useVisibleMinute,
-  type PlannerPerson,
-} from '../data';
+import { usePlannerWrites, useVisibleMinute, type PlannerPerson } from '../data';
 import {
   alarmLabelOf,
   alarmsInRingOrder,
@@ -24,9 +18,8 @@ import {
   nextRingOf,
   nextRingTextOf,
   repeatTextOf,
-  skipDayOf,
 } from './alarm-text';
-import { AlarmChips, hasAlarmChips } from './alarm-chips';
+import { AlarmChips, hasAlarmChips, type AlarmDefaults } from './alarm-chips';
 import { DayDots } from './day-dots';
 import { MissedAlarms } from './missed-alarm-card';
 import { TargetChips } from './target-chips';
@@ -38,17 +31,21 @@ export interface AlarmCardProps {
   readonly alarm: PlannerAlarmRow;
   readonly now: number;
   readonly timeZone: string;
-  readonly weekStart: number;
+  readonly weekStart: number | null;
+  readonly defaults: AlarmDefaults | null;
   readonly layout: AlarmCardLayout;
   readonly selected?: boolean;
   readonly hero?: boolean;
   readonly disabled?: boolean;
   readonly onToggle: (enabled: boolean) => void;
   readonly onOpen?: () => void;
-  readonly onSkip?: () => void;
 }
 
 const SELECTED = 'border border-primary/55 bg-primary/7';
+
+const PASSIVE = { pointerEvents: 'none' } as const;
+
+const THROUGH = { pointerEvents: 'box-none' } as const;
 
 function openLabelOf(alarm: PlannerAlarmRow): string {
   return `Edit alarm ${alarm.time} ${alarmLabelOf(alarm)}`;
@@ -76,31 +73,53 @@ function AlarmSwitch({ alarm, disabled, onToggle }: AlarmCardProps): ReactNode {
   );
 }
 
-function OpenArea({
+function OpenCard({
   card,
   className,
   children,
 }: {
-  readonly card: Pick<AlarmCardProps, 'alarm' | 'selected' | 'onOpen'>;
-  readonly className: string;
+  readonly card: AlarmCardProps;
+  readonly className?: string;
   readonly children: ReactNode;
 }): ReactNode {
   const { alarm, selected = false, onOpen } = card;
-  if (onOpen === undefined) return <View className={className}>{children}</View>;
+  const passive = onOpen === undefined ? {} : THROUGH;
   return (
-    <Interactive
-      label={openLabelOf(alarm)}
-      selected={selected}
-      onPress={onOpen}
-      className={className}
-      layerClassName="rounded-md"
-    >
+    <Card className={cn('relative', className, selected && SELECTED)}>
+      {onOpen === undefined ? null : (
+        <Interactive
+          label={openLabelOf(alarm)}
+          selected={selected}
+          onPress={onOpen}
+          className="absolute inset-0"
+          layerClassName="rounded-lg"
+        >
+          {null}
+        </Interactive>
+      )}
+      <View {...passive} className="gap-3">
+        {children}
+      </View>
+    </Card>
+  );
+}
+
+function Passive({
+  className,
+  children,
+}: {
+  readonly className?: string;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <View {...PASSIVE} {...(className === undefined ? {} : { className })}>
       {children}
-    </Interactive>
+    </View>
   );
 }
 
 function Repeat({ alarm, weekStart }: AlarmCardProps): ReactNode {
+  if (weekStart === null) return null;
   if (alarm.once_on !== null || alarm.days.length === 0) {
     return (
       <Text variant="footnote" tone="variant" className="tabular">
@@ -112,114 +131,111 @@ function Repeat({ alarm, weekStart }: AlarmCardProps): ReactNode {
 }
 
 function WideCard(props: AlarmCardProps): ReactNode {
-  const { alarm, now, timeZone, selected = false } = props;
+  const { alarm, now, timeZone, defaults, selected = false } = props;
   return (
-    <Card className={cn(selected && SELECTED)}>
-      <View className="flex-row items-start gap-4">
-        <OpenArea card={props} className="min-w-0 flex-1 flex-row items-start gap-4">
-          <View className="w-36 gap-0.5">
-            <Figure
-              value={alarm.time}
-              size="l"
-              tone={alarm.enabled ? (selected ? 'primary' : 'default') : 'variant'}
-            />
-            <AlarmName alarm={alarm} />
-          </View>
-          <View className="min-w-0 flex-1 gap-2 pt-1">
-            <Repeat {...props} />
-            <TargetChips alarm={alarm} extra={<AlarmChips alarm={alarm} />} />
-          </View>
-        </OpenArea>
-        <View className="items-end gap-1.5">
+    <OpenCard card={props}>
+      <View {...THROUGH} className="flex-row items-start gap-4">
+        <Passive className="w-36 gap-0.5">
+          <Figure
+            value={alarm.time}
+            size="l"
+            tone={alarm.enabled ? (selected ? 'primary' : 'default') : 'variant'}
+          />
+          <AlarmName alarm={alarm} />
+        </Passive>
+        <Passive className="min-w-0 flex-1 gap-2 pt-1">
+          <Repeat {...props} />
+          <TargetChips
+            alarm={alarm}
+            defaults={defaults}
+            extra={<AlarmChips alarm={alarm} defaults={defaults} />}
+          />
+        </Passive>
+        <View {...THROUGH} className="items-end gap-1.5">
           <AlarmSwitch {...props} />
-          <Text variant="caption" tone="variant" className="tabular text-right">
-            {nextRingTextOf(alarm, now, timeZone)}
-          </Text>
+          <Passive>
+            <Text variant="caption" tone="variant" className="tabular text-right">
+              {nextRingTextOf(alarm, now, timeZone)}
+            </Text>
+          </Passive>
         </View>
       </View>
-      <WatchStateLines alarm={alarm} />
-    </Card>
-  );
-}
-
-function HeroActions({
-  alarm,
-  now,
-  timeZone,
-  disabled,
-  onOpen,
-  onSkip,
-}: AlarmCardProps): ReactNode {
-  const skip = skipDayOf(alarm, now, timeZone);
-  return (
-    <View className="flex-row flex-wrap gap-2">
-      {skip === null || onSkip === undefined ? null : (
-        <Button
-          label={`Skip ${skip}`}
-          icon="skipForward"
-          variant="outlined"
-          disabled={(disabled ?? false) || !alarm.enabled}
-          onPress={onSkip}
-        />
-      )}
-      {onOpen === undefined ? null : (
-        <Button label="Edit" icon="pencil" variant="outlined" onPress={onOpen} />
-      )}
-    </View>
+      <Passive>
+        <WatchStateLines alarm={alarm} />
+      </Passive>
+    </OpenCard>
   );
 }
 
 function HeroCard(props: AlarmCardProps): ReactNode {
-  const { alarm, now, timeZone } = props;
+  const { alarm, now, timeZone, defaults } = props;
   const at = nextRingOf(alarm, now, timeZone);
   return (
-    <Card className="border border-primary/30">
-      <View className="flex-row items-center justify-between gap-2">
-        <Badge
-          label={at === null ? nextRingTextOf(alarm, now, timeZone) : dayWordOf(at, now, timeZone)}
-          tone="primary"
-          icon="alarmClock"
-        />
+    <OpenCard card={props} className="border border-primary/30">
+      <View {...THROUGH} className="flex-row items-center justify-between gap-2">
+        <Passive>
+          <Badge
+            label={
+              at === null ? nextRingTextOf(alarm, now, timeZone) : dayWordOf(at, now, timeZone)
+            }
+            tone="primary"
+            icon="alarmClock"
+          />
+        </Passive>
         <AlarmSwitch {...props} />
       </View>
-      <View className="flex-row flex-wrap items-baseline gap-3">
-        <Figure value={alarm.time} size="xl" />
-        <AlarmName alarm={alarm} />
-      </View>
-      <Text variant="footnote" tone="variant" className="tabular">
-        {nextRingTextOf(alarm, now, timeZone)}
-      </Text>
-      <Repeat {...props} />
-      <TargetChips alarm={alarm} extra={<AlarmChips alarm={alarm} />} />
-      <WatchStateLines alarm={alarm} />
-      <HeroActions {...props} />
-    </Card>
+      <Passive className="gap-3">
+        <View className="flex-row flex-wrap items-baseline gap-3">
+          <Figure value={alarm.time} size="xl" />
+          <AlarmName alarm={alarm} />
+        </View>
+        <Text variant="footnote" tone="variant" className="tabular">
+          {nextRingTextOf(alarm, now, timeZone)}
+        </Text>
+        <Repeat {...props} />
+        <TargetChips
+          alarm={alarm}
+          defaults={defaults}
+          extra={<AlarmChips alarm={alarm} defaults={defaults} />}
+        />
+        <WatchStateLines alarm={alarm} />
+      </Passive>
+    </OpenCard>
   );
 }
 
+function compactLineOf(props: AlarmCardProps): string {
+  const next = nextRingTextOf(props.alarm, props.now, props.timeZone);
+  return props.weekStart === null
+    ? next
+    : `${repeatTextOf(props.alarm, props.weekStart)} · ${next}`;
+}
+
 function CompactCard(props: AlarmCardProps): ReactNode {
-  const { alarm, now, timeZone, weekStart } = props;
+  const { alarm, defaults } = props;
   return (
-    <Card>
-      <View className="flex-row items-center gap-3">
-        <OpenArea card={props} className="min-w-0 flex-1 gap-0.5">
+    <OpenCard card={props}>
+      <View {...THROUGH} className="flex-row items-center gap-3">
+        <Passive className="min-w-0 flex-1 gap-0.5">
           <View className="flex-row flex-wrap items-baseline gap-2">
             <Figure value={alarm.time} size="m" tone={alarm.enabled ? 'default' : 'variant'} />
             <AlarmName alarm={alarm} />
           </View>
           <Text variant="footnote" tone="variant" className="tabular">
-            {`${repeatTextOf(alarm, weekStart)} · ${nextRingTextOf(alarm, now, timeZone)}`}
+            {compactLineOf(props)}
           </Text>
-        </OpenArea>
+        </Passive>
         <AlarmSwitch {...props} />
       </View>
-      {hasAlarmChips(alarm) ? (
-        <View className="flex-row flex-wrap gap-2">
-          <AlarmChips alarm={alarm} />
-        </View>
+      {hasAlarmChips(alarm, defaults) ? (
+        <Passive className="flex-row flex-wrap gap-2">
+          <AlarmChips alarm={alarm} defaults={defaults} />
+        </Passive>
       ) : null}
-      <WatchStateLines alarm={alarm} />
-    </Card>
+      <Passive>
+        <WatchStateLines alarm={alarm} />
+      </Passive>
+    </OpenCard>
   );
 }
 
@@ -232,7 +248,8 @@ export interface AlarmListProps {
   readonly person: PlannerPerson;
   readonly alarms: readonly PlannerAlarmRow[];
   readonly timeZone: string;
-  readonly weekStart: number;
+  readonly weekStart: number | null;
+  readonly defaults: AlarmDefaults | null;
   readonly layout: AlarmCardLayout;
   readonly offline: boolean;
   readonly selectedId?: string | null;
@@ -243,21 +260,10 @@ function run(failure: string, work: () => Promise<unknown>): void {
   background(work().catch(notifyFailure(failure)), 'clock.alarm_card_failed');
 }
 
-interface AlarmHandlers {
-  readonly toggle: (alarm: PlannerAlarmRow, enabled: boolean) => void;
-  readonly skip: (alarm: PlannerAlarmRow) => void;
-}
-
-function useAlarmHandlers(person: PlannerPerson): AlarmHandlers {
+function useToggle(person: PlannerPerson): (alarm: PlannerAlarmRow, enabled: boolean) => void {
   const writes = usePlannerWrites(person);
-  const clock = usePlannerClockWrites(person);
-  return {
-    toggle: (alarm, enabled): void => {
-      run('Couldn’t change that alarm', () => writes.updateAlarm(alarm, { enabled }));
-    },
-    skip: (alarm): void => {
-      run('Couldn’t skip that alarm', () => clock.skipNextAlarm(alarm.id));
-    },
+  return (alarm, enabled): void => {
+    run('Couldn’t change that alarm', () => writes.updateAlarm(alarm, { enabled }));
   };
 }
 
@@ -265,7 +271,7 @@ export function AlarmList(props: AlarmListProps): ReactNode {
   const { person, alarms, timeZone, layout, offline, selectedId = null, onOpen } = props;
   const frame = useRef<View>(null);
   const { value: now, onLayout } = useVisibleMinute(frame);
-  const handlers = useAlarmHandlers(person);
+  const toggle = useToggle(person);
   const ordered = alarmsInRingOrder(alarms, now, timeZone);
   const first = ordered[0];
   const heroId = first?.enabled === true ? first.id : null;
@@ -279,15 +285,13 @@ export function AlarmList(props: AlarmListProps): ReactNode {
           now={now}
           timeZone={timeZone}
           weekStart={props.weekStart}
+          defaults={props.defaults}
           layout={layout}
           selected={alarm.id === selectedId}
           hero={alarm.id === heroId}
           disabled={offline}
           onToggle={(enabled) => {
-            handlers.toggle(alarm, enabled);
-          }}
-          onSkip={() => {
-            handlers.skip(alarm);
+            toggle(alarm, enabled);
           }}
           {...(onOpen === undefined
             ? {}

@@ -14,6 +14,7 @@ import { DayDots } from '../../planner';
 import { BedtimeDial } from './bedtime-dial';
 import { dialTimesOf, sleepLengthText, sleepMinutesOf, type DialTimes } from './dial-model';
 import { NightSheet, type NightDraft } from './night-sheet';
+import { NoNightsPanel, OffPanel } from './tonight-panels';
 import {
   FALLBACK_NIGHT,
   addedNight,
@@ -28,6 +29,8 @@ import {
 
 export type BedtimeLayout = 'compact' | 'medium' | 'wide';
 
+const STACK_BELOW = 600;
+
 export interface TonightProps {
   readonly bedtime: PlannerBedtime;
   readonly weekStart: number;
@@ -37,30 +40,6 @@ export interface TonightProps {
   readonly offline: boolean;
   readonly onSave: (edit: (bedtime: PlannerBedtime) => PlannerBedtime) => void;
   readonly onStart: () => void;
-}
-
-function OffPanel({
-  onStart,
-  offline,
-}: {
-  readonly onStart: () => void;
-  readonly offline: boolean;
-}): ReactNode {
-  return (
-    <View className="items-center gap-3 py-4">
-      <View className="size-16 items-center justify-center rounded-full bg-surface-3">
-        <Icon name="moonStar" size={32} colour="sleep-deep" />
-      </View>
-      <Text variant="title-3" align="center">
-        Plan your nights
-      </Text>
-      <Text variant="callout" tone="variant" align="center" className="max-w-100">
-        Pick when you go to bed and wake up. A reminder, a calm wind-down and Do not disturb follow
-        the plan, and your alarm wakes you.
-      </Text>
-      <Button label="Turn on bedtime" icon="moon" disabled={offline} onPress={onStart} />
-    </View>
-  );
 }
 
 function Fact({ label, value }: { readonly label: string; readonly value: string }): ReactNode {
@@ -107,6 +86,19 @@ function TonightFacts({
   );
 }
 
+function NightSpan({ night }: { readonly night: PlannerBedtimeNight }): ReactNode {
+  return (
+    <View className="min-w-0 flex-row items-baseline gap-3">
+      <Text variant="body-strong" numberOfLines={1} className="shrink-0 tabular">
+        {`${night.bed} – ${night.wake}`}
+      </Text>
+      <Text variant="footnote" tone="variant" numberOfLines={1} className="shrink-0 tabular">
+        {sleepLengthText(sleepMinutesOf(dialTimesOf(night)))}
+      </Text>
+    </View>
+  );
+}
+
 function NightRow({
   night,
   weekStart,
@@ -122,15 +114,7 @@ function NightRow({
   readonly compact: boolean;
   readonly onPress: () => void;
 }): ReactNode {
-  const times = dialTimesOf(night);
-  const span = (
-    <View className="min-w-0 flex-row items-baseline gap-3">
-      <Text variant="body-strong" className="tabular">{`${night.bed} – ${night.wake}`}</Text>
-      <Text variant="footnote" tone="variant" className="tabular">
-        {sleepLengthText(sleepMinutesOf(times))}
-      </Text>
-    </View>
-  );
+  const span = <NightSpan night={night} />;
   return (
     <Interactive
       label={`${daysTextOf(night.days, weekStart)}, bed ${night.bed}, wake ${night.wake}. Change`}
@@ -147,7 +131,11 @@ function NightRow({
       <View className="flex-row items-center gap-2">
         <DayDots days={night.days} weekStart={weekStart} />
         {compact ? <View className="flex-1" /> : null}
-        {compact ? <Icon name="pencil" size={16} /> : null}
+        {compact ? (
+          <View className="shrink-0">
+            <Icon name="pencil" size={16} />
+          </View>
+        ) : null}
       </View>
       {compact ? span : <View className="min-w-0 flex-1 items-end">{span}</View>}
       {compact ? null : <Icon name="pencil" size={16} />}
@@ -171,9 +159,11 @@ function useScheduleState(): ScheduleState {
 function ScheduleList({
   card,
   state,
+  stacked,
 }: {
   readonly card: TonightProps;
   readonly state: ScheduleState;
+  readonly stacked: boolean;
 }): ReactNode {
   const { bedtime, weekStart, offline } = card;
   const free = freeDaysOf(bedtime.schedule);
@@ -187,7 +177,7 @@ function ScheduleList({
           weekStart={weekStart}
           selected={index === state.chosen && bedtime.schedule.length > 1}
           disabled={offline}
-          compact={card.layout === 'compact'}
+          compact={stacked}
           onPress={() => {
             state.setChosen(index);
             state.setDraft({ index, days: night.days, times: dialTimesOf(night) });
@@ -287,16 +277,32 @@ function OnBody({
   readonly card: TonightProps;
   readonly state: ScheduleState;
 }): ReactNode {
+  const [width, setWidth] = useState<number | null>(null);
   const next = nextNightOf(card.bedtime, card.now, card.zone);
   const compact = card.layout === 'compact';
+  const stacked = width === null ? compact : width < STACK_BELOW;
   return (
-    <View className="gap-4">
+    <View
+      className="gap-4"
+      onLayout={(event) => {
+        setWidth(event.nativeEvent.layout.width);
+      }}
+    >
       <NightPicker card={card} state={state} />
-      <View className={compact ? 'items-center gap-4' : 'flex-row items-center gap-8'}>
-        <DialArea card={card} state={state} />
-        <TonightFacts next={next} now={card.now} zone={card.zone} />
-      </View>
-      <ScheduleList card={card} state={state} />
+      {stacked ? (
+        <View className="gap-4">
+          <View className="items-center">
+            <DialArea card={card} state={state} />
+          </View>
+          <TonightFacts next={next} now={card.now} zone={card.zone} />
+        </View>
+      ) : (
+        <View className="flex-row items-center gap-8">
+          <DialArea card={card} state={state} />
+          <TonightFacts next={next} now={card.now} zone={card.zone} />
+        </View>
+      )}
+      <ScheduleList card={card} state={state} stacked={stacked} />
       {compact ? null : (
         <Text variant="footnote" tone="variant">
           Drag the moon or the sun on the dial, or pick a row to type the times.
@@ -306,10 +312,33 @@ function OnBody({
   );
 }
 
+function TonightBody({
+  card,
+  state,
+}: {
+  readonly card: TonightProps;
+  readonly state: ScheduleState;
+}): ReactNode {
+  const { bedtime } = card;
+  if (!bedtime.enabled) return <OffPanel onStart={card.onStart} offline={card.offline} />;
+  if (bedtime.schedule.length > 0) return <OnBody card={card} state={state} />;
+  return (
+    <NoNightsPanel
+      offline={card.offline}
+      onAdd={() => {
+        state.setDraft({
+          index: null,
+          days: freeDaysOf(bedtime.schedule),
+          times: dialTimesOf(FALLBACK_NIGHT),
+        });
+      }}
+    />
+  );
+}
+
 export function TonightCard(card: TonightProps): ReactNode {
   const state = useScheduleState();
   const { bedtime } = card;
-  const on = bedtime.enabled && bedtime.schedule.length > 0;
   return (
     <Card
       title="Bedtime"
@@ -326,11 +355,7 @@ export function TonightCard(card: TonightProps): ReactNode {
         />
       }
     >
-      {on ? (
-        <OnBody card={card} state={state} />
-      ) : (
-        <OffPanel onStart={card.onStart} offline={card.offline} />
-      )}
+      <TonightBody card={card} state={state} />
       <NightSheet
         draft={state.draft}
         weekStart={card.weekStart}

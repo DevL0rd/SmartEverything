@@ -94,18 +94,25 @@ function ToggleFooter({
   );
 }
 
+export interface LocalMount {
+  readonly blocked: boolean;
+  readonly words: MountToggleWords | null;
+}
+
 export function MountToggle({
   deviceId,
   computer,
   mount,
   detail,
   live,
+  local,
 }: {
   readonly deviceId: string;
   readonly computer: string;
   readonly mount: DrivePlacement | null;
   readonly detail: MountToggleDetail;
   readonly live: boolean;
+  readonly local?: LocalMount;
 }): ReactNode {
   const writes = usePlacementWrites();
   const [target, setTarget] = useState<boolean | null>(null);
@@ -114,7 +121,7 @@ export function MountToggle({
   const value = pending ? target : on;
   const words = pending
     ? pendingWordsOf(target, computer)
-    : mountToggleWordsOf(computer, mount, detail);
+    : (local?.words ?? mountToggleWordsOf(computer, mount, detail));
   return (
     <View className="gap-1">
       <SwitchRow
@@ -124,7 +131,7 @@ export function MountToggle({
         wrapSubtitle
         icon="cloud"
         value={value}
-        disabled={!live}
+        disabled={!live || local?.blocked === true}
         label={`Mount My Drive on ${computer}`}
         onChange={(next) => {
           if (writes.busy) return;

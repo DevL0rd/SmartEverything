@@ -11,6 +11,7 @@ import {
   habitEntriesOf,
   habitHeatOf,
   habitStreakOf,
+  habitWeeksOf,
   heatFirstDayOf,
   heatWindowOf,
   repeatWordsOf,
@@ -170,6 +171,12 @@ describe('the habit heatmap', () => {
     expect(heat.find((cell) => cell.day === '2026-11-03')?.covered).toBe(true);
   });
 
+  it('counts the weeks from the week the habit began', () => {
+    expect(habitWeeksOf('2026-11-03', TODAY)).toBe(1);
+    expect(habitWeeksOf('2026-10-20', TODAY)).toBe(3);
+    expect(habitWeeksOf(TODAY, TODAY)).toBe(1);
+  });
+
   it('pages back a week at a time until the habit began', () => {
     const window = heatWindowOf(TODAY, 1, 2);
     expect(window.end).toBe(shiftDay(TODAY, -14));
@@ -193,7 +200,8 @@ describe('habit entries and repeat words', () => {
     expect(repeatWordsOf('FREQ=DAILY')).toBe('Every day');
     expect(repeatWordsOf('FREQ=DAILY;BYHOUR=7,22')).toBe('Twice a day');
     expect(repeatWordsOf('FREQ=DAILY;INTERVAL=2')).toBe('Every 2 days');
-    expect(repeatWordsOf('FREQ=WEEKLY;BYDAY=TU,TH,SA')).toBe('Tue, Thu, Sat');
+    expect(repeatWordsOf('FREQ=WEEKLY;BYDAY=TU,TH,SA')).toBe('Every Tue, Thu, Sat');
+    expect(repeatWordsOf('FREQ=WEEKLY;BYDAY=SU')).toBe('Every Sun');
     expect(repeatWordsOf('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR')).toBe('Weekdays');
     expect(repeatWordsOf('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO')).toBe('Every 2 weeks on Mon');
     expect(repeatWordsOf('FREQ=MONTHLY')).toBe('Every month');

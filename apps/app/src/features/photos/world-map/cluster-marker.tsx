@@ -8,10 +8,12 @@ import { clusterTarget, type ClusterMark } from './clusters';
 export function ClusterMarker({
   mark,
   selected,
+  dimmed,
   onSelect,
 }: {
   readonly mark: ClusterMark;
   readonly selected: boolean;
+  readonly dimmed: boolean;
   readonly onSelect: (cluster: PlaceCluster) => void;
 }): ReactNode {
   const disc = { minWidth: mark.size, height: mark.size };
@@ -24,7 +26,11 @@ export function ClusterMarker({
         onSelect(mark.cluster);
       }}
       style={clusterTarget(mark)}
-      className={cn('absolute items-center justify-center', selected && 'z-10')}
+      className={cn(
+        'absolute items-center justify-center',
+        selected && 'z-10',
+        dimmed && 'opacity-35',
+      )}
     >
       <View
         style={disc}

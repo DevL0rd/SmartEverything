@@ -4,6 +4,7 @@ import { changeDrive } from '../../../api/drive';
 import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
 import { useMutationState } from '../../../store/mutation';
+import { restoreLocalCopiesWithNotice } from '../library/local-copies';
 import {
   deleteAllConfirm,
   deleteNowConfirm,
@@ -31,6 +32,12 @@ function idsOf(items: readonly DeletedItem[]): readonly string[] {
   return items.map((item) => item.id);
 }
 
+export function restoreLocalOf(result: DriveChangeResult): void {
+  const restored = result.done.map((entry) => entry.itemId);
+  if (restored.length === 0) return;
+  background(restoreLocalCopiesWithNotice(restored), 'photos.deleted.local_restore_failed');
+}
+
 export function useDeletedActions(onDone: () => void): DeletedActions {
   const mutation = useMutationState();
   const settled =
@@ -44,7 +51,10 @@ export function useDeletedActions(onDone: () => void): DeletedActions {
     mutation.run(() => changeDrive({ action: 'restore', itemIds: idsOf(items) }), {
       failure: 'Nothing was restored',
       label: 'photos.deleted.restore',
-      onDone: settled('restored'),
+      onDone: (result): void => {
+        settled('restored')(result);
+        restoreLocalOf(result);
+      },
     });
   };
   const remove = async (items: readonly DeletedItem[], request: ConfirmRequest): Promise<void> => {

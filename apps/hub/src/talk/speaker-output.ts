@@ -1,5 +1,6 @@
 import { TALK_FRAME_MS } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import { CameraOfflineError, UnknownStreamError } from '../cameras/camera-service';
 import type { Cancel, Clock } from '../clock';
 import { OPUS_SILENCE } from '../reach/voice-pacing';
 import type { OggFeed, TalkFeeds } from './feeds';
@@ -210,7 +211,7 @@ export class CameraOutput {
         this.started(feed, codec, begun);
       },
       (cause: unknown) => {
-        this.failed(feed, messageOf(cause));
+        this.failed(feed, cause);
       },
     );
   }
@@ -256,8 +257,13 @@ export class CameraOutput {
     this.restart();
   }
 
-  private failed(feed: OggFeed, reason: string): void {
+  private failed(feed: OggFeed, cause: unknown): void {
     if (feed !== this.feed) {
+      return;
+    }
+    const reason = messageOf(cause);
+    if (cause instanceof CameraOfflineError || cause instanceof UnknownStreamError) {
+      this.waitForCamera(feed, reason);
       return;
     }
     const retryInMs = RETRY_AFTER_MS[Math.min(this.failures, RETRY_AFTER_MS.length - 1)] ?? 0;
@@ -277,6 +283,19 @@ export class CameraOutput {
       this.state = 'closed';
       this.ensure();
     });
+    this.notify((watch) => {
+      watch.refused(reason);
+    });
+  }
+
+  private waitForCamera(feed: OggFeed, reason: string): void {
+    this.deps.log.info('talk.camera_speaker_waiting', { cameraId: this.cameraId, reason });
+    feed.end();
+    this.feed = null;
+    this.state = 'waiting';
+    this.lastFailure = reason;
+    this.timer?.();
+    this.timer = null;
     this.notify((watch) => {
       watch.refused(reason);
     });

@@ -21,15 +21,14 @@ vi.mock('react-native', () => ({
   View: ({ children }: Passed): ReactNode => createElement('div', {}, children),
   ScrollView: ({ children }: Passed): ReactNode => createElement('main', {}, children),
 }));
-vi.mock('../../../components/tabs-bar', () => ({
-  TabsBar: ({
-    items,
+vi.mock('./details-tab-strip', () => ({
+  DetailsTabStrip: ({
+    tabs,
     active,
   }: {
-    readonly items: readonly Tab[];
+    readonly tabs: readonly Tab[];
     readonly active: string;
-  }): ReactNode =>
-    createElement('nav', {}, `${items.map((item) => item.label).join(',')}|${active}`),
+  }): ReactNode => createElement('nav', {}, `${tabs.map((tab) => tab.label).join(',')}|${active}`),
 }));
 vi.mock('./info-tab', () => ({ InfoTab: (): ReactNode => 'info-body' }));
 vi.mock('./preview-tab', () => ({ PreviewTab: (): ReactNode => 'preview-body' }));
@@ -43,6 +42,7 @@ const FOLDER = nodeOfEntry({ key: 'kitchen', parentKey: 'root', name: 'Kitchen',
 const COMMENTS: SourceTabSpec<FixtureOrigin> = {
   id: 'comments',
   label: 'Comments',
+  icon: 'messageCircle',
   Tab: ({ node }) => `comments-of-${node.name}`,
 };
 

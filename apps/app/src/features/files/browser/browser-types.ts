@@ -36,6 +36,7 @@ export interface FileBrowserHost<O> {
   readonly refusedAction?: BrowserLinkAction;
   readonly compact?: boolean;
   readonly placesInFrame?: boolean;
+  readonly offlineInFrame?: boolean;
 }
 
 export interface BrowserLinkAction {

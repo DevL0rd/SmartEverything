@@ -13,7 +13,7 @@ import {
 } from '../../../drive';
 import type { ServerConnection } from '../../../../api/connection/storage';
 import type { ChargingSource } from './network-conditions';
-import type { NativeMediaPort, UploadPort } from './ports';
+import type { LocalTrashPort, LocalTrashResult, NativeMediaPort, UploadPort } from './ports';
 
 interface PhotosNative {
   statMedia(ids: readonly string[], operation: string): Promise<unknown>;
@@ -23,6 +23,7 @@ interface PhotosNative {
   prepare(operation: string): void;
   cancel(operation: string): void;
   charging(): Promise<unknown>;
+  changeTrash(ids: readonly string[], trash: boolean): Promise<unknown>;
   addListener(event: 'chargingChanged', listener: (value: unknown) => void): { remove(): void };
 }
 
@@ -44,6 +45,10 @@ const STATS = z.array(
   }),
 );
 const CHARGING = z.strictObject({ charging: z.boolean() });
+const TRASHED = z.strictObject({
+  outcome: z.enum(['done', 'declined', 'unsupported']),
+  ids: z.array(z.string().min(1)),
+});
 let sequence = 0;
 
 function capability(): PhotosNative {
@@ -93,6 +98,16 @@ export function createNativeMediaPort(): NativeMediaPort {
     },
   };
 }
+
+async function changeTrash(localIds: readonly string[], trash: boolean): Promise<LocalTrashResult> {
+  const answer = TRASHED.parse(await capability().changeTrash(localIds, trash));
+  return { outcome: answer.outcome, localIds: answer.ids };
+}
+
+export const nativeTrashPort: LocalTrashPort = {
+  trash: (localIds) => changeTrash(localIds, true),
+  untrash: (localIds) => changeTrash(localIds, false),
+};
 
 export const chargingSource: ChargingSource = {
   async read(): Promise<boolean> {

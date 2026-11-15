@@ -42,6 +42,8 @@ import { usePhotoPeople } from './queries';
 
 const SMART_HREF = href.settings.page(PHOTOS_SMART_PAGE);
 
+const PEOPLE_SETTINGS = { href: SMART_HREF, label: 'Face grouping settings' } as const;
+
 export const UNSORTED_NOTE = 'Faces seen in one photo so far. Name one to start a person.';
 
 function GroupingOff(): ReactNode {
@@ -154,17 +156,19 @@ function Loading(): ReactNode {
 function Ready({
   people,
   status,
+  live,
 }: {
   readonly people: PhotoPeople;
   readonly status: PhotoAiStatus | undefined;
+  readonly live: boolean;
 }): ReactNode {
   const [species, setSpecies] = useState<string | null>(null);
   const size = shellLayoutOf(useAreaWidth()) === 'compact' ? 80 : 112;
   const sections = peopleSectionsOf(people.groups, species);
   return (
     <View className="gap-section-gap">
-      <PeopleHeader sections={sections} status={status} naming={namingOf(people.groups)} />
-      <MergeSuggestions people={people} />
+      <PeopleHeader status={status} naming={namingOf(people.groups)} />
+      <MergeSuggestions people={people} live={live} />
       <GroupSection title="People" groups={sections.people} size={size} />
       <PetsSection
         all={people.groups}
@@ -194,19 +198,21 @@ function StateBody({
   people,
   status,
   failed,
+  live,
   retry,
 }: {
   readonly state: PeopleState;
   readonly people: PhotoPeople | undefined;
   readonly status: PhotoAiStatus | undefined;
   readonly failed: unknown;
+  readonly live: boolean;
   readonly retry: () => void;
 }): ReactNode {
   if (isScanState(state))
     return status === undefined ? null : <Scan state={state} status={status} />;
   switch (state) {
     case 'ready':
-      return people === undefined ? null : <Ready people={people} status={status} />;
+      return people === undefined ? null : <Ready people={people} status={status} live={live} />;
     case 'loading':
       return <Loading />;
     case 'offline':
@@ -238,6 +244,7 @@ export function PeopleScreen(): ReactNode {
   return (
     <PhotosFrame
       active="people"
+      settings={PEOPLE_SETTINGS}
       {...(subtitle === null ? {} : { subtitle })}
       {...(live || people.data === undefined
         ? {}
@@ -258,6 +265,7 @@ export function PeopleScreen(): ReactNode {
           people={people.data}
           status={status.data}
           failed={people.error}
+          live={live}
           retry={() => {
             background(people.refetch(), 'photos.people.refetch_failed');
           }}

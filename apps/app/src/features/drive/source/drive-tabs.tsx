@@ -76,10 +76,10 @@ function SharingPane({ node }: TabProps): ReactNode {
 }
 
 const TABS: Readonly<Record<DriveTabId, SourceTabSpec<DriveOrigin>>> = {
-  comments: { id: 'comments', label: TAB_LABEL.comments, Tab: CommentsPane },
-  versions: { id: 'versions', label: TAB_LABEL.versions, Tab: VersionsPane },
-  activity: { id: 'activity', label: TAB_LABEL.activity, Tab: ActivityPane },
-  sharing: { id: 'sharing', label: TAB_LABEL.sharing, Tab: SharingPane },
+  comments: { id: 'comments', label: TAB_LABEL.comments, icon: 'messageCircle', Tab: CommentsPane },
+  versions: { id: 'versions', label: TAB_LABEL.versions, icon: 'layers', Tab: VersionsPane },
+  activity: { id: 'activity', label: TAB_LABEL.activity, icon: 'activity', Tab: ActivityPane },
+  sharing: { id: 'sharing', label: TAB_LABEL.sharing, icon: 'users', Tab: SharingPane },
 };
 
 export function driveTabsOf(node: DriveNode): readonly SourceTabSpec<DriveOrigin>[] {

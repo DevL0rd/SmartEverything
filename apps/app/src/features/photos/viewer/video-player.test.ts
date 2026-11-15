@@ -8,10 +8,10 @@ import {
   followPlayable,
   playableProgressOf,
   playableShare,
-  togglePlayback,
   videoLookOf,
   type PlayableProgress,
 } from './video-player';
+import { togglePlayback } from './player-view';
 
 const ITEM = '00000000-0000-4000-8000-0000000000a1';
 const OTHER = '00000000-0000-4000-8000-0000000000a2';

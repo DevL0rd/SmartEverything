@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { PhotoPlace, PlaceCountry } from '@smarteverything/domain';
-import type { MediaTile } from '../../../components/media-grid/tiles';
 import {
   clusterCovers,
   clusterLine,
   clusterSummary,
   countryGroups,
-  feedMonths,
-  feedTiles,
   libraryLine,
+  monthScopeOf,
   placeMatches,
   placesByCount,
   placesIn,
@@ -169,30 +167,8 @@ describe('places model', () => {
     expect(spanLine([{ month: '2024-05', count: 1 }])).toBe('2024 · 1 visit');
   });
 
-  it('feeds months newest first and keeps loaded tiles in that order', () => {
-    const buckets = [
-      { month: '2019-06', count: 1 },
-      { month: '2026-11', count: 1 },
-    ];
-    expect(feedMonths(buckets, null)).toEqual(['2026-11', '2019-06']);
-    expect(feedMonths(buckets, '2019-06')).toEqual(['2019-06']);
-    const tile = (id: string): MediaTile => ({
-      id,
-      rev: 1,
-      aspect: 1,
-      takenAt: 0,
-      offsetMin: null,
-      durationMs: null,
-      flags: 0,
-      local: false,
-    });
-    const loaded = new Map([
-      ['2019-06', { tiles: [tile('old')], more: null }],
-      ['2026-11', { tiles: [tile('new')], more: null }],
-    ]);
-    expect(feedTiles(['2026-11', '2019-06'], loaded).map((entry) => entry.id)).toEqual([
-      'new',
-      'old',
-    ]);
+  it('scopes a visit to the whole days of its month', () => {
+    expect(monthScopeOf('2024-02')).toEqual({ from: '2024-02-01', to: '2024-02-29' });
+    expect(monthScopeOf('2026-11')).toEqual({ from: '2026-11-01', to: '2026-11-30' });
   });
 });

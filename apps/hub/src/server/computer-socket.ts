@@ -8,7 +8,8 @@ import { bearerOf } from './http';
 import { ComputerLog } from './computer-log';
 import { requestRemoteKind } from './request-trace';
 import { messageOf } from '@smarteverything/logging';
-import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
+import { ConnectionHeartbeat } from '../network/connection-heartbeat';
+import { pingWhenOpen } from '../network/guarded-socket';
 
 const HELLO_TIMEOUT_MS = 30_000;
 const CLOSE_POLICY = 1008;
@@ -75,7 +76,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
   protected readonly connections = new Map<string, C>();
   protected stopped = false;
   private readonly server: WebSocketServer;
-  private readonly heartbeat: NodeJS.Timeout;
+  private readonly heartbeat = new ConnectionHeartbeat(NODE_HEARTBEAT_MS, () => this.beat());
 
   protected constructor(
     private readonly protocol: string,
@@ -86,12 +87,6 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
       noServer: true,
       handleProtocols: (protocols): string | false => (protocols.has(protocol) ? protocol : false),
     });
-    this.heartbeat = setInterval(() => {
-      afterPendingInput(() => {
-        this.beat();
-      });
-    }, NODE_HEARTBEAT_MS);
-    this.heartbeat.unref();
   }
 
   upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -118,7 +113,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
   stop(): void {
     this.log.info('computer.stopping', { protocol: this.protocol, sockets: this.connections.size });
     this.stopped = true;
-    clearInterval(this.heartbeat);
+    this.heartbeat.stop();
     for (const connection of this.connections.values()) connection.terminate();
     this.connections.clear();
     this.server.close();
@@ -141,6 +136,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
     }
     const connection = this.open(socket, identity, request);
     this.connections.set(identity.device_id, connection);
+    this.heartbeat.start();
     events.connected(
       connection,
       identity.device_id,
@@ -192,7 +188,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
     }
   }
 
-  private beat(): void {
+  private beat(): boolean {
     for (const connection of this.connections.values()) {
       if (!connection.alive) {
         connection.closer ??= 'hub:heartbeat_missed';
@@ -209,6 +205,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
       connection.alive = false;
       pingWhenOpen(connection.socket);
     }
+    return this.connections.size > 0;
   }
 }
 

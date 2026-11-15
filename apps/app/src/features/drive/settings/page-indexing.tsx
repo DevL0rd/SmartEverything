@@ -1,24 +1,18 @@
-import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { useQueryClient, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type {
   DriveProgressNotice,
   DriveSettings,
   DriveSettingsUpdate,
   DriveWatcherState,
 } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
 import { updateDriveSettings } from '../../../api/drive';
 import { Button } from '../../../components/button';
 import { ProgressBar } from '../../../components/charts/progress-bar';
-import { ErrorState } from '../../../components/error-state';
 import { ListRow } from '../../../components/list-row';
 import { SwitchRow } from '../../../components/rows';
-import { Icon } from '../../../components/icon';
 import { List } from '../../../components/section';
-import { Sheet } from '../../../components/sheet';
-import { Skeleton } from '../../../components/skeleton';
-import { Text } from '../../../components/text';
 import { usePausable } from '../../../design/external-store';
 import { count, percent } from '../../../format/number';
 import { driveKey } from '../../../queries/keys';
@@ -35,7 +29,9 @@ import {
 } from '../data';
 import { driveLabelOf } from '../model/drive-access';
 import { DriveSettingsSection } from './page';
-import { ocrChoicesOf, ocrLanguagesAfter, ocrLineOf, ocrValueOf } from './ocr-languages';
+import { OcrLanguageSheet } from './ocr-language-sheet';
+import { ocrValueOf } from './ocr-languages';
+import { SettingsQueryState } from './settings-query-state';
 import { watcherLineOf } from './watcher-line';
 
 type Phase = DriveProgressNotice['phase'];
@@ -104,32 +100,6 @@ export function indexingLineOf(paused: boolean, working: number): string {
 export function hashedLineOf(share: number | undefined): string {
   const base = 'Reads each file once to spot exact copies';
   return share === undefined ? base : `${base} · ${percent(share)} of files read`;
-}
-
-export function SettingsQueryState<T>({
-  query,
-  event,
-}: {
-  readonly query: UseQueryResult<T>;
-  readonly event: string;
-}): ReactNode {
-  if (!query.isError) {
-    return (
-      <View className="px-4 py-3">
-        <Skeleton shape="line" className="h-10" />
-      </View>
-    );
-  }
-  return (
-    <View className="px-4">
-      <ErrorState
-        error={query.error}
-        retry={() => {
-          background(query.refetch(), event);
-        }}
-      />
-    </View>
-  );
 }
 
 function useProgress(): DriveProgress {
@@ -221,47 +191,6 @@ function ContentRow({ settings }: { readonly settings: DriveSettings }): ReactNo
         });
       }}
     />
-  );
-}
-
-function OcrLanguageSheet({
-  settings,
-  opener,
-  onClose,
-}: {
-  readonly settings: DriveSettings;
-  readonly opener: RefObject<View | null>;
-  readonly onClose: () => void;
-}): ReactNode {
-  const client = useQueryClient();
-  const mutation = useMutationState();
-  const chosen = settings.ocrLanguages;
-  return (
-    <Sheet open onClose={onClose} title="Languages for text in pictures" subpage={{ opener }}>
-      <Text variant="footnote" tone="variant">
-        {ocrLineOf(chosen)}
-      </Text>
-      <List inset>
-        {ocrChoicesOf(chosen).map((choice) => (
-          <ListRow
-            key={choice.code}
-            title={choice.name}
-            role="checkbox"
-            checked={choice.chosen}
-            disabled={mutation.busy || (choice.chosen && chosen.length === 1)}
-            trailing={choice.chosen ? <Icon name="check" size={20} tone="primary" /> : undefined}
-            onPress={() => {
-              const next = ocrLanguagesAfter(chosen, choice.code, !choice.chosen);
-              if (next === null) return;
-              mutation.run(() => saveDriveSettings(client, { ocrLanguages: [...next] }), {
-                failure: 'The languages did not change',
-                label: 'drive_settings.ocr_languages',
-              });
-            }}
-          />
-        ))}
-      </List>
-    </Sheet>
   );
 }
 
@@ -359,7 +288,12 @@ export function IndexingSection(): ReactNode {
   return (
     <DriveSettingsSection>
       {settings.data === undefined ? (
-        <SettingsQueryState query={settings} event="drive_settings.indexing_refetch_failed" />
+        <SettingsQueryState
+          query={settings}
+          event="drive_settings.indexing_refetch_failed"
+          rows={5}
+          failed="The indexing settings could not be read"
+        />
       ) : (
         <IndexingBody settings={settings.data} />
       )}

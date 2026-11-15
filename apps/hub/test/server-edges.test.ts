@@ -2,7 +2,7 @@ import { API_ENDPOINTS, liveProtocols } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { linkFakeProvider, pairPhone, useBootedServer, verifiedPublicUrl } from './support/booted';
-import { call, openLive } from './support/server';
+import { call, changedColumns, openLive } from './support/server';
 
 const suite = useBootedServer({ linked: false });
 
@@ -247,8 +247,8 @@ describe('roles and personal data', () => {
       path: '/api/layouts/camera-prefs',
       body: { layout: { phone: true } },
     });
-    expect(await live.next((message) => message.type === 'change')).toMatchObject({
-      record: { layout: { phone: true } },
+    expect(changedColumns(await live.next((message) => message.type === 'change'))).toMatchObject({
+      layout: { phone: true },
     });
     expect(
       (

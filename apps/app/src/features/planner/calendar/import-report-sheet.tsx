@@ -64,9 +64,13 @@ export function ImportReportSheet({ report, onClose }: ImportReportProps): React
       subpage
     >
       {summary === null ? null : (
-        <View className="gap-3 px-4 pb-3">
-          <Text variant="title-3">{summary.headline}</Text>
-          <SegmentBar segments={segments} label="Imported items" legend size="thick" />
+        <View className="gap-3 pb-3">
+          <Text variant="title-3" tone={summary.total === 0 ? 'critical' : 'default'}>
+            {summary.headline}
+          </Text>
+          {summary.total === 0 ? null : (
+            <SegmentBar segments={segments} label="Imported items" legend size="thick" />
+          )}
           <Skipped lines={summary.skipped} />
         </View>
       )}

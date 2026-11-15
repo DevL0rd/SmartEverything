@@ -1,9 +1,10 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type {
-  DESKTOP_DRIVE_READDIR_PLUS,
-  DesktopDriveTuning,
-  DesktopDriveTuningLimits,
+import {
+  DEFAULT_DESKTOP_DRIVE_TUNING,
+  type DESKTOP_DRIVE_READDIR_PLUS,
+  type DesktopDriveTuning,
+  type DesktopDriveTuningLimits,
 } from '@smarteverything/domain';
 import { measureAnchor, type Rect } from '../../../components/anchor';
 import { Badge } from '../../../components/badge';
@@ -15,9 +16,14 @@ import { SwitchTrack } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
+import { useIsPhone } from '../../../design/size-class';
 import { count } from '../../../format/number';
 import { selectionTick } from '../../../platform/haptics';
-import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
+import {
+  TextEditSheet,
+  type TextEditRequest,
+  type TextEditReset,
+} from '../../../settings/text-edit-sheet';
 import {
   entryOf,
   fieldProblemOf,
@@ -39,6 +45,8 @@ const READDIR_OPTIONS: readonly SelectOption<Readdir>[] = [
   { value: 'always', label: 'Always', description: 'Every listing carries file details' },
 ];
 
+const READDIR_PICKER_WIDTH = 320;
+
 export interface TuningRowProps {
   readonly spec: TuningRowSpec;
   readonly icon: TuningRowSpec['icon'];
@@ -50,6 +58,20 @@ export interface TuningRowProps {
   readonly subtitle: string;
   readonly apply: (tuning: DesktopDriveTuning) => void;
   readonly save: (tuning: DesktopDriveTuning) => Promise<unknown>;
+}
+
+export interface ValueLines {
+  readonly subtitle: string;
+  readonly value?: string;
+  readonly caption?: string;
+}
+
+export function valueLinesOf(stacked: boolean, value: string, subtitle: string): ValueLines {
+  return stacked ? { subtitle: value, caption: subtitle } : { subtitle, value };
+}
+
+export function useStackedValue(): boolean {
+  return useIsPhone();
 }
 
 function useInset(): string {
@@ -136,24 +158,28 @@ function ReaddirTuningRow(props: TuningRowProps): ReactNode {
   const ref = useRef<View>(null);
   const opener = useRef<View>(null);
   const [anchor, setAnchor] = useState<Rect | null>(null);
+  const stacked = useStackedValue();
   return (
     <View ref={ref} collapsable={false}>
       <ListRow
         title={spec.title}
         icon={spec.icon}
-        subtitle={props.subtitle}
+        {...valueLinesOf(
+          stacked,
+          valueTextOf(spec.kind, tuning[spec.field], spec.zero),
+          props.subtitle,
+        )}
         wrapSubtitle
-        value={valueTextOf(spec.kind, tuning[spec.field], spec.zero)}
         chevron
         pressRef={opener}
         disabled={props.busy || props.notOnWindows}
         onPress={() => {
           measureAnchor(ref, setAnchor);
         }}
-        trailing={<ResetButton {...props} />}
       />
       <SelectPicker
         label={spec.title}
+        width={READDIR_PICKER_WIDTH}
         options={READDIR_OPTIONS}
         value={tuning.readdirPlus}
         anchor={anchor}
@@ -169,6 +195,16 @@ function ReaddirTuningRow(props: TuningRowProps): ReactNode {
   );
 }
 
+function tuningResetOf({ spec, tuning, notOnWindows, save }: TuningRowProps): TextEditReset | null {
+  if (notOnWindows || tuningIsDefault(tuning, spec.field)) return null;
+  const standard = valueTextOf(spec.kind, DEFAULT_DESKTOP_DRIVE_TUNING[spec.field], spec.zero);
+  return {
+    label: 'Reset',
+    spoken: `Reset ${spec.title.toLowerCase()} to ${standard.toLowerCase()}`,
+    run: () => save(tuningReset(tuning, spec.field)),
+  };
+}
+
 function useTuningRequest(
   props: TuningRowProps,
   opener: TextEditRequest['opener'],
@@ -176,11 +212,13 @@ function useTuningRequest(
   const { spec, tuning, limits, save } = props;
   const empty = spec.kind === 'keep' || spec.kind === 'follow';
   const initial = initialTextOf(spec.kind, tuning[spec.field]);
+  const reset = tuningResetOf(props);
   return {
     id: `drive.sync-mount.advanced.${spec.field}`,
     opener,
     title: spec.title,
-    label: spec.title,
+    label: spec.label,
+    ...(reset === null ? {} : { reset }),
     initial,
     placeholder: empty ? valueTextOf(spec.kind, tuning[spec.field], spec.zero) : initial,
     confirmLabel: 'Save',
@@ -200,21 +238,24 @@ function TextTuningRow(props: TuningRowProps): ReactNode {
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const request = useTuningRequest(props, opener);
+  const stacked = useStackedValue();
   return (
     <>
       <ListRow
         title={spec.title}
         icon={spec.icon}
-        subtitle={props.subtitle}
+        {...valueLinesOf(
+          stacked,
+          valueTextOf(spec.kind, tuning[spec.field], spec.zero),
+          props.subtitle,
+        )}
         wrapSubtitle
-        value={valueTextOf(spec.kind, tuning[spec.field], spec.zero)}
         chevron
         pressRef={opener}
         disabled={props.busy || props.notOnWindows}
         onPress={() => {
           setOpen(true);
         }}
-        trailing={<ResetButton {...props} />}
       />
       <TextEditSheet
         request={open ? request : null}

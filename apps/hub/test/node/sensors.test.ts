@@ -131,6 +131,24 @@ describe('SensorCollector', () => {
     expect(failures).toHaveLength(1);
   });
 
+  it('times each input once and keeps its tier across the periodic rescan', () => {
+    const files = new ScriptedFiles();
+    const collector = new SensorCollector(
+      files,
+      () => undefined,
+      () => inputs(),
+    );
+    collector.read(tick(0));
+    const cpu = files.reads['/h/cpu'] ?? 0;
+    const nvme = files.reads['/h/nvme'] ?? 0;
+    collector.read(tick(60_000));
+    expect(files.reads['/h/cpu']).toBe(cpu + 1);
+    expect(files.reads['/h/nvme']).toBe(nvme + 1);
+    collector.read(tick(61_000));
+    expect(files.reads['/h/cpu']).toBe(cpu + 2);
+    expect(files.reads['/h/nvme']).toBe(nvme + 1);
+  });
+
   it('knows whether the machine has fans', () => {
     expect(
       new SensorCollector(

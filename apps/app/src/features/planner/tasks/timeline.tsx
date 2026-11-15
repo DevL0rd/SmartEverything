@@ -14,6 +14,7 @@ import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { VirtualList } from '../../../components/virtual-list';
 import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { selectionTick } from '../../../platform/haptics';
 import { useMinute } from '../../../store/clock';
@@ -40,9 +41,11 @@ import {
 } from './timeline-model';
 
 const HANDLE = 16;
+const NARROW_DAY = 48;
 
 interface Geometry {
   readonly compact: boolean;
+  readonly touch: boolean;
   readonly width: number;
   readonly window: TimelineWindow;
 }
@@ -101,7 +104,7 @@ function DueHandle({ row, geometry, right, shift }: HandleProps): ReactNode {
         accessibilityLabel={`Due date of ${row.entry.item.title}: ${row.bar.label}`}
         accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
         onAccessibilityAction={onAction}
-        style={[placeAt(right - HANDLE / 2), moved]}
+        style={[placeAt(Math.max(0, Math.min(right - HANDLE / 2, width - HANDLE))), moved]}
         className="absolute bottom-0 top-0 w-4 cursor-ew-resize items-center justify-center"
       >
         <View className="h-3 w-1 rounded-full bg-on-surface-variant" />
@@ -212,6 +215,11 @@ function NowLine({
 
 const NAME_WIDTH = { compact: 'w-28', wide: 'w-56' } as const;
 
+function rowHeightOf(geometry: Geometry): string {
+  if (geometry.touch) return 'h-12';
+  return geometry.compact ? 'h-8' : 'h-9';
+}
+
 interface RowViewProps {
   readonly row: TimelineRow;
   readonly geometry: Geometry;
@@ -225,7 +233,7 @@ const RowView = memo(function RowView({ row, geometry, now }: RowViewProps): Rea
     <View
       className={cn(
         'flex-row border-x border-b border-outline-variant bg-surface-1',
-        geometry.compact ? 'h-8' : 'h-9',
+        rowHeightOf(geometry),
       )}
     >
       <Interactive
@@ -304,7 +312,7 @@ function DayAxis({
               numberOfLines={1}
               {...(day.today ? { className: 'font-medium' } : {})}
             >
-              {day.label}
+              {geometry.width / geometry.window.days < NARROW_DAY ? day.number : day.label}
             </Text>
           </View>
         ))}
@@ -352,7 +360,12 @@ export interface TaskTimelineProps {
   readonly header: ReactElement;
 }
 
-const DAYS = { compact: 7, wide: 14 } as const;
+const DAY_WIDTH = 56;
+const LEAST_DAYS = 7;
+
+function windowDaysOf(width: number): number {
+  return Math.max(LEAST_DAYS, Math.floor(width / DAY_WIDTH));
+}
 
 function keyOf(row: TimelineRow): string {
   return row.key;
@@ -363,9 +376,10 @@ export function TaskTimeline({ entries, today, filter, header }: TaskTimelinePro
   const collections = usePlannerCollections(person);
   const now = useMinute();
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
+  const touch = useIdiom() === 'touch';
   const [width, setWidth] = useState(0);
-  const window = { from: today, days: compact ? DAYS.compact : DAYS.wide };
-  const geometry: Geometry = { compact, width, window };
+  const window = { from: today, days: windowDaysOf(width) };
+  const geometry: Geometry = { compact, touch, width, window };
   const rows = timelineRowsOf({ entries, filter, collections, today, now, window });
   const renderItem = (row: TimelineRow): ReactElement => (
     <RowView row={row} geometry={geometry} now={now} />

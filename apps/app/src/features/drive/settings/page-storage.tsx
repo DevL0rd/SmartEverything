@@ -19,8 +19,10 @@ import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import type { Tone } from '../../../components/tone';
 import { bytes } from '../../../format/number';
+import { sentenceCase } from '../../../format/text';
 import { moment } from '../../../format/time';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
+import { useIsPhone } from '../../../design/size-class';
 import { useMinute } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
 import { useActiveProfile, useProfiles } from '../../../store/people';
@@ -31,7 +33,7 @@ import { useDriveBackupStatus, useDriveHealth, useDriveQuotas, useDriveUsage } f
 import { SCRUB_EXPLAINER, ScrubProgress, damagedText } from '../storage/scrub-progress';
 import { gigabytesInitialOf, gigabytesOf, gigabytesProblemOf } from './gigabytes';
 import { DriveSettingsSection } from './page';
-import { SettingsQueryState } from './page-indexing';
+import { SettingsQueryState } from './settings-query-state';
 import { NUMBER_LENGTH } from './page-sharing';
 import { ScrubScheduleRow } from './page-storage-schedule';
 
@@ -120,19 +122,28 @@ export function scrubLineOf(scrub: DriveScrubState, now: number): StatusLine {
   };
 }
 
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
 export function backupLineOf(status: DriveBackupStatus, now: number): StatusLine {
   const last = status.last;
   if (last === null) return { text: 'No backup has reported in yet', tone: 'variant' };
   const when = moment(last.at, now);
   if (last.ok) {
     return {
-      text: `Last ${when} · ${bytes(last.bytes)} · from ${last.reporter}`,
+      text: `${sentenceCase(when)} · ${bytes(last.bytes)} · from ${last.reporter}`,
       tone: 'positive',
     };
   }
   const good =
-    status.lastOkAt === null ? 'no good backup yet' : `last good ${moment(status.lastOkAt, now)}`;
-  return { text: `Last run ${when} failed · from ${last.reporter} · ${good}`, tone: 'critical' };
+    status.lastOkAt === null
+      ? 'no good backup yet'
+      : `last good ${lowerFirst(moment(status.lastOkAt, now))}`;
+  return {
+    text: `Failed ${lowerFirst(when)} · from ${last.reporter} · ${good}`,
+    tone: 'critical',
+  };
 }
 
 export type QuotaTarget = Pick<QuotaLine, 'profileId' | 'name' | 'quota'>;
@@ -216,13 +227,22 @@ function QuotaList({ owner }: { readonly owner: boolean }): ReactNode {
   const everyone = useProfiles();
   const me = useActiveProfile();
   const people = owner ? everyone : me === null ? [] : [me];
+  const title = owner ? 'Space per person' : 'Your space';
   if (usage.data === undefined) {
-    return <SettingsQueryState query={usage} event="drive_settings.usage_refetch_failed" />;
+    return (
+      <SettingsQueryState
+        query={usage}
+        event="drive_settings.usage_refetch_failed"
+        rows={Math.max(1, people.length)}
+        failed="Space use could not be read"
+        title={title}
+      />
+    );
   }
   const limits = quotas.data ?? [];
   const editable = owner && quotas.data !== undefined;
   return (
-    <List inset title={owner ? 'Space per person' : 'Your space'}>
+    <List inset title={title}>
       {people.map((person) => (
         <QuotaRow
           key={person.id}
@@ -270,6 +290,8 @@ function ScrubRow({
 }): ReactNode {
   const scrub = health.scrub;
   const line = scrubLineOf(scrub, useMinute());
+  const stacked = useIsPhone();
+  const action = <ScrubTrailing scrub={scrub} owner={owner} />;
   return (
     <View>
       <ListRow
@@ -279,8 +301,9 @@ function ScrubRow({
         subtitle={line.text}
         subtitleTone={line.tone}
         wrapSubtitle
-        trailing={<ScrubTrailing scrub={scrub} owner={owner} />}
+        {...(stacked ? {} : { trailing: action })}
       />
+      {stacked && owner ? <View className="flex-row pb-3 pl-18 pr-4">{action}</View> : null}
       {scrub.state === 'idle' ? null : (
         <View className="px-4 pb-3">
           <ScrubProgress scrub={scrub} />
@@ -316,14 +339,24 @@ function ReportRow(): ReactNode {
   );
 }
 
+const CHECKS_TITLE = 'Checks and backups';
+
 function ChecksList({ owner }: { readonly owner: boolean }): ReactNode {
   const health = useDriveHealth();
   const backup = useDriveBackupStatus(owner);
   if (health.data === undefined) {
-    return <SettingsQueryState query={health} event="drive_settings.health_refetch_failed" />;
+    return (
+      <SettingsQueryState
+        query={health}
+        event="drive_settings.health_refetch_failed"
+        rows={owner ? 4 : 2}
+        failed="Checks could not be read"
+        title={CHECKS_TITLE}
+      />
+    );
   }
   return (
-    <List inset title="Checks and backups">
+    <List inset title={CHECKS_TITLE}>
       <ScrubRow health={health.data} owner={owner} />
       {owner ? <ScrubScheduleRow /> : null}
       {backup.data === undefined ? null : <BackupRow status={backup.data} />}

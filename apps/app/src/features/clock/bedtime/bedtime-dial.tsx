@@ -294,7 +294,8 @@ export function BedtimeDial(props: BedtimeDialProps): ReactNode {
           accessible
           accessibilityRole="image"
           accessibilityLabel={`${dialSpokenOf(shown)}. Drag the moon or the sun to change it.`}
-          className="cursor-pointer"
+          accessibilityState={{ disabled: props.disabled }}
+          className={props.disabled ? 'opacity-40' : 'cursor-pointer'}
         >
           {face}
         </View>

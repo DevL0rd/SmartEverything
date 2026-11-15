@@ -27,7 +27,7 @@ import { archiveSubtitle, shareOf, spanText, yearsOf, type YearCount } from './a
 import { openMetaEdit } from './meta/meta-request';
 import { useMonthFeed, type OrganiseFeed } from './month-feed';
 import { ARCHIVE_SOURCE } from './queries';
-import { PickBar, PickHead, PickRow, type PickAction, type PickBarProps } from './selection-bar';
+import { pickSlotsOf, type PickAction, type PickBarProps } from './selection-bar';
 import { viewerFromParams } from '../viewer/params';
 
 const ARCHIVE_NOTE = 'Archived items stay in albums, search and People and pets.';
@@ -41,12 +41,15 @@ function YearBars({ years }: { readonly years: readonly YearCount[] }): ReactNod
     <View
       accessible
       accessibilityLabel={years.map((year) => `${year.year}: ${count(year.count)}`).join(', ')}
-      className="min-w-40 flex-1 flex-row items-end gap-1"
+      className="ml-auto min-w-40 max-w-80 flex-1 flex-row items-end gap-1"
     >
       {years.map((year) => {
         const bar = barOf(year.count, years);
         return (
           <View key={year.year} className="min-w-0 flex-1 items-center gap-1">
+            <Text variant="caption" className="tabular-nums" align="center" numberOfLines={1}>
+              {count(year.count)}
+            </Text>
             <View className="h-14 w-full max-w-12 justify-end overflow-hidden rounded-xs bg-surface-2">
               <View className="rounded-xs bg-viz-1" style={bar} />
             </View>
@@ -68,11 +71,9 @@ function ArchiveCard({ feed }: { readonly feed: OrganiseFeed }): ReactNode {
         <View className="flex-row items-center gap-3">
           <IconWell icon="archive" colour="viz-1" />
           <View className="gap-0.5">
-            <Text variant="title-2" className="tabular-nums">
-              {count(feed.total)}
-            </Text>
+            <Text variant="title-3">{spanText(years) ?? 'Archived'}</Text>
             <Text variant="footnote" tone="variant">
-              {spanText(years) ?? 'Archived'}
+              Archived per year
             </Text>
           </View>
         </View>
@@ -148,7 +149,7 @@ function pickActions(
     {
       id: 'meta',
       label: 'Edit date and location',
-      short: 'Date',
+      short: 'Date & place',
       icon: 'calendar',
       look: 'plain',
       onPress: (): void => {
@@ -168,8 +169,25 @@ function pickActions(
   ];
 }
 
-function selectAction(feed: OrganiseFeed, begin: () => void): readonly ShellAction[] {
-  return feed.tiles.length === 0 ? [] : [{ icon: 'circleCheck', label: 'Select', onPress: begin }];
+function selectAction(
+  feed: OrganiseFeed,
+  live: boolean,
+  begin: () => void,
+): readonly ShellAction[] {
+  return !live || feed.tiles.length === 0
+    ? []
+    : [{ icon: 'circleCheck', label: 'Select', onPress: begin }];
+}
+
+function OfflineBanner(): ReactNode {
+  return (
+    <Banner
+      tone="info"
+      title="Offline · showing the last snapshot"
+      body="Unarchiving and moving need your home hub."
+      wrapBody
+    />
+  );
 }
 
 export function ArchiveScreen(): ReactNode {
@@ -181,11 +199,14 @@ export function ArchiveScreen(): ReactNode {
   const ids = [...controls.selection.ids];
   const bar: PickBarProps = {
     picked: ids.length,
-    total: feed.tiles.length,
+    total: feed.total,
     disabled: !live || actions.busy,
     actions: pickActions(ids, actions, controls.clear),
     onClear: controls.clear,
-    onAll: controls.all,
+    onAll: (): void => {
+      feed.loadAll();
+      controls.all();
+    },
   };
   const active = controls.selection.active;
   const subtitle = archiveSubtitle(feed.state === 'loading' ? null : feed.total);
@@ -194,21 +215,9 @@ export function ArchiveScreen(): ReactNode {
       active="archive"
       {...(subtitle === null ? {} : { subtitle })}
       scroll={false}
-      actions={active ? [] : selectAction(feed, controls.begin)}
-      selection={active ? compact ? <PickHead {...bar} /> : <PickBar {...bar} /> : null}
-      footer={active && compact ? <PickRow {...bar} /> : null}
-      {...(live
-        ? {}
-        : {
-            banner: (
-              <Banner
-                tone="warning"
-                title="The hub is offline"
-                body="Archived photos come back when the hub answers."
-                wrapBody
-              />
-            ),
-          })}
+      actions={active ? [] : selectAction(feed, live, controls.begin)}
+      {...pickSlotsOf(bar, active, compact)}
+      {...(live ? {} : { banner: <OfflineBanner /> })}
     >
       {feed.sources}
       <Body feed={feed} controls={controls} />

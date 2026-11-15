@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { ScrollView } from 'react-native';
 import { z } from 'zod';
 import { router } from 'expo-router';
 import { href } from '../../app-shell/hrefs';
@@ -19,9 +18,7 @@ function Scope({ children }: { readonly children: ReactNode }): ReactNode {
   const offline = useHubOffline();
   return (
     <PlannerFrameContext value={{ person: null, offline, focusQuickAdd: openPlanner }}>
-      <ScrollView className="flex-1" nestedScrollEnabled>
-        {children}
-      </ScrollView>
+      {children}
     </PlannerFrameContext>
   );
 }
@@ -52,7 +49,8 @@ export const PLANNER_WIDGETS: readonly WidgetDefinition[] = [
     type: 'planner-day',
     title: 'Planner day',
     icon: 'calendar',
-    ...SIZE,
+    sizes: allSizes('XL'),
+    defaultSize: 'XL',
     render: ({ options }) => (
       <Scope>
         <PlannerDayWidget {...dayOf(options)} />

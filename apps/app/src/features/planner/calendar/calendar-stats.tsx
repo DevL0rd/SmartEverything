@@ -1,7 +1,7 @@
 import type { PlannerOccurrenceView, PlannerRange, PlannerSleep } from '@smarteverything/domain';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useEffect, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { readPlannerSleep } from '../../../api/planner';
 import { SegmentBar, type BarSegment } from '../../../components/charts/segment-bar';
 import { Button } from '../../../components/button';
@@ -25,13 +25,9 @@ import {
   type PlannerPerson,
 } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { LIST_DOT } from '../item/composer-tokens';
-import type { CalendarShowKey } from '../settings/options';
 import type { Prefs } from '../settings/preferences';
 import { changedTimes, type BlockChange, type MinuteSpan } from './grid-gestures';
-import { useCalendarLookEdit } from './calendar-edit';
 import { useCalendarLooks } from './calendar-looks';
-import { ShowChips } from './show-chips';
 import {
   bookedOf,
   busyOf,
@@ -68,36 +64,11 @@ function segmentsOf(booked: readonly Booked[]): readonly BarSegment[] {
     }));
 }
 
-function chipValue(entry: Booked): string {
-  return entry.minutes > 0 && entry.collection.visible
-    ? `${entry.collection.name} ${hoursText(entry.minutes)}`
-    : entry.collection.name;
-}
-
-function CalendarChips({ booked }: { readonly booked: readonly Booked[] }): ReactNode {
-  const edit = useCalendarLookEdit();
-  return booked.map((entry) => (
-    <FilterChip
-      key={entry.collection.id}
-      label="Calendar"
-      value={chipValue(entry)}
-      swatchClassName={LIST_DOT[entry.collection.colour]}
-      active={entry.collection.visible}
-      onPress={() => {
-        edit(entry.collection.id, { visible: !entry.collection.visible });
-      }}
-    />
-  ));
-}
-
-const STATS_OVERLAYS: readonly CalendarShowKey[] = ['show_tasks', 'show_sleep'];
-
 export interface TimeStatsProps {
   readonly days: readonly string[];
   readonly occurrences: readonly PlannerOccurrenceView[];
   readonly calendars: readonly string[] | null;
   readonly previous: string;
-  readonly prefs: Prefs;
 }
 
 function usePreviousMinutes(props: TimeStatsProps): number | null {
@@ -128,34 +99,25 @@ export function TimeStats(props: TimeStatsProps): ReactNode {
     collections: looks.collections,
     timeZone,
   });
-  const before = usePreviousMinutes(props);
+  const change = loadLineOf(totalOf(booked), usePreviousMinutes(props), props.previous);
   return (
-    <View className="flex-row flex-wrap items-center gap-x-4 gap-y-2">
-      <View className="min-w-64 flex-1 gap-1.5">
-        <View className="flex-row flex-wrap justify-between gap-x-3">
-          <Text variant="caption" tone="variant">
-            Hours booked by calendar
-          </Text>
+    <View className="gap-1.5">
+      <View className="flex-row flex-wrap justify-between gap-x-3">
+        <Text variant="caption" tone="variant">
+          Hours booked by calendar
+        </Text>
+        {change === null ? null : (
           <Text variant="caption" tone="variant" className="tabular">
-            {loadLineOf(totalOf(booked), before, props.previous)}
+            {change}
           </Text>
-        </View>
-        <SegmentBar segments={segmentsOf(booked)} label="Hours booked by calendar" />
+        )}
       </View>
-      <View className="w-full flex-row items-center gap-2">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="min-w-0 flex-1"
-          contentContainerClassName="items-center gap-1"
-        >
-          <CalendarChips booked={booked} />
-        </ScrollView>
-        <View aria-hidden className="h-6 w-px bg-outline-variant" />
-        <View className="flex-row items-center gap-1">
-          <ShowChips prefs={props.prefs} keys={STATS_OVERLAYS} />
-        </View>
-      </View>
+      <SegmentBar
+        segments={segmentsOf(booked)}
+        label="Hours booked by calendar"
+        legend
+        format={hoursText}
+      />
     </View>
   );
 }
@@ -366,7 +328,6 @@ export function TimeContent({
         occurrences={input.range.occurrences}
         calendars={input.calendars}
         previous={previous}
-        prefs={input.prefs}
       />
       <View className="min-h-0 flex-1 flex-row gap-4">
         <TimeGridOf input={input} />

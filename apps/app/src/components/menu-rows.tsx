@@ -29,6 +29,7 @@ export interface MenuItem {
   readonly shortcut?: string;
   readonly selected?: boolean;
   readonly group?: string;
+  readonly section?: string;
 }
 
 type StandardMenuLayout = 'touch-popover' | 'popover';
@@ -60,9 +61,10 @@ function groupedEntries(items: readonly MenuItem[]): MenuEntry[] {
   const entries: MenuEntry[] = [];
   items.forEach((item, index) => {
     const before = items[index - 1];
-    const changed = before !== undefined && before.group !== item.group;
+    const regrouped = before !== undefined && before.group !== item.group;
+    const changed = regrouped || (before !== undefined && before.section !== item.section);
     if (changed) entries.push({ kind: 'divider', key: `group-divider-${String(index)}` });
-    if (item.group !== undefined && (before === undefined || changed)) {
+    if (item.group !== undefined && (before === undefined || regrouped)) {
       entries.push({ kind: 'heading', key: `group-${item.group}`, label: item.group });
     }
     entries.push({ kind: 'item', item });
@@ -277,7 +279,10 @@ export function MenuRows({
           variant="caption"
           tone="variant"
           role="heading"
-          className="mx-1 px-3 pb-1 pt-2"
+          className={cn(
+            'pb-1 pt-2',
+            layout === 'compact' || layout === 'compact-pointer' ? '' : 'mx-1 px-3',
+          )}
         >
           {entry.label}
         </Text>

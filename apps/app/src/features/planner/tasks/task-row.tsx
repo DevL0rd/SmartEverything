@@ -1,23 +1,18 @@
-import { background } from '@smarteverything/logging';
 import { memo, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { View, type ViewStyle } from 'react-native';
 import type { PlannerItemRow } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { SwipeRow, type SwipeAction } from '../../../components/swipe-row';
 import { Text } from '../../../components/text';
-import { notify } from '../../../components/toast-store';
-import { cn } from '../../../design/cn';
-import { selectionTick } from '../../../platform/haptics';
 import { useMinuteOf } from '../../../store/clock';
 import { useRow } from '../../../store/selectors';
-import { usePlannerWrites } from '../data';
-import { usePlannerFrame } from '../frame/frame-context';
 import { useItemPress } from '../item/item-menu-host';
-import { PRIORITY_RING, PriorityFlag, priorityOf } from './priority-flag';
+import { PriorityFlag, priorityOf } from './priority-flag';
 import { nestTargetOf } from '../item/steps-model';
 import { AssigneeMark } from './assignee-mark';
+import { TaskCheck, useTaskActions } from './task-check';
 import { dueLabelOf, isOverdue, stepsLabelOf, type TaskEntry } from './task-grouping';
 import type { RowEdge } from './task-rows';
 
@@ -37,38 +32,19 @@ interface ShownTask {
   readonly above: PlannerItemRow | null;
 }
 
-export const TASK_FRAME: Readonly<Record<RowEdge, string>> = {
-  only: 'rounded-lg',
-  first: 'rounded-t-lg border-b-0',
-  middle: 'border-y-0',
-  last: 'rounded-b-lg border-t-0',
+export interface TaskFrame {
+  readonly className: string;
+  readonly style: ViewStyle;
+}
+
+const FRAME_BASE = 'border-hairline border-outline-variant bg-surface-1';
+
+export const TASK_FRAME: Readonly<Record<RowEdge, TaskFrame>> = {
+  only: { className: `${FRAME_BASE} rounded-lg`, style: {} },
+  first: { className: `${FRAME_BASE} rounded-t-lg`, style: { borderBottomWidth: 0 } },
+  middle: { className: FRAME_BASE, style: { borderTopWidth: 0, borderBottomWidth: 0 } },
+  last: { className: `${FRAME_BASE} rounded-b-lg`, style: { borderTopWidth: 0 } },
 };
-
-interface TaskActions {
-  readonly done: (() => void) | null;
-  readonly skip: (() => void) | null;
-}
-
-function useTaskActions(entry: TaskEntry): TaskActions {
-  const { person, offline } = usePlannerFrame();
-  const writes = usePlannerWrites(person);
-  const key = entry.occurrenceKey;
-  if (offline || !entry.open || key === null) return { done: null, skip: null };
-  const run = (failure: string, work: () => Promise<unknown>) => (): void => {
-    background(
-      work().catch((error: unknown) => {
-        notify({ message: failure, error, tone: 'critical' });
-      }),
-      'planner.task_row_failed',
-    );
-  };
-  return {
-    done: run('Couldn’t mark that done', () =>
-      writes.completeItem(entry.item.id, { occurrence_key: key }),
-    ),
-    skip: run('Couldn’t skip that', () => writes.skipItem(entry.item.id, key)),
-  };
-}
 
 function swipeOf(
   label: string,
@@ -77,45 +53,6 @@ function swipeOf(
   onCommit: (() => void) | null,
 ): SwipeAction | undefined {
   return onCommit === null ? undefined : { label, icon, tone, onCommit };
-}
-
-function TaskCheck({
-  entry,
-  onDone,
-}: {
-  readonly entry: TaskEntry;
-  readonly onDone: (() => void) | null;
-}): ReactNode {
-  const priority = priorityOf(entry.item.priority);
-  return (
-    <Interactive
-      role="checkbox"
-      checked={entry.done}
-      label={`Done: ${entry.item.title}`}
-      disabled={onDone === null}
-      onPress={() => {
-        selectionTick();
-        onDone?.();
-      }}
-      className={cn(
-        '-m-2 size-11 items-center justify-center rounded-md',
-        entry.done && 'opacity-100',
-      )}
-      layerClassName="rounded-md"
-      focusInset
-    >
-      <View
-        className={cn(
-          'size-5 items-center justify-center rounded-xs border-2',
-          entry.done && 'border-primary bg-primary',
-          !entry.done &&
-            (priority === null ? 'border-on-surface-variant' : PRIORITY_RING[priority]),
-        )}
-      >
-        {entry.done ? <Icon name="check" size={16} tone="onPrimary" /> : null}
-      </View>
-    </Interactive>
-  );
 }
 
 function DeviceName({ entry }: { readonly entry: TaskEntry }): ReactNode {
@@ -216,12 +153,12 @@ function Row({ entry, edge, today, above, expanded, onExpand }: TaskRowProps): R
       leading={swipeOf('Done', 'check', 'primary', actions.done)}
       trailing={swipeOf('Skip', 'skipForward', 'neutral', actions.skip)}
     >
-      <View className={cn('border-hairline border-outline-variant bg-surface-1', TASK_FRAME[edge])}>
+      <View className={TASK_FRAME[edge].className} style={TASK_FRAME[edge].style}>
         {edge === 'middle' || edge === 'last' ? (
-          <View className="mx-3 h-hairline bg-outline-variant" />
+          <View className="absolute inset-x-3 top-0 h-hairline bg-outline-variant" />
         ) : null}
         <View className="min-h-12 flex-row items-center gap-3 px-3 py-1.5">
-          <TaskCheck entry={entry} onDone={actions.done} />
+          <TaskCheck entry={entry} actions={actions} />
           <TaskBody entry={entry} today={today} overdue={overdue} above={above} />
           {entry.item.rrule === null ? null : (
             <View accessible accessibilityLabel="Repeats">

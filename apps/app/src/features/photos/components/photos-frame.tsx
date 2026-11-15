@@ -20,7 +20,7 @@ import type { PrimaryActionProps } from '../../../components/primary-action';
 import { SummaryWell } from '../../../components/summary-well';
 import { Text } from '../../../components/text';
 import { isNative } from '../../../design/platform';
-import { useAreaWidth } from '../../../design/size-class';
+import { useAreaWidth, useSizeClass } from '../../../design/size-class';
 import { bytes, count } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { useLibraryRefresh } from '../../drive';
@@ -382,11 +382,12 @@ function restOf(frame: FrameRest): Partial<StandardShellProps> {
 export function PhotosFrame({ active, title, ...frame }: PhotosFrameProps): ReactNode {
   const { counts, compact, summary } = usePhotosFrameData();
   const refresh = useLibraryRefresh(null);
+  const desktop = useSizeClass().header === 'desktop';
   const switcher = !compact || frame.breadcrumbs === undefined;
   return (
     <PageShell
       title={title ?? photosTitleOf(active)}
-      back={!switcher}
+      back={frame.breadcrumbs !== undefined && !desktop}
       settings={frame.settings ?? mainPageSettings('photos')}
       actions={frame.actions ?? NO_ACTIONS}
       {...(switcher

@@ -1,12 +1,14 @@
 import type { PlannerImportResult } from '@smarteverything/domain';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { ColourSwatches } from '../../../components/colour-swatches';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { ListRow } from '../../../components/list-row';
 import { SelectRow } from '../../../components/rows';
+import { useSheetReveal } from '../../../components/sheet-body';
 import { notify } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { useMinuteOf } from '../../../store/clock';
@@ -17,12 +19,12 @@ import { COLOUR_OPTIONS, NONE, beforeText, reminderOptions } from '../settings/o
 import { useCalendarActions } from './calendar-actions';
 import { mayChangeLook, useCalendarEdit, useCalendarLookEdit } from './calendar-edit';
 import { canImport, canManage, canShare, sourceText, type ViewerCalendar } from './calendars-model';
-import { feedStatusOf, refreshOptionsOf, type FeedStatus } from './feeds-model';
+import { feedFailureOf, feedStatusOf, refreshOptionsOf, type FeedStatus } from './feeds-model';
 import { PublishRow } from './publish-row';
 
-export function remindersText(calendar: ViewerCalendar): string {
+function remindersText(calendar: ViewerCalendar): string | null {
   const reminders = calendar.row.default_reminders;
-  if (reminders.length === 0) return 'None';
+  if (reminders.length === 0) return null;
   return reminders.map((reminder) => beforeText(reminder.minutes_before)).join(', ');
 }
 
@@ -87,6 +89,7 @@ function LookFields({ calendar }: { readonly calendar: ViewerCalendar }): ReactN
         <SelectRow
           title="Default reminder"
           icon="bell"
+          compact
           options={reminderOptions(reminderValue(calendar))}
           value={reminderValue(calendar)}
           onChange={(value) => {
@@ -108,6 +111,7 @@ function RefreshField({ calendar }: { readonly calendar: ViewerCalendar }): Reac
     <SelectRow
       title="Check for changes"
       icon="refresh"
+      compact
       options={refreshOptionsOf(feed.refresh_minutes)}
       value={String(feed.refresh_minutes)}
       onChange={(value) => {
@@ -164,7 +168,12 @@ function ImportButton({
   );
 }
 
-function MainActions({ calendar, onShare, onImported }: ActionProps): ReactNode {
+function MainActions({
+  calendar,
+  onShare,
+  onImported,
+  failed,
+}: ActionProps & { readonly failed: boolean }): ReactNode {
   const actions = useCalendarActions();
   const ics = calendar.row.feed?.kind === 'ics';
   return (
@@ -179,7 +188,7 @@ function MainActions({ calendar, onShare, onImported }: ActionProps): ReactNode 
           }}
         />
       ) : null}
-      {ics && canManage(calendar) ? (
+      {ics && canManage(calendar) && !failed ? (
         <Button
           label="Refresh now"
           icon="refresh"
@@ -229,14 +238,47 @@ function EndAction({ calendar }: { readonly calendar: ViewerCalendar }): ReactNo
   );
 }
 
-function CalendarDetail(props: ActionProps): ReactNode {
-  const { calendar } = props;
-  const publishes = canManage(calendar) && calendar.row.feed?.kind !== 'ics';
+function FailureNotice({ calendar }: { readonly calendar: ViewerCalendar }): ReactNode {
+  const actions = useCalendarActions();
+  const now = useMinuteOf((minute) => minute);
+  const feed = calendar.row.feed;
+  const failure = feed === null ? null : feedFailureOf(feed, now);
+  if (failure === null) return null;
   return (
-    <View className="mx-4 mb-2 gap-3 rounded-md bg-surface-2 px-3 py-3">
+    <Banner
+      tone="critical"
+      title={failure.title}
+      body={failure.reason}
+      wrapBody
+      {...(canManage(calendar)
+        ? {
+            action: {
+              label: 'Refresh now',
+              icon: 'refresh',
+              variant: 'tonal',
+              onPress: (): void => {
+                actions.refresh(calendar);
+              },
+            },
+          }
+        : {})}
+    />
+  );
+}
+
+function CalendarDetail(props: ActionProps & { readonly onShown: () => void }): ReactNode {
+  const { calendar, onShown, ...actions } = props;
+  const publishes = canManage(calendar) && calendar.row.feed?.kind !== 'ics';
+  const failed = calendar.row.feed?.kind === 'ics' && calendar.row.feed.failure !== null;
+  return (
+    <View
+      onLayout={onShown}
+      className="mb-2 gap-3 rounded-md border-hairline border-outline-variant px-3 py-3"
+    >
+      <FailureNotice calendar={calendar} />
       <LookFields calendar={calendar} />
       <RefreshField calendar={calendar} />
-      <MainActions {...props} />
+      <MainActions calendar={calendar} {...actions} failed={failed} />
       {publishes ? (
         <View className="gap-2 border-t-hairline border-outline-variant pt-3">
           <PublishRow calendar={calendar} />
@@ -257,23 +299,34 @@ export interface CalendarRowProps extends ActionProps {
 export function CalendarRow({ open, onOpen, ...props }: CalendarRowProps): ReactNode {
   const { calendar } = props;
   const status = useFeedStatus(calendar);
+  const reveal = useSheetReveal();
+  const box = useRef<View>(null);
   const subtitle = status?.text ?? sourceText(calendar);
+  const reminders =
+    canManage(calendar) && calendar.row.feed === null ? remindersText(calendar) : null;
   return (
-    <View>
-      <ListRow
-        leading={<ShownMark calendar={calendar} />}
-        title={calendar.row.name}
-        subtitle={subtitle}
-        subtitleTone={status?.tone ?? 'variant'}
-        {...(canManage(calendar) && calendar.row.feed === null
-          ? { value: remindersText(calendar) }
-          : {})}
-        chevron
-        expanded={open}
-        label={`${calendar.row.name}, ${subtitle}`}
-        onPress={onOpen}
-      />
-      {open ? <CalendarDetail {...props} /> : null}
+    <View ref={box} collapsable={false}>
+      <View className="-mx-4">
+        <ListRow
+          leading={<ShownMark calendar={calendar} />}
+          title={calendar.row.name}
+          subtitle={subtitle}
+          subtitleTone={status?.tone ?? 'variant'}
+          {...(reminders === null ? {} : { value: reminders })}
+          chevron
+          expanded={open}
+          label={`${calendar.row.name}, ${subtitle}`}
+          onPress={onOpen}
+        />
+      </View>
+      {open ? (
+        <CalendarDetail
+          {...props}
+          onShown={() => {
+            reveal(box.current);
+          }}
+        />
+      ) : null}
     </View>
   );
 }

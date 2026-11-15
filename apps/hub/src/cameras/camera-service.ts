@@ -98,6 +98,7 @@ function compactTime(iso: string): string {
 
 export class CameraService {
   private readonly streams = new Map<string, string>();
+  private readonly added = new Set<(deviceId: string) => void>();
   private readonly recordEvents = new Map<string, boolean>();
   private syncing: Promise<void> = Promise.resolve();
   private readonly frames: FrameCache;
@@ -163,6 +164,9 @@ export class CameraService {
       await registerStream(this.options.client, device.id, source);
       this.streams.set(device.id, source);
       this.options.log.info('stream.added', { deviceId: device.id });
+      this.added.forEach((listener) => {
+        listener(device.id);
+      });
     } else if (source === null && registered !== undefined) {
       await this.options.client.unpreload(device.id);
       await this.options.client.deleteStream(device.id);
@@ -179,6 +183,13 @@ export class CameraService {
 
   cameraChanged(camera: CameraRow): void {
     this.recordEvents.set(camera.device_id, camera.record_events);
+  }
+
+  onStreamAdded(listener: (deviceId: string) => void): () => void {
+    this.added.add(listener);
+    return () => {
+      this.added.delete(listener);
+    };
   }
 
   hasStream(deviceId: string): boolean {

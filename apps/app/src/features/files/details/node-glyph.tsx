@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { FileGlyph } from '../../../components/files/file-glyph';
 import { FolderBadgeImage, FolderGlyph } from '../../../components/files/folder-glyph';
 import type { FolderGlyphWell } from '../../../components/files/folder-glyph-model';
 import { Icon } from '../../../components/icon';
@@ -27,15 +26,6 @@ export function NodeGlyph({
       />
     );
   }
-  if (node.kind === 'special') {
-    if (well === null) return <Icon name={KIND_ICON.special} size={20} tone="variant" />;
-    return <IconWell icon={KIND_ICON.special} colour="on-surface-variant" size={well} />;
-  }
-  return (
-    <FileGlyph
-      kind={node.kind === 'link' ? 'link' : 'file'}
-      name={node.name}
-      {...(well === null ? {} : { well })}
-    />
-  );
+  if (well === null) return <Icon name={KIND_ICON[node.kind]} size={20} tone="variant" />;
+  return <IconWell icon={KIND_ICON[node.kind]} colour="on-surface-variant" size={well} />;
 }

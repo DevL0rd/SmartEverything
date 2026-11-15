@@ -136,6 +136,14 @@ export function sentenceOf(entry: ActivityEntry, me: string | null): string {
   return `${subjectOf(entry, me)} ${verb} ${entry.itemName}${after}`;
 }
 
+export function itemSentenceOf(entry: ActivityEntry, me: string | null): string {
+  const { verb, after } = VERB[entry.row.op];
+  if (entry.row.via === 'outside') {
+    return `${verb.charAt(0).toUpperCase()}${verb.slice(1)}${after} on the disk`;
+  }
+  return `${subjectOf(entry, me)} ${verb}${after}`;
+}
+
 export function badgeOf(entry: ActivityEntry): string {
   const { via } = entry.row;
   const look = VIA_LOOK[via];

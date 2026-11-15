@@ -107,6 +107,9 @@ export function startWakeName(context: ServerContext, wiring: WakeWiring): WakeL
   wiring.rules.onCamerasChanged(() => {
     listeners.sync();
   });
+  context.hub.onStreamAdded((cameraId) => {
+    listeners.cameraAvailable(cameraId);
+  });
   listeners.start();
   return listeners;
 }

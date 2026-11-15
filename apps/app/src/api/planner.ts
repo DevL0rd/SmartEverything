@@ -163,6 +163,18 @@ export async function skipPlannerItem(
   });
 }
 
+export async function reopenPlannerItem(
+  personId: PersonId,
+  itemId: string,
+  occurrenceKey: string,
+): Promise<void> {
+  await api().call(E.reopenPlannerItem, {
+    params: { itemId },
+    query: person(personId),
+    body: { occurrence_key: occurrenceKey },
+  });
+}
+
 export async function movePlannerItem(
   personId: PersonId,
   itemId: string,

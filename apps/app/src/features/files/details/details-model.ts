@@ -1,3 +1,4 @@
+import type { IconName } from '../../../components/icon';
 import { ValueStore, useValue } from '../../../design/external-store';
 import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
@@ -17,9 +18,15 @@ export const TAB_LABEL: Readonly<Record<BuiltinTab, string>> = {
   info: 'Info',
 };
 
+const TAB_ICON: Readonly<Record<BuiltinTab, IconName>> = {
+  preview: 'eye',
+  info: 'info',
+};
+
 export interface DetailsTabItem {
   readonly key: string;
   readonly label: string;
+  readonly icon: IconName;
 }
 
 type TabAbilities = Pick<FileAbilities, 'details' | 'quickLook'>;
@@ -27,16 +34,16 @@ type TabAbilities = Pick<FileAbilities, 'details' | 'quickLook'>;
 export function tabsOf(
   node: Pick<FileNode, 'kind'>,
   abilities: TabAbilities,
-  sourceTabs: readonly Pick<SourceTabSpec, 'id' | 'label'>[],
+  sourceTabs: readonly Pick<SourceTabSpec, 'id' | 'label' | 'icon'>[],
 ): readonly DetailsTabItem[] {
   if (!abilities.details) return [];
   const preview = node.kind !== 'folder' && abilities.quickLook.includes(node.kind);
   return [
-    ...(preview ? [{ key: 'preview', label: TAB_LABEL.preview }] : []),
-    { key: 'info', label: TAB_LABEL.info },
+    ...(preview ? [{ key: 'preview', label: TAB_LABEL.preview, icon: TAB_ICON.preview }] : []),
+    { key: 'info', label: TAB_LABEL.info, icon: TAB_ICON.info },
     ...sourceTabs
       .filter((tab) => tab.id !== 'preview' && tab.id !== 'info')
-      .map((tab) => ({ key: tab.id, label: tab.label })),
+      .map((tab) => ({ key: tab.id, label: tab.label, icon: tab.icon })),
   ];
 }
 

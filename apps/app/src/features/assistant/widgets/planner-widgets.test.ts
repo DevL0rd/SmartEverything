@@ -2,9 +2,6 @@ import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('react-native', () => ({
-  ScrollView: ({ children }: { readonly children: ReactNode }): ReactNode => children,
-}));
 vi.mock('../../clock', () => ({ useHubOffline: (): boolean => false }));
 vi.mock('../../planner/widgets/planner-cards', () => ({
   PlannerDayWidget: ({ day }: { readonly day?: string }): ReactNode =>
@@ -53,10 +50,11 @@ function render(view: 'day' | 'item' | 'alarm' | 'timer', day?: string): string 
     () => null,
     [],
   );
+  const size = view === 'day' ? 'XL' : 'W';
   expect(widget.wide).toBe(true);
-  expect(widget.definition.sizes.compact).toContain('W');
+  expect(widget.definition.sizes.compact).toContain(size);
   return renderToStaticMarkup(
-    widget.definition.render({ options: widget.options, size: 'W', editing: false, frame: FRAME }),
+    widget.definition.render({ options: widget.options, size, editing: false, frame: FRAME }),
   );
 }
 
@@ -66,6 +64,12 @@ describe('Planner chat widgets', () => {
     for (const view of ['item', 'alarm', 'timer'] as const)
       expect(render(view)).toContain(`${view}:${ID}`);
     expect(render('day')).toContain('day:today');
+  });
+
+  it('gives the day view the tall size so its list fits without scrolling', () => {
+    const day = resolveWidget('planner', { kind: 'planner', view: 'day' }, () => null, []);
+    expect(day.definition.defaultSize).toBe('XL');
+    for (const sizes of Object.values(day.definition.sizes)) expect(sizes).toEqual(['XL']);
   });
 
   it('rejects missing entity ids before placing a widget in the lane', () => {

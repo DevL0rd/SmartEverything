@@ -269,8 +269,14 @@ export {
   ROW_CHANGE,
   ROW_OPERATIONS,
   TABLE_ROWS,
+  LIVE_FRAME,
+  LIVE_WIRE_CHANGE,
+  LIVE_WIRE_MESSAGE,
   splitLiveTables,
 } from './live';
+export { LIVE_ROW_KEYS, liveColumnsOf } from './live-frames';
+export { LiveFrameError, liveFrameOf, mergedColumns, type LiveFrameOut } from './live-diff';
+export { DRIVE_NOTICE_TYPES } from './live-drive';
 export type {
   LiveChange,
   LiveClientMessage,
@@ -280,6 +286,9 @@ export type {
   CommittedNotice,
   LiveServerMessage,
   LiveStream,
+  LiveFrame,
+  LiveWireChange,
+  LiveWireMessage,
   PushCommandNotice,
   LiveTable,
   RowChange,

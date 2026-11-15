@@ -79,17 +79,28 @@ export function feedStatusOf(
   }
   const every = `every ${refreshText(feed.refresh_minutes)}`;
   if (feed.failure !== null) {
-    return {
-      text: `Refresh failed ${relative(feed.failure.at, now)}: ${feed.failure.reason}`,
-      tone: 'critical',
-    };
+    return { text: `Refresh failed ${relative(feed.failure.at, now)}`, tone: 'critical' };
   }
   if (feed.fetched_at === null) return { text: `Not fetched yet · ${every}`, tone: 'variant' };
   return { text: `Refreshed ${relative(feed.fetched_at, now)} · ${every}`, tone: 'variant' };
 }
 
+export interface FeedFailure {
+  readonly title: string;
+  readonly reason: string;
+}
+
+export function feedFailureOf(feed: PlannerFeed, now: number): FeedFailure | null {
+  if (feed.kind !== 'ics' || feed.failure === null) return null;
+  return {
+    title: `Last refresh failed ${relative(feed.failure.at, now)}`,
+    reason: feed.failure.reason,
+  };
+}
+
 export interface ImportReport {
   readonly headline: string;
+  readonly total: number;
   readonly counts: readonly {
     readonly key: 'added' | 'updated' | 'unchanged';
     readonly label: string;
@@ -98,11 +109,18 @@ export interface ImportReport {
   readonly skipped: readonly string[];
 }
 
+function importHeadlineOf(imported: number, unchanged: number): string {
+  if (imported === 0 && unchanged === 0) return 'Nothing in this file could be imported';
+  if (unchanged === 0) return `${plural(imported, 'item')} imported`;
+  if (imported === 0) return `${plural(unchanged, 'item')} already up to date`;
+  return `${String(imported)} imported · ${String(unchanged)} already up to date`;
+}
+
 export function importReportOf(result: PlannerImportResult): ImportReport {
   const total = result.added + result.updated + result.unchanged;
   return {
-    headline:
-      total === 0 ? 'Nothing in this file could be imported' : `${plural(total, 'item')} imported`,
+    headline: importHeadlineOf(result.added + result.updated, result.unchanged),
+    total,
     counts: [
       { key: 'added', label: 'Added', count: result.added },
       { key: 'updated', label: 'Updated', count: result.updated },

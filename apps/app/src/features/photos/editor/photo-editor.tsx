@@ -22,7 +22,7 @@ import type { Size } from './geometry';
 import { useEraserKey, type PatchImages } from './queries';
 import { cropped } from './recipe-ops';
 import { EDITOR_TOOLS, TOOL_LOOK, type EditorTool } from './tools';
-import { TopBar } from './top-bar';
+import { EditorActions, EditorShell } from './top-bar';
 import { useLeaveHandler, usePhotoEditor, type PhotoEditor } from './use-photo-editor';
 
 export interface PhotoEditorProps {
@@ -208,6 +208,30 @@ function Panel(props: {
   );
 }
 
+function Actions({
+  editor,
+  canSaveVersion,
+}: {
+  readonly editor: PhotoEditor;
+  readonly canSaveVersion: boolean;
+}): ReactNode {
+  return (
+    <EditorActions
+      canUndo={editor.canUndo}
+      canRedo={editor.canRedo}
+      dirty={editor.dirty}
+      saving={editor.saving}
+      busy={editor.saving || editor.erasing}
+      canSaveVersion={canSaveVersion}
+      compare={editor.compare}
+      onUndo={editor.undo}
+      onRedo={editor.redo}
+      onCompare={editor.setCompare}
+      onSave={editor.save}
+    />
+  );
+}
+
 export function PhotoEditorView(props: PhotoEditorProps): ReactNode {
   const editor = usePhotoEditor(props.edit, props.patchImages);
   const phone = useIsPhone();
@@ -235,26 +259,17 @@ export function PhotoEditorView(props: PhotoEditorProps): ReactNode {
   );
   return (
     <View className="flex-1 bg-black">
-      <TopBar
+      <EditorShell
         title={props.item.name}
-        canUndo={editor.canUndo}
-        canRedo={editor.canRedo}
-        dirty={editor.dirty}
-        saving={editor.saving}
-        busy={editor.saving || editor.erasing}
-        canSaveVersion={props.edit.canSaveVersion}
-        compare={editor.compare}
         onCancel={editor.leave}
-        onUndo={editor.undo}
-        onRedo={editor.redo}
-        onCompare={editor.setCompare}
-        onSave={editor.save}
-      />
-      <CopyOnly reason={props.edit.copyOnlyReason} />
-      <View className={cn('min-h-0 flex-1', phone ? '' : 'flex-row')}>
-        {stage}
-        <Panel editor={editor} local={local} setLocal={setLocal} uri={props.uri} side={!phone} />
-      </View>
+        trailing={<Actions editor={editor} canSaveVersion={props.edit.canSaveVersion} />}
+      >
+        <CopyOnly reason={props.edit.copyOnlyReason} />
+        <View className={cn('min-h-0 flex-1', phone ? '' : 'flex-row')}>
+          {stage}
+          <Panel editor={editor} local={local} setLocal={setLocal} uri={props.uri} side={!phone} />
+        </View>
+      </EditorShell>
     </View>
   );
 }

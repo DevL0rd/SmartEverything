@@ -1,7 +1,8 @@
 import type { PlannerAlarmRow, PlannerDay, PlannerOccurrenceView } from '@smarteverything/domain';
 import type { FrameClass } from '../../../components/widget-board';
 import { TYPE_SCALE, type Idiom } from '../../../design/tokens';
-import { clock24 } from '../../../format/time';
+import { zonedDateFormat } from '../../../format/locale';
+import { clock24, daysBetween, localDayKey } from '../../../format/time';
 import { countdownOf, nextRingOf, type NextRing } from '../clock/alarm-text';
 import { anchorOf, riverTimeOf } from '../today/river-model';
 
@@ -9,10 +10,17 @@ export const LINE_GAP = 4;
 export const SECTION_GAP = 12;
 export const SPLIT_GAP = 16;
 export const CHIP_HEIGHT = 32;
-export const DIAL_SIZE = 56;
+export const DIAL_SIZE = 72;
 export const DIAL_GAP = 12;
+export const STRIP_HEIGHT = 58;
+export const NARROW_SIDE = 200;
 const DIVIDER = 1;
 const DIAL_CAPTION_GAP = 2;
+const FIGURE_M_LINE = 32;
+const TIGHT_GAP = 2;
+const WEEK = 7;
+const WEEKDAY_SHORT = zonedDateFormat({ weekday: 'short' });
+const MONTH_SHORT = zonedDateFormat({ month: 'short' });
 
 export interface DayCounts {
   readonly missed: number;
@@ -51,10 +59,36 @@ export function halfWidthOf(width: number): number {
   return (width - 2 * SPLIT_GAP - DIVIDER) / 2;
 }
 
+export function dialBlockOf(idiom: Idiom): number {
+  return DIAL_SIZE + DIAL_CAPTION_GAP + TYPE_SCALE[idiom].caption[1];
+}
+
 export function dialsFit(width: number, height: number, idiom: Idiom): number {
   const perRow = linesFit(width, DIAL_SIZE, DIAL_GAP);
-  const block = DIAL_SIZE + DIAL_CAPTION_GAP + TYPE_SCALE[idiom].caption[1];
-  return perRow * Math.max(1, linesFit(height, block, DIAL_GAP));
+  return perRow * Math.max(1, linesFit(height, dialBlockOf(idiom), DIAL_GAP));
+}
+
+export function nextAlarmHeightOf(idiom: Idiom): number {
+  const caption = TYPE_SCALE[idiom].caption[1];
+  return caption + TIGHT_GAP + FIGURE_M_LINE + TIGHT_GAP + caption;
+}
+
+export interface RowsShown {
+  readonly shown: number;
+  readonly more: number;
+}
+
+export function rowsShownOf(total: number, fit: number): RowsShown {
+  if (total <= fit || fit < 2) return { shown: Math.min(total, fit), more: 0 };
+  const shown = Math.max(0, fit - 1);
+  return { shown, more: total - shown };
+}
+
+export function dayTokenOf(at: number, now: number, timeZone: string): string {
+  const day = localDayKey(at, timeZone);
+  const noon = new Date(`${day}T12:00:00Z`);
+  if (daysBetween(localDayKey(now, timeZone), day) < WEEK) return WEEKDAY_SHORT('UTC').format(noon);
+  return `${String(noon.getUTCDate())} ${MONTH_SHORT('UTC').format(noon)}`;
 }
 
 function spanOf(occurrence: PlannerOccurrenceView, timeZone: string): string {

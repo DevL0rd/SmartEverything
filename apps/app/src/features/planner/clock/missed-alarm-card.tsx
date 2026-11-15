@@ -8,15 +8,9 @@ import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
-import { clock, dayBoundsOf, localDayKey } from '../../../format/time';
+import { clock24, dayBoundsOf, localDayKey } from '../../../format/time';
 import { usePlannerRings, type PlannerPerson } from '../data';
-import {
-  alarmLabelOf,
-  missedAlarmsOf,
-  missedPillOf,
-  missedReasonOf,
-  missedStoryOf,
-} from './alarm-text';
+import { alarmLabelOf, missedAlarmsOf, missedPillOf, missedStoryOf } from './alarm-text';
 
 export interface MissedAlarmCardProps {
   readonly ring: PlannerRingRow;
@@ -37,12 +31,9 @@ export function MissedAlarmCard({
     <Card tone="critical">
       <View className="flex-row items-center justify-between gap-2">
         <Badge label={missedPillOf(ring.due_at, now, timeZone)} tone="critical" icon="warning" />
-        <Text variant="caption" tone="variant">
-          {missedReasonOf(ring)}
-        </Text>
       </View>
       <View className="flex-row flex-wrap items-baseline gap-3">
-        <Figure value={clock(ring.due_at, timeZone)} size="l" />
+        <Figure value={clock24(ring.due_at, timeZone)} size="l" />
         <Text variant="footnote" tone="variant" numberOfLines={1}>
           {alarm === null ? 'Alarm' : alarmLabelOf(alarm)}
         </Text>

@@ -224,3 +224,8 @@ export function routeNameOfTab(tab: TabKey): string {
 export function tabOfRouteName(name: string): TabKey | null {
   return TAB_ROUTES.find((candidate) => routeNameOfTab(candidate.tab) === name)?.tab ?? null;
 }
+
+export function tabIconOfRouteName(name: string): IconName | null {
+  const definition = TAB_ROUTES.find((candidate) => routeNameOfTab(candidate.tab) === name);
+  return definition === undefined ? null : definition.icon;
+}

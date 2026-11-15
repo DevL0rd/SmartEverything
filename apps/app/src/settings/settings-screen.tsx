@@ -5,7 +5,6 @@ import { EmptyState } from '../components/empty-state';
 import { PageShell } from '../components/page-shell/page-shell';
 import type { PrimaryActionProps } from '../components/primary-action';
 import { useSettingEnv } from './env';
-import { SettingsNav, useSettingsRail, useSettingsSearch } from './settings-nav';
 import { pageReachable, useBuiltSettingsPages } from './availability';
 import { SettingsFrame } from './settings-frame';
 import { href } from '../app-shell/hrefs';
@@ -15,17 +14,8 @@ import { SettingsPageBody, type SettingsBlocksLayout } from './settings-page';
 import { onPlatform, settingsPage } from './tree';
 import type { SettingsPageDefinition } from './types';
 
-function SettingsList(): ReactNode {
-  const search = useSettingsSearch();
-  return (
-    <PageShell title="Settings" search={search}>
-      <SettingsNav />
-    </PageShell>
-  );
-}
-
 export function SettingsIndex(): ReactNode {
-  return useSettingsRail() ? <SettingsPageScreen page="home" /> : <SettingsList />;
+  return <SettingsPageScreen page="home" />;
 }
 
 const PLATFORM_NAMES = {

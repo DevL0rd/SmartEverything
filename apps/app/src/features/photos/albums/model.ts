@@ -189,7 +189,9 @@ function midSentence(text: string): string {
 
 export function ruleLine(rule: SmartRule): string {
   if (rule.match === 'all') return rule.rules.map(leafText).join(' · ');
-  return rule.rules.map((leaf, index) => (index === 0 ? leafText(leaf) : midSentence(leafText(leaf)))).join(' or ');
+  return rule.rules
+    .map((leaf, index) => (index === 0 ? leafText(leaf) : midSentence(leafText(leaf))))
+    .join(' or ');
 }
 
 export function ruleLead(rule: SmartRule): string {

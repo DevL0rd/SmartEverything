@@ -4,6 +4,7 @@ import { useTabGroup } from '../../../app-shell/tab-group';
 import { href } from '../../../app-shell/hrefs';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import { useDevice } from '../../../store/selectors';
 
 const ORIGINS: Readonly<Record<string, Crumb>> = {
@@ -35,11 +36,13 @@ export function DeviceSettingsFrame({
   deviceId,
   name,
   title,
+  search,
   children,
 }: {
   readonly deviceId: string;
   readonly name: string;
   readonly title: string;
+  readonly search?: ShellSearchConfig;
   readonly children: ReactNode;
 }): ReactNode {
   const sub = title !== name;
@@ -49,6 +52,7 @@ export function DeviceSettingsFrame({
       title={sub ? title : `${name} settings`}
       {...(sub ? { subtitle: name } : {})}
       breadcrumbs={crumbs}
+      {...(search === undefined ? {} : { search })}
     >
       {children}
     </PageShell>

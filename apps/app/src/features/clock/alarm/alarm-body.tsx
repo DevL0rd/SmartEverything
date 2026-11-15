@@ -16,7 +16,7 @@ import {
 import { useStoreSelector } from '../../../store/store-context';
 import { useHubOffline } from '../frame/hub-status';
 import { draftOf, newAlarmTimeOf, newDraftOf, toggledTargetsEdit } from './alarm-draft';
-import { AlarmFields, AlarmTime, type AlarmFieldProps } from './alarm-fields';
+import { AlarmFields, AlarmTime, FieldSection, type AlarmFieldProps } from './alarm-fields';
 import { AlarmChallenge } from './alarm-challenge';
 import { AlarmSunrise } from './alarm-sunrise';
 import { SmartWakeRow, WakeRoutine } from './alarm-wake';
@@ -126,17 +126,22 @@ export function AlarmBody({
   const watched = hasPersonWatch(sources) || watch.length > 0;
   const places = { phone: reachesPhone(sources, fields.draft.targets), watch: watched };
   return (
-    <View className="gap-4">
+    <View className="gap-section-gap">
       <AlarmTime {...fields} />
       <AlarmFields {...fields} />
-      {watched ? <SmartWakeRow {...wake} /> : null}
-      <AlarmSunrise {...wake} />
-      <WakeRoutine {...wake} defaultAutomationId={defaultAutomationId} />
-      <AlarmChallenge {...wake} places={places} />
+      <FieldSection title="Wake" compact={fields.compact}>
+        {watched ? <SmartWakeRow {...wake} /> : null}
+        <AlarmSunrise {...wake} />
+        <WakeRoutine {...wake} defaultAutomationId={defaultAutomationId} />
+      </FieldSection>
+      <FieldSection title="Dismiss challenge" compact={fields.compact}>
+        <AlarmChallenge {...wake} places={places} />
+      </FieldSection>
       <RingTargets
         places={rings}
         targets={fields.draft.targets}
         watch={watch}
+        compact={fields.compact}
         disabled={fields.disabled}
         onToggle={(ring) => {
           fields.onChange(toggledTargetsEdit(fields.draft.targets, ring));
@@ -150,7 +155,7 @@ export function AlarmBody({
 function AlarmDelete({ screen }: { readonly screen: AlarmScreen }): ReactNode {
   if (screen.editing.alarm === null) return null;
   return (
-    <View className="items-start border-t-hairline border-outline-variant pt-3">
+    <View className="items-start">
       <Button
         label="Delete alarm"
         icon="trash"

@@ -15,9 +15,8 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
 import { EmptyState } from '../../../components/empty-state';
-import { settingsTrail } from '../../../settings/tree';
+import { SettingsFrame } from '../../../settings/settings-frame';
 import { ActionRow } from '../../../components/rows';
-import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
@@ -36,7 +35,7 @@ import { ChannelMembersBlock, type MemberChange } from './channel-members';
 
 import { talkLog, trackTalk } from '../data/talk-log';
 import { background } from '@smarteverything/logging';
-const CRUMBS = settingsTrail('talk/channels');
+const CHANNELS = 'talk/channels';
 
 const PARAMS = z.object({ channelId: z.string().min(1) });
 
@@ -142,9 +141,10 @@ function NewChannel(): ReactNode {
   const { saving, create } = useCreate(fields, members);
   const problem = nameProblem(fields.name);
   return (
-    <PageShell
+    <SettingsFrame
+      page={CHANNELS}
+      detail
       title="New channel"
-      breadcrumbs={CRUMBS}
       footer={
         <CreateBar
           saving={saving}
@@ -179,7 +179,7 @@ function NewChannel(): ReactNode {
           />
         }
       />
-    </PageShell>
+    </SettingsFrame>
   );
 }
 
@@ -237,7 +237,7 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
     ).catch(notifyFailure('The channel wasn’t changed'));
   };
   return (
-    <PageShell title={channel.name} breadcrumbs={CRUMBS}>
+    <SettingsFrame page={CHANNELS} detail title={channel.name}>
       <ChannelEditorBody
         fields={
           <ChannelFieldsBlock
@@ -269,7 +269,7 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
           }}
         />
       </List>
-    </PageShell>
+    </SettingsFrame>
   );
 }
 
@@ -277,9 +277,9 @@ function ChannelById({ channelId }: { readonly channelId: string }): ReactNode {
   const channel = useRow('talk_channels', channelId);
   if (channel === null) {
     return (
-      <PageShell title="Channel" breadcrumbs={CRUMBS}>
+      <SettingsFrame page={CHANNELS} detail title="Channel">
         <EmptyState icon="radio" title="Channel not found" body="It may have been deleted." />
-      </PageShell>
+      </SettingsFrame>
     );
   }
   return <ExistingChannel channel={channel} />;

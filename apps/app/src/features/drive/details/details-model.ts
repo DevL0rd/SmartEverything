@@ -41,11 +41,12 @@ export interface RingDot {
 }
 
 export interface ComputerRing extends RingDot {
+  readonly place: string;
   readonly share: number;
   readonly word: string;
 }
 
-type PlacementFacts = Pick<DrivePlacement, 'id' | 'mode' | 'hold'> & {
+type PlacementFacts = Pick<DrivePlacement, 'id' | 'mode' | 'hold' | 'localPath'> & {
   readonly status: Pick<DrivePlacement['status'], 'state' | 'needBytes'>;
 };
 
@@ -58,23 +59,23 @@ function stateLookOf(placement: PlacementFacts): RingLook {
   const { state, needBytes } = placement.status;
   switch (state) {
     case 'up_to_date':
-      return { tone: 'positive', word: 'up to date' };
+      return { tone: 'positive', word: 'Up to date' };
     case 'mounted':
-      return { tone: 'positive', word: 'mounted' };
+      return { tone: 'positive', word: 'Mounted' };
     case 'syncing':
       return { tone: 'info', word: `${bytes(needBytes)} left` };
     case 'starting':
-      return { tone: 'info', word: 'starting' };
+      return { tone: 'info', word: 'Starting' };
     case 'offline':
-      return { tone: null, word: 'offline' };
+      return { tone: null, word: 'Offline' };
     case 'stopped':
-      return { tone: null, word: 'paused' };
+      return { tone: null, word: 'Paused' };
     case 'blocked':
-      return { tone: 'warning', word: 'blocked' };
+      return { tone: 'warning', word: 'Blocked' };
     case 'failed':
       return {
         tone: 'critical',
-        word: placement.mode === 'mounted' ? 'mount failed' : 'sync failed',
+        word: placement.mode === 'mounted' ? 'Mount failed' : 'Sync failed',
       };
   }
 }
@@ -90,10 +91,11 @@ export function placementRingOf(
   placedBytes: number,
 ): ComputerRing {
   const look: RingLook =
-    placement.hold === null ? stateLookOf(placement) : { tone: 'warning', word: 'on hold' };
+    placement.hold === null ? stateLookOf(placement) : { tone: 'warning', word: 'On hold' };
   const share =
     placement.mode === 'synced' ? haveShare(placedBytes, placement.status.needBytes) : 1;
-  return { key: placement.id, name, tone: look.tone, share, word: look.word };
+  const place = placement.localPath ?? 'Mounted drive';
+  return { key: placement.id, name, place, tone: look.tone, share, word: look.word };
 }
 
 export function coversItem(folderRelPath: string | null, itemRelPath: string): boolean {
@@ -117,7 +119,7 @@ export function whoSeesOf(who: WhoSees): string {
     case 'shared':
       return 'Everyone in the home';
     case 'own':
-      return who.people.length === 0 ? 'Only you' : `You and ${listed(who.people)}`;
+      return who.people.length === 0 ? 'Only you' : listed(['You', ...who.people]);
     case 'edit':
     case 'view':
       return `Shared with you by ${who.ownerName ?? 'its owner'} · ${ROLE_LABEL[who.access]}`;

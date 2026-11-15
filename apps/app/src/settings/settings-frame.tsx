@@ -6,7 +6,7 @@ import { searchPanelShown, type ShellSearchConfig } from '../components/page-she
 import type { ShellAction } from '../components/page-shell/shell-actions';
 import type { PrimaryActionProps } from '../components/primary-action';
 import { useSettingsOrigin } from '../app-shell/settings-navigation';
-import { useSettingsRail, useSettingsSearch, useSettingsSections } from './settings-nav';
+import { useSettingsSearch, useSettingsSections } from './settings-nav';
 import { settingsPage, settingsTrail } from './tree';
 
 export interface SettingsFrameProps {
@@ -18,6 +18,7 @@ export interface SettingsFrameProps {
   readonly overflow?: readonly MenuItem[];
   readonly search?: ShellSearchConfig;
   readonly banner?: ReactNode;
+  readonly footer?: ReactNode;
   readonly primaryAction?: PrimaryActionProps;
   readonly scroll?: boolean;
   readonly children: ReactNode;
@@ -31,7 +32,10 @@ function crumbsOf(page: string, detail: boolean, trail: readonly Crumb[]): reado
 const SEARCH_TITLE = 'Search results';
 
 type ShellChrome = Partial<
-  Pick<StandardShellProps, 'back' | 'sections' | 'search' | 'actions' | 'overflow' | 'banner'>
+  Pick<
+    StandardShellProps,
+    'back' | 'sections' | 'search' | 'actions' | 'overflow' | 'banner' | 'footer'
+  >
 >;
 
 function useRailChrome(
@@ -39,14 +43,13 @@ function useRailChrome(
   detail: boolean,
   search: ShellSearchConfig | undefined,
 ): ShellChrome {
-  const rail = useSettingsRail();
   const sections = useSettingsSections(page);
   const settingsSearch = useSettingsSearch();
   const origin = useSettingsOrigin();
-  const topLevel = rail && !detail && settingsPage(page)?.parent === null && !origin;
+  const topLevel = !detail && settingsPage(page)?.parent === null && !origin;
   return {
     ...(topLevel ? { back: false } : {}),
-    ...(rail ? { sections } : {}),
+    sections,
     search: search ?? settingsSearch,
   };
 }
@@ -55,11 +58,13 @@ function pageChromeOf({
   actions,
   overflow,
   banner,
-}: Pick<SettingsFrameProps, 'actions' | 'overflow' | 'banner'>): ShellChrome {
+  footer,
+}: Pick<SettingsFrameProps, 'actions' | 'overflow' | 'banner' | 'footer'>): ShellChrome {
   return {
     ...(actions === undefined ? {} : { actions }),
     ...(overflow === undefined ? {} : { overflow }),
     ...(banner === undefined ? {} : { banner }),
+    ...(footer === undefined ? {} : { footer }),
   };
 }
 

@@ -68,9 +68,9 @@ describe('photos entry points', () => {
       'sharing',
       'map',
       'folders',
-      'insights',
       'archive',
       'locked',
+      'insights',
       'deleted',
     ]);
   });

@@ -14,6 +14,7 @@ import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { BoardColumn } from './board-column';
 import { BOARD_GROUPING_LABEL, boardColumnsOf, type BoardGrouping } from './matrix-model';
 import type { TaskEntry, TaskFilter } from './task-grouping';
+import { TaskEmptyState } from './task-list';
 
 const GROUPINGS: readonly BoardGrouping[] = ['list', 'status'];
 
@@ -92,6 +93,9 @@ export function TaskBoard({ entries, today, filter, grouping }: TaskBoardProps):
   const columns = boardColumnsOf({ entries, filter, collections, today, grouping });
   const gap = useGridGap();
   const width = columnWidthOf({ available, count: columns.length, gap, compact });
+  if (columns.every((column) => column.entries.length === 0)) {
+    return <TaskEmptyState entries={entries} today={today} filter={filter} />;
+  }
   return (
     <View
       {...(compact ? { className: '-mr-gutter' } : {})}

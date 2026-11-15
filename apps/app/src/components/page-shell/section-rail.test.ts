@@ -45,6 +45,8 @@ describe('section rail item link', () => {
     active: 'recent',
     width: 'wide',
     hrefOf: (): AppHref => '/photos',
+    label: 'Photos sections',
+    safeTop: false,
   } as const;
 
   it('replaces the open section when the rail navigates by replacing', () => {

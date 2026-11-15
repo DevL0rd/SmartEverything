@@ -12,19 +12,7 @@ export interface PinFieldProps {
   readonly onSubmit: () => void;
   readonly error: string | null;
   readonly helper: string;
-}
-
-function Dots({ value, error }: { readonly value: string; readonly error: boolean }): ReactNode {
-  return (
-    <View pointerEvents="none" className="h-4 flex-row items-center justify-center gap-2.5">
-      {Array.from(value, (_, index) => (
-        <View
-          key={String(index)}
-          className={cn('size-2.5 rounded-full', error ? 'bg-critical' : 'bg-primary')}
-        />
-      ))}
-    </View>
-  );
+  readonly disabled?: boolean;
 }
 
 export function PinField({
@@ -34,8 +22,9 @@ export function PinField({
   onSubmit,
   error,
   helper,
+  disabled = false,
 }: PinFieldProps): ReactNode {
-  const ref = useFocusOnMount(true);
+  const ref = useFocusOnMount(!disabled);
   return (
     <View className="w-full max-w-90 gap-2 self-center">
       <Text variant="footnote" tone="variant" align="center">
@@ -50,6 +39,8 @@ export function PinField({
         onSubmitEditing={onSubmit}
         accessibilityLabel={label}
         accessibilityHint={helper}
+        editable={!disabled}
+        accessibilityState={{ disabled }}
         keyboardType="number-pad"
         inputMode="numeric"
         autoComplete="off"
@@ -59,9 +50,9 @@ export function PinField({
         className={cn(
           'h-14 rounded-md border bg-surface-2 px-4 text-center font-mono text-title-2 tracking-widest text-on-surface web:outline-none',
           error === null ? 'border-outline' : 'border-critical',
+          disabled && 'opacity-60',
         )}
       />
-      <Dots value={value} error={error !== null} />
       <Text
         variant="footnote"
         tone={error === null ? 'variant' : 'critical'}

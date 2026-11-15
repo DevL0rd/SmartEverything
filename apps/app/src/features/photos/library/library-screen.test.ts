@@ -22,6 +22,8 @@ function controlsOf(begin: () => void, active = false): MediaSelectionControls {
   };
 }
 
+const SHOWN = { upload: true, select: true };
+
 function statusOf(phase: BackupStatus['phase']): BackupStatus {
   return { ...INITIAL_BACKUP_STATUS, phase, total: 10, done: 4 };
 }
@@ -45,23 +47,33 @@ describe('library page modules', () => {
   it('keeps Upload as the one primary and Select, with no search opener', async () => {
     const { libraryActions } = await import('./hub-tab');
     const begin = vi.fn();
-    const wide = libraryActions(false, controlsOf(begin));
+    const wide = libraryActions(false, controlsOf(begin), SHOWN);
     expect(wide.map((action) => action.label)).toEqual(['Upload', 'Select']);
     expect(wide.filter((action) => action.primary === true).map((action) => action.label)).toEqual([
       'Upload',
     ]);
     wide.find((action) => action.label === 'Select')?.onPress?.();
     expect(begin).toHaveBeenCalledTimes(1);
-    const compact = libraryActions(true, controlsOf(vi.fn()));
+    const compact = libraryActions(true, controlsOf(vi.fn()), SHOWN);
     expect(compact.every((action) => action.iconOnly === true)).toBe(true);
+  });
+
+  it('offers Select only with tiles and one Upload when the empty state shows its own', async () => {
+    const { libraryActions } = await import('./hub-tab');
+    const labels = (shown: { upload: boolean; select: boolean }): readonly string[] =>
+      libraryActions(false, controlsOf(vi.fn()), shown).map((action) => action.label);
+    expect(labels({ upload: true, select: false })).toEqual(['Upload']);
+    expect(labels({ upload: false, select: false })).toEqual([]);
   });
 
   it('leaves the selection bar close as the only way out of selection mode', async () => {
     const { libraryActions } = await import('./hub-tab');
     const { deviceActions } = await import('./device-tab');
     const selecting = controlsOf(vi.fn(), true);
-    expect(libraryActions(false, selecting).map((action) => action.label)).toEqual(['Upload']);
-    expect(libraryActions(true, selecting)).toEqual([]);
+    expect(libraryActions(false, selecting, SHOWN).map((action) => action.label)).toEqual([
+      'Upload',
+    ]);
+    expect(libraryActions(true, selecting, SHOWN)).toEqual([]);
     expect(deviceActions(true, selecting)).toEqual([]);
     expect(deviceActions(true, controlsOf(vi.fn())).map((action) => action.label)).toEqual([
       'Select',

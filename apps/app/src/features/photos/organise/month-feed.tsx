@@ -22,10 +22,12 @@ type OnFeed = (month: string, feed: MonthFeed, pager: Pager) => void;
 function MonthReader({
   source,
   month,
+  eager,
   onFeed,
 }: {
   readonly source: MonthSource;
   readonly month: string;
+  readonly eager: boolean;
   readonly onFeed: OnFeed;
 }): ReactNode {
   const pages = useSourceMonth(source, month);
@@ -46,6 +48,11 @@ function MonthReader({
       },
     );
   }, [month, tiles, hasNextPage, isFetching, isError, fetchNextPage, refetch]);
+  useEffect(() => {
+    if (eager && hasNextPage && !isFetching && !isError) {
+      background(fetchNextPage(), 'photos.organise.page_failed', { month });
+    }
+  }, [eager, month, hasNextPage, isFetching, isError, fetchNextPage]);
   return null;
 }
 
@@ -57,6 +64,7 @@ export interface OrganiseFeed {
   readonly failed: unknown;
   readonly sources: ReactNode;
   readonly onEnd: () => void;
+  readonly loadAll: () => void;
   readonly retry: () => void;
 }
 
@@ -66,10 +74,11 @@ interface Held {
   readonly key: string;
   readonly feeds: ReadonlyMap<string, MonthFeed>;
   readonly shown: number;
+  readonly eager: boolean;
 }
 
 function freshFor(key: string): Held {
-  return { key, feeds: new Map(), shown: 1 };
+  return { key, feeds: new Map(), shown: 1, eager: false };
 }
 
 interface HeldFeeds {
@@ -77,6 +86,7 @@ interface HeldFeeds {
   readonly onFeed: OnFeed;
   readonly pagerOf: (month: string | undefined) => Pager | undefined;
   readonly showMore: (count: number) => void;
+  readonly showAll: (count: number) => void;
 }
 
 function useHeldFeeds(key: string): HeldFeeds {
@@ -96,14 +106,30 @@ function useHeldFeeds(key: string): HeldFeeds {
     showMore: (count): void => {
       setHeld((state) => ({ ...baseOf(state), shown: count }));
     },
+    showAll: (count): void => {
+      setHeld((state) => ({ ...baseOf(state), shown: count, eager: true }));
+    },
   };
+}
+
+function totalOf(buckets: readonly LibraryBucket[]): number {
+  return buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+}
+
+function stateOf(
+  tiles: readonly MediaTile[],
+  query: ReturnType<typeof useSourceBuckets>,
+  first: MonthFeed | undefined,
+): FeedState {
+  if (tiles.length > 0) return 'ready';
+  return feedState({ buckets: query.data, bucketsFailed: query.isError, first });
 }
 
 export function useMonthFeed(source: MonthSource): OrganiseFeed {
   const key = sourceKeyOf(source);
   const query = useSourceBuckets(source);
   const buckets = query.data ?? NO_BUCKETS;
-  const { current, onFeed, pagerOf, showMore } = useHeldFeeds(key);
+  const { current, onFeed, pagerOf, showMore, showAll } = useHeldFeeds(key);
   const shown = useMemo(
     () => buckets.slice(0, current.shown).map((bucket) => bucket.month),
     [buckets, current.shown],
@@ -111,25 +137,27 @@ export function useMonthFeed(source: MonthSource): OrganiseFeed {
   const tiles = useMemo(() => feedTiles(shown, current.feeds), [shown, current.feeds]);
   const first = shown[0];
   return {
-    state:
-      tiles.length > 0
-        ? 'ready'
-        : feedState({
-            buckets: query.data,
-            bucketsFailed: query.isError,
-            first: first === undefined ? undefined : current.feeds.get(first),
-          }),
+    state: stateOf(tiles, query, first === undefined ? undefined : current.feeds.get(first)),
     buckets,
     tiles,
-    total: buckets.reduce((sum, bucket) => sum + bucket.count, 0),
+    total: totalOf(buckets),
     failed: query.error,
     sources: shown.map((month) => (
-      <MonthReader key={`${key}|${month}`} source={source} month={month} onFeed={onFeed} />
+      <MonthReader
+        key={`${key}|${month}`}
+        source={source}
+        month={month}
+        eager={current.eager}
+        onFeed={onFeed}
+      />
     )),
     onEnd: (): void => {
       const step = endStep(shown, current.feeds, buckets.length);
       if (step === 'next') showMore(shown.length + 1);
       if (step === 'fetch') pagerOf(shown.at(-1))?.more();
+    },
+    loadAll: (): void => {
+      showAll(buckets.length);
     },
     retry: (): void => {
       if (query.isError) {

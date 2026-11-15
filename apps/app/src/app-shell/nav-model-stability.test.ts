@@ -6,6 +6,7 @@ import { CommandLedger } from '../store/command-ledger';
 import { EntityStore } from '../store/entity-store';
 import { StoreProvider } from '../store/store-context';
 import type { NavModel } from './nav-model';
+import { wired } from '../test-support/live-wire';
 
 vi.mock('expo-router', () => ({ usePathname: (): string => '/' }));
 
@@ -78,7 +79,7 @@ describe('the navigation model at idle', () => {
     expect(seen).toHaveLength(1);
     for (let seq = 1; seq <= NOTICES; seq += 1) {
       act(() => {
-        if (seq % 3 === 0) store.apply([changeAt(seq)]);
+        if (seq % 3 === 0) store.apply(wired([changeAt(seq)]));
         else if (seq % 3 === 1) store.setSync({ status: 'live', problem: null });
         else store.appendLog([`line ${String(seq)}`]);
       });

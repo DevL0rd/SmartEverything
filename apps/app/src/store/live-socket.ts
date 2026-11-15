@@ -1,10 +1,10 @@
 import {
   LIVE_HEARTBEAT_MS,
-  LIVE_MESSAGE,
+  LIVE_WIRE_MESSAGE,
   MEDIA_PATHS,
   liveProtocols,
   type LiveClientMessageInput,
-  type LiveMessage,
+  type LiveWireMessage,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { traceSocket } from './live-socket-log';
@@ -22,7 +22,7 @@ export function backoffOf(attempt: number): number {
 }
 
 export type Received =
-  | { readonly kind: 'message'; readonly message: LiveMessage }
+  | { readonly kind: 'message'; readonly message: LiveWireMessage }
   | { readonly kind: 'unreadable'; readonly reason: string; readonly table: string | null };
 
 const CHANGED_TABLE = z.looseObject({ type: z.literal('change'), table: z.string() });
@@ -53,7 +53,7 @@ function readLiveMessage(data: unknown): Received {
       table: null,
     };
   }
-  const parsed = readLeniently(LIVE_MESSAGE, read.value);
+  const parsed = readLeniently(LIVE_WIRE_MESSAGE, read.value);
   if (!parsed.ok) {
     return {
       kind: 'unreadable',

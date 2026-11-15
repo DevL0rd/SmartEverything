@@ -269,6 +269,28 @@ function skipRoute(context: PlannerContext): RouteOf<'skipPlannerItem'> {
   );
 }
 
+function reopenRoute(context: PlannerContext): RouteOf<'reopenPlannerItem'> {
+  const { store } = context;
+  return bound(E.reopenPlannerItem, ({ params, query, body, caller }) =>
+    store.write(() => {
+      const profileId = plannerProfileOf(context, caller, query.personId);
+      const item = openItemOf(store, {
+        profileId,
+        itemId: params.itemId,
+        key: body.occurrence_key,
+        need: 'complete',
+      });
+      if (store.plannerOccurrences.find(item.id, body.occurrence_key) !== undefined) {
+        store.plannerOccurrences.remove(item.id, body.occurrence_key);
+      }
+      if (item.rrule === null && item.status === 'done') {
+        store.plannerItems.update(item.id, item.profile_id, { status: 'open' });
+      }
+      return DONE_REPLY;
+    }),
+  );
+}
+
 function moveRoute(context: PlannerContext): RouteOf<'movePlannerItem'> {
   const { store } = context;
   return bound(E.movePlannerItem, ({ params, query, body, caller }) =>
@@ -300,6 +322,7 @@ export const plannerItemRoutes = (context: PlannerContext, now: () => Date) =>
     deletePlannerItem: deleteRoute(context),
     completePlannerItem: completeRoute(context, now),
     skipPlannerItem: skipRoute(context),
+    reopenPlannerItem: reopenRoute(context),
     movePlannerItem: moveRoute(context),
   }) as const;
 

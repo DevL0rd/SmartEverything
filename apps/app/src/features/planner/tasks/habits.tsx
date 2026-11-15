@@ -82,6 +82,11 @@ export function heatWindowOf(today: string, weeks: number, back: number): HeatWi
   return { end: shiftDay(today, -WEEK * back), weeks: Math.max(1, weeks) };
 }
 
+export function habitWeeksOf(since: string, end: string): number {
+  const firstMonday = shiftDay(since, -mondayIndexOf(since));
+  return Math.max(1, Math.floor(daysBetween(firstMonday, end) / WEEK) + 1);
+}
+
 export function heatFirstDayOf(window: HeatWindow): string {
   return shiftDay(window.end, -mondayIndexOf(window.end) - WEEK * (window.weeks - 1));
 }
@@ -150,7 +155,8 @@ function weeklyWords(rule: PlannerRrule): string {
     days.length === WORK_DAYS.length && WORK_DAYS.every((day) => days.includes(day))
       ? 'Weekdays'
       : days.map((day) => WEEKDAY_NAME[day]).join(', ');
-  return rule.interval > 1 ? `${every} on ${named}` : named;
+  if (rule.interval > 1) return `${every} on ${named}`;
+  return named === 'Weekdays' ? named : `Every ${named}`;
 }
 
 const PLAIN_WORDS: Readonly<Partial<Record<PlannerRrule['freq'], string>>> = {

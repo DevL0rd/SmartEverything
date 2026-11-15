@@ -1,9 +1,10 @@
-import type { LiveChange, Snapshot } from '@smarteverything/domain';
+import type { LiveChange, LiveWireChange, Snapshot } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { LogTally } from '../design/log-tally';
 import { perfStoreChanged } from '../perf/store-hook';
 import { retainPendingTurns } from './chat-turns';
-import { applyChange, replaceWith } from './live-reducers';
+import { applyLiveChange } from './live-frames';
+import { replaceWith } from './live-reducers';
 import { emptyState, type StoreState, type SyncState } from './state';
 import { changedSlices, SubscriptionManager, type Slice } from './subscriptions';
 
@@ -81,12 +82,16 @@ export class EntityStore {
     }
   };
 
-  apply(changes: readonly LiveChange[]): void {
+  apply(changes: readonly LiveWireChange[]): readonly LiveChange[] {
+    const resolved: LiveChange[] = [];
     if (changes.length === 0) {
-      return;
+      return resolved;
     }
     const committed = this.commit((state) => {
-      const applied = changes.reduce(applyChange, state);
+      const applied = changes.reduce(
+        (current, change) => applyLiveChange(current, change, resolved),
+        state,
+      );
       const last = changes[changes.length - 1];
       return last === undefined
         ? applied
@@ -95,6 +100,7 @@ export class EntityStore {
     if (committed) {
       this.renderNextFrame();
     }
+    return resolved;
   }
 
   private commit(change: (state: StoreState) => StoreState): boolean {

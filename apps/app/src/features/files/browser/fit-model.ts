@@ -15,3 +15,12 @@ export function fittingCount({ ends, room, moreSpan }: FitInput): number {
   }
   return 0;
 }
+
+export function endsOf(widths: readonly (number | undefined)[]): readonly (number | undefined)[] {
+  let sum = 0;
+  return widths.map((width) => {
+    if (width === undefined) return undefined;
+    sum += width;
+    return sum;
+  });
+}

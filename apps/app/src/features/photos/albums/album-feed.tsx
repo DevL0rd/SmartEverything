@@ -66,22 +66,24 @@ export function AlbumFeed({
   const [step, setStep] = useState<MediaZoomStep>('days');
   const badgeOf = useContributorBadges(album, items);
   return (
-    <LibraryGrid
-      tiles={tiles}
-      step={step}
-      onStep={setStep}
-      selection={controls}
-      media={media}
-      header={header}
-      empty={<AlbumEmpty album={album} onAdd={onAdd} />}
-      footer={<View className="h-4" />}
-      viewer={{ albumId: album.id }}
-      {...(badgeOf === undefined ? {} : { badgeOf })}
-      onEnd={() => {
-        if (pages.hasNextPage && !pages.isFetchingNextPage) {
-          background(pages.fetchNextPage(), 'photos.album_page_failed', { albumId: album.id });
-        }
-      }}
-    />
+    <View className="-mx-gutter min-h-0 flex-1">
+      <LibraryGrid
+        tiles={tiles}
+        step={step}
+        onStep={setStep}
+        selection={controls}
+        media={media}
+        header={header}
+        empty={<AlbumEmpty album={album} onAdd={onAdd} />}
+        footer={<View className="h-4" />}
+        viewer={{ albumId: album.id }}
+        {...(badgeOf === undefined ? {} : { badgeOf })}
+        onEnd={() => {
+          if (pages.hasNextPage && !pages.isFetchingNextPage) {
+            background(pages.fetchNextPage(), 'photos.album_page_failed', { albumId: album.id });
+          }
+        }}
+      />
+    </View>
   );
 }

@@ -8,6 +8,7 @@ import {
   EVENT_KIND_LABELS,
   isUrgent,
   type LiveChange,
+  type LiveWireChange,
   type Snapshot,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
@@ -103,9 +104,10 @@ function synchronized(
   client: QueryClient,
   replayed: readonly LiveChange[],
   snapshot: Snapshot,
+  frames: readonly LiveWireChange[],
 ): void {
-  log.info('runtime.synchronized', { replayed: replayed.length });
-  if (!replayed.some((change) => change.table === 'device_effect_targets')) {
+  log.info('runtime.synchronized', { replayed: frames.length });
+  if (!frames.some((change) => change.table === 'device_effect_targets')) {
     refreshDeviceEffects(client);
   }
   refreshChatMeterHistory(client, replayed);
@@ -120,9 +122,9 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
   const ledger = new CommandLedger(store);
   const sync = new LiveSync(connection, store, {
     onSnapshotCommands: ledger.noteSnapshot.bind(ledger),
-    onChanges: (changes): void => {
+    onChanges: (changes, frames): void => {
       ledger.noteChanges(changes);
-      applyToWindows(client, changes);
+      applyToWindows(client, changes, frames);
       transcriptCameraChanges(client, changes);
       reconcileImageMessages(client, changes);
       notifyDesktop(store, changes);

@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import type { LiveChange, LiveTable } from '@smarteverything/domain';
+import type { LiveTable, LiveWireChange } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { plannerKeys, type PlannerKind } from '../../../queries/keys';
 
@@ -11,8 +11,9 @@ const PERSON = 'a1b2c3d4-0000-4000-8000-000000000001';
 const FIRST = '2026-11-02T00:00:00.000Z';
 const LAST = '2026-11-08T23:59:59.000Z';
 
-function deletion(table: 'planner_items' | 'planner_alarms' | 'google_accounts'): LiveChange {
-  return { type: 'change', table, operation: 'DELETE', record: null, oldRecord: null, seq: 1 };
+function deletion(table: 'planner_items' | 'planner_alarms' | 'google_accounts'): LiveWireChange {
+  const key = table === 'google_accounts' ? { profile_id: PERSON } : { id: PERSON };
+  return { type: 'change', table, operation: 'UPDATE', key, set: {}, previous: {}, seq: 1 };
 }
 
 function seeded(): QueryClient {
@@ -38,19 +39,19 @@ function stale(client: QueryClient): readonly PlannerKind[] {
 describe('planner live invalidation', () => {
   it('refetches day, range and stats when an item changes', () => {
     const client = seeded();
-    applyToWindows(client, [deletion('planner_items')]);
+    applyToWindows(client, [], [deletion('planner_items')]);
     expect(stale(client)).toEqual(['day', 'range', 'stats']);
   });
 
   it('refetches day, stats and rings when an alarm changes, never the range', () => {
     const client = seeded();
-    applyToWindows(client, [deletion('planner_alarms')]);
+    applyToWindows(client, [], [deletion('planner_alarms')]);
     expect(stale(client)).toEqual(['day', 'stats', 'rings']);
   });
 
   it('refetches day and range when the Google account changes', () => {
     const client = seeded();
-    applyToWindows(client, [deletion('google_accounts')]);
+    applyToWindows(client, [], [deletion('google_accounts')]);
     expect(stale(client)).toEqual(['day', 'range']);
   });
 
@@ -63,7 +64,7 @@ describe('planner live invalidation', () => {
 
   it('never touches the preferences query', () => {
     const client = seeded();
-    applyToWindows(client, [deletion('planner_items'), deletion('planner_alarms')]);
+    applyToWindows(client, [], [deletion('planner_items'), deletion('planner_alarms')]);
     expect(client.getQueryState(plannerKeys.preferences(PERSON))?.isInvalidated).toBe(false);
   });
 });

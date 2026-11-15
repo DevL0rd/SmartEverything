@@ -25,7 +25,7 @@ import {
 import { LibraryBack, LibrarySelectionBar, useLibraryBack } from './library-pages';
 import { LibraryOriginFocus } from './library-focus';
 import { LibraryProblem } from './library-states';
-import { useLibraryState, type LibraryState } from './library-state';
+import type { LibraryState } from './library-state';
 import { LibraryTools } from './library-tools';
 
 const FILTER_COLUMN_STYLE = { width: LIBRARY_FILTER_WIDTH };
@@ -37,6 +37,11 @@ export interface LibraryBodyProps {
   readonly picker: ModelPickerProps;
   readonly note: string | null;
   readonly compact?: boolean;
+}
+
+export interface HostedLibraryBodyProps extends LibraryBodyProps {
+  readonly state: LibraryState;
+  readonly searchField: ReactNode;
 }
 
 function resultsCount(data: LibraryData): string {
@@ -71,7 +76,7 @@ function Footer({
 }
 
 interface ResultsProps {
-  readonly body: LibraryBodyProps;
+  readonly body: HostedLibraryBodyProps;
   readonly state: LibraryState;
   readonly data: LibraryData;
   readonly filtersInline: boolean;
@@ -158,6 +163,7 @@ function Results({ body, state, data, filtersInline, touch }: ResultsProps): Rea
           data={data}
           filtersInline={filtersInline}
           compact={body.compact === true}
+          searchField={body.searchField}
           touch={touch}
           details={details}
           toggleDetails={(): void => {
@@ -267,10 +273,10 @@ function Columns({
   );
 }
 
-export function LibraryBody(body: LibraryBodyProps): ReactNode {
+export function LibraryBody(body: HostedLibraryBodyProps): ReactNode {
+  const { state } = body;
   const touch = useIdiom() === 'touch';
   const layout = libraryLayout(body.width, touch);
-  const state = useLibraryState(body.picker.initialQuery ?? '');
   const data = useLibraryData(body.picker, state);
   const filters = state.page === 'filters' && layout === 'one';
   const detail = state.page === 'detail' && layout !== 'three';

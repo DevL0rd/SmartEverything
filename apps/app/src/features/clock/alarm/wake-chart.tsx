@@ -286,14 +286,21 @@ export function WakeInsightsCard({
   const [range, setRange] = useState<PlannerStatsRange>('week');
   return (
     <Card>
-      <View className="flex-row flex-wrap items-center justify-between gap-3">
+      <View className={compact ? 'gap-3' : 'flex-row items-center justify-between gap-3'}>
         <View className="min-w-0 flex-1">
           <Text variant="body-strong">Wake insights</Text>
           <Text variant="caption" tone="variant">
             Alarm time against when you stopped it
           </Text>
         </View>
-        <Segmented options={RANGES} value={range} onChange={setRange} label="Range" compact />
+        <Segmented
+          options={RANGES}
+          value={range}
+          onChange={setRange}
+          label="Range"
+          compact
+          fill={compact}
+        />
       </View>
       <WakeData view={{ range, compact, timeZone }} />
     </Card>

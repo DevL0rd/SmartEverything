@@ -2,6 +2,7 @@ import { LIVE_CHANGE, type LiveChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EntityStore } from '../../../store/entity-store';
 import { refetchOnBindingChange } from './harness';
+import { wired } from '../../../test-support/live-wire';
 
 const CHAT = '00000000-0000-4000-8000-0000000000c1';
 const PROFILE = '00000000-0000-4000-8000-0000000000a1';
@@ -49,7 +50,7 @@ function chatChange(
 
 function openStore(refetch: () => void): EntityStore {
   const store = new EntityStore();
-  store.apply([chatChange(1, { profile: PROFILE, model: 'a/b', title: 'First' })]);
+  store.apply(wired([chatChange(1, { profile: PROFILE, model: 'a/b', title: 'First' })]));
   refetchOnBindingChange(store, CHAT, refetch);
   return store;
 }
@@ -66,7 +67,7 @@ describe('refetchOnBindingChange', () => {
   it('refetches once when the chat engine changes', () => {
     const refetch = vi.fn();
     const store = openStore(refetch);
-    store.apply([chatChange(2, { profile: PROFILE, model: 'c/d', title: 'First' })]);
+    store.apply(wired([chatChange(2, { profile: PROFILE, model: 'c/d', title: 'First' })]));
     store.subscriptions.flush();
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -74,7 +75,7 @@ describe('refetchOnBindingChange', () => {
   it('refetches once when the chat moves to another profile', () => {
     const refetch = vi.fn();
     const store = openStore(refetch);
-    store.apply([chatChange(2, { profile: OTHER_PROFILE, model: 'a/b', title: 'First' })]);
+    store.apply(wired([chatChange(2, { profile: OTHER_PROFILE, model: 'a/b', title: 'First' })]));
     store.subscriptions.flush();
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -82,7 +83,7 @@ describe('refetchOnBindingChange', () => {
   it('stays quiet for changes that do not touch the binding', () => {
     const refetch = vi.fn();
     const store = openStore(refetch);
-    store.apply([chatChange(2, { profile: PROFILE, model: 'a/b', title: 'Renamed' })]);
+    store.apply(wired([chatChange(2, { profile: PROFILE, model: 'a/b', title: 'Renamed' })]));
     store.setSync({ status: 'live' });
     store.subscriptions.flush();
     expect(refetch).not.toHaveBeenCalled();
@@ -91,10 +92,10 @@ describe('refetchOnBindingChange', () => {
   it('stops listening once unsubscribed', () => {
     const refetch = vi.fn();
     const store = new EntityStore();
-    store.apply([chatChange(1, { profile: PROFILE, model: 'a/b', title: 'First' })]);
+    store.apply(wired([chatChange(1, { profile: PROFILE, model: 'a/b', title: 'First' })]));
     const stop = refetchOnBindingChange(store, CHAT, refetch);
     stop();
-    store.apply([chatChange(2, { profile: PROFILE, model: 'c/d', title: 'First' })]);
+    store.apply(wired([chatChange(2, { profile: PROFILE, model: 'c/d', title: 'First' })]));
     store.subscriptions.flush();
     expect(refetch).not.toHaveBeenCalled();
   });

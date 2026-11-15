@@ -15,6 +15,7 @@ import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { keyPressOf } from '../../../design/keyboard';
 import { isNative, useIdiom } from '../../../design/platform';
+import { browserCovered } from '../../../platform/browser-overlays';
 import { useAreaWidth } from '../../../design/size-class';
 import { joinParts } from '../../../format/text';
 import { dayKeyOf, zonedStartOfDay } from '../../../format/time';
@@ -60,7 +61,7 @@ function useCalendarKeys(
   const active = useIsFocused();
   const handle = useEffectEvent((event: KeyboardEvent): void => {
     const press = keyPressOf(event);
-    if (press.typing || press.command || press.alt) return;
+    if (press.typing || press.command || press.alt || browserCovered.get()) return;
     const action = keyActionOf(press.key, views);
     if (action === null) return;
     event.preventDefault();

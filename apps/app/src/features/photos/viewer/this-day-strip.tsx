@@ -9,6 +9,7 @@ import { flattenPages, useDriveLink } from '../../drive';
 import { PHOTO_ALL } from '../data/keys';
 import { usePhotoBuckets, usePhotoMonth } from '../data/queries';
 import type { MediaItem } from './info-model';
+import { Row } from './info-row';
 import { otherYearDays } from './this-day';
 
 function YearShot({
@@ -64,15 +65,13 @@ export function ThisDayStrip({
   const days = otherYearDays(buckets.data, day);
   if (days.length === 0) return null;
   return (
-    <View className="gap-2 pt-2">
-      <Text variant="footnote" tone="variant">
-        This day in other years
-      </Text>
-      <View className="flex-row flex-wrap gap-2">
+    <Row icon="calendar">
+      <Text variant="callout">This day in other years</Text>
+      <View className="flex-row flex-wrap gap-2 pt-1.5">
         {days.map((other) => (
           <YearShot key={other} day={other} onOpen={onOpen} />
         ))}
       </View>
-    </View>
+    </Row>
   );
 }

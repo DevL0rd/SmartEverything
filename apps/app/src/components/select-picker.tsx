@@ -3,8 +3,9 @@ import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
+import { useWindowSize } from '../design/size-class';
 import { selectionTick } from '../platform/haptics';
-import type { Rect } from './anchor';
+import { MARGIN, type Rect } from './anchor';
 import { BottomSheet } from './bottom-sheet';
 import {
   COMPACT_DETAIL_ROW_HEIGHT,
@@ -15,12 +16,18 @@ import {
 import { focusView } from './focus-request';
 import { Icon } from './icon';
 import { Interactive } from './interactive';
-import { Popover } from './popover';
+import { Popover, PopoverFrame } from './popover';
 import { SearchField } from './search-field';
 import { useSheetSubpage } from './sheet-navigation';
 import { Text } from './text';
 
 const SELECT_DETENTS = ['fit'] as const;
+
+const DIALOG_WIDTH = 440;
+
+const DIALOG_HEIGHT = 560;
+
+export type SelectPresentation = 'anchored' | 'dialog';
 
 export interface SelectOption<T extends string> {
   readonly value: T;
@@ -39,6 +46,8 @@ export interface SelectPickerProps<T extends string> {
   readonly onPick: (value: T) => void;
   readonly onClose: () => void;
   readonly searchable?: boolean;
+  readonly searchPlaceholder?: string;
+  readonly presentation?: SelectPresentation;
   readonly opener?: RefObject<View | null>;
   readonly width?: number;
 }
@@ -48,6 +57,10 @@ interface OptionRowProps<T extends string> {
   readonly selected: boolean;
   readonly touch: boolean;
   readonly onPick: (value: T) => void;
+}
+
+function pointerRowOf(description: string | undefined): string {
+  return cn('mx-1 min-h-9 rounded-sm px-3', description !== undefined && 'py-1.5');
 }
 
 function OptionRow<T extends string>({
@@ -70,7 +83,7 @@ function OptionRow<T extends string>({
       }}
       className={cn(
         COMPACT_ROW_FRAME,
-        touch ? cn(rowHeight, 'rounded-sm py-1') : 'mx-1 min-h-9 rounded-sm px-3',
+        touch ? cn(rowHeight, 'rounded-sm py-1') : pointerRowOf(option.description),
       )}
       layerClassName="rounded-sm"
     >
@@ -118,6 +131,7 @@ function Options<T extends string>({
   options,
   value,
   searchable,
+  searchPlaceholder,
   touch,
   pick,
 }: {
@@ -125,6 +139,7 @@ function Options<T extends string>({
   readonly options: readonly SelectOption<T>[];
   readonly value: T | null;
   readonly searchable: boolean;
+  readonly searchPlaceholder: string;
   readonly touch: boolean;
   readonly pick: (value: T) => void;
 }): ReactNode {
@@ -137,7 +152,7 @@ function Options<T extends string>({
           <SearchField
             value={query}
             onChange={setQuery}
-            placeholder={`Search ${label.toLowerCase()}`}
+            placeholder={searchPlaceholder}
             focusOnMount={!touch}
           />
         </View>
@@ -163,6 +178,8 @@ export function SelectPicker<T extends string>({
   onPick,
   onClose,
   searchable = false,
+  searchPlaceholder = `Search ${label.toLowerCase()}`,
+  presentation = 'anchored',
   opener,
   width,
 }: SelectPickerProps<T>): ReactNode {
@@ -180,14 +197,7 @@ export function SelectPicker<T extends string>({
     onPick(picked);
   };
   const body = (
-    <Options
-      label={label}
-      options={options}
-      value={value}
-      searchable={searchable}
-      touch={touch}
-      pick={pick}
-    />
+    <Options {...{ label, options, value, searchable, searchPlaceholder, touch, pick }} />
   );
   const subpage = useSheetSubpage(touch && anchor !== null, {
     title: label,
@@ -198,9 +208,42 @@ export function SelectPicker<T extends string>({
   });
   if (subpage && touch) return null;
   return (
-    <SelectSurface touch={touch} anchor={anchor} label={label} width={width} onClose={close}>
+    <SelectSurface {...{ touch, anchor, label, width, presentation }} onClose={close}>
       {body}
     </SelectSurface>
+  );
+}
+
+function dialogRectOf(window: { readonly width: number; readonly height: number }): Rect {
+  const width = Math.min(DIALOG_WIDTH, window.width - 2 * MARGIN);
+  const height = Math.min(DIALOG_HEIGHT, window.height - 2 * MARGIN);
+  return { x: (window.width - width) / 2, y: (window.height - height) / 2, width, height };
+}
+
+function DialogSurface({
+  open,
+  label,
+  onClose,
+  children,
+}: {
+  readonly open: boolean;
+  readonly label: string;
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+}): ReactNode {
+  const window = useWindowSize();
+  return (
+    <PopoverFrame
+      open={open}
+      onClose={onClose}
+      label={label}
+      frame={dialogRectOf(window)}
+      scrim
+      fitContent
+      align="top"
+    >
+      {children}
+    </PopoverFrame>
   );
 }
 
@@ -209,6 +252,7 @@ function SelectSurface({
   anchor,
   label,
   width,
+  presentation,
   onClose,
   children,
 }: {
@@ -216,6 +260,7 @@ function SelectSurface({
   readonly anchor: Rect | null;
   readonly label: string;
   readonly width: number | undefined;
+  readonly presentation: SelectPresentation;
   readonly onClose: () => void;
   readonly children: ReactNode;
 }): ReactNode {
@@ -231,6 +276,13 @@ function SelectSurface({
       >
         {children}
       </BottomSheet>
+    );
+  }
+  if (presentation === 'dialog') {
+    return (
+      <DialogSurface open={anchor !== null} label={label} onClose={onClose}>
+        {children}
+      </DialogSurface>
     );
   }
   return (

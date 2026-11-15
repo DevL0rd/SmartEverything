@@ -14,6 +14,7 @@ import { downloadNode, openNode } from '../quick-look/node-files';
 import type {
   FileLinks,
   FileNode,
+  FileSource,
   InfoRow,
   SourceActionSpec,
   SourceInfoSpec,
@@ -96,8 +97,6 @@ function OpenButton({
     <Button
       label="Open"
       icon="externalLink"
-      grow
-      disabled={links.file === null}
       onPress={() => {
         openNode(node, links);
       }}
@@ -117,7 +116,6 @@ function DownloadButton({
       label="Download"
       icon="download"
       variant="tonal"
-      disabled={links.download === null}
       onPress={() => {
         downloadNode(node, links);
       }}
@@ -125,36 +123,35 @@ function DownloadButton({
   );
 }
 
-function MainActions({
-  node,
-  links,
-  open,
-  download,
-}: {
-  readonly node: FileNode;
-  readonly links: FileLinks;
-  readonly open: boolean;
-  readonly download: boolean;
-}): ReactNode {
-  if (!open && !download) return null;
-  return (
-    <View className="flex-row gap-2">
-      {open ? <OpenButton node={node} links={links} /> : null}
-      {download ? <DownloadButton node={node} links={links} /> : null}
-    </View>
-  );
+export function detailsActionsOf<O>(
+  source: FileSource<O>,
+  node: FileNode<O>,
+): readonly SourceActionSpec<O>[] {
+  const covered = new Set([
+    ...source.tabs(node).map((tab) => tab.id),
+    ...source.infoSections(node).map((section) => section.id),
+  ]);
+  return source.actions([node]).filter((action) => !covered.has(action.id));
 }
 
-function ExtraActions<O>({
+function Actions<O>({
   node,
+  links,
+  exports,
   extra,
 }: {
   readonly node: FileNode<O>;
+  readonly links: FileLinks;
+  readonly exports: ExportState;
   readonly extra: readonly SourceActionSpec<O>[];
 }): ReactNode {
-  if (extra.length === 0) return null;
+  const open = node.kind !== 'folder' && exports.mayOpen && links.file !== null;
+  const download = exports.mayDownload && links.download !== null;
+  if (!open && !download && extra.length === 0) return null;
   return (
     <View className="flex-row flex-wrap gap-2">
+      {open ? <OpenButton node={node} links={links} /> : null}
+      {download ? <DownloadButton node={node} links={links} /> : null}
       {extra.map((action) => (
         <Button
           key={action.id}
@@ -166,30 +163,6 @@ function ExtraActions<O>({
           }}
         />
       ))}
-    </View>
-  );
-}
-
-function Actions<O>({
-  node,
-  links,
-  exports,
-  extra,
-  pane,
-}: {
-  readonly node: FileNode<O>;
-  readonly links: FileLinks;
-  readonly exports: ExportState;
-  readonly extra: readonly SourceActionSpec<O>[];
-  readonly pane: boolean;
-}): ReactNode {
-  const open = pane && node.kind !== 'folder' && exports.mayOpen;
-  const download = pane && exports.mayDownload;
-  if (!open && !download && extra.length === 0) return null;
-  return (
-    <View className="gap-2">
-      <MainActions node={node} links={links} open={open} download={download} />
-      <ExtraActions node={node} extra={extra} />
     </View>
   );
 }
@@ -218,13 +191,14 @@ export function InfoTab<O>({
       {links.thumb !== null && previewableOf(node, links.thumb) ? (
         <PreviewPicture node={node} thumb={links.thumb} />
       ) : null}
-      <Actions
-        node={node}
-        links={links}
-        exports={exports}
-        extra={source.actions([node])}
-        pane={pane}
-      />
+      {pane ? (
+        <Actions
+          node={node}
+          links={links}
+          exports={exports}
+          extra={detailsActionsOf(source, node)}
+        />
+      ) : null}
       <Facts node={node} rows={rows} exports={exports} />
       <Sections node={node} sections={source.infoSections(node)} />
     </View>

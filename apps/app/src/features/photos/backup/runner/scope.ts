@@ -6,6 +6,7 @@ import {
   type BackupCheck,
   type BackupHave,
   type BackupRegister,
+  type PhotoFolderCopiesRequest,
   type PhotosBackupPref,
 } from '@smarteverything/domain';
 import { api, type ServerConnection } from '../../../../api/transport';
@@ -75,6 +76,10 @@ function hubPort(signal: AbortSignal, current: () => boolean): BackupHubPort {
         },
         { signal },
       );
+    },
+    folderCopies(body: PhotoFolderCopiesRequest): ReturnType<BackupHubPort['folderCopies']> {
+      checked();
+      return client.call(E.readFolderBackupCopies, { body }, { signal });
     },
   };
 }

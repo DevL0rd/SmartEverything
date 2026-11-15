@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PHOTO_FOLDER_ORIGIN } from './folders';
+import { PHOTO_FOLDER_KEY, PHOTO_FOLDER_ORIGIN } from './folders';
 import { COUNT, ID, MOMENT, NAME } from './shared';
 
 export const BACKUP_PLATFORMS = ['android', 'ios', 'desktop'] as const;
@@ -106,6 +106,47 @@ export const PHOTO_ORIGINS = z
   .readonly();
 
 export type PhotoOrigins = z.infer<typeof PHOTO_ORIGINS>;
+
+export const PHOTO_FOLDER_COPIES_REQUEST = z
+  .strictObject({
+    deviceId: z.string().min(1),
+    folderKey: PHOTO_FOLDER_KEY,
+    localIds: z.array(z.string().min(1)).min(1).readonly(),
+  })
+  .readonly();
+
+export type PhotoFolderCopiesRequest = z.infer<typeof PHOTO_FOLDER_COPIES_REQUEST>;
+
+export const PHOTO_COPY_KEPT_REASONS = [
+  'other_device',
+  'other_folder',
+  'shared',
+  'edited',
+  'album',
+] as const;
+
+export type PhotoCopyKeptReason = (typeof PHOTO_COPY_KEPT_REASONS)[number];
+
+export const PHOTO_FOLDER_COPIES = z
+  .strictObject({
+    items: z
+      .array(
+        z
+          .strictObject({
+            itemId: ID,
+            bytes: COUNT,
+            localIds: z.array(z.string().min(1)).min(1).readonly(),
+          })
+          .readonly(),
+      )
+      .readonly(),
+    kept: z
+      .array(z.strictObject({ itemId: ID, reason: z.enum(PHOTO_COPY_KEPT_REASONS) }).readonly())
+      .readonly(),
+  })
+  .readonly();
+
+export type PhotoFolderCopies = z.infer<typeof PHOTO_FOLDER_COPIES>;
 
 export const BACKUP_DEVICE_STATE = z
   .strictObject({

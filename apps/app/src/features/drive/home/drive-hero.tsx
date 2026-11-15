@@ -50,7 +50,22 @@ function Legend({ entries }: { readonly entries: readonly KindLegendEntry[] }): 
   );
 }
 
-function KindMix({
+function KindBar({ hero }: { readonly hero: DriveHeroModel }): ReactNode {
+  if (hero.segments.length === 0) {
+    return <ProgressBar progress={0} colour="primary" label={`${hero.title} by kind`} />;
+  }
+  return (
+    <SegmentBar
+      segments={hero.segments}
+      total={hero.total}
+      label={`${hero.title} by kind`}
+      size="regular"
+      format={bytes}
+    />
+  );
+}
+
+function KindBody({
   hero,
   known,
 }: {
@@ -65,26 +80,35 @@ function KindMix({
       </View>
     );
   }
-  if (hero.segments.length === 0) {
-    return (
-      <View className="gap-2">
-        <ProgressBar progress={0} colour="primary" label={`${hero.title} by kind`} />
+  return (
+    <View className="gap-2">
+      <KindBar hero={hero} />
+      {hero.segments.length === 0 ? (
         <Text variant="caption" tone="variant">
           Nothing stored yet
         </Text>
-      </View>
-    );
-  }
+      ) : (
+        <Legend entries={hero.legend} />
+      )}
+    </View>
+  );
+}
+
+function KindMix({
+  hero,
+  known,
+}: {
+  readonly hero: DriveHeroModel;
+  readonly known: boolean;
+}): ReactNode {
   return (
     <View className="gap-2">
-      <SegmentBar
-        segments={hero.segments}
-        total={hero.total}
-        label={`${hero.title} by kind`}
-        size="regular"
-        format={bytes}
-      />
-      <Legend entries={hero.legend} />
+      <KindBody hero={hero} known={known} />
+      {hero.caption === null ? null : (
+        <Text variant="caption" tone="variant" className="tabular">
+          {hero.caption}
+        </Text>
+      )}
     </View>
   );
 }
@@ -95,14 +119,48 @@ function Gauge({ gauge }: { readonly gauge: HeroGauge }): ReactNode {
       {gauge.share === null ? null : (
         <ProgressBar progress={gauge.share} colour={gauge.colour} label="Space used" thick />
       )}
-      <Text
-        variant="footnote"
-        tone={gauge.colour === 'critical' ? 'critical' : 'variant'}
-        className="tabular"
-        numberOfLines={1}
-      >
-        {gauge.text}
-      </Text>
+      <View>
+        <Text
+          variant="footnote"
+          tone={gauge.colour === 'critical' ? 'critical' : 'variant'}
+          className="tabular"
+          numberOfLines={1}
+        >
+          {gauge.text}
+        </Text>
+        {gauge.note === null ? null : (
+          <Text variant="caption" tone="variant" numberOfLines={1}>
+            {gauge.note}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function CompactMeter({
+  hero,
+  known,
+}: {
+  readonly hero: DriveHeroModel;
+  readonly known: boolean;
+}): ReactNode {
+  if (!known) return <Skeleton className="h-2" />;
+  return (
+    <View className="flex-row items-center gap-3">
+      <View className="min-w-0 flex-1">
+        <KindBar hero={hero} />
+      </View>
+      {hero.gauge === null ? null : (
+        <Text
+          variant="caption"
+          tone={hero.gauge.colour === 'critical' ? 'critical' : 'variant'}
+          numberOfLines={1}
+          className="tabular shrink-0"
+        >
+          {hero.gauge.text}
+        </Text>
+      )}
     </View>
   );
 }
@@ -127,9 +185,11 @@ function People(): ReactNode {
 function Heading({
   hero,
   people,
+  caption,
 }: {
   readonly hero: DriveHeroModel;
   readonly people: boolean;
+  readonly caption: boolean;
 }): ReactNode {
   return (
     <View className="min-w-0 gap-1">
@@ -139,7 +199,7 @@ function Heading({
       <Text variant="footnote" tone="variant" numberOfLines={2} className="tabular">
         {hero.line}
       </Text>
-      {hero.caption === null ? null : (
+      {!caption || hero.caption === null ? null : (
         <Text variant="caption" tone="variant" numberOfLines={2} className="tabular">
           {hero.caption}
         </Text>
@@ -169,38 +229,51 @@ function Phases({ root }: { readonly root: DriveRoot }): ReactNode {
   ));
 }
 
-function HeroCard({
-  root,
-  hero,
-  people,
-  known,
-}: {
-  readonly root: DriveRoot;
+interface HeroProps {
   readonly hero: DriveHeroModel;
   readonly people: boolean;
   readonly known: boolean;
+}
+
+function WideHero({ hero, people, known }: HeroProps): ReactNode {
+  return (
+    <View className="min-h-22 flex-row items-center gap-6">
+      <View className="min-w-64 shrink basis-1/3">
+        <Heading hero={hero} people={people} caption={false} />
+      </View>
+      <View className="min-w-0 flex-1">
+        <KindMix hero={hero} known={known} />
+      </View>
+      {hero.gauge === null ? null : (
+        <View className="min-w-44 shrink basis-1/4">
+          <Gauge gauge={hero.gauge} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function CompactHero({ hero, people, known }: HeroProps): ReactNode {
+  return (
+    <View className="gap-3">
+      <Heading hero={hero} people={people} caption />
+      <CompactMeter hero={hero} known={known} />
+    </View>
+  );
+}
+
+function HeroCard({
+  root,
+  ...props
+}: HeroProps & {
+  readonly root: DriveRoot;
 }): ReactNode {
   const { width, onLayout } = useMeasuredWidth(undefined, useFrameBodyWidth());
   const wide = twoFrameColumnsAt(width);
   const sync = useDriveSync(root.id);
   return (
-    <View
-      onLayout={onLayout}
-      className="gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-4 elevation-1"
-    >
-      <View className={wide ? 'min-h-22 flex-row items-center gap-6' : 'gap-3'}>
-        <View className={wide ? 'w-56' : ''}>
-          <Heading hero={hero} people={people} />
-        </View>
-        <View className={wide ? 'min-w-0 flex-1' : ''}>
-          <KindMix hero={hero} known={known} />
-        </View>
-        {hero.gauge === null ? null : (
-          <View className={wide ? 'w-52' : ''}>
-            <Gauge gauge={hero.gauge} />
-          </View>
-        )}
-      </View>
+    <View onLayout={onLayout} className="gap-3 px-4 pt-4">
+      {wide ? <WideHero {...props} /> : <CompactHero {...props} />}
       {sync}
       <Phases root={root} />
     </View>

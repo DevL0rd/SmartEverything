@@ -1,6 +1,6 @@
 export type FrameLayout = 'compact' | 'icon' | 'wide';
 
-export type RailWidth = 'icon' | 'mid' | 'wide';
+export type RailWidth = 'compact' | 'icon' | 'mid' | 'wide';
 
 export type RailForm = 'sections' | 'icon';
 
@@ -16,6 +16,7 @@ export interface FrameLayoutMath {
 }
 
 export const RAIL_PX: Readonly<Record<RailWidth, number>> = {
+  compact: 80,
   icon: 96,
   mid: 240,
   wide: 260,
@@ -66,16 +67,24 @@ export const ASIDE_DOCK_FROM = 1100;
 
 export const SEARCH_WIDTH = { min: 280, max: 560 } as const;
 
-export const PHONE_TAB_LIMIT = 5;
-
 const shellMath = frameLayoutMath(SHELL_BREAKPOINTS);
 
 export const shellLayoutOf = shellMath.frameLayoutOf;
 
 export function shellRailOf(area: number, form: RailForm | null): RailWidth | null {
-  if (form === null || shellMath.frameLayoutOf(area) === 'compact') return null;
+  if (form === null) return null;
+  if (shellMath.frameLayoutOf(area) === 'compact') return 'compact';
   if (form === 'icon') return 'icon';
   return shellMath.railWidthOf(area);
+}
+
+export function sectionRailOf(
+  phone: boolean,
+  area: number,
+  form: RailForm | null,
+): RailWidth | null {
+  if (form === null) return null;
+  return phone ? 'compact' : shellRailOf(area, form);
 }
 
 export function asideDockedAt(area: number): boolean {
@@ -120,6 +129,10 @@ export function shellColumnOf({ area, gutter, rail, aside }: ShellGeometry): She
 const BAR_TITLE_INSET = 12;
 
 const BACK_SPAN = 52;
+
+export function stackedRail(rail: RailWidth): boolean {
+  return rail === 'compact' || rail === 'icon';
+}
 
 export function barLeadOf(titleLeft: number, back: boolean): number {
   return Math.max(0, titleLeft - BAR_TITLE_INSET - (back ? BACK_SPAN : 0));

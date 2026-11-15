@@ -58,6 +58,7 @@ export interface PrinterModel {
   readonly costMonth: number | null;
   readonly gapOpen: boolean;
   readonly observedAt: string;
+  readonly bootedAt: string | null;
 }
 
 export interface ModelInput {
@@ -73,6 +74,7 @@ export interface ModelInput {
   readonly costMonth: number | null;
   readonly gapOpen: boolean;
   readonly observedAt: string;
+  readonly bootedAt: string | null;
 }
 
 const VIRTUAL_TRAYS: ReadonlySet<string> = new Set(['auto']);
@@ -142,6 +144,20 @@ function soonest(rows: readonly SupplyRow[]): number | null {
   return days.length === 0 ? null : Math.min(...days);
 }
 
+export function bootedAtOf(
+  previous: PrinterModel | null,
+  status: PrinterStatus,
+  now: Date,
+): string | null {
+  const { upTime } = status;
+  if (upTime === null) return null;
+  if (previous !== null && previous.bootedAt !== null) {
+    const before = previous.status.upTime;
+    if (before !== null && upTime >= before) return previous.bootedAt;
+  }
+  return new Date(Math.round(now.getTime() / 1000 - upTime) * 1000).toISOString();
+}
+
 export function buildModel(input: ModelInput): PrinterModel {
   const { status, description } = input;
   const state = stateValueOf(status.state);
@@ -167,5 +183,6 @@ export function buildModel(input: ModelInput): PrinterModel {
     costMonth: input.costMonth,
     gapOpen: input.gapOpen,
     observedAt: input.observedAt,
+    bootedAt: input.bootedAt,
   };
 }

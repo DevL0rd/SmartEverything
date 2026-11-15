@@ -121,6 +121,19 @@ describe('a printer session reading a printer', () => {
     });
   });
 
+  it('does not republish the device when a later poll only moves the clock and the up time', async () => {
+    await session.poll();
+    const published = rig.devices.length;
+    for (let poll = 0; poll < 5; poll += 1) {
+      later(30);
+      printer.state.upTime += 30;
+      await session.poll();
+    }
+    expect(rig.devices).toHaveLength(published);
+    expect(rig.devices.at(-1)?.details['lastSeen']).toBeNull();
+    expect(rig.devices.at(-1)?.details['bootedAt']).toBe('2026-10-18T09:43:20.000Z');
+  });
+
   it('detects a restart when the up time falls and does not count the counter drop as pages', async () => {
     await session.poll();
     printer.state.upTime = 5;

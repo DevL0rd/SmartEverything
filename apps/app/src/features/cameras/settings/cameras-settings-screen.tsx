@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
 import type { CameraReach } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import { settingsTrail } from '../../../settings/tree';
+import { SettingsFrame } from '../../../settings/settings-frame';
 import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
 import { NavRow } from '../../../components/rows';
-import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { useIsOwner } from '../../../store/selectors';
 import { BudgetRow, RetentionRow } from '../transcripts/keep-rows';
@@ -60,7 +59,7 @@ export function CamerasSettingsScreen(): ReactNode {
   const entries = useCameraEntries();
   const owner = useIsOwner();
   return (
-    <PageShell title="Camera settings" breadcrumbs={settingsTrail('cameras').slice(0, -1)}>
+    <SettingsFrame page="cameras">
       {entries.length === 0 ? (
         <EmptyState icon="cameras" title="No cameras" body="Cameras you link show up here." />
       ) : (
@@ -85,6 +84,6 @@ export function CamerasSettingsScreen(): ReactNode {
           <BudgetRow />
         </List>
       ) : null}
-    </PageShell>
+    </SettingsFrame>
   );
 }

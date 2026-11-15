@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { browserCovered } from '../../../platform/browser-overlays';
 import type { ComposerKind } from '../item/parse-preview';
 import type { PlannerSection } from '../model/section-routes';
 
 export interface ComposerOpening {
   readonly text: string;
   readonly kind: ComposerKind | null;
+  readonly collectionId?: string;
 }
 
 export interface ComposerControl {
@@ -42,6 +44,10 @@ export function isTextEntry(target: EventTarget | null): boolean {
     target instanceof HTMLTextAreaElement ||
     (target instanceof HTMLElement && target.isContentEditable)
   );
+}
+
+export function pageKeysHeld(target: EventTarget | null): boolean {
+  return isTextEntry(target) || browserCovered.get();
 }
 
 export function opensComposer(press: ComposerKeyPress, editing: boolean): boolean {

@@ -27,18 +27,29 @@ export function focusView(node: FocusTarget | null, staticTarget = false): boole
   return document.activeElement === target;
 }
 
-export function useFocusRequest(requested: boolean): RefObject<View | null> {
+export function typingInField(): boolean {
+  if (isNative()) return false;
+  const node = document.activeElement;
+  return (
+    node instanceof HTMLInputElement ||
+    node instanceof HTMLTextAreaElement ||
+    (node instanceof HTMLElement && node.isContentEditable)
+  );
+}
+
+export function useFocusRequest(requested: boolean, yieldToField = false): RefObject<View | null> {
   const ref = useRef<View>(null);
   useEffect(() => {
     if (!requested) {
       return undefined;
     }
     const frame = requestAnimationFrame(() => {
+      if (yieldToField && typingInField()) return;
       focusView(ref.current);
     });
     return (): void => {
       cancelAnimationFrame(frame);
     };
-  }, [requested]);
+  }, [requested, yieldToField]);
   return ref;
 }

@@ -132,4 +132,42 @@ describe('desktop media scan ownership', () => {
     expect(await library.file(currentId)).toEqual(currentFile);
     expect(await parallel).toEqual(result);
   });
+
+  it('moves the chosen local photos to the computer trash and drops them from the library', async () => {
+    const { root, library } = await fixture();
+    await writeFile(join(root, 'a.jpg'), 'first');
+    await writeFile(join(root, 'b.jpg'), 'second');
+    const items = (await library.list()).items;
+    const first = items.find((item) => item.name === 'a.jpg');
+    if (first === undefined) throw new Error('Fixture item missing.');
+    const removed: string[] = [];
+    let changes = 0;
+    library.subscribe(() => {
+      changes += 1;
+    });
+    const trashed = await library.trash([first.id, 'f'.repeat(64)], (path) => {
+      removed.push(path);
+      return rm(path);
+    });
+    expect(trashed).toEqual([first.id]);
+    expect(removed).toEqual([join(root, 'a.jpg')]);
+    expect(changes).toBeGreaterThan(0);
+    expect((await library.list()).items.map((item) => item.name)).toEqual(['b.jpg']);
+  });
+
+  it('refuses to trash a local photo that changed since the library read it', async () => {
+    const { root, library } = await fixture();
+    await writeFile(join(root, 'a.jpg'), 'first');
+    const [item] = (await library.list()).items;
+    if (item === undefined) throw new Error('Fixture item missing.');
+    await writeFile(join(root, 'a.jpg'), 'edited afterwards');
+    const removed: string[] = [];
+    await expect(
+      library.trash([item.id], (path) => {
+        removed.push(path);
+        return Promise.resolve();
+      }),
+    ).rejects.toThrow('changed');
+    expect(removed).toEqual([]);
+  });
 });

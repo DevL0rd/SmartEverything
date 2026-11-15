@@ -84,9 +84,9 @@ function liveFacts(model: PrinterModel): Partial<PrinterDetails> {
       description: alert.description,
     })),
     activeJob: model.activeJob,
-    lastSeen: model.record.lastSeen,
+    lastSeen: model.online ? null : model.record.lastSeen,
     gapOpen: model.gapOpen,
-    uptimeSeconds: status.upTime,
+    bootedAt: model.bootedAt,
   };
 }
 

@@ -91,7 +91,7 @@ export function detailsOf(extra: Partial<PrinterDetails> = {}): PrinterDetails {
     lastSeen: '2026-10-18T10:00:00+00:00',
     gapOpen: false,
     wifiSsid: null,
-    uptimeSeconds: 5000,
+    bootedAt: '2026-10-18T08:36:40+00:00',
     ...extra,
   });
 }

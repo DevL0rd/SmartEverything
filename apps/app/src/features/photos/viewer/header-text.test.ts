@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PhotoPlace } from '@smarteverything/domain';
-import { desktopHeaderText, phoneHeaderText, type HeaderInput } from './header-text';
+import { desktopHeaderText, headerFormOf, phoneHeaderText, type HeaderInput } from './header-text';
 import { isMediaItem, type MediaItem } from './info-model';
 import { imageFixture } from '../../drive/testing';
 
@@ -75,6 +75,8 @@ describe('viewer header text', () => {
     const text = phoneHeaderText(input({}));
     expect(text.title.startsWith('Today, ')).toBe(true);
     expect(text.detail).toBe('Alfama, Lisbon');
+    const city = phoneHeaderText(input({ place: { ...PLACE, name: 'Lisbon' } }));
+    expect(city.detail).toBe('Lisbon');
   });
 
   it('falls back to the file name when the capture time is unknown', () => {
@@ -82,5 +84,12 @@ describe('viewer header text', () => {
       title: 'IMG_1.JPG',
       detail: null,
     });
+  });
+
+  it('uses the short header in a narrow stage column and the full one in a wide one', () => {
+    expect(headerFormOf(true, 1200)).toBe('phone');
+    expect(headerFormOf(false, 524)).toBe('compact');
+    expect(headerFormOf(false, 1080)).toBe('desktop');
+    expect(headerFormOf(false, null)).toBe('desktop');
   });
 });

@@ -113,7 +113,7 @@ function Layers({
 
 export function PinMap(props: PinMapProps): ReactNode {
   const { ref, frame, onLayout } = useMapFrame();
-  useMapWheel(ref, 'ctrl-wheel', props, frame);
+  useMapWheel(ref, 'ctrl-wheel', props);
   return (
     <View
       ref={ref}

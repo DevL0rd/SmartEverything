@@ -1,12 +1,15 @@
 package expo.modules.healthconnect.photos
 
 import android.Manifest
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.BatteryManager
+import android.os.Build
+import android.provider.MediaStore
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
@@ -17,6 +20,11 @@ import kotlinx.coroutines.withContext
 class PhotosBackupModule : Module() {
   private var media: PhotosMedia? = null
   private var receiver: BroadcastReceiver? = null
+  private val trash = PhotosTrash(
+    Build.VERSION.SDK_INT,
+    { ids -> trashRows(ids) },
+    { rows, trashed -> withContext(Dispatchers.Main) { askTrash(rows, trashed) } }
+  )
 
   private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
@@ -38,6 +46,12 @@ class PhotosBackupModule : Module() {
       withContext(Dispatchers.IO) { media().range(uri, id, offset, length) }
     }
     AsyncFunction("releaseChunk") { uri: String -> media().releaseChunk(uri) }
+    AsyncFunction("changeTrash") Coroutine { ids: List<String>, trashed: Boolean ->
+      withContext(Dispatchers.IO) { trash.change(ids, trashed) }
+    }
+    OnActivityResult { _, payload ->
+      if (payload.requestCode == REQUEST_TRASH) trash.finish(payload.resultCode == Activity.RESULT_OK)
+    }
     Function("prepare") { id: String -> media().prepare(id) }
     Function("cancel") { id: String -> media().cancel(id) }
     AsyncFunction("charging") {
@@ -60,6 +74,18 @@ class PhotosBackupModule : Module() {
     }
   }
 
+  private fun trashRows(ids: List<Long>): List<TrashRow> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) error("The system trash needs Android 11")
+    return MediaTrashQuery.rows(context().contentResolver, ids)
+  }
+
+  private fun askTrash(rows: List<TrashRow>, trashed: Boolean) {
+    val activity = appContext.currentActivity ?: throw Exceptions.MissingActivity()
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) error("The system trash needs Android 11")
+    val request = MediaStore.createTrashRequest(context().contentResolver, rows.map(MediaTrashQuery::uriOf), trashed)
+    activity.startIntentSenderForResult(request.intentSender, REQUEST_TRASH, null, 0, 0, 0)
+  }
+
   private fun stopObserving() {
     receiver?.let { context().unregisterReceiver(it) }
     receiver = null
@@ -67,4 +93,8 @@ class PhotosBackupModule : Module() {
 
   private fun charging(intent: Intent?): Boolean =
     requireNotNull(intent).getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+
+  private companion object {
+    const val REQUEST_TRASH = 0x5C42
+  }
 }

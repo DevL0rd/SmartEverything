@@ -9,7 +9,6 @@ import {
   dayCountText,
   exposureChips,
   fileDetail,
-  fileLine,
   folderOf,
   isMediaItem,
   isRaw,
@@ -68,8 +67,14 @@ describe('viewer info', () => {
 
   it('writes the lens and exposure the way photographers read them', () => {
     const item = photo();
-    expect(lensLine(item.camera, item.exposure)).toBe('24 mm f/1.78');
-    expect(lensLine({ make: null, model: null, lens: 'FE 35mm F1.8' }, null)).toBe('FE 35mm F1.8');
+    expect(lensLine(item.camera, item.exposure)).toBe('24 mm');
+    expect(lensLine(item.camera, { iso: null, aperture: 1.68, shutter: null, focal: 6.9 })).toBe(
+      '6.9 mm',
+    );
+    expect(lensLine({ make: null, model: null, lens: 'FE 35mm F1.8' }, item.exposure)).toBe(
+      'FE 35mm F1.8',
+    );
+    expect(lensLine(null, null)).toBeNull();
     expect(exposureChips(item.exposure)).toEqual(['ISO 80', '1/1250 s', 'f/1.78']);
     expect(shutterText(2.5)).toBe('2.5 s');
     expect(exposureChips(null)).toEqual([]);
@@ -91,8 +96,7 @@ describe('viewer info', () => {
 
   it('describes the file, its folder and its type', () => {
     const item = photo();
-    expect(fileLine(item)).toBe('IMG_4821.HEIC · 4032 × 3024');
-    expect(fileDetail(item)).toBe(`12.2 MP · ${bytes(3_565_158)} · HEIC`);
+    expect(fileDetail(item)).toBe(`4032 × 3024 · 12.2 MP · ${bytes(3_565_158)} · HEIC`);
     expect(folderOf(item.relPath)).toBe('Camera roll/Alex/2026/2026-11');
     expect(folderOf('top.jpg')).toBe('');
     expect(addedLine(item, 'Photos', null)).toMatch(/^Photos · Added \S.*\d$/);
@@ -100,7 +104,7 @@ describe('viewer info', () => {
     expect(addedLine(item, null, 'You')).toMatch(/^Added .+ by You$/);
     expect(askLabel(item)).toBe('Ask about this photo');
     expect(askLabel(video())).toBe('Ask about this video');
-    expect(fileLine(photo({ width: null, height: null }))).toBe('IMG_4821.HEIC');
+    expect(fileDetail(photo({ width: null, height: null }))).toBe(`${bytes(3_565_158)} · HEIC`);
   });
 
   it('knows RAW files and which originals the stage can show', () => {
@@ -139,6 +143,19 @@ describe('viewer info', () => {
         coverItemId: null,
       }),
     ).toBe('Alfama, Lisbon, Portugal');
+    expect(
+      placeLine({
+        id: 2,
+        name: 'Lisbon',
+        admin: 'lisbon',
+        country: 'Portugal',
+        countryCode: 'PT',
+        lat: 38.72,
+        lon: -9.14,
+        count: 4,
+        coverItemId: null,
+      }),
+    ).toBe('Lisbon, Portugal');
     expect(dayCountText(3, 23, true)).toBe('3 of 23 today');
     expect(dayCountText(1, 2, false)).toBe('1 of 2 that day');
   });

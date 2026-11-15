@@ -40,3 +40,5 @@ export const DRIVE_NOTICES = [
   PHOTOS_FOLDERS_NOTICE,
   PHOTOS_EDIT_JOB_NOTICE,
 ] as const;
+
+export const DRIVE_NOTICE_TYPES = DRIVE_NOTICES.map((notice) => notice.shape.type.value);

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { PhotoGroup } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
+import { CheckboxMark } from '../../../components/checkbox';
 import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
 import { Sheet } from '../../../components/sheet';
@@ -96,6 +97,8 @@ function MergeRow({
       }
       role="checkbox"
       checked={picked}
+      selected={picked}
+      trailing={<CheckboxMark checked={picked} />}
       onPress={onToggle}
     />
   );
@@ -139,44 +142,92 @@ function MergeList({
   ));
 }
 
+function MergeFooter({
+  count,
+  busy,
+  onCancel,
+  onMerge,
+}: {
+  readonly count: number;
+  readonly busy: boolean;
+  readonly onCancel: () => void;
+  readonly onMerge: () => void;
+}): ReactNode {
+  return (
+    <>
+      <Button label="Cancel" variant="text" onPress={onCancel} />
+      <Button
+        label={count === 0 ? 'Merge' : `Merge ${String(count)}`}
+        variant="filled"
+        disabled={count === 0 || busy}
+        loading={busy}
+        onPress={onMerge}
+      />
+    </>
+  );
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
+function MergeBody(props: Parameters<typeof MergeList>[0]): ReactNode {
+  return (
+    <View className="gap-2 pb-2">
+      <Text variant="footnote" tone="variant">
+        {`Pick the groups that are ${groupTitleOf(props.group)}. Their photos join this one.`}
+      </Text>
+      <MergeList {...props} />
+    </View>
+  );
+}
+
 function MergeSheet({
   group,
+  open,
   onClose,
 }: {
   readonly group: PhotoGroup;
+  readonly open: boolean;
   readonly onClose: () => void;
 }): ReactNode {
   const people = usePhotoPeople().data;
   const actions = usePeopleActions();
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [picked, setPicked] = useState<ReadonlySet<string>>(NONE);
   const targets = mergeTargetsOf(group, people?.groups ?? []);
   const sources = targets.filter((target) => picked.has(target.id));
+  const close = (): void => {
+    setPicked(NONE);
+    onClose();
+  };
   return (
-    <View className="gap-2 pb-2">
-      <Text variant="footnote" tone="variant">
-        {`Pick the groups that are ${groupTitleOf(group)}. Their photos join this one.`}
-      </Text>
-      <MergeList
-        group={group}
-        targets={targets}
-        picked={picked}
-        onToggle={(id) => {
-          setPicked((held) => toggled(held, id));
-        }}
-      />
-      <View className="flex-row justify-end gap-2 pt-2">
-        <Button label="Cancel" variant="text" onPress={onClose} />
-        <Button
-          label={sources.length === 0 ? 'Merge' : `Merge ${String(sources.length)}`}
-          variant="filled"
-          disabled={sources.length === 0 || actions.busy}
-          loading={actions.busy}
-          onPress={() => {
-            actions.merge(group, sources, onClose);
+    <Sheet
+      open={open}
+      onClose={close}
+      title={`Merge into ${groupTitleOf(group)}`}
+      detents={['half', 'full']}
+      footer={
+        targets.length === 0 ? undefined : (
+          <MergeFooter
+            count={sources.length}
+            busy={actions.busy}
+            onCancel={close}
+            onMerge={() => {
+              actions.merge(group, sources, close);
+            }}
+          />
+        )
+      }
+    >
+      {open ? (
+        <MergeBody
+          group={group}
+          targets={targets}
+          picked={picked}
+          onToggle={(id) => {
+            setPicked((held) => toggled(held, id));
           }}
         />
-      </View>
-    </View>
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -199,14 +250,7 @@ export function PersonSheets({
       >
         {sheet === 'link' ? <LinkSheet group={group} onClose={onClose} /> : null}
       </Sheet>
-      <Sheet
-        open={sheet === 'merge'}
-        onClose={onClose}
-        title={`Merge into ${groupTitleOf(group)}`}
-        detents={['half', 'full']}
-      >
-        {sheet === 'merge' ? <MergeSheet group={group} onClose={onClose} /> : null}
-      </Sheet>
+      <MergeSheet group={group} open={sheet === 'merge'} onClose={onClose} />
     </>
   );
 }

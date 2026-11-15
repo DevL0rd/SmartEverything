@@ -4,7 +4,7 @@ import { bootServer, linkFakeProvider, verifiedPublicUrl, type Booted } from './
 import { LAMP } from './support/fake-provider';
 import { captureLogs } from './support/logs';
 import { callTool, structured } from './mcp/client';
-import { call, openLive, temporaryDirectory } from './support/server';
+import { call, changedTo, openLive, temporaryDirectory } from './support/server';
 
 const BLASTER: DiscoveredDevice = {
   ...LAMP,
@@ -94,11 +94,8 @@ describe('correcting what an IR remote is assumed to be doing over HTTP', () => 
     live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['settings'], streams: [] }));
     await live.next((message) => message.type === 'subscribed');
     await patch(remote, { on: true });
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'settings' &&
-        message.record?.ir_remotes[remote]?.on === true,
+    await live.next((message) =>
+      changedTo(message, 'settings', { ir_remotes: { [remote]: { on: true } } }),
     );
     live.socket.close();
   });

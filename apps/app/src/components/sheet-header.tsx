@@ -20,7 +20,7 @@ export interface SheetBackAction {
 }
 
 function SheetBack({ action }: { readonly action: SheetBackAction }): ReactNode {
-  const ref = useFocusRequest(action.focus);
+  const ref = useFocusRequest(action.focus, true);
   return <IconButton ref={ref} icon="chevronLeft" label={action.label} onPress={action.onPress} />;
 }
 
@@ -29,23 +29,30 @@ export function useSheetHeading(reading = false): RefObject<View | null> | undef
   return reading ? heading : undefined;
 }
 
+function titleLinesOf(touch: boolean, single: boolean): number | undefined {
+  if (single) return 1;
+  return touch ? undefined : 2;
+}
+
 function SheetTitle({
   title,
   touch,
   compact,
+  single,
   focus,
 }: {
   readonly title: string;
   readonly touch: boolean;
   readonly compact: boolean;
+  readonly single: boolean;
   readonly focus: RefObject<View | null> | undefined;
 }): ReactNode {
   const text = (
     <Text
       variant={touch && !compact ? 'title-2' : 'title-3'}
       accessibilityRole={focus === undefined ? 'header' : undefined}
-      className={focus === undefined ? 'flex-1' : ''}
-      numberOfLines={touch ? undefined : 2}
+      className={focus === undefined ? 'min-w-0 flex-1' : ''}
+      numberOfLines={titleLinesOf(touch, single)}
     >
       {title}
     </Text>
@@ -72,6 +79,7 @@ export function SheetHeader({
   touch,
   compact = false,
   back,
+  action,
   titleFocus,
 }: {
   readonly title: string | undefined;
@@ -79,6 +87,7 @@ export function SheetHeader({
   readonly touch: boolean;
   readonly compact?: boolean;
   readonly back?: SheetBackAction | undefined;
+  readonly action?: ReactNode;
   readonly titleFocus?: RefObject<View | null> | undefined;
 }): ReactNode {
   if (title === undefined) {
@@ -89,7 +98,14 @@ export function SheetHeader({
       className={cn('min-h-touch-min flex-row items-center gap-2', headerInset(touch, compact))}
     >
       {back === undefined ? null : <SheetBack key={back.key} action={back} />}
-      <SheetTitle title={title} touch={touch} compact={compact} focus={titleFocus} />
+      <SheetTitle
+        title={title}
+        touch={touch}
+        compact={compact}
+        single={action !== undefined}
+        focus={titleFocus}
+      />
+      {action}
       {touch ? null : <IconButton icon="close" label="Close" onPress={onClose} shortcut="Esc" />}
     </View>
   );
@@ -100,12 +116,14 @@ export function SheetHandle({
   onClose,
   compact,
   back,
+  action,
   titleFocus,
 }: {
   readonly title: string | undefined;
   readonly onClose: () => void;
   readonly compact: boolean;
   readonly back: SheetBackAction | undefined;
+  readonly action: ReactNode;
   readonly titleFocus: RefObject<View | null> | undefined;
 }): ReactNode {
   return (
@@ -119,6 +137,7 @@ export function SheetHandle({
         touch
         compact={compact}
         back={back}
+        action={action}
         titleFocus={titleFocus}
       />
     </View>

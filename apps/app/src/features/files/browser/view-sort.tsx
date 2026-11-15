@@ -100,14 +100,22 @@ function ViewButton<O>({ browser }: { readonly browser: FileBrowserHandle<O> }):
   );
 }
 
+function controlsOf<O>(browser: FileBrowserHandle<O>): {
+  readonly sort: boolean;
+  readonly grid: boolean;
+} {
+  const { abilities, listing } = browser;
+  const shown = abilities.list && listing.entries.length > 0;
+  return { sort: shown && abilities.sort.length > 1, grid: shown && abilities.grid };
+}
+
 export function BrowserViewControls<O>({
   browser,
 }: {
   readonly browser: FileBrowserHandle<O>;
 }): ReactNode {
   const dense = useSizeClass().header === 'large';
-  const sort = browser.abilities.list && browser.abilities.sort.length > 1;
-  const grid = browser.abilities.list && browser.abilities.grid;
+  const { sort, grid } = controlsOf(browser);
   if (!sort && !grid) return null;
   if (dense) {
     return (

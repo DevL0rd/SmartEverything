@@ -80,7 +80,7 @@ describe('info lines', () => {
     expect(whoSeesOf({ ...who, access: 'own' })).toBe('Only you');
     expect(whoSeesOf({ ...who, access: 'own', people: ['Sam'] })).toBe('You and Sam');
     expect(whoSeesOf({ ...who, access: 'own', people: ['Sam', 'Robin', 'Ada'] })).toBe(
-      'You and Sam, Robin and Ada',
+      'You, Sam, Robin and Ada',
     );
     expect(whoSeesOf({ ...who, access: 'edit' })).toBe('Shared with you by Sam · Can edit');
     expect(whoSeesOf({ ...who, access: 'view', ownerName: null })).toBe(
@@ -130,7 +130,15 @@ describe('computer rings', () => {
     state: Facts['status']['state'],
     extra: Partial<Facts> = {},
   ): Facts {
-    return { id, mode: 'synced', hold: null, status: { state, needBytes: 0 }, ...extra };
+    const mode = extra.mode ?? 'synced';
+    return {
+      id,
+      mode,
+      hold: null,
+      localPath: mode === 'synced' ? '/home/alex/Projects' : null,
+      status: { state, needBytes: 0 },
+      ...extra,
+    };
   }
 
   it('gives each placement its share of the placed folder and a word from its state', () => {
@@ -149,15 +157,25 @@ describe('computer rings', () => {
       placementRingOf(placement('h', 'stopped'), 'Spare', 4096),
     ];
     expect(rings.map((ring) => [ring.name, ring.share, ring.word, ring.tone])).toEqual([
-      ['Workstation', 1, 'up to date', 'positive'],
+      ['Workstation', 1, 'Up to date', 'positive'],
       ['Laptop', 0.5, `${bytes(2048)} left`, 'info'],
-      ['Office PC', 1, 'offline', null],
-      ['Den', 1, 'sync failed', 'critical'],
-      ['Attic', 1, 'on hold', 'warning'],
-      ['Studio', 1, 'mounted', 'positive'],
-      ['Shed', 1, 'mount failed', 'critical'],
-      ['Spare', 1, 'paused', null],
+      ['Office PC', 1, 'Offline', null],
+      ['Den', 1, 'Sync failed', 'critical'],
+      ['Attic', 1, 'On hold', 'warning'],
+      ['Studio', 1, 'Mounted', 'positive'],
+      ['Shed', 1, 'Mount failed', 'critical'],
+      ['Spare', 1, 'Paused', null],
     ]);
+  });
+
+  it('tells a mounted drive from a synced folder on the same computer', () => {
+    const mounted = placementRingOf(
+      placement('m', 'mounted', { mode: 'mounted' }),
+      'Workstation',
+      4096,
+    );
+    const synced = placementRingOf(placement('s', 'up_to_date'), 'Workstation', 4096);
+    expect([mounted.place, synced.place]).toEqual(['Mounted drive', '/home/alex/Projects']);
   });
 
   it('counts an item as placed when it is the placed folder or inside it, or the whole drive', () => {

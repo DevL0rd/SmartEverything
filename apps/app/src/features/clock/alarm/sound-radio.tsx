@@ -169,12 +169,7 @@ export function RadioTab(props: SoundTabProps): ReactNode {
   const search = useRadioSearch(text);
   return (
     <View className="gap-3">
-      <SearchField
-        value={text}
-        onChange={setText}
-        placeholder="Search stations"
-        variant="field"
-      />
+      <SearchField value={text} onChange={setText} placeholder="Search stations" variant="field" />
       <Results {...props} search={search} />
       <Text variant="caption" tone="faint">
         Stations come from the Radio Browser directory.

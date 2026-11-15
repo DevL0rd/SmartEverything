@@ -10,6 +10,7 @@ import {
   modelWords,
   nameProblem,
   opensAfterCreate,
+  stepSearchOf,
 } from './add-appliance-model';
 
 const CLIMATE: IrLibraryModel = {
@@ -62,5 +63,16 @@ describe('the add appliance browse', () => {
     expect(nameProblem('  ')).toBe('Give it a name');
     expect(nameProblem('x'.repeat(81))).toBe('Use at most 80 characters');
     expect(nameProblem('Bedroom AC')).toBeNull();
+  });
+
+  it('searches the step in view from the page search and has none on the details step', () => {
+    const steps = [
+      { category: null, brand: null, model: null },
+      { category: 'TV', brand: null, model: null },
+      { category: 'TV', brand: 'Samsung', model: null },
+    ].map(stepSearchOf);
+    expect(steps.every((step) => step !== null)).toBe(true);
+    expect(new Set(steps).size).toBe(steps.length);
+    expect(stepSearchOf({ category: 'TV', brand: 'Samsung', model: KEYS })).toBeNull();
   });
 });

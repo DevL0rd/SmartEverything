@@ -1,8 +1,14 @@
-import type { PlannerColourKey, PlannerDay, PlannerOccurrenceView } from '@smarteverything/domain';
+import type {
+  PlannerColourKey,
+  PlannerDay,
+  PlannerItemRow,
+  PlannerOccurrenceView,
+} from '@smarteverything/domain';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Arc } from '../../../components/charts/arc';
+import { Icon } from '../../../components/icon';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { WidgetEmpty, WidgetFrame, widgetBodyHeight } from '../../../components/widget-board';
@@ -10,16 +16,25 @@ import { useWidgetFace } from '../../../components/widget-board/use-widget-face'
 import { cn } from '../../../design/cn';
 import { plural } from '../../../format/text';
 import { useDayKey } from '../../../store/clock';
-import { useRows } from '../../../store/selectors';
+import { useRows, useSettings } from '../../../store/selectors';
 import { useHubOffline } from '../../clock';
 import { DeviceFace } from '../../devices';
 import { usePlannerProfile } from '../data/assignment';
-import { usePlannerCollections, usePlannerDay, usePlannerItems, useVisibleMinute } from '../data';
+import {
+  usePlannerCollections,
+  usePlannerDay,
+  usePlannerItems,
+  usePlannerPreferences,
+  useVisibleMinute,
+} from '../data';
 import { LIST_DOT } from '../item/composer-tokens';
+import { DayStrip } from '../today/day-strip';
+import { dayStripOf, type DayStripModel } from '../today/day-strip-model';
 import { lensOf } from '../today/now-lens';
-import { riverRowsOf, type RiverRow } from '../today/river-model';
+import { occurrenceKeyOf, riverRowsOf, riverTimeOf } from '../today/river-model';
 import {
   SECTION_GAP,
+  STRIP_HEIGHT,
   dayCountsOf,
   deviceIdsOf,
   isSplit,
@@ -27,6 +42,7 @@ import {
   leadWhenOf,
   linesFit,
   rowLineOf,
+  rowsShownOf,
   LINE_GAP,
 } from './home-fit';
 
@@ -58,7 +74,7 @@ function Offline(): ReactNode {
   );
 }
 
-function DayBadge({ day }: { readonly day: PlannerDay }): ReactNode {
+export function DayBadge({ day }: { readonly day: PlannerDay }): ReactNode {
   const counts = dayCountsOf(day);
   const whole = counts.missed + counts.left + counts.done;
   return (
@@ -78,7 +94,7 @@ function DayBadge({ day }: { readonly day: PlannerDay }): ReactNode {
           {`${String(counts.done)} done`}
         </Text>
       )}
-      {whole === 0 ? null : (
+      {counts.done === 0 ? null : (
         <View
           accessible
           accessibilityRole="image"
@@ -91,28 +107,149 @@ function DayBadge({ day }: { readonly day: PlannerDay }): ReactNode {
   );
 }
 
+export interface DayLine {
+  readonly key: string;
+  readonly time: string;
+  readonly title: string;
+  readonly dot: string;
+  readonly missed: boolean;
+  readonly spoken: string;
+}
+
+function missedLineOf(occurrence: PlannerOccurrenceView, timeZone: string): DayLine {
+  const time = riverTimeOf(occurrence, timeZone);
+  return {
+    key: `missed:${occurrenceKeyOf(occurrence)}`,
+    time,
+    title: occurrence.title,
+    dot: 'bg-critical',
+    missed: true,
+    spoken: `Missed, ${time}, ${occurrence.title}`,
+  };
+}
+
+export function useDayLines(
+  day: PlannerDay,
+  lens: PlannerOccurrenceView | null,
+): readonly DayLine[] {
+  const items = usePlannerItems(null);
+  const collections = usePlannerCollections(null);
+  const guests = useRows('planner_guests');
+  const me = usePlannerProfile(null);
+  const rows = riverRowsOf({ day, collections, items, hidden: NO_HIDDEN, lens, guests, me });
+  return [
+    ...day.missed.map((occurrence) => missedLineOf(occurrence, day.time_zone)),
+    ...rows.map((row): DayLine => ({
+      key: row.key,
+      time: row.time,
+      title: row.title,
+      dot: dotOf(row.colour),
+      missed: false,
+      spoken: row.spoken,
+    })),
+  ];
+}
+
+export function useStripModel(day: PlannerDay): DayStripModel {
+  const collections = usePlannerCollections(null);
+  const preferences = usePlannerPreferences(null).data;
+  const { latitude, longitude } = useSettings();
+  return dayStripOf({
+    day,
+    collections,
+    place: latitude === null || longitude === null ? null : { latitude, longitude },
+    showSleep: preferences?.day_planner.show_sleep === true,
+  });
+}
+
+export function DayRows({
+  lines,
+  fit,
+  className,
+}: {
+  readonly lines: readonly DayLine[];
+  readonly fit: number;
+  readonly className?: string;
+}): ReactNode {
+  const { shown, more } = rowsShownOf(lines.length, fit);
+  if (shown === 0 && more === 0) return null;
+  return (
+    <View className={cn('min-w-0 gap-1', className)}>
+      {lines.slice(0, shown).map((line, index) => (
+        <View
+          key={line.key}
+          accessible
+          accessibilityLabel={line.spoken}
+          className="flex-row items-center gap-2"
+        >
+          <Text
+            variant="footnote"
+            tone={line.missed ? 'critical' : 'variant'}
+            numberOfLines={1}
+            className="w-16 shrink-0 font-mono tabular"
+          >
+            {line.time}
+          </Text>
+          <View className={cn('size-2 rounded-full', line.dot, !line.missed && fadeOf(index))} />
+          <Text variant="footnote" numberOfLines={1} className="min-w-0 flex-1">
+            {line.title}
+          </Text>
+        </View>
+      ))}
+      {more === 0 ? null : (
+        <Text variant="footnote" tone="variant" numberOfLines={1} className="pl-22 tabular-nums">
+          {`+${String(more)} more today`}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function itemOf(
+  items: readonly PlannerItemRow[],
+  occurrence: PlannerOccurrenceView,
+): PlannerItemRow | undefined {
+  return items.find((item) => item.id === occurrence.item_id);
+}
+
 function Lead({
   occurrence,
   day,
   now,
   split,
+  report,
 }: {
   readonly occurrence: PlannerOccurrenceView;
   readonly day: PlannerDay;
   readonly now: number;
   readonly split: boolean;
+  readonly report: boolean;
 }): ReactNode {
   const devices = deviceIdsOf(occurrence);
+  const item = itemOf(usePlannerItems(null), occurrence);
   return (
     <View className={cn('min-w-0 gap-1', split && 'flex-1')}>
-      <Text variant="body-strong" numberOfLines={1}>
+      <Text variant="body-strong" numberOfLines={report ? 2 : 1}>
         {occurrence.title}
       </Text>
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
         {leadWhenOf(occurrence, day.time_zone, now)}
       </Text>
+      {report && occurrence.location !== null ? (
+        <View className="flex-row items-center gap-1">
+          <Icon name="mapPin" size={14} tone="faint" />
+          <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
+            {occurrence.location}
+          </Text>
+        </View>
+      ) : null}
+      {report && item !== undefined && item.notes !== '' ? (
+        <Text variant="footnote" tone="variant" numberOfLines={2}>
+          {item.notes}
+        </Text>
+      ) : null}
       {devices.length === 0 ? null : (
-        <View className="flex-row gap-2 overflow-hidden">
+        <View className="flex-row flex-wrap gap-2 overflow-hidden">
           {devices.map((deviceId) => (
             <DeviceFace key={deviceId} deviceId={deviceId} face="chip" context="nested" />
           ))}
@@ -122,38 +259,29 @@ function Lead({
   );
 }
 
-function NextRows({
-  rows,
-  count,
-  split,
+function UpNextReport({
+  day,
+  occurrence,
+  now,
+  lines,
 }: {
-  readonly rows: readonly RiverRow[];
-  readonly count: number;
-  readonly split: boolean;
+  readonly day: PlannerDay;
+  readonly occurrence: PlannerOccurrenceView;
+  readonly now: number;
+  readonly lines: readonly DayLine[];
 }): ReactNode {
+  const { frame } = useWidgetFace();
+  const strip = useStripModel(day);
+  const top = widgetBodyHeight(frame) - STRIP_HEIGHT - SECTION_GAP;
+  const fit = linesFit(top, rowLineOf(frame.idiom), LINE_GAP);
   return (
-    <View className={cn('min-w-0 gap-1', split && 'flex-1')}>
-      {rows.slice(0, count).map((row, index) => (
-        <View
-          key={row.key}
-          accessible
-          accessibilityLabel={row.spoken}
-          className="flex-row items-center gap-2"
-        >
-          <Text
-            variant="footnote"
-            tone="variant"
-            numberOfLines={1}
-            className="min-w-11 shrink-0 font-mono tabular"
-          >
-            {row.time}
-          </Text>
-          <View className={cn('size-2 rounded-full', dotOf(row.colour), fadeOf(index))} />
-          <Text variant="footnote" numberOfLines={1} className="min-w-0 flex-1">
-            {row.title}
-          </Text>
-        </View>
-      ))}
+    <View className="flex-1 gap-3">
+      <View className="flex-1 flex-row gap-4">
+        <Lead occurrence={occurrence} day={day} now={now} split report />
+        {lines.length === 0 ? null : <View className="w-px self-stretch bg-outline-variant" />}
+        {lines.length === 0 ? null : <DayRows lines={lines} fit={fit} className="flex-1" />}
+      </View>
+      <DayStrip model={strip} compact />
     </View>
   );
 }
@@ -168,41 +296,39 @@ function UpNextBody({
   readonly now: number;
 }): ReactNode {
   const { frame, cls } = useWidgetFace();
-  const items = usePlannerItems(null);
-  const collections = usePlannerCollections(null);
-  const guests = useRows('planner_guests');
-  const me = usePlannerProfile(null);
-  const rows = riverRowsOf({
-    day,
-    collections,
-    items,
-    hidden: NO_HIDDEN,
-    lens: lensOf(day, NO_HIDDEN),
-    guests,
-    me,
-  });
+  const lines = useDayLines(day, occurrence);
+  if (cls === 'xl')
+    return <UpNextReport day={day} occurrence={occurrence} now={now} lines={lines} />;
   const split = isSplit(cls);
-  const body = widgetBodyHeight(frame);
+  const tall = cls === 'l';
+  const body = widgetBodyHeight(frame) - (tall ? STRIP_HEIGHT + SECTION_GAP : 0);
   const lead = leadHeightOf(frame.idiom, deviceIdsOf(occurrence).length > 0);
   const room = split ? body : body - lead - SECTION_GAP;
-  const count = linesFit(room, rowLineOf(frame.idiom), LINE_GAP);
-  const shown = count > 0 && rows.length > 0;
-  const leadNode = <Lead occurrence={occurrence} day={day} now={now} split={split} />;
+  const fit = linesFit(room, rowLineOf(frame.idiom), LINE_GAP);
+  const shown = fit > 0 && lines.length > 0;
+  const leadNode = (
+    <Lead occurrence={occurrence} day={day} now={now} split={split} report={false} />
+  );
   if (split) {
     return (
       <View className="flex-1 flex-row gap-4">
         {leadNode}
         {shown ? <View className="w-px self-stretch bg-outline-variant" /> : null}
-        {shown ? <NextRows rows={rows} count={count} split /> : null}
+        {shown ? <DayRows lines={lines} fit={fit} className="flex-1" /> : null}
       </View>
     );
   }
   return (
     <View className="flex-1 gap-3">
       {leadNode}
-      {shown ? <NextRows rows={rows} count={count} split={false} /> : null}
+      {shown ? <DayRows lines={lines} fit={fit} className="flex-1" /> : null}
+      {tall ? <TallStrip day={day} /> : null}
     </View>
   );
+}
+
+function TallStrip({ day }: { readonly day: PlannerDay }): ReactNode {
+  return <DayStrip model={useStripModel(day)} compact />;
 }
 
 function UpNextDay({

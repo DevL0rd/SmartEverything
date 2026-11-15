@@ -7,7 +7,12 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { count } from '../../../format/number';
-import { SelectionGroup, SelectionSurface } from '../components/selection-surface';
+import {
+  SelectionActions,
+  SelectionGroup,
+  SelectionSummary,
+  SelectionSurface,
+} from '../components/selection-surface';
 
 export interface PickAction {
   readonly id: string;
@@ -34,27 +39,25 @@ export function pickedLine(picked: number): string {
 function Summary({ bar }: { readonly bar: PickBarProps }): ReactNode {
   useEscape(true, bar.onClear);
   return (
-    <>
+    <SelectionSummary>
       <IconButton
         icon="close"
         label="Clear the selection"
         tone="onPrimaryContainer"
         onPress={bar.onClear}
       />
-      <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
-        <Text
-          variant="title-3"
-          tone="onPrimaryContainer"
-          className="tabular-nums"
-          numberOfLines={1}
-        >
-          {pickedLine(bar.picked)}
-        </Text>
-        {bar.picked < bar.total ? (
-          <Button label="Select all" variant="text" onPress={bar.onAll} />
-        ) : null}
-      </View>
-    </>
+      <Text
+        variant="title-3"
+        tone="onPrimaryContainer"
+        className="shrink-0 tabular-nums"
+        numberOfLines={1}
+      >
+        {pickedLine(bar.picked)}
+      </Text>
+      {bar.picked < bar.total ? (
+        <Button label="Select all" variant="text" onPress={bar.onAll} />
+      ) : null}
+    </SelectionSummary>
   );
 }
 
@@ -66,17 +69,19 @@ export function PickBar(props: PickBarProps): ReactNode {
     <SelectionSurface>
       <Summary bar={props} />
       {off ? null : (
-        <SelectionGroup>
-          {props.actions.map((action) => (
-            <Button
-              key={action.id}
-              label={action.label}
-              icon={action.icon}
-              variant={VARIANT[action.look]}
-              onPress={action.onPress}
-            />
-          ))}
-        </SelectionGroup>
+        <SelectionActions>
+          <SelectionGroup>
+            {props.actions.map((action) => (
+              <Button
+                key={action.id}
+                label={action.label}
+                icon={action.icon}
+                variant={VARIANT[action.look]}
+                onPress={action.onPress}
+              />
+            ))}
+          </SelectionGroup>
+        </SelectionActions>
       )}
     </SelectionSurface>
   );
@@ -88,6 +93,17 @@ export function PickHead(props: PickBarProps): ReactNode {
       <Summary bar={props} />
     </SelectionSurface>
   );
+}
+
+export interface PickSlots {
+  readonly selection: ReactNode;
+  readonly footer: ReactNode;
+}
+
+export function pickSlotsOf(bar: PickBarProps, active: boolean, compact: boolean): PickSlots {
+  if (!active) return { selection: null, footer: null };
+  if (!compact) return { selection: <PickBar {...bar} />, footer: null };
+  return { selection: <PickHead {...bar} />, footer: bar.picked > 0 ? <PickRow {...bar} /> : null };
 }
 
 export function PickRow(props: PickBarProps): ReactNode {

@@ -20,11 +20,8 @@ export interface TranscriptFeedProps {
   readonly pageHeader?: ReactElement;
   readonly banner?: ReactNode;
   readonly controls?: ReactNode;
-  readonly inlineControls?: boolean;
   readonly compactRows?: boolean;
   readonly focus?: boolean;
-  readonly focusSearch?: boolean;
-  readonly shellSearch?: boolean;
 }
 
 const READER_WIDTH = 'w-full max-w-detail self-start';
@@ -70,9 +67,6 @@ function FeedHeader({
   pageHeader,
   banner,
   controls,
-  inlineControls,
-  focusSearch,
-  shellSearch,
   feed,
   layout,
   top,
@@ -92,15 +86,11 @@ function FeedHeader({
       <View onLayout={layout} className={READER_WIDTH}>
         <FeedChrome
           words={feed.words}
-          changeWords={feed.changeWords}
           context={feed.context}
           missingAnchor={feed.missingAnchor}
           back={back}
           latest={latest}
           controls={controls}
-          inlineControls={inlineControls === true}
-          search={shellSearch !== true}
-          focusSearch={focusSearch === true}
         />
         <ReaderState
           error={feed.error}

@@ -224,6 +224,7 @@ function useSpace(myDrive: DriveRoot | null, stats: DriveStats | undefined): Spa
   const usage = useDriveUsage().data;
   if (myDrive === null) return null;
   const use = driveUseOf({ root: myDrive, viewerId, usage });
+  if (use.quota.kind === 'unknown') return null;
   return spaceMeterOf({
     used: use.used,
     quota: use.quota.kind === 'limit' ? use.quota.bytes : null,
@@ -295,9 +296,10 @@ function DrivesWell({
 function DrivesFooter({ stats }: { readonly stats: DriveStats | undefined }): ReactNode {
   const space = useSpace(useMyDrive(), stats);
   const sync = useDriveSyncSummary();
+  const pill = useSyncPillShown();
   return (
     <View className="pt-2">
-      <DrivesWell stats={stats} space={space} sync={sync} />
+      <DrivesWell stats={stats} space={space} sync={pill ? null : sync} />
     </View>
   );
 }

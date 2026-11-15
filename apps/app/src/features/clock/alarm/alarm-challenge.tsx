@@ -54,17 +54,6 @@ function Note({ text }: { readonly text: string }): ReactNode {
   );
 }
 
-function ChallengeHeader(): ReactNode {
-  return (
-    <View className="flex-row items-center gap-2">
-      <Icon name="lock" size={18} tone="primary" />
-      <Text variant="body-strong" className="flex-1">
-        Dismiss challenge
-      </Text>
-    </View>
-  );
-}
-
 export function AlarmChallenge({ draft, disabled, places, onChange }: ChallengeProps): ReactNode {
   const [scanFirst, setScanFirst] = useState(false);
   const challenge = draft.challenge;
@@ -74,8 +63,7 @@ export function AlarmChallenge({ draft, disabled, places, onChange }: ChallengeP
   };
   const shown = scanFirst ? 'qr' : challenge.kind;
   return (
-    <View className="gap-3 rounded-md bg-surface-2 p-3">
-      <ChallengeHeader />
+    <View className="gap-3 px-4 py-3">
       <Segmented
         label="Dismiss challenge"
         options={CHALLENGE_OPTIONS}

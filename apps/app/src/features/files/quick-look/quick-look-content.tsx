@@ -32,6 +32,13 @@ function Picture({ node, links }: ShownProps): ReactNode {
       recyclingKey={nodeKeyOf(node)}
       label={node.name}
       onZoomed={setZoomed}
+      onOpen={
+        links.file === null
+          ? null
+          : (): void => {
+              openNode(node, links);
+            }
+      }
     />
   );
 }

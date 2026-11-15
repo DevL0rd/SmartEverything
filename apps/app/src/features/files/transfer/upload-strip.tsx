@@ -23,6 +23,7 @@ import {
   progressOf,
   rateText,
   retryNoticeOf,
+  sharedFailureOf,
   storedAsText,
   summaryOf,
   type RateClock,
@@ -135,12 +136,15 @@ function StripRow({
   item,
   lane,
   folder,
+  shared,
 }: {
   readonly item: UploadItem;
   readonly lane: Lane;
   readonly folder: string;
+  readonly shared: string | null;
 }): ReactNode {
-  const failure = failureLineOf(item);
+  const line = failureLineOf(item);
+  const failure = line === shared ? null : line;
   const conflict = conflictLineOf(item, folder);
   return (
     <View className="min-h-12 flex-row items-center gap-3 py-1">
@@ -274,12 +278,14 @@ export interface UploadStripProps {
 }
 
 function Notices({
+  shared,
   items,
   summary,
   lane,
   folder,
   onConflicts,
 }: {
+  readonly shared: string | null;
   readonly items: readonly UploadItem[];
   readonly summary: UploadSummary;
   readonly lane: Lane;
@@ -288,6 +294,11 @@ function Notices({
 }): ReactNode {
   return (
     <>
+      {shared === null ? null : (
+        <Text variant="footnote" tone="critical">
+          {shared}
+        </Text>
+      )}
       {summary.conflicts > 0 && onConflicts !== undefined ? (
         <Banner
           wrapBody
@@ -302,6 +313,24 @@ function Notices({
   );
 }
 
+function StripHead({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <View className="flex-row items-center gap-3">
+      <Icon name="upload" size={20} tone="primary" />
+      <Text variant="body-strong" numberOfLines={2} className="tabular min-w-0 flex-1">
+        {title}
+      </Text>
+      {children}
+    </View>
+  );
+}
+
 export function UploadStrip(props: UploadStripProps): ReactNode {
   const { queue, folderKey, folder } = props;
   const [open, setOpen] = useState(true);
@@ -310,14 +339,11 @@ export function UploadStrip(props: UploadStripProps): ReactNode {
   const rows = shownRowsOf(items);
   if (rows.length === 0) return null;
   const summary = summaryOf(items);
+  const shared = sharedFailureOf(items);
   const lane = { queue, resume: props.resume };
   return (
     <View className="gap-2 border-t border-outline-variant px-4 py-3">
-      <View className="flex-row items-center gap-3">
-        <Icon name="upload" size={20} tone="primary" />
-        <Text variant="body-strong" numberOfLines={1} className="tabular min-w-0 flex-1">
-          {headlineOf(summary, folder)}
-        </Text>
+      <StripHead title={headlineOf(summary, folder)}>
         <HeadActions
           items={items}
           summary={summary}
@@ -328,8 +354,9 @@ export function UploadStrip(props: UploadStripProps): ReactNode {
             setOpen((current) => !current);
           }}
         />
-      </View>
+      </StripHead>
       <Notices
+        shared={shared}
         items={items}
         summary={summary}
         lane={lane}
@@ -345,7 +372,7 @@ export function UploadStrip(props: UploadStripProps): ReactNode {
       {open ? (
         <ScrollView className="max-h-60">
           {rows.map((item) => (
-            <StripRow key={item.id} item={item} lane={lane} folder={folder} />
+            <StripRow key={item.id} item={item} lane={lane} folder={folder} shared={shared} />
           ))}
         </ScrollView>
       ) : null}

@@ -6,6 +6,8 @@ import {
   boundsOf,
   clusterQueryOf,
   mapBoxOf,
+  viewFitting,
+  type WeightedPoint,
   WORLD_START,
   zoomedInto,
   type MapBounds,
@@ -28,6 +30,8 @@ export interface MapState {
   readonly selected: PlaceCluster | null;
   readonly select: (cluster: PlaceCluster | null) => void;
   readonly zoomInto: (cluster: PlaceCluster) => void;
+  readonly showAll: () => void;
+  readonly atStart: boolean;
   readonly bounds: MapBounds;
 }
 
@@ -43,15 +47,17 @@ function useRange(
   return [range, setChosen];
 }
 
-export function useMapState(enabled: boolean): MapState {
-  const [view, setView] = useState<MapView>(WORLD_START);
+export function useMapState(points: readonly WeightedPoint[]): MapState {
+  const [chosen, setView] = useState<MapView | null>(null);
   const [frame, setFrame] = useState<FrameSize | null>(null);
+  const start = frame === null ? WORLD_START : viewFitting(points, frame);
+  const view = chosen ?? start;
   const [selected, select] = useState<PlaceCluster | null>(null);
   const buckets = usePhotoBuckets(PHOTO_ALL).data;
   const months = buckets === undefined ? NO_MONTHS : monthsOf(buckets);
   const [range, setRange] = useRange(months);
   const query = clusterQueryOf(view, frame ?? FIRST_FRAME, windowOf(range, months));
-  const clusters = usePhotoClusters(query, enabled && frame !== null).data ?? NO_CLUSTERS;
+  const clusters = usePhotoClusters(query, frame !== null).data ?? NO_CLUSTERS;
   const changeView = (next: MapView): void => {
     select(null);
     setView(next);
@@ -74,6 +80,11 @@ export function useMapState(enabled: boolean): MapState {
     zoomInto: (cluster): void => {
       changeView(zoomedInto(view, cluster));
     },
+    showAll: (): void => {
+      select(null);
+      setView(null);
+    },
+    atStart: chosen === null,
     bounds: boundsOf(mapBoxOf(view, frame ?? FIRST_FRAME)),
   };
 }

@@ -65,14 +65,20 @@ function DividedRows({
   readonly leading: boolean;
 }): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  return childRowsOf(children).map((row, index) => (
-    <Fragment key={row.key ?? index}>
-      {index === 0 ? null : (
-        <View className={cn('h-hairline bg-outline-variant', leadingInsetOf(leading, pointer))} />
-      )}
-      {row}
-    </Fragment>
-  ));
+  return (
+    <View>
+      {childRowsOf(children).map((row, index) => (
+        <Fragment key={row.key ?? index}>
+          {index === 0 ? null : (
+            <View
+              className={cn('h-hairline bg-outline-variant', leadingInsetOf(leading, pointer))}
+            />
+          )}
+          {row}
+        </Fragment>
+      ))}
+    </View>
+  );
 }
 
 function ColourLead({ colour }: { readonly colour: PlannerColourKey }): ReactNode {

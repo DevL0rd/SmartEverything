@@ -5,8 +5,10 @@ import { personalRootRow, rootRow } from '../data/fixtures';
 import {
   SHARED_LOCKED_NOTE,
   driveSettingsCardsOf,
+  damagedLineOf,
   driveStateLineOf,
   driveTilesOf,
+  scanLineOf,
 } from './drive-card-model';
 
 const MINE = '00000000-0000-4000-8000-000000000201';
@@ -95,5 +97,23 @@ describe('driveTilesOf', () => {
       ['Files', count(1234)],
       ['Folders', count(56)],
     ]);
+  });
+});
+
+describe('scan progress and damaged files', () => {
+  it('shows live folder reading only while the drive scans', () => {
+    const scanning = rootRow(HOME, 'scanning');
+    expect(scanLineOf(scanning, { scan: { done: 4210, total: 12_480 } })).toEqual({
+      text: `Reading folders · ${count(4210)} of ${count(12_480)}`,
+      share: 4210 / 12_480,
+    });
+    expect(scanLineOf(scanning, { hash: { done: 1, total: 2 } })).toBeNull();
+    expect(scanLineOf(rootRow(HOME, 'ready'), { scan: { done: 1, total: 2 } })).toBeNull();
+  });
+
+  it('points a drive with damaged files to the damage check', () => {
+    const root = rootRow(HOME, 'ready');
+    expect(damagedLineOf(root)).toBeNull();
+    expect(damagedLineOf({ ...root, health: { ...root.health, corrupt: 2 } })).toContain('2 files');
   });
 });

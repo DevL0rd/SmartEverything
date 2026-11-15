@@ -15,6 +15,7 @@ import {
   SERIES_LOOK,
   VIA_LOOK,
   badgeOf,
+  itemSentenceOf,
   sentenceOf,
   seriesOf,
   targetOf,
@@ -24,6 +25,7 @@ import {
 export interface ActivityRowProps {
   readonly entry: ActivityEntry;
   readonly me: string | null;
+  readonly itemless?: boolean;
 }
 
 type Mark = { readonly initials: string } | { readonly icon: IconName };
@@ -65,11 +67,15 @@ function Avatar({
   );
 }
 
-export const ActivityRow = memo(function ActivityRow({ entry, me }: ActivityRowProps): ReactNode {
+export const ActivityRow = memo(function ActivityRow({
+  entry,
+  me,
+  itemless = false,
+}: ActivityRowProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const zone = useSettings().time_zone;
   const time = clock(entry.row.at, zone);
-  const sentence = sentenceOf(entry, me);
+  const sentence = itemless ? itemSentenceOf(entry, me) : sentenceOf(entry, me);
   const badge = badgeOf(entry);
   const target = targetOf(entry);
   const roots = useDriveRoots();

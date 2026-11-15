@@ -1,4 +1,10 @@
-import type { ClientRow, LiveChange, LiveMessage } from '@smarteverything/domain';
+import {
+  liveFrameOf,
+  type ClientRow,
+  type LiveChange,
+  type LiveFrameOut,
+  type LiveMessage,
+} from '@smarteverything/domain';
 import { wireMessage } from '../assistant/wire-message';
 import { memberEngineChange } from './member-engine';
 
@@ -13,8 +19,7 @@ const OWNER_NOTICES: ReadonlySet<LiveMessage['type']> = new Set([
   'hub_update_source_changed',
 ]);
 
-function wireChange(change: LiveChange): LiveChange {
-  if (change.table === 'plugin_streams') return { ...change, oldRecord: null };
+function wireRows(change: LiveChange): LiveChange {
   if (change.table !== 'assistant_messages') return change;
   return {
     ...change,
@@ -23,8 +28,17 @@ function wireChange(change: LiveChange): LiveChange {
   };
 }
 
+function wireFrame(change: LiveChange): LiveFrameOut & { readonly seq: number } {
+  const frame = liveFrameOf(wireRows(change));
+  const seq = change.seq;
+  if (frame.table === 'plugin_streams' && frame.operation === 'UPDATE') {
+    return { ...frame, previous: {}, seq };
+  }
+  return { ...frame, seq };
+}
+
 export function wireText(message: LiveMessage): string {
-  return JSON.stringify(message.type === 'change' ? wireChange(message) : message);
+  return JSON.stringify(message.type === 'change' ? wireFrame(message) : message);
 }
 
 export function liveText(role: ClientRow['role'], message: LiveMessage): string | null {

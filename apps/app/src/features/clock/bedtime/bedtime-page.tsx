@@ -132,6 +132,7 @@ function BedtimeBody({ view }: { readonly view: BedtimeView }): ReactNode {
 function subtitleOf(prefs: PlannerPreferences | undefined, now: number, zone: string): string {
   if (prefs === undefined) return 'Bed, wind-down and sleep sounds';
   if (!prefs.bedtime.enabled) return 'Off';
+  if (prefs.bedtime.schedule.length === 0) return 'No nights planned';
   return tonightLineOf(nextNightOf(prefs.bedtime, now, zone), now);
 }
 

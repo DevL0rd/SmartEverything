@@ -40,7 +40,8 @@ describe('drive hero', () => {
     ]);
     expect(hero.legend.map((entry) => entry.key)).toEqual(['image', 'video', 'document']);
     expect(hero.gauge).toEqual({
-      text: `${bytes(9 * GB)} of ${bytes(18 * GB)}`,
+      text: `${bytes(9 * GB)} used of ${bytes(18 * GB)}`,
+      note: 'Includes versions and trash',
       share: 0.5,
       colour: 'primary',
     });
@@ -49,6 +50,7 @@ describe('drive hero', () => {
   it('says when there is no limit, turns critical when full and shows no gauge when unknown', () => {
     expect(quotaGaugeOf({ used: GB, quota: { kind: 'none' } })).toEqual({
       text: 'No limit set',
+      note: null,
       share: null,
       colour: 'primary',
     });

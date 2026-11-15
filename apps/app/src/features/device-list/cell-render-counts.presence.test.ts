@@ -30,6 +30,7 @@ import {
 } from './cell-mocks';
 import { presenceFixture } from '../../plugins/shelly-presence/presence-fixture';
 import { makeTable } from '../../store/state';
+import { wired } from '../../test-support/live-wire';
 
 const calls = vi.hoisted((): { list: { enabled: boolean; holder: string }[] } => ({ list: [] }));
 
@@ -247,18 +248,18 @@ describe('presence cell render counts', () => {
     await settle();
     nodes.count = 0;
     act(() => {
-      store.apply([unrelatedChange()]);
+      store.apply(wired([unrelatedChange()]));
       flushFrames();
     });
     expect(nodes.count).toBe(0);
     act(() => {
-      store.apply([tracksChange(1)]);
+      store.apply(wired([tracksChange(1)]));
       flushFrames();
     });
     expect(nodes.count).toBeGreaterThan(0);
     nodes.count = 0;
     act(() => {
-      store.apply([tracksChange(1)]);
+      store.apply(wired([tracksChange(1)]));
       flushFrames();
     });
     expect(nodes.count).toBe(0);

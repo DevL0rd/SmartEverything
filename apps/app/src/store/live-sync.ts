@@ -1,7 +1,7 @@
 import {
   LIVE_TABLES,
-  type LiveChange,
-  type LiveMessage,
+  type LiveWireChange,
+  type LiveWireMessage,
   type LiveTable,
 } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
@@ -30,7 +30,7 @@ const log = new Logger('app.live');
 export const LINK_DEADLINE_MS = 20_000;
 type Phase = 'closed' | 'buffering' | 'live';
 const traffic = new LogTally(log, 'live.summarised', 5000);
-type ActivityNotice = Extract<LiveMessage, { type: 'chat_activity' | 'chat_stream' }>;
+type ActivityNotice = Extract<LiveWireMessage, { type: 'chat_activity' | 'chat_stream' }>;
 
 export class LiveSync {
   private readonly snapshotCommands: NonNullable<LiveSyncHooks['onSnapshotCommands']>;
@@ -45,9 +45,9 @@ export class LiveSync {
   });
   private attempt = 0;
   private phase: Phase = 'closed';
-  private buffer: LiveChange[] = [];
+  private buffer: LiveWireChange[] = [];
   private activityBuffer: ActivityNotice[] = [];
-  private batch: LiveChange[] = [];
+  private batch: LiveWireChange[] = [];
   private snapshotRun = 0;
   private readonly failures: SectionFailures;
   private unsupportedTables: ReadonlySet<string> = new Set();
@@ -238,7 +238,7 @@ export class LiveSync {
     return [...this.sentTables];
   }
 
-  private dropUnsupported(message: LiveMessage): boolean {
+  private dropUnsupported(message: LiveWireMessage): boolean {
     if (message.type !== 'refused') return false;
     const rejected = rejectedTables(this.sentTables, message.error.message);
     if (rejected.length === 0) return false;
@@ -247,7 +247,7 @@ export class LiveSync {
     return true;
   }
 
-  private handle(message: LiveMessage): void {
+  private handle(message: LiveWireMessage): void {
     if (message.type === 'change') {
       this.change(message);
       return;
@@ -282,7 +282,7 @@ export class LiveSync {
     noticeTo(this.store, message.type, message);
   }
 
-  private change(change: LiveChange): void {
+  private change(change: LiveWireChange): void {
     if (this.phase === 'buffering') {
       this.buffer.push(change);
       traffic.bump('changeBuffered');
@@ -310,17 +310,17 @@ export class LiveSync {
     this.applyAll(changes);
   }
 
-  private applyAll(changes: readonly LiveChange[]): void {
+  private applyAll(changes: readonly LiveWireChange[]): ReturnType<EntityStore['apply']> {
     try {
-      this.store.apply(changes);
+      const resolved = this.store.apply(changes);
+      this.hooks.onChanges(resolved, changes);
+      return resolved;
     } catch (error) {
       if (!(error instanceof UnreadableChangeError)) throw error;
-      log.error('live.change_unreadable', error, { table: error.table, reason: error.reason });
-      this.failures.live([{ section: `tables.${error.table}`, reason: error.reason }]);
+      this.failures.unappliedChange(error.table, error.reason, error);
       this.resnapshot(null);
-      return;
+      return [];
     }
-    this.hooks.onChanges(changes);
   }
 
   private resnapshot(problem: SyncProblem | null): void {
@@ -353,11 +353,11 @@ export class LiveSync {
       this.buffer = [];
       this.enter('live');
       this.deadline.cancel();
-      this.applyAll(replay);
+      const replayed = this.applyAll(replay);
       this.replayActivity();
       this.attempt = 0;
       this.store.setSync({ status: 'live', problem: null, failed: this.failures.all() });
-      this.hooks.onSynchronized?.(replay, snapshot);
+      this.hooks.onSynchronized?.(replayed, snapshot, replay);
       log.info('live.ready', {
         ...this.ids(),
         seq: snapshot.seq,

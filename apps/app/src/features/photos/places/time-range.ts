@@ -60,11 +60,11 @@ export function rangeLabel(range: MonthRange, months: readonly LibraryBucket[]):
 }
 
 export function shareOf(index: number, total: number): number {
-  return total > 1 ? index / (total - 1) : 0;
+  return total > 0 ? (index + 0.5) / total : 0;
 }
 
 export function indexAt(share: number, total: number): number {
-  return Math.min(Math.max(0, total - 1), Math.max(0, Math.round(share * (total - 1))));
+  return Math.min(Math.max(0, total - 1), Math.max(0, Math.floor(share * total)));
 }
 
 export function withStart(range: MonthRange, start: number): MonthRange {

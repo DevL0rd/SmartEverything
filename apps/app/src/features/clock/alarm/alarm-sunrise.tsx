@@ -1,16 +1,14 @@
 import type { PlannerSunrise } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { FlatChoice } from '../../../components/flat-choice';
-import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
 import { SwitchRow } from '../../../components/rows';
-import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useRows } from '../../../store/selectors';
 import type { AlarmDraft, AlarmEdit } from './alarm-draft';
+import { minutesText } from './alarm-options';
 import {
   firstSunriseOf,
   missingLightsOf,
@@ -23,6 +21,7 @@ import {
 
 export interface SunriseProps {
   readonly draft: AlarmDraft;
+  readonly compact: boolean;
   readonly disabled: boolean;
   readonly onChange: (edit: AlarmEdit) => void;
 }
@@ -57,35 +56,67 @@ function SunrisePreview({
   );
 }
 
-function LightChips({
+function LightRows({
   sunrise,
   lights,
+  compact,
   disabled,
   onChange,
 }: {
   readonly sunrise: PlannerSunrise;
   readonly lights: readonly SunriseLight[];
+  readonly compact: boolean;
   readonly disabled: boolean;
   readonly onChange: (edit: AlarmEdit) => void;
 }): ReactNode {
   const missing = missingLightsOf(sunrise, lights).map((id) => ({ id, name: 'Removed light' }));
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <>
       {[...lights, ...missing].map((light) => (
-        <FlatChoice
+        <SwitchRow
           key={light.id}
-          role="checkbox"
-          spoken={`Sunrise on ${light.name}`}
-          label={light.name}
+          title={light.name}
+          label={`Sunrise on ${light.name}`}
           icon="lightbulb"
-          active={sunrise.lights.includes(light.id)}
+          compact={compact}
+          value={sunrise.lights.includes(light.id)}
           disabled={disabled}
-          onPress={() => {
+          onChange={() => {
             onChange({ sunrise: toggledSunriseLight(sunrise, light.id) });
           }}
         />
       ))}
-    </View>
+    </>
+  );
+}
+
+function StartsBefore({
+  sunrise,
+  compact,
+  disabled,
+  onChange,
+}: Omit<SunriseProps, 'draft'> & { readonly sunrise: PlannerSunrise }): ReactNode {
+  return (
+    <ListRow
+      title="Starts before"
+      icon="clock"
+      compact={compact}
+      disabled={disabled}
+      trailing={
+        <NumberStepper
+          label="Sunrise minutes"
+          value={sunrise.minutes}
+          min={1}
+          max={MOST}
+          step={5}
+          formatValue={minutesText}
+          disabled={disabled}
+          onChange={(minutes) => {
+            onChange({ sunrise: { ...sunrise, minutes } });
+          }}
+        />
+      }
+    />
   );
 }
 
@@ -93,6 +124,7 @@ function SunriseFields({
   sunrise,
   lights,
   draft,
+  compact,
   disabled,
   onChange,
 }: SunriseProps & {
@@ -100,74 +132,60 @@ function SunriseFields({
   readonly lights: readonly SunriseLight[];
 }): ReactNode {
   return (
-    <View className="gap-3">
-      <SunrisePreview sunrise={sunrise} time={draft.time} />
-      <LightChips sunrise={sunrise} lights={lights} disabled={disabled} onChange={onChange} />
-      <View>
-        <ListRow
-          title="Starts before"
-          icon="clock"
-          compact
-          trailing={
-            <NumberStepper
-              label="Sunrise minutes"
-              value={sunrise.minutes}
-              min={1}
-              max={MOST}
-              step={5}
-              unit="min"
-              disabled={disabled}
-              onChange={(minutes) => {
-                onChange({ sunrise: { ...sunrise, minutes } });
-              }}
-            />
-          }
-        />
-        <SwitchRow
-          title="Warm to daylight"
-          subtitle="Lights that can change colour cool as they brighten"
-          wrapSubtitle
-          icon="thermometer"
-          compact
-          value={sunrise.colour}
-          disabled={disabled}
-          onChange={(colour) => {
-            onChange({ sunrise: { ...sunrise, colour } });
-          }}
-        />
+    <>
+      <View className={compact ? 'py-2' : 'px-4 py-2'}>
+        <SunrisePreview sunrise={sunrise} time={draft.time} />
       </View>
-    </View>
+      <LightRows
+        sunrise={sunrise}
+        lights={lights}
+        compact={compact}
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <StartsBefore sunrise={sunrise} compact={compact} disabled={disabled} onChange={onChange} />
+      <SwitchRow
+        title="Warm to daylight"
+        subtitle="Lights that can change colour cool as they brighten"
+        wrapSubtitle
+        icon="thermometer"
+        compact={compact}
+        value={sunrise.colour}
+        disabled={disabled}
+        onChange={(colour) => {
+          onChange({ sunrise: { ...sunrise, colour } });
+        }}
+      />
+    </>
   );
 }
 
+function sunriseHintOf(none: boolean, sunrise: PlannerSunrise | null, time: string): string {
+  if (none) return 'Add a light to the home to wake with a sunrise';
+  return sunrise === null
+    ? 'Lights brighten slowly before the alarm rings'
+    : sunriseSummaryOf(sunrise, time);
+}
+
 export function AlarmSunrise(props: SunriseProps): ReactNode {
-  const { draft, disabled, onChange } = props;
+  const { draft, compact, disabled, onChange } = props;
   const lights = useHomeLights();
   const sunrise = draft.sunrise;
   const none = lights.length === 0 && sunrise === null;
   return (
-    <View className="gap-3 rounded-md bg-surface-2 p-3">
-      <View className="flex-row items-center gap-2">
-        <Icon name="sunrise" size={18} tone="primary" />
-        <Text variant="body-strong" className="flex-1">
-          Sunrise
-        </Text>
-        <Switch
-          label="Sunrise"
-          value={sunrise !== null}
-          disabled={disabled || none}
-          onChange={(on) => {
-            onChange({ sunrise: on ? firstSunriseOf(lights) : null });
-          }}
-        />
-      </View>
-      <Text variant="footnote" tone="variant">
-        {none
-          ? 'Add a light to the home to wake with a sunrise.'
-          : sunrise === null
-            ? 'Lights brighten slowly before the alarm rings.'
-            : sunriseSummaryOf(sunrise, draft.time)}
-      </Text>
+    <View>
+      <SwitchRow
+        title="Sunrise"
+        subtitle={sunriseHintOf(none, sunrise, draft.time)}
+        wrapSubtitle
+        icon="sunrise"
+        compact={compact}
+        value={sunrise !== null}
+        disabled={disabled || none}
+        onChange={(on) => {
+          onChange({ sunrise: on ? firstSunriseOf(lights) : null });
+        }}
+      />
       {sunrise === null ? null : <SunriseFields {...props} sunrise={sunrise} lights={lights} />}
     </View>
   );

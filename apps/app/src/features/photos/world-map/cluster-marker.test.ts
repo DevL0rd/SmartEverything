@@ -38,7 +38,7 @@ function draw(selected: boolean, onSelect: (cluster: PlaceCluster) => void): voi
   seen.length = 0;
   const [mark] = clusterMarks([lisbon], fitOf(WORLD_VIEW, { width: 1000, height: 400 }));
   if (mark === undefined) throw new Error('no mark');
-  renderToStaticMarkup(createElement(ClusterMarker, { mark, selected, onSelect }));
+  renderToStaticMarkup(createElement(ClusterMarker, { mark, selected, dimmed: false, onSelect }));
 }
 
 function isPress(value: unknown): value is () => void {

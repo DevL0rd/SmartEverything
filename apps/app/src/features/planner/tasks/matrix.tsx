@@ -5,12 +5,14 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { useMinuteOf } from '../../../store/clock';
 import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { useItemPress } from '../item/item-menu-host';
 import { matrixOf, type QuadrantKey, type QuadrantModel } from './matrix-model';
-import { TaskCheck, useTaskActions } from './task-card';
+import { AssigneeMark } from './assignee-mark';
+import { TaskCheck, useTaskActions } from './task-check';
 import { dueLabelOf, isOverdue, type TaskEntry, type TaskFilter } from './task-grouping';
 
 const TITLE_TONE: Readonly<Record<QuadrantKey, Tone>> = {
@@ -37,18 +39,22 @@ const MatrixTask = memo(function MatrixTask({
   const actions = useTaskActions(entry);
   const overdue = useMinuteOf((now) => isOverdue(entry, now, today));
   const press = useItemPress(entry.item.id, entry.occurrenceKey);
+  const touch = useIdiom() === 'touch';
   return (
     <View className="flex-row items-start gap-1.5">
-      <TaskCheck entry={entry} onDone={actions.done} />
+      <TaskCheck entry={entry} actions={actions} />
       <Interactive
         {...press.open}
         onLongPress={press.onLongPress}
         onContextMenu={press.onContextMenu}
         label={entry.item.title}
-        className="min-h-7 min-w-0 flex-1 justify-center rounded-sm py-0.5"
+        className={cn(
+          touch ? 'min-h-11' : 'min-h-8',
+          'min-w-0 flex-1 justify-center rounded-sm py-0.5',
+        )}
         layerClassName="rounded-sm"
       >
-        <Text variant="footnote" numberOfLines={2}>
+        <Text variant="footnote" tone={entry.done ? 'variant' : 'default'} numberOfLines={2}>
           {entry.item.title}
         </Text>
         <Text variant="caption" tone={overdue ? 'critical' : 'variant'} className="tabular">
@@ -56,6 +62,7 @@ const MatrixTask = memo(function MatrixTask({
         </Text>
         {press.menu}
       </Interactive>
+      <AssigneeMark item={entry.item} side={entry.assigned} />
     </View>
   );
 });

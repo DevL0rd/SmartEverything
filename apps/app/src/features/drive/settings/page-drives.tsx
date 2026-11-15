@@ -19,7 +19,7 @@ export function DrivesSection(): ReactNode {
           body="My Drive and the Shared Drive appear here as soon as the Hub has made them."
         />
       ) : (
-        <View className="gap-4">
+        <View className="gap-8">
           {cards.map((card) => (
             <DriveCard key={card.root.id} card={card} />
           ))}

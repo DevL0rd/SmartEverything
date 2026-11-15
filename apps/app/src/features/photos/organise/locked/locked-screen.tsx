@@ -16,6 +16,7 @@ import {
   type MediaSelectionControls,
 } from '../../../../components/media-grid/selection';
 import type { ShellAction } from '../../../../components/page-shell/shell-actions';
+import type { MenuItem } from '../../../../components/menu';
 import { Skeleton } from '../../../../components/skeleton';
 import { notify } from '../../../../components/toast-store';
 import { useAreaWidth } from '../../../../design/size-class';
@@ -28,7 +29,7 @@ import { LibraryLoading } from '../../library/library-states';
 import { itemsText } from '../actions';
 import { deleteFromLockedFolder, moveOutOfLockedFolder } from '../api';
 import { useMonthFeed, type OrganiseFeed } from '../month-feed';
-import { PickBar, PickHead, PickRow, type PickAction, type PickBarProps } from '../selection-bar';
+import { pickSlotsOf, type PickAction, type PickBarProps } from '../selection-bar';
 import { LockedChangePin } from './change-pin';
 import { LockedSetup, LockedUnlock } from './locked-gate';
 import { lockedThumbs } from './links';
@@ -64,10 +65,7 @@ function Gate({ onChangePin }: { readonly onChangePin: () => void }): ReactNode 
   const state = useLockedState(true);
   if (state.isPending) {
     return (
-      <View
-        className="w-full max-w-160 gap-3 self-center pt-4"
-        accessibilityLabel="Loading the Locked folder"
-      >
+      <View className="w-full gap-3 pt-4" accessibilityLabel="Loading the Locked folder">
         <Skeleton shape="block" className="h-72" />
       </View>
     );
@@ -127,8 +125,13 @@ function OpenBody({
         today={today}
         empty={<Empty />}
         thumbs={lockedThumbs}
+        selection={controls.selection}
+        onDay={controls.day}
         onOpen={(tile) => {
           if (!controls.press(tile.id, { shift: false })) onView(tile.id);
+        }}
+        onMenu={(tile) => {
+          controls.pick(tile.id);
         }}
         onEndReached={feed.onEnd}
       />
@@ -229,25 +232,44 @@ function Viewing({
   );
 }
 
-function openActions(
-  feed: OrganiseFeed,
-  controls: MediaSelectionControls,
-  onChangePin: () => void,
-): readonly ShellAction[] {
+function openActions(feed: OrganiseFeed, controls: MediaSelectionControls): readonly ShellAction[] {
   return [
     { icon: 'lock', label: 'Lock', primary: true, onPress: closeLockedSession },
-    { icon: 'key', label: 'Change PIN', iconOnly: true, onPress: onChangePin },
     ...(feed.tiles.length === 0
       ? []
-      : [
-          {
-            icon: 'circleCheck' as const,
-            label: 'Select',
-            iconOnly: true,
-            onPress: controls.begin,
-          },
-        ]),
+      : [{ icon: 'circleCheck' as const, label: 'Select', onPress: controls.begin }]),
   ];
+}
+
+function barOf({
+  session,
+  feed,
+  controls,
+  mutation,
+  live,
+}: {
+  readonly session: LockedUnlocked;
+  readonly feed: OrganiseFeed;
+  readonly controls: MediaSelectionControls;
+  readonly mutation: MutationState;
+  readonly live: boolean;
+}): PickBarProps {
+  const ids = [...controls.selection.ids];
+  return {
+    picked: ids.length,
+    total: feed.total,
+    disabled: !live || mutation.busy,
+    actions: pickActions(session, ids, mutation, controls.clear),
+    onClear: controls.clear,
+    onAll: (): void => {
+      feed.loadAll();
+      controls.all();
+    },
+  };
+}
+
+function changePinItem(onChangePin: () => void): MenuItem {
+  return { id: 'change-pin', label: 'Change PIN', icon: 'key', onPress: onChangePin };
 }
 
 function Opened({
@@ -263,15 +285,7 @@ function Opened({
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));
   const mutation = useMutationState();
   const [viewing, setViewing] = useState<string | null>(null);
-  const ids = [...controls.selection.ids];
-  const bar: PickBarProps = {
-    picked: ids.length,
-    total: feed.tiles.length,
-    disabled: !live || mutation.busy,
-    actions: pickActions(session, ids, mutation, controls.clear),
-    onClear: controls.clear,
-    onAll: controls.all,
-  };
+  const bar = barOf({ session, feed, controls, mutation, live });
   const active = controls.selection.active;
   return (
     <PhotosFrame
@@ -282,9 +296,9 @@ function Opened({
           : 'Locks when you leave'
       }
       scroll={false}
-      actions={active ? [] : openActions(feed, controls, onChangePin)}
-      selection={active ? compact ? <PickHead {...bar} /> : <PickBar {...bar} /> : null}
-      footer={active && compact ? <PickRow {...bar} /> : null}
+      actions={active ? [] : openActions(feed, controls)}
+      overflow={active ? [] : [changePinItem(onChangePin)]}
+      {...pickSlotsOf(bar, active, compact)}
     >
       {feed.sources}
       <OpenBody feed={feed} controls={controls} onView={setViewing} />

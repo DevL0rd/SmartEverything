@@ -1,6 +1,7 @@
 import { memo, useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
+import { Button } from '../../../components/button';
 import { DoneMark } from '../../../components/done-mark';
 import { EmptyState } from '../../../components/empty-state';
 import { Text } from '../../../components/text';
@@ -120,7 +121,7 @@ const EMPTY_COPY: Readonly<Record<SmartChoice, { readonly title: string; readonl
     completed: { title: 'Nothing done yet', body: 'Tasks you finish show up here.' },
     all: {
       title: 'No open tasks',
-      body: 'Tasks you add here, from chat or from Google show up here.',
+      body: 'Tasks you add, ask the assistant for or sync from Google show up here.',
     },
   };
 
@@ -136,13 +137,33 @@ function AllDone(): ReactNode {
   );
 }
 
-function TaskListEmpty({ entries, today, filter }: TaskListProps): ReactElement {
+export function AddTaskAction(): ReactNode {
+  const { offline, focusQuickAdd } = usePlannerFrame();
+  return (
+    <Button
+      label="Add a task"
+      icon="plus"
+      variant="tonal"
+      disabled={offline}
+      onPress={() => {
+        focusQuickAdd();
+      }}
+    />
+  );
+}
+
+export function TaskEmptyState({
+  entries,
+  today,
+  filter,
+}: Pick<TaskListProps, 'entries' | 'today' | 'filter'>): ReactElement {
   if (filter.kind === 'list') {
     return (
       <EmptyState
         icon="listCheck"
         title="Nothing open in this list"
         body="Add a task to it from the bar below."
+        action={<AddTaskAction />}
       />
     );
   }
@@ -151,7 +172,9 @@ function TaskListEmpty({ entries, today, filter }: TaskListProps): ReactElement 
     return <AllDone />;
   }
   const copy = EMPTY_COPY[filter.list];
-  return <EmptyState icon="circleCheck" title={copy.title} body={copy.body} />;
+  return (
+    <EmptyState icon="circleCheck" title={copy.title} body={copy.body} action={<AddTaskAction />} />
+  );
 }
 
 export interface TaskListProps {
@@ -208,7 +231,7 @@ export function TaskList(props: TaskListProps): ReactNode {
         renderItem={renderItem}
         sameItem={sameTaskListRow}
         {...(header === undefined ? {} : { header })}
-        empty={<TaskListEmpty {...props} />}
+        empty={<TaskEmptyState entries={entries} today={today} filter={filter} />}
         probe="planner-task-list"
       />
     </View>

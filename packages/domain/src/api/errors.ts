@@ -61,6 +61,7 @@ export const API_ERROR = z.strictObject({
     code: z.enum(API_ERROR_CODES),
     message: z.string().min(1),
     reason: z.string().min(1).optional(),
+    retryAfterSeconds: z.number().int().positive().optional(),
   }),
 });
 
@@ -74,6 +75,7 @@ export class ApiError extends Error {
     readonly code: ApiErrorCode,
     message: string,
     readonly reason: string | null = null,
+    readonly retryAfterSeconds: number | null = null,
   ) {
     super(message);
     this.status = API_ERROR_STATUS[code];
@@ -85,6 +87,7 @@ export class ApiError extends Error {
         code: this.code,
         message: this.message,
         ...(this.reason === null ? {} : { reason: this.reason }),
+        ...(this.retryAfterSeconds === null ? {} : { retryAfterSeconds: this.retryAfterSeconds }),
       },
     };
   }
@@ -102,5 +105,6 @@ export function apiErrorOf(status: number, body: unknown): ApiError {
     parsed.data.error.code,
     parsed.data.error.message,
     parsed.data.error.reason ?? null,
+    parsed.data.error.retryAfterSeconds ?? null,
   );
 }

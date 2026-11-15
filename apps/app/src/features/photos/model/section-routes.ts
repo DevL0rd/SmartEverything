@@ -5,9 +5,9 @@ export const PHOTOS_SECTIONS = [
   'sharing',
   'map',
   'folders',
-  'insights',
   'archive',
   'locked',
+  'insights',
   'deleted',
 ] as const;
 

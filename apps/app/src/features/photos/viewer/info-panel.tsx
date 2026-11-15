@@ -6,7 +6,7 @@ import { Text } from '../../../components/text';
 import { Button } from '../../../components/button';
 import { openMetaEdit } from '../organise/meta/meta-request';
 import { ItemSmartRows } from '../smart/item-rows';
-import { InfoRows, type InfoContent } from './info-rows';
+import { InfoActions, InfoRows, type InfoContent } from './info-rows';
 import { metaCurrentOf } from './use-viewer-controls';
 
 const INFO_DETENTS = ['full'] as const;
@@ -50,6 +50,7 @@ export function InfoPanel({
         <MetaEntry content={content} />
         <InfoRows content={content} />
         <ItemSmartRows itemId={content.item.id} />
+        <InfoActions content={content} />
       </ScrollView>
     </View>
   );
@@ -76,6 +77,7 @@ export function InfoSheet({
       <MetaEntry content={content} onOpened={onClose} />
       <InfoRows content={content} />
       <ItemSmartRows itemId={content.item.id} onOpened={onClose} />
+      <InfoActions content={content} />
     </BottomSheet>
   );
 }

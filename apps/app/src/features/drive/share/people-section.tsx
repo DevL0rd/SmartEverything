@@ -162,13 +162,19 @@ function NewPersonControls(props: NewPersonControlsProps): ReactNode {
           onChange={props.onRole}
         />
         {expiry.chip}
-        <Button
-          label={chosen === null ? 'Share' : `Share with ${chosen.name}`}
-          icon="share"
-          loading={props.busy}
-          disabled={!live || chosen === null}
-          onPress={props.onShare}
-        />
+        {chosen === null ? (
+          <Text variant="footnote" tone="variant">
+            Pick someone to share with
+          </Text>
+        ) : (
+          <Button
+            label={`Share with ${chosen.name}`}
+            icon="share"
+            loading={props.busy}
+            disabled={!live}
+            onPress={props.onShare}
+          />
+        )}
       </View>
       {expiry.picker}
     </>
@@ -293,7 +299,7 @@ function ManagedPerson({
           }}
         />
       </PersonHead>
-      <View className={cn('gap-2', person.profile !== null && 'pl-11')}>
+      <View className="gap-2">
         <View className="flex-row flex-wrap items-center gap-2">
           <Segmented
             options={ROLE_OPTIONS}

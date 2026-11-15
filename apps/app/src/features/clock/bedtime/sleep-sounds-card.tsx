@@ -33,12 +33,23 @@ export interface SleepSoundsProps {
   readonly onSave: (edit: (sounds: PlannerSleepSounds) => PlannerSleepSounds) => void;
 }
 
-function SoundArt({ sound }: { readonly sound: PlannerSleepSound | null }): ReactNode {
+function SoundArt({
+  sound,
+  compact,
+}: {
+  readonly sound: PlannerSleepSound | null;
+  readonly compact: boolean;
+}): ReactNode {
   if (sound?.kind === 'noise') {
-    return <NoiseSpectrum colour={sound.colour} width={72} height={40} />;
+    return <NoiseSpectrum colour={sound.colour} width={compact ? 48 : 72} height={40} />;
   }
   return (
-    <View className="h-10 w-18 items-center justify-center rounded-md bg-surface-3">
+    <View
+      className={cn(
+        'h-10 items-center justify-center rounded-md bg-surface-3',
+        compact ? 'w-12' : 'w-18',
+      )}
+    >
       <Icon name={sound?.kind === 'radio' ? 'radio' : 'music'} size={24} colour="sleep-core" />
     </View>
   );
@@ -61,7 +72,7 @@ function SoundTile({
       className="min-h-touch-min flex-row items-center gap-4 rounded-md bg-surface-2 p-3"
       layerClassName="rounded-md"
     >
-      <SoundArt sound={sound} />
+      <SoundArt sound={sound} compact={card.compact} />
       <View className="min-w-0 flex-1">
         <Text variant="body-strong" numberOfLines={1}>
           {title}
@@ -70,9 +81,13 @@ function SoundTile({
           {sleepSoundKindLabelOf(sound)}
         </Text>
       </View>
-      <Text variant="callout" tone="primary">
-        Change
-      </Text>
+      {card.compact ? (
+        <Icon name="chevronRight" size={20} tone="variant" />
+      ) : (
+        <Text variant="callout" tone="primary">
+          Change
+        </Text>
+      )}
     </Interactive>
   );
 }
@@ -103,7 +118,7 @@ function PlayRow({ card }: { readonly card: SleepSoundsProps }): ReactNode {
   };
   return (
     <View className="flex-row flex-wrap items-center gap-3">
-      <View className="min-w-0 flex-1 flex-row items-center gap-2">
+      <View className="min-w-0 grow basis-48 flex-row items-center gap-2">
         <View className={cn('size-2 rounded-full', playing ? 'bg-positive' : 'bg-outline')} />
         <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
           {liveLineOf(card.live, card.control.here)}

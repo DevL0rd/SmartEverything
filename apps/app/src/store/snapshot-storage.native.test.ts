@@ -4,8 +4,8 @@ const disk = vi.hoisted((): { items: Map<string, string> } => ({ items: new Map(
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
-    setItem: (key: string, value: string): Promise<void> => {
-      disk.items.set(key, value);
+    multiSet: (entries: readonly [string, string][]): Promise<void> => {
+      entries.forEach(([key, value]) => disk.items.set(key, value));
       return Promise.resolve();
     },
     multiGet: (keys: readonly string[]): Promise<[string, string | null][]> =>
@@ -27,8 +27,15 @@ describe('native snapshot storage', () => {
   });
 
   it('reads only the keys that exist, writes and removes by key', async () => {
-    await writeStored('a', '1');
-    await writeStored('b', '2');
+    await writeStored(
+      [
+        ['a', '1'],
+        ['b', '2'],
+        ['c', '3'],
+      ],
+      [],
+    );
+    await writeStored([], ['c']);
     expect([...(await readStored(['a', 'b', 'c']))]).toEqual([
       ['a', '1'],
       ['b', '2'],

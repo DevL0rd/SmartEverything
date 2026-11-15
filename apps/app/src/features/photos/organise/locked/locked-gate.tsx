@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import { background } from '@smarteverything/logging';
+import { ApiError } from '@smarteverything/domain';
+import { background, Logger } from '@smarteverything/logging';
 import { Button } from '../../../../components/button';
 import { Card } from '../../../../components/card';
 import { Icon, type IconName } from '../../../../components/icon';
@@ -53,7 +54,7 @@ export function GateCard({
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <View className="w-full max-w-160 self-center pt-4">
+    <View className="w-full pt-4">
       <Card>
         <View className="gap-5">
           <View className="flex-row items-center gap-3">
@@ -69,11 +70,17 @@ export function GateCard({
   );
 }
 
-function unlockWith(mutation: MutationState, pin: string, onOpened?: () => void): void {
+function unlockWith(
+  mutation: MutationState,
+  pin: string,
+  onFailed: (error: unknown) => void,
+  onOpened?: () => void,
+): void {
   mutation.run(() => unlockLockedFolder(pin), {
     failure: 'The Locked folder did not open',
     label: 'photos.locked.unlock',
     inline: true,
+    onError: onFailed,
     onDone: (unlocked) => {
       openLockedSession(unlocked);
       onOpened?.();
@@ -81,13 +88,68 @@ function unlockWith(mutation: MutationState, pin: string, onOpened?: () => void)
   });
 }
 
+const log = new Logger('app.photos');
+
+interface Lockout {
+  readonly until: number;
+  readonly text: string;
+}
+
+function lockoutOf(error: unknown, now: number): Lockout | null {
+  if (!(error instanceof ApiError) || error.code !== 'rate_limited') return null;
+  if (error.retryAfterSeconds === null) {
+    log.error('locked.lockout_without_retry', { message: error.message });
+    return null;
+  }
+  const minutes = Math.ceil(error.retryAfterSeconds / 60);
+  return {
+    until: now + error.retryAfterSeconds * 1000,
+    text: `Too many wrong attempts. Try again in ${String(minutes)} min.`,
+  };
+}
+
+function useLockout(): {
+  readonly lockout: Lockout | null;
+  readonly attempt: number;
+  readonly expired: boolean;
+  readonly failed: (error: unknown) => void;
+} {
+  const [lockout, setLockout] = useState<Lockout | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    if (lockout === null) return undefined;
+    const timer = setTimeout(
+      () => {
+        setLockout(null);
+        setExpired(true);
+        setAttempt((current) => current + 1);
+      },
+      Math.max(0, lockout.until - Date.now()),
+    );
+    return (): void => {
+      clearTimeout(timer);
+    };
+  }, [lockout]);
+  return {
+    lockout,
+    attempt,
+    expired,
+    failed: (error): void => {
+      setExpired(false);
+      setLockout(lockoutOf(error, Date.now()));
+      setAttempt((current) => current + 1);
+    },
+  };
+}
+
 const SETUP_LABELS = ['Choose a PIN', 'Enter it again', 'Fingerprint'];
 
 function setupCopy(step: SetupStep): { readonly label: string; readonly helper: string } {
   if (step.kind === 'choose') {
-    return { label: 'Choose a PIN', helper: 'Use at least four digits you will remember.' };
+    return { label: 'PIN', helper: 'Use at least four digits you will remember.' };
   }
-  return { label: 'Enter the PIN again', helper: 'Type the same PIN to confirm it.' };
+  return { label: 'PIN again', helper: 'Type the same PIN to confirm it.' };
 }
 
 function FingerprintStep({
@@ -200,7 +262,7 @@ export function LockedSetup(): ReactNode {
       <View className="flex-row justify-end">
         <Button
           label={step.kind === 'choose' ? 'Continue' : 'Set up Locked folder'}
-          icon={step.kind === 'choose' ? 'chevronRight' : 'lock'}
+          {...(step.kind === 'choose' ? {} : { icon: 'lock' as const })}
           loading={setup.mutation.busy}
           disabled={step.kind !== 'fingerprint' && !pinReady(value)}
           onPress={setup.next}
@@ -213,6 +275,7 @@ export function LockedSetup(): ReactNode {
 function useFingerprint(
   clientId: string,
   mutation: MutationState,
+  onFailed: (error: unknown) => void,
 ): {
   readonly kept: boolean;
   readonly use: () => void;
@@ -236,7 +299,7 @@ function useFingerprint(
       background(
         keptPin(clientId).then(async (pin) => {
           if (pin !== null) {
-            unlockWith(mutation, pin);
+            unlockWith(mutation, pin, onFailed);
             return;
           }
           await forgetPin(clientId);
@@ -252,10 +315,16 @@ export function LockedUnlock({ onChangePin }: { readonly onChangePin: () => void
   const clientId = useSession().client.id;
   const mutation = useMutationState();
   const [pin, setPin] = useState('');
-  const fingerprint = useFingerprint(clientId, mutation);
+  const { lockout, attempt, expired, failed } = useLockout();
+  const onFailed = (error: unknown): void => {
+    setPin('');
+    failed(error);
+  };
+  const fingerprint = useFingerprint(clientId, mutation, onFailed);
+  const locked = lockout !== null;
   const unlock = (): void => {
-    if (pinReady(pin))
-      unlockWith(mutation, pin, () => {
+    if (!locked && pinReady(pin))
+      unlockWith(mutation, pin, onFailed, () => {
         setPin('');
       });
   };
@@ -263,32 +332,61 @@ export function LockedUnlock({ onChangePin }: { readonly onChangePin: () => void
     <GateCard title="Enter your PIN">
       <Promises />
       <PinField
+        key={String(attempt)}
         label="Locked folder PIN"
         helper="The folder locks again when you leave this page."
         value={pin}
         onChange={setPin}
         onSubmit={unlock}
-        error={mutation.problem}
+        error={lockout === null ? (expired ? null : mutation.problem) : lockout.text}
+        disabled={locked}
       />
-      <View className="flex-row flex-wrap justify-end gap-2">
-        <Button label="Change PIN" variant="text" disabled={mutation.busy} onPress={onChangePin} />
-        {fingerprint.kept ? (
-          <Button
-            label="Use fingerprint"
-            icon="key"
-            variant="tonal"
-            disabled={mutation.busy}
-            onPress={fingerprint.use}
-          />
-        ) : null}
-        <Button
-          label="Unlock"
-          icon="lockOpen"
-          loading={mutation.busy}
-          disabled={!pinReady(pin)}
-          onPress={unlock}
-        />
-      </View>
+      <UnlockActions
+        busy={mutation.busy}
+        locked={locked}
+        ready={pinReady(pin)}
+        fingerprint={fingerprint}
+        onChangePin={onChangePin}
+        onUnlock={unlock}
+      />
     </GateCard>
+  );
+}
+
+function UnlockActions({
+  busy,
+  locked,
+  ready,
+  fingerprint,
+  onChangePin,
+  onUnlock,
+}: {
+  readonly busy: boolean;
+  readonly locked: boolean;
+  readonly ready: boolean;
+  readonly fingerprint: { readonly kept: boolean; readonly use: () => void };
+  readonly onChangePin: () => void;
+  readonly onUnlock: () => void;
+}): ReactNode {
+  return (
+    <View className="flex-row flex-wrap justify-end gap-2">
+      <Button label="Change PIN" variant="text" disabled={busy} onPress={onChangePin} />
+      {fingerprint.kept ? (
+        <Button
+          label="Use fingerprint"
+          icon="key"
+          variant="tonal"
+          disabled={busy || locked}
+          onPress={fingerprint.use}
+        />
+      ) : null}
+      <Button
+        label="Unlock"
+        icon="lockOpen"
+        loading={busy}
+        disabled={locked || !ready}
+        onPress={onUnlock}
+      />
+    </View>
   );
 }

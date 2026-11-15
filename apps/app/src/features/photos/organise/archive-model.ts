@@ -29,7 +29,7 @@ export function shareOf(value: number, years: readonly YearCount[]): number {
 
 export function archiveSubtitle(total: number | null): string | null {
   if (total === null) return null;
-  if (total === 0) return 'Nothing archived';
+  if (total === 0) return 'Hidden from the Library and Map';
   return `${total === 1 ? '1 item' : `${count(total)} items`} hidden from the Library and Map`;
 }
 

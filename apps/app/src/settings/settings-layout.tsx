@@ -1,19 +1,17 @@
 import type { ReactNode } from 'react';
 import { Stack } from 'expo-router';
 import { screenPause } from '../app-shell/screen-pause';
+import { SectionHost } from '../app-shell/section-host';
 import { useStackOptions } from '../app-shell/tab-stack';
 import { BuiltSettingsPages } from './availability';
-import { useSettingsRail } from './settings-nav';
 
 export function SettingsLayout(): ReactNode {
-  const rail = useSettingsRail();
   const options = useStackOptions();
   return (
     <BuiltSettingsPages>
-      <Stack
-        screenLayout={screenPause}
-        screenOptions={rail ? { ...options, animation: 'none' } : options}
-      />
+      <SectionHost>
+        <Stack screenLayout={screenPause} screenOptions={{ ...options, animation: 'none' }} />
+      </SectionHost>
     </BuiltSettingsPages>
   );
 }

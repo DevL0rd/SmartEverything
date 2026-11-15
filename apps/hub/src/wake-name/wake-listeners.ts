@@ -1,5 +1,6 @@
 import {
   OPEN_OUTREACH_STATES,
+  isCamera,
   isPrivate,
   privacySwitchOf,
   type AiOutreachRow,
@@ -91,7 +92,7 @@ export class WakeListeners {
     });
     this.unwatchHealth = this.options.health.onChange((cameraId, down) => {
       if (down === null) {
-        this.cameraRecovered(cameraId);
+        this.cameraAvailable(cameraId);
       }
     });
     this.sync();
@@ -114,7 +115,7 @@ export class WakeListeners {
       });
   }
 
-  private cameraRecovered(cameraId: string): void {
+  cameraAvailable(cameraId: string): void {
     this.ears.get(cameraId)?.ear.resume();
   }
 
@@ -173,10 +174,12 @@ export class WakeListeners {
   }
 
   private concerns(deviceId: string): boolean {
+    if (this.ears.has(deviceId) || this.options.store.cameras.find(deviceId) !== undefined) {
+      return true;
+    }
+    const device = this.options.store.devices.find(deviceId);
     return (
-      this.ears.has(deviceId) ||
-      this.options.rules.cameras().includes(deviceId) ||
-      this.options.store.cameras.find(deviceId) !== undefined
+      device !== undefined && isCamera(device) && this.options.rules.cameras().includes(deviceId)
     );
   }
 

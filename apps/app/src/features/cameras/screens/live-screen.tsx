@@ -115,12 +115,7 @@ export function LiveScreen(): ReactNode {
         board
       ) : (
         <View className="-mx-gutter min-h-0 flex-1">
-          <CameraTranscriptFeed
-            transcripts={transcripts}
-            banner={banner}
-            header={board}
-            shellSearch
-          />
+          <CameraTranscriptFeed transcripts={transcripts} banner={banner} header={board} />
         </View>
       )}
     </PageShell>

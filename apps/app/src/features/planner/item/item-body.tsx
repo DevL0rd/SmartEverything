@@ -6,10 +6,6 @@ import type {
 } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Interactive } from '../../../components/interactive';
-import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
-import { duration } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useRows, useSettings } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
@@ -27,9 +23,7 @@ import {
   useTaskRows,
   type ItemRole,
 } from '../data/assignment';
-import { PriorityFlag, priorityOf } from '../tasks/priority-flag';
 import { TaskRuleCard } from './completion-rule-picker';
-import { LIST_DOT } from './composer-tokens';
 import {
   GoogleTitleLine,
   reminderCaptionOf,
@@ -49,10 +43,10 @@ import {
 import type { ItemEditor, ItemTarget } from './item-editor';
 import { ItemNotes, ItemSteps, stepCreateOf, stepsOf, type StepView } from './item-steps';
 import type { ItemActionScope } from './item-menu-host';
+import { ItemMeta, parentIn } from './item-meta';
 import { ItemTitle } from './item-title';
 import { PanelAttachments } from './panel-parts';
 import { RsvpBar } from './rsvp-bar';
-import { useItemOpen } from './selection';
 import { OUTDENT_CHANGE, canHoldSteps, type StepMove } from './steps-model';
 
 const selectViewer = (state: StoreState): string | null => state.session?.client.profile_id ?? null;
@@ -80,93 +74,6 @@ function collectionIn(
 export interface ItemFocus {
   readonly part: 'when' | 'attach';
   readonly at: number;
-}
-
-function CollectionChip({ collection }: { readonly collection: PlannerCollectionRow }): ReactNode {
-  return (
-    <View className="flex-row items-center gap-1.5 rounded-full bg-surface-3 px-2 py-0.5">
-      <View className={cn('size-2 rounded-full', LIST_DOT[collection.colour])} />
-      <Text variant="caption" tone="variant">
-        {collection.name}
-      </Text>
-    </View>
-  );
-}
-
-function StepOfLink({ parent }: { readonly parent: PlannerItemRow }): ReactNode {
-  const open = useItemOpen(parent.id, 'single');
-  return (
-    <Interactive
-      {...open}
-      label={`Step of ${parent.title}, open it`}
-      className="min-h-8 flex-row items-center gap-1.5 self-start rounded-sm"
-      layerClassName="rounded-sm"
-    >
-      <Text variant="footnote" tone="variant">
-        Step of
-      </Text>
-      <Text variant="footnote" tone="primary" numberOfLines={1} className="shrink">
-        {parent.title}
-      </Text>
-    </Interactive>
-  );
-}
-
-export interface ItemMetaProps {
-  readonly item: PlannerItemRow;
-  readonly collection: PlannerCollectionRow | null;
-  readonly parent: PlannerItemRow | null;
-  readonly inPanel: boolean;
-  readonly facts: boolean;
-}
-
-function MetaFacts({ item }: { readonly item: PlannerItemRow }): ReactNode {
-  return (
-    <>
-      {item.tags.map((tag) => (
-        <Text key={tag} variant="footnote" tone="variant">
-          {`#${tag}`}
-        </Text>
-      ))}
-      {item.estimate_minutes === null ? null : (
-        <Text variant="footnote" tone="variant" className="tabular">
-          {duration(item.estimate_minutes * 60)}
-        </Text>
-      )}
-    </>
-  );
-}
-
-export function ItemMeta({ item, collection, parent, inPanel, facts }: ItemMetaProps): ReactNode {
-  const priority = priorityOf(item.priority);
-  const source = item.google === null ? 'this hub' : 'Google';
-  const kind = item.kind === 'event' ? 'Event' : 'Task';
-  const row =
-    !inPanel ||
-    priority !== null ||
-    (facts && (item.tags.length > 0 || item.estimate_minutes !== null));
-  return (
-    <View className="gap-1">
-      {row ? (
-        <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-          {inPanel || collection === null ? null : <CollectionChip collection={collection} />}
-          {priority === null ? null : <PriorityFlag priority={priority} />}
-          {facts ? <MetaFacts item={item} /> : null}
-          {inPanel ? null : (
-            <Text variant="footnote" tone="variant">
-              {`${kind} · ${source}`}
-            </Text>
-          )}
-        </View>
-      ) : null}
-      {parent === null ? null : <StepOfLink parent={parent} />}
-    </View>
-  );
-}
-
-function parentIn(items: readonly PlannerItemRow[], item: PlannerItemRow): PlannerItemRow | null {
-  if (item.parent_id === null) return null;
-  return items.find((row) => row.id === item.parent_id) ?? null;
 }
 
 function ItemMetaLines({
@@ -356,14 +263,17 @@ function Columns({
   );
 }
 
-export function ItemBody(props: ItemBodyProps): ReactNode {
-  const { item, editor, target, scope, focus, inPanel, offline, onClose } = props;
-  const data = useBodyData(item, target.person);
-  const lock = lockOf(useItemRole(target.person, item), item, offline || editor.busy);
+interface PartProps extends ItemBodyProps {
+  readonly data: BodyData;
+  readonly lock: ItemLock;
+  readonly focused: string;
+}
+
+function MainPart(props: PartProps): ReactNode {
+  const { item, editor, target, scope, focus, inPanel, data, lock, focused } = props;
   const shown = editor.shown;
   const personName = personNameOf(data.profiles, item.profile_id, data.viewer);
-  const focused = focus === null ? 'none' : String(focus.at);
-  const main = (
+  return (
     <>
       <ItemTitle
         key={shown.title}
@@ -372,13 +282,13 @@ export function ItemBody(props: ItemBodyProps): ReactNode {
         onChange={editor.change}
       />
       <ItemMetaLines item={item} shown={shown} data={data} inPanel={inPanel} />
-      <RsvpBar item={item} person={target.person} disabled={offline} />
+      <RsvpBar item={item} person={target.person} disabled={props.offline} />
       <ItemActions
         item={item}
         target={target}
         scope={scope}
         disabled={lock.actions}
-        onClose={onClose}
+        onClose={props.onClose}
       />
       <ItemFields
         key={`fields-${focused}`}
@@ -394,23 +304,36 @@ export function ItemBody(props: ItemBodyProps): ReactNode {
         disabled={lock.fields}
         onChange={editor.change}
       />
+      <RuleAndAttachments {...props} personName={personName} />
+    </>
+  );
+}
+
+function RuleAndAttachments(props: PartProps & { readonly personName: string }): ReactNode {
+  const { editor, target, focus, lock, focused } = props;
+  return (
+    <>
       <TaskRuleCard
-        item={shown}
+        item={editor.shown}
         person={target.person}
-        personName={personName}
+        personName={props.personName}
         disabled={lock.fields}
         onChange={editor.change}
       />
       <PanelAttachments
         key={`attach-${focused}`}
-        item={shown}
+        item={editor.shown}
         disabled={lock.fields}
         picking={focus?.part === 'attach'}
         onChange={editor.change}
       />
     </>
   );
-  const side = (
+}
+
+function SidePart({ item, editor, target, offline, data, lock }: PartProps): ReactNode {
+  const shown = editor.shown;
+  return (
     <>
       <StepsArea item={item} steps={data.steps} person={target.person} disabled={offline} />
       {item.kind === 'event' ? (
@@ -425,5 +348,18 @@ export function ItemBody(props: ItemBodyProps): ReactNode {
       <ItemHistory model={data.history} />
     </>
   );
-  return <Columns columns={props.columns} main={main} side={side} />;
+}
+
+export function ItemBody(props: ItemBodyProps): ReactNode {
+  const { item, editor, target, focus, offline } = props;
+  const data = useBodyData(item, target.person);
+  const lock = lockOf(useItemRole(target.person, item), item, offline || editor.busy);
+  const parts = { ...props, data, lock, focused: focus === null ? 'none' : String(focus.at) };
+  return (
+    <Columns
+      columns={props.columns}
+      main={<MainPart {...parts} />}
+      side={<SidePart {...parts} />}
+    />
+  );
 }

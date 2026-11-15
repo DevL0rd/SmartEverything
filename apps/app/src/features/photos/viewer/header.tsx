@@ -77,17 +77,35 @@ export function ViewerHeading({ text }: { readonly text: HeaderText }): ReactNod
   );
 }
 
+function FavouriteButton({ controls }: { readonly controls: HeaderControls }): ReactNode {
+  return (
+    <IconButton
+      icon="star"
+      label={controls.starred ? 'Remove from favourites' : 'Favourite'}
+      selected={controls.starred}
+      disabled={controls.busy}
+      onPress={controls.onFavourite}
+      shortcut="F"
+    />
+  );
+}
+
+function InfoButton({ controls }: { readonly controls: HeaderControls }): ReactNode {
+  return (
+    <IconButton
+      icon="info"
+      label={controls.infoOpen ? 'Info, open' : 'Info'}
+      selected={controls.infoOpen}
+      onPress={controls.onInfo}
+      shortcut="I"
+    />
+  );
+}
+
 export function DesktopControls({ controls }: { readonly controls: HeaderControls }): ReactNode {
   return (
     <View className="flex-row items-center gap-1">
-      <IconButton
-        icon="star"
-        label={controls.starred ? 'Remove from favourites' : 'Favourite'}
-        selected={controls.starred}
-        disabled={controls.busy}
-        onPress={controls.onFavourite}
-        shortcut="F"
-      />
+      <FavouriteButton controls={controls} />
       <JobRing job={controls.edit.job} />
       {controls.edit.available ? (
         <IconButton
@@ -105,14 +123,59 @@ export function DesktopControls({ controls }: { readonly controls: HeaderControl
         disabled={controls.busy}
         onPress={controls.onShare}
       />
-      <IconButton
-        icon="info"
-        label={controls.infoOpen ? 'Info, open' : 'Info'}
-        selected={controls.infoOpen}
-        onPress={controls.onInfo}
-        shortcut="I"
-      />
+      <InfoButton controls={controls} />
       <MenuIconButton icon="ellipsis" label="More" items={controls.more} />
+    </View>
+  );
+}
+
+export function compactMoreItems(
+  controls: HeaderControls,
+  onAlbums: () => void,
+): readonly MenuItem[] {
+  const { edit } = controls;
+  const editing: readonly MenuItem[] = edit.available
+    ? [
+        {
+          label: edit.label,
+          icon: 'pencil',
+          shortcut: 'E',
+          disabled: controls.busy || edit.busy,
+          onPress: edit.onEdit,
+        },
+      ]
+    : [];
+  return [
+    ...editing,
+    { label: 'Add to album', icon: 'layers', onPress: onAlbums },
+    { label: 'Share link', icon: 'share', disabled: controls.busy, onPress: controls.onShare },
+    ...controls.more,
+  ];
+}
+
+export function CompactControls({ controls }: { readonly controls: HeaderControls }): ReactNode {
+  const {
+    ref: albumsRef,
+    open: openAlbums,
+    menu: albumsMenu,
+  } = useAnchoredMenu(controls.albums, 'Add to album');
+  const {
+    ref: moreRef,
+    open: openMore,
+    menu: moreMenu,
+  } = useAnchoredMenu(compactMoreItems(controls, openAlbums), 'More');
+  return (
+    <View className="flex-row items-center gap-1">
+      <FavouriteButton controls={controls} />
+      <JobRing job={controls.edit.job} />
+      <InfoButton controls={controls} />
+      <View ref={albumsRef} collapsable={false}>
+        <View ref={moreRef} collapsable={false}>
+          <IconButton icon="ellipsis" label="More" onPress={openMore} />
+        </View>
+      </View>
+      {moreMenu}
+      {albumsMenu}
     </View>
   );
 }

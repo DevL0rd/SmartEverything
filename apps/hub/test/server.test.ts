@@ -8,7 +8,14 @@ import { LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
 import { PUBLIC_URL, tunnel, xiaomiWithCameraLogin } from './support/booted';
 import { testLayout } from './support/test-layout';
-import { call, fakeGo2rtcBinary, openLive, temporaryDirectory } from './support/server';
+import {
+  call,
+  changedColumns,
+  changedTo,
+  fakeGo2rtcBinary,
+  openLive,
+  temporaryDirectory,
+} from './support/server';
 
 let directory: { path: string; remove: () => Promise<void> };
 let running: RunningServer | null = null;
@@ -95,12 +102,7 @@ describe('startServer', () => {
       body: { provider: 'xiaomi', username: 'me@example.com', password: 'pw', region: 'de' },
     });
     expect(link).toMatchObject({ status: 200, body: { ok: true } });
-    await ownerLive.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'provider_links' &&
-        message.record?.status === 'linked',
-    );
+    await ownerLive.next((message) => changedTo(message, 'provider_links', { status: 'linked' }));
     ownerLive.socket.close();
 
     const pairing = await call(base, owner, {
@@ -160,11 +162,8 @@ describe('startServer', () => {
       source: 'app',
       requested_by: phone.client.id,
     });
-    const finished = await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'commands' &&
-        message.record?.status === 'succeeded',
+    const finished = await live.next((message) =>
+      changedTo(message, 'commands', { status: 'succeeded' }),
     );
     expect(finished).toMatchObject({ operation: 'UPDATE' });
     fake.adapter.sink?.state({
@@ -174,10 +173,10 @@ describe('startServer', () => {
       observedAt: '2026-10-08T10:00:00Z',
     });
     expect(
-      await live.next((message) => message.type === 'change' && message.table === 'device_state'),
-    ).toMatchObject({
-      record: { device_id: lamp?.id, capability: 'power', value: true },
-    });
+      changedColumns(
+        await live.next((message) => message.type === 'change' && message.table === 'device_state'),
+      ),
+    ).toMatchObject({ device_id: lamp?.id, capability: 'power', value: true });
 
     expect((await call(base, phone.token, { method: 'GET', path: '/api/clients' })).status).toBe(
       403,

@@ -3,10 +3,25 @@ import { dayText } from '../../../components/media-grid/day-text';
 import { wallDayKey } from '../../../components/media-grid/tiles';
 import { zonedDateFormat } from '../../../format/locale';
 import type { HeaderText } from './header';
-import { dayCountText, headerDayText, wallTimeOf, type MediaItem } from './info-model';
+import {
+  dayCountText,
+  distinctAdmin,
+  headerDayText,
+  wallTimeOf,
+  type MediaItem,
+} from './info-model';
 import type { DayPosition } from './sequence';
 
 const CLOCK = zonedDateFormat({ hour: '2-digit', minute: '2-digit' });
+
+export const COMPACT_STAGE_WIDTH = 640;
+
+export type HeaderForm = 'phone' | 'compact' | 'desktop';
+
+export function headerFormOf(phone: boolean, stageWidth: number | null): HeaderForm {
+  if (phone) return 'phone';
+  return stageWidth !== null && stageWidth < COMPACT_STAGE_WIDTH ? 'compact' : 'desktop';
+}
 
 export interface HeaderInput {
   readonly item: MediaItem;
@@ -48,6 +63,6 @@ export function phoneHeaderText(input: HeaderInput): HeaderText {
   const day = dayText(dayOf(input, item.takenAt), 1, input.today).title;
   return {
     title: `${day}, ${CLOCK(time.zone).format(time.at)}`,
-    detail: place === null ? null : joined([place.name, place.admin], ', '),
+    detail: place === null ? null : joined([place.name, distinctAdmin(place)], ', '),
   };
 }

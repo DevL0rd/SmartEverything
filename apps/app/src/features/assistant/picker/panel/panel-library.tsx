@@ -6,7 +6,7 @@ import { MARGIN, type PanelSize } from '../../../../components/anchor';
 import { useFocusRequest } from '../../../../components/focus-request';
 import { cn } from '../../../../design/cn';
 import { ImageLibraryBody } from '../image/image-library-body';
-import { LibraryBody } from '../library/library-body';
+import { PickerLibraryBody } from '../library/picker-library-body';
 import {
   IMAGE_LIBRARY_DIALOG_MAX_WIDTH,
   LIBRARY_DIALOG_MAX_HEIGHT,
@@ -57,7 +57,7 @@ function Catalogue({
   return image ? (
     <ImageLibraryBody onClose={onClose} compact={compact === true} />
   ) : (
-    <LibraryBody
+    <PickerLibraryBody
       mode="pick"
       width={width}
       picker={pick.picker}

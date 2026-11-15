@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FrameClass } from '../../../components/widget-board';
 import type { Palette } from '../../../design/colour-roles';
 import type { Device } from '../../../store/state';
+import { wired } from '../../../test-support/live-wire';
 
 interface Counters {
   count: number;
@@ -315,7 +316,7 @@ function mount(cls: FrameClass, options: { readonly paused?: boolean } = {}): Mo
     change: (capability, value, at): number => {
       nodes.count = 0;
       act(() => {
-        store.apply([liveChange(capability, value, at)]);
+        store.apply(wired([liveChange(capability, value, at)]));
         flushFrames();
       });
       return nodes.count;

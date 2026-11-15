@@ -3,7 +3,7 @@ import type { PrinterDescription, PrinterStatus } from '@smarteverything/ipp';
 import { dayKeyOf } from './clock';
 import { monthSpend, perPageCost } from './cost';
 import type { PrinterLedger } from './ledger';
-import { buildModel, supplyKeysOf, type PrinterModel } from './model';
+import { bootedAtOf, buildModel, supplyKeysOf, type PrinterModel } from './model';
 import type { PrinterRecord } from './records';
 
 const WEEK_DAYS = 7;
@@ -55,5 +55,6 @@ export function composeModel(input: Composition): PrinterModel {
     costMonth: monthSpend(ledger.days(), today.slice(0, 7), cost),
     gapOpen: !input.online,
     observedAt: now.toISOString(),
+    bootedAt: bootedAtOf(input.previous, status, now),
   });
 }

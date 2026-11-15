@@ -4,7 +4,15 @@ import type { Ledger } from '../model/ledger';
 import { blockedBy, type PauseReason } from '../model/conditions';
 import { patchBackupStatus } from '../model/status';
 import { BackupCycle, scopeOf, type CycleEnd } from './cycle';
+import { findFolderCopies, forgetFolderCopies, type FolderCopies } from './folder-copies';
 import { findFreeable, freeUp, type Freeable, type FreeableResult } from './free-up';
+import {
+  placeOf,
+  restoreLocalCopies,
+  trashLocalCopies,
+  type LocalCopyResult,
+  type LocalPlace,
+} from './local-copies';
 import { loadLedger, loadPaused, savePaused } from './ledger-store';
 import type { BackupPorts } from './ports';
 
@@ -81,6 +89,30 @@ export class BackupRunner {
   async freeUp(freeable: Freeable): Promise<boolean> {
     if (this.stopped) return false;
     return freeUp(this.ports, await this.ledgerOf(), freeable, this.lifetime.signal);
+  }
+
+  get place(): LocalPlace {
+    return placeOf(this.ports);
+  }
+
+  async trashLocalCopies(itemIds: readonly string[]): Promise<LocalCopyResult> {
+    if (this.stopped || !this.ports.available()) return { kind: 'none' };
+    return trashLocalCopies(this.ports, await this.ledgerOf(), itemIds);
+  }
+
+  async restoreLocalCopies(itemIds: readonly string[]): Promise<LocalCopyResult> {
+    if (this.stopped || !this.ports.available()) return { kind: 'none' };
+    return restoreLocalCopies(this.ports, itemIds);
+  }
+
+  async folderCopies(backupIds: readonly string[]): Promise<FolderCopies> {
+    if (this.stopped) throw new Error('Photo backup stopped on this device.');
+    return findFolderCopies(this.ports, await this.ledgerOf(), backupIds);
+  }
+
+  async forgetFolderCopies(localIds: readonly string[]): Promise<void> {
+    if (this.stopped) throw new Error('Photo backup stopped before it forgot the removed copies.');
+    await forgetFolderCopies(this.ports, await this.ledgerOf(), localIds);
   }
 
   pause(): Promise<void> {

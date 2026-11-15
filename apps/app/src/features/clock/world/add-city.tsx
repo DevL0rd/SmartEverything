@@ -36,6 +36,8 @@ export function AddCityPicker({
       value={null}
       anchor={anchor}
       searchable
+      searchPlaceholder="Search cities"
+      presentation="dialog"
       onPick={onAdd}
       onClose={onClose}
     />

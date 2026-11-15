@@ -8,6 +8,8 @@ import {
   BACKUP_REGISTER,
   BACKUP_DEVICE,
   BACKUP_STATE,
+  PHOTO_FOLDER_COPIES,
+  PHOTO_FOLDER_COPIES_REQUEST,
   PHOTO_ORIGINS,
   PHOTO_ORIGINS_REQUEST,
 } from '../photos/backup';
@@ -371,6 +373,17 @@ export const PHOTOS_ENDPOINTS = {
     query: NOTHING,
     body: PHOTO_ORIGINS_REQUEST,
     response: PHOTO_ORIGINS,
+  }),
+  readFolderBackupCopies: endpoint({
+    method: 'POST',
+    path: '/api/drive/photos/backup/folder-copies',
+    access: 'member',
+    summary:
+      'Which hub copies came only from one folder on this device, and which stay because they came from elsewhere, were edited or are in albums',
+    params: NOTHING,
+    query: NOTHING,
+    body: PHOTO_FOLDER_COPIES_REQUEST,
+    response: PHOTO_FOLDER_COPIES,
   }),
   readBackupState: endpoint({
     method: 'GET',

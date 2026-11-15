@@ -21,8 +21,6 @@ import { useHomeMap } from '../../home-map';
 import { DeviceBanner } from './device-overview';
 import { sectionHref, sectionsOf, type DeviceSection } from './sections';
 
-const PHONE_SECTION_TABS: readonly string[] = ['overview', 'controls', 'history', 'activity'];
-
 export interface DeviceShell {
   readonly props: Pick<
     StandardShellProps,
@@ -94,7 +92,6 @@ export function sectionsShellOf(
   return {
     label: 'Device pages',
     active,
-    phoneTabs: PHONE_SECTION_TABS,
     hrefOf: (key) => (key === 'overview' ? href.device(device) : sectionHref(device.id, key)),
     navigation: 'replace',
     groups: [

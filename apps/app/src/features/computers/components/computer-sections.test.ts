@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { phoneTabsOf, sectionsPullUp } from '../../../components/page-shell/shell-sections';
 import { computerSectionsOf, railGroupsOf } from './computer-sections';
 import { AI_SECTIONS, NOT_AVAILABLE, SECTIONS } from '../model/sections';
 
@@ -31,23 +30,7 @@ describe('computer sections', () => {
     expect(entries.find((entry) => entry.id === 'overview')?.short).toBeUndefined();
   });
 
-  it('opens the pull-up on phones and pins the most used pages as tabs that replace the page', () => {
-    const sections = computerSectionsOf(INPUT);
-    expect(sectionsPullUp(sections)).toBe(true);
-    const tabs = phoneTabsOf(sections);
-    expect(tabs?.items.map((item) => item.key)).toEqual([
-      'overview',
-      'performance',
-      'processes',
-      'files',
-      'apps',
-    ]);
-    expect(tabs?.items.every((item) => item.navigation === 'replace')).toBe(true);
-  });
-
-  it('adds the open page to the phone tabs when it is not pinned', () => {
-    const tabs = phoneTabsOf(computerSectionsOf({ ...INPUT, active: 'codex' }));
-    expect(tabs?.active).toBe('codex');
-    expect(tabs?.items.map((item) => item.key)).toContain('codex');
+  it('replaces the open page from the rail', () => {
+    expect(computerSectionsOf(INPUT).navigation).toBe('replace');
   });
 });

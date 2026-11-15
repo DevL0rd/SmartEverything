@@ -1,13 +1,10 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { PhotoAiStatus, PhotoGroup, PhotoPeople } from '@smarteverything/domain';
-import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Arc, SegmentBar } from '../../../components/charts';
 import { FilterChip } from '../../../components/filter-chip';
-import { HScroller } from '../../../components/h-scroller';
-import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { count, percent } from '../../../format/number';
 import { sentenceCase } from '../../../format/text';
@@ -16,17 +13,13 @@ import { FaceAvatar } from './face-avatar';
 import { GroupGrid } from './group-tile';
 import {
   faceProgressOf,
-  groupTitleOf,
   mergeCandidatesOf,
   namingLineOf,
   pairLineOf,
   speciesChipsOf,
   suggestionKey,
   type Naming,
-  type PeopleSections,
 } from './model';
-
-const STRIP_FACE = 56;
 
 export function FaceRing({
   status,
@@ -60,28 +53,6 @@ export function FaceRing({
   );
 }
 
-function StripFace({ group }: { readonly group: PhotoGroup }): ReactNode {
-  return (
-    <Interactive
-      role="link"
-      label={groupTitleOf(group)}
-      href={href.photosPerson(group.id)}
-      className="w-18 items-center gap-1 rounded-md py-1"
-      layerClassName="rounded-md"
-    >
-      <FaceAvatar
-        itemId={group.coverItemId}
-        box={group.coverBox}
-        kind={group.kind}
-        size={STRIP_FACE}
-      />
-      <Text variant="caption" numberOfLines={1} className="w-full text-center">
-        {groupTitleOf(group)}
-      </Text>
-    </Interactive>
-  );
-}
-
 function NamingBar({ naming }: { readonly naming: Naming }): ReactNode {
   if (naming.total === 0) return null;
   return (
@@ -100,11 +71,9 @@ function NamingBar({ naming }: { readonly naming: Naming }): ReactNode {
 }
 
 export function PeopleHeader({
-  sections,
   status,
   naming,
 }: {
-  readonly sections: PeopleSections;
   readonly status: PhotoAiStatus | undefined;
   readonly naming: Naming;
 }): ReactNode {
@@ -127,21 +96,41 @@ export function PeopleHeader({
       <View className="pt-3">
         <NamingBar naming={naming} />
       </View>
-      {sections.strip.length === 0 ? null : (
-        <View className="-mx-1 pt-3">
-          <HScroller label="Named people">
-            {sections.strip.map((group) => (
-              <StripFace key={group.id} group={group} />
-            ))}
-          </HScroller>
-        </View>
-      )}
     </Card>
   );
 }
 
-function MergeCard({ pair }: { readonly pair: readonly [PhotoGroup, PhotoGroup] }): ReactNode {
+interface PairProps {
+  readonly pair: readonly [PhotoGroup, PhotoGroup];
+  readonly live: boolean;
+}
+
+function MergeButtons({ pair, live }: PairProps): ReactNode {
   const actions = usePeopleActions();
+  const disabled = !live || actions.busy;
+  return (
+    <View className="flex-row gap-2">
+      <Button
+        label="Not now"
+        variant="text"
+        disabled={disabled}
+        onPress={() => {
+          actions.dismissMerge(pair);
+        }}
+      />
+      <Button
+        label="Merge"
+        variant="filled"
+        disabled={disabled}
+        onPress={() => {
+          actions.merge(pair[0], [pair[1]]);
+        }}
+      />
+    </View>
+  );
+}
+
+function MergeCard({ pair, live }: PairProps): ReactNode {
   const [first, second] = pair;
   const noun = first.kind === 'pet' ? 'pet' : 'person';
   return (
@@ -163,37 +152,26 @@ function MergeCard({ pair }: { readonly pair: readonly [PhotoGroup, PhotoGroup] 
             {pairLineOf(first, second)}
           </Text>
         </View>
-        <View className="flex-row gap-2">
-          <Button
-            label="Not now"
-            variant="text"
-            disabled={actions.busy}
-            onPress={() => {
-              actions.dismissMerge(pair);
-            }}
-          />
-          <Button
-            label="Merge"
-            variant="filled"
-            disabled={actions.busy}
-            onPress={() => {
-              actions.merge(first, [second]);
-            }}
-          />
-        </View>
+        <MergeButtons pair={pair} live={live} />
       </View>
     </Card>
   );
 }
 
-export function MergeSuggestions({ people }: { readonly people: PhotoPeople }): ReactNode {
+export function MergeSuggestions({
+  people,
+  live,
+}: {
+  readonly people: PhotoPeople;
+  readonly live: boolean;
+}): ReactNode {
   const pairs = mergeCandidatesOf(people.mergeSuggestions, people.groups);
   if (pairs.length === 0) return null;
   return (
     <View className="flex-row flex-wrap gap-3">
       {pairs.map((pair) => {
         const key = suggestionKey({ groupIds: [pair[0].id, pair[1].id], similarity: 0 });
-        return <MergeCard key={key} pair={pair} />;
+        return <MergeCard key={key} pair={pair} live={live} />;
       })}
     </View>
   );

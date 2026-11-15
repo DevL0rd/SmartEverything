@@ -4,7 +4,6 @@ import { useWindowSize } from '../../../../design/size-class';
 import { Banner } from '../../../../components/banner';
 import { FlatChoice } from '../../../../components/flat-choice';
 import { HScroller } from '../../../../components/h-scroller';
-import { SearchField } from '../../../../components/search-field';
 import { Select } from '../../../../components/select';
 import { StatusChip } from '../../../../components/status-chip';
 import { Text } from '../../../../components/text';
@@ -17,6 +16,8 @@ import type { LibraryState } from './library-state';
 import { ModelSearchSource } from '../model-search-source';
 import { SourceStatuses } from '../model-source-status';
 import { LibraryOriginFocus } from './library-focus';
+
+export const MODEL_SEARCH_PLACEHOLDER = 'Search models';
 
 export function SortSelect<T extends string>({
   options,
@@ -84,6 +85,7 @@ export interface LibraryToolsProps {
   readonly data: LibraryData;
   readonly filtersInline: boolean;
   readonly compact: boolean;
+  readonly searchField: ReactNode;
   readonly touch: boolean;
   readonly details: boolean;
   readonly toggleDetails: () => void;
@@ -134,6 +136,7 @@ function LibraryCountLine({
   filtersInline,
   touch,
   compact,
+  searchField,
   count,
 }: LibraryToolsProps & { readonly count: string | null }): ReactNode {
   return (
@@ -144,7 +147,7 @@ function LibraryCountLine({
         state.setPage('filters');
       }}
       sort={
-        touch && !data.search.scoped ? (
+        (touch || searchField === null) && !data.search.scoped ? (
           <SortSelect
             options={SORT_OPTIONS}
             sort={state.sort}
@@ -181,20 +184,14 @@ export function LibraryTools(props: LibraryToolsProps): ReactNode {
   return (
     <View className="gap-2 pt-2" onLayout={onLayout}>
       <View className="gap-2 px-4">
-        <View className="flex-row items-center gap-2">
-          <View className="min-w-0 flex-1">
-            <SearchField
-              value={state.text}
-              onChange={state.setText}
-              placeholder="Search models"
-              variant="field"
-              focusOnMount={!touch}
-            />
+        {props.searchField === null ? null : (
+          <View className="flex-row items-center gap-2">
+            <View className="min-w-0 flex-1">{props.searchField}</View>
+            {touch || data.search.scoped ? null : (
+              <SortSelect options={SORT_OPTIONS} sort={state.sort} onChange={state.setSort} />
+            )}
           </View>
-          {touch || data.search.scoped ? null : (
-            <SortSelect options={SORT_OPTIONS} sort={state.sort} onChange={state.setSort} />
-          )}
-        </View>
+        )}
         <LibraryCountLine {...props} count={countAtSources ? null : count} />
       </View>
       {data.search.scoped ? null : (

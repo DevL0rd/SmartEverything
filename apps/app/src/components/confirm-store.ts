@@ -1,5 +1,6 @@
 import { Logger } from '@smarteverything/logging';
 import { ValueStore } from '../design/external-store';
+import type { ThemeName } from '../design/tokens';
 
 const log = new Logger('app.confirm');
 
@@ -10,6 +11,7 @@ export interface ConfirmRequest {
   readonly cancelLabel?: string;
   readonly tone?: 'default' | 'destructive';
   readonly typed?: string;
+  readonly theme?: ThemeName;
 }
 
 export interface PendingConfirm extends ConfirmRequest {

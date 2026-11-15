@@ -18,11 +18,13 @@ export interface TuningRowSpec {
   readonly keywords: readonly string[];
   readonly zero: string;
   readonly helper: string;
+  readonly label: string;
 }
 
 export interface HubRowSpec {
   readonly field: HubTuningField;
   readonly title: string;
+  readonly label: string;
   readonly icon: IconName;
   readonly origin: string;
   readonly keywords: readonly string[];
@@ -42,10 +44,21 @@ const HELPER: Readonly<Record<TuningKind, string>> = {
   readdir: COUNT_HELPER,
 };
 
-type SpecInput = Omit<TuningRowSpec, 'zero' | 'helper'> & Partial<Pick<TuningRowSpec, 'zero'>>;
+const LABEL: Readonly<Record<TuningKind, string>> = {
+  count: 'Number',
+  bytes: 'Size',
+  seconds: 'Time',
+  keep: 'Time',
+  follow: 'Requests',
+  switch: 'Setting',
+  readdir: 'Setting',
+};
+
+type SpecInput = Omit<TuningRowSpec, 'zero' | 'helper' | 'label'> &
+  Partial<Pick<TuningRowSpec, 'zero' | 'label'>>;
 
 function spec(input: SpecInput): TuningRowSpec {
-  return { zero: 'Off', helper: HELPER[input.kind], ...input };
+  return { zero: 'Off', helper: HELPER[input.kind], label: LABEL[input.kind], ...input };
 }
 
 export const KERNEL_ROWS: readonly TuningRowSpec[] = [
@@ -54,6 +67,7 @@ export const KERNEL_ROWS: readonly TuningRowSpec[] = [
     title: 'Kernel requests in flight',
     icon: 'gauge',
     kind: 'count',
+    label: 'Requests',
     origin: 'like NFS 4.2',
     keywords: ['max background', 'requests in flight', 'queue depth', 'fuse', 'nfs slots'],
   }),
@@ -192,6 +206,7 @@ export const UPLOAD_ROWS: readonly TuningRowSpec[] = [
     title: 'Files uploaded at once',
     icon: 'upload',
     kind: 'count',
+    label: 'Files',
     origin: 'like rclone',
     keywords: ['transfers', 'parallel uploads', 'files at once', 'commit lanes'],
   }),
@@ -200,6 +215,7 @@ export const UPLOAD_ROWS: readonly TuningRowSpec[] = [
     title: 'Upload pieces in flight',
     icon: 'layers',
     kind: 'count',
+    label: 'Pieces',
     origin: 'like NFS',
     keywords: ['upload window', 'frames in flight', 'write slots'],
   }),
@@ -247,6 +263,7 @@ export const HUB_ROWS: readonly HubRowSpec[] = [
   {
     field: 'fileIoThreads',
     title: 'File threads',
+    label: 'Threads',
     icon: 'server',
     origin: 'like the NFS server',
     helper: 'A whole number from 1 to 1024.',
@@ -255,6 +272,7 @@ export const HUB_ROWS: readonly HubRowSpec[] = [
   {
     field: 'cpuWorkers',
     title: 'Processing workers',
+    label: 'Workers',
     icon: 'cpu',
     origin: 'one per Hub processor core',
     helper: 'A whole number, 1 or more. Hashing and other heavy work runs here.',
@@ -263,6 +281,7 @@ export const HUB_ROWS: readonly HubRowSpec[] = [
   {
     field: 'listingCacheSeconds',
     title: 'Keep unused folder listings',
+    label: 'Time',
     icon: 'clock',
     origin: 'like rclone',
     helper: `${TIME_HELPER} 0 turns it off.`,

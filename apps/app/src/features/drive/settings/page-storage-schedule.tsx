@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from 'react';
 import { useRef, useState } from 'react';
-import type { View } from 'react-native';
+import { View } from 'react-native';
 import {
   SCHEDULE_LIMITS,
   isScheduleActive,
@@ -10,6 +10,7 @@ import {
 } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
+import { FilterChip } from '../../../components/filter-chip';
 import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Sheet } from '../../../components/sheet';
@@ -35,6 +36,13 @@ export const SCRUB_SCHEDULE_LABEL = 'Check Drive files for damage';
 export const MOST_DAYS = Math.floor(SCHEDULE_LIMITS.horizonSeconds / DAY_SECONDS);
 
 export const FIRST_DAYS = 30;
+
+export const SCHEDULE_PRESETS: readonly { readonly days: number; readonly label: string }[] = [
+  { days: 7, label: 'Every week' },
+  { days: 14, label: 'Every 2 weeks' },
+  { days: 30, label: 'Every month' },
+  { days: 91, label: 'Every 3 months' },
+];
 
 function isScrubStep(step: ScheduleRow['steps'][number]): boolean {
   return step.kind === 'tool' && step.tool === SCRUB_TOOL && step.args['action'] === SCRUB_ACTION;
@@ -103,6 +111,45 @@ function ScheduledRow({ row }: { readonly row: ScheduleRow }): ReactNode {
   );
 }
 
+function HowOften({
+  days,
+  onChange,
+}: {
+  readonly days: number;
+  readonly onChange: (days: number) => void;
+}): ReactNode {
+  return (
+    <>
+      <Text variant="label" tone="variant">
+        How often
+      </Text>
+      <View className="flex-row flex-wrap gap-2">
+        {SCHEDULE_PRESETS.map((preset) => (
+          <FilterChip
+            key={preset.days}
+            label="How often"
+            value={preset.label}
+            active={days === preset.days}
+            singleChoice
+            onPress={() => {
+              onChange(preset.days);
+            }}
+          />
+        ))}
+      </View>
+      <NumberStepper
+        label="How often"
+        value={days}
+        min={1}
+        max={MOST_DAYS}
+        step={1}
+        formatValue={everyText}
+        onChange={onChange}
+      />
+    </>
+  );
+}
+
 function ScheduleSheet({
   opener,
   onClose,
@@ -129,20 +176,19 @@ function ScheduleSheet({
       title="Check files on a schedule"
       detents={['fit']}
       subpage={{ opener }}
-      footer={<Button label="Save schedule" loading={mutation.busy} onPress={save} />}
+      footer={
+        <>
+          <Button label="Cancel" variant="text" onPress={onClose} />
+          <Button label="Save schedule" loading={mutation.busy} onPress={save} />
+        </>
+      }
     >
-      <NumberStepper
-        label="How often"
-        value={days}
-        min={1}
-        max={MOST_DAYS}
-        step={1}
-        formatValue={everyText}
-        onChange={setDays}
-      />
-      <Text variant="footnote" tone="variant">
-        {`${SCRUB_EXPLAINER}. A scheduled check runs the same way as Scrub now.`}
-      </Text>
+      <View className="gap-3">
+        <HowOften days={days} onChange={setDays} />
+        <Text variant="footnote" tone="variant">
+          {`${SCRUB_EXPLAINER}. A scheduled check runs the same way as Scrub now.`}
+        </Text>
+      </View>
     </Sheet>
   );
 }

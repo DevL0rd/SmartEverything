@@ -57,14 +57,16 @@ describe('camera and AI source tiles', () => {
     ]);
   });
 
-  it('lays out a head and rows of equal tiles at the source aspect', () => {
+  it('lays out a head and rows of equal tiles at the source aspect and the library density', () => {
     const tiles = [1, 2, 3, 4, 5].map((index) =>
       sourceTileOf(itemAt(index, '2026-11-07T09:00:00')),
     );
     const rows = sourceRowsOf(sourceDaysOf(tiles), { width: 1000, target: 160, gap: 3 }, 16 / 9);
     expect(rows.map((row) => row.kind)).toEqual(['head', 'tiles', 'tiles']);
     const first = rows[1];
-    expect(first?.kind === 'tiles' ? first.tiles.length : 0).toBe(3);
+    expect(first?.kind === 'tiles' ? first.tiles.length : 0).toBe(4);
+    const square = sourceRowsOf(sourceDaysOf(tiles), { width: 1000, target: 160, gap: 3 }, 1);
+    expect(square[1]?.kind === 'tiles' ? square[1].tiles.length : 0).toBe(4);
     expect(first?.kind === 'tiles' ? first.height * (16 / 9) : 0).toBeCloseTo(
       first?.kind === 'tiles' ? first.tileWidth : -1,
     );

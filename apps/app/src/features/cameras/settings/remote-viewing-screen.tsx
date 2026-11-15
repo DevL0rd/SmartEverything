@@ -8,18 +8,15 @@ import {
   type SettingsRow,
 } from '@smarteverything/domain';
 import { updateRemoteViewing, type RemoteViewingChange } from '../../../api/media';
-import { settingsTrail } from '../../../settings/tree';
+import { SettingsFrame } from '../../../settings/settings-frame';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
-import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
 import { notify } from '../../../components/toast-store';
 import { useIsOwner, useSettings } from '../../../store/selectors';
-
-const CRUMBS = settingsTrail('cameras');
 
 function saved(change: RemoteViewingChange): void {
   updateRemoteViewing(change).catch((error: unknown) => {
@@ -178,11 +175,11 @@ export function RemoteViewingScreen(): ReactNode {
   const settings = useSettings();
   const owner = useIsOwner();
   return (
-    <PageShell title="Camera connection" breadcrumbs={CRUMBS}>
+    <SettingsFrame page="cameras/remote-viewing" title="Camera connection">
       <List footer="Video connects automatically using WebRTC. On supported devices, it can recover through your server if that path cannot carry video. Talk needs WebRTC.">
         <ListRow title="Live viewing" value="Automatic" icon="globe" />
       </List>
       {owner ? <Advanced settings={settings} /> : null}
-    </PageShell>
+    </SettingsFrame>
   );
 }

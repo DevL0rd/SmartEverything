@@ -41,9 +41,10 @@ function Clusters({
 }): ReactNode {
   return clusterMarks(map.clusters, fitOf(WORLD_VIEW, frame)).map((mark) => (
     <ClusterMarker
-      key={mark.cluster.geohash}
+      key={mark.key}
       mark={mark}
       selected={mark.cluster.geohash === map.selected}
+      dimmed={false}
       onSelect={map.onSelect}
     />
   ));

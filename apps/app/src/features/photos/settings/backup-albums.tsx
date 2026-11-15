@@ -10,8 +10,11 @@ import { ErrorState } from '../../../components/error-state';
 import { ListRow } from '../../../components/list-row';
 import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
+import { notify } from '../../../components/toast-store';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { PREFS, usePref } from '../../../store/prefs';
+import { stopFolderBackup } from '../folders/backup-removal';
+import { namesOf, stoppedIds } from '../folders/backup-removal-model';
 import {
   BACKUP_CHOICES_KEY,
   backupChoiceKind,
@@ -73,15 +76,42 @@ function AlbumList({
   ));
 }
 
+function savingWithRemoval(
+  pref: PhotosBackupPref,
+  choices: readonly BackupChoice[] | undefined,
+  onSave: (next: PhotosBackupPref) => void,
+): (next: PhotosBackupPref) => void {
+  return (next) => {
+    const known = choices === undefined ? [] : choices.map((choice) => choice.id);
+    const stopped = stoppedIds(pref, next, known);
+    if (stopped.length === 0) {
+      onSave(next);
+      return;
+    }
+    if (choices === undefined) throw new Error('The folders on this device are not loaded yet.');
+    const apply = (): Promise<void> => {
+      onSave(next);
+      return Promise.resolve();
+    };
+    background(
+      stopFolderBackup(stopped, namesOf(stopped, choices), apply).catch((error: unknown) => {
+        notify({ message: 'Backup was not changed', error, tone: 'critical' });
+      }),
+      'photos_settings.backup_stop_failed',
+    );
+  };
+}
+
 function AlbumChoices({
   pref,
-  onSave,
+  onSave: saveNow,
 }: {
   readonly pref: PhotosBackupPref;
   readonly onSave: (next: PhotosBackupPref) => void;
 }): ReactNode {
   const albums = useScreenQuery({ queryKey: BACKUP_CHOICES_KEY, queryFn: listBackupChoices });
   const kind = backupChoiceKind();
+  const onSave = savingWithRemoval(pref, albums.data, saveNow);
   return (
     <View className="gap-1">
       <Checkbox

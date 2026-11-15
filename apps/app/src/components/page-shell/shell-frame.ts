@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
+import type { LayoutChangeEvent } from 'react-native';
 import type Animated from 'react-native-reanimated';
 import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
 import type { HeaderKind } from '../../design/size-class';
+import type { IconName } from '../icon';
 import type { RailWidth, ShellColumn } from './layout';
 import { searchPanelShown } from './search-slot';
 import type { ShellRefresh } from './shell-body';
-import { phoneTabsOf, type ShellSections, type ShellTabRow } from './shell-sections';
 import type { StandardShellProps } from './shell-types';
 import type { TitleRowProps } from './top-shell';
 
@@ -23,13 +24,23 @@ export interface FrameProps {
   readonly scrollY: SharedValue<number>;
   readonly scrollRef: AnimatedRef<Animated.ScrollView>;
   readonly fab: boolean;
-  readonly openPullUp: (() => void) | undefined;
+  readonly icon: IconName | null;
+  readonly onTop: ((height: number) => void) | null;
 }
 
-export function titleRowOf(
-  shell: StandardShellProps,
-  onTitlePress: (() => void) | undefined,
-): TitleRowProps {
+export function topLayoutOf(frame: FrameProps): {
+  readonly onLayout?: (event: LayoutChangeEvent) => void;
+} {
+  const { onTop } = frame;
+  if (onTop === null) return {};
+  return {
+    onLayout: (event): void => {
+      onTop(event.nativeEvent.layout.height);
+    },
+  };
+}
+
+export function titleRowOf(shell: StandardShellProps, icon: IconName | null): TitleRowProps {
   return {
     back: shell.back !== false,
     controls: shell.controls,
@@ -37,7 +48,7 @@ export function titleRowOf(
       title: shell.title,
       subtitle: shell.subtitle,
       breadcrumbs: shell.breadcrumbs,
-      onPress: onTitlePress,
+      icon,
     },
     actions: {
       actions: shell.actions,
@@ -53,20 +64,13 @@ export function titleRowOf(
   };
 }
 
-export function compactSections(
-  shell: StandardShellProps,
-  rail: RailWidth | null,
-): ShellSections | undefined {
-  return rail === null ? shell.sections : undefined;
-}
-
-export function tabRowsOf(shell: StandardShellProps, layout: ShellLayout): readonly ShellTabRow[] {
-  const sections = compactSections(shell, layout.rail);
-  const sectionTabs = sections === undefined ? null : phoneTabsOf(sections);
-  return [
-    ...(sectionTabs === null ? [] : [{ key: 'sections' as const, tabs: sectionTabs }]),
-    ...(shell.tabs === undefined ? [] : [{ key: 'page' as const, tabs: shell.tabs }]),
-  ];
+export function besideRail(frame: FrameProps): FrameProps {
+  const { layout } = frame;
+  if (layout.rail === null) return frame;
+  return {
+    ...frame,
+    layout: { ...layout, column: { left: layout.gutter, width: layout.column.width } },
+  };
 }
 
 export function bodyOf(shell: StandardShellProps): ReactNode {
@@ -79,8 +83,4 @@ export function refreshOf(shell: StandardShellProps): ShellRefresh {
 
 export function selecting(shell: StandardShellProps): boolean {
   return shell.selection !== undefined && shell.selection !== null;
-}
-
-export function pinnedRows(shell: StandardShellProps, tabs: readonly ShellTabRow[]): boolean {
-  return shell.search !== undefined || tabs.length > 0 || shell.toolbar !== undefined;
 }

@@ -219,7 +219,7 @@ function WrappedChoices(props: {
   const [width, setWidth] = useState<number | null>(null);
   return (
     <View
-      className="px-4"
+      className="items-center px-4"
       onLayout={(event) => {
         setWidth(Math.max(0, event.nativeEvent.layout.width - INSET * 2));
       }}

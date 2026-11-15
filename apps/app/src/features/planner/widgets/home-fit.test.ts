@@ -7,7 +7,9 @@ import {
 import { describe, expect, it } from 'vitest';
 import { zonedInstant } from '../../../format/time';
 import {
+  DIAL_SIZE,
   dayCountsOf,
+  dayTokenOf,
   deviceIdsOf,
   dialsFit,
   halfWidthOf,
@@ -15,7 +17,9 @@ import {
   leadHeightOf,
   leadWhenOf,
   linesFit,
+  nextAlarmHeightOf,
   ringsInOrderOf,
+  rowsShownOf,
 } from './home-fit';
 
 const ZONE = 'Europe/Berlin';
@@ -130,7 +134,7 @@ describe('Up next lead line', () => {
 
   it('marks a due task that is due now and keeps an untimed task as any time', () => {
     expect(leadWhenOf(occurrence('01', { due_at: at(-5) }), ZONE, NOW)).toBe('Now · 13:55');
-    expect(leadWhenOf(occurrence('02'), ZONE, NOW)).toBe('Any time');
+    expect(leadWhenOf(occurrence('02'), ZONE, NOW)).toBe('Anytime');
   });
 
   it('keeps only device attachments as live chips', () => {
@@ -165,9 +169,32 @@ describe('Home widget fitting', () => {
   it('fits timer dials across the half width and down the body', () => {
     const half = halfWidthOf(800);
     expect(half).toBeCloseTo((800 - 33) / 2);
-    expect(dialsFit(half, 76, 'pointer')).toBe(5);
-    expect(dialsFit(half, 300, 'pointer')).toBe(15);
+    expect(DIAL_SIZE).toBe(72);
+    expect(dialsFit(half, 76, 'pointer')).toBe(4);
+    expect(dialsFit(half, 300, 'pointer')).toBe(12);
+    expect(dialsFit(156, 76, 'touch')).toBe(2);
     expect(dialsFit(40, 76, 'pointer')).toBe(0);
+  });
+
+  it('keeps the last fitted line for a count of the rows that do not fit', () => {
+    expect(rowsShownOf(3, 4)).toEqual({ shown: 3, more: 0 });
+    expect(rowsShownOf(4, 4)).toEqual({ shown: 4, more: 0 });
+    expect(rowsShownOf(7, 2)).toEqual({ shown: 1, more: 6 });
+    expect(rowsShownOf(7, 1)).toEqual({ shown: 1, more: 0 });
+    expect(rowsShownOf(3, 0)).toEqual({ shown: 0, more: 0 });
+  });
+
+  it('measures the next alarm block from the caption lines and the figure', () => {
+    expect(nextAlarmHeightOf('touch')).toBe(16 + 2 + 32 + 2 + 16);
+    expect(nextAlarmHeightOf('pointer')).toBe(14 + 2 + 32 + 2 + 14);
+  });
+});
+
+describe('Clock alarm day token', () => {
+  it('names the weekday within a week and the date after that', () => {
+    expect(dayTokenOf(zonedInstant('2026-11-07', 15 * 60, ZONE), NOW, ZONE)).toBe('Sat');
+    expect(dayTokenOf(zonedInstant('2026-11-09', 7 * 60, ZONE), NOW, ZONE)).toBe('Mon');
+    expect(dayTokenOf(zonedInstant('2026-11-20', 7 * 60, ZONE), NOW, ZONE)).toBe('20 Nov');
   });
 });
 

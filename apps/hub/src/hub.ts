@@ -51,6 +51,7 @@ export interface RunningHub {
   readonly answerTalk: (deviceId: string, sdp: string, clientId: string) => Promise<string>;
   readonly snapshot: (deviceId: string, size: MediaSize) => Promise<Uint8Array>;
   readonly streamReady: (deviceId: string) => Promise<void>;
+  readonly onStreamAdded: (listener: (deviceId: string) => void) => () => void;
   readonly setDeviceOnline: (deviceId: string, online: boolean) => Promise<void>;
   readonly settled: () => Promise<void>;
   readonly providers: Pick<ProviderManager, 'link' | 'answer' | 'cancelLink'>;
@@ -307,6 +308,7 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     answerTalk: (deviceId, sdp, clientId) => core.cameras.talk(deviceId, sdp, clientId),
     snapshot: (deviceId, size) => core.cameras.snapshot(deviceId, size),
     streamReady: (deviceId) => core.cameras.streamReady(deviceId),
+    onStreamAdded: (listener) => core.cameras.onStreamAdded(listener),
     settled: (): Promise<void> => flushWrites(core, false),
     local,
     watches,

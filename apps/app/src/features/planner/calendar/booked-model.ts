@@ -104,12 +104,11 @@ export function hoursText(minutes: number): string {
   return `${rounded(minutes / 60, 1)} h`;
 }
 
-export function loadLineOf(now: number, before: number | null, previous: string): string {
-  const booked = `Booked ${hoursText(now)}`;
-  if (before === null) return booked;
-  if (now === before) return `${booked} · same as ${previous}`;
-  const change = now > before ? 'up' : 'down';
-  return `${booked} · ${change} ${hoursText(Math.abs(now - before))} on ${previous}`;
+export function loadLineOf(now: number, before: number | null, previous: string): string | null {
+  if (before === null) return null;
+  if (now === before) return `Same as ${previous}`;
+  const change = now > before ? 'Up' : 'Down';
+  return `${change} ${hoursText(Math.abs(now - before))} on ${previous}`;
 }
 
 export function bookedLineOf(
@@ -117,5 +116,6 @@ export function bookedLineOf(
   input: Omit<BookedInput, 'occurrences'>,
 ): string | null {
   if (range === undefined) return null;
-  return `${hoursText(totalOf(bookedOf({ ...input, occurrences: range.occurrences })))} booked`;
+  const total = totalOf(bookedOf({ ...input, occurrences: range.occurrences }));
+  return total === 0 ? null : `${hoursText(total)} booked`;
 }

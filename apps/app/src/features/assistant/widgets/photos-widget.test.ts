@@ -147,10 +147,10 @@ describe('chat photos strip layout', () => {
     expect(layout.restWidth).toBeGreaterThan(0);
   });
 
-  it('draws one photo at its own shape, never wider than the card', () => {
+  it('fills the card width with one photo at the single height', () => {
     const single = stripLayout(500, [tile(0.75)], 1);
     expect(single.height).toBe(SINGLE_HEIGHT);
-    expect(single.cells.map((cell) => cell.width)).toEqual([SINGLE_HEIGHT * 0.75]);
+    expect(single.cells.map((cell) => cell.width)).toEqual([500]);
     expect(stripLayout(300, [tile(2)], 1).cells[0]?.width).toBe(300);
   });
 
@@ -176,7 +176,7 @@ describe('chat photos widget', () => {
     };
     const markup = render({ kind: 'photos', view: 'album', id: ALBUM_ID });
     expect(markup).toContain('Lisbon 2026');
-    expect(markup).toContain('>204<');
+    expect(markup).toContain('>204 items<');
     expect(markup).toContain(`<button>${PHOTOS_WIDGET_COPY.openAlbum}</button>`);
   });
 
@@ -185,7 +185,7 @@ describe('chat photos widget', () => {
     state.month = { data: { pages: [] }, error: null, refetch: resolved };
     const markup = render({ kind: 'photos', view: 'month', id: '2026-11' });
     expect(markup).toContain('November 2026');
-    expect(markup).toContain('>1,234<');
+    expect(markup).toContain('>1,234 items<');
     expect(markup).toContain(`<button>${PHOTOS_WIDGET_COPY.openPhotos}</button>`);
   });
 

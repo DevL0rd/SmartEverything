@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import type { PhotoRecipe } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
+import { FilterChip } from '../../../components/filter-chip';
+import { HScroller } from '../../../components/h-scroller';
 import { Segmented } from '../../../components/segmented';
 import { Slider } from '../../../components/slider';
-import { EditorChip } from './editor-chip';
 import {
   COLOUR_KEYS,
   LIGHT_KEYS,
@@ -42,23 +43,22 @@ function KeyRow({
   readonly onChoose: (key: Key) => void;
 }): ReactNode {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      accessibilityLabel="What to adjust"
-      contentContainerClassName="gap-2 px-4"
-    >
-      {keys.map((key) => (
-        <EditorChip
-          key={key}
-          label={chipLabel(key, adjustValue(recipe, key))}
-          selected={key === chosen}
-          onPress={() => {
-            onChoose(key);
-          }}
-        />
-      ))}
-    </ScrollView>
+    <HScroller label="What to adjust" fade>
+      <View className="flex-row items-center gap-2 px-4">
+        {keys.map((key) => (
+          <FilterChip
+            key={key}
+            label={SLIDER_LABELS[key]}
+            value={chipLabel(key, adjustValue(recipe, key))}
+            active={key === chosen}
+            singleChoice
+            onPress={() => {
+              onChoose(key);
+            }}
+          />
+        ))}
+      </View>
+    </HScroller>
   );
 }
 

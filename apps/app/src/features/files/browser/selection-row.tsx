@@ -6,17 +6,16 @@ import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import type { FileBrowserHandle } from './browser-types';
-import { fittingCount } from './fit-model';
+import { endsOf, fittingCount } from './fit-model';
 import type { MenuSpec } from './menu-specs';
 import { selectionLabelOf } from './selection-model';
 
 interface Measured {
-  readonly signature: string;
   readonly widths: ReadonlyMap<string, number>;
   readonly more: number | null;
 }
 
-const NOTHING_MEASURED: Measured = { signature: '', widths: new Map(), more: null };
+const NOTHING_MEASURED: Measured = { widths: new Map(), more: null };
 
 interface Fit {
   readonly shown: number;
@@ -30,44 +29,29 @@ function widthOf(event: LayoutChangeEvent): number {
   return event.nativeEvent.layout.width;
 }
 
-function endsOf(widths: readonly (number | undefined)[]): readonly (number | undefined)[] {
-  let sum = 0;
-  return widths.map((width) => {
-    if (width === undefined) return undefined;
-    sum += width;
-    return sum;
-  });
-}
-
 function useFit(specs: readonly MenuSpec[]): Fit {
-  const signature = specs.map((spec) => spec.id).join('\n');
   const [room, setRoom] = useState<number | null>(null);
-  const [stored, setMeasured] = useState<Measured>(NOTHING_MEASURED);
-  const measured = stored.signature === signature ? stored : { ...NOTHING_MEASURED, signature };
+  const [measured, setMeasured] = useState<Measured>(NOTHING_MEASURED);
   const ends = endsOf(specs.map((spec) => measured.widths.get(spec.id)));
   return {
     shown: fittingCount({ ends, room, moreSpan: measured.more ?? undefined }),
     moreKnown: measured.more !== null,
     onRoom: (event): void => {
-      setRoom(event.nativeEvent.layout.width);
+      setRoom(widthOf(event));
     },
     onWidth:
       (id) =>
       (event): void => {
         const width = widthOf(event);
-        setMeasured((now) => {
-          const base = now.signature === signature ? now : { ...NOTHING_MEASURED, signature };
-          return base.widths.get(id) === width
-            ? base
-            : { ...base, widths: new Map(base.widths).set(id, width) };
-        });
+        setMeasured((now) =>
+          now.widths.get(id) === width
+            ? now
+            : { ...now, widths: new Map(now.widths).set(id, width) },
+        );
       },
     onMore: (event): void => {
-      const end = widthOf(event);
-      setMeasured((now) => {
-        const base = now.signature === signature ? now : { ...NOTHING_MEASURED, signature };
-        return base.more === null ? { ...base, more: end } : base;
-      });
+      const width = widthOf(event);
+      setMeasured((now) => (now.more === width ? now : { ...now, more: width }));
     },
   };
 }

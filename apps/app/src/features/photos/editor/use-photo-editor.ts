@@ -90,7 +90,7 @@ function savedNote(mode: PhotoSaveMode, itemId: string): void {
   });
 }
 
-function useLeave(itemId: string, dirty: boolean): () => void {
+export function useLeave(itemId: string, dirty: boolean, kept: string): () => void {
   return (): void => {
     if (!dirty) {
       closeEditor(itemId);
@@ -98,10 +98,11 @@ function useLeave(itemId: string, dirty: boolean): () => void {
     }
     confirm({
       title: 'Discard your edits?',
-      body: 'The photo stays as it was.',
+      body: kept,
       confirmLabel: 'Discard',
       cancelLabel: 'Keep editing',
       tone: 'destructive',
+      theme: 'dark',
     })
       .then((discard) => {
         if (discard) closeEditor(itemId);
@@ -198,7 +199,7 @@ export function usePhotoEditor(edit: PhotoEdit, kept: PatchImages): PhotoEditor 
   const writes = useWrites(edit, history, change, (patchId, png) => {
     setImages((current) => ({ ...current, [patchId]: png }));
   });
-  const leave = useLeave(edit.itemId, dirty);
+  const leave = useLeave(edit.itemId, dirty, 'The photo stays as it was.');
   return {
     recipe: shown(history),
     committed: history.present,

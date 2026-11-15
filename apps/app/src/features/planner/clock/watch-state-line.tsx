@@ -37,10 +37,11 @@ export function WatchStateLines({
 }: {
   readonly alarm: Pick<PlannerAlarmRow, 'watch'>;
 }): ReactNode {
-  if (alarm.watch.length === 0) return null;
+  const attention = alarm.watch.filter((link) => link.state !== 'synced');
+  if (attention.length === 0) return null;
   return (
     <View className="gap-2">
-      {alarm.watch.map((link) => (
+      {attention.map((link) => (
         <WatchStateLine key={link.deviceId} link={link} />
       ))}
     </View>

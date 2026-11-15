@@ -11,6 +11,7 @@ interface MutationRun<T> {
   readonly label?: string;
   readonly inline?: boolean;
   readonly onDone?: (value: T) => void;
+  readonly onError?: (error: unknown) => void;
 }
 
 export interface MutationState {
@@ -52,6 +53,7 @@ export function useMutationState(): MutationState {
             durationMs: Date.now() - begun,
             ...errorFields(error),
           });
+          options.onError?.(error);
           if (options.inline === true) {
             setProblem(rawErrorText(error));
             return;

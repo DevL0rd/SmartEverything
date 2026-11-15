@@ -182,9 +182,10 @@ describe('eraser', () => {
     const rect = { left: 0, top: 0, width: 200, height: 100 };
     expect(pointIn(rect, 50, 150)).toEqual({ x: 0.25, y: 1 });
     expect(brushPx(0.1, rect)).toBe(10);
-    expect(erasedSummary(0)).toContain('Brush');
-    expect(erasedSummary(2)).toContain('2 areas');
-    expect(erasedSummary(1)).toBe('One area erased.');
+    expect(erasedSummary(0, false)).toBe('Brush over what to remove, then tap Erase.');
+    expect(erasedSummary(0, true)).toBe('Brush over what to remove, then click Erase.');
+    expect(erasedSummary(2, true)).toContain('2 areas');
+    expect(erasedSummary(1, false)).toBe('One area erased.');
   });
 });
 

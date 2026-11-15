@@ -259,7 +259,7 @@ function ReadoutLine({
   readonly focused: HistoryEntry | null;
 }): ReactNode {
   if (focused !== null) {
-    const what = focused.summary === null ? WORD[focused.status] : focused.summary;
+    const what = focused.summary ?? WORD[focused.status];
     return (
       <Text variant="callout" className="tabular">
         {`${focused.day} · ${what}`}
@@ -317,7 +317,7 @@ function Strip({
           onPointerDown={() => {
             onFocus(entry.key);
           }}
-          className="h-8 min-w-1.5 max-w-4 flex-1 justify-center"
+          className="h-8 w-4 min-w-1.5 shrink justify-center"
         >
           <View
             className={cn(
@@ -332,8 +332,6 @@ function Strip({
   );
 }
 
-const CELL_SPAN = 18;
-
 export function ItemHistory({ model }: { readonly model: ItemHistoryModel }): ReactNode {
   const [focused, setFocused] = useState<string | null>(null);
   const first = model.entries[0];
@@ -345,7 +343,7 @@ export function ItemHistory({ model }: { readonly model: ItemHistoryModel }): Re
       caption={`${String(model.done)} of ${String(model.entries.length)} done`}
     >
       <View className="gap-2 px-4">
-        <View className="w-full gap-1" style={{ maxWidth: model.entries.length * CELL_SPAN }}>
+        <View className="max-w-full gap-1 self-start">
           <Strip model={model} focused={focused} onFocus={setFocused} />
           <View className="flex-row justify-between gap-4">
             <Text variant="caption" tone="faint" className="tabular">

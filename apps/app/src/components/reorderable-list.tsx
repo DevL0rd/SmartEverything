@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { cn } from '../design/cn';
 import { useMotion } from '../design/motion';
 import { useIdiom } from '../design/platform';
 import type { Frame } from './widget-board/board-geometry';
@@ -69,6 +70,7 @@ interface RowProps {
   readonly label: string;
   readonly frame: Frame;
   readonly first: boolean;
+  readonly lifted: boolean;
   readonly drag: DragState;
   readonly onLift: (key: string) => void;
   readonly onDrop: () => void;
@@ -96,7 +98,10 @@ function Row(props: RowProps): ReactNode {
     <GestureDetector gesture={gesture}>
       <Animated.View
         style={style}
-        className="absolute bg-surface-1"
+        className={cn(
+          'absolute bg-surface-1',
+          props.lifted && 'rounded-lg border-hairline border-outline-variant elevation-3',
+        )}
         accessible
         accessibilityLabel={props.label}
         accessibilityHint={touch ? 'Hold and drag to reorder' : 'Drag to reorder'}
@@ -110,7 +115,9 @@ function Row(props: RowProps): ReactNode {
             props.onHeight(rowKey, event.nativeEvent.layout.height);
           }}
         >
-          {props.first ? null : <View className="ml-18 h-hairline bg-outline-variant" />}
+          {props.first || props.lifted ? null : (
+            <View className="ml-18 h-hairline bg-outline-variant" />
+          )}
           {props.children}
         </View>
       </Animated.View>
@@ -118,15 +125,19 @@ function Row(props: RowProps): ReactNode {
   );
 }
 
-function useReorder<T>(props: ReorderableListProps<T>): {
+interface Reorder {
   readonly order: readonly string[];
   readonly drag: DragState;
-  readonly lift: () => void;
+  readonly lifted: string | null;
+  readonly lift: (key: string) => void;
   readonly drop: () => void;
   readonly shift: (key: string, offset: -1 | 1) => void;
-} {
+}
+
+function useReorder<T>(props: ReorderableListProps<T>): Reorder {
   const keys = props.items.map(props.keyOf);
   const [dragging, setDragging] = useState<readonly string[] | null>(null);
+  const [lifted, setLifted] = useState<string | null>(null);
   const latest = useRef<readonly string[] | null>(null);
   const current = useRef({ keys, onReorder: props.onReorder });
   useEffect(() => {
@@ -144,11 +155,14 @@ function useReorder<T>(props: ReorderableListProps<T>): {
   return {
     order,
     drag,
-    lift: (): void => {
+    lifted,
+    lift: (key): void => {
+      setLifted(key);
       update(current.current.keys);
       autoScroll(true);
     },
     drop: (): void => {
+      setLifted(null);
       autoScroll(false);
       const final = latest.current;
       if (final !== null && final.join() !== current.current.keys.join()) {
@@ -191,6 +205,38 @@ function useHeights(): {
   };
 }
 
+function rowsOf<T>(
+  props: ReorderableListProps<T>,
+  reorder: Reorder,
+  frames: Readonly<Record<string, Frame>>,
+  measure: (key: string, height: number) => void,
+): ReactNode {
+  return props.items.map((item) => {
+    const key = props.keyOf(item);
+    const frame = frames[key];
+    if (frame === undefined) {
+      return null;
+    }
+    return (
+      <Row
+        key={key}
+        rowKey={key}
+        label={props.labelOf(item)}
+        frame={frame}
+        first={reorder.order[0] === key}
+        lifted={reorder.lifted === key}
+        drag={reorder.drag}
+        onLift={reorder.lift}
+        onDrop={reorder.drop}
+        onShift={reorder.shift}
+        onHeight={measure}
+      >
+        {props.renderItem(item)}
+      </Row>
+    );
+  });
+}
+
 export function ReorderableList<T>(props: ReorderableListProps<T>): ReactNode {
   const { heights, measure } = useHeights();
   const [width, setWidth] = useState(0);
@@ -202,38 +248,20 @@ export function ReorderableList<T>(props: ReorderableListProps<T>): ReactNode {
   );
   const container = useAnimatedStyle(() => ({ height: total }), [total]);
   return (
-    <Animated.View
-      style={container}
-      onLayout={(event: LayoutChangeEvent) => {
-        setWidth(event.nativeEvent.layout.width);
-      }}
-      className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+    <View
+      className={cn(
+        'rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1',
+        reorder.lifted === null && 'overflow-hidden',
+      )}
     >
-      {width === 0
-        ? null
-        : props.items.map((item) => {
-            const key = props.keyOf(item);
-            const frame = frames[key];
-            if (frame === undefined) {
-              return null;
-            }
-            return (
-              <Row
-                key={key}
-                rowKey={key}
-                label={props.labelOf(item)}
-                frame={frame}
-                first={reorder.order[0] === key}
-                drag={reorder.drag}
-                onLift={reorder.lift}
-                onDrop={reorder.drop}
-                onShift={reorder.shift}
-                onHeight={measure}
-              >
-                {props.renderItem(item)}
-              </Row>
-            );
-          })}
-    </Animated.View>
+      <Animated.View
+        style={container}
+        onLayout={(event: LayoutChangeEvent) => {
+          setWidth(event.nativeEvent.layout.width);
+        }}
+      >
+        {width === 0 ? null : rowsOf(props, reorder, frames, measure)}
+      </Animated.View>
+    </View>
   );
 }

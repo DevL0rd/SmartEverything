@@ -5,8 +5,8 @@ import type { StandardShellProps } from '../../../../components/page-shell/page-
 import { INITIAL_BACKUP_STATUS, type BackupStatus } from '../../backup/model/status';
 
 vi.mock('expo-router', () => ({ Stack: { Screen: (): null => null } }));
-vi.mock('../../../../app-shell/route-error-boundary', () => ({
-  RouteErrorBoundary: (): null => null,
+vi.mock('../../components/photos-error-boundary', () => ({
+  PhotosErrorBoundary: (): null => null,
 }));
 vi.mock('../../../../app-shell/tab-stack', async () => {
   const { PhotosFrame } = await import('../../components/photos-frame');

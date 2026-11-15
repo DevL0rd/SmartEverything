@@ -10,7 +10,8 @@ import { EndpointLog } from './endpoint-log';
 import { requestRemoteKind } from './request-trace';
 import { socketClient } from './socket-auth';
 import { clientSocketsOf } from './client-sockets';
-import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
+import { ConnectionHeartbeat } from '../network/connection-heartbeat';
+import { pingWhenOpen } from '../network/guarded-socket';
 
 const SLOW_CLIENT_BYTES = 512 * 1024;
 
@@ -81,7 +82,7 @@ function jsonOf(text: string): unknown {
 export class SocketEndpoint<Message> {
   private readonly server: WebSocketServer;
   private readonly connections = new Set<Connection<Message>>();
-  private readonly heartbeat: NodeJS.Timeout;
+  private readonly heartbeat: ConnectionHeartbeat;
   private sequence = 0;
 
   constructor(private readonly options: SocketEndpointOptions<Message>) {
@@ -90,12 +91,7 @@ export class SocketEndpoint<Message> {
       handleProtocols: (protocols: Set<string>): string | false =>
         protocols.has(options.protocol) ? options.protocol : false,
     });
-    this.heartbeat = setInterval(() => {
-      afterPendingInput(() => {
-        this.beat();
-      });
-    }, options.heartbeatMs);
-    this.heartbeat.unref();
+    this.heartbeat = new ConnectionHeartbeat(options.heartbeatMs, () => this.beat());
   }
 
   upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -108,6 +104,7 @@ export class SocketEndpoint<Message> {
     this.server.handleUpgrade(request, socket, head, (ws) => {
       clientSocketsOf(this.options.store).track(client.id, ws);
       this.accept(client, ws, request);
+      this.heartbeat.start();
     });
   }
 
@@ -117,7 +114,7 @@ export class SocketEndpoint<Message> {
 
   stop(): void {
     this.options.log.info(`${this.options.name}.stopping`, { sockets: this.connections.size });
-    clearInterval(this.heartbeat);
+    this.heartbeat.stop();
     this.connections.forEach((connection) => {
       connection.stats.closedBy('hub:shutdown');
       connection.socket.terminate();
@@ -224,7 +221,7 @@ export class SocketEndpoint<Message> {
     }
   }
 
-  private beat(): void {
+  private beat(): boolean {
     for (const connection of this.connections) {
       if (!connection.alive) {
         connection.stats.closedBy('hub:heartbeat_missed');
@@ -241,5 +238,6 @@ export class SocketEndpoint<Message> {
       connection.alive = false;
       pingWhenOpen(connection.socket);
     }
+    return this.connections.size > 0;
   }
 }

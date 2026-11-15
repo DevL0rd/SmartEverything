@@ -2,6 +2,7 @@ import type { ReactNode, RefObject } from 'react';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useValue } from '../design/external-store';
+import { ThemeScope } from '../design/theme-scope';
 import { warningBuzz } from '../platform/haptics';
 import { Button } from './button';
 import { pendingConfirm, settleConfirm, type PendingConfirm } from './confirm-store';
@@ -86,5 +87,11 @@ function ConfirmDialog({ pending }: { readonly pending: PendingConfirm }): React
 
 export function ConfirmHost(): ReactNode {
   const pending = useValue(pendingConfirm);
-  return pending === null ? null : <ConfirmDialog key={pending.id} pending={pending} />;
+  if (pending === null) return null;
+  const dialog = <ConfirmDialog key={pending.id} pending={pending} />;
+  return pending.theme === undefined ? (
+    dialog
+  ) : (
+    <ThemeScope theme={pending.theme}>{dialog}</ThemeScope>
+  );
 }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import type { ClientRow, LiveChange } from '@smarteverything/domain';
+import type { ClientRow, LiveChange, LiveWireChange } from '@smarteverything/domain';
 import { applyToWindows } from '../../../queries/live-invalidations';
 import { ACCESS_PREFIX } from '../../../queries/keys';
+import { wired } from '../../../test-support/live-wire';
 
 const CLIENT: ClientRow = {
   id: '00000000-0000-4000-8000-0000000000c1',
@@ -29,13 +30,14 @@ function pairedChange(): LiveChange {
   };
 }
 
-function otherChange(): LiveChange {
+function otherChange(): LiveWireChange {
   return {
     type: 'change',
     table: 'state_history',
-    operation: 'INSERT',
-    record: null,
-    oldRecord: null,
+    operation: 'UPDATE',
+    key: { id: 1 },
+    set: {},
+    previous: {},
     seq: 2,
   };
 }
@@ -49,13 +51,13 @@ function primed(): QueryClient {
 describe('access queries and live changes', () => {
   it('refetches the access list when a device is paired or a person changes', () => {
     const client = primed();
-    applyToWindows(client, [pairedChange()]);
+    applyToWindows(client, [pairedChange()], wired([pairedChange()]));
     expect(client.getQueryState(PEOPLE_KEY)?.isInvalidated).toBe(true);
   });
 
   it('leaves the access list alone for unrelated changes', () => {
     const client = primed();
-    applyToWindows(client, [otherChange()]);
+    applyToWindows(client, [], [otherChange()]);
     expect(client.getQueryState(PEOPLE_KEY)?.isInvalidated).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { BottomSheet } from '../../../components/bottom-sheet';
@@ -13,6 +14,7 @@ import { useSourceLinks } from '../source/source-hooks';
 import { quickActionsOf, sizeTextOf, type QuickAction } from './details-model';
 import type { DetailsHost, DetailsProps } from './details-host';
 import { DetailsTabs } from './details-tabs';
+import { detailsActionsOf } from './info-tab';
 import { NodeGlyph } from './node-glyph';
 import { rememberTab } from './tab-memory';
 
@@ -42,6 +44,27 @@ function specOf(action: QuickAction, node: FileNode): QuickSpec {
   }
 }
 
+function QuickFace({
+  spec,
+  active,
+}: {
+  readonly spec: QuickSpec;
+  readonly active: boolean;
+}): ReactNode {
+  return (
+    <>
+      <View className="h-10 w-14 items-center justify-center rounded-full bg-surface-2">
+        <Icon name={spec.icon} size={20} tone={active ? 'primary' : 'default'} />
+      </View>
+      <Text variant="caption" tone="variant" numberOfLines={1}>
+        {spec.label}
+      </Text>
+    </>
+  );
+}
+
+const QUICK_CLASS = 'min-w-0 flex-1 items-center gap-1.5 rounded-md py-1';
+
 function QuickButton({
   spec,
   active,
@@ -52,20 +75,48 @@ function QuickButton({
   readonly onPress: () => void;
 }): ReactNode {
   return (
-    <Interactive
-      role="button"
-      label={spec.label}
-      onPress={onPress}
-      className="min-w-0 flex-1 items-center gap-1.5 rounded-md py-1"
-    >
-      <View className="h-10 w-14 items-center justify-center rounded-full bg-surface-2">
-        <Icon name={spec.icon} size={20} tone={active ? 'primary' : 'default'} />
-      </View>
-      <Text variant="caption" tone="variant" numberOfLines={1}>
-        {spec.label}
-      </Text>
+    <Interactive role="button" label={spec.label} onPress={onPress} className={QUICK_CLASS}>
+      <QuickFace spec={spec} active={active} />
     </Interactive>
   );
+}
+
+const MORE_SPEC: QuickSpec = { label: 'More', icon: 'ellipsis' };
+
+function QuickMore({
+  items,
+  name,
+}: {
+  readonly items: readonly MenuItem[];
+  readonly name: string;
+}): ReactNode {
+  const label = `More actions for ${name}`;
+  const { ref, open, menu } = useAnchoredMenu(items, label);
+  return (
+    <View ref={ref} collapsable={false} className="min-w-0 flex-1">
+      <Interactive role="button" label={label} onPress={open} className={QUICK_CLASS}>
+        <QuickFace spec={MORE_SPEC} active={false} />
+      </Interactive>
+      {menu}
+    </View>
+  );
+}
+
+function moreItemsOf<O>(
+  host: DetailsHost<O>,
+  node: FileNode<O>,
+  chat: boolean,
+): readonly MenuItem[] {
+  return detailsActionsOf(host.source, node)
+    .filter((action) => !(chat && action.id === 'attach'))
+    .map((action) => ({
+      id: action.id,
+      label: action.label,
+      icon: action.icon,
+      onPress: (): void => {
+        action.run([node]);
+      },
+    }));
 }
 
 function useQuickRun<O>(
@@ -103,7 +154,8 @@ function QuickRow<O>({
     ...host.abilities,
     attach: host.abilities.attach && attachActionOf(host, node) !== null,
   });
-  if (actions.length === 0) return null;
+  const more = moreItemsOf(host, node, actions.includes('chat'));
+  if (actions.length === 0 && more.length === 0) return null;
   return (
     <View className="flex-row px-2 pb-3">
       {actions.map((action) => (
@@ -116,6 +168,7 @@ function QuickRow<O>({
           }}
         />
       ))}
+      {more.length === 0 ? null : <QuickMore items={more} name={node.name} />}
     </View>
   );
 }

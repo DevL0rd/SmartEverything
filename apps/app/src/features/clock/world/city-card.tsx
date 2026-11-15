@@ -91,9 +91,11 @@ export function CityCard({
             {view.city.name}
           </Text>
         </View>
-        <Text variant="caption" tone="variant" className="tabular">
-          {view.offset}
-        </Text>
+        {view.city.home ? null : (
+          <Text variant="caption" tone="variant" className="tabular">
+            {view.offset}
+          </Text>
+        )}
         <CityMenu view={view} menu={menu} />
       </View>
       <View className="flex-row items-baseline gap-2">

@@ -18,6 +18,7 @@ export interface DriveUse {
 
 export interface HeroGauge {
   readonly text: string;
+  readonly note: string | null;
   readonly share: number | null;
   readonly colour: ColourRole;
 }
@@ -100,15 +101,18 @@ const LEVEL_COLOUR: Readonly<Record<QuotaLevel['kind'], ColourRole>> = {
   full: 'critical',
 };
 
+export const QUOTA_NOTE = 'Includes versions and trash';
+
 export function quotaGaugeOf(use: DriveUse): HeroGauge | null {
   switch (use.quota.kind) {
     case 'unknown':
       return null;
     case 'none':
-      return { text: 'No limit set', share: null, colour: 'primary' };
+      return { text: 'No limit set', note: null, share: null, colour: 'primary' };
     case 'limit':
       return {
-        text: `${bytes(use.used)} of ${bytes(use.quota.bytes)}`,
+        text: `${bytes(use.used)} used of ${bytes(use.quota.bytes)}`,
+        note: QUOTA_NOTE,
         share: quotaShareOf(use),
         colour: LEVEL_COLOUR[quotaLevelOf(use).kind],
       };

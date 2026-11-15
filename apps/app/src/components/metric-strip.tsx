@@ -30,12 +30,24 @@ export interface MetricItem {
 export interface MetricStripProps {
   readonly items: readonly MetricItem[];
   readonly columns: StripColumns;
+  readonly dense?: boolean;
 }
 
-const FRAME =
-  'min-h-16 min-w-0 flex-1 basis-0 flex-row items-center gap-2 rounded-md border-hairline border-outline-variant bg-surface-1 px-3 py-2.5 elevation-1';
+const FRAME_BASE =
+  'min-w-0 flex-1 basis-0 flex-row items-center gap-2 rounded-md border-hairline border-outline-variant bg-surface-1 elevation-1';
 
-function TileText({ item }: { readonly item: MetricItem }): ReactNode {
+const FRAME = {
+  regular: `${FRAME_BASE} min-h-16 px-3 py-2.5`,
+  dense: `${FRAME_BASE} min-h-12 px-2 py-1.5`,
+} as const;
+
+function TileText({
+  item,
+  dense,
+}: {
+  readonly item: MetricItem;
+  readonly dense: boolean;
+}): ReactNode {
   const { label, value, unit, tone, caption, stale = false } = item;
   return (
     <View className="min-w-0 flex-1 self-start">
@@ -52,7 +64,7 @@ function TileText({ item }: { readonly item: MetricItem }): ReactNode {
         />
         {tone === 'warning' ? <Icon name="warning" size={16} tone="warning" /> : null}
       </View>
-      {caption === undefined ? null : (
+      {caption === undefined || dense ? null : (
         <Text variant="caption" tone={stale ? 'warning' : 'variant'} numberOfLines={1}>
           {caption}
         </Text>
@@ -64,15 +76,17 @@ function TileText({ item }: { readonly item: MetricItem }): ReactNode {
 function TileContent({
   item,
   width,
+  dense,
 }: {
   readonly item: MetricItem;
   readonly width: number;
+  readonly dense: boolean;
 }): ReactNode {
   const { series, stale = false } = item;
-  const showSeries = series !== undefined && !stale && width >= SPARKLINE_MIN_TILE;
+  const showSeries = series !== undefined && !stale && !dense && width >= SPARKLINE_MIN_TILE;
   return (
     <>
-      <TileText item={item} />
+      <TileText item={item} dense={dense} />
       {showSeries ? (
         <View className="w-11 shrink-0">
           <Sparkline points={series} colour="on-surface-variant" height={24} />
@@ -82,14 +96,21 @@ function TileContent({
   );
 }
 
-function MetricTile({ item }: { readonly item: MetricItem }): ReactNode {
+function MetricTile({
+  item,
+  dense,
+}: {
+  readonly item: MetricItem;
+  readonly dense: boolean;
+}): ReactNode {
   const { label, value, unit, onPress, href } = item;
   const { width, onLayout } = useMeasuredWidth();
   const spoken = [label, value, unit].filter((part) => part !== undefined).join(' ');
-  const content = <TileContent item={item} width={width} />;
+  const content = <TileContent item={item} width={width} dense={dense} />;
+  const frame = FRAME[dense ? 'dense' : 'regular'];
   if (onPress === undefined && href === undefined) {
     return (
-      <View accessible accessibilityLabel={spoken} onLayout={onLayout} className={FRAME}>
+      <View accessible accessibilityLabel={spoken} onLayout={onLayout} className={frame}>
         {content}
       </View>
     );
@@ -100,7 +121,7 @@ function MetricTile({ item }: { readonly item: MetricItem }): ReactNode {
         onPress={onPress}
         href={href}
         label={spoken}
-        className={FRAME}
+        className={frame}
         layerClassName="rounded-md"
       >
         {content}
@@ -109,14 +130,15 @@ function MetricTile({ item }: { readonly item: MetricItem }): ReactNode {
   );
 }
 
-export function MetricStrip({ items, columns }: MetricStripProps): ReactNode {
-  const per = stripColumnsAt(useSizeClass().area, columns);
+export function MetricStrip({ items, columns, dense = false }: MetricStripProps): ReactNode {
+  const fitted = stripColumnsAt(useSizeClass().area, columns);
+  const per = dense ? items.length : fitted;
   return (
     <View className="gap-2">
       {stripChunks(items, per).map((row) => (
         <View key={row[0]?.key} className="flex-row gap-2">
           {row.map((item) => (
-            <MetricTile key={item.key} item={item} />
+            <MetricTile key={item.key} item={item} dense={dense} />
           ))}
         </View>
       ))}

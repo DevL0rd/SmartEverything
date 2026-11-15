@@ -11,6 +11,8 @@ import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { LibraryBody } from '../picker/library/library-body';
 import { useModelsRefresh } from '../picker/library/library-refresh';
+import { useLibraryState, type LibraryState } from '../picker/library/library-state';
+import { MODEL_SEARCH_PLACEHOLDER } from '../picker/library/library-tools';
 import { PanelSubpageContext } from '../picker/panel/panel-subpage-context';
 
 const MODELS_PAGE = 'assistant/models';
@@ -29,14 +31,25 @@ function useRefreshAction(): ShellAction | null {
 
 export function ModelsScreen(): ReactNode {
   const refresh = useRefreshAction();
+  const state = useLibraryState('');
   return (
-    <SettingsFrame page={MODELS_PAGE} scroll={false} actions={refresh === null ? [] : [refresh]}>
-      <ModelsCatalogue />
+    <SettingsFrame
+      page={MODELS_PAGE}
+      scroll={false}
+      actions={refresh === null ? [] : [refresh]}
+      search={{
+        value: state.text,
+        onChange: state.setText,
+        placeholder: MODEL_SEARCH_PLACEHOLDER,
+        label: MODEL_SEARCH_PLACEHOLDER,
+      }}
+    >
+      <ModelsCatalogue state={state} />
     </SettingsFrame>
   );
 }
 
-function ModelsCatalogue(): ReactNode {
+function ModelsCatalogue({ state }: { readonly state: LibraryState }): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
   const focused = useIsFocused();
   const localBack = useRef<(() => void) | null>(null);
@@ -72,7 +85,14 @@ function ModelsCatalogue(): ReactNode {
       )}
       <PanelSubpageContext value={subpage}>
         {width === 0 ? null : (
-          <LibraryBody mode="browse" width={width} picker={BROWSE_PICKER} note={null} />
+          <LibraryBody
+            mode="browse"
+            width={width}
+            picker={BROWSE_PICKER}
+            note={null}
+            state={state}
+            searchField={null}
+          />
         )}
       </PanelSubpageContext>
     </View>

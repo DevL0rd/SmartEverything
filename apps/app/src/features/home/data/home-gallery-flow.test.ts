@@ -18,6 +18,7 @@ import { deviceFixture } from '../../../store/device-fixture';
 import { EntityStore } from '../../../store/entity-store';
 import { StoreProvider } from '../../../store/store-context';
 import { DEVICE_GROUP_WIDGET } from '../../device-groups';
+import { wired } from '../../../test-support/live-wire';
 
 const STAMP = '2026-01-01T00:00:00.000Z';
 const CLIENT = '00000000-0000-4000-8000-000000000001';
@@ -210,16 +211,18 @@ describe('Home gallery under live target changes', () => {
     const selected = latest().flow;
     expect(selected.picked?.key).toBe(`group:${GROUP.id}`);
     act(() => {
-      store.apply([
-        LIVE_CHANGE.parse({
-          type: 'change',
-          table: 'device_groups',
-          operation: 'DELETE',
-          seq: 2,
-          record: null,
-          oldRecord: GROUP,
-        }),
-      ]);
+      store.apply(
+        wired([
+          LIVE_CHANGE.parse({
+            type: 'change',
+            table: 'device_groups',
+            operation: 'DELETE',
+            seq: 2,
+            record: null,
+            oldRecord: GROUP,
+          }),
+        ]),
+      );
       selected.addPicked();
       frames.splice(0).forEach((callback) => {
         callback();

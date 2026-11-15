@@ -78,7 +78,7 @@ export function FindATimeCard(props: FindATimeProps): ReactNode {
             Working hours are tinted, night is dim. Drag the marker.
           </Text>
         </View>
-        <Pill text={pick.summary} />
+        <Pill text={`${hourTimeOf(pick.hour, props.home)} here`} />
         <HourSteps pick={pick} />
         <CreateButton
           time={hourTimeOf(pick.hour, props.home)}

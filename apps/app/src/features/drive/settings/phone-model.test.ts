@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DriveOfflineItem } from '@smarteverything/domain';
 import { bytes } from '../../../format/number';
-import { documentFixture, folderFixture } from '../data/fixtures';
+import { documentFixture, folderFixture, imageFixture, videoFixture } from '../data/fixtures';
 import { phoneRowLineOf, phoneSegmentsOf, phoneSummaryOf } from './phone-model';
 
 const CLIENT = '00000000-0000-4000-8000-0000000000c1';
@@ -31,20 +31,23 @@ describe('this phone', () => {
     expect(phoneRowLineOf(pin(FILE), doc)).toEqual({
       itemId: FILE,
       name: 'Budget.xlsx',
-      folder: false,
+      icon: 'fileText',
       line: `Kept · ${bytes(2048)}`,
       tone: 'variant',
     });
     const folder = folderFixture({ id: FOLDER, name: 'Taxes' });
     const waiting = pin(FOLDER, { state: 'waiting', bytes: 0, syncedRev: null });
+    expect(phoneRowLineOf(pin(FILE), videoFixture({ id: FILE }))).toMatchObject({ icon: 'film' });
+    expect(phoneRowLineOf(pin(FILE), imageFixture({ id: FILE }))).toMatchObject({ icon: 'image' });
     expect(phoneRowLineOf(waiting, folder)).toMatchObject({
-      folder: true,
+      icon: 'folder',
       line: 'Copying to this phone',
       tone: 'info',
     });
     const failed = pin(FILE, { state: 'failed', syncedRev: null, error: 'Too little space' });
     expect(phoneRowLineOf(failed, undefined)).toMatchObject({
       name: 'A file you can no longer open',
+      icon: 'ban',
       line: 'Not copied: Too little space',
       tone: 'critical',
     });

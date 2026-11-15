@@ -1,4 +1,4 @@
-import type { PlannerAlarmRow } from '@smarteverything/domain';
+import type { PlannerAlarmRow, PlannerPreferences } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import {
   challengeTextOf,
@@ -12,6 +12,15 @@ import { TargetChip } from './target-chips';
 
 const CHALLENGE_ICON = { maths: 'calculator', qr: 'qr', steps: 'footprints' } as const;
 
+export type AlarmDefaults = Pick<PlannerPreferences['clock'], 'snooze_limit' | 'targets'>;
+
+function ownSnoozeLimit(alarm: PlannerAlarmRow, defaults: AlarmDefaults | null): number | null {
+  if (alarm.snooze_limit === null) return null;
+  return defaults !== null && alarm.snooze_limit === defaults.snooze_limit
+    ? null
+    : alarm.snooze_limit;
+}
+
 function SoundChip({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
   const item = useDriveItem(musicItemIdOf(alarm.sound), null);
   if (alarm.sound.kind === 'tone') return null;
@@ -23,9 +32,16 @@ function SoundChip({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
   );
 }
 
-export function AlarmChips({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
+export function AlarmChips({
+  alarm,
+  defaults,
+}: {
+  readonly alarm: PlannerAlarmRow;
+  readonly defaults: AlarmDefaults | null;
+}): ReactNode {
   const challenge = alarm.challenge;
   const challengeText = challengeTextOf(challenge);
+  const snoozeLimit = ownSnoozeLimit(alarm, defaults);
   return (
     <>
       <SoundChip alarm={alarm} />
@@ -35,23 +51,21 @@ export function AlarmChips({ alarm }: { readonly alarm: PlannerAlarmRow }): Reac
       {challenge.kind === 'none' || challengeText === null ? null : (
         <TargetChip icon={CHALLENGE_ICON[challenge.kind]} label={challengeText} />
       )}
-      {alarm.snooze_limit === null ? null : (
+      {snoozeLimit === null ? null : (
         <TargetChip
           icon="repeat"
-          label={
-            alarm.snooze_limit === 1 ? 'Snooze once' : `Snooze ${String(alarm.snooze_limit)} times`
-          }
+          label={snoozeLimit === 1 ? 'Snooze once' : `Snooze ${String(snoozeLimit)} times`}
         />
       )}
     </>
   );
 }
 
-export function hasAlarmChips(alarm: PlannerAlarmRow): boolean {
+export function hasAlarmChips(alarm: PlannerAlarmRow, defaults: AlarmDefaults | null): boolean {
   return (
     alarm.sound.kind !== 'tone' ||
     alarm.sunrise !== null ||
     alarm.challenge.kind !== 'none' ||
-    alarm.snooze_limit !== null
+    ownSnoozeLimit(alarm, defaults) !== null
   );
 }

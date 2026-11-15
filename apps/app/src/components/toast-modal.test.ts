@@ -117,6 +117,7 @@ vi.mock('../design/platform', () => ({
   useIdiom: (): string => 'pointer',
 }));
 vi.mock('../design/size-class', () => ({ useSizeClass: (): unknown => ({ nav: 'sidebar' }) }));
+vi.mock('../design/theme-scope', () => ({ ThemeScope: Pass, useScopedTheme: (): null => null }));
 vi.mock('../platform/haptics', () => ({ warningBuzz: (): void => undefined }));
 vi.mock('./button', () => ({ Button: TestButton }));
 vi.mock('./focus-request', () => ({ focusView: vi.fn() }));

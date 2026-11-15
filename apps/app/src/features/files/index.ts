@@ -33,7 +33,7 @@ export type { QuickLookTarget } from './quick-look/quick-look-model';
 export { DetailsPane } from './details/details-pane';
 export { DetailsTabs } from './details/details-tabs';
 export type { DetailsAct, DetailsHost, DetailsProps } from './details/details-host';
-export { subjectOf, tabsOf, type DetailsTabItem } from './details/details-model';
+export { kindTextOf, subjectOf, tabsOf, type DetailsTabItem } from './details/details-model';
 export { rememberTab } from './details/tab-memory';
 export { NodeGlyph } from './details/node-glyph';
 export * from './browser/browser-types';

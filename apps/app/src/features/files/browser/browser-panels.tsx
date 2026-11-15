@@ -6,6 +6,7 @@ import type { DetailsHost } from '../details/details-host';
 import { QuickLook } from '../quick-look/quick-look';
 import { DownloadFlow, type DownloadIntent, type DownloadOutcome } from '../transfer/download-flow';
 import { DownloadSheet } from '../transfer/download-sheet';
+import { freeNameOf } from '../transfer/name-model';
 import { NameSheet } from '../transfer/name-sheet';
 import { TransferSheet } from '../transfer/transfer-sheet';
 import { UploadSheet } from '../transfer/upload-sheet';
@@ -105,6 +106,7 @@ function RenameSheet<O>({
       title={`Rename ${node.name}`}
       label="Name"
       initial={node.name}
+      current={node.name}
       helper={`In ${folderNameOf(browser)}`}
       confirmLabel="Rename"
       taken={takenOf(browser, node.key)}
@@ -121,14 +123,16 @@ function NewFolderSheet<O>({
   where,
   close,
 }: SheetProps<O> & { readonly where: FileLocation }): ReactNode {
+  const taken = takenOf(browser, null);
   return (
     <NameSheet
       title="New folder"
       label="Folder name"
-      initial={NEW_FOLDER_NAME}
+      initial={freeNameOf(NEW_FOLDER_NAME, taken)}
+      current={null}
       helper={`In ${folderNameOf(browser)}`}
       confirmLabel="Make folder"
-      taken={takenOf(browser, null)}
+      taken={taken}
       onSubmit={(name) => {
         browser.commands.run({ kind: 'new_folder', in: where, name });
       }}

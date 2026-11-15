@@ -87,6 +87,11 @@ describe('drag move rules', () => {
     expect(dropVerdictOf(payload([notes]), target(home, []), COMPUTER_FULL, false)).toMatchObject({
       reason: 'already_here',
     });
+    const topLevel = { ...notes, parentKey: null };
+    const rootTarget = target('my_drive', [], { location: { place: 'my_drive', folder: null } });
+    expect(dropVerdictOf(payload([topLevel]), rootTarget, COMPUTER_FULL, false)).toMatchObject({
+      reason: 'already_here',
+    });
     expect(
       dropVerdictOf(
         payload([notes]),

@@ -203,6 +203,8 @@ interface OpenedMenu {
 
 const NO_ITEMS: readonly MenuItem[] = [];
 
+const NO_OPTIONS: MenuOptions = {};
+
 export function useAnchoredMenu(
   items: readonly MenuItem[],
   label: string,
@@ -237,14 +239,16 @@ export function OverflowButton({
   label = 'More options',
   late = null,
   pressRef,
+  options = NO_OPTIONS,
 }: {
   readonly items: readonly MenuItem[];
   readonly label?: string;
   readonly late?: (() => readonly MenuItem[]) | null;
   readonly pressRef?: RefObject<View | null>;
+  readonly options?: MenuOptions;
 }): ReactNode {
   const touch = useIdiom() === 'touch';
-  const { ref, open, menu } = useAnchoredMenu(items, label, {}, late);
+  const { ref, open, menu } = useAnchoredMenu(items, label, options, late);
   return (
     <View ref={ref} collapsable={false}>
       <IconButton

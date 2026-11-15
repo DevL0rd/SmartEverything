@@ -32,6 +32,7 @@ import {
   useParsePreview,
   type ComposerKind,
   type ComposerPlan,
+  type ParseState,
   type WillAddChip,
 } from './parse-preview';
 
@@ -42,6 +43,7 @@ export interface ComposerProps {
   readonly person: PlannerPerson;
   readonly text: string;
   readonly kind: ComposerKind | null;
+  readonly collectionId?: string;
   readonly disabled: boolean;
 }
 
@@ -219,6 +221,19 @@ function useSubmit(
   return { ready: ready && !props.disabled && !busy, busy, submit };
 }
 
+function seedOf(props: ComposerProps): { readonly collectionId?: string } {
+  return props.collectionId === undefined ? {} : { collectionId: props.collectionId };
+}
+
+function usePreviewFor(
+  props: ComposerProps,
+  text: string,
+  kind: ComposerKind,
+  timeZone: string,
+): ParseState {
+  return useParsePreview({ person: props.person, text, kind, timeZone, ...seedOf(props) });
+}
+
 function useComposer(props: ComposerProps): ComposerState {
   const timeZone = useSettings().time_zone;
   const now = useMinute();
@@ -227,7 +242,7 @@ function useComposer(props: ComposerProps): ComposerState {
   const [chosen, choose] = useState<ComposerKind | null>(props.kind);
   const [ruleOn, setRuleOn] = useState(true);
   const asked = shownKindOf(props.target, chosen, null);
-  const preview = useParsePreview(props.person, text, asked, timeZone);
+  const preview = usePreviewFor(props, text, asked, timeZone);
   const { parsed } = preview;
   const kind = shownKindOf(props.target, chosen, parsed?.draft.kind ?? null);
   const fallback = useFallbackPlan({
@@ -236,6 +251,7 @@ function useComposer(props: ComposerProps): ComposerState {
     problem: preview.problem,
     kind,
     text,
+    ...seedOf(props),
   });
   const plan = fallback ?? composerPlanOf({ kind, text, parsed, timeZone });
   const suggestion = suggestionOf(kind, preview.suggestions);

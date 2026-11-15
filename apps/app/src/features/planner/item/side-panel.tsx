@@ -30,14 +30,8 @@ import {
 } from './item-menu-host';
 import { useItemCollections, useVisibleItem } from '../data/assignment';
 import { TaskRuleCard } from './completion-rule-picker';
-import {
-  ItemBody,
-  ItemMeta,
-  ItemStepsFor,
-  useItemParent,
-  useOwnerName,
-  type ItemFocus,
-} from './item-body';
+import { ItemMeta } from './item-meta';
+import { ItemBody, ItemStepsFor, useItemParent, useOwnerName, type ItemFocus } from './item-body';
 import { ItemGuests } from './item-guests';
 import { useItemEditor } from './item-editor';
 import { RsvpBar } from './rsvp-bar';
@@ -95,11 +89,11 @@ function PanelMenuButton({
   readonly menu: ItemMenuItems;
   readonly title: string;
 }): ReactNode {
-  const anchored = useAnchoredMenu(menu.items, title, { quick: menu.quick });
+  const { ref, open, menu: host } = useAnchoredMenu(menu.items, title, { quick: menu.quick });
   return (
-    <View ref={anchored.ref} collapsable={false}>
-      <IconButton icon="ellipsis" label="More options" onPress={anchored.open} />
-      {anchored.menu}
+    <View ref={ref} collapsable={false}>
+      <IconButton icon="ellipsis" label="More options" onPress={open} />
+      {host}
     </View>
   );
 }
@@ -119,7 +113,7 @@ function PanelHeader({
   const collection = useItemCollections(person, item.collection_id).current;
   const source = item.google === null ? 'this hub' : 'Google';
   return (
-    <View className="flex-row items-center gap-2 pb-1 pl-8 pr-2 pt-3">
+    <View className={cn('flex-row items-center gap-2 pb-1 pr-2 pt-3', editing ? 'pl-3' : 'pl-8')}>
       {collection === null ? null : (
         <View className={cn('size-3 rounded-full', LIST_DOT[collection.colour])} />
       )}
@@ -178,6 +172,31 @@ function Notes({ notes }: { readonly notes: string }): ReactNode {
   );
 }
 
+function ViewHead({
+  item,
+  shown,
+  data,
+}: {
+  readonly item: PlannerItemRow;
+  readonly shown: PlannerItemRow;
+  readonly data: PanelData;
+}): ReactNode {
+  const { person, offline } = usePlannerFrame();
+  const parent = useItemParent(item, person);
+  return (
+    <>
+      <View className="gap-2 px-4">
+        <Text variant="title-2">{shown.title}</Text>
+        <ItemMeta item={shown} collection={null} parent={parent} inPanel facts />
+      </View>
+      <RsvpBar item={item} person={person} disabled={offline} />
+      <View className="px-4">
+        <Facts item={shown} data={data} />
+      </View>
+    </>
+  );
+}
+
 function ViewBody({
   item,
   selection,
@@ -188,21 +207,13 @@ function ViewBody({
   const { person, offline } = usePlannerFrame();
   const data = usePanelData(item, selection, person);
   const editor = useItemEditor(item, { ...selection, person }, offline);
-  const parent = useItemParent(item, person);
   const shown = editor.shown;
   const bar = data.view === null ? null : dayBarOf(data.views, data.view, data.now);
   const proposal = data.view === null ? null : proposalNear(data.views, data.view);
   const locked = offline || editor.busy;
   return (
     <View className="gap-4 px-4 pb-5">
-      <View className="gap-2 px-4">
-        <Text variant="title-2">{shown.title}</Text>
-        <ItemMeta item={shown} collection={null} parent={parent} inPanel facts />
-      </View>
-      <RsvpBar item={item} person={person} disabled={offline} />
-      <View className="px-4">
-        <Facts item={shown} data={data} />
-      </View>
+      <ViewHead item={item} shown={shown} data={data} />
       {bar === null ? null : <DayBarWell bar={bar} timeZone={data.timeZone} />}
       <ItemStepsFor item={item} person={person} disabled={offline} />
       <TaskRuleCard

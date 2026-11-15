@@ -25,7 +25,7 @@ import { focusView } from './focus-request';
 import { Overlay, useOverlayShown } from './overlay';
 import { SheetHandle, useSheetHeading, type SheetBackAction } from './sheet-header';
 import { SheetNavigationProvider, useSheetNavigation } from './sheet-navigation';
-import { sheetFrame } from './sheet-frame';
+import { sheetFrame, type SheetMeasurement } from './sheet-frame';
 import { EscapeScopeVisible } from './escape-scope';
 
 export type Detent = 'fit' | 'half' | 'full';
@@ -40,6 +40,7 @@ export interface BottomSheetProps {
   readonly onClose: () => void;
   readonly onBack?: (() => void) | undefined;
   readonly title?: string | undefined;
+  readonly headerAction?: ReactNode;
   readonly label: string;
   readonly detents: readonly Detent[];
   readonly footer?: ReactNode;
@@ -150,6 +151,7 @@ function useDragToDismiss(
 interface PanelProps {
   readonly onClose: () => void;
   readonly title: string | undefined;
+  readonly headerAction?: ReactNode;
   readonly label: string;
   readonly back: SheetBackAction | undefined;
   readonly detents: readonly Detent[];
@@ -164,10 +166,7 @@ interface PanelProps {
 function SheetPanel(props: PanelProps): ReactNode {
   const { onClose, title, back, detents, full, compact, expanded, onExpanded, reading } = props;
   const titleFocus = useSheetHeading(reading);
-  const [measurement, setMeasurement] = useState<{
-    readonly page: string | undefined;
-    readonly height: number;
-  } | null>(null);
+  const [measurement, setMeasurement] = useState<SheetMeasurement | null>(null);
   const page = back?.key;
   const measuredHeight = measurement?.page === page ? measurement?.height : undefined;
   const initial = restingOffset(detents, measuredHeight ?? full);
@@ -204,6 +203,7 @@ function SheetPanel(props: PanelProps): ReactNode {
           onClose={onClose}
           compact={compact}
           back={back}
+          action={props.headerAction}
           titleFocus={titleFocus}
         />
       </GestureDetector>
@@ -228,10 +228,6 @@ interface PanelBodyProps {
 function panelFooterInset(compact: boolean, subpage: boolean, reading: boolean): string {
   if (compact) return cn(COMPACT_PANEL_INSET, subpage && 'pb-3 pt-2');
   return cn('px-4 pb-4 pt-2', reading && 'border-t border-outline-variant');
-}
-
-function readingFill(reading: boolean, fit: boolean): boolean {
-  return reading && !fit;
 }
 
 function PanelBody({
@@ -259,7 +255,7 @@ function PanelBody({
         <SheetBody
           scroll={scroll}
           fit={fit}
-          fill={readingFill(reading, fit)}
+          fill={reading ? !fit : false}
           reading={reading}
           padding={compact ? cn(COMPACT_PANEL_INSET, 'pb-1') : 'px-4 pb-0'}
         >
@@ -340,6 +336,7 @@ function useVisibleSheet(props: RootSheet, navigation: Navigation): VisibleSheet
     return {
       panel: {
         title: props.title,
+        headerAction: props.headerAction,
         label: props.label,
         back: undefined,
         detents: props.detents,

@@ -60,24 +60,58 @@ function usePlayableLink(item: MediaItem, media: MediaInfo | null): string | nul
   );
 }
 
+function StageMedia({
+  item,
+  media,
+  touch,
+  onHeld,
+}: {
+  readonly item: MediaItem;
+  readonly media: MediaInfo | null;
+  readonly touch: boolean;
+  readonly onHeld: (held: boolean) => void;
+}): ReactNode {
+  const source = usePlayableLink(item, media);
+  if (item.kind !== 'video') {
+    return <ViewerPhoto item={item} media={media} touch={touch} onZoomed={onHeld} />;
+  }
+  return (
+    <ViewerVideo
+      item={item}
+      media={media}
+      source={source}
+      available
+      phone={touch}
+      onScrubbing={onHeld}
+    />
+  );
+}
+
 export function ViewerStage({
   item,
   media,
   moves,
   touch,
+  floating,
 }: {
   readonly item: MediaItem;
   readonly media: MediaInfo | null;
   readonly moves: StageMoves;
   readonly touch: boolean;
+  readonly floating: boolean;
 }): ReactNode {
-  const source = usePlayableLink(item, media);
   const [zoomed, setZoomed] = useState(false);
   const swipe = useSwipe(touch && !zoomed, (choice) => {
     chosen(moves, choice);
   });
   return (
-    <View className={cn('min-h-0 flex-1 flex-row items-center', touch ? '' : 'gap-4 px-4')}>
+    <View
+      className={cn(
+        'min-h-0 flex-1 flex-row items-center',
+        touch ? '' : 'gap-4 px-4',
+        floating ? '' : 'pt-safe-offset-14',
+      )}
+    >
       {touch ? null : <Step side="previous" tile={moves.previous} onGo={moves.onGo} />}
       <GestureDetector gesture={swipe.gesture}>
         <Animated.View
@@ -88,18 +122,7 @@ export function ViewerStage({
             swipe.measure(width, height);
           }}
         >
-          {item.kind === 'video' ? (
-            <ViewerVideo
-              item={item}
-              media={media}
-              source={source}
-              available
-              phone={touch}
-              onScrubbing={setZoomed}
-            />
-          ) : (
-            <ViewerPhoto item={item} media={media} onZoomed={setZoomed} />
-          )}
+          <StageMedia item={item} media={media} touch={touch} onHeld={setZoomed} />
         </Animated.View>
       </GestureDetector>
       {touch ? null : <Step side="next" tile={moves.next} onGo={moves.onGo} />}

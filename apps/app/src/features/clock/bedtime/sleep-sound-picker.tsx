@@ -64,7 +64,7 @@ export function SleepSoundPicker(props: SleepSoundPickerProps): ReactNode {
       open={props.open}
       onClose={props.onClose}
       title="Sleep sound"
-      detents={['full']}
+      detents={['fit', 'full']}
       footer={
         <View className="flex-row justify-end">
           <Button label="Done" icon="check" onPress={props.onClose} />

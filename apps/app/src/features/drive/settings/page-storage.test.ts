@@ -189,15 +189,24 @@ describe('scrub and backups', () => {
     expect(
       backupLineOf({ last: { at, reporter: 'restic', bytes: GIB, ok: true }, lastOkAt: at }, NOW),
     ).toEqual({
-      text: `Last ${moment(at, NOW)} · ${bytes(GIB)} · from restic`,
+      text: `Today ${moment(at, NOW).slice('today '.length)} · ${bytes(GIB)} · from restic`,
       tone: 'positive',
     });
     expect(
       backupLineOf({ last: { at, reporter: 'restic', bytes: 0, ok: false }, lastOkAt: null }, NOW),
     ).toEqual({
-      text: `Last run ${moment(at, NOW)} failed · from restic · no good backup yet`,
+      text: `Failed ${moment(at, NOW)} · from restic · no good backup yet`,
       tone: 'critical',
     });
+    const yesterday = '2026-11-06T09:00:00.000Z';
+    expect(
+      backupLineOf(
+        { last: { at: yesterday, reporter: 'restic', bytes: 0, ok: false }, lastOkAt: yesterday },
+        NOW,
+      ).text,
+    ).toBe(
+      `Failed yesterday ${moment(yesterday, NOW).slice('Yesterday '.length)} · from restic · last good yesterday ${moment(yesterday, NOW).slice('Yesterday '.length)}`,
+    );
     expect(REPORT_ADDRESS).toBe('POST /api/drive/backups');
   });
 });

@@ -1,20 +1,19 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { SharedValue } from 'react-native-reanimated';
+import { barOptionsOf, useSearchOptionsPlace } from './bar-search';
 import { BodyColumn, ShellScroll, StaticBody } from './shell-body';
 import {
+  besideRail,
   bodyOf,
-  pinnedRows,
   refreshOf,
   selecting,
-  tabRowsOf,
   titleRowOf,
+  topLayoutOf,
   type FrameProps,
 } from './shell-frame';
-import { ShellTitle } from './shell-parts';
+import { ShellRail } from './shell-sections';
 import {
   AppBar,
-  COLLAPSE_AT,
   SURFACE_AT,
   ShellRows,
   TopSurface,
@@ -22,135 +21,69 @@ import {
   touchControlsPlaceOf,
 } from './top-shell';
 
-function StickyRows({
-  scrollY,
-  stuckAt,
-  children,
-}: {
-  readonly scrollY: SharedValue<number>;
-  readonly stuckAt: number;
-  readonly children: ReactNode;
-}): ReactNode {
-  return (
-    <View className="pt-2">
-      <TopSurface scrollY={scrollY} from={stuckAt - SURFACE_AT} to={stuckAt} />
-      {children}
-    </View>
-  );
-}
-
-function LargeTitle({ frame }: { readonly frame: FrameProps }): ReactNode {
-  return (
-    <ShellTitle
-      {...titleRowOf(frame.shell, frame.openPullUp).title}
-      size="large"
-      testID="shell-title"
-    />
-  );
-}
-
-function PhoneTop({
-  frame,
-  scroll,
-  rows,
-}: {
-  readonly frame: FrameProps;
-  readonly scroll: boolean;
-  readonly rows: ReactNode | null;
-}): ReactNode {
+function PhoneTop({ frame }: { readonly frame: FrameProps }): ReactNode {
   const { shell, layout, scrollY } = frame;
-  const tabs = tabRowsOf(shell, layout);
-  const choosing = selecting(shell);
-  const collapsing = scroll && !choosing;
+  const place = useSearchOptionsPlace();
   return (
-    <View testID="shell-top" className="z-10 pt-safe">
-      <TopSurface scrollY={scrollY} from={0} to={collapsing ? COLLAPSE_AT : SURFACE_AT} />
-      {choosing ? (
+    <View testID="shell-top" className="z-10 pt-safe" {...topLayoutOf(frame)}>
+      <TopSurface scrollY={scrollY} from={0} to={SURFACE_AT} />
+      {selecting(shell) ? (
         shell.selection
       ) : (
         <AppBar
-          row={titleRowOf(shell, frame.openPullUp)}
-          title={scroll ? 'collapsing' : 'none'}
-          scrollY={scrollY}
+          row={titleRowOf(shell, frame.icon)}
           column={layout.column}
-          controls={touchControlsPlaceOf(shell.search, tabs) === 'title'}
+          controls={touchControlsPlaceOf(shell.tabs) === 'title'}
+          search={shell.search}
         />
       )}
-      {scroll || choosing ? null : (
-        <View style={columnStyle(layout.column)} className="pb-2 pt-1">
-          <LargeTitle frame={frame} />
-        </View>
-      )}
-      {rows}
+      <ShellRows
+        options={barOptionsOf(shell.search, place)}
+        tabs={shell.tabs}
+        toolbar={shell.toolbar}
+        controls={shell.controls}
+        column={layout.column}
+      />
     </View>
   );
 }
 
-function PhoneScroll({
-  frame,
-  rows,
-  pinned,
-}: {
-  readonly frame: FrameProps;
-  readonly rows: ReactNode;
-  readonly pinned: boolean;
-}): ReactNode {
-  const [titleHeight, setTitleHeight] = useState(COLLAPSE_AT);
-  const { shell, layout, scrollY } = frame;
+function PhoneColumn({ frame }: { readonly frame: FrameProps }): ReactNode {
+  const { shell, layout } = frame;
   return (
-    <ShellScroll
-      scrollRef={frame.scrollRef}
-      refresh={refreshOf(shell)}
-      left={0}
-      fab={frame.fab}
-      {...(pinned ? { stickyHeaderIndices: [1] } : {})}
-    >
-      <View
-        style={columnStyle(layout.column)}
-        className="pb-2 pt-1"
-        onLayout={(event) => {
-          setTitleHeight(event.nativeEvent.layout.height);
-        }}
-      >
-        {selecting(shell) ? null : <LargeTitle frame={frame} />}
-      </View>
-      {pinned ? (
-        <StickyRows scrollY={scrollY} stuckAt={titleHeight}>
-          {rows}
-        </StickyRows>
-      ) : null}
-      <View style={columnStyle(layout.column)} className="pt-2">
-        <BodyColumn column={layout.column} banner={shell.banner} fill={false}>
+    <>
+      <PhoneTop frame={frame} />
+      {shell.scroll === false ? (
+        <StaticBody column={layout.column} banner={shell.banner} fab={frame.fab}>
           {bodyOf(shell)}
-        </BodyColumn>
-      </View>
-    </ShellScroll>
+        </StaticBody>
+      ) : (
+        <ShellScroll
+          scrollRef={frame.scrollRef}
+          refresh={refreshOf(shell)}
+          left={0}
+          fab={frame.fab}
+        >
+          <View style={columnStyle(layout.column)} className="pt-2">
+            <BodyColumn column={layout.column} banner={shell.banner} fill={false}>
+              {bodyOf(shell)}
+            </BodyColumn>
+          </View>
+        </ShellScroll>
+      )}
+    </>
   );
 }
 
 export function PhoneFrame(frame: FrameProps): ReactNode {
   const { shell, layout } = frame;
-  const scroll = shell.scroll !== false;
-  const tabs = tabRowsOf(shell, layout);
-  const rows = (
-    <ShellRows
-      search={shell.search}
-      tabs={tabs}
-      toolbar={shell.toolbar}
-      controls={shell.controls}
-      column={layout.column}
-    />
-  );
+  if (layout.rail === null || shell.sections === undefined) return <PhoneColumn frame={frame} />;
   return (
-    <>
-      <PhoneTop frame={frame} scroll={scroll} rows={scroll ? null : rows} />
-      {scroll ? (
-        <PhoneScroll frame={frame} rows={rows} pinned={pinnedRows(shell, tabs)} />
-      ) : (
-        <StaticBody column={layout.column} banner={shell.banner}>
-          {bodyOf(shell)}
-        </StaticBody>
-      )}
-    </>
+    <View className="min-h-0 flex-1 flex-row">
+      <ShellRail sections={shell.sections} rail={layout.rail} safeTop />
+      <View testID="shell-content" className="min-h-0 min-w-0 flex-1">
+        <PhoneColumn frame={besideRail(frame)} />
+      </View>
+    </View>
   );
 }

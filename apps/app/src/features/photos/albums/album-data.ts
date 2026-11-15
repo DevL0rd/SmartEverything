@@ -51,18 +51,27 @@ export async function deleteAlbum(album: DriveAlbum): Promise<void> {
   await removeDriveAlbum(album.id);
 }
 
-export async function removeFromAlbum(album: DriveAlbum, itemIds: readonly string[]): Promise<void> {
+export async function removeFromAlbum(
+  album: DriveAlbum,
+  itemIds: readonly string[],
+): Promise<void> {
   const result = await changeDrive({ action: 'album_remove', albumId: album.id, itemIds });
   if (result.failed.length > 0) {
-    throw new Error(`${String(result.failed.length)} of ${String(itemIds.length)} stayed in the album`);
+    throw new Error(
+      `${String(result.failed.length)} of ${String(itemIds.length)} stayed in the album`,
+    );
   }
+}
+
+export interface Removal {
+  readonly owner: boolean;
+  readonly me: string | null;
+  readonly items: readonly DriveItem[];
 }
 
 export function removableIds(
   album: DriveAlbum,
-  owner: boolean,
-  me: string | null,
-  items: readonly DriveItem[],
+  { owner, me, items }: Removal,
   ids: readonly string[],
 ): readonly string[] | null {
   if (album.kind === 'smart') return null;

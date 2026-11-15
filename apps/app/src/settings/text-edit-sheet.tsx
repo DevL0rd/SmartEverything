@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
-import type { View } from 'react-native';
+import { View } from 'react-native';
 import { Button } from '../components/button';
 import { Sheet } from '../components/sheet';
 import { TextField, type FieldKind } from '../components/text-field';
@@ -21,23 +21,45 @@ export interface TextEditRequest {
   readonly helper?: string;
   readonly problemOf?: (value: string) => string | null;
   readonly save: (value: string) => Promise<void>;
+  readonly reset?: TextEditReset;
+}
+
+export interface TextEditReset {
+  readonly label: string;
+  readonly spoken: string;
+  readonly run: () => Promise<unknown>;
 }
 
 function Footer({
   label,
   busy,
   ready,
+  reset,
   onSubmit,
+  onReset,
   onClose,
 }: {
   readonly label: string;
   readonly busy: boolean;
   readonly ready: boolean;
+  readonly reset: TextEditReset | undefined;
   readonly onSubmit: () => void;
+  readonly onReset: () => void;
   readonly onClose: () => void;
 }): ReactNode {
   return (
     <>
+      {reset === undefined ? null : (
+        <View className="mr-auto">
+          <Button
+            label={reset.label}
+            spoken={reset.spoken}
+            variant="text"
+            disabled={busy}
+            onPress={onReset}
+          />
+        </View>
+      )}
       <Button label="Cancel" variant="text" onPress={onClose} />
       <Button label={label} loading={busy} disabled={!ready} onPress={onSubmit} />
     </>
@@ -57,6 +79,7 @@ interface EditorState {
   readonly invalid: string | null;
   readonly ready: boolean;
   readonly submit: () => void;
+  readonly resetNow: () => void;
   readonly mutation: MutationState;
 }
 
@@ -78,7 +101,13 @@ function useEditor(request: TextEditRequest, onClose: () => void): EditorState {
       });
     }
   };
-  return { value, setValue, invalid, ready, submit, mutation };
+  const resetNow = (): void => {
+    const reset = request.reset;
+    if (reset !== undefined) {
+      mutation.run(reset.run, { failure: request.title, inline: true, onDone: onClose });
+    }
+  };
+  return { value, setValue, invalid, ready, submit, resetNow, mutation };
 }
 
 function Editor({
@@ -88,7 +117,10 @@ function Editor({
   readonly request: TextEditRequest;
   readonly onClose: () => void;
 }): ReactNode {
-  const { value, setValue, invalid, ready, submit, mutation } = useEditor(request, onClose);
+  const { value, setValue, invalid, ready, submit, resetNow, mutation } = useEditor(
+    request,
+    onClose,
+  );
   return (
     <Sheet
       subpage={request.opener === undefined ? true : { opener: request.opener }}
@@ -101,7 +133,9 @@ function Editor({
           label={request.confirmLabel}
           busy={mutation.busy}
           ready={ready}
+          reset={request.reset}
           onSubmit={submit}
+          onReset={resetNow}
           onClose={onClose}
         />
       }

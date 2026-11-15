@@ -7,7 +7,7 @@ import {
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { pairPhone, useBootedServer, verifiedPublicUrl } from '../support/booted';
-import { call, openLive } from '../support/server';
+import { call, changedColumns, openLive } from '../support/server';
 import { until } from '../support/wait';
 
 const suite = useBootedServer({ linked: true });
@@ -213,9 +213,8 @@ describe('the devices a person may use', () => {
       });
     }
     const first = await live.next((message) => message.type === 'change');
-    expect(first.type === 'change' && first.table === 'devices' ? first.record?.id : null).toBe(
-      lamp.id,
-    );
+    expect(first).toMatchObject({ table: 'devices' });
+    expect(changedColumns(first)).toMatchObject({ id: lamp.id });
     live.socket.close();
   });
 });

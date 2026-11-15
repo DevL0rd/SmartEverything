@@ -25,6 +25,7 @@ import { MEMBER_NOTE, OWNER_NOTE, READ_ONLY_NOTE, subtitleOf } from './copy';
 import { DeletedGrid } from './deleted-grid';
 import type { TileHandlers } from './deleted-tile';
 import { LeavingCard } from './leaving-card';
+import { PickRow, type PickAction, type PickBarProps } from '../organise/selection-bar';
 import { pickedOf, totalsOf, type DeletedItem } from './model';
 import { SelectionHeader } from './selection-header';
 import { useDeleted, type DeletedView } from './use-deleted';
@@ -70,7 +71,7 @@ function Empty({ owner }: { readonly owner: boolean }): ReactNode {
         icon="trash"
         title="Nothing in Recently deleted"
         body="Photos and videos you delete stay here for a year, then leave for good."
-        action={<Button label="Open Timeline" variant="tonal" href="/photos" />}
+        action={<Button label="Open Library" variant="tonal" href="/photos" />}
       />
       <Notes owner={owner} />
     </View>
@@ -123,6 +124,7 @@ function Content(body: Body): ReactNode {
           months={view.months}
           actions={{
             compact: body.compact,
+            selecting: body.selection.active,
             disabled: whole,
             onRestoreAll: () => {
               actions.restore(view.items);
@@ -168,9 +170,10 @@ function SelectionBar({
       picked={totalsOf(picked)}
       total={body.view.items.length}
       disabled={body.disabled}
+      inline={!body.compact}
       onClear={onClear}
       onSelectAll={() => {
-        body.setSelection(() => selectAll(body.view.items.map((item) => item.id)));
+        selectEvery(body);
       }}
       onRestore={() => {
         body.actions.restore(picked);
@@ -184,6 +187,60 @@ function SelectionBar({
       }
     />
   );
+}
+
+function selectEvery(body: Body): void {
+  body.setSelection(() => selectAll(body.view.items.map((item) => item.id)));
+}
+
+function pickRowOf(body: Body, onClear: () => void): PickBarProps | null {
+  const picked = pickedOf(body.view.items, body.selection.ids);
+  if (picked.length === 0) return null;
+  const restore: PickAction = {
+    id: 'restore',
+    label: 'Restore',
+    short: 'Restore',
+    icon: 'archiveRestore',
+    look: 'primary',
+    onPress: (): void => {
+      body.actions.restore(picked);
+    },
+  };
+  const remove: readonly PickAction[] = body.owner
+    ? [
+        {
+          id: 'delete-now',
+          label: 'Delete now',
+          short: 'Delete now',
+          icon: 'trash',
+          look: 'destructive',
+          onPress: (): void => {
+            body.actions.deleteNow(picked);
+          },
+        },
+      ]
+    : [];
+  return {
+    picked: picked.length,
+    total: body.view.items.length,
+    disabled: body.disabled,
+    actions: [restore, ...remove],
+    onClear,
+    onAll: (): void => {
+      selectEvery(body);
+    },
+  };
+}
+
+function FooterRow({
+  body,
+  onClear,
+}: {
+  readonly body: Body;
+  readonly onClear: () => void;
+}): ReactNode {
+  const row = pickRowOf(body, onClear);
+  return row === null ? null : <PickRow {...row} />;
 }
 
 export function DeletedScreen(): ReactNode {
@@ -219,6 +276,11 @@ export function DeletedScreen(): ReactNode {
             })
       }
       selection={selection.active ? <SelectionBar body={body} onClear={clear} /> : null}
+      footer={
+        selection.active && compact && selection.ids.size > 0 ? (
+          <FooterRow body={body} onClear={clear} />
+        ) : null
+      }
       {...(live ? {} : { banner: <OfflineBanner /> })}
     >
       <Content {...body} />

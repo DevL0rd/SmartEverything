@@ -60,6 +60,7 @@ export class SensorCollector {
   private readonly inputs = new Rescan(() => this.measureTiers(this.scan()));
   private readonly reading = new PerTick<SensorReading>();
   private readonly values = new Map<string, number>();
+  private readonly tiers = new Map<string, boolean>();
   private slowAt: number | null = null;
   private scanned: Tiered | null = null;
 
@@ -131,6 +132,11 @@ export class SensorCollector {
         this.values.delete(path);
       }
     }
+    for (const path of this.tiers.keys()) {
+      if (!paths.has(path)) {
+        this.tiers.delete(path);
+      }
+    }
   }
 
   private measure(path: string, divisor: number): number | undefined {
@@ -148,13 +154,19 @@ export class SensorCollector {
 
   private measureTiers(inputs: HwmonInputs): Tiered {
     const slow = (path: string): boolean => {
+      const known = this.tiers.get(path);
+      if (known !== undefined) {
+        return known;
+      }
       const times: number[] = [];
       for (let attempt = 0; attempt < MEASURE_READS; attempt += 1) {
         const started = performance.now();
         this.files.read(path);
         times.push(performance.now() - started);
       }
-      return median(times.slice(1)) >= SLOW_READ_MS;
+      const measured = median(times.slice(1)) >= SLOW_READ_MS;
+      this.tiers.set(path, measured);
+      return measured;
     };
     return {
       temperatures: inputs.temperatures.map((input) => ({ ...input, slow: slow(input.path) })),

@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { API_ENDPOINTS as E, type HistoryBucket, type HistoryRow } from '@smarteverything/domain';
 import { applyToWindows } from './live-invalidations';
 import { deviceHistoryKey } from './keys';
+import { wired } from '../test-support/live-wire';
 
 interface Call {
   readonly endpoint: string;
@@ -137,16 +138,29 @@ describe('live readings on a device chart', () => {
     client.setQueryData<HistoryRow[]>(mine, []);
     client.setQueryData<HistoryRow[]>(theirs, []);
     const incoming = row(7, THIS_DEVICE, 22);
-    applyToWindows(client, [
-      {
-        type: 'change',
-        table: 'state_history',
-        operation: 'INSERT',
-        record: incoming,
-        oldRecord: null,
-        seq: 1,
-      },
-    ]);
+    applyToWindows(
+      client,
+      [
+        {
+          type: 'change',
+          table: 'state_history',
+          operation: 'INSERT',
+          record: incoming,
+          oldRecord: null,
+          seq: 1,
+        },
+      ],
+      wired([
+        {
+          type: 'change',
+          table: 'state_history',
+          operation: 'INSERT',
+          record: incoming,
+          oldRecord: null,
+          seq: 1,
+        },
+      ]),
+    );
     expect(client.getQueryData(mine)).toEqual([incoming]);
     expect(client.getQueryData(theirs)).toEqual([]);
   });

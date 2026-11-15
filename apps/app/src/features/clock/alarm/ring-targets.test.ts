@@ -1,14 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ClientRow } from '@smarteverything/domain';
-vi.mock('../../planner', () => ({
-  watchDotOf: (): null => null,
-  WatchStateLines: (): null => null,
-}));
+vi.mock('../../planner', () => ({ WatchStateLines: (): null => null }));
 vi.mock('../../../store/selectors', () => ({ useRows: (): never[] => [] }));
 vi.mock('../../../store/store-context', () => ({ useStoreSelector: (): null => null }));
-vi.mock('../../../components/flat-choice', () => ({ FlatChoice: (): null => null }));
-vi.mock('../../../components/text', () => ({ Text: (): null => null }));
-vi.mock('../../../components/tone', () => ({ STATUS_FILL: {} }));
+vi.mock('../../../components/list-row', () => ({ ListRow: (): null => null }));
+vi.mock('../../../components/rows', () => ({ SwitchRow: (): null => null }));
+vi.mock('./alarm-fields', () => ({ FieldSection: (): null => null }));
 vi.mock('../../device-visuals', () => ({ deviceIcon: (): string => 'monitor' }));
 vi.mock('../../watches', () => ({ isLocalWatch: (): boolean => false }));
 

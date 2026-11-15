@@ -31,10 +31,15 @@ export interface ClusterMapProps {
   readonly clusters: readonly PlaceCluster[];
   readonly selected: PlaceCluster | null;
   readonly onSelect: (cluster: PlaceCluster | null) => void;
+  readonly onZoom: (cluster: PlaceCluster) => void;
   readonly card: ReactNode;
   readonly label: string;
-  readonly attribution: string;
+  readonly attribution: string | null;
+  readonly match: ((cluster: PlaceCluster) => boolean) | null;
+  readonly atStart: boolean;
+  readonly onShowAll: () => void;
   readonly className?: string;
+  readonly style?: ViewStyle;
 }
 
 interface MapGestures {
@@ -91,6 +96,12 @@ function ZoomButtons({ map }: { readonly map: ClusterMapProps }): ReactNode {
           map.onView(zoomedBy(map.view, -1));
         }}
       />
+      <IconButton
+        icon="globe"
+        label="Show all places"
+        disabled={map.atStart}
+        onPress={map.onShowAll}
+      />
     </View>
   );
 }
@@ -138,10 +149,11 @@ function Layers({
         </View>
         {marks.map((mark) => (
           <ClusterMarker
-            key={mark.cluster.geohash}
+            key={mark.key}
             mark={mark}
             selected={mark.cluster.geohash === map.selected?.geohash}
-            onSelect={map.onSelect}
+            dimmed={map.match !== null && !map.match(mark.cluster)}
+            onSelect={mark.merged ? map.onZoom : map.onSelect}
           />
         ))}
       </Animated.View>
@@ -151,7 +163,7 @@ function Layers({
 
 export function ClusterMap(props: ClusterMapProps): ReactNode {
   const { ref, frame, onLayout } = useMapFrame();
-  useMapWheel(ref, 'wheel', props, frame);
+  useMapWheel(ref, 'wheel', props);
   return (
     <View
       ref={ref}
@@ -162,15 +174,18 @@ export function ClusterMap(props: ClusterMapProps): ReactNode {
         onLayout(event);
       }}
       className={cn('overflow-hidden bg-surface-1', props.className)}
+      {...(props.style === undefined ? {} : { style: props.style })}
     >
       {frame === null ? null : <Layers map={props} frame={frame} />}
       {frame === null ? null : <SelectedCard map={props} frame={frame} />}
       <ZoomButtons map={props} />
-      <View pointerEvents="none" className="absolute bottom-2 left-3">
-        <Text variant="caption" tone="variant">
-          {props.attribution}
-        </Text>
-      </View>
+      {props.attribution === null ? null : (
+        <View pointerEvents="none" className="absolute bottom-2 left-3">
+          <Text variant="caption" tone="variant">
+            {props.attribution}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }

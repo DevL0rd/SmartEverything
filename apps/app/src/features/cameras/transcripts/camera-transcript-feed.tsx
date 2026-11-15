@@ -84,13 +84,11 @@ export function CameraTranscriptFeed({
   header,
   spacer,
   banner,
-  shellSearch = false,
 }: {
   readonly transcripts: CameraTranscripts;
   readonly header: ReactNode;
   readonly spacer?: TranscriptFeedProps['pageHeader'];
   readonly banner?: ReactNode;
-  readonly shellSearch?: boolean;
 }): ReactNode {
   const { feed, entry, sourceId, filter, filterCamera, focus } = transcripts;
   const { time_zone: timeZone } = useSettings();
@@ -105,11 +103,8 @@ export function CameraTranscriptFeed({
       {...(spacer === undefined ? {} : { pageHeader: spacer })}
       banner={banner}
       controls={<CameraControls entry={entry} filter={filter} filterCamera={filterCamera} />}
-      inlineControls={entry === undefined}
       compactRows
-      shellSearch={shellSearch}
       focus={focus === 'transcripts' || focus === 'transcript-search'}
-      focusSearch={!shellSearch && focus === 'transcript-search'}
     />
   );
 }

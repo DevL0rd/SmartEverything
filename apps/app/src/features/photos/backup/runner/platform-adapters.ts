@@ -8,6 +8,7 @@ import {
   createBackupUploadPort,
   createNativeMediaPort,
   nativeBackupAvailable,
+  nativeTrashPort,
 } from './native-adapters';
 import { conditionsPort } from './network-conditions';
 import { desktopBackupAdapters } from './desktop-adapters';
@@ -21,7 +22,7 @@ export function backupAvailable(): boolean {
 export function backupAdapters(
   connection: ServerConnection,
   key: string,
-): Pick<BackupPorts, 'media' | 'native' | 'conditions' | 'upload'> {
+): Pick<BackupPorts, 'media' | 'native' | 'trash' | 'conditions' | 'upload'> {
   if (appPlatform() === 'desktop') {
     const photos = desktopBridge()?.photos;
     if (photos === undefined) throw new Error('Update the desktop app to enable photo backup.');
@@ -30,6 +31,7 @@ export function backupAdapters(
   return {
     media: mediaLibraryPort,
     native: createNativeMediaPort(),
+    trash: nativeTrashPort,
     conditions: conditionsPort(chargingSource),
     upload: createBackupUploadPort(connection, key),
   };

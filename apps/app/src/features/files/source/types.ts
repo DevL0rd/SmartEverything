@@ -226,6 +226,7 @@ export interface SourceActionSpec<O = unknown> {
 export interface SourceTabSpec<O = unknown> {
   readonly id: string;
   readonly label: string;
+  readonly icon: IconName;
   readonly Tab: ComponentType<{ readonly node: FileNode<O> }>;
 }
 

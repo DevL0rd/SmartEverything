@@ -9,8 +9,9 @@ import type { MediaTile } from '../../../components/media-grid/tiles';
 import { Text } from '../../../components/text';
 import { Zoomable } from '../../../components/zoomable';
 import { useScopeVisible } from '../../../design/visibility';
-import { driveLinks, useDriveLink } from '../../drive';
+import { driveLinks, useDriveItem, useDriveLink } from '../../drive';
 import { noPreviewOf, showsOriginal, type MediaItem } from './info-model';
+import { LivePhoto } from './live-photo';
 import { SaveToDeviceButton } from './save-button';
 
 const log = new Logger('app.photos');
@@ -82,30 +83,57 @@ function Processing(): ReactNode {
   );
 }
 
+function useMotionClip(clipId: string | null): string | null {
+  const clip = useDriveItem(clipId, null).data;
+  return useDriveLink(clip === undefined ? null : clip.id, clip?.rev ?? 1, 'playable');
+}
+
+function Motion({
+  clipId,
+  touch,
+  children,
+}: {
+  readonly clipId: string | null;
+  readonly touch: boolean;
+  readonly children: ReactNode;
+}): ReactNode {
+  const clip = useMotionClip(clipId);
+  if (clipId === null) return children;
+  return (
+    <LivePhoto clip={clip} available phone={touch}>
+      {children}
+    </LivePhoto>
+  );
+}
+
 export function ViewerPhoto({
   item,
   media,
+  touch,
   onZoomed,
 }: {
   readonly item: MediaItem;
   readonly media: MediaInfo | null;
+  readonly touch: boolean;
   readonly onZoomed: (zoomed: boolean) => void;
 }): ReactNode {
   const [zoomed, setZoomed] = useState(false);
   const look = photoLookOf(media);
   if (look === 'no-preview') return <NoPreview item={item} />;
   return (
-    <Zoomable
-      wheel="wheel"
-      className="size-full overflow-hidden"
-      onZoomed={(value) => {
-        setZoomed(value);
-        onZoomed(value);
-      }}
-    >
-      <Picture item={item} look={look} zoomed={zoomed} />
-      {look === 'processing' ? <Processing /> : null}
-    </Zoomable>
+    <Motion clipId={media?.motionClipId ?? null} touch={touch}>
+      <Zoomable
+        wheel="wheel"
+        className="size-full overflow-hidden"
+        onZoomed={(value) => {
+          setZoomed(value);
+          onZoomed(value);
+        }}
+      >
+        <Picture item={item} look={look} zoomed={zoomed} />
+        {look === 'processing' ? <Processing /> : null}
+      </Zoomable>
+    </Motion>
   );
 }
 

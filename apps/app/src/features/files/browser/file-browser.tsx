@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
+import { usePrimaryActionPlacement } from '../../../components/primary-action';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { joinParts } from '../../../format/text';
 import { itemsLine } from '../source/node';
@@ -12,7 +14,6 @@ import { layoutOf } from './column-model';
 import { DropZone, useDragSession, type DragSession } from './drop-zone';
 import { FilterStatus } from './filter-field';
 import { keyHintsOf, type KeyHint } from './keys-model';
-import { selectionLabelOf } from './selection-model';
 import { BrowserSelection } from './selection';
 import { BrowserBodyState, OfflineLine } from './states';
 import { Toolbar } from './toolbar';
@@ -46,17 +47,22 @@ function KeyCap({ hint }: { readonly hint: KeyHint }): ReactNode {
 }
 
 function footerLineOf<O>(browser: FileBrowserHandle<O>): string {
-  const { listing, visible, picked, total } = browser;
+  const { listing, visible, total } = browser;
   const hidden = listing.complete && total !== null ? listing.entries.length - total : 0;
   return joinParts([
     total === null ? null : itemsLine(total),
     hidden > 0 ? `${String(hidden)} hidden` : null,
     visible.length === total ? null : `${String(visible.length)} shown`,
-    picked.length === 0 ? null : selectionLabelOf(picked.length),
   ]);
 }
 
-function Footer<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
+function Footer<O>({
+  browser,
+  fab,
+}: {
+  readonly browser: FileBrowserHandle<O>;
+  readonly fab: boolean;
+}): ReactNode {
   const pointer = useIdiom() === 'pointer';
   if (browser.body.kind !== 'entries') return null;
   const { abilities } = browser;
@@ -66,7 +72,12 @@ function Footer<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): Rea
     rename: abilities.rename && !browser.inTrash,
   });
   return (
-    <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1 border-t border-outline-variant px-4 py-2.5">
+    <View
+      className={cn(
+        'flex-row flex-wrap items-center gap-x-4 gap-y-1 border-t border-outline-variant py-2.5 pl-4',
+        fab ? 'pr-36' : 'pr-4',
+      )}
+    >
       <Text
         variant="caption"
         tone="variant"
@@ -85,36 +96,45 @@ interface PartProps<O> {
   readonly session: DragSession<O>;
   readonly wide: boolean;
   readonly top: ReactNode;
+  readonly fab: boolean;
 }
 
-function Listing<O>({ browser, session, wide, top }: PartProps<O>): ReactNode {
+function Listing<O>({ browser, session, wide, top, fab }: PartProps<O>): ReactNode {
+  const room = fab ? <View className="h-18" /> : null;
   if (browser.body.kind !== 'entries') {
     return (
       <ScrollView contentContainerClassName="gap-3 pb-6">
         {top}
         <BrowserBodyState browser={browser} />
+        {room}
       </ScrollView>
     );
   }
   if (browser.view === 'cards') {
-    return <BrowserGrid browser={browser} session={session} header={top} footer={null} />;
+    return <BrowserGrid browser={browser} session={session} header={top} footer={room} />;
   }
-  return <BrowserList browser={browser} session={session} wide={wide} header={top} footer={null} />;
+  return <BrowserList browser={browser} session={session} wide={wide} header={top} footer={room} />;
 }
 
 function Card<O>(props: PartProps<O> & { readonly strip: ReactNode }): ReactNode {
-  const { browser, session } = props;
+  const { browser, session, fab } = props;
   return (
     <View className="min-h-0 flex-1 overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
+      {fab ? props.strip : null}
       <DropZone browser={browser} session={session}>
         <OfflineLine browser={browser} />
         <FilterStatus browser={browser} />
         <Listing {...props} />
       </DropZone>
-      {props.strip}
-      <Footer browser={browser} />
+      {fab ? null : props.strip}
+      <Footer browser={browser} fab={fab} />
     </View>
   );
+}
+
+function useFabRoom<O>(browser: FileBrowserHandle<O>): boolean {
+  const placement = usePrimaryActionPlacement();
+  return placement === 'fab' && browser.header.primary !== undefined;
 }
 
 export function FileBrowser<O>({ browser, slots = {} }: FileBrowserProps<O>): ReactNode {
@@ -122,6 +142,7 @@ export function FileBrowser<O>({ browser, slots = {} }: FileBrowserProps<O>): Re
   const session = useDragSession<O>();
   const wide = layoutOf(measured.width, browser.host.compact === true) === 'table';
   const docked = useIdiom() === 'touch' || !wide;
+  const fab = useFabRoom(browser);
   const { panels } = browser.state;
   return (
     <View onLayout={measured.onLayout} className="min-h-0 flex-1 gap-3">
@@ -134,6 +155,7 @@ export function FileBrowser<O>({ browser, slots = {} }: FileBrowserProps<O>): Re
               browser={browser}
               session={session}
               wide={wide}
+              fab={fab}
               top={slots.top ?? null}
               strip={slots.strip ?? null}
             />

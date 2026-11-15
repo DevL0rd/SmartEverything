@@ -11,7 +11,14 @@ import { testLayout } from './test-layout';
 import { CAMERA, LAMP, fakeModule, type FakeModule } from './fake-provider';
 import { captureLogs, testLogger } from './logs';
 import { LogLines } from '../../src/service/log-lines';
-import { call, fakeGo2rtcServer, freePort, openLive, temporaryDirectory } from './server';
+import {
+  call,
+  changedTo,
+  fakeGo2rtcServer,
+  freePort,
+  openLive,
+  temporaryDirectory,
+} from './server';
 
 export const PUBLIC_URL = 'https://home.example.com';
 
@@ -93,12 +100,7 @@ export async function linkFakeProvider(booted: Booted): Promise<void> {
     path: '/api/providers/link',
     body: { provider: 'xiaomi', username: 'me@example.com', password: 'pw', region: 'de' },
   });
-  await live.next(
-    (message) =>
-      message.type === 'change' &&
-      message.table === 'provider_links' &&
-      message.record?.status === 'linked',
-  );
+  await live.next((message) => changedTo(message, 'provider_links', { status: 'linked' }));
   live.socket.close();
 }
 

@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import type { HistoryRow, LiveChange, LiveTable } from '@smarteverything/domain';
+import type { HistoryRow, LiveChange, LiveTable, LiveWireChange } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import { LogTally } from '../design/log-tally';
 import { applyHomeMapChanges } from '../features/home-map/data/live';
@@ -158,18 +158,18 @@ export function refreshDeviceEffects(client: QueryClient): void {
   );
 }
 
-export function applyToWindows(client: QueryClient, changes: readonly LiveChange[]): void {
+export function applyToWindows(
+  client: QueryClient,
+  changes: readonly LiveChange[],
+  frames: readonly LiveWireChange[],
+): void {
   const tables = new Set<LiveTable>();
   applied.bump('batches');
-  for (const change of changes) {
-    tables.add(change.table);
-    applied.bump(`change.${change.table}`);
-    if (
-      change.table === 'state_history' &&
-      change.record !== null &&
-      change.operation === 'INSERT'
-    ) {
-      appendHistory(client, change.record);
+  for (const frame of frames) {
+    tables.add(frame.table);
+    applied.bump(`change.${frame.table}`);
+    if (frame.table === 'state_history' && frame.operation === 'INSERT') {
+      appendHistory(client, frame.record);
     }
   }
   if ([...tables].some((table) => HEALTH_TABLES.has(table))) {
@@ -191,7 +191,7 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
   invalidateDeviceLogs(client, changes);
   patchCameraDays(client, changes);
   refreshSnapshots(client, changes);
-  applyHomeMapChanges(client, changes);
+  applyHomeMapChanges(client, frames);
   applyDriveChanges(client, changes);
 }
 

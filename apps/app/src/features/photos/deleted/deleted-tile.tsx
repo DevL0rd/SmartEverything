@@ -73,9 +73,9 @@ export function CountdownRing({
 
 function Face({ item }: { readonly item: DeletedItem }): ReactNode {
   return (
-    <View className="absolute inset-0 items-center justify-center gap-1 bg-surface-3 px-2 pb-7 pt-7">
+    <View className="absolute inset-0 items-center justify-center gap-1 overflow-hidden bg-surface-2 px-2 pb-9 pt-2">
       <FileGlyph kind={item.isFolder ? 'folder' : 'file'} name={item.name} well="m" />
-      <Text variant="caption" tone="variant" align="center" numberOfLines={2}>
+      <Text variant="caption" tone="variant" ellipsize="middle">
         {item.name}
       </Text>
     </View>
@@ -101,7 +101,7 @@ function Marks({ item }: { readonly item: DeletedItem }): ReactNode {
     <ThemeScope theme="dark">
       <View
         pointerEvents="none"
-        className="absolute bottom-1.5 right-1.5 flex-row items-center gap-1 rounded-full bg-black/50 px-1.5 py-0.5"
+        className="absolute bottom-1.5 right-1.5 flex-row items-center gap-1 rounded-full bg-black/80 px-1.5 py-0.5"
       >
         <CountdownRing kept={item.kept} critical={item.critical} />
         <Text
@@ -115,7 +115,7 @@ function Marks({ item }: { readonly item: DeletedItem }): ReactNode {
       {item.who === null ? null : (
         <View
           pointerEvents="none"
-          className="absolute bottom-1.5 left-1.5 max-w-1/2 rounded-full bg-black/50 px-1.5 py-0.5"
+          className="absolute bottom-1.5 left-1.5 max-w-1/2 rounded-full bg-black/80 px-1.5 py-0.5"
         >
           <Text variant="caption" numberOfLines={1}>
             {item.who}

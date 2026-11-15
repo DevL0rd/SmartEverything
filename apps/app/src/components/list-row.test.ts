@@ -127,7 +127,7 @@ describe('ListRow trailing controls', () => {
     expect(tree.nodes[0]?.['className']).toContain('relative');
     const value = tree.nodes.find((node) => node['className'] === 'min-w-0 max-w-48 shrink');
     expect(value).toMatchObject({ pointerEvents: 'none', 'aria-hidden': true });
-    const body = tree.nodes.find((node) => node['className'] === 'min-w-0 flex-1 basis-32 gap-0.5');
+    const body = tree.nodes.find((node) => node['className'] === 'min-w-0 flex-1 basis-20 gap-0.5');
     expect(body).toMatchObject({ pointerEvents: 'none' });
     const tail = tree.nodes.find((node) => String(node['className']).startsWith('ml-auto'));
     expect(tail).toMatchObject({ pointerEvents: 'box-none' });

@@ -5,6 +5,7 @@ import { LiveWatch } from './live-watch';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
+  DRIVE_NOTICE_TYPES,
   LIVE_HEARTBEAT_MS,
   LIVE_PROTOCOL,
   LIVE_PROTOCOL_MISMATCH,
@@ -40,7 +41,8 @@ import { issuesOf } from './errors';
 import { projected, seenBy } from './live-visibility';
 import { applySubscription, type LivePrimer, type LiveSubscription } from './live-subscription';
 import { liveText } from './live-wire';
-import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
+import { ConnectionHeartbeat } from '../network/connection-heartbeat';
+import { pingWhenOpen } from '../network/guarded-socket';
 import { answering } from './live-reach';
 import { LiveNotifications } from './live-notifications';
 import { AppViewBroker } from '../app-view/broker';
@@ -48,6 +50,7 @@ import { AppViewBroker } from '../app-view/broker';
 export type LiveNotice = Exclude<LiveMessage, { type: 'change' | 'ready' | 'subscribed' }>;
 
 const POLICY_VIOLATION = 1008;
+const DRIVE_NOTICES: ReadonlySet<string> = new Set(DRIVE_NOTICE_TYPES);
 type LiveConnection = LoggedConnection;
 
 export type LiveAudience = 'everyone' | 'owners' | LiveStream;
@@ -75,7 +78,7 @@ export class LiveHub {
   private sequence = 0;
   private readonly primers = new Map<LiveStream, LivePrimer>();
   private readonly subscription: LiveSubscription;
-  private readonly heartbeat: NodeJS.Timeout;
+  private readonly heartbeat = new ConnectionHeartbeat(LIVE_HEARTBEAT_MS, () => this.beat());
   private readonly unsubscribe: readonly (() => void)[];
 
   constructor(private readonly options: LiveOptions) {
@@ -114,13 +117,9 @@ export class LiveHub {
         if (notice.type === 'listening_changed') this.announce(notice, 'everyone');
         if (notice.type === 'ai_subscription_usage_changed')
           this.profileNotice(notice, notice.profile_id, 'assistant');
+        if (DRIVE_NOTICES.has(notice.type)) this.driveNotice(notice);
       }),
     ];
-    this.heartbeat = setInterval(() => {
-      afterPendingInput(() => {
-        this.beat();
-      });
-    }, LIVE_HEARTBEAT_MS);
     options.log.info('live.started', {
       heartbeatMs: LIVE_HEARTBEAT_MS,
       slowClientBytes: SLOW_CLIENT_BYTES,
@@ -213,6 +212,12 @@ export class LiveHub {
     }
   }
 
+  private driveNotice(notice: LiveNotice): void {
+    for (const connection of this.connections) {
+      if (!this.backgrounds.has(connection)) this.send(connection, notice);
+    }
+  }
+
   toClient(clientId: string, notice: LiveNotice): void {
     for (const connection of this.connections) {
       if (connection.client.id === clientId) {
@@ -260,7 +265,7 @@ export class LiveHub {
 
   stop(): void {
     this.options.log.info('live.stopping', { sockets: this.connections.size });
-    clearInterval(this.heartbeat);
+    this.heartbeat.stop();
     this.notifications.stop();
     this.appViews.stop();
     this.unsubscribe.forEach((stop) => {
@@ -287,6 +292,7 @@ export class LiveHub {
       stats: new SocketStats(),
     };
     this.connections.add(connection);
+    this.heartbeat.start();
     this.tally.open();
     socket.on('pong', () => {
       connection.alive = true;
@@ -390,7 +396,7 @@ export class LiveHub {
     this.tally.delivered(message.type, text.length);
   }
 
-  private beat(): void {
+  private beat(): boolean {
     let silent = 0;
     for (const connection of this.connections) {
       if (!connection.alive) {
@@ -404,6 +410,7 @@ export class LiveHub {
       pingWhenOpen(connection.socket);
     }
     this.summarise(silent);
+    return this.connections.size > 0;
   }
 
   private summarise(silent: number): void {

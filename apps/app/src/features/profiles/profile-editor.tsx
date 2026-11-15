@@ -10,8 +10,8 @@ import { confirm } from '../../components/confirm-store';
 import { EmptyState } from '../../components/empty-state';
 import { List } from '../../components/section';
 import { ListRow } from '../../components/list-row';
-import { PageShell } from '../../components/page-shell/page-shell';
 import { ACCENT_LABELS, ACCENT_SWATCH } from '../../design/tokens';
+import { SettingsFrame } from '../../settings/settings-frame';
 import { TextEditSheet } from '../../settings/text-edit-sheet';
 import { useProfiles } from '../../store/people';
 import { useIsOwner, useRow } from '../../store/selectors';
@@ -147,12 +147,12 @@ export function ProfileEditorScreen({
 }): ReactNode {
   const profile = useRow('profiles', profileId);
   return (
-    <PageShell title={profile?.name ?? 'Person'}>
+    <SettingsFrame page="profiles" detail title={profile?.name ?? 'Person'}>
       {profile === null ? (
         <EmptyState icon="users" title="Person not found" body="They may have been removed." />
       ) : (
         <Editor key={profile.id} profile={profile} extra={extra} />
       )}
-    </PageShell>
+    </SettingsFrame>
   );
 }

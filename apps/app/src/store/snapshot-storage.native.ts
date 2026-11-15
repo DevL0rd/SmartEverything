@@ -9,8 +9,16 @@ export async function readStored(keys: readonly string[]): Promise<ReadonlyMap<s
   return texts;
 }
 
-export function writeStored(key: string, text: string): Promise<void> {
-  return AsyncStorage.setItem(key, text);
+export async function writeStored(
+  entries: readonly (readonly [string, string])[],
+  removed: readonly string[],
+): Promise<void> {
+  await Promise.all([
+    entries.length === 0
+      ? undefined
+      : AsyncStorage.multiSet(entries.map(([key, text]): [string, string] => [key, text])),
+    removed.length === 0 ? undefined : AsyncStorage.multiRemove([...removed]),
+  ]);
 }
 
 export function removeStored(keys: readonly string[]): Promise<void> {

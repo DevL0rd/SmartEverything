@@ -118,6 +118,7 @@ export function PrefMinutesRow({
           max={MINUTES_IN_HOUR}
           step={1}
           unit="min"
+          formatValue={String}
           fixedWidth
           onChange={(minutes) => {
             save(() => spec.set(minutes));

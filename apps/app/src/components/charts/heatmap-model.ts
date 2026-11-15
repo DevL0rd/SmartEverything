@@ -54,14 +54,45 @@ export function calendarCells(days: readonly HeatDay[], today: string): readonly
   }));
 }
 
-function labelsOf(cells: readonly CalendarCell[]): CalendarBlock['labels'] {
+type BlockLabel = CalendarBlock['labels'][number];
+
+const LABEL_COLUMNS = { month: 3, year: 4 } as const;
+
+function monthLabelOf(cell: CalendarCell, withYear: boolean): BlockLabel {
+  const month = MONTHS[Number(cell.day.slice(5, 7)) - 1] ?? '';
+  return { column: cell.column, text: withYear ? `${month} ${cell.day.slice(0, 4)}` : month };
+}
+
+function monthStarts(cells: readonly CalendarCell[]): readonly CalendarCell[] {
   const seen = new Set<string>();
-  return cells.flatMap((cell) => {
+  return cells.filter((cell) => {
     const month = cell.day.slice(0, 7);
-    if (cell.row > 0 || seen.has(month)) return [];
+    if (cell.row > 0 || seen.has(month)) return false;
     seen.add(month);
-    return [{ column: cell.column, text: MONTHS[Number(cell.day.slice(5, 7)) - 1] ?? '' }];
+    return true;
   });
+}
+
+function crowds(previous: BlockLabel | undefined, label: BlockLabel): boolean {
+  if (previous === undefined) return false;
+  const room = previous.text.includes(' ') ? LABEL_COLUMNS.year : LABEL_COLUMNS.month;
+  return label.column - previous.column < room;
+}
+
+function labelsOf(cells: readonly CalendarCell[]): CalendarBlock['labels'] {
+  const crosses = new Set(cells.map((cell) => cell.day.slice(0, 4))).size > 1;
+  const labels: BlockLabel[] = [];
+  for (const cell of monthStarts(cells)) {
+    const previous = labels.at(-1);
+    const withYear = crosses && (previous === undefined || cell.day.slice(5, 7) === '01');
+    const label = monthLabelOf(cell, withYear);
+    if (!crowds(previous, label)) {
+      labels.push(label);
+      continue;
+    }
+    labels[labels.length - 1] = labels.length === 1 && crosses ? monthLabelOf(cell, true) : label;
+  }
+  return labels;
 }
 
 export function calendarBlocks(

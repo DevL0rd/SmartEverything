@@ -5,6 +5,7 @@ import {
   indexAt,
   monthsOf,
   rangeLabel,
+  shareOf,
   windowOf,
   withEnd,
   withStart,
@@ -61,6 +62,15 @@ describe('map time range', () => {
 
   it('ticks each year once and drops ticks that would overlap', () => {
     expect(yearTicks(MONTHS, 900, 48).map((tick) => tick.year)).toEqual(['2019', '2024', '2026']);
-    expect(yearTicks(MONTHS, 60, 48).map((tick) => tick.year)).toEqual(['2019', '2026']);
+    expect(yearTicks(MONTHS, 70, 48).map((tick) => tick.year)).toEqual(['2019', '2026']);
+  });
+
+  it('puts handles and ticks on the centre of their month bar and reads a point back to its bar', () => {
+    expect(shareOf(0, 4)).toBe(0.125);
+    expect(shareOf(3, 4)).toBe(0.875);
+    for (const index of [0, 1, 2, 3]) expect(indexAt(shareOf(index, 4), 4)).toBe(index);
+    expect(indexAt(0.24, 4)).toBe(0);
+    expect(indexAt(0.26, 4)).toBe(1);
+    expect(yearTicks(MONTHS, 900, 48).map((tick) => tick.share)).toEqual([0.125, 0.625, 0.875]);
   });
 });

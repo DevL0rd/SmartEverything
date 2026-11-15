@@ -44,7 +44,8 @@ vi.mock('react-native', async (importOriginal) => ({
   View: stub('View'),
 }));
 
-const { DesktopControls, PhoneActions, PhoneControls } = await import('./header');
+const { CompactControls, DesktopControls, PhoneActions, PhoneControls, compactMoreItems } =
+  await import('./header');
 
 const CONTROLS: HeaderControls = {
   starred: true,
@@ -85,6 +86,7 @@ describe('viewer header icons', () => {
     const all = [
       ...rendered(createElement(DesktopControls, { controls: CONTROLS })),
       ...rendered(createElement(PhoneControls, { controls: CONTROLS })),
+      ...rendered(createElement(CompactControls, { controls: CONTROLS })),
       ...rendered(createElement(PhoneActions, { controls: CONTROLS })),
     ];
     const icons = iconsOf(all);
@@ -123,5 +125,21 @@ describe('viewer header icons', () => {
     expect(
       phone.some((entry) => entry.kind === 'Interactive' && entry.props.label === 'Edit'),
     ).toBe(false);
+  });
+
+  it('keeps favourite, info and More inline in a narrow stage and moves the rest into More', () => {
+    const compact = rendered(createElement(CompactControls, { controls: CONTROLS }));
+    const inline = compact.filter((entry) => entry.kind === 'IconButton').map((e) => e.props.icon);
+    expect(inline).toEqual(['star', 'info', 'ellipsis']);
+    const albums = vi.fn();
+    const items = compactMoreItems(CONTROLS, albums);
+    expect(items.map((item) => item.label)).toEqual(['Edit', 'Add to album', 'Share link']);
+    items[1]?.onPress();
+    expect(albums).toHaveBeenCalledOnce();
+    const plain = compactMoreItems(
+      { ...CONTROLS, edit: { ...CONTROLS.edit, available: false } },
+      albums,
+    );
+    expect(plain.map((item) => item.label)).toEqual(['Add to album', 'Share link']);
   });
 });

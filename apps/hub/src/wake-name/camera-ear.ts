@@ -1,6 +1,6 @@
 import type { WakeSensitivity } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { CameraOfflineError } from '../cameras/camera-service';
+import { CameraOfflineError, UnknownStreamError } from '../cameras/camera-service';
 import type { Cancel, Clock } from '../clock';
 import type { RemoteEar, RemoteEars } from '../listening/remote-ears-port';
 import type { CameraMicrophones, OpenMicrophone } from '../talk/camera-microphone';
@@ -105,7 +105,7 @@ export class CameraEar {
           return null;
         }
         this.release();
-        if (cause instanceof CameraOfflineError) {
+        if (cause instanceof CameraOfflineError || cause instanceof UnknownStreamError) {
           this.waitForCamera(cause.message);
         } else {
           this.retry(messageOf(cause));

@@ -77,10 +77,12 @@ function MissingAlarm({
   const body = wakeAlarmBodyOf(night);
   return (
     <View className="flex-row flex-wrap items-center gap-3 rounded-md border-hairline border-outline-variant px-3 py-2">
-      <Icon name="alarmClock" size={20} />
-      <Text variant="callout" tone="variant" className="min-w-0 flex-1">
-        {`No alarm at ${night.wake} on ${daysTextOf(body.days, card.weekStart)}`}
-      </Text>
+      <View className="min-w-0 grow basis-48 flex-row items-center gap-3">
+        <Icon name="alarmClock" size={20} />
+        <Text variant="callout" tone="variant" className="min-w-0 flex-1">
+          {`No alarm at ${night.wake} on ${daysTextOf(body.days, card.weekStart)}`}
+        </Text>
+      </View>
       <Button
         label="Create alarm"
         icon="plus"

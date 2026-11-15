@@ -7,7 +7,7 @@ import { Interactive } from '../../../components/interactive';
 import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
 import { SelectRow, SwitchRow } from '../../../components/rows';
-import { List } from '../../../components/section';
+import { List, Section } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
 import { TimeField } from '../../../components/time-field';
 import { dayKeyOf, startOfDayKey } from '../../../format/time';
@@ -31,7 +31,7 @@ import {
   type AlarmDraft,
   type AlarmEdit,
 } from './alarm-draft';
-import { REPEAT_OPTIONS, snoozeLimitText } from './alarm-options';
+import { minutesText, REPEAT_OPTIONS, snoozeLimitText } from './alarm-options';
 import { SoundPicker } from './sound-picker';
 
 export interface AlarmFieldProps {
@@ -103,6 +103,23 @@ export function FieldRows({
   return compact ? <View>{children}</View> : <List>{children}</List>;
 }
 
+export function FieldSection({
+  title,
+  compact,
+  children,
+}: {
+  readonly title: string;
+  readonly compact: boolean;
+  readonly children: ReactNode;
+}): ReactNode {
+  if (!compact) return <List title={title}>{children}</List>;
+  return (
+    <Section title={title}>
+      <View>{children}</View>
+    </Section>
+  );
+}
+
 function LabelRow({ draft, compact, disabled, onChange }: AlarmFieldProps): ReactNode {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
@@ -143,7 +160,14 @@ function LabelRow({ draft, compact, disabled, onChange }: AlarmFieldProps): Reac
   );
 }
 
-function RepeatRow({ draft, now, timeZone, compact, disabled, onChange }: AlarmFieldProps): ReactNode {
+function RepeatRow({
+  draft,
+  now,
+  timeZone,
+  compact,
+  disabled,
+  onChange,
+}: AlarmFieldProps): ReactNode {
   return (
     <SelectRow
       title="Repeat"
@@ -224,8 +248,6 @@ function OnceOnDate({
     />
   );
 }
-
-const minutesText = (minutes: number): string => `${String(minutes)} min`;
 
 function SnoozeRow({ draft, compact, disabled, onChange }: AlarmFieldProps): ReactNode {
   return (

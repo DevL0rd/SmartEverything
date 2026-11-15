@@ -169,11 +169,9 @@ function WeatherCard({
   readonly day: PlannerDay;
   readonly grid: boolean;
 }): ReactNode {
-  const { person } = usePlannerFrame();
-  const preferences = usePlannerPreferences(person).data;
   const view = useWeather();
   const now = useMinute();
-  if (view.kind !== 'ready' || preferences?.day_planner.show_weather !== true) return null;
+  if (view.kind !== 'ready') return null;
   const { forecast } = view;
   const change = changeOf(forecast, now);
   return (
@@ -303,11 +301,17 @@ function planText(prompt: PlanPrompt, timeZone: string): string {
   return `${tasks} and ${slots} before ${clock(prompt.until, timeZone)}. Nothing moves until you accept.`;
 }
 
-function PlanCard({ day, grid }: { readonly day: PlannerDay; readonly grid: boolean }): ReactNode {
-  const now = useMinute();
-  const [hidden, setHidden] = useState(false);
-  const prompt = planPromptOf(day, now);
-  if (prompt === null || hidden) return null;
+function PlanCard({
+  day,
+  prompt,
+  grid,
+  onHide,
+}: {
+  readonly day: PlannerDay;
+  readonly prompt: PlanPrompt;
+  readonly grid: boolean;
+  readonly onHide: () => void;
+}): ReactNode {
   const ask = (): void => {
     askAssistantWith(
       `Plan the rest of today: propose times for my ${String(prompt.tasks)} open tasks in my free slots before ${clock(prompt.until, day.time_zone)}. Only propose; don't book anything until I accept.`,
@@ -325,13 +329,7 @@ function PlanCard({ day, grid }: { readonly day: PlannerDay; readonly grid: bool
         </Text>
         <View className="flex-row flex-wrap gap-2">
           <Button label="Show plan" variant="tonal" onPress={ask} />
-          <Button
-            label="Not now"
-            variant="text"
-            onPress={() => {
-              setHidden(true);
-            }}
-          />
+          <Button label="Not now" variant="text" onPress={onHide} />
         </View>
       </Card>
     </Cell>
@@ -350,16 +348,35 @@ export function TodaySideColumn({
   const { person } = usePlannerFrame();
   const rings = useTodayRings(day, move);
   const timers = liveTimersOf(usePlannerTimers(person));
+  const forecast = useWeather();
+  const preferences = usePlannerPreferences(person).data;
+  const weather = forecast.kind === 'ready' && preferences?.day_planner.show_weather === true;
+  const now = useMinute();
+  const [planHidden, setPlanHidden] = useState(false);
+  const prompt = planHidden ? null : planPromptOf(day, now);
+  const counted = !isOpenDay(day);
   const grid = layout === 'grid';
+  const empty =
+    !counted && !weather && day.next_alarm_at === null && timers.length === 0 && prompt === null;
+  if (empty) return null;
   return (
     <View className={cn(grid ? 'flex-row flex-wrap gap-3' : 'w-84 gap-4')}>
-      {isOpenDay(day) ? null : <RingsCard rings={rings} layout={layout} />}
-      <WeatherCard day={day} grid={grid} />
+      {counted ? <RingsCard rings={rings} layout={layout} /> : null}
+      {weather ? <WeatherCard day={day} grid={grid} /> : null}
       <AlarmCard day={day} grid={grid} />
       {timers.map((timer) => (
         <TimerCard key={timer.id} timer={timer} grid={grid} />
       ))}
-      <PlanCard day={day} grid={grid} />
+      {prompt === null ? null : (
+        <PlanCard
+          day={day}
+          prompt={prompt}
+          grid={grid}
+          onHide={() => {
+            setPlanHidden(true);
+          }}
+        />
+      )}
     </View>
   );
 }

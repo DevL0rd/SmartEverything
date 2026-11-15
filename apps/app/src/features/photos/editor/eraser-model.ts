@@ -17,7 +17,7 @@ export function brushPx(size: number, rect: Rect): number {
   return size * Math.min(rect.width, rect.height);
 }
 
-export function erasedSummary(count: number): string {
-  if (count === 0) return 'Brush over what to remove, then tap Erase.';
+export function erasedSummary(count: number, pointer: boolean): string {
+  if (count === 0) return `Brush over what to remove, then ${pointer ? 'click' : 'tap'} Erase.`;
   return count === 1 ? 'One area erased.' : `${String(count)} areas erased.`;
 }

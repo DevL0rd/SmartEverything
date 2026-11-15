@@ -25,8 +25,6 @@ const WORKSPACE: readonly WorkspaceLink[] = [
   { id: 'timers', label: 'Timers', icon: 'timer', href: links.scheduled() },
 ];
 
-const PHONE_TABS: readonly WorkspaceSection[] = ['automations', 'runs', 'templates', 'schedule'];
-
 function entryOf(link: WorkspaceLink): RailEntry {
   return { id: link.id, label: link.label, short: link.short, icon: link.icon, missing: null };
 }
@@ -43,7 +41,6 @@ export function workspaceSectionsOf(active: WorkspaceSection): ShellSections {
     active,
     hrefOf: workspaceHrefOf,
     navigation: 'replace',
-    phoneTabs: PHONE_TABS,
     groups: [{ title: null, entries: WORKSPACE.map(entryOf) }],
   };
 }

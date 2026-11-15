@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
-import type { PlaceCountry } from '@smarteverything/domain';
+import { ScrollView, View, type ViewStyle } from 'react-native';
+import type { PlaceCluster, PlaceCountry } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
@@ -16,11 +16,15 @@ import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoPlaces } from '../data';
 import { NATURAL_EARTH_ATTRIBUTION } from '../world-map';
+import { WORLD_VIEW } from '../world-map/projection';
 import { ClusterCard } from './cluster-card';
 import { ClusterMap } from './cluster-map';
+import { MAP_COPY } from './map-copy';
 import { MonthRangeCard } from './month-range';
 import type { MapBounds } from './map-view';
 import {
+  allPlaces,
+  clusterHolds,
   countriesWhere,
   inViewLine,
   libraryLine,
@@ -39,26 +43,6 @@ const MODES: readonly SegmentedOption<MapMode>[] = [
   { value: 'places', label: 'Places', icon: 'list' },
 ];
 
-export const MAP_COPY = {
-  empty: {
-    title: 'Photos with a location show up here',
-    body: "Turn on location in your phone's camera. Photos without one stay in the Library.",
-  },
-  offline: {
-    title: 'The hub is offline',
-    body: 'These are the places from your last visit. They update when the hub is back.',
-  },
-  unreachable: {
-    title: 'The hub is offline',
-    body: 'Map and places open when the hub reconnects. Your photos stay on the hub as they are.',
-  },
-  find: 'Find a place',
-  inView: 'Places in view',
-  found: 'Places found',
-  noMatch: 'No place matches. Try a city, region or country.',
-  noneInView: 'No places in this part of the map. Zoom out to see more.',
-} as const;
-
 const MAP_SETTINGS = {
   href: href.settings.focus('photos', 'photos.map.enabled'),
   label: 'Map settings',
@@ -75,14 +59,31 @@ function columnsOf(area: number, wide: number): number {
   return area >= WIDE_COLUMNS_FROM ? wide : 2;
 }
 
+const WIDE_MAP = { aspectRatio: WORLD_VIEW.width / WORLD_VIEW.height } as const;
+
+function matcherOf(
+  countries: readonly PlaceCountry[],
+  text: string,
+): ((cluster: PlaceCluster) => boolean) | null {
+  if (text.trim() === '') return null;
+  const found = allPlaces(countries).filter((place) => placeMatches(place, text));
+  return (cluster) => clusterHolds(cluster, found);
+}
+
 function WorldCard({
   state,
   countries,
+  text,
+  attribution,
   className,
+  style,
 }: {
   readonly state: MapState;
   readonly countries: readonly PlaceCountry[];
+  readonly text: string;
+  readonly attribution: string | null;
   readonly className: string;
+  readonly style?: ViewStyle;
 }): ReactNode {
   const selected = state.selected;
   return (
@@ -93,9 +94,14 @@ function WorldCard({
       clusters={state.clusters}
       selected={selected}
       onSelect={state.select}
+      onZoom={state.zoomInto}
       label={MAP_LABEL}
-      attribution={NATURAL_EARTH_ATTRIBUTION}
+      attribution={attribution}
+      match={matcherOf(countries, text)}
+      atStart={state.atStart}
+      onShowAll={state.showAll}
       className={className}
+      {...(style === undefined ? {} : { style })}
       card={
         selected === null ? null : (
           <ClusterCard
@@ -163,7 +169,7 @@ function WideMap({
   readonly text: string;
   readonly area: number;
 }): ReactNode {
-  const state = useMapState(true);
+  const state = useMapState(allPlaces(countries));
   const side = area >= WIDE_COLUMNS_FROM;
   return (
     <View className={side ? 'flex-row gap-section-gap' : 'gap-section-gap'}>
@@ -171,7 +177,10 @@ function WideMap({
         <WorldCard
           state={state}
           countries={countries}
-          className="h-115 rounded-lg border-hairline border-outline-variant"
+          text={text}
+          attribution={NATURAL_EARTH_ATTRIBUTION}
+          className="w-full rounded-lg border-hairline border-outline-variant"
+          style={WIDE_MAP}
         />
         {state.months.length === 0 ? null : (
           <MonthRangeCard months={state.months} range={state.range} onRange={state.setRange} />
@@ -195,13 +204,22 @@ function PhoneMap({
   readonly countries: readonly PlaceCountry[];
   readonly text: string;
 }): ReactNode {
-  const state = useMapState(true);
+  const state = useMapState(allPlaces(countries));
   return (
     <View className="min-h-0 flex-1">
-      <WorldCard state={state} countries={countries} className="flex-1" />
+      <WorldCard
+        state={state}
+        countries={countries}
+        text={text}
+        attribution={null}
+        className="flex-1"
+      />
       <PhonePlacesPanel
         places={placesByCount(sideCountries(countries, state.bounds, text))}
         total={countOf(countries)}
+        searching={text.trim() !== ''}
+        range={{ months: state.months, range: state.range, onRange: state.setRange }}
+        attribution={NATURAL_EARTH_ATTRIBUTION}
       />
     </View>
   );
@@ -268,18 +286,17 @@ export function MapScreen(): ReactNode {
   const places = usePhotoPlaces();
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const countries = places.data;
+  const some = countries !== undefined && countries.length > 0;
   return (
     <PhotosFrame
       active="map"
       settings={MAP_SETTINGS}
-      {...(countries === undefined ? {} : { subtitle: libraryLine(countries) })}
-      {...(countries === undefined || countries.length === 0
-        ? {}
-        : { search: { value: text, onChange: setText, placeholder: MAP_COPY.find } })}
-      scroll={!(compact && mode === 'map' && countries !== undefined && countries.length > 0)}
+      {...(some ? { subtitle: libraryLine(countries) } : {})}
+      {...(some ? { search: { value: text, onChange: setText, placeholder: MAP_COPY.find } } : {})}
+      scroll={!(compact && mode === 'map' && some)}
     >
       <View className="min-h-0 flex-1 gap-section-gap">
-        <Segmented options={MODES} value={mode} onChange={setMode} label="View" />
+        {some ? <Segmented options={MODES} value={mode} onChange={setMode} label="View" /> : null}
         {countries === undefined ? <Loading places={places} /> : <OfflineNote />}
         {countries === undefined ? null : <Body mode={mode} countries={countries} text={text} />}
       </View>

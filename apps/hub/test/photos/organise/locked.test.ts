@@ -73,6 +73,8 @@ describe('the Locked folder PIN', () => {
     }
     await expect(service.unlock(ALICE(), kit.phone, '2468')).rejects.toMatchObject({
       code: 'rate_limited',
+      retryAfterSeconds: 600,
+      message: 'Too many wrong attempts. Try again in 10 min.',
     });
     kit.time.current = new Date(kit.time.current.getTime() + 11 * 60_000);
     await expect(service.unlock(ALICE(), kit.phone, '2468')).resolves.toMatchObject({});

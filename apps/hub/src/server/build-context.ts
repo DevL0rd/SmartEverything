@@ -93,6 +93,18 @@ function talkOf(options: BuildOptions, live: LiveHub): TalkService {
       talk.camera.speakers.reprime(deviceId);
     }
   });
+  options.core.hub.onStreamAdded((deviceId) => {
+    talk.camera.speakers.reprime(deviceId);
+  });
+  options.store.feed.subscribe((change) => {
+    if (
+      change.table === 'devices' &&
+      change.record?.online === true &&
+      change.oldRecord?.online === false
+    ) {
+      talk.camera.speakers.reprime(change.record.id);
+    }
+  });
   return talk;
 }
 

@@ -10,7 +10,7 @@ import { notify } from '../../../components/toast-store';
 import type { Tone } from '../../../components/tone';
 import { cn } from '../../../design/cn';
 import { usePlannerWrites } from '../data';
-import { usePlannerFrame } from '../frame/frame-context';
+import { usePlannerFrame, type QuickAddSeed } from '../frame/frame-context';
 import { LIST_DOT } from '../item/composer-tokens';
 import { ListTrend } from './list-trend';
 import { boardMovesOf, type BoardColumnModel, type BoardStatus } from './matrix-model';
@@ -145,6 +145,17 @@ function ColumnCards({
   );
 }
 
+const STATUS_DUE: Readonly<Partial<Record<BoardStatus, QuickAddSeed['due']>>> = {
+  today: 'today',
+  upcoming: 'tomorrow',
+};
+
+function seedOf(column: BoardColumnModel): QuickAddSeed {
+  if (column.collection !== null) return { collectionId: column.collection.id };
+  const due = column.status === null ? undefined : STATUS_DUE[column.status];
+  return due === undefined ? {} : { due };
+}
+
 function widthOf(width: number): ViewStyle {
   return { width };
 }
@@ -175,7 +186,9 @@ export const BoardColumn = memo(function BoardColumn({
             icon="plus"
             variant="text"
             disabled={offline}
-            onPress={focusQuickAdd}
+            onPress={() => {
+              focusQuickAdd(seedOf(column));
+            }}
           />
         </View>
       )}

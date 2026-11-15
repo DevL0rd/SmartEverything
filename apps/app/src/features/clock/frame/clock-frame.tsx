@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Banner } from '../../../components/banner';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import type { ShellAside } from '../../../components/page-shell/shell-types';
 import { useSizeClass } from '../../../design/size-class';
 import {
   usePlannerReload,
@@ -23,18 +24,12 @@ export interface ClockFrameProps {
   readonly subtitle?: string;
   readonly actions?: readonly ShellAction[];
   readonly scroll?: boolean;
+  readonly aside?: ShellAside;
   readonly children: ReactNode;
 }
 
-function OfflineBanner(): ReactNode {
-  return (
-    <Banner
-      tone="info"
-      title="Can’t reach the hub"
-      body="Changes wait for the hub. Alarms set on this phone still ring."
-      wrapBody
-    />
-  );
+function OfflineBanner({ body }: { readonly body: string }): ReactNode {
+  return <Banner tone="info" title="Can’t reach the hub" body={body} wrapBody />;
 }
 
 function useRefresh(): { readonly refreshing: boolean; readonly onRefresh: () => void } {
@@ -57,6 +52,7 @@ export function ClockFrame({
   subtitle,
   actions = [],
   scroll = true,
+  aside,
   children,
 }: ClockFrameProps): ReactNode {
   const phone = useSizeClass().header === 'large';
@@ -86,7 +82,8 @@ export function ClockFrame({
       refreshing={refresh.refreshing}
       footer={phone ? <ScrollAwayBar>{quickAdd}</ScrollAwayBar> : quickAdd}
       {...(subtitle === undefined ? {} : { subtitle })}
-      {...(offline ? { banner: <OfflineBanner /> } : {})}
+      {...(aside === undefined ? {} : { aside })}
+      {...(offline ? { banner: <OfflineBanner body={clockSectionOf(section).offline} /> } : {})}
     >
       {children}
       <QuickAddComposer

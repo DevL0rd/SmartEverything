@@ -49,7 +49,7 @@ function NewFolderField({
   readonly onCreate: (name: string) => void;
 }): ReactNode {
   const [text, setText] = useState('');
-  const ready = nameReadyOf(text, '', taken);
+  const ready = nameReadyOf(text, null, taken);
   const submit = (): void => {
     if (ready) onCreate(text.trim());
   };
@@ -61,7 +61,7 @@ function NewFolderField({
         onChange={setText}
         onSubmit={submit}
         helper={`Created inside ${folder}`}
-        error={nameProblemOf(text, '', taken)}
+        error={nameProblemOf(text, null, taken)}
         focusOnMount
       />
       <Button label="Create and open" variant="tonal" disabled={!ready} onPress={submit} />
@@ -112,26 +112,36 @@ function Extra<O>({ footer }: { readonly footer: PickerFooterProps<O> }): ReactN
   return null;
 }
 
-function Secondary<O>({ footer }: { readonly footer: PickerFooterProps<O> }): ReactNode {
-  const { extra, onExtra } = footer;
+function Actions<O>({ footer }: { readonly footer: PickerFooterProps<O> }): ReactNode {
+  const { extra, onExtra, view, compact } = footer;
   const toggle = (next: PickerExtra) => (): void => {
     onExtra(extra === next ? 'none' : next);
   };
   return (
     <View className="flex-row flex-wrap items-center gap-2">
-      {footer.canCreate ? (
-        <Button label="New folder" variant="outlined" icon="plus" onPress={toggle('folder')} />
-      ) : null}
-      {footer.locationOf === null ? null : (
+      <View className="flex-row flex-wrap items-center gap-2">
+        {footer.canCreate ? (
+          <Button label="New folder" variant="outlined" icon="plus" onPress={toggle('folder')} />
+        ) : null}
+        {footer.locationOf === null ? null : (
+          <Button
+            label={extra === 'path' ? 'Browse' : 'Enter path'}
+            variant="text"
+            onPress={toggle('path')}
+          />
+        )}
+      </View>
+      <View className="ml-auto flex-row items-center gap-2">
+        {footer.onCancel === undefined ? null : (
+          <Button label="Cancel" variant="text" onPress={footer.onCancel} />
+        )}
         <Button
-          label={extra === 'path' ? 'Browse' : 'Enter path'}
-          variant="text"
-          onPress={toggle('path')}
+          label={view.label}
+          size={compact ? 'md' : 'lg'}
+          disabled={view.choice === null}
+          onPress={footer.onChoose}
         />
-      )}
-      {footer.onCancel === undefined ? null : (
-        <Button label="Cancel" variant="text" onPress={footer.onCancel} />
-      )}
+      </View>
     </View>
   );
 }
@@ -150,16 +160,7 @@ export function PickerFooter<O>(footer: PickerFooterProps<O>): ReactNode {
       </Text>
       {view.reason === null ? null : <ReasonLine icon="lock" tone="warning" text={view.reason} />}
       <Extra key={footer.extra} footer={footer} />
-      <View className="flex-row">
-        <Button
-          label={view.label}
-          size={compact ? 'md' : 'lg'}
-          grow
-          disabled={view.choice === null}
-          onPress={footer.onChoose}
-        />
-      </View>
-      <Secondary footer={footer} />
+      <Actions footer={footer} />
     </View>
   );
 }

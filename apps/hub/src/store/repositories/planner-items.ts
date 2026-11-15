@@ -70,6 +70,7 @@ export interface PlannerItemFilter {
   readonly collectionIds?: readonly string[] | undefined;
   readonly kind?: PlannerItemRow['kind'] | undefined;
   readonly statuses?: readonly PlannerItemRow['status'][] | undefined;
+  readonly completion?: PlannerItemRow['completion']['kind'] | undefined;
   readonly scope?: PlannerItemScope | undefined;
 }
 
@@ -110,6 +111,10 @@ function filterClauses(filter: PlannerItemFilter): {
   if (filter.kind !== undefined) {
     clauses.push('kind = $kind');
     values['kind'] = filter.kind;
+  }
+  if (filter.completion !== undefined) {
+    clauses.push("json_extract(completion, '$.kind') = $completionKind");
+    values['completionKind'] = filter.completion;
   }
   return { text: clauses.map((clause) => ` and ${clause}`).join(''), parameters: values };
 }

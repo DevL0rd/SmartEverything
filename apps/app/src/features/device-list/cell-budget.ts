@@ -26,6 +26,7 @@ import type { StoreState } from '../../store/state';
 import { startClock } from '../../store/clock';
 import type { WidgetFrameBox } from '../../components/widget-board';
 import { treeOf } from './cell-tree';
+import { wired } from '../../test-support/live-wire';
 
 export const DEVICE = '00000000-0000-4000-8000-000000000001';
 const OTHER = '00000000-0000-4000-8000-000000000002';
@@ -222,7 +223,7 @@ export function mountFace(face: Face, size: 'S' | 'M' | WidgetFrameBox): Mounted
 function rendersAfter(mounted: Mounted, change: LiveChange): number {
   nodes.count = 0;
   act(() => {
-    mounted.store.apply([change]);
+    mounted.store.apply(wired([change]));
     flushFrames();
   });
   return nodes.count;

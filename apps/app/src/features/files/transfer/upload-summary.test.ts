@@ -13,6 +13,7 @@ import {
   nextClock,
   overallProgress,
   retryNoticeOf,
+  sharedFailureOf,
   summaryOf,
 } from './upload-summary';
 
@@ -81,7 +82,19 @@ describe('upload summary', () => {
     ).toBe('Uploaded 2 files to Projects');
     expect(
       headlineOf(summaryOf([item('a', 'done', 100), item('b', 'failed', 10)]), 'Projects'),
-    ).toBe('Uploaded 1 of 2 · 1 didn’t upload');
+    ).toBe('Uploaded 1 of 2 · 1 failed');
+    expect(
+      headlineOf(summaryOf([item('a', 'failed', 0), item('b', 'failed', 0)]), 'Projects'),
+    ).toBe('2 uploads failed');
+  });
+
+  it('names a failure every upload shares once, and keeps distinct reasons per row', () => {
+    const refused = { retryable: false, error: 'The hub refused the file.' };
+    const same = [item('a', 'failed', 0, refused), item('b', 'failed', 0, refused)];
+    expect(sharedFailureOf(same)).toBe('The hub refused the file.');
+    const mixed = [...same, item('c', 'failed', 0, { retryable: false, error: 'Too big.' })];
+    expect(sharedFailureOf(mixed)).toBeNull();
+    expect(sharedFailureOf([item('a', 'failed', 0, refused)])).toBeNull();
   });
 
   it('times the rate from the first sending sample and resets when nothing sends', () => {

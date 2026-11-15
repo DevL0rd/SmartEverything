@@ -26,7 +26,7 @@ import { useLibraryFeed, type LibraryFeed } from '../library/use-library-feed';
 import { useMediaActions, type MediaActions } from '../library/use-media-actions';
 import { notThisText, usePeopleActions } from './actions';
 import { groupTitleOf } from './model';
-import { PersonHero } from './person-hero';
+import { PersonHero, usePersonMenu } from './person-hero';
 import { PersonSheets, type PersonSheet } from './person-sheets';
 import { usePhotoGroup } from './queries';
 
@@ -61,7 +61,7 @@ function Grid({ feed, controls, media, hero }: GridProps): ReactNode {
   );
   return (
     <View className="-mx-gutter min-h-0 flex-1">
-      <View className="px-gutter pb-3">{hero}</View>
+      {hero === null ? null : <View className="px-gutter pb-3">{hero}</View>}
       {feed.state === 'loading' ? <LibraryLoading /> : null}
       {feed.state === 'error' ? <LibraryError onRetry={feed.retry} /> : null}
       {feed.state === 'ready' || feed.state === 'empty' ? (
@@ -124,29 +124,29 @@ function PersonBody({
   const media = useMediaActions();
   const [sheet, setSheet] = useState<PersonSheet>(null);
   const notThis = useNotThis(group, controls, !live);
+  const overflow = usePersonMenu(group, live, setSheet);
   const frame = selectionFrameOf(compact, {
     controls,
     tiles: feed.tiles,
     media,
     extras: [notThis],
   });
+  const hero = controls.selection.active ? null : (
+    <PersonHero group={group} live={live} onReview={controls.begin} />
+  );
   return (
     <PhotosFrame
       active="people"
       title={groupTitleOf(group)}
       breadcrumbs={CRUMBS}
+      overflow={overflow}
       scroll={false}
       selection={frame.selection}
       footer={frame.footer}
       {...(live ? {} : { banner: OFFLINE_BANNER })}
     >
       {feed.sources}
-      <Grid
-        feed={feed}
-        controls={controls}
-        media={media}
-        hero={<PersonHero group={group} live={live} onSheet={setSheet} onReview={controls.begin} />}
-      />
+      <Grid feed={feed} controls={controls} media={media} hero={hero} />
       <PersonSheets
         group={group}
         sheet={sheet}

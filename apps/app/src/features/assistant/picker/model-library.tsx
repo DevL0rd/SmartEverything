@@ -3,7 +3,7 @@ import type { Engine } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import type { ModelPickerProps } from '../data/model-candidates';
 import type { NativeModelRequest } from '../provider/subscription-models';
-import { LibraryBody } from './library/library-body';
+import { PickerLibraryBody } from './library/picker-library-body';
 import { librarySubtitle, libraryTitle } from './library/library-model';
 import { pickOf } from './library/library-pick';
 import { LibrarySheet } from './library/library-sheet';
@@ -82,7 +82,7 @@ export function ModelLibrary(props: ModelLibraryProps): ReactNode {
       }
     >
       {(width): ReactNode => (
-        <LibraryBody
+        <PickerLibraryBody
           mode={props.mode}
           width={width}
           picker={pickerOf(props, props.onClose)}

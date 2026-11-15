@@ -193,7 +193,7 @@ export function NumberStepper(props: NumberStepperProps): ReactNode {
       {...(typable ? {} : { accessible: true, ...adjustable(access) })}
       className={cn(
         'max-w-full flex-row items-center gap-1 self-start rounded-full bg-surface-2',
-        fixed && 'w-52 justify-between',
+        fixed && 'w-44 justify-between',
       )}
     >
       <IconButton

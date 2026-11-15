@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   DESKTOP_PHOTO_HASH,
   DESKTOP_PHOTO_LIBRARY,
+  DESKTOP_PHOTO_TRASHED,
   DESKTOP_PHOTOS_CHANGED,
   DESKTOP_PHOTOS_CHARGING_CHANGED,
   type DesktopPhotos,
@@ -25,6 +26,9 @@ export const photos: DesktopPhotos = {
   },
   async cancel(operation): Promise<void> {
     await ipcRenderer.invoke('desktop:photos-cancel', operation);
+  },
+  async trash(ids): ReturnType<DesktopPhotos['trash']> {
+    return DESKTOP_PHOTO_TRASHED.parse(await ipcRenderer.invoke('desktop:photos-trash', ids));
   },
   async charging(): Promise<boolean> {
     return z.boolean().parse(await ipcRenderer.invoke('desktop:photos-charging'));

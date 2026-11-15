@@ -5,8 +5,6 @@ import type { ShellSections } from '../../../components/page-shell/shell-section
 import { DOMAIN_INFO, FITNESS_DOMAINS, type FitnessDomain } from '../model/domains';
 import type { FitnessTab } from '../model/section-routes';
 
-const PHONE_TABS: readonly FitnessTab[] = ['today', 'activity', 'nutrition', 'heart', 'sleep'];
-
 const TODAY_ENTRY: RailEntry = {
   id: 'today',
   label: 'Today',
@@ -40,7 +38,6 @@ export function fitnessSectionsOf(
     active,
     hrefOf: fitnessHrefOf,
     navigation: 'replace',
-    phoneTabs: PHONE_TABS,
     groups: [{ title: null, entries: [TODAY_ENTRY, ...domains.map(domainEntry)] }],
   };
 }

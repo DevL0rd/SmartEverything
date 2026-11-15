@@ -61,19 +61,33 @@ function pickAndUpload(): void {
     });
 }
 
+export interface LibraryActionsShown {
+  readonly upload: boolean;
+  readonly select: boolean;
+}
+
 export function libraryActions(
   compact: boolean,
   controls: MediaSelectionControls,
+  shown: LibraryActionsShown,
 ): readonly ShellAction[] {
-  const upload: ShellAction = {
-    icon: 'upload',
-    label: 'Upload',
-    primary: true,
-    iconOnly: compact,
-    onPress: pickAndUpload,
-  };
-  if (controls.selection.active) return compact ? [] : [upload];
-  return [upload, { icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin }];
+  const upload: readonly ShellAction[] = shown.upload
+    ? [
+        {
+          icon: 'upload',
+          label: 'Upload',
+          primary: true,
+          iconOnly: compact,
+          onPress: pickAndUpload,
+        },
+      ]
+    : [];
+  if (controls.selection.active) return compact ? [] : upload;
+  if (!shown.select) return upload;
+  return [
+    ...upload,
+    { icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin },
+  ];
 }
 
 export function selectionHeadOf(
@@ -168,6 +182,21 @@ function waiting(feed: LibraryFeed, localLoading: boolean): boolean {
   return (feed.state === 'loading' || localLoading) && feed.tiles.length === 0;
 }
 
+function emptyUploadShown(
+  feed: LibraryFeed,
+  tab: HubTabId,
+  search: LibrarySearch,
+  localLoading: boolean,
+): boolean {
+  return (
+    tab === 'all' &&
+    feed.tiles.length === 0 &&
+    feed.state !== 'error' &&
+    !waiting(feed, localLoading) &&
+    !isSearching(search.input)
+  );
+}
+
 function Body({ page, feed, controls, media, localLoading }: BodyProps): ReactNode {
   const { search } = page.head;
   const monthHeads = useMonthHeads(feed);
@@ -241,12 +270,16 @@ export function HubTab(props: HubTabProps): ReactNode {
   const offline = isOffline(useSyncStatus().status);
   const selection = selectionOf(feed, controls, media);
   const localLoading = tab === 'all' && local.state === 'loading';
+  const filled = feed.tiles.length > 0;
   return (
     <LibraryShell
-      head={head}
+      head={filled ? head : { ...head, zoom: null }}
       frame={{
         subtitle: isSearching(head.search.input) ? null : props.subtitle,
-        actions: libraryActions(head.compact, controls),
+        actions: libraryActions(head.compact, controls, {
+          upload: !emptyUploadShown(feed, tab, head.search, localLoading),
+          select: filled,
+        }),
         selection: selectionHeadOf(head.compact, selection),
         banner: offline ? <OfflineBanner seenAt={feed.seenAt} /> : null,
         footer:

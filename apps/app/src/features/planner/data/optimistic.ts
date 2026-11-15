@@ -177,7 +177,7 @@ export function occurrenceEdit(
   state: StoreState,
   itemId: string,
   key: string,
-  next: PlannerOccurrenceRow,
+  next: PlannerOccurrenceRow | null,
 ): Edit {
   const access = occurrenceAccess(itemId, key);
   return rowEdit(access, access.find(state), next);

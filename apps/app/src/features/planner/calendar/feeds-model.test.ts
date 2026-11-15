@@ -3,6 +3,7 @@ import {
   addressOf,
   defaultCountryOf,
   exportNameOf,
+  feedFailureOf,
   feedStatusOf,
   importReportOf,
   reachText,
@@ -91,7 +92,14 @@ describe('feed status', () => {
         NOW,
         [],
       ),
-    ).toEqual({ text: 'Refresh failed 30 min ago: The server answered 503', tone: 'critical' });
+    ).toEqual({ text: 'Refresh failed 30 min ago', tone: 'critical' });
+    expect(
+      feedFailureOf(
+        { ...ICS, failure: { at: '2026-11-14T09:30:00.000Z', reason: 'The server answered 503' } },
+        NOW,
+      ),
+    ).toEqual({ title: 'Last refresh failed 30 min ago', reason: 'The server answered 503' });
+    expect(feedFailureOf(ICS, NOW)).toBeNull();
   });
 });
 
@@ -106,12 +114,19 @@ describe('import report', () => {
         { part: 'component', detail: 'Free and busy blocks are not imported', count: 1 },
       ],
     });
-    expect(report.headline).toBe('7 items imported');
+    expect(report.headline).toBe('5 imported · 2 already up to date');
+    expect(report.total).toBe(7);
     expect(report.counts.map((entry) => entry.count)).toEqual([4, 1, 2]);
     expect(report.skipped).toEqual([
       'Attachments are not imported (3 times)',
       'Free and busy blocks are not imported',
     ]);
+    expect(importReportOf({ added: 3, updated: 0, unchanged: 0, unsupported: [] }).headline).toBe(
+      '3 items imported',
+    );
+    expect(importReportOf({ added: 0, updated: 0, unchanged: 4, unsupported: [] }).headline).toBe(
+      '4 items already up to date',
+    );
     expect(importReportOf({ added: 0, updated: 0, unchanged: 0, unsupported: [] }).headline).toBe(
       'Nothing in this file could be imported',
     );

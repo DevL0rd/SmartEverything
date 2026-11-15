@@ -46,8 +46,12 @@ function handleAt(left: number): ViewStyle {
   return { left: left - HANDLE_TARGET / 2, width: HANDLE_TARGET };
 }
 
-function tickAt(share: number, width: number): ViewStyle {
-  return { left: Math.min(share * width, width - TICK_SPACING) };
+function barWidthOf(width: number, total: number): number {
+  return total > 0 ? Math.max(1, (width / total) * BAR_SHARE) : 0;
+}
+
+function tickAt(share: number, width: number, bar: number): ViewStyle {
+  return { left: Math.max(0, Math.min(share * width - bar / 2, width - TICK_SPACING)) };
 }
 
 function Histogram({
@@ -58,7 +62,7 @@ function Histogram({
   const on = useColour('viz-1');
   const off = useColour('outline-variant');
   const peak = months.reduce((top, bucket) => Math.max(top, bucket.count), 0);
-  const slot = months.length > 0 ? width / months.length : 0;
+  const bar = barWidthOf(width, months.length);
   return (
     <Svg width={width} height={HEIGHT}>
       {months.map((bucket, index) => {
@@ -67,7 +71,7 @@ function Histogram({
         return (
           <Path
             key={bucket.month}
-            d={barPath(index * slot, Math.max(1, slot * BAR_SHARE), height)}
+            d={barPath(shareOf(index, months.length) * width - bar / 2, bar, height)}
             fill={shown ? on : off}
           />
         );
@@ -134,7 +138,11 @@ function Ticks({
   return (
     <View className="h-4">
       {yearTicks(months, width, TICK_SPACING).map((tick) => (
-        <View key={tick.year} className="absolute" style={tickAt(tick.share, width)}>
+        <View
+          key={tick.year}
+          className="absolute"
+          style={tickAt(tick.share, width, barWidthOf(width, months.length))}
+        >
           <Text variant="caption" tone="variant" className="tabular-nums">
             {tick.year}
           </Text>
@@ -144,23 +152,44 @@ function Ticks({
   );
 }
 
-export function MonthRangeCard(props: MonthRangeProps): ReactNode {
+export function MonthRangeChart(props: MonthRangeProps): ReactNode {
   const [width, setWidth] = useState(0);
+  return (
+    <View
+      accessibilityLabel="Photos per month"
+      onLayout={(event) => {
+        setWidth(event.nativeEvent.layout.width);
+      }}
+      className="gap-1"
+    >
+      <View className="h-16">
+        {width > 0 ? <Histogram {...props} width={width} /> : null}
+        {width > 0 ? <Handle side="start" slider={props} width={width} /> : null}
+        {width > 0 ? <Handle side="end" slider={props} width={width} /> : null}
+      </View>
+      {width > 0 ? <Ticks months={props.months} width={width} /> : null}
+    </View>
+  );
+}
+
+export function AllTimeButton(props: MonthRangeProps): ReactNode {
+  return (
+    <Button
+      label="All time"
+      variant="text"
+      onPress={() => {
+        props.onRange(fullRange(props.months));
+      }}
+    />
+  );
+}
+
+export function MonthRangeCard(props: MonthRangeProps): ReactNode {
   const label = rangeLabel(props.range, props.months);
   return (
     <Card
       title="Time range"
-      action={
-        isFull(props.range, props.months) ? null : (
-          <Button
-            label="All time"
-            variant="text"
-            onPress={() => {
-              props.onRange(fullRange(props.months));
-            }}
-          />
-        )
-      }
+      action={isFull(props.range, props.months) ? null : <AllTimeButton {...props} />}
       metadata={
         label === null ? null : (
           <Text variant="footnote" tone="variant" className="tabular-nums">
@@ -169,20 +198,7 @@ export function MonthRangeCard(props: MonthRangeProps): ReactNode {
         )
       }
     >
-      <View
-        accessibilityLabel="Photos per month"
-        onLayout={(event) => {
-          setWidth(event.nativeEvent.layout.width);
-        }}
-        className="gap-1"
-      >
-        <View className="h-16">
-          {width > 0 ? <Histogram {...props} width={width} /> : null}
-          {width > 0 ? <Handle side="start" slider={props} width={width} /> : null}
-          {width > 0 ? <Handle side="end" slider={props} width={width} /> : null}
-        </View>
-        {width > 0 ? <Ticks months={props.months} width={width} /> : null}
-      </View>
+      <MonthRangeChart {...props} />
     </Card>
   );
 }

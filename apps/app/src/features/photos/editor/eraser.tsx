@@ -10,6 +10,7 @@ import { Button } from '../../../components/button';
 import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
+import { useIdiom } from '../../../design/platform';
 import type { Rect } from './geometry';
 import { brushPx, erasedSummary, pointIn, type Stroke } from './eraser-model';
 import { SliderHead } from './slider-head';
@@ -118,26 +119,48 @@ function Erasing(): ReactNode {
   );
 }
 
+function BrushSize({
+  brush,
+  onBrush,
+}: {
+  readonly brush: number;
+  readonly onBrush: (size: number) => void;
+}): ReactNode {
+  const [dragging, setDragging] = useState<number | null>(null);
+  const shown = dragging ?? brush;
+  return (
+    <View className="gap-1 px-4">
+      <SliderHead label="Brush size" value={`${String(shown)}%`} />
+      <Slider
+        label="Brush size"
+        value={shown}
+        min={1}
+        max={100}
+        step={1}
+        formatValue={(value) => `${String(value)}%`}
+        onChange={setDragging}
+        onCommit={(value) => {
+          setDragging(null);
+          onBrush(value);
+        }}
+        onCancel={() => {
+          setDragging(null);
+        }}
+      />
+    </View>
+  );
+}
+
 export function EraserPanel(props: EraserPanelProps): ReactNode {
+  const pointer = useIdiom() === 'pointer';
   if (props.hasKey === false) return <NoKey />;
   if (props.editor.erasing) return <Erasing />;
   return (
     <View className="gap-3">
       <Text variant="callout" tone="variant" className="px-4">
-        {erasedSummary(props.editor.committed.patches.length)}
+        {erasedSummary(props.editor.committed.patches.length, pointer)}
       </Text>
-      <View className="gap-1 px-4">
-        <SliderHead label="Brush size" value={`${String(props.brush)}%`} />
-        <Slider
-          label="Brush size"
-          value={props.brush}
-          min={1}
-          max={100}
-          step={1}
-          formatValue={(value) => `${String(value)}%`}
-          onCommit={props.onBrush}
-        />
-      </View>
+      <BrushSize brush={props.brush} onBrush={props.onBrush} />
       <View className="flex-row flex-wrap items-center gap-2 px-4">
         <Button
           label="Erase"

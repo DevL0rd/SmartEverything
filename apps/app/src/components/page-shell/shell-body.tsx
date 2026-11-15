@@ -49,14 +49,12 @@ export function ShellScroll({
   refresh,
   left,
   fab,
-  stickyHeaderIndices,
   children,
 }: {
   readonly scrollRef: AnimatedRef<Animated.ScrollView>;
   readonly refresh: ShellRefresh;
   readonly left: number;
   readonly fab: boolean;
-  readonly stickyHeaderIndices?: readonly number[];
   readonly children: ReactNode;
 }): ReactNode {
   const { scrollY } = useScreen();
@@ -74,9 +72,6 @@ export function ShellScroll({
       onScroll={onScroll}
       scrollEventThrottle={16}
       keyboardShouldPersistTaps="handled"
-      {...(stickyHeaderIndices === undefined
-        ? {}
-        : { stickyHeaderIndices: [...stickyHeaderIndices] })}
       refreshControl={
         refresh.onRefresh === undefined ? undefined : (
           <RefreshControl refreshing={refresh.refreshing} onRefresh={refresh.onRefresh} />
@@ -93,14 +88,16 @@ export function ShellScroll({
 export function StaticBody({
   column,
   banner,
+  fab,
   children,
 }: {
   readonly column: ShellColumn;
   readonly banner: ReactNode;
+  readonly fab: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <View style={columnStyle(column)} className="flex-1 pt-4">
+    <View style={columnStyle(column)} className={cn('flex-1 pt-4', fab && 'pb-24')}>
       <BodyColumn column={column} banner={banner} fill>
         {children}
       </BodyColumn>

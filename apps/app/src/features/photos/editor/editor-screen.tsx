@@ -5,7 +5,7 @@ import type { PhotoEdit } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { IconButton } from '../../../components/icon-button';
+import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { ToastModal } from '../../../components/toast-modal';
 import { ThemeScope } from '../../../design/theme-scope';
@@ -15,7 +15,8 @@ import type { Size } from './geometry';
 import { editItemOf } from './params';
 import { PhotoEditorView } from './photo-editor';
 import { useKeptPatches, usePhotoEdit, usePhotoEditBase } from './queries';
-import { requestLeave } from './use-photo-editor';
+import { EditorShell } from './top-bar';
+import { closeEditor, requestLeave } from './use-photo-editor';
 import { VideoEditorView } from './video-editor';
 
 export function sourceSizeOf(item: MediaItem): Size {
@@ -35,16 +36,14 @@ function Frame({
 }): ReactNode {
   return (
     <View className="flex-1 bg-black">
-      <View className="h-16 flex-row items-center px-2 pt-safe">
-        <IconButton
-          icon="close"
-          label="Close the editor"
-          onPress={() => {
-            requestLeave(itemId);
-          }}
-        />
-      </View>
-      <View className="flex-1 items-center justify-center p-6">{children}</View>
+      <EditorShell
+        title="Edit"
+        onCancel={() => {
+          requestLeave(itemId);
+        }}
+      >
+        <View className="flex-1 items-center justify-center p-6">{children}</View>
+      </EditorShell>
     </View>
   );
 }
@@ -109,9 +108,18 @@ function PhotoEditorLoader({ item }: { readonly item: MediaItem }): ReactNode {
     return (
       <Frame itemId={item.id}>
         <EmptyState
-          icon="fileText"
+          icon="lock"
           title="You cannot edit this photo"
           body={edit.data.copyOnlyReason ?? 'You can only view it.'}
+          action={
+            <Button
+              label="Back to photo"
+              variant="tonal"
+              onPress={() => {
+                closeEditor(item.id);
+              }}
+            />
+          }
         />
       </Frame>
     );
@@ -167,6 +175,7 @@ export function EditorScreen(): ReactNode {
       visible
       animationType="fade"
       statusBarTranslucent
+      focusRoot
       onRequestClose={() => {
         requestLeave(itemId);
       }}

@@ -3,6 +3,8 @@ import type {
   BackupHave,
   BackupHaveResult,
   BackupRegister,
+  PhotoFolderCopies,
+  PhotoFolderCopiesRequest,
   PhotoFolderOrigin,
 } from '@smarteverything/domain';
 import type { UploadHandle, UploadOutcome } from '../../../drive';
@@ -14,6 +16,8 @@ import type {
   ConditionsPort,
   LedgerFile,
   LedgerStorage,
+  LocalTrashPort,
+  LocalTrashResult,
   MediaLibraryPort,
   NativeMediaPort,
   SettingsPort,
@@ -49,8 +53,11 @@ export function rowOf(
   };
 }
 
+export const CAMERA_PATH = 'DCIM/Camera/';
+
 export class FakeLibrary implements MediaLibraryPort {
   rows: MediaRow[] = [];
+  readonly paths = new Map<string, string>();
   level: MediaAccess = 'all';
   pageSize = 2;
   pagesRead = 0;
@@ -74,8 +81,16 @@ export class FakeLibrary implements MediaLibraryPort {
     return Promise.resolve();
   }
 
+  pathOf(id: string): string {
+    return this.paths.get(id) ?? CAMERA_PATH;
+  }
+
   private visible(scope: MediaScope): MediaRow[] {
-    return this.rows.filter((row) => scope.includeVideos || row.kind === 'photo');
+    return this.rows.filter(
+      (row) =>
+        (scope.includeVideos || row.kind === 'photo') &&
+        (scope.albumIds.length === 0 || scope.albumIds.includes(this.pathOf(row.id))),
+    );
   }
 
   listIds(scope: MediaScope): Promise<ReadonlySet<string>> {
@@ -143,7 +158,7 @@ export class FakeNative implements NativeMediaPort {
           id,
           bytes: this.sizes.get(id) ?? 1000,
           mimeType: row.kind === 'photo' ? 'image/jpeg' : 'video/mp4',
-          relativePath: 'DCIM/Camera/',
+          relativePath: this.library.pathOf(id),
           dateAddedSeconds: 1,
           modifiedSeconds: row.modificationTime,
           isTrashed: this.trashed.has(id),
@@ -206,6 +221,36 @@ export class FakeHub implements BackupHubPort {
   resolveTarget(_deviceId: string, takenAt: string): Promise<{ readonly folderId: string }> {
     this.targets.push(takenAt);
     return Promise.resolve({ folderId: FOLDER_ID });
+  }
+
+  readonly copyAsks: PhotoFolderCopiesRequest[] = [];
+  copies: PhotoFolderCopies = { items: [], kept: [] };
+
+  folderCopies(input: PhotoFolderCopiesRequest): Promise<PhotoFolderCopies> {
+    this.copyAsks.push(input);
+    return Promise.resolve(this.copies);
+  }
+}
+
+export class FakeTrash implements LocalTrashPort {
+  outcome: LocalTrashResult['outcome'] = 'done';
+  readonly calls: { readonly ids: readonly string[]; readonly trash: boolean }[] = [];
+
+  constructor(private readonly library: FakeLibrary) {}
+
+  private change(ids: readonly string[], trash: boolean): Promise<LocalTrashResult> {
+    this.calls.push({ ids: [...ids], trash });
+    if (this.outcome !== 'done') return Promise.resolve({ outcome: this.outcome, localIds: [] });
+    if (trash) this.library.rows = this.library.rows.filter((row) => !ids.includes(row.id));
+    return Promise.resolve({ outcome: 'done', localIds: [...ids] });
+  }
+
+  trash(ids: readonly string[]): Promise<LocalTrashResult> {
+    return this.change(ids, true);
+  }
+
+  untrash(ids: readonly string[]): Promise<LocalTrashResult> {
+    return this.change(ids, false);
   }
 }
 
@@ -334,6 +379,7 @@ export class MemoryLedgerFile implements LedgerFile {
 export interface Rig {
   readonly library: FakeLibrary;
   readonly native: FakeNative;
+  readonly trash: FakeTrash;
   readonly hub: FakeHub;
   readonly upload: FakeUpload;
   readonly conditions: FakeConditions;
@@ -345,9 +391,10 @@ export interface Rig {
   available: boolean;
 }
 
-export function rig(platform: 'android' | 'ios' = 'android'): Rig {
+export function rig(platform: 'android' | 'ios' | 'desktop' = 'android'): Rig {
   const library = new FakeLibrary();
   const native = new FakeNative(library);
+  const trash = new FakeTrash(library);
   const hub = new FakeHub();
   const upload = new FakeUpload();
   upload.hub = hub;
@@ -359,6 +406,7 @@ export function rig(platform: 'android' | 'ios' = 'android'): Rig {
   const ports: BackupPorts = {
     media: library,
     native,
+    trash,
     conditions,
     upload,
     hub,
@@ -372,6 +420,7 @@ export function rig(platform: 'android' | 'ios' = 'android'): Rig {
   return {
     library,
     native,
+    trash,
     hub,
     upload,
     conditions,

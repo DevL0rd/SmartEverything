@@ -1,14 +1,17 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import type { LibraryScope } from '@smarteverything/domain';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
+import { useIdiom } from '../../../design/platform';
 import { ThemeScope } from '../../../design/theme-scope';
 import { useDayKey } from '../../../store/clock';
 import { closeViewer } from './close';
 import {
+  CompactControls,
   DesktopControls,
   PhoneActions,
   PhoneControls,
@@ -16,7 +19,13 @@ import {
   type HeaderControls,
   type HeaderText,
 } from './header';
-import { desktopHeaderText, phoneHeaderText } from './header-text';
+import {
+  desktopHeaderText,
+  headerFormOf,
+  phoneHeaderText,
+  type HeaderForm,
+  type HeaderInput,
+} from './header-text';
 import { InfoPanel, InfoSheet } from './info-panel';
 import { useViewerKeys } from './keys';
 import { usePrefetchNeighbours } from './photo';
@@ -116,6 +125,7 @@ function Stage({
       item={ready.viewer.item}
       media={ready.viewer.media}
       touch={ready.phone}
+      floating={ready.phone}
       moves={{
         previous: sequence.previous,
         next: sequence.next,
@@ -126,15 +136,27 @@ function Stage({
   );
 }
 
+function Trailing({
+  form,
+  controls,
+}: {
+  readonly form: HeaderForm;
+  readonly controls: HeaderControls;
+}): ReactNode {
+  if (form === 'phone') return <PhoneControls controls={controls} />;
+  if (form === 'compact') return <CompactControls controls={controls} />;
+  return <DesktopControls controls={controls} />;
+}
+
 function ViewerShell({
   text,
   controls,
-  phone,
+  form,
   children,
 }: {
   readonly text: HeaderText;
   readonly controls: HeaderControls;
-  readonly phone: boolean;
+  readonly form: HeaderForm;
   readonly children: ReactNode;
 }): ReactNode {
   return (
@@ -143,12 +165,57 @@ function ViewerShell({
       title={text.title}
       heading={<ViewerHeading text={text} />}
       onBack={controls.onClose}
-      trailing={
-        phone ? <PhoneControls controls={controls} /> : <DesktopControls controls={controls} />
-      }
+      trailing={<Trailing form={form} controls={controls} />}
     >
       {children}
     </PageShell>
+  );
+}
+
+function KeyHints(): ReactNode {
+  if (useIdiom() !== 'pointer') return null;
+  return (
+    <Text variant="caption" tone="variant" align="center" className="px-4 pb-4">
+      {KEY_HINTS}
+    </Text>
+  );
+}
+
+function WideViewer({
+  ready,
+  sequence,
+  controls,
+  input,
+}: {
+  readonly ready: ReadyViewerProps;
+  readonly sequence: ViewerSequence;
+  readonly controls: ViewerControls;
+  readonly input: HeaderInput;
+}): ReactNode {
+  const [stageWidth, setStageWidth] = useState<number | null>(null);
+  const form = headerFormOf(false, stageWidth);
+  return (
+    <View className="flex-1 flex-row">
+      <ThemeScope theme="dark">
+        <View
+          className="min-w-0 flex-1 bg-black"
+          onLayout={(event) => {
+            setStageWidth(event.nativeEvent.layout.width);
+          }}
+        >
+          <ViewerShell
+            text={form === 'compact' ? phoneHeaderText(input) : desktopHeaderText(input)}
+            controls={controls.header}
+            form={form}
+          >
+            <Stage ready={ready} sequence={sequence} />
+            <Strip ready={ready} controls={controls} compact={false} />
+            <KeyHints />
+          </ViewerShell>
+        </View>
+      </ThemeScope>
+      {ready.infoOpen ? <InfoPanel content={controls.info} onClose={ready.onInfo} /> : null}
+    </View>
   );
 }
 
@@ -162,36 +229,21 @@ export function ReadyViewer(props: ReadyViewerProps): ReactNode {
     day: sequence.day,
     today,
   };
-  if (props.phone) {
-    return (
-      <View className="flex-1">
-        <ThemeScope theme="dark">
-          <View className="flex-1 bg-black">
-            <ViewerShell text={phoneHeaderText(input)} controls={controls.header} phone>
-              <Stage ready={props} sequence={sequence} />
-              <Strip ready={props} controls={controls} compact />
-              <PhoneActions controls={controls.header} />
-            </ViewerShell>
-          </View>
-        </ThemeScope>
-        <InfoSheet open={props.infoOpen} content={controls.info} onClose={props.onInfo} />
-      </View>
-    );
+  if (!props.phone) {
+    return <WideViewer ready={props} sequence={sequence} controls={controls} input={input} />;
   }
   return (
-    <View className="flex-1 flex-row">
+    <View className="flex-1">
       <ThemeScope theme="dark">
-        <View className="min-w-0 flex-1 bg-black">
-          <ViewerShell text={desktopHeaderText(input)} controls={controls.header} phone={false}>
+        <View className="flex-1 bg-black">
+          <ViewerShell text={phoneHeaderText(input)} controls={controls.header} form="phone">
             <Stage ready={props} sequence={sequence} />
-            <Strip ready={props} controls={controls} compact={false} />
-            <Text variant="caption" tone="variant" align="center" className="px-4 pb-4">
-              {KEY_HINTS}
-            </Text>
+            <Strip ready={props} controls={controls} compact />
+            <PhoneActions controls={controls.header} />
           </ViewerShell>
         </View>
       </ThemeScope>
-      {props.infoOpen ? <InfoPanel content={controls.info} onClose={props.onInfo} /> : null}
+      <InfoSheet open={props.infoOpen} content={controls.info} onClose={props.onInfo} />
     </View>
   );
 }

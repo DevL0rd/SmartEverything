@@ -1,7 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { PLACE_PARAMS, type PhotoPlace, type LibraryBucket } from '@smarteverything/domain';
+import {
+  ApiError,
+  PLACE_PARAMS,
+  type LibraryBucket,
+  type LibraryScope,
+  type PhotoPlace,
+} from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import type { Crumb } from '../../../components/breadcrumbs';
@@ -9,16 +15,25 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { FlatChoice } from '../../../components/flat-choice';
+import type { MediaZoomStep } from '../../../components/media-grid/justify';
+import { useMediaSelection } from '../../../components/media-grid/selection';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
+import { useAreaWidth } from '../../../design/size-class';
 import { count } from '../../../format/number';
 import { useSyncStatus } from '../../../store/selectors';
 import { ChipRow } from '../../../components/chip-row';
 import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoBuckets, usePhotoPlace } from '../data';
+import { LibraryGrid } from '../library/library-grid';
+import { selectionFrameOf } from '../library/library-selection';
+import { LibraryError, LibraryLoading } from '../library/library-states';
+import { useLibraryFeed, type LibraryFeed } from '../library/use-library-feed';
+import { useMediaActions } from '../library/use-media-actions';
+import { viewerParamsOf } from '../viewer/params';
 import { MiniMap } from '../world-map';
-import { PlaceFeed } from './place-feed';
-import { totalOf, visitChips } from './place-model';
+import { monthScopeOf, totalOf, visitChips } from './place-model';
 import { monthLabel, monthsOf } from './time-range';
 
 type KindFilter = 'all' | 'videos' | 'favourites';
@@ -47,9 +62,8 @@ function Stat({ value, label }: { readonly value: string; readonly label: string
   );
 }
 
-export function itemsLabel(items: number, videos: number | null): string {
-  if (videos === null) return 'items';
-  return `items · ${count(Math.max(0, items - videos))} photos, ${count(videos)} videos`;
+export function itemsLabel(items: number): string {
+  return items === 1 ? 'photo or video' : 'photos and videos';
 }
 
 function figure(value: number | null): string {
@@ -76,7 +90,7 @@ function StatsCard({
         className="h-36 medium:h-45 medium:w-90"
       />
       <View className="flex-1 flex-row flex-wrap items-center gap-6 p-4 medium:px-6">
-        <Stat value={count(place.count)} label={itemsLabel(place.count, videos)} />
+        <Stat value={count(place.count)} label={itemsLabel(place.count)} />
         <Stat value={count(months.length)} label={months.length === 1 ? 'visit' : 'visits'} />
         <Stat value={figure(videos)} label="videos" />
         <Stat value={figure(favourites)} label="favourites" />
@@ -197,47 +211,136 @@ function Unavailable({
   );
 }
 
-function PlaceBody({ place }: { readonly place: PhotoPlace }): ReactNode {
-  const [choice, setChoice] = useState<Choice>({ month: null, kind: 'all' });
-  const all = usePhotoBuckets({ filter: 'all', placeId: place.id });
-  const scope = { filter: choice.kind, placeId: place.id };
-  const scoped = usePhotoBuckets(scope);
-  const buckets = all.data;
-  if (buckets === undefined) {
-    return all.isError ? (
-      <Unavailable error={all.error} retry={all.refetch} />
-    ) : (
-      <Skeleton shape="block" className="h-45 w-full" />
-    );
-  }
-  const header = (
-    <View className="gap-2 px-gutter pb-2">
-      <StatsCard place={place} buckets={buckets} />
-      <Chips name={place.name} buckets={buckets} choice={choice} onChoice={setChoice} />
-    </View>
-  );
-  return (
-    <PlaceFeed
-      key={`${choice.kind}:${choice.month ?? 'all'}`}
-      buckets={scoped.data ?? []}
-      scope={scope}
-      month={choice.month}
-      header={header}
-      empty={
-        <EmptyState
-          icon="image"
-          title="No photos match"
-          body="Choose All visits and All to see every photo from here."
-        />
-      }
-    />
-  );
+export function placeScopeOf(placeId: number, choice: Choice): LibraryScope {
+  return {
+    filter: choice.kind,
+    placeId,
+    ...(choice.month === null ? {} : monthScopeOf(choice.month)),
+  };
 }
 
 const MAP_CRUMB: Crumb = { label: 'Map and places', href: href.photosPage('map') };
 
 function crumbsOf(place: PhotoPlace | undefined): readonly Crumb[] {
   return place === undefined ? [MAP_CRUMB] : [MAP_CRUMB, { label: place.country }];
+}
+
+const NO_MATCH = (
+  <EmptyState
+    icon="image"
+    title="No photos match"
+    body="Choose All visits and All to see every photo from here."
+  />
+);
+
+function PlaceGrid({
+  feed,
+  header,
+  scope,
+  controls,
+  media,
+}: {
+  readonly feed: LibraryFeed;
+  readonly header: ReactElement;
+  readonly scope: LibraryScope;
+  readonly controls: ReturnType<typeof useMediaSelection>;
+  readonly media: ReturnType<typeof useMediaActions>;
+}): ReactNode {
+  const [step, setStep] = useState<MediaZoomStep>('days');
+  if (feed.state === 'loading' || feed.state === 'error') {
+    return (
+      <View className="min-h-0 flex-1">
+        {header}
+        {feed.state === 'loading' ? <LibraryLoading /> : <LibraryError onRetry={feed.retry} />}
+      </View>
+    );
+  }
+  return (
+    <LibraryGrid
+      tiles={feed.tiles}
+      step={step}
+      onStep={setStep}
+      selection={controls}
+      media={media}
+      empty={NO_MATCH}
+      footer={<View />}
+      header={header}
+      viewer={viewerParamsOf(scope)}
+      onEnd={feed.onEnd}
+    />
+  );
+}
+
+function PlaceFeed({
+  place,
+  buckets,
+}: {
+  readonly place: PhotoPlace;
+  readonly buckets: readonly LibraryBucket[];
+}): ReactNode {
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
+  const [choice, setChoice] = useState<Choice>({ month: null, kind: 'all' });
+  const scope = useMemo(() => placeScopeOf(place.id, choice), [place.id, choice]);
+  const feed = useLibraryFeed(scope);
+  const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));
+  const media = useMediaActions();
+  const frame = selectionFrameOf(compact, { controls, tiles: feed.tiles, media });
+  const header = (
+    <View className="gap-2 px-gutter pb-2">
+      <StatsCard place={place} buckets={buckets} />
+      <Chips
+        name={place.name}
+        buckets={buckets}
+        choice={choice}
+        onChoice={(next) => {
+          controls.clear();
+          setChoice(next);
+        }}
+      />
+    </View>
+  );
+  return (
+    <PhotosFrame
+      active="map"
+      title={place.name}
+      breadcrumbs={crumbsOf(place)}
+      scroll={false}
+      selection={frame.selection}
+      footer={frame.footer}
+    >
+      {feed.sources}
+      <View className="-mx-gutter min-h-0 flex-1">
+        <PlaceGrid feed={feed} header={header} scope={scope} controls={controls} media={media} />
+      </View>
+    </PhotosFrame>
+  );
+}
+
+function PlaceBody({ place }: { readonly place: PhotoPlace }): ReactNode {
+  const all = usePhotoBuckets({ filter: 'all', placeId: place.id });
+  if (all.data !== undefined) return <PlaceFeed place={place} buckets={all.data} />;
+  return (
+    <PhotosFrame active="map" title={place.name} breadcrumbs={crumbsOf(place)}>
+      {all.isError ? (
+        <Unavailable error={all.error} retry={all.refetch} />
+      ) : (
+        <Skeleton shape="block" className="h-45 w-full" />
+      )}
+    </PhotosFrame>
+  );
+}
+
+const GONE = (
+  <EmptyState
+    icon="mapPin"
+    title="This place is gone"
+    body="Its photos no longer have this location. Open another place from Map and places."
+    action={<Button label="Open Map and places" variant="tonal" href={href.photosPage('map')} />}
+  />
+);
+
+function isMissing(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'not_found';
 }
 
 function PlaceState({
@@ -259,7 +362,7 @@ function PlaceState({
       />
     );
   }
-  if (query.data !== undefined) return <PlaceBody place={query.data} />;
+  if (isMissing(query.error)) return GONE;
   if (!query.isError) return <Skeleton shape="block" className="h-45 w-full" />;
   return <Unavailable error={query.error} retry={query.refetch} />;
 }
@@ -267,14 +370,9 @@ function PlaceState({
 export function PlaceScreen(): ReactNode {
   const placeId = placeIdOf(useLocalSearchParams()['placeId']);
   const query = usePhotoPlace(placeId);
-  const place = query.data;
+  if (query.data !== undefined) return <PlaceBody place={query.data} />;
   return (
-    <PhotosFrame
-      active="map"
-      title={place?.name ?? 'Place'}
-      breadcrumbs={crumbsOf(place)}
-      scroll={false}
-    >
+    <PhotosFrame active="map" title="Place" breadcrumbs={crumbsOf(undefined)}>
       <PlaceState placeId={placeId} query={query} />
     </PhotosFrame>
   );

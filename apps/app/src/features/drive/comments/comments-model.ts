@@ -165,12 +165,6 @@ export function stampOf(comment: DriveComment, now: number): string {
 
 export const DELETED_COMMENT = 'Comment deleted';
 
-export function repliesLabelOf(thread: DriveCommentThread): string | null {
-  const replies = thread.replies.length;
-  if (replies === 0) return null;
-  return replies === 1 ? '1 reply' : `${count(replies)} replies`;
-}
-
 export function resolvedLabelOf(resolved: number): string {
   return resolved === 1 ? '1 resolved thread' : `${count(resolved)} resolved threads`;
 }

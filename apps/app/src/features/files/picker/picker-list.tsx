@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
+import { FolderGlyph } from '../../../components/files/folder-glyph';
 import { ErrorState } from '../../../components/error-state';
 import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
@@ -53,6 +54,19 @@ function Check({ picked }: { readonly picked: boolean }): ReactNode {
   );
 }
 
+function FolderLeading<O>({
+  row,
+  compact,
+}: {
+  readonly row: PickerRow<O>;
+  readonly compact: boolean;
+}): ReactNode {
+  const glyph = (
+    <FolderGlyph look={{ colour: row.node.marks.colour, iconHint: row.node.marks.iconHint }} />
+  );
+  return compact ? glyph : <View className="size-10 items-center justify-center">{glyph}</View>;
+}
+
 function Rows<O>({ listing, rows, mode, compact, onPress }: PickerListProps<O>): ReactNode {
   const many = mode === 'files';
   const renderItem = ({ item }: { readonly item: PickerRow<O> }): ReactElement => {
@@ -62,7 +76,9 @@ function Rows<O>({ listing, rows, mode, compact, onPress }: PickerListProps<O>):
         compact={compact}
         title={item.node.name}
         {...(item.caption === null ? {} : { subtitle: item.caption })}
-        icon={item.icon}
+        {...(item.node.kind === 'folder'
+          ? { leading: <FolderLeading row={item} compact={compact} /> }
+          : { icon: item.icon })}
         chevron={item.opens}
         disabled={!item.enabled}
         selected={item.picked}

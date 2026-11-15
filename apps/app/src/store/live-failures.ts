@@ -69,6 +69,11 @@ export class SectionFailures {
     this.store.setSync({ failed: this.all() });
   }
 
+  unappliedChange(table: string, reason: string, error: Error): void {
+    log.error('live.change_unreadable', error, { table, reason });
+    this.live([{ section: `tables.${table}`, reason }]);
+  }
+
   unreadableChange(table: string | null, reason: string): void {
     if (table === null) {
       log.warn('live.notice_ignored', { reason });

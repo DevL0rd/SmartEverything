@@ -1,17 +1,7 @@
-import { DEVICE_EFFECT_TARGET } from '../device-effects';
-import { DEVICE_GROUP_ROW } from '../device-groups';
-import { AUTOMATION_VALUE_ROW } from '../automation-values';
-import { AUTOMATION_PLUGIN_KIND_ROW } from '../automation-plugin-kinds';
-import { HOME_MAP_SUMMARY_ROW } from './endpoints-home-map';
-import { DRIVE_NOTICES, DRIVE_TABLE_ROWS } from './live-drive';
-import { PLANNER_LIVE_NOTICES, PLANNER_TABLE_ROWS } from './live-planner';
-import {
-  MODEL_CATALOG_ROW,
-  MODEL_OVERRIDE_ROW,
-  MODEL_OWNER,
-  MODEL_SHA256,
-} from '../models/catalog';
-import { AUTOMATION_ROW, AUTOMATION_RUN_SUMMARY } from '../automation-v3/rows';
+import { DRIVE_NOTICES } from './live-drive';
+import { PLANNER_LIVE_NOTICES } from './live-planner';
+import { LIVE_TABLE, ROW_OPERATIONS, TABLE_ROWS, type LiveTable } from './live-rows';
+import { liveFrameSchemaOf } from './live-frames';
 import { TRANSCRIPT_CHANGED_NOTICE } from '../transcript-reader';
 import {
   LISTENING_CHANGED_NOTICE,
@@ -37,15 +27,9 @@ import { AI_HARNESS_CONFIGURATION_NOTICE } from '../ai-harness-extensions';
 import { AI_CHAT_PROVIDER_NOTICE } from '../ai-provider';
 import { AI_SUBSCRIPTION_USAGE_NOTICE } from '../ai-subscription-usage';
 import { z } from 'zod';
-import { BODY_READING_ROW } from '../body-readings';
-import { FOOD_ROW } from '../foods';
-import { WATCH_DAY_ROW } from '../watches';
-import { TALK_CHANNEL_ROW, TALK_FLOORS_NOTICE, TALK_MEMBER_ROW, TALK_MESSAGE_ROW } from '../talk';
-import { WEATHER_ROW } from '../weather/forecast';
-import { EXCHANGE_RATES_ROW } from '../exchange-rates';
-import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE, CHAT_STREAM_NOTICE } from '../ai-chats';
-import { ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS_NOTICE } from '../assistant';
-import { AI_USAGE_ROW } from '../ai-usage';
+import { TALK_FLOORS_NOTICE } from '../talk';
+import { CHAT_ACTIVITY_NOTICE, CHAT_STREAM_NOTICE } from '../ai-chats';
+import { ASSISTANT_STATUS_NOTICE } from '../assistant';
 import { COMPUTER_AI_NOTICES } from '../computer-ai-notices';
 import {
   COMPUTER_FILES_CHANGED_NOTICE,
@@ -57,15 +41,11 @@ import { PHONE_DETAIL_NOTICE } from '../phone-detail';
 import { TREADMILL_LIVE_NOTICE } from '../treadmill-views';
 import { BRUSH_LIVE_NOTICE } from '../toothbrush-views';
 import { CLAUDE_NOTICES } from '../claude';
-import { HEALTH_ENTRY_ROW } from '../health-entries';
-import { PROFILE_ROW } from '../profiles';
-import { SCHEDULE_ROW } from '../schedules';
-import { AI_OUTREACH_ROW, AI_SPEECH_NOTICE } from '../reach';
+import { AI_SPEECH_NOTICE } from '../reach';
 import { APP_VIEW_NOTICE } from '../app-view';
 import { APP_UPDATE_NOTICE } from '../app-updates';
 import { HUB_UPDATE_STATUS_CHANGED } from '../self-update-recovery';
 import { CLIPBOARD_NOTICE } from '../shared-clipboard';
-import { PLUGIN_ROW, PLUGIN_STREAM_ROW, PLUGIN_UI_ROW } from '../plugins';
 import { LIVE_NOTIFICATION_NOTICE } from '../live-notification';
 import { PUSH_COMMAND } from '../push-commands';
 import { JSON_VALUE } from '../values';
@@ -75,127 +55,21 @@ import { HUB_STATUS } from './endpoints-access';
 import { SMARTTHINGS_WEBHOOK } from './endpoints-smartthings';
 import { FIREWALL_STATUS } from './firewall';
 import { ID, ROLE, SEQ } from './primitives';
-import {
-  HEALTH_DAILY_ROW,
-  HEALTH_SOURCE_ROW,
-  MCP_TOKEN_ROW,
-  OAUTH_CLIENT_ROW,
-} from './rows-access';
-import {
-  CLIENT_ROW,
-  COMMAND_ROW,
-  DEVICE_ROW,
-  EVENT_ROW,
-  HISTORY_ROW,
-  PROVIDER_LINK_ROW,
-  ROOM_ROW,
-  SETTINGS_ROW,
-  STATE_ROW,
-  TELEVISION_SETTINGS_ROW,
-} from './rows-home';
-import {
-  CAMERA_ROW,
-  IR_CODE_ROW,
-  IR_REMOTE_ROW,
-  LAYOUT_ROW,
-  PUSH_TARGET_ROW,
-  RECORDING_ROW,
-} from './rows-media';
 
 export const LIVE_SEQUENCE_HEADER = 'x-smarteverything-live-seq';
 
 export const LIVE_HEARTBEAT_MS = 30_000;
 
-export const ROW_OPERATIONS = ['INSERT', 'UPDATE', 'DELETE'] as const;
-
-export type RowOperation = (typeof ROW_OPERATIONS)[number];
-
-const MODEL_ASSET_KINDS = ['spec', 'glb'] as const;
-
-const MODEL_ASSET_OWNER = z.union([MODEL_OWNER, z.string().regex(/^user:.+$/)]);
-
-export const MODEL_ASSET_ROW = z.object({
-  sha256: MODEL_SHA256,
-  kind: z.enum(MODEL_ASSET_KINDS),
-  size: z.int().positive(),
-  owner: MODEL_ASSET_OWNER,
-  created: z.iso.datetime({ offset: true }),
-});
-
-export const TABLE_ROWS = {
-  settings: SETTINGS_ROW,
-  clients: CLIENT_ROW,
-  provider_links: PROVIDER_LINK_ROW,
-  rooms: ROOM_ROW,
-  device_groups: DEVICE_GROUP_ROW,
-  device_effect_targets: DEVICE_EFFECT_TARGET,
-  devices: DEVICE_ROW,
-  television_settings: TELEVISION_SETTINGS_ROW,
-  device_state: STATE_ROW,
-  state_history: HISTORY_ROW,
-  commands: COMMAND_ROW,
-  events: EVENT_ROW,
-  cameras: CAMERA_ROW,
-  recordings: RECORDING_ROW,
-  ir_remotes: IR_REMOTE_ROW,
-  ir_codes: IR_CODE_ROW,
-  automations: AUTOMATION_ROW,
-  automation_values: AUTOMATION_VALUE_ROW,
-  automation_runs: AUTOMATION_RUN_SUMMARY,
-  layouts: LAYOUT_ROW,
-  push_targets: PUSH_TARGET_ROW,
-  health_sources: HEALTH_SOURCE_ROW,
-  health_daily: HEALTH_DAILY_ROW,
-  mcp_tokens: MCP_TOKEN_ROW,
-  oauth_clients: OAUTH_CLIENT_ROW,
-  profiles: PROFILE_ROW,
-  body_readings: BODY_READING_ROW,
-  health_entries: HEALTH_ENTRY_ROW,
-  foods: FOOD_ROW,
-  watch_days: WATCH_DAY_ROW,
-  weather: WEATHER_ROW,
-  exchange_rates: EXCHANGE_RATES_ROW,
-  talk_channels: TALK_CHANNEL_ROW,
-  talk_members: TALK_MEMBER_ROW,
-  talk_messages: TALK_MESSAGE_ROW,
-  assistant_messages: ASSISTANT_MESSAGE_ROW,
-  ai_chats: AI_CHAT_ROW,
-  scheduled_actions: SCHEDULE_ROW,
-  ai_usage: AI_USAGE_ROW,
-  plugins: PLUGIN_ROW,
-  plugin_streams: PLUGIN_STREAM_ROW,
-  plugin_ui: PLUGIN_UI_ROW,
-  ai_outreach: AI_OUTREACH_ROW,
-  home_maps: HOME_MAP_SUMMARY_ROW,
-  model_assets: MODEL_ASSET_ROW,
-  model_catalog: MODEL_CATALOG_ROW,
-  model_overrides: MODEL_OVERRIDE_ROW,
-  automation_plugin_kinds: AUTOMATION_PLUGIN_KIND_ROW,
-  ...DRIVE_TABLE_ROWS,
-  ...PLANNER_TABLE_ROWS,
-} as const;
-
-export type LiveTable = keyof typeof TABLE_ROWS;
-
-export type TableRow<T extends LiveTable> = z.output<(typeof TABLE_ROWS)[T]>;
-
-const LIVE_TABLE = z.object(TABLE_ROWS).keyof();
-
-export const LIVE_TABLES = LIVE_TABLE.options;
-
-export function splitLiveTables(names: readonly string[]): {
-  readonly known: LiveTable[];
-  readonly unknown: string[];
-} {
-  const known: LiveTable[] = [];
-  const unknown: string[] = [];
-  for (const name of names) {
-    const table = LIVE_TABLE.safeParse(name);
-    if (table.success) known.push(table.data);
-    else unknown.push(name);
-  }
-  return { known, unknown };
-}
+export {
+  LIVE_TABLES,
+  MODEL_ASSET_ROW,
+  ROW_OPERATIONS,
+  TABLE_ROWS,
+  splitLiveTables,
+  type LiveTable,
+  type RowOperation,
+  type TableRow,
+} from './live-rows';
 
 export const OWNER_TABLES: ReadonlySet<LiveTable> = new Set([
   'clients',
@@ -313,6 +187,82 @@ export const LIVE_CHANGE = z.intersection(ROW_CHANGE, z.object({ seq: SEQ }));
 
 export type LiveChange = z.output<typeof LIVE_CHANGE>;
 
+export const LIVE_FRAME = z.discriminatedUnion('table', [
+  liveFrameSchemaOf('settings', TABLE_ROWS.settings),
+  liveFrameSchemaOf('clients', TABLE_ROWS.clients),
+  liveFrameSchemaOf('provider_links', TABLE_ROWS.provider_links),
+  liveFrameSchemaOf('rooms', TABLE_ROWS.rooms),
+  liveFrameSchemaOf('device_groups', TABLE_ROWS.device_groups),
+  liveFrameSchemaOf('device_effect_targets', TABLE_ROWS.device_effect_targets),
+  liveFrameSchemaOf('devices', TABLE_ROWS.devices),
+  liveFrameSchemaOf('television_settings', TABLE_ROWS.television_settings),
+  liveFrameSchemaOf('device_state', TABLE_ROWS.device_state),
+  liveFrameSchemaOf('state_history', TABLE_ROWS.state_history),
+  liveFrameSchemaOf('commands', TABLE_ROWS.commands),
+  liveFrameSchemaOf('events', TABLE_ROWS.events),
+  liveFrameSchemaOf('cameras', TABLE_ROWS.cameras),
+  liveFrameSchemaOf('recordings', TABLE_ROWS.recordings),
+  liveFrameSchemaOf('ir_remotes', TABLE_ROWS.ir_remotes),
+  liveFrameSchemaOf('ir_codes', TABLE_ROWS.ir_codes),
+  liveFrameSchemaOf('automations', TABLE_ROWS.automations),
+  liveFrameSchemaOf('automation_values', TABLE_ROWS.automation_values),
+  liveFrameSchemaOf('automation_runs', TABLE_ROWS.automation_runs),
+  liveFrameSchemaOf('layouts', TABLE_ROWS.layouts),
+  liveFrameSchemaOf('push_targets', TABLE_ROWS.push_targets),
+  liveFrameSchemaOf('health_sources', TABLE_ROWS.health_sources),
+  liveFrameSchemaOf('health_daily', TABLE_ROWS.health_daily),
+  liveFrameSchemaOf('mcp_tokens', TABLE_ROWS.mcp_tokens),
+  liveFrameSchemaOf('oauth_clients', TABLE_ROWS.oauth_clients),
+  liveFrameSchemaOf('profiles', TABLE_ROWS.profiles),
+  liveFrameSchemaOf('body_readings', TABLE_ROWS.body_readings),
+  liveFrameSchemaOf('health_entries', TABLE_ROWS.health_entries),
+  liveFrameSchemaOf('foods', TABLE_ROWS.foods),
+  liveFrameSchemaOf('watch_days', TABLE_ROWS.watch_days),
+  liveFrameSchemaOf('weather', TABLE_ROWS.weather),
+  liveFrameSchemaOf('exchange_rates', TABLE_ROWS.exchange_rates),
+  liveFrameSchemaOf('talk_channels', TABLE_ROWS.talk_channels),
+  liveFrameSchemaOf('talk_members', TABLE_ROWS.talk_members),
+  liveFrameSchemaOf('talk_messages', TABLE_ROWS.talk_messages),
+  liveFrameSchemaOf('assistant_messages', TABLE_ROWS.assistant_messages),
+  liveFrameSchemaOf('ai_chats', TABLE_ROWS.ai_chats),
+  liveFrameSchemaOf('scheduled_actions', TABLE_ROWS.scheduled_actions),
+  liveFrameSchemaOf('ai_usage', TABLE_ROWS.ai_usage),
+  liveFrameSchemaOf('plugins', TABLE_ROWS.plugins),
+  liveFrameSchemaOf('plugin_streams', TABLE_ROWS.plugin_streams),
+  liveFrameSchemaOf('plugin_ui', TABLE_ROWS.plugin_ui),
+  liveFrameSchemaOf('ai_outreach', TABLE_ROWS.ai_outreach),
+  liveFrameSchemaOf('home_maps', TABLE_ROWS.home_maps),
+  liveFrameSchemaOf('model_assets', TABLE_ROWS.model_assets),
+  liveFrameSchemaOf('model_catalog', TABLE_ROWS.model_catalog),
+  liveFrameSchemaOf('model_overrides', TABLE_ROWS.model_overrides),
+  liveFrameSchemaOf('automation_plugin_kinds', TABLE_ROWS.automation_plugin_kinds),
+  liveFrameSchemaOf('drive_roots', TABLE_ROWS.drive_roots),
+  liveFrameSchemaOf('drive_albums', TABLE_ROWS.drive_albums),
+  liveFrameSchemaOf('drive_grants', TABLE_ROWS.drive_grants),
+  liveFrameSchemaOf('drive_placements', TABLE_ROWS.drive_placements),
+  liveFrameSchemaOf('drive_notifications', TABLE_ROWS.drive_notifications),
+  liveFrameSchemaOf('drive_access_requests', TABLE_ROWS.drive_access_requests),
+  liveFrameSchemaOf('drive_file_requests', TABLE_ROWS.drive_file_requests),
+  liveFrameSchemaOf('drive_transfers', TABLE_ROWS.drive_transfers),
+  liveFrameSchemaOf('drive_offline_items', TABLE_ROWS.drive_offline_items),
+  liveFrameSchemaOf('planner_collections', TABLE_ROWS.planner_collections),
+  liveFrameSchemaOf('planner_items', TABLE_ROWS.planner_items),
+  liveFrameSchemaOf('planner_occurrences', TABLE_ROWS.planner_occurrences),
+  liveFrameSchemaOf('planner_alarms', TABLE_ROWS.planner_alarms),
+  liveFrameSchemaOf('planner_timers', TABLE_ROWS.planner_timers),
+  liveFrameSchemaOf('planner_stopwatches', TABLE_ROWS.planner_stopwatches),
+  liveFrameSchemaOf('planner_collection_shares', TABLE_ROWS.planner_collection_shares),
+  liveFrameSchemaOf('planner_guests', TABLE_ROWS.planner_guests),
+  liveFrameSchemaOf('planner_booking_pages', TABLE_ROWS.planner_booking_pages),
+  liveFrameSchemaOf('google_accounts', TABLE_ROWS.google_accounts),
+]);
+
+export type LiveFrame = z.output<typeof LIVE_FRAME>;
+
+export const LIVE_WIRE_CHANGE = z.intersection(LIVE_FRAME, z.object({ seq: SEQ }));
+
+export type LiveWireChange = z.output<typeof LIVE_WIRE_CHANGE>;
+
 export const LIVE_STREAMS = ['service_log', 'talk', 'assistant', 'claude'] as const;
 
 export type LiveStream = (typeof LIVE_STREAMS)[number];
@@ -406,8 +356,15 @@ export const LIVE_MESSAGE = z.union([
 
 export type LiveMessage = z.output<typeof LIVE_MESSAGE>;
 
+export const LIVE_WIRE_MESSAGE = z.union([
+  LIVE_WIRE_CHANGE,
+  z.discriminatedUnion('type', [READY, SUBSCRIBED, ...NOTICES, ...AUTOMATION_TRACE_NOTICE.options]),
+]);
+
+export type LiveWireMessage = z.output<typeof LIVE_WIRE_MESSAGE>;
+
 export const LIVE_SERVER_MESSAGE = z.union([
-  ROW_CHANGE,
+  LIVE_FRAME,
   READY,
   SUBSCRIBED,
   ...NOTICES,

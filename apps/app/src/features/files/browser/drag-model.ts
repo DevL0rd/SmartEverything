@@ -43,13 +43,18 @@ function refused<O>(reason: DropRefusal): DropVerdict<O> {
   return { kind: 'refused', reason };
 }
 
+function alreadyIn(node: FileNode, target: DropTarget): boolean {
+  if (node.parentKey === null) return target.location.folder === null;
+  return node.parentKey === target.key;
+}
+
 export function placeRefusal<O>(payload: DragPayload<O>, target: DropTarget): DropRefusal | null {
   if (payload.nodes.length === 0) return 'nothing';
   if (payload.sourceId !== target.sourceId) return 'other_source';
   const keys = new Set(payload.nodes.map((node) => node.key));
   if (target.key !== null && keys.has(target.key)) return 'into_itself';
   if (target.ancestors.some((key) => keys.has(key))) return 'into_child';
-  if (payload.nodes.every((node) => node.parentKey === target.key)) return 'already_here';
+  if (payload.nodes.every((node) => alreadyIn(node, target))) return 'already_here';
   return target.writable ? null : 'not_writable';
 }
 

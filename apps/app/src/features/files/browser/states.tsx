@@ -38,33 +38,13 @@ function offlineEmptyLineOf<O>(browser: FileBrowserHandle<O>): string {
 
 export function OfflineLine<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
   if (!browser.offline || browser.body.kind !== 'entries') return null;
+  if (browser.host.offlineInFrame === true) return null;
   return (
     <View className="flex-row items-center gap-2 border-b border-outline-variant px-4 py-2">
       <Icon name="wifiOff" size={16} tone="variant" />
       <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
         {offlineLineOf(browser)}
       </Text>
-    </View>
-  );
-}
-
-function AreaButtons<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
-  const { primary, actions } = browser.header;
-  if (primary === undefined && actions.length === 0) return null;
-  return (
-    <View className="flex-row flex-wrap justify-center gap-2">
-      {primary === undefined ? null : (
-        <Button label={primary.label} icon={primary.icon} onPress={primary.onPress} />
-      )}
-      {actions.map((action) => (
-        <Button
-          key={action.label}
-          label={action.label}
-          icon={action.icon}
-          variant="tonal"
-          {...(action.onPress === undefined ? {} : { onPress: action.onPress })}
-        />
-      ))}
     </View>
   );
 }
@@ -104,13 +84,13 @@ function Empty<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): Reac
       icon={browser.inTrash ? 'trash' : 'folder'}
       title={copy.title}
       body={copy.body}
-      action={
-        browser.hiddenOnly ? (
-          <Button label="Show hidden items" icon="eye" variant="tonal" onPress={showHidden} />
-        ) : (
-          <AreaButtons browser={browser} />
-        )
-      }
+      {...(browser.hiddenOnly
+        ? {
+            action: (
+              <Button label="Show hidden items" icon="eye" variant="tonal" onPress={showHidden} />
+            ),
+          }
+        : {})}
     />
   );
 }

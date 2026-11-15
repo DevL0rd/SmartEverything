@@ -4,7 +4,8 @@ import type { MediaInfo, PhotoPlace } from '@smarteverything/domain';
 import type { AppHref } from '../../../components/app-href';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
-import { Icon, type IconName } from '../../../components/icon';
+import { Icon } from '../../../components/icon';
+import { Interactive } from '../../../components/interactive';
 import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { MiniMap } from '../world-map';
@@ -15,7 +16,6 @@ import {
   cameraLine,
   exposureChips,
   fileDetail,
-  fileLine,
   folderOf,
   lensLine,
   placeLine,
@@ -24,6 +24,7 @@ import {
   wallTimeOf,
   type MediaItem,
 } from './info-model';
+import { Lines, Row } from './info-row';
 import { ThisDayStrip } from './this-day-strip';
 
 export const LOCATION_NOTE = 'Location is removed from links shared outside the home';
@@ -40,42 +41,6 @@ export interface InfoContent {
   readonly driveHref: AppHref;
   readonly ask: AskAbout;
   readonly onOpenItem: (itemId: string) => void;
-}
-
-function Row({
-  icon,
-  children,
-}: {
-  readonly icon: IconName;
-  readonly children: ReactNode;
-}): ReactNode {
-  return (
-    <View className="flex-row gap-3 py-2">
-      <Icon name={icon} size={20} tone="variant" />
-      <View className="min-w-0 flex-1 gap-0.5">{children}</View>
-    </View>
-  );
-}
-
-function Lines({
-  main,
-  detail,
-}: {
-  readonly main: string;
-  readonly detail: string | null;
-}): ReactNode {
-  return (
-    <>
-      <Text variant="callout" numberOfLines={2}>
-        {main}
-      </Text>
-      {detail === null ? null : (
-        <Text variant="footnote" tone="variant" numberOfLines={2}>
-          {detail}
-        </Text>
-      )}
-    </>
-  );
 }
 
 function CameraRow({ item }: { readonly item: MediaItem }): ReactNode {
@@ -140,11 +105,35 @@ function AlbumsRow({ items }: { readonly items: readonly MenuItem[] }): ReactNod
   const { ref, open, menu } = useAnchoredMenu(items, 'Add to album');
   return (
     <Row icon="layers">
-      <View ref={ref} collapsable={false} className="flex-row">
-        <Button label="Add to album" icon="plus" variant="text" onPress={open} />
+      <View ref={ref} collapsable={false} className="self-start">
+        <Interactive
+          label="Add to album"
+          onPress={open}
+          className="min-h-touch-min flex-row items-center gap-1.5 -my-3"
+          layerClassName="rounded-sm"
+        >
+          <Text variant="callout" tone="primary">
+            Add to album
+          </Text>
+          <Icon name="plus" size={16} tone="primary" />
+        </Interactive>
       </View>
       {menu}
     </Row>
+  );
+}
+
+export function InfoActions({ content }: { readonly content: InfoContent }): ReactNode {
+  return (
+    <View className="gap-2 pt-4">
+      <Button
+        label={askLabel(content.item)}
+        icon="sparkles"
+        variant="tonal"
+        onPress={content.ask.run}
+      />
+      <Button label="Show in Drive" icon="folder" variant="outlined" href={content.driveHref} />
+    </View>
   );
 }
 
@@ -156,7 +145,7 @@ export function InfoRows({ content }: { readonly content: InfoContent }): ReactN
       <CameraRow item={item} />
       <TakenRow item={item} media={content.media} />
       <Row icon="image">
-        <Lines main={fileLine(item)} detail={fileDetail(item)} />
+        <Lines main={item.name} detail={fileDetail(item)} />
       </Row>
       <Row icon="folder">
         <Lines
@@ -172,17 +161,6 @@ export function InfoRows({ content }: { readonly content: InfoContent }): ReactN
       <LocationRow content={content} />
       <AlbumsRow items={content.albums} />
       <ThisDayStrip item={item} media={content.media} onOpen={content.onOpenItem} />
-      <View className="gap-2 pt-4">
-        <Button
-          label={askLabel(item)}
-          icon="sparkles"
-          variant="tonal"
-          disabled={content.ask.hint !== null}
-          {...(content.ask.hint === null ? {} : { hint: content.ask.hint })}
-          onPress={content.ask.run}
-        />
-        <Button label="Show in Drive" icon="folder" variant="outlined" href={content.driveHref} />
-      </View>
     </View>
   );
 }

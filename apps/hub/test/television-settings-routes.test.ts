@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bootServer, linkFakeProvider, type Booted } from './support/booted';
 import { LAMP } from './support/fake-provider';
 import { captureLogs } from './support/logs';
-import { call, openLive, temporaryDirectory } from './support/server';
+import { call, changedTo, openLive, temporaryDirectory } from './support/server';
 
 const TELEVISION: DiscoveredDevice = {
   ...LAMP,
@@ -80,11 +80,8 @@ describe('naming the inputs of a television over HTTP', () => {
     );
     await live.next((message) => message.type === 'subscribed');
     await patch(id, { input_names: { HDMI1: 'Console' } });
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'television_settings' &&
-        message.record?.input_names['HDMI1'] === 'Console',
+    await live.next((message) =>
+      changedTo(message, 'television_settings', { input_names: { HDMI1: 'Console' } }),
     );
     live.socket.close();
   });

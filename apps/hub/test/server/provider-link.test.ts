@@ -1,7 +1,7 @@
 import { API_ENDPOINTS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { pairPhone, useBootedServer, verifiedPublicUrl } from '../support/booted';
-import { call, openLive } from '../support/server';
+import { call, changedColumns, changedTo, openLive } from '../support/server';
 
 const suite = useBootedServer({ linked: true });
 
@@ -37,25 +37,21 @@ describe('provider linking endpoints', () => {
       path: API_ENDPOINTS.linkProvider.path,
       body: CREDENTIALS,
     });
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'provider_links' &&
-        message.record?.prompt !== null &&
-        message.record?.prompt !== undefined,
-    );
+    await live.next((message) => {
+      const prompt = changedColumns(message)?.['prompt'];
+      return changedTo(message, 'provider_links', {}) && prompt !== null && prompt !== undefined;
+    });
     await call(base, owner, {
       method: 'POST',
       path: API_ENDPOINTS.answerProviderPrompt.path,
       body: { provider: 'xiaomi', answer: '482913' },
     });
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'provider_links' &&
-        message.record?.status === 'linked' &&
-        message.record.prompt === null,
-    );
+    const seen = { linked: false, answered: false };
+    await live.next((message) => {
+      seen.linked ||= changedTo(message, 'provider_links', { status: 'linked' });
+      seen.answered ||= changedTo(message, 'provider_links', { prompt: null });
+      return seen.linked && seen.answered;
+    });
     live.socket.close();
     const commands = await call(base, owner, { method: 'GET', path: '/api/commands?limit=500' });
     const text = JSON.stringify(commands.body);
@@ -78,25 +74,18 @@ describe('provider linking endpoints', () => {
       path: API_ENDPOINTS.linkProvider.path,
       body: CREDENTIALS,
     });
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'provider_links' &&
-        message.record?.prompt !== null &&
-        message.record?.prompt !== undefined,
-    );
+    await live.next((message) => {
+      const prompt = changedColumns(message)?.['prompt'];
+      return changedTo(message, 'provider_links', {}) && prompt !== null && prompt !== undefined;
+    });
     const stopped = await call(base, owner, {
       method: 'POST',
       path: API_ENDPOINTS.cancelProviderLink.path,
       body: { provider: 'xiaomi' },
     });
     expect(stopped).toMatchObject({ status: 200, body: { ok: true } });
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'provider_links' &&
-        message.record?.status === 'linked' &&
-        message.record.prompt === null,
+    await live.next((message) =>
+      changedTo(message, 'provider_links', { status: 'linked', prompt: null }),
     );
     live.socket.close();
     expect(await linkRow()).toMatchObject({ status: 'linked', prompt: null });

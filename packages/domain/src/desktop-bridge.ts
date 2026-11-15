@@ -5,12 +5,7 @@ import type {
   DesktopGoogleLink,
   DesktopGoogleOpened,
 } from './desktop-google';
-import type {
-  DesktopPhotos,
-  DesktopPhotoLibrary,
-  DESKTOP_PHOTO_HASH,
-  DESKTOP_PHOTO_HASH_REQUEST,
-} from './desktop-photos';
+import type { DesktopPhotoChannels, DesktopPhotos } from './desktop-photos';
 import type {
   NativeHubNetwork,
   NativeHubTrust,
@@ -209,15 +204,7 @@ export interface SmartEverythingDesktop {
   reportWebBundleFailure(reason: string): Promise<void>;
 }
 
-export interface DesktopInvokeChannels {
-  readonly 'desktop:photos-list': {
-    readonly request: undefined;
-    readonly response: DesktopPhotoLibrary;
-  };
-  readonly 'desktop:photos-hash': {
-    readonly request: z.infer<typeof DESKTOP_PHOTO_HASH_REQUEST>;
-    readonly response: z.infer<typeof DESKTOP_PHOTO_HASH>;
-  };
+export interface DesktopInvokeChannels extends DesktopPhotoChannels {
   readonly 'desktop:google-link-open': {
     readonly request: undefined;
     readonly response: DesktopGoogleOpened;
@@ -230,8 +217,6 @@ export interface DesktopInvokeChannels {
     readonly request: undefined;
     readonly response: undefined;
   };
-  readonly 'desktop:photos-cancel': { readonly request: string; readonly response: undefined };
-  readonly 'desktop:photos-charging': { readonly request: undefined; readonly response: boolean };
   readonly 'desktop:hub-configure-trust': {
     readonly request: NativeHubTrust;
     readonly response: undefined;

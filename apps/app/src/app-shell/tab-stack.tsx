@@ -6,7 +6,8 @@ import { useColour } from '../design/colour';
 import { isNative } from '../design/platform';
 import { screenPause } from './screen-pause';
 import { forgetRoute, isInstantRoute } from './instant-open';
-import { tabOfRouteName } from './nav-model';
+import { PageIconContext } from '../components/page-shell/page-icon';
+import { tabIconOfRouteName, tabOfRouteName } from './nav-model';
 import { leafRoutesOf, singularIdOf } from './pin-routes';
 import { TabGroupContext } from './tab-group';
 import { preloader } from './preloader';
@@ -44,6 +45,7 @@ export function TabStack({
   const focused = useIsFocused();
   const options = useStackOptions();
   const group = useRoute().name;
+  const icon = tabIconOfRouteName(group);
   useEffect(() => {
     const tab = focused ? tabOfRouteName(group) : null;
     log.debug('tab.focus_changed', { group, focused, tab });
@@ -53,28 +55,30 @@ export function TabStack({
   }, [focused, group]);
   return (
     <TabGroupContext value={group}>
-      <View className="flex-1" aria-hidden={!focused}>
-        <Stack
-          initialRouteName={initialRouteName}
-          screenLayout={screenPause}
-          screenListeners={{
-            beforeRemove: (event) => {
-              log.debug('stack.route_removing', {
-                group,
-                target: event.target ?? null,
-              });
-              forgetRoute(event.target);
-              forgetAwake(event.target);
-            },
-          }}
-          screenOptions={({ route }) =>
-            isInstantRoute(route) ? { ...options, animation: 'none' } : options
-          }
-        >
-          {children}
-          {pinScreens(group)}
-        </Stack>
-      </View>
+      <PageIconContext value={icon}>
+        <View className="flex-1" aria-hidden={!focused}>
+          <Stack
+            initialRouteName={initialRouteName}
+            screenLayout={screenPause}
+            screenListeners={{
+              beforeRemove: (event) => {
+                log.debug('stack.route_removing', {
+                  group,
+                  target: event.target ?? null,
+                });
+                forgetRoute(event.target);
+                forgetAwake(event.target);
+              },
+            }}
+            screenOptions={({ route }) =>
+              isInstantRoute(route) ? { ...options, animation: 'none' } : options
+            }
+          >
+            {children}
+            {pinScreens(group)}
+          </Stack>
+        </View>
+      </PageIconContext>
     </TabGroupContext>
   );
 }

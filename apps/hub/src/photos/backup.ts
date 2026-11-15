@@ -9,6 +9,8 @@ import {
   type BackupRegister,
   type BackupState,
   type DriveItem,
+  type PhotoFolderCopies,
+  type PhotoFolderCopiesRequest,
   type PhotoFolderOrigin,
   type PhotoOrigins,
   type PhotoOriginsRequest,
@@ -33,6 +35,7 @@ import type {
 import type { DevicesRepository } from '../store/repositories/devices';
 import { inList, type Sql } from '../store/sql';
 
+import { folderCopiesOf } from './folder-copies';
 import { PhotoFolderStore } from './folder-store';
 import { LOCAL_MONTH } from './library';
 import { PHOTOS_FOLDER } from './membership';
@@ -170,6 +173,11 @@ export class BackupService {
     return {
       origins: input.itemIds.map((itemId) => ({ itemId, folder: found.get(itemId) ?? null })),
     };
+  }
+
+  folderCopies(profileId: string, input: PhotoFolderCopiesRequest): PhotoFolderCopies {
+    const device = this.deviceOf(profileId, input.deviceId);
+    return folderCopiesOf(this.env.sql, { profileId, backupDeviceId: device.id }, input);
   }
 
   settleItem(item: DriveItem): number {

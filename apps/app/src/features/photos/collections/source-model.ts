@@ -41,6 +41,8 @@ export type SourceRow = SourceHeadRow | SourceTilesRow;
 
 export const SOURCE_ASPECT: Readonly<Record<PhotoSource, number>> = { cameras: 16 / 9, ai: 1 };
 
+export const LIBRARY_TILE_ASPECT = 3 / 2;
+
 const NOUNS: Readonly<Record<PhotoSource, readonly [string, string]>> = {
   cameras: ['clip', 'clips'],
   ai: ['image', 'images'],
@@ -86,7 +88,7 @@ export function sourceRowsOf(
   aspect: number,
 ): readonly SourceRow[] {
   if (geometry.width <= 0) return [];
-  const columns = columnsOf({ ...geometry, target: geometry.target * aspect });
+  const columns = columnsOf({ ...geometry, target: geometry.target * LIBRARY_TILE_ASPECT });
   const tileWidth = tileWidthOf(geometry, columns);
   const height = tileWidth / aspect;
   return days.flatMap((day): SourceRow[] => [

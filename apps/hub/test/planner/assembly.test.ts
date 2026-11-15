@@ -18,7 +18,7 @@ import {
   verifiedPublicUrl,
   type Booted,
 } from '../support/booted';
-import { call, openLive, temporaryDirectory } from '../support/server';
+import { call, changedColumns, changedTo, openLive, temporaryDirectory } from '../support/server';
 
 const suite = useBootedServer({ linked: false });
 
@@ -216,13 +216,10 @@ describe('google wiring', () => {
       email: 'ann@example.test',
       status: 'linked',
     });
-    const change = await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'google_accounts' &&
-        message.record?.status === 'linked',
+    const change = await live.next((message) =>
+      changedTo(message, 'google_accounts', { status: 'linked' }),
     );
-    expect(change).toMatchObject({ record: { email: 'ann@example.test' } });
+    expect(changedColumns(change)).toMatchObject({ status: 'linked' });
     live.socket.close();
   });
 });

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { CAMERA } from './support/fake-provider';
 import { useBootedServer } from './support/booted';
-import { call, openLive } from './support/server';
+import { call, changedTo, openLive } from './support/server';
 
 const suite = useBootedServer({ linked: true });
 
@@ -118,12 +118,7 @@ describe('camera media through the server', () => {
       occurredAt: '2026-10-08T10:00:00Z',
       details: {},
     });
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'recordings' &&
-        message.record?.kind === 'clip',
-    );
+    await live.next((message) => changedTo(message, 'recordings', { kind: 'clip' }));
     live.socket.close();
     const recordings = API_ENDPOINTS.listRecordings.response.parse(
       (
@@ -190,13 +185,10 @@ describe('camera media through the server', () => {
         value: { deviceId: camera, seconds: 10 },
       },
     });
-    const done = await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'commands' &&
-        message.record?.status === 'succeeded',
+    const done = await live.next((message) =>
+      changedTo(message, 'commands', { status: 'succeeded' }),
     );
-    expect(done).toMatchObject({ record: { result: { bytes: 10 } } });
+    expect(done).toMatchObject({ set: { result: { bytes: 10 } } });
     live.socket.close();
   });
 });

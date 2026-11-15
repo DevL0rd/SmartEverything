@@ -3,9 +3,10 @@ import { View } from 'react-native';
 import type { PhotoGroup } from '@smarteverything/domain';
 import { router } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
-import { Button, type ButtonProps } from '../../../components/button';
+import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Icon } from '../../../components/icon';
+import type { MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { useProfiles } from '../../../store/people';
@@ -61,88 +62,91 @@ function LinkedLine({ group }: { readonly group: PhotoGroup }): ReactNode {
 export interface HeroProps {
   readonly group: PhotoGroup;
   readonly live: boolean;
-  readonly onSheet: (sheet: PersonSheet) => void;
   readonly onReview: () => void;
 }
 
-function Slot(props: ButtonProps): ReactNode {
-  return (
-    <View className="min-w-36 grow">
-      <Button variant="outlined" {...props} />
-    </View>
-  );
+function sheetItem(
+  id: Exclude<PersonSheet, null>,
+  label: string,
+  disabled: boolean,
+  onSheet: (sheet: PersonSheet) => void,
+): MenuItem {
+  return {
+    id,
+    label,
+    icon: id,
+    disabled,
+    onPress: (): void => {
+      onSheet(id);
+    },
+  };
 }
 
-function HeroActions({ group, live, onSheet, onReview }: HeroProps): ReactNode {
+function shareItem(group: PhotoGroup, disabled: boolean): MenuItem | null {
+  if (group.kind !== 'person' || group.name === null) return null;
+  return {
+    id: 'share',
+    label: 'Share with partner',
+    icon: 'users',
+    disabled,
+    onPress: (): void => {
+      router.push(href.photosPage('sharing', { group: group.id }));
+    },
+  };
+}
+
+export function usePersonMenu(
+  group: PhotoGroup,
+  live: boolean,
+  onSheet: (sheet: PersonSheet) => void,
+): readonly MenuItem[] {
   const actions = usePeopleActions();
   const disabled = !live || actions.busy;
-  return (
-    <View className="flex-row flex-wrap gap-2">
-      {group.kind === 'person' ? (
-        <Slot
-          label="Link to a person"
-          icon="link"
-          disabled={disabled}
-          onPress={() => {
-            onSheet('link');
-          }}
-        />
-      ) : null}
-      <Slot
-        label="Merge"
-        icon="merge"
-        disabled={disabled}
-        onPress={() => {
-          onSheet('merge');
-        }}
-      />
-      <Slot label={notThisText(group.kind)} icon="circleX" disabled={disabled} onPress={onReview} />
-      <Slot
-        label={group.hidden ? 'Show' : 'Hide'}
-        icon={group.hidden ? 'eye' : 'eyeOff'}
-        disabled={disabled}
-        onPress={() => {
-          actions.update(group, { hidden: !group.hidden });
-        }}
-      />
-      {group.kind === 'person' && group.name !== null ? (
-        <Slot
-          label="Share with partner"
-          icon="users"
-          variant="tonal"
-          disabled={disabled}
-          onPress={() => {
-            router.push(href.photosPage('sharing', { group: group.id }));
-          }}
-        />
-      ) : null}
-    </View>
-  );
+  const hide: MenuItem = {
+    id: 'hide',
+    label: group.hidden ? 'Show in People and pets' : 'Hide from People and pets',
+    icon: group.hidden ? 'eye' : 'eyeOff',
+    disabled,
+    onPress: (): void => {
+      actions.update(group, { hidden: !group.hidden });
+    },
+  };
+  const items = [
+    group.kind === 'person' ? sheetItem('link', 'Link to a person', disabled, onSheet) : null,
+    sheetItem('merge', 'Merge', disabled, onSheet),
+    hide,
+    shareItem(group, disabled),
+  ];
+  return items.filter((item): item is MenuItem => item !== null);
 }
 
-export function PersonHero(props: HeroProps): ReactNode {
-  const { group, live } = props;
+export function PersonHero({ group, live, onReview }: HeroProps): ReactNode {
+  const actions = usePeopleActions();
   return (
     <Card>
-      <View className="gap-4">
-        <View className="flex-row flex-wrap items-center gap-4">
-          <FaceAvatar itemId={group.coverItemId} box={group.coverBox} kind={group.kind} size={96} />
-          <View className="min-w-56 flex-1 gap-2">
-            <NameField key={group.name ?? ''} group={group} disabled={!live} />
-            <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
-              <Text variant="footnote" className="tabular-nums font-sans-medium">
-                {photosText(group.count)}
+      <View className="flex-row flex-wrap items-center gap-4">
+        <FaceAvatar itemId={group.coverItemId} box={group.coverBox} kind={group.kind} size={96} />
+        <View className="min-w-56 flex-1 gap-2">
+          <NameField key={group.name ?? ''} group={group} disabled={!live} />
+          <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
+            <Text variant="footnote" className="tabular-nums font-sans-medium">
+              {photosText(group.count)}
+            </Text>
+            <LinkedLine group={group} />
+            {group.hidden ? (
+              <Text variant="footnote" tone="variant">
+                Hidden from People and pets
               </Text>
-              <LinkedLine group={group} />
-              {group.hidden ? (
-                <Text variant="footnote" tone="variant">
-                  Hidden from People and pets
-                </Text>
-              ) : null}
-            </View>
+            ) : null}
           </View>
         </View>
-        <HeroActions {...props} />
+        <Button
+          label={notThisText(group.kind)}
+          icon="circleX"
+          variant="outlined"
+          disabled={!live || actions.busy}
+          onPress={onReview}
+        />
       </View>
     </Card>
   );

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { opusCodec } from '../src/assistant-voice/audio';
 import type { RemoteEar, RemoteEars } from '../src/listening/remote-ears-port';
 import type { MicrophoneHandlers, OpenMicrophone } from '../src/talk/camera-microphone';
-import { CameraOfflineError } from '../src/cameras/camera-service';
+import { CameraOfflineError, UnknownStreamError } from '../src/cameras/camera-service';
 import { CameraEar } from '../src/wake-name/camera-ear';
 import { FakeClock } from './support/fake-clock';
 import { captureLogs, type CapturedLogs } from './support/logs';
@@ -82,39 +82,43 @@ describe('camera audio stall', () => {
 });
 
 describe('camera ear of a camera that is down', () => {
-  it('stops asking while the camera is down and listens again the moment it is told the camera recovered', async () => {
-    const clock = new FakeClock(START);
-    let down = true;
-    let asked = 0;
-    const ear = new CameraEar('living', {
-      ears: inertEars,
-      microphones: {
-        open: (id): Promise<OpenMicrophone> => {
-          asked += 1;
-          return down
-            ? Promise.reject(new CameraOfflineError(id))
-            : Promise.resolve({ stop: () => undefined });
+  it.each([
+    ['is offline', (id: string): Error => new CameraOfflineError(id)],
+    ['has no stream yet', (id: string): Error => new UnknownStreamError(id)],
+  ])(
+    'stops asking while the camera %s and listens again the moment it is told the camera is available',
+    async (_case, refusal) => {
+      const clock = new FakeClock(START);
+      let down = true;
+      let asked = 0;
+      const ear = new CameraEar('living', {
+        ears: inertEars,
+        microphones: {
+          open: (id): Promise<OpenMicrophone> => {
+            asked += 1;
+            return down ? Promise.reject(refusal(id)) : Promise.resolve({ stop: () => undefined });
+          },
         },
-      },
-      sensitivity: (): WakeSensitivity => 'standard',
-      busy: (): boolean => false,
-      clock,
-      log: new Logger('hub.wake-name'),
-    });
-    await ear.open();
-    clock.advanceTo('2026-10-17T17:30:00.000Z');
-    expect(asked).toBe(1);
-    expect(payloads('wake.listen_failed')).toEqual([]);
-    expect(payloads('wake.waiting_for_camera')).toHaveLength(1);
-    down = false;
-    ear.resume();
-    await Promise.resolve();
-    expect(asked).toBe(2);
-    expect(payloads('wake.resumed')).toHaveLength(1);
-    ear.resume();
-    expect(asked).toBe(2);
-    await ear.close();
-  });
+        sensitivity: (): WakeSensitivity => 'standard',
+        busy: (): boolean => false,
+        clock,
+        log: new Logger('hub.wake-name'),
+      });
+      await ear.open();
+      clock.advanceTo('2026-10-17T17:30:00.000Z');
+      expect(asked).toBe(1);
+      expect(payloads('wake.listen_failed')).toEqual([]);
+      expect(payloads('wake.waiting_for_camera')).toHaveLength(1);
+      down = false;
+      ear.resume();
+      await Promise.resolve();
+      expect(asked).toBe(2);
+      expect(payloads('wake.resumed')).toHaveLength(1);
+      ear.resume();
+      expect(asked).toBe(2);
+      await ear.close();
+    },
+  );
 });
 
 describe('camera ear feeding a remote ear', () => {

@@ -63,6 +63,7 @@ function AutomationRow({ card }: { readonly card: BeforeBedProps }): ReactNode {
         subtitle="Set one up to dim lights or close blinds"
         icon="automations"
         compact={card.compact}
+        disabled={card.offline}
         href={href.automationNew()}
       />
     );
@@ -141,7 +142,7 @@ function LeadRows({ card }: { readonly card: BeforeBedProps }): ReactNode {
 
 export function BeforeBedCard(card: BeforeBedProps): ReactNode {
   const { bedtime, compact, offline, onSave } = card;
-  const off = !bedtime.enabled;
+  const off = !bedtime.enabled || bedtime.schedule.length === 0;
   return (
     <Card title="Before bed" icon="breath">
       <QuietAccess />

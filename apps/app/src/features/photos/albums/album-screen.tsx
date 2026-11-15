@@ -75,6 +75,26 @@ interface AlbumView {
   readonly onOpen: (opened: AlbumOpened) => void;
 }
 
+function AlbumWaiting({ pages }: { readonly pages: AlbumView['pages'] }): ReactNode {
+  const live = useSyncStatus().status === 'live';
+  if (!pages.isError) return <Skeleton shape="block" className="h-45 w-full" />;
+  return live ? (
+    <ErrorState
+      error={pages.error}
+      page
+      retry={() => {
+        background(pages.refetch(), 'photos.album_refetch_failed');
+      }}
+    />
+  ) : (
+    <EmptyState
+      icon="wifiOff"
+      title="The hub is offline"
+      body="This album opens when the hub reconnects. Its photos stay on the hub as they are."
+    />
+  );
+}
+
 function AlbumBody({
   album,
   view,
@@ -85,25 +105,7 @@ function AlbumBody({
   readonly onEdit: () => void;
 }): ReactNode {
   const { pages, loaded, share } = view;
-  const live = useSyncStatus().status === 'live';
-  if (loaded === null) {
-    if (!pages.isError) return <Skeleton shape="block" className="h-45 w-full" />;
-    return live ? (
-      <ErrorState
-        error={pages.error}
-        page
-        retry={() => {
-          background(pages.refetch(), 'photos.album_refetch_failed');
-        }}
-      />
-    ) : (
-      <EmptyState
-        icon="wifiOff"
-        title="The hub is offline"
-        body="This album opens when the hub reconnects. Its photos stay on the hub as they are."
-      />
-    );
-  }
+  if (loaded === null) return <AlbumWaiting pages={pages} />;
   const header = (
     <View className="gap-3 px-gutter pb-2">
       {album.itemCount === 0 ? null : <AlbumStatsCard album={album} loaded={loaded} />}
@@ -150,7 +152,11 @@ export function deleteBody(memberNames: readonly string[]): string {
   return `${namesText(memberNames)} can no longer open it. The photos they added stay in their own libraries, and yours stay in your library.`;
 }
 
-function removeAlbum(album: DriveAlbum, mutation: MutationState, memberNames: readonly string[]): void {
+function removeAlbum(
+  album: DriveAlbum,
+  mutation: MutationState,
+  memberNames: readonly string[],
+): void {
   background(
     confirm({
       title: `Delete ${album.title}?`,
@@ -220,6 +226,10 @@ function photosText(total: number): string {
   return total === 1 ? '1 item' : `${count(total)} items`;
 }
 
+function joinedContributor(share: AlbumShare): boolean {
+  return share.role === 'contributor' && !share.invited;
+}
+
 function useRemoveExtra(
   album: DriveAlbum,
   share: AlbumShare,
@@ -230,17 +240,19 @@ function useRemoveExtra(
   const mutation = useMutationState();
   const client = useQueryClient();
   const owner = ownsAlbum(album, me);
-  if (!owner && (share.role !== 'contributor' || share.invited)) return [];
-  const ids = removableIds(album, owner, me, loaded?.items ?? [], [...controls.selection.ids]);
-  if (ids === null && album.kind === 'smart') return [];
+  if (album.kind === 'smart' || (!owner && !joinedContributor(share))) return [];
+  const ids = removableIds(album, { owner, me, items: loaded?.items ?? [] }, [
+    ...controls.selection.ids,
+  ]);
+  const usable = ids !== null && ids.length > 0;
   return [
     {
       id: 'album-remove',
       label: 'Remove from album',
       short: 'Remove',
       icon: 'minus',
-      disabled: ids === null || ids.length === 0 || mutation.busy,
-      onPress: (chosen) => {
+      disabled: !usable || mutation.busy,
+      onPress: (chosen): void => {
         mutation.run(() => removeFromAlbum(album, chosen), {
           failure: `Not everything left ${album.title}`,
           label: 'photos.album_remove',
@@ -265,6 +277,18 @@ function useOverflow(
   return compact ? albumMenuOf(album, share, onOpen, leaving.leave) : [];
 }
 
+function useAlbumView(album: DriveAlbum): AlbumView & { readonly opened: AlbumOpened } {
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
+  const pages = usePhotoAlbumItems(album.id);
+  const loaded = loadedItems(pages);
+  const tiles = loaded === null ? [] : tilesOfItems(loaded.items);
+  const controls = useMediaSelection(tiles.map((tile) => tile.id));
+  const media = useMediaActions();
+  const share = useAlbumShare(album);
+  const [opened, setOpened] = useState<AlbumOpened>(null);
+  return { pages, loaded, tiles, controls, media, share, compact, opened, onOpen: setOpened };
+}
+
 function AlbumPage({
   album,
   actions,
@@ -276,17 +300,11 @@ function AlbumPage({
   readonly onEdit: () => void;
   readonly children: ReactNode;
 }): ReactNode {
-  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
-  const pages = usePhotoAlbumItems(album.id);
-  const loaded = loadedItems(pages);
-  const tiles = loaded === null ? [] : tilesOfItems(loaded.items);
-  const controls = useMediaSelection(tiles.map((tile) => tile.id));
-  const media = useMediaActions();
-  const share = useAlbumShare(album);
-  const [opened, setOpened] = useState<AlbumOpened>(null);
-  const extras = useRemoveExtra(album, share, loaded, controls);
+  const view = useAlbumView(album);
+  const { compact, tiles, controls, media, share } = view;
+  const extras = useRemoveExtra(album, share, view.loaded, controls);
   const frame = selectionFrameOf(compact, { controls, tiles, media, extras });
-  const overflow = useOverflow(album, share, compact, setOpened);
+  const overflow = useOverflow(album, share, compact, view.onOpen);
   const active = controls.selection.active;
   return (
     <PhotosFrame
@@ -299,17 +317,13 @@ function AlbumPage({
       selection={frame.selection}
       footer={frame.footer}
     >
-      <AlbumBody
-        album={album}
-        view={{ pages, loaded, tiles, controls, media, share, compact, onOpen: setOpened }}
-        onEdit={onEdit}
-      />
+      <AlbumBody album={album} view={view} onEdit={onEdit} />
       <AlbumSheets
         album={album}
         share={share}
-        opened={opened}
+        opened={view.opened}
         onClose={() => {
-          setOpened(null);
+          view.onOpen(null);
         }}
       />
       {children}

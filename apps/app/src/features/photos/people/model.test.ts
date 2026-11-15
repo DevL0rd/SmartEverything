@@ -13,6 +13,7 @@ import {
   groupingTextOf,
   faceProgressOf,
   groupLabelOf,
+  groupCaptionOf,
   groupTitleOf,
   mergeCandidatesOf,
   mergeTargetsOf,
@@ -81,7 +82,6 @@ describe('the people page sections', () => {
   it('puts named groups first, then the largest, and keeps one-face groups unsorted', () => {
     const sections = peopleSectionsOf(all, null);
     expect(sections.people).toEqual([bo, anna, big]);
-    expect(sections.strip).toEqual([bo, anna]);
     expect(sections.pets).toEqual([rex, tom]);
     expect(sections.unsorted).toEqual([once, stray]);
     expect(sections.hidden).toEqual([hidden]);
@@ -102,12 +102,14 @@ describe('the people page sections', () => {
   });
 
   it('names unnamed groups so every tile reads', () => {
-    expect(groupTitleOf(group())).toBe('Add a name');
+    expect(groupTitleOf(group())).toBe('Unnamed person');
+    expect(groupCaptionOf(group())).toBe('Add a name');
+    expect(groupCaptionOf(rex)).toBe('Rex');
     expect(groupTitleOf(rex)).toBe('Rex');
     expect(groupTitleOf(tom)).toBe('Cat');
     expect(groupLabelOf(group({ count: 1 }))).toBe('Unnamed person, 1 photo');
     expect(groupLabelOf(bo)).toBe('Bo, 40 photos');
-    expect(peopleSubtitleOf({ groups: all, mergeSuggestions: [] })).toBe('4 people · 3 pets');
+    expect(peopleSubtitleOf({ groups: all, mergeSuggestions: [] })).toBe('3 people · 2 pets');
     expect(peopleSubtitleOf({ groups: [], mergeSuggestions: [] })).toBeNull();
   });
 

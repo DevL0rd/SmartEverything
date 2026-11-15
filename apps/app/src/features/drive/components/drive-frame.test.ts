@@ -384,14 +384,14 @@ describe('drive frame', () => {
     expect(seen.frame?.sections?.iconRail).toBe(true);
   });
 
-  it('keeps the phone header free of the pill and refresh, with the sections in the pull-up', () => {
+  it('keeps the phone header free of the pill and refresh, with the sections in the rail', () => {
     seen.header = 'large';
     render();
     const frame = seen.frame;
     expect(seen.status).toBeNull();
     expect(frame?.actions).toEqual([]);
     expect(frame?.onRefresh).toBeTypeOf('function');
-    expect(frame?.sections?.phoneTabs).toBeUndefined();
+    expect(frame?.sections?.groups.length).toBeGreaterThan(0);
   });
 
   it('shows the pill only while a folder is placed and links it to Computers', () => {

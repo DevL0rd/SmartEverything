@@ -16,6 +16,7 @@ import {
   deletePlannerCollection,
   deletePlannerItem,
   movePlannerItem,
+  reopenPlannerItem,
   skipPlannerItem,
   updatePlannerAlarm,
   updatePlannerCollection,
@@ -51,6 +52,7 @@ export interface ItemWrites {
   readonly deleteItem: (item: PlannerItemRow, scope?: PlannerDeleteScope) => Promise<void>;
   readonly completeItem: (itemId: string, body?: CompleteBody) => Promise<PlannerOccurrenceRow>;
   readonly skipItem: (itemId: string, key?: string) => Promise<PlannerOccurrenceRow>;
+  readonly reopenItem: (item: PlannerItemRow, key: string) => Promise<void>;
   readonly moveItem: (
     itemId: string,
     body: Body<'movePlannerItem'>,
@@ -108,6 +110,21 @@ export function itemWith(item: PlannerItemRow, change: ItemChange): PlannerItemR
   return { ...item, ...change.changes };
 }
 
+function reopenWrite(store: EntityStore, who: string | undefined): ItemWrites['reopenItem'] {
+  return (item, key) =>
+    writeOptimistically(
+      store,
+      'planner_item.reopen',
+      [
+        occurrenceEdit(store.get(), item.id, key, null),
+        ...(item.rrule === null && item.status === 'done'
+          ? [itemEdit(item, { ...item, status: 'open' })]
+          : []),
+      ],
+      () => reopenPlannerItem(who, item.id, key),
+    );
+}
+
 function itemWrites(store: EntityStore, who: string | undefined): ItemWrites {
   return {
     createItem: (body) => createPlannerItem(who, body),
@@ -147,6 +164,7 @@ function itemWrites(store: EntityStore, who: string | undefined): ItemWrites {
         () => skipPlannerItem(who, itemId, key),
       );
     },
+    reopenItem: reopenWrite(store, who),
     moveItem: (itemId, body) => movePlannerItem(who, itemId, body),
   };
 }

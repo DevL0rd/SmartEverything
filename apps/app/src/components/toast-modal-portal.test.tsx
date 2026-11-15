@@ -90,6 +90,10 @@ vi.mock('react-native-gesture-handler', () => ({
   GestureHandlerRootView: ({ children }: { readonly children: ReactNode }): ReactNode => children,
 }));
 vi.mock('./toasts', () => ({ ToastLayer: (): null => null }));
+vi.mock('../design/theme-scope', () => ({
+  ThemeScope: ({ children }: { readonly children: ReactNode }): ReactNode => children,
+  useScopedTheme: (): null => null,
+}));
 
 let doc: FakeDocument;
 

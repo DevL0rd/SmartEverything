@@ -3,6 +3,7 @@ import { COMMAND_ROW, type CommandRow, type JsonValue } from '@smarteverything/d
 import { EntityStore } from '../../../store/entity-store';
 import { failureText, sendPlan, type PlanRun, type PlanStep } from './send-plan';
 import { washerDevice } from './washer-fixture';
+import { wired } from '../../../test-support/live-wire';
 
 const NOW = '2026-10-17T10:00:00.000Z';
 const EXPIRES = '2026-10-17T10:00:30.000Z';
@@ -56,16 +57,18 @@ function harness(outcomes: Readonly<Record<string, CommandRow['status'] | 'refus
       }
       const row = rowFor(command, outcome);
       sequence += 1;
-      store.apply([
-        {
-          seq: sequence,
-          type: 'change',
-          table: 'commands',
-          operation: 'UPDATE',
-          record: row,
-          oldRecord: null,
-        },
-      ]);
+      store.apply(
+        wired([
+          {
+            seq: sequence,
+            type: 'change',
+            table: 'commands',
+            operation: 'UPDATE',
+            record: row,
+            oldRecord: null,
+          },
+        ]),
+      );
       return Promise.resolve({ sent: true as const, row });
     },
   };

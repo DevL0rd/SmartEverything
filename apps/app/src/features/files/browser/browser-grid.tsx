@@ -10,18 +10,27 @@ import { OverflowButton } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
+import { useSizeClass } from '../../../design/size-class';
 import { shortDate } from '../../../format/time';
 import { joinParts } from '../../../format/text';
 import { captionOf, markListOf } from '../source/node';
 import type { FileNode } from '../source/types';
 import type { FileBrowserHandle } from './browser-types';
-import { HitLine, MoreLoading, useNodeDrag, type NodeViewProps } from './browser-list';
+import {
+  HitLine,
+  MoreLoading,
+  detailsFocusOf,
+  useNodeDrag,
+  type NodeViewProps,
+} from './browser-list';
 import { useRowMenu } from './context-menu';
 import type { DragSession } from './drop-zone';
 import { NodeGlyph, NodeThumb, thumbWanted } from './node-glyph';
 import { useRevealer } from './use-browser-keys';
 
-const TILE_MIN_WIDTH = 240;
+const TILE_MIN_WIDTH = 160;
+
+const COMPACT_TILE_MIN_WIDTH = 128;
 
 const ALL_COLUMNS = Number.MAX_SAFE_INTEGER;
 
@@ -33,10 +42,10 @@ function tileCaption(node: FileNode): string {
 
 function TileArt<O>({ node, browser }: Omit<NodeViewProps<O>, 'session'>): ReactNode {
   if (thumbWanted(node, browser.abilities)) {
-    return <NodeThumb node={node} source={browser.source} className="h-28 rounded-md" />;
+    return <NodeThumb node={node} source={browser.source} className="h-28" />;
   }
   return (
-    <View className="h-28 items-center justify-center rounded-md bg-surface-2">
+    <View className="h-28 items-center justify-center bg-surface-2">
       <NodeGlyph node={node} source={browser.source} well="l" />
     </View>
   );
@@ -65,7 +74,7 @@ function TileText<O>({ node, browser }: Omit<NodeViewProps<O>, 'session'>): Reac
   const hit = browser.filter.hits.get(node.key);
   return (
     <>
-      <View className="min-w-0 flex-row items-center gap-1 px-1">
+      <View className="min-w-0 flex-row items-center gap-1 px-3">
         <Text variant="callout" numberOfLines={1} className="min-w-0 shrink">
           <Highlighted text={node.name} range={browser.filter.highlight(node.name)} />
         </Text>
@@ -73,7 +82,7 @@ function TileText<O>({ node, browser }: Omit<NodeViewProps<O>, 'session'>): Reac
           <Icon key={mark.key} name={mark.icon} size={16} tone={mark.tone} />
         ))}
       </View>
-      <View className="px-1">
+      <View className="px-3">
         {hit === undefined ? (
           <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
             {tileCaption(node)}
@@ -92,15 +101,17 @@ function Tile<O>(props: NodeViewProps<O>): ReactNode {
   const { ref, hovering } = useNodeDrag(props);
   const selecting = browser.picked.length > 0;
   const selected = browser.state.selection.keys.has(node.key);
+  const focused = detailsFocusOf(browser, node);
   return (
     <View
       ref={ref}
       collapsable={false}
       className={cn(
-        'h-46 flex-row rounded-lg border p-2',
+        'h-46 overflow-hidden rounded-lg border',
         selected || hovering
           ? 'border-primary bg-primary-container'
           : 'border-outline-variant bg-surface-1',
+        focused && !selected && !hovering && 'border-primary bg-primary/10',
       )}
     >
       <Interactive
@@ -113,14 +124,20 @@ function Tile<O>(props: NodeViewProps<O>): ReactNode {
           browser.commands.pick(node);
         }}
         onContextMenu={menu.context.onContextMenu}
+        focusInset
         className="min-w-0 flex-1 gap-2"
-        layerClassName="rounded-md"
       >
         <TileArt node={node} browser={browser} />
         <TileMark selecting={selecting} selected={selected} />
         <TileText node={node} browser={browser} />
       </Interactive>
-      <OverflowButton items={menu.items} label={`Actions for ${node.name}`} />
+      <View className="absolute right-1 top-1 rounded-full bg-surface-1/90">
+        <OverflowButton
+          items={menu.items}
+          label={`Actions for ${node.name}`}
+          options={menu.options}
+        />
+      </View>
       {menu.host}
     </View>
   );
@@ -139,7 +156,7 @@ function GridRow<O>({
 }): ReactNode {
   const empty = Array.from({ length: columns - row.length }, (_, slot) => `empty-${String(slot)}`);
   return (
-    <View className="flex-row gap-2 pb-2">
+    <View className="flex-row gap-2 px-2 pb-2">
       {row.map((node) => (
         <View key={node.key} className="min-w-0 flex-1">
           <Tile node={node} browser={browser} session={session} />
@@ -150,6 +167,12 @@ function GridRow<O>({
       ))}
     </View>
   );
+}
+
+function useTileColumns(width: number): number {
+  const compact = useSizeClass().width === 'compact';
+  const minWidth = compact ? COMPACT_TILE_MIN_WIDTH : TILE_MIN_WIDTH;
+  return useGridLayout(width, minWidth, 'tight', ALL_COLUMNS).columns;
 }
 
 export interface BrowserGridProps<O> {
@@ -166,16 +189,13 @@ export function BrowserGrid<O>({
   footer,
 }: BrowserGridProps<O>): ReactNode {
   const measured = useMeasuredWidth();
-  const { columns } = useGridLayout(measured.width, TILE_MIN_WIDTH, 'tight', ALL_COLUMNS);
+  const columns = useTileColumns(measured.width);
   const rows = rowsOfCards(browser.visible, columns);
   const list = useRef<FlashListRef<readonly FileNode<O>[]>>(null);
   const onScroll = useRevealer(browser.reveal, list, columns, GRID_ROW_HEIGHT);
   const { listing } = browser;
   return (
-    <View
-      onLayout={measured.onLayout}
-      className={cn('min-h-0 flex-1 p-2', (listing.stale || browser.offline) && 'opacity-80')}
-    >
+    <View onLayout={measured.onLayout} className="min-h-0 flex-1">
       {measured.width === 0 ? null : (
         <FlashList
           ref={list}
@@ -188,7 +208,13 @@ export function BrowserGrid<O>({
           onEndReached={() => {
             listing.more?.();
           }}
-          ListHeaderComponent={<>{header}</>}
+          ListHeaderComponent={
+            header === null ? (
+              <View className="h-2" />
+            ) : (
+              <View className="pb-grid-gap">{header}</View>
+            )
+          }
           ListFooterComponent={
             <>
               <MoreLoading more={listing.more !== null} />

@@ -162,9 +162,11 @@ export class CompletionWatcher {
 
   handle(signal: SignalInput): readonly PlannerOccurrenceRow[] {
     if (signal.source === PLANNER_SIGNAL_SOURCE) return [];
+    const candidates = this.candidates(signal);
+    if (candidates.length === 0) return [];
     const day = this.dayOf(Date.parse(signal.at));
     const completed = this.options.store.write(() =>
-      this.candidates(signal).flatMap((item) => this.complete(item, signal, day)),
+      candidates.flatMap((item) => this.complete(item, signal, day)),
     );
     for (const entry of completed) this.announce(entry);
     return completed.map((entry) => entry.row);
@@ -181,7 +183,7 @@ export class CompletionWatcher {
     const owner = ownerOf(signal);
     const ids = owner === null ? profiles.list().map((profile) => profile.id) : [owner];
     return ids
-      .flatMap((id) => plannerItems.list(id, { statuses: ['open'] }))
+      .flatMap((id) => plannerItems.list(id, { statuses: ['open'], completion: 'signal' }))
       .filter((item) => {
         const rule = ruleOf(item);
         return (

@@ -9,7 +9,6 @@ import { count } from '../../../format/number';
 import { compareText, sentenceCase } from '../../../format/text';
 
 export interface PeopleSections {
-  readonly strip: readonly PhotoGroup[];
   readonly people: readonly PhotoGroup[];
   readonly pets: readonly PhotoGroup[];
   readonly unsorted: readonly PhotoGroup[];
@@ -43,7 +42,6 @@ export function peopleSectionsOf(
   const shown = sorted(groups.filter((group) => !group.hidden));
   const sortedOut = shown.filter((group) => !isUnsorted(group));
   return {
-    strip: sortedOut.filter((group) => group.kind === 'person' && group.name !== null),
     people: sortedOut.filter((group) => group.kind === 'person'),
     pets: sortedOut.filter(
       (group) => group.kind === 'pet' && (species === null || group.species === species),
@@ -69,7 +67,11 @@ export function speciesChipsOf(groups: readonly PhotoGroup[]): readonly SpeciesC
 export function groupTitleOf(group: Pick<PhotoGroup, 'name' | 'kind' | 'species'>): string {
   if (group.name !== null) return group.name;
   if (group.kind === 'pet') return sentenceCase(group.species ?? 'pet');
-  return 'Add a name';
+  return 'Unnamed person';
+}
+
+export function groupCaptionOf(group: Pick<PhotoGroup, 'name' | 'kind' | 'species'>): string {
+  return group.name === null && group.kind === 'person' ? 'Add a name' : groupTitleOf(group);
 }
 
 export function photosText(total: number): string {
@@ -77,8 +79,7 @@ export function photosText(total: number): string {
 }
 
 export function groupLabelOf(group: PhotoGroup): string {
-  const title = group.name ?? (group.kind === 'pet' ? groupTitleOf(group) : 'Unnamed person');
-  return `${title}, ${photosText(group.count)}`;
+  return `${groupTitleOf(group)}, ${photosText(group.count)}`;
 }
 
 export interface FaceCrop {
@@ -233,8 +234,9 @@ export function nameDraftOf(raw: string): string | null {
 
 export function peopleSubtitleOf(people: PhotoPeople | undefined): string | null {
   if (people === undefined) return null;
-  const persons = people.groups.filter((group) => group.kind === 'person' && !group.hidden).length;
-  const pets = people.groups.filter((group) => group.kind === 'pet' && !group.hidden).length;
+  const shown = people.groups.filter((group) => !group.hidden && !isUnsorted(group));
+  const persons = shown.filter((group) => group.kind === 'person').length;
+  const pets = shown.filter((group) => group.kind === 'pet').length;
   const parts = [
     persons === 0 ? null : `${count(persons)} ${persons === 1 ? 'person' : 'people'}`,
     pets === 0 ? null : `${count(pets)} ${pets === 1 ? 'pet' : 'pets'}`,

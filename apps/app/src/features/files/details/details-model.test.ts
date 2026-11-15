@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { IconName } from '../../../components/icon-glyphs';
 import { bytes } from '../../../format/number';
 import { NO_ABILITIES, abilitiesOf, offlineOf, readOnlyOf } from '../source/abilities';
 import { COMPUTER_FULL } from '../source/fixture-seeds';
@@ -26,11 +27,11 @@ function node(key: string, name: string, over: Partial<FixtureEntry> = {}): Fixt
 
 const PHOTO = node('photo', 'Cat.jpg', { mime: 'image/jpeg', size: 2048 });
 const FOLDER = node('kitchen', 'Kitchen', { kind: 'folder' });
-const DRIVE_TABS = [
-  { id: 'comments', label: 'Comments' },
-  { id: 'versions', label: 'Versions' },
-  { id: 'activity', label: 'Activity' },
-  { id: 'sharing', label: 'Sharing' },
+const DRIVE_TABS: readonly { readonly id: string; readonly label: string; readonly icon: IconName }[] = [
+  { id: 'comments', label: 'Comments', icon: 'messageCircle' },
+  { id: 'versions', label: 'Versions', icon: 'layers' },
+  { id: 'activity', label: 'Activity', icon: 'activity' },
+  { id: 'sharing', label: 'Sharing', icon: 'users' },
 ];
 const DRIVE = abilitiesOf(['details', 'star', 'attach', 'download', 'trash'], {
   quickLook: ['image', 'video', 'audio', 'document', 'archive', 'other'],
@@ -61,7 +62,7 @@ describe('tab set per abilities', () => {
 
   it('shows no tabs where the source has no details, and never doubles a built-in tab', () => {
     expect(tabsOf(PHOTO, NO_ABILITIES, DRIVE_TABS)).toEqual([]);
-    const doubled = [{ id: 'info', label: 'Other info' }, ...DRIVE_TABS.slice(0, 1)];
+    const doubled = [{ id: 'info', label: 'Other info', icon: 'info' as const }, ...DRIVE_TABS.slice(0, 1)];
     expect(keysOf(tabsOf(PHOTO, DRIVE, doubled))).toEqual(['preview', 'info', 'comments']);
   });
 

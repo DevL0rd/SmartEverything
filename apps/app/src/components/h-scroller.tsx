@@ -169,6 +169,7 @@ interface HScrollerProps {
   readonly fill?: boolean;
   readonly snapTo?: number;
   readonly fade?: boolean;
+  readonly inset?: boolean;
   readonly arrows?: boolean;
   readonly scrollStep?: number;
   readonly reveal?: RevealRange | null;
@@ -203,6 +204,7 @@ export function HScroller({
   fill = false,
   snapTo,
   fade,
+  inset = false,
   reveal = null,
   ...appearance
 }: HScrollerProps): ReactNode {
@@ -229,7 +231,7 @@ export function HScroller({
         {...snapPropsOf(snapTo)}
         scrollEventThrottle={64}
         className={cn(scroller, snapClassOf(snapTo), fadeClassOf(fade, edges))}
-        contentContainerClassName={content}
+        contentContainerClassName={cn(content, inset && 'px-4')}
       >
         <Snapped snapTo={snapTo}>{children}</Snapped>
       </ScrollView>

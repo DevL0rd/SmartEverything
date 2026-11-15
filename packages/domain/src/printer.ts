@@ -149,7 +149,7 @@ export const PRINTER_DETAILS = z.object({
   lastSeen: z.iso.datetime({ offset: true }).nullable(),
   gapOpen: z.boolean(),
   wifiSsid: z.string().nullable(),
-  uptimeSeconds: z.number().nullable(),
+  bootedAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 export type PrinterDetails = z.infer<typeof PRINTER_DETAILS>;

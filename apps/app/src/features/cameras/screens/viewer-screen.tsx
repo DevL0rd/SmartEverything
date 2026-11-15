@@ -173,7 +173,6 @@ function ViewerContent(props: ViewerContentProps): ReactNode {
               ),
             })}
         header={header}
-        shellSearch
       />
     </View>
   );

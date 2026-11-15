@@ -24,25 +24,22 @@ function useLinkSteps(calendar: ViewerCalendar): LinkSteps {
   const [busy, setBusy] = useState<Busy>(null);
   const id = calendar.row.id;
   const name = calendar.row.name;
+  const confirmed = async (step: Exclude<Busy, null>): Promise<boolean> => {
+    if (step !== 'reset') return true;
+    return confirm({
+      title: 'Make a new feed address?',
+      body: 'Apps that use the current address stop getting updates until they get the new one.',
+      confirmLabel: 'Reset address',
+    });
+  };
   const work = async (step: Exclude<Busy, null>): Promise<void> => {
-    if (step === 'stop') {
-      await feeds.unpublish(id);
-      return;
-    }
-    if (step === 'reset') {
-      const yes = await confirm({
-        title: 'Make a new feed address?',
-        body: 'Apps that use the current address stop getting updates until they get the new one.',
-        confirmLabel: 'Reset address',
-      });
-      if (!yes) return;
-    }
-    await feeds.publish(id);
+    if (!(await confirmed(step))) return;
+    setBusy(step);
+    await (step === 'stop' ? feeds.unpublish(id) : feeds.publish(id));
   };
   return {
     busy,
     run: (step): void => {
-      setBusy(step);
       work(step)
         .catch((error: unknown) => {
           notify({

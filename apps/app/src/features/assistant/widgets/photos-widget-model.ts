@@ -82,8 +82,7 @@ export function stripLayout(
   const first = tiles[0];
   if (width <= 0 || first === undefined) return NOTHING;
   if (total === 1) {
-    const single = Math.min(width, SINGLE_HEIGHT * first.aspect);
-    return { ...NOTHING, cells: [{ tile: first, width: single }], height: SINGLE_HEIGHT };
+    return { ...NOTHING, cells: [{ tile: first, width }], height: SINGLE_HEIGHT };
   }
   const columns = Math.max(1, Math.floor((width + STRIP_GAP) / (TILE_MIN + STRIP_GAP)));
   const slots = total > columns && columns > 1 ? columns - 1 : columns;

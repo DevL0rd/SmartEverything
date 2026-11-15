@@ -29,6 +29,7 @@ vi.mock('./instant-open', () => ({
 }));
 vi.mock('./nav-model', () => ({
   tabOfRouteName: (name: string): string | null => (name === '(devices)' ? 'devices' : null),
+  tabIconOfRouteName: (): null => null,
 }));
 vi.mock('./screen-pause', () => ({ screenPause: (): null => null }));
 vi.mock('./preloader', () => ({

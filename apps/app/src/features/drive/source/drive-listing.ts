@@ -11,6 +11,8 @@ import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import {
   filterWordsOf,
+  itemsLine,
+  kindTextOf,
   matchRangesOf,
   plainSnippetOf,
   type FileCrumb,
@@ -21,7 +23,7 @@ import {
   type SearchMatch,
   type SearchQuery,
 } from '../../files';
-import { ENTRY_LABEL, entryLineOf, isContentItem, isEntryItem } from '../model/item-content';
+import { ENTRY_LABEL, entryLineOf, isEntryItem } from '../model/item-content';
 import { foldersOf, wasInText } from '../trash/trash-model';
 import {
   type DriveNode,
@@ -143,8 +145,14 @@ const KIND_TEXT: Readonly<Record<DriveNode['kind'], string>> = {
 };
 
 function kindValueOf(node: DriveNode, item: DriveItem): string {
-  if (isEntryItem(item)) return ENTRY_LABEL[item.kind];
-  return joinParts([KIND_TEXT[node.kind], isContentItem(item) ? item.mime : null]);
+  return isEntryItem(item) ? ENTRY_LABEL[item.kind] : kindTextOf(node);
+}
+
+function sizeRowsOf(node: DriveNode): readonly InfoRow[] {
+  if (node.size === null) return [];
+  const items =
+    node.kind === 'folder' && node.childCount !== null ? itemsLine(node.childCount) : null;
+  return [{ key: 'size', label: 'Size', value: joinParts([bytes(node.size), items]) }];
 }
 
 export function infoRowsOf(
@@ -159,7 +167,7 @@ export function infoRowsOf(
   if (origin.kind === 'trash') {
     return [
       { key: 'kind', label: 'Kind', value: KIND_TEXT[node.kind] },
-      ...(node.size === null ? [] : [{ key: 'size', label: 'Size', value: bytes(node.size) }]),
+      ...sizeRowsOf(node),
       {
         key: 'was',
         label: 'Was in',
@@ -184,7 +192,7 @@ export function infoRowsOf(
     ...(item.kind === 'special'
       ? [{ key: 'what', label: 'What it is', value: entryLineOf(item) }]
       : []),
-    ...(node.size === null ? [] : [{ key: 'size', label: 'Size', value: bytes(node.size) }]),
+    ...sizeRowsOf(node),
     { key: 'modified', label: 'Modified', value: facts.when(item.modifiedAt) },
     { key: 'added', label: 'Added', value: joinParts([facts.when(item.addedAt), by]) },
     ...(parent === '' ? [] : [{ key: 'where', label: 'Where', value: parent }]),

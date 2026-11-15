@@ -74,7 +74,7 @@ function WeekSection({
   const calendars = usePlannerCollections(person);
   return (
     <View className={wide ? 'flex-row items-start gap-4' : 'gap-section-gap'}>
-      <View className={wide ? 'min-w-0 flex-1' : ''}>
+      <View className={wide ? 'min-w-0 flex-1 pt-9' : ''}>
         <BookingWeekCard week={bookingWeekOf(items, days, dayKeyOf)} next={upcoming[0] ?? null} />
       </View>
       <View className={wide ? 'min-w-0 flex-1' : ''}>

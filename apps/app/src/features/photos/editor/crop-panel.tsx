@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { Button } from '../../../components/button';
+import { FilterChip } from '../../../components/filter-chip';
+import { HScroller } from '../../../components/h-scroller';
 import { Slider } from '../../../components/slider';
 import { ASPECTS, ASPECT_LABELS, presetBox, ratioOf, type Aspect } from './crop-model';
-import { EditorChip } from './editor-chip';
 import {
   cropped,
   geometryReset,
@@ -29,27 +30,26 @@ function degrees(value: number): string {
 function AspectRow(props: CropPanelProps): ReactNode {
   const { editor } = props;
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      accessibilityLabel="Aspect ratio"
-      contentContainerClassName="gap-2 px-4"
-    >
-      {ASPECTS.map((aspect) => (
-        <EditorChip
-          key={aspect}
-          label={ASPECT_LABELS[aspect]}
-          selected={props.aspect === aspect}
-          onPress={() => {
-            props.onAspect(aspect);
-            const ratio = ratioOf(aspect, props.imageRatio);
-            if (ratio !== null) {
-              editor.commit(cropped(editor.committed, presetBox(ratio, props.imageRatio)));
-            }
-          }}
-        />
-      ))}
-    </ScrollView>
+    <HScroller label="Aspect ratio" fade>
+      <View className="flex-row items-center gap-2 px-4">
+        {ASPECTS.map((aspect) => (
+          <FilterChip
+            key={aspect}
+            label="Aspect ratio"
+            value={ASPECT_LABELS[aspect]}
+            active={props.aspect === aspect}
+            singleChoice
+            onPress={() => {
+              props.onAspect(aspect);
+              const ratio = ratioOf(aspect, props.imageRatio);
+              if (ratio !== null) {
+                editor.commit(cropped(editor.committed, presetBox(ratio, props.imageRatio)));
+              }
+            }}
+          />
+        ))}
+      </View>
+    </HScroller>
   );
 }
 

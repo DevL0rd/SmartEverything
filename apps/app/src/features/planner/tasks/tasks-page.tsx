@@ -1,7 +1,6 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
-import { useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
@@ -37,9 +36,11 @@ const VIEW_OPTIONS: readonly SegmentedOption<TaskView>[] = [
   { value: 'habits', label: 'Habits', icon: 'flame' },
 ];
 
-const PHONE_VIEW_OPTIONS: readonly SegmentedOption<TaskView>[] = VIEW_OPTIONS.map(
-  ({ value, label }) => ({ value, label }),
-);
+function phoneOptionsOf(view: TaskView): readonly SegmentedOption<TaskView>[] {
+  return VIEW_OPTIONS.map((option) =>
+    option.value === view ? option : { ...option, label: '', spoken: option.label },
+  );
+}
 
 const VIRTUAL_VIEWS: ReadonlySet<TaskView> = new Set(['list', 'timeline']);
 
@@ -87,22 +88,15 @@ interface ViewBarProps {
 function ViewBar({ view, onView, compact, board }: ViewBarProps): ReactNode {
   const segmented = (
     <Segmented
-      options={compact ? PHONE_VIEW_OPTIONS : VIEW_OPTIONS}
+      options={compact ? phoneOptionsOf(view) : VIEW_OPTIONS}
       value={view}
       onChange={onView}
       label="View"
       compact={compact}
-      fill={compact}
+      fill={false}
     />
   );
-  if (compact) {
-    return (
-      <View className="gap-3">
-        {segmented}
-        {view === 'board' ? <View className="flex-row">{board}</View> : null}
-      </View>
-    );
-  }
+  if (compact) return segmented;
   return (
     <View className="min-w-0 flex-row flex-wrap items-center gap-2">
       {segmented}
@@ -115,15 +109,24 @@ interface ControlsProps {
   readonly state: PageState;
   readonly onFilter: (filter: TaskFilter) => void;
   readonly viewBar: ReactNode;
+  readonly trailing: ReactNode;
 }
 
-function Controls({ state, onFilter, viewBar }: ControlsProps): ReactElement {
-  const { entries, today, filter } = state;
+function Controls({ state, onFilter, viewBar, trailing }: ControlsProps): ReactElement {
+  const { entries, today, filter, view } = state;
+  const habits = view === 'habits';
   return (
     <View className="gap-3 pb-1">
       {viewBar}
-      <SmartListChips entries={entries} today={today} filter={filter} onFilter={onFilter} />
-      <TasksMetrics entries={entries} today={today} />
+      <SmartListChips
+        entries={entries}
+        today={today}
+        filter={filter}
+        onFilter={onFilter}
+        mode={habits ? 'habits' : 'tasks'}
+        {...(trailing === null ? {} : { trailing })}
+      />
+      {habits ? null : <TasksMetrics entries={entries} today={today} />}
     </View>
   );
 }
@@ -166,19 +169,27 @@ export function TasksPage(): ReactNode {
   const [filter, setFilter] = useState<TaskFilter>(ALL_OPEN);
   const [grouping, setGrouping] = useState<BoardGrouping>('list');
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
-  const pointer = useIdiom() === 'pointer';
   const state: PageState = { view, filter, grouping, ...useShownEntries() };
   const board = <BoardGroupChip grouping={grouping} onGrouping={setGrouping} />;
-  const viewBar = <ViewBar view={view} onView={setView} compact={compact} board={board} />;
+  const onView = (next: TaskView): void => {
+    setView(next);
+    if (next === 'habits' && filter.kind === 'smart') setFilter(ALL_OPEN);
+  };
+  const viewBar = <ViewBar view={view} onView={onView} compact={compact} board={board} />;
   const controls = (
-    <Controls state={state} onFilter={setFilter} viewBar={pointer ? null : viewBar} />
+    <Controls
+      state={state}
+      onFilter={setFilter}
+      viewBar={compact ? viewBar : null}
+      trailing={compact && view === 'board' ? board : null}
+    />
   );
   return (
     <PlannerFrame
       section="tasks"
       subtitle={tasksSubtitleOf(state)}
       scroll={!VIRTUAL_VIEWS.has(view)}
-      {...(pointer ? { toolbar: viewBar } : {})}
+      {...(compact ? {} : { toolbar: viewBar })}
     >
       <ViewBody state={state} controls={controls} />
     </PlannerFrame>

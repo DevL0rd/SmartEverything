@@ -6,6 +6,7 @@ import { NotificationsSection } from './settings/page-notifications';
 import { PhoneSection } from './settings/page-phone';
 import { SharingSection } from './settings/page-sharing';
 import { StorageSection } from './settings/page-storage';
+import { AdvancedMountSection } from './settings/page-advanced';
 import { SyncMountSection } from './settings/page-sync-mount';
 import {
   DRIVE_SETTINGS_SECTIONS,
@@ -18,6 +19,7 @@ import {
 const SECTION_COMPONENTS: Readonly<Record<DriveSettingsSectionId, ComponentType>> = {
   drives: DrivesSection,
   'sync-mount': SyncMountSection,
+  advanced: AdvancedMountSection,
   phone: PhoneSection,
   sharing: SharingSection,
   notifications: NotificationsSection,

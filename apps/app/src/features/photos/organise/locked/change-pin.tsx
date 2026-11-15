@@ -23,12 +23,12 @@ const CHANGE_LABELS = ['Current PIN', 'New PIN', 'Confirm'];
 
 function changeCopy(step: ChangeStep): { readonly label: string; readonly helper: string } {
   if (step.kind === 'current') {
-    return { label: 'Current PIN', helper: 'Enter the PIN that opens the folder now.' };
+    return { label: 'PIN', helper: 'Enter the PIN that opens the folder now.' };
   }
   if (step.kind === 'choose') {
-    return { label: 'New PIN', helper: 'Use at least four digits you will remember.' };
+    return { label: 'PIN', helper: 'Use at least four digits you will remember.' };
   }
-  return { label: 'Enter the new PIN again', helper: 'Type the same PIN to confirm it.' };
+  return { label: 'New PIN again', helper: 'Type the same PIN to confirm it.' };
 }
 
 async function saveChange(clientId: string, currentPin: string, pin: string): Promise<void> {
@@ -103,10 +103,10 @@ export function LockedChangePin({ onDone }: { readonly onDone: () => void }): Re
         error={change.error}
       />
       <View className="flex-row flex-wrap justify-end gap-2">
-        <Button label="Cancel" variant="tonal" disabled={change.busy} onPress={onDone} />
+        <Button label="Cancel" variant="text" disabled={change.busy} onPress={onDone} />
         <Button
           label={step.kind === 'repeat' ? 'Change PIN' : 'Continue'}
-          icon={step.kind === 'repeat' ? 'key' : 'chevronRight'}
+          {...(step.kind === 'repeat' ? { icon: 'key' as const } : {})}
           loading={change.busy}
           disabled={!pinReady(value)}
           onPress={change.next}

@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import type { AppHref } from '../app-href';
 import { cn } from '../../design/cn';
-import { RAIL_PX, type RailWidth } from './layout';
+import { RAIL_PX, stackedRail, type RailWidth } from './layout';
 import { Icon, type IconName } from '../icon';
 import { Interactive, type LinkNavigation } from '../interactive';
 import { Text } from '../text';
@@ -27,11 +27,14 @@ export interface SectionRailProps {
   readonly width: RailWidth;
   readonly hrefOf: (id: string) => AppHref;
   readonly navigation?: LinkNavigation | undefined;
+  readonly label: string;
   readonly footer?: ReactNode;
+  readonly safeTop: boolean;
 }
 
 const RAIL_WIDTH_STYLE = StyleSheet.create({
   list: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
+  compact: { width: RAIL_PX.compact },
   icon: { width: RAIL_PX.icon },
   mid: { width: RAIL_PX.mid },
   wide: { width: RAIL_PX.wide },
@@ -66,7 +69,7 @@ function StackedFace({
         variant="caption"
         tone={selected ? 'default' : 'variant'}
         align="center"
-        numberOfLines={1}
+        numberOfLines={2}
         className="w-full"
       >
         {entry.short ?? entry.label}
@@ -92,12 +95,7 @@ function RowFace({
       <View className={cn(entry.missing !== null && 'opacity-50')}>
         <Icon name={entry.icon} size={20} tone={selected ? 'primary' : 'variant'} />
       </View>
-      <Text
-        variant="label"
-        tone={rowTone(entry, selected)}
-        className="flex-1"
-        numberOfLines={1}
-      >
+      <Text variant="label" tone={rowTone(entry, selected)} className="flex-1" numberOfLines={1}>
         {entry.label}
       </Text>
       {entry.count === undefined || entry.count === '' ? null : (
@@ -112,24 +110,21 @@ function RowFace({
 export function RailItem({
   entry,
   rail,
-  onPress,
 }: {
   readonly entry: RailEntry;
   readonly rail: SectionRailProps;
-  readonly onPress?: () => void;
 }): ReactNode {
   const selected = rail.active === entry.id;
-  const stacked = rail.width === 'icon';
+  const stacked = stackedRail(rail.width);
   return (
     <Interactive
       href={rail.hrefOf(entry.id)}
       navigation={rail.navigation}
-      onPress={onPress}
       selected={selected}
       label={railEntryLabel(entry)}
       className={cn(
         stacked
-          ? 'min-h-14 w-full items-center justify-center gap-1 px-1 py-1'
+          ? 'min-h-14 w-full items-center justify-center gap-1 py-1'
           : 'h-10 min-h-touch-min flex-row items-center gap-3 rounded-full px-4',
         !stacked && selected && 'bg-primary-container',
       )}
@@ -151,7 +146,7 @@ function GroupHeading({
   readonly title: string;
   readonly width: RailWidth;
 }): ReactNode {
-  return width === 'icon' ? (
+  return stackedRail(width) ? (
     <View className="my-1.5 h-hairline w-10 self-center bg-outline-variant" />
   ) : (
     <Text variant="caption" tone="faint" className="px-4 pb-1 pt-3">
@@ -160,25 +155,14 @@ function GroupHeading({
   );
 }
 
-export function RailGroups({
-  rail,
-  onPress,
-}: {
-  readonly rail: SectionRailProps;
-  readonly onPress?: () => void;
-}): ReactNode {
+function RailGroups({ rail }: { readonly rail: SectionRailProps }): ReactNode {
   return rail.groups.map((group, index) => (
     <Fragment key={group.title ?? ''}>
-      {group.title === null || (index === 0 && rail.width === 'icon') ? null : (
+      {group.title === null || (index === 0 && stackedRail(rail.width)) ? null : (
         <GroupHeading title={group.title} width={rail.width} />
       )}
       {group.entries.map((entry) => (
-        <RailItem
-          key={entry.id}
-          entry={entry}
-          rail={rail}
-          {...(onPress === undefined ? {} : { onPress })}
-        />
+        <RailItem key={entry.id} entry={entry} rail={rail} />
       ))}
     </Fragment>
   ));
@@ -190,12 +174,13 @@ export function SectionRail(rail: SectionRailProps): ReactNode {
       style={RAIL_WIDTH_STYLE[rail.width]}
       className={cn(
         'shrink-0 grow-0 border-r border-outline-variant bg-chrome',
-        rail.width === 'icon' ? 'px-1' : 'px-3',
+        stackedRail(rail.width) ? 'px-1' : 'px-3',
+        rail.safeTop && 'pt-safe',
       )}
     >
       <ScrollView
         accessibilityRole="list"
-        accessibilityLabel="Sections"
+        accessibilityLabel={rail.label}
         style={RAIL_WIDTH_STYLE.list}
         contentContainerClassName="gap-1 pb-3 pt-3"
       >

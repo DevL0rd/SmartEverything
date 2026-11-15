@@ -221,6 +221,16 @@ export const PLANNER_ITEM_ENDPOINTS = {
     body: OCCURRENCE_BODY,
     response: PLANNER_OCCURRENCE_ROW,
   }),
+  reopenPlannerItem: endpoint({
+    method: 'POST',
+    path: '/api/planner/items/:itemId/reopen',
+    access: 'member',
+    summary: 'Undo a done or skipped occurrence, and reopen a single task that was done',
+    params: ITEM_PARAMS,
+    query: PLANNER_PERSON_QUERY,
+    body: OCCURRENCE_BODY,
+    response: DONE,
+  }),
   movePlannerItem: endpoint({
     method: 'POST',
     path: '/api/planner/items/:itemId/move',

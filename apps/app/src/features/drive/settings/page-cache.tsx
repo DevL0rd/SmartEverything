@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DesktopDrive, DesktopDriveCache } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import { Button } from '../../../components/button';
 import { SegmentBar } from '../../../components/charts';
 import { confirm } from '../../../components/confirm-store';
 import type { IconName } from '../../../components/icon';
@@ -180,9 +181,25 @@ function cachedBytesOf(summary: MountSummary): number {
   return Math.max(0, summary.cacheBytes - summary.pinnedBytes);
 }
 
-function CacheUsage({ summary }: { readonly summary: MountSummary }): ReactNode {
+export function cacheUsageLineOf(summary: MountSummary, maxBytes: number | null): string {
+  const used = bytes(summary.cacheBytes);
+  return maxBytes === null
+    ? `${used} cached on this computer`
+    : `${used} of ${bytes(maxBytes)} cached on this computer`;
+}
+
+function CacheUsage({
+  summary,
+  maxBytes,
+}: {
+  readonly summary: MountSummary;
+  readonly maxBytes: number | null;
+}): ReactNode {
   return (
-    <View className="px-4 py-3">
+    <View className="gap-2 px-4 pb-3 pt-4">
+      <Text variant="body-strong" className="tabular">
+        {cacheUsageLineOf(summary, maxBytes)}
+      </Text>
       <SegmentBar
         label="Cache on this computer"
         segments={[
@@ -211,25 +228,34 @@ function ClearCacheRow({
   readonly summary: MountSummary | null;
   readonly drive: DesktopDriveView;
 }): ReactNode {
+  const clear = (): void => {
+    background(
+      confirm({
+        title: 'Clear the mount cache?',
+        body: 'Cached copies are removed and download again when opened. Files kept offline, open files and changes waiting to upload stay.',
+        confirmLabel: 'Clear cache',
+        tone: 'destructive',
+      }).then((accepted) => {
+        if (accepted) drive.run({ kind: 'clear-cache' }, 'The cache was not cleared');
+      }),
+      'drive.mount.clear_cache_confirm_failed',
+    );
+  };
   return (
     <ListRow
       title="Clear cache"
       icon="eraser"
       subtitle={clearLineOf(summary)}
       wrapSubtitle
-      disabled={drive.busy}
-      onPress={() => {
-        background(
-          confirm({
-            title: 'Clear the mount cache?',
-            body: 'Cached copies are removed and download again when opened. Files kept offline, open files and changes waiting to upload stay.',
-            confirmLabel: 'Clear cache',
-          }).then((accepted) => {
-            if (accepted) drive.run({ kind: 'clear-cache' }, 'The cache was not cleared');
-          }),
-          'drive.mount.clear_cache_confirm_failed',
-        );
-      }}
+      trailing={
+        <Button
+          label="Clear"
+          variant="tonal"
+          spoken="Clear the mount cache"
+          loading={drive.busy}
+          onPress={clear}
+        />
+      }
     />
   );
 }
@@ -249,7 +275,9 @@ export function CacheSettings({
         title="Cache"
         footer="Files you open are kept here so they open fast next time. Changes apply to the running mount at once."
       >
-        {summary?.active === true ? <CacheUsage summary={summary} /> : null}
+        {summary?.active === true ? (
+          <CacheUsage summary={summary} maxBytes={cache.maxBytes} />
+        ) : null}
         {CACHE_ROWS.map((spec) => (
           <CacheRow key={spec.field} spec={spec} cache={cache} />
         ))}

@@ -145,7 +145,7 @@ describe('the calendars a person sees', () => {
     const shared = named(asAlex(), 'Sam work');
     expect(shared).toMatchObject({ role: 'view', ownerName: 'Sam' });
     expect(shared.row).toMatchObject({ colour: 'health', visible: false });
-    expect(sourceText(shared)).toBe("Sam's · view only");
+    expect(sourceText(shared)).toBe('Shared by Sam · view only');
   });
 
   it('lets every member edit the Family calendar and lists what the owner shared', () => {
@@ -158,6 +158,8 @@ describe('the calendars a person sees', () => {
     expect(named(asSam, 'Family')).toMatchObject({ role: 'edit', section: 'family' });
     expect(named(asSam, 'Personal')).toMatchObject({ role: 'edit', section: 'shared' });
     expect(sourceText(named(asAlex(), 'Personal'))).toBe('Shared with 2 people');
+    expect(sourceText(named(asSam, 'Family'))).toBe('Everyone at home · made by Alex');
+    expect(sourceText(named(asSam, 'Personal'))).toBe('Shared by Alex · can edit');
     expect(
       viewerCalendarsOf({ collections: COLLECTIONS, shares: [], profiles: [], me: null }),
     ).toEqual([]);

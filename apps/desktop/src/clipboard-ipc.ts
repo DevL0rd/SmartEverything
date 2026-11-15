@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard } from 'electron';
+import { app, BrowserWindow, clipboard } from 'electron';
 import { z } from 'zod';
 import { background, Logger } from '@smarteverything/logging';
 import {
@@ -17,6 +17,28 @@ export type ClipboardHandle = <C extends DesktopInvokeChannel>(
     argument: unknown,
   ) => DesktopInvokeChannels[C]['response'] | Promise<DesktopInvokeChannels[C]['response']>,
 ) => void;
+
+function whileFocused(periodMs: number, run: () => void): () => void {
+  let timer: NodeJS.Timeout | null = null;
+  const watch = (): void => {
+    if (timer !== null) return;
+    timer = setInterval(run, periodMs);
+    timer.unref();
+  };
+  const rest = (): void => {
+    if (timer === null) return;
+    clearInterval(timer);
+    timer = null;
+  };
+  app.on('browser-window-focus', watch);
+  app.on('browser-window-blur', rest);
+  if (BrowserWindow.getFocusedWindow() !== null) watch();
+  return () => {
+    app.off('browser-window-focus', watch);
+    app.off('browser-window-blur', rest);
+    rest();
+  };
+}
 
 export function registerClipboardIpc(
   handle: ClipboardHandle,
@@ -52,12 +74,11 @@ export function registerClipboardIpc(
     target.webContents.send(DESKTOP_CLIPBOARD_CHANGED, text);
   };
 
-  const timer = setInterval(() => {
+  const unwatch = whileFocused(pollMs, () => {
     background(poll(), 'clipboard.read_failed');
-  }, pollMs);
-  timer.unref();
+  });
   return () => {
     stopped = true;
-    clearInterval(timer);
+    unwatch();
   };
 }

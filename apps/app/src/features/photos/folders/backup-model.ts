@@ -10,6 +10,14 @@ export function folderBacksUp(choice: FolderBackupChoice, backupId: string): boo
   return choice.enabled && selectedFor(choice, backupId);
 }
 
+export function backupIdsBackedUp(
+  choice: FolderBackupChoice,
+  known: readonly string[],
+): readonly string[] {
+  const ids = choice.albumIds.length === 0 ? known : [...new Set([...known, ...choice.albumIds])];
+  return ids.filter((id) => folderBacksUp(choice, id));
+}
+
 function turnedOn(choice: FolderBackupChoice, backupId: string): FolderBackupChoice {
   if (choice.enabled) {
     return selectedFor(choice, backupId)

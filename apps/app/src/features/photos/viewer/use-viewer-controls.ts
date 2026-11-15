@@ -13,6 +13,7 @@ import type { HeaderControls } from './header';
 import type { InfoContent } from './info-rows';
 import type { MediaItem } from './info-model';
 import { albumMenuItems, moreMenuItems } from './menus';
+import { openNewAlbum } from '../albums/new-album-host';
 import { useEditEntry } from '../editor/edit-entry';
 import { saveToDevice } from '../library/save-to-device';
 import { placeLine } from './info-model';
@@ -88,7 +89,9 @@ export function useViewerControls(input: ViewerControlsInput): ViewerControls {
   });
   const organise = useOrganiseActions();
   const edit = useEditEntry(item);
-  const albums = albumMenuItems(useDriveAlbums('photos'), actions.addToAlbum);
+  const albums = albumMenuItems(useDriveAlbums('photos'), actions.addToAlbum, () => {
+    openNewAlbum([item.id]);
+  });
   const driveHref = openHrefOf(item, useDriveRoots());
   const archived = usePhotoArchived(item.id).data?.archived ?? null;
   const info = useInfoContent(input, albums, driveHref, archived === true);

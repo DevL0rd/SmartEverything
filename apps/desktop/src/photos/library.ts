@@ -132,6 +132,24 @@ export class PhotoLibrary {
     }
   }
 
+  async trash(
+    ids: readonly string[],
+    remove: (path: string) => Promise<void>,
+  ): Promise<readonly string[]> {
+    if (ids.some((id) => !this.files.has(id))) await this.list();
+    const trashed: string[] = [];
+    for (const id of ids) {
+      if (!this.files.has(id)) continue;
+      const file = await this.file(id);
+      await remove(file.path);
+      this.files.delete(id);
+      trashed.push(id);
+    }
+    log.info('library.trashed', { asked: ids.length, trashed: trashed.length });
+    if (trashed.length > 0) this.invalidate();
+    return trashed;
+  }
+
   cancel(operation: string): void {
     this.operations.get(operation)?.abort();
   }

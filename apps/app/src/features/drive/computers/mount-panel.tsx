@@ -119,7 +119,7 @@ function MissingParts({ missing }: { readonly missing: readonly string[] }): Rea
   );
 }
 
-function SetupAction({
+export function SetupAction({
   setup,
   command,
 }: {

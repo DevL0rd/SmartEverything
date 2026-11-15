@@ -107,7 +107,8 @@ describe('drive hero card', () => {
     expect(markup).toContain('Images');
     expect(markup).toContain('Documents');
     expect(markup).not.toContain('Videos');
-    expect(markup).toContain(`${bytes(9 * GB)} of ${bytes(18 * GB)}`);
+    expect(markup).toContain(`${bytes(9 * GB)} used of ${bytes(18 * GB)}`);
+    expect(markup).toContain('Includes versions and trash');
   });
 
   it('draws the scanning bar under the hero on a phone', () => {

@@ -6,7 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { clockOfMinutes, localDayKey, shiftDay, zonedInstant } from '../../../format/time';
 import { countdownOf, weekdayOfKey, weekOrderOf } from '../../planner';
-import { DAY_MINUTES, wrapMinute, type DialTimes } from './dial-model';
+import { DAY_MINUTES, sleepLengthText, wrapMinute, type DialTimes } from './dial-model';
 
 type Schedule = PlannerBedtime['schedule'];
 
@@ -23,6 +23,8 @@ const SLEEP_GOAL_MINUTES = 8 * 60;
 const FIRST_SUNDAY = Date.UTC(2026, 10, 15, 12);
 
 const SHORT_DAY = new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: 'UTC' });
+
+const RANGE_DASH = '\u00a0–\u00a0';
 
 export const FALLBACK_NIGHT = { bed: '23:00', wake: '07:00' } as const;
 
@@ -53,7 +55,7 @@ export function daysTextOf(days: readonly number[], weekStart: number): string {
       const first = run[0] ?? 0;
       const last = run.at(-1) ?? first;
       return run.length >= RUN_AT_LEAST
-        ? `${dayShortOf(first)} – ${dayShortOf(last)}`
+        ? `${dayShortOf(first)}${RANGE_DASH}${dayShortOf(last)}`
         : run.map(dayShortOf).join(', ');
     })
     .join(', ');
@@ -217,11 +219,7 @@ export interface MinuteOption {
 }
 
 export function leadLabelOf(minutes: number): string {
-  if (minutes % 60 === 0) {
-    const hours = minutes / 60;
-    return `${String(hours)} ${hours === 1 ? 'hour' : 'hours'} before`;
-  }
-  return `${String(minutes)} min before`;
+  return `${sleepLengthText(minutes)} before`;
 }
 
 export function leadOptionsOf(current: number | null): readonly MinuteOption[] {

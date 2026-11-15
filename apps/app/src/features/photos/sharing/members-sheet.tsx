@@ -12,9 +12,8 @@ import { Button } from '../../../components/button';
 import { CheckboxMark } from '../../../components/checkbox';
 import { confirm } from '../../../components/confirm-store';
 import { FlatChoice } from '../../../components/flat-choice';
-import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
-import { useAnchoredMenu } from '../../../components/menu';
+import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Segmented } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
@@ -54,39 +53,61 @@ export function youName(profile: ProfileRow, me: string | null): string {
   return profile.id === me ? `${profile.name} (you)` : profile.name;
 }
 
+function useRoleItems(
+  album: DriveAlbum,
+  profile: ProfileRow,
+  role: AlbumMemberRole,
+): { readonly busy: boolean; readonly roles: readonly MenuItem[] } {
+  const mutation = useMutationState();
+  const client = useQueryClient();
+  const roles = ROLE_OPTIONS.map((option) => ({
+    id: option.value,
+    label: option.label,
+    selected: option.value === role,
+    onPress: (): void => {
+      if (option.value === role) return;
+      mutation.run(
+        () =>
+          setAlbumMembers(album.id, { members: [{ profileId: profile.id, role: option.value }] }),
+        {
+          failure: `${profile.name}’s role did not change`,
+          label: 'photos.album_member.role',
+          onDone: () => {
+            invalidateSharing(client);
+          },
+        },
+      );
+    },
+  }));
+  return { busy: mutation.busy, roles };
+}
+
 function RolePicker({
   album,
   profile,
   role,
   disabled,
+  onRemove,
 }: {
   readonly album: DriveAlbum;
   readonly profile: ProfileRow;
   readonly role: AlbumMemberRole;
   readonly disabled: boolean;
+  readonly onRemove: () => void;
 }): ReactNode {
-  const mutation = useMutationState();
-  const client = useQueryClient();
+  const { busy, roles } = useRoleItems(album, profile, role);
   const { ref, open, menu } = useAnchoredMenu(
-    ROLE_OPTIONS.map((option) => ({
-      id: option.value,
-      label: option.label,
-      selected: option.value === role,
-      onPress: () => {
-        if (option.value === role) return;
-        mutation.run(
-          () =>
-            setAlbumMembers(album.id, { members: [{ profileId: profile.id, role: option.value }] }),
-          {
-            failure: `${profile.name}’s role did not change`,
-            label: 'photos.album_member.role',
-            onDone: () => {
-              invalidateSharing(client);
-            },
-          },
-        );
+    [
+      ...roles,
+      {
+        id: 'remove',
+        label: `Remove ${profile.name}`,
+        icon: 'x',
+        destructive: true,
+        group: 'remove',
+        onPress: onRemove,
       },
-    })),
+    ],
     `What ${profile.name} can do`,
   );
   return (
@@ -97,7 +118,7 @@ function RolePicker({
         trailing="chevronDown"
         menu
         active={false}
-        disabled={disabled || mutation.busy}
+        disabled={disabled || busy}
         onPress={open}
       />
       {menu}
@@ -118,6 +139,32 @@ function Member({
   readonly owner: boolean;
   readonly me: string | null;
 }): ReactNode {
+  const { busy, remove } = useRemoveMember(album, profile);
+  return (
+    <ListRow
+      title={youName(profile, me)}
+      leading={<ProfileAvatar profile={profile} />}
+      {...(owner
+        ? {
+            trailing: (
+              <RolePicker
+                album={album}
+                profile={profile}
+                role={role}
+                disabled={busy}
+                onRemove={remove}
+              />
+            ),
+          }
+        : { value: ROLE_LABEL[role] })}
+    />
+  );
+}
+
+function useRemoveMember(
+  album: DriveAlbum,
+  profile: ProfileRow,
+): { readonly busy: boolean; readonly remove: () => void } {
   const mutation = useMutationState();
   const client = useQueryClient();
   const remove = (): void => {
@@ -140,32 +187,7 @@ function Member({
       'photos.album_member.remove_confirm_failed',
     );
   };
-  return (
-    <ListRow
-      title={youName(profile, me)}
-      leading={<ProfileAvatar profile={profile} />}
-      {...(owner
-        ? {
-            trailing: (
-              <View className="flex-row items-center">
-                <RolePicker
-                  album={album}
-                  profile={profile}
-                  role={role}
-                  disabled={mutation.busy}
-                />
-                <IconButton
-                  icon="x"
-                  label={`Remove ${profile.name}`}
-                  disabled={mutation.busy}
-                  onPress={remove}
-                />
-              </View>
-            ),
-          }
-        : { value: ROLE_LABEL[role] })}
-    />
-  );
+  return { busy: mutation.busy, remove };
 }
 
 function Checklist({

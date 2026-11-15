@@ -7,6 +7,7 @@ const fake = vi.hoisted(() => ({
   prepare: vi.fn(),
   cancel: vi.fn(),
   remove: vi.fn(),
+  trash: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   listener: (value: unknown): void => {
     void value;
   },
@@ -20,6 +21,7 @@ vi.mock('expo', () => ({
           prepare: fake.prepare,
           cancel: fake.cancel,
           charging: (): Promise<boolean> => Promise.resolve(true),
+          changeTrash: fake.trash,
           addListener: (_event: string, listener: (value: unknown) => void): { remove(): void } => {
             fake.listener = listener;
             return { remove: fake.remove };
@@ -96,4 +98,21 @@ it('reports an absent native backup capability for an older installed runtime', 
     'Update the app',
   );
   fake.available = true;
+});
+
+it('moves local copies to the system trash and back through the native module', async () => {
+  fake.trash.mockResolvedValueOnce({ outcome: 'done', ids: ['7'] });
+  await expect(adapters.nativeTrashPort.trash(['7', '8'])).resolves.toEqual({
+    outcome: 'done',
+    localIds: ['7'],
+  });
+  expect(fake.trash).toHaveBeenLastCalledWith(['7', '8'], true);
+  fake.trash.mockResolvedValueOnce({ outcome: 'declined', ids: [] });
+  await expect(adapters.nativeTrashPort.untrash(['7'])).resolves.toEqual({
+    outcome: 'declined',
+    localIds: [],
+  });
+  expect(fake.trash).toHaveBeenLastCalledWith(['7'], false);
+  fake.trash.mockResolvedValueOnce({ outcome: 'trashed' });
+  await expect(adapters.nativeTrashPort.trash(['7'])).rejects.toThrow();
 });

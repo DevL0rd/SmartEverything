@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { CAMERA, LAMP } from '../support/fake-provider';
 import { bootServer, linkFakeProvider, verifiedPublicUrl, type Booted } from '../support/booted';
 import { captureLogs } from '../support/logs';
-import { call, openLive, temporaryDirectory } from '../support/server';
+import { call, changedTo, openLive, temporaryDirectory } from '../support/server';
 import { answerOf, callTool, structured, type ToolResult } from './client';
 
 let directory: { path: string; remove: () => Promise<void> };
@@ -185,12 +185,7 @@ describe('the history, event, health and camera tools', () => {
         value: 20 + index,
         observedAt: new Date(Date.UTC(2026, 0, 1, 0, index * 20)).toISOString(),
       });
-      await live.next(
-        (message) =>
-          message.type === 'change' &&
-          message.table === 'state_history' &&
-          message.record?.value === 20 + index,
-      );
+      await live.next((message) => changedTo(message, 'state_history', { value: 20 + index }));
     }
     live.socket.close();
     const range = { from: '2026-01-01T00:00:00Z', to: '2026-01-01T03:00:00Z' };
@@ -257,12 +252,7 @@ describe('the history, event, health and camera tools', () => {
     };
     happened(LAMP.externalId, 'motion', 9);
     happened(CAMERA.externalId, 'doorbell', 10);
-    await live.next(
-      (message) =>
-        message.type === 'change' &&
-        message.table === 'recordings' &&
-        message.record?.kind === 'snapshot',
-    );
+    await live.next((message) => changedTo(message, 'recordings', { kind: 'snapshot' }));
     live.socket.close();
     const motion = structured(await tool('event_find', { kinds: ['motion'] }));
     expect(motion['events']).toMatchObject([{ kind: 'motion', device: 'Desk lamp' }]);

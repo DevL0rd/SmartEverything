@@ -141,8 +141,9 @@ export function canImport(calendar: ViewerCalendar): boolean {
 export function sourceText(calendar: ViewerCalendar): string {
   const { row } = calendar;
   if (calendar.ownerName !== null) {
+    if (row.audience === 'household') return `Everyone at home · made by ${calendar.ownerName}`;
     const role = calendar.role === 'view' ? 'view only' : 'can edit';
-    return `${calendar.ownerName}'s · ${row.audience === 'household' ? 'everyone at home' : role}`;
+    return `Shared by ${calendar.ownerName} · ${role}`;
   }
   if (row.source === 'google') return 'Google';
   if (row.audience === 'household') return 'Everyone at home';

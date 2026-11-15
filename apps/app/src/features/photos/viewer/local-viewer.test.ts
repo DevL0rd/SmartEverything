@@ -64,12 +64,14 @@ vi.mock('../../../components/empty-state', () => ({
 vi.mock('../../../components/zoomable', () => ({ Zoomable: childrenOf }));
 vi.mock('../../../design/theme-scope', () => ({ ThemeScope: childrenOf }));
 vi.mock('./local-playback', () => ({ LocalPlayback: (): null => null }));
+vi.mock('./media-skeleton', () => ({ MediaSkeleton: (): null => null }));
+vi.mock('../../../design/size-class', () => ({ useIsPhone: (): boolean => true }));
 vi.mock('./close', () => ({ closeViewer: (): void => undefined }));
 vi.mock('../components/photos-frame', () => ({
   PHOTOS_BACKUP_SETTINGS_HREF: '/settings/photos/backup',
 }));
 
-const { LocalViewer } = await import('./local-viewer');
+const { LocalViewer, localDetail, localTakenLine } = await import('./local-viewer');
 let root: Root | null = null;
 
 beforeEach(() => {
@@ -134,4 +136,14 @@ it('resolves a same-ID edit again and clears the previous decode failure with a 
     uri: 'content://media/images/7',
     cacheKey: '7:11',
   });
+});
+
+it('writes the local details with the shared date, size and duration formats', () => {
+  const photo = shown.items[0];
+  if (photo === undefined) throw new Error('Expected a local photo');
+  expect(localDetail(photo)).toBe('40 × 30 · 0.0 MP');
+  expect(localDetail({ ...photo, width: null, height: null, durationMs: 12_000 })).toBe('12 s');
+  expect(localDetail({ ...photo, width: null, height: null })).toBeNull();
+  expect(localTakenLine(photo, true)).toMatch(/^On this device · Backed up · \S/);
+  expect(localTakenLine(photo, false)).not.toContain('Backed up');
 });

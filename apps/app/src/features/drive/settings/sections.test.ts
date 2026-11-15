@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DRIVE_SETTINGS_SECTIONS,
   driveRowVisible,
+  driveSettingsFocusHref,
   driveSettingsHref,
   visibleDriveSettingsSections,
 } from './sections';
@@ -57,6 +58,7 @@ describe('Drive settings sections', () => {
     expect(visibleDriveSettingsSections(OWNER_DESKTOP).map((section) => section.id)).toEqual([
       'drives',
       'sync-mount',
+      'advanced',
       'sharing',
       'notifications',
       'indexing',
@@ -67,6 +69,7 @@ describe('Drive settings sections', () => {
     expect(rows).toContain('drive.indexing.contents');
     expect(rows).toContain('drive.indexing.ocr');
     expect(rows).not.toContain('drive.phone.space');
+    expect(rows).toContain('drive.sync-mount.mount');
     expect(rows).toContain('drive.sync-mount.cache-age');
     expect(rows).not.toContain('drive.storage.mine');
   });
@@ -84,7 +87,6 @@ describe('Drive settings sections', () => {
 
   it('lists every advanced mount row for a desktop and the Hub rows for the owner only', () => {
     const owner = visibleRows(OWNER_DESKTOP);
-    expect(owner).toContain('drive.sync-mount.advanced');
     expect(owner).toContain('drive.sync-mount.advanced.max-background');
     expect(owner).toContain('drive.sync-mount.advanced.dead-after-seconds');
     expect(owner).toContain('drive.sync-mount.advanced.hub.file-io-threads');
@@ -118,7 +120,20 @@ describe('Drive settings sections', () => {
     const pages = DRIVE_SETTINGS_SECTIONS.map((section) => section.page);
     expect(new Set(pages).size).toBe(pages.length);
     for (const page of pages) {
-      expect(DRIVE_PAGES.find((one) => one.id === page)?.parent).toBe('drive');
+      expect(DRIVE_PAGES.find((one) => one.id === page)?.parent).toBe(
+        page === 'drive/mount/advanced' ? 'drive/mount' : 'drive',
+      );
     }
+  });
+
+  it('keeps the mount pages on the desktop and the offline files on the phone', () => {
+    const platformOf = (id: string): string | undefined =>
+      DRIVE_PAGES.find((one) => one.id === id)?.platform;
+    expect(platformOf('drive/mount')).toBe('desktop');
+    expect(platformOf('drive/mount/advanced')).toBe('desktop');
+    expect(platformOf('drive/phone')).toBe('android');
+    expect(driveSettingsFocusHref('advanced')).toMatchObject({
+      params: { page: ['drive', 'mount', 'advanced'], focus: 'drive.sync-mount.advanced' },
+    });
   });
 });

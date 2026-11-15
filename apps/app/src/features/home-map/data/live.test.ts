@@ -7,7 +7,7 @@ import {
   type HomeMapId,
   type HomeMapSummary,
   type HomeMapSummaryRow,
-  type LiveChange,
+  type LiveWireChange,
 } from '@smarteverything/domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HomeMapSignal } from './live';
@@ -55,30 +55,36 @@ const summary = (
   id: string,
   revision: number,
   more: Partial<HomeMapSummaryRow> = {},
-): LiveChange => ({
-  type: 'change',
-  table: 'home_maps',
-  operation: 'UPDATE',
-  record: row(id, revision, more),
-  oldRecord: null,
-  seq: revision,
-});
+): LiveWireChange => {
+  const { id: key, ...fields } = row(id, revision, more);
+  const set: Extract<LiveWireChange, { readonly operation: 'UPDATE' }>['set'] = JSON.parse(
+    JSON.stringify(fields),
+  );
+  return {
+    type: 'change',
+    table: 'home_maps',
+    operation: 'UPDATE',
+    key: { id: key },
+    set,
+    previous: {},
+    seq: revision,
+  };
+};
 
-const removal = (id: string, isDefault = false): LiveChange => ({
+const removal = (id: string, isDefault = false): LiveWireChange => ({
   type: 'change',
   table: 'home_maps',
   operation: 'DELETE',
-  record: null,
+  key: { id },
   oldRecord: row(id, 5, { isDefault }),
   seq: 9,
 });
 
-const roomChange: LiveChange = {
+const roomChange: LiveWireChange = {
   type: 'change',
   table: 'rooms',
   operation: 'INSERT',
   record: { id: '3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73', name: 'Study', position: 0 },
-  oldRecord: null,
   seq: 3,
 };
 
@@ -97,7 +103,7 @@ const entry = (id: string, revision: number, more: Partial<HomeMapSummary> = {})
     ...more,
   });
 
-const signalOf = (change: LiveChange): HomeMapSignal => {
+const signalOf = (change: LiveWireChange): HomeMapSignal => {
   const [signal] = homeMapSignalsOf([change]);
   if (signal === undefined) throw new Error('The change carries no map signal');
   return signal;
@@ -150,10 +156,27 @@ describe('the home map summaries on the live stream', () => {
       ['home', 'revision'],
       ['cabin', 'revision'],
     ]);
-    expect(signals[0]).toMatchObject({ revision: 7 });
+    expect(signals[0]).toMatchObject({ row: { revision: 7 } });
     expect(homeMapSignalsOf([summary('home', 6), removal('home', true)])).toStrictEqual([
       { kind: 'removed', id: 'home', wasDefault: true },
     ]);
+  });
+
+  it('reads a column-scoped UPDATE that changed only the name as not behind the held map', () => {
+    const renamed: LiveWireChange = {
+      type: 'change',
+      table: 'home_maps',
+      operation: 'UPDATE',
+      key: { id: 'home' },
+      set: { name: 'House' },
+      previous: { name: 'home' },
+      seq: 12,
+    };
+    const signal = signalOf(renamed);
+    expect(signal).toStrictEqual({ kind: 'revision', id: 'home', row: { name: 'House' } });
+    expect(homeMapBehind(mapAt(5), signal)).toBe(false);
+    expect(homeMapSetBehind([entry('home', 5)], signal)).toBe(true);
+    expect(homeMapSetBehind([entry('home', 5, { name: 'House' })], signal)).toBe(false);
   });
 
   it('is behind only for a newer revision, a removal or nothing held', () => {

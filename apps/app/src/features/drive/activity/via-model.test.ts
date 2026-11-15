@@ -11,6 +11,7 @@ import {
   isChange,
   outsideOf,
   peopleLabel,
+  itemSentenceOf,
   sentenceOf,
   seriesOf,
   seriesTotals,
@@ -103,6 +104,9 @@ describe('via model', () => {
   it('writes the sentence the feed row shows', () => {
     expect(sentenceOf(entry({ actorProfileId: SAM, op: 'create' }), ME)).toBe('Sam added Notes.md');
     expect(sentenceOf(entry({ op: 'trash' }), ME)).toBe('You moved Notes.md to trash');
+    expect(itemSentenceOf(entry({ actorProfileId: SAM, op: 'update' }), ME)).toBe('Sam changed');
+    expect(itemSentenceOf(entry({ op: 'trash' }), ME)).toBe('You moved to trash');
+    expect(itemSentenceOf(entry({ via: 'outside', ...NOBODY, op: 'update' }), ME)).toBe('Changed on the disk');
     expect(sentenceOf(entry({ via: 'ai', op: 'rename' }), ME)).toBe('AI renamed Notes.md');
     expect(sentenceOf(entry({ via: 'outside', ...NOBODY }), ME)).toBe(
       'Notes.md changed on the disk',

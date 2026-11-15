@@ -149,3 +149,23 @@ it('rejects a backup platform inconsistent with the paired device without regist
     { platform: 'android' },
   );
 });
+
+it('answers which folder copies to remove only for the calling device once it backs up', async () => {
+  const mine = pairedDevice();
+  const another = pairedDevice();
+  const all = routes();
+  const ask = (deviceId: string): ReturnType<typeof raw> => ({
+    ...raw(deviceId),
+    body: { deviceId, folderKey: 'computer:/home/me/Pictures', localIds: ['a'.repeat(64)] },
+  });
+  await expect(
+    all.readFolderBackupCopies.run(mine.caller, ask(another.deviceId), testLogger()),
+  ).rejects.toThrow('paired phone or computer');
+  await expect(
+    all.readFolderBackupCopies.run(mine.caller, ask(mine.deviceId), testLogger()),
+  ).rejects.toThrow('not registered for backup');
+  await all.registerBackupDevice.run(mine.caller, raw(mine.deviceId), testLogger());
+  expect(
+    await all.readFolderBackupCopies.run(mine.caller, ask(mine.deviceId), testLogger()),
+  ).toEqual({ items: [], kept: [] });
+});

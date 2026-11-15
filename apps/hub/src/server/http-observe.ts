@@ -88,6 +88,8 @@ function requestPayload(
 
 export class ServerObserver {
   private readonly tally = new HttpTally();
+  private summarising = false;
+  private summary: NodeJS.Timeout | null = null;
 
   constructor(private readonly listener: string) {}
 
@@ -128,6 +130,7 @@ export class ServerObserver {
       bytesIn: numberHeader(request.headers['content-length']) ?? 0,
       bytesOut: length === undefined ? 0 : (numberHeader(length) ?? 0),
     });
+    this.noted();
     if (trace.faultLogged) return;
     const level = levelOf(response.statusCode, aborted, durationMs);
     if (!passesThreshold(level, Logger.level)) return;
@@ -141,6 +144,7 @@ export class ServerObserver {
 
   connected(socket: Duplex): void {
     this.tally.connected();
+    this.noted();
     socket.once('close', () => {
       this.tally.disconnected();
     });
@@ -157,10 +161,12 @@ export class ServerObserver {
       }));
     });
     this.tally.upgraded(false);
+    this.noted();
   }
 
   upgradeRefused(request: IncomingMessage, { error, unexpected }: HttpFailure): void {
     this.tally.upgraded(true);
+    this.noted();
     const suppressed = refusals.pass(`upgrade:${upgradeRoute(request)}:${error.code}`);
     if (suppressed === null) return;
     const payload = {
@@ -185,7 +191,18 @@ export class ServerObserver {
   }
 
   summarise(server: Server): void {
-    const timer = setInterval(() => {
+    this.summarising = true;
+    server.once('close', () => {
+      this.summarising = false;
+      if (this.summary !== null) clearTimeout(this.summary);
+      this.summary = null;
+    });
+  }
+
+  private noted(): void {
+    if (!this.summarising || this.summary !== null) return;
+    this.summary = setTimeout(() => {
+      this.summary = null;
       const taken = this.tally.take();
       if (taken !== null && passesThreshold('debug', Logger.level)) {
         log.debug('http.summary', () => ({
@@ -195,9 +212,6 @@ export class ServerObserver {
         }));
       }
     }, SUMMARY_MS);
-    timer.unref();
-    server.once('close', () => {
-      clearInterval(timer);
-    });
+    this.summary.unref();
   }
 }

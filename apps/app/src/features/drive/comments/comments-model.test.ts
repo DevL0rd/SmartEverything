@@ -15,7 +15,6 @@ import {
   mentionsIn,
   moderatesComments,
   openLabelOf,
-  repliesLabelOf,
   resolvedByLineOf,
   resolvedLabelOf,
   suggestionsOf,
@@ -66,9 +65,7 @@ describe('threads', () => {
     expect(threadGroupsOf([resolved, open])).toEqual({ open: [open], resolved: [resolved] });
   });
 
-  it('counts replies and threads in words', () => {
-    expect(repliesLabelOf(open)).toBe('1 reply');
-    expect(repliesLabelOf(resolved)).toBeNull();
+  it('counts threads in words', () => {
     expect(resolvedLabelOf(1)).toBe('1 resolved thread');
     expect(resolvedLabelOf(1200)).toBe('1,200 resolved threads');
     expect(openLabelOf(0)).toBe('No open comments');

@@ -7,7 +7,9 @@ import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { Skeleton } from '../../../components/skeleton';
+import { useAreaWidth } from '../../../design/size-class';
 import { plural } from '../../../format/text';
 import { useGoogleAccount, usePlannerAlarms } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
@@ -139,28 +141,84 @@ function RiverSkeleton(): ReactNode {
   );
 }
 
-export function TodaySkeleton(): ReactNode {
+function StripSkeleton({ compact }: { readonly compact: boolean }): ReactNode {
   return (
-    <View className="gap-4" aria-busy accessibilityLabel="Loading today">
-      <Card>
-        <Skeleton shape="line" className="h-5" />
-        <View className="flex-row items-center gap-3">
-          <Skeleton shape="circle" className="size-13" />
-          <View className="flex-1 gap-2">
-            <Skeleton shape="text" className="w-3/4" />
-            <Skeleton shape="text" className="h-2.5 w-1/2" />
-          </View>
+    <Card>
+      {compact ? null : (
+        <View className="flex-row items-center justify-between">
+          <Skeleton shape="text" className="w-24" />
+          <Skeleton shape="text" className="w-40" />
         </View>
-      </Card>
+      )}
+      <View className="gap-2">
+        <Skeleton shape="line" className={compact ? 'h-5' : 'h-6.5'} />
+        <Skeleton shape="text" className="h-2.5 w-full" />
+      </View>
+      {compact ? (
+        <>
+          <View className="h-hairline bg-outline-variant" />
+          <View className="flex-row items-center gap-3">
+            <Skeleton shape="circle" className="size-14" />
+            <View className="flex-1 gap-2">
+              <Skeleton shape="text" className="w-3/4" />
+              <Skeleton shape="text" className="h-2.5 w-1/2" />
+            </View>
+          </View>
+        </>
+      ) : null}
+    </Card>
+  );
+}
+
+function MainSkeleton(): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 gap-4">
       <Card>
-        <Skeleton shape="text" className="w-2/5" />
-        <Skeleton shape="line" className="h-5 w-3/4" />
-        <Skeleton shape="block" className="h-15" />
+        <Skeleton shape="text" className="w-28" />
+        <Skeleton shape="line" className="h-6 w-3/4" />
+        <Skeleton shape="text" className="h-2.5 w-1/3" />
+        <View className="flex-row justify-end gap-2">
+          <Skeleton shape="block" className="h-10 w-24 rounded-full" />
+          <Skeleton shape="block" className="h-10 w-20 rounded-full" />
+        </View>
       </Card>
       <View className="gap-4">
         {['first', 'second', 'third', 'fourth'].map((key) => (
           <RiverSkeleton key={key} />
         ))}
+      </View>
+    </View>
+  );
+}
+
+function SideSkeleton(): ReactNode {
+  return (
+    <View className="w-84 gap-4">
+      <Card>
+        <Skeleton shape="text" className="w-16" />
+        <View className="flex-row items-center gap-4">
+          <Skeleton shape="circle" className="size-28" />
+          <View className="flex-1 gap-2">
+            <Skeleton shape="text" className="w-full" />
+            <Skeleton shape="text" className="w-full" />
+            <Skeleton shape="text" className="w-full" />
+          </View>
+        </View>
+        <Skeleton shape="block" className="h-16" />
+      </Card>
+    </View>
+  );
+}
+
+export function TodaySkeleton(): ReactNode {
+  const layout = shellLayoutOf(useAreaWidth());
+  const compact = layout === 'compact';
+  return (
+    <View className="gap-4" aria-busy accessibilityLabel="Loading today">
+      <StripSkeleton compact={compact} />
+      <View className={layout === 'wide' ? 'flex-row items-start gap-4' : 'gap-4'}>
+        <MainSkeleton />
+        {layout === 'wide' ? <SideSkeleton /> : null}
       </View>
     </View>
   );

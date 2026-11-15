@@ -10,8 +10,6 @@ import {
   type SectionDef,
 } from '../model/sections';
 
-const PHONE_TABS: readonly string[] = ['overview', 'performance', 'processes', 'files', 'apps'];
-
 export interface SectionsInput {
   readonly deviceId: string;
   readonly active: string;
@@ -38,7 +36,6 @@ export function computerSectionsOf(input: SectionsInput): ShellSections {
   return {
     label: 'Computer pages',
     active: input.active,
-    phoneTabs: PHONE_TABS,
     navigation: 'replace',
     hrefOf: (id) => href.settings.device(input.deviceId, id),
     groups: railGroupsOf(input),

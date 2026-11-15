@@ -300,15 +300,23 @@ export interface ParseState {
   readonly suggestions: readonly PlannerSuggestion[];
 }
 
+type ParseRequest = Pick<ParsePreviewInput, 'timeZone' | 'collectionId'> & {
+  readonly text: string | null;
+};
+
 function useParsed(
   tools: PlannerTools,
   key: readonly unknown[],
-  text: string | null,
-  timeZone: string,
+  { text, timeZone, collectionId }: ParseRequest,
 ): Pick<ParseState, 'parsed' | 'problem' | 'current' | 'retry'> {
   const parse = useScreenQuery({
-    queryKey: [...key, timeZone, text],
-    queryFn: () => tools.parse({ text: text ?? '', time_zone: timeZone }),
+    queryKey: [...key, timeZone, text, ...(collectionId === undefined ? [] : [collectionId])],
+    queryFn: () =>
+      tools.parse({
+        text: text ?? '',
+        time_zone: timeZone,
+        ...(collectionId === undefined ? {} : { collection_id: collectionId }),
+      }),
     enabled: text !== null,
     placeholderData: keepPreviousData,
     retry: false,
@@ -338,21 +346,22 @@ function useSuggestions(
   return title === null ? [] : (suggest.data ?? []);
 }
 
-export function useParsePreview(
-  person: PlannerPerson,
-  text: string,
-  kind: ComposerKind,
-  timeZone: string,
-): ParseState {
+export interface ParsePreviewInput {
+  readonly person: PlannerPerson;
+  readonly text: string;
+  readonly kind: ComposerKind;
+  readonly timeZone: string;
+  readonly collectionId?: string;
+}
+
+export function useParsePreview({ person, text, kind, ...request }: ParsePreviewInput): ParseState {
   const tools = usePlannerTools(person);
   const trimmed = text.trim();
   const read = kind === 'timer' || trimmed === '' ? null : trimmed;
-  const { parsed, problem, current, retry } = useParsed(
-    tools,
-    ['planner', 'parse', person],
-    read,
-    timeZone,
-  );
+  const { parsed, problem, current, retry } = useParsed(tools, ['planner', 'parse', person], {
+    ...request,
+    text: read,
+  });
   const title = kind === 'task' ? (parsed?.draft.title ?? null) : null;
   const suggestions = useSuggestions(tools, ['planner', 'suggest-completion', person], title);
   return { parsed, problem, current, retry, suggestions };

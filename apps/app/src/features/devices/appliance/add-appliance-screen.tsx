@@ -28,6 +28,7 @@ import {
   modelTitle,
   nameProblem,
   opensAfterCreate,
+  stepSearchOf,
   type LibraryPath,
 } from './add-appliance-model';
 import { blasterChoices } from './appliance-model';
@@ -272,15 +273,18 @@ function DetailsStep({
 function Step({
   blaster,
   path,
+  query,
   onChange,
 }: {
   readonly blaster: Device;
   readonly path: LibraryPath;
+  readonly query: string;
   readonly onChange: (path: LibraryPath) => void;
 }): ReactNode {
   if (path.category === null) {
     return (
       <CategoryStep
+        query={query}
         onPick={(category) => {
           onChange({ ...EMPTY_PATH, category });
         }}
@@ -291,6 +295,7 @@ function Step({
     return (
       <BrandStep
         category={path.category}
+        query={query}
         onPick={(brand) => {
           onChange({ ...path, brand });
         }}
@@ -302,6 +307,7 @@ function Step({
       <ModelStep
         category={path.category}
         brand={path.brand}
+        query={query}
         onPick={(model) => {
           onChange({ ...path, model });
         }}
@@ -313,11 +319,24 @@ function Step({
 
 function Body({ blaster }: { readonly blaster: Device }): ReactNode {
   const name = useDisplayName(blaster.id);
-  const [path, setPath] = useState<LibraryPath>(EMPTY_PATH);
+  const [path, setStepPath] = useState<LibraryPath>(EMPTY_PATH);
+  const [query, setQuery] = useState('');
+  const setPath = (next: LibraryPath): void => {
+    setStepPath(next);
+    setQuery('');
+  };
+  const placeholder = stepSearchOf(path);
   return (
-    <DeviceSettingsFrame deviceId={blaster.id} name={name} title="Add an appliance">
+    <DeviceSettingsFrame
+      deviceId={blaster.id}
+      name={name}
+      title="Add an appliance"
+      {...(placeholder === null
+        ? {}
+        : { search: { value: query, onChange: setQuery, placeholder, label: placeholder } })}
+    >
       <Picked path={path} onChange={setPath} />
-      <Step blaster={blaster} path={path} onChange={setPath} />
+      <Step blaster={blaster} path={path} query={query} onChange={setPath} />
     </DeviceSettingsFrame>
   );
 }

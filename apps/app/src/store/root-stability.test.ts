@@ -6,6 +6,7 @@ import { CommandLedger } from './command-ledger';
 import { EntityStore } from './entity-store';
 import { useLoaded, useSyncStatus } from './selectors';
 import { StoreProvider, useStoreSelector } from './store-context';
+import { wired } from '../test-support/live-wire';
 
 const NOTICES = 500;
 const DEVICE = '00000000-0000-4000-8000-000000000001';
@@ -88,7 +89,7 @@ function noticesOf(store: EntityStore): void {
     const kind = seq % 4;
     act(() => {
       if (kind === 0) {
-        store.apply([deviceStateChange(seq)]);
+        store.apply(wired([deviceStateChange(seq)]));
       } else if (kind === 1) {
         store.update((state) => ({ ...state, tables: { ...state.tables } }));
       } else if (kind === 2) {

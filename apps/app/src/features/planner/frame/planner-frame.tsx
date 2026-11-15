@@ -33,7 +33,7 @@ import {
   usePlannerSelection,
 } from '../item/selection';
 import type { PlannerSection } from '../model/section-routes';
-import { PlannerFrameContext, type PlannerFrameValue } from './frame-context';
+import { PlannerFrameContext, type PlannerFrameValue, type QuickAddSeed } from './frame-context';
 import { usePersonChoices, usePlannerShownPerson, type PersonChoice } from './person';
 import { PersonPicker } from './person-picker';
 import { plannerMenu } from './planner-menu';
@@ -134,8 +134,12 @@ function useFrameValue(section: PlannerSection, composer: ComposerControl): Plan
     () => ({
       person,
       offline,
-      focusQuickAdd: (): void => {
-        open({ text: '', kind: plannerComposerKindOf(section) });
+      focusQuickAdd: (seed: QuickAddSeed = {}): void => {
+        open({
+          text: seed.due === undefined ? '' : `${seed.due} `,
+          kind: plannerComposerKindOf(section),
+          ...(seed.collectionId === undefined ? {} : { collectionId: seed.collectionId }),
+        });
       },
     }),
     [person, offline, open, section],
@@ -229,7 +233,9 @@ function PlannerQuickAdd({
     <QuickAddBar
       target={PLANNER_QUICK_ADD_TARGET}
       hint={phone ? def.phoneHint : def.hint}
-      onOpen={frame.focusQuickAdd}
+      onOpen={() => {
+        frame.focusQuickAdd();
+      }}
       disabled={frame.offline}
     />
   );

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveItem, DrivePlacement } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { Arc } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import type { StatusTone } from '../../../components/tone';
@@ -25,8 +26,13 @@ const RING_COLOUR: Readonly<Record<StatusTone | 'offline', ColourRole>> = {
   offline: 'track',
 };
 
-function computerNamesIn(state: StoreState, deviceIds: readonly string[]): readonly string[] {
-  return deviceIds.map((deviceId) => state.tables.devices.byId[deviceId]?.label ?? 'A computer');
+const log = new Logger('app.drive');
+
+function computerNamesIn(
+  state: StoreState,
+  deviceIds: readonly string[],
+): readonly (string | null)[] {
+  return deviceIds.map((deviceId) => state.tables.devices.byId[deviceId]?.label ?? null);
 }
 
 function useComputerRings(rootId: string, item: DriveItem): readonly ComputerRing[] {
@@ -49,7 +55,15 @@ function useComputerRings(rootId: string, item: DriveItem): readonly ComputerRin
     if (folder === undefined || !coversItem(folder?.relPath ?? null, item.relPath)) return [];
     const placedBytes = folder === null ? root?.bytes : folder.bytes;
     if (placedBytes === undefined) return [];
-    return [placementRingOf(placement, names[index] ?? 'A computer', placedBytes)];
+    const name = names[index] ?? null;
+    if (name === null) {
+      log.warn('placement.device_unknown', {
+        placementId: placement.id,
+        deviceId: placement.deviceId,
+      });
+      return [];
+    }
+    return [placementRingOf(placement, name, placedBytes)];
   });
 }
 
@@ -57,7 +71,7 @@ function RingRow({ ring }: { readonly ring: ComputerRing }): ReactNode {
   return (
     <View
       accessible
-      accessibilityLabel={`${ring.name}, ${ring.word}`}
+      accessibilityLabel={`${ring.name}, ${ring.place}, ${ring.word}`}
       className="flex-row items-center gap-2"
     >
       <View aria-hidden className="shrink-0">
@@ -70,6 +84,9 @@ function RingRow({ ring }: { readonly ring: ComputerRing }): ReactNode {
       </View>
       <Text variant="callout" numberOfLines={1} className="min-w-0 flex-1">
         {ring.name}
+        <Text variant="callout" tone="variant">
+          {` · ${ring.place}`}
+        </Text>
       </Text>
       <Text variant="footnote" tone="variant" numberOfLines={1} className="tabular">
         {ring.word}

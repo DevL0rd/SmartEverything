@@ -38,13 +38,11 @@ function OpenAlarmEditor(props: OpenProps): ReactNode {
       open={props.open}
       onClose={props.onClose}
       title={screen.title}
+      headerAction={<AlarmSkip screen={screen} />}
       detents={['full']}
       {...(props.alarm === null ? { footer: create } : {})}
     >
-      <View className="gap-4 pb-4 pt-2">
-        <View className="flex-row justify-end">
-          <AlarmSkip screen={screen} />
-        </View>
+      <View className="pb-4 pt-2">
         <AlarmBody
           target={target}
           screen={screen}

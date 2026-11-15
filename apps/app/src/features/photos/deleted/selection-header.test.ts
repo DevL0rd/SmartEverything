@@ -53,6 +53,7 @@ function render(props: Partial<SelectionHeaderProps>): string {
       onSelectAll: () => undefined,
       onRestore: () => undefined,
       onDeleteNow: () => undefined,
+      inline: true,
       ...props,
     }),
   );
@@ -64,6 +65,13 @@ describe('Recently deleted selection bar', () => {
     expect(html).toContain('4 selected');
     expect(html).toContain('data-variant="tonal" data-off="no">Restore');
     expect(html).toContain('data-variant="destructive" data-off="no">Delete now');
+  });
+
+  it('asks to select items at zero and leaves the actions to the footer on phones', () => {
+    expect(render({ picked: { count: 0, bytes: 0 } })).toContain('Select items');
+    const html = render({ inline: false });
+    expect(html).toContain('4 selected');
+    expect(html).not.toContain('>Restore<');
   });
 
   it('offers Select all until every item is picked', () => {

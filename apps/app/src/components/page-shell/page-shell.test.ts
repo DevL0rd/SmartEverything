@@ -10,8 +10,9 @@ import {
 import type { RailEntry } from './section-rail';
 import { pageMenuOf } from '../page-menu';
 import { touchMenuItemsOf, type ShellAction } from './shell-actions';
-import { bodyOf, compactSections, tabRowsOf, type ShellLayout } from './shell-frame';
-import { phoneTabsOf, sectionsPullUp, type ShellSections } from './shell-sections';
+import { barOptionsOf, searchInlineAt } from './bar-search';
+import { bodyOf } from './shell-frame';
+import { railFormOf, type ShellSections } from './shell-sections';
 
 vi.mock('expo-router', () => ({ router: { push: vi.fn(), navigate: vi.fn() } }));
 
@@ -21,16 +22,11 @@ function entry(id: string): RailEntry {
   return { id, label: id.toUpperCase(), icon: 'folder', missing: null };
 }
 
-function sectionsOf(
-  ids: readonly string[],
-  active: string,
-  phoneTabs?: readonly string[],
-): ShellSections {
+function sectionsOf(ids: readonly string[], active: string): ShellSections {
   return {
     groups: [{ title: null, entries: ids.map(entry) }],
     active,
     hrefOf: (id) => (id === 'b' ? '/drive/recent' : '/drive'),
-    ...(phoneTabs === undefined ? {} : { phoneTabs }),
   };
 }
 
@@ -78,28 +74,11 @@ describe('page search keys', () => {
   });
 });
 
-describe('phone sections', () => {
-  it('shows up to five sections as tabs without a pull-up', () => {
-    const sections = sectionsOf(['a', 'b', 'c', 'd', 'e'], 'b');
-    expect(sectionsPullUp(sections)).toBe(false);
-    expect(phoneTabsOf(sections)?.items.map((item) => item.key)).toEqual(['a', 'b', 'c', 'd', 'e']);
-    expect(phoneTabsOf(sections)?.items[1]?.href).toBe('/drive/recent');
-  });
-
-  it('keeps the pull-up for longer lists with the pinned sections and the active one as tabs', () => {
-    const sections = sectionsOf(['a', 'b', 'c', 'd', 'e', 'f'], 'f', ['a', 'b']);
-    expect(sectionsPullUp(sections)).toBe(true);
-    expect(phoneTabsOf(sections)?.items.map((item) => item.key)).toEqual(['a', 'b', 'f']);
-  });
-
-  it('leaves a long list with no pinned tabs to the title pull-up', () => {
-    const sections = sectionsOf(['a', 'b', 'c', 'd', 'e', 'f'], 'a');
-    expect(sectionsPullUp(sections)).toBe(true);
-    expect(phoneTabsOf(sections)).toBeNull();
-  });
-
-  it('shows no tabs for a long list with nothing pinned on a pinned section', () => {
-    expect(phoneTabsOf(sectionsOf(['a', 'b', 'c', 'd', 'e', 'f'], 'x'))).toBeNull();
+describe('section rail form', () => {
+  it('draws the full rail for sections, an icon rail on request and none without sections', () => {
+    expect(railFormOf(sectionsOf(['a', 'b'], 'a'))).toBe('sections');
+    expect(railFormOf({ ...sectionsOf(['a'], 'a'), iconRail: true })).toBe('icon');
+    expect(railFormOf(undefined)).toBeNull();
   });
 });
 
@@ -155,24 +134,22 @@ describe('touch header actions', () => {
   });
 });
 
-describe('compact section navigation', () => {
-  const layout = (rail: ShellLayout['rail']): ShellLayout => ({
-    header: 'desktop',
-    gutter: 32,
-    rail,
-    docked: false,
-    column: { left: 32, width: 500 },
-  });
-  const tabs = { label: 'Views', active: 'grid', items: [{ key: 'grid', label: 'Grid' }] };
-  const shell = { title: 'T', children: null, sections: sectionsOf(['a', 'b'], 'a'), tabs };
-
-  it('uses the section tabs whenever no rail shows, whatever the header kind', () => {
-    expect(compactSections(shell, null)).toBe(shell.sections);
-    expect(compactSections(shell, 'icon')).toBeUndefined();
-    expect(tabRowsOf(shell, layout(null)).map((row) => row.key)).toEqual(['sections', 'page']);
+describe('top bar search', () => {
+  it('keeps the field in the bar only when the title still has room, and an icon otherwise', () => {
+    expect(searchInlineAt(332, 96)).toBe(false);
+    expect(searchInlineAt(700, 140)).toBe(true);
+    expect(searchInlineAt(611, 140)).toBe(false);
   });
 
-  it('keeps only the page tabs beside a rail', () => {
-    expect(tabRowsOf(shell, layout('wide')).map((row) => row.key)).toEqual(['page']);
+  it('moves search options under the bar only where they do not sit inside the field', () => {
+    const search = {
+      value: '',
+      onChange: (): void => undefined,
+      placeholder: 'Find',
+      options: 'O',
+    };
+    expect(barOptionsOf(search, 'below')).toBe('O');
+    expect(barOptionsOf(search, 'inside')).toBeUndefined();
+    expect(barOptionsOf(undefined, 'below')).toBeUndefined();
   });
 });

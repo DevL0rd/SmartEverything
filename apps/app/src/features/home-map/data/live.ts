@@ -1,10 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query';
-import type {
-  HomeMap,
-  HomeMapSummary,
-  HomeMapSummaryRow,
-  LiveChange,
+import {
+  HOME_MAP_SUMMARY_ROW,
+  type HomeMap,
+  type HomeMapSummary,
+  type LiveWireChange,
 } from '@smarteverything/domain';
+import { z } from 'zod';
 import { Logger, background } from '@smarteverything/logging';
 import { sameJson } from '../../../store/same-json';
 import { homeMapQueryKey } from './home-map-query';
@@ -12,34 +13,49 @@ import { HOME_MAP_FEEDS_QUERY_KEY, HOME_MAP_SET_QUERY_KEY, forgetMap } from './m
 
 const log = new Logger('app.home-map');
 
+const SUMMARY_FACTS = HOME_MAP_SUMMARY_ROW.omit({ id: true }).partial();
+
+type SummaryFacts = z.infer<typeof SUMMARY_FACTS>;
+
+const MAP_KEY = z.object({ id: HOME_MAP_SUMMARY_ROW.shape.id });
+
 export type HomeMapSignal =
   | {
       readonly kind: 'revision';
       readonly id: string;
-      readonly revision: number;
-      readonly row: HomeMapSummaryRow;
+      readonly row: SummaryFacts;
     }
   | { readonly kind: 'removed'; readonly id: string; readonly wasDefault: boolean };
 
-export function homeMapSignalsOf(changes: readonly LiveChange[]): readonly HomeMapSignal[] {
+function signalOf(change: LiveWireChange): HomeMapSignal | null {
+  if (change.table !== 'home_maps') return null;
+  if (change.operation === 'DELETE') {
+    const gone = change.oldRecord;
+    return { kind: 'removed', id: gone.id, wasDefault: gone.isDefault === true };
+  }
+  if (change.operation === 'INSERT') {
+    return { kind: 'revision', id: change.record.id, row: change.record };
+  }
+  return {
+    kind: 'revision',
+    id: MAP_KEY.parse(change.key).id,
+    row: SUMMARY_FACTS.parse(change.set),
+  };
+}
+
+export function homeMapSignalsOf(changes: readonly LiveWireChange[]): readonly HomeMapSignal[] {
   const latest = new Map<string, HomeMapSignal>();
   for (const change of changes) {
-    if (change.table !== 'home_maps') continue;
-    if (change.record === null) {
-      const gone = change.oldRecord;
-      if (gone === null) continue;
-      latest.set(gone.id, { kind: 'removed', id: gone.id, wasDefault: gone.isDefault === true });
-    } else {
-      const row = change.record;
-      latest.set(row.id, { kind: 'revision', id: row.id, revision: row.revision, row });
-    }
+    const signal = signalOf(change);
+    if (signal !== null) latest.set(signal.id, signal);
   }
   return [...latest.values()];
 }
 
 export function homeMapBehind(cached: HomeMap | undefined, signal: HomeMapSignal): boolean {
   if (signal.kind === 'removed' || cached === undefined) return true;
-  return signal.revision > cached.revision;
+  const revision = signal.row.revision;
+  return revision !== undefined && revision > cached.revision;
 }
 
 function defaultMapStale(cached: HomeMap | undefined, signal: HomeMapSignal): boolean {
@@ -50,8 +66,9 @@ function defaultMapStale(cached: HomeMap | undefined, signal: HomeMapSignal): bo
   return isDefault === false || homeMapBehind(cached, signal);
 }
 
-function rowDiffers(row: HomeMapSummaryRow, entry: HomeMapSummary): boolean {
-  if (row.revision > entry.revision || row.name !== entry.name) return true;
+function rowDiffers(row: SummaryFacts, entry: HomeMapSummary): boolean {
+  if (row.revision !== undefined && row.revision > entry.revision) return true;
+  if (row.name !== undefined && row.name !== entry.name) return true;
   const carried: readonly (readonly [unknown, unknown])[] = [
     [row.position, entry.position],
     [row.isDefault, entry.isDefault],
@@ -87,7 +104,7 @@ function applyToMap(client: QueryClient, signal: HomeMapSignal): void {
   }
 }
 
-export function applyHomeMapChanges(client: QueryClient, changes: readonly LiveChange[]): void {
+export function applyHomeMapChanges(client: QueryClient, changes: readonly LiveWireChange[]): void {
   const signals = homeMapSignalsOf(changes);
   if (signals.length === 0) return;
   const held = client.getQueryData<readonly HomeMapSummary[]>(HOME_MAP_SET_QUERY_KEY);
@@ -95,7 +112,9 @@ export function applyHomeMapChanges(client: QueryClient, changes: readonly LiveC
     log.info('home_map.summary_seen', {
       id: signal.id,
       kind: signal.kind,
-      ...(signal.kind === 'revision' ? { revision: signal.revision } : {}),
+      ...(signal.kind === 'revision' && signal.row.revision !== undefined
+        ? { revision: signal.row.revision }
+        : {}),
     });
     applyToMap(client, signal);
   }

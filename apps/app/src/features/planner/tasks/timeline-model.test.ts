@@ -128,6 +128,7 @@ describe('the timeline window', () => {
     expect(days[0]?.today).toBe(true);
     expect(days[0]?.label).toMatch(/ 28$/);
     expect(days[1]?.label).not.toMatch(/\d/);
+    expect(days.map((day) => day.number)).toEqual(['28', '29', '30', '1', '2']);
     expect(days[3]?.label).toMatch(/ 1$/);
   });
 });

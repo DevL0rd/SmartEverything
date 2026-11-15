@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { cn } from '../design/cn';
@@ -22,6 +22,7 @@ export interface TextFieldProps {
   readonly multiline?: boolean;
   readonly disabled?: boolean;
   readonly focusOnMount?: boolean;
+  readonly inputRef?: RefObject<TextInput | null>;
   readonly showLabel?: boolean;
   readonly action?: ReactNode;
 }
@@ -52,7 +53,7 @@ function Help({
 function Input(props: TextFieldProps & { readonly revealed: boolean }): ReactNode {
   const kind = props.kind ?? 'text';
   const look = FIELD_KINDS[kind];
-  const ref = useFocusOnMount(props.focusOnMount === true);
+  const ref = useFocusOnMount(props.focusOnMount === true, props.inputRef);
   return (
     <TextInput
       ref={ref}
@@ -75,7 +76,7 @@ function Input(props: TextFieldProps & { readonly revealed: boolean }): ReactNod
       className={cn(
         'min-w-0 flex-1 self-stretch px-3 text-body text-on-surface web:outline-none',
         look.mono && props.value !== '' ? 'font-mono' : 'font-sans',
-        props.multiline === true && 'py-2',
+        props.multiline === true && 'resize-none py-2',
       )}
     />
   );

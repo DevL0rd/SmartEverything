@@ -116,6 +116,32 @@ export async function temporaryDirectory(): Promise<{ path: string; remove: () =
   return { path, remove: () => rm(path, { recursive: true, force: true }) };
 }
 
+export function changedColumns(
+  message: LiveServerMessage,
+): Readonly<Record<string, unknown>> | null {
+  if (message.type !== 'change') return null;
+  if (message.operation === 'INSERT') return message.record;
+  if (message.operation === 'UPDATE') return { ...message.key, ...message.set };
+  return null;
+}
+
+function holds(actual: unknown, expected: unknown): boolean {
+  if (typeof expected !== 'object' || expected === null) return Object.is(actual, expected);
+  if (typeof actual !== 'object' || actual === null) return false;
+  return Object.entries(expected).every(
+    ([key, value]) => Object.hasOwn(actual, key) && holds(Reflect.get(actual, key), value),
+  );
+}
+
+export function changedTo(
+  message: LiveServerMessage,
+  table: string,
+  columns: Readonly<Record<string, unknown>>,
+): boolean {
+  if (message.type !== 'change' || message.table !== table) return false;
+  return holds(changedColumns(message), columns);
+}
+
 export interface LiveClient {
   readonly socket: WebSocket;
   readonly next: (matches: (message: LiveServerMessage) => boolean) => Promise<LiveServerMessage>;

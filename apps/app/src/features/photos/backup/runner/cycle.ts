@@ -6,6 +6,7 @@ import { freshRows, identityOf, lastModified, removedIds, unknownIds } from '../
 import { patchBackupStatus } from '../model/status';
 import type { MediaRow, MediaScope, MediaStat } from '../model/types';
 import { saveLedger } from './ledger-store';
+import { loadLocalTrash, trashedTimes } from './local-trash-store';
 import type { BackupPorts } from './ports';
 import { uploadItem, type HashedItem } from './upload-item';
 
@@ -50,6 +51,7 @@ export class BackupCycle {
   private bytesLeft = 0;
   private lastFailure: string | null = null;
   private present: ReadonlySet<string> = new Set();
+  private trashed: ReadonlyMap<string, number> = new Map();
 
   constructor(
     private readonly ports: BackupPorts,
@@ -69,6 +71,7 @@ export class BackupCycle {
     const present = await this.ports.media.listIds(this.scope, this.signal);
     if (this.interrupted()) return 'interrupted';
     this.present = present;
+    this.trashed = trashedTimes(await loadLocalTrash(this.ports.storage));
     this.ledger.forget(removedIds(present, this.ledger));
     await this.reconcileIdentities();
     if (this.interrupted()) return 'interrupted';
@@ -106,6 +109,12 @@ export class BackupCycle {
     return this.signal.aborted;
   }
 
+  private deletedHere(row: MediaRow): boolean {
+    if (this.trashed.get(row.id) !== row.modificationTime) return false;
+    this.unresolved.add(row.id);
+    return true;
+  }
+
   private hasGap(present: ReadonlySet<string>, plan: readonly PlannedPage[]): boolean {
     const accounted = new Set(this.unresolved);
     for (const page of plan) {
@@ -123,7 +132,7 @@ export class BackupCycle {
         const identity = identityOf(row);
         if (!this.present.has(row.id) || seen.has(identity)) return false;
         seen.add(identity);
-        return true;
+        return !this.deletedHere(row);
       });
       plan.push(await this.readyItems(freshRows(inScope, this.ledger), lastModified(rows)));
       if (this.interrupted()) break;

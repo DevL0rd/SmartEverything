@@ -56,6 +56,7 @@ function useLockedLink(tile: MediaTile, size: 'preview' | 'playable'): LinkState
 
 function Media({ tile }: { readonly tile: MediaTile }): ReactNode {
   const video = tile.durationMs !== null;
+  const phone = useIsPhone();
   const link = useLockedLink(tile, video ? 'playable' : 'preview');
   const [failed, setFailed] = useState(false);
   if (link.state === 'loading') {
@@ -72,7 +73,7 @@ function Media({ tile }: { readonly tile: MediaTile }): ReactNode {
       />
     );
   }
-  if (video) return <LocalPlayback uri={link.url} />;
+  if (video) return <LocalPlayback uri={link.url} durationMs={tile.durationMs} phone={phone} />;
   return (
     <Image
       source={{ uri: link.url, cacheKey: `locked:${tile.id}:${String(tile.rev)}` }}
@@ -186,7 +187,7 @@ function Stage(props: LockedViewerProps & { readonly place: LockedNeighbours }):
       <GestureDetector gesture={swipe.gesture}>
         <Animated.View
           style={swipe.style}
-          className="size-full min-w-0 flex-1 justify-center"
+          className="relative min-h-0 min-w-0 flex-1 self-stretch justify-center"
           onLayout={(event) => {
             swipe.measure(event.nativeEvent.layout.width, event.nativeEvent.layout.height);
           }}

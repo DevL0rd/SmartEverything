@@ -1,17 +1,17 @@
 import type { PlannerAlarmRow, PlannerRingTarget, PlannerWatchLink } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { FlatChoice } from '../../../components/flat-choice';
 import type { IconName } from '../../../components/icon';
-import { Text } from '../../../components/text';
-import { STATUS_FILL } from '../../../components/tone';
+import { ListRow } from '../../../components/list-row';
+import { SwitchRow } from '../../../components/rows';
 import { useRows } from '../../../store/selectors';
 import type { Device, RowOf } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceIcon } from '../../device-visuals';
-import { watchDotOf, WatchStateLines } from '../../planner';
+import { WatchStateLines } from '../../planner';
 import { isLocalWatch } from '../../watches';
 import { hasTarget, targetKeyOf } from './alarm-draft';
+import { FieldSection } from './alarm-fields';
 
 export interface RingPlace {
   readonly target: PlannerRingTarget;
@@ -120,16 +120,11 @@ export function hasPersonWatch(sources: RingSources): boolean {
   return sources.devices.some((device) => isPersonWatch(device, sources.profileId));
 }
 
-function dotOf(place: RingPlace): string | undefined {
-  if (place.link === null) return undefined;
-  const tone = watchDotOf(place.link.state);
-  return tone === null ? undefined : STATUS_FILL[tone];
-}
-
 export interface RingTargetsProps {
   readonly places: readonly RingPlace[];
   readonly targets: readonly PlannerRingTarget[];
   readonly watch: readonly PlannerWatchLink[];
+  readonly compact: boolean;
   readonly disabled: boolean;
   readonly onToggle: (target: PlannerRingTarget) => void;
 }
@@ -138,37 +133,36 @@ export function RingTargets({
   places,
   targets,
   watch,
+  compact,
   disabled,
   onToggle,
 }: RingTargetsProps): ReactNode {
   return (
     <View className="gap-2">
-      <Text variant="footnote" tone="variant">
-        Rings on
-      </Text>
-      {places.length === 0 ? (
-        <Text variant="footnote" tone="variant">
-          No phone, computer or watch of yours is paired.
-        </Text>
-      ) : (
-        <View className="flex-row flex-wrap gap-2">
-          {places.map((place) => (
-            <FlatChoice
+      <FieldSection title="Rings on" compact={compact}>
+        {places.length === 0 ? (
+          <ListRow
+            title="No phone, computer or watch of yours is paired"
+            icon="smartphone"
+            compact={compact}
+          />
+        ) : (
+          places.map((place) => (
+            <SwitchRow
               key={targetKeyOf(place.target)}
-              role="checkbox"
-              spoken={`Rings on ${place.name}`}
-              label={place.name}
+              title={place.name}
+              label={`Rings on ${place.name}`}
               icon={place.icon}
-              swatchClassName={dotOf(place)}
-              active={hasTarget(targets, place.target)}
+              compact={compact}
+              value={hasTarget(targets, place.target)}
               disabled={disabled}
-              onPress={() => {
+              onChange={() => {
                 onToggle(place.target);
               }}
             />
-          ))}
-        </View>
-      )}
+          ))
+        )}
+      </FieldSection>
       <WatchStateLines alarm={{ watch }} />
     </View>
   );

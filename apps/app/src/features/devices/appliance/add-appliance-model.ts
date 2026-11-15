@@ -14,6 +14,13 @@ export interface LibraryPath {
 
 export const EMPTY_PATH: LibraryPath = { category: null, brand: null, model: null };
 
+export function stepSearchOf(path: LibraryPath): string | null {
+  if (path.category === null) return 'Search types';
+  if (path.brand === null) return 'Search brands';
+  if (path.model === null) return 'Search models or buttons';
+  return null;
+}
+
 export function matching<T>(
   items: readonly T[],
   query: string,

@@ -70,8 +70,8 @@ function alarm(time: string, days: readonly number[], enabled = true): PlannerAl
 
 describe('the bedtime schedule', () => {
   it('names day groups by runs in the week order', () => {
-    expect(daysTextOf([0, 1, 2, 3, 4], 0)).toBe('Sun – Thu');
-    expect(daysTextOf([0, 1, 2, 3, 4], 1)).toBe('Mon – Thu, Sun');
+    expect(daysTextOf([0, 1, 2, 3, 4], 0)).toBe('Sun\u00a0–\u00a0Thu');
+    expect(daysTextOf([0, 1, 2, 3, 4], 1)).toBe('Mon\u00a0–\u00a0Thu, Sun');
     expect(daysTextOf([5, 6], 1)).toBe('Fri, Sat');
     expect(daysTextOf([0, 1, 2, 3, 4, 5, 6], 1)).toBe('Every night');
     expect(daysTextOf([], 1)).toBe('No nights');
@@ -171,7 +171,7 @@ describe('tonight', () => {
     const options = leadOptionsOf(25);
     expect(options[0]).toEqual({ value: 'off', label: 'Off' });
     expect(options.map((option) => option.value)).toContain('25');
-    expect(options.find((option) => option.value === '60')?.label).toBe('1 hour before');
-    expect(options.find((option) => option.value === '90')?.label).toBe('90 min before');
+    expect(options.find((option) => option.value === '60')?.label).toBe('1 h before');
+    expect(options.find((option) => option.value === '90')?.label).toBe('1 h 30 min before');
   });
 });

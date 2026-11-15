@@ -16,6 +16,7 @@ import {
 import { messageOf, type Logger } from '@smarteverything/logging';
 import { WebSocketServer, type WebSocket, type RawData } from 'ws';
 import type { ComputerNodeAccess } from '../../computers/node-access';
+import { ConnectionHeartbeat } from '../../network/connection-heartbeat';
 import { pingWhenOpen } from '../../network/guarded-socket';
 import { profileIdOf } from '../../server/auth';
 import { bearerOf } from '../../server/http';
@@ -70,7 +71,7 @@ export type MountAccess = Pick<ComputerNodeAccess, 'authenticate'>;
 export class DriveMountSocket {
   private readonly server: WebSocketServer;
   private readonly connections = new Set<Connection>();
-  private readonly heartbeat: NodeJS.Timeout;
+  private readonly heartbeat = new ConnectionHeartbeat(PING_INTERVAL_MS, () => this.beat());
 
   constructor(
     private readonly store: Store,
@@ -85,10 +86,6 @@ export class DriveMountSocket {
       handleProtocols: (protocols): string | false =>
         protocols.has(MOUNT_SUBPROTOCOL) ? MOUNT_SUBPROTOCOL : false,
     });
-    this.heartbeat = setInterval(() => {
-      this.beat();
-    }, PING_INTERVAL_MS);
-    this.heartbeat.unref();
   }
 
   upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -132,7 +129,7 @@ export class DriveMountSocket {
   }
 
   stop(): void {
-    clearInterval(this.heartbeat);
+    this.heartbeat.stop();
     for (const connection of this.connections) connection.socket.terminate();
     this.connections.clear();
     this.server.close();
@@ -160,6 +157,7 @@ export class DriveMountSocket {
     };
     const connection = new Connection(socket, caller, link);
     this.connections.add(connection);
+    this.heartbeat.start();
     socket.on('message', (raw: RawData, binary: boolean) => {
       this.receive(connection, raw, binary);
     });
@@ -240,7 +238,7 @@ export class DriveMountSocket {
     }
   }
 
-  private beat(): void {
+  private beat(): boolean {
     const now = Date.now();
     for (const connection of this.connections) {
       if (now - connection.lastPongAt > PONG_TIMEOUT_MS) {
@@ -249,5 +247,6 @@ export class DriveMountSocket {
       }
       pingWhenOpen(connection.socket);
     }
+    return this.connections.size > 0;
   }
 }

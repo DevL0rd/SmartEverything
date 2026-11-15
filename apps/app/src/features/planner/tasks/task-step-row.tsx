@@ -1,6 +1,5 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { cn } from '../../../design/cn';
 import { usePlannerWrites } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { reported } from '../item/item-actions';
@@ -14,8 +13,8 @@ function Row({ step, edge }: { readonly step: StepView; readonly edge: RowEdge }
   const { person, offline } = usePlannerFrame();
   const writes = usePlannerWrites(person);
   return (
-    <View className={cn('border-hairline border-outline-variant bg-surface-1', TASK_FRAME[edge])}>
-      <View className="ml-13 mr-3 h-hairline bg-outline-variant" />
+    <View className={TASK_FRAME[edge].className} style={TASK_FRAME[edge].style}>
+      <View className="absolute left-28 right-3 top-0 h-hairline bg-outline-variant" />
       <View className="pl-10 pr-2">
         <StepRow
           step={step}

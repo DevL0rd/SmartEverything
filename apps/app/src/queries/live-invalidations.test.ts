@@ -3,6 +3,7 @@ import { AI_CHAT_ROW, AI_USAGE_ROW, type LiveChange } from '@smarteverything/dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { refreshChatMeterHistory } from './chat-meter-history';
 import { chatMeterHistoryKey } from './keys';
+import { wired } from '../test-support/live-wire';
 
 const applyHomeMapChanges = vi.fn();
 
@@ -40,8 +41,11 @@ describe('home map live changes', () => {
 
   it('hands revision and removal changes of home_maps to the home map refetch', () => {
     const client = new QueryClient();
-    applyToWindows(client, [mapChange, removal]);
-    expect(applyHomeMapChanges).toHaveBeenCalledExactlyOnceWith(client, [mapChange, removal]);
+    applyToWindows(client, [mapChange, removal], wired([mapChange, removal]));
+    expect(applyHomeMapChanges).toHaveBeenCalledExactlyOnceWith(
+      client,
+      wired([mapChange, removal]),
+    );
   });
 });
 
@@ -134,7 +138,11 @@ describe('chat meter history live changes', () => {
 
   it('invalidates only the chat whose measured context changed', () => {
     const client = seededClient();
-    applyToWindows(client, [updateChat({ ...chat, context_percent: 0 })]);
+    applyToWindows(
+      client,
+      [updateChat({ ...chat, context_percent: 0 })],
+      wired([updateChat({ ...chat, context_percent: 0 })]),
+    );
     expect(client.getQueryState(key)?.isInvalidated).toBe(true);
     expect(client.getQueryState(otherKey)?.isInvalidated).toBe(false);
   });
@@ -159,7 +167,11 @@ describe('chat meter history live changes', () => {
     });
     const unsubscribe = observer.subscribe(() => undefined);
     try {
-      applyToWindows(client, [updateChat({ ...chat, context_percent: 75 })]);
+      applyToWindows(
+        client,
+        [updateChat({ ...chat, context_percent: 75 })],
+        wired([updateChat({ ...chat, context_percent: 75 })]),
+      );
       await vi.waitFor(() => {
         expect(client.getQueryData(key)).toEqual([75]);
       });
@@ -172,30 +184,51 @@ describe('chat meter history live changes', () => {
 
   it('keeps history cached through unrelated chat edits and cost corrections', () => {
     const client = seededClient();
-    applyToWindows(client, [
-      updateChat({ ...chat, title: 'Renamed' }),
-      updateUsage({ ...usage, cost_micros: 120 }),
-    ]);
+    applyToWindows(
+      client,
+      [updateChat({ ...chat, title: 'Renamed' }), updateUsage({ ...usage, cost_micros: 120 })],
+      wired([
+        updateChat({ ...chat, title: 'Renamed' }),
+        updateUsage({ ...usage, cost_micros: 120 }),
+      ]),
+    );
     expect(client.getQueryState(key)?.isInvalidated).toBe(false);
   });
 
   it('refreshes cache history when new usage arrives or a reading changes chats', () => {
     const client = seededClient();
-    applyToWindows(client, [
-      {
-        type: 'change',
-        table: 'ai_usage',
-        operation: 'INSERT',
-        record: usage,
-        oldRecord: null,
-        seq: 1,
-      },
-    ]);
+    applyToWindows(
+      client,
+      [
+        {
+          type: 'change',
+          table: 'ai_usage',
+          operation: 'INSERT',
+          record: usage,
+          oldRecord: null,
+          seq: 1,
+        },
+      ],
+      wired([
+        {
+          type: 'change',
+          table: 'ai_usage',
+          operation: 'INSERT',
+          record: usage,
+          oldRecord: null,
+          seq: 1,
+        },
+      ]),
+    );
     expect(client.getQueryState(key)?.isInvalidated).toBe(true);
     expect(client.getQueryState(otherKey)?.isInvalidated).toBe(false);
 
     client.setQueryData(key, []);
-    applyToWindows(client, [updateUsage({ ...usage, chat_id: OTHER_CHAT_ID })]);
+    applyToWindows(
+      client,
+      [updateUsage({ ...usage, chat_id: OTHER_CHAT_ID })],
+      wired([updateUsage({ ...usage, chat_id: OTHER_CHAT_ID })]),
+    );
     expect(client.getQueryState(key)?.isInvalidated).toBe(true);
     expect(client.getQueryState(otherKey)?.isInvalidated).toBe(true);
   });

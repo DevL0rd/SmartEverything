@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View, type AccessibilityActionEvent, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
@@ -26,6 +26,16 @@ const CELL_TONE: Readonly<Record<HourTone, string>> = {
   day: 'bg-surface-3',
   night: 'bg-bg',
 };
+
+const SLIM_TONE: Readonly<Record<HourTone, string>> = {
+  work: 'bg-primary-container',
+  day: 'bg-surface-3',
+  night: 'border-hairline border-outline-variant bg-surface-2',
+};
+
+const LABEL_EVERY_CELL = 28;
+
+const SPARSE_LABEL_STEP = 3;
 
 const LABEL_TONE: Readonly<Record<HourTone, string>> = {
   work: 'text-on-primary-container',
@@ -82,12 +92,18 @@ function useHourDrag(onHour: (hour: number) => void): {
   };
 }
 
+function labelShown(cell: HourCell, sparse: boolean): boolean {
+  return !sparse || cell.hour % SPARSE_LABEL_STEP === 0;
+}
+
 function CellRow({
   cells,
   slim,
+  sparse,
 }: {
   readonly cells: readonly HourCell[];
   readonly slim: boolean;
+  readonly sparse: boolean;
 }): ReactNode {
   return (
     <View className={cn('justify-center', slim ? 'h-6' : 'h-7')}>
@@ -97,11 +113,12 @@ function CellRow({
             key={cell.hour}
             className={cn(
               'flex-1 items-center justify-center',
-              slim ? 'rounded-xs' : 'rounded-sm',
-              CELL_TONE[cell.tone],
+              slim
+                ? cn('rounded-xs', SLIM_TONE[cell.tone])
+                : cn('rounded-sm', CELL_TONE[cell.tone]),
             )}
           >
-            {slim ? null : (
+            {slim || !labelShown(cell, sparse) ? null : (
               <Text
                 variant="caption"
                 className={cn('tabular', LABEL_TONE[cell.tone])}
@@ -134,14 +151,16 @@ function Marker({ hour }: { readonly hour: number }): ReactNode {
 function PickedTimes({
   cities,
   at,
+  slim,
 }: {
   readonly cities: readonly WorldCity[];
   readonly at: number;
+  readonly slim: boolean;
 }): ReactNode {
   return (
     <View className="w-12 gap-1">
       {cities.map((city) => (
-        <View key={city.key} className="h-6 items-end justify-center">
+        <View key={city.key} className={cn('items-end justify-center', slim ? 'h-6' : 'h-7')}>
           <Text variant="caption" tone="variant" className="tabular">
             {clock24(at, city.zone)}
           </Text>
@@ -166,8 +185,51 @@ export interface HourGridProps {
   readonly slim: boolean;
 }
 
-export function HourGrid({ cities, home, plan, pick, slim }: HourGridProps): ReactNode {
+function Cells({
+  cities,
+  home,
+  plan,
+  pick,
+  slim,
+  onWidth,
+}: HourGridProps & { readonly onWidth: (width: number) => void }): ReactNode {
+  const [width, setWidth] = useState(0);
+  const sparse = width / DAY_HOURS < LABEL_EVERY_CELL;
+  return (
+    <View
+      accessible
+      accessibilityRole={slim ? 'image' : 'adjustable'}
+      accessibilityLabel="Hour to compare"
+      accessibilityValue={{ text: pick.summary }}
+      {...(slim
+        ? {}
+        : {
+            accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+            onAccessibilityAction: onActionOf(pick),
+          })}
+      onLayout={(event) => {
+        setWidth(event.nativeEvent.layout.width);
+        onWidth(event.nativeEvent.layout.width);
+      }}
+      className="flex-1 gap-1"
+    >
+      {cities.map((city) => (
+        <CellRow
+          key={city.key}
+          cells={hourCellsOf(city.zone, home, plan)}
+          slim={slim}
+          sparse={sparse}
+        />
+      ))}
+      <Marker hour={pick.hour} />
+    </View>
+  );
+}
+
+export function HourGrid(props: HourGridProps): ReactNode {
+  const { cities, home, pick, slim } = props;
   const drag = useHourDrag(pick.onHour);
+  const cells = <Cells {...props} onWidth={drag.onWidth} />;
   return (
     <View className={cn('flex-row', slim ? 'gap-2' : 'gap-3')}>
       <View className={cn('gap-1', slim ? 'w-24' : 'w-30')}>
@@ -179,26 +241,8 @@ export function HourGrid({ cities, home, plan, pick, slim }: HourGridProps): Rea
           </View>
         ))}
       </View>
-      <GestureDetector gesture={drag.gesture}>
-        <View
-          accessible
-          accessibilityRole="adjustable"
-          accessibilityLabel="Hour to compare"
-          accessibilityValue={{ text: pick.summary }}
-          accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-          onAccessibilityAction={onActionOf(pick)}
-          onLayout={(event) => {
-            drag.onWidth(event.nativeEvent.layout.width);
-          }}
-          className="flex-1 gap-1"
-        >
-          {cities.map((city) => (
-            <CellRow key={city.key} cells={hourCellsOf(city.zone, home, plan)} slim={slim} />
-          ))}
-          <Marker hour={pick.hour} />
-        </View>
-      </GestureDetector>
-      {slim ? <PickedTimes cities={cities} at={instantAt(home, pick.hour)} /> : null}
+      {slim ? cells : <GestureDetector gesture={drag.gesture}>{cells}</GestureDetector>}
+      <PickedTimes cities={cities} at={instantAt(home, pick.hour)} slim={slim} />
     </View>
   );
 }

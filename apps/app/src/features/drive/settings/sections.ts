@@ -14,7 +14,14 @@ import {
 export const DRIVE_SETTINGS_PAGE = DRIVE_PAGE.root;
 
 export type DriveSettingsSectionId =
-  'drives' | 'sync-mount' | 'phone' | 'sharing' | 'notifications' | 'indexing' | 'storage';
+  | 'drives'
+  | 'sync-mount'
+  | 'advanced'
+  | 'phone'
+  | 'sharing'
+  | 'notifications'
+  | 'indexing'
+  | 'storage';
 
 type SectionEnv = Pick<SettingEnv, 'owner' | 'platform'>;
 
@@ -83,20 +90,25 @@ function kebab(field: string): string {
   return field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
-const ADVANCED_ROWS: readonly DriveSettingsRowSpec[] = [
-  row(
-    'drive.sync-mount.advanced',
-    'Advanced mount settings',
-    ['advanced', 'tuning', 'performance', 'speed', 'kernel', 'fuse'],
-    'desktop',
-  ),
-  ...COMPUTER_ROWS.map((spec) =>
-    row(`drive.sync-mount.advanced.${kebab(spec.field)}`, spec.title, spec.keywords, 'desktop'),
-  ),
-  ...HUB_ROWS.map((spec) =>
-    row(`drive.sync-mount.advanced.hub.${kebab(spec.field)}`, spec.title, spec.keywords, 'owner'),
-  ),
-];
+const ADVANCED: DriveSettingsSectionSpec = {
+  id: 'advanced',
+  page: DRIVE_PAGE.advanced,
+  settingId: 'drive.sync-mount.advanced',
+  title: 'Advanced mount settings',
+  caption: 'Kernel, cache, upload and connection tuning.',
+  icon: 'customize',
+  keywords: ['advanced', 'tuning', 'performance', 'speed', 'kernel', 'fuse'],
+  scope: 'device-local',
+  audience: 'desktop',
+  rows: [
+    ...COMPUTER_ROWS.map((spec) =>
+      row(`drive.sync-mount.advanced.${kebab(spec.field)}`, spec.title, spec.keywords, 'desktop'),
+    ),
+    ...HUB_ROWS.map((spec) =>
+      row(`drive.sync-mount.advanced.hub.${kebab(spec.field)}`, spec.title, spec.keywords, 'owner'),
+    ),
+  ],
+};
 
 const SYNC_MOUNT: DriveSettingsSectionSpec = {
   id: 'sync-mount',
@@ -109,6 +121,12 @@ const SYNC_MOUNT: DriveSettingsSectionSpec = {
   scope: 'device-local',
   audience: 'desktop',
   rows: [
+    row(
+      'drive.sync-mount.mount',
+      'Mount My Drive',
+      ['mount', 'unmount', 'file manager', 'network drive', 'this computer'],
+      'desktop',
+    ),
     row(
       'drive.sync-mount.cache-age',
       'Remove unused cache after',
@@ -145,7 +163,6 @@ const SYNC_MOUNT: DriveSettingsSectionSpec = {
       ['computers', 'synced folders', 'placements', 'selective sync'],
       'desktop',
     ),
-    ...ADVANCED_ROWS,
   ],
 };
 
@@ -316,6 +333,7 @@ const STORAGE: DriveSettingsSectionSpec = {
 export const DRIVE_SETTINGS_SECTIONS: readonly DriveSettingsSectionSpec[] = [
   DRIVES,
   SYNC_MOUNT,
+  ADVANCED,
   PHONE,
   SHARING,
   NOTIFICATIONS,

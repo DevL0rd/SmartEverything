@@ -9,6 +9,7 @@ export interface ClockSectionDef {
   readonly icon: IconName;
   readonly href: AppHref;
   readonly hint: string;
+  readonly offline: string;
 }
 
 export const CLOCK_QUICK_ADD_TARGET = 'clock' as const;
@@ -20,6 +21,8 @@ export const CLOCK_SECTION_DEFS: readonly ClockSectionDef[] = [
     icon: 'alarmClock',
     href: href.clock.alarms(),
     hint: 'New alarm. Try: wake me 06:30 weekdays',
+    offline:
+      'You can change alarms again when the hub is back. Alarms set on this phone still ring.',
   },
   {
     id: 'bedtime',
@@ -27,6 +30,7 @@ export const CLOCK_SECTION_DEFS: readonly ClockSectionDef[] = [
     icon: 'moon',
     href: href.clock.bedtime(),
     hint: 'New alarm. Try: wake me 06:30 weekdays',
+    offline: 'Bedtime changes wait for the hub. Alarms set on this phone still ring.',
   },
   {
     id: 'timers',
@@ -34,6 +38,7 @@ export const CLOCK_SECTION_DEFS: readonly ClockSectionDef[] = [
     icon: 'timer',
     href: href.clock.timers(),
     hint: 'New timer. Try: pasta 10 min',
+    offline: 'Changes wait for the hub. Alarms set on this phone still ring.',
   },
   {
     id: 'stopwatch',
@@ -41,6 +46,7 @@ export const CLOCK_SECTION_DEFS: readonly ClockSectionDef[] = [
     icon: 'clock',
     href: href.clock.stopwatch(),
     hint: 'New alarm or timer. Try: tea 4 min',
+    offline: 'Changes wait for the hub. Alarms set on this phone still ring.',
   },
   {
     id: 'world',
@@ -48,6 +54,7 @@ export const CLOCK_SECTION_DEFS: readonly ClockSectionDef[] = [
     icon: 'globe',
     href: href.clock.world(),
     hint: 'New alarm or timer. Try: wake me 06:30 weekdays',
+    offline: 'World clock changes wait for the hub. Alarms set on this phone still ring.',
   },
 ];
 

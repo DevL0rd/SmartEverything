@@ -8,7 +8,7 @@ import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { usePrinterLive } from '../../../features/device-visuals';
 import type { Device } from '../../../store/state';
-import { useSecondOf } from '../../../store/clock';
+import { useMinuteOf } from '../../../store/clock';
 import { agoLabel } from '../model/format';
 import { detailRows, uptimeLabel } from '../model/details-view';
 
@@ -52,9 +52,31 @@ function Speed({
   );
 }
 
+function RunTimes({
+  bootedAt,
+  lastSeen,
+}: {
+  readonly bootedAt: string | null;
+  readonly lastSeen: string | null;
+}): ReactNode {
+  const now = useMinuteOf((value) => value);
+  return (
+    <>
+      {bootedAt === null ? null : (
+        <ListRow
+          title="Running for"
+          value={uptimeLabel(Math.max(0, (now - Date.parse(bootedAt)) / 1000))}
+        />
+      )}
+      {lastSeen === null ? null : (
+        <ListRow title="Last seen" value={agoLabel(Date.parse(lastSeen), now)} />
+      )}
+    </>
+  );
+}
+
 export function DetailsSection({ device }: { readonly device: Device }): ReactNode {
   const live = usePrinterLive(device);
-  const now = useSecondOf((value) => value, false);
   if (live === null) return null;
   const { details } = live;
   return (
@@ -73,12 +95,7 @@ export function DetailsSection({ device }: { readonly device: Device }): ReactNo
         {detailRows(details).map((row) => (
           <ListRow key={row.label} title={row.label} value={row.value} />
         ))}
-        {details.uptimeSeconds === null ? null : (
-          <ListRow title="Running for" value={uptimeLabel(details.uptimeSeconds)} />
-        )}
-        {details.lastSeen === null ? null : (
-          <ListRow title="Last seen" value={agoLabel(Date.parse(details.lastSeen), now)} />
-        )}
+        <RunTimes bootedAt={details.bootedAt} lastSeen={device.online ? null : details.lastSeen} />
       </List>
     </View>
   );

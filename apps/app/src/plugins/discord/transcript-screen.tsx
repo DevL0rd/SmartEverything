@@ -106,8 +106,6 @@ function CallPage({
               restoreFocus={focusSelector}
             />
           }
-          inlineControls
-          shellSearch
           controls={MISTAKES_NOTE}
         />
       </View>

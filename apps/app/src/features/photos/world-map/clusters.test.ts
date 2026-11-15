@@ -63,4 +63,33 @@ describe('map clusters', () => {
     const big = { ...small, size: 60, left: 10, top: 20 };
     expect(clusterTarget(big)).toEqual({ left: 10, top: 20, width: 60, height: 60 });
   });
+
+  it('merges discs that overlap on screen into one, summing their photos', () => {
+    const fit = fitOf(WORLD_VIEW, { width: 1000, height: 400 });
+    const berlin = { ...cluster('u33db', 52.52, 13.4, 4210), placeId: 1 };
+    const hamburg = { ...cluster('u1x0e', 53.55, 9.99, 620), placeId: 2 };
+    const munich = { ...cluster('u281z', 48.14, 11.58, 512), placeId: 3 };
+    const tokyo = { ...cluster('xn76u', 35.68, 139.69, 905), placeId: 4 };
+    const marks = clusterMarks([hamburg, tokyo, munich, berlin], fit);
+    expect(marks).toHaveLength(2);
+    const [germany, japan] = marks;
+    if (germany === undefined || japan === undefined) throw new Error('two marks expected');
+    expect(germany.cluster.count).toBe(4210 + 620 + 512);
+    expect(germany.cluster.placeId).toBeNull();
+    expect(germany.cluster.coverItemId).toBe(berlin.coverItemId);
+    expect(germany.cluster.geohash).toBe('u');
+    expect(germany.key).toBe('u33db+u1x0e+u281z');
+    expect(germany.merged).toBe(true);
+    expect(japan.merged).toBe(false);
+    expect(japan.cluster).toBe(tokyo);
+    for (const [index, first] of marks.entries()) {
+      for (const second of marks.slice(index + 1)) {
+        const gap = Math.hypot(
+          first.left + first.radius - second.left - second.radius,
+          first.top + first.radius - second.top - second.radius,
+        );
+        expect(gap).toBeGreaterThanOrEqual(first.radius + second.radius);
+      }
+    }
+  });
 });

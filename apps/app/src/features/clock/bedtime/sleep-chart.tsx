@@ -204,9 +204,11 @@ function PlannedSwatch(): ReactNode {
   return <View style={paint} className="size-2.5 rounded-sm border border-dashed" />;
 }
 
+const FOUR_ACROSS = 560;
+
 function Fact({ label, value }: { readonly label: string; readonly value: string }): ReactNode {
   return (
-    <View className="gap-0.5">
+    <View className="min-w-0 flex-1 gap-0.5">
       <Text variant="caption" tone="variant">
         {label}
       </Text>
@@ -216,8 +218,10 @@ function Fact({ label, value }: { readonly label: string; readonly value: string
 }
 
 function SleepFactsRow({ facts }: { readonly facts: SleepFacts }): ReactNode {
-  return (
-    <View className="flex-row flex-wrap gap-x-8 gap-y-3">
+  const [width, setWidth] = useState<number | null>(null);
+  const across = width !== null && width >= FOUR_ACROSS;
+  const lengths = (
+    <>
       <Fact
         label="Asleep on average"
         value={facts.averageAsleep === null ? '–' : sleepLengthText(facts.averageAsleep)}
@@ -226,8 +230,32 @@ function SleepFactsRow({ facts }: { readonly facts: SleepFacts }): ReactNode {
         label="Last 7 nights"
         value={facts.weekAverage === null ? '–' : sleepLengthText(facts.weekAverage)}
       />
+    </>
+  );
+  const drifts = (
+    <>
       <Fact label="Bed against plan" value={driftTextOf(facts.bedDrift)} />
       <Fact label="Up against plan" value={driftTextOf(facts.wakeDrift)} />
+    </>
+  );
+  return (
+    <View
+      className={across ? 'flex-row gap-6' : 'gap-3'}
+      onLayout={(event) => {
+        setWidth(event.nativeEvent.layout.width);
+      }}
+    >
+      {across ? (
+        <>
+          {lengths}
+          {drifts}
+        </>
+      ) : (
+        <>
+          <View className="flex-row gap-6">{lengths}</View>
+          <View className="flex-row gap-6">{drifts}</View>
+        </>
+      )}
     </View>
   );
 }

@@ -52,4 +52,15 @@ export const PLANNER_PAGES: readonly SettingsPageDefinition[] = [
   subpage('calendars', 'Calendars', 'calendar', ['calendars', 'visibility', 'hide']),
   subpage('calendar-show', 'Show on the calendar', 'layers', ['overlays', 'sleep', 'free time']),
   subpage('ring-on', 'Ring on', 'smartphone', ['ring', 'phone', 'alarm targets']),
+  {
+    ...subpage('invitation-email', 'Invitation email', 'atSign', [
+      'smtp',
+      'mail server',
+      'outgoing email',
+      'invitations',
+      'send a test',
+    ]),
+    subtitle: 'Send Planner invitations and booking confirmations',
+    visible: (env) => env.owner,
+  },
 ];

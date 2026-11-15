@@ -16,7 +16,7 @@ import { DURATION, EASING, useMotion } from '../../../design/motion';
 import { isNative, useIdiom } from '../../../design/platform';
 import type { PlannerPerson } from '../data';
 import { Composer } from '../item/composer';
-import { isTextEntry, opensComposer, type ComposerControl } from './quick-add';
+import { opensComposer, pageKeysHeld, type ComposerControl } from './quick-add';
 
 export type QuickAddTarget = 'planner' | 'clock';
 
@@ -32,13 +32,13 @@ const LABEL: Readonly<Record<QuickAddTarget, string>> = {
   clock: 'Add an alarm or timer',
 };
 
-const OFFLINE_HINT = 'Changes wait for the hub';
+const OFFLINE_HINT = 'You can add again when the hub is back';
 
 const SHORTCUT = 'N';
 
 function useComposerKey(active: boolean, onOpen: () => void): void {
   const open = useEffectEvent((event: KeyboardEvent): void => {
-    if (event.defaultPrevented || !opensComposer(event, isTextEntry(event.target))) return;
+    if (event.defaultPrevented || !opensComposer(event, pageKeysHeld(event.target))) return;
     event.preventDefault();
     onOpen();
   });
@@ -110,6 +110,7 @@ export function QuickAddComposer({
       person={person}
       text={opening === null ? '' : opening.text}
       kind={opening === null ? null : opening.kind}
+      {...(opening?.collectionId === undefined ? {} : { collectionId: opening.collectionId })}
       disabled={disabled}
     />
   );

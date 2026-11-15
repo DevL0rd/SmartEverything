@@ -1,19 +1,14 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { BackOutcome } from '../back-navigation';
 import { Breadcrumbs, type Crumb } from '../breadcrumbs';
-import { Icon } from '../icon';
+import { Icon, type IconName } from '../icon';
 import { IconButton } from '../icon-button';
-import { Interactive } from '../interactive';
-import { Text, type TextVariant } from '../text';
+import { Text } from '../text';
 
-export type ShellTitleSize = 'bar' | 'large' | 'desktop';
+export type ShellTitleSize = 'bar' | 'desktop';
 
-const TITLE_VARIANT: Readonly<Record<ShellTitleSize, TextVariant>> = {
-  bar: 'title-3',
-  large: 'large-title',
-  desktop: 'title-1',
-};
+const MEASURE_WIDTH = { width: 4096 } as const;
 
 export type BackPress = (() => BackOutcome | null) | null;
 
@@ -40,7 +35,7 @@ export interface ShellTitleProps {
   readonly size: ShellTitleSize;
   readonly subtitle?: string | undefined;
   readonly breadcrumbs?: readonly Crumb[] | undefined;
-  readonly onPress?: (() => void) | undefined;
+  readonly icon?: IconName | null;
   readonly lead?: ReactNode;
   readonly testID?: string;
 }
@@ -63,63 +58,79 @@ function CrumbLine({
   );
 }
 
-function TitleText({
-  title,
-  size,
-}: {
-  readonly title: string;
-  readonly size: ShellTitleSize;
-}): ReactNode {
+function TitleText({ title }: { readonly title: string }): ReactNode {
   return (
     <Text
-      variant={TITLE_VARIANT[size]}
+      variant="title-3"
       accessibilityRole="header"
-      numberOfLines={size === 'large' ? 2 : 1}
+      numberOfLines={1}
+      className="min-w-0 shrink wrap-anywhere"
     >
       {title}
     </Text>
   );
 }
 
-function PressableTitle({
+function iconOnlyAt(room: number | null, need: number | null): boolean {
+  return room !== null && need !== null && need > room;
+}
+
+function FittedTitle({
   title,
-  size,
-  onPress,
+  icon,
 }: {
   readonly title: string;
-  readonly size: ShellTitleSize;
-  readonly onPress: () => void;
+  readonly icon: IconName;
 }): ReactNode {
+  const [room, setRoom] = useState<number | null>(null);
+  const [need, setNeed] = useState<number | null>(null);
   return (
-    <Interactive
-      label={`${title}, sections`}
-      onPress={onPress}
-      className="min-h-touch-min min-w-touch-min flex-row items-center gap-1 self-start rounded-md"
-      layerClassName="rounded-md"
+    <View
+      className="min-w-0 flex-row"
+      onLayout={(event) => {
+        setRoom(event.nativeEvent.layout.width);
+      }}
     >
-      <TitleText title={title} size={size} />
-      <Icon name="chevronDown" size={size === 'large' ? 24 : 20} tone="variant" />
-    </Interactive>
+      <View
+        pointerEvents="none"
+        aria-hidden
+        style={MEASURE_WIDTH}
+        className="absolute left-0 top-0 flex-row opacity-0"
+      >
+        <Text
+          variant="title-3"
+          numberOfLines={1}
+          onLayout={(event) => {
+            setNeed(event.nativeEvent.layout.width);
+          }}
+        >
+          {title}
+        </Text>
+      </View>
+      {iconOnlyAt(room, need) ? (
+        <View testID="shell-title-icon" accessible accessibilityRole="header" aria-label={title}>
+          <Icon name={icon} size={24} tone="default" />
+        </View>
+      ) : (
+        <TitleText title={title} />
+      )}
+    </View>
   );
 }
 
 export function ShellTitle(props: ShellTitleProps): ReactNode {
   return (
-    <View testID={props.testID} className="min-w-0 gap-0.5">
+    <View testID={props.testID} className="min-w-0 gap-0.5 overflow-hidden">
       {props.size === 'desktop' ? (
         <CrumbLine breadcrumbs={props.breadcrumbs} lead={props.lead} />
       ) : null}
-      {props.onPress === undefined ? (
-        <TitleText title={props.title} size={props.size} />
+      {props.icon === undefined || props.icon === null ? (
+        <TitleText title={props.title} />
       ) : (
-        <PressableTitle title={props.title} size={props.size} onPress={props.onPress} />
+        <FittedTitle title={props.title} icon={props.icon} />
       )}
       {props.subtitle === undefined ? null : (
-        <Text
-          variant={props.size === 'bar' ? 'footnote' : 'callout'}
-          tone="variant"
-          numberOfLines={props.size === 'bar' ? 1 : 2}
-        >
+        <Text variant="footnote" tone="variant" numberOfLines={1}>
           {props.subtitle}
         </Text>
       )}

@@ -11,6 +11,7 @@ import {
 import { EntityStore } from '../../../store/entity-store';
 import { deviceOf } from '../../../store/state';
 import { programPlan, runProgram, type ProgramRun } from './send-program';
+import { wired } from '../../../test-support/live-wire';
 
 const NOW = '2026-10-17T10:00:00.000Z';
 const EXPIRES = '2026-10-17T10:00:30.000Z';
@@ -103,33 +104,37 @@ function harness(
       const command = { capability, value };
       sent.push(command);
       const row = commandRow(command, failing.has(capability));
-      store.apply([
-        {
-          seq: next(),
-          type: 'change',
-          table: 'commands',
-          operation: 'UPDATE',
-          record: row,
-          oldRecord: null,
-        },
-      ]);
+      store.apply(
+        wired([
+          {
+            seq: next(),
+            type: 'change',
+            table: 'commands',
+            operation: 'UPDATE',
+            record: row,
+            oldRecord: null,
+          },
+        ]),
+      );
       for (const report of reports(command)) {
         setTimeout(() => {
-          store.apply([
-            {
-              seq: next(),
-              type: 'change',
-              table: 'device_state',
-              operation: 'UPDATE',
-              record: {
-                device_id: DEVICE_ID,
-                capability: report.key,
-                value: report.value,
-                observed_at: NOW,
+          store.apply(
+            wired([
+              {
+                seq: next(),
+                type: 'change',
+                table: 'device_state',
+                operation: 'UPDATE',
+                record: {
+                  device_id: DEVICE_ID,
+                  capability: report.key,
+                  value: report.value,
+                  observed_at: NOW,
+                },
+                oldRecord: null,
               },
-              oldRecord: null,
-            },
-          ]);
+            ]),
+          );
         }, 1000);
       }
       return Promise.resolve({ sent: true, row });

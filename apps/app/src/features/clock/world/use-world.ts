@@ -1,3 +1,5 @@
+import type { PlannerPreferences } from '@smarteverything/domain';
+import type { UseQueryResult } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { MenuItem } from '../../../components/menu';
 import { localDayKey } from '../../../format/time';
@@ -23,13 +25,11 @@ import {
 import { cityMenuOf } from './city-menu';
 import type { HourPick } from './hour-grid';
 
-const NO_CLOCKS: readonly WorldClock[] = [];
-
 export interface WorldModel {
   readonly cities: readonly WorldCity[];
   readonly clocks: readonly WorldClock[];
   readonly home: HomeDay;
-  readonly plan: HourPlan | null;
+  readonly plan: HourPlan;
   readonly offline: boolean;
   readonly add: (zone: string) => void;
   readonly menuOf: (city: WorldCity) => readonly MenuItem[];
@@ -59,21 +59,33 @@ function useClockEdits(offline: boolean): {
   };
 }
 
-export function useWorld(now: number): WorldModel {
+export interface WorldData {
+  readonly query: UseQueryResult<PlannerPreferences>;
+  readonly offline: boolean;
+  readonly worldOf: (prefs: PlannerPreferences) => WorldModel;
+}
+
+export function useWorld(now: number): WorldData {
   const settings = useSettings();
-  const prefs = usePlannerPreferences(null).data;
+  const query = usePlannerPreferences(null);
   const offline = useHubOffline();
   const edits = useClockEdits(offline);
-  const clocks = prefs?.clock.world_clocks ?? NO_CLOCKS;
   const zone = settings.time_zone;
   return {
-    cities: citiesOf({ zone, point: homePointOf(settings) }, clocks),
-    clocks,
-    home: { day: localDayKey(now, zone), zone },
-    plan: prefs === undefined ? null : hourPlanOf(prefs.general),
+    query,
     offline,
-    add: edits.add,
-    menuOf: (city) => edits.menuOf(city, clocks),
+    worldOf: (prefs): WorldModel => {
+      const clocks = prefs.clock.world_clocks;
+      return {
+        cities: citiesOf({ zone, point: homePointOf(settings) }, clocks),
+        clocks,
+        home: { day: localDayKey(now, zone), zone },
+        plan: hourPlanOf(prefs.general),
+        offline,
+        add: edits.add,
+        menuOf: (city) => edits.menuOf(city, clocks),
+      };
+    },
   };
 }
 

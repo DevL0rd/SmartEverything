@@ -32,6 +32,7 @@ const { LeavingCard } = await import('./leaving-card');
 function render(actions: Partial<WholeActions>): string {
   const whole: WholeActions = {
     compact: false,
+    selecting: false,
     disabled: false,
     onRestoreAll: () => undefined,
     onDeleteAll: () => undefined,
@@ -61,6 +62,12 @@ describe('Recently deleted leaving card', () => {
     expect(html).toContain('Leaving for good per month');
     expect(html).toContain('data-grow="yes">Restore all');
     expect(html).toContain('data-grow="yes">Delete all now');
+  });
+
+  it('hides the whole-trash actions while selecting', () => {
+    const html = render({ selecting: true });
+    expect(html).not.toContain('Restore all');
+    expect(html).not.toContain('Delete all now');
   });
 
   it('never offers Delete all now to a member', () => {

@@ -55,8 +55,6 @@ vi.mock('../../../components/section', () => ({
 vi.mock('../../../settings/custom-screens', () => ({ CUSTOM_SETTINGS_SCREENS: {} }));
 vi.mock('../../../settings/env', () => ({ useSettingEnv: (): null => null }));
 vi.mock('../../../settings/settings-nav', () => ({
-  SettingsNav: (): null => null,
-  useSettingsRail: (): boolean => false,
   useSettingsSearch: (): null => null,
 }));
 vi.mock('../../../settings/availability', () => ({

@@ -5,6 +5,7 @@ import type { StatusTone } from '../../../components/tone';
 import { bytes, count } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { relative } from '../../../format/time';
+import type { RootProgress } from '../data/progress';
 import {
   MY_DRIVE_LABEL,
   SHARED_DRIVE_LABEL,
@@ -26,8 +27,7 @@ export interface DriveSettingsCard {
   readonly note: string | null;
 }
 
-export const VERSIONS_NOTE =
-  'Keeps older copies when files change or are replaced. They use space and count toward the limit.';
+export const VERSIONS_NOTE = 'Older copies of changed files, counted toward the space limit';
 
 export const HIDDEN_NOTE = 'Files and folders whose names start with a dot';
 
@@ -108,4 +108,23 @@ export function driveTilesOf(root: DriveRoot): readonly MetricItem[] {
     { key: 'files', label: 'Files', value: count(root.items) },
     { key: 'folders', label: 'Folders', value: count(root.folders) },
   ];
+}
+
+export interface ScanLine {
+  readonly text: string;
+  readonly share: number;
+}
+
+export function scanLineOf(root: DriveRoot, progress: RootProgress | undefined): ScanLine | null {
+  const scan = progress?.scan;
+  if (root.state !== 'scanning' || scan === undefined) return null;
+  return {
+    text: `Reading folders · ${count(scan.done)} of ${count(scan.total)}`,
+    share: scan.total === 0 ? 0 : scan.done / scan.total,
+  };
+}
+
+export function damagedLineOf(root: DriveRoot): string | null {
+  if (root.health.corrupt === 0) return null;
+  return `Storage shows the damage check for ${plural(root.health.corrupt, 'file')} and how to restore them`;
 }

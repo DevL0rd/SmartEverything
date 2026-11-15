@@ -8,6 +8,7 @@ import type { BackupScope } from './sessions';
 import type { ScopeInput } from './scope';
 import { PHONE_SESSION, phoneStoreState } from './lifecycle-fixtures';
 import { watchBackupHost } from './host';
+import { wired } from '../../../../test-support/live-wire';
 
 const fake = vi.hoisted(() => ({
   prefReads: 0,
@@ -110,7 +111,7 @@ function openHost(): EntityStore {
 
 function burst(store: EntityStore, count: number): void {
   for (let step = 0; step < count; step += 1) {
-    store.apply([heartbeat()]);
+    store.apply(wired([heartbeat()]));
     runFrames();
   }
 }
@@ -154,7 +155,7 @@ describe('photos backup host store subscriptions', () => {
     const store = openHost();
     await settled();
     fake.prefReads = 0;
-    store.apply([backupPrefChange(true)]);
+    store.apply(wired([backupPrefChange(true)]));
     runFrames();
     expect(fake.prefReads).toBe(1);
   });
@@ -170,12 +171,12 @@ describe('photos backup host store subscriptions', () => {
     burst(store, 150);
     expect(fake.prefReads).toBe(0);
     expect(heard).not.toHaveBeenCalled();
-    store.apply([backupPrefChange(true)]);
+    store.apply(wired([backupPrefChange(true)]));
     runFrames();
     expect(heard).toHaveBeenCalledTimes(1);
     expect(input.settings.read().enabled).toBe(true);
     stop();
-    store.apply([backupPrefChange(false)]);
+    store.apply(wired([backupPrefChange(false)]));
     runFrames();
     expect(heard).toHaveBeenCalledTimes(1);
   });

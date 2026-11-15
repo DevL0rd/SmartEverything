@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
-import { PageShell } from '../../../components/page-shell/page-shell';
 import { Section } from '../../../components/section';
-import { settingsTrail } from '../../../settings/tree';
+import { SettingsFrame } from '../../../settings/settings-frame';
 import { SetupHero } from '../components/setup-hero';
 import { SetupItemCard } from '../components/setup-item-card';
 import { useReadiness } from '../data/use-readiness';
@@ -58,7 +57,7 @@ function Areas({ readiness }: { readonly readiness: Readiness }): ReactNode {
 export function SetupScreen(): ReactNode {
   const readiness = useReadiness();
   return (
-    <PageShell title="Setup" breadcrumbs={settingsTrail('setup').slice(0, -1)}>
+    <SettingsFrame page="setup">
       {readiness.entries.length === 0 ? (
         <EmptyState
           icon="circleCheck"
@@ -71,6 +70,6 @@ export function SetupScreen(): ReactNode {
           <Areas readiness={readiness} />
         </>
       )}
-    </PageShell>
+    </SettingsFrame>
   );
 }

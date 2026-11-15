@@ -59,7 +59,8 @@ export function headlineOf(summary: UploadSummary, folder: string): string {
   if (summary.conflicts > 0) return `${plural(summary.conflicts, 'name')} already in ${folder}`;
   if (summary.paused > 0) return `Paused · ${count(finished)} of ${count(total)} sent`;
   if (failed === 0) return `Uploaded ${plural(total, 'file')} to ${folder}`;
-  return `Uploaded ${count(landed)} of ${count(total)} · ${count(failed)} didn’t upload`;
+  if (landed === 0) return `${plural(failed, 'upload')} failed`;
+  return `Uploaded ${count(landed)} of ${count(total)} · ${count(failed)} failed`;
 }
 
 export function amountOf(summary: UploadSummary): string {
@@ -101,6 +102,16 @@ export function progressOf(item: UploadItem): number {
 export function failureLineOf(item: UploadItem): string | null {
   if (item.state !== 'failed') return null;
   return item.retryable ? `Failed at ${percent(progressOf(item))}` : item.error;
+}
+
+export function sharedFailureOf(items: readonly UploadItem[]): string | null {
+  const lines = items.flatMap((item) => {
+    const line = item.state === 'failed' && !item.retryable ? item.error : null;
+    return line === null ? [] : [line];
+  });
+  const first = lines[0];
+  if (first === undefined || lines.length < 2) return null;
+  return lines.every((line) => line === first) ? first : null;
 }
 
 export interface RetryNotice {

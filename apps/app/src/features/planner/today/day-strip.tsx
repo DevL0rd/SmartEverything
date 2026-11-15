@@ -157,9 +157,11 @@ export function DayStrip({
         {now === null || width === 0 ? null : <NowMarker placed={placed} now={now} />}
       </View>
       {empty ? (
-        <Text variant="caption" tone="variant" className="text-center">
-          Nothing booked today
-        </Text>
+        <View className="items-center">
+          <Text variant="caption" tone="variant">
+            Nothing booked today
+          </Text>
+        </View>
       ) : null}
     </View>
   );

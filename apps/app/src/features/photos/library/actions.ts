@@ -3,6 +3,12 @@ import { Logger, background } from '@smarteverything/logging';
 import { changeDrive } from '../../../api/drive';
 import { notify } from '../../../components/toast-store';
 import { count } from '../../../format/number';
+import {
+  changeLocalCopies,
+  LIVE_LOCAL_COPIES,
+  restoreLocalCopiesWithNotice,
+  type LocalCopies,
+} from './local-copies';
 
 const log = new Logger('app.photos');
 
@@ -58,17 +64,26 @@ export async function addToAlbum(
 export async function moveToTrash(
   itemIds: readonly string[],
   change: Change = changeDrive,
+  local: LocalCopies = LIVE_LOCAL_COPIES,
 ): Promise<boolean> {
   const moved = await run(change, { action: 'trash', itemIds }, 'Could not move to trash');
   if (!moved) return false;
+  const detail = await changeLocalCopies('trash', itemIds, local);
   notify({
     message: `Moved ${photosText(itemIds.length)} to trash`,
+    ...(detail === null ? {} : { detail }),
     undo: () => {
-      background(
-        run(change, { action: 'restore', itemIds }, 'Could not restore'),
-        'photos.restore_failed',
-      );
+      background(restoreBoth(itemIds, change, local), 'photos.restore_failed');
     },
   });
   return true;
+}
+
+async function restoreBoth(
+  itemIds: readonly string[],
+  change: Change,
+  local: LocalCopies,
+): Promise<void> {
+  if (await run(change, { action: 'restore', itemIds }, 'Could not restore'))
+    await restoreLocalCopiesWithNotice(itemIds, local);
 }

@@ -1,10 +1,15 @@
 import type { PlannerAlarmRow, PlannerPreferences } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
+import type { UseQueryResult } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
-import { Button } from '../../components/button';
+import { View } from 'react-native';
+import { Banner } from '../../components/banner';
 import { EmptyState } from '../../components/empty-state';
+import { useFrameBodyWidth } from '../../components/page-shell/body-width';
+import { asideDockedAt } from '../../components/page-shell/layout';
 import type { ShellAction } from '../../components/page-shell/shell-actions';
-import { useAreaWidth } from '../../design/size-class';
+import type { ShellAside } from '../../components/page-shell/shell-types';
+import { useSizeClass } from '../../design/size-class';
 import { useMinute } from '../../store/clock';
 import { useSettings } from '../../store/selectors';
 import {
@@ -13,18 +18,16 @@ import {
   AlarmList,
   alarmsInRingOrder,
   alarmsSubtitleOf,
-  QueryBody,
 } from '../planner';
 import { AlarmEditor } from './alarm/alarm-editor';
-import { AlarmInspector } from './alarm/alarm-inspector';
+import { ALARM_INSPECTOR_WIDTH, AlarmInspector } from './alarm/alarm-inspector';
 import { SystemAlarmRow } from './alarm/system-alarm-row';
 import { WakeInsightsCard } from './alarm/wake-chart';
 import { ClockFrame } from './frame/clock-frame';
 import { useHubOffline } from './frame/hub-status';
-import { shellLayoutOf } from '../../components/page-shell/layout';
 import { WatchArrivalsNotice } from './watch-notice';
 
-type Layout = ReturnType<typeof shellLayoutOf>;
+const WIDE_CARDS_FROM = 600;
 
 type Chosen =
   | { readonly kind: 'next' }
@@ -39,26 +42,37 @@ interface EditorState {
 
 interface AlarmsView {
   readonly alarms: readonly PlannerAlarmRow[];
-  readonly prefs: PlannerPreferences;
+  readonly prefs: UseQueryResult<PlannerPreferences>;
   readonly now: number;
   readonly timeZone: string;
-  readonly layout: Layout;
   readonly offline: boolean;
 }
 
-function NoAlarms({
-  onNew,
-  offline,
-}: {
-  readonly onNew: () => void;
-  readonly offline: boolean;
-}): ReactNode {
+function NoAlarms(): ReactNode {
   return (
     <EmptyState
       icon="alarmClock"
       title="No alarms yet"
-      body="Add one here, from quick add or from chat. Each alarm shows when it rings next and where."
-      action={<Button label="New alarm" icon="plus" disabled={offline} onPress={onNew} />}
+      body="Add one with New alarm, from quick add or from chat. Each alarm shows when it rings next and where."
+    />
+  );
+}
+
+function PrefsFailed({ prefs }: { readonly prefs: UseQueryResult<PlannerPreferences> }): ReactNode {
+  if (!prefs.isError || prefs.data !== undefined) return null;
+  return (
+    <Banner
+      tone="critical"
+      title="Couldn’t load your clock settings"
+      body="Alarms still show and ring. Editing waits until the settings load."
+      wrapBody
+      action={{
+        label: 'Retry',
+        icon: 'refresh',
+        onPress: () => {
+          background(prefs.refetch(), 'clock.preferences_refetch_failed');
+        },
+      }}
     />
   );
 }
@@ -67,25 +81,27 @@ function AlarmColumn({
   view,
   selectedId,
   onOpen,
-  onNew,
 }: {
   readonly view: AlarmsView;
   readonly selectedId: string | null;
   readonly onOpen: (alarm: PlannerAlarmRow) => void;
-  readonly onNew: () => void;
 }): ReactNode {
-  const compact = view.layout === 'compact';
+  const compact = useFrameBodyWidth() < WIDE_CARDS_FROM;
+  const prefs = view.prefs.data;
+  const none = view.alarms.length === 0;
   return (
     <View className="gap-3">
+      <PrefsFailed prefs={view.prefs} />
       <WatchArrivalsNotice />
-      {view.alarms.length === 0 ? (
-        <NoAlarms onNew={onNew} offline={view.offline} />
+      {none ? (
+        <NoAlarms />
       ) : (
         <AlarmList
           person={null}
           alarms={view.alarms}
           timeZone={view.timeZone}
-          weekStart={view.prefs.general.week_start}
+          weekStart={prefs === undefined ? null : prefs.general.week_start}
+          defaults={prefs === undefined ? null : prefs.clock}
           layout={compact ? 'compact' : 'wide'}
           offline={view.offline}
           selectedId={selectedId}
@@ -93,7 +109,7 @@ function AlarmColumn({
         />
       )}
       <SystemAlarmRow now={view.now} timeZone={view.timeZone} compact={compact} />
-      <WakeInsightsCard compact={compact} timeZone={view.timeZone} />
+      {none ? null : <WakeInsightsCard compact={compact} timeZone={view.timeZone} />}
     </View>
   );
 }
@@ -105,111 +121,62 @@ function chosenAlarmOf(view: AlarmsView, chosen: Chosen): PlannerAlarmRow | null
   return view.alarms.find((alarm) => alarm.id === chosen.id);
 }
 
-function WideAlarms({
-  view,
-  chosen,
-  onChoose,
-}: {
-  readonly view: AlarmsView;
-  readonly chosen: Chosen;
-  readonly onChoose: (chosen: Chosen) => void;
-}): ReactNode {
-  const alarm = chosenAlarmOf(view, chosen);
-  return (
-    <View className="min-h-0 flex-1 flex-row gap-6">
-      <ScrollView className="flex-1" contentContainerClassName="pb-section-gap">
-        <AlarmColumn
-          view={view}
-          selectedId={alarm?.id ?? null}
-          onOpen={(row) => {
+function inspectorAsideOf(
+  alarm: PlannerAlarmRow | null | undefined,
+  onChoose: (chosen: Chosen) => void,
+): ShellAside {
+  const close = (): void => {
+    onChoose({ kind: 'none' });
+  };
+  return {
+    label: alarm === null ? 'New alarm' : 'Alarm',
+    open: alarm !== undefined,
+    width: ALARM_INSPECTOR_WIDTH,
+    onClose: close,
+    children:
+      alarm === undefined ? null : (
+        <AlarmInspector
+          person={null}
+          alarm={alarm}
+          onCreated={(row) => {
             onChoose({ kind: 'alarm', id: row.id });
           }}
-          onNew={() => {
-            onChoose({ kind: 'new' });
-          }}
+          onClose={close}
         />
-      </ScrollView>
-      {alarm === undefined ? null : (
-        <View className="w-85">
-          <ScrollView className="flex-1" contentContainerClassName="pb-section-gap">
-            <AlarmInspector
-              person={null}
-              alarm={alarm}
-              onCreated={(row) => {
-                onChoose({ kind: 'alarm', id: row.id });
-              }}
-              onClose={() => {
-                onChoose({ kind: 'none' });
-              }}
-            />
-          </ScrollView>
-        </View>
-      )}
-    </View>
-  );
+      ),
+  };
 }
 
-function SheetAlarms({
-  view,
-  editor,
-  onEditor,
-}: {
-  readonly view: AlarmsView;
-  readonly editor: EditorState;
-  readonly onEditor: (editor: EditorState) => void;
-}): ReactNode {
-  return (
-    <>
-      <AlarmColumn
-        view={view}
-        selectedId={null}
-        onOpen={(row) => {
-          onEditor({ open: true, alarmId: row.id });
-        }}
-        onNew={() => {
-          onEditor({ open: true, alarmId: null });
-        }}
-      />
-      <AlarmEditor
-        person={null}
-        alarmId={editor.alarmId}
-        open={editor.open}
-        onClose={() => {
-          onEditor({ ...editor, open: false });
-        }}
-        onCreated={(row) => {
-          onEditor({ open: true, alarmId: row.id });
-        }}
-      />
-    </>
-  );
-}
-
-function useAlarmsView(): Omit<AlarmsView, 'prefs'> {
-  const alarms = usePlannerAlarms(null);
+function useAlarmsView(): AlarmsView {
   return {
-    alarms,
+    alarms: usePlannerAlarms(null),
+    prefs: usePlannerPreferences(null),
     now: useMinute(),
     timeZone: useSettings().time_zone,
-    layout: shellLayoutOf(useAreaWidth()),
     offline: useHubOffline(),
   };
 }
 
+function useDocked(): boolean {
+  const size = useSizeClass();
+  return size.header !== 'large' && asideDockedAt(size.area);
+}
+
 export function AlarmsPage(): ReactNode {
-  const base = useAlarmsView();
-  const prefs = usePlannerPreferences(null);
+  const view = useAlarmsView();
+  const docked = useDocked();
   const [chosen, setChosen] = useState<Chosen>({ kind: 'next' });
   const [editor, setEditor] = useState<EditorState>({ open: false, alarmId: null });
-  const wide = base.layout === 'wide';
-  const subtitle = alarmsSubtitleOf(base.alarms, base.now, base.timeZone);
+  const inspected = docked ? chosenAlarmOf(view, chosen) : undefined;
+  const aside = inspectorAsideOf(inspected, setChosen);
+  const subtitle = alarmsSubtitleOf(view.alarms, view.now, view.timeZone);
   const newAlarm: ShellAction = {
     icon: 'plus',
     label: 'New alarm',
     primary: true,
-    disabled: base.offline,
+    disabled: view.offline,
     onPress: () => {
-      if (wide) setChosen({ kind: 'new' });
+      if (docked) setChosen({ kind: 'new' });
       else setEditor({ open: true, alarmId: null });
     },
   };
@@ -217,18 +184,30 @@ export function AlarmsPage(): ReactNode {
     <ClockFrame
       section="index"
       actions={[newAlarm]}
-      scroll={!wide}
+      {...(docked ? { aside } : {})}
       {...(subtitle === null ? {} : { subtitle })}
     >
-      <QueryBody query={prefs}>
-        {(loaded) =>
-          wide ? (
-            <WideAlarms view={{ ...base, prefs: loaded }} chosen={chosen} onChoose={setChosen} />
-          ) : (
-            <SheetAlarms view={{ ...base, prefs: loaded }} editor={editor} onEditor={setEditor} />
-          )
-        }
-      </QueryBody>
+      <AlarmColumn
+        view={view}
+        selectedId={inspected?.id ?? null}
+        onOpen={(row) => {
+          if (docked) setChosen({ kind: 'alarm', id: row.id });
+          else setEditor({ open: true, alarmId: row.id });
+        }}
+      />
+      {docked ? null : (
+        <AlarmEditor
+          person={null}
+          alarmId={editor.alarmId}
+          open={editor.open}
+          onClose={() => {
+            setEditor({ ...editor, open: false });
+          }}
+          onCreated={(row) => {
+            setEditor({ open: true, alarmId: row.id });
+          }}
+        />
+      )}
     </ClockFrame>
   );
 }

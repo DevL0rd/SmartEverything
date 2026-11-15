@@ -40,6 +40,7 @@ export interface TimelineRow {
 export interface TimelineDay {
   readonly day: string;
   readonly label: string;
+  readonly number: string;
   readonly today: boolean;
 }
 
@@ -110,7 +111,7 @@ export function timelineBarOf(
     left: clamp01(left),
     right: clamp01(right),
     tone: span.tone,
-    label: span.tone === 'undated' ? 'No date' : dueLabelOf(entry, today),
+    label: dueLabelOf(entry, today),
     before: right < 0,
     after: left > 1,
     draggable: entry.open && entry.item.rrule === null && right >= 0 && left <= 1,
@@ -126,7 +127,7 @@ export interface BarLayout {
   readonly side: LabelSide;
 }
 
-export const BAR_SIZES = { label: 56, least: 4, stub: 6 } as const;
+export const BAR_SIZES = { label: 80, least: 4, stub: 6 } as const;
 
 export function barLayoutOf(bar: TimelineBar, width: number): BarLayout {
   const start = bar.left * width;
@@ -163,6 +164,7 @@ export function timelineDaysOf(window: TimelineWindow, today: string): readonly 
     return {
       day,
       label: numbered ? `${weekday} ${dayNumber(day)}` : weekday,
+      number: dayNumber(day),
       today: day === today,
     };
   });

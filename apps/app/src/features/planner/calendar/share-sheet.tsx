@@ -50,20 +50,22 @@ function PersonRow({
     });
   };
   return (
-    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2">
-      <View className="min-w-40 flex-1 flex-row items-center gap-3">
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-2 py-2">
+      <View className="min-w-24 flex-1 flex-row items-center gap-3">
         <ProfileAvatar profile={person} />
-        <Text variant="label" numberOfLines={1} className="shrink">
+        <Text variant="label" numberOfLines={1} className="min-w-0 shrink">
           {person.name}
         </Text>
       </View>
-      <Segmented
-        label={`${person.name} can`}
-        options={ACCESS}
-        value={accessOf(candidate)}
-        onChange={choose}
-        compact
-      />
+      <View className="ml-auto">
+        <Segmented
+          label={`${person.name} can`}
+          options={ACCESS}
+          value={accessOf(candidate)}
+          onChange={choose}
+          compact
+        />
+      </View>
     </View>
   );
 }
@@ -88,7 +90,7 @@ export function ShareSheet({ calendarId, onClose }: ShareSheetProps): ReactNode 
     >
       {calendar === undefined ? null : (
         <View className="gap-1 pb-2">
-          <Text variant="caption" tone="variant" className="px-4 pb-1">
+          <Text variant="caption" tone="variant" className="pb-1">
             People who can view see its events in their own Planner. People who can edit also add
             and change them.
           </Text>

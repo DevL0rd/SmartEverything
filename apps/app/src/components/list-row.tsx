@@ -72,17 +72,25 @@ function Leading({
   );
 }
 
+function chevronOf(expanded: boolean | undefined): IconName {
+  if (expanded === undefined) return 'chevronRight';
+  return expanded ? 'chevronUp' : 'chevronDown';
+}
+
 function Trailing({
   value,
   chevron,
+  expanded,
   trailing,
   passive,
 }: {
   readonly value: string | undefined;
   readonly chevron: boolean | undefined;
+  readonly expanded: boolean | undefined;
   readonly trailing: ReactNode;
   readonly passive: boolean;
 }): ReactNode {
+  const glyph = chevronOf(expanded);
   return (
     <View
       className={cn(
@@ -101,10 +109,10 @@ function Trailing({
       {trailing}
       {chevron !== true ? null : passive ? (
         <View {...PASSIVE}>
-          <Icon name="chevronRight" size={20} tone="faint" />
+          <Icon name={glyph} size={20} tone="faint" />
         </View>
       ) : (
-        <Icon name="chevronRight" size={20} tone="faint" />
+        <Icon name={glyph} size={20} tone="faint" />
       )}
     </View>
   );
@@ -140,9 +148,10 @@ function BodySubtitle({ subtitle, subtitleTone, compact, wrapSubtitle }: BodyPro
   );
 }
 
-function bodyClassOf(shrinks: boolean, columned: boolean): string {
+function bodyClassOf(shrinks: boolean, twoLines: boolean, control: boolean): string {
   if (shrinks) return 'min-w-0 flex-1 gap-0.5';
-  return columned ? 'min-w-0 flex-1 basis-32 gap-0.5' : 'min-w-0 shrink grow basis-auto gap-0.5';
+  if (twoLines) return 'min-w-0 flex-1 basis-32 gap-0.5';
+  return control ? 'min-w-0 flex-1 basis-20 gap-0.5' : 'min-w-0 shrink grow basis-auto gap-0.5';
 }
 
 function BodyTitle(props: BodyProps): ReactNode {
@@ -188,10 +197,13 @@ function BodyCaption({ caption, captionEllipsize }: BodyProps): ReactNode {
 function Body(props: BodyProps): ReactNode {
   const { overline, passive, compact } = props;
   const wrapTitle = compact === true || props.wrapTitle === true;
-  const columned = props.subtitle !== undefined || props.trailing !== undefined;
   return (
     <View
-      className={bodyClassOf(wrapTitle || props.canShrink, columned)}
+      className={bodyClassOf(
+        wrapTitle || props.canShrink,
+        props.subtitle !== undefined,
+        props.trailing !== undefined,
+      )}
       {...(passive ? PASSIVE : {})}
     >
       {overline === undefined ? null : (
@@ -286,6 +298,7 @@ function RowTrailing({
     <Trailing
       value={row.value}
       chevron={row.chevron}
+      expanded={row.expanded}
       trailing={row.trailing}
       passive={passive}
     />

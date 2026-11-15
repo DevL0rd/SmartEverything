@@ -27,11 +27,11 @@ import {
   type ScreenValue,
 } from '../screen-context';
 import { BodyWidthContext } from './body-width';
-import { asideDockedAt, shellColumnOf, shellRailOf } from './layout';
+import { asideDockedAt, sectionRailOf, shellColumnOf } from './layout';
 import { PhoneFrame } from './phone-frame';
 import { ShellFooter } from './shell-body';
-import { compactSections, selecting, type FrameProps, type ShellLayout } from './shell-frame';
-import { SectionsPullUp, railFormOf, sectionsPullUp, type ShellSections } from './shell-sections';
+import { selecting, type FrameProps, type ShellLayout } from './shell-frame';
+import { railFormOf } from './shell-sections';
 import {
   isVariantShell,
   type PageShellProps,
@@ -39,6 +39,9 @@ import {
   type StandardShellProps,
 } from './shell-types';
 import { ShellInsetContext } from './shell-inset';
+import { PageIconContext, activeSectionIcon } from './page-icon';
+import { RailHostContext } from './rail-host';
+import { RailPublisher, besideHostedRail, railSectionsOf, withoutSections } from './rail-publish';
 import { OverlayShell, PaneShell } from './shell-variants';
 import { WideFrame } from './wide-frame';
 
@@ -55,7 +58,7 @@ function useShellLayout(shell: StandardShellProps): ShellLayout {
   const area = size.area - use(ShellInsetContext);
   const gutter = gutterOf(size.width, size.idiom, useThemeSetting('density'));
   const phone = size.header === 'large';
-  const rail = phone ? null : shellRailOf(area, railFormOf(shell.sections));
+  const rail = sectionRailOf(phone, area, railFormOf(shell.sections));
   const docked = shell.aside?.open === true && !phone && asideDockedAt(area);
   const column = shellColumnOf({
     area,
@@ -105,32 +108,24 @@ function AsideSheet({ aside }: { readonly aside: ShellAside }): ReactNode {
   );
 }
 
-function PullUp({
-  sections,
-  title,
-  open,
-  onClose,
-}: {
-  readonly sections: ShellSections | undefined;
-  readonly title: string;
-  readonly open: boolean;
-  readonly onClose: () => void;
-}): ReactNode {
-  if (sections === undefined) return null;
-  return <SectionsPullUp open={open} onClose={onClose} title={title} sections={sections} />;
-}
-
 function useFabAction(shell: StandardShellProps): PrimaryActionProps | undefined {
   const placement = usePrimaryActionPlacement();
   return placement === 'fab' && !selecting(shell) ? shell.primaryAction : undefined;
 }
 
-function pullUpSectionsOf(
-  shell: StandardShellProps,
-  layout: ShellLayout,
-): ShellSections | undefined {
-  const sections = compactSections(shell, layout.rail);
-  return sections !== undefined && sectionsPullUp(sections) ? sections : undefined;
+interface AmbientTop {
+  readonly top: number | null | undefined;
+  readonly onTop: ((height: number) => void) | null;
+}
+
+function useAmbientTop(scroll: boolean): AmbientTop {
+  const [top, setTop] = useState<number | null>(null);
+  return scroll ? { top: undefined, onTop: null } : { top, onTop: setTop };
+}
+
+function ShellAmbient({ top }: { readonly top: number | null | undefined }): ReactNode {
+  if (top === undefined) return <Ambient />;
+  return top === null ? null : <Ambient height={top} />;
 }
 
 function ShellProviders({
@@ -138,12 +133,14 @@ function ShellProviders({
   anchor,
   width,
   title,
+  top,
   children,
 }: {
   readonly value: ScreenValue;
   readonly anchor: ScreenScroll | null;
   readonly width: number;
   readonly title: string;
+  readonly top: number | null | undefined;
   readonly children: ReactNode;
 }): ReactNode {
   return (
@@ -154,7 +151,7 @@ function ShellProviders({
             <title>{`${title} · SmartEverything`}</title>
           </Head>
           <KeyboardViewport className="flex-1">
-            <Ambient />
+            <ShellAmbient top={top} />
             {children}
           </KeyboardViewport>
         </BodyWidthContext>
@@ -163,46 +160,59 @@ function ShellProviders({
   );
 }
 
-function StandardShell(shell: StandardShellProps): ReactNode {
-  const layout = useShellLayout(shell);
+interface HostedShell {
+  readonly shell: StandardShellProps;
+  readonly layout: ShellLayout;
+  readonly publisher: ReactNode;
+}
+
+function useHostedShell(props: StandardShellProps): HostedShell {
+  const host = use(RailHostContext);
+  const own = useShellLayout(props);
+  if (host === null) return { shell: props, layout: own, publisher: null };
+  const sections = railSectionsOf(props, own);
+  return {
+    shell: sections === null ? props : withoutSections(props),
+    layout: sections === null ? own : besideHostedRail(own),
+    publisher: <RailPublisher host={host} sections={sections} />,
+  };
+}
+
+function StandardShell(props: StandardShellProps): ReactNode {
+  const { shell, layout, publisher } = useHostedShell(props);
   const scrollY = useSharedValue(0);
   const tick = useSharedValue(0);
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
-  const [pullUp, setPullUp] = useState(false);
   const scroll = shell.scroll !== false;
+  const ambient = useAmbientTop(scroll);
   const fabAction = useFabAction(shell);
   const value = useShellValue(scrollY, scroll ? scrollRef : null, shell.primaryAction, scroll);
   const anchor = useScrollAnchor(scroll, scrollRef, scrollY, tick);
   const phone = layout.header === 'large';
-  const pullUpSections = pullUpSectionsOf(shell, layout);
+  const tabIcon = use(PageIconContext);
   const frame: FrameProps = {
     shell,
     layout,
     scrollY,
     scrollRef,
     fab: fabAction !== undefined,
-    openPullUp:
-      pullUpSections === undefined
-        ? undefined
-        : (): void => {
-            setPullUp(true);
-          },
+    icon: activeSectionIcon(props.sections) ?? tabIcon,
+    onTop: ambient.onTop,
   };
   return (
-    <ShellProviders value={value} anchor={anchor} width={layout.column.width} title={shell.title}>
+    <ShellProviders
+      value={value}
+      anchor={anchor}
+      width={layout.column.width}
+      title={shell.title}
+      top={ambient.top}
+    >
+      {publisher}
       <View className="min-h-0 flex-1">
         {phone ? <PhoneFrame {...frame} /> : <WideFrame {...frame} />}
         {fabAction === undefined ? null : <PrimaryAction {...fabAction} />}
       </View>
       {!phone || shell.footer === undefined ? null : <ShellFooter>{shell.footer}</ShellFooter>}
-      <PullUp
-        sections={pullUpSections}
-        title={shell.title}
-        open={pullUp}
-        onClose={() => {
-          setPullUp(false);
-        }}
-      />
       {shell.aside === undefined || layout.docked ? null : <AsideSheet aside={shell.aside} />}
     </ShellProviders>
   );

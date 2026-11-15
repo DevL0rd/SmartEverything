@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DESKTOP_CLIPBOARD_CHANGED } from '@smarteverything/domain';
 import type { ClipboardHandle } from '../src/clipboard-ipc.js';
@@ -16,11 +17,17 @@ interface State {
 }
 
 const state: State = { text: '', focused: null, destroyed: false };
+const windows = new EventEmitter();
+let reads = 0;
 const sent: { channel: string; value: unknown }[] = [];
 
 vi.mock('electron', () => ({
+  app: windows,
   clipboard: {
-    readText: (): Promise<string> => Promise.resolve(state.text),
+    readText: (): Promise<string> => {
+      reads += 1;
+      return Promise.resolve(state.text);
+    },
     writeText: (value: string): Promise<void> => {
       state.text = value;
       return Promise.resolve();
@@ -44,6 +51,16 @@ function read(): unknown {
 
 function write(text: string): unknown {
   return handlers.get('desktop:clipboard-write')?.(text);
+}
+
+function focus(window: FakeWindow): void {
+  state.focused = window;
+  windows.emit('browser-window-focus');
+}
+
+function blur(): void {
+  state.focused = null;
+  windows.emit('browser-window-blur');
 }
 
 function windowWithSink(): FakeWindow {
@@ -73,6 +90,7 @@ describe('the desktop clipboard bridge', () => {
     state.text = '';
     state.focused = null;
     state.destroyed = false;
+    reads = 0;
   });
 
   it('reads the system clipboard and answers null when it holds nothing', async () => {
@@ -91,7 +109,7 @@ describe('the desktop clipboard bridge', () => {
 
   it('sends a copy made on this computer to the focused window once', async () => {
     stop = registerClipboardIpc(handle, POLL_MS);
-    state.focused = windowWithSink();
+    focus(windowWithSink());
     await poll();
     state.text = 'desk copy';
     await poll();
@@ -103,7 +121,7 @@ describe('the desktop clipboard bridge', () => {
 
   it('does not send back text it has just put on the clipboard itself', async () => {
     stop = registerClipboardIpc(handle, POLL_MS);
-    state.focused = windowWithSink();
+    focus(windowWithSink());
     await poll();
     await write('from another device');
     await poll();
@@ -119,10 +137,38 @@ describe('the desktop clipboard bridge', () => {
 
   it('sends nothing to a window that is gone', async () => {
     stop = registerClipboardIpc(handle, POLL_MS);
-    state.focused = windowWithSink();
+    focus(windowWithSink());
     state.destroyed = true;
     state.text = 'copied during shutdown';
     await poll();
     expect(sent).toStrictEqual([]);
+  });
+
+  it('keeps no timer and reads nothing while no window is focused, then catches up on focus', async () => {
+    stop = registerClipboardIpc(handle, POLL_MS);
+    await poll();
+    expect(reads).toBe(0);
+    focus(windowWithSink());
+    await poll();
+    blur();
+    const before = reads;
+    state.text = 'copied in another app';
+    await poll();
+    expect(reads).toBe(before);
+    expect(sent).toStrictEqual([]);
+    focus(windowWithSink());
+    await poll();
+    expect(sent).toStrictEqual([
+      { channel: DESKTOP_CLIPBOARD_CHANGED, value: 'copied in another app' },
+    ]);
+  });
+
+  it('starts watching at once when a window already has focus', async () => {
+    state.focused = windowWithSink();
+    stop = registerClipboardIpc(handle, POLL_MS);
+    await poll();
+    state.text = 'desk copy';
+    await poll();
+    expect(sent).toStrictEqual([{ channel: DESKTOP_CLIPBOARD_CHANGED, value: 'desk copy' }]);
   });
 });

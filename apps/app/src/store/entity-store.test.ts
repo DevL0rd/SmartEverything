@@ -1,6 +1,7 @@
 import { LIVE_CHANGE, type LiveChange } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EntityStore } from './entity-store';
+import { wired } from '../test-support/live-wire';
 
 let frames: (() => void)[] = [];
 
@@ -47,7 +48,7 @@ describe('EntityStore live notifications', () => {
     const seen: (number | null)[] = [];
     store.subscribe(() => seen.push(seqOf(store)));
     for (let seq = 1; seq <= 3; seq += 1) {
-      store.apply([levelChange(seq)]);
+      store.apply(wired([levelChange(seq)]));
     }
     expect(seen).toStrictEqual([1, 2, 3]);
   });
@@ -57,7 +58,7 @@ describe('EntityStore live notifications', () => {
     const rendered: (number | null)[] = [];
     store.subscribeRender(() => rendered.push(seqOf(store)));
     for (let seq = 1; seq <= 5; seq += 1) {
-      store.apply([levelChange(seq)]);
+      store.apply(wired([levelChange(seq)]));
     }
     expect(rendered).toStrictEqual([]);
     expect(runFrame()).toBe(1);
@@ -68,7 +69,7 @@ describe('EntityStore live notifications', () => {
     const store = new EntityStore();
     const rendered: (number | null)[] = [];
     store.subscribeRender(() => rendered.push(seqOf(store)));
-    store.apply([levelChange(1)]);
+    store.apply(wired([levelChange(1)]));
     store.setSync({ status: 'live' });
     expect(rendered).toStrictEqual([]);
     await Promise.resolve();
@@ -82,7 +83,7 @@ describe('EntityStore live notifications', () => {
     const rendered: (number | null)[] = [];
     store.subscribeRender(() => rendered.push(seqOf(store)));
     for (let seq = 1; seq <= 200; seq += 1) {
-      store.apply([levelChange(seq)]);
+      store.apply(wired([levelChange(seq)]));
       if (seq % 20 === 0) runFrame();
     }
     runFrame();
@@ -94,7 +95,7 @@ describe('EntityStore live notifications', () => {
     const store = new EntityStore();
     const listener = vi.fn();
     const stop = store.subscribeRender(listener);
-    store.apply([levelChange(1)]);
+    store.apply(wired([levelChange(1)]));
     stop();
     runFrame();
     expect(listener).not.toHaveBeenCalled();
@@ -102,8 +103,8 @@ describe('EntityStore live notifications', () => {
 
   it('gives a render listener added before the frame the final state', () => {
     const store = new EntityStore();
-    store.apply([levelChange(1)]);
-    store.apply([levelChange(2)]);
+    store.apply(wired([levelChange(1)]));
+    store.apply(wired([levelChange(2)]));
     const rendered: (number | null)[] = [];
     store.subscribeRender(() => rendered.push(seqOf(store)));
     runFrame();
@@ -112,7 +113,7 @@ describe('EntityStore live notifications', () => {
 
   it('commits live changes with no subscribers at all', () => {
     const store = new EntityStore();
-    store.apply([levelChange(1)]);
+    store.apply(wired([levelChange(1)]));
     runFrame();
     expect(seqOf(store)).toBe(1);
   });
@@ -121,7 +122,7 @@ describe('EntityStore live notifications', () => {
     const store = new EntityStore();
     const woken = vi.fn();
     store.subscribeSlices(['tables.ai_chats'], woken);
-    store.apply([levelChange(1)]);
+    store.apply(wired([levelChange(1)]));
     runFrame();
     expect(woken).not.toHaveBeenCalled();
     store.setSync({ status: 'live' });

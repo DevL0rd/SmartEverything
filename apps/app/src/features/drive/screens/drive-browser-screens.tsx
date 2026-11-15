@@ -139,6 +139,7 @@ function useDriveFileBrowser(location: FileLocation): FileBrowserHandle<DriveOri
       },
       byName: useByName(),
       placesInFrame: true,
+      offlineInFrame: true,
     },
   });
   useRevealItem(browser);

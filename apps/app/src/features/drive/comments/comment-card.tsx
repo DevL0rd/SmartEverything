@@ -18,7 +18,6 @@ import {
   bodyPartsOf,
   commentRightsOf,
   mayResolve,
-  repliesLabelOf,
   resolvedByLineOf,
   stampOf,
 } from './comments-model';
@@ -171,12 +170,10 @@ function CommentView({
   );
 }
 
-function footLineOf(thread: DriveCommentThread, context: CommentContext): string {
-  return (
-    resolvedByLineOf(thread, context.nameOf, context.now) ??
-    repliesLabelOf(thread) ??
-    'No replies yet'
-  );
+function footLineOf(thread: DriveCommentThread, context: CommentContext): string | null {
+  const resolved = resolvedByLineOf(thread, context.nameOf, context.now);
+  if (resolved !== null) return resolved;
+  return thread.replies.length === 0 ? 'No replies yet' : null;
 }
 
 function ThreadFooter({
@@ -194,27 +191,24 @@ function ThreadFooter({
   const line = footLineOf(thread, context);
   return (
     <View className="gap-1 border-t border-outline-variant pt-2">
-      <View className="flex-row flex-wrap items-center gap-2">
-        <Text
-          variant="caption"
-          tone="variant"
-          numberOfLines={1}
-          className="min-w-0 flex-1 basis-48"
-        >
+      <View className="flex-row items-center gap-2">
+        <Text variant="caption" tone="variant" numberOfLines={2} className="min-w-0 flex-1">
           {line}
         </Text>
-        {context.writable && !resolved ? (
-          <Button label="Reply" variant="text" onPress={onReply} />
-        ) : null}
-        {resolvable ? (
-          <ResolveButton
-            resolved={resolved}
-            busy={resolve.busy}
-            onPress={() => {
-              resolve.run(thread.root.id, !resolved);
-            }}
-          />
-        ) : null}
+        <View className="flex-row items-center gap-2">
+          {context.writable && !resolved ? (
+            <Button label="Reply" variant="text" onPress={onReply} />
+          ) : null}
+          {resolvable ? (
+            <ResolveButton
+              resolved={resolved}
+              busy={resolve.busy}
+              onPress={() => {
+                resolve.run(thread.root.id, !resolved);
+              }}
+            />
+          ) : null}
+        </View>
       </View>
       {resolve.problem === null ? null : (
         <Text variant="footnote" tone="critical">

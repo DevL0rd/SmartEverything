@@ -100,12 +100,15 @@ function leave(album: DriveAlbum, run: Run, refresh: () => void): void {
   );
 }
 
-export function useLeaveAlbum(album: DriveAlbum): { readonly busy: boolean; readonly leave: () => void } {
+export function useLeaveAlbum(album: DriveAlbum): {
+  readonly busy: boolean;
+  readonly leave: () => void;
+} {
   const mutation = useMutationState();
   const client = useQueryClient();
   return {
     busy: mutation.busy,
-    leave: () => {
+    leave: (): void => {
       leave(album, mutation.run, () => {
         invalidateSharing(client);
       });
@@ -180,14 +183,22 @@ export function albumMenuOf(
       id: spec.key,
       label: spec.label,
       icon: spec.icon,
-      onPress: () => {
+      onPress: (): void => {
         onOpen(spec.key);
       },
     }));
   const leaving: MenuItem[] =
     share.role === null || share.role === 'owner' || share.invited
       ? []
-      : [{ id: 'leave', label: 'Leave album', icon: 'signOut', destructive: true, onPress: onLeave }];
+      : [
+          {
+            id: 'leave',
+            label: 'Leave album',
+            icon: 'signOut',
+            destructive: true,
+            onPress: onLeave,
+          },
+        ];
   return [...opens, ...leaving];
 }
 

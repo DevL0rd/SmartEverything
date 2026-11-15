@@ -6,6 +6,7 @@ import {
   type DriveItem,
   type DriveShortcut,
 } from '@smarteverything/domain';
+import { bytes } from '../../../format/number';
 import { AT, ROOT_ID, documentFixture, driveItemFixture, folderFixture } from '../data/fixtures';
 import {
   ancestorsOf,
@@ -188,6 +189,13 @@ describe('info rows', () => {
     expect(rows.map((row) => row.key)).toEqual(['kind', 'size', 'modified', 'added', 'where']);
     expect(rows.find((row) => row.key === 'where')?.value).toBe('Docs');
     expect(rows.find((row) => row.key === 'added')?.value).toContain('Dana');
+    expect(rows.find((row) => row.key === 'kind')?.value).toBe('PDF document');
+  });
+
+  it('gives a folder its size and how many items it holds', () => {
+    const folder = folderFixture({ id: idOf(10), name: 'Projects', bytes: 4096, childCount: 46 });
+    const rows = infoRowsOf(driveNodeOf(folder, worldContext()), facts);
+    expect(rows.find((row) => row.key === 'size')?.value).toBe(`${bytes(4096)} · 46 items`);
   });
 
   it('names a link and its target and a special file by its kind', () => {

@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BarSegment } from '../../../components/charts';
 import type { RailGroup } from '../../../components/page-shell/section-rail';
 import type { StandardShellProps } from '../../../components/page-shell/page-shell';
-import { phoneTabsOf, sectionsPullUp } from '../../../components/page-shell/shell-sections';
 import { bytes } from '../../../format/number';
 import { INITIAL_BACKUP_STATUS, type BackupStatus } from '../backup/model/status';
 import type { PhotosFrameProps } from './photos-frame';
@@ -365,12 +364,10 @@ describe('photos frame', () => {
     expect(render()).not.toContain('data-href');
   });
 
-  it('leaves the phone sections to the title pull-up so the page keeps one tab row', () => {
+  it('passes the sections to the phone rail and keeps the phone header free of actions', () => {
     seen.area = 412;
     render({ active: 'albums', children: null });
-    const sections = seen.frame?.sections;
-    expect(sections === undefined ? false : sectionsPullUp(sections)).toBe(true);
-    expect(sections === undefined ? undefined : phoneTabsOf(sections)).toBeNull();
+    expect(seen.frame?.sections?.active).toBe('albums');
     expect(seen.frame?.actions).toEqual([]);
   });
 

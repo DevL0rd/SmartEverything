@@ -16,7 +16,10 @@ import {
   zoomedAt,
   zoomedBy,
   zoomedInto,
+  wheeledAt,
+  viewFitting,
   type MapView,
+  type WheelState,
 } from './map-view';
 import { fitOf, GRID_PER_DEGREE, type GeoPoint } from '../world-map/projection';
 
@@ -107,8 +110,41 @@ describe('map view', () => {
   });
 
   it('turns wheel travel into whole zoom steps and keeps the rest for the next turn', () => {
-    expect(mapWheelOf(0, -MAP_WHEEL_PIXELS_PER_STEP * 2.5)).toEqual({ steps: 2, pending: 50 });
+    expect(mapWheelOf(0, -MAP_WHEEL_PIXELS_PER_STEP * 2.5)).toEqual({ steps: 1, pending: 50 });
     expect(mapWheelOf(50, -60)).toEqual({ steps: 1, pending: 10 });
     expect(mapWheelOf(50, 120)).toEqual({ steps: -1, pending: -20 });
+  });
+
+  it('zooms one step per wheel notch and keeps the place under the pointer through six notches', () => {
+    const at = { x: 540, y: 110 };
+    const geoAt = (view: MapView): GeoPoint => {
+      const fit = fitOf(mapBoxOf(view, FRAME), FRAME);
+      return {
+        lon: (at.x - fit.dx) / fit.scale / GRID_PER_DEGREE - 180,
+        lat: 90 - (at.y - fit.dy) / fit.scale / GRID_PER_DEGREE,
+      };
+    };
+    const start = geoAt(WORLD_START);
+    let state: WheelState = { view: WORLD_START, pending: 0 };
+    for (let notch = 0; notch < 6; notch += 1) state = wheeledAt(state, -120, at, FRAME);
+    expect(state.view.zoom).toBe(6);
+    expect(geoAt(state.view).lat).toBeCloseTo(start.lat);
+    expect(geoAt(state.view).lon).toBeCloseTo(start.lon);
+  });
+
+  it('fits the photos on start and fills a tall frame instead of letterboxing the world', () => {
+    const berlin = { lat: 52.5, lon: 13.4, count: 4000 };
+    const paris = { lat: 48.9, lon: 2.4, count: 500 };
+    const sydney = { lat: -33.9, lon: 151.2, count: 100 };
+    const europe = viewFitting([berlin, paris], FRAME);
+    expect(europe.zoom).toBeGreaterThan(2);
+    expect(europe.lon).toBeCloseTo(7.9);
+    expect(viewFitting([berlin, paris, sydney], { width: 1020, height: 400 })).toEqual(WORLD_START);
+    expect(viewFitting([berlin, paris, sydney], FRAME).zoom).toBe(1);
+    const tall = { width: 380, height: 560 };
+    const world = viewFitting([berlin, paris, sydney], tall);
+    expect(world.zoom).toBe(2);
+    expect(world.lat).toBeGreaterThan(40);
+    expect(viewFitting([berlin], FRAME).zoom).toBe(10);
   });
 });

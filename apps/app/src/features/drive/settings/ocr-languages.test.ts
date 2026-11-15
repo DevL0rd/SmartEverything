@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ocrChoicesOf, ocrLanguagesAfter, ocrLineOf, ocrValueOf } from './ocr-languages';
+import {
+  ocrChoicesOf,
+  ocrLanguagesAfter,
+  ocrLineOf,
+  ocrShownOf,
+  ocrValueOf,
+} from './ocr-languages';
 
 describe('picture text languages', () => {
   it('marks the chosen languages and keeps a chosen code the list does not name', () => {
@@ -28,7 +34,19 @@ describe('picture text languages', () => {
 
   it('names the languages in the caption', () => {
     expect(ocrLineOf(['eng', 'chi_sim'])).toBe(
-      'Reads text in pictures in English, Chinese, simplified. A new language downloads once to the Hub.',
+      'Reads text in pictures in English and Chinese, simplified. A new language downloads once to the Hub.',
     );
+    expect(ocrLineOf(['eng', 'deu', 'fra'])).toBe(
+      'Reads text in pictures in English, German and French. A new language downloads once to the Hub.',
+    );
+  });
+
+  it('filters the languages by name and keeps the ones chosen when the sheet opened on top', () => {
+    const pinned = new Set(['deu']);
+    expect(ocrShownOf(['deu'], 'jap', pinned).map((choice) => choice.code)).toEqual(['deu', 'jpn']);
+    const all = ocrShownOf(['deu', 'eng'], '', pinned);
+    expect(all[0]?.code).toBe('deu');
+    expect(all.find((choice) => choice.code === 'eng')?.chosen).toBe(true);
+    expect(all).toHaveLength(ocrChoicesOf(['deu']).length);
   });
 });

@@ -1,8 +1,9 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { PhotoPlace, PlaceCountry } from '@smarteverything/domain';
-import { MAP_COPY, MapScreen } from './map-screen';
+import { ApiError, type PhotoPlace, type PlaceCountry } from '@smarteverything/domain';
+import { MAP_COPY } from './map-copy';
+import { MapScreen } from './map-screen';
 import { itemsLabel, PlaceScreen } from './place-screen';
 
 interface QueryState<T> {
@@ -107,7 +108,6 @@ vi.mock('../../../components/interactive', () => ({
     readonly children: ReactNode;
   }): ReactNode => createElement('a', { 'aria-label': label }, children),
 }));
-vi.mock('./place-feed', () => ({ PlaceFeed: (): null => null }));
 vi.mock('../world-map', () => ({ MiniMap: (): null => null, NATURAL_EARTH_ATTRIBUTION: '' }));
 
 const LISBON: PhotoPlace = {
@@ -170,15 +170,23 @@ describe('map with places', () => {
 });
 
 describe('place page states', () => {
-  it('splits the items into photos and videos once the video count is known', () => {
-    expect(itemsLabel(1284, null)).toBe('items');
-    expect(itemsLabel(1284, 86)).toBe('items · 1,198 photos, 86 videos');
+  it('labels the item count once, leaving videos to their own figure', () => {
+    expect(itemsLabel(1284)).toBe('photos and videos');
+    expect(itemsLabel(1)).toBe('photo or video');
   });
 
   it('points an unknown place back to Map and places', () => {
     state.placeId = 'lisbon';
     expect(placePage()).toContain('Open Map and places');
     state.placeId = '1';
+  });
+
+  it('shows a missing place as gone with a way back instead of a retry', () => {
+    state.place = query<PhotoPlace>(undefined, new ApiError('not_found', 'There is no such place'));
+    const markup = placePage();
+    expect(markup).toContain('This place is gone');
+    expect(markup).toContain('Open Map and places');
+    expect(markup).not.toContain('role="alert"');
   });
 
   it('says the hub is offline instead of an error when it cannot reach the hub', () => {

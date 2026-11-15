@@ -1,48 +1,42 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { centredRect, type Rect } from '../../components/anchor';
-import { Button } from '../../components/button';
 import { Card } from '../../components/card';
 import { CardGrid, evenColumnsOf } from '../../components/card-grid';
 import { EmptyState } from '../../components/empty-state';
 import type { ShellAction } from '../../components/page-shell/shell-actions';
 import { useAreaWidth, useWindowSize } from '../../design/size-class';
+import { useSettings } from '../../store/selectors';
 import { clock24 } from '../../format/time';
-import { useVisibleMinute, Composer } from '../planner';
+import { useVisibleMinute, Composer, QueryBody } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
 import { shellLayoutOf } from '../../components/page-shell/layout';
 import { AddCityPicker } from './world/add-city';
 import { CityCard, CityRow, cityViewOf } from './world/city-card';
 import { FindATimeCard, FindATimePhone } from './world/find-a-time-card';
 import { eventTextAt } from './world/find-a-time';
+import type { PlannerPreferences } from '@smarteverything/domain';
 import { useHourPick, useWorld, type WorldModel } from './world/use-world';
 
 const ME = null;
 
-function subtitleOf(world: WorldModel, now: number, compact: boolean): string {
-  const count = world.clocks.length;
-  const cities = `${String(count)} ${count === 1 ? 'city' : 'cities'}`;
-  const head = `Home ${clock24(now, world.home.zone)} · ${cities}`;
-  return compact ? head : `${head} · drag across the hours to find a time`;
+function subtitleOf(prefs: PlannerPreferences | undefined, head: string, compact: boolean): string {
+  if (prefs === undefined) return head;
+  const count = prefs.clock.world_clocks.length;
+  const cities = `${head} · ${String(count)} ${count === 1 ? 'city' : 'cities'}`;
+  return compact ? cities : `${cities} · drag across the hours to find a time`;
 }
 
-function NoCities({
-  onAdd,
-  disabled,
-}: {
-  readonly onAdd: () => void;
-  readonly disabled: boolean;
-}): ReactNode {
+function NoCities(): ReactNode {
   return (
-    <EmptyState
-      icon="globe"
-      title="No other cities yet"
-      body="Add the cities you call or work with to see their time, daylight and the best hour to meet."
-      compact
-      action={
-        <Button label="Add city" icon="plus" variant="tonal" disabled={disabled} onPress={onAdd} />
-      }
-    />
+    <Card>
+      <EmptyState
+        icon="globe"
+        title="No other cities yet"
+        body="Add the cities you call or work with to see their time, daylight and the best hour to meet."
+        compact
+      />
+    </Card>
   );
 }
 
@@ -52,28 +46,50 @@ interface CitiesProps {
   readonly columns: number | null;
 }
 
+type CitySlot =
+  | { readonly kind: 'city'; readonly view: ReturnType<typeof cityViewOf> }
+  | { readonly kind: 'empty' };
+
+function slotKeyOf(slot: CitySlot): string {
+  return slot.kind === 'city' ? slot.view.city.key : 'empty';
+}
+
 function Cities({ world, now, columns }: CitiesProps): ReactNode {
   const views = world.cities.map((city) => cityViewOf(city, now, world.home.zone));
+  const empty = world.clocks.length === 0;
   if (columns === null) {
     return (
-      <Card padding="none">
-        {views.map((view, index) => (
-          <CityRow
-            key={view.city.key}
-            view={view}
-            menu={world.menuOf(view.city)}
-            first={index === 0}
-          />
-        ))}
-      </Card>
+      <>
+        <Card padding="none">
+          {views.map((view, index) => (
+            <CityRow
+              key={view.city.key}
+              view={view}
+              menu={world.menuOf(view.city)}
+              first={index === 0}
+            />
+          ))}
+        </Card>
+        {empty ? <NoCities /> : null}
+      </>
     );
   }
+  const slots: readonly CitySlot[] = [
+    ...views.map((view) => ({ kind: 'city' as const, view })),
+    ...(empty ? [{ kind: 'empty' as const }] : []),
+  ];
   return (
     <CardGrid
-      items={views}
-      columns={evenColumnsOf(views.length, columns)}
-      keyOf={(view) => view.city.key}
-      render={(view) => <CityCard view={view} menu={world.menuOf(view.city)} />}
+      items={slots}
+      columns={evenColumnsOf(slots.length, columns)}
+      keyOf={slotKeyOf}
+      render={(slot) =>
+        slot.kind === 'city' ? (
+          <CityCard view={slot.view} menu={world.menuOf(slot.view.city)} />
+        ) : (
+          <NoCities />
+        )
+      }
     />
   );
 }
@@ -96,7 +112,6 @@ function FindATime({
   readonly onCreate: (text: string) => void;
 }): ReactNode {
   const pick = useHourPick(now, world);
-  if (world.plan === null) return null;
   const props = {
     cities: world.cities,
     home: world.home,
@@ -114,6 +129,37 @@ function addActionOf(open: () => void, offline: boolean): readonly ShellAction[]
   return [{ icon: 'plus', label: 'Add city', primary: true, disabled: offline, onPress: open }];
 }
 
+function WorldBody({
+  world,
+  now,
+  columns,
+  anchor,
+  onCloseAdd,
+  onCreate,
+}: {
+  readonly world: WorldModel;
+  readonly now: number;
+  readonly columns: number | null;
+  readonly anchor: Rect | null;
+  readonly onCloseAdd: () => void;
+  readonly onCreate: (text: string) => void;
+}): ReactNode {
+  return (
+    <View className="gap-section-gap">
+      <Cities world={world} now={now} columns={columns} />
+      <FindATime world={world} now={now} compact={columns === null} onCreate={onCreate} />
+      <AddCityPicker
+        anchor={anchor}
+        cities={world.cities}
+        now={now}
+        homeZone={world.home.zone}
+        onAdd={world.add}
+        onClose={onCloseAdd}
+      />
+    </View>
+  );
+}
+
 export function WorldPage(): ReactNode {
   const ref = useRef<View>(null);
   const { value: now, onLayout } = useVisibleMinute(ref);
@@ -122,30 +168,33 @@ export function WorldPage(): ReactNode {
   const columns = columnsOf(useAreaWidth());
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const [event, setEvent] = useState<string | null>(null);
+  const zone = useSettings().time_zone;
+  const loaded = world.query.data !== undefined;
   const openAdd = (): void => {
     setAnchor(centredRect(window));
   };
   return (
     <ClockFrame
       section="world"
-      subtitle={subtitleOf(world, now, columns === null)}
-      actions={addActionOf(openAdd, world.offline)}
+      subtitle={subtitleOf(world.query.data, `Home ${clock24(now, zone)}`, columns === null)}
+      actions={addActionOf(openAdd, world.offline || !loaded)}
     >
-      <View ref={ref} onLayout={onLayout} className="gap-section-gap">
-        <Cities world={world} now={now} columns={columns} />
-        {world.clocks.length === 0 ? <NoCities onAdd={openAdd} disabled={world.offline} /> : null}
-        <FindATime world={world} now={now} compact={columns === null} onCreate={setEvent} />
+      <View ref={ref} onLayout={onLayout}>
+        <QueryBody query={world.query}>
+          {(prefs) => (
+            <WorldBody
+              world={world.worldOf(prefs)}
+              now={now}
+              columns={columns}
+              anchor={anchor}
+              onCloseAdd={() => {
+                setAnchor(null);
+              }}
+              onCreate={setEvent}
+            />
+          )}
+        </QueryBody>
       </View>
-      <AddCityPicker
-        anchor={anchor}
-        cities={world.cities}
-        now={now}
-        homeZone={world.home.zone}
-        onAdd={world.add}
-        onClose={() => {
-          setAnchor(null);
-        }}
-      />
       <Composer
         open={event !== null}
         onClose={() => {

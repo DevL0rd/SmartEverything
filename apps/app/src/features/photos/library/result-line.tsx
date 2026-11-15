@@ -20,7 +20,7 @@ export function ResultLine({
     <View className="min-h-11 flex-row items-center gap-3 px-gutter">
       <View className="min-w-40 flex-1 gap-0.5">
         {text === null ? null : (
-          <Text variant="body-strong" className="tabular-nums" numberOfLines={1}>
+          <Text variant="body-strong" className="tabular-nums" numberOfLines={2}>
             {text}
           </Text>
         )}

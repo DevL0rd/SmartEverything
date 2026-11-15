@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import type { SettingDefinition, SettingEnv } from '../../../settings/types';
 import { EmailSettings } from './email-settings';
 
-export const EMAIL_PAGE = 'connections/email';
+export const EMAIL_PAGE = 'planner/invitation-email';
 
 const owner = (env: SettingEnv): boolean => env.owner;
 

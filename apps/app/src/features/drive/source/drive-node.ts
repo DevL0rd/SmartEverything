@@ -80,9 +80,7 @@ function mimeOf(item: DriveItem): string | null {
 }
 
 function sizeOf(item: DriveItem): number | null {
-  return item.kind === 'folder' || item.kind === 'link' || item.kind === 'special'
-    ? null
-    : item.bytes;
+  return item.kind === 'link' || item.kind === 'special' ? null : item.bytes;
 }
 
 function marksOf(item: DriveItem, context: DriveNodeContext): FileMarks {

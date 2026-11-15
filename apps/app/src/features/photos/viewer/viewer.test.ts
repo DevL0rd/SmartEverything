@@ -64,11 +64,15 @@ describe('photo viewer', () => {
 
   it('offers the albums to add to and keeps Move to trash last', () => {
     const add = vi.fn();
-    const items = albumMenuItems([albumRow(ITEM, 'photos')], add);
-    expect(items.map((item) => item.label)).toEqual(['Trip']);
+    const make = vi.fn();
+    const items = albumMenuItems([albumRow(ITEM, 'photos')], add, make);
+    expect(items.map((item) => item.label)).toEqual(['Trip', 'New album…']);
     items[0]?.onPress();
     expect(add).toHaveBeenCalledWith(ITEM, 'Trip');
-    expect(albumMenuItems([], add)[0]?.disabled).toBe(true);
+    const none = albumMenuItems([], add, make);
+    expect(none.map((item) => item.label)).toEqual(['New album…']);
+    none[0]?.onPress();
+    expect(make).toHaveBeenCalledOnce();
     const archive = { label: 'Archive', onPress: vi.fn() };
     const more = moreMenuItems({
       onSave: vi.fn(),

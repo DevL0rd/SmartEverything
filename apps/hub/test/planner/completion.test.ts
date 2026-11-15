@@ -344,3 +344,41 @@ describe('listening on the signal bus', () => {
     expect(published).toHaveLength(1);
   });
 });
+
+describe('a signal that no planner rule waits for', () => {
+  it('reads only the items completed by a signal and opens no write', () => {
+    add(ann, { title: 'Water the plants' });
+    add(bob, { title: 'Call the bank' });
+    const teeth = add(ann, {
+      completion: signalRule(BRUSH, { brushing: 'finished', person: 'Ann' }, 'occurrence'),
+    });
+    let writes = 0;
+    const write = test.store.write.bind(test.store);
+    watcher = new CompletionWatcher({
+      store: {
+        profiles: test.store.profiles,
+        settings: test.store.settings,
+        plannerOccurrences: test.store.plannerOccurrences,
+        plannerItems: test.store.plannerItems,
+        write: <T>(work: () => T): T => {
+          writes += 1;
+          return write(work);
+        },
+      },
+      clock,
+      emit: (input): void => {
+        published.push(input);
+      },
+      log: testLogger(),
+    });
+    expect(
+      test.store.plannerItems.list(ann.profileId, { statuses: ['open'], completion: 'signal' }),
+    ).toEqual([teeth]);
+    expect(watcher.handle(signal(TREADMILL, { load: 0.4 }, '2026-11-07T07:38:00.000Z'))).toEqual(
+      [],
+    );
+    expect(writes).toBe(0);
+    expect(watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'))).toHaveLength(1);
+    expect(writes).toBe(1);
+  });
+});

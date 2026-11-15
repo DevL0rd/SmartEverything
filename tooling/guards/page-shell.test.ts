@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applicationRoutes, applicationSource, filesUnder, insideApp } from './repository-files';
+import { rendersSearch, routesReaching, searchesOutsideTheShell } from './search-placement';
 
 const DELETED_SHELLS = [
   'src/components/screen.tsx',
@@ -19,46 +20,34 @@ const SHELLS = [
   join(applicationSource, 'components', 'flow-frame.tsx'),
 ];
 
-const OWN_BAR_ROUTES = new Set(['app/(app)/(photos)/photos/view/[itemId]/edit.tsx']);
+const APP_CHROME: readonly string[] = [];
 
-const SEARCH_FIELD_USERS = new Set([
-  'src/components/page-shell/search-slot.tsx',
-  'src/search/sidebar-search.tsx',
-  'src/search/search-popover.tsx',
-  'src/search/pin-picker.tsx',
-  'src/app-shell/nav-sheet-body.tsx',
-  'src/app-shell/shortcut-help.tsx',
-  'src/components/emoji-picker.tsx',
-  'src/components/schema-editor.tsx',
-  'src/components/select-picker.tsx',
-  'src/components/transcript-feed/feed-chrome.tsx',
-  'src/components/widget-board/edit/gallery-browse-step.tsx',
-  'src/components/widget-board/edit/gallery-target-step.tsx',
-  'src/features/assistant/access/access-tools-page.tsx',
-  'src/features/assistant/extensions/devices-sheet.tsx',
-  'src/features/assistant/picker/image/image-library-body.tsx',
-  'src/features/assistant/picker/library/library-tools.tsx',
-  'src/features/assistant/provider/provider-work-sheet.tsx',
-  'src/features/assistant/voice-preview/voice-preview-picker.tsx',
-  'src/features/automations/editor/inspector/values/option-picker.tsx',
-  'src/features/automations/editor/inspector/values/wire-picker.tsx',
-  'src/features/automations/editor/palette/palette-body.tsx',
-  'src/features/clock/alarm/sound-music.tsx',
-  'src/features/clock/alarm/sound-radio.tsx',
-  'src/features/device-groups/member-picker.tsx',
-  'src/features/devices/appliance/library-steps.tsx',
-  'src/features/devices/laundry/program-picker.tsx',
-  'src/features/home-map/editor/tools/catalogue-panel.tsx',
-  'src/features/home-map/editor/tools/device-tray.tsx',
-  'src/features/photos/organise/meta/location-section.tsx',
-  'src/features/planner/item/attachment-picker.tsx',
-  'src/features/plugins/picker/option-picker-sheet.tsx',
-  'src/features/settings/home/location-sheet.tsx',
+const AUTOMATION_EDITOR = [
+  'app/(app)/(z-assistant,automations)/automations/[automationId]/edit.tsx',
+  'app/(app)/(z-assistant,automations)/automations/[automationId]/runs/[runId].tsx',
+  'app/(app)/(z-assistant,automations)/automations/nodes/[functionId]/edit.tsx',
+];
+
+const HOME_MAP_EDITOR = ['app/(app)/(z-assistant,home,devices)/home-map/edit.tsx'];
+
+const ANY_FORM = ['form control'];
+
+const SEARCH_PANELS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['src/search/sidebar-search.tsx', APP_CHROME],
+  ['src/search/search-popover.tsx', APP_CHROME],
+  ['src/app-shell/nav-sheet-body.tsx', APP_CHROME],
+  ['src/features/automations/editor/inspector/values/wire-picker.tsx', AUTOMATION_EDITOR],
+  ['src/features/automations/editor/palette/palette-body.tsx', AUTOMATION_EDITOR],
+  ['src/features/home-map/editor/tools/catalogue-panel.tsx', HOME_MAP_EDITOR],
+  ['src/features/home-map/editor/tools/device-tray.tsx', HOME_MAP_EDITOR],
+  ['src/components/schema-editor.tsx', ANY_FORM],
 ]);
 
-const SEARCH_FIELD_IMPORT = /from '[^']*\/search-field'/u;
-
 const RAIL_IMPORT = /import \{[^}]*\b(?:SectionRail|RailItem|RailGroups)\b[^}]*\} from/u;
+
+const SECTION_SWITCHES = /\bphoneTabs\b|\bsectionsPullUp\b|\bSectionsPullUp\b/u;
+
+const LARGE_SHELL_TITLE = /<ShellTitle\b[^>]*\bsize="large"/u;
 
 const ANY_IMPORT = /from '(\.[^']+)'/gu;
 
@@ -118,27 +107,59 @@ describe('the page shell', () => {
   });
 
   it('renders every route page inside PageShell, its overlay and pane forms, or a flow', () => {
-    const outside = routes
-      .filter((route) => !OWN_BAR_ROUTES.has(route.path) && !reachesShell(route.file))
-      .map((route) => route.path);
+    const outside = routes.filter((route) => !reachesShell(route.file)).map((route) => route.path);
     expect(outside).toEqual([]);
   });
 
-  it('does not keep an allowance for a route page that now reaches the shell', () => {
-    const moved = routes
-      .filter((route) => OWN_BAR_ROUTES.has(route.path) && reachesShell(route.file))
-      .map((route) => route.path);
-    expect(moved).toEqual([]);
-    const known = new Set(routes.map((route) => route.path));
-    expect([...OWN_BAR_ROUTES].filter((path) => !known.has(path))).toEqual([]);
+  it('puts every page search in the shell search slot, leaving others to pickers, sheets and dialogs', () => {
+    expect(sources.filter(rendersSearch).length).toBeGreaterThan(20);
+    const outside = searchesOutsideTheShell(sources, routes);
+    const unexplained = outside.filter((path) => {
+      const allowed = SEARCH_PANELS.get(path);
+      if (allowed === undefined) return true;
+      if (allowed === ANY_FORM) return false;
+      const reached = routesReaching(sources, routes, path);
+      if (allowed.length > 0 && reached.length === 0) return true;
+      return reached.some((route) => !allowed.includes(route));
+    });
+    expect(unexplained).toEqual([]);
+    expect([...SEARCH_PANELS.keys()].filter((path) => !outside.includes(path))).toEqual([]);
   });
 
-  it('puts page search in the shell search slot and keeps SearchField to pickers and sheets', () => {
-    const users = sources
-      .filter((source) => SEARCH_FIELD_IMPORT.test(source.text))
+  it('keeps the section rail as the only section navigation, with no section tabs or pull-up', () => {
+    const found = sources
+      .filter((source) => SECTION_SWITCHES.test(source.text))
       .map((source) => source.path);
-    expect(users.filter((path) => !SEARCH_FIELD_USERS.has(path))).toEqual([]);
-    expect([...SEARCH_FIELD_USERS].filter((path) => !users.includes(path))).toEqual([]);
+    expect(found).toEqual([]);
+    const parts = textOf.get(
+      join(applicationSource, 'components', 'page-shell', 'shell-parts.tsx'),
+    );
+    expect(parts).toBeDefined();
+    expect(parts).not.toMatch(/chevronDown|PressableTitle/u);
+  });
+
+  it('draws page search in the top bar only, never as a row of its own', () => {
+    const drawn = sources
+      .filter((source) => /<ShellSearch\b/u.test(source.text))
+      .map((source) => source.path);
+    expect(drawn).toEqual(['src/components/page-shell/bar-search.tsx']);
+  });
+
+  it('shows the page title in the top bar only, never as a large title row', () => {
+    const shellFiles = sources.filter(
+      (source) =>
+        source.path.startsWith('src/components/page-shell/') ||
+        source.path === 'src/components/flow-frame.tsx',
+    );
+    expect(shellFiles.length).toBeGreaterThan(0);
+    expect(
+      shellFiles
+        .filter((source) => /large-title|'large'\s*:/u.test(source.text))
+        .map((s) => s.path),
+    ).toEqual([]);
+    expect(
+      sources.filter((source) => LARGE_SHELL_TITLE.test(source.text)).map((source) => source.path),
+    ).toEqual([]);
   });
 
   it('draws every section sidebar with the one shared section rail', () => {

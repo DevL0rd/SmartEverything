@@ -4,8 +4,8 @@ import {
   type PlannerFeedCreate,
   type PlannerHolidayRegion,
 } from '@smarteverything/domain';
-import { useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { View, type TextInput } from 'react-native';
 import { Button } from '../../../components/button';
 import { ColourSwatches } from '../../../components/colour-swatches';
 import { SelectRow } from '../../../components/rows';
@@ -42,7 +42,12 @@ function useSaving(onClose: () => void): {
   };
 }
 
-function NewCalendarBody({ onClose }: { readonly onClose: () => void }): ReactNode {
+interface BodyProps {
+  readonly onClose: () => void;
+  readonly field: RefObject<TextInput | null>;
+}
+
+function NewCalendarBody({ onClose, field }: BodyProps): ReactNode {
   const writes = usePlannerWrites(usePlannerFrame().person);
   const [name, setName] = useState('');
   const [colour, setColour] = useState<PlannerColourKey>('personal');
@@ -57,8 +62,15 @@ function NewCalendarBody({ onClose }: { readonly onClose: () => void }): ReactNo
     );
   };
   return (
-    <View className="gap-3 px-4 pb-3">
-      <TextField label="Name" value={name} onChange={setName} onSubmit={create} focusOnMount />
+    <View className="gap-3 pb-3">
+      <TextField
+        label="Name"
+        value={name}
+        onChange={setName}
+        onSubmit={create}
+        inputRef={field}
+        focusOnMount
+      />
       <ColourSwatches label="Colour" value={colour} options={COLOUR_OPTIONS} onChange={setColour} />
       <Button
         label="Add calendar"
@@ -71,7 +83,7 @@ function NewCalendarBody({ onClose }: { readonly onClose: () => void }): ReactNo
   );
 }
 
-function SubscribeBody({ onClose }: { readonly onClose: () => void }): ReactNode {
+function SubscribeBody({ onClose, field }: BodyProps): ReactNode {
   const feeds = usePlannerFeeds(usePlannerFrame().person);
   const [address, setAddress] = useState('');
   const [refresh, setRefresh] = useState(PLANNER_FEED_DEFAULT_REFRESH_MINUTES);
@@ -88,7 +100,7 @@ function SubscribeBody({ onClose }: { readonly onClose: () => void }): ReactNode
     save(() => feeds.add(body), 'The subscription was not added');
   };
   return (
-    <View className="gap-3 px-4 pb-3">
+    <View className="gap-3 pb-3">
       <TextField
         label="Calendar address"
         kind="url"
@@ -98,11 +110,13 @@ function SubscribeBody({ onClose }: { readonly onClose: () => void }): ReactNode
         placeholder="https://example.com/calendar.ics"
         error={check.ok ? null : check.reason}
         helper="The hub fetches it and keeps it up to date. Its events are read only."
+        inputRef={field}
         focusOnMount
       />
       <SelectRow
         title="Check for changes"
         icon="refresh"
+        compact
         options={refreshOptionsOf(refresh)}
         value={String(refresh)}
         onChange={(value) => {
@@ -143,6 +157,7 @@ function RegionPicker({
       <SelectRow
         title="Country"
         icon="globe"
+        compact
         searchable
         options={regions.map((entry) => ({ value: entry.country, label: entry.name }))}
         value={country}
@@ -152,6 +167,7 @@ function RegionPicker({
         <SelectRow
           title="Region"
           icon="locate"
+          compact
           searchable
           options={[
             { value: WHOLE_COUNTRY, label: `All of ${region.name}` },
@@ -187,7 +203,7 @@ function HolidaysBody({ onClose }: { readonly onClose: () => void }): ReactNode 
     );
   };
   return (
-    <View className="gap-3 px-4 pb-3">
+    <View className="gap-3 pb-3">
       <RegionPicker
         regions={regions}
         country={country}
@@ -225,6 +241,7 @@ export function AddCalendarSheet({
   readonly kind: AddKind | null;
   readonly onClose: () => void;
 }): ReactNode {
+  const field = useRef<TextInput>(null);
   return (
     <Sheet
       open={kind !== null}
@@ -232,9 +249,10 @@ export function AddCalendarSheet({
       title={kind === null ? '' : TITLES[kind]}
       detents={['fit']}
       subpage
+      {...(kind === 'calendar' || kind === 'subscribe' ? { initialFocus: field } : {})}
     >
-      {kind === 'calendar' ? <NewCalendarBody onClose={onClose} /> : null}
-      {kind === 'subscribe' ? <SubscribeBody onClose={onClose} /> : null}
+      {kind === 'calendar' ? <NewCalendarBody onClose={onClose} field={field} /> : null}
+      {kind === 'subscribe' ? <SubscribeBody onClose={onClose} field={field} /> : null}
       {kind === 'holidays' ? <HolidaysBody onClose={onClose} /> : null}
     </Sheet>
   );

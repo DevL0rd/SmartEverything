@@ -5,7 +5,7 @@ import { shortDate } from '../../format/time';
 import { Highlighted, type TextRange } from '../highlighted';
 import { Icon, type IconName } from '../icon';
 import { Interactive, type Point } from '../interactive';
-import { OverflowButton, type MenuItem } from '../menu';
+import { OverflowButton, type MenuItem, type MenuOptions } from '../menu';
 import { Text } from '../text';
 import type { Tone } from '../tone';
 import { FileGlyph } from './file-glyph';
@@ -30,6 +30,7 @@ export interface EntryRowProps {
   readonly selected: boolean;
   readonly openLabel: string;
   readonly menu: readonly MenuItem[];
+  readonly menuOptions?: MenuOptions;
   readonly thumbnail?: ReactNode;
   readonly marks?: readonly EntryMark[];
   readonly by?: string | null;
@@ -155,31 +156,40 @@ export function EntryRow(props: EntryRowProps): ReactNode {
         onPress={selecting ? onSelect : onOpen}
         onLongPress={onSelect}
         onContextMenu={onContextMenu}
-        className="min-w-0 flex-1 flex-row items-center self-stretch"
+        focusInset
+        className="absolute inset-0"
       >
-        <View className="min-w-0 flex-1 flex-row items-center gap-3">
-          <Leading
-            kind={kind}
-            name={name}
-            selecting={selecting}
-            selected={selected}
-            thumbnail={thumbnail}
-          />
-          <Title
-            name={name}
-            caption={caption}
-            marks={marks ?? NO_MARKS}
-            highlight={props.nameHighlight ?? null}
-            below={props.below}
-            detail={props.detail}
-          />
-          {props.trailing ??
-            (wide ? (
-              <Columns size={size} modifiedAt={modifiedAt} {...(by === undefined ? {} : { by })} />
-            ) : null)}
-        </View>
+        {null}
       </Interactive>
-      <OverflowButton items={menu} label={`Actions for ${name}`} />
+      <View
+        pointerEvents="none"
+        className="min-w-0 flex-1 flex-row items-center gap-3 self-stretch"
+      >
+        <Leading
+          kind={kind}
+          name={name}
+          selecting={selecting}
+          selected={selected}
+          thumbnail={thumbnail}
+        />
+        <Title
+          name={name}
+          caption={caption}
+          marks={marks ?? NO_MARKS}
+          highlight={props.nameHighlight ?? null}
+          below={props.below}
+          detail={props.detail}
+        />
+        {props.trailing ??
+          (wide ? (
+            <Columns size={size} modifiedAt={modifiedAt} {...(by === undefined ? {} : { by })} />
+          ) : null)}
+      </View>
+      <OverflowButton
+        items={menu}
+        label={`Actions for ${name}`}
+        {...(props.menuOptions === undefined ? {} : { options: props.menuOptions })}
+      />
     </View>
   );
 }

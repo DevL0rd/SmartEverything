@@ -2,29 +2,29 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { skipToken } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { readDriveLinks } from '../../../api/drive';
 import { Icon } from '../../../components/icon';
 import { cn } from '../../../design/cn';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
+import { readRoutedDriveLinks } from '../../drive/data/links';
+import { coverLinkOf, coverStaleMs, type CoverLink } from './cover-link';
 
 export function coverKey(itemId: string | null): readonly unknown[] {
   return driveKey('photo-cover', DRIVE_EVERYWHERE, itemId);
 }
 
-async function coverUrl(itemId: string): Promise<string | null> {
-  const links = await readDriveLinks([itemId]);
-  const link = links.find((entry) => entry.itemId === itemId);
-  return link?.thumb?.url ?? null;
+async function coverLink(itemId: string): Promise<CoverLink | null> {
+  return coverLinkOf(await readRoutedDriveLinks([itemId]), itemId);
 }
 
 export function useCoverUrl(itemId: string | null): string | null {
   const query = useScreenQuery({
     queryKey: coverKey(itemId),
-    queryFn: itemId === null ? skipToken : (): Promise<string | null> => coverUrl(itemId),
+    queryFn: itemId === null ? skipToken : (): Promise<CoverLink | null> => coverLink(itemId),
+    staleTime: (entry) => coverStaleMs(entry.state.data ?? null, Date.now()),
     retry: false,
   });
-  return query.data ?? null;
+  return query.data?.url ?? null;
 }
 
 export function Cover({

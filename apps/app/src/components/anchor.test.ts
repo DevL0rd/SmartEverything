@@ -242,8 +242,15 @@ describe('placing a menu inside the window', () => {
 
   it('keeps the menu inside the window horizontally', () => {
     const edge = { x: 1430, y: 100, width: 0, height: 0 };
-    expect(placeFitted(edge, 240, window, { height: 100, prefer: 'below' }).left).toBe(
-      window.width - 240 - MARGIN,
+    expect(placeFitted(edge, 240, window, { height: 100, prefer: 'below' }).left).toBe(1430 - 240);
+    const corner = { x: 4, y: 100, width: 0, height: 0 };
+    expect(placeFitted(corner, 240, window, { height: 100, prefer: 'below' }).left).toBe(MARGIN);
+  });
+
+  it('lines a menu that would overflow up with the right edge of its trigger', () => {
+    const trigger = { x: 1376, y: 16, width: 40, height: 40 };
+    expect(placeFitted(trigger, 240, window, { height: 100, prefer: 'below' }).left).toBe(
+      1416 - 240,
     );
   });
 });

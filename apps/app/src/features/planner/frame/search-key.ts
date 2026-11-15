@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { isNative } from '../../../design/platform';
-import { isTextEntry, opensSearch } from './quick-add';
+import { opensSearch, pageKeysHeld } from './quick-add';
 
 export const PLANNER_SEARCH_ACTION: ShellAction = {
   icon: 'search',
@@ -22,7 +22,7 @@ export function withPlannerSearch(
 
 export function usePlannerSearchKey(active: boolean): void {
   const open = useEffectEvent((event: KeyboardEvent): void => {
-    if (event.defaultPrevented || !opensSearch(event, isTextEntry(event.target))) return;
+    if (event.defaultPrevented || !opensSearch(event, pageKeysHeld(event.target))) return;
     event.preventDefault();
     router.push(href.planner.search());
   });

@@ -9,11 +9,12 @@ import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { joinParts, plural } from '../../../format/text';
 import { clock, startOfDayKey, weekdayShort } from '../../../format/time';
+import { weekdayLetterOf } from '../clock/alarm-text';
 import { bookerNameOf, type BookingDay, type UpcomingBooking } from './booking-model';
 
 export function bookingDayLabelOf(day: BookingDay): string {
-  const start = startOfDayKey(day.day);
-  return `${weekdayShort(start)} ${String(new Date(start).getDate())}`;
+  const date = new Date(startOfDayKey(day.day));
+  return `${weekdayLetterOf(date.getDay())} ${String(date.getDate())}`;
 }
 
 export function BookingWeekCard({

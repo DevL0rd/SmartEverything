@@ -1,20 +1,18 @@
 import type { PlannerAlarmRow, PlannerRingTarget, PlannerWatchLink } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Dot } from '../../../components/badge';
 import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import type { StatusTone } from '../../../components/tone';
 import { useRow } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceIcon } from '../../device-visuals';
-import { wakeRoutineTimeOf, watchDotOf } from './alarm-text';
+import type { AlarmDefaults } from './alarm-chips';
+import { wakeRoutineTimeOf } from './alarm-text';
 import { useWatchName } from './watch-state-line';
 
 interface ChipProps {
   readonly icon: IconName;
   readonly label: string;
-  readonly dot?: StatusTone | null;
 }
 
 const CLIENT_ICON = {
@@ -31,14 +29,13 @@ const SELF_NAME = {
   browser: 'This browser',
 } as const;
 
-export function TargetChip({ icon, label, dot = null }: ChipProps): ReactNode {
+export function TargetChip({ icon, label }: ChipProps): ReactNode {
   return (
-    <View className="min-h-8 flex-row items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1">
+    <View className="min-h-8 min-w-0 max-w-full shrink flex-row items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1">
       <Icon name={icon} size={16} tone="variant" />
-      <Text variant="caption" tone="variant" numberOfLines={1}>
+      <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 shrink">
         {label}
       </Text>
-      {dot === null ? null : <Dot tone={dot} />}
     </View>
   );
 }
@@ -56,9 +53,7 @@ function ClientChip({ clientId }: { readonly clientId: string }): ReactNode {
 }
 
 function WatchChip({ link }: { readonly link: PlannerWatchLink }): ReactNode {
-  return (
-    <TargetChip icon="watch" label={useWatchName(link.deviceId)} dot={watchDotOf(link.state)} />
-  );
+  return <TargetChip icon="watch" label={useWatchName(link.deviceId)} />;
 }
 
 function DeviceChip({ deviceId }: { readonly deviceId: string }): ReactNode {
@@ -83,7 +78,7 @@ function WakeRoutineChip({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactN
   const automation = useRow('automations', alarm.wake_automation_id);
   const at = wakeRoutineTimeOf(alarm);
   if (automation === null || at === null) return null;
-  return <TargetChip icon="sunrise" label={`${automation.name} ${at}`} />;
+  return <TargetChip icon="automations" label={`${automation.name} ${at}`} />;
 }
 
 export function looseWatchLinksOf(alarm: PlannerAlarmRow): readonly PlannerWatchLink[] {
@@ -99,16 +94,33 @@ function targetKeyOf(target: PlannerRingTarget): string {
   return target.kind === 'client' ? `client:${target.clientId}` : `device:${target.deviceId}`;
 }
 
+function sameTargets(
+  left: readonly PlannerRingTarget[],
+  right: readonly PlannerRingTarget[],
+): boolean {
+  const keys = new Set(right.map(targetKeyOf));
+  return left.length === right.length && left.every((target) => keys.has(targetKeyOf(target)));
+}
+
+export function ownTargetsOf(
+  alarm: PlannerAlarmRow,
+  defaults: AlarmDefaults | null,
+): readonly PlannerRingTarget[] {
+  return defaults !== null && sameTargets(alarm.targets, defaults.targets) ? [] : alarm.targets;
+}
+
 export function TargetChips({
   alarm,
+  defaults,
   extra = null,
 }: {
   readonly alarm: PlannerAlarmRow;
+  readonly defaults: AlarmDefaults | null;
   readonly extra?: ReactNode;
 }): ReactNode {
   return (
-    <View className="flex-row flex-wrap gap-2">
-      {alarm.targets.map((target) => (
+    <View className="min-w-0 flex-row flex-wrap gap-2">
+      {ownTargetsOf(alarm, defaults).map((target) => (
         <RingTargetChip key={targetKeyOf(target)} target={target} watch={alarm.watch} />
       ))}
       {looseWatchLinksOf(alarm).map((link) => (
@@ -116,7 +128,7 @@ export function TargetChips({
       ))}
       <WakeRoutineChip alarm={alarm} />
       {alarm.smart_minutes === null ? null : (
-        <TargetChip icon="watch" label={`Smart ${String(alarm.smart_minutes)} min`} />
+        <TargetChip icon="moon" label={`Smart ${String(alarm.smart_minutes)} min`} />
       )}
       {extra}
     </View>

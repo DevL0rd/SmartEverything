@@ -7,6 +7,7 @@ import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { confirm } from '../../../components/confirm-store';
+import { EmptyState } from '../../../components/empty-state';
 import { notifyFailure } from '../../../components/toast-store';
 import { bytes } from '../../../format/number';
 import { useSession } from '../../../store/selectors';
@@ -29,7 +30,7 @@ function PinnedRow({ line }: { readonly line: PhoneRowLine }): ReactNode {
   return (
     <ListRow
       title={line.name}
-      icon={line.folder ? 'folder' : 'fileText'}
+      icon={line.icon}
       subtitle={line.line}
       subtitleTone={line.tone}
       trailing={
@@ -43,6 +44,31 @@ function PinnedRow({ line }: { readonly line: PhoneRowLine }): ReactNode {
         />
       }
     />
+  );
+}
+
+function KeptActions({ storage }: { readonly storage: PhoneStorage }): ReactNode {
+  return (
+    <View className="flex-row flex-wrap justify-between gap-2 pt-1">
+      <Button
+        label="Remove all"
+        icon="trash"
+        variant="destructive"
+        loading={storage.clearing}
+        disabled={storage.clearing}
+        onPress={() => {
+          confirm({
+            title: 'Remove every offline file?',
+            body: 'They stay in your drive. Only the copies on this phone go.',
+            confirmLabel: 'Remove all',
+            tone: 'destructive',
+          }).then((accepted) => {
+            if (accepted) storage.removeAll();
+          }, notifyFailure('The offline files were not removed.'));
+        }}
+      />
+      <Button label="Copy now" icon="refresh" variant="tonal" onPress={storage.syncNow} />
+    </View>
   );
 }
 
@@ -61,30 +87,16 @@ function Kept({ storage }: { readonly storage: PhoneStorage }): ReactNode {
           {phoneSummaryOf(storage.rows, storage.status?.usedBytes ?? null)}
         </Text>
         {segments.length === 0 ? null : (
-          <SegmentBar segments={segments} label="Space on this phone by item" format={bytes} />
-        )}
-        <View className="flex-row flex-wrap justify-between gap-2 pt-1">
-          <Button
-            label="Remove all"
-            icon="trash"
-            variant="destructive"
-            loading={storage.clearing}
-            disabled={storage.clearing}
-            onPress={() => {
-              confirm({
-                title: 'Remove every offline file?',
-                body: 'They stay in your drive. Only the copies on this phone go.',
-                confirmLabel: 'Remove all',
-                tone: 'destructive',
-              }).then((accepted) => {
-                if (accepted) storage.removeAll();
-              }, notifyFailure('The offline files were not removed.'));
-            }}
+          <SegmentBar
+            segments={segments}
+            label="Space on this phone by item"
+            format={bytes}
+            legend
           />
-          <Button label="Copy now" icon="refresh" variant="tonal" onPress={storage.syncNow} />
-        </View>
+        )}
+        <KeptActions storage={storage} />
       </View>
-      <List inset title="Kept on this phone">
+      <List inset title="Kept on this phone" footer={FILES_APP_LINE}>
         {lines.map((line) => (
           <PinnedRow key={line.itemId} line={line} />
         ))}
@@ -96,26 +108,24 @@ function Kept({ storage }: { readonly storage: PhoneStorage }): ReactNode {
 function PhoneBody({ link }: { readonly link: DriveProviderLink }): ReactNode {
   const storage = usePhoneStorage(link);
   if (!storage.available) {
+    return <EmptyState compact icon="smartphone" title="Not linked yet" body={NOT_LINKED_LINE} />;
+  }
+  if (storage.rows.length === 0) {
     return (
-      <Text variant="footnote" tone="variant">
-        {NOT_LINKED_LINE}
-      </Text>
+      <View className="gap-3">
+        <EmptyState
+          compact
+          icon="download"
+          title="Nothing kept offline yet"
+          body="Choose Make available offline in a file or folder menu to keep a copy on this phone."
+        />
+        <Text variant="footnote" tone="variant" className="px-4">
+          {FILES_APP_LINE}
+        </Text>
+      </View>
     );
   }
-  return (
-    <View className="gap-3">
-      <Text variant="footnote" tone="variant">
-        {FILES_APP_LINE}
-      </Text>
-      {storage.rows.length === 0 ? (
-        <Text variant="footnote" tone="variant">
-          Nothing is kept on this phone yet. Choose Make available offline in a file or folder menu.
-        </Text>
-      ) : (
-        <Kept storage={storage} />
-      )}
-    </View>
-  );
+  return <Kept storage={storage} />;
 }
 
 export function PhoneSection({

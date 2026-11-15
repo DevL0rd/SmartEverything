@@ -1,7 +1,8 @@
-import { app, BrowserWindow, powerMonitor } from 'electron';
+import { app, BrowserWindow, powerMonitor, shell } from 'electron';
 import { z } from 'zod';
 import {
   DESKTOP_PHOTO_HASH_REQUEST,
+  DESKTOP_PHOTO_TRASH_REQUEST,
   DESKTOP_PHOTOS_CHANGED,
   DESKTOP_PHOTOS_CHARGING_CHANGED,
 } from '@smarteverything/domain';
@@ -31,6 +32,11 @@ export function registerPhotosIpc(handle: ArgumentHandle): void {
     photos.cancel(z.string().min(1).parse(value));
     return undefined;
   });
+  handle('desktop:photos-trash', async (value) => ({
+    trashed: await photos.trash(DESKTOP_PHOTO_TRASH_REQUEST.parse(value), (path) =>
+      shell.trashItem(path),
+    ),
+  }));
   handle('desktop:photos-charging', () => !powerMonitor.isOnBatteryPower());
   const changed = (): void => {
     broadcast(DESKTOP_PHOTOS_CHARGING_CHANGED);

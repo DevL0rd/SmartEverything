@@ -10,7 +10,7 @@ import type { StatusTone, Tone } from '../../../components/tone';
 import { zonedDateFormat } from '../../../format/locale';
 import { compareText } from '../../../format/text';
 import {
-  clock,
+  clock24,
   clockOfMinutes,
   DAY_MS,
   daysBetween,
@@ -235,10 +235,6 @@ const MISSED_REASON: Readonly<Record<PlannerMissedReason, string>> = {
   computer_asleep: 'computer was asleep',
 };
 
-export function missedReasonOf(ring: Pick<PlannerRingRow, 'missed_reason'>): string {
-  return ring.missed_reason === null ? 'did not ring' : MISSED_REASON[ring.missed_reason];
-}
-
 export function missedAlarmsOf(rings: readonly PlannerRingRow[]): readonly PlannerRingRow[] {
   return rings.filter((ring) => ring.kind === 'alarm' && ring.outcome === 'missed');
 }
@@ -254,7 +250,7 @@ export function missedStoryOf(
   ring: Pick<PlannerRingRow, 'missed_reason' | 'due_at'>,
   timeZone: string,
 ): string {
-  const at = clock(ring.due_at, timeZone);
+  const at = clock24(ring.due_at, timeZone);
   const what =
     ring.missed_reason === null
       ? `It did not ring at ${at}.`

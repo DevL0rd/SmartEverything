@@ -1,6 +1,6 @@
 export { CLOCK_SECTION_ROUTES, CLOCK_SECTIONS, type ClockSection } from './model/section-routes';
 export { ClockFrame, type ClockFrameProps } from './frame/clock-frame';
-export { TimerCard, TimerDial } from './timer-card';
+export { TimerCard, TimerDial, timerLineOf, useTimerActions } from './timer-card';
 export {
   ringWindowOf,
   timerViewsOf,

@@ -4,7 +4,6 @@ import type {
   PlaceCountry,
   LibraryBucket,
 } from '@smarteverything/domain';
-import type { MediaTile } from '../../../components/media-grid/tiles';
 import { count } from '../../../format/number';
 import { geohashBounds, inside, type MapBounds } from './map-view';
 import { monthLabel, monthsOf } from './time-range';
@@ -121,6 +120,12 @@ export function clusterSummary(
   return { title: top === undefined ? 'Photos in this area' : `${top.name} and around`, places };
 }
 
+export function clusterHolds(cluster: PlaceCluster, places: readonly PhotoPlace[]): boolean {
+  if (cluster.placeId !== null) return places.some((place) => place.id === cluster.placeId);
+  const bounds = geohashBounds(cluster.geohash);
+  return places.some((place) => inside(place, bounds));
+}
+
 export const CLUSTER_COVER_SLOTS = 3;
 
 export function clusterCovers(
@@ -171,25 +176,8 @@ export function totalOf(buckets: readonly LibraryBucket[] | undefined): number |
   return buckets === undefined ? null : buckets.reduce((sum, bucket) => sum + bucket.count, 0);
 }
 
-export interface MonthTiles {
-  readonly tiles: readonly MediaTile[];
-  readonly more: (() => void) | null;
-}
-
-export function feedMonths(
-  buckets: readonly LibraryBucket[],
-  month: string | null,
-): readonly string[] {
-  return monthsOf(buckets)
-    .slice()
-    .reverse()
-    .map((bucket) => bucket.month)
-    .filter((key) => month === null || key === month);
-}
-
-export function feedTiles(
-  months: readonly string[],
-  loaded: ReadonlyMap<string, MonthTiles>,
-): readonly MediaTile[] {
-  return months.flatMap((month) => loaded.get(month)?.tiles ?? []);
+export function monthScopeOf(month: string): { readonly from: string; readonly to: string } {
+  const [year = 0, index = 1] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(year, index, 0)).getUTCDate();
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` };
 }

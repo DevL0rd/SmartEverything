@@ -58,13 +58,37 @@ export function ocrLanguagesAfter(
   return left.length === 0 ? null : left;
 }
 
+function namesOf(chosen: readonly string[]): readonly string[] {
+  return chosen.map((code) => OCR_LANGUAGE_NAMES[code] ?? code);
+}
+
+function listText(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+}
+
 export function ocrValueOf(chosen: readonly string[]): string {
-  const names = chosen.map((code) => OCR_LANGUAGE_NAMES[code] ?? code);
-  if (names.length <= 2) return names.join(' and ');
+  const names = namesOf(chosen);
+  if (names.length <= 2) return listText(names);
   return `${names.slice(0, 2).join(', ')} and ${String(names.length - 2)} more`;
 }
 
 export function ocrLineOf(chosen: readonly string[]): string {
-  const names = chosen.map((code) => OCR_LANGUAGE_NAMES[code] ?? code);
-  return `Reads text in pictures in ${names.join(', ')}. A new language downloads once to the Hub.`;
+  return `Reads text in pictures in ${listText(namesOf(chosen))}. A new language downloads once to the Hub.`;
+}
+
+export function ocrShownOf(
+  chosen: readonly string[],
+  query: string,
+  pinned: ReadonlySet<string>,
+): readonly OcrChoice[] {
+  const needle = query.trim().toLowerCase();
+  const choices = ocrChoicesOf(chosen);
+  const top = choices.filter((choice) => pinned.has(choice.code));
+  const rest = choices.filter(
+    (choice) =>
+      !pinned.has(choice.code) &&
+      (needle === '' || choice.name.toLowerCase().includes(needle) || choice.code.includes(needle)),
+  );
+  return [...top, ...rest];
 }

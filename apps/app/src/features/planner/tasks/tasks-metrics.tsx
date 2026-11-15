@@ -3,12 +3,16 @@ import type { ReactNode } from 'react';
 import type { ChartPoint } from '../../../components/charts';
 import { MetricStrip, type MetricItem } from '../../../components/metric-strip';
 import { compareText } from '../../../format/text';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
+import { useAreaWidth } from '../../../design/size-class';
 import { daysBetween } from '../../../format/time';
 import { usePlannerStats } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { matchesFilter, type TaskEntry, type TaskFilter } from './task-grouping';
 
 const COLUMNS = { compact: 2, medium: 4, expanded: 4 } as const;
+
+type StripLayout = ReturnType<typeof shellLayoutOf>;
 
 export interface OpenFacts {
   readonly open: number;
@@ -75,11 +79,12 @@ function percent(part: number, whole: number): number {
   return whole === 0 ? 0 : Math.round((part / whole) * 100);
 }
 
-function doneItems(stats: PlannerStats | undefined): readonly MetricItem[] {
+function doneItems(stats: PlannerStats | undefined, layout: StripLayout): readonly MetricItem[] {
+  const devices = layout === 'compact' ? 'Devices' : 'By devices';
   if (stats === undefined) {
     return [
-      { key: 'done', label: 'Done this week', value: '–', stale: true },
-      { key: 'devices', label: 'Done by devices', value: '–', stale: true },
+      { key: 'done', label: 'Done', value: '–', stale: true },
+      { key: 'devices', label: devices, value: '–', stale: true },
     ];
   }
   const { done, due } = stats.completion;
@@ -87,14 +92,14 @@ function doneItems(stats: PlannerStats | undefined): readonly MetricItem[] {
   return [
     {
       key: 'done',
-      label: 'Done this week',
+      label: 'Done',
       value: String(done),
-      caption: `of ${String(due)} due`,
-      series: doneSeriesOf(stats),
+      caption: `of ${String(due)} due this week`,
+      ...(layout === 'wide' ? { series: doneSeriesOf(stats) } : {}),
     },
     {
       key: 'devices',
-      label: 'Done by devices',
+      label: devices,
       value: String(byDevice),
       caption: `${String(percent(byDevice, byDevice + byHand))} % of done`,
     },
@@ -114,7 +119,14 @@ export function TasksMetrics({
 }): ReactNode {
   const { person } = usePlannerFrame();
   const stats = usePlannerStats(person, 'week').data;
+  const layout = shellLayoutOf(useAreaWidth());
   const facts = openFactsOf(entries, today);
   if (entries.length === 0 && stats !== undefined && !hasHistory(stats)) return null;
-  return <MetricStrip items={[...openItems(facts), ...doneItems(stats)]} columns={COLUMNS} />;
+  return (
+    <MetricStrip
+      items={[...openItems(facts), ...doneItems(stats, layout)]}
+      columns={COLUMNS}
+      dense={layout === 'compact'}
+    />
+  );
 }

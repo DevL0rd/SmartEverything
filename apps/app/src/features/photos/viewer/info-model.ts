@@ -101,18 +101,13 @@ function present(parts: readonly (string | null)[]): readonly string[] {
   return parts.filter((part) => part !== null);
 }
 
-function opticsOf(exposure: Exposure | null): string | null {
-  if (exposure === null) return null;
-  const optics = present([
-    exposure.focal === null ? null : `${rounded(exposure.focal, 0)} mm`,
-    exposure.aperture === null ? null : apertureText(exposure.aperture),
-  ]);
-  return optics.length === 0 ? null : optics.join(' ');
+function focalText(exposure: Exposure | null): string | null {
+  if (exposure?.focal === undefined || exposure.focal === null) return null;
+  return `${rounded(exposure.focal, 1)} mm`;
 }
 
 export function lensLine(camera: Camera | null, exposure: Exposure | null): string | null {
-  const parts = present([camera?.lens ?? null, opticsOf(exposure)]);
-  return parts.length === 0 ? null : parts.join(' · ');
+  return camera?.lens ?? focalText(exposure);
 }
 
 export function exposureChips(exposure: Exposure | null): readonly string[] {
@@ -162,15 +157,13 @@ export function typeLabel(item: MediaItem): string {
   return extension === '' ? 'Photo' : extension.toUpperCase();
 }
 
-export function fileLine(item: MediaItem): string {
-  if (item.width === null || item.height === null) return item.name;
-  return `${item.name} · ${String(item.width)} × ${String(item.height)}`;
+function sizeParts(item: MediaItem): readonly string[] {
+  if (item.width === null || item.height === null) return [];
+  return [`${String(item.width)} × ${String(item.height)}`, megapixels(item.width, item.height)];
 }
 
 export function fileDetail(item: MediaItem): string {
-  const size =
-    item.width === null || item.height === null ? null : megapixels(item.width, item.height);
-  return present([size, bytes(item.bytes), typeLabel(item)]).join(' · ');
+  return [...sizeParts(item), bytes(item.bytes), typeLabel(item)].join(' · ');
 }
 
 export function folderOf(relPath: string): string {
@@ -205,8 +198,13 @@ export function askLabel(item: MediaItem): string {
   return item.kind === 'video' ? 'Ask about this video' : 'Ask about this photo';
 }
 
+export function distinctAdmin(place: PhotoPlace): string | null {
+  if (place.admin === null) return null;
+  return place.admin.toLocaleLowerCase() === place.name.toLocaleLowerCase() ? null : place.admin;
+}
+
 export function placeLine(place: PhotoPlace): string {
-  return present([place.name, place.admin, place.country]).join(', ');
+  return present([place.name, distinctAdmin(place), place.country]).join(', ');
 }
 
 export function dayCountText(position: number, total: number, today: boolean): string {

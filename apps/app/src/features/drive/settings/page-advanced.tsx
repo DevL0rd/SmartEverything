@@ -8,15 +8,20 @@ import {
   type DriveSettings,
 } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
-import { Disclosure } from '../../../components/disclosure';
-import { IconButton } from '../../../components/icon-button';
+import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
-import { List, Section, SectionAction } from '../../../components/section';
+import { List, SectionAction } from '../../../components/section';
+import { Text } from '../../../components/text';
 import { desktopBridge } from '../../../design/platform';
 import { useIsOwner } from '../../../store/selectors';
 import { useMutationState } from '../../../store/mutation';
-import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
+import {
+  TextEditSheet,
+  type TextEditRequest,
+  type TextEditReset,
+} from '../../../settings/text-edit-sheet';
 import { trackSetting } from '../../settings';
+import { useDesktopDrive } from '../computers/this-computer';
 import { useDriveSettings } from '../data';
 import {
   HUB_DEFAULTS,
@@ -33,7 +38,7 @@ import {
   remountPendingFor,
   tuningAllDefault,
 } from './advanced-model';
-import { TuningRow } from './advanced-row';
+import { TuningRow, useStackedValue, valueLinesOf } from './advanced-row';
 import {
   COMPUTER_GROUPS,
   HUB_ROWS,
@@ -41,7 +46,9 @@ import {
   type HubRowSpec,
   type TuningRowSpec,
 } from './advanced-rows';
-import { SettingsQueryState, saveDriveSettings } from './page-indexing';
+import { DriveSettingsSection } from './page';
+import { saveDriveSettings } from './page-indexing';
+import { SettingsQueryState } from './settings-query-state';
 import { NUMBER_LENGTH } from './page-sharing';
 
 class DesktopTuningMissingError extends Error {
@@ -101,6 +108,30 @@ interface RunProps {
   readonly run: (work: () => Promise<unknown>, failure: string) => void;
 }
 
+function GroupHeading({
+  title,
+  caption,
+  action,
+}: {
+  readonly title: string;
+  readonly caption: string;
+  readonly action: ReactNode;
+}): ReactNode {
+  return (
+    <View className="flex-row items-end justify-between gap-2 px-4">
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text variant="title-3" accessibilityRole="header">
+          {title}
+        </Text>
+        <Text variant="footnote" tone="variant">
+          {caption}
+        </Text>
+      </View>
+      {action}
+    </View>
+  );
+}
+
 function TuningGroup({
   title,
   rows,
@@ -141,35 +172,34 @@ function ComputerTuning({ state }: ComputerProps): ReactNode {
   };
   const changed = !tuningAllDefault(state.tuning.saved);
   return (
-    <Section
-      title="This computer"
-      caption="How this computer’s mount talks to the kernel and the Hub."
-      action={
-        changed ? (
-          <SectionAction
-            label="Reset all"
-            spoken="Reset every setting for this computer"
-            onPress={() => {
-              run(() => saveTuning(DEFAULT_DESKTOP_DRIVE_TUNING), 'The settings were not reset');
-            }}
-          />
-        ) : null
-      }
-    >
-      <View className="gap-4">
-        <RemountRow state={state} busy={mutation.busy} run={run} />
-        {COMPUTER_GROUPS.map((group) => (
-          <TuningGroup
-            key={group.title}
-            title={group.title}
-            rows={group.rows}
-            state={state}
-            busy={mutation.busy}
-            run={run}
-          />
-        ))}
-      </View>
-    </Section>
+    <View className="gap-4">
+      <GroupHeading
+        title="This computer"
+        caption="How this computer’s mount talks to the kernel and the Hub."
+        action={
+          changed ? (
+            <SectionAction
+              label="Reset all"
+              spoken="Reset every setting for this computer"
+              onPress={() => {
+                run(() => saveTuning(DEFAULT_DESKTOP_DRIVE_TUNING), 'The settings were not reset');
+              }}
+            />
+          ) : null
+        }
+      />
+      <RemountRow state={state} busy={mutation.busy} run={run} />
+      {COMPUTER_GROUPS.map((group) => (
+        <TuningGroup
+          key={group.title}
+          title={group.title}
+          rows={group.rows}
+          state={state}
+          busy={mutation.busy}
+          run={run}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -186,8 +216,21 @@ interface HubRowProps {
   readonly spec: HubRowSpec;
   readonly settings: DriveSettings;
   readonly busy: boolean;
-  readonly apply: (field: HubTuningField, value: number) => void;
   readonly save: (field: HubTuningField, value: number) => Promise<unknown>;
+}
+
+function hubResetOf(
+  spec: HubRowSpec,
+  settings: DriveSettings,
+  save: HubRowProps['save'],
+): TextEditReset | null {
+  const standard = HUB_DEFAULTS[spec.field];
+  if (standard === null || hubIsDefault(settings, spec.field)) return null;
+  return {
+    label: 'Reset',
+    spoken: `Reset ${spec.title.toLowerCase()} to ${hubValueText(spec.field, standard)}`,
+    run: () => save(spec.field, standard),
+  };
 }
 
 function useHubRequest(
@@ -198,11 +241,13 @@ function useHubRequest(
     spec.field === 'listingCacheSeconds'
       ? `${String(settings[spec.field])}s`
       : String(settings[spec.field]);
+  const reset = hubResetOf(spec, settings, save);
   return {
     id: `drive.sync-mount.advanced.${spec.field}`,
     opener,
     title: spec.title,
-    label: spec.title,
+    label: spec.label,
+    ...(reset === null ? {} : { reset }),
     initial,
     placeholder: initial,
     confirmLabel: 'Save',
@@ -216,41 +261,29 @@ function useHubRequest(
   };
 }
 
-function HubReset({ spec, settings, busy, apply }: HubRowProps): ReactNode {
-  const standard = HUB_DEFAULTS[spec.field];
-  if (standard === null || hubIsDefault(settings, spec.field)) return undefined;
-  return (
-    <IconButton
-      icon="reset"
-      label={`Reset ${spec.title.toLowerCase()} to its default`}
-      disabled={busy}
-      onPress={() => {
-        apply(spec.field, standard);
-      }}
-    />
-  );
-}
-
 function HubRow(props: HubRowProps): ReactNode {
   const { spec, settings } = props;
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const request = useHubRequest(props, opener);
+  const stacked = useStackedValue();
   return (
     <>
       <ListRow
         title={spec.title}
         icon={spec.icon}
-        subtitle={hubSubtitleOf(spec)}
+        {...valueLinesOf(
+          stacked,
+          hubValueText(spec.field, settings[spec.field]),
+          hubSubtitleOf(spec),
+        )}
         wrapSubtitle
-        value={hubValueText(spec.field, settings[spec.field])}
         chevron
         pressRef={opener}
         disabled={props.busy}
         onPress={() => {
           setOpen(true);
         }}
-        trailing={<HubReset {...props} />}
       />
       <TextEditSheet
         request={open ? request : null}
@@ -268,70 +301,81 @@ function HubTuning({ settings }: { readonly settings: DriveSettings }): ReactNod
   const reset = hubResetAll(settings);
   const save = (field: HubTuningField, value: number): Promise<DriveSettings> =>
     saveDriveSettings(client, { [field]: value });
-  const apply = (field: HubTuningField, value: number): void => {
-    mutation.run(() => save(field, value), {
-      failure: 'The Hub setting did not change',
-      label: 'drive_tuning.hub',
-    });
-  };
   return (
-    <List
-      inset
-      title="Hub, for every computer"
-      caption="Shared by every computer that mounts the drive."
-      action={
-        Object.keys(reset).length === 0 ? null : (
-          <SectionAction
-            label="Reset all"
-            spoken="Reset every Hub setting"
-            onPress={() => {
-              mutation.run(() => saveDriveSettings(client, reset), {
-                failure: 'The Hub settings were not reset',
-                label: 'drive_tuning.hub_reset',
-              });
-            }}
+    <View className="gap-4">
+      <GroupHeading
+        title="Hub, for every computer"
+        caption="Shared by every computer that mounts the drive."
+        action={
+          Object.keys(reset).length === 0 ? null : (
+            <SectionAction
+              label="Reset all"
+              spoken="Reset every Hub setting"
+              onPress={() => {
+                mutation.run(() => saveDriveSettings(client, reset), {
+                  failure: 'The Hub settings were not reset',
+                  label: 'drive_tuning.hub_reset',
+                });
+              }}
+            />
+          )
+        }
+      />
+      <List inset>
+        {HUB_ROWS.map((spec) => (
+          <HubRow
+            key={spec.field}
+            spec={spec}
+            settings={settings}
+            busy={mutation.busy}
+            save={save}
           />
-        )
-      }
-    >
-      {HUB_ROWS.map((spec) => (
-        <HubRow
-          key={spec.field}
-          spec={spec}
-          settings={settings}
-          busy={mutation.busy}
-          apply={apply}
-          save={save}
-        />
-      ))}
-    </List>
+        ))}
+      </List>
+    </View>
   );
 }
 
 function HubTuningLoader(): ReactNode {
   const settings = useDriveSettings();
   if (settings.data === undefined) {
-    return <SettingsQueryState query={settings} event="drive_settings.tuning_refetch_failed" />;
+    return (
+      <SettingsQueryState
+        query={settings}
+        event="drive_settings.tuning_refetch_failed"
+        rows={HUB_ROWS.length}
+        failed="The Hub settings could not be read"
+      />
+    );
   }
   return <HubTuning settings={settings.data} />;
 }
 
-export function AdvancedSettings({ state }: ComputerProps): ReactNode {
-  const [open, setOpen] = useState(false);
+function AdvancedBody(): ReactNode {
+  const drive = useDesktopDrive();
   const owner = useIsOwner();
+  const state = drive?.state ?? null;
   return (
-    <Disclosure
-      label="Advanced"
-      accessibleLabel="Advanced mount settings"
-      hint="Kernel, cache, upload and connection tuning"
-      open={open}
-      onToggle={() => {
-        setOpen(!open);
-      }}
-      bodyClassName="gap-6 pt-2"
-    >
-      <ComputerTuning state={state} />
+    <View className="gap-8">
+      {state === null ? (
+        <EmptyState
+          compact
+          icon="folderSync"
+          title="Waiting for the computer service"
+          body="This computer has not reported its drive yet. Its mount settings show here once the computer service is running."
+        />
+      ) : (
+        <ComputerTuning state={state} />
+      )}
       {owner ? <HubTuningLoader /> : null}
-    </Disclosure>
+    </View>
+  );
+}
+
+export function AdvancedMountSection(): ReactNode {
+  return (
+    <DriveSettingsSection>
+      <AdvancedBody />
+    </DriveSettingsSection>
   );
 }

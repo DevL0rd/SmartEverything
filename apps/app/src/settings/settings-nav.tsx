@@ -3,7 +3,6 @@ import { useDeferredValue, useState } from 'react';
 import { mainSettingsFirst } from '../app-shell/main-pages';
 import { href } from '../app-shell/hrefs';
 import type { AppHref } from '../components/app-href';
-import { shellRailOf } from '../components/page-shell/layout';
 import type { ShellSearchConfig } from '../components/page-shell/search-slot';
 import type { RailGroup } from '../components/page-shell/section-rail';
 import type { ShellSections } from '../components/page-shell/shell-sections';
@@ -11,8 +10,6 @@ import type { IconName } from '../components/icon';
 import { NavRow } from '../components/rows';
 import { List } from '../components/section';
 import { Text } from '../components/text';
-import { useSizeClass } from '../design/size-class';
-import { useStoreSelector } from '../store/store-context';
 import { useSettingEnv } from './env';
 import { pageReachable, useBuiltSettingsPages } from './availability';
 import { visibleSettings } from './registry';
@@ -40,11 +37,6 @@ function useGroupPages(): readonly SettingsGroupPages[] {
     );
     return { title: group, pages: group === 'App' ? mainSettingsFirst(pages) : pages };
   }).filter((group) => group.pages.length > 0);
-}
-
-export function useSettingsRail(): boolean {
-  const size = useSizeClass();
-  return size.header !== 'large' && shellRailOf(size.area, 'sections') !== null;
 }
 
 function topPageOf(page: string, groups: readonly SettingsGroupPages[]): string {
@@ -78,33 +70,6 @@ export function useSettingsSections(page: string): ShellSections {
     navigation: 'replace',
     label: 'Settings',
   };
-}
-
-function TopRow({ page }: { readonly page: SettingsPageDefinition }): ReactNode {
-  const summary = useStoreSelector((state) => page.summary?.(state) ?? null);
-  return (
-    <NavRow
-      title={page.title}
-      icon={page.icon}
-      href={pageHref(page)}
-      {...(summary === null ? {} : { subtitle: summary })}
-    />
-  );
-}
-
-export function SettingsNav(): ReactNode {
-  const groups = useGroupPages();
-  return (
-    <>
-      {groups.map((group) => (
-        <List key={group.title} title={group.title} inset>
-          {group.pages.map((page) => (
-            <TopRow key={page.id} page={page} />
-          ))}
-        </List>
-      ))}
-    </>
-  );
 }
 
 function matches(text: string, needle: string): boolean {

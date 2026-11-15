@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { addedByName } from './added-by';
-import { askInChat } from './ask';
+import { askAbout, askInChat } from './ask';
 
-const chat = vi.hoisted(() => ({ attach: vi.fn(), push: vi.fn() }));
+const chat = vi.hoisted(() => ({ attach: vi.fn(), push: vi.fn(), start: vi.fn() }));
 
 vi.mock('expo-router', () => ({ router: { push: chat.push } }));
 vi.mock('../../assistant', () => ({
   attachFiles: chat.attach,
+  startChatWith: chat.start,
   useLastChat: (): { readonly kind: 'none' } => ({ kind: 'none' }),
 }));
 
@@ -40,5 +41,19 @@ describe('viewer info people and chat', () => {
       pathname: '/assistant/chat/[chatId]',
       params: { chatId: CHAT },
     });
+  });
+
+  it('starts a new chat with the photo when no chat is open', () => {
+    const file = {
+      name: 'IMG_4822.JPG',
+      mime: 'image/jpeg',
+      bytes: 10,
+      preview: null,
+      data: (): Promise<ArrayBuffer> => Promise.resolve(new ArrayBuffer(10)),
+    };
+    chat.push.mockClear();
+    askAbout(null, file);
+    expect(chat.start).toHaveBeenCalledWith([file]);
+    expect(chat.push).not.toHaveBeenCalled();
   });
 });

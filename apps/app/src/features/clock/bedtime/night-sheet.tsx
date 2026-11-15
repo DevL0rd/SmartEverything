@@ -32,7 +32,7 @@ function toggled(days: readonly number[], day: number): readonly number[] {
   return days.includes(day) ? days.filter((one) => one !== day) : [...days, day];
 }
 
-function TimeRow({
+function TimeColumn({
   label,
   minute,
   onChange,
@@ -42,8 +42,10 @@ function TimeRow({
   readonly onChange: (minute: number) => void;
 }): ReactNode {
   return (
-    <View className="flex-row flex-wrap items-center justify-between gap-3">
-      <Text variant="body-strong">{label}</Text>
+    <View className="min-w-0 grow basis-36 items-start gap-2">
+      <Text variant="caption" tone="variant">
+        {label}
+      </Text>
       <TimeField
         label={label}
         value={timeOfClockText(clockOfMinutes(minute))}
@@ -88,6 +90,41 @@ function NightFooter({
   );
 }
 
+function NightTimes({
+  draft,
+  onChange,
+}: {
+  readonly draft: NightDraft;
+  readonly onChange: (draft: NightDraft) => void;
+}): ReactNode {
+  const same = draft.times.bed === draft.times.wake;
+  return (
+    <View className="gap-3">
+      <View className="flex-row flex-wrap gap-x-6 gap-y-4">
+        <TimeColumn
+          label="Go to bed"
+          minute={draft.times.bed}
+          onChange={(bed) => {
+            onChange({ ...draft, times: { ...draft.times, bed } });
+          }}
+        />
+        <TimeColumn
+          label="Wake up"
+          minute={draft.times.wake}
+          onChange={(wake) => {
+            onChange({ ...draft, times: { ...draft.times, wake } });
+          }}
+        />
+      </View>
+      <Text variant="callout" tone={same ? 'critical' : 'variant'}>
+        {same
+          ? 'Bed and wake times need to differ.'
+          : `${sleepLengthText(sleepMinutesOf(draft.times))} in bed`}
+      </Text>
+    </View>
+  );
+}
+
 function NightBody({
   draft,
   weekStart,
@@ -97,7 +134,6 @@ function NightBody({
   readonly weekStart: number;
   readonly onChange: (draft: NightDraft) => void;
 }): ReactNode {
-  const same = draft.times.bed === draft.times.wake;
   return (
     <View className="gap-5 pb-4 pt-2">
       <View className="gap-2">
@@ -115,25 +151,7 @@ function NightBody({
           {`${daysTextOf(draft.days, weekStart)}. A night belongs to the day you go to bed.`}
         </Text>
       </View>
-      <TimeRow
-        label="Go to bed"
-        minute={draft.times.bed}
-        onChange={(bed) => {
-          onChange({ ...draft, times: { ...draft.times, bed } });
-        }}
-      />
-      <TimeRow
-        label="Wake up"
-        minute={draft.times.wake}
-        onChange={(wake) => {
-          onChange({ ...draft, times: { ...draft.times, wake } });
-        }}
-      />
-      <Text variant="callout" tone={same ? 'critical' : 'variant'}>
-        {same
-          ? 'Bed and wake times need to differ.'
-          : `${sleepLengthText(sleepMinutesOf(draft.times))} in bed`}
-      </Text>
+      <NightTimes draft={draft} onChange={onChange} />
     </View>
   );
 }

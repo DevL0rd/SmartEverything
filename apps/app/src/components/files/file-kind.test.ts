@@ -8,6 +8,9 @@ describe('glyphOf', () => {
     expect(glyphOf({ kind: 'file', name: 'Photo.JPG' })).toBe('image');
     expect(glyphOf({ kind: 'file', name: 'png' })).toBe('fileText');
     expect(glyphOf({ kind: 'file', name: 'notes.txt' })).toBe('fileText');
+    expect(glyphOf({ kind: 'file', name: 'Kitchen renovation walkthrough.mp4' })).toBe('film');
+    expect(glyphOf({ kind: 'file', name: 'Voice memo.M4A' })).toBe('music');
+    expect(glyphOf({ kind: 'file', name: 'Backup.zip' })).toBe('archive');
     expect(glyphOf({ kind: 'other', name: 'socket' })).toBe('fileText');
   });
 });

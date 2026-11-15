@@ -29,6 +29,13 @@ function LeavingBars({ months }: { readonly months: readonly LeavingMonth[] }): 
       accessibilityLabel={leavingLabel(months)}
       className="gap-1"
     >
+      <BarLabels
+        bars={months.map((month) => ({
+          key: month.key,
+          ...(month.count === 0 ? {} : { label: count(month.count) }),
+        }))}
+        width={width}
+      />
       <View style={box} onLayout={onLayout}>
         {width > 0 ? (
           <Svg width={width} height={BARS_HEIGHT}>
@@ -46,6 +53,7 @@ function LeavingBars({ months }: { readonly months: readonly LeavingMonth[] }): 
 
 export interface WholeActions {
   readonly compact: boolean;
+  readonly selecting: boolean;
   readonly disabled: boolean;
   readonly onRestoreAll: () => void;
   readonly onDeleteAll: (() => void) | null;
@@ -86,10 +94,7 @@ function InHere({ totals }: { readonly totals: DeletedTotals }): ReactNode {
       <Text variant="caption" tone="variant">
         In here
       </Text>
-      <Text variant="title-1" className="tabular-nums">
-        {count(totals.count)}
-      </Text>
-      <Text variant="footnote" tone="variant" className="tabular-nums">
+      <Text variant="title-3" className="tabular-nums">
         {totalsText(totals)}
       </Text>
     </View>
@@ -116,7 +121,7 @@ export function LeavingCard({
           <LeavingBars months={months} />
         </View>
       </View>
-      <ActionRow actions={actions} />
+      {actions.selecting ? null : <ActionRow actions={actions} />}
     </Card>
   );
 }

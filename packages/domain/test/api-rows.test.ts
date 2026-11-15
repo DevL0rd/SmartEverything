@@ -949,7 +949,14 @@ describe('live messages', () => {
 
   it('LIVE_SERVER_MESSAGE accepts every message the server sends', () => {
     for (const message of [
-      { type: 'change', table: 'rooms', operation: 'UPDATE', record: room, oldRecord: room },
+      {
+        type: 'change',
+        table: 'rooms',
+        operation: 'UPDATE',
+        key: { id: room.id },
+        set: { name: 'Den' },
+        previous: { name: room.name },
+      },
       { type: 'ready', clientId: FIRST, role: 'owner', hub: HUB, seq: 3 },
       { type: 'subscribed', tables: ['rooms', 'devices'], streams: ['talk'], seq: 3 },
       { type: 'presence', hub: HUB },

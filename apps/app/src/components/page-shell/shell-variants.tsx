@@ -4,7 +4,6 @@ import { useSharedValue } from 'react-native-reanimated';
 import Head from 'expo-router/head';
 import { cn } from '../../design/cn';
 import { useIdiom } from '../../design/platform';
-import { useSizeClass } from '../../design/size-class';
 import { useScreenViewport } from '../../design/viewport';
 import { EdgeScrim } from '../edge-scrim';
 import { useBackAction } from '../back-navigation';
@@ -13,7 +12,14 @@ import { KeyboardViewport } from '../keyboard-viewport';
 import { PrimaryAction, usePrimaryActionPlacement } from '../primary-action';
 import { ScreenContext, type ScreenValue } from '../screen-context';
 import type { VariantShellProps } from './shell-types';
-import { ShellSearch } from './search-slot';
+import {
+  BarInline,
+  BarTrailing,
+  OpenSearch,
+  barOptionsOf,
+  useBarSearch,
+  useSearchOptionsPlace,
+} from './bar-search';
 import { ShellActions, type ShellAction } from './shell-actions';
 import { ShellFooter } from './shell-body';
 import { ShellBack, ShellTitle, type BackPress } from './shell-parts';
@@ -42,48 +48,54 @@ function LeadingActions({ actions }: { readonly actions: readonly ShellAction[] 
   ));
 }
 
-function useInlineSearch(): boolean {
-  return useSizeClass().header === 'desktop';
-}
-
-function SearchRow({ shell }: { readonly shell: VariantShellProps }): ReactNode {
-  const inline = useInlineSearch();
-  if (inline || shell.search === undefined) return null;
+function SearchOptionsRow({ shell }: { readonly shell: VariantShellProps }): ReactNode {
+  const options = barOptionsOf(shell.search, useSearchOptionsPlace());
+  if (options === undefined) return null;
   return (
-    <View testID="shell-search" className="px-gutter pb-2">
-      <ShellSearch search={shell.search} />
+    <View testID="shell-search-options" className="px-gutter pb-2">
+      {options}
     </View>
   );
 }
 
 function BarRow({ shell }: { readonly shell: VariantShellProps }): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const inline = useInlineSearch();
+  const bar = useBarSearch(shell.search);
   const back = useBackPress(shell);
   const leading = shell.leading ?? [];
   const bare = back === null && leading.length === 0;
+  if (shell.search !== undefined && bar.mode === 'open') {
+    return (
+      <View className="min-h-14 flex-row items-center px-1">
+        <OpenSearch search={shell.search} onClose={bar.close} />
+      </View>
+    );
+  }
   return (
-    <View className={cn('min-h-14 flex-row items-center gap-1 pr-1', bare ? 'pl-gutter' : 'pl-1')}>
+    <View
+      className={cn('min-h-14 flex-row items-center gap-1 pr-1', bare ? 'pl-gutter' : 'pl-1')}
+      onLayout={(event) => {
+        bar.onBar(event.nativeEvent.layout.width);
+      }}
+    >
       {back === null ? null : <ShellBack back={back} pointer={pointer} />}
       <LeadingActions actions={leading} />
       <View testID="shell-title" className={cn('min-w-0 flex-1 pr-1', bare ? null : 'pl-1')}>
         {shell.heading ?? <ShellTitle title={shell.title} size="bar" />}
       </View>
-      {shell.search === undefined || !inline ? null : (
-        <View testID="shell-search" className="min-w-0 max-w-140 shrink grow basis-48">
-          <ShellSearch search={shell.search} />
-        </View>
-      )}
-      {shell.trailing}
-      <ShellActions
-        kind={pointer ? 'pointer' : 'touch'}
-        compact
-        actions={shell.actions}
-        overflow={shell.overflow}
-        settings={shell.settings}
-        editing={shell.editing}
-        primaryAction={shell.primaryAction}
-      />
+      <BarInline search={shell.search} bar={bar} />
+      <BarTrailing search={shell.search} bar={bar}>
+        {shell.trailing}
+        <ShellActions
+          kind={pointer ? 'pointer' : 'touch'}
+          compact
+          actions={shell.actions}
+          overflow={shell.overflow}
+          settings={shell.settings}
+          editing={shell.editing}
+          primaryAction={shell.primaryAction}
+        />
+      </BarTrailing>
     </View>
   );
 }
@@ -134,7 +146,7 @@ function OverlayTop({ shell }: { readonly shell: VariantShellProps }): ReactNode
     <View testID="shell-top" className="absolute inset-x-0 top-0 pt-safe">
       <EdgeScrim edge="top" />
       <BarRow shell={shell} />
-      <SearchRow shell={shell} />
+      <SearchOptionsRow shell={shell} />
       {shell.toolbar === undefined ? null : (
         <View testID="shell-toolbar" className="px-gutter pb-2">
           {shell.toolbar}
@@ -159,7 +171,7 @@ export function PaneShell(props: VariantShellProps): ReactNode {
     <VariantProviders shell={props} head={false}>
       <View testID="shell-top" className="z-10 border-b border-outline-variant bg-chrome pt-safe">
         <BarRow shell={props} />
-        <SearchRow shell={props} />
+        <SearchOptionsRow shell={props} />
         {props.toolbar === undefined ? null : (
           <View testID="shell-toolbar" className="pb-2">
             {props.toolbar}

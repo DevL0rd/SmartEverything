@@ -3,6 +3,8 @@ import type {
   BackupHave,
   BackupHaveResult,
   BackupRegister,
+  PhotoFolderCopies,
+  PhotoFolderCopiesRequest,
   PhotosBackupPref,
 } from '@smarteverything/domain';
 import type { UploadHandle } from '../../../drive';
@@ -31,6 +33,16 @@ export interface MediaLibraryPort {
   ): Promise<ReadonlyMap<string, number>>;
   onChange(listener: () => void): () => void;
   remove(localIds: readonly string[]): Promise<boolean>;
+}
+
+export interface LocalTrashResult {
+  readonly outcome: 'done' | 'declined' | 'unsupported';
+  readonly localIds: readonly string[];
+}
+
+export interface LocalTrashPort {
+  trash(localIds: readonly string[]): Promise<LocalTrashResult>;
+  untrash(localIds: readonly string[]): Promise<LocalTrashResult>;
 }
 
 export interface NativeMediaPort {
@@ -65,6 +77,7 @@ export interface BackupHubPort {
   lookupHashes(input: BackupHave): Promise<BackupHaveResult>;
   checkBackup(input: BackupCheck): Promise<BackupHaveResult>;
   resolveTarget(deviceId: string, takenAt: string): Promise<{ readonly folderId: string }>;
+  folderCopies(input: PhotoFolderCopiesRequest): Promise<PhotoFolderCopies>;
 }
 
 export interface SettingsPort {
@@ -91,6 +104,7 @@ export interface LedgerStores {
 export interface BackupPorts {
   readonly media: MediaLibraryPort;
   readonly native: NativeMediaPort;
+  readonly trash: LocalTrashPort;
   readonly conditions: ConditionsPort;
   readonly upload: UploadPort;
   readonly hub: BackupHubPort;

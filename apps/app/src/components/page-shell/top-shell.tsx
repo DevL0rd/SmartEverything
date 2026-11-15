@@ -1,35 +1,16 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
-import Animated, {
-  interpolate,
-  useAnimatedReaction,
-  useAnimatedStyle,
-  type SharedValue,
-} from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import Animated, { interpolate, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { TabsBar } from '../tabs-bar';
-import { SEARCH_WIDTH, barLeadOf, type ShellColumn } from './layout';
-import { ShellSearch, type ShellSearchConfig } from './search-slot';
+import { BarInline, BarTrailing, OpenSearch, useBarSearch } from './bar-search';
+import { barLeadOf, type ShellColumn } from './layout';
+import type { ShellSearchConfig } from './search-slot';
 import { ShellActions, type ShellActionsProps } from './shell-actions';
 import { useBackAction } from '../back-navigation';
 import { ShellBack, ShellTitle, type BackPress, type ShellTitleProps } from './shell-parts';
-import type { ShellTabRow } from './shell-sections';
-
-export const COLLAPSE_AT = 48;
+import type { ShellTabs } from './shell-sections';
 
 export const SURFACE_AT = 8;
-
-const TITLE_MIN = 240;
-
-const ROW_GAP = 16;
-
-const SEARCH_STYLE: ViewStyle = {
-  flexGrow: 1,
-  flexShrink: 1,
-  flexBasis: SEARCH_WIDTH.min,
-  minWidth: SEARCH_WIDTH.min,
-  maxWidth: SEARCH_WIDTH.max,
-};
 
 export interface TitleRowProps {
   readonly title: Omit<ShellTitleProps, 'size'>;
@@ -38,14 +19,10 @@ export interface TitleRowProps {
   readonly actions: Omit<ShellActionsProps, 'kind'>;
 }
 
-export type ControlsPlace = 'title' | 'search' | 'tabs';
+export type ControlsPlace = 'title' | 'tabs';
 
-export function touchControlsPlaceOf(
-  search: ShellSearchConfig | undefined,
-  tabs: readonly ShellTabRow[],
-): ControlsPlace {
-  if (search !== undefined) return 'search';
-  return tabs.length > 0 ? 'tabs' : 'title';
+export function touchControlsPlaceOf(tabs: ShellTabs | undefined): ControlsPlace {
+  return tabs === undefined ? 'title' : 'tabs';
 }
 
 function ShellControls({ controls }: { readonly controls: ReactNode }): ReactNode {
@@ -86,78 +63,43 @@ export function TopSurface({
   );
 }
 
-export type BarTitle = 'bar' | 'collapsing' | 'none';
-
-function useTitleShown(title: BarTitle, scrollY: SharedValue<number>): boolean {
-  const [shown, setShown] = useState(title === 'bar');
-  useAnimatedReaction(
-    () => title === 'bar' || (title === 'collapsing' && scrollY.get() > COLLAPSE_AT - 16),
-    (now, before) => {
-      if (now !== before) scheduleOnRN(setShown, now);
-    },
-    [title],
-  );
-  return shown;
-}
-
 export function AppBar({
   row,
-  title,
-  scrollY,
   column,
   controls,
+  search,
 }: {
   readonly row: TitleRowProps;
-  readonly title: BarTitle;
-  readonly scrollY: SharedValue<number>;
   readonly column: ShellColumn;
   readonly controls: boolean;
+  readonly search: ShellSearchConfig | undefined;
 }): ReactNode {
   const back = useBackAction(row.back);
-  const shown = useTitleShown(title, scrollY);
-  const titleStyle = useAnimatedStyle(() => {
-    if (title === 'bar') return { opacity: 1 };
-    if (title === 'none') return { opacity: 0 };
-    return {
-      opacity: interpolate(scrollY.get(), [COLLAPSE_AT - 16, COLLAPSE_AT], [0, 1], 'clamp'),
-    };
-  });
+  const bar = useBarSearch(search);
+  if (search !== undefined && bar.mode === 'open') {
+    return (
+      <View className="h-14 flex-row items-center px-1">
+        <OpenSearch search={search} onClose={bar.close} />
+      </View>
+    );
+  }
   return (
-    <View className="h-14 flex-row items-center gap-1 px-1">
+    <View
+      className="h-14 flex-row items-center gap-1 px-1"
+      onLayout={(event) => {
+        bar.onBar(event.nativeEvent.layout.width);
+      }}
+    >
       <View style={widthStyle(barLeadOf(column.left, back !== null))} />
       <ShellBack back={back} />
-      <Animated.View
-        style={titleStyle}
-        aria-hidden={!shown}
-        pointerEvents={shown ? 'auto' : 'none'}
-        className="min-w-0 flex-1 px-1"
-      >
-        <ShellTitle
-          {...row.title}
-          size="bar"
-          {...(title === 'bar' ? { testID: 'shell-title' } : { subtitle: undefined })}
-        />
-      </Animated.View>
-      {controls ? <ShellControls controls={row.controls} /> : null}
-      <ShellActions {...row.actions} kind="touch" />
-    </View>
-  );
-}
-
-export function searchInlineAt(column: ShellColumn, trailing: number): boolean {
-  return column.width >= TITLE_MIN + SEARCH_WIDTH.min + trailing + ROW_GAP * 2;
-}
-
-function SearchBox({
-  search,
-  inline,
-}: {
-  readonly search: ShellSearchConfig;
-  readonly inline: boolean;
-}): ReactNode {
-  return (
-    <View testID="shell-search" style={inline ? SEARCH_STYLE : undefined}>
-      <ShellSearch search={search} />
+      <View className="min-w-0 flex-1 px-1">
+        <ShellTitle {...row.title} size="bar" testID="shell-title" />
+      </View>
+      <BarInline search={search} bar={bar} />
+      <BarTrailing search={search} bar={bar}>
+        {controls ? <ShellControls controls={row.controls} /> : null}
+        <ShellActions {...row.actions} kind="touch" />
+      </BarTrailing>
     </View>
   );
 }
@@ -170,7 +112,7 @@ function DesktopTitle({
   readonly back: BackPress;
 }): ReactNode {
   return (
-    <View className="min-w-0 flex-1 basis-60">
+    <View className="min-w-0 flex-1">
       <ShellTitle
         {...row.title}
         size="desktop"
@@ -190,35 +132,39 @@ export function DesktopTitleRow({
   readonly search: ShellSearchConfig | undefined;
   readonly column: ShellColumn;
 }): ReactNode {
-  const [trailing, setTrailing] = useState(0);
-  const inline = searchInlineAt(column, trailing);
   const back = useBackAction(row.back);
-  return (
-    <View style={columnStyle(column)} className="gap-2 pt-2">
-      <View className="min-h-12 flex-row flex-wrap items-center gap-x-4 gap-y-2">
-        <DesktopTitle row={row} back={back} />
-        {search !== undefined && inline ? <SearchBox search={search} inline /> : null}
-        <View
-          className="shrink-0 flex-row items-center gap-4"
-          onLayout={(event) => {
-            setTrailing(event.nativeEvent.layout.width);
-          }}
-        >
-          <ShellControls controls={row.controls} />
-          <ShellActions {...row.actions} kind="pointer" />
-        </View>
+  const bar = useBarSearch(search);
+  if (search !== undefined && bar.mode === 'open') {
+    return (
+      <View style={columnStyle(column)} className="min-h-12 flex-row items-center pt-2">
+        <OpenSearch search={search} onClose={bar.close} />
       </View>
-      {search !== undefined && !inline ? <SearchBox search={search} inline={false} /> : null}
+    );
+  }
+  return (
+    <View
+      style={columnStyle(column)}
+      className="min-h-12 flex-row items-center gap-4 pt-2"
+      onLayout={(event) => {
+        bar.onBar(event.nativeEvent.layout.width);
+      }}
+    >
+      <DesktopTitle row={row} back={back} />
+      <BarInline search={search} bar={bar} />
+      <BarTrailing search={search} bar={bar} wide>
+        <ShellControls controls={row.controls} />
+        <ShellActions {...row.actions} kind="pointer" />
+      </BarTrailing>
     </View>
   );
 }
 
 export function shellRowsShown(
-  search: ShellSearchConfig | undefined,
-  tabs: readonly ShellTabRow[],
+  options: ReactNode,
+  tabs: ShellTabs | undefined,
   toolbar: ReactNode,
 ): boolean {
-  return search !== undefined || tabs.length > 0 || toolbar !== undefined;
+  return options !== undefined || tabs !== undefined || toolbar !== undefined;
 }
 
 function BesideControls({
@@ -238,40 +184,29 @@ function BesideControls({
 }
 
 export function ShellRows({
-  search,
+  options,
   tabs,
   toolbar,
   controls,
   column,
 }: {
-  readonly search: ShellSearchConfig | undefined;
-  readonly tabs: readonly ShellTabRow[];
+  readonly options: ReactNode;
+  readonly tabs: ShellTabs | undefined;
   readonly toolbar: ReactNode;
   readonly controls: ReactNode;
   readonly column: ShellColumn;
 }): ReactNode {
-  if (!shellRowsShown(search, tabs, toolbar)) return null;
-  const place = touchControlsPlaceOf(search, tabs);
-  const last = tabs.at(-1)?.key;
+  if (!shellRowsShown(options, tabs, toolbar)) return null;
   return (
     <View style={columnStyle(column)} className="gap-2 pb-2">
-      {search === undefined ? null : (
-        <BesideControls controls={place === 'search' ? controls : undefined}>
-          <View testID="shell-search">
-            <ShellSearch search={search} />
+      {options === undefined ? null : <View testID="shell-search-options">{options}</View>}
+      {tabs === undefined ? null : (
+        <BesideControls controls={touchControlsPlaceOf(tabs) === 'tabs' ? controls : undefined}>
+          <View testID="shell-tabs">
+            <TabsBar items={tabs.items} active={tabs.active} label={tabs.label} />
           </View>
         </BesideControls>
       )}
-      {tabs.map((row) => (
-        <BesideControls
-          key={row.key}
-          controls={place === 'tabs' && row.key === last ? controls : undefined}
-        >
-          <View testID="shell-tabs">
-            <TabsBar items={row.tabs.items} active={row.tabs.active} label={row.tabs.label} />
-          </View>
-        </BesideControls>
-      ))}
       {toolbar === undefined ? null : <View testID="shell-toolbar">{toolbar}</View>}
     </View>
   );

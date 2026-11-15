@@ -241,6 +241,7 @@ export function LiveActions({ view }: { readonly view: TimerView }): ReactNode {
         icon={running ? 'pause' : 'play'}
         label={running ? 'Pause' : 'Resume'}
         variant={running ? 'tonal' : 'filled'}
+        size="control"
         disabled={offline}
         onPress={() => {
           act(running ? 'pause' : 'resume');
@@ -259,6 +260,7 @@ export function LiveActions({ view }: { readonly view: TimerView }): ReactNode {
         icon="close"
         label="Cancel timer"
         variant="tonal"
+        size="control"
         disabled={offline}
         onPress={() => {
           act('cancel');

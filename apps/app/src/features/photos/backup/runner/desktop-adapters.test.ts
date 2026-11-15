@@ -29,10 +29,12 @@ const item: DesktopPhotoItem = {
 const list = vi.fn<DesktopPhotos['list']>();
 const hash = vi.fn<DesktopPhotos['hash']>();
 const cancel = vi.fn<DesktopPhotos['cancel']>();
+const trash = vi.fn<DesktopPhotos['trash']>();
 const photos: DesktopPhotos = {
   list,
   hash,
   cancel,
+  trash,
   onChange: () => () => undefined,
   charging: () => Promise.resolve(true),
   onChargingChange: () => () => undefined,
@@ -120,4 +122,18 @@ it('reads only the requested chunk and rejects a full-file response', async () =
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it('moves computer copies to the system trash and says it cannot take them back out', async () => {
+  trash.mockResolvedValueOnce({ trashed: [item.id] });
+  const ports = desktopBackupAdapters(photos, connection, 'scope');
+  await expect(ports.trash.trash([item.id, 'b'.repeat(64)])).resolves.toEqual({
+    outcome: 'done',
+    localIds: [item.id],
+  });
+  expect(trash).toHaveBeenCalledWith([item.id, 'b'.repeat(64)]);
+  await expect(ports.trash.untrash([item.id])).resolves.toEqual({
+    outcome: 'unsupported',
+    localIds: [],
+  });
 });

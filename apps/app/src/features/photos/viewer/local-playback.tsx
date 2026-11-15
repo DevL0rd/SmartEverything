@@ -1,42 +1,43 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { useEventListener } from 'expo';
-import { Text } from '../../../components/text';
-import { useModulePlayer, usePlaybackLive, useVideoModule, type VideoModule } from './live-photo';
+import type { ReactNode } from 'react';
+import { EmptyState } from '../../../components/empty-state';
+import { MediaSkeleton } from './media-skeleton';
+import { useVideoModule } from './live-photo';
+import { PlayerView } from './player-view';
 
-function Playback({
-  module,
+export function LocalPlayback({
   uri,
+  durationMs,
+  phone,
 }: {
-  readonly module: VideoModule;
   readonly uri: string;
+  readonly durationMs: number | null;
+  readonly phone: boolean;
 }): ReactNode {
-  const player = useModulePlayer(module, uri);
-  const live = usePlaybackLive();
-  const [failed, setFailed] = useState(false);
-  useEventListener(player, 'statusChange', (event) => {
-    if (event.status === 'error') setFailed(true);
-  });
-  useEffect(() => {
-    if (!live) player.pause();
-  }, [live, player]);
-  if (failed) return <Text>This video could not be played on this device.</Text>;
-  const { VideoView } = module;
-  return (
-    <View className="min-h-0 flex-1">
-      <VideoView
-        player={player}
-        nativeControls
-        contentFit="contain"
-        style={StyleSheet.absoluteFill}
-      />
-    </View>
-  );
-}
-
-export function LocalPlayback({ uri }: { readonly uri: string }): ReactNode {
   const module = useVideoModule(true);
-  if (module === null) return <Text>Loading video…</Text>;
-  if (module === 'failed') return <Text>This device could not load the video player.</Text>;
-  return <Playback module={module} uri={uri} />;
+  if (module === null) return <MediaSkeleton />;
+  if (module === 'failed') {
+    return (
+      <EmptyState
+        icon="film"
+        title="The video player did not load"
+        body="This device could not load the video player."
+      />
+    );
+  }
+  return (
+    <PlayerView
+      module={module}
+      source={uri}
+      phone={phone}
+      lengthSeconds={durationMs === null ? 0 : durationMs / 1000}
+      failed={
+        <EmptyState
+          icon="film"
+          title="This video cannot play here"
+          body="This device could not play the video."
+        />
+      }
+      onScrubbing={() => undefined}
+    />
+  );
 }

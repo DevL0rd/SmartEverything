@@ -14,12 +14,12 @@ export interface SheetProps {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly title?: string;
+  readonly headerAction?: ReactNode;
   readonly label?: string;
   readonly detents?: readonly Detent[];
   readonly kind?: PointerSheetKind;
   readonly anchor?: Rect | null;
   readonly wide?: boolean;
-  readonly large?: boolean;
   readonly footer?: ReactNode;
   readonly scroll?: boolean;
   readonly reading?: boolean;
@@ -32,6 +32,7 @@ function TouchSheet({
   open,
   onClose,
   title,
+  headerAction,
   name,
   detents = ['half', 'full'],
   footer,
@@ -57,6 +58,7 @@ function TouchSheet({
       open={open}
       onClose={onClose}
       title={title}
+      headerAction={headerAction}
       label={name}
       detents={detents}
       footer={footer}
@@ -73,10 +75,10 @@ function PointerSheet({
   open,
   onClose,
   title,
+  headerAction,
   kind = 'dialog',
   anchor = null,
   wide = false,
-  large = false,
   footer,
   scroll = true,
   reading = false,
@@ -95,18 +97,46 @@ function PointerSheet({
       open={open}
       onClose={onClose}
       title={title}
+      headerAction={headerAction}
       label={name}
       footer={footer}
       scroll={scroll}
       reading={reading}
       kind={kind}
       wide={wide}
-      large={large}
       {...(initialFocus === undefined ? {} : { initialFocus })}
     >
       {children}
     </DialogFrame>
   );
+}
+
+function usePointerSubpage({
+  name,
+  open,
+  onClose,
+  title,
+  kind = 'dialog',
+  footer,
+  scroll = true,
+  subpage = false,
+  children,
+}: SheetProps & { readonly name: string }): boolean {
+  const mayNest = subpage !== false && kind !== 'popover';
+  const nested = useSheetSubpage(mayNest && open, {
+    title: title ?? name,
+    onClose,
+    footer,
+    scroll,
+    children,
+    opener: typeof subpage === 'boolean' ? undefined : subpage.opener,
+  });
+  return mayNest && nested;
+}
+
+function NestablePointerSheet(props: SheetProps & { readonly name: string }): ReactNode {
+  if (usePointerSubpage(props)) return null;
+  return <PointerSheet {...props} />;
 }
 
 export function Sheet(props: SheetProps): ReactNode {
@@ -115,5 +145,5 @@ export function Sheet(props: SheetProps): ReactNode {
   if (touch) {
     return <TouchSheet {...props} name={name} />;
   }
-  return <PointerSheet {...props} name={name} />;
+  return <NestablePointerSheet {...props} name={name} />;
 }
