@@ -59,6 +59,8 @@ export function generateDriveFixture(options: DriveFixtureOptions): DriveFixture
       membersMayShare: false,
       duplicatesHashing: true,
       indexingPaused: false,
+      contentIndexing: true,
+      ocrLanguages: ['eng'],
     },
   };
 }

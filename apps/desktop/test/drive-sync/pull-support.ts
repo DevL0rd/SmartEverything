@@ -4,6 +4,17 @@ import type { BlockSource, RemoteFile } from '../../src/drive-sync/transfer.js';
 
 export const BLOCK = 128 * 1024;
 
+export const NO_META = {
+  linkTarget: null,
+  linkKey: null,
+  hubInode: null,
+  xattrs: [],
+  metaDirty: false,
+} as const;
+
+const ENTRY_MTIME = '2026-11-01T10:00:00.000Z';
+const ENTRY_MTIME_NS = (BigInt(Date.parse(ENTRY_MTIME)) * 1_000_000n).toString();
+
 export function sha256Of(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -45,9 +56,13 @@ export function fileEntry(
     itemId,
     relPath,
     kind: 'file',
-    mtime: '2026-11-01T10:00:00.000Z',
+    mtime: ENTRY_MTIME,
+    mtimeNs: ENTRY_MTIME_NS,
     rev,
     deleted: false,
+    mode: 0o644,
+    xattrs: [],
+    inode: null,
     bytes: content.length,
     blockSize: blockSizeFor(content.length),
     blocksHash: sha256Of(blockHashes(content)),
@@ -59,9 +74,12 @@ export function folderEntry(relPath: string, rev: number): SyncIndexEntry {
     itemId: randomUUID(),
     relPath,
     kind: 'folder',
-    mtime: '2026-11-01T10:00:00.000Z',
+    mtime: ENTRY_MTIME,
+    mtimeNs: ENTRY_MTIME_NS,
     rev,
     deleted: false,
+    mode: 0o755,
+    xattrs: [],
   };
 }
 

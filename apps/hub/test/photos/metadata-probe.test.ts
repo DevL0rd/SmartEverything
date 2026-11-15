@@ -5,13 +5,14 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { ffmpegPath } from '../../src/media/ffmpeg-path';
 import {
   ExifReaderModule,
   ExifToolModule,
   motionClip,
+  type ExifToolHandle,
   readImage,
   readVideo,
   type MediaInfo,
@@ -55,6 +56,23 @@ function exiftoolText(tags: Record<string, unknown>, name: string): string | nul
     : null;
 }
 
+interface Probe {
+  readonly reader: z.infer<typeof ExifReaderModule>;
+  readonly exiftool: ExifToolHandle;
+  readonly mediainfo: (options: object) => Promise<MediaInfo>;
+}
+
+function loadProbe(): Probe {
+  const load = createRequire(PROBE);
+  return {
+    reader: ExifReaderModule.parse(load('exifreader')),
+    exiftool: ExifToolModule.parse(load('exiftool-vendored')).exiftool,
+    mediainfo: z
+      .object({ default: z.custom<(options: object) => Promise<MediaInfo>>() })
+      .parse(load('mediainfo.js')).default,
+  };
+}
+
 describe('photo fixtures', () => {
   it('stay small and keep the structures the readers depend on', () => {
     const total = [...IMAGES, ...VIDEOS, 'screenshot.png'].reduce(
@@ -81,16 +99,15 @@ describe('photo fixtures', () => {
 });
 
 describe.skipIf(!HAS_PROBE)('metadata readers against exiftool', () => {
-  const load = createRequire(PROBE);
-  const reader = ExifReaderModule.parse(load('exifreader'));
-  const exiftool = ExifToolModule.parse(load('exiftool-vendored')).exiftool;
-  const mediainfoFactory = z
-    .object({ default: z.custom<(options: object) => Promise<MediaInfo>>() })
-    .parse(load('mediainfo.js')).default;
+  let probe: Probe;
+
+  beforeAll(() => {
+    probe = loadProbe();
+  });
 
   async function videoFacts(name: string): Promise<VideoFacts> {
     const data = fixture(name);
-    const mediaInfo = await mediainfoFactory({ format: 'object' });
+    const mediaInfo = await probe.mediainfo({ format: 'object' });
     const result = await mediaInfo.analyzeData(data.length, (length, offset) =>
       data.subarray(offset, offset + length),
     );
@@ -99,8 +116,8 @@ describe.skipIf(!HAS_PROBE)('metadata readers against exiftool', () => {
   }
 
   it.each(IMAGES)('exifreader reads every shown field of %s like exiftool', async (name) => {
-    const facts = readImage(reader, fixture(name));
-    const truth = await exiftool.read(join(FIXTURES, name));
+    const facts = readImage(probe.reader, fixture(name));
+    const truth = await probe.exiftool.read(join(FIXTURES, name));
     expect(facts.takenAt).toEqual({ iso: '2025-06-14T09:30:15.123+07:00', source: 'exif-offset' });
     expect(exiftoolText(truth, 'DateTimeOriginal')).toBe(facts.takenAt?.iso);
     expect(facts.make).toBe(exiftoolText(truth, 'Make'));
@@ -117,13 +134,13 @@ describe.skipIf(!HAS_PROBE)('metadata readers against exiftool', () => {
   });
 
   it('reads orientation from EXIF and leaves it null when the file has none', () => {
-    expect(readImage(reader, fixture('exif-full.jpg')).orientation).toBe(6);
-    expect(readImage(reader, fixture('synthetic.arw')).orientation).toBe(1);
-    expect(readImage(reader, fixture('exif-full.heic')).orientation).toBeNull();
+    expect(readImage(probe.reader, fixture('exif-full.jpg')).orientation).toBe(6);
+    expect(readImage(probe.reader, fixture('synthetic.arw')).orientation).toBe(1);
+    expect(readImage(probe.reader, fixture('exif-full.heic')).orientation).toBeNull();
   });
 
   it('reads the lens only where the file carries LensModel', () => {
-    const lenses = IMAGES.map((name) => readImage(reader, fixture(name)).lens);
+    const lenses = IMAGES.map((name) => readImage(probe.reader, fixture(name)).lens);
     expect(lenses).toEqual([
       'FE 24-70mm F2.8 GM II',
       'FE 24-70mm F2.8 GM II',
@@ -135,9 +152,9 @@ describe.skipIf(!HAS_PROBE)('metadata readers against exiftool', () => {
   });
 
   it('decodes the Apple content identifier from the raw maker note and the motion clip offset', () => {
-    expect(readImage(reader, fixture('live-photo.heic')).liveId).toBe(LIVE_ID);
-    expect(readImage(reader, fixture('exif-full.heic')).liveId).toBeNull();
-    const motion = readImage(reader, fixture('motion-photo.jpg'));
+    expect(readImage(probe.reader, fixture('live-photo.heic')).liveId).toBe(LIVE_ID);
+    expect(readImage(probe.reader, fixture('exif-full.heic')).liveId).toBeNull();
+    const motion = readImage(probe.reader, fixture('motion-photo.jpg'));
     expect(motion.motionClip).toEqual({
       offset: fixture('motion-photo.jpg').length - fixture('motion-clip.mp4').length,
       length: fixture('motion-clip.mp4').length,
@@ -145,7 +162,7 @@ describe.skipIf(!HAS_PROBE)('metadata readers against exiftool', () => {
   });
 
   it('reads a PNG screenshot with no capture time and no camera', () => {
-    const facts = readImage(reader, fixture('screenshot.png'));
+    const facts = readImage(probe.reader, fixture('screenshot.png'));
     expect(facts.takenAt).toBeNull();
     expect(facts.make).toBeNull();
     expect(facts.gps).toBeNull();
@@ -155,7 +172,7 @@ describe.skipIf(!HAS_PROBE)('metadata readers against exiftool', () => {
 
   it.each(VIDEOS)('mediainfo reads duration, codecs and place of %s', async (name) => {
     const facts = await videoFacts(name);
-    const truth = await exiftool.read(join(FIXTURES, name));
+    const truth = await probe.exiftool.read(join(FIXTURES, name));
     expect(facts.durationSeconds).toBeCloseTo(Number(truth['Duration']), 1);
     expect(facts.videoCodec).toBe('AVC');
     expect(facts.audioCodec === 'AAC' || name === 'motion-clip.mp4').toBe(true);
@@ -188,13 +205,15 @@ describe.skipIf(!HAS_PROBE)('metadata readers against exiftool', () => {
 });
 
 describe.skipIf(!HAS_PROBE)('lossless location removal', () => {
-  const load = createRequire(PROBE);
-  const exiftool = ExifToolModule.parse(load('exiftool-vendored')).exiftool;
-  const reader = ExifReaderModule.parse(load('exifreader'));
+  let probe: Probe;
   const directories: string[] = [];
 
+  beforeAll(() => {
+    probe = loadProbe();
+  });
+
   afterAll(async () => {
-    await exiftool.end();
+    await probe.exiftool.end();
     await Promise.all(directories.map((directory) => rm(directory, { recursive: true })));
   });
 
@@ -237,16 +256,18 @@ describe.skipIf(!HAS_PROBE)('lossless location removal', () => {
       const { path, data } = await copyOf(name);
       const result = strip(data);
       await writeFile(path, data);
-      const after = await exiftool.read(path);
-      const before = await exiftool.read(join(FIXTURES, name));
+      const after = await probe.exiftool.read(path);
+      const before = await probe.exiftool.read(join(FIXTURES, name));
       expect(result.exif).toBe(true);
       expect(data.length).toBe(fixture(name).length);
       expect(Object.keys(after).filter((key) => /^GPS|^City$|^Country$/.test(key))).toEqual([]);
       for (const key of ['Make', 'Model', 'LensModel', 'ISO', 'FNumber', 'DateTimeOriginal']) {
         expect(String(after[key])).toBe(String(before[key]));
       }
-      expect(readImage(reader, data).gps).toBeNull();
-      expect(readImage(reader, data).takenAt).toEqual(readImage(reader, fixture(name)).takenAt);
+      expect(readImage(probe.reader, data).gps).toBeNull();
+      expect(readImage(probe.reader, data).takenAt).toEqual(
+        readImage(probe.reader, fixture(name)).takenAt,
+      );
     },
   );
 
@@ -264,7 +285,7 @@ describe.skipIf(!HAS_PROBE)('lossless location removal', () => {
     expect(data.subarray(data.length - clip.length)).toEqual(clip);
     const live = await copyOf('live-photo.heic');
     stripIsoBmffStill(live.data);
-    expect(readImage(reader, live.data).liveId).toBe(LIVE_ID);
+    expect(readImage(probe.reader, live.data).liveId).toBe(LIVE_ID);
   });
 
   it.each([
@@ -322,7 +343,7 @@ describe.skipIf(!HAS_PROBE)('lossless location removal', () => {
       '-',
     ]);
     expect(afterRemux.stdout).toBe(before.stdout);
-    const tags = await exiftool.read(output);
+    const tags = await probe.exiftool.read(output);
     expect(Object.keys(tags).filter((key) => /GPS|Location|xyz/i.test(key))).toEqual([]);
     expect((await readFile(output)).length).toBeGreaterThan(0);
   });

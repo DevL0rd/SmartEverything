@@ -10,8 +10,10 @@ import { useWidgetFace } from '../../../components/widget-board/use-widget-face'
 import { cn } from '../../../design/cn';
 import { plural } from '../../../format/text';
 import { useDayKey } from '../../../store/clock';
+import { useRows } from '../../../store/selectors';
 import { useHubOffline } from '../../clock';
 import { DeviceFace } from '../../devices';
+import { usePlannerProfile } from '../data/assignment';
 import { usePlannerCollections, usePlannerDay, usePlannerItems, useVisibleMinute } from '../data';
 import { LIST_DOT } from '../item/composer-tokens';
 import { lensOf } from '../today/now-lens';
@@ -168,7 +170,9 @@ function UpNextBody({
   const { frame, cls } = useWidgetFace();
   const items = usePlannerItems(null);
   const collections = usePlannerCollections(null);
-  const rows = riverRowsOf({ day, collections, items, hidden: NO_HIDDEN });
+  const guests = useRows('planner_guests');
+  const me = usePlannerProfile(null);
+  const rows = riverRowsOf({ day, collections, items, hidden: NO_HIDDEN, guests, me });
   const split = isSplit(cls);
   const body = widgetBodyHeight(frame);
   const lead = leadHeightOf(frame.idiom, deviceIdsOf(occurrence).length > 0);

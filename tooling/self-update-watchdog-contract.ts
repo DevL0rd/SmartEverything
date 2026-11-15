@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 const PATH = z.string().startsWith('/');
 
+export const WATCHDOG_ORDERS = ['watch', 'recover', 'rollback', 'keep'] as const;
+
+export type WatchdogOrder = (typeof WATCHDOG_ORDERS)[number];
+
 export const WATCHDOG_OPTIONS = z.strictObject({
   runId: z.uuid(),
   url: z.url({ protocol: /^https?$/u }),
@@ -17,7 +21,7 @@ export const WATCHDOG_OPTIONS = z.strictObject({
   health: PATH,
   data: PATH,
   startingSchema: z.int().nonnegative().nullable(),
-  retryUnrecoverable: z.boolean(),
+  order: z.enum(WATCHDOG_ORDERS),
   holdSeconds: z.int().min(0).max(600),
   expectedSchema: z.int().nonnegative().nullable(),
 });

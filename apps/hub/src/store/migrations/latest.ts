@@ -1,3 +1,21 @@
+import { DRIVE_MEMBER_AREA_MIGRATION } from './drive-member-area';
+import { ROUTER_LIVE_STREAM_MIGRATION } from './router-live-stream';
+import { AI_USAGE_PHOTOS_MIGRATION } from './ai-usage-photos';
+import { PLANNER_BOOKING_PAGE_MIGRATION } from './planner-booking-page';
+import { DRIVE_INODES_MIGRATION } from './drive-inodes';
+import { DRIVE_INTENT_OPS_MIGRATION } from './drive-intent-ops';
+import { DRIVE_SHORTCUT_ORIGIN_MIGRATION } from './drive-shortcut-origin';
+import { PHOTOS_WAVE2_LEDGERS_MIGRATION } from './photos-wave2-ledgers';
+import { PHOTOS_WAVE2_MIGRATION } from './photos-wave2';
+import { RUNTIME_LOG_RUNTIME_INDEX_MIGRATION } from './runtime-log-runtime-index';
+import { PHOTO_FOLDERS_MIGRATION } from './photo-folders';
+import { BUILD_SOURCES_MIGRATION } from './build-sources';
+import { NO_SCENES_MIGRATION } from './no-scenes';
+import { DRIVE_WAVE2_MIGRATION } from './drive-wave2';
+import { RING_TARGETS_HUB_CLIENT_DROP_MIGRATION } from './ring-targets-hub-client-drop';
+import { PLANNER_CLOCK_WAVE2_MIGRATION } from './planner-clock-wave2';
+import { PLANNER_COLLABORATION_MIGRATION } from './planner-collaboration';
+import { DRIVE_MOUNT_LOCATION_MIGRATION } from './drive-mount-location';
 import { DRIVE_SPACES_MIGRATION } from './drive-spaces';
 import { DRIVE_UPLOAD_TOP_MIGRATION } from './drive-upload-top';
 import { PHOTOS_REDESIGN_MIGRATION } from './photos-redesign';
@@ -151,4 +169,22 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   DRIVE_SPACES_MIGRATION,
   PHOTOS_REDESIGN_MIGRATION,
   DRIVE_UPLOAD_TOP_MIGRATION,
+  RING_TARGETS_HUB_CLIENT_DROP_MIGRATION,
+  DRIVE_MOUNT_LOCATION_MIGRATION,
+  PLANNER_CLOCK_WAVE2_MIGRATION,
+  PLANNER_COLLABORATION_MIGRATION,
+  DRIVE_WAVE2_MIGRATION,
+  BUILD_SOURCES_MIGRATION,
+  NO_SCENES_MIGRATION,
+  PHOTO_FOLDERS_MIGRATION,
+  RUNTIME_LOG_RUNTIME_INDEX_MIGRATION,
+  PHOTOS_WAVE2_MIGRATION,
+  DRIVE_INODES_MIGRATION,
+  AI_USAGE_PHOTOS_MIGRATION,
+  DRIVE_INTENT_OPS_MIGRATION,
+  PHOTOS_WAVE2_LEDGERS_MIGRATION,
+  PLANNER_BOOKING_PAGE_MIGRATION,
+  DRIVE_SHORTCUT_ORIGIN_MIGRATION,
+  ROUTER_LIVE_STREAM_MIGRATION,
+  DRIVE_MEMBER_AREA_MIGRATION,
 ];

@@ -7,8 +7,13 @@ import {
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
+import { driveRootRow } from './drive-roots';
 
-const COLUMNS = 'id, item_id, profile_id, role, granted_by, created_at';
+const COLUMNS = 'id, item_id, profile_id, role, granted_by, created_at, expires_at';
+
+const ROOT_OF = z.strictObject({ root_id: z.string() });
+
+const SOONEST = z.strictObject({ expires_at: z.string().nullable() });
 
 const GRANT_COLUMNS = z.strictObject({
   id: z.string(),
@@ -17,6 +22,7 @@ const GRANT_COLUMNS = z.strictObject({
   role: DRIVE_GRANT_ROLE,
   granted_by: z.string(),
   created_at: z.string(),
+  expires_at: z.string().nullable(),
 });
 
 const STORED_GRANT = storedRow(
@@ -28,6 +34,7 @@ const STORED_GRANT = storedRow(
       role: row.role,
       grantedBy: row.granted_by,
       createdAt: row.created_at,
+      expiresAt: row.expires_at,
     }),
   ),
   {},
@@ -82,14 +89,18 @@ export class DriveGrantsRepository {
     );
   }
 
-  set(input: DriveGrantSet, grantedBy: string): DriveGrant {
+  set(request: DriveGrantSet, grantedBy: string): DriveGrant {
+    const input = {
+      ...request,
+      expiresAt: request.expiresAt === null ? null : new Date(request.expiresAt).toISOString(),
+    };
     return this.context.write(() => {
       const before = this.forPerson(input.itemId, input.profileId);
       if (before === undefined) {
         this.context.sql.run(
           'create the drive grant',
           `insert into drive_grants (${COLUMNS})
-            values ($id, $itemId, $profileId, $role, $grantedBy, $now)`,
+            values ($id, $itemId, $profileId, $role, $grantedBy, $now, $expiresAt)`,
           {
             id: this.context.newId(),
             itemId: input.itemId,
@@ -97,13 +108,14 @@ export class DriveGrantsRepository {
             role: input.role,
             grantedBy,
             now: this.context.now(),
+            expiresAt: input.expiresAt,
           },
         );
-      } else if (before.role !== input.role) {
+      } else if (before.role !== input.role || before.expiresAt !== input.expiresAt) {
         this.context.sql.run(
           'change the drive grant',
-          'update drive_grants set role = $role where id = $id',
-          { id: before.id, role: input.role },
+          'update drive_grants set role = $role, expires_at = $expiresAt where id = $id',
+          { id: before.id, role: input.role, expiresAt: input.expiresAt },
         );
       }
       const row = found(
@@ -111,11 +123,26 @@ export class DriveGrantsRepository {
         'drive grant',
         `${input.itemId}/${input.profileId}`,
       );
-      if (before === undefined) this.context.changed('drive_grants', 'INSERT', row, null);
-      else if (before.role !== row.role)
+      if (before === undefined) {
+        this.context.changed('drive_grants', 'INSERT', row, null);
+        this.announceRoot(row.itemId);
+      } else if (before.role !== row.role || before.expiresAt !== row.expiresAt) {
         this.context.changed('drive_grants', 'UPDATE', row, before);
+      }
       return row;
     });
+  }
+
+  private announceRoot(itemId: string): void {
+    const item = found(
+      this.context.sql.get(ROOT_OF, 'select root_id from drive_items where id = $itemId', {
+        itemId,
+      }),
+      'drive item',
+      itemId,
+    );
+    const root = driveRootRow(this.context, item.root_id);
+    this.context.changed('drive_roots', 'UPDATE', root, root);
   }
 
   remove(id: string): void {
@@ -125,6 +152,35 @@ export class DriveGrantsRepository {
         id,
       });
       this.context.changed('drive_grants', 'DELETE', null, before);
+    });
+  }
+
+  nextExpiry(): string | null {
+    return (
+      this.context.sql.get(
+        SOONEST,
+        'select min(expires_at) as expires_at from drive_grants where expires_at is not null',
+      )?.expires_at ?? null
+    );
+  }
+
+  removeExpired(now: string): DriveGrant[] {
+    return this.context.write(() => {
+      const expired = this.context.sql.all(
+        STORED_GRANT,
+        `select ${COLUMNS} from drive_grants
+          where expires_at is not null and expires_at <= $now order by expires_at, id`,
+        { now },
+      );
+      for (const grant of expired) {
+        this.context.sql.run(
+          'remove the expired drive grant',
+          'delete from drive_grants where id = $id',
+          { id: grant.id },
+        );
+        this.context.changed('drive_grants', 'DELETE', null, grant);
+      }
+      return expired;
     });
   }
 

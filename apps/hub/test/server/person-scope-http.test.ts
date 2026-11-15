@@ -181,18 +181,6 @@ describe('the devices a person may use', () => {
       body: { name: 'Mine', device_ids: [camera.id] },
     });
     expect(refusedGroup.status).toBe(403);
-    const refusedScene = await call(suite.current.base, kid.token, {
-      method: 'POST',
-      path: '/api/scenes',
-      body: {
-        name: 'Night',
-        icon: 'moon',
-        actions: [
-          { type: 'command', deviceId: camera.id, capability: 'privacy_mode', value: true },
-        ],
-      },
-    });
-    expect(refusedScene.status).toBe(403);
     const target = await call(suite.current.base, kid.token, {
       method: 'POST',
       path: '/api/device-targets/commands',

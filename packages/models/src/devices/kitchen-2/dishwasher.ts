@@ -233,7 +233,7 @@ export const DISHWASHER_MODEL: ModelSpec = {
   title: 'Dishwasher',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.622, height: 0.84 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: [

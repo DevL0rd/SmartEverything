@@ -41,7 +41,7 @@ function posts(): ModelSpecPart[] {
 export const PATIO_CHAIR_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.patio-chair',
   title: 'Patio chair',
-  footprint: { width: 0.58, depth: 0.58, height: 0.9 },
+  footprint: { width: 0.55, depth: 0.5105, height: 0.9 },
   meta: {
     names: {
       display: 'Patio chair',

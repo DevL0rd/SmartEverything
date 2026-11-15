@@ -42,7 +42,6 @@ vi.mock('../controls/capability-row', () => ({
 }));
 vi.mock('../controls/family-controls', () => ({ FAMILY_CONTROLS: {} }));
 vi.mock('../controls/guard', () => ({ offlineReason: (): string => 'Offline' }));
-vi.mock('../controls/primary-controls', () => ({ usePrimaryControls: (): [] => [] }));
 vi.mock('../model/display-name', () => ({ useDisplayName: (): string => 'Fixture plug' }));
 
 function control(key: DeviceCapability['key'], value: DeviceCapability['value']): DeviceCapability {
@@ -66,9 +65,7 @@ describe('Device control groups', () => {
     [2512, 1],
   ])('packs the two control groups and provider extras at %s px', (width, rows) => {
     pane.width = width;
-    const screen = renderToStaticMarkup(
-      createElement(ControlsSection, { device: plug(), beside: false }),
-    );
+    const screen = renderToStaticMarkup(createElement(ControlsSection, { device: plug() }));
     expect(screen.match(/class="flex-row items-stretch gap-grid-gap"/gu)).toHaveLength(rows);
     expect(screen).toContain('data-control="brightness"');
     expect(screen).toContain('data-control="mute"');

@@ -3,15 +3,17 @@ import type { SQLInputValue } from 'node:sqlite';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { flag, jsonText } from '../sql';
+import { removeBookingPagesOfCollection } from './planner-booking-pages';
 import type { PlannerItemsRepository } from './planner-items';
+import { removeSharesOfCollection } from './planner-shares';
 
 const STORED_COLLECTION = storedRow(PLANNER_COLLECTION_ROW, {
   flags: ['visible'],
-  json: ['default_reminders', 'google'],
+  json: ['default_reminders', 'google', 'feed'],
 });
 
 const COLUMNS = `id, profile_id, kind, name, colour, icon, position, visible, default_reminders,
-  source, google, created_at, updated_at`;
+  audience, source, google, feed, created_at, updated_at`;
 
 export type PlannerCollectionInput = Omit<PlannerCollectionRow, 'id' | 'created_at' | 'updated_at'>;
 
@@ -30,6 +32,7 @@ function parameters(row: PlannerCollectionRow): Record<string, SQLInputValue> {
     visible: flag(row.visible),
     default_reminders: jsonText(row.default_reminders),
     google: row.google === null ? null : jsonText(row.google),
+    feed: row.feed === null ? null : jsonText(row.feed),
   };
 }
 
@@ -57,6 +60,42 @@ export class PlannerCollectionsRepository {
       `select ${COLUMNS} from planner_collections where profile_id = $profileId
        order by kind, position, id`,
       { profileId },
+    );
+  }
+
+  findAny(id: string): PlannerCollectionRow | undefined {
+    return this.context.sql.get(
+      STORED_COLLECTION,
+      `select ${COLUMNS} from planner_collections where id = $id`,
+      { id },
+    );
+  }
+
+  anyById(id: string): PlannerCollectionRow {
+    return found(this.findAny(id), 'planner collection', id);
+  }
+
+  all(): PlannerCollectionRow[] {
+    return this.context.sql.all(
+      STORED_COLLECTION,
+      `select ${COLUMNS} from planner_collections order by profile_id, kind, position, id`,
+    );
+  }
+
+  household(): PlannerCollectionRow[] {
+    return this.context.sql.all(
+      STORED_COLLECTION,
+      `select ${COLUMNS} from planner_collections where audience = 'household'
+       order by kind, position, id`,
+    );
+  }
+
+  feeds(kind: 'ics' | 'holidays' | 'birthdays'): PlannerCollectionRow[] {
+    return this.context.sql.all(
+      STORED_COLLECTION,
+      `select ${COLUMNS} from planner_collections
+       where source = 'feed' and json_extract(feed, '$.kind') = $kind order by profile_id, id`,
+      { kind },
     );
   }
 
@@ -114,6 +153,8 @@ export class PlannerCollectionsRepository {
     this.context.write(() => {
       const before = this.byId(id, profileId);
       this.items.purgeCollection(id);
+      removeBookingPagesOfCollection(this.context, id);
+      removeSharesOfCollection(this.context, id);
       this.context.sql.run(
         'remove the planner collection',
         'delete from planner_collections where id = $id',

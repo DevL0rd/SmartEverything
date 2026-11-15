@@ -77,7 +77,7 @@ function BrowsePageError({
 }: Pick<BrowseModel, 'loadMore' | 'restart'> & { readonly error: Error }): ReactNode {
   const moved = error instanceof ApiError && error.reason === 'snapshot_moved';
   return (
-    <View className="px-gutter pt-3">
+    <View className="pt-3">
       <Banner
         tone="warning"
         title={moved ? 'The catalogue changed' : 'Couldn’t load more results'}
@@ -106,7 +106,7 @@ export function BrowseFooter({ model }: { readonly model: BrowseModel }): ReactN
   if (error !== null)
     return <BrowsePageError error={error} loadMore={loadMore} restart={restart} />;
   return (
-    <View className="items-center px-gutter pt-3">
+    <View className="items-center pt-3">
       <Button label="Load more" variant="text" disabled={discovery.isFetching} onPress={loadMore} />
     </View>
   );

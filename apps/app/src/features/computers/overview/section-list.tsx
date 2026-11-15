@@ -4,7 +4,7 @@ import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { useSectionSummary } from '../components/section-summary';
-import { SECTIONS, notAvailableOn, offersSection, type SectionDef } from '../model/sections';
+import { SECTIONS, NOT_AVAILABLE, offersSection, type SectionDef } from '../model/sections';
 
 function SectionRow({
   deviceId,
@@ -33,12 +33,10 @@ export function SectionList({
   deviceId,
   online,
   features,
-  os,
 }: {
   readonly deviceId: string;
   readonly online: boolean;
   readonly features: readonly ComputerFeature[] | undefined;
-  readonly os: string | null;
 }): ReactNode {
   return (
     <List title="Sections">
@@ -48,7 +46,7 @@ export function SectionList({
           deviceId={deviceId}
           def={def}
           online={online}
-          missing={offersSection(def, features) ? null : notAvailableOn(os)}
+          missing={offersSection(def, features) ? null : NOT_AVAILABLE}
         />
       ))}
     </List>

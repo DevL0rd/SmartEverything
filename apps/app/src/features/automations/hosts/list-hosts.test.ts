@@ -22,7 +22,10 @@ vi.mock('../../../components/master-detail', () => ({
     return null;
   },
 }));
-vi.mock('../../../design/size-class', () => ({ useSizeClass: (): unknown => pane }));
+vi.mock('../../../design/size-class', () => ({
+  MASTER_WIDTH: 420,
+  useSizeClass: (): unknown => pane,
+}));
 vi.mock('../../../store/selectors', () => ({ useRooms: (): unknown => [] }));
 vi.mock('./use-environment', () => ({
   useRefNames: (): unknown => ({}),

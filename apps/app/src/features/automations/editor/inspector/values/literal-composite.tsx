@@ -27,7 +27,8 @@ import {
 } from './composite-model';
 import { ConditionEditor } from './condition-editor';
 import { FieldRowsLiteral } from './field-list-editor';
-import { defaultLiteral, PortScopeContext } from './literal-model';
+import { defaultLiteral } from './literal-model';
+import { PortScopeContext } from './port-scope-context';
 import { LookupTableEditor } from './lookup-table-editor';
 import { RemoveRow } from './rows-editor';
 import type { LiteralProps } from './literal-scalar';

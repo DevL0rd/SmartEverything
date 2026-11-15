@@ -1,0 +1,55 @@
+{
+  "release": {
+    "url": "https://api.github.com/repos/owner/smarteverything/releases/250000001",
+    "html_url": "https://github.com/owner/smarteverything/releases/tag/v1.2.3",
+    "id": 250000001,
+    "tag_name": "v1.2.3",
+    "target_commitish": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "name": "v1.2.3",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2026-11-14T07:00:00Z",
+    "published_at": "2026-11-14T07:05:00Z",
+    "assets": [
+      {
+        "url": "https://api.github.com/repos/owner/smarteverything/releases/assets/310000001",
+        "id": 310000001,
+        "name": "smarteverything-ui-android-1.2.3.tar",
+        "label": "",
+        "content_type": "application/x-tar",
+        "state": "uploaded",
+        "size": 0,
+        "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "download_count": 0,
+        "created_at": "2026-11-14T07:04:00Z",
+        "updated_at": "2026-11-14T07:04:10Z",
+        "browser_download_url": "https://github.com/owner/smarteverything/releases/download/v1.2.3/smarteverything-ui-android-1.2.3.tar"
+      },
+      {
+        "url": "https://api.github.com/repos/owner/smarteverything/releases/assets/310000002",
+        "id": 310000002,
+        "name": "smarteverything-desktop-linux-x64-1.2.3.tar",
+        "label": "",
+        "content_type": "application/x-tar",
+        "state": "uploaded",
+        "size": 2048,
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "download_count": 0,
+        "created_at": "2026-11-14T07:04:00Z",
+        "updated_at": "2026-11-14T07:04:10Z",
+        "browser_download_url": "https://github.com/owner/smarteverything/releases/download/v1.2.3/smarteverything-desktop-linux-x64-1.2.3.tar"
+      }
+    ]
+  },
+  "commit": {
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "html_url": "https://github.com/owner/smarteverything/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "compare": {
+    "url": "https://api.github.com/repos/owner/smarteverything/compare/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...main",
+    "status": "ahead",
+    "ahead_by": 2,
+    "behind_by": 0,
+    "total_commits": 2
+  }
+}

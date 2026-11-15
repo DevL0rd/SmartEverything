@@ -1,4 +1,4 @@
-import type { StateChange, StateUpdate } from '@smarteverything/domain';
+import type { DeviceEvent, StateChange, StateUpdate } from '@smarteverything/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { EventRouter, type RecordedEvent } from '../src/state/event-router';
 import { Inventory } from '../src/state/inventory';
@@ -70,6 +70,51 @@ async function setup(): Promise<{
 const at = '2026-10-08T10:00:00.000Z';
 
 describe('StateWriter', () => {
+  it('drops state queued for a device that is removed in the same turn and keeps writing the rest', async () => {
+    const { db, inventory, writer, lampId } = await setup();
+    await inventory.apply('xiaomi', [{ ...LAMP, externalId: 'lamp-2' }]);
+    const otherId = inventory.deviceOf('xiaomi', 'lamp-2')?.id ?? '';
+    writer.push('xiaomi', {
+      externalId: 'lamp-1',
+      capability: 'power',
+      value: true,
+      observedAt: at,
+    });
+    writer.push('xiaomi', {
+      externalId: 'lamp-2',
+      capability: 'power',
+      value: true,
+      observedAt: at,
+    });
+    await inventory.remove('xiaomi', ['lamp-1']);
+    await writer.settled();
+    expect(db.store.state.list().map((row) => row.device_id)).toStrictEqual([otherId]);
+    expect(db.store.devices.list().some((device) => device.id === lampId)).toBe(false);
+  });
+
+  it('drops a row the store refuses and writes the rest instead of retrying the batch forever', async () => {
+    const logs = captureLogs();
+    const { db, inventory, writer, lampId } = await setup();
+    await inventory.apply('xiaomi', [{ ...LAMP, externalId: 'lamp-2' }]);
+    const otherId = inventory.deviceOf('xiaomi', 'lamp-2')?.id ?? '';
+    writer.push('xiaomi', {
+      externalId: 'lamp-1',
+      capability: 'power',
+      value: true,
+      observedAt: at,
+    });
+    writer.push('xiaomi', {
+      externalId: 'lamp-2',
+      capability: 'power',
+      value: true,
+      observedAt: at,
+    });
+    db.store.devices.remove([lampId]);
+    await writer.settled();
+    expect(db.store.state.list().map((row) => row.device_id)).toStrictEqual([otherId]);
+    expect(logs.events()).toContain('state.write_failed');
+  });
+
   it('writes only values that changed, batched, and reports each change with its previous value', async () => {
     const { stateWrites, writer, changes, lampId } = await setup();
     writer.push('xiaomi', {
@@ -322,6 +367,29 @@ describe('EventRouter', () => {
         occurredAt: at,
         details: { press: 'double' },
       },
+    ]);
+  });
+
+  it('drops events queued for a device removed in the same turn, committed ones too, and keeps the rest', async () => {
+    const { db, inventory } = await setup();
+    await inventory.apply('xiaomi', [{ ...LAMP, externalId: 'lamp-2' }]);
+    const { router, recorded } = eventRouter(db.database, inventory);
+    const event = (externalId: string, occurrence?: string): DeviceEvent => ({
+      externalId,
+      kind: 'button',
+      occurredAt: at,
+      details: {},
+      ...(occurrence === undefined ? {} : { occurrence }),
+    });
+    router.fromProvider('xiaomi', event('lamp-1'));
+    router.fromProvider('xiaomi', event('lamp-2'));
+    const committed = router.fromProviderCommitted('xiaomi', event('lamp-1', 'press-1'));
+    await inventory.remove('xiaomi', ['lamp-1']);
+    await expect(committed).rejects.toThrow('no longer exists');
+    await router.settled();
+    await Promise.resolve();
+    expect(recorded.map((entry) => entry.deviceId)).toStrictEqual([
+      inventory.deviceOf('xiaomi', 'lamp-2')?.id,
     ]);
   });
 

@@ -26,7 +26,7 @@ const SHEET = fabric('#EEE9DF');
 export const BEDDING_SET_MODEL: ModelSpec = bedroomItem({
   id: 'cat.bedroom.bedding-set',
   title: 'Bedding set',
-  footprint: { width: 1.7, depth: 1.75, height: 0.3 },
+  footprint: { width: 1.7, depth: 1.8267, height: 0.3323 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

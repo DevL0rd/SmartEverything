@@ -81,8 +81,10 @@ export class CalendarMirror {
         position,
         visible: entry.selected !== false,
         default_reminders: [],
+        audience: 'personal',
         source: 'google',
         google,
+        feed: null,
       });
     }
     if (known.google?.etag === google.etag) return known;

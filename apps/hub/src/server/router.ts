@@ -162,6 +162,10 @@ type ExtensionEndpointName =
   | 'publishMachineUpdate'
   | 'rollbackMachineUpdate'
   | 'withdrawMachineUpdate'
+  | 'beginReleaseUpload'
+  | 'listReleaseUploads'
+  | 'readReleaseUpload'
+  | 'finishReleaseUpload'
   | 'readAppUpdate'
   | 'listAppUpdates'
   | 'publishAppUpdate'
@@ -181,6 +185,9 @@ type ExtensionEndpointName =
   | 'uploadHomeMapScan'
   | 'homeMapScanLink'
   | 'removeHomeMapScan'
+  | 'importPlannerCalendar'
+  | 'exportPlannerCalendar'
+  | 'exportPlannerItem'
   | ComputerEndpointName;
 
 export type RouteOf<N extends EndpointName> = Bound<ApiEndpoints[N]>;

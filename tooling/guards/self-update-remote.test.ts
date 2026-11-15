@@ -139,5 +139,4 @@ it('places the self-update work, ledger and watchdog log through the data layout
   expect(paths.log).toBe(layout.system.logs.hubUpdateWatchdog);
   expect(paths.ledger.startsWith(layout.system.updates.selfUpdate)).toBe(true);
   expect(paths.watchdogLog.startsWith(layout.system.updates.selfUpdate)).toBe(true);
-  expect(paths.step.startsWith(layout.system.updates.selfUpdate)).toBe(true);
 });

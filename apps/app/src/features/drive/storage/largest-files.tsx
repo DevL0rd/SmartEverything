@@ -12,6 +12,7 @@ import { StorageCardState } from './storage-card-state';
 
 export const LARGEST_QUERY: Omit<DriveQuery, 'cursor'> = {
   text: null,
+  match: 'names',
   rootId: null,
   folderId: null,
   kinds: ['image', 'video', 'audio', 'document', 'other'],

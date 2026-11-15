@@ -9,6 +9,7 @@ import { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { lanEndpoints } from './addresses';
 import type { HubTlsIdentity } from './identity';
+import type { InterfaceSnapshot } from './lan';
 
 const log = new Logger('hub.network');
 
@@ -19,6 +20,7 @@ export class HubConnections {
   constructor(
     readonly tls: HubTlsIdentity,
     private readonly store: Store,
+    private readonly interfaces?: InterfaceSnapshot,
   ) {}
 
   listening(lan: AddressInfo | null): void {
@@ -48,7 +50,7 @@ export class HubConnections {
       settings.public_url !== null && settings.public_url_verified_at !== null;
     const endpoints: HubEndpoint[] = [];
     if (this.listener !== null) {
-      const lan = lanEndpoints(this.listener);
+      const lan = lanEndpoints(this.listener, this.interfaces);
       if (lan.length > 0)
         endpoints.push(
           {

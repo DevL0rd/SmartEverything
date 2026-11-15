@@ -36,7 +36,12 @@ export interface MetadataJob {
   readonly rootId: string;
 }
 
-export type DriveJob = ScanJob | HashJob | MetadataJob;
+export interface TextJob {
+  readonly kind: 'text';
+  readonly rootId: string;
+}
+
+export type DriveJob = ScanJob | HashJob | MetadataJob | TextJob;
 
 export type DriveJobKind = DriveJob['kind'];
 
@@ -56,13 +61,27 @@ export function jobKey(job: DriveJob): string {
 export function runnerOf(
   handlers: DriveJobHandlers,
 ): (job: DriveJob, signal: AbortSignal) => Promise<void> {
-  return (job, signal) =>
-    (handlers[job.kind] as (job: DriveJob, signal: AbortSignal) => Promise<void>)(job, signal);
+  return (job, signal) => {
+    switch (job.kind) {
+      case 'scan':
+        return handlers.scan(job, signal);
+      case 'hash':
+        return handlers.hash(job, signal);
+      case 'metadata':
+        return handlers.metadata(job, signal);
+      case 'text':
+        return handlers.text(job, signal);
+    }
+  };
 }
 
 export interface ScanEnvironment {
-  readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'feed' | 'write' | 'now'>;
+  readonly store: Pick<
+    Store,
+    'driveRoots' | 'driveItems' | 'driveInodes' | 'feed' | 'write' | 'now'
+  >;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
+  readonly mounted: (rootId: string) => boolean;
   readonly workerScript: string;
   readonly log: Logger;
   readonly newId?: () => string;
@@ -166,7 +185,7 @@ class ScanRun {
   private data(): WalkData {
     return {
       path: this.root.path,
-      includeHidden: this.root.includeHidden,
+      includeHidden: this.root.includeHidden || this.env.mounted(this.root.id),
       skip: this.root.skipPatterns,
       reserved: [MARKER_DIRECTORY],
       control: this.control,
@@ -261,6 +280,7 @@ async function commitScan(
 ): Promise<void> {
   const dependencies: CommitDependencies = {
     items: env.store.driveItems,
+    inodes: env.store.driveInodes,
     write: (work) => env.store.write(work),
     now: env.store.now,
     newId: env.newId ?? randomUUID,
@@ -290,7 +310,7 @@ async function commitScan(
     rootId: root.id,
     ...totals,
     unreadable: outcome.unreadable.length,
-    skippedSpecial: outcome.skipped,
+    skippedUnknown: outcome.skipped,
     durationMs: Math.round(performance.now() - startedAt),
   });
 }

@@ -55,7 +55,7 @@ function lumps(): ModelSpecPart[] {
 export const HEDGE_MODEL: ModelSpec = outdoorSpec({
   id: 'cat.outdoor.hedge',
   title: 'Hedge',
-  footprint: { width: 2, depth: DEPTH, height: 1.2 },
+  footprint: { width: 2, depth: 0.796, height: 1.146 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

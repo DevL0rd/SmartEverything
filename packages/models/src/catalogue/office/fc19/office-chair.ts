@@ -11,7 +11,7 @@ function up(y: number): ReturnType<typeof by> {
 export const OFFICE_CHAIR_MODEL: ModelSpec = officeItem({
   id: 'cat.office.office-chair',
   title: 'Office chair',
-  footprint: { width: 0.66, depth: 0.66, height: 1.0861 },
+  footprint: { width: 0.6129, depth: 0.6692, height: 1.0861 },
   size: { height: { param: 'lift', extra: 0.6261, resizes: true } },
   meta: {
     names: {

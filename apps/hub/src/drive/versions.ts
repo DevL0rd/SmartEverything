@@ -1,6 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { link, lstat, mkdir, open, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import {
+  copyFile,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  rename,
+  rm,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
@@ -8,12 +19,23 @@ import { isMissing } from '../fs-util';
 import { DRIVE_VERSION, type DriveVia, type DriveVersion } from '@smarteverything/domain';
 import type { DriveVersionEntry, DriveVersionFile } from '../store/repositories/drive-versions';
 import type { DriveIntent } from '../store/repositories/drive-intents';
+import type { FileItem } from './file-item';
+import { applyPatch, restoreUndoLog, writeUndoLog } from './patch-files';
+import {
+  commitPatch,
+  hashOf,
+  stampAfter,
+  versionToCapture,
+  type CommittedBytes,
+} from './patch-commit';
 import {
   abandonIntent,
+  diskModeOf,
   DriveWriteError,
   locate,
   moveWithin,
   purgeDeadline,
+  shaOfVersionPath,
   TMP_DIRECTORY,
   tmpRelPath,
   VERSIONS_DIRECTORY,
@@ -52,6 +74,50 @@ async function syncDirectory(path: string): Promise<void> {
   }
 }
 
+async function* readNoFollow(path: string): AsyncGenerator<Uint8Array> {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    yield* handle.createReadStream({ autoClose: false });
+  } finally {
+    await handle.close();
+  }
+}
+
+async function chmodNoFollow(path: string, mode: number): Promise<void> {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    await handle.chmod(mode);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function cloneFile(from: string, to: string, temporary: string): Promise<void> {
+  await mkdir(dirname(temporary), { recursive: true, mode: 0o700 });
+  await mkdir(dirname(to), { recursive: true, mode: 0o700 });
+  const source = await open(from, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    await copyFile(
+      `/proc/self/fd/${String(source.fd)}`,
+      temporary,
+      constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL,
+    );
+    const copied = await open(temporary, 'r');
+    try {
+      await copied.sync();
+    } finally {
+      await copied.close();
+    }
+    await rename(temporary, to);
+    await syncDirectory(dirname(to));
+  } catch (cause) {
+    await rm(temporary, { force: true });
+    throw cause;
+  } finally {
+    await source.close();
+  }
+}
+
 async function writeDurable(path: string, temporary: string, text: string): Promise<void> {
   await mkdir(dirname(temporary), { recursive: true, mode: 0o700 });
   await writeFile(temporary, text, { mode: 0o600, flag: 'wx' });
@@ -74,7 +140,10 @@ export const nodeFiles: DriveFiles = {
         ino: stat.ino,
         size: Number(stat.size),
         mtimeNs: stat.mtimeNs,
+        mode: Number(stat.mode & 0o7777n),
+        nlink: Number(stat.nlink),
         directory: stat.isDirectory(),
+        symlink: stat.isSymbolicLink(),
       };
     } catch (cause) {
       if (isMissing(cause)) {
@@ -93,7 +162,7 @@ export const nodeFiles: DriveFiles = {
       throw cause;
     }
   },
-  read: (path) => createReadStream(path),
+  read: readNoFollow,
   mkdir: async (path) => {
     await mkdir(path, { recursive: true, mode: 0o700 });
   },
@@ -113,6 +182,11 @@ export const nodeFiles: DriveFiles = {
   stage: stageFile,
   writeDurable,
   syncDirectory,
+  chmod: chmodNoFollow,
+  clone: cloneFile,
+  writeUndo: writeUndoLog,
+  applyPatch,
+  restoreUndo: restoreUndoLog,
 };
 
 export function fileEnv(
@@ -125,6 +199,8 @@ export function fileEnv(
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
+
+const FILE_DEFAULT_MODE = 0o644;
 
 export interface StagedBytes {
   readonly relPath: string;
@@ -149,14 +225,6 @@ export async function stageBytes(
   }
 }
 
-async function hashOf(env: FileEnv, path: string): Promise<string> {
-  const hash = createHash('sha256');
-  for await (const chunk of env.files.read(path)) {
-    hash.update(chunk);
-  }
-  return hash.digest('hex');
-}
-
 export async function stageInPlace(
   env: FileEnv,
   root: DriveWriteRoot,
@@ -175,32 +243,30 @@ export interface CommitRequest {
   readonly staged: StagedBytes;
   readonly relPath: string;
   readonly previousSha256: string | null;
+  readonly mode?: number | undefined;
 }
 
-export interface CommittedBytes {
-  readonly intent: DriveIntent;
-  readonly captured: { readonly sha256: string; readonly relPath: string } | null;
-  readonly sha256: string;
-  readonly bytes: number;
-  readonly stamp: FileStamp;
+function sharesInode(existing: FileStamp | null): existing is FileStamp {
+  return existing !== null && !existing.directory && !existing.symlink && existing.nlink > 1;
 }
 
-async function versionToCapture(env: FileEnv, request: CommitRequest): Promise<string | null> {
-  const live = await locate(request.root, request.relPath);
-  const existing = await env.files.stamp(live);
-  if (existing?.directory === true) {
-    throw new DriveWriteError('exists', 'A folder is in the way of the file.');
-  }
-  if (existing === null || !request.root.versions) {
-    return null;
-  }
-  return request.previousSha256 ?? (await hashOf(env, live));
-}
-
-export async function commitBytes(env: FileEnv, request: CommitRequest): Promise<CommittedBytes> {
+async function replaceFile(
+  env: FileEnv,
+  request: CommitRequest,
+  existing: FileStamp | null,
+): Promise<CommittedBytes> {
   const { root, staged, relPath } = request;
-  const captured = await versionToCapture(env, request);
+  const captured = await versionToCapture(env, {
+    root,
+    live: await locate(root, relPath),
+    existing,
+    previousSha256: request.previousSha256,
+  });
   const versionPath = captured === null ? null : versionRelPath(captured);
+  await env.files.chmod(
+    await locate(root, staged.relPath),
+    diskModeOf(request.mode ?? existing?.mode ?? FILE_DEFAULT_MODE, false),
+  );
   const intent = env.store.driveIntents.open({
     rootId: root.id,
     op: 'commit',
@@ -217,10 +283,7 @@ export async function commitBytes(env: FileEnv, request: CommitRequest): Promise
     await abandonIntent(env, root, intent);
     throw cause;
   }
-  const stamp = await env.files.stamp(await locate(root, relPath));
-  if (stamp === null) {
-    throw new DriveWriteError('missing', 'The committed file is missing after the rename.');
-  }
+  const stamp = await stampAfter(env, root, relPath);
   return {
     intent,
     captured:
@@ -229,6 +292,22 @@ export async function commitBytes(env: FileEnv, request: CommitRequest): Promise
     bytes: staged.bytes,
     stamp,
   };
+}
+
+export async function commitBytes(env: FileEnv, request: CommitRequest): Promise<CommittedBytes> {
+  const { root, staged, relPath } = request;
+  const existing = await env.files.stamp(await locate(root, relPath));
+  if (!sharesInode(existing)) {
+    return replaceFile(env, request, existing);
+  }
+  const patched = await commitPatch(env, {
+    root,
+    staged,
+    relPath,
+    previousSha256: request.previousSha256,
+    patch: { ranges: staged.bytes === 0 ? [] : [[0, staged.bytes]], size: staged.bytes },
+  });
+  return { ...patched, sha256: staged.sha256 };
 }
 
 export interface VersionSource {
@@ -245,6 +324,26 @@ export interface VersionSource {
 export function newVersion(env: FileEnv, source: VersionSource): DriveVersion {
   const at = env.now().toISOString();
   return DRIVE_VERSION.parse({ ...source, id: randomUUID(), at, purgeAt: purgeDeadline(at) });
+}
+
+export function recordOutsideVersion(
+  env: FileEnv,
+  rootId: string,
+  found: { readonly item: FileItem; readonly versionPath: string },
+): void {
+  env.store.driveVersions.insert(
+    rootId,
+    newVersion(env, {
+      itemId: found.item.id,
+      rev: found.item.rev,
+      sha256: shaOfVersionPath(found.versionPath),
+      bytes: found.item.bytes,
+      actorProfileId: null,
+      via: 'outside',
+      deviceId: null,
+      addedByProfileId: found.item.addedByProfileId,
+    }),
+  );
 }
 
 export async function captureVersion(

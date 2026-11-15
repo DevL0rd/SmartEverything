@@ -61,6 +61,13 @@ describe('the planner tools', () => {
       'timers',
       'stats',
       'free_slots',
+      'search',
+      'sharing',
+      'guests',
+      'feeds',
+      'booking_pages',
+      'bedtime',
+      'sleep',
       'google_status',
     ]);
     expect(PLANNER_EDIT_ACTIONS).toEqual([
@@ -76,6 +83,18 @@ describe('the planner tools', () => {
       'timer_start',
       'timer_stop',
       'stopwatch',
+      'share',
+      'unshare',
+      'guests_set',
+      'rsvp',
+      'feed_add',
+      'feed_refresh',
+      'import_ics',
+      'export_link',
+      'booking_page_set',
+      'booking_page_remove',
+      'bedtime_set',
+      'sleep_sound',
     ]);
     expect(new Set(PLANNER_READ_VIEWS).size).toBe(PLANNER_READ_VIEWS.length);
     expect(new Set(PLANNER_EDIT_ACTIONS).size).toBe(PLANNER_EDIT_ACTIONS.length);
@@ -91,6 +110,22 @@ describe('the planner tools', () => {
     expect(edit).toContain('timer');
     expect(edit).toContain('stopwatch');
     expect(edit).toContain('propose');
+    for (const action of [
+      'guests_set',
+      'rsvp',
+      'share',
+      'unshare',
+      'feed_add',
+      'feed_refresh',
+      'import_ics',
+      'export_link',
+      'booking_page_set',
+      'booking_page_remove',
+      'bedtime_set',
+      'sleep_sound',
+    ]) {
+      expect(edit, action).toContain(action);
+    }
   });
 
   it('take over timers and reminders from schedule_edit', () => {

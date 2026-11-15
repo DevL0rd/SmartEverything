@@ -3,8 +3,12 @@ import { background } from '@smarteverything/logging';
 import { useState } from 'react';
 import { confirm } from '../../../components/confirm-store';
 import { notifyFailure } from '../../../components/toast-store';
-import { alarmLabelOf } from '../../planner/clock/alarm-text';
-import { usePlannerClockWrites, usePlannerWrites, type PlannerPerson } from '../../planner/data';
+import {
+  alarmLabelOf,
+  usePlannerClockWrites,
+  usePlannerWrites,
+  type PlannerPerson,
+} from '../../planner';
 import {
   appliedEdit,
   changeOf,

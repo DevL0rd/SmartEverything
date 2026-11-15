@@ -1,6 +1,5 @@
-import { useSyncExternalStore } from 'react';
-import { Dimensions } from 'react-native';
-import { ValueStore, useValue } from './external-store';
+import { Dimensions, type ScaledSize } from 'react-native';
+import { ValueStore, usePausable, useValue } from './external-store';
 import { SharedSource } from './shared-source';
 import { appPlatform, useIdiom, type AppPlatform } from './platform';
 import { WIDTH_BREAKPOINTS, type Idiom, type WidthClass } from './tokens';
@@ -158,10 +157,18 @@ const windowChanges = new SharedSource((notify) => {
 const subscribeBands = windowChanges.subscribe;
 
 export function useSizeClass(): SizeClass {
-  const { width, height } = useSyncExternalStore(subscribeBands, readBands, readBands);
+  const { width, height } = usePausable(subscribeBands, readBands);
   const idiom = useIdiom();
   const sidebarCollapsed = useValue(collapsedSidebar);
   return sizeClassOf({ width, height, idiom, platform: appPlatform(), sidebarCollapsed });
+}
+
+function readWindow(): ScaledSize {
+  return Dimensions.get('window');
+}
+
+export function useWindowSize(): ScaledSize {
+  return usePausable(subscribeBands, readWindow);
 }
 
 export function useIsPhone(): boolean {

@@ -7,12 +7,13 @@ import { confirm } from '../../../components/confirm-store';
 import type { Point } from '../../../components/interactive';
 import { Menu, useMenuTrigger, type MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
-import { usePlannerItems, usePlannerWrites, type PlannerWrites } from '../data';
+import { usePlannerWrites, type PlannerWrites } from '../data';
+import { useVisibleItem } from '../data/assignment';
 import { usePlannerFrame } from '../frame/frame-context';
 import { askAboutItem } from './item-ask';
 import type { DeleteChoice } from './item-delete';
 import { itemMenuOf, type ItemMenuAction, type ItemMenuEntry } from './item-menu';
-import { itemIn } from './item-sheet';
+import { OUTDENT_CHANGE, indentChangeOf, type NestTarget } from './steps-model';
 import {
   clearPlannerSelection,
   openPlannerItem,
@@ -25,6 +26,7 @@ import {
 export interface ItemTargetKey {
   readonly itemId: string;
   readonly occurrenceKey: string | null;
+  readonly nest?: NestTarget | null;
 }
 
 function reported(work: Promise<unknown>, message: string): void {
@@ -78,6 +80,20 @@ export function useItemActionRunner(item: PlannerItemRow, target: ItemTargetKey)
       case 'google':
         reported(Linking.openURL(action.url), 'Couldn’t open Google');
         return;
+      case 'indent':
+        reported(
+          writes.updateItem(item, {
+            changes: indentChangeOf(action.parentId),
+          }),
+          'Couldn’t make that a step',
+        );
+        return;
+      case 'outdent':
+        reported(
+          writes.updateItem(item, { changes: OUTDENT_CHANGE }),
+          'Couldn’t make that its own task',
+        );
+        return;
       case 'delete':
         reported(deleteConfirmed(writes, item, action.choice), 'Couldn’t delete that');
     }
@@ -106,7 +122,12 @@ export interface ItemMenuItems {
 export function useItemMenuItems(item: PlannerItemRow, target: ItemTargetKey): ItemMenuItems {
   const { offline } = usePlannerFrame();
   const run = useItemActionRunner(item, target);
-  const model = itemMenuOf({ item, occurrenceKey: target.occurrenceKey, offline });
+  const model = itemMenuOf({
+    item,
+    occurrenceKey: target.occurrenceKey,
+    offline,
+    nest: target.nest ?? null,
+  });
   return {
     quick: model.quick.map((entry) => menuItemOf(entry, run)),
     items: model.items.map((entry) => menuItemOf(entry, run)),
@@ -140,7 +161,7 @@ function ItemMenu({
   readonly onClose: () => void;
 }): ReactNode {
   const { person } = usePlannerFrame();
-  const item = itemIn(usePlannerItems(person), target.itemId);
+  const item = useVisibleItem(person, target.itemId);
   if (item === null) return null;
   return <OpenItemMenu item={item} target={target} anchor={anchor} onClose={onClose} />;
 }
@@ -152,7 +173,11 @@ export interface ItemPress {
   readonly menu: ReactNode;
 }
 
-export function useItemPress(itemId: string, occurrenceKey: string | null): ItemPress {
+export function useItemPress(
+  itemId: string,
+  occurrenceKey: string | null,
+  nest: NestTarget | null = null,
+): ItemPress {
   const open = useItemOpen(itemId, occurrenceKey);
   const trigger = useMenuTrigger();
   return {
@@ -162,7 +187,7 @@ export function useItemPress(itemId: string, occurrenceKey: string | null): Item
     menu:
       trigger.anchor === null ? null : (
         <ItemMenu
-          target={{ itemId, occurrenceKey }}
+          target={{ itemId, occurrenceKey, nest }}
           anchor={trigger.anchor}
           onClose={trigger.close}
         />

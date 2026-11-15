@@ -78,7 +78,7 @@ const WASHES: ModelSpec['parts'] = [
 export const WALL_SCONCE_MODEL: ModelSpec = lightModel({
   id: 'dev.light.wall-sconce',
   title: 'Wall sconce',
-  footprint: { width: 0.09, depth: BODY_Z + BODY_R, height: 0.22 },
+  footprint: { width: 0.09, depth: 0.1149, height: 0.17 },
   framing: { tile: VIEW, card: VIEW, hero: { ...VIEW, padding: 0.1 } },
   shots: [glowShot({ focus: 'body', zoom: 1.15, yaw: 24, pitch: 6 })],
   meta: {

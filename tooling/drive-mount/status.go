@@ -25,6 +25,7 @@ type usageLine struct {
 	Type    string `json:"type"`
 	Mount   string `json:"mount"`
 	Cache   int64  `json:"cacheBytes"`
+	Pinned  int64  `json:"pinnedBytes"`
 	Open    int64  `json:"openFiles"`
 	Pending int64  `json:"pendingUploads"`
 }
@@ -69,8 +70,8 @@ func (r *reporter) status(mount, state, reason string) {
 	r.enc.Encode(line)
 }
 
-func (r *reporter) usage(mount string, cache, open, pending int64) {
-	line := usageLine{Type: "usage", Mount: mount, Cache: cache, Open: open, Pending: pending}
+func (r *reporter) usage(mount string, cache, pinned, open, pending int64) {
+	line := usageLine{Type: "counters", Mount: mount, Cache: cache, Pinned: pinned, Open: open, Pending: pending}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if previous, ok := r.seen[mount]; ok && previous == line {

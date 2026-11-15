@@ -24,8 +24,10 @@ const collection = {
   position: 1,
   visible: true,
   default_reminders: [{ minutes_before: 10 }],
+  audience: 'personal',
   source: 'local',
   google: null,
+  feed: null,
   created_at: NOW,
   updated_at: NOW,
 };
@@ -61,6 +63,10 @@ const timedItem = {
   attachments: [],
   reminders: [],
   google: null,
+  assignee_id: null,
+  ical_uid: null,
+  ical_sequence: 0,
+  booking_page_id: null,
   created_by: 'person',
   created_at: NOW,
   updated_at: NOW,
@@ -132,6 +138,26 @@ describe('planner item rows', () => {
     expect(
       PLANNER_ITEM_ROW.safeParse({ ...yearly, rrule: 'FREQ=YEARLY;UNTIL=20301225' }).success,
     ).toBe(true);
+  });
+
+  it('gives only a task an assignee and takes booking and feed as creators', () => {
+    expect(PLANNER_ITEM_ROW.safeParse({ ...timedItem, assignee_id: ID }).success).toBe(false);
+    const task = { ...timedItem, kind: 'task', assignee_id: ID };
+    expect(PLANNER_ITEM_ROW.safeParse(task).success).toBe(true);
+    for (const created_by of ['booking', 'feed']) {
+      expect(PLANNER_ITEM_ROW.safeParse({ ...timedItem, created_by }).success, created_by).toBe(
+        true,
+      );
+    }
+    expect(PLANNER_ITEM_ROW.safeParse({ ...timedItem, created_by: 'guest' }).success).toBe(false);
+  });
+
+  it('carries the calendar UID and a whole-number sequence', () => {
+    const imported = { ...timedItem, ical_uid: 'abc@example.com', ical_sequence: 3 };
+    expect(PLANNER_ITEM_ROW.safeParse(imported).success).toBe(true);
+    expect(PLANNER_ITEM_ROW.safeParse({ ...imported, ical_uid: '' }).success).toBe(false);
+    expect(PLANNER_ITEM_ROW.safeParse({ ...imported, ical_sequence: -1 }).success).toBe(false);
+    expect(PLANNER_ITEM_ROW.safeParse({ ...imported, ical_sequence: 1.5 }).success).toBe(false);
   });
 
   it('needs a repeat rule for exdates and a series end', () => {
@@ -231,6 +257,31 @@ describe('planner collections, completion and attachments', () => {
     expect(PLANNER_COLLECTION_ROW.safeParse({ ...collection, google }).success).toBe(false);
   });
 
+  it('ties the feed descriptor to the feed source and keeps a feed a calendar', () => {
+    const feed = { kind: 'birthdays' };
+    expect(PLANNER_COLLECTION_ROW.safeParse({ ...collection, source: 'feed' }).success).toBe(false);
+    expect(PLANNER_COLLECTION_ROW.safeParse({ ...collection, source: 'feed', feed }).success).toBe(
+      true,
+    );
+    expect(PLANNER_COLLECTION_ROW.safeParse({ ...collection, feed }).success).toBe(false);
+    expect(
+      PLANNER_COLLECTION_ROW.safeParse({ ...collection, kind: 'list', source: 'feed', feed })
+        .success,
+    ).toBe(false);
+  });
+
+  it('carries the audience and rejects an unknown one', () => {
+    expect(PLANNER_COLLECTION_ROW.safeParse({ ...collection, audience: 'household' }).success).toBe(
+      true,
+    );
+    expect(PLANNER_COLLECTION_ROW.safeParse({ ...collection, audience: 'public' }).success).toBe(
+      false,
+    );
+    expect(PLANNER_COLLECTION_ROW.safeParse({ ...collection, audience: undefined }).success).toBe(
+      false,
+    );
+  });
+
   it('parses manual and signal completion', () => {
     expect(PLANNER_COMPLETION.safeParse({ kind: 'manual' }).success).toBe(true);
     const signal = {
@@ -248,11 +299,10 @@ describe('planner collections, completion and attachments', () => {
     expect(PLANNER_COMPLETION.safeParse({ kind: 'manual', minSeconds: 60 }).success).toBe(false);
   });
 
-  it('parses the five attachment kinds', () => {
+  it('parses the four attachment kinds', () => {
     const attachments = [
       { kind: 'device', deviceId: ID, face: null },
       { kind: 'device', deviceId: ID, face: 'wide' },
-      { kind: 'scene', sceneId: ID },
       { kind: 'automation', automationId: ID },
       { kind: 'file', fileId: 'file-1' },
       { kind: 'link', url: 'https://example.com/a', title: null },
@@ -264,7 +314,7 @@ describe('planner collections, completion and attachments', () => {
       PLANNER_ATTACHMENT.safeParse({ kind: 'link', url: 'javascript:alert(1)', title: null })
         .success,
     ).toBe(false);
-    expect(PLANNER_ATTACHMENT.safeParse({ kind: 'scene', sceneId: 'x' }).success).toBe(false);
+    expect(PLANNER_ATTACHMENT.safeParse({ kind: 'scene', sceneId: ID }).success).toBe(false);
   });
 });
 
@@ -311,12 +361,15 @@ describe('planner alarms and rings', () => {
     once_on: null,
     skip_on: null,
     enabled: true,
-    sound: 'dawn',
+    sound: { kind: 'tone', id: 'dawn' },
     ramp_seconds: 30,
     vibrate: true,
     snooze_minutes: 9,
+    snooze_limit: null,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: null,
+    wake_automation_id: null,
     wake_lead_minutes: null,
     targets: [{ kind: 'client', clientId: ID }],
     watch: [{ deviceId: OTHER, alarmId: 3, hash: 'abc', state: 'synced', detail: null }],
@@ -340,9 +393,10 @@ describe('planner alarms and rings', () => {
   });
 
   it('sets the wake scene and its lead together and links each watch once', () => {
-    expect(PLANNER_ALARM_ROW.safeParse({ ...alarm, wake_scene_id: ID }).success).toBe(false);
+    expect(PLANNER_ALARM_ROW.safeParse({ ...alarm, wake_automation_id: ID }).success).toBe(false);
     expect(
-      PLANNER_ALARM_ROW.safeParse({ ...alarm, wake_scene_id: ID, wake_lead_minutes: 15 }).success,
+      PLANNER_ALARM_ROW.safeParse({ ...alarm, wake_automation_id: ID, wake_lead_minutes: 15 })
+        .success,
     ).toBe(true);
     expect(
       PLANNER_ALARM_ROW.safeParse({ ...alarm, watch: [...alarm.watch, ...alarm.watch] }).success,
@@ -454,13 +508,24 @@ describe('planner preferences', () => {
       show_free_time: false,
     },
     clock: {
-      sound: 'dawn',
+      sound: { kind: 'tone', id: 'dawn' },
       ramp_seconds: 30,
       snooze_minutes: 9,
+      snooze_limit: null,
       targets: [],
-      wake_scene_id: null,
+      wake_automation_id: null,
       world_clocks: [{ time_zone: 'Asia/Tokyo', label: null }],
     },
+    bedtime: {
+      enabled: false,
+      schedule: [],
+      reminder_minutes: 30,
+      wind_down_minutes: 30,
+      wind_down_automation_id: null,
+      do_not_disturb: true,
+      sleep_sound: null,
+    },
+    sleep_sounds: { sound: null, timer_minutes: 60, fade_seconds: 30 },
     watch: { watch_alarm_sync: true, watch_calendar_push: true },
     ai: { briefing: 'after_alarm', evening_review: true, plan_suggestions: false },
   };

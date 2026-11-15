@@ -21,7 +21,6 @@ const AVAILABILITY: Availability = {
   hasClimate: false,
   hasCameras: false,
   hasHealth: false,
-  hasScenes: false,
   hasEnergy: false,
   hasSecurity: false,
   hasIr: false,
@@ -42,6 +41,7 @@ describe('photos links', () => {
   it('keep the album, place and viewer pages as pushes on the Photos stack', () => {
     expect(landing('/photos/albums/a1')).toBe('(photos) > photos/albums/[albumId]');
     expect(landing('/photos/places/p1')).toBe('(photos) > photos/places/[placeId]');
+    expect(landing('/photos/people/g1')).toBe('(photos) > photos/people/[groupId]');
     expect(landing('/photos/view/i1')).toBe('(photos) > photos/view/[itemId]');
   });
 
@@ -54,13 +54,25 @@ describe('photos links', () => {
   it('carry the ids to the pushed pages', () => {
     expect(leafParams('/photos/albums/a1')).toEqual({ albumId: 'a1' });
     expect(leafParams('/photos/places/p1')).toEqual({ placeId: 'p1' });
+    expect(leafParams('/photos/people/g1')).toEqual({ groupId: 'g1' });
     expect(leafParams('/photos/view/i1')).toEqual({ itemId: 'i1' });
   });
 });
 
 describe('photos entry points', () => {
   it('lists the sections in the order of the section switcher', () => {
-    expect(PHOTOS_SECTION_ROUTES).toEqual(['index', 'albums/index', 'map', 'insights', 'deleted']);
+    expect(PHOTOS_SECTION_ROUTES).toEqual([
+      'index',
+      'people',
+      'albums/index',
+      'sharing',
+      'map',
+      'folders',
+      'insights',
+      'archive',
+      'locked',
+      'deleted',
+    ]);
   });
 
   it('has a search entry for every Library tab and every other section, each under the Photos tab', () => {
@@ -71,9 +83,18 @@ describe('photos entry points', () => {
       ['photos-device', { pathname: '/photos', params: { tab: 'device' } }],
       ['photos-cameras', { pathname: '/photos', params: { tab: 'cameras' } }],
       ['photos-ai', { pathname: '/photos', params: { tab: 'ai' } }],
+      ['photos-people', { pathname: '/photos/people', params: {} }],
       ['photos-albums', { pathname: '/photos/albums', params: {} }],
+      ['photos-sharing', { pathname: '/photos/sharing', params: {} }],
       ['photos-map', { pathname: '/photos/map', params: {} }],
+      ['photos-folders', { pathname: '/photos/folders', params: {} }],
       ['photos-insights', { pathname: '/photos/insights', params: {} }],
+      ['photos-archive', { pathname: '/photos/archive', params: {} }],
+      ['photos-locked', { pathname: '/photos/locked', params: {} }],
+      ['photos-edit-meta', '/photos'],
+      ['photos-edit', '/photos'],
+      ['photos-edit-video', { pathname: '/photos', params: { tab: 'videos' } }],
+      ['photos-smart-search', '/photos'],
       ['photos-deleted', { pathname: '/photos/deleted', params: {} }],
     ]);
     for (const route of PHOTOS) {

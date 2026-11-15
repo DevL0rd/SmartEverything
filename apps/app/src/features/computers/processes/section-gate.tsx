@@ -4,9 +4,26 @@ import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import { EmptyState } from '../../../components/empty-state';
 import { useDevice } from '../../../store/selectors';
-import { factsOf } from '../data/computer-device';
 import { useComputerDetail } from '../data/computer-metrics';
-import { SECTIONS, notAvailableOn, offersSection } from '../model/sections';
+import { NOT_AVAILABLE, SECTIONS, offersSection, type SectionDef } from '../model/sections';
+
+export type SectionState =
+  | { readonly kind: 'open' }
+  | { readonly kind: 'missing'; readonly def: SectionDef }
+  | { readonly kind: 'off' };
+
+export function useSectionState(
+  deviceId: string,
+  section: string,
+  scope: ComputerScope,
+): SectionState {
+  const device = useDevice(deviceId);
+  const detail = useComputerDetail(deviceId, device?.online === true).data;
+  const def = SECTIONS.find((candidate) => candidate.id === section);
+  if (def !== undefined && !offersSection(def, detail?.features)) return { kind: 'missing', def };
+  if (detail?.scopes[scope] === false) return { kind: 'off' };
+  return { kind: 'open' };
+}
 
 export function SectionGate({
   deviceId,
@@ -19,19 +36,17 @@ export function SectionGate({
   readonly scope: ComputerScope;
   readonly children: ReactNode;
 }): ReactNode {
-  const device = useDevice(deviceId);
-  const detail = useComputerDetail(deviceId, device?.online === true).data;
-  const def = SECTIONS.find((candidate) => candidate.id === section);
-  if (def !== undefined && !offersSection(def, detail?.features)) {
+  const state = useSectionState(deviceId, section, scope);
+  if (state.kind === 'missing') {
     return (
       <EmptyState
-        icon={def.icon}
-        title={def.missing ?? 'Not available on this computer'}
-        body={notAvailableOn(device === null ? null : factsOf(device).os)}
+        icon={state.def.icon}
+        title={NOT_AVAILABLE}
+        body={state.def.missing ?? 'This computer does not offer it yet.'}
       />
     );
   }
-  if (detail?.scopes[scope] === false) {
+  if (state.kind === 'off') {
     return (
       <Banner
         tone="info"

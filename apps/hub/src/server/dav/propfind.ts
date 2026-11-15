@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { DriveItem } from '@smarteverything/domain';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
+import { isFileItem } from '../../drive/file-item';
 import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import { authenticateDav, DavError, guarded, type DavDeps, type DavExchange } from './dav-auth';
 import { DAV_PREFIX, headerOf, targetOf, type DavTarget } from './collections';
@@ -196,7 +197,7 @@ function itemResource(item: DriveItem): Resource {
     modified: item.modifiedAt,
     created: item.addedAt,
     bytes: collection ? null : item.bytes,
-    mime: item.kind === 'folder' ? null : item.mime,
+    mime: isFileItem(item) ? item.mime : null,
     etag: item.etag,
   };
 }

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../../design/size-class';
 import { usePanelFrame } from '../../../../components/adaptive-panel';
 import { MARGIN, type PanelSize } from '../../../../components/anchor';
 import { useFocusRequest } from '../../../../components/focus-request';
@@ -13,8 +14,9 @@ import {
   libraryTitle,
 } from '../library/library-model';
 import { PanelHead } from './panel-chrome';
-import { LibraryActionFocus } from '../library/library-pages';
-import { CatalogueFit, catalogueHeight, useCatalogueFit } from '../library/catalogue-fit';
+import { LibraryActionFocus } from '../library/library-focus';
+import { catalogueHeight, useCatalogueFit } from '../library/catalogue-fit';
+import { CatalogueFit } from '../library/catalogue-fit-context';
 import type { PanelPicker } from './use-panel-picker';
 
 export interface PanelLibraryProps {
@@ -78,7 +80,7 @@ function useLibraryFrame(image: boolean): {
   readonly sheet: boolean;
 } {
   const frame = usePanelFrame();
-  const window = useWindowDimensions();
+  const window = useWindowSize();
   const sheet = frame.presentation === 'sheet';
   const size = libraryPanelSize(image);
   return {

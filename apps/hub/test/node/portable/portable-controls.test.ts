@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { hasPicture, thumbVersion } from '../../../src/computers/file-thumbs';
 import { collectorFor, UnsupportedPlatformError } from '../../../src/node/collectors/collector';
 import { controlsFor } from '../../../src/node/controls/controls';
 import { userPlaces } from '../../../src/node/controls/portable/user-places';
@@ -43,18 +44,61 @@ describe('what a Windows or Mac computer does not control yet', () => {
   });
 
   it('answers the system topics with empty states and only offers the places of the files', async () => {
-    const places = { home: '/h', places: [] };
+    const places = { home: '/h', abilities: [], places: [] };
     const system = unsupportedSystem('macOS', () => Promise.resolve(places));
     expect((await system.settings.state()).usb).toStrictEqual([]);
     expect(await system.startup.list()).toStrictEqual({ entries: [] });
     expect(await system.services.list()).toStrictEqual({ services: [], timers: [] });
     expect(await system.files.places()).toBe(places);
-    await expect(system.files.search({ path: '/', text: 'a', cursor: null })).rejects.toMatchObject(
-      {
-        code: 'not_supported',
-      },
-    );
+    await expect(
+      system.files.search({ path: '/', text: 'a', contents: false, cursor: null }),
+    ).rejects.toMatchObject({
+      code: 'not_supported',
+    });
     expect(await system.features()).toStrictEqual([]);
+  });
+});
+
+describe('file links on a Windows or Mac computer', () => {
+  let folder = '';
+
+  beforeEach(async () => {
+    folder = await mkdtemp(join(tmpdir(), 'hub-links-'));
+  });
+
+  afterEach(async () => {
+    await rm(folder, { recursive: true, force: true });
+  });
+
+  it('answers the details of a file from the file system without writing', async () => {
+    const path = join(folder, 'photo.png');
+    await writeFile(path, 'png');
+    const system = unsupportedSystem('Windows', () =>
+      Promise.resolve({ home: folder, abilities: [], places: [] }),
+    );
+    const properties = await system.files.properties(path);
+    expect(properties).toMatchObject({
+      name: 'photo.png',
+      kind: 'file',
+      size: 3,
+      mimeType: 'image/png',
+    });
+    expect(Number.isNaN(Date.parse(properties.modifiedAt))).toBe(false);
+    await expect(system.files.properties(join(folder, 'missing'))).rejects.toMatchObject({
+      code: 'not_found',
+    });
+  });
+
+  it('gives what a file link and a thumbnail link are minted from', async () => {
+    const path = join(folder, 'photo.png');
+    await writeFile(path, 'png');
+    const system = unsupportedSystem('macOS', () =>
+      Promise.resolve({ home: folder, abilities: [], places: [] }),
+    );
+    const properties = await system.files.properties(path);
+    expect(properties.kind).toBe('file');
+    expect(hasPicture(properties.mimeType) && properties.size > 0).toBe(true);
+    expect(thumbVersion(properties)).toMatch(/^[0-9a-f]{16}$/u);
   });
 });
 

@@ -6,11 +6,10 @@ import { ListRow } from '../../../components/list-row';
 import { Segmented } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { FolderPickerSheet } from '../../computers';
-import { placementBodyOf } from '../model/placement-body';
-import { DriveFolderTree, type PickedFolder } from './drive-folder-tree';
+import { ComputerFolderPickerSheet } from '../../computers';
+import { DriveFolderField } from './drive-folder-field';
 import { usePlacementWrites } from './placement-change';
-import { childPath } from './placement-model';
+import { childPath, mountPlaceOf, sheetBodyOf, type PickedFolder } from './placement-model';
 import { MODE_ICON } from './placement-words';
 
 export interface PlacementSheetTarget {
@@ -31,6 +30,23 @@ const MODE_NOTE: Readonly<Record<DrivePlacementMode, string>> = {
 
 export function localPathOf(parent: string | null, picked: PickedFolder | null): string | null {
   return parent === null || picked === null ? null : childPath(parent, picked.name);
+}
+
+function MountPlace({
+  computer,
+  picked,
+}: {
+  readonly computer: string;
+  readonly picked: PickedFolder | null;
+}): ReactNode {
+  return (
+    <ListRow
+      title={`Where on ${computer}`}
+      subtitle={mountPlaceOf(computer, picked)}
+      wrapSubtitle
+      icon="hardDrive"
+    />
+  );
 }
 
 function LocalFolder({
@@ -61,9 +77,9 @@ function LocalFolder({
           />
         }
       />
-      <FolderPickerSheet
+      <ComputerFolderPickerSheet
         open={choosing}
-        mode="folder"
+        writableOnly
         deviceId={deviceId}
         onClose={() => {
           setChoosing(false);
@@ -74,26 +90,12 @@ function LocalFolder({
   );
 }
 
-function Notes({
-  readOnly,
-  problem,
-}: {
-  readonly readOnly: boolean;
-  readonly problem: string | null;
-}): ReactNode {
+function Problem({ problem }: { readonly problem: string | null }): ReactNode {
+  if (problem === null) return null;
   return (
-    <>
-      {readOnly ? (
-        <Text variant="footnote" tone="variant">
-          You can view this folder, so it stays read only on the computer.
-        </Text>
-      ) : null}
-      {problem === null ? null : (
-        <Text variant="footnote" tone="critical">
-          {problem}
-        </Text>
-      )}
-    </>
+    <Text variant="footnote" tone="critical">
+      {problem}
+    </Text>
   );
 }
 
@@ -128,14 +130,9 @@ function SheetBody({
   const [parent, setParent] = useState<string | null>(null);
   const writes = usePlacementWrites();
   const localPath = localPathOf(parent, picked);
+  const body = sheetBodyOf(target.deviceId, mode, picked, localPath);
   const done = (): void => {
-    if (picked === null || localPath === null) return;
-    const body = placementBodyOf({
-      deviceId: target.deviceId,
-      target: { rootId: picked.rootId, folderItemId: picked.folderItemId },
-      mode,
-      localPath,
-    });
+    if (picked === null || body === null) return;
     writes.set([body], `${picked.name} was not put on ${target.computer}`, onClose);
   };
   return (
@@ -144,23 +141,25 @@ function SheetBody({
       onClose={onClose}
       title={mode === 'synced' ? 'Sync a folder' : 'Mount a folder'}
       wide
-      footer={
-        <Footer ready={localPath !== null} busy={writes.busy} onCancel={onClose} onDone={done} />
-      }
+      footer={<Footer ready={body !== null} busy={writes.busy} onCancel={onClose} onDone={done} />}
     >
       <View className="gap-4">
         <Segmented label="How" options={MODE_OPTIONS} value={mode} onChange={setMode} fill />
         <Text variant="footnote" tone="variant">
           {MODE_NOTE[mode]}
         </Text>
-        <DriveFolderTree picked={picked} onPick={setPicked} />
-        <Notes readOnly={picked?.readOnly === true} problem={writes.problem} />
-        <LocalFolder
-          deviceId={target.deviceId}
-          computer={target.computer}
-          path={localPath ?? parent}
-          onChoose={setParent}
-        />
+        <DriveFolderField picked={picked} onPick={setPicked} />
+        <Problem problem={writes.problem} />
+        {mode === 'synced' ? (
+          <LocalFolder
+            deviceId={target.deviceId}
+            computer={target.computer}
+            path={localPath ?? parent}
+            onChoose={setParent}
+          />
+        ) : (
+          <MountPlace computer={target.computer} picked={picked} />
+        )}
       </View>
     </Sheet>
   );

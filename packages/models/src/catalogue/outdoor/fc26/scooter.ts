@@ -68,7 +68,7 @@ export const SCOOTER_MODEL: ModelSpec = catalogueModel({
   id: 'cat.outdoor.scooter',
   title: 'Electric scooter',
   category: 'outdoor',
-  footprint: { width: 0.5, depth: 1.13, height: 1.13 },
+  footprint: { width: 0.5, depth: 1.13, height: 1.1289 },
   view: { yaw: 50, pitch: 14, fov: 28, padding: 0.08 },
   meta: {
     names: {

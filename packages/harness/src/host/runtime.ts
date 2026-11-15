@@ -432,5 +432,3 @@ export class HarnessRuntime {
     return `Current execution host: ${this.host.name} (${JSON.stringify(this.host.target)}). ${execution} ${projectWorkspaceContext(server)}`;
   }
 }
-
-export { createHarnessRuntime } from './create-runtime';

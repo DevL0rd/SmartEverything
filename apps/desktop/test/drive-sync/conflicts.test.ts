@@ -7,6 +7,7 @@ import { ConflictResolver } from '../../src/drive-sync/conflicts.js';
 import { openDriveSyncDatabase, type DriveSyncDatabase } from '../../src/drive-sync/db/index.js';
 import type { PushIntent } from '../../src/drive-sync/push-intents.js';
 import type { PushConflict } from '../../src/drive-sync/push.js';
+import { NO_META } from './pull-support.js';
 
 const log = new Logger('desktop.drive-sync');
 const ROOT = 'root-1';
@@ -52,6 +53,7 @@ async function localFile(relPath: string, content: string, hubRev: number | null
   await writeFile(disk(relPath), content);
   const info = await stat(disk(relPath), { bigint: true });
   database.files.upsert({
+    ...NO_META,
     placementId: ROOT,
     relPath,
     kind: 'file',

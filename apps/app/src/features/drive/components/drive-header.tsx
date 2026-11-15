@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { HeaderStatusProvider, useHeaderStatus } from '../../../components/header-status';
-import type { HeaderAction } from '../../../components/page-header';
 import type { PageSettingsLink } from '../../../components/page-settings-button';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import type { PrimaryActionProps } from '../../../components/primary-action';
 import { useSettingEnv } from '../../../settings/env';
 import type { DriveSection } from '../model/section-routes';
@@ -14,7 +14,7 @@ export interface DriveHeaderProps {
   readonly title?: string;
   readonly subtitle?: string;
   readonly breadcrumbs?: readonly Crumb[];
-  readonly actions?: readonly HeaderAction[];
+  readonly actions?: readonly ShellAction[];
   readonly primary?: PrimaryActionProps;
 }
 
@@ -22,16 +22,16 @@ export interface DriveHeaderSlots {
   readonly title: string;
   readonly subtitle?: string;
   readonly breadcrumbs?: readonly Crumb[];
-  readonly actions: readonly HeaderAction[];
+  readonly actions: readonly ShellAction[];
   readonly settings: PageSettingsLink;
   readonly primaryAction?: PrimaryActionProps;
 }
 
 const DRIVE_TITLE = 'Drive';
 
-const NO_ACTIONS: readonly HeaderAction[] = [];
+const NO_ACTIONS: readonly ShellAction[] = [];
 
-export function secondaryActionsOf(actions: readonly HeaderAction[]): readonly HeaderAction[] {
+export function secondaryActionsOf(actions: readonly ShellAction[]): readonly ShellAction[] {
   return actions.map((action) =>
     action.primary === true ? { ...action, primary: false } : action,
   );

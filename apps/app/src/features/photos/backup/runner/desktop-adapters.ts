@@ -55,6 +55,13 @@ class DesktopLibrary {
       listIds: async (scope, signal) =>
         new Set((await this.list(scope, signal)).map((item) => item.id)),
       pagesFrom: (scope, modifiedFrom, signal) => this.pages(scope, modifiedFrom, signal),
+      modificationTimes: async (localIds, signal): Promise<ReadonlyMap<string, number>> => {
+        const wanted = new Set(localIds);
+        const items = await this.list({ albumIds: [], includeVideos: true }, signal);
+        return new Map(
+          items.filter((item) => wanted.has(item.id)).map((item) => [item.id, item.modifiedAt]),
+        );
+      },
       onChange: (listener) => this.photos.onChange(listener),
       remove: (): Promise<boolean> =>
         Promise.reject(new Error('Desktop photo backup does not delete local originals.')),
@@ -118,7 +125,7 @@ function desktopNativePort(
             id,
             bytes: item.bytes,
             mimeType: item.mimeType,
-            relativePath: '',
+            relativePath: item.folder,
             dateAddedSeconds: Math.floor(item.takenAt / 1000),
             modifiedSeconds: Math.floor(item.modifiedAt / 1000),
             isTrashed: false,

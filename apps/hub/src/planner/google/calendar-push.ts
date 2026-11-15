@@ -1,10 +1,10 @@
 import type { PlannerItemRow } from '@smarteverything/domain';
 import {
-  GoogleEventSchema,
   buildFieldPatch,
   deterministicEventId,
   eventInsertPath,
   eventPath,
+  GoogleEventSchema,
   resolveLocalDelete,
   type FieldPatch,
   type GoogleEvent,
@@ -24,14 +24,22 @@ import {
   patchable,
   type Fields,
 } from './calendar-map';
+import { guestsOfItem, pullAttendees } from './calendar-guests';
 import { GoogleCallError, type Ctx, type Requester } from './calendar-run';
 
 const log = new Logger('hub.planner');
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 
+const SEND_UPDATES = 'sendUpdates=all';
+
+function notifying(url: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}${SEND_UPDATES}`;
+}
+
 export interface PushPorts {
-  readonly store: Pick<Store, 'plannerItems'>;
+  readonly store: Pick<Store, 'plannerItems' | 'plannerGuests'>;
+  readonly now: () => Date;
   readonly request: Requester;
   readonly reconcile: (ctx: Ctx, item: PlannerItemRow, event: GoogleEvent, fields: Fields) => void;
   readonly create: (ctx: Ctx, event: GoogleEvent, fields: Fields) => void;
@@ -109,22 +117,30 @@ export class CalendarPusher {
     const patch = buildFieldPatch({
       etag: google.etag,
       base: patchable(google.base),
-      next: patchable(itemFields(item)),
+      next: patchable(itemFields(item, guestsOfItem(this.ports.store, item))),
       fields: PATCH_FIELDS,
     });
     if (patch !== null) await this.patch(ctx, item, patch, retried);
   }
 
   private settle(ctx: Ctx, item: PlannerItemRow, event: GoogleEvent): PlannerItemRow {
-    return this.ports.store.plannerItems.update(item.id, ctx.run.profileId, {
+    const base = eventFields(event, eventZone(event, ctx.zone));
+    const settled = this.ports.store.plannerItems.update(item.id, ctx.run.profileId, {
       google: {
         id: event.id,
         calendarOrListId: ctx.calendarId,
         etag: event.etag,
-        base: eventFields(event, eventZone(event, ctx.zone)),
+        base,
         state: 'synced',
       },
     });
+    pullAttendees(this.ports.store, {
+      item: settled,
+      event,
+      merged: base,
+      at: this.ports.now().toISOString(),
+    });
+    return settled;
   }
 
   private async insert(ctx: Ctx, item: PlannerItemRow): Promise<void> {
@@ -134,7 +150,7 @@ export class CalendarPusher {
       google: { id, calendarOrListId: ctx.calendarId, etag: null, base: {}, state: 'sending' },
     });
     const body = {
-      ...itemFields(sending),
+      ...itemFields(sending, guestsOfItem(this.ports.store, sending)),
       id,
       extendedProperties: { private: { smarteverythingId: item.id } },
     };
@@ -142,7 +158,7 @@ export class CalendarPusher {
       const event = await this.ports.request({
         profileId,
         method: 'POST',
-        url: eventInsertPath(ctx.calendarId),
+        url: notifying(eventInsertPath(ctx.calendarId)),
         schema: GoogleEventSchema,
         body,
         headers: JSON_HEADERS,
@@ -201,7 +217,7 @@ export class CalendarPusher {
       const event = await this.ports.request({
         profileId: ctx.run.profileId,
         method: 'PATCH',
-        url: eventPath(ctx.calendarId, id),
+        url: notifying(eventPath(ctx.calendarId, id)),
         schema: GoogleEventSchema,
         body: patch.body,
         headers: patch.headers,
@@ -248,7 +264,7 @@ export class CalendarPusher {
       await this.ports.request({
         profileId: ctx.run.profileId,
         method: 'DELETE',
-        url: eventPath(ctx.calendarId, id),
+        url: notifying(eventPath(ctx.calendarId, id)),
         schema: z.null(),
         headers: google.etag === null ? {} : { 'If-Match': google.etag },
       });

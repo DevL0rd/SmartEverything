@@ -76,7 +76,7 @@ function head(): ModelSpecPart[] {
 export const MONITOR_ARM_MODEL: ModelSpec = officeItem({
   id: 'cat.office.monitor-arm',
   title: 'Monitor arm',
-  footprint: { width: 0.16, depth: 0.58, height: 0.508 },
+  footprint: { width: 0.17, depth: 0.587, height: 0.508 },
   size: { height: { param: 'height', extra: 0.058, resizes: true } },
   meta: {
     names: {

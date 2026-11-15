@@ -3,6 +3,7 @@ import {
   CLIENT_PREF_KEYS,
   HEALTH_METRICS,
   HEALTH_RECORD_TYPES,
+  PLANNER_SEARCH_PAGE,
   programKeywords,
   searchTitles,
   type NodeKindLookup,
@@ -11,13 +12,13 @@ import {
   type NavTarget,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { shortcutsForQuery } from '../../../drive/social/shortcuts';
 import { driveHits, type DriveHit } from '../../../drive/search-provider';
 import type { DriveActor } from '../../../drive/access';
 import { deviceHidden, deviceIdReachable } from '../../../server/person-scope';
-import { sceneDeviceIds } from '../../../server/snapshot-reach';
 import { flatAutomation } from '../../../store/repositories/automation-trees';
 import type { Store } from '../../../store/store';
-import { profileFor, type ActingContext } from './acting';
+import { operate, profileFor, type OperatingContext } from './acting';
 import { listedDevices } from './devices';
 import { deviceScopeOfActor, reachableAreas } from './person-reach';
 import { READS, defineTool, matches, type Tool, type ToolContext } from './registry';
@@ -89,15 +90,6 @@ function homeHits(
       .filter((room) => matches(query, room.name))
       .slice(0, limit)
       .map((room) => ({ id: room.id, name: room.name })),
-    scenes: store.scenes
-      .list()
-      .filter(
-        (scene) =>
-          matches(query, scene.name) &&
-          sceneDeviceIds(scene.actions).every((id) => deviceIdReachable(store, scope, id)),
-      )
-      .slice(0, limit)
-      .map((scene) => ({ id: scene.id, name: scene.name })),
     automations: automationHits(store, { query, limit }, kinds),
     values: store.automationValues
       .list()
@@ -155,45 +147,52 @@ function fileHits(context: ToolContext, { query, limit }: Search): DriveHit[] {
   if (areas !== undefined && !areas.includes('drive')) {
     return [];
   }
-  return driveHits(context.store.driveSearch, driveActorOf(context), { query, limit });
+  const { store } = context;
+  return driveHits(store.driveSearch, driveActorOf(context), { query, limit }, (viewer, request) =>
+    shortcutsForQuery({ store, context: store.context }, viewer, request),
+  );
 }
 
 function plannerItemTarget(itemId: string): NavTarget {
   return { kind: 'page', path: `planner/item/${itemId}` };
 }
 
-export function plannerHits(
-  context: ActingContext,
+export async function plannerHits(
+  context: OperatingContext,
   { query, limit }: Search,
-): Record<string, unknown>[] {
+): Promise<Record<string, unknown>[]> {
   const areas = reachableAreas(context);
   if (areas !== undefined && !areas.includes('planner')) {
     return [];
   }
-  return context.store.plannerItems
-    .list(profileFor(context, {}))
-    .filter((item) => matches(query, item.title, item.notes, item.location))
-    .slice(0, limit)
-    .map((item) => ({
-      id: item.id,
-      title: item.title,
-      kind: item.kind,
-      start: item.start,
-      target: plannerItemTarget(item.id),
-    }));
+  const page = PLANNER_SEARCH_PAGE.parse(
+    await operate(context, 'readPlannerSearch', { query: { text: query } }),
+  );
+  return page.hits.slice(0, limit).map(({ occurrence, reading, matched }) => ({
+    id: occurrence.item_id,
+    occurrence_key: occurrence.occurrence_key,
+    title: occurrence.title,
+    kind: occurrence.kind,
+    start: occurrence.start,
+    due_at: occurrence.due_at,
+    status: occurrence.status,
+    reading,
+    matched,
+    target: plannerItemTarget(occurrence.item_id),
+  }));
 }
 
 export const SEARCH_TOOL: Tool = defineTool({
   name: 'home_search',
   input: SEARCH,
   annotations: READS,
-  run: (context, input) => {
+  run: async (context, input) => {
     const scope = deviceScopeOfActor(context);
     return {
       structured: {
         ...homeHits(context.store, scope, input, context.hub.automationKinds),
         files: fileHits(context, input),
-        planner: plannerHits(context, input),
+        planner: await plannerHits(context, input),
         capabilities: capabilityHits(context.store, scope, input),
         ...appHits(input),
       },

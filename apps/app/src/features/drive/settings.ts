@@ -3,6 +3,8 @@ import type { SettingDefinition } from '../../settings/types';
 import { DrivesSection } from './settings/page-drives';
 import { GoogleSection } from './settings/page-google';
 import { IndexingSection } from './settings/page-indexing';
+import { NotificationsSection } from './settings/page-notifications';
+import { PhoneSection } from './settings/page-phone';
 import { SharingSection } from './settings/page-sharing';
 import { StorageSection } from './settings/page-storage';
 import { SyncMountSection } from './settings/page-sync-mount';
@@ -18,7 +20,9 @@ import {
 const SECTION_COMPONENTS: Readonly<Record<DriveSettingsSectionId, ComponentType>> = {
   drives: DrivesSection,
   'sync-mount': SyncMountSection,
+  phone: PhoneSection,
   sharing: SharingSection,
+  notifications: NotificationsSection,
   indexing: IndexingSection,
   storage: StorageSection,
   google: GoogleSection,

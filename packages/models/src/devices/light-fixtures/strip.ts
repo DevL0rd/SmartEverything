@@ -110,7 +110,7 @@ const PARTS: ModelSpec['parts'] = [
 export const LIGHT_STRIP_MODEL: ModelSpec = lightModel({
   id: 'dev.light.strip',
   title: 'LED light strip',
-  footprint: { width: 0.7, depth: 0.2, height: 0.016 },
+  footprint: { width: 0.6341, depth: 0.1435, height: 0.016 },
   framing: { tile: VIEW, card: VIEW, hero: { ...VIEW, pitch: 32, padding: 0.16 } },
   shots: [glowShot({ focus: 'lane', zoom: 1.05, yaw: 24, pitch: 40 })],
   meta: {

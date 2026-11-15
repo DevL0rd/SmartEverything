@@ -6,8 +6,7 @@ import { InvalidValueError, checkValue } from './values';
 import { decimalsOf, formatValue } from './value-format';
 import type { JsonValue, ValueDescriptor } from './values';
 
-export type SearchGroup =
-  'action' | 'device' | 'room' | 'setting' | 'scene' | 'page' | 'automation';
+export type SearchGroup = 'action' | 'device' | 'room' | 'setting' | 'page' | 'automation';
 
 export type SearchTarget =
   | {
@@ -20,7 +19,6 @@ export type SearchTarget =
   | { readonly kind: 'room'; readonly roomId: string }
   | { readonly kind: 'page'; readonly path: string }
   | { readonly kind: 'setting'; readonly settingId: string; readonly value: JsonValue }
-  | { readonly kind: 'scene'; readonly sceneId: string }
   | { readonly kind: 'automation'; readonly automationId: string; readonly enabled: boolean }
   | { readonly kind: 'device-page'; readonly deviceId: string; readonly focus: string | null }
   | { readonly kind: 'camera'; readonly deviceId: string; readonly talk: boolean };
@@ -75,12 +73,6 @@ export interface SearchSetting {
   readonly path: string;
 }
 
-export interface SearchScene {
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-}
-
 export interface SearchAutomation {
   readonly triggerKeywords?: readonly string[];
   readonly id: string;
@@ -119,7 +111,6 @@ export interface SearchSources {
   readonly rooms: readonly SearchRoom[];
   readonly pages: readonly SearchPage[];
   readonly settings: readonly SearchSetting[];
-  readonly scenes: readonly SearchScene[];
   readonly automations: readonly SearchAutomation[];
   readonly irRemotes: readonly SearchIrRemote[];
   readonly cameras: readonly SearchCamera[];

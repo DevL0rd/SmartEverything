@@ -6,7 +6,6 @@ export const ID_SOURCES: Readonly<Record<string, string>> = {
   roomId: 'home_read',
   rooms: 'home_read',
   groupId: 'home_read',
-  sceneId: 'scene_find',
   automationId: 'automation_read',
   testId: 'automation_runs_read view tests',
   runId: 'automation_runs_read',
@@ -100,8 +99,6 @@ export const TOOL_FIELD_TEXTS: Readonly<Record<string, string>> = {
   'transcript_read.anchor': 'The line id to read around, from view feed or search',
   'listening_edit.wake': 'true listens for the AI’s name',
   'listening_edit.transcribe': 'true writes down what it hears',
-  'scene_edit.actions':
-    'Device commands, each with deviceId and capability from device_read and a value',
   'schedule_edit.timing': 'When: in some seconds, at a moment, or a list of moments',
   'schedule_edit.steps': 'The steps in order: a tool call, a wait or an AI wake',
   'schedule_edit.step': 'The index of one step to change, 0 is the first',

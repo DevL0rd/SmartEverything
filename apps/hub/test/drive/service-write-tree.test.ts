@@ -1,8 +1,9 @@
-import { mkdir, readdir, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readlink, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
 import { DriveReadService } from '../../src/drive/service-read';
+import { linkDraft, NO_IDENTITY, specialDraft } from '../../src/drive/posix/drafts';
 import { DriveTreeWriter } from '../../src/drive/service-write-tree';
 import type { DriveCaller } from '../../src/drive/service-write-support';
 import { nodeFiles } from '../../src/drive/versions';
@@ -110,7 +111,10 @@ describe('stars', () => {
 describe('grants on a personal drive', () => {
   it('refuses writes under a view grant and allows them under an edit grant', async () => {
     const { store } = opened;
-    store.driveGrants.set({ itemId: ROBIN_TRIP, profileId: idaId, role: 'view' }, robinId);
+    store.driveGrants.set(
+      { itemId: ROBIN_TRIP, profileId: idaId, role: 'view', expiresAt: null },
+      robinId,
+    );
     const refused = await writer.apply(callerOf(idaId), {
       action: 'new_folder',
       parent: { kind: 'folder', folderId: ROBIN_TRIP },
@@ -118,7 +122,10 @@ describe('grants on a personal drive', () => {
     });
     expect(refused.done).toEqual([]);
     expect(refused.failed[0]?.reason).toMatch(/only view/);
-    store.driveGrants.set({ itemId: ROBIN_TRIP, profileId: idaId, role: 'edit' }, robinId);
+    store.driveGrants.set(
+      { itemId: ROBIN_TRIP, profileId: idaId, role: 'edit', expiresAt: null },
+      robinId,
+    );
     const allowed = await writer.apply(callerOf(idaId), {
       action: 'new_folder',
       parent: { kind: 'folder', folderId: ROBIN_TRIP },
@@ -162,5 +169,68 @@ describe('grants on a personal drive', () => {
     });
     expect(other.done).toEqual([]);
     expect(other.failed).toHaveLength(1);
+  });
+});
+
+describe('copying links and special files', () => {
+  const LINK_ID = '0f000000-0000-4000-8000-0000000000a1';
+  const SPECIAL_ID = '0f000000-0000-4000-8000-0000000000a2';
+  const DEST = '0f000000-0000-4000-8000-0000000000a3';
+
+  function placed(relPath: string): {
+    readonly rootId: string;
+    readonly parentId: string | null;
+    readonly relPath: string;
+    readonly modifiedAt: string;
+    readonly addedAt: string;
+    readonly outside: boolean;
+    readonly addedByProfileId: null;
+    readonly id: string;
+  } {
+    const trip = opened.store.driveItems.byPath(ROBIN_DRIVE, 'Trip', null);
+    return {
+      rootId: ROBIN_DRIVE,
+      parentId: trip?.id ?? null,
+      relPath,
+      modifiedAt: '2026-11-07T00:00:00.000Z',
+      addedAt: '2026-11-07T00:00:00.000Z',
+      outside: false,
+      addedByProfileId: null,
+      id: relPath === 'Trip/l' ? LINK_ID : SPECIAL_ID,
+    };
+  }
+
+  it('copies a link as a link and a special file as a special file', async () => {
+    const { store } = opened;
+    await mkdir(join(opened.layout.person(robinId).drive, 'Dest'), { recursive: true });
+    putItem(store, { rootId: ROBIN_DRIVE, id: DEST, relPath: 'Dest', kind: 'folder' });
+    store.driveItems.write({
+      item: linkDraft(placed('Trip/l'), 'some/target'),
+      identity: { dev: '1', ino: '9001' },
+    });
+    store.driveItems.write({
+      item: specialDraft(placed('Trip/p')),
+      identity: NO_IDENTITY,
+      inode: { specialType: 'fifo', mode: 0o600, uid: 1000, gid: 1000 },
+    });
+    const result = await writer.apply(callerOf(robinId), {
+      action: 'copy',
+      itemIds: [LINK_ID, SPECIAL_ID],
+      toFolderId: DEST,
+    });
+    expect(result.failed).toEqual([]);
+    expect(result.done).toHaveLength(2);
+    const dest = join(opened.layout.person(robinId).drive, 'Dest');
+    expect((await lstat(join(dest, 'l'))).isSymbolicLink()).toBe(true);
+    expect(await readlink(join(dest, 'l'))).toBe('some/target');
+    expect(await readdir(dest)).toEqual(['l']);
+    const copiedLink = store.driveItems.byPath(ROBIN_DRIVE, 'Dest/l', null);
+    expect(copiedLink).toMatchObject({ kind: 'link', linkTarget: 'some/target' });
+    const copiedSpecial = store.driveItems.byPath(ROBIN_DRIVE, 'Dest/p', null);
+    expect(copiedSpecial?.kind).toBe('special');
+    const inode =
+      copiedSpecial === undefined ? undefined : store.driveInodes.ofItem(copiedSpecial.id);
+    expect(inode).toMatchObject({ type: 'fifo', mode: 0o600, uid: 1000, gid: 1000 });
+    expect(copiedSpecial?.id).not.toBe(SPECIAL_ID);
   });
 });

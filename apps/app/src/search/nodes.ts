@@ -18,7 +18,7 @@ export const RESULT_GROUP_LABELS: Readonly<Record<ResultGroup, string>> = {
   pages: 'Pages',
   settings: 'Settings',
   rooms: 'Rooms',
-  routines: 'Scenes & automations',
+  routines: 'Automations',
   plugins: 'Plugins',
 };
 
@@ -64,7 +64,6 @@ export function groupOf(entry: SearchEntry, catalogue: SearchCatalogue): ResultG
       return 'settings';
     case 'room':
       return 'rooms';
-    case 'scene':
     case 'automation':
       return 'routines';
     case 'device':

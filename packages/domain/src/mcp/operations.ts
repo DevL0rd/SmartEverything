@@ -20,6 +20,18 @@ export const MCP_UNAVAILABLE_OPERATIONS: Readonly<Partial<Record<EndpointName, s
   controlClaudeCliSession: RETIRED_EXTERNAL_CHAT,
   answerClaudeCliPrompt: RETIRED_EXTERNAL_CHAT,
   registerClaudeController: RETIRED_EXTERNAL_CHAT,
+  setLockedPin:
+    'Sets the Locked folder PIN, an access-granting step; only the person does it in the app.',
+  unlockLockedFolder:
+    'Opens the Locked folder with the PIN; only the person unlocks it in the app.',
+  readLockedBuckets:
+    'The Locked folder is never readable by an AI; the person opens it in the app.',
+  readLockedPage: 'The Locked folder is never readable by an AI; the person opens it in the app.',
+  readLockedLinks: 'The Locked folder is never readable by an AI; the person opens it in the app.',
+  moveOutOfLockedFolder:
+    'Taking photos out of the Locked folder needs the unlock token; only the person does it in the app.',
+  deleteFromLockedFolder:
+    'Deleting photos in the Locked folder needs the unlock token; only the person does it in the app.',
   registerComputerClaudeController: RETIRED_EXTERNAL_CHAT,
   removeClaudeController: RETIRED_EXTERNAL_CHAT,
   removeComputerClaudeController: RETIRED_EXTERNAL_CHAT,
@@ -322,7 +334,6 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   [SELF_UPDATE_RECOVERY_PATH, 'system'],
   [HUB_UPDATE_SOURCE_PATH, 'system'],
   ['/api/runtime-logs', 'system'],
-  ['/api/scenes', 'automations'],
   ['/api/automations', 'automations'],
   ['/api/automation-', 'automations'],
   ['/api/scheduled', 'automations'],

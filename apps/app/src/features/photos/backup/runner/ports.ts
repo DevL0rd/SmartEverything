@@ -1,4 +1,5 @@
 import type {
+  BackupCheck,
   BackupHave,
   BackupHaveResult,
   BackupRegister,
@@ -24,6 +25,10 @@ export interface MediaLibraryPort {
     modifiedFrom: number,
     signal?: AbortSignal,
   ): AsyncIterable<readonly MediaRow[]>;
+  modificationTimes(
+    localIds: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<ReadonlyMap<string, number>>;
   onChange(listener: () => void): () => void;
   remove(localIds: readonly string[]): Promise<boolean>;
 }
@@ -57,7 +62,8 @@ export interface UploadPort {
 
 export interface BackupHubPort {
   register(input: BackupRegister): Promise<unknown>;
-  checkHashes(input: BackupHave, purpose: 'lookup' | 'backup'): Promise<BackupHaveResult>;
+  lookupHashes(input: BackupHave): Promise<BackupHaveResult>;
+  checkBackup(input: BackupCheck): Promise<BackupHaveResult>;
   resolveTarget(deviceId: string, takenAt: string): Promise<{ readonly folderId: string }>;
 }
 
@@ -69,6 +75,17 @@ export interface SettingsPort {
 export interface LedgerStorage {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+}
+
+export interface LedgerFile {
+  read(): Promise<string | null>;
+  write(text: string): Promise<void>;
+}
+
+export interface LedgerStores {
+  readonly storage: LedgerStorage;
+  readonly ledgerFile: LedgerFile;
 }
 
 export interface BackupPorts {
@@ -79,6 +96,7 @@ export interface BackupPorts {
   readonly hub: BackupHubPort;
   readonly settings: SettingsPort;
   readonly storage: LedgerStorage;
+  readonly ledgerFile: LedgerFile;
   readonly identity: BackupDeviceIdentity;
   readonly available: () => boolean;
   readonly now: () => Date;

@@ -1,4 +1,8 @@
-import type { PhotoInsights } from '@smarteverything/domain';
+import {
+  PHOTO_RANKING_SUMMARY,
+  type PhotoInsightRange,
+  type PhotoInsights,
+} from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
@@ -6,7 +10,7 @@ import { Card } from '../../../components/card';
 import { ProgressBar, SegmentBar } from '../../../components/charts';
 import { ListRow } from '../../../components/list-row';
 import { RankedList } from '../../../components/ranked-list';
-import { List } from '../../../components/section';
+import { List, SectionAction } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
 import { driveLabelOf, useDriveItem, useDriveRoots, useViewerId } from '../../drive';
@@ -24,6 +28,7 @@ import {
   type FolderRow,
 } from './lists-model';
 import { placesLine } from './model';
+import { RANKING_TITLES, busiestRowOf, type RankingId } from './ranking-model';
 
 export function PlacesCard({ places }: { readonly places: PhotoInsights['places'] }): ReactNode {
   const countries = places.countries.map((country) => ({
@@ -106,7 +111,7 @@ export function CoverageCard({
   );
 }
 
-function LargestRow({
+export function LargestRow({
   video,
 }: {
   readonly video: PhotoInsights['largestVideos'][number];
@@ -123,15 +128,66 @@ function LargestRow({
   );
 }
 
+function ShowAll({
+  shown,
+  ranking,
+  range,
+}: {
+  readonly shown: number;
+  readonly ranking: RankingId;
+  readonly range: PhotoInsightRange;
+}): ReactNode {
+  return shown < PHOTO_RANKING_SUMMARY ? null : (
+    <SectionAction
+      label="Show all"
+      spoken={`Show all ${RANKING_TITLES[ranking].toLowerCase()}`}
+      href={href.photosRanking(ranking, range)}
+    />
+  );
+}
+
 export function LargestVideos({
   videos,
+  range,
 }: {
   readonly videos: PhotoInsights['largestVideos'];
+  readonly range: PhotoInsightRange;
 }): ReactNode {
   return videos.length === 0 ? null : (
-    <List title="Largest videos">
+    <List
+      title="Largest videos"
+      action={<ShowAll shown={videos.length} ranking="largest-videos" range={range} />}
+    >
       {videos.map((video) => (
         <LargestRow key={video.itemId} video={video} />
+      ))}
+    </List>
+  );
+}
+
+export function BusiestDayRow({
+  entry,
+}: {
+  readonly entry: PhotoInsights['busiestDays'][number];
+}): ReactNode {
+  const row = busiestRowOf(entry);
+  return <ListRow title={row.title} subtitle={row.note} icon="calendar" />;
+}
+
+export function BusiestDays({
+  days,
+  range,
+}: {
+  readonly days: PhotoInsights['busiestDays'];
+  readonly range: PhotoInsightRange;
+}): ReactNode {
+  return days.length === 0 ? null : (
+    <List
+      title="Busiest days"
+      action={<ShowAll shown={days.length} ranking="busiest-days" range={range} />}
+    >
+      {days.map((entry) => (
+        <BusiestDayRow key={entry.day} entry={entry} />
       ))}
     </List>
   );

@@ -100,7 +100,6 @@ describe('activitySummary', () => {
       live: false,
       tools: [
         titled('device_find', 'Find kitchen lights'),
-        titled('scene_find', 'Read evening scene'),
         titled('device_read', 'Read hob light'),
         titled('mcp__smarteverything__device_control', 'Dim hob light'),
         titled('WebSearch', 'Look up bulbs'),
@@ -109,7 +108,6 @@ describe('activitySummary', () => {
     });
     expect(summary.verbs).toEqual([
       'read devices',
-      'read scenes',
       'control devices',
       'search the web',
       'read web pages',

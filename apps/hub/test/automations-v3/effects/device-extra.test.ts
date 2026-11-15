@@ -13,7 +13,6 @@ import type {
   DeviceSetTogetherRequest,
 } from '../../../src/automations/effects/device-set';
 import { reportedWithin } from '../../../src/automations/effects/reported-value';
-import { actionsOfSnapshot, captureScene } from '../../../src/automations/effects/scene-capture';
 import { AutomationRunCancelledError } from '../../../src/automations/effects/run-abort';
 import { closeSetups, NOW, setup } from '../../support/executor-setup';
 import { FakeClock } from '../../support/fake-clock';
@@ -253,41 +252,5 @@ describe('device restore', () => {
     await expect(
       new DeviceRestorer(setter).restore({ lamp: { power: true } }, STAMP, testRun()),
     ).rejects.toMatchObject({ code: 'command_refused' });
-  });
-});
-
-describe('scene capture', () => {
-  const lamp = '6f1d2c34-5b7a-4e8f-9a01-b2c3d4e5f607';
-  const actions = actionsOfSnapshot({ [lamp]: { power: true, brightness: 40 } });
-
-  it('turns a snapshot into command actions', () => {
-    expect(actions).toEqual([
-      { type: 'command', deviceId: lamp, capability: 'power', value: true },
-      { type: 'command', deviceId: lamp, capability: 'brightness', value: 40 },
-    ]);
-  });
-
-  it('saves a new scene, refuses a taken name and replaces it when allowed', async () => {
-    const home = await setup();
-    const { store } = home.db;
-    const made = captureScene(store, { name: 'Rain', overwrite: false, actions });
-    expect(store.scenes.byId(made.id).actions).toEqual(actions);
-    expect(() => captureScene(store, { name: 'Rain', overwrite: false, actions })).toThrow(
-      /already exists/,
-    );
-    const again = captureScene(store, {
-      name: 'Rain',
-      overwrite: true,
-      actions: actions.slice(0, 1),
-    });
-    expect(again.id).toBe(made.id);
-    expect(store.scenes.byId(made.id).actions).toHaveLength(1);
-  });
-
-  it('refuses an empty capture', async () => {
-    const home = await setup();
-    expect(() =>
-      captureScene(home.db.store, { name: 'Empty', overwrite: false, actions: [] }),
-    ).toThrow(/nothing to save/);
   });
 });

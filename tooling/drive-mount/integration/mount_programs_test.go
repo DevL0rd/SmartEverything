@@ -45,7 +45,7 @@ func TestGitInitAddAndCommitOnTheMount(t *testing.T) {
 		t.Skip("git missing")
 	}
 	hub := fakehub.New(t)
-	hub.Mkdir("/placeholder")
+	hub.EnsureDir("/placeholder")
 	h := startHelper(t, hub)
 	repo := filepath.Join(h.point, "repo")
 	if err := os.Mkdir(repo, 0o755); err != nil {

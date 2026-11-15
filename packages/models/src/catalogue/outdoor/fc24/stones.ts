@@ -61,7 +61,7 @@ function stone(index: number): ModelSpecPart[] {
 export const PATH_STONES_MODEL: ModelSpec = outdoorSpec({
   id: 'cat.outdoor.path-stones',
   title: 'Path stones',
-  footprint: { width: 0.56, depth: 2.9, height: THICK + 0.01 },
+  footprint: { width: 0.6745, depth: 2.7269, height: 0.066 },
   meta: {
     names: {
       display: 'Path stones',

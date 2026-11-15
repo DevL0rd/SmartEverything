@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import { gunzipSync } from 'node:zlib';
 import type { Logger } from '@smarteverything/logging';
@@ -12,6 +13,14 @@ import {
   type DrivePlaceRow,
 } from '../store/repositories/drive-places';
 import { SettingsKvRepository } from '../store/repositories/settings-kv';
+
+const SHIPPED = new URL('places/cities.tsv.gz', import.meta.url);
+const CHECKOUT = new URL('../../assets/places/cities.tsv.gz', import.meta.url);
+
+export function placesDatasetPath(): string {
+  const found = [SHIPPED, CHECKOUT].find((candidate) => existsSync(candidate));
+  return fileURLToPath(found ?? CHECKOUT);
+}
 
 const DATASET_SETTING_KEY = 'photos-places';
 

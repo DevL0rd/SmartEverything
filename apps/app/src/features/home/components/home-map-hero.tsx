@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { AppHref } from '../../../components/app-href';
 import type { HomeMap, HomeMapLookPref, HomeMapStageView } from '@smarteverything/domain';
@@ -7,7 +7,7 @@ import { Logger } from '@smarteverything/logging';
 import type { StageLiveProps } from '../../../components/house-map/live-visibility/stage-host';
 import type { RenderFloor, RenderScene } from '../../../components/house-map/render-scene';
 import { cn } from '../../../design/cn';
-import { useIsPhone, useSizeClass } from '../../../design/size-class';
+import { useIsPhone, useSizeClass, useWindowSize } from '../../../design/size-class';
 import { SEMANTIC_SIZES } from '../../../design/tokens';
 import { useSyncStatus } from '../../../store/selectors';
 import {
@@ -347,7 +347,7 @@ function ShownHero({ look, hide, realistic }: ShownHeroProps): ReactNode {
   const router = useRouter();
   const phone = useIsPhone();
   const { height: heightClass } = useSizeClass();
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const reserve = heightClass === 'compact' ? 0 : SEMANTIC_SIZES.touch.comfortable.touchMin;
   const [full, setFull] = useState(false);
   const onEdit = (): void => {

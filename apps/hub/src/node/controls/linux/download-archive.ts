@@ -9,7 +9,7 @@ import { NodeFailureError } from '../../node-failure';
 import { failureOfFs, type FileScope } from './file-scope';
 import { orElse, UNREADABLE } from './fs-fallback';
 import { mimeOf } from '../home-files';
-import { zipChunks, type ZipEntry } from './zip-stream';
+import { zipChunks, type ZipEntry } from '../../../zip/zip-stream';
 
 const IDLE_EXPIRY_MS = 10 * 60_000;
 const PSEUDO_FOLDERS: ReadonlySet<string> = new Set(['/proc', '/sys', '/dev']);

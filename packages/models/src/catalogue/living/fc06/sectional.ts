@@ -95,7 +95,7 @@ function cushionParts(): ModelSpecPart[] {
 export const SECTIONAL_L_MODEL = furniture({
   id: 'cat.living.sectional-l',
   title: 'L-shaped sectional sofa',
-  footprint: { width: 2.8, depth: 1.65, height: HEIGHT },
+  footprint: { width: 2.8, depth: 1.65, height: 0.854 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     depth: { param: 'depth', extra: 0, resizes: true },

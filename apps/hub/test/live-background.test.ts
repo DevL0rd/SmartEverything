@@ -44,10 +44,12 @@ afterEach(async () => {
   await test.close();
 });
 
-async function phone(background: boolean | undefined): Promise<{
+interface Login {
+  readonly token: string;
   readonly clientId: string;
-  readonly notices: string[];
-}> {
+}
+
+function login(): Login {
   const token = createClientToken();
   const row = test.store.clients.create({
     name: 'Phone',
@@ -55,6 +57,16 @@ async function phone(background: boolean | undefined): Promise<{
     role: 'member',
     tokenHash: hashClientToken(token),
   });
+  return { token, clientId: row.id };
+}
+
+async function phone(
+  background: boolean | undefined,
+  { token, clientId }: Login = login(),
+): Promise<{
+  readonly clientId: string;
+  readonly notices: string[];
+}> {
   const notices: string[] = [];
   const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/live`, [...liveProtocols(token)]);
   sockets.push(socket);
@@ -78,7 +90,7 @@ async function phone(background: boolean | undefined): Promise<{
     }),
   );
   await until(() => subscribed, 'the subscription to be confirmed');
-  return { clientId: row.id, notices };
+  return { clientId, notices };
 }
 
 describe('a connection from an app in the background', () => {
@@ -132,5 +144,35 @@ describe('a connection from an app in the background', () => {
     expect(await hub.deliver(front.clientId, speech, 'foreground')).toBe(1);
     await until(() => front.notices.includes('ai_speech'), 'the speech to reach the open app');
     expect(back.notices).not.toContain('ai_speech');
+  });
+
+  it('answers a notice once when two of its sockets are open, preferring the one in front', async () => {
+    const own = login();
+    const back = await phone(true, own);
+    const front = await phone(false, own);
+    const notice = {
+      type: 'notification',
+      id: 'eventId=2',
+      requestId: '3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b74',
+      title: 'Doorbell',
+      body: 'Someone is at the door',
+      data: {},
+    } as const;
+    expect(await hub.deliver(own.clientId, notice)).toBe(1);
+    await until(() => front.notices.includes('notification'), 'the notification to arrive');
+    expect(back.notices).not.toContain('notification');
+  });
+
+  it('answers a notice once when two background sockets are open', async () => {
+    const own = login();
+    const first = await phone(true, own);
+    const second = await phone(true, own);
+    const notice = { type: 'planner_phone_rings' } as const;
+    expect(await hub.deliver(own.clientId, notice)).toBe(1);
+    const rings = (): number =>
+      [...first.notices, ...second.notices].filter((type) => type === 'planner_phone_rings').length;
+    await until(() => rings() > 0, 'the notice to arrive');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(rings()).toBe(1);
   });
 });

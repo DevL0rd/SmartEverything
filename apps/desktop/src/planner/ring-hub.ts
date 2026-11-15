@@ -11,7 +11,7 @@ import {
 } from '@smarteverything/domain';
 import type { Agent } from 'node:http';
 import type { z } from 'zod';
-import type { DesktopRing } from './ring-types.js';
+import type { DesktopRing, RingElsewhere } from './ring-types.js';
 
 export interface RingHubLease {
   readonly url: URL;
@@ -57,6 +57,14 @@ export class RingNotFoundError extends Error {
 
 export interface RingSnooze {
   readonly until: string;
+  readonly snoozes: number;
+}
+
+export class RingSoundUnavailableError extends Error {
+  constructor(itemId: string, reason: string) {
+    super(`the sound file ${itemId} could not be downloaded: ${reason}`);
+    this.name = 'RingSoundUnavailableError';
+  }
 }
 
 export class RingHub {
@@ -110,7 +118,30 @@ export class RingHub {
       body: { ringId: row.id },
     });
     if (snoozed.rang_at === null) throw new RingNotFoundError(ring);
-    return { until: snoozed.rang_at };
+    return { until: snoozed.rang_at, snoozes: snoozed.snoozes };
+  }
+
+  async elsewhere(ring: DesktopRing, dueAt: string, now: Date): Promise<RingElsewhere> {
+    const row = await this.#rowOf(ring, dueAt);
+    if (row.dismissed_at !== null) return { kind: 'dismissed' };
+    if (row.rang_at !== null && Date.parse(row.rang_at) > now.getTime()) {
+      return { kind: 'snoozed', until: row.rang_at, snoozes: row.snoozes };
+    }
+    return { kind: 'ringing' };
+  }
+
+  async soundFile(itemId: string): Promise<ReadableStream<Uint8Array>> {
+    const server = await this.#paired();
+    const [link] = await this.#call(server, E.itemLinks, { body: { itemIds: [itemId] } });
+    if (link === undefined) throw new RingSoundUnavailableError(itemId, 'the Hub sent no link');
+    const response = await this.#options.fetch(new URL(link.file.url, server.url), {
+      method: 'GET',
+      headers: { authorization: `Bearer ${server.token}` },
+    });
+    if (!response.ok || response.body === null) {
+      throw new RingSoundUnavailableError(itemId, `the Hub answered ${String(response.status)}`);
+    }
+    return response.body;
   }
 
   async #rowOf(ring: DesktopRing, dueAt: string): Promise<PlannerRingRow> {

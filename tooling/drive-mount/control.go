@@ -10,8 +10,19 @@ import (
 	"time"
 )
 
+type mountRoot struct {
+	RootID   string
+	FolderID string
+}
+
+type routeSpec struct {
+	URL    string
+	Server string
+	Pin    string
+}
+
 type controller interface {
-	mount(id string, root mountRoot, point string) error
+	mount(id string, root mountRoot, point string, options mountOptions) error
 	unmount(id string) error
 	invalidate(id string, paths []string) error
 	cache(policy cachePolicy) error
@@ -28,6 +39,7 @@ type controlLine struct {
 	Point   string   `json:"point"`
 	Path    string   `json:"path"`
 	Paths   []string `json:"paths"`
+	Options []string `json:"options"`
 	URL     string   `json:"url"`
 	Server  string   `json:"server"`
 	Pin     string   `json:"pin"`
@@ -59,14 +71,20 @@ type operation struct {
 
 var operations = map[string]operation{
 	"mount": {[]string{"mount", "root", "point"}, func(c controller, l controlLine) error {
-		return c.mount(l.Mount, mountRoot{RootID: l.Root, FolderID: l.Folder}, l.Point)
+		options, err := parseMountOptions(l.Options)
+		if err != nil {
+			return err
+		}
+		return c.mount(l.Mount, mountRoot{RootID: l.Root, FolderID: l.Folder}, l.Point, options)
 	}},
 	"unmount":    {[]string{"mount"}, func(c controller, l controlLine) error { return c.unmount(l.Mount) }},
 	"invalidate": {[]string{"mount"}, func(c controller, l controlLine) error { return c.invalidate(l.Mount, l.Paths) }},
 	"cache":      {[]string{"maxAgeSeconds", "cleanupSeconds"}, func(c controller, l controlLine) error { return c.cache(l.policy()) }},
 	"pin":        {[]string{"mount", "path"}, func(c controller, l controlLine) error { return c.pin(l.Mount, l.Path) }},
 	"unpin":      {[]string{"mount", "path"}, func(c controller, l controlLine) error { return c.unpin(l.Mount, l.Path) }},
-	"route":      {nil, func(c controller, l controlLine) error { return c.route(routeSpec{URL: l.URL, Server: l.Server, Pin: l.Pin}) }},
+	"route": {nil, func(c controller, l controlLine) error {
+		return c.route(routeSpec{URL: l.URL, Server: l.Server, Pin: l.Pin})
+	}},
 }
 
 func (l controlLine) field(name string) string {

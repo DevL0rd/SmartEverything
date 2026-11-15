@@ -33,6 +33,7 @@ export interface InfoContent {
   readonly media: MediaInfo | null;
   readonly place: PhotoPlace | null;
   readonly library: string | null;
+  readonly archived: boolean;
   readonly addedBy: string | null;
   readonly removeLocation: boolean;
   readonly albums: readonly MenuItem[];
@@ -163,6 +164,11 @@ export function InfoRows({ content }: { readonly content: InfoContent }): ReactN
           detail={addedLine(item, content.library, content.addedBy)}
         />
       </Row>
+      {content.archived ? (
+        <Row icon="archive">
+          <Lines main="Archived" detail="Hidden from the Library and the map, still in albums" />
+        </Row>
+      ) : null}
       <LocationRow content={content} />
       <AlbumsRow items={content.albums} />
       <ThisDayStrip item={item} media={content.media} onOpen={content.onOpenItem} />

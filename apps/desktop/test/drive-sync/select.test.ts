@@ -12,6 +12,7 @@ import {
   isPlaceholder,
   wantsWithout,
 } from '../../src/drive-sync/select.js';
+import { NO_META } from './pull-support.js';
 
 const log = new Logger('desktop.drive-sync');
 const PLACEMENT = 'placement-1';
@@ -43,8 +44,12 @@ function entry(relPath: string, rev: number, bytes = 10, deleted = false): SyncI
     relPath,
     kind: 'file',
     mtime: '2026-11-01T10:00:00.000Z',
+    mtimeNs: '1793527200000000000',
     rev,
     deleted,
+    mode: 0o644,
+    xattrs: [],
+    inode: null,
     bytes,
     blockSize: 131072,
     blocksHash: 'ab'.repeat(32),
@@ -60,6 +65,7 @@ async function downloaded(relPath: string, content: string, hubRev = 4): Promise
   await writeFile(disk(relPath), content);
   const info = await stat(disk(relPath), { bigint: true });
   database.files.upsert({
+    ...NO_META,
     placementId: PLACEMENT,
     relPath,
     kind: 'file',

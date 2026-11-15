@@ -81,6 +81,8 @@ const FLAT_GEOMETRY = new Set(['roundedPlane', 'glow', 'ring', 'grille']);
 
 const FADED_GEOMETRY = new Set(['glow']);
 
+const PATTERN_PIXELS = new Map<string, PatternPixels>();
+
 export function createModelResources(): ModelResources {
   const geometries = new Map<string, BufferGeometry>();
   const materials = new Map<string, MeshPhysicalMaterial>();
@@ -145,8 +147,9 @@ function patternFor(
   const size = patternSize(lod);
   if (params.pattern === null || size === 0) return null;
   const pattern = params.pattern;
-  return cached(resources.patterns, `${pattern}:${String(size)}`, () => {
-    const pixels = patternPixels(pattern, size);
+  const key = `${pattern}:${String(size)}`;
+  return cached(resources.patterns, key, () => {
+    const pixels = cached(PATTERN_PIXELS, key, () => patternPixels(pattern, size));
     return { pixels, texture: patternTexture(pixels) };
   });
 }

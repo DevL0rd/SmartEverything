@@ -17,6 +17,9 @@ import { PLANNER_ALARM_ROW } from '../planner/alarms';
 import { PLANNER_COLLECTION_ROW } from '../planner/collections';
 import { PLANNER_ITEM_ROW } from '../planner/items';
 import { PLANNER_OCCURRENCE_ROW } from '../planner/occurrences';
+import { PLANNER_BOOKING_PAGE_ROW } from '../planner/booking';
+import { PLANNER_GUEST_ROW } from '../planner/guests';
+import { PLANNER_COLLECTION_SHARE_ROW } from '../planner/sharing';
 import { PLANNER_STOPWATCH_ROW } from '../planner/stopwatch';
 import { PLANNER_TIMER_ROW } from '../planner/timers';
 import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE } from '../ai-chats';
@@ -51,7 +54,6 @@ import {
   LAYOUT_ROW,
   PUSH_TARGET_ROW,
   RECORDING_ROW,
-  SCENE_ROW,
 } from './rows-media';
 
 export const SNAPSHOT_WINDOWS = {
@@ -70,7 +72,6 @@ export const SNAPSHOT_TABLES = z.object({
   television_settings: z.array(TELEVISION_SETTINGS_ROW).optional(),
   device_state: z.array(STATE_ROW),
   cameras: z.array(CAMERA_ROW),
-  scenes: z.array(SCENE_ROW),
   automations: z.array(AUTOMATION_ROW),
   automation_values: z.array(AUTOMATION_VALUE_ROW).optional(),
   automation_runs: z.array(AUTOMATION_RUN_SUMMARY).optional(),
@@ -110,6 +111,9 @@ export const SNAPSHOT_TABLES = z.object({
   planner_alarms: z.array(PLANNER_ALARM_ROW),
   planner_timers: z.array(PLANNER_TIMER_ROW),
   planner_stopwatches: z.array(PLANNER_STOPWATCH_ROW),
+  planner_collection_shares: z.array(PLANNER_COLLECTION_SHARE_ROW),
+  planner_guests: z.array(PLANNER_GUEST_ROW),
+  planner_booking_pages: z.array(PLANNER_BOOKING_PAGE_ROW),
   google_accounts: z.array(GOOGLE_ACCOUNT_ROW),
 });
 

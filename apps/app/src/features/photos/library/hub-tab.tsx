@@ -31,6 +31,7 @@ import {
 import { LibraryEmpty, LibraryError, LibraryLoading, OfflineBanner } from './library-states';
 import { resultLineOf, type HubTabId } from './library-tabs-view';
 import { LocalLibraryStatus } from './local-library-status';
+import { matchLineOf } from '../search/match-line';
 import { ResultLine } from './result-line';
 import { UploadPanel } from './upload-panel';
 import { uploadFiles } from './uploads';
@@ -148,6 +149,7 @@ function HubResultLine({
   return (
     <ResultLine
       text={resultLineOf(feed.buckets)}
+      matched={matchLineOf(search.input)}
       search={search.input}
       onClear={() => {
         search.act({ type: 'clear' });
@@ -221,6 +223,10 @@ export function HubTab(props: HubTabProps): ReactNode {
         actions: libraryActions(head.compact, controls),
         selection: selectionHeadOf(head.compact, selection),
         banner: offline ? <OfflineBanner seenAt={feed.seenAt} /> : null,
+        footer:
+          head.compact && controls.selection.ids.size > 0 ? (
+            <LibraryActionRow {...selection} />
+          ) : null,
       }}
     >
       {feed.sources}
@@ -236,7 +242,6 @@ export function HubTab(props: HubTabProps): ReactNode {
           media={media}
           localLoading={localLoading}
         />
-        {controls.selection.active && head.compact ? <LibraryActionRow {...selection} /> : null}
         <UploadPanel compact={head.compact} />
       </DropZone>
     </LibraryShell>

@@ -26,6 +26,7 @@ const KOTLIN_SCOPE: Readonly<Record<string, readonly string[]>> = {
   Larq: ['larq'],
   Sonicare: ['sonicare'],
   HealthConnect: [''],
+  Planner: ['planner'],
 };
 
 function exportedBy(text: string): readonly string[] {

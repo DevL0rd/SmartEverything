@@ -115,15 +115,16 @@ describe('layout v1 rename engine', () => {
     expect(await snapshot(root)).toEqual(before);
   });
 
-  it('resumes to the same tree after a crash at every step and phase', async () => {
-    await runV1Renames(root);
-    const expected = await snapshot(root);
-    const steps = (await readJournal(root))?.steps.length ?? 0;
-    const template = join(work, 'template');
-    await rm(root, { recursive: true });
-    await mkdir(template);
-    await writeLiveListing(template);
-    for (const phase of ['started', 'renamed', 'done'] as const) {
+  it.each(['started', 'renamed', 'done'] as const)(
+    'resumes to the same tree after a crash at every step in the %s phase',
+    async (phase) => {
+      await runV1Renames(root);
+      const expected = await snapshot(root);
+      const steps = (await readJournal(root))?.steps.length ?? 0;
+      const template = join(work, 'template');
+      await rm(root, { recursive: true });
+      await mkdir(template);
+      await writeLiveListing(template);
       for (let index = 0; index < steps; index += 1) {
         const target = join(work, `crash-${phase}-${String(index)}`);
         await cp(template, target, { recursive: true });
@@ -132,8 +133,9 @@ describe('layout v1 rename engine', () => {
         expect(await snapshot(target)).toEqual(expected);
         await rm(target, { recursive: true });
       }
-    }
-  }, 300_000);
+    },
+    300_000,
+  );
 
   it('reverses to the original names exactly', async () => {
     const original = await snapshot(root);

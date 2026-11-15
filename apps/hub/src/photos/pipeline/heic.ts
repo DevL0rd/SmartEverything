@@ -8,6 +8,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import { DERIVED_LONG_EDGE } from './derived-paths';
 import type { HeicRequest } from './heic-worker';
+import { UNLIMITED_PIXELS } from '../../media/sharp-input';
 import type { DecodedSource, DecodeOutcome, PreviewDecoder } from './preview';
 
 export const BUNDLED_HEIC_WORKER = fileURLToPath(new URL('./heic-worker.mjs', import.meta.url));
@@ -270,6 +271,7 @@ async function toSrgb(pixels: HeicPixels, profile: Buffer): Promise<DecodedSourc
   const edge = DERIVED_LONG_EDGE.preview;
   const tagged = embedProfile(
     await sharp(pixels.data, {
+      ...UNLIMITED_PIXELS,
       raw: { width: pixels.width, height: pixels.height, channels: RGBA_CHANNELS },
     })
       .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
@@ -277,7 +279,7 @@ async function toSrgb(pixels: HeicPixels, profile: Buffer): Promise<DecodedSourc
       .toBuffer(),
     profile,
   );
-  const converted = await sharp(tagged)
+  const converted = await sharp(tagged, UNLIMITED_PIXELS)
     .pipelineColourspace('rgb16')
     .toColourspace('srgb')
     .ensureAlpha()
@@ -292,7 +294,7 @@ async function toSrgb(pixels: HeicPixels, profile: Buffer): Promise<DecodedSourc
 }
 
 async function sourceOf(path: string, pixels: HeicPixels): Promise<DecodedSource> {
-  const { icc } = await sharp(path).metadata();
+  const { icc } = await sharp(path, UNLIMITED_PIXELS).metadata();
   if (icc === undefined) {
     return { kind: 'pixels', data: pixels.data, width: pixels.width, height: pixels.height };
   }

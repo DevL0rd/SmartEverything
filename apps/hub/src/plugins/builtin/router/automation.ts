@@ -18,7 +18,7 @@ import {
   RESTART,
   SPEED_TEST,
 } from './automation-nodes';
-import { SNAPSHOT_STREAM } from './runtime';
+import { LIVE_STREAM, SNAPSHOT_STREAM } from './streams';
 
 export {
   CLIENT_JOINED,
@@ -147,7 +147,7 @@ const WIFI_LINK_VALUE = streamValue({
   keywords: ['router', 'wifi', 'signal', 'rssi', 'dbm', 'band'],
   summary: 'Wi-Fi signal of {device}',
   inputs: DEVICE_INPUT,
-  stream: SNAPSHOT_STREAM,
+  stream: LIVE_STREAM,
   select: { list: '/stations', key: '/mac', port: 'device' },
   outputs: {
     signal: { kind: maybe(ports.number({ unit: 'dBm' })), from: '/rssiDbm' },

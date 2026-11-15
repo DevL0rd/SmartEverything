@@ -25,7 +25,7 @@ function WaitingRow({
   readonly first: boolean;
 }): ReactNode {
   const { job, handlers } = entry;
-  const card = jobCardOf(job, { stopped: false, now: 0, ppm: null });
+  const card = jobCardOf(job, { printer: 'ready', now: 0, ppm: null });
   const title = titleOf(job);
   const hold = job.state === 'pending' ? handlers.onHold : null;
   const release = job.state === 'held' ? handlers.onRelease : null;

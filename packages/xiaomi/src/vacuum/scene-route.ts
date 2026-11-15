@@ -18,7 +18,7 @@ interface OpenRun {
 }
 
 function isMopping(point: RoutePoint): boolean {
-  return point.mode !== 'sweep';
+  return point.mode === 'mop' || point.mode === 'both';
 }
 
 function distance(a: RoutePoint, b: RoutePoint): number {

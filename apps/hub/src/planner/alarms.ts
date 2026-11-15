@@ -8,6 +8,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { Store } from '../store/store';
 import type { RingDesk } from './rings';
+import type { SunriseRamp } from './sunrise';
 import type { WakeRoutine } from './wake-routine';
 
 type AlarmTiming = Pick<PlannerAlarmRow, 'time' | 'days' | 'once_on' | 'skip_on'>;
@@ -76,6 +77,7 @@ export interface AlarmSchedulerOptions {
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly rings: RingDesk;
   readonly wake: WakeRoutine;
+  readonly sunrise: SunriseRamp;
   readonly log: Logger;
 }
 
@@ -149,6 +151,7 @@ export class AlarmScheduler {
       if (before !== null) {
         this.disarm(before.id);
         this.options.wake.cancel(before.id);
+        this.options.sunrise.cancel(before.id);
       }
       return;
     }
@@ -193,9 +196,11 @@ export class AlarmScheduler {
     if (dueAt === null) {
       this.disarm(alarm.id);
       this.options.wake.cancel(alarm.id);
+      this.options.sunrise.cancel(alarm.id);
       return;
     }
     this.options.wake.arm(alarm, dueAt);
+    this.options.sunrise.arm(alarm, dueAt);
     if (this.armed.get(alarm.id)?.dueAtMs === dueAt.getTime()) {
       return;
     }
@@ -230,5 +235,6 @@ export class AlarmScheduler {
       this.disarm(alarmId);
     }
     this.options.wake.cancelAll();
+    this.options.sunrise.cancelAll();
   }
 }

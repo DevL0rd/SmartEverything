@@ -2,142 +2,90 @@ package main
 
 import (
 	"context"
-	"path"
-	"strings"
+
+	"github.com/smarteverything/drive-mount/wire"
 )
 
-type renamePlan struct {
-	root      mountRoot
-	from, to  string
-	source    entry
-	hasSource bool
-	target    entry
-	hasTarget bool
-	moving    []*session
-	replaced  []*session
-	dest      parentRef
+func (w *writeBack) lookup(ctx context.Context, parent uint64, name string) (Entry, error) {
+	reply, err := w.ask(ctx, wire.OpLookup, wire.Meta{wire.KeyParent: parent, wire.KeyName: name})
+	if err != nil {
+		return Entry{}, err
+	}
+	return wire.ParseEntry(reply.Meta)
 }
 
-func (p *renamePlan) exact() *session { return sessionAt(p.moving, p.from) }
-
-func (p *renamePlan) replacedFile() *session { return sessionAt(p.replaced, p.to) }
-
-func (w *writeBack) Rename(ctx context.Context, root mountRoot, from, to string, replace bool) error {
-	if from == to {
-		return nil
-	}
-	if strings.HasPrefix(to, from+"/") {
-		return errInvalid
-	}
-	if strings.HasPrefix(from, to+"/") {
-		return errNotEmpty
-	}
-	moving, err := w.claimUnder(ctx, root, from)
+func (w *writeBack) Rename(ctx context.Context, args RenameArgs) error {
+	source, err := w.lookup(ctx, args.Parent, args.Name)
 	if err != nil {
 		return err
 	}
-	defer w.unclaim(moving)
-	plan := &renamePlan{root: root, from: from, to: to, moving: moving}
-	if err := w.survey(ctx, plan); err != nil {
+	target, targetErr := w.lookup(ctx, args.NewParent, args.NewName)
+	if err := w.flushWait(ctx, source.Ino); err != nil {
 		return err
 	}
-	defer w.unclaim(plan.replaced)
-	if err := w.admit(ctx, plan, replace); err != nil {
+	if targetErr == nil && args.Flags&wire.RenameFlagExchange != 0 {
+		if err := w.flushWait(ctx, target.Ino); err != nil {
+			return err
+		}
+	}
+	if _, err := w.mutate(ctx, wire.OpRename, wire.Meta{
+		wire.KeyParent: args.Parent, wire.KeyName: args.Name,
+		wire.KeyNewParent: args.NewParent, wire.KeyNewName: args.NewName,
+		wire.KeyFlags: uint64(args.Flags),
+	}, nil); err != nil {
 		return err
 	}
-	if err := w.apply(ctx, plan); err != nil {
-		return err
-	}
-	w.refresh(root, from, to)
-	return nil
-}
-
-func (w *writeBack) survey(ctx context.Context, plan *renamePlan) error {
-	var err error
-	if plan.source, plan.hasSource, err = w.hubStat(ctx, plan.root, plan.from); err != nil {
-		return err
-	}
-	if !plan.hasSource && plan.exact() == nil {
-		return errNotFound
-	}
-	if plan.dest, err = w.placement(ctx, plan.root, plan.to); err != nil {
-		return err
-	}
-	if plan.replaced, err = w.claimUnder(ctx, plan.root, plan.to); err != nil {
-		return err
-	}
-	plan.target, plan.hasTarget, err = w.hubStat(ctx, plan.root, plan.to)
-	return err
-}
-
-func (w *writeBack) admit(ctx context.Context, plan *renamePlan, replace bool) error {
-	occupied := plan.hasTarget || plan.replacedFile() != nil
-	if !occupied {
-		return nil
-	}
-	if !replace {
-		return errExists
-	}
-	sourceDir := plan.hasSource && plan.source.Dir
-	targetDir := plan.hasTarget && plan.target.Dir
+	w.renamed(source.Ino, args.Parent, args.Name, args.NewParent, args.NewName)
 	switch {
-	case sourceDir && !targetDir:
-		return errNotDir
-	case !sourceDir && targetDir:
-		return errIsDir
-	case targetDir:
-		return w.requireEmpty(ctx, plan.root, plan.to)
+	case targetErr != nil:
+	case args.Flags&wire.RenameFlagExchange != 0:
+		w.renamed(target.Ino, args.NewParent, args.NewName, args.Parent, args.Name)
+	case target.Attr.Nlink <= 1:
+		w.orphaned(target.Ino)
 	}
 	return nil
 }
 
-func (w *writeBack) apply(ctx context.Context, plan *renamePlan) error {
-	var err error
-	if plan.hasSource {
-		err = w.moveOnHub(ctx, plan)
-	} else {
-		err = w.moveSession(plan)
+func (w *writeBack) renamed(ino, parent uint64, name string, newParent uint64, newName string) {
+	s := w.sessionOf(ino)
+	if s == nil {
+		return
 	}
+	s.mu.Lock()
+	if s.rec.Parent == parent && s.rec.Name == name {
+		s.rec.Parent, s.rec.Name = newParent, newName
+	}
+	s.mu.Unlock()
+}
+
+func (w *writeBack) orphaned(ino uint64) {
+	if s := w.sessionOf(ino); s != nil {
+		s.mu.Lock()
+		s.rec.Orphan = true
+		s.mu.Unlock()
+	}
+}
+
+func (w *writeBack) Link(ctx context.Context, ino, parent uint64, name string) (Attr, error) {
+	if err := w.flushWait(ctx, ino); err != nil {
+		return Attr{}, err
+	}
+	reply, err := w.mutate(ctx, wire.OpLink, wire.Meta{wire.KeyIno: ino, wire.KeyParent: parent, wire.KeyName: name}, nil)
 	if err != nil {
-		return err
+		return Attr{}, err
 	}
-	for _, s := range plan.replaced {
-		w.drop(s)
-	}
-	return nil
-}
-
-func (w *writeBack) moveSession(plan *renamePlan) error {
-	s := plan.exact()
-	target := s.rec.Target
-	if target.ItemID == "" {
-		target = uploadTarget{FolderID: plan.dest.folder(plan.root), Name: path.Base(plan.to)}
-		if plan.hasTarget {
-			target = uploadTarget{ItemID: plan.target.ID, BaseRev: plan.target.Rev}
-		}
-	}
-	return w.rekey(s, plan.to, target)
-}
-
-func (w *writeBack) moveOnHub(ctx context.Context, plan *renamePlan) error {
-	if plan.hasTarget {
-		if err := w.hub.remove(ctx, plan.root, plan.target); err != nil {
-			return err
-		}
-	}
-	moved, err := w.hub.rename(ctx, plan.root, plan.source, plan.dest, path.Base(plan.to))
+	attr, err := reply.Meta.Attr(wire.KeyAttr)
 	if err != nil {
-		return err
+		return Attr{}, err
 	}
-	exact := plan.exact()
-	for _, s := range plan.moving {
-		target := s.rec.Target
-		if s == exact && target.ItemID == plan.source.ID && target.BaseRev == plan.source.Rev {
-			target.BaseRev = moved.Rev
+	if s := w.sessionOf(ino); s != nil {
+		s.mu.Lock()
+		if s.rec.Orphan {
+			s.rec.Orphan = false
+			s.rec.Parent, s.rec.Name = parent, name
 		}
-		if err := w.rekey(s, plan.to+strings.TrimPrefix(s.rec.Path, plan.from), target); err != nil {
-			return err
-		}
+		s.mu.Unlock()
 	}
-	return nil
+	w.overlayAttr(&attr)
+	return attr, nil
 }

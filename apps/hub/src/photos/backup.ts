@@ -3,6 +3,7 @@ import {
   BACKUP_DEVICE,
   BACKUP_SETTINGS,
   type BackupDevice,
+  type BackupCheck,
   type BackupHave,
   type BackupHaveResult,
   type BackupRegister,
@@ -19,6 +20,7 @@ import {
   type ChangeEnv,
   type ChangeStore,
 } from '../drive/changes';
+import { isFileItem } from '../drive/file-item';
 import { DriveWriteError, locate, type DriveWriteRoot } from '../drive/intents';
 import { personalDrive } from '../drive/spaces';
 import type {
@@ -28,6 +30,7 @@ import type {
 import type { DevicesRepository } from '../store/repositories/devices';
 import { inList, type Sql } from '../store/sql';
 
+import { PhotoFolderStore } from './folder-store';
 import { LOCAL_MONTH } from './library';
 import { PHOTOS_FOLDER } from './membership';
 
@@ -118,7 +121,7 @@ export class BackupService {
     return { have, missing };
   }
 
-  checkHashes(profileId: string, input: BackupHave): BackupHaveResult {
+  checkHashes(profileId: string, input: BackupCheck): BackupHaveResult {
     const device = this.deviceOf(profileId, input.deviceId);
     const now = this.env.now().toISOString();
     const held = this.heldItems(
@@ -127,6 +130,7 @@ export class BackupService {
     );
     const have: { localId: string; itemId: string }[] = [];
     const missing: string[] = [];
+    const folders = new PhotoFolderStore(this.env.sql);
     this.env.store.write(() => {
       this.env.store.driveBackup.touchDevice(device.id, now);
       for (const asset of input.assets) {
@@ -139,6 +143,7 @@ export class BackupService {
           state: itemId === null ? 'uploading' : 'verified',
           at: now,
         });
+        folders.saveOrigin(device.id, asset.localId, asset.folder);
         if (itemId === null) {
           missing.push(asset.localId);
         } else {
@@ -154,7 +159,7 @@ export class BackupService {
   }
 
   settleItem(item: DriveItem): number {
-    if (item.kind === 'folder' || item.sha256 === null || item.integrity !== 'ok') {
+    if (!isFileItem(item) || item.sha256 === null || item.integrity !== 'ok') {
       return 0;
     }
     const { driveBackup, driveRoots } = this.env.store;

@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import { ANDROID_APK_ABIS } from '@smarteverything/domain';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,13 +9,7 @@ import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { applyDeveloperHost, nodeToolCommand, pnpmProgram } from './build-host.ts';
 import { gradleMemoryArguments } from './build-scope.ts';
-import {
-  apkProblems,
-  readApk,
-  readAppIdentity,
-  runtimeVersionOf,
-  type ApkVariant,
-} from './release-apk.ts';
+import { apkProblems, readApk, runtimeVersionOf, type ApkVariant } from './release-apk.ts';
 import {
   androidHome,
   javaHome,
@@ -170,7 +165,7 @@ async function verified({
   versionName,
   above,
 }: Verification): Promise<string | null> {
-  const identity = readAppIdentity();
+  const identity = APP_IDENTITY;
   const facts = readApk(file);
   const problems = await apkProblems(facts, {
     variant,
@@ -232,7 +227,7 @@ function collect(options: BuildOptions, apk: string, versionName: string): strin
 async function main(): Promise<void> {
   applyDeveloperHost();
   const options = parsedOptions();
-  const problems = preflightProblems(readAppIdentity().applicationId);
+  const problems = preflightProblems(APP_IDENTITY.applicationId);
   if (problems.length > 0) throw new ReleasePreflightError(problems);
   const building = log.operation('android.build', {
     variant: options.variant,

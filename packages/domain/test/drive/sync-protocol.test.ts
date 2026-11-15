@@ -14,12 +14,15 @@ import {
   isValidBlockSize,
   packHashes,
   packedToBytes,
+  syncMomentOfNs,
   unpackHashes,
 } from '../../src/drive/sync';
 
 const ID = '3f6f1a52-7c5b-4a77-9d5c-0a1f2d3e4b5c';
 const OTHER = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
 const NOW = '2026-11-07T09:05:03.000Z';
+const NOW_NS = '1794042303123456789';
+const NOW_MS = '2026-11-07T09:05:03.123Z';
 const HASH = 'ab'.repeat(32);
 
 const push = {
@@ -27,9 +30,14 @@ const push = {
   opId: 'op-1',
   relPath: 'a/b.txt',
   baseRev: null,
-  meta: { bytes: 10, mtime: NOW, blockSize: MIN_BLOCK_SIZE, blocksHash: HASH },
+  meta: { bytes: 10, mtime: NOW_MS, mtimeNs: NOW_NS, blockSize: MIN_BLOCK_SIZE, blocksHash: HASH },
   blocks: HASH,
+  mode: 0o755,
+  xattrs: [{ name: 'user.note', value: 'aGk=' }],
+  linkOf: null,
 };
+
+const entryBase = { mtime: NOW_MS, mtimeNs: NOW_NS, deleted: false, mode: 0o644, xattrs: [] };
 
 const valid = [
   { type: 'hello', placementId: ID, indexId: null, afterSeq: 0 },
@@ -39,22 +47,43 @@ const valid = [
     seq: 4,
     last: true,
     entries: [
-      { itemId: ID, relPath: 'a', kind: 'folder', mtime: NOW, rev: 1, deleted: false },
+      { ...entryBase, itemId: ID, relPath: 'a', kind: 'folder', rev: 1, mode: 0o755 },
       {
+        ...entryBase,
         itemId: OTHER,
         relPath: 'a/b.txt',
         kind: 'file',
-        mtime: NOW,
         rev: 2,
-        deleted: false,
+        inode: 7,
         bytes: 10,
         blockSize: MIN_BLOCK_SIZE,
         blocksHash: HASH,
+        xattrs: [{ name: 'user.note', value: 'aGk=' }],
+      },
+      {
+        ...entryBase,
+        itemId: ID,
+        relPath: 'a/c',
+        kind: 'link',
+        rev: 1,
+        inode: null,
+        target: '../b.txt',
+        mode: 0o777,
       },
     ],
   },
   { type: 'index_update', seq: 5, entries: [] },
   push,
+  {
+    type: 'push_meta',
+    opId: 'op-4',
+    relPath: 'a/b.txt',
+    baseRev: 2,
+    mode: 0o600,
+    mtimeNs: NOW_NS,
+    xattrs: [],
+  },
+  { type: 'push_link', opId: 'op-5', relPath: 'a/c', target: '../b.txt' },
   { type: 'accept', opId: 'op-1', rev: 3, seq: 6 },
   {
     type: 'conflict',
@@ -89,8 +118,8 @@ describe('sync messages', () => {
   it('splits client and hub directions', () => {
     expect(SYNC_CLIENT_MESSAGE.safeParse(push).success).toBe(true);
     expect(SYNC_HUB_MESSAGE.safeParse(push).success).toBe(false);
-    expect(SYNC_HUB_MESSAGE.safeParse(valid[4]).success).toBe(true);
-    expect(SYNC_CLIENT_MESSAGE.safeParse(valid[4]).success).toBe(false);
+    expect(SYNC_HUB_MESSAGE.safeParse(valid[6]).success).toBe(true);
+    expect(SYNC_CLIENT_MESSAGE.safeParse(valid[6]).success).toBe(false);
   });
 
   it('refuses a push whose hashes do not match the size', () => {
@@ -109,6 +138,85 @@ describe('sync messages', () => {
     expect(
       SYNC_MESSAGE.safeParse({ type: 'move', opId: 'x', from: 'a', to: 'a', baseRev: 1 }).success,
     ).toBe(false);
+  });
+});
+
+describe('sync metadata', () => {
+  it('ties the millisecond moment to the nanosecond stamp', () => {
+    expect(syncMomentOfNs(NOW_NS)).toBe(NOW_MS);
+    expect(
+      SYNC_MESSAGE.safeParse({ ...push, meta: { ...push.meta, mtime: '2026-11-07T09:05:03.124Z' } })
+        .success,
+    ).toBe(false);
+    expect(
+      SYNC_MESSAGE.safeParse({ ...push, meta: { ...push.meta, mtimeNs: '12x' } }).success,
+    ).toBe(false);
+  });
+
+  it('refuses a mode beyond the permission bits', () => {
+    expect(SYNC_MESSAGE.safeParse({ ...push, mode: 0o10000 }).success).toBe(false);
+    expect(SYNC_MESSAGE.safeParse({ ...push, mode: -1 }).success).toBe(false);
+    expect(SYNC_MESSAGE.safeParse({ ...push, mode: 0o7777 }).success).toBe(true);
+  });
+
+  it('keeps extended attributes inside the stored namespaces and limits', () => {
+    const withXattrs = (xattrs: unknown): boolean =>
+      SYNC_MESSAGE.safeParse({ ...push, xattrs }).success;
+    expect(withXattrs([{ name: 'trusted.a', value: '' }])).toBe(true);
+    expect(withXattrs([{ name: 'security.selinux', value: 'AAAA' }])).toBe(true);
+    expect(withXattrs([{ name: 'system.posix_acl_access', value: '' }])).toBe(false);
+    expect(withXattrs([{ name: 'user.', value: '' }])).toBe(false);
+    expect(withXattrs([{ name: 'user.a', value: 'not base64!' }])).toBe(false);
+    expect(
+      withXattrs([
+        { name: 'user.a', value: '' },
+        { name: 'user.a', value: '' },
+      ]),
+    ).toBe(false);
+    expect(withXattrs([{ name: 'user.a', value: 'A'.repeat(87384) }])).toBe(false);
+    expect(withXattrs([{ name: 'user.a', value: 'A'.repeat(87380) }])).toBe(true);
+    expect(
+      withXattrs([
+        { name: `user.${'x'.repeat(250)}`, value: '' },
+        ...Array.from({ length: 400 }, (_, index) => ({
+          name: `user.${'y'.repeat(200)}${String(index)}`,
+          value: '',
+        })),
+      ]),
+    ).toBe(false);
+  });
+
+  it('refuses a link without a target and a link entry without one', () => {
+    expect(SYNC_MESSAGE.safeParse({ type: 'push_link', opId: 'x', relPath: 'l' }).success).toBe(
+      false,
+    );
+    expect(
+      SYNC_MESSAGE.safeParse({
+        type: 'push_link',
+        opId: 'x',
+        relPath: 'l',
+        target: '',
+      }).success,
+    ).toBe(false);
+    expect(
+      SYNC_MESSAGE.safeParse({
+        type: 'index_update',
+        seq: 1,
+        entries: [{ ...entryBase, itemId: ID, relPath: 'l', kind: 'link', rev: 1, inode: null }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('carries a hard link as a push naming an existing path', () => {
+    expect(SYNC_CLIENT_MESSAGE.safeParse({ ...push, linkOf: 'a/other.txt' }).success).toBe(true);
+    expect(SYNC_CLIENT_MESSAGE.safeParse({ ...push, linkOf: '' }).success).toBe(false);
+  });
+
+  it('refuses metadata messages from the hub side', () => {
+    expect(SYNC_HUB_MESSAGE.safeParse(valid[4]).success).toBe(false);
+    expect(SYNC_HUB_MESSAGE.safeParse(valid[5]).success).toBe(false);
+    expect(SYNC_CLIENT_MESSAGE.safeParse(valid[4]).success).toBe(true);
+    expect(SYNC_CLIENT_MESSAGE.safeParse(valid[5]).success).toBe(true);
   });
 });
 

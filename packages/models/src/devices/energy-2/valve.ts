@@ -36,7 +36,7 @@ export const WATER_VALVE_MODEL: ModelSpec = {
   title: 'Water valve',
   category: 'water',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.086, height: 0.2035 },
   framing: house('handle', 26, 18),
   shots: [
     shot('flowing', FLOWING, 'handle', { zoom: 1.5, yaw: 20, pitch: 22, loopS: 1.6, stillAt: 0.8 }),

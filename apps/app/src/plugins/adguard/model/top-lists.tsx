@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { RankedList } from '../../../components/ranked-list';
-import { cn } from '../../../design/cn';
 import type { Device } from '../../../store/state';
 import { adguardSectionHref } from './links';
 import { rankedEntries } from './top-model';
@@ -38,17 +37,15 @@ export function TopLists({
   stats,
   lists,
   limit,
-  stale,
 }: {
   readonly device: Device;
   readonly stats: AdGuardStats;
   readonly lists: readonly TopList[];
   readonly limit: number;
-  readonly stale: boolean;
 }): ReactNode {
   const router = useRouter();
   return (
-    <View className={cn('gap-section-gap', stale && 'opacity-60')}>
+    <View className="gap-section-gap">
       {lists.map((list) => {
         const entries = rankedEntries(SOURCE[list](stats), limit, LISTS[list].noun);
         return entries.length === 0 ? null : (

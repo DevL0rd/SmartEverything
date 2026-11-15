@@ -30,7 +30,7 @@ export const POOL_PUMP_MODEL: ModelSpec = {
   title: 'Pool pump',
   category: 'water',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.54, depth: 0.28, height: 0.269 },
   framing: house('impeller', 30, 22),
   shots: [
     shot('pumping', RUNNING, 'impeller', { zoom: 1.3, yaw: 18, pitch: 40, loopS: 1, symmetry: 90 }),

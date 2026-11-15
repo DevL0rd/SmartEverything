@@ -19,7 +19,7 @@ const TOP_Y = CARCASS_TOP + 0.02;
 export const SINK_UNIT_MODEL: ModelSpec = kitchenFurniture({
   id: 'cat.kitchen.sink-unit',
   title: 'Sink unit',
-  footprint: { width: 1.2, depth: 0.62, height: 1.24 },
+  footprint: { width: 1.2, depth: 0.62, height: 1.2412 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {
@@ -106,7 +106,7 @@ export const SINK_UNIT_MODEL: ModelSpec = kitchenFurniture({
 export const COUNTERTOP_MODEL: ModelSpec = kitchenFurniture({
   id: 'cat.kitchen.countertop',
   title: 'Countertop',
-  footprint: { width: 2, depth: 0.62, height: 1 },
+  footprint: { width: 2, depth: 0.62, height: 0.152 },
   size: {
     width: { param: 'length', extra: 0, resizes: true },
     depth: { param: 'depth', extra: 0, resizes: true },

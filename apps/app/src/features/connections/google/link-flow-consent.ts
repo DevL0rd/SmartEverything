@@ -1,7 +1,7 @@
 import type { DesktopGoogleLink } from '@smarteverything/domain';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
-import { authorizeGoogleOnDesktop, desktopGoogleLink } from '../../planner/data/desktop-bridge';
+import { authorizeGoogleOnDesktop, desktopGoogleLink } from '../../planner';
 import { ANDROID_REDIRECT_URI, androidAnswer, type GoogleConsent } from './link-flow';
 
 export function desktopConsent(link: DesktopGoogleLink): GoogleConsent {

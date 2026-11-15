@@ -1,12 +1,12 @@
-import { SAMPLE_TOPICS, type ProcessWindow } from '@smarteverything/domain';
+import { SAMPLE_TOPICS } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
-import { deviceTarget, type Viewers } from '../metrics/viewers';
+import { deviceTarget, type Viewers, type DeviceDetail } from '../metrics/viewers';
 
 const KEY_FRAME_WAIT_MS = 3_000;
 
 const READ_TOPICS = SAMPLE_TOPICS.filter((topic) => topic !== 'processes');
 
-export type FreshViewers = Pick<Viewers<ProcessWindow>, 'hold' | 'release' | 'demand'>;
+export type FreshViewers = Pick<Viewers<DeviceDetail>, 'hold' | 'release' | 'demand'>;
 
 export class FreshRead {
   private readonly waiters = new Set<() => void>();

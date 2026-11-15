@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
@@ -26,13 +26,8 @@ const HEALTH_PLUGIN = join(
   'plugin',
   'with-health-connect.ts',
 );
-const APP_IDENTITY_FILE = join(ROOT, 'apps', 'app', 'app-identity.json');
 const PRIVACY_SECTIONS = join(ROOT, 'apps', 'hub', 'src', 'extensions', 'privacy', 'sections.ts');
 
-const APP_IDENTITY = z.object({
-  applicationId: z.string().min(1),
-  signingCertificateSha256: z.string().regex(/^[0-9a-f]{64}$/u),
-});
 const HEALTH_PERMISSIONS = z.object({ HEALTH_CONNECT_PERMISSIONS: z.array(z.string().min(1)) });
 const PRIVACY_TOPICS = z.object({
   PRIVACY_PERMISSION_TOPICS: z.record(z.string(), z.string()),
@@ -49,12 +44,6 @@ const BADGING_FIELDS = z.object({
 });
 
 export type ApkVariant = 'release' | 'development';
-
-export type AppIdentity = z.infer<typeof APP_IDENTITY>;
-
-export function readAppIdentity(): AppIdentity {
-  return APP_IDENTITY.parse(JSON.parse(readFileSync(APP_IDENTITY_FILE, 'utf8')));
-}
 
 export interface ApkFacts {
   readonly file: string;
@@ -147,21 +136,37 @@ export function parseSigner(text: string): string | null {
   return /^Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})$/mu.exec(text)?.[1] ?? null;
 }
 
+const META_VALUE_PATTERNS: readonly RegExp[] = [
+  /:value\(0x[0-9a-f]+\)="([^"]*)"/u,
+  /:value\(0x[0-9a-f]+\)=(@0x[0-9a-f]+)/u,
+  /:value\(0x[0-9a-f]+\)=\(type 0x[0-9a-f]+\)(0x[0-9a-f]+)/u,
+  /:value\(0x[0-9a-f]+\)=([^\s"(]+)/u,
+  /:resource\(0x[0-9a-f]+\)=(@0x[0-9a-f]+)/u,
+];
+
+function metaValueOf(element: string): string | undefined {
+  for (const pattern of META_VALUE_PATTERNS) {
+    const value = pattern.exec(element)?.[1];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function metaEntryOf(element: string): readonly [string, string] | null {
+  const name = /:name\(0x[0-9a-f]+\)="([^"]*)"/u.exec(element)?.[1];
+  if (name === undefined) return null;
+  const value = metaValueOf(element);
+  if (value === undefined) throw new ApkReadError('aapt2', `meta-data ${name} has no value`);
+  return [name, value];
+}
+
 export function parseMetaData(text: string): Readonly<Record<string, string>> {
   const entries = text
     .split(/^\s*E: /mu)
     .filter((element) => element.startsWith('meta-data'))
     .flatMap((element) => {
-      const name = /:name\(0x[0-9a-f]+\)="([^"]*)"/u.exec(element)?.[1];
-      const value =
-        /:value\(0x[0-9a-f]+\)="([^"]*)"/u.exec(element)?.[1] ??
-        /:value\(0x[0-9a-f]+\)=(@0x[0-9a-f]+)/u.exec(element)?.[1] ??
-        /:value\(0x[0-9a-f]+\)=\(type 0x[0-9a-f]+\)(0x[0-9a-f]+)/u.exec(element)?.[1] ??
-        /:value\(0x[0-9a-f]+\)=([^\s"(]+)/u.exec(element)?.[1] ??
-        /:resource\(0x[0-9a-f]+\)=(@0x[0-9a-f]+)/u.exec(element)?.[1];
-      if (name === undefined) return [];
-      if (value === undefined) throw new ApkReadError('aapt2', `meta-data ${name} has no value`);
-      return [[name, value] as const];
+      const entry = metaEntryOf(element);
+      return entry === null ? [] : [entry];
     });
   return Object.fromEntries(entries);
 }

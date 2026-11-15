@@ -2,7 +2,7 @@ import type { PlannerAlarmRow, PlannerWatchState } from '@smarteverything/domain
 import type { ReactNode } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import { NavRow } from '../../../components/rows';
-import { useMyWatch } from '../../watches/watch-glance';
+import { useMyWatch } from '../../watches';
 import { usePlannerAlarms } from '../data';
 import { useOwnPrefs } from './preferences';
 

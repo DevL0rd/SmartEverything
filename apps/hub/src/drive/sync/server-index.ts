@@ -2,13 +2,21 @@ import { createHash } from 'node:crypto';
 import type { DriveFeedRow, DriveItem, DriveTrashEntry } from '@smarteverything/domain';
 import { blockCount, blockSizeFor, type SyncIndexEntry } from '@smarteverything/domain/drive-sync';
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
+import { FILE_MODE, FOLDER_MODE, nsOfMoment } from '../../store/repositories/drive-inodes';
 import type { Store } from '../../store/store';
 import { DRIVE_PAGE_SIZE } from '../service-read';
 import { inScope, toWirePath, type SyncScope } from './placement-scope';
+import { metaOf } from './server-meta';
 
 export type SyncIndexStore = Pick<
   Store,
-  'driveRoots' | 'driveItems' | 'driveBlocks' | 'driveFeed' | 'driveTrash'
+  | 'driveRoots'
+  | 'driveItems'
+  | 'driveBlocks'
+  | 'driveFeed'
+  | 'driveTrash'
+  | 'driveInodes'
+  | 'driveXattrs'
 >;
 
 const HASH_BYTES = 32;
@@ -35,7 +43,7 @@ export function indexIsStale(
 }
 
 function blocksMatch(
-  item: Exclude<DriveItem, { readonly kind: 'folder' }>,
+  item: Exclude<DriveItem, { readonly kind: 'folder' | 'link' | 'special' }>,
   blocks: DriveBlocks,
 ): boolean {
   return blocks.hashes.length === blockCount(item.bytes, blocks.blockSize) * HASH_BYTES;
@@ -48,19 +56,28 @@ export function entryOf(
 ): SyncIndexEntry | null {
   const relPath = toWirePath(scope, item.relPath);
   if (relPath === null) return null;
+  if (item.kind === 'special') return null;
+  const meta = metaOf(store, item);
   const base = {
     itemId: item.id,
     relPath,
     mtime: item.modifiedAt,
+    mtimeNs: meta.mtimeNs,
     rev: item.rev,
     deleted: false,
+    mode: meta.mode,
+    xattrs: meta.xattrs,
   };
   if (item.kind === 'folder') return { ...base, kind: 'folder' };
+  if (item.kind === 'link') {
+    return { ...base, kind: 'link', inode: meta.inode, target: item.linkTarget };
+  }
   const blocks = store.driveBlocks.find(item.id, item.rev);
   if (blocks === undefined || !blocksMatch(item, blocks)) return null;
   return {
     ...base,
     kind: 'file',
+    inode: meta.inode,
     bytes: item.bytes,
     blockSize: blocks.blockSize,
     blocksHash: blocksHashOf(blocks.hashes),
@@ -76,13 +93,17 @@ function tombstoneOf(
     itemId: entry.itemId,
     relPath,
     mtime: row.at,
+    mtimeNs: nsOfMoment(row.at).toString(),
     rev: row.rev,
     deleted: true,
+    xattrs: [],
   };
-  if (entry.isFolder) return { ...base, kind: 'folder' };
+  if (entry.isFolder) return { ...base, kind: 'folder', mode: FOLDER_MODE };
   return {
     ...base,
     kind: 'file',
+    mode: FILE_MODE,
+    inode: null,
     bytes: entry.bytes,
     blockSize: blockSizeFor(entry.bytes),
     blocksHash: NO_BLOCKS_HASH,

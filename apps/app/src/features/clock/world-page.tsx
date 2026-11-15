@@ -1,15 +1,14 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { useWindowDimensions, View } from 'react-native';
+import { View } from 'react-native';
 import { centredRect, type Rect } from '../../components/anchor';
 import { Button } from '../../components/button';
 import { Card } from '../../components/card';
 import { CardGrid, evenColumnsOf } from '../../components/card-grid';
 import { EmptyState } from '../../components/empty-state';
 import type { HeaderAction } from '../../components/page-header';
-import { useAreaWidth } from '../../design/size-class';
+import { useAreaWidth, useWindowSize } from '../../design/size-class';
 import { clock24 } from '../../format/time';
-import { useVisibleMinute } from '../planner/data';
-import { Composer } from '../planner/item';
+import { useVisibleMinute, Composer } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
 import { frameLayoutOf } from './frame/sections';
 import { AddCityPicker } from './world/add-city';
@@ -119,7 +118,7 @@ export function WorldPage(): ReactNode {
   const ref = useRef<View>(null);
   const { value: now, onLayout } = useVisibleMinute(ref);
   const world = useWorld(now);
-  const window = useWindowDimensions();
+  const window = useWindowSize();
   const columns = columnsOf(useAreaWidth());
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const [event, setEvent] = useState<string | null>(null);

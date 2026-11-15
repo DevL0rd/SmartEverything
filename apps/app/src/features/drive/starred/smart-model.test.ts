@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_ALBUM, DRIVE_ITEM, type DriveAlbum, type DriveItem } from '@smarteverything/domain';
+import { DRIVE_ALBUM, type DriveAlbum, type DriveItem } from '@smarteverything/domain';
 import {
   NEW_MATCH_DAYS,
   matchDaysOf,
@@ -9,33 +9,20 @@ import {
   thisWeekText,
   type SmartFolder,
 } from './smart-model';
+import { documentFixture } from '../data/fixtures';
 
 const ROOT = 'a1b2c3d4-0000-4000-8000-000000000001';
 
 function item(index: number, addedAt: string, bytes: number): DriveItem {
-  return DRIVE_ITEM.parse({
+  return documentFixture({
     id: `a1b2c3d4-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
     rootId: ROOT,
     parentId: null,
-    relPath: `File ${String(index)}.pdf`,
     name: `File ${String(index)}.pdf`,
     modifiedAt: addedAt,
     addedAt,
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
-    mime: 'application/pdf',
     bytes,
-    sha256: null,
-    integrity: 'unknown',
-    thumb: { state: 'none' },
-    kind: 'document',
   });
 }
 

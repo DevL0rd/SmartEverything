@@ -4,12 +4,11 @@ import { View } from 'react-native';
 import type { AppHref } from '../../../components/app-href';
 import { entryIdOfRecord, type HealthRecord } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { logFormOf } from '../../health-log';
 import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
@@ -65,7 +64,7 @@ function editHref(record: HealthRecord, at: number): AppHref | null {
     : href.logHealth(record.type, { entry: entryId, at: String(at) });
 }
 
-function logAction(spec: SeriesSpec): HeaderAction | null {
+function logAction(spec: SeriesSpec): ShellAction | null {
   if (spec.type === 'Nutrition' || spec.type === 'Hydration') {
     return { icon: 'plus', label: 'Add food', href: href.logFood() };
   }
@@ -119,13 +118,9 @@ export function MetricScreen(): ReactNode {
   const known = isSeriesKey(metric);
   const log = known ? logAction(seriesOf(metric)) : null;
   return (
-    <Screen
-      header={
-        <PageHeader
-          title={known ? seriesOf(metric).label : 'Health data'}
-          actions={log === null ? [] : [log]}
-        />
-      }
+    <PageShell
+      title={known ? seriesOf(metric).label : 'Health data'}
+      actions={log === null ? [] : [log]}
     >
       {known ? (
         <MetricBody spec={seriesOf(metric)} />
@@ -136,6 +131,6 @@ export function MetricScreen(): ReactNode {
           body="This kind of health data does not exist."
         />
       )}
-    </Screen>
+    </PageShell>
   );
 }

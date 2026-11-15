@@ -78,7 +78,7 @@ export class AgentConnection {
     this.socket.on('data', (chunk: string) => {
       this.receive(chunk);
     });
-    this.socket.once('error', () => {
+    this.socket.on('error', () => {
       this.fail(new NodeFailureError('not_supported', AGENT_GONE));
     });
     this.socket.once('close', () => {

@@ -6,7 +6,7 @@ import { landing, leafParams } from './route-landing.test-util';
 import { ROUTES, TAB_ROUTES } from './routes';
 import { TAB_NAMES } from './tab-names';
 
-const CLOCK_SECTIONS = ['index', 'timers', 'stopwatch', 'world'] as const;
+const CLOCK_SECTIONS = ['index', 'bedtime', 'timers', 'stopwatch', 'world'] as const;
 
 describe('clock links', () => {
   it('open every section inside the Clock tab section switcher', () => {
@@ -16,14 +16,16 @@ describe('clock links', () => {
     }
   });
 
-  it('keep the ring screen as a push on the Clock stack', () => {
-    expect(landing('/clock/ring/r1')).toBe('(clock) > clock/ring/[ringId]');
-    expect(leafParams('/clock/ring/r1')).toEqual({ ringId: 'r1' });
+  it('open the ring screen over the whole app, outside every tab', () => {
+    expect(landing('/ring/r1')).toBe('');
+    expect(leafParams('/ring/r1')).toEqual({ ringId: 'r1' });
+    const chat = ['(app)', '(z-assistant)', 'assistant/chat/[chatId]'];
+    expect(landing('/ring/r1', chat)).toBe('');
   });
 
-  it('stay inside the assistant when a ring opens from a chat', () => {
-    const chat = ['(app)', '(z-assistant)', 'assistant/chat/[chatId]'];
-    expect(landing('/clock/ring/r1', chat)).toBe('(z-assistant) > clock/ring/[ringId]');
+  it('open the ring screen from the phone alarm link with its ring key', () => {
+    const key = 'alarm:a1b2c3d4-0000-4000-8000-000000000003';
+    expect(leafParams(`/ring/${key}`)).toEqual({ ringId: key });
   });
 
   it('open the Clock tab from any other tab', () => {
@@ -35,6 +37,7 @@ describe('clock links', () => {
   it('have no clock pages left under the Planner', () => {
     expect(landing('/planner/clock/alarms')).not.toContain('clock/(sections)');
     expect(landing('/planner/ring/r1')).not.toContain('ring/[ringId]');
+    expect(landing('/clock/ring/r1')).not.toContain('ring/[ringId]');
   });
 });
 
@@ -60,6 +63,7 @@ describe('clock entry points', () => {
   it('registers every section but the first as a page under the Clock tab', () => {
     const pages = ROUTES.filter((route) => route.parent === 'clock');
     expect(pages.map((route) => route.key)).toEqual([
+      'clock-bedtime',
       'clock-timers',
       'clock-stopwatch',
       'clock-world',
@@ -82,8 +86,9 @@ describe('clock entry points', () => {
     expect(href.clock.timers()).toBe('/clock/timers');
     expect(href.clock.stopwatch()).toBe('/clock/stopwatch');
     expect(href.clock.world()).toBe('/clock/world');
+    expect(href.clock.bedtime()).toBe('/clock/bedtime');
     expect(href.clock.ring('r1')).toStrictEqual({
-      pathname: '/clock/ring/[ringId]',
+      pathname: '/ring/[ringId]',
       params: { ringId: 'r1' },
     });
   });

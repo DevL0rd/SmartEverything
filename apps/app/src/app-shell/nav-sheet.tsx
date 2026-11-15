@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import Animated, {
   interpolate,
   useAnimatedReaction,
@@ -133,7 +134,7 @@ function Panel({
 }
 
 export function NavSheetHost(): ReactNode {
-  const window = useWindowDimensions();
+  const window = useWindowSize();
   const insets = useSafeAreaInsets();
   const frame = floatingSheetFrame(window, insets);
   const stops = useSheetStops(window.height, frame.maxHeight);

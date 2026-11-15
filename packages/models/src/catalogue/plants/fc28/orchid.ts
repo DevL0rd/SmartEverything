@@ -89,7 +89,7 @@ export function orchidParts(): ModelSpecPart[] {
 export const ORCHID_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.orchid',
   title: 'Orchid',
-  footprint: { width: 0.57, depth: 0.58, height: 0.57 },
+  footprint: { width: 0.5676, depth: 0.5827, height: 0.5705 },
   names: {
     display: 'Orchid',
     synonyms: ['orchid', 'phalaenopsis', 'moth orchid', 'flowering plant', 'potted orchid'],

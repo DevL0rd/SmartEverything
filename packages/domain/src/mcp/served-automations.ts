@@ -2,33 +2,6 @@ import type { Served } from './served-types';
 
 export const SERVED_AUTOMATIONS = [
   {
-    name: 'scene_find',
-    area: 'automations',
-    access: 'read',
-    title: 'Find scenes',
-    line: 'Scenes with their actions',
-    description:
-      'Lists scenes in order with their actions, filtered by words in the name; a partial list carries the total and nextCursor. Read it before scene_run or scene_edit for the sceneId.',
-    route: { part: 'scene_find' },
-  },
-  {
-    name: 'scene_edit',
-    area: 'automations',
-    access: 'control',
-    title: 'Edit scenes',
-    line: 'Add, change or remove',
-    description:
-      'Adds, changes or removes a scene; sceneId comes from scene_find and each action needs deviceId and capability from device_read. Not for running one (scene_run).',
-    route: {
-      key: 'action',
-      branches: {
-        create: { part: 'create_scene', line: 'Add a scene from a name, icon and actions' },
-        update: { part: 'update_scene', line: 'Change a scene’s name, icon, actions or position' },
-        remove: { part: 'remove_scene', line: 'Remove a scene' },
-      },
-    },
-  },
-  {
     name: 'schedule_find',
     area: 'automations',
     access: 'read',

@@ -1,16 +1,34 @@
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HUB_UPDATE_LEDGER_FILE } from '@smarteverything/domain';
-import { buildSync } from 'esbuild';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
+import { UPDATE_ENTRY_FILES } from './hub-install-layout.ts';
 
 const ROOT = join(import.meta.dirname, '..');
 
-export const WATCHDOG_ENTRY = join(ROOT, 'tooling', 'self-update-watchdog.ts');
+const WATCHDOG_ENTRY = join(ROOT, 'tooling', 'self-update-watchdog.ts');
 
-export const STEP_ENTRY = join(ROOT, 'tooling', 'self-update-step.ts');
+const STEP_ENTRY = join(ROOT, 'tooling', 'self-update-step.ts');
 
-const HUB_PACKAGE = '@smarteverything/hub';
+const HUB_COMMAND_ENTRY = join(ROOT, 'tooling', 'self-update-hub-command.ts');
+
+const MIGRATION_CHECK_ENTRY = join(
+  ROOT,
+  'apps',
+  'hub',
+  'src',
+  'self-update',
+  'migration-check-main.ts',
+);
+
+export const UPDATE_ENTRIES: readonly {
+  readonly entry: string;
+  readonly file: string;
+}[] = [
+  { entry: HUB_COMMAND_ENTRY, file: UPDATE_ENTRY_FILES.hubCommand },
+  { entry: WATCHDOG_ENTRY, file: UPDATE_ENTRY_FILES.watchdog },
+  { entry: STEP_ENTRY, file: UPDATE_ENTRY_FILES.step },
+  { entry: MIGRATION_CHECK_ENTRY, file: UPDATE_ENTRY_FILES.migrationCheck },
+];
 
 export interface SelfUpdatePaths {
   readonly work: string;
@@ -18,7 +36,6 @@ export interface SelfUpdatePaths {
   readonly health: string;
   readonly log: string;
   readonly watchdogLog: string;
-  readonly step: string;
 }
 
 export function selfUpdatePaths(layout: HubLayout): SelfUpdatePaths {
@@ -29,31 +46,7 @@ export function selfUpdatePaths(layout: HubLayout): SelfUpdatePaths {
     health: join(work, 'healthy'),
     log: layout.system.logs.hubUpdateWatchdog,
     watchdogLog: join(work, 'watchdog.log'),
-    step: join(work, 'step.mjs'),
   };
-}
-
-export function bundle(entry: string, outfile: string): string {
-  buildSync({
-    entryPoints: [entry],
-    outfile,
-    bundle: true,
-    platform: 'node',
-    format: 'esm',
-    target: 'node22',
-    logLevel: 'silent',
-    banner: {
-      js: 'import { createRequire as selfUpdateRequire } from "node:module"; const require = selfUpdateRequire(import.meta.url);',
-    },
-  });
-  return outfile;
-}
-
-export function buildWatchdog(entry: string, outfile: string): string {
-  if (readFileSync(entry, 'utf8').includes(HUB_PACKAGE)) {
-    throw new Error(`The watchdog must not import ${HUB_PACKAGE}, or it dies with the hub`);
-  }
-  return bundle(entry, outfile);
 }
 
 export { latestRelease, readLedger, writeLedger } from './self-update-ledger.ts';

@@ -1,4 +1,4 @@
-import { API_ENDPOINTS } from '@smarteverything/domain';
+import { API_ENDPOINTS, COMPUTER_ROLE_MODELS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DesktopEntries } from '../../src/node/controls/linux/desktop-entries';
 import { LinuxSession } from '../../src/node/controls/linux/linux-session';
@@ -27,9 +27,12 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 
-async function deviceKinds(base: Booted): Promise<readonly string[]> {
+async function pairedComputers(base: Booted): Promise<readonly string[]> {
   const reply = await call(base.base, base.owner, { method: 'GET', path: '/api/devices' });
-  return API_ENDPOINTS.listDevices.response.parse(reply.body).map((device) => device.kind);
+  return API_ENDPOINTS.listDevices.response
+    .parse(reply.body)
+    .filter((device) => device.kind === 'computer' && device.model !== COMPUTER_ROLE_MODELS.hub)
+    .map((device) => device.id);
 }
 
 describe.skipIf(process.platform !== 'linux')('hub on an unreachable desktop session bus', () => {
@@ -53,10 +56,10 @@ describe.skipIf(process.platform !== 'linux')('hub on an unreachable desktop ses
 });
 
 describe('hub without a computer of its own', () => {
-  it('opens no session bus and lists no computer until a node pairs', async () => {
+  it('opens no session bus and lists no paired computer until a node pairs', async () => {
     booted = await bootServer(directory.path);
     expect(logs.events()).not.toContain('node.session_unavailable');
-    expect(await deviceKinds(booted)).not.toContain('computer');
+    expect(await pairedComputers(booted)).toEqual([]);
   });
 });
 

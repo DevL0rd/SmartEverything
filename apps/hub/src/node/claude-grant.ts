@@ -72,7 +72,7 @@ export class NodeClaudeGrant {
 
   stop(): void {
     this.stopped = true;
-    this.options.mcp?.revoke('claude');
+    this.options.mcp?.release('claude');
   }
 
   async revoke(): Promise<void> {

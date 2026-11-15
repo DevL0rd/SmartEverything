@@ -1,6 +1,5 @@
 import { mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import type { DrivePlacement } from '@smarteverything/domain';
 
 export type FolderState = readonly string[] | 'absent' | 'file';
 
@@ -16,9 +15,8 @@ export interface PathFacts {
 }
 
 export interface PathCheck {
-  readonly placement: DrivePlacement;
-  readonly earlier: readonly DrivePlacement[];
-  readonly requireEmpty: boolean;
+  readonly path: string;
+  readonly earlier: readonly string[];
 }
 
 const POSIX_SYSTEM = [
@@ -109,26 +107,13 @@ function staticRefusal(facts: PathFacts, target: string): string | null {
   return null;
 }
 
-async function folderRefusal(fs: PathFs, target: string): Promise<string | null> {
-  const state = await fs.inspect(target);
-  if (state === 'file') return 'The mount path is a file, not a folder';
-  if (state !== 'absent' && state.length > 0) return 'The mount folder must be empty';
-  return null;
-}
-
-export async function pathRefusal(
-  check: PathCheck,
-  facts: PathFacts,
-  fs: PathFs,
-): Promise<string | null> {
-  const target = check.placement.localPath;
-  const refused = staticRefusal(facts, target);
+export function pathRefusal(check: PathCheck, facts: PathFacts): string | null {
+  const refused = staticRefusal(facts, check.path);
   if (refused !== null) return refused;
-  if (check.earlier.some((other) => overlaps(facts.platform, other.localPath, target))) {
+  if (check.earlier.some((other) => overlaps(facts.platform, other, check.path))) {
     return 'The path overlaps another folder placed on this computer';
   }
-  if (check.placement.mode !== 'mounted' || !check.requireEmpty) return null;
-  return folderRefusal(fs, target);
+  return null;
 }
 
 function missing(cause: unknown): boolean {

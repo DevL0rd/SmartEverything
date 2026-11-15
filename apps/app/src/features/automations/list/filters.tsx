@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import { ChoiceChip } from '../../../components/choice-chip';
 import { FlatChoice } from '../../../components/flat-choice';
 import { HScroller } from '../../../components/h-scroller';
-import { SearchField } from '../../../components/search-field';
 import { count } from '../../../format/number';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import {
   DEFAULT_VIEW,
   SEARCH_FROM,
@@ -12,6 +12,7 @@ import {
   type FilterChoice,
   type View as ListView,
 } from './list-view';
+import type { AutomationsList } from './use-list';
 
 const INLINE_FILTER_MIN = 520;
 const SORT_OPTIONS = SORTS.map(({ id, label }) => ({ value: id, label }));
@@ -19,7 +20,6 @@ const SORT_OPTIONS = SORTS.map(({ id, label }) => ({ value: id, label }));
 export interface FiltersProps {
   readonly choices: readonly FilterChoice[];
   readonly view: ListView;
-  readonly total: number;
   readonly onChange: (view: ListView) => void;
 }
 
@@ -72,46 +72,45 @@ function StatusFilters({
   );
 }
 
-export function Filters({ choices, view, total, onChange }: FiltersProps): ReactNode {
+export function listSearchOf(list: AutomationsList): ShellSearchConfig | undefined {
+  if (list.entries.length < SEARCH_FROM) return undefined;
+  return {
+    value: list.view.query,
+    onChange: (query): void => {
+      list.setView({ ...list.view, query });
+    },
+    placeholder: 'Find an automation',
+  };
+}
+
+export function Filters({ choices, view, onChange }: FiltersProps): ReactNode {
   const [width, setWidth] = useState(0);
   return (
     <View
-      className="gap-2"
+      className="flex-row items-center gap-1"
       onLayout={(event) => {
         setWidth(event.nativeEvent.layout.width);
       }}
     >
-      {total >= SEARCH_FROM ? (
-        <SearchField
-          value={view.query}
-          onChange={(query) => {
-            onChange({ ...view, query });
-          }}
-          placeholder="Find an automation"
-          variant="field"
+      <View className="min-w-0 flex-1">
+        <StatusFilters
+          choices={choices}
+          view={view}
+          onChange={onChange}
+          narrow={width < INLINE_FILTER_MIN}
         />
-      ) : null}
-      <View className="flex-row items-center gap-1">
-        <View className="min-w-0 flex-1">
-          <StatusFilters
-            choices={choices}
-            view={view}
-            onChange={onChange}
-            narrow={width < INLINE_FILTER_MIN}
-          />
-        </View>
-        <View className="max-w-[45%] min-w-0">
-          <ChoiceChip
-            label="Sort automations"
-            icon="list"
-            options={SORT_OPTIONS}
-            value={view.sort}
-            all={DEFAULT_VIEW.sort}
-            onChange={(sort) => {
-              onChange({ ...view, sort });
-            }}
-          />
-        </View>
+      </View>
+      <View className="max-w-1/2 min-w-0">
+        <ChoiceChip
+          label="Sort automations"
+          icon="list"
+          options={SORT_OPTIONS}
+          value={view.sort}
+          all={DEFAULT_VIEW.sort}
+          onChange={(sort) => {
+            onChange({ ...view, sort });
+          }}
+        />
       </View>
     </View>
   );

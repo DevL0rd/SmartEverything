@@ -1,7 +1,8 @@
 import { createElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { DRIVE_ALBUM, DRIVE_ITEM, type DriveAlbum, type DriveItem } from '@smarteverything/domain';
+import { DRIVE_ALBUM, type DriveAlbum, type DriveItem } from '@smarteverything/domain';
+import { documentFixture } from '../data/fixtures';
 
 interface Pages {
   data: { pages: { items: DriveItem[]; next: string | null }[] } | undefined;
@@ -61,7 +62,7 @@ vi.mock('../components/drive-frame', () => ({
     readonly primary?: { readonly label: string };
   }): ReactNode => createElement('main', {}, primary?.label, subtitle, banner, children),
 }));
-vi.mock('../folder/folder-footer', () => ({ runChange: (): void => undefined }));
+vi.mock('../model/item-commands', () => ({ runChange: (): void => undefined }));
 vi.mock('./save-smart-folder', () => ({
   useSaveSmartFolder: (): unknown => ({
     open: (): void => undefined,
@@ -77,16 +78,26 @@ vi.mock('./smart-folders', () => ({
       folders.map((folder) => createElement('li', { key: folder.id }, folder.title)),
     ),
 }));
-vi.mock('./starred-row', () => ({
-  StarredRow: ({
-    item,
+vi.mock('./starred-look', () => ({
+  StarredFileRow: ({
+    node,
     chip,
     where,
   }: {
-    readonly item: DriveItem;
+    readonly node: { readonly name: string };
     readonly chip: { readonly label: string };
     readonly where: string;
-  }): ReactNode => createElement('li', {}, `${item.name} in ${chip.label} › ${where}`),
+  }): ReactNode => createElement('li', {}, `${node.name} in ${chip.label} › ${where}`),
+}));
+vi.mock('../source/drive-lists', () => ({
+  useDriveItemList: (
+    _list: string,
+    items: readonly DriveItem[],
+  ): { readonly browser: null; readonly nodes: readonly object[] } => ({
+    browser: null,
+    nodes: items.map((item) => ({ key: item.id, name: item.name, origin: { kind: 'item', item } })),
+  }),
+  DriveListFrame: ({ children }: { readonly children: ReactNode }): ReactNode => children,
 }));
 vi.mock('./starred-states', () => ({
   StarredEmpty: ({ live }: { readonly live: boolean }): ReactNode =>
@@ -118,31 +129,17 @@ vi.mock('../../../components/virtual-list', () => ({
     ),
 }));
 
-const ROOT_ID = 'a1b2c3d4-0000-4000-8000-000000000001';
-
-const DOC = DRIVE_ITEM.parse({
+const DOC = documentFixture({
   id: 'a1b2c3d4-0000-4000-8000-000000000010',
-  rootId: ROOT_ID,
   parentId: null,
   relPath: 'Projects/Budget 2027.xlsx',
   name: 'Budget 2027.xlsx',
   modifiedAt: '2026-11-07T10:00:00.000Z',
   addedAt: '2026-11-07T10:00:00.000Z',
-  openedAt: null,
   starred: true,
-  shared: false,
-  rev: 1,
   etag: 'e',
-  outside: false,
-  addedByProfileId: null,
-  remoteId: null,
-  remoteRev: null,
   mime: 'application/vnd.ms-excel',
   bytes: 88_000,
-  sha256: null,
-  integrity: 'unknown',
-  thumb: { state: 'none' },
-  kind: 'document',
 });
 
 function smart(title: string, surface: 'drive' | 'photos'): DriveAlbum {

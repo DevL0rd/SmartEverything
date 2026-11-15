@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { TabsBar } from '../../../components/tabs-bar';
+import type { ShellTabs } from '../../../components/page-shell/shell-sections';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import type { WorkspaceLink } from './list-links';
@@ -12,8 +12,6 @@ export interface WorkspaceRailProps {
   readonly links: readonly WorkspaceLink[];
   readonly extras: readonly WorkspaceLink[];
   readonly active: string;
-  readonly orientation: 'row' | 'column';
-  readonly focused?: boolean | undefined;
 }
 
 function Entry({
@@ -51,36 +49,29 @@ function Entry({
   );
 }
 
-export function WorkspaceRail({
-  links,
-  extras,
-  active,
-  orientation,
-  focused,
-}: WorkspaceRailProps): ReactNode {
-  const column = orientation === 'column';
-  const entries = [...links, ...extras];
-  if (column) {
-    return (
-      <View accessibilityRole="tablist" accessibilityLabel="Automation workspace">
-        {entries.map((link) => (
-          <Entry key={link.id} link={link} active={link.id === active} />
-        ))}
-      </View>
-    );
-  }
+export function workspaceTabsOf(
+  links: readonly WorkspaceLink[],
+  extras: readonly WorkspaceLink[],
+  active: string,
+): ShellTabs {
+  return {
+    items: [...links, ...extras].map((link) => ({
+      key: link.id,
+      label: link.label,
+      href: link.href,
+      icon: link.icon,
+    })),
+    active,
+    label: 'Automation workspace',
+  };
+}
+
+export function WorkspaceRail({ links, extras, active }: WorkspaceRailProps): ReactNode {
   return (
-    <TabsBar
-      compact
-      items={entries.map((link) => ({
-        key: link.id,
-        label: link.label,
-        href: link.href,
-        icon: link.icon,
-      }))}
-      active={active}
-      label="Automation workspace"
-      focused={focused}
-    />
+    <View accessibilityRole="tablist" accessibilityLabel="Automation workspace">
+      {[...links, ...extras].map((link) => (
+        <Entry key={link.id} link={link} active={link.id === active} />
+      ))}
+    </View>
   );
 }

@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { EmptyState } from '../../../components/empty-state';
-import { useFrameBodyWidth } from '../../../components/section-body';
-import { useAreaWidth } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
+import { useShellRailShown } from '../../../components/page-shell/rail-shown';
 import { joinParts } from '../../../format/text';
 import { useDevice, useIsOwner } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
@@ -22,8 +22,7 @@ import { OverviewSkeleton } from '../overview/overview-skeleton';
 import { SectionList } from '../overview/section-list';
 import { NowPlayingCard, VolumeCard } from '../overview/sound-cards';
 import { TopProcesses } from '../overview/top-processes';
-import { frameLayoutOf } from '../model/sections';
-import { twoFrameColumnsAt } from '../../../components/frame-layout';
+import { twoFrameColumnsAt } from '../../../components/page-shell/layout';
 import { uptimeText } from '../model/computer-view';
 
 const TOPICS = ['summary', 'system'] as const;
@@ -85,7 +84,7 @@ function Body({ device }: { readonly device: Device }): ReactNode {
   const features = useComputerDetail(device.id, device.online).data?.features;
   const loaded = useComputerSelect(device.id, (parts) => parts.summary !== undefined);
   const hasGpu = useHasGpu(device.id, status.offline);
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = !useShellRailShown();
   if (!loaded && device.online) return <OverviewSkeleton />;
   return (
     <>
@@ -98,12 +97,7 @@ function Body({ device }: { readonly device: Device }): ReactNode {
         disabled={status.offline}
         sections={
           compact ? (
-            <SectionList
-              deviceId={device.id}
-              online={device.online}
-              features={features}
-              os={factsOf(device).os}
-            />
+            <SectionList deviceId={device.id} online={device.online} features={features} />
           ) : null
         }
       />

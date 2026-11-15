@@ -11,6 +11,10 @@ import type { Store } from '../../../store/store';
 import type { MediaNotes } from '../../../transcripts/media-notes';
 import type { AcceptedCaller } from '../bearer';
 import { ID_SOURCES } from './field-texts';
+import type { ReleasePublications } from '../../../self-update/release-publications';
+import type { SecretStore } from '../../../secrets/store';
+
+export type ReleaseSecrets = Pick<SecretStore, 'githubReleaseToken' | 'saveGithubReleaseToken'>;
 
 export interface ToolImage {
   readonly data: string;
@@ -33,6 +37,8 @@ export interface ToolContext {
   readonly hub: RunningHub;
   readonly clock: Clock;
   readonly operations: Operations;
+  readonly publications: ReleasePublications;
+  readonly releaseSecrets: ReleaseSecrets;
   readonly commandWaitMs: number;
   readonly recordingPath: (storagePath: string) => string;
   readonly caller: AcceptedCaller | null;

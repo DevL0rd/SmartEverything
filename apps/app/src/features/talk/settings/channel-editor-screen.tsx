@@ -15,10 +15,9 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
 import { settingsTrail } from '../../../settings/tree';
 import { ActionRow } from '../../../components/rows';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
@@ -143,8 +142,9 @@ function NewChannel(): ReactNode {
   const { saving, create } = useCreate(fields, members);
   const problem = nameProblem(fields.name);
   return (
-    <Screen
-      header={<PageHeader title="New channel" breadcrumbs={CRUMBS} />}
+    <PageShell
+      title="New channel"
+      breadcrumbs={CRUMBS}
       footer={
         <CreateBar
           saving={saving}
@@ -179,7 +179,7 @@ function NewChannel(): ReactNode {
           />
         }
       />
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -237,7 +237,7 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
     ).catch(notifyFailure('The channel wasn’t changed'));
   };
   return (
-    <Screen header={<PageHeader title={channel.name} breadcrumbs={CRUMBS} titleLines="wrap" />}>
+    <PageShell title={channel.name} breadcrumbs={CRUMBS}>
       <ChannelEditorBody
         fields={
           <ChannelFieldsBlock
@@ -269,7 +269,7 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
           }}
         />
       </List>
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -277,9 +277,9 @@ function ChannelById({ channelId }: { readonly channelId: string }): ReactNode {
   const channel = useRow('talk_channels', channelId);
   if (channel === null) {
     return (
-      <Screen header={<PageHeader title="Channel" breadcrumbs={CRUMBS} />} maxWidth="reading">
+      <PageShell title="Channel" breadcrumbs={CRUMBS} width="reading">
         <EmptyState icon="radio" title="Channel not found" body="It may have been deleted." />
-      </Screen>
+      </PageShell>
     );
   }
   return <ExistingChannel channel={channel} />;

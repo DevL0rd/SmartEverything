@@ -4,7 +4,6 @@ import { MANIFEST, MANIFEST_SLOTS } from '@smarteverything/flow/compile/manifest
 import type { Manifest } from '@smarteverything/flow/compile/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { requireReachableTargets } from '../../src/automations/service-reach';
-import { requirePhoneAccess } from '../../src/server/handlers/scenes';
 import type { Caller } from '../../src/server/auth';
 import { checkedCommands, commandPrincipal, type CheckedInput } from '../../src/server/commands';
 import { captureLogs } from '../support/logs';
@@ -196,26 +195,13 @@ describe('saving work that commands a phone', () => {
   });
 
   it('refuses an owner automation that opens a settings page on someone else’s phone', () => {
-    const actions = [{ deviceId: phone.id, capability: 'open_settings', value: 'wifi' }];
     expect(
       refusal(() => {
-        requirePhoneAccess(test.store, caller(owner), actions);
+        requireReachableTargets(test.store, caller(owner), steps('open_settings'));
       }).message,
     ).toBe('Only the person who owns this phone can do this.');
     expect(() => {
-      requirePhoneAccess(test.store, caller(dana), actions);
-    }).not.toThrow();
-  });
-
-  it('refuses a member scene that sets sound on someone else’s phone', () => {
-    const actions = [{ deviceId: phone.id, capability: 'ring_volume', value: 40 }];
-    expect(
-      refusal(() => {
-        requirePhoneAccess(test.store, caller(sam), actions);
-      }).code,
-    ).toBe('forbidden');
-    expect(() => {
-      requirePhoneAccess(test.store, caller(dana), actions);
+      requireReachableTargets(test.store, caller(dana), steps('open_settings'));
     }).not.toThrow();
   });
 });

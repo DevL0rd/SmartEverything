@@ -35,7 +35,7 @@ function drawer(index: number): ModelSpecPart[] {
 export const FILING_CABINET_MODEL: ModelSpec = officeItem({
   id: 'cat.office.filing-cabinet',
   title: 'Filing cabinet',
-  footprint: { width: WIDTH, depth: DEPTH, height: PLINTH + PITCH * 3 + 0.03 },
+  footprint: { width: WIDTH, depth: 0.646, height: PLINTH + PITCH * 3 + 0.03 },
   meta: {
     names: {
       display: 'Filing cabinet',

@@ -95,6 +95,9 @@ function inserted(
     original_start: null,
     status: 'open',
     google: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
   });
 }
@@ -158,12 +161,15 @@ function alarmSet(
       once_on: alarm.once_on,
       skip_on: null,
       enabled: true,
-      sound: 'default',
+      sound: { kind: 'tone', id: 'default' },
       ramp_seconds: 30,
       vibrate: true,
       snooze_minutes: alarm.snooze_minutes ?? 9,
+      snooze_limit: null,
+      challenge: { kind: 'none' },
+      sunrise: null,
       smart_minutes: null,
-      wake_scene_id: null,
+      wake_automation_id: null,
       wake_lead_minutes: null,
       targets: [],
       watch: [],
@@ -206,6 +212,8 @@ async function rig(): Promise<Rig> {
     default_reminders: [],
     source: 'local',
     google: null,
+    audience: 'personal',
+    feed: null,
   }).id;
   store.plannerCollections.insert({
     profile_id: ann,
@@ -218,6 +226,8 @@ async function rig(): Promise<Rig> {
     default_reminders: [],
     source: 'local',
     google: null,
+    audience: 'personal',
+    feed: null,
   });
   const calls: Call[] = [];
   const handlers = plannerEffects({
@@ -333,6 +343,8 @@ describe('planner.add_task', () => {
       default_reminders: [],
       source: 'local',
       google: null,
+      audience: 'personal',
+      feed: null,
     }).id;
     const preferences = home.store.plannerPreferences;
     const base = {
@@ -360,13 +372,24 @@ describe('planner.add_task', () => {
         show_free_time: false,
       },
       clock: {
-        sound: 'default',
+        sound: { kind: 'tone', id: 'default' },
         ramp_seconds: 30,
         snooze_minutes: 9,
+        snooze_limit: null,
         targets: [],
-        wake_scene_id: null,
+        wake_automation_id: null,
         world_clocks: [],
       },
+      bedtime: {
+        enabled: false,
+        schedule: [],
+        reminder_minutes: 30,
+        wind_down_minutes: 30,
+        wind_down_automation_id: null,
+        do_not_disturb: true,
+        sleep_sound: null,
+      },
+      sleep_sounds: { sound: null, timer_minutes: null, fade_seconds: 20 },
       watch: { watch_alarm_sync: true, watch_calendar_push: true },
       ai: { briefing: 'off', evening_review: false, plan_suggestions: true },
     } as const;

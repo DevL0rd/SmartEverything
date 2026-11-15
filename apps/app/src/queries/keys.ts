@@ -192,7 +192,7 @@ export function computerAiKey(deviceId: string): readonly string[] {
 
 export const PLANNER_PREFIX = ['window', 'planner'] as const;
 
-export type PlannerKind = 'day' | 'range' | 'stats' | 'rings';
+export type PlannerKind = 'day' | 'range' | 'stats' | 'rings' | 'search';
 
 export const plannerKeys = {
   day: (personId: string | null, date: string): readonly unknown[] => [
@@ -259,6 +259,18 @@ export const DRIVE_WINDOW_KINDS = [
   'grants',
   'shared-with-me',
   'shared-by-me',
+  'zip-entries',
+  'zip-link',
+  'item-text',
+  'open-item',
+  'suggested',
+  'comments',
+  'access-requests',
+  'file-requests',
+  'file-request-uploads',
+  'notifications',
+  'transfers',
+  'offline',
   'photo-buckets',
   'photo-rail-counts',
   'photo-cover',
@@ -276,6 +288,18 @@ export const DRIVE_WINDOW_KINDS = [
   'photo-backup',
   'photo-duplicates',
   'photo-duplicate-stats',
+  'photo-folders',
+  'photo-hidden-folders',
+  'photo-people',
+  'photo-ai-status',
+  'photo-suggest',
+  'photo-archive-buckets',
+  'photo-archive-month',
+  'photo-locked-state',
+  'photo-locked',
+  'photo-sharing',
+  'photo-largest-videos',
+  'photo-busiest-days',
 ] as const;
 
 export type DriveWindowKind = (typeof DRIVE_WINDOW_KINDS)[number];

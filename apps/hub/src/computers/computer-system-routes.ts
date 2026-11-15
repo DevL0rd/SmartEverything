@@ -4,10 +4,12 @@ import {
   AUDIO_STATE,
   DISPLAY_STATE,
   FILE_PLACES,
+  FILE_TRASH_LIST,
   FILE_PROPERTIES,
   FILE_SEARCH_RESULT,
   FILE_UPLOAD_RESULT,
   FILE_WRITE_RESULT,
+  DRIVE_ZIP_PAGE,
   HISTORY_COLUMNS,
   PROCESS_DETAIL,
   SERVICES_STATE,
@@ -29,6 +31,7 @@ import type { Store } from '../store/store';
 import type { ComputerDirectory } from './computer-directory';
 import type { ComputerDownloads } from './computer-downloads';
 import type { ComputerService } from './computer-service';
+import type { ComputerFileLinker } from './file-links';
 
 export type ComputerSystemEndpointName =
   | 'readComputerAudio'
@@ -54,6 +57,10 @@ export type ComputerSystemEndpointName =
   | 'uploadComputerFile'
   | 'readComputerPlaces'
   | 'prepareComputerDownload'
+  | 'computerFileLinks'
+  | 'listComputerTrash'
+  | 'listComputerZipEntries'
+  | 'computerZipEntryLink'
   | 'readHistoryBackfill';
 
 export interface ComputerSystemRouteOptions {
@@ -61,6 +68,7 @@ export interface ComputerSystemRouteOptions {
   readonly service: ComputerService;
   readonly directory: ComputerDirectory;
   readonly downloads: Pick<ComputerDownloads, 'prepare'>;
+  readonly fileLinks: Pick<ComputerFileLinker, 'links' | 'zipEntry'>;
   readonly sources: Pick<SourceHistory, 'backfill'>;
 }
 
@@ -142,7 +150,7 @@ function screenRoutes(options: ComputerSystemRouteOptions, ask: Ask): Routes<Scr
 
 type SettingEndpointName = Exclude<
   ComputerSystemEndpointName,
-  FileEndpointName | ScreenEndpointName
+  FileEndpointName | BrowseEndpointName | ScreenEndpointName
 >;
 
 function settingRoutes(options: ComputerSystemRouteOptions, ask: Ask): Routes<SettingEndpointName> {
@@ -205,6 +213,9 @@ type FileEndpointName =
   | 'readComputerPlaces'
   | 'prepareComputerDownload';
 
+type BrowseEndpointName =
+  'computerFileLinks' | 'listComputerTrash' | 'listComputerZipEntries' | 'computerZipEntryLink';
+
 function fileRoutes(options: ComputerSystemRouteOptions, ask: Ask): Routes<FileEndpointName> {
   return {
     readComputerProcess: bound(E.readComputerProcess, ({ params, caller }) =>
@@ -224,7 +235,12 @@ function fileRoutes(options: ComputerSystemRouteOptions, ask: Ask): Routes<FileE
       },
     ),
     searchComputerFiles: bound(E.searchComputerFiles, ({ params, query, caller }) => {
-      const search = { path: query.path, text: query.text, cursor: query.cursor ?? null };
+      const search = {
+        path: query.path,
+        text: query.text,
+        contents: query.contents,
+        cursor: query.cursor ?? null,
+      };
       return ask(
         caller,
         params.deviceId,
@@ -250,6 +266,28 @@ function fileRoutes(options: ComputerSystemRouteOptions, ask: Ask): Routes<FileE
   };
 }
 
+function browseRoutes(options: ComputerSystemRouteOptions, ask: Ask): Routes<BrowseEndpointName> {
+  return {
+    computerFileLinks: bound(E.computerFileLinks, ({ params, query, caller }) =>
+      options.fileLinks.links(caller, params.deviceId, query.path),
+    ),
+    listComputerTrash: bound(E.listComputerTrash, ({ params, query, caller }) =>
+      ask(caller, params.deviceId, { verb: 'trash_list', cursor: query.cursor }, FILE_TRASH_LIST),
+    ),
+    listComputerZipEntries: bound(E.listComputerZipEntries, ({ params, query, caller }) => {
+      const request = {
+        verb: 'zip_entries',
+        path: query.path,
+        cursor: query.cursor ?? null,
+      } as const;
+      return ask(caller, params.deviceId, request, DRIVE_ZIP_PAGE);
+    }),
+    computerZipEntryLink: bound(E.computerZipEntryLink, ({ params, query, caller }) =>
+      options.fileLinks.zipEntry(caller, params.deviceId, query.path, query.index),
+    ),
+  };
+}
+
 export function computerSystemRoutes(
   options: ComputerSystemRouteOptions,
 ): Routes<ComputerSystemEndpointName> {
@@ -258,5 +296,6 @@ export function computerSystemRoutes(
     ...screenRoutes(options, ask),
     ...settingRoutes(options, ask),
     ...fileRoutes(options, ask),
+    ...browseRoutes(options, ask),
   };
 }

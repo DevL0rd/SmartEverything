@@ -85,7 +85,7 @@ export const STAIR_RAILING_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Stair railing',
   category: 'structure',
-  footprint: { width: NEWEL + 0.012, depth: POST_END - POST_START + NEWEL, height: 3.97 },
+  footprint: { width: NEWEL + 0.012, depth: 3.452, height: 3.97 },
   framing: framingOf(VIEW),
   meta: {
     names: {

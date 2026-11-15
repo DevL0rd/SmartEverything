@@ -1,8 +1,13 @@
 import { vi } from 'vitest';
 import type { AppUpdateOutcome, AppUpdateSummary } from '@smarteverything/domain';
-import type { AdapterStart, RestartRequest, UpdateAdapter } from '../model/adapter';
+import type {
+  AdapterStart,
+  FallbackControls,
+  RestartRequest,
+  UpdateAdapter,
+} from '../model/adapter';
 import type { CheckOutcome } from '../model/update-state';
-import type { AppUpdatePrefs } from './update-prefs';
+import type { AppUpdateFallback, AppUpdatePrefs } from './update-prefs';
 import { AppUpdateController, type ControllerDeps } from './update-controller';
 
 export const OFFER: AppUpdateSummary = {
@@ -41,6 +46,8 @@ interface Setup {
   readonly start?: AdapterStart;
   readonly outcome?: CheckOutcome;
   readonly prefs?: Partial<AppUpdatePrefs>;
+  readonly fallback?: FallbackControls;
+  readonly recorded?: AppUpdateFallback;
 }
 
 export interface World {
@@ -49,6 +56,7 @@ export interface World {
   readonly ask: ReturnType<typeof vi.fn<ControllerDeps['ask']>>;
   readonly reports: AppUpdateOutcome[];
   readonly prefs: () => AppUpdatePrefs;
+  readonly recorded: () => AppUpdateFallback;
   readonly setBusy: (busy: boolean) => void;
   readonly clickTray: () => void;
   readonly trayListening: () => boolean;
@@ -101,6 +109,7 @@ function adapterOf(options: Setup, tray: Tray): UpdateAdapter {
       return Promise.resolve();
     }),
     onConfirmRequested: tray.listen,
+    ...(options.fallback === undefined ? {} : { fallback: options.fallback }),
   };
 }
 
@@ -111,6 +120,7 @@ export function setup(options: Setup = {}): World {
     pendingId: null,
     ...options.prefs,
   };
+  let recorded: AppUpdateFallback = options.recorded ?? null;
   let busy = false;
   const tray = trayOf();
   const reports: AppUpdateOutcome[] = [];
@@ -126,6 +136,10 @@ export function setup(options: Setup = {}): World {
     changePrefs: (change): void => {
       prefs = { ...prefs, ...change };
     },
+    fallback: (): AppUpdateFallback => recorded,
+    changeFallback: (next): void => {
+      recorded = next;
+    },
     token: (): string => 'token',
     busy: (): boolean => busy,
     ask,
@@ -137,6 +151,7 @@ export function setup(options: Setup = {}): World {
     ask,
     reports,
     prefs: (): AppUpdatePrefs => prefs,
+    recorded: (): AppUpdateFallback => recorded,
     setBusy: (next: boolean): void => {
       busy = next;
       controller.busyChanged(next);

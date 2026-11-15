@@ -27,6 +27,7 @@ export const OTHER_REMOTE_MODEL: ModelSpec = remote({
     'remote control',
   ],
   size: SIZE,
+  footprint: { width: 0.1716, depth: SIZE.width, height: 0.0215 },
   materials: DARK_BODY,
   finishes: { black: {}, white: { body: { finish: 'matte-white' }, keys: { color: '#AEB2B8' } } },
   defaultFinish: 'black',

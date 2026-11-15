@@ -8,7 +8,7 @@ import { VirtualList } from '../../../components/virtual-list';
 import { useAreaWidth } from '../../../design/size-class';
 import { useDevices, useRows, useSession, useSyncStatus } from '../../../store/selectors';
 import { ChipRow } from '../../../components/library-frame';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
 import { useDriveChips } from '../data';
 import { DriveFilterChips } from '../components/drive-chip';
 import { DriveFrame } from '../components/drive-frame';
@@ -24,6 +24,8 @@ import { RecentBars } from './recent-bars';
 import { howOf, type RecentNames } from './recent-how';
 import {
   chartShown,
+  relPathOf,
+  rootIdOf,
   sectionsOf,
   timeOf,
   weekBarsOf,
@@ -31,6 +33,15 @@ import {
   type RecentLine,
 } from './recent-model';
 import { RecentRow } from './recent-row';
+import type { FileBrowserHandle } from '../../files';
+import { DriveListFrame, useDriveNodeList } from '../source/drive-lists';
+import {
+  driveNodeOf,
+  shortcutNodeOf,
+  type DriveNode,
+  type DriveNodeContext,
+  type DriveOrigin,
+} from '../source/drive-node';
 import { RecentEmpty, RecentFooter, RecentStaleBanner, recentStale } from './recent-states';
 import { loadMore, useRecentFeed, type RecentFeed } from './use-recent-feed';
 
@@ -72,7 +83,7 @@ interface ListTopProps {
 }
 
 function chipOfLine(chipOf: DriveChipOf): (line: RecentLine) => DriveChip {
-  return (line) => chipOf(line.entry.item.rootId);
+  return (line) => chipOf(rootIdOf(line.entry));
 }
 
 function ListTop({ filter, onFilter, feed, lines, scope, wide }: ListTopProps): ReactNode {
@@ -107,6 +118,7 @@ interface RowRenderInput {
   readonly chipOf: DriveChipOf;
   readonly days: RecentDays;
   readonly wide: boolean;
+  readonly list: RecentList;
 }
 
 function renderLine({
@@ -114,21 +126,54 @@ function renderLine({
   chipOf,
   days,
   wide,
+  list,
 }: RowRenderInput): (line: RecentLine) => ReactElement {
   return function RenderedLine(line: RecentLine): ReactElement {
-    const { item } = line.entry;
-    const chip = chipOf(item.rootId);
+    const chip = chipOf(rootIdOf(line.entry));
+    const node = list.nodeOf.get(line.key);
+    if (node === undefined) throw new MissingRecentNodeError(line.key);
     return (
       <RecentRow
-        line={line}
+        node={node}
+        browser={list.browser}
         how={howOf(line.entry, names)}
         chip={chip}
-        where={folderTrailOf(chip, item.relPath)}
+        where={folderTrailOf(chip, relPathOf(line.entry))}
         time={timeOf(line, days.timeZone)}
         wide={wide}
       />
     );
   };
+}
+
+class MissingRecentNodeError extends Error {
+  override readonly name = 'MissingRecentNodeError';
+  constructor(key: string) {
+    super(`The recent line ${key} has no file node.`);
+  }
+}
+
+interface RecentList {
+  readonly browser: FileBrowserHandle<DriveOrigin>;
+  readonly nodeOf: ReadonlyMap<string, DriveNode>;
+}
+
+function nodeOfEntry(entry: RecentLine['entry'], context: DriveNodeContext): DriveNode {
+  return entry.kind === 'shortcut'
+    ? shortcutNodeOf(entry.shortcut, context)
+    : driveNodeOf(entry.item, context);
+}
+
+function useRecentList(lines: readonly RecentLine[]): RecentList {
+  const keyed = new Map<string, DriveNode>();
+  const { browser } = useDriveNodeList('recent', (context) =>
+    lines.map((line) => {
+      const node = nodeOfEntry(line.entry, context);
+      keyed.set(line.key, node);
+      return node;
+    }),
+  );
+  return { browser, nodeOf: keyed };
 }
 
 interface RecentListProps {
@@ -141,32 +186,35 @@ interface RecentListProps {
   readonly live: boolean;
 }
 
-function RecentList(props: RecentListProps): ReactNode {
+function RecentLines(props: RecentListProps): ReactNode {
   const { feed, lines, scope, wide } = props;
   const names = useNames();
+  const list = useRecentList(lines);
   return (
-    <VirtualList
-      sections={sectionsOf(lines)}
-      keyOf={(line) => line.key}
-      renderItem={renderLine({ names, chipOf: scope.chipOf, days: feed.days, wide })}
-      header={<ListTop {...props} />}
-      empty={
-        <RecentEmpty
-          pages={feed.pages}
-          filter={props.filter}
-          drive={scope.drive}
-          onAllDrives={() => {
-            scope.onDrive('all');
-          }}
-          live={props.live}
-        />
-      }
-      footer={<RecentFooter pages={feed.pages} />}
-      onEndReached={() => {
-        loadMore(feed.pages);
-      }}
-      probe="drive-recent"
-    />
+    <DriveListFrame browser={list.browser}>
+      <VirtualList
+        sections={sectionsOf(lines)}
+        keyOf={(line) => line.key}
+        renderItem={renderLine({ names, chipOf: scope.chipOf, days: feed.days, wide, list })}
+        header={<ListTop {...props} />}
+        empty={
+          <RecentEmpty
+            pages={feed.pages}
+            filter={props.filter}
+            drive={scope.drive}
+            onAllDrives={() => {
+              scope.onDrive('all');
+            }}
+            live={props.live}
+          />
+        }
+        footer={<RecentFooter pages={feed.pages} />}
+        onEndReached={() => {
+          loadMore(feed.pages);
+        }}
+        probe="drive-recent"
+      />
+    </DriveListFrame>
   );
 }
 
@@ -174,7 +222,7 @@ export function RecentScreen(): ReactNode {
   const [filter, setFilter] = useState<DriveRecentFilter>('everything');
   const [drive, setDrive] = useState<DriveFilter>('all');
   const feed = useRecentFeed(filter);
-  const wide = libraryLayoutOf(useAreaWidth()) !== 'compact';
+  const wide = useAreaWidth() >= SHELL_BREAKPOINTS.compactMax;
   const chipOf = useDriveChips();
   const lines = inDrive(feed.lines, drive, chipOfLine(chipOf));
   const live = useSyncStatus().status === 'live';
@@ -190,7 +238,7 @@ export function RecentScreen(): ReactNode {
         : {})}
     >
       <View className="-mx-gutter flex-1">
-        <RecentList
+        <RecentLines
           filter={filter}
           onFilter={setFilter}
           feed={feed}

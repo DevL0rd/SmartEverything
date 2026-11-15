@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useWindowDimensions, type View } from 'react-native';
+import { type View } from 'react-native';
+import { useWindowSize } from './size-class';
 import { useAnimatedReaction, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useScreen } from '../components/screen-context';
@@ -13,7 +14,7 @@ const SCROLL_STEP = 24;
 
 export function useScreenViewport(scrollY: SharedValue<number>): ViewportRegistry {
   const watching = useSharedValue(false);
-  const size = useWindowDimensions();
+  const size = useWindowSize();
   const [registry] = useState(
     () =>
       new ViewportRegistry(size, (next) => {

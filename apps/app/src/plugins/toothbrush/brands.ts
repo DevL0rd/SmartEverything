@@ -3,6 +3,7 @@ import {
   ORALB_MODEL_PREFIX,
   SONICARE_MODEL_PREFIX,
   type BrushBrand,
+  type BrushStateView,
 } from '@smarteverything/domain';
 import { ORALB_UI } from '../oralb/brand';
 import { SONICARE_UI } from '../sonicare/brand';
@@ -12,6 +13,10 @@ export const BRAND_UI: BrushBrandRegistry = { sonicare: SONICARE_UI, oralb: ORAL
 
 export function brandUi(brand: BrushBrand): BrushBrandUi {
   return BRAND_UI[brand];
+}
+
+export function heroShowsLastSession(view: BrushStateView): boolean {
+  return brandUi(view.profile.brand).RestHero !== null && view.mine && view.lastSession !== null;
 }
 
 const MODEL_PREFIX: Readonly<Record<BrushBrand, string>> = {

@@ -85,9 +85,21 @@ function insertRoot(): void {
   });
 }
 
+function insertInode(): number {
+  const now = 1_000_000_000;
+  const row = database
+    .prepare(
+      `insert into drive_inodes (root_id, is_root, type, mode, atime_ns, mtime_ns, ctime_ns, btime_ns, orphan)
+       values (?, 0, 'file', 420, ?, ?, ?, ?, 0) returning id`,
+    )
+    .get(ROOT, now, now, now, now);
+  return Number(row?.['id']);
+}
+
 function insertItem(id: string, name: string): void {
   insert('drive_items', {
     id,
+    inode_id: insertInode(),
     root_id: ROOT,
     rel_path: name,
     name,

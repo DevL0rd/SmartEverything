@@ -4,6 +4,7 @@ import {
   type JsonValue,
   type PlannerAttachment,
   type PlannerColourKey,
+  type PlannerGuestRow,
   type PlannerItemRow,
   type PlannerReminder,
 } from '@smarteverything/domain';
@@ -15,6 +16,7 @@ import {
   type GoogleEvent,
 } from '@smarteverything/google';
 import { instantOf, instantsOf, isoOf } from '../instants';
+import { ATTENDEE_FIELD, eventGuestFields, guestFields } from './calendar-guests';
 
 export type Fields = Readonly<Record<string, JsonValue>>;
 
@@ -32,6 +34,7 @@ export const PATCH_FIELDS = [
   'end',
   'recurrence',
   'reminders',
+  ATTENDEE_FIELD,
 ] as const;
 export const EVENT_TYPE_KEY = 'eventType';
 
@@ -225,8 +228,9 @@ function timingFields(
   return { start: pointOf(start, zone), end: pointOf(end ?? start, zone) };
 }
 
-export function itemFields(item: PlannerItemRow): Fields {
+export function itemFields(item: PlannerItemRow, guests: readonly PlannerGuestRow[]): Fields {
   const fields: Record<string, JsonValue> = {
+    ...guestFields(guests),
     summary: item.title,
     reminders: reminderField(item.reminders.map((reminder) => reminder.minutes_before)),
   };
@@ -268,6 +272,7 @@ export function eventFields(event: GoogleEvent, zone: string | null): Fields {
     reminders: reminderField(eventReminders(event).map((reminder) => reminder.minutes_before)),
     ...timingFields(start, zone === null ? plusDay(endLocal, -1) : endLocal, zone),
     ...textFields(event),
+    ...eventGuestFields(event),
   };
   const parsed = parseRecurrence(event.recurrence, zone);
   if (parsed.rrule !== null) {

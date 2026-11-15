@@ -27,6 +27,7 @@ export const LEGACY_NAMES: LayoutNames = {
     secretKey: 'secret.key',
     secrets: 'secrets.json.enc',
     tlsIdentity: 'hub-tls-identity.json',
+    releaseKeys: 'release-keys.json',
   },
   config: { service: 'service.json' },
   run: {
@@ -64,6 +65,7 @@ export const LEGACY_NAMES: LayoutNames = {
     machineUpdatesPrevious: 'machine-updates.previous',
     selfUpdate: 'self-update',
     appUpdatesLock: 'app-updates.write.lock',
+    releaseStaging: 'staged',
   },
   migration: {
     journal: 'migration/journal',
@@ -77,6 +79,7 @@ export const LEGACY_NAMES: LayoutNames = {
     smartthingsCapabilities: 'providers/smartthings/capabilities',
     codexInputs: 'codex/inputs',
     buildHost: 'build-host',
+    ocr: 'ocr',
   },
   backups: { releases: 'release-backups', manual: 'backups', legacyDatabase: '' },
   provider: (id) => `providers/${id}`,

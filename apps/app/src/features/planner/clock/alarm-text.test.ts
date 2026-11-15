@@ -53,12 +53,15 @@ function alarmOf(change: Partial<PlannerAlarmRow>): PlannerAlarmRow {
     once_on: null,
     skip_on: null,
     enabled: true,
-    sound: 'Morning light',
+    sound: { kind: 'tone', id: 'default' },
     ramp_seconds: 60,
     vibrate: true,
     snooze_minutes: 9,
+    snooze_limit: null,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: null,
+    wake_automation_id: null,
     wake_lead_minutes: null,
     targets: [],
     watch: [],
@@ -217,11 +220,13 @@ describe('skipDayOf', () => {
 
 describe('wakeRoutineTimeOf', () => {
   it('starts the routine its lead before the alarm', () => {
-    expect(wakeRoutineTimeOf(alarmOf({ wake_scene_id: SCENE, wake_lead_minutes: 20 }))).toBe(
+    expect(wakeRoutineTimeOf(alarmOf({ wake_automation_id: SCENE, wake_lead_minutes: 20 }))).toBe(
       '06:40',
     );
     expect(
-      wakeRoutineTimeOf(alarmOf({ time: '00:10', wake_scene_id: SCENE, wake_lead_minutes: 20 })),
+      wakeRoutineTimeOf(
+        alarmOf({ time: '00:10', wake_automation_id: SCENE, wake_lead_minutes: 20 }),
+      ),
     ).toBe('23:50');
     expect(wakeRoutineTimeOf(alarmOf({}))).toBeNull();
   });

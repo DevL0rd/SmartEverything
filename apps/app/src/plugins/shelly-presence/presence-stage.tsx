@@ -145,6 +145,7 @@ function SensorThreeBody({ input, scene, context, live }: ThreeProps): ReactNode
     chrome: context.chrome,
     insets: context.chromeInsets,
     label: input.label,
+    sharedRenderer: input.shown !== 'realistic',
     selection: sensorSelection(input.view),
     selectedItem: null,
     look,

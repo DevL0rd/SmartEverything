@@ -11,7 +11,6 @@ export const MCP_TOOL_DOMAINS = [
   'remote',
   'phone',
   'watch',
-  'scene',
   'history',
   'event',
   'camera',

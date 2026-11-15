@@ -16,7 +16,7 @@ export const SBC_MODEL: ModelSpec = {
   title: 'Single-board computer',
   category: 'computer',
   family: 'computer',
-  footprint: { width: W, depth: D, height: 0.0195 },
+  footprint: { width: W, depth: 0.0583, height: 0.0182 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

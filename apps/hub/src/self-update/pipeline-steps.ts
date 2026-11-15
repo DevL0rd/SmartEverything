@@ -9,12 +9,18 @@ import {
   failedBecause,
   hubUpdateOutcome,
   type HubUpdateRelease,
+  type PipelineComponent,
   type UpdateRevision,
   type UpdateRevisionStep,
 } from '@smarteverything/domain';
 import type { HubLayout } from '../data-layout';
 import { loadRelease } from '../updates/release-folder';
-import { runConfiguredUpdateCommand, runUpdateCommand, UpdateBusyError } from './command';
+import {
+  hubBuildRefusal,
+  runConfiguredUpdateCommand,
+  runUpdateCommand,
+  UpdateBusyError,
+} from './command';
 import type { StepOutcome } from './release-queue';
 import { configuredSourceCheck } from './source';
 import { withHubReleaseLock } from './release-lock';
@@ -65,11 +71,22 @@ function rollbackOf(release: HubUpdateRelease): 'none' | 'reverted' | 'unrecover
 
 function hubFailure(release: HubUpdateRelease): StepOutcome {
   const detail = release.reason ?? failedBecause(release.failedChecks);
+  const ending =
+    release.phase === 'awaiting_decision'
+      ? `Hub update ${release.runId} waits for the owner's decision with its backup kept; nothing was rolled back.`
+      : release.phase === 'kept'
+        ? `Hub update ${release.runId} was kept by the owner as it is; nothing was rolled back and the backup is kept.`
+        : `Hub update ${release.runId} ended as ${release.phase}.`;
   return {
     status: 'failed',
-    message: `${detail.length === 0 ? 'The Hub update failed.' : detail} Hub update ${release.runId} ended as ${release.phase}.`,
+    message: `${detail.length === 0 ? 'The Hub update failed.' : detail} ${ending}`,
     rollback: rollbackOf(release),
   };
+}
+
+function refusedBuild(layout: HubLayout, component: PipelineComponent): StepOutcome | null {
+  const refusal = hubBuildRefusal(layout, component);
+  return refusal === null ? null : { status: 'failed', message: refusal, rollback: 'none' };
 }
 
 export function movedPastPlan(tip: string, planned: string): StepOutcome | null {
@@ -127,7 +144,7 @@ export async function executeHub(
   const runId = step.runId;
   if (runId === null) throw new Error('A Hub step needs a request ID before it runs.');
   if ((await readHubUpdate(deps.layout, runId)) === null) {
-    const early = await startHub(deps, runId, revision.tip);
+    const early = refusedBuild(deps.layout, 'hub') ?? (await startHub(deps, runId, revision.tip));
     if (early !== null) return early;
   }
   const release = await deps.finished(runId);
@@ -180,6 +197,8 @@ export async function executePublication(
   revision: UpdateRevision,
   step: UpdateRevisionStep,
 ): Promise<StepOutcome> {
+  const refused = refusedBuild(deps.layout, step.component);
+  if (refused !== null) return refused;
   const { script, input } = await publicationInput(deps, revision, step);
   const server = deps.publicServer();
   const result = await whenIdle(

@@ -101,6 +101,10 @@ function doneItems(stats: PlannerStats | undefined): readonly MetricItem[] {
   ];
 }
 
+function hasHistory(stats: PlannerStats): boolean {
+  return stats.completion.done > 0 || stats.completion.due > 0;
+}
+
 export function TasksMetrics({
   entries,
   today,
@@ -111,5 +115,6 @@ export function TasksMetrics({
   const { person } = usePlannerFrame();
   const stats = usePlannerStats(person, 'week').data;
   const facts = openFactsOf(entries, today);
+  if (entries.length === 0 && stats !== undefined && !hasHistory(stats)) return null;
   return <MetricStrip items={[...openItems(facts), ...doneItems(stats)]} columns={COLUMNS} />;
 }

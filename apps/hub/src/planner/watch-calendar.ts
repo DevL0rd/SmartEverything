@@ -14,7 +14,14 @@ import { isWatchDevice, type WatchChannel } from './watch-projection';
 
 export type WatchCalendarStore = Pick<
   Store,
-  'plannerItems' | 'plannerOccurrences' | 'plannerCollections' | 'devices' | 'settings' | 'feed'
+  | 'plannerItems'
+  | 'plannerOccurrences'
+  | 'plannerCollections'
+  | 'plannerShares'
+  | 'plannerGuests'
+  | 'devices'
+  | 'settings'
+  | 'feed'
 >;
 
 export interface WatchCalendarOptions {

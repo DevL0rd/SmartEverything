@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { MODEL_REGISTRY } from '../../../../../../packages/models/src/registry';
 import { editFactsOf } from '../../house-map/edit/furniture-box';
 import { buildModel } from './build-model';
+import { modelBounds } from './framing';
 import { sizedModel } from './sized-model';
 
 type Params = Readonly<Record<string, number>>;
@@ -89,6 +90,38 @@ describe('every resizable catalogue model builds to the size it declares', () =>
       if (spec.size?.depth !== undefined) {
         expect(Math.abs(box.d - declared.depth)).toBeLessThanOrEqual(MODEL_SPEC_SIZE_TOLERANCE);
       }
+    }
+  });
+});
+
+const PUBLISHED_SIZE_GEOMETRY_GAPS: ReadonlySet<string> = new Set([
+  'dev.computer.asus-rog-strix-g834jy',
+  'dev.diffuser.xiaomi-xw2iv',
+  'dev.gateway.xiaomi-hub-2',
+  'dev.monitor.samsung-g9-oled-49',
+  'dev.phone.galaxy-z-fold7',
+  'dev.tablet.galaxy-tab-s9-ultra',
+  'dev.vacuum.omni-station-pv11gl',
+  'dev.vacuum.xiaomi-pv11gl',
+]);
+
+const DECLARED = MODEL_REGISTRY.filter((spec) => !PUBLISHED_SIZE_GEOMETRY_GAPS.has(spec.id));
+
+describe('every catalogue model declares the footprint it builds to', () => {
+  it('covers every model whose geometry matches its published size', () => {
+    expect(DECLARED.length + PUBLISHED_SIZE_GEOMETRY_GAPS.size).toBe(MODEL_REGISTRY.length);
+  });
+
+  it.each(DECLARED.map((spec) => [spec.id, spec] as const))('%s', (_id, spec) => {
+    const model = buildModel(spec, { lod: 2, params: {} });
+    const size = modelBounds(model).getSize(new Vector3());
+    model.dispose();
+    const body: Size = { width: size.x, depth: size.z, height: size.y };
+    for (const axis of MODEL_SPEC_SIZE_AXES) {
+      expect(
+        Math.abs(body[axis] - spec.footprint[axis]),
+        `${axis}: built ${String(body[axis])}, footprint ${String(spec.footprint[axis])}`,
+      ).toBeLessThanOrEqual(MODEL_SPEC_SIZE_TOLERANCE);
     }
   });
 });

@@ -9,6 +9,7 @@ export interface Due {
   readonly at: Temporal.Instant;
   readonly kind: 'reminder' | 'missed';
   readonly item: PlannerItemRow;
+  readonly profileId: string;
   readonly view: PlannerOccurrenceView;
   readonly anchor: Temporal.Instant;
   readonly minutesBefore: number;
@@ -45,19 +46,32 @@ function missedAt(view: PlannerOccurrenceView, zone: string): Temporal.Instant |
   return startOfDay(Temporal.PlainDate.from(view.due_date).add({ days: 1 }), zone);
 }
 
-export function duesOfView(view: PlannerOccurrenceView, item: PlannerItemRow, zone: string): Due[] {
+export function duesOfView(
+  view: PlannerOccurrenceView,
+  item: PlannerItemRow,
+  profileId: string,
+  zone: string,
+): Due[] {
   if (!ACTIVE.has(view.status)) return [];
   const dues: Due[] = [];
   const anchor = anchorOf(view, zone);
   if (anchor !== null) {
     for (const { minutes_before: minutesBefore } of item.reminders) {
       const at = anchor.subtract({ milliseconds: minutesBefore * MINUTE_MS });
-      dues.push({ at, kind: 'reminder', item, view, anchor, minutesBefore });
+      dues.push({ at, kind: 'reminder', item, profileId, view, anchor, minutesBefore });
     }
   }
   const boundary = missedAt(view, zone);
   if (boundary !== null) {
-    dues.push({ at: boundary, kind: 'missed', item, view, anchor: boundary, minutesBefore: 0 });
+    dues.push({
+      at: boundary,
+      kind: 'missed',
+      item,
+      profileId,
+      view,
+      anchor: boundary,
+      minutesBefore: 0,
+    });
   }
   return dues;
 }

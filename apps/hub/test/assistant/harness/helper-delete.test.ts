@@ -5,7 +5,10 @@ import { ChatDirectory } from '../../../src/assistant/chat-directory';
 import { ConversationLog } from '../../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../../src/assistant/files';
 import { costRolledUp } from '../../../src/assistant/cost-rollup';
-import { admitInactiveRemoval } from '../../../src/assistant/agent-runs/inactive-removal';
+import {
+  admitInactiveRemoval,
+  removalNeedsInactive,
+} from '../../../src/assistant/agent-runs/inactive-removal';
 import {
   adoptSubagentSession,
   settleNativeChild,
@@ -58,6 +61,16 @@ async function finishedHelper(): Promise<{
   settleNativeChild(store, header.id, [turnEnd], NOW);
   return { made, parentId: parent.id, childId: chat.id, childSession: header.id, runId: run.id };
 }
+
+describe('deleting a helper chat without the inactive flag', () => {
+  it('is held to the inactive rule for helpers and not for ordinary chats', async () => {
+    const { made, parentId, childId } = await finishedHelper();
+    const { store } = made.opened;
+    expect(removalNeedsInactive(store, childId, false)).toBe(true);
+    expect(removalNeedsInactive(store, parentId, false)).toBe(false);
+    expect(removalNeedsInactive(store, parentId, true)).toBe(true);
+  });
+});
 
 describe('deleting a finished helper from its row', () => {
   it('rechecks an inactive helper and its subtree after new work is queued', async () => {

@@ -16,7 +16,7 @@ import { IconButton } from '../../../components/icon-button';
 import { Zoomable } from '../../../components/zoomable';
 import { cn } from '../../../design/cn';
 import { DURATION, EASING, useMotion } from '../../../design/motion';
-import { swipeChoiceOf } from '../../photos/viewer/swipe';
+import { swipeChoiceOf } from '../../photos';
 
 const IMAGE_SIZE = { width: '100%', height: '100%' } as const;
 

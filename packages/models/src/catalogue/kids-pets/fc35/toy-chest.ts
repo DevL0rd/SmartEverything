@@ -56,7 +56,7 @@ export const TOY_CHEST_MODEL: ModelSpec = catalogueItem({
   id: 'cat.kids-pets.toy-chest',
   title: 'Toy chest',
   category: 'kids-pets',
-  footprint: { width: 0.764, depth: 0.42, height: BODY_TOP + LID_H },
+  footprint: { width: 0.764, depth: 0.428, height: BODY_TOP + LID_H },
   size: { width: { param: 'width', extra: 0.064, resizes: true } },
   meta: {
     names: {

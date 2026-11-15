@@ -245,5 +245,14 @@ export function signalsOf(family: DeviceFamily, state: VisualState): ModelSignal
     ]),
     ...(own === undefined ? {} : own(state)),
   };
-  return state.online ? shown : { ...shown, power: false };
+  return still(state.online ? shown : { ...shown, power: false });
+}
+
+function still(shown: ModelSignals): ModelSignals {
+  if (shown.power !== false) return shown;
+  return {
+    ...shown,
+    ...(shown.speed === undefined ? {} : { speed: 0 }),
+    ...(shown.oscillating === undefined ? {} : { oscillating: false }),
+  };
 }

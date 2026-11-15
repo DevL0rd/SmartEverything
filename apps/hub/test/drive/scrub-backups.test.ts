@@ -13,6 +13,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hashHandler, type HashEnvironment } from '../../src/drive/hasher';
 import { hashRequested, type HashResponse } from '../../src/drive/blocks';
+import { isFileItem } from '../../src/drive/file-item';
 import {
   BACKUP_DATABASE_FILE,
   BACKUP_MANIFEST_LINE,
@@ -31,8 +32,10 @@ import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveBackupsRepository } from '../../src/store/repositories/drive-backups';
+import { DriveOpensRepository } from '../../src/store/repositories/drive-opens';
 import { DrivePlacementsRepository } from '../../src/store/repositories/drive-placements';
 import { DriveBlocksRepository } from '../../src/store/repositories/drive-blocks';
+import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { DriveScrubRepository } from '../../src/store/repositories/drive-scrub';
@@ -115,11 +118,13 @@ async function indexAndHash(): Promise<void> {
     store: {
       driveRoots: roots,
       driveItems: items,
+      driveInodes: new DriveInodesRepository(context),
       feed,
       write: (w) => context.write(w),
       now: clock,
     },
     availability: () => Promise.resolve('online'),
+    mounted: (): boolean => false,
     workerScript: scannerScript,
     log: testLogger(),
   };
@@ -130,6 +135,7 @@ async function indexAndHash(): Promise<void> {
       driveItems: items,
       driveBlocks: new DriveBlocksRepository(context),
       drivePlacements: new DrivePlacementsRepository(context),
+      driveOpens: new DriveOpensRepository(context),
       settingsKv: new SettingsKvRepository(context),
       feed,
       write: (w) => context.write(w),
@@ -187,7 +193,7 @@ function scrubber(
 
 function integrityOf(path: string): string {
   const item = items.byPath(ROOT, path, null);
-  if (item === undefined || item.kind === 'folder') throw new Error(`${path} is not a file`);
+  if (item === undefined || !isFileItem(item)) throw new Error(`${path} is not a file`);
   return item.integrity;
 }
 
@@ -240,6 +246,45 @@ describe('scrubbing hashed files', () => {
     expect(readFileSync(join(tree, 'docs/b.txt'))).toEqual(flipped);
     expect(roots.byId(ROOT).health.corrupt).toBe(1);
     expect(second.state()).toMatchObject({ state: 'idle', corrupt: 1 });
+  });
+
+  it('marks a file the filesystem cannot read back as corrupt and tells the owner', async () => {
+    const real = inProcessHasher()();
+    const failing: () => FileHasher = () => ({
+      request: async (fields) =>
+        fields.relPath === 'docs/b.txt'
+          ? { kind: 'skipped', id: 1, reason: 'unreadable', code: 'EIO' }
+          : real.request(fields),
+      close: () => Promise.resolve(),
+    });
+    const run = scrubber(failing);
+    run.start();
+    await run.settled();
+    expect(integrityOf('docs/b.txt')).toBe('corrupt');
+    expect(integrityOf('a.txt')).toBe('ok');
+    expect(corruptions).toHaveLength(1);
+    expect(corruptions[0]).toMatchObject({
+      relPath: 'docs/b.txt',
+      cause: 'filesystem',
+      actual: 'unreadable:EIO',
+    });
+    expect(run.state()).toMatchObject({ state: 'idle', corrupt: 1 });
+  });
+
+  it('only warns about a file that is unreadable for another reason', async () => {
+    const real = inProcessHasher()();
+    const denied: () => FileHasher = () => ({
+      request: async (fields) =>
+        fields.relPath === 'docs/b.txt'
+          ? { kind: 'skipped', id: 1, reason: 'unreadable', code: 'EACCES' }
+          : real.request(fields),
+      close: () => Promise.resolve(),
+    });
+    const run = scrubber(denied);
+    run.start();
+    await run.settled();
+    expect(corruptions).toEqual([]);
+    expect(integrityOf('docs/b.txt')).toBe('unknown');
   });
 
   it('does not call a file corrupt when its size or time changed since it was hashed', async () => {

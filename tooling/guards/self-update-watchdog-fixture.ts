@@ -193,7 +193,7 @@ function optionsOf(): WatchdogOptions {
     startingSchema: STARTING_SCHEMA,
     expectedSchema: STARTING_SCHEMA,
     holdSeconds: 0,
-    retryUnrecoverable: false,
+    order: 'watch',
   };
 }
 

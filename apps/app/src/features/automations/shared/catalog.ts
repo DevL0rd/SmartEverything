@@ -1,4 +1,4 @@
-import type { AiChatRow, ProfileRow, SceneRow } from '@smarteverything/domain';
+import type { AiChatRow, ProfileRow } from '@smarteverything/domain';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { useDevices, useIsOwner, useRows } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
@@ -7,7 +7,6 @@ import type { Names } from './describe-names';
 export interface Catalog {
   readonly devices: readonly Device[];
   readonly allDevices: readonly Device[];
-  readonly scenes: readonly SceneRow[];
   readonly people: readonly ProfileRow[];
   readonly chats: readonly AiChatRow[];
   readonly wakeProfileId: string | null;
@@ -25,7 +24,6 @@ function useWakeProfileId(): string | null {
 
 export function useCatalog(): Catalog {
   const devices = useDevices({ includeHidden: true });
-  const scenes = useRows('scenes');
   const people = useProfiles();
   const chats = useRows('ai_chats').filter(
     (chat) => chat.archived_at === null && WAKEABLE_KINDS.has(chat.kind),
@@ -35,13 +33,12 @@ export function useCatalog(): Catalog {
   return {
     devices: devices.filter((device) => !device.hidden),
     allDevices: devices,
-    scenes,
     people,
     chats,
     wakeProfileId,
     speakers: devices.filter((device) =>
       cameras.some((camera) => camera.device_id === device.id && camera.two_way_audio),
     ),
-    names: { devices, scenes, people, chats },
+    names: { devices, people, chats },
   };
 }

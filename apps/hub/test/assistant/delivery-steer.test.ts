@@ -102,6 +102,20 @@ describe('a message sent while the AI is working', () => {
     );
   });
 
+  it('is not marked failed by a hub restart once the running turn took it', async () => {
+    const mine = fixture(() => Promise.resolve(true));
+    mine.add('first');
+    mine.delivery.pump();
+    const second = mine.add('and one more thing');
+    mine.delivery.pump();
+    await settle();
+
+    const abandoned = rig.opened.store.assistantEvents.abandoned().map((event) => event.id);
+
+    expect(abandoned).not.toContain(second.id);
+    expect(abandoned).toHaveLength(1);
+  });
+
   it('waits its turn when the running turn cannot take it, and is offered only once', async () => {
     const mine = fixture(() => Promise.resolve(false));
     mine.add('first');

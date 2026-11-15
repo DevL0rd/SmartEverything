@@ -142,7 +142,7 @@ function AlarmFace({
   readonly timeZone: string;
 }): ReactNode {
   const hubRan =
-    card.ring.missed_reason !== 'hub_down' && (card.alarm?.wake_scene_id ?? null) !== null;
+    card.ring.missed_reason !== 'hub_down' && (card.alarm?.wake_automation_id ?? null) !== null;
   return (
     <View className="gap-2">
       <View className="flex-row items-center justify-between gap-2">

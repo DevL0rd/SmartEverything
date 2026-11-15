@@ -1,4 +1,4 @@
-import type { ServerResponse } from 'node:http';
+import type { IncomingHttpHeaders, ServerResponse } from 'node:http';
 import type { Caller } from './auth';
 
 export interface RequestTrace {
@@ -63,4 +63,17 @@ export function remoteKind(address: string | undefined): string {
   const plain = address.replace(/^::ffff:/, '');
   if (plain === '::1' || plain.startsWith('127.')) return 'loopback';
   return PRIVATE_V4.test(plain) || PRIVATE_V6.test(plain) ? 'private' : 'public';
+}
+
+const TUNNEL_HEADERS = ['cf-connecting-ip', 'cf-ray'] as const;
+
+export interface RemoteRequest {
+  readonly socket: { readonly remoteAddress?: string | undefined };
+  readonly headers: IncomingHttpHeaders;
+}
+
+export function requestRemoteKind(request: RemoteRequest): string {
+  const kind = remoteKind(request.socket.remoteAddress);
+  if (kind !== 'loopback') return kind;
+  return TUNNEL_HEADERS.some((name) => request.headers[name] !== undefined) ? 'tunnel' : kind;
 }

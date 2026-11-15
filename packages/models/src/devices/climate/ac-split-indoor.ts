@@ -21,7 +21,7 @@ export const SPLIT_AC_INDOOR_MODEL: ModelSpec = {
   title: 'Air conditioner',
   category: 'climate',
   family: 'air_conditioner',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.203, height: HEIGHT },
   framing: {
     tile: { ...HOUSE, padding: 0.05 },
     card: HOUSE,

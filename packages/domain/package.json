@@ -9,7 +9,9 @@
     ".": "./src/index.ts",
     "./voice-overlay": "./src/voice-overlay.ts",
     "./markdown": "./src/markdown.ts",
+    "./app-identity": "./src/app-identity.ts",
     "./drive-sync": "./src/drive/sync/index.ts",
+    "./drive-mount": "./src/drive/mount/index.ts",
     "./assistant-voice-copy": "./src/assistant-voice-copy.ts",
     "./node/harness-frames": "./src/node/harness-frames.ts",
     "./vacuum-scene": "./src/vacuum-scene.ts",
@@ -26,6 +28,7 @@
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",
+    "cbor-x": "1.6.8",
     "colord": "2.9.3",
     "zod": "4.4.3"
   }

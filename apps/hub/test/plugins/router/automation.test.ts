@@ -39,6 +39,12 @@ import type { PluginOptionProvider, PluginTool } from '../../../src/plugins/buil
 import { routerPlugin } from '../../../src/plugins/builtin/router';
 import { CLIENT_PICKER, PEOPLE_PICKER } from '../../../src/plugins/builtin/router/automation';
 import { ClientRegistry } from '../../../src/plugins/builtin/router/client-registry';
+import {
+  inventoryOf,
+  LIVE_STREAM,
+  liveOf,
+  SNAPSHOT_STREAM,
+} from '../../../src/plugins/builtin/router/streams';
 import { registerRouterPickers } from '../../../src/plugins/builtin/router/pickers';
 import { routerTools } from '../../../src/plugins/builtin/router/tools';
 import { testRun } from '../../automations-v3/effects/support';
@@ -496,7 +502,12 @@ describe('the router client values', () => {
     if (value === undefined) throw new Error(`no value ${id}`);
     opened.store.pluginData.publish(
       'router',
-      { stream: 'router.snapshot', at: NOW, value: JSON_VALUE.parse(HOUSE) },
+      { stream: SNAPSHOT_STREAM, at: NOW, value: JSON_VALUE.parse(inventoryOf(HOUSE)) },
+      1,
+    );
+    opened.store.pluginData.publish(
+      'router',
+      { stream: LIVE_STREAM, at: NOW, value: JSON_VALUE.parse(liveOf(HOUSE)) },
       1,
     );
     const handler = pluginValueHandler(opened.store, valueBindingOf('router', value));

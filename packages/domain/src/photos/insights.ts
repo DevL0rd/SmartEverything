@@ -4,6 +4,8 @@ import { COUNT, DAY, ID, MONTH, NAME } from './shared';
 
 export const PHOTO_INSIGHT_RANGES = ['this_year', 'last_12_months', 'all_time'] as const;
 
+export const PHOTO_RANKING_SUMMARY = 10;
+
 export type PhotoInsightRange = (typeof PHOTO_INSIGHT_RANGES)[number];
 
 export const PHOTO_INSIGHT_KINDS = ['photo', 'screenshot', 'raw', 'video'] as const;
@@ -39,9 +41,11 @@ const ROOT_BYTES = z
   })
   .readonly();
 
-const LARGEST_VIDEO = z
+export const PHOTO_LARGEST_VIDEO = z
   .strictObject({ itemId: ID, bytes: COUNT, durationMs: COUNT.nullable() })
   .readonly();
+
+export const PHOTO_BUSIEST_DAY = z.strictObject({ day: DAY, items: COUNT }).readonly();
 
 const COUNTRY = z
   .strictObject({ countryCode: z.string().length(2), country: NAME, items: COUNT })
@@ -65,7 +69,7 @@ export const PHOTO_INSIGHTS = z
     cameras: z.array(CAMERA).readonly(),
     lenses: z.array(LENS).readonly(),
     roots: z.array(ROOT_BYTES).readonly(),
-    largestVideos: z.array(LARGEST_VIDEO).readonly(),
+    largestVideos: z.array(PHOTO_LARGEST_VIDEO).readonly(),
     videoTotals: z
       .strictObject({ items: COUNT, bytes: COUNT, durationMs: COUNT, longestMs: COUNT.nullable() })
       .readonly(),
@@ -84,7 +88,7 @@ export const PHOTO_INSIGHTS = z
       .array(z.strictObject({ month: MONTH, hours: z.number().nonnegative() }).readonly())
       .readonly()
       .nullable(),
-    busiestDays: z.array(z.strictObject({ day: DAY, items: COUNT }).readonly()).readonly(),
+    busiestDays: z.array(PHOTO_BUSIEST_DAY).readonly(),
     perDay: z.array(z.strictObject({ day: DAY, items: COUNT }).readonly()).readonly(),
     weekdayByHour: z
       .array(z.strictObject({ weekday: WEEKDAY, hour: HOUR, items: COUNT }).readonly())
@@ -100,3 +104,8 @@ export const PHOTO_INSIGHTS = z
 export type PhotoInsights = z.infer<typeof PHOTO_INSIGHTS>;
 
 export const PHOTO_INSIGHTS_QUERY = z.strictObject({ range: z.enum(PHOTO_INSIGHT_RANGES) });
+
+export const PHOTO_RANKING_QUERY = z.strictObject({
+  range: z.enum(PHOTO_INSIGHT_RANGES),
+  cursor: z.string().min(1).optional(),
+});

@@ -42,7 +42,8 @@ class AlarmScheduler(
       set.hash,
       set.rings,
       before.armed.filterKeys { it in unchanged },
-      before.settled.filter { it in unchanged }.toSet()
+      before.settled.filter { it in unchanged }.toSet(),
+      before.snoozes.filterKeys { it in unchanged }
     )
     store.save(reconcile(state, reportOverdue = false))
     reports.acknowledge(clientId, set.hash)
@@ -50,12 +51,25 @@ class AlarmScheduler(
 
   fun ringOf(ringKey: String): PhoneRing? = store.load().rings.firstOrNull { it.ringKey == ringKey }
 
-  fun snooze(ring: PhoneRing, minutes: Int) = synchronized(LOCK) {
+  fun snooze(ring: PhoneRing, minutes: Int): Boolean = synchronized(LOCK) {
+    val state = store.load()
+    val used = state.snoozes[ring.ringKey] ?: 0
+    if (!SnoozePolicy.allowed(ring.snoozeLimit, used)) {
+      return@synchronized false
+    }
+    store.save(state.withSnoozes(state.snoozes + (ring.ringKey to used + 1)))
     arming.arm(RingSnooze.ringOf(ring, clock(), minutes), clock().plusSeconds(minutes * SECONDS_PER_MINUTE))
+    true
+  }
+
+  fun snoozesLeft(ring: PhoneRing): Int? = synchronized(LOCK) {
+    SnoozePolicy.left(ring.snoozeLimit, store.load().snoozes[ring.ringKey] ?: 0)
   }
 
   fun cancelSnooze(ringKey: String) = synchronized(LOCK) {
     arming.cancel(RingKeys.snoozeOf(ringKey))
+    val state = store.load()
+    store.save(state.withSnoozes(state.snoozes - ringKey))
   }
 
   private fun cancelAll(ringKey: String) {
@@ -71,7 +85,7 @@ class AlarmScheduler(
     val state = store.load()
     val ring = state.rings.firstOrNull { it.ringKey == ringKey } ?: return@synchronized
     val settled = if (ring.repeats) state.settled else state.settled + ringKey
-    val next = RingState(state.clientId, state.hash, state.rings, state.armed - ringKey, settled)
+    val next = RingState(state.clientId, state.hash, state.rings, state.armed - ringKey, settled, state.snoozes - ringKey)
     store.save(reconcile(next, reportOverdue = false))
   }
 
@@ -94,7 +108,7 @@ class AlarmScheduler(
     val spent = overdueAt != null && !ring.repeats
     val next = if (spent) null else NextTrigger.of(ring, now, zone())
     val settled = if (spent) state.settled + key else state.settled
-    return RingState(state.clientId, state.hash, state.rings, rearmed(state.armed, ring, armedAt, next), settled)
+    return RingState(state.clientId, state.hash, state.rings, rearmed(state.armed, ring, armedAt, next), settled, state.snoozes)
   }
 
   private fun rearmed(armed: Map<String, Long>, ring: PhoneRing, armedAt: Instant?, next: Instant?): Map<String, Long> {

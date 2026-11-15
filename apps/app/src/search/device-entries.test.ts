@@ -83,7 +83,7 @@ describe('IR remote search', () => {
   it('finds the in-page actions of a blaster under its Remote page', () => {
     const blaster = { ...deviceOf('ir-1', 'tuya'), kind: 'ir_blaster' as const };
     expect(remoteActions(blaster)).toEqual([
-      { title: 'Make a scene', parent: 'devpage:ir-1:remote' },
+      { title: 'Set up an automation', parent: 'devpage:ir-1:remote' },
       { title: 'Check with a plug', parent: 'devpage:ir-1:remote' },
       { title: 'It didn’t work?', parent: 'devpage:ir-1:remote' },
       { title: 'Learn a button', parent: 'devpage:ir-1:remote' },

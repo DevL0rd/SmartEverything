@@ -37,7 +37,7 @@ function part(name: string): () => ReactNode {
   };
 }
 
-vi.mock('../../../components/section-body', () => ({
+vi.mock('../../../components/page-shell/body-width', () => ({
   useFrameBodyWidth: (): number => seen.width,
 }));
 vi.mock('../../../store/people', () => ({

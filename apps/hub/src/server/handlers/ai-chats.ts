@@ -5,7 +5,10 @@ import {
   type AiChatRow,
 } from '@smarteverything/domain';
 import type { ChatOwner } from '../../assistant/chat-directory';
-import { admitInactiveRemoval } from '../../assistant/agent-runs/inactive-removal';
+import {
+  admitInactiveRemoval,
+  removalNeedsInactive,
+} from '../../assistant/agent-runs/inactive-removal';
 import { removeProfileChats } from '../../assistant/remove-profile-chats';
 import { chatOwnerOf, clientOf, confinedChatOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
@@ -104,7 +107,11 @@ function removalRoute(context: ChatContext): RouteOf<'removeAiChat'> {
   return bound(E.removeAiChat, async ({ params, query, caller }) => {
     const owner = ownerOf(context, caller);
     const runId = query.expected_inactive_run_id;
-    const inactiveOnly = runId !== undefined || query.inactive_helper === 'true';
+    const inactiveOnly = removalNeedsInactive(
+      store,
+      params.chatId,
+      runId !== undefined || query.inactive_helper === 'true',
+    );
     await assistant.removeChat(
       owner,
       params.chatId,

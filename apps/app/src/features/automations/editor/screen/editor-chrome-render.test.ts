@@ -45,7 +45,7 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: (): { readonly bottom: number } => ({ bottom: 0 }),
 }));
 
-const { TopBar } = await import('./top-bar');
+const { TopBarActions } = await import('./top-bar');
 const { BottomBar } = await import('./bottom-bar');
 
 const NO_OP = (): void => undefined;
@@ -110,15 +110,15 @@ describe('the editor chrome render budget', () => {
   it('renders the top bar once, not at all for equal props, and once per real change', () => {
     const root = mount();
     act(() => {
-      root.render(createElement(TopBar, TOP));
+      root.render(createElement(TopBarActions, TOP));
     });
     expect(counts.renders.get('icon-button:Undo')).toBe(BUDGET.mount);
     act(() => {
-      root.render(createElement(TopBar, { ...TOP }));
+      root.render(createElement(TopBarActions, { ...TOP }));
     });
     expect(counts.renders.get('icon-button:Undo')).toBe(BUDGET.mount + BUDGET.equalProps);
     act(() => {
-      root.render(createElement(TopBar, { ...TOP, canUndo: true }));
+      root.render(createElement(TopBarActions, { ...TOP, canUndo: true }));
     });
     expect(counts.renders.get('icon-button:Undo')).toBe(BUDGET.mount + BUDGET.oneChange);
   });
@@ -161,7 +161,7 @@ describe('the editor chrome render budget', () => {
               commits += 1;
             },
           },
-          createElement(TopBar, TOP),
+          createElement(TopBarActions, TOP),
           createElement(BottomBar, { items: bottomBarItems(BOTTOM), onItem: NO_OP }),
         ),
       );

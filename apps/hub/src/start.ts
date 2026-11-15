@@ -3,6 +3,7 @@ import { HubConnections } from './network/connections';
 import { openHubIdentity } from './network/identity';
 import { advertiseHub } from './network/mdns-advertise';
 import type { OpenMdns } from './network/mdns';
+import type { InterfaceSnapshot } from './network/lan';
 import type { Server } from 'node:http';
 import { mkdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
@@ -22,6 +23,7 @@ import { updatePipelineExtension } from './self-update/pipeline-extension';
 import { hubUpdateSourceWiring } from './self-update/source-wiring';
 import type { HubUpdateSourceRoutes } from './server/handlers/hub-update-source';
 import { machineUpdatesExtension } from './updates/extension';
+import { releaseUploadsExtension } from './releases/upload-routes';
 import { phonesExtension } from './phones/extension';
 import { treadmillsExtension } from './local/treadmill/extension';
 import { recordingRetentionExtension } from './cameras/recording-retention-extension';
@@ -42,6 +44,7 @@ import { openSecretStore } from './secrets/open';
 import { buildServer, type BuiltServer } from './server/build';
 import { originAllowList } from './server/origin-allow-list';
 import { serviceUrl } from './service/configuration';
+import { listenWhileStarting } from './service/starting-listener';
 import type { LogLines } from './service/log-lines';
 import { startCore, type Core } from './services';
 import { openStore, type Store } from './store/store';
@@ -51,6 +54,7 @@ export const DEFAULT_ORIGINS: readonly string[] = ['app://smarteverything'];
 
 export interface ServerOptions {
   readonly lan?: { readonly port: number; readonly host?: string; readonly advertise?: boolean };
+  readonly interfaces?: InterfaceSnapshot;
   readonly layout: HubLayout;
   readonly hubBootRunId?: string;
   readonly codex?: {
@@ -113,6 +117,7 @@ function serverExtensions(
     bottlesExtension(clock.now),
     toothbrushesExtension(clock),
     machineUpdatesExtension(),
+    releaseUploadsExtension(clock.now),
     appUpdatesExtension(),
     hubUpdateCompletionExtension(),
     updatePipelineExtension(),
@@ -197,8 +202,12 @@ function coreOptions(
   };
 }
 
-async function openConnections(layout: HubLayout, store: Store): Promise<HubConnections> {
-  return new HubConnections(await openHubIdentity(layout.system.keys.tlsIdentity), store);
+async function openConnections(options: ServerOptions, store: Store): Promise<HubConnections> {
+  return new HubConnections(
+    await openHubIdentity(options.layout.system.keys.tlsIdentity),
+    store,
+    options.interfaces,
+  );
 }
 
 function openHubStore(options: ServerOptions, clock: Clock): Store {
@@ -236,7 +245,7 @@ async function boot(
     () => core.hub.stop(),
   );
   const alerts = new OwnerAlerts();
-  const connections = await openConnections(options.layout, store);
+  const connections = await openConnections(options, store);
   const built = await buildServer({
     connections,
     store,
@@ -286,6 +295,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   await mkdir(options.layout.root, { recursive: true, mode: 0o700 });
   await mkdir(dirname(options.layout.system.database.file), { recursive: true, mode: 0o700 });
   const undo: Undo[] = [];
+  const starting = await listenWhileStarting(options.port, options.host ?? '0.0.0.0', options.log);
   const resume = resumeWatchOf(options);
   const stopResumeWatch = resume.stop;
   undo.push(stopResumeWatch);
@@ -295,6 +305,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     resume.attach(started.core);
     const ownerToken = await started.built.access.ensureOwner();
     const host = options.host ?? '0.0.0.0';
+    await starting.close();
     const address = await listen(started.built.http, options.port, host);
     const url = serviceUrl({ host, port: address.port });
     const withdraw = await startLan(options, started);
@@ -316,6 +327,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       },
     };
   } catch (cause) {
+    await starting.close();
     await rollBack(undo, options.log);
     throw cause;
   }

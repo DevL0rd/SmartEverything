@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
-import { usePhoneSummary } from '../frame/phone-rail';
+import { usePhoneSummary } from '../frame/phone-sections';
 import { PHONE_SECTIONS, type PhoneSectionDef } from '../model/sections';
 
 function SectionRow({

@@ -68,10 +68,6 @@ export function isFiltered(filter: TrashFilter): boolean {
   return filter.chip !== 'everything' || filter.drive !== 'all' || needleOf(filter.query) !== '';
 }
 
-export function deletableNow(item: TrashItem, owner: boolean, driveOf: TrashDriveOf): boolean {
-  return owner || driveOf(item) === 'mine' || item.deleter.kind === 'you';
-}
-
 export function shownText(shown: number, total: number): string {
   return `${count(shown)} of ${count(total)}`;
 }

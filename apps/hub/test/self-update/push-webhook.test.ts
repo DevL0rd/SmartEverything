@@ -17,6 +17,7 @@ function push(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     before: BEFORE,
     after: TIP,
     deleted: false,
+    commits: [{ added: ['a.ts'], removed: [], modified: ['b.ts', 'a.ts'] }],
     repository: { full_name: 'DevL0rd/SmartEverything' },
     ...overrides,
   };
@@ -51,7 +52,19 @@ describe('push decision', () => {
       kind: 'accepted',
       tip: TIP,
       before: BEFORE,
+      paths: ['a.ts', 'b.ts'],
     });
+  });
+
+  it('gives no changed paths when the payload commit list is empty or truncated', () => {
+    const none = decidePush('push', push({ commits: [] }), TARGET);
+    const many = decidePush(
+      'push',
+      push({ commits: Array.from({ length: 20 }, () => ({ added: ['a.ts'] })) }),
+      TARGET,
+    );
+    expect(none).toMatchObject({ kind: 'accepted', paths: null });
+    expect(many).toMatchObject({ kind: 'accepted', paths: null });
   });
 
   it('answers the GitHub ping without queueing anything', () => {

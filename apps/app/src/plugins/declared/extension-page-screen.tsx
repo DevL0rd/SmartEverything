@@ -5,8 +5,7 @@ import { Button } from '../../components/button';
 import { Card } from '../../components/card';
 import { EmptyState } from '../../components/empty-state';
 import { Grid } from '../../components/grid';
-import { PageHeader } from '../../components/page-header';
-import { Screen } from '../../components/screen';
+import { PageShell } from '../../components/page-shell/page-shell';
 import { useRow } from '../../store/selectors';
 import { BodyView } from './body-view';
 import { extensionIcon } from './extension-icon';
@@ -23,9 +22,7 @@ function Sections({
   const page = ui.pages.find((candidate) => candidate.id === pageId);
   if (page === undefined) return <PageGone />;
   return (
-    <Screen
-      header={<PageHeader title={page.title} titleLines="wrap" subtitle={ui.name} back />}
-    >
+    <PageShell title={page.title} subtitle={ui.name} back>
       <Grid
         minItemWidth={SECTION_MIN_WIDTH}
         maxColumns={page.sections.length}
@@ -42,20 +39,20 @@ function Sections({
           </Card>
         ))}
       </Grid>
-    </Screen>
+    </PageShell>
   );
 }
 
 function PageGone(): ReactNode {
   return (
-    <Screen maxWidth="detail" header={<PageHeader title="Page not available" back />}>
+    <PageShell title="Page not available" back width="detail">
       <EmptyState
         icon="puzzle"
         title="This page is not available"
         body="The plugin that adds it is switched off or no longer has this page."
         action={<Button label="Back to Home" href={href.home()} variant="tonal" />}
       />
-    </Screen>
+    </PageShell>
   );
 }
 

@@ -1,17 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requireOptionalNativeModule } from 'expo';
 import { z } from 'zod';
-import type { UploadHandle } from '../../../drive/upload/transport/types';
-import type { ServerConnection } from '../../../../api/connection/storage';
-import { assertUploadActive } from '../../../drive/upload/transport/abort';
-import { UPLOAD_CHUNK_BYTES } from '../../../drive/upload/transport/client';
-import { createContentReader } from '../../../drive/upload/transport/content-reader';
-import { connectionUploadTransport } from '../../../drive/upload/transport/hub-transport';
 import {
+  type UploadHandle,
+  assertUploadActive,
+  UPLOAD_CHUNK_BYTES,
+  createContentReader,
+  connectionUploadTransport,
   PersistedUrlStorage,
   RESUME_STORAGE_KEY,
-} from '../../../drive/upload/transport/resume-store';
-import { runUpload } from '../../../drive/upload/transport/run';
+  runUpload,
+} from '../../../drive';
+import type { ServerConnection } from '../../../../api/connection/storage';
 import type { ChargingSource } from './network-conditions';
 import type { NativeMediaPort, UploadPort } from './ports';
 

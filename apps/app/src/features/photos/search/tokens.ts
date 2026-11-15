@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PHOTO_LABEL } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 
 const DAY = z.iso.date();
@@ -23,13 +24,21 @@ export const SEARCH_TOKEN = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('camera'), label: z.string().min(1) }),
   z.strictObject({ kind: z.literal('album'), albumId: z.uuid(), label: z.string().min(1) }),
   z.strictObject({ kind: z.literal('favourites'), label: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('person'), groupId: z.uuid(), label: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('pet'), groupId: z.uuid(), label: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('thing'), label: PHOTO_LABEL }),
+  z.strictObject({
+    kind: z.literal('photoText'),
+    text: z.string().trim().min(1),
+    label: z.string().min(1),
+  }),
 ]);
 
 export type SearchToken = z.infer<typeof SEARCH_TOKEN>;
 
 export type SearchTokenKind = SearchToken['kind'];
 
-const SINGLE: ReadonlySet<SearchTokenKind> = new Set(['date', 'media', 'favourites']);
+const SINGLE: ReadonlySet<SearchTokenKind> = new Set(['date', 'media', 'favourites', 'photoText']);
 
 export const TOKEN_ICON: Readonly<Record<SearchTokenKind, IconName>> = {
   place: 'mapPin',
@@ -39,6 +48,10 @@ export const TOKEN_ICON: Readonly<Record<SearchTokenKind, IconName>> = {
   camera: 'camera',
   album: 'layers',
   favourites: 'star',
+  person: 'user',
+  pet: 'dog',
+  thing: 'sparkles',
+  photoText: 'textCursor',
 };
 
 export function tokenIconOf(token: SearchToken): IconName {
@@ -46,7 +59,21 @@ export function tokenIconOf(token: SearchToken): IconName {
   return TOKEN_ICON[token.kind];
 }
 
+const SMART_KINDS: ReadonlySet<SearchTokenKind> = new Set(['person', 'pet', 'thing', 'photoText']);
+
+export type SmartToken = Extract<SearchToken, { kind: 'person' | 'pet' | 'thing' | 'photoText' }>;
+
+export type BaseToken = Exclude<SearchToken, SmartToken>;
+
+export function isSmartToken(token: SearchToken): token is SmartToken {
+  return SMART_KINDS.has(token.kind);
+}
+
 export function tokenKey(token: SearchToken): string {
+  return isSmartToken(token) ? smartKeyOf(token) : baseKeyOf(token);
+}
+
+function baseKeyOf(token: BaseToken): string {
   switch (token.kind) {
     case 'place':
       return `place:${String(token.placeId)}`;
@@ -62,6 +89,18 @@ export function tokenKey(token: SearchToken): string {
       return `album:${token.albumId}`;
     case 'favourites':
       return 'favourites';
+  }
+}
+
+function smartKeyOf(token: SmartToken): string {
+  switch (token.kind) {
+    case 'person':
+    case 'pet':
+      return `group:${token.groupId}`;
+    case 'thing':
+      return `thing:${token.label.toLowerCase()}`;
+    case 'photoText':
+      return `text:${token.text.toLowerCase()}`;
   }
 }
 

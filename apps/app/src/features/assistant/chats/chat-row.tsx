@@ -14,7 +14,8 @@ import { StatusDot } from '../../../components/status-dot';
 import { SwipeRow, swipeAccessibility } from '../../../components/swipe-row';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { entering, exiting, useMotion } from '../../../design/motion';
+import { entering, useMotion } from '../../../design/motion';
+import { useShownExit } from '../../../design/visibility';
 import { useIdiom } from '../../../design/platform';
 import { useKeyboardRow } from '../../../components/keyboard-list';
 import { useIsOwner } from '../../../store/selectors';
@@ -321,11 +322,12 @@ function Row(props: ChatRowProps): ReactNode {
   const hoverShown = useIdiom() === 'pointer' && hovered;
   const keyboard = useKeyboardRow(entry.id);
   useDeleteKey(keyboard.highlighted, keyboard.nativeID, items.find(isDelete)?.onPress);
+  const exit = useShownExit(ROW_EXIT);
   return (
     <Animated.View
       nativeID={keyboard.nativeID}
       {...(motion.reduced ? {} : { layout: ROW_REORDER })}
-      {...exiting(motion, ROW_EXIT)}
+      {...exit}
       onPointerEnter={() => {
         setHovered(true);
       }}

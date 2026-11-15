@@ -93,7 +93,7 @@ export const TREE_PALM_MODEL: ModelSpec = catalogueModel({
   id: 'cat.outdoor.tree-palm',
   title: 'Palm tree',
   category: 'outdoor',
-  footprint: { width: 4.75, depth: 4.8, height: 5.9 },
+  footprint: { width: 4.7191, depth: 4.7751, height: 5.8705 },
   view: TALL_VIEW,
   meta: {
     names: {

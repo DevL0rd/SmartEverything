@@ -5,9 +5,12 @@ export const SEARCH_PRESENTATION = isNative() ? 'fullScreenModal' : 'card';
 
 export const FLOWS_PRESENTATION = isNative() ? 'modal' : 'transparentModal';
 
+export const RING_PRESENTATION = isNative() ? 'fullScreenModal' : 'card';
+
 const ROOT_PRESENTATIONS: Readonly<Record<string, string>> = {
   search: SEARCH_PRESENTATION,
   '(flows)': FLOWS_PRESENTATION,
+  ring: RING_PRESENTATION,
 };
 
 const SEE_THROUGH: readonly string[] = ['transparentModal', 'containedTransparentModal'];

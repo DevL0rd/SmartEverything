@@ -10,7 +10,7 @@ import type { NativeModelRequest } from '../provider/subscription-models';
 import { useChatModel } from './chat-model';
 import { Skeleton } from '../../../components/skeleton';
 import { useHarnessCatalogue } from '../data/harness';
-import { routeFacts, useRouteInfo } from '../data/route-info';
+import { routeFacts, useEngineRouteInfo } from '../data/route-info';
 import { useEngineCatalogue } from '../provider/provider-data';
 import { ModelPanel } from '../picker/panel/model-panel';
 import { useChipShortcuts } from '../picker/panel/panel-shortcuts';
@@ -117,7 +117,7 @@ function ChipControl({
   const switching = useMachineSwitchPending(accessory?.chat);
   const needsMachine = accessory !== null && accessory.pending !== null;
   const thinking = useEngineThinking(engine);
-  const facts = routeFacts(useRouteInfo(engine).data);
+  const facts = routeFacts(useEngineRouteInfo(engine).data);
   if (useModelLoading(model)) return <ChipSkeleton />;
   const icon = switching && !machineInHeader ? 'loader' : needsMachine ? 'monitor' : 'brain';
   return (

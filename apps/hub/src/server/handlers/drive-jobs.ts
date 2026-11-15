@@ -1,4 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
+import { textHandler, type TextEnvironment } from '../../drive/content/text-job';
 import { hashHandler } from '../../drive/hasher';
 import { jobKey, runnerOf, scanHandler, type DriveJob } from '../../drive/jobs';
 import { metadataHandler } from '../../drive/metadata';
@@ -15,6 +16,7 @@ export interface DriveJobDeps {
   readonly log: Logger;
   readonly scannerScript: string;
   readonly hasherScript: string;
+  readonly text: TextEnvironment;
 }
 
 export interface DriveJobRunner {
@@ -27,7 +29,14 @@ export function driveJobHandlers(deps: DriveJobDeps): DriveJobRunner {
   return {
     keyOf: jobKey,
     run: runnerOf({
-      scan: scanHandler({ store, availability, workerScript: deps.scannerScript, log }),
+      scan: scanHandler({
+        store,
+        availability,
+        mounted: (rootId) =>
+          store.drivePlacements.forRoot(rootId).some((placement) => placement.mode === 'mounted'),
+        workerScript: deps.scannerScript,
+        log,
+      }),
       hash: hashHandler({ store, availability, workerScript: deps.hasherScript, log }),
       metadata: metadataHandler({
         store,
@@ -35,6 +44,7 @@ export function driveJobHandlers(deps: DriveJobDeps): DriveJobRunner {
         availability,
         log,
       }),
+      text: textHandler(deps.text),
     }),
   };
 }

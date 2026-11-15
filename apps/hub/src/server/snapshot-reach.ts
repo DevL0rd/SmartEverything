@@ -1,5 +1,4 @@
 import {
-  SCENE_ACTIONS,
   SNAPSHOT_ONLY_AREAS,
   SNAPSHOT_TABLES,
   TABLE_AREAS,
@@ -10,12 +9,6 @@ import {
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { reachableRows, scopesOfClient } from './person-scope';
-
-export function sceneDeviceIds(actions: unknown): string[] {
-  const parsed = SCENE_ACTIONS.safeParse(actions);
-  if (!parsed.success) return [];
-  return parsed.data.map((action) => action.deviceId);
-}
 
 function withoutAreas(tables: SnapshotTables, scopes: AccessScopes): SnapshotTables {
   const missing = new Set(
@@ -68,9 +61,5 @@ function devicesReached(
             (group) => rows(group.device_ids, (id) => id).length === group.device_ids.length,
           ),
         }),
-    scenes: tables.scenes.filter((scene) => {
-      const ids = sceneDeviceIds(scene.actions);
-      return rows(ids, (id) => id).length === ids.length;
-    }),
   };
 }

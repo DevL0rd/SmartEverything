@@ -282,9 +282,7 @@ describe('linking SmartThings', () => {
     expect(`${url.origin}${url.pathname}`).toBe('https://api.smartthings.com/oauth/authorize');
     expect(url.searchParams.get('client_id')).toBe('client-1');
     expect(url.searchParams.get('redirect_uri')).toBe(`${PUBLIC_URL}/smartthings/callback`);
-    expect(url.searchParams.get('scope')).toBe(
-      'r:devices:* x:devices:* r:locations:* r:scenes:* x:scenes:*',
-    );
+    expect(url.searchParams.get('scope')).toBe('r:devices:* x:devices:* r:locations:*');
     const location = await callback({ code: 'code-1', state: url.searchParams.get('state') ?? '' });
     expect(location).toBe('/smartthings/linked?outcome=linked');
     const shown = await page(location);

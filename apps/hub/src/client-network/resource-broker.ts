@@ -39,7 +39,7 @@ export class HubResourceBroker {
     return this.listener.origin;
   }
   async start(): Promise<void> {
-    await this.listener.start();
+    await this.listener.start(0);
   }
   open(owner: number, value: unknown): NativeHubResource {
     const input = NATIVE_HUB_RESOURCE_OPEN.parse(value);

@@ -8,6 +8,8 @@ import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
+import { DriveOpensRepository } from '../../src/store/repositories/drive-opens';
+import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { DriveBlocksRepository } from '../../src/store/repositories/drive-blocks';
 import { DrivePlacementsRepository } from '../../src/store/repositories/drive-placements';
 import { DriveRootsRepository, type StoredDrive } from '../../src/store/repositories/drive-roots';
@@ -27,6 +29,8 @@ export interface DriveFixture {
   readonly addDrive: (root: DriveRoot, path: string) => StoredDrive;
   readonly items: DriveItemsRepository;
   readonly blocks: DriveBlocksRepository;
+  readonly opens: DriveOpensRepository;
+  readonly profiles: ProfilesRepository;
   readonly settings: SettingsKvRepository;
 }
 
@@ -70,6 +74,8 @@ export function openDriveFixture(): DriveFixture {
     },
     items: new DriveItemsRepository(context),
     blocks: new DriveBlocksRepository(context),
+    opens: new DriveOpensRepository(context),
+    profiles: new ProfilesRepository(context),
     settings: new SettingsKvRepository(context),
   };
 }

@@ -159,7 +159,7 @@ function Settled({
 }): ReactNode {
   const look = useTimelineLook(data.entries);
   const earlier = data.entries[1];
-  if (earlier === undefined) return <OneVersion root={subject.root} />;
+  if (earlier === undefined) return <OneVersion kept={subject.versionsKept} />;
   return (
     <View className="gap-4">
       <SizeOverYear
@@ -190,7 +190,11 @@ export function VersionsTab({
   const data = useTabData(subject.item);
   const [target, setTarget] = useState<VersionsTarget | null>(null);
   const compare = (): void => {
-    setTarget({ root: subject.root, item: subject.item, picks: initialPicks(data.entries) });
+    setTarget({
+      versionsKept: subject.versionsKept,
+      item: subject.item,
+      picks: initialPicks(data.entries),
+    });
   };
   return (
     <>

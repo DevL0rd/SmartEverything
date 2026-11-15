@@ -49,17 +49,13 @@ vi.mock('../../../components/use-measured-width', () => ({
     onLayout: (): void => undefined,
   }),
 }));
-vi.mock('../../../components/screen', () => ({
-  Screen: ({
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: ({
     children,
-    header,
-    maxWidth,
-  }: Children & { readonly header: ReactNode; readonly maxWidth?: string }): ReactNode =>
-    createElement('main', { 'data-width': maxWidth }, header, children),
-}));
-vi.mock('../../../components/page-header', () => ({
-  PageHeader: ({ title }: { readonly title: string }): ReactNode =>
-    createElement('h1', null, title),
+    title,
+    width,
+  }: Children & { readonly title: string; readonly width?: string }): ReactNode =>
+    createElement('main', { 'data-width': width }, createElement('h1', null, title), children),
 }));
 vi.mock('../../../components/card', () => ({
   Card: ({ children, title }: Children & { readonly title?: string }): ReactNode =>

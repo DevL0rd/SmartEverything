@@ -5,7 +5,7 @@ import type { JsonValue } from '@smarteverything/domain';
 import { DEVICE_FAMILIES, humanizeEnum } from '@smarteverything/domain';
 import { Segmented } from '../../../../../components/segmented';
 import { Text } from '../../../../../components/text';
-import { PortScopeContext } from './literal-model';
+import { PortScopeContext } from './port-scope-context';
 import { OptionPicker } from './option-picker';
 import { withHeld, type PickerOption } from './option-picker-model';
 import { CAPABLE_ONLY, pickerOptionsOf } from './reference-picker';

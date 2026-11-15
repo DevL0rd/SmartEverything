@@ -68,7 +68,9 @@ const none = (): null => null;
 
 vi.mock('react-native', () => ({
   View: ({ children }: { readonly children?: ReactNode }): ReactNode => children ?? null,
-  useWindowDimensions: (): { width: number; height: number } => ({ width: 400, height: 800 }),
+}));
+vi.mock('../../../design/size-class', () => ({
+  useWindowSize: (): { width: number; height: number } => ({ width: 400, height: 800 }),
 }));
 vi.mock('expo-router', () => ({
   useRouter: (): { push: (target: unknown) => void } => ({

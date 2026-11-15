@@ -93,7 +93,7 @@ export const SERVED_ASSISTANT = [
     title: 'Show widgets',
     line: 'Cards and charts under a reply',
     description:
-      'Attaches live widgets (a device, remote or camera card, a health or nutrition chart, a plugin board, weather, scenes, or a button that opens a setting, device, automation, scene, room, schedule or page) under the reply you are writing, when seeing the thing helps. Ids come from reads; a reply holds at most 6, extra ones come back in dropped.',
+      'Attaches live widgets (a device, remote or camera card, a health or nutrition chart, a plugin board, weather, or a button that opens a setting, device, automation, room, schedule or page) under the reply you are writing, when seeing the thing helps. Ids come from reads; a reply holds at most 6, extra ones come back in dropped.',
     route: { part: 'widget_show' },
   },
   {
@@ -123,9 +123,9 @@ export const SERVED_ASSISTANT = [
     area: 'system',
     access: 'control',
     title: 'Update SmartEverything',
-    line: 'Release and recover hub, app and desktop updates',
+    line: 'Release, recover and roll back hub, app and desktop updates',
     description:
-      'Updates and releases of this SmartEverything installation, for the owner’s AI chats and for the owner’s remote MCP clients such as Claude Code on a paired computer. Hub returns a run ID; its result is posted in the requesting chat, and an MCP client reads it with status. Recover resumes an interrupted hub update. App builds and offers a signed Android installer for native changes; ui publishes compatible Android and desktop UI offers; desktop builds and publishes the Desktop native release (app and Computer service) for the listed Linux architectures, replacing the previous release, and needs a higher version in apps/desktop/package.json. App, ui and desktop build the pushed branch tip on the hub machine and return a result when done. Test needs a paired Android device. Check status with the run ID after interruption; partial means a platform is missing and can be resumed with the same request. Published means offered, never installed.',
+      'Updates of this SmartEverything installation, for the owner’s AI chats and owner MCP clients. Nothing is built on the Hub by default: hub, app, ui and desktop publish a build made elsewhere, from the source provided (a staged upload ID), github (a release tag or commit) or the opt-in hub. The Hub checks the signature, checksums and facts first. A failed hub release waits for the owner’s decision with its backup kept, and rollback runs only when the owner orders it. Release_keys manages signing keys and the GitHub release token. Check status by run ID. Published means offered, never installed.',
     route: {
       key: 'action',
       branches: {
@@ -133,17 +133,29 @@ export const SERVED_ASSISTANT = [
           part: 'update_status',
           line: 'Read a hub, app, ui or desktop outcome by run ID',
         },
-        hub: { part: 'update_hub', line: 'Prepare a hub release with automatic recovery' },
-        app: { part: 'update_app', line: 'Build and offer a signed Android installer' },
+        hub: { part: 'update_hub', line: 'Release a provided or GitHub hub build' },
+        app: { part: 'update_app', line: 'Offer a signed Android installer build' },
         ui: {
           part: 'update_ui',
           line: 'Offer compatible Android and desktop UI updates',
         },
         desktop: {
           part: 'update_desktop',
-          line: 'Build and publish the Desktop native release',
+          line: 'Publish the Desktop native release build',
         },
         recover: { part: 'update_recover', line: 'Resume an interrupted hub update' },
+        rollback: {
+          part: 'update_rollback',
+          line: 'Restore the previous release when the owner orders it',
+        },
+        release_keys: {
+          part: 'update_release_keys',
+          line: 'Manage release signing keys and the GitHub release token',
+        },
+        discard: {
+          part: 'update_discard',
+          line: 'Delete a staged upload that will not be published',
+        },
       },
     },
   },
@@ -294,7 +306,7 @@ export const SERVED_ASSISTANT = [
     title: 'Show a camera in a call',
     line: 'A home camera, or stop looking',
     description:
-      'Shows a home camera to the assistant in a running voice call, or stops it looking at anything; callId comes from outreach_read view calls.',
+      'Shows a home camera to the assistant in a running voice call, or stops it looking at anything; callId is only needed when several calls are running (outreach_read view calls).',
     route: {
       key: 'action',
       branches: {

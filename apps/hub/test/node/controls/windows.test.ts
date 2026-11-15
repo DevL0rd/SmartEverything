@@ -167,7 +167,12 @@ describe('LinuxWindows', () => {
     focused: false,
   };
 
-  function control(options: { kde: boolean; programs: string[]; rows?: WindowRow[] }): {
+  function control(options: {
+    kde: boolean;
+    programs: string[];
+    session?: boolean;
+    rows?: WindowRow[];
+  }): {
     windows: LinuxWindows;
     acted: string[];
     clock: ReturnType<typeof manualSchedule>;
@@ -197,6 +202,7 @@ describe('LinuxWindows', () => {
     return {
       windows: new LinuxWindows({
         kde: () => options.kde,
+        session: () => options.session ?? true,
         probe: installed(...options.programs),
         kdeProvider: () => provider,
         x11Provider: () => provider,
@@ -223,6 +229,19 @@ describe('LinuxWindows', () => {
     const none = control({ kde: false, programs: [] }).windows;
     await expect(none.features()).resolves.toEqual([]);
     await expect(none.read()).rejects.toMatchObject({ code: 'not_supported' });
+  });
+
+  it('lists no windows, without failing, on a computer with no graphical session', async () => {
+    const { windows, watched } = control({ kde: false, programs: [], session: false });
+    await expect(windows.features()).resolves.toEqual(['windows']);
+    await expect(windows.read()).resolves.toEqual({ windows: [] });
+    await expect(windows.change({ windowId: 'w1', action: 'focus' })).rejects.toMatchObject({
+      code: 'not_supported',
+    });
+    const stop = windows.watch(() => undefined);
+    await settle();
+    stop();
+    expect(watched).toEqual([]);
   });
 
   it('acts on a window and reports one that is already gone', async () => {

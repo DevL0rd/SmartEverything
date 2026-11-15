@@ -36,7 +36,7 @@ export const WATER_HEATER_MODEL: ModelSpec = {
   title: 'Water heater',
   category: 'water',
   family: 'heater',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: RADIUS * 2, depth: 0.501, height: 1.0825 },
   framing: house('band', 26, 12),
   shots: [
     shot('heating', HEATING, 'band', { zoom: 1.35, yaw: 22, pitch: 8, loopS: 3, stillAt: 1.5 }),

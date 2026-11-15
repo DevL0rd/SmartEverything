@@ -6,11 +6,11 @@ import { flag, jsonText } from '../sql';
 
 const STORED_ALARM = storedRow(PLANNER_ALARM_ROW, {
   flags: ['enabled', 'vibrate'],
-  json: ['days', 'targets', 'watch'],
+  json: ['days', 'sound', 'challenge', 'sunrise', 'targets', 'watch'],
 });
 
 const COLUMNS = `id, profile_id, label, time, days, once_on, skip_on, enabled, sound, ramp_seconds,
-  vibrate, snooze_minutes, smart_minutes, wake_scene_id, wake_lead_minutes, targets, watch, source,
+  vibrate, snooze_minutes, snooze_limit, challenge, sunrise, smart_minutes, wake_automation_id, wake_lead_minutes, targets, watch, source,
   created_at, updated_at`;
 
 export type PlannerAlarmInput = Omit<PlannerAlarmRow, 'id' | 'created_at' | 'updated_at'>;
@@ -23,6 +23,9 @@ function parameters(row: PlannerAlarmRow): Record<string, SQLInputValue> {
   return {
     ...row,
     days: jsonText(row.days),
+    sound: jsonText(row.sound),
+    challenge: jsonText(row.challenge),
+    sunrise: row.sunrise === null ? null : jsonText(row.sunrise),
     enabled: flag(row.enabled),
     vibrate: flag(row.vibrate),
     targets: jsonText(row.targets),

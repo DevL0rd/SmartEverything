@@ -1,6 +1,6 @@
 import { cp, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { NodeFailureError } from '../../node-failure';
 import { fsCode } from '../../../fs-code';
 import { sessionEnvironment } from './session-environment';
@@ -14,18 +14,54 @@ function encodePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/');
 }
 
+function pad(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 function trashStamp(date: Date): string {
-  return date.toISOString().slice(0, 19);
+  const day = `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function infoText(path: string, date: Date): string {
   return `[Trash Info]\nPath=${encodePath(path)}\nDeletionDate=${trashStamp(date)}\n`;
 }
 
-function originalPath(info: string): string | null {
-  const match = /^Path=(.+)$/m.exec(info);
-  return match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+export interface TrashInfo {
+  readonly path: string;
+  readonly deletedAt: Date | null;
 }
+
+function localMoment(stamp: string | undefined): Date | null {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/.exec(stamp ?? '')?.slice(1);
+  if (parts === undefined) {
+    return null;
+  }
+  const [year = 0, month = 1, day = 1, hour = 0, minute = 0, second = 0] = parts.map(Number);
+  return new Date(year, month - 1, day, hour, minute, second);
+}
+
+function decoded(path: string): string | null {
+  try {
+    return decodeURIComponent(path);
+  } catch (cause) {
+    if (cause instanceof URIError) {
+      return null;
+    }
+    throw cause;
+  }
+}
+
+export function readTrashInfo(info: string): TrashInfo | null {
+  const recorded = /^Path=(.+)$/m.exec(info)?.[1];
+  const path = recorded === undefined ? null : decoded(recorded);
+  if (path === null) {
+    return null;
+  }
+  return { path, deletedAt: localMoment(/^DeletionDate=(.+)$/m.exec(info)?.[1]) };
+}
+
+export const TRASH_INFO_SUFFIX = INFO_SUFFIX;
 
 export async function moveAcrossDevices(from: string, to: string): Promise<void> {
   try {
@@ -50,8 +86,14 @@ export class XdgTrash {
   constructor(
     dataHome: string = sessionEnvironment().XDG_DATA_HOME ?? join(homedir(), '.local', 'share'),
     private readonly now: () => Date = () => new Date(),
+    bin = 'Trash',
+    private readonly topdir: string | null = null,
   ) {
-    this.root = join(dataHome, 'Trash');
+    this.root = join(dataHome, bin);
+  }
+
+  originalOf(recorded: string): string {
+    return this.topdir === null ? recorded : resolve(this.topdir, recorded);
   }
 
   async put(path: string): Promise<string> {
@@ -78,13 +120,33 @@ export class XdgTrash {
       }
       throw cause;
     });
-    const target = originalPath(info);
-    if (target === null) {
+    const recorded = readTrashInfo(info);
+    if (recorded === null) {
       throw new NodeFailureError('failed', 'The Trash does not know where that item came from.');
     }
+    const target = this.originalOf(recorded.path);
     await this.place(join(this.root, 'files', id), target);
     await rm(infoFile, { force: true });
     return target;
+  }
+
+  async forget(id: string): Promise<string> {
+    if (!SAFE_ID.test(id) || id === '.' || id === '..') {
+      throw new NodeFailureError('not_found', 'That item is not in the Trash.');
+    }
+    const infoFile = join(this.root, 'info', `${id}${INFO_SUFFIX}`);
+    const info = await readFile(infoFile, 'utf8').catch((cause: unknown) => {
+      if (isMissing(cause)) {
+        throw new NodeFailureError('not_found', 'That item is not in the Trash.');
+      }
+      throw cause;
+    });
+    const recorded = readTrashInfo(info);
+    const original =
+      recorded === null ? join(this.root, 'files', id) : this.originalOf(recorded.path);
+    await rm(join(this.root, 'files', id), { recursive: true, force: true });
+    await rm(infoFile, { force: true });
+    return original;
   }
 
   private async place(from: string, target: string): Promise<void> {

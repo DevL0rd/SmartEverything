@@ -1,7 +1,6 @@
 import {
   COMPUTER_ROLE_MODELS,
   DRIVE_PLACEMENT,
-  type DiskSnapshot,
   type DrivePlacement,
 } from '@smarteverything/domain';
 import { deviceFixture } from '../../../store/device-fixture';
@@ -41,7 +40,8 @@ export function placement(
     rootId: ROOT,
     folderItemId: null,
     mode,
-    localPath: '/home/me/Drive',
+    localPath: mode === 'synced' ? '/home/me/Drive' : null,
+    mountName: mode === 'synced' ? null : 'Drive',
     enabled: true,
     hold: null,
     createdBy: ME,
@@ -61,23 +61,10 @@ export function placement(
       lastSyncedAt: null,
       errors: [],
       reason: null,
+      mountPoint: null,
       reportedAt: AT,
       ...status,
     },
     ...patch,
   });
-}
-
-export function disk(mount: string, usedBytes: number, totalBytes: number): DiskSnapshot {
-  return {
-    mount,
-    device: `/dev/${mount.length === 1 ? 'root' : 'data'}`,
-    label: null,
-    filesystem: 'ext4',
-    usedBytes,
-    totalBytes,
-    readRate: 0,
-    writeRate: 0,
-    temperature: null,
-  };
 }

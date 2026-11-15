@@ -173,7 +173,7 @@ export class BackupRunner {
   }
 
   async ledgerOf(): Promise<Ledger> {
-    this.ledger ??= await loadLedger(this.ports.storage);
+    this.ledger ??= await loadLedger(this.ports);
     return this.ledger;
   }
 

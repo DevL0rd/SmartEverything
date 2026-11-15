@@ -1,4 +1,4 @@
-export const CLOCK_SECTIONS = ['index', 'timers', 'stopwatch', 'world'] as const;
+export const CLOCK_SECTIONS = ['index', 'bedtime', 'timers', 'stopwatch', 'world'] as const;
 
 export type ClockSection = (typeof CLOCK_SECTIONS)[number];
 

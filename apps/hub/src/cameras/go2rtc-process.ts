@@ -108,7 +108,7 @@ function awaitReady(child: Go2rtcChild, launch: Go2rtcLaunch): Promise<void> {
     child.once('exit', (code, signal) => {
       reject(new Go2rtcExitedError(code, signal));
     });
-    child.once('error', reject);
+    child.on('error', reject);
     createInterface({ input: child.stdout }).on('line', (text) => {
       if (relay(launch, text)) {
         resolve();

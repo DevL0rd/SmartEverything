@@ -14,16 +14,31 @@ import { RepeatGate } from './repeat-gate';
 
 export const LINK_LIFETIME_SECONDS = 10 * 60;
 
-const DRIVE_LINK = SIGNED_LINK.extend({ rev: z.coerce.number().int().positive() });
+const CLAIMED_LINK = z.looseObject({
+  expires: z.coerce.number().int().positive(),
+  signature: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+const DRIVE_LINK = SIGNED_LINK.extend({
+  rev: z.coerce.number().int().positive(),
+  download: z.literal('1').optional(),
+});
 
 export interface VerifiedDriveLink {
   readonly rev: number;
+  readonly download: boolean;
   readonly expiresAt: Date;
 }
 
 const sizePart = (size: MediaSize): readonly string[] => [size];
 const sizeQuery = (size: MediaSize): Readonly<Record<string, string>> => ({ size });
 const revPart = (rev: number): string => `rev=${String(rev)}`;
+const DOWNLOAD_PART = 'download=1';
+const claimParts = (claims: Readonly<Record<string, string>>): readonly string[] => [
+  JSON.stringify(
+    Object.entries(claims).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+  ),
+];
 
 const log = new Logger('hub.server');
 const rejections = new RepeatGate(30_000);
@@ -64,6 +79,10 @@ export class MediaLinks {
     return this.sign(buildPath(MEDIA_PATHS.computerDownload, { deviceId, ticketId }), []);
   }
 
+  driveDownloadTicket(ticketId: string): MediaLink {
+    return this.sign(buildPath(MEDIA_PATHS.driveDownload, { ticketId }), []);
+  }
+
   machineUpdate(file: string): MediaLink {
     return this.sign(buildPath(MEDIA_PATHS.machineUpdate, { file }), []);
   }
@@ -96,19 +115,65 @@ export class MediaLinks {
     return this.sign(buildPath(MEDIA_PATHS.driveFile, { itemId }), [revPart(rev)], { rev });
   }
 
+  driveDownload(itemId: string, rev: number): MediaLink {
+    return this.sign(buildPath(MEDIA_PATHS.driveFile, { itemId }), [revPart(rev), DOWNLOAD_PART], {
+      rev,
+      download: 1,
+    });
+  }
+
+  driveZipEntry(itemId: string, index: number, rev: number): MediaLink {
+    return this.sign(
+      buildPath(MEDIA_PATHS.driveZipEntry, { itemId, index: String(index) }),
+      [revPart(rev)],
+      { rev },
+    );
+  }
+
+  driveZipEntryDownload(itemId: string, index: number, rev: number): MediaLink {
+    return this.sign(
+      buildPath(MEDIA_PATHS.driveZipEntry, { itemId, index: String(index) }),
+      [revPart(rev), DOWNLOAD_PART],
+      { rev, download: 1 },
+    );
+  }
+
+  driveFolderIcon(itemId: string, rev: number): MediaLink {
+    return this.sign(buildPath(MEDIA_PATHS.driveFolderIcon, { itemId }), [revPart(rev)], { rev });
+  }
+
   driveThumb(itemId: string, size: string, rev: number): MediaLink {
     return this.sign(buildPath(MEDIA_PATHS.driveThumb, { itemId, size }), [revPart(rev)], { rev });
   }
 
   verifyDrive(url: URL): VerifiedDriveLink {
     const link = this.parse(DRIVE_LINK, url);
-    this.check(url, link.expires, link.signature, [revPart(link.rev)]);
-    return { rev: link.rev, expiresAt: new Date(link.expires * 1000) };
+    const download = link.download !== undefined;
+    this.check(
+      url,
+      link.expires,
+      link.signature,
+      download ? [revPart(link.rev), DOWNLOAD_PART] : [revPart(link.rev)],
+    );
+    return { rev: link.rev, download, expiresAt: new Date(link.expires * 1000) };
   }
 
   verify(url: URL): void {
     const link = this.parse(SIGNED_LINK, url);
     this.check(url, link.expires, link.signature, []);
+  }
+
+  claimed(path: string, claims: Readonly<Record<string, string>>): MediaLink {
+    return this.sign(path, claimParts(claims), claims);
+  }
+
+  verifyClaimed(url: URL): Readonly<Record<string, string>> {
+    const link = this.parse(CLAIMED_LINK, url);
+    const claims = Object.fromEntries(
+      [...url.searchParams].filter(([name]) => name !== 'expires' && name !== 'signature'),
+    );
+    this.check(url, link.expires, link.signature, claimParts(claims));
+    return claims;
   }
 
   verifyImage(url: URL): MediaSize {

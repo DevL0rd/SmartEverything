@@ -72,6 +72,18 @@ describe('literalFits', () => {
     expect(fits({ t: 'entity', of: 'chat-hub.channel' }, 1)).toBe(false);
   });
 
+  it('accepts a device list as the plain ids a literal holds and as the refs a Find devices read returns', () => {
+    const devices: FlowType = { t: 'list', of: { t: 'ref', of: 'device' } };
+    expect(fits(devices, ['lamp-a', 'lamp-b'])).toBe(true);
+    expect(fits(devices, [{ device: 'lamp-a' }, { device: 'lamp-b' }])).toBe(true);
+    expect(fits(devices, [{ room: 'kitchen' }])).toBe(false);
+    expect(fits({ t: 'ref', of: 'device' }, { device: 'lamp-a', extra: 1 })).toBe(false);
+    expect(literalRefs(devices, [{ device: 'lamp-a' }, 'lamp-b'])).toEqual([
+      { of: 'device', id: 'lamp-a' },
+      { of: 'device', id: 'lamp-b' },
+    ]);
+  });
+
   it('checks times and dates', () => {
     expect(fits({ t: 'instant' }, '2026-10-18T10:00:00+07:00')).toBe(true);
     expect(fits({ t: 'instant' }, '2026-10-18T10:00Z')).toBe(true);
@@ -131,7 +143,8 @@ describe('literalFits', () => {
   it('checks references and targets', () => {
     expect(fits({ t: 'ref', of: 'room' }, 'room-1')).toBe(true);
     expect(fits({ t: 'ref', of: 'room' }, '')).toBe(false);
-    expect(fits({ t: 'ref', of: 'room' }, { room: 'x' })).toBe(false);
+    expect(fits({ t: 'ref', of: 'room' }, { room: 'x' })).toBe(true);
+    expect(fits({ t: 'ref', of: 'room' }, { device: 'x' })).toBe(false);
     const target: FlowType = { t: 'ref', of: 'target' };
     expect(fits(target, { device: 'd1' })).toBe(true);
     expect(fits(target, { devices: ['d1', 'd2'] })).toBe(true);

@@ -50,7 +50,7 @@ export const RADIATOR_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Radiator',
   category: 'structure',
-  footprint: { width: 1, depth: DEPTH, height: 0.722 },
+  footprint: { width: 1, depth: 0.088, height: 0.722 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     height: { param: 'height', extra: 0.122, resizes: true },

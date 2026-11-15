@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import type { DriveConflict, DriveItem, DriveRoot } from '@smarteverything/domain';
+import type { DriveConflict, DriveItem } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -20,7 +20,7 @@ import {
   useDriveOf,
   useDriveVersions,
 } from '../data';
-import { entryKindOf } from '../folder/folder-list';
+import { entryKindOf } from '../model/item-content';
 import { canWrite } from '../model/drive-access';
 import { RestoreButtons } from './restore';
 import {
@@ -47,7 +47,7 @@ import {
 } from './versions-model';
 
 export interface VersionsTarget {
-  readonly root: DriveRoot;
+  readonly versionsKept: boolean | null;
   readonly item: DriveItem;
   readonly picks?: VersionPicks;
 }
@@ -134,7 +134,7 @@ function CompareArea({ parts }: { readonly parts: PanelParts }): ReactNode {
   const { data, picks, look, slots } = parts;
   const a = entryOf(data.entries, picks.a);
   const b = entryOf(data.entries, picks.b);
-  if (a === null || b === null) return <OneVersion root={parts.target.root} />;
+  if (a === null || b === null) return <OneVersion kept={parts.target.versionsKept} />;
   return (
     <View className="min-h-0 flex-1 gap-3">
       {slots.compare === undefined ? null : (

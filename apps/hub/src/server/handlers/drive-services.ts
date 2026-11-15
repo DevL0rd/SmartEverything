@@ -36,6 +36,7 @@ export interface RootPageQuery {
 
 export interface ShareListQuery {
   readonly itemId?: string | undefined;
+  readonly albumId?: string | undefined;
   readonly cursor?: string | undefined;
 }
 

@@ -44,7 +44,6 @@ vi.mock('react-native', async (importOriginal) => {
     }): ReactNode => real.createElement('div', { id: nativeID, className }, children),
     ScrollView: ({ children }: { readonly children?: ReactNode }): ReactNode =>
       real.createElement('div', null, children),
-    useWindowDimensions: (): { width: number; height: number } => ({ width: 412, height: 844 }),
   };
 });
 
@@ -127,6 +126,7 @@ vi.mock('../chats/compact-chat-button', () => ({
 vi.mock('../../../design/size-class', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useSizeClass: vi.fn().mockReturnValue({ height: 'medium' }),
+  useWindowSize: (): { width: number; height: number } => ({ width: 412, height: 844 }),
 }));
 vi.mock('../../region', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),

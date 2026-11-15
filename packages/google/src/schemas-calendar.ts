@@ -71,6 +71,16 @@ export const ExtendedPropertiesSchema = z.object({
 });
 export type ExtendedProperties = z.infer<typeof ExtendedPropertiesSchema>;
 
+export const AttendeeSchema = z.object({
+  email: z.string().min(1),
+  displayName: z.string().optional(),
+  responseStatus: z.enum(['needsAction', 'declined', 'tentative', 'accepted']).optional(),
+  organizer: z.boolean().optional(),
+  self: z.boolean().optional(),
+  resource: z.boolean().optional(),
+});
+export type Attendee = z.infer<typeof AttendeeSchema>;
+
 export const GoogleEventSchema = z.object({
   id: z.string().min(1),
   etag: z.string().min(1),
@@ -95,6 +105,7 @@ export const GoogleEventSchema = z.object({
   sequence: z.number().int().optional(),
   updated: z.string().optional(),
   extendedProperties: ExtendedPropertiesSchema.optional(),
+  attendees: z.array(AttendeeSchema).optional(),
 });
 export type GoogleEvent = z.infer<typeof GoogleEventSchema>;
 

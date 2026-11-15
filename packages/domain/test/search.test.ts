@@ -157,7 +157,6 @@ const sources: SearchSources = {
       path: '/settings',
     },
   ],
-  scenes: [{ id: 'evening', name: 'Evening', path: '/automations' }],
   automations: [
     { id: 'porch', name: 'Porch lights at sunset', enabled: true, path: '/automations' },
     { id: 'cry', name: 'Baby cry call', enabled: false, path: '/automations' },
@@ -469,7 +468,7 @@ describe('the search index', () => {
     );
   });
 
-  it('indexes rooms, pages, settings, scenes and automations', () => {
+  it('indexes rooms, pages, settings and automations', () => {
     expect(entry('room:living')).toMatchObject({
       group: 'room',
       title: 'Living room',
@@ -506,18 +505,6 @@ describe('the search index', () => {
       suggested: false,
     });
     expect(entry('setting:members')).toMatchObject({ run: null, runLabel: null, state: null });
-    expect(entry('scene:evening')).toMatchObject({
-      group: 'scene',
-      title: 'Evening',
-      detail: 'Scene',
-      keywords: ['scene', 'mode', 'run', 'activate', 'start'],
-      state: null,
-      run: { kind: 'scene', sceneId: 'evening' },
-      runLabel: 'Run',
-      open: { kind: 'page', path: '/automations' },
-      openLabel: 'Edit',
-      suggested: false,
-    });
     expect(entry('automation:porch')).toMatchObject({
       group: 'automation',
       title: 'Porch lights at sunset',
@@ -548,7 +535,6 @@ describe('the search index', () => {
       device: 4,
       room: 1,
       setting: 2,
-      scene: 1,
       page: 3,
       automation: 2,
     });
@@ -640,7 +626,6 @@ describe('ranking', () => {
       ['action:purifier:power:true', 0],
       ['room:living', 1 + 3],
       ['setting:members', 0.5],
-      ['scene:evening', 1],
       ['page:/climate', 1],
       ['automation:porch', 0.5],
     ] as const;
@@ -669,14 +654,18 @@ describe('ranking', () => {
 
 describe('searching', () => {
   it('suggests favourites and recent entries when nothing is typed, most recent first', () => {
-    const recent = { 'scene:evening': options.now, 'page:/climate': options.now - DAY };
-    expect(titles('', { recent })).toStrictEqual(['Evening', 'Climate', 'Air purifier']);
-    expect(titles('', { recent, limit: 1 })).toStrictEqual(['Evening']);
+    const recent = { 'automation:porch': options.now, 'page:/climate': options.now - DAY };
+    expect(titles('', { recent })).toStrictEqual([
+      'Porch lights at sunset',
+      'Climate',
+      'Air purifier',
+    ]);
+    expect(titles('', { recent, limit: 1 })).toStrictEqual(['Porch lights at sunset']);
     expect(
       titles('', {
-        recent: { 'scene:evening': options.now, 'device:purifier': options.now },
+        recent: { 'automation:porch': options.now, 'device:purifier': options.now },
       }).slice(0, 2),
-    ).toStrictEqual(['Air purifier', 'Evening']);
+    ).toStrictEqual(['Air purifier', 'Porch lights at sunset']);
     expect(titles('', { recent, group: 'page' })).toStrictEqual(['Climate']);
   });
 
@@ -700,8 +689,7 @@ describe('searching', () => {
     expect(titles('unlock')).toStrictEqual(['Unlock — Front door', 'Lock — Front door']);
   });
 
-  it('runs scenes and switches automations from the words a person would say', () => {
-    expect(titles('run evening scene')).toStrictEqual(['Evening']);
+  it('switches automations from the words a person would say', () => {
     expect(titles('disable porch automation')).toStrictEqual(['Porch lights at sunset']);
     expect(titles('enable porch automation')).toStrictEqual([]);
     expect(titles('enable baby cry')).toStrictEqual(['Baby cry call']);

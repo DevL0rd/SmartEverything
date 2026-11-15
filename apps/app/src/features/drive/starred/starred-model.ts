@@ -16,13 +16,14 @@ export const STARRED_CHIPS: readonly { readonly chip: StarredChip; readonly labe
 const CHIP_KINDS: Readonly<Record<StarredChip, readonly ItemKind[] | null>> = {
   all: null,
   folders: ['folder'],
-  files: ['document', 'audio', 'other'],
+  files: ['document', 'audio', 'other', 'link', 'special'],
   photos: ['image', 'video'],
 };
 
 export function starredQueryOf(chip: StarredChip): Omit<DriveQuery, 'cursor'> {
   return {
     text: null,
+    match: 'names',
     rootId: null,
     folderId: null,
     kinds: CHIP_KINDS[chip],

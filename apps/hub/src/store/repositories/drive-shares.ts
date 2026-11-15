@@ -9,12 +9,13 @@ import { storedRow } from '../codec';
 import { found, StoreNotFoundError, type StoreContext } from '../context';
 import { inList } from '../sql';
 
-const COLUMNS = `id, item_id, permission, expires_at, password_hash is not null as has_password,
+const COLUMNS = `id, item_id, album_id, permission, expires_at, password_hash is not null as has_password,
   created_by, revoked_at, opens, downloads, last_opened_at`;
 
 const SHARE_COLUMNS = z.strictObject({
   id: z.string(),
-  item_id: z.string(),
+  item_id: z.string().nullable(),
+  album_id: z.string().nullable(),
   permission: z.enum(DRIVE_SHARE_PERMISSIONS),
   expires_at: z.string().nullable(),
   has_password: z.boolean(),
@@ -29,6 +30,7 @@ function shareOf(row: z.output<typeof SHARE_COLUMNS>): DriveShare {
   return DRIVE_SHARE.parse({
     id: row.id,
     itemId: row.item_id,
+    albumId: row.album_id,
     permission: row.permission,
     expiresAt: row.expires_at,
     hasPassword: row.has_password,
@@ -54,7 +56,8 @@ const STORED_RECORD = storedRow(
 
 export interface DriveShareInsert {
   readonly id: string;
-  readonly itemId: string;
+  readonly itemId: string | null;
+  readonly albumId?: string;
   readonly tokenHash: string;
   readonly permission: DriveSharePermission;
   readonly expiresAt: string | null;
@@ -73,6 +76,7 @@ export type DriveShareEvent = 'open' | 'download';
 export interface DriveShareWindow {
   readonly createdBy: string;
   readonly itemId: string | undefined;
+  readonly albumId?: string | undefined;
   readonly after: { readonly at: string; readonly id: string } | null;
   readonly limit: number;
 }
@@ -106,13 +110,14 @@ export class DriveSharesRepository {
     return this.context.write(() => {
       this.context.sql.run(
         'create the drive share',
-        `insert into drive_shares (id, item_id, token_hash, permission, expires_at, password_hash,
+        `insert into drive_shares (id, item_id, album_id, token_hash, permission, expires_at, password_hash,
           created_by, created_at, revoked_at, opens, downloads, last_opened_at)
-          values ($id, $itemId, $tokenHash, $permission, $expiresAt, $passwordHash, $createdBy,
+          values ($id, $itemId, $albumId, $tokenHash, $permission, $expiresAt, $passwordHash, $createdBy,
           $createdAt, null, 0, 0, null)`,
         {
           id: share.id,
           itemId: share.itemId,
+          albumId: share.albumId ?? null,
           tokenHash: share.tokenHash,
           permission: share.permission,
           expiresAt: share.expiresAt,
@@ -133,20 +138,30 @@ export class DriveSharesRepository {
     );
   }
 
+  forAlbum(albumId: string): DriveShare[] {
+    return this.context.sql.all(
+      STORED_SHARE,
+      `select ${COLUMNS} from drive_shares where album_id = $albumId order by created_at desc, id desc`,
+      { albumId },
+    );
+  }
+
   madeBy(window: DriveShareWindow): DriveShare[] {
     const item = window.itemId === undefined ? '' : 'and item_id = $itemId';
+    const album = window.albumId === undefined ? '' : 'and album_id = $albumId';
     const after =
       window.after === null
         ? ''
         : 'and (created_at < $afterAt or (created_at = $afterAt and id < $afterId))';
     return this.context.sql.all(
       STORED_SHARE,
-      `select ${COLUMNS} from drive_shares where created_by = $createdBy ${item} ${after}
+      `select ${COLUMNS} from drive_shares where created_by = $createdBy ${item} ${album} ${after}
        order by created_at desc, id desc limit $limit`,
       {
         createdBy: window.createdBy,
         limit: window.limit,
         ...(window.itemId === undefined ? {} : { itemId: window.itemId }),
+        ...(window.albumId === undefined ? {} : { albumId: window.albumId }),
         ...(window.after === null ? {} : { afterAt: window.after.at, afterId: window.after.id }),
       },
     );

@@ -58,7 +58,7 @@ export const SPRINKLER_MODEL: ModelSpec = {
   title: 'Sprinkler',
   category: 'garden',
   family: 'generic',
-  footprint: { width: REACH * 2, depth: REACH * 2, height: HEIGHT },
+  footprint: { width: REACH * 2, depth: REACH * 2, height: 0.096 },
   framing: house('head', 28, 20),
   shots: [
     shot('spraying', SPRAYING, 'head', { zoom: 1.3, yaw: 24, pitch: 22, loopS: 4, symmetry: 120 }),

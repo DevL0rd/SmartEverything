@@ -18,6 +18,8 @@ vi.mock('../../../api/drive', async (importOriginal) => ({
       membersMayShare: update.membersMayShare ?? true,
       duplicatesHashing: true,
       indexingPaused: false,
+      contentIndexing: update.contentIndexing ?? true,
+      ocrLanguages: update.ocrLanguages ?? ['eng'],
     });
   },
 }));

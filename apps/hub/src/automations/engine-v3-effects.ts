@@ -17,8 +17,7 @@ import type { DeviceSetter } from './effects/device-set';
 import type { TemporaryDeviceChanges } from './effects/device-temporary';
 import type { DeviceToggler } from './effects/device-toggle';
 import type { EffectRun } from './effects/effect-run';
-import type { CommandIssuer } from './issue-commands';
-import { sceneHandler, toggleHandler } from './engine-v3-device-effects';
+import { toggleHandler } from './engine-v3-device-effects';
 import { applyValueChange } from './effects/value-ops';
 import type { HttpEffects, HttpRequest } from './effects/http';
 import { TARGET_VALUE } from './world-v3/refs';
@@ -41,8 +40,7 @@ export interface EffectPorts {
   readonly temporary?: Pick<TemporaryDeviceChanges, 'run'> | undefined;
   readonly http: Pick<HttpEffects, 'request'>;
   readonly toggler: Pick<DeviceToggler, 'toggle'>;
-  readonly issuer: Pick<CommandIssuer, 'issue' | 'confirm'>;
-  readonly store: Pick<Store, 'automationValues' | 'scenes'>;
+  readonly store: Pick<Store, 'automationValues'>;
   readonly owned: Pick<AutomationOwnedValuesRepository, 'list' | 'write'>;
   readonly kept: Pick<KeptData, 'read' | 'write'>;
   readonly extra: EffectHandlers;
@@ -376,7 +374,6 @@ export function effectHandlers(ports: EffectPorts): EffectHandlers {
     'var.set': variable(ports),
     'var.change': variable(ports),
     'device.toggle': toggleHandler(ports.toggler),
-    'scene.run': sceneHandler(ports.store, ports.issuer),
     ...ports.extra,
   };
 }

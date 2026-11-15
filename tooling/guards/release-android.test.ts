@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import appConfig from '../../apps/app/app.config.ts';
 import {
@@ -15,7 +16,6 @@ import {
   parseFingerprint,
   parseMetaData,
   parseSigner,
-  readAppIdentity,
   releaseProblems,
   runtimeVersionOf,
   signingProblems,
@@ -171,7 +171,7 @@ describe('judging an APK', () => {
   });
 
   it('pins the app to the installed id and its signing certificate', () => {
-    expect(readAppIdentity()).toEqual({
+    expect(APP_IDENTITY).toEqual({
       applicationId: 'com.devl0rd.smarteverything.dev',
       signingCertificateSha256: APP_SIGNER,
     });

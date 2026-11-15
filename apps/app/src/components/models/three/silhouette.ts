@@ -106,34 +106,56 @@ function modelMeshes(root: Object3D): readonly Mesh[] {
   return found;
 }
 
-export function createSilhouette(root: Object3D, theme: StageTheme): Silhouette {
+interface Edge {
+  readonly material: ShaderMaterial;
+  readonly uniforms: EdgeUniforms;
+}
+
+const edges = new Map<StageTheme, Edge>();
+
+function edgeOf(theme: StageTheme): Edge {
+  const known = edges.get(theme);
+  if (known !== undefined) return known;
   const uniforms = edgeUniforms(theme);
-  const material = edgeMaterial(uniforms);
+  const edge = { material: edgeMaterial(uniforms), uniforms };
+  edges.set(theme, edge);
+  return edge;
+}
+
+function hullOf(mesh: Mesh, current: () => Edge): Mesh {
   const viewport = new Vector4();
-  const hulls = modelMeshes(root).map((mesh) => {
-    for (const each of materialsOf(mesh)) markSilhouette(each);
-    const hull = new Mesh(mesh.geometry, material);
-    hull.name = `${mesh.name}:silhouette`;
-    hull.renderOrder = SILHOUETTE_ORDER;
-    hull.onBeforeRender = (renderer: WebGLRenderer): void => {
-      renderer.getCurrentViewport(viewport);
-      uniforms.resolution.value.set(viewport.z, viewport.w);
-      uniforms.width.value = SILHOUETTE_WIDTH_PX * renderer.getPixelRatio();
-      material.uniformsNeedUpdate = true;
-    };
-    mesh.add(hull);
-    return hull;
-  });
+  for (const each of materialsOf(mesh)) markSilhouette(each);
+  const hull = new Mesh(mesh.geometry, current().material);
+  hull.name = `${mesh.name}:silhouette`;
+  hull.renderOrder = SILHOUETTE_ORDER;
+  hull.onBeforeRender = (renderer: WebGLRenderer): void => {
+    const { material, uniforms } = current();
+    renderer.getCurrentViewport(viewport);
+    uniforms.resolution.value.set(viewport.z, viewport.w);
+    uniforms.width.value = SILHOUETTE_WIDTH_PX * renderer.getPixelRatio();
+    material.uniformsNeedUpdate = true;
+  };
+  mesh.add(hull);
+  return hull;
+}
+
+export function createSilhouette(root: Object3D, theme: StageTheme): Silhouette {
+  let edge = edgeOf(theme);
+  const hulls = modelMeshes(root).map((mesh) => hullOf(mesh, () => edge));
   return {
-    material,
-    uniforms,
+    get material(): ShaderMaterial {
+      return edge.material;
+    },
+    get uniforms(): EdgeUniforms {
+      return edge.uniforms;
+    },
     hulls,
     setTheme: (next): void => {
-      uniforms.tone.value.set(STAGE_RIGS[next].edge);
+      edge = edgeOf(next);
+      for (const hull of hulls) hull.material = edge.material;
     },
     dispose: (): void => {
       for (const hull of hulls) hull.removeFromParent();
-      material.dispose();
     },
   };
 }

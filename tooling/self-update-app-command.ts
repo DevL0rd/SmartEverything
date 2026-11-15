@@ -1,3 +1,4 @@
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import { desktopPublicationId, executeUiPublication } from './self-update-app-executor.ts';
 import {
   API_ENDPOINTS,
@@ -16,7 +17,10 @@ import { AndroidApkFolder } from '../apps/hub/src/app-updates/android-apk-folder
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
 import { readIndex } from '../apps/hub/src/app-updates/store.ts';
 import { baselineApk } from './android-apk-baseline.ts';
-import { AndroidApkPublicationError, publishAndroidApk } from './android-apk-publish.ts';
+import {
+  AndroidApkPublicationError,
+  publishAndroidApk,
+} from '../apps/hub/src/releases/publish-apk.ts';
 import { readAndroidUpdateHome } from './android-update-home.ts';
 import { AppUpdateCandidateError } from '../apps/hub/src/app-updates/candidate.ts';
 import type { AndroidReleaseTarget } from './app-update-candidate.ts';
@@ -28,12 +32,13 @@ import {
 import { requireBuildDisk } from './build-disk.ts';
 import { applyBuildHost, BuildHostError, requireBuildHost } from './build-host.ts';
 import { runInBuildScope } from './build-scope.ts';
+import { requireHubSource } from './hub-build-gate.ts';
 import { HubSourceError } from './hub-update-source.ts';
 import { PublishCommandError, runCommand } from './publish-app-update-shared.ts';
 import { SyncedCheckoutError, syncedCheckout } from './self-update-checkout.ts';
 import { desktopWebRuntime } from '../apps/desktop/packaging/web-runtime.ts';
 import { WEB_EXPORT } from './publish-app-update-desktop.ts';
-import { readAppIdentity } from './release-apk.ts';
+import { readReleaseVersion } from './release-version.ts';
 import { dataLayoutOf } from './release-hub-files.ts';
 import {
   AppPublicationRefused,
@@ -81,7 +86,7 @@ export async function observations(
   layout: HubLayout,
   clientId?: string,
 ): Promise<readonly PairedAndroidBuild[]> {
-  const app = readAppIdentity().applicationId;
+  const app = APP_IDENTITY.applicationId;
   if (clientId !== undefined) {
     const endpoint = API_ENDPOINTS.readAndroidAppBuild;
     const path = endpoint.path.replace(':clientId', clientId);
@@ -227,8 +232,13 @@ async function publish(
         observation,
         readObservation: reference,
         apk,
-        server: environment.server,
         notes: input.notes,
+        expected: {
+          identity: APP_IDENTITY,
+          versionName: readReleaseVersion('app'),
+          server: environment.server,
+        },
+        now,
       });
     } else await publishUi(environment, input, scratch, readTargets);
   } catch (error) {
@@ -285,7 +295,7 @@ export async function inspect(
     desktop: desktopReceipt(index.entries, input),
     clientId: release.clientId ?? null,
     runtimeVersion: release.runtimeVersion,
-    applicationId: readAppIdentity().applicationId,
+    applicationId: APP_IDENTITY.applicationId,
     versionCode: null,
   };
 }
@@ -310,6 +320,9 @@ async function main(): Promise<void> {
   }
   const root = process.cwd();
   const kind = command.input.action;
+  requireHubSource(layout, kind, (error) => {
+    failUnfinishedJob(ports.store, runId, error.message);
+  });
   const status = runInBuildScope(kind, layout, (error) => {
     failUnfinishedJob(ports.store, runId, error.message);
   });

@@ -13,13 +13,15 @@ import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Sheet } from '../../../components/sheet';
+import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { createSchedule, type ScheduleInput } from '../../../api/schedules';
 import { moment } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
 import { useRows, useSettings } from '../../../store/selectors';
-import { trackSetting } from '../../settings/settings-log';
+import { trackSetting } from '../../settings';
+import { SCRUB_EXPLAINER } from '../storage/scrub-progress';
 import { daysText } from './page-sharing';
 
 const DAY_SECONDS = 86_400;
@@ -82,7 +84,7 @@ export function scheduleValueOf(row: ScheduleRow): string {
 }
 
 export function scheduleLineOf(row: ScheduleRow, now: number, zone: string): string {
-  if (row.state === 'running') return `${scheduleValueOf(row)} · checking now`;
+  if (row.state === 'running') return `${scheduleValueOf(row)} · reading files back now`;
   if (row.next_at === null) return scheduleValueOf(row);
   return `${scheduleValueOf(row)} · next ${moment(row.next_at, now, zone)}`;
 }
@@ -138,6 +140,9 @@ function ScheduleSheet({
         formatValue={everyText}
         onChange={setDays}
       />
+      <Text variant="footnote" tone="variant">
+        {`${SCRUB_EXPLAINER}. A scheduled check runs the same way as Scrub now.`}
+      </Text>
     </Sheet>
   );
 }

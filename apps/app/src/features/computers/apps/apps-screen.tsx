@@ -1,18 +1,42 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { ReasonLine } from '../../../components/reason-line';
 import { ComputerFrame } from '../components/computer-frame';
 import { useComputerReach } from '../data/computer-scopes';
-import { SectionGate } from '../processes/section-gate';
-import { AppsSection } from './apps-section';
+import { SectionGate, useSectionState } from '../processes/section-gate';
+import { AppsSection, InstalledSearch } from './apps-section';
 import { OpenSection } from './open-section';
 import { TilingSection } from './tiling-section';
 import { WindowsSection } from './windows-section';
 
 export function ComputerAppsScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const reach = useComputerReach(deviceId);
+  const [query, setQuery] = useState('');
+  const open = useSectionState(deviceId, 'apps', 'apps').kind === 'open';
   return (
-    <ComputerFrame deviceId={deviceId} title="Apps and windows" width="dashboard">
+    <ComputerFrame
+      deviceId={deviceId}
+      title="Apps and windows"
+      width="dashboard"
+      {...(open
+        ? {
+            search: {
+              value: query,
+              onChange: setQuery,
+              placeholder: 'Search installed apps',
+              label: 'Search installed apps',
+              panel: (
+                <InstalledSearch
+                  deviceId={deviceId}
+                  machine={reach.name}
+                  online={reach.online}
+                  query={query}
+                />
+              ),
+            },
+          }
+        : {})}
+    >
       <SectionGate deviceId={deviceId} section="apps" scope="apps">
         {reach.online ? null : (
           <ReasonLine

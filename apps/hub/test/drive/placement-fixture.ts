@@ -132,7 +132,8 @@ export function placementRequest(
     rootId: HOME_DRIVE,
     folderItemId: null,
     mode,
-    localPath: '/home/robin/Games',
+    localPath: mode === 'synced' ? '/home/robin/Games' : null,
+    mountName: mode === 'synced' ? null : 'Games',
     enabled: true,
     ...(mode === 'synced' ? { excluded: [], ignorePatterns: [], conflictCopies: false } : {}),
     ...fields,
@@ -154,6 +155,7 @@ export function status(fields: Partial<DrivePlacementStatus> = {}): DrivePlaceme
     lastSyncedAt: null,
     errors: [],
     reason: null,
+    mountPoint: null,
     reportedAt: LATER,
     ...fields,
   };

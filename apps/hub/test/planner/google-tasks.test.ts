@@ -257,6 +257,10 @@ function local(fields: Partial<PlannerItemInput> & { title: string }): PlannerIt
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     ...fields,
   };
@@ -309,6 +313,8 @@ beforeEach(() => {
     default_reminders: [],
     source: 'google',
     google: { id: LIST, etag: null, syncToken: null },
+    audience: 'personal',
+    feed: null,
   }).id;
   sync = new TasksSync({
     fetch: remote.fetch,

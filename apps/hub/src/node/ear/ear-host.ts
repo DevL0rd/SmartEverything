@@ -1,4 +1,4 @@
-import type { HubFrame, RemoteEarHubMessage, RemoteEarNodeMessage } from '@smarteverything/domain';
+import type { RemoteEarHubMessage, RemoteEarNodeMessage } from '@smarteverything/domain';
 import { background, type Logger } from '@smarteverything/logging';
 import { systemClock, type Clock } from '../../clock';
 import type { EarRuntimeLost } from './runtime-lost';
@@ -7,11 +7,7 @@ import { WakeDiagnostics } from './wake-diagnostics';
 import { pcmOf } from './ear-audio';
 import type { KeywordEngine } from './relayed-spotter';
 import { RelayedEar } from './relayed-ear';
-
-export type EarsFrame = Extract<
-  HubFrame,
-  { readonly type: 'ears_open' | 'ears_audio' | 'ears_close' | 'ears' | 'ears_score' }
->;
+import type { EarsFrame } from '../ear-link';
 
 export type RemoteEarSend = (key: string, message: RemoteEarNodeMessage) => void;
 
@@ -36,18 +32,6 @@ export interface EarHostDeps {
   readonly diagnostics?: WakeDiagnostics | null;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
-}
-
-const EARS_FRAME_TYPES: ReadonlySet<string> = new Set([
-  'ears_open',
-  'ears_audio',
-  'ears_close',
-  'ears',
-  'ears_score',
-]);
-
-export function isEarsFrame(frame: HubFrame): frame is EarsFrame {
-  return EARS_FRAME_TYPES.has(frame.type);
 }
 
 export class EarHost implements EarHostPort {

@@ -47,6 +47,9 @@ const BASE_ITEM = {
   openedAt: null,
   starred: false,
   shared: false,
+  locked: false,
+  lockedHere: false,
+  openComments: 0,
   rev: 1,
   etag: '1-abc',
   outside: false,
@@ -157,7 +160,14 @@ describe('DRIVE_ITEM', () => {
     };
     expect(DRIVE_ITEM.safeParse(IMAGE_ITEM).success).toBe(true);
     expect(
-      DRIVE_ITEM.safeParse({ ...BASE_ITEM, kind: 'folder', childCount: 2, bytes: 3 }).success,
+      DRIVE_ITEM.safeParse({
+        ...BASE_ITEM,
+        kind: 'folder',
+        childCount: 2,
+        bytes: 3,
+        colour: null,
+        iconHint: false,
+      }).success,
     ).toBe(true);
     expect(DRIVE_ITEM.safeParse({ ...IMAGE_ITEM, kind: 'video', durationMs: 5 }).success).toBe(
       true,

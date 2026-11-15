@@ -27,6 +27,7 @@ minimumReleaseAgeExclude:
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': false
+  cbor-extract: false
   cpu-features: false
   electron: true
   electron-winstaller: true
@@ -37,6 +38,7 @@ allowBuilds:
   node-pty: true
   protobufjs: false
   ssh2: false
+  tesseract.js: false
   usocket: false
 
 overrides:
@@ -68,6 +70,7 @@ patchedDependencies:
   node-forge@1.4.0: patches/node-forge@1.4.0.patch
   openrgb-sdk@0.6.0: patches/openrgb-sdk@0.6.0.patch
   react-native@0.86.3: patches/react-native@0.86.3.patch
+  three@0.186.1: patches/three@0.186.1.patch
 
 packageExtensions:
   dsh-plugin-codegraph-service:

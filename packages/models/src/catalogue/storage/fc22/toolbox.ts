@@ -15,7 +15,7 @@ const ARCH: readonly (readonly [number, number, number])[] = [
 export const TOOLBOX_MODEL: ModelSpec = storageItem({
   id: 'cat.storage.toolbox',
   title: 'Toolbox',
-  footprint: { width: 0.47, depth: DEPTH, height: BODY_H + LID_H + 0.095 + 0.012 },
+  footprint: { width: 0.47, depth: 0.244, height: BODY_H + LID_H + 0.095 + 0.012 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

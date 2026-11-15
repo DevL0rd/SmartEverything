@@ -62,7 +62,7 @@ export const ORALB_IO9_MODEL: ModelSpec = {
   title: 'Oral-B iO9',
   category: 'personal-care',
   family: 'toothbrush',
-  footprint: { width: 0.06, depth: 0.06, height: 0.24 },
+  footprint: { width: 0.06, depth: 0.06, height: 0.2258 },
   framing: {
     tile: { ...TALL, padding: 0.08 },
     card: TALL,

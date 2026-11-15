@@ -14,7 +14,7 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerSession } from '../../src/computers/computer-session';
-import { Viewers } from '../../src/metrics/viewers';
+import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import type { HubLink } from '../../src/node/link';
 import { captureLogs, testLogger } from '../support/logs';
 
@@ -79,7 +79,7 @@ interface Recorded {
 }
 
 function start(
-  viewers: Viewers<ProcessWindow>,
+  viewers: Viewers<DeviceDetail>,
   options: { readonly hubMachine?: boolean; readonly scopes?: ComputerScopes } = {},
 ): {
   readonly recorded: Recorded;
@@ -124,7 +124,7 @@ function start(
     viewers,
     policyOf: (): typeof DEFAULT_HISTORY_POLICY => DEFAULT_HISTORY_POLICY,
     publish: (notice): void => {
-      recorded.notices.push(notice);
+      if (notice.type === 'computer_live') recorded.notices.push(notice);
     },
     deviceIdOf: (): string => 'device-1',
     scopesOf: (): ComputerScopes => options.scopes ?? DEFAULT_COMPUTER_SCOPES,
@@ -179,7 +179,7 @@ describe('computer session', () => {
   });
 
   it('asks the computer for exactly the topics that are watched, with the process window', () => {
-    const viewers = new Viewers<ProcessWindow>();
+    const viewers = new Viewers<DeviceDetail>();
     const { recorded, send } = start(viewers);
     send({ type: 'hello', hello: HELLO });
     viewers.hold('phone', [
@@ -202,7 +202,7 @@ describe('computer session', () => {
   });
 
   it('leaves processes out of the demand while the processes permission is off', () => {
-    const viewers = new Viewers<ProcessWindow>();
+    const viewers = new Viewers<DeviceDetail>();
     const scopes = { ...DEFAULT_COMPUTER_SCOPES, processes: false };
     const { recorded, send } = start(viewers, { scopes });
     send({ type: 'hello', hello: HELLO });

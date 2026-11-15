@@ -63,10 +63,18 @@ describe('stageState', () => {
     expect(gone).toEqual({ live: false, mounted: true, showStill: true });
   });
 
-  it('keeps its DOM component warm when another screen shows, even with the still not drawn yet', () => {
+  it('unmounts when another screen shows, even with the still not drawn yet', () => {
     const live = stageState(STAGE_NOT_REGISTERED, { ...visible, stillReady: false });
     const gone = stageState(live, { ...visible, stillReady: false, screenFocused: false });
-    expect(gone).toEqual({ live: false, mounted: true, showStill: true });
+    expect(gone).toEqual({ live: false, mounted: false, showStill: true });
+  });
+
+  it('releases a mounted stage on a blurred screen in the foreground whose still never reports ready', () => {
+    const gone = stageState(
+      { live: false, mounted: true, showStill: true },
+      { ...visible, screenFocused: false, stillReady: false, appForeground: true },
+    );
+    expect(gone.mounted).toBe(false);
   });
 
   it('unmounts at once when the app goes to the background, even with the still not drawn yet', () => {

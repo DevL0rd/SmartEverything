@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DrivePlacement, DriveRoot, DriveStats } from '@smarteverything/domain';
 import { useHeaderStatus } from '../../../components/header-status';
 import { bytes, count } from '../../../format/number';
-import type { LibraryFrameProps } from '../../../components/library-frame';
+import type { StandardShellProps } from '../../../components/page-shell/page-shell';
 import type { DriveFrameProps } from './drive-frame';
 
 const VIEWER = '00000000-0000-4000-8000-0000000000e1';
@@ -12,27 +12,26 @@ const LAPTOP = '00000000-0000-4000-8000-0000000000d1';
 const DESKTOP = '00000000-0000-4000-8000-0000000000d2';
 
 interface Seen {
-  area: number;
-  width: 'compact' | 'medium' | 'expanded' | 'large' | 'xlarge';
-  frame: (LibraryFrameProps & { readonly iconRail?: boolean }) | null;
+  header: 'large' | 'standard' | 'desktop';
+  frame: StandardShellProps | null;
   status: ReactNode;
   placements: DrivePlacement[];
   stats: DriveStats | undefined;
+  unread: number;
 }
 
 const seen = vi.hoisted((): Seen => ({
-  area: 1336,
-  width: 'large',
+  header: 'desktop',
   frame: null,
   status: null,
   placements: [],
   stats: undefined,
+  unread: 0,
 }));
 
 vi.mock('../../../design/size-class', async (original) => ({
   ...(await original<object>()),
-  useAreaWidth: (): number => seen.area,
-  useSizeClass: (): { readonly width: Seen['width'] } => ({ width: seen.width }),
+  useSizeClass: (): { readonly header: Seen['header'] } => ({ header: seen.header }),
 }));
 vi.mock('../../../settings/env', () => ({
   useSettingEnv: (): { readonly owner: boolean; readonly platform: string } => ({
@@ -53,6 +52,7 @@ vi.mock('../data', () => ({
   useViewerId: (): string => VIEWER,
   useDriveAlbums: (): readonly unknown[] => [],
   useDriveGrantRows: (): readonly unknown[] => [],
+  useUnreadDriveNotifications: (): number => seen.unread,
   useDrivePlacementRows: (): readonly DrivePlacement[] => seen.placements,
   useDriveUsage: (): { readonly data: undefined } => ({ data: undefined }),
   useDriveStats: (): { readonly data: DriveStats | undefined } => ({ data: seen.stats }),
@@ -78,7 +78,9 @@ vi.mock('../../../components/interactive', () => ({
 vi.mock('../../../components/library-frame', () => ({
   SummaryWell: ({ title }: { readonly title: string }): ReactNode =>
     createElement('aside', {}, title),
-  LibraryFrame: (props: NonNullable<Seen['frame']>): ReactNode => {
+}));
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: (props: NonNullable<Seen['frame']>): ReactNode => {
     seen.frame = props;
     seen.status = useHeaderStatus();
     return createElement('main', {}, props.children);
@@ -105,6 +107,7 @@ const STATUS: DrivePlacement['status'] = {
   lastSyncedAt: null,
   errors: [],
   reason: null,
+  mountPoint: null,
   reportedAt: '2026-11-14T08:00:00+00:00',
 };
 
@@ -115,6 +118,7 @@ const PLACEMENT: DrivePlacement = {
   folderItemId: null,
   mode: 'synced',
   localPath: '/home/me/Drive',
+  mountName: null,
   enabled: true,
   excluded: [],
   ignorePatterns: [],
@@ -188,12 +192,12 @@ function render(patch: Partial<DriveFrameProps> = {}): string {
 }
 
 beforeEach(() => {
-  seen.area = 1336;
-  seen.width = 'large';
+  seen.header = 'desktop';
   seen.frame = null;
   seen.status = null;
   seen.placements = [];
   seen.stats = undefined;
+  seen.unread = 0;
 });
 
 describe('drive sync summary', () => {
@@ -263,6 +267,7 @@ describe('drive rail', () => {
       sharedDrive: null,
       smartFolders: 0,
       sharedWithMe: 0,
+      unread: 0,
       computerProblems: 0,
       trash: { count: 0, more: false },
       sync: null,
@@ -272,12 +277,13 @@ describe('drive rail', () => {
     ).toBe(true);
   });
 
-  it('badges shared with me, computer problems and trash, and counts each drive', () => {
+  it('badges shared with me, unread notifications, computer problems and trash, and counts each drive', () => {
     const rail = driveRailOf({
       myDrive: ROOT,
       sharedDrive: { ...ROOT, scope: 'home', ownerProfileId: null, items: 1 },
       smartFolders: 3,
       sharedWithMe: 4,
+      unread: 3,
       computerProblems: 2,
       trash: { count: 50, more: true },
       sync: 'Synced on Laptop · up to date',
@@ -285,6 +291,7 @@ describe('drive rail', () => {
     expect(rail.index?.detail).toBe(`${count(12480)} files`);
     expect(rail['shared-drive']?.detail).toBe('1 file');
     expect(rail.shared?.count).toBe(4);
+    expect(rail.notifications?.count).toBe(3);
     expect(rail.starred?.detail).toBe('3 smart folders');
     expect(rail.computers).toEqual({ count: 2, detail: 'Synced on Laptop · up to date' });
     expect(rail.trash?.count).toBe(`${count(50)}+`);
@@ -293,14 +300,16 @@ describe('drive rail', () => {
   it('groups the rail as the plan lays it out with a usage bar under Storage', () => {
     const groups = driveSectionGroupsOf({}, spaceMeterOf({ used: 10, quota: 100, disk: 1000 }));
     expect(groups.map((group) => group.title)).toEqual([null, 'Activity', 'Computers', 'Space']);
-    expect(groups[0]?.sections.map((section) => section.label)).toEqual([
+    expect(groups[0]?.entries.map((entry) => entry.label)).toEqual([
       'My Drive',
       'Shared Drive',
       'Shared with me',
+      'Priority',
       'Recent',
       'Starred',
     ]);
-    const storage = groups[3]?.sections.find((section) => section.id === 'storage');
+    expect(groups[1]?.entries.map((entry) => entry.label)).toEqual(['Notifications', 'Activity']);
+    const storage = groups[3]?.entries.find((entry) => entry.id === 'storage');
     expect(isValidElement(storage?.detail)).toBe(true);
   });
 
@@ -358,52 +367,74 @@ describe('drive header', () => {
 describe('drive frame', () => {
   it('opens Drive settings on the section that matches the page', () => {
     render({ primary: { label: 'New', icon: 'folder', onPress: vi.fn() } });
-    expect(seen.frame?.settings.label).toBe('Drive settings');
-    expect(seen.frame?.settings.href).toMatchObject({
+    expect(seen.frame?.settings?.label).toBe('Drive settings');
+    expect(seen.frame?.settings?.href).toMatchObject({
       params: { page: ['drive'], focus: 'drive.sync-mount' },
     });
     expect(seen.frame?.primaryAction?.label).toBe('New');
     expect(seen.frame?.title).toBe('Drive');
+    expect(seen.frame?.back).toBe(false);
   });
 
-  it('puts the sync pill in the header status and the drives well in the rail on wide screens', () => {
+  it('puts the sync pill in the header status and the drives well under the rail on wide screens', () => {
     seen.placements = [PLACEMENT];
     seen.stats = STATS;
     render();
+    const sections = seen.frame?.sections;
     expect(isValidElement(seen.status)).toBe(true);
-    expect(seen.frame?.summary).toBeDefined();
-    expect(seen.frame?.iconRail).toBe(false);
-    expect(seen.frame?.sections.map((group) => group.title)).toEqual([
+    expect(isValidElement(sections?.footer)).toBe(true);
+    expect(sections?.iconRail).toBeUndefined();
+    expect(sections?.active).toBe('computers');
+    expect(sections?.groups.map((group) => group.title)).toEqual([
       null,
       'Activity',
       'Computers',
       'Space',
     ]);
+    expect(seen.frame?.actions?.map((action) => action.label)).toEqual(['Refresh']);
+  });
+
+  it('badges Notifications while the viewer has unread ones', () => {
+    seen.unread = 2;
+    render();
+    const notifications = seen.frame?.sections?.groups[1]?.entries[0];
+    expect(notifications).toMatchObject({ id: 'notifications', count: '2' });
   });
 
   it('badges Computers while a placed folder failed', () => {
     seen.placements = [placed({}, { state: 'failed' })];
     render();
-    const computers = seen.frame?.sections[2]?.sections[0];
-    expect(computers?.count).toBe(1);
+    const computers = seen.frame?.sections?.groups[2]?.entries[0];
+    expect(computers?.count).toBe('1');
   });
 
-  it('drops to the icon rail when the page asks and below the large width', () => {
+  it('hands the page search to the shell search slot and leaves it out when the page has none', () => {
+    const search = { value: '', onChange: vi.fn(), placeholder: 'Filter My Drive' };
+    render({ search });
+    expect(seen.frame?.search).toBe(search);
+    render();
+    expect(seen.frame?.search).toBeUndefined();
+  });
+
+  it('keeps the rail to icons while the page asks for room', () => {
     render({ iconRail: true });
-    expect(seen.frame?.iconRail).toBe(true);
-    seen.width = 'expanded';
-    render();
-    expect(seen.frame?.iconRail).toBe(true);
+    expect(seen.frame?.sections?.iconRail).toBe(true);
   });
 
-  it('keeps the phone header free of the pill and moves the well into the pull-up', () => {
-    seen.area = 412;
-    seen.width = 'compact';
+  it('keeps the phone header free of the pill and refresh, with the most used sections as tabs', () => {
+    seen.header = 'large';
     render();
+    const frame = seen.frame;
     expect(seen.status).toBeNull();
-    expect(seen.frame?.summary).toBeUndefined();
-    expect(seen.frame?.renderPullUpFooter).toBeTypeOf('function');
-    expect(seen.frame?.chips).toBeDefined();
+    expect(frame?.actions).toEqual([]);
+    expect(frame?.onRefresh).toBeTypeOf('function');
+    expect(frame?.sections?.phoneTabs).toEqual([
+      'index',
+      'shared-drive',
+      'shared',
+      'recent',
+      'starred',
+    ]);
   });
 
   it('shows the pill only while a folder is placed and links it to Computers', () => {

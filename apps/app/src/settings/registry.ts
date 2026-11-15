@@ -25,31 +25,33 @@ import { anyVisible, indexByPage, settingsOfPage } from './page-index';
 import { onPlatform, settingsPage } from './tree';
 import type { SettingDefinition, SettingEnv } from './types';
 
-const SETTINGS: readonly SettingDefinition[] = [
-  ...PROFILES,
-  ...ACCESS,
-  ...DEVICES,
-  ...WATCHES,
-  ...PHONE,
-  ...PHOTOS,
-  ...CAMERAS,
-  ...FITNESS,
-  ...NUTRITION,
-  ...PLANNER,
-  ...AUTOMATIONS,
-  ...DRIVE,
-  ...TALK,
-  ...ASSISTANT,
-  ...SETTINGS_PAGES,
-  ...HOME,
-  ...HOME_MAP,
-  ...REGION,
-  ...CLIPBOARD,
-  ...DEVELOPER,
-  ...CONNECTIONS,
-  ...APP_UPDATES,
-  ...HUB_UPDATES,
-];
+function allSettings(): readonly SettingDefinition[] {
+  return [
+    ...PROFILES,
+    ...ACCESS,
+    ...DEVICES,
+    ...WATCHES,
+    ...PHONE,
+    ...PHOTOS,
+    ...CAMERAS,
+    ...FITNESS,
+    ...NUTRITION,
+    ...PLANNER,
+    ...AUTOMATIONS,
+    ...DRIVE,
+    ...TALK,
+    ...ASSISTANT,
+    ...SETTINGS_PAGES,
+    ...HOME,
+    ...HOME_MAP,
+    ...REGION,
+    ...CLIPBOARD,
+    ...DEVELOPER,
+    ...CONNECTIONS,
+    ...APP_UPDATES,
+    ...HUB_UPDATES,
+  ];
+}
 
 class SettingsRegistryError extends Error {
   override readonly name = 'SettingsRegistryError';
@@ -70,26 +72,40 @@ function validate(settings: readonly SettingDefinition[]): void {
   }
 }
 
-if (__DEV__) {
-  validate(SETTINGS);
+interface Registry {
+  readonly settings: readonly SettingDefinition[];
+  readonly byPage: ReadonlyMap<string, SettingDefinition[]>;
 }
 
-const BY_PAGE = indexByPage(SETTINGS);
+let registry: Registry | undefined;
+
+function registryOf(): Registry {
+  if (registry === undefined) {
+    const settings = allSettings();
+    if (__DEV__) {
+      validate(settings);
+    }
+    registry = { settings, byPage: indexByPage(settings) };
+  }
+  return registry;
+}
 
 export function settingPageOf(id: string): string | undefined {
-  return SETTINGS.find((setting) => setting.id === id)?.page;
+  return registryOf().settings.find((setting) => setting.id === id)?.page;
 }
 
 export function settingsOn(page: string, env: SettingEnv): readonly SettingDefinition[] {
-  return settingsOfPage(BY_PAGE, page).filter((setting) => setting.visible?.(env) ?? true);
+  return settingsOfPage(registryOf().byPage, page).filter(
+    (setting) => setting.visible?.(env) ?? true,
+  );
 }
 
 export function hasSettingsOn(page: string, env: SettingEnv): boolean {
-  return anyVisible(settingsOfPage(BY_PAGE, page), env);
+  return anyVisible(settingsOfPage(registryOf().byPage, page), env);
 }
 
 export function visibleSettings(env: SettingEnv): readonly SettingDefinition[] {
-  return SETTINGS.filter((setting) => {
+  return registryOf().settings.filter((setting) => {
     const page = settingsPage(setting.page);
     return (
       (setting.visible?.(env) ?? true) &&

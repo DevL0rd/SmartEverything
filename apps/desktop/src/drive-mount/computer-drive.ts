@@ -1,5 +1,5 @@
-import { mkdir, rm } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { mkdir, readdir, rm } from 'node:fs/promises';
+import { homedir, userInfo } from 'node:os';
 import { env } from 'node:process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,7 @@ import {
   type DriveSyncDatabase,
 } from '../drive-sync/db/index.js';
 import { DriveSyncEngine } from '../drive-sync/engine.js';
+import { createMetaPort, type MetaPort } from '../drive-sync/meta-port.js';
 import { SyncPlacementIntake, type SyncTarget } from '../drive-sync/service.js';
 import { SyncSocket, type SyncSocketTransport } from '../drive-sync/socket.js';
 import { ignoreMatcherOf } from '../drive-sync/state.js';
@@ -26,7 +27,6 @@ import { MountController } from './controller.js';
 import { driveControlAddress } from './control-protocol.js';
 import { DriveControlServer } from './control-server.js';
 import { detectFuse, nodeFuseExists, recoverStaleMount, type FuseStatus } from './fuse-detect.js';
-import { FirstRun } from './first-run.js';
 import { HelperProcess, nodeSpawnHelper } from './helper-process.js';
 import {
   CacheSettingsFile,
@@ -35,6 +35,14 @@ import {
   routeWordOf,
   type HelperRouteSource,
 } from './helper-settings.js';
+import {
+  MountLocations,
+  mountAreaOf,
+  nodeLetterInUse,
+  runtimeDirectoryOf,
+  type LocationFacts,
+} from './mount-location.js';
+import { MountPlaces, nodePlacesFs, placesFilesOf, type MountPlace } from './mount-places.js';
 import type { MountTray } from './mount-state.js';
 import { FilePlacementCache } from './placement-cache.js';
 import { nodePathFs, systemDirectories } from './placement-paths.js';
@@ -54,7 +62,6 @@ const ENGINE_TIMINGS = {
 } as const;
 const NOTIFY_QUIET_MS = 250;
 const PLACEMENT_CACHE_FILE = 'drive-placements.json';
-const FIRST_RUN_FILE = 'drive-first-run.json';
 const CACHE_SETTINGS_FILE = 'drive-cache.json';
 const HELPER_FOLDER = 'drive-mount';
 const HELPER_NAME = 'se-drive-mount';
@@ -86,15 +93,29 @@ export function bundledDriveMountHelper(): string {
   return fileURLToPath(new URL(`./${HELPER_FOLDER}/${HELPER_NAME}`, import.meta.url));
 }
 
+function pause(milliseconds: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
 export class ComputerDrive implements ComputerDriveRuntime {
   private readonly relay = new PlacementRelay();
   private readonly router = new SocketRouter();
   private readonly cache: FilePlacementCache;
-  private readonly firstRun: FirstRun;
   private readonly cacheSettings: CacheSettingsFile;
   private stopRoute: (() => void) | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly platform = process.platform;
+  private readonly locationFacts: LocationFacts = {
+    platform: this.platform,
+    runtimeDirectory: runtimeDirectoryOf(env, userInfo().uid),
+  };
+  private readonly locations = new MountLocations(this.locationFacts, {
+    fs: nodePathFs,
+    letterInUse: nodeLetterInUse,
+  });
+  private readonly places: MountPlaces | null;
   private readonly socket: SyncSocket;
   private readonly helper: HelperProcess;
   private readonly host: SyncEngineHost;
@@ -102,6 +123,7 @@ export class ComputerDrive implements ComputerDriveRuntime {
   private readonly controller: MountController;
   private readonly server: DriveControlServer;
   private readonly hasher: BlockHasher;
+  private readonly meta: MetaPort;
   private database: DriveSyncDatabase | null = null;
   private fuse: FuseStatus = { available: true };
   private mount: MountTray | null = null;
@@ -110,12 +132,12 @@ export class ComputerDrive implements ComputerDriveRuntime {
   constructor(private readonly context: ComputerDriveContext) {
     const { layout, node, transport, log } = context;
     this.cache = new FilePlacementCache(join(layout.root, PLACEMENT_CACHE_FILE), log);
-    this.firstRun = new FirstRun({
-      file: join(layout.root, FIRST_RUN_FILE),
-      home: homedir(),
-      mountable: this.platform === 'linux',
-    });
     this.cacheSettings = new CacheSettingsFile(join(layout.root, CACHE_SETTINGS_FILE));
+    const area = mountAreaOf(this.locationFacts);
+    this.places =
+      this.platform === 'linux' && area !== null
+        ? new MountPlaces(placesFilesOf(env, homedir(), area), nodePlacesFs, log)
+        : null;
     this.socket = new SyncSocket({
       hubUrl: node.hub_url,
       token: node.node_token,
@@ -124,6 +146,7 @@ export class ComputerDrive implements ComputerDriveRuntime {
       log,
     });
     this.hasher = createBlockHasher({ workerFile: bundledBlockWorker(), log });
+    this.meta = createMetaPort({ binary: bundledDriveMountHelper(), platform: this.platform, log });
     this.host = new SyncEngineHost({
       create: (target, changed): EngineHandle => this.engineOf(target, changed),
       prepare: async (target): Promise<void> => {
@@ -177,6 +200,7 @@ export class ComputerDrive implements ComputerDriveRuntime {
     await this.host.close();
     this.socket.stop();
     await this.hasher.close();
+    await this.meta.close();
     this.database?.close();
     this.database = null;
     if (this.timer !== null) clearTimeout(this.timer);
@@ -196,10 +220,6 @@ export class ComputerDrive implements ComputerDriveRuntime {
       mount: this.mount,
       sync: summary,
       fuse: this.fuse,
-      firstRun: {
-        pending: await this.firstRun.pending(this.cache.all()),
-        defaultParent: this.firstRun.defaultParent,
-      },
       cache: await this.cacheSettings.read(),
     };
   }
@@ -211,14 +231,6 @@ export class ComputerDrive implements ComputerDriveRuntime {
         return;
       case 'sync-resume':
         await this.host.resume();
-        return;
-      case 'first-run-mounted':
-        await this.firstRun.settle('mounted');
-        this.changed();
-        return;
-      case 'first-run-dismissed':
-        await this.firstRun.settle('dismissed');
-        this.changed();
         return;
       case 'cache':
         await this.cacheSettings.write(command.cache);
@@ -254,9 +266,11 @@ export class ComputerDrive implements ComputerDriveRuntime {
         return this.fuse;
       },
       recover: (point) => recoverStaleMount(run, point),
+      stalePoints: () => this.stalePoints(),
       known: () => this.cache.all(),
       helper: this.helper,
       link: this.relay,
+      sleep: pause,
       createPlacements: (ports) =>
         new PlacementsController({
           ...ports,
@@ -271,7 +285,10 @@ export class ComputerDrive implements ComputerDriveRuntime {
             dataDirectory: layout.root,
             systemDirectories: systemDirectories(this.platform, env),
           },
-          fs: nodePathFs,
+          locations: this.locations,
+          places: (shown): void => {
+            this.showPlaces(shown);
+          },
           synced: (placements): void => {
             this.intake.accept(placements).catch((cause: unknown) => {
               log.error('drive_sync.intake_failed', cause);
@@ -287,6 +304,23 @@ export class ComputerDrive implements ComputerDriveRuntime {
       },
       log,
     });
+  }
+
+  private showPlaces(shown: readonly MountPlace[]): void {
+    this.places?.show(shown).catch((cause: unknown) => {
+      this.context.log.error('drive_mount.places_failed', cause);
+    });
+  }
+
+  private async stalePoints(): Promise<readonly string[]> {
+    const area = this.platform === 'linux' ? this.locations.area : null;
+    if (area === null) return [];
+    try {
+      return (await readdir(area)).map((name) => join(area, name));
+    } catch (cause) {
+      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return [];
+      throw cause;
+    }
   }
 
   private subscribe(
@@ -325,6 +359,7 @@ export class ComputerDrive implements ComputerDriveRuntime {
       database,
       socket: this.socket,
       hasher: this.hasher,
+      meta: this.meta,
       source: new HubBlockSource(hub),
       uploader: new HubBlockUploader(hub),
       ignore: ignoreMatcherOf(target.ignorePatterns, this.platform),

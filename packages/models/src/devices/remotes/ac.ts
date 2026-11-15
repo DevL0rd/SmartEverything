@@ -16,6 +16,7 @@ export const AC_REMOTE_MODEL: ModelSpec = remote({
     'heat pump remote',
   ],
   size: SIZE,
+  footprint: { width: 0.1515, depth: SIZE.width, height: 0.0211 },
   materials: LIGHT_BODY,
   finishes: { white: {}, grey: { body: { color: '#D9DBDE', roughness: 0.5 } } },
   defaultFinish: 'white',

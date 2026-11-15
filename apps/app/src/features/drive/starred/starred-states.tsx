@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import type { DriveQueryPage } from '@smarteverything/domain';
+import type { DriveSearchPage } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
@@ -14,7 +14,7 @@ import { DRIVE_FILTER_LOOK, type DriveFilter } from '../model/drive-chip';
 import { recentStateOf } from '../recent/recent-states';
 import { nothingStarredBody, type StarredChip } from './starred-model';
 
-export type StarredPages = DrivePages<DriveQueryPage>;
+export type StarredPages = DrivePages<DriveSearchPage>;
 
 const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'] as const;
 

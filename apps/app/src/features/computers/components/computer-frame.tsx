@@ -5,31 +5,24 @@ import { useLocalSearchParams } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import type { Crumb } from '../../../components/breadcrumbs';
-import type { MenuItem } from '../../../components/menu';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import type { ShellWidth } from '../../../components/page-shell/layout';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import { useShellRailShown } from '../../../components/page-shell/rail-shown';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import type { PrimaryActionProps } from '../../../components/primary-action';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import {
-  CompactBody,
-  FrameBodyWidth,
-  WideBody,
-  type FrameWidth,
-} from '../../../components/section-body';
-import type { RailWidth } from '../../../components/frame-layout';
 import { sectionParamOf } from '../../../components/use-section-param';
-import { useAreaWidth } from '../../../design/size-class';
 import { clock } from '../../../format/time';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useLastSeen } from '../../devices';
 import { useComputerDetail } from '../data/computer-metrics';
 import { DemandRegion } from '../../../store/demand-region';
-import { factsOf } from '../data/computer-device';
 import { useComputerMenu } from '../overview/use-computer-menu';
-import { frameLayoutOf, railWidthOf } from '../model/sections';
+import { computerSectionsOf } from './computer-sections';
 import { PairComputerSheet } from './pair-computer-sheet';
-import { SectionRail } from './section-rail';
 
 const RECONNECT_STEPS: readonly string[] = [
   'Check that the computer is on and connected to your network.',
@@ -101,133 +94,85 @@ export interface ComputerFrameProps {
   readonly title: string;
   readonly subtitle?: string;
   readonly crumbs?: readonly Crumb[];
-  readonly width?: FrameWidth;
+  readonly width?: ShellWidth;
   readonly scroll?: boolean;
+  readonly actions?: readonly ShellAction[];
+  readonly primary?: PrimaryActionProps;
+  readonly search?: ShellSearchConfig;
+  readonly iconRail?: boolean;
   readonly children: ReactNode;
 }
 
-function FrameHeader({
-  device,
-  title,
-  subtitle,
-  crumbs,
-  menu,
-}: {
-  readonly device: Device;
-  readonly title: string;
-  readonly subtitle: string | undefined;
-  readonly crumbs: readonly Crumb[] | undefined;
-  readonly menu: readonly MenuItem[];
-}): ReactNode {
+type LiveProps = Omit<ComputerFrameProps, 'deviceId'> & { readonly device: Device };
+
+function crumbsOf(device: Device, crumbs: readonly Crumb[] | undefined): readonly Crumb[] {
   return (
-    <PageHeader
-      title={title}
-      subtitle={subtitle ?? device.label}
-      breadcrumbs={
-        crumbs ?? [
-          { label: 'Devices', href: href.devices() },
-          { label: device.label, href: href.settings.device(device.id, 'overview') },
-        ]
-      }
-      overflow={menu}
-    />
+    crumbs ?? [
+      { label: 'Devices', href: href.devices() },
+      { label: device.label, href: href.settings.device(device.id, 'overview') },
+    ]
   );
 }
 
-function useRail(device: Device, width: RailWidth): ReactNode {
+function useSections(device: Device, iconRail: boolean): ReturnType<typeof computerSectionsOf> {
   const features = useComputerDetail(device.id, device.online).data?.features;
   const active = sectionParamOf(useLocalSearchParams(), 'page') ?? 'overview';
-  return (
-    <SectionRail
-      deviceId={device.id}
-      active={active}
-      online={device.online}
-      features={features}
-      os={factsOf(device).os}
-      width={width}
-    />
-  );
-}
-
-function FrameBody({
-  device,
-  scroll,
-  width,
-  area,
-  children,
-}: {
-  readonly device: Device;
-  readonly scroll: boolean;
-  readonly width: FrameWidth;
-  readonly children: ReactNode;
-  readonly area: number;
-}): ReactNode {
-  const compact = frameLayoutOf(area) === 'compact';
-  const railWidth = railWidthOf(area);
-  const rail = useRail(device, railWidth);
-  const scrolls = compact && scroll;
-  return (
-    <DemandRegion
-      deviceId={device.id}
-      topics={compact ? NO_TOPICS : RAIL_TOPICS}
-      className={scrolls ? 'gap-section-gap' : 'flex-1 gap-section-gap'}
-    >
-      {compact ? (
-        <CompactBody scroll={scroll} width={width}>
-          {children}
-        </CompactBody>
-      ) : (
-        <WideBody scroll={scroll} width={width} rail={rail} railWidth={railWidth}>
-          {children}
-        </WideBody>
-      )}
-    </DemandRegion>
-  );
+  const sections = computerSectionsOf({
+    deviceId: device.id,
+    active,
+    online: device.online,
+    features,
+  });
+  return iconRail ? { ...sections, iconRail } : sections;
 }
 
 function LiveFrame({
   device,
-  title,
-  subtitle,
-  crumbs,
   width = 'reading',
   scroll = true,
+  primary,
+  search,
+  actions,
+  iconRail,
   children,
-}: Omit<ComputerFrameProps, 'deviceId'> & { readonly device: Device }): ReactNode {
+  ...head
+}: LiveProps): ReactNode {
   const [pair, setPair] = useState(false);
   const menu = useComputerMenu(device, () => {
     setPair(true);
   });
-  const area = useAreaWidth();
-  const compact = frameLayoutOf(area) === 'compact';
-  const scrolls = compact && scroll;
+  const sections = useSections(device, iconRail === true);
+  const railShown = useShellRailShown();
   return (
-    <Screen
-      maxWidth={compact ? width : 'full'}
-      scroll={scrolls}
-      header={
-        <FrameHeader
-          device={device}
-          title={title}
-          subtitle={subtitle}
-          crumbs={crumbs}
-          menu={menu}
-        />
-      }
-      banner={
-        device.online ? undefined : <OfflineBanner deviceId={device.id} name={device.label} />
-      }
+    <PageShell
+      title={head.title}
+      subtitle={head.subtitle ?? device.label}
+      breadcrumbs={crumbsOf(device, head.crumbs)}
+      overflow={menu}
+      sections={sections}
+      width={width}
+      scroll={scroll}
+      {...(actions === undefined ? {} : { actions })}
+      {...(search === undefined ? {} : { search })}
+      {...(primary === undefined ? {} : { primaryAction: primary })}
+      {...(device.online
+        ? {}
+        : { banner: <OfflineBanner deviceId={device.id} name={device.label} /> })}
     >
-      <FrameBody device={device} area={area} scroll={scroll} width={width}>
+      <DemandRegion
+        deviceId={device.id}
+        topics={railShown ? RAIL_TOPICS : NO_TOPICS}
+        className={scroll ? 'gap-section-gap' : 'min-h-0 flex-1 gap-section-gap'}
+      >
         {children}
-      </FrameBody>
+      </DemandRegion>
       <PairComputerSheet
         open={pair}
         onClose={() => {
           setPair(false);
         }}
       />
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -235,11 +180,9 @@ export function ComputerFrame({ deviceId, ...frame }: ComputerFrameProps): React
   const device = useDevice(deviceId);
   if (device === null) {
     return (
-      <Screen maxWidth="reading" header={<PageHeader title={frame.title} overflow={[]} />}>
-        <FrameBodyWidth scroll width="reading">
-          {frame.children}
-        </FrameBodyWidth>
-      </Screen>
+      <PageShell title={frame.title} width="reading">
+        {frame.children}
+      </PageShell>
     );
   }
   return <LiveFrame device={device} {...frame} />;

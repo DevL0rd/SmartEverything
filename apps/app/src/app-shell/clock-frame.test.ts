@@ -93,6 +93,7 @@ function parsedTask(patch: Partial<PlannerParse['draft']>): PlannerParse {
       completion: { kind: 'manual' },
       attachments: [],
       reminders: [],
+      assignee_id: null,
       ...patch,
     },
     next_occurrences: [],
@@ -118,12 +119,15 @@ function alarmRow(body: Parameters<ComposerPorts['items']['createAlarm']>[0]): P
     once_on: body.once_on,
     skip_on: null,
     enabled: true,
-    sound: 'Morning light',
+    sound: { kind: 'tone', id: 'default' },
     ramp_seconds: 60,
     vibrate: true,
     snooze_minutes: 9,
+    snooze_limit: null,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: null,
+    wake_automation_id: null,
     wake_lead_minutes: null,
     targets: [],
     watch: [],
@@ -200,6 +204,7 @@ describe('the clock sections', () => {
     expect(CLOCK_SECTION_DEFS.map((def) => def.id)).toEqual([...CLOCK_SECTION_ROUTES]);
     expect(CLOCK_SECTION_DEFS.map((def) => def.label)).toEqual([
       'Alarms',
+      'Bedtime',
       'Timers',
       'Stopwatch',
       'World clock',
@@ -211,6 +216,7 @@ describe('the clock sections', () => {
     expect(clockHrefOf('timers')).toBe(href.clock.timers());
     expect(clockHrefOf('stopwatch')).toBe(href.clock.stopwatch());
     expect(clockHrefOf('world')).toBe(href.clock.world());
+    expect(clockHrefOf('bedtime')).toBe(href.clock.bedtime());
     expect(() => clockHrefOf('insights')).toThrow('The Clock has no section insights.');
   });
 
@@ -220,11 +226,13 @@ describe('the clock sections', () => {
     expect(clockSectionOf('timers').hint).toBe('New timer. Try: pasta 10 min');
     expect(clockSectionOf('stopwatch').hint).toBe('New alarm or timer. Try: tea 4 min');
     expect(clockSectionOf('world').hint).toBe('New alarm or timer. Try: wake me 06:30 weekdays');
+    expect(clockSectionOf('bedtime').hint).toBe('New alarm. Try: wake me 06:30 weekdays');
   });
 
   it('opens the composer as an alarm on Alarms and World, and as a timer on Timers and Stopwatch', () => {
     expect(clockComposerKindOf('index')).toBe('alarm');
     expect(clockComposerKindOf('world')).toBe('alarm');
+    expect(clockComposerKindOf('bedtime')).toBe('alarm');
     expect(clockComposerKindOf('timers')).toBe('timer');
     expect(clockComposerKindOf('stopwatch')).toBe('timer');
   });
@@ -359,14 +367,16 @@ describe('the clock frame', () => {
       import('../features/clock/timers-page'),
       import('../features/clock/stopwatch-page'),
       import('../features/clock/world-page'),
+      import('../features/clock/bedtime/bedtime-page'),
       import('../features/clock/ring-screen'),
       import('../features/clock'),
     ]);
-    const [alarms, timers, stopwatchPage, world, ring, feature] = pages;
+    const [alarms, timers, stopwatchPage, world, bedtime, ring, feature] = pages;
     expect(typeof alarms.AlarmsPage).toBe('function');
     expect(typeof timers.TimersPage).toBe('function');
     expect(typeof stopwatchPage.StopwatchPage).toBe('function');
     expect(typeof world.WorldPage).toBe('function');
+    expect(typeof bedtime.BedtimePage).toBe('function');
     expect(typeof ring.RingScreen).toBe('function');
     expect(typeof feature.ClockFrame).toBe('function');
   });

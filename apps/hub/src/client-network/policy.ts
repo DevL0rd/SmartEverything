@@ -60,7 +60,7 @@ function openPinned(
   socket.setTimeout(HUB_REQUEST_TIMEOUT_MS, () => {
     socket.destroy(new HubTransportError('Hub TLS handshake timed out'));
   });
-  socket.once('error', settle);
+  socket.on('error', settle);
   socket.once('secureConnect', () => {
     const mismatch = pinMismatch(socket, trust);
     if (mismatch === null) settle(null);

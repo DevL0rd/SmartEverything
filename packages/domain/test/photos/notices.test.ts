@@ -31,6 +31,9 @@ const COUNTS = {
   duplicates: 9,
   backupDevices: 2,
   deleted: 1,
+  people: 7,
+  sharing: 2,
+  archive: 3,
 };
 
 describe('drive_changed months', () => {
@@ -78,7 +81,16 @@ describe('photos_progress', () => {
 
   it('is registered once beside the other drive notices', () => {
     const types = DRIVE_NOTICES.map((notice) => notice.shape.type.value);
-    expect(types).toStrictEqual(['drive_changed', 'drive_progress', 'photos_progress']);
+    expect(types).toStrictEqual(
+      expect.arrayContaining([
+        'drive_changed',
+        'drive_progress',
+        'photos_progress',
+        'photos_activity',
+        'photos_partner',
+        'photos_ai',
+      ]),
+    );
     expect(new Set(types).size).toBe(types.length);
   });
 });

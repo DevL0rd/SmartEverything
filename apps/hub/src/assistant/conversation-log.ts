@@ -212,6 +212,10 @@ export class ConversationLog {
     this.messages.updateMessage(id, { embeds: this.withTimeline(id, timeline) });
   }
 
+  savedText(id: string): string {
+    return this.messages.message(id).text;
+  }
+
   progress(id: string, text: string, timeline: ChatTimelineEmbed): void {
     this.messages.updateMessage(id, { text, embeds: this.withTimeline(id, timeline) });
   }

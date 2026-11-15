@@ -1,14 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { lstatSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { DriveFeedOp, DriveItem, DriveVersion, DriveVia } from '@smarteverything/domain';
 import type { DriveIntent } from '../store/repositories/drive-intents';
+import type { DriveInodePatch } from '../store/repositories/drive-item-inodes';
 import type { DriveItemDraft, DriveItemIdentity } from '../store/repositories/drive-items';
 import type { Store } from '../store/store';
 import {
   DriveWriteError,
   locate,
-  shaOfVersionPath,
   type DriveFileStore,
   type DriveWriteRoot,
   type FileEnv,
@@ -16,7 +15,11 @@ import {
 } from './intents';
 import { takenMonths } from './changes-months';
 import { classify } from './scanner-commit';
-import { commitBytes, newVersion, type StagedBytes } from './versions';
+import { onlyFile, type FileItem } from './file-item';
+import { discardUndo, type CommittedBytes } from './patch-commit';
+import { carryBlocks, namesSharing } from './shared-names';
+import { statSyncOf } from './disk-stamp';
+import { commitBytes, newVersion, recordOutsideVersion, type StagedBytes } from './versions';
 
 export interface ChangeActor {
   readonly actorProfileId: string | null;
@@ -29,7 +32,7 @@ export interface PurgeSchedule {
 }
 
 export type ChangeStore = DriveFileStore &
-  Pick<Store, 'driveItems' | 'driveFeed' | 'driveGrants' | 'feed'>;
+  Pick<Store, 'driveItems' | 'driveFeed' | 'driveGrants' | 'driveBlocks' | 'feed'>;
 
 export interface ChangeEnv extends FileEnv {
   readonly store: ChangeStore;
@@ -200,6 +203,7 @@ export interface ContentWrite {
   readonly staged: StagedBytes;
   readonly relPath: string;
   readonly actor: ChangeActor;
+  readonly mode?: number | undefined;
   readonly alongside?: (item: DriveItem) => void;
 }
 
@@ -209,109 +213,160 @@ export interface ContentResult {
   readonly version: DriveVersion | null;
 }
 
-function trustedSha(existing: DriveItem | undefined, live: FileStamp | null): string | null {
-  if (existing === undefined || existing.kind === 'folder' || live === null) {
+export function trustedSha(existing: FileItem | undefined, live: FileStamp | null): string | null {
+  if (existing === undefined || live === null) {
     return null;
   }
   const current = existing.bytes === live.size && existing.modifiedAt === isoOf(live.mtimeNs);
   return current ? existing.sha256 : null;
 }
 
-function replacedDraft(existing: DriveItem, stamp: FileStamp, staged: StagedBytes): DriveItemDraft {
-  if (existing.kind === 'folder') {
-    throw new DriveWriteError('exists', 'A folder is in the way of the file.');
-  }
+function replacedDraft(
+  existing: FileItem,
+  stamp: FileStamp,
+  sha256: string | null,
+): DriveItemDraft {
   return {
     ...existing,
-    bytes: staged.bytes,
+    bytes: stamp.size,
     modifiedAt: isoOf(stamp.mtimeNs),
-    sha256: staged.sha256,
-    integrity: 'ok',
+    sha256,
+    integrity: sha256 === null ? 'unknown' : 'ok',
     thumb: { state: 'none' },
     outside: false,
   };
 }
 
-interface Settle {
+export interface Settle {
   readonly env: ChangeEnv;
-  readonly write: ContentWrite;
-  readonly existing: DriveItem | undefined;
+  readonly root: DriveWriteRoot;
+  readonly relPath: string;
+  readonly actor: ChangeActor;
+  readonly alongside: ((item: DriveItem) => void) | undefined;
+  readonly mode: number | undefined;
+  readonly existing: FileItem | undefined;
   readonly parent: DriveItem | null;
   readonly before: FileStamp | null;
-  readonly committed: Awaited<ReturnType<typeof commitBytes>>;
+  readonly committed: CommittedBytes;
 }
 
 function captureRow(settle: Settle): DriveVersion | null {
-  const { env, write, existing, before, committed } = settle;
+  const { env, root, actor, existing, before, committed } = settle;
   if (committed.captured === null || existing === undefined) {
     return null;
   }
   return env.store.driveVersions.insert(
-    write.root.id,
+    root.id,
     newVersion(env, {
       itemId: existing.id,
       rev: existing.rev,
       sha256: committed.captured.sha256,
       bytes: before?.size ?? existing.bytes,
-      actorProfileId: write.actor.actorProfileId,
-      via: write.actor.via,
-      deviceId: write.actor.deviceId,
+      actorProfileId: actor.actorProfileId,
+      via: actor.via,
+      deviceId: actor.deviceId,
       addedByProfileId: existing.addedByProfileId,
     }),
   ).version;
 }
 
-function settleContent(settle: Settle): ContentResult {
-  const { env, write, existing, parent, committed } = settle;
-  const { root, actor } = write;
+function writtenDraft(settle: Settle): DriveItemDraft {
+  const { env, root, actor, existing, parent, committed, relPath } = settle;
+  if (existing !== undefined) {
+    return replacedDraft(existing, committed.stamp, committed.sha256);
+  }
+  const added = {
+    rootId: root.id,
+    parentId: parent?.id ?? null,
+    relPath,
+    modifiedAt: isoOf(committed.stamp.mtimeNs),
+    addedAt: env.now().toISOString(),
+    outside: false,
+    addedByProfileId: actor.actorProfileId,
+  };
+  return fileDraft(added, { bytes: committed.stamp.size, sha256: committed.sha256 });
+}
+
+function updateNames(settle: Settle, existing: FileItem, inode: DriveInodePatch): DriveItem[] {
+  const { env, actor, committed } = settle;
+  const identity = identityOf(committed.stamp);
+  const touched: DriveItem[] = [];
+  for (const sibling of namesSharing(env.store, existing)) {
+    const draft = replacedDraft(sibling, committed.stamp, committed.sha256);
+    const update = env.store.driveItems.write({ item: draft, identity, inode });
+    if (update.changed) {
+      appendFeed(env, update.item, 'update', actor);
+      touched.push(update.item);
+    }
+  }
+  return touched;
+}
+
+export function settleContent(settle: Settle): ContentResult {
+  const { env, root, actor, existing, committed, mode } = settle;
   const version = captureRow(settle);
-  const draft =
-    existing === undefined
-      ? fileDraft(
-          {
-            rootId: root.id,
-            parentId: parent?.id ?? null,
-            relPath: write.relPath,
-            modifiedAt: isoOf(committed.stamp.mtimeNs),
-            addedAt: env.now().toISOString(),
-            outside: false,
-            addedByProfileId: actor.actorProfileId,
-          },
-          write.staged,
-        )
-      : replacedDraft(existing, committed.stamp, write.staged);
-  const written = env.store.driveItems.write({
-    item: draft,
-    identity: identityOf(committed.stamp),
-  });
+  const inode = { mtimeNs: committed.stamp.mtimeNs, ...(mode === undefined ? {} : { mode }) };
+  const identity = identityOf(committed.stamp);
+  const written = env.store.driveItems.write({ item: writtenDraft(settle), identity, inode });
   if (written.changed) {
     appendFeed(env, written.item, existing === undefined ? 'create' : 'update', actor);
   }
-  write.alongside?.(written.item);
+  const siblings = existing === undefined ? [] : updateNames(settle, existing, inode);
+  settle.alongside?.(written.item);
+  carryBlocks(env.store, written.item, siblings);
   env.store.driveIntents.clear(committed.intent.id);
-  announce(env, root.id, written.item.parentId, [written.item]);
+  announce(env, root.id, written.item.parentId, [written.item, ...siblings]);
   return { item: written.item, created: existing === undefined, version };
 }
 
-export async function commitContent(env: ChangeEnv, write: ContentWrite): Promise<ContentResult> {
-  const { root, relPath } = write;
+export interface Located {
+  readonly existing: FileItem | undefined;
+  readonly before: FileStamp | null;
+}
+
+export async function locateExisting(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  relPath: string,
+): Promise<Located> {
   const before = await env.files.stamp(await locate(root, relPath));
-  const existing = env.store.driveItems.byPath(root.id, relPath, null);
+  const existing = onlyFile(env.store.driveItems.byPath(root.id, relPath, null));
   if (existing === undefined && before !== null) {
     throw new DriveWriteError('exists', 'The file is not in the index yet; scan the root first.');
   }
+  return { existing, before };
+}
+
+export async function finishContent(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  committed: CommittedBytes,
+  settle: () => ContentResult,
+): Promise<ContentResult> {
+  const result = env.store.write(settle);
+  if (committed.intent.op === 'patch') {
+    await discardUndo(env, root, committed.intent.fromPath);
+  }
+  env.purge.rearm();
+  return result;
+}
+
+export async function commitContent(env: ChangeEnv, write: ContentWrite): Promise<ContentResult> {
+  const { root, relPath, actor } = write;
+  const { existing, before } = await locateExisting(env, root, relPath);
   const parent = parentOf(env, root.id, relPath);
   const committed = await commitBytes(env, {
     root,
     staged: write.staged,
     relPath,
     previousSha256: trustedSha(existing, before),
+    mode: write.mode,
   });
-  const result = env.store.write(() =>
-    settleContent({ env, write, existing, parent, before, committed }),
+  const alongside = write.alongside;
+  const settle = { env, root, relPath, actor, alongside, mode: write.mode };
+  return finishContent(env, root, committed, () =>
+    settleContent({ ...settle, existing, parent, before, committed }),
   );
-  env.purge.rearm();
-  return result;
 }
 
 const OUTSIDE: ChangeActor = { actorProfileId: null, via: 'outside', deviceId: null };
@@ -320,27 +375,22 @@ interface Finished {
   readonly env: ChangeEnv;
   readonly root: DriveWriteRoot;
   readonly intent: DriveIntent;
-  readonly existing: DriveItem | undefined;
+  readonly existing: FileItem | undefined;
   readonly stamp: FileStamp;
 }
 
 function finishedDraft({ env, root, intent, existing, stamp }: Finished): DriveItemDraft {
   if (existing === undefined) {
-    return fileDraft(
-      {
-        rootId: root.id,
-        parentId: parentOf(env, root.id, intent.toPath)?.id ?? null,
-        relPath: intent.toPath,
-        modifiedAt: isoOf(stamp.mtimeNs),
-        addedAt: env.now().toISOString(),
-        outside: true,
-        addedByProfileId: null,
-      },
-      { bytes: stamp.size, sha256: null },
-    );
-  }
-  if (existing.kind === 'folder') {
-    throw new DriveWriteError('exists', 'A folder is in the way of the file.');
+    const added = {
+      rootId: root.id,
+      parentId: parentOf(env, root.id, intent.toPath)?.id ?? null,
+      relPath: intent.toPath,
+      modifiedAt: isoOf(stamp.mtimeNs),
+      addedAt: env.now().toISOString(),
+      outside: true,
+      addedByProfileId: null,
+    };
+    return fileDraft(added, { bytes: stamp.size, sha256: null });
   }
   return {
     ...existing,
@@ -353,45 +403,27 @@ function finishedDraft({ env, root, intent, existing, stamp }: Finished): DriveI
   };
 }
 
-function statLive(root: DriveWriteRoot, relPath: string): FileStamp {
-  const stat = lstatSync(join(root.path, relPath), { bigint: true });
-  return {
-    dev: stat.dev,
-    ino: stat.ino,
-    size: Number(stat.size),
-    mtimeNs: stat.mtimeNs,
-    directory: stat.isDirectory(),
-  };
-}
-
 export function finishCommitFromDisk(
   env: ChangeEnv,
 ): (intent: DriveIntent, root: DriveWriteRoot) => void {
   return (intent, root) => {
-    const stamp = statLive(root, intent.toPath);
-    const existing = env.store.driveItems.byPath(root.id, intent.toPath, null);
+    const stamp = statSyncOf(join(root.path, intent.toPath));
+    const existing = onlyFile(env.store.driveItems.byPath(root.id, intent.toPath, null));
     env.store.write(() => {
-      if (intent.versionPath !== null && existing !== undefined && existing.kind !== 'folder') {
-        const sha256 = shaOfVersionPath(intent.versionPath);
-        env.store.driveVersions.insert(
-          root.id,
-          newVersion(env, {
-            itemId: existing.id,
-            rev: existing.rev,
-            sha256,
-            bytes: existing.bytes,
-            ...OUTSIDE,
-            addedByProfileId: existing.addedByProfileId,
-          }),
-        );
+      if (intent.versionPath !== null && existing !== undefined) {
+        recordOutsideVersion(env, root.id, { item: existing, versionPath: intent.versionPath });
       }
-      const written = env.store.driveItems.write({
-        item: finishedDraft({ env, root, intent, existing, stamp }),
-        identity: identityOf(stamp),
+      const inode = { mtimeNs: stamp.mtimeNs };
+      const identity = identityOf(stamp);
+      const names = existing === undefined ? [] : [existing, ...namesSharing(env.store, existing)];
+      const touched = (names.length === 0 ? [undefined] : names).map((name) => {
+        const item = finishedDraft({ env, root, intent, existing: name, stamp });
+        const written = env.store.driveItems.write({ item, identity, inode }).item;
+        appendFeed(env, written, name === undefined ? 'create' : 'update', OUTSIDE);
+        return written;
       });
-      appendFeed(env, written.item, existing === undefined ? 'create' : 'update', OUTSIDE);
       env.store.driveIntents.clear(intent.id);
-      announce(env, root.id, written.item.parentId, [written.item]);
+      announce(env, root.id, touched[0]?.parentId ?? null, touched);
     });
     env.purge.rearm();
   };

@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { View, type LayoutChangeEvent } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetBody } from './sheet-body';
 import { Gesture, GestureDetector, type PanGesture } from 'react-native-gesture-handler';
@@ -25,7 +26,7 @@ import { Overlay, useOverlayShown } from './overlay';
 import { SheetHandle, useSheetHeading, type SheetBackAction } from './sheet-header';
 import { SheetNavigationProvider, useSheetNavigation } from './sheet-navigation';
 import { sheetFrame } from './sheet-frame';
-import { EscapeScopeVisible } from './use-escape';
+import { EscapeScopeVisible } from './escape-scope';
 
 export type Detent = 'fit' | 'half' | 'full';
 
@@ -224,6 +225,15 @@ interface PanelBodyProps {
   readonly subpage?: boolean;
 }
 
+function panelFooterInset(compact: boolean, subpage: boolean, reading: boolean): string {
+  if (compact) return cn(COMPACT_PANEL_INSET, subpage && 'pb-3 pt-2');
+  return cn('px-4 pb-4 pt-2', reading && 'border-t border-outline-variant');
+}
+
+function readingFill(reading: boolean, fit: boolean): boolean {
+  return reading && !fit;
+}
+
 function PanelBody({
   compact,
   scroll,
@@ -237,9 +247,7 @@ function PanelBody({
   subpage = false,
 }: PanelBodyProps): ReactNode {
   const padding = { paddingBottom: hidden };
-  const footerInset = compact
-    ? cn(COMPACT_PANEL_INSET, subpage && 'pb-3 pt-2')
-    : cn('px-4 pb-4 pt-2', reading && 'border-t border-outline-variant');
+  const footerInset = panelFooterInset(compact, subpage, reading);
   return (
     <EscapeScopeVisible value={visible}>
       <View
@@ -251,7 +259,7 @@ function PanelBody({
         <SheetBody
           scroll={scroll}
           fit={fit}
-          fill={reading && !fit}
+          fill={readingFill(reading, fit)}
           reading={reading}
           padding={compact ? cn(COMPACT_PANEL_INSET, 'pb-1') : 'px-4 pb-0'}
         >
@@ -367,7 +375,7 @@ function useVisibleSheet(props: RootSheet, navigation: Navigation): VisibleSheet
 }
 
 function OpenBottomSheet(props: RootSheet): ReactNode {
-  const viewport = useWindowDimensions();
+  const viewport = useWindowSize();
   const insets = useSafeAreaInsets();
   const { left, width, bottom, maxHeight } = floatingSheetFrame(viewport, insets);
   const navigation = useSheetNavigation(props.onClose);

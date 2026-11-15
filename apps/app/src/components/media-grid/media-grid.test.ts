@@ -230,4 +230,29 @@ describe('the media grid', () => {
     expect(shownIds.some((id) => asked.has(id))).toBe(true);
     expect(hiddenIds.some((id) => asked.has(id))).toBe(false);
   });
+
+  it('draws the badge each tile asks for and nothing for the others', async () => {
+    const tiles = fixtureTiles(4);
+    const badged = new Set([tiles[0]?.id, tiles[2]?.id]);
+    const drawn: string[] = [];
+    const Badge = ({ id }: { readonly id: string }): null => {
+      drawn.push(id);
+      return null;
+    };
+    act(() => {
+      root?.render(
+        createElement(MediaGrid, {
+          tiles,
+          step: 'days',
+          today: '2026-11-07',
+          resolveThumb,
+          onOpen: (): void => undefined,
+          badgeOf: (tile: MediaTile): ReactElement | null =>
+            badged.has(tile.id) ? createElement(Badge, { id: tile.id }) : null,
+        }),
+      );
+    });
+    await settle();
+    expect(new Set(drawn)).toEqual(badged);
+  });
 });

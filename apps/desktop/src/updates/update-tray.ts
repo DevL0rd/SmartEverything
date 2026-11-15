@@ -40,15 +40,44 @@ function downloadLabel(status: MachineUpdateStatus): string {
     : `Downloading desktop version ${status.version ?? ''} · ${String(downloadedPercent(status.progress))}%`;
 }
 
+export interface DesktopBootActions {
+  readonly keep: () => void;
+  readonly rollBack: () => void;
+}
+
+export function desktopBootMenuItems(
+  version: string,
+  actions: DesktopBootActions,
+): MenuItemConstructorOptions[] {
+  return [
+    { label: `Desktop version ${version} did not finish its first start`, enabled: false },
+    { label: 'Keep this desktop version', click: actions.keep },
+    { label: 'Roll back to the previous desktop version', click: actions.rollBack },
+  ];
+}
+
+export interface WebUpdateTrayActions {
+  readonly askToRestart: () => void;
+  readonly retry: () => void;
+  readonly rollBack: () => void;
+}
+
 export function webUpdateMenuItems(
   status: WebUpdateStatus,
-  askToRestart: () => void,
+  actions: WebUpdateTrayActions,
 ): MenuItemConstructorOptions[] {
   if (status.state === 'ready') {
-    return [{ label: 'Restart for the interface update', click: askToRestart }];
+    return [{ label: 'Restart for the interface update', click: actions.askToRestart }];
   }
   if (status.state === 'rollback_ready') {
-    return [{ label: 'Restart to return to the built-in interface', click: askToRestart }];
+    return [{ label: 'Restart to return to the built-in interface', click: actions.askToRestart }];
+  }
+  if (status.state === 'boot_failed') {
+    return [
+      { label: 'The interface update did not start', enabled: false },
+      { label: 'Try the interface update again', click: actions.retry },
+      { label: 'Roll back the interface update', click: actions.rollBack },
+    ];
   }
   if (status.state === 'downloading') {
     return [
@@ -65,9 +94,8 @@ function downloadedPercent(status: { readonly received: number; readonly total: 
   return status.total === 0 ? 0 : Math.floor((status.received * 100) / status.total);
 }
 
-export interface WebUpdateTray {
+export interface WebUpdateTray extends WebUpdateTrayActions {
   readonly status: () => WebUpdateStatus;
-  readonly askToRestart: () => void;
 }
 
 export function trayActions(
@@ -90,6 +118,6 @@ export function updateTrayItems(
 ): MenuItemConstructorOptions[] {
   return [
     ...updateMenuItems(updates.status(), trayActions(updates)),
-    ...webUpdateMenuItems(web.status(), web.askToRestart),
+    ...webUpdateMenuItems(web.status(), web),
   ];
 }

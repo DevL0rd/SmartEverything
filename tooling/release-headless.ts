@@ -101,7 +101,7 @@ export function installDataScript(): string {
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 const C = ${JSON.stringify(constants)};
-const [bootstrap, data, defaultData, binary, manifest] = process.argv.slice(2);
+const [bootstrap, data, defaultData, binary, manifest, repository, branch] = process.argv.slice(2);
 const fail = (message) => { process.stderr.write(message + '\\n'); process.exit(1); };
 const read = (file) => {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch (error) {
@@ -131,7 +131,9 @@ const config = read(configFile);
 if (config !== undefined && (config === null || typeof config !== 'object' || (config.role !== undefined && config.role !== 'hub') || config.go2rtcBinary !== binary)) fail('Existing service.json must describe a hub using the standalone camera engine.');
 if (!legacy) for (const directory of C.directories) mkdirSync(join(data, directory), { recursive: true });
 if (!legacy && marker === undefined) create(join(data, C.marker), { version: 1, rootId, createdAt: new Date().toISOString(), state: 'active' });
-if (config === undefined) create(configFile, { lan: { host: '0.0.0.0' }, go2rtcBinary: binary });
+if (repository !== '' && !/^[a-z0-9][a-z0-9._-]*\\/[a-z0-9._-]+$/u.test(repository)) fail('The repository must look like owner/name in lower case.');
+if (repository !== '' && config !== undefined) fail(configFile + ' already exists; run tooling/configure-update-source.ts --repository from a checkout to change the update source.');
+if (config === undefined) create(configFile, { lan: { host: '0.0.0.0' }, go2rtcBinary: binary, ...(repository === '' ? {} : { updateSource: { repository, branch } }) });
 if (pointer === undefined) create(pointerFile, { root: data, rootId, state: legacy ? 'pending-v1' : 'active' });
 `;
 }
@@ -167,16 +169,22 @@ const CONFIGURE_SOURCE = `if [ -n "$update_source" ]; then
 fi`;
 
 const CHOSEN_FOLDER = `usage() {
-  echo "Usage: ./install.sh [--data <absolute path of the hub data folder>] [--update-source <absolute path of a SmartEverything checkout>]" >&2
+  echo "Usage: ./install.sh [--data <absolute path of the hub data folder>] [--repository <owner/name> [--branch <branch>]] [--update-source <absolute path of a SmartEverything checkout, for the hub build source only>]" >&2
   exit 1
 }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --data) [ "$#" -ge 2 ] || usage; data="$2"; shift 2 ;;
+    --repository) [ "$#" -ge 2 ] || usage; repository="$2"; shift 2 ;;
+    --branch) [ "$#" -ge 2 ] || usage; branch="$2"; shift 2 ;;
     --update-source) [ "$#" -ge 2 ] || usage; update_source="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
+if [ -n "$repository" ] && [ -n "$update_source" ]; then
+  echo "Give either --repository or --update-source, not both; a checkout reads its repository from its remote." >&2
+  exit 1
+fi
 case "$data" in
   /*) ;;
   *) echo "Give the hub data folder as an absolute path." >&2; exit 1 ;;
@@ -202,6 +210,8 @@ install="$HOME/${HUB_INSTALL_DIRECTORY}"
 default_data="$HOME/${DATA_DIRECTORY}"
 data="$default_data"
 update_source=
+repository=
+branch=main
 case "\${XDG_CONFIG_HOME:-}" in
   /*) config_home="$XDG_CONFIG_HOME" ;;
   *) config_home="$HOME/.config" ;;
@@ -225,7 +235,7 @@ defined=no
 enabled=no
 ${INSTALL_ROLLBACK}
 trap clean_up EXIT
-"$here/node/bin/node" "$here/${INSTALL_DATA_FILE}" "$bootstrap" "$data" "$default_data" "$install/resources/go2rtc/go2rtc" "$manifest"
+"$here/node/bin/node" "$here/${INSTALL_DATA_FILE}" "$bootstrap" "$data" "$default_data" "$install/resources/go2rtc/go2rtc" "$manifest" "$repository" "$branch"
 ${CONFIGURE_SOURCE}
 ${PUBLISH_INSTALL}
 unit_stage=$(mktemp "$units/.smarteverything.XXXXXX")

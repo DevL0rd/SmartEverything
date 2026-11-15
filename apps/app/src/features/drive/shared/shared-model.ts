@@ -9,7 +9,8 @@ import type {
 import type { MetricItem } from '../../../components/metric-strip';
 import { count } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
-import { DAY_MS, HOUR_MS, relative, shortDate } from '../../../format/time';
+import { DAY_MS, relative, shortDate } from '../../../format/time';
+import { endLabelOf } from '../share/grant-expiry';
 import { ROLE_LABEL } from '../share/share-model';
 
 export const SHARED_VIEWS = ['with-me', 'by-me'] as const;
@@ -49,11 +50,7 @@ export function linkGroupsOf(shares: readonly DriveShare[], now: number): LinkGr
 }
 
 export function linkEndLabel(share: DriveShare, now: number): string {
-  if (share.expiresAt === null) return 'No end';
-  const left = Date.parse(share.expiresAt) - now;
-  if (left < HOUR_MS) return 'Ends within the hour';
-  if (left < DAY_MS) return `Ends in ${plural(Math.floor(left / HOUR_MS), 'hour')}`;
-  return `Ends in ${plural(Math.floor(left / DAY_MS), 'day')}`;
+  return endLabelOf(share.expiresAt, now);
 }
 
 export function endsThisWeek(share: DriveShare, now: number): boolean {
@@ -199,12 +196,23 @@ export interface PersonChip {
 export function personChipsOf(
   grants: readonly DriveGrant[],
   profiles: readonly Person[],
+  now: number,
 ): readonly PersonChip[] {
   return grants.map((grant) => ({
     key: grant.id,
     name: profiles.find((profile) => profile.id === grant.profileId)?.name ?? 'A former member',
-    role: ROLE_LABEL[grant.role],
+    role:
+      grant.expiresAt === null
+        ? ROLE_LABEL[grant.role]
+        : joinParts([ROLE_LABEL[grant.role], endLabelOf(grant.expiresAt, now)]),
   }));
+}
+
+export function withMeLineOf(grant: DriveGrant, now: number): string {
+  return joinParts([
+    sharedAgoOf(grant.createdAt, now),
+    grant.expiresAt === null ? null : endLabelOf(grant.expiresAt, now),
+  ]);
 }
 
 export interface LinkChip {

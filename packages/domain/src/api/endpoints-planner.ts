@@ -6,13 +6,17 @@ import {
   PLANNER_REMINDERS,
 } from '../planner/collections';
 import { PLANNER_DAY } from '../planner/day';
-import { PLANNER_LOCAL_DATE } from '../planner/items';
+import { PLANNER_ITEM_KINDS, PLANNER_LOCAL_DATE } from '../planner/items';
 import { PLANNER_PREFERENCES } from '../planner/preferences';
 import { PLANNER_RANGE } from '../planner/range';
+import { PLANNER_SEARCH_PAGE, PLANNER_SEARCH_WHEN } from '../planner/search';
 import { PLANNER_STATS, PLANNER_STATS_RANGES } from '../planner/stats';
 import { NO_BODY, endpoint } from './endpoint';
 import { PLANNER_CLOCK_ENDPOINTS } from './endpoints-planner-clock';
 import { PLANNER_ITEM_ENDPOINTS, PLANNER_PERSON_QUERY } from './endpoints-planner-items';
+import { PLANNER_BOOKING_ENDPOINTS } from './endpoints-planner-booking';
+import { PLANNER_FEED_ENDPOINTS } from './endpoints-planner-feeds';
+import { PLANNER_SHARING_ENDPOINTS } from './endpoints-planner-sharing';
 import { DONE, ID, MOMENT, NOTHING, queryList, somethingToChange } from './primitives';
 
 export const PLANNER_DAY_QUERY = z.strictObject({
@@ -31,6 +35,15 @@ export const PLANNER_RANGE_QUERY = z
     path: ['to'],
     message: 'the range ends after it starts',
   });
+
+export const PLANNER_SEARCH_QUERY = z.strictObject({
+  personId: ID.optional(),
+  text: z.string().trim().min(1),
+  collections: queryList(ID).optional(),
+  kinds: queryList(z.enum(PLANNER_ITEM_KINDS)).optional(),
+  when: z.enum(PLANNER_SEARCH_WHEN).default('all'),
+  cursor: z.string().min(1).optional(),
+});
 
 export const PLANNER_STATS_QUERY = z.strictObject({
   personId: ID.optional(),
@@ -81,6 +94,17 @@ export const PLANNER_ENDPOINTS = {
     query: PLANNER_RANGE_QUERY,
     body: NO_BODY,
     response: PLANNER_RANGE,
+  }),
+  readPlannerSearch: endpoint({
+    method: 'GET',
+    path: '/api/planner/search',
+    access: 'member',
+    summary:
+      'Search events and tasks by title, notes, location, guests and calendar name across everything the person may see; each hit carries its next or last occurrence',
+    params: NOTHING,
+    query: PLANNER_SEARCH_QUERY,
+    body: NO_BODY,
+    response: PLANNER_SEARCH_PAGE,
   }),
   readPlannerStats: endpoint({
     method: 'GET',
@@ -145,4 +169,7 @@ export const PLANNER_ENDPOINTS = {
   }),
   ...PLANNER_ITEM_ENDPOINTS,
   ...PLANNER_CLOCK_ENDPOINTS,
+  ...PLANNER_SHARING_ENDPOINTS,
+  ...PLANNER_FEED_ENDPOINTS,
+  ...PLANNER_BOOKING_ENDPOINTS,
 } as const;

@@ -40,7 +40,6 @@ vi.mock('../../../components/error-state', () => ({
   },
 }));
 vi.mock('../../../components/empty-state', () => ({ EmptyState: (): null => null }));
-vi.mock('../../../components/search-field', () => ({ SearchField: (): null => null }));
 vi.mock('../../../components/select', () => ({ Select: (): null => null }));
 vi.mock('../../../components/skeleton', () => ({ Skeleton: (): null => null }));
 vi.mock('../../../design/use-debounced-value', () => ({

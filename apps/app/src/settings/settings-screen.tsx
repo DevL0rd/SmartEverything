@@ -2,12 +2,10 @@ import type { ReactNode } from 'react';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { CUSTOM_SETTINGS_SCREENS, customSettingsScreenId } from './custom-screens';
 import { EmptyState } from '../components/empty-state';
-import { PageHeader } from '../components/page-header';
+import { PageShell } from '../components/page-shell/page-shell';
 import type { PrimaryActionProps } from '../components/primary-action';
-import { Screen } from '../components/screen';
-import { useSizeClass } from '../design/size-class';
 import { useSettingEnv } from './env';
-import { SettingsNav } from './settings-nav';
+import { SettingsNav, useSettingsRail, useSettingsSearch } from './settings-nav';
 import { pageReachable, useBuiltSettingsPages } from './availability';
 import { SettingsFrame, type SettingsFrameProps } from './settings-frame';
 import { href } from '../app-shell/hrefs';
@@ -17,16 +15,17 @@ import { SettingsPageBody, type SettingsBlocksLayout } from './settings-page';
 import { onPlatform, settingsPage } from './tree';
 import type { SettingsPageDefinition } from './types';
 
-export function SettingsIndex(): ReactNode {
-  const { split } = useSizeClass();
-  if (split) {
-    return <SettingsPageScreen page="home" />;
-  }
+function SettingsList(): ReactNode {
+  const search = useSettingsSearch();
   return (
-    <Screen header={<PageHeader title="Settings" />} maxWidth="reading">
+    <PageShell title="Settings" width="reading" search={search}>
       <SettingsNav />
-    </Screen>
+    </PageShell>
   );
+}
+
+export function SettingsIndex(): ReactNode {
+  return useSettingsRail() ? <SettingsPageScreen page="home" /> : <SettingsList />;
 }
 
 const PLATFORM_NAMES = {
@@ -50,13 +49,13 @@ function ElsewhereOnly({ page }: { readonly page: SettingsPageDefinition }): Rea
 
 function NotThere(): ReactNode {
   return (
-    <Screen header={<PageHeader title="Settings" />} maxWidth="reading">
+    <PageShell title="Settings" width="reading">
       <EmptyState
         icon="settings"
         title="Page not found"
         body="This settings page does not exist."
       />
-    </Screen>
+    </PageShell>
   );
 }
 

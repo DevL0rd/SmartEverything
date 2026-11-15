@@ -80,8 +80,14 @@ export function useCountUp(value: string, enabled: boolean, minChange = 0): stri
       setShown(value);
       return undefined;
     }
+    let last: string | null = null;
     return tween(plan.from, plan.to, DURATION.long, (current) => {
-      setShown(current.toFixed(plan.decimals));
+      const text = current.toFixed(plan.decimals);
+      if (text === last) {
+        return;
+      }
+      last = text;
+      setShown(text);
     });
   }, [value, enabled, paused, minChange]);
   return shown;

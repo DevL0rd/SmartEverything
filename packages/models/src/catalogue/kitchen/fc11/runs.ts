@@ -73,7 +73,7 @@ const WALL_DOOR_Z = 0.164;
 export const WALL_CABINET_RUN_MODEL: ModelSpec = wallFurniture({
   id: 'cat.kitchen.wall-cabinet-run',
   title: 'Wall cabinet run',
-  footprint: { width: 1.8, depth: WALL_D, height: WALL_H },
+  footprint: { width: 1.8, depth: 0.365, height: 0.734 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {
@@ -124,7 +124,7 @@ const UPPER_H = PANTRY_TOP - PLINTH - LOWER_H - 0.03;
 export const TALL_PANTRY_MODEL: ModelSpec = kitchenFurniture({
   id: 'cat.kitchen.tall-pantry',
   title: 'Tall pantry',
-  footprint: { width: 0.61, depth: 0.6, height: PANTRY_H },
+  footprint: { width: 0.61, depth: 0.616, height: PANTRY_H },
   size: { width: { param: 'width', extra: 0.01, resizes: true } },
   meta: {
     names: {

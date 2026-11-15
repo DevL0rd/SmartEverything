@@ -4,6 +4,7 @@ import fc from 'fast-check';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GoogleLink } from '../../src/google/link';
 import { GoogleTokens } from '../../src/google/tokens';
+import { setGuestList } from '../../src/planner/guests/guest-list';
 import { instantsOf } from '../../src/planner/instants';
 import { GoogleCalendarSync } from '../../src/planner/google/calendar-sync';
 import { editItem } from '../../src/planner/series-edit';
@@ -132,6 +133,10 @@ function localEvent(title: string, extra: Partial<PlannerItemInput> = {}): Plann
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     ...timing,
     ...instantsOf({ ...timing, ...extra }),
@@ -628,4 +633,117 @@ describe('convergence', () => {
       { numRuns: 15 },
     );
   }, 120_000);
+});
+
+describe('guests', () => {
+  const attendees = [
+    { email: 'ann@example.test', self: true, organizer: true, responseStatus: 'accepted' },
+    { email: 'Sam@Example.com', displayName: 'Sam', responseStatus: 'accepted' },
+    { email: 'kim@example.com', responseStatus: 'needsAction' },
+  ];
+
+  const guestsOf = (item: PlannerItemRow): string[] =>
+    rig.test.store.plannerGuests
+      .forItem(item.id)
+      .map((guest) => `${guest.email ?? ''}:${guest.response}:${guest.delivery}`)
+      .sort();
+
+  it('turns Google attendees into guests with their answers and leaves the organiser out', async () => {
+    remote().insert({ summary: 'Party', ...timed(9), attendees });
+    await pull();
+    expect(guestsOf(titled('Party'))).toStrictEqual([
+      'Sam@Example.com:yes:google',
+      'kim@example.com:needs_action:google',
+    ]);
+    expect(
+      rig.test.store.plannerGuests
+        .forItem(titled('Party').id)
+        .find((guest) => guest.email === 'Sam@Example.com')?.name,
+    ).toBe('Sam');
+  });
+
+  it('follows answers and removals that happen on the Google side', async () => {
+    const event = remote().insert({ summary: 'Party', ...timed(9), attendees });
+    await pull();
+    remote().patch(
+      String(event['id']),
+      {
+        attendees: [
+          attendees[0],
+          { email: 'kim@example.com', responseStatus: 'declined' },
+          { email: 'lee@example.com', responseStatus: 'tentative' },
+        ],
+      },
+      null,
+    );
+    await pull();
+    expect(guestsOf(titled('Party'))).toStrictEqual([
+      'kim@example.com:no:google',
+      'lee@example.com:maybe:google',
+    ]);
+  });
+
+  it('sends a local guest list to Google and lets Google mail the invitation', async () => {
+    await pull();
+    const created = localEvent('Dinner');
+    setGuestList(rig.test.store, created, [
+      { kind: 'email', email: 'Sam@Example.com', name: 'Sam' },
+    ]);
+    rig.google.requests.length = 0;
+    await pull();
+    const insert = rig.google.requests.find((request) => request.method === 'POST');
+    expect(insert?.query['sendUpdates']).toBe('all');
+    const id = titled('Dinner').google?.id ?? '';
+    expect(remote().get(id)['attendees']).toStrictEqual([{ email: 'sam@example.com' }]);
+    expect(guestsOf(titled('Dinner'))).toStrictEqual(['Sam@Example.com:needs_action:google']);
+    setGuestList(rig.test.store, titled('Dinner'), [
+      { kind: 'email', email: 'Sam@Example.com', name: 'Sam' },
+      { kind: 'email', email: 'kim@example.com', name: null },
+    ]);
+    rig.google.requests.length = 0;
+    await pull();
+    const patch = rig.google.requests.find((request) => request.method === 'PATCH');
+    expect(patch?.query['sendUpdates']).toBe('all');
+    expect(remote().get(id)['attendees']).toStrictEqual([
+      { email: 'kim@example.com' },
+      { email: 'sam@example.com' },
+    ]);
+  });
+
+  it('does not push again after Google echoes the list back with its own details', async () => {
+    await pull();
+    const created = localEvent('Dinner');
+    setGuestList(rig.test.store, created, [
+      { kind: 'email', email: 'sam@example.com', name: 'Sam' },
+    ]);
+    await pull();
+    const id = titled('Dinner').google?.id ?? '';
+    remote().patch(
+      id,
+      {
+        attendees: [
+          { email: 'sam@example.com', displayName: 'Samuel', responseStatus: 'accepted' },
+        ],
+      },
+      null,
+    );
+    await pull();
+    rig.google.requests.length = 0;
+    const run = await pull();
+    expect(run.counts()).toMatchObject({ pushed: 0 });
+    expect(rig.google.requests.filter((request) => request.method === 'PATCH')).toHaveLength(0);
+    expect(guestsOf(titled('Dinner'))).toStrictEqual(['sam@example.com:yes:google']);
+  });
+
+  it('removes the guests from Google when the local list is emptied', async () => {
+    await pull();
+    const created = localEvent('Dinner');
+    setGuestList(rig.test.store, created, [
+      { kind: 'email', email: 'sam@example.com', name: null },
+    ]);
+    await pull();
+    setGuestList(rig.test.store, titled('Dinner'), []);
+    await pull();
+    expect(remote().get(titled('Dinner').google?.id ?? '')['attendees']).toBeUndefined();
+  });
 });

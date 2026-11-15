@@ -4,9 +4,10 @@ import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { HomeMap, HomeMapActor, HomeMapId, HomeMapOp } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { Button } from '../../../components/button';
 import { ErrorState } from '../../../components/error-state';
-import { IconButton } from '../../../components/icon-button';
+import type { MenuItem } from '../../../components/menu';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import type { RenderFloor, RenderScene } from '../../../components/house-map/render-scene';
@@ -18,7 +19,7 @@ import { useHomeMap, useHomeMapEditing, type HomeMapEditing } from '../data/home
 import { useHomeMapScene } from '../data/map-scene';
 import { editorLaunchOf } from '../model/create-map';
 import { DockedPanel } from './docked-panel';
-import { EditorOptions } from './editor-options';
+import { editorOptionItems } from './editor-options';
 import { EditorStage } from './editor-stage';
 import { ListMode } from './list-editor/list-mode';
 import type { EditCommit } from './mount-edit';
@@ -87,69 +88,80 @@ function addFloorOp(map: HomeMap): HomeMapOp {
   };
 }
 
-function Options({ editor }: { readonly editor: Editor }): ReactNode {
+function editorOptions(editor: Editor): readonly MenuItem[] {
   const { tools, dispatch } = editor;
+  return editorOptionItems({
+    view: tools.view,
+    camera: tools.camera,
+    readOnly: editor.readOnly,
+    onView: (view): void => {
+      dispatch({ type: 'view', view });
+    },
+    onCamera: (camera): void => {
+      dispatch({ type: 'camera', camera });
+    },
+    onAddFloor: (): void => {
+      run(editor.editing.edit([addFloorOp(editor.map)]), 'home_map.add_floor_failed');
+    },
+  });
+}
+
+function editorActions(editor: Editor, draft: boolean, onDone: () => void): readonly ShellAction[] {
+  const { editing } = editor;
+  const history = historyButtons(editing.state);
+  return [
+    { icon: 'check', label: 'Done', primary: !draft, onPress: onDone },
+    {
+      icon: 'undo',
+      label: 'Undo',
+      iconOnly: true,
+      disabled: !history.undo,
+      onPress: (): void => {
+        run(editing.undo(), 'home_map.undo_failed');
+      },
+    },
+    {
+      icon: 'redo',
+      label: 'Redo',
+      iconOnly: true,
+      disabled: !history.redo,
+      onPress: (): void => {
+        run(editing.redo(), 'home_map.redo_failed');
+      },
+    },
+  ];
+}
+
+function SaveLine({ editor }: { readonly editor: Editor }): ReactNode {
+  const line = saveLine(editor.editing.state);
   return (
-    <EditorOptions
-      view={tools.view}
-      camera={tools.camera}
-      readOnly={editor.readOnly}
-      onView={(view): void => {
-        dispatch({ type: 'view', view });
-      }}
-      onCamera={(camera): void => {
-        dispatch({ type: 'camera', camera });
-      }}
-      onAddFloor={(): void => {
-        run(editor.editing.edit([addFloorOp(editor.map)]), 'home_map.add_floor_failed');
-      }}
-    />
+    <Text variant="caption" tone={line.tone} accessibilityLiveRegion="polite">
+      {line.text}
+    </Text>
   );
 }
 
-interface HeaderProps {
-  readonly editor: Editor;
-  readonly draft: boolean;
-  readonly onDone: () => void;
-}
-
-function Header({ editor, draft, onDone }: HeaderProps): ReactNode {
-  const { editing } = editor;
-  const line = saveLine(editing.state);
-  const history = historyButtons(editing.state);
+function EditorFrame({
+  title,
+  actions,
+  overflow,
+  children,
+}: {
+  readonly title: string;
+  readonly actions?: readonly ShellAction[];
+  readonly overflow?: readonly MenuItem[];
+  readonly children: ReactNode;
+}): ReactNode {
   return (
-    <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-      <View className="min-w-0 max-w-full grow gap-0.5">
-        <Text variant="body-strong" accessibilityRole="header">
-          {editor.map.name === '' ? EDITOR_TITLE : editor.map.name}
-        </Text>
-        <Text variant="caption" tone={line.tone} accessibilityLiveRegion="polite">
-          {line.text}
-        </Text>
-      </View>
-      <View className="ml-auto shrink-0 flex-row items-center gap-2">
-        <IconButton
-          icon="undo"
-          label="Undo"
-          size="control"
-          disabled={!history.undo}
-          onPress={(): void => {
-            run(editing.undo(), 'home_map.undo_failed');
-          }}
-        />
-        <IconButton
-          icon="redo"
-          label="Redo"
-          size="control"
-          disabled={!history.redo}
-          onPress={(): void => {
-            run(editing.redo(), 'home_map.redo_failed');
-          }}
-        />
-        <Options editor={editor} />
-        <Button label="Done" icon="check" variant={draft ? 'tonal' : 'filled'} onPress={onDone} />
-      </View>
-    </View>
+    <PageShell
+      variant="overlay"
+      title={title}
+      back={actions === undefined}
+      {...(actions === undefined ? {} : { actions })}
+      {...(overflow === undefined ? {} : { overflow })}
+    >
+      <View className="flex-1 bg-bg pt-safe-offset-14">{children}</View>
+    </PageShell>
   );
 }
 
@@ -235,6 +247,23 @@ function useEditSync(edit: HomeMapEditing['edit']): EditSync {
   return { commit, committed, settled };
 }
 
+function EditorTools({ editor }: { readonly editor: Editor }): ReactNode {
+  const { tools, readOnly, dispatch } = editor;
+  return (
+    <ToolRow
+      tool={shownTool(tools, readOnly)}
+      more={tools.more}
+      readOnly={readOnly}
+      onPick={(tool): void => {
+        dispatch({ type: 'pick', tool });
+      }}
+      onToggleMore={(): void => {
+        dispatch({ type: 'toggleMore' });
+      }}
+    />
+  );
+}
+
 export interface EditorBodyProps extends Editor {
   readonly onDone: () => void;
 }
@@ -244,7 +273,7 @@ export function EditorBody({ onDone, ...editor }: EditorBodyProps): ReactNode {
   const sync = useEditSync(editor.editing.edit);
   const mount = useToolMount(editor, shown?.floor, sync);
   const [unavailable, setUnavailable] = useState(false);
-  const { tools, readOnly, dispatch } = editor;
+  const { tools, readOnly } = editor;
   const { status } = editor.editing.state;
   const notice = stageNoticeOf({ unavailable, readOnly, status, notice: mount.notice });
   const stage =
@@ -258,33 +287,27 @@ export function EditorBody({ onDone, ...editor }: EditorBodyProps): ReactNode {
       />
     );
   return (
-    <DockedPanel
-      map={
-        <>
-          {tools.view === 'list' ? <ListMode {...listModeOf(editor)} /> : stage}
-          <EmptyFloorPrompt editor={editor} floor={shown?.floor} />
-        </>
-      }
-      bar={mount.bar ?? null}
-      header={<Header editor={editor} draft={mount.draft} onDone={onDone} />}
-      tools={
-        <ToolRow
-          tool={shownTool(tools, readOnly)}
-          more={tools.more}
-          readOnly={readOnly}
-          onPick={(tool): void => {
-            dispatch({ type: 'pick', tool });
-          }}
-          onToggleMore={(): void => {
-            dispatch({ type: 'toggleMore' });
-          }}
-        />
-      }
+    <EditorFrame
+      title={editor.map.name === '' ? EDITOR_TITLE : editor.map.name}
+      actions={editorActions(editor, mount.draft, onDone)}
+      overflow={editorOptions(editor)}
     >
-      <Hint editor={editor} />
-      {unavailable && tools.view === 'map' ? <ListMode {...listModeOf(editor)} /> : null}
-      {mount.panel}
-    </DockedPanel>
+      <DockedPanel
+        map={
+          <>
+            {tools.view === 'list' ? <ListMode {...listModeOf(editor)} /> : stage}
+            <EmptyFloorPrompt editor={editor} floor={shown?.floor} />
+          </>
+        }
+        bar={mount.bar ?? null}
+        header={<SaveLine editor={editor} />}
+        tools={<EditorTools editor={editor} />}
+      >
+        <Hint editor={editor} />
+        {unavailable && tools.view === 'map' ? <ListMode {...listModeOf(editor)} /> : null}
+        {mount.panel}
+      </DockedPanel>
+    </EditorFrame>
   );
 }
 
@@ -321,10 +344,6 @@ function Shell({ map, mapId, actor, params, launchFloorId }: ShellProps): ReactN
   );
 }
 
-function Frame({ children }: { readonly children: ReactNode }): ReactNode {
-  return <View className="flex-1 bg-bg pt-safe">{children}</View>;
-}
-
 export function HomeMapEditorScreen(): ReactNode {
   const params = useLocalSearchParams();
   const launch = editorLaunchOf(params);
@@ -332,36 +351,34 @@ export function HomeMapEditorScreen(): ReactNode {
   const profile = useActiveProfile();
   if (failure !== null) {
     return (
-      <Frame>
+      <EditorFrame title={EDITOR_TITLE}>
         <ErrorState error={failure} retry={retry} page />
-      </Frame>
+      </EditorFrame>
     );
   }
   if (map === null || loading) {
     return (
-      <Frame>
+      <EditorFrame title={EDITOR_TITLE}>
         <Skeleton shape="block" className="m-3 flex-1" />
-      </Frame>
+      </EditorFrame>
     );
   }
   if (profile === null) {
     return (
-      <Frame>
+      <EditorFrame title={EDITOR_TITLE}>
         <Text variant="body" tone="variant" align="center" className="m-6">
           {NO_PROFILE_TEXT}
         </Text>
-      </Frame>
+      </EditorFrame>
     );
   }
   return (
-    <Frame>
-      <Shell
-        map={map}
-        mapId={launch.mapId}
-        actor={`profile:${profile.id}`}
-        params={params}
-        launchFloorId={launch.floorId ?? null}
-      />
-    </Frame>
+    <Shell
+      map={map}
+      mapId={launch.mapId}
+      actor={`profile:${profile.id}`}
+      params={params}
+      launchFloorId={launch.floorId ?? null}
+    />
   );
 }

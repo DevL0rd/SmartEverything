@@ -86,6 +86,7 @@ describe('secret store', () => {
       plugins: {},
       googleApp: null,
       googleAccounts: {},
+      githubReleaseToken: null,
     });
     await store.update((secrets) => ({ ...secrets, pushServiceAccount }));
     await store.saveAccount('tuya', { label: 'Tuya', secrets: { refreshToken: 'very-secret' } });

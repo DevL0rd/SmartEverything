@@ -10,7 +10,9 @@ import { HomeFiles } from '../home-files';
 import { LinuxInput } from './input-control';
 import { KdeWindows } from './kde-windows';
 import { KonveyorTiling } from './konveyor';
+import { ALSA_ROOT, AlsaAudio } from './alsa-audio';
 import { LinuxApps } from './linux-apps';
+import { LinuxAudio } from './linux-audio';
 import { LinuxCapture } from './linux-capture';
 import { LinuxMachine } from './linux-machine';
 import { LinuxRing } from './linux-ring';
@@ -31,7 +33,7 @@ import { PulseAudio } from './pulse-audio';
 import { DesktopRevertNotice } from './revert-notice';
 import { SessionBus } from './dbus-session';
 import { UserManagerEnvironment } from './user-manager-environment';
-import { isKdePlasma, sessionEnvironment } from './session-environment';
+import { hasGraphicalSession, isKdePlasma, sessionEnvironment } from './session-environment';
 import { SpectacleCapture } from './spectacle-capture';
 import { WmctrlWindows } from './wmctrl-windows';
 import { describeFailure } from '@smarteverything/logging';
@@ -74,6 +76,7 @@ function linuxWindows(
 ): LinuxWindows {
   return new LinuxWindows({
     kde: isKdePlasma,
+    session: hasGraphicalSession,
     probe,
     kdeProvider: () => new KdeWindows(() => session.bridge(), entries),
     x11Provider: () => new WmctrlWindows(runProgram, probe, spawnLines),
@@ -122,6 +125,11 @@ function linuxInput(
   });
 }
 
+function linuxAudio(options: ControlOptions, server: PulseAudio): LinuxAudio {
+  const failed = partFailure(options, 'audio');
+  return new LinuxAudio(server, new AlsaAudio(systemSchedule, ALSA_ROOT, failed), failed);
+}
+
 export function linuxControls(options: ControlOptions): ComputerControls {
   const entries = new DesktopEntries();
   const probe = cachedProbe(programAvailable);
@@ -152,7 +160,7 @@ export function linuxControls(options: ControlOptions): ComputerControls {
     processes: new LinuxProcesses(),
     links: linuxLinks,
     session,
-    audio,
+    audio: linuxAudio(options, audio),
     displays: linuxDisplays(options, probe, session),
     windows: linuxWindows(options, probe, session, entries),
     tiling: linuxTiling(options),

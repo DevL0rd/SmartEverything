@@ -12,7 +12,7 @@ const STORAGE_MATERIALS = {
 export const SIDE_TABLE_MODEL = furniture({
   id: 'cat.living.side-table',
   title: 'Side table',
-  footprint: { width: 0.45, depth: 0.45, height: 0.55 },
+  footprint: { width: 0.45, depth: 0.45, height: 0.568 },
   size: {
     width: { param: 'diameter', extra: 0, resizes: true },
     depth: { param: 'diameter', extra: 0, resizes: true },
@@ -83,7 +83,7 @@ const CONSOLE_FEET = corners(by('width', 0.5, -0.1), 0.13, by('width', -0.5, 0.1
 export const TV_CONSOLE_MODEL = furniture({
   id: 'cat.living.tv-console',
   title: 'TV console',
-  footprint: { width: 1.81, depth: 0.42, height: 0.52 },
+  footprint: { width: 1.81, depth: 0.433, height: 0.52 },
   size: { width: { param: 'width', extra: 0.01, resizes: true } },
   meta: {
     names: {
@@ -177,7 +177,7 @@ function wallBase(): ModelSpecPart[] {
 export const MEDIA_WALL_UNIT_MODEL = furniture({
   id: 'cat.living.media-wall-unit',
   title: 'Media wall unit',
-  footprint: { width: 3, depth: 0.44, height: WALL_HEIGHT },
+  footprint: { width: 3, depth: 0.464, height: WALL_HEIGHT },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

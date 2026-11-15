@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import type {
   AndroidAppObservation,
   AppUpdateEntry,
@@ -9,7 +10,7 @@ import type {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { AppUpdateCandidateError, contentsMatch } from '../apps/hub/src/app-updates/candidate.ts';
-import { readApk, readAppIdentity, runtimeVersionOf } from './release-apk.ts';
+import { readApk, runtimeVersionOf } from './release-apk.ts';
 
 const EXPORTED_ANDROID_APP = z.object({ android: z.object({ package: z.string() }) });
 
@@ -49,7 +50,7 @@ async function embeddedDigest(apk: string | null, running: AndroidAppObservation
     String(facts.versionCode) !== running.versionCode ||
     runtimeVersionOf(facts) !== running.runtimeVersion ||
     !facts.signatureVerifies ||
-    facts.signerSha256 !== readAppIdentity().signingCertificateSha256 ||
+    facts.signerSha256 !== APP_IDENTITY.signingCertificateSha256 ||
     facts.debuggable ||
     facts.includesDevLauncher
   ) {
@@ -65,8 +66,7 @@ function launchOf(candidate: AppUpdateEntry, applicationId: string): AppUpdateFi
   if (
     candidate.platform !== 'android' ||
     !config.success ||
-    config.data.android.package !== applicationId ||
-    candidate.launch === null
+    config.data.android.package !== applicationId
   ) {
     throw new AppUpdateCandidateError(
       'The export is not a bundle for the same Android application.',
@@ -110,7 +110,7 @@ export async function verifyAndroidTarget(
   candidate: AppUpdateEntry,
   target: AndroidReleaseTarget,
 ): Promise<AppUpdateEntry> {
-  const applicationId = readAppIdentity().applicationId;
+  const applicationId = APP_IDENTITY.applicationId;
   const running = target.observation;
   if (running.applicationId !== applicationId || !matchesRuntime(candidate, running)) {
     throw new AppUpdateCandidateError(
@@ -129,7 +129,7 @@ export async function verifyAndroidCohort(
   candidate: AppUpdateEntry,
   cohort: readonly AndroidReleaseTarget[],
 ): Promise<AppUpdateEntry> {
-  const applicationId = readAppIdentity().applicationId;
+  const applicationId = APP_IDENTITY.applicationId;
   const launch = launchOf(candidate, applicationId);
   const targets = cohort.filter(
     ({ observation }) =>

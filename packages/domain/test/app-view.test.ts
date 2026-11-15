@@ -35,7 +35,7 @@ describe('the show in app tool input', () => {
     expect(
       SHOW_IN_APP_INPUT.safeParse({ action: 'highlight', focus: 'app-updates.channel' }).success,
     ).toBe(true);
-    expect(SHOW_IN_APP_INPUT.safeParse({ action: 'dismiss' }).success).toBe(true);
+    expect(SHOW_IN_APP_INPUT.safeParse({ action: 'dismiss', appId: DEVICE }).success).toBe(true);
   });
 
   it('refuses a missing page to open, a pointer without a focus and a stray field', () => {
@@ -96,7 +96,7 @@ describe('the show in app tool', () => {
       path: '/api/app-view',
       access: 'member',
     });
-    expect(mcpToolOperation('show_in_app')).toBe('showInApp');
+    expect(mcpToolOperation('app_show')).toBe('showInApp');
     expect(MCP_ROUTES.get('app_show')).toEqual({
       key: 'action',
       branches: {
@@ -107,7 +107,7 @@ describe('the show in app tool', () => {
         },
         dismiss: {
           part: 'clear_app_pointer',
-          line: 'Clear the pointer and close what was opened',
+          line: 'Clear the pointer',
         },
       },
     });

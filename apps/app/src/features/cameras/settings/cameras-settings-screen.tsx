@@ -4,9 +4,8 @@ import { href } from '../../../app-shell/hrefs';
 import { settingsTrail } from '../../../settings/tree';
 import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
-import { PageHeader } from '../../../components/page-header';
 import { NavRow } from '../../../components/rows';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { useIsOwner } from '../../../store/selectors';
 import { BudgetRow, RetentionRow } from '../transcripts/keep-rows';
@@ -61,11 +60,10 @@ export function CamerasSettingsScreen(): ReactNode {
   const entries = useCameraEntries();
   const owner = useIsOwner();
   return (
-    <Screen
-      header={
-        <PageHeader title="Camera settings" breadcrumbs={settingsTrail('cameras').slice(0, -1)} />
-      }
-      maxWidth="reading"
+    <PageShell
+      title="Camera settings"
+      breadcrumbs={settingsTrail('cameras').slice(0, -1)}
+      width="reading"
     >
       {entries.length === 0 ? (
         <EmptyState icon="cameras" title="No cameras" body="Cameras you link show up here." />
@@ -91,6 +89,6 @@ export function CamerasSettingsScreen(): ReactNode {
           <BudgetRow />
         </List>
       ) : null}
-    </Screen>
+    </PageShell>
   );
 }

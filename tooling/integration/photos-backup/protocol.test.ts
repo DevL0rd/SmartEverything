@@ -26,10 +26,12 @@ function transportOf(): UploadTransport {
   return { send: (request) => exchange(fixture.origin, request) };
 }
 
+const CAMERA = { key: 'phone:DCIM/Camera', name: 'Camera' } as const;
+
 function rememberPhoto(): void {
   fixture.service.checkHashes(fixture.profileId, {
     deviceId: fixture.phoneId,
-    assets: [{ localId: 'photo', sha256: hash('photo') }],
+    assets: [{ localId: 'photo', sha256: hash('photo'), folder: CAMERA }],
   });
 }
 
@@ -54,9 +56,7 @@ describe('the actual app upload runner against real tus HTTP', () => {
       kind: 'done',
       itemId: item.id,
     });
-    expect(
-      await readFile(join(fixture.opened.directory, 'library', 'Uploads', 'app.jpg'), 'utf8'),
-    ).toBe('after');
+    expect(await readFile(join(fixture.drivePath, 'Uploads', 'app.jpg'), 'utf8')).toBe('after');
     expect(fixture.opened.store.driveVersions.findRev(item.id, item.rev)).toBeDefined();
   });
 
@@ -75,7 +75,7 @@ describe('the actual app upload runner against real tus HTTP', () => {
     expect(
       fixture.opened.store.driveItems.byPath(fixture.root.id, 'Uploads/app.jpg'),
     ).toBeUndefined();
-    expect(fixture.service.state(fixture.profileId)[0]).toMatchObject({
+    expect(fixture.service.state(fixture.profileId).devices[0]).toMatchObject({
       backedUp: 0,
       uploading: 1,
     });
@@ -110,9 +110,7 @@ describe('the actual app upload runner against real tus HTTP', () => {
       name: 'app.jpg',
     });
     expect(sent).toBe(5);
-    expect(
-      await readFile(join(fixture.opened.directory, 'library', 'Uploads', 'app.jpg'), 'utf8'),
-    ).toBe('photo');
+    expect(await readFile(join(fixture.drivePath, 'Uploads', 'app.jpg'), 'utf8')).toBe('photo');
   });
 
   it('backs up once and transfers no bytes for the second hash-only backup', async () => {
@@ -131,13 +129,13 @@ describe('the actual app upload runner against real tus HTTP', () => {
     }).outcome;
     expect(outcome.kind).toBe('done');
     expect(sent).toBe(5);
-    expect(fixture.service.state(fixture.profileId)[0]).toMatchObject({
+    expect(fixture.service.state(fixture.profileId).devices[0]).toMatchObject({
       backedUp: 1,
       uploading: 0,
     });
     const repeated = fixture.service.checkHashes(fixture.profileId, {
       deviceId: fixture.phoneId,
-      assets: [{ localId: 'photo', sha256: hash('photo') }],
+      assets: [{ localId: 'photo', sha256: hash('photo'), folder: CAMERA }],
     });
     expect(repeated.missing).toEqual([]);
     expect(repeated.have).toHaveLength(1);
@@ -164,15 +162,13 @@ describe('the actual app upload runner against real tus HTTP', () => {
     expect(
       fixture.opened.store.driveItems.byPath(fixture.root.id, 'Uploads/app.jpg'),
     ).toBeUndefined();
-    expect(fixture.service.state(fixture.profileId)[0]).toMatchObject({
+    expect(fixture.service.state(fixture.profileId).devices[0]).toMatchObject({
       backedUp: 0,
       uploading: 1,
     });
     expect(notices).toEqual([]);
     expect(fixture.opened.store.driveIntents.forRoot(fixture.root.id)).toHaveLength(1);
-    expect(
-      await readFile(join(fixture.opened.directory, 'library', 'Uploads', 'app.jpg'), 'utf8'),
-    ).toBe('photo');
+    expect(await readFile(join(fixture.drivePath, 'Uploads', 'app.jpg'), 'utf8')).toBe('photo');
     const receipt = fixture.opened.store.context.sql.get(
       z.strictObject({ total: z.number() }),
       'select count(*) as total from drive_upload_results',

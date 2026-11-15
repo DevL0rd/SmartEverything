@@ -1,10 +1,8 @@
 import type { ExpoConfig } from 'expo/config';
 import { withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import { z } from 'zod';
-import identity from './app-identity.json';
 import manifest from './package.json';
-
-const APPLICATION_ID = z.object({ applicationId: z.string().min(1) }).parse(identity).applicationId;
 
 const APP_VERSION = z.object({ version: z.string().min(1) }).parse(manifest).version;
 
@@ -160,7 +158,7 @@ export default (): ExpoConfig => {
     icon: './assets/icon.png',
     web: { bundler: 'metro', output: 'single', favicon: './assets/favicon.png' },
     android: {
-      package: APPLICATION_ID,
+      package: APP_IDENTITY.applicationId,
       versionCode: versionCodeOf(environment),
       googleServicesFile: './google-services.json',
       adaptiveIcon: {

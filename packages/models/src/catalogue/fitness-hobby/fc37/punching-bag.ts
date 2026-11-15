@@ -94,7 +94,7 @@ export const PUNCHING_BAG_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.punching-bag',
   title: 'Punching bag',
   category: 'fitness-hobby',
-  footprint: { width: 0.8, depth: 1, height: 2.02 },
+  footprint: { width: 0.8, depth: 1.02, height: 2.02 },
   size: { height: { param: 'height', extra: 0.02, resizes: true } },
   view: TALL_VIEW,
   meta: {

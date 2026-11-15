@@ -1,31 +1,25 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Logger } from '@smarteverything/logging';
-import { SelectionBar, type SelectionAction } from '../../../components/files/selection-bar';
-import { useEscape } from '../../../components/use-escape';
+import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { VirtualList } from '../../../components/virtual-list';
 import { useAreaWidth } from '../../../design/size-class';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { count } from '../../../format/number';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
 import { DriveFrame } from '../components/drive-frame';
-import { deleterKey, UNKNOWN_TONE, type PersonTone } from './deleted-by';
-import {
-  keptPicks,
-  NOTHING_PICKED,
-  pickedOf,
-  pickStateOf,
-  toggleAll,
-  togglePicked,
-  type TrashSelection,
-} from './selection';
+import type { FileBrowserHandle } from '../../files';
+import { DriveListFrame, useDriveList } from '../source/drive-lists';
+import type { DriveNode, DriveOrigin } from '../source/drive-node';
+import { deleterKey, UNKNOWN_TONE } from './deleted-by';
+import { pickStateOf } from './selection';
 import { useTrashActions, type TrashActions } from './trash-actions';
 import {
-  deletableNow,
   filterTrash,
+  isFiltered,
   NO_FILTER,
+  shownText,
   type TrashDriveOf,
   type TrashFilter,
 } from './trash-filter';
@@ -49,56 +43,57 @@ interface Body {
   readonly driveOf: TrashDriveOf;
   readonly layout: TrashLayout;
   readonly disabled: boolean;
-  readonly picks: TrashSelection;
-  readonly setPicks: (update: (picks: TrashSelection) => TrashSelection) => void;
+  readonly browser: FileBrowserHandle<DriveOrigin>;
+  readonly nodes: readonly DriveNode[];
   readonly actions: TrashActions;
 }
 
-function renderRow(body: Body): (item: TrashItem) => ReactElement {
+function renderRow(body: Body): (node: DriveNode) => ReactElement {
   const tones = new Map(body.view.deletedBy.map((share) => [share.key, share.tone]));
-  const toneOf = (item: TrashItem): PersonTone =>
-    tones.get(deleterKey(item.deleter)) ?? UNKNOWN_TONE;
-  return function RenderedRow(item: TrashItem): ReactElement {
+  const items = new Map(body.shown.map((item) => [item.id, item]));
+  return function RenderedRow(node: DriveNode): ReactElement {
+    const item = items.get(node.key);
+    if (item === undefined) throw new MissingTrashItemError(node.key);
     return (
       <TrashRow
         item={item}
+        node={node}
+        browser={body.browser}
         wasIn={wasInOf(item, body.view.rootLabelOf(item.rootId))}
-        tone={toneOf(item)}
+        tone={tones.get(deleterKey(item.deleter)) ?? UNKNOWN_TONE}
         layout={body.layout}
-        picked={body.picks.has(item.id)}
-        disabled={body.disabled}
-        onToggle={(picked) => {
-          body.setPicks((picks) => togglePicked(picks, picked.id));
-        }}
-        onRestore={(picked) => {
-          body.actions.restore([picked]);
-        }}
       />
     );
   };
 }
 
+class MissingTrashItemError extends Error {
+  override readonly name = 'MissingTrashItemError';
+  constructor(key: string) {
+    super(`The trash row ${key} has no trash item.`);
+  }
+}
+
 function header(body: Body): ReactElement | undefined {
-  const { view, shown, owner, driveOf, layout, disabled, actions } = body;
+  const { view, shown, driveOf, layout, disabled, actions } = body;
   if (view.status !== 'ready' || view.items.length === 0) return undefined;
-  const allDeletable = view.items.every((item) => deletableNow(item, owner, driveOf));
+  const allDeletable = view.items.every((item) => view.nodeOf.get(item.id)?.deletable === true);
   return (
     <TableTop
       layout={layout}
       shares={view.deletedBy}
       months={view.months}
-      pickState={pickStateOf(body.picks, shown)}
+      pickState={pickStateOf(body.browser.picked.length, shown.length)}
       onToggleAll={() => {
-        body.setPicks((picks) => toggleAll(picks, shown));
+        if (body.browser.picked.length >= shown.length) body.browser.commands.clearSelection();
+        else body.browser.commands.selectAll();
       }}
       filterRow={
         <TrashFilterRow
           items={view.items}
-          shown={shown.length}
           filter={body.filter}
           onFilter={body.setFilter}
           driveOf={driveOf}
-          wide={layout !== 'compact'}
         />
       }
       deleteAll={
@@ -115,59 +110,6 @@ function header(body: Body): ReactElement | undefined {
   );
 }
 
-function selectionActions(body: Body, picked: readonly TrashItem[]): readonly SelectionAction[] {
-  const restore: SelectionAction = {
-    label: 'Restore',
-    icon: 'archiveRestore',
-    variant: 'tonal',
-    disabled: body.disabled,
-    onPress: () => {
-      body.actions.restore(picked);
-    },
-  };
-  const deletable = picked.filter((item) => deletableNow(item, body.owner, body.driveOf));
-  if (deletable.length === 0) return [restore];
-  return [
-    restore,
-    {
-      label:
-        deletable.length === picked.length ? 'Delete now' : `Delete ${count(deletable.length)} now`,
-      icon: 'trash',
-      variant: 'destructive',
-      disabled: body.disabled,
-      onPress: (): void => {
-        body.actions.deleteNow(deletable);
-      },
-    },
-  ];
-}
-
-function PickedBar({
-  body,
-  onClear,
-}: {
-  readonly body: Body;
-  readonly onClear: () => void;
-}): ReactNode {
-  const picked = pickedOf(body.shown, body.picks);
-  if (picked.length === 0) return null;
-  return (
-    <SelectionBar
-      docked
-      summary={{
-        kind: 'count',
-        count: picked.length,
-        total: body.shown.length,
-        onClear,
-        onSelectAll: () => {
-          body.setPicks((picks) => toggleAll(picks, body.shown));
-        },
-      }}
-      actions={selectionActions(body, picked)}
-    />
-  );
-}
-
 function useTrashLog(view: TrashView): void {
   useLifecycleLog(log, 'drive_trash_screen');
   const shown = view.items.length;
@@ -179,7 +121,6 @@ function useTrashLog(view: TrashView): void {
 interface TrashBody {
   readonly body: Body;
   readonly live: boolean;
-  readonly clear: () => void;
 }
 
 function useTrashBody(layout: TrashLayout): TrashBody {
@@ -189,14 +130,13 @@ function useTrashBody(layout: TrashLayout): TrashBody {
   const driveOf: TrashDriveOf = (item) => view.chipOf(item.rootId).key;
   const [filter, setFilter] = useState<TrashFilter>(NO_FILTER);
   const shown = filterTrash(view.items, filter, driveOf);
-  const [selection, setPicks] = useState<TrashSelection>(NOTHING_PICKED);
-  const picks = keptPicks(selection, shown);
-  const clear = (): void => {
-    setPicks(NOTHING_PICKED);
-  };
-  const actions = useTrashActions(clear, view.rootLabelOf);
+  const nodes = shown.flatMap((item) => {
+    const node = view.nodeOf.get(item.id);
+    return node === undefined ? [] : [node];
+  });
+  const browser = useDriveList('trash', 'trash', nodes);
+  const actions = useTrashActions(browser.commands.clearSelection);
   const disabled = !live || actions.busy;
-  useEscape(picks.size > 0, clear);
   useTrashLog(view);
   return {
     body: {
@@ -208,22 +148,21 @@ function useTrashBody(layout: TrashLayout): TrashBody {
       driveOf,
       layout,
       disabled,
-      picks,
-      setPicks,
+      browser,
+      nodes,
       actions,
     },
     live,
-    clear,
   };
 }
 
 function TrashList({ body }: { readonly body: Body }): ReactNode {
-  const { view, shown, owner } = body;
+  const { view, shown, owner, nodes } = body;
   const top = header(body);
   return (
     <VirtualList
-      sections={shown.length === 0 ? [] : [{ key: 'trash', title: null, data: shown }]}
-      keyOf={(item) => item.id}
+      sections={nodes.length === 0 ? [] : [{ key: 'trash', title: null, data: nodes }]}
+      keyOf={(node) => node.key}
       renderItem={renderRow(body)}
       {...(top === undefined ? {} : { header: top })}
       empty={
@@ -239,11 +178,26 @@ function TrashList({ body }: { readonly body: Body }): ReactNode {
   );
 }
 
+function trashSearchOf(body: Body): ShellSearchConfig | undefined {
+  const { view, filter, shown, setFilter } = body;
+  if (view.items.length === 0 && filter.query === '') return undefined;
+  return {
+    value: filter.query,
+    onChange: (query: string): void => {
+      setFilter({ ...filter, query });
+    },
+    placeholder: 'Find in trash',
+    label: 'Find in trash',
+    ...(isFiltered(filter) ? { status: shownText(shown.length, view.items.length) } : {}),
+  };
+}
+
 export function TrashScreen(): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = useAreaWidth() < SHELL_BREAKPOINTS.compactMax;
   const { width, onLayout } = useMeasuredWidth(tableSnap);
-  const { body, live, clear } = useTrashBody(trashLayoutOf(compact, width));
+  const { body, live } = useTrashBody(trashLayoutOf(compact, width));
   const { view } = body;
+  const search = trashSearchOf(body);
   return (
     <DriveFrame
       section="trash"
@@ -251,11 +205,13 @@ export function TrashScreen(): ReactNode {
       subtitle={subtitleOf(view.status === 'ready' ? view.totals : null, compact)}
       scroll={false}
       {...(live ? {} : { banner: <OfflineBanner /> })}
+      {...(search === undefined ? {} : { search })}
     >
-      <View className="-mx-gutter flex-1" onLayout={onLayout}>
-        <TrashList body={body} />
-        <PickedBar body={body} onClear={clear} />
-      </View>
+      <DriveListFrame browser={body.browser}>
+        <View className="-mx-gutter flex-1" onLayout={onLayout}>
+          <TrashList body={body} />
+        </View>
+      </DriveListFrame>
     </DriveFrame>
   );
 }

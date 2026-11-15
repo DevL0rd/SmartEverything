@@ -99,7 +99,7 @@ export const HIGH_CHAIR_MODEL: ModelSpec = catalogueItem({
   id: 'cat.kids-pets.high-chair',
   title: 'High chair',
   category: 'kids-pets',
-  footprint: { width: 0.52, depth: 0.7, height: 0.97 },
+  footprint: { width: 0.5109, depth: 0.7054, height: 0.97 },
   view: { yaw: 30, pitch: 14, fov: 28, padding: 0.08 },
   meta: {
     names: {

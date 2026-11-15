@@ -32,10 +32,28 @@ export async function readHubUpdate(
   return (runId === undefined ? ledger.releases.at(-1) : releaseOf(ledger, runId)) ?? null;
 }
 
+const REPORTED: ReadonlySet<HubUpdateRelease['phase']> = new Set([
+  'awaiting_decision',
+  'unrecoverable',
+]);
+
 export function hubUpdateStatusOf(release: HubUpdateRelease | undefined): HubUpdateRecoveryStatus {
   if (release === undefined) return { release: null };
   const { runId, phase, interrupted, startedAt, updatedAt, finishedAt } = release;
-  return { release: { runId, phase, interrupted, startedAt, updatedAt, finishedAt } };
+  const reported = REPORTED.has(phase);
+  return {
+    release: {
+      runId,
+      phase,
+      interrupted,
+      startedAt,
+      updatedAt,
+      finishedAt,
+      reason: reported ? release.reason : null,
+      failedChecks: reported ? release.failedChecks : [],
+      backupKept: reported && release.backup !== null,
+    },
+  };
 }
 
 export async function hubUpdateStatus(layout: HubLayout): Promise<HubUpdateRecoveryStatus> {

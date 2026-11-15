@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { anchorOf, dockedOpen } from '../palette/armed-insert';
 import { EditorBody } from './editor-body';
-import { EditorBanners, EditorShortcuts, EditorTopBar } from './editor-chrome';
+import { EditorBanners, EditorShell, EditorShortcuts } from './editor-chrome';
 import {
   InspectorDock,
   PaletteDock,
@@ -17,9 +17,8 @@ export function WideEditor({ model }: { readonly model: EditorModel }): ReactNod
   const wide = model.layout === 'wide';
   const pane = { sizes: model.panes.sizes, onResize: model.panes.resize };
   return (
-    <>
+    <EditorShell model={model}>
       <LayoutWide
-        top={<EditorTopBar model={model} />}
         sentence={<SentenceStrip text={model.props.sentence} />}
         banner={<EditorBanners model={model} />}
         left={
@@ -51,6 +50,6 @@ export function WideEditor({ model }: { readonly model: EditorModel }): ReactNod
       />
       {wide ? null : <ProblemsPhone host={model.problems} />}
       <EditorShortcuts model={model} />
-    </>
+    </EditorShell>
   );
 }

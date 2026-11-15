@@ -175,7 +175,7 @@ describe('Storage header', () => {
     const now = Date.parse('2026-11-07T00:00:00Z');
     expect(storageSubtitleOf(undefined, IDLE, now)).toBeUndefined();
     expect(storageSubtitleOf({ ...STATS, kinds: [] }, IDLE, now)).toBe(
-      `${bytes(300 * GB)} of ${bytes(1000 * GB)} · ${bytes(700 * GB)} free on the data disk · Last scrub 3 d ago, no damage`,
+      `${bytes(300 * GB)} of ${bytes(1000 * GB)} · ${bytes(700 * GB)} free on the data disk · Last scrub 3 d ago, nothing damaged or unreadable`,
     );
   });
 
@@ -184,7 +184,9 @@ describe('Storage header', () => {
     expect(scrubTextOf({ state: 'idle', lastFinishedAt: null, corrupt: 0 }, now)).toBe(
       'Never scrubbed',
     );
-    expect(scrubTextOf({ ...IDLE, corrupt: 2 }, now)).toBe('Last scrub 3 d ago, 2 damaged files');
+    expect(scrubTextOf({ ...IDLE, corrupt: 2 }, now)).toBe(
+      'Last scrub 3 d ago, 2 files damaged or unreadable',
+    );
     expect(
       scrubTextOf(
         { state: 'stopped', startedAt: IDLE.lastFinishedAt, checked: 1, total: 4, corrupt: 0 },

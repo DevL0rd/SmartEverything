@@ -124,13 +124,51 @@ function emptyTable<R>(): Table<R> {
 
 function emptyDriveTables(): Pick<
   Tables,
-  'drive_roots' | 'drive_albums' | 'drive_grants' | 'drive_placements'
+  | 'drive_roots'
+  | 'drive_albums'
+  | 'drive_grants'
+  | 'drive_placements'
+  | 'drive_notifications'
+  | 'drive_access_requests'
+  | 'drive_file_requests'
+  | 'drive_transfers'
+  | 'drive_offline_items'
 > {
   return {
     drive_roots: emptyTable(),
     drive_albums: emptyTable(),
     drive_grants: emptyTable(),
     drive_placements: emptyTable(),
+    drive_notifications: emptyTable(),
+    drive_access_requests: emptyTable(),
+    drive_file_requests: emptyTable(),
+    drive_transfers: emptyTable(),
+    drive_offline_items: emptyTable(),
+  };
+}
+
+function emptyPlannerTables(): Pick<
+  Tables,
+  | 'planner_collections'
+  | 'planner_items'
+  | 'planner_occurrences'
+  | 'planner_alarms'
+  | 'planner_timers'
+  | 'planner_stopwatches'
+  | 'planner_collection_shares'
+  | 'planner_guests'
+  | 'planner_booking_pages'
+> {
+  return {
+    planner_collections: emptyTable(),
+    planner_items: emptyTable(),
+    planner_occurrences: emptyTable(),
+    planner_alarms: emptyTable(),
+    planner_timers: emptyTable(),
+    planner_stopwatches: emptyTable(),
+    planner_collection_shares: emptyTable(),
+    planner_guests: emptyTable(),
+    planner_booking_pages: emptyTable(),
   };
 }
 
@@ -148,7 +186,6 @@ function emptyTables(): Tables {
     recordings: emptyTable(),
     ir_remotes: emptyTable(),
     ir_codes: emptyTable(),
-    scenes: emptyTable(),
     automations: emptyTable(),
     automation_values: emptyTable(),
     automation_runs: emptyTable(),
@@ -174,13 +211,8 @@ function emptyTables(): Tables {
     model_assets: emptyTable(),
     model_catalog: emptyTable(),
     model_overrides: emptyTable(),
-    planner_collections: emptyTable(),
-    planner_items: emptyTable(),
-    planner_occurrences: emptyTable(),
-    planner_alarms: emptyTable(),
-    planner_timers: emptyTable(),
-    planner_stopwatches: emptyTable(),
     google_accounts: emptyTable(),
+    ...emptyPlannerTables(),
     ...emptyDriveTables(),
   };
 }

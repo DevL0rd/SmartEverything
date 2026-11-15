@@ -1,9 +1,11 @@
 import {
   PLANNER_COLLECTION_ROW,
   PLANNER_DAY,
+  PLANNER_GUEST_ROW,
   PLANNER_ITEM_ROW,
   type PlannerCollectionRow,
   type PlannerDay,
+  type PlannerGuestRow,
   type PlannerItemRow,
   type PlannerOccurrenceView,
 } from '@smarteverything/domain';
@@ -12,6 +14,7 @@ import { clock24 } from '../../../format/time';
 import {
   FADE_FROM_MINUTES,
   fadeStepsOf,
+  guestMarksOf,
   riverCaptionOf,
   riverKeyOf,
   riverOccurrencesOf,
@@ -54,8 +57,10 @@ function collection(
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
     created_at: STAMP,
     updated_at: STAMP,
   });
@@ -95,6 +100,10 @@ function item(id: string, estimate: number | null): PlannerItemRow {
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     created_at: STAMP,
     updated_at: STAMP,
@@ -184,7 +193,14 @@ function dayOf(overrides: Partial<PlannerDay> = {}): PlannerDay {
 }
 
 function input(day: PlannerDay, hidden: ReadonlySet<string> = new Set()): RiverInput {
-  return { day, collections: COLLECTIONS, items: [item(COOK, 45)], hidden };
+  return {
+    day,
+    collections: COLLECTIONS,
+    items: [item(COOK, 45)],
+    hidden,
+    guests: [],
+    me: PROFILE,
+  };
 }
 
 function titles(occurrences: readonly { readonly title: string }[]): readonly string[] {
@@ -318,5 +334,54 @@ describe('riverCaptionOf', () => {
     expect(riverCaptionOf({ left: 3, bookedMinutes: 90, savedAt: NOW, timeZone: ZONE })).toBe(
       `as saved ${clock24(NOW, ZONE)}`,
     );
+  });
+});
+
+describe('guestMarksOf', () => {
+  const OTHER = 'a1b2c3d4-0000-4000-8000-000000000099';
+  function guest(n: number, extra: Record<string, unknown>): PlannerGuestRow {
+    return PLANNER_GUEST_ROW.parse({
+      id: `a1b2c3d4-0000-4000-8000-0000000003${String(n).padStart(2, '0')}`,
+      item_id: COOK,
+      kind: 'email',
+      profile_id: null,
+      email: `guest${String(n)}@example.com`,
+      name: null,
+      response: 'needs_action',
+      note: null,
+      delivery: 'sent',
+      delivery_detail: null,
+      invited_at: STAMP,
+      responded_at: null,
+      ...extra,
+    });
+  }
+  const own = item(COOK, null);
+
+  it('counts the guests of an event the viewer organises', () => {
+    const guests = [guest(1, {}), guest(2, {})];
+    expect(guestMarksOf(COOK, own, { guests, me: PROFILE })).toEqual({ invite: null, guests: 2 });
+  });
+
+  it('shows the viewer’s own answer on an event they are invited to', () => {
+    const mine = guest(3, {
+      kind: 'person',
+      profile_id: OTHER,
+      email: null,
+      delivery: 'not_sent',
+      response: 'maybe',
+      responded_at: STAMP,
+    });
+    expect(guestMarksOf(COOK, undefined, { guests: [mine], me: OTHER })).toEqual({
+      invite: 'maybe',
+      guests: 0,
+    });
+  });
+
+  it('marks nothing on someone else’s event without the viewer as a guest', () => {
+    expect(guestMarksOf(COOK, own, { guests: [guest(4, {})], me: OTHER })).toEqual({
+      invite: null,
+      guests: 0,
+    });
   });
 });

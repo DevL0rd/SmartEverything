@@ -57,8 +57,8 @@ describe('loopback listener', () => {
   it('listens on loopback with a random port and gives 64-hex grant ids', async () => {
     const a = listener();
     const b = listener();
-    await a.start();
-    await b.start();
+    await a.start(0);
+    await b.start(0);
     expect(a.host).toMatch(/^127\.0\.0\.1:\d+$/);
     expect(a.host).not.toBe(b.host);
     const first = a.add('o', 'x', undefined, () => undefined);
@@ -69,14 +69,14 @@ describe('loopback listener', () => {
 
   it('refuses a second start', async () => {
     const created = listener();
-    await created.start();
-    await expect(created.start()).rejects.toThrow('already running');
+    await created.start(0);
+    await expect(created.start(0)).rejects.toThrow('already running');
   });
 
   it('serves a known grant and answers 409 with a reason for an unknown or released one', async () => {
     const logs = captureLogs();
     const created = listener();
-    await created.start();
+    await created.start(0);
     const id = created.add('o', 'hello', undefined, () => undefined);
     const ok = await fetch(`http://${created.host}/grant/${id}`);
     expect(await ok.text()).toBe('hello');
@@ -89,7 +89,7 @@ describe('loopback listener', () => {
 
   it('refuses a Host that differs from the listener', async () => {
     const created = listener();
-    await created.start();
+    await created.start(0);
     const id = created.add('o', 'hello', undefined, () => undefined);
     const answer = await raw(
       portOf(created.host),
@@ -101,7 +101,7 @@ describe('loopback listener', () => {
 
   it('destroys CONNECT and upgrade requests', async () => {
     const created = listener();
-    await created.start();
+    await created.start(0);
     const port = portOf(created.host);
     const connectAnswer = await raw(
       port,
@@ -117,7 +117,7 @@ describe('loopback listener', () => {
 
   it('aborts the entry controller on release, closeOwner and close, and retires on signal abort', async () => {
     const created = listener();
-    await created.start();
+    await created.start(0);
     const signal = new AbortController();
     const retired: string[] = [];
     const a = created.add('one', 'x', signal.signal, (id) => {
@@ -144,7 +144,7 @@ describe('loopback listener', () => {
 
   it('finds a grant by owner and replaces its value', async () => {
     const created = listener();
-    await created.start();
+    await created.start(0);
     const id = created.add('o', 'old', undefined, () => undefined);
     expect(created.find((entry) => entry.owner === 'o')).toBe(id);
     expect(created.find((entry) => entry.owner === 'p')).toBeUndefined();
@@ -155,7 +155,7 @@ describe('loopback listener', () => {
 
   it('answers 502 when the serve handler fails', async () => {
     const created = listener(() => Promise.reject(new Error('boom')));
-    await created.start();
+    await created.start(0);
     const id = created.add('o', 'x', undefined, () => undefined);
     const answer = await fetch(`http://${created.host}/grant/${id}`);
     expect(answer.status).toBe(502);

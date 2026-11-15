@@ -45,7 +45,7 @@ describe('the memory embedder', () => {
       );
 
       await expect(embedder.embed(['first', 'second'])).rejects.toMatchObject({
-        name: 'MemoryEmbeddingBatchError',
+        name: 'EmbeddingBatchError',
       });
     },
   );

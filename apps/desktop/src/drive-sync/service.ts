@@ -22,18 +22,23 @@ export interface SyncEnginePort {
 }
 
 export function syncTargets(placements: readonly DrivePlacement[]): readonly SyncTarget[] {
-  return placements
-    .filter(
-      (placement) => placement.mode === 'synced' && placement.enabled && placement.hold === null,
-    )
-    .map((placement) => ({
-      placementId: placement.id,
-      driveId: placement.rootId,
-      localPath: placement.localPath,
-      excluded: placement.excluded ?? [],
-      ignorePatterns: placement.ignorePatterns ?? [],
-      receiveOnly: placement.status.readOnly,
-    }));
+  return placements.flatMap((placement): SyncTarget[] =>
+    placement.mode === 'synced' &&
+    placement.localPath !== null &&
+    placement.enabled &&
+    placement.hold === null
+      ? [
+          {
+            placementId: placement.id,
+            driveId: placement.rootId,
+            localPath: placement.localPath,
+            excluded: placement.excluded ?? [],
+            ignorePatterns: placement.ignorePatterns ?? [],
+            receiveOnly: placement.status.readOnly,
+          },
+        ]
+      : [],
+  );
 }
 
 function sameList(first: readonly string[], second: readonly string[]): boolean {

@@ -81,7 +81,7 @@ function Columns({ frame, span, slots, columns, usual, current }: PlotProps): Re
                 <Placeholder frame={frame} slot={slot} usual={usual} />
               )
             ) : (
-              <NightBar frame={frame} slot={slot} column={column} />
+              <NightBar frame={frame} slot={slot} column={column} colour="sleep-asleep" />
             )}
             <NapMark frame={frame} slot={slot} column={column} dense={span !== 'week'} />
           </G>

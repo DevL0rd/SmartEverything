@@ -1,21 +1,23 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import {
   API_ENDPOINTS as E,
   ApiError,
+  PIPELINE_COMPONENTS,
   UPDATE_PUSH_PATH,
   UPDATE_PUSH_SECRET_FILE,
   type HubUpdateRelease,
   type UpdatePushSetup,
+  type PipelineComponent,
   type UpdateRevision,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../extensions';
 import { readPushSecret, updatePushRoute } from '../server/handlers/self-update-push';
 import { bound } from '../server/router';
+import { buildSourceOf } from './build-source';
 import { PLAN_RESULT } from './plan-contract';
+import { planRelease } from './release-planner';
 import {
   executeHub,
   executePublication,
@@ -23,7 +25,7 @@ import {
   whenIdle,
   type StepDependencies,
 } from './pipeline-steps';
-import { repositoryOf, type PushTarget } from './push-webhook';
+import type { PushTarget } from './push-webhook';
 import {
   PipelineRefusal,
   ReleaseQueue,
@@ -37,19 +39,11 @@ import { runConfiguredUpdateCommand } from './command';
 import { httpsPublicServer, verifiedHttpsServer } from './public-server';
 import { findUpdateSource } from './update-source';
 
-const git = promisify(execFile);
-
-async function pushTarget(context: Pick<ExtensionContext, 'layout'>): Promise<PushTarget> {
+function pushTarget(context: Pick<ExtensionContext, 'layout'>): PushTarget {
   const source = findUpdateSource(context.layout);
   if (source === undefined)
     throw new ApiError('conflict', 'This hub has no update source configured.');
-  const { stdout } = await git('git', ['remote', 'get-url', source.remote], {
-    cwd: source.checkout,
-  });
-  const repository = repositoryOf(stdout);
-  if (repository === undefined)
-    throw new ApiError('conflict', 'The configured update remote is not a GitHub repository.');
-  return { repository, branch: source.branch };
+  return { repository: source.repository, branch: source.branch };
 }
 
 function baseOf(revisions: readonly UpdateRevision[], tip: string): string | null {
@@ -87,11 +81,17 @@ async function prepare(
   revision: UpdateRevision,
 ): Promise<Prepared> {
   const { layout } = context;
-  const request = {
-    tip: revision.tip,
-    pushedFrom: revision.pushedFrom,
-    base: baseOf(await record.list(), revision.tip),
-  };
+  const base = baseOf(await record.list(), revision.tip);
+  if (PIPELINE_COMPONENTS.every((component) => buildSourceOf(layout, component) !== 'hub'))
+    return {
+      base,
+      components:
+        revision.changedPaths === null
+          ? [...PIPELINE_COMPONENTS]
+          : planRelease(revision.changedPaths).components,
+      notes: null,
+    };
+  const request = { tip: revision.tip, pushedFrom: revision.pushedFrom, base };
   const reply = await whenIdle(
     () => untilIdle(layout),
     () => runConfiguredUpdateCommand('self-update-push-plan-command.ts', layout, request),
@@ -112,6 +112,7 @@ function ports(context: ExtensionContext, record: RevisionRecord, watch: Release
     record,
     now: (): Date => new Date(),
     newId: randomUUID,
+    sourceOf: (component: PipelineComponent) => buildSourceOf(layout, component),
     prepare: (revision): Promise<Prepared> => prepare(context, record, revision),
     execute: (revision, step): Promise<StepOutcome> =>
       step.component === 'hub'
@@ -148,6 +149,7 @@ export function updatePipelineExtension(): ServerExtension {
     await watch.start();
     const queue = new ReleaseQueue(ports(context, record, watch));
     queue.resume();
+    context.publications.listen((component, commit) => queue.completeWaiting(component, commit));
     const secretFile = join(layout.system.updates.selfUpdate, UPDATE_PUSH_SECRET_FILE);
     return {
       endpoints: {
@@ -159,7 +161,7 @@ export function updatePipelineExtension(): ServerExtension {
       routes: [
         updatePushRoute({
           secret: () => readPushSecret(secretFile),
-          target: () => pushTarget(context),
+          target: () => Promise.resolve().then(() => pushTarget(context)),
           submit: async (push) => (await queue.submit(push)).id,
         }),
       ],

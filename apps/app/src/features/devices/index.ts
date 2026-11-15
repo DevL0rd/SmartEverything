@@ -56,6 +56,7 @@ export {
   type WideClass,
   type WideFrame,
 } from './card/wide-card';
+export { TIMELINE_CAPTIONS_PX, useGraphRoom } from './sensors/layout';
 export { AddApplianceScreen } from './appliance/add-appliance-screen';
 export { SETTINGS as DEVICE_SETTINGS } from './settings';
 export { presentedFor, presentedRows } from './vacuum/model/presented-refs';

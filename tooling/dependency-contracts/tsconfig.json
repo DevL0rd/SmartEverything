@@ -6,5 +6,5 @@
     "types": ["node"],
     "typeRoots": ["../../node_modules/@types", "./types"]
   },
-  "include": ["**/*.ts", "../pinned-versions.ts"]
+  "include": ["**/*.ts", "../pinned-versions.ts", "../vision-models.ts"]
 }

@@ -127,7 +127,7 @@ export const CAR_MODEL: ModelSpec = catalogueModel({
   id: 'cat.outdoor.car',
   title: 'Parked car',
   category: 'outdoor',
-  footprint: { width: 2.14, depth: 4.61, height: 1.5 },
+  footprint: { width: 2.14, depth: 4.6088, height: 1.4506 },
   view: { yaw: 35, pitch: 16, fov: 28, padding: 0.08 },
   meta: {
     names: {

@@ -162,7 +162,7 @@ async function addLockedFolder(rootId: string, dir: string): Promise<void> {
   await mkdir(join(dir, 'Locked'));
   putItem(opened.store, { rootId, id, relPath: 'Locked', kind: 'folder' });
   opened.store.driveGrants.set(
-    { itemId: id, profileId: memberProfile, role: 'view' },
+    { itemId: id, profileId: memberProfile, role: 'view', expiresAt: null },
     ownerProfile,
   );
 }

@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Card } from '../../../components/card';
 import { ProgressBar, Sparkline } from '../../../components/charts';
 import { Text } from '../../../components/text';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { hoursMinutes } from '../../../format/time';
 import type { TodayApp } from '../model/apps-model';
 import { AppIcon } from './app-icon';

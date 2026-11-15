@@ -2,7 +2,8 @@ import type { JsonValue, Variable } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import type { Plan, PlanOp } from '../../src/compile/plan';
 import type { FunctionInterface } from '../../src/functions/interface-hash';
-import { CALL_FRAMES, callOps, instanceOf, planOwner } from '../../src/interpret/calls';
+import { CALL_FRAMES, callOps } from '../../src/interpret/calls';
+import { instanceOf, planOwner } from '../../src/interpret/call-state';
 import { CORE_FRAMES, CORE_OPS } from '../../src/interpret/core-ops';
 import type {
   EffectRequest,

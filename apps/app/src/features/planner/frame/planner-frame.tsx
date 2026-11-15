@@ -1,5 +1,6 @@
 import { background } from '@smarteverything/logging';
 import { useMemo, useState, type ReactNode } from 'react';
+import { useIsFocused } from 'expo-router';
 import { ScrollView, View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
@@ -11,7 +12,7 @@ import { useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { longDate } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
-import { useHubOffline } from '../../clock/frame/hub-status';
+import { useHubOffline } from '../../clock';
 import {
   useGoogleAccount,
   usePlannerReload,
@@ -30,6 +31,7 @@ import { PlannerTabs } from './planner-tabs';
 import { QuickAddBar, QuickAddComposer, ScrollAwayBar } from './quick-add-bar';
 import { plannerComposerKindOf, useComposerControl, type ComposerControl } from './quick-add';
 import { plannerSubtitleOf, todaySummaryOf } from './rail-summary';
+import { PLANNER_SEARCH_ACTION, usePlannerSearchKey } from './search-key';
 import {
   PLANNER_QUICK_ADD_TARGET,
   frameLayoutOf,
@@ -168,18 +170,10 @@ function FrameBody({ section, scroll, width, quickAdd, children }: BodyProps): R
 
 function headerBelow(
   compact: boolean,
-  section: PlannerSection,
   people: readonly PersonChoice[],
   toolbar: ReactNode,
 ): ReactNode {
-  if (compact) {
-    return (
-      <>
-        <PlannerTabs active={section} />
-        {toolbar}
-      </>
-    );
-  }
+  if (compact) return toolbar;
   if (people.length === 0 && toolbar === undefined) return undefined;
   return (
     <View className="flex-row flex-wrap items-center gap-2">
@@ -218,18 +212,21 @@ function FrameHeader({ section, subtitle, actions, toolbar }: HeaderInput): Reac
   const pointer = useIdiom() === 'pointer';
   const people = usePersonChoices();
   const google = useGoogleAccount();
+  const focused = useIsFocused();
+  usePlannerSearchKey(pointer && focused);
   return (
     <PageHeader
       title={plannerTitleOf(section, area)}
       subtitle={useSubtitle(section, subtitle)}
       back={false}
-      actions={[...actions, ASK_AI]}
+      actions={[...actions, PLANNER_SEARCH_ACTION, ASK_AI]}
       overflow={plannerMenu({
         people: pointer ? [] : people,
-        insights: compact,
+        sections: compact,
         googleNeedsAttention: google.needsAttention,
       })}
-      below={headerBelow(compact, section, pointer ? people : [], toolbar)}
+      belowStrip={compact ? <PlannerTabs active={section} /> : undefined}
+      below={headerBelow(compact, pointer ? people : [], toolbar)}
     />
   );
 }

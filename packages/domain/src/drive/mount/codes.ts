@@ -1,0 +1,63 @@
+export const ERROR_NAMES = [
+  'ENOENT',
+  'EEXIST',
+  'ENOTEMPTY',
+  'ENOTDIR',
+  'EISDIR',
+  'EACCES',
+  'EPERM',
+  'EINVAL',
+  'ENOSPC',
+  'EDQUOT',
+  'EXDEV',
+  'ENAMETOOLONG',
+  'EILSEQ',
+  'ESTALE',
+  'EAGAIN',
+  'EDEADLK',
+  'EINTR',
+  'EOPNOTSUPP',
+  'ENODATA',
+  'ERANGE',
+  'E2BIG',
+  'ELOOP',
+  'ENOLCK',
+  'EIO',
+  'ENETUNREACH',
+  'EFBIG',
+] as const;
+
+export type DriveMountErrorName = (typeof ERROR_NAMES)[number];
+
+export const ERROR_CODES = {
+  ENOENT: 1,
+  EEXIST: 2,
+  ENOTEMPTY: 3,
+  ENOTDIR: 4,
+  EISDIR: 5,
+  EACCES: 6,
+  EPERM: 7,
+  EINVAL: 8,
+  ENOSPC: 9,
+  EDQUOT: 10,
+  EXDEV: 11,
+  ENAMETOOLONG: 12,
+  EILSEQ: 13,
+  ESTALE: 14,
+  EAGAIN: 15,
+  EDEADLK: 16,
+  EINTR: 17,
+  EOPNOTSUPP: 18,
+  ENODATA: 19,
+  ERANGE: 20,
+  E2BIG: 21,
+  ELOOP: 22,
+  ENOLCK: 23,
+  EIO: 24,
+  ENETUNREACH: 25,
+  EFBIG: 26,
+} as const satisfies Record<(typeof ERROR_NAMES)[number], number>;
+
+export function errorNameOf(code: number): DriveMountErrorName | undefined {
+  return ERROR_NAMES[code - 1];
+}

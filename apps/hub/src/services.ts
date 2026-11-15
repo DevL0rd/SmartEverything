@@ -289,6 +289,7 @@ function plannerOf(
     clock: options.clock,
     signals: hub.signals,
     submit: hub.submit,
+    automations: hub.automationEngine,
     google: google.runner,
     log: options.log.forArea('hub.planner'),
   });

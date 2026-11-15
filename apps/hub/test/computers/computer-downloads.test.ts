@@ -30,6 +30,10 @@ function counting(real: SystemControls): SystemControls {
       write: (change) => real.files.write(change),
       upload: (chunk) => real.files.upload(chunk),
       places: () => real.files.places(),
+      trash: (cursor) => real.files.trash(cursor),
+      zipEntries: (path, cursor) => real.files.zipEntries(path, cursor),
+      zipEntryRange: (path, index, start, length) =>
+        real.files.zipEntryRange(path, index, start, length),
       openDownload: (paths) => real.files.openDownload(paths),
       readDownload: (id, length) => real.files.readDownload(id, length),
       closeDownload: (id): Promise<void> => {

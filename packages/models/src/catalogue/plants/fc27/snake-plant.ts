@@ -60,7 +60,7 @@ function blade(entry: Blade, index: number): ModelSpecPart[] {
 export const SNAKE_PLANT_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.snake-plant',
   title: 'Snake plant',
-  footprint: { width: 0.4, depth: 0.42, height: 0.97 },
+  footprint: { width: 0.3641, depth: 0.4072, height: 0.9701 },
   names: {
     display: 'Snake plant',
     synonyms: [

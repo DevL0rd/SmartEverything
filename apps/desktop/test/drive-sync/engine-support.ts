@@ -15,6 +15,7 @@ import { DriveSyncEngine, type EngineSink } from '../../src/drive-sync/engine.js
 import type { ConflictResult } from '../../src/drive-sync/conflicts.js';
 import { isEngineTempName } from '../../src/drive-sync/scan.js';
 import { ignoreMatcherOf } from '../../src/drive-sync/state.js';
+import { NoXattrPort, type MetaPort } from '../../src/drive-sync/meta-port.js';
 import { SyncSocket, type SyncSocketSink } from '../../src/drive-sync/socket.js';
 import { RemoteChangedError, type BlockSource } from '../../src/drive-sync/transfer.js';
 import { blockHashes } from './pull-support.js';
@@ -44,7 +45,7 @@ export interface Peer {
 export interface Lab {
   readonly hub: FakeHub;
   readonly transport: TestTransport;
-  readonly peer: (name: string, placement?: PeerPlacement) => Promise<Peer>;
+  readonly peer: (name: string, placement?: PeerPlacement, meta?: MetaPort) => Promise<Peer>;
   readonly close: () => Promise<void>;
 }
 
@@ -122,7 +123,12 @@ function forwardTo(target: () => SyncSocketSink): SyncSocketSink {
   };
 }
 
-async function peerOf(context: Context, name: string, placement: PeerPlacement): Promise<Peer> {
+async function peerOf(
+  context: Context,
+  name: string,
+  placement: PeerPlacement,
+  meta: MetaPort,
+): Promise<Peer> {
   const { hub, transport, scratch } = context;
   const identity = hub.peer(name, placement);
   const localPath = join(scratch, name);
@@ -148,6 +154,7 @@ async function peerOf(context: Context, name: string, placement: PeerPlacement):
     database,
     socket,
     hasher: hasherOf(),
+    meta,
     source: sourceOf(hub),
     uploader: new HubBlockUploader({ hubUrl: hub.url, token: identity.token, fetch }),
     ignore: ignoreMatcherOf(placement.ignorePatterns ?? [], process.platform),
@@ -175,8 +182,8 @@ export async function openLab(): Promise<Lab> {
   return {
     hub,
     transport,
-    peer: async (name, placement = {}): Promise<Peer> => {
-      const peer = await peerOf({ hub, transport, scratch }, name, placement);
+    peer: async (name, placement = {}, meta = new NoXattrPort()): Promise<Peer> => {
+      const peer = await peerOf({ hub, transport, scratch }, name, placement, meta);
       peers.push(peer);
       return peer;
     },

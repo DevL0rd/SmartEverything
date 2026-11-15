@@ -31,7 +31,7 @@ import {
 import type { Context } from '@deepseek-ai/cordis';
 import { harnessTargetKey } from '@smarteverything/domain';
 import type { HarnessRuntimeRequest, HarnessRuntimeReceipt } from '@smarteverything/domain';
-import { createHarnessRuntime } from '../host/runtime';
+import { createHarnessRuntime } from '../host/create-runtime';
 import type { HarnessRuntime } from '../host/runtime';
 import type { HarnessSession } from '../host/session';
 import { HarnessRuntimeError } from '../host/errors';

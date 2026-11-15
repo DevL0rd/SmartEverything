@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_ITEM, DRIVE_QUERY, SMART_RULE, type DriveItem } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID } from '../features/drive/data/fixtures';
+import { DRIVE_QUERY, SMART_RULE, type DriveItem } from '@smarteverything/domain';
+import {
+  FOLDER_ID,
+  ROOT_ID,
+  documentFixture,
+  folderFixture,
+  imageFixture,
+  videoFixture,
+} from '../features/drive/data/fixtures';
 import {
   driveFoundText,
   driveGroupStateOf,
@@ -10,6 +17,7 @@ import {
   fileEdgeOf,
   splitDriveHits,
 } from './drive-results';
+import { driveKindOf } from './drive-words';
 
 const AT = '2026-11-07T10:00:00.000Z';
 
@@ -26,62 +34,29 @@ function base(index: number, name: string): object {
     name,
     modifiedAt: AT,
     addedAt: AT,
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
-    etag: 'etag',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
   };
 }
 
-const FILE = { bytes: 10, sha256: null, integrity: 'unknown', thumb: { state: 'ready' } };
-
-const MEDIA = {
-  takenAt: null,
-  width: null,
-  height: null,
-  orientation: null,
-  camera: null,
-  exposure: null,
-  place: null,
-};
+const FILE = { thumb: { state: 'ready' } };
 
 function photo(index: number): DriveItem {
-  return DRIVE_ITEM.parse({
-    ...base(index, `garden-${String(index)}.jpg`),
-    ...FILE,
-    ...MEDIA,
-    kind: 'image',
-    mime: 'image/jpeg',
-  });
+  return imageFixture({ ...base(index, `garden-${String(index)}.jpg`), ...FILE });
 }
 
 function clip(index: number): DriveItem {
-  return DRIVE_ITEM.parse({
+  return videoFixture({
     ...base(index, `garden-${String(index)}.mp4`),
     ...FILE,
-    ...MEDIA,
-    kind: 'video',
-    mime: 'video/mp4',
     durationMs: 1000,
   });
 }
 
 function doc(index: number): DriveItem {
-  return DRIVE_ITEM.parse({
-    ...base(index, `Garden plan ${String(index)}.pdf`),
-    ...FILE,
-    kind: 'document',
-    mime: 'application/pdf',
-  });
+  return documentFixture({ ...base(index, `Garden plan ${String(index)}.pdf`), ...FILE });
 }
 
 function folder(index: number): DriveItem {
-  return DRIVE_ITEM.parse({ ...base(index, 'Garden'), kind: 'folder', childCount: 2, bytes: 0 });
+  return folderFixture({ ...base(index, 'Garden'), childCount: 2, bytes: 0 });
 }
 
 const photos = (total: number): readonly DriveItem[] =>
@@ -93,6 +68,7 @@ describe('the Photos and files group in global search', () => {
   it('asks the hub for the typed text across all of Drive, newest first', () => {
     expect(DRIVE_QUERY.parse({ ...driveSearchOf('  garden plan '), cursor: null })).toEqual({
       text: 'garden plan',
+      match: 'all',
       rootId: null,
       folderId: null,
       kinds: null,
@@ -102,6 +78,27 @@ describe('the Photos and files group in global search', () => {
       sort: { field: 'modifiedAt', direction: 'desc' },
       cursor: null,
     });
+  });
+
+  it('turns a kind word for links or special files into a kind search', () => {
+    expect(['Symlinks', ' links ', 'symbolic link'].map(driveKindOf)).toEqual([
+      'link',
+      'link',
+      'link',
+    ]);
+    expect(
+      ['named pipes', 'FIFO', 'sockets', 'special files', 'device file'].map(driveKindOf),
+    ).toEqual(['special', 'special', 'special', 'special', 'special']);
+    expect(['link notes', 'special', 'device', 'pipeline'].map(driveKindOf)).toEqual([
+      null,
+      null,
+      null,
+      null,
+    ]);
+    const query = DRIVE_QUERY.parse({ ...driveSearchOf('Named pipes'), cursor: null });
+    expect(query.text).toBeNull();
+    expect(query.kinds).toEqual(['special']);
+    expect(driveSmartRuleOf('symlinks')).toBeNull();
   });
 
   it('puts photos and videos in the thumbnail strip and everything else in rows', () => {

@@ -3,14 +3,16 @@ import { useState } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { Interactive } from '../components/interactive';
-import { cn } from '../design/cn';
+import { useBottomChromeShown } from '../components/bottom-chrome';
+import { Icon } from '../components/icon';
+import { Text } from '../components/text';
 import { useToastObstacle } from '../components/toast-obstacles';
 import { BarOverlay, useBarOverlay, type BarOverlayControl } from './bar-overlay';
 import { BarSlot } from './bar-slot';
 import { NO_SLOT, reorderedKeys } from './nav-bar-drag';
 import { foldKind, foldableOf, type FoldKind } from './nav-fold';
 import { useNavEdits, type NavEdits } from './nav-edit-actions';
-import type { NavEntry, NavModel } from './nav-model';
+import { leafEntries, type NavEntry, type NavModel } from './nav-model';
 import { NavOrb } from './nav-orb';
 import { useNavSheetPan } from './nav-sheet-gesture';
 import { openNavSheet } from './nav-sheet-state';
@@ -22,21 +24,37 @@ export interface NavViewProps {
   readonly intent: (entry: NavEntry) => void;
 }
 
-function SheetHandle({ active }: { readonly active: boolean }): ReactNode {
+function HandleMark({ entry }: { readonly entry: NavEntry | undefined }): ReactNode {
+  if (entry === undefined) return <View className="h-1 w-8 rounded-full bg-on-surface-faint" />;
+  return (
+    <View className="flex-row items-center gap-1.5 rounded-full bg-primary-container px-2.5 py-0.5">
+      <Icon name={entry.icon} size={12} tone="onPrimaryContainer" />
+      <Text variant="caption" tone="onPrimaryContainer" numberOfLines={1}>
+        {entry.shortTitle}
+      </Text>
+    </View>
+  );
+}
+
+function sheetEntryOf(model: NavModel): NavEntry | undefined {
+  if (!model.sheetActive) return undefined;
+  return [...leafEntries(model.nodes), ...model.system].find((entry) => entry.active);
+}
+
+function SheetHandle({ model }: { readonly model: NavModel }): ReactNode {
+  const entry = sheetEntryOf(model);
   return (
     <View pointerEvents="box-none" className="absolute inset-x-0 top-0 items-center">
       <Interactive
         role="button"
-        label="Open navigation"
+        label={entry === undefined ? 'Open navigation' : `Open navigation, on ${entry.title}`}
         hint="Swipe up on the bar to open"
         onPress={openNavSheet}
-        selected={active}
-        className="h-6 w-32 items-center justify-center"
+        selected={entry !== undefined}
+        className="h-6 min-w-32 items-center justify-center px-2"
         layerClassName="rounded-full"
       >
-        <View
-          className={cn('h-1 rounded-full', active ? 'w-12 bg-primary' : 'w-8 bg-on-surface-faint')}
-        />
+        <HandleMark entry={entry} />
       </Interactive>
     </View>
   );
@@ -117,6 +135,7 @@ function BarSlots({ model, go, intent, drag, overlay, edits, onWidth }: SlotsPro
 
 export function BottomBar({ model, go, intent }: NavViewProps): ReactNode {
   const pan = useNavSheetPan('bar');
+  useBottomChromeShown();
   const { attach, onLayout } = useToastObstacle('bottom');
   const edits = useNavEdits();
   const overlay = useBarOverlay();
@@ -134,7 +153,7 @@ export function BottomBar({ model, go, intent }: NavViewProps): ReactNode {
         accessibilityRole="tablist"
         className="border-t border-outline-variant bg-chrome px-2 pb-safe pt-6"
       >
-        <SheetHandle active={model.sheetActive} />
+        <SheetHandle model={model} />
         <BarSlots
           model={model}
           go={go}

@@ -12,7 +12,7 @@ import { useAutomations } from '../../../data/use-automations';
 import type { AutomationScope, OptionContext, OptionResult } from '../../../hosts/option-types';
 import { useLintContext, useOptionSource } from '../../../hosts/use-environment';
 import type { FieldControl } from '../schema-fields';
-import { PortScopeContext } from './literal-model';
+import { PortScopeContext } from './port-scope-context';
 import { LOADING_LIST } from './literal-reference';
 import type { LiteralProps } from './literal-scalar';
 import { OptionPicker } from './option-picker';

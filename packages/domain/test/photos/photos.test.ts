@@ -32,6 +32,11 @@ const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const C = '33333333-3333-4333-8333-333333333333';
 const HASH = 'a'.repeat(64);
+const OWNER_ONLY: ReadonlySet<string> = new Set([
+  'listPhotoAiModels',
+  'setPhotoAiModels',
+  'reanalysePhotos',
+]);
 
 const PAGE = {
   month: '2026-07',
@@ -184,8 +189,8 @@ describe('the backup state', () => {
     expect(BACKUP_STATE.safeParse({ devices: [], bytesLeft: 0 }).success).toBe(false);
   });
 
-  it('keeps the photos preference on its third version without the memories fields', () => {
-    expect(PHOTOS_CLIENT_PREFS.photos.version).toBe(3);
+  it('keeps the photos preference on its fourth version without the memories fields', () => {
+    expect(PHOTOS_CLIENT_PREFS.photos.version).toBe(4);
     expect(Object.keys(PHOTOS_PREF.shape)).not.toContain('memories');
     expect(Object.keys(PHOTOS_PREF.shape)).toContain('libraryZoom');
   });
@@ -341,7 +346,7 @@ describe('the Photos endpoints', () => {
   it('sit in the Photos & Drive area and let a member reach them', () => {
     for (const [name, endpoint] of entries) {
       expect(endpoint.path.startsWith('/api/drive/photos/'), name).toBe(true);
-      expect(endpoint.access, name).toBe('member');
+      expect(endpoint.access, name).toBe(OWNER_ONLY.has(name) ? 'owner' : 'member');
       expect(mcpOperationArea(endpoint), name).toBe('drive');
       expect(endpointAccessArea(endpoint), name).toBe('drive');
     }

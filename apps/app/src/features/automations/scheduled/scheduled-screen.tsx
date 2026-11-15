@@ -8,8 +8,7 @@ import { EmptyState } from '../../../components/empty-state';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
 import type { MenuItem } from '../../../components/menu';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { joinParts, plural } from '../../../format/text';
 import { useMinute, useSecondOf } from '../../../store/clock';
@@ -148,13 +147,9 @@ export function ScheduledScreen(): ReactNode {
     router.push(href.scheduledNew());
   };
   return (
-    <Screen
-      header={
-        <PageHeader
-          title="One-off timers"
-          {...(upcoming === 0 ? {} : { subtitle: `${plural(upcoming, 'action')} coming up` })}
-        />
-      }
+    <PageShell
+      title="One-off timers"
+      {...(upcoming === 0 ? {} : { subtitle: `${plural(upcoming, 'action')} coming up` })}
       primaryAction={{ label: 'Schedule', icon: 'plus', onPress: create }}
     >
       {rows.length === 0 ? (
@@ -167,6 +162,6 @@ export function ScheduledScreen(): ReactNode {
       ) : (
         <Lists rows={rows} />
       )}
-    </Screen>
+    </PageShell>
   );
 }

@@ -85,6 +85,7 @@ interface MountCallbacks {
 
 function useMounted(
   callbacks: MountCallbacks,
+  sharedRenderer: boolean,
 ): readonly [Mounted | null, (canvas: HTMLCanvasElement) => (() => void) | undefined] {
   const [mounted, setMounted] = useState<Mounted | null>(null);
   const { onPick, onPickDevice, onUnavailable, onMarks, onFrameTime, onScanFailed } = callbacks;
@@ -94,6 +95,7 @@ function useMounted(
       try {
         const core = new RenderCore({
           canvas,
+          sharedRenderer,
           onPickRoom: onPick,
           onPickDevice,
           onMarks,
@@ -117,7 +119,17 @@ function useMounted(
         return undefined;
       }
     },
-    [onPick, onPickDevice, onUnavailable, onMarks, onFrameTime, onScanFailed, onEdit, onYield],
+    [
+      onPick,
+      onPickDevice,
+      onUnavailable,
+      onMarks,
+      onFrameTime,
+      onScanFailed,
+      onEdit,
+      onYield,
+      sharedRenderer,
+    ],
   );
   return [mounted, attach];
 }
@@ -350,7 +362,10 @@ export default function Map3d(props: Map3dDomProps): ReactNode {
   const [marks, onMarks] = useMarks();
   const [yieldTo, onYield] = useYield();
   const onEdit = useEditCallback(props);
-  const [mounted, attach] = useMounted({ ...useCoreCallbacks(props), onMarks, onEdit, onYield });
+  const [mounted, attach] = useMounted(
+    { ...useCoreCallbacks(props), onMarks, onEdit, onYield },
+    props.sharedRenderer ?? false,
+  );
   const onPainter = useEditLayer(mounted, props.editing ?? false);
   useDOMImperativeHandle<Map3dHandle>(ref, () => handleOf(mounted, onUnavailable), [mounted]);
   useEffect(() => {

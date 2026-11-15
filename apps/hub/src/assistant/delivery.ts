@@ -137,8 +137,10 @@ export class AssistantDelivery {
             steered,
             durationMs: Math.round(performance.now() - startedAt),
           });
-          if (steered) this.options.events.mark(event.id, 'delivered_at');
-          else this.unsteerable.add(event.id);
+          if (steered) {
+            this.options.events.mark(event.id, 'delivered_at');
+            this.options.events.mark(event.id, 'answered_at');
+          } else this.unsteerable.add(event.id);
         })
         .catch((cause: unknown) => {
           this.unsteerable.add(event.id);

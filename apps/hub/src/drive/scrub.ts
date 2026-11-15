@@ -10,10 +10,13 @@ import type {
 } from '../store/repositories/drive-scrub';
 import type { Store } from '../store/store';
 import type { HashRequest, HashResponse } from './blocks';
+import { isFileItem } from './file-item';
 import { modifiedIso } from './hasher';
 import type { RootAvailability } from './root-marker';
 
 const WINDOW_ROWS = 1000;
+
+const FILESYSTEM_DAMAGE_CODES: ReadonlySet<string> = new Set(['EIO', 'EUCLEAN', 'EBADMSG']);
 
 export interface FileHasher {
   request(fields: Omit<HashRequest, 'id'>): Promise<HashResponse>;
@@ -32,6 +35,7 @@ export interface ScrubCorruption {
   readonly relPath: string;
   readonly expected: string;
   readonly actual: string;
+  readonly cause: 'hash' | 'filesystem';
 }
 
 export interface ScrubEnvironment {
@@ -98,7 +102,7 @@ class RootScrub {
   private async verify(candidate: DriveScrubCandidate): Promise<void> {
     const item = this.env.store.driveItems.find(candidate.itemId);
     const identity = item === undefined ? null : this.env.store.driveItems.identityOf(item.id);
-    if (item === undefined || item.kind === 'folder' || identity === null) return;
+    if (item === undefined || !isFileItem(item) || identity === null) return;
     const response = await this.hasher.request({
       rootPath: this.root.path,
       relPath: item.relPath,
@@ -107,6 +111,10 @@ class RootScrub {
       withBlocks: false,
     });
     if (response.kind === 'skipped') {
+      if (response.reason === 'unreadable' && FILESYSTEM_DAMAGE_CODES.has(response.code)) {
+        this.settle(item, candidate.sha256, `unreadable:${response.code}`, 'filesystem');
+        return;
+      }
       this.env.log.warn('drive.scrub_skipped', {
         rootId: this.root.id,
         relPath: item.relPath,
@@ -119,7 +127,7 @@ class RootScrub {
       this.env.log.info('drive.scrub_changed', { rootId: this.root.id, relPath: item.relPath });
       return;
     }
-    this.settle(item, candidate.sha256, response.sha256);
+    this.settle(item, candidate.sha256, response.sha256, 'hash');
   }
 
   private unchanged(
@@ -128,18 +136,23 @@ class RootScrub {
     response: Extract<HashResponse, { readonly kind: 'hashed' }>,
   ): boolean {
     return (
-      item.kind !== 'folder' &&
+      isFileItem(item) &&
       item.sha256 === candidate.sha256 &&
       item.bytes === response.bytes &&
       item.modifiedAt === modifiedIso(response.modifiedMs)
     );
   }
 
-  private settle(item: DriveItem, expected: string, actual: string): void {
+  private settle(
+    item: DriveItem,
+    expected: string,
+    actual: string,
+    cause: ScrubCorruption['cause'],
+  ): void {
     const result: DriveScrubResult = expected === actual ? 'ok' : 'corrupt';
     this.env.store.write(() => {
       this.env.store.driveScrub.record(this.root.id, item.id, result);
-      if (item.kind !== 'folder' && item.integrity !== result) {
+      if (isFileItem(item) && item.integrity !== result) {
         this.env.store.driveItems.setIntegrity(item.id, result);
       }
     });
@@ -159,8 +172,13 @@ class RootScrub {
       relPath: item.relPath,
       expected,
       actual,
+      cause,
     };
-    this.env.log.error('drive.scrub_corrupt', new Error('The file no longer matches its hash.'), {
+    const reason =
+      cause === 'filesystem'
+        ? 'The filesystem could not read the file back.'
+        : 'The file no longer matches its hash.';
+    this.env.log.error('drive.scrub_corrupt', new Error(reason), {
       ...corruption,
     });
     this.env.notifyOwner(corruption);

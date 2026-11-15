@@ -16,7 +16,7 @@ import { DURATION, EASING, useMotion } from '../../../design/motion';
 import { isNative, useIdiom } from '../../../design/platform';
 import type { PlannerPerson } from '../data';
 import { Composer } from '../item/composer';
-import { opensComposer, type ComposerControl } from './quick-add';
+import { isTextEntry, opensComposer, type ComposerControl } from './quick-add';
 
 export type QuickAddTarget = 'planner' | 'clock';
 
@@ -35,14 +35,6 @@ const LABEL: Readonly<Record<QuickAddTarget, string>> = {
 const OFFLINE_HINT = 'Changes wait for the hub';
 
 const SHORTCUT = 'N';
-
-function isTextEntry(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  );
-}
 
 function useComposerKey(active: boolean, onOpen: () => void): void {
   const open = useEffectEvent((event: KeyboardEvent): void => {

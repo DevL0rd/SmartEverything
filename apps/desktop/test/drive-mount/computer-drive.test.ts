@@ -102,7 +102,6 @@ describe('ComputerDrive', () => {
     client.start();
     await until(() => client?.current !== null);
     expect(client.current?.sync).toBeNull();
-    expect(client.current?.firstRun.pending).toBe(process.platform === 'linux');
 
     const target = join(folder, 'synced');
     feed.push([syncedPlacement(target)]);
@@ -113,9 +112,6 @@ describe('ComputerDrive', () => {
     expect(paused.sync?.paused).toBe(true);
     const resumed = await client.run({ kind: 'sync-resume' });
     expect(resumed.sync?.paused).toBe(false);
-
-    const settled = await client.run({ kind: 'first-run-dismissed' });
-    expect(settled.firstRun.pending).toBe(false);
 
     const cache = {
       maxAgeSeconds: 600,

@@ -34,6 +34,7 @@ object ProcessExits {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
       return emptyList()
     }
+    val recorder = JavaCrashRecorder.at(context)
     val manager = context.getSystemService(ActivityManager::class.java)
     return manager.getHistoricalProcessExitReasons(context.packageName, 0, KEPT)
       .filter { it.processName == context.packageName || it.processName.startsWith(context.packageName + ":") }
@@ -47,7 +48,7 @@ object ProcessExits {
         "processName" to exit.processName,
         "pssKb" to exit.pss,
         "rssKb" to exit.rss,
-        "nativeTrace" to NativeTrace.read(exit)
+        "nativeTrace" to NativeTrace.read(exit, if (exit.reason == ApplicationExitInfo.REASON_CRASH) recorder.matching(exit.timestamp) else null)
       )
     }
   }
@@ -62,6 +63,7 @@ class DiagnosticsModule : Module() {
     Events("onLog")
 
     OnCreate {
+      appContext.reactContext?.let { JavaCrashRecorder.install(JavaCrashRecorder.at(it)) }
       logForwarding = appContext.backgroundCoroutineScope.launch {
         NativeLog.events.collect { if (NativeLog.claim(it)) sendEvent("onLog", it) }
       }

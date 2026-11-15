@@ -53,7 +53,12 @@ function accessTo(actor: DriveActor, itemId: string): ReturnType<typeof itemAcce
 
 describe('sharing with a person', () => {
   it('grants a folder, covers what is inside and lists the grant to the person who shared', () => {
-    const grant = grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view' });
+    const grant = grants.set(sam, {
+      itemId: TRIP,
+      profileId: robin.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
     expect(grant).toMatchObject({
       itemId: TRIP,
       profileId: robin.profileId,
@@ -65,8 +70,18 @@ describe('sharing with a person', () => {
   });
 
   it('changes the role of a person already shared with and keeps one grant', () => {
-    const first = grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view' });
-    const again = grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'edit' });
+    const first = grants.set(sam, {
+      itemId: TRIP,
+      profileId: robin.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
+    const again = grants.set(sam, {
+      itemId: TRIP,
+      profileId: robin.profileId,
+      role: 'edit',
+      expiresAt: null,
+    });
     expect(again.id).toBe(first.id);
     expect(again.role).toBe('edit');
     expect(grants.list(sam, TRIP)).toHaveLength(1);
@@ -74,7 +89,12 @@ describe('sharing with a person', () => {
   });
 
   it('stops sharing when the person who shared revokes', () => {
-    const grant = grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view' });
+    const grant = grants.set(sam, {
+      itemId: TRIP,
+      profileId: robin.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
     grants.remove(sam, grant.id);
     expect(accessTo(robin, TRIP_FILE)).toBe('none');
     expect(grants.list(sam, TRIP)).toEqual([]);
@@ -84,7 +104,12 @@ describe('sharing with a person', () => {
   });
 
   it('lets the recipient leave a share and nobody else end it', () => {
-    const grant = grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view' });
+    const grant = grants.set(sam, {
+      itemId: TRIP,
+      profileId: robin.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
     expect(() => {
       grants.remove(kim, grant.id);
     }).toThrow(/no such share/u);
@@ -93,23 +118,38 @@ describe('sharing with a person', () => {
   });
 
   it('lets an edit grantee write but not share, and refuses a view grantee any write', () => {
-    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'edit' });
-    grants.set(sam, { itemId: OTHER_FILE, profileId: kim.profileId, role: 'view' });
+    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'edit', expiresAt: null });
+    grants.set(sam, {
+      itemId: OTHER_FILE,
+      profileId: kim.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
     expect(canWrite(accessTo(robin, TRIP_FILE))).toBe(true);
     expect(canShare(accessTo(robin, TRIP_FILE))).toBe(false);
     expect(() =>
-      grants.set(robin, { itemId: TRIP_FILE, profileId: kim.profileId, role: 'view' }),
+      grants.set(robin, {
+        itemId: TRIP_FILE,
+        profileId: kim.profileId,
+        role: 'view',
+        expiresAt: null,
+      }),
     ).toThrow(/whose drive/u);
     expect(canRead(accessTo(kim, OTHER_FILE))).toBe(true);
     expect(canWrite(accessTo(kim, OTHER_FILE))).toBe(false);
     expect(() =>
-      grants.set(kim, { itemId: OTHER_FILE, profileId: robin.profileId, role: 'view' }),
+      grants.set(kim, {
+        itemId: OTHER_FILE,
+        profileId: robin.profileId,
+        role: 'view',
+        expiresAt: null,
+      }),
     ).toThrow(/whose drive/u);
   });
 
   it('shows a grantee only their own grant on the item', () => {
-    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view' });
-    grants.set(sam, { itemId: TRIP, profileId: kim.profileId, role: 'edit' });
+    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view', expiresAt: null });
+    grants.set(sam, { itemId: TRIP, profileId: kim.profileId, role: 'edit', expiresAt: null });
     expect(grants.list(sam, TRIP)).toHaveLength(2);
     expect(grants.list(robin, TRIP_FILE)).toEqual([]);
     expect(grants.list(robin, TRIP).map((grant) => grant.profileId)).toEqual([robin.profileId]);
@@ -118,9 +158,9 @@ describe('sharing with a person', () => {
   it('refuses the Hub owner any view or change of another person’s unshared items', () => {
     expect(() => grants.list(robin, TRIP)).toThrow(/no such file/u);
     expect(() =>
-      grants.set(robin, { itemId: TRIP, profileId: kim.profileId, role: 'view' }),
+      grants.set(robin, { itemId: TRIP, profileId: kim.profileId, role: 'view', expiresAt: null }),
     ).toThrow(/no such file/u);
-    grants.set(sam, { itemId: TRIP, profileId: kim.profileId, role: 'view' });
+    grants.set(sam, { itemId: TRIP, profileId: kim.profileId, role: 'view', expiresAt: null });
     expect(() => grants.list(robin, TRIP)).toThrow(/no such file/u);
     expect(grants.sharedWithMe(robin, undefined).items).toEqual([]);
     expect(grants.sharedByMe(robin, undefined).items).toEqual([]);
@@ -128,16 +168,21 @@ describe('sharing with a person', () => {
 
   it('refuses the Shared Drive, yourself, an unknown person and an unknown item', () => {
     expect(() =>
-      grants.set(robin, { itemId: SHARED_FILE, profileId: sam.profileId, role: 'view' }),
+      grants.set(robin, {
+        itemId: SHARED_FILE,
+        profileId: sam.profileId,
+        role: 'view',
+        expiresAt: null,
+      }),
     ).toThrow(/Shared Drive/u);
-    expect(() => grants.set(sam, { itemId: TRIP, profileId: sam.profileId, role: 'view' })).toThrow(
-      /own/u,
-    );
-    expect(() => grants.set(sam, { itemId: TRIP, profileId: UNKNOWN, role: 'view' })).toThrow(
-      /no such person/u,
-    );
     expect(() =>
-      grants.set(sam, { itemId: UNKNOWN, profileId: kim.profileId, role: 'view' }),
+      grants.set(sam, { itemId: TRIP, profileId: sam.profileId, role: 'view', expiresAt: null }),
+    ).toThrow(/own/u);
+    expect(() =>
+      grants.set(sam, { itemId: TRIP, profileId: UNKNOWN, role: 'view', expiresAt: null }),
+    ).toThrow(/no such person/u);
+    expect(() =>
+      grants.set(sam, { itemId: UNKNOWN, profileId: kim.profileId, role: 'view', expiresAt: null }),
     ).toThrow(/no such file/u);
   });
 });
@@ -165,7 +210,12 @@ describe('what happens to the item', () => {
 
   it('hides a trashed item from the person it was shared with and shows it again when restored', () => {
     const { store } = opened;
-    const grant = grants.set(sam, { itemId: OTHER_FILE, profileId: robin.profileId, role: 'view' });
+    const grant = grants.set(sam, {
+      itemId: OTHER_FILE,
+      profileId: robin.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
     expect(grants.sharedWithMe(robin, undefined).items).toHaveLength(1);
     trash(OTHER_FILE, 'other.txt');
     expect(grants.sharedWithMe(robin, undefined).items).toEqual([]);
@@ -181,7 +231,12 @@ describe('what happens to the item', () => {
 
   it('forgets the grants of an item that is gone for good', () => {
     const { store } = opened;
-    const grant = grants.set(sam, { itemId: OTHER_FILE, profileId: robin.profileId, role: 'view' });
+    const grant = grants.set(sam, {
+      itemId: OTHER_FILE,
+      profileId: robin.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
     trash(OTHER_FILE, 'other.txt');
     store.driveGrants.sweepOrphans();
     expect(store.driveGrants.find(grant.id)).toBeDefined();
@@ -191,7 +246,7 @@ describe('what happens to the item', () => {
   });
 
   it('ends cover when an item moves out of the shared folder', () => {
-    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view' });
+    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view', expiresAt: null });
     expect(accessTo(robin, TRIP_FILE)).toBe('view');
     const item = opened.store.driveItems.byId(TRIP_FILE, null);
     opened.store.driveItems.write({
@@ -205,9 +260,19 @@ describe('what happens to the item', () => {
 
 describe('the pages', () => {
   it('lists what was shared with a person, with the role and who shared', () => {
-    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'edit' });
-    grants.set(sam, { itemId: OTHER_FILE, profileId: robin.profileId, role: 'view' });
-    grants.set(sam, { itemId: OTHER_FILE, profileId: kim.profileId, role: 'view' });
+    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'edit', expiresAt: null });
+    grants.set(sam, {
+      itemId: OTHER_FILE,
+      profileId: robin.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
+    grants.set(sam, {
+      itemId: OTHER_FILE,
+      profileId: kim.profileId,
+      role: 'view',
+      expiresAt: null,
+    });
     const page = grants.sharedWithMe(robin, undefined);
     expect(page.next).toBeNull();
     expect(
@@ -223,8 +288,8 @@ describe('the pages', () => {
   });
 
   it('lists what a person shared with their people and their links, by name', () => {
-    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view' });
-    grants.set(sam, { itemId: TRIP, profileId: kim.profileId, role: 'edit' });
+    grants.set(sam, { itemId: TRIP, profileId: robin.profileId, role: 'view', expiresAt: null });
+    grants.set(sam, { itemId: TRIP, profileId: kim.profileId, role: 'edit', expiresAt: null });
     opened.store.driveShares.insert({
       id: id(60),
       itemId: OTHER_FILE,
@@ -263,7 +328,12 @@ describe('the pages', () => {
         relPath: `bulk-${String(index).padStart(2, '0')}.txt`,
         kind: 'document',
       });
-      grants.set(sam, { itemId: id(100 + index), profileId: robin.profileId, role: 'view' });
+      grants.set(sam, {
+        itemId: id(100 + index),
+        profileId: robin.profileId,
+        role: 'view',
+        expiresAt: null,
+      });
     }
     const first = grants.sharedWithMe(robin, undefined);
     expect(first.items).toHaveLength(50);

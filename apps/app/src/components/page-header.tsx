@@ -15,7 +15,6 @@ import { PageSettingsButton, type PageSettingsLink } from './page-settings-butto
 import { useSizeClass, type HeaderKind } from '../design/size-class';
 import { Breadcrumbs, type Crumb } from './breadcrumbs';
 import { useHeaderPinItems } from './header-pin';
-import { useHeaderSearchHandler } from './header-search';
 import { useHeaderStatus } from './header-status';
 import { Button } from './button';
 import type { IconName } from './icon';
@@ -51,9 +50,9 @@ interface HeaderProps {
   readonly back?: boolean;
   readonly actions?: readonly HeaderAction[];
   readonly below?: ReactNode;
+  readonly belowStrip?: ReactNode;
   readonly editing?: HeaderEditing | null;
   readonly breadcrumbs?: readonly Crumb[];
-  readonly search?: boolean;
   readonly onTitlePress?: () => void;
   readonly titleLines?: 1 | 2 | 'wrap';
 }
@@ -85,15 +84,6 @@ function overflowItems(
     })),
     ...overflow,
   ];
-}
-
-function SearchAction(): ReactNode {
-  const openSearch = useHeaderSearchHandler();
-  const { chromeSearch } = useSizeClass();
-  if (chromeSearch || openSearch === null) {
-    return null;
-  }
-  return <IconButton icon="search" label="Search" onPress={openSearch} />;
 }
 
 function settingsMenuItem(settings: PageSettingsLink): MenuItem {
@@ -130,13 +120,11 @@ function TouchActions({
   actions,
   overflow,
   late,
-  search,
   settings,
 }: {
   readonly actions: readonly HeaderAction[];
   readonly overflow: readonly MenuItem[];
   readonly late: LateItems;
-  readonly search: boolean;
   readonly settings: PageSettingsLink | undefined;
 }): ReactNode {
   const shown = actions.slice(0, TOUCH_ACTIONS);
@@ -145,7 +133,6 @@ function TouchActions({
   const placed = usePrimaryActionPlacement() === 'header' ? primaryAction : null;
   return (
     <View className="flex-row items-center">
-      {search ? <SearchAction /> : null}
       {placed === null ? null : (
         <IconButton icon={placed.icon} label={placed.label} onPress={placed.onPress} />
       )}
@@ -247,13 +234,7 @@ function Trailing(props: PageHeaderProps & { readonly kind: HeaderKind }): React
       {props.kind === 'desktop' ? (
         <PointerActions actions={actions} overflow={overflow} late={late} />
       ) : (
-        <TouchActions
-          actions={actions}
-          overflow={overflow}
-          late={late}
-          search={props.search ?? true}
-          settings={props.settings}
-        />
+        <TouchActions actions={actions} overflow={overflow} late={late} settings={props.settings} />
       )}
       {props.kind === 'desktop' && props.settings !== undefined ? (
         <PageSettingsButton settings={props.settings} />
@@ -337,7 +318,8 @@ function AppBar(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNo
         </Animated.View>
         <Trailing {...props} />
       </View>
-      {large ? null : props.below}
+      {large ? null : props.belowStrip}
+      {large || props.below === undefined ? null : <View className="px-4 pb-2">{props.below}</View>}
     </View>
   );
 }
@@ -358,7 +340,12 @@ function LargeTitle(props: PageHeaderProps): ReactNode {
           {props.subtitle}
         </Text>
       )}
-      {props.below === undefined ? null : <View className="pt-2">{props.below}</View>}
+      {props.belowStrip === undefined && props.below === undefined ? null : (
+        <View className="pt-2">
+          {props.belowStrip}
+          {props.below}
+        </View>
+      )}
     </View>
   );
 }
@@ -372,7 +359,7 @@ function DesktopHeader(props: PageHeaderProps): ReactNode {
         {back === null ? null : (
           <IconButton icon="arrowLeft" label="Back" onPress={back} shortcut="Alt ←" />
         )}
-        <View className="min-w-0 flex-1 gap-0.5">
+        <View className="min-w-0 flex-1 basis-72 gap-0.5">
           {props.breadcrumbs === undefined ? null : <Breadcrumbs crumbs={props.breadcrumbs} />}
           <Text variant="title-1" accessibilityRole="header" numberOfLines={titleLines}>
             {props.title}
@@ -389,6 +376,7 @@ function DesktopHeader(props: PageHeaderProps): ReactNode {
         </View>
         <Trailing {...props} kind="desktop" />
       </View>
+      {props.belowStrip}
       {props.below}
     </View>
   );

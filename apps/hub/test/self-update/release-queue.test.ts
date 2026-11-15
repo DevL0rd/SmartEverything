@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PipelineComponent, UpdateRevision } from '@smarteverything/domain';
+import type { PipelineComponent, ReleaseSource, UpdateRevision } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   PipelineRefusal,
@@ -31,6 +31,7 @@ function planned(...components: PipelineComponent[]): Prepared {
 }
 
 interface Behaviour {
+  sources?: Partial<Record<PipelineComponent, ReleaseSource>>;
   prepare?: (revision: UpdateRevision) => Promise<Prepared>;
   execute?: (revision: UpdateRevision, component: PipelineComponent) => Promise<StepOutcome>;
 }
@@ -41,6 +42,7 @@ function queueOf(behaviour: Behaviour): { queue: ReleaseQueue; crashes: unknown[
     record,
     now: (): Date => new Date('2026-11-14T10:00:00.000Z'),
     newId: id,
+    sourceOf: (component): ReleaseSource => behaviour.sources?.[component] ?? 'hub',
     prepare: behaviour.prepare ?? ((): Promise<Prepared> => Promise.resolve(planned('hub', 'ui'))),
     execute: async (revision, step): Promise<StepOutcome> => {
       executed.push(`${revision.tip.slice(0, 1)}:${step.component}:${String(step.runId)}`);
@@ -94,7 +96,7 @@ describe('release queue', () => {
         return { status: 'done', offered: true };
       },
     });
-    await queue.submit({ tip: commit('a'), pushedFrom: commit('9') });
+    await queue.submit({ tip: commit('a'), pushedFrom: commit('9'), paths: null });
     await queue.settled();
     const [revision] = await record.list();
     expect(overlap).toBe(1);
@@ -113,7 +115,7 @@ describe('release queue', () => {
 
   it('announces every change so the app can follow progress', async () => {
     const { queue } = queueOf({ prepare: () => Promise.resolve(planned('ui')) });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     expect(announced.map((entry) => entry.status)).toEqual([
       'queued',
@@ -127,7 +129,7 @@ describe('release queue', () => {
 
   it('finishes a revision that needs no release without running anything', async () => {
     const { queue } = queueOf({ prepare: () => Promise.resolve(planned()) });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     expect(executed).toEqual([]);
     expect(await statuses()).toEqual(['a=done']);
@@ -147,7 +149,7 @@ describe('release queue', () => {
             : { status: 'done', offered: true },
         ),
     });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     const [revision] = await record.list();
     expect(executed).toHaveLength(1);
@@ -166,7 +168,7 @@ describe('release queue', () => {
       prepare: () => Promise.resolve(planned('ui')),
       execute: () => Promise.reject(new Error('Metro bundle failed')),
     });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     const [revision] = await record.list();
     expect(revision?.failure).toEqual({
@@ -181,7 +183,7 @@ describe('release queue', () => {
       prepare: () =>
         Promise.reject(new PipelineRefusal('refused', 'The update checkout has uncommitted work.')),
     });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     const [revision] = await record.list();
     expect(executed).toEqual([]);
@@ -192,7 +194,7 @@ describe('release queue', () => {
 
   it('records a planning error as a failed revision', async () => {
     const { queue } = queueOf({ prepare: () => Promise.reject(new Error('git fetch failed')) });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     const [revision] = await record.list();
     expect(revision?.status).toBe('failed');
@@ -215,11 +217,11 @@ describe('release queue', () => {
         return { status: 'done', offered: true };
       },
     });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await nextTick();
-    await queue.submit({ tip: commit('b'), pushedFrom: commit('a') });
-    await queue.submit({ tip: commit('c'), pushedFrom: commit('b') });
-    await queue.submit({ tip: commit('d'), pushedFrom: commit('c') });
+    await queue.submit({ tip: commit('b'), pushedFrom: commit('a'), paths: null });
+    await queue.submit({ tip: commit('c'), pushedFrom: commit('b'), paths: null });
+    await queue.submit({ tip: commit('d'), pushedFrom: commit('c'), paths: null });
     expect(await statuses()).toEqual(['a=running', 'b=queued', 'c=queued', 'd=queued']);
     release?.();
     await queue.settled();
@@ -238,12 +240,12 @@ describe('release queue', () => {
             : { status: 'done', offered: true },
         ),
     });
-    const first = await queue.submit({ tip: commit('a'), pushedFrom: null });
+    const first = await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     fail = false;
-    const retry = await queue.submit({ tip: commit('a'), pushedFrom: null });
+    const retry = await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
-    const again = await queue.submit({ tip: commit('a'), pushedFrom: null });
+    const again = await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     expect(retry.id).not.toBe(first.id);
     expect(again.id).toBe(retry.id);
     expect(await statuses()).toEqual(['a=failed', 'a=done']);
@@ -251,7 +253,7 @@ describe('release queue', () => {
 
   it('resumes an interrupted release with the same request ID instead of starting it again', async () => {
     const { queue } = queueOf({ prepare: () => Promise.resolve(planned('hub', 'ui')) });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     const done = await onlyRevision();
     const interrupted: UpdateRevision = {
@@ -277,7 +279,7 @@ describe('release queue', () => {
 
   it('does not run a step that already finished before the restart', async () => {
     const { queue } = queueOf({ prepare: () => Promise.resolve(planned('hub', 'ui')) });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     const done = await onlyRevision();
     await record.save({
@@ -309,6 +311,7 @@ describe('release queue', () => {
       },
       now: (): Date => new Date('2026-11-14T10:00:00.000Z'),
       newId: id,
+      sourceOf: (): ReleaseSource => 'hub',
       prepare: (): Promise<Prepared> => Promise.resolve(planned('ui')),
       execute: (): Promise<StepOutcome> => Promise.resolve({ status: 'done', offered: false }),
       changed: (): void => undefined,
@@ -316,10 +319,81 @@ describe('release queue', () => {
         crashes.push(cause);
       },
     });
-    await queue.submit({ tip: commit('a'), pushedFrom: null });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
     await queue.settled();
     expect(crashes).toHaveLength(1);
     expect(String(crashes[0])).toContain('disk full');
+  });
+});
+
+describe('build sources', () => {
+  it('records provided and github artifacts as waiting and executes only the hub one', async () => {
+    const { queue } = queueOf({
+      prepare: () => Promise.resolve(planned('hub', 'app', 'desktop', 'ui')),
+      sources: { hub: 'hub', app: 'provided', desktop: 'github', ui: 'provided' },
+    });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: ['apps/hub/src/x.ts'] });
+    await queue.settled();
+    const revision = await onlyRevision();
+    expect(executed.map((entry) => entry.split(':')[1])).toEqual(['hub']);
+    expect(revision.changedPaths).toEqual(['apps/hub/src/x.ts']);
+    expect(revision.status).toBe('waiting');
+    expect(revision.finishedAt).toBeNull();
+    expect(revision.steps.map((step) => [step.component, step.status, step.detail])).toEqual([
+      ['hub', 'done', null],
+      ['app', 'waiting', 'waiting for a provided build'],
+      ['desktop', 'waiting', 'waiting for the GitHub release'],
+      ['ui', 'waiting', 'waiting for a provided build'],
+    ]);
+  });
+
+  it('executes nothing when no artifact is set to hub and does not block newer pushes', async () => {
+    const { queue } = queueOf({
+      prepare: () => Promise.resolve(planned('ui')),
+      sources: { ui: 'provided' },
+    });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
+    await queue.settled();
+    await queue.submit({ tip: commit('b'), pushedFrom: commit('a'), paths: null });
+    await queue.settled();
+    expect(executed).toEqual([]);
+    expect(await statuses()).toEqual(['a=waiting', 'b=waiting']);
+  });
+
+  it('completes a waiting step when its commit is provided and finishes the revision', async () => {
+    const { queue } = queueOf({
+      prepare: () => Promise.resolve(planned('app', 'ui')),
+      sources: { app: 'provided', ui: 'github' },
+    });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
+    await queue.settled();
+    await queue.completeWaiting('app', commit('b'));
+    expect((await onlyRevision()).status).toBe('waiting');
+    await queue.completeWaiting('app', commit('a'));
+    let revision = await onlyRevision();
+    expect(revision.status).toBe('waiting');
+    expect(revision.steps.map((step) => [step.component, step.status, step.offered])).toEqual([
+      ['app', 'done', true],
+      ['ui', 'waiting', false],
+    ]);
+    await queue.completeWaiting('ui', commit('a'));
+    revision = await onlyRevision();
+    expect(revision.status).toBe('done');
+    expect(revision.finishedAt).not.toBeNull();
+    expect(executed).toEqual([]);
+  });
+
+  it('skips waiting steps when a hub step fails', async () => {
+    const { queue } = queueOf({
+      prepare: () => Promise.resolve(planned('hub', 'ui')),
+      sources: { hub: 'hub', ui: 'provided' },
+      execute: () => Promise.resolve({ status: 'failed', message: 'no', rollback: 'none' }),
+    });
+    await queue.submit({ tip: commit('a'), pushedFrom: null, paths: null });
+    await queue.settled();
+    const revision = await onlyRevision();
+    expect(revision.status).toBe('failed');
+    expect(revision.steps.map((step) => step.status)).toEqual(['failed', 'skipped']);
   });
 });
 

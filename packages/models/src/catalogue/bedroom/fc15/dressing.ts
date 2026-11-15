@@ -157,7 +157,7 @@ function stoolParts(): ModelSpecPart[] {
 export const DRESSING_TABLE_MODEL: ModelSpec = bedroomItem({
   id: 'cat.bedroom.dressing-table',
   title: 'Dressing table',
-  footprint: { width: 1.1, depth: DEPTH, height: 1.4 },
+  footprint: { width: 1.1, depth: DEPTH, height: 1.3666 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

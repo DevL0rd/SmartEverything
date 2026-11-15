@@ -1,5 +1,6 @@
 import type { RemoteEarNodeMessage } from '@smarteverything/domain';
-import type { EarHostPort, EarsFrame } from '../ear-host';
+import type { EarsFrame } from '../../ear-link';
+import type { EarHostPort } from '../ear-host';
 import type { EarProcess, EarSession } from './ear-process';
 import type { PortSink } from './process-events';
 import { EAR_CALL, EAR_COMMAND } from './protocol';

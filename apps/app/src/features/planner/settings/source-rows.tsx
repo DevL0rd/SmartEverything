@@ -7,8 +7,10 @@ import { NavRow, SwitchRow } from '../../../components/rows';
 import { notify } from '../../../components/toast-store';
 import { rowsOf } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
-import { useGoogleAccount, usePlannerCollections, usePlannerWrites } from '../data';
-import type { CollectionChange } from '../data/writes';
+import { mayChangeLook } from '../calendar/calendar-edit';
+import { sourceText } from '../calendar/calendars-model';
+import { useGoogleAccount, usePlannerCollections } from '../data';
+import { usePlannerSharing, useViewerCalendars, type ViewerLook } from '../data/sharing';
 import { COLOUR_OPTIONS, NONE, googleRowText, ringsOnClient, type Option } from './options';
 import { PrefSelectRow, PrefSwitchRow, type ValueSpec } from './rows';
 
@@ -39,14 +41,15 @@ export function GoogleRow(): ReactNode {
 }
 
 export function CalendarRows(): ReactNode {
-  const writes = usePlannerWrites(null);
-  const calendars = usePlannerCollections(null).filter((row) => row.kind === 'calendar');
+  const sharing = usePlannerSharing(null);
+  const calendars = useViewerCalendars(null).filter(mayChangeLook);
   if (calendars.length === 0) {
     return <ListRow icon="calendar" title="No calendars yet" />;
   }
-  return calendars.map((row) => {
-    const change = (edit: CollectionChange): void => {
-      writes.updateCollection(row, edit).catch((error: unknown) => {
+  return calendars.map((calendar) => {
+    const { row } = calendar;
+    const change = (look: ViewerLook): void => {
+      sharing.look(calendar, look).catch((error: unknown) => {
         notify({ message: `${row.name} was not changed`, error, tone: 'critical' });
       });
     };
@@ -55,6 +58,7 @@ export function CalendarRows(): ReactNode {
         <SwitchRow
           icon="calendar"
           title={row.name}
+          subtitle={sourceText(calendar)}
           value={row.visible}
           onChange={(visible) => {
             change({ visible });
@@ -116,9 +120,12 @@ export function DefaultListRow({ spec }: { readonly spec: ValueSpec }): ReactNod
   );
 }
 
-export function WakeSceneRow({ spec }: { readonly spec: ValueSpec }): ReactNode {
-  const scenes = useStoreSelector((state) => rowsOf(state.tables.scenes));
+export function WakeAutomationRow({ spec }: { readonly spec: ValueSpec }): ReactNode {
+  const automations = useStoreSelector((state) => rowsOf(state.tables.automations));
   return (
-    <PrefSelectRow spec={spec} options={[{ value: NONE, label: 'None' }, ...optionsOf(scenes)]} />
+    <PrefSelectRow
+      spec={spec}
+      options={[{ value: NONE, label: 'None' }, ...optionsOf(automations)]}
+    />
   );
 }

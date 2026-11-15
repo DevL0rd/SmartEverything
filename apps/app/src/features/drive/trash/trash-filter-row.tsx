@@ -3,16 +3,12 @@ import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { FilterChip } from '../../../components/filter-chip';
-import { SearchField } from '../../../components/search-field';
-import { cn } from '../../../design/cn';
 import { ChipRow } from '../../../components/library-frame';
 import { DriveFilterChips } from '../components/drive-chip';
 import { driveFilterCounts } from '../model/drive-chip';
 import {
   chipCountsOf,
-  isFiltered,
   NO_FILTER,
-  shownText,
   TRASH_CHIPS,
   type TrashDriveOf,
   type TrashFilter,
@@ -21,11 +17,9 @@ import type { TrashItem } from './trash-model';
 
 export interface TrashFilterRowProps {
   readonly items: readonly TrashItem[];
-  readonly shown: number;
   readonly filter: TrashFilter;
   readonly onFilter: (filter: TrashFilter) => void;
   readonly driveOf: TrashDriveOf;
-  readonly wide: boolean;
 }
 
 function DriveRow({ items, filter, onFilter, driveOf }: TrashFilterRowProps): ReactNode {
@@ -48,41 +42,25 @@ function DriveRow({ items, filter, onFilter, driveOf }: TrashFilterRowProps): Re
 }
 
 export function TrashFilterRow(props: TrashFilterRowProps): ReactNode {
-  const { items, shown, filter, onFilter, driveOf, wide } = props;
+  const { items, filter, onFilter, driveOf } = props;
   const counts = chipCountsOf(items, filter, driveOf);
-  const active = isFiltered(filter);
   return (
     <View className="gap-2">
-      <View className={cn('gap-2', wide && 'flex-row items-center gap-3')}>
-        <View className={wide ? 'w-72' : 'w-full'}>
-          <SearchField
-            value={filter.query}
-            onChange={(query) => {
-              onFilter({ ...filter, query });
+      <ChipRow label="Show in trash">
+        {TRASH_CHIPS.map((entry) => (
+          <FilterChip
+            key={entry.chip}
+            label="Show"
+            value={entry.label}
+            count={counts[entry.chip]}
+            active={entry.chip === filter.chip}
+            singleChoice
+            onPress={() => {
+              onFilter({ ...filter, chip: entry.chip });
             }}
-            placeholder="Find in trash"
-            active={filter.query.trim() !== ''}
-            {...(active ? { status: shownText(shown, items.length) } : {})}
           />
-        </View>
-        <View className="min-w-0 flex-1">
-          <ChipRow label="Show in trash">
-            {TRASH_CHIPS.map((entry) => (
-              <FilterChip
-                key={entry.chip}
-                label="Show"
-                value={entry.label}
-                count={counts[entry.chip]}
-                active={entry.chip === filter.chip}
-                singleChoice
-                onPress={() => {
-                  onFilter({ ...filter, chip: entry.chip });
-                }}
-              />
-            ))}
-          </ChipRow>
-        </View>
-      </View>
+        ))}
+      </ChipRow>
       <DriveRow {...props} />
     </View>
   );

@@ -34,7 +34,7 @@ describe('planner links', () => {
 
 describe('planner entry points', () => {
   it('lists the sections in the order of the section switcher', () => {
-    expect(PLANNER_SECTION_ROUTES).toEqual(['index', 'tasks', 'calendar', 'insights']);
+    expect(PLANNER_SECTION_ROUTES).toEqual(['index', 'tasks', 'calendar', 'insights', 'booking']);
   });
 
   it('sits after Fitness and before Clock in the navigation', () => {
@@ -55,10 +55,15 @@ describe('planner entry points', () => {
       'planner-tasks',
       'planner-calendar',
       'planner-insights',
+      'planner-booking',
+      'planner-search',
     ]);
-    expect(pages.map((route) => route.href)).toEqual(
-      PLANNER_SECTION_ROUTES.filter((name) => name !== 'index').map((name) => `/planner/${name}`),
-    );
+    expect(pages.map((route) => route.href)).toEqual([
+      ...PLANNER_SECTION_ROUTES.filter((name) => name !== 'index').map(
+        (name) => `/planner/${name}`,
+      ),
+      '/planner/search',
+    ]);
     expect(pages.every((route) => route.tab === 'planner')).toBe(true);
   });
 

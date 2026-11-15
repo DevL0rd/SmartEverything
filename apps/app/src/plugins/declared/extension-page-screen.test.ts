@@ -4,13 +4,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type * as GridModule from '../../components/grid';
 import type { GridProps } from '../../components/grid';
-import type { ScreenProps } from '../../components/screen';
+import type { StandardShellProps } from '../../components/page-shell/page-shell';
 import { ExtensionPageScreen } from './extension-page-screen';
 import { uiRowFixture } from './ui-fixture';
 
 const fixture = vi.hoisted(() => ({ width: 0 }));
 const PaneWidth = createContext(0);
-const paneLimits = { dashboard: Infinity, full: Infinity, detail: 1120, reading: 720 } as const;
+const paneLimits = { dashboard: 1440, full: Infinity, detail: 1120, reading: 720 } as const;
 
 function none(): null {
   return null;
@@ -34,18 +34,17 @@ vi.mock('../../components/grid', async (importOriginal) => {
       createElement(Grid, { ...props, measuredWidth: useContext(PaneWidth) }),
   };
 });
-vi.mock('../../components/screen', () => ({
-  Screen: ({ maxWidth, children }: ScreenProps): ReactNode =>
+vi.mock('../../components/page-shell/page-shell', () => ({
+  PageShell: ({ width, children }: StandardShellProps): ReactNode =>
     createElement(
       PaneWidth.Provider,
-      { value: Math.min(fixture.width, paneLimits[maxWidth ?? 'dashboard']) },
+      { value: Math.min(fixture.width, paneLimits[width ?? 'dashboard']) },
       children,
     ),
 }));
 vi.mock('../../app-shell/hrefs', () => ({ href: { home: (): '/' => '/' } }));
 vi.mock('../../components/button', () => ({ Button: none }));
 vi.mock('../../components/empty-state', () => ({ EmptyState: none }));
-vi.mock('../../components/page-header', () => ({ PageHeader: none }));
 vi.mock('../../components/card', () => ({
   Card: ({ title }: { readonly title: string }): ReactNode => title,
 }));
@@ -72,7 +71,7 @@ describe('Extension page layout', () => {
   it.each([
     [380, 7],
     [1112, 3],
-    [3096, 1],
+    [1440, 2],
   ])('packs seven readable cards at pane width %s into %s rows', (width, rows) => {
     fixture.width = width;
     const page = renderToStaticMarkup(

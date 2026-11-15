@@ -6,7 +6,7 @@ import { cn } from '../design/cn';
 import { useMotion } from '../design/motion';
 import { useIdiom } from '../design/platform';
 import { EndFade, useEndFade } from './end-fade';
-import { Interactive } from './interactive';
+import { Interactive, type LinkNavigation } from './interactive';
 import { FlatChoice } from './flat-choice';
 import type { IconName } from './icon-glyphs';
 import { revealedAt, settledSpans, type Span, type Spans } from './tab-spans';
@@ -17,6 +17,7 @@ export interface TabItem {
   readonly label: string;
   readonly icon?: IconName | undefined;
   readonly href?: AppHref;
+  readonly navigation?: LinkNavigation;
   readonly onPress?: () => void;
 }
 
@@ -33,17 +34,19 @@ function RegularTab({
   readonly pointer: boolean;
   readonly dense: boolean;
 }): ReactNode {
+  const touch = dense ? 'h-12 px-4' : 'h-12 px-2';
   return (
     <Interactive
       role="tab"
       label={item.label}
       selected={selected}
       href={item.href}
+      navigation={item.navigation}
       onPress={item.onPress}
       focusInset
       className={cn(
         'items-center justify-center',
-        pointer ? cn('h-10 rounded-t-sm', dense ? 'px-3' : 'px-4') : 'h-12 min-w-24 px-4',
+        pointer ? cn('h-10 rounded-t-sm', dense ? 'px-3' : 'px-4') : touch,
       )}
     >
       <Text variant="label" tone={selected ? 'primary' : 'variant'} numberOfLines={1}>
@@ -73,6 +76,7 @@ function Tab({
 }): ReactNode {
   return (
     <View
+      className={pointer || compact ? '' : 'grow'}
       onLayout={(event) => {
         onMeasure({ x: event.nativeEvent.layout.x, width: event.nativeEvent.layout.width });
       }}
@@ -84,6 +88,7 @@ function Tab({
           active={selected}
           icon={item.icon}
           href={item.href}
+          navigation={item.navigation}
           onPress={item.onPress}
         />
       ) : (
@@ -140,6 +145,11 @@ function useTabSpans(items: readonly TabItem[]): {
   return { spans, measure };
 }
 
+function contentClassOf(pointer: boolean, compact: boolean, count: number): string {
+  if (!pointer) return compact ? '' : 'grow';
+  return count <= DENSE_FROM ? 'gap-1' : '';
+}
+
 interface TabsBarProps {
   readonly items: readonly TabItem[];
   readonly active: string;
@@ -175,7 +185,7 @@ export function TabsBar({
           setViewport(event.nativeEvent.layout.width);
         }}
         {...fade.scroll}
-        contentContainerClassName={pointer && items.length <= DENSE_FROM ? 'gap-1' : ''}
+        contentContainerClassName={contentClassOf(pointer, compact === true, items.length)}
       >
         {items.map((item) => (
           <Tab

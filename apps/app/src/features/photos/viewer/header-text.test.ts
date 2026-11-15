@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_ITEM, type PhotoPlace } from '@smarteverything/domain';
+import type { PhotoPlace } from '@smarteverything/domain';
 import { desktopHeaderText, phoneHeaderText, type HeaderInput } from './header-text';
 import { isMediaItem, type MediaItem } from './info-model';
+import { imageFixture } from '../../drive/testing';
 
 const TAKEN = '2026-11-07T10:42:00.000Z';
 
@@ -18,26 +19,15 @@ const PLACE: PhotoPlace = {
 };
 
 function item(takenAt: string | null): MediaItem {
-  const parsed = DRIVE_ITEM.parse({
+  const parsed = imageFixture({
     id: '00000000-0000-4000-8000-0000000000a1',
     rootId: '00000000-0000-4000-8000-0000000000b1',
     parentId: null,
-    relPath: 'IMG_1.JPG',
     name: 'IMG_1.JPG',
     modifiedAt: TAKEN,
     addedAt: TAKEN,
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
     mime: 'image/jpeg',
-    bytes: 10,
-    sha256: null,
     integrity: 'ok',
     thumb: { state: 'ready' },
     takenAt,
@@ -47,7 +37,6 @@ function item(takenAt: string | null): MediaItem {
     camera: null,
     exposure: null,
     place: null,
-    kind: 'image',
   });
   if (!isMediaItem(parsed)) throw new TypeError('not media');
   return parsed;

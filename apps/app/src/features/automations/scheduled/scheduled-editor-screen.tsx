@@ -6,8 +6,7 @@ import { z } from 'zod';
 import { useHideNavigation } from '../../../app-shell/nav-visibility';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Section } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
@@ -106,15 +105,10 @@ function Editor({
   const touch = useIdiom() === 'touch';
   const saveLabel = savedId === null ? 'Schedule' : 'Save';
   return (
-    <Screen
-      header={
-        <PageHeader
-          title={title}
-          titleLines="wrap"
-          actions={
-            touch ? [] : [{ icon: 'check', label: saveLabel, primary: true, onPress: editor.save }]
-          }
-        />
+    <PageShell
+      title={title}
+      actions={
+        touch ? [] : [{ icon: 'check', label: saveLabel, primary: true, onPress: editor.save }]
       }
       {...(touch ? { footer: <SaveBar editor={editor} label={saveLabel} /> } : {})}
     >
@@ -132,7 +126,7 @@ function Editor({
           <StepsBlock editor={editor} />
         </View>
       </View>
-    </Screen>
+    </PageShell>
   );
 }
 

@@ -23,7 +23,8 @@ function Newest(): ReactNode {
   if (newest === undefined)
     return (
       <Text variant="callout" tone="variant">
-        No pushes yet. Each push to the update branch releases what it changed.
+        No pushes yet. Each push to the update branch records what it needs and waits for its
+        builds.
       </Text>
     );
   const view = revisionView(newest);

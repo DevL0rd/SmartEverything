@@ -38,22 +38,7 @@ func (c *blockCache) SetPolicy(policy cachePolicy) error {
 	return err
 }
 
-func (c *blockCache) Hold(root mountRoot, p string) func() {
-	at := location{root, p}
-	c.mu.Lock()
-	c.held[at]++
-	c.mu.Unlock()
-	return func() {
-		c.mu.Lock()
-		c.held[at]--
-		if c.held[at] <= 0 {
-			delete(c.held, at)
-		}
-		c.mu.Unlock()
-	}
-}
-
-func (c *blockCache) OnEvict(fn func(root mountRoot)) {
+func (c *blockCache) OnEvict(fn func(root string)) {
 	c.mu.Lock()
 	c.evicted = fn
 	c.mu.Unlock()
@@ -61,7 +46,7 @@ func (c *blockCache) OnEvict(fn func(root mountRoot)) {
 
 func (c *blockCache) isHeld(id blockID) bool {
 	f := c.files[id.key]
-	return f != nil && c.held[location{f.st.Root, f.st.Path}] > 0
+	return f != nil && c.held[f.st.Ino] > 0
 }
 
 func (c *blockCache) shortfall() int64 {
@@ -100,7 +85,7 @@ func (c *blockCache) evict() error {
 
 func (c *blockCache) announce() {
 	c.mu.Lock()
-	roots := make([]mountRoot, 0, len(c.released))
+	roots := make([]string, 0, len(c.released))
 	for root := range c.released {
 		roots = append(roots, root)
 	}

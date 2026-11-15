@@ -1,10 +1,9 @@
-import { useWindowDimensions } from 'react-native';
-import { useSizeClass } from '../../../design/size-class';
+import { useSizeClass, useWindowSize } from '../../../design/size-class';
 import { useLocalPref } from '../../../store/local-prefs';
 import { DOCK_DEFAULT, aiLayout, type AiLayout } from '../model/ai-layout';
 
 export function useAiLayout(): AiLayout {
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useWindowSize();
   const { idiom, nav } = useSizeClass();
   const sidebarCollapsed = useLocalPref('sidebarCollapsed');
   const listOpen = useLocalPref('chatListOpen');

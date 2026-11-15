@@ -6,7 +6,9 @@ import { cn } from '../../design/cn';
 import { ACCENT_SWATCH } from '../../design/tokens';
 import { initialsOf } from '../../format/text';
 
-const SIZES = { m: 'size-8', nav: 'size-10', l: 'size-12' } as const;
+const SIZES = { s: 'size-6', m: 'size-8', nav: 'size-10', l: 'size-12' } as const;
+
+const TEXT = { s: 'caption', m: 'label', nav: 'label', l: 'title-3' } as const;
 
 export function ProfileAvatar({
   profile,
@@ -25,7 +27,7 @@ export function ProfileAvatar({
         ACCENT_SWATCH[profile.colour],
       )}
     >
-      <Text variant={size === 'l' ? 'title-3' : 'label'} tone="onPrimary">
+      <Text variant={TEXT[size]} tone="onPrimary">
         {initialsOf(profile.name)}
       </Text>
     </View>

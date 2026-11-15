@@ -1,6 +1,7 @@
 import {
   DRIVE_DURATION_BUCKETS,
   PHOTO_INSIGHT_KINDS,
+  PHOTO_RANKING_SUMMARY,
   PHOTO_SEASONS,
   driveDurationBucket,
   driveHistoryShown,
@@ -11,7 +12,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 
-export const RANKING_LENGTH = 10;
+export const RANKING_LENGTH = PHOTO_RANKING_SUMMARY;
 
 const MONTHS_IN_YEAR = 12;
 

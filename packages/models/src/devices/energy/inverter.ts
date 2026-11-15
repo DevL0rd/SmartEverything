@@ -37,7 +37,7 @@ export const SOLAR_INVERTER_MODEL: ModelSpec = {
   title: 'Solar inverter',
   category: 'energy',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.1774, height: 0.523 },
   framing: house('sun', 20, 10),
   shots: [
     shot('producing', PRODUCING, 'sun', { zoom: 1.5, yaw: 18, pitch: 8, loopS: 3, stillAt: 1.5 }),

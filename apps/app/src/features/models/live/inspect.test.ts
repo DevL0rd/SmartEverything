@@ -131,6 +131,7 @@ describe('inspect in the shared renderer', () => {
     const cameras: Camera[] = [];
     const gl: LiveGl = {
       autoClear: true,
+      info: { programs: [] },
       setPixelRatio: () => undefined,
       setSize: () => undefined,
       setScissorTest: () => undefined,

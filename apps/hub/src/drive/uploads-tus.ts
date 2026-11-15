@@ -247,15 +247,14 @@ export class TusUploads {
     if (Number(headerOf(request, 'upload-offset')) !== offset) {
       throw new TusError(409, `The upload is at offset ${String(offset)}.`);
     }
-    const next = await this.append(request, { upload, offset, claim });
-    const result =
-      next === upload.length ? await this.commit({ ...upload, offset: next }, caller) : {};
+    const advanced = await this.append(request, { upload, offset, claim });
+    const result = advanced.offset === upload.length ? await this.commit(advanced, caller) : {};
     return {
       status: 204,
       headers: {
         ...result,
-        'Upload-Offset': String(next),
-        'Upload-Expires': expiresHeader(upload),
+        'Upload-Offset': String(advanced.offset),
+        'Upload-Expires': expiresHeader(advanced),
       },
     };
   }
@@ -299,7 +298,7 @@ export class TusUploads {
   private async append(
     request: IncomingMessage,
     write: { upload: DriveUpload; offset: number; claim: string | undefined },
-  ): Promise<number> {
+  ): Promise<DriveUpload> {
     const { upload, offset, claim } = write;
     const root = this.rootOf(upload);
     const handle = await open(await locate(root, tmpPath(upload.id)), 'r+');
@@ -321,8 +320,9 @@ export class TusUploads {
         throw new TusError(460, 'The checksum does not match the received bytes.');
       }
       await handle.sync();
-      this.env.store.driveUploads.setOffset(upload.id, offset + written);
-      return offset + written;
+      const days = readDriveSettings(this.env.store).uploadExpiryDays;
+      const expiresAt = new Date(this.env.now().getTime() + days * DAY_MS).toISOString();
+      return this.env.store.driveUploads.setOffset(upload.id, offset + written, expiresAt);
     } catch (cause) {
       await this.afterInterruption(cause, handle, upload);
       throw cause;

@@ -147,6 +147,16 @@ export function requireUpdateRequester(context: Caller): UpdateRequester {
   return requester;
 }
 
+export function requireOwnerConnection(context: Caller): string {
+  const profileId = context.actor === null ? ownerConnection(context) : null;
+  if (profileId === null)
+    throw new ToolError(
+      'Only the owner’s own MCP connection, called directly and not from an AI chat, can change the trusted release keys.',
+      'forbidden',
+    );
+  return profileId;
+}
+
 export async function requesterChat(context: ToolContext): Promise<AiChatRow> {
   const { chatId } = requireUpdateRequester(context);
   if (chatId !== null) return context.store.aiChats.chat(chatId);

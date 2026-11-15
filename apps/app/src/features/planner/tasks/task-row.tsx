@@ -1,7 +1,9 @@
 import { background } from '@smarteverything/logging';
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
+import type { PlannerItemRow } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
+import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { SwipeRow, type SwipeAction } from '../../../components/swipe-row';
 import { Text } from '../../../components/text';
@@ -14,21 +16,28 @@ import { usePlannerWrites } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { useItemPress } from '../item/item-menu-host';
 import { PRIORITY_RING, PriorityFlag, priorityOf } from './priority-flag';
-import { dueLabelOf, isOverdue, stepsLabelOf, type RowEdge, type TaskEntry } from './task-grouping';
+import { nestTargetOf } from '../item/steps-model';
+import { AssigneeMark } from './assignee-mark';
+import { dueLabelOf, isOverdue, stepsLabelOf, type TaskEntry } from './task-grouping';
+import type { RowEdge } from './task-rows';
 
 export interface TaskRowProps {
   readonly entry: TaskEntry;
   readonly edge: RowEdge;
   readonly today: string;
+  readonly above: PlannerItemRow | null;
+  readonly expanded: boolean;
+  readonly onExpand: (itemId: string) => void;
 }
 
 interface ShownTask {
   readonly entry: TaskEntry;
   readonly today: string;
   readonly overdue: boolean;
+  readonly above: PlannerItemRow | null;
 }
 
-const FRAME: Readonly<Record<RowEdge, string>> = {
+export const TASK_FRAME: Readonly<Record<RowEdge, string>> = {
   only: 'rounded-lg',
   first: 'rounded-t-lg border-b-0',
   middle: 'border-y-0',
@@ -84,13 +93,15 @@ function TaskCheck({
       checked={entry.done}
       label={`Done: ${entry.item.title}`}
       disabled={onDone === null}
-      hitSlop={8}
       onPress={() => {
         selectionTick();
         onDone?.();
       }}
-      className={cn('size-7 items-center justify-center rounded-sm', entry.done && 'opacity-100')}
-      layerClassName="rounded-sm"
+      className={cn(
+        '-m-2 size-11 items-center justify-center rounded-md',
+        entry.done && 'opacity-100',
+      )}
+      layerClassName="rounded-md"
       focusInset
     >
       <View
@@ -146,14 +157,18 @@ function TaskMeta({ entry, today, overdue }: ShownTask): ReactNode {
 function TaskBody(props: ShownTask): ReactNode {
   const { entry } = props;
   const priority = priorityOf(entry.item.priority);
-  const press = useItemPress(entry.item.id, entry.occurrenceKey);
+  const press = useItemPress(
+    entry.item.id,
+    entry.occurrenceKey,
+    nestTargetOf(entry.item, props.above, entry.steps !== null),
+  );
   return (
     <Interactive
       {...press.open}
       onLongPress={press.onLongPress}
       onContextMenu={press.onContextMenu}
       label={entry.item.title}
-      className="min-w-0 flex-1 gap-0.5 rounded-sm py-0.5"
+      className="min-h-11 min-w-0 flex-1 justify-center gap-0.5 rounded-sm py-0.5"
       layerClassName="rounded-sm"
     >
       {press.menu}
@@ -173,7 +188,27 @@ function TaskBody(props: ShownTask): ReactNode {
   );
 }
 
-function Row({ entry, edge, today }: TaskRowProps): ReactNode {
+function ExpandButton({
+  entry,
+  expanded,
+  onExpand,
+}: Pick<TaskRowProps, 'entry' | 'expanded' | 'onExpand'>): ReactNode {
+  if (entry.steps === null) return null;
+  return (
+    <IconButton
+      icon={expanded ? 'chevronUp' : 'chevronDown'}
+      label={
+        expanded ? `Hide the steps of ${entry.item.title}` : `Show the steps of ${entry.item.title}`
+      }
+      size="control"
+      onPress={() => {
+        onExpand(entry.item.id);
+      }}
+    />
+  );
+}
+
+function Row({ entry, edge, today, above, expanded, onExpand }: TaskRowProps): ReactNode {
   const actions = useTaskActions(entry);
   const overdue = useMinuteOf((now) => isOverdue(entry, now, today));
   return (
@@ -181,18 +216,20 @@ function Row({ entry, edge, today }: TaskRowProps): ReactNode {
       leading={swipeOf('Done', 'check', 'primary', actions.done)}
       trailing={swipeOf('Skip', 'skipForward', 'neutral', actions.skip)}
     >
-      <View className={cn('border-hairline border-outline-variant bg-surface-1', FRAME[edge])}>
+      <View className={cn('border-hairline border-outline-variant bg-surface-1', TASK_FRAME[edge])}>
         {edge === 'middle' || edge === 'last' ? (
           <View className="mx-3 h-hairline bg-outline-variant" />
         ) : null}
         <View className="min-h-12 flex-row items-center gap-3 px-3 py-1.5">
           <TaskCheck entry={entry} onDone={actions.done} />
-          <TaskBody entry={entry} today={today} overdue={overdue} />
+          <TaskBody entry={entry} today={today} overdue={overdue} above={above} />
           {entry.item.rrule === null ? null : (
             <View accessible accessibilityLabel="Repeats">
               <Icon name="repeat" size={16} tone="faint" />
             </View>
           )}
+          <AssigneeMark item={entry.item} side={entry.assigned} />
+          <ExpandButton entry={entry} expanded={expanded} onExpand={onExpand} />
         </View>
       </View>
     </SwipeRow>

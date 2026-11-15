@@ -98,7 +98,7 @@ afterEach(() => {
 });
 
 describe('runtime log store', () => {
-  it('keeps an uploaded record exactly as it was sent, positions and all', () => {
+  it('keeps an uploaded record as it was sent, positions and all, with the secret fields hidden', () => {
     const stack = 'Error: api_key=examplekey\n    at request (index.android.bundle:16:3)';
     logs.ingest({
       access: MEMBER,
@@ -115,7 +115,7 @@ describe('runtime log store', () => {
     });
     const [row] = logs.search(MEMBER, { limit: 1 }).rows;
     expect(row?.payload).toEqual({
-      detail: [{ note: 'email somebody@example.test', password: 'notstored' }],
+      detail: [{ note: 'email somebody@example.test', password: '[redacted]' }],
     });
     expect(row?.failure).toMatchObject({ message: 'api_key=examplekey', stack });
     expect(logs.search(MEMBER, { text: 'examplekey', limit: 1 }).rows).toHaveLength(1);
@@ -326,7 +326,7 @@ describe('runtime log store', () => {
     expect(logs.gaps(MEMBER).gaps).toEqual([{ firstAt: first, lastAt: NOW }]);
   });
 
-  it('stores a payload field whatever the field is called', () => {
+  it('hides the secret fields of a payload at any depth and stores the rest', () => {
     const recorded = {
       ...LINE,
       payload: {
@@ -344,7 +344,12 @@ describe('runtime log store', () => {
       now: NOW,
     });
     const held = sql.get(HELD, 'select payload from runtime_logs')?.payload ?? '';
-    expect(JSON.parse(held)).toEqual(recorded.payload);
+    expect(JSON.parse(held)).toEqual({
+      password: '[redacted]',
+      token: '[redacted]',
+      nested: { api_key: '[redacted]' },
+      detail: 'kept',
+    });
   });
 
   it('keeps a native or JS failure with its component and signature', () => {
@@ -391,7 +396,7 @@ describe('runtime log retention', () => {
   });
 
   it('keeps the newest PER_RUNTIME_ROWS records of a runtime and forgets the rest', () => {
-    const records = many(PER_RUNTIME_ROWS + 100);
+    const records = many(PER_RUNTIME_ROWS + 4100);
     for (let start = 0; start < records.length; start += 2000) {
       logs.ingest({
         access: OWNER,
@@ -401,11 +406,22 @@ describe('runtime log retention', () => {
         now: NOW,
       });
     }
-    expect(stored()).toBe(PER_RUNTIME_ROWS + 100);
-    expect(sweepRuntimeLogs(sql, new Date(NOW))['runtime_logs']).toBe(100);
+    expect(stored()).toBe(PER_RUNTIME_ROWS + 4100);
+    expect(sweepRuntimeLogs(sql, new Date(NOW))['runtime_logs']).toBe(4100);
     expect(stored()).toBe(PER_RUNTIME_ROWS);
     expect(logs.search(OWNER, { limit: 1 }).rows[0]?.at).toBe(at(1));
     expect(logs.search(OWNER, { limit: 100 }).rows.at(-1)?.at).toBe(at(100));
+  });
+
+  it('ranks a runtime from its own index instead of scanning and sorting the whole table', () => {
+    const plan = sql.database
+      .prepare(
+        "explain query plan select id from runtime_logs where runtime = 'hub' order by at desc, id desc",
+      )
+      .all()
+      .map((row) => JSON.stringify(row));
+    expect(plan.join(' ')).toContain('runtime_logs_runtime_at');
+    expect(plan.join(' ')).not.toContain('TEMP B-TREE');
   });
 
   it('measures how much room its kept records really take', () => {

@@ -7,13 +7,7 @@ export const TOKEN_URL = `${SMARTTHINGS_API}/oauth/token`;
 
 export const AUTHORIZE_URL = `${SMARTTHINGS_API}/oauth/authorize`;
 
-export const OAUTH_SCOPES = [
-  'r:devices:*',
-  'x:devices:*',
-  'r:locations:*',
-  'r:scenes:*',
-  'x:scenes:*',
-] as const;
+export const OAUTH_SCOPES = ['r:devices:*', 'x:devices:*', 'r:locations:*'] as const;
 
 export const REFRESH_INTERVAL_MS = 20 * 60 * 60 * 1000;
 

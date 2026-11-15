@@ -226,7 +226,14 @@ export const PLANNER_ITEM_KINDS = ['task', 'event'] as const;
 
 export const PLANNER_ITEM_STATUSES = ['open', 'done', 'cancelled', 'proposed'] as const;
 
-export const PLANNER_ITEM_CREATORS = ['person', 'ai', 'google', 'automation'] as const;
+export const PLANNER_ITEM_CREATORS = [
+  'person',
+  'ai',
+  'google',
+  'automation',
+  'booking',
+  'feed',
+] as const;
 
 export const PLANNER_GOOGLE_STATES = ['synced', 'sending', 'conflict'] as const;
 
@@ -273,6 +280,10 @@ const ITEM_SHAPE = z.strictObject({
   attachments: z.array(PLANNER_ATTACHMENT).readonly(),
   reminders: PLANNER_REMINDERS,
   google: PLANNER_ITEM_GOOGLE.nullable(),
+  assignee_id: ID.nullable(),
+  ical_uid: z.string().min(1).nullable(),
+  ical_sequence: z.int().nonnegative(),
+  booking_page_id: ID.nullable(),
   created_by: z.enum(PLANNER_ITEM_CREATORS),
   created_at: MOMENT,
   updated_at: MOMENT,
@@ -328,6 +339,9 @@ function timingIssues(row: ItemShape, context: z.RefinementCtx): void {
 function dueIssues(row: ItemShape, context: z.RefinementCtx): void {
   if (row.kind === 'event' && (row.due_date !== null || row.due_at !== null)) {
     flag(context, 'due_date', 'only a task is due');
+  }
+  if (row.kind === 'event' && row.assignee_id !== null) {
+    flag(context, 'assignee_id', 'only a task has an assignee; an event has guests');
   }
   if (row.parent_id === row.id) flag(context, 'parent_id', 'an item is not its own parent');
 }

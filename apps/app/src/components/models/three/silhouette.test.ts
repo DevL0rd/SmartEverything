@@ -7,7 +7,7 @@ import {
   NotEqualStencilFunc,
   ReplaceStencilOp,
 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createSilhouette, SILHOUETTE_ORDER, SILHOUETTE_STENCIL } from './silhouette';
 import { STAGE_RIGS } from './stage';
 
@@ -53,5 +53,22 @@ describe('silhouette edge', () => {
     expect(edge.uniforms.tone.value.getHexString()).not.toBe(light);
     edge.dispose();
     expect(body.children).toEqual([lid]);
+  });
+
+  it('shares one edge material per theme and keeps it when a model leaves', () => {
+    const solid = (): Group => {
+      const root = new Group();
+      root.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial()));
+      return root;
+    };
+    const first = createSilhouette(solid(), 'dark');
+    const dispose = vi.spyOn(first.material, 'dispose');
+    first.dispose();
+    const second = createSilhouette(solid(), 'dark');
+    expect(second.material).toBe(first.material);
+    expect(dispose).not.toHaveBeenCalled();
+    second.setTheme('light');
+    expect(second.hulls[0]?.material).toBe(second.material);
+    expect(second.material).not.toBe(first.material);
   });
 });

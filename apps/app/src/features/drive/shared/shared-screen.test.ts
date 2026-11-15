@@ -2,6 +2,7 @@ import { createElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriveSharedByMeEntry, DriveSharedWithMeEntry } from '@smarteverything/domain';
+import { folderFixture } from '../data/fixtures';
 
 interface Children {
   readonly children?: ReactNode;
@@ -15,6 +16,7 @@ interface Seen {
   failed: boolean;
   subtitle: string | undefined;
   banner: boolean;
+  requests: readonly object[];
 }
 
 const seen = vi.hoisted((): Seen => ({
@@ -25,6 +27,7 @@ const seen = vi.hoisted((): Seen => ({
   failed: false,
   subtitle: undefined,
   banner: false,
+  requests: [],
 }));
 
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -54,11 +57,19 @@ vi.mock('react-native', () => ({ View: node('div') }));
 vi.mock('expo-router', () => ({ router: { push: (): void => undefined } }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: (): object => ({}) }));
 vi.mock('../../../components/toast-store', () => ({
+  notify: (): void => undefined,
   notifyFailure: (): (() => void) => () => undefined,
 }));
 vi.mock('./stop-sharing', () => ({ stopSharing: (): Promise<boolean> => Promise.resolve(true) }));
-vi.mock('../folder/folder-footer', () => ({ openItemFile: (): void => undefined }));
-vi.mock('../folder/folder-list', () => ({ entryKindOf: (): string => 'folder' }));
+vi.mock('../model/item-commands', () => ({ openItemFile: (): void => undefined }));
+vi.mock('../components/folder-glyph', () => ({ DriveKindGlyph: (): null => null }));
+vi.mock('../requests/file-request-list', () => ({
+  FileRequestsSection: (): ReactNode => createElement('section', null, 'file-requests'),
+  useMyFileRequests: (): readonly object[] => seen.requests,
+}));
+vi.mock('../requests/file-request-sheet', () => ({
+  useFileRequestSheet: (): object => ({ edit: (): void => undefined, host: null }),
+}));
 vi.mock('../../profiles', () => ({ ProfileAvatar: (): ReactNode => createElement('img') }));
 vi.mock('../share', () => ({
   useShareSheet: (): object => ({ open: (): void => undefined, host: null }),
@@ -70,8 +81,8 @@ vi.mock('../../../components/use-section-param', () => ({
   useSectionParam: (): readonly unknown[] => [seen.view, (): void => undefined],
 }));
 vi.mock('../../../design/size-class', () => ({ useAreaWidth: (): number => 1360 }));
-vi.mock('../../../components/library-frame/sections', () => ({
-  libraryLayoutOf: (): string => 'wide',
+vi.mock('../../../components/page-shell/layout', () => ({
+  SHELL_BREAKPOINTS: { compactMax: 600 },
 }));
 vi.mock('../../../store/selectors', () => ({
   useSyncStatus: (): { readonly status: string } => ({ status: seen.live ? 'live' : 'offline' }),
@@ -83,9 +94,9 @@ vi.mock('../../../store/people', () => ({
 vi.mock('../data', () => ({
   useSharedWithMe: (): object => pagesOf(seen.withMe),
   useSharedByMe: (): object => pagesOf(seen.byMe),
-  flattenPages: (data: {
-    readonly pages: readonly { readonly items: readonly unknown[] }[];
-  }): readonly unknown[] => data.pages.flatMap((page) => page.items),
+  flattenPages: (
+    data: { readonly pages: readonly { readonly items: readonly unknown[] }[] } | undefined,
+  ): readonly unknown[] => data?.pages.flatMap((page) => page.items) ?? [],
 }));
 vi.mock('../components/drive-frame', () => ({
   DriveFrame: (
@@ -104,6 +115,35 @@ vi.mock('../../../components/segmented', () => ({
   Segmented: (props: { readonly value: string }): ReactNode =>
     createElement('nav', null, `view:${props.value}`),
 }));
+vi.mock('../../files', () => ({
+  FileRow: (props: {
+    readonly node: { readonly name: string };
+    readonly look: { readonly caption: string | null; readonly trailing: ReactNode };
+  }): ReactNode =>
+    createElement(
+      'p',
+      null,
+      props.node.name,
+      ` | ${props.look.caption ?? ''} | `,
+      props.look.trailing,
+    ),
+}));
+vi.mock('../source/drive-node', () => ({
+  driveNodeOf: (item: { readonly id: string; readonly name: string }): object => ({
+    key: item.id,
+    name: item.name,
+  }),
+}));
+vi.mock('../source/drive-lists', () => ({
+  useDriveNodeList: (
+    _list: string,
+    build: (context: object) => readonly object[],
+  ): { readonly browser: null; readonly nodes: readonly object[] } => ({
+    browser: null,
+    nodes: build({}),
+  }),
+  DriveListFrame: ({ children }: { readonly children: ReactNode }): ReactNode => children,
+}));
 vi.mock('../../../components/list-row', () => ({
   ListRow: (props: {
     readonly title: string;
@@ -119,7 +159,6 @@ vi.mock('../../../components/button', () => ({
   Button: (props: { readonly label: string; readonly disabled?: boolean }): ReactNode =>
     createElement('button', { disabled: props.disabled }, props.label),
 }));
-vi.mock('../../../components/files/file-glyph', () => ({ FileGlyph: (): null => null }));
 vi.mock('../../../components/text', () => ({ Text: node('span') }));
 vi.mock('../../../components/empty-state', () => ({
   EmptyState: (props: { readonly title: string }): ReactNode =>
@@ -156,27 +195,18 @@ vi.mock('../../../components/virtual-list', () => ({
 const { SharedScreen } = await import('./shared-screen');
 
 function folder(id: string, name: string): DriveSharedWithMeEntry['item'] {
-  return {
-    kind: 'folder',
+  return folderFixture({
     id,
     rootId: ROOT,
     parentId: null,
-    relPath: name,
     name,
     modifiedAt: AT,
     addedAt: AT,
-    openedAt: null,
-    starred: false,
     shared: true,
-    rev: 1,
     etag: 'e',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
     childCount: 1,
     bytes: 1,
-  };
+  });
 }
 
 const ITEM = '00000000-0000-4000-8000-000000000201';
@@ -187,6 +217,7 @@ const GRANT = {
   role: 'edit',
   grantedBy: SAM,
   createdAt: AT,
+  expiresAt: null,
 } as const;
 
 const render = (): string => renderToStaticMarkup(createElement(SharedScreen));
@@ -198,6 +229,28 @@ describe('Shared screen', () => {
     seen.withMe = [];
     seen.byMe = [];
     seen.failed = false;
+    seen.requests = [];
+  });
+
+  it('shows the file requests above the shared items in By me', () => {
+    seen.view = 'by-me';
+    seen.requests = [{}];
+    const markup = render();
+    expect(markup).toContain('<section>file-requests</section>');
+    expect(markup).toContain('You have not shared anything yet');
+    expect(markup).not.toContain('Shared items');
+  });
+
+  it('marks a view only item shared for viewing and names when the access ends', () => {
+    seen.withMe = [
+      {
+        item: { ...folder(ITEM, 'Taxes'), locked: true },
+        grant: { ...GRANT, role: 'view', expiresAt: '2026-11-10T12:00:00.000Z' },
+      },
+    ];
+    const markup = render();
+    expect(markup).toContain('Taxes | Shared 2 d ago · Ends in 3 days |');
+    expect(markup).toContain('<b>View only</b><b>Can view</b>');
   });
 
   it('opens With me and groups what was shared under the person who shared it', () => {
@@ -206,7 +259,7 @@ describe('Shared screen', () => {
     expect(markup).toContain('view:with-me');
     expect(markup).toContain('Sam');
     expect(markup).toContain('shared 1 item');
-    expect(markup).toContain('Taxes | Shared 2 d ago | <b>Can edit</b>');
+    expect(markup).toContain('Taxes | Shared 2 d ago | <div><b>Can edit</b></div>');
     expect(seen.subtitle).toBe('1 item · from 1 person');
   });
 
@@ -228,6 +281,7 @@ describe('Shared screen', () => {
           {
             id: '00000000-0000-4000-8000-000000000501',
             itemId: ITEM,
+            albumId: null,
             permission: 'view',
             expiresAt: null,
             hasPassword: false,

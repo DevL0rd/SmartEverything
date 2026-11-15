@@ -107,7 +107,6 @@ const REFERENCES: Readonly<Record<RefKind, Lookup>> = {
   computer: ({ store }, id) => store.devices.find(id)?.kind === 'computer',
   room: ({ store }, id) => present(() => store.rooms.byId(id)),
   group: ({ store }, id) => present(() => store.deviceGroups.byId(id)),
-  scene: ({ store }, id) => present(() => store.scenes.byId(id)),
   person: ({ store }, id) => present(() => store.profiles.byId(id)),
   chat: ({ store }, id) => store.aiChats.find(id) !== undefined,
   value: ({ store }, id) => present(() => store.automationValues.byId(id)),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 const PANEL_HEIGHT_MAX = 320;
 const PANEL_MARGIN = 8;
 export function SuggestionPanel({
@@ -10,7 +11,7 @@ export function SuggestionPanel({
   readonly inline?: boolean;
 }): ReactNode {
   const anchor = useRef<View>(null);
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const [room, setRoom] = useState(PANEL_HEIGHT_MAX);
   const measure = (): void => {
     anchor.current?.measureInWindow((_x, y) => {

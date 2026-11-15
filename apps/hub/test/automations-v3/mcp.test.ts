@@ -46,9 +46,6 @@ const AUTOMATION_TOOLS: Readonly<Record<string, Kind>> = {
   custom_node_edit: 'write',
   value_read: 'read',
   value_edit: 'destructive',
-  scene_find: 'read',
-  scene_edit: 'destructive',
-  scene_run: 'write',
   schedule_find: 'read',
   schedule_edit: 'destructive',
 };

@@ -21,7 +21,14 @@ import type { Device } from '../../../store/state';
 import { useDrivePlacementRows } from '../data';
 import { DriveFrame } from '../components/drive-frame';
 import { usePlacementWrites } from './placement-change';
-import { removePlacement, usePlacedFolder, type PlacedFolder } from './placement-row';
+import {
+  OpenHereButton,
+  PlacementLocation,
+  removePlacement,
+  useOpenHere,
+  usePlacedFolder,
+  type PlacedFolder,
+} from './placement-row';
 import { SelectiveSync, SyncRules } from './placement-sync';
 import {
   basicLimitsOf,
@@ -91,6 +98,7 @@ function Hero({
   readonly words: PlacementWords;
 }): ReactNode {
   const now = useMinute();
+  const openHere = useOpenHere(placement);
   return (
     <Card>
       <View className="flex-row flex-wrap items-center gap-4">
@@ -109,9 +117,12 @@ function Hero({
           <Text variant="callout" tone="variant" numberOfLines={3}>
             {sentenceOf(placement.mode, words)}
           </Text>
-          <Text variant="footnote" tone="variant" numberOfLines={1} className="font-mono">
-            {placement.localPath}
-          </Text>
+          <PlacementLocation placement={placement} />
+          {openHere === null ? null : (
+            <View className="flex-row">
+              <OpenHereButton action={openHere} />
+            </View>
+          )}
         </View>
       </View>
       <MetricStrip items={heroTilesOf(placement, placed, now)} columns={TILE_COLUMNS} />

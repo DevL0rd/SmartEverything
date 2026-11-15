@@ -7,7 +7,6 @@ import { SettingsFrame } from '../../../settings/settings-frame';
 import { List } from '../../../components/section';
 import { NavRow } from '../../../components/rows';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
-import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import { Button } from '../../../components/button';
 import { useExtensions, useExtensionConfiguration } from './queries';
@@ -32,19 +31,15 @@ function InstalledHeader({
   configuration,
   catalogue,
   onDevices,
-  query,
-  setQuery,
   kind,
 }: {
   readonly configuration: ConfigurationQuery;
   readonly catalogue: ReturnType<typeof useExtensions>;
   readonly onDevices: () => void;
-  readonly query: string;
-  readonly setQuery: (value: string) => void;
   readonly kind: 'extension' | 'skill';
 }): ReactNode {
   return (
-    <View className="gap-section-gap px-gutter">
+    <View className="gap-section-gap">
       <ExtensionReadStatus
         kind={kind}
         loading={configuration.isFetching ? configuration.data === undefined : false}
@@ -64,12 +59,6 @@ function InstalledHeader({
       <ClaudeCollectionControl kind={kind} />
       <DeviceLink configuration={configuration} onDevices={onDevices} />
       <CatalogueLinks kind={kind} />
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        placeholder={kind === 'skill' ? 'Search your skills' : 'Search your extensions'}
-        variant="field"
-      />
     </View>
   );
 }
@@ -115,12 +104,23 @@ function sectionsOf(items: readonly CatalogueItem[]): readonly VirtualSection<Ca
   ].filter((section) => section.data.length > 0);
 }
 
-function InstalledList({ kind }: { readonly kind: 'extension' | 'skill' }): ReactNode {
+function useDevicesSection(): boolean {
+  const params = z.object({ section: z.string().optional() }).parse(useLocalSearchParams());
+  return params.section === 'devices';
+}
+
+function InstalledList({
+  kind,
+  query,
+  onClear,
+}: {
+  readonly kind: 'extension' | 'skill';
+  readonly query: string;
+  readonly onClear: () => void;
+}): ReactNode {
   const configuration = useExtensionConfiguration();
   const catalogue = useExtensions();
-  const params = z.object({ section: z.string().optional() }).parse(useLocalSearchParams());
-  const [devices, setDevices] = useState(params.section === 'devices');
-  const [query, setQuery] = useState('');
+  const [devices, setDevices] = useState(useDevicesSection());
   const items = installedCatalogueItems(catalogue.data, kind);
   return (
     <>
@@ -132,23 +132,13 @@ function InstalledList({ kind }: { readonly kind: 'extension' | 'skill' }): Reac
             onDevices={() => {
               setDevices(true);
             }}
-            query={query}
-            setQuery={setQuery}
             kind={kind}
           />
         }
         sections={sectionsOf(items.filter((item) => matchesCatalogueItem(item, query.trim())))}
         keyOf={(item) => item.id}
         renderItem={(item) => <InstalledRow item={item} />}
-        empty={
-          <CatalogueEmpty
-            kind={kind}
-            query={query.trim()}
-            clear={() => {
-              setQuery('');
-            }}
-          />
-        }
+        empty={<CatalogueEmpty kind={kind} query={query.trim()} clear={onClear} />}
       />
       {configuration.data === undefined ? null : (
         <ExtensionDevicesSheet
@@ -171,13 +161,25 @@ export function AiExtensionsScreen({
   const banner = useMemberBanner(
     kind === 'skill' ? 'add, update or remove skills' : 'add, update or remove extensions',
   );
+  const [query, setQuery] = useState('');
   return (
     <SettingsFrame
       page={kind === 'skill' ? 'assistant/skills' : 'assistant/extensions'}
       scroll={false}
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: kind === 'skill' ? 'Search your skills' : 'Search your extensions',
+      }}
       {...(banner === undefined ? {} : { banner })}
     >
-      <InstalledList kind={kind} />
+      <InstalledList
+        kind={kind}
+        query={query}
+        onClear={() => {
+          setQuery('');
+        }}
+      />
     </SettingsFrame>
   );
 }

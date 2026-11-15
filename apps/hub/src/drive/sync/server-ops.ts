@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import { ApiError, type DriveItem } from '@smarteverything/domain';
-import type { SyncFileMeta, SyncHubMessage } from '@smarteverything/domain/drive-sync';
+import type { SyncFileMeta, SyncHubMessage, SyncXattr } from '@smarteverything/domain/drive-sync';
 import { SYNC_HUB_MESSAGE } from '@smarteverything/domain/drive-sync';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import { fsCode } from '../../fs-code';
@@ -12,6 +12,8 @@ import type { ConflictEnv } from '../conflicts';
 import { DriveWriteError } from '../intents';
 import { nodeCaller } from '../node-caller';
 import { DrivePathError } from '../paths';
+import { PosixError } from '../posix/errors';
+import type { DrivePosix } from '../posix/service';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from '../quotas';
 import type { DriveActor } from '../access';
 import type { DataSpaceProbe } from '../data-space';
@@ -21,6 +23,11 @@ export interface SyncNode {
   readonly profileId: string;
   readonly actor: DriveActor;
 }
+
+export type SyncPosix = Pick<
+  DrivePosix,
+  'setattr' | 'symlink' | 'link' | 'setxattr' | 'removexattr' | 'listxattr' | 'getxattr'
+>;
 
 export interface SyncEnv extends ConflictEnv {
   readonly store: ChangeEnv['store'] &
@@ -34,7 +41,10 @@ export interface SyncEnv extends ConflictEnv {
       | 'computerNodes'
       | 'driveQuotas'
       | 'devices'
+      | 'driveInodes'
+      | 'driveXattrs'
     >;
+  readonly posix: SyncPosix;
   readonly space: DataSpaceProbe['space'];
   readonly authenticate: (request: IncomingMessage) => SyncNode | null;
 }
@@ -117,8 +127,10 @@ export function recall(
   return message;
 }
 
-export function fileOf(item: DriveItem): Exclude<DriveItem, { readonly kind: 'folder' }> | null {
-  return item.kind === 'folder' ? null : item;
+export type ContentItem = Exclude<DriveItem, { readonly kind: 'folder' | 'link' | 'special' }>;
+
+export function fileOf(item: DriveItem): ContentItem | null {
+  return item.kind === 'folder' || item.kind === 'link' || item.kind === 'special' ? null : item;
 }
 
 const WRITE_FAILURE_CODE = {
@@ -129,8 +141,21 @@ const WRITE_FAILURE_CODE = {
   corrupt: 'internal',
 } as const;
 
+const POSIX_API_CODES: Readonly<Record<string, ApiError['code']>> = {
+  ENOENT: 'not_found',
+  EACCES: 'forbidden',
+  EPERM: 'forbidden',
+  EEXIST: 'conflict',
+  ESTALE: 'conflict',
+  ENOSPC: 'payload_too_large',
+  EDQUOT: 'payload_too_large',
+};
+
 export function apiErrorOf(cause: unknown): ApiError | null {
   if (cause instanceof ApiError) return cause;
+  if (cause instanceof PosixError) {
+    return new ApiError(POSIX_API_CODES[cause.code] ?? 'invalid_request', cause.message);
+  }
   if (cause instanceof DriveQuotaExceededError) {
     return new ApiError('payload_too_large', cause.message);
   }
@@ -151,6 +176,8 @@ export interface TxnSpec extends Origin {
   readonly relPath: string;
   readonly baseRev: number | null;
   readonly meta: SyncFileMeta;
+  readonly mode: number;
+  readonly xattrs: readonly SyncXattr[];
   readonly hashes: readonly string[];
   readonly tmpRel: string;
 }

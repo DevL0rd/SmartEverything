@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
-import type { HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useHideNavigation } from '../../../app-shell/nav-visibility';
 import { useDraftEngine } from '../data/draft-engine';
-import { DraftHeader } from './chat-header';
+import { DraftShell } from './chat-header';
 import { useDraftKeys } from './chat-list-toggle';
 import { EngineAccessoryProvider, useEngineControls } from './engine-accessories';
 import { StartChat } from './start-chat';
@@ -22,7 +21,7 @@ export function DraftThread({
 }: {
   readonly onStarted: (chatId: string) => void;
   readonly back: boolean;
-  readonly leading?: readonly HeaderAction[];
+  readonly leading?: readonly ShellAction[];
 }): ReactNode {
   const [engine, setEngine] = useDraftEngine();
   const control = useEngineControls(engine, setEngine);
@@ -30,13 +29,9 @@ export function DraftThread({
   return (
     <EngineAccessoryProvider value={control}>
       {back ? <HiddenNavigation /> : null}
-      <Screen
-        scroll={false}
-        maxWidth="full"
-        header={<DraftHeader engine={engine} back={back} leading={leading} />}
-      >
+      <DraftShell engine={engine} back={back} leading={leading}>
         <StartChat onStarted={onStarted} />
-      </Screen>
+      </DraftShell>
     </EngineAccessoryProvider>
   );
 }

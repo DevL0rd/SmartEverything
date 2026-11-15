@@ -66,7 +66,7 @@ export const REMOTE_4KEY_MODEL: ModelSpec = {
   title: 'Four-key remote',
   category: 'button',
   family: 'button',
-  footprint: { width: SIZE, depth: DEPTH, height: SIZE },
+  footprint: { width: SIZE, depth: 0.0138, height: SIZE },
   framing: house('shell', 22, 12),
   shots: [
     {

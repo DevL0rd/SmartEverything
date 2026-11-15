@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { TextInput, View, type AccessibilityActionEvent } from 'react-native';
 import { cn } from '../design/cn';
+import { useIdiom } from '../design/platform';
 import { decimal, withUnit } from '../format/number';
 import { selectionTick } from '../platform/haptics';
 import { clamp, decimalsOf } from './charts/scale';
@@ -129,6 +130,7 @@ interface ValueInputProps extends AdjustableArgs {
 function ValueInput(props: ValueInputProps): ReactNode {
   const { value, range, unit, disabled, onChange } = props;
   const draft = useDraft(value, range, onChange);
+  const pointer = useIdiom() === 'pointer';
   return (
     <View className="shrink flex-row items-center gap-1">
       <TextInput
@@ -144,7 +146,8 @@ function ValueInput(props: ValueInputProps): ReactNode {
         cursorColorClassName="accent-primary"
         selectionColorClassName="accent-primary"
         className={cn(
-          'w-20 rounded-md px-1 py-2 text-center font-sans-medium text-body text-on-surface tabular web:outline-none focus:bg-surface-3',
+          'w-20 rounded-md px-1 py-0 text-center font-sans-medium text-body text-on-surface tabular web:outline-none focus:bg-surface-3',
+          pointer ? 'h-8' : 'h-11',
           disabled && 'opacity-40',
         )}
       />

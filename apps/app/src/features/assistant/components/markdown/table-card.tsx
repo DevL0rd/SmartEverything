@@ -7,7 +7,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Text } from '../../../../components/text';
 import { useMeasuredWidth } from '../../../../components/use-measured-width';
@@ -15,6 +15,7 @@ import { useColour } from '../../../../design/colour';
 import { cn } from '../../../../design/cn';
 import { plural } from '../../../../format/text';
 import { CHAT_SURFACE } from '../chat-surface';
+import { useInnerScrollGesture } from '../inner-scroll';
 import { CardCopy } from './card-action';
 import { inlineText, tableTsv, type Block, type Inline } from '@smarteverything/domain/markdown';
 import { Runs } from './inline-runs';
@@ -161,7 +162,7 @@ export function TableCard({ table }: { readonly table: TableBlock }): ReactNode 
   const end = useEnd();
   const cardWidth = { maxWidth: table.header.length * COLUMN.max };
   const tsv = useMemo(() => tableTsv(table), [table]);
-  const drag = useMemo(() => Gesture.Native().disallowInterruption(true), []);
+  const drag = useInnerScrollGesture();
   const grid = (
     <ScrollView
       horizontal

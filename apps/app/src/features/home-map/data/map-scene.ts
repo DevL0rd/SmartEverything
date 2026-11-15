@@ -6,8 +6,9 @@ import {
   type HomeMapSceneLive,
 } from '../../../components/house-map/adapters/home-map-scene';
 import type { RenderScene } from '../../../components/house-map/render-scene';
-import { useDevices, useRooms } from '../../../store/selectors';
-import type { Device } from '../../../store/state';
+import { devicesIn, useDevices, useRooms, type DeviceFilter } from '../../../store/selectors';
+import { rowsOf, type Device, type StoreState } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
 
 interface NamedRoom {
   readonly id: string;
@@ -27,6 +28,44 @@ export function homeMapSceneLive(
       return device === undefined ? null : { name: device.label, kind: device.kind };
     },
   };
+}
+
+type SceneDevice = Pick<Device, 'id' | 'label' | 'kind'>;
+
+export interface HomeMapSceneNames {
+  readonly rooms: readonly NamedRoom[];
+  readonly devices: readonly SceneDevice[];
+}
+
+export function homeMapSceneNamesOf(state: StoreState, filter: DeviceFilter): HomeMapSceneNames {
+  return {
+    rooms: rowsOf(state.tables.rooms).map(({ id, name }) => ({ id, name })),
+    devices: devicesIn(state, filter).map(({ id, label, kind }) => ({ id, label, kind })),
+  };
+}
+
+export function sameHomeMapSceneNames(left: HomeMapSceneNames, right: HomeMapSceneNames): boolean {
+  return (
+    left.rooms.length === right.rooms.length &&
+    left.devices.length === right.devices.length &&
+    left.rooms.every((room, index) => {
+      const other = right.rooms[index];
+      return room.id === other?.id && room.name === other.name;
+    }) &&
+    left.devices.every((device, index) => {
+      const other = right.devices[index];
+      return device.id === other?.id && device.label === other.label && device.kind === other.kind;
+    })
+  );
+}
+
+export function useHomeMapSceneLive(filter: DeviceFilter): HomeMapSceneLive {
+  const names = useStoreSelector(
+    (state) => homeMapSceneNamesOf(state, filter),
+    sameHomeMapSceneNames,
+    [filter.room, filter.includeHidden],
+  );
+  return useMemo(() => homeMapSceneLive(names.rooms, names.devices), [names]);
 }
 
 export function useHomeMapScene(map: HomeMap | null): RenderScene | null {

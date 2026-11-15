@@ -28,7 +28,7 @@ export const MCP_TOOL_AREA_LABELS: Readonly<Record<McpToolArea, string>> = {
   devices: 'Devices',
   computers: 'Computers',
   control: 'Control',
-  automations: 'Automations & scenes',
+  automations: 'Automations',
   history: 'History & events',
   health: 'Health',
   nutrition: 'Food & water',

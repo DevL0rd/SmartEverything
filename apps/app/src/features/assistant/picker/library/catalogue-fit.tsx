@@ -1,11 +1,10 @@
-import { createContext, use, useLayoutEffect, useState, type ReactNode } from 'react';
+import { use, useLayoutEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { CatalogueFit } from './catalogue-fit-context';
 
-type Part = 'tools' | 'results' | 'listFooter' | 'selection';
+export type Part = 'tools' | 'results' | 'listFooter' | 'selection';
 type Measurements = Readonly<Partial<Record<Part, number | null>>>;
-type Measure = (part: Part, height: number | null) => void;
-
-export const CatalogueFit = createContext<Measure | null>(null);
+export type Measure = (part: Part, height: number | null) => void;
 
 const RESULTS_GAP = 8;
 

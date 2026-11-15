@@ -12,6 +12,7 @@ import type { DrivePlacementTarget } from '../store/repositories/drive-placement
 import type { Store } from '../store/store';
 import { canRead, type DriveActor, type ItemAccess } from './access';
 import { targetAccess, type PlacementAccessStore } from './placement-access';
+import { requireExport } from './sharing/export-guard';
 
 export type PlacementStore = PlacementAccessStore & Pick<Store, 'drivePlacements'>;
 
@@ -58,6 +59,7 @@ function signatureOf(placements: readonly DrivePlacement[]): string {
       placement.folderItemId,
       placement.mode,
       placement.localPath,
+      placement.mountName,
       placement.status.readOnly,
       placement.excluded ?? null,
       placement.ignorePatterns ?? null,
@@ -101,6 +103,7 @@ export class DrivePlacements {
       const target = {
         mode: input.mode,
         localPath: input.localPath,
+        mountName: input.mountName,
         enabled: input.enabled,
         ...settings,
       };
@@ -141,12 +144,27 @@ export class DrivePlacements {
     );
   }
 
+  repoint(placementId: string, rootId: string): DrivePlacement {
+    const before = this.deps.store.drivePlacements.byId(placementId);
+    return this.mutate(before.deviceId, () => {
+      this.deps.context.sql.run(
+        'point the placement at the drive its folder moved to',
+        'update drive_placements set root_id = $rootId where id = $id',
+        { id: placementId, rootId },
+      );
+      const after = this.deps.store.drivePlacements.byId(placementId);
+      this.deps.context.changed('drive_placements', 'UPDATE', after, before);
+      return after;
+    });
+  }
+
   setReadOnly(placementId: string, readOnly: boolean): DrivePlacement {
     const placement = this.deps.store.drivePlacements.byId(placementId);
     return this.mutate(placement.deviceId, () =>
       this.deps.store.drivePlacements.retarget(placementId, {
         mode: placement.mode,
         localPath: placement.localPath,
+        mountName: placement.mountName,
         enabled: placement.enabled,
         readOnly,
         ...syncSettingsOf(placement),
@@ -185,6 +203,7 @@ export class DrivePlacements {
     if (input.folderItemId !== null) {
       const folder = this.deps.store.driveItems.find(input.folderItemId, null);
       if (folder?.kind !== 'folder') throw invalid('A placement needs a folder, not a file.');
+      requireExport(access, folder);
     }
     for (const excluded of input.excluded ?? []) refuseExclusion(excluded);
     return access;
@@ -202,8 +221,9 @@ export class DrivePlacements {
       );
     for (const other of others) {
       if (this.nests(target, other)) {
+        const where = other.localPath === null ? '' : ` at ${other.localPath}`;
         throw conflicting(
-          `That folder and the synced folder at ${other.localPath} on this computer contain one another.`,
+          `That folder and the synced folder${where} on this computer contain one another.`,
         );
       }
     }
@@ -299,6 +319,7 @@ function startingStatus(reportedAt: string, readOnly: boolean): DrivePlacementSt
     lastSyncedAt: null,
     errors: [],
     reason: null,
+    mountPoint: null,
     reportedAt,
   };
 }

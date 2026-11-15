@@ -1,6 +1,6 @@
 import { appendTo } from '@smarteverything/domain';
 
-export type EntryKind = 'file' | 'folder' | 'other';
+export type EntryKind = 'file' | 'folder' | 'link' | 'other';
 
 export interface EntryIdentity {
   readonly kind: EntryKind;

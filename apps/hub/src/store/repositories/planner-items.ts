@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, moment, type StoreContext } from '../context';
 import { flag, inList, jsonText } from '../sql';
+import { removeGuestsOfItems } from './planner-guests';
 import type { PlannerOccurrencesRepository } from './planner-occurrences';
 
 const STORED_ITEM = storedRow(PLANNER_ITEM_ROW, {
@@ -14,11 +15,42 @@ const STORED_ITEM = storedRow(PLANNER_ITEM_ROW, {
 const COLUMNS = `id, profile_id, collection_id, kind, parent_id, title, notes, location, priority,
   tags, estimate_minutes, start_local, end_local, time_zone, all_day, due_date, due_at, rrule,
   exdates, series_id, original_start, start, "end", series_end, status, position, completion,
-  attachments, reminders, google, created_by, created_at, updated_at, deleted_at`;
+  attachments, reminders, google, assignee_id, ical_uid, ical_sequence, booking_page_id, created_by, created_at,
+  updated_at, deleted_at`;
 
 const LIVE = 'deleted_at is null';
 
+const MASTER = 'coalesce(planner_items.series_id, planner_items.id)';
+
+const INVOLVED = `(assignee_id = $profileId
+  or exists (select 1 from planner_items parent
+    where parent.id = planner_items.parent_id and parent.assignee_id = $profileId)
+  or exists (select 1 from planner_guests guest
+    where guest.profile_id = $profileId and guest.item_id = ${MASTER}))`;
+
+const VISIBLE = `(profile_id = $profileId
+  or collection_id in (select collection_id from planner_collection_shares where profile_id = $profileId)
+  or collection_id in (select id from planner_collections where audience = 'household')
+  or ${INVOLVED})`;
+
+const NOT_DECLINED = `not exists (select 1 from planner_guests declined
+  where declined.profile_id = $profileId and declined.response = 'no' and declined.item_id = ${MASTER})`;
+
+const NOT_OTHERS_TASK = `(kind = 'event' or assignee_id is null or assignee_id = $profileId
+  or profile_id = $profileId)`;
+
+const SCOPES = {
+  owned: 'profile_id = $profileId',
+  visible: VISIBLE,
+  shown: `${VISIBLE} and ${NOT_DECLINED} and ${NOT_OTHERS_TASK}`,
+  involved: `(profile_id = $profileId or ${INVOLVED}) and ${NOT_DECLINED}`,
+} as const;
+
+export type PlannerItemScope = keyof typeof SCOPES;
+
 const REMOVED_ID = z.object({ id: z.string() });
+
+const GUEST_PROFILE = z.object({ profile_id: z.string() });
 
 export type PlannerItemInput = Omit<
   PlannerItemRow,
@@ -38,6 +70,7 @@ export interface PlannerItemFilter {
   readonly collectionIds?: readonly string[] | undefined;
   readonly kind?: PlannerItemRow['kind'] | undefined;
   readonly statuses?: readonly PlannerItemRow['status'][] | undefined;
+  readonly scope?: PlannerItemScope | undefined;
 }
 
 export interface PlannerInstantWindow {
@@ -87,6 +120,45 @@ export class PlannerItemsRepository {
     private readonly occurrences: PlannerOccurrencesRepository,
   ) {}
 
+  findAny(id: string): PlannerItemRow | undefined {
+    return this.context.sql.get(
+      STORED_ITEM,
+      `select ${COLUMNS} from planner_items where id = $id and ${LIVE}`,
+      { id },
+    );
+  }
+
+  anyById(id: string): PlannerItemRow {
+    return found(this.findAny(id), 'planner item', id);
+  }
+
+  byIcalUid(collectionId: string, icalUid: string): PlannerItemRow | undefined {
+    return this.context.sql.get(
+      STORED_ITEM,
+      `select ${COLUMNS} from planner_items
+       where collection_id = $collectionId and ical_uid = $icalUid and series_id is null`,
+      { collectionId, icalUid },
+    );
+  }
+
+  inCollection(collectionId: string): PlannerItemRow[] {
+    return this.context.sql.all(
+      STORED_ITEM,
+      `select ${COLUMNS} from planner_items
+       where collection_id = $collectionId and ${LIVE} order by position, id`,
+      { collectionId },
+    );
+  }
+
+  assignedTo(profileId: string): PlannerItemRow[] {
+    return this.context.sql.all(
+      STORED_ITEM,
+      `select ${COLUMNS} from planner_items
+       where assignee_id = $profileId and ${LIVE} order by collection_id, position, id`,
+      { profileId },
+    );
+  }
+
   find(id: string, profileId: string): PlannerItemRow | undefined {
     return this.context.sql.get(
       STORED_ITEM,
@@ -104,17 +176,21 @@ export class PlannerItemsRepository {
     return this.context.sql.all(
       STORED_ITEM,
       `select ${COLUMNS} from planner_items
-       where profile_id = $profileId and ${LIVE}${clauses.text}
+       where ${SCOPES[filter.scope ?? 'owned']} and ${LIVE}${clauses.text}
        order by collection_id, position, id`,
       { profileId, ...clauses.parameters },
     );
   }
 
-  range(profileId: string, window: PlannerInstantWindow): PlannerItemRow[] {
+  range(
+    profileId: string,
+    window: PlannerInstantWindow,
+    scope: PlannerItemScope = 'owned',
+  ): PlannerItemRow[] {
     return this.context.sql.all(
       STORED_ITEM,
       `select ${COLUMNS} from planner_items
-       where profile_id = $profileId and ${LIVE}
+       where ${SCOPES[scope]} and ${LIVE}
          and ((rrule is null and start is not null and start < $to and coalesce("end", start) >= $from)
            or (rrule is not null and start <= $to and (series_end is null or series_end >= $from)))
        order by start, id`,
@@ -122,11 +198,15 @@ export class PlannerItemsRepository {
     );
   }
 
-  due(profileId: string, window: PlannerInstantWindow): PlannerItemRow[] {
+  due(
+    profileId: string,
+    window: PlannerInstantWindow,
+    scope: PlannerItemScope = 'owned',
+  ): PlannerItemRow[] {
     return this.context.sql.all(
       STORED_ITEM,
       `select ${COLUMNS} from planner_items
-       where profile_id = $profileId and ${LIVE} and due_at >= $from and due_at < $to
+       where ${SCOPES[scope]} and ${LIVE} and due_at >= $from and due_at < $to
        order by due_at, id`,
       { profileId, from: moment(window.from), to: moment(window.to) },
     );
@@ -265,13 +345,33 @@ export class PlannerItemsRepository {
       `select ${COLUMNS} from planner_items where ${inList('id', 'ids', ids).text}`,
       { ids: jsonText(ids) },
     );
+    const guests = this.guestProfiles(ids);
     this.occurrences.removeForItems(ids);
+    removeGuestsOfItems(this.context, ids);
     this.context.sql.run(
       'remove the planner item',
       'delete from planner_items where id = $rootId',
       { rootId },
     );
-    for (const row of rows) this.context.changed('planner_items', 'DELETE', null, row);
+    for (const row of rows) {
+      this.context.changedWithSequence('planner_items', 'DELETE', {
+        record: null,
+        oldRecord: row,
+        guests,
+      });
+    }
+  }
+
+  private guestProfiles(itemIds: readonly string[]): string[] {
+    const items = inList('item_id', 'ids', itemIds);
+    return this.context.sql
+      .all(
+        GUEST_PROFILE,
+        `select distinct profile_id from planner_guests
+         where profile_id is not null and ${items.text}`,
+        items.parameters,
+      )
+      .map((row) => row.profile_id);
   }
 
   private write(operation: string, row: PlannerItemRow): void {

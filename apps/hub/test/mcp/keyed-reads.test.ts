@@ -11,7 +11,6 @@ import { systemClock } from '../../src/clock';
 import { shotOf } from '../../src/extensions/mcp/tools/camera-live';
 import { latestSnapshot } from '../../src/extensions/mcp/tools/camera';
 import { reported } from '../../src/extensions/mcp/tools/commanding';
-import { scenes } from '../../src/extensions/mcp/tools/control';
 import { deviceDetails, foundDevices } from '../../src/extensions/mcp/tools/devices';
 import { eventsOf } from '../../src/extensions/mcp/tools/history';
 import { peopleOf } from '../../src/extensions/mcp/tools/people';
@@ -105,29 +104,6 @@ describe('a command report', () => {
       },
     );
     expect(report['commands']).toMatchObject([{ device_id: null, device: null, now: null }]);
-  });
-});
-
-describe('scene listing', () => {
-  it('names each action device from one read of the devices', () => {
-    opened.store.scenes.create({
-      name: 'Evening',
-      icon: 'moon',
-      position: 0,
-      actions: [
-        { type: 'command', deviceId: home.lamp.id, capability: 'power', value: true },
-        { type: 'command', deviceId: home.camera.id, capability: 'privacy_mode', value: true },
-        { type: 'command', deviceId: home.lamp.id, capability: 'power', value: false },
-      ],
-    });
-    const devices = vi.spyOn(opened.store.devices, 'list');
-    const listed = scenes({ store: opened.store });
-    expect(listed).toMatchObject([
-      {
-        actions: [{ device: 'Desk lamp' }, { device: 'Front door' }, { device: 'Desk lamp' }],
-      },
-    ]);
-    expect(devices).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -46,7 +46,7 @@ function parts(): ModelSpecPart[] {
 export const UPHOLSTERED_HEADBOARD_MODEL: ModelSpec = bedroomItem({
   id: 'cat.bedroom.upholstered-headboard',
   title: 'Upholstered headboard',
-  footprint: { width: 1.6, depth: THICK, height: 1.1 },
+  footprint: { width: 1.6, depth: 0.123, height: 1.1 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     height: { param: 'height', extra: 0.25, resizes: true },

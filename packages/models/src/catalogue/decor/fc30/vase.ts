@@ -52,7 +52,7 @@ const STEMS = [
 export const VASE_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.vase',
   title: 'Vase',
-  footprint: { width: 0.22, depth: 0.2, height: 0.62 },
+  footprint: { width: 0.18, depth: 0.18, height: 0.643 },
   meta: {
     names: {
       display: 'Vase',

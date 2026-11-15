@@ -11,7 +11,13 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createFakeGoogle, FAKE_CLIENT_ID, FAKE_CLIENT_SECRET } from '../fakes/google';
-import { bootServer, useBootedServer, type Booted } from '../support/booted';
+import {
+  bootServer,
+  pairPhone,
+  useBootedServer,
+  verifiedPublicUrl,
+  type Booted,
+} from '../support/booted';
 import { call, openLive, temporaryDirectory } from '../support/server';
 
 const suite = useBootedServer({ linked: false });
@@ -106,6 +112,8 @@ describe('planner wiring', () => {
     expect(day.status).toBe(200);
     expect(PLANNER_DAY.parse(day.body).date).toBe('2026-11-09');
 
+    await verifiedPublicUrl(suite.current);
+    const phone = await pairPhone(suite.current, 'owner');
     const made = await call(base, owner, {
       method: 'POST',
       path: '/api/planner/alarms',
@@ -113,7 +121,7 @@ describe('planner wiring', () => {
         time: '07:00',
         days: [1, 2, 3, 4, 5],
         label: 'Work',
-        targets: [{ kind: 'client', clientId: ready.clientId }],
+        targets: [{ kind: 'client', clientId: phone.clientId }],
       },
     });
     expect(made.status).toBe(200);
@@ -126,9 +134,9 @@ describe('planner wiring', () => {
     expect(summary).toMatchObject({ type: 'planner_summary', runningTimers: 0 });
     expect(summary).not.toMatchObject({ nextAlarmAt: null });
 
-    const rings = await call(base, owner, {
+    const rings = await call(base, phone.token, {
       method: 'GET',
-      path: `/api/planner/phone-rings?clientId=${ready.clientId}`,
+      path: `/api/planner/phone-rings?clientId=${phone.clientId}`,
     });
     expect(rings.status).toBe(200);
     expect(PLANNER_PHONE_RING_SET.parse(rings.body).rings).toEqual([

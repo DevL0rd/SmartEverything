@@ -1,20 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
+  closeSync,
   mkdirSync,
+  openSync,
   mkdtempSync,
-  readdirSync,
-  readFileSync,
   renameSync,
   rmSync,
   statSync,
-  watch,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import {
   DriveWatchers,
   systemWatch,
@@ -99,73 +99,6 @@ const lockedTree = (root: string): string => {
   return locked;
 };
 
-describe('what the watcher relies on from fs.watch on Linux', () => {
-  it('throws EACCES naming the directory when any subdirectory is unreadable', () => {
-    if (process.getuid?.() === 0) return;
-    const locked = lockedTree(join(base, 'locked'));
-    try {
-      expect(() => watch(join(base, 'locked'), { recursive: true })).toThrow(
-        expect.objectContaining({ code: 'EACCES', path: locked }),
-      );
-    } finally {
-      chmodSync(locked, 0o755);
-    }
-  });
-
-  it('never reports a queue overflow, so only a re-read after the burst knows every name', async () => {
-    const root = join(base, 'burst');
-    mkdirSync(root);
-    const names = new Set<string>();
-    const errors: Error[] = [];
-    const watcher = watch(root, { recursive: true }, (_type, name) => {
-      names.add(String(name));
-    });
-    watcher.on('error', (error) => errors.push(error));
-    const created = 30000;
-    for (let index = 0; index < created; index += 1)
-      writeFileSync(join(root, `f${String(index)}`), '');
-    await pause(200);
-    watcher.close();
-    expect(errors).toEqual([]);
-    expect(readdirSync(root).length).toBe(created);
-    expect(names.size).toBeLessThanOrEqual(created);
-  });
-
-  it('holds one inotify watch per directory for ten thousand directories', () => {
-    const root = join(base, 'big');
-    mkdirSync(root);
-    const queue = [root];
-    for (let made = 0; made < 10000;) {
-      const parent = queue.shift() ?? root;
-      for (let index = 0; index < 20 && made < 10000; index += 1, made += 1) {
-        const child = join(parent, `d${String(index)}`);
-        mkdirSync(child);
-        queue.push(child);
-      }
-    }
-    const count = (): number =>
-      readdirSync('/proc/self/fdinfo').reduce((total, fd) => {
-        try {
-          return (
-            total +
-            readFileSync(`/proc/self/fdinfo/${fd}`, 'utf8')
-              .split('\n')
-              .filter((line) => line.startsWith('inotify wd:')).length
-          );
-        } catch (cause) {
-          expect(cause).toBeInstanceOf(Error);
-          return total;
-        }
-      }, 0);
-    const before = count();
-    const started = performance.now();
-    const watcher = watch(root, { recursive: true });
-    expect(performance.now() - started).toBeLessThan(2000);
-    expect(count() - before).toBeGreaterThanOrEqual(10000);
-    watcher.close();
-  });
-});
-
 describe('the root watcher', () => {
   it('asks for a reconcile on start, then once per burst of changes five levels deep', async () => {
     const deepest = join(base, 'a/b/c/d/e');
@@ -248,6 +181,48 @@ describe('the root watcher', () => {
     }
   });
 
+  it('keeps hearing a folder that was deleted and made again under the same name', async () => {
+    const root = join(base, 'again');
+    mkdirSync(join(root, 'work/inner'), { recursive: true });
+    const pool = watchersOver(root);
+    pool.start(roots.byId(ROOT));
+    rmSync(join(root, 'work'), { recursive: true });
+    await nextScan();
+    mkdirSync(join(root, 'work/inner'), { recursive: true });
+    await nextScan();
+    await pause(SETTLE_MS * 3);
+    const seen = scans.length;
+    writeFileSync(join(root, 'work/inner/late.txt'), '1');
+    await nextScan();
+    expect(scans.length).toBeGreaterThan(seen);
+  });
+
+  it('survives a path longer than PATH_MAX and keeps hearing the rest of the tree', async () => {
+    const root = join(base, 'deep');
+    mkdirSync(root);
+    const name = 'n'.repeat(200);
+    const pool = watchersOver(root);
+    pool.start(roots.byId(ROOT));
+    let directory = root;
+    let held = openSync(root, 'r');
+    try {
+      for (let level = 0; level < 24; level += 1) {
+        mkdirSync(join(`/proc/self/fd/${String(held)}`, name));
+        const next = openSync(join(`/proc/self/fd/${String(held)}`, name), 'r');
+        closeSync(held);
+        held = next;
+        directory = join(directory, name);
+      }
+    } finally {
+      closeSync(held);
+    }
+    expect(directory.length).toBeGreaterThan(4096);
+    await pause(SETTLE_MS * 4);
+    writeFileSync(join(root, 'real.txt'), '1');
+    await nextScan();
+    expect(pool.status(ROOT)).toMatchObject({ watching: true, problem: null });
+  });
+
   it('shows an exhausted watch limit on the root and stops adding watches', () => {
     mkdirSync(join(base, 'a'));
     let attempts = 0;
@@ -287,9 +262,9 @@ describe('the root watcher', () => {
 
   it('starts again with a reconcile after a remount, and clears a shown problem', () => {
     let refuse = true;
-    const factory: WatchFactory = (directory, recursive, onEvent) => {
+    const factory: WatchFactory = (directory, onEvent) => {
       if (refuse) throw Object.assign(new Error('limit'), { code: 'ENOSPC' });
-      return systemWatch(directory, recursive, onEvent);
+      return systemWatch(directory, onEvent);
     };
     const pool = watchersOver(base, factory);
     pool.start(roots.byId(ROOT));
@@ -328,11 +303,13 @@ describe('a hub write seen again by the watcher', () => {
       store: {
         driveRoots: roots,
         driveItems: items,
+        driveInodes: new DriveInodesRepository(context),
         feed: fixture.feed,
         write: (work) => context.write(work),
         now: () => new Date(NOW),
       },
       availability: () => Promise.resolve('online'),
+      mounted: (): boolean => false,
       workerScript,
       log: testLogger(),
     };

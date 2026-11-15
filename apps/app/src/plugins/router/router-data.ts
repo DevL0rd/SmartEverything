@@ -1,8 +1,11 @@
 import {
   formatMegabits,
-  ROUTER_SNAPSHOT,
+  ROUTER_INVENTORY,
+  ROUTER_LIVE,
   SPEED_TEST_PROGRESS,
   SPEED_TEST_RESULT,
+  type RouterInventory,
+  type RouterLive,
   type RouterSnapshot,
   type SpeedTestResult,
 } from '@smarteverything/domain';
@@ -24,8 +27,67 @@ import { background } from '@smarteverything/logging';
 
 export const ROUTER_PLUGIN = 'router';
 
+const ROUTER_LIVE_STREAM = 'router.live';
+const ROUTER_INVENTORY_STREAM = 'router.snapshot';
+
+type Ready<T> = Extract<PluginStream<T>, { readonly state: 'ready' }>;
+
+const merged = new WeakMap<
+  Ready<RouterInventory>,
+  WeakMap<Ready<RouterLive>, PluginStream<RouterSnapshot>>
+>();
+
+function withTraffic(
+  clients: RouterInventory['clients'],
+  stations: RouterLive['stations'],
+): RouterInventory['clients'] {
+  const traffic = new Map(stations.map((station) => [station.mac, station.trafficBytesPerSecond]));
+  const updated = clients.map((client) => {
+    const bytes = traffic.get(client.mac) ?? null;
+    return client.trafficBytesPerSecond === bytes
+      ? client
+      : { ...client, trafficBytesPerSecond: bytes };
+  });
+  return updated.every((client, index) => client === clients[index]) ? clients : updated;
+}
+
+function routerSnapshotOf(live: RouterLive, inventory: RouterInventory): RouterSnapshot {
+  return {
+    ...live,
+    info: inventory.info,
+    radios: inventory.radios,
+    clients: withTraffic(inventory.clients, live.stations),
+    people: inventory.people,
+  };
+}
+
+export function mergeRouterStreams(
+  live: PluginStream<RouterLive>,
+  inventory: PluginStream<RouterInventory>,
+): PluginStream<RouterSnapshot> {
+  if (live.state !== 'ready') return live;
+  if (inventory.state !== 'ready') return inventory;
+  let byLive = merged.get(inventory);
+  if (byLive === undefined) {
+    byLive = new WeakMap();
+    merged.set(inventory, byLive);
+  }
+  const known = byLive.get(live);
+  if (known !== undefined) return known;
+  const stream: PluginStream<RouterSnapshot> = {
+    state: 'ready',
+    value: routerSnapshotOf(live.value, inventory.value),
+    at: live.at,
+  };
+  byLive.set(live, stream);
+  return stream;
+}
+
 export function useRouterSnapshot(): PluginStream<RouterSnapshot> {
-  return usePluginStream(ROUTER_PLUGIN, 'router.snapshot', ROUTER_SNAPSHOT);
+  return mergeRouterStreams(
+    usePluginStream(ROUTER_PLUGIN, ROUTER_LIVE_STREAM, ROUTER_LIVE),
+    usePluginStream(ROUTER_PLUGIN, ROUTER_INVENTORY_STREAM, ROUTER_INVENTORY),
+  );
 }
 
 function useSpeedTestProgress(): PluginStream<z.output<typeof SPEED_TEST_PROGRESS>> {

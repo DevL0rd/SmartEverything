@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { randomUUID } from 'expo-crypto';
-import type { HubUpdateSourceCheck } from '@smarteverything/domain';
+import type { HubUpdateSourceCheck, ReleaseSource } from '@smarteverything/domain';
 import { View } from 'react-native';
 import { Card } from '../../../components/card';
 import { Text } from '../../../components/text';
 import { clock, shortDate } from '../../../format/time';
 import type { useHubUpdateSource } from '../data/update-queries';
-import { sourceBlockedReason, SOURCE_RELATION_LABEL } from '../model/update-copy';
+import { gitSourceNote, sourceBlockedReason, SOURCE_RELATION_LABEL } from '../model/update-copy';
 import { SourceReleaseAction, type SavedReleaseChoice } from './source-release-action';
 import { SourceSaveAction } from './source-save-action';
 
@@ -50,9 +50,11 @@ function SourceSummary({ source }: { readonly source: HubUpdateSourceCheck }): R
 export function SourceCard({
   releaseInProgress,
   check,
+  hubSource,
 }: {
   readonly releaseInProgress: boolean;
   readonly check: ReturnType<typeof useHubUpdateSource>;
+  readonly hubSource: ReleaseSource | undefined;
 }): ReactNode {
   return (
     <Card title="Git source" icon="server">
@@ -73,7 +75,12 @@ export function SourceCard({
           Couldn’t check the remote branch. Check the hub’s Git source settings and try again.
         </Text>
       ) : null}
-      {check.data?.offerId === undefined ? null : (
+      {hubSource === undefined || hubSource === 'hub' ? null : (
+        <Text variant="footnote" tone="variant">
+          {gitSourceNote(hubSource)}
+        </Text>
+      )}
+      {check.data?.offerId === undefined || hubSource !== 'hub' ? null : (
         <SourceActions
           key={check.data.offerId}
           offerId={check.data.offerId}

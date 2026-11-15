@@ -1,6 +1,5 @@
 export type LogPayload = Readonly<Record<string, unknown>>;
 
-/** A marker for a value a person chose to hide. Logs are never rewritten with it. */
 export const REDACTED = '[redacted]';
 
 const CYCLIC = '[circular]';
@@ -33,5 +32,8 @@ function plain(value: unknown, path: Set<object>): unknown {
 }
 
 export function payloadOf(value: LogPayload): LogPayload {
-  return plain(value, new Set<object>()) as LogPayload;
+  const path = new Set<object>([value]);
+  return Object.fromEntries(
+    Object.entries(value).map(([name, entry]) => [name, plain(entry, path)]),
+  );
 }

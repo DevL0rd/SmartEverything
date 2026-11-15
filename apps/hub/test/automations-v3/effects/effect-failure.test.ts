@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { effectFailure } from '../../../src/automations/effect-failure';
 import { IntegrationError } from '../../../src/automations/effects/integration-error';
 import { AutomationRunCancelledError } from '../../../src/automations/effects/run-abort';
-import { UnknownSceneError } from '../../../src/automations/effects/scene';
 import { CommandNotConfirmedError } from '../../../src/automations/effects/command-confirm';
 import { EffectBudgetExceededError } from '../../../src/automations/effects/effect-budget';
 import { ToolActionError } from '../../../src/automations/effects/tool';
@@ -25,12 +24,6 @@ describe('effect failures', () => {
       class: 'Refused',
       message: 'ApiError: skipped members: lamp',
       code: 'command_refused',
-    });
-    expect(effectFailure(new UnknownSceneError('s1'))).toStrictEqual({
-      ok: false,
-      class: 'NotFound',
-      message: 'UnknownSceneError: Scene s1 does not exist in this home.',
-      code: 'unknown_scene',
     });
   });
 

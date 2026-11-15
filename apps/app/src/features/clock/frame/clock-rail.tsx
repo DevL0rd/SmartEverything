@@ -1,7 +1,7 @@
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { RailWidth } from '../../../components/frame-layout';
-import { SectionRail, type RailEntry } from '../../../components/section-rail';
+import type { RailWidth } from '../../../components/page-shell/layout';
+import { SectionRail, type RailEntry } from '../../../components/page-shell/section-rail';
 import { Text } from '../../../components/text';
 import { useVisibleLive } from '../../../design/use-visible-live';
 import { useSecondOf } from '../../../store/clock';
@@ -11,7 +11,9 @@ import {
   usePlannerSummary,
   usePlannerTimers,
   useVisibleMinuteOf,
-} from '../../planner/data';
+} from '../../planner';
+import { useSettings } from '../../../store/selectors';
+import { bedtimeSummaryOf } from '../bedtime/schedule-model';
 import type { ClockSection } from '../model/section-routes';
 import {
   alarmSummaryOf,
@@ -88,8 +90,19 @@ function WorldSummary(): ReactNode {
   return <MinuteSummary select={(now) => worldSummaryOf(clocks, now)} />;
 }
 
+function BedtimeSummary(): ReactNode {
+  const bedtime = usePlannerPreferences(ME).data?.bedtime;
+  const zone = useSettings().time_zone;
+  return (
+    <MinuteSummary
+      select={(now) => (bedtime === undefined ? null : bedtimeSummaryOf(bedtime, now, zone))}
+    />
+  );
+}
+
 const SUMMARY: Readonly<Record<ClockSection, () => ReactNode>> = {
   index: AlarmSummary,
+  bedtime: BedtimeSummary,
   timers: TimerSummary,
   stopwatch: StopwatchSummary,
   world: WorldSummary,

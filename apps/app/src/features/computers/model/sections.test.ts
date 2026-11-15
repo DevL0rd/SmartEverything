@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  AI_SECTIONS,
-  SECTIONS,
-  frameLayoutOf,
-  notAvailableOn,
-  offersSection,
-  railWidthOf,
-  type SectionDef,
-} from './sections';
+import { AI_SECTIONS, SECTIONS, NOT_AVAILABLE, offersSection, type SectionDef } from './sections';
 
 const find = (id: string): SectionDef | undefined => SECTIONS.find((section) => section.id === id);
 
@@ -37,13 +29,7 @@ describe('sections', () => {
     expect(overview !== undefined && offersSection(overview, [])).toBe(true);
   });
 
-  it('says which system a missing section is missing on', () => {
-    expect(notAvailableOn('Windows')).toBe('Not available on Windows yet');
-    expect(notAvailableOn(null)).toBe('Not available yet');
-  });
-
-  it('keeps the computer frame at a compact page to 600, an icon rail to 900 and a full rail beyond', () => {
-    expect([599, 600, 899, 900].map(frameLayoutOf)).toEqual(['compact', 'icon', 'icon', 'wide']);
-    expect([840, 960, 1440].map(railWidthOf)).toEqual(['icon', 'mid', 'wide']);
+  it('says a missing section is missing on this computer, never on its operating system', () => {
+    expect(NOT_AVAILABLE).toBe('Not available on this computer yet');
   });
 });

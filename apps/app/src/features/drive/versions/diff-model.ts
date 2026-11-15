@@ -2,14 +2,20 @@ import type { DriveItem } from '@smarteverything/domain';
 import { diffLines } from 'diff/lib/diff/line.js';
 import type { FileDiffLine } from '../../../components/diff-line';
 import { count } from '../../../format/number';
-import { contentOf, showsImageFile } from '../quick-look/quick-look-model';
+import { isTextMime, showsImageFile } from '../../files';
 
 export type CompareKind = 'image' | 'text' | 'download';
 
+function shownImage(item: Extract<DriveItem, { readonly kind: 'image' }>): boolean {
+  return showsImageFile({ kind: 'image', mime: item.mime, name: item.name });
+}
+
 export function compareKindOf(item: DriveItem): CompareKind {
-  const content = contentOf(item);
-  if (content === 'image') return 'image';
-  return content === 'text' ? 'text' : 'download';
+  if (item.kind === 'image') {
+    return item.thumb.state === 'ready' || shownImage(item) ? 'image' : 'download';
+  }
+  const text = (item.kind === 'document' || item.kind === 'other') && isTextMime(item.mime);
+  return text ? 'text' : 'download';
 }
 
 export type ImageMode = 'side' | 'swipe';
@@ -48,7 +54,7 @@ export function swipeCaption(mode: ImageMode): string {
 export type VersionLinkSize = 'file' | 'preview';
 
 export function imageSizeOf(item: DriveItem): VersionLinkSize {
-  return item.kind === 'image' && showsImageFile(item.mime) ? 'file' : 'preview';
+  return item.kind === 'image' && shownImage(item) ? 'file' : 'preview';
 }
 
 function textLines(text: string): readonly string[] {

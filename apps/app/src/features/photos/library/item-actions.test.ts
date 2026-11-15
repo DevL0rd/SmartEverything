@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
+import { driveItemFixture } from '../../drive/testing';
 import type { ToastInput } from '../../../components/toast-store';
 import type { PickedFile } from '../../../platform/pick-files';
 
@@ -21,7 +22,7 @@ const ROOT = '00000000-0000-4000-8000-0000000000b1';
 const CHAT = 'chat-1';
 
 function item(id: string, kind: 'image' | 'document', name: string): DriveItem {
-  return DRIVE_ITEM.parse({
+  return driveItemFixture(kind, {
     id,
     rootId: ROOT,
     parentId: null,
@@ -29,32 +30,14 @@ function item(id: string, kind: 'image' | 'document', name: string): DriveItem {
     name,
     modifiedAt: '2026-11-07T10:42:18.000Z',
     addedAt: '2026-11-07T10:42:18.000Z',
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e1',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
     mime: kind === 'image' ? 'image/jpeg' : 'application/pdf',
     bytes: 2048,
-    sha256: null,
     integrity: 'ok',
     thumb: { state: 'ready' },
     ...(kind === 'image'
-      ? {
-          takenAt: '2026-11-07T10:42:18.000Z',
-          width: 4032,
-          height: 3024,
-          orientation: 1,
-          camera: null,
-          exposure: null,
-          place: null,
-        }
+      ? { takenAt: '2026-11-07T10:42:18.000Z', width: 4032, height: 3024, orientation: 1 }
       : {}),
-    kind,
   });
 }
 

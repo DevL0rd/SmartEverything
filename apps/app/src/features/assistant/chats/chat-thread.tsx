@@ -5,8 +5,7 @@ import Animated, { LinearTransition } from 'react-native-reanimated';
 import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
 import { olderChatMessages } from '../../../api/ai';
 import { useHideNavigation } from '../../../app-shell/nav-visibility';
-import type { HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Banner } from '../../../components/banner';
 import { EmptyState } from '../../../components/empty-state';
 import { DURATION, EASING, useMotion } from '../../../design/motion';
@@ -21,7 +20,7 @@ import { useAssistantName } from '../data/assistant-data';
 import { useChatWorking } from '../data/chat-store';
 import { usePendingMessages } from '../data/outbox';
 import { attachFiles } from '../data/uploads';
-import { ChatHeader, ChatHistoryHeader } from './chat-header';
+import { ChatHistoryShell, ChatShell } from './chat-header';
 import { appChatHistoryOnly } from './chat-visibility';
 import { usePanelState, type PanelState } from './chat-panel-state';
 import { BrowserPane } from './browser-panel';
@@ -41,7 +40,7 @@ export interface ChatThreadProps {
   readonly chat: AiChatRow;
   readonly rows: readonly AssistantMessageRow[];
   readonly back: boolean;
-  readonly leading?: readonly HeaderAction[];
+  readonly leading?: readonly ShellAction[];
 }
 
 function ChatEmpty({ chat, name }: { readonly chat: AiChatRow; readonly name: string }): ReactNode {
@@ -107,7 +106,10 @@ function Column({
 }: Pick<ChatThreadProps, 'chat' | 'rows'> & { readonly working: boolean }): ReactNode {
   const name = useAssistantName();
   return (
-    <Screen scroll={false} maxWidth="full" banner={<ThreadBanners />}>
+    <View className="min-h-0 flex-1">
+      <View className="px-gutter">
+        <ThreadBanners />
+      </View>
       <Body chat={chat} rows={rows} name={name} />
       <ProviderPromptDock chat={chat} />
       <ProviderRouteSheet chat={chat} />
@@ -116,7 +118,7 @@ function Column({
           <ThreadFooter chat={chat} working={working} />
         </PerfProbe>
       </View>
-    </Screen>
+    </View>
   );
 }
 
@@ -167,24 +169,28 @@ function LiveThread(props: ChatThreadProps): ReactNode {
   const live = useChatWorking(chat.id);
   const waiting = usePendingMessages(chat.id).length;
   useChatTrace(chat, rows, active, live);
+  const panes = (
+    <ThreadPanes chat={chat} rows={rows} panel={panel} working={live} active={active} />
+  );
   return (
     <EngineAccessoryProvider value={control}>
-      <View className="min-h-0 flex-1">
-        {active ? (
-          <ChatHeader
-            chat={chat}
-            rows={rows}
-            working={live}
-            waiting={waiting}
-            back={back}
-            leading={leading}
-            panel={panel}
-            ref={browserToggleRef}
-          />
-        ) : null}
-        {back && active ? <HiddenNavigation /> : null}
-        <ThreadPanes chat={chat} rows={rows} panel={panel} working={live} active={active} />
-      </View>
+      {active ? (
+        <ChatShell
+          chat={chat}
+          rows={rows}
+          working={live}
+          waiting={waiting}
+          back={back}
+          leading={leading}
+          panel={panel}
+          ref={browserToggleRef}
+        >
+          {back ? <HiddenNavigation /> : null}
+          {panes}
+        </ChatShell>
+      ) : (
+        <View className="min-h-0 flex-1">{panes}</View>
+      )}
       {active ? <RoutedChatRename chat={chat} /> : null}
     </EngineAccessoryProvider>
   );
@@ -193,24 +199,22 @@ function LiveThread(props: ChatThreadProps): ReactNode {
 function HistoryThread({ chat, rows, back, leading = [] }: ChatThreadProps): ReactNode {
   const name = useAssistantName();
   return (
-    <>
-      <ChatHistoryHeader title={chat.title} back={back} leading={leading} />
+    <ChatHistoryShell
+      title={chat.title}
+      back={back}
+      leading={leading}
+      banner={
+        <Banner
+          tone="info"
+          title="Chat history"
+          body="You can read this chat. Start a new chat to send a message."
+          wrapBody
+        />
+      }
+    >
       {back ? <HiddenNavigation /> : null}
-      <Screen
-        scroll={false}
-        maxWidth="full"
-        banner={
-          <Banner
-            tone="info"
-            title="Chat history"
-            body="You can read this chat. Start a new chat to send a message."
-            wrapBody
-          />
-        }
-      >
-        <Body chat={chat} rows={rows} name={name} />
-      </Screen>
-    </>
+      <Body chat={chat} rows={rows} name={name} />
+    </ChatHistoryShell>
   );
 }
 

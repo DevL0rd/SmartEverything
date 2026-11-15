@@ -3,8 +3,12 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
 import { Sheet } from '../../../components/sheet';
-import { usePlannerAlarms, usePlannerPreferences, type PlannerPerson } from '../../planner/data';
-import { QueryBody } from '../../planner/frame/query-body';
+import {
+  usePlannerAlarms,
+  usePlannerPreferences,
+  type PlannerPerson,
+  QueryBody,
+} from '../../planner';
 import { AlarmBody, AlarmCreateBar, AlarmSkip, useAlarmScreen } from './alarm-body';
 
 export interface AlarmEditorProps {
@@ -44,7 +48,7 @@ function OpenAlarmEditor(props: OpenProps): ReactNode {
         <AlarmBody
           target={target}
           screen={screen}
-          defaultSceneId={props.prefs.clock.wake_scene_id}
+          defaultAutomationId={props.prefs.clock.wake_automation_id}
         />
       </View>
     </Sheet>

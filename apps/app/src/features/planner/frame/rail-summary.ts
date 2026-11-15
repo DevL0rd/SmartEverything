@@ -63,3 +63,12 @@ export function insightsSummaryOf(stats: PlannerStats | null): string | null {
 export function plannerSubtitleOf(date: string, summary: string | null): string {
   return summary === null ? date : `${date} · ${summary}`;
 }
+
+export function bookingSummaryOf(enabled: number, ahead: number): string | null {
+  if (enabled === 0 && ahead === 0) return null;
+  const parts = [
+    ...(enabled > 0 ? [`${String(enabled)} on`] : []),
+    ...(ahead > 0 ? [`${String(ahead)} booked`] : []),
+  ];
+  return parts.join(' · ');
+}

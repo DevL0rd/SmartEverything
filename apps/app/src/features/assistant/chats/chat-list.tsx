@@ -1,11 +1,14 @@
 import type { ReactElement, ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, type TextInput } from 'react-native';
+import type { TextInput } from 'react-native';
 import { useIsFocused, useLocalSearchParams, router } from 'expo-router';
-import { Ambient } from '../../../components/ambient';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { Banner } from '../../../components/banner';
 import { KeyboardList } from '../../../components/keyboard-list';
-import { SearchField } from '../../../components/search-field';
+import type { PageSettingsLink } from '../../../components/page-settings-button';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import { useIdiom } from '../../../design/platform';
 import { useAreaStatus } from '../data/area-status';
 import type { AreaStatus } from '../model/area-status';
 import type { ChatEntry } from './chat-entry';
@@ -14,13 +17,15 @@ import { FilterBar } from './filter-bar';
 import { GroupHeading } from './group-heading';
 import { HitRow } from './hit-row';
 import { ListContent } from './list-groups';
-import { ListHeader, type ListHeaderKind } from './list-header';
-import { filterOfParam, type ChatFilter, type FilterCounts } from './list-filters';
+import { toggleChatList } from './chat-list-toggle';
+import { filterOfParam, type ChatFilter } from './list-filters';
 import { keyboardItemsOf, needingCount, runningCount, type ListItem } from './list-items';
 import { useListModel, type ListModel } from './use-list-model';
 
+export type ChatListKind = 'screen' | 'pane' | 'slide-over';
+
 export interface ChatListProps {
-  readonly kind: ListHeaderKind;
+  readonly kind: ChatListKind;
   readonly selected: string | null;
   readonly focusSearch?: boolean;
   readonly onOpen: (chatId: string, messageId?: string) => void;
@@ -39,14 +44,6 @@ function useFilterParam(apply: (filter: ChatFilter) => void): void {
       router.setParams({ filter: undefined });
     }
   }, [focused, filter, apply]);
-}
-
-function OfflineBanner(): ReactNode {
-  return (
-    <View className="px-gutter pb-2">
-      <Banner tone="info" title="Offline · showing saved chats" />
-    </View>
-  );
 }
 
 interface RowContext {
@@ -91,40 +88,6 @@ function renderRow(item: ListItem, context: RowContext): ReactElement {
         />
       );
   }
-}
-
-function Controls({
-  query,
-  filter,
-  counts,
-  inputRef,
-  focusSearch,
-  onQuery,
-  onFilter,
-}: {
-  readonly query: string;
-  readonly filter: ChatFilter;
-  readonly counts: FilterCounts;
-  readonly inputRef: RefObject<TextInput | null>;
-  readonly focusSearch: boolean;
-  readonly onQuery: (query: string) => void;
-  readonly onFilter: (filter: ChatFilter) => void;
-}): ReactNode {
-  return (
-    <View className="gap-1 pb-1">
-      <View className="px-gutter">
-        <SearchField
-          value={query}
-          inputRef={inputRef}
-          onChange={onQuery}
-          placeholder="Search chats and messages"
-          variant="field"
-          focusOnMount={focusSearch}
-        />
-      </View>
-      <FilterBar filter={filter} counts={counts} onChange={onFilter} />
-    </View>
-  );
 }
 
 function useCollapsedAgents(): {
@@ -246,51 +209,57 @@ function useListView(props: ChatListProps): ListView {
   };
 }
 
+function listActionsOf(kind: ChatListKind): readonly ShellAction[] {
+  if (kind !== 'pane') return [];
+  return [{ icon: 'panelLeft', label: 'Hide chat list', shortcut: '⌘\\', onPress: toggleChatList }];
+}
+
+function useListSettings(kind: ChatListKind): PageSettingsLink | undefined {
+  const touch = useIdiom() === 'touch';
+  return kind === 'screen' || touch ? mainPageSettings('assistant') : undefined;
+}
+
 export function ChatList(props: ChatListProps): ReactNode {
   const view = useListView(props);
-  const [headerHeight, setHeaderHeight] = useState(0);
-  const [controlsHeight, setControlsHeight] = useState(0);
+  const settings = useListSettings(props.kind);
   const { model } = view;
   const bare = !view.loading && model.total === 0 && view.filter === 'all' && view.query === '';
   return (
-    <View className="relative min-h-0 flex-1 bg-bg">
-      <Ambient height={headerHeight + controlsHeight} />
-      <View
-        onLayout={(event) => {
-          setHeaderHeight(event.nativeEvent.layout.height);
-        }}
-      >
-        <ListHeader kind={props.kind} />
-        {view.area.kind === 'offline-cached' ? <OfflineBanner /> : null}
-      </View>
+    <PageShell
+      variant="pane"
+      title="Chats"
+      back={false}
+      actions={listActionsOf(props.kind)}
+      {...(settings === undefined ? {} : { settings })}
+      {...(bare
+        ? {}
+        : {
+            search: {
+              value: view.query,
+              onChange: view.setQuery,
+              placeholder: 'Search chats and messages',
+              inputRef: view.searchInput,
+              focusOnMount: props.focusSearch === true,
+            },
+            toolbar: (
+              <FilterBar filter={view.filter} counts={model.counts} onChange={view.setFilter} />
+            ),
+          })}
+      {...(view.area.kind === 'offline-cached'
+        ? { banner: <Banner tone="info" title="Offline · showing saved chats" /> }
+        : {})}
+    >
       <KeyboardList
         items={view.keys}
         onActivate={view.activate}
         searchInput={view.searchInput}
         label="Chats"
-        className="min-h-0 flex-1"
+        className="min-h-0 flex-1 bg-bg"
         {...(view.query === '' ? {} : { onEscape: view.clearSearch })}
       >
-        <View
-          onLayout={(event) => {
-            setControlsHeight(event.nativeEvent.layout.height);
-          }}
-        >
-          {bare ? null : (
-            <Controls
-              query={view.query}
-              filter={view.filter}
-              counts={model.counts}
-              inputRef={view.searchInput}
-              focusSearch={props.focusSearch === true}
-              onQuery={view.setQuery}
-              onFilter={view.setFilter}
-            />
-          )}
-          <GroupHeading count={model.chatCount} onNewChat={props.onNewChat} />
-        </View>
+        <GroupHeading count={model.chatCount} onNewChat={props.onNewChat} />
         <ListContent view={view} list={props} />
       </KeyboardList>
-    </View>
+    </PageShell>
   );
 }

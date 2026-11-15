@@ -43,6 +43,7 @@ export interface DeviceSection {
   readonly title: string;
   readonly icon: IconName;
   readonly scrolls?: boolean;
+  readonly search?: { readonly placeholder: string };
   readonly render: (device: Device, beside: boolean) => ReactNode;
 }
 
@@ -107,7 +108,7 @@ const SECTIONS: readonly BuiltinSection[] = [
     key: 'controls',
     title: 'All controls',
     icon: 'customize',
-    render: (device, beside) => <ControlsSection device={device} beside={beside} />,
+    render: (device) => <ControlsSection device={device} />,
   },
   {
     key: BUTTONS_SECTION,

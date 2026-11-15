@@ -19,6 +19,7 @@ export interface DateNavProps {
   readonly range: DateRange;
   readonly onChange: (date: Date) => void;
   readonly max?: Date;
+  readonly withYear?: boolean;
 }
 
 const CURRENT: Readonly<Record<Exclude<DateRange, 'day'>, string>> = {
@@ -45,9 +46,13 @@ function samePeriod(a: Date, b: Date, range: DateRange): boolean {
   return startOf(a.getTime(), range).getTime() === startOf(b.getTime(), range).getTime();
 }
 
-function chipLabel(value: Date, range: DateRange, today: Date): string {
+function chipLabel(value: Date, range: DateRange, today: Date, withYear: boolean): string {
   if (range === 'day') {
-    return dayLabel(value, today.getTime());
+    return withYear
+      ? dateFormat({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(
+          value,
+        )
+      : dayLabel(value, today.getTime());
   }
   if (samePeriod(value, today, range)) {
     return CURRENT[range];
@@ -98,6 +103,7 @@ interface DayCellProps {
 }
 
 function DayCell({ day, selected, today, disabled, onPick }: DayCellProps): ReactNode {
+  const pointer = useIdiom() === 'pointer';
   return (
     <Interactive
       label={dateFormat({ weekday: 'long', day: 'numeric', month: 'long' }).format(day)}
@@ -107,7 +113,8 @@ function DayCell({ day, selected, today, disabled, onPick }: DayCellProps): Reac
         onPick(day);
       }}
       className={cn(
-        'size-10 items-center justify-center rounded-full',
+        'items-center justify-center rounded-full',
+        pointer ? 'size-10' : 'size-11',
         selected && 'bg-primary',
         today && !selected && 'border border-primary',
       )}
@@ -251,14 +258,15 @@ function DateChip({
   );
 }
 
-export function DateNav({ value, range, onChange, max }: DateNavProps): ReactNode {
+export function DateNav(props: DateNavProps): ReactNode {
+  const { value, range, onChange, max } = props;
   const pointer = useIdiom() === 'pointer';
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState(() => new Date());
   const previous = shifted(value, range, -1);
   const next = shifted(value, range, 1);
-  const label = chipLabel(value, range, today);
+  const label = chipLabel(value, range, today, props.withYear === true);
   const go = (date: Date) => (): void => {
     onChange(date);
   };

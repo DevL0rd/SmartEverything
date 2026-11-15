@@ -75,7 +75,7 @@ export const PET_CRATE_MODEL: ModelSpec = catalogueItem({
   id: 'cat.kids-pets.pet-crate',
   title: 'Pet crate',
   category: 'kids-pets',
-  footprint: { width: 0.9, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.914, depth: 0.602, height: 0.6978 },
   meta: {
     names: {
       display: 'Pet crate',

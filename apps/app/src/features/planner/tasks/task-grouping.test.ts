@@ -1,10 +1,8 @@
 import {
-  PLANNER_COLLECTION_ROW,
   PLANNER_DAY,
   PLANNER_ITEM_ROW,
   PLANNER_OCCURRENCE_ROW,
   PLANNER_STATS,
-  type PlannerCollectionRow,
   type PlannerDay,
   type PlannerItemRow,
   type PlannerOccurrenceRow,
@@ -13,7 +11,6 @@ import {
 import { describe, expect, it } from 'vitest';
 import { clock, shiftDay, shortDate, startOfDayKey, weekdayShort } from '../../../format/time';
 import {
-  ALL_OPEN,
   dueLabelOf,
   isOverdue,
   listTrendOf,
@@ -21,8 +18,6 @@ import {
   smartChipsOf,
   smartCountOf,
   taskEntriesOf,
-  taskGroupsOf,
-  taskListRowsOf,
   todayKeysOf,
   type TaskEntry,
   type TaskFilter,
@@ -74,6 +69,10 @@ function task(title: string, extra: Partial<PlannerItemRow> = {}): PlannerItemRo
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     created_at: STAMP,
     updated_at: STAMP,
@@ -87,24 +86,6 @@ function habit(title: string): PlannerItemRow {
     rrule: 'FREQ=DAILY',
     start_local: '2026-11-01T07:30:00',
     time_zone: ZONE,
-  });
-}
-
-function list(listId: string, name: string, position: number): PlannerCollectionRow {
-  return PLANNER_COLLECTION_ROW.parse({
-    id: listId,
-    profile_id: PROFILE,
-    kind: 'list',
-    name,
-    colour: 'home',
-    icon: 'house',
-    position,
-    visible: true,
-    default_reminders: [],
-    source: 'local',
-    google: null,
-    created_at: STAMP,
-    updated_at: STAMP,
   });
 }
 
@@ -258,47 +239,6 @@ describe('repeating tasks', () => {
     const [entry] = entries;
     expect(entry?.occurrenceKey).toBeNull();
     expect(entry === undefined ? '' : dueLabelOf(entry, TODAY)).toBe('Not due today');
-  });
-});
-
-describe('taskGroupsOf and taskListRowsOf', () => {
-  const collections = [list(WORK, 'Work', 1), list(HOME, 'Home', 0)];
-  const a = task('Later at home', { due_date: shiftDay(TODAY, 2) });
-  const b = task('Urgent at home', { due_date: TODAY, priority: 1 });
-  const c = task('Low at home', { due_date: TODAY, priority: 3 });
-  const d = task('Work thing', { collection_id: WORK });
-
-  it('groups by list in list order and sorts by due date then priority', () => {
-    const entries = taskEntriesOf({ items: [a, b, c, d], occurrences: [], day: undefined });
-    const groups = taskGroupsOf({ entries, filter: ALL_OPEN, collections, today: TODAY });
-    expect(groups.map((group) => group.collection?.name)).toEqual(['Home', 'Work']);
-    expect(groups[0]?.entries.map((entry) => entry.item.title)).toEqual([
-      'Urgent at home',
-      'Low at home',
-      'Later at home',
-    ]);
-    const rows = taskListRowsOf(groups);
-    expect(rows.map((row) => (row.kind === 'head' ? 'head' : row.edge))).toEqual([
-      'head',
-      'first',
-      'middle',
-      'last',
-      'head',
-      'only',
-    ]);
-  });
-
-  it('shows the latest finished task first in Completed', () => {
-    const old = task('Old', { status: 'done', updated_at: '2026-11-02T08:00:00.000Z' });
-    const fresh = task('Fresh', { status: 'done', updated_at: '2026-11-06T08:00:00.000Z' });
-    const entries = taskEntriesOf({ items: [old, fresh], occurrences: [], day: undefined });
-    const [group] = taskGroupsOf({
-      entries,
-      filter: smart('completed'),
-      collections,
-      today: TODAY,
-    });
-    expect(group?.entries.map((entry) => entry.item.title)).toEqual(['Fresh', 'Old']);
   });
 });
 

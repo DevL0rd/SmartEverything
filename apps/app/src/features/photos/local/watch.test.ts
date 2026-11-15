@@ -13,6 +13,7 @@ const ITEM: LocalMediaItem = {
   height: 480,
   durationMs: null,
   video: false,
+  folder: null,
 };
 
 interface SourceRig {

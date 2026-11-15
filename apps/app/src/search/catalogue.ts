@@ -35,7 +35,7 @@ import {
 import { deviceSources, type DeviceControl } from './device-entries';
 import { useCachedProviderChats } from './cached-provider-chats';
 import { synonymsOf } from './synonyms';
-import { sameSearchDevices, sameSearchStreams } from './table-equality';
+import { sameSearchAutomations, sameSearchDevices, sameSearchStreams } from './table-equality';
 
 export interface SearchCatalogue {
   readonly index: SearchIndex;
@@ -54,7 +54,6 @@ const GROUP_ICONS: Readonly<Record<SearchEntry['group'], IconName>> = {
   device: 'cpu',
   room: 'grid',
   setting: 'settings',
-  scene: 'sparkles',
   page: 'activity',
   automation: 'automations',
 };
@@ -69,9 +68,6 @@ function routineLink(entry: SearchEntry): AppHref {
     return href.room(entry.open.roomId);
   }
   const target = entry.run;
-  if (target?.kind === 'scene') {
-    return href.scene(target.sceneId);
-  }
   return target?.kind === 'automation' ? href.automation(target.automationId) : href.home();
 }
 
@@ -189,7 +185,6 @@ function catalogueFor(tables: SearchTables, env: SettingEnv): SearchCatalogue {
     tables.devices,
     tables.rooms,
     tables.deviceGroups,
-    tables.scenes,
     tables.automations,
     tables.automationValues,
     tables.automationPluginKinds,
@@ -263,7 +258,6 @@ function searchTablesOf(state: StoreState): SearchTables {
     devices: t.devices,
     rooms: t.rooms,
     deviceGroups: t.device_groups,
-    scenes: t.scenes,
     automations: t.automations,
     automationValues: t.automation_values,
     automationPluginKinds: t.automation_plugin_kinds,
@@ -287,7 +281,7 @@ function samePlugins(left: SearchTables, right: SearchTables): boolean {
 
 function sameAutomationTables(left: SearchTables, right: SearchTables): boolean {
   return (
-    left.automations === right.automations &&
+    sameSearchAutomations(left.automations, right.automations) &&
     left.automationValues === right.automationValues &&
     left.automationPluginKinds === right.automationPluginKinds &&
     left.scheduled === right.scheduled
@@ -299,7 +293,6 @@ function sameTables(left: SearchTables, right: SearchTables): boolean {
     sameSearchDevices(left.devices, right.devices) &&
     left.rooms === right.rooms &&
     left.deviceGroups === right.deviceGroups &&
-    left.scenes === right.scenes &&
     sameAutomationTables(left, right) &&
     samePlugins(left, right) &&
     sameChats(left.chats, right.chats) &&

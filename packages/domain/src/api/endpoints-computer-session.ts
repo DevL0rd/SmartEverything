@@ -2,7 +2,14 @@ import { z } from 'zod';
 import { APP_CLOSED, COMPUTER_APPS } from '../node/computer-apps';
 import { CAPTURE_TARGETS, COMPUTER_CAPTURE } from '../node/computer-capture';
 import { COMPUTER_INPUT } from '../node/computer-input';
-import { FILE_CONTENT, FILE_LIST, FILE_PATH, LIST_CURSOR } from '../node/computer-files';
+import {
+  FILE_CONTENT,
+  FILE_LIST,
+  FILE_PATH,
+  FILE_SORT_DIRECTIONS,
+  FILE_SORT_FIELDS,
+  LIST_CURSOR,
+} from '../node/computer-files';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, NOTHING } from './primitives';
 
@@ -48,9 +55,25 @@ export const COMPUTER_SESSION_ENDPOINTS = {
     path: '/api/computers/:deviceId/files',
     access: 'member',
     summary:
-      'Files and folders in any folder the computer’s user can read (the home folder when no path), 500 at a time: pass next from the answer as cursor for the following page',
+      'Files and folders in any folder the computer’s user can read (the home folder when no path), 500 at a time, folders first and sorted by name, size or modified time in either direction: pass next from the answer as cursor for the following page',
     params: COMPUTER_PARAMS,
-    query: z.strictObject({ path: FILE_PATH.optional(), cursor: LIST_CURSOR }),
+    query: z
+      .strictObject({
+        path: FILE_PATH.optional(),
+        cursor: LIST_CURSOR,
+        sort: z
+          .enum(FILE_SORT_FIELDS)
+          .describe('Field to sort files by; name it together with direction')
+          .optional(),
+        direction: z
+          .enum(FILE_SORT_DIRECTIONS)
+          .describe('Sort direction, asc or desc; name it together with sort')
+          .optional(),
+      })
+      .refine((query) => (query.sort === undefined) === (query.direction === undefined), {
+        message: 'name both a sort field and a direction, or neither',
+        path: ['direction'],
+      }),
     body: NO_BODY,
     response: FILE_LIST,
   }),

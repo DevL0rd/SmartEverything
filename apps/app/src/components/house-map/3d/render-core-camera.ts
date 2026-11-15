@@ -105,7 +105,13 @@ export class CameraRig {
 
   panZoom({ dx, dy, factor, centre }: PanZoom): void {
     this.moved = true;
-    const panned = orbitPan(this.orbit, { dx, dy }, { viewport: this.view, frame: this.frame });
+    const step = {
+      dx,
+      dy,
+      from: this.ndc({ x: centre.x - dx, y: centre.y - dy }),
+      to: this.ndc(centre),
+    };
+    const panned = orbitPan(this.orbit, step, { view: this.view, frame: this.frame });
     this.move(this.zoomAt(panned, factor, centre));
   }
 

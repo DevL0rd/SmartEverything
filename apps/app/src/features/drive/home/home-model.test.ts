@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_RECENT_ENTRY, type DriveRecentEntry } from '@smarteverything/domain';
 import { bytes, percent } from '../../../format/number';
 import { MEMBER_ID, OTHER_ROOT_ID, ROOT_ID, personalRootRow, rootRow } from '../data/fixtures';
 import { OFFLINE_TITLE, driveBannerOf, mayRescanOf } from './banner-model';
@@ -13,16 +12,9 @@ import {
   rootKindsOf,
   sharedDriveHeroOf,
 } from './hero-model';
-import {
-  OUTSIDE_CAPTION,
-  entriesInDrive,
-  recentCaptionOf,
-  type RecentNames,
-} from './quick-access-model';
 import { driveUseOf } from './use-drive-use';
 
 const GB = 1_000_000_000;
-const AT = '2026-11-07T06:00:00.000Z';
 const KINDS = [
   { kind: 'image', items: 4, bytes: 3 * GB },
   { kind: 'video', items: 1, bytes: 5 * GB },
@@ -162,65 +154,5 @@ describe('drive banner', () => {
     expect(mayRescanOf(HOME, MEMBER_ID, false)).toBe(false);
     expect(mayRescanOf(HOME, MEMBER_ID, true)).toBe(true);
     expect(mayRescanOf(null, MEMBER_ID, true)).toBe(false);
-  });
-});
-
-describe('quick access', () => {
-  const NOW = Date.parse('2026-11-07T10:00:00.000Z');
-  const SAM = 'b1b2c3d4-0000-4000-8000-000000000001';
-  const NAMES: RecentNames = { me: MEMBER_ID, people: { [SAM]: 'Sam' }, devices: {} };
-
-  function entry(
-    patch: Readonly<Record<string, unknown>>,
-    rootId = ROOT_ID,
-    id = SAM,
-  ): DriveRecentEntry {
-    const opened = patch['kind'] === 'opened';
-    return DRIVE_RECENT_ENTRY.parse({
-      kind: 'changed',
-      ...(opened ? {} : { actorProfileId: MEMBER_ID, deviceId: null, via: 'app' }),
-      at: '2026-11-07T07:00:00.000Z',
-      item: {
-        id,
-        rootId,
-        parentId: null,
-        relPath: 'plan.pdf',
-        name: 'plan.pdf',
-        modifiedAt: AT,
-        addedAt: AT,
-        openedAt: null,
-        starred: false,
-        shared: false,
-        rev: 1,
-        etag: 'e1',
-        outside: false,
-        addedByProfileId: null,
-        remoteId: null,
-        remoteRev: null,
-        mime: 'application/pdf',
-        bytes: 10,
-        sha256: null,
-        integrity: 'unknown',
-        thumb: { state: 'none' },
-        kind: 'document',
-      },
-      ...patch,
-    });
-  }
-
-  it('says what happened, when and by whom', () => {
-    expect(recentCaptionOf(entry({}), NAMES, NOW)).toBe('Edited 3 h ago by you');
-    expect(recentCaptionOf(entry({ kind: 'added', actorProfileId: SAM }), NAMES, NOW)).toBe(
-      'Added 3 h ago by Sam',
-    );
-    expect(recentCaptionOf(entry({ kind: 'opened' }), NAMES, NOW)).toBe('Opened 3 h ago');
-    expect(recentCaptionOf(entry({ via: 'outside' }), NAMES, NOW)).toBe(
-      `${OUTSIDE_CAPTION} · 3 h ago`,
-    );
-  });
-
-  it('keeps one card per file of this drive', () => {
-    const entries = [entry({}), entry({ kind: 'opened' }), entry({}, OTHER_ROOT_ID, ROOT_ID)];
-    expect(entriesInDrive(entries, ROOT_ID)).toHaveLength(1);
   });
 });

@@ -15,6 +15,7 @@ import { useBackupStatus } from '../backup/model/status';
 import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
 import { NO_CHAT_HINT } from '../model/ask-actions';
 import type { LocalMediaItem } from '../local/types';
+import { NOTHING_PICKED } from './library-selection';
 import { localFileOf } from './local-ask';
 import { pickedLocalItems, pickedLocalText } from './local-scope';
 
@@ -95,7 +96,7 @@ export function DeviceSelection({ controls, items }: DeviceSelectionProps): Reac
         className="min-w-0 flex-1 tabular-nums"
         numberOfLines={1}
       >
-        {pickedLocalText(picked.length)}
+        {picked.length === 0 ? NOTHING_PICKED : pickedLocalText(picked.length)}
       </Text>
       {picked.length < items.length ? (
         <Button label="Select all" variant="text" onPress={controls.all} />

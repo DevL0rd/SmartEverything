@@ -6,6 +6,7 @@ import { loadRelease } from '../apps/hub/src/updates/release-folder.ts';
 import { desktopWebRuntime } from '../apps/desktop/packaging/web-runtime.ts';
 import { requireBuildDisk } from './build-disk.ts';
 import { applyBuildHost, pnpmProgram, requireBuildHost } from './build-host.ts';
+import { requireHubSource } from './hub-build-gate.ts';
 import { runInBuildScope } from './build-scope.ts';
 import { PublishOutputError, runCommand } from './publish-app-update-shared.ts';
 import { webExportCommand, WEB_EXPORT } from './publish-app-update-desktop.ts';
@@ -134,6 +135,9 @@ async function main(): Promise<void> {
     return;
   }
   const root = process.cwd();
+  requireHubSource(layout, 'desktop', (error) => {
+    failUnfinishedJob(storeOf(layout, command.input.runId), command.input.runId, error.message);
+  });
   const status = runInBuildScope('desktop', layout, (error) => {
     failUnfinishedJob(storeOf(layout, command.input.runId), command.input.runId, error.message);
   });

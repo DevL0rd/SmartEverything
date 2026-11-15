@@ -9,7 +9,7 @@ import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { DriveStacksRepository } from '../../src/store/repositories/drive-stacks';
-import { insertDriveRow, recordLibraryRow } from './photo-rows';
+import { insertDriveRow, recordLibraryRow, insertInode } from './photo-rows';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
@@ -95,6 +95,7 @@ function seed(item: Seed): string {
   insert('drive_items', {
     id,
     root_id: placed(item.root).rootId,
+    inode_id: insertInode(database, placed(item.root).rootId),
     rel_path: `${String(item.n)}.bin`,
     name: `${String(item.n)}.bin`,
     kind,

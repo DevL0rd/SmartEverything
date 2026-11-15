@@ -88,7 +88,7 @@ export const DUMBBELL_RACK_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.dumbbell-rack',
   title: 'Dumbbell rack',
   category: 'fitness-hobby',
-  footprint: { width: 0.83, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.84, depth: DEPTH, height: HEIGHT },
   view: { yaw: 30, pitch: 16, fov: 28, padding: 0.08 },
   meta: {
     names: {

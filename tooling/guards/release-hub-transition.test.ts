@@ -32,7 +32,12 @@ import {
   SERVICE_FILES,
   type ReleaseTarget,
 } from '../release-hub-files.ts';
-import { releasePlan, rollbackWith, type ReleaseOptions } from '../release-hub.ts';
+import {
+  ReleaseAwaitingDecision,
+  releasePlan,
+  rollbackWith,
+  type ReleaseOptions,
+} from '../release-hub.ts';
 import {
   legacyLayoutOf,
   type Transition,
@@ -318,7 +323,7 @@ describe('rolling back across v1', () => {
     expect(existsSync(join(environment.bootstrap, LOCATION_FILE))).toBe(true);
   });
 
-  it('puts the old unit back and removes the pointer when the hub never migrated', async () => {
+  it('keeps the new unit after a failed release and puts the old one back on the ordered rollback', async () => {
     const units: Units = {
       ...fakeUnits(() => legacy.system.logs.service),
       restart: () => {
@@ -331,7 +336,18 @@ describe('rolling back across v1', () => {
     });
     await plan.find((step) => step.title.startsWith('back up'))?.run();
     await plan[3]?.run();
-    await expect(plan[4]?.run()).rejects.toThrow('preparation refused');
+    const failure = await plan[4]?.run().then(
+      () => null,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(ReleaseAwaitingDecision);
+    if (!(failure instanceof ReleaseAwaitingDecision)) return;
+    expect(failure.message).toContain('preparation refused');
+    expect(events).toEqual(['stop', 'reload']);
+    expect(
+      readFileSync(join(environment.unitDirectory, 'smarteverything.service'), 'utf8'),
+    ).not.toBe(OLD_UNIT);
+    await rollback(failure.backup, failure.rollback.includes('--with-database'));
     expect(events).toEqual(['stop', 'reload', 'stop', 'reload', 'start']);
     expect(readFileSync(join(environment.unitDirectory, 'smarteverything.service'), 'utf8')).toBe(
       OLD_UNIT,

@@ -33,7 +33,7 @@ export const VIDEO_DOORBELL_MODEL: ModelSpec = {
   title: 'Video doorbell',
   category: 'security',
   family: 'doorbell',
-  footprint: { width: W, depth: D + PLATE, height: H },
+  footprint: { width: 0.047, depth: 0.0315, height: 0.131 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

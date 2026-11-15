@@ -11,6 +11,7 @@ const ITEM: LocalMediaItem = {
   height: 3000,
   durationMs: null,
   video: false,
+  folder: null,
 };
 
 function stateOf(patch: Partial<LocalLibraryState>): LocalLibraryState {

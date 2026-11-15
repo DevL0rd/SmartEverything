@@ -303,7 +303,9 @@ describe('Gemini Live renewal after a broken session', () => {
     drop(call.sockets[0] ?? fail(), 1007, 'Request contains an invalid argument.');
     await call.advance(0);
     const catchUp = call.sockets[1]?.sent.find((line) => line.startsWith('text ')) ?? '';
-    expect(catchUp).toContain('sight_look returned a result too large to repeat here');
+    expect(catchUp).toContain(
+      'sight_look returned a result too large to repeat here. Carry on with what they asked, and call it again only when you need its data to do that.',
+    );
     expect(catchUp).not.toContain('xxxx');
     expect(catchUp.length).toBeLessThan(catchUpCharacters(null));
     expect(payloadOf('voice.catch_up_left_out')).toMatchObject({

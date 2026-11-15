@@ -5,7 +5,6 @@ import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useColour } from '../../../design/colour';
 import { percent } from '../../../format/number';
-import { sizeStyle } from './style';
 import { pressureSharesLabel, type PressureShare } from '../model/stats-model';
 
 const HEIGHT = 18;
@@ -73,8 +72,7 @@ export function ShareBar({ shares }: { readonly shares: readonly PressureShare[]
       <View
         aria-hidden
         onLayout={onLayout}
-        className="overflow-hidden rounded-full"
-        style={sizeStyle(width, HEIGHT)}
+        className="h-4.5 self-stretch overflow-hidden rounded-full"
       >
         {width > 0 ? (
           <Svg width={width} height={HEIGHT}>

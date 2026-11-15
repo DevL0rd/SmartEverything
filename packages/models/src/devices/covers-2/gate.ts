@@ -40,7 +40,7 @@ export const GATE_MODEL: ModelSpec = {
   title: 'Sliding gate',
   category: 'cover',
   family: 'cover',
-  footprint: { width: 4.8, depth: POST, height: POST_H + 0.06 },
+  footprint: { width: 4.83, depth: 0.53, height: POST_H + 0.06 },
   framing: {
     tile: { ...HOUSE, padding: 0.06, focus: 'leaf' },
     card: HOUSE,

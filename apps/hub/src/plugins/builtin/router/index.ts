@@ -10,7 +10,8 @@ import {
   ROUTER_AUTOMATION,
 } from './automation';
 import { ROUTER_MODEL_MATCH, ROUTER_MODELS } from './models';
-import { SNAPSHOT_STREAM, SPEED_TEST_STREAM, startRouter } from './runtime';
+import { SPEED_TEST_STREAM, startRouter } from './runtime';
+import { LIVE_STREAM, SNAPSHOT_STREAM } from './streams';
 import { ROUTER_SETTINGS, ROUTER_SETTINGS_FORM } from './settings';
 
 const ROUTER_MANIFEST: PluginManifestInput = {
@@ -30,11 +31,18 @@ const ROUTER_MANIFEST: PluginManifestInput = {
         history: 0,
         live: true,
       },
+      {
+        stream: LIVE_STREAM,
+        title: 'Router live',
+        schema: { type: 'object' },
+        history: 0,
+        live: true,
+      },
       { stream: SPEED_TEST_STREAM, title: 'Speed test', schema: { type: 'object' }, history: 0 },
     ],
     events: [CLIENT_JOINED, CLIENT_LEFT, PERSON_ARRIVED, PERSON_LEFT],
     widgets: [
-      figureWidget('router-internet', 'Internet', 'globe', SNAPSHOT_STREAM),
+      figureWidget('router-internet', 'Internet', 'globe', LIVE_STREAM),
       figureWidget('router-people', 'Who’s home', 'users', SNAPSHOT_STREAM),
     ],
     settings: ROUTER_SETTINGS_FORM,

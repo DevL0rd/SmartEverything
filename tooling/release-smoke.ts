@@ -1,7 +1,8 @@
 import { parseArgs } from 'node:util';
 import { env } from 'node:process';
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import { z } from 'zod';
-import { apkProblems, readApk, readAppIdentity, type ApkVariant } from './release-apk.ts';
+import { apkProblems, readApk, type ApkVariant } from './release-apk.ts';
 import { dataRootOf } from './data-root.ts';
 import { dataLayoutOf } from './release-hub-files.ts';
 import { parseSchemaFlag, systemdUnits, verifyHub } from './release-hub-verify.ts';
@@ -30,7 +31,7 @@ export const SMOKE_STEPS: readonly SmokeStep[] = [
     area: 'phone',
     coverage: 'apk',
     check:
-      'The APK is signed with the app certificate in app-identity.json, so it installs over the app, and the signature verifies.',
+      'The APK is signed with the app certificate in the app identity, so it installs over the app, and the signature verifies.',
   },
   {
     id: 'apk-not-debuggable',
@@ -187,7 +188,7 @@ export interface ApkRequest {
 }
 
 async function checkApk({ file, variant, above, server }: ApkRequest): Promise<void> {
-  const identity = readAppIdentity();
+  const identity = APP_IDENTITY;
   const problems = await apkProblems(readApk(file), {
     variant,
     applicationId: identity.applicationId,

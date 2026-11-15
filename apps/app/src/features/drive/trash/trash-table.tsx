@@ -7,9 +7,9 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import type { DeletedByShare } from './deleted-by';
 import type { LeavingMonth } from './leaving-bars';
+import { Icon } from '../../../components/icon';
 import type { PickState } from './selection';
 import { TABLE_COLUMNS, type TrashLayout } from './trash-layout';
-import { CheckMark } from './trash-row';
 import { TrashSummary } from './trash-summary';
 
 export interface TableTopProps {
@@ -33,6 +33,22 @@ function Heading({
     <Text variant="caption" tone="variant" numberOfLines={1} className={className}>
       {text}
     </Text>
+  );
+}
+
+function CheckMark({ state }: { readonly state: PickState }): ReactNode {
+  return (
+    <View
+      aria-hidden
+      className={cn(
+        'size-5 shrink-0 items-center justify-center rounded-xs border-2',
+        state === false ? 'border-on-surface-variant' : 'border-primary bg-primary',
+      )}
+    >
+      {state === false ? null : (
+        <Icon name={state === 'mixed' ? 'minus' : 'check'} size={16} tone="onPrimary" />
+      )}
+    </View>
   );
 }
 
@@ -61,7 +77,7 @@ function ColumnHeader({
         <Heading text="Size" className={cn(TABLE_COLUMNS.size, 'text-right')} />
         <Heading text="Leaves in" className={TABLE_COLUMNS.leaves} />
       </View>
-      <View className={TABLE_COLUMNS.restore} />
+      <View className={TABLE_COLUMNS.actions} />
     </View>
   );
 }

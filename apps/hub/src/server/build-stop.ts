@@ -1,16 +1,75 @@
 import type { ServerContext } from './context';
-import type { BuildOptions } from './build';
+import type { BuildOptions, Serving } from './build';
 import { ingestOwnLogs } from './hub-log-sink';
 import { storeStartupJournal } from './startup-journal';
-import type { Serving } from './build';
-import {
-  followNetworkSettings,
-  startClocks,
-  stopAssistantServices,
-  stopComputersAndServing,
-  subscribeLive,
-} from './build';
+import type { LiveHub } from './live';
 import type { startHubHarness } from './harness-wiring';
+
+function followNetworkSettings(options: BuildOptions, context: ServerContext): () => void {
+  return options.store.feed.subscribe((change) => {
+    if (change.table !== 'settings' || change.record === null) {
+      return;
+    }
+    options.core.supervisor
+      .apply({ candidates: change.record.webrtc_candidates, iceServers: change.record.ice_servers })
+      .then(
+        () => {
+          context.live.presence();
+        },
+        (cause: unknown) => {
+          context.log.error('go2rtc.reconfigure_failed', cause);
+        },
+      );
+  });
+}
+
+function startClocks(context: ServerContext): void {
+  context.access.lifecycle.start();
+  context.weather.start();
+  context.exchangeRates.start();
+  context.openRouter.start();
+  context.harness.skillUpdates.start();
+}
+
+function stopServing(served: Serving): void {
+  served.stopRepair();
+  served.detachTrace();
+  served.memory.stop();
+  served.reconciler.stop();
+  served.budget.stop();
+  served.reach.stop();
+  served.transcribing.transcripts.stop();
+  served.claude.stop();
+}
+
+function subscribeLive(options: BuildOptions, live: LiveHub): () => void {
+  const unfollowFirewall = options.core.firewall.onChange((firewall) => {
+    live.firewall(firewall);
+  });
+  const unfollowLog = options.logLines.listen((lines) => {
+    live.announce({ type: 'service_log', lines: [...lines] }, 'service_log');
+  });
+  return (): void => {
+    unfollowFirewall();
+    unfollowLog();
+  };
+}
+
+function stopComputersAndServing(context: ServerContext, served: Serving): void {
+  context.access.lifecycle.stop();
+  context.harnessSockets.stop();
+  context.nodeSockets.stop();
+  context.computerAi.stop();
+  context.machineApprovals.stop();
+  stopServing(served);
+}
+
+async function stopAssistantServices(context: ServerContext): Promise<void> {
+  await context.harness.skillUpdates.stop();
+  context.assistant.stop();
+  await context.imageRuntime.stop();
+  context.browser.stop();
+}
 
 interface Stopping {
   readonly harness: Awaited<ReturnType<typeof startHubHarness>>;

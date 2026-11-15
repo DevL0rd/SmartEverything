@@ -7,7 +7,7 @@ import { closeFlow } from '../../../app-shell/close-flow';
 import { Button } from '../../../components/button';
 import { ErrorState } from '../../../components/error-state';
 import { ListLoader } from '../../../components/list-loader';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { ScreenPausedContext, useScreenPaused } from '../../../design/screen-pause';
 import { useEntityStore } from '../../../store/store-context';
 import { recordInConversation } from './open-voice-conversation';
@@ -61,7 +61,7 @@ export function VoiceMessageOpening(): ReactNode {
     }, [attempt, store, pause, paused]),
   );
   return (
-    <Screen scroll={false}>
+    <PageShell title="Voice message" scroll={false}>
       {failure === null ? (
         <ListLoader loading />
       ) : (
@@ -73,6 +73,6 @@ export function VoiceMessageOpening(): ReactNode {
           }}
         />
       )}
-    </Screen>
+    </PageShell>
   );
 }

@@ -9,7 +9,13 @@ import type {
 } from '@smarteverything/domain';
 import type * as ExpoUpdates from 'expo-updates';
 import { Logger } from '@smarteverything/logging';
-import type { AdapterStart, CheckRequest, RestartRequest, UpdateAdapter } from '../model/adapter';
+import type {
+  AdapterStart,
+  CheckRequest,
+  FallbackControls,
+  RestartRequest,
+  UpdateAdapter,
+} from '../model/adapter';
 import { UpdateFailure } from '../model/adapter';
 import { failureOf, asFailure } from '../model/safe-reason';
 import type { CheckOutcome, RunningVersion } from '../model/update-state';
@@ -289,6 +295,27 @@ async function restartFailing(
   }
 }
 
+async function relaunch(
+  updates: Updates,
+  approval: NativeLaunchApproval,
+  updateId: string,
+): Promise<void> {
+  try {
+    await approval.approveUpdateAsync(updateId);
+    await updates.reloadAsync();
+  } catch (error) {
+    await revokeApproval(approval);
+    throw failureOf('restart', error);
+  }
+}
+
+function fallbackOf(updates: Updates, approval: NativeLaunchApproval): FallbackControls {
+  return {
+    keepBuiltIn: () => approval.approveUpdateAsync(null),
+    relaunch: (updateId) => relaunch(updates, approval, updateId),
+  };
+}
+
 export function nativeAdapterOf(
   updates: Updates,
   hub: HubReads,
@@ -303,6 +330,7 @@ export function nativeAdapterOf(
       asFailure('download', () => download(updates, offer, onProgress)),
     prepareRollback: () => asFailure('check', () => prepareRollback(updates)),
     restart: (request) => restartFailing(updates, hub, approval, request),
+    fallback: fallbackOf(updates, approval),
   };
 }
 

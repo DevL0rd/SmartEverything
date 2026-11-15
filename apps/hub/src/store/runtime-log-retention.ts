@@ -77,19 +77,20 @@ export function readLogFootprint(sql: Sql): LogFootprint {
   };
 }
 
-function trim(sql: Sql, runtime: string): number {
-  return sql.run(
-    'forget the oldest runtime logs of a runtime beyond its budget',
+const TRIM_BATCH_ROWS = 2_000;
+
+const BOUNDARY = z.object({ at: z.string(), id: z.number() });
+
+function boundaryOf(sql: Sql, runtime: string): z.infer<typeof BOUNDARY> | undefined {
+  return sql.get(
+    BOUNDARY,
     `with ranked as (
-       select id, row_number() over (order by at desc, id desc) as rank, ${CONTENT} as bytes
+       select at, id, row_number() over (order by at desc, id desc) as rank, ${CONTENT} as bytes
        from runtime_logs where runtime = $runtime
      ), counted as (
-       select id, sum(bytes) over (order by rank) as carried from ranked
+       select at, id, rank, sum(bytes) over (order by rank) as carried from ranked
      )
-     delete from runtime_logs where runtime = $runtime and id in (
-       select id from counted where carried > $content
-       union select id from ranked where rank > $rows
-     )`,
+     select at, id from counted where carried > $content or rank > $rows order by rank limit 1`,
     {
       runtime,
       content: PER_RUNTIME_BYTES - PER_RUNTIME_ROWS * GUARD_BYTES,
@@ -98,9 +99,30 @@ function trim(sql: Sql, runtime: string): number {
   );
 }
 
+function trim(sql: Sql, runtime: string): number {
+  const boundary = boundaryOf(sql, runtime);
+  if (boundary === undefined) return 0;
+  let removed = 0;
+  for (;;) {
+    const batch = sql.transaction(() =>
+      sql.run(
+        'forget one batch of the oldest runtime logs of a runtime beyond its budget',
+        `delete from runtime_logs where id in (
+           select id from runtime_logs
+           where runtime = $runtime and (at, id) <= ($at, $id)
+           order by at, id limit $batch
+         )`,
+        { runtime, at: boundary.at, id: boundary.id, batch: TRIM_BATCH_ROWS },
+      ),
+    );
+    removed += batch;
+    if (batch < TRIM_BATCH_ROWS) return removed;
+  }
+}
+
 export function sweepRuntimeLogs(sql: Sql, now: Date): Record<string, number> {
+  const trimmed = RUNTIMES.map((runtime) => trim(sql, runtime));
   return sql.transaction(() => {
-    const trimmed = RUNTIMES.map((runtime) => trim(sql, runtime));
     const stale = sql.run(
       'forget sources that sent nothing for a day',
       'delete from runtime_log_sources where last_at < $before',

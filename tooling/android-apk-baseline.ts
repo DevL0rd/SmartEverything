@@ -1,3 +1,4 @@
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import {
   ANDROID_APK_BASELINE,
   type AndroidApkBaseline,
@@ -17,10 +18,14 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AndroidApkFolder } from '../apps/hub/src/app-updates/android-apk-folder.ts';
-import { AndroidApkPublicationError, apkSha256, sameAndroidBuild } from './android-apk-publish.ts';
+import {
+  AndroidApkPublicationError,
+  apkSha256,
+  sameAndroidBuild,
+} from '../apps/hub/src/releases/publish-apk.ts';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
 import { withAppUpdateLock } from '../apps/hub/src/app-updates/lock.ts';
-import { apkProblems, readApk, readAppIdentity, runtimeVersionOf } from './release-apk.ts';
+import { apkProblems, readApk, runtimeVersionOf } from './release-apk.ts';
 
 interface BaselineImport {
   readonly apk: string;
@@ -36,7 +41,7 @@ async function verifiedBaseline(
   staged: string,
 ): Promise<AndroidApkBaseline> {
   const { applicationId, versionCode, runtimeVersion, channel } = input.observation;
-  const identity = readAppIdentity();
+  const identity = APP_IDENTITY;
   const facts = readApk(staged);
   if (
     applicationId !== identity.applicationId ||

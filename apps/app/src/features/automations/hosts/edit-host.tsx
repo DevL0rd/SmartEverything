@@ -43,7 +43,8 @@ import { EditorValueServices, unavailable, useInsert, useInspectorBinding } from
 import { useEditorContext, type EditorContext } from './editor-context';
 import { EditorTest } from './editor-test';
 import { LIST_LINKS } from './host-links';
-import { NotFound, PageShell } from './page-shell';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import { NotFound } from '../shared/not-found';
 import { usePlace } from './use-environment';
 
 const PARAMS = z.object({ automationId: z.string() });
@@ -355,7 +356,7 @@ function Load({ automationId }: { readonly automationId: string }): ReactNode {
   const { load, query } = useDraftLoad(automationId);
   if (load === null) {
     return (
-      <PageShell title="Automation">
+      <PageShell title="Automation" width="reading">
         <LoadedQuery query={query}>{() => null}</LoadedQuery>
       </PageShell>
     );

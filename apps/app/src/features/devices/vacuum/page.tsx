@@ -1,14 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Screen } from '../../../components/screen';
-import { TabsBar } from '../../../components/tabs-bar';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellTabs } from '../../../components/page-shell/shell-sections';
 import { Text } from '../../../components/text';
 import { atLeast, useSizeClass } from '../../../design/size-class';
 import type { Device } from '../../../store/state';
-import { DeviceHeader } from '../detail/device-header';
-import { DeviceBanner } from '../detail/device-overview';
-import { Shortcuts } from '../detail/shortcuts';
+import { DeviceBanners, useDeviceShell } from '../detail/device-shell';
 import {
   VACUUM_SHOW_PARAM,
   VACUUM_TABS,
@@ -99,26 +97,18 @@ function TabBody({
   }
 }
 
-function Tabs({
-  tab,
-  onTab,
-}: {
-  readonly tab: VacuumTab;
-  readonly onTab: (tab: VacuumTab) => void;
-}): ReactNode {
-  return (
-    <TabsBar
-      label="Robot vacuum pages"
-      active={tab}
-      items={VACUUM_TABS.map((entry) => ({
-        key: entry.key,
-        label: entry.label,
-        onPress: (): void => {
-          onTab(entry.key);
-        },
-      }))}
-    />
-  );
+function tabsOf(tab: VacuumTab, onTab: (tab: VacuumTab) => void): ShellTabs {
+  return {
+    label: 'Robot vacuum pages',
+    active: tab,
+    items: VACUUM_TABS.map((entry) => ({
+      key: entry.key,
+      label: entry.label,
+      onPress: (): void => {
+        onTab(entry.key);
+      },
+    })),
+  };
 }
 
 function VacuumLayout({
@@ -160,28 +150,25 @@ export function VacuumPage({ device }: { readonly device: Device }): ReactNode {
   };
   const hero = <VacuumOverview device={device} onShow={show} />;
   const pages = (
-    <>
-      <Tabs tab={tab} onTab={setTab} />
-      <TabBody
-        tab={tab}
-        device={device}
-        reveal={reveal}
-        onShowRooms={(): void => {
-          show('rooms');
-        }}
-      />
-      <Shortcuts device={device} />
-    </>
+    <TabBody
+      tab={tab}
+      device={device}
+      reveal={reveal}
+      onShowRooms={(): void => {
+        show('rooms');
+      }}
+    />
   );
   const columns = atLeast(width, 'expanded');
-  const headline = useVacuumHeadline(device);
+  const shell = useDeviceShell(device, 'overview', useVacuumHeadline(device));
   return (
-    <Screen
-      header={<DeviceHeader device={device} sectionTitle={null} stateLine={headline} />}
-      maxWidth={width === 'medium' ? 'reading' : 'detail'}
-      banner={<DeviceBanner device={device} />}
+    <PageShell
+      {...shell.props}
+      width="detail"
+      tabs={tabsOf(tab, setTab)}
+      banner={<DeviceBanners device={device} schedule={shell.schedule} />}
     >
       <VacuumLayout columns={columns} hero={hero} pages={pages} />
-    </Screen>
+    </PageShell>
   );
 }

@@ -1,9 +1,9 @@
 import { deferred } from './deferred-fixture';
 import { describe, expect, it } from 'vitest';
-import { MemoryStorage, rig } from './fixtures';
+import { MemoryLedgerFile, MemoryStorage, rig } from './fixtures';
 import { BackupRunner } from './runner';
 import { backupStatus, INITIAL_BACKUP_STATUS } from '../model/status';
-import { scopedBackupStorage } from './scoped-storage';
+import { currentLedgerFile, scopedBackupStorage } from './scoped-storage';
 import { LEDGER_STORAGE_KEY, PAUSED_STORAGE_KEY } from './ledger-store';
 
 describe('backup storage authority', () => {
@@ -30,6 +30,21 @@ describe('backup storage authority', () => {
     release.resolve(null);
     await late;
     expect(disk.values.size).toBe(0);
+  });
+
+  it('prevents an invalidated owner from writing the ledger file or removing the old key', async () => {
+    const disk = new MemoryStorage();
+    await disk.setItem(`${LEDGER_STORAGE_KEY}:old`, 'kept');
+    const file = new MemoryLedgerFile();
+    let current = true;
+    const guardedFile = currentLedgerFile(file, () => current);
+    const scoped = scopedBackupStorage(disk, 'old', () => current);
+    await guardedFile.write('fresh');
+    current = false;
+    await guardedFile.write('stale');
+    await scoped.removeItem(LEDGER_STORAGE_KEY);
+    expect(await guardedFile.read()).toBe('fresh');
+    expect(disk.values.get(`${LEDGER_STORAGE_KEY}:old`)).toBe('kept');
   });
 });
 

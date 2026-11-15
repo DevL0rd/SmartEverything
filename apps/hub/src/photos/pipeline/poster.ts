@@ -78,9 +78,7 @@ export async function extractPoster(
 function mediaPatchOf(outcome: DerivedOutcome): Parameters<DriveMediaRepository['update']>[1] {
   return outcome.state === 'ready'
     ? {
-        // The media row schema narrows thumbhash to ArrayBuffer-backed storage;
-        // the thumbhash helper returns the generic Uint8Array type.
-        thumbhash: outcome.thumbhash as Uint8Array<ArrayBuffer>,
+        thumbhash: outcome.thumbhash,
         preview_state: 'ready',
         preview_reason: null,
         poster_state: 'ready',

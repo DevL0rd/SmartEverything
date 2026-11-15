@@ -15,6 +15,9 @@ export interface SearchFieldProps {
   readonly onBlur?: () => void;
   readonly onKey?: (key: string) => void;
   readonly placeholder: string;
+  readonly label?: string;
+  readonly leading?: ReactNode;
+  readonly trailing?: ReactNode;
   readonly icon?: IconName;
   readonly status?: string;
   readonly active?: boolean;
@@ -91,9 +94,10 @@ export function SearchField(props: SearchFieldProps): ReactNode {
         size={pointer ? 16 : 24}
         tone={props.active === true ? 'primary' : 'variant'}
       />
+      {props.leading}
       <TextInput
         ref={ref}
-        accessibilityLabel={props.placeholder}
+        accessibilityLabel={props.label ?? props.placeholder}
         value={props.value}
         onChangeText={props.onChange}
         onSubmitEditing={props.onSubmit}
@@ -118,6 +122,7 @@ export function SearchField(props: SearchFieldProps): ReactNode {
           props.onChange('');
         }}
       />
+      {props.trailing}
     </View>
   );
 }

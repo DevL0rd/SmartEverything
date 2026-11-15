@@ -128,7 +128,7 @@ export const LAPTOP_MODEL: ModelSpec = {
   title: 'Laptop',
   category: 'computer',
   family: 'computer',
-  footprint: { width: W, depth: D, height: HEIGHT },
+  footprint: { width: 0.3136, depth: 0.2796, height: 0.2121 },
   framing: house('lid', 30, 20),
   shots: [shot('screen', ON, 'screen', { zoom: 1.2, yaw: 30, pitch: 8, loopS: 3, stillAt: 1.5 })],
   meta: {

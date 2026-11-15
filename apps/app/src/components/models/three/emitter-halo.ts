@@ -1,8 +1,10 @@
 import {
   AdditiveBlending,
+  Color,
   KeepStencilOp,
   NormalBlending,
   NotEqualStencilFunc,
+  SRGBColorSpace,
   Sprite,
   SpriteMaterial,
   Vector3,
@@ -26,9 +28,24 @@ export interface EmitterHalos {
 export const HALO_FLOOR = 0.35;
 
 export const HALO_LOOK: Readonly<Record<StageTheme, { blending: Blending; opacity: number }>> = {
-  light: { blending: NormalBlending, opacity: 0.6 },
+  light: { blending: NormalBlending, opacity: 0.75 },
   dark: { blending: AdditiveBlending, opacity: 0.9 },
 };
+
+const LIGHT_HALO = { hue: 0.1, minSaturation: 0.8, maxLightness: 0.5, greyBelow: 0.15 } as const;
+
+export function haloColour(colour: string, theme: StageTheme): Color {
+  const out = new Color(colour);
+  if (theme === 'dark') return out;
+  const hsl = out.getHSL({ h: 0, s: 0, l: 0 }, SRGBColorSpace);
+  const hue = hsl.s < LIGHT_HALO.greyBelow ? LIGHT_HALO.hue : hsl.h;
+  return out.setHSL(
+    hue,
+    Math.max(hsl.s, LIGHT_HALO.minSaturation),
+    Math.min(hsl.l, LIGHT_HALO.maxLightness),
+    SRGBColorSpace,
+  );
+}
 
 export function haloStrength(intensity: number): number {
   if (intensity <= 0) return 0;
@@ -99,7 +116,7 @@ export function createEmitterHalos(model: EmitterSource, theme: StageTheme): Emi
         const strength = emitter.on ? haloStrength(emitter.intensity) : 0;
         sprite.visible = strength > 0;
         if (!sprite.visible) continue;
-        sprite.material.color.set(emitter.color);
+        sprite.material.color.copy(haloColour(emitter.color, current));
         sprite.material.opacity = strength * HALO_LOOK[current].opacity;
         entry.diameter = haloDiameter(emitter.radius, strength);
         sprite.scale.setScalar(entry.diameter);

@@ -76,7 +76,7 @@ const INTERRUPTED_MANNER =
 
 const TOOL_FACTS = 'Tools are how you see and change the home; their results are facts.';
 
-const CHATS_RULE =
+export const CHATS_RULE =
   'Chats are separate conversations of one person. chat_send messages another of their chats. You can quote a message of that chat (quoteMessageId on chat_send, chat_post and chat_speak) to reply to it, and mention a helper or person by writing @Name. A helper starts with the task you give it and can receive follow-ups. The parent thread shows explicit messages to its direct helper and displays that helper’s messages and unwaited answers under its name. Unwaited answers from other chats arrive as reports.';
 
 const DEVICE_RULE =
@@ -97,7 +97,6 @@ export function homeRules(toolManners: readonly string[], toolManner = TOOL_MANN
   return [
     [TOOL_FACTS, ...toolManners, toolManner].join(' '),
     `${CHANGE_MANNER} ${DATE_MANNER}`,
-    CHATS_RULE,
     DEVICE_RULE,
   ].join('\n');
 }
@@ -133,6 +132,7 @@ export function stablePrompt(
   );
   const chatRules = [
     rules,
+    CHATS_RULE,
     CHAT_REPLY,
     ...(mode === 'codex' ? [] : [MID_WORK_MANNER]),
     INTERRUPTED_MANNER,

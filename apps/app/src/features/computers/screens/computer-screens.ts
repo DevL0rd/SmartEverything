@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { ComputerAudioScreen } from '../audio/audio-screen';
 import { ComputerDisplaysScreen } from '../displays/displays-screen';
 import { ComputerAppsScreen } from '../apps/apps-screen';
-import { ComputerFilesScreen } from '../files/files-screen';
+import { ComputerFilesScreen } from '../files-screen';
 import { ComputerNetworkScreen } from '../network/network-screen';
 import { ComputerPerformanceScreen } from '../performance/performance-screen';
 import { ComputerProcessesScreen } from '../processes/processes-screen';

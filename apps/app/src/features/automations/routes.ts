@@ -53,7 +53,6 @@ export const links = {
   runs: (): AppHref => href.automationRuns(),
   schedule: (): AppHref => href.automationSchedule(),
   scheduled: (): AppHref => href.scheduled(),
-  scenes: (): AppHref => href.scenes(),
 };
 
 export const AUTOMATIONS_ACTIONS: NonNullable<RouteDefinition['actions']> = [
@@ -132,26 +131,6 @@ export const ROUTES: readonly RouteDefinition[] = [
         icon: 'plus',
         href: links.variable('new'),
         keywords: ['create', 'add', 'value', 'remember'],
-      },
-    ],
-  },
-  {
-    key: 'automations.scenes',
-    href: links.scenes(),
-    title: 'Scenes',
-    icon: 'sparkles',
-    tab: 'automations',
-    parent: 'automations',
-    keywords: ['scene', 'mood', 'preset', 'movie', 'bedtime'],
-    available: always,
-    searchable: true,
-    actions: [
-      {
-        key: 'new',
-        title: 'New scene',
-        icon: 'plus',
-        href: href.scene('new'),
-        keywords: ['create', 'add', 'make'],
       },
     ],
   },

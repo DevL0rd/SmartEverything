@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
+import { PLANNER_CLOCK_WAVE2_MIGRATION } from '../../src/store/migrations/planner-clock-wave2';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
@@ -122,6 +123,7 @@ describe('migrating a live schema-80 database', () => {
       'harness_outbox',
       'harness_skill_presentations',
       'preview_error_rules',
+      'scenes',
     ]);
     expect(migrated.prepare('pragma foreign_key_check').all()).toStrictEqual([]);
     expect(
@@ -403,5 +405,146 @@ describe('migration backups', () => {
     kept.close();
     open().close();
     expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([]);
+  });
+});
+
+describe('migrating planner alarms and preferences to the clock wave 2 shapes', () => {
+  const PROFILE = '0d000000-0000-4000-8000-0000000000a1';
+  const OLD_LISTS = [
+    'today',
+    'upcoming',
+    'overdue',
+    'device_tasks',
+    'habits',
+    'someday',
+    'completed',
+  ];
+  const COLUMN = z.object({ value: z.string().nullable() });
+
+  function oldPreferences(sound: string, smartLists: readonly string[]): string {
+    return JSON.stringify({
+      general: { week_start: 1 },
+      tasks: { default_collection_id: null, smart_lists: smartLists, suggest_completion: true },
+      clock: {
+        sound,
+        ramp_seconds: 30,
+        snooze_minutes: 9,
+        targets: [],
+        wake_scene_id: null,
+        world_clocks: [],
+      },
+      watch: { watch_alarm_sync: true, watch_calendar_push: true },
+    });
+  }
+
+  function seedOld(database: DatabaseSync): void {
+    database
+      .prepare(
+        "insert into profiles (id, name, colour, fitness_goals, created_at, updated_at) values (?, 'Ann', 'aqua', '{}', ?, ?)",
+      )
+      .run(PROFILE, NOW, NOW);
+    const alarm = database.prepare(
+      `insert into planner_alarms (id, profile_id, label, time, days, once_on, skip_on, enabled, sound,
+        ramp_seconds, vibrate, snooze_minutes, smart_minutes, wake_scene_id, wake_lead_minutes, targets,
+        watch, source, created_at, updated_at)
+       values (?, ?, null, '07:00', '[1,2]', null, null, 1, ?, 30, 1, 9, null, null, null, '[]', '[]', 'planner', ?, ?)`,
+    );
+    alarm.run('a1', PROFILE, 'sunrise', NOW, NOW);
+    alarm.run('a2', PROFILE, 'default', NOW, NOW);
+    database
+      .prepare(
+        'insert into planner_preferences (profile_id, preferences, updated_at) values (?, ?, ?)',
+      )
+      .run(PROFILE, oldPreferences('dawn', OLD_LISTS), NOW);
+  }
+
+  function value(database: DatabaseSync, query: string): string | null {
+    return COLUMN.parse(database.prepare(query).get()).value;
+  }
+
+  function migrated(): DatabaseSync {
+    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+    const before = MIGRATIONS.filter(
+      (migration) => migration.version < PLANNER_CLOCK_WAVE2_MIGRATION.version,
+    );
+    migrate(new Sql(database), before, NOW, testLogger());
+    seedOld(database);
+    migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
+    return database;
+  }
+
+  it('rewrites every stored alarm sound to a tone once and gives the new columns their defaults', () => {
+    const database = migrated();
+    expect(value(database, "select sound as value from planner_alarms where id = 'a1'")).toBe(
+      '{"kind":"tone","id":"sunrise"}',
+    );
+    expect(value(database, "select sound as value from planner_alarms where id = 'a2'")).toBe(
+      '{"kind":"tone","id":"default"}',
+    );
+    expect(value(database, "select challenge as value from planner_alarms where id = 'a1'")).toBe(
+      '{"kind":"none"}',
+    );
+    expect(
+      value(database, "select snooze_limit as value from planner_alarms where id = 'a1'"),
+    ).toBeNull();
+    expect(
+      value(database, "select sunrise as value from planner_alarms where id = 'a1'"),
+    ).toBeNull();
+    database.close();
+  });
+
+  it('rewrites the stored preferences once and adds the bedtime and sleep sound sections', () => {
+    const database = migrated();
+    const read = (path: string): string | null =>
+      value(
+        database,
+        `select cast(json_extract(preferences, '${path}') as text) as value from planner_preferences`,
+      );
+    expect(read('$.clock.sound')).toBe('{"kind":"tone","id":"dawn"}');
+    expect(
+      value(
+        database,
+        "select json_type(preferences, '$.clock.snooze_limit') as value from planner_preferences",
+      ),
+    ).toBe('null');
+    expect(read('$.bedtime')).toBe(
+      '{"enabled":false,"schedule":[],"reminder_minutes":30,"wind_down_minutes":30,"do_not_disturb":true,"sleep_sound":null,"wind_down_automation_id":null}',
+    );
+    expect(read('$.sleep_sounds')).toBe('{"sound":null,"timer_minutes":60,"fade_seconds":30}');
+    expect(read('$.general.week_start')).toBe('1');
+    database.close();
+  });
+
+  it('adds the assigned smart list to the default list only', () => {
+    const database = migrated();
+    expect(
+      value(
+        database,
+        "select json_extract(preferences, '$.tasks.smart_lists') as value from planner_preferences",
+      ),
+    ).toBe(
+      '["today","upcoming","overdue","assigned","device_tasks","habits","someday","completed"]',
+    );
+    database.close();
+    rmSync(path);
+    const custom = new DatabaseSync(path, { enableForeignKeyConstraints: true });
+    migrate(
+      new Sql(custom),
+      MIGRATIONS.filter((migration) => migration.version < PLANNER_CLOCK_WAVE2_MIGRATION.version),
+      NOW,
+      testLogger(),
+    );
+    seedOld(custom);
+    custom
+      .prepare('update planner_preferences set preferences = ?')
+      .run(oldPreferences('dawn', ['today', 'someday']));
+    migrate(new Sql(custom), MIGRATIONS, NOW, testLogger());
+    expect(
+      value(
+        custom,
+        "select json_extract(preferences, '$.tasks.smart_lists') as value from planner_preferences",
+      ),
+    ).toBe('["today","someday"]');
+    custom.close();
   });
 });

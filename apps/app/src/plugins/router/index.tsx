@@ -61,6 +61,7 @@ export const routerAppPlugin: AppPlugin = {
       icon: 'users',
       title: 'Devices on the network',
       scrolls: true,
+      search: { placeholder: 'Name, address or MAC' },
       applies: isRouter,
       render: () => <ClientsSection />,
     },

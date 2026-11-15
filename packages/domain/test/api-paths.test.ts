@@ -62,8 +62,8 @@ describe('matching paths', () => {
   });
 
   it('matchPath refuses a path with a different literal segment', () => {
-    expect(matchPath('/api/rooms/:roomId', '/api/scenes/r1')).toBeNull();
-    expect(matchPath('/api/rooms', '/api/scenes')).toBeNull();
+    expect(matchPath('/api/rooms/:roomId', '/api/groups/r1')).toBeNull();
+    expect(matchPath('/api/rooms', '/api/groups')).toBeNull();
   });
 
   it('matchPath refuses a path with more or fewer segments', () => {

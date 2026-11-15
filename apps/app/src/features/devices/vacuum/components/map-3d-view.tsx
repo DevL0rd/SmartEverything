@@ -28,7 +28,7 @@ import {
   type EditEvent,
   type EditOverlay,
 } from '../../../../components/house-map/3d/map-3d-edit-protocol';
-import type { EditFloorFeed, EditSettled } from '../../../home-map/components/stage/home-map-3d';
+import type { EditFloorFeed, EditSettled } from '../../../home-map';
 import type {
   CameraPresetId,
   ViewInsets,

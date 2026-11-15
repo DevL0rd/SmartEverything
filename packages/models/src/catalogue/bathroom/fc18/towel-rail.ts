@@ -77,7 +77,7 @@ function towel(): ModelSpecPart[] {
 export const TOWEL_RAIL_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.towel-rail',
   title: 'Towel rail',
-  footprint: { width: 0.506, depth: 0.09, height: 1.2 },
+  footprint: { width: 0.506, depth: 0.078, height: 1.2 },
   size: {
     width: { param: 'width', extra: 0.006, resizes: true },
     height: { param: 'height', extra: 0, resizes: true },

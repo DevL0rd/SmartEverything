@@ -31,9 +31,6 @@ const AREA_VERBS: Readonly<Record<McpToolArea, AccessVerbs>> = {
 const NAMED_VERBS: ReadonlyMap<McpToolName, string> = new Map<McpToolName, string>([
   ['weather_read', 'check the weather'],
   ['place_search', 'find places'],
-  ['scene_find', 'read scenes'],
-  ['scene_edit', 'edit scenes'],
-  ['scene_run', 'run scenes'],
   ['remote_press', 'press remotes'],
   ['schedule_find', 'read schedules'],
   ['schedule_edit', 'edit schedules'],

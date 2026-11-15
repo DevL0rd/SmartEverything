@@ -61,6 +61,24 @@ describe('justifying one day', () => {
     );
   });
 
+  it('stretches a short last row to the full width while it stays near the target', () => {
+    const tiles = [tile('a', 1.5), tile('b', 1.5)];
+    const rows = layoutGrid([{ key: '2026-11-07', tiles }], GEOMETRY).filter(
+      (row): row is TileRow => row.kind === 'tiles',
+    );
+    expect(rows).toHaveLength(1);
+    const only = rows[0];
+    expect(only === undefined ? 0 : rowWidth(only)).toBeCloseTo(400, 6);
+    expect(only?.height).toBeLessThanOrEqual(150);
+  });
+
+  it('keeps a lone tall tile at the target height instead of blowing it up', () => {
+    const rows = layoutGrid([{ key: '2026-11-07', tiles: [tile('a', 0.75)] }], GEOMETRY).filter(
+      (row): row is TileRow => row.kind === 'tiles',
+    );
+    expect(rows[0]?.height).toBe(100);
+  });
+
   it('breaks where the row height lands closest to the target', () => {
     const lines = justifyDay([tile('a', 2), tile('b', 1.9), tile('c', 1)], GEOMETRY);
     expect(lines[0]?.tiles.map((item) => item.id)).toEqual(['a', 'b']);

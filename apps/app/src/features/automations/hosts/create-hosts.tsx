@@ -15,14 +15,22 @@ import type { SlotValues, Template } from '../model/templates/parameters';
 import { takenStates } from '../model/templates/taken';
 import { GalleryScreen } from '../templates/gallery-screen';
 import { links } from '../routes';
-import { PageShell } from './page-shell';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { useRefNames } from './use-environment';
 
 const log = new Logger('app.automations');
 
 const SCRATCH_NAME = 'New automation';
 
-const PARAMS = z.object({ template: z.string().optional() });
+const PARAMS = z.object({
+  template: z.string().optional(),
+  room: z.string().optional(),
+  device: z.string().optional(),
+});
+
+type Scope = Omit<z.infer<typeof PARAMS>, 'template'>;
+
+const WHOLE_HOME: Scope = {};
 
 function useCreate(): (name: string, definition: AutomationV4) => Promise<void> {
   const router = useRouter();
@@ -42,15 +50,24 @@ function useCreate(): (name: string, definition: AutomationV4) => Promise<void> 
   };
 }
 
-function useTemplates(): readonly Template[] {
+function useTemplates(scope: Scope): readonly Template[] {
   const devices = useDevices({});
   const rooms = useRooms();
   const people = useProfiles();
-  return useMemo(() => templatesFor(devices, { rooms, people }), [devices, rooms, people]);
+  const { room, device } = scope;
+  return useMemo(() => {
+    const shown = devices.filter(
+      (entry) =>
+        (room === undefined || entry.room_id === room) &&
+        (device === undefined || entry.id === device),
+    );
+    const places = room === undefined ? rooms : rooms.filter((entry) => entry.id === room);
+    return templatesFor(shown, { rooms: places, people });
+  }, [devices, rooms, people, room, device]);
 }
 
-function Gallery(): ReactNode {
-  const templates = useTemplates();
+function Gallery({ scope }: { readonly scope: Scope }): ReactNode {
+  const templates = useTemplates(scope);
   const names = useRefNames();
   const { lookup } = useAutomationsSource();
   const { rows } = useAutomations();
@@ -64,7 +81,7 @@ function Gallery(): ReactNode {
     [templates, rows],
   );
   return (
-    <PageShell title="Templates" maxWidth="full">
+    <PageShell title="Templates" width="full">
       <GalleryScreen
         templates={templates}
         taken={taken}
@@ -92,18 +109,23 @@ function FromTemplate({ template }: { readonly template: Template }): ReactNode 
     started.current = true;
     background(create(template.name, template.build()), 'automations.create_template');
   }, [create, template]);
-  return <PageShell title="New automation">{null}</PageShell>;
+  return (
+    <PageShell title="New automation" width="reading">
+      {null}
+    </PageShell>
+  );
 }
 
 export function TemplatesHost(): ReactNode {
-  return <Gallery />;
+  return <Gallery scope={WHOLE_HOME} />;
 }
 
 export function NewHost(): ReactNode {
   const params = PARAMS.safeParse(useLocalSearchParams());
-  const templates = useTemplates();
+  const scope = params.success ? params.data : WHOLE_HOME;
+  const templates = useTemplates(WHOLE_HOME);
   const chosen = params.success
     ? templates.find((entry) => entry.id === params.data.template)
     : undefined;
-  return chosen === undefined ? <Gallery /> : <FromTemplate template={chosen} />;
+  return chosen === undefined ? <Gallery scope={scope} /> : <FromTemplate template={chosen} />;
 }

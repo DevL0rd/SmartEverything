@@ -4,7 +4,7 @@ import type { AppHref } from '../app-href';
 import { BottomSheet } from '../bottom-sheet';
 import { Icon } from '../icon';
 import { Interactive } from '../interactive';
-import { railEntryLabel } from '../section-rail';
+import { railEntryLabel } from '../page-shell/section-rail';
 import { Text } from '../text';
 import { cn } from '../../design/cn';
 import { countText, railEntryOf, type LibrarySection, type LibrarySectionGroup } from './sections';

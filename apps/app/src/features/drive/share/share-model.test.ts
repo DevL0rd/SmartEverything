@@ -14,8 +14,15 @@ import {
   expiryOf,
   footerLineOf,
   itemLinkStatsOf,
+  SCREENSHOT_LINE,
+  VIEW_ONLY_TITLE,
   linkStateOf,
+  peopleLinkLineOf,
+  peopleLinkOf,
   peopleModeOf,
+  viewOnlyInherited,
+  viewOnlyLineOf,
+  viewOnlyShownOf,
   reachOf,
   shareRequestOf,
   shareTitleOf,
@@ -40,6 +47,7 @@ function share(fields: Partial<DriveShare>): DriveShare {
   return DRIVE_SHARE.parse({
     id: 'a1b2c3d4-0000-4000-8000-000000000401',
     itemId: ITEM_ID,
+    albumId: null,
     permission: 'view',
     expiresAt: null,
     hasPassword: false,
@@ -192,5 +200,44 @@ describe('the item link stats', () => {
       ['Opens', '6'],
       ['Downloads', '3'],
     ]);
+  });
+});
+
+describe('view only', () => {
+  it('lets only the drive owner turn it on, with the screenshot warning beside the switch', () => {
+    expect(viewOnlyShownOf('own')).toBe(true);
+    expect(viewOnlyShownOf('shared')).toBe(false);
+    expect(viewOnlyShownOf('edit')).toBe(false);
+    expect(viewOnlyShownOf('view')).toBe(false);
+    expect(VIEW_ONLY_TITLE).toBe('Viewers can download and copy');
+    expect(SCREENSHOT_LINE).toMatch(/screenshot/);
+  });
+
+  it('says what view only blocks for viewers', () => {
+    expect(viewOnlyLineOf({ locked: true, lockedHere: true })).toMatch(
+      /no download, copy, sync or offline copy/,
+    );
+    expect(viewOnlyLineOf({ locked: false, lockedHere: false })).toMatch(/^Turn off/);
+    expect(viewOnlyLineOf({ locked: true, lockedHere: false })).toBe(
+      'View only is set on a folder above.',
+    );
+    expect(viewOnlyInherited({ locked: true, lockedHere: false })).toBe(true);
+    expect(viewOnlyInherited({ locked: true, lockedHere: true })).toBe(false);
+  });
+});
+
+describe('link for people', () => {
+  it('uses the hub’s public address when it has one, and the app link otherwise', () => {
+    expect(peopleLinkOf(ITEM_ID, 'https://drive.example.com/', 'app://x')).toBe(
+      `https://drive.example.com/drive/open/${ITEM_ID}`,
+    );
+    expect(peopleLinkOf(ITEM_ID, null, `smarteverything://drive/open/${ITEM_ID}`)).toBe(
+      `smarteverything://drive/open/${ITEM_ID}`,
+    );
+  });
+
+  it('says who the link opens for', () => {
+    expect(peopleLinkLineOf('shared')).toBe('Everyone in the home can open it with this link.');
+    expect(peopleLinkLineOf('own')).toMatch(/can ask for access/);
   });
 });

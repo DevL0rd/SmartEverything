@@ -22,12 +22,14 @@ import type { AppUpdateView } from '../data/update-controller';
 import {
   DESKTOP_RESTART_PENDING_HINT,
   checkRowOf,
+  fallbackChoiceOf,
   offerViewOf,
   runningLabel,
 } from '../model/update-copy';
 import type { ReleaseOffer } from '../model/release-offer';
 import type { AppUpdateState } from '../model/update-state';
 import { AndroidApkOffer } from './android-apk-offer';
+import { AndroidFallbackCard } from './android-fallback-card';
 import { DesktopInstallerRows } from './desktop-installer-rows';
 import { OfferBlock, OfferButton } from './offer-block';
 import { useShellScope } from './offer-notice';
@@ -109,6 +111,7 @@ function MainAction({
   const pending = useValue(pendingRestart);
   const button = useRef<View>(null);
   const press = offerPress(offer, actions);
+  const stay = fallbackChoiceOf(state);
   const details = useSettingsDetails(state, offer, press, button);
   if (offer.action === null) return details.modal;
   if (offer.action.kind === 'restart' && pending !== null)
@@ -123,6 +126,7 @@ function MainAction({
   return (
     <View className="flex-row flex-wrap gap-2">
       <OfferButton action={offer.action} onPress={press} buttonRef={button} />
+      {stay === null ? null : <OfferButton action={stay} onPress={actions.stayOnBuiltIn} />}
       {details.secondaryAction === undefined ? null : (
         <Button {...details.secondaryAction} variant="text" />
       )}
@@ -186,6 +190,7 @@ export function AppUpdatesScreen(): ReactNode {
     <SettingsFrame page={APP_UPDATES_PAGE}>
       {available ? <CheckForUpdates state={state} checking={checking} check={check} /> : null}
       <UpdateStatusCard view={{ state, running }} actions={actions} />
+      <AndroidFallbackCard />
       <AndroidApkOffer />
       {installer === null ? null : (
         <List title="Desktop app" footer={INSTALLER_FOOTER}>

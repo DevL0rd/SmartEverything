@@ -3,7 +3,7 @@ import { Fragment } from 'react';
 import { Grid } from '../../../components/grid';
 import { ReasonLine } from '../../../components/reason-line';
 import { Skeleton } from '../../../components/skeleton';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { useRow } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 

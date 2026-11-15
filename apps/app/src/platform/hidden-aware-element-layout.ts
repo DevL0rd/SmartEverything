@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { useScreenPaused } from '../design/screen-pause';
+import { LayoutSettle } from './layout-settle';
 
 interface Layout {
   readonly x: number;
@@ -24,13 +25,7 @@ interface Tracked {
   last: Layout | null;
 }
 
-const SETTLE_PASSES = 4;
-
 const tracked = new WeakMap<Element, Tracked>();
-
-const observed = new Set<Element>();
-
-let settling = false;
 
 function pageOffsets(node: HTMLElement): { readonly left: number; readonly top: number } {
   let left = node.offsetLeft;
@@ -101,29 +96,11 @@ function deliver(node: Element, first: boolean): boolean {
   return true;
 }
 
-function deliverAll(): boolean {
-  let delivered = false;
-  for (const node of observed) {
-    delivered = deliver(node, false) || delivered;
-  }
-  return delivered;
-}
-
-function settle(): void {
-  settling = false;
-  for (let pass = 0; pass < SETTLE_PASSES; pass += 1) {
-    if (!flushSync(deliverAll)) {
-      return;
-    }
-  }
-}
-
-function settleAfterCommit(): void {
-  if (!settling) {
-    settling = true;
-    queueMicrotask(settle);
-  }
-}
+const settler = new LayoutSettle<Element>({
+  deliver: (node): boolean => deliver(node, false),
+  flush: (run): boolean => flushSync(run),
+  queue: queueMicrotask,
+});
 
 const observer =
   typeof ResizeObserver === 'function'
@@ -151,10 +128,10 @@ export default function useElementLayout(
     entry.handler = onLayout;
     entry.paused = paused;
     tracked.set(node, entry);
-    if (!paused && (wasPaused.current || entry.last === null)) {
-      if (deliver(node, true) && wasPaused.current) {
-        settleAfterCommit();
-      }
+    if (!paused) {
+      const resumed = wasPaused.current;
+      const delivered = (resumed || entry.last === null) && deliver(node, true);
+      settler.committed(node, resumed, delivered);
     }
     wasPaused.current = paused;
   });
@@ -164,10 +141,9 @@ export default function useElementLayout(
       return undefined;
     }
     observer.observe(node);
-    observed.add(node);
     return (): void => {
       observer.unobserve(node);
-      observed.delete(node);
+      settler.forget(node);
       tracked.delete(node);
     };
   }, [ref, watching]);

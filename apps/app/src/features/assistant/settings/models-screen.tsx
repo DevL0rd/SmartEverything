@@ -4,19 +4,19 @@ import { View } from 'react-native';
 import { useFocusRequest } from '../../../components/focus-request';
 import { useHostedNativeBack } from '../../../components/hosted-sheet-pages';
 import { IconButton } from '../../../components/icon-button';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { LibraryBody } from '../picker/library/library-body';
 import { useModelsRefresh } from '../picker/library/library-refresh';
-import { PanelSubpageContext } from '../picker/panel/panel-subpage';
+import { PanelSubpageContext } from '../picker/panel/panel-subpage-context';
 
 const MODELS_PAGE = 'assistant/models';
 const BROWSE_PICKER = { picked: null, onPick: null } as const;
 
-function useRefreshAction(): HeaderAction | null {
+function useRefreshAction(): ShellAction | null {
   const refresh = useModelsRefresh();
   if (refresh === null) return null;
   return {

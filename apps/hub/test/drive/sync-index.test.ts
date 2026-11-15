@@ -206,7 +206,8 @@ function place(
     rootId: root.id,
     folderItemId: fields.folderItemId ?? null,
     mode,
-    localPath: `/sync/${randomUUID()}`,
+    localPath: mode === 'synced' ? `/sync/${randomUUID()}` : null,
+    mountName: mode === 'synced' ? null : 'Mounted',
     enabled: true,
     createdBy: node.profileId ?? ownerId,
     ...(mode === 'synced'
@@ -478,6 +479,7 @@ describe('the index of a placed folder', () => {
     opened.store.drivePlacements.retarget(placed.id, {
       mode: 'synced',
       localPath: placed.localPath,
+      mountName: null,
       enabled: true,
       readOnly: false,
       excluded: ['cache'],
@@ -636,7 +638,7 @@ describe('who may open what', () => {
     const folder = seedFolder(theirs, 'trip');
     seedFile(theirs, 'trip/a.txt', folder, true);
     const grant = opened.store.driveGrants.set(
-      { itemId: folder.id, profileId: ownerId, role: 'view' },
+      { itemId: folder.id, profileId: ownerId, role: 'view', expiresAt: null },
       samId,
     );
     const node = pairNode(ownerId);

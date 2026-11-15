@@ -151,11 +151,12 @@ export function sharedDriveHeroOf(
 
 type Phase = DriveProgressNotice['phase'];
 
-const PHASES: readonly Phase[] = ['scan', 'hash', 'scrub'];
+const PHASES: readonly Phase[] = ['scan', 'hash', 'text', 'scrub'];
 
 const PHASE_WORD: Readonly<Record<Phase, string>> = {
   scan: 'Scanning',
   hash: 'Finding duplicates',
+  text: 'Reading text',
   scrub: 'Checking for damage',
 };
 

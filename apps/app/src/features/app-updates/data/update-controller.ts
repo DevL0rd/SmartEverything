@@ -24,7 +24,14 @@ import {
   type RestartTarget,
 } from '../model/update-state';
 import type { askToRestart } from './restart-confirmation';
-import type { AppUpdatePrefs } from './update-prefs';
+import {
+  fellBack,
+  resumeFallback,
+  stayOnBuiltIn,
+  tryUpdateAgain,
+  type FallbackHooks,
+} from './update-fallback';
+import type { AppUpdateFallback, AppUpdatePrefs } from './update-prefs';
 
 type PendingId = NonNullable<AppUpdatePrefs['pendingId']>;
 
@@ -42,6 +49,8 @@ export interface ControllerDeps {
   readonly report: (outcome: AppUpdateOutcome) => Promise<void>;
   readonly prefs: () => AppUpdatePrefs;
   readonly changePrefs: (change: Partial<AppUpdatePrefs>) => void;
+  readonly fallback: () => AppUpdateFallback;
+  readonly changeFallback: (fallback: AppUpdateFallback) => void;
   readonly token: () => string | null;
   readonly busy: () => boolean;
   readonly ask: typeof askToRestart;
@@ -163,8 +172,29 @@ export class AppUpdateController {
     }
     this.runtimeVersion = started.runtimeVersion;
     this.view.set({ ...this.view.get(), running: started.running });
-    if (started.emergency === null) this.settlePending(started.running);
-    else this.rolledBack(started.emergency);
+    if (started.emergency !== null) this.launchFailed(started.emergency);
+    else this.settlePending(started.running);
+    const hooks = this.fallbackHooks();
+    if (hooks !== null && this.state().kind !== 'fell_back') resumeFallback(hooks, started.running);
+  }
+
+  private fallbackHooks(): FallbackHooks | null {
+    const controls = this.deps.adapter.fallback;
+    if (controls === undefined) return null;
+    return {
+      controls,
+      fallback: this.deps.fallback,
+      changeFallback: this.deps.changeFallback,
+      changePrefs: this.deps.changePrefs,
+      dispatch: (event): void => {
+        this.dispatch(event);
+      },
+      report: (outcome): void => {
+        this.report(outcome);
+      },
+      state: () => this.state(),
+      check: () => this.check('retry'),
+    };
   }
 
   private settlePending(running: RunningVersion | null): void {
@@ -177,12 +207,33 @@ export class AppUpdateController {
       this.report({ updateId, outcome: 'applied', reason: null });
       return;
     }
+    const hooks = this.fallbackHooks();
+    if (hooks !== null && updateId !== null) {
+      fellBack(hooks, updateId, NOT_APPLIED_REASON);
+      return;
+    }
     log.warn('app_update.not_applied', { updateId });
     this.report({ updateId, outcome: 'rolled_back', reason: NOT_APPLIED_REASON });
   }
 
-  private rolledBack(emergency: EmergencyLaunch): void {
+  private launchFailed(emergency: EmergencyLaunch): void {
     const failedId = emergency.failedId ?? this.deps.prefs().launchedId;
+    const hooks = this.fallbackHooks();
+    if (hooks === null) this.rolledBack(failedId, emergency);
+    else fellBack(hooks, failedId, emergency.reason ?? NO_REASON);
+  }
+
+  tryUpdateAgain(): Promise<void> {
+    const hooks = this.fallbackHooks();
+    return hooks === null ? Promise.resolve() : tryUpdateAgain(hooks);
+  }
+
+  stayOnBuiltIn(): Promise<void> {
+    const hooks = this.fallbackHooks();
+    return hooks === null ? Promise.resolve() : stayOnBuiltIn(hooks);
+  }
+
+  private rolledBack(failedId: string | null, emergency: EmergencyLaunch): void {
     this.deps.changePrefs({ pendingId: null, launchedId: null });
     log.warn('app_update.rolled_back', { updateId: failedId, reason: emergency.reason });
     this.report({ updateId: failedId, outcome: 'rolled_back', reason: emergency.reason });

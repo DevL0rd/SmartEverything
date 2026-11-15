@@ -38,7 +38,6 @@ const ENV = {
     hasClimate: false,
     hasCameras: false,
     hasHealth: false,
-    hasScenes: false,
     hasEnergy: false,
     hasSecurity: false,
     hasIr: false,
@@ -53,7 +52,6 @@ function searchTables(): SearchTables {
     devices: tables.devices,
     rooms: tables.rooms,
     deviceGroups: tables.device_groups,
-    scenes: tables.scenes,
     automations: AUTOMATIONS,
     scheduled: tables.scheduled_actions,
     plugins: tables.plugins,
@@ -75,7 +73,7 @@ function linksOf(): SourceLinks {
 
 describe('search over automations with plugin kinds', () => {
   it('indexes the keywords of a plugin trigger once the lookup knows its kind', () => {
-    const tables = { scenes: emptyState().tables.scenes, automations: AUTOMATIONS };
+    const tables = { automations: AUTOMATIONS };
     expect(routinesOf(tables, LOOKUP).automations[0]?.triggerKeywords).toContain('arrive');
     expect(routinesOf(tables, STATIC_KIND_LOOKUP).automations[0]?.triggerKeywords).not.toContain(
       'arrive',

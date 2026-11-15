@@ -172,11 +172,20 @@ describe('camera presets and orbit', () => {
 
   it('pans along the ground and stays inside the scene', () => {
     const start = presetOrbit('top', geometry.frame, aspect);
-    const context = { viewport, frame: geometry.frame };
-    const right = orbitPan(start, { dx: -50, dy: 0 }, context);
+    const context = { view: viewport, frame: geometry.frame };
+    const centre = { x: 0, y: 0 };
+    const right = orbitPan(
+      start,
+      { dx: -50, dy: 0, from: centre, to: { x: -0.25, y: 0 } },
+      context,
+    );
     expect(right.target[0]).toBeGreaterThan(start.target[0]);
     expect(right.target[1]).toBe(0);
-    const far = orbitPan(start, { dx: -1_000_000, dy: 1_000_000 }, context);
+    const far = orbitPan(
+      start,
+      { dx: -1_000_000, dy: 1_000_000, from: centre, to: { x: -5000, y: -5000 } },
+      context,
+    );
     expect(Math.abs(far.target[0] - geometry.frame.centre[0])).toBeLessThanOrEqual(
       geometry.frame.radius + 1e-9,
     );
@@ -209,6 +218,31 @@ describe('camera presets and orbit', () => {
     },
   );
 
+  it.each(['top', 'angled'] as const)(
+    'pans so the ground under the pointer follows it (%s)',
+    (preset) => {
+      const start = presetOrbit(preset, geometry.frame, aspect);
+      const from = { x: 230, y: 170 };
+      const to = { x: 190, y: 120 };
+      const bounds = { left: 0, top: 0, width: viewport.width, height: viewport.height };
+      const panned = orbitPan(
+        start,
+        {
+          dx: to.x - from.x,
+          dy: to.y - from.y,
+          from: pointerToNdc(from, bounds),
+          to: pointerToNdc(to, bounds),
+        },
+        { view: viewport, frame: geometry.frame },
+      );
+      const grabbed = groundUnderPointer(start, pointerToNdc(from, bounds));
+      const held = groundUnderPointer(panned, pointerToNdc(to, bounds));
+      expect(held.x).toBeCloseTo(grabbed.x, 6);
+      expect(held.z).toBeCloseTo(grabbed.z, 6);
+      expect(panned.target[1]).toBe(0);
+    },
+  );
+
   it('zooms about the target when the pointer looks above the horizon', () => {
     const start = presetOrbit('side', geometry.frame, aspect);
     const zoomed = orbitZoomAt(start, 2, { x: 0, y: 1 }, { view: viewport, frame: geometry.frame });
@@ -231,7 +265,11 @@ describe('camera presets and orbit', () => {
 
   it('pans and zooms in one pinch step without losing the map', () => {
     const start = presetOrbit('angled', geometry.frame, aspect);
-    const panned = orbitPan(start, { dx: 40, dy: -25 }, { viewport, frame: geometry.frame });
+    const panned = orbitPan(
+      start,
+      { dx: 40, dy: -25, from: { x: 0, y: 0 }, to: { x: 0.2, y: 0.17 } },
+      { view: viewport, frame: geometry.frame },
+    );
     const both = orbitZoomAt(
       panned,
       1.25,

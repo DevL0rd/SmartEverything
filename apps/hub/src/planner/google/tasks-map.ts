@@ -18,8 +18,6 @@ function describeAttachment(attachment: PlannerAttachment): string {
       return attachment.title === null ? attachment.url : `${attachment.title} ${attachment.url}`;
     case 'device':
       return 'a device';
-    case 'scene':
-      return 'a scene';
     case 'automation':
       return 'an automation';
     case 'file':
@@ -120,13 +118,22 @@ export function baseSentAt(base: PlannerItemGoogle['base']): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+function importedLink(task: GoogleTask, listId: string): PlannerItemGoogle {
+  return {
+    id: task.id,
+    calendarOrListId: listId,
+    etag: task.etag,
+    base: baseOf({ fields: taskFields(task), position: googleOrder(task.position), sentAt: null }),
+    state: 'synced',
+  };
+}
+
 export function importedTask(
   task: GoogleTask,
   profileId: string,
   collectionId: string,
   listId: string,
 ): PlannerItemInput {
-  const fields = taskFields(task);
   const due = dueDate(task.due) ?? null;
   const position = googleOrder(task.position);
   return {
@@ -158,13 +165,11 @@ export function importedTask(
     completion: { kind: 'manual' },
     attachments: [],
     reminders: [],
-    google: {
-      id: task.id,
-      calendarOrListId: listId,
-      etag: task.etag,
-      base: baseOf({ fields, position, sentAt: null }),
-      state: 'synced',
-    },
+    google: importedLink(task, listId),
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'google',
   };
 }

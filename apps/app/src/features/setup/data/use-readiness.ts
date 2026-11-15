@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 import { localPref, setLocalPref, useLocalPref } from '../../../store/local-prefs';
 import { useStoreSelector } from '../../../store/store-context';
+import { readPlannerPreferences } from '../../../api/planner';
+import { plannerKeys } from '../../../queries/keys';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { sameStoreFacts, storeFactsOf, type SetupFacts } from '../model/facts';
 import { SETUP_ITEMS, type SetupItemId } from '../model/items';
 import { readinessOf, type Readiness } from '../model/readiness';
@@ -14,9 +17,14 @@ export function useSetupFacts(): SetupFacts {
   const facts = useStoreSelector(storeFactsOf, sameStoreFacts);
   const reach = useLocalPref('setupReach');
   const alarmPhone = useAlarmPhone();
+  const bedtime = useScreenQuery({
+    queryKey: plannerKeys.preferences(null),
+    queryFn: () => readPlannerPreferences(undefined),
+  }).data?.bedtime;
+  const bedtimeQuiet = bedtime?.enabled === true && bedtime.do_not_disturb;
   return useMemo(
-    () => ({ ...facts, homeOnly: reach === 'home', alarmPhone }),
-    [facts, reach, alarmPhone],
+    () => ({ ...facts, homeOnly: reach === 'home', alarmPhone, bedtimeQuiet }),
+    [facts, reach, alarmPhone, bedtimeQuiet],
   );
 }
 

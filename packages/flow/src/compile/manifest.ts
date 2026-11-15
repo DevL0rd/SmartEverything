@@ -15,7 +15,6 @@ export const REF_SLOTS = [
   'device',
   'room',
   'group',
-  'scene',
   'person',
   'computer',
   'phone',

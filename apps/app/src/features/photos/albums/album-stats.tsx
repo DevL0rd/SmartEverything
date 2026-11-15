@@ -5,9 +5,10 @@ import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
+import { useWhoSees } from '../sharing/album-who';
 import type { LoadedItems } from './album-data';
 import { statsOf } from './album-items';
-import { itemsText, leafIcon, leafText, ruleLead, visibilityOf } from './model';
+import { itemsText, leafIcon, leafText, ruleLead } from './model';
 
 const UNKNOWN = '–';
 
@@ -43,7 +44,7 @@ export function AlbumStatsCard({
   readonly loaded: LoadedItems;
 }): ReactNode {
   const stats = loaded.complete ? statsOf(loaded.items) : null;
-  const who = visibilityOf(album.scope);
+  const who = useWhoSees(album);
   return (
     <View className="flex-row flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border-hairline border-outline-variant bg-surface-1 px-5 py-4">
       <View className="min-w-24 gap-0.5">

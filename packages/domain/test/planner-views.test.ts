@@ -3,8 +3,12 @@ import { SIGNAL_INPUT } from '../src/signals';
 import { PLANNER_DAY } from '../src/planner/day';
 import { PLANNER_OCCURRENCE_VIEW, PLANNER_RANGE } from '../src/planner/range';
 import {
+  PLANNER_ASSIGNED_NOTICE,
+  PLANNER_BOOKED_NOTICE,
+  PLANNER_INVITED_NOTICE,
   PLANNER_PHONE_RINGS_NOTICE,
   PLANNER_RING_NOTICE,
+  PLANNER_RSVP_NOTICE,
   PLANNER_SIGNAL,
   PLANNER_SIGNAL_KINDS,
 } from '../src/planner/signals';
@@ -101,6 +105,22 @@ const signalData: Record<string, unknown> = {
     startsAt: '2026-11-07T09:00:00+00:00',
     minutesBefore: 10,
   },
+  guest_responded: { itemId: ITEM, guestId: ALARM, title: 'Dentist', response: 'maybe' },
+  task_assigned: { itemId: ITEM, title: 'Bins', assigneeId: ALARM, assignerId: null },
+  booking_made: {
+    itemId: ITEM,
+    pageId: ALARM,
+    title: 'Intro call',
+    startsAt: '2026-11-07T09:00:00+00:00',
+    bookerName: 'Ida',
+  },
+  bedtime_reminder: { bedAt: '2026-11-07T16:00:00+00:00', minutesBefore: 30 },
+  wind_down_started: {
+    bedAt: '2026-11-07T16:00:00+00:00',
+    wakeAt: '2026-11-07T23:00:00+00:00',
+    minutes: 30,
+  },
+  wake_time: { wakeAt: '2026-11-07T23:00:00+00:00' },
 };
 
 function signal(kind: string): Record<string, unknown> {
@@ -186,6 +206,43 @@ describe('planner signals and notices', () => {
       false,
     );
     expect(PLANNER_SIGNAL.safeParse({ ...signal('task_done'), data: task }).success).toBe(false);
+  });
+
+  it('reads the invitation, answer, assignment and booking notices of a person', () => {
+    const base = { personId: ALARM, itemId: ITEM, title: 'Dentist' };
+    const invited = {
+      type: 'planner_invited',
+      ...base,
+      startsAt: '2026-11-07T09:00:00+00:00',
+      inviterId: COLLECTION,
+    };
+    expect(PLANNER_INVITED_NOTICE.safeParse(invited).success).toBe(true);
+    expect(PLANNER_INVITED_NOTICE.safeParse({ ...invited, startsAt: null }).success).toBe(true);
+    expect(PLANNER_INVITED_NOTICE.safeParse({ ...invited, personId: undefined }).success).toBe(
+      false,
+    );
+    const rsvp = { type: 'planner_rsvp', ...base, guestId: COLLECTION, response: 'yes' };
+    expect(PLANNER_RSVP_NOTICE.safeParse(rsvp).success).toBe(true);
+    expect(PLANNER_RSVP_NOTICE.safeParse({ ...rsvp, response: 'needs_action' }).success).toBe(
+      false,
+    );
+    const assigned = {
+      type: 'planner_assigned',
+      ...base,
+      state: 'done',
+      assignerId: null,
+      assigneeId: COLLECTION,
+    };
+    expect(PLANNER_ASSIGNED_NOTICE.safeParse(assigned).success).toBe(true);
+    expect(PLANNER_ASSIGNED_NOTICE.safeParse({ ...assigned, state: 'late' }).success).toBe(false);
+    const booked = {
+      type: 'planner_booked',
+      ...base,
+      pageId: COLLECTION,
+      startsAt: '2026-11-07T09:00:00+00:00',
+    };
+    expect(PLANNER_BOOKED_NOTICE.safeParse(booked).success).toBe(true);
+    expect(PLANNER_BOOKED_NOTICE.safeParse({ ...booked, startsAt: null }).success).toBe(false);
   });
 
   it('reads the phone ring set notice and nothing else', () => {

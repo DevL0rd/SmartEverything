@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, type ReactElement, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 import type { AppHref } from '../../../components/app-href';
 import { Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
@@ -356,7 +357,7 @@ function Grid({
 
 export function DeviceGrid(props: DeviceGridProps): ReactNode {
   useLifecycleLog(log, 'grid');
-  const screenWidth = useWindowDimensions().width;
+  const screenWidth = useWindowSize().width;
   const { width, onLayout } = useMeasuredWidth(
     Math.round,
     useIdiom() === 'touch' ? Math.round(screenWidth) : 0,

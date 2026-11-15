@@ -1,4 +1,4 @@
-import { createContext, use, useState, type ReactNode } from 'react';
+import { use, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { IconButton } from '../../../../components/icon-button';
 import { SelectionBar } from '../../../../components/files/selection-bar';
@@ -6,12 +6,12 @@ import { Text } from '../../../../components/text';
 import { useFocusRequest } from '../../../../components/focus-request';
 import { isNative } from '../../../../design/platform';
 import type { PrimaryAction } from './library-model';
-import { PanelSubpageContext, usePanelSubpage } from '../panel/panel-subpage';
+import { usePanelSubpage } from '../panel/panel-subpage';
+import { PanelSubpageContext } from '../panel/panel-subpage-context';
 import { CatalogueMeasure } from './catalogue-fit';
+import { LibraryActionFocus, LibraryOriginFocus } from './library-focus';
 
-export const LibraryActionFocus = createContext(false);
-type LibraryOrigin = 'filters' | 'detail';
-export const LibraryOriginFocus = createContext<LibraryOrigin | null>(null);
+export type LibraryOrigin = 'filters' | 'detail';
 
 export function useLibraryBack(
   page: LibraryOrigin | 'results',

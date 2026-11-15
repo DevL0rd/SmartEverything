@@ -12,21 +12,16 @@ import { useAreaWidth } from '../../../design/size-class';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { usePlannerCollections, usePlannerRange } from '../data';
+import { usePlannerRange } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { QueryBody } from '../frame/query-body';
 import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
-import {
-  agendaDaysOf,
-  agendaRowsOf,
-  agendaWindowOf,
-  dayMapOf,
-  type AgendaEntry,
-  type AgendaHead,
-  type AgendaRow,
-  type RowEdge,
-} from './month-model';
+import { agendaRowsOf, type AgendaEntry, type AgendaHead, type AgendaRow } from './agenda-model';
+import { useCalendarLooks } from './calendar-looks';
+import type { EventLook } from './calendars-model';
+import { LookMark } from './event-look';
+import { agendaDaysOf, agendaWindowOf, dayMapOf, type RowEdge } from './month-model';
 
 const FRAME: Readonly<Record<RowEdge, string>> = {
   only: 'rounded-lg',
@@ -35,8 +30,23 @@ const FRAME: Readonly<Record<RowEdge, string>> = {
   last: 'rounded-b-lg border-t-0',
 };
 
-function stripeOf(colour: PlannerColourKey | null): string {
-  return colour === null ? 'bg-on-surface-variant' : LIST_DOT[colour];
+function stripeOf(colour: PlannerColourKey | null, look: EventLook): string {
+  const fill = colour === null ? 'bg-on-surface-variant' : LIST_DOT[colour];
+  if (look === 'invited') return 'border border-on-surface-variant bg-transparent';
+  return look === 'maybe' ? cn(fill, 'opacity-50') : fill;
+}
+
+function LookTag({ look }: { readonly look: EventLook }): ReactNode {
+  if (look === 'invited' || look === 'maybe') {
+    return (
+      <View className="rounded-full bg-surface-3 px-2 py-0.5">
+        <Text variant="caption" tone="variant">
+          {look === 'invited' ? 'Invited' : 'Maybe'}
+        </Text>
+      </View>
+    );
+  }
+  return <LookMark look={look} />;
 }
 
 function GoogleMark(): ReactNode {
@@ -55,7 +65,7 @@ function CompactLine({ entry }: { readonly entry: AgendaEntry }): ReactNode {
       <Text variant="caption" tone="variant" numberOfLines={2} className="w-11 font-mono tabular">
         {entry.time}
       </Text>
-      <View className={cn('h-7 w-0.75 rounded-full', stripeOf(entry.colour))} />
+      <View className={cn('h-7 w-0.75 rounded-full', stripeOf(entry.colour, entry.look))} />
       <View className="min-w-0 flex-1">
         <Text variant="label" numberOfLines={1}>
           {entry.occurrence.title}
@@ -76,7 +86,7 @@ function WideLine({ entry }: { readonly entry: AgendaEntry }): ReactNode {
       <Text variant="caption" tone="variant" numberOfLines={1} className="w-24 font-mono tabular">
         {entry.range}
       </Text>
-      <View className={cn('h-6 w-0.75 rounded-full', stripeOf(entry.colour))} />
+      <View className={cn('h-6 w-0.75 rounded-full', stripeOf(entry.colour, entry.look))} />
       <Text variant="label" numberOfLines={1} className="min-w-0 flex-1">
         {entry.occurrence.title}
       </Text>
@@ -109,6 +119,7 @@ function Item({ entry, edge, wide }: AgendaItemProps): ReactNode {
         focusInset
       >
         {wide ? <WideLine entry={entry} /> : <CompactLine entry={entry} />}
+        <LookTag look={entry.look} />
         {entry.google ? <GoogleMark /> : null}
       </Interactive>
     </View>
@@ -145,7 +156,8 @@ function sameRow(left: AgendaRow, right: AgendaRow): boolean {
       left.edge === right.edge &&
       left.entry.occurrence === right.entry.occurrence &&
       left.entry.calendar === right.entry.calendar &&
-      left.entry.colour === right.entry.colour
+      left.entry.colour === right.entry.colour &&
+      left.entry.look === right.entry.look
     );
   }
   return false;
@@ -199,13 +211,15 @@ function useAgendaRows(range: PlannerRange, day: string, query: string): readonl
   const { person } = usePlannerFrame();
   const timeZone = useSettings().time_zone;
   const window = agendaDaysOf(day);
+  const looks = useCalendarLooks(person);
   return agendaRowsOf({
     days: dayMapOf(range.occurrences, timeZone, window),
     window,
     today: useMinuteOf(dayKeyOf),
-    collections: usePlannerCollections(person),
+    collections: looks.collections,
     timeZone,
     query,
+    lookOf: looks.lookOf,
   });
 }
 

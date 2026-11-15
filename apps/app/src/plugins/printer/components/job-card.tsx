@@ -8,7 +8,7 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useSecondOf } from '../../../store/clock';
-import { jobCardOf, type JobCard as Card } from '../model/job-card';
+import { jobCardOf, type JobCard as Card, type PrinterHalt } from '../model/job-card';
 
 export interface JobHandlers {
   readonly onCancel: (() => void) | null;
@@ -18,7 +18,7 @@ export interface JobHandlers {
 
 export interface JobCardProps extends JobHandlers {
   readonly job: PrinterJob;
-  readonly stopped: boolean;
+  readonly printer: PrinterHalt;
   readonly ppm: number | null;
 }
 
@@ -102,6 +102,7 @@ function Body({
   readonly handlers: JobHandlers;
 }): ReactNode {
   const frozen = card.kind === 'stopped';
+  const paused = frozen || card.kind === 'offline';
   const facts = factsOf(job);
   return (
     <>
@@ -111,7 +112,7 @@ function Body({
       {card.progress === null ? null : (
         <ProgressBar
           progress={card.progress}
-          colour={frozen ? 'critical' : 'primary'}
+          colour={frozen ? 'critical' : paused ? 'outline' : 'primary'}
           label="Job progress"
         />
       )}
@@ -131,10 +132,11 @@ function Body({
   );
 }
 
-export function JobCard({ job, stopped, ppm, ...handlers }: JobCardProps): ReactNode {
-  const now = useSecondOf((value) => value, !stopped && job.state === 'processing');
-  const card = jobCardOf(job, { stopped, now, ppm });
+export function JobCard({ job, printer, ppm, ...handlers }: JobCardProps): ReactNode {
+  const now = useSecondOf((value) => value, printer === 'ready' && job.state === 'processing');
+  const card = jobCardOf(job, { printer, now, ppm });
   const frozen = card.kind === 'stopped';
+  const offline = card.kind === 'offline';
   return (
     <View
       className={cn(
@@ -145,7 +147,10 @@ export function JobCard({ job, stopped, ppm, ...handlers }: JobCardProps): React
       accessibilityLabel={`${titleOf(job)}. ${card.headline}${card.remaining ?? ''}`}
     >
       <View className="flex-row items-center gap-2">
-        <Icon name={frozen ? 'warning' : 'fileText'} tone={frozen ? 'critical' : 'variant'} />
+        <Icon
+          name={frozen || offline ? 'warning' : 'fileText'}
+          tone={frozen ? 'critical' : 'variant'}
+        />
         <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
           {titleOf(job)}
         </Text>

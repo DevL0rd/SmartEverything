@@ -16,6 +16,7 @@ import {
 import { useStableCallback } from '../../../design/use-stable-callback';
 import { FADE_IN_MS } from '../visual/model-visual';
 import { browserScheduler } from './frame-loop';
+import { watchLayout, type LayoutWatchHost, type NodeWatch } from './layout-watch';
 import { startCanvas, type CanvasGraphics, type RunningCanvas } from './live-canvas';
 import { liveSurface } from './live-surface';
 import { createLiveRenderer, type LiveRect, type LiveRenderer } from './renderer-core';
@@ -89,48 +90,65 @@ function placementChanged(): void {
   invalidateSurface();
 }
 
-function layoutKey(): string {
-  const parts: string[] = [];
-  for (const [id, target] of placed) {
-    for (const element of [target.element, ...target.clips]) {
-      const { x, y, width, height } = rectOf(element);
-      parts.push(`${id}:${String(x)},${String(y)},${String(width)},${String(height)}`);
-    }
-  }
-  return parts.join('|');
+const STRUCTURE: MutationObserverInit = { childList: true, subtree: true };
+
+const STYLE: MutationObserverInit = { attributes: true, attributeFilter: ['style', 'class'] };
+
+function mutationWatch(options: MutationObserverInit) {
+  return (onChange: () => void): NodeWatch<HTMLElement> => {
+    const observer = new MutationObserver(onChange);
+    return {
+      observe: (node): void => {
+        observer.observe(node, options);
+      },
+      disconnect: (): void => {
+        observer.disconnect();
+      },
+    };
+  };
 }
 
-function watchLayout(onMoved: () => void): () => void {
-  let last = layoutKey();
-  const check = (): void => {
-    const next = layoutKey();
-    if (next === last) return;
-    last = next;
-    onMoved();
+function sizeWatch(onChange: () => void): NodeWatch<HTMLElement> {
+  const observer = new ResizeObserver(onChange);
+  return {
+    observe: (node): void => {
+      observer.observe(node);
+    },
+    disconnect: (): void => {
+      observer.disconnect();
+    },
   };
-  const sizes = new ResizeObserver(check);
-  const observePlaced = (): void => {
-    sizes.disconnect();
-    for (const target of placed.values()) {
-      sizes.observe(target.element);
-      for (const clip of target.clips) sizes.observe(clip);
-    }
-    last = layoutKey();
-  };
-  const mutations = new MutationObserver(check);
-  mutations.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['style', 'class'],
-  });
-  placementEvents.add(observePlaced);
-  observePlaced();
-  return (): void => {
-    placementEvents.delete(observePlaced);
-    mutations.disconnect();
-    sizes.disconnect();
-  };
+}
+
+function* ancestorChain(target: Placed): Iterable<HTMLElement> {
+  for (
+    let at: HTMLElement | null = target.element;
+    at !== null && at !== document.body;
+    at = at.parentElement
+  ) {
+    yield at;
+  }
+}
+
+function* elementChildren(node: HTMLElement): Iterable<HTMLElement> {
+  for (const child of node.children) if (child instanceof HTMLElement) yield child;
+}
+
+const layoutHost: LayoutWatchHost<HTMLElement> = {
+  targets: () => placed.values(),
+  rectOf,
+  scopeOf: (target) => target.clips[0] ?? document.body,
+  chainOf: ancestorChain,
+  childrenOf: elementChildren,
+  watchSizes: sizeWatch,
+  watchStructure: mutationWatch(STRUCTURE),
+  watchStyle: mutationWatch(STYLE),
+  scheduler: browserScheduler(),
+  placementEvents,
+};
+
+function watchPlacedLayout(onMoved: () => void): () => void {
+  return watchLayout(layoutHost, onMoved);
 }
 
 function openGraphics(canvas: HTMLCanvasElement): CanvasGraphics {
@@ -163,7 +181,7 @@ export function LiveSurfaceHost(): ReactNode {
           scheduler: browserScheduler(),
           open: openGraphics,
           place: placeAll,
-          watchLayout,
+          watchLayout: watchPlacedLayout,
           onRestored,
         });
       } catch (error) {

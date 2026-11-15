@@ -1,7 +1,6 @@
 import { API_ENDPOINTS, liveProtocols } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { LAMP } from './support/fake-provider';
 import { linkFakeProvider, pairPhone, useBootedServer, verifiedPublicUrl } from './support/booted';
 import { call, openLive } from './support/server';
 
@@ -305,64 +304,7 @@ describe('roles and personal data', () => {
   });
 });
 
-describe('scenes, automations, health and assistant access', () => {
-  it('runs a scene as validated commands with source scene', async () => {
-    await linkFakeProvider(suite.current);
-    const devices = API_ENDPOINTS.listDevices.response.parse(
-      (await call(suite.current.base, suite.current.owner, { method: 'GET', path: '/api/devices' }))
-        .body,
-    );
-    const lamp = devices.find((device) => device.external_id === LAMP.externalId)?.id ?? '';
-    const scene = API_ENDPOINTS.createScene.response.parse(
-      (
-        await call(suite.current.base, suite.current.owner, {
-          method: 'POST',
-          path: '/api/scenes',
-          body: {
-            name: 'Evening',
-            actions: [{ type: 'command', deviceId: lamp, capability: 'brightness', value: 30 }],
-          },
-        })
-      ).body,
-    );
-    expect(scene).toMatchObject({ icon: 'sparkles', position: 0 });
-    const ran = await call(suite.current.base, suite.current.owner, {
-      method: 'POST',
-      path: `/api/scenes/${scene.id}/run`,
-    });
-    expect(ran.body).toMatchObject([
-      { device_id: lamp, capability: 'brightness', value: 30, source: 'scene' },
-    ]);
-    const empty = API_ENDPOINTS.createScene.response.parse(
-      (
-        await call(suite.current.base, suite.current.owner, {
-          method: 'POST',
-          path: '/api/scenes',
-          body: { name: 'Empty', actions: [] },
-        })
-      ).body,
-    );
-    expect(
-      (
-        await call(suite.current.base, suite.current.owner, {
-          method: 'POST',
-          path: `/api/scenes/${empty.id}/run`,
-        })
-      ).body,
-    ).toMatchObject({
-      error: { code: 'command_refused', message: 'The scene Empty has no actions.' },
-    });
-    expect(
-      (
-        await call(suite.current.base, suite.current.owner, {
-          method: 'PUT',
-          path: '/api/scenes/order',
-          body: { ids: [empty.id, scene.id] },
-        })
-      ).body,
-    ).toMatchObject([{ name: 'Empty' }, { name: 'Evening' }]);
-  });
-
+describe('automations, health and assistant access', () => {
   it('takes health uploads from a phone’s own pairing and stops them when it stops syncing or is unpaired', async () => {
     await verifiedPublicUrl(suite.current);
     const phone = await pairPhone(suite.current);

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { memo, useEffect, useState } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
@@ -26,11 +26,13 @@ export const TILE_FADE_MS = 120;
 
 export type Thumbnail = string | VideoThumbnail;
 export type ResolveThumb = (tile: MediaTile) => Promise<Thumbnail | null>;
+export type TileBadge = (tile: MediaTile) => ReactElement | null;
 
 export interface TileActions {
   readonly resolveThumb: ResolveThumb;
   readonly onOpen: (tile: MediaTile) => void;
   readonly onMenu?: (tile: MediaTile, point: Point | null) => void;
+  readonly badgeOf?: TileBadge;
 }
 
 interface Resolved {
@@ -175,12 +177,60 @@ export interface MediaTileProps extends TileActions {
   readonly height: number;
 }
 
-function Tile({ tile, width, height, resolveThumb, onOpen, onMenu }: MediaTileProps): ReactNode {
+function Overlays({
+  tile,
+  ready,
+  badgeOf,
+}: {
+  readonly tile: MediaTile;
+  readonly ready: boolean;
+  readonly badgeOf: TileBadge | undefined;
+}): ReactNode {
+  const marks = ready ? tileMarks(tile) : null;
+  const badge = badgeOf?.(tile) ?? null;
+  return (
+    <>
+      {marks !== null && hasMarks(marks) ? <Marks marks={marks} /> : null}
+      {badge === null ? null : (
+        <View pointerEvents="none" className="absolute left-1.5 top-1.5">
+          {badge}
+        </View>
+      )}
+    </>
+  );
+}
+
+function menuHandlers(
+  tile: MediaTile,
+  onMenu: TileActions['onMenu'],
+): {
+  readonly onLongPress: (() => void) | undefined;
+  readonly onContextMenu: ((point: Point) => void) | undefined;
+} {
+  if (onMenu === undefined) return { onLongPress: undefined, onContextMenu: undefined };
+  return {
+    onLongPress: (): void => {
+      onMenu(tile, null);
+    },
+    onContextMenu: (point: Point): void => {
+      onMenu(tile, point);
+    },
+  };
+}
+
+function Tile({
+  tile,
+  width,
+  height,
+  resolveThumb,
+  onOpen,
+  onMenu,
+  badgeOf,
+}: MediaTileProps): ReactNode {
   const [failed, setFailed] = useState<string | null>(null);
   const key = tileKey(tile);
   const state = failed === key ? 'unreadable' : tileState(tile);
   const url = useThumb(tile, resolveThumb, state === 'ready');
-  const marks = state === 'ready' ? tileMarks(tile) : null;
   return (
     <View style={boxOf(width, height)}>
       <Interactive
@@ -189,20 +239,7 @@ function Tile({ tile, width, height, resolveThumb, onOpen, onMenu }: MediaTilePr
         onPress={() => {
           onOpen(tile);
         }}
-        onLongPress={
-          onMenu === undefined
-            ? undefined
-            : (): void => {
-                onMenu(tile, null);
-              }
-        }
-        onContextMenu={
-          onMenu === undefined
-            ? undefined
-            : (point: Point): void => {
-                onMenu(tile, point);
-              }
-        }
+        {...menuHandlers(tile, onMenu)}
       >
         {state === 'unreadable' ? (
           <Unreadable />
@@ -215,7 +252,7 @@ function Tile({ tile, width, height, resolveThumb, onOpen, onMenu }: MediaTilePr
             }}
           />
         )}
-        {marks !== null && hasMarks(marks) ? <Marks marks={marks} /> : null}
+        <Overlays tile={tile} ready={state === 'ready'} badgeOf={badgeOf} />
       </Interactive>
     </View>
   );

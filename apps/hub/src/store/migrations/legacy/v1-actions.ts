@@ -1,6 +1,6 @@
 import {
-  LEGACY_ACTION,
-  type LegacyAction,
+  STEP_ACTION_KINDS,
+  STEP_ACTION_NODE,
   AUTOMATION_COMMAND_INPUT,
   AUTOMATION_INPUT,
   AUTOMATION_VALUE_ID,
@@ -16,6 +16,13 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { CONDITIONS, type Conditions } from './v1-conditions';
+
+const LEGACY_ACTION = z.discriminatedUnion('type', [
+  ...STEP_ACTION_KINDS,
+  z.object({ type: z.literal('scene'), sceneId: z.uuid(), ...STEP_ACTION_NODE }),
+]);
+
+type LegacyAction = z.infer<typeof LEGACY_ACTION>;
 
 const MAX_AUTOMATION_DEPTH = 12;
 const MAX_AUTOMATION_NODES = 500;

@@ -8,7 +8,7 @@ const WALL = 0.2;
 export const LAUNDRY_BASKET_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.laundry-basket',
   title: 'Laundry basket',
-  footprint: { width: 0.44, depth: 0.44, height: 0.63 },
+  footprint: { width: 0.45, depth: 0.45, height: 0.63 },
   size: { height: { param: 'height', extra: 0.03, resizes: true } },
   meta: {
     names: {

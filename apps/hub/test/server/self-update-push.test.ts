@@ -15,7 +15,7 @@ const BEFORE = 'b'.repeat(40);
 let server: Server;
 let base: string;
 let secret: string | null;
-let submitted: { tip: string; pushedFrom: string }[];
+let submitted: { tip: string; pushedFrom: string | null; paths: readonly string[] | null }[];
 
 function payload(change: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -23,6 +23,7 @@ function payload(change: Record<string, unknown> = {}): string {
     before: BEFORE,
     after: TIP,
     deleted: false,
+    commits: [{ added: ['apps/hub/new.ts'], removed: [], modified: ['apps/app/a.ts'] }],
     repository: { full_name: 'DevL0rd/SmartEverything' },
     ...change,
   });
@@ -83,7 +84,21 @@ describe('push webhook endpoint', () => {
       kind: 'queued',
       revisionId: '00000000-0000-4000-8000-000000000001',
     });
-    expect(submitted).toEqual([{ tip: TIP, pushedFrom: BEFORE }]);
+    expect(submitted).toEqual([
+      { tip: TIP, pushedFrom: BEFORE, paths: ['apps/hub/new.ts', 'apps/app/a.ts'] },
+    ]);
+  });
+
+  it('queues a push without commits with no known paths', async () => {
+    const reply = await post(payload({ commits: [] }), { 'x-github-event': 'push' });
+    expect(reply.status).toBe(202);
+    expect(submitted).toEqual([{ tip: TIP, pushedFrom: BEFORE, paths: null }]);
+  });
+
+  it('refuses a push payload with no commits list', async () => {
+    const reply = await post(payload({ commits: undefined }), { 'x-github-event': 'push' });
+    expect(reply.status).toBe(400);
+    expect(submitted).toEqual([]);
   });
 
   it('answers a signed ping and ignores pushes that are not for the configured branch', async () => {

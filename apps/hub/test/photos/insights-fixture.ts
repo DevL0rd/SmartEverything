@@ -44,7 +44,23 @@ export let rail: RailCountsReader;
 export let alice: DriveActor;
 export let bob: DriveActor;
 
+function inodeOf(rootId: string | number | null): number {
+  const now = 1_000_000_000;
+  return Number(
+    database
+      .prepare(
+        `insert into drive_inodes (root_id, is_root, type, mode, atime_ns, mtime_ns, ctime_ns, btime_ns, orphan)
+         values (?, 0, 'file', 420, ?, ?, ?, ?, 0) returning id`,
+      )
+      .get(rootId, now, now, now, now)?.['id'],
+  );
+}
+
 export function insert(table: string, fields: Fields): void {
+  if (table === 'drive_items' && fields['inode_id'] === undefined) {
+    insert(table, { ...fields, inode_id: inodeOf(fields['root_id'] ?? null) });
+    return;
+  }
   const columns = Object.keys(fields);
   database
     .prepare(
@@ -206,7 +222,7 @@ export function setup(): void {
     lon: 139.7,
   });
   reader = new InsightsReader(context);
-  rail = new RailCountsReader(context);
+  rail = new RailCountsReader(context, () => 0);
 }
 
 export function teardown(): void {

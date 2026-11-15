@@ -208,6 +208,8 @@ export function excessText(seconds: number): string {
   return seconds === 0 ? 'No time pressing too hard' : `${secondsText(seconds)} pressing too hard`;
 }
 
+export const EXCESS_WORD = 'pressed too hard';
+
 export function hasExcess(session: BrushingSession): boolean {
   return session.pressure?.strip.includes(PRESSURE_CODE_TOO_HIGH) === true;
 }

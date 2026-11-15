@@ -109,7 +109,8 @@ describe('what a check can answer', () => {
     await controller.check('release');
     await controller.download(id);
     await controller.apply({ kind: 'update', id }, () => undefined);
-    const rolledBack = await controller.bootFailed('The trial crashed.');
+    await controller.bootFailed('The trial crashed.');
+    const rolledBack = await controller.rollBack(() => undefined);
     home.newerIncompatible = NEWER;
 
     expect(await controller.check('release')).toStrictEqual(rolledBack);

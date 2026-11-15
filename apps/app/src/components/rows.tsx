@@ -19,6 +19,7 @@ interface RowBase {
   readonly caption?: string;
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
+  readonly iconTone?: NonNullable<ListRowProps['iconTone']>;
   readonly disabled?: boolean;
   readonly compact?: boolean;
 }

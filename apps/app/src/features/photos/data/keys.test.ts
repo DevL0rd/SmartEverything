@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import { invalidateDriveChanged } from '../../drive';
 import { driveKey } from '../../../queries/keys';
-import { ROOT_ID } from '../../drive/data/fixtures';
+import { ROOT_ID } from '../../drive/testing';
 import { PHOTO_ALL, photoKeys } from './keys';
 
 function seeded(): QueryClient {

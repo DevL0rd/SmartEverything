@@ -6,7 +6,7 @@ import { COMPACT_PANEL_INSET } from './compact-panel';
 import { SheetBody } from './sheet-body';
 import { SheetHeader } from './sheet-header';
 import { SheetNavigationProvider, type useSheetNavigation } from './sheet-navigation';
-import { EscapeScopeVisible } from './use-escape';
+import { EscapeScopeVisible } from './escape-scope';
 
 type Navigation = ReturnType<typeof useSheetNavigation>;
 type Entry = Navigation['pages'][number];

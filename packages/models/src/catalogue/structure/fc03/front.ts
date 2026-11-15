@@ -130,7 +130,7 @@ export const DOOR_FRONT_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Front door',
   category: 'structure',
-  footprint: { width: 1.106, depth: 0.17, height: 2.213 },
+  footprint: { width: 1.106, depth: 0.1805, height: 2.213 },
   size: {
     width: { param: 'width', extra: 0.186, resizes: true },
     height: { param: 'height', extra: 0.113, resizes: true },

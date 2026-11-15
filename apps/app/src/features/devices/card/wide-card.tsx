@@ -215,7 +215,13 @@ function Graph({
         onLayout?.(event);
       }}
     >
-      <GraphBody graph={graph} slot={slot} />
+      {beside ? (
+        <View className="absolute inset-0">
+          <GraphBody graph={graph} slot={slot} />
+        </View>
+      ) : (
+        <GraphBody graph={graph} slot={slot} />
+      )}
     </View>
   );
 }
@@ -254,7 +260,7 @@ function Spare({ fit }: Pick<Measured, 'fit'>): ReactNode {
 
 function Beside(props: WideCardProps & Measured): ReactNode {
   return (
-    <View className="min-h-0 flex-1 flex-row gap-4" pointerEvents="box-none">
+    <View className="shrink-0 grow flex-row gap-4" pointerEvents="box-none">
       <View className="min-w-0 flex-1" pointerEvents="box-none">
         <Info {...props} />
         <Spare fit={props.fit} />

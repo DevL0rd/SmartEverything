@@ -12,7 +12,9 @@ const PROGRAM_READERS: readonly RegExp[] = [
   /^packages\/domain\/src\/automation-nodes\//,
   /^packages\/domain\/src\/api\/endpoints-automation-/,
   /^packages\/domain\/src\/device-log\.ts$/,
-  /^apps\/app\/src\/features\/automations\/(?:editor|functions|model\/canvas|model\/editor|model\/templates|model\/consumers)\//,
+  /^packages\/domain\/src\/plugin-automation\.ts$/,
+  /^apps\/app\/src\/features\/automations\/(?:editor|functions|model\/canvas|model\/editor|model\/graph|model\/templates|model\/consumers)\//,
+  /^apps\/app\/src\/features\/automations\/hosts\/editor-test\.tsx$/,
   /^apps\/app\/src\/features\/automations\/runs\/run-view\/program-facts\.ts$/,
 ];
 

@@ -34,7 +34,7 @@ function Handle({ share, height, onDrag, onResize, onCollapse }: HandleProps): R
     else if (name === 'activate') onCollapse();
   };
   return (
-    <View className="flex-row items-center px-gutter">
+    <View className="flex-row items-center">
       <GestureDetector gesture={drag}>
         <View
           accessible
@@ -66,7 +66,7 @@ function FoldedBar({
   readonly onExpand: () => void;
 }): ReactNode {
   return (
-    <View className="flex-row items-center gap-2 border-b border-outline-variant bg-surface-1 px-gutter">
+    <View className="flex-row items-center gap-2 rounded-lg bg-surface-1 pl-4">
       <View className="min-w-0 flex-1">{bar}</View>
       <IconButton icon="chevronDown" label="Show the home map" onPress={onExpand} />
     </View>
@@ -96,7 +96,10 @@ export function PinnedSplit({ stage, bar, children }: PinnedSplitProps): ReactNo
   const share = dragged ?? size;
   return (
     <View className="flex-1" onLayout={onLayout}>
-      <View style={pinnedStageStyle(height, share, collapsed)} className="w-full overflow-hidden">
+      <View
+        style={pinnedStageStyle(height, share, collapsed)}
+        className="w-full overflow-hidden rounded-lg"
+      >
         <VisualVisibility visible={!collapsed && height > 0}>{stage}</VisualVisibility>
       </View>
       {collapsed ? (

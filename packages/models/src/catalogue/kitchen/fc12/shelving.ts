@@ -56,7 +56,7 @@ function bolts(): ModelSpecPart[] {
 export const OPEN_SHELF_MODEL: ModelSpec = wallFurniture({
   id: 'cat.kitchen.open-shelf',
   title: 'Open shelf',
-  footprint: { width: 1.2, depth: SHELF_D, height: TIERS[1] + SHELF_T },
+  footprint: { width: 1.2, depth: SHELF_D, height: 0.538 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {
@@ -133,7 +133,7 @@ function jarParts(): ModelSpecPart[] {
 export const SPICE_RACK_MODEL: ModelSpec = wallFurniture({
   id: 'cat.kitchen.spice-rack',
   title: 'Spice rack',
-  footprint: { width: 0.5, depth: 0.1, height: 0.34 },
+  footprint: { width: 0.5, depth: 0.101, height: 0.34 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

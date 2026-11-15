@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DRIVE_ITEM,
-  type DriveItem,
-  type DriveRecentEntry,
-  type DriveVia,
-} from '@smarteverything/domain';
+import { type DriveItem, type DriveRecentEntry, type DriveVia } from '@smarteverything/domain';
+import { documentFixture } from '../data/fixtures';
 import { howOf, type RecentNames } from './recent-how';
 import {
   chartShown,
@@ -28,7 +24,7 @@ const SAM = 'a1b2c3d4-0000-4000-8000-0000000000a2';
 const LAPTOP = 'a1b2c3d4-0000-4000-8000-0000000000d1';
 
 function file(id: string, relPath: string, parentId: string | null): DriveItem {
-  return DRIVE_ITEM.parse({
+  return documentFixture({
     id,
     rootId: ROOT,
     parentId,
@@ -36,21 +32,7 @@ function file(id: string, relPath: string, parentId: string | null): DriveItem {
     name: relPath.split('/').at(-1),
     modifiedAt: '2026-11-07T10:00:00.000Z',
     addedAt: '2026-11-07T10:00:00.000Z',
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
-    mime: 'application/pdf',
-    bytes: 10,
-    sha256: null,
-    integrity: 'unknown',
-    thumb: { state: 'none' },
-    kind: 'document',
   });
 }
 

@@ -37,6 +37,7 @@ import type { WatchCaptureStore } from '../watch-captures/capture-store';
 import type { DeveloperDevices } from '../watch-captures/developer-devices';
 import type { IrApplianceService } from '../infrared/appliance-service';
 import type { HomeMapRuntime } from '../home-map/home-map-hub';
+import type { ReleasePublications } from '../self-update/release-publications';
 
 export interface ServerContext {
   readonly connections?: HubConnections;
@@ -71,6 +72,7 @@ export interface ServerContext {
   readonly exchangeRates: ExchangeRateService;
   readonly openRouter: OpenRouterPlatform;
   readonly mediaNotes: MediaNotes;
+  readonly publications: ReleasePublications;
   readonly places: PlaceFinder;
   readonly status: () => HubStatus;
   readonly publicStatus: () => PublicStatus;

@@ -242,13 +242,36 @@ describe('objects and devices list', () => {
     expect(texts()).toContain('Speaker');
     expect(texts()).toContain(model.NOT_ON_MAP_TEXT);
     const buttons = all('Button', 'Place automatically');
-    expect(buttons.map((props) => props['disabled'])).toStrictEqual([true, false]);
+    expect(buttons.map((props) => props['disabled'])).toStrictEqual([false, true]);
+  });
+
+  it('groups devices by their room in home order with No room last', () => {
+    renderList(vi.fn());
+    expect(texts()).toContain('Kitchen · 2');
+    expect(texts()).toContain('No room · 1');
+    const groups = model.deviceRoomGroups(
+      model.deviceGroups(MAP, floor(), [
+        deviceFixture(1, { id: SPEAKER, name: 'Speaker', room_id: HUB }),
+        deviceFixture(2, { id: LAMP, name: 'Lamp', room_id: HUB }),
+        deviceFixture(3, { id: FAN, name: 'Fan', room_id: null }),
+      ]),
+      [{ id: HUB, name: 'Kitchen', position: 0 }],
+    );
+    expect(
+      groups.map((group) => [
+        group.title,
+        group.devices.map((entry) => `${entry.kind} ${entry.device.label}`),
+      ]),
+    ).toStrictEqual([
+      ['Kitchen', ['placed Lamp', 'unplaced Speaker']],
+      ['No room', ['unplaced Fan']],
+    ]);
   });
 
   it('places one device through the hub placement endpoint for its map', async () => {
     call.mockResolvedValueOnce({ revision: 2, placed: 1 });
     renderList(vi.fn());
-    const speaker = all('Button', 'Place automatically')[1];
+    const speaker = all('Button', 'Place automatically')[0];
     if (speaker === undefined) throw new Error('no button');
     press(speaker, 'onPress');
     await vi.waitFor(() => {

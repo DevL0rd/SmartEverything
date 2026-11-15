@@ -16,9 +16,16 @@ describe('target values', () => {
     });
   });
 
+  it('fans a plain list of device ids out to every device in it', () => {
+    expect(TARGET_VALUE.parse(['lamp', 'fan'])).toEqual({
+      kind: 'devices',
+      deviceIds: ['lamp', 'fan'],
+    });
+  });
+
   it('refuses an empty list and a list of anything but devices', () => {
     expect(TARGET_VALUE.safeParse([]).success).toBe(false);
     expect(TARGET_VALUE.safeParse([{ room: 'kitchen' }]).success).toBe(false);
-    expect(TARGET_VALUE.safeParse(['lamp']).success).toBe(false);
+    expect(TARGET_VALUE.safeParse([1]).success).toBe(false);
   });
 });

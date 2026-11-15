@@ -193,5 +193,67 @@ describe('WriteQueue', () => {
       state.down = false;
       await subject.settled();
     });
+
+    describe('with work that can never succeed', () => {
+      class Refused extends Error {}
+
+      function refusingQueue(
+        written: Item[],
+        dropped: Item[][],
+        failures: unknown[],
+        gone: ReadonlySet<string> = new Set(),
+      ): WriteQueue<Item, string> {
+        return new WriteQueue<Item, string>({
+          write: (items): Promise<readonly string[]> => {
+            if (items.some((item) => item.key === 'bad')) return Promise.reject(new Refused('no'));
+            written.push(...items);
+            return Promise.resolve(items.map((item) => item.key));
+          },
+          keyOf: (item) => item.key,
+          failed: (_items, cause): void => {
+            failures.push(cause);
+          },
+          permanent: (cause): boolean => cause instanceof Refused,
+          stale: (item): boolean => gone.has(item.key),
+          dropped: (items): void => {
+            dropped.push([...items]);
+          },
+          append: { batchLimit: 8, attempts: 2, retryMs: 1 },
+        });
+      }
+
+      it('drops only the refused item, writes the rest of its batch and does not retry', async () => {
+        const written: Item[] = [];
+        const failures: unknown[] = [];
+        const subject = refusingQueue(written, [], failures);
+        const good = subject.push({ key: 'a', value: 1 });
+        const bad = subject.push({ key: 'bad', value: 2 });
+        const later = subject.push({ key: 'c', value: 3 });
+        await expect(bad).rejects.toBeInstanceOf(Refused);
+        await expect(good).resolves.toBe('a');
+        await expect(later).resolves.toBe('c');
+        await subject.settled();
+        expect(written.map((item) => item.key)).toStrictEqual(['a', 'c']);
+        expect(failures).toHaveLength(1);
+      });
+
+      it('settles a queue that only held a refused item', async () => {
+        const subject = refusingQueue([], [], []);
+        subject.enqueue({ key: 'bad', value: 1 });
+        await expect(subject.settled()).resolves.toBeUndefined();
+      });
+
+      it('rejects and reports an item that went stale before its write, never writing it', async () => {
+        const written: Item[] = [];
+        const dropped: Item[][] = [];
+        const subject = refusingQueue(written, dropped, [], new Set(['gone']));
+        const stale = subject.push({ key: 'gone', value: 1 });
+        const fresh = subject.push({ key: 'a', value: 2 });
+        await expect(stale).rejects.toThrow('no longer exists');
+        await expect(fresh).resolves.toBe('a');
+        expect(written.map((item) => item.key)).toStrictEqual(['a']);
+        expect(dropped).toStrictEqual([[{ key: 'gone', value: 1 }]]);
+      });
+    });
   });
 });

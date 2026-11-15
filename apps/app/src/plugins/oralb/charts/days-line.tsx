@@ -28,6 +28,7 @@ function Resets({
   const mark = useColour('on-surface-variant');
   return series.resets.map((at) => {
     const x = plotX(share(series, at), width);
+    const before = x > width / 2;
     return (
       <G key={at}>
         <Line
@@ -40,9 +41,10 @@ function Resets({
           strokeDasharray="3 3"
         />
         <SvgText
-          transform={[{ translateX: x + 4 }, { translateY: plotY(1) + 9 }]}
-          fontSize={10}
+          transform={[{ translateX: before ? x - 4 : x + 4 }, { translateY: plotY(1) + 9 }]}
+          fontSize={11}
           fill={mark}
+          textAnchor={before ? 'end' : 'start'}
         >
           new head
         </SvgText>

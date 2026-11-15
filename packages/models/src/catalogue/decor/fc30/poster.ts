@@ -4,7 +4,7 @@ import { PAPER, ball, block, by, cyl, decorItem, woodAndBlack } from './kit';
 export const POSTER_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.poster',
   title: 'Poster',
-  footprint: { width: 0.543, depth: 0.022, height: 0.695 },
+  footprint: { width: 0.543, depth: 0.019, height: 0.695 },
   size: {
     width: { param: 'width', extra: 0.043, resizes: true },
     height: { param: 'height', extra: -0.005, resizes: true },

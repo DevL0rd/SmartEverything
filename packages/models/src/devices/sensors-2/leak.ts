@@ -15,7 +15,7 @@ export const LEAK_SENSOR_MODEL: ModelSpec = {
   title: 'Water leak sensor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: DEPTH, depth: DEPTH + PROBE_LEN, height: H + 0.004 },
+  footprint: { width: DEPTH, depth: 0.0736, height: 0.0226 },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

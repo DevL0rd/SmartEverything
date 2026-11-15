@@ -76,14 +76,13 @@ export const NAV_PIN_TARGET = z.discriminatedUnion('kind', [
       .min(1)
       .max(200)
       .describe(
-        'A page of the app by route key, for example fitness-sleep, devices-air, automations.scenes or plugin.pluginId.pageId for a page a plugin adds',
+        'A page of the app by route key, for example fitness-sleep, devices-air, automations.runs or plugin.pluginId.pageId for a page a plugin adds',
       ),
   }),
   z.strictObject({ kind: z.literal('device'), deviceId: z.uuid(), focus: FOCUS }),
   z.strictObject({ kind: z.literal('camera'), deviceId: z.uuid() }),
   z.strictObject({ kind: z.literal('room'), roomId: z.uuid() }),
   z.strictObject({ kind: z.literal('group'), groupId: z.uuid() }),
-  z.strictObject({ kind: z.literal('scene'), sceneId: z.uuid() }),
   z.strictObject({ kind: z.literal('automation'), automationId: z.uuid(), focus: FOCUS }),
   z.strictObject({
     kind: z.literal('drive'),
@@ -345,8 +344,6 @@ export function navTargetOfSearch(open: SearchTarget): NavPinTarget | null {
       return { kind: 'camera', deviceId: open.deviceId };
     case 'room':
       return { kind: 'room', roomId: open.roomId };
-    case 'scene':
-      return { kind: 'scene', sceneId: open.sceneId };
     case 'automation':
       return { kind: 'automation', automationId: open.automationId, focus: null };
     case 'command':

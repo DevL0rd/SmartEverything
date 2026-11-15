@@ -93,6 +93,8 @@ describe('desktop updates in the renderer', () => {
       changePrefs: (change: Partial<AppUpdatePrefs>): void => {
         prefs = { ...prefs, ...change };
       },
+      fallback: (): null => null,
+      changeFallback: (): void => undefined,
       token: (): null => null,
       busy: (): boolean => true,
       ask,

@@ -26,7 +26,7 @@ function pinnedAgent(pin: string): Agent {
         if (cause === null) callback(null, socket);
         else callback(cause, null);
       };
-      socket.once('error', settle);
+      socket.on('error', settle);
       socket.once('secureConnect', () => {
         const key = socket
           .getPeerX509Certificate()

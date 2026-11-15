@@ -125,7 +125,11 @@ vi.mock('./icon-button', () => ({ IconButton: TestAction }));
 vi.mock('./interactive', () => ({ Interactive: TestAction }));
 vi.mock('./keyboard-viewport', () => ({ KeyboardRoot: Pass, KeyboardViewport: Pass }));
 vi.mock('./sheet-body', () => ({ SheetBody: Pass }));
-vi.mock('./sheet-header', () => ({ SheetHeader: (): null => null }));
+vi.mock('./sheet-header', () => ({
+  SheetHeader: (): null => null,
+  SheetHandle: (): null => null,
+  useSheetHeading: (): undefined => undefined,
+}));
 vi.mock('./text', () => ({ Text: TestText }));
 vi.mock('./text-field', () => ({ TextField: (): null => null }));
 vi.mock('./toast-obstacles', () => ({
@@ -247,7 +251,7 @@ describe('interactive toast layers', () => {
     });
     const cancel = actions.get('Cancel');
     expect(cancel?.surface).toBe('Release remote snapshot?');
-    expect(focusView).toHaveBeenCalledWith({ label: 'Cancel' });
+    expect(focusView).toHaveBeenCalledWith({ label: 'Cancel' }, false);
     act(() => {
       cancel?.press();
     });

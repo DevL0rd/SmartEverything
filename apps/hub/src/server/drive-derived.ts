@@ -1,8 +1,10 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { ApiError } from '@smarteverything/domain';
+import { ApiError, type DriveItem } from '@smarteverything/domain';
 import { z } from 'zod';
+import { inLockedFolder } from '../drive/access';
 import { fsCode } from '../fs-code';
+import { isLockedLink, verifyLockedLink } from '../photos/organise/locked-links';
 import { derivedPath, DERIVED_MIME } from '../photos/pipeline/derived-paths';
 import { locatePlayable, playableSource } from '../photos/pipeline/playable';
 import {
@@ -14,19 +16,34 @@ import { DriveMediaRepository } from '../store/repositories/drive-media';
 import type { DriveDeps } from './handlers/drive-wiring';
 import { serveBytes } from './file-serve';
 import type { DriveExchange } from './drive-files';
+import type { VerifiedDriveLink } from './media-links';
 
 const SIZE = z.enum(['thumb', 'preview', 'playable']);
 
+type DerivedDeps = PhotoPipelineDeps & Pick<DriveDeps, 'links' | 'now'>;
+
+function verified(
+  deps: DerivedDeps,
+  url: URL,
+  itemId: string,
+): { readonly item: DriveItem; readonly link: VerifiedDriveLink } {
+  if (isLockedLink(url)) return verifyLockedLink(deps.store, deps.links, url, itemId);
+  const link = deps.links.verifyDrive(url);
+  const item = deps.store.driveItems.byId(itemId, null);
+  if (inLockedFolder(item))
+    throw new ApiError('not_found', 'There is no such file for this caller.');
+  return { item, link };
+}
+
 export async function serveDriveDerived(
-  deps: PhotoPipelineDeps & Pick<DriveDeps, 'links' | 'now'>,
+  deps: DerivedDeps,
   mediaPipeline: PhotoPipeline,
   exchange: DriveExchange,
   target: { readonly itemId: string; readonly size: string },
 ): Promise<void> {
   const { itemId } = target;
   const size = SIZE.parse(target.size);
-  const link = deps.links.verifyDrive(exchange.url);
-  const item = deps.store.driveItems.byId(itemId, null);
+  const { item, link } = verified(deps, exchange.url, itemId);
   if (item.rev !== link.rev)
     throw new ApiError('link_expired', 'This file changed; request a new link.');
   mediaPipeline.runner.prioritise(itemId);

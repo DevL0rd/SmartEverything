@@ -11,8 +11,16 @@ import type { ColourRole } from '../../../design/tokens';
 import { count, percent } from '../../../format/number';
 import { plural } from '../../../format/text';
 import { relative } from '../../../format/time';
+import { usePausable } from '../../../design/external-store';
 import { useMinute } from '../../../store/clock';
-import { useDriveHealth } from '../data';
+import { driveProgress, useDriveHealth, type DriveProgress } from '../data';
+import {
+  SCRUB_EXPLAINER,
+  ScrubProgress,
+  damagedText,
+  scrubCountsOf,
+  scrubShareOf,
+} from './scrub-progress';
 import { StorageCardState } from './storage-card-state';
 
 export interface ScrubView {
@@ -33,21 +41,16 @@ export interface HealthLine {
 const RING_SIZE = 56;
 const RING_THICKNESS = 5;
 
-function checkedShare(checked: number, total: number): number {
-  return total === 0 ? 0 : checked / total;
-}
-
-function damageOf(corrupt: number): string {
-  return corrupt === 0 ? 'no damaged files' : plural(corrupt, 'damaged file');
-}
-
-export function scrubViewOf(health: DriveHealth, now: number): ScrubView {
+export function scrubViewOf(health: DriveHealth, now: number, progress: DriveProgress): ScrubView {
   const scrub = health.scrub;
   if (scrub.state !== 'idle') {
-    const share = checkedShare(scrub.checked, scrub.total);
+    const share = scrubShareOf(scrubCountsOf(scrub, progress));
     return {
       title: scrub.state === 'running' ? 'Scrubbing now' : `Scrub stopped at ${percent(share)}`,
-      detail: `${count(scrub.checked)} of ${count(scrub.total)} files checked · ${damageOf(scrub.corrupt)}`,
+      detail:
+        scrub.state === 'running'
+          ? 'Reading every file back from the disk'
+          : 'Scrub now carries on from here',
       ring: share,
       colour: scrub.state === 'running' ? 'info' : 'warning',
     };
@@ -55,14 +58,14 @@ export function scrubViewOf(health: DriveHealth, now: number): ScrubView {
   if (scrub.lastFinishedAt === null) {
     return {
       title: 'Never scrubbed',
-      detail: 'A scrub reads every file and checks it against its fingerprint',
+      detail: SCRUB_EXPLAINER,
       ring: health.verifiedShare,
       colour: 'track',
     };
   }
   return {
     title: `Scrub · ${relative(scrub.lastFinishedAt, now)}`,
-    detail: `${percent(health.verifiedShare)} of files checked · ${damageOf(scrub.corrupt)}`,
+    detail: `${percent(health.verifiedShare)} of files read back · ${damagedText(scrub.corrupt)}`,
     ring: health.verifiedShare,
     colour: scrub.corrupt === 0 ? 'positive' : 'critical',
   };
@@ -110,7 +113,7 @@ export function healthLinesOf(health: DriveHealth, now: number): readonly Health
     {
       key: 'damage',
       icon: health.corrupt === 0 ? 'shieldCheck' : 'shieldAlert',
-      title: 'Damaged files',
+      title: 'Damaged or unreadable files',
       text: health.corrupt === 0 ? 'None found' : plural(health.corrupt, 'file'),
       tone: health.corrupt === 0 ? 'variant' : 'critical',
     },
@@ -156,7 +159,7 @@ export function HealthBody({
   readonly health: DriveHealth;
   readonly now: number;
 }): ReactNode {
-  const scrub = scrubViewOf(health, now);
+  const scrub = scrubViewOf(health, now, usePausable(driveProgress.subscribe, driveProgress.get));
   return (
     <Card title="Drive health" icon="shield">
       <View
@@ -166,6 +169,7 @@ export function HealthBody({
       >
         <ScrubRing view={scrub} />
       </View>
+      {health.scrub.state === 'idle' ? null : <ScrubProgress scrub={health.scrub} />}
       <View className="-mx-card-pad -mb-card-pad">
         {healthLinesOf(health, now).map((line) => (
           <View key={line.key} className="border-t-hairline border-outline-variant">

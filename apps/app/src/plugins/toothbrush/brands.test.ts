@@ -1,6 +1,7 @@
 import { BRUSH_BRANDS, ORALB_MODES, SONICARE_MODES } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { BRAND_UI, brandOfModel, brandUi } from './brands';
+import { BRAND_UI, brandOfModel, brandUi, heroShowsLastSession } from './brands';
+import { oralbViewOf, viewOf } from './model/fixtures';
 
 describe('the brand registry', () => {
   it('has an entry for every brand', () => {
@@ -47,5 +48,12 @@ describe('the brand registry', () => {
   it('offers a model choice only where the brush needs one', () => {
     expect(brandUi('sonicare').modelChoices.length).toBeGreaterThan(0);
     expect(brandUi('oralb').modelChoices).toEqual([]);
+  });
+
+  it('lets the hero carry the last session only where the brand has a rest hero', () => {
+    expect(heroShowsLastSession(oralbViewOf())).toBe(true);
+    expect(heroShowsLastSession(oralbViewOf({ view: { lastSession: null } }))).toBe(false);
+    expect(heroShowsLastSession(oralbViewOf({ view: { mine: false } }))).toBe(false);
+    expect(heroShowsLastSession(viewOf())).toBe(false);
   });
 });

@@ -68,6 +68,7 @@ describe('computer downloads', () => {
     expect(
       FILE_PLACES.parse({
         home: '/home/dana',
+        abilities: ['write', 'trash'],
         places: [{ label: 'Home', path: '/home/dana', kind: 'home' }],
       }).places,
     ).toHaveLength(1);

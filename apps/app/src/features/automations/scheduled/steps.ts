@@ -1,7 +1,7 @@
 import {
   CAPABILITY_KEY,
   JSON_VALUE,
-  type LegacyAction as Action,
+  type StepAction as Action,
   type McpToolName,
   type ScheduleStep,
   type ScheduleStepInput,
@@ -9,18 +9,15 @@ import {
 import { z } from 'zod';
 
 const CONTROL_DEVICES: McpToolName = 'device_control';
-const RUN_SCENE: McpToolName = 'scene_run';
 const LONGEST_DELAY = 86_400;
 
-export const STEP_ACTION_TYPES = ['command', 'scene', 'delay', 'wake_ai'] as const;
+export const STEP_ACTION_TYPES = ['command', 'delay', 'wake_ai'] as const;
 
 const CONTROL_ARGS = z.strictObject({
   deviceIds: z.tuple([z.uuid()]),
   capability: CAPABILITY_KEY,
   value: JSON_VALUE,
 });
-
-const RUN_SCENE_ARGS = z.strictObject({ sceneId: z.uuid() });
 
 function stepOf(action: Action): ScheduleStepInput | null {
   switch (action.type) {
@@ -30,8 +27,6 @@ function stepOf(action: Action): ScheduleStepInput | null {
         tool: CONTROL_DEVICES,
         args: { deviceIds: [action.deviceId], capability: action.capability, value: action.value },
       };
-    case 'scene':
-      return { kind: 'tool', tool: RUN_SCENE, args: { sceneId: action.sceneId } };
     case 'delay':
       return { kind: 'wait', seconds: action.seconds };
     case 'wake_ai':
@@ -58,10 +53,6 @@ function builtInOf(step: Extract<ScheduleStep, { kind: 'tool' }>): Action | null
     }
     const [deviceId] = args.data.deviceIds;
     return { type: 'command', deviceId, capability: args.data.capability, value: args.data.value };
-  }
-  if (step.tool === RUN_SCENE) {
-    const args = RUN_SCENE_ARGS.safeParse(step.args);
-    return args.success ? { type: 'scene', sceneId: args.data.sceneId } : null;
   }
   return null;
 }

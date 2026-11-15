@@ -40,7 +40,7 @@ export const EV_CHARGER_MODEL: ModelSpec = {
   title: 'EV charger',
   category: 'energy',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.181, height: 0.4083 },
   framing: house('face', 24, 10),
   shots: [
     shot('charging', CHARGING, 'bar', { zoom: 1.45, yaw: 20, pitch: 8, loopS: 2, stillAt: 1 }),

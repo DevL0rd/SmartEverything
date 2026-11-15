@@ -18,3 +18,33 @@ export async function recoverHubUpdate(
     throw cause;
   }
 }
+
+export async function rollbackHubUpdate(
+  layout: HubLayout,
+  runId: string,
+): Promise<HubUpdateRecoveryResult> {
+  try {
+    return RECOVERY_RESULT.parse(
+      await runUpdateCommand(layout, { action: 'rollback', artifact: 'hub', id: runId }),
+    );
+  } catch (cause) {
+    if (cause instanceof UpdateBusyError) return { status: 'refused', refusal: 'busy' };
+    if (cause instanceof UpdateUnavailableError)
+      return { status: 'refused', refusal: 'unavailable' };
+    throw cause;
+  }
+}
+
+export async function keepHubUpdate(
+  layout: HubLayout,
+  runId: string,
+): Promise<HubUpdateRecoveryResult> {
+  try {
+    return RECOVERY_RESULT.parse(await runUpdateCommand(layout, { action: 'keep', id: runId }));
+  } catch (cause) {
+    if (cause instanceof UpdateBusyError) return { status: 'refused', refusal: 'busy' };
+    if (cause instanceof UpdateUnavailableError)
+      return { status: 'refused', refusal: 'unavailable' };
+    throw cause;
+  }
+}

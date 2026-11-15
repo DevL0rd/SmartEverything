@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NO_PORT_SCOPE } from './literal-model';
+import { NO_PORT_SCOPE } from './port-scope-context';
 import {
   LACKS_CONTROL,
   chosenControlOf,

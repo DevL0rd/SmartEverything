@@ -10,7 +10,7 @@ export const ROUTE_DELTA = z.object({
 
 const NO_POINTS = 'NULL';
 
-export type RouteMode = 'sweep' | 'mop' | 'both';
+export type RouteMode = 'idle' | 'sweep' | 'mop' | 'both';
 
 export interface RoutePoint {
   readonly poseId: number;
@@ -37,7 +37,7 @@ export interface ActionOutput {
   readonly value: unknown;
 }
 
-const MODES: Readonly<Record<number, RouteMode>> = { 1: 'sweep', 2: 'mop', 3: 'both' };
+const MODES: Readonly<Record<number, RouteMode>> = { 0: 'idle', 1: 'sweep', 2: 'mop', 3: 'both' };
 const DEFAULT_MODE = 1;
 const PEN_UP = 0;
 const PEN_DOWN = 1;
@@ -49,7 +49,7 @@ function decodePoint(point: PathPoint, poseId: number): RoutePoint {
   const code = point.sweep_mop_mode ?? DEFAULT_MODE;
   const mode = MODES[code];
   if (mode === undefined) {
-    throw new MapBlobError('route point', 'sweep_mop_mode 1, 2 or 3', `mode ${String(code)}`);
+    throw new MapBlobError('route point', 'sweep_mop_mode 0, 1, 2 or 3', `mode ${String(code)}`);
   }
   return {
     poseId,

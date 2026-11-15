@@ -157,7 +157,7 @@ function cabinet(): ModelSpecPart[] {
 export const VANITY_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.vanity-with-sink',
   title: 'Vanity with sink',
-  footprint: { width: 0.8, depth: DEPTH, height: SURFACE + 0.13 },
+  footprint: { width: 0.8, depth: 0.493, height: 0.9727 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

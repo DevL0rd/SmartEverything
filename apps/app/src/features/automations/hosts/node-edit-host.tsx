@@ -28,7 +28,8 @@ import {
   type GesturePort,
 } from './editor-binding';
 import { useEditorContext, type EditorContext } from './editor-context';
-import { NotFound, PageShell } from './page-shell';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import { NotFound } from '../shared/not-found';
 import { nodeEditStage } from './node-edit-stage';
 import { useNodeSave, type NodeSave } from './use-node-save';
 
@@ -231,7 +232,7 @@ function Load({ functionId }: { readonly functionId: string }): ReactNode {
     );
   }
   return (
-    <PageShell title="Custom Node">
+    <PageShell title="Custom Node" width="reading">
       <LoadedQuery query={query}>{() => null}</LoadedQuery>
     </PageShell>
   );

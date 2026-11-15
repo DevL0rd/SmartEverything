@@ -1,0 +1,189 @@
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  ALLOCATE_MODES,
+  END_OF_FILE,
+  ERROR_CODES,
+  ERROR_META_KEYS,
+  FRAME_FLAGS,
+  FRAME_TYPES,
+  HEADER_BYTES,
+  INODE_TYPES,
+  LEASE_MS,
+  LOCK_TYPES,
+  MAX_FRAME_BYTES,
+  MAX_META_BYTES,
+  MAX_PAYLOAD_BYTES,
+  META_KEYS,
+  MOUNT_SUBPROTOCOL,
+  NAME_MAX_BYTES,
+  OP_KEY_BYTES,
+  PATH_MAX_BYTES,
+  PING_INTERVAL_MS,
+  PONG_TIMEOUT_MS,
+  PUSH_OPS,
+  REQUEST_OPS,
+  RENAME_FLAGS,
+  SEEK_WHENCE,
+  SESSION_BYTES,
+  SETATTR_VALID,
+  XATTR_FLAGS,
+  XATTR_LIST_MAX_BYTES,
+  XATTR_NAME_MAX_BYTES,
+  XATTR_SIZE_MAX_BYTES,
+  encodeMessage,
+} from '../packages/domain/src/drive/mount';
+import { sampleMessages } from '../packages/domain/test/drive/mount/samples';
+
+const ROOT = join(import.meta.dirname, '..');
+export const GO_OUTPUT = join(ROOT, 'tooling', 'drive-mount', 'wire', 'codes_gen.go');
+export const GOLDEN_DIRECTORY = join(
+  ROOT,
+  'packages',
+  'domain',
+  'test',
+  'drive',
+  'mount',
+  'golden',
+);
+
+interface Constant {
+  readonly name: string;
+  readonly type?: string;
+  readonly value: string;
+}
+
+function pascal(name: string): string {
+  return name
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join('');
+}
+
+function capital(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function hex(value: number): string {
+  return `0x${value.toString(16).padStart(2, '0')}`;
+}
+
+function block(constants: readonly Constant[]): string {
+  const width = Math.max(...constants.map((constant) => constant.name.length));
+  const typeWidth = Math.max(...constants.map((constant) => (constant.type ?? '').length));
+  const lines = constants.map(({ name, type, value }) =>
+    type === undefined
+      ? `\t${name.padEnd(width)} = ${value}`
+      : `\t${name.padEnd(width)} ${type.padEnd(typeWidth)} = ${value}`,
+  );
+  return `const (\n${lines.join('\n')}\n)\n`;
+}
+
+function numbered(
+  prefix: string,
+  table: Readonly<Record<string, number>>,
+  type?: string,
+  format: (value: number) => string = String,
+): string {
+  return block(
+    Object.entries(table).map(([name, value]) => ({
+      name: `${prefix}${capital(name)}`,
+      ...(type === undefined ? {} : { type }),
+      value: format(value),
+    })),
+  );
+}
+
+function renderLimits(): readonly string[] {
+  return [
+    block([
+      { name: 'Subprotocol', value: JSON.stringify(MOUNT_SUBPROTOCOL) },
+      { name: 'HeaderBytes', value: String(HEADER_BYTES) },
+      { name: 'MaxPayloadBytes', value: String(MAX_PAYLOAD_BYTES) },
+      { name: 'MaxMetaBytes', value: String(MAX_META_BYTES) },
+      { name: 'MaxFrameBytes', value: String(MAX_FRAME_BYTES) },
+      { name: 'SessionBytes', value: String(SESSION_BYTES) },
+      { name: 'OpKeyBytes', value: String(OP_KEY_BYTES) },
+      { name: 'LeaseMs', value: String(LEASE_MS) },
+      { name: 'PingIntervalMs', value: String(PING_INTERVAL_MS) },
+      { name: 'PongTimeoutMs', value: String(PONG_TIMEOUT_MS) },
+      { name: 'NameMaxBytes', value: String(NAME_MAX_BYTES) },
+      { name: 'PathMaxBytes', value: String(PATH_MAX_BYTES) },
+      { name: 'XattrNameMaxBytes', value: String(XATTR_NAME_MAX_BYTES) },
+      { name: 'XattrSizeMaxBytes', value: String(XATTR_SIZE_MAX_BYTES) },
+      { name: 'XattrListMaxBytes', value: String(XATTR_LIST_MAX_BYTES) },
+    ]),
+  ];
+}
+
+function renderCodes(): readonly string[] {
+  const ops = [
+    ...Object.entries(REQUEST_OPS).map(([name, op]) => ({
+      name: `Op${pascal(name)}`,
+      code: op.code,
+    })),
+    ...Object.entries(PUSH_OPS).map(([name, op]) => ({
+      name: `Push${pascal(name)}`,
+      code: op.code,
+    })),
+  ];
+  const errors = Object.entries(ERROR_CODES).map(([name, code]) => ({
+    name: `Err${name}`,
+    type: 'ErrorCode',
+    value: String(code),
+  }));
+  const keys = Object.entries(META_KEYS).map(([name, key]) => ({
+    name: `Key${capital(name)}`,
+    value: String(key),
+  }));
+  const errorKeys = ERROR_META_KEYS.map((name) => `Key${capital(name)}`);
+  const sections = [
+    'package wire\n',
+    `type Op uint8\n\ntype FrameType uint8\n\ntype ErrorCode uint8\n`,
+    ...renderLimits(),
+    block([{ name: 'EndOfFile', type: 'uint64', value: `0x${END_OF_FILE.toString(16)}` }]),
+    numbered('Frame', FRAME_TYPES, 'FrameType'),
+    numbered('Flag', FRAME_FLAGS, undefined, hex),
+    block(ops.map(({ name, code }) => ({ name, type: 'Op', value: hex(code) }))),
+    block(errors),
+    block(keys),
+    `var ErrorMetaKeys = []uint64{${errorKeys.join(', ')}}\n`,
+    numbered('InodeType', INODE_TYPES),
+    numbered('SetattrValid', SETATTR_VALID),
+    numbered('LockType', LOCK_TYPES),
+    numbered('Whence', SEEK_WHENCE),
+    numbered('Allocate', ALLOCATE_MODES),
+    numbered('RenameFlag', RENAME_FLAGS),
+    numbered('XattrFlag', XATTR_FLAGS),
+  ];
+  return sections;
+}
+
+function renderGo(): string {
+  return `// Code generated by tooling/generate-drive-mount-wire.ts; DO NOT EDIT.\n\n${renderCodes().join('\n')}`;
+}
+
+export interface GeneratedWire {
+  readonly go: string;
+  readonly golden: ReadonlyMap<string, Uint8Array>;
+}
+
+export function renderDriveMountWire(): GeneratedWire {
+  const golden = new Map<string, Uint8Array>();
+  for (const [name, message] of sampleMessages()) golden.set(`${name}.bin`, encodeMessage(message));
+  return { go: renderGo(), golden };
+}
+
+function writeAll(generated: GeneratedWire): void {
+  mkdirSync(GOLDEN_DIRECTORY, { recursive: true });
+  for (const file of readdirSync(GOLDEN_DIRECTORY)) {
+    if (file.endsWith('.bin') && !generated.golden.has(file)) {
+      rmSync(join(GOLDEN_DIRECTORY, file));
+    }
+  }
+  writeFileSync(GO_OUTPUT, generated.go);
+  for (const [file, bytes] of generated.golden) writeFileSync(join(GOLDEN_DIRECTORY, file), bytes);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) writeAll(renderDriveMountWire());

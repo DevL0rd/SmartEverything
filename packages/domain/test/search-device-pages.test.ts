@@ -103,7 +103,6 @@ const sources: SearchSources = {
   rooms: [],
   pages: [],
   settings: [],
-  scenes: [],
   automations: [],
   irRemotes: [tvRemote, fanRemote],
   cameras: [],

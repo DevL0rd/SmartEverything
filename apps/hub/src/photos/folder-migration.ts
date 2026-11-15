@@ -9,6 +9,7 @@ import { migratePhotoPending } from './folder-pending';
 import { repathItem } from '../drive/service-write-repath';
 import { DriveWriteError, locate, type DriveWriteRoot } from '../drive/intents';
 import { relPathOf } from '../drive/uploads-tus-target';
+import { isFileItem } from '../drive/file-item';
 import { syncPhotoDirectories, writePhotoFolderReceipt } from './folder-receipts';
 import { BackupService, type BackupEnv } from './backup';
 
@@ -95,7 +96,7 @@ async function relocate(env: BackupEnv, service: BackupService, row: Relocation)
     );
   }
   const identity = env.store.driveItems.identityOf(item.id);
-  if (identity === null || item.kind === 'folder')
+  if (identity === null || !isFileItem(item))
     throw new DriveWriteError('missing', 'The original photo identity is missing.');
   await writePhotoFolderReceipt(env, root, {
     kind: 'file',
@@ -203,6 +204,7 @@ async function removeOldFolder(env: BackupEnv, item: DriveItem): Promise<void> {
     });
     env.store.driveItems.remove(item.id);
     env.store.driveGrants.sweepOrphans();
+    env.store.driveShortcuts.sweepOrphans();
     announce(env, item.rootId, item.parentId, []);
   });
 }

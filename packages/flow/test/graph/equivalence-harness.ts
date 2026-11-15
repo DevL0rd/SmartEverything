@@ -1,7 +1,8 @@
 import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import type { JsonValue } from '@smarteverything/domain';
 import type { Plan } from '../../src/compile/plan';
-import { CALL_FRAMES, callOps, planOwner } from '../../src/interpret/calls';
+import { CALL_FRAMES, callOps } from '../../src/interpret/calls';
+import { planOwner } from '../../src/interpret/call-state';
 import { CORE_FRAMES, CORE_OPS } from '../../src/interpret/core-ops';
 import {
   CONCURRENT_EACH_FRAMES,

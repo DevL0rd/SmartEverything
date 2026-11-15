@@ -32,6 +32,8 @@ export {
   type HeroRealisticInput,
   type HomeMap3dProps,
   type HomeMap3dScan,
+  type EditFloorFeed,
+  type EditSettled,
 } from './components/stage/home-map-3d';
 export { RobotMapFeed, robotMapsHref } from './components/robot-map-feed';
 export { useHomeMapLive, type HomeMapLive, type HomeMapLiveRequest } from './data/live-feed';
@@ -53,3 +55,4 @@ export {
   type StageViews,
 } from './model/stage-view';
 export { EDITOR_PATH } from './model/create-map';
+export { StageNoticeChip } from './editor/stage-notice';

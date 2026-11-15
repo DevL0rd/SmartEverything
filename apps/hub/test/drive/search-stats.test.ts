@@ -3,6 +3,7 @@ import {
   DRIVE_DURATION_BUCKETS,
   type DriveItem,
   type DriveQuery,
+  type DriveRecentEntry,
   type DriveRecentFilter,
   type DriveRecentPage,
 } from '@smarteverything/domain';
@@ -32,6 +33,7 @@ import {
 } from '../../src/store/repositories/drive-items';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { DriveGrantsRepository } from '../../src/store/repositories/drive-grants';
+import { DriveOpensRepository } from '../../src/store/repositories/drive-opens';
 import { DriveStarsRepository } from '../../src/store/repositories/drive-stars';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
@@ -50,6 +52,7 @@ let database: DatabaseSync;
 let context: StoreContext;
 let clock: Date;
 let items: DriveItemsRepository;
+let opens: DriveOpensRepository;
 let feed: DriveFeedRepository;
 let days: DriveDaysRepository;
 let roots: DriveRootsRepository;
@@ -198,6 +201,7 @@ function put(draft: DriveItemDraft, albumTitles: readonly string[] = []): DriveI
 function query(fields: Partial<DriveQuery> = {}): DriveQuery {
   return {
     text: null,
+    match: 'all',
     rootId: null,
     folderId: null,
     kinds: null,
@@ -221,6 +225,7 @@ beforeEach(() => {
   context = new StoreContext(new Sql(database), new ChangeFeed(log), () => clock);
   migrate(new Sql(database), MIGRATIONS, NOW, log);
   items = new DriveItemsRepository(context);
+  opens = new DriveOpensRepository(context);
   feed = new DriveFeedRepository(context);
   days = new DriveDaysRepository(context);
   roots = new DriveRootsRepository(context, drivePathOf);
@@ -292,7 +297,7 @@ describe('search scope', () => {
     const folderItem = put(folder(20, 'trip', { rootId: SAM_ROOT }));
     put(document(21, 'trip plan.txt', { rootId: SAM_ROOT, relPath: 'trip/trip plan.txt' }));
     put(document(22, 'tripod plan.txt', { rootId: SAM_ROOT, relPath: 'tripod/tripod plan.txt' }));
-    grants.set({ itemId: folderItem.id, profileId: robin, role: 'view' }, sam);
+    grants.set({ itemId: folderItem.id, profileId: robin, role: 'view', expiresAt: null }, sam);
     expect(names(owner, { text: 'plan' })).toEqual([
       'robin plan.txt',
       'shared plan.txt',
@@ -421,7 +426,7 @@ describe('drive hits for home_search', () => {
     const trips = put(folder(1, 'trips'));
     put(photo(2, 'beach.jpg', { relPath: 'trips/beach.jpg', parentId: trips.id }));
     put(document(3, 'top beach notes.txt'));
-    const hits = driveHits(search, owner, { query: 'beach', limit: 10 });
+    const hits = driveHits(search, owner, { query: 'beach', limit: 10 }, () => []);
     expect(hits.map((hit) => hit.name).sort()).toEqual(['beach.jpg', 'top beach notes.txt']);
     const beach = hits.find((hit) => hit.name === 'beach.jpg');
     expect(beach).toEqual({
@@ -440,7 +445,7 @@ describe('drive hits for home_search', () => {
       itemId: id(3),
       focus: null,
     });
-    const named = driveHits(search, owner, { query: 'trips', limit: 10 }).find(
+    const named = driveHits(search, owner, { query: 'trips', limit: 10 }, () => []).find(
       (hit) => hit.kind === 'folder',
     );
     expect(named?.target).toEqual({
@@ -455,8 +460,8 @@ describe('drive hits for home_search', () => {
   it('honours the limit and the viewer scope', () => {
     for (let index = 1; index <= 4; index += 1) put(document(index, `note ${String(index)}.txt`));
     put(document(9, 'note private.txt', { rootId: SAM_ROOT }));
-    expect(driveHits(search, owner, { query: 'note', limit: 3 })).toHaveLength(3);
-    expect(driveHits(search, owner, { query: 'private', limit: 10 })).toEqual([]);
+    expect(driveHits(search, owner, { query: 'note', limit: 3 }, () => [])).toHaveLength(3);
+    expect(driveHits(search, owner, { query: 'private', limit: 10 }, () => [])).toEqual([]);
   });
 
   it('finds what a person shared with the searcher and nothing else of theirs', () => {
@@ -469,10 +474,10 @@ describe('drive hits for home_search', () => {
       }),
     );
     put(document(32, 'shared secret.txt', { rootId: SAM_ROOT }));
-    expect(driveHits(search, owner, { query: 'shared', limit: 10 })).toEqual([]);
-    grants.set({ itemId: shared.id, profileId: robin, role: 'view' }, sam);
+    expect(driveHits(search, owner, { query: 'shared', limit: 10 }, () => [])).toEqual([]);
+    grants.set({ itemId: shared.id, profileId: robin, role: 'view', expiresAt: null }, sam);
     expect(
-      driveHits(search, owner, { query: 'shared', limit: 10 })
+      driveHits(search, owner, { query: 'shared', limit: 10 }, () => [])
         .map((hit) => hit.name)
         .sort(),
     ).toEqual(['shared trip', 'shared trip map.txt']);
@@ -508,14 +513,19 @@ describe('recent', () => {
     return reader().read(viewer, { filter, cursor }, 50);
   }
 
+  function itemName(entry: DriveRecentEntry): string {
+    if (entry.kind === 'shortcut') throw new Error('unexpected shortcut entry');
+    return entry.item.name;
+  }
+
   it('lists opened files newest first and skips never-opened ones', () => {
     put(document(1, 'old.txt'));
     put(document(2, 'new.txt'));
     put(document(3, 'never.txt'));
-    items.markOpened(id(1), '2026-11-01T00:00:00.000Z');
-    items.markOpened(id(2), '2026-11-02T00:00:00.000Z');
+    opens.record(robin, id(1), '2026-11-01T00:00:00.000Z');
+    opens.record(robin, id(2), '2026-11-02T00:00:00.000Z');
     const page = read('opened');
-    expect(page.entries.map((entry) => [entry.kind, entry.item.name])).toEqual([
+    expect(page.entries.map((entry) => [entry.kind, itemName(entry)])).toEqual([
       ['opened', 'new.txt'],
       ['opened', 'old.txt'],
     ]);
@@ -527,7 +537,7 @@ describe('recent', () => {
     append(id(1), 'create', { actorProfileId: robin, via: 'app' });
     append(id(2), 'create', { via: 'mount', deviceId: DEVICE });
     const entries = read('added').entries;
-    expect(entries.map((entry) => entry.item.name)).toEqual(['mounted.txt', 'made.txt']);
+    expect(entries.map(itemName)).toEqual(['mounted.txt', 'made.txt']);
     expect(entries[0]).toMatchObject({ kind: 'added', via: 'mount', deviceId: DEVICE });
     expect(entries[1]).toMatchObject({ kind: 'added', via: 'app', actorProfileId: robin });
   });
@@ -543,21 +553,21 @@ describe('recent', () => {
     const entries = read('changed').entries;
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ kind: 'changed', via: 'app', actorProfileId: robin });
-    expect(entries[0]?.item.name).toBe('edited.txt');
+    expect(entries.map(itemName)).toEqual(['edited.txt']);
   });
 
   it('merges all three kinds by time and pages through them without gaps', () => {
     put(document(1, 'one.txt'));
     put(document(2, 'two.txt'));
     append(id(1), 'create');
-    items.markOpened(id(1), '2026-11-07T00:00:10.000Z');
+    opens.record(robin, id(1), '2026-11-07T00:00:10.000Z');
     append(id(2), 'create');
     append(id(1), 'update', { rev: 2 });
     const seen: string[] = [];
     let cursor: string | null = null;
     do {
       const page = reader().read(owner, { filter: 'everything', cursor }, 2);
-      seen.push(...page.entries.map((entry) => `${entry.kind}:${entry.item.name}`));
+      seen.push(...page.entries.map((entry) => `${entry.kind}:${itemName(entry)}`));
       cursor = page.next;
     } while (cursor !== null);
     expect(seen).toHaveLength(4);
@@ -575,8 +585,8 @@ describe('recent', () => {
     append(id(2), 'create', { rootId: SAM_ROOT });
     append(id(3), 'create', { rootId: ROBIN_ROOT });
     items.remove(id(1));
-    expect(read('added').entries.map((entry) => entry.item.name)).toEqual(['robin.txt']);
-    expect(read('added', member).entries.map((entry) => entry.item.name)).toEqual(['sam.txt']);
+    expect(read('added').entries.map(itemName)).toEqual(['robin.txt']);
+    expect(read('added', member).entries.map(itemName)).toEqual(['sam.txt']);
   });
 
   it('refuses a cursor it did not issue', () => {

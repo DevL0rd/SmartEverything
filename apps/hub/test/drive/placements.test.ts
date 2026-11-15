@@ -48,7 +48,7 @@ function nextTick(): Promise<void> {
 }
 
 function grant(itemId: string, profileId: string, role: 'view' | 'edit'): void {
-  world.store.driveGrants.set({ itemId, profileId, role }, world.robin.profileId);
+  world.store.driveGrants.set({ itemId, profileId, role, expiresAt: null }, world.robin.profileId);
 }
 
 beforeEach(async () => {
@@ -68,7 +68,8 @@ describe('setting a placement', () => {
       rootId: HOME_DRIVE,
       folderItemId: null,
       mode: 'mounted',
-      localPath: '/home/robin/Games',
+      localPath: null,
+      mountName: 'Games',
       enabled: true,
       hold: null,
       createdBy: world.robin.profileId,
@@ -307,7 +308,7 @@ describe('nesting of synced folders on one computer', () => {
       place(world, world.robin, world.robinDesk, {
         rootId: ROBIN_DRIVE,
         folderItemId: ROBIN_TRIP_DEEP,
-        localPath: '/m',
+        mountName: 'm',
       }).mode,
     ).toBe('mounted');
     expect(
@@ -330,10 +331,10 @@ describe('nesting of synced folders on one computer', () => {
   it('keeps the nesting refusal out of mounted placements', () => {
     place(world, world.robin, world.robinDesk, { folderItemId: ROMS });
     expect(
-      place(world, world.robin, world.robinDesk, { folderItemId: ROMS_INNER, localPath: '/b' }).id,
+      place(world, world.robin, world.robinDesk, { folderItemId: ROMS_INNER, mountName: 'b' }).id,
     ).toBeDefined();
     expect(
-      place(world, world.robin, world.robinDesk, { folderItemId: MUSIC, localPath: '/c' }).id,
+      place(world, world.robin, world.robinDesk, { folderItemId: MUSIC, mountName: 'c' }).id,
     ).toBeDefined();
   });
 });
@@ -342,11 +343,11 @@ describe('the stored uniqueness', () => {
   const insert = (rootId: string, folderItemId: string | null): void => {
     world.test.store.context.sql.run(
       'insert a placement row',
-      `insert into drive_placements (id, device_id, root_id, folder_item_id, mode, local_path,
+      `insert into drive_placements (id, device_id, root_id, folder_item_id, mode, mount_name,
         enabled, hold, created_by, created_at, state, tier, basic_limits, read_only, route,
         cache_bytes, pinned_bytes, open_files, pending_uploads, need_bytes, last_synced_at, errors,
         reason, reported_at)
-        values ($id, $deviceId, $rootId, $folderItemId, 'mounted', '/x', 1, null, $createdBy,
+        values ($id, $deviceId, $rootId, $folderItemId, 'mounted', 'x', 1, null, $createdBy,
         $now, 'starting', null, null, 0, null, 0, 0, 0, 0, 0, null, '[]', null, $now)`,
       {
         id: newId(),
@@ -423,7 +424,7 @@ describe('active placements', () => {
     const held = place(world, world.robin, world.robinDesk, {
       rootId: HOME_DRIVE,
       folderItemId: MUSIC,
-      localPath: '/m',
+      mountName: 'm',
     });
     world.placements.setHold(held.id, 'trashed');
     expect(world.placements.activeFor(world.robinDesk).map((row) => row.id)).toEqual([kept.id]);
@@ -501,7 +502,7 @@ describe('the device change listener', () => {
   it('fires once for several changes in one transaction and names each changed device', async () => {
     world.store.context.write(() => {
       place(world, world.robin, world.robinDesk);
-      place(world, world.robin, world.robinDesk, { rootId: ROBIN_DRIVE, localPath: '/b' });
+      place(world, world.robin, world.robinDesk, { rootId: ROBIN_DRIVE, mountName: 'b' });
       place(world, world.robin, world.secondRobinDesk);
     });
     await nextTick();

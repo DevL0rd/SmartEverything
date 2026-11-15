@@ -37,7 +37,7 @@ export const ROUND_THERMOSTAT_MODEL: ModelSpec = {
   title: 'Thermostat',
   category: 'climate',
   family: 'thermostat',
-  footprint: { width: R * 2 + 0.008, depth: DEPTH, height: R * 2 + 0.008 },
+  footprint: { width: R * 2 + 0.008, depth: 0.029, height: R * 2 + 0.008 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

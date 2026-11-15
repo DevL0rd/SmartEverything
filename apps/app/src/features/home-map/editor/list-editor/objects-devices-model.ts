@@ -13,6 +13,7 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { api } from '../../../../api/transport';
 import { compareText } from '../../../../format/text';
+import { roomGroupsOf, type RoomGroup } from '../../../../store/room-groups';
 import type { Device } from '../../../../store/state';
 
 const log = new Logger('app.home-map');
@@ -163,6 +164,20 @@ export function deviceGroups(
       .filter((device) => !placedAnywhere.has(device.id))
       .map((device) => ({ device, onMap: device.room_id !== null && linked.has(device.room_id) })),
   };
+}
+
+export type DeviceEntry =
+  ({ readonly kind: 'placed' } & PlacedDevice) | ({ readonly kind: 'unplaced' } & UnplacedDevice);
+
+export function deviceRoomGroups(
+  groups: DeviceGroups,
+  rooms: readonly { readonly id: string; readonly name: string; readonly position: number }[],
+): readonly RoomGroup<DeviceEntry>[] {
+  const entries: readonly DeviceEntry[] = [
+    ...groups.placed.map((entry) => ({ kind: 'placed' as const, ...entry })),
+    ...groups.unplaced.map((entry) => ({ kind: 'unplaced' as const, ...entry })),
+  ];
+  return roomGroupsOf(entries, rooms, (entry) => entry.device.room_id);
 }
 
 export async function placeAutomatically(

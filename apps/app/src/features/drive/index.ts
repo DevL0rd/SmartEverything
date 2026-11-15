@@ -1,6 +1,9 @@
-export { DRIVE_SECTION_ROUTES, DRIVE_SECTIONS } from './model/section-routes';
-export type { DriveSection } from './model/section-routes';
+export { DRIVE_SECTION_ROUTES, DRIVE_SECTIONS, type DriveSection } from './model/section-routes';
 export { openHrefOf } from './recent/recent-model';
-export { driveLabelOf } from './model/drive-access';
+export { driveLabelOf, isDriveOwner } from './model/drive-access';
 export * from './data';
 export * from './upload/transport';
+export { makeShareLink } from './share/share-data';
+export { LinkForm } from './share/share-form';
+export { NEW_DRAFT, draftReady, expiryOf, reachOf, type ShareDraft } from './share/share-model';
+export { revokeLink } from './shared/revoke-link';

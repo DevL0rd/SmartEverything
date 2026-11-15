@@ -3,7 +3,7 @@ import { href } from '../../../app-shell/hrefs';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import type { AppHref } from '../../../components/app-href';
 import type { MenuItem } from '../../../components/menu';
-import { PLANNER_CLOCK_SETTING, PLANNER_SETTINGS_PAGE } from '../../planner/settings';
+import { PLANNER_CLOCK_SETTING, PLANNER_SETTINGS_PAGE } from '../../planner';
 
 export function clockSettingsHref(): AppHref {
   return href.settings.focus(PLANNER_SETTINGS_PAGE, PLANNER_CLOCK_SETTING);

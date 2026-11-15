@@ -53,7 +53,7 @@ export const GENERIC_PURIFIER_MODEL: ModelSpec = {
   title: 'Air purifier',
   category: 'climate',
   family: 'air_purifier',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: 0.2664, depth: 0.2664, height: 0.6272 },
   framing: house('intake', 28, 16),
   shots: [
     shot('purifying', RUNNING, 'rotor', {

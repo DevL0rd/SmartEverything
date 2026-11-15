@@ -5,10 +5,8 @@ import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
-import { SearchField } from '../../../components/search-field';
 import { Sheet } from '../../../components/sheet';
 import { useRows } from '../../../store/selectors';
 import { operateValue } from '../../../api/automation-runtime';
@@ -94,9 +92,12 @@ export function ValuesScreen(): ReactNode {
     row.content.name.toLowerCase().includes(query.toLowerCase()),
   );
   return (
-    <Screen
-      maxWidth="reading"
-      header={<PageHeader title="Values" />}
+    <PageShell
+      title="Values"
+      width="reading"
+      {...(rows.length === 0
+        ? {}
+        : { search: { value: query, onChange: setQuery, placeholder: 'Find a value' } })}
       primaryAction={{
         label: 'New value',
         icon: 'plus',
@@ -105,7 +106,6 @@ export function ValuesScreen(): ReactNode {
         },
       }}
     >
-      <SearchField value={query} onChange={setQuery} placeholder="Find a value" variant="field" />
       <ValueRows rows={rows} visible={visible} onSelect={setSelected} />
       <Sheet
         open={current !== undefined}
@@ -125,6 +125,6 @@ export function ValuesScreen(): ReactNode {
           />
         )}
       </Sheet>
-    </Screen>
+    </PageShell>
   );
 }

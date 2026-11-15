@@ -9,10 +9,9 @@ import {
 } from '@smarteverything/domain';
 import { changeCamera } from '../../../api/media';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
 import { SelectRow, SwitchRow } from '../../../components/rows';
 import type { SelectOption } from '../../../components/select';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { notifyFailure } from '../../../components/toast-store';
 import { CapabilityRow, DeviceAlertsRow, DeviceSettingsFrame, offlineReason } from '../../devices';
@@ -135,13 +134,13 @@ export function CameraSettingsScreen({ deviceId }: { readonly deviceId: string }
   const entry = useCameraEntry(deviceId);
   if (entry === null) {
     return (
-      <Screen header={<PageHeader title="Camera" />} maxWidth="reading">
+      <PageShell title="Camera" width="reading">
         <EmptyState
           icon="cameraOff"
           title="Camera not found"
           body="It may have been removed or hidden."
         />
-      </Screen>
+      </PageShell>
     );
   }
   return <CameraSettings entry={entry} />;

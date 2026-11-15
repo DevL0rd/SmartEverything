@@ -6,6 +6,7 @@ import {
   type GoogleImportDeps,
   type ImportProgress,
 } from '../../../src/drive/google/service';
+import { isFileItem } from '../../../src/drive/file-item';
 import type { DriveWriteRoot } from '../../../src/drive/intents';
 import { ensureDrives, personalDrive } from '../../../src/drive/spaces';
 import { nodeFiles } from '../../../src/drive/versions';
@@ -47,7 +48,9 @@ function holds(
     viewer: null,
   });
   return entries.some(({ item }) =>
-    item.kind === 'folder' ? holds(opened, rootId, sha256, item.id) : item.sha256 === sha256,
+    item.kind === 'folder'
+      ? holds(opened, rootId, sha256, item.id)
+      : isFileItem(item) && item.sha256 === sha256,
   );
 }
 

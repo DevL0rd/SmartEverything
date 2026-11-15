@@ -156,7 +156,7 @@ function Body({
   const columns = width >= WIDTH_BREAKPOINTS.expanded;
   const column = cn('min-w-0 max-w-reading gap-section-gap', columns ? 'flex-1' : 'w-full');
   return (
-    <DeviceSettingsFrame deviceId={device.id} name={name} title={name} maxWidth="full">
+    <DeviceSettingsFrame deviceId={device.id} name={name} title={name} width="full">
       <View
         onLayout={onLayout}
         className={cn('gap-section-gap', columns && 'flex-row items-start')}

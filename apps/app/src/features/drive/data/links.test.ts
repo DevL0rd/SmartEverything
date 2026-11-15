@@ -13,6 +13,8 @@ function link(itemId: string, rev: number, issuedAt: number, thumb: boolean): Dr
     itemId,
     rev,
     file: { url: `/media/f-${itemId}-${String(rev)}-${String(issuedAt)}`, expiresAt },
+    download: null,
+    icon: null,
     thumb: thumb
       ? { url: `/media/t-${itemId}-${String(rev)}-${String(issuedAt)}`, expiresAt }
       : null,
@@ -132,4 +134,25 @@ it('keeps a playable video link separate from downloading the phone original', a
   );
   expect(await cache.resolve(ITEM, 1, 'playable')).toBe(playable.url);
   expect(await cache.resolve(ITEM, 1, 'file')).toBe(original.file.url);
+});
+
+it('serves the download and the folder icon links only when the Hub gave them', async () => {
+  const original = link(ITEM, 1, START, false);
+  const download = { url: '/media/download', expiresAt: original.file.expiresAt };
+  const icon = { url: '/media/folder-icon', expiresAt: original.file.expiresAt };
+  const cache = new DriveLinkCache(
+    () => Promise.resolve([{ ...original, download, icon }]),
+    () => START,
+    () => 1,
+  );
+  expect(await cache.resolve(ITEM, 1, 'download')).toBe(download.url);
+  expect(await cache.resolve(ITEM, 1, 'icon')).toBe(icon.url);
+  expect(await cache.resolve(ITEM, 1, 'file')).toBe(original.file.url);
+  const viewOnly = new DriveLinkCache(
+    () => Promise.resolve([original]),
+    () => START,
+    () => 1,
+  );
+  expect(await viewOnly.resolve(ITEM, 1, 'download')).toBeNull();
+  expect(await viewOnly.resolve(ITEM, 1, 'icon')).toBeNull();
 });

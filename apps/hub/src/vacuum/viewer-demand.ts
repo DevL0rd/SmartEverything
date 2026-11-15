@@ -1,9 +1,8 @@
-import type { ProcessWindow } from '@smarteverything/domain';
-import type { ViewDemand, Viewers } from '../metrics/viewers';
+import type { ViewDemand, Viewers, DeviceDetail } from '../metrics/viewers';
 
 export const VACUUM_VIEW_TOPIC = 'live';
 
-export type ViewerSource = Pick<Viewers<ProcessWindow>, 'follow' | 'demand'>;
+export type ViewerSource = Pick<Viewers<DeviceDetail>, 'follow' | 'demand'>;
 
 export interface ViewerDemandPorts {
   readonly viewers: ViewerSource;
@@ -39,7 +38,7 @@ export class VacuumViewerDemand {
     if (this.watching.delete(deviceId)) this.ports.changed(deviceId, false);
   }
 
-  private apply(deviceId: string, demand: ViewDemand<ProcessWindow>): void {
+  private apply(deviceId: string, demand: ViewDemand<DeviceDetail>): void {
     const watched = demand.topics.has(VACUUM_VIEW_TOPIC);
     if (watched === this.watching.has(deviceId)) return;
     if (watched) this.watching.add(deviceId);

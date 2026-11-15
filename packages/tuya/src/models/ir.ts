@@ -56,7 +56,7 @@ export const TUYA_S06_PRO_MODEL: ModelSpec = {
   title: 'Tuya S06 Pro IR blaster',
   category: 'infrared',
   family: 'ir_blaster',
-  footprint: { width: SIDE, depth: SIDE, height: 0.02 },
+  footprint: { width: SIDE, depth: 0.0686, height: 0.0195 },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

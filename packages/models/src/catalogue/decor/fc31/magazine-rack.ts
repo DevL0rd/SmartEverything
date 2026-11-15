@@ -79,7 +79,7 @@ function magazine(index: number): ModelSpecPart[] {
 export const MAGAZINE_RACK_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.magazine-rack',
   title: 'Magazine rack',
-  footprint: { width: 0.4, depth: 0.28, height: 0.44 },
+  footprint: { width: 0.366, depth: 0.248, height: 0.44 },
   meta: {
     names: {
       display: 'Magazine rack',

@@ -33,6 +33,7 @@ export const PREFS = {
   cameras: CLIENT_PREFS.cameras,
   deviceAlerts: CLIENT_PREFS.device_alerts,
   driveHints: CLIENT_PREFS.drive_hints,
+  driveNotifications: CLIENT_PREFS.drive_notifications,
   healthSync: CLIENT_PREFS.health_sync,
   homeMapLook: CLIENT_PREFS.home_map_look,
   homeMapView: CLIENT_PREFS.home_map_view,

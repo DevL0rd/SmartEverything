@@ -11,9 +11,11 @@ import {
   type RefKind,
   type RefNames,
 } from '@smarteverything/domain';
-import type { FunctionDetail } from '../data/graph-adapter';
+import type { AutomationRow, FunctionDetail } from '../data/graph-adapter';
 import type { LintContext } from '@smarteverything/flow/check/lint';
 import { Logger } from '@smarteverything/logging';
+import { useStableValue } from '../../../components/use-stable-value';
+import { deepEqual } from '../model/editor/deep-equal';
 import { useProfiles } from '../../../store/people';
 import { useDevices, useIsOwner, useRooms, useRows, useSettings } from '../../../store/selectors';
 import { useScreenQuery } from '../../../queries/use-screen-query';
@@ -43,6 +45,53 @@ function table<T extends { readonly id: string }>(
   return new Map(rows.map((row) => [row.id, nameOf(row)] as const));
 }
 
+export function sameNames(kept: Names, next: Names): boolean {
+  if (kept.size !== next.size) return false;
+  const theirs = next.entries();
+  for (const [id, name] of kept) {
+    const other = theirs.next();
+    if (other.done === true || other.value[0] !== id || other.value[1] !== name) return false;
+  }
+  return true;
+}
+
+export function sameTables(
+  kept: Readonly<Record<string, Names>>,
+  next: Readonly<Record<string, Names>>,
+): boolean {
+  const entries = Object.entries(next);
+  if (entries.length !== Object.keys(kept).length) return false;
+  return entries.every(([kind, names]) => {
+    const mine = kept[kind];
+    return mine !== undefined && sameNames(mine, names);
+  });
+}
+
+type Definitions = ReadonlyMap<string, AutomationRow['definition']>;
+
+export function sameDefinitions(kept: Definitions, next: Definitions): boolean {
+  if (kept.size !== next.size) return false;
+  for (const [id, definition] of next) {
+    if (!kept.has(id) || !deepEqual(kept.get(id), definition)) return false;
+  }
+  return true;
+}
+
+function useAutomationNames(): Names {
+  const { rows } = useAutomations();
+  const names = useMemo(() => table(rows, (row) => row.name), [rows]);
+  return useStableValue(names, sameNames);
+}
+
+function useAutomationDefinitions(): Definitions {
+  const { rows } = useAutomations();
+  const definitions = useMemo(
+    (): Definitions => new Map(rows.map((row) => [row.id, row.definition] as const)),
+    [rows],
+  );
+  return useStableValue(definitions, sameDefinitions);
+}
+
 type HomeKind = Exclude<RefKind, 'automation' | 'function' | 'target' | 'secret'>;
 
 function zoneList(): readonly string[] | null {
@@ -53,7 +102,6 @@ export function useAutomationHome(): HomeData {
   const devices = useDevices({ includeHidden: true });
   const rooms = useRooms();
   const groups = useRows('device_groups');
-  const scenes = useRows('scenes');
   const values = useRows('automation_values');
   const chats = useRows('ai_chats');
   const channels = useRows('talk_channels');
@@ -64,7 +112,6 @@ export function useAutomationHome(): HomeData {
       devices,
       rooms,
       groups,
-      scenes,
       people,
       chats,
       channels,
@@ -72,7 +119,7 @@ export function useAutomationHome(): HomeData {
       automations,
       timeZones: zoneList(),
     }),
-    [devices, rooms, groups, scenes, people, chats, channels, values, automations],
+    [devices, rooms, groups, people, chats, channels, values, automations],
   );
 }
 
@@ -83,12 +130,11 @@ function labelled(rows: readonly { readonly id: string; readonly label: string }
 function useHomeNames(): Readonly<Record<HomeKind, Names>> {
   const home = useAutomationHome();
   const cameras = useRows('cameras');
-  return useMemo(
+  const names = useMemo(
     () => ({
       device: table(home.devices, (row) => row.label),
       room: table(home.rooms, (row) => row.name),
       group: table(home.groups, (row) => row.name),
-      scene: table(home.scenes, (row) => row.name),
       person: table(home.people, (row) => row.name),
       computer: labelled(computersOf(home.devices)),
       phone: labelled(phonesOf(home.devices)),
@@ -103,6 +149,7 @@ function useHomeNames(): Readonly<Record<HomeKind, Names>> {
     }),
     [home, cameras],
   );
+  return useStableValue(names, sameTables);
 }
 
 type NameTables = Readonly<Record<RefKind, Names>>;
@@ -113,19 +160,20 @@ export function targetNamesOf(home: Readonly<Record<'device' | 'room' | 'group',
 
 function useNameTables(): NameTables {
   const home = useHomeNames();
-  const automations = useAutomations();
+  const automations = useAutomationNames();
   const functions = useFunctions();
   const secrets = useSecrets(useIsOwner());
-  return useMemo(
+  const tables = useMemo(
     (): NameTables => ({
       ...home,
-      automation: table(automations.rows, (row) => row.name),
+      automation: automations,
       function: table(functions.data ?? NO_FUNCTIONS, (row) => row.name),
       target: targetNamesOf(home),
       secret: table(secrets.data ?? [], (row) => row.name),
     }),
-    [home, automations.rows, functions.data, secrets.data],
+    [home, automations, functions.data, secrets.data],
   );
+  return useStableValue(tables, sameTables);
 }
 
 export function useRefNames(): RefNames {
@@ -236,7 +284,7 @@ export function useFunctionLookup(): FunctionLookup {
 
 export function useLintContext(): LintContext {
   const { lookup } = useAutomationsSource();
-  const automations = useAutomations().byId;
+  const automations = useAutomationDefinitions();
   const summaries = useFunctions().data ?? NO_FUNCTIONS;
   const refs = useRefNames();
   const secrets = useSecrets(useIsOwner()).data;
@@ -244,7 +292,7 @@ export function useLintContext(): LintContext {
     const byId = new Map(summaries.map((summary) => [summary.id, summary] as const));
     return {
       kinds: (id) => lookup.get(id),
-      automations: (id) => automations.get(id)?.definition,
+      automations: (id) => automations.get(id),
       scopeOutputs: (kind) => FLOW_SCOPE_OUTPUTS[kind] ?? [],
       references: (kind, id) => refs(kind, id) !== undefined,
       functions: (id) => byId.get(id)?.interface,

@@ -27,13 +27,7 @@ func readToken() (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
-func newFilesystem(spec routeSpec, token, cacheDir, journalDir string) (*writeBack, error) {
-	hub := newHubClient(spec, token)
-	cache := newBlockCache(directSource{hub: hub}, cacheDir)
-	return newWriteBack(cache, hub, journalDir)
-}
-
-func serve(in io.Reader, out io.Writer, source Filesystem, stop <-chan os.Signal) error {
+func serve(in io.Reader, out io.Writer, source InodeFilesystem, stop <-chan os.Signal) error {
 	report := newReporter(out)
 	set := newMountSet(source, report)
 	finished := make(chan error, 1)
@@ -50,6 +44,14 @@ func serve(in io.Reader, out io.Writer, source Filesystem, stop <-chan os.Signal
 }
 
 func main() {
+	startReaper()
+	if len(os.Args) > 1 && os.Args[1] == "meta" {
+		if err := runMeta(os.Stdin, os.Stdout, platformMeta()); err != nil {
+			fmt.Fprintln(os.Stderr, "meta:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	cacheDir := flag.String("cache", "", "block cache folder")
 	flag.Parse()
 	if *cacheDir == "" {
@@ -65,7 +67,7 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	files, err := newFilesystem(routeSpec{}, token, *cacheDir, filepath.Join(filepath.Dir(filepath.Clean(*cacheDir)), "journal"))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "journal:", err)
+		fmt.Fprintln(os.Stderr, "start:", err)
 		os.Exit(1)
 	}
 	err = serve(os.Stdin, os.Stdout, files, stop)

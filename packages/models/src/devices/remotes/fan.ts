@@ -21,6 +21,7 @@ export const FAN_REMOTE_MODEL: ModelSpec = remote({
   title: 'Fan remote',
   synonyms: ['fan controller', 'ceiling fan remote', 'tower fan remote', 'fan handset'],
   size: SIZE,
+  footprint: { width: 0.1134, depth: SIZE.width, height: 0.0183 },
   materials: LIGHT_BODY,
   finishes: { white: {}, sand: { body: { color: '#E4DCCB', roughness: 0.55 } } },
   defaultFinish: 'white',

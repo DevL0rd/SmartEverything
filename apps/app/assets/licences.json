@@ -505,6 +505,16 @@
     "licence": "LGPL-3.0"
   },
   {
+    "name": "@cbor-extract/cbor-extract-linux-arm64",
+    "version": "2.2.3",
+    "licence": "MIT"
+  },
+  {
+    "name": "@cbor-extract/cbor-extract-linux-x64",
+    "version": "2.2.3",
+    "licence": "MIT"
+  },
+  {
     "name": "@config-plugins/react-native-webrtc",
     "version": "15.0.2",
     "licence": "MIT"
@@ -1465,6 +1475,11 @@
     "licence": "Apache-2.0"
   },
   {
+    "name": "@hnw/date-tibetan",
+    "version": "1.0.2",
+    "licence": "MIT"
+  },
+  {
     "name": "@hono/node-server",
     "version": "2.1.4",
     "licence": "MIT"
@@ -2055,6 +2070,11 @@
     "licence": "MIT"
   },
   {
+    "name": "@tesseract.js-data/eng",
+    "version": "1.0.0",
+    "licence": "MIT"
+  },
+  {
     "name": "@tokenizer/inflate",
     "version": "0.4.1",
     "licence": "MIT"
@@ -2395,6 +2415,11 @@
     "licence": "Python-2.0"
   },
   {
+    "name": "argparse",
+    "version": "3.0.4",
+    "licence": "PSF-2.0"
+  },
+  {
     "name": "aria-hidden",
     "version": "1.2.6",
     "licence": "MIT"
@@ -2417,6 +2442,11 @@
   {
     "name": "assert-plus",
     "version": "1.0.0",
+    "licence": "MIT"
+  },
+  {
+    "name": "astronomia",
+    "version": "4.3.0",
     "licence": "MIT"
   },
   {
@@ -2535,6 +2565,11 @@
     "licence": "MIT"
   },
   {
+    "name": "bmp-js",
+    "version": "0.1.0",
+    "licence": "MIT"
+  },
+  {
     "name": "body-parser",
     "version": "2.3.0",
     "licence": "MIT"
@@ -2640,6 +2675,11 @@
     "licence": "BSD-3-Clause"
   },
   {
+    "name": "caldate",
+    "version": "2.1.0",
+    "licence": "ISC"
+  },
+  {
     "name": "call-bind-apply-helpers",
     "version": "1.0.2",
     "licence": "MIT"
@@ -2663,6 +2703,16 @@
     "name": "caseless",
     "version": "0.12.0",
     "licence": "Apache-2.0"
+  },
+  {
+    "name": "cbor-extract",
+    "version": "2.2.3",
+    "licence": "MIT"
+  },
+  {
+    "name": "cbor-x",
+    "version": "1.6.8",
+    "licence": "MIT"
   },
   {
     "name": "chalk",
@@ -3083,6 +3133,31 @@
     "name": "data-uri-to-buffer",
     "version": "4.0.1",
     "licence": "MIT"
+  },
+  {
+    "name": "date-bengali-revised",
+    "version": "2.1.0",
+    "licence": "MIT"
+  },
+  {
+    "name": "date-chinese",
+    "version": "2.2.0",
+    "licence": "MIT"
+  },
+  {
+    "name": "date-easter",
+    "version": "1.1.0",
+    "licence": "MIT"
+  },
+  {
+    "name": "date-holidays",
+    "version": "3.39.1",
+    "licence": "(ISC AND CC-BY-SA-4.0)"
+  },
+  {
+    "name": "date-holidays-parser",
+    "version": "3.7.0",
+    "licence": "ISC"
   },
   {
     "name": "dbus-next",
@@ -4080,6 +4155,11 @@
     "licence": "BSD-3-Clause"
   },
   {
+    "name": "ical.js",
+    "version": "2.2.1",
+    "licence": "MPL-2.0"
+  },
+  {
     "name": "iconv-lite",
     "version": "0.7.3",
     "licence": "MIT"
@@ -4230,6 +4310,11 @@
     "licence": "MIT"
   },
   {
+    "name": "is-url",
+    "version": "1.2.4",
+    "licence": "MIT"
+  },
+  {
     "name": "is-wsl",
     "version": "2.2.0",
     "licence": "MIT"
@@ -4247,6 +4332,11 @@
   {
     "name": "isstream",
     "version": "0.1.2",
+    "licence": "MIT"
+  },
+  {
+    "name": "jalaali-js",
+    "version": "2.0.1",
     "licence": "MIT"
   },
   {
@@ -4297,6 +4387,11 @@
   {
     "name": "js-yaml",
     "version": "4.3.2",
+    "licence": "MIT"
+  },
+  {
+    "name": "js-yaml",
+    "version": "5.5.0",
     "licence": "MIT"
   },
   {
@@ -4448,6 +4543,11 @@
     "name": "lightningcss-linux-x64-gnu",
     "version": "1.33.0",
     "licence": "MPL-2.0"
+  },
+  {
+    "name": "lodash",
+    "version": "4.18.1",
+    "licence": "MIT"
   },
   {
     "name": "lodash._baseiteratee",
@@ -4900,6 +5000,16 @@
     "licence": "MIT"
   },
   {
+    "name": "moment",
+    "version": "2.31.0",
+    "licence": "MIT"
+  },
+  {
+    "name": "moment-timezone",
+    "version": "0.6.6",
+    "licence": "MIT"
+  },
+  {
     "name": "mqtt",
     "version": "5.16.0",
     "licence": "MIT"
@@ -5010,6 +5120,11 @@
     "licence": "MIT"
   },
   {
+    "name": "node-gyp-build-optional-packages",
+    "version": "5.1.1",
+    "licence": "MIT"
+  },
+  {
     "name": "node-int64",
     "version": "0.4.0",
     "licence": "MIT"
@@ -5023,6 +5138,11 @@
     "name": "node-releases",
     "version": "2.0.57",
     "licence": "MIT"
+  },
+  {
+    "name": "nodemailer",
+    "version": "10.5.0",
+    "licence": "MIT-0"
   },
   {
     "name": "nopt",
@@ -5135,6 +5255,11 @@
     "licence": "Apache-2.0"
   },
   {
+    "name": "opencollective-postinstall",
+    "version": "2.0.3",
+    "licence": "MIT"
+  },
+  {
     "name": "openrgb-sdk",
     "version": "0.6.0",
     "licence": "MIT"
@@ -5240,6 +5365,11 @@
     "licence": "(MIT OR Apache2)"
   },
   {
+    "name": "pend",
+    "version": "1.2.0",
+    "licence": "MIT"
+  },
+  {
     "name": "performance-now",
     "version": "2.1.0",
     "licence": "MIT"
@@ -5303,6 +5433,11 @@
     "name": "postcss-value-parser",
     "version": "4.2.0",
     "licence": "MIT"
+  },
+  {
+    "name": "prepin",
+    "version": "1.0.3",
+    "licence": "Unlicense"
   },
   {
     "name": "pretty-format",
@@ -6090,6 +6225,16 @@
     "licence": "BSD-2-Clause"
   },
   {
+    "name": "tesseract.js",
+    "version": "7.0.0",
+    "licence": "Apache-2.0"
+  },
+  {
+    "name": "tesseract.js-core",
+    "version": "7.0.0",
+    "licence": "Apache-2.0"
+  },
+  {
     "name": "three",
     "version": "0.186.1",
     "licence": "MIT"
@@ -6305,6 +6450,11 @@
     "licence": "MIT"
   },
   {
+    "name": "unpdf",
+    "version": "2.1.0",
+    "licence": "MIT"
+  },
+  {
     "name": "unpipe",
     "version": "1.0.0",
     "licence": "MIT"
@@ -6403,6 +6553,11 @@
     "name": "warn-once",
     "version": "0.1.1",
     "licence": "MIT"
+  },
+  {
+    "name": "wasm-feature-detect",
+    "version": "1.10.1",
+    "licence": "Apache-2.0"
   },
   {
     "name": "wcwidth",
@@ -6563,6 +6718,16 @@
     "name": "yargs-parser",
     "version": "22.0.0",
     "licence": "ISC"
+  },
+  {
+    "name": "yauzl",
+    "version": "3.4.0",
+    "licence": "MIT"
+  },
+  {
+    "name": "zlibjs",
+    "version": "0.3.1",
+    "licence": "MIT"
   },
   {
     "name": "zod",

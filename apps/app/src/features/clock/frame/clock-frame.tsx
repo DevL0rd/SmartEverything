@@ -6,9 +6,13 @@ import { PageHeader, type HeaderAction } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { CompactBody, WideBody, type FrameWidth } from '../../../components/section-body';
 import { useAreaWidth } from '../../../design/size-class';
-import { usePlannerReload } from '../../planner/data';
-import { useComposerControl } from '../../planner/frame/quick-add';
-import { QuickAddBar, QuickAddComposer, ScrollAwayBar } from '../../planner/frame/quick-add-bar';
+import {
+  usePlannerReload,
+  useComposerControl,
+  QuickAddBar,
+  QuickAddComposer,
+  ScrollAwayBar,
+} from '../../planner';
 import type { ClockSection } from '../model/section-routes';
 import { clockMenu } from './clock-menu';
 import { ClockRail } from './clock-rail';
@@ -157,7 +161,7 @@ export function ClockFrame({
           back={false}
           actions={actions}
           overflow={clockMenu()}
-          {...(compact ? { below: <ClockStrip active={section} /> } : {})}
+          {...(compact ? { belowStrip: <ClockStrip active={section} /> } : {})}
         />
       }
     >

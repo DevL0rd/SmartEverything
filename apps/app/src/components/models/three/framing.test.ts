@@ -1,6 +1,7 @@
 import type { ModelSpec, ModelSpecShot } from '@smarteverything/domain';
 import { Box3, Sprite, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { HOT_TUB_MODEL } from '../../../../../../packages/models/src/catalogue/outdoor/fc25/hot-tub';
 import { buildModel } from './build-model';
 import {
   blendPose,
@@ -11,6 +12,7 @@ import {
   focusPoint,
   framedShot,
   frameView,
+  keptBox,
   modelBounds,
   posePosition,
   shotPose,
@@ -310,4 +312,28 @@ describe('shot containment', () => {
     const rest = framedShot(model, spec, { ...frame, view: 'hero', shot: undefined });
     expect(rest).toEqual(frameView(model, spec, 'hero', 1.5));
   });
+});
+
+describe('hot tub hero', () => {
+  it.each([1.5, 2, 3, 4])(
+    'keeps the tub whole through the soaking shot in a %s wide strip',
+    (aspect) => {
+      const model = buildModel(HOT_TUB_MODEL, { lod: 2 });
+      const shot = HOT_TUB_MODEL.shots?.[0];
+      const kept = keptBox(model, HOT_TUB_MODEL, 'hero', shot?.focus);
+      if (shot === undefined || kept === undefined) throw new Error('no soaking shot or kept tub');
+      expect(kept.max.y - kept.min.y).toBeGreaterThan(0.9);
+      for (const progress of [0, 0.5, 1]) {
+        const pose = framedShot(model, HOT_TUB_MODEL, {
+          view: 'hero',
+          aspect,
+          shot,
+          elapsedS: 0,
+          progress,
+        });
+        expect(projectedExtent(pose, aspect, kept)).toBeLessThanOrEqual(1 - CONTAIN_PADDING + 1e-6);
+      }
+      model.dispose();
+    },
+  );
 });

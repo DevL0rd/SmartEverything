@@ -2,7 +2,7 @@ import type { RouteDefinition } from '../../app-shell/route-types';
 
 interface PageSpec {
   readonly key: string;
-  readonly path: 'timers' | 'stopwatch' | 'world';
+  readonly path: 'bedtime' | 'timers' | 'stopwatch' | 'world';
   readonly title: string;
   readonly icon: RouteDefinition['icon'];
   readonly keywords: readonly string[];
@@ -23,6 +23,13 @@ function page({ key, path, title, icon, keywords }: PageSpec): RouteDefinition {
 }
 
 export const ROUTES: readonly RouteDefinition[] = [
+  page({
+    key: 'clock-bedtime',
+    path: 'bedtime',
+    title: 'Bedtime',
+    icon: 'moon',
+    keywords: ['sleep', 'bedtime', 'wind-down', 'sleep sounds', 'white noise', 'do not disturb'],
+  }),
   page({
     key: 'clock-timers',
     path: 'timers',

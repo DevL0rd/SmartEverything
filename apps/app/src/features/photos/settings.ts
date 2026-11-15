@@ -6,6 +6,7 @@ import {
   type PhotosPref,
 } from '@smarteverything/domain';
 import { changeBackupEnabled } from './backup/activation';
+import { HiddenFoldersRow } from './folders/hidden-folders-row';
 import { BackupAlbumsRow } from './settings/backup-albums';
 import { MapAttributionRow } from './settings/map-attribution';
 import { BackupFolderRow, OriginalQualityRow } from './settings/phone-rows';
@@ -24,6 +25,7 @@ const SOURCES = 'Sources';
 const MAP = 'Map and places';
 const THIS_DEVICE = 'This device';
 const DETECTION = 'Duplicate detection';
+const SHARING = 'Sharing';
 
 const ZOOM_LABELS = {
   years: 'Years',
@@ -175,6 +177,24 @@ const LIBRARY_SETTINGS: readonly SettingDefinition[] = [
     keywords: ['not backed up', 'only on this device', 'library'],
     key: 'showNotBackedUp',
   }),
+  customRow({
+    id: 'photos.library.hidden_folders',
+    page: PHOTOS_PAGE,
+    section: LIBRARY,
+    title: 'Hidden folders',
+    keywords: [
+      'hidden folders',
+      'hide folder',
+      'hide album',
+      'show hidden',
+      'folders',
+      'phone albums',
+      'computer folders',
+      'library',
+    ],
+    scope: 'server',
+    component: HiddenFoldersRow,
+  }),
 ];
 
 const SOURCE_SETTINGS: readonly SettingDefinition[] = [
@@ -223,6 +243,27 @@ const MAP_SETTINGS: readonly SettingDefinition[] = [
     keywords: ['attribution', 'geonames', 'natural earth', 'map data', 'licence'],
     scope: 'server',
     component: MapAttributionRow,
+  }),
+];
+
+const SHARING_SETTINGS: readonly SettingDefinition[] = [
+  photosSwitch({
+    id: 'photos.sharing.album_activity',
+    section: SHARING,
+    title: 'Shared album activity',
+    description:
+      'Get a notification when people add photos, comment or like in albums shared with you.',
+    icon: 'bell',
+    keywords: [
+      'shared albums',
+      'album activity',
+      'notifications',
+      'comments',
+      'likes',
+      'photos added',
+      'sharing',
+    ],
+    key: 'albumActivity',
   }),
 ];
 
@@ -303,6 +344,7 @@ export const PHOTOS_SETTINGS: readonly SettingDefinition[] = [
   ...LIBRARY_SETTINGS,
   ...SOURCE_SETTINGS,
   ...MAP_SETTINGS,
+  ...SHARING_SETTINGS,
   ...BACKUP_SETTINGS,
   ...DUPLICATE_SETTINGS,
 ];

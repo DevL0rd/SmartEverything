@@ -2,8 +2,8 @@ import type { DrivePlacement } from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { FuseStatus } from './fuse-detect.js';
 import type { HelperLine } from './helper-process.js';
-import { MountSummary, mountedIds, type MountTray } from './mount-state.js';
-import type { PlacementReport } from './placement-state.js';
+import { MountSummary, type MountTray } from './mount-state.js';
+import { parseHelperLine, type PlacementReport } from './placement-state.js';
 import type { HelperPort, LinkPort, PlacementsController, PlacementsPorts } from './placements.js';
 
 export type MountCommand =
@@ -14,6 +14,8 @@ export type MountCommand =
 export interface HelperHandle extends HelperPort {
   readonly send: (line: HelperLine) => void;
   readonly close: () => Promise<void>;
+  readonly onCrash: (listener: (reason: string) => void) => () => void;
+  readonly restart: () => void;
 }
 
 export type MountPlacements = Pick<PlacementsController, 'start' | 'stop'>;
@@ -21,14 +23,19 @@ export type MountPlacements = Pick<PlacementsController, 'start' | 'stop'>;
 export interface MountControllerPorts {
   readonly fuse: () => Promise<FuseStatus>;
   readonly recover: (point: string) => Promise<unknown>;
+  readonly stalePoints: () => Promise<readonly string[]>;
   readonly known: () => readonly DrivePlacement[];
   readonly helper: HelperHandle;
   readonly link: LinkPort;
   readonly createPlacements: (ports: Pick<PlacementsPorts, 'helper' | 'link'>) => MountPlacements;
   readonly clearCache: () => Promise<void>;
+  readonly sleep: (milliseconds: number) => Promise<void>;
   readonly tray: (state: MountTray | null) => void;
   readonly log: Logger;
 }
+
+const RESTART_FIRST_MS = 1000;
+const RESTART_LONGEST_MS = 30_000;
 
 export class MountNotRunningError extends Error {
   override readonly name = 'MountNotRunningError';
@@ -45,6 +52,9 @@ export class MountController {
   private fuse: FuseStatus = { available: true };
   private shown = JSON.stringify(null);
   private queue: Promise<void> = Promise.resolve();
+  private generation = 0;
+  private crashes = 0;
+  private watching: readonly (() => void)[] = [];
 
   constructor(private readonly ports: MountControllerPorts) {}
 
@@ -98,12 +108,22 @@ export class MountController {
     }
     const known = this.ports.known();
     this.summary.track(known);
-    if (this.fuse.available) await this.recoverStale(known);
+    if (this.fuse.available) await this.recoverStale();
     const placements = this.ports.createPlacements({
       helper: this.gatedHelper(),
       link: this.trackedLink(),
     });
     this.placements = placements;
+    this.generation += 1;
+    this.crashes = 0;
+    this.watching = [
+      this.ports.helper.onLine((raw) => {
+        this.observe(raw);
+      }),
+      this.ports.helper.onCrash(() => {
+        this.crashed(this.generation);
+      }),
+    ];
     placements.start();
     this.publish();
   }
@@ -111,22 +131,54 @@ export class MountController {
   private async down(): Promise<void> {
     const { placements } = this;
     this.placements = null;
+    this.generation += 1;
+    for (const stop of this.watching) stop();
+    this.watching = [];
     placements?.stop();
     await this.ports.helper.close();
     this.summary.clear();
     this.publish();
   }
 
-  private async recoverStale(known: readonly DrivePlacement[]): Promise<void> {
-    const ids = mountedIds(known);
-    for (const placement of known.filter((candidate) => ids.has(candidate.id))) {
+  private observe(raw: string): void {
+    let line: ReturnType<typeof parseHelperLine>;
+    try {
+      line = parseHelperLine(raw);
+    } catch (cause) {
+      this.ports.log.warn('drive_mount.helper_line_rejected', { error: messageOf(cause) });
+      return;
+    }
+    if (line.type === 'status' && line.state === 'mounted') this.crashes = 0;
+    if (line.type !== 'counters') return;
+    this.summary.pendingUploads(line.mount, line.pendingUploads);
+    this.publish();
+  }
+
+  private crashed(generation: number): void {
+    const delay = Math.min(RESTART_FIRST_MS * 2 ** this.crashes, RESTART_LONGEST_MS);
+    this.crashes += 1;
+    this.ports.log.warn('drive_mount.helper_restart_scheduled', { delay_ms: delay });
+    this.ports
+      .sleep(delay)
+      .then(() => this.enqueue(() => this.restart(generation)))
+      .catch((cause: unknown) => {
+        this.ports.log.error('drive_mount.helper_restart_failed', cause);
+      });
+  }
+
+  private async restart(generation: number): Promise<void> {
+    if (generation !== this.generation || this.placements === null) return;
+    await this.recoverStale();
+    if (generation !== this.generation) return;
+    this.ports.helper.restart();
+  }
+
+  private async recoverStale(): Promise<void> {
+    for (const point of await this.ports.stalePoints()) {
       try {
-        await this.ports.recover(placement.localPath);
+        await this.ports.recover(point);
       } catch (cause) {
-        this.ports.log.warn('drive_mount.stale_recovery_failed', {
-          placement_id: placement.id,
-          error: messageOf(cause),
-        });
+        this.ports.log.warn('drive_mount.stale_recovery_failed', { error: messageOf(cause) });
       }
     }
   }

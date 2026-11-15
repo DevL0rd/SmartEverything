@@ -133,32 +133,33 @@ function replacementEvents(
 ): readonly DshSessionEvent[] {
   const surface = foldSurface(history, SESSION_MESSAGE_PROJECTIONS).nodes;
   const nodes = history[surface[0] ?? -1]?.type === 'system/message' ? surface.slice(1) : surface;
-  const first = nodes[0];
   const last = nodes.at(-1);
-  if (first === undefined || last === undefined) return [];
+  if (last === undefined) return [];
+  const kept = retainedSurface(history, nodes, removed);
+  const unchanged = unchangedPrefix(history, nodes, kept);
+  const first = nodes[unchanged];
   const base = history.length;
   const time = Date.now();
-  const events: unknown[] = [
-    editRecord(base, time, removed),
-    {
-      type: 'system/message',
-      seq: base + 1,
-      time,
-      surfaceOp: { op: 'replace', startSeq: first, endSeq: last },
-      sourceEventSeqs: nodes,
-      data: {
-        turn: 0,
-        step: 0,
-        message: {
-          id: randomUUID(),
-          role: 'system',
-          source: { kind: 'system-prompt' },
-          content: [],
-        },
+  const events: unknown[] = [editRecord(base, time, removed)];
+  if (first === undefined) return DSH_SESSION_EVENTS_WRITE.parse(events);
+  events.push({
+    type: 'system/message',
+    seq: base + 1,
+    time,
+    surfaceOp: { op: 'replace', startSeq: first, endSeq: last },
+    sourceEventSeqs: nodes.slice(unchanged),
+    data: {
+      turn: 0,
+      step: 0,
+      message: {
+        id: randomUUID(),
+        role: 'system',
+        source: { kind: 'system-prompt' },
+        content: [],
       },
     },
-  ];
-  for (const source of retainedSurface(history, nodes, removed)) {
+  });
+  for (const source of kept.slice(unchanged)) {
     const event = history[source];
     if (event === undefined) continue;
     const data = DATA.parse(event.data);
@@ -171,6 +172,32 @@ function replacementEvents(
     });
   }
   return DSH_SESSION_EVENTS_WRITE.parse(events.map((event) => JSON_VALUE.parse(event)));
+}
+
+function replayRoot(history: ReturnType<typeof readNativeHistory>, seq: number): number {
+  let current = seq;
+  for (;;) {
+    const event = history[current];
+    if (event === undefined) return current;
+    const replay = z.int().nonnegative().safeParse(DATA.parse(event.data)['historyReplaySource']);
+    if (!replay.success || replay.data >= current) return current;
+    current = replay.data;
+  }
+}
+
+function unchangedPrefix(
+  history: ReturnType<typeof readNativeHistory>,
+  nodes: readonly number[],
+  kept: readonly number[],
+): number {
+  let length = 0;
+  while (
+    length < nodes.length &&
+    length < kept.length &&
+    replayRoot(history, nodes[length] ?? -1) === kept[length]
+  )
+    length += 1;
+  return length;
 }
 
 function originalMessage(input: unknown, id: string): boolean {

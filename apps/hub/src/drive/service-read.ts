@@ -3,30 +3,35 @@ import {
   type DriveActivityEntry,
   type DriveAlbum,
   type DriveAlbumSurface,
-  type DriveFeedOp,
+  type DriveFeedRow,
   type DriveItem,
-  type DriveRecentEntry,
   type DriveRecentFilter,
   type DriveRecentPage,
   type DriveRoot,
+  type DriveShortcut,
+  type DriveSort,
 } from '@smarteverything/domain';
+import { z } from 'zod';
 import type { Store } from '../store/store';
 import type { StoredDrive } from '../store/repositories/drive-roots';
+import type { DriveChildrenMark } from '../store/repositories/drive-item-sort';
 import { canRead, driveAccess, itemAccess, type DriveActor } from './access';
+import { shortcutsInFolder } from './social/shortcuts';
 
 export const DRIVE_PAGE_SIZE = 200;
 
 export interface BrowseRequest {
   readonly rootId: string;
   readonly folderId?: string | undefined;
-  readonly sortField?: string | undefined;
-  readonly sortDirection?: string | undefined;
+  readonly sortField?: DriveSort['field'] | undefined;
+  readonly sortDirection?: DriveSort['direction'] | undefined;
   readonly cursor?: string | undefined;
 }
 
 export interface BrowsePage {
   readonly folder: DriveItem | null;
   readonly items: readonly DriveItem[];
+  readonly shortcuts: readonly DriveShortcut[];
   readonly next: string | null;
 }
 
@@ -37,28 +42,16 @@ export interface RecentRequest {
 
 type ReadStore = Pick<
   Store,
-  'driveRoots' | 'driveItems' | 'driveAlbums' | 'driveFeed' | 'driveGrants'
+  | 'driveRoots'
+  | 'driveItems'
+  | 'driveAlbums'
+  | 'driveFeed'
+  | 'driveGrants'
+  | 'driveShortcuts'
+  | 'driveRecent'
+  | 'driveFileRequests'
+  | 'driveOpens'
 >;
-
-const ADDED_OPS: readonly DriveFeedOp[] = ['create'];
-const CHANGED_OPS: readonly DriveFeedOp[] = ['update', 'rename', 'move', 'restore'];
-const EVERYTHING_OPS: readonly DriveFeedOp[] = [...ADDED_OPS, ...CHANGED_OPS];
-
-function opsOf(filter: DriveRecentFilter): readonly DriveFeedOp[] {
-  switch (filter) {
-    case 'added':
-      return ADDED_OPS;
-    case 'changed':
-      return CHANGED_OPS;
-    case 'everything':
-      return EVERYTHING_OPS;
-    case 'opened':
-      throw new ApiError(
-        'invalid_request',
-        'Recently opened files are not available yet; the item store keeps no opened order.',
-      );
-  }
-}
 
 function cursorOf(cursor: string | undefined): number | null {
   if (cursor === undefined) {
@@ -69,6 +62,52 @@ function cursorOf(cursor: string | undefined): number | null {
     throw new ApiError('invalid_request', 'The cursor is not one this list gave out.');
   }
   return seq;
+}
+
+const NAME_FIRST: DriveSort = { field: 'name', direction: 'asc' };
+
+const MARK = z.tuple([z.union([z.string(), z.number()]), z.string(), z.string()]);
+
+function sortOf(request: BrowseRequest): DriveSort {
+  if (request.sortField === undefined || request.sortDirection === undefined) {
+    return NAME_FIRST;
+  }
+  return { field: request.sortField, direction: request.sortDirection };
+}
+
+function badCursor(reason: string): ApiError {
+  return new ApiError(
+    'invalid_request',
+    'The cursor is not one this folder listing gave out.',
+    reason,
+  );
+}
+
+function markOf(cursor: string | undefined, sort: DriveSort): DriveChildrenMark | null {
+  if (cursor === undefined) {
+    return null;
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+  } catch (error) {
+    throw badCursor(
+      `Expected an encoded sort mark, received ${cursor}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const parsed = MARK.safeParse(raw);
+  const expected = sort.field === 'bytes' ? 'number' : 'string';
+  if (!parsed.success || typeof parsed.data[0] !== expected) {
+    throw badCursor(`Expected a ${expected} mark for ${sort.field}, received ${cursor}.`);
+  }
+  const [key, name, id] = parsed.data;
+  return { key, name, id };
+}
+
+function cursorOfMark(mark: DriveChildrenMark | null): string | null {
+  return mark === null
+    ? null
+    : Buffer.from(JSON.stringify([mark.key, mark.name, mark.id]), 'utf8').toString('base64url');
 }
 
 function driveHidden(): ApiError {
@@ -119,25 +158,35 @@ export class DriveReadService {
     return item;
   }
 
-  browseFolder(actor: DriveActor, request: BrowseRequest): BrowsePage {
-    if (request.sortField !== undefined && !this.namedAscending(request)) {
-      throw new ApiError(
-        'invalid_request',
-        'Folders can only be listed by name, ascending, for now.',
-      );
+  recordOpen(actor: DriveActor, itemId: string, at: string): void {
+    const item = this.readItem(actor, itemId);
+    if (item.kind === 'folder') {
+      throw new ApiError('invalid_request', 'A folder is browsed, not opened.');
     }
+    this.store.driveOpens.record(actor.profileId, item.id, at);
+  }
+
+  browseFolder(actor: DriveActor, request: BrowseRequest): BrowsePage {
+    const sort = sortOf(request);
+    const after = markOf(request.cursor, sort);
     const folder = request.folderId === undefined ? null : this.folderOf(actor, request);
     if (folder === null) {
       this.rootFor(actor, request.rootId);
     }
-    const window = this.store.driveItems.children({
+    const window = this.store.driveItems.sortedChildren({
       rootId: request.rootId,
       parentId: folder?.id ?? null,
-      after: request.cursor ?? null,
+      sort,
+      after,
       limit: DRIVE_PAGE_SIZE,
       viewer: actor.profileId,
     });
-    return { folder, items: window.entries.map((entry) => entry.item), next: window.next };
+    return {
+      folder,
+      items: window.entries.map((entry) => entry.item),
+      shortcuts: this.shortcutsOf(actor, request, folder),
+      next: cursorOfMark(window.next),
+    };
   }
 
   listAlbums(actor: DriveActor, surface: DriveAlbumSurface): DriveAlbum[] {
@@ -145,33 +194,11 @@ export class DriveReadService {
   }
 
   readRecent(actor: DriveActor, request: RecentRequest): DriveRecentPage {
-    const window = this.store.driveFeed.latest(
-      opsOf(request.filter),
-      cursorOf(request.cursor),
+    return this.store.driveRecent.read(
+      actor,
+      { filter: request.filter, cursor: request.cursor ?? null },
       DRIVE_PAGE_SIZE,
     );
-    const entries = window.rows.flatMap((row): DriveRecentEntry[] => {
-      const item = this.store.driveItems.find(row.itemId, actor.profileId);
-      const drive = this.store.driveRoots.find(row.rootId);
-      if (
-        item === undefined ||
-        drive === undefined ||
-        !canRead(itemAccess(this.store, actor, drive, item))
-      ) {
-        return [];
-      }
-      return [
-        {
-          kind: row.op === 'create' ? 'added' : 'changed',
-          item,
-          at: row.at,
-          actorProfileId: row.actorProfileId,
-          via: row.via,
-          deviceId: row.deviceId,
-        },
-      ];
-    });
-    return { entries, next: window.next === null ? null : String(window.next) };
   }
 
   readActivity(
@@ -184,26 +211,40 @@ export class DriveReadService {
       before: cursorOf(request.cursor),
       limit: DRIVE_PAGE_SIZE,
     });
-    const items = window.rows.map((row): DriveActivityEntry => {
-      const item = this.store.driveItems.find(row.itemId, actor.profileId);
-      return {
-        row,
-        item:
-          item === undefined
-            ? null
-            : {
-                kind: item.kind,
-                name: item.name,
-                parentId: item.parentId,
-                relPath: item.relPath,
-              },
-      };
-    });
-    return { items, next: window.next === null ? null : String(window.next) };
+    return {
+      items: window.rows.map((row) => this.activityEntryOf(actor, row)),
+      next: window.next === null ? null : String(window.next),
+    };
   }
 
-  private namedAscending(request: BrowseRequest): boolean {
-    return request.sortField === 'name' && request.sortDirection === 'asc';
+  activityEntryOf(actor: DriveActor, row: DriveFeedRow): DriveActivityEntry {
+    const item = this.store.driveItems.find(row.itemId, actor.profileId);
+    return {
+      row,
+      outsiderName:
+        row.via === 'share' && row.actorProfileId === null
+          ? this.store.driveFileRequests.uploaderOf(row.itemId)
+          : null,
+      item:
+        item === undefined
+          ? null
+          : {
+              kind: item.kind,
+              name: item.name,
+              parentId: item.parentId,
+              relPath: item.relPath,
+            },
+    };
+  }
+
+  private shortcutsOf(
+    actor: DriveActor,
+    request: BrowseRequest,
+    folder: DriveItem | null,
+  ): DriveShortcut[] {
+    return request.cursor === undefined
+      ? shortcutsInFolder(this.store, actor, request.rootId, folder?.id ?? null)
+      : [];
   }
 
   private folderOf(actor: DriveActor, request: BrowseRequest): DriveItem {

@@ -1,4 +1,4 @@
-import { PLANNER_CALENDAR_VIEWS, type PlannerRange } from '@smarteverything/domain';
+import type { PlannerRange } from '@smarteverything/domain';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useIsFocused } from 'expo-router';
 import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
@@ -13,13 +13,13 @@ import { Skeleton } from '../../../components/skeleton';
 import { keyPressOf } from '../../../design/keyboard';
 import { isNative } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
-import { dateFormat } from '../../../format/locale';
 import { joinParts } from '../../../format/text';
 import { dayKeyOf, zonedStartOfDay } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useMinuteOf } from '../../../store/clock';
 import { useIsOwner, useSettings } from '../../../store/selectors';
-import { rangeQuery, usePlannerCollections } from '../data';
+import { rangeQuery } from '../data';
+import { usePlannerCalendars } from '../data/sharing';
 import { usePlannerFrame } from '../frame/frame-context';
 import { usePlannerShownPerson } from '../frame/person';
 import { PlannerFrame } from '../frame/planner-frame';
@@ -29,88 +29,26 @@ import { Composer } from '../item';
 import { VIEW_OPTIONS } from '../settings/options';
 import { useOwnPrefs, type Prefs } from '../settings/preferences';
 import { AgendaList } from './agenda-list';
-import { PREVIOUS, TimeContent, bookedLineOf, eventTextOf } from './calendar-stats';
-import { CalendarsSheet, shownCalendarsOf } from './calendars-sheet';
+import { bookedLineOf, eventTextOf } from './booked-model';
+import { PREVIOUS, TimeContent } from './calendar-stats';
+import { CalendarsSheet } from './calendars-sheet';
+import { shownCalendarsOf } from './calendars-model';
 import type { MinuteSpan } from './grid-gestures';
 import { MonthGrid } from './month-grid';
+import {
+  isTimeView,
+  keyActionOf,
+  steppedDay,
+  titleOf,
+  viewsFor,
+  windowDaysOf,
+  type CalendarView,
+  type KeyAction,
+} from './calendar-view-model';
 import { openingViewOf } from './opening-view';
-import { addDays, dayLabelOf, monthOf, shiftMonth } from './month-model';
+import { addDays } from './month-model';
 import { PeopleTimeline } from './people-timeline';
-import { daysFrom } from './time-grid-layout';
 import { YearHeat } from './year-heat';
-
-export type CalendarView = (typeof PLANNER_CALENDAR_VIEWS)[number];
-
-export type TimeView = 'day' | 'three_days' | 'week';
-
-const SPAN: Readonly<Record<TimeView, number>> = { day: 1, three_days: 3, week: 7 };
-
-const MONTH_YEAR = dateFormat({ month: 'long', year: 'numeric', timeZone: 'UTC' });
-
-const MONTH = dateFormat({ month: 'long', timeZone: 'UTC' });
-
-export function isTimeView(view: CalendarView): view is TimeView {
-  return view === 'day' || view === 'three_days' || view === 'week';
-}
-
-export function viewsFor(owner: boolean): readonly CalendarView[] {
-  return PLANNER_CALENDAR_VIEWS.filter((view) => owner || view !== 'people');
-}
-
-export function viewOfKey(key: string, views: readonly CalendarView[]): CalendarView | null {
-  const view = PLANNER_CALENDAR_VIEWS[Number(key) - 1];
-  return view !== undefined && views.includes(view) ? view : null;
-}
-
-export function weekStartOf(day: string, weekStart: number): string {
-  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
-  return addDays(day, -((weekday - weekStart + 7) % 7));
-}
-
-export function windowDaysOf(view: TimeView, day: string, weekStart: number): readonly string[] {
-  return view === 'week' ? daysFrom(weekStartOf(day, weekStart), 7) : daysFrom(day, SPAN[view]);
-}
-
-export function steppedDay(view: CalendarView, day: string, by: number): string {
-  if (isTimeView(view)) return addDays(day, by * SPAN[view]);
-  if (view === 'people') return addDays(day, by);
-  if (view === 'year') return `${String(Number(day.slice(0, 4)) + by)}-01-01`;
-  return `${shiftMonth(monthOf(day), by)}-01`;
-}
-
-function dayNumber(day: string): string {
-  return String(Number(day.slice(8, 10)));
-}
-
-function spanTitleOf(days: readonly string[]): string {
-  const first = days[0] ?? '';
-  const last = days[days.length - 1] ?? first;
-  if (first === last) return dayLabelOf(first, true);
-  const lastText = `${dayNumber(last)} ${MONTH.format(new Date(`${last}T00:00:00Z`))}`;
-  if (monthOf(first) === monthOf(last)) return `${dayNumber(first)} to ${lastText}`;
-  return `${dayNumber(first)} ${MONTH.format(new Date(`${first}T00:00:00Z`))} to ${lastText}`;
-}
-
-export function titleOf(view: CalendarView, day: string, weekStart: number): string {
-  if (isTimeView(view)) return spanTitleOf(windowDaysOf(view, day, weekStart));
-  if (view === 'people') return dayLabelOf(day, true);
-  if (view === 'year') return day.slice(0, 4);
-  if (view === 'agenda') return `From ${dayLabelOf(day, true)}`;
-  return MONTH_YEAR.format(new Date(`${monthOf(day)}-01T00:00:00Z`));
-}
-
-type KeyAction =
-  | { readonly kind: 'view'; readonly view: CalendarView }
-  | { readonly kind: 'step'; readonly by: number }
-  | { readonly kind: 'today' };
-
-export function keyActionOf(key: string, views: readonly CalendarView[]): KeyAction | null {
-  if (key === 'ArrowLeft') return { kind: 'step', by: -1 };
-  if (key === 'ArrowRight') return { kind: 'step', by: 1 };
-  if (key === 't' || key === 'T') return { kind: 'today' };
-  const view = viewOfKey(key, views);
-  return view === null ? null : { kind: 'view', view };
-}
 
 function useCalendarKeys(
   views: readonly CalendarView[],
@@ -351,7 +289,7 @@ interface CalendarData {
 
 function useCalendarData(state: CalendarState, prefs: Prefs): CalendarData {
   const timeZone = useSettings().time_zone;
-  const collections = usePlannerCollections(usePlannerShownPerson());
+  const collections = usePlannerCalendars(usePlannerShownPerson());
   const calendars = shownCalendarsOf(collections);
   const weekStart = prefs.general.week_start;
   const time = isTimeView(state.view);

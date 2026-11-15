@@ -50,6 +50,7 @@ const actorOf = (person: TestPerson): DriveActor => ({ profileId: person.profile
 function query(fields: Partial<DriveQuery> = {}): DriveQuery {
   return {
     text: null,
+    match: 'all',
     rootId: null,
     folderId: null,
     kinds: null,
@@ -138,8 +139,14 @@ beforeEach(async () => {
     kind: 'document',
     addedBy: b.profileId,
   });
-  store.driveGrants.set({ itemId: VIEW_DIR, profileId: b.profileId, role: 'view' }, a.profileId);
-  store.driveGrants.set({ itemId: EDIT_DIR, profileId: b.profileId, role: 'edit' }, a.profileId);
+  store.driveGrants.set(
+    { itemId: VIEW_DIR, profileId: b.profileId, role: 'view', expiresAt: null },
+    a.profileId,
+  );
+  store.driveGrants.set(
+    { itemId: EDIT_DIR, profileId: b.profileId, role: 'edit', expiresAt: null },
+    a.profileId,
+  );
   read = new DriveReadService(store);
   search = new DriveSearch(store.context);
 });
@@ -212,13 +219,15 @@ describe('who reaches what', () => {
     const recent = (person: TestPerson): string[] =>
       new DriveRecentReader(opened.store.context)
         .read(actorOf(person), { filter: 'added', cursor: null }, 50)
-        .entries.map((entry) => entry.item.id)
+        .entries.flatMap((entry) => (entry.kind === 'shortcut' ? [] : [entry.item.id]))
         .sort();
     expect(recent(owner)).toEqual([SHARED_FILE]);
     expect(recent(b)).toEqual([SHARED_FILE, VIEW_FILE].sort());
     expect(recent(a)).toEqual([OUTSIDE, SHARED_FILE, VIEW_FILE].sort());
     expect(
-      read.readRecent(actorOf(owner), { filter: 'added' }).entries.map((entry) => entry.item.id),
+      read
+        .readRecent(actorOf(owner), { filter: 'added' })
+        .entries.flatMap((entry) => (entry.kind === 'shortcut' ? [] : [entry.item.id])),
     ).toEqual([SHARED_FILE]);
   });
 });

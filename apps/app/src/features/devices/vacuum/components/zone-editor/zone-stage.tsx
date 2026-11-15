@@ -14,9 +14,10 @@ import {
   type StageContent,
   type StageContext,
   type StageViewOption,
+  type EditFloorFeed,
+  type EditSettled,
+  StageNoticeChip,
 } from '../../../../home-map';
-import type { EditFloorFeed, EditSettled } from '../../../../home-map/components/stage/home-map-3d';
-import { StageNoticeChip } from '../../../../home-map/editor/stage-notice';
 import type { UnifiedMap } from '../../model/unified-map';
 import { Map3dView } from '../map-3d-view';
 import { VacuumStill } from '../map-view-parts';

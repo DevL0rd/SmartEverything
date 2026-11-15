@@ -6,6 +6,9 @@ import { Interactive } from '../../../components/interactive';
 import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
+import { Arc } from '../../../components/charts/arc';
+import type { EditEntry } from '../editor/edit-entry';
+import type { EditJobView } from '../editor/job-view';
 
 export interface HeaderText {
   readonly title: string;
@@ -23,6 +26,7 @@ export interface HeaderControls {
   readonly onShare: () => void;
   readonly onInfo: () => void;
   readonly onTrash: () => void;
+  readonly edit: EditEntry;
 }
 
 function MenuIconButton({
@@ -39,6 +43,21 @@ function MenuIconButton({
     <View ref={ref} collapsable={false}>
       <IconButton icon={icon} label={label} onPress={open} />
       {menu}
+    </View>
+  );
+}
+
+function JobRing({ job }: { readonly job: EditJobView | null }): ReactNode {
+  if (job === null) return null;
+  return (
+    <View accessible accessibilityRole="progressbar" accessibilityLabel={job.label}>
+      <Arc
+        value={job.progress ?? 0}
+        size={28}
+        thickness={3}
+        colour="primary"
+        trackColour="surface-3"
+      />
     </View>
   );
 }
@@ -77,6 +96,16 @@ export function DesktopHeader({
         onPress={controls.onFavourite}
         shortcut="F"
       />
+      <JobRing job={controls.edit.job} />
+      {controls.edit.available ? (
+        <IconButton
+          icon="pencil"
+          label={controls.edit.label}
+          disabled={controls.busy || controls.edit.busy}
+          onPress={controls.edit.onEdit}
+          shortcut="E"
+        />
+      ) : null}
       <MenuIconButton icon="layers" label="Add to album" items={controls.albums} />
       <IconButton
         icon="share"
@@ -107,6 +136,7 @@ export function PhoneHeader({
     <View className="h-14 flex-row items-center gap-1 px-1 pt-safe">
       <IconButton icon="arrowLeft" label="Back" onPress={controls.onClose} />
       <Titles text={text} />
+      <JobRing job={controls.edit.job} />
       <MenuIconButton icon="ellipsisVertical" label="More" items={controls.more} />
     </View>
   );
@@ -166,6 +196,14 @@ export function PhoneActions({ controls }: { readonly controls: HeaderControls }
       />
       <BarAction icon="share" label="Share" disabled={controls.busy} onPress={controls.onShare} />
       <AlbumAction items={controls.albums} />
+      {controls.edit.available ? (
+        <BarAction
+          icon="pencil"
+          label="Edit"
+          disabled={controls.busy || controls.edit.busy}
+          onPress={controls.edit.onEdit}
+        />
+      ) : null}
       <BarAction icon="info" label="Info" onPress={controls.onInfo} />
       <BarAction
         icon="trash"

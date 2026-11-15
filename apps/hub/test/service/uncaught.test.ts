@@ -12,12 +12,17 @@ describe('an exception nothing caught', () => {
       stopped.push(code);
       return Promise.resolve();
     });
-    source.emit('uncaughtException', new Error('WebSocket is not open: readyState 0 (CONNECTING)'));
+    source.emit(
+      'uncaughtException',
+      new Error('WebSocket is not open: readyState 0 (CONNECTING)'),
+      'uncaughtException',
+    );
     await Promise.resolve();
     expect(stopped).toEqual([1]);
     const record = logs.records.find((entry) => entry.event === 'process.uncaught');
     expect(record?.level).toBe('exception');
     expect(JSON.stringify(record)).toContain('readyState 0');
+    expect(JSON.stringify(record)).toContain('uncaughtException');
   });
 
   it('stops listening once the hub has stopped', () => {

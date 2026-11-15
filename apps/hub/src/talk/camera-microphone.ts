@@ -126,7 +126,7 @@ export class CameraMicrophones {
     child.stderr.on('data', (chunk: Buffer) => {
       stderr = `${stderr}${chunk.toString('utf8')}`.slice(-STDERR_KEPT);
     });
-    child.once('error', (cause) => {
+    child.on('error', (cause) => {
       stderr = cause.message;
     });
     child.once('close', (code) => {

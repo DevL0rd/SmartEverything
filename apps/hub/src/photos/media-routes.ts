@@ -15,6 +15,7 @@ import { bound, type Bound } from '../server/router';
 import type { StoreContext } from '../store/context';
 import {
   DriveMediaJobsRepository,
+  PHOTO_AI_JOB_KINDS,
   type DriveMediaJob,
   type DriveMediaJobKind,
 } from '../store/repositories/drive-media-jobs';
@@ -33,13 +34,17 @@ const TIME_SOURCES: Readonly<Record<DriveMediaRow['time_source'], MediaTimeSourc
   manual: null,
 };
 
-const JOB_KINDS: Readonly<Record<DriveMediaJobKind, MediaJob['kind']>> = {
+const JOB_KINDS: Readonly<Record<DriveMediaJobKind, MediaJob['kind'] | null>> = {
   preview: 'preview',
   poster: 'poster',
   playable: 'playable',
   playable_source: 'playable',
   motion: 'motion',
   place: 'place',
+  faces: null,
+  vision: null,
+  embed: null,
+  pet_embed: null,
 };
 
 type Derived = 'preview' | 'poster' | 'playable';
@@ -108,18 +113,22 @@ function infoOf(row: DriveMediaRow, jobs: readonly DriveMediaJob[]): MediaInfo {
   };
 }
 
-function jobOf(job: DriveMediaJob): MediaJob {
-  return {
-    id: job.id,
-    kind: JOB_KINDS[job.kind],
-    itemId: job.item_id,
-    rev: job.rev,
-    state: job.state,
-    attempts: job.attempts,
-    error: job.error,
-    modelVersion: job.model_version,
-    queuedAt: job.queued_at,
-  };
+function jobOf(job: DriveMediaJob): MediaJob[] {
+  const kind = JOB_KINDS[job.kind];
+  if (kind === null) return [];
+  return [
+    {
+      id: job.id,
+      kind,
+      itemId: job.item_id,
+      rev: job.rev,
+      state: job.state,
+      attempts: job.attempts,
+      error: job.error,
+      modelVersion: job.model_version,
+      queuedAt: job.queued_at,
+    },
+  ];
 }
 
 export class PhotoMedia {
@@ -149,9 +158,10 @@ export class PhotoMedia {
       STATE_COUNT,
       `select j.state, count(*) as total from drive_media_jobs j
          join drive_items i on i.id = j.item_id
-       where j.state in ('queued', 'running') and ${roots.text}
+       where j.state in ('queued', 'running') and j.kind not in (select value from json_each($aiKinds))
+         and ${roots.text}
        group by j.state`,
-      roots.parameters,
+      { ...roots.parameters, aiKinds: JSON.stringify(PHOTO_AI_JOB_KINDS) },
     );
     const visible = new Set(rootIds);
     const failed = this.jobs
@@ -160,7 +170,7 @@ export class PhotoMedia {
         const item = this.store.driveItems.find(job.item_id, null);
         return item !== undefined && visible.has(item.rootId);
       })
-      .map(jobOf);
+      .flatMap(jobOf);
     const total = (state: 'queued' | 'running'): number =>
       counts.find((count) => count.state === state)?.total ?? 0;
     return { queued: total('queued'), running: total('running'), failed };

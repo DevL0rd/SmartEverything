@@ -1,9 +1,9 @@
-import { useWindowDimensions, type View } from 'react-native';
+import { type View } from 'react-native';
 import { useRef, type RefObject } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
 import type { CallAudioPref, DesktopCaptureMode, SightFacing } from '@smarteverything/domain';
 import { appPlatform, useIdiom } from '../../../design/platform';
-import { useAreaWidth } from '../../../design/size-class';
+import { useAreaWidth, useWindowSize } from '../../../design/size-class';
 import { heavyThud, selectionTick } from '../../../platform/haptics';
 import { useEscape } from '../../../components/use-escape';
 import { useAssistantName } from '../data/assistant-data';
@@ -208,7 +208,7 @@ function requestActions(
 
 export function useCallRoom(): CallRoomModel {
   const call = useCall();
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const layout = callLayoutOf({ width: useAreaWidth(), height, idiom: useIdiom() });
   const layers = useCallLayers();
   const { pref } = useCallAudio();

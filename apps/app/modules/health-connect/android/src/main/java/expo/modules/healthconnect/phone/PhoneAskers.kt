@@ -9,8 +9,7 @@ object PhoneAskers {
   private val SOURCES = mapOf(
     APP to "The SmartEverything app",
     "assistant" to "Your assistant",
-    "automation" to "An automation",
-    "scene" to "A scene"
+    "automation" to "An automation"
   )
 
   fun describe(source: String, client: String? = null): String {

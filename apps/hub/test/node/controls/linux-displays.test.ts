@@ -161,6 +161,18 @@ describe('capabilities and fallbacks', () => {
     });
   });
 
+  it('offers the section with no screens, not a failure, when there is no graphical session', async () => {
+    const test = rig(BOTH, {
+      programs: [],
+      environment: { kde: false, wayland: false, x11: false },
+    });
+    await expect(test.displays.features()).resolves.toEqual(['displays']);
+    const state = await test.displays.read();
+    expect(state.outputs).toEqual([]);
+    expect(state.pendingRevert).toBeNull();
+    expect(state.nightLight.supported).toBe(false);
+  });
+
   it('does not pick kscreen-doctor outside KDE and has no tool for a plain X11 session', async () => {
     const test = rig(BOTH, { environment: { kde: false, wayland: false, x11: true } });
     await expect(test.displays.features()).resolves.toEqual([]);

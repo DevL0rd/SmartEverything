@@ -4,7 +4,6 @@ import {
   filterTrash,
   isFiltered,
   NO_FILTER,
-  deletableNow,
   shownText,
   TRASH_CHIPS,
   type TrashDriveOf,
@@ -84,20 +83,6 @@ describe('Trash filter', () => {
       'Deleted by you',
       'Folders',
     ]);
-  });
-
-  it('lets a member delete for good only their own drive’s trash and what they deleted', () => {
-    const sharedByOther = item({
-      id: 'o',
-      name: 'Other.md',
-      rootId: SHARED_ROOT,
-      deleter: { kind: 'person', id: 'sam', name: 'Sam' },
-    });
-    const sharedByYou = item({ id: 'y', name: 'Mine.md', rootId: SHARED_ROOT });
-    expect(deletableNow(QUOTES, false, driveOf)).toBe(true);
-    expect(deletableNow(sharedByYou, false, driveOf)).toBe(true);
-    expect(deletableNow(sharedByOther, false, driveOf)).toBe(false);
-    expect(deletableNow(sharedByOther, true, driveOf)).toBe(true);
   });
 
   it('says how many of the whole trash are shown', () => {

@@ -10,7 +10,7 @@ export const YOGA_MAT_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.yoga-mat',
   title: 'Yoga mat',
   category: 'fitness-hobby',
-  footprint: { width: WIDTH, depth: 1.83, height: ROLL * 2 },
+  footprint: { width: 0.62, depth: 1.83, height: ROLL * 2 },
   size: { depth: { param: 'length', extra: 0, resizes: true } },
   view: { yaw: 24, pitch: 35, fov: 28, padding: 0.08 },
   meta: {

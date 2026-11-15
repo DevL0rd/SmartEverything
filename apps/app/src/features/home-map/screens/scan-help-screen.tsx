@@ -2,8 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Grid } from '../../../components/grid';
 import { Icon, type IconName } from '../../../components/icon';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
 
 export interface ScanHelpStep {
@@ -98,7 +97,7 @@ function Step({ step, index }: { readonly step: ScanHelpStep; readonly index: nu
 
 export function ScanHelpScreen(): ReactNode {
   return (
-    <Screen header={<PageHeader title={SCAN_HELP_TITLE} />}>
+    <PageShell title={SCAN_HELP_TITLE}>
       <View className="gap-grid-gap">
         <Text variant="callout" tone="variant" className="max-w-reading">
           {SCAN_HELP_INTRO}
@@ -109,6 +108,6 @@ export function ScanHelpScreen(): ReactNode {
           ))}
         </Grid>
       </View>
-    </Screen>
+    </PageShell>
   );
 }

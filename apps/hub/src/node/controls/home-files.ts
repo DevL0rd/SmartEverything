@@ -5,6 +5,7 @@ import {
   type FileEntry,
   type FileList,
   type FileRange,
+  type FileSort,
 } from '@smarteverything/domain';
 import type { Dirent, Stats } from 'node:fs';
 import { lstat, open, readdir, readFile, realpath } from 'node:fs/promises';
@@ -32,10 +33,58 @@ const MIME: Readonly<Record<string, string>> = {
   '.mp3': 'audio/mpeg',
   '.mp4': 'video/mp4',
   '.zip': 'application/zip',
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.xml': 'application/xml',
+  '.yaml': 'application/yaml',
+  '.yml': 'application/yaml',
+  '.toml': 'application/toml',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.ts': 'text/typescript',
+  '.tsx': 'text/typescript',
+  '.jsx': 'text/javascript',
+  '.sh': 'text/x-shellscript',
+  '.py': 'text/x-python',
+  '.ini': 'text/plain',
+  '.conf': 'text/plain',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif',
+  '.heic': 'image/heic',
+  '.tiff': 'image/tiff',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/opus',
+  '.m4a': 'audio/mp4',
+  '.mkv': 'video/x-matroska',
+  '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.avi': 'video/x-msvideo',
+  '.gz': 'application/gzip',
+  '.tar': 'application/x-tar',
+  '.7z': 'application/x-7z-compressed',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 
 export function mimeOf(path: string): string | undefined {
   return MIME[extname(path).toLowerCase()];
+}
+
+const TEXT_MIMES: ReadonlySet<string> = new Set([
+  'application/json',
+  'application/xml',
+  'application/yaml',
+  'application/toml',
+  'image/svg+xml',
+]);
+
+export function holdsText(mime: string | null): boolean {
+  return mime === null || mime.startsWith('text/') || TEXT_MIMES.has(mime);
 }
 
 function kindOf(entry: Dirent): FileEntry['kind'] {
@@ -71,11 +120,27 @@ async function readable<T>(work: Promise<T>): Promise<T> {
   }
 }
 
-function byKindThenName(a: Dirent, b: Dirent): number {
-  return Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name);
+function naturalName(a: string, b: string): number {
+  return (
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) || a.localeCompare(b)
+  );
 }
 
-async function fileAt(path: string): Promise<{ file: string; stats: Stats }> {
+function byKindThenName(direction: number) {
+  return (a: Dirent, b: Dirent): number =>
+    Number(b.isDirectory()) - Number(a.isDirectory()) || direction * naturalName(a.name, b.name);
+}
+
+function byKindThenField(field: 'size' | 'modifiedAt', direction: number) {
+  return (a: FileEntry, b: FileEntry): number => {
+    const folders = Number(b.kind === 'folder') - Number(a.kind === 'folder');
+    const left = field === 'size' ? a.size : Date.parse(a.modifiedAt);
+    const right = field === 'size' ? b.size : Date.parse(b.modifiedAt);
+    return folders || direction * (left - right) || naturalName(a.name, b.name);
+  };
+}
+
+export async function fileAt(path: string): Promise<{ file: string; stats: Stats }> {
   const file = await readable(realpath(path));
   const stats = await readable(lstat(file));
   if (!stats.isFile()) {
@@ -88,10 +153,12 @@ export async function describeEntry(folder: string, entry: Dirent): Promise<File
   const path = join(folder, entry.name);
   try {
     const stats = await lstat(path);
+    const kind = kindOf(entry);
     return {
       name: entry.name,
       path,
-      kind: kindOf(entry),
+      kind,
+      mime: kind === 'folder' ? null : (mimeOf(entry.name) ?? null),
       size: stats.size,
       modifiedAt: stats.mtime.toISOString(),
       hidden: entry.name.startsWith('.'),
@@ -107,18 +174,34 @@ export async function describeEntry(folder: string, entry: Dirent): Promise<File
 export class HomeFiles implements FileControl {
   constructor(private readonly home: string = homedir()) {}
 
-  async list(path: string | null, cursor: number): Promise<FileList> {
+  async list(path: string | null, cursor: number, sort?: FileSort): Promise<FileList> {
     const folder = await readable(realpath(path ?? this.home));
     const entries = await readable(readdir(folder, { withFileTypes: true }));
-    const page = entries.sort(byKindThenName).slice(cursor, cursor + FILE_PAGE_SIZE);
-    const rows = await Promise.all(page.map((entry) => describeEntry(folder, entry)));
+    const direction = sort?.direction === 'desc' ? -1 : 1;
     const end = cursor + FILE_PAGE_SIZE;
+    const parent = dirname(folder) === folder ? null : dirname(folder);
+    const next = end < entries.length ? end : null;
+    if (sort === undefined || sort.field === 'name') {
+      const page = entries.sort(byKindThenName(direction)).slice(cursor, end);
+      const rows = await Promise.all(page.map((entry) => describeEntry(folder, entry)));
+      return {
+        path: folder,
+        parent,
+        entries: rows.filter((row) => row !== null),
+        total: entries.length,
+        next,
+      };
+    }
+    const described = await Promise.all(entries.map((entry) => describeEntry(folder, entry)));
+    const rows = described
+      .filter((row) => row !== null)
+      .sort(byKindThenField(sort.field, direction));
     return {
       path: folder,
-      parent: dirname(folder) === folder ? null : dirname(folder),
-      entries: rows.filter((row) => row !== null),
+      parent,
+      entries: rows.slice(cursor, end),
       total: entries.length,
-      next: end < entries.length ? end : null,
+      next,
     };
   }
 

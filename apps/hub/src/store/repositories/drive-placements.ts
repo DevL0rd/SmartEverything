@@ -17,10 +17,10 @@ import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 
-const COLUMNS = `id, device_id, root_id, folder_item_id, mode, local_path, enabled, hold, created_by,
-  created_at, excluded, ignore_patterns, conflict_copies, state, tier, basic_limits, read_only,
-  route, cache_bytes, pinned_bytes, open_files, pending_uploads, need_bytes, last_synced_at, errors,
-  reason, reported_at`;
+const COLUMNS = `id, device_id, root_id, folder_item_id, mode, local_path, mount_name, enabled, hold,
+  created_by, created_at, excluded, ignore_patterns, conflict_copies, state, tier, basic_limits,
+  read_only, route, cache_bytes, pinned_bytes, open_files, pending_uploads, need_bytes,
+  last_synced_at, errors, reason, mount_point, reported_at`;
 
 const PLACEMENT_COLUMNS = z.strictObject({
   id: z.string(),
@@ -28,7 +28,8 @@ const PLACEMENT_COLUMNS = z.strictObject({
   root_id: z.string(),
   folder_item_id: z.string().nullable(),
   mode: DRIVE_PLACEMENT_MODE,
-  local_path: z.string(),
+  local_path: z.string().nullable(),
+  mount_name: z.string().nullable(),
   enabled: z.boolean(),
   hold: DRIVE_PLACEMENT_HOLD.nullable(),
   created_by: z.string(),
@@ -49,6 +50,7 @@ const PLACEMENT_COLUMNS = z.strictObject({
   last_synced_at: z.string().nullable(),
   errors: z.array(z.unknown()),
   reason: z.string().nullable(),
+  mount_point: z.string().nullable(),
   reported_at: z.string(),
 });
 
@@ -71,6 +73,7 @@ const STORED_PLACEMENT = storedRow(
       folderItemId: row.folder_item_id,
       mode: row.mode,
       localPath: row.local_path,
+      mountName: row.mount_name,
       enabled: row.enabled,
       hold: row.hold,
       createdBy: row.created_by,
@@ -90,6 +93,7 @@ const STORED_PLACEMENT = storedRow(
         lastSyncedAt: row.last_synced_at,
         errors: row.errors,
         reason: row.reason,
+        mountPoint: row.mount_point,
         reportedAt: row.reported_at,
       },
     }),
@@ -107,7 +111,8 @@ export interface DrivePlacementInsert {
   readonly rootId: string;
   readonly folderItemId: string | null;
   readonly mode: DrivePlacementMode;
-  readonly localPath: string;
+  readonly localPath: string | null;
+  readonly mountName: string | null;
   readonly enabled: boolean;
   readonly createdBy: string;
   readonly excluded?: readonly string[];
@@ -118,7 +123,8 @@ export interface DrivePlacementInsert {
 
 export interface DrivePlacementTarget {
   readonly mode: DrivePlacementMode;
-  readonly localPath: string;
+  readonly localPath: string | null;
+  readonly mountName: string | null;
   readonly enabled: boolean;
   readonly readOnly: boolean;
   readonly excluded?: readonly string[];
@@ -190,10 +196,10 @@ export class DrivePlacementsRepository {
       this.context.sql.run(
         'create the drive placement',
         `insert into drive_placements (${COLUMNS}) values ($id, $deviceId, $rootId, $folderItemId,
-          $mode, $localPath, $enabled, null, $createdBy, $now, $excluded, $ignorePatterns,
-          $conflictCopies, $state, $tier, $basicLimits, $readOnly, $route, $cacheBytes,
-          $pinnedBytes, $openFiles, $pendingUploads, $needBytes, $lastSyncedAt, $errors, $reason,
-          $reportedAt)`,
+          $mode, $localPath, $mountName, $enabled, null, $createdBy, $now, $excluded,
+          $ignorePatterns, $conflictCopies, $state, $tier, $basicLimits, $readOnly, $route,
+          $cacheBytes, $pinnedBytes, $openFiles, $pendingUploads, $needBytes, $lastSyncedAt,
+          $errors, $reason, $mountPoint, $reportedAt)`,
         {
           id: placement.id,
           deviceId: placement.deviceId,
@@ -201,6 +207,7 @@ export class DrivePlacementsRepository {
           folderItemId: placement.folderItemId,
           mode: placement.mode,
           localPath: placement.localPath,
+          mountName: placement.mountName,
           enabled: placement.enabled ? 1 : 0,
           createdBy: placement.createdBy,
           now: this.context.now(),
@@ -219,14 +226,16 @@ export class DrivePlacementsRepository {
       const before = this.byId(id);
       this.context.sql.run(
         'change the drive placement',
-        `update drive_placements set mode = $mode, local_path = $localPath, enabled = $enabled,
-          read_only = $readOnly, excluded = $excluded, ignore_patterns = $ignorePatterns,
+        `update drive_placements set mode = $mode, local_path = $localPath,
+          mount_name = $mountName,
+          mount_point = case when $mode = 'mounted' then mount_point end, enabled = $enabled, read_only = $readOnly, excluded = $excluded, ignore_patterns = $ignorePatterns,
           conflict_copies = $conflictCopies where id = $id`,
         {
           id,
           ...settingsParameters(target),
           mode: target.mode,
           localPath: target.localPath,
+          mountName: target.mountName,
           enabled: target.enabled ? 1 : 0,
           readOnly: target.readOnly ? 1 : 0,
         },
@@ -257,7 +266,7 @@ export class DrivePlacementsRepository {
           pinned_bytes = $pinnedBytes, open_files = $openFiles,
           pending_uploads = $pendingUploads, need_bytes = $needBytes,
           last_synced_at = $lastSyncedAt, errors = $errors, reason = $reason,
-          reported_at = $reportedAt where id = $id`,
+          mount_point = $mountPoint, reported_at = $reportedAt where id = $id`,
         { id, ...statusParameters(status) },
       );
       return this.emit(id, before);
@@ -298,6 +307,7 @@ function statusParameters(status: DrivePlacementStatus): Record<string, string |
     lastSyncedAt: status.lastSyncedAt,
     errors: jsonText(z.array(DRIVE_SYNC_ERROR).parse(status.errors)),
     reason: status.reason,
+    mountPoint: status.mountPoint,
     reportedAt: status.reportedAt,
   };
 }

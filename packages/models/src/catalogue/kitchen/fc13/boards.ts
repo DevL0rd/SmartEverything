@@ -70,7 +70,7 @@ function paddle(): ModelSpecPart[] {
 export const CUTTING_BOARDS_MODEL: ModelSpec = kitchenItem({
   id: 'cat.kitchen.cutting-boards',
   title: 'Cutting boards',
-  footprint: { width: 0.44, depth: 0.34, height: 0.065 },
+  footprint: { width: 0.42, depth: 0.3143, height: 0.0655 },
   meta: {
     names: {
       display: 'Cutting boards',

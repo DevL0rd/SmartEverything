@@ -5,7 +5,7 @@ import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
 import type { Device } from '../../store/state';
-import { usePlannerPreferences } from '../planner/data';
+import { usePlannerPreferences } from '../planner';
 import { WatchAlarms } from './watch-alarm-rows';
 import { configOf, useWatchCommand, type WatchOutcome } from './watch-config';
 import { WatchFaces } from './watch-face-rows';

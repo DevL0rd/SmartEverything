@@ -15,7 +15,7 @@ export const SMOKE_DETECTOR_MODEL: ModelSpec = {
   title: 'Smoke detector',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: 2 * R, depth: 2 * R, height: HEIGHT },
+  footprint: { width: 2 * R, depth: 2 * R, height: 0.0429 },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

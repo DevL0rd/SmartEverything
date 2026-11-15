@@ -1,0 +1,239 @@
+import type { IncomingMessage } from 'node:http';
+import type { Duplex } from 'node:stream';
+import { ApiError, type ComputerNodeRow } from '@smarteverything/domain';
+import {
+  FrameError,
+  MAX_FRAME_BYTES,
+  MOUNT_SUBPROTOCOL,
+  OPS,
+  PING_INTERVAL_MS,
+  PONG_TIMEOUT_MS,
+  REQUEST_META,
+  decodeFrame,
+  decodeMeta,
+  type Frame,
+} from '@smarteverything/domain/drive-mount';
+import { messageOf, type Logger } from '@smarteverything/logging';
+import { WebSocketServer, WebSocket, type RawData } from 'ws';
+import type { ComputerNodeAccess } from '../../computers/node-access';
+import { profileIdOf } from '../../server/auth';
+import { bearerOf } from '../../server/http';
+import type { Store } from '../../store/store';
+import { nodeCaller } from '../node-caller';
+import type { PosixCaller } from '../posix/env';
+import { errorFrame, pushFrame, replyFrame } from './frames';
+import type { DriveMount } from './service';
+import type { MountLink, MountSession } from './session';
+
+const CLOSE_POLICY = 1008;
+const CLOSE_UNSUPPORTED = 1003;
+const CLOSE_REVOKED = 4001;
+const REASON_LIMIT = 120;
+
+class Connection {
+  private bound: MountSession | null = null;
+  private pong = Date.now();
+
+  constructor(
+    readonly socket: WebSocket,
+    readonly caller: PosixCaller,
+    readonly link: MountLink,
+  ) {}
+
+  get session(): MountSession | null {
+    return this.bound;
+  }
+
+  bind(session: MountSession): void {
+    this.bound = session;
+  }
+
+  get lastPongAt(): number {
+    return this.pong;
+  }
+
+  ponged(): void {
+    this.pong = Date.now();
+  }
+}
+
+function bytesOf(raw: RawData): Uint8Array {
+  if (Array.isArray(raw)) return Buffer.concat(raw);
+  if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
+  return raw;
+}
+
+export type MountAccess = Pick<ComputerNodeAccess, 'authenticate'>;
+
+export class DriveMountSocket {
+  private readonly server: WebSocketServer;
+  private readonly connections = new Set<Connection>();
+  private readonly heartbeat: NodeJS.Timeout;
+
+  constructor(
+    private readonly store: Store,
+    private readonly access: MountAccess,
+    private readonly mount: DriveMount,
+    private readonly log: Logger,
+  ) {
+    this.server = new WebSocketServer({
+      noServer: true,
+      maxPayload: MAX_FRAME_BYTES,
+      perMessageDeflate: false,
+      handleProtocols: (protocols): string | false =>
+        protocols.has(MOUNT_SUBPROTOCOL) ? MOUNT_SUBPROTOCOL : false,
+    });
+    this.heartbeat = setInterval(() => {
+      this.beat();
+    }, PING_INTERVAL_MS);
+    this.heartbeat.unref();
+  }
+
+  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const offered = (request.headers['sec-websocket-protocol'] ?? '')
+      .split(',')
+      .map((value) => value.trim());
+    if (!offered.includes(MOUNT_SUBPROTOCOL)) {
+      throw new ApiError(
+        'invalid_request',
+        `Open this socket with the ${MOUNT_SUBPROTOCOL} subprotocol.`,
+      );
+    }
+    const node = this.authenticated(request);
+    const caller = this.callerOf(node);
+    this.server.handleUpgrade(request, socket, head, (ws) => {
+      this.accept(ws, caller);
+    });
+  }
+
+  private authenticated(request: IncomingMessage): ComputerNodeRow {
+    try {
+      return this.access.authenticate(bearerOf(request));
+    } catch (cause) {
+      this.log.warn('drive_mount.refused_upgrade', { reason: messageOf(cause) });
+      throw cause;
+    }
+  }
+
+  private callerOf(node: ComputerNodeRow): PosixCaller {
+    return {
+      profileId: profileIdOf(this.store, nodeCaller(this.store, node)),
+      nodeId: node.device_id,
+    };
+  }
+
+  revoke(deviceId: string): void {
+    for (const connection of this.connections) {
+      if (connection.caller.nodeId === deviceId)
+        connection.socket.close(CLOSE_REVOKED, 'Computer access revoked');
+    }
+  }
+
+  stop(): void {
+    clearInterval(this.heartbeat);
+    for (const connection of this.connections) connection.socket.terminate();
+    this.connections.clear();
+    this.server.close();
+  }
+
+  private accept(socket: WebSocket, caller: PosixCaller): void {
+    const link: MountLink = {
+      send: (bytes) => {
+        socket.send(bytes, { binary: true });
+      },
+      close: (code, reason) => {
+        socket.close(code, reason);
+      },
+    };
+    const connection = new Connection(socket, caller, link);
+    this.connections.add(connection);
+    socket.on('message', (raw: RawData, binary: boolean) => {
+      this.receive(connection, raw, binary);
+    });
+    socket.on('pong', () => {
+      connection.ponged();
+    });
+    socket.on('error', (cause: Error) => {
+      this.log.warn('drive_mount.socket_error', { reason: messageOf(cause) });
+    });
+    socket.on('close', () => {
+      this.connections.delete(connection);
+      if (connection.session !== null)
+        this.mount.services.registry.detach(connection.session, link);
+    });
+  }
+
+  private receive(connection: Connection, raw: RawData, binary: boolean): void {
+    if (!binary) {
+      connection.socket.close(CLOSE_UNSUPPORTED, 'Mount frames are binary.');
+      return;
+    }
+    let frame: Frame;
+    try {
+      frame = decodeFrame(bytesOf(raw));
+    } catch (cause) {
+      this.refuse(connection, cause);
+      return;
+    }
+    if (frame.op === OPS.HELLO.code) {
+      this.greet(connection, frame);
+    } else if (connection.session === null) {
+      connection.socket.close(CLOSE_POLICY, 'Say hello before sending anything else.');
+    } else {
+      this.mount.dispatch.handle(connection.session, connection.link, frame);
+    }
+  }
+
+  private refuse(connection: Connection, cause: unknown): void {
+    this.log.warn('drive_mount.refused_frame', { reason: messageOf(cause) });
+    const reason = cause instanceof FrameError ? cause.fault : 'invalid frame';
+    connection.socket.close(CLOSE_POLICY, reason.slice(0, REASON_LIMIT));
+  }
+
+  private greet(connection: Connection, frame: Frame): void {
+    if (connection.session !== null || frame.type !== 'request') {
+      connection.socket.close(CLOSE_POLICY, 'This channel already said hello.');
+      return;
+    }
+    try {
+      const request = decodeMeta(REQUEST_META.HELLO, frame.meta);
+      const greeting = this.mount.services.registry.hello(
+        connection.link,
+        connection.caller,
+        request,
+      );
+      connection.bind(greeting.session);
+      connection.link.send(replyFrame('HELLO', frame.requestId, greeting.reply, null));
+      this.afterHello(greeting.session, greeting.lost, greeting.reply.resumed);
+    } catch (cause) {
+      this.log.warn('drive_mount.refused_hello', { reason: messageOf(cause) });
+      connection.link.send(
+        errorFrame(frame.op, frame.requestId, { code: 'EINVAL', message: messageOf(cause) }),
+      );
+    }
+  }
+
+  private afterHello(
+    session: MountSession,
+    lost: readonly { readonly ino: number; readonly owner: { readonly owner: bigint } }[],
+    resumed: boolean,
+  ): void {
+    for (const lock of lost)
+      session.link?.send(pushFrame('LOCK_LOST', { ino: lock.ino, owner: lock.owner.owner }));
+    if (!resumed) return;
+    for (const attachment of session.attachments.values()) {
+      this.mount.services.push.pump(session, attachment);
+    }
+  }
+
+  private beat(): void {
+    const now = Date.now();
+    for (const connection of this.connections) {
+      if (now - connection.lastPongAt > PONG_TIMEOUT_MS) {
+        connection.socket.terminate();
+        continue;
+      }
+      if (connection.socket.readyState === WebSocket.OPEN) connection.socket.ping();
+    }
+  }
+}

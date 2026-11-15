@@ -22,10 +22,9 @@ export interface NoMapEntryProps {
   readonly map: BlankMap | null;
   readonly robot?: NoMapRobot | undefined;
   readonly menu?: readonly MenuItem[] | undefined;
-  readonly className?: string | undefined;
 }
 
-export function NoMapEntry({ map, robot, menu, className }: NoMapEntryProps): ReactNode {
+export function NoMapEntry({ map, robot, menu }: NoMapEntryProps): ReactNode {
   const create = useCreateMap(map?.id);
   const hasVacuum = useDevices().some((device) => device.kind === 'vacuum');
   return (
@@ -35,7 +34,6 @@ export function NoMapEntry({ map, robot, menu, className }: NoMapEntryProps): Re
       create={create}
       robot={robot}
       menu={menu}
-      className={className}
     />
   );
 }

@@ -2,7 +2,7 @@ import { PLUGIN_MANIFEST, type PluginDataPoint } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { contributionsOf } from '../../src/plugins/contributions';
 import { routerPlugin } from '../../src/plugins/builtin/router';
-import { SNAPSHOT_STREAM } from '../../src/plugins/builtin/router/runtime';
+import { SNAPSHOT_STREAM } from '../../src/plugins/builtin/router/streams';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 

@@ -67,6 +67,10 @@ function occurrenceKey(row: RowOf<'planner_occurrences'>): string {
   return `${row.item_id}\n${row.occurrence_key}`;
 }
 
+function shareKey(row: RowOf<'planner_collection_shares'>): string {
+  return `${row.collection_id}\n${row.profile_id}`;
+}
+
 function byId<R extends { readonly id: string }>(): TableRule<R> {
   return { idOf: (row) => row.id, order: alphabetical((row) => row.id), keep: ALL };
 }
@@ -114,7 +118,6 @@ export const RULES: Rules = {
   },
   ir_remotes: { idOf: (row) => row.id, order: alphabetical((row) => row.name), keep: ALL },
   ir_codes: { idOf: (row) => row.id, order: alphabetical((row) => row.button), keep: ALL },
-  scenes: { idOf: (row) => row.id, order: positioned, keep: ALL },
   automations: { idOf: (row) => row.id, order: alphabetical((row) => row.name), keep: ALL },
   automation_values: {
     idOf: (row) => row.id,
@@ -215,6 +218,13 @@ export const RULES: Rules = {
   planner_alarms: byId(),
   planner_timers: byId(),
   planner_stopwatches: byId(),
+  planner_collection_shares: {
+    idOf: shareKey,
+    order: alphabetical(shareKey),
+    keep: ALL,
+  },
+  planner_guests: byId(),
+  planner_booking_pages: byId(),
   google_accounts: {
     idOf: (row) => row.profile_id,
     order: alphabetical((row) => row.profile_id),

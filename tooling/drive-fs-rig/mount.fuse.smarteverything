@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 2 ]; then
+  echo "usage: mount.fuse.smarteverything <//smarteverything/test|//smarteverything/scratch> <directory> [-o options]" >&2
+  exit 2
+fi
+
+source=$1
+directory=$2
+options=
+if [ "$#" -ge 4 ] && [ "$3" = "-o" ]; then
+  options=$4
+fi
+options_json=$(printf '%s' "$options" | awk -v RS=, 'BEGIN { printf "[" } NF { printf "%s\"%s\"", (n++ ? "," : ""), $0 } END { printf "]" }')
+: "${SE_RIG_ENV:?SE_RIG_ENV is not set; run this inside rig exec}"
+. "$SE_RIG_ENV"
+
+placement=${source#//smarteverything/}
+case "$placement" in
+  test) root=$SE_RIG_ROOT_TEST; mount_id=$SE_RIG_PLACEMENT_TEST ;;
+  scratch) root=$SE_RIG_ROOT_SCRATCH; mount_id=$SE_RIG_PLACEMENT_SCRATCH ;;
+  *) echo "mount.fuse.smarteverything: unknown source $source" >&2; exit 2 ;;
+esac
+
+launch=$(mktemp -d "$SE_RIG_RUN/launch.XXXXXX")
+mkfifo "$launch/control"
+: >"$launch/status"
+mkdir -p "$launch/cache"
+
+SE_DRIVE_MOUNT_RIG=allow_other,direct_mount setsid nohup sh -c '
+  exec "$0" -cache "$1/cache" 3<"$2" <>"$1/control" >"$1/status" 2>"$1/helper.log"
+' "$SE_RIG_HELPER" "$launch" "$SE_RIG_TOKEN_FILE" >/dev/null 2>&1 &
+helper=$!
+echo "$helper" >"$launch/pid"
+
+printf '{"op":"route","url":"%s","server":"%s","pin":"%s"}\n' "$SE_RIG_ROUTE_URL" "$SE_RIG_SERVER" "$SE_RIG_PIN" >"$launch/control"
+printf '{"op":"mount","mount":"%s","root":"%s","point":"%s","options":%s}\n' "$mount_id" "$root" "$directory" "$options_json" >"$launch/control"
+
+for _ in $(seq 1 200); do
+  if grep -q '"state":"mounted"' "$launch/status"; then
+    setsid nohup sh -c '
+      while mountpoint -q "$1"; do sleep 1; done
+      kill "$2" 2>/dev/null || true
+    ' sh "$directory" "$helper" >/dev/null 2>&1 &
+    exit 0
+  fi
+  if grep -q '"state":"failed"' "$launch/status" || ! kill -0 "$helper" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+
+echo "mount.fuse.smarteverything: mount of $source on $directory failed" >&2
+cat "$launch/status" "$launch/helper.log" >&2
+kill "$helper" 2>/dev/null || true
+exit 1

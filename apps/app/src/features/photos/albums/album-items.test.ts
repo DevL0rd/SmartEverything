@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_ITEM, hasPhotoFlag, type DriveItem } from '@smarteverything/domain';
+import { hasPhotoFlag, type DriveItem } from '@smarteverything/domain';
+import { driveItemFixture } from '../../drive/testing';
 import { bytes } from '../../../format/number';
 import { isMedia, mosaicOf, offsetOf, statsOf, tileOfItem, tilesOfItems } from './album-items';
 
@@ -10,36 +11,22 @@ function media(
   kind: 'image' | 'video',
   fields: Readonly<Record<string, unknown>>,
 ): Extract<DriveItem, { readonly kind: 'image' | 'video' }> {
-  const item = DRIVE_ITEM.parse({
+  const item = driveItemFixture(kind, {
     id: `a1b2c3d4-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
     rootId: ROOT,
     parentId: null,
-    relPath: `photo-${String(index)}`,
     name: `photo-${String(index)}`,
     modifiedAt: '2026-11-07T10:00:00Z',
     addedAt: '2026-11-07T10:00:00Z',
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e1',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
     mime: kind === 'image' ? 'image/jpeg' : 'video/mp4',
     bytes: 1_000_000,
-    sha256: null,
     integrity: 'ok',
     thumb: { state: 'ready' },
     takenAt: '2026-11-05T09:00:00+01:00',
     width: 4000,
     height: 3000,
     orientation: 1,
-    camera: null,
-    exposure: null,
-    place: null,
-    kind,
     ...(kind === 'video' ? { durationMs: 42_000 } : {}),
     ...fields,
   });

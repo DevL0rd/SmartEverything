@@ -1,7 +1,8 @@
 import { createElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRIVE_ITEM, type DriveRecentEntry } from '@smarteverything/domain';
+import type { DriveRecentEntry } from '@smarteverything/domain';
+import { documentFixture } from '../data/fixtures';
 
 interface Pages {
   data: { pages: { entries: DriveRecentEntry[]; next: string | null }[] } | undefined;
@@ -95,6 +96,20 @@ vi.mock('./recent-row', () => ({
     readonly time: string;
   }): ReactNode => createElement('li', {}, `${how.text} ${chip.label} ${time}`),
 }));
+vi.mock('../source/drive-node', () => ({
+  driveNodeOf: (item: { readonly id: string }): object => ({ key: item.id }),
+  shortcutNodeOf: (shortcut: { readonly id: string }): object => ({ key: shortcut.id }),
+}));
+vi.mock('../source/drive-lists', () => ({
+  useDriveNodeList: (
+    _list: string,
+    build: (context: object) => readonly object[],
+  ): { readonly browser: null; readonly nodes: readonly object[] } => ({
+    browser: null,
+    nodes: build({}),
+  }),
+  DriveListFrame: ({ children }: { readonly children: ReactNode }): ReactNode => children,
+}));
 vi.mock('./recent-states', () => ({
   RecentEmpty: ({ live }: { readonly live: boolean }): ReactNode =>
     createElement('p', {}, live ? 'empty' : 'offline'),
@@ -132,29 +147,16 @@ const ME = 'a1b2c3d4-0000-4000-8000-0000000000a1';
 const MEMBER = 'a1b2c3d4-0000-4000-8000-0000000000b2';
 const NOW = Date.parse('2026-11-07T15:00:00.000Z');
 
-const ITEM = DRIVE_ITEM.parse({
+const ITEM = documentFixture({
   id: 'a1b2c3d4-0000-4000-8000-000000000010',
   rootId: ROOT_ID,
   parentId: null,
-  relPath: 'Notes.md',
   name: 'Notes.md',
   modifiedAt: '2026-11-07T10:00:00.000Z',
   addedAt: '2026-11-07T10:00:00.000Z',
-  openedAt: null,
-  starred: false,
-  shared: false,
-  rev: 1,
   etag: 'e',
-  outside: false,
-  addedByProfileId: null,
-  remoteId: null,
-  remoteRev: null,
   mime: 'text/markdown',
   bytes: 4,
-  sha256: null,
-  integrity: 'unknown',
-  thumb: { state: 'none' },
-  kind: 'document',
 });
 
 function pagesOf(entries: DriveRecentEntry[], next: string | null): Pages {

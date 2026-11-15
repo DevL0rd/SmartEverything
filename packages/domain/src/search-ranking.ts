@@ -33,7 +33,6 @@ const GROUP_WEIGHT: Readonly<Record<SearchGroup, number>> = {
   device: 1.5,
   room: 1,
   setting: 0.5,
-  scene: 1,
   page: 1,
   automation: 0.5,
 };

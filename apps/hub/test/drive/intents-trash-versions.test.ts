@@ -25,7 +25,8 @@ import {
   type DriveWriteRoot,
   type RecoveryEnv,
 } from '../../src/drive/intents';
-import { moveToTrash, removeTrashEntry, restoreFromTrash } from '../../src/drive/trash';
+import type { CommittedBytes } from '../../src/drive/patch-commit';
+import { moveToTrash, removeTrashEntry, restoreFromTrash, type RestoreEnv } from '../../src/drive/trash';
 import {
   captureVersion,
   commitBytes,
@@ -35,7 +36,6 @@ import {
   purgeVersions,
   stageBytes,
   stageVersion,
-  type CommittedBytes,
   sweepOrphanVersionsAtStart,
 } from '../../src/drive/versions';
 import { isMissing } from '../../src/fs-util';
@@ -133,6 +133,10 @@ function env(files: DriveFiles = nodeFiles): ReturnType<typeof fileEnv> {
   return fileEnv(opened.store, testLogger('drive'), () => NOW, files);
 }
 
+function restoreEnv(files: DriveFiles = nodeFiles): RestoreEnv {
+  return { ...env(files), store: opened.store };
+}
+
 function recovery(): RecoveryEnv {
   return {
     ...env(),
@@ -183,13 +187,14 @@ async function trashed(
     relPath,
     name: relPath.split('/').at(-1) ?? relPath,
     isFolder,
+    onDisk: true,
     bytes: 1,
     deletedBy: null,
     addedByProfileId: null,
   });
   opened.store.write(() => {
     opened.store.driveTrash.insert(move.entry);
-    opened.store.driveIntents.clear(move.intent.id);
+    if (move.intent !== null) opened.store.driveIntents.clear(move.intent.id);
   });
   return move.entry;
 }
@@ -215,6 +220,7 @@ describe('trash', () => {
       relPath: 'docs/a.txt',
       name: 'a.txt',
       isFolder: false,
+      onDisk: true,
       bytes: 9,
       deletedBy: null,
       addedByProfileId: null,
@@ -242,6 +248,7 @@ describe('trash', () => {
           relPath: 'dir',
           name: 'dir',
           isFolder: true,
+          onDisk: true,
           bytes: 9,
           deletedBy: null,
           addedByProfileId: null,
@@ -346,7 +353,7 @@ describe('restore', () => {
     const made = await scenario();
     await put(made.dir, 'docs/a.txt', OLD);
     const entry = await trashed(made, 'docs/a.txt');
-    const restored = await restoreFromTrash(env(), made.root, entry);
+    const restored = await restoreFromTrash(restoreEnv(), made.root, { entry, onDisk: true });
     expect(restored.relPath).toBe('docs/a.txt');
     expect(await text(made.dir, 'docs/a.txt')).toBe(OLD);
     expect(await names(made.dir, TRASH_DIRECTORY)).toEqual([]);
@@ -357,13 +364,13 @@ describe('restore', () => {
     await put(made.dir, 'a.txt', OLD);
     const first = await trashed(made, 'a.txt');
     await put(made.dir, 'a.txt', 'someone else');
-    const one = await restoreFromTrash(env(), made.root, first);
+    const one = await restoreFromTrash(restoreEnv(), made.root, { entry: first, onDisk: true });
     expect(one.relPath).toBe('a (restored).txt');
     await put(made.dir, 'b.txt', NEW);
     const second = await trashed(made, 'b.txt');
     await put(made.dir, 'b.txt', 'again');
     await put(made.dir, 'b (restored).txt', 'taken');
-    const two = await restoreFromTrash(env(), made.root, second);
+    const two = await restoreFromTrash(restoreEnv(), made.root, { entry: second, onDisk: true });
     expect(two.relPath).toBe('b (restored 2).txt');
     expect(await text(made.dir, 'a.txt')).toBe('someone else');
     expect(await text(made.dir, 'a (restored).txt')).toBe(OLD);
@@ -377,7 +384,7 @@ describe('restore', () => {
     await put(made.dir, 'v1.2/x.txt', OLD);
     const entry = await trashed(made, 'v1.2', true);
     await put(made.dir, 'v1.2/y.txt', 'new');
-    const restored = await restoreFromTrash(env(), made.root, entry);
+    const restored = await restoreFromTrash(restoreEnv(), made.root, { entry, onDisk: true });
     expect(restored.relPath).toBe('v1.2 (restored)');
     expect(await text(made.dir, 'v1.2 (restored)/x.txt')).toBe(OLD);
   });
@@ -387,7 +394,9 @@ describe('restore', () => {
     await put(made.dir, 'gone/a.txt', OLD);
     const entry = await trashed(made, 'gone/a.txt');
     await rm(join(made.dir, 'gone'), { recursive: true });
-    expect((await restoreFromTrash(env(), made.root, entry)).relPath).toBe('a.txt');
+    expect((await restoreFromTrash(restoreEnv(), made.root, { entry, onDisk: true })).relPath).toBe(
+      'a.txt',
+    );
   });
 
   it('is rolled back after a crash at every step', async () => {
@@ -399,7 +408,7 @@ describe('restore', () => {
         await put(made.dir, 'a.txt', 'other');
         return { ...made, entry };
       },
-      (made, files) => restoreFromTrash(env(files), made.root, made.entry),
+      (made, files) => restoreFromTrash(restoreEnv(files), made.root, { entry: made.entry, onDisk: true }),
       async (made) => {
         expect(await text(made.dir, made.entry.trashRelPath)).toBe(OLD);
         expect(await text(made.dir, 'a.txt')).toBe('other');
@@ -688,13 +697,14 @@ describe('delete and versions', () => {
       relPath: 'doc.txt',
       name: 'doc.txt',
       isFolder: false,
+      onDisk: true,
       bytes: NEW.length,
       deletedBy: null,
       addedByProfileId: null,
     });
     opened.store.write(() => {
       opened.store.driveTrash.insert(move.entry);
-      opened.store.driveIntents.clear(move.intent.id);
+      if (move.intent !== null) opened.store.driveIntents.clear(move.intent.id);
     });
     expect(await names(made.dir, '.smarteverything/versions')).toEqual([OLD_SHA.slice(0, 2)]);
     expect(opened.store.driveVersions.forItem(itemId, null, 10).versions).toHaveLength(1);

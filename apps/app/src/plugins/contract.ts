@@ -12,6 +12,7 @@ interface PluginDeviceSection {
   readonly title: string;
   readonly icon?: IconName;
   readonly scrolls?: boolean;
+  readonly search?: { readonly placeholder: string };
   readonly applies: (device: Device) => boolean;
   readonly render: (device: Device, beside: boolean) => ReactNode;
 }

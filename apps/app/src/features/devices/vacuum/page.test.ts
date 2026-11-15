@@ -6,22 +6,22 @@ import { deviceOf } from '../../../store/state';
 
 interface Props {
   readonly children?: ReactNode;
-  readonly header?: ReactNode;
+  readonly title?: string;
+  readonly subtitle?: string;
   readonly banner?: ReactNode;
-  readonly maxWidth?: string;
+  readonly width?: string;
+  readonly tabs?: TabsProps;
 }
 
-function screen(): (props: Props) => ReactNode {
-  function Screen(props: Props): ReactNode {
-    return createElement(
-      'main',
-      { 'data-width': props.maxWidth },
-      props.header,
-      props.banner,
-      props.children,
-    );
-  }
-  return Screen;
+function shell(props: Props): ReactNode {
+  return createElement(
+    'main',
+    { 'data-width': props.width, 'data-subtitle': props.subtitle },
+    createElement('header', { 'data-part': 'header' }, props.title),
+    props.tabs === undefined ? null : tabsBar(props.tabs),
+    props.banner,
+    props.children,
+  );
 }
 
 const size = vi.hoisted(() => ({ width: 'compact' }));
@@ -47,8 +47,7 @@ function tabsBar(props: TabsProps): ReactNode {
 }
 
 vi.mock('react-native', () => ({ View: part('view') }));
-vi.mock('../../../components/screen', () => ({ Screen: screen() }));
-vi.mock('../../../components/tabs-bar', () => ({ TabsBar: tabsBar }));
+vi.mock('../../../components/page-shell/page-shell', () => ({ PageShell: shell }));
 vi.mock('../../../components/text', () => ({ Text: part('text') }));
 vi.mock('./page-reveal', () => ({ RevealBox: part('reveal') }));
 vi.mock('./sections/care', () => ({ VacuumCare: part('care') }));
@@ -65,9 +64,17 @@ vi.mock('../../../design/size-class', () => ({
   atLeast: (width: string, floor: string): boolean =>
     floor === 'expanded' ? width === 'expanded' : width !== 'compact',
 }));
-vi.mock('../detail/device-header', () => ({ DeviceHeader: part('header') }));
-vi.mock('../detail/device-overview', () => ({ DeviceBanner: part('banner') }));
-vi.mock('../detail/shortcuts', () => ({ Shortcuts: part('shortcuts') }));
+vi.mock('../detail/device-shell', () => ({
+  useDeviceShell: (
+    _device: unknown,
+    _active: string,
+    line: string,
+  ): { props: Props; schedule: null } => ({
+    props: { title: 'Robot Vacuum', subtitle: line },
+    schedule: null,
+  }),
+  DeviceBanners: part('banner'),
+}));
 vi.mock('./sections/overview', () => ({
   VacuumOverview: part('overview'),
   useVacuumHeadline: (): string => 'Cleaning · Kitchen',
@@ -108,18 +115,18 @@ beforeEach(() => {
 });
 
 describe('vacuum page', () => {
-  it('puts the map hero first, then the tabs, the Clean tab and the shortcuts', () => {
+  it('puts the tabs in the shell and the map hero before the Clean tab', () => {
     const page = html();
+    expect(page).toContain('data-subtitle="Cleaning · Kitchen"');
     const order = [
       'header',
+      'tabs',
       'banner',
       'overview',
-      'tabs',
       'clean-modes',
       'clean-lists',
       'rooms',
       'zones',
-      'shortcuts',
     ].map((name) => page.indexOf(`data-part="${name}"`));
     expect(page.lastIndexOf('data-part="clean-lists"')).toBeGreaterThan(
       page.indexOf('data-part="zones"'),
@@ -137,10 +144,10 @@ describe('vacuum page', () => {
     }
   });
 
-  it('uses the detail width on a phone, the reading width on medium and two columns when expanded', () => {
+  it('uses the detail width at every size and two columns when expanded', () => {
     expect(html()).toContain('data-width="detail"');
     size.width = 'medium';
-    expect(html()).toContain('data-width="reading"');
+    expect(html()).toContain('data-width="detail"');
     size.width = 'expanded';
     expect(html()).toContain('data-width="detail"');
   });

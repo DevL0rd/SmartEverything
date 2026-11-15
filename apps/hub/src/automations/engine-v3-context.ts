@@ -6,7 +6,8 @@ import type {
   RefKind,
 } from '@smarteverything/domain';
 import type { Plan } from '@smarteverything/flow/compile/plan';
-import { CALL_FRAMES, callOps, planOwner } from '@smarteverything/flow/interpret/calls';
+import { CALL_FRAMES, callOps } from '@smarteverything/flow/interpret/calls';
+import { planOwner } from '@smarteverything/flow/interpret/call-state';
 import { CORE_FRAMES, CORE_OPS } from '@smarteverything/flow/interpret/core-ops';
 import {
   CONCURRENT_EACH_FRAMES,

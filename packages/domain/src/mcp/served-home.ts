@@ -91,7 +91,7 @@ export const SERVED_HOME = [
     title: 'Search the home',
     line: 'Devices, rooms, people and more by words',
     description:
-      'Searches devices, rooms, scenes, automations, remotes, people, capabilities, preferences and health types by words, when you do not know which kind of thing the person means. Returns each match with its kind and id. Not for tools (tool_search).',
+      'Searches devices, rooms, automations, remotes, people, capabilities, preferences and health types by words, when you do not know which kind of thing the person means. Returns each match with its kind and id. Not for tools (tool_search).',
     route: { part: 'home_search' },
   },
   {
@@ -166,16 +166,6 @@ export const SERVED_HOME = [
     description:
       'Sends one learned button of an infrared remote or appliance through its blaster; remote and button names come from remote_find. The press is not confirmed by the device, so the remote’s state is assumed.',
     route: { part: 'remote_press' },
-  },
-  {
-    name: 'scene_run',
-    area: 'control',
-    access: 'control',
-    title: 'Run a scene',
-    line: 'Every command in it',
-    description:
-      'Runs every command of a scene and waits for the results; sceneId comes from scene_find. Returns each command’s outcome. Not for changing a scene (scene_edit).',
-    route: { part: 'scene_run' },
   },
   {
     name: 'phone_read',

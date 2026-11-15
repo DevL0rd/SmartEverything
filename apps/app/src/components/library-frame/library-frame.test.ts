@@ -2,7 +2,7 @@ import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeaderAction } from '../page-header';
-import type { SectionRailProps } from '../section-rail';
+import type { SectionRailProps } from '../page-shell/section-rail';
 import type { LibraryFrameProps } from './library-frame';
 import type { SectionPullUpProps } from './section-pull-up';
 
@@ -10,7 +10,6 @@ interface Seen {
   area: number;
   header: {
     readonly title: string;
-    readonly search: boolean;
     readonly actions: readonly HeaderAction[];
     readonly onTitlePress?: () => void;
   } | null;
@@ -29,7 +28,10 @@ const seen = vi.hoisted((): Seen => ({
   refreshed: 0,
 }));
 
-vi.mock('../../design/size-class', () => ({ useAreaWidth: (): number => seen.area }));
+vi.mock('../../design/size-class', () => ({
+  MASTER_WIDTH: 420,
+  useAreaWidth: (): number => seen.area,
+}));
 vi.mock('../page-header', () => ({
   PageHeader: (props: NonNullable<Seen['header']>): null => {
     seen.header = props;
@@ -58,7 +60,7 @@ vi.mock('../section-body', () => ({
     readonly children: ReactNode;
   }): ReactNode => createElement('section', { 'data-body': 'wide' }, rail, children),
 }));
-vi.mock('../section-rail', () => ({
+vi.mock('../page-shell/section-rail', () => ({
   SectionRail: (props: SectionRailProps): ReactNode => {
     seen.rail = props;
     return createElement('nav', {}, props.footer);
@@ -137,13 +139,6 @@ describe('library frame on a phone', () => {
     });
     expect(seen.pullUp?.footer).toBeDefined();
     expect(closer).toBeTypeOf('function');
-  });
-
-  it('shows global search by default and lets pages with their own search omit it', () => {
-    render(412, { area: 'drive' });
-    expect(seen.header?.search).toBe(true);
-    render(412, { search: false });
-    expect(seen.header?.search).toBe(false);
   });
 
   it('keeps the header actions as the page passed them', () => {

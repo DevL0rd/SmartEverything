@@ -1,36 +1,55 @@
 import type { ReactNode } from 'react';
 import { Banner } from '../../../../components/banner';
+import { PageShell } from '../../../../components/page-shell/page-shell';
 import { OFFLINE_BANNER } from './screen-model';
 import { ShortcutSheet } from './shortcut-sheet';
-import { TopBar } from './top-bar';
+import { TopBarActions, TopBarTitle, type TopBarProps } from './top-bar';
 import type { EditorModel } from './use-editor-model';
 
-export function EditorTopBar({ model }: { readonly model: EditorModel }): ReactNode {
+function topBarPropsOf(model: EditorModel): TopBarProps {
   const { props: screen, flags, check } = model;
+  return {
+    layout: model.layout,
+    name: screen.name,
+    status: screen.status,
+    reusable: screen.reusable,
+    online: screen.online,
+    empty: flags.empty,
+    counts: check.counts,
+    canUndo: flags.canUndo,
+    canRedo: flags.canRedo,
+    onBack: screen.onBack,
+    onRename: screen.onRename,
+    onUndo: screen.store.undo,
+    onRedo: screen.store.redo,
+    onPublish: screen.onPublish,
+    onTest: screen.onTest,
+    onAdd: model.openPalette,
+    onProblems: model.onProblems,
+    onShortcuts: (): void => {
+      model.setShortcuts(true);
+    },
+  };
+}
+
+export function EditorShell({
+  model,
+  children,
+}: {
+  readonly model: EditorModel;
+  readonly children: ReactNode;
+}): ReactNode {
+  const bar = topBarPropsOf(model);
   return (
-    <TopBar
-      layout={model.layout}
-      name={screen.name}
-      status={screen.status}
-      reusable={screen.reusable}
-      online={screen.online}
-      empty={flags.empty}
-      counts={check.counts}
-      canUndo={flags.canUndo}
-      canRedo={flags.canRedo}
-      onBack={screen.onBack}
-      onRename={screen.onRename}
-      onUndo={screen.store.undo}
-      onRedo={screen.store.redo}
-      onPublish={screen.onPublish}
-      onTest={screen.onTest}
-      onAdd={model.openPalette}
-      onProblems={model.onProblems}
-      onShortcuts={() => {
-        model.setShortcuts(true);
-      }}
-      focusRef={model.focus.topBar}
-    />
+    <PageShell
+      variant="pane"
+      title={bar.name}
+      onBack={bar.onBack}
+      heading={<TopBarTitle {...bar} focusRef={model.focus.topBar} />}
+      trailing={<TopBarActions {...bar} />}
+    >
+      {children}
+    </PageShell>
   );
 }
 

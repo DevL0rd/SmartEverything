@@ -44,8 +44,10 @@ function add(person: TestPerson, change: Partial<PlannerItemInput>): PlannerItem
       position: 1,
       visible: true,
       default_reminders: [],
+      audience: 'personal',
       source: 'local',
       google: null,
+      feed: null,
     }).id;
   collections = { ...collections, [person.profileId]: collection };
   const input: PlannerItemInput = {
@@ -78,6 +80,10 @@ function add(person: TestPerson, change: Partial<PlannerItemInput>): PlannerItem
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     ...change,
   };

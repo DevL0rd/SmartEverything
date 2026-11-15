@@ -120,7 +120,7 @@ export class GpuProcessUsage {
         this.seen.set(parsed[0], { percent: percent(parsed[1]), at: Date.now() });
       }
     });
-    child.once('error', (cause) => {
+    child.on('error', (cause) => {
       this.pmon = null;
       log.warn('node.gpu_processes_unavailable', { reason: cause.message });
     });

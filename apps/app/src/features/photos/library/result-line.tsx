@@ -7,10 +7,12 @@ import { SaveSmartAlbum } from '../search/save-smart-album';
 
 export function ResultLine({
   text,
+  matched = null,
   search,
   onClear,
 }: {
   readonly text: string | null;
+  readonly matched?: string | null;
   readonly search: SearchInput | null;
   readonly onClear: () => void;
 }): ReactNode {
@@ -19,6 +21,11 @@ export function ResultLine({
       {text === null ? null : (
         <Text variant="body-strong" className="tabular-nums" numberOfLines={1}>
           {text}
+        </Text>
+      )}
+      {matched === null ? null : (
+        <Text variant="footnote" tone="variant" numberOfLines={1}>
+          {matched}
         </Text>
       )}
       <View className="flex-1" />

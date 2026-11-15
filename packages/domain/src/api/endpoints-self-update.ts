@@ -1,5 +1,11 @@
 import { SELF_UPDATE_RECOVERY_PATH, UPDATE_PIPELINE, UPDATE_REVISIONS_PATH } from '../self-update';
-import { RECOVERY_REQUEST, RECOVERY_RESULT, RECOVERY_STATUS } from '../self-update-recovery';
+import {
+  KEEP_REQUEST,
+  RECOVERY_REQUEST,
+  RECOVERY_RESULT,
+  RECOVERY_STATUS,
+  ROLLBACK_REQUEST,
+} from '../self-update-recovery';
 import { NO_BODY, endpoint } from './endpoint';
 import { NOTHING } from './primitives';
 
@@ -22,6 +28,28 @@ export const SELF_UPDATE_ENDPOINTS = {
     params: NOTHING,
     query: NOTHING,
     body: RECOVERY_REQUEST,
+    response: RECOVERY_RESULT,
+  }),
+  rollbackHubUpdate: endpoint({
+    method: 'POST',
+    path: `${SELF_UPDATE_RECOVERY_PATH}/rollback`,
+    access: 'owner',
+    summary:
+      'Restore the backup of a hub release that waits for the owner’s decision or could not be recovered; only on the owner’s order, never automatic',
+    params: NOTHING,
+    query: NOTHING,
+    body: ROLLBACK_REQUEST,
+    response: RECOVERY_RESULT,
+  }),
+  keepHubUpdate: endpoint({
+    method: 'POST',
+    path: `${SELF_UPDATE_RECOVERY_PATH}/keep`,
+    access: 'owner',
+    summary:
+      'Keep a hub release that waits for the owner’s decision as it is: nothing is restored, the backup stays, and the release counts as finished so new hub updates can start; only on the owner’s order',
+    params: NOTHING,
+    query: NOTHING,
+    body: KEEP_REQUEST,
     response: RECOVERY_RESULT,
   }),
   readUpdateRevisions: endpoint({

@@ -35,7 +35,7 @@ import {
 } from '../../src/store/repositories/drive-media-jobs';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { insertDriveRow } from './photo-rows';
+import { insertDriveRow, insertInode } from './photo-rows';
 
 const run = promisify(execFile);
 const NOW = '2026-11-07T00:00:00.000Z';
@@ -69,6 +69,7 @@ function seed(n: number, name: string, mime = 'video/mp4'): string {
   insert('drive_items', {
     id,
     root_id: ROOT,
+    inode_id: insertInode(database, ROOT),
     rel_path: name,
     name,
     kind: 'video',

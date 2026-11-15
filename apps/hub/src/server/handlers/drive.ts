@@ -3,9 +3,15 @@ import { readDriveSettings } from '../../drive/settings';
 import type { Store } from '../../store/store';
 import { bound, type Routes } from '../router';
 import { driveAlbumRoutes } from './drive-albums';
+import { driveContentRoutes } from './drive-content';
+import { driveDownloadRoutes } from './drive-download';
+import type { DriveExtras } from './drive-extras';
 import { refusing } from './drive-errors';
 import { driveGrantRoutes } from './drive-grants';
 import { driveLibraryRoutes } from './drive-library';
+import { driveOfflineRoutes } from './drive-offline';
+import { driveSharingRoutes } from './drive-sharing';
+import { driveSocialRoutes } from './drive-social';
 import { actorOf, callerOf, type DriveServices } from './drive-services';
 import { driveStorageRoutes } from './drive-storage';
 
@@ -51,5 +57,22 @@ export function driveRoutes(
     ...driveAlbumRoutes(store, services),
     ...driveGrantRoutes(store, services.grants),
     ...driveStorageRoutes(store, services),
+  };
+}
+
+export function driveExtraRoutes(
+  store: Store,
+  extras: DriveExtras,
+): ReturnType<typeof driveContentRoutes> &
+  ReturnType<typeof driveDownloadRoutes> &
+  ReturnType<typeof driveSharingRoutes> &
+  ReturnType<typeof driveSocialRoutes> &
+  ReturnType<typeof driveOfflineRoutes> {
+  return {
+    ...driveContentRoutes(store, extras.content),
+    ...driveDownloadRoutes(store, extras.downloads),
+    ...driveSharingRoutes(store, extras.sharing),
+    ...driveSocialRoutes(store, extras.social),
+    ...driveOfflineRoutes(store, extras.offline),
   };
 }

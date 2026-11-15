@@ -177,3 +177,35 @@ export function reachOf(isPublic: boolean): string {
 }
 
 export const LINKS_NOTE = 'Opens and downloads show in Shared › By me.';
+
+export const VIEW_ONLY_TITLE = 'Viewers can download and copy';
+
+export const VIEW_ONLY_ABOVE_LINE = 'View only is set on a folder above.';
+
+export function viewOnlyInherited(item: Pick<DriveItem, 'locked' | 'lockedHere'>): boolean {
+  return item.locked && !item.lockedHere;
+}
+
+export function viewOnlyLineOf(item: Pick<DriveItem, 'locked' | 'lockedHere'>): string {
+  if (viewOnlyInherited(item)) return VIEW_ONLY_ABOVE_LINE;
+  return item.locked
+    ? 'People who can view open it in the app only: no download, copy, sync or offline copy.'
+    : 'Turn off to keep people who can view from downloading, copying or syncing it.';
+}
+
+export const SCREENSHOT_LINE = 'Nobody can stop a screenshot or a photo of the screen.';
+
+export function viewOnlyShownOf(access: DriveAccess): boolean {
+  return access === 'own';
+}
+
+export function peopleLinkOf(itemId: string, publicUrl: string | null, appLink: string): string {
+  if (publicUrl === null) return appLink;
+  return `${publicUrl.replace(/\/+$/, '')}/drive/open/${itemId}`;
+}
+
+export function peopleLinkLineOf(access: DriveAccess): string {
+  return access === 'shared'
+    ? 'Everyone in the home can open it with this link.'
+    : 'Opens for the people it is shared with. Anyone else in the home can ask for access.';
+}

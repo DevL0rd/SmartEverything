@@ -43,12 +43,15 @@ const alarm = (profileId: string, time: string): PlannerAlarmInput => ({
   once_on: null,
   skip_on: null,
   enabled: true,
-  sound: 'sunrise',
+  sound: { kind: 'tone', id: 'sunrise' },
   ramp_seconds: 30,
   vibrate: true,
   snooze_minutes: 9,
+  snooze_limit: null,
+  challenge: { kind: 'none' },
+  sunrise: null,
   smart_minutes: null,
-  wake_scene_id: null,
+  wake_automation_id: null,
   wake_lead_minutes: null,
   targets: [{ kind: 'client', clientId: CLIENT }],
   watch: [{ deviceId: DEVICE, alarmId: 2, hash: 'h1', state: 'synced', detail: null }],
@@ -83,12 +86,23 @@ const PREFERENCES: PlannerPreferences = PLANNER_PREFERENCES.parse({
     show_sleep: false,
     show_free_time: false,
   },
+  bedtime: {
+    enabled: false,
+    schedule: [],
+    reminder_minutes: 30,
+    wind_down_minutes: 30,
+    wind_down_automation_id: null,
+    do_not_disturb: true,
+    sleep_sound: null,
+  },
+  sleep_sounds: { sound: null, timer_minutes: 60, fade_seconds: 30 },
   clock: {
-    sound: 'sunrise',
+    sound: { kind: 'tone', id: 'sunrise' },
     ramp_seconds: 30,
     snooze_minutes: 9,
+    snooze_limit: null,
     targets: [],
-    wake_scene_id: null,
+    wake_automation_id: null,
     world_clocks: [{ time_zone: 'Asia/Bangkok', label: null }],
   },
   watch: { watch_alarm_sync: true, watch_calendar_push: false },
@@ -123,6 +137,27 @@ describe('planner alarms', () => {
     expect(changes.map((change) => [change.table, change.operation])).toEqual([
       ['planner_alarms', 'INSERT'],
     ]);
+  });
+
+  it('keeps a sound, snooze limit, challenge and sunrise through a write and a read and clears them again', () => {
+    const light = '5b1c1c0e-7d1c-4a55-9f7a-3a3f0f6f2c11';
+    const row = alarms.insert({
+      ...alarm(ann, '06:30'),
+      sound: { kind: 'playlist', item_id: light, shuffle: true },
+      snooze_limit: 2,
+      challenge: { kind: 'maths', difficulty: 'hard', count: 3 },
+      sunrise: { lights: [light], minutes: 20, colour: true },
+    });
+    expect(alarms.byId(row.id, ann)).toEqual(row);
+    expect(alarms.byId(row.id, ann).sunrise?.lights).toEqual([light]);
+    const cleared = alarms.update(row.id, ann, {
+      sound: { kind: 'tone', id: 'default' },
+      snooze_limit: null,
+      challenge: { kind: 'none' },
+      sunrise: null,
+    });
+    expect(alarms.byId(row.id, ann)).toEqual(cleared);
+    expect(cleared.sunrise).toBeNull();
   });
 
   it('lists a person alarms by time and every enabled alarm for the scheduler', () => {

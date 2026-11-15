@@ -26,9 +26,10 @@ import {
   sameFeatures,
 } from './computer-node-reports';
 import { controlFeatures, type ComputerControls } from './controls/controls';
+import { nodeFolderWatch, type FolderWatch } from './controls/folder-watch';
 import type { EarFactory, EarPort } from './ear/computer-ear';
-import { type EarHostFactory, type EarHostPort } from './ear/ear-host';
-import { receiveEars } from './ear/ear-receive';
+import type { EarHostFactory, EarHostPort } from './ear/ear-host';
+import { earHostOf, earOf, receiveEars } from './ear-link';
 import type { NodeLink } from './link';
 import { failureOf, NodeFailureError } from './node-failure';
 import { PlacementLink } from './placement-link';
@@ -66,6 +67,7 @@ export class ComputerNode {
   private readonly handler: NodeRequestHandler;
   private readonly sampler: Sampler;
   private readonly states: StateWatch;
+  private readonly folders: FolderWatch;
   private readonly apps: AppEventsWatch;
   private readonly ear: EarPort | null;
   private readonly earHost: EarHostPort | null;
@@ -87,27 +89,14 @@ export class ComputerNode {
       now: (): number => options.now().getTime(),
       log: options.log,
     });
-    this.ear =
-      options.ear?.((message) => {
-        options.link.send({ type: 'ear', ear: message });
-      }) ?? null;
-    this.earHost =
-      options.earHost?.(
-        (key, ear) => {
-          options.link.send({ type: 'ears', key, ear });
-        },
-        (id, heard) => {
-          options.link.send({ type: 'ears_scored', id, heard });
-        },
-        (id, reason) => {
-          options.link.send({ type: 'ears_score_failed', id, reason });
-        },
-      ) ?? null;
+    this.ear = earOf(options);
+    this.earHost = earHostOf(options);
     this.apps = appEventsOf(options);
     this.placements = new PlacementLink(options.link.send);
     this.relay = new NodeServerRelay((frame) => {
       options.link.send(frame);
     }, options.log);
+    this.folders = nodeFolderWatch(options.link, options.log);
     this.states = new StateWatch({
       controls: options.controls,
       allows: (scope): boolean => this.handler.allows(scope),
@@ -154,6 +143,7 @@ export class ComputerNode {
       background(this.earHost.stop(), 'computer_node.ear_host_stop_failed');
     }
     this.states.stop();
+    this.folders.stop();
     this.options.collector.stop();
     this.options.controls.processes.stop();
     this.session = null;
@@ -315,6 +305,7 @@ export class ComputerNode {
     if (frame.type === 'scopes') {
       this.handler.allow(frame.scopes);
       this.apps.watch(this.handler.allows('apps') && this.handler.allows('app_events'));
+      this.folders.demand(this.demand.files, this.handler.allows('files'));
       this.sync();
       this.sendSession();
       return;
@@ -333,6 +324,7 @@ export class ComputerNode {
 
   private demanded(demand: NodeDemand): void {
     this.demand = demand;
+    this.folders.demand(this.demand.files, this.handler.allows('files'));
     if (
       demand.history !== undefined &&
       JSON.stringify(demand.history) !== JSON.stringify(this.policy)

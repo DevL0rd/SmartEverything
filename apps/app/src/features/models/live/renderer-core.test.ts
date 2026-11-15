@@ -145,6 +145,50 @@ describe('shared live renderer', () => {
     expect(steps.indexOf(true)).toBe(6);
   });
 
+  it('leaves a frame that compiled a shader program out of the quality measure', () => {
+    const { fake, renderer } = setup(1);
+    renderer.draw(0);
+    for (let index = 0; index < 6; index += 1) renderer.recordFrame(4);
+    const compiling = fake.gl.render;
+    Object.assign(fake.gl, {
+      render: (...args: Parameters<typeof compiling>): void => {
+        fake.programs.push({ usedTimes: 1 });
+        compiling(...args);
+      },
+    });
+    renderer.draw(16);
+    expect(renderer.recordFrame(400)).toBe(false);
+    Object.assign(fake.gl, { render: compiling });
+    const steps = Array.from({ length: 6 }, () => renderer.recordFrame(4));
+    expect(steps).not.toContain(true);
+    expect(fake.pixelRatio()).toBe(2);
+  });
+
+  it('keeps a 1x1 buffer and clears it only once while no view is placed', () => {
+    const { fake, renderer } = setup(0);
+    expect(renderer.draw(0)).toEqual({ moving: false, drawn: [] });
+    expect(fake.size()).toEqual([1, 1]);
+    expect(fake.pixelRatio()).toBe(1);
+    expect(fake.clears()).toBe(1);
+    renderer.resize(800, 1200, 2);
+    renderer.draw(16);
+    renderer.draw(32);
+    expect(fake.size()).toEqual([1, 1]);
+    expect(fake.clears()).toBe(1);
+    syncLive(renderer, [view('w0')]);
+    const rect = { x: 0, y: 0, width: 80, height: 80 };
+    renderer.place('w0', rect, rect);
+    expect(renderer.draw(48).drawn).toEqual(['w0']);
+    expect(fake.size()).toEqual([800, 1200]);
+    expect(fake.pixelRatio()).toBe(2);
+    syncLive(renderer, []);
+    const cleared = fake.clears();
+    renderer.draw(64);
+    renderer.draw(80);
+    expect(fake.size()).toEqual([1, 1]);
+    expect(fake.clears()).toBe(cleared + 1);
+  });
+
   it('intersects rectangles', () => {
     const a = { x: 0, y: 0, width: 10, height: 10 };
     expect(intersect(a, { x: 5, y: 5, width: 10, height: 10 })).toEqual({

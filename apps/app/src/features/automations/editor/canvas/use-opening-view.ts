@@ -17,7 +17,7 @@ const PASSIVE: ReadonlySet<GraphCanvasIntent['type']> = new Set([
   'viewportSettled',
 ]);
 
-type HeldView = 'opening' | 'fit' | null;
+type HeldView = 'opening' | 'whole' | 'fit' | null;
 
 export interface OpeningView {
   readonly onMoveStart: (event: MouseEvent | TouchEvent | null) => void;
@@ -48,14 +48,17 @@ export function useOpeningView(
   const flow = useReactFlow<GraphFlowNode, GraphFlowEdge>();
   const initialised = useNodesInitialized();
   const fitGraph = useFitGraph(framing);
-  const held = useRef<HeldView>(framing === 'whole' ? 'fit' : 'opening');
+  const held = useRef<HeldView>(framing === 'whole' ? 'whole' : 'opening');
   const apply = useStableCallback((): void => {
     const element = root.current;
     if (!initialised || focused || held.current === null || element === null) return;
     const { width, height } = element.getBoundingClientRect();
     if (width <= 0 || height <= 0) return;
-    if (held.current === 'fit') {
-      background(fitGraph(), 'automations.canvas.fit');
+    if (held.current !== 'opening') {
+      background(
+        fitGraph(held.current === 'fit' ? 'whole' : 'open'),
+        'automations.canvas.fit',
+      );
       return;
     }
     background(
@@ -75,7 +78,7 @@ export function useOpeningView(
   });
   const fit = useStableCallback((): Promise<boolean> => {
     held.current = 'fit';
-    return fitGraph();
+    return fitGraph('whole');
   });
   return { onMoveStart, touched, fit };
 }

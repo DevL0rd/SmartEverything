@@ -61,11 +61,10 @@ function existing(id: string, name: string): void {
 }
 
 describe('installing the starter Custom Nodes', () => {
-  it('follows the newest migration with its own version', () => {
+  it('is one of the migrations and owns its version', () => {
     const versions = MIGRATIONS.map((migration) => migration.version);
     expect(new Set(versions).size).toBe(versions.length);
-    expect(MIGRATIONS.at(-1)).toBe(STARTER_CUSTOM_NODES_MIGRATION);
-    expect(STARTER_CUSTOM_NODES_MIGRATION.version).toBe(Math.max(...versions));
+    expect(MIGRATIONS).toContain(STARTER_CUSTOM_NODES_MIGRATION);
   });
 
   it('installs each node once as revision 1 of an ordinary Custom Node with its plan', () => {

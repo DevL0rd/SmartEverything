@@ -13,6 +13,13 @@ const PUSH = z.looseObject({
   before: HUB_UPDATE_COMMIT,
   after: HUB_UPDATE_COMMIT,
   deleted: z.boolean(),
+  commits: z.array(
+    z.looseObject({
+      added: z.array(z.string().min(1)).default([]),
+      removed: z.array(z.string().min(1)).default([]),
+      modified: z.array(z.string().min(1)).default([]),
+    }),
+  ),
   repository: z.looseObject({ full_name: z.string().min(1) }),
 });
 
@@ -22,7 +29,12 @@ export interface PushTarget {
 }
 
 export type PushDecision =
-  | { readonly kind: 'accepted'; readonly tip: string; readonly before: string }
+  | {
+      readonly kind: 'accepted';
+      readonly tip: string;
+      readonly before: string;
+      readonly paths: readonly string[] | null;
+    }
   | { readonly kind: 'pong' }
   | {
       readonly kind: 'ignored';
@@ -89,6 +101,17 @@ export function repositoryOf(remoteUrl: string): string | undefined {
   return owner === undefined || name === undefined ? undefined : `${owner}/${name}`.toLowerCase();
 }
 
+const PAYLOAD_COMMIT_LIMIT = 20;
+
+function changedPathsOf(commits: z.infer<typeof PUSH>['commits']): readonly string[] | null {
+  if (commits.length === 0 || commits.length >= PAYLOAD_COMMIT_LIMIT) return null;
+  return [
+    ...new Set(
+      commits.flatMap((commit) => [...commit.added, ...commit.removed, ...commit.modified]),
+    ),
+  ];
+}
+
 export function decidePush(
   event: string | undefined,
   body: unknown,
@@ -98,10 +121,10 @@ export function decidePush(
   if (event !== 'push') return { kind: 'ignored', reason: 'event' };
   const parsed = PUSH.safeParse(body);
   if (!parsed.success) return { kind: 'malformed' };
-  const { ref, before, after, deleted, repository } = parsed.data;
+  const { ref, before, after, deleted, repository, commits } = parsed.data;
   if (repository.full_name.toLowerCase() !== target.repository)
     return { kind: 'ignored', reason: 'other_repository' };
   if (ref !== `refs/heads/${target.branch}`) return { kind: 'ignored', reason: 'other_branch' };
   if (deleted) return { kind: 'ignored', reason: 'branch_deleted' };
-  return { kind: 'accepted', tip: after, before };
+  return { kind: 'accepted', tip: after, before, paths: changedPathsOf(commits) };
 }

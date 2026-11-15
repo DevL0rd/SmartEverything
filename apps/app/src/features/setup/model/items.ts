@@ -41,11 +41,12 @@ export type SetupItemId =
   | 'assistants.connected'
   | 'fitness.about'
   | 'clock.full_screen'
-  | 'clock.background';
+  | 'clock.background'
+  | 'clock.do_not_disturb';
 
 export type RawState = 'done' | 'todo' | 'not_applicable';
 
-export type SystemSetting = 'full_screen_alarms' | 'background_alarms';
+export type SystemSetting = 'full_screen_alarms' | 'background_alarms' | 'do_not_disturb';
 
 export type SetupGo =
   | { readonly kind: 'page'; readonly href: AppHref }
@@ -73,6 +74,11 @@ const system = (setting: SystemSetting): SetupGo => ({ kind: 'system', setting }
 
 function alarmPhoneState(facts: SetupFacts, allowed: boolean | null): RawState {
   return !facts.ringsHere || allowed === null ? 'not_applicable' : done(allowed);
+}
+
+function quietState(facts: SetupFacts): RawState {
+  if (!facts.bedtimeQuiet || facts.alarmPhone.quiet === null) return 'not_applicable';
+  return done(facts.alarmPhone.quiet);
 }
 
 function firewallState(facts: SetupFacts): RawState {
@@ -229,6 +235,19 @@ export const SETUP_ITEMS: readonly SetupItem[] = [
     action: 'Open battery settings',
     go: system('background_alarms'),
     stateOf: (facts) => alarmPhoneState(facts, facts.alarmPhone.unrestricted),
+  },
+  {
+    id: 'clock.do_not_disturb',
+    area: 'clock',
+    priority: 'recommended',
+    owner: false,
+    icon: 'bellOff',
+    title: 'Let bedtime silence this phone',
+    doneText: 'Bedtime turns on Do not disturb at wind-down and off when you wake.',
+    todoText: 'Allow Do not disturb access so bedtime can quiet this phone through the night.',
+    action: 'Allow Do not disturb access',
+    go: system('do_not_disturb'),
+    stateOf: quietState,
   },
   {
     id: 'home.location',

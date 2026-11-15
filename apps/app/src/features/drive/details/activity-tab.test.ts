@@ -1,8 +1,13 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRIVE_FEED_ROW, DRIVE_ITEM, type DriveFeedRow } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID, rootRow } from '../data/fixtures';
+import {
+  DRIVE_ACTIVITY_ENTRY,
+  DRIVE_FEED_ROW,
+  type DriveActivityEntry,
+  type DriveFeedRow,
+} from '@smarteverything/domain';
+import { ROOT_ID, documentFixture } from '../data/fixtures';
 
 interface Passed {
   readonly children?: ReactNode;
@@ -13,7 +18,7 @@ interface RowPassed {
 }
 
 interface Hub {
-  rows: readonly DriveFeedRow[] | null;
+  rows: readonly DriveActivityEntry[] | null;
   live: boolean;
   error: boolean;
 }
@@ -88,35 +93,22 @@ const { ActivityTab, activityDaysOf, itemActivityHref } = await import('./activi
 const ME = 'b1b2c3d4-0000-4000-8000-000000000001';
 const ITEM_ID = 'b1b2c3d4-0000-4000-8000-000000000002';
 
-const item = DRIVE_ITEM.parse({
+const item = documentFixture({
   id: ITEM_ID,
-  rootId: ROOT_ID,
-  parentId: FOLDER_ID,
   relPath: 'Home/Notes.md',
   name: 'Notes.md',
   modifiedAt: '2026-11-07T09:10:00.000Z',
   addedAt: '2026-11-02T09:10:00.000Z',
-  openedAt: null,
-  starred: false,
-  shared: false,
   rev: 3,
-  etag: 'etag',
-  outside: false,
-  addedByProfileId: null,
-  remoteId: null,
-  remoteRev: null,
-  kind: 'document',
   mime: 'text/markdown',
   bytes: 1200,
-  sha256: null,
-  integrity: 'unknown',
-  thumb: { state: 'none' },
 });
 
 const subject = {
-  root: rootRow(ROOT_ID, 'ready'),
+  rootId: ROOT_ID,
+  ownerProfileId: null,
+  versionsKept: true,
   item,
-  label: 'Shared Drive',
   access: 'shared',
   writable: true,
 } as const;
@@ -139,7 +131,13 @@ const ROWS = [
   row(1, 'create', '2026-11-02T09:10:00.000Z'),
   row(2, 'update', '2026-11-07T08:00:00.000Z'),
   row(3, 'rename', '2026-11-07T09:10:00.000Z'),
-];
+].map((feed) =>
+  DRIVE_ACTIVITY_ENTRY.parse({
+    row: feed,
+    outsiderName: null,
+    item: { kind: 'document', name: 'Notes.md', parentId: null, relPath: 'Notes.md' },
+  }),
+);
 
 function render(): string {
   return renderToStaticMarkup(createElement(ActivityTab, { subject }));
@@ -155,7 +153,6 @@ describe('activity tab', () => {
   it('groups the item changes by day, newest first, with who made them', () => {
     const days = activityDaysOf(
       ROWS,
-      subject,
       {
         chipOf: () => ({ key: 'mine', label: 'My Drive', icon: 'hardDrive', tone: 'primary' }),
         people: new Map([[ME, 'Dana Moss']]),

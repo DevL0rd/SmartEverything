@@ -51,7 +51,7 @@ function hand(
 export const WALL_CLOCK_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.wall-clock',
   title: 'Wall clock',
-  footprint: { width: 0.35, depth: 0.035, height: 0.35 },
+  footprint: { width: 0.35, depth: 0.042, height: 0.35 },
   size: {
     width: { param: 'diameter', extra: 0, resizes: true },
     height: { param: 'diameter', extra: 0, resizes: false },

@@ -16,6 +16,8 @@ import { isNative, useIdiom } from '../design/platform';
 import { useLinkIntent } from './link-intent';
 import { spaceKeyProps } from './space-key';
 
+export type LinkNavigation = 'push' | 'replace';
+
 const CHECKED_ROLES: ReadonlySet<AccessibilityRole> = new Set(['checkbox', 'radio', 'switch']);
 
 export interface Point {
@@ -32,6 +34,7 @@ export interface InteractiveProps {
   readonly onPressOut?: (() => void) | undefined;
   readonly onContextMenu?: ((point: Point) => void) | undefined;
   readonly href?: AppHref | undefined;
+  readonly navigation?: LinkNavigation | undefined;
   readonly disabled?: boolean | undefined;
   readonly selected?: boolean | undefined;
   readonly checked?: boolean | 'mixed' | undefined;
@@ -303,12 +306,12 @@ function Pressed(props: PressedProps): ReactNode {
 }
 
 export function Interactive(props: InteractiveProps): ReactNode {
-  const { href, ...pressed } = props;
+  const { href, navigation, ...pressed } = props;
   if (href === undefined || props.disabled === true) {
     return <Pressed {...pressed} intentHref={href} />;
   }
   return (
-    <RouterLink href={href} asChild>
+    <RouterLink href={href} push={navigation === 'push'} replace={navigation === 'replace'} asChild>
       <Pressed {...pressed} intentHref={href} />
     </RouterLink>
   );

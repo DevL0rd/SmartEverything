@@ -64,7 +64,12 @@
       "entry": [
         "test/**/*.test.ts",
         "src/claude/hook-helper.ts",
-        "src/plugins/builtin/discord/voice/isolated/worker.ts"
+        "src/plugins/builtin/discord/voice/isolated/worker.ts",
+        "src/drive/hasher-worker.ts",
+        "src/photos/edits/colour-worker.ts",
+        "src/node/ear/process/worker.ts",
+        "src/service/loop-watchdog/worker.ts",
+        "src/self-update/migration-check-main.ts"
       ],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
@@ -73,7 +78,18 @@
       "project": ["src/**/*.{ts,cts}", "test/**/*.ts", "*.ts", "packaging/**/*.ts"]
     }
   },
-  "ignoreBinaries": ["gitleaks"],
+  "ignoreBinaries": [
+    "gitleaks",
+    "flock",
+    "nvidia-smi",
+    "dbus-daemon",
+    "zipinfo",
+    "7z",
+    "openssl",
+    "go",
+    "systemd-run",
+    "journalctl"
+  ],
   "ignoreDependencies": [
     "babel-plugin-react-compiler",
     "opusscript",

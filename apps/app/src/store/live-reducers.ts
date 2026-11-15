@@ -3,6 +3,7 @@ import { automationTablesOf } from './automation-tables';
 import { modelTablesOf } from './model-tables';
 import { plannerTablesOf } from './planner-tables';
 import { driveTablesOf } from './drive-tables';
+import { dropUninvitedItems } from '../features/planner/data/guest-drop';
 import {
   type RowChange,
   type Snapshot,
@@ -248,7 +249,6 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   recordings: list('recordings'),
   ir_remotes: list('ir_remotes'),
   ir_codes: list('ir_codes'),
-  scenes: list('scenes'),
   automations: list('automations'),
   automation_values: list('automation_values'),
   automation_runs: list('automation_runs'),
@@ -280,11 +280,20 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   planner_alarms: list('planner_alarms'),
   planner_timers: list('planner_timers'),
   planner_stopwatches: list('planner_stopwatches'),
+  planner_collection_shares: list('planner_collection_shares'),
+  planner_guests: (state, change) =>
+    dropUninvitedItems(applyListChange(state, 'planner_guests', change), change),
+  planner_booking_pages: list('planner_booking_pages'),
   google_accounts: list('google_accounts'),
   drive_roots: list('drive_roots'),
   drive_albums: list('drive_albums'),
   drive_grants: list('drive_grants'),
   drive_placements: list('drive_placements'),
+  drive_notifications: list('drive_notifications'),
+  drive_access_requests: list('drive_access_requests'),
+  drive_file_requests: list('drive_file_requests'),
+  drive_transfers: list('drive_transfers'),
+  drive_offline_items: list('drive_offline_items'),
   health_entries: (state) => state,
   foods: (state) => state,
   watch_days: (state) => state,
@@ -372,7 +381,6 @@ function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
     recordings: next('recordings', t.recordings),
     ir_remotes: next('ir_remotes', t.ir_remotes),
     ir_codes: next('ir_codes', t.ir_codes),
-    scenes: next('scenes', t.scenes),
     automations: next('automations', t.automations),
     ...automationTablesOf(snapshot, next),
     layouts: next('layouts', t.layouts),

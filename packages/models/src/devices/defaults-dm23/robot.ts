@@ -72,7 +72,7 @@ export const DESK_ROBOT_MODEL: ModelSpec = {
   title: 'Desk robot',
   category: 'robot',
   family: 'robot',
-  footprint: { width: HEAD_W + 0.012, depth: 0.09, height: HEIGHT },
+  footprint: { width: 0.108, depth: 0.091, height: 0.1433 },
   framing: house('head', 28, 12),
   shots: [
     shot('talk', whenAll(leaf('playing', 'eq', true)), 'face', {

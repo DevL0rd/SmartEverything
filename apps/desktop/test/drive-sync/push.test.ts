@@ -16,6 +16,7 @@ import {
 } from '../../src/drive-sync/push.js';
 import { SyncSocket } from '../../src/drive-sync/socket.js';
 import { startFakeHub, TestTransport, until, type FakeHub, type HubPeer } from './hub-harness.js';
+import { NO_META } from './pull-support.js';
 
 const log = new Logger('desktop.drive-sync');
 const BLOCK = 128 * 1024;
@@ -167,6 +168,7 @@ function record(rig: Rig, relPath: string, bytes: Buffer, hubRev: number | null)
     );
   }
   rig.database.files.upsert({
+    ...NO_META,
     placementId: rig.peer.placementId,
     relPath,
     kind: 'file',
@@ -184,10 +186,24 @@ function hubRevOf(rig: Rig, relPath: string): number | null | undefined {
   return rig.database.files.get(rig.peer.placementId, relPath)?.hubRev;
 }
 
+function viewOf(rig: Rig): ReturnType<typeof fileViewOf> {
+  return fileViewOf(rig.database.files.list(rig.peer.placementId));
+}
+
 function pushOf(rig: Rig, ...relPaths: string[]): Promise<void> {
-  const view = fileViewOf(rig.database.files.list(rig.peer.placementId));
+  const view = viewOf(rig);
   return rig.pusher.submit(
     pushIntents({ renames: [], changed: relPaths, deleted: [] }, view, view),
+  );
+}
+
+function pushEditOf(
+  rig: Rig,
+  before: ReturnType<typeof fileViewOf>,
+  ...relPaths: string[]
+): Promise<void> {
+  return rig.pusher.submit(
+    pushIntents({ renames: [], changed: relPaths, deleted: [] }, before, viewOf(rig)),
   );
 }
 
@@ -217,8 +233,9 @@ describe('pushing content', () => {
     await putFile(rig, 'a.txt', Buffer.from('one'));
     await pushOf(rig, 'a.txt');
     const first = hubRevOf(rig, 'a.txt');
+    const before = viewOf(rig);
     await putFile(rig, 'a.txt', Buffer.from('two!'), first ?? null);
-    await pushOf(rig, 'a.txt');
+    await pushEditOf(rig, before, 'a.txt');
     expect((await hub.readFile('a.txt')).toString()).toBe('two!');
     expect(rig.conflicted).toEqual([]);
     expect(hubRevOf(rig, 'a.txt')).toBeGreaterThan(first ?? 0);
@@ -282,6 +299,7 @@ describe('moves and deletes', () => {
     await pushOf(rig, 'dir/sub/a.txt', 'dir/b.txt');
     for (const folder of ['dir', 'dir/sub']) {
       rig.database.files.upsert({
+        ...NO_META,
         placementId: rig.peer.placementId,
         relPath: folder,
         kind: 'folder',

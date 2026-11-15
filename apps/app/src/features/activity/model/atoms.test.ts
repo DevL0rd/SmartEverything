@@ -47,3 +47,39 @@ describe('automation run lines', () => {
     expect(atom?.what).toBe('Someone is at the door');
   });
 });
+
+describe('device removal lines', () => {
+  const removal = (details: EventRow['details']): EventRow => ({
+    ...runEvent(details),
+    kind: 'signal',
+  });
+
+  it('shows a removed device from the stored note, though its row is gone', () => {
+    const atom = eventAtom(
+      removal({
+        source: 'device',
+        kind: 'lifecycle',
+        label: 'A device is added, removed or changed',
+        data: { change: 'removed', name: 'Hall lamp' },
+      }),
+      new Map(),
+    );
+    expect(atom).toMatchObject({
+      name: 'Hall lamp',
+      what: 'Removed',
+      deviceId: null,
+      category: 'devices',
+      failed: false,
+    });
+  });
+
+  it('names an unnamed removed device generically and ignores other device-less signals', () => {
+    expect(
+      eventAtom(
+        removal({ source: 'device', kind: 'lifecycle', data: { change: 'removed' } }),
+        new Map(),
+      )?.name,
+    ).toBe('A device');
+    expect(eventAtom(removal({ source: 'weather', kind: 'rain', data: {} }), new Map())).toBeNull();
+  });
+});

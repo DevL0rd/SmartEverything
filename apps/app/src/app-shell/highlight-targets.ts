@@ -25,7 +25,6 @@ const KEYS: { readonly [K in Kind]: Keys<K> } = {
   camera: NONE,
   room: NONE,
   group: NONE,
-  scene: NONE,
   chat: NONE,
   drive: NONE,
 };

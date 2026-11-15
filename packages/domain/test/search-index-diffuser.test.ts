@@ -33,7 +33,6 @@ function sources(overrides: Partial<SearchSources>): SearchSources {
     rooms: [],
     pages: [],
     settings: [],
-    scenes: [],
     automations: [],
     irRemotes: [],
     cameras: [],

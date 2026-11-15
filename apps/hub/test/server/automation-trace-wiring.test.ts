@@ -3,10 +3,9 @@ import {
   type AutomationRunRecord,
   type AutomationTraceNotice,
   type ClientRow,
-  type ProcessWindow,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { Viewers } from '../../src/metrics/viewers';
+import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import { wireAutomationTrace } from '../../src/server/automation-trace-wiring';
 import { readSubscribe } from '../../src/server/live-subscribe';
 import { LiveWatch, type WatchNotice } from '../../src/server/live-watch';
@@ -68,7 +67,7 @@ describe('automation trace wiring', () => {
 
   it('marks watched subjects, sends the keyframe and relays published notices', () => {
     const sent: AutomationTraceNotice[] = [];
-    const viewers = new Viewers<ProcessWindow>();
+    const viewers = new Viewers<DeviceDetail>();
     const watches = new LiveWatch<{
       id: number;
       client: ClientRow;

@@ -39,6 +39,7 @@ export const SMART_LIST_LABELS: Readonly<Record<SmartList, string>> = {
   today: 'Today',
   upcoming: 'Upcoming',
   overdue: 'Overdue',
+  assigned: 'Assigned to me and by me',
   device_tasks: 'Device tasks',
   habits: 'Habits',
   someday: 'Someday',
@@ -130,12 +131,6 @@ export const BRIEFING_OPTIONS = labelled(PLANNER_BRIEFINGS, [
   'After the alarm',
   'At day start',
 ]);
-
-export const DEFAULT_SOUND = 'default';
-
-export function soundOptions(current: string): readonly Option[] {
-  return withCurrent([{ value: DEFAULT_SOUND, label: 'Phone default' }], current, current);
-}
 
 export function reminderOptions(current: string): readonly Option[] {
   const options = [

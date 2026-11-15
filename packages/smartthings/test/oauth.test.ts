@@ -37,20 +37,14 @@ describe('the SmartThings OAuth exchange', () => {
 
   it('builds the authorize URL with the OAuth-In scopes the CLI offers', () => {
     expect(AUTHORIZE_URL).toBe('https://api.smartthings.com/oauth/authorize');
-    expect(OAUTH_SCOPES).toEqual([
-      'r:devices:*',
-      'x:devices:*',
-      'r:locations:*',
-      'r:scenes:*',
-      'x:scenes:*',
-    ]);
+    expect(OAUTH_SCOPES).toEqual(['r:devices:*', 'x:devices:*', 'r:locations:*']);
     const url = new URL(authorizeUrl('client 1', 'https://home.test/smartthings/callback', 'st-1'));
     expect(`${url.origin}${url.pathname}`).toBe(AUTHORIZE_URL);
     expect(Object.fromEntries(url.searchParams)).toEqual({
       client_id: 'client 1',
       response_type: 'code',
       redirect_uri: 'https://home.test/smartthings/callback',
-      scope: 'r:devices:* x:devices:* r:locations:* r:scenes:* x:scenes:*',
+      scope: 'r:devices:* x:devices:* r:locations:*',
       state: 'st-1',
     });
   });

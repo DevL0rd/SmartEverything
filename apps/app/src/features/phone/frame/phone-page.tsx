@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { EmptyState } from '../../../components/empty-state';
 import { href } from '../../../app-shell/hrefs';
-import type { FrameWidth } from '../../../components/section-body';
+import type { ShellWidth } from '../../../components/page-shell/layout';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { PhoneFrame } from './phone-frame';
@@ -11,12 +12,14 @@ export function PhonePage({
   title,
   width,
   root = false,
+  search,
   children,
 }: {
   readonly deviceId: string;
   readonly title: string | null;
-  readonly width: FrameWidth;
+  readonly width: ShellWidth;
   readonly root?: boolean;
+  readonly search?: ShellSearchConfig;
   readonly children: (device: Device) => ReactNode;
 }): ReactNode {
   const device = useDevice(deviceId);
@@ -36,6 +39,7 @@ export function PhonePage({
       deviceId={device.id}
       title={title ?? device.label}
       width={width}
+      {...(search === undefined ? {} : { search })}
       {...(root
         ? { crumbs: [{ label: 'Devices', href: href.devices() }, { label: device.label }] }
         : {})}

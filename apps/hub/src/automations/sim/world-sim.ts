@@ -1,5 +1,5 @@
-import { NODE_REGISTRY } from '@smarteverything/domain';
-import type { JsonValue, LiveChange, StateRow } from '@smarteverything/domain';
+import { NODE_REGISTRY, deviceFamily } from '@smarteverything/domain';
+import type { DeviceRow, JsonValue, LiveChange, StateRow } from '@smarteverything/domain';
 import type { KeptScope } from '@smarteverything/flow/interpret/kept-types';
 import type { StateMemoryPort } from '@smarteverything/flow/interpret/state-ops';
 import { z } from 'zod';
@@ -126,6 +126,21 @@ export class ScenarioWorld {
 
   deviceIds(target: JsonValue): readonly string[] {
     return devicesOf(this.base.store, TARGET_VALUE.parse(target)).map((device) => device.id);
+  }
+
+  lightsOf(target: JsonValue): {
+    readonly lights: readonly DeviceRow[];
+    readonly skipped: readonly { readonly device: string; readonly reason: string }[];
+  } {
+    const lights: DeviceRow[] = [];
+    const skipped: { device: string; reason: string }[] = [];
+    for (const device of devicesOf(this.base.store, TARGET_VALUE.parse(target))) {
+      if (deviceFamily(device) !== 'light')
+        skipped.push({ device: device.id, reason: 'It is not a light.' });
+      else if (!device.online) skipped.push({ device: device.id, reason: 'It is offline.' });
+      else lights.push(device);
+    }
+    return { lights, skipped };
   }
 
   persistentVariables(): PersistentVariables {

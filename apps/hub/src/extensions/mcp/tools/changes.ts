@@ -1,6 +1,5 @@
 import {
   COLOR_INPUT_FORMS,
-  JSON_VALUE,
   deviceFamily,
   memberOutcomes,
   privacySwitchOf,
@@ -28,6 +27,16 @@ export interface Change {
   readonly scope?: 'all' | 'on' | undefined;
 }
 
+const SCALAR_VALUE = z.union([z.boolean(), z.number(), z.string()]);
+
+const CAPABILITY_VALUE = z.union([
+  z.boolean(),
+  z.number(),
+  z.string(),
+  z.record(z.string(), SCALAR_VALUE),
+  z.null(),
+]);
+
 export const DEVICE_CONTROL = z.strictObject({
   ...TARGET_FIELDS,
   capability: z
@@ -38,7 +47,7 @@ export const DEVICE_CONTROL = z.strictObject({
     .describe(
       'Capability key, role (such as power or target_temperature) or label; power when left out',
     ),
-  value: JSON_VALUE.describe(
+  value: CAPABILITY_VALUE.describe(
     `New value in the capability’s value_format from device_read: true or false; a number in its unit; an enum option or its label; a colour as ${COLOR_INPUT_FORMS}; null runs an action. Brightness, fan speed and white tone are their own capabilities (white tone: kelvin as a number, "2700K" or "370 mireds")`,
   ),
   unit: VALUE_UNIT,

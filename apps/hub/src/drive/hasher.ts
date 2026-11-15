@@ -1,5 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import type { DriveItem } from '@smarteverything/domain';
+import { isFileItem, type FileItem } from './file-item';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import type { Store } from '../store/store';
@@ -20,6 +21,7 @@ export interface HashEnvironment {
     | 'driveItems'
     | 'driveBlocks'
     | 'drivePlacements'
+    | 'driveOpens'
     | 'settingsKv'
     | 'feed'
     | 'write'
@@ -57,16 +59,17 @@ export function byPriority(left: HashCandidate, right: HashCandidate): number {
 
 function candidateOf(
   entry: DriveItemEntry,
+  openedAt: string | null,
   needed: boolean,
   wantBlocks: boolean,
 ): HashCandidate | null {
   const { item, identity } = entry;
-  if (item.kind === 'folder' || identity === null || !needed) return null;
+  if (!isFileItem(item) || identity === null || !needed) return null;
   return {
     id: item.id,
     relPath: item.relPath,
     bytes: item.bytes,
-    openedAt: item.openedAt,
+    openedAt,
     dev: identity.dev,
     ino: identity.ino,
     wantBlocks,
@@ -81,10 +84,14 @@ export function syncsBlocks(
 }
 
 export function collectBacklog(
-  store: Pick<HashEnvironment['store'], 'driveItems' | 'driveBlocks' | 'drivePlacements'>,
+  store: Pick<
+    HashEnvironment['store'],
+    'driveItems' | 'driveBlocks' | 'drivePlacements' | 'driveOpens'
+  >,
   root: StoredDrive,
 ): HashBacklog {
   const synced = syncsBlocks(store, root.id);
+  const opened = store.driveOpens.latestInDrive(root.id);
   const candidates: HashCandidate[] = [];
   let files = 0;
   let hashed = 0;
@@ -104,10 +111,16 @@ export function collectBacklog(
           pending.push(entry.item.id);
           continue;
         }
+        if (!isFileItem(entry.item)) continue;
         files += 1;
         const hasBlocks =
           !synced || store.driveBlocks.find(entry.item.id, entry.item.rev) !== undefined;
-        const found = candidateOf(entry, entry.item.sha256 === null || !hasBlocks, synced);
+        const found = candidateOf(
+          entry,
+          opened.get(entry.item.id) ?? null,
+          entry.item.sha256 === null || !hasBlocks,
+          synced,
+        );
         if (found === null) hashed += 1;
         else candidates.push(found);
       }
@@ -260,19 +273,16 @@ class HashRun {
   private stillValid(
     current: DriveItem | undefined,
     response: HashedResponse,
-  ): current is Exclude<DriveItem, { readonly kind: 'folder' }> {
+  ): current is FileItem {
     return (
       current !== undefined &&
-      current.kind !== 'folder' &&
+      isFileItem(current) &&
       current.bytes === response.bytes &&
       current.modifiedAt === modifiedIso(response.modifiedMs)
     );
   }
 
-  private hashItem(
-    current: Exclude<DriveItem, { readonly kind: 'folder' }>,
-    sha256: string,
-  ): DriveItem | null {
+  private hashItem(current: FileItem, sha256: string): DriveItem | null {
     if (current.sha256 === sha256) return current;
     if (current.sha256 !== null) {
       this.env.log.warn('drive.hash_changed_silently', {

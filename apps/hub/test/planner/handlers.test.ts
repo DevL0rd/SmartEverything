@@ -16,6 +16,7 @@ import {
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Caller } from '../../src/server/auth';
+import { FeedRegistry } from '../../src/planner/feeds/registry';
 import { plannerCoreRoutes } from '../../src/server/handlers/planner';
 import {
   plannerCollectionRoutes,
@@ -54,13 +55,24 @@ const PREFERENCES: PlannerPreferences = PLANNER_PREFERENCES.parse({
     show_free_time: false,
   },
   clock: {
-    sound: 'default',
+    sound: { kind: 'tone', id: 'default' },
     ramp_seconds: 30,
     snooze_minutes: 9,
+    snooze_limit: null,
     targets: [],
-    wake_scene_id: null,
+    wake_automation_id: null,
     world_clocks: [],
   },
+  bedtime: {
+    enabled: false,
+    schedule: [],
+    reminder_minutes: 30,
+    wind_down_minutes: 30,
+    wind_down_automation_id: null,
+    do_not_disturb: true,
+    sleep_sound: null,
+  },
+  sleep_sounds: { sound: null, timer_minutes: null, fade_seconds: 0 },
   watch: { watch_alarm_sync: true, watch_calendar_push: true },
   ai: { briefing: 'off', evening_review: false, plan_suggestions: true },
 });
@@ -139,6 +151,7 @@ beforeEach(async () => {
     now: () => NOW,
     preferencesOf: () => PREFERENCES,
     catalogueOf: () => catalogue,
+    feeds: { registry: new FeedRegistry() },
   });
   items = plannerItemRoutes(context, () => NOW);
   collections = plannerCollectionRoutes(context);
@@ -240,10 +253,12 @@ describe('parse', () => {
     expect(result.repeat_text).toBe('Every day at 07:30');
   });
 
-  it('answers a clear error when the person has no calendar or list', async () => {
-    await expect(
-      call(core.parsePlannerText, ann, { body: { text: 'brush teeth' } }),
-    ).rejects.toMatchObject({ code: 'invalid_request' });
+  it('files into the Family calendar when the person has no calendar or list of their own', async () => {
+    const [family] = test.store.plannerCollections.household();
+    const parsed = PLANNER_PARSE_RESULT.parse(
+      await call(core.parsePlannerText, ann, { body: { text: 'brush teeth' } }),
+    );
+    expect(parsed.draft.collection_id).toBe(family?.id);
   });
 
   it('refuses a collection of another person', async () => {

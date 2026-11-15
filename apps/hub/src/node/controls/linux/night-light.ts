@@ -37,7 +37,7 @@ function modeOf(enabled: boolean, kwinMode: number): NightLight['mode'] {
 
 export type NightLightBus = Pick<SessionBus, 'call' | 'watch'>;
 
-const UNSUPPORTED_NIGHT_LIGHT: NightLight = {
+export const UNSUPPORTED_NIGHT_LIGHT: NightLight = {
   supported: false,
   mode: 'off',
   active: false,

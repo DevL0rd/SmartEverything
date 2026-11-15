@@ -27,8 +27,6 @@ vi.mock('../../../../home-map', () => ({
   },
   HomeMap3d: stub('HomeMap3d'),
   useHomeMapLive: (): object => ({}),
-}));
-vi.mock('../../../../home-map/editor/stage-notice', () => ({
   StageNoticeChip: stub('StageNoticeChip'),
 }));
 vi.mock('../map-3d-view', () => ({ Map3dView: stub('Map3dView') }));

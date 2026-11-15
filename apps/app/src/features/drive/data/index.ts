@@ -1,3 +1,4 @@
+export * from './downloads';
 export * from './drives';
 export * from './links';
 export * from './live';

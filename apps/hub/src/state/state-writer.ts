@@ -13,6 +13,7 @@ import { ChangeThreshold } from './change-threshold';
 import type { Inventory } from './inventory';
 import { RepeatLog } from '../providers/repeat-log';
 import { IngestTally } from './ingest-tally';
+import { refusedByStore } from './permanent-failure';
 import { WriteQueue, logQueueNotice } from './write-queue';
 
 export interface StateWriterOptions {
@@ -62,6 +63,15 @@ export class StateWriter {
       },
       keyOf: (row): string => keyOf(row.deviceId, row.capability),
       append: STATE_APPEND_POLICY,
+      stale: (row): boolean => options.inventory.deviceById(row.deviceId) === undefined,
+      dropped: (rows): void => {
+        options.log.info('state.rows_dropped', {
+          reason: 'device_removed',
+          count: rows.length,
+          devices: new Set(rows.map((row) => row.deviceId)).size,
+        });
+      },
+      permanent: refusedByStore,
       observe: (notice): void => {
         logQueueNotice(options.log, 'state', notice);
       },

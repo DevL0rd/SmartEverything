@@ -8,7 +8,9 @@ import {
   type PlannerOccurrenceRow,
   type PlannerPreferences,
   type PlannerRange,
+  type PlannerRadioResult,
   type PlannerRingRow,
+  type PlannerSleep,
   type PlannerStats,
   type PlannerStatsRange,
   type PlannerStopwatchRow,
@@ -245,6 +247,25 @@ export async function skipNextPlannerAlarm(
   alarmId: string,
 ): Promise<PlannerAlarmRow> {
   return api().call(E.skipNextPlannerAlarm, { params: { alarmId }, query: person(personId) });
+}
+
+export async function readPlannerSleep(
+  personId: PersonId,
+  from: string,
+  to: string,
+): Promise<PlannerSleep> {
+  return api().call(E.readPlannerSleep, { query: { ...person(personId), from, to } });
+}
+
+export async function searchPlannerRadio(text: string): Promise<PlannerRadioResult[]> {
+  return api().call(E.searchPlannerRadio, { query: { text } });
+}
+
+export async function playPlannerSleepSound(
+  personId: PersonId,
+  body: Body<'playPlannerSleepSound'>,
+): Promise<void> {
+  await api().call(E.playPlannerSleepSound, { query: person(personId), body });
 }
 
 export async function startPlannerTimer(

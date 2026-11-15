@@ -18,7 +18,18 @@ vi.mock('react-native', async (original) => ({
   ...(await original<typeof ReactNative>()),
   View: childrenOf,
 }));
-vi.mock('../../../settings/settings-frame', () => ({ SettingsFrame: childrenOf }));
+vi.mock('../../../settings/settings-frame', () => ({
+  SettingsFrame: ({
+    search,
+    children,
+  }: {
+    readonly search: { readonly onChange: (query: string) => void };
+    readonly children: ReactNode;
+  }): ReactNode => {
+    rendered.search.mockImplementation(search.onChange);
+    return children;
+  },
+}));
 vi.mock('../../../components/list-row', () => ({ ListRow: rendered.row }));
 vi.mock('../../../components/text', () => ({
   Text: ({ children }: { readonly children: ReactNode }): null => {
@@ -26,13 +37,6 @@ vi.mock('../../../components/text', () => ({
     return null;
   },
 }));
-vi.mock('../../../components/search-field', () => ({
-  SearchField: ({ onChange }: { readonly onChange: (query: string) => void }): null => {
-    rendered.search.mockImplementation(onChange);
-    return null;
-  },
-}));
-
 const { LicencesScreen } = await import('./licences-screen');
 
 function withLicences(check: () => void): void {

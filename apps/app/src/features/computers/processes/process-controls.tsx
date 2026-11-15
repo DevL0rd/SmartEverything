@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { ChoiceChip } from '../../../components/choice-chip';
-import { SearchField } from '../../../components/search-field';
 import { Segmented } from '../../../components/segmented';
 import { Text } from '../../../components/text';
 import { count, decimal } from '../../../format/number';
@@ -35,8 +34,6 @@ interface ControlsProps {
   readonly deviceId: string;
   readonly view: ProcessView;
   readonly onView: (view: ProcessView) => void;
-  readonly query: string;
-  readonly onQuery: (query: string) => void;
   readonly filter: ProcessFilter;
   readonly onFilter: (filter: ProcessFilter) => void;
   readonly flat: boolean;
@@ -71,7 +68,7 @@ function FilterRow({
 }
 
 export function ProcessControls(props: ControlsProps): ReactNode {
-  const { deviceId, view, onView, query, onQuery, flat } = props;
+  const { deviceId, view, onView, flat } = props;
   return (
     <View className="gap-3">
       <View className="flex-row items-center gap-3">
@@ -84,12 +81,6 @@ export function ProcessControls(props: ControlsProps): ReactNode {
           options={VIEWS}
         />
       </View>
-      <SearchField
-        value={query}
-        onChange={onQuery}
-        placeholder="Search name, command or PID"
-        variant="field"
-      />
       <FilterRow {...props} />
     </View>
   );

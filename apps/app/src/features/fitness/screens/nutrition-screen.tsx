@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { NutritionDay, useNutritionStarted } from '../../nutrition';
-import { FitnessFrame } from '../components/fitness-frame';
+import { FitnessShell } from '../components/fitness-shell';
 import { FitnessToolbar } from '../components/fitness-toolbar';
 import { useFitnessParams } from '../data/day';
 
@@ -11,7 +11,7 @@ export function NutritionScreen(): ReactNode {
   const { day, today } = useFitnessParams('day');
   const started = useNutritionStarted(day);
   return (
-    <FitnessFrame
+    <FitnessShell
       tab="nutrition"
       width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range="day" />}
@@ -28,6 +28,6 @@ export function NutritionScreen(): ReactNode {
       }
     >
       <NutritionDay day={day} today={today} started={started} />
-    </FitnessFrame>
+    </FitnessShell>
   );
 }

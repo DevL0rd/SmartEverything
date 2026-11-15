@@ -1,23 +1,23 @@
 import type { ReactNode } from 'react';
-import { mainPageSettings } from '../../../app-shell/main-pages';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
+import type { TalkChannelRow } from '@smarteverything/domain';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { MasterDetail } from '../../../components/master-detail';
-import { PageHeader } from '../../../components/page-header';
-import { Text } from '../../../components/text';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellSections } from '../../../components/page-shell/shell-sections';
 import { Section } from '../../../components/section';
-import { useSizeClass } from '../../../design/size-class';
 import { useIsOwner } from '../../../store/selectors';
 import { ChannelCard } from '../components/channel-card';
 import { ChannelPanel } from '../components/channel-panel';
 import { DeviceStatus } from '../components/device-status';
-import { chooseTalkChannel, useTalkChannelId } from '../data/talk-channel';
+import { useTalkChannelId } from '../data/talk-channel';
 import { useMyChannels, useTalkChannel, useTalkChannels } from '../data/talk-data';
-import type { TalkChannelRow } from '@smarteverything/domain';
+import { useTalkSections } from './talk-sections';
+
+const TITLE = 'Walkie-talkie';
 
 function NoChannels(): ReactNode {
   const owner = useIsOwner();
@@ -39,16 +39,16 @@ function NoChannels(): ReactNode {
   );
 }
 
+function openChannel(channelId: string): void {
+  router.push(href.talkChannel(channelId));
+}
+
 function ChannelGroup({
   title,
   channels,
-  selected,
-  open,
 }: {
   readonly title: string;
   readonly channels: readonly TalkChannelRow[];
-  readonly selected: string | null;
-  readonly open: (channelId: string) => void;
 }): ReactNode {
   if (channels.length === 0) {
     return null;
@@ -60,9 +60,8 @@ function ChannelGroup({
           <ChannelCard
             key={channel.id}
             channel={channel}
-            selected={channel.id === selected}
             onOpen={() => {
-              open(channel.id);
+              openChannel(channel.id);
             }}
           />
         ))}
@@ -71,85 +70,67 @@ function ChannelGroup({
   );
 }
 
-function openChannel(channelId: string): void {
-  router.push(href.talkChannel(channelId));
-}
-
-function ChannelLists({ split }: { readonly split: boolean }): ReactNode {
+function ChannelLists(): ReactNode {
   const all = useTalkChannels();
   const mine = useMyChannels();
-  const selected = useTalkChannelId();
   const others = all.filter((channel) => !mine.some((own) => own.id === channel.id));
-  const open = split ? chooseTalkChannel : openChannel;
   if (all.length === 0) {
     return <NoChannels />;
   }
   return (
     <>
-      <ChannelGroup
-        title="Your channels"
-        channels={mine}
-        selected={split ? selected : null}
-        open={open}
-      />
-      <ChannelGroup title="Other channels" channels={others} selected={null} open={openChannel} />
+      <ChannelGroup title="Your channels" channels={mine} />
+      <ChannelGroup title="Other channels" channels={others} />
     </>
   );
 }
 
-function ListScreen(): ReactNode {
+function ListPage(): ReactNode {
   return (
-    <Screen
-      header={<PageHeader settings={mainPageSettings('talk')} title="Walkie-talkie" />}
-      maxWidth="reading"
-    >
+    <PageShell title={TITLE} settings={mainPageSettings('talk')} width="reading">
       <DeviceStatus />
-      <ChannelLists split={false} />
-    </Screen>
+      <ChannelLists />
+    </PageShell>
   );
 }
 
-function Master(): ReactNode {
+function OverviewPage({
+  sections,
+  channelId,
+}: {
+  readonly sections: ShellSections;
+  readonly channelId: string | null;
+}): ReactNode {
+  const channel = useTalkChannel(channelId);
   return (
-    <ScrollView contentContainerClassName="gap-section-gap px-4 pb-6 pt-safe-offset-6">
-      <View className="flex-row items-center gap-2 px-2">
-        <Text variant="title-1" accessibilityRole="header" className="flex-1">
-          Walkie-talkie
-        </Text>
-      </View>
-      <DeviceStatus />
-      <ChannelLists split />
-    </ScrollView>
-  );
-}
-
-function SelectedChannel(): ReactNode {
-  const channel = useTalkChannel(useTalkChannelId());
-  if (channel === null) {
-    return (
-      <Screen
-        header={<PageHeader settings={mainPageSettings('talk')} title="Channel" back={false} />}
-        maxWidth="reading"
-      >
-        <EmptyState
-          icon="radio"
-          title="Choose a channel"
-          body="Open one from the list to talk on it here."
-        />
-      </Screen>
-    );
-  }
-  return (
-    <Screen
-      header={<PageHeader settings={mainPageSettings('talk')} title={channel.name} back={false} />}
-      maxWidth="reading"
+    <PageShell
+      title={TITLE}
+      {...(channel === null ? {} : { subtitle: channel.name })}
+      settings={mainPageSettings('talk')}
+      sections={sections}
     >
-      <ChannelPanel channel={channel} />
-    </Screen>
+      {channel === null ? (
+        <>
+          <DeviceStatus />
+          <EmptyState
+            icon="radio"
+            title="Choose a channel"
+            body="Open one from the list to talk on it here."
+          />
+        </>
+      ) : (
+        <ChannelPanel channel={channel} split />
+      )}
+    </PageShell>
   );
 }
 
 export function TalkScreen(): ReactNode {
-  const { split } = useSizeClass();
-  return split ? <MasterDetail master={<Master />} detail={<SelectedChannel />} /> : <ListScreen />;
+  const channelId = useTalkChannelId();
+  const sections = useTalkSections(channelId);
+  return sections === undefined ? (
+    <ListPage />
+  ) : (
+    <OverviewPage sections={sections} channelId={channelId} />
+  );
 }

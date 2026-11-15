@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import {
   HUB_UPDATE_LEDGER_FILE,
+  HUB_UPDATE_WAITING,
   appendTo,
   hubUpdateFinished,
   releaseOf,
@@ -59,7 +60,8 @@ export class ReleaseWatch {
 
   private resolveRun(ledger: HubUpdateLedger, runId: string): void {
     const release = releaseOf(ledger, runId);
-    if (release === undefined || !hubUpdateFinished(release)) return;
+    if (release === undefined) return;
+    if (!hubUpdateFinished(release) && !HUB_UPDATE_WAITING.has(release.phase)) return;
     for (const waiter of this.waiters.get(runId) ?? []) waiter(release);
     this.waiters.delete(runId);
   }

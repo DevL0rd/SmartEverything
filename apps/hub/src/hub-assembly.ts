@@ -7,7 +7,6 @@ import {
   privacySwitchOf,
   type HubCommand,
   type JsonValue,
-  type ProcessWindow,
   type Provider,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
@@ -50,7 +49,7 @@ import { EventRouter } from './state/event-router';
 import { Inventory } from './state/inventory';
 import { StateWriter } from './state/state-writer';
 import type { Store } from './store/store';
-import { Viewers } from './metrics/viewers';
+import { Viewers, type DeviceDetail } from './metrics/viewers';
 import { systemRouteTimer } from './vacuum/live-route';
 import { VacuumHub } from './vacuum/vacuum-hub';
 import type { VacuumVideoPorts } from './vacuum/video-session';
@@ -95,7 +94,7 @@ export interface Core {
   readonly drivers: DeviceDriverRegistry;
   readonly irAssumed: IrAssumedState;
   readonly vacuums: VacuumHub;
-  readonly deviceViewers: Viewers<ProcessWindow>;
+  readonly deviceViewers: Viewers<DeviceDetail>;
 }
 
 interface Trackers {
@@ -134,6 +133,13 @@ function stateWriterOf(
   });
 }
 
+function lateLookup(inventory: () => Inventory): Pick<Inventory, 'deviceOf' | 'deviceById'> {
+  return {
+    deviceOf: (provider, externalId) => inventory().deviceOf(provider, externalId),
+    deviceById: (id) => inventory().deviceById(id),
+  };
+}
+
 function assembleWriters(
   parts: HubParts,
   cameras: CameraService,
@@ -143,7 +149,7 @@ function assembleWriters(
   const camerasLog = areaOf(parts, 'cameras');
   const events: EventRouter = new EventRouter({
     store: parts.database,
-    inventory: { deviceOf: (provider, externalId) => inventory.deviceOf(provider, externalId) },
+    inventory: lateLookup(() => inventory),
     log: areaOf(parts, 'events'),
     claim: (device, event) =>
       trackers.laundry.claim(device, event) || trackers.vacuums.claim(device, event),
@@ -281,7 +287,7 @@ export function assemble(parts: HubParts): Core {
     { store: parts.store, now: parts.clock.now, log: areaOf(parts, 'laundry') },
     () => writers,
   );
-  const deviceViewers = new Viewers<ProcessWindow>();
+  const deviceViewers = new Viewers<DeviceDetail>();
   const vacuums = vacuumHubOf(parts, deviceViewers, () => writers);
   const writers = assembleWriters(parts, cameras, signals, { laundry, vacuums });
   const providers = providerManager(parts, writers, cameras, vacuums);
@@ -325,7 +331,7 @@ export function assemble(parts: HubParts): Core {
 
 function vacuumHubOf(
   parts: HubParts,
-  viewers: Viewers<ProcessWindow>,
+  viewers: Viewers<DeviceDetail>,
   writers: () => Pick<Core, 'state' | 'events'>,
 ): VacuumHub {
   return new VacuumHub({

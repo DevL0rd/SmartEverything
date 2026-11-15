@@ -6,7 +6,7 @@ import {
   type NavOpenTarget,
   type NavPinTarget,
 } from '@smarteverything/domain';
-import { isIconName, type IconName } from '../components/icon';
+import type { IconName } from '../components/icon';
 import { deviceIcon } from '../features/device-visuals';
 import { extensionIcon } from '../plugins/declared/extension-icon';
 import { settingPageOf } from '../settings/registry';
@@ -90,14 +90,6 @@ function settingHref(target: Of<'setting'>): AppHref | null {
 function deviceFacts(deviceId: string, state: StoreState): TargetFacts {
   const device = state.tables.devices.byId[deviceId];
   return named(device?.label, device === undefined ? UNKNOWN_ICON : deviceIcon(device));
-}
-
-function sceneFacts(target: Of<'scene'>, state: StoreState): TargetFacts {
-  const scene = state.tables.scenes.byId[target.sceneId];
-  return named(
-    scene?.name,
-    scene !== undefined && isIconName(scene.icon) ? scene.icon : 'sparkles',
-  );
 }
 
 function chatFacts(target: Of<'chat'>, state: StoreState): TargetFacts {
@@ -189,11 +181,6 @@ const KINDS: { readonly [K in Kind]: TargetKind<K> } = {
     href: (target) => href.group(target.groupId),
     facts: (target, state) => named(state.tables.device_groups.byId[target.groupId]?.name, 'lamp'),
   },
-  scene: {
-    key: (target) => `scene:${target.sceneId}`,
-    href: (target) => href.scene(target.sceneId),
-    facts: sceneFacts,
-  },
   automation: {
     key: (target) => `automation:${target.automationId}`,
     href: (target) => href.automation(target.automationId),
@@ -239,10 +226,9 @@ const PATH_RULES: readonly PathRule[] = [
   { pattern: /^cameras\/(?!events$|monitor$|settings)([^/]+)/u, kind: 'camera' },
   { pattern: /^rooms\/([^/]+)/u, kind: 'room' },
   { pattern: /^groups\/(?!new$)([^/]+)/u, kind: 'group' },
-  { pattern: /^automations\/scenes\/(?!new$)([^/]+)/u, kind: 'scene' },
   {
     pattern:
-      /^automations\/(?!runs$|scenes|scheduled|schedule$|nodes|templates|secrets$|variables|new$)([^/]+)/u,
+      /^automations\/(?!runs$|scheduled|schedule$|nodes|templates|secrets$|variables|new$)([^/]+)/u,
     kind: 'automation',
   },
   { pattern: /^assistant\/chat\/([^/]+)/u, kind: 'chat' },
@@ -279,8 +265,6 @@ function candidateOf(kind: string, id: string): unknown {
       return { kind, roomId: id };
     case 'group':
       return { kind, groupId: id };
-    case 'scene':
-      return { kind, sceneId: id };
     case 'automation':
       return { kind, automationId: id, focus: null };
     case 'page':

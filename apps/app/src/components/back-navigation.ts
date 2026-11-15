@@ -1,13 +1,7 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useSyncExternalStore,
-} from 'react';
+import { useCallback, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
 import { router, useFocusEffect, usePathname, useNavigation, useRoute } from 'expo-router';
 import type { AppHref } from './app-href';
+import { BackRulesContext } from './back-rules-context';
 
 export type AppPath = Extract<AppHref, string>;
 
@@ -36,8 +30,6 @@ export class MissingBackRulesError extends Error {
     this.name = 'MissingBackRulesError';
   }
 }
-
-const BackRulesContext = createContext<BackRules | null>(null);
 
 export const BackRulesProvider = BackRulesContext.Provider;
 

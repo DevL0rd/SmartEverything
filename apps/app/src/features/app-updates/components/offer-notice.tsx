@@ -16,6 +16,8 @@ const ICONS: Readonly<Record<OfferAction['kind'], IconName>> = {
   retry: 'refresh',
   check: 'refresh',
   cancel: 'close',
+  retry_update: 'refresh',
+  stay_built_in: 'circleCheck',
 };
 
 export function offerIcon(action: OfferAction): IconName {

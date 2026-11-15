@@ -21,6 +21,7 @@ const REGISTERING_SOURCES: ReadonlySet<string> = new Set([
 const CHAT_ENDPOINT_HOMES: ReadonlySet<string> = new Set([
   'apps/hub/src/harness/transport.ts',
   'apps/hub/src/openrouter/media-notes.ts',
+  'apps/hub/src/openrouter/vision.ts',
 ]);
 
 const SCANNED_ROOTS: readonly string[] = [

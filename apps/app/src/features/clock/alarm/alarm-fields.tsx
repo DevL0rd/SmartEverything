@@ -11,25 +11,27 @@ import { List } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
 import { TimeField } from '../../../components/time-field';
 import { dayKeyOf, startOfDayKey } from '../../../format/time';
-import { alarmLabelOf, dateTextOf } from '../../planner/clock/alarm-text';
-import { DayDots } from '../../planner/clock/day-dots';
 import {
+  alarmLabelOf,
+  dateTextOf,
+  DayDots,
   MINUTES_IN_HOUR,
   clockTextOf,
   rampOptions,
   timeOfClockText,
-} from '../../planner/settings/options';
+} from '../../planner';
 import {
   firstOnceDateOf,
   labelEdit,
   onceOnEdit,
   repeatEdit,
   repeatModeOf,
+  snoozeLimitEdit,
   toggledDayEdit,
   type AlarmDraft,
   type AlarmEdit,
 } from './alarm-draft';
-import { REPEAT_OPTIONS } from './alarm-options';
+import { REPEAT_OPTIONS, snoozeLimitText } from './alarm-options';
 import { SoundPicker } from './sound-picker';
 
 export interface AlarmFieldProps {
@@ -255,6 +257,30 @@ function SnoozeRow({ draft, compact, disabled, onChange }: AlarmFieldProps): Rea
   );
 }
 
+function SnoozeLimitRow({ draft, compact, disabled, onChange }: AlarmFieldProps): ReactNode {
+  return (
+    <ListRow
+      title="Snooze limit"
+      icon="repeat"
+      compact={compact}
+      trailing={
+        <NumberStepper
+          label="Snooze limit"
+          value={draft.snooze_limit ?? 0}
+          min={0}
+          max={Number.MAX_SAFE_INTEGER}
+          step={1}
+          formatValue={snoozeLimitText}
+          disabled={disabled}
+          onChange={(limit) => {
+            onChange(snoozeLimitEdit(limit));
+          }}
+        />
+      }
+    />
+  );
+}
+
 export function AlarmFields(props: AlarmFieldProps): ReactNode {
   const { draft, compact, disabled, onChange } = props;
   return (
@@ -292,6 +318,7 @@ export function AlarmFields(props: AlarmFieldProps): ReactNode {
         }}
       />
       <SnoozeRow {...props} />
+      <SnoozeLimitRow {...props} />
     </FieldRows>
   );
 }

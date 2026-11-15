@@ -34,7 +34,7 @@ describe('home size registry', () => {
 });
 
 describe('home tiles by window width', () => {
-  const tiles = (['rooms', 'weather', 'scenes'] as const).map((type) => ({
+  const tiles = (['rooms', 'weather', 'automations'] as const).map((type) => ({
     key: type,
     type,
     size: HOME_WIDGET_SIZES[type].defaultSize,

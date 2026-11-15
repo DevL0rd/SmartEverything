@@ -38,6 +38,8 @@ function collection(profileId: string, kind: 'calendar' | 'list', name: string):
     default_reminders: [],
     source: 'local',
     google: null,
+    audience: 'personal',
+    feed: null,
   }).id;
 }
 
@@ -73,6 +75,10 @@ function insert(
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person' as const,
     ...change,
   };

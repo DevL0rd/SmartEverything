@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { useIsFocused } from 'expo-router';
 import type { LibraryScope } from '@smarteverything/domain';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { Text } from '../../../components/text';
@@ -8,6 +9,7 @@ import { useDayKey } from '../../../store/clock';
 import { closeViewer } from './close';
 import { DesktopHeader, PhoneActions, PhoneHeader } from './header';
 import { desktopHeaderText, phoneHeaderText } from './header-text';
+import { MetaEditHost } from '../organise/meta/meta-sheet';
 import { InfoPanel, InfoSheet } from './info-panel';
 import { useViewerKeys } from './keys';
 import { usePrefetchNeighbours } from './photo';
@@ -16,15 +18,17 @@ import { ViewerStage } from './stage';
 import { useViewerControls, type ViewerControls } from './use-viewer-controls';
 import type { ViewerItem } from './use-viewer-item';
 import { useViewerSequence } from './use-viewer-sequence';
+import type { ViewerFrom } from './params';
 import type { ViewerSequence } from './sequence';
 
-const KEY_HINTS = 'Arrows browse · F favourite · I info · Esc closes';
+const KEY_HINTS = 'Arrows browse · F favourite · E edit · I info · Esc closes';
 
 type ReadyItem = Extract<ViewerItem, { readonly state: 'ready' }>;
 
 export interface ReadyViewerProps {
   readonly viewer: ReadyItem;
   readonly scope: LibraryScope;
+  readonly from: ViewerFrom;
   readonly phone: boolean;
   readonly infoOpen: boolean;
   readonly onInfo: () => void;
@@ -55,12 +59,20 @@ function Strip({
   );
 }
 
+function editWithKey(controls: ViewerControls): void {
+  const { edit } = controls.header;
+  if (edit.available && !edit.busy && !controls.header.busy) edit.onEdit();
+}
+
 function useReady(props: ReadyViewerProps): {
   readonly sequence: ViewerSequence;
   readonly controls: ViewerControls;
 } {
   const { viewer } = props;
-  const sequence = useViewerSequence(viewer.item.id, viewer.month, props.scope);
+  const sequence = useViewerSequence(viewer.item.id, viewer.month, {
+    scope: props.scope,
+    from: props.from,
+  });
   const controls = useViewerControls({
     item: viewer.item,
     media: viewer.media,
@@ -73,9 +85,10 @@ function useReady(props: ReadyViewerProps): {
     onClose: closeViewer,
   });
   usePrefetchNeighbours(sequence.previous, sequence.next);
-  useViewerKeys(true, (action) => {
+  useViewerKeys(useIsFocused(), (action) => {
     if (action === 'info') props.onInfo();
     else if (action === 'favourite') controls.actions.favourite();
+    else if (action === 'edit') editWithKey(controls);
     else {
       const tile = action === 'next' ? sequence.next : sequence.previous;
       if (tile !== null) props.onGo(tile);
@@ -129,6 +142,7 @@ export function ReadyViewer(props: ReadyViewerProps): ReactNode {
           </View>
         </ThemeScope>
         <InfoSheet open={props.infoOpen} content={controls.info} onClose={props.onInfo} />
+        <MetaEditHost />
       </View>
     );
   }
@@ -145,6 +159,7 @@ export function ReadyViewer(props: ReadyViewerProps): ReactNode {
         </View>
       </ThemeScope>
       {props.infoOpen ? <InfoPanel content={controls.info} onClose={props.onInfo} /> : null}
+      <MetaEditHost />
     </View>
   );
 }

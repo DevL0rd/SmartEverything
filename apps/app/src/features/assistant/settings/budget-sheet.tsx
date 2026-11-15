@@ -84,7 +84,7 @@ function BudgetFooter({
   readonly onSave: BudgetSheetProps['onSave'];
 }): ReactNode {
   return (
-    <View className="flex-row gap-2">
+    <View className="flex-1 flex-row gap-2">
       {canTurnOff ? (
         <Button
           label="Turn off"

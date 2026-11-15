@@ -40,6 +40,7 @@ export interface LibraryGridProps {
   readonly onEnd: () => void;
   readonly grouping?: MediaGrouping;
   readonly headText?: (group: MediaDay) => DayText;
+  readonly viewer?: Readonly<Record<string, string>>;
 }
 
 type MenuMode = 'actions' | 'albums';
@@ -55,8 +56,8 @@ function resolveThumb(tile: MediaTile): Promise<Thumbnail | null> {
   return local === null ? driveLinks.resolve(tile.id, tile.rev, 'thumb') : localThumbnail(tile);
 }
 
-function openViewer(tile: MediaTile): void {
-  router.push(href.photosItem(tile.id));
+function openViewer(tile: MediaTile, params: Readonly<Record<string, string>> = {}): void {
+  router.push(href.photosItem(tile.id, params));
 }
 
 export function menuActionsOf(
@@ -192,7 +193,7 @@ export function LibraryGrid(props: LibraryGridProps): ReactNode {
           resolveThumb={resolveThumb}
           onPrefetchTiles={setUpcoming}
           onOpen={(tile) => {
-            if (!selection.press(tile.id, { shift: false })) openViewer(tile);
+            if (!selection.press(tile.id, { shift: false })) openViewer(tile, props.viewer);
           }}
           onMenu={(tile: MediaTile, point: Point | null) => {
             if (point === null) heavyThud();

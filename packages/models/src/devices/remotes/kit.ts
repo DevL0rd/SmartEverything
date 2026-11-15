@@ -239,6 +239,7 @@ export interface RemoteInput {
   readonly title: string;
   readonly synonyms: readonly string[];
   readonly size: Handset;
+  readonly footprint: ModelSpec['footprint'];
   readonly materials: Readonly<Record<'body' | 'keys' | 'glass', ModelSpecMaterial>>;
   readonly finishes: NonNullable<ModelSpec['finishes']>;
   readonly defaultFinish: string;
@@ -258,7 +259,7 @@ export function remote(input: RemoteInput): ModelSpec {
     title: input.title,
     category: 'infrared',
     family: 'ir_remote',
-    footprint: { width: size.length, depth: size.width, height: size.height },
+    footprint: input.footprint,
     framing: {
       tile: { ...VIEW, padding: 0.03 },
       card: { ...VIEW, padding: 0.05 },

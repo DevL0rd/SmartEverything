@@ -98,7 +98,7 @@ export const MOTORBIKE_MODEL: ModelSpec = catalogueModel({
   id: 'cat.outdoor.motorbike',
   title: 'Motorbike',
   category: 'outdoor',
-  footprint: { width: 0.78, depth: 2.1, height: 1.06 },
+  footprint: { width: 0.78, depth: 2.104, height: 1.065 },
   view: { yaw: 50, pitch: 14, fov: 28, padding: 0.08 },
   meta: {
     names: {

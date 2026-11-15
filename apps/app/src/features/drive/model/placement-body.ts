@@ -21,7 +21,8 @@ export interface PlacementPlan {
   readonly deviceId: string;
   readonly target: PlacementTarget;
   readonly mode: DrivePlacementMode;
-  readonly localPath: string;
+  readonly localPath: string | null;
+  readonly mountName: string | null;
   readonly sync?: SyncSettings;
   readonly enabled?: boolean;
 }
@@ -33,6 +34,7 @@ export function placementBodyOf(plan: PlacementPlan): DrivePlacementSet {
     folderItemId: plan.target.folderItemId,
     mode: plan.mode,
     localPath: plan.localPath,
+    mountName: plan.mountName,
     enabled: plan.enabled ?? true,
   };
   return plan.mode === 'synced' ? { ...base, ...(plan.sync ?? DEFAULT_SYNC_SETTINGS) } : base;

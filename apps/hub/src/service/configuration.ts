@@ -25,13 +25,25 @@ const PORT = z.int().min(1).max(65_535);
 
 const SERVICE_ENVIRONMENT = z.object({ [DATA_DIRECTORY_VARIABLE]: ABSOLUTE_PATH });
 
-export const UPDATE_SOURCE = z.strictObject({
-  checkout: ABSOLUTE_PATH,
-  remote: HUB_UPDATE_SOURCE_CHECK.shape.remote,
-  branch: HUB_UPDATE_SOURCE_CHECK.shape.branch,
-});
+const GITHUB_REPOSITORY = z.string().regex(/^[a-z0-9][a-z0-9._-]*\/[a-z0-9._-]+$/u);
+
+export const UPDATE_SOURCE = z
+  .strictObject({
+    repository: GITHUB_REPOSITORY,
+    branch: HUB_UPDATE_SOURCE_CHECK.shape.branch,
+    checkout: ABSOLUTE_PATH.optional(),
+    remote: HUB_UPDATE_SOURCE_CHECK.shape.remote.optional(),
+  })
+  .refine((source) => (source.checkout === undefined) === (source.remote === undefined), {
+    message: 'checkout and remote are set together, for the hub build source only',
+  });
 
 export type UpdateSource = z.infer<typeof UPDATE_SOURCE>;
+
+export type CheckoutUpdateSource = UpdateSource & {
+  readonly checkout: string;
+  readonly remote: string;
+};
 
 const HUB_SERVICE_CONFIG = z.strictObject({
   lan: z

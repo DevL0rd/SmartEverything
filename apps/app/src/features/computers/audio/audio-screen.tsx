@@ -8,7 +8,7 @@ import { SwitchRow } from '../../../components/rows';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { List } from '../../../components/section';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { ComputerFrame } from '../components/computer-frame';

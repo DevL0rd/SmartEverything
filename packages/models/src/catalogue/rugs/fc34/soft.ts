@@ -26,7 +26,7 @@ const SHAG_ROWS = 24;
 export const SHAG_RUG_MODEL: ModelSpec = rugItem({
   id: 'cat.rugs.shag-rug',
   title: 'Shag rug',
-  footprint: { width: 2, depth: 1.4, height: 0.06 },
+  footprint: { width: 2, depth: 1.4, height: 0.062 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     depth: { param: 'depth', extra: 0, resizes: true },
@@ -76,7 +76,7 @@ const BATH_WAYS: Readonly<Record<string, Colourway>> = {
 export const BATH_RUG_MODEL: ModelSpec = rugItem({
   id: 'cat.rugs.bath-rug',
   title: 'Bath rug',
-  footprint: { width: 0.9, depth: 0.6, height: 0.034 },
+  footprint: { width: 0.9, depth: 0.6, height: 0.0345 },
   meta: {
     names: {
       display: 'Bath rug',

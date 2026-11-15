@@ -8,7 +8,6 @@ import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { ListRow } from '../../../components/list-row';
 import { ReasonLine } from '../../../components/reason-line';
-import { SearchField } from '../../../components/search-field';
 import { List } from '../../../components/section';
 import { PAGE_SIZE, ShowMore } from '../../../components/show-more';
 import { Skeleton } from '../../../components/skeleton';
@@ -19,6 +18,10 @@ interface Reach {
   readonly deviceId: string;
   readonly machine: string;
   readonly online: boolean;
+}
+
+interface SectionProps extends Reach {
+  readonly query: string;
 }
 
 function UsedList({
@@ -101,20 +104,15 @@ function InstalledRows({
 function InstalledList({
   reach,
   apps,
+  query,
 }: {
   readonly reach: Reach;
   readonly apps: ComputerApps;
+  readonly query: string;
 }): ReactNode {
-  const [query, setQuery] = useState('');
   const installed = matchingInstalled(apps.installed, query);
   return (
     <View className="gap-2">
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        placeholder="Search installed apps"
-        variant="field"
-      />
       {installed.length === 0 ? (
         <EmptyState
           compact
@@ -133,7 +131,13 @@ function InstalledList({
   );
 }
 
-export function AppsSection(reach: Reach): ReactNode {
+function AppsData({
+  reach,
+  children,
+}: {
+  readonly reach: Reach;
+  readonly children: (apps: ComputerApps) => ReactNode;
+}): ReactNode {
   const apps = useComputerApps(reach.deviceId, reach.online);
   if (apps.isError) {
     return (
@@ -146,10 +150,28 @@ export function AppsSection(reach: Reach): ReactNode {
     );
   }
   if (apps.data === undefined) return reach.online ? <Skeleton shape="block" /> : null;
+  return children(apps.data);
+}
+
+export function AppsSection(reach: Reach): ReactNode {
   return (
-    <View className="gap-5">
-      <UsedList reach={reach} apps={apps.data} />
-      <InstalledList reach={reach} apps={apps.data} />
+    <AppsData reach={reach}>
+      {(apps) => (
+        <View className="gap-5">
+          <UsedList reach={reach} apps={apps} />
+          <InstalledList reach={reach} apps={apps} query="" />
+        </View>
+      )}
+    </AppsData>
+  );
+}
+
+export function InstalledSearch({ query, ...reach }: SectionProps): ReactNode {
+  return (
+    <View className="w-full max-w-detail">
+      <AppsData reach={reach}>
+        {(apps) => <InstalledList reach={reach} apps={apps} query={query} />}
+      </AppsData>
     </View>
   );
 }

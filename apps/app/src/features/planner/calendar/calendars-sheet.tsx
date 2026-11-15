@@ -1,234 +1,227 @@
-import type { PlannerCollectionRow } from '@smarteverything/domain';
+import type { PlannerImportResult } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { ColourSwatches } from '../../../components/colour-swatches';
-import { EmptyState } from '../../../components/empty-state';
-import { FilterChip } from '../../../components/filter-chip';
+import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
 import { ListRow } from '../../../components/list-row';
-import { SelectRow } from '../../../components/rows';
+import { useAnchoredMenu } from '../../../components/menu';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
-import { cn } from '../../../design/cn';
-import { usePlannerCollections, usePlannerWrites } from '../data';
-import type { CollectionChange } from '../data/writes';
+import { usePlannerFeeds } from '../data/feeds';
+import { useViewerCalendars } from '../data/sharing';
 import { usePlannerFrame } from '../frame/frame-context';
-import { LIST_DOT } from '../item/composer-tokens';
+import type { Prefs } from '../settings/preferences';
+import { AddCalendarSheet, type AddKind } from './add-sheets';
+import { CalendarRow } from './calendar-row';
 import {
-  CALENDAR_SHOWS,
-  type CalendarShowKey,
-  COLOUR_OPTIONS,
-  NONE,
-  beforeText,
-  reminderOptions,
-} from '../settings/options';
-import { useSavePrefs, type Prefs } from '../settings/preferences';
+  sectionsOf,
+  type CalendarSection,
+  type CalendarSectionKey,
+  type ViewerCalendar,
+} from './calendars-model';
+import { ImportReportSheet } from './import-report-sheet';
+import { ShareSheet } from './share-sheet';
+import { SHOW_KEYS, ShowChips } from './show-chips';
 
-export function shownCalendarsOf(
-  collections: readonly PlannerCollectionRow[],
-): readonly string[] | null {
-  return collections.every((row) => row.visible)
-    ? null
-    : collections.filter((row) => row.visible).map((row) => row.id);
+interface Report {
+  readonly calendar: string;
+  readonly result: PlannerImportResult;
 }
 
-export function sourceText(row: PlannerCollectionRow): string {
-  return row.source === 'google' ? 'Google' : 'This hub';
+interface SheetActions {
+  readonly add: (kind: AddKind) => void;
+  readonly addBirthdays: () => void;
+  readonly share: (calendarId: string) => void;
+  readonly imported: (calendar: ViewerCalendar, result: PlannerImportResult) => void;
 }
 
-export function remindersText(row: PlannerCollectionRow): string {
-  if (row.default_reminders.length === 0) return 'None';
-  return row.default_reminders.map((reminder) => beforeText(reminder.minutes_before)).join(', ');
-}
+const EMPTY_ROW: Readonly<
+  Partial<Record<CalendarSectionKey, { readonly title: string; readonly kind: AddKind | null }>>
+> = {
+  mine: { title: 'New calendar', kind: 'calendar' },
+  subscriptions: { title: 'Subscribe by address', kind: 'subscribe' },
+  holidays: { title: 'Add public holidays', kind: 'holidays' },
+  birthdays: { title: 'Add the birthdays calendar', kind: null },
+};
 
-export function reminderValue(row: PlannerCollectionRow): string {
-  const first = row.default_reminders[0];
-  return first === undefined ? NONE : String(first.minutes_before);
-}
-
-export function remindersOf(value: string): CollectionChange {
-  return { default_reminders: value === NONE ? [] : [{ minutes_before: Number(value) }] };
-}
-
-export type CollectionEdit = (row: PlannerCollectionRow, change: CollectionChange) => void;
-
-export function useCollectionEdit(): CollectionEdit {
-  const writes = usePlannerWrites(usePlannerFrame().person);
-  return (row, change) => {
-    writes.updateCollection(row, change).catch((error: unknown) => {
-      notify({ message: `${row.name} was not changed`, error, tone: 'critical' });
-    });
-  };
-}
-
-export function showChange(key: CalendarShowKey, on: boolean): Partial<Prefs['calendar']> {
-  switch (key) {
-    case 'show_tasks':
-      return { show_tasks: on };
-    case 'show_alarms':
-      return { show_alarms: on };
-    case 'show_sleep':
-      return { show_sleep: on };
-    case 'show_free_time':
-      return { show_free_time: on };
-  }
-}
-
-export function useFlipShow(): (key: CalendarShowKey) => void {
-  const save = useSavePrefs('Show on the calendar');
-  return (key) => {
-    save((current) => ({ calendar: showChange(key, !current.calendar[key]) }));
-  };
-}
-
-export function ShowChips({
-  prefs,
-  keys,
-}: {
-  readonly prefs: Prefs;
-  readonly keys: readonly CalendarShowKey[];
-}): ReactNode {
-  const flip = useFlipShow();
-  return CALENDAR_SHOWS.filter((show) => keys.includes(show.key)).map((show) => (
-    <FilterChip
-      key={show.key}
-      label="Show on the calendar"
-      value={show.title}
-      icon={show.icon}
-      active={prefs.calendar[show.key]}
-      onPress={() => {
-        flip(show.key);
-      }}
-    />
-  ));
-}
-
-type Change = CollectionEdit;
-
-function ShownMark({
-  row,
-  onChange,
-}: {
-  readonly row: PlannerCollectionRow;
-  readonly onChange: Change;
-}): ReactNode {
+function SectionHead({ section }: { readonly section: CalendarSection }): ReactNode {
   return (
-    <Interactive
-      role="checkbox"
-      checked={row.visible}
-      label={`Show ${row.name}`}
-      onPress={() => {
-        onChange(row, { visible: !row.visible });
-      }}
-      className="min-h-touch-min min-w-touch-min items-center justify-center rounded-full"
-      layerClassName="rounded-full"
-    >
-      <View
-        className={cn(
-          'size-5 items-center justify-center rounded-xs border-2',
-          row.visible
-            ? cn('border-transparent', LIST_DOT[row.colour])
-            : 'border-on-surface-variant',
-        )}
-      >
-        {row.visible ? <Icon name="check" size={16} tone="onPrimary" /> : null}
-      </View>
-    </Interactive>
-  );
-}
-
-function CalendarDetail({
-  row,
-  onChange,
-}: {
-  readonly row: PlannerCollectionRow;
-  readonly onChange: Change;
-}): ReactNode {
-  return (
-    <View className="mx-4 mb-2 gap-2 rounded-md bg-surface-2 px-3 py-2.5">
-      <Text variant="caption" tone="variant">
-        {`${row.name} · colour`}
+    <View className="flex-row items-center gap-2 px-4 pb-1 pt-3">
+      <Icon name={section.icon} size={16} tone="variant" />
+      <Text variant="caption" tone="variant" accessibilityRole="header" className="flex-1">
+        {section.title}
       </Text>
-      <ColourSwatches
-        label={`${row.name} colour`}
-        value={row.colour}
-        options={COLOUR_OPTIONS}
-        onChange={(colour) => {
-          onChange(row, { colour });
-        }}
-      />
-      <SelectRow
-        title="Default reminder"
-        icon="bell"
-        options={reminderOptions(reminderValue(row))}
-        value={reminderValue(row)}
-        onChange={(value) => {
-          onChange(row, remindersOf(value));
-        }}
-      />
+      {section.calendars.length > 0 ? (
+        <Text variant="caption" tone="faint" className="tabular">
+          {String(section.calendars.length)}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
-function CalendarRow({
-  row,
-  open,
-  onOpen,
-  onChange,
+function EmptySection({
+  section,
+  actions,
 }: {
-  readonly row: PlannerCollectionRow;
-  readonly open: boolean;
-  readonly onOpen: () => void;
-  readonly onChange: Change;
+  readonly section: CalendarSection;
+  readonly actions: SheetActions;
 }): ReactNode {
+  const row = EMPTY_ROW[section.key];
+  if (row === undefined) return null;
+  return (
+    <ListRow
+      icon="plus"
+      title={row.title}
+      onPress={() => {
+        if (row.kind === null) actions.addBirthdays();
+        else actions.add(row.kind);
+      }}
+    />
+  );
+}
+
+function SectionBlock({
+  section,
+  actions,
+}: {
+  readonly section: CalendarSection;
+  readonly actions: SheetActions;
+}): ReactNode {
+  const [opened, setOpened] = useState<string | null>(null);
+  if (section.calendars.length === 0 && EMPTY_ROW[section.key] === undefined) return null;
   return (
     <View>
-      <ListRow
-        leading={<ShownMark row={row} onChange={onChange} />}
-        title={row.name}
-        subtitle={sourceText(row)}
-        value={remindersText(row)}
-        chevron
-        expanded={open}
-        label={`${row.name}, ${sourceText(row)}, reminder ${remindersText(row)}`}
-        onPress={onOpen}
-      />
-      {open ? <CalendarDetail row={row} onChange={onChange} /> : null}
+      <SectionHead section={section} />
+      {section.calendars.length === 0 ? <EmptySection section={section} actions={actions} /> : null}
+      {section.calendars.map((calendar) => (
+        <CalendarRow
+          key={calendar.row.id}
+          calendar={calendar}
+          open={opened === calendar.row.id}
+          onOpen={() => {
+            setOpened(opened === calendar.row.id ? null : calendar.row.id);
+          }}
+          onShare={actions.share}
+          onImported={actions.imported}
+        />
+      ))}
     </View>
   );
 }
 
-function CalendarList(): ReactNode {
-  const calendars = usePlannerCollections(usePlannerFrame().person).filter(
-    (row) => row.kind === 'calendar',
+function AddMenu({
+  actions,
+  hasBirthdays,
+}: {
+  readonly actions: SheetActions;
+  readonly hasBirthdays: boolean;
+}): ReactNode {
+  const { ref, open, menu } = useAnchoredMenu(
+    [
+      {
+        label: 'New calendar',
+        icon: 'calendar',
+        onPress: (): void => {
+          actions.add('calendar');
+        },
+      },
+      {
+        label: 'Subscribe by address',
+        icon: 'globe',
+        onPress: (): void => {
+          actions.add('subscribe');
+        },
+      },
+      {
+        label: 'Public holidays',
+        icon: 'sun',
+        onPress: (): void => {
+          actions.add('holidays');
+        },
+      },
+      {
+        label: 'Birthdays',
+        icon: 'party',
+        disabled: hasBirthdays,
+        description: hasBirthdays
+          ? 'Already in your calendars'
+          : 'Everyone at home with a birth date',
+        onPress: actions.addBirthdays,
+      },
+    ],
+    'Add a calendar',
   );
-  const onChange = useCollectionEdit();
-  const [opened, setOpened] = useState<string | null>(null);
-  if (calendars.length === 0) {
-    return (
-      <EmptyState
-        icon="calendar"
-        title="No calendars yet"
-        body="Calendars from Google and the ones made here show up in this list."
-      />
-    );
-  }
-  return calendars.map((row) => (
-    <CalendarRow
-      key={row.id}
-      row={row}
-      open={opened === row.id}
-      onOpen={() => {
-        setOpened(opened === row.id ? null : row.id);
-      }}
-      onChange={onChange}
-    />
-  ));
+  return (
+    <View ref={ref} collapsable={false} className="flex-row px-4">
+      <Button label="Add calendar" icon="plus" variant="tonal" onPress={open} />
+      {menu}
+    </View>
+  );
 }
 
-const SHOW_KEYS = CALENDAR_SHOWS.map((show) => show.key);
+function useSheetActions(): {
+  readonly actions: SheetActions;
+  readonly adding: AddKind | null;
+  readonly sharing: string | null;
+  readonly report: Report | null;
+  readonly close: () => void;
+} {
+  const feeds = usePlannerFeeds(usePlannerFrame().person);
+  const [adding, setAdding] = useState<AddKind | null>(null);
+  const [sharing, setSharing] = useState<string | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
+  return {
+    actions: {
+      add: setAdding,
+      share: setSharing,
+      imported: (calendar, result): void => {
+        setReport({ calendar: calendar.row.name, result });
+      },
+      addBirthdays: (): void => {
+        feeds.add({ kind: 'birthdays' }).catch((error: unknown) => {
+          notify({ message: 'The birthdays calendar was not added', error, tone: 'critical' });
+        });
+      },
+    },
+    adding,
+    sharing,
+    report,
+    close: (): void => {
+      setAdding(null);
+      setSharing(null);
+      setReport(null);
+    },
+  };
+}
+
+function SheetBody({ prefs }: { readonly prefs: Prefs }): ReactNode {
+  const calendars = useViewerCalendars(usePlannerFrame().person);
+  const sheets = useSheetActions();
+  const sections = sectionsOf(calendars);
+  const hasBirthdays = calendars.some((calendar) => calendar.section === 'birthdays');
+  return (
+    <View className="gap-2 pb-2">
+      <AddMenu actions={sheets.actions} hasBirthdays={hasBirthdays} />
+      {sections.map((section) => (
+        <SectionBlock key={section.key} section={section} actions={sheets.actions} />
+      ))}
+      <View className="mx-4 mt-1 h-hairline bg-outline-variant" />
+      <View className="gap-2 px-4">
+        <Text variant="caption" tone="variant">
+          Show on the calendar
+        </Text>
+        <View className="flex-row flex-wrap items-center gap-1">
+          <ShowChips prefs={prefs} keys={SHOW_KEYS} />
+        </View>
+      </View>
+      <AddCalendarSheet kind={sheets.adding} onClose={sheets.close} />
+      <ShareSheet calendarId={sheets.sharing} onClose={sheets.close} />
+      <ImportReportSheet report={sheets.report} onClose={sheets.close} />
+    </View>
+  );
+}
 
 export interface CalendarsSheetProps {
   readonly open: boolean;
@@ -238,21 +231,8 @@ export interface CalendarsSheetProps {
 
 export function CalendarsSheet({ open, onClose, prefs }: CalendarsSheetProps): ReactNode {
   return (
-    <Sheet open={open} onClose={onClose} title="Calendars" detents={['fit']}>
-      {open ? (
-        <View className="gap-2 pb-2">
-          <CalendarList />
-          <View className="mx-4 h-hairline bg-outline-variant" />
-          <View className="gap-2 px-4">
-            <Text variant="caption" tone="variant">
-              Show on the calendar
-            </Text>
-            <View className="flex-row flex-wrap items-center gap-1">
-              <ShowChips prefs={prefs} keys={SHOW_KEYS} />
-            </View>
-          </View>
-        </View>
-      ) : null}
+    <Sheet open={open} onClose={onClose} title="Calendars" detents={['half', 'full']}>
+      {open ? <SheetBody prefs={prefs} /> : null}
     </Sheet>
   );
 }

@@ -58,7 +58,13 @@ export const ANDROID_APP_BUILD_REPORT = ANDROID_APP_BUILD.extend({
 
 export type AndroidAppBuildReport = z.infer<typeof ANDROID_APP_BUILD_REPORT>;
 
-export const APP_UPDATE_OUTCOMES = ['applied', 'rolled_back', 'download_failed'] as const;
+export const APP_UPDATE_OUTCOMES = [
+  'applied',
+  'rolled_back',
+  'download_failed',
+  'fell_back',
+  'kept_built_in',
+] as const;
 
 export type AppUpdateOutcomeKind = (typeof APP_UPDATE_OUTCOMES)[number];
 

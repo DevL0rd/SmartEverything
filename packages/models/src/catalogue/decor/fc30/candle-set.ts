@@ -28,7 +28,7 @@ function candle(shape: (typeof CANDLES)[number]): ModelSpecPart[] {
 export const CANDLE_SET_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.candle-set',
   title: 'Candle set',
-  footprint: { width: 0.28, depth: 0.28, height: 0.26 },
+  footprint: { width: 0.28, depth: 0.28, height: 0.266 },
   meta: {
     names: {
       display: 'Candle set',

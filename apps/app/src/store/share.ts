@@ -45,6 +45,12 @@ function shareModelAndPlannerTables(
     planner_alarms: shareTable(previous.planner_alarms, next.planner_alarms),
     planner_timers: shareTable(previous.planner_timers, next.planner_timers),
     planner_stopwatches: shareTable(previous.planner_stopwatches, next.planner_stopwatches),
+    planner_collection_shares: shareTable(
+      previous.planner_collection_shares,
+      next.planner_collection_shares,
+    ),
+    planner_guests: shareTable(previous.planner_guests, next.planner_guests),
+    planner_booking_pages: shareTable(previous.planner_booking_pages, next.planner_booking_pages),
     google_accounts: shareTable(previous.google_accounts, next.google_accounts),
   };
 }
@@ -52,12 +58,28 @@ function shareModelAndPlannerTables(
 function shareDriveTables(
   previous: Tables,
   next: Tables,
-): Pick<Tables, 'drive_roots' | 'drive_albums' | 'drive_grants' | 'drive_placements'> {
+): Pick<
+  Tables,
+  | 'drive_roots'
+  | 'drive_albums'
+  | 'drive_grants'
+  | 'drive_placements'
+  | 'drive_notifications'
+  | 'drive_access_requests'
+  | 'drive_file_requests'
+  | 'drive_transfers'
+  | 'drive_offline_items'
+> {
   return {
     drive_roots: shareTable(previous.drive_roots, next.drive_roots),
     drive_albums: shareTable(previous.drive_albums, next.drive_albums),
     drive_grants: shareTable(previous.drive_grants, next.drive_grants),
     drive_placements: shareTable(previous.drive_placements, next.drive_placements),
+    drive_notifications: shareTable(previous.drive_notifications, next.drive_notifications),
+    drive_access_requests: shareTable(previous.drive_access_requests, next.drive_access_requests),
+    drive_file_requests: shareTable(previous.drive_file_requests, next.drive_file_requests),
+    drive_transfers: shareTable(previous.drive_transfers, next.drive_transfers),
+    drive_offline_items: shareTable(previous.drive_offline_items, next.drive_offline_items),
   };
 }
 
@@ -75,7 +97,6 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     recordings: shareTable(previous.recordings, next.recordings),
     ir_remotes: shareTable(previous.ir_remotes, next.ir_remotes),
     ir_codes: shareTable(previous.ir_codes, next.ir_codes),
-    scenes: shareTable(previous.scenes, next.scenes),
     automations: shareTable(previous.automations, next.automations),
     automation_values: shareTable(previous.automation_values, next.automation_values),
     automation_runs: shareTable(previous.automation_runs, next.automation_runs),

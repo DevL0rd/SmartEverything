@@ -59,7 +59,7 @@ function planter(herb: Herb): ModelSpecPart[] {
 export const HERB_POTS_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.herb-pots',
   title: 'Herb pots',
-  footprint: { width: 0.65, depth: 0.35, height: 0.28 },
+  footprint: { width: 0.6518, depth: 0.3525, height: 0.276 },
   view: { yaw: 25, pitch: 24, fov: 28, padding: 0.08 },
   names: {
     display: 'Herb pots',

@@ -1,0 +1,6 @@
+Face test fixtures, all public domain works of the United States federal government, downloaded from Wikimedia Commons.
+
+obama1.jpg  Official_portrait_of_Barack_Obama.jpg
+obama2.jpg  President_Barack_Obama.jpg
+biden1.jpg  Joe_Biden_presidential_portrait.jpg
+pair.jpg    Barack_Obama_jokes_with_Joe_Biden_in_the_Oval_Office,_Feb._9,_2015.jpg

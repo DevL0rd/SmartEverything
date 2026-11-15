@@ -43,7 +43,7 @@ function notes(): ModelSpecPart[] {
 export const PINBOARD_MODEL: ModelSpec = officeItem({
   id: 'cat.office.pinboard',
   title: 'Pinboard',
-  footprint: { width: 1, depth: 0.08, height: 0.7 },
+  footprint: { width: 1, depth: 0.0535, height: 0.7 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     height: { param: 'height', extra: 0, resizes: true },

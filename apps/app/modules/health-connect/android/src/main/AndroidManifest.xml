@@ -61,6 +61,16 @@
       android:grantUriPermissions="true">
       <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/hub_resource_paths" />
     </provider>
+    <provider
+      android:name="expo.modules.healthconnect.drive.DriveDocumentsProvider"
+      android:authorities="${applicationId}.drive.documents"
+      android:exported="true"
+      android:grantUriPermissions="true"
+      android:permission="android.permission.MANAGE_DOCUMENTS">
+      <intent-filter>
+        <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+      </intent-filter>
+    </provider>
     <service
       android:name="androidx.work.impl.foreground.SystemForegroundService"
       android:foregroundServiceType="dataSync"
@@ -211,6 +221,18 @@
       android:name="expo.modules.healthconnect.planner.RingService"
       android:exported="false"
       android:foregroundServiceType="mediaPlayback" />
+    <service
+      android:name="expo.modules.healthconnect.planner.SleepSoundService"
+      android:exported="false"
+      android:foregroundServiceType="mediaPlayback" />
+    <receiver android:name="expo.modules.healthconnect.planner.BedtimeReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        <action android:name="android.intent.action.TIME_SET" />
+        <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+      </intent-filter>
+    </receiver>
     <receiver android:name="expo.modules.healthconnect.planner.TimeChangeReceiver" android:exported="false">
       <intent-filter>
         <action android:name="android.intent.action.TIME_SET" />

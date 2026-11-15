@@ -113,7 +113,7 @@ export const EASEL_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.easel',
   title: 'Easel',
   category: 'fitness-hobby',
-  footprint: { width: 0.7, depth: 0.9, height: 1.6947 },
+  footprint: { width: 0.7155, depth: 0.9255, height: 1.6947 },
   size: { height: { param: 'height', extra: -0.0053, resizes: true } },
   view: TALL_VIEW,
   meta: {

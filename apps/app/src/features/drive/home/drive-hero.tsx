@@ -2,10 +2,12 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveRoot } from '@smarteverything/domain';
 import { ProgressBar, SegmentBar } from '../../../components/charts';
+import { twoFrameColumnsAt } from '../../../components/page-shell/layout';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useColour } from '../../../design/colour';
-import { atLeast, useSizeClass } from '../../../design/size-class';
 import type { ColourRole } from '../../../design/tokens';
 import { bytes } from '../../../format/number';
 import { useProfiles } from '../../../store/people';
@@ -176,10 +178,14 @@ function HeroCard({
   readonly people: boolean;
   readonly known: boolean;
 }): ReactNode {
-  const wide = atLeast(useSizeClass().width, 'expanded');
+  const { width, onLayout } = useMeasuredWidth(undefined, useFrameBodyWidth());
+  const wide = twoFrameColumnsAt(width);
   const sync = useDriveSync(root.id);
   return (
-    <View className="gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-4 elevation-1">
+    <View
+      onLayout={onLayout}
+      className="gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-4 elevation-1"
+    >
       <View className={wide ? 'min-h-22 flex-row items-center gap-6' : 'gap-3'}>
         <View className={wide ? 'w-56' : ''}>
           <Heading hero={hero} people={people} />

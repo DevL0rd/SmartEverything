@@ -225,12 +225,20 @@ describe('media paths', () => {
       assistantAttachment: '/media/assistant/:attachmentId',
       talkMessage: '/media/talk/:messageId',
       computerDownload: '/media/computers/:deviceId/downloads/:ticketId',
+      computerFile: '/media/computers/:deviceId/file',
+      computerThumb: '/media/computers/:deviceId/thumb',
+      computerZipEntry: '/media/computers/:deviceId/zip/:index',
+      driveDownload: '/media/drive-downloads/:ticketId',
       machineUpdate: '/media/machine-updates/:file',
       appUpdateBlob: '/media/app-updates/:sha256',
       homeMapScan: '/media/home-maps/:mapId/scans/:hash',
+      androidApk: '/media/android-apks/:channel/:scope/:id',
       driveThumb: '/media/drive/:itemId/thumb/:size',
       driveFile: '/media/drive/:itemId/file',
+      driveZipEntry: '/media/drive/:itemId/zip/:index',
+      driveFolderIcon: '/media/drive/:itemId/icon',
       driveShare: '/s/:token',
+      driveFileRequest: '/r/:token',
     });
   });
 });

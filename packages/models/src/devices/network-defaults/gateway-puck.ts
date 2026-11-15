@@ -33,7 +33,7 @@ export const GATEWAY_PUCK_MODEL: ModelSpec = {
   title: 'Smart home gateway',
   category: 'hub',
   family: 'gateway',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: 0.0284 },
   framing: house('cap', 30, 26),
   shots: [
     shot('pairing', PAIRING, 'ring', { zoom: 1.3, yaw: 20, pitch: 30, loopS: 2, stillAt: 1 }),

@@ -30,7 +30,7 @@ export const DOME_CAMERA_MODEL: ModelSpec = {
   title: 'Indoor dome camera',
   category: 'security',
   family: 'camera',
-  footprint: { width: BASE_R * 2, depth: BASE_R * 2, height: HEIGHT },
+  footprint: { width: BASE_R * 2, depth: BASE_R * 2, height: 0.0781 },
   framing: house('head', 30, 18),
   shots: [
     shot('watch', whenAll(leaf('motion', 'eq', true)), 'head', {

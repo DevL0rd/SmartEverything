@@ -14,6 +14,20 @@ import {
 import { z } from 'zod';
 import { instantsOf } from '../../../planner/instants';
 import { operate, profileFor, type ActingContext } from './acting';
+import {
+  CALENDAR_EDIT_FIELDS,
+  bookingPageRemove,
+  bookingPageSet,
+  exportLink,
+  feedAdd,
+  feedRefresh,
+  guestsSet,
+  importIcs,
+  rsvp,
+  share,
+  unshare,
+} from './planner-edits-calendar';
+import { CLOCK_EDIT_FIELDS, bedtimeSet, sleepSound } from './planner-edits-clock';
 import { MOMENT_ARGUMENT, PERSON, WRITES } from './registry';
 import { selection, type SelectedToolDefinition, type Selection } from './selected-tool';
 
@@ -33,7 +47,9 @@ const STOPWATCH_OPERATIONS: Readonly<Record<(typeof STOPWATCH_STEPS)[number], En
 export const PLANNER_EDIT_INPUT = z.strictObject({
   action: z.enum(PLANNER_EDIT_ACTIONS).describe('What to change'),
   personId: PERSON,
-  item: PLANNER_ITEM_CREATE.optional().describe('The new task or event for action add'),
+  item: PLANNER_ITEM_CREATE.optional().describe(
+    'The new task or event for action add; a parent id makes a subtask and an assignee id assigns a task',
+  ),
   items: z
     .array(PLANNER_ITEM_CREATE)
     .min(1)
@@ -56,6 +72,40 @@ export const PLANNER_EDIT_INPUT = z.strictObject({
   timer: PLANNER_TIMER_START.optional().describe('The timer to start for action timer_start'),
   timerId: z.uuid().optional().describe('The timer to stop for action timer_stop'),
   stopwatch: z.enum(STOPWATCH_STEPS).optional().describe('What the stopwatch does'),
+  collectionId: CALENDAR_EDIT_FIELDS.collectionId
+    .optional()
+    .describe('The calendar for share, unshare, feed_refresh, import_ics and export_link'),
+  withPersonId: CALENDAR_EDIT_FIELDS.withPersonId
+    .optional()
+    .describe('The household member a calendar is shared with or unshared from'),
+  role: CALENDAR_EDIT_FIELDS.role.optional().describe('view or edit for action share'),
+  guests: CALENDAR_EDIT_FIELDS.guests
+    .optional()
+    .describe('The whole guest list of an event for action guests_set'),
+  rsvp: CALENDAR_EDIT_FIELDS.rsvp
+    .optional()
+    .describe('The answer yes, no or maybe for action rsvp'),
+  feed: CALENDAR_EDIT_FIELDS.feed
+    .optional()
+    .describe('The ics address, holidays country or birthdays calendar for action feed_add'),
+  ics: CALENDAR_EDIT_FIELDS.ics.optional().describe('The .ics file text for action import_ics'),
+  link: CALENDAR_EDIT_FIELDS.link
+    .optional()
+    .describe('publish (or reset) or stop the feed address for action export_link'),
+  page: CALENDAR_EDIT_FIELDS.page.optional().describe('The new booking page for booking_page_set'),
+  pageId: CALENDAR_EDIT_FIELDS.pageId.optional().describe('The booking page to change or remove'),
+  pageChanges: CALENDAR_EDIT_FIELDS.pageChanges
+    .optional()
+    .describe('The booking page fields to change'),
+  bedtime: CLOCK_EDIT_FIELDS.bedtime
+    .optional()
+    .describe('The whole bedtime schedule, reminder and wind-down for action bedtime_set'),
+  sleepSounds: CLOCK_EDIT_FIELDS.sleepSounds
+    .optional()
+    .describe('The sleep sound, its timer and fade for action bedtime_set'),
+  sleepSound: CLOCK_EDIT_FIELDS.sleepSound
+    .optional()
+    .describe('Start or stop the sleep sound for action sleep_sound'),
 });
 
 function occurrence(key: OccurrenceKey | undefined): { readonly occurrence_key?: unknown } {
@@ -84,6 +134,9 @@ function proposed(
     original_start: null,
     status: 'proposed',
     google: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'ai',
   });
 }
@@ -266,5 +319,17 @@ export const PLANNER_EDIT: SelectedToolDefinition = {
     timer_start: timerStart(),
     timer_stop: timerStop(),
     stopwatch: stopwatch(),
+    share: share(),
+    unshare: unshare(),
+    guests_set: guestsSet(),
+    rsvp: rsvp(),
+    feed_add: feedAdd(),
+    feed_refresh: feedRefresh(),
+    import_ics: importIcs(),
+    export_link: exportLink(),
+    booking_page_set: bookingPageSet(),
+    booking_page_remove: bookingPageRemove(),
+    bedtime_set: bedtimeSet(),
+    sleep_sound: sleepSound(),
   },
 };

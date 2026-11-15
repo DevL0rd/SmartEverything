@@ -46,6 +46,12 @@ export type AppUpdateState =
       readonly failedId: string | null;
       readonly reason: string;
       readonly retrying: boolean;
+    }
+  | {
+      readonly kind: 'fell_back';
+      readonly failedId: string | null;
+      readonly reason: string;
+      readonly deciding: boolean;
     };
 
 export interface CheckOutcome {
@@ -80,6 +86,9 @@ export type AppUpdateEvent =
       readonly sequence: number;
     }
   | { readonly type: 'rolled_back'; readonly failedId: string | null; readonly reason: string }
+  | { readonly type: 'fell_back'; readonly failedId: string | null; readonly reason: string }
+  | { readonly type: 'decision_started' }
+  | { readonly type: 'kept_built_in' }
   | { readonly type: 'retry_started' }
   | { readonly type: 'download_started'; readonly offer: AppUpdateSummary }
   | {
@@ -128,6 +137,7 @@ const HOLDING: ReadonlySet<AppUpdateState['kind']> = new Set([
   'ready',
   'waiting_for_call',
   'restarting',
+  'fell_back',
 ]);
 
 export function holdsUpdate(state: AppUpdateState): boolean {
@@ -230,8 +240,36 @@ function checkFailed(
   };
 }
 
-export function reduceAppUpdate(state: AppUpdateState, event: AppUpdateEvent): AppUpdateState {
-  if (isDownloadEvent(event)) return reduceDownload(state, event);
+type FallbackEvent = Extract<
+  AppUpdateEvent,
+  { readonly type: 'fell_back' | 'decision_started' | 'kept_built_in' }
+>;
+
+const FALLBACK_EVENTS: ReadonlySet<AppUpdateEvent['type']> = new Set([
+  'fell_back',
+  'decision_started',
+  'kept_built_in',
+]);
+
+function isFallbackEvent(event: AppUpdateEvent): event is FallbackEvent {
+  return FALLBACK_EVENTS.has(event.type);
+}
+
+function reduceFallback(state: AppUpdateState, event: FallbackEvent): AppUpdateState {
+  switch (event.type) {
+    case 'fell_back':
+      return { kind: 'fell_back', failedId: event.failedId, reason: event.reason, deciding: false };
+    case 'decision_started':
+      return state.kind === 'fell_back' ? { ...state, deciding: true } : state;
+    case 'kept_built_in':
+      return state.kind === 'fell_back' ? INITIAL_UPDATE_STATE : state;
+  }
+}
+
+function reduceCheck(
+  state: AppUpdateState,
+  event: Exclude<AppUpdateEvent, DownloadEvent | FallbackEvent>,
+): AppUpdateState {
   switch (event.type) {
     case 'unsupported':
       return { kind: 'unsupported', reason: event.reason };
@@ -261,6 +299,12 @@ export function reduceAppUpdate(state: AppUpdateState, event: AppUpdateEvent): A
     case 'retry_started':
       return isProblem(state) ? { ...state, retrying: true } : state;
   }
+}
+
+export function reduceAppUpdate(state: AppUpdateState, event: AppUpdateEvent): AppUpdateState {
+  if (isDownloadEvent(event)) return reduceDownload(state, event);
+  if (isFallbackEvent(event)) return reduceFallback(state, event);
+  return reduceCheck(state, event);
 }
 
 export interface BusyState {

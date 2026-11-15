@@ -25,7 +25,7 @@ export const Dark = (): ReactElement => (
     <LiftMenu
       label="Tile menu"
       preview={preview}
-      previewAlign="start"
+      header={null}
       quick={quick}
       entries={entries}
       onClose={() => undefined}
@@ -38,7 +38,7 @@ export const Light = (): ReactElement => (
       <LiftMenu
         label="Tile menu"
         preview={preview}
-        previewAlign="start"
+        header={null}
         quick={quick}
         entries={entries}
         onClose={() => undefined}

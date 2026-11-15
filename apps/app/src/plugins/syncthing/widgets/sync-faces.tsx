@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../components/text';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
-import { cn } from '../../../design/cn';
 import { ServiceMedallion } from '../../shared/service-medallion';
 import type { ServiceLayout } from '../../shared/service-widget-frame';
 import { devicesLineFits, fitChips, fitRows, rowCapacity } from './frame-faces';
@@ -60,7 +59,7 @@ function Tile({ status, stale }: SyncFaceProps): ReactNode {
         label={spokenStatus(status, stale)}
         offline={stale !== null}
       />
-      <View className={cn('gap-0.5', stale !== null && 'opacity-60')}>
+      <View className="gap-0.5">
         <Headline status={status} size="body-strong" />
       </View>
       {stale === null ? (
@@ -109,7 +108,7 @@ function Compact({ ready, layout, status, stale, folders }: SyncFaceProps): Reac
     devices !== status.left && devicesLineFits(layout.room, layout.idiom, stale !== null);
   return (
     <View className="gap-1.5">
-      <View className={cn('gap-1.5', stale !== null && 'opacity-60')}>
+      <View className="gap-1.5">
         <View className="flex-row items-baseline gap-2">
           <Headline status={status} size="body-strong" />
           <Text variant="footnote" tone="variant" numberOfLines={1} className="shrink">
@@ -154,12 +153,12 @@ function Rows({ ready, layout, status, stale, folders }: SyncFaceProps): ReactNo
   const capacity = rowCapacity(layout.room, reserved, sizes.touchMin);
   return (
     <View className="flex-1 gap-1">
-      <View className={cn('flex-row items-baseline gap-2', stale !== null && 'opacity-60')}>
+      <View className="flex-row items-baseline gap-2">
         <Headline status={status} size="title-3" />
         <View className="flex-1" />
         {stale === null ? <Rates status={status} ready={ready} /> : null}
       </View>
-      <View className={cn('flex-1', stale !== null && 'opacity-60')}>
+      <View className="flex-1">
         <FolderRows folders={folders} ready={ready} capacity={capacity} />
       </View>
       <View className="flex-row items-center justify-between gap-2">
@@ -176,13 +175,13 @@ function Wide({ ready, status, stale, folders }: SyncFaceProps): ReactNode {
   return (
     <View className="flex-1 flex-row items-center gap-6">
       <View className="w-2/5 gap-0.5">
-        <View className={cn('gap-0.5', stale !== null && 'opacity-60')}>
+        <View className="gap-0.5">
           <Headline status={status} size="title-3" />
           <Rates status={status} ready={ready} />
         </View>
         {stale === null ? <InviteLine ready={ready} /> : <StaleLine stale={stale} />}
       </View>
-      <View className={cn('min-w-0 flex-1', stale !== null && 'opacity-60')}>
+      <View className="min-w-0 flex-1">
         <Chips
           folders={folders}
           width={frame.width * WIDE_CHIP_SHARE - WIDE_GUTTER}
@@ -200,12 +199,12 @@ function Columns({ ready, layout, status, stale, folders }: SyncFaceProps): Reac
   const peers = fitRows(ready.snapshot.peers, capacity);
   return (
     <View className="flex-1 gap-1">
-      <View className={cn('flex-row items-baseline gap-2', stale !== null && 'opacity-60')}>
+      <View className="flex-row items-baseline gap-2">
         <Headline status={status} size="title-3" />
         <View className="flex-1" />
         {stale === null ? <Rates status={status} ready={ready} /> : null}
       </View>
-      <View className={cn('flex-1 flex-row gap-6', stale !== null && 'opacity-60')}>
+      <View className="flex-1 flex-row gap-6">
         <View className="min-w-0 flex-1">
           <Text variant="label" tone="variant">
             Folders

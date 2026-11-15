@@ -266,7 +266,7 @@ export const WALL_OVEN_MODEL: ModelSpec = {
   title: 'Wall oven',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.614, height: HEIGHT },
   framing: { tile: FRAME, card: { ...FRAME, padding: 0.1 }, hero: { ...FRAME, padding: 0.12 } },
   shots: [
     {

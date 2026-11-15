@@ -2,6 +2,8 @@ import type {
   PlannerCollectionRow,
   PlannerColourKey,
   PlannerDay,
+  PlannerGuestResponse,
+  PlannerGuestRow,
   PlannerItemRow,
   PlannerOccurrenceView,
   PlannerPreferences,
@@ -33,6 +35,8 @@ export interface RiverRow {
   readonly colour: PlannerColourKey | null;
   readonly google: boolean;
   readonly sending: boolean;
+  readonly invite: PlannerGuestResponse | null;
+  readonly guests: number;
   readonly spoken: string;
 }
 
@@ -41,6 +45,8 @@ export interface RiverInput {
   readonly collections: readonly PlannerCollectionRow[];
   readonly items: readonly PlannerItemRow[];
   readonly hidden: ReadonlySet<string>;
+  readonly guests: readonly PlannerGuestRow[];
+  readonly me: string | null;
 }
 
 function momentOf(value: string | null): number | null {
@@ -104,17 +110,43 @@ export function riverSubtitleOf(
   return parts.length === 0 ? null : parts.join(' · ');
 }
 
+const INVITE_WORDS: Readonly<Record<PlannerGuestResponse, string>> = {
+  needs_action: 'invited, not answered',
+  yes: 'you are going',
+  maybe: 'you might go',
+  no: 'you are not going',
+};
+
 function spokenOf(row: Omit<RiverRow, 'spoken'>): string {
   return [
     row.time,
     row.title,
     row.subtitle,
     row.calendar,
+    row.invite === null ? null : INVITE_WORDS[row.invite],
+    row.guests === 0 ? null : plural(row.guests, 'guest'),
     row.google ? 'from Google' : null,
     row.sending ? 'sending to Google' : null,
   ]
     .filter((part) => part !== null)
     .join(', ');
+}
+
+export interface GuestMarks {
+  readonly invite: PlannerGuestResponse | null;
+  readonly guests: number;
+}
+
+export function guestMarksOf(
+  itemId: string,
+  item: PlannerItemRow | undefined,
+  input: Pick<RiverInput, 'guests' | 'me'>,
+): GuestMarks {
+  const masterId = item?.series_id ?? itemId;
+  const rows = input.guests.filter((row) => row.item_id === masterId);
+  const mine = rows.find((row) => row.kind === 'person' && row.profile_id === input.me);
+  if (mine !== undefined) return { invite: mine.response, guests: 0 };
+  return { invite: null, guests: item?.profile_id === input.me ? rows.length : 0 };
 }
 
 function rowOf(
@@ -137,6 +169,7 @@ function rowOf(
     colour: collection?.colour ?? null,
     google: occurrence.google_state !== null,
     sending: occurrence.google_state === 'sending',
+    ...guestMarksOf(occurrence.item_id, item, input),
   };
   return { ...row, spoken: spokenOf(row) };
 }

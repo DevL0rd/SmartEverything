@@ -62,7 +62,6 @@ describe('deviceScopeOf', () => {
         { id: 'kitchen', name: 'Kitchen' },
       ],
       groups: [],
-      scenes: [],
       people: [],
       chats: [],
       channels: [],

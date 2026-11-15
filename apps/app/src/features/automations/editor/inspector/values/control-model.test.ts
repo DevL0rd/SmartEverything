@@ -25,7 +25,8 @@ import {
   type ControlSpec,
   type ControlValueSpec,
 } from './control-model';
-import { NO_PORT_SCOPE, typedControl, type PortScope } from './literal-model';
+import { typedControl, type PortScope } from './literal-model';
+import { NO_PORT_SCOPE } from './port-scope-context';
 
 function cap(
   key: DeviceCapability['key'],

@@ -8,7 +8,6 @@ const AVAILABILITY: SettingEnv['availability'] = {
   hasClimate: false,
   hasCameras: true,
   hasHealth: false,
-  hasScenes: false,
   hasEnergy: false,
   hasSecurity: false,
   hasIr: false,
@@ -41,11 +40,16 @@ describe('photos settings', () => {
     expect(new Set(ids).size).toBe(ids.length);
     const pages = PHOTOS_PAGES.map((page) => page.id);
     expect(PHOTOS_SETTINGS.every((setting) => pages.includes(setting.page))).toBe(true);
-    expect(pages).toEqual(['photos', 'photos/backup', 'photos/duplicates']);
+    expect(pages).toEqual(['photos', 'photos/backup', 'photos/smart', 'photos/duplicates']);
   });
 
   it('keep Library, Sources and Map and places on the Photos page with no Memories', () => {
-    expect(sectionsOf(onPage('photos'))).toEqual(['Library', 'Sources', 'Map and places']);
+    expect(sectionsOf(onPage('photos'))).toEqual([
+      'Library',
+      'Sources',
+      'Map and places',
+      'Sharing',
+    ]);
     expect(PHOTOS_SETTINGS.some((setting) => setting.id.includes('memories'))).toBe(false);
     expect(PHOTOS_SETTINGS.some((setting) => setting.section === 'Timeline')).toBe(false);
   });

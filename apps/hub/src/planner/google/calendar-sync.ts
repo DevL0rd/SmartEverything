@@ -1,14 +1,9 @@
+import { JSON_VALUE, type GoogleSyncTrigger, type PlannerItemRow } from '@smarteverything/domain';
 import {
-  JSON_VALUE,
-  type GoogleSyncTrigger,
-  type JsonValue,
-  type PlannerItemRow,
-} from '@smarteverything/domain';
-import {
-  EventsPageSchema,
   VENDOR_MAX_REMINDER_OVERRIDES,
   applyEventsPage,
   classifyApiFailure,
+  EventsPageSchema,
   eventsListQuery,
   mergeFields,
   valuesEqual,
@@ -23,8 +18,9 @@ import type { FetchLike } from '../../plugins/builtin/fetch-like';
 import type { PlannerItemInput } from '../../store/repositories/planner-items';
 import type { Store } from '../../store/store';
 import { CalendarMirror } from './calendar-list';
+import { jsonOr, recoverable, type Batch } from './calendar-batch';
+import { guestsOfItem, pullAttendees } from './calendar-guests';
 import {
-  MapError,
   eventFields,
   eventZone,
   itemFields,
@@ -47,28 +43,16 @@ const FIELDS = z.record(z.string(), JSON_VALUE);
 export interface CalendarSyncDeps {
   readonly store: Pick<
     Store,
-    'plannerItems' | 'plannerCollections' | 'googleAccounts' | 'googleSyncState' | 'googleSyncLog'
+    | 'plannerItems'
+    | 'plannerGuests'
+    | 'plannerCollections'
+    | 'googleAccounts'
+    | 'googleSyncState'
+    | 'googleSyncLog'
   >;
   readonly tokens: Pick<GoogleTokens, 'accessToken' | 'invalidate'>;
   readonly fetch: FetchLike;
   readonly now: () => Date;
-}
-
-interface Batch {
-  readonly upserts: GoogleEvent[];
-  readonly tombstones: EventTombstone[];
-  readonly seen: Set<string>;
-  readonly full: boolean;
-  syncToken: string | null;
-}
-
-function jsonOr(value: unknown): JsonValue {
-  const parsed = JSON_VALUE.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-function recoverable(cause: unknown): boolean {
-  return cause instanceof MapError || cause instanceof RangeError;
 }
 
 export class GoogleCalendarSync {
@@ -80,6 +64,7 @@ export class GoogleCalendarSync {
     this.mirror = new CalendarMirror({ store: deps.store, request });
     this.pusher = new CalendarPusher({
       store: deps.store,
+      now: deps.now,
       request,
       reconcile: (ctx, item, event, fields): void => {
         this.reconcile(ctx, item, event, fields);
@@ -255,7 +240,8 @@ export class GoogleCalendarSync {
       log.warn('Skipped an exception whose series is unknown', { event: event.id });
       return;
     }
-    plannerItems.insert(this.newItem(ctx, event, fields, master));
+    const created = plannerItems.insert(this.newItem(ctx, event, fields, master));
+    this.takeAttendees(created, event, fields);
     ctx.run.count('created');
   }
 
@@ -284,6 +270,10 @@ export class GoogleCalendarSync {
       completion: { kind: 'manual' },
       attachments: meetAttachments(event, []),
       google: this.link(ctx, event, fields),
+      assignee_id: null,
+      ical_uid: event.iCalUID ?? null,
+      ical_sequence: event.sequence ?? 0,
+      booking_page_id: null,
       created_by: 'google',
     };
   }
@@ -305,7 +295,7 @@ export class GoogleCalendarSync {
   private reconcile(ctx: Ctx, item: PlannerItemRow, event: GoogleEvent, fields: Fields): void {
     const google = item.google;
     if (item.deleted_at !== null || google === null || google.etag === event.etag) return;
-    const mine = patchable(itemFields(item));
+    const mine = this.mineOf(item);
     const base = patchable(google.base);
     const theirs = patchable(fields);
     let target: Fields = theirs;
@@ -327,11 +317,12 @@ export class GoogleCalendarSync {
         });
       }
     }
-    this.deps.store.plannerItems.update(item.id, ctx.run.profileId, {
+    const updated = this.deps.store.plannerItems.update(item.id, ctx.run.profileId, {
       ...mappedItem(target, item.reminders.slice(VENDOR_MAX_REMINDER_OVERRIDES)),
       attachments: meetAttachments(event, item.attachments),
       google: this.link(ctx, event, fields),
     });
+    this.takeAttendees(updated, event, target);
     ctx.run.count('updated');
   }
 
@@ -354,10 +345,17 @@ export class GoogleCalendarSync {
     if (master !== undefined) this.exclude(ctx, master, entry.originalStartTime);
   }
 
+  private takeAttendees(item: PlannerItemRow, event: GoogleEvent, merged: Fields): void {
+    const at = this.deps.now().toISOString();
+    pullAttendees(this.deps.store, { item, event, merged, at });
+  }
+
+  private mineOf(item: PlannerItemRow): Fields {
+    return patchable(itemFields(item, guestsOfItem(this.deps.store, item)));
+  }
+
   private edited(item: PlannerItemRow): boolean {
-    return (
-      item.google !== null && !valuesEqual(patchable(itemFields(item)), patchable(item.google.base))
-    );
+    return item.google !== null && !valuesEqual(this.mineOf(item), patchable(item.google.base));
   }
 
   private exclude(

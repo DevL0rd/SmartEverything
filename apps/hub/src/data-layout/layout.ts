@@ -20,7 +20,7 @@ export interface LayoutNames {
   readonly lock: string;
   readonly tmp: string;
   readonly database: Paths<'file' | 'wal' | 'shm'>;
-  readonly keys: Paths<'ownerToken' | 'secretKey' | 'secrets' | 'tlsIdentity'>;
+  readonly keys: Paths<'ownerToken' | 'secretKey' | 'secrets' | 'tlsIdentity' | 'releaseKeys'>;
   readonly config: Paths<'service'>;
   readonly run: Paths<
     | 'pid'
@@ -50,11 +50,12 @@ export interface LayoutNames {
     | 'machineUpdatesPrevious'
     | 'selfUpdate'
     | 'appUpdatesLock'
+    | 'releaseStaging'
   >;
   readonly migration: Paths<'journal' | 'orphans' | 'staging'>;
   readonly home: Paths<'drive' | 'talk' | 'homeMapScans'>;
   readonly cache: Paths<
-    'harness' | 'voiceSamples' | 'smartthingsCapabilities' | 'codexInputs' | 'buildHost'
+    'harness' | 'voiceSamples' | 'smartthingsCapabilities' | 'codexInputs' | 'buildHost' | 'ocr'
   >;
   readonly backups: Paths<'releases' | 'manual' | 'legacyDatabase'>;
   readonly provider: (id: string) => string;
@@ -90,6 +91,7 @@ export const V1_NAMES: LayoutNames = {
     secretKey: 'system/keys/secret.key',
     secrets: 'system/keys/secrets.json.enc',
     tlsIdentity: 'system/keys/hub-tls-identity.json',
+    releaseKeys: 'system/keys/release-keys.json',
   },
   config: { service: 'system/config/service.json' },
   run: {
@@ -127,6 +129,7 @@ export const V1_NAMES: LayoutNames = {
     machineUpdatesPrevious: 'system/updates/machine-updates.previous',
     selfUpdate: 'system/updates/self-update',
     appUpdatesLock: 'system/updates/app-updates.write.lock',
+    releaseStaging: 'system/updates/staged',
   },
   migration: {
     journal: 'system/migration/journal',
@@ -140,6 +143,7 @@ export const V1_NAMES: LayoutNames = {
     smartthingsCapabilities: 'cache/smartthings-capabilities',
     codexInputs: 'cache/codex-inputs',
     buildHost: 'cache/build-host',
+    ocr: 'cache/ocr',
   },
   backups: {
     releases: 'backups/releases',
@@ -195,7 +199,7 @@ export interface HubLayout {
   readonly tmp: string;
   readonly system: {
     readonly database: Paths<'file' | 'wal' | 'shm'>;
-    readonly keys: Paths<'ownerToken' | 'secretKey' | 'secrets' | 'tlsIdentity'>;
+    readonly keys: Paths<'ownerToken' | 'secretKey' | 'secrets' | 'tlsIdentity' | 'releaseKeys'>;
     readonly config: Paths<'service'>;
     readonly run: LayoutNames['run'];
     readonly logs: LayoutNames['logs'];
@@ -223,6 +227,7 @@ export interface HubLayout {
     readonly smartthingsCapabilities: string;
     readonly codexInputs: string;
     readonly buildHost: string;
+    readonly ocr: string;
   };
   readonly backups: LayoutNames['backups'];
 }
@@ -288,6 +293,7 @@ function updatesOf(names: LayoutNames, at: At): LayoutNames['updates'] {
     machineUpdatesPrevious: at(updates.machineUpdatesPrevious),
     selfUpdate: at(updates.selfUpdate),
     appUpdatesLock: at(updates.appUpdatesLock),
+    releaseStaging: at(updates.releaseStaging),
   };
 }
 
@@ -303,6 +309,7 @@ function storageOf(
       secretKey: at(keys.secretKey),
       secrets: at(keys.secrets),
       tlsIdentity: at(keys.tlsIdentity),
+      releaseKeys: at(keys.releaseKeys),
     },
     config: { service: at(config.service) },
   };
@@ -381,6 +388,7 @@ export function layoutFromNames(
       smartthingsCapabilities: at(cache.smartthingsCapabilities),
       codexInputs: at(cache.codexInputs),
       buildHost: at(cache.buildHost),
+      ocr: at(cache.ocr),
     },
     backups: {
       releases: at(backups.releases),

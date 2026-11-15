@@ -155,5 +155,6 @@ export const HOT_TUB_MODEL: ModelSpec = catalogueModel({
       stillAt: 1,
     }),
   ],
+  heroFocus: 'cabinet',
   states: { off: { power: false }, on: { power: true } },
 });

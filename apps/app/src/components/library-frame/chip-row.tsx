@@ -10,8 +10,10 @@ export function ChipRow({
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <HScroller label={label} fade fadeSurface="bg">
-      <View className="flex-row items-center gap-2">{children}</View>
-    </HScroller>
+    <View className="-mx-gutter">
+      <HScroller label={label} fade fadeSurface="bg">
+        <View className="flex-row items-center gap-2 px-gutter">{children}</View>
+      </HScroller>
+    </View>
   );
 }

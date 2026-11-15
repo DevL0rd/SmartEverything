@@ -24,8 +24,8 @@ vi.mock('../../../components/skeleton', () => ({
   Skeleton: (props: { readonly shape: string; readonly className?: string }): ReactNode =>
     createElement('i', { 'data-skeleton': props.shape, className: props.className }),
 }));
-vi.mock('../components/fitness-frame', () => ({
-  FitnessFrame: ({
+vi.mock('../components/fitness-shell', () => ({
+  FitnessShell: ({
     children,
     width,
   }: {

@@ -58,7 +58,7 @@ function pillow(shape: Pillow, index: number): ModelSpecPart[] {
 export const THROW_PILLOWS_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.throw-pillows',
   title: 'Throw pillows',
-  footprint: { width: 0.95, depth: 0.3, height: 0.47 },
+  footprint: { width: 0.9765, depth: 0.3873, height: 0.5497 },
   meta: {
     names: {
       display: 'Throw pillows',

@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import { Logger } from '@smarteverything/logging';
 import {
   builtServiceProblems,
-  checkMigrations,
+  serviceMigrationCheck,
   freeSpaceProblem,
   pruneBackups,
   pruneReleaseLeftovers,
@@ -49,13 +49,18 @@ export function finishRelease(target: ReleaseTarget, name: string): void {
   log.info('release.backups_pruned', { removed: removed.length });
 }
 
-export function migrationStep(target: ReleaseTarget, record: (moved: boolean) => void): Plan {
+export function migrationStep(
+  target: ReleaseTarget,
+  built: string,
+  record: (moved: boolean) => void,
+): Plan {
   return {
-    title: 'run the migrations twice on a copy of the live database',
-    run: async (): Promise<void> => {
-      const { from, to } = await checkMigrations(target.data);
+    title: 'run the built service migrations twice on a copy of the live database',
+    run: (): Promise<void> => {
+      const { from, to } = serviceMigrationCheck(process.execPath, built, target.data);
       record(from !== to);
       log.info('release.migrations_checked', { from, to });
+      return Promise.resolve();
     },
   };
 }

@@ -16,7 +16,7 @@ import {
   type LocalBlocks,
   type TransferProgress,
 } from '../../src/drive-sync/transfer.js';
-import { BLOCK, FakeHubFiles, blockHashes, bytesOf, remoteOf } from './pull-support.js';
+import { BLOCK, blockHashes, bytesOf, FakeHubFiles, NO_META, remoteOf } from './pull-support.js';
 
 const log = new Logger('desktop.drive-sync');
 const ROOT = randomUUID();
@@ -85,6 +85,7 @@ describe('downloading a file into a temp file', () => {
     const index = new LocalBlockIndex({
       records: [
         {
+          ...NO_META,
           placementId: ROOT,
           relPath: 'held.bin',
           kind: 'file',
@@ -114,6 +115,7 @@ describe('downloading a file into a temp file', () => {
     const index = new LocalBlockIndex({
       records: [
         {
+          ...NO_META,
           placementId: ROOT,
           relPath: 'held.bin',
           kind: 'file',

@@ -8,11 +8,14 @@ import {
   FILE_PLACES,
   FILE_PROPERTIES,
   FILE_SEARCH_RESULT,
+  FILE_TRASH_LIST,
   FILE_UPLOAD_CHUNK,
   FILE_UPLOAD_RESULT,
+  LIST_CURSOR,
   FILE_WRITE_CHANGE,
   FILE_WRITE_RESULT,
 } from '../node/computer-files';
+import { DRIVE_ZIP_PAGE } from '../drive/zip';
 import { PROCESS_DETAIL } from '../node/computer-processes';
 import {
   SERVICE_REQUEST,
@@ -26,9 +29,26 @@ import { TILING_CHANGE, TILING_STATE } from '../node/computer-tiling';
 import { WINDOW_CHANGE, WINDOWS_STATE } from '../node/computer-windows';
 import { HISTORY_BACKFILL_REQUEST, HISTORY_BACKFILL_RESPONSE } from '../history-backfill';
 import { NO_BODY, endpoint } from './endpoint';
-import { DONE, ID, NOTHING } from './primitives';
+import { MEDIA_LINK } from './endpoints-media';
+import { DONE, ID, NOTHING, QUERY_FLAG } from './primitives';
 
 const COMPUTER_PARAMS = z.strictObject({ deviceId: ID });
+
+export const COMPUTER_FILE_LINKS = z.strictObject({
+  path: FILE_PATH,
+  file: MEDIA_LINK,
+  thumb: MEDIA_LINK.nullable().describe('Null when the file has no picture to shrink'),
+});
+
+export type ComputerFileLinks = z.infer<typeof COMPUTER_FILE_LINKS>;
+
+export const COMPUTER_ZIP_ENTRY_LINK = z.strictObject({
+  index: z.int().nonnegative(),
+  file: MEDIA_LINK,
+  download: MEDIA_LINK,
+});
+
+export type ComputerZipEntryLink = z.infer<typeof COMPUTER_ZIP_ENTRY_LINK>;
 
 const PROCESS_PARAMS = z.strictObject({ deviceId: ID, pid: z.string().regex(/^[1-9][0-9]*$/) });
 
@@ -221,11 +241,14 @@ export const COMPUTER_SYSTEM_ENDPOINTS = {
     path: '/api/computers/:deviceId/files/search',
     access: 'member',
     summary:
-      'Search a folder and everything below it for file and folder names containing some text; pass next from the answer as cursor to continue the search',
+      'Search a folder and everything below it for file and folder names containing some text, or with contents set also for the text inside text files, each match with where it hit and a snippet; pass next from the answer as cursor to continue the search',
     params: COMPUTER_PARAMS,
     query: z.strictObject({
       path: FILE_PATH,
       text: z.string().trim().min(1).max(200),
+      contents: QUERY_FLAG.describe(
+        'true to also search the text inside text files, not only names',
+      ).default(false),
       cursor: z.string().min(1).optional(),
     }),
     body: NO_BODY,
@@ -246,7 +269,7 @@ export const COMPUTER_SYSTEM_ENDPOINTS = {
     path: '/api/computers/:deviceId/files/write',
     access: 'member',
     summary:
-      'Make a folder, rename, move, copy, move to Trash or restore from Trash on a computer; nothing is deleted for good and nothing is overwritten unless replace is set',
+      'Make a folder, rename, move, copy, move to Trash, restore from Trash or delete from Trash for good on a computer; only delete_now removes anything for good and nothing is overwritten unless replace is set',
     params: COMPUTER_PARAMS,
     query: NOTHING,
     body: FILE_WRITE_CHANGE,
@@ -263,12 +286,55 @@ export const COMPUTER_SYSTEM_ENDPOINTS = {
     body: FILE_UPLOAD_CHUNK,
     response: FILE_UPLOAD_RESULT,
   }),
+  computerFileLinks: endpoint({
+    method: 'GET',
+    path: '/api/computers/:deviceId/files/links',
+    access: 'member',
+    summary:
+      'Short-lived signed links for one file on a computer: the file itself to show inline (Range supported) and a small picture of it when it is an image',
+    params: COMPUTER_PARAMS,
+    query: z.strictObject({ path: FILE_PATH }),
+    body: NO_BODY,
+    response: COMPUTER_FILE_LINKS,
+  }),
+  listComputerTrash: endpoint({
+    method: 'GET',
+    path: '/api/computers/:deviceId/files/trash',
+    access: 'member',
+    summary:
+      'What is in the Trash of a computer’s user: each with its trash id, name, where it was, when it was deleted and its size, 500 at a time; pass next as cursor for the following page',
+    params: COMPUTER_PARAMS,
+    query: z.strictObject({ cursor: LIST_CURSOR }),
+    body: NO_BODY,
+    response: FILE_TRASH_LIST,
+  }),
+  listComputerZipEntries: endpoint({
+    method: 'GET',
+    path: '/api/computers/:deviceId/files/zip',
+    access: 'member',
+    summary:
+      'The files and folders inside a zip archive on a computer in its own order, one page at a time',
+    params: COMPUTER_PARAMS,
+    query: z.strictObject({ path: FILE_PATH, cursor: z.string().min(1).optional() }),
+    body: NO_BODY,
+    response: DRIVE_ZIP_PAGE,
+  }),
+  computerZipEntryLink: endpoint({
+    method: 'GET',
+    path: '/api/computers/:deviceId/files/zip/link',
+    access: 'member',
+    summary: 'Short-lived signed links that stream one file out of a zip archive on a computer',
+    params: COMPUTER_PARAMS,
+    query: z.strictObject({ path: FILE_PATH, index: z.coerce.number().int().nonnegative() }),
+    body: NO_BODY,
+    response: COMPUTER_ZIP_ENTRY_LINK,
+  }),
   readComputerPlaces: endpoint({
     method: 'GET',
     path: '/api/computers/:deviceId/files/places',
     access: 'member',
     summary:
-      'Where to start browsing a computer: its home folder, the top of the drive, the usual folders (Downloads, Desktop, Documents) and its mounted drives',
+      'Where to start browsing a computer: its home folder, the top of the drive, the usual folders (Downloads, Desktop, Documents), its mounted drives and its Trash, and what its system can do with files (write, upload, search, contents, properties, download, zip, trash, watch)',
     params: COMPUTER_PARAMS,
     query: NOTHING,
     body: NO_BODY,

@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import Animated, {
+  cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 import { cn } from '../design/cn';
-import { useAnimationGate } from '../design/animation-gate';
 import { isNative } from '../design/platform';
+import { useOnScreenGate } from '../design/visibility';
 
 type SkeletonShape = 'text' | 'line' | 'block' | 'circle' | 'tile';
 
@@ -36,18 +37,31 @@ function StillSkeleton(props: SkeletonProps): ReactNode {
   return <View aria-hidden className={skeletonClass(props)} />;
 }
 
-function ShimmerSkeleton(props: SkeletonProps): ReactNode {
+function WebSkeleton(props: SkeletonProps): ReactNode {
+  const ref = useRef<View>(null);
+  const { moving, onLayout } = useOnScreenGate(ref, true);
   const opacity = useSharedValue(1);
   useEffect(() => {
+    if (!moving) {
+      cancelAnimation(opacity);
+      opacity.set(1);
+      return undefined;
+    }
     opacity.set(withRepeat(withTiming(0.5, { duration: SHIMMER_MS / 2 }), -1, true));
-  }, [opacity]);
+    return (): void => {
+      cancelAnimation(opacity);
+    };
+  }, [moving, opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
-  return <Animated.View aria-hidden style={style} className={skeletonClass(props)} />;
-}
-
-function WebSkeleton(props: SkeletonProps): ReactNode {
-  const { moving } = useAnimationGate(true, true);
-  return moving ? <ShimmerSkeleton {...props} /> : <StillSkeleton {...props} />;
+  return (
+    <Animated.View
+      ref={ref}
+      onLayout={onLayout}
+      aria-hidden
+      style={style}
+      className={skeletonClass(props)}
+    />
+  );
 }
 
 export function Skeleton(props: SkeletonProps): ReactNode {

@@ -19,14 +19,19 @@ interface Hold {
   readonly deviceId: string;
   readonly topics: readonly WatchTopic[];
   readonly processes: ProcessWindow | undefined;
+  readonly files: string | undefined;
 }
 
 function demandsOf(holds: ReadonlySet<Hold>): WatchDemand[] {
-  const byDevice = new Map<string, { topics: Set<WatchTopic>; processes?: ProcessWindow }>();
+  const byDevice = new Map<
+    string,
+    { topics: Set<WatchTopic>; processes?: ProcessWindow; files?: string }
+  >();
   for (const hold of holds) {
     const known = byDevice.get(hold.deviceId) ?? { topics: new Set<WatchTopic>() };
     hold.topics.forEach((topic) => known.topics.add(topic));
     if (hold.processes !== undefined) known.processes = hold.processes;
+    if (hold.files !== undefined) known.files = hold.files;
     byDevice.set(hold.deviceId, known);
   }
   return [...byDevice]
@@ -35,6 +40,7 @@ function demandsOf(holds: ReadonlySet<Hold>): WatchDemand[] {
       deviceId,
       topics: [...known.topics].sort(),
       ...(known.processes === undefined ? {} : { processes: known.processes }),
+      ...(known.files === undefined ? {} : { files: known.files }),
     }));
 }
 
@@ -45,9 +51,14 @@ export class LiveWatchRegistry {
   private sent = NOTHING;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  hold(deviceId: string, topics: readonly WatchTopic[], processes?: ProcessWindow): () => void {
+  hold(
+    deviceId: string,
+    topics: readonly WatchTopic[],
+    processes?: ProcessWindow,
+    files?: string,
+  ): () => void {
     if (topics.length === 0) return (): void => undefined;
-    const hold: Hold = { deviceId, topics, processes };
+    const hold: Hold = { deviceId, topics, processes, files };
     const wasDemanded = this.demanded(deviceId);
     this.holds.add(hold);
     if (!wasDemanded) this.tell(deviceId, true);

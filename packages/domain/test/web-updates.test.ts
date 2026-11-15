@@ -31,6 +31,7 @@ const STATUSES: readonly WebUpdateStatus[] = [
   },
   { state: 'failed', reason: 'hash mismatch', offer: null },
   { state: 'failed', reason: 'offline', offer: OFFER },
+  { state: 'boot_failed', failedId: ID, reason: 'window crashed' },
   { state: 'rolled_back', failedId: ID, reason: 'window crashed' },
 ];
 

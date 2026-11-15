@@ -8,7 +8,7 @@ import {
 import type { z } from 'zod';
 import { twoDigits } from '../../../format/number';
 import { hourOf, localDayKey, shiftDay, zonedInstant } from '../../../format/time';
-import type { AlarmChange } from '../../planner/data/writes';
+import type { AlarmChange } from '../../planner';
 
 export type AlarmDraft = Pick<
   PlannerAlarmRow,
@@ -21,8 +21,11 @@ export type AlarmDraft = Pick<
   | 'ramp_seconds'
   | 'vibrate'
   | 'snooze_minutes'
+  | 'snooze_limit'
+  | 'challenge'
+  | 'sunrise'
   | 'smart_minutes'
-  | 'wake_scene_id'
+  | 'wake_automation_id'
   | 'wake_lead_minutes'
   | 'targets'
 >;
@@ -47,8 +50,11 @@ const DRAFT_KEYS = [
   'ramp_seconds',
   'vibrate',
   'snooze_minutes',
+  'snooze_limit',
+  'challenge',
+  'sunrise',
   'smart_minutes',
-  'wake_scene_id',
+  'wake_automation_id',
   'wake_lead_minutes',
   'targets',
 ] as const satisfies readonly (keyof AlarmDraft)[];
@@ -77,15 +83,18 @@ export function draftOf(alarm: PlannerAlarmRow): AlarmDraft {
     ramp_seconds: alarm.ramp_seconds,
     vibrate: alarm.vibrate,
     snooze_minutes: alarm.snooze_minutes,
+    snooze_limit: alarm.snooze_limit,
+    challenge: alarm.challenge,
+    sunrise: alarm.sunrise,
     smart_minutes: alarm.smart_minutes,
-    wake_scene_id: alarm.wake_scene_id,
+    wake_automation_id: alarm.wake_automation_id,
     wake_lead_minutes: alarm.wake_lead_minutes,
     targets: alarm.targets,
   };
 }
 
 export function newDraftOf(defaults: ClockDefaults, time: string): AlarmDraft {
-  const scene = defaults.wake_scene_id;
+  const automation = defaults.wake_automation_id;
   return {
     label: null,
     time,
@@ -96,9 +105,12 @@ export function newDraftOf(defaults: ClockDefaults, time: string): AlarmDraft {
     ramp_seconds: defaults.ramp_seconds,
     vibrate: true,
     snooze_minutes: defaults.snooze_minutes,
+    snooze_limit: defaults.snooze_limit,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: scene,
-    wake_lead_minutes: scene === null ? null : DEFAULT_WAKE_LEAD_MINUTES,
+    wake_automation_id: automation,
+    wake_lead_minutes: automation === null ? null : DEFAULT_WAKE_LEAD_MINUTES,
     targets: defaults.targets,
   };
 }
@@ -108,7 +120,17 @@ export function appliedEdit(draft: AlarmDraft, edit: AlarmEdit): AlarmDraft {
 }
 
 export function createBodyOf(draft: AlarmDraft): AlarmCreate {
-  return { ...draft, days: [...draft.days], targets: [...draft.targets] };
+  return {
+    ...draft,
+    days: [...draft.days],
+    targets: [...draft.targets],
+    sunrise:
+      draft.sunrise === null ? null : { ...draft.sunrise, lights: [...draft.sunrise.lights] },
+  };
+}
+
+export function snoozeLimitEdit(limit: number): AlarmEdit {
+  return { snooze_limit: limit === 0 ? null : limit };
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -159,10 +181,10 @@ export function firstOnceDateOf(time: string, now: number, timeZone: string): st
   return ringsToday ? today : shiftDay(today, 1);
 }
 
-export function wakeEdit(sceneId: string | null, leadMinutes: number): AlarmEdit {
-  return sceneId === null
-    ? { wake_scene_id: null, wake_lead_minutes: null }
-    : { wake_scene_id: sceneId, wake_lead_minutes: leadMinutes };
+export function wakeEdit(automationId: string | null, leadMinutes: number): AlarmEdit {
+  return automationId === null
+    ? { wake_automation_id: null, wake_lead_minutes: null }
+    : { wake_automation_id: automationId, wake_lead_minutes: leadMinutes };
 }
 
 export function targetKeyOf(target: PlannerRingTarget): string {

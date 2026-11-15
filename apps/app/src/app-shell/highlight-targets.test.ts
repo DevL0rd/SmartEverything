@@ -43,13 +43,12 @@ describe('the elements a target can point at', () => {
     expect(anchorKeysOf(automation, 'step-1')).toEqual(['step:step-1']);
   });
 
-  it('has nothing to point at on pages, rooms, cameras, groups, scenes and chats', () => {
+  it('has nothing to point at on pages, rooms, cameras, groups and chats', () => {
     const targets = [
       { kind: 'page', path: 'fitness/sleep' },
       { kind: 'room', roomId: ID },
       { kind: 'camera', deviceId: ID },
       { kind: 'group', groupId: ID },
-      { kind: 'scene', sceneId: ID },
       { kind: 'chat', chatId: ID },
     ] as const;
     for (const target of targets) {

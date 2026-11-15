@@ -11,7 +11,7 @@ import type { VolumeSpace } from '../../../apps/hub/src/drive/volumes';
 import type { TusCaller } from '../../../apps/hub/src/drive/uploads-tus-wire';
 import { BackupService } from '../../../apps/hub/src/photos/backup';
 import { DriveBackupRepository } from '../../../apps/hub/src/store/repositories/drive-backup';
-import { UNSYNCED } from '../../../apps/hub/src/store/repositories/drive-roots';
+import { personalDriveRoot } from '../../../apps/hub/test/store/drive-roots-fixture';
 import { captureLogs, testLogger } from '../../../apps/hub/test/support/logs';
 import { testStore, type TestStore } from '../../../apps/hub/test/support/store';
 import { PersistedUrlStorage } from '../../../apps/app/src/features/drive/upload/transport/resume-store';
@@ -26,6 +26,7 @@ const NOW = new Date('2026-11-07T00:00:00.000Z');
 export interface ProtocolFixture {
   readonly opened: TestStore;
   readonly root: DriveRoot;
+  readonly drivePath: string;
   readonly folderId: string;
   readonly profileId: string;
   readonly phoneId: string;
@@ -36,34 +37,6 @@ export interface ProtocolFixture {
 
 export function hash(text: string): string {
   return createHash('sha256').update(text).digest('hex');
-}
-
-function rootRow(path: string, profileId: string): DriveRoot {
-  const id = randomUUID();
-  return {
-    id,
-    kind: 'managed',
-    label: 'Isolated backup root',
-    scope: 'person',
-    ownerProfileId: profileId,
-    path,
-    readOnly: false,
-    versions: true,
-    volume: null,
-    indexId: `index-${id}`,
-    state: 'ready',
-    stateReason: null,
-    items: 0,
-    folders: 0,
-    bytes: 0,
-    scannedAt: null,
-    health: { hashedShare: 0, verifiedShare: 0, corrupt: 0, lastScrubAt: null, lastBackupAt: null },
-    inPhotos: true,
-    skipPatterns: [],
-    includeHidden: false,
-    synced: false,
-    sync: UNSYNCED,
-  };
 }
 
 function backupPhone(opened: TestStore, service: BackupService, profileId: string): string {
@@ -141,8 +114,9 @@ async function storageFixture(): Promise<StorageFixture> {
   captureLogs();
   const opened = await testStore(() => NOW);
   const profileId = opened.store.profiles.create({ name: 'Isolated person' }).id;
-  const root = rootRow(join(opened.directory, 'library'), profileId);
-  await mkdir(join(opened.directory, 'library', 'Uploads'), { recursive: true });
+  const drivePath = opened.layout.person(profileId).drive;
+  const root = personalDriveRoot(randomUUID(), profileId);
+  await mkdir(join(drivePath, 'Uploads'), { recursive: true });
   opened.store.driveRoots.insert(root);
   const env: ChangeEnv = {
     files: nodeFiles,
@@ -164,7 +138,17 @@ async function storageFixture(): Promise<StorageFixture> {
     role: 'member',
     tokenHash: 'a'.repeat(64),
   });
-  return { opened, root, profileId, folderId, service, phoneId, clientId: client.id, env };
+  return {
+    opened,
+    root,
+    drivePath,
+    profileId,
+    folderId,
+    service,
+    phoneId,
+    clientId: client.id,
+    env,
+  };
 }
 
 async function closeServer(server: http.Server, opened: TestStore): Promise<void> {

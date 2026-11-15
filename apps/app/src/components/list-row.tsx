@@ -134,14 +134,15 @@ function BodySubtitle({ subtitle, subtitleTone, compact, wrapSubtitle }: BodyPro
   );
 }
 
+function bodyClassOf(shrinks: boolean): string {
+  return shrinks ? 'min-w-0 flex-1 gap-0.5' : 'min-w-0 shrink grow basis-auto gap-0.5';
+}
+
 function Body(props: BodyProps): ReactNode {
   const { title, overline, titleHighlight, caption, destructive, passive, compact } = props;
   const wrapTitle = compact === true || props.wrapTitle === true;
   return (
-    <View
-      className={cn('flex-1 gap-0.5', wrapTitle || props.canShrink ? 'min-w-0' : 'min-w-40')}
-      {...(passive ? PASSIVE : {})}
-    >
+    <View className={bodyClassOf(wrapTitle || props.canShrink)} {...(passive ? PASSIVE : {})}>
       {overline === undefined ? null : (
         <Text variant="caption" tone="variant">
           {overline}
@@ -288,7 +289,7 @@ export function ListRow({ pressRef, ...props }: ListRowProps): ReactNode {
   const { onPress, href, disabled = false, contextMenu } = props;
   if (onPress === undefined && href === undefined && contextMenu === undefined) {
     return (
-      <View className={cn(frameOf(props), disabled && 'opacity-40')}>
+      <View aria-disabled={disabled} className={cn(frameOf(props), disabled && 'opacity-40')}>
         <RowLead row={props} passive={false} />
         <RowTrailing row={props} passive={false} />
       </View>

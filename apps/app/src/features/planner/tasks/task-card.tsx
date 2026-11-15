@@ -56,13 +56,15 @@ export function TaskCheck({
       checked={entry.done}
       label={`Done: ${entry.item.title}`}
       disabled={onDone === null}
-      hitSlop={8}
       onPress={() => {
         selectionTick();
         onDone?.();
       }}
-      className={cn('size-7 items-center justify-center rounded-sm', entry.done && 'opacity-100')}
-      layerClassName="rounded-sm"
+      className={cn(
+        '-m-2 size-11 items-center justify-center rounded-md',
+        entry.done && 'opacity-100',
+      )}
+      layerClassName="rounded-md"
       focusInset
     >
       <View

@@ -3,8 +3,7 @@ import { useContext } from 'react';
 import { View } from 'react-native';
 import type { AutomationValueContent, AutomationValueRow } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Select } from '../../../components/select';
 import { useReloadSaved } from '../shared/editor-navigation';
 import { LibraryReturnContext } from './library-return';
@@ -69,26 +68,22 @@ export function ValueEditor({ row, initialKind, lockKind }: ValueEditorProps): R
     );
   return (
     <EditorFocusProvider>
-      <Screen
-        maxWidth="reading"
-        header={
-          <PageHeader
-            title={editor.row === null ? 'New value' : editor.row.content.name}
-            overflow={
-              editor.row === null
-                ? []
-                : [
-                    { label: 'Reload saved', icon: 'refresh', onPress: reload },
-                    { icon: 'trash', label: 'Delete', destructive: true, onPress: editor.remove },
-                  ]
-            }
-          />
+      <PageShell
+        width="reading"
+        title={editor.row === null ? 'New value' : editor.row.content.name}
+        overflow={
+          editor.row === null
+            ? []
+            : [
+                { label: 'Reload saved', icon: 'refresh', onPress: reload },
+                { icon: 'trash', label: 'Delete', destructive: true, onPress: editor.remove },
+              ]
         }
         footer={<Button label="Save" loading={editor.busy} onPress={editor.save} />}
       >
         <ValueForm editor={editor} lockKind={lockKind === true} />
         <ValueFocus editor={editor} />
-      </Screen>
+      </PageShell>
     </EditorFocusProvider>
   );
 }

@@ -292,6 +292,10 @@ export class BakeChannel {
     for (const entry of this.pending.values()) this.send(entry);
   }
 
+  detach(): void {
+    this.connected = false;
+  }
+
   lost(): void {
     this.connected = false;
     for (const id of [...this.sent]) {

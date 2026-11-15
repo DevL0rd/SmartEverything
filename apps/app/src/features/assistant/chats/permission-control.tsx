@@ -23,7 +23,7 @@ import {
 } from '../access/harness-access';
 import { harnessModel } from '../access/harness-model';
 import { useChatHarness, useHarnessCatalogue } from '../data/harness';
-import { useRouteInfo } from '../data/route-info';
+import { useEngineRouteInfo } from '../data/route-info';
 import { useOwnDeviceSelection } from '../data/own-device-selection';
 import { harnessHostName, harnessHostReason } from '../model/harness-context';
 import { isComputerEngine } from '../provider/computer-engine';
@@ -34,7 +34,7 @@ import { useEngineAccessory } from './engine-accessories';
 const HUB = 'server';
 
 function usePresets(engine: Engine): AiPermissionPresets | null {
-  return useRouteInfo(engine).data?.permission_presets ?? null;
+  return useEngineRouteInfo(engine).data?.permission_presets ?? null;
 }
 
 export function PermissionControl({
@@ -176,6 +176,21 @@ function DraftAccess({
   );
 }
 
+function sessionTarget(
+  session: AiHarnessSession | undefined,
+  engine: DshEngine,
+): {
+  readonly target: DshEngine['execution_target'];
+  readonly change: NonNullable<AiHarnessSession['permission_change']> | null;
+  readonly current: DshEngine['permission'];
+} {
+  return {
+    target: session?.target ?? engine.execution_target,
+    change: session?.permission_change ?? null,
+    current: session?.permission ?? engine.permission,
+  };
+}
+
 function SessionAccess({
   chat,
   engine,
@@ -185,8 +200,8 @@ function SessionAccess({
 }): ReactNode {
   const query = useChatHarness(chat.id, true);
   const session = query.data;
-  const target = session?.target ?? engine.execution_target;
-  const control = useSessionPermission(chat.id, target, session?.permission_change ?? null);
+  const { target, change, current } = sessionTarget(session, engine);
+  const control = useSessionPermission(chat.id, target, change);
   const catalogue = useHarnessCatalogue();
   const owner = useIsOwner();
   const presets = usePresets(engine);
@@ -199,7 +214,7 @@ function SessionAccess({
         host: name,
         presets,
         permissions: control.policies,
-        current: session?.permission ?? engine.permission,
+        current,
         memberNote: target.kind === 'server' && !owner,
         tools: chat,
       })}

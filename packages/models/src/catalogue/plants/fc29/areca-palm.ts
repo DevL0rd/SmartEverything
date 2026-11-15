@@ -59,7 +59,7 @@ function frond(entry: Frond, index: number): ModelSpecPart[] {
 export const ARECA_PALM_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.areca-palm',
   title: 'Areca palm',
-  footprint: { width: 1.43, depth: 1.5, height: 1.08 },
+  footprint: { width: 1.4263, depth: 1.4964, height: 1.0803 },
   names: {
     display: 'Areca palm',
     synonyms: ['areca palm', 'butterfly palm', 'golden cane palm', 'indoor palm', 'dypsis'],

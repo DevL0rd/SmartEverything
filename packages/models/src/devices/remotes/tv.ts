@@ -10,6 +10,7 @@ export const TV_REMOTE_MODEL: ModelSpec = remote({
   title: 'TV remote',
   synonyms: ['television remote', 'TV controller', 'clicker', 'telly remote'],
   size: SIZE,
+  footprint: { width: 0.2016, depth: SIZE.width, height: 0.0222 },
   materials: DARK_BODY,
   finishes: { black: {}, graphite: { body: { finish: 'graphite' } } },
   defaultFinish: 'black',

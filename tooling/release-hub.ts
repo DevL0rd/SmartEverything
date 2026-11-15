@@ -9,11 +9,11 @@ import { HUB_UNIT } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import {
   backUpRelease,
-  checkMigrations,
   markBackup,
   ReleaseStepError,
   releaseSceneOf,
   rollbackPreflight,
+  serviceMigrationCheck,
   swapService,
   type ReleaseTarget,
 } from './release-hub-files.ts';
@@ -54,7 +54,7 @@ const USAGE = `usage:
   tsx tooling/release-hub.ts rollback --backup <backups/releases/name-epoch> --url <hub https url> [--with-database] [--dry-run]
   tsx tooling/release-hub.ts verify   --url <hub https url> [--schema <n>]
   tsx tooling/release-hub.ts backup   --name <release18> [--dry-run]
-  tsx tooling/release-hub.ts check    (migrations on a copy of the live database)
+  tsx tooling/release-hub.ts check    --service <built service dir> (its migrations on a copy of the live database)
 options for every command: --install <dir> (default ~/${HUB_INSTALL_DIRECTORY}), --data <dir> (default: the data folder named by the pointer in the hub bootstrap folder)`;
 
 export interface ReleaseOptions {
@@ -79,31 +79,37 @@ interface ReleaseState {
   schemaMoved: boolean;
 }
 
-async function rollbackAfter(
-  cause: unknown,
-  options: ReleaseOptions,
-  state: ReleaseState,
-): Promise<never> {
-  const { target, transition, environment, units, url, epoch } = options;
-  try {
-    await rollbackWith({
-      target,
-      environment,
-      units,
-      backup: state.backup,
-      url,
-      withDatabase: state.schemaMoved || (transition !== null && hasV1Marker(target.data.root)),
-      stamp: String(epoch),
-    });
-  } catch (rollbackCause) {
-    log.error('release.rollback_failed', rollbackCause);
-    throw new AggregateError(
-      [cause, rollbackCause],
-      `${describe(cause)}; the rollback also failed: ${describe(rollbackCause)}`,
-      { cause: rollbackCause },
+export class ReleaseAwaitingDecision extends Error {
+  override readonly name = 'ReleaseAwaitingDecision';
+
+  constructor(
+    readonly backup: string,
+    readonly rollback: string,
+    cause: unknown,
+  ) {
+    super(
+      `${describe(cause)}; the release stopped without rolling back and kept the backup ${backup}. Tell the owner, and only after the owner agrees run: ${rollback}`,
+      { cause },
     );
   }
-  throw cause;
+}
+
+function rollbackCommand(options: ReleaseOptions, state: ReleaseState): string {
+  const { target, transition, url } = options;
+  const withDatabase = state.schemaMoved || (transition !== null && hasV1Marker(target.data.root));
+  return [
+    'tsx tooling/release-hub.ts rollback',
+    `--backup ${state.backup}`,
+    `--url ${url}`,
+    `--install ${target.install.directory}`,
+    `--data ${target.data.root}`,
+    ...(withDatabase ? ['--with-database'] : []),
+  ].join(' ');
+}
+
+function awaitDecision(cause: unknown, options: ReleaseOptions, state: ReleaseState): never {
+  log.error('release.awaiting_decision', cause, { backup: state.backup });
+  throw new ReleaseAwaitingDecision(state.backup, rollbackCommand(options, state), cause);
 }
 
 async function verifyRelease(options: ReleaseOptions, state: ReleaseState): Promise<void> {
@@ -118,7 +124,7 @@ async function verifyRelease(options: ReleaseOptions, state: ReleaseState): Prom
       );
   } catch (cause) {
     log.error('release.verify_failed', cause);
-    return rollbackAfter(cause, options, state);
+    awaitDecision(cause, options, state);
   }
   markBackup(locateBackup(target.data.root, state.backup), 'verified');
 }
@@ -136,12 +142,12 @@ async function restartRelease(options: ReleaseOptions, state: ReleaseState): Pro
     units.start(HUB_UNIT);
     await awaitHub((transition?.after ?? target.data).system.logs.service, url, since);
   } catch (cause) {
-    return rollbackAfter(cause, options, state);
+    awaitDecision(cause, options, state);
   }
 }
 
 async function captureRelease(options: ReleaseOptions): Promise<string> {
-  const { target, name, epoch, transition, environment, units, url } = options;
+  const { target, name, epoch, transition, environment, units } = options;
   units.stop(HUB_UNIT);
   try {
     const backup = backUpRelease(target, name, epoch);
@@ -149,9 +155,23 @@ async function captureRelease(options: ReleaseOptions): Promise<string> {
     log.info('release.backed_up', { backup });
     return backup;
   } catch (cause) {
-    const since = new Date();
-    units.start(HUB_UNIT);
-    await awaitHub(target.data.system.logs.service, url, since);
+    await startUnchanged(options);
+    throw cause;
+  }
+}
+
+async function startUnchanged({ target, units, url }: ReleaseOptions): Promise<void> {
+  const since = new Date();
+  units.start(HUB_UNIT);
+  await awaitHub(target.data.system.logs.service, url, since);
+}
+
+async function swapRelease(options: ReleaseOptions, state: ReleaseState): Promise<void> {
+  try {
+    swapService(options.target.install, options.built, options.name);
+  } catch (cause) {
+    if (!(cause instanceof ReleaseStepError)) awaitDecision(cause, options, state);
+    await startUnchanged(options);
     throw cause;
   }
 }
@@ -168,7 +188,7 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
           checkBuild(target, built);
         }),
     },
-    migrationStep(target, (moved) => {
+    migrationStep(target, built, (moved) => {
       state.schemaMoved = moved;
     }),
     {
@@ -179,13 +199,7 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
     },
     {
       title: `swap ${install.service} for ${built}`,
-      run: async (): Promise<void> => {
-        try {
-          swapService(install, built, name);
-        } catch (cause) {
-          return rollbackAfter(cause, options, state);
-        }
-      },
+      run: () => swapRelease(options, state),
     },
     {
       title: `${transition === null ? '' : `write the pending-v1 pointer in ${environment.bootstrap}, the new hub unit in ${environment.unitDirectory} and reload systemd, then `}restart ${HUB_UNIT}${transition === null ? ` with its unit in ${environment.unitDirectory} rewritten and systemd reloaded` : ''} and wait until it reports started and answers at ${url}`,
@@ -193,7 +207,7 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
     },
     {
       title:
-        'verify the hub; any failed check rolls the service back, and the database too when the migration moved the schema',
+        'verify the hub; a failed check stops the release with the backup kept, and nothing is rolled back until the owner says so',
       run: () => verifyRelease(options, state),
     },
     {
@@ -377,7 +391,15 @@ async function main(): Promise<void> {
       await backupCommand(invocation);
       return;
     case 'check':
-      process.stdout.write(`${JSON.stringify(await checkMigrations(target.data))}\n`);
+      process.stdout.write(
+        `${JSON.stringify(
+          serviceMigrationCheck(
+            process.execPath,
+            required(values.service, '--service'),
+            target.data,
+          ),
+        )}\n`,
+      );
       return;
     case undefined:
     default:

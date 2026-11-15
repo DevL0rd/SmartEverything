@@ -8,6 +8,7 @@ import type {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
+import { mayExport } from './access';
 import { placementAccess } from './placement-access';
 import type { DrivePlacements } from './placements';
 
@@ -53,11 +54,11 @@ function held(hold: DrivePlacementHold): Verdict {
 }
 
 function stopped(status: DrivePlacementStatus, reason: string, at: string): DrivePlacementStatus {
-  return { ...status, state: 'stopped', reason, reportedAt: at };
+  return { ...status, state: 'stopped', reason, mountPoint: null, reportedAt: at };
 }
 
 function restarting(status: DrivePlacementStatus, at: string): DrivePlacementStatus {
-  return { ...status, state: 'starting', reason: null, reportedAt: at };
+  return { ...status, state: 'starting', reason: null, mountPoint: null, reportedAt: at };
 }
 
 export class PlacementLifecycle {
@@ -155,7 +156,13 @@ export class PlacementLifecycle {
     if (folder === 'trashed') return held('trashed');
     const access = placementAccess(store, placement);
     if (access === 'none') return held('no_access');
+    if (!mayExport(access, this.folderLocked(placement))) return held('no_access');
     return live(access === 'view');
+  }
+
+  private folderLocked(placement: DrivePlacement): boolean {
+    if (placement.folderItemId === null) return false;
+    return this.deps.store.driveItems.find(placement.folderItemId, null)?.locked === true;
   }
 
   private folderState(placement: DrivePlacement): FolderState {

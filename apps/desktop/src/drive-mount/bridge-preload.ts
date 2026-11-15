@@ -16,6 +16,9 @@ export const drive: DesktopDrive = {
     const parsed = DESKTOP_DRIVE_COMMAND.parse(command);
     return DESKTOP_DRIVE_STATE.parse(await ipcRenderer.invoke('desktop:drive-run', parsed));
   },
+  async open(placementId): ReturnType<DesktopDrive['open']> {
+    await ipcRenderer.invoke('desktop:drive-open', placementId);
+  },
   onChange(listener): () => void {
     const relay = (_event: IpcRendererEvent, value: unknown): void => {
       listener(MAYBE_STATE.parse(value));

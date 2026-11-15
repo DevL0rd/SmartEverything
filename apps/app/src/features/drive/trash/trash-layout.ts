@@ -5,10 +5,10 @@ export const TABLE_COLUMNS = {
   deletedBy: 'w-36',
   size: 'w-21',
   leaves: 'w-32',
-  restore: 'w-28',
+  actions: 'w-touch-min',
 } as const;
 
-const TABLE_FIXED_PX = 208 + 144 + 84 + 128 + 112;
+const TABLE_FIXED_PX = 208 + 144 + 84 + 128 + 48;
 const ROW_CHROME_PX = 16 + 12 + 20 + 28 + 6 * 12;
 const NAME_MIN_PX = 240;
 

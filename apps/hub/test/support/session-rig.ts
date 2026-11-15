@@ -8,13 +8,12 @@ import {
   type SignalInput,
   type HubFrame,
   type NodeHello,
-  type ProcessWindow,
   NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import type { AppTime } from '../../src/computers/app-focus';
-import { ComputerSession } from '../../src/computers/computer-session';
-import { Viewers } from '../../src/metrics/viewers';
+import { ComputerSession, type ComputerSessionOptions } from '../../src/computers/computer-session';
+import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import { testLogger } from './logs';
 
 export const HELLO: NodeHello = {
@@ -35,7 +34,7 @@ export const HELLO: NodeHello = {
 
 export interface SessionRig {
   readonly session: ComputerSession;
-  readonly viewers: Viewers<ProcessWindow>;
+  readonly viewers: Viewers<DeviceDetail>;
   readonly sent: HubFrame[];
   readonly deliver: (frame: unknown) => void;
 }
@@ -50,6 +49,7 @@ export interface SessionRigOptions {
   readonly signal?: (signal: SignalInput) => void;
   readonly personId?: string;
   readonly now?: () => Date;
+  readonly publish?: ComputerSessionOptions['publish'];
 }
 
 function sinkOf(options: SessionRigOptions): AdapterSink {
@@ -69,7 +69,7 @@ function sinkOf(options: SessionRigOptions): AdapterSink {
 export function sessionRig(deviceId: string, options: SessionRigOptions = {}): SessionRig {
   const sent: HubFrame[] = [];
   const listeners = new Set<(frame: unknown) => void>();
-  const viewers = new Viewers<ProcessWindow>();
+  const viewers = new Viewers<DeviceDetail>();
   const session = new ComputerSession({
     link: {
       send: (frame): void => {
@@ -86,7 +86,7 @@ export function sessionRig(deviceId: string, options: SessionRigOptions = {}): S
     history: { push: (): void => undefined },
     viewers,
     policyOf: (): HistoryPolicy => ({ window_ms: 3_600_000, interval_ms: 1_000 }),
-    publish: (): void => undefined,
+    publish: options.publish ?? ((): void => undefined),
     deviceIdOf: (): string => deviceId,
     scopesOf: (): ComputerScopes => options.scopes ?? DEFAULT_COMPUTER_SCOPES,
     directory: options.directory ?? new ComputerDirectory(),

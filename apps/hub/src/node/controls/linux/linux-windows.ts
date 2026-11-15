@@ -13,6 +13,7 @@ const UNSUPPORTED_TEXT = "Window control isn't available on this computer yet.";
 
 export interface LinuxWindowsOptions {
   readonly kde: () => boolean;
+  readonly session: () => boolean;
   readonly probe: ProgramProbe;
   readonly kdeProvider: () => WindowProvider;
   readonly x11Provider: () => WindowProvider;
@@ -30,11 +31,17 @@ export class LinuxWindows implements WindowControl {
   constructor(private readonly options: LinuxWindowsOptions) {}
 
   async features(): Promise<readonly ComputerFeature[]> {
-    return (await this.provider()) === null ? [] : ['windows'];
+    return (await this.provider()) === null && this.options.session() ? [] : ['windows'];
   }
 
   async read(): Promise<WindowsState> {
-    const provider = await this.require();
+    const provider = await this.provider();
+    if (provider === null && !this.options.session()) {
+      return { windows: [] };
+    }
+    if (provider === null) {
+      throw new NodeFailureError('not_supported', UNSUPPORTED_TEXT);
+    }
     return { windows: await provider.list() };
   }
 
@@ -86,11 +93,13 @@ export class LinuxWindows implements WindowControl {
       return;
     }
     this.watching = true;
-    this.require()
+    this.provider()
       .then((provider) =>
-        provider.watch(() => {
-          this.scheduleRefresh();
-        }, this.options.failed),
+        provider === null
+          ? (): void => undefined
+          : provider.watch(() => {
+              this.scheduleRefresh();
+            }, this.options.failed),
       )
       .then((stop) => {
         if (this.watching) {

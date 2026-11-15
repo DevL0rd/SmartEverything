@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { PlannerSuggestion } from '../../../api/planner';
 import { deviceFixture } from '../../../store/device-fixture';
-import type { Upload } from '../../assistant/data/uploads';
+import type { Upload } from '../../assistant';
 import {
   AttachedWidgets,
   attachmentViewOf,
@@ -59,7 +59,6 @@ vi.mock('../../models', () => ({
 const BRUSH = '00000000-0000-4000-8000-000000000101';
 const TREADMILL = '00000000-0000-4000-8000-000000000102';
 const BOTTLE = '00000000-0000-4000-8000-000000000103';
-const SCENE = '00000000-0000-4000-8000-000000000104';
 const AUTOMATION = '00000000-0000-4000-8000-000000000105';
 
 function signal(
@@ -176,13 +175,11 @@ const NAMES: AttachmentNames = {
     [BOTTLE, KITCHEN_BOTTLE],
     [TREADMILL, { ...KITCHEN_BOTTLE, id: TREADMILL, label: 'Kingsmith G15', subtitle: null }],
   ]),
-  scenes: new Map([[SCENE, 'Workout lights']]),
   automations: new Map([[AUTOMATION, 'Fan on during walks']]),
 };
 
 const ATTACHED: readonly PlannerAttachment[] = [
   { kind: 'device', deviceId: TREADMILL, face: 'card' },
-  { kind: 'scene', sceneId: SCENE },
   { kind: 'automation', automationId: AUTOMATION },
   { kind: 'file', fileId: 'walking-plan' },
   { kind: 'link', url: 'https://www.example.com/queue', title: null },
@@ -207,12 +204,11 @@ describe('attachment picker', () => {
   it('labels every attachment kind as a chip', () => {
     expect(ATTACHED.map((attachment) => attachmentViewOf(attachment, NAMES).label)).toEqual([
       'Kingsmith G15 · card',
-      'Scene · Workout lights',
       'Automation · Fan on during walks',
       'File',
       'Link · example.com',
     ]);
-    expect(withoutAttachment(ATTACHED, `scene:${SCENE}`)).toHaveLength(4);
+    expect(withoutAttachment(ATTACHED, `automation:${AUTOMATION}`)).toHaveLength(3);
   });
 
   it('reads the widget face, defaulting to the card', () => {
@@ -233,11 +229,15 @@ describe('attachment picker', () => {
       null,
     );
     expect(taken.rest.map((entry) => entry.title)).toEqual(['Kitchen bottle']);
-    const scenes = namedGroupsOf([{ id: SCENE, name: 'Workout lights' }], 'scene', {
-      taken: new Set(),
-      text: 'work',
-    });
-    expect(scenes.rest.map((entry) => entry.icon)).toEqual(['sparkles']);
+    const automations = namedGroupsOf(
+      [{ id: AUTOMATION, name: 'Fan on during walks' }],
+      'automation',
+      {
+        taken: new Set(),
+        text: 'walk',
+      },
+    );
+    expect(automations.rest.map((entry) => entry.icon)).toEqual(['automations']);
   });
 
   it('builds the attachment the Attach button adds', () => {
@@ -273,7 +273,7 @@ describe('attachment picker', () => {
         attachments: [
           { kind: 'device', deviceId: BOTTLE, face: 'panel' },
           { kind: 'device', deviceId: TREADMILL, face: null },
-          { kind: 'scene', sceneId: SCENE },
+          { kind: 'automation', automationId: AUTOMATION },
         ],
       }),
     );

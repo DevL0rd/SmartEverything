@@ -3,6 +3,8 @@ import type { FileRecord } from './db/index.js';
 
 export type PushIntent =
   | { readonly kind: 'push'; readonly record: FileRecord }
+  | { readonly kind: 'meta'; readonly record: FileRecord }
+  | { readonly kind: 'link'; readonly record: FileRecord }
   | { readonly kind: 'move'; readonly from: string; readonly to: string; readonly baseRev: number }
   | { readonly kind: 'tombstone'; readonly relPath: string; readonly baseRev: number };
 
@@ -34,6 +36,7 @@ export function pushIntentOf(
   relPath: string,
 ): readonly PushIntent[] {
   if (record === undefined || record.kind === 'folder') return [];
+  if (record.kind === 'link') return [{ kind: 'link', record }];
   if (!isHashedFile(record)) throw new PushNotReadyError(relPath);
   return [{ kind: 'push', record }];
 }
@@ -47,6 +50,26 @@ function sameContent(first: FileRecord, second: FileRecord): boolean {
   );
 }
 
+function createdIntents(
+  rename: DirtyBatch['renames'][number],
+  target: FileRecord | undefined,
+  after: FileView,
+): readonly PushIntent[] {
+  const created = rename.kind === 'folder' ? after.under(rename.to) : [target];
+  return created.flatMap((record) => pushIntentOf(record, record?.relPath ?? rename.to));
+}
+
+function afterMoveIntents(
+  source: FileRecord,
+  target: FileRecord | undefined,
+  to: string,
+): readonly PushIntent[] {
+  if (target?.kind === 'file' && !sameContent(source, target)) return pushIntentOf(target, to);
+  return target?.metaDirty === true && target.kind !== 'link'
+    ? [{ kind: 'meta', record: target }]
+    : [];
+}
+
 function renameIntents(
   rename: DirtyBatch['renames'][number],
   before: FileView,
@@ -55,13 +78,51 @@ function renameIntents(
   const source = before.get(rename.from);
   const target = after.get(rename.to);
   const baseRev = source?.hubRev ?? null;
-  if (source === undefined || baseRev === null) {
-    const created = rename.kind === 'folder' ? after.under(rename.to) : [target];
-    return created.flatMap((record) => pushIntentOf(record, record?.relPath ?? rename.to));
-  }
+  if (source === undefined || baseRev === null) return createdIntents(rename, target, after);
   const move: PushIntent = { kind: 'move', from: rename.from, to: rename.to, baseRev };
-  const edited = target?.kind === 'file' && !sameContent(source, target);
-  return edited ? [move, ...pushIntentOf(target, rename.to)] : [move];
+  return [move, ...afterMoveIntents(source, target, rename.to)];
+}
+
+function tombstoneOf(record: FileRecord | undefined): readonly PushIntent[] {
+  const baseRev = record?.hubRev ?? null;
+  return record === undefined || baseRev === null
+    ? []
+    : [{ kind: 'tombstone', relPath: record.relPath, baseRev }];
+}
+
+function knownOf(prior: FileRecord | undefined): FileRecord | undefined {
+  return prior?.hubRev === null ? undefined : prior;
+}
+
+function replacesLink(prior: FileRecord | undefined, next: FileRecord): prior is FileRecord {
+  if (prior === undefined) return false;
+  return prior.kind !== next.kind && (prior.kind === 'link' || next.kind === 'link');
+}
+
+function linkChange(known: FileRecord | undefined, next: FileRecord): readonly PushIntent[] {
+  if (known === undefined) return pushIntentOf(next, next.relPath);
+  return known.linkTarget === next.linkTarget
+    ? []
+    : [...tombstoneOf(known), ...pushIntentOf(next, next.relPath)];
+}
+
+function fileChange(known: FileRecord | undefined, next: FileRecord): readonly PushIntent[] {
+  return known?.kind === 'file' && sameContent(known, next)
+    ? [{ kind: 'meta', record: next }]
+    : pushIntentOf(next, next.relPath);
+}
+
+function changeIntents(relPath: string, before: FileView, after: FileView): readonly PushIntent[] {
+  const next = after.get(relPath);
+  const prior = before.get(relPath);
+  if (next === undefined) return [];
+  if (replacesLink(prior, next)) return [...tombstoneOf(prior), ...pushIntentOf(next, relPath)];
+  const known = knownOf(prior);
+  if (next.kind === 'link') return linkChange(known, next);
+  if (next.kind === 'folder') {
+    return known?.kind === 'folder' ? [{ kind: 'meta', record: next }] : [];
+  }
+  return fileChange(known, next);
 }
 
 function deleteIntents(relPath: string, before: FileView): readonly PushIntent[] {
@@ -85,7 +146,7 @@ export function pushIntents(
   return [
     ...batch.renames.flatMap((rename) => renameIntents(rename, before, after)),
     ...batch.deleted.flatMap((relPath) => deleteIntents(relPath, before)),
-    ...batch.changed.flatMap((relPath) => pushIntentOf(after.get(relPath), relPath)),
+    ...batch.changed.flatMap((relPath) => changeIntents(relPath, before, after)),
   ];
 }
 

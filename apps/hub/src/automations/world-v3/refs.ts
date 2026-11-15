@@ -36,6 +36,10 @@ export const TARGET_VALUE = z.union([
       deviceIds: refs.map((ref) => ref.device),
     })),
   z
+    .array(ID)
+    .min(1)
+    .transform((ids): DeviceTarget => ({ kind: 'devices', deviceIds: ids })),
+  z
     .strictObject({ group: ID })
     .transform((target): DeviceTarget => ({ kind: 'group', groupId: target.group })),
   ROOM_TARGET,

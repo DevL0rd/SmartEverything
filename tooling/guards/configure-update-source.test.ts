@@ -8,6 +8,8 @@ import {
   configureUpdateSource,
   ConfigureUpdateSourceError,
   ensurePushSecret,
+  repositorySourceOf,
+  saveUpdateSource,
   updateSourceOf,
 } from '../configure-update-source.ts';
 import { gitSourceText } from '../hub-update-source.ts';
@@ -36,6 +38,7 @@ async function prepareCheckout(): Promise<void> {
     'base',
   );
   await git(scratch, 'clone', '--no-hardlinks', upstream, checkout);
+  await git(checkout, 'remote', 'set-url', 'origin', 'https://github.com/owner/repo.git');
   mkdirSync(join(checkout, 'tooling'));
   writeFileSync(join(checkout, 'tooling', 'self-update-app-command.ts'), '');
 }
@@ -52,6 +55,7 @@ afterEach(() => {
 
 it('derives the remote and branch from the checkout upstream', async () => {
   await expect(updateSourceOf(checkout)).resolves.toStrictEqual({
+    repository: 'owner/repo',
     checkout,
     remote: 'origin',
     branch: 'main',
@@ -77,8 +81,29 @@ it('writes the source into service.json and keeps every other field', async () =
   expect(JSON.parse(readFileSync(file, 'utf8'))).toStrictEqual({
     go2rtcBinary: '/opt/go2rtc',
     port: 7881,
-    updateSource: { checkout, remote: 'origin', branch: 'main' },
+    updateSource: { repository: 'owner/repo', checkout, remote: 'origin', branch: 'main' },
   });
+});
+
+it('writes a repository-only source with no checkout', async () => {
+  const layout = await testLayout(join(scratch, 'repository-data'));
+  const file = dataLayoutOf(layout.root).system.config.service;
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({ go2rtcBinary: '/opt/go2rtc' }));
+  saveUpdateSource(layout.root, repositorySourceOf('Owner/Repo', 'main'));
+  expect(JSON.parse(readFileSync(file, 'utf8'))).toStrictEqual({
+    go2rtcBinary: '/opt/go2rtc',
+    updateSource: { repository: 'owner/repo', branch: 'main' },
+  });
+});
+
+it('refuses a repository that is not owner/name', () => {
+  expect(() => repositorySourceOf('noslash', 'main')).toThrow();
+});
+
+it('refuses a checkout whose remote is not a GitHub repository', async () => {
+  await git(checkout, 'remote', 'set-url', 'origin', scratch);
+  await expect(updateSourceOf(checkout)).rejects.toThrow(/not a GitHub repository/u);
 });
 
 describe('push webhook secret', () => {

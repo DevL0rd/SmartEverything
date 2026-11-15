@@ -63,9 +63,18 @@ const PLANNER_DEPENDENTS: Readonly<Record<PlannerKind, readonly LiveTable[]>> = 
     'planner_collections',
     'planner_alarms',
     'planner_timers',
+    'planner_guests',
+    'planner_collection_shares',
     'google_accounts',
   ],
-  range: ['planner_items', 'planner_occurrences', 'planner_collections', 'google_accounts'],
+  range: [
+    'planner_items',
+    'planner_occurrences',
+    'planner_collections',
+    'planner_guests',
+    'planner_collection_shares',
+    'google_accounts',
+  ],
   stats: [
     'planner_items',
     'planner_occurrences',
@@ -74,9 +83,16 @@ const PLANNER_DEPENDENTS: Readonly<Record<PlannerKind, readonly LiveTable[]>> = 
     'planner_timers',
   ],
   rings: ['planner_alarms', 'planner_timers'],
+  search: [
+    'planner_items',
+    'planner_occurrences',
+    'planner_collections',
+    'planner_guests',
+    'planner_collection_shares',
+  ],
 };
 
-const PLANNER_KINDS: readonly PlannerKind[] = ['day', 'range', 'stats', 'rings'];
+const PLANNER_KINDS: readonly PlannerKind[] = ['day', 'range', 'stats', 'rings', 'search'];
 
 export function plannerKindsChanged(tables: ReadonlySet<LiveTable>): readonly PlannerKind[] {
   return PLANNER_KINDS.filter((kind) =>

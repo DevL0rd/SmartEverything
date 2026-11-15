@@ -138,7 +138,7 @@ export const XIAOMI_AIR_PURIFIER_4_PRO_MODEL: ModelSpec = {
   title: 'Xiaomi Smart Air Purifier 4 Pro',
   category: 'climate',
   family: 'air_purifier',
-  footprint: { width: 0.275, depth: 0.275, height: TOP },
+  footprint: { width: 0.2761, depth: 0.2767, height: 0.6845 },
   framing: {
     tile: HOUSE,
     card: HOUSE,
@@ -286,7 +286,7 @@ export const XIAOMI_AIR_PURIFIER_4_PRO_MODEL: ModelSpec = {
       property: 'rotate',
       axis: 'y',
       source: 'speed',
-      map: { type: 'speed', in: [0, 1], perSecond: [0.5, 3] },
+      map: { type: 'speed', in: [0, 1], perSecond: [0, 3] },
       motion: { type: 'spin' },
       reduced: 'hold',
     },

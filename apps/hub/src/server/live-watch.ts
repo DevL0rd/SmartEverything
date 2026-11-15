@@ -1,12 +1,12 @@
 import {
   SOCKET_BACK_PRESSURE_BYTES,
   type ClientRow,
+  type ComputerFilesChangedNotice,
   type ComputerLiveNotice,
   type ComputerPartsUpdate,
   type BrushLiveNotice,
   type PhoneDetailNotice,
   type TreadmillLiveNotice,
-  type ProcessWindow,
   mergeProcessUpdates,
   type AutomationTraceNotice,
   type AutomationWatchMessage,
@@ -19,24 +19,28 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { pickParts } from '../computers/computer-view';
-import { deviceTarget, type ViewLease, type Viewers } from '../metrics/viewers';
+import { deviceTarget, type ViewLease, type Viewers, type DeviceDetail } from '../metrics/viewers';
 import type { WebSocket } from 'ws';
 
 export type DeviceNotice =
-  ComputerLiveNotice | PhoneDetailNotice | TreadmillLiveNotice | BrushLiveNotice;
+  | ComputerLiveNotice
+  | ComputerFilesChangedNotice
+  | PhoneDetailNotice
+  | TreadmillLiveNotice
+  | BrushLiveNotice;
 
 export type WatchNotice = DeviceNotice;
 
 type AnyNotice = DeviceNotice | AutomationTraceNotice;
 
 export interface TraceSource {
-  readonly viewers: Pick<Viewers<ProcessWindow>, 'hold' | 'release'>;
+  readonly viewers: Pick<Viewers<DeviceDetail>, 'hold' | 'release'>;
   readonly allowed: (client: ClientRow, subject: string) => boolean;
   readonly keyframe: (subject: string, client: ClientRow) => AutomationTraceNotice | null;
 }
 
 export interface WatchSource {
-  readonly viewers: Pick<Viewers<ProcessWindow>, 'hold' | 'release'>;
+  readonly viewers: Pick<Viewers<DeviceDetail>, 'hold' | 'release'>;
   readonly allowed: (client: ClientRow, deviceId: string) => boolean;
   readonly keyframe: (deviceId: string, client: ClientRow) => DeviceNotice | null;
 }
@@ -57,7 +61,7 @@ type Topics = ReadonlyMap<string, ReadonlySet<string>>;
 
 interface Family {
   readonly topics: Topics;
-  readonly leases: readonly ViewLease<ProcessWindow>[];
+  readonly leases: readonly ViewLease<DeviceDetail>[];
 }
 
 type FamilyName = 'devices' | 'traces';
@@ -128,11 +132,11 @@ function topicsOf(demands: readonly WatchDemand[]): Map<string, Set<string>> {
   return topics;
 }
 
-function traceLeasesOf(subjects: Iterable<string>): ViewLease<ProcessWindow>[] {
+function traceLeasesOf(subjects: Iterable<string>): ViewLease<DeviceDetail>[] {
   return [...subjects].map((subject) => ({ target: subject, topic: TRACE_TOPIC }));
 }
 
-function leasesOf(demands: readonly WatchDemand[]): ViewLease<ProcessWindow>[] {
+function leasesOf(demands: readonly WatchDemand[]): ViewLease<DeviceDetail>[] {
   return demands.flatMap((demand) =>
     demand.topics.map((topic) => ({
       target: deviceTarget(demand.deviceId),
@@ -140,11 +144,14 @@ function leasesOf(demands: readonly WatchDemand[]): ViewLease<ProcessWindow>[] {
       ...(topic === 'processes' && demand.processes !== undefined
         ? { detail: demand.processes }
         : {}),
+      ...(topic === 'files' && demand.files !== undefined ? { detail: demand.files } : {}),
     })),
   );
 }
 
 const PHONE_DETAIL_TOPIC = 'live';
+
+const FILES_TOPIC = 'files';
 
 function coveredParts(
   parts: ComputerPartsUpdate,
@@ -155,6 +162,7 @@ function coveredParts(
 
 function covered(notice: AnyNotice, topics: ReadonlySet<string>): AnyNotice | null {
   if (isTrace(notice)) return topics.has(TRACE_TOPIC) ? notice : null;
+  if (notice.type === 'computer_files_changed') return topics.has(FILES_TOPIC) ? notice : null;
   if (
     notice.type === 'phone_detail' ||
     notice.type === 'treadmill_live' ||
@@ -281,7 +289,7 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     }
   }
 
-  private viewersOf(): Set<Pick<Viewers<ProcessWindow>, 'hold' | 'release'>> {
+  private viewersOf(): Set<Pick<Viewers<DeviceDetail>, 'hold' | 'release'>> {
     return new Set([
       ...[...this.sources].map((source) => source.viewers),
       ...[...this.traceSources].map((source) => source.viewers),
@@ -302,7 +310,7 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     const deviceViewers = new Set([...this.sources].map((source) => source.viewers));
     const traceViewers = new Set([...this.traceSources].map((source) => source.viewers));
     for (const viewers of new Set([...deviceViewers, ...traceViewers])) {
-      const leases: ViewLease<ProcessWindow>[] = [
+      const leases: ViewLease<DeviceDetail>[] = [
         ...(deviceViewers.has(viewers) ? watching.devices.leases : []),
         ...(traceViewers.has(viewers) ? watching.traces.leases : []),
       ];
@@ -343,6 +351,10 @@ export class LiveWatch<Subscriber extends WatchConnection> {
   private deliver(connection: Subscriber, watching: Watching, notice: AnyNotice): void {
     if (isTrace(notice)) {
       this.deliverTrace(connection, watching, notice);
+      return;
+    }
+    if (notice.type === 'computer_files_changed') {
+      this.options.send(connection, notice);
       return;
     }
     const key = notice.deviceId;

@@ -1,9 +1,10 @@
 import { DRIVE_TRASH_ENTRY, type DriveTrashEntry } from '@smarteverything/domain';
 import { z } from 'zod';
+import { lockedTrashSql } from '../../drive/access';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { flag } from '../sql';
-import { DriveTrashRows, type StashedRow } from './drive-trash-rows';
+import { DriveTrashRows, type StashedRoot, type StashedRow } from './drive-trash-rows';
 
 const COLUMNS = `item_id, root_id, name, original_rel_path, trash_rel_path, is_folder, bytes,
   deleted_at, purge_at, deleted_by, added_by_profile_id`;
@@ -74,6 +75,14 @@ export class DriveTrashRepository {
     return this.rows.rows(itemId);
   }
 
+  stashedRoot(itemId: string): StashedRoot {
+    return this.rows.root(itemId);
+  }
+
+  reinstateInodes(rows: readonly StashedRow[]): void {
+    this.rows.reinstateInodes(rows);
+  }
+
   reinstate(itemId: string, rows: readonly StashedRow[], to: string): void {
     this.rows.reinstate(itemId, rows, to);
   }
@@ -142,7 +151,7 @@ export class DriveTrashRepository {
     const rows = this.context.sql.all(
       STORED_ENTRY,
       `select ${COLUMNS} from drive_trash
-        where root_id = $rootId
+        where root_id = $rootId and not ${lockedTrashSql('drive_trash')}
           ${after === null ? '' : 'and (deleted_at, item_id) < ($deletedAt, $itemId)'}
         order by deleted_at desc, item_id desc limit $limit`,
       after === null

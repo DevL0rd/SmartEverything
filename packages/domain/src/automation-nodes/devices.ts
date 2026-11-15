@@ -250,35 +250,9 @@ const deviceOperation = defineNodeKind({
   tier: 'v1',
 });
 
-const sceneRun = defineNodeKind({
-  id: 'scene.run',
-  name: 'Run scene',
-  category: 'devices',
-  icon: 'clapperboard',
-  class: 'effect',
-  description: 'Applies a scene. Offline members are skipped and reported.',
-  inputs: [
-    {
-      name: 'scene',
-      type: { t: 'ref', of: 'scene' },
-      required: true,
-      description: 'Which scene.',
-      summary: true,
-    },
-  ],
-  outputs: [OK, SKIPPED_OUT, ERROR_OUT],
-  exits: ['next'],
-  effect: { retry: 'idempotent', budget: 'command', mode: 'fire_and_forget' },
-  summary: 'Run scene {scene}',
-  keywords: ['scene', 'movie', 'mood', 'apply'],
-  access: 'member',
-  tier: 'v1',
-});
-
 export const DEVICE_NODE_KINDS: readonly NodeKind[] = [
   deviceSet,
   deviceSetTemporarily,
   deviceToggle,
   deviceOperation,
-  sceneRun,
 ];

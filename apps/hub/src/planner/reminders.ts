@@ -13,12 +13,13 @@ import { isoOf } from './instants';
 import { expandOccurrences } from './occurrences';
 import { loadWindow } from './range';
 import { duesOfView, reachOf, ringKey, type Due } from './reminder-dues';
-import { profileIdOfItem, type SummaryDesk, type SummaryStore } from './summary';
+import { involvedProfiles } from './sharing/visibility';
+import { profilesOfItem, type SummaryDesk, type SummaryStore } from './summary';
 
 const DAY_MS = 86_400_000;
 
 export type ReminderStore = SummaryStore &
-  Pick<Store, 'plannerItems' | 'plannerOccurrences' | 'plannerRings'>;
+  Pick<Store, 'plannerItems' | 'plannerOccurrences' | 'plannerRings' | 'plannerGuests'>;
 
 export type ReminderPull = (item: PlannerItemRow) => Promise<void>;
 
@@ -51,17 +52,26 @@ export class ReminderScheduler {
   }
 
   private follow(change: LiveChange): void {
-    if (change.table === 'planner_items') {
-      const row = change.record ?? change.oldRecord;
-      if (row !== null) this.arm(row.profile_id);
-    } else if (change.table === 'planner_occurrences') {
-      const row = change.record ?? change.oldRecord;
-      const profileId = row === null ? null : profileIdOfItem(this.options.store, row.item_id);
-      if (profileId === null) this.armAll();
-      else this.arm(profileId);
-    } else if (change.table === 'settings') {
-      this.armAll();
-    }
+    if (change.table === 'planner_items') this.followItem(change.record ?? change.oldRecord);
+    else if (change.table === 'planner_guests') this.followGuest(change.record ?? change.oldRecord);
+    else if (change.table === 'planner_occurrences') {
+      this.followOccurrence(change.record ?? change.oldRecord);
+    } else if (change.table === 'settings') this.armAll();
+  }
+
+  private followItem(row: PlannerItemRow | null): void {
+    if (row === null) return;
+    for (const profileId of involvedProfiles(this.options.store, row)) this.arm(profileId);
+  }
+
+  private followGuest(row: { readonly profile_id: string | null } | null): void {
+    if (row?.profile_id !== null && row?.profile_id !== undefined) this.arm(row.profile_id);
+  }
+
+  private followOccurrence(row: { readonly item_id: string } | null): void {
+    const profiles = row === null ? [] : profilesOfItem(this.options.store, row.item_id);
+    if (profiles.length === 0) this.armAll();
+    else for (const profileId of profiles) this.arm(profileId);
   }
 
   stop(): void {
@@ -113,9 +123,11 @@ export class ReminderScheduler {
 
   private handledUntil(profileId: string): Map<string, number> {
     const lower = new Map<string, number>();
-    for (const item of this.options.store.plannerItems.list(profileId)) {
+    for (const item of this.options.store.plannerItems.list(profileId, { scope: 'involved' })) {
       if (item.reminders.length === 0) continue;
-      const rings = this.options.store.plannerRings.forRef('reminder', item.id);
+      const rings = this.options.store.plannerRings
+        .forRef('reminder', item.id)
+        .filter((ring) => ring.profile_id === profileId);
       const latest = rings.at(-1)?.due_at;
       lower.set(
         item.id,
@@ -128,13 +140,13 @@ export class ReminderScheduler {
   private duesIn(profileId: string, from: Temporal.Instant, to: Temporal.Instant): Due[] {
     const { store } = this.options;
     const zone = this.zone();
-    const reach = reachOf(store.plannerItems.list(profileId));
+    const reach = reachOf(store.plannerItems.list(profileId, { scope: 'involved' }));
     const window = {
       from: from.subtract({ milliseconds: reach.lead }),
       to: to.add({ milliseconds: reach.reach }),
       timeZone: zone,
     };
-    const loaded = loadWindow(store, profileId, window);
+    const loaded = loadWindow(store, profileId, window, 'involved');
     const items = new Map(loaded.items.map((item) => [item.id, item]));
     const views = expandOccurrences({
       items: loaded.items,
@@ -146,7 +158,7 @@ export class ReminderScheduler {
     return views
       .flatMap((view) => {
         const item = items.get(view.item_id);
-        return item === undefined ? [] : duesOfView(view, item, zone);
+        return item === undefined ? [] : duesOfView(view, item, profileId, zone);
       })
       .filter((due) => {
         const key = `${due.kind}|${due.view.occurrence_key}|${ringKey(due.item, due.at)}`;
@@ -160,7 +172,7 @@ export class ReminderScheduler {
   }
 
   private next(profileId: string, after: Temporal.Instant): Due | null {
-    const reach = reachOf(this.options.store.plannerItems.list(profileId));
+    const reach = reachOf(this.options.store.plannerItems.list(profileId, { scope: 'involved' }));
     if (!reach.relevant) return null;
     for (let span = DAY_MS; ; span *= 2) {
       const to = after.add({ milliseconds: span });
@@ -247,7 +259,7 @@ export class ReminderScheduler {
     const at = isoOf(due.at);
     return this.options.store.plannerRings
       .forRef('reminder', due.item.id)
-      .some((row) => row.due_at === at);
+      .some((row) => row.due_at === at && row.profile_id === due.profileId);
   }
 
   private ring(due: Due): void {
@@ -255,7 +267,7 @@ export class ReminderScheduler {
     const row = this.options.store.plannerRings.insert({
       kind: 'reminder',
       ref_id: due.item.id,
-      profile_id: due.item.profile_id,
+      profile_id: due.profileId,
       due_at: isoOf(due.at),
       rang_at: now,
       dismissed_at: now,
@@ -273,7 +285,7 @@ export class ReminderScheduler {
     const row = this.options.store.plannerRings.insert({
       kind: 'reminder',
       ref_id: due.item.id,
-      profile_id: due.item.profile_id,
+      profile_id: due.profileId,
       due_at: isoOf(due.at),
       rang_at: null,
       dismissed_at: null,
@@ -304,7 +316,7 @@ export class ReminderScheduler {
       value: ring?.id ?? due.view.occurrence_key,
       previous: null,
       at: this.options.clock.now().toISOString(),
-      profileId: due.item.profile_id,
+      profileId: due.profileId,
     };
   }
 

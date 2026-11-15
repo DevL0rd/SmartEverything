@@ -1,4 +1,4 @@
-import type { FilePlaces } from '@smarteverything/domain';
+import type { FileAbility, FilePlaces } from '@smarteverything/domain';
 import { readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { orElse } from './fs-fallback';
@@ -46,7 +46,20 @@ const USER_FOLDERS: readonly (readonly [string, string, string])[] = [
 interface PlacesSources {
   readonly mounts: string;
   readonly userDirs: string;
+  readonly trash: string;
 }
+
+export const LINUX_FILE_ABILITIES: readonly FileAbility[] = [
+  'write',
+  'upload',
+  'search',
+  'contents',
+  'properties',
+  'download',
+  'zip',
+  'trash',
+  'watch',
+];
 
 function unescaped(field: string): string {
   return field.replace(/\\(\d{3})/g, (_, octal: string) => String.fromCharCode(parseInt(octal, 8)));
@@ -57,6 +70,20 @@ function isSystemMount(mount: string): boolean {
     mount === '/' ||
     SYSTEM_PREFIXES.some((prefix) => mount === prefix || mount.startsWith(`${prefix}/`))
   );
+}
+
+export function mountPointsOf(mounts: string): string[] {
+  const seen = new Set<string>();
+  return mounts.split('\n').flatMap((line): string[] => {
+    const [device = '', mount = '', type = ''] = line.split(' ');
+    const path = unescaped(mount);
+    const network = NETWORK_TYPES.has(type);
+    if (!DRIVE_TYPES.has(type) || !(network || device.startsWith('/dev/')) || seen.has(path)) {
+      return [];
+    }
+    seen.add(path);
+    return [path];
+  });
 }
 
 function driveOf(line: string): { readonly device: string; readonly place: Place } | null {
@@ -118,11 +145,13 @@ export class FilePlacesReader {
     const mounts = await orElse(readFile(this.sources.mounts, 'utf8'), '');
     return {
       home: this.home,
+      abilities: [...LINUX_FILE_ABILITIES],
       places: [
         { label: 'Home', path: this.home, kind: 'home' },
         ...folders,
         { label: 'Computer', path: '/', kind: 'root' },
         ...drivesOf(mounts),
+        { label: 'Trash', path: join(this.sources.trash, 'files'), kind: 'trash' },
       ],
     };
   }

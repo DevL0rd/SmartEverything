@@ -18,7 +18,8 @@ import {
   narrowing,
   type Statement,
 } from './library-scope';
-import { PHOTO_VISIBLE, photoVisible } from './membership';
+import { LIBRARY_VISIBLE, PHOTO_VISIBLE, photoVisible } from './membership';
+import { isSearching } from './people/scope';
 
 export {
   FILTER_SQL,
@@ -34,6 +35,7 @@ export const LIBRARY_PAGE_SIZE = 2000;
 
 export interface PageQuery extends LibraryScope {
   readonly cursor?: string | undefined;
+  readonly meaningIds?: readonly string[] | undefined;
 }
 
 export const PHOTO_FROM = `drive_items i
@@ -41,12 +43,22 @@ export const PHOTO_FROM = `drive_items i
   left join drive_media m on m.item_id = i.id
   left join drive_stacks s on s.id = m.stack_id`;
 
-export const PHOTO_SHOWN = `i.kind in ('image', 'video', 'audio') and i.kind <> 'audio'
-  and i.taken_at is not null and ${PHOTO_VISIBLE}
+function shownFor(visible: string): string {
+  return `i.kind in ('image', 'video', 'audio') and i.kind <> 'audio'
+  and i.taken_at is not null and ${visible}
   and not exists (select 1 from drive_media c where c.motion_clip_id = i.id)
   and (m.stack_id is null or s.cover_item_id = i.id
     or (s.cover_item_id is null
       and i.id = (select min(x.item_id) from drive_media x where x.stack_id = m.stack_id)))`;
+}
+
+export const PHOTO_SHOWN = shownFor(LIBRARY_VISIBLE);
+
+export const PHOTO_SEARCHED = shownFor(PHOTO_VISIBLE);
+
+export function shownBy(scope: LibraryScope): string {
+  return isSearching(scope) ? PHOTO_SEARCHED : PHOTO_SHOWN;
+}
 
 const MEDIA_STATE = `coalesce(case when i.kind = 'video' then m.poster_state else m.preview_state end, 'none')`;
 
@@ -94,12 +106,13 @@ export function bucketsStatement(
   actor: DriveActor,
   scope: LibraryScope,
   albums: AlbumScopes,
+  meaning: readonly string[] = [],
 ): Statement {
-  const filter = narrowing(actor, scope, albums);
+  const filter = narrowing(actor, scope, albums, meaning);
   return {
     text: `select ${LOCAL_MONTH} as month, count(*) as count
       from ${PHOTO_FROM}
-      where ${PHOTO_SHOWN}${filter.text}
+      where ${shownBy(scope)}${filter.text}
       group by month order by month desc`,
     parameters: { ...visibility(actor), ...filter.parameters },
   };
@@ -150,14 +163,14 @@ export function pageStatement(
   query: PageQuery,
   albums: AlbumScopes,
 ): Statement {
-  const filter = narrowing(actor, query, albums);
+  const filter = narrowing(actor, query, albums, query.meaningIds);
   const window = monthWindow(month);
   const after = afterCursor(query.cursor, '<');
   return {
     text: `select i.id, i.rev, i.width, i.height, i.orientation, i.taken_at, m.tz_offset_min,
         i.duration_ms, m.thumbhash, ${FLAGS_SQL} as flags
       from ${PHOTO_FROM}
-      where ${PHOTO_SHOWN}${filter.text}
+      where ${shownBy(query)}${filter.text}
         and i.taken_at >= $monthFrom and i.taken_at < $monthTo
         and ${LOCAL_MONTH} = $month${after.text}
       order by i.taken_at desc, i.id desc
@@ -216,15 +229,24 @@ export class LibraryReader {
     this.albums = new AlbumScopes(context, timeZone);
   }
 
-  buckets(actor: DriveActor, scope: LibraryScope): LibraryBucket[] {
-    const statement = bucketsStatement(actor, scope, this.albums);
+  buckets(
+    actor: DriveActor,
+    scope: LibraryScope,
+    meaning: readonly string[] = [],
+  ): LibraryBucket[] {
+    const statement = bucketsStatement(actor, scope, this.albums, meaning);
     return this.context.sql
       .all(BUCKET_ROW, statement.text, statement.parameters)
       .map((row) => ({ month: row.month, count: row.count }));
   }
 
-  page(actor: DriveActor, month: string, query: PageQuery): LibraryPage {
-    const statement = pageStatement(actor, month, query, this.albums);
+  page(
+    actor: DriveActor,
+    month: string,
+    query: PageQuery,
+    meaning: readonly string[] = [],
+  ): LibraryPage {
+    const statement = pageStatement(actor, month, { ...query, meaningIds: meaning }, this.albums);
     return pageOf(month, this.context.sql.all(PAGE_ROW, statement.text, statement.parameters));
   }
 }

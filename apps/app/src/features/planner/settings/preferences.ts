@@ -21,6 +21,8 @@ export function mergedPrefs(prefs: Prefs, change: PrefsChange): Prefs {
     tasks: { ...prefs.tasks, ...change.tasks },
     calendar: { ...prefs.calendar, ...change.calendar },
     clock: { ...prefs.clock, ...change.clock },
+    bedtime: { ...prefs.bedtime, ...change.bedtime },
+    sleep_sounds: { ...prefs.sleep_sounds, ...change.sleep_sounds },
     watch: { ...prefs.watch, ...change.watch },
     ai: { ...prefs.ai, ...change.ai },
   };

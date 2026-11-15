@@ -15,7 +15,7 @@ export const INTERCOM_MODEL: ModelSpec = {
   title: 'Video intercom',
   category: 'security',
   family: 'doorbell',
-  footprint: { width: W, depth: D, height: H },
+  footprint: { width: W, depth: 0.0344, height: H },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

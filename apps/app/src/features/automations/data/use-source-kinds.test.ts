@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NODE_REGISTRY } from '@smarteverything/domain';
 import * as hubApi from './api';
 import { kindLookupOf, type KindLookup } from './kind-lookup';
+import { AutomationsSourceContext } from './source-context';
 import {
-  AutomationsSourceContext,
   useAutomationsSource,
   type AutomationsSource,
   type ResolvedAutomationsSource,

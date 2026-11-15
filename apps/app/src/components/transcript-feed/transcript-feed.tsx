@@ -26,6 +26,7 @@ export interface TranscriptFeedProps {
   readonly headerWidth?: 'dashboard' | 'detail' | 'full';
   readonly focus?: boolean;
   readonly focusSearch?: boolean;
+  readonly shellSearch?: boolean;
 }
 
 const HEADER_WIDTH = {
@@ -81,6 +82,7 @@ function FeedHeader({
   controls,
   inlineControls,
   focusSearch,
+  shellSearch,
   headerWidth = 'full',
   feed,
   layout,
@@ -108,6 +110,7 @@ function FeedHeader({
           latest={latest}
           controls={controls}
           inlineControls={inlineControls === true}
+          search={shellSearch !== true}
           focusSearch={focusSearch === true}
         />
         <ReaderState

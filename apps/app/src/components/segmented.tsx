@@ -9,6 +9,8 @@ import { Text } from './text';
 
 export type ControlSize = 'touch' | 'control';
 
+export type SegmentedSize = ControlSize | 'inset';
+
 export interface SegmentedOption<T extends string> {
   readonly value: T;
   readonly label: string;
@@ -24,7 +26,7 @@ export interface SegmentedProps<T extends string> {
   readonly disabled?: boolean;
   readonly fill?: boolean;
   readonly compact?: boolean;
-  readonly size?: ControlSize;
+  readonly size?: SegmentedSize;
 }
 
 function touchPadding(compact: boolean): string {
@@ -33,14 +35,15 @@ function touchPadding(compact: boolean): string {
     : 'h-12 min-w-touch-min rounded-full px-2 medium:px-4';
 }
 
-function pointerHeight(size: ControlSize): string {
-  return size === 'control' ? 'h-control-h' : 'h-8';
+function pointerHeight(size: SegmentedSize): string {
+  if (size === 'inset') return 'h-6 px-2';
+  return size === 'control' ? 'h-control-h px-3' : 'h-8 px-3';
 }
 
 interface SegmentLook {
   readonly fill: boolean;
   readonly compact: boolean;
-  readonly size: ControlSize;
+  readonly size: SegmentedSize;
 }
 
 function segmentClass(
@@ -51,7 +54,7 @@ function segmentClass(
   return cn(
     'shrink flex-row items-center justify-center gap-1.5',
     fill && 'flex-auto',
-    pointer ? cn(pointerHeight(size), 'min-w-0 rounded-xs px-3') : touchPadding(compact),
+    pointer ? cn(pointerHeight(size), 'min-w-0 rounded-xs') : touchPadding(compact),
     selected ? 'border border-primary bg-primary-container' : 'border border-transparent',
   );
 }
@@ -93,7 +96,7 @@ function Segment<T extends string>({
   readonly pointer: boolean;
   readonly fill: boolean;
   readonly compact: boolean;
-  readonly size: ControlSize;
+  readonly size: SegmentedSize;
   readonly onChange: (value: T) => void;
 }): ReactNode {
   return (

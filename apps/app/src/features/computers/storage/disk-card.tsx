@@ -6,7 +6,7 @@ import { Card } from '../../../components/card';
 import { ProgressBar } from '../../../components/charts';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { decimal } from '../../../format/number';
 import { columnsOfBody } from '../components/card-grid';
 import { LiveSeriesChart, type LiveLine } from '../components/live-series-chart';

@@ -41,7 +41,10 @@ const seen = vi.hoisted((): Seen => ({
 }));
 
 vi.mock('../../../design/platform', () => ({ isNative: (): boolean => seen.phone }));
-vi.mock('../../../design/size-class', () => ({ useAreaWidth: (): number => seen.area }));
+vi.mock('../../../design/size-class', async (original) => ({
+  ...(await original<object>()),
+  useAreaWidth: (): number => seen.area,
+}));
 vi.mock('../backup/model/status', async (original) => ({
   ...(await original<object>()),
   useBackupStatus: (): BackupStatus => seen.status,
@@ -77,6 +80,7 @@ vi.mock('../../../components/charts', () => ({
   },
 }));
 vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
+vi.mock('../organise/meta/meta-sheet', () => ({ MetaEditHost: (): null => null }));
 vi.mock('../../../components/interactive', () => ({
   Interactive: ({
     href,
@@ -127,6 +131,9 @@ const COUNTS: PhotoRailCounts = {
   duplicates: 37,
   backupDevices: 3,
   deleted: 214,
+  people: 12,
+  sharing: 2,
+  archive: 9,
 };
 
 const INSIGHTS: PhotoInsights = {
@@ -218,7 +225,7 @@ beforeEach(() => {
 });
 
 describe('photos rail', () => {
-  it('lists Library, Albums and Map and places on top and the Manage group under them', () => {
+  it('lists Library, People and pets, Albums, Sharing and Map and places on top and the Manage group under them', () => {
     const groups = photosRailGroups(WIDE);
     expect(groups.map((group) => group.title)).toEqual([null, 'Manage']);
     expect(
@@ -226,10 +233,15 @@ describe('photos rail', () => {
     ).toEqual([
       [
         ['library', 'Library'],
+        ['people', 'People and pets'],
         ['albums', 'Albums'],
+        ['sharing', 'Sharing'],
         ['map', 'Map and places'],
       ],
       [
+        ['folders', 'Folders'],
+        ['archive', 'Archive'],
+        ['locked', 'Locked folder'],
         ['insights', 'Insights'],
         ['deleted', 'Recently deleted'],
       ],
@@ -261,8 +273,13 @@ describe('photos rail', () => {
     expect(Object.values(countsOf(groups)).every((value) => value === null)).toBe(true);
     expect(detailsOf(groups)).toEqual({
       library: '<div><span>48,213 items</span></div>',
+      people: '<div><span>12 people and pets</span></div>',
       albums: '<div><span>24 albums</span></div>',
+      sharing: '<div><span>2 new updates</span></div>',
       map: '<div><span>41 places</span></div>',
+      folders: '',
+      archive: '<div><span>9 items</span></div>',
+      locked: '',
       insights: '<div><span>41 places · 2 countries</span></div>',
       deleted: '<div><span>214 items</span></div>',
     });
@@ -286,8 +303,13 @@ describe('photos rail', () => {
   it('gives the phone pull-up trailing counts', () => {
     expect(countsOf(photosRailGroups(COMPACT))).toEqual({
       library: 48213,
+      people: 12,
       albums: 24,
+      sharing: 2,
       map: 41,
+      folders: null,
+      archive: 9,
+      locked: null,
       insights: null,
       deleted: 214,
     });
@@ -297,6 +319,9 @@ describe('photos rail', () => {
   it('links every section and names the page after it', () => {
     expect(photosHrefOf('library')).toBe('/photos');
     expect(photosHrefOf('albums')).toEqual({ pathname: '/photos/albums', params: {} });
+    expect(photosHrefOf('people')).toEqual({ pathname: '/photos/people', params: {} });
+    expect(photosHrefOf('sharing')).toEqual({ pathname: '/photos/sharing', params: {} });
+    expect(photosTitleOf('people')).toBe('People and pets');
     expect(photosHrefOf('map')).toEqual({ pathname: '/photos/map', params: {} });
     expect(photosHrefOf('deleted')).toEqual({ pathname: '/photos/deleted', params: {} });
     expect(() => photosHrefOf('memories')).toThrow();
@@ -398,14 +423,16 @@ describe('photos frame', () => {
     expect(render()).not.toContain('data-href');
   });
 
-  it('gives the phone the Library, Albums and Places tabs on a section page', () => {
+  it('gives the phone the Library, People, Albums, Places and Folders tabs on a section page', () => {
     render({ active: 'albums', children: null });
     const tabs = tabsOf(seen.frame?.chips);
     expect(tabs?.active).toBe('albums');
     expect(tabs?.items.map((item) => [item.label, item.href])).toEqual([
       ['Library', '/photos'],
+      ['People', { pathname: '/photos/people', params: {} }],
       ['Albums', { pathname: '/photos/albums', params: {} }],
       ['Places', { pathname: '/photos/map', params: {} }],
+      ['Folders', { pathname: '/photos/folders', params: {} }],
     ]);
     expect(PHOTOS_PHONE_TABS).toBe(tabs?.items);
   });

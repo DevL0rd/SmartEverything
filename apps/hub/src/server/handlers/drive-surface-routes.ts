@@ -1,8 +1,9 @@
 import type { Logger } from '@smarteverything/logging';
 import { ApiError } from '@smarteverything/domain';
 import type { ConflictEnv } from '../../drive/conflicts';
-import { DriveFsApi } from '../../drive/fs-api';
-import { fsSpace } from '../../drive/fs-space';
+import { nodeInodeProbe } from '../../drive/fs-space';
+import { DriveMount } from '../../drive/mount/service';
+import { DriveMountSocket } from '../../drive/mount/socket';
 import { createDriveSync } from '../../drive/sync/server-push';
 import { syncAuthentication, type SyncEnv } from '../../drive/sync/server-ops';
 import { DriveSyncServer } from '../../drive/sync/server-socket';
@@ -14,10 +15,10 @@ import type { Store } from '../../store/store';
 import { CLASS2_METHODS, createDavHandler } from '../dav';
 import type { DavDeps } from '../dav/dav-auth';
 import type { DriveFiles } from '../drive-files';
-import { driveFsRoutes } from '../drive-fs-route';
 import type { RawRoute } from '../http-server';
 
 export const SYNC_SOCKET_PATH = '/drive/sync';
+export const MOUNT_SOCKET_PATH = '/drive/mount';
 export const SYNC_BLOCK_PATH = '/drive/blocks/:rootId/:itemId/:index';
 export const SYNC_PUT_BLOCK_PATH = '/drive/sync/:txn/block/:index';
 export const SYNC_COMMIT_PATH = '/drive/sync/:txn/commit';
@@ -44,11 +45,12 @@ export interface DriveSurfaces {
   readonly stop: () => void;
 }
 
-function syncEnvOf(inputs: DriveSurfaceInputs): SyncEnv {
+function syncEnvOf(inputs: DriveSurfaceInputs, posix: SyncEnv['posix']): SyncEnv {
   const { store, nodes, services } = inputs;
   return {
     ...inputs.env,
     store,
+    posix,
     space: services.probe.space,
     authenticate: syncAuthentication(store, nodes),
   };
@@ -111,43 +113,53 @@ function syncRoutes(
   ];
 }
 
-export function createDriveSurfaces(inputs: DriveSurfaceInputs): DriveSurfaces {
+function mountEnvOf(inputs: DriveSurfaceInputs): ConstructorParameters<typeof DriveMount>[0] {
   const { store, services } = inputs;
-  const parts = createDriveSync(syncEnvOf(inputs));
-  const server = new DriveSyncServer(store, inputs.nodes, parts.operations, inputs.log);
-  const fs = new DriveFsApi({
-    env: inputs.env,
+  const quota = (profileId: string): ReturnType<typeof store.driveQuotas.status> =>
+    store.driveQuotas.status(profileId);
+  return {
     store,
-    read: services.read,
-    write: services.write,
-    ops: store.driveSyncOps,
-  });
+    change: { ...inputs.env, store },
+    guard: { status: quota, space: services.probe.space },
+    space: { read: services.read, store, quota, probe: services.probe, inodes: nodeInodeProbe },
+    log: inputs.log,
+  };
+}
+
+function mountRoute(socket: DriveMountSocket): RawRoute {
+  return {
+    method: 'GET',
+    path: MOUNT_SOCKET_PATH,
+    handle: () =>
+      Promise.reject(new ApiError('invalid_request', 'Open this address as a WebSocket.')),
+    upgrade: (request, connection, head): Promise<void> =>
+      new Promise((resolve) => {
+        socket.upgrade(request, connection, head);
+        resolve();
+      }),
+  };
+}
+
+export function createDriveSurfaces(inputs: DriveSurfaceInputs): DriveSurfaces {
+  const { store } = inputs;
+  const mount = new DriveMount(mountEnvOf(inputs));
+  const parts = createDriveSync(syncEnvOf(inputs, mount.services.posix));
+  const server = new DriveSyncServer(store, inputs.nodes, parts.operations, inputs.log);
+  const mountSocket = new DriveMountSocket(store, inputs.nodes, mount, inputs.log);
   return {
     routes: [
       ...syncRoutes(server, parts),
-      ...driveFsRoutes({
-        api: fs,
-        files: services.files,
-        space: (caller, rootId, base) =>
-          fsSpace(
-            {
-              read: services.read,
-              store,
-              quota: (profileId) => store.driveQuotas.status(profileId),
-              probe: services.probe,
-            },
-            caller,
-            rootId,
-            base,
-          ),
-      }),
+      mountRoute(mountSocket),
       ...davRoutes(davDepsOf(inputs)),
     ],
     revoke: (deviceId): void => {
       server.revoke(deviceId);
+      mountSocket.revoke(deviceId);
     },
     stop: (): void => {
       server.stop();
+      mountSocket.stop();
+      mount.stop();
     },
   };
 }

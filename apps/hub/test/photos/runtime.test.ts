@@ -47,19 +47,22 @@ afterEach(async () => {
 
 function thumbState(id: string): string {
   const item = opened.store.driveItems.byId(id, null);
-  if (item.kind === 'folder') throw new Error('A folder has no thumbnail.');
+  if (item.kind === 'folder' || item.kind === 'link' || item.kind === 'special') {
+    throw new Error(`A ${item.kind} has no thumbnail.`);
+  }
   return item.thumb.state;
 }
 
 function seed(id: string, kind: 'image' | 'video', name: string, mime: string): void {
+  const inode = opened.store.driveInodes.create({ rootId: ROOT, type: 'file' }).id;
   opened.store.database
     .prepare(
       `insert into drive_items
-    (id, root_id, rel_path, name, kind, mime, bytes, integrity, modified_at, added_at,
+    (id, root_id, inode_id, rel_path, name, kind, mime, bytes, integrity, modified_at, added_at,
     rev, etag, outside, thumb_state, taken_at)
-    values (?, ?, ?, ?, ?, ?, 10, 'ok', ?, ?, 1, 'phone-rev1', 0, 'none', ?)`,
+    values (?, ?, ?, ?, ?, ?, ?, 10, 'ok', ?, ?, 1, 'phone-rev1', 0, 'none', ?)`,
     )
-    .run(id, ROOT, name, name, kind, mime, NOW, NOW, NOW);
+    .run(id, ROOT, inode, name, name, kind, mime, NOW, NOW, NOW);
   opened.store.database
     .prepare(
       `insert into drive_media

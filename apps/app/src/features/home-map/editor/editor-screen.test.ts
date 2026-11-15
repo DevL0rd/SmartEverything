@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOME_MAP, HOME_MAP_FLOOR } from '@smarteverything/domain';
 import type { AppHref } from '../../../components/app-href';
 import type { MenuItem } from '../../../components/menu';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import type { HomeMapEditing } from '../data/home-map-query';
 import type { EditorTool } from './tool-state';
 
@@ -18,6 +19,17 @@ interface Seen {
 }
 
 const seen = vi.hoisted(() => new Array<Seen>());
+const shell = vi.hoisted(
+  (): { actions: readonly ShellAction[]; overflow: readonly MenuItem[] } => ({
+    actions: [],
+    overflow: [],
+  }),
+);
+
+interface ShellProps extends Props {
+  readonly actions?: readonly ShellAction[];
+  readonly overflow?: readonly MenuItem[];
+}
 const start = vi.hoisted((): { params: Record<string, string> } => ({ params: {} }));
 const world = vi.hoisted(() => ({
   phone: true,
@@ -63,6 +75,14 @@ vi.mock('../../../components/icon', () => ({ Icon: stub('Icon') }));
 vi.mock('../../../components/icon-button', () => ({ IconButton: stub('IconButton') }));
 vi.mock('../../../components/interactive', () => ({ Interactive: stub('Interactive') }));
 vi.mock('../../../components/skeleton', () => ({ Skeleton: stub('Skeleton') }));
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: (props: ShellProps): ReactNode => {
+    shell.actions = props.actions ?? [];
+    shell.overflow = props.overflow ?? [];
+    seen.push({ kind: 'PageShell', props });
+    return props.children ?? null;
+  },
+}));
 vi.mock('../../../components/text', () => ({ Text: stub('Text') }));
 vi.mock('../../../components/menu', () => ({
   useAnchoredMenu: (items: readonly MenuItem[]): object => {
@@ -244,8 +264,14 @@ function only(kind: string): Props {
   return found.props;
 }
 
+function shellAction(label: string): ShellAction {
+  const found = shell.actions.find((item) => item.label === label);
+  if (found === undefined) throw new Error(`no action ${label}`);
+  return found;
+}
+
 function option(id: string): MenuItem {
-  const found = world.menu.find((item) => item.id === id);
+  const found = shell.overflow.find((item) => item.id === id);
   if (found === undefined) throw new Error(`no option ${id}`);
   return found;
 }
@@ -340,21 +366,21 @@ describe('HomeMapEditorScreen', () => {
   it('runs undo, and adds a floor from the Editor options', () => {
     render();
     expect(texts()).toContain('Saved');
-    expect(find('IconButton', 'Redo')['disabled']).toBe(true);
-    expect(find('IconButton', 'Editor options')['icon']).toBe('customize');
-    press(find('IconButton', 'Undo')['onPress']);
+    expect(shellAction('Redo').disabled).toBe(true);
+    press(shellAction('Undo').onPress);
     expect(world.undo).toHaveBeenCalledTimes(1);
     press(option('floor').onPress);
     const ops = world.edit.mock.calls[0]?.[0];
     expect(ops).toMatchObject([{ op: 'addFloor', floor: { name: 'Floor 3', level: 2 } }]);
   });
 
-  it('keeps Done filled and turns it tonal while a draft is open', () => {
+  it('keeps Done primary and drops the emphasis while a draft is open', () => {
     render();
-    expect(find('Button', 'Done')['variant']).toBe('filled');
+    expect(only('PageShell')).toMatchObject({ variant: 'overlay', back: false });
+    expect(shellAction('Done').primary).toBe(true);
     world.draft = true;
     render();
-    expect(find('Button', 'Done')['variant']).toBe('tonal');
+    expect(shellAction('Done').primary).toBe(false);
   });
 
   it('is read only offline: the stage says so and editing tools are disabled', () => {
@@ -362,7 +388,7 @@ describe('HomeMapEditorScreen', () => {
     render();
     expect(texts()).toContain('Offline: editing is paused');
     expect(only('EditorStage')['notice']).toEqual({ text: PAUSED_NOTICE, tone: 'warning' });
-    expect(find('IconButton', 'Undo')['disabled']).toBe(true);
+    expect(shellAction('Undo').disabled).toBe(true);
     expect(option('floor').disabled).toBe(true);
     expect(find('Interactive', 'Walls')['disabled']).toBe(true);
     expect(find('Interactive', 'Select')['disabled']).toBe(false);

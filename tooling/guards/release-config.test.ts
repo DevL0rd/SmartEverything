@@ -1,21 +1,12 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
 import appConfig from '../../apps/app/app.config.ts';
 import { readReleaseVersion, withVersion } from '../release-version.ts';
 
-const IDENTITY = z
-  .object({ applicationId: z.string().min(1) })
-  .parse(
-    JSON.parse(
-      readFileSync(
-        join(import.meta.dirname, '..', '..', 'apps', 'app', 'app-identity.json'),
-        'utf8',
-      ),
-    ),
-  ).applicationId;
+const IDENTITY = APP_IDENTITY.applicationId;
 
 const SERVER = 'https://hub.example.test';
 

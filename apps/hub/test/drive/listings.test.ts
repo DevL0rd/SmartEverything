@@ -160,4 +160,35 @@ describe('drive shares', () => {
     expect(listings.shares(sam, {}).items).toHaveLength(1);
     expect(() => listings.shares(sam, { cursor: onOther })).toThrow();
   });
+
+  it('lists the links of one album', () => {
+    const item = file(HOME);
+    const itemLink = share(item, owner.profileId, '2026-11-07T01:00:00.000Z');
+    const album = opened.store.driveAlbums.insert({
+      id: nextId(),
+      title: 'Holiday',
+      kind: 'manual',
+      surface: 'photos',
+      scope: 'person',
+      ownerProfileId: owner.profileId,
+      coverItemId: null,
+    });
+    const albumLink = nextId();
+    opened.store.driveShares.insert({
+      id: albumLink,
+      itemId: null,
+      albumId: album.id,
+      tokenHash: albumLink,
+      permission: 'view',
+      expiresAt: null,
+      passwordHash: null,
+      createdBy: owner.profileId,
+      createdAt: '2026-11-07T02:00:00.000Z',
+    });
+    expect(listings.shares(owner, { albumId: album.id }).items.map((one) => one.id)).toEqual([
+      albumLink,
+    ]);
+    expect(listings.shares(owner, {}).items.map((one) => one.id)).toEqual([albumLink, itemLink]);
+    expect(listings.shares(sam, { albumId: album.id }).items).toEqual([]);
+  });
 });

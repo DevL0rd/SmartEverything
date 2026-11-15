@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url';
 import type { DriveItem } from '@smarteverything/domain';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { collectUnread, metadataHandler, type MetadataEnvironment } from '../../src/drive/metadata';
 import { momentOf, readStill, readTimed, routeOf, TimedProbe } from '../../src/drive/metadata-read';
 import { updateDriveSettings } from '../../src/drive/settings';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
+import { PhotoMetaOverridesRepository } from '../../src/store/repositories/photo-meta-overrides';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
@@ -202,11 +204,13 @@ async function scan(): Promise<void> {
     store: {
       driveRoots: drive.roots,
       driveItems: drive.items,
+      driveInodes: new DriveInodesRepository(drive.context),
       feed: drive.feed,
       write: (work) => drive.context.write(work),
       now: () => new Date(NOW),
     },
     availability: () => Promise.resolve('online'),
+    mounted: (): boolean => false,
     workerScript: scannerScript,
     log: testLogger(),
   };
@@ -219,6 +223,7 @@ function environment(): MetadataEnvironment {
       driveRoots: drive.roots,
       driveItems: drive.items,
       settingsKv: drive.settings,
+      photoMetaOverrides: new PhotoMetaOverridesRepository(drive.context),
       write: (work) => drive.context.write(work),
     },
     media,

@@ -1,6 +1,7 @@
 import { PLANNER_OCCURRENCE_SINGLE, type PlannerItemRow } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 import { deleteChoicesOf, type DeleteChoice } from './item-delete';
+import type { NestTarget } from './steps-model';
 
 export type ItemMenuAction =
   | { readonly kind: 'done'; readonly key: string }
@@ -8,6 +9,8 @@ export type ItemMenuAction =
   | { readonly kind: 'ask' }
   | { readonly kind: 'open'; readonly intent: 'edit' | 'attach' }
   | { readonly kind: 'google'; readonly url: string }
+  | { readonly kind: 'indent'; readonly parentId: string }
+  | { readonly kind: 'outdent' }
   | { readonly kind: 'delete'; readonly choice: DeleteChoice };
 
 export interface ItemMenuEntry {
@@ -29,6 +32,7 @@ export interface ItemMenuInput {
   readonly item: PlannerItemRow;
   readonly occurrenceKey: string | null;
   readonly offline: boolean;
+  readonly nest?: NestTarget | null;
 }
 
 export type ItemShortcut = 'reschedule' | 'attach' | 'delete';
@@ -93,6 +97,30 @@ function googleEntry(item: PlannerItemRow): readonly ItemMenuEntry[] {
   ];
 }
 
+function nestEntries({ item, offline, nest }: ItemMenuInput): readonly ItemMenuEntry[] {
+  if (item.parent_id !== null) {
+    return [
+      {
+        id: 'outdent',
+        label: 'Make it its own task',
+        icon: 'arrowLeft',
+        action: { kind: 'outdent' },
+        disabled: offline,
+      },
+    ];
+  }
+  if (nest === undefined || nest === null) return [];
+  return [
+    {
+      id: 'indent',
+      label: `Make it a step of “${nest.title}”`,
+      icon: 'listTree',
+      action: { kind: 'indent', parentId: nest.id },
+      disabled: offline,
+    },
+  ];
+}
+
 function deleteEntries({ item, occurrenceKey, offline }: ItemMenuInput): readonly ItemMenuEntry[] {
   return deleteChoicesOf(item, occurrenceKey).map((choice, index) => ({
     id: choice.id,
@@ -133,6 +161,7 @@ export function itemMenuOf(input: ItemMenuInput): ItemMenuModel {
         action: { kind: 'open', intent: 'edit' },
         disabled: offline,
       },
+      ...nestEntries(input),
       ...googleEntry(input.item),
       ...deleteEntries(input),
     ],

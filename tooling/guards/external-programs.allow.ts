@@ -39,6 +39,11 @@ export const PROGRAMS: Readonly<Record<string, ProgramEntry>> = {
     kind: 'os',
     reason: 'a Windows PowerShell cmdlet, present on every supported Windows',
   },
+  arp: {
+    kind: 'os',
+    reason:
+      'present on macOS and Windows; reads the neighbor table of the machine for the firewall page (Linux reads /proc/net/arp)',
+  },
   flock: { kind: 'os', reason: 'serializes Linux hub releases and desktop folder installs' },
   systemctl: { kind: 'os', reason: 'systemd manages the Linux service the app installs' },
   journalctl: {
@@ -215,6 +220,22 @@ export const PROGRAMS: Readonly<Record<string, ProgramEntry>> = {
 };
 
 export const DYNAMIC_SITES: Readonly<Record<string, ProgramEntry>> = {
+  'apps/hub/src/data-layout/unit.ts': {
+    kind: 'os',
+    reason: 'the Linux hub unit install runs systemctl through the injected runner',
+  },
+  'apps/hub/src/self-update/command.ts': {
+    kind: 'os',
+    reason: 'the update child runner starts flock to serialize releases',
+  },
+  'apps/desktop/src/drive-sync/meta-port.ts': {
+    kind: 'bundled',
+    reason: 'the Drive sync helper ships with the desktop app and its path comes from the options',
+  },
+  'apps/desktop/src/service/pair-computer.ts': {
+    kind: 'bundled',
+    reason: 'runs the Computer service executable that ships with the desktop app',
+  },
   'apps/desktop/src/firewall/apply.ts': {
     kind: 'os',
     reason: 'runs the pkexec, powershell.exe or osascript command the plan names',

@@ -9,6 +9,7 @@ export const DESKTOP_PHOTO_ITEM = z.strictObject({
   takenAt: z.number().nonnegative(),
   uri: z.string().min(1),
   video: z.boolean(),
+  folder: z.string().min(1),
 });
 export type DesktopPhotoItem = z.infer<typeof DESKTOP_PHOTO_ITEM>;
 export const DESKTOP_PHOTO_LIBRARY = z.strictObject({

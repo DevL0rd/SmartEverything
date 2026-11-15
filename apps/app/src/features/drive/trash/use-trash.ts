@@ -3,9 +3,17 @@ import { background } from '@smarteverything/logging';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { useDayKey } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
-import { useSession } from '../../../store/selectors';
-import { flattenPages, useDriveChips, useDriveStats, useDriveTrash } from '../data';
+import { useIsOwner, useSession } from '../../../store/selectors';
+import {
+  flattenPages,
+  useDriveChips,
+  useDriveRoots,
+  useDriveStats,
+  useDriveTrash,
+  useViewerId,
+} from '../data';
 import type { DriveChipOf } from '../model/drive-chip';
+import { trashNodeOf, type DriveNode } from '../source/drive-node';
 import { deletedByOf, type DeletedByShare } from './deleted-by';
 import type { LeavingMonth } from './leaving-bars';
 import {
@@ -27,6 +35,7 @@ export interface TrashView {
   readonly months: readonly LeavingMonth[] | null;
   readonly rootLabelOf: (rootId: string) => string | null;
   readonly chipOf: DriveChipOf;
+  readonly nodeOf: ReadonlyMap<string, DriveNode>;
 }
 
 type TrashQuery = ReturnType<typeof useDriveTrash>;
@@ -62,15 +71,15 @@ export function useTrash(): TrashView {
   const chipOf = useDriveChips();
   const months = useDriveStats().data?.purges ?? null;
   const { data } = query;
-  const items = useMemo(
-    () =>
-      trashItemsOf(
-        flattenPages(data, (page) => page.items),
-        today,
-        people,
-      ),
-    [data, today, people],
-  );
+  const entries = useMemo(() => flattenPages(data, (page) => page.items), [data]);
+  const items = useMemo(() => trashItemsOf(entries, today, people), [entries, today, people]);
+  const owner = useIsOwner();
+  const viewerId = useViewerId();
+  const roots = useDriveRoots();
+  const nodeOf = useMemo(() => {
+    const rights = { owner, viewerId, roots };
+    return new Map(entries.map((entry) => [entry.itemId, trashNodeOf(entry, rights)]));
+  }, [entries, owner, viewerId, roots]);
   const deletedBy = useMemo(() => deletedByOf(items), [items]);
   return {
     status: statusOf(query),
@@ -85,5 +94,6 @@ export function useTrash(): TrashView {
     months,
     rootLabelOf: (rootId) => chipOf(rootId).label,
     chipOf,
+    nodeOf,
   };
 }

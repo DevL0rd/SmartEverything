@@ -37,7 +37,6 @@ export interface SearchTables extends ExtensionSearchData {
   readonly devices: StoreState['tables']['devices'];
   readonly rooms: StoreState['tables']['rooms'];
   readonly deviceGroups: StoreState['tables']['device_groups'];
-  readonly scenes: StoreState['tables']['scenes'];
   readonly automations: StoreState['tables']['automations'];
   readonly automationValues?: StoreState['tables']['automation_values'];
   readonly automationPluginKinds: StoreState['tables']['automation_plugin_kinds'];

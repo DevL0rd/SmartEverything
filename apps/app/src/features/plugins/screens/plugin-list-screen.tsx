@@ -6,7 +6,6 @@ import { href } from '../../../app-shell/hrefs';
 import { EmptyState } from '../../../components/empty-state';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
-import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { plural } from '../../../format/text';
@@ -20,8 +19,6 @@ import { OptionPickerSheet } from '../picker/option-picker-sheet';
 import { OptionVisual } from '../picker/option-visual';
 import { itemsProblem, listItems, typedItems } from '../model/setting-values';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
-
-const SEARCH_FROM = 12;
 
 function addRequest(
   row: PluginRow,
@@ -118,27 +115,13 @@ function PickToAdd({
   );
 }
 
-function ListHeader({
-  setting,
-  searchable,
-  query,
-  onQuery,
-}: {
-  readonly setting: PluginListSetting;
-  readonly searchable: boolean;
-  readonly query: string;
-  readonly onQuery: (query: string) => void;
-}): ReactNode {
+function ListHeader({ setting }: { readonly setting: PluginListSetting }): ReactNode {
+  if (setting.description === null) return null;
   return (
-    <View className="gap-2 px-gutter pt-2">
-      {searchable ? (
-        <SearchField value={query} onChange={onQuery} placeholder="Search the list" />
-      ) : null}
-      {setting.description === null ? null : (
-        <Text variant="footnote" tone="variant">
-          {setting.description}
-        </Text>
-      )}
+    <View className="px-gutter pt-2">
+      <Text variant="footnote" tone="variant">
+        {setting.description}
+      </Text>
     </View>
   );
 }
@@ -159,16 +142,17 @@ function Items({
   row,
   setting,
   list,
+  query,
 }: {
   readonly row: PluginRow;
   readonly setting: PluginListSetting;
   readonly list: ListEdit;
+  readonly query: string;
 }): ReactNode {
   const { items } = list;
   const known = chosenLabels(
     useChosenOptions(setting.picker === null ? null : pluginOptionFeed(row, setting.picker), items),
   );
-  const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query).trim().toLowerCase();
   const shown = shownItems(items, known, deferred);
   if (items.length === 0) {
@@ -188,14 +172,7 @@ function Items({
           }}
         />
       )}
-      header={
-        <ListHeader
-          setting={setting}
-          searchable={items.length >= SEARCH_FROM}
-          query={query}
-          onQuery={setQuery}
-        />
-      }
+      header={<ListHeader setting={setting} />}
       empty={
         <Text variant="body" tone="variant" className="px-gutter py-6">
           Nothing matches “{query.trim()}”.
@@ -258,17 +235,27 @@ function PluginListPage({
     `${setting.title} wasn’t saved`,
   );
   const { add, sheets } = useAdder(row, name, setting, list);
+  const [query, setQuery] = useState('');
   return (
     <SettingsFrame
       page="plugins"
       title={setting.title}
       detail
       scroll={false}
+      {...(list.items.length === 0
+        ? {}
+        : {
+            search: {
+              value: query,
+              onChange: setQuery,
+              placeholder: `Search ${setting.title.toLowerCase()}`,
+            },
+          })}
       trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
       primaryAction={{ label: 'Add', icon: 'plus', onPress: add }}
     >
       <View className="w-full max-w-reading flex-1 self-start">
-        <Items row={row} setting={setting} list={list} />
+        <Items row={row} setting={setting} list={list} query={query} />
       </View>
       {sheets}
     </SettingsFrame>

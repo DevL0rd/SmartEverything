@@ -11,29 +11,68 @@ export const LIBRARY_TAB_IDS = [
   'ai',
 ] as const;
 
-export type LibraryTabId = (typeof LIBRARY_TAB_IDS)[number];
+export type FixedTabId = (typeof LIBRARY_TAB_IDS)[number];
+
+export type PartnerTabId = `partner-${string}`;
+
+export type LibraryTabId = FixedTabId | PartnerTabId;
+
+const PARTNER_PREFIX = 'partner-';
+
+export function partnerTabIdOf(shareId: string): PartnerTabId {
+  return `${PARTNER_PREFIX}${shareId}`;
+}
+
+export function isPartnerTabId(id: LibraryTabId): id is PartnerTabId {
+  return id.startsWith(PARTNER_PREFIX);
+}
 
 export type LibraryTab =
   | {
-      readonly id: LibraryTabId;
+      readonly id: FixedTabId;
       readonly label: string;
       readonly icon?: IconName;
       readonly kind: 'hub';
       readonly filter: LibraryFilter;
     }
   | {
-      readonly id: LibraryTabId;
+      readonly id: FixedTabId;
       readonly label: string;
       readonly icon?: IconName;
       readonly kind: 'source';
       readonly source: PhotoSource;
     }
   | {
-      readonly id: LibraryTabId;
+      readonly id: FixedTabId;
       readonly label: string;
       readonly icon?: IconName;
       readonly kind: 'device';
+    }
+  | {
+      readonly id: PartnerTabId;
+      readonly label: string;
+      readonly icon?: IconName;
+      readonly kind: 'partner';
+      readonly shareId: string;
+      readonly sharerId: string;
     };
+
+export interface PartnerTabSource {
+  readonly id: string;
+  readonly sharerId: string;
+  readonly name: string;
+}
+
+export function partnerTabsOf(shares: readonly PartnerTabSource[]): readonly LibraryTab[] {
+  return shares.map((share) => ({
+    id: partnerTabIdOf(share.id),
+    label: share.name,
+    icon: 'users',
+    kind: 'partner',
+    shareId: share.id,
+    sharerId: share.sharerId,
+  }));
+}
 
 export const LIBRARY_TABS: readonly LibraryTab[] = [
   { id: 'all', label: 'All', kind: 'hub', filter: 'all' },
@@ -44,6 +83,17 @@ export const LIBRARY_TABS: readonly LibraryTab[] = [
   { id: 'cameras', label: 'Cameras', icon: 'camera', kind: 'source', source: 'cameras' },
   { id: 'ai', label: 'Made with AI', icon: 'sparkles', kind: 'source', source: 'ai' },
 ];
+
+export type PhotosPage =
+  | 'people'
+  | 'albums'
+  | 'sharing'
+  | 'map'
+  | 'folders'
+  | 'insights'
+  | 'archive'
+  | 'locked'
+  | 'deleted';
 
 export const TAB_PARAM = 'tab';
 
@@ -73,7 +123,7 @@ export interface TabCountInput {
   readonly device: number | undefined;
 }
 
-const COUNTS: Readonly<Record<LibraryTabId, (input: TabCountInput) => number | null>> = {
+const COUNTS: Readonly<Record<FixedTabId, (input: TabCountInput) => number | null>> = {
   all: (input) => input.rail?.library ?? null,
   favourites: (input) => input.rail?.favourites ?? null,
   videos: (input) => input.rail?.videos ?? null,
@@ -84,5 +134,5 @@ const COUNTS: Readonly<Record<LibraryTabId, (input: TabCountInput) => number | n
 };
 
 export function tabCountOf(id: LibraryTabId, input: TabCountInput): number | null {
-  return COUNTS[id](input);
+  return isPartnerTabId(id) ? null : COUNTS[id](input);
 }

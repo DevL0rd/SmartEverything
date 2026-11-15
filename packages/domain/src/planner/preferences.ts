@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { TIME_ZONE } from '../automations';
 import { CLOCK_TIME } from '../zoned-clock';
 import { PLANNER_DAYS, PLANNER_RING_TARGETS, PLANNER_WEEKDAY } from './alarms';
+import { PLANNER_BEDTIME, PLANNER_SLEEP_SOUNDS } from './bedtime';
 import { PLANNER_REMINDERS } from './collections';
+import { PLANNER_ALARM_SOUND } from './sounds';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
@@ -15,6 +17,7 @@ export const PLANNER_SMART_LISTS = [
   'today',
   'upcoming',
   'overdue',
+  'assigned',
   'device_tasks',
   'habits',
   'someday',
@@ -82,11 +85,12 @@ const CALENDAR = z
 
 const CLOCK = z
   .strictObject({
-    sound: z.string().trim().min(1),
+    sound: PLANNER_ALARM_SOUND,
     ramp_seconds: z.int().nonnegative(),
     snooze_minutes: z.int().positive(),
+    snooze_limit: z.int().positive().nullable(),
     targets: PLANNER_RING_TARGETS,
-    wake_scene_id: ID.nullable(),
+    wake_automation_id: ID.nullable(),
     world_clocks: z.array(WORLD_CLOCK).readonly(),
   })
   .readonly();
@@ -110,6 +114,8 @@ export const PLANNER_PREFERENCES = z
     tasks: TASKS,
     calendar: CALENDAR,
     clock: CLOCK,
+    bedtime: PLANNER_BEDTIME,
+    sleep_sounds: PLANNER_SLEEP_SOUNDS,
     watch: WATCH,
     ai: AI,
   })

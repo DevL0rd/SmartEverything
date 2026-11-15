@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
+
+	"github.com/smarteverything/drive-mount/wire"
 )
 
-func (c *blockCache) PinnedFiles(root mountRoot) int {
+func (c *blockCache) PinnedFiles(root string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	count := 0
@@ -20,48 +21,80 @@ func (c *blockCache) PinnedFiles(root mountRoot) int {
 	return count
 }
 
-func (c *blockCache) repin(root mountRoot, p string) {
-	defer c.background.Done()
-	if err := c.Pin(context.Background(), root, p); err != nil && !errors.Is(err, errNotFound) {
-		fmt.Fprintln(os.Stderr, "keep offline again:", p, err)
+func (c *blockCache) repin(ino uint64) {
+	if err := c.Pin(c.ctx, ino); err != nil && !remoteCode(err, wire.ErrENOENT) && !errors.Is(err, context.Canceled) && !unreachable(err) {
+		fmt.Fprintln(os.Stderr, "keep offline again:", ino, err)
 	}
 }
 
-func (c *blockCache) walk(ctx context.Context, root mountRoot, p string, visit func(string, entry) error) error {
-	e, err := c.stat(ctx, root, p)
+func (c *blockCache) repinIncomplete() {
+	c.mu.Lock()
+	var again []uint64
+	for _, f := range c.files {
+		if !f.st.Pinned {
+			continue
+		}
+		for i := range blockTotal(f.st.Size, f.st.Block) {
+			if !f.has(i) {
+				again = append(again, f.st.Ino)
+				break
+			}
+		}
+	}
+	c.mu.Unlock()
+	for _, ino := range again {
+		c.spawn(func() { c.repin(ino) })
+	}
+}
+
+func (c *blockCache) walk(ctx context.Context, attr wire.Attr, visit func(wire.Attr) error) error {
+	if attr.Type != wire.InodeTypeDirectory {
+		return visit(attr)
+	}
+	entries, err := c.listing(ctx, attr.Ino)
 	if err != nil {
 		return err
 	}
-	if !e.Dir {
-		return visit(p, e)
-	}
-	items, err := c.List(ctx, root, p)
-	if err != nil {
-		return err
-	}
-	for _, it := range items {
-		if err := c.walk(ctx, root, path.Join(p, it.Name), visit); err != nil {
+	for _, e := range entries {
+		if err := c.walk(ctx, e.Attr, visit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *blockCache) Pin(ctx context.Context, root mountRoot, p string) error {
+func (c *blockCache) Pin(ctx context.Context, ino uint64) error {
 	if c.startErr != nil {
 		return c.startErr
 	}
-	return c.walk(ctx, root, p, func(file string, e entry) error {
-		return c.pinFile(ctx, c.fileFor(root, file, e))
+	attr, err := c.Getattr(ctx, ino)
+	if err != nil {
+		return err
+	}
+	return c.walk(ctx, attr, func(a wire.Attr) error {
+		if a.Type != wire.InodeTypeFile {
+			return nil
+		}
+		return c.pinFile(ctx, c.fileFor(a))
 	})
 }
 
-func (c *blockCache) Unpin(ctx context.Context, root mountRoot, p string) error {
+func (c *blockCache) Unpin(ctx context.Context, ino uint64) error {
 	if c.startErr != nil {
 		return c.startErr
 	}
-	return c.walk(ctx, root, p, func(file string, e entry) error {
-		return c.setPinned(c.fileFor(root, file, e), false)
+	attr, err := c.Getattr(ctx, ino)
+	if err != nil {
+		return err
+	}
+	return c.walk(ctx, attr, func(a wire.Attr) error {
+		c.mu.Lock()
+		f := c.byIno[a.Ino]
+		c.mu.Unlock()
+		if f == nil {
+			return nil
+		}
+		return c.setPinned(f, false)
 	})
 }
 
@@ -69,6 +102,12 @@ func (c *blockCache) pinFile(ctx context.Context, f *cachedFile) error {
 	if err := c.setPinned(f, true); err != nil {
 		return err
 	}
+	var wh *wireHandle
+	defer func() {
+		if wh != nil {
+			wh.drop()
+		}
+	}()
 	for i := range blockTotal(f.st.Size, f.st.Block) {
 		c.mu.Lock()
 		present := f.has(i)
@@ -76,7 +115,14 @@ func (c *blockCache) pinFile(ctx context.Context, f *cachedFile) error {
 		if present {
 			continue
 		}
-		if _, err := c.fetch(ctx, f, i); err != nil {
+		if wh == nil {
+			opened, err := c.openWire(ctx, f.st.Ino)
+			if err != nil {
+				return errors.Join(err, c.setPinned(f, false))
+			}
+			wh = opened
+		}
+		if _, err := c.fetch(ctx, wh, f, i); err != nil {
 			return errors.Join(err, c.setPinned(f, false))
 		}
 	}

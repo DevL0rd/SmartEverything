@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Logger } from '@smarteverything/logging';
+import { useValue } from '../../../design/external-store';
 import { useStableCallback } from '../../../design/use-stable-callback';
 import { useLoaded } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
@@ -57,8 +58,20 @@ function usePruneAtStart(): void {
   }, [loaded, store]);
 }
 
+function useBakeWork(): boolean {
+  const busy = useValue(modelBakeQueue.busy);
+  useEffect(() => {
+    if (!busy) return undefined;
+    return (): void => {
+      bakeChannel.detach();
+    };
+  }, [busy]);
+  return busy;
+}
+
 export function BakeHost(): ReactNode {
   usePruneAtStart();
+  const busy = useBakeWork();
   const [generation, setGeneration] = useState(0);
   const drop = useStableCallback((cause: string): void => {
     log.warn('model.bake_host_lost', { cause, generation });
@@ -69,6 +82,7 @@ export function BakeHost(): ReactNode {
     drop(cause);
     return Promise.resolve();
   });
+  if (!busy) return null;
   return (
     <View
       style={OFF_VIEW}

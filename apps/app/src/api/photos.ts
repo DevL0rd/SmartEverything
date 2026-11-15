@@ -1,6 +1,6 @@
 import {
   PHOTOS_ENDPOINTS as P,
-  type BackupHave,
+  type BackupCheck,
   type BackupRegister,
   type DuplicateKeepBest,
   type PhotoInsightRange,
@@ -74,6 +74,20 @@ export function readPhotoInsights(range: PhotoInsightRange): Call<'readPhotoInsi
   return api().call(P.readPhotoInsights, { query: { range } });
 }
 
+export function listPhotoLargestVideos(
+  range: PhotoInsightRange,
+  cursor: string | null,
+): Call<'listPhotoLargestVideos'> {
+  return api().call(P.listPhotoLargestVideos, { query: { range, ...cursorQuery(cursor) } });
+}
+
+export function listPhotoBusiestDays(
+  range: PhotoInsightRange,
+  cursor: string | null,
+): Call<'listPhotoBusiestDays'> {
+  return api().call(P.listPhotoBusiestDays, { query: { range, ...cursorQuery(cursor) } });
+}
+
 export function listPhotoDuplicates(cursor: string | null): Call<'listPhotoDuplicates'> {
   return api().call(P.listPhotoDuplicates, { query: cursorQuery(cursor) });
 }
@@ -131,7 +145,7 @@ export function registerBackupDevice(body: BackupRegister): Call<'registerBackup
   return api().call(P.registerBackupDevice, { body });
 }
 
-export function checkBackupHashes(body: BackupHave): Call<'checkBackupHashes'> {
+export function checkBackupHashes(body: BackupCheck): Call<'checkBackupHashes'> {
   return api().call(P.checkBackupHashes, { body });
 }
 

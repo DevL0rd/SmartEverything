@@ -21,7 +21,7 @@ export const GENERIC_HUMIDIFIER_MODEL: ModelSpec = {
   title: 'Humidifier',
   category: 'climate',
   family: 'humidifier',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: RADIUS * 2, depth: 0.2151, height: 0.306 },
   framing: house('tank', 28, 16),
   shots: [
     shot('misting', RUNNING, 'tank', { zoom: 1.15, yaw: 20, pitch: 14, loopS: 4, stillAt: 2 }),

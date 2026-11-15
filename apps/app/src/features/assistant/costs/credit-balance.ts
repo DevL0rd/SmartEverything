@@ -1,5 +1,5 @@
 import type { OpenRouterAccount } from '@smarteverything/domain';
-import type { Money } from '../../region/model/money';
+import type { Money } from '../../region';
 
 const LOW_CREDITS_USD = 1;
 

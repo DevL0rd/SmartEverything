@@ -15,7 +15,7 @@ export const BOOKSHELF_SPEAKER_MODEL: ModelSpec = {
   title: 'Bookshelf speaker',
   category: 'audio',
   family: 'speaker',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.2805, height: HEIGHT },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

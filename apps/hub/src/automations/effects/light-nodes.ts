@@ -9,7 +9,7 @@ import {
   type HsvColor,
   type JsonValue,
 } from '@smarteverything/domain';
-import type { EffectRequest } from '@smarteverything/flow/interpret/frames';
+import type { Checked, EffectRequest, Outputs } from '@smarteverything/flow/interpret/frames';
 import { Logger, failureLine } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { Clock } from '../../clock';
@@ -42,15 +42,15 @@ const LIGHT_PARAMS = z.object({
   transition: z.number().min(0).optional(),
 });
 
-type Presented = NonNullable<ReturnType<typeof targetCapability>>;
-type LightParams = z.infer<typeof LIGHT_PARAMS>;
+export type Presented = NonNullable<ReturnType<typeof targetCapability>>;
+export type LightParams = z.infer<typeof LIGHT_PARAMS>;
 
 interface Change {
   readonly control: string;
   readonly value: JsonValue;
 }
 
-interface Wanted {
+export interface Wanted {
   readonly label: string;
   readonly control: string;
   readonly value: (presented: Presented) => JsonValue;
@@ -86,7 +86,7 @@ interface Sent {
   readonly skipped?: Skipped;
 }
 
-type ColourAsk =
+export type ColourAsk =
   | { readonly kind: 'none' }
   | { readonly kind: 'colour'; readonly colour: HsvColor }
   | { readonly kind: 'white'; readonly kelvin: number };
@@ -303,16 +303,29 @@ function planned(
   };
 }
 
+export interface LightAsk {
+  readonly ask: LightParams;
+  readonly colour: ColourAsk;
+  readonly wanted: readonly Wanted[];
+}
+
+export function lightAsk(params: Outputs): Checked<LightAsk> {
+  const checked = parsed(LIGHT_PARAMS, params);
+  if (!checked.ok) return checked;
+  const ask = checked.value;
+  const colour = colourOf(ask);
+  if (typeof colour === 'string') return invalid(colour);
+  const wanted = wantedOf(ask, colour);
+  if (wanted.length === 0) return invalid('Choose at least one thing to change on the lights.');
+  return { ok: true, value: { ask, colour, wanted } };
+}
+
 function lightSet(ports: LightEffectPorts): EffectHandler {
   const sender = new LightSender(ports);
   return async (params, request, run) => {
-    const checked = parsed(LIGHT_PARAMS, params);
-    if (!checked.ok) return checked;
-    const ask = checked.value;
-    const colour = colourOf(ask);
-    if (typeof colour === 'string') return invalid(colour);
-    const wanted = wantedOf(ask, colour);
-    if (wanted.length === 0) return invalid('Choose at least one thing to change on the lights.');
+    const asked = lightAsk(params);
+    if (!asked.ok) return asked;
+    const { ask, colour } = asked.value;
     try {
       const { plans, skipped } = planned(ports, ask, colour, request);
       announceFade(run, plans, ask);

@@ -10,7 +10,7 @@ import type { Tone } from '../../components/tone';
 import { notifyFailure } from '../../components/toast-store';
 import { cn } from '../../design/cn';
 import { useAreaWidth } from '../../design/size-class';
-import { usePlannerClockWrites, usePlannerStopwatch } from '../planner/data';
+import { usePlannerClockWrites, usePlannerStopwatch } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
 import { useHubOffline } from './frame/hub-status';
 import { frameLayoutOf } from './frame/sections';

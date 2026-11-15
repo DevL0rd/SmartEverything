@@ -6,19 +6,19 @@ import {
   type DriveFolderPlace,
   type DriveItem,
 } from '@smarteverything/domain';
-import {
-  announce,
-  commitContent,
-  folderDraft,
-  identityOf,
-  isoOf,
-  recordItem,
-  type ChangeEnv,
-} from './changes';
+import { announce, folderDraft, identityOf, isoOf, recordItem, type ChangeEnv } from './changes';
+import { itemAccess } from './access';
 import { DriveWriteError, locate, moveWithin, type DriveWriteRoot } from './intents';
 import { isInside, normalizeRelativePath } from './paths';
-import { checkDriveWrite, type DriveWriteGuard } from './quotas';
+import type { DriveWriteGuard } from './quotas';
 import { DRIVE_PAGE_SIZE, type DriveReadService } from './service-read';
+import {
+  copyFile,
+  copyLink,
+  copySpecial,
+  type CopyContext,
+  type CopyRoots,
+} from './service-write-copy';
 import type { AlbumEditing } from './service-write-albums';
 import { repathItem, type RepathOp } from './service-write-repath';
 import {
@@ -30,9 +30,9 @@ import {
   type DriveCaller,
   type WriteStore,
 } from './service-write-support';
+import { requireExport } from './sharing/export-guard';
 import { commitRestore, commitTrash } from './trash-purge';
 import { removeTrashEntry } from './trash';
-import { stageBytes } from './versions';
 
 export interface TreeDeps {
   readonly env: ChangeEnv;
@@ -46,11 +46,6 @@ export interface TreeDeps {
 type ItemChange = Extract<DriveChange, { readonly itemIds: readonly string[] }>;
 
 type Outcome = string | null;
-
-interface CopyRoots {
-  readonly source: DriveWriteRoot;
-  readonly root: DriveWriteRoot;
-}
 
 function placeIdOf(place: DriveFolderPlace): string {
   return place.kind === 'drive' ? place.rootId : place.folderId;
@@ -311,41 +306,36 @@ export class DriveTreeWriter {
     roots: CopyRoots,
     item: DriveItem,
     parent: DriveItem,
-  ): Promise<DriveItem> {
-    return item.kind === 'folder'
-      ? this.copyFolder(caller, roots, item, parent)
-      : this.copyFile(caller, roots, item, parent);
+  ): DriveItem | Promise<DriveItem> {
+    const { store } = this.deps;
+    requireExport(itemAccess(store, caller, store.driveRoots.byId(item.rootId), item), item);
+    switch (item.kind) {
+      case 'folder':
+        return this.copyFolder(caller, roots, item, parent);
+      case 'link':
+        return copyLink(this.copyContext(caller, roots), { item, target: item.linkTarget }, parent);
+      case 'special':
+        return copySpecial(this.copyContext(caller, roots), item, parent);
+      case 'image':
+      case 'video':
+      case 'audio':
+      case 'document':
+      case 'other':
+        return copyFile(this.copyContext(caller, roots), item, parent);
+    }
   }
 
-  private async copyFile(
-    caller: DriveCaller,
-    roots: CopyRoots,
-    item: DriveItem,
-    parent: DriveItem,
-  ): Promise<DriveItem> {
-    const { env, guard } = this.deps;
-    const relPath = joined(parent, item.name);
-    this.assertFree(roots.root.id, relPath, caller);
-    await checkDriveWrite(guard, {
-      profileId: caller.profileId,
-      addBytes: item.bytes,
-      releasedBytes: 0,
-      path: roots.root.path,
-    });
-    const source = env.files.read(await locate(roots.source, item.relPath));
-    const staged = await stageBytes(env, roots.root, source);
-    try {
-      const written = await commitContent(env, {
-        root: roots.root,
-        staged,
-        relPath,
-        actor: changeActorOf(caller),
-      });
-      return written.item;
-    } catch (cause) {
-      await env.files.remove(await locate(roots.root, staged.relPath));
-      throw cause;
-    }
+  private copyContext(caller: DriveCaller, roots: CopyRoots): CopyContext {
+    return {
+      caller,
+      roots,
+      env: this.deps.env,
+      store: this.deps.store,
+      guard: this.deps.guard,
+      assertFree: (rootId, relPath, who): void => {
+        this.assertFree(rootId, relPath, who);
+      },
+    };
   }
 
   private async copyFolder(

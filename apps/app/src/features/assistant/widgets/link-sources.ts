@@ -103,12 +103,6 @@ const ENTITIES: Readonly<Record<EntityLink['kind'], EntityKind>> = {
     title: (tables, id) => named(tables.automations.byId, id, (row) => row.name),
     to: (id) => href.automation(id),
   },
-  scene_link: {
-    icon: 'sparkles',
-    trail: 'Scene',
-    title: (tables, id) => named(tables.scenes.byId, id, (row) => row.name),
-    to: (id) => href.scene(id),
-  },
   room_link: {
     icon: 'grid',
     trail: 'Room',

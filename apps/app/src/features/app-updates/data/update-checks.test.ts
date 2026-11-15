@@ -66,6 +66,8 @@ function checksOf(state: AppUpdateState): Checks {
         download: vi.fn(),
         retry: vi.fn(),
         restart: vi.fn(),
+        tryUpdateAgain: vi.fn(),
+        stayOnBuiltIn: vi.fn(),
       }),
     );
     return null;

@@ -73,6 +73,32 @@ export function placeNear(anchor: Rect, width: number, window: WindowSize): Plac
   };
 }
 
+export type PreferredSide = 'below' | 'above';
+
+export function placeFitted(
+  anchor: Rect,
+  width: number,
+  window: WindowSize,
+  { height, prefer }: { readonly height: number; readonly prefer: PreferredSide },
+): Placed {
+  const left = leftOf(anchor, width, window);
+  const below = anchor.y + anchor.height + GAP;
+  const fitsBelow = below + height <= window.height - MARGIN;
+  const fitsAbove = anchor.y - GAP - height >= MARGIN;
+  if (fitsBelow && (prefer === 'below' || !fitsAbove)) {
+    return { left, vertical: { top: below }, maxHeight: height };
+  }
+  if (fitsAbove) {
+    return { left, vertical: { bottom: window.height - anchor.y + GAP }, maxHeight: height };
+  }
+  const room = Math.max(0, window.height - 2 * MARGIN);
+  return {
+    left,
+    vertical: { top: Math.max(MARGIN, window.height - MARGIN - height) },
+    maxHeight: Math.min(height, room),
+  };
+}
+
 export function centredRect(window: WindowSize): Rect {
   return pointRect(window.width / 2, window.height / 2);
 }

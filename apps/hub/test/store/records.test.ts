@@ -245,17 +245,7 @@ describe('clients and pairing', () => {
   });
 });
 
-describe('scenes, automations, remotes and personal settings', () => {
-  it('orders scenes and keeps a scene change to what was named', () => {
-    const { store } = opened;
-    const a = store.scenes.create({ name: 'A', icon: 'sun', actions: [], position: 0 });
-    const b = store.scenes.create({ name: 'B', icon: 'moon', actions: [], position: 1 });
-    expect(store.scenes.order([b.id, a.id]).map((scene) => scene.name)).toStrictEqual(['B', 'A']);
-    expect(store.scenes.update(a.id, { icon: 'star' })).toMatchObject({ name: 'A', icon: 'star' });
-    store.scenes.remove(a.id);
-    expect(store.scenes.list().map((scene) => scene.id)).toStrictEqual([b.id]);
-  });
-
+describe('automations, remotes and personal settings', () => {
   it('clears the last error of an automation only when a new revision is published', () => {
     const { store } = opened;
     const rule = saveAutomation(store, { name: 'Rule' });

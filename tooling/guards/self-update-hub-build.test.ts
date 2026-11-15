@@ -1,6 +1,4 @@
-import { spawnSync } from 'node:child_process';
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -10,33 +8,46 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { pnpmProgram } from '../build-host.ts';
 import { useBuildHost } from './build-host-fixture.ts';
 import { gitSourceText } from '../hub-update-source.ts';
-import { hubLayout } from '../../apps/hub/src/data-layout/index.ts';
+import type { HubLayout } from '../../apps/hub/src/data-layout/index.ts';
 import { testLayout } from '../../apps/hub/test/support/test-layout.ts';
 import { schemaVersionOf } from '../release-hub-files.ts';
 import { candidateIdentity } from '../self-update-candidate-identity.ts';
 import type { StepOutcome, StepRequest } from '../self-update-commands.ts';
+import { HubBuildSourceError } from '../hub-build-gate.ts';
 import { approvedRemoteHubBuild, localHubBuild } from '../self-update-hub-build.ts';
 
-const DATABASE_RELATIVE = relative('/root', hubLayout('/root', {}).system.database.file);
+const MIGRATIONS = 'export const migrations = true;';
 
-const MIGRATIONS = `
-import { dirname, join, relative } from 'node:path';
+const MIGRATION_ENTRY = `
 import { DatabaseSync } from 'node:sqlite';
-const [command, flag, data] = process.argv.slice(2);
-if (command !== 'check' || flag !== '--data') process.exit(3);
-const db = new DatabaseSync(join(data, ${JSON.stringify(DATABASE_RELATIVE)}));
+const [database] = process.argv.slice(2);
+const db = new DatabaseSync(database, { readOnly: true });
 const { version: from } = db.prepare('select max(version) as version from schema_version').get();
-db.exec('insert into schema_version values (7)');
-const { version: to } = db.prepare('select max(version) as version from schema_version').get();
 db.close();
-process.stdout.write(JSON.stringify({ from, to }) + '\\n');
+process.stdout.write(JSON.stringify({ from, to: 7 }) + '\\n');
 `;
+
+function remoteBuild(
+  layout: HubLayout,
+  input: unknown,
+  run: (request: StepRequest) => StepOutcome,
+): ReturnType<typeof approvedRemoteHubBuild> {
+  return approvedRemoteHubBuild(layout, input, run, process.execPath);
+}
+
+function localBuild(
+  layout: HubLayout,
+  root: string,
+  run: (request: StepRequest) => StepOutcome,
+): ReturnType<typeof localHubBuild> {
+  return localHubBuild(layout, root, run, process.execPath);
+}
 
 useBuildHost();
 
@@ -44,6 +55,20 @@ let scratch: string;
 let candidate: string;
 let source: string;
 let tip: string;
+
+async function layoutWithSource(source: string): Promise<HubLayout> {
+  const layout = await testLayout(join(scratch, `database-${source}`));
+  mkdirSync(dirname(layout.system.database.file), { recursive: true });
+  const database = new DatabaseSync(layout.system.database.file);
+  database.exec(
+    'create table ai_settings (key text primary key, settings text not null, updated_at text not null)',
+  );
+  database
+    .prepare('insert into ai_settings values (?, ?, ?)')
+    .run('updates.buildSource.hub', JSON.stringify({ source }), '2026-11-14T00:00:00.000Z');
+  database.close();
+  return layout;
+}
 
 function git(root: string, ...args: string[]): Promise<string> {
   return gitSourceText(root, args, 'prepare a release fixture');
@@ -56,16 +81,6 @@ async function approved(): Promise<Record<string, string>> {
     tip,
     identity: await candidateIdentity(candidate),
   };
-}
-
-function checkMigrationStep(request: StepRequest): StepOutcome {
-  const step = request.steps[0];
-  if (step === undefined) throw new Error('No migration command was requested.');
-  const outcome = spawnSync(process.execPath, step.args.slice(2), {
-    cwd: step.cwd,
-    encoding: 'utf8',
-  });
-  return { status: outcome.status ?? 1, output: outcome.stdout + outcome.stderr };
 }
 
 beforeEach(async () => {
@@ -95,7 +110,7 @@ afterEach(() => {
 });
 
 describe('preparing the exact approved remote checkout', () => {
-  it('executes the candidate migration command against a disposable database copy', async () => {
+  it('runs the built service migration check against the live database without changing it', async () => {
     const layout = await testLayout(join(scratch, 'database'));
     mkdirSync(dirname(layout.system.database.file), { recursive: true });
     const database = new DatabaseSync(layout.system.database.file);
@@ -103,24 +118,21 @@ describe('preparing the exact approved remote checkout', () => {
       'create table schema_version (version integer); insert into schema_version values (4)',
     );
     database.close();
-    const migrationScratch = join(scratch, 'migrations');
-    let copiedData: string | undefined;
-    const build = approvedRemoteHubBuild(await approved(), migrationScratch, (request) => {
-      const step = request.steps[0];
-      expect(step?.cwd).toBe(candidate);
-      copiedData = step?.args.at(-1);
-      expect(copiedData).toMatch(/candidate-migrations-/u);
-      expect(copiedData).not.toBe(layout.root);
-      return checkMigrationStep(request);
+    const stage = join(scratch, 'stage');
+    const build = remoteBuild(await layoutWithSource('hub'), await approved(), () => {
+      mkdirSync(join(stage, 'update'), { recursive: true });
+      writeFileSync(join(stage, 'update', 'migration-check.mjs'), MIGRATION_ENTRY);
+      return { status: 0, output: '' };
     });
 
+    await expect(build.checkMigrations(layout)).rejects.toThrow('Build the service');
+    await build.build(stage);
     await expect(build.checkMigrations(layout)).resolves.toEqual({ from: 4, to: 7 });
     expect(schemaVersionOf(layout.system.database.file)).toBe(4);
-    expect(copiedData === undefined ? true : existsSync(copiedData)).toBe(false);
   });
 
   it('refuses changed source bytes before executing the approved checkout', async () => {
-    const build = approvedRemoteHubBuild(await approved(), scratch, () => {
+    const build = remoteBuild(await layoutWithSource('hub'), await approved(), () => {
       throw new Error('A stale approval must not run any command.');
     });
     writeFileSync(join(candidate, 'tooling', 'release-hub.ts'), 'changed');
@@ -128,7 +140,7 @@ describe('preparing the exact approved remote checkout', () => {
   });
 
   it('refuses an escaping symlink before dependencies can install', async () => {
-    const build = approvedRemoteHubBuild(await approved(), scratch, () => {
+    const build = remoteBuild(await layoutWithSource('hub'), await approved(), () => {
       throw new Error('An escaping link must not run any command.');
     });
     symlinkSync(source, join(candidate, 'escape'));
@@ -140,7 +152,7 @@ describe('preparing the exact approved remote checkout', () => {
     mkdirSync(api, { recursive: true });
     writeFileSync(join(api, 'endpoints-ai.ts'), '/api/ai/memory/new-path');
     const requests: StepRequest[] = [];
-    const build = approvedRemoteHubBuild(await approved(), scratch, (request) => {
+    const build = remoteBuild(await layoutWithSource('hub'), await approved(), (request) => {
       requests.push(request);
       return { status: 0, output: '' };
     });
@@ -159,7 +171,7 @@ describe('preparing the exact approved remote checkout', () => {
 
   it('builds a candidate into a stage that carries no compatibility stamp', async () => {
     const stage = join(scratch, 'stage');
-    const build = approvedRemoteHubBuild(await approved(), scratch, (request) => {
+    const build = remoteBuild(await layoutWithSource('hub'), await approved(), (request) => {
       expect(request.steps[0]?.args.at(-1)).toBe(stage);
       mkdirSync(stage);
       return { status: 0, output: '' };
@@ -170,7 +182,7 @@ describe('preparing the exact approved remote checkout', () => {
 
   it('rejects a build step that modifies an approved file', async () => {
     const stage = join(scratch, 'stage');
-    const build = approvedRemoteHubBuild(await approved(), scratch, (request) => {
+    const build = remoteBuild(await layoutWithSource('hub'), await approved(), (request) => {
       expect(request.steps[0]?.cwd).toBe(candidate);
       expect(request.steps[0]?.args.at(-1)).toBe(stage);
       writeFileSync(join(candidate, 'tooling', 'release-hub.ts'), 'changed by the build');
@@ -181,13 +193,26 @@ describe('preparing the exact approved remote checkout', () => {
   });
 
   it('does not run a candidate build whose output could overwrite either checkout', async () => {
-    const build = approvedRemoteHubBuild(await approved(), scratch, () => {
+    const build = remoteBuild(await layoutWithSource('hub'), await approved(), () => {
       throw new Error('An overlapping output must not run any command.');
     });
 
     await expect(build.build(join(source, 'stage'))).rejects.toMatchObject({ code: 'git' });
     await expect(build.build(join(candidate, 'stage'))).rejects.toMatchObject({ code: 'git' });
     await expect(build.build(scratch)).rejects.toMatchObject({ code: 'git' });
+  });
+});
+
+describe('the hub build source gate', () => {
+  it.each(['provided', 'github'])('refuses both builders when the source is %s', async (source) => {
+    const layout = await layoutWithSource(source);
+    expect(() => localBuild(layout, candidate, () => ({ status: 0, output: '' }))).toThrow(
+      HubBuildSourceError,
+    );
+    const input = await approved();
+    expect(() => remoteBuild(layout, input, () => ({ status: 0, output: '' }))).toThrow(
+      /build source is .*, not hub\..*provision-build-host/u,
+    );
   });
 });
 
@@ -198,7 +223,7 @@ describe('preparing the local checkout', () => {
     const tracked = join(candidate, 'tooling', 'release-hub.ts');
     writeFileSync(pending, 'export const pending = true;');
     writeFileSync(tracked, `${MIGRATIONS}\n`);
-    const build = localHubBuild(candidate, (request) => {
+    const build = localBuild(await layoutWithSource('hub'), candidate, (request) => {
       requests.push(request);
       return { status: 0, output: '' };
     });
@@ -219,13 +244,16 @@ describe('preparing the local checkout', () => {
   });
 
   it('reports the output of a type check that failed without counting an error', async () => {
-    const build = localHubBuild(candidate, () => ({ status: 1, output: 'spawn tsc ENOENT' }));
+    const build = localBuild(await layoutWithSource('hub'), candidate, () => ({
+      status: 1,
+      output: 'spawn tsc ENOENT',
+    }));
     await expect(build.typeErrors()).rejects.toThrow('spawn tsc ENOENT');
   });
 
   it('runs the service build through the running node with tsx', async () => {
     const requests: StepRequest[] = [];
-    const build = localHubBuild(candidate, (request) => {
+    const build = localBuild(await layoutWithSource('hub'), candidate, (request) => {
       requests.push(request);
       return { status: 0, output: '' };
     });
@@ -242,7 +270,7 @@ describe('preparing the local checkout', () => {
     const requests: StepRequest[] = [];
     const pending = join(candidate, 'pending.ts');
     writeFileSync(pending, 'export const pending = true;');
-    const build = localHubBuild(candidate, (request) => {
+    const build = localBuild(await layoutWithSource('hub'), candidate, (request) => {
       requests.push(request);
       return { status: 0, output: '' };
     });
@@ -254,7 +282,7 @@ describe('preparing the local checkout', () => {
 
   it('rejects a build that rewrites tracked source while running', async () => {
     const file = join(candidate, 'tooling', 'release-hub.ts');
-    const build = localHubBuild(candidate, () => {
+    const build = localBuild(await layoutWithSource('hub'), candidate, () => {
       writeFileSync(file, MIGRATIONS);
       utimesSync(file, 0, 0);
       return { status: 0, output: '' };

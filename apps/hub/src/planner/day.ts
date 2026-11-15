@@ -368,11 +368,12 @@ function alarmTimes(
 
 export function composeDayFromStore(store: DayReader, query: DayQuery): PlannerDay {
   const frame = frameOf(query);
-  const loaded = loadWindow(store, query.profileId, {
-    from: frame.lookbackFrom,
-    to: frame.dayEnd,
-    timeZone: query.timeZone,
-  });
+  const loaded = loadWindow(
+    store,
+    query.profileId,
+    { from: frame.lookbackFrom, to: frame.dayEnd, timeZone: query.timeZone },
+    'shown',
+  );
   const alarms = alarmTimes(store, query, frame);
   return composeDay({
     frame,

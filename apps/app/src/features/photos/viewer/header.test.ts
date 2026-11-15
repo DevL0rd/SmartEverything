@@ -31,6 +31,7 @@ vi.mock('../../../components/icon', () => ({ Icon: stub('Icon') }));
 vi.mock('../../../components/icon-button', () => ({ IconButton: stub('IconButton') }));
 vi.mock('../../../components/interactive', () => ({ Interactive: stub('Interactive') }));
 vi.mock('../../../components/text', () => ({ Text: stub('Text') }));
+vi.mock('../../../components/charts/arc', () => ({ Arc: stub('Arc') }));
 vi.mock('../../../components/menu', () => ({
   useAnchoredMenu: (): { readonly ref: null; readonly open: () => void; readonly menu: null } => ({
     ref: null,
@@ -56,6 +57,14 @@ const CONTROLS: HeaderControls = {
   onShare: () => undefined,
   onInfo: () => undefined,
   onTrash: () => undefined,
+  edit: {
+    label: 'Edit',
+    available: true,
+    busy: false,
+    onEdit: () => undefined,
+    onRevert: null,
+    job: { progress: 0.4, label: 'Saving the edited video, 40%' },
+  },
 };
 
 const TEXT = { title: 'Saturday 7 November 2026 · 10:42', detail: 'Lisbon, Portugal' };
@@ -96,5 +105,25 @@ describe('viewer header icons', () => {
     );
     expect(action?.props.selected).toBe(true);
     expect(phone.some((entry) => entry.kind === 'Icon' && entry.props.name === 'star')).toBe(true);
+  });
+
+  it('offers Edit on desktop and phone and shows a running video edit', () => {
+    const desktop = rendered(createElement(DesktopHeader, { text: TEXT, controls: CONTROLS }));
+    expect(desktop.find((entry) => entry.props.label === 'Edit')?.props.icon).toBe('pencil');
+    expect(desktop.some((entry) => entry.kind === 'Arc')).toBe(true);
+    const phone = rendered(createElement(PhoneActions, { controls: CONTROLS }));
+    expect(
+      phone.some((entry) => entry.kind === 'Interactive' && entry.props.label === 'Edit'),
+    ).toBe(true);
+  });
+
+  it('hides Edit when the photo cannot be edited', () => {
+    const controls = { ...CONTROLS, edit: { ...CONTROLS.edit, available: false } };
+    const desktop = rendered(createElement(DesktopHeader, { text: TEXT, controls }));
+    expect(desktop.some((entry) => entry.props.label === 'Edit')).toBe(false);
+    const phone = rendered(createElement(PhoneActions, { controls }));
+    expect(
+      phone.some((entry) => entry.kind === 'Interactive' && entry.props.label === 'Edit'),
+    ).toBe(false);
   });
 });

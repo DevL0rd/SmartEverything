@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path';
 import { SELF_UPDATE_ROOT } from '@smarteverything/domain';
 import { z } from 'zod';
-import { findUpdateSource } from '../apps/hub/src/self-update/update-source.ts';
+import { findCheckoutSource } from '../apps/hub/src/self-update/update-source.ts';
 import { hubPendingIdentity } from './hub-update-candidate.ts';
 import { dataLayoutOf } from './release-hub-files.ts';
 import {
@@ -23,11 +23,11 @@ export const REVIEWED_OFFER = z.strictObject({
 type ReviewedOffer = z.infer<typeof REVIEWED_OFFER>;
 
 export function configuredHubSource(data: string): HubUpdateSource {
-  const source = findUpdateSource(dataLayoutOf(data));
+  const source = findCheckoutSource(dataLayoutOf(data));
   if (source === undefined)
     throw new HubSourceError(
       'git',
-      'This hub has no update source configured. Run tooling/configure-update-source.ts from the SmartEverything checkout.',
+      'This hub has no update checkout. Run tooling/configure-update-source.ts --checkout from the SmartEverything checkout.',
     );
   return { folder: source.checkout, remote: source.remote, branch: source.branch };
 }

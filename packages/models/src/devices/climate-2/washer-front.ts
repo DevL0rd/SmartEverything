@@ -247,7 +247,7 @@ export const FRONT_WASHER_MODEL: ModelSpec = {
   title: 'Washing machine',
   category: 'appliance',
   family: 'laundry',
-  footprint: { width: WIDTH, depth: DEPTH + 0.06, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.6628, height: HEIGHT },
   framing: house('cabinet', 28, 16),
   shots: [
     {

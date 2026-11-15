@@ -7,8 +7,6 @@ import { href } from '../../app-shell/hrefs';
 import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
-import { PageHeader } from '../../components/page-header';
-import { Screen } from '../../components/screen';
 import { Select } from '../../components/select';
 import { Text } from '../../components/text';
 import { TranscriptFeed } from '../../components/transcript-feed';
@@ -16,22 +14,17 @@ import { longDate, shortClock } from '../../format/time';
 import { useFeedController } from '../../queries/transcript-reader/use-feed-controller';
 import { useTranscriptRemoval } from '../../queries/transcript-reader/use-transcript-removal';
 import { useTranscriptSessions } from '../../queries/transcript-reader/use-transcript-sessions';
+import { SettingsFrame } from '../../settings/settings-frame';
 import { useSettings } from '../../store/selectors';
 import { DISCORD_PLUGIN } from './discord-data';
 import { background } from '@smarteverything/logging';
 
-function TranscriptHeader(): ReactNode {
-  return (
-    <PageHeader
-      title="Call transcripts"
-      subtitle="Discord · one call at a time"
-      breadcrumbs={[
-        { label: 'Plugins', href: href.settings.page('plugins') },
-        { label: 'Discord', href: href.pluginSettings(DISCORD_PLUGIN) },
-      ]}
-    />
-  );
-}
+const TRANSCRIPT_SHELL = {
+  page: 'plugins',
+  title: 'Call transcripts',
+  detail: true,
+  trail: [{ label: 'Discord', href: href.pluginSettings(DISCORD_PLUGIN) }],
+} as const;
 
 function CallSelector({
   calls,
@@ -66,13 +59,21 @@ function CallSelector({
   );
 }
 
-function CallFeed({
+const MISTAKES_NOTE = (
+  <Text variant="footnote" tone="variant">
+    Recognition can contain mistakes.
+  </Text>
+);
+
+function CallPage({
   call,
-  selector,
+  calls,
+  select,
   focusSelector,
 }: {
   readonly call: TranscriptSession;
-  readonly selector: ReactNode;
+  readonly calls: readonly TranscriptSession[];
+  readonly select: (id: string) => void;
   readonly focusSelector: boolean;
 }): ReactNode {
   const { focus } = useLocalSearchParams<{ focus?: string }>();
@@ -80,22 +81,38 @@ function CallFeed({
   const remove = useTranscriptRemoval();
   const { time_zone: timeZone } = useSettings();
   return (
-    <TranscriptFeed
-      feed={feed}
-      timeZone={timeZone}
-      grouped
-      {...(remove === undefined ? {} : { remove })}
-      header={selector}
-      pageHeader={<TranscriptHeader />}
-      headerWidth="detail"
-      inlineControls
-      focusSearch={focus === 'transcript-search' && !focusSelector}
-      controls={
-        <Text variant="footnote" tone="variant">
-          Search this call. Recognition can contain mistakes.
-        </Text>
-      }
-    />
+    <SettingsFrame
+      {...TRANSCRIPT_SHELL}
+      scroll={false}
+      search={{
+        value: feed.words,
+        onChange: feed.changeWords,
+        placeholder: 'Search this call',
+        label: 'Search this call',
+        focusOnMount: focus === 'transcript-search' && !focusSelector,
+      }}
+    >
+      <View className="-mx-gutter min-h-0 flex-1">
+        <TranscriptFeed
+          feed={feed}
+          timeZone={timeZone}
+          grouped
+          {...(remove === undefined ? {} : { remove })}
+          header={
+            <CallSelector
+              calls={calls}
+              selected={call.id}
+              select={select}
+              restoreFocus={focusSelector}
+            />
+          }
+          headerWidth="detail"
+          inlineControls
+          shellSearch
+          controls={MISTAKES_NOTE}
+        />
+      </View>
+    </SettingsFrame>
   );
 }
 
@@ -137,15 +154,9 @@ function Reader(): ReactNode {
   const calls = useTranscriptSessions('plugin', DISCORD_PLUGIN, useIsFocused());
   const [selected, select] = useState<string | null>(null);
   const call = calls.data?.find((item) => item.id === selected) ?? calls.data?.[0];
-  const focusSelector = selected === call?.id;
-  return (
-    <Screen
-      header={<TranscriptHeader />}
-      maxWidth="reading"
-      scroll={call === undefined}
-      externalScroll={call !== undefined}
-    >
-      {call === undefined ? (
+  if (call === undefined) {
+    return (
+      <SettingsFrame {...TRANSCRIPT_SHELL}>
         <NoCall
           error={calls.error}
           loading={calls.isPending}
@@ -153,22 +164,17 @@ function Reader(): ReactNode {
             background(calls.refetch(), 'calls.refetch_failed');
           }}
         />
-      ) : (
-        <CallFeed
-          key={call.id}
-          call={call}
-          focusSelector={focusSelector}
-          selector={
-            <CallSelector
-              calls={calls.data ?? []}
-              selected={call.id}
-              select={select}
-              restoreFocus={focusSelector}
-            />
-          }
-        />
-      )}
-    </Screen>
+      </SettingsFrame>
+    );
+  }
+  return (
+    <CallPage
+      key={call.id}
+      call={call}
+      calls={calls.data ?? []}
+      select={select}
+      focusSelector={selected === call.id}
+    />
   );
 }
 
@@ -180,14 +186,14 @@ export function DiscordTranscriptScreen({
   usePluginScreen('discord', 'DiscordTranscriptScreen');
   if (pluginId !== DISCORD_PLUGIN) {
     return (
-      <Screen header={<TranscriptHeader />} maxWidth="reading">
+      <SettingsFrame {...TRANSCRIPT_SHELL}>
         <EmptyState
           icon="messageCircle"
           title="Transcripts unavailable"
           body="Call transcripts are written by the Discord plugin."
           action={<Button label="Discord settings" href={href.pluginSettings(DISCORD_PLUGIN)} />}
         />
-      </Screen>
+      </SettingsFrame>
     );
   }
   return <Reader />;

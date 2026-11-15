@@ -5,15 +5,31 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type {
+  DriveAccessBox,
   DriveItem,
+  DriveItemText,
+  DriveOpenItem,
+  DriveZipEntryLink,
   DriveQuery,
-  DriveQueryPage,
+  DriveSearchPage,
   DriveRecentFilter,
   DriveSort,
 } from '@smarteverything/domain';
 import {
   type DriveResult,
   browseDrive,
+  listDriveAccessRequests,
+  listDriveComments,
+  listDriveFileRequestUploads,
+  listDriveFileRequests,
+  listDriveNotifications,
+  listDriveOffline,
+  listDriveSuggested,
+  listDriveTransfers,
+  listDriveZipEntries,
+  openDriveItem,
+  readDriveItemText,
+  readDriveZipEntryLink,
   listDriveAlbumItems,
   listDriveConflicts,
   listDriveDuplicates,
@@ -89,8 +105,8 @@ export function useDriveItems(
 export function useDriveSearch(
   query: Omit<DriveQuery, 'cursor'>,
   enabled: boolean,
-): DrivePages<DriveQueryPage> {
-  return useDrivePages<DriveQueryPage>({
+): DrivePages<DriveSearchPage> {
+  return useDrivePages<DriveSearchPage>({
     queryKey: driveKey('search', inRoot(query.rootId), query),
     read: (cursor) => searchDrive({ ...query, cursor }),
     enabled,
@@ -244,5 +260,111 @@ export function useSharedByMe(): DrivePages<DriveResult<'listSharedByMe'>> {
   return useDrivePages({
     queryKey: driveKey('shared-by-me', DRIVE_EVERYWHERE),
     read: listDriveSharedByMe,
+  });
+}
+
+export function useDriveZipEntries(
+  itemId: string,
+  rev: number,
+): DrivePages<DriveResult<'listZipEntries'>> {
+  return useDrivePages({
+    queryKey: driveKey('zip-entries', DRIVE_EVERYWHERE, itemId, rev),
+    read: (cursor) => listDriveZipEntries(itemId, cursor),
+  });
+}
+
+export function useDriveZipEntryLink(
+  itemId: string | null,
+  rev: number,
+  index: number | null,
+): UseQueryResult<DriveZipEntryLink> {
+  return useScreenQuery<DriveZipEntryLink>({
+    queryKey: driveKey('zip-link', DRIVE_EVERYWHERE, itemId, rev, index),
+    queryFn:
+      itemId === null || index === null
+        ? skipToken
+        : (): Promise<DriveZipEntryLink> => readDriveZipEntryLink(itemId, index),
+    retry: false,
+  });
+}
+
+export function useDriveItemText(
+  itemId: string | null,
+  rev: number,
+): UseQueryResult<DriveItemText> {
+  return useScreenQuery<DriveItemText>({
+    queryKey: driveKey('item-text', DRIVE_EVERYWHERE, itemId, rev),
+    queryFn: itemId === null ? skipToken : (): Promise<DriveItemText> => readDriveItemText(itemId),
+    retry: false,
+  });
+}
+
+export function useDriveOpenItem(itemId: string | null): UseQueryResult<DriveOpenItem> {
+  return useScreenQuery<DriveOpenItem>({
+    queryKey: driveKey('open-item', DRIVE_EVERYWHERE, itemId),
+    queryFn: itemId === null ? skipToken : (): Promise<DriveOpenItem> => openDriveItem(itemId),
+    retry: false,
+  });
+}
+
+export function useDriveSuggested(): DrivePages<DriveResult<'listSuggested'>> {
+  return useDrivePages({
+    queryKey: driveKey('suggested', DRIVE_EVERYWHERE),
+    read: listDriveSuggested,
+  });
+}
+
+export function useDriveComments(itemId: string): DrivePages<DriveResult<'listComments'>> {
+  return useDrivePages({
+    queryKey: driveKey('comments', DRIVE_EVERYWHERE, itemId),
+    read: (cursor) => listDriveComments(itemId, cursor),
+  });
+}
+
+export function useDriveAccessRequests(
+  box: DriveAccessBox,
+): DrivePages<DriveResult<'listDriveAccessRequests'>> {
+  return useDrivePages({
+    queryKey: driveKey('access-requests', DRIVE_EVERYWHERE, box),
+    read: (cursor) => listDriveAccessRequests(box, cursor),
+  });
+}
+
+export function useDriveFileRequests(
+  folderItemId: string | null,
+): DrivePages<DriveResult<'listFileRequests'>> {
+  return useDrivePages({
+    queryKey: driveKey('file-requests', DRIVE_EVERYWHERE, folderItemId),
+    read: (cursor) => listDriveFileRequests(folderItemId, cursor),
+  });
+}
+
+export function useDriveFileRequestUploads(
+  fileRequestId: string,
+): DrivePages<DriveResult<'listFileRequestUploads'>> {
+  return useDrivePages({
+    queryKey: driveKey('file-request-uploads', DRIVE_EVERYWHERE, fileRequestId),
+    read: (cursor) => listDriveFileRequestUploads(fileRequestId, cursor),
+  });
+}
+
+export function useDriveNotifications(): DrivePages<DriveResult<'listNotifications'>> {
+  return useDrivePages({
+    queryKey: driveKey('notifications', DRIVE_EVERYWHERE),
+    read: listDriveNotifications,
+  });
+}
+
+export function useDriveTransfers(): DrivePages<DriveResult<'listTransfers'>> {
+  return useDrivePages({
+    queryKey: driveKey('transfers', DRIVE_EVERYWHERE),
+    read: listDriveTransfers,
+  });
+}
+
+export function useDriveOffline(clientId: string | null): DrivePages<DriveResult<'listOffline'>> {
+  return useDrivePages({
+    queryKey: driveKey('offline', DRIVE_EVERYWHERE, clientId),
+    read: (cursor) => listDriveOffline(clientId, cursor),
   });
 }

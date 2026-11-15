@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { API_ENDPOINTS as E, type DriveItem } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, type DriveHit, type DriveItem } from '@smarteverything/domain';
 import { decodeCursor, encodeCursor } from '../../drive/search';
 import type { DriveActor } from '../../drive/access';
 import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
@@ -26,7 +26,11 @@ function membersOf(
   services: DriveServices,
   actor: DriveActor,
   request: AlbumPageRequest,
-): { readonly items: DriveItem[]; readonly next: string | null } {
+): {
+  readonly items: DriveItem[];
+  readonly hits: DriveHit[];
+  readonly next: string | null;
+} {
   const { albumId, cursor } = request;
   const page = services.albums.members(
     albumId,
@@ -36,6 +40,7 @@ function membersOf(
   );
   return {
     items: page.itemIds.map((itemId) => store.driveItems.byId(itemId, actor.profileId)),
+    hits: page.itemIds.map((itemId) => ({ itemId, where: 'name', snippet: null })),
     next: page.next === null ? null : encodeCursor(page.next),
   };
 }

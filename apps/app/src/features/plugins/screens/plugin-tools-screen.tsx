@@ -6,7 +6,6 @@ import { href } from '../../../app-shell/hrefs';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { SwitchRow } from '../../../components/rows';
-import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { joinParts, plural } from '../../../format/text';
@@ -61,9 +60,8 @@ function ToolRow({
   );
 }
 
-function ToolList({ row }: { readonly row: PluginRow }): ReactNode {
+function ToolList({ row, query }: { readonly row: PluginRow; readonly query: string }): ReactNode {
   const tools = usePluginTools(row);
-  const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query);
   if (row.status !== 'running') {
     return (
@@ -93,8 +91,7 @@ function ToolList({ row }: { readonly row: PluginRow }): ReactNode {
       keyOf={(tool) => tool.name}
       renderItem={(tool) => <ToolRow row={row} tool={tool} />}
       header={
-        <View className="gap-2 px-gutter pt-2">
-          <SearchField value={query} onChange={setQuery} placeholder="Search tools" />
+        <View className="px-gutter pt-2">
           <Text variant="footnote" tone="variant">
             Your AI can use the tools that are on.
           </Text>
@@ -117,6 +114,7 @@ export function PluginToolsScreen({
   readonly pluginId: string | undefined;
 }): ReactNode {
   const row = usePluginParam(pluginId);
+  const [query, setQuery] = useState('');
   if (row === null) {
     return <MissingPlugin />;
   }
@@ -127,9 +125,12 @@ export function PluginToolsScreen({
       detail
       scroll={false}
       trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
+      {...(row.status === 'running'
+        ? { search: { value: query, onChange: setQuery, placeholder: 'Search tools' } }
+        : {})}
     >
       <View className="w-full max-w-reading flex-1 self-start">
-        <ToolList row={row} />
+        <ToolList row={row} query={query} />
       </View>
     </SettingsFrame>
   );

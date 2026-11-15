@@ -35,9 +35,9 @@ object NativeTrace {
   private val JAVA_THROWABLE = Regex("(?:[\\w$]+\\.)+[A-Z][\\w$]*(?:Exception|Error|Throwable|Failure)")
   private val JAVA_FRAME = Regex("(?:^|\\sat\\s)[\\w$.]+\\.[\\w$<>]+\\(")
 
-  fun read(exit: ApplicationExitInfo): Map<String, Any?> = when (exit.reason) {
+  fun read(exit: ApplicationExitInfo, recorded: Map<String, Any?>?): Map<String, Any?> = when (exit.reason) {
     ApplicationExitInfo.REASON_CRASH_NATIVE -> readNative(exit.traceInputStream)
-    ApplicationExitInfo.REASON_CRASH -> readJava(exit.traceInputStream)
+    ApplicationExitInfo.REASON_CRASH -> recorded ?: readJava(exit.traceInputStream)
     else -> state("not_native")
   }
 
@@ -60,12 +60,21 @@ object NativeTrace {
         "state" to "java",
         "name" to name.substringAfterLast('.'),
         "message" to DiagnosticText.description(text.lineSequence().first()),
-        "frame" to DiagnosticText.symbol(frame.substring(0, frame.length - 1))
+        "frame" to DiagnosticText.symbol(frame.substring(0, frame.length - 1)),
+        "frames" to javaFrames(text)
       )
     } catch (failure: Exception) {
       state("unreadable")
     }
   }
+
+  private fun javaFrames(text: String): List<String> = text.lineSequence()
+    .filter { JAVA_FRAME.containsMatchIn(it) }
+    .map { it.trim().removePrefix("at ") }
+    .filter { it.matches(Regex("[A-Za-z0-9_:$<>(), .\\[\\]~+=-]{1,400}")) }
+    .map { it.take(240) }
+    .take(MAX_FRAMES)
+    .toList()
 
   private fun bounded(stream: InputStream): ByteArray? {
     val output = ByteArrayOutputStream()

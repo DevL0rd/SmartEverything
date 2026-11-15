@@ -40,7 +40,7 @@ interface Chosen {
 const BROKEN_SESSION_CODES: ReadonlySet<number> = new Set([1007, 1008, 1011]);
 
 function tooLargeLine(tool: string): string {
-  return `${tool} returned a result too large to repeat here; call it again if you need it.`;
+  return `${tool} returned a result too large to repeat here. Carry on with what they asked, and call it again only when you need its data to do that.`;
 }
 
 function leftOutLine(left: number): string {

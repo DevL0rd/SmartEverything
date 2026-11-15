@@ -15,7 +15,6 @@ const NOT_YET_MOVED: Readonly<Record<string, string>> = {
     'BrowserActionScope has a boolean default',
   'src/features/assistant/chats/engine-accessories.tsx':
     'EngineAccessoryContext reads null quietly',
-  'src/features/assistant/details/details-scope.tsx': 'Scope throws on refresh',
   'src/features/automations/values/editor-focus.tsx': 'FocusContext has a non-null default',
   'src/features/devices/card/standalone-shell.tsx': 'ShellContext reads null quietly',
   'src/features/device-visuals/parts/material.tsx': 'LightingContext has a non-null default',

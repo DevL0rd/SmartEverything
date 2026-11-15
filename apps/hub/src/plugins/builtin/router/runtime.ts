@@ -19,9 +19,9 @@ import { listSpeedTests, saveSpeedTest } from './speed-tests';
 import { runSpeedTest, SpeedTestError } from './speed-test';
 import { SshRouterShell } from './ssh-shell';
 import { routerTools } from './tools';
+import { RouterStreams } from './streams';
 import { messageOf } from '@smarteverything/logging';
 
-export const SNAPSHOT_STREAM = 'router.snapshot';
 export const SPEED_TEST_STREAM = 'router.speed_test';
 
 type Context = PluginContext<RouterSettings>;
@@ -29,16 +29,17 @@ type Context = PluginContext<RouterSettings>;
 export function startRouter(ctx: Context): PluginStop {
   const presence = new RouterPresence(ctx);
   const sync = new DeviceMirror(routerMirror(ctx.metrics));
-  const publish = (enriched: RouterSnapshot): void => {
-    ctx.data.publish(SNAPSHOT_STREAM, enriched);
+  const streams = new RouterStreams(ctx.data.publish);
+  const publish = (enriched: RouterSnapshot, full: boolean): void => {
+    streams.publish(enriched, full);
     presence.index(enriched);
   };
   const collector = createCollector(ctx, {
     record: (snapshot) => {
       sync.update(presence.enrich(snapshot));
     },
-    publish: (snapshot) => {
-      publish(presence.enrich(snapshot));
+    publish: (snapshot, full) => {
+      publish(presence.enrich(snapshot), full);
     },
   });
   const latest = (): RouterSnapshot =>
@@ -47,7 +48,7 @@ export function startRouter(ctx: Context): PluginStop {
     if (collector !== null) {
       const enriched = presence.enrich(collector.latest);
       sync.update(enriched);
-      publish(enriched);
+      publish(enriched, true);
     }
   };
   const speedTests = new SpeedTestRunner(ctx);
@@ -68,7 +69,7 @@ export function startRouter(ctx: Context): PluginStop {
   );
   registerRouterPickers(ctx, { snapshot: latest });
   if (collector === null) {
-    ctx.data.publish(SNAPSHOT_STREAM, notSetUp());
+    streams.publish(notSetUp(), true);
     return () => Promise.resolve();
   }
   return startMonitoring(ctx, collector, sync);

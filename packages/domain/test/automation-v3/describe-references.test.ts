@@ -55,7 +55,7 @@ describe('programReferenceIds', () => {
           }),
           node(3, 'plain', 'device.set', { ports: { target: { lit: 'x' } } }),
           node(4, 'unknown', 'plugin.mystery', { ports: { a: { lit: ids.other } } }),
-          node(5, 'scene', 'scene.run', { ports: { scene: { lit: ids.other } } }),
+          node(5, 'other', 'automation.run', { ports: { automation: { lit: ids.other } } }),
         ],
       },
     };

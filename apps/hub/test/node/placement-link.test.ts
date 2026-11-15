@@ -33,6 +33,7 @@ const STATUS = {
   lastSyncedAt: null,
   errors: [],
   reason: null,
+  mountPoint: null,
   reportedAt: '2026-11-07T10:00:00.000Z',
 } as const;
 
@@ -42,7 +43,8 @@ const PLACEMENT: DrivePlacement = {
   rootId: IDS.root,
   folderItemId: null,
   mode: 'mounted',
-  localPath: '/home/ada/roms',
+  localPath: null,
+  mountName: 'roms',
   enabled: true,
   hold: null,
   createdBy: IDS.person,

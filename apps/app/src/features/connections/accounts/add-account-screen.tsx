@@ -7,7 +7,6 @@ import { Badge } from '../../../components/badge';
 import { BrandMark } from '../../../components/brand-mark';
 import { Card } from '../../../components/card';
 import { Grid } from '../../../components/grid';
-import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import { useProviderLink } from '../../../store/selectors';
 import { CONNECT_FLOW, PROVIDER_BRAND, isAddable } from '../model/brands';
@@ -64,13 +63,11 @@ export function AddAccountScreen(): ReactNode {
   const rememberFocus = useAccountBackFocus();
   const shown = ADDABLE_PROVIDERS.filter((provider) => matches(provider, query));
   return (
-    <SettingsFrame page="connections/add" contentWidth="detail">
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        placeholder="Search accounts"
-        variant="field"
-      />
+    <SettingsFrame
+      page="connections/add"
+      contentWidth="detail"
+      search={{ value: query, onChange: setQuery, placeholder: 'Search accounts' }}
+    >
       {shown.length === 0 ? (
         <Text variant="callout" tone="variant" align="center">
           {`Nothing matches “${query.trim()}”`}

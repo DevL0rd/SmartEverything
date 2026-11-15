@@ -97,7 +97,7 @@ beforeEach(async () => {
   bus.register(GARAGE);
   router = new EventRouter({
     store: db.database,
-    inventory: { deviceOf: (): undefined => undefined },
+    inventory: { deviceOf: (): undefined => undefined, deviceById: (): undefined => undefined },
     log: testLogger(),
     recorded: (event): void => {
       recorded.push(event);

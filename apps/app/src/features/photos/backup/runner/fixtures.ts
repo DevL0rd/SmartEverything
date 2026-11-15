@@ -1,4 +1,10 @@
-import type { BackupHave, BackupHaveResult, BackupRegister } from '@smarteverything/domain';
+import type {
+  BackupCheck,
+  BackupHave,
+  BackupHaveResult,
+  BackupRegister,
+  PhotoFolderOrigin,
+} from '@smarteverything/domain';
 import type { UploadHandle, UploadOutcome } from '../../../drive';
 import type { Conditions, MediaAccess, MediaRow, MediaScope, MediaStat } from '../model/types';
 import type {
@@ -6,6 +12,7 @@ import type {
   BackupPorts,
   BackupUploadRequest,
   ConditionsPort,
+  LedgerFile,
   LedgerStorage,
   MediaLibraryPort,
   NativeMediaPort,
@@ -49,6 +56,8 @@ export class FakeLibrary implements MediaLibraryPort {
   pagesRead = 0;
   removeAnswer = true;
   readonly removed: string[] = [];
+  readonly removeCalls: string[][] = [];
+  readonly timeLookups: string[][] = [];
   readonly listeners = new Set<() => void>();
   picked = 0;
 
@@ -84,6 +93,17 @@ export class FakeLibrary implements MediaLibraryPort {
     }
   }
 
+  modificationTimes(localIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+    this.timeLookups.push([...localIds]);
+    return Promise.resolve(
+      new Map(
+        this.rows
+          .filter((row) => localIds.includes(row.id))
+          .map((row) => [row.id, row.modificationTime]),
+      ),
+    );
+  }
+
   onChange(listener: () => void): () => void {
     this.listeners.add(listener);
     return (): void => {
@@ -92,6 +112,7 @@ export class FakeLibrary implements MediaLibraryPort {
   }
 
   remove(localIds: readonly string[]): Promise<boolean> {
+    this.removeCalls.push([...localIds]);
     if (this.removeAnswer) {
       this.removed.push(...localIds);
       this.rows = this.rows.filter((row) => !localIds.includes(row.id));
@@ -150,6 +171,7 @@ export class FakeHub implements BackupHubPort {
   readonly registered: BackupRegister[] = [];
   readonly checks: BackupHave[] = [];
   readonly checkPurposes: ('lookup' | 'backup')[] = [];
+  readonly folders: (PhotoFolderOrigin | null)[] = [];
   readonly targets: string[] = [];
   registerError: Error | null = null;
 
@@ -159,7 +181,16 @@ export class FakeHub implements BackupHubPort {
     return Promise.resolve({});
   }
 
-  checkHashes(input: BackupHave, purpose: 'lookup' | 'backup'): Promise<BackupHaveResult> {
+  lookupHashes(input: BackupHave): Promise<BackupHaveResult> {
+    return this.answer(input, 'lookup');
+  }
+
+  checkBackup(input: BackupCheck): Promise<BackupHaveResult> {
+    this.folders.push(...input.assets.map((asset) => asset.folder));
+    return this.answer(input, 'backup');
+  }
+
+  private answer(input: BackupHave, purpose: 'lookup' | 'backup'): Promise<BackupHaveResult> {
     this.checks.push(input);
     this.checkPurposes.push(purpose);
     const have = input.assets
@@ -280,6 +311,24 @@ export class MemoryStorage implements LedgerStorage {
     this.values.set(key, value);
     return Promise.resolve();
   }
+
+  removeItem(key: string): Promise<void> {
+    this.values.delete(key);
+    return Promise.resolve();
+  }
+}
+
+export class MemoryLedgerFile implements LedgerFile {
+  text: string | null = null;
+
+  read(): Promise<string | null> {
+    return Promise.resolve(this.text);
+  }
+
+  write(text: string): Promise<void> {
+    this.text = text;
+    return Promise.resolve();
+  }
 }
 
 export interface Rig {
@@ -290,6 +339,7 @@ export interface Rig {
   readonly conditions: FakeConditions;
   readonly settings: FakeSettings;
   readonly storage: MemoryStorage;
+  readonly ledgerFile: MemoryLedgerFile;
   readonly ports: BackupPorts;
   readonly runner: BackupRunner;
   available: boolean;
@@ -304,6 +354,7 @@ export function rig(platform: 'android' | 'ios' = 'android'): Rig {
   const conditions = new FakeConditions();
   const settings = new FakeSettings();
   const storage = new MemoryStorage();
+  const ledgerFile = new MemoryLedgerFile();
   const state = { available: true };
   const ports: BackupPorts = {
     media: library,
@@ -313,6 +364,7 @@ export function rig(platform: 'android' | 'ios' = 'android'): Rig {
     hub,
     settings,
     storage,
+    ledgerFile,
     identity: { deviceId: 'phone-1', name: 'Test phone', platform },
     available: () => state.available,
     now: () => new Date('2026-11-07T10:00:00.000Z'),
@@ -325,6 +377,7 @@ export function rig(platform: 'android' | 'ios' = 'android'): Rig {
     conditions,
     settings,
     storage,
+    ledgerFile,
     ports,
     runner: new BackupRunner(ports),
     get available(): boolean {

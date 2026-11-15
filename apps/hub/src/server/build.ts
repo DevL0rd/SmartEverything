@@ -3,6 +3,7 @@ import { chatFileDeliveryRoutes } from '../self-update/chat-file';
 import { nodeConnectionRoute } from './handlers/node-connection';
 import { modelAssetRoutes, modelRouteServices } from './handlers/model-assets';
 import { homeMapScanRoutesOf } from './handlers/home-map-scan';
+import { plannerIcalRoutesOf } from './planner-ical-routes';
 import type { HubConnections } from '../network/connections';
 import type { Server } from 'node:http';
 import { startHubHarness } from './harness-wiring';
@@ -42,6 +43,7 @@ import { codexLocalFactory } from './codex-wiring';
 import { hubCodexSites } from '../codex/sites';
 import { startReach, type StartedReach } from './reach-wiring';
 import { contextOf, statusOf } from './build-context';
+import { ensureInviteKey } from '../planner/invites/token';
 import { extensionRoutes, routeTable, startExtensions } from './build-routes';
 import { PluginSpeakers } from '../plugins/plugin-speakers';
 import { startTranscribing, type Transcribing } from './transcribing';
@@ -90,24 +92,6 @@ export interface BuiltServer {
   readonly access: AccessService;
   readonly extensions: readonly RunningExtension[];
   readonly stop: () => Promise<void>;
-}
-
-export function followNetworkSettings(options: BuildOptions, context: ServerContext): () => void {
-  return options.store.feed.subscribe((change) => {
-    if (change.table !== 'settings' || change.record === null) {
-      return;
-    }
-    options.core.supervisor
-      .apply({ candidates: change.record.webrtc_candidates, iceServers: change.record.ice_servers })
-      .then(
-        () => {
-          context.live.presence();
-        },
-        (cause: unknown) => {
-          context.log.error('go2rtc.reconfigure_failed', cause);
-        },
-      );
-  });
 }
 
 export interface Serving {
@@ -212,6 +196,8 @@ function toolHubOf(options: BuildOptions, context: ServerContext, operations: Op
     store: options.store,
     hub: options.core.hub,
     operations,
+    publications: context.publications,
+    releaseSecrets: options.secrets,
     layout: options.layout,
     clock: options.clock,
     mediaNotes: context.mediaNotes,
@@ -263,25 +249,6 @@ function reconcilerOf(options: BuildOptions, context: ServerContext): Reconciler
   });
 }
 
-export function startClocks(context: ServerContext): void {
-  context.access.lifecycle.start();
-  context.weather.start();
-  context.exchangeRates.start();
-  context.openRouter.start();
-  context.harness.skillUpdates.start();
-}
-
-function stopServing(served: Serving): void {
-  served.stopRepair();
-  served.detachTrace();
-  served.memory.stop();
-  served.reconciler.stop();
-  served.budget.stop();
-  served.reach.stop();
-  served.transcribing.transcripts.stop();
-  served.claude.stop();
-}
-
 function startHomeServices(context: ServerContext): () => void {
   seedModels(context.store);
   const stopIrAppliances = startIrAppliances(context);
@@ -305,6 +272,7 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
   );
   const stopWatches = startWatchDriver(context);
   const stopHomeServices = startHomeServices(context);
+  await ensureInviteKey(context.secrets);
   await context.talk.start();
   context.assistant.start();
   const operations = new Operations(context.log, context.store);
@@ -321,19 +289,6 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
     access: context.access,
     extensions: [...extensions, served.plugins.extension],
     stop,
-  };
-}
-
-export function subscribeLive(options: BuildOptions, live: LiveHub): () => void {
-  const unfollowFirewall = options.core.firewall.onChange((firewall) => {
-    live.firewall(firewall);
-  });
-  const unfollowLog = options.logLines.listen((lines) => {
-    live.announce({ type: 'service_log', lines: [...lines] }, 'service_log');
-  });
-  return (): void => {
-    unfollowFirewall();
-    unfollowLog();
   };
 }
 
@@ -356,15 +311,6 @@ function rawRoutesOf(
     ...harnessTransportRoutes(context, context.harness, fetcher),
   ];
 }
-export function stopComputersAndServing(context: ServerContext, served: Serving): void {
-  context.access.lifecycle.stop();
-  context.harnessSockets.stop();
-  context.nodeSockets.stop();
-  context.computerAi.stop();
-  context.machineApprovals.stop();
-  stopServing(served);
-}
-
 function attachBudget(context: ServerContext, budget: Budget): void {
   bindMeteredBudget(context.store, budget.gate);
   context.assistant.delegation.attachGate(budget.gate);
@@ -391,6 +337,7 @@ function listenersOf(
       ...rawRoutesOf(parts.extensions, parts.routes, context, options.fetch),
       ...chatFileDeliveryRoutes(options.layout),
       ...homeMapScanRoutesOf(options, context),
+      ...plannerIcalRoutesOf(options, context),
     ],
     allowedOrigins: options.allowedOrigins,
     cameraSockets: parts.cameraSockets,
@@ -407,11 +354,4 @@ function listenersOf(
           minVersion: 'TLSv1.2',
         });
   return { http, secure };
-}
-
-export async function stopAssistantServices(context: ServerContext): Promise<void> {
-  await context.harness.skillUpdates.stop();
-  context.assistant.stop();
-  await context.imageRuntime.stop();
-  context.browser.stop();
 }

@@ -11,12 +11,8 @@ import { StatusChip } from '../../../../components/status-chip';
 import { useIdiom } from '../../../../design/platform';
 import { useMoney } from '../../../region';
 import { CatalogueMeasure } from '../library/catalogue-fit';
-import {
-  LibraryBack,
-  LibraryOriginFocus,
-  LibrarySelectionBar,
-  useLibraryBack,
-} from '../library/library-pages';
+import { LibraryBack, LibrarySelectionBar, useLibraryBack } from '../library/library-pages';
+import { LibraryOriginFocus } from '../library/library-focus';
 import { LibraryList, type LibraryListApi } from '../library/library-list';
 import { ROW_HEIGHT, type PrimaryAction } from '../library/library-model';
 import { selectedRow, libraryView, type LibraryRow } from '../library/library-rows';

@@ -21,7 +21,13 @@ describe('the starred list', () => {
     expect(starredQueryOf('all').kinds).toBeNull();
     expect(starredQueryOf('folders').kinds).toEqual(['folder']);
     expect(starredQueryOf('photos').kinds).toEqual(['image', 'video']);
-    expect(starredQueryOf('files').kinds).toEqual(['document', 'audio', 'other']);
+    expect(starredQueryOf('files').kinds).toEqual([
+      'document',
+      'audio',
+      'other',
+      'link',
+      'special',
+    ]);
   });
 
   it('puts every kind in exactly one chip', () => {

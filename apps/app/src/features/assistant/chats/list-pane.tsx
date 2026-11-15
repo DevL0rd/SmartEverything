@@ -42,7 +42,7 @@ export function ListPane({
       <Animated.View
         style={fade}
         pointerEvents={open ? 'auto' : 'none'}
-        className={cn('min-h-0 flex-1', full ? 'w-full' : 'w-master pt-safe')}
+        className={cn('min-h-0 flex-1', full ? 'w-full' : 'w-master')}
       >
         <KeyboardViewport className="min-h-0 flex-1">{children}</KeyboardViewport>
       </Animated.View>

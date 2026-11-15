@@ -3,12 +3,11 @@ import { OUTDOOR_FRAME, OUTDOOR_METAL, block, by, outdoorItem, piece } from '../
 
 const BOARDS = 18;
 const POST = 0.09;
-const DEPTH = 0.1;
 
 export const FENCE_PANEL_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.fence-panel',
   title: 'Fence panel',
-  footprint: { width: 2, depth: DEPTH, height: 1.88 },
+  footprint: { width: 2, depth: 0.11, height: 1.88 },
   size: {
     width: { param: 'length', extra: 0.2, resizes: true },
     height: { param: 'height', extra: 0.08, resizes: true },

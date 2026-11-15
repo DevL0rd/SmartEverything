@@ -20,9 +20,12 @@ class DomainConstantsTest {
       DomainConstants.PUSH_COMMAND_MACHINE_APPROVAL_CANCEL,
       DomainConstants.PUSH_COMMAND_WATCH_ACTION,
       DomainConstants.PUSH_COMMAND_TREADMILL_ACTION,
+      DomainConstants.PUSH_COMMAND_BOTTLE_ACTION,
+      DomainConstants.PUSH_COMMAND_TOOTHBRUSH_ACTION,
       DomainConstants.PUSH_COMMAND_AI_SPEECH,
       DomainConstants.PUSH_COMMAND_AI_RING,
-      DomainConstants.PUSH_COMMAND_AI_RING_CANCEL
+      DomainConstants.PUSH_COMMAND_AI_RING_CANCEL,
+      DomainConstants.PUSH_COMMAND_DRIVE_OFFLINE_CHANGED
     )
     assertEquals(named, PushCommands.HANDLERS.keys)
   }

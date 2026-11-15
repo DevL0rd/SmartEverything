@@ -118,6 +118,27 @@ describe('signals of the shared state', () => {
     }
   });
 
+  it('stops an off purifier rotor whatever fan level it remembers', () => {
+    expect(signalsOf('air_purifier', sample({ power: 'off', level: 0.33 }))).toMatchObject({
+      power: false,
+      speed: 0,
+    });
+  });
+
+  it('stops an off tower fan from spinning and swinging', () => {
+    expect(
+      signalsOf('tower_fan', sample({ power: 'off', level: 0.67, oscillating: true, angle: 90 })),
+    ).toMatchObject({ power: false, speed: 0, oscillating: false });
+  });
+
+  it.each(shaped)('keeps a switched off or offline %s still', (family) => {
+    for (const changes of [{ power: 'off' }, { power: 'on', online: false }] as const) {
+      const actual = signalsOf(family, sample({ ...changes, level: 1, oscillating: true }));
+      if (actual.speed !== undefined) expect(actual.speed).toBe(0);
+      if (actual.oscillating !== undefined) expect(actual.oscillating).toBe(false);
+    }
+  });
+
   it('registers the air, kitchen, laundry, climate and light families', () => {
     expect(Object.keys(FAMILY_SIGNALS)).toEqual(
       expect.arrayContaining([
@@ -159,7 +180,7 @@ describe('air_purifier', () => {
     expectSignals('air_purifier', sample({ power: 'off', ambientLight: false }), {
       power: false,
       online: true,
-      speed: 0.6,
+      speed: 0,
       lamp: false,
     });
   });
@@ -168,7 +189,7 @@ describe('air_purifier', () => {
     expectSignals('air_purifier', sample({ power: 'unknown', online: false, level: 0.2 }), {
       power: false,
       online: false,
-      speed: 0.2,
+      speed: 0,
     });
   });
 });
@@ -196,7 +217,7 @@ describe('humidifier', () => {
     expectSignals('humidifier', sample({ power: 'off' }), {
       power: false,
       online: true,
-      speed: 0.6,
+      speed: 0,
       waterLow: false,
     });
   });
@@ -228,7 +249,7 @@ describe('diffuser', () => {
     expectSignals(
       'diffuser',
       sample({ power: 'off', diffuser: { spray: null, charging: true, fault: false } }),
-      { power: false, online: true, speed: 0.6, waterLow: false, charging: true, fault: false },
+      { power: false, online: true, speed: 0, waterLow: false, charging: true, fault: false },
     );
   });
 
@@ -244,7 +265,7 @@ describe('diffuser', () => {
     expectSignals('diffuser', sample({ online: false }), {
       power: false,
       online: false,
-      speed: 0.6,
+      speed: 0,
       waterLow: false,
     });
   });
@@ -512,7 +533,7 @@ describe('dehumidifier', () => {
     expectSignals('dehumidifier', sample({ power: 'off', ambientLight: false }), {
       power: false,
       online: true,
-      speed: 0.6,
+      speed: 0,
       lamp: false,
       waterLow: false,
     });
@@ -541,7 +562,7 @@ describe('tower_fan', () => {
     expectSignals('tower_fan', sample({ power: 'off' }), {
       power: false,
       online: true,
-      speed: 0.6,
+      speed: 0,
       oscillating: false,
     });
   });
@@ -565,7 +586,7 @@ describe('fan', () => {
     expectSignals('fan', sample({ power: 'unknown', online: false }), {
       power: false,
       online: false,
-      speed: 0.6,
+      speed: 0,
       oscillating: false,
     });
   });
@@ -596,7 +617,7 @@ describe('heater', () => {
     expectSignals('heater', sample({ power: 'off' }), {
       power: false,
       online: true,
-      speed: 0.6,
+      speed: 0,
       thermal: 'idle',
     });
   });
@@ -641,7 +662,7 @@ describe('air_conditioner', () => {
     expectSignals('air_conditioner', sample({ power: 'off', current: 26 }), {
       power: false,
       online: true,
-      speed: 0.6,
+      speed: 0,
       oscillating: false,
       thermal: 'idle',
       current: 26,

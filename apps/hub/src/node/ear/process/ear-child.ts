@@ -4,7 +4,8 @@ import type { LogRecord } from '@smarteverything/logging';
 import { systemClock } from '../../../clock';
 import { serveChild, type ChildChannel } from '../../../plugins/isolation/child-serve';
 import { startBundledWatchdog } from '../../../service/loop-watchdog/script';
-import { earHostFor, isEarsFrame, type EarHostPort, type EarHosting } from '../ear-host';
+import { earHostFor, type EarHostPort, type EarHosting } from '../ear-host';
+import { isEarsFrame } from '../../ear-link';
 import { localEarPipeline, type EarPipeline } from '../ear-pipeline';
 import { EarRuntimeAbortedError } from '../runtime-lost';
 import {

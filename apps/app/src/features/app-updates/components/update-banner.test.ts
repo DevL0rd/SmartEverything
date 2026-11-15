@@ -12,7 +12,14 @@ vi.mock('../data/android-apk', () => ({ useAndroidApkOffer: vi.fn() }));
 vi.mock('../data/desktop-installer', () => ({ useDesktopInstaller: vi.fn() }));
 
 function fakeActions(): AppUpdateActions {
-  return { check: vi.fn(), download: vi.fn(), retry: vi.fn(), restart: vi.fn() };
+  return {
+    check: vi.fn(),
+    download: vi.fn(),
+    retry: vi.fn(),
+    restart: vi.fn(),
+    tryUpdateAgain: vi.fn(),
+    stayOnBuiltIn: vi.fn(),
+  };
 }
 
 function fixture(name: string): AppUpdateView {

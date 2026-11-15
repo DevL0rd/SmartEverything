@@ -10,10 +10,12 @@ import { DriveBackups } from '../../drive/backups';
 import { hashRequested, type HashResponse } from '../../drive/blocks';
 import type { ConflictEnv, DriveConflictStore } from '../../drive/conflicts';
 import { readDataSpace, type DataSpaceProbe } from '../../drive/data-space';
+import type { TextEnvironment } from '../../drive/content/text-job';
 import { DriveGrants } from '../../drive/grants';
 import { DriveHealthReader } from '../../drive/health';
 import { BUNDLED_HASH_WORKER, BUNDLED_SCANNER_WORKER, type DriveJob } from '../../drive/jobs';
 import { nodeCaller } from '../../drive/node-caller';
+import type { DrivePlacements } from '../../drive/placements';
 import { DriveScrubber, type FileHasher, type ScrubCorruption } from '../../drive/scrub';
 import { DriveReadService } from '../../drive/service-read';
 import { DriveWriteService } from '../../drive/service-write';
@@ -24,11 +26,13 @@ import { fileEnv } from '../../drive/versions';
 import { DriveWatchers, systemWatch } from '../../drive/watcher';
 import { WorkQueue, defaultConcurrency } from '../../drive/work-queue';
 import type { ComputerNodeAccess } from '../../computers/node-access';
+import type { PushCommandChannel } from '../../extensions/push/commands';
 import { found, type StoreContext } from '../../store/context';
 import type { Store } from '../../store/store';
 import type { MediaLinks } from '../media-links';
 import { availabilityOf } from './drive-availability';
 import { driveJobHandlers } from './drive-jobs';
+import { extrasOf, iconsOf, placementsOf, textOf, type DriveExtras } from './drive-extras';
 import { actorOf, type DriveListings, type DriveServices } from './drive-services';
 import { photoBackupService } from './photos-hub';
 import { tusAuthentication } from './drive-tus-auth';
@@ -49,12 +53,14 @@ export interface DriveDeps {
   readonly localUrl: () => string;
   readonly links: MediaLinks;
   readonly nodes: ComputerNodeAccess;
+  readonly pushCommands: Pick<PushCommandChannel, 'send'>;
   readonly probe: DataSpaceProbe;
   readonly now: () => Date;
   readonly log: Logger;
   readonly watchSettleMs: number;
   readonly scannerScript?: string;
   readonly hasherScript?: string;
+  readonly contentScript?: string;
 }
 
 export interface DriveRuntime {
@@ -67,6 +73,8 @@ export interface DriveRuntime {
   readonly uploads: TusUploads;
   readonly scrubber: DriveScrubber;
   readonly availability: ReturnType<typeof availabilityOf>;
+  readonly placements: DrivePlacements;
+  readonly extras: DriveExtras;
 }
 
 interface Core {
@@ -146,6 +154,7 @@ function queueOf(
   deps: DriveDeps,
   availability: DriveRuntime['availability'],
   media: PhotoPipeline,
+  text: TextEnvironment,
 ): WorkQueue<DriveJob> {
   const handlers = driveJobHandlers({
     store: deps.store,
@@ -154,13 +163,17 @@ function queueOf(
     log: deps.log.forArea('hub.drive-jobs'),
     scannerScript: deps.scannerScript ?? BUNDLED_SCANNER_WORKER,
     hasherScript: deps.hasherScript ?? BUNDLED_HASH_WORKER,
+    text,
   });
   const queue: WorkQueue<DriveJob> = new WorkQueue<DriveJob>({
     concurrency: defaultConcurrency(),
     keyOf: handlers.keyOf,
     run: async (job, signal): Promise<void> => {
       await handlers.run(job, signal);
-      if (job.kind === 'metadata' && !signal.aborted) media.reconcile();
+      if (job.kind === 'metadata' && !signal.aborted) {
+        media.reconcile();
+        queue.enqueue({ kind: 'text', rootId: job.rootId });
+      }
       if (job.kind === 'scan' && !signal.aborted) {
         queue.enqueue({ kind: 'hash', rootId: job.rootId });
         queue.enqueue({ kind: 'metadata', rootId: job.rootId });
@@ -297,7 +310,8 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
   );
   const env = conflictEnvOf(deps, purge.rearm);
   const media = new PhotoPipeline(deps);
-  const queue = queueOf(deps, availability, media);
+  const icons = iconsOf(deps);
+  const queue = queueOf(deps, availability, media, textOf(deps, availability, icons));
   const core: Core = {
     env,
     queue,
@@ -309,15 +323,25 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
       log: deps.log.forArea('hub.drive'),
     }),
   };
+  const services = servicesOf(deps, core);
+  const placements = placementsOf(deps);
   return {
     env,
     media,
     queue,
     watchers: core.watchers,
     scrubber: core.scrubber,
-    services: servicesOf(deps, core),
+    services,
     purge,
     uploads: uploadsOf(deps, env),
     availability,
+    placements,
+    extras: extrasOf(deps, {
+      env,
+      read: services.read,
+      shares: services.shares,
+      placements,
+      icons,
+    }),
   };
 }

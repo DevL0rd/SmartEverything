@@ -11,8 +11,6 @@ type Name = keyof typeof API_ENDPOINTS;
 
 const NAMES = Object.keys(API_ENDPOINTS).filter((name): name is Name => name in API_ENDPOINTS);
 
-const ACTION = { type: 'command', deviceId: SECOND, capability: 'power', value: true };
-
 const SERVICE_ACCOUNT = {
   type: 'service_account',
   project_id: 'home-push',
@@ -94,14 +92,15 @@ describe('access request bodies', () => {
     ]);
   });
 
-  it('claimPairing takes a code, a client name and an Android or web platform', () => {
-    expect(PAIRED_PLATFORMS).toStrictEqual(['android', 'web']);
+  it('claimPairing takes a code, a client name and an Android, desktop or web platform', () => {
+    expect(PAIRED_PLATFORMS).toStrictEqual(['android', 'desktop', 'web']);
     const claim = { code: 'ABCD-2345', name: 'Pixel 9', platform: 'android' };
     expectKept('claimPairing', claim);
     expectKept('claimPairing', { ...claim, platform: 'web' });
+    expectKept('claimPairing', { ...claim, platform: 'desktop' });
     expect(bodyOf('claimPairing').parse({ ...claim, name: ' Pixel 9 ' })).toStrictEqual(claim);
     expectRefused('claimPairing', [
-      { ...claim, platform: 'desktop' },
+      { ...claim, platform: 'ios' },
       { ...claim, code: 'abcd-2345' },
       { ...claim, name: '' },
       { ...claim, extra: 1 },
@@ -228,7 +227,7 @@ describe('device request bodies', () => {
   it('sendCommand takes a command that comes from the app by default', () => {
     const command = { device_id: FIRST, capability: 'power', value: true };
     expect(bodyOf('sendCommand').parse(command)).toStrictEqual({ ...command, source: 'app' });
-    for (const source of ['app', 'automation', 'scene']) {
+    for (const source of ['app', 'automation']) {
       expectKept('sendCommand', { ...command, source });
     }
     expectKept('sendCommand', {
@@ -240,6 +239,7 @@ describe('device request bodies', () => {
     expectKept('sendCommand', { ...command, capability: 'c'.repeat(120), source: 'app' });
     expectRefused('sendCommand', [
       { ...command, source: 'assistant' },
+      { ...command, source: 'scene' },
       { ...command, capability: '' },
       { ...command, capability: 'c'.repeat(121) },
       { ...command, extra: 1 },
@@ -252,7 +252,7 @@ describe('device request bodies', () => {
   });
 
   it('sendCommands takes one to 100 commands', () => {
-    const command = { device_id: FIRST, capability: 'power', value: true, source: 'scene' };
+    const command = { device_id: FIRST, capability: 'power', value: true, source: 'automation' };
     expectKept('sendCommands', { commands: [command] });
     expectKept('sendCommands', { commands: [command, command] });
     expectKept('sendCommands', { commands: Array.from({ length: 100 }, () => command) });
@@ -382,37 +382,6 @@ describe('media request bodies', () => {
   it('rebindIrAppliance takes only a blaster id', () => {
     expectKept('rebindIrAppliance', { blaster_id: FIRST });
     expectRefused('rebindIrAppliance', [{}, { blaster_id: 'b1' }, { blaster_id: FIRST, x: 1 }]);
-  });
-});
-
-describe('scene and automation request bodies', () => {
-  it('createScene takes a name and actions with a sparkles icon first by default', () => {
-    expect(bodyOf('createScene').parse({ name: 'Movie night', actions: [ACTION] })).toStrictEqual({
-      name: 'Movie night',
-      icon: 'sparkles',
-      actions: [ACTION],
-      position: 0,
-    });
-    const scene = { name: 'Movie night', icon: 'film', actions: [], position: 2 };
-    expectKept('createScene', scene);
-    expectKept('createScene', { ...scene, icon: 'i'.repeat(40) });
-    expectRefused('createScene', [
-      { ...scene, icon: '' },
-      { ...scene, icon: 'i'.repeat(41) },
-      { ...scene, actions: [{ type: 'notify', message: 'x' }] },
-      { ...scene, extra: 1 },
-    ]);
-  });
-
-  it('updateScene changes the name, icon or actions', () => {
-    expectPatch('updateScene', { name: 'Reading', icon: 'book', actions: [ACTION] });
-    expectRefused('updateScene', [{ icon: '' }, { position: 1 }]);
-  });
-
-  it('orderScenes takes at least one scene id', () => {
-    expectKept('orderScenes', { ids: [FIRST] });
-    expectKept('orderScenes', { ids: [FIRST, SECOND] });
-    expectRefused('orderScenes', [{ ids: [] }, { ids: ['s1'] }, { ids: [FIRST], extra: 1 }]);
   });
 });
 

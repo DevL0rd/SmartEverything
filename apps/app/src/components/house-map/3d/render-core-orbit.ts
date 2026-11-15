@@ -152,26 +152,44 @@ export function orbitZoom(
 }
 
 export interface PanContext {
-  readonly viewport: Viewport;
+  readonly view: CameraView;
   readonly frame: SceneFrame;
 }
 
-export function orbitPan(
-  state: OrbitState,
-  delta: { readonly dx: number; readonly dy: number },
-  context: PanContext,
-): OrbitState {
-  const { dx, dy } = delta;
-  const { viewport, frame } = context;
+export interface PanStep {
+  readonly dx: number;
+  readonly dy: number;
+  readonly from: Ndc;
+  readonly to: Ndc;
+}
+
+function screenPan(state: OrbitState, step: PanStep, context: PanContext): OrbitState {
+  const { dx, dy } = step;
+  const { view, frame } = context;
   const metresPerPixel =
     (2 * state.distance * Math.tan((fieldOfView(state) * Math.PI) / 360)) /
-    Math.max(viewport.height, 1);
+    Math.max(view.height, 1);
   const sine = Math.sin(state.azimuth);
   const cosine = Math.cos(state.azimuth);
   const [x, , z] = state.target;
   const nextX = x - cosine * dx * metresPerPixel - sine * dy * metresPerPixel;
   const nextZ = z + sine * dx * metresPerPixel - cosine * dy * metresPerPixel;
   return { ...state, target: clampTarget(nextX, nextZ, frame) };
+}
+
+export function orbitPan(state: OrbitState, step: PanStep, context: PanContext): OrbitState {
+  const { view, frame } = context;
+  const grabbed = groundUnder(state, step.from, view, frame);
+  const held = groundUnder(state, step.to, view, frame);
+  if (grabbed === null || held === null) return screenPan(state, step, context);
+  return {
+    ...state,
+    target: clampTarget(
+      state.target[0] + grabbed.x - held.x,
+      state.target[2] + grabbed.z - held.z,
+      frame,
+    ),
+  };
 }
 
 export function clampTarget(

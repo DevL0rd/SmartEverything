@@ -37,7 +37,6 @@ const HOME: HomeData = {
   groups: [
     { id: 'lights', name: 'Lights', device_ids: ['light'], created_at: STAMP, updated_at: STAMP },
   ],
-  scenes: [{ id: 'movie', name: 'Movie' }],
   people: [{ id: 'ann', name: 'Ann' }],
   chats: [{ id: 'chat', title: 'Morning' }],
   channels: [{ id: 'family', name: 'Family' }],
@@ -243,8 +242,7 @@ describe('camera sources', () => {
 });
 
 describe('home sources', () => {
-  it('lists scenes, people, rooms, groups, chats, Values and automations by name', () => {
-    expect(ids(resolveOptions('scenes', context(), HOME, IDLE))).toEqual(['movie']);
+  it('lists people, rooms, groups, chats, Values and automations by name', () => {
     expect(ids(resolveOptions('people', context(), HOME, IDLE))).toEqual(['ann']);
     expect(ids(resolveOptions('rooms', context(), HOME, IDLE))).toEqual(['hall', 'kitchen']);
     expect(ids(resolveOptions('groups', context(), HOME, IDLE))).toEqual(['lights']);

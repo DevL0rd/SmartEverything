@@ -80,18 +80,12 @@ export interface TabEmpty {
 
 export type HubTabId = 'all' | 'favourites' | 'videos' | 'screenshots';
 
+const HUB_TABS: readonly HubTabId[] = ['all', 'favourites', 'videos', 'screenshots'];
+
 export function hubTabOf(id: LibraryTabId): HubTabId {
-  switch (id) {
-    case 'all':
-    case 'favourites':
-    case 'videos':
-    case 'screenshots':
-      return id;
-    case 'device':
-    case 'cameras':
-    case 'ai':
-      throw new RangeError(`${id} is not a hub Library tab`);
-  }
+  const hub = HUB_TABS.find((candidate) => candidate === id);
+  if (hub === undefined) throw new RangeError(`${id} is not a hub Library tab`);
+  return hub;
 }
 
 export const TAB_EMPTY: Readonly<Record<HubTabId | 'device', TabEmpty>> = {

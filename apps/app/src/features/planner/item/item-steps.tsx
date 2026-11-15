@@ -3,14 +3,17 @@ import type {
   PlannerItemRow,
   PlannerOccurrenceRow,
 } from '@smarteverything/domain';
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
-import { Checkbox } from '../../../components/checkbox';
+import { ListRow } from '../../../components/list-row';
+import { ReorderableList } from '../../../components/reorderable-list';
 import { Section } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
 import { compareText } from '../../../format/text';
 import type { ItemChanges } from './repeat-scope-bar';
+import { StepRow } from './step-row';
+import { stepMoveOf, type StepMove } from './steps-model';
 
 export interface StepView {
   readonly item: PlannerItemRow;
@@ -65,6 +68,8 @@ export interface ItemStepsProps {
   readonly disabled: boolean;
   readonly onDone: (step: StepView) => void;
   readonly onAdd: (title: string) => void;
+  readonly onMove: (move: StepMove) => void;
+  readonly onOutdent: ((step: StepView) => void) | null;
 }
 
 function AddStep({ disabled, onAdd }: Pick<ItemStepsProps, 'disabled' | 'onAdd'>): ReactNode {
@@ -106,26 +111,52 @@ function AddStep({ disabled, onAdd }: Pick<ItemStepsProps, 'disabled' | 'onAdd'>
   );
 }
 
-export function ItemSteps({ steps, disabled, onDone, onAdd }: ItemStepsProps): ReactNode {
+function keyOf(step: StepView): string {
+  return step.item.id;
+}
+
+function labelOf(step: StepView): string {
+  return step.item.title;
+}
+
+function StepList(props: ItemStepsProps): ReactNode {
+  const { steps, disabled, onDone, onMove, onOutdent } = props;
+  const row = (step: StepView): ReactElement => (
+    <StepRow step={step} disabled={disabled} onDone={onDone} onOutdent={onOutdent} />
+  );
+  if (disabled || steps.length < 2) {
+    return steps.map((step) => <View key={step.item.id}>{row(step)}</View>);
+  }
+  return (
+    <ReorderableList
+      items={steps}
+      keyOf={keyOf}
+      labelOf={labelOf}
+      renderItem={row}
+      onReorder={(order) => {
+        const move = stepMoveOf(
+          steps.map((step) => ({ id: step.item.id, position: step.item.position })),
+          order,
+        );
+        if (move !== null) onMove(move);
+      }}
+    />
+  );
+}
+
+export function ItemSteps(props: ItemStepsProps): ReactNode {
+  const { steps, disabled, onAdd } = props;
   const done = steps.filter((step) => step.done).length;
   return (
     <Section
       title="Steps"
       {...(steps.length === 0 ? {} : { caption: `${String(done)} of ${String(steps.length)}` })}
     >
-      <View className="px-4">
-        {steps.map((step) => (
-          <Checkbox
-            key={step.item.id}
-            label={step.item.title}
-            checked={step.done}
-            disabled={disabled || step.done}
-            onChange={() => {
-              onDone(step);
-            }}
-          />
-        ))}
-        <AddStep disabled={disabled} onAdd={onAdd} />
+      <View className="px-2">
+        <StepList {...props} />
+        <View className="px-2">
+          <AddStep disabled={disabled} onAdd={onAdd} />
+        </View>
       </View>
     </Section>
   );
@@ -153,6 +184,34 @@ export function ItemNotes({
       placeholder="Add notes"
       multiline
       disabled={disabled}
+    />
+  );
+}
+
+export function StepOfRow({
+  parent,
+  disabled,
+  onOutdent,
+}: {
+  readonly parent: PlannerItemRow;
+  readonly disabled: boolean;
+  readonly onOutdent: () => void;
+}): ReactNode {
+  return (
+    <ListRow
+      wrapTitle
+      title="Step of"
+      icon="listTree"
+      value={parent.title}
+      trailing={
+        <Button
+          label="Make it its own task"
+          icon="arrowLeft"
+          variant="text"
+          disabled={disabled}
+          onPress={onOutdent}
+        />
+      }
     />
   );
 }

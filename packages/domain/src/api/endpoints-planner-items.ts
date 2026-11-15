@@ -45,6 +45,7 @@ const ITEM_FIELDS = {
   completion: PLANNER_COMPLETION,
   attachments: z.array(PLANNER_ATTACHMENT),
   reminders: PLANNER_REMINDERS,
+  assignee_id: ID.nullable(),
 } as const;
 
 export const PLANNER_ITEM_CREATE = z.strictObject({
@@ -69,6 +70,7 @@ export const PLANNER_ITEM_CREATE = z.strictObject({
   completion: ITEM_FIELDS.completion.default({ kind: 'manual' }),
   attachments: ITEM_FIELDS.attachments.default([]),
   reminders: ITEM_FIELDS.reminders.default([]),
+  assignee_id: ITEM_FIELDS.assignee_id.default(null),
 });
 
 export type PlannerItemCreate = z.infer<typeof PLANNER_ITEM_CREATE>;

@@ -11,7 +11,8 @@ import {
 } from '@smarteverything/domain';
 import * as hubApi from '../../data/api';
 import type { RevisionRow } from '../../data/api';
-import { AutomationsSourceContext, type AutomationsSource } from '../../data/source';
+import { type AutomationsSource } from '../../data/source';
+import { AutomationsSourceContext } from '../../data/source-context';
 import { automationKeys } from '../../data/keys';
 import { structureAutomation } from '../../data/graph-adapter';
 import { automation, note, start } from '../../model/graph/graph-scene-fixtures';

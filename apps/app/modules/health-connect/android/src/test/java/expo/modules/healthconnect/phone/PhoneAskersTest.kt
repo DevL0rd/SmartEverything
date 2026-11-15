@@ -16,8 +16,8 @@ class PhoneAskersTest {
   }
 
   @Test
-  fun `a link asked by the assistant an automation or a scene always waits for a tap`() {
-    listOf("assistant", "automation", "scene").forEach { source ->
+  fun `a link asked by the assistant or an automation always waits for a tap`() {
+    listOf("assistant", "automation").forEach { source ->
       assertEquals(LinkOpening.TapToOpen, PhoneAskers.linkOpening(PhoneActionOrigin(source), overlayAllowed = true))
     }
   }
@@ -27,6 +27,6 @@ class PhoneAskersTest {
     assertEquals("Your assistant (Desk)", PhoneAskers.describe(PhoneActionOrigin("assistant", "Desk")))
     assertEquals("An automation", PhoneAskers.describe(PhoneActionOrigin("automation")))
     assertEquals("The SmartEverything app (Desktop)", PhoneAskers.describe("app", "Desktop"))
-    assertEquals("A scene", PhoneAskers.describe("scene", ""))
+    assertEquals("The SmartEverything app", PhoneAskers.describe("app", ""))
   }
 }

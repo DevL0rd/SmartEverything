@@ -1,6 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { HomeMap, HomeMapActor, HomeMapFloor, HomeMapOp } from '@smarteverything/domain';
+import type {
+  HomeMap,
+  HomeMapActor,
+  HomeMapFloor,
+  HomeMapOp,
+  TableRow,
+} from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { Icon } from '../../../../components/icon';
 import { Text } from '../../../../components/text';
@@ -11,12 +17,13 @@ import { ListSection } from './list-parts';
 import { ObjectItem } from './object-item';
 import {
   deviceGroups,
+  deviceRoomGroups,
   objectTitle,
   placeAutomatically,
   type DeviceGroups,
   type ItemsContext,
 } from './objects-devices-model';
-import { checkedOps, NOT_APPLIED_TEXT, roomTitle, type HubRoom } from './rooms-walls-model';
+import { checkedOps, NOT_APPLIED_TEXT, roomTitle } from './rooms-walls-model';
 
 export const OBJECTS_DEVICES_LABEL = 'Furniture and devices as a list';
 
@@ -73,10 +80,12 @@ function Objects({
 function Devices({
   context,
   groups,
+  rooms,
   open,
 }: {
   readonly context: ItemsContext;
   readonly groups: DeviceGroups;
+  readonly rooms: readonly TableRow<'rooms'>[];
   readonly open: OpenState;
 }): ReactNode {
   const ready = groups.unplaced.filter(({ onMap }) => onMap).map(({ device }) => device.id);
@@ -91,17 +100,25 @@ function Devices({
         context.place(ready);
       }}
     >
-      {groups.placed.map((entry) => (
-        <PlacedDeviceItem
-          key={entry.device.id}
-          context={context}
-          entry={entry}
-          open={open.openId === entry.device.id}
-          onToggle={toggle(open, entry.device.id)}
-        />
-      ))}
-      {groups.unplaced.map((entry) => (
-        <UnplacedDeviceRow key={entry.device.id} context={context} entry={entry} />
+      {deviceRoomGroups(groups, rooms).map((group) => (
+        <View key={group.key} className="gap-2">
+          <Text variant="footnote" tone="variant" accessibilityRole="header" className="pt-2">
+            {`${group.title} · ${String(group.devices.length)}`}
+          </Text>
+          {group.devices.map((entry) =>
+            entry.kind === 'placed' ? (
+              <PlacedDeviceItem
+                key={entry.device.id}
+                context={context}
+                entry={entry}
+                open={open.openId === entry.device.id}
+                onToggle={toggle(open, entry.device.id)}
+              />
+            ) : (
+              <UnplacedDeviceRow key={entry.device.id} context={context} entry={entry} />
+            ),
+          )}
+        </View>
       ))}
     </ListSection>
   );
@@ -109,7 +126,7 @@ function Devices({
 
 function useItemsContext(
   props: ObjectsDevicesListProps,
-  hubRooms: readonly HubRoom[],
+  hubRooms: readonly TableRow<'rooms'>[],
 ): { readonly context: ItemsContext; readonly notice: string | null } {
   const [notice, setNotice] = useState<string | null>(null);
   const context: ItemsContext = {
@@ -151,6 +168,7 @@ export function ObjectsDevicesList(props: ObjectsDevicesListProps): ReactNode {
       <Devices
         context={context}
         groups={deviceGroups(props.map, props.floor, devices)}
+        rooms={hubRooms}
         open={open}
       />
     </View>

@@ -10,6 +10,7 @@ import {
   nodeCatalogue,
   type NodeKind,
 } from '../../src/index';
+import { DRIVE_TRIGGER_KINDS } from '../../src/automation-nodes/drive';
 import { PLANNER_KINDS } from '../../src/automation-nodes/planner';
 import { APPLIANCE_TRIGGER_KINDS } from '../../src/automation-nodes/triggers-appliance';
 import { VACUUM_TRIGGER_KINDS } from '../../src/automation-nodes/triggers-vacuum';
@@ -23,6 +24,7 @@ const registry = buildRegistry([
   ...APPLIANCE_TRIGGER_KINDS,
   ...VACUUM_TRIGGER_KINDS,
   ...PLANNER_TRIGGER_KINDS,
+  ...DRIVE_TRIGGER_KINDS,
 ]);
 
 function kind(id: string): NodeKind {
@@ -76,7 +78,8 @@ describe('trigger kinds', () => {
         TRIGGER_V11_KINDS.length +
         APPLIANCE_TRIGGER_KINDS.length +
         VACUUM_TRIGGER_KINDS.length +
-        PLANNER_TRIGGER_KINDS.length,
+        PLANNER_TRIGGER_KINDS.length +
+        DRIVE_TRIGGER_KINDS.length,
     );
   });
 
@@ -96,7 +99,8 @@ describe('trigger kinds', () => {
         TRIGGER_V11_KINDS.length +
         APPLIANCE_TRIGGER_KINDS.length +
         VACUUM_TRIGGER_KINDS.length +
-        PLANNER_TRIGGER_KINDS.length,
+        PLANNER_TRIGGER_KINDS.length +
+        DRIVE_TRIGGER_KINDS.length,
     );
     expect(nodeCatalogue(registry, { query: 'baby' }).map((entry) => entry.id)).toEqual([
       'trigger.camera',
@@ -217,6 +221,9 @@ describe('compile to matcher', () => {
         'trigger.safety',
         'trigger.vacuum',
         'trigger.planner',
+        'trigger.drive_item_added',
+        'trigger.drive_conflict',
+        'trigger.drive_integrity',
       ].sort(),
     );
     for (const id of Object.keys(DEVICE_MATCHER_MAPPINGS)) expect(registry.has(id)).toBe(true);

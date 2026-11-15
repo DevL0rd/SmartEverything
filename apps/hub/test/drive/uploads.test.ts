@@ -573,6 +573,54 @@ describe('resuming', () => {
   });
 });
 
+describe('very large files', () => {
+  const GIB = 1024 ** 3;
+  const PIECE = 4 * 1024 * 1024;
+
+  function* zeros(total: number): Generator<Uint8Array> {
+    const piece = new Uint8Array(PIECE);
+    for (let sent = 0; sent < total; sent += PIECE) {
+      yield piece;
+    }
+  }
+
+  it('accepts a declared length of many gigabytes and streams a multi-gigabyte chunk without refusing it', async () => {
+    let received = 0;
+    await startServer((_handle, chunk) => {
+      received += chunk.byteLength;
+      return Promise.resolve();
+    });
+    const length = 64 * GIB;
+    const location = await open(length);
+    const sent = 3 * GIB;
+    const response = await fetch(location, {
+      method: 'PATCH',
+      headers: patchHeaders('robin', 0),
+      body: Readable.toWeb(Readable.from(zeros(sent))),
+      duplex: 'half',
+    });
+    expect(response.status).toBe(204);
+    expect(response.headers.get('upload-offset')).toBe(String(sent));
+    expect(received).toBe(sent);
+    expect(opened.store.driveUploads.byId(idOf(location)).offset).toBe(sent);
+  }, 120_000);
+
+  it('keeps an upload alive for as long as it receives bytes, counting expiry from the last chunk', async () => {
+    const uploads = await startServer();
+    updateDriveSettings(opened.store, { uploadExpiryDays: 2 });
+    const location = await open(10);
+    clock = new Date(START.getTime() + DAY_MS + DAY_MS / 2);
+    const first = await patch(location, 0, 'hello');
+    expect(first.status).toBe(204);
+    expect(new Date(first.headers.get('upload-expires') ?? '').getTime()).toBe(
+      clock.getTime() + 2 * DAY_MS,
+    );
+    clock = new Date(START.getTime() + 3 * DAY_MS);
+    expect(await uploads.sweepExpired()).toBe(0);
+    expect((await patch(location, 5, 'world')).status).toBe(204);
+  });
+});
+
 describe('checksum', () => {
   it('accepts a correct sha256 and rejects a wrong one with 460, keeping the offset', async () => {
     await startServer();
@@ -673,9 +721,15 @@ describe('ownership and scope', () => {
   it('lets an edit grant upload into the shared folder and refuses a view grant', async () => {
     await startServer();
     const folder = await personalFolder();
-    opened.store.driveGrants.set({ itemId: folder.id, profileId: sam, role: 'view' }, robin);
+    opened.store.driveGrants.set(
+      { itemId: folder.id, profileId: sam, role: 'view', expiresAt: null },
+      robin,
+    );
     expect((await uploadInto('sam', folder.id)).status).toBe(403);
-    opened.store.driveGrants.set({ itemId: folder.id, profileId: sam, role: 'edit' }, robin);
+    opened.store.driveGrants.set(
+      { itemId: folder.id, profileId: sam, role: 'edit', expiresAt: null },
+      robin,
+    );
     expect((await uploadInto('sam', folder.id)).status).toBe(201);
     expect((await uploadInto('owner', folder.id)).status).toBe(404);
   });
@@ -835,7 +889,11 @@ describe('camera roll backup through tus', () => {
   it('settles the actual committed hash and repeats a backup without sending bytes', async () => {
     const { service, phoneId } = registeredBackup();
     const assets = [
-      { localId: 'content://photo', sha256: createHash('sha256').update('photo').digest('hex') },
+      {
+        localId: 'content://photo',
+        sha256: createHash('sha256').update('photo').digest('hex'),
+        folder: null,
+      },
     ];
     expect(service.checkHashes(robin, { deviceId: phoneId, assets }).missing).toEqual([
       'content://photo',

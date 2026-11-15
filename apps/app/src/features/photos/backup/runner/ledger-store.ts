@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
 import { Ledger, STORED_LEDGER } from '../model/ledger';
-import type { LedgerStorage } from './ports';
+import type { LedgerStorage, LedgerStores } from './ports';
 
 const log = new Logger('app.photos');
 
@@ -23,28 +23,47 @@ function parseJson(raw: string): unknown {
   }
 }
 
-export async function loadLedger(storage: LedgerStorage): Promise<Ledger> {
-  const raw = await storage.getItem(LEDGER_STORAGE_KEY);
-  if (raw === null) return new Ledger();
+function ledgerOf(raw: string): Ledger | null {
   const value = parseJson(raw);
   const legacy = VERSION_ONE_LEDGER.safeParse(value);
   if (legacy.success) {
-    const ledger = new Ledger({
+    return new Ledger({
       ...legacy.data,
       version: 2,
       entries: legacy.data.entries.map((entry) => ({ ...entry, itemId: null })),
     });
-    await saveLedger(storage, ledger);
-    return ledger;
   }
   const parsed = STORED_LEDGER.safeParse(value);
   if (parsed.success) return new Ledger(parsed.data);
   log.warn('backup.ledger_discarded', { reason: parsed.error.message });
-  return new Ledger();
+  return null;
 }
 
-export function saveLedger(storage: LedgerStorage, ledger: Ledger): Promise<void> {
-  return storage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(ledger.toStored()));
+async function legacyLedgerText(storage: LedgerStorage): Promise<string | null> {
+  try {
+    return await storage.getItem(LEDGER_STORAGE_KEY);
+  } catch (cause) {
+    log.warn('backup.legacy_ledger_unreadable', {
+      reason: cause instanceof Error ? cause.message : String(cause),
+    });
+    return '';
+  }
+}
+
+export async function loadLedger(stores: LedgerStores): Promise<Ledger> {
+  const stored = await stores.ledgerFile.read();
+  if (stored !== null) return ledgerOf(stored) ?? new Ledger();
+  const legacy = await legacyLedgerText(stores.storage);
+  if (legacy === null) return new Ledger();
+  const ledger = ledgerOf(legacy) ?? new Ledger();
+  await saveLedger(stores, ledger);
+  await stores.storage.removeItem(LEDGER_STORAGE_KEY);
+  log.info('backup.ledger_moved_to_file', { entries: ledger.localIds().size });
+  return ledger;
+}
+
+export function saveLedger(stores: LedgerStores, ledger: Ledger): Promise<void> {
+  return stores.ledgerFile.write(JSON.stringify(ledger.toStored()));
 }
 
 export const PAUSED_STORAGE_KEY = 'smarteverything.photos.backup.paused';

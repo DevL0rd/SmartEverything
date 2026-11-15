@@ -33,6 +33,7 @@ import { healthRepositories } from '../../../src/store/repositories/areas/health
 import { homeRepositories } from '../../../src/store/repositories/areas/home';
 import { peopleRepositories } from '../../../src/store/repositories/areas/people';
 import { plannerRepositories } from '../../../src/store/repositories/areas/planner';
+import { photoRepositories } from '../../../src/store/repositories/areas/photos';
 import { platformRepositories } from '../../../src/store/repositories/areas/platform';
 import { AutomationFunctionsRepository } from '../../../src/store/repositories/automation-functions';
 import { AutomationPlansRepository } from '../../../src/store/repositories/automation-plans';
@@ -92,6 +93,7 @@ function composeStore(context: StoreContext, feed: ChangeFeed, database: Databas
     ...plannerRepositories(context),
     ...assistantRepositories(context),
     ...peopleRepositories(context),
+    ...photoRepositories(context),
     ...platformRepositories(context),
     write: (work) => context.write(work),
     durableWrite: (work) => durableSessionWrite(context, work),

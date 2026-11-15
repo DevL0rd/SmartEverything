@@ -18,7 +18,7 @@ const DOOR_T = 0.02;
 export const BROOM_CUPBOARD_MODEL: ModelSpec = storageItem({
   id: 'cat.storage.broom-cupboard',
   title: 'Broom cupboard',
-  footprint: { width: 0.6, depth: DEPTH + DOOR_T, height: HEIGHT },
+  footprint: { width: 0.6, depth: 0.455, height: HEIGHT },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

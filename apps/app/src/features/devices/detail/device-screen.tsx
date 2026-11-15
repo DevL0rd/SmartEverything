@@ -1,32 +1,32 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
-import { ScrollView, View } from 'react-native';
-import { Redirect, useRouter } from 'expo-router';
+import { View } from 'react-native';
+import { Redirect } from 'expo-router';
 import { isCamera, type DeviceFamily } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { AfterPaint } from '../../../components/after-paint';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { Screen } from '../../../components/screen';
-import { TabsBar } from '../../../components/tabs-bar';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
+import { twoFrameColumnsAt } from '../../../components/page-shell/layout';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
+import { useSectionParam } from '../../../components/use-section-param';
 import { href } from '../../../app-shell/hrefs';
 import { cn } from '../../../design/cn';
-import { atLeast, useSizeClass } from '../../../design/size-class';
+import {
+  SectionSearchContext,
+  useSectionSearchState,
+  type SectionSearch,
+} from '../../../plugins/shared/section-search';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useDeviceModel, type DeviceModel } from '../model/device-model';
-import { DeviceHeader } from './device-header';
-import { DeviceBanner, Hero, PrimaryCard } from './device-overview';
-import {
-  sectionHref,
-  sectionsOf,
-  useHasOverviewDetails,
-  OverviewDetails,
-  type DeviceSection,
-} from './sections';
+import { DeviceBanners, useDeviceShell } from './device-shell';
+import { Hero, PrimaryCard } from './device-overview';
+import { sectionsOf, useHasOverviewDetails, OverviewDetails, type DeviceSection } from './sections';
 import { MissingDevice } from './missing-device';
-import { Shortcuts } from './shortcuts';
 import { LaundryPage } from '../laundry/page';
 import { TelevisionLead } from '../television/lead';
 import { VacuumPage } from '../vacuum/page';
@@ -58,167 +58,66 @@ function Lead({ device }: { readonly device: Device }): ReactNode {
   );
 }
 
-function Overview({
-  device,
-  columns,
-  narrow = false,
-}: {
-  readonly device: Device;
-  readonly columns: boolean;
-  readonly narrow?: boolean;
-}): ReactNode {
-  const side = cn('gap-section-gap', columns && 'flex-1');
+function OverviewBody({ model }: { readonly model: DeviceModel }): ReactNode {
+  const { device, family } = model;
+  const details = useHasOverviewDetails(device);
+  const bodyWidth = useFrameBodyWidth();
+  const columns =
+    details && FAMILY_PAGES[family]?.singleColumn !== true && twoFrameColumnsAt(bodyWidth);
+  const side = cn('gap-section-gap', columns && 'min-w-0 flex-1');
   return (
-    <Screen
-      header={<DeviceHeader device={device} sectionTitle={null} titleLines="wrap" />}
-      maxWidth={narrow ? 'reading' : 'detail'}
-    >
-      <DeviceBanner device={device} />
-      <View className={cn('gap-section-gap', columns && 'flex-row items-start')}>
-        <View className={side}>
-          <Lead device={device} />
-        </View>
+    <View className={cn('gap-section-gap', columns && 'flex-row items-start')}>
+      <View className={side}>
+        <Lead device={device} />
+      </View>
+      {details ? (
         <View className={side}>
           <AfterPaint>
             <OverviewDetails device={device} />
-            <Shortcuts device={device} />
           </AfterPaint>
         </View>
-      </View>
-    </Screen>
+      ) : null}
+    </View>
   );
 }
 
-function BesideBody({
-  device,
-  section,
-}: {
-  readonly device: Device;
-  readonly section: DeviceSection;
-}): ReactNode {
-  return section.scrolls === true ? (
-    <View className="flex-1 pt-section-gap">{section.render(device, true)}</View>
-  ) : (
-    <ScrollView contentContainerClassName="gap-section-gap py-section-gap">
-      {section.render(device, true)}
-    </ScrollView>
-  );
-}
-
-function StaticDetailBody({
-  className,
-  children,
-}: {
-  readonly className?: string;
-  readonly children: ReactNode;
-}): ReactNode {
-  return <View className={cn('w-full flex-1 px-gutter', className)}>{children}</View>;
-}
-
-function useOpenSection(device: Device, active: string): (next: string) => void {
-  const router = useRouter();
-  return (next): void => {
-    if (next === active) return;
-    if (next === 'overview') {
-      router.dismissTo(href.device(device));
-      return;
-    }
-    const target = sectionHref(device.id, next);
-    if (active === 'overview') {
-      router.push(target);
-    } else {
-      router.replace(target);
-    }
-  };
-}
-
-function Split({
+function SectionBody({
   device,
   shown,
-  sections,
 }: {
   readonly device: Device;
-  readonly shown: DeviceSection;
-  readonly sections: readonly DeviceSection[];
-}): ReactNode {
-  const { key: active } = shown;
-  const openSection = useOpenSection(device, active);
-  const deviceId = device.id;
-  useEffect(() => {
-    log.info('section.changed', { deviceId, section: active, layout: 'split' });
-  }, [deviceId, active]);
-  return (
-    <Screen header={<DeviceHeader device={device} sectionTitle={null} />} scroll={false}>
-      <StaticDetailBody className="flex-row gap-section-gap">
-        <ScrollView
-          className="max-w-140 flex-1"
-          contentContainerClassName="gap-section-gap pb-section-gap pt-2"
-        >
-          <DeviceBanner device={device} />
-          <Lead device={device} />
-        </ScrollView>
-        <View className="min-w-0 flex-1">
-          <TabsBar
-            label="Device pages"
-            active={active}
-            items={sections.map((section) => ({
-              key: section.key,
-              label: section.key === 'controls' ? 'Controls' : section.title,
-              onPress: (): void => {
-                openSection(section.key);
-              },
-            }))}
-          />
-          <BesideBody device={device} section={shown} />
-        </View>
-      </StaticDetailBody>
-    </Screen>
-  );
-}
-
-function SubPage({
-  device,
-  section,
-  shown,
-}: {
-  readonly device: Device;
-  readonly section: string;
   readonly shown: DeviceSection | undefined;
 }): ReactNode {
-  const deviceId = device.id;
-  const found = shown !== undefined;
-  const scroll = shown?.scrolls !== true;
+  if (shown === undefined) {
+    return (
+      <EmptyState
+        icon="puzzle"
+        title="This page isn’t here"
+        body="This page may have moved or its plugin may be unavailable."
+        action={<Button label="Back to device" href={href.device(device)} />}
+      />
+    );
+  }
+  return shown.render(device, false);
+}
+
+function useSectionLog(deviceId: string, section: string, found: boolean): void {
   useEffect(() => {
     if (found) {
-      log.info('section.changed', { deviceId, section, layout: 'page' });
+      log.info('section.changed', { deviceId, section });
     } else {
       log.warn('section.missing', { deviceId, section });
     }
   }, [deviceId, section, found]);
-  return (
-    <Screen
-      header={
-        <DeviceHeader device={device} sectionTitle={shown === undefined ? null : shown.title} />
-      }
-      maxWidth="detail"
-      scroll={scroll}
-      banner={scroll ? undefined : <DeviceBanner device={device} />}
-    >
-      {scroll ? <DeviceBanner device={device} /> : null}
-      {shown === undefined ? (
-        <EmptyState
-          icon="puzzle"
-          title="This page isn’t here"
-          body="This page may have moved or its plugin may be unavailable."
-          action={<Button label="Back to device" href={href.device(device)} />}
-        />
-      ) : shown.scrolls === true ? (
-        <StaticDetailBody>{shown.render(device, false)}</StaticDetailBody>
-      ) : (
-        shown.render(device, false)
-      )}
-    </Screen>
-  );
+}
+
+function shellSearchOf(
+  shown: DeviceSection | undefined,
+  search: SectionSearch,
+): { readonly search: ShellSearchConfig } | Record<string, never> {
+  return shown?.search === undefined
+    ? {}
+    : { search: { ...search, placeholder: shown.search.placeholder } };
 }
 
 function GenericPage({
@@ -228,20 +127,28 @@ function GenericPage({
   readonly model: DeviceModel;
   readonly section: string;
 }): ReactNode {
-  const { device, family } = model;
-  const { width } = useSizeClass();
-  const details = useHasOverviewDetails(device);
-  const split = atLeast(width, 'expanded') && details;
-  if (section === 'overview' && !split) {
-    const columns = details && width === 'medium' && FAMILY_PAGES[family]?.singleColumn !== true;
-    return <Overview device={device} columns={columns} narrow={!details && width !== 'compact'} />;
-  }
-  const sections = sectionsOf(model);
-  const shown = sections.find(({ key }) => key === section);
-  return split && shown !== undefined ? (
-    <Split device={device} shown={shown} sections={sections} />
-  ) : (
-    <SubPage device={device} section={section} shown={shown} />
+  const { device } = model;
+  const shell = useDeviceShell(device, section);
+  const shown = sectionsOf(model).find(({ key }) => key === section);
+  const [initial] = useSectionParam('search');
+  const search = useSectionSearchState(`${section}|${initial ?? ''}`, initial ?? '');
+  useSectionLog(device.id, section, shown !== undefined);
+  return (
+    <PageShell
+      {...shell.props}
+      {...shellSearchOf(shown, search)}
+      width="detail"
+      scroll={shown?.scrolls !== true}
+      banner={<DeviceBanners device={device} schedule={shell.schedule} />}
+    >
+      {section === 'overview' ? (
+        <OverviewBody model={model} />
+      ) : (
+        <SectionSearchContext value={shown?.search === undefined ? null : search}>
+          <SectionBody device={device} shown={shown} />
+        </SectionSearchContext>
+      )}
+    </PageShell>
   );
 }
 

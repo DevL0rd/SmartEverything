@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  Color,
   Mesh,
   MeshBasicMaterial,
   NormalBlending,
@@ -15,11 +16,14 @@ import {
   fitHalo,
   frameRoom,
   HALO_FLOOR,
+  HALO_LOOK,
+  haloColour,
   haloDiameter,
   haloStrength,
 } from './emitter-halo';
 import type { SceneEmitter } from './scene-signals';
 import { SILHOUETTE_STENCIL } from './silhouette';
+import { STAGE_RIGS } from './stage';
 
 const RADIUS = 0.05;
 
@@ -117,5 +121,33 @@ describe('emitter halo', () => {
     dim.dispose();
     bright.dispose();
     expect(sprite?.parent).toBeNull();
+  });
+
+  function luminance(colour: Color): number {
+    return 0.2126 * colour.r + 0.7152 * colour.g + 0.0722 * colour.b;
+  }
+
+  it.each(['#FFD9A0', '#FFFFFF', '#E0ECFF', '#FFF4E5'])(
+    'stands out from the light stage around a white body for a %s light',
+    (colour) => {
+      const surface = new Color(STAGE_RIGS.light.surface);
+      const { opacity } = HALO_LOOK.light;
+      const drawn = haloColour(colour, 'light')
+        .multiplyScalar(opacity)
+        .add(surface.clone().multiplyScalar(1 - opacity));
+      const contrast = (luminance(surface) + 0.05) / (luminance(drawn) + 0.05);
+      expect(contrast).toBeGreaterThanOrEqual(1.5);
+    },
+  );
+
+  it('keeps the light colour itself for the additive dark theme glow', () => {
+    expect(haloColour('#FFD9A0', 'dark').getHexString()).toBe('ffd9a0');
+  });
+
+  it('paints the light theme halo in the tinted colour when it syncs', () => {
+    const halos = createEmitterHalos(source(1), 'light');
+    halos.sync();
+    expect(halos.sprites[0]?.material.color.getHex()).toBe(haloColour('#FFD9A0', 'light').getHex());
+    halos.dispose();
   });
 });

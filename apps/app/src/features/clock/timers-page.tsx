@@ -16,7 +16,7 @@ import { notifyFailure } from '../../components/toast-store';
 import { useAreaWidth } from '../../design/size-class';
 import { playTime } from '../../format/time';
 import { useScreenQuery } from '../../queries/use-screen-query';
-import { ringsQuery, usePlannerClockWrites, usePlannerTimers } from '../planner/data';
+import { ringsQuery, usePlannerClockWrites, usePlannerTimers } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
 import { useHubOffline } from './frame/hub-status';
 import { frameLayoutOf } from './frame/sections';

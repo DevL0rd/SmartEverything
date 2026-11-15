@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import type { PhotoSource } from '@smarteverything/domain';
+import type { LibraryScope, PhotoSource } from '@smarteverything/domain';
 import { NO_SOURCE_SEARCH } from '../../../api/photos';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
+import type { MediaGrouping } from '../../../components/media-grid/tiles';
 import { libraryLayoutOf } from '../../../components/library-frame/sections';
 import { useAreaWidth } from '../../../design/size-class';
 import { useDayKey } from '../../../store/clock';
@@ -18,11 +19,12 @@ import {
 import { localMediaSource } from '../local/source';
 import { useLocalLibrary } from '../local/use-local-library';
 import { scopeOf } from '../model/library-scope';
-import { tabParamOf, type TabCountInput } from '../model/library-tabs';
+import { PartnerTab, usePartnerTabs } from '../sharing';
+import { tabParamOf, type LibraryTab, type TabCountInput } from '../model/library-tabs';
 import { useLibrarySearch } from '../search/library-search';
 import { DeviceTab } from './device-tab';
 import { HubTab } from './hub-tab';
-import type { LibraryHeadProps } from './library-head';
+import type { LibraryHeadProps, ZoomControl } from './library-head';
 import { libraryLine } from './library-model';
 import { activeTabOf, hubTabOf, shownTabs, tabChipsOf } from './library-tabs-view';
 import { deviceCountOf } from './local-scope';
@@ -53,6 +55,44 @@ function openTab(id: Parameters<typeof tabParamOf>[0]): void {
   router.setParams({ tab: tab ?? undefined });
 }
 
+function ScopedTab({
+  tab,
+  head,
+  scope,
+  zoom,
+  grouping,
+}: {
+  readonly tab: LibraryTab;
+  readonly head: LibraryHeadProps;
+  readonly scope: LibraryScope;
+  readonly zoom: ZoomControl;
+  readonly grouping: MediaGrouping;
+}): ReactNode {
+  const subtitle = useLibrarySubtitle();
+  if (tab.kind === 'partner') {
+    return (
+      <PartnerTab
+        head={head}
+        shareId={tab.shareId}
+        name={tab.label}
+        scope={scope}
+        zoom={zoom}
+        grouping={grouping}
+      />
+    );
+  }
+  return (
+    <HubTab
+      head={head}
+      tab={hubTabOf(tab.id)}
+      scope={scope}
+      zoom={zoom}
+      grouping={grouping}
+      subtitle={subtitle}
+    />
+  );
+}
+
 function LibraryPage({
   q,
   tabParam,
@@ -63,7 +103,7 @@ function LibraryPage({
   const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
   const pref = usePref(PREFS.photos);
   const prefs = pref.status === 'ready' ? pref.value : PREFS.photos.defaultValue;
-  const tabs = shownTabs(localMediaSource() !== null, prefs);
+  const tabs = [...shownTabs(localMediaSource() !== null, prefs), ...usePartnerTabs()];
   const tab = activeTabOf(tabParam, tabs);
   const search = useLibrarySearch(q);
   const { state } = search;
@@ -80,7 +120,6 @@ function LibraryPage({
     compact,
     zoom: query.kind === 'source' ? null : zoom,
   };
-  const subtitle = useLibrarySubtitle();
   if (query.kind === 'source') {
     return <SourceTab key={query.source} head={head} source={query.source} search={query.search} />;
   }
@@ -90,13 +129,12 @@ function LibraryPage({
     );
   }
   return (
-    <HubTab
+    <ScopedTab
+      tab={tab}
       head={head}
-      tab={hubTabOf(tab.id)}
       scope={query.scope}
       zoom={zoom}
       grouping={prefs.libraryGroup}
-      subtitle={subtitle}
     />
   );
 }

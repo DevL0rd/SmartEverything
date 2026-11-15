@@ -1,3 +1,4 @@
+import { statfs } from 'node:fs/promises';
 import { ApiError } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import type { DataSpaceProbe } from './data-space';
@@ -54,15 +55,51 @@ function measured(
   return { used: folder.bytes, path: drive.path, quotaOf: own ? actor.profileId : null };
 }
 
+async function spaceOf(env: FsSpaceEnv, target: Measured): Promise<FsSpace> {
+  const disk = await env.probe.space(target.path);
+  const allowed = quotaFree(env, target.quotaOf);
+  const freeBytes = allowed === null ? disk.freeBytes : Math.min(allowed, disk.freeBytes);
+  return { totalBytes: target.used + freeBytes, usedBytes: target.used, freeBytes };
+}
+
 export async function fsSpace(
   env: FsSpaceEnv,
   actor: DriveActor,
   rootId: string,
   base: string | undefined,
 ): Promise<FsSpace> {
+  return spaceOf(env, measured(env, actor, rootId, base));
+}
+
+export interface InodeCounts {
+  readonly files: number;
+  readonly free: number;
+}
+
+export type InodeProbe = (path: string) => Promise<InodeCounts>;
+
+export const nodeInodeProbe: InodeProbe = async (path) => {
+  const counts = await statfs(path);
+  return { files: counts.files, free: counts.ffree };
+};
+
+export interface FsStatfsEnv extends FsSpaceEnv {
+  readonly inodes: InodeProbe;
+}
+
+export interface FsStatfs extends FsSpace {
+  readonly files: number;
+  readonly freeFiles: number;
+}
+
+export async function fsStatfs(
+  env: FsStatfsEnv,
+  actor: DriveActor,
+  rootId: string,
+  base: string | undefined,
+): Promise<FsStatfs> {
   const target = measured(env, actor, rootId, base);
-  const disk = await env.probe.space(target.path);
-  const allowed = quotaFree(env, target.quotaOf);
-  const freeBytes = allowed === null ? disk.freeBytes : Math.min(allowed, disk.freeBytes);
-  return { totalBytes: target.used + freeBytes, usedBytes: target.used, freeBytes };
+  const space = await spaceOf(env, target);
+  const counts = await env.inodes(target.path);
+  return { ...space, files: counts.files, freeFiles: counts.free };
 }

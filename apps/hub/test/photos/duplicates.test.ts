@@ -7,7 +7,7 @@ import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
-import { insertDriveRow, recordLibraryRow } from './photo-rows';
+import { insertDriveRow, recordLibraryRow, insertInode } from './photo-rows';
 import { DriveAlbumsRepository } from '../../src/store/repositories/drive-albums';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
@@ -117,11 +117,13 @@ function itemId(n: number): string {
 function seed(item: Seed): string {
   const id = itemId(item.n);
   const kind = item.kind ?? 'image';
+  const rootId = item.root ?? HOME_ROOT;
   const visual =
     kind === 'document' ? {} : { width: item.width ?? 100, height: item.height ?? 100 };
   insert('drive_items', {
     id,
-    root_id: item.root ?? HOME_ROOT,
+    root_id: rootId,
+    inode_id: insertInode(database, rootId),
     rel_path: `${String(item.n)}.bin`,
     name: `${String(item.n)}.bin`,
     kind,
@@ -139,7 +141,7 @@ function seed(item: Seed): string {
   });
   recordLibraryRow(database, {
     id,
-    rootId: item.root ?? HOME_ROOT,
+    rootId,
     kind,
     starred: item.starred === true,
     inLibrary: item.library !== false,

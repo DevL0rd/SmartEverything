@@ -8,9 +8,17 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ArgumentHandle } from '../../src/ipc.js';
 
 const sent: { channel: string; value: unknown }[] = [];
+const opened: string[] = [];
+let openFailure = '';
 
 vi.mock('electron', () => ({
   app: { once: (): void => undefined },
+  shell: {
+    openPath: (path: string): Promise<string> => {
+      opened.push(path);
+      return Promise.resolve(openFailure);
+    },
+  },
   BrowserWindow: {
     getAllWindows: (): readonly unknown[] => [
       {
@@ -27,11 +35,16 @@ vi.mock('electron', () => ({
 
 const { registerDriveIpc } = await import('../../src/drive-mount/bridge-ipc.js');
 
+const MOUNT = '11111111-1111-4111-8111-111111111111';
+
 const STATE: DesktopDriveState = {
-  mount: null,
+  mount: {
+    status: 'Mounted',
+    mounted: true,
+    points: [{ placementId: MOUNT, point: '/run/user/1000/smarteverything/Photos' }],
+  },
   sync: null,
   fuse: { available: true },
-  firstRun: { pending: true, defaultParent: '/home/u/SmartEverything' },
   cache: DEFAULT_DESKTOP_DRIVE_CACHE,
 };
 
@@ -70,8 +83,8 @@ describe('drive bridge', () => {
   it('answers the last state and runs only valid commands', async () => {
     const { handlers, ran } = wired();
     expect(handlers.get('desktop:drive-state')?.(undefined)).toEqual(STATE);
-    await handlers.get('desktop:drive-run')?.({ kind: 'first-run-dismissed' });
-    expect(ran).toEqual([{ kind: 'first-run-dismissed' }]);
+    await handlers.get('desktop:drive-run')?.({ kind: 'sync-pause' });
+    expect(ran).toEqual([{ kind: 'sync-pause' }]);
     expect(() => handlers.get('desktop:drive-run')?.({ kind: 'format-disk' })).toThrow();
   });
 
@@ -84,5 +97,22 @@ describe('drive bridge', () => {
       { channel: DESKTOP_DRIVE_CHANGED, value: null },
       { channel: DESKTOP_DRIVE_CHANGED, value: STATE },
     ]);
+  });
+
+  it('opens only a mounted folder, at the point this computer reported', async () => {
+    const { handlers } = wired();
+    opened.length = 0;
+    openFailure = '';
+    await handlers.get('desktop:drive-open')?.(MOUNT);
+    expect(opened).toEqual(['/run/user/1000/smarteverything/Photos']);
+    await expect(
+      handlers.get('desktop:drive-open')?.('22222222-2222-4222-8222-222222222222'),
+    ).rejects.toThrow(/not mounted/);
+    await expect(handlers.get('desktop:drive-open')?.('/etc/passwd')).rejects.toThrow(
+      /not mounted/,
+    );
+    openFailure = 'No application is registered';
+    await expect(handlers.get('desktop:drive-open')?.(MOUNT)).rejects.toThrow(/No application/);
+    expect(opened).toHaveLength(2);
   });
 });

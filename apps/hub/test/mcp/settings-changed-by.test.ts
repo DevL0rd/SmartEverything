@@ -21,6 +21,7 @@ describe('settings_read changed_by', () => {
     const known = new Set([
       ...Object.keys(SETTINGS_ROW.shape),
       'push',
+      'drive_settings',
       'goals',
       'preferences',
       'layouts',

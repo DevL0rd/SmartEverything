@@ -3,6 +3,7 @@ import { DEFAULT_RESPONSE_STYLE } from '@smarteverything/domain';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
 import { FORMAT_MANNER, WIDGET_MANNER } from '../../src/ai-tools/tool-guide';
 import {
+  CHATS_RULE,
   contextLines,
   homeRules,
   identityLine,
@@ -98,6 +99,7 @@ describe('chat and voice build their context from the same pieces', () => {
       expect(VOICE).toContain(voiceOnly);
     }
     for (const chatOnly of [
+      CHATS_RULE,
       FORMAT_MANNER,
       WIDGET_MANNER,
       'User message received while you were working',

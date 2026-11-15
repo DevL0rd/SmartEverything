@@ -27,6 +27,8 @@ let member: ClientRow;
 let routes: ReturnType<typeof selfUpdateRecoveryRoutes>;
 
 const calls: (readonly [string, number])[] = [];
+const rollbacks: string[] = [];
+const keeps: string[] = [];
 
 beforeAll(async () => {
   opened = await testStore();
@@ -43,6 +45,14 @@ beforeAll(async () => {
     status: () => hubUpdateStatus(opened.layout),
     recover: (id, seconds): Promise<HubUpdateRecoveryResult> => {
       calls.push([id, seconds]);
+      return Promise.resolve({ status: 'started', runId: id });
+    },
+    rollback: (id): Promise<HubUpdateRecoveryResult> => {
+      rollbacks.push(id);
+      return Promise.resolve({ status: 'started', runId: id });
+    },
+    keep: (id): Promise<HubUpdateRecoveryResult> => {
+      keeps.push(id);
       return Promise.resolve({ status: 'started', runId: id });
     },
   });
@@ -103,6 +113,35 @@ it('reports the latest release without disclosing local paths or diagnostics', a
       startedAt: NOW,
       updatedAt: LATER,
       finishedAt: null,
+      reason: null,
+      failedChecks: [],
+      backupKept: false,
+    },
+  });
+});
+
+it('reports the reason, failed checks and kept backup of a release waiting for a decision', async () => {
+  const failed = { name: 'startup', ok: false, detail: 'the hub did not answer' };
+  await writeFile(
+    join(opened.layout.system.updates.selfUpdate, HUB_UPDATE_LEDGER_FILE),
+    JSON.stringify({
+      releases: [
+        {
+          ...release(RUN, LATER),
+          phase: 'awaiting_decision',
+          interrupted: false,
+          reason: 'the new release did not start',
+          failedChecks: [failed],
+        },
+      ],
+    }),
+  );
+  await expect(call(routes.readHubUpdateRecovery, owner)).resolves.toMatchObject({
+    release: {
+      phase: 'awaiting_decision',
+      reason: 'the new release did not start',
+      failedChecks: [failed],
+      backupKept: true,
     },
   });
 });
@@ -148,4 +187,34 @@ it('accepts only a release id and hold time, never caller-supplied paths', async
     runId: RUN,
   });
   expect(calls).toEqual([[RUN, 120]]);
+});
+
+it('rolls back only on an owner request that names the release and nothing else', async () => {
+  await expect(call(routes.rollbackHubUpdate, member, { runId: RUN })).rejects.toMatchObject({
+    code: 'forbidden',
+  });
+  await expect(
+    call(routes.rollbackHubUpdate, owner, { runId: RUN, backup: SECRET }),
+  ).rejects.toMatchObject({ code: 'invalid_request' });
+  expect(rollbacks).toEqual([]);
+  await expect(call(routes.rollbackHubUpdate, owner, { runId: RUN })).resolves.toEqual({
+    status: 'started',
+    runId: RUN,
+  });
+  expect(rollbacks).toEqual([RUN]);
+});
+
+it('keeps a release only on an owner request that names the release and nothing else', async () => {
+  await expect(call(routes.keepHubUpdate, member, { runId: RUN })).rejects.toMatchObject({
+    code: 'forbidden',
+  });
+  await expect(
+    call(routes.keepHubUpdate, owner, { runId: RUN, backup: SECRET }),
+  ).rejects.toMatchObject({ code: 'invalid_request' });
+  expect(keeps).toEqual([]);
+  await expect(call(routes.keepHubUpdate, owner, { runId: RUN })).resolves.toEqual({
+    status: 'started',
+    runId: RUN,
+  });
+  expect(keeps).toEqual([RUN]);
 });

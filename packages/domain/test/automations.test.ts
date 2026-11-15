@@ -5,7 +5,6 @@ import {
   CLOCK_TIME,
   COMPARISON,
   MissingLocationError,
-  SCENE_ACTIONS,
   TIME_ZONE,
   WEEKDAYS,
   compare,
@@ -19,7 +18,6 @@ import {
   type TimedTrigger,
 } from '../src';
 
-const LAMP = '11111111-1111-4111-8111-111111111111';
 const BERLIN = { timeZone: 'Europe/Berlin', location: { latitude: 52.52, longitude: 13.405 } };
 
 function comparison(value: unknown): Comparison {
@@ -53,14 +51,6 @@ describe('schemas', () => {
   it('refuses a between range whose minimum exceeds its maximum', () => {
     expect(COMPARISON.safeParse({ operator: 'between', min: 2, max: 1 }).success).toBe(false);
     expect(COMPARISON.safeParse({ operator: 'between', min: 1, max: 1 }).success).toBe(true);
-  });
-
-  it('allows only device commands in a scene', () => {
-    expect(
-      SCENE_ACTIONS.safeParse([{ type: 'command', deviceId: LAMP, capability: 'power', value: 1 }])
-        .success,
-    ).toBe(true);
-    expect(SCENE_ACTIONS.safeParse([{ type: 'delay', seconds: 1 }]).success).toBe(false);
   });
 });
 

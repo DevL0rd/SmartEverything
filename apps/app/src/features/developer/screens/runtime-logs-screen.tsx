@@ -13,7 +13,6 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { SearchField } from '../../../components/search-field';
 import { Select } from '../../../components/select';
 import type { SelectOption } from '../../../components/select-picker';
 import { Skeleton } from '../../../components/skeleton';
@@ -130,8 +129,6 @@ function refreshAction(
 }
 
 interface LogFilterBarProps {
-  readonly query: string;
-  readonly onQueryChange: (value: string) => void;
   readonly level: Level;
   readonly onLevelChange: (value: Level) => void;
   readonly source: string;
@@ -141,30 +138,25 @@ interface LogFilterBarProps {
 
 function LogFilterBar(props: LogFilterBarProps): ReactNode {
   return (
-    <View className="w-full max-w-detail flex-row flex-wrap gap-2">
-      <View className="min-w-0 grow basis-64">
-        <SearchField value={props.query} onChange={props.onQueryChange} placeholder="Search logs" />
+    <View className="w-full max-w-detail flex-row gap-2">
+      <View className="min-w-0 flex-1">
+        <Select
+          label="Level"
+          options={LEVELS}
+          value={props.level}
+          onChange={props.onLevelChange}
+          showLabel={false}
+        />
       </View>
-      <View className="min-w-0 grow basis-64 flex-row gap-2">
-        <View className="min-w-0 flex-1">
-          <Select
-            label="Level"
-            options={LEVELS}
-            value={props.level}
-            onChange={props.onLevelChange}
-            showLabel={false}
-          />
-        </View>
-        <View className="min-w-0 flex-1">
-          <Select
-            label="Source"
-            options={props.sources}
-            value={props.source}
-            onChange={props.onSourceChange}
-            showLabel={false}
-            searchable
-          />
-        </View>
+      <View className="min-w-0 flex-1">
+        <Select
+          label="Source"
+          options={props.sources}
+          value={props.source}
+          onChange={props.onSourceChange}
+          showLabel={false}
+          searchable
+        />
       </View>
     </View>
   );
@@ -179,13 +171,20 @@ function OwnerLogs(): ReactNode {
   const logs = useRuntimeLogs({ text, level, source: source === ALL ? null : source });
   const sources = useRuntimeLogSources();
   return (
-    <SettingsFrame page={PAGE} scroll={false} actions={[refreshAction(logs, sources)]}>
+    <SettingsFrame
+      page={PAGE}
+      scroll={false}
+      actions={[refreshAction(logs, sources)]}
+      search={{
+        value: query,
+        onChange: (value) => {
+          setQuery(value.slice(0, RUNTIME_LOG_SEARCH_MAX));
+        },
+        placeholder: 'Search logs',
+      }}
+    >
       <View className="w-full flex-1 gap-2 px-gutter pb-section-gap">
         <LogFilterBar
-          query={query}
-          onQueryChange={(value) => {
-            setQuery(value.slice(0, RUNTIME_LOG_SEARCH_MAX));
-          }}
           level={level}
           onLevelChange={setLevel}
           source={source}

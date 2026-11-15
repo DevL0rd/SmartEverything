@@ -19,13 +19,18 @@ export const DRIVE_GRANT = z
     role: DRIVE_GRANT_ROLE,
     grantedBy: ID,
     createdAt: MOMENT,
+    expiresAt: MOMENT.nullable(),
   })
   .readonly();
 
 export type DriveGrant = z.infer<typeof DRIVE_GRANT>;
 
 export const DRIVE_GRANT_SET = z
-  .strictObject({ itemId: ID, profileId: ID, role: DRIVE_GRANT_ROLE })
+  .strictObject({ itemId: ID, profileId: ID, role: DRIVE_GRANT_ROLE, expiresAt: MOMENT.nullable() })
+  .refine((grant) => grant.expiresAt === null || Date.parse(grant.expiresAt) > Date.now(), {
+    message: 'access can only expire in the future',
+    path: ['expiresAt'],
+  })
   .readonly();
 
 export type DriveGrantSet = z.infer<typeof DRIVE_GRANT_SET>;

@@ -6,6 +6,7 @@ import type { MediaZoomStep } from '../../../components/media-grid/justify';
 import type { HeaderAction } from '../../../components/page-header';
 import { Segmented } from '../../../components/segmented';
 import { PhotosFrame } from '../components/photos-frame';
+import { ShowAllRow, ShowAllToggle } from '../folders/show-all-toggle';
 import type { LibraryTabId } from '../model/library-tabs';
 import { LibrarySearchBar, LibrarySearchPanel, type LibrarySearch } from '../search/library-search';
 import type { SearchToken } from '../search/tokens';
@@ -33,6 +34,7 @@ export interface ShellFrame {
   readonly actions: readonly HeaderAction[];
   readonly selection: ReactElement | null;
   readonly banner: ReactNode;
+  readonly footer?: ReactNode;
 }
 
 function TabsRow({
@@ -66,6 +68,7 @@ function TabsRow({
 function Toolbar({ zoom }: { readonly zoom: ZoomControl | null }): ReactNode {
   return (
     <View className="flex-row flex-wrap items-center justify-end gap-2">
+      <ShowAllToggle />
       <BackupChip />
       {zoom === null ? null : (
         <Segmented
@@ -83,13 +86,14 @@ function Toolbar({ zoom }: { readonly zoom: ZoomControl | null }): ReactNode {
 export function LibraryHead(props: LibraryHeadProps): ReactNode {
   const { search, compact } = props;
   return (
-    <View className="gap-2 pb-2">
+    <View className="gap-2">
       <View className={compact ? 'gap-2' : 'flex-row flex-wrap items-start gap-3'}>
-        <View className="min-w-0 flex-1">
+        <View className={compact ? 'min-w-0' : 'min-w-0 flex-1 basis-72'}>
           <LibrarySearchBar search={search} unused={props.unused} />
         </View>
         {compact || search.open ? null : <Toolbar zoom={props.zoom} />}
       </View>
+      {compact && !search.open ? <ShowAllRow /> : null}
       {search.open ? null : (
         <TabsRow chips={props.chips} active={props.active} onTab={props.onTab} compact={compact} />
       )}
@@ -109,12 +113,12 @@ export function LibraryShell({
   return (
     <PhotosFrame
       active="library"
-      search={false}
       scroll={false}
       {...(frame.subtitle === null ? {} : { subtitle: frame.subtitle })}
       actions={frame.actions}
       selection={frame.selection}
       {...(frame.banner === null ? {} : { banner: frame.banner })}
+      {...(frame.footer === undefined ? {} : { footer: frame.footer })}
     >
       <LibraryHead {...head} />
       {head.search.open ? <LibrarySearchPanel search={head.search} /> : children}

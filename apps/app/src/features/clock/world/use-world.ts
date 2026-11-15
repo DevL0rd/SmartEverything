@@ -2,8 +2,7 @@ import { useState } from 'react';
 import type { MenuItem } from '../../../components/menu';
 import { localDayKey } from '../../../format/time';
 import { useSettings } from '../../../store/selectors';
-import { usePlannerPreferences } from '../../planner/data';
-import { useSavePrefs } from '../../planner/settings/preferences';
+import { usePlannerPreferences, useSavePrefs } from '../../planner';
 import { useHubOffline } from '../frame/hub-status';
 import {
   addedClock,

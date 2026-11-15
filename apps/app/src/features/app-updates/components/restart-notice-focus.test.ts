@@ -111,6 +111,8 @@ vi.mock('../data/update-store', () => ({
       check: vi.fn(),
       download: vi.fn(),
       retry: vi.fn(),
+      tryUpdateAgain: vi.fn(),
+      stayOnBuiltIn: vi.fn(),
       restart: (_offerId, restoreFocus): void => {
         void askToRestart(ROLLBACK_CONFIRM, 'ui', restoreFocus);
       },

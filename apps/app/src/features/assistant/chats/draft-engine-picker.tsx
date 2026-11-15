@@ -16,7 +16,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { useIsOwner } from '../../../store/selectors';
-import { FolderPicker } from '../../computers';
+import { ComputerFolderPicker } from '../../computers';
 import { usePickerSession } from '../picker/model-search-session';
 import { PanelHead } from '../picker/panel/panel-chrome';
 import { usePanelSubpage } from '../picker/panel/panel-subpage';
@@ -306,9 +306,8 @@ function WorkingFolder({
         backLabel="Back"
         backRef={focusBack}
       />
-      <FolderPicker
+      <ComputerFolderPicker
         compact
-        mode="folder"
         deviceId={target.deviceId}
         onCancel={back}
         onChoose={(path): void => {

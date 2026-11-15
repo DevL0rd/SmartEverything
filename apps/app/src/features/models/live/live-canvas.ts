@@ -59,14 +59,17 @@ function runGraphics(setup: LoopSetup, graphics: CanvasGraphics): RunningCanvas 
   const sync = (): void => {
     syncCanvasViews(renderer, loop, surface.live());
   };
+  const redraw = (): void => {
+    if (renderer.viewIds().length > 0) loop.invalidate();
+  };
   const resize = (): void => {
     sizeTo(renderer);
-    loop.invalidate();
+    redraw();
   };
   const unsubscribe = surface.subscribe(sync);
-  const unwatch = setup.watchLayout(loop.invalidate);
+  const unwatch = setup.watchLayout(redraw);
   window.addEventListener('resize', resize);
-  document.addEventListener('scroll', loop.invalidate, { capture: true, passive: true });
+  document.addEventListener('scroll', redraw, { capture: true, passive: true });
   sync();
   return {
     invalidate: loop.invalidate,
@@ -74,7 +77,7 @@ function runGraphics(setup: LoopSetup, graphics: CanvasGraphics): RunningCanvas 
       unsubscribe();
       unwatch();
       window.removeEventListener('resize', resize);
-      document.removeEventListener('scroll', loop.invalidate, { capture: true });
+      document.removeEventListener('scroll', redraw, { capture: true });
       loop.dispose();
       renderer.dispose();
       release();

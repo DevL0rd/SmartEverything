@@ -91,7 +91,7 @@ export const HEADPHONES_MODEL: ModelSpec = {
   title: 'Headphones',
   category: 'audio',
   family: 'speaker',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.0818, height: 0.1924 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

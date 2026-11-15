@@ -10,7 +10,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { HubLayout } from '../data-layout';
-import { findUpdateSource } from '../self-update/update-source';
+import { findCheckoutSource } from '../self-update/update-source';
 
 const git = promisify(execFile);
 const SOURCE_BYTES = 12 * 1024;
@@ -46,7 +46,7 @@ export function repairSourceDigest(text: string): string {
 }
 
 function checkoutRoot(layout: HubLayout): string {
-  const source = findUpdateSource(layout);
+  const source = findCheckoutSource(layout);
   if (source === undefined)
     throw new ApiError(
       'conflict',

@@ -1,5 +1,7 @@
 import type { ServerResponse } from 'node:http';
+import { isFileItem } from '../../drive/file-item';
 import { DrivePathError, openResolved, resolveInRoot } from '../../drive/paths';
+import { requireExport } from '../../drive/sharing/export-guard';
 import { serveBytes } from '../file-serve';
 import { targetOf } from './collections';
 import { authenticateDav, DavError, guarded, type DavDeps, type DavExchange } from './dav-auth';
@@ -40,13 +42,20 @@ export function handleRead(deps: DavDeps, exchange: DavExchange): Promise<void> 
   const { request, response } = exchange;
   return guarded(exchange, async () => {
     const caller = authenticateDav(deps, request);
-    const { root, item, relPath } = targetOf(deps, caller, request);
+    const { root, item, relPath, access } = targetOf(deps, caller, request);
     if (relPath !== '' && item === undefined) {
       throw new DavError(404, 'There is nothing at that address.');
     }
     if (item === undefined || item.kind === 'folder') {
       throw new DavError(405, 'A collection has no bytes to download; list it with PROPFIND.');
     }
+    if (!isFileItem(item)) {
+      throw new DavError(
+        405,
+        'A link or special file has no bytes to download; the hub never follows links.',
+      );
+    }
+    requireExport(access, item);
     const resolved = await resolveInRoot(root.path, relPath).catch(unreadable);
     const handle = await openResolved(resolved, 'read').catch(unreadable);
     try {

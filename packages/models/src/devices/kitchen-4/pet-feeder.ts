@@ -177,7 +177,7 @@ export const PET_FEEDER_MODEL: ModelSpec = {
   title: 'Pet feeder',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.325, height: HEIGHT },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: [
     {

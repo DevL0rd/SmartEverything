@@ -1,5 +1,7 @@
 import type { FilePlaces } from '@smarteverything/domain';
 import { NodeFailureError } from '../../node-failure';
+import { ZipEntries } from '../zip-entries';
+import { portableProperties } from './file-properties';
 import type {
   AudioControl,
   DisplayControl,
@@ -95,12 +97,16 @@ export function unsupportedSystem(
   places: () => Promise<FilePlaces>,
 ): SystemControls {
   const no = (what: string) => (): Promise<never> => notSupported(what, machine);
+  const zip = new ZipEntries();
   const files: FileWriteControl = {
     search: no('File search'),
-    properties: no('File details'),
+    properties: portableProperties,
     write: no('Changing files'),
     upload: no('Sending files to the computer'),
     places,
+    trash: no('The Trash'),
+    zipEntries: (path, cursor) => zip.list(path, cursor),
+    zipEntryRange: (path, index, start, length) => zip.range(path, index, start, length),
     openDownload: no('Downloading files'),
     readDownload: no('Downloading files'),
     closeDownload: () => Promise.resolve(),

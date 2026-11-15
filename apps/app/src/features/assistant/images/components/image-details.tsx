@@ -8,7 +8,7 @@ import { Interactive } from '../../../../components/interactive';
 import { Text } from '../../../../components/text';
 import { cn } from '../../../../design/cn';
 import { useRows } from '../../../../store/selectors';
-import { useMoney } from '../../../region/data/use-money';
+import { useMoney } from '../../../region';
 import { CHAT_SURFACE } from '../../components/chat-surface';
 import { detailRows, promptLine, type DetailRow } from '../model/image-generation';
 

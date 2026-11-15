@@ -1,7 +1,8 @@
 import type { InputPort, OutputPort, PortValue } from '@smarteverything/domain';
 import type { Plan, PlanOp } from '../../src/compile/plan';
 import type { FunctionInterface } from '../../src/functions/interface-hash';
-import { CALL_FRAMES, callOps, planOwner } from '../../src/interpret/calls';
+import { CALL_FRAMES, callOps } from '../../src/interpret/calls';
+import { planOwner } from '../../src/interpret/call-state';
 import type { CalleeResolver } from '../../src/interpret/calls';
 import { CORE_FRAMES, CORE_OPS } from '../../src/interpret/core-ops';
 import type { EffectRequest, StepContext } from '../../src/interpret/frames';

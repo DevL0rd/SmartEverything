@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   LIBRARY_TAB_IDS,
   LIBRARY_TABS,
+  isPartnerTabId,
+  partnerTabIdOf,
+  partnerTabsOf,
   tabById,
   tabCountOf,
   tabOfParam,
@@ -19,6 +22,9 @@ const RAIL = {
   duplicates: 0,
   backupDevices: 1,
   deleted: 0,
+  people: 0,
+  sharing: 0,
+  archive: 0,
 } as const;
 
 describe('Library tabs', () => {
@@ -65,5 +71,27 @@ describe('Library tabs', () => {
         tabCountOf(id, { rail: undefined, cameras: undefined, ai: undefined, device: undefined }),
       ),
     ).toEqual([null, null, null, null, null, null, null]);
+  });
+});
+
+describe('partner tabs', () => {
+  it('names one tab after each partner and keeps its count blank', () => {
+    const tabs = partnerTabsOf([
+      { id: 'a1b2c3d4-0000-4000-8000-000000000030', sharerId: 'p-ana', name: 'Ana' },
+    ]);
+    expect(tabs).toEqual([
+      {
+        id: 'partner-a1b2c3d4-0000-4000-8000-000000000030',
+        label: 'Ana',
+        icon: 'users',
+        kind: 'partner',
+        shareId: 'a1b2c3d4-0000-4000-8000-000000000030',
+        sharerId: 'p-ana',
+      },
+    ]);
+    const id = partnerTabIdOf('a1b2c3d4-0000-4000-8000-000000000030');
+    expect(isPartnerTabId(id)).toBe(true);
+    expect(isPartnerTabId('videos')).toBe(false);
+    expect(tabCountOf(id, { rail: undefined, cameras: 3, ai: 1, device: 2 })).toBeNull();
   });
 });

@@ -6,7 +6,7 @@ const FOLD = 0.04;
 export const THROW_BLANKET_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.throw-blanket',
   title: 'Throw blanket',
-  footprint: { width: 0.965, depth: 0.5, height: 0.12 },
+  footprint: { width: 0.965, depth: 0.5, height: 0.118 },
   size: { width: { param: 'length', extra: 0.065, resizes: true } },
   meta: {
     names: {

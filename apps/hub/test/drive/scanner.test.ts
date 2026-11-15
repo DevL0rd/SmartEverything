@@ -36,6 +36,7 @@ import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
+import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { Sql } from '../../src/store/sql';
@@ -60,6 +61,7 @@ let items: DriveItemsRepository;
 let feed: ChangeFeed;
 let context: StoreContext;
 let notices: { readonly done: number; readonly total: number }[];
+let mountedRoot = false;
 let availability: 'online' | 'missing' | 'different';
 
 beforeAll(async () => {
@@ -117,6 +119,7 @@ beforeEach(() => {
     }
   });
   availability = 'online';
+  mountedRoot = false;
   roots.insert(driveRoot());
 });
 
@@ -130,11 +133,13 @@ function environment(script = workerScript): ScanEnvironment {
     store: {
       driveRoots: roots,
       driveItems: items,
+      driveInodes: new DriveInodesRepository(context),
       feed,
       write: (work) => context.write(work),
       now: () => new Date(NOW),
     },
     availability: () => Promise.resolve(availability),
+    mounted: () => mountedRoot,
     workerScript: script,
     log: testLogger(),
   };
@@ -297,7 +302,7 @@ describe('scanning a root', () => {
     }
   });
 
-  it('skips hidden files, the marker folder, skip patterns and links', async () => {
+  it('skips hidden files, the marker folder and skip patterns but records links', async () => {
     roots.update(ROOT, { skipPatterns: ['*.tmp', 'cache/**'] });
     put('.hidden');
     put('.smarteverything/root.json');
@@ -306,7 +311,7 @@ describe('scanning a root', () => {
     put('visible.txt');
     symlinkSync(join(tree, 'visible.txt'), join(tree, 'link.txt'));
     await scan();
-    expect(pathsInIndex()).toEqual(['cache', 'visible.txt']);
+    expect(pathsInIndex()).toEqual(['cache', 'link.txt', 'visible.txt']);
   });
 
   it('indexes hidden files when the root asks for them', async () => {
@@ -315,6 +320,15 @@ describe('scanning a root', () => {
     put('.smarteverything/root.json');
     await scan();
     expect(pathsInIndex()).toEqual(['.hidden']);
+  });
+
+  it('indexes hidden files of a drive that is mounted so files made through the mount stay', async () => {
+    mountedRoot = true;
+    put('.git/config');
+    put('.hidden');
+    put('.smarteverything/root.json');
+    await scan();
+    expect(pathsInIndex()).toEqual(['.git', '.git/config', '.hidden']);
   });
 
   it('marks a drive whose folder is not its own as an error with the index kept', async () => {
@@ -408,13 +422,16 @@ describe('the 100k index', () => {
 
   function fill(): void {
     database.exec(`
-      insert into drive_items (id, root_id, parent_id, rel_path, name, kind, mime, bytes, child_count, sha256, integrity, dev, ino, modified_at, added_at, rev, etag, outside, thumb_state)
-      with recursive n(i) as (select 0 union all select i + 1 from n where i < ${String(FOLDERS - 1)})
-      select '0e000000-0000-4000-8000-' || printf('%012d', i), '${ROOT}', null, 'd' || i, 'd' || i, 'folder', null, 0, 99, null, 'unknown', '1', 'f' || i, '${NOW}', '${NOW}', 1, '1-0.0', 0, 'none' from n`);
+      insert into drive_inodes (root_id, is_root, type, mode, atime_ns, mtime_ns, ctime_ns, btime_ns, orphan)
+      values ('${ROOT}', 0, 'file', 420, 1, 1, 1, 1, 0)`);
     database.exec(`
-      insert into drive_items (id, root_id, parent_id, rel_path, name, kind, mime, bytes, child_count, sha256, integrity, dev, ino, modified_at, added_at, rev, etag, outside, thumb_state)
+      insert into drive_items (id, root_id, inode_id, parent_id, rel_path, name, kind, mime, bytes, child_count, sha256, integrity, dev, ino, modified_at, added_at, rev, etag, outside, thumb_state)
+      with recursive n(i) as (select 0 union all select i + 1 from n where i < ${String(FOLDERS - 1)})
+      select '0e000000-0000-4000-8000-' || printf('%012d', i), '${ROOT}', (select max(id) from drive_inodes), null, 'd' || i, 'd' || i, 'folder', null, 0, 99, null, 'unknown', '1', 'f' || i, '${NOW}', '${NOW}', 1, '1-0.0', 0, 'none' from n`);
+    database.exec(`
+      insert into drive_items (id, root_id, inode_id, parent_id, rel_path, name, kind, mime, bytes, child_count, sha256, integrity, dev, ino, modified_at, added_at, rev, etag, outside, thumb_state)
       with recursive n(i) as (select 0 union all select i + 1 from n where i < ${String(FILES - 1)})
-      select '0d000000-0000-4000-8000-' || printf('%012d', i + 100), '${ROOT}', '0e000000-0000-4000-8000-' || printf('%012d', i % ${String(FOLDERS)}), 'd' || (i % ${String(FOLDERS)}) || '/n' || i, 'n' || i, 'document', 'text/plain', 1, null, null, 'unknown', '1', 'i' || i, '${NOW}', '${NOW}', 1, '1-0.0', 0, 'none' from n`);
+      select '0d000000-0000-4000-8000-' || printf('%012d', i + 100), '${ROOT}', (select max(id) from drive_inodes), '0e000000-0000-4000-8000-' || printf('%012d', i % ${String(FOLDERS)}), 'd' || (i % ${String(FOLDERS)}) || '/n' || i, 'n' || i, 'document', 'text/plain', 1, null, null, 'unknown', '1', 'i' || i, '${NOW}', '${NOW}', 1, '1-0.0', 0, 'none' from n`);
   }
 
   function plan(text: string, parameters: Record<string, string>): string {
@@ -447,6 +464,7 @@ describe('the 100k index', () => {
     fill();
     const dependencies: CommitDependencies = {
       items,
+      inodes: new DriveInodesRepository(context),
       write: (work) => context.write(work),
       now: () => new Date(NOW),
       newId: randomUUID,
@@ -584,6 +602,7 @@ describe('the job table', () => {
       },
       hash: () => Promise.resolve(),
       metadata: () => Promise.resolve(),
+      text: () => Promise.resolve(),
     });
     await run(job, new AbortController().signal);
     expect(handled).toEqual([ROOT]);

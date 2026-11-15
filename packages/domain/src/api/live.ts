@@ -47,7 +47,11 @@ import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE, CHAT_STREAM_NOTICE } from '../ai-cha
 import { ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS_NOTICE } from '../assistant';
 import { AI_USAGE_ROW } from '../ai-usage';
 import { COMPUTER_AI_NOTICES } from '../computer-ai-notices';
-import { COMPUTER_LIVE_NOTICE, WATCH_MESSAGE } from '../node/computer-live';
+import {
+  COMPUTER_FILES_CHANGED_NOTICE,
+  COMPUTER_LIVE_NOTICE,
+  WATCH_MESSAGE,
+} from '../node/computer-live';
 import { AUTOMATION_TRACE_NOTICE, AUTOMATION_WATCH_MESSAGE } from './live-automation-trace';
 import { PHONE_DETAIL_NOTICE } from '../phone-detail';
 import { TREADMILL_LIVE_NOTICE } from '../treadmill-views';
@@ -96,7 +100,6 @@ import {
   LAYOUT_ROW,
   PUSH_TARGET_ROW,
   RECORDING_ROW,
-  SCENE_ROW,
 } from './rows-media';
 
 export const LIVE_SEQUENCE_HEADER = 'x-smarteverything-live-seq';
@@ -136,7 +139,6 @@ export const TABLE_ROWS = {
   recordings: RECORDING_ROW,
   ir_remotes: IR_REMOTE_ROW,
   ir_codes: IR_CODE_ROW,
-  scenes: SCENE_ROW,
   automations: AUTOMATION_ROW,
   automation_values: AUTOMATION_VALUE_ROW,
   automation_runs: AUTOMATION_RUN_SUMMARY,
@@ -248,7 +250,6 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('recordings', TABLE_ROWS.recordings),
   changeOf('ir_remotes', TABLE_ROWS.ir_remotes),
   changeOf('ir_codes', TABLE_ROWS.ir_codes),
-  changeOf('scenes', TABLE_ROWS.scenes),
   changeOf('automations', TABLE_ROWS.automations),
   changeOf('automation_values', TABLE_ROWS.automation_values),
   changeOf('automation_runs', TABLE_ROWS.automation_runs),
@@ -285,12 +286,22 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('drive_albums', TABLE_ROWS.drive_albums),
   changeOf('drive_grants', TABLE_ROWS.drive_grants),
   changeOf('drive_placements', TABLE_ROWS.drive_placements),
+  changeOf('drive_notifications', TABLE_ROWS.drive_notifications),
+  changeOf('drive_access_requests', TABLE_ROWS.drive_access_requests),
+  changeOf('drive_file_requests', TABLE_ROWS.drive_file_requests),
+  changeOf('drive_transfers', TABLE_ROWS.drive_transfers),
+  changeOf('drive_offline_items', TABLE_ROWS.drive_offline_items),
   changeOf('planner_collections', TABLE_ROWS.planner_collections),
-  changeOf('planner_items', TABLE_ROWS.planner_items),
+  changeOf('planner_items', TABLE_ROWS.planner_items).extend({
+    guests: z.array(z.string()).optional(),
+  }),
   changeOf('planner_occurrences', TABLE_ROWS.planner_occurrences),
   changeOf('planner_alarms', TABLE_ROWS.planner_alarms),
   changeOf('planner_timers', TABLE_ROWS.planner_timers),
   changeOf('planner_stopwatches', TABLE_ROWS.planner_stopwatches),
+  changeOf('planner_collection_shares', TABLE_ROWS.planner_collection_shares),
+  changeOf('planner_guests', TABLE_ROWS.planner_guests),
+  changeOf('planner_booking_pages', TABLE_ROWS.planner_booking_pages),
   changeOf('google_accounts', TABLE_ROWS.google_accounts),
 ]);
 
@@ -343,6 +354,7 @@ const NOTICES = [
   ...CLAUDE_NOTICES,
   ...COMPUTER_AI_NOTICES,
   COMPUTER_LIVE_NOTICE,
+  COMPUTER_FILES_CHANGED_NOTICE,
   PHONE_DETAIL_NOTICE,
   TREADMILL_LIVE_NOTICE,
   BRUSH_LIVE_NOTICE,

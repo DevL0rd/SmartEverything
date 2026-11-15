@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import { router } from 'expo-router';
 import { href } from '../app-shell/hrefs';
 import { placeBelow, type Rect } from '../components/anchor';
@@ -62,7 +63,12 @@ function Panel({ query, field }: { readonly query: string; readonly field: boole
           />
         </View>
       ) : null}
-      <ResultList model={panel.model} contentClassName="py-2" grow={false} />
+      <ResultList
+        model={panel.model}
+        contentClassName="py-2"
+        grow={false}
+        footer={panel.content ?? undefined}
+      />
       {query.trim() === '' ? null : (
         <View className="border-t border-outline-variant">
           <ListRow
@@ -81,7 +87,7 @@ function Panel({ query, field }: { readonly query: string; readonly field: boole
 
 export function SearchPopover(): ReactNode {
   const overlay = useValue(searchOverlay);
-  const window = useWindowDimensions();
+  const window = useWindowSize();
   if (!overlay.open) {
     return null;
   }

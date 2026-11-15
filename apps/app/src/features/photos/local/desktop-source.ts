@@ -1,6 +1,7 @@
 import type { DesktopPhotoItem } from '@smarteverything/domain';
 import { desktopBridge } from '../../../design/platform';
 import { desktopMediaShape, type LocalMediaShape } from './desktop-metadata';
+import { computerFolderOf } from './folders';
 import { localLibrary } from './store';
 import type { LocalMediaItem, LocalMediaSource } from './types';
 
@@ -22,6 +23,7 @@ function itemOf(item: DesktopPhotoItem): LocalMediaItem {
     takenAt: item.takenAt,
     modificationTime: item.modifiedAt,
     video: item.video,
+    folder: computerFolderOf(item.folder),
     width: shape?.width ?? null,
     height: shape?.height ?? null,
     durationMs: shape?.durationMs ?? null,

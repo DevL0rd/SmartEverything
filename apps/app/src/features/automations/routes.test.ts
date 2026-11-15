@@ -54,7 +54,6 @@ describe('the automations routes', () => {
         'automations.nodes',
         'automations.templates',
         'automations.variables',
-        'automations.scenes',
         'automations.schedule',
         'automations.scheduled',
         'automations.runs',
@@ -77,7 +76,6 @@ describe('the automations routes', () => {
     expect(withNew.map((route) => route.key)).toEqual([
       'automations.nodes',
       'automations.variables',
-      'automations.scenes',
       'automations.scheduled',
       'automations.secrets',
     ]);

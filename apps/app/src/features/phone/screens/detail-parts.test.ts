@@ -16,7 +16,7 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('../../../components/reason-line', () => ({ ReasonLine: (): null => null }));
 vi.mock('../../../components/skeleton', () => ({ Skeleton: (): null => null }));
-vi.mock('../../../components/section-body', () => ({
+vi.mock('../../../components/page-shell/body-width', () => ({
   useFrameBodyWidth: (): number => fixture.width,
 }));
 vi.mock('../../../design/platform', () => ({ useIdiom: (): 'pointer' => 'pointer' }));

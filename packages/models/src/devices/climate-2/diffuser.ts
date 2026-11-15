@@ -17,7 +17,7 @@ export const ULTRASONIC_DIFFUSER_MODEL: ModelSpec = {
   title: 'Scent diffuser',
   category: 'climate',
   family: 'diffuser',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: 0.1528, depth: 0.1546, height: HEIGHT },
   framing: house('cover', 28, 18),
   shots: [
     shot('scenting', RUNNING, 'cover', { zoom: 1.15, yaw: 20, pitch: 20, loopS: 4, stillAt: 2 }),

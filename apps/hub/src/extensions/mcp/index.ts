@@ -148,6 +148,8 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
       hub: context.hub,
       clock: options.clock,
       operations: context.operations,
+      publications: context.publications,
+      releaseSecrets: context.secrets,
       commandWaitMs: COMMAND_WAIT_MS,
       recordingPath: recordingPathIn(context.layout),
       caller: null,

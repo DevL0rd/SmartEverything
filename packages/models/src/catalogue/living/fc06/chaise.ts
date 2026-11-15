@@ -25,7 +25,7 @@ const FEET = corners(
 export const CHAISE_MODEL = furniture({
   id: 'cat.living.chaise',
   title: 'Chaise longue',
-  footprint: { width: 1.6634, depth: WIDTH, height: 0.86 },
+  footprint: { width: 1.6634, depth: 0.723, height: 0.8547 },
   size: { width: { param: 'length', extra: 0.0134, resizes: true } },
   meta: {
     names: {

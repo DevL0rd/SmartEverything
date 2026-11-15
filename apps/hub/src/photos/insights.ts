@@ -1,10 +1,12 @@
 import {
+  ApiError,
   PHOTO_INSIGHTS,
   type PhotoInsightRange,
   type PhotoInsights,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import type { DriveActor } from '../drive/access';
+import { DRIVE_PAGE_SIZE } from '../drive/service-read';
 import type { StoreContext } from '../store/context';
 import {
   CAMERA_ROW,
@@ -69,6 +71,26 @@ const RAW_SQL = RAW_EXTENSIONS.map((extension) => `lower(i.name) like '%.${exten
 const KIND_SQL = `case when i.kind = 'video' then 'video' when ${RAW_SQL} then 'raw'
   when ${SCREENSHOT_SQL} then 'screenshot' else 'photo' end`;
 
+const LARGEST_CURSOR = /^(\d+):([0-9a-f-]{36})$/;
+
+const BUSIEST_CURSOR = /^(\d+):(\d{4}-\d{2}-\d{2})$/;
+
+export interface RankingPage<T> {
+  readonly items: readonly T[];
+  readonly next: string | null;
+}
+
+function invalidCursor(): ApiError {
+  return new ApiError('invalid_request', 'The cursor is not one this list gave out.');
+}
+
+function cursorOf(cursor: string | undefined, pattern: RegExp): readonly [number, string] | null {
+  if (cursor === undefined) return null;
+  const match = pattern.exec(cursor);
+  if (match === null) throw invalidCursor();
+  return [Number(match[1]), match[2] ?? ''];
+}
+
 interface Scope {
   readonly where: string;
   readonly parameters: Statement['parameters'];
@@ -114,6 +136,76 @@ export class InsightsReader {
       places: placesOf(this.countries(scope)),
       backupCoverage: this.coverage(actor),
     });
+  }
+
+  largestVideosPage(
+    actor: DriveActor,
+    range: PhotoInsightRange,
+    cursor: string | undefined,
+    at: InsightsContext,
+  ): RankingPage<PhotoInsights['largestVideos'][number]> {
+    const scope = scopeOf(actor, range, at.today);
+    const after = cursorOf(cursor, LARGEST_CURSOR);
+    const rows = this.context.sql.all(
+      LARGEST_ROW,
+      `select i.id, i.bytes, i.duration_ms from ${PHOTO_FROM}
+       where ${scope.where} and i.kind = 'video'
+         and ($afterBytes is null or i.bytes < $afterBytes
+           or (i.bytes = $afterBytes and i.id > $afterId))
+       order by i.bytes desc, i.id limit $limit`,
+      {
+        ...scope.parameters,
+        afterBytes: after?.[0] ?? null,
+        afterId: after?.[1] ?? null,
+        limit: DRIVE_PAGE_SIZE + 1,
+      },
+    );
+    const shown = rows.slice(0, DRIVE_PAGE_SIZE);
+    const last = shown.at(-1);
+    return {
+      items: shown.map((row) => ({
+        itemId: row.id,
+        bytes: row.bytes,
+        durationMs: row.duration_ms,
+      })),
+      next:
+        rows.length > DRIVE_PAGE_SIZE && last !== undefined
+          ? `${String(last.bytes)}:${last.id}`
+          : null,
+    };
+  }
+
+  busiestDaysPage(
+    actor: DriveActor,
+    range: PhotoInsightRange,
+    cursor: string | undefined,
+    at: InsightsContext,
+  ): RankingPage<PhotoInsights['busiestDays'][number]> {
+    const scope = scopeOf(actor, range, at.today);
+    const after = cursorOf(cursor, BUSIEST_CURSOR);
+    const rows = this.context.sql.all(
+      DAY_ROW,
+      `select ${LOCAL_DAY} as day, count(*) as items
+       from ${PHOTO_FROM} where ${scope.where} group by day
+       having ($afterItems is null or count(*) < $afterItems
+         or (count(*) = $afterItems and day > $afterDay))
+       order by items desc, day limit $limit`,
+      {
+        ...scope.parameters,
+        afterItems: after?.[0] ?? null,
+        afterDay: after?.[1] ?? null,
+        limit: DRIVE_PAGE_SIZE + 1,
+      },
+    );
+    const shown = rows.slice(0, DRIVE_PAGE_SIZE);
+    const last = shown.at(-1);
+    return {
+      items: shown,
+      next:
+        rows.length > DRIVE_PAGE_SIZE && last !== undefined
+          ? `${String(last.items)}:${last.day}`
+          : null,
+    };
   }
 
   private monthly(scope: Scope): z.output<typeof MONTH_KIND_ROW>[] {

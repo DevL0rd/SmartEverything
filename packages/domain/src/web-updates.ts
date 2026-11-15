@@ -38,6 +38,11 @@ export const WEB_UPDATE_STATUS = z.discriminatedUnion('state', [
     offer: APP_UPDATE_COMPATIBLE.nullable(),
   }),
   z.strictObject({
+    state: z.literal('boot_failed'),
+    failedId: z.uuid(),
+    reason: z.string().min(1),
+  }),
+  z.strictObject({
     state: z.literal('rolled_back'),
     failedId: z.uuid(),
     reason: z.string().min(1),

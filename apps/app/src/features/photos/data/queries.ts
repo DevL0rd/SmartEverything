@@ -8,6 +8,8 @@ import type {
 import {
   type PhotosResult,
   type SourceSearch,
+  listPhotoBusiestDays,
+  listPhotoLargestVideos,
   listPhotoSource,
   listPlaceClusters,
   listPhotoDuplicates,
@@ -27,11 +29,13 @@ import {
 } from '../../../api/photos';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useDrivePages, type DrivePages } from '../../drive';
+import { useFolderScope } from '../folders/data';
 import { photoKeys } from './keys';
 
 export function usePhotoBuckets(
-  scope: LibraryScope,
+  requested: LibraryScope,
 ): UseQueryResult<PhotosResult<'readLibraryBuckets'>> {
+  const scope = useFolderScope(requested);
   return useScreenQuery({
     queryKey: photoKeys.buckets(scope),
     queryFn: () => readLibraryBuckets(scope),
@@ -42,9 +46,10 @@ export function usePhotoBuckets(
 
 export function usePhotoMonth(
   month: string,
-  scope: LibraryScope,
+  requested: LibraryScope,
   enabled: boolean,
 ): DrivePages<PhotosResult<'readLibraryPage'>> {
+  const scope = useFolderScope(requested);
   return useDrivePages({
     queryKey: photoKeys.month(month, scope),
     read: (cursor) => readLibraryPage(month, scope, cursor),
@@ -116,6 +121,24 @@ export function usePhotoInsights(
     queryFn: () => readPhotoInsights(range),
     placeholderData: keepPreviousData,
     retry: false,
+  });
+}
+
+export function usePhotoLargestVideos(
+  range: PhotoInsightRange,
+): DrivePages<PhotosResult<'listPhotoLargestVideos'>> {
+  return useDrivePages({
+    queryKey: photoKeys.largestVideos(range),
+    read: (cursor) => listPhotoLargestVideos(range, cursor),
+  });
+}
+
+export function usePhotoBusiestDays(
+  range: PhotoInsightRange,
+): DrivePages<PhotosResult<'listPhotoBusiestDays'>> {
+  return useDrivePages({
+    queryKey: photoKeys.busiestDays(range),
+    read: (cursor) => listPhotoBusiestDays(range, cursor),
   });
 }
 

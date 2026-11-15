@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   DRIVE_CONFLICT,
-  DRIVE_ITEM,
   DRIVE_VERSION,
   type DriveConflict,
   type DriveItem,
   type DriveVersion,
 } from '@smarteverything/domain';
 import { bytes } from '../../../format/number';
-import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
+import { FOLDER_ID, ROOT_ID, documentFixture } from '../data/fixtures';
 import {
   CONFLICT_FOOTER,
   CURRENT,
@@ -50,7 +49,7 @@ function idOf(index: number): string {
 }
 
 function item(extra: object = {}): DriveItem {
-  return DRIVE_ITEM.parse({
+  return documentFixture({
     id: ITEM_ID,
     rootId: ROOT_ID,
     parentId: FOLDER_ID,
@@ -58,21 +57,11 @@ function item(extra: object = {}): DriveItem {
     name: 'Island sketch v4.jpg',
     modifiedAt: '2026-11-07T13:52:00.000Z',
     addedAt: '2026-10-03T10:00:00.000Z',
-    openedAt: null,
-    starred: false,
-    shared: false,
     rev: 4,
-    etag: 'etag',
-    outside: false,
     addedByProfileId: ME,
-    remoteId: null,
-    remoteRev: null,
-    kind: 'document',
     mime: 'text/markdown',
     bytes: 3_400_000,
-    sha256: null,
     integrity: 'ok',
-    thumb: { state: 'none' },
     ...extra,
   });
 }

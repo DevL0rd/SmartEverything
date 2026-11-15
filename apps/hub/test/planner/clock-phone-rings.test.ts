@@ -1,10 +1,13 @@
 import {
   hashClientToken,
   createClientToken,
+  type PlannerPreferences,
   type PlannerRingTarget,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SimulatedClock } from '../../src/clock/simulated';
+import { AlarmSounds } from '../../src/planner/alarm-sound';
+import { plannerPreferencesOf } from '../../src/planner/preferences';
 import {
   PHONE_RING_ACK,
   PHONE_RING_SET,
@@ -41,12 +44,15 @@ function alarmInput(change: Partial<PlannerAlarmInput> = {}): PlannerAlarmInput 
     once_on: null,
     skip_on: null,
     enabled: true,
-    sound: 'sunrise',
+    sound: { kind: 'tone', id: 'sunrise' },
     ramp_seconds: 30,
     vibrate: true,
     snooze_minutes: 9,
+    snooze_limit: null,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: null,
+    wake_automation_id: null,
     wake_lead_minutes: null,
     targets: [{ kind: 'client', clientId: owner.client.id }],
     watch: [],
@@ -89,6 +95,8 @@ beforeEach(async () => {
         return Promise.resolve(reachable);
       },
     },
+    sounds: new AlarmSounds(test.store, testLogger('sounds')),
+    preferencesOf: (profileId): PlannerPreferences => plannerPreferencesOf(test.store, profileId),
     now: (): Date => clock.now(),
     log: testLogger('phone-rings'),
   });
@@ -108,15 +116,18 @@ describe('pushing the desired set', () => {
     expect(sent[0]?.set.alarms).toEqual([
       {
         id: alarm.id,
+        profileId: owner.profileId,
         label: 'Work',
         time: '07:00',
         days: [1, 2, 3, 4, 5],
         onceOn: null,
         skipOn: null,
-        sound: 'sunrise',
+        sound: { kind: 'tone', id: 'sunrise' },
         rampSeconds: 30,
         vibrate: true,
         snoozeMinutes: 9,
+        snoozeLimit: null,
+        challenge: { kind: 'none' },
       },
     ]);
     expect(sent[0]?.set.timers).toEqual([]);
@@ -152,7 +163,12 @@ describe('pushing the desired set', () => {
       timerInput([{ kind: 'client', clientId: owner.client.id }]),
     );
     expect(sent.at(-1)?.set.timers).toEqual([
-      { id: timer.id, label: 'Tea', endsAt: '2026-11-07T08:10:00.000Z' },
+      {
+        id: timer.id,
+        profileId: owner.profileId,
+        label: 'Tea',
+        endsAt: '2026-11-07T08:10:00.000Z',
+      },
     ]);
     test.store.plannerTimers.update(timer.id, owner.profileId, {
       state: 'paused',
@@ -296,5 +312,113 @@ describe('reconnect', () => {
     rings.connected(owner.client.id);
     expect(sent).toHaveLength(2);
     expect(rings.stateOf(owner.client.id)?.ackedAt).toBeNull();
+  });
+});
+
+describe('the ring set a phone installs', () => {
+  function readOwner(): ReturnType<PhoneRings['read']> {
+    return rings.read(owner.client.id, owner.profileId);
+  }
+
+  function savePreferences(change: (current: PlannerPreferences) => PlannerPreferences): void {
+    test.store.plannerPreferences.put(
+      owner.profileId,
+      change(plannerPreferencesOf(test.store, owner.profileId)),
+    );
+    rings.preferencesChanged(owner.profileId);
+  }
+
+  it('carries the sound, the snooze limit and the challenge of each ring', () => {
+    test.store.plannerAlarms.insert(
+      alarmInput({
+        snooze_limit: 3,
+        challenge: { kind: 'maths', difficulty: 'hard', count: 4 },
+      }),
+    );
+    const [ring] = readOwner().rings;
+    expect(ring).toMatchObject({
+      sound: { kind: 'tone', id: 'sunrise' },
+      snoozeLimit: 3,
+      challenge: { kind: 'maths', difficulty: 'hard', count: 4 },
+    });
+  });
+
+  it('gives a timer the clock default sound and no limit or challenge', () => {
+    test.store.plannerTimers.insert(timerInput([{ kind: 'client', clientId: owner.client.id }]));
+    const [ring] = readOwner().rings;
+    expect(ring).toMatchObject({
+      kind: 'timer',
+      sound: { kind: 'tone', id: 'default' },
+      snoozeLimit: null,
+      challenge: { kind: 'none' },
+    });
+  });
+
+  it('records what the phone read so its acknowledgement matches', () => {
+    test.store.plannerAlarms.insert(alarmInput());
+    const set = readOwner();
+    expect(rings.acknowledge(owner.client.id, set.hash)).toBe(true);
+  });
+
+  it('computes the next bedtime windows from the bedtime preferences', () => {
+    savePreferences((current) => ({
+      ...current,
+      bedtime: {
+        ...current.bedtime,
+        enabled: true,
+        wind_down_minutes: 30,
+        do_not_disturb: true,
+        schedule: [{ days: [0, 1, 2, 3, 4, 5, 6], bed: '23:00', wake: '07:00' }],
+      },
+    }));
+    const { bedtimeWindows } = readOwner();
+    expect(bedtimeWindows).toHaveLength(7);
+    expect(bedtimeWindows[0]).toEqual({
+      windDownAt: '2026-11-07T22:30:00.000Z',
+      bedAt: '2026-11-07T23:00:00.000Z',
+      wakeAt: '2026-11-08T07:00:00.000Z',
+    });
+  });
+
+  it('gives no windows while bedtime or Do not disturb is off', () => {
+    const schedule = [{ days: [1, 2, 3, 4, 5], bed: '23:00', wake: '07:00' }] as const;
+    savePreferences((current) => ({
+      ...current,
+      bedtime: { ...current.bedtime, enabled: false, schedule },
+    }));
+    expect(readOwner().bedtimeWindows).toEqual([]);
+    savePreferences((current) => ({
+      ...current,
+      bedtime: { ...current.bedtime, enabled: true, do_not_disturb: false },
+    }));
+    expect(readOwner().bedtimeWindows).toEqual([]);
+  });
+
+  it('pushes the phones of a person again when the bedtime changes and not when it does not', () => {
+    rings.connected(owner.client.id);
+    const before = sent.length;
+    savePreferences((current) => current);
+    expect(sent).toHaveLength(before);
+    savePreferences((current) => ({
+      ...current,
+      bedtime: {
+        ...current.bedtime,
+        enabled: true,
+        schedule: [{ days: [1], bed: '23:00', wake: '07:00' }],
+      },
+    }));
+    expect(sent).toHaveLength(before + 1);
+    expect(sent.every((push) => push.clientId === owner.client.id)).toBe(true);
+  });
+
+  it('pushes again when the clock default sound changes for a running timer', () => {
+    test.store.plannerTimers.insert(timerInput([{ kind: 'client', clientId: owner.client.id }]));
+    const before = sent.length;
+    savePreferences((current) => ({
+      ...current,
+      clock: { ...current.clock, sound: { kind: 'tone', id: 'birds' } },
+    }));
+    expect(sent).toHaveLength(before + 1);
+    expect(toOwner().at(-1)?.set.timerSound).toEqual({ kind: 'tone', id: 'birds' });
   });
 });

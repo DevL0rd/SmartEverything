@@ -3,7 +3,7 @@ import { sameJson } from '../../../store/same-json';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 import { flattenPages, useDriveItem, useDriveVersions } from '../data';
-import { useByName } from '../folder/folder-list';
+import { useByName } from '../components/use-by-name';
 import { hubMakerOf, sidesOf, type ConflictNamers, type ConflictSides } from './conflict-model';
 
 export interface ConflictFacts {

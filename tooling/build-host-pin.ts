@@ -28,8 +28,10 @@ export type PinnedDownload = z.infer<typeof DOWNLOAD>;
 
 export type PinArch = 'x64' | 'arm64';
 
+const PIN: BuildHostPin = BUILD_HOST_PIN.parse(
+  JSON.parse(readFileSync(join(import.meta.dirname, 'build-host-pin.json'), 'utf8')),
+);
+
 export function readBuildHostPin(): BuildHostPin {
-  return BUILD_HOST_PIN.parse(
-    JSON.parse(readFileSync(join(import.meta.dirname, 'build-host-pin.json'), 'utf8')),
-  );
+  return PIN;
 }

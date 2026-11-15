@@ -65,7 +65,7 @@ export const SEWING_TABLE_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.sewing-table',
   title: 'Sewing table',
   category: 'fitness-hobby',
-  footprint: { width: 1.1, depth: DEPTH, height: TOP_Y + TOP_T / 2 + 0.31 },
+  footprint: { width: 1.1, depth: DEPTH, height: 1.1025 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

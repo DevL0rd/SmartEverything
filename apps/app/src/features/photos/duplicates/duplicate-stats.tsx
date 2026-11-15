@@ -135,10 +135,10 @@ export function DuplicatesLoading({ compact }: { readonly compact: boolean }): R
   return (
     <View accessibilityLabel="Loading duplicates" className="gap-4">
       <View className={compact ? 'gap-2' : 'flex-row gap-3'}>
-        <View className="min-w-0 flex-1">
+        <View className={compact ? 'min-w-0' : 'min-w-0 flex-1'}>
           <Skeleton shape="block" />
         </View>
-        <View className="min-w-0 flex-1">
+        <View className={compact ? 'min-w-0' : 'min-w-0 flex-1'}>
           <Skeleton shape="block" />
         </View>
       </View>

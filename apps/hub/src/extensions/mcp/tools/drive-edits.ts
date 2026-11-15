@@ -14,6 +14,10 @@ import { z } from 'zod';
 import { operate } from './acting';
 import { attachToChat } from './drive-attach';
 import { DRIVE_FIELDS, PERSON, ownDrive } from './drive-reads';
+import { PHOTO_EDITS } from './drive-photos-edits';
+import { PHOTO_EDIT_FIELDS } from './drive-photos-fields';
+import { SOCIAL_EDIT_FIELDS, SOCIAL_EDITS } from './drive-social-edits';
+import { FOLDER_KEY, folderHidden } from './photo-folder-tools';
 import { ToolError, WRITES } from './registry';
 import { selection, type SelectedToolDefinition, type Selection } from './selected-tool';
 
@@ -45,7 +49,9 @@ export const DRIVE_EDIT_INPUT = z.strictObject({
   changes: DRIVE_ALBUM_CHANGE.optional().describe('The album fields to change, for album_update'),
   source: z.enum(PHOTO_SOURCES).optional().describe('cameras or ai, for action keep'),
   versionId: z.uuid().optional().describe('A version id from drive_read view versions'),
-  share: DRIVE_SHARE_CREATE.optional().describe('The link to make, for action share_create'),
+  share: DRIVE_SHARE_CREATE.optional().describe(
+    'The link to make, for action share_create: itemId for a file or folder, or albumId for a Photos album',
+  ),
   shareId: z.uuid().optional().describe('A share id from drive_read view shares'),
   conflictId: z.uuid().optional().describe('A conflict id from drive_read view conflicts'),
   resolution: z.enum(DRIVE_CONFLICT_RESOLUTIONS).optional().describe('Which copy to keep'),
@@ -58,6 +64,12 @@ export const DRIVE_EDIT_INPUT = z.strictObject({
     'The folder placement on one of your computers, for action placement_set',
   ),
   placementId: z.uuid().optional().describe('A placement id from drive_read view placements'),
+  folderKey: FOLDER_KEY.optional().describe('The folder, for actions folder_hide and folder_show'),
+  folderName: NAME.optional().describe(
+    'The folder name shown in Settings, from view photo_folders, for folder_hide and folder_show',
+  ),
+  ...PHOTO_EDIT_FIELDS,
+  ...SOCIAL_EDIT_FIELDS,
 });
 
 function change(name: string, shape: z.ZodRawShape): Selection {
@@ -132,10 +144,16 @@ function sharePeople(): Selection {
       itemId: DRIVE_FIELDS.itemId,
       recipientId: z.uuid(),
       role: z.enum([...DRIVE_GRANT_ROLES, 'none']),
+      expiresAt: z.iso.datetime({ offset: true }).nullable().default(null),
     }),
-    run: async (context, { itemId, recipientId, role }, as) => {
+    run: async (context, { itemId, recipientId, role, expiresAt }, as) => {
       if (role !== 'none') {
-        return operate(context, 'setGrant', { body: { itemId, profileId: recipientId, role } }, as);
+        return operate(
+          context,
+          'setGrant',
+          { body: { itemId, profileId: recipientId, role, expiresAt } },
+          as,
+        );
       }
       const grants = E.listGrants.response.parse(
         await operate(context, 'listGrants', { params: { itemId } }, as),
@@ -264,5 +282,9 @@ export const DRIVE_EDIT: SelectedToolDefinition = {
     placement_set: bodied('setPlacement', 'placement', DRIVE_PLACEMENT_SET),
     placement_remove: placementRemove(),
     scrub_start: scrubStart(),
+    folder_hide: folderHidden(true),
+    folder_show: folderHidden(false),
+    ...SOCIAL_EDITS,
+    ...PHOTO_EDITS,
   }),
 };

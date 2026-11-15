@@ -83,7 +83,7 @@ function bottles(): ModelSpecPart[] {
 export const BAR_CART_MODEL: ModelSpec = diningFurniture({
   id: 'cat.dining.bar-cart',
   title: 'Bar cart',
-  footprint: { width: WIDTH + 0.08, depth: DEPTH + 0.06, height: 0.96 },
+  footprint: { width: 0.74, depth: 0.43, height: 1.1665 },
   meta: {
     names: {
       display: 'Bar cart',

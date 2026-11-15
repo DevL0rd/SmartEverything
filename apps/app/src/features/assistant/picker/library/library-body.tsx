@@ -22,12 +22,8 @@ import {
   type LibraryMode,
   type PrimaryAction,
 } from './library-model';
-import {
-  LibraryBack,
-  LibraryOriginFocus,
-  LibrarySelectionBar,
-  useLibraryBack,
-} from './library-pages';
+import { LibraryBack, LibrarySelectionBar, useLibraryBack } from './library-pages';
+import { LibraryOriginFocus } from './library-focus';
 import { LibraryProblem } from './library-states';
 import { useLibraryState, type LibraryState } from './library-state';
 import { LibraryTools } from './library-tools';

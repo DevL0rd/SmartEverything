@@ -1,8 +1,8 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRIVE_ITEM, DRIVE_VERSION, type DriveVersion } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID, rootRow } from '../data/fixtures';
+import { DRIVE_VERSION, type DriveVersion } from '@smarteverything/domain';
+import { ROOT_ID, documentFixture } from '../data/fixtures';
 
 interface Passed {
   readonly children?: ReactNode;
@@ -93,29 +93,15 @@ const { CONFLICT_FOOTER, RESTORE_FOOTER, entriesOf } = await import('../versions
 
 const ITEM_ID = 'f1b2c3d4-0000-4000-8000-000000000001';
 
-const item = DRIVE_ITEM.parse({
+const item = documentFixture({
   id: ITEM_ID,
-  rootId: ROOT_ID,
-  parentId: FOLDER_ID,
   relPath: 'Home/Notes.md',
   name: 'Notes.md',
   modifiedAt: '2026-11-07T09:10:00.000Z',
   addedAt: '2026-11-02T09:10:00.000Z',
-  openedAt: null,
-  starred: false,
-  shared: false,
   rev: 3,
-  etag: 'etag',
-  outside: false,
-  addedByProfileId: null,
-  remoteId: null,
-  remoteRev: null,
-  kind: 'document',
   mime: 'text/markdown',
   bytes: 1200,
-  sha256: null,
-  integrity: 'unknown',
-  thumb: { state: 'none' },
 });
 
 function version(rev: number, at: string): DriveVersion {
@@ -138,9 +124,10 @@ const TWO = [version(2, '2026-11-06T09:10:00.000Z'), version(1, '2026-11-03T09:1
 
 function render(writable = true): string {
   const subject = {
-    root: rootRow(ROOT_ID, 'ready'),
+    rootId: ROOT_ID,
+    ownerProfileId: null,
+    versionsKept: true,
     item,
-    label: 'Shared Drive',
     access: 'shared',
     writable,
   } as const;

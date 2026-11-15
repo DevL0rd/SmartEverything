@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { KNOWN_SESSION_EVENT_TYPES, pluginRecordOf } from '@deepseek-ai/dsh-session';
+import { KNOWN_SESSION_EVENT_TYPES, foldSurface, pluginRecordOf } from '@deepseek-ai/dsh-session';
 import { ApiError, ENGINE } from '@smarteverything/domain';
 import { closeNativeHistory } from '../../../src/assistant/engines/dsh/history-change';
 import { nativeHistoryPrefix, rewriteNativeHistory } from '../../../src/harness/history-mutation';
@@ -32,6 +32,26 @@ describe('native history after an edit or a retry', () => {
       [second, secondAnswer].flatMap((row) => (row === undefined ? [] : [row])),
     );
 
+    expect(visibleTexts(storedHistory(rig, seeded.sessionId))).toStrictEqual([
+      'first question',
+      'first answer',
+    ]);
+  });
+
+  it('keeps the earlier messages untouched in the surface so their prompt cache is reused', () => {
+    const seeded = seedConversation(rig, TWO_EXCHANGES);
+    const [, , second, secondAnswer] = seeded.rows;
+    const before = foldSurface(storedHistory(rig, seeded.sessionId)).nodes;
+
+    rewriteNativeHistory(
+      rig.service,
+      seeded.chat,
+      [second, secondAnswer].flatMap((row) => (row === undefined ? [] : [row])),
+    );
+
+    const after = foldSurface(storedHistory(rig, seeded.sessionId)).nodes;
+    const kept = before.slice(0, 3);
+    expect(after.slice(0, kept.length)).toStrictEqual(kept);
     expect(visibleTexts(storedHistory(rig, seeded.sessionId))).toStrictEqual([
       'first question',
       'first answer',

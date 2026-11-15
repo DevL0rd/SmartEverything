@@ -45,7 +45,7 @@ export const SOUNDBAR_MODEL: ModelSpec = {
   title: 'Soundbar',
   category: 'audio',
   family: 'speaker',
-  footprint: { width: WIDTH, depth: DEPTH, height: BAR_Y + HEIGHT / 2 },
+  footprint: { width: WIDTH, depth: 0.1007, height: 0.0716 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

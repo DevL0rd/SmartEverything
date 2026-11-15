@@ -30,7 +30,7 @@ export interface ProductSync {
 export type SyncListener = (profileId: string) => Promise<void>;
 
 export interface GoogleSyncRunnerOptions {
-  readonly store: Pick<Store, 'googleAccounts' | 'plannerCollections' | 'feed'>;
+  readonly store: Pick<Store, 'googleAccounts' | 'plannerCollections' | 'plannerItems' | 'feed'>;
   readonly calendar: ProductSync;
   readonly tasks: ProductSync;
   readonly clock: Pick<Clock, 'now' | 'at'>;
@@ -122,9 +122,20 @@ export class GoogleSyncRunner {
   }
 
   private follow(change: LiveChange): void {
+    if (change.table === 'planner_guests') {
+      const guest = change.record ?? change.oldRecord;
+      const item =
+        guest === null ? undefined : this.options.store.plannerItems.findAny(guest.item_id);
+      if (item !== undefined) this.followItem(item);
+      return;
+    }
     if (change.table !== 'planner_items') return;
     const row = change.record ?? change.oldRecord;
-    if (row === null || this.flights.has(row.profile_id)) return;
+    if (row !== null) this.followItem(row);
+  }
+
+  private followItem(row: PlannerItemRow): void {
+    if (this.flights.has(row.profile_id)) return;
     const collection = this.options.store.plannerCollections.find(
       row.collection_id,
       row.profile_id,

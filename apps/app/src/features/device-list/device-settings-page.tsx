@@ -2,8 +2,7 @@ import { pluginDevicePage } from '../../app-shell/device-pages';
 import { useDevice } from '../../store/selectors';
 import type { ReactNode } from 'react';
 import { EmptyState } from '../../components/empty-state';
-import { PageHeader } from '../../components/page-header';
-import { Screen } from '../../components/screen';
+import { PageShell } from '../../components/page-shell/page-shell';
 import {
   ComputerClaudeScreen,
   ComputerProviderScreen,
@@ -54,13 +53,13 @@ export function DeviceSettingsPage({
   const Page = PAGES[page] ?? (device === null ? undefined : KIND_SCREENS[device.kind]?.[page]);
   if (Page === undefined) {
     return (
-      <Screen header={<PageHeader title="Settings" />} maxWidth="reading">
+      <PageShell title="Settings" width="reading">
         <EmptyState
           icon="settings"
           title="Page not found"
           body="This settings page does not exist."
         />
-      </Screen>
+      </PageShell>
     );
   }
   return <Page deviceId={deviceId} />;

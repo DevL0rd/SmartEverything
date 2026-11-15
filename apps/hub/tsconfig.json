@@ -6,7 +6,14 @@
     "lib": ["ES2023", "ESNext.Temporal"],
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "bench/**/*.ts", "package.json"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.json",
+    "test/**/*.ts",
+    "test/**/*.json",
+    "bench/**/*.ts",
+    "package.json"
+  ],
   "references": [
     {
       "path": "../../packages/logging"

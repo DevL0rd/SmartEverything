@@ -137,16 +137,21 @@ export const SERVED_COMPUTERS = [
     area: 'computers',
     access: 'read',
     title: 'Read computer files',
-    line: 'Folders, files, search and downloads',
+    line: 'Folders, files, search, Trash, zips and downloads',
     description:
-      'Files on a computer, anywhere its user can read: a folder’s entries (cursor pages on), one file up to 5 MB, a search by name below a folder, one file’s details, or a download link of any size for the person (a folder or several items as one zip). Not for this chat’s project folder (project_read) or drive files and photos (drive_read).',
+      'Files on a computer, anywhere its user can read: a folder’s entries (cursor pages on, sorted by name, size or date), one file up to 5 MB, a search by name or also by the text inside files below a folder, one file’s details, what is in the Trash, the files inside a zip archive, or a download link of any size for the person (a folder or several items as one zip). Not for this chat’s project folder (project_read) or drive files and photos (drive_read).',
     route: {
       key: 'view',
       branches: {
         folder: { part: 'list_files', line: 'A folder’s files and folders' },
         file: { part: 'read_file', line: 'One file’s content up to 5 MB' },
-        search: { part: 'search_files', line: 'Files by name below a folder' },
+        search: {
+          part: 'search_files',
+          line: 'Files by name below a folder, or with contents true by the text inside them',
+        },
         properties: { part: 'read_file_details', line: 'Size, owner, permissions and dates' },
+        trash: { part: 'list_trash_files', line: 'What is in the Trash, with trash ids' },
+        zip: { part: 'list_zip_files', line: 'The files inside a zip archive' },
         download: { part: 'prepare_download', line: 'A short-lived signed link for the person' },
       },
     },
@@ -156,9 +161,9 @@ export const SERVED_COMPUTERS = [
     area: 'computers',
     access: 'control',
     title: 'Edit computer files',
-    line: 'Folder, rename, move, copy, trash, save',
+    line: 'Folder, rename, move, copy, trash, delete from Trash, save',
     description:
-      'Makes a folder, renames, moves, copies, moves to Trash, restores from Trash, or saves a chat attachment onto a computer. Not for drive files (drive_edit). Nothing is deleted for good and nothing is overwritten unless replace is true. Returns what was done and what failed.',
+      'Makes a folder, renames, moves, copies, moves to Trash, restores from Trash, deletes items already in the Trash for good (delete_now, with trash ids from file_read view trash), or saves a chat attachment onto a computer. Not for drive files (drive_edit). Only delete_now removes anything for good and nothing is overwritten unless replace is true. Returns what was done and what failed.',
     route: { part: 'file_edit' },
   },
 ] as const satisfies readonly Served[];

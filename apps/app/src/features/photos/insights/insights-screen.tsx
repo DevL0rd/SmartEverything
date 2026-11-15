@@ -11,6 +11,7 @@ import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoInsights, usePhotoRailCounts } from '../data';
 import { CalendarCard, GrowthCard, KindsCard, SeasonCard, WeekCard } from './insights-charts';
 import {
+  BusiestDays,
   CamerasCard,
   CoverageCard,
   FoldersCard,
@@ -57,6 +58,7 @@ function FullInsights({
         </View>
       </View>
       <CalendarCard insights={insights} range={range} today={today} compact={compact} />
+      <BusiestDays days={insights.busiestDays} range={range} />
       <View className="gap-4 large:flex-row large:items-start">
         <View className="min-w-0 large:flex-1">
           <WeekCard insights={insights} />
@@ -74,7 +76,7 @@ function FullInsights({
         </View>
         <View className="min-w-0 gap-4 large:flex-1">
           <CoverageCard coverage={insights.backupCoverage} />
-          <LargestVideos videos={insights.largestVideos} />
+          <LargestVideos videos={insights.largestVideos} range={range} />
         </View>
       </View>
       {owner ? <FoldersCard roots={insights.roots} /> : null}

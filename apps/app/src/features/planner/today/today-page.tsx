@@ -14,6 +14,7 @@ import { CatchUpDeck } from './catch-up-deck';
 import { DayRiver } from './day-river';
 import { DayStripCard } from './day-strip';
 import { DoneRibbon } from './done-ribbon';
+import { InvitationsCard } from './invitations-card';
 import { NowLens } from './now-lens';
 import { TodaySideColumn } from './side-column';
 import { TodayRingsLine, useTodayRings } from './today-rings';
@@ -28,6 +29,7 @@ function MainColumn({ day, savedAt }: DayProps): ReactNode {
   if (isOpenDay(day)) {
     return (
       <View className="min-w-0 flex-1 gap-4">
+        <InvitationsCard />
         <OpenDay />
         <GoogleAttention />
       </View>
@@ -35,6 +37,7 @@ function MainColumn({ day, savedAt }: DayProps): ReactNode {
   }
   return (
     <View className="min-w-0 flex-1 gap-4">
+      <InvitationsCard />
       <CatchUpDeck day={day} />
       <NowLens day={day} />
       <DoneRibbon day={day} />

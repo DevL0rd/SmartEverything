@@ -2,13 +2,14 @@ import type { DriveItem, DriveUploadTarget } from '@smarteverything/domain';
 import type { ChangeEnv } from './changes';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import { canRead, canWrite, driveAccess, itemAccess, type DriveActor } from './access';
+import { isFileItem, type FileItem } from './file-item';
 import { locate, type DriveWriteRoot } from './intents';
 import { freeNameAt, TusError } from './uploads-tus-wire';
 
 export interface Destination {
   readonly root: DriveWriteRoot;
   readonly folder: DriveItem | null;
-  readonly item: Exclude<DriveItem, { readonly kind: 'folder' }> | null;
+  readonly item: FileItem | null;
 }
 
 const NO_TARGET = 'There is no such target for this credential.';
@@ -70,8 +71,8 @@ export function destinationOf(
     }
     return { root, folder: found, item: null };
   }
-  if (found.kind === 'folder') {
-    throw new TusError(400, 'The target is a folder, not a file.');
+  if (!isFileItem(found)) {
+    throw new TusError(400, 'The target is not a regular file.');
   }
   if (found.rev !== target.baseRev) {
     throw new TusError(

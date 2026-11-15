@@ -178,7 +178,7 @@ export const MIJIA_WASHER_DRYER_F29GL_MODEL: ModelSpec = {
   title: 'Mijia washer-dryer',
   category: 'appliance',
   family: 'laundry',
-  footprint: { width: 0.598, depth: 0.57, height: 0.85 },
+  footprint: { width: 0.598, depth: 0.6338, height: 0.85 },
   framing: { tile: HOUSE, card: HOUSE, hero: { ...HOUSE, padding: 0.12 } },
   shots: [
     drumShot('spin', ['spin'], [1.5, 1, 0.33]),

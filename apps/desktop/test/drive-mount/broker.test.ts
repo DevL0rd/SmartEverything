@@ -7,6 +7,10 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Logger } from '@smarteverything/logging';
 import { HubGuestBroker } from '@smarteverything/hub/client-network/guest-broker';
 import type { NodeRouteState } from '@smarteverything/hub/client-network/route-authority';
 import {
@@ -218,6 +222,11 @@ async function broker(route: FakeRoute): Promise<HubGuestBroker> {
       view: { trust: null },
     },
     CANONICAL,
+    {
+      port: 0,
+      directory: await mkdtemp(join(tmpdir(), 'drive-broker-')),
+      log: new Logger('desktop.test'),
+    },
   );
   await instance.start();
   const dispose = registerDriveFamilies(instance, route);

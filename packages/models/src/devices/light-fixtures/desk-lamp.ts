@@ -96,7 +96,7 @@ const HEAD_PARTS: ModelSpec['parts'] = [
 export const DESK_LAMP_MODEL: ModelSpec = lightModel({
   id: 'dev.light.desk-lamp',
   title: 'Desk lamp',
-  footprint: { width: 0.42, depth: 0.16, height: 0.42 },
+  footprint: { width: 0.4377, depth: 0.1809, height: 0.3907 },
   framing: {
     tile: VIEW,
     card: VIEW,

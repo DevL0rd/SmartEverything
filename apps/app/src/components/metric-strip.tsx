@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AppHref } from './app-href';
-import { cn } from '../design/cn';
 import { useSizeClass } from '../design/size-class';
 import { Sparkline } from './charts/sparkline';
 import type { ChartPoint } from './charts/scale';
@@ -54,7 +53,7 @@ function TileText({ item }: { readonly item: MetricItem }): ReactNode {
         {tone === 'warning' ? <Icon name="warning" size={16} tone="warning" /> : null}
       </View>
       {caption === undefined ? null : (
-        <Text variant="caption" tone="variant" numberOfLines={1}>
+        <Text variant="caption" tone={stale ? 'warning' : 'variant'} numberOfLines={1}>
           {caption}
         </Text>
       )}
@@ -84,14 +83,13 @@ function TileContent({
 }
 
 function MetricTile({ item }: { readonly item: MetricItem }): ReactNode {
-  const { label, value, unit, stale = false, onPress, href } = item;
+  const { label, value, unit, onPress, href } = item;
   const { width, onLayout } = useMeasuredWidth();
-  const frame = cn(FRAME, stale && 'opacity-60');
   const spoken = [label, value, unit].filter((part) => part !== undefined).join(' ');
   const content = <TileContent item={item} width={width} />;
   if (onPress === undefined && href === undefined) {
     return (
-      <View accessible accessibilityLabel={spoken} onLayout={onLayout} className={frame}>
+      <View accessible accessibilityLabel={spoken} onLayout={onLayout} className={FRAME}>
         {content}
       </View>
     );
@@ -102,7 +100,7 @@ function MetricTile({ item }: { readonly item: MetricItem }): ReactNode {
         onPress={onPress}
         href={href}
         label={spoken}
-        className={frame}
+        className={FRAME}
         layerClassName="rounded-md"
       >
         {content}

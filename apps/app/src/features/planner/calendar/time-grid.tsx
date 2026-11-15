@@ -11,7 +11,9 @@ import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { localDayKey } from '../../../format/time';
 import { useVisibleMinuteOf } from '../data';
-import { AlarmPin, PILL_HEIGHT } from './alarm-pin';
+import { PILL_HEIGHT } from './alarm-clusters';
+import { AlarmPins } from './alarm-pin';
+import type { EventLook } from './calendars-model';
 import { AllDayChip, EventBlock } from './event-block';
 import { NowLine } from './now-line';
 import {
@@ -39,6 +41,7 @@ export interface TimeGridProps {
   readonly timeZone: string;
   readonly startMinute: number;
   readonly readOnlyOf: (occurrence: PlannerOccurrenceView) => boolean;
+  readonly lookOf: (occurrence: PlannerOccurrenceView) => EventLook;
   readonly hourHeight?: number;
 }
 
@@ -205,14 +208,7 @@ function DayColumn({
           compact={geometry.compact}
         />
       ))}
-      {pins.map((pin) => (
-        <AlarmPin
-          key={pin.key}
-          pin={pin}
-          hourHeight={geometry.hourHeight}
-          compact={geometry.compact}
-        />
-      ))}
+      <AlarmPins pins={pins} hourHeight={geometry.hourHeight} compact={geometry.compact} />
     </View>
   );
 }

@@ -5,11 +5,11 @@ import type { Index } from '../compile/reads';
 import { countStep, stepBreach, suspended } from '../state/budgets';
 import { breachError } from '../state/errors';
 import type { RunState } from '../state/run-state';
-import { callInputs, instanceOf } from './calls';
+import { callInputs, instanceOf } from './call-state';
 import { clipToPass, interruptPass, passExpired } from './pass-deadline';
 import { sizeGuarded } from './size-guard';
 import type { Checked, Env, Evaluated, NodeResult, Outputs, StepContext } from './frames';
-import { keptFor, keptScope, keptStart } from './kept';
+import type { KeptScope, KeptStart } from './kept-types';
 import type { OpHandlers, OpName, OpOf, StepEvent, StepResult } from './frames';
 import {
   InterpreterError,
@@ -57,6 +57,28 @@ export function evaluateAll(
     if (evaluated.value !== undefined) values[name] = evaluated.value;
   }
   return { ok: true, value: values };
+}
+
+function keptScope(env: Env, variable: Variable): KeptScope | undefined {
+  if (variable.persist !== true) return undefined;
+  const instance = instanceOf(env.state);
+  return instance === '' ? undefined : { instance, type: variable.type };
+}
+
+function keptStart(env: Env, variable: Variable): Checked<JsonValue> {
+  const initial = evaluate(env, variable.initial);
+  if (!initial.ok) return initial;
+  return initial.value === undefined
+    ? { ok: false, class: 'Invalid', message: `the start value of ${variable.name} is absent` }
+    : { ok: true, value: initial.value };
+}
+
+export function keptFor(env: Env, name: string): Checked<KeptStart | undefined> {
+  const variable = env.plan.variables.find((held) => held.name === name);
+  const scope = variable === undefined ? undefined : keptScope(env, variable);
+  if (variable === undefined || scope === undefined) return { ok: true, value: undefined };
+  const start = keptStart(env, variable);
+  return start.ok ? { ok: true, value: { ...scope, start: start.value } } : start;
 }
 
 function storedValue(env: Env, variable: Variable): Evaluated {

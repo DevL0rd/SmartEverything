@@ -10,6 +10,7 @@ import { messageOf, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
 import { ffmpegPath } from '../../media/ffmpeg-path';
 import { derivedDirectory, type DerivedLayout } from './derived-paths';
+import { UNLIMITED_PIXELS } from '../../media/sharp-input';
 import { stripIsoBmffStill } from './strip-heif';
 import { LayoutRejected, Tiff, reject, stripTiff, stripXmpPackets } from './strip-tiff';
 import type { StripResult } from './strip-tiff';
@@ -244,11 +245,11 @@ const ENCODERS: Readonly<Record<string, Encoder>> = {
 };
 
 async function reencoded(request: OutsideRequest): Promise<OutsideCopy> {
-  const { format } = await sharp(request.source).metadata();
+  const { format } = await sharp(request.source, UNLIMITED_PIXELS).metadata();
   const encoder = ENCODERS[format] ?? JPEG_ENCODER;
   const target = outsidePath(request.layout, request.itemId, request.rev, encoder.extension);
   const bytes = await encoder
-    .encode(sharp(request.source).autoOrient().keepIccProfile())
+    .encode(sharp(request.source, UNLIMITED_PIXELS).autoOrient().keepIccProfile())
     .toBuffer();
   await stage(target, (staged) => writeFile(staged, bytes));
   return { path: target, extension: encoder.extension, method: 'reencoded' };

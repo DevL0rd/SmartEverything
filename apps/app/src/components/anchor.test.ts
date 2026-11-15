@@ -3,6 +3,7 @@ import {
   GAP,
   MARGIN,
   PANEL_SIZE,
+  placeFitted,
   placePanel,
   settlePanel,
   type Insets,
@@ -203,3 +204,50 @@ describe('re-placing an open panel', () => {
     expect(dialog.frame.height).toBe(560);
   });
 });
+
+describe('placing a menu inside the window', () => {
+  const window = { width: 1440, height: 900 };
+  const row = { x: 1200, y: 520, width: 32, height: 32 };
+
+  it('opens below the anchor when the whole menu fits there', () => {
+    const placed = placeFitted(row, 240, window, { height: 300, prefer: 'below' });
+    expect(placed.vertical).toEqual({ top: row.y + row.height + GAP });
+    expect(placed.maxHeight).toBe(300);
+  });
+
+  it('flips above the anchor when the menu does not fit below but fits above', () => {
+    const placed = placeFitted(row, 240, window, { height: 400, prefer: 'below' });
+    expect(placed.vertical).toEqual({ bottom: window.height - row.y + GAP });
+    expect(placed.maxHeight).toBe(400);
+  });
+
+  it('keeps a menu that prefers above below the anchor when only below has room', () => {
+    const top = { x: 100, y: 40, width: 32, height: 32 };
+    const placed = placeFitted(top, 240, window, { height: 300, prefer: 'above' });
+    expect(placed.vertical).toEqual({ top: top.y + top.height + GAP });
+  });
+
+  it('shifts a menu that fits on neither side so it ends at the bottom margin', () => {
+    const middle = pointFor(450);
+    const placed = placeFitted(middle, 240, window, { height: 600, prefer: 'below' });
+    expect(placed.vertical).toEqual({ top: window.height - MARGIN - 600 });
+    expect(placed.maxHeight).toBe(600);
+  });
+
+  it('caps a menu taller than the window to the window so it scrolls', () => {
+    const placed = placeFitted(pointFor(450), 240, window, { height: 2000, prefer: 'below' });
+    expect(placed.vertical).toEqual({ top: MARGIN });
+    expect(placed.maxHeight).toBe(window.height - 2 * MARGIN);
+  });
+
+  it('keeps the menu inside the window horizontally', () => {
+    const edge = { x: 1430, y: 100, width: 0, height: 0 };
+    expect(placeFitted(edge, 240, window, { height: 100, prefer: 'below' }).left).toBe(
+      window.width - 240 - MARGIN,
+    );
+  });
+});
+
+function pointFor(y: number): Rect {
+  return { x: 700, y, width: 0, height: 0 };
+}

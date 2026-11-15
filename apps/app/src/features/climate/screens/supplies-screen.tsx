@@ -4,8 +4,7 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Grid } from '../../../components/grid';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
 import { MaintenanceCard } from '../../devices';
 import { useClimateSources } from '../model/climate-devices';
@@ -13,25 +12,24 @@ import { hasSupplies } from '../model/supplies';
 
 const MIN_SUPPLY_CARD_WIDTH = 420;
 
+const TITLE = 'Filters & water';
+
 export function SuppliesScreen(): ReactNode {
   const sources = useClimateSources(null).filter(hasSupplies);
-  const header = <PageHeader title="Filters & water" />;
   if (sources.length === 0) {
     return (
-      <Screen header={header}>
-        <View className="w-full max-w-reading self-start">
-          <EmptyState
-            icon="wrench"
-            title="Nothing to look after"
-            body="Filters and water tanks of your climate devices show up here."
-            action={<Button label="Back to Devices" href={href.devices()} />}
-          />
-        </View>
-      </Screen>
+      <PageShell title={TITLE} width="reading">
+        <EmptyState
+          icon="wrench"
+          title="Nothing to look after"
+          body="Filters and water tanks of your climate devices show up here."
+          action={<Button label="Back to Devices" href={href.devices()} />}
+        />
+      </PageShell>
     );
   }
   return (
-    <Screen header={header}>
+    <PageShell title={TITLE}>
       <Grid
         minItemWidth={MIN_SUPPLY_CARD_WIDTH}
         maxColumns={sources.length}
@@ -47,6 +45,6 @@ export function SuppliesScreen(): ReactNode {
           </View>
         ))}
       </Grid>
-    </Screen>
+    </PageShell>
   );
 }

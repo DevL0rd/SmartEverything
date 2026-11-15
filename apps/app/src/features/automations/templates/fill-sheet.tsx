@@ -122,7 +122,7 @@ function StepFooter({
   readonly onNext: () => void;
 }): ReactNode {
   return (
-    <View className="flex-row gap-2">
+    <View className="flex-1 flex-row gap-2">
       <Button label={first ? 'Cancel' : 'Back'} variant="text" onPress={onBack} />
       <Button label={last ? 'Create automation' : 'Next'} grow onPress={onNext} />
     </View>

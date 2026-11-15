@@ -24,7 +24,6 @@ import { PhoneContextsRepository } from '../phone-contexts';
 import { PhoneDetailsRepository } from '../phone-details';
 import { PhoneIconsRepository } from '../phone-icons';
 import { RoomsRepository } from '../rooms';
-import { ScenesRepository } from '../scenes';
 import { StateRepository } from '../state';
 import { TelevisionSettingsRepository } from '../television-settings';
 import { TreadmillSessionsRepository } from '../treadmill-sessions';
@@ -46,7 +45,6 @@ export const homeRepositories = (context: StoreContext, log: Logger) =>
     cameras: new CamerasRepository(context),
     infrared: new InfraredRepository(context),
     irAppliances: new IrAppliancesRepository(context),
-    scenes: new ScenesRepository(context),
     localDevices: new LocalDevicesRepository(context),
     bleObservations: new BleObservationsRepository(context),
     phoneContexts: new PhoneContextsRepository(context),

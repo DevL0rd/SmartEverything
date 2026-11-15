@@ -121,6 +121,9 @@ async function walkEntry(relPath: string): Promise<WalkEntry> {
     parentRelPath: null,
     bytes: stats.size,
     modifiedMs: stats.mtimeMs,
+    mtimeNs: bigint.mtimeNs.toString(),
+    mode: Number(bigint.mode & 0o7777n),
+    nlink: Number(bigint.nlink),
     dev: bigint.dev.toString(),
     ino: bigint.ino.toString(),
   };
@@ -130,6 +133,7 @@ async function reconcile(relPath: string): Promise<void> {
   const committer = new ScanCommitter(
     {
       items: opened.store.driveItems,
+      inodes: opened.store.driveInodes,
       write: <T>(work: () => T): T => opened.store.write(work),
       now: (): Date => START,
       newId: randomUUID,

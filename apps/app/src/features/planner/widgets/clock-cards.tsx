@@ -11,9 +11,16 @@ import { WidgetEmpty, WidgetFrame, widgetBodyHeight } from '../../../components/
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useSettings } from '../../../store/selectors';
-import { TimerCard, ringWindowOf, timerViewsOf, useHubOffline } from '../../clock';
-import { timerNameOf, timersSubtitleOf, type TimerView } from '../../clock/lap-model';
-import { TimerDial } from '../../clock/timer-card';
+import {
+  TimerCard,
+  ringWindowOf,
+  timerViewsOf,
+  useHubOffline,
+  timerNameOf,
+  timersSubtitleOf,
+  type TimerView,
+  TimerDial,
+} from '../../clock';
 import { AlarmList } from '../clock/alarm-card';
 import { alarmLabelOf, countdownOf, dayWordOf, type NextRing } from '../clock/alarm-text';
 import {

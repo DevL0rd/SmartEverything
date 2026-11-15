@@ -1,14 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { useIsFocused } from 'expo-router';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
-import { Filters } from './filters';
+import { Filters, listSearchOf } from './filters';
 import { QuestionsCard } from './questions-card';
 import { HealthStrip } from './health-strip';
 import { useListActions, type ListActions } from './list-actions';
@@ -17,7 +15,7 @@ import { headerLine } from './list-view';
 import { Sections } from './sections';
 import { TimelineBand } from './timeline-band';
 import { useAutomationsList, type AutomationsList, type ListEnvironment } from './use-list';
-import { WorkspaceRail } from './workspace-rail';
+import { workspaceTabsOf } from './workspace-rail';
 
 export interface ListProps {
   readonly environment: ListEnvironment;
@@ -79,7 +77,7 @@ export function ListBody({
   return (
     <View className="gap-3">
       {overview ? <Overview list={list} links={links} /> : null}
-      <Filters choices={list.choices} view={view} total={entries.length} onChange={list.setView} />
+      <Filters choices={list.choices} view={view} onChange={list.setView} />
       {list.shown === 0 ? (
         <Text variant="body" tone="variant" align="center" className="py-6">
           Nothing matches
@@ -102,17 +100,15 @@ export function ListBody({
 export function AutomationsScreen({ environment, links, onNew }: ListProps): ReactNode {
   const list = useAutomationsList(environment);
   const actions = useListActions();
-  const focused = useIsFocused();
+  const search = listSearchOf(list);
   return (
-    <Screen
-      header={
-        <PageHeader
-          title="Automations"
-          settings={mainPageSettings('automations')}
-          {...(list.entries.length === 0 ? {} : { subtitle: headerLine(list.entries) })}
-        />
-      }
-      maxWidth="full"
+    <PageShell
+      title="Automations"
+      settings={mainPageSettings('automations')}
+      {...(list.entries.length === 0 ? {} : { subtitle: headerLine(list.entries) })}
+      {...(search === undefined ? {} : { search })}
+      tabs={workspaceTabsOf(links.workspace, links.extras, 'automations')}
+      width="full"
       primaryAction={{
         label: 'New automation',
         icon: 'plus',
@@ -130,16 +126,7 @@ export function AutomationsScreen({ environment, links, onNew }: ListProps): Rea
             ),
           })}
     >
-      <View className="gap-3">
-        <WorkspaceRail
-          links={links.workspace}
-          extras={links.extras}
-          active="automations"
-          orientation="row"
-          focused={focused}
-        />
-        <ListBody list={list} links={links} actions={actions} onNew={onNew} overview />
-      </View>
-    </Screen>
+      <ListBody list={list} links={links} actions={actions} onNew={onNew} overview />
+    </PageShell>
   );
 }

@@ -7,16 +7,24 @@ import { Badge } from '../../../components/badge';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { SegmentBar } from '../../../components/charts';
+import { confirm } from '../../../components/confirm-store';
 import { CopyField } from '../../../components/copy-field';
+import { IconWell } from '../../../components/icon-well';
 import { MetricStrip, type MetricItem } from '../../../components/metric-strip';
 import { ProgressSteps } from '../../../components/progress-steps';
 import { Text } from '../../../components/text';
 import { bytes, count } from '../../../format/number';
 import { plural } from '../../../format/text';
 import {
+  HEALTH_LOOK,
+  ROUTE_LOOK,
+  mountLocationsOf,
+  offlineBodyOf,
   setupCopyOf,
   setupOf,
+  uploadWaitOf,
   TIER_WORD,
+  type MountLocation,
   type MountSetup,
   type MountSummary,
 } from './mount-summary';
@@ -34,7 +42,10 @@ export function mountTilesOf(summary: MountSummary): readonly MetricItem[] {
       value: count(summary.pendingUploads),
       ...(summary.pendingUploads === 0
         ? { caption: 'Everything is on the Hub' }
-        : { tone: 'info' }),
+        : {
+            tone: summary.health === 'ready' ? 'info' : 'warning',
+            caption: uploadWaitOf(summary.health),
+          }),
     },
   ];
 }
@@ -69,7 +80,7 @@ function Stopped({
       body={summary.stopped.status.reason ?? 'The drive is not mounted right now.'}
       wrapBody
       action={{
-        label: 'Again',
+        label: 'Start again',
         icon: 'refresh',
         variant: 'tonal',
         loading: drive.busy,
@@ -78,6 +89,37 @@ function Stopped({
         },
       }}
     />
+  );
+}
+
+function Offline({ summary }: { readonly summary: MountSummary }): ReactNode {
+  if (summary.health !== 'offline') return null;
+  return (
+    <Banner tone="warning" title="The Hub is out of reach" body={offlineBodyOf(summary)} wrapBody />
+  );
+}
+
+function clearCache(summary: MountSummary, drive: DesktopDriveView): void {
+  background(
+    confirm({
+      title: 'Clear the mount cache?',
+      body: `${bytes(Math.max(0, summary.cacheBytes - summary.pinnedBytes))} of cached copies are removed and download again when opened. Files kept offline, open files and changes waiting to upload stay.`,
+      confirmLabel: 'Clear cache',
+    }).then((accepted) => {
+      if (accepted) drive.run({ kind: 'clear-cache' }, 'The cache was not cleared');
+    }),
+    'drive.mount.clear_cache_confirm_failed',
+  );
+}
+
+function MissingParts({ missing }: { readonly missing: readonly string[] }): ReactNode {
+  if (missing.length === 0) return null;
+  return (
+    <View className="flex-row flex-wrap gap-2">
+      {missing.map((part) => (
+        <Badge key={part} label={`Missing ${part}`} tone="warning" icon="warning" />
+      ))}
+    </View>
   );
 }
 
@@ -131,6 +173,9 @@ export function MountSetupSteps({
       <Text variant="footnote" tone="variant">
         {copy.intro}
       </Text>
+      {setup === 'fuse3' && fuse?.available === false ? (
+        <MissingParts missing={fuse.missing} />
+      ) : null}
       <ProgressSteps steps={copy.steps} />
       <SetupAction setup={setup} command={fuse?.available === false ? fuse.command : null} />
       <Text variant="footnote" tone="variant">
@@ -140,20 +185,101 @@ export function MountSetupSteps({
   );
 }
 
+function LocationRow({
+  location,
+  drive,
+  explained,
+}: {
+  readonly location: MountLocation;
+  readonly drive: DesktopDriveView;
+  readonly explained: boolean;
+}): ReactNode {
+  return (
+    <View className="flex-row flex-wrap items-center gap-3 rounded-md bg-surface-3 p-3">
+      <IconWell icon="hardDrive" colour="viz-blue" size="m" />
+      <View className="min-w-0 flex-1 basis-48 gap-0.5">
+        <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+          <Text variant="callout" numberOfLines={1} className="min-w-0 shrink">
+            {location.name}
+          </Text>
+          <Badge label={location.chip.label} tone={location.chip.tone} />
+        </View>
+        <Text
+          variant="footnote"
+          tone="variant"
+          numberOfLines={1}
+          className={location.point === null ? '' : 'font-mono'}
+          selectable={location.point !== null}
+        >
+          {location.point ??
+            (location.chip.tone === 'positive' ? 'Place not reported yet' : 'Not mounted')}
+        </Text>
+        {explained || location.chip.tone === 'positive' ? null : (
+          <Text variant="footnote" tone={location.lineTone} numberOfLines={2}>
+            {location.line}
+          </Text>
+        )}
+      </View>
+      {location.openable ? (
+        <Button
+          label="Open in file manager"
+          icon="externalLink"
+          variant="tonal"
+          loading={drive.busy}
+          spoken={`Open ${location.name} in the file manager`}
+          onPress={() => {
+            drive.open(location.id);
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function Locations({
+  summary,
+  drive,
+}: {
+  readonly summary: MountSummary;
+  readonly drive: DesktopDriveView;
+}): ReactNode {
+  const locations = mountLocationsOf(summary);
+  if (locations.length === 0) return null;
+  return (
+    <View className="gap-2">
+      {locations.map((location) => (
+        <LocationRow
+          key={location.id}
+          location={location}
+          drive={drive}
+          explained={location.id === summary.stopped?.id}
+        />
+      ))}
+    </View>
+  );
+}
+
 function Header({ summary }: { readonly summary: MountSummary }): ReactNode {
+  const health = HEALTH_LOOK[summary.health];
+  const route =
+    summary.health === 'ready' && summary.route !== null ? ROUTE_LOOK[summary.route] : null;
   return (
     <View className="flex-row flex-wrap items-center gap-2">
-      <Text variant="body-strong" className="min-w-0 flex-1">
+      <Text variant="body-strong" className="min-w-0 flex-1 basis-48">
         Mounted on this computer
       </Text>
-      {summary.tier === null ? null : (
-        <Badge
-          label={
-            summary.readOnly ? `${TIER_WORD[summary.tier]} · read only` : TIER_WORD[summary.tier]
-          }
-          tone="primary"
-        />
-      )}
+      <View className="flex-row flex-wrap items-center gap-2">
+        <Badge label={health.label} tone={health.tone} icon={health.icon} />
+        {route === null ? null : <Badge label={route.label} tone={route.tone} icon={route.icon} />}
+        {summary.tier === null ? null : (
+          <Badge
+            label={
+              summary.readOnly ? `${TIER_WORD[summary.tier]} · read only` : TIER_WORD[summary.tier]
+            }
+            tone="primary"
+          />
+        )}
+      </View>
     </View>
   );
 }
@@ -173,6 +299,8 @@ export function MountPanel({
         <View className="gap-3 rounded-md bg-surface-2 p-3">
           <Header summary={summary} />
           <Stopped summary={summary} drive={drive} />
+          <Offline summary={summary} />
+          <Locations summary={summary} drive={drive} />
           {summary.active ? <CacheBar summary={summary} /> : null}
           {summary.active ? (
             <MetricStrip items={mountTilesOf(summary)} columns={TILE_COLUMNS} />
@@ -185,7 +313,7 @@ export function MountPanel({
               loading={drive.busy}
               spoken={`Clear the mount cache, ${plural(summary.placements.length, 'folder')}`}
               onPress={() => {
-                drive.run({ kind: 'clear-cache' }, 'The cache was not cleared');
+                clearCache(summary, drive);
               }}
             />
           </View>

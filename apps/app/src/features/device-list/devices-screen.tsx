@@ -9,9 +9,8 @@ import { href } from '../../app-shell/hrefs';
 import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
-import { PageHeader } from '../../components/page-header';
+import { PageShell } from '../../components/page-shell/page-shell';
 import { useLifecycleLog } from '../../components/use-lifecycle-log';
-import { Screen } from '../../components/screen';
 import { Text } from '../../components/text';
 import { useListedDevices, useRooms } from '../../store/selectors';
 import type { Device } from '../../store/state';
@@ -62,17 +61,14 @@ function useQuery(): readonly [DeviceQuery, (query: DeviceQuery) => void] {
 
 function NoDevices(): ReactNode {
   return (
-    <Screen
-      header={<PageHeader title="Devices" settings={mainPageSettings('devices')} back={false} />}
-      maxWidth="reading"
-    >
+    <PageShell title="Devices" settings={mainPageSettings('devices')} back={false} width="reading">
       <EmptyState
         icon="bulb"
         title="No devices yet"
         body="Link the account your devices use, or add one by its address."
         action={<Button label="Add a device" href={ADD_DEVICE} />}
       />
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -80,17 +76,14 @@ function ListTop({
   allOffline,
   filtering,
   room,
-  children,
 }: {
   readonly allOffline: boolean;
   readonly filtering: boolean;
   readonly room: string | null;
-  readonly children: ReactNode;
 }): ReactNode {
   return (
     <View className="gap-3 px-gutter pb-1">
       <View className="w-full max-w-dashboard gap-3">
-        {children}
         {room === null ? null : <SelectedRoomCard roomId={room} />}
         {allOffline ? (
           <Banner
@@ -183,41 +176,51 @@ interface ListProps {
   readonly setQuery: (query: DeviceQuery) => void;
 }
 
-function DeviceList({ devices, rooms, query, sections, setQuery }: ListProps): ReactNode {
+function Filters({ devices, rooms, query, setQuery }: Omit<ListProps, 'sections'>): ReactNode {
+  return (
+    <DeviceFilters
+      query={query}
+      rooms={roomOptions(devices, rooms)}
+      kinds={kindOptions(devices)}
+      all={ANY}
+      selection={selectionChip(devices, rooms, query, setQuery)}
+      onChange={(next) => {
+        setQuery(
+          next.room === query.room
+            ? next
+            : withSelection(next, { kind: 'room', roomId: next.room }),
+        );
+      }}
+    />
+  );
+}
+
+function DeviceList({ devices, query, sections, setQuery }: ListProps): ReactNode {
   const room = selectedRoom(query);
   return (
-    <DeviceGrid
-      groups={sections}
-      selectedDeviceId={selectedDevice(query)}
-      selectedRoomId={room}
-      status={!isFiltering(query)}
-      header={
-        <ListTop allOffline={devices.every(isOffline)} filtering={isFiltering(query)} room={room}>
-          <DeviceFilters
-            query={query}
-            rooms={roomOptions(devices, rooms)}
-            kinds={kindOptions(devices)}
-            all={ANY}
-            selection={selectionChip(devices, rooms, query, setQuery)}
-            onChange={(next) => {
-              setQuery(
-                next.room === query.room
-                  ? next
-                  : withSelection(next, { kind: 'room', roomId: next.room }),
-              );
+    <View className="-mx-gutter min-h-0 flex-1">
+      <DeviceGrid
+        groups={sections}
+        selectedDeviceId={selectedDevice(query)}
+        selectedRoomId={room}
+        status={!isFiltering(query)}
+        header={
+          <ListTop
+            allOffline={devices.every(isOffline)}
+            filtering={isFiltering(query)}
+            room={room}
+          />
+        }
+        empty={
+          <NoMatch
+            text={query.text.trim()}
+            onReset={() => {
+              setQuery(BLANK_QUERY);
             }}
           />
-        </ListTop>
-      }
-      empty={
-        <NoMatch
-          text={query.text.trim()}
-          onReset={() => {
-            setQuery(BLANK_QUERY);
-          }}
-        />
-      }
-    />
+        }
+      />
+    </View>
   );
 }
 
@@ -235,8 +238,8 @@ function MapAndList(props: ListProps): ReactNode {
   const list = <DeviceList {...props} />;
   if (choice.kind === 'blank') {
     return (
-      <View className="min-h-0 flex-1">
-        <NoMapEntry map={choice.map} className="rounded-none border-x-0 border-t-0" />
+      <View className="min-h-0 flex-1 gap-3">
+        <NoMapEntry map={choice.map} />
         <View className="min-h-0 flex-1">{list}</View>
       </View>
     );
@@ -271,18 +274,22 @@ export function DevicesScreen(): ReactNode {
     return <NoDevices />;
   }
   return (
-    <Screen
+    <PageShell
+      title="Devices"
+      settings={mainPageSettings('devices')}
+      back={false}
+      actions={[{ icon: 'plus', label: 'Add a device', href: ADD_DEVICE, primary: true }]}
       scroll={false}
-      maxWidth="full"
-      header={
-        <PageHeader
-          title="Devices"
-          settings={mainPageSettings('devices')}
-          back={false}
-          search={false}
-          actions={[{ icon: 'plus', label: 'Add a device', href: ADD_DEVICE, primary: true }]}
-        />
-      }
+      width="full"
+      search={{
+        value: query.text,
+        onChange: (text) => {
+          setQuery({ ...query, text });
+        },
+        placeholder: 'Find a device',
+        label: 'Find a device',
+      }}
+      toolbar={<Filters devices={devices} rooms={rooms} query={query} setQuery={setQuery} />}
     >
       <MapAndList
         devices={devices}
@@ -291,6 +298,6 @@ export function DevicesScreen(): ReactNode {
         sections={sections}
         setQuery={setQuery}
       />
-    </Screen>
+    </PageShell>
   );
 }

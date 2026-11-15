@@ -7,6 +7,7 @@ import {
   type PlannerPreferences,
 } from '@smarteverything/domain';
 import { zonedDateFormat } from '../../../format/locale';
+import type { EventLook } from './calendars-model';
 import { compareText } from '../../../format/text';
 import {
   HOUR_MS,
@@ -50,6 +51,7 @@ export interface GridBlock extends GridSpan {
   readonly time: string;
   readonly proposed: boolean;
   readonly readOnly: boolean;
+  readonly look: EventLook;
 }
 
 export interface AllDayEntry {
@@ -57,6 +59,7 @@ export interface AllDayEntry {
   readonly occurrence: PlannerOccurrenceView;
   readonly colour: PlannerColourKey | null;
   readonly readOnly: boolean;
+  readonly look: EventLook;
 }
 
 export interface GridDay {
@@ -86,6 +89,7 @@ export interface GridInput {
   readonly collections: readonly PlannerCollectionRow[];
   readonly workingHours: WorkingHours | null;
   readonly readOnlyOf: (occurrence: PlannerOccurrenceView) => boolean;
+  readonly lookOf: (occurrence: PlannerOccurrenceView) => EventLook;
   readonly minMinutes: number;
 }
 
@@ -256,7 +260,10 @@ function gridDayOf(input: GridInput, date: string): GridDay {
   const colours = coloursOf(input.collections);
   const colourOf = (occurrence: PlannerOccurrenceView): PlannerColourKey | null =>
     colours.get(occurrence.collection_id) ?? null;
-  const spans = laneSpans(timedSpansOn(input.occurrences, date, input.timeZone), input.minMinutes);
+  const shownHere = input.occurrences.filter(
+    (occurrence) => input.lookOf(occurrence) !== 'declined',
+  );
+  const spans = laneSpans(timedSpansOn(shownHere, date, input.timeZone), input.minMinutes);
   const noon = startOfDayKey(date) + 12 * HOUR_MS;
   return {
     date,
@@ -270,14 +277,16 @@ function gridDayOf(input: GridInput, date: string): GridDay {
       time: blockTimeOf(span.occurrence, input.timeZone),
       proposed: span.occurrence.status === 'proposed',
       readOnly: input.readOnlyOf(span.occurrence),
+      look: input.lookOf(span.occurrence),
     })),
-    allDay: input.occurrences
+    allDay: shownHere
       .filter((occurrence) => allDayOn(occurrence, date, input.timeZone))
       .map((occurrence) => ({
         key: keyOf(occurrence),
         occurrence,
         colour: colourOf(occurrence),
         readOnly: input.readOnlyOf(occurrence),
+        look: input.lookOf(occurrence),
       })),
   };
 }

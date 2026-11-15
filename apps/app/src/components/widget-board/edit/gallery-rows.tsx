@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { Icon, type IconName } from '../../icon';
@@ -12,7 +13,7 @@ const TOUCH_ROW_INSET = 56;
 
 export function usePreviewWidth(): number {
   const idiom = useIdiom();
-  const { width } = useWindowDimensions();
+  const { width } = useWindowSize();
   return idiom === 'touch' ? Math.min(TOUCH_PREVIEW, width - TOUCH_ROW_INSET) : POINTER_PREVIEW;
 }
 

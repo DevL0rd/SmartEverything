@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RefNames } from '@smarteverything/domain';
 import type { AutomationRow } from '../data/graph-adapter';
@@ -34,7 +35,7 @@ interface MiniCanvasProps extends PreviewProps {
 }
 
 function usePanelHeight(bounds: ReturnType<typeof sceneBounds>, width: number): number {
-  const screen = useWindowDimensions();
+  const screen = useWindowSize();
   const insets = useSafeAreaInsets();
   const available = screen.height - insets.top - insets.bottom;
   return bounds === null ? available : wholeHeight(bounds, width, available);

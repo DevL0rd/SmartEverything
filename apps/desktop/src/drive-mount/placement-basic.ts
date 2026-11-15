@@ -23,6 +23,7 @@ export interface BasicRequest {
 }
 
 export interface BasicMount {
+  readonly point: string;
   readonly limits: DrivePlacementBasicLimits;
   readonly offer: UpgradeOffer | null;
   readonly reason: string | null;
@@ -60,6 +61,7 @@ export function basicFields(mount: BasicMount, route: RouteKind): PlacementField
     readOnly: false,
     route,
     reason: mount.reason,
+    mountPoint: mount.point,
   };
 }
 
@@ -97,6 +99,7 @@ async function mountLinux(ports: BasicPorts, request: BasicRequest): Promise<Bas
   if (location === undefined) throw new Error('gio did not report where the folder is mounted');
   await emptyFolderLink(ports, location, request.localPath);
   return {
+    point: request.localPath,
     limits: { maxFileBytes: null, wholeFileOpen: false, offline: false },
     offer: await upgradeOffer('linux', ports),
     reason: null,
@@ -129,6 +132,7 @@ async function mountMacAt(ports: BasicPorts, request: BasicRequest): Promise<() 
 
 async function mountMac(ports: BasicPorts, request: BasicRequest): Promise<BasicMount> {
   return {
+    point: request.localPath,
     limits: { maxFileBytes: null, wholeFileOpen: true, offline: false },
     offer: null,
     reason: null,
@@ -142,6 +146,7 @@ async function mountWindows(ports: BasicPorts, request: BasicRequest): Promise<B
   const letter = /Drive ([A-Za-z]:)/.exec(stdout)?.[1];
   if (letter === undefined) throw new Error('Windows did not report the drive letter');
   return {
+    point: letter.toUpperCase(),
     limits: { maxFileBytes, wholeFileOpen: false, offline: false },
     offer: await upgradeOffer('win32', ports),
     reason: `Available as drive ${letter.toUpperCase()}`,

@@ -122,7 +122,7 @@ function SlotLine({
         }}
       />
       <IconButton
-        icon="chevronDown"
+        icon="arrowDown"
         label={`Move ${slot.label} down`}
         disabled={!open || busy || last}
         onPress={() => {

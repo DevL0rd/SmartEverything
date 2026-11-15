@@ -10,7 +10,7 @@ const DESCRIPTION_MIN = 60;
 const DESCRIPTION_MAX = 600;
 const LINE_MAX = 60;
 const BRANCH_LINE_MAX = 140;
-const ACTIONS_MAX = 8;
+const ACTIONS_MAX = 9;
 const VIEWS_MAX = 12;
 
 const NAMES: ReadonlySet<string> = new Set(MCP_TOOLS.map((tool) => tool.name));

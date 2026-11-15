@@ -30,8 +30,7 @@ import {
 } from '../../../format/time';
 import { useMinute, useSecondOf } from '../../../store/clock';
 import { askAssistantWith } from '../../assistant';
-import { useWeather } from '../../weather';
-import { conditionIcon, degrees } from '../../weather/model/present';
+import { useWeather, conditionIcon, degrees } from '../../weather';
 import {
   usePlannerClockWrites,
   usePlannerPreferences,

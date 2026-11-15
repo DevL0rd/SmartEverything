@@ -65,7 +65,7 @@ export const PEDESTAL_FAN_MODEL: ModelSpec = {
   title: 'Pedestal fan',
   category: 'climate',
   family: 'fan',
-  footprint: { width: GUARD_R * 2 + 0.03, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.431, depth: DEPTH, height: 1.2155 },
   framing: {
     tile: { ...VIEW, padding: 0.03 },
     card: { ...VIEW, padding: 0.06 },
@@ -159,7 +159,7 @@ export const PEDESTAL_FAN_MODEL: ModelSpec = {
       property: 'rotate',
       axis: 'z',
       source: 'speed',
-      map: { type: 'speed', in: [0, 1], perSecond: [0.5, 3] },
+      map: { type: 'speed', in: [0, 1], perSecond: [0, 3] },
       motion: { type: 'spin' },
       reduced: 'hold',
       blur: { part: 'rotorBlur', from: 2, to: 3 },

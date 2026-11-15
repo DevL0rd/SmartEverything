@@ -1,5 +1,7 @@
 import { Activity, use, useLayoutEffect, useState, type ReactElement } from 'react';
+import { View } from 'react-native';
 import { z } from 'zod';
+import { isNative } from '../design/platform';
 import { ScreenPause, ScreenPausedContext } from '../design/screen-pause';
 import { ScreenRouteContext } from '../design/screen-route';
 import { probedScreen } from '../perf/screen-probe';
@@ -79,6 +81,22 @@ function coverIn(state: LayerState, routeKey: string, awake: boolean): Cover {
   return position === state.index - 1 ? 'paused' : 'frozen';
 }
 
+const PAINT: Readonly<Record<Cover, string>> = {
+  shown: 'contents',
+  paused: 'contents invisible',
+  frozen: 'contents',
+};
+
+function Painted({
+  cover,
+  children,
+}: {
+  readonly cover: Cover;
+  readonly children: ReactElement;
+}): ReactElement {
+  return isNative() ? children : <View className={PAINT[cover]}>{children}</View>;
+}
+
 function paramsOf(route: LayerRoute): HeldRoute['params'] {
   const params: unknown = route.params;
   if (typeof params !== 'object' || params === null) return {};
@@ -151,7 +169,9 @@ function ScreenPauseLayer(args: ScreenPauseArgs): ReactElement {
         navigation={args.navigation}
       />
       <ScreenRouteContext value={args.route.key}>
-        <Activity mode={cover === 'frozen' ? 'hidden' : 'visible'}>{args.children}</Activity>
+        <Activity mode={cover === 'frozen' ? 'hidden' : 'visible'}>
+          <Painted cover={cover}>{args.children}</Painted>
+        </Activity>
       </ScreenRouteContext>
     </ScreenPausedContext>
   );

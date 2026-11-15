@@ -76,6 +76,8 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
       driveId: options.driveId,
       rootPath,
       platform,
+      meta: options.meta,
+      tolerance: (): bigint => this.#scanner.toleranceNs,
       database,
       source: options.source,
       wants: this.exclusions.wants,
@@ -174,6 +176,7 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
       portablePaths: this.#options.portablePaths,
       database,
       hasher: this.#options.hasher,
+      meta: this.#options.meta,
       ignore: this.#options.ignore,
       writeQuietMs: this.#options.timings.writeQuietMs,
       settled: (): Promise<void> => this.#puller.settled(),
@@ -215,6 +218,10 @@ export class DriveSyncEngine implements Pick<SyncEnginePort, 'waiting'> {
       contended: sink.contended,
       deferred: (relPath): void => {
         log.debug('drive_sync.engine.deferred', { placementId, relPath });
+      },
+      skipped: sink.skipped,
+      dirtied: (): void => {
+        this.#enqueue(() => this.#scan());
       },
       progress: sink.progress,
       blocked: sink.blocked,

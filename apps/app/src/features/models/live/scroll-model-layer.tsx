@@ -1,5 +1,4 @@
 import {
-  createContext,
   useEffect,
   useRef,
   useState,
@@ -32,6 +31,7 @@ import {
   type LivePlacement,
 } from './live-protocol';
 import { LiveSurface } from './live-surface';
+import { ScrollModelContext } from './scroll-model-context';
 import type { LiveRect } from './renderer-core';
 
 const log = new Logger('app.models');
@@ -95,8 +95,6 @@ export class ScrollLayer {
     return { ...size, dpr, placements };
   };
 }
-
-export const ScrollModelContext = createContext<ScrollLayer | null>(null);
 
 function useLayerWire(
   layer: ScrollLayer,

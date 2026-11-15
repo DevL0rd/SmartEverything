@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useSyncStatus } from '../../../store/selectors';
 import { useArchivedChats } from '../data/archived-chats';
 import { setChatArchived } from './chat-actions';
@@ -69,7 +69,7 @@ export function MissingChat({
 }: {
   readonly chatId: string;
   readonly back: boolean;
-  readonly leading: readonly HeaderAction[];
+  readonly leading: readonly ShellAction[];
 }): ReactNode {
   const status = useSyncStatus().status;
   const syncing = status === 'connecting' || status === 'loading';
@@ -81,21 +81,16 @@ export function MissingChat({
     archivedIds: archived.entries.map((entry) => entry.id),
   });
   return (
-    <Screen
-      scroll={false}
-      header={
-        <PageHeader
-          title="Chat"
-          back={back}
-          settings={mainPageSettings('assistant')}
-          search={false}
-          actions={leading}
-        />
-      }
+    <PageShell
+      variant="pane"
+      title="Chat"
+      back={back}
+      leading={leading}
+      settings={mainPageSettings('assistant')}
     >
       <View className="flex-1 justify-center">
         <MissingBody state={state} chatId={chatId} retry={archived.retry} />
       </View>
-    </Screen>
+    </PageShell>
   );
 }

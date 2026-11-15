@@ -220,7 +220,7 @@ export const KETTLE_MODEL: ModelSpec = {
   title: 'Kettle',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: TOP },
+  footprint: { width: 0.2703, depth: 0.197, height: TOP },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: [
     {

@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import { ScrollView, Text as NativeText, View } from 'react-native';
+import { Platform, ScrollView, Text as NativeText, View } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { cn } from '../../../../design/cn';
 import { useColour } from '../../../../design/colour';
 import { useSizeClass } from '../../../../design/size-class';
 import { useScopeVisible } from '../../../../design/visibility';
 import { CHAT_SURFACE } from '../chat-surface';
+import { useInnerScrollGesture } from '../inner-scroll';
 import { CardAction, CardCopy } from './card-action';
 import { highlight, type CodeTone } from './code-highlight';
 
@@ -13,6 +15,20 @@ const HIGHLIGHT_MAX = 6000;
 
 interface ToneStyle {
   readonly color: string;
+}
+
+function SideScroll({ code }: { readonly code: string }): ReactNode {
+  const drag = useInnerScrollGesture();
+  const scroller = (
+    <ScrollView horizontal className="grow-0" contentContainerClassName="px-3 pb-2.5">
+      <CodeText code={code} />
+    </ScrollView>
+  );
+  return Platform.OS === 'android' ? (
+    <GestureDetector gesture={drag}>{scroller}</GestureDetector>
+  ) : (
+    scroller
+  );
 }
 
 function useToneStyles(): Readonly<Record<CodeTone, ToneStyle>> {
@@ -88,9 +104,7 @@ export function CodeCard({
           <CodeText code={code} />
         </View>
       ) : (
-        <ScrollView horizontal className="grow-0" contentContainerClassName="px-3 pb-2.5">
-          <CodeText code={code} />
-        </ScrollView>
+        <SideScroll code={code} />
       )}
     </View>
   );

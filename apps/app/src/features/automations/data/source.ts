@@ -1,10 +1,11 @@
 import type { NodeKindLookup } from '@smarteverything/domain';
-import { createContext, use, useMemo, useSyncExternalStore } from 'react';
+import { use, useMemo, useSyncExternalStore } from 'react';
 import type { NodeKind } from '@smarteverything/domain';
 import type { EntityStore } from '../../../store/entity-store';
 import { rowsOf } from '../../../store/state';
 import { StoreContext } from '../../../store/store-runtime';
 import * as hubApi from './api';
+import { AutomationsSourceContext } from './source-context';
 import {
   parseAutomationRows,
   type AutomationRows,
@@ -78,8 +79,6 @@ export function hubSource(store: EntityStore): AutomationsSource {
     runChanges: (listener) => store.subscribeSlices(['tables.automation_runs'], listener),
   };
 }
-
-export const AutomationsSourceContext = createContext<AutomationsSource | null>(null);
 
 export function useAutomationsSource(): ResolvedAutomationsSource {
   const injected = use(AutomationsSourceContext);

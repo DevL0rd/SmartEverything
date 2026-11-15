@@ -82,7 +82,7 @@ function backParts(): ModelSpecPart[] {
 export const SUN_LOUNGER_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.sun-lounger',
   title: 'Sun lounger',
-  footprint: { width: WIDTH, depth: round4(SEAT_END - HEAD), height: 0.8 },
+  footprint: { width: 0.7, depth: 1.8659, height: 0.8296 },
   meta: {
     names: {
       display: 'Sun lounger',

@@ -69,7 +69,7 @@ export const GENERIC_PHONE_MODEL: ModelSpec = {
   title: 'Phone',
   category: 'phone',
   family: 'phone',
-  footprint: { width: WIDTH, depth: LENGTH, height: T },
+  footprint: { width: WIDTH, depth: LENGTH, height: 0.0111 },
   framing: {
     tile: { ...FLAT, padding: 0.08 },
     card: FLAT,

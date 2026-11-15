@@ -8,15 +8,11 @@ import (
 	"syscall"
 )
 
-const (
-	fallocKeepSize  = 0x1
-	fallocPunchHole = 0x2
-)
-
 func markSparse(*os.File) error { return nil }
 
 func punchHole(f *os.File, off, length int64) error {
-	return syscall.Fallocate(int(f.Fd()), fallocPunchHole|fallocKeepSize, off, length)
+	const punchKeepingSize = 0x2 | 0x1
+	return syscall.Fallocate(int(f.Fd()), punchKeepingSize, off, length)
 }
 
 func allocatedBytes(f *os.File) (int64, error) {

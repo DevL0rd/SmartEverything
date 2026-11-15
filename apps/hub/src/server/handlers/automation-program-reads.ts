@@ -72,7 +72,6 @@ const NAMES: Readonly<Record<RefKind, Namer>> = {
   computer: deviceName,
   room: (deps, id) => present(() => deps.store.rooms.byId(id).name),
   group: (deps, id) => present(() => deps.store.deviceGroups.byId(id).name),
-  scene: (deps, id) => present(() => deps.store.scenes.byId(id).name),
   person: (deps, id) => present(() => deps.store.profiles.byId(id).name),
   chat: (deps, id) => deps.store.aiChats.find(id)?.title ?? undefined,
   value: (deps, id) => present(() => deps.store.automationValues.byId(id).content.name),

@@ -24,6 +24,7 @@ export type WriteStore = Pick<
   Store,
   | 'driveRoots'
   | 'driveItems'
+  | 'driveInodes'
   | 'driveAlbums'
   | 'driveFeed'
   | 'driveTrash'

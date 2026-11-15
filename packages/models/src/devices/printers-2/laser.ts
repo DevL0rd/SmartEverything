@@ -27,7 +27,7 @@ export const LASER_PRINTER_MODEL: ModelSpec = {
   title: 'Laser printer',
   category: 'printer',
   family: 'printer',
-  footprint: { width: W, depth: D, height: TOP + 0.01 },
+  footprint: { width: 0.406, depth: 0.4227, height: 0.2425 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

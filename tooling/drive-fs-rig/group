@@ -1,0 +1,8 @@
+root:x:0:
+daemon:x:1:
+bin:x:2:
+fsgqa:x:1001:
+123456-fsgqa:x:1002:
+fsgqa2:x:1003:
+nobody:x:65534:
+nogroup:x:65534:

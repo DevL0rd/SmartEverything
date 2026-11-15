@@ -46,7 +46,7 @@ function blooms(): ModelSpecPart[] {
 export const PLANTER_BOX_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.planter-box',
   title: 'Planter box',
-  footprint: { width: 0.9, depth: DEPTH, height: 0.7 },
+  footprint: { width: 0.9, depth: DEPTH, height: 0.692 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

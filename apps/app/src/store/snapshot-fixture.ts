@@ -19,6 +19,9 @@ export const EMPTY_LATER_TABLES = {
   planner_alarms: [],
   planner_timers: [],
   planner_stopwatches: [],
+  planner_collection_shares: [],
+  planner_guests: [],
+  planner_booking_pages: [],
   google_accounts: [],
 } as const;
 
@@ -57,7 +60,6 @@ export function snapshotWire(firewall: unknown = READABLE_FIREWALL): Record<stri
       devices: [],
       device_state: [],
       cameras: [],
-      scenes: [],
       automations: [],
       provider_links: [],
       ir_remotes: [],

@@ -1,5 +1,6 @@
 import { use, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../../design/size-class';
 import { Banner } from '../../../../components/banner';
 import { FlatChoice } from '../../../../components/flat-choice';
 import { HScroller } from '../../../../components/h-scroller';
@@ -15,7 +16,7 @@ import { sourceChipLabel, type LibrarySource } from './library-sources';
 import type { LibraryState } from './library-state';
 import { ModelSearchSource } from '../model-search-source';
 import { SourceStatuses } from '../model-source-status';
-import { LibraryOriginFocus } from './library-pages';
+import { LibraryOriginFocus } from './library-focus';
 
 export function SortSelect<T extends string>({
   options,
@@ -169,7 +170,7 @@ export function useCountAtSources(
   readonly onLayout: ReturnType<typeof useMeasuredWidth>['onLayout'];
 } {
   const { width, onLayout } = useMeasuredWidth();
-  const { fontScale } = useWindowDimensions();
+  const { fontScale } = useWindowSize();
   return { countAtSources: enabled && width > 0 && width < inlineWidth * fontScale, onLayout };
 }
 

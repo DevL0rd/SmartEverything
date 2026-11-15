@@ -16,6 +16,7 @@ import {
   type MediaFacts,
   type Moment,
 } from './metadata-read';
+import { overrideFacts } from '../photos/organise/override';
 import { DrivePathError, openResolved, resolveInRoot } from './paths';
 import { readDriveSettings } from './settings';
 import type { RootAvailability } from './root-marker';
@@ -25,7 +26,10 @@ type MediaItem = Extract<DriveItem, { readonly kind: 'image' | 'video' | 'audio'
 const WINDOW_ROWS = 1000;
 
 export interface MetadataEnvironment {
-  readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'settingsKv' | 'write'>;
+  readonly store: Pick<
+    Store,
+    'driveRoots' | 'driveItems' | 'settingsKv' | 'write' | 'photoMetaOverrides'
+  >;
   readonly media: Pick<DriveMediaRepository, 'find' | 'save' | 'update'>;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly log: Logger;
@@ -110,7 +114,7 @@ const HEAD_BYTES = 12;
 
 function mediaRowFor(
   itemId: string,
-  moment: Pick<Moment, 'offsetMin' | 'source'>,
+  moment: Pick<Moment, 'offsetMin'> & { readonly source: Moment['source'] | 'manual' },
 ): Parameters<MetadataEnvironment['media']['save']>[0] {
   return {
     item_id: itemId,
@@ -243,17 +247,26 @@ class MetadataRun {
       }
       const identity = this.env.store.driveItems.identityOf(current.id);
       if (identity === null) return false;
+      const override = this.env.store.photoMetaOverrides.find(candidate.id);
+      const facts = overrideFacts(reading.facts, override);
       const written = this.env.store.driveItems.write({
-        item: itemWith(current, reading.facts),
+        item: itemWith(current, facts),
         identity,
       }).item;
-      if (written.kind !== 'audio') this.keepTime(written.id, reading.facts.takenAt);
+      if (written.kind !== 'audio') {
+        this.keepTime(
+          written.id,
+          facts.takenAt,
+          override !== undefined && override.takenAt !== null,
+        );
+      }
       return true;
     });
   }
 
-  private keepTime(itemId: string, moment: Moment | null): void {
-    const time = moment ?? { offsetMin: null, source: 'modified' as const };
+  private keepTime(itemId: string, moment: Moment | null, edited: boolean): void {
+    const base = moment ?? { offsetMin: null, source: 'modified' as const };
+    const time = edited ? { ...base, source: 'manual' as const } : base;
     if (this.env.media.find(itemId) === undefined) {
       this.env.media.save(mediaRowFor(itemId, time));
       return;

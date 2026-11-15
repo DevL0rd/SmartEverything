@@ -37,20 +37,50 @@ export type DeviceLookup = ReadonlyMap<string, Device>;
 const SOURCES: Readonly<Record<CommandRow['source'], string>> = {
   app: 'You',
   automation: 'An automation',
-  scene: 'A scene',
   assistant: 'An assistant',
 };
 
 const SOURCE_CATEGORY: Readonly<Record<CommandRow['source'], ActivityCategory | null>> = {
   app: null,
   automation: 'automations',
-  scene: 'automations',
   assistant: 'assistants',
 };
 
 const FAILED: ReadonlySet<CommandRow['status']> = new Set(['failed', 'expired']);
 
 const EVENT_SUMMARY = z.object({ summary: z.string().min(1), topic: z.string().min(1) });
+
+const DEVICE_REMOVAL = z.object({
+  source: z.literal('device'),
+  kind: z.literal('lifecycle'),
+  data: z.object({ change: z.literal('removed'), name: z.string().min(1).optional() }),
+});
+
+function removalAtom(event: EventRow): ActivityAtom | null {
+  if (event.kind !== 'signal') {
+    return null;
+  }
+  const removal = DEVICE_REMOVAL.safeParse(event.details);
+  if (!removal.success) {
+    return null;
+  }
+  const what = 'Removed';
+  return {
+    id: `event:${event.id}`,
+    kind: 'event',
+    group: `event:removed:${event.id}`,
+    at: event.occurred_at,
+    deviceId: null,
+    name: removal.data.data.name ?? 'A device',
+    what,
+    topic: what,
+    by: null,
+    icon: 'trash',
+    tone: 'faint',
+    category: 'devices',
+    failed: false,
+  };
+}
 
 function deviceCategory(device: Device | undefined): ActivityCategory {
   return device !== undefined && isCamera(device) ? 'cameras' : 'devices';
@@ -60,7 +90,10 @@ export function eventAtom(event: EventRow, devices: DeviceLookup): ActivityAtom 
   if (event.kind === 'automation_run') {
     return automationRunAtom(event);
   }
-  const device = event.device_id === null ? undefined : devices.get(event.device_id);
+  if (event.device_id === null) {
+    return removalAtom(event);
+  }
+  const device = devices.get(event.device_id);
   if (device === undefined) {
     return null;
   }

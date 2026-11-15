@@ -222,7 +222,7 @@ export const COUNTER_MICROWAVE_MODEL: ModelSpec = {
   title: 'Microwave',
   category: 'kitchen',
   family: 'microwave',
-  footprint: { width: WIDTH, depth: DEPTH + 0.03, height: HEIGHT + FOOT },
+  footprint: { width: WIDTH, depth: 0.388, height: HEIGHT + FOOT },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: [
     {

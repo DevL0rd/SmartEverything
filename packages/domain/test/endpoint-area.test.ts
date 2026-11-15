@@ -49,6 +49,8 @@ const DECIDED_AS_SYSTEM = [
   'startHubUpdateSource',
   'saveHubUpdateSource',
   'recoverHubUpdate',
+  'rollbackHubUpdate',
+  'keepHubUpdate',
   'readDeveloperDevice',
   'setDeveloperDevice',
   'saveWatchCaptures',
@@ -84,6 +86,13 @@ const DECIDED_AS_SYSTEM = [
   'publishMachineUpdate',
   'rollbackMachineUpdate',
   'withdrawMachineUpdate',
+  'beginReleaseUpload',
+  'listReleaseUploads',
+  'readReleaseUpload',
+  'finishReleaseUpload',
+  'readMailSettings',
+  'writeMailSettings',
+  'sendMailTest',
 ];
 
 describe('the area every app call belongs to', () => {
@@ -136,6 +145,9 @@ describe('the planner area', () => {
     'planner_alarms',
     'planner_timers',
     'planner_stopwatches',
+    'planner_collection_shares',
+    'planner_guests',
+    'planner_booking_pages',
     'google_accounts',
   ] as const;
 

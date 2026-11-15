@@ -21,7 +21,13 @@ export { VOICE_NOTICES } from './overlay/voice-notices';
 export { refreshImageOperations, reconcileImageMessages } from './images/data/image-cache';
 export { IMAGE_QUERY_PREFIX } from './images/model/image-query-keys';
 export { clearImageSession } from './images/data/image-session';
-export { attachFiles, clearUploads } from './data/uploads';
+export {
+  attachFiles,
+  clearUploads,
+  readyAttachments,
+  type Upload,
+  useUploads,
+} from './data/uploads';
 export { forgetOlderMessages, refreshOlderMessages } from './data/history';
 
 export { useExtensions, useExtensionConfiguration } from './extensions/queries';

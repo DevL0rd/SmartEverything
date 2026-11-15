@@ -6,16 +6,14 @@ import {
   type PlannerItemRow,
   type PlannerItemScope,
 } from '@smarteverything/domain';
-import type { PLANNER_ITEM_CHANGES } from '@smarteverything/domain';
-import type { z } from 'zod';
-import type { PlannerItemInput } from '../store/repositories/planner-items';
+import type { PlannerItemInput, PlannerItemPatch } from '../store/repositories/planner-items';
 import type { Store } from '../store/store';
 import { instantOf, instantsOf, isoOf } from './instants';
 import { occurrencesBetween, type RecurrenceSeries } from './recurrence';
 
 export type SeriesStore = Pick<Store, 'plannerItems' | 'plannerOccurrences'>;
 
-export type PlannerItemChanges = z.infer<typeof PLANNER_ITEM_CHANGES>;
+export type PlannerItemChanges = PlannerItemPatch;
 
 export interface SeriesEdit {
   readonly scope: PlannerItemScope;
@@ -55,7 +53,7 @@ function sameLocal(a: string, b: string): boolean {
   return whole(a) === whole(b);
 }
 
-function withPatch<T extends object, P extends object>(base: T, patch: P): T {
+function withPatch<T extends object>(base: T, patch: object): T {
   return Object.assign({}, base, patch);
 }
 

@@ -80,10 +80,10 @@ function RingTargetChip({
 }
 
 function WakeRoutineChip({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
-  const scene = useRow('scenes', alarm.wake_scene_id);
+  const automation = useRow('automations', alarm.wake_automation_id);
   const at = wakeRoutineTimeOf(alarm);
-  if (scene === null || at === null) return null;
-  return <TargetChip icon="sunrise" label={`${scene.name} ${at}`} />;
+  if (automation === null || at === null) return null;
+  return <TargetChip icon="sunrise" label={`${automation.name} ${at}`} />;
 }
 
 export function looseWatchLinksOf(alarm: PlannerAlarmRow): readonly PlannerWatchLink[] {
@@ -99,7 +99,13 @@ function targetKeyOf(target: PlannerRingTarget): string {
   return target.kind === 'client' ? `client:${target.clientId}` : `device:${target.deviceId}`;
 }
 
-export function TargetChips({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
+export function TargetChips({
+  alarm,
+  extra = null,
+}: {
+  readonly alarm: PlannerAlarmRow;
+  readonly extra?: ReactNode;
+}): ReactNode {
   return (
     <View className="flex-row flex-wrap gap-2">
       {alarm.targets.map((target) => (
@@ -112,6 +118,7 @@ export function TargetChips({ alarm }: { readonly alarm: PlannerAlarmRow }): Rea
       {alarm.smart_minutes === null ? null : (
         <TargetChip icon="watch" label={`Smart ${String(alarm.smart_minutes)} min`} />
       )}
+      {extra}
     </View>
   );
 }

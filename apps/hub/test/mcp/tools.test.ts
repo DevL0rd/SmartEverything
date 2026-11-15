@@ -171,43 +171,6 @@ describe('the control tools', () => {
       ],
     });
   });
-
-  it('run a scene and list scenes', async () => {
-    const scene = API_ENDPOINTS.createScene.response.parse(
-      await owner('POST', '/api/scenes', {
-        name: 'Evening',
-        actions: [
-          { type: 'command', deviceId: lamp, capability: 'brightness', value: 30 },
-          { type: 'command', deviceId: lamp, capability: 'power', value: true },
-        ],
-      }),
-    );
-    const empty = API_ENDPOINTS.createScene.response.parse(
-      await owner('POST', '/api/scenes', { name: 'Empty', actions: [] }),
-    );
-    const ran = structured(await tool('scene_run', { sceneId: scene.id }));
-    expect(ran).toMatchObject({
-      ok: true,
-      id: scene.id,
-      summary: 'Ran scene “Evening”: 2 of 2 commands done',
-    });
-    const sources = API_ENDPOINTS.listCommands.response
-      .parse(await owner('GET', '/api/commands'))
-      .map((command) => command.source);
-    expect(sources).toStrictEqual(['scene', 'scene']);
-    expect(await refusal('scene_run', { sceneId: empty.id })).toContain('has no actions');
-    expect(await refusal('scene_run', { sceneId: NOT_FOUND_ID })).toContain('There is no scene');
-    expect(structured(await tool('scene_find'))['scenes']).toMatchObject([
-      { name: 'Empty', actions: [] },
-      {
-        name: 'Evening',
-        actions: [
-          { type: 'command', capability: 'brightness', value: 30, device: 'Desk lamp' },
-          { type: 'command', capability: 'power', value: true, device: 'Desk lamp' },
-        ],
-      },
-    ]);
-  });
 });
 
 describe('the history, event, health and camera tools', () => {

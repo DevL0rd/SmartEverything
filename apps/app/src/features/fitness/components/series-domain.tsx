@@ -6,7 +6,7 @@ import { useHealthPresence } from '../data/presence';
 import { seriesOf } from '../model/catalogue';
 import { DOMAIN_INFO, seriesWithData, type FitnessDomain } from '../model/domains';
 import { RANGES, windowOf, type Range } from '../model/window';
-import { FitnessFrame } from './fitness-frame';
+import { FitnessShell } from './fitness-shell';
 import { FitnessToolbar } from './fitness-toolbar';
 import { MetricSection } from './metric-section';
 import { NoDataRow } from './no-data-row';
@@ -30,7 +30,7 @@ export function SeriesDomain({
   const info = DOMAIN_INFO[domain];
   const keys = seriesWithData(presence.types, info.series);
   return (
-    <FitnessFrame
+    <FitnessShell
       tab={domain}
       width="dashboard"
       toolbar={
@@ -58,6 +58,6 @@ export function SeriesDomain({
         </View>
       )}
       {after}
-    </FitnessFrame>
+    </FitnessShell>
   );
 }

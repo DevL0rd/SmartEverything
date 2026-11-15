@@ -6,7 +6,8 @@ import { PLAN } from '../../src/compile/plan';
 import { lower } from '../../src/compile/lower';
 import type { LowerContext } from '../../src/compile/lower';
 import type { Program } from '../../src/program/walk';
-import { CALL_FRAMES, callOps, calleeOf } from '../../src/interpret/calls';
+import { CALL_FRAMES, callOps } from '../../src/interpret/calls';
+import { calleeOf } from '../../src/interpret/call-state';
 import { CORE_FRAMES, CORE_OPS } from '../../src/interpret/core-ops';
 import {
   CONCURRENT_EACH_FRAMES,

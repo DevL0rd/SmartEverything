@@ -1,4 +1,4 @@
-import { JSON_VALUE, capabilityOf, type CommandAction } from '@smarteverything/domain';
+import { JSON_VALUE } from '@smarteverything/domain';
 import type { Outputs } from '@smarteverything/flow/interpret/frames';
 import { z } from 'zod';
 import type { Clock } from '../clock';
@@ -8,8 +8,6 @@ import { DeviceEnsurer, EnsureNotConfirmedError } from './effects/device-ensure'
 import { DeviceFader } from './effects/device-fade';
 import { DeviceRestorer } from './effects/device-restore';
 import { admittedMembers, type DeviceSetter } from './effects/device-set';
-import { captureScene } from './effects/scene-capture';
-import { resolveTarget } from '../device-groups/commands';
 import { stampOf } from './effects/command-metadata';
 import { invalid, outputs, parsed } from './engine-v3-effects';
 import { modeOf } from './effects/action-mode';
@@ -41,12 +39,6 @@ const FADE_PARAMS = z.object({
   over: z.number().int().min(1),
   curve: z.enum(['linear', 'ease']).default('linear'),
   step: z.number().positive().optional(),
-});
-
-const CAPTURE_PARAMS = z.object({
-  target: TARGET_VALUE,
-  name: z.string().min(1),
-  overwrite: z.boolean().default(false),
 });
 
 const RESTORE_PARAMS = z.object({ snapshot: SNAPSHOT_VALUE });
@@ -153,43 +145,10 @@ function deviceRestore(ports: DeviceExtraPorts): EffectHandler {
   };
 }
 
-function sceneCapture(ports: DeviceExtraPorts): EffectHandler {
-  return (params) => {
-    const checked = parsed(CAPTURE_PARAMS, params);
-    if (!checked.ok) return Promise.resolve(checked);
-    const ask = checked.value;
-    try {
-      const actions = resolveTarget(ports.store, ask.target).flatMap((device): CommandAction[] =>
-        device.capabilities.flatMap((entry): CommandAction[] => {
-          const capability = capabilityOf(device, entry.key);
-          if (capability === undefined || capability.access === 'read') return [];
-          if (capability.value.kind === 'action') return [];
-          const value = ports.store.state.value(device.id, entry.key);
-          return value === undefined || value === null
-            ? []
-            : [{ type: 'command', deviceId: device.id, capability: entry.key, value }];
-        }),
-      );
-      const scene = captureScene(ports.store, {
-        name: ask.name,
-        overwrite: ask.overwrite,
-        actions,
-      });
-      return Promise.resolve({
-        ok: true,
-        value: outputs({ ok: true, scene: { scene: scene.id } }),
-      });
-    } catch (cause) {
-      return Promise.resolve(effectFailure(cause));
-    }
-  };
-}
-
 export function deviceExtraHandlers(ports: DeviceExtraPorts): EffectHandlers {
   return {
     'device.ensure': deviceEnsure(ports),
     'device.fade': deviceFade(ports),
     'device.restore': deviceRestore(ports),
-    'scene.capture': sceneCapture(ports),
   };
 }

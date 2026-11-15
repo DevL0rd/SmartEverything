@@ -17,7 +17,7 @@ export function routeInfoKey(choice: RouteChoice | null): readonly unknown[] {
   return ['ai-route-info', choice?.route_id ?? null, choice?.model ?? null];
 }
 
-export function useRouteInfo(engine: Engine): UseQueryResult<AiRouteInfo> {
+export function useEngineRouteInfo(engine: Engine): UseQueryResult<AiRouteInfo> {
   const choice = routeChoiceOf(engine);
   return useScreenQuery({
     queryKey: routeInfoKey(choice),

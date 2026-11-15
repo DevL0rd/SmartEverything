@@ -1,6 +1,6 @@
-import type { DeviceRow, PhoneActionResult, ProcessWindow } from '@smarteverything/domain';
+import type { DeviceRow, PhoneActionResult } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { deviceTarget, Viewers } from '../../src/metrics/viewers';
+import { deviceTarget, Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import { PhoneLive, LIVE_RENEW_MS } from '../../src/phones/phone-live';
 import type { PhoneTarget } from '../../src/phones/phone-nodes';
 import { captureLogs, testLogger } from '../support/logs';
@@ -13,7 +13,7 @@ interface Pushed {
 }
 
 let test: TestStore;
-let viewers: Viewers<ProcessWindow>;
+let viewers: Viewers<DeviceDetail>;
 let pushed: Pushed[];
 let answer: { ok: boolean; detail: string };
 let live: PhoneLive;
@@ -23,7 +23,7 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   captureLogs();
   test = await testStore();
-  viewers = new Viewers<ProcessWindow>();
+  viewers = new Viewers<DeviceDetail>();
   pushed = [];
   answer = { ok: true, detail: 'Live.' };
   phone = addPhoneDevice(test, {

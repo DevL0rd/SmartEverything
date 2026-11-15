@@ -14,6 +14,7 @@ export function pluginSectionsOf(device: Device): readonly DeviceSection[] {
     title: section.title,
     icon: section.icon ?? 'puzzle',
     scrolls: section.scrolls === true,
+    ...(section.search === undefined ? {} : { search: section.search }),
     render: section.render,
   }));
 }

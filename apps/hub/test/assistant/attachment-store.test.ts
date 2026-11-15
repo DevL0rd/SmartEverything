@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../src/assistant/files';
@@ -271,7 +271,8 @@ describe('sending a file from the chat folder', () => {
 
   it('refuses a path that leaves the chat folder through ..', async () => {
     await mkdir(join(projects.root(chatId), 'workspace'), { recursive: true });
-    await expect(attach('workspace/../../../../../../etc/hostname')).rejects.toMatchObject({
+    const escape = relative(projects.root(chatId), '/etc/hostname');
+    await expect(attach(join('workspace', '..', escape))).rejects.toMatchObject({
       code: 'forbidden',
     });
   });

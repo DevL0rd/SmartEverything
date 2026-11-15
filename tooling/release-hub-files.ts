@@ -1,9 +1,9 @@
+import { spawnSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -15,8 +15,6 @@ import {
 import { basename, dirname, join } from 'node:path';
 import { env } from 'node:process';
 import { DatabaseSync } from 'node:sqlite';
-import { pathToFileURL } from 'node:url';
-import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 
 import {
@@ -30,6 +28,8 @@ import {
   desktopPayloadIn,
   HUB_SERVICE_DIRECTORY,
   HUB_SERVICE_ENTRY,
+  UPDATE_ENTRY_DIRECTORY,
+  UPDATE_ENTRY_FILES,
 } from './hub-install-layout.ts';
 import {
   hasV1Marker,
@@ -44,8 +44,6 @@ import {
 
 import { syncDirectory } from './release-photo-paths.ts';
 
-const ROOT = join(import.meta.dirname, '..');
-
 export const BACKUP_DATABASE_FILE = 'smarteverything.db';
 export const SERVICE_ENTRY = HUB_SERVICE_ENTRY;
 export const SERVICE_FILES = [
@@ -56,7 +54,6 @@ export const SERVICE_FILES = [
   'raster-worker.mjs',
 ] as const;
 
-const STORE_MODULE = join(ROOT, 'apps', 'hub', 'src', 'store', 'store.ts');
 const FREE_SPACE_FACTOR = 3;
 const BACKUP_STATUS_FILE = 'status';
 export type BackupStatus = 'verified' | 'rolled-back';
@@ -276,52 +273,55 @@ export function restoreDatabase(data: DataLayout, backup: string, stamp: string)
   cpSync(join(backup, BACKUP_DATABASE_FILE), file);
 }
 
-const OPEN_STORE = z.object({
-  openStore: z.custom<(options: StoreOptions) => { readonly close: () => void }>(
-    (value) => typeof value === 'function',
-  ),
+const MIGRATION_RESULT = z.strictObject({
+  from: z.number().int().nonnegative(),
+  to: z.number().int().nonnegative(),
 });
-
-interface StoreOptions {
-  readonly path: string;
-  readonly log: Logger;
-  readonly now: () => Date;
-  readonly systemTimeZone: string;
-}
+const FAILURE_TAIL = 2000;
 
 export interface MigrationCheck {
   readonly from: number;
   readonly to: number;
 }
 
-export async function checkMigrations(data: DataLayout): Promise<MigrationCheck> {
-  const { openStore } = OPEN_STORE.parse(await import(pathToFileURL(STORE_MODULE).href));
-  mkdirSync(data.tmp, { recursive: true });
-  const scratch = mkdtempSync(join(data.tmp, 'release-migration-'));
-  const copy = join(scratch, BACKUP_DATABASE_FILE);
-  try {
-    vacuumInto(data.system.database.file, copy);
-    const from = schemaVersionOf(copy);
-    const [first = 0, second = 0] = [1, 2].map((pass) => {
-      const store = openStore({
-        path: copy,
-        log: new Logger(`tool.release-migration-pass-${String(pass)}`),
-        now: () => new Date(),
-        systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      });
-      store.close();
-      return schemaVersionOf(copy);
-    });
-    if (first !== second) {
-      throw new ReleaseStepError(
-        'migration check',
-        `a second open moved the schema from ${String(first)} to ${String(second)}, so the migrations are not idempotent`,
-      );
-    }
-    return { from, to: first };
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
+function checkResult(output: string, from: number): MigrationCheck {
+  const line = output.split('\n').findLast((value) => value.trimStart().startsWith('{"from":'));
+  if (line === undefined) {
+    throw new ReleaseStepError('migration check', 'the new release returned no schema result');
   }
+  const result = MIGRATION_RESULT.parse(JSON.parse(line));
+  if (result.from !== from || result.to < from) {
+    throw new ReleaseStepError(
+      'migration check',
+      `expected schema ${String(from)} or newer, got ${String(result.from)} → ${String(result.to)}`,
+    );
+  }
+  return result;
+}
+
+export function serviceMigrationCheck(
+  node: string,
+  service: string,
+  data: DataLayout,
+): MigrationCheck {
+  const database = data.system.database.file;
+  const from = schemaVersionOf(database);
+  const result = spawnSync(
+    node,
+    [join(service, UPDATE_ENTRY_DIRECTORY, UPDATE_ENTRY_FILES.migrationCheck), database, data.tmp],
+    {
+      cwd: service,
+      encoding: 'utf8',
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  if (result.status !== 0)
+    throw new ReleaseStepError(
+      'migration check',
+      `the new release's migration check exited with status ${String(result.status)}: ${`${result.stdout}${result.stderr}`.slice(-FAILURE_TAIL)}`,
+    );
+  return checkResult(result.stdout, from);
 }
 
 export function markBackup(backup: string, status: BackupStatus): void {

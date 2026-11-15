@@ -26,7 +26,7 @@ export const spawnLines: LineSubscriber = (stream) => {
     });
     current = child;
     createInterface({ input: child.stdout }).on('line', stream.onLine);
-    child.once('error', stream.onFailure);
+    child.on('error', stream.onFailure);
     child.once('exit', () => {
       current = null;
       if (!stopped) {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Circle, G, Path } from 'react-native-svg';
 import { useColour } from '../../design/colour';
+import type { ColourRole } from '../../design/tokens';
 import {
   barPixels,
   bandShares,
@@ -90,12 +91,14 @@ export function NightBar({
   frame,
   slot,
   column,
+  colour,
 }: {
   readonly frame: BarsFrame;
   readonly slot: Slot;
   readonly column: WindowColumn;
+  readonly colour: ColourRole;
 }): ReactNode {
-  const fill = useColour('sleep-asleep');
+  const fill = useColour(colour);
   if (column.night === null) {
     return null;
   }

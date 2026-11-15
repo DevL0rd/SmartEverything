@@ -3,7 +3,7 @@ import type { DeviceGroupRow, DeviceTarget } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import type { BoardWidget } from '../../../components/widget-board';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import type { MenuItem } from '../../../components/menu';
 import { confirmRemoval, removeGroup } from '../data/remove-group';
 import { notify } from '../../../components/toast-store';
@@ -13,7 +13,7 @@ import type { GroupData } from '../widget/use-group-data';
 
 export type AddToHome = (widget: BoardWidget) => void;
 
-export function powerAction(data: GroupData, noun: 'light' | 'device'): readonly HeaderAction[] {
+export function powerAction(data: GroupData, noun: 'light' | 'device'): readonly ShellAction[] {
   const { state } = data.view;
   if (state.power === 'none' || state.members === 0) return [];
   return [

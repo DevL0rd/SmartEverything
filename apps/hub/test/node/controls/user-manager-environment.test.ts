@@ -156,26 +156,28 @@ describe('screen control when the session appears after the node started', () =>
   const NONE = { kde: false, wayland: false, x11: false };
   const KDE = { kde: true, wayland: true, x11: false };
 
-  it('reports no screen features without a session and the screens once it appears', async () => {
+  it('reports an empty screen list without a session and the screens once it appears', async () => {
     const test = displayRig(BOTH, { environment: NONE });
-    await expect(test.displays.features()).resolves.toEqual([]);
+    await expect(test.displays.features()).resolves.toEqual(['displays']);
+    await expect(test.displays.read()).resolves.toMatchObject({ outputs: [] });
     test.setEnvironment(KDE);
-    await expect(test.displays.features()).resolves.toContain('displays');
+    await expect(test.displays.features()).resolves.toContain('display_modes');
+    expect((await test.displays.read()).outputs.length).toBeGreaterThan(0);
     expect(test.calls.some((call) => call.startsWith('kscreen-doctor'))).toBe(true);
   });
 
-  it('refuses reads as not supported without a session, then serves them once it appears', async () => {
+  it('refuses changes as not supported without a session', async () => {
     const test = displayRig(BOTH, { environment: NONE });
-    await expect(test.displays.read()).rejects.toMatchObject({ code: 'not_supported' });
-    test.setEnvironment(KDE);
-    expect((await test.displays.read()).outputs.length).toBeGreaterThan(0);
+    await expect(
+      test.displays.change({ action: 'enable', output: 'x' }, false),
+    ).rejects.toMatchObject({ code: 'not_supported' });
   });
 
-  it('keeps answering without a session and never throws anything but not supported', async () => {
+  it('keeps answering without a session and never throws', async () => {
     const test = displayRig(BOTH, { environment: NONE });
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      await expect(test.displays.features()).resolves.toEqual([]);
-      await expect(test.displays.read()).rejects.toMatchObject({ code: 'not_supported' });
+      await expect(test.displays.features()).resolves.toEqual(['displays']);
+      await expect(test.displays.read()).resolves.toMatchObject({ outputs: [] });
     }
     expect(test.failures).toEqual([]);
   });

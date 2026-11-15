@@ -227,7 +227,7 @@ describe('execute', () => {
   it('adds the republish cost note only when an entry was republished', () => {
     const base = {
       id: ID,
-      platform: 'android',
+      platform: 'desktop',
       channel: 'release',
       runtimeVersion: 'r',
       createdAt: '2026-10-25T10:00:00.000Z',
@@ -261,7 +261,7 @@ describe('execute', () => {
     const published = APP_UPDATE_ENTRY.parse(JSON.parse(lines[0] ?? ''));
     expect(published).toMatchObject({ runtimeVersion: 'rt-1', notes });
     const [entry] = (await readIndex(workspace.data)).entries;
-    assert.ok(entry);
+    assert.ok(entry?.platform === 'android');
     expect(entry).toEqual(published);
     const manifest = expoManifestFor(entry, SERVER, (hash) => `/assets/${hash}`);
     expect(manifest.extra.smarteverything.notes).toBe(notes);

@@ -22,6 +22,7 @@ import {
   OR_KEY,
   OR_MODELS,
   OR_VIDEO_MODELS,
+  OR_ZDR_ENDPOINTS,
   type Credits,
   type GenerationStats,
   type KeyInfo,
@@ -95,6 +96,15 @@ export class OpenRouterClient {
 
   async models(): Promise<OrModel[]> {
     return (await this.json({ path: '/models', key: null }, OR_MODELS, 'model list')).data;
+  }
+
+  async zdrModelIds(): Promise<ReadonlySet<string>> {
+    const answer = await this.json(
+      { path: '/endpoints/zdr', key: null },
+      OR_ZDR_ENDPOINTS,
+      'zero data retention list',
+    );
+    return new Set(answer.data.map((endpoint) => endpoint.model_id));
   }
 
   async transcriptionModels(): Promise<OrModel[]> {

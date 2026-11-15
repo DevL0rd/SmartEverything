@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  LINK_TARGET,
+  MODE,
+  XATTR_LIST_MAX_BYTES,
+  XATTR_NAME,
+  XATTR_SIZE_MAX_BYTES,
+  utf8Bytes,
+} from '../mount/fields';
 import { DRIVE_SYNC_ERROR } from '../placement';
 import { isValidBlockSize, packedMatchesSize } from './blocks';
 
@@ -13,6 +21,40 @@ const BLOCK_SIZE = z
   .refine(isValidBlockSize, 'block size must be a power of two from 128 KiB to 16 MiB');
 const PACKED = z.string().regex(/^(?:[0-9a-f]{64})*$/);
 
+const NS = z.string().regex(/^\d{1,19}$/);
+const BASE64 = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+const XATTR_NAMESPACES = ['user.', 'trusted.', 'security.'] as const;
+const NS_PER_MS = 1_000_000n;
+
+export function syncMomentOfNs(mtimeNs: string): string {
+  return new Date(Number(BigInt(mtimeNs) / NS_PER_MS)).toISOString();
+}
+
+function decodedBytes(value: string): number {
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  return (value.length / 4) * 3 - padding;
+}
+
+export const SYNC_XATTR = z
+  .strictObject({
+    name: XATTR_NAME.refine((value) =>
+      XATTR_NAMESPACES.some((prefix) => value.startsWith(prefix) && value.length > prefix.length),
+    ),
+    value: BASE64.refine((value) => decodedBytes(value) <= XATTR_SIZE_MAX_BYTES),
+  })
+  .readonly();
+
+export type SyncXattr = z.infer<typeof SYNC_XATTR>;
+
+export const SYNC_XATTRS = z
+  .array(SYNC_XATTR)
+  .refine((xattrs) => new Set(xattrs.map((xattr) => xattr.name)).size === xattrs.length)
+  .refine(
+    (xattrs) =>
+      xattrs.reduce((sum, xattr) => sum + utf8Bytes(xattr.name) + 1, 0) <= XATTR_LIST_MAX_BYTES,
+  )
+  .readonly();
+
 export const SYNC_CONFLICT_REASONS = ['stale', 'exists', 'missing', 'path'] as const;
 
 export type SyncConflictReason = (typeof SYNC_CONFLICT_REASONS)[number];
@@ -21,35 +63,56 @@ export const SYNC_FILE_META = z
   .strictObject({
     bytes: COUNT,
     mtime: MOMENT,
+    mtimeNs: NS,
     blockSize: BLOCK_SIZE,
     blocksHash: SHA256,
   })
+  .refine(
+    (meta) =>
+      NS.safeParse(meta.mtimeNs).success &&
+      MOMENT.safeParse(meta.mtime).success &&
+      syncMomentOfNs(meta.mtimeNs) === new Date(meta.mtime).toISOString(),
+    'mtime must be the millisecond moment of mtimeNs',
+  )
   .readonly();
 
 export type SyncFileMeta = z.infer<typeof SYNC_FILE_META>;
 
-const FOLDER_ENTRY = z.strictObject({
+const ENTRY_BASE = {
   itemId: ID,
   relPath: REL_PATH,
-  kind: z.literal('folder'),
   mtime: MOMENT,
+  mtimeNs: NS,
   rev: COUNT,
   deleted: z.boolean(),
+  mode: MODE,
+  xattrs: SYNC_XATTRS,
+};
+
+const FOLDER_ENTRY = z.strictObject({
+  ...ENTRY_BASE,
+  kind: z.literal('folder'),
 });
 
 const FILE_ENTRY = z.strictObject({
-  itemId: ID,
-  relPath: REL_PATH,
+  ...ENTRY_BASE,
   kind: z.literal('file'),
-  mtime: MOMENT,
-  rev: COUNT,
-  deleted: z.boolean(),
+  inode: COUNT.nullable(),
   bytes: COUNT,
   blockSize: BLOCK_SIZE,
   blocksHash: SHA256,
 });
 
-export const SYNC_INDEX_ENTRY = z.discriminatedUnion('kind', [FOLDER_ENTRY, FILE_ENTRY]).readonly();
+const LINK_ENTRY = z.strictObject({
+  ...ENTRY_BASE,
+  kind: z.literal('link'),
+  inode: COUNT.nullable(),
+  target: LINK_TARGET,
+});
+
+export const SYNC_INDEX_ENTRY = z
+  .discriminatedUnion('kind', [FOLDER_ENTRY, FILE_ENTRY, LINK_ENTRY])
+  .readonly();
 
 export type SyncIndexEntry = z.infer<typeof SYNC_INDEX_ENTRY>;
 
@@ -90,11 +153,35 @@ export const SYNC_PUSH = z
     baseRev: COUNT.nullable(),
     meta: SYNC_FILE_META,
     blocks: PACKED,
+    mode: MODE,
+    xattrs: SYNC_XATTRS,
+    linkOf: REL_PATH.nullable(),
   })
   .refine(
     (push) => packedMatchesSize(push.blocks, push.meta.bytes, push.meta.blockSize),
     'blocks must hold one hash per block of the declared size',
   )
+  .readonly();
+
+export const SYNC_PUSH_META = z
+  .strictObject({
+    type: z.literal('push_meta'),
+    opId: OP_ID,
+    relPath: REL_PATH,
+    baseRev: COUNT,
+    mode: MODE,
+    mtimeNs: NS,
+    xattrs: SYNC_XATTRS,
+  })
+  .readonly();
+
+export const SYNC_PUSH_LINK = z
+  .strictObject({
+    type: z.literal('push_link'),
+    opId: OP_ID,
+    relPath: REL_PATH,
+    target: LINK_TARGET,
+  })
   .readonly();
 
 export const SYNC_ACCEPT = z
@@ -165,6 +252,8 @@ export const SYNC_CLIENT_STATE = z
 export const SYNC_CLIENT_MESSAGE = z.discriminatedUnion('type', [
   SYNC_HELLO,
   SYNC_PUSH,
+  SYNC_PUSH_META,
+  SYNC_PUSH_LINK,
   SYNC_COMMIT,
   SYNC_MOVE,
   SYNC_TOMBSTONE,
@@ -184,6 +273,8 @@ export const SYNC_MESSAGE = z.discriminatedUnion('type', [
   SYNC_INDEX,
   SYNC_INDEX_UPDATE,
   SYNC_PUSH,
+  SYNC_PUSH_META,
+  SYNC_PUSH_LINK,
   SYNC_ACCEPT,
   SYNC_CONFLICT,
   SYNC_NEED_BLOCKS,

@@ -5,6 +5,7 @@ import {
   MEDIA_PAGE_ROWS,
   mediaScanCancelled,
 } from '../backup/runner/media-library';
+import { phoneFoldersOf } from './phone-folders';
 import type { LocalMediaItem, LocalMediaSource } from './types';
 
 type MediaLibrary = typeof MediaLibraryModule;
@@ -25,11 +26,19 @@ function itemOf(lib: MediaLibrary, entry: AssetMetadata): LocalMediaItem | null 
     height: dimension(entry.height),
     durationMs: entry.duration === null ? null : entry.duration * 1000,
     video,
+    folder: null,
   };
 }
 
 async function listLibrary(signal?: AbortSignal): Promise<readonly LocalMediaItem[]> {
   const lib = await import('expo-media-library');
+  const items = await scanAssets(lib, signal);
+  if (mediaScanCancelled(signal)) return items;
+  const folders = await phoneFoldersOf(lib, signal);
+  return items.map((item) => ({ ...item, folder: folders.get(item.id) ?? null }));
+}
+
+async function scanAssets(lib: MediaLibrary, signal?: AbortSignal): Promise<LocalMediaItem[]> {
   const items: LocalMediaItem[] = [];
   for (let offset = 0; ; offset += MEDIA_PAGE_ROWS) {
     if (mediaScanCancelled(signal)) return items;

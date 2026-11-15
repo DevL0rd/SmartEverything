@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FitnessFrame } from '../components/fitness-frame';
+import { FitnessShell } from '../components/fitness-shell';
 import { FitnessToolbar } from '../components/fitness-toolbar';
 import { NightCard } from '../components/night-card';
 import { SleepPatternCard } from '../components/sleep-pattern-card';
@@ -21,13 +21,13 @@ function Trends({ window, today }: { readonly window: Window; readonly today: st
 export function SleepScreen(): ReactNode {
   const { day, today, range } = useFitnessParams('week');
   return (
-    <FitnessFrame
+    <FitnessShell
       tab="sleep"
       width="detail"
       toolbar={<FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />}
     >
       <NightCard day={day} quiet={range !== 'day'} />
       {range === 'day' ? null : <Trends window={windowOf(range, day)} today={today} />}
-    </FitnessFrame>
+    </FitnessShell>
   );
 }

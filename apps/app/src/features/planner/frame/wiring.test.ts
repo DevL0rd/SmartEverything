@@ -71,19 +71,24 @@ describe('the planner notices', () => {
 
 describe('the planner pages', () => {
   it('load every page, the item screen and the feature entry', async () => {
-    const [today, tasks, calendar, insights, item, feature, routes] = await Promise.all([
-      import('../today/today-page'),
-      import('../tasks/tasks-page'),
-      import('../calendar/calendar-page'),
-      import('../insights/insights-page'),
-      import('../item'),
-      import('..'),
-      import('../routes'),
-    ]);
+    const [today, tasks, calendar, insights, booking, search, item, feature, routes] =
+      await Promise.all([
+        import('../today/today-page'),
+        import('../tasks/tasks-page'),
+        import('../calendar/calendar-page'),
+        import('../insights/insights-page'),
+        import('../booking/booking-page'),
+        import('../search/search-screen'),
+        import('../item'),
+        import('..'),
+        import('../routes'),
+      ]);
     expect(typeof today.TodayPage).toBe('function');
     expect(typeof tasks.TasksPage).toBe('function');
     expect(typeof calendar.CalendarPage).toBe('function');
     expect(typeof insights.InsightsPage).toBe('function');
+    expect(typeof booking.BookingPage).toBe('function');
+    expect(typeof search.PlannerSearchScreen).toBe('function');
     expect(typeof item.ItemScreen).toBe('function');
     expect(typeof feature.PlannerFrame).toBe('function');
     expect(typeof feature.QuickAddBar).toBe('function');
@@ -91,6 +96,8 @@ describe('the planner pages', () => {
       '/planner/tasks',
       '/planner/calendar',
       '/planner/insights',
+      '/planner/booking',
+      '/planner/search',
     ]);
   });
 });

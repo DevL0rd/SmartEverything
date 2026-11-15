@@ -1,6 +1,6 @@
 import { insideClockWindow, localClock, type PlannerPreferences } from '@smarteverything/domain';
 import { clock24, clockOfMinutes, localDayKey, zonedInstant } from '../../../format/time';
-import { dayLabelOf } from '../../planner/calendar/month-model';
+import { dayLabelOf } from '../../planner';
 import { weekdayNameOf } from './world-time';
 
 export const DAY_HOURS = 24;

@@ -11,6 +11,7 @@ const SHORT_COMMIT_LENGTH = 8;
 
 export type StepState =
   | 'queued'
+  | 'waiting'
   | 'running'
   | 'done'
   | 'offered'
@@ -58,6 +59,7 @@ export const COMPONENT: Readonly<
 
 export const STEP_LOOK: Readonly<Record<StepState, Look>> = {
   queued: { label: 'Queued', tone: 'neutral', icon: 'clock' },
+  waiting: { label: 'Waiting for a build', tone: 'neutral', icon: 'clock' },
   running: { label: 'Running', tone: 'primary', icon: 'loader' },
   done: { label: 'Done', tone: 'positive', icon: 'circleCheck' },
   offered: { label: 'Offered', tone: 'positive', icon: 'circleCheck' },
@@ -71,6 +73,7 @@ export const STEP_LOOK: Readonly<Record<StepState, Look>> = {
 export const REVISION_LOOK: Readonly<Record<UpdateRevisionStatus, Look>> = {
   queued: { label: 'Queued', tone: 'neutral', icon: 'clock' },
   running: { label: 'Releasing', tone: 'primary', icon: 'loader' },
+  waiting: { label: 'Waiting for a build', tone: 'neutral', icon: 'clock' },
   done: { label: 'Released', tone: 'positive', icon: 'circleCheck' },
   failed: { label: 'Failed', tone: 'critical', icon: 'circleX' },
   refused: { label: 'Refused', tone: 'warning', icon: 'ban' },
@@ -93,6 +96,8 @@ export function stepState(revision: UpdateRevision, step: UpdateRevisionStep): S
   switch (step.status) {
     case 'pending':
       return 'queued';
+    case 'waiting':
+      return 'waiting';
     case 'running':
       return 'running';
     case 'done':
@@ -116,8 +121,16 @@ export function shortCommit(commit: string): string {
   return commit.slice(0, SHORT_COMMIT_LENGTH);
 }
 
+function waitingStepsLine(revision: UpdateRevision): string | null {
+  const waiting = revision.steps.filter((step) => step.status === 'waiting');
+  if (waiting.length === 0) return null;
+  return waiting
+    .map((step) => `${COMPONENT[step.component].name}: ${step.detail ?? 'waiting for a build'}`)
+    .join(' · ');
+}
+
 function waitingLine(revision: UpdateRevision): string | null {
-  if (revision.steps.length > 0) return null;
+  if (revision.steps.length > 0) return waitingStepsLine(revision);
   if (revision.status === 'queued') return 'Waiting for the current release to finish.';
   if (revision.status === 'running') return 'Working out what this push needs to release.';
   if (revision.status === 'superseded')

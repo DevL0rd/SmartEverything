@@ -1,6 +1,6 @@
-import type { CapabilityKey, JsonValue, ProcessWindow, VacuumSlot } from '@smarteverything/domain';
+import type { CapabilityKey, JsonValue, VacuumSlot } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Viewers, deviceTarget } from '../../src/metrics/viewers';
+import { Viewers, deviceTarget, type DeviceDetail } from '../../src/metrics/viewers';
 import { VacuumLiveRoute, type RouteIo } from '../../src/vacuum/live-route';
 import {
   VACUUM_LOCATING_KEY,
@@ -28,7 +28,7 @@ interface FeedCall {
 }
 
 let logs: CapturedLogs;
-let viewers: Viewers<ProcessWindow>;
+let viewers: Viewers<DeviceDetail>;
 let timer: FakeRouteTimer;
 let feed: FeedCall[];
 let actions: JsonValue[][];
@@ -97,7 +97,7 @@ async function mapPush(slot: VacuumSlot = 'current'): Promise<void> {
 
 beforeEach(() => {
   logs = captureLogs();
-  viewers = new Viewers<ProcessWindow>();
+  viewers = new Viewers<DeviceDetail>();
   timer = new FakeRouteTimer();
   feed = [];
   actions = [];

@@ -1,14 +1,38 @@
 import type { DriveItem, DriveRoot } from '@smarteverything/domain';
 import mime from 'mime-types';
-import type {
-  DriveItemDraft,
-  DriveItemEntry,
-  DriveItemsRepository,
-} from '../store/repositories/drive-items';
+import type { DriveInode, DriveInodesRepository } from '../store/repositories/drive-inodes';
+import type { DriveInodePatch } from '../store/repositories/drive-item-inodes';
+import type { DriveItemDraft, DriveItemsRepository } from '../store/repositories/drive-items';
+import {
+  freshDraft,
+  ownersOf,
+  resolveUnreadable,
+  type Common,
+  type FileType,
+} from './scanner-drafts';
+import {
+  carriesFile,
+  carriesLink,
+  identityKey,
+  indexedOf,
+  isoOf,
+  kindOf,
+  linked,
+  modeDrifts,
+  sameContent,
+  sameIdentity,
+  specialPatch,
+  under,
+  type Indexed,
+} from './scanner-index';
 import { WALK_BATCH_ROWS, type WalkEntry } from './scanner-walk';
 
 export interface CommitDependencies {
-  readonly items: Pick<DriveItemsRepository, 'byPath' | 'children' | 'find' | 'remove' | 'write'>;
+  readonly items: Pick<
+    DriveItemsRepository,
+    'byPath' | 'children' | 'find' | 'identityOf' | 'remove' | 'write'
+  >;
+  readonly inodes: Pick<DriveInodesRepository, 'findMany' | 'names' | 'ofItem'>;
   readonly write: <T>(work: () => T) => T;
   readonly now: () => Date;
   readonly newId: () => string;
@@ -19,19 +43,6 @@ export interface ScanTotals {
   readonly folders: number;
   readonly bytes: number;
 }
-
-interface Indexed {
-  readonly id: string;
-  readonly relPath: string;
-  readonly folder: boolean;
-  readonly bytes: number;
-  readonly modifiedAt: string;
-  readonly childCount: number | null;
-  readonly dev: string | null;
-  readonly ino: string | null;
-}
-
-type FileKind = 'image' | 'video' | 'audio' | 'document' | 'other';
 
 const OCTET_STREAM = 'application/octet-stream';
 
@@ -53,7 +64,7 @@ export class ScanOrderError extends Error {
   }
 }
 
-export function classify(name: string): { readonly mime: string; readonly kind: FileKind } {
+export function classify(name: string): FileType {
   const found = mime.lookup(name);
   const type = found === false ? OCTET_STREAM : found;
   if (type.startsWith('image/')) return { mime: type, kind: 'image' };
@@ -63,126 +74,10 @@ export function classify(name: string): { readonly mime: string; readonly kind: 
   return { mime: type, kind: document ? 'document' : 'other' };
 }
 
-function identityKey(dev: string | null, ino: string | null): string {
-  return `${dev ?? ''}:${ino ?? ''}`;
-}
-
-function indexedOf(entry: DriveItemEntry): Indexed {
-  const item = entry.item;
-  return {
-    id: item.id,
-    relPath: item.relPath,
-    folder: item.kind === 'folder',
-    bytes: item.bytes,
-    modifiedAt: item.modifiedAt,
-    childCount: item.kind === 'folder' ? item.childCount : null,
-    dev: entry.identity?.dev ?? null,
-    ino: entry.identity?.ino ?? null,
-  };
-}
-
-function isoOf(entry: WalkEntry): string {
-  return new Date(entry.modifiedMs).toISOString();
-}
-
-function sameIdentity(indexed: Indexed, entry: WalkEntry): boolean {
-  return (
-    indexed.folder === (entry.kind === 'folder') &&
-    indexed.dev === entry.dev &&
-    indexed.ino === entry.ino
-  );
-}
-
-function sameContent(indexed: Indexed, entry: WalkEntry): boolean {
-  if (indexed.modifiedAt !== isoOf(entry) || indexed.bytes !== entry.bytes) return false;
-  return entry.kind !== 'folder' || indexed.childCount === entry.childCount;
-}
-
-function under(path: string, prefix: string): boolean {
-  return path === prefix || path.startsWith(`${prefix}/`);
-}
-
-interface Common {
-  readonly id: string;
-  readonly rootId: string;
-  readonly parentId: string | null;
-  readonly relPath: string;
-  readonly name: string;
-  readonly modifiedAt: string;
-  readonly addedAt: string;
-  readonly starred: false;
-  readonly shared: false;
-  readonly outside: boolean;
-  readonly addedByProfileId: string | null;
-  readonly remoteId: string | null;
-  readonly remoteRev: string | null;
-}
-
-const NO_MEDIA = {
-  takenAt: null,
-  width: null,
-  height: null,
-  orientation: null,
-  camera: null,
-  exposure: null,
-  place: null,
-} as const;
-
-function fileDraft(common: Common, entry: WalkEntry): DriveItemDraft {
-  const { mime: type, kind } = classify(entry.name);
-  const file = {
-    ...common,
-    mime: type,
-    bytes: entry.bytes,
-    sha256: null,
-    integrity: 'unknown',
-    thumb: { state: 'none' },
-  } as const;
-  switch (kind) {
-    case 'image':
-      return { ...file, ...NO_MEDIA, kind };
-    case 'video':
-      return { ...file, ...NO_MEDIA, kind, durationMs: null };
-    case 'audio':
-      return { ...file, kind, takenAt: null, durationMs: null };
-    case 'document':
-    case 'other':
-      return { ...file, kind };
-  }
-}
-
-function freshDraft(common: Common, entry: WalkEntry): DriveItemDraft {
-  if (entry.kind === 'folder') {
-    return {
-      ...common,
-      kind: 'folder',
-      childCount: entry.childCount ?? 0,
-      bytes: entry.bytes,
-    };
-  }
-  return fileDraft(common, entry);
-}
-
-function resolveUnreadable(entry: WalkEntry, base: DriveItem | null): WalkEntry {
-  if (entry.kind !== 'folder' || entry.childCount !== null || base?.kind !== 'folder') {
-    return entry;
-  }
-  return { ...entry, childCount: base.childCount, bytes: base.bytes };
-}
-
-function ownersOf(
-  base: DriveItem | null,
-): Pick<Common, 'addedByProfileId' | 'remoteId' | 'remoteRev'> {
-  return {
-    addedByProfileId: base?.addedByProfileId ?? null,
-    remoteId: base?.remoteId ?? null,
-    remoteRev: base?.remoteRev ?? null,
-  };
-}
-
 export class ScanCommitter {
   private readonly live = new Map<string, Indexed>();
-  private readonly byIdentity = new Map<string, Indexed>();
+  private readonly byIdentity = new Map<string, Indexed[]>();
+  private readonly inodeOfIdentity = new Map<string, number>();
   private readonly seen = new Set<string>();
   private readonly deferred: WalkEntry[] = [];
   private readonly known: boolean;
@@ -214,7 +109,9 @@ export class ScanCommitter {
     const gone = [...this.live.values()]
       .filter(
         (indexed) =>
-          !this.seen.has(indexed.id) && !unreadable.some((path) => under(indexed.relPath, path)),
+          indexed.kind !== 'special' &&
+          !this.seen.has(indexed.id) &&
+          !unreadable.some((path) => under(indexed.relPath, path)),
       )
       .sort((left, right) => left.relPath.length - right.relPath.length);
     for (let from = 0; from < gone.length; from += WALK_BATCH_ROWS) {
@@ -243,11 +140,22 @@ export class ScanCommitter {
         limit: WALK_BATCH_ROWS,
         viewer: null,
       });
+      const inodes = new Map(
+        this.deps.inodes
+          .findMany(window.entries.map((entry) => entry.inodeId))
+          .map((inode) => [inode.id, inode]),
+      );
       for (const entry of window.entries) {
-        const indexed = indexedOf(entry);
+        const indexed = indexedOf(entry, inodes.get(entry.inodeId));
         this.live.set(indexed.relPath, indexed);
-        this.byIdentity.set(identityKey(indexed.dev, indexed.ino), indexed);
-        if (indexed.folder) folders.push(indexed.id);
+        const key = identityKey(indexed.dev, indexed.ino);
+        const known = this.byIdentity.get(key);
+        if (known === undefined) this.byIdentity.set(key, [indexed]);
+        else known.push(indexed);
+        if (indexed.kind === 'file' && !this.inodeOfIdentity.has(key)) {
+          this.inodeOfIdentity.set(key, indexed.inodeId);
+        }
+        if (indexed.kind === 'folder') folders.push(indexed.id);
       }
       after = window.next;
     } while (after !== null);
@@ -260,36 +168,44 @@ export class ScanCommitter {
       this.keep(hit, entry);
       return;
     }
-    const mover = this.mover(entry);
+    const mover = linked(entry) ? undefined : this.mover(entry);
     if (mover !== undefined) {
       this.move(mover, entry, hit);
-    } else if (hit !== undefined && !hit.folder && entry.kind === 'file') {
+    } else if (
+      linked(entry) ||
+      (hit !== undefined && hit.kind !== 'folder' && entry.kind === 'file')
+    ) {
       this.deferred.push(entry);
-    } else if (hit !== undefined) {
-      this.save(hit, entry);
     } else {
-      this.save(null, entry);
+      this.save(hit ?? null, entry);
     }
   }
 
   private settle(entry: WalkEntry): void {
     const hit = this.live.get(entry.relPath);
+    const mover = this.mover(entry);
+    if (mover !== undefined) {
+      this.move(mover, entry, hit);
+      return;
+    }
     this.save(hit !== undefined && !this.seen.has(hit.id) ? hit : null, entry);
   }
 
   private mover(entry: WalkEntry): Indexed | undefined {
-    const candidate = this.byIdentity.get(identityKey(entry.dev, entry.ino));
-    const matches =
-      candidate !== undefined &&
-      !this.seen.has(candidate.id) &&
-      candidate.relPath !== entry.relPath &&
-      sameIdentity(candidate, entry) &&
-      (entry.kind === 'folder' || sameContent(candidate, entry));
-    return matches ? candidate : undefined;
+    return (this.byIdentity.get(identityKey(entry.dev, entry.ino)) ?? []).find(
+      (candidate) =>
+        !this.seen.has(candidate.id) &&
+        candidate.relPath !== entry.relPath &&
+        sameIdentity(candidate, entry) &&
+        (entry.kind === 'folder' || sameContent(candidate, entry)),
+    );
   }
 
   private keep(hit: Indexed, entry: WalkEntry): void {
-    if ((entry.kind === 'folder' && entry.childCount === null) || sameContent(hit, entry)) {
+    if (
+      (entry.kind === 'folder' && entry.childCount === null) ||
+      (sameContent(hit, entry) && !modeDrifts(hit.mode, entry))
+    ) {
       this.seen.add(hit.id);
       return;
     }
@@ -305,20 +221,83 @@ export class ScanCommitter {
   }
 
   private save(previous: Indexed | null, entry: WalkEntry): void {
-    const base = this.base(previous, entry);
-    const id = base?.id ?? this.deps.newId();
+    const base = this.reusable(this.base(previous, entry), previous, entry);
     const resolved = resolveUnreadable(entry, base);
-    const common = this.common(id, resolved, base);
-    const draft =
-      base !== null && this.carries(base, resolved)
-        ? { ...base, ...common }
-        : freshDraft(common, resolved);
-    const written = this.deps.items.write({
+    const common = this.common(base?.id ?? this.deps.newId(), resolved, base);
+    const carried = base !== null && this.carries(base, resolved);
+    const draft = carried
+      ? { ...base, ...common }
+      : freshDraft(common, resolved, classify(resolved.name));
+    const written = this.store(draft, resolved, base, carried);
+    this.seen.add(written.id);
+    this.remember(written, entry);
+  }
+
+  private store(
+    draft: DriveItemDraft,
+    entry: WalkEntry,
+    base: DriveItem | null,
+    carried: boolean,
+  ): DriveItem {
+    const share =
+      base === null && linked(entry)
+        ? this.inodeOfIdentity.get(identityKey(entry.dev, entry.ino))
+        : undefined;
+    return this.deps.items.write({
       item: draft,
       identity: { dev: entry.dev, ino: entry.ino },
+      inode: this.inodePatch(base, entry, carried),
+      ...(share === undefined ? {} : { shareInode: share }),
     }).item;
-    this.seen.add(id);
-    this.live.set(entry.relPath, this.indexed(written, entry));
+  }
+
+  private remember(written: DriveItem, entry: WalkEntry): void {
+    const key = identityKey(entry.dev, entry.ino);
+    const inode = this.deps.inodes.ofItem(written.id);
+    if (inode !== undefined && entry.kind === 'file' && !this.inodeOfIdentity.has(key)) {
+      this.inodeOfIdentity.set(key, inode.id);
+    }
+    this.live.set(entry.relPath, this.indexed(written, entry, inode));
+  }
+
+  private reusable(
+    base: DriveItem | null,
+    previous: Indexed | null,
+    entry: WalkEntry,
+  ): DriveItem | null {
+    if (base === null) return null;
+    if (kindOf(base) !== entry.kind || this.diverged(base, previous, entry)) {
+      this.evict(base.id, base.relPath);
+      return null;
+    }
+    return base;
+  }
+
+  private diverged(base: DriveItem, previous: Indexed | null, entry: WalkEntry): boolean {
+    if (entry.kind !== 'file' || this.onSameFile(base, previous, entry)) return false;
+    const inode = this.deps.inodes.ofItem(base.id);
+    return inode !== undefined && this.deps.inodes.names(inode.id).length > 1;
+  }
+
+  private onSameFile(base: DriveItem, previous: Indexed | null, entry: WalkEntry): boolean {
+    const identity =
+      previous?.id === base.id
+        ? { dev: previous.dev, ino: previous.ino }
+        : this.deps.items.identityOf(base.id);
+    return identity?.dev === entry.dev && identity.ino === entry.ino;
+  }
+
+  private inodePatch(base: DriveItem | null, entry: WalkEntry, carried: boolean): DriveInodePatch {
+    const stored = base === null ? undefined : this.deps.inodes.ofItem(base.id);
+    const mode =
+      entry.kind !== 'link' && (stored === undefined || modeDrifts(stored.mode, entry))
+        ? entry.mode
+        : undefined;
+    return {
+      ...(mode === undefined ? {} : { mode }),
+      ...(carried ? {} : { mtimeNs: BigInt(entry.mtimeNs) }),
+      ...(entry.kind === 'special' ? specialPatch(entry) : {}),
+    };
   }
 
   private base(previous: Indexed | null, entry: WalkEntry): DriveItem | null {
@@ -329,13 +308,16 @@ export class ScanCommitter {
   }
 
   private carries(base: DriveItem, entry: WalkEntry): boolean {
-    if (entry.kind === 'folder') return false;
-    return (
-      base.kind !== 'folder' &&
-      base.mime === classify(entry.name).mime &&
-      base.bytes === entry.bytes &&
-      base.modifiedAt === isoOf(entry)
-    );
+    switch (entry.kind) {
+      case 'folder':
+        return false;
+      case 'link':
+        return carriesLink(base, entry);
+      case 'special':
+        return base.kind === 'special';
+      case 'file':
+        return carriesFile(base, entry, classify(entry.name).mime);
+    }
   }
 
   private common(id: string, entry: WalkEntry, base: DriveItem | null): Common {
@@ -361,16 +343,19 @@ export class ScanCommitter {
     return parent.id;
   }
 
-  private indexed(item: DriveItem, entry: WalkEntry): Indexed {
+  private indexed(item: DriveItem, entry: WalkEntry, inode: DriveInode | undefined): Indexed {
     return {
       id: item.id,
       relPath: item.relPath,
-      folder: item.kind === 'folder',
+      kind: kindOf(item),
       bytes: item.bytes,
       modifiedAt: item.modifiedAt,
       childCount: item.kind === 'folder' ? item.childCount : null,
+      target: item.kind === 'link' ? item.linkTarget : null,
       dev: entry.dev,
       ino: entry.ino,
+      inodeId: inode?.id ?? 0,
+      mode: inode?.mode ?? entry.mode,
     };
   }
 
@@ -391,11 +376,11 @@ export class ScanCommitter {
     let folders = 0;
     let bytes = 0;
     for (const indexed of this.live.values()) {
-      if (indexed.folder) {
+      if (indexed.kind === 'folder') {
         folders += 1;
       } else {
         items += 1;
-        bytes += indexed.bytes;
+        if (indexed.kind === 'file') bytes += indexed.bytes;
       }
     }
     return { items, folders, bytes };

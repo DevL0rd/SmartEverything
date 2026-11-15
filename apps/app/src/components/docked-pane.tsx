@@ -174,7 +174,7 @@ export function DockedPane({
   return (
     <View className="h-full flex-row">
       {side === 'right' ? handle : null}
-      <Animated.View style={frame} className="h-full min-w-0">
+      <Animated.View style={frame} className="h-full min-w-0 overflow-hidden">
         {children}
       </Animated.View>
       {side === 'left' ? handle : null}

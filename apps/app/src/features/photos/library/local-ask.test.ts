@@ -16,6 +16,7 @@ const ITEM: LocalMediaItem = {
   height: null,
   durationMs: null,
   video: false,
+  folder: null,
 };
 
 afterEach(() => {

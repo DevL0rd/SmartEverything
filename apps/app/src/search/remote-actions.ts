@@ -17,9 +17,9 @@ function ofKinds(...kinds: readonly Device['kind'][]): (device: Device) => boole
 
 const REMOTE_ACTIONS: readonly RemoteAction[] = [
   {
-    key: 'scene',
-    title: 'Make a scene',
-    keywords: ['scene', 'record', 'sequence', 'several keys', 'macro', 'routine', 'ir'],
+    key: 'automation',
+    title: 'Set up an automation',
+    keywords: ['automation', 'sequence', 'several keys', 'macro', 'routine', 'ir'],
     applies: ofKinds('ir_blaster'),
     place: 'remote',
   },

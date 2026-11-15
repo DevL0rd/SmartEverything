@@ -51,6 +51,7 @@ describe('places', () => {
     return new FilePlacesReader(home, {
       mounts: join(folder, 'mounts'),
       userDirs: join(folder, 'user-dirs.dirs'),
+      trash: join(folder, 'Trash'),
     });
   }
 
@@ -66,6 +67,7 @@ describe('places', () => {
       ['games', 'drive'],
       ['stick', 'drive'],
       ['nas', 'drive'],
+      ['Trash', 'trash'],
     ]);
   });
 
@@ -87,7 +89,8 @@ describe('places', () => {
     const places = await new FilePlacesReader(home, {
       mounts: join(folder, 'missing'),
       userDirs: join(folder, 'missing'),
+      trash: join(folder, 'Trash'),
     }).read();
-    expect(places.places.map((place) => place.label)).toEqual(['Home', 'Computer']);
+    expect(places.places.map((place) => place.label)).toEqual(['Home', 'Computer', 'Trash']);
   });
 });

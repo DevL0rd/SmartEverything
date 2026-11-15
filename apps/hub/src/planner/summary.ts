@@ -8,8 +8,10 @@ import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import { composeDayFromStore, summarise, type DayReader } from './day';
+import { profilesSeeing, type PlannerAccessStore } from './sharing/visibility';
 
 export type SummaryStore = DayReader &
+  PlannerAccessStore &
   Pick<Store, 'profiles' | 'settings' | 'plannerTimers' | 'feed'>;
 
 export interface SummaryDeskOptions {
@@ -19,11 +21,8 @@ export interface SummaryDeskOptions {
   readonly log: Logger;
 }
 
-export function profileIdOfItem(store: SummaryStore, itemId: string): string | null {
-  for (const profile of store.profiles.list()) {
-    if (store.plannerItems.find(itemId, profile.id) !== undefined) return profile.id;
-  }
-  return null;
+export function profilesOfItem(store: SummaryStore, itemId: string): string[] {
+  return profilesSeeing(store, itemId);
 }
 
 export class SummaryDesk {
@@ -84,23 +83,43 @@ export class SummaryDesk {
   }
 
   private follow(change: LiveChange): void {
-    if (change.table === 'settings') {
-      this.refreshAll();
-    } else if (change.table === 'planner_occurrences') {
+    if (change.table === 'settings') this.refreshAll();
+    else if (change.table === 'planner_occurrences') {
       this.followOccurrence(change.record ?? change.oldRecord);
-    } else if (
-      change.table === 'planner_items' ||
-      change.table === 'planner_alarms' ||
-      change.table === 'planner_timers'
-    ) {
+    } else if (change.table === 'planner_items') {
+      if (change.record === null) this.refreshAll();
+      else this.refreshSeeing(change.record.id, change.record.profile_id);
+    } else if (change.table === 'planner_guests') {
       const row = change.record ?? change.oldRecord;
-      if (row !== null) this.refresh(row.profile_id);
+      if (row !== null) this.refreshSeeing(row.item_id, null);
+    } else {
+      this.followOwned(change);
     }
   }
 
+  private followOwned(change: LiveChange): void {
+    if (
+      change.table !== 'planner_collection_shares' &&
+      change.table !== 'planner_alarms' &&
+      change.table !== 'planner_timers'
+    ) {
+      return;
+    }
+    const row = change.record ?? change.oldRecord;
+    if (row !== null) this.refresh(row.profile_id);
+  }
+
+  private refreshSeeing(itemId: string, owner: string | null): void {
+    const seeing = new Set([
+      ...profilesOfItem(this.options.store, itemId),
+      ...(owner === null ? [] : [owner]),
+    ]);
+    if (seeing.size === 0) this.refreshAll();
+    else for (const profileId of seeing) this.refresh(profileId);
+  }
+
   private followOccurrence(row: { readonly item_id: string } | null): void {
-    const profileId = row === null ? null : profileIdOfItem(this.options.store, row.item_id);
-    if (profileId === null) this.refreshAll();
-    else this.refresh(profileId);
+    if (row === null) this.refreshAll();
+    else this.refreshSeeing(row.item_id, null);
   }
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
+import type { NativeGesture } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, {
   SwipeDirection,
   type SwipeableMethods,
@@ -18,6 +19,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { Icon } from '../../../components/icon';
 import { DURATION, useMotion } from '../../../design/motion';
 import { lightTap } from '../../../platform/haptics';
+import { yieldRegistry } from './inner-scroll';
+import { InnerScrollYield } from './inner-scroll-yield';
 
 const ARM_PX = 44;
 
@@ -84,6 +87,8 @@ export function SwipeToQuote({
 }): ReactNode {
   const ref = useRef<SwipeableMethods>(null);
   const [armed, setArmed] = useState(false);
+  const [inner, setInner] = useState<NativeGesture[]>([]);
+  const yieldTo = useMemo(() => yieldRegistry(setInner), []);
   const arm = useCallback(() => {
     setArmed(true);
   }, []);
@@ -96,6 +101,7 @@ export function SwipeToQuote({
     <ReanimatedSwipeable
       ref={ref}
       enabled={enabled}
+      requireExternalGestureToFail={inner}
       leftThreshold={ARM_PX}
       overshootLeft={false}
       overshootRight={false}
@@ -109,7 +115,9 @@ export function SwipeToQuote({
         ref.current?.close();
       }}
     >
-      <View onTouchStart={arm}>{children}</View>
+      <InnerScrollYield value={yieldTo}>
+        <View onTouchStart={arm}>{children}</View>
+      </InnerScrollYield>
     </ReanimatedSwipeable>
   );
 }

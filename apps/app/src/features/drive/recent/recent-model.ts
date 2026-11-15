@@ -12,6 +12,7 @@ import type { ColourRole } from '../../../design/tokens';
 import { zonedDateFormat } from '../../../format/locale';
 import { count } from '../../../format/number';
 import { clock, localDayKey, shiftDay, startOfDayKey } from '../../../format/time';
+import { ENTRY_ICON } from '../model/item-content';
 import { driveLocationHref } from '../model/section-routes';
 
 type DriveRoots = readonly Pick<DriveRoot, 'id' | 'scope'>[];
@@ -58,8 +59,17 @@ export function groupOf(at: string, days: RecentDays): RecentGroup {
   return day >= days.weekStart ? 'week' : 'earlier';
 }
 
+export function rootIdOf(entry: DriveRecentEntry): string {
+  return entry.kind === 'shortcut' ? entry.shortcut.rootId : entry.item.rootId;
+}
+
+export function relPathOf(entry: DriveRecentEntry): string {
+  return entry.kind === 'shortcut' ? '' : entry.item.relPath;
+}
+
 export function entryKeyOf(entry: DriveRecentEntry): string {
-  return `${entry.kind}\n${entry.item.id}\n${entry.at}`;
+  const id = entry.kind === 'shortcut' ? entry.shortcut.id : entry.item.id;
+  return `${entry.kind}\n${id}\n${entry.at}`;
 }
 
 export function linesOf(entries: readonly DriveRecentEntry[], days: RecentDays): RecentLine[] {
@@ -136,4 +146,6 @@ export const KIND_LOOK: Readonly<Record<DriveItem['kind'], KindLook>> = {
   audio: { icon: 'music', colour: 'viz-4' },
   document: { icon: 'fileText', colour: 'viz-6' },
   other: { icon: 'fileText', colour: 'track' },
+  link: { icon: ENTRY_ICON.link, colour: 'track' },
+  special: { icon: ENTRY_ICON.special, colour: 'track' },
 };

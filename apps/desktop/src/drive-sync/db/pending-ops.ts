@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ClientSql } from './sql.js';
 
-export const PENDING_OP_KINDS = ['push', 'move', 'tombstone'] as const;
+export const PENDING_OP_KINDS = ['push', 'move', 'tombstone', 'meta', 'link'] as const;
 export const PENDING_OP_STATES = ['queued', 'sent'] as const;
 
 const OP_ROW = z

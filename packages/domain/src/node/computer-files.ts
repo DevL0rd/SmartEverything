@@ -23,12 +23,24 @@ export const FILE_ENTRY = z.strictObject({
   name: z.string().min(1),
   path: FILE_PATH,
   kind: z.enum(FILE_KINDS),
+  mime: z.string().min(1).nullable(),
   size: z.number().nonnegative(),
   modifiedAt: z.iso.datetime({ offset: true }),
   hidden: z.boolean(),
 });
 
 export type FileEntry = z.infer<typeof FILE_ENTRY>;
+
+export const FILE_SORT_FIELDS = ['name', 'size', 'modifiedAt'] as const;
+
+export const FILE_SORT_DIRECTIONS = ['asc', 'desc'] as const;
+
+export const FILE_SORT = z.strictObject({
+  field: z.enum(FILE_SORT_FIELDS),
+  direction: z.enum(FILE_SORT_DIRECTIONS),
+});
+
+export type FileSort = z.infer<typeof FILE_SORT>;
 
 export const FILE_LIST = z.strictObject({
   path: FILE_PATH,
@@ -85,14 +97,43 @@ export type FileProperties = z.infer<typeof FILE_PROPERTIES>;
 export const FILE_SEARCH_QUERY = z.strictObject({
   path: FILE_PATH,
   text: z.string().trim().min(1).max(200),
+  contents: z.boolean().default(false),
   cursor: z.string().min(1).nullable(),
 });
 
 export type FileSearchQuery = z.infer<typeof FILE_SEARCH_QUERY>;
 
+export const FILE_HIT_KINDS = ['name', 'text'] as const;
+
+export const FILE_HIT_RANGE = z
+  .strictObject({ start: z.int().nonnegative(), end: z.int().positive() })
+  .refine((range) => range.end > range.start, { message: 'a range ends after it starts' });
+
+export const FILE_SEARCH_HIT = z
+  .strictObject({
+    kind: z.enum(FILE_HIT_KINDS),
+    snippet: z.string().min(1),
+    line: z.int().positive().nullable(),
+    ranges: z.array(FILE_HIT_RANGE).min(1),
+  })
+  .refine((hit) => (hit.kind === 'text') === (hit.line !== null), {
+    message: 'a text hit names its line and a name hit does not',
+    path: ['line'],
+  })
+  .refine((hit) => hit.ranges.every((range) => range.end <= hit.snippet.length), {
+    message: 'every range lies inside the snippet',
+    path: ['ranges'],
+  });
+
+export type FileSearchHit = z.infer<typeof FILE_SEARCH_HIT>;
+
+export const FILE_SEARCH_MATCH = z.strictObject({ entry: FILE_ENTRY, hit: FILE_SEARCH_HIT });
+
+export type FileSearchMatch = z.infer<typeof FILE_SEARCH_MATCH>;
+
 export const FILE_SEARCH_RESULT = z.strictObject({
   path: FILE_PATH,
-  matches: z.array(FILE_ENTRY),
+  matches: z.array(FILE_SEARCH_MATCH),
   scanned: z.int().nonnegative(),
   next: z.string().min(1).nullable(),
 });
@@ -131,6 +172,13 @@ export const FILE_WRITE_CHANGE = z.discriminatedUnion('action', [
   z.strictObject({
     action: z.literal('restore'),
     items: z.array(z.string().min(1)).min(1).describe('trashId values returned by trash'),
+  }),
+  z.strictObject({
+    action: z.literal('delete_now'),
+    items: z
+      .array(z.string().min(1))
+      .min(1)
+      .describe('trashId values from the Trash listing; they are deleted for good'),
   }),
 ]);
 
@@ -181,10 +229,25 @@ export const FILE_TOOL_CHANGE = z.discriminatedUnion('action', [
 
 export type FileToolChange = z.infer<typeof FILE_TOOL_CHANGE>;
 
-export const FILE_PLACE_KINDS = ['home', 'root', 'folder', 'drive'] as const;
+export const FILE_PLACE_KINDS = ['home', 'root', 'folder', 'drive', 'trash'] as const;
+
+export const FILE_ABILITIES = [
+  'write',
+  'upload',
+  'search',
+  'contents',
+  'properties',
+  'download',
+  'zip',
+  'trash',
+  'watch',
+] as const;
+
+export type FileAbility = (typeof FILE_ABILITIES)[number];
 
 export const FILE_PLACES = z.strictObject({
   home: FILE_PATH,
+  abilities: z.array(z.enum(FILE_ABILITIES)),
   places: z.array(
     z.strictObject({
       label: z.string().min(1),
@@ -195,6 +258,25 @@ export const FILE_PLACES = z.strictObject({
 });
 
 export type FilePlaces = z.infer<typeof FILE_PLACES>;
+
+export const FILE_TRASH_ENTRY = z.strictObject({
+  trashId: z.string().min(1),
+  name: z.string().min(1),
+  originalPath: FILE_PATH,
+  deletedAt: z.iso.datetime({ offset: true }),
+  size: z.number().nonnegative(),
+  kind: z.enum(FILE_KINDS),
+});
+
+export type FileTrashEntry = z.infer<typeof FILE_TRASH_ENTRY>;
+
+export const FILE_TRASH_LIST = z.strictObject({
+  entries: z.array(FILE_TRASH_ENTRY),
+  total: z.int().nonnegative(),
+  next: z.int().nonnegative().nullable(),
+});
+
+export type FileTrashList = z.infer<typeof FILE_TRASH_LIST>;
 
 export const DOWNLOAD_PATHS = z.array(FILE_PATH).min(1);
 

@@ -2,6 +2,7 @@ import {
   NODE_FRAME,
   type AdapterSink,
   type ComputerAction,
+  type ComputerFilesChangedNotice,
   type ComputerLiveNotice,
   type ComputerParts,
   type ComputerPartsUpdate,
@@ -11,17 +12,17 @@ import {
   type HistoryPolicy,
   type JsonValue,
   type MachineActionSupport,
+  type NodeFilesChanged,
   type NodeFrame,
   type NodeHello,
   type NodeRequest,
   type NodeResult,
   type NodeSampleFrame,
-  type ProcessWindow,
   type RelayNodeFrame,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { MetricHistory } from '../metrics/history';
-import { deviceTarget, type ViewDemand, type Viewers } from '../metrics/viewers';
+import { deviceTarget, type ViewDemand, type Viewers, type DeviceDetail } from '../metrics/viewers';
 import type { HubLink } from '../node/link';
 import { AppFocusTracker, type AppTime } from './app-focus';
 import { AppPresence, type AppPresenceOptions } from './app-presence';
@@ -45,9 +46,9 @@ export interface ComputerSessionOptions
   readonly link: HubLink;
   readonly sink: AdapterSink;
   readonly history: Pick<MetricHistory, 'push'>;
-  readonly viewers: Pick<Viewers<ProcessWindow>, 'follow'> & FreshViewers;
+  readonly viewers: Pick<Viewers<DeviceDetail>, 'follow'> & FreshViewers;
   readonly policyOf: (deviceId: string) => HistoryPolicy;
-  readonly publish: (notice: ComputerLiveNotice) => void;
+  readonly publish: (notice: ComputerLiveNotice | ComputerFilesChangedNotice) => void;
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly scopesOf: (deviceId: string) => ComputerScopes;
   readonly directory: Pick<ComputerDirectory, 'isHubMachine'>;
@@ -200,19 +201,24 @@ export class ComputerSession {
       if (!this.relay.receive(data)) this.options.log.debug('computer.relay_unexpected', {});
       return;
     }
+    if (data.type === 'files_changed') {
+      this.filesChanged(data.path);
+      return;
+    }
     this.route(data);
   }
 
-  private route(data: Exclude<NodeFrame, EarFrame | RelayNodeFrame>): void {
+  private route(data: Exclude<NodeFrame, EarFrame | RelayNodeFrame | NodeFilesChanged>): void {
     switch (data.type) {
       case 'hello':
         this.greeted(data.hello);
         return;
       case 'machine':
-        this.machineReported(data.actions, data.permissions);
+        this.amended({ actions: data.actions, permissions: data.permissions });
         return;
       case 'features':
-        this.featuresReported(data.features);
+        this.options.log.info('computer.features_reported', { features: data.features.length });
+        this.amended({ features: data.features });
         return;
       case 'sample':
         this.sampleReceived(data);
@@ -236,6 +242,11 @@ export class ComputerSession {
     }
   }
 
+  private filesChanged(path: string): void {
+    if (this.deviceId === null || this.scopes?.files !== true) return;
+    this.options.publish({ type: 'computer_files_changed', deviceId: this.deviceId, path });
+  }
+
   private sampleReceived(frame: NodeSampleFrame): void {
     this.measured(frame.at, frame.parts);
     if (frame.key === true) this.fresh.keyFrame();
@@ -247,27 +258,13 @@ export class ComputerSession {
     }
   }
 
-  private machineReported(
-    actions: NodeHello['actions'],
-    permissions: NodeHello['permissions'],
-  ): void {
+  private amended(change: Partial<Pick<NodeHello, 'actions' | 'permissions' | 'features'>>): void {
     const { known } = this;
     if (known === null) {
       this.options.log.warn('computer.frame_before_hello', {});
       return;
     }
-    this.known = { ...known, hello: { ...known.hello, actions, permissions } };
-    this.describeIfChanged(this.known);
-  }
-
-  private featuresReported(features: NodeHello['features']): void {
-    const { known } = this;
-    if (known === null) {
-      this.options.log.warn('computer.frame_before_hello', {});
-      return;
-    }
-    this.options.log.info('computer.features_reported', { features: features.length });
-    this.known = { ...known, hello: { ...known.hello, features } };
+    this.known = { ...known, hello: { ...known.hello, ...change } };
     this.describeIfChanged(this.known);
   }
 
@@ -406,7 +403,7 @@ export class ComputerSession {
     });
   }
 
-  private demanded(deviceId: string, demand: ViewDemand<ProcessWindow>): void {
+  private demanded(deviceId: string, demand: ViewDemand<DeviceDetail>): void {
     this.merged.retain(demandedTopics(demand));
     this.sendDemand(deviceId);
   }
@@ -416,7 +413,7 @@ export class ComputerSession {
     const demand = nodeDemandOf(
       this.options.viewers.demand(deviceTarget(deviceId)),
       this.options.policyOf(deviceId),
-      this.scopes.processes,
+      this.scopes,
     );
     this.options.log.debug('computer.demand_sent', () => ({
       deviceId,

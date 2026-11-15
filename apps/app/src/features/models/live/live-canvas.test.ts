@@ -171,6 +171,24 @@ describe('the web live canvas', () => {
     running.dispose();
   });
 
+  it('schedules no frame on scroll or layout changes while no view is live', () => {
+    const { canvas, surface, setup, tick, gl, frames, moved } = harness({ speed: 0 });
+    const running = startCanvas(canvas, setup);
+    tick();
+    surface.set.report('fan', { screenFocused: false });
+    tick();
+    expect(frames.pending()).toBe(false);
+    const cleared = gl.clears();
+    document.dispatchEvent(new Event('scroll'));
+    moved();
+    window.dispatchEvent(new Event('resize'));
+    expect(frames.pending()).toBe(false);
+    tick();
+    expect(gl.clears()).toBe(cleared);
+    expect(gl.size()).toEqual([1, 1]);
+    running.dispose();
+  });
+
   it('places a still view again when the layout moves it, without drawing until then', () => {
     const { canvas, setup, tick, gl, moveTo, moved } = harness({ speed: 0 });
     const running = startCanvas(canvas, setup);

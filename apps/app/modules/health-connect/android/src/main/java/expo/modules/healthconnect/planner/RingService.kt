@@ -1,45 +1,48 @@
 package expo.modules.healthconnect.planner
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.PowerManager
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import expo.modules.healthconnect.NativeGuard
-import expo.modules.healthconnect.R
 import expo.modules.healthconnect.diagnostics.NativeLog
-import java.io.IOException
-import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 object RingingNow {
   private val keys = CopyOnWriteArrayList<String>()
+  private val playback = ConcurrentHashMap<String, RingPlayback>()
 
   fun keys(): List<String> = keys.toList()
+
+  fun playbackOf(ringKey: String): RingPlayback? = playback[ringKey]
 
   internal fun add(ringKey: String) {
     keys.remove(ringKey)
     keys.add(ringKey)
+    playback[ringKey] = RingPlayback.PENDING
+  }
+
+  internal fun report(ringKey: String, state: RingPlayback) {
+    if (keys.contains(ringKey)) {
+      playback[ringKey] = state
+    }
   }
 
   internal fun remove(ringKey: String) {
     keys.remove(ringKey)
+    playback.remove(ringKey)
   }
 }
 
@@ -67,7 +70,9 @@ object RingControl {
 
 class RingService : Service() {
   private val handler = Handler(Looper.getMainLooper())
-  private var player: MediaPlayer? = null
+  private val sound by lazy {
+    RingSoundPlayer(this, handler, RingFiles.cacheOf(this, RingFiles.RING_DIRECTORY), ::reported)
+  }
   private var playing: PhoneRing? = null
   private var playingSince = 0L
 
@@ -75,7 +80,7 @@ class RingService : Service() {
     override fun run() {
       val ring = playing ?: return
       val volume = RingRamp.volume(SystemClock.elapsedRealtime() - playingSince, ring.rampSeconds)
-      player?.setVolume(volume, volume)
+      sound.volume(volume)
       if (volume < 1f) {
         handler.postDelayed(this, RAMP_STEP_MILLIS)
       }
@@ -104,19 +109,21 @@ class RingService : Service() {
 
   private fun ring(key: String) {
     val base = RingKeys.baseOf(key)
-    val ring = AlarmScheduler.of(this).ringOf(base)
+    val scheduler = AlarmScheduler.of(this)
+    val ring = scheduler.ringOf(base)
     if (ring == null) {
       NativeLog.warn("planner-alarm", "ring.unknown") { mapOf("ringKey" to key) }
-      startForegroundNotice(genericNotice())
+      startForegroundNotice(RingNotice.generic(this))
       settle()
       return
     }
     if (!RingKeys.isSnooze(key)) {
-      AlarmScheduler.of(this).fired(base)
+      scheduler.fired(base)
     }
     RingingNow.add(base)
-    startForegroundNotice(notice(ring))
+    startForegroundNotice(RingNotice.of(this, ring, scheduler.snoozesLeft(ring)))
     play(ring)
+    PlannerEvents.emit("ring_started", "ringing", RingPlayback.PENDING.toMap(base, scheduler.snoozesLeft(ring)))
     NativeLog.info("planner-alarm", "ringing") { mapOf("kind" to ring.kind.wire) }
   }
 
@@ -124,8 +131,9 @@ class RingService : Service() {
     val base = RingKeys.baseOf(key)
     val scheduler = AlarmScheduler.of(this)
     val ring = scheduler.ringOf(base)
-    if (ring != null) {
-      scheduler.snooze(ring, if (minutes > 0) minutes else ring.snoozeMinutes)
+    if (ring != null && !scheduler.snooze(ring, if (minutes > 0) minutes else ring.snoozeMinutes)) {
+      NativeLog.warn("planner-alarm", "snooze.refused") { mapOf("ringKey" to base, "limit" to ring.snoozeLimit) }
+      return
     }
     release(base)
   }
@@ -138,77 +146,59 @@ class RingService : Service() {
 
   private fun release(base: String) {
     RingingNow.remove(base)
-    val manager = getSystemService(NotificationManager::class.java)
-    val next = RingingNow.keys().lastOrNull()?.let { AlarmScheduler.of(this).ringOf(it) }
+    PlannerEvents.emit("ring_ended", "ring released", mapOf("ringKey" to base))
+    val scheduler = AlarmScheduler.of(this)
+    val next = RingingNow.keys().lastOrNull()?.let { scheduler.ringOf(it) }
     if (next == null) {
       settle()
       return
     }
-    manager.notify(NOTIFICATION_ID, notice(next))
+    getSystemService(NotificationManager::class.java).notify(RingNotice.ID, RingNotice.of(this, next, scheduler.snoozesLeft(next)))
     play(next)
   }
 
   private fun settle() {
     silence()
+    StepCounter.stop()
     stopForeground(STOP_FOREGROUND_REMOVE)
     stopSelf()
   }
 
   private fun startForegroundNotice(notification: Notification) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+      startForeground(RingNotice.ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
     } else {
-      startForeground(NOTIFICATION_ID, notification)
+      startForeground(RingNotice.ID, notification)
     }
+  }
+
+  private fun reported(state: RingPlayback) {
+    val ring = playing ?: return
+    RingingNow.report(RingKeys.baseOf(ring.ringKey), state)
+    PlannerEvents.emit(
+      "ring_playback",
+      state.safetyNet ?: "playing",
+      state.toMap(RingKeys.baseOf(ring.ringKey), AlarmScheduler.of(this).snoozesLeft(ring))
+    )
   }
 
   private fun play(ring: PhoneRing) {
     silence()
     playing = ring
     playingSince = SystemClock.elapsedRealtime()
-    player = start(ring.sound) ?: start(DEFAULT_SOUND)
-    if (player == null) {
-      NativeLog.warn("planner-alarm", "sound.unavailable") { mapOf("sound" to ring.sound) }
-    }
+    sound.play(ring)
     if (ring.vibrate) {
-      vibrator()?.vibrate(VibrationEffect.createWaveform(VIBRATION, 0), ALARM_ATTRIBUTES)
+      vibrator()?.vibrate(VibrationEffect.createWaveform(VIBRATION, 0), RingSoundPlayer.ALARM_ATTRIBUTES)
     }
     ramp.run()
   }
 
-  private fun start(sound: String): MediaPlayer? {
-    val uri = (if (sound == DEFAULT_SOUND) defaultUri() else Uri.parse(sound)) ?: return null
-    val created = MediaPlayer()
-    return try {
-      created.setAudioAttributes(ALARM_ATTRIBUTES)
-      created.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK)
-      created.setDataSource(this, uri)
-      created.isLooping = true
-      created.prepare()
-      created.setVolume(RingRamp.FLOOR, RingRamp.FLOOR)
-      created.start()
-      created
-    } catch (failure: IOException) {
-      NativeLog.warn("planner-alarm", "sound.failed", failure) { mapOf("sound" to sound) }
-      created.release()
-      null
-    } catch (failure: IllegalStateException) {
-      NativeLog.warn("planner-alarm", "sound.failed", failure) { mapOf("sound" to sound) }
-      created.release()
-      null
-    }
-  }
-
   private fun silence() {
     handler.removeCallbacks(ramp)
-    player?.release()
-    player = null
+    sound.stop()
     playing = null
     vibrator()?.cancel()
   }
-
-  private fun defaultUri(): Uri? =
-    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
 
   private fun vibrator(): Vibrator? =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -217,66 +207,8 @@ class RingService : Service() {
       getSystemService(Vibrator::class.java)
     }
 
-  private fun genericNotice(): Notification = builder().setContentTitle("Alarm").build()
-
-  private fun notice(ring: PhoneRing): Notification {
-    val open = open(ring.ringKey)
-    val title = ring.label ?: if (ring.kind == RingKind.TIMER) "Timer" else "Alarm"
-    val text = if (ring.kind == RingKind.TIMER) "Time is up" else "Ringing now"
-    val builder = builder()
-      .setContentTitle(title)
-      .setContentText(text)
-      .setContentIntent(open)
-      .setWhen(Instant.now().toEpochMilli())
-      .addAction(Notification.Action.Builder(null, "Snooze", action(RingControl.ACTION_SNOOZE, ring.ringKey)).build())
-      .addAction(Notification.Action.Builder(null, "Stop", action(RingControl.ACTION_STOP, ring.ringKey)).build())
-    val manager = getSystemService(NotificationManager::class.java)
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || manager.canUseFullScreenIntent()) {
-      builder.setFullScreenIntent(open, true)
-    }
-    return builder.build()
-  }
-
-  private fun builder(): Notification.Builder {
-    val manager = getSystemService(NotificationManager::class.java)
-    val channel = NotificationChannel(CHANNEL, "Alarms and timers", NotificationManager.IMPORTANCE_HIGH)
-    channel.setSound(null, null)
-    channel.enableVibration(false)
-    channel.setBypassDnd(true)
-    manager.createNotificationChannel(channel)
-    return Notification.Builder(this, CHANNEL)
-      .setSmallIcon(R.drawable.ic_stat_smarteverything)
-      .setCategory(Notification.CATEGORY_ALARM)
-      .setOngoing(true)
-      .setVisibility(Notification.VISIBILITY_PUBLIC)
-      .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-  }
-
-  private fun open(ringKey: String): PendingIntent {
-    val intent = Intent(Intent.ACTION_VIEW, RingKeys.linkOf(SCHEME, ringKey))
-      .setPackage(packageName)
-      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-    return PendingIntent.getActivity(this, ringKey.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-  }
-
-  private fun action(action: String, ringKey: String): PendingIntent =
-    PendingIntent.getService(
-      this,
-      ringKey.hashCode(),
-      RingControl.intent(this, action, ringKey),
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-
   private companion object {
-    const val CHANNEL = "smarteverything.ring"
-    const val NOTIFICATION_ID = 7511
-    const val SCHEME = "smarteverything"
-    const val DEFAULT_SOUND = "default"
     const val RAMP_STEP_MILLIS = 250L
     val VIBRATION = longArrayOf(0, 700, 500)
-    val ALARM_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
-      .setUsage(AudioAttributes.USAGE_ALARM)
-      .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-      .build()
   }
 }

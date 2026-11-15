@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { LegacyAction as Action, CommandAction, SceneRow } from '@smarteverything/domain';
+import type { StepAction as Action, CommandAction } from '@smarteverything/domain';
 import type { Catalog } from './catalog';
-import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { commandAction } from './action-blanks';
@@ -78,28 +77,6 @@ export function CommandFields({
   );
 }
 
-function SceneField({
-  action,
-  scenes,
-  onChange,
-}: {
-  readonly action: Extract<Action, { type: 'scene' }>;
-  readonly scenes: readonly SceneRow[];
-  readonly onChange: (action: Action) => void;
-}): ReactNode {
-  return (
-    <Select
-      label="Scene"
-      placeholder="Pick a scene"
-      value={scenes.some((scene) => scene.id === action.sceneId) ? action.sceneId : null}
-      options={scenes.map((scene) => ({ value: scene.id, label: scene.name }))}
-      onChange={(sceneId) => {
-        onChange({ ...action, sceneId });
-      }}
-    />
-  );
-}
-
 export function ActionFields({
   action,
   catalog,
@@ -112,8 +89,6 @@ export function ActionFields({
   switch (action.type) {
     case 'command':
       return <CommandFields action={action} devices={catalog.devices} onChange={onChange} />;
-    case 'scene':
-      return <SceneField action={action} scenes={catalog.scenes} onChange={onChange} />;
     case 'delay':
       return (
         <DurationField

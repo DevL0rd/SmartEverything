@@ -1,4 +1,4 @@
-import { JSON_VALUE } from '@smarteverything/domain';
+import { JSON_VALUE, targetCapability } from '@smarteverything/domain';
 import type { ErrorClass, JsonValue } from '@smarteverything/domain';
 import type {
   Checked,
@@ -7,11 +7,13 @@ import type {
   Outputs,
 } from '@smarteverything/flow/interpret/frames';
 import { RUN_AUTOMATION_KIND } from '@smarteverything/flow/interpret/run-automation';
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { Clock } from '../../clock';
 import type { RunScope } from '../driver/ports';
+import { lightAsk } from '../effects/light-nodes';
 import { KEPT_PARAMS, VARIABLE_PARAMS, nextOf, outputs, parsed } from '../engine-v3-effects';
 import { ReadFailure } from '../world-v3/read-port';
+import { SNAPSHOT_VALUE } from '../world-v3/snapshot';
 import { deviceRefs } from '../world-v3/refs';
 import type { EffectOutcome, EffectScript } from './scenario';
 import { CONTROL_DEFAULT } from './world-sim';
@@ -50,6 +52,8 @@ const DEVICE_KINDS: ReadonlySet<string> = new Set([
   'device.set_temporarily',
   'device.toggle',
 ]);
+
+const RESTORE_PARAMS = z.object({ snapshot: SNAPSHOT_VALUE });
 
 const OK: NodeResult = { ok: true, value: {} };
 
@@ -116,8 +120,18 @@ export class EffectsSim {
 
   private targetsOf(request: EffectRequest): Checked<readonly string[]> {
     const { target } = request.params;
-    if (target === undefined || !DEVICE_KINDS.has(request.kind)) return { ok: true, value: [] };
+    if (request.kind === 'device.restore') {
+      const snapshot = parsed(RESTORE_PARAMS, request.params);
+      return snapshot.ok ? { ok: true, value: Object.keys(snapshot.value.snapshot) } : snapshot;
+    }
+    const lights = request.kind === 'light.set';
+    if (target === undefined || !(lights || DEVICE_KINDS.has(request.kind)))
+      return { ok: true, value: [] };
     try {
+      if (lights) {
+        const found = this.options.world.lightsOf(target).lights;
+        return { ok: true, value: found.map((light) => light.id) };
+      }
       return { ok: true, value: this.options.world.deviceIds(target) };
     } catch (cause) {
       if (cause instanceof ReadFailure) return failure(cause.errorClass, cause.message);
@@ -169,6 +183,8 @@ export class EffectsSim {
       return this.setVariable(request, scope);
     }
     if (request.kind === 'notify.ask') return { ok: true, value: { notificationId: request.key } };
+    const special = this.specialDevice(request, targets);
+    if (special !== undefined) return special;
     if (!DEVICE_KINDS.has(request.kind)) return OK;
     const planned = this.changesOf(request, targets);
     if (!planned.ok) return planned;
@@ -188,6 +204,61 @@ export class EffectsSim {
         ...(last === undefined ? {} : { value: last.value }),
       },
     };
+  }
+
+  private specialDevice(
+    request: EffectRequest,
+    targets: readonly string[],
+  ): NodeResult | undefined {
+    if (request.kind === 'light.set') return this.lightSet(request);
+    return request.kind === 'device.restore' ? this.restore(request, targets) : undefined;
+  }
+
+  private lightSet(request: EffectRequest): NodeResult {
+    const asked = lightAsk(request.params);
+    if (!asked.ok) return asked;
+    const { world, applyToWorld } = this.options;
+    const { lights, skipped } = world.lightsOf(request.params['target'] ?? null);
+    const left = skipped.map(({ device, reason }) => ({ device: { device }, reason }));
+    const sent: string[] = [];
+    for (const light of lights) {
+      const changes = asked.value.wanted.flatMap((wish) => {
+        const presented = targetCapability(light, wish.control);
+        return presented?.writable === true
+          ? [{ control: wish.control, value: wish.value(presented) }]
+          : [];
+      });
+      if (changes.length === 0) {
+        left.push({ device: { device: light.id }, reason: 'It has none of the asked controls.' });
+        continue;
+      }
+      sent.push(light.id);
+      if (applyToWorld) {
+        for (const change of changes) world.setDevice(light.id, change.control, change.value);
+      }
+    }
+    if (sent.length === 0)
+      return failure('Refused', 'None of the lights could be changed in the simulation.');
+    return {
+      ok: true,
+      value: {
+        sent: JSON_VALUE.parse(deviceRefs(sent)),
+        skipped: JSON_VALUE.parse(left),
+      },
+    };
+  }
+
+  private restore(request: EffectRequest, targets: readonly string[]): NodeResult {
+    const checked = parsed(RESTORE_PARAMS, request.params);
+    if (!checked.ok) return checked;
+    if (this.options.applyToWorld) {
+      for (const [device, values] of Object.entries(checked.value.snapshot)) {
+        for (const [control, value] of Object.entries(values)) {
+          this.options.world.setDevice(device, control, value);
+        }
+      }
+    }
+    return { ok: true, value: { ok: true, sent: [...targets], skipped: [] } };
   }
 
   private changesOf(

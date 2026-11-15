@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { inList } from '../sql';
 import { found, type StoreContext } from '../context';
 
+export const PHOTO_AI_JOB_KINDS = ['faces', 'vision', 'embed', 'pet_embed'] as const;
+
 export const DRIVE_MEDIA_JOB_KINDS = [
   'preview',
   'poster',
@@ -9,6 +11,7 @@ export const DRIVE_MEDIA_JOB_KINDS = [
   'playable_source',
   'motion',
   'place',
+  ...PHOTO_AI_JOB_KINDS,
 ] as const;
 
 export const DRIVE_MEDIA_JOB_STATES = ['queued', 'running', 'done', 'failed'] as const;

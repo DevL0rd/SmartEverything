@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { useAiChat, useChatMessages } from '../data/chat-store';
 import { FilesTab } from './files-tab';
 
@@ -11,7 +10,7 @@ export function FilesPage(): ReactNode {
   const chat = useAiChat(chatId);
   const rows = useChatMessages(chatId);
   return (
-    <Screen header={<PageHeader title="Files" search={false} />}>
+    <PageShell title="Files">
       {chat === null ? (
         <EmptyState
           compact
@@ -22,6 +21,6 @@ export function FilesPage(): ReactNode {
       ) : (
         <FilesTab key={chat.id} chat={chat} rows={rows} />
       )}
-    </Screen>
+    </PageShell>
   );
 }

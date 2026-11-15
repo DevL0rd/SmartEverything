@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { ENGINE } from '@smarteverything/domain';
+import { AI_DEFAULT_MODEL, ENGINE } from '@smarteverything/domain';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { meteredRouteId } from '../../src/openrouter/metered-engine';
@@ -139,7 +139,7 @@ describe('migrating a database that still has chats on the retired hub engine', 
 
     const stored = engines();
     expect(stored[NAMED_MODEL]).toMatchObject({ model: 'openai/gpt-5', effort: 'high' });
-    expect(stored[FULL]).toMatchObject({ model: 'openai/gpt-6-luna', effort: 'low' });
+    expect(stored[FULL]).toMatchObject({ model: AI_DEFAULT_MODEL, effort: 'low' });
   });
 
   it('drops the effort of a model that does not reason', () => {

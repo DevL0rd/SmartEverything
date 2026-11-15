@@ -4,6 +4,7 @@ import type { DriveItem } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
 import type { WalkEntry } from '../../src/drive/scanner-walk';
+import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
@@ -36,6 +37,7 @@ afterEach(() => {
 function dependencies(): CommitDependencies {
   return {
     items,
+    inodes: new DriveInodesRepository(context),
     write: (work) => context.write(work),
     now: () => new Date(NOW),
     newId: randomUUID,
@@ -57,6 +59,9 @@ function fileEntry(
     parentRelPath: null,
     bytes: 5,
     modifiedMs: DISK_MS,
+    mtimeNs: String(DISK_MS * 1_000_000),
+    mode: 0o644,
+    nlink: 1,
     dev: '7',
     ino: '8',
     ...fields,
@@ -74,6 +79,8 @@ function folderEntry(
     parentRelPath: null,
     bytes: 5,
     modifiedMs: DISK_MS,
+    mtimeNs: String(DISK_MS * 1_000_000),
+    mode: 0o755,
     dev: '7',
     ino: '6',
     childCount: 1,
@@ -296,16 +303,16 @@ describe('committing a scan over a changing index', () => {
   it('keeps the owning fields when a rescan writes changed facts', () => {
     uploadRow('edited.txt', { dev: '7', ino: '8' });
     const seeded = rowAt('edited.txt');
-    items.markOpened(seeded.id, OPENED_AT);
+    fixture.opens.record(profileId, seeded.id, OPENED_AT);
     const scan = committer();
     scan.apply([fileEntry('edited.txt')]);
     const totals = scan.finish([]);
+    expect(items.byPath(ROOT, 'edited.txt', profileId)?.openedAt).toBe(OPENED_AT);
     expect(items.byPath(ROOT, 'edited.txt', null)).toMatchObject({
       id: seeded.id,
       rev: 2,
       modifiedAt: DISK_AT,
       addedAt: UPLOADED_AT,
-      openedAt: OPENED_AT,
       addedByProfileId: profileId,
       remoteId: 'remote-42',
       remoteRev: 'rev-7',

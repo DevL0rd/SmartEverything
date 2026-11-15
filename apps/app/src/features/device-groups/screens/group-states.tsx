@@ -4,13 +4,12 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import type { MenuItem } from '../../../components/menu';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Skeleton } from '../../../components/skeleton';
 
 export function GroupLoading({ title }: { readonly title: string }): ReactNode {
   return (
-    <Screen header={<PageHeader title={title} subtitle="Loading…" back />}>
+    <PageShell title={title} subtitle="Loading…">
       <View className="gap-3">
         <Skeleton shape="tile" className="h-56" />
         <Skeleton shape="block" className="h-14" />
@@ -19,20 +18,20 @@ export function GroupLoading({ title }: { readonly title: string }): ReactNode {
           <Skeleton key={index} shape="block" className="h-12" />
         ))}
       </View>
-    </Screen>
+    </PageShell>
   );
 }
 
 export function GroupGone({ room }: { readonly room: boolean }): ReactNode {
   return (
-    <Screen header={<PageHeader title={room ? 'Room lights' : 'Group'} back />} maxWidth="reading">
+    <PageShell title={room ? 'Room lights' : 'Group'} width="reading">
       <EmptyState
         icon="bulb"
         title={room ? 'This room no longer exists' : 'This group was removed'}
         body={room ? 'Its lights keep their settings.' : 'Its devices keep their settings.'}
         action={<Button label="All devices" href={href.devices()} variant="tonal" />}
       />
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -48,12 +47,7 @@ export function GroupEmpty({
   readonly onAdd: () => void;
 }): ReactNode {
   return (
-    <Screen
-      header={
-        <PageHeader title={title} titleLines="wrap" subtitle="No devices" back overflow={menu} />
-      }
-      maxWidth="reading"
-    >
+    <PageShell title={title} subtitle="No devices" overflow={menu} width="reading">
       {roomName !== null ? (
         <EmptyState
           icon="bulb"
@@ -69,6 +63,6 @@ export function GroupEmpty({
           action={<Button label="Add devices" onPress={onAdd} />}
         />
       )}
-    </Screen>
+    </PageShell>
   );
 }

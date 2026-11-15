@@ -41,7 +41,7 @@ export class NodeCodexGrant implements CodexNativeGrantResolver {
   }
   stop(): void {
     this.stopped = true;
-    this.options.mcp?.revoke('codex');
+    this.options.mcp?.release('codex');
   }
   async revoke(): Promise<void> {
     this.options.mcp?.revoke('codex');

@@ -1,4 +1,3 @@
-import { frameLayoutMath } from '../../../components/frame-layout';
 import type { IconName } from '../../../components/icon';
 
 export const PHONE_SECTION_IDS = [
@@ -35,9 +34,3 @@ export const PHONE_SECTIONS: readonly PhoneSectionDef[] = [
   { id: 'activity', label: 'Activity', icon: 'activity' },
   { id: 'setup', label: 'Setup', icon: 'settings' },
 ];
-
-export const { frameLayoutOf, railWidthOf } = frameLayoutMath({
-  compactMax: 600,
-  iconRailMax: 720,
-  wideRailMin: 1024,
-});

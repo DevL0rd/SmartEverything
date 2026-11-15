@@ -22,7 +22,7 @@ interface Probe {
   choice: { kind: string; map?: unknown };
   splits: number;
   summaries: unknown[];
-  noMaps: { map: unknown; className: unknown }[];
+  noMaps: { map: unknown }[];
 }
 
 const probe: Probe = vi.hoisted(() => ({
@@ -71,8 +71,10 @@ vi.mock('../../app-shell/hrefs', async (importOriginal) => {
     },
   };
 });
-vi.mock('../../components/screen', () => ({ Screen: pass }));
-vi.mock('../../components/page-header', () => ({ PageHeader: none }));
+vi.mock('../../components/page-shell/page-shell', () => ({
+  PageShell: ({ toolbar, children }: Slot & { readonly toolbar?: ReactNode }): ReactNode =>
+    createElement(Fragment, null, toolbar, children),
+}));
 vi.mock('../../components/banner', () => ({ Banner: none }));
 vi.mock('../../components/button', () => ({ Button: none }));
 vi.mock('../../components/empty-state', () => ({ EmptyState: none }));
@@ -135,8 +137,8 @@ vi.mock('./components/pinned-split', () => ({
   },
 }));
 vi.mock('../home-map/components/stage/no-map-entry', () => ({
-  NoMapEntry: (props: { readonly map: unknown; readonly className: unknown }): null => {
-    probe.noMaps.push({ map: props.map, className: props.className });
+  NoMapEntry: (props: { readonly map: unknown }): null => {
+    probe.noMaps.push({ map: props.map });
     return null;
   },
 }));
@@ -345,10 +347,7 @@ describe('devices screen without a drawn map', () => {
     const cabin = { id: 'cabin', name: 'Cabin', roomCount: 0 };
     probe.choice = { kind: 'blank', map: cabin };
     render({});
-    expect(probe.noMaps.at(-1)).toEqual({
-      map: cabin,
-      className: 'rounded-none border-x-0 border-t-0',
-    });
+    expect(probe.noMaps.at(-1)).toEqual({ map: cabin });
     expect(probe.splits).toBe(0);
     expect(probe.stageMounts).toBe(0);
     expect(probe.queries.length).toBeGreaterThan(0);

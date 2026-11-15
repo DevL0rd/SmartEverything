@@ -11,14 +11,12 @@ import {
   woodOf,
 } from './kit';
 
-const HEIGHT = 0.76;
 const TOP_Y = 0.74;
 const TOP_T = 0.04;
 const REACH = 0.15;
 const RECT_DEPTH = 0.95;
 const PITCH = 0.6;
 const SITE_Z = RECT_DEPTH / 2 + REACH;
-const CHAIR_DEPTH = 0.526;
 
 const TABLE_MATERIALS = {
   body: woodOf('oak'),
@@ -69,7 +67,7 @@ function endSlabs(): ModelSpecPart[] {
 export const DINING_TABLE_RECTANGLE_MODEL: ModelSpec = diningFurniture({
   id: 'cat.dining.dining-table-rectangle',
   title: 'Rectangular dining table',
-  footprint: { width: 2, depth: 2 * (SITE_Z + CHAIR_DEPTH / 2), height: HEIGHT },
+  footprint: { width: 2, depth: 1.779, height: 0.868 },
   meta: {
     names: {
       display: 'Rectangular dining table',
@@ -134,7 +132,7 @@ function diagonalSites(): ChairSite[] {
 export const DINING_TABLE_ROUND_MODEL: ModelSpec = diningFurniture({
   id: 'cat.dining.dining-table-round',
   title: 'Round dining table',
-  footprint: { width: 2.029, depth: 2.029, height: HEIGHT },
+  footprint: { width: 2.029, depth: 2.029, height: 0.868 },
   size: {
     width: { param: 'diameter', extra: 0.829, resizes: true },
     depth: { param: 'diameter', extra: 0.829, resizes: true },

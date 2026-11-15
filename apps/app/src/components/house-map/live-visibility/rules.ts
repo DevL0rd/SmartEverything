@@ -43,7 +43,8 @@ export function stageState(previous: StageState, facts: StageFacts): StageState 
   const mounted =
     live ||
     (previous.mounted &&
-      (keepsDomComponent(facts) || (!facts.stillReady && staysAttached(facts))));
+      (keepsDomComponent(facts) ||
+        (!facts.stillReady && facts.screenFocused && staysAttached(facts))));
   return { live, mounted, showStill: !live };
 }
 

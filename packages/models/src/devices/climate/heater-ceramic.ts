@@ -49,7 +49,7 @@ export const CERAMIC_HEATER_MODEL: ModelSpec = {
   title: 'Ceramic heater',
   category: 'climate',
   family: 'heater',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.161, height: 0.306 },
   framing: house('grille', 28, 14),
   shots: [
     shot('heating', HEATING, 'grille', { zoom: 1.45, yaw: 18, pitch: 8, loopS: 1, symmetry: 72 }),
@@ -164,7 +164,7 @@ export const CERAMIC_HEATER_MODEL: ModelSpec = {
       property: 'rotate',
       axis: 'z',
       source: 'speed',
-      map: { type: 'speed', in: [0, 1], perSecond: [0.5, 3] },
+      map: { type: 'speed', in: [0, 1], perSecond: [0, 3] },
       motion: { type: 'spin' },
       reduced: 'hold',
     },

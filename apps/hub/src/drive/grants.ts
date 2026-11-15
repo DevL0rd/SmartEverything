@@ -26,7 +26,13 @@ export interface GrantPage<T> {
 export interface GrantsEnv {
   readonly store: Pick<
     Store,
-    'driveGrants' | 'driveItems' | 'driveRoots' | 'driveShares' | 'profiles'
+    | 'driveGrants'
+    | 'driveItems'
+    | 'driveRoots'
+    | 'driveShares'
+    | 'driveNotifications'
+    | 'profiles'
+    | 'write'
   >;
 }
 
@@ -77,7 +83,22 @@ export class DriveGrants {
     if (!this.env.store.profiles.list().some((profile) => profile.id === input.profileId)) {
       throw new ApiError('not_found', 'There is no such person to share with.');
     }
-    const grant = this.env.store.driveGrants.set(input, actor.profileId);
+    const { store } = this.env;
+    const grant = store.write(() => {
+      const fresh = store.driveGrants.forPerson(input.itemId, input.profileId) === undefined;
+      const stored = store.driveGrants.set(input, actor.profileId);
+      if (fresh) {
+        store.driveNotifications.add({
+          profileId: input.profileId,
+          kind: 'shared',
+          itemId: input.itemId,
+          actorProfileId: actor.profileId,
+          actorName: null,
+          refId: null,
+        });
+      }
+      return stored;
+    });
     log.info('drive_grant.set', {
       grantId: grant.id,
       itemId: grant.itemId,
@@ -154,7 +175,7 @@ export class DriveGrants {
         after,
         limit: 500,
       });
-      for (const share of page) ids.push(share.itemId);
+      for (const share of page) if (share.itemId !== null) ids.push(share.itemId);
       const last = page.at(-1);
       if (page.length < 500 || last === undefined) return ids;
       after = { at: this.env.store.driveShares.createdAt(last.id), id: last.id };

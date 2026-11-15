@@ -11,6 +11,7 @@ import { useForeground } from '../../../design/animation-gate';
 import { releaseNotesOf } from '../../../format/release-notes';
 import { useIsOwner, useSession, useSyncStatus } from '../../../store/selectors';
 import {
+  useBuildSources,
   useHubUpdateSource,
   useHubUpdateStarting,
   useHubUpdateStatus,
@@ -149,10 +150,10 @@ function sourceCheckStatus(check: SourceCheck): string | null {
 
 function visibleSource(
   source: HubUpdateSourceCheck | undefined,
-  live: boolean,
+  shown: boolean,
   dismissedTip: string | null,
 ): HubUpdateSourceCheck | null {
-  if (!live || source === undefined || source.tip === dismissedTip) return null;
+  if (!shown || source === undefined || source.tip === dismissedTip) return null;
   return source.offerId === undefined && source.availableUpdate === undefined ? null : source;
 }
 
@@ -189,21 +190,21 @@ interface SourceUpdateNoticeProps {
   readonly onDismiss: (() => void) | undefined;
   readonly notice: ReleaseNotice | null;
   readonly check: SourceCheck;
-  readonly live: boolean;
+  readonly shown: boolean;
   readonly start: Start;
   readonly ownerId: string;
 }
 
 function SourceUpdateNotice({
   check,
-  live,
+  shown,
   start,
   notice,
   ownerId,
   onDismiss,
 }: SourceUpdateNoticeProps): ReactNode {
   const [dismissedTip, setDismissedTip] = useState<string | null>(null);
-  const source = visibleSource(check.data, live, dismissedTip);
+  const source = visibleSource(check.data, shown, dismissedTip);
   const offer = sourceOfferOf(source);
   const unavailable = notice?.title ?? sourceCheckStatus(check);
   const { action, confirmation, opener } = useSourceApproval(
@@ -314,7 +315,8 @@ function OwnerUpdateBanner({
   const live = useSyncStatus().status === 'live';
   const foreground = useForeground();
   const active = live && foreground;
-  const check = useHubUpdateSource(active);
+  const hubBuilds = useBuildSources(active).data?.hub === 'hub';
+  const check = useHubUpdateSource(active && hubBuilds);
   const status = useHubUpdateStatus(active);
   const start = useStartHubUpdateSource();
   const starting = useHubUpdateStarting();
@@ -328,7 +330,7 @@ function OwnerUpdateBanner({
   return (
     <SourceUpdateNotice
       check={check}
-      live={live}
+      shown={live ? hubBuilds : false}
       start={start}
       notice={notice}
       ownerId={ownerId}

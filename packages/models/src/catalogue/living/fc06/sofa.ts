@@ -96,7 +96,7 @@ export function sofa(shape: SofaShape): ModelSpec {
   return furniture({
     id: shape.id,
     title: shape.title,
-    footprint: { width: shape.width.default, depth: DEPTH, height: HEIGHT },
+    footprint: { width: shape.width.default, depth: 0.932, height: 0.854 },
     size: { width: { param: 'width', extra: 0, resizes: true } },
     meta: shape.meta,
     params: { width: { ...shape.width, unit: 'm' } },

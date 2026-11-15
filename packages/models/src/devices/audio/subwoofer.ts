@@ -34,7 +34,7 @@ export const SUBWOOFER_MODEL: ModelSpec = {
   title: 'Subwoofer',
   category: 'audio',
   family: 'speaker',
-  footprint: { width: SIDE, depth: SIDE, height: HEIGHT },
+  footprint: { width: SIDE, depth: 0.3265, height: HEIGHT },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

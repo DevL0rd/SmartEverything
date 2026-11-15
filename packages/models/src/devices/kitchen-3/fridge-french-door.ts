@@ -152,7 +152,7 @@ export const FRENCH_DOOR_FRIDGE_MODEL: ModelSpec = {
   title: 'French door fridge',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.752, height: HEIGHT },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: FRIDGE_SHOTS,
   meta: {

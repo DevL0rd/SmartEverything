@@ -14,7 +14,6 @@ const IDS = [
   'device.snapshot',
   'device.restore',
   'device.ir_send',
-  'scene.capture',
   'timing.debounce',
   'timing.rate_limit',
   'timing.quiet_hours',
@@ -44,7 +43,6 @@ describe('v1.1 device and state kinds', () => {
       'device.fade',
       'device.ir_send',
       'device.restore',
-      'scene.capture',
     ]);
     expect(NODE_REGISTRY.get('device.ir_send')?.effect).toEqual({
       retry: 'relative',

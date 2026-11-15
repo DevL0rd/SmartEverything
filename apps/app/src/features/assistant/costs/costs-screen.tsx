@@ -117,7 +117,6 @@ function CostsFrame({
     <SettingsFrame
       page={COSTS_PAGE}
       {...(chat === null ? {} : { title: `Costs for “${chat.title}”` })}
-      search={false}
       overflow={menu}
       scroll={false}
       banner={<CostsBanners />}

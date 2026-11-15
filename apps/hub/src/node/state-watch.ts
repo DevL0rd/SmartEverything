@@ -11,10 +11,10 @@ import type { StopWatching } from './controls/session-controls';
 
 type StateTopic = (typeof STATE_TOPICS)[number];
 
-type StatePartTopic = Exclude<StateTopic, 'drive_mounts'>;
+type StatePartTopic = Exclude<StateTopic, 'drive_mounts' | 'files'>;
 
 const STATE_PART_TOPICS = STATE_TOPICS.filter(
-  (topic): topic is StatePartTopic => topic !== 'drive_mounts',
+  (topic): topic is StatePartTopic => topic !== 'drive_mounts' && topic !== 'files',
 );
 
 type Emit = (parts: StateParts) => void;

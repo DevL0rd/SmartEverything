@@ -23,7 +23,7 @@ import {
 import { controlScopeOf, specOf } from './control-model';
 import { useControlChoices } from './control-picker';
 import { ControlValue } from './control-value';
-import { PortScopeContext } from './literal-model';
+import { PortScopeContext } from './port-scope-context';
 import type { LiteralProps } from './literal-scalar';
 
 type Render = (props: LiteralProps<FieldControl>) => ReactNode;

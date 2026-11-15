@@ -7,7 +7,7 @@ import { List } from '../../../components/section';
 import type { FieldKind } from '../../../components/text-field';
 import { desktopBridge } from '../../../design/platform';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { trackSetting } from '../../settings/settings-log';
+import { trackSetting } from '../../settings';
 import {
   DURATION_HELPER,
   cacheSizeProblemOf,
@@ -162,20 +162,13 @@ function CacheRow({
   );
 }
 
-export function CacheSettings({
-  cache,
-  parent,
-}: {
-  readonly cache: DesktopDriveCache;
-  readonly parent: string;
-}): ReactNode {
+export function CacheSettings({ cache }: { readonly cache: DesktopDriveCache }): ReactNode {
   return (
     <List
       inset
       title="Mount cache"
       footer="Files you open are kept here so they open fast next time. Changes apply to the running mount at once."
     >
-      <ListRow title="Folder for new mounts" icon="folder" subtitle={parent} wrapSubtitle />
       {CACHE_ROWS.map((spec) => (
         <CacheRow key={spec.field} spec={spec} cache={cache} />
       ))}

@@ -3,7 +3,6 @@ import {
   type AutomationTraceNotice,
   type ClientRow,
   type ComputerLiveNotice,
-  type ProcessWindow,
   type TraceNodeStateNotice,
   type TraceRun,
 } from '@smarteverything/domain';
@@ -12,7 +11,7 @@ import type { RunState } from '@smarteverything/flow/state/run-state';
 import { describe, expect, it } from 'vitest';
 import { liveSink, traceWaitOf, traceWatchSource } from '../../src/automations/driver/live-sink';
 import type { RunSink } from '../../src/automations/driver/ports';
-import { Viewers } from '../../src/metrics/viewers';
+import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import { LiveWatch, type WatchNotice } from '../../src/server/live-watch';
 import type { TraceOwners } from '../../src/server/live-visibility';
 import { testLogger } from '../support/logs';
@@ -79,10 +78,10 @@ function runOf(runId: string, automationId: string): TraceRun {
 
 function rig(runs: readonly TraceRun[] = []): {
   readonly watch: LiveWatch<Fake>;
-  readonly viewers: Viewers<ProcessWindow>;
+  readonly viewers: Viewers<DeviceDetail>;
   readonly sent: [number, WatchNotice | AutomationTraceNotice][];
 } {
-  const viewers = new Viewers<ProcessWindow>();
+  const viewers = new Viewers<DeviceDetail>();
   const sent: [number, WatchNotice | AutomationTraceNotice][] = [];
   const watch = new LiveWatch<Fake>({
     send: (to, message): void => {

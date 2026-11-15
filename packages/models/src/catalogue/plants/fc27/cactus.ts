@@ -32,7 +32,7 @@ function arm(side: -1 | 1, rise: number, reach: number, radius: number): ModelSp
 export const CACTUS_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.cactus',
   title: 'Cactus',
-  footprint: { width: 0.37, depth: 0.25, height: 0.67 },
+  footprint: { width: 0.366, depth: 0.254, height: 0.665 },
   names: {
     display: 'Cactus',
     synonyms: ['cactus', 'saguaro', 'desert plant', 'succulent', 'potted cactus'],

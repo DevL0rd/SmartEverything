@@ -7,7 +7,7 @@ import { HUB_UPDATE_LEDGER_FILE, type HubUpdateRelease } from '@smarteverything/
 import { z } from 'zod';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import type { HubLayout } from '../../src/data-layout';
-import { settleStaleUpdateJobs } from '../../src/self-update/stale-jobs';
+import { settleHubJobsFromLedger, settleStaleUpdateJobs } from '../../src/self-update/stale-jobs';
 import { testLayout } from '../support/test-layout';
 
 const AT = '2026-11-08T08:07:41.704Z';
@@ -136,6 +136,34 @@ it('settles a hub job from its release in the ledger', async () => {
   expect((await read(3)).phase).toBe('running');
   expect((await read(4)).phase).toBe('failed');
   expect((await read(4)).detail).toContain('missing');
+});
+
+it('settles a running hub job once its release finishes after the start-up pass', async () => {
+  await put(1, job(1, 'hub', 'running', { runId: ID(11) }));
+  await put(2, job(2, 'ui', 'running'));
+  await put(3, job(3, 'hub', 'running'));
+  const ledger = join(work, HUB_UPDATE_LEDGER_FILE);
+  await writeFile(ledger, JSON.stringify({ releases: [release(11, 'restarting')] }));
+  await settleStaleUpdateJobs(layout, () => NOW);
+  expect((await read(1)).phase).toBe('running');
+  await writeFile(ledger, JSON.stringify({ releases: [release(11, 'done')] }));
+  const settled = await settleHubJobsFromLedger(layout, () => NOW);
+  expect(settled.map((entry) => entry.runId)).toEqual([ID(1)]);
+  expect((await read(1)).phase).toBe('applied');
+  expect((await read(2)).phase).toBe('failed');
+  expect((await read(3)).phase).toBe('failed');
+});
+
+it('leaves jobs without a started release and non-hub jobs alone when only the ledger changed', async () => {
+  await put(1, job(1, 'hub', 'running'));
+  await put(2, job(2, 'ui', 'running'));
+  await writeFile(
+    join(work, HUB_UPDATE_LEDGER_FILE),
+    JSON.stringify({ releases: [release(11, 'done')] }),
+  );
+  expect(await settleHubJobsFromLedger(layout, () => NOW)).toEqual([]);
+  expect((await read(1)).phase).toBe('running');
+  expect((await read(2)).phase).toBe('running');
 });
 
 it('removes publication scratch folders left by a killed build but not while one runs', async () => {

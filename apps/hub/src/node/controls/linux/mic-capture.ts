@@ -117,7 +117,7 @@ export class MicCapture {
         handlers.ended(reason);
       }
     };
-    child.once('error', (cause: Error) => {
+    child.on('error', (cause: Error) => {
       finish(`${tool.program} could not start: ${cause.message}`);
     });
     child.once('exit', (code: number | null, signal: NodeJS.Signals | null) => {

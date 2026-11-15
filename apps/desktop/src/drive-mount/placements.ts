@@ -1,7 +1,9 @@
 import type { DrivePlacement } from '@smarteverything/domain';
 import type { SyncHubMessage } from '@smarteverything/domain/drive-sync';
 import { messageOf, type Logger } from '@smarteverything/logging';
-import { pathRefusal, type PathFacts, type PathFs } from './placement-paths.js';
+import type { MountLocations } from './mount-location.js';
+import type { MountPlace } from './mount-places.js';
+import { pathRefusal, type PathFacts } from './placement-paths.js';
 import {
   PlacementStates,
   inOrder,
@@ -75,11 +77,17 @@ export interface PlacementsPorts {
   readonly route: RoutePort;
   readonly openSubscribe: OpenSubscribe;
   readonly facts: PathFacts;
-  readonly fs: PathFs;
+  readonly locations: Pick<MountLocations, 'assign' | 'prepare'>;
+  readonly places: (shown: readonly MountPlace[]) => void;
   readonly synced: (placements: readonly DrivePlacement[]) => void;
   readonly now: () => Date;
   readonly log: Logger;
 }
+
+type Admission =
+  | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'synced' }
+  | { readonly kind: 'mounted'; readonly point: string };
 
 interface SubscriptionWiring {
   readonly placementId: string;
@@ -127,6 +135,7 @@ export class PlacementsController {
   private queue: Promise<void> = Promise.resolve();
   private route: RouteKind;
   private handedOver = '[]';
+  private shownPlaces = '[]';
   private ended = false;
 
   constructor(private readonly ports: PlacementsPorts) {
@@ -209,31 +218,52 @@ export class PlacementsController {
     placement: DrivePlacement,
     earlier: readonly DrivePlacement[],
   ): Promise<boolean> {
-    const refusal = await this.refusal(placement, earlier);
-    if (refusal !== null) {
+    const admission = await this.admission(placement, earlier);
+    if (admission.kind === 'refused') {
       this.ports.log.warn('drive_mount.placement_blocked', { placement_id: placement.id });
-      this.states.set(placement.id, this.blocked(refusal));
+      this.states.set(placement.id, this.blocked(admission.reason));
       return false;
     }
-    this.begin(placement);
+    if (admission.kind === 'synced') this.beginSynced(placement);
+    else this.beginMount(placement, admission.point);
     return true;
   }
 
-  private async refusal(
+  private async admission(
     placement: DrivePlacement,
     earlier: readonly DrivePlacement[],
-  ): Promise<string | null> {
-    const { facts, fs } = this.ports;
+  ): Promise<Admission> {
     try {
-      const refused = await pathRefusal({ placement, earlier, requireEmpty: true }, facts, fs);
-      if (refused !== null || placement.mode !== 'mounted') return refused;
-      if (facts.platform !== 'win32' && (await fs.inspect(placement.localPath)) === 'absent') {
-        await fs.create(placement.localPath);
-      }
-      return null;
+      return placement.mode === 'synced'
+        ? this.syncedAdmission(placement, earlier)
+        : await this.mountAdmission(placement);
     } catch (cause) {
-      return `The folder cannot be used: ${messageOf(cause)}`;
+      return { kind: 'refused', reason: `The folder cannot be used: ${messageOf(cause)}` };
     }
+  }
+
+  private syncedAdmission(
+    placement: DrivePlacement,
+    earlier: readonly DrivePlacement[],
+  ): Admission {
+    if (placement.localPath === null) {
+      return { kind: 'refused', reason: 'A synced folder needs a folder on this computer' };
+    }
+    const others = earlier.flatMap((other) => (other.localPath === null ? [] : [other.localPath]));
+    const refused = pathRefusal({ path: placement.localPath, earlier: others }, this.ports.facts);
+    return refused === null ? { kind: 'synced' } : { kind: 'refused', reason: refused };
+  }
+
+  private async mountAdmission(placement: DrivePlacement): Promise<Admission> {
+    if (placement.mountName === null) {
+      return { kind: 'refused', reason: 'A mounted folder needs the name it is mounted under' };
+    }
+    const taken = [...this.running.values()].flatMap((running) =>
+      running.point === null ? [] : [running.point],
+    );
+    const point = await this.ports.locations.assign(placement.mountName, taken);
+    await this.ports.locations.prepare(point);
+    return { kind: 'mounted', point };
   }
 
   private blocked(reason: string): PlacementFields {
@@ -244,16 +274,23 @@ export class PlacementsController {
       readOnly: false,
       route: null,
       reason,
+      mountPoint: null,
     };
   }
 
-  private begin(placement: DrivePlacement): void {
-    const running: Running = { placement, helperState: 'starting', reason: null };
+  private beginSynced(placement: DrivePlacement): void {
+    this.running.set(placement.id, {
+      placement,
+      point: null,
+      helperState: 'starting',
+      reason: null,
+    });
+    this.states.set(placement.id, { state: 'starting', route: this.route, mountPoint: null });
+  }
+
+  private beginMount(placement: DrivePlacement, point: string): void {
+    const running: Running = { placement, point, helperState: 'starting', reason: null };
     this.running.set(placement.id, running);
-    if (placement.mode === 'synced') {
-      this.states.set(placement.id, { state: 'starting', route: this.route });
-      return;
-    }
     this.states.set(placement.id, mountFields(running, this.route));
     this.subscribe(placement.id);
     this.ports.helper.send({
@@ -261,7 +298,7 @@ export class PlacementsController {
       mount: placement.id,
       root: placement.rootId,
       folder: placement.folderItemId ?? '',
-      point: placement.localPath,
+      point,
     });
   }
 
@@ -287,6 +324,7 @@ export class PlacementsController {
     this.subscriptions.get(id)?.stop();
     this.subscriptions.delete(id);
     this.ports.helper.send({ op: 'unmount', mount: id });
+    this.showPlaces();
   }
 
   private routeChanged(route: RouteKind): void {
@@ -325,6 +363,27 @@ export class PlacementsController {
     running.helperState = line.type === 'error' ? 'failed' : line.state;
     running.reason = line.reason ?? null;
     this.states.set(line.mount, mountFields(running, this.route));
+    this.showPlaces();
+  }
+
+  private showPlaces(): void {
+    const shown = [...this.running.values()].flatMap((running): MountPlace[] =>
+      running.helperState === 'mounted' &&
+      running.point !== null &&
+      running.placement.mountName !== null
+        ? [
+            {
+              placementId: running.placement.id,
+              point: running.point,
+              name: running.placement.mountName,
+            },
+          ]
+        : [],
+    );
+    const key = JSON.stringify(shown);
+    if (key === this.shownPlaces) return;
+    this.shownPlaces = key;
+    this.ports.places(shown);
   }
 
   private handOver(): void {

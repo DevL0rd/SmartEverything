@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../../design/size-class';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { BottomSheet } from '../../../../components/bottom-sheet';
@@ -48,7 +49,7 @@ function Header({
 function Dialog(props: LibrarySheetProps): ReactNode {
   const motion = useMotion();
   const shown = useOverlayShown();
-  const width = dialogWidth(useWindowDimensions().width);
+  const width = dialogWidth(useWindowSize().width);
   return (
     <Animated.View
       {...entering(motion, FadeIn.duration(250))}
@@ -85,7 +86,7 @@ function PointerSheet(props: LibrarySheetProps): ReactNode {
 }
 
 function TouchSheet(props: LibrarySheetProps): ReactNode {
-  const viewport = useWindowDimensions();
+  const viewport = useWindowSize();
   const insets = useSafeAreaInsets();
   const { width } = floatingSheetFrame(viewport, insets);
   return (

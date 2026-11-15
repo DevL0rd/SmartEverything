@@ -9,6 +9,7 @@ import type { PrinterLive } from '../../../features/device-visuals';
 import type { Device } from '../../../store/state';
 import type { PrinterActor } from '../data/use-printer-view';
 import { countLabel } from '../model/format';
+import type { PrinterHalt } from '../model/job-card';
 import { JobCard, type JobHandlers } from './job-card';
 import { WaitingList } from './waiting-list';
 
@@ -92,6 +93,11 @@ function QueueControl({ band }: { readonly band: QueueBandProps }): ReactNode {
   );
 }
 
+function haltOf(live: PrinterLive): PrinterHalt {
+  if (!live.online) return 'offline';
+  return live.state === 'stopped' ? 'stopped' : 'ready';
+}
+
 function handlersOf(job: PrinterJob, band: QueueBandProps): JobHandlers {
   const { device, live, actor, mayCancel } = band;
   const printer = device.external_id;
@@ -144,7 +150,7 @@ export function QueueBand(props: QueueBandProps): ReactNode {
           {active === null ? null : (
             <JobCard
               job={active}
-              stopped={props.live.state === 'stopped'}
+              printer={haltOf(props.live)}
               ppm={props.live.details.ppm}
               {...handlersOf(active, props)}
             />

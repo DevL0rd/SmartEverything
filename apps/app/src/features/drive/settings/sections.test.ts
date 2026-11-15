@@ -30,9 +30,11 @@ describe('Drive settings sections', () => {
     }
   });
 
-  it('shows a member on a phone their drives and storage only', () => {
+  it('shows a member on a phone their drives, this phone, notifications and storage', () => {
     expect(visibleDriveSettingsSections(MEMBER_PHONE).map((section) => section.id)).toEqual([
       'drives',
+      'phone',
+      'notifications',
       'storage',
     ]);
     expect(visibleRows(MEMBER_PHONE)).toEqual([
@@ -40,6 +42,10 @@ describe('Drive settings sections', () => {
       'drive.drives.hidden',
       'drive.drives.skip',
       'drive.drives.rescan',
+      'drive.phone.space',
+      'drive.phone.remove-all',
+      'drive.phone.files-app',
+      'drive.notifications.push',
       'drive.storage.mine',
       'drive.storage.scrub',
       'drive.storage.backup',
@@ -51,17 +57,35 @@ describe('Drive settings sections', () => {
       'drives',
       'sync-mount',
       'sharing',
+      'notifications',
       'indexing',
       'storage',
       'google',
     ]);
     const rows = visibleRows(OWNER_DESKTOP);
     expect(rows).toContain('drive.storage.quotas');
+    expect(rows).toContain('drive.indexing.contents');
+    expect(rows).toContain('drive.indexing.ocr');
+    expect(rows).not.toContain('drive.phone.space');
     expect(rows).toContain('drive.sync-mount.cache-age');
     expect(rows).not.toContain('drive.storage.mine');
   });
 
+  it('keeps content reading and picture languages for the owner only', () => {
+    const memberDesktop = { owner: false, platform: 'desktop' } as const;
+    const rows = DRIVE_SETTINGS_SECTIONS.flatMap((section) =>
+      section.rows
+        .filter((row) => driveRowVisible(section, row, memberDesktop))
+        .map((row) => row.settingId),
+    );
+    expect(rows).not.toContain('drive.indexing.contents');
+    expect(rows).not.toContain('drive.indexing.ocr');
+  });
+
   it('opens settings on the section of the Drive page', () => {
+    expect(driveSettingsHref('notifications', MEMBER_PHONE)).toMatchObject({
+      params: { page: ['drive'], focus: 'drive.notifications' },
+    });
     expect(driveSettingsHref('index', MEMBER_PHONE)).toMatchObject({
       params: { page: ['drive'], focus: 'drive.drives' },
     });

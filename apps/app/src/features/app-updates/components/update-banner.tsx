@@ -15,44 +15,71 @@ import { pendingRestart, settleRestart } from '../data/restart-confirmation';
 import { useAndroidApkOffer } from '../data/android-apk';
 import type { AppUpdateActions } from '../data/update-store';
 import { useAppUpdate } from '../data/update-store';
-import { DESKTOP_RESTART_PENDING_HINT, bannerOf } from '../model/update-copy';
-import type { ReleaseOffer } from '../model/release-offer';
+import { DESKTOP_RESTART_PENDING_HINT, bannerOf, fallbackChoiceOf } from '../model/update-copy';
+import type { OfferActionKind, ReleaseOffer } from '../model/release-offer';
 import { otaUpdateDetailsOf } from '../model/update-details';
 import type { AppUpdateState } from '../model/update-state';
 import { AndroidApkBanner } from './android-apk-offer';
 import { AndroidUpdateHistory } from './android-update-history';
 import { DesktopInstallerBanner, type DesktopInstaller } from './desktop-installer-banner';
-import { OfferNotice, offerButton, offerDetailsFooter, useShellScope } from './offer-notice';
+import {
+  OfferNotice,
+  offerButton,
+  offerDetailsFooter,
+  useShellScope,
+  type BannerButton,
+} from './offer-notice';
 
 type Confirmation = ReturnType<typeof pendingRestart.get>;
+
+type Press = (
+  offer: ReleaseOffer,
+  actions: AppUpdateActions,
+  restoreFocus?: () => void,
+) => (() => void) | undefined;
+
+function retryPress(offer: ReleaseOffer, actions: AppUpdateActions): () => void {
+  return (): void => {
+    actions.retry(offer.offerId ?? undefined);
+  };
+}
+
+const PRESSES: Readonly<Record<OfferActionKind, Press>> = {
+  update: ({ offerId }, actions) =>
+    offerId === null
+      ? undefined
+      : (): void => {
+          actions.download(offerId);
+        },
+  restart:
+    ({ offerId }, actions, restoreFocus) =>
+    (): void => {
+      actions.restart(offerId ?? undefined, restoreFocus);
+    },
+  retry: retryPress,
+  check: retryPress,
+  retry_update: (_offer, actions) => actions.tryUpdateAgain,
+  stay_built_in: (_offer, actions) => actions.stayOnBuiltIn,
+  cancel: () => undefined,
+};
 
 export function offerPress(
   offer: ReleaseOffer,
   actions: AppUpdateActions,
   restoreFocus?: () => void,
 ): (() => void) | undefined {
-  const { action, offerId } = offer;
+  const { action } = offer;
   if (action === null || action.busy) return undefined;
-  const expected = offerId ?? undefined;
-  switch (action.kind) {
-    case 'update':
-      return offerId === null
-        ? undefined
-        : (): void => {
-            actions.download(offerId);
-          };
-    case 'restart':
-      return (): void => {
-        actions.restart(expected, restoreFocus);
-      };
-    case 'retry':
-    case 'check':
-      return (): void => {
-        actions.retry(expected);
-      };
-    case 'cancel':
-      return undefined;
-  }
+  return PRESSES[action.kind](offer, actions, restoreFocus);
+}
+
+function fallbackChoice(
+  state: AppUpdateState,
+  actions: AppUpdateActions,
+): BannerButton | undefined {
+  const choice = fallbackChoiceOf(state);
+  if (choice === null) return undefined;
+  return offerButton(choice, actions.stayOnBuiltIn);
 }
 
 function detailsPress(
@@ -186,7 +213,7 @@ function AppUpdatePrompt({
           offer={offer}
           action={offerButton(offer.action, press)}
           actionRef={buttonRef}
-          secondaryAction={details.secondaryAction}
+          secondaryAction={fallbackChoice(state, actions) ?? details.secondaryAction}
           onDismiss={(): void => {
             dismissed.set(offer.key);
           }}

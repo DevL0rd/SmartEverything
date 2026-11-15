@@ -50,6 +50,9 @@ const LOCAL_PREFS = z.strictObject({
     launchedId: z.uuid().nullable(),
     pendingId: z.union([z.uuid(), z.literal('built_in')]).nullable(),
   }),
+  appUpdateFallback: z
+    .strictObject({ updateId: z.uuid().nullable(), reason: z.string().min(1) })
+    .nullable(),
   hubUpdateNotices: z.record(z.string(), z.array(z.string())),
   androidInstall: z
     .strictObject({ versionCode: ANDROID_APP_BUILD.shape.versionCode, appVersion: z.string() })
@@ -117,6 +120,7 @@ const defaults: Values = {
   vacuumFinishes: {},
   voiceClips: { played: [], speed: 1 },
   appUpdates: { channel: 'release', launchedId: null, pendingId: null },
+  appUpdateFallback: null,
   hubUpdateNotices: {},
   androidInstall: null,
 };

@@ -62,7 +62,7 @@ function frame(): ModelSpecPart[] {
 export const OUTDOOR_SOFA_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.outdoor-sofa',
   title: 'Outdoor sofa',
-  footprint: { width: 2, depth: DEPTH, height: 0.8 },
+  footprint: { width: 2, depth: DEPTH, height: 0.9417 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

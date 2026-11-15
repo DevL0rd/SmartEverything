@@ -5,17 +5,23 @@ import { z } from 'zod';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useIsOwner } from '../../../store/selectors';
 import { ChannelPanel } from '../components/channel-panel';
 import { useTalkChannel } from '../data/talk-data';
+import { useTalkSections } from './talk-sections';
 
 const PARAMS = z.object({ channelId: z.string().min(1) });
 
-function Missing(): ReactNode {
+function Missing({ channelId }: { readonly channelId: string | null }): ReactNode {
+  const sections = useTalkSections(channelId);
   return (
-    <Screen header={<PageHeader title="Walkie-talkie" />}>
+    <PageShell
+      title="Walkie-talkie"
+      width="reading"
+      {...(sections === undefined ? {} : { sections })}
+    >
       <EmptyState
         compact
         icon="radio"
@@ -27,27 +33,36 @@ function Missing(): ReactNode {
           </View>
         }
       />
-    </Screen>
+    </PageShell>
   );
 }
 
 function Opened({ channelId }: { readonly channelId: string }): ReactNode {
   const channel = useTalkChannel(channelId);
   const owner = useIsOwner();
+  const sections = useTalkSections(channelId);
   if (channel === null) {
-    return <Missing />;
+    return <Missing channelId={channelId} />;
   }
-  const actions: HeaderAction[] = owner
+  const actions: readonly ShellAction[] = owner
     ? [{ icon: 'settings', label: 'Channel settings', href: href.settings.talkChannel(channel.id) }]
     : [];
   return (
-    <Screen header={<PageHeader title={channel.name} titleLines="wrap" actions={actions} />}>
+    <PageShell
+      title={channel.name}
+      actions={actions}
+      {...(sections === undefined ? {} : { sections })}
+    >
       <ChannelPanel channel={channel} split />
-    </Screen>
+    </PageShell>
   );
 }
 
 export function ChannelScreen(): ReactNode {
   const params = PARAMS.safeParse(useLocalSearchParams());
-  return params.success ? <Opened channelId={params.data.channelId} /> : <Missing />;
+  return params.success ? (
+    <Opened channelId={params.data.channelId} />
+  ) : (
+    <Missing channelId={null} />
+  );
 }

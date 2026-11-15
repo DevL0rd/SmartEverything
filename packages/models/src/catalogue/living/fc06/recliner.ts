@@ -2,7 +2,6 @@ import { block, by, furniture, piece, upholsteryFinishes, upholsteryOf } from '.
 
 const WIDTH = 0.92;
 const DEPTH = 0.98;
-const HEIGHT = 1.04;
 const PLINTH_H = 0.05;
 const ARM = 0.17;
 const SEAT_Y = 0.42;
@@ -11,7 +10,7 @@ const HINGE = { type: 'sphere', radius: 0.03, segments: 12 } as const;
 export const RECLINER_MODEL = furniture({
   id: 'cat.living.recliner',
   title: 'Recliner',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.932, depth: 1.024, height: 1.0271 },
   meta: {
     names: {
       display: 'Recliner',

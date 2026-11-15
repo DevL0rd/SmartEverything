@@ -149,7 +149,5 @@ export function resolveWidget(
       return boardWidget(key, widget.type, widget.options, extensions);
     case 'weather':
       return { ...plain(key, definitionIn(HOME_WIDGETS, 'weather'), undefined), wide: true };
-    case 'scenes':
-      return { ...plain(key, definitionIn(HOME_WIDGETS, 'scenes'), undefined), wide: true };
   }
 }

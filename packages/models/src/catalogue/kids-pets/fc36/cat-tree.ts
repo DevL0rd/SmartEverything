@@ -113,7 +113,7 @@ export const CAT_TREE_MODEL: ModelSpec = catalogueItem({
   id: 'cat.kids-pets.cat-tree',
   title: 'Cat tree',
   category: 'kids-pets',
-  footprint: { width: 0.7, depth: 0.55, height: 1.45 },
+  footprint: { width: 0.73, depth: 0.55, height: 1.45 },
   size: { height: { param: 'height', extra: 0.05, resizes: true } },
   view: TALL_VIEW,
   meta: {

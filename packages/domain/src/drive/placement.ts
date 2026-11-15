@@ -69,6 +69,7 @@ export const DRIVE_PLACEMENT_STATUS_FIELDS = {
   lastSyncedAt: MOMENT.nullable(),
   errors: z.array(DRIVE_SYNC_ERROR).readonly(),
   reason: z.string().min(1).nullable(),
+  mountPoint: z.string().min(1).nullable(),
   reportedAt: MOMENT,
 } as const;
 
@@ -80,7 +81,8 @@ export const DRIVE_PLACEMENT_TARGET_FIELDS = {
   rootId: ID,
   folderItemId: ID.nullable(),
   mode: DRIVE_PLACEMENT_MODE,
-  localPath: z.string().min(1),
+  localPath: z.string().min(1).nullable(),
+  mountName: z.string().min(1).nullable(),
   enabled: z.boolean(),
 } as const;
 
@@ -90,26 +92,46 @@ const SYNC_SETTING_FIELDS = {
   conflictCopies: z.boolean().optional(),
 } as const;
 
-function syncSettingsMatchMode(
+function fieldsMatchMode(
   placement: {
     readonly mode: DrivePlacementMode;
+    readonly localPath: string | null;
+    readonly mountName: string | null;
     readonly excluded?: readonly string[] | undefined;
     readonly ignorePatterns?: readonly string[] | undefined;
     readonly conflictCopies?: boolean | undefined;
   },
   context: z.RefinementCtx,
 ): void {
+  const synced = placement.mode === 'synced';
   const present = [placement.excluded, placement.ignorePatterns, placement.conflictCopies].map(
     (value) => value !== undefined,
   );
-  const expected = placement.mode === 'synced';
-  if (present.some((isPresent) => isPresent !== expected)) {
+  if (present.some((isPresent) => isPresent !== synced)) {
     context.addIssue({
       code: 'custom',
-      message: expected
+      message: synced
         ? 'a synced placement carries excluded, ignorePatterns and conflictCopies'
         : 'only a synced placement carries excluded, ignorePatterns and conflictCopies',
       path: ['mode'],
+    });
+  }
+  if ((placement.localPath !== null) !== synced) {
+    context.addIssue({
+      code: 'custom',
+      message: synced
+        ? 'a synced placement names its folder on the computer'
+        : 'a mounted placement has no chosen folder; the computer mounts it in its standard place',
+      path: ['localPath'],
+    });
+  }
+  if ((placement.mountName !== null) === synced) {
+    context.addIssue({
+      code: 'custom',
+      message: synced
+        ? 'only a mounted placement carries a mount name'
+        : 'a mounted placement carries the name it is mounted under',
+      path: ['mountName'],
     });
   }
 }
@@ -125,14 +147,14 @@ export const DRIVE_PLACEMENT = z
     createdAt: MOMENT,
     status: DRIVE_PLACEMENT_STATUS,
   })
-  .superRefine(syncSettingsMatchMode)
+  .superRefine(fieldsMatchMode)
   .readonly();
 
 export type DrivePlacement = z.infer<typeof DRIVE_PLACEMENT>;
 
 export const DRIVE_PLACEMENT_SET = z
   .strictObject({ deviceId: ID, ...DRIVE_PLACEMENT_TARGET_FIELDS, ...SYNC_SETTING_FIELDS })
-  .superRefine(syncSettingsMatchMode)
+  .superRefine(fieldsMatchMode)
   .readonly();
 
 export type DrivePlacementSet = z.infer<typeof DRIVE_PLACEMENT_SET>;

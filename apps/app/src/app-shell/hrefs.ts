@@ -2,7 +2,7 @@ import type { AppHref } from '../components/app-href';
 import { isCamera } from '@smarteverything/domain';
 import type { Device } from '../store/state';
 import { selectionOf, selectionParams } from '../features/home-map/model/selection';
-import type { LibraryTabId } from '../features/photos/model/library-tabs';
+import { photosHrefs } from './hrefs-photos';
 
 export const UPDATES_SETTINGS_PAGE = 'app-updates';
 export const PUSH_RELEASES_SETTINGS_PAGE = `${UPDATES_SETTINGS_PAGE}/releases`;
@@ -44,18 +44,6 @@ function groupPageParams(options: GroupPageOptions): Readonly<Record<string, str
   };
 }
 
-export interface PhotosLibraryParams {
-  readonly tab?: Exclude<LibraryTabId, 'all'>;
-  readonly q?: string;
-}
-
-function photosLibraryQuery(params: PhotosLibraryParams): Readonly<Record<string, string>> {
-  return {
-    ...(params.tab === undefined ? {} : { tab: params.tab }),
-    ...(params.q === undefined || params.q === '' ? {} : { q: params.q }),
-  };
-}
-
 export const href = {
   home: (target?: HomeReveal): AppHref =>
     target === undefined
@@ -75,6 +63,9 @@ export const href = {
     tasks: (): AppHref => '/planner/tasks',
     calendar: (): AppHref => '/planner/calendar',
     insights: (): AppHref => '/planner/insights',
+    booking: (): AppHref => '/planner/booking',
+    search: (query = ''): AppHref =>
+      query === '' ? '/planner/search' : { pathname: '/planner/search', params: { q: query } },
     item: (itemId: string, occurrence: string | null): AppHref => ({
       pathname: '/planner/item/[itemId]',
       params: occurrence === null ? { itemId } : { itemId, occurrence },
@@ -85,39 +76,23 @@ export const href = {
     timers: (): AppHref => '/clock/timers',
     stopwatch: (): AppHref => '/clock/stopwatch',
     world: (): AppHref => '/clock/world',
+    bedtime: (): AppHref => '/clock/bedtime',
     ring: (ringId: string): AppHref => ({
-      pathname: '/clock/ring/[ringId]',
+      pathname: '/ring/[ringId]',
       params: { ringId },
     }),
   },
-  photos: (params: PhotosLibraryParams = {}): AppHref => {
-    const query = photosLibraryQuery(params);
-    return Object.keys(query).length === 0 ? '/photos' : { pathname: '/photos', params: query };
-  },
-  photosPage: (
-    page: 'albums' | 'map' | 'insights' | 'deleted',
-    params: Readonly<Record<string, string>> = {},
-  ): AppHref => ({ pathname: `/photos/${page}`, params }),
-  photosAlbum: (albumId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
-    pathname: '/photos/albums/[albumId]',
-    params: { ...params, albumId },
-  }),
-  photosPlace: (placeId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
-    pathname: '/photos/places/[placeId]',
-    params: { ...params, placeId },
-  }),
-  photosItem: (itemId: string, params: Readonly<Record<string, string>> = {}): AppHref => ({
-    pathname: '/photos/view/[itemId]',
-    params: { ...params, itemId },
-  }),
+  ...photosHrefs,
   drive: (params: Readonly<Record<string, string>> = {}): AppHref =>
     Object.keys(params).length === 0 ? '/drive' : { pathname: '/drive', params },
   drivePage: (
     page:
       | 'shared-drive'
       | 'shared'
+      | 'priority'
       | 'recent'
       | 'starred'
+      | 'notifications'
       | 'activity'
       | 'computers'
       | 'storage'
@@ -132,9 +107,9 @@ export const href = {
     pathname: '/drive/starred/[albumId]',
     params: { albumId },
   }),
-  driveComputer: (deviceId: string): AppHref => ({
+  driveComputer: (deviceId: string, path?: string): AppHref => ({
     pathname: '/drive/computers/[deviceId]',
-    params: { deviceId },
+    params: path === undefined ? { deviceId } : { deviceId, path },
   }),
   drivePlacement: (placementId: string): AppHref => ({
     pathname: '/drive/placement/[placementId]',
@@ -156,6 +131,12 @@ export const href = {
     template === undefined
       ? '/automations/new'
       : { pathname: '/automations/new', params: { template } },
+  automationNewFor: (
+    scope: { readonly roomId: string } | { readonly deviceId: string },
+  ): AppHref => ({
+    pathname: '/automations/new',
+    params: 'roomId' in scope ? { room: scope.roomId } : { device: scope.deviceId },
+  }),
   automationRuns: (automationId?: string, focus?: string): AppHref =>
     automationId === undefined
       ? { pathname: '/automations/runs', params: focus === undefined ? {} : { focus } }
@@ -182,11 +163,6 @@ export const href = {
     deviceId === undefined
       ? '/automations/scheduled/new'
       : { pathname: '/automations/scheduled/new', params: { deviceId } },
-  scenes: (): AppHref => '/automations/scenes',
-  scene: (sceneId: string): AppHref => ({
-    pathname: '/automations/scenes/[sceneId]',
-    params: { sceneId },
-  }),
   assistantCosts: (filters?: { readonly chat?: string }): AppHref =>
     filters?.chat === undefined
       ? '/settings/assistant/costs'

@@ -5,6 +5,7 @@ import {
   type ModelSpecShot,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
+import { MODEL_REGISTRY } from '../../../../../packages/models/src/registry';
 import {
   activeShot,
   conditionHolds,
@@ -362,5 +363,19 @@ describe('reduced motion', () => {
       },
     ]);
     expect(reducedChannelFrames({}, {})).toEqual([]);
+  });
+});
+
+describe('switched off models', () => {
+  const offStates = MODEL_REGISTRY.flatMap((spec) =>
+    spec.states?.['off'] === undefined ? [] : [[spec.id, spec] as const],
+  );
+
+  it.each(offStates)('%s does not spin or swing while off', (_id, spec) => {
+    const moving = evaluateChannels(spec.channels ?? [], spec.states?.['off'] ?? {})
+      .filter((frame) => frame.output.kind === 'spin' || frame.output.kind === 'oscillate')
+      .filter((frame) => isMoving(frame.output))
+      .map((frame) => frame.channelId);
+    expect(moving).toEqual([]);
   });
 });

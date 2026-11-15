@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keyboardLift } from './keyboard-lift';
+import { keyboardLift, liftReport } from './keyboard-lift';
 
 const window = { pageY: 0, height: 914 };
 const keyboard = 336;
@@ -46,5 +46,27 @@ describe('keyboardLift', () => {
   it('does not lift a viewport that cannot be measured', () => {
     expect(keyboardLift(keyboard, null, window)).toBe(0);
     expect(keyboardLift(keyboard, { pageY: 0, height: 914 }, null)).toBe(0);
+  });
+});
+
+describe('the lift report written when the keyboard settles', () => {
+  it('reports nothing covered when the lift clears the keyboard', () => {
+    const view = { pageY: 0, height: 914 };
+    expect(liftReport(300, view, window, keyboardLift(300, view, window))).toStrictEqual({
+      keyboard: 300,
+      lift: 300,
+      viewTop: 0,
+      viewBottom: 914,
+      rootBottom: 914,
+      covered: 0,
+    });
+  });
+
+  it('reports how many pixels the keyboard still covers when the lift came up short', () => {
+    expect(liftReport(300, { pageY: 0, height: 914 }, window, 225).covered).toBe(75);
+  });
+
+  it('reports unknown cover when a frame could not be measured', () => {
+    expect(liftReport(300, null, window, 0)).toMatchObject({ covered: null, viewBottom: null });
   });
 });

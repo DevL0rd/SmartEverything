@@ -1,67 +1,38 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import type { DriveItem } from '@smarteverything/domain';
+import { useLocalSearchParams } from 'expo-router';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
+import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
+import { VirtualList } from '../../../components/virtual-list';
+import { useAreaWidth } from '../../../design/size-class';
 import { joinParts } from '../../../format/text';
 import { useSyncStatus } from '../../../store/selectors';
-import { useDriveAlbumItems, useDriveRoots } from '../data';
+import { useDriveAlbumItems, useDriveChips } from '../data';
 import { DriveFrame } from '../components/drive-frame';
-import { runAction, type ItemCommands } from '../folder/folder-footer';
-import { WIDE_FROM } from '../folder/folder-header';
-import {
-  FolderList,
-  FolderLoading,
-  useByName,
-  type FolderRowHandlers,
-} from '../folder/folder-list';
-import {
-  DEFAULT_SORT,
-  actionsOf,
-  columnSort,
-  sortItems,
-  type ByName,
-  type FolderAction,
-  type FolderSort,
-} from '../folder/folder-model';
-import { openHrefOf } from '../recent/recent-model';
+import { folderTrailOf, type DriveChipOf } from '../model/drive-chip';
 import { usePlaceOf } from './rule-chip-view';
 import { ruleSummary } from './rule-labels';
+import { StarredColumns } from './section-head';
 import { useSmartFolder, windowOf, type AlbumPages } from './smart-data';
 import { matchesText, type SmartFolder } from './smart-model';
+import { StarredFileRow } from './starred-look';
+import type { FileBrowserHandle } from '../../files';
+import { DriveListFrame, useDriveItemList } from '../source/drive-lists';
+import { itemOf, type DriveNode, type DriveOrigin } from '../source/drive-node';
 
-const NO_PICKS: ReadonlySet<string> = new Set();
 const NO_PLACES: ReadonlyMap<string, string> = new Map();
-const READ_ONLY = { writable: false, details: false } as const;
 
-function useHandlers(byName: ByName): FolderRowHandlers {
-  const router = useRouter();
-  const roots = useDriveRoots();
-  const open = (item: DriveItem): void => {
-    router.push(openHrefOf(item, roots));
-  };
-  const commands: ItemCommands = { open, details: open, rename: open };
-  return {
-    byName,
-    actionsOf: (item): readonly FolderAction[] => actionsOf(item, READ_ONLY),
-    onAction: (action, item): void => {
-      runAction(action, item, commands);
-    },
-    onPick: open,
-    onPress: open,
-    highlight: (): null => null,
-  };
-}
+const LOADING_ROWS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
 
-function EveryMatch({ pages }: { readonly pages: AlbumPages }): ReactNode {
-  if (pages.data === undefined || pages.hasNextPage) return null;
+function EveryMatch({ pages }: { readonly pages: AlbumPages }): ReactElement {
+  if (pages.data === undefined || pages.hasNextPage) return <View />;
   return (
     <Text variant="caption" tone="variant" align="center" className="py-4">
       That’s every match.
@@ -69,13 +40,42 @@ function EveryMatch({ pages }: { readonly pages: AlbumPages }): ReactNode {
   );
 }
 
+function Loading(): ReactNode {
+  return (
+    <View aria-busy aria-label="Finding the matching files" className="gap-2 p-4">
+      {LOADING_ROWS.map((key) => (
+        <Skeleton key={key} className="h-row-h" />
+      ))}
+    </View>
+  );
+}
+
+function rowOf(
+  browser: FileBrowserHandle<DriveOrigin>,
+  chipOf: DriveChipOf,
+  wide: boolean,
+): (node: DriveNode) => ReactElement {
+  return function SmartMatch(node: DriveNode): ReactElement {
+    const item = itemOf(node);
+    const chip = chipOf(item?.rootId ?? '');
+    return (
+      <StarredFileRow
+        node={node}
+        browser={browser}
+        chip={chip}
+        where={folderTrailOf(chip, item?.relPath ?? '')}
+        wide={wide}
+      />
+    );
+  };
+}
+
 function Matches({ pages }: { readonly pages: AlbumPages }): ReactNode {
-  const [sort, setSort] = useState<FolderSort>(DEFAULT_SORT);
-  const byName = useByName();
-  const handlers = useHandlers(byName);
-  const wide = useFrameBodyWidth() >= WIDE_FROM;
-  const items = sortItems(windowOf(pages).items, sort, byName);
-  if (pages.data === undefined) return <FolderLoading label="Finding the matching files" />;
+  const chipOf = useDriveChips();
+  const wide = useAreaWidth() >= SHELL_BREAKPOINTS.compactMax;
+  const { items } = windowOf(pages);
+  const { browser, nodes } = useDriveItemList('smart-folder', items);
+  if (pages.data === undefined) return <Loading />;
   if (items.length === 0) {
     return (
       <EmptyState
@@ -86,23 +86,22 @@ function Matches({ pages }: { readonly pages: AlbumPages }): ReactNode {
     );
   }
   return (
-    <FolderList
-      items={items}
-      wide={wide}
-      sort={sort}
-      selection={NO_PICKS}
-      handlers={handlers}
-      loadingMore={pages.isFetchingNextPage}
-      stale={pages.isPlaceholderData}
-      footer={<EveryMatch pages={pages} />}
-      onSort={(key) => {
-        setSort(columnSort(sort, key));
-      }}
-      onMore={() => {
-        if (!pages.hasNextPage || pages.isFetchingNextPage) return;
-        pages.fetchNextPage().catch(notifyFailure('More matching files could not be read.'));
-      }}
-    />
+    <DriveListFrame browser={browser}>
+      <View className="-mx-gutter flex-1">
+        <VirtualList
+          sections={[{ key: 'matches', title: null, data: nodes }]}
+          keyOf={(node) => node.key}
+          renderItem={rowOf(browser, chipOf, wide)}
+          {...(wide ? { header: <StarredColumns /> } : {})}
+          footer={<EveryMatch pages={pages} />}
+          onEndReached={() => {
+            if (!pages.hasNextPage || pages.isFetchingNextPage) return;
+            pages.fetchNextPage().catch(notifyFailure('More matching files could not be read.'));
+          }}
+          probe="drive-smart-folder"
+        />
+      </View>
+    </DriveListFrame>
   );
 }
 
@@ -147,9 +146,7 @@ function Opened({ folder }: { readonly folder: SmartFolder }): ReactNode {
       breadcrumbs={[{ label: 'Starred', href: href.drivePage('starred') }, { label: folder.title }]}
       scroll={false}
     >
-      <View className="min-h-0 flex-1 overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
-        <Body pages={pages} online={online} />
-      </View>
+      <Body pages={pages} online={online} />
     </DriveFrame>
   );
 }

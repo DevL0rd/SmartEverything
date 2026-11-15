@@ -14,10 +14,19 @@ import { errorText } from '../../../format/errors';
 import { count } from '../../../format/number';
 import { useSyncStatus } from '../../../store/selectors';
 import { driveLinks, flattenPages, useDriveItem } from '../../drive';
-import { usePhotoAlbum, usePhotoAlbumItems, loadedItems } from '../../photos/albums/album-data';
-import { isMedia, tileOfItem, tilesOfItems } from '../../photos/albums/album-items';
-import { PHOTO_ALL, usePhotoBuckets, usePhotoMonth } from '../../photos/data';
-import { longDay, monthName } from '../../photos/model/media-text';
+import {
+  usePhotoAlbum,
+  usePhotoAlbumItems,
+  loadedItems,
+  isMedia,
+  tileOfItem,
+  tilesOfItems,
+  PHOTO_ALL,
+  usePhotoBuckets,
+  usePhotoMonth,
+  longDay,
+  monthName,
+} from '../../photos';
 import { CHAT_SURFACE } from '../components/chat-surface';
 import {
   PHOTOS_WIDGET_COPY,

@@ -20,6 +20,13 @@ export const PHOTOS_PREF = z.strictObject({
   removeLocationOutside: z
     .boolean()
     .describe('Links opened by people outside the home get copies without GPS data'),
+  smartSearch: z
+    .boolean()
+    .describe('Send photo previews to OpenRouter to find tags, text and meaning for search'),
+  faceGrouping: z.boolean().describe('Group the people and pets in photos on the Hub'),
+  albumActivity: z
+    .boolean()
+    .describe('Notify about photos, comments and likes added to shared albums'),
 });
 
 export type PhotosPref = z.infer<typeof PHOTOS_PREF>;
@@ -38,7 +45,7 @@ export const PHOTOS_CLIENT_PREFS = {
   photos: clientPref({
     storageKey: 'photos',
     scope: 'profile',
-    version: 3,
+    version: 4,
     defaultValue: {
       showCameras: true,
       showAi: true,
@@ -48,6 +55,9 @@ export const PHOTOS_CLIENT_PREFS = {
       showNotBackedUp: true,
       map: true,
       removeLocationOutside: true,
+      smartSearch: false,
+      faceGrouping: true,
+      albumActivity: true,
     },
     schema: PHOTOS_PREF,
     legacy: noLegacy,

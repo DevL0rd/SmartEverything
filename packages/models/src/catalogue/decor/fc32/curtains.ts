@@ -51,7 +51,7 @@ function finial(side: -1 | 1): ModelSpecPart {
 export const CURTAINS_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.curtains',
   title: 'Curtains and rod',
-  footprint: { width: 2.188, depth: 0.14, height: 2.474 },
+  footprint: { width: 2.188, depth: 0.105, height: 2.474 },
   size: {
     width: { param: 'width', extra: 0.388, resizes: true },
     height: { param: 'height', extra: 0.074, resizes: true },

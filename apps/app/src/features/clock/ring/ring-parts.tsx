@@ -7,10 +7,12 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { clock } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { LIST_DOT } from '../../planner/item/composer-tokens';
+import { LIST_DOT } from '../../planner';
 import { useWeather } from '../../weather';
+import type { SoundLine } from './ring-lines';
 import {
   briefingLinesOf,
+  clockPartsOf,
   dateLineOf,
   greetingAt,
   todayRowsOf,
@@ -18,7 +20,9 @@ import {
   type TodayRow,
 } from './ring-model';
 
-const RING_TIME = 'font-mono-medium text-figure-xl tracking-tighter tabular';
+const RING_TIME = 'font-mono-medium tracking-tighter tabular';
+
+const RING_PERIOD = 'font-mono-medium text-figure-m tabular';
 
 function useWeatherLine(today: string): string | null {
   const weather = useWeather();
@@ -29,13 +33,16 @@ export function RingHeading({
   icon,
   label,
   today,
+  compact,
 }: {
   readonly icon: IconName;
   readonly label: string;
   readonly today: string;
+  readonly compact: boolean;
 }): ReactNode {
   const now = useMinute();
   const weather = useWeatherLine(today);
+  const time = clockPartsOf(clock(now));
   return (
     <View className="items-center gap-1">
       <View className="flex-row items-center gap-2">
@@ -44,9 +51,19 @@ export function RingHeading({
           {label}
         </Text>
       </View>
-      <Text role="timer" className={RING_TIME} numberOfLines={1}>
-        {clock(now)}
-      </Text>
+      <View role="timer" aria-label={clock(now)} className="flex-row items-baseline gap-2">
+        <Text
+          className={cn(RING_TIME, compact ? 'text-figure-xl' : 'text-display')}
+          numberOfLines={1}
+        >
+          {time.digits}
+        </Text>
+        {time.period === null ? null : (
+          <Text tone="variant" className={RING_PERIOD} numberOfLines={1}>
+            {time.period}
+          </Text>
+        )}
+      </View>
       <Text variant="callout" tone="variant" align="center">
         {dateLineOf(now, weather)}
       </Text>
@@ -54,7 +71,39 @@ export function RingHeading({
   );
 }
 
-export function MorningCard({ day }: { readonly day: PlannerDay }): ReactNode {
+export function SoundLineRow({ line }: { readonly line: SoundLine }): ReactNode {
+  const tone = line.fellBack ? 'warning' : 'variant';
+  return (
+    <View
+      role={line.fellBack ? 'alert' : undefined}
+      className="flex-row items-center justify-center gap-2 self-center"
+    >
+      <Icon name={line.icon} size={16} tone={tone} />
+      <Text variant="callout" tone={tone} className="shrink" align="center">
+        {line.text}
+      </Text>
+    </View>
+  );
+}
+
+export function SleepLine({ sleep }: { readonly sleep: string }): ReactNode {
+  return (
+    <View className="flex-row items-center gap-2">
+      <Icon name="moon" size={14} tone="variant" />
+      <Text variant="callout" tone="variant" className="shrink">
+        {sleep}
+      </Text>
+    </View>
+  );
+}
+
+export function MorningCard({
+  day,
+  sleep,
+}: {
+  readonly day: PlannerDay;
+  readonly sleep: string | null;
+}): ReactNode {
   const now = useMinute();
   return (
     <Card className="gap-2 bg-surface-1/80">
@@ -62,6 +111,7 @@ export function MorningCard({ day }: { readonly day: PlannerDay }): ReactNode {
         <Icon name="sparkles" size={16} tone="primary" />
         <Text variant="body-strong">{greetingAt(now)}</Text>
       </View>
+      {sleep === null ? null : <SleepLine sleep={sleep} />}
       <Text variant="callout">{briefingLinesOf(day, now).join(' ')}</Text>
     </Card>
   );

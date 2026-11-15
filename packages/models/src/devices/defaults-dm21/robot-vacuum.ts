@@ -76,7 +76,7 @@ export const ROBOT_VACUUM_MODEL: ModelSpec = {
   title: 'Robot vacuum',
   category: 'cleaning',
   family: 'vacuum',
-  footprint: { width: R * 2, depth: R * 2, height: HEIGHT },
+  footprint: { width: 0.3469, depth: 0.3516, height: 0.1015 },
   framing: {
     tile: { yaw: 30, pitch: 35, fov: 28, padding: 0.06, focus: 'body' },
     card: { yaw: 30, pitch: 35, fov: 28, padding: 0.1, focus: 'body' },

@@ -14,7 +14,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useDebouncedValue } from '../../../design/use-debounced-value';
 import { useStableCallback } from '../../../design/use-stable-callback';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { ComputerFrame } from '../components/computer-frame';
 import { DemandRegion } from '../../../store/demand-region';
 import { useComputerSelect } from '../data/computer-metrics';
@@ -31,7 +31,7 @@ import {
   type ProcessOrdering,
 } from './process-sort';
 import { ProcessTable, type ProcessTableProps } from './process-table';
-import { SectionGate } from './section-gate';
+import { SectionGate, useSectionState } from './section-gate';
 
 const TOPICS = ['processes'] as const;
 const SEARCH_SETTLE_MS = 250;
@@ -68,8 +68,7 @@ interface ListState {
   readonly setOrdering: (next: (current: ProcessOrdering) => ProcessOrdering) => void;
   readonly view: ProcessView;
   readonly setView: (view: ProcessView) => void;
-  readonly query: string;
-  readonly setQuery: (query: string) => void;
+  readonly clearQuery: () => void;
   readonly filter: ProcessFilter;
   readonly setFilter: (filter: ProcessFilter) => void;
   readonly search: string;
@@ -79,10 +78,9 @@ interface ListState {
   readonly layout: ProcessLayout;
 }
 
-function useListState(): ListState {
+function useListState(query: string, onQuery: (query: string) => void): ListState {
   const [ordering, setOrdering] = useState<ProcessOrdering>(DEFAULT_ORDERING);
   const [view, setView] = useState<ProcessView>('tree');
-  const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ProcessFilter>('all');
   const search = useDebouncedValue(query, SEARCH_SETTLE_MS).trim();
   const layout = layoutOf(useFrameBodyWidth());
@@ -93,8 +91,9 @@ function useListState(): ListState {
     setOrdering,
     view,
     setView,
-    query,
-    setQuery,
+    clearQuery: (): void => {
+      onQuery('');
+    },
     filter,
     setFilter,
     search,
@@ -117,7 +116,7 @@ function Card({
   readonly handlers: Pick<ProcessTableProps, 'onSort' | 'onOpen' | 'onToggle'>;
 }): ReactNode {
   const clear = (): void => {
-    state.setQuery('');
+    state.clearQuery();
     state.setFilter('all');
   };
   if (part === undefined) return <Loading />;
@@ -158,14 +157,15 @@ function useHandlers(
   };
 }
 
-export function Results({
-  deviceId,
-  offline,
-}: {
+export interface ResultsProps {
   readonly deviceId: string;
   readonly offline: boolean;
-}): ReactNode {
-  const state = useListState();
+  readonly query: string;
+  readonly onQuery: (query: string) => void;
+}
+
+export function Results({ deviceId, offline, query, onQuery }: ResultsProps): ReactNode {
+  const state = useListState(query, onQuery);
   const [selected, setSelected] = useState<string | null>(null);
   const part = useComputerSelect(deviceId, (parts) => parts.processes);
   const rows = part?.rows ?? NO_ROWS;
@@ -183,8 +183,6 @@ export function Results({
         deviceId={deviceId}
         view={state.view}
         onView={state.setView}
-        query={state.query}
-        onQuery={state.setQuery}
         filter={state.filter}
         onFilter={state.setFilter}
         flat={state.flat}
@@ -254,8 +252,25 @@ function GpuHint({
 
 export function ComputerProcessesScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const reach = useComputerReach(deviceId);
+  const [query, setQuery] = useState('');
+  const open = useSectionState(deviceId, 'processes', 'processes').kind === 'open';
   return (
-    <ComputerFrame deviceId={deviceId} title="Processes" width="dashboard" scroll={false}>
+    <ComputerFrame
+      deviceId={deviceId}
+      title="Processes"
+      width="dashboard"
+      scroll={false}
+      {...(open
+        ? {
+            search: {
+              value: query,
+              onChange: setQuery,
+              placeholder: 'Search name, command or PID',
+              label: 'Search processes',
+            },
+          }
+        : {})}
+    >
       <SectionGate deviceId={deviceId} section="processes" scope="processes">
         {reach.online ? null : (
           <ReasonLine
@@ -264,7 +279,7 @@ export function ComputerProcessesScreen({ deviceId }: { readonly deviceId: strin
             text={`${reach.name} is offline. This is the last reading.`}
           />
         )}
-        <Results deviceId={deviceId} offline={!reach.online} />
+        <Results deviceId={deviceId} offline={!reach.online} query={query} onQuery={setQuery} />
       </SectionGate>
     </ComputerFrame>
   );

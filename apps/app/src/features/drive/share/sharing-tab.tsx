@@ -32,6 +32,9 @@ import {
   type LinkGroups,
 } from '../shared/shared-model';
 import { PeopleSection, SectionTitle } from './people-section';
+import { RequestsSection } from './requests-section';
+import { TransferSection } from './transfer-section';
+import { PeopleLink, ViewOnlyRow } from './view-only-row';
 import { LINK_STATE_LINE, itemLinkStatsOf, linkStateOf, type LinkState } from './share-model';
 
 type SharePages = ReturnType<typeof useDriveShares>;
@@ -303,8 +306,13 @@ export function SharingTab({
   const link = linkStateOf(subject.access, useIsOwner(), useDriveSettings().data ?? null);
   return (
     <View className="gap-4">
-      <PeopleSection item={item} root={subject.root} access={subject.access} />
+      <RequestsSection itemId={item.id} />
+      <PeopleSection item={item} ownerProfileId={subject.ownerProfileId} access={subject.access} />
+      <ViewOnlyRow item={item} access={subject.access} />
       {link === 'owner-only' ? null : <LinksPart item={item} onShare={onShare} link={link} />}
+      <View className="h-px bg-outline-variant" />
+      <PeopleLink itemId={item.id} access={subject.access} />
+      <TransferSection item={item} access={subject.access} />
     </View>
   );
 }

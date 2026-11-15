@@ -10,6 +10,7 @@ import { useIsFocused, useScrollToTop } from 'expo-router';
 import { cn } from '../design/cn';
 import { useScreenViewport } from '../design/viewport';
 import { Ambient } from './ambient';
+import { useBottomChrome } from './bottom-chrome';
 import { KeyboardViewport } from './keyboard-viewport';
 import { useToastObstacle } from './toast-obstacles';
 import {
@@ -50,11 +51,15 @@ export interface ScreenProps {
 
 function FooterBar({ children }: { readonly children: ReactNode }): ReactNode {
   const { attach, onLayout } = useToastObstacle('bottom', useIsFocused());
+  const aboveChrome = useBottomChrome();
   return (
     <View
       ref={attach}
       onLayout={onLayout}
-      className="border-t border-outline-variant bg-chrome px-gutter pt-3 pb-safe-offset-3"
+      className={cn(
+        'border-t border-outline-variant bg-chrome px-gutter pt-3',
+        aboveChrome ? 'pb-3' : 'pb-safe-offset-3',
+      )}
     >
       {children}
     </View>

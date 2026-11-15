@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
-import { ScrollView, View, useWindowDimensions, type ViewStyle } from 'react-native';
+import { useRef, useState, type ReactNode } from 'react';
+import { ScrollView, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { cn } from '../design/cn';
 import { entering, useMotion } from '../design/motion';
-import { placeAbove, placeNear, type Rect } from './anchor';
+import { placeAbove, placeFitted, placeNear, type Rect } from './anchor';
 import { CHROME_SURFACE, COMPACT_PANEL_INSET } from './compact-panel';
 import { Overlay, useOverlayShown } from './overlay';
 
@@ -26,16 +27,60 @@ interface PanelProps {
   readonly scroll: boolean;
   readonly className: string | undefined;
   readonly chrome: boolean;
+  readonly onNatural?: (height: number) => void;
   readonly children: ReactNode;
 }
 
-function PopoverPanel({ frame, className, chrome, children, scroll }: PanelProps): ReactNode {
+interface NaturalHeight {
+  readonly panel: (event: LayoutChangeEvent) => void;
+  readonly viewport: (event: LayoutChangeEvent) => void;
+  readonly content: (width: number, height: number) => void;
+}
+
+function useNaturalHeight(report: (height: number) => void): NaturalHeight {
+  const sizes = useRef({ panel: 0, viewport: 0, content: 0 });
+  const update = (): void => {
+    const { panel, viewport, content } = sizes.current;
+    if (viewport > 0 && content > 0) report(content + panel - viewport);
+  };
+  return {
+    panel: (event): void => {
+      sizes.current.panel = event.nativeEvent.layout.height;
+      update();
+    },
+    viewport: (event): void => {
+      sizes.current.viewport = event.nativeEvent.layout.height;
+      update();
+    },
+    content: (_width, height): void => {
+      sizes.current.content = height;
+      update();
+    },
+  };
+}
+
+function ignoreHeight(): void {
+  return undefined;
+}
+
+function PopoverPanel({
+  frame,
+  className,
+  chrome,
+  children,
+  scroll,
+  onNatural = ignoreHeight,
+}: PanelProps): ReactNode {
   const motion = useMotion();
   const shown = useOverlayShown();
+  const natural = useNaturalHeight(onNatural);
   return (
     <Animated.View
       {...entering(motion, FadeIn.duration(150))}
-      onLayout={shown}
+      onLayout={(event) => {
+        shown();
+        natural.panel(event);
+      }}
       style={frame}
       className={cn(
         'absolute overflow-hidden elevation-2',
@@ -48,6 +93,8 @@ function PopoverPanel({ frame, className, chrome, children, scroll }: PanelProps
       {scroll ? (
         <ScrollView
           {...(chrome ? { className: 'min-h-0 shrink' } : {})}
+          onLayout={natural.viewport}
+          onContentSizeChange={natural.content}
           contentContainerClassName={cn('py-1', chrome && COMPACT_PANEL_INSET)}
         >
           <View>{children}</View>
@@ -91,7 +138,7 @@ export function PopoverFrame({
   chrome = false,
   children,
 }: PopoverFrameProps): ReactNode {
-  const window = useWindowDimensions();
+  const window = useWindowSize();
   const vertical = fitContent
     ? fitVertical(frame, window.height, align)
     : { top: frame.y, height: frame.height };
@@ -103,6 +150,26 @@ export function PopoverFrame({
       </PopoverPanel>
     </Overlay>
   );
+}
+
+function placeOf({
+  anchor,
+  width,
+  window,
+  placement,
+  measured,
+}: {
+  readonly anchor: Rect;
+  readonly width: number;
+  readonly window: { readonly width: number; readonly height: number };
+  readonly placement: 'auto' | 'above';
+  readonly measured: number | null;
+}): ReturnType<typeof placeNear> {
+  const prefer = placement === 'above' ? 'above' : 'below';
+  if (measured !== null) return placeFitted(anchor, width, window, { height: measured, prefer });
+  return placement === 'above'
+    ? placeAbove(anchor, width, window)
+    : placeNear(anchor, width, window);
 }
 
 export function Popover({
@@ -118,13 +185,13 @@ export function Popover({
   chrome = false,
   children,
 }: PopoverProps): ReactNode {
-  const window = useWindowDimensions();
+  const window = useWindowSize();
+  const [natural, setNatural] = useState<number | null>(null);
   if (anchor === null) {
     return null;
   }
   const shown = Math.min(width, window.width - 16);
-  const place =
-    placement === 'above' ? placeAbove(anchor, shown, window) : placeNear(anchor, shown, window);
+  const place = placeOf({ anchor, width: shown, window, placement, measured: height ?? natural });
   const frame = {
     left: place.left,
     ...place.vertical,
@@ -134,7 +201,13 @@ export function Popover({
   };
   return (
     <Overlay open={open} onClose={onClose} label={label} scrim={false}>
-      <PopoverPanel frame={frame} className={className} chrome={chrome} scroll={scroll}>
+      <PopoverPanel
+        frame={frame}
+        className={className}
+        chrome={chrome}
+        scroll={scroll}
+        onNatural={setNatural}
+      >
         {children}
       </PopoverPanel>
     </Overlay>

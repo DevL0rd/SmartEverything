@@ -14,7 +14,7 @@ describe('backup runner', () => {
   });
 
   async function ledger(): Promise<Ledger> {
-    return loadLedger(t.storage);
+    return loadLedger(t.ports);
   }
 
   it('registers the phone and uploads new items oldest first into their month folder', async () => {
@@ -249,7 +249,8 @@ describe('backup runner', () => {
   it('survives a restart with the ledger in storage', async () => {
     t.library.rows = [rowOf('a', 1000)];
     await t.runner.request();
-    expect(t.storage.values.has(LEDGER_STORAGE_KEY)).toBe(true);
+    expect(t.ledgerFile.text).not.toBeNull();
+    expect(t.storage.values.has(LEDGER_STORAGE_KEY)).toBe(false);
     t.native.hashed = [];
     await new BackupRunner(t.ports).request();
     expect(t.native.hashed).toEqual([]);

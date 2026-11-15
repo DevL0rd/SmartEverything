@@ -8,8 +8,7 @@ import { mainPageSettings } from '../../../app-shell/main-pages';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import {
   WidgetBoard,
   boardClassOf,
@@ -94,17 +93,14 @@ function useReveal(): BoardReveal | undefined {
 
 function EmptyHome({ title }: { readonly title: string }): ReactNode {
   return (
-    <Screen
-      header={<PageHeader title={title} settings={mainPageSettings('home')} back={false} />}
-      maxWidth="reading"
-    >
+    <PageShell title={title} settings={mainPageSettings('home')} back={false} width="reading">
       <EmptyState
         icon="home"
         title="Let’s add your first devices"
         body="Link the account your devices use and they show up here."
         action={<Button label="Connect an account" href={href.settings.page('connections/add')} />}
       />
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -222,22 +218,16 @@ export function HomeScreen(): ReactNode {
     return <EmptyHome title={title} />;
   }
   return (
-    <Screen
-      header={
-        <PageHeader
-          title={title}
-          settings={mainPageSettings('home')}
-          back={false}
-          actions={editor.editing ? [] : [editor.editAction]}
-          search={header !== 'large'}
-          editing={editor.header}
-          {...(header === 'standard' ? {} : { below: <HeaderBelow search={header === 'large'} /> })}
-        />
-      }
+    <PageShell
+      title={title}
+      settings={mainPageSettings('home')}
+      back={false}
+      actions={editor.editing ? [] : [editor.editAction]}
+      editing={editor.header}
     >
-      {header === 'standard' ? <SummaryLine /> : null}
+      {header === 'standard' ? <SummaryLine /> : <HeaderBelow />}
       <HomeMapHero realistic={homeMapRealistic} />
       <HomeBoard editor={editor} reveal={reveal} />
-    </Screen>
+    </PageShell>
   );
 }

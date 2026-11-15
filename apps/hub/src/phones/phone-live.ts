@@ -1,6 +1,6 @@
-import type { DeviceRow, LiveChange, ProcessWindow } from '@smarteverything/domain';
+import type { DeviceRow, LiveChange } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { deviceTarget, type Viewers } from '../metrics/viewers';
+import { deviceTarget, type Viewers, type DeviceDetail } from '../metrics/viewers';
 import type { Store } from '../store/store';
 import type { PhoneActionBroker } from './phone-actions';
 import type { PhoneTarget } from './phone-nodes';
@@ -11,7 +11,7 @@ const LIVE_TOPIC = 'live';
 
 export interface PhoneLiveOptions {
   readonly store: Pick<Store, 'devices' | 'feed'>;
-  readonly viewers: Pick<Viewers<ProcessWindow>, 'follow'>;
+  readonly viewers: Pick<Viewers<DeviceDetail>, 'follow'>;
   readonly actions: Pick<PhoneActionBroker, 'live'>;
   readonly target: (device: DeviceRow) => PhoneTarget;
   readonly log: Logger;

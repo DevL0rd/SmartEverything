@@ -49,8 +49,8 @@ vi.mock('../../../components/error-state', () => ({
   },
 }));
 vi.mock('../../../components/list-loader', () => ({ ListLoader: (): null => null }));
-vi.mock('../../../components/screen', () => ({
-  Screen: ({ children }: { readonly children: ReactNode }): ReactNode => children,
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: ({ children }: { readonly children: ReactNode }): ReactNode => children,
 }));
 vi.mock('../../../store/store-context', () => ({ useEntityStore: (): EntityStore => store }));
 vi.mock('../../../store/assistant-response-style', () => ({

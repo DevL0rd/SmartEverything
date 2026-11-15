@@ -1,6 +1,6 @@
-import type { DesktopRing } from './ring-types.js';
+import type { DesktopRing, RingChoice } from './ring-types.js';
 
-const KIND_NAMES = { alarm: 'Alarm', timer: 'Timer', reminder: 'Reminder' } as const;
+export const KIND_NAMES = { alarm: 'Alarm', timer: 'Timer', reminder: 'Reminder' } as const;
 
 export function ringTime(ring: DesktopRing): string {
   return new Date(ring.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -23,4 +23,9 @@ export function missedNotice(ring: DesktopRing): { readonly title: string; reado
     title: `Missed ${KIND_NAMES[ring.kind].toLowerCase()} ${ringTime(ring)}${label}`,
     body: 'This computer was asleep.',
   };
+}
+
+export function choiceFailedLine(ring: DesktopRing, choice: RingChoice): string {
+  const action = choice === 'snooze' ? 'Snooze' : ring.kind === 'timer' ? 'Stop' : 'Dismiss';
+  return `${action} did not reach the Hub, so the ${KIND_NAMES[ring.kind].toLowerCase()} is still ringing. Try again.`;
 }

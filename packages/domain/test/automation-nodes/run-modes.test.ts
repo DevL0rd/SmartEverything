@@ -10,7 +10,6 @@ describe('run modes', () => {
       'device.toggle',
       'device.fade',
       'device.restore',
-      'scene.run',
       'notify.person',
       'notify.feed',
       'notify.speak',

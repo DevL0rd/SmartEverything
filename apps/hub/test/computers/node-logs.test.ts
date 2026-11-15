@@ -13,7 +13,8 @@ describe('paired computer runtime logs', () => {
     const booted = hub.booted();
     const logs = new NodeLogShip();
     const runtime = new NodeAiRuntime({
-      hubUrl: booted.base,
+      hubUrl: paired.hubUrl,
+      transport: paired.transport,
       token: paired.token,
       deviceId: paired.deviceId,
       hello: paired.hello,

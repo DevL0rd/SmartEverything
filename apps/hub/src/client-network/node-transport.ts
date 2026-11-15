@@ -17,6 +17,7 @@ export interface McpGrantAddress {
 }
 export interface NodeMcpTransport {
   endpoint(runtime: ComputerAiRuntime, address: McpGrantAddress, token: string): string;
+  release(runtime: ComputerAiRuntime): void;
   revoke(runtime: ComputerAiRuntime): void;
 }
 

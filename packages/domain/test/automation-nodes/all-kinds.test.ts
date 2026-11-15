@@ -103,7 +103,6 @@ const V1_IDS: readonly string[] = [
   'random.choice',
   'random.number',
   'room.info',
-  'scene.run',
   'state.history',
   'text.format',
   'text.join',

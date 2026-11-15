@@ -1,13 +1,22 @@
-import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { partCallOf, toolNamed } from '../../src/extensions/mcp/tools';
 import {
   ownerUpdateChat,
   ownerUpdateRequester,
+  requireOwnerConnection,
   requireUpdateRequester,
 } from '../../src/extensions/mcp/tools/update-requester';
+import { releaseKeys } from '../../src/extensions/mcp/tools/update-release-keys';
+import { requireSourceFields } from '../../src/extensions/mcp/tools/update-source';
+import { systemClock } from '../../src/clock';
+import { hubLayout } from '../../src/data-layout';
+import { trustedReleaseKeys } from '../../src/releases/trust';
+import { SecretStore } from '../../src/secrets/store';
 import { eventAuthority } from '../../src/assistant/turn-authority';
 import type { ToolActor } from '../../src/extensions/mcp/tools/registry';
 import { TEST_ENGINE } from '../support/engine';
@@ -67,6 +76,9 @@ describe('the update tools', () => {
       'ui',
       'desktop',
       'recover',
+      'rollback',
+      'release_keys',
+      'discard',
     ]);
     expect(partCallOf('chat_file_send', { path: '/a', what: 'A file' })).toEqual({
       name: 'chat_file_send',
@@ -104,14 +116,32 @@ describe('the update tools', () => {
       name: 'update_recover',
       args: { id },
     });
+    expect(partCallOf('update_control', { action: 'rollback', artifact: 'hub', id })).toEqual({
+      name: 'update_rollback',
+      args: { artifact: 'hub', id },
+    });
+    expect(partCallOf('update_control', { action: 'release_keys', operation: 'list' })).toEqual({
+      name: 'update_release_keys',
+      args: { operation: 'list' },
+    });
+    expect(
+      partCallOf('update_control', { action: 'release_keys', operation: 'set', token: 'x' }),
+    ).toEqual({ name: 'update_release_keys', args: { operation: 'set', token: 'x' } });
+    const upload = randomUUID();
+    expect(partCallOf('update_control', { action: 'discard', upload })).toEqual({
+      name: 'update_discard',
+      args: { upload },
+    });
   });
 
   it('has no environment switch that disables app, ui or desktop publishing', () => {
-    const source = readFileSync(
-      join(import.meta.dirname, '../../src/extensions/mcp/tools/update.ts'),
-      'utf8',
-    );
-    expect(source).not.toMatch(/ALLOW_APP|process\.env|from 'node:process'/u);
+    const tools = join(import.meta.dirname, '../../src/extensions/mcp/tools');
+    const files = readdirSync(tools).filter((name) => name.startsWith('update'));
+    expect(files).toContain('update-publish.ts');
+    for (const file of files)
+      expect(readFileSync(join(tools, file), 'utf8')).not.toMatch(
+        /ALLOW_APP|process\.env|from 'node:process'/u,
+      );
   });
 
   it('refuses automatic repair service authority for an otherwise eligible owner chat', () => {
@@ -269,5 +299,188 @@ describe('the update tools', () => {
       chatId: owner.chatId,
     });
     expect(ownerUpdateRequester({ store: fixture.store, caller: null, actor: null })).toBeNull();
+  });
+
+  it('changes trusted release keys only through the owner’s own MCP connection called directly', () => {
+    const { store } = fixture;
+    const personal = {
+      kind: 'accepted',
+      via: 'personal',
+      id: randomUUID(),
+      localOnly: true,
+      readOnly: false,
+    } as const;
+    expect(requireOwnerConnection({ store, caller: personal, actor: null })).toBe(
+      store.personAccess.homeOwner(),
+    );
+    expect(() => requireOwnerConnection({ store, caller: null, actor: owner })).toThrow(
+      /Only the owner’s own MCP connection/,
+    );
+    expect(() => requireOwnerConnection({ store, caller: personal, actor: owner })).toThrow(
+      /Only the owner’s own MCP connection/,
+    );
+    expect(() =>
+      requireOwnerConnection({ store, caller: { ...personal, via: 'plugin' }, actor: null }),
+    ).toThrow(/Only the owner’s own MCP connection/);
+  });
+
+  it('refuses trust and remove from the owner’s AI chat and still lets it list', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hub-release-keys-'));
+    try {
+      const layout = hubLayout(directory, {});
+      const context = {
+        store: fixture.store,
+        caller: null,
+        actor: owner,
+        layout,
+        clock: systemClock,
+        releaseSecrets: await SecretStore.open(join(directory, 'secrets.enc'), randomBytes(32)),
+      };
+      const publicKey = generateKeyPairSync('ed25519')
+        .publicKey.export({ format: 'der', type: 'spki' })
+        .subarray(-32)
+        .toString('base64');
+      await expect(
+        releaseKeys(context, { operation: 'trust', publicKey, role: 'machine', label: 'Injected' }),
+      ).rejects.toThrow(/Only the owner’s own MCP connection/);
+      await expect(
+        releaseKeys(context, { operation: 'remove', fingerprint: 'a'.repeat(64) }),
+      ).rejects.toThrow(/Only the owner’s own MCP connection/);
+      expect(await trustedReleaseKeys(layout.system.keys.releaseKeys)).toEqual([]);
+      const listed = await releaseKeys(context, { operation: 'list' });
+      expect(listed.structured).toMatchObject({ operation: 'list', changed: null, keys: [] });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('stores and clears the GitHub release token only over the owner’s own MCP connection', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hub-release-token-'));
+    try {
+      const path = join(directory, 'secrets.enc');
+      const key = randomBytes(32);
+      const releaseSecrets = await SecretStore.open(path, key);
+      const personal = {
+        kind: 'accepted',
+        via: 'personal',
+        id: randomUUID(),
+        localOnly: true,
+        readOnly: false,
+      } as const;
+      const layout = hubLayout(directory, {});
+      const direct = {
+        store: fixture.store,
+        caller: personal,
+        actor: null,
+        layout,
+        clock: systemClock,
+        releaseSecrets,
+      };
+      const token = 'github_pat_release_read_only';
+      const set = await releaseKeys(direct, { operation: 'set', token });
+      expect(set.structured).toMatchObject({ operation: 'set', githubTokenStored: true });
+      expect(JSON.stringify(set)).not.toContain(token);
+      expect(readFileSync(path, 'utf8')).not.toContain(token);
+      expect(releaseSecrets.githubReleaseToken()).toBe(token);
+      expect((await SecretStore.open(path, key)).githubReleaseToken()).toBe(token);
+      expect((await releaseKeys(direct, { operation: 'list' })).structured).toMatchObject({
+        operation: 'list',
+        githubTokenStored: true,
+      });
+      await expect(releaseKeys(direct, { operation: 'set' })).rejects.toThrow(/set needs token/);
+      await expect(releaseKeys(direct, { operation: 'clear', token })).rejects.toThrow(
+        /clear does not take token/,
+      );
+      const cleared = await releaseKeys(direct, { operation: 'clear' });
+      expect(cleared.structured).toMatchObject({
+        operation: 'clear',
+        githubTokenStored: false,
+      });
+      expect(releaseSecrets.githubReleaseToken()).toBeNull();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to set or clear the release token from the owner’s AI chat or repair chat', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'hub-release-token-'));
+    try {
+      const releaseSecrets = await SecretStore.open(
+        join(directory, 'secrets.enc'),
+        randomBytes(32),
+      );
+      await releaseSecrets.saveGithubReleaseToken('kept-token');
+      const authority = owner.authority;
+      if (authority === undefined) throw new Error('Missing fixture authority');
+      const repair: ToolActor = {
+        ...owner,
+        clientId: null,
+        authority: { ...authority, kind: 'service', client_id: null, repair_origin: randomUUID() },
+      };
+      for (const actor of [owner, repair]) {
+        const context = {
+          store: fixture.store,
+          caller: null,
+          actor,
+          layout: hubLayout(directory, {}),
+          clock: systemClock,
+          releaseSecrets,
+        };
+        await expect(
+          releaseKeys(context, { operation: 'set', token: 'injected-token' }),
+        ).rejects.toThrow(/Only the owner/);
+        await expect(releaseKeys(context, { operation: 'clear' })).rejects.toThrow(
+          /Only the owner/,
+        );
+      }
+      expect(releaseSecrets.githubReleaseToken()).toBe('kept-token');
+      const shown = await releaseKeys(
+        {
+          store: fixture.store,
+          caller: null,
+          actor: owner,
+          layout: hubLayout(directory, {}),
+          clock: systemClock,
+          releaseSecrets,
+        },
+        { operation: 'list' },
+      );
+      expect(shown.structured).toMatchObject({ operation: 'list', githubTokenStored: true });
+      expect(JSON.stringify(shown)).not.toContain('kept-token');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses source fields that do not fit the source', () => {
+    const upload = randomUUID();
+    const commit = 'a'.repeat(40);
+    expect(() => {
+      requireSourceFields({ source: 'provided', upload, tag: 'v1' });
+    }).toThrow(/only the upload ID/);
+    expect(() => {
+      requireSourceFields({ upload });
+    }).toThrow(/need an explicit source/);
+    expect(() => {
+      requireSourceFields({ tag: 'v1' });
+    }).toThrow(/need an explicit source/);
+    expect(() => {
+      requireSourceFields({ source: 'provided', commit });
+    }).toThrow(/staged upload ID/);
+    expect(() => {
+      requireSourceFields({ source: 'github', upload });
+    }).toThrow(/does not take an upload ID/);
+    expect(() => {
+      requireSourceFields({ source: 'github' });
+    }).toThrow(/exactly one of tag or commit/);
+    expect(() => {
+      requireSourceFields({ source: 'hub', tag: 'v1' });
+    }).toThrow(/only an optional commit/);
+    expect(() => {
+      requireSourceFields({ source: 'github', tag: 'v1' });
+    }).not.toThrow();
+    expect(() => {
+      requireSourceFields({});
+    }).not.toThrow();
   });
 });

@@ -1,4 +1,4 @@
-export const PLANNER_SECTIONS = ['index', 'tasks', 'calendar', 'insights'] as const;
+export const PLANNER_SECTIONS = ['index', 'tasks', 'calendar', 'insights', 'booking'] as const;
 
 export type PlannerSection = (typeof PLANNER_SECTIONS)[number];
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { DriveItem, DrivePlacement, DriveRoot } from '@smarteverything/domain';
+import type { DriveItem, DrivePlacement } from '@smarteverything/domain';
 import { Arc } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import type { StatusTone } from '../../../components/tone';
@@ -8,7 +8,7 @@ import type { ColourRole } from '../../../design/tokens';
 import { sameJson } from '../../../store/same-json';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
-import { useDriveItems, useDrivePlacementRows } from '../data';
+import { useDriveItems, useDrivePlacementRows, useDriveRoots } from '../data';
 import {
   RING_SIZE,
   RING_THICKNESS,
@@ -29,12 +29,13 @@ function computerNamesIn(state: StoreState, deviceIds: readonly string[]): reado
   return deviceIds.map((deviceId) => state.tables.devices.byId[deviceId]?.label ?? 'A computer');
 }
 
-function useComputerRings(root: DriveRoot, item: DriveItem): readonly ComputerRing[] {
-  const placements = useDrivePlacementRows().filter((placement) => placement.rootId === root.id);
+function useComputerRings(rootId: string, item: DriveItem): readonly ComputerRing[] {
+  const root = useDriveRoots().find((one) => one.id === rootId) ?? null;
+  const placements = useDrivePlacementRows().filter((placement) => placement.rootId === rootId);
   const folderIds = placements.flatMap((placement) =>
     placement.folderItemId === null ? [] : [placement.folderItemId],
   );
-  const folders = useDriveItems(folderIds, root.id);
+  const folders = useDriveItems(folderIds, rootId);
   const deviceIds = placements.map((placement) => placement.deviceId);
   const names = useStoreSelector((state) => computerNamesIn(state, deviceIds), sameJson, [
     deviceIds.join('\n'),
@@ -46,7 +47,8 @@ function useComputerRings(root: DriveRoot, item: DriveItem): readonly ComputerRi
   return placements.flatMap((placement, index) => {
     const folder = folderOf(placement);
     if (folder === undefined || !coversItem(folder?.relPath ?? null, item.relPath)) return [];
-    const placedBytes = folder === null ? root.bytes : folder.bytes;
+    const placedBytes = folder === null ? root?.bytes : folder.bytes;
+    if (placedBytes === undefined) return [];
     return [placementRingOf(placement, names[index] ?? 'A computer', placedBytes)];
   });
 }
@@ -77,13 +79,13 @@ function RingRow({ ring }: { readonly ring: ComputerRing }): ReactNode {
 }
 
 export function OnComputers({
-  root,
+  rootId,
   item,
 }: {
-  readonly root: DriveRoot;
+  readonly rootId: string;
   readonly item: DriveItem;
 }): ReactNode {
-  const rings = useComputerRings(root, item);
+  const rings = useComputerRings(rootId, item);
   if (rings.length === 0) return null;
   return (
     <View className="gap-1">

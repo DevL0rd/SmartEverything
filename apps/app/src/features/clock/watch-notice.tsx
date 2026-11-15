@@ -11,7 +11,7 @@ import { IconButton } from '../../components/icon-button';
 import { Text } from '../../components/text';
 import { ValueStore, useValue } from '../../design/external-store';
 import { jsonText } from '../../format/json-text';
-import { usePlannerAlarms } from '../planner/data';
+import { usePlannerAlarms } from '../planner';
 
 const log = new Logger('app.clock');
 

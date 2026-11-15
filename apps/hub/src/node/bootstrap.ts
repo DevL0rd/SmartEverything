@@ -1,4 +1,4 @@
-import { HubGuestBroker } from '../client-network/guest-broker';
+import { CLAUDE_MCP_PORT, HubGuestBroker } from '../client-network/guest-broker';
 import { NodeRouteAuthority } from '../client-network/route-authority';
 import { nodeHubTransport, type NodeHubTransport } from '../client-network/node-transport';
 import { pid } from 'node:process';
@@ -129,7 +129,7 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
   const watchdog = nodeWatchdog(options.log, logPath);
   const identity = await nodeIdentity(options.layout.computerNodeId);
   const authority = await startAuthority(options);
-  const { broker, transport } = await startNodeTransport(authority, node.hub_url);
+  const { broker, transport } = await startNodeTransport(authority, node.hub_url, options);
   const ready = new NodeReadyWriter(options);
   const harness = new NodeHarnessRuntime({
     node,
@@ -275,11 +275,16 @@ async function startDrive(
 async function startNodeTransport(
   authority: NodeRouteAuthority,
   canonical: string,
+  options: NodeBootstrapOptions,
 ): Promise<{
   readonly broker: HubGuestBroker;
   readonly transport: NodeHubTransport;
 }> {
-  const broker = new HubGuestBroker(authority, new URL(canonical).origin);
+  const broker = new HubGuestBroker(authority, new URL(canonical).origin, {
+    port: CLAUDE_MCP_PORT,
+    directory: options.layout.claudeHost,
+    log: options.log.forArea('hub.node-mcp-broker'),
+  });
   try {
     await broker.start();
   } catch (cause) {
@@ -288,8 +293,11 @@ async function startNodeTransport(
   }
   const transport = nodeHubTransport(authority, canonical, {
     endpoint: (runtime, address, token): string => broker.openMcp(runtime, address, token),
-    revoke: (runtime): void => {
+    release: (runtime): void => {
       broker.closeOwner(`mcp:${runtime}`);
+    },
+    revoke: (runtime): void => {
+      broker.revokeMcp(runtime);
     },
   });
   return { broker, transport };

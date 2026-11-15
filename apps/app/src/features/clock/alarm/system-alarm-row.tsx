@@ -6,7 +6,7 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { MINUTE_MS, clockOfMinutes, localDayKey, zonedStartOfDay } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
-import { dayWordOf } from '../../planner/clock/alarm-text';
+import { dayWordOf } from '../../planner';
 
 const SYSTEM_ALARM_KEY = ['clock', 'system-alarm'] as const;
 

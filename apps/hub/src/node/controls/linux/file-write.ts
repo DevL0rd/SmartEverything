@@ -4,7 +4,8 @@ import { cp, lstat, mkdir, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { NodeFailureError } from '../../node-failure';
 import { contains, failureOfFs, type FileScope, type Located } from './file-scope';
-import { moveAcrossDevices, type XdgTrash } from './trash';
+import type { TrashBins } from './file-trash';
+import { moveAcrossDevices } from './trash';
 import { messageOf } from '@smarteverything/logging';
 
 type Done = FileWriteResult['done'][number];
@@ -33,7 +34,7 @@ async function exists(path: string): Promise<boolean> {
 export class FileWriter {
   constructor(
     private readonly scope: FileScope,
-    private readonly trash: XdgTrash,
+    private readonly bins: TrashBins,
   ) {}
 
   async write(change: FileWriteChange): Promise<FileWriteResult> {
@@ -54,6 +55,8 @@ export class FileWriter {
         return this.each(change.paths, (path) => this.trashOne(path));
       case 'restore':
         return this.each(change.items, (item) => this.restore(item));
+      case 'delete_now':
+        return this.each(change.items, (item) => this.deleteNow(item));
     }
   }
 
@@ -148,17 +151,22 @@ export class FileWriter {
 
   private async trashOne(path: string): Promise<Outcome> {
     const source = await this.scope.existing(path, true);
-    if (contains(this.trash.root, source.path)) {
+    if (await this.bins.contains(source.path)) {
       throw new NodeFailureError('failed', 'That is already in the Trash.');
     }
-    const trashId = await this.trash
+    const trashId = await this.bins.home
       .put(source.path)
       .catch((cause: unknown) => failureOfFs(cause, 'trash'));
     return { newPath: null, trashId };
   }
 
   private async restore(item: string): Promise<Outcome> {
-    const path = await this.trash.restore(item);
+    const path = await this.bins.restore(item);
+    return { path, newPath: null, trashId: item };
+  }
+
+  private async deleteNow(item: string): Promise<Outcome> {
+    const path = await this.bins.purge(item);
     return { path, newPath: null, trashId: item };
   }
 }

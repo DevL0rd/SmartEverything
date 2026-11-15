@@ -1,6 +1,6 @@
 import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
-import { frameLayoutMath } from '../../../components/frame-layout';
+import { frameLayoutMath } from '../../../components/page-shell/layout';
 import type { IconName } from '../../../components/icon';
 import type { PlannerSection } from '../model/section-routes';
 
@@ -46,6 +46,14 @@ export const PLANNER_SECTION_DEFS: readonly PlannerSectionDef[] = [
     icon: 'trendUp',
     href: href.planner.insights(),
     hint: 'Add a task or an event. Try: brush teeth every day 07:30 #health',
+    phoneTab: false,
+  },
+  {
+    id: 'booking',
+    label: 'Booking',
+    icon: 'share',
+    href: href.planner.booking(),
+    hint: 'Add an event. Try: call with Anna Fri 10:00',
     phoneTab: false,
   },
 ];

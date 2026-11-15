@@ -9,7 +9,7 @@ const RIDGES = 6;
 export const BATH_MAT_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.bath-mat',
   title: 'Bath mat',
-  footprint: { width: 0.5, depth: 0.8, height: PILE + BACKING + 0.01 },
+  footprint: { width: 0.5, depth: 0.8, height: 0.027 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     depth: { param: 'depth', extra: 0, resizes: true },

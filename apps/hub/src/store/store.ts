@@ -17,6 +17,7 @@ import { driveRepositories } from './repositories/areas/drive';
 import { healthRepositories } from './repositories/areas/health';
 import { homeRepositories } from './repositories/areas/home';
 import { peopleRepositories } from './repositories/areas/people';
+import { photoRepositories } from './repositories/areas/photos';
 import { plannerRepositories } from './repositories/areas/planner';
 import { platformRepositories } from './repositories/areas/platform';
 import { durableSessionWrite } from './repositories/dsh-session-durability';
@@ -98,6 +99,7 @@ const repositoriesOf = (context: StoreContext, log: Logger, drivePathOf: DrivePa
     ...plannerRepositories(context),
     ...assistantRepositories(context),
     ...peopleRepositories(context),
+    ...photoRepositories(context),
     ...platformRepositories(context),
   }) as const;
 

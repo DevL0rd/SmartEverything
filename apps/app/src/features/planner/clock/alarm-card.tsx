@@ -26,6 +26,7 @@ import {
   repeatTextOf,
   skipDayOf,
 } from './alarm-text';
+import { AlarmChips, hasAlarmChips } from './alarm-chips';
 import { DayDots } from './day-dots';
 import { MissedAlarms } from './missed-alarm-card';
 import { TargetChips } from './target-chips';
@@ -126,7 +127,7 @@ function WideCard(props: AlarmCardProps): ReactNode {
           </View>
           <View className="min-w-0 flex-1 gap-2 pt-1">
             <Repeat {...props} />
-            <TargetChips alarm={alarm} />
+            <TargetChips alarm={alarm} extra={<AlarmChips alarm={alarm} />} />
           </View>
         </OpenArea>
         <View className="items-end gap-1.5">
@@ -189,7 +190,7 @@ function HeroCard(props: AlarmCardProps): ReactNode {
         {nextRingTextOf(alarm, now, timeZone)}
       </Text>
       <Repeat {...props} />
-      <TargetChips alarm={alarm} />
+      <TargetChips alarm={alarm} extra={<AlarmChips alarm={alarm} />} />
       <WatchStateLines alarm={alarm} />
       <HeroActions {...props} />
     </Card>
@@ -212,6 +213,11 @@ function CompactCard(props: AlarmCardProps): ReactNode {
         </OpenArea>
         <AlarmSwitch {...props} />
       </View>
+      {hasAlarmChips(alarm) ? (
+        <View className="flex-row flex-wrap gap-2">
+          <AlarmChips alarm={alarm} />
+        </View>
+      ) : null}
       <WatchStateLines alarm={alarm} />
     </Card>
   );

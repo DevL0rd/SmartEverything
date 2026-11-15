@@ -7,7 +7,7 @@ const BASE = 0.02;
 export const DESK_ORGANISER_MODEL: ModelSpec = officeItem({
   id: 'cat.office.desk-organiser',
   title: 'Desk organiser',
-  footprint: { width: 0.26, depth: 0.15, height: 0.16 },
+  footprint: { width: 0.26, depth: 0.15, height: 0.2154 },
   meta: {
     names: {
       display: 'Desk organiser',

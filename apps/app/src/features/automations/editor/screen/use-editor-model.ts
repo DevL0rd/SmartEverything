@@ -1,10 +1,10 @@
 import { useAutomationsSource } from '../../data/source';
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import { useWindowDimensions } from 'react-native';
+
 import { notify } from '../../../../components/toast-store';
 import { usePausable } from '../../../../design/external-store';
 import { useIdiom } from '../../../../design/platform';
-import { useSizeClass } from '../../../../design/size-class';
+import { useSizeClass, useWindowSize } from '../../../../design/size-class';
 import { useStableCallback } from '../../../../design/use-stable-callback';
 import type { HostActions } from '../host/host-actions';
 import { filterPinOf, type InsertPoint, type ScreenPoint } from '../palette/armed-insert';
@@ -238,7 +238,7 @@ function useDropInsert(
 export function useEditorModel(props: EditorScreenProps): EditorModel {
   const { store } = props;
   const layout = editorLayoutOf(useSizeClass().width);
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const flags = useFlags(store);
   const check = useLiveCheck(store, props.lint, props.options.registry);
   const insertion = useInsertion(props.onInsert);

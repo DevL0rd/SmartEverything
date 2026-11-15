@@ -5,12 +5,14 @@ import {
   isPushed,
   type CameraNotificationsPref,
   type ClientPrefRead,
+  type LiveChange,
   type RecordingRow,
   type AssistantMessageRow,
   type EventRow,
   type PushStatus,
   type PushTargetRow,
 } from '@smarteverything/domain';
+import { watchAlbumActivity } from './album-activity';
 import { effectiveClientById } from '../../server/person-access';
 import type { Logger } from '@smarteverything/logging';
 import type { ExtensionContext, ServerExtension } from '../../extensions';
@@ -30,6 +32,7 @@ import {
   type CameraNotice,
 } from './camera-notice';
 import { CameraGate } from './camera-gate';
+import { driveDelivery } from './drive-delivery';
 import { clientsReachedLive, liveNotificationOf } from './live-delivery';
 import { replyAudience, type Audience } from './reply-audience';
 import { background, failureLine } from '@smarteverything/logging';
@@ -141,6 +144,11 @@ class PushSender {
     );
   }
 
+  driveChanged(change: LiveChange): void {
+    const sent = driveDelivery(change, this.context.store, this.log);
+    if (sent !== null) this.track(sent.subject, sent.compose, sent.audience);
+  }
+
   assistantReplied(row: AssistantMessageRow): void {
     const { store, live, openCalls, replyNotices } = this.context;
     const subject = { kind: 'assistant_reply', messageId: row.id };
@@ -219,11 +227,7 @@ class PushSender {
     };
   }
 
-  private track(
-    subject: Subject,
-    compose: () => PushNotification,
-    accept: Audience = () => true,
-  ): void {
+  track(subject: Subject, compose: () => PushNotification, accept: Audience = () => true): void {
     const delivery = this.deliver(subject, compose, accept).catch((cause: unknown) => {
       this.record({ ...NOTHING, reasons: [failureLine(cause)] });
       this.log.error('push.failed', cause, subject);
@@ -385,10 +389,14 @@ export function pushExtension(options: PushOptions): ServerExtension {
       ) {
         sender.recordingWritten(change.record);
       }
+      sender.driveChanged(change);
       const reply = finishedReply(change);
       if (reply !== null) {
         sender.assistantReplied(reply);
       }
+    });
+    const stopAlbums = watchAlbumActivity(context.store, log, (push, accept) => {
+      sender.track(push.subject, () => push.notification, accept);
     });
     const stopAlerts = options.alerts.listen((alert) => {
       sender.alertRaised(alert);
@@ -404,6 +412,7 @@ export function pushExtension(options: PushOptions): ServerExtension {
       routes: [],
       stop: async (): Promise<void> => {
         unsubscribe();
+        stopAlbums();
         stopAlerts();
         stopNotices();
         detachCommands();

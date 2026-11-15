@@ -1,4 +1,6 @@
-import { appendTo } from '@smarteverything/domain';
+import { appendTo, type ProcessWindow } from '@smarteverything/domain';
+
+export type DeviceDetail = ProcessWindow | string;
 
 export type ViewListener = (watched: boolean) => void;
 

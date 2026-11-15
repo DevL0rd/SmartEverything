@@ -3,7 +3,9 @@ import { basename, dirname, join } from 'node:path';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import type { Store } from '../store/store';
-import { normalizeRelativePath, resolveInRoot } from './paths';
+import { rollbackExchangeState } from './exchange-files';
+import type { ContentPatch } from './patch-files';
+import { locateInRoot, ORPHAN_DIRECTORY } from './paths';
 import { MARKER_DIRECTORY } from './root-marker';
 
 export const TMP_DIRECTORY = `${MARKER_DIRECTORY}/tmp`;
@@ -41,7 +43,10 @@ export interface FileStamp {
   readonly ino: bigint;
   readonly size: number;
   readonly mtimeNs: bigint;
+  readonly mode: number;
+  readonly nlink: number;
   readonly directory: boolean;
+  readonly symlink: boolean;
 }
 
 export interface StagedWrite {
@@ -61,19 +66,48 @@ export interface DriveFiles {
   readonly stage: (path: string, source: AsyncIterable<Uint8Array>) => Promise<StagedWrite>;
   readonly writeDurable: (path: string, temporary: string, text: string) => Promise<void>;
   readonly syncDirectory: (path: string) => Promise<void>;
+  readonly chmod: (path: string, mode: number) => Promise<void>;
+  readonly clone: (from: string, to: string, temporary: string) => Promise<void>;
+  readonly writeUndo: (
+    live: string,
+    undo: string,
+    temporary: string,
+    patch: ContentPatch,
+  ) => Promise<void>;
+  readonly applyPatch: (live: string, staged: string, patch: ContentPatch) => Promise<void>;
+  readonly restoreUndo: (live: string, undo: string) => Promise<void>;
 }
 
-export async function locate(root: DriveWriteRoot, relPath: string): Promise<string> {
-  const normalized = normalizeRelativePath(relPath);
-  const parent = await resolveInRoot(
-    root.path,
-    dirname(normalized) === '.' ? '' : dirname(normalized),
-  );
-  return join(parent.absolute, basename(normalized));
+export function locate(root: DriveWriteRoot, relPath: string): Promise<string> {
+  return locateInRoot(root.path, relPath);
 }
 
 export function tmpRelPath(): string {
   return `${TMP_DIRECTORY}/${randomUUID()}`;
+}
+
+export function mountStagingRelPath(commitId: number): string {
+  return `${TMP_DIRECTORY}/commit-${String(commitId)}`;
+}
+
+export function undoRelPath(stagedRelPath: string): string {
+  return `${stagedRelPath}.undo`;
+}
+
+export function exchangeRelPath(intentId: string): string {
+  return `${TMP_DIRECTORY}/${intentId}.exchange`;
+}
+
+export function orphanRelPath(inodeId: number): string {
+  return `${ORPHAN_DIRECTORY}/${String(inodeId)}`;
+}
+
+export const DISK_FILE_BITS = 0o600;
+
+export const DISK_FOLDER_BITS = 0o700;
+
+export function diskModeOf(mode: number, folder: boolean): number {
+  return mode | (folder ? DISK_FOLDER_BITS : DISK_FILE_BITS);
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -136,10 +170,14 @@ export async function moveWithin(
 export type DriveFileStore = Pick<
   Store,
   | 'driveGrants'
+  | 'driveInodes'
   | 'driveIntents'
+  | 'driveMountCommits'
+  | 'drivePlacements'
   | 'driveVersions'
   | 'driveTrash'
   | 'driveRoots'
+  | 'driveShortcuts'
   | 'driveUploads'
   | 'write'
 >;
@@ -162,6 +200,23 @@ export interface RecoveryReport {
   readonly failed: number;
 }
 
+async function putBack(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  intent: DriveIntent,
+  paths: { readonly from: string; readonly to: string },
+): Promise<void> {
+  const shared =
+    intent.op === 'version' &&
+    env.store.driveVersions.references(root.id, shaOfVersionPath(intent.toPath)) > 0;
+  await (shared ? env.files.link(paths.to, paths.from) : env.files.rename(paths.to, paths.from));
+  await env.files.syncDirectory(dirname(paths.from));
+}
+
+function sameFile(source: FileStamp, target: FileStamp): boolean {
+  return source.ino === target.ino && source.dev === target.dev && !source.directory;
+}
+
 async function undoMove(env: FileEnv, root: DriveWriteRoot, intent: DriveIntent): Promise<void> {
   const from = await locate(root, intent.fromPath);
   const to = await locate(root, intent.toPath);
@@ -170,18 +225,45 @@ async function undoMove(env: FileEnv, root: DriveWriteRoot, intent: DriveIntent)
     return;
   }
   if (source === null) {
-    const shared =
-      intent.op === 'version' &&
-      env.store.driveVersions.references(root.id, shaOfVersionPath(intent.toPath)) > 0;
-    await (shared ? env.files.link(to, from) : env.files.rename(to, from));
-    await env.files.syncDirectory(dirname(from));
-    return;
-  }
-  if (source.ino === target.ino && source.dev === target.dev && !source.directory) {
+    await putBack(env, root, intent, { from, to });
+  } else if (sameFile(source, target)) {
     await env.files.unlink(to);
-    return;
+  } else if (intent.op === 'trash' && !source.directory && !target.directory) {
+    await env.files.remove(to);
+  } else {
+    env.log.warn('drive.intent_destination_kept', { rootId: root.id, op: intent.op });
   }
-  env.log.warn('drive.intent_destination_kept', { rootId: root.id, op: intent.op });
+}
+
+async function rollbackExchange(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  intent: DriveIntent,
+): Promise<void> {
+  await rollbackExchangeState(env.files, {
+    a: await locate(root, intent.fromPath),
+    b: await locate(root, intent.toPath),
+    temporary: await locate(root, exchangeRelPath(intent.id)),
+  });
+}
+
+async function rollbackPatch(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  intent: DriveIntent,
+): Promise<boolean> {
+  const staged = await locate(root, intent.fromPath);
+  if ((await env.files.stamp(staged)) === null) {
+    return false;
+  }
+  const live = await locate(root, intent.toPath);
+  const undo = await locate(root, undoRelPath(intent.fromPath));
+  if ((await env.files.stamp(undo)) !== null) {
+    await env.files.restoreUndo(live, undo);
+    await env.files.remove(undo);
+  }
+  await env.files.remove(staged);
+  return true;
 }
 
 export function manifestPath(trashRel: string): string {
@@ -259,6 +341,10 @@ export async function rollbackIntent(
     await rollbackRestore(env, root, intent);
   } else if (intent.op === 'version') {
     await undoMove(env, root, intent);
+  } else if (intent.op === 'exchange') {
+    await rollbackExchange(env, root, intent);
+  } else if (intent.op === 'patch') {
+    return rollbackPatch(env, root, intent);
   } else if ((await env.files.stamp(await locate(root, intent.fromPath))) === null) {
     return false;
   } else {
@@ -300,8 +386,13 @@ async function resolveIntent(
 
 async function removeOrphanTmp(env: FileEnv, root: DriveWriteRoot): Promise<number> {
   const directory = await locate(root, TMP_DIRECTORY);
-  const openUploads = new Set(env.store.driveUploads.openIdsInRoot(root.id));
-  const names = (await env.files.list(directory)).filter((name) => !openUploads.has(name));
+  const held = new Set(env.store.driveUploads.openIdsInRoot(root.id));
+  for (const placement of env.store.drivePlacements.forRoot(root.id)) {
+    for (const commit of env.store.driveMountCommits.open(placement.id)) {
+      held.add(basename(mountStagingRelPath(commit.id)));
+    }
+  }
+  const names = (await env.files.list(directory)).filter((name) => !held.has(name));
   for (const name of names) {
     await env.files.remove(join(directory, name));
   }

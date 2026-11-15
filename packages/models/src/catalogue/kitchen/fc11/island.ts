@@ -19,7 +19,7 @@ const BODY_D = 0.54;
 export const KITCHEN_ISLAND_MODEL: ModelSpec = kitchenFurniture({
   id: 'cat.kitchen.island',
   title: 'Kitchen island',
-  footprint: { width: 2.04, depth: 1.02, height: 0.9 },
+  footprint: { width: 2.04, depth: 1.025, height: 0.9 },
   size: { width: { param: 'length', extra: 0.04, resizes: true } },
   meta: {
     names: {

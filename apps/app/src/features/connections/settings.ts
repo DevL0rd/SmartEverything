@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { href } from '../../app-shell/hrefs';
 import type { SettingDefinition, SettingEnv } from '../../settings/types';
+import { EMAIL_SETTINGS } from './email/settings';
 import { ASSISTANTS } from './model/assistants';
 import { toolsSummary } from './model/tools';
 import { ThisComputerRows } from './server/this-computer';
@@ -142,6 +143,7 @@ const THIS_COMPUTER: readonly SettingDefinition[] = [
 export const SETTINGS: readonly SettingDefinition[] = [
   ...ACCOUNTS,
   ...ASSISTANT_SETTINGS,
+  ...EMAIL_SETTINGS,
   ...SERVER,
   ...THIS_COMPUTER,
 ];

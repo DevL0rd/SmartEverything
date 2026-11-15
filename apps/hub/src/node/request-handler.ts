@@ -240,7 +240,7 @@ export class NodeRequestHandler {
       case 'close_app':
         return { windows: await this.controls.apps.close(request.appId, request.force) };
       case 'files':
-        return this.controls.files.list(request.path, request.cursor);
+        return this.controls.files.list(request.path, request.cursor, request.sort);
       case 'file':
         return this.controls.files.read(request.path);
       case 'file_range':

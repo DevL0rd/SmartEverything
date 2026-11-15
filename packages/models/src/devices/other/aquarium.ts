@@ -63,7 +63,7 @@ export const AQUARIUM_MODEL: ModelSpec = {
   title: 'Aquarium',
   category: 'pet',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: DEPTH, height: 0.872 },
   framing: house('tank', 26, 12),
   shots: [shot('swimming', LIVE, 'fishA', { zoom: 1.6, yaw: 12, pitch: 6, loopS: 8, stillAt: 4 })],
   meta: {

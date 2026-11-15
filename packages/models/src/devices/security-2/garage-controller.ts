@@ -15,7 +15,7 @@ export const GARAGE_CONTROLLER_MODEL: ModelSpec = {
   title: 'Garage door controller',
   category: 'security',
   family: 'switch',
-  footprint: { width: W, depth: D, height: H },
+  footprint: { width: W, depth: 0.027, height: H },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

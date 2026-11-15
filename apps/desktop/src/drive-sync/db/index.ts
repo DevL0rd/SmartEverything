@@ -57,6 +57,7 @@ export function openDriveSyncDatabase(path: string, log: Logger): DriveSyncDatab
 }
 
 export type { FileInput, FileRecord } from './files.js';
+export { inputOf } from './files.js';
 export type { Cursor } from './cursors.js';
 export type { PendingOp } from './pending-ops.js';
 export type { Transfer } from './transfers.js';

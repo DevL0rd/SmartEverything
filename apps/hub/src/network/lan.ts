@@ -76,7 +76,7 @@ function outbound(): Promise<string> {
       resolve(address);
       socket.close();
     };
-    socket.once('error', () => {
+    socket.on('error', () => {
       done('');
     });
     socket.connect(PROBE_PORT, PROBE_ADDRESS, () => {

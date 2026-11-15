@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useId, useState } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import { useSharedValue } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
@@ -145,7 +146,7 @@ function colourDescription(value: Props['value']): string {
 function Wheel(props: Props): ReactNode {
   const { value, label, disabled = false, onCommit } = props;
   const { focus, gesture, setSize, current } = useWheel(props);
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const frame = {
     maxWidth: Math.min(WHEEL_MAX_SIZE, Math.max(WHEEL_MIN_SIZE, height - SHEET_CHROME_HEIGHT)),
   };

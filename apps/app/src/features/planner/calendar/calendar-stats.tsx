@@ -1,8 +1,4 @@
-import type {
-  PlannerCollectionRow,
-  PlannerOccurrenceView,
-  PlannerRange,
-} from '@smarteverything/domain';
+import type { PlannerOccurrenceView, PlannerRange } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { SegmentBar, type BarSegment } from '../../../components/charts/segment-bar';
@@ -13,136 +9,44 @@ import { Icon } from '../../../components/icon';
 import { notify } from '../../../components/toast-store';
 import { Text } from '../../../components/text';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
-import { rounded } from '../../../format/number';
 import { useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { clock, clockOfMinutes, localDayKey, zonedStartOfDay } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import {
-  usePlannerAlarms,
-  usePlannerCollections,
-  usePlannerRange,
-  usePlannerWrites,
-} from '../data';
+import { usePlannerAlarms, usePlannerRange, usePlannerWrites } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
 import type { CalendarShowKey } from '../settings/options';
 import type { Prefs } from '../settings/preferences';
 import type { MinuteSpan } from './grid-gestures';
-import { ShowChips, useCollectionEdit } from './calendars-sheet';
-import { addDays, dayLabelOf } from './month-model';
+import { useCalendarLookEdit } from './calendar-edit';
+import { useCalendarLooks } from './calendar-looks';
+import { ShowChips } from './show-chips';
+import {
+  bookedOf,
+  busyOf,
+  clockMinutesOf,
+  dayWindowOf,
+  dueOn,
+  freeGapsOf,
+  hoursText,
+  openWindowOf,
+  loadLineOf,
+  minutesByCollectionOf,
+  totalOf,
+  type Booked,
+} from './booked-model';
+import { addDays } from './month-model';
 import { TimeGrid } from './time-grid';
 import { timedSpansOn, wallMinuteOf } from './time-grid-layout';
-
-export interface Booked {
-  readonly collection: PlannerCollectionRow;
-  readonly minutes: number;
-}
-
-export interface BookedInput {
-  readonly occurrences: readonly PlannerOccurrenceView[];
-  readonly collections: readonly PlannerCollectionRow[];
-  readonly days: readonly string[];
-  readonly timeZone: string;
-}
-
-export function minutesByCollectionOf(
-  input: Omit<BookedInput, 'collections'>,
-): Map<string, number> {
-  const minutes = new Map<string, number>();
-  const events = busyOf(input.occurrences);
-  for (const day of input.days) {
-    for (const span of timedSpansOn(events, day, input.timeZone)) {
-      const id = span.occurrence.collection_id;
-      minutes.set(id, (minutes.get(id) ?? 0) + span.to - span.from);
-    }
-  }
-  return minutes;
-}
-
-export function bookedOf(input: BookedInput): readonly Booked[] {
-  const minutes = minutesByCollectionOf(input);
-  return input.collections
-    .filter((collection) => collection.kind === 'calendar')
-    .map((collection) => ({ collection, minutes: minutes.get(collection.id) ?? 0 }));
-}
-
-export function totalOf(booked: readonly Booked[]): number {
-  return booked.reduce((sum, entry) => sum + entry.minutes, 0);
-}
-
-export function clockMinutesOf(text: string): number {
-  const [hour = '0', minute = '0'] = text.split(':');
-  return Number(hour) * 60 + Number(minute);
-}
-
-export function dayWindowOf(general: Prefs['general']): MinuteSpan {
-  const from = clockMinutesOf(general.day_start);
-  const end = clockMinutesOf(general.day_end);
-  return {
-    from: Math.floor(from / 60) * 60,
-    to: Math.min(1440, Math.ceil((end <= from ? 1440 : end) / 60) * 60),
-  };
-}
-
-export function freeGapsOf(busy: readonly MinuteSpan[], window: MinuteSpan): readonly MinuteSpan[] {
-  const gaps: MinuteSpan[] = [];
-  let cursor = window.from;
-  for (const span of [...busy].sort((left, right) => left.from - right.from)) {
-    if (span.from >= window.to) break;
-    if (span.from > cursor) gaps.push({ from: cursor, to: span.from });
-    cursor = Math.max(cursor, span.to);
-  }
-  if (cursor < window.to) gaps.push({ from: cursor, to: window.to });
-  return gaps;
-}
-
-export function openWindowOf(window: MinuteSpan, now: number | null): MinuteSpan {
-  return { from: now === null ? window.from : Math.max(window.from, now), to: window.to };
-}
-
-export function busyOf(occurrences: readonly PlannerOccurrenceView[]): PlannerOccurrenceView[] {
-  return occurrences.filter((view) => view.kind === 'event' && view.status !== 'proposed');
-}
-
-export function dueOn(
-  occurrences: readonly PlannerOccurrenceView[],
-  day: string,
-  timeZone: string,
-): readonly PlannerOccurrenceView[] {
-  return occurrences.filter(
-    (view) =>
-      view.kind === 'task' &&
-      view.status !== 'cancelled' &&
-      view.status !== 'proposed' &&
-      (view.due_date === day ||
-        (view.due_at !== null && localDayKey(Date.parse(view.due_at), timeZone) === day)),
-  );
-}
 
 export function useNowMinute(day: string): number | null {
   const timeZone = useSettings().time_zone;
   return useMinuteOf((now) =>
     localDayKey(now, timeZone) === day ? wallMinuteOf(now, timeZone) : null,
   );
-}
-
-export function eventTextOf(day: string, gap: MinuteSpan): string {
-  return `${dayLabelOf(day, true)} ${clockOfMinutes(gap.from)} to ${clockOfMinutes(gap.to)}`;
-}
-
-export function hoursText(minutes: number): string {
-  return `${rounded(minutes / 60, 1)} h`;
-}
-
-export function loadLineOf(now: number, before: number | null, previous: string): string {
-  const booked = `Booked ${hoursText(now)}`;
-  if (before === null) return booked;
-  if (now === before) return `${booked} · same as ${previous}`;
-  const change = now > before ? 'up' : 'down';
-  return `${booked} · ${change} ${hoursText(Math.abs(now - before))} on ${previous}`;
 }
 
 function segmentsOf(booked: readonly Booked[]): readonly BarSegment[] {
@@ -162,7 +66,7 @@ function chipValue(entry: Booked): string {
 }
 
 function CalendarChips({ booked }: { readonly booked: readonly Booked[] }): ReactNode {
-  const edit = useCollectionEdit();
+  const edit = useCalendarLookEdit();
   return booked.map((entry) => (
     <FilterChip
       key={entry.collection.id}
@@ -171,7 +75,7 @@ function CalendarChips({ booked }: { readonly booked: readonly Booked[] }): Reac
       swatchClassName={LIST_DOT[entry.collection.colour]}
       active={entry.collection.visible}
       onPress={() => {
-        edit(entry.collection, { visible: !entry.collection.visible });
+        edit(entry.collection.id, { visible: !entry.collection.visible });
       }}
     />
   ));
@@ -195,16 +99,26 @@ function usePreviousMinutes(props: TimeStatsProps): number | null {
   const from = new Date(zonedStartOfDay(first, timeZone)).toISOString();
   const to = new Date(zonedStartOfDay(props.days[0] ?? first, timeZone)).toISOString();
   const range = usePlannerRange(person, from, to, props.calendars).data;
+  const looks = useCalendarLooks(person);
   if (range === undefined) return null;
-  const minutes = minutesByCollectionOf({ occurrences: range.occurrences, days, timeZone });
+  const minutes = minutesByCollectionOf({
+    occurrences: looks.shown(range.occurrences),
+    days,
+    timeZone,
+  });
   return [...minutes.values()].reduce((sum, value) => sum + value, 0);
 }
 
 export function TimeStats(props: TimeStatsProps): ReactNode {
   const { person } = usePlannerFrame();
   const timeZone = useSettings().time_zone;
-  const collections = usePlannerCollections(person);
-  const booked = bookedOf({ ...props, collections, timeZone });
+  const looks = useCalendarLooks(person);
+  const booked = bookedOf({
+    ...props,
+    occurrences: looks.shown(props.occurrences),
+    collections: looks.collections,
+    timeZone,
+  });
   const before = usePreviousMinutes(props);
   return (
     <View className="flex-row flex-wrap items-center gap-x-4 gap-y-2">
@@ -219,7 +133,7 @@ export function TimeStats(props: TimeStatsProps): ReactNode {
         </View>
         <SegmentBar segments={segmentsOf(booked)} label="Hours booked by calendar" />
       </View>
-      <View className="flex-row flex-wrap items-center gap-1">
+      <View className="w-full flex-row flex-wrap items-center gap-1">
         <CalendarChips booked={booked} />
         <ShowChips prefs={props.prefs} keys={STATS_OVERLAYS} />
       </View>
@@ -333,18 +247,6 @@ export const PREVIOUS = {
   week: 'last week',
 } as const;
 
-export function bookedLineOf(
-  range: PlannerRange | undefined,
-  input: Omit<BookedInput, 'occurrences'>,
-): string | null {
-  if (range === undefined) return null;
-  return `${hoursText(totalOf(bookedOf({ ...input, occurrences: range.occurrences })))} booked`;
-}
-
-function editableAlways(): boolean {
-  return false;
-}
-
 export interface TimeInput {
   readonly days: readonly string[];
   readonly range: PlannerRange;
@@ -363,16 +265,18 @@ function TimeGridOf({ input }: { readonly input: TimeInput }): ReactNode {
   const { person } = usePlannerFrame();
   const alarms = usePlannerAlarms(person);
   const { prefs } = input;
+  const looks = useCalendarLooks(person);
   return (
     <TimeGrid
       days={input.days}
       occurrences={shownOf(input.range, prefs)}
-      collections={usePlannerCollections(person)}
+      collections={looks.collections}
       alarms={prefs.calendar.show_alarms ? alarms : []}
       workingHours={prefs.calendar.show_free_time ? prefs.general.working_hours : null}
       timeZone={useSettings().time_zone}
       startMinute={clockMinutesOf(prefs.general.day_start)}
-      readOnlyOf={editableAlways}
+      readOnlyOf={looks.readOnlyOf}
+      lookOf={looks.lookOf}
     />
   );
 }

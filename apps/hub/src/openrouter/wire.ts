@@ -66,6 +66,10 @@ export type OrModel = z.infer<typeof OR_MODEL>;
 
 export const OR_MODELS = z.looseObject({ data: z.array(OR_MODEL) });
 
+export const OR_ZDR_ENDPOINTS = z.looseObject({
+  data: z.array(z.looseObject({ model_id: z.string().min(1) })),
+});
+
 const OR_VIDEO_MODEL = z.looseObject({
   id: z.string().min(3).max(200),
   name: z.string().min(1).max(200),

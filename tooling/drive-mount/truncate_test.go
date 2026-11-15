@@ -1,91 +1,106 @@
-//go:build linux
-
 package main
 
 import (
-	"context"
-	"fmt"
 	"testing"
+	"time"
 
-	"github.com/smarteverything/drive-mount/integration/fakehub"
+	"github.com/smarteverything/drive-mount/wire"
 )
 
-func TestTruncateByPathShrinksEmptiesAndExtendsOnTheHub(t *testing.T) {
-	h := fakehub.New(t)
-	h.Put("/t.txt", "abcdef")
-	w := openFake(t, h, writeDir(t))
-	t.Cleanup(w.Close)
-	ctx := context.Background()
-	steps := []struct {
-		size int64
-		want string
-	}{{3, "abc"}, {6, "abc\x00\x00\x00"}, {0, ""}}
-	for _, step := range steps {
-		if err := w.Truncate(ctx, writeRoot, "/t.txt", step.size); err != nil {
-			t.Fatal(err)
-		}
-		awaitHub(t, w, fmt.Sprintf("truncated content %d", step.size), hubHas(h, "/t.txt", step.want))
-		awaitHub(t, w, "pending to clear", func() bool { return w.Pending(writeRoot) == 0 })
-	}
-}
-
-func TestTruncateToTheCurrentSizeUploadsNothing(t *testing.T) {
-	h := fakehub.New(t)
-	h.Put("/t.txt", "abc")
-	w := openFake(t, h, writeDir(t))
-	t.Cleanup(w.Close)
-	if err := w.Truncate(context.Background(), writeRoot, "/t.txt", 3); err != nil {
-		t.Fatal(err)
-	}
-	if w.Pending(writeRoot) != 0 || opCount(h, "upload") != 0 {
-		t.Fatalf("pending %d ops %v", w.Pending(writeRoot), h.Ops())
-	}
-}
-
-func TestTruncateThroughAnOpenHandleKeepsLaterWrites(t *testing.T) {
-	h := fakehub.New(t)
-	h.Put("/t.txt", "abcdef")
-	w := openFake(t, h, writeDir(t))
-	t.Cleanup(w.Close)
-	handle, err := w.OpenWrite(context.Background(), writeRoot, "/t.txt", false)
+func TestSetattrSizeTruncatesLocallyAndCommitsLater(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "t", "0123456789")
+	attr, err := r.w.Setattr(wbCtx, SetattrArgs{Ino: ino, Valid: wire.SetattrValidSize, Size: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := handle.Truncate(2); err != nil {
+	if attr.Size != 4 {
+		t.Fatalf("attr size %d", attr.Size)
+	}
+	r.drain()
+	if got := r.hub.content(ino); got != "0123" {
+		t.Fatalf("hub %q", got)
+	}
+}
+
+func TestSetattrSizeToZeroIsOnePut(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "t", "0123456789")
+	if _, err := r.w.Setattr(wbCtx, SetattrArgs{Ino: ino, Valid: wire.SetattrValidSize, Size: 0}); err != nil {
 		t.Fatal(err)
 	}
-	if size, live := w.Size(writeRoot, "/t.txt"); !live || size != 2 {
-		t.Fatalf("size %d live %v", size, live)
-	}
-	writeAll(t, handle, 2, "XY")
-	buf := make([]byte, 8)
-	if n, err := handle.ReadAt(buf, 0); err != nil || string(buf[:n]) != "abXY" {
-		t.Fatalf("read %q %v", buf[:n], err)
-	}
-	handle.Close()
-	awaitHub(t, w, "content", hubHas(h, "/t.txt", "abXY"))
-}
-
-func TestTruncateOfAMissingFileIsRefused(t *testing.T) {
-	h := fakehub.New(t)
-	w := openFake(t, h, writeDir(t))
-	t.Cleanup(w.Close)
-	if err := w.Truncate(context.Background(), writeRoot, "/none", 0); err == nil {
-		t.Fatal("expected an error")
+	r.drain()
+	if r.hub.content(ino) != "" || r.hub.count("PUT") != 1 || r.hub.count("BEGIN") != 0 {
+		t.Fatalf("ops %v content %q", r.hub.ops, r.hub.content(ino))
 	}
 }
 
-func TestTruncatingOpenWithoutWritesEmptiesTheHubFile(t *testing.T) {
-	h := fakehub.New(t)
-	h.Put("/t.txt", "abcdef")
-	w := openFake(t, h, writeDir(t))
-	t.Cleanup(w.Close)
-	handle, err := w.OpenWrite(context.Background(), writeRoot, "/t.txt", true)
+func TestSetattrSizeToTheSameSizeStillCommitsToUpdateTimes(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "t", "abc")
+	before := r.hub.rev(ino)
+	if _, err := r.w.Setattr(wbCtx, SetattrArgs{Ino: ino, Valid: wire.SetattrValidSize, Size: 3}); err != nil {
+		t.Fatal(err)
+	}
+	r.drain()
+	wbEventually(t, "commit", func() bool { return r.hub.rev(ino) > before })
+	if r.hub.content(ino) != "abc" {
+		t.Fatal("content changed")
+	}
+}
+
+func TestSetattrModeGoesStraightToTheHub(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "t", "abc")
+	attr, err := r.w.Setattr(wbCtx, SetattrArgs{Ino: ino, Valid: wire.SetattrValidMode, Mode: 0o755})
+	if err != nil || attr.Mode != 0o755 {
+		t.Fatalf("%v %o", err, attr.Mode)
+	}
+	if r.hub.count("PUT")+r.hub.count("BEGIN") != 0 {
+		t.Fatal("a mode change cost a commit")
+	}
+}
+
+func TestSetattrSizeAndMtimeApplyInOrder(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "t", "abcdef")
+	stamp := time.Unix(2_000_000, 0)
+	attr, err := r.w.Setattr(wbCtx, SetattrArgs{Ino: ino, Valid: wire.SetattrValidSize, Size: 2, Mtime: TimeSpec{Set: true, At: stamp}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := handle.Close(); err != nil {
-		t.Fatal(err)
+	if attr.Size != 2 || attr.MtimeNs != stamp.UnixNano() {
+		t.Fatalf("attr %+v", attr)
 	}
-	awaitHub(t, w, "the emptied file", func() bool { got, ok := h.Content("/t.txt"); return ok && got == "" && h.Rev("/t.txt") == 2 })
+	r.drain()
+	if r.hub.content(ino) != "ab" {
+		t.Fatal("size")
+	}
+	r.hub.mu.Lock()
+	m := r.hub.nodes[ino].mtime
+	r.hub.mu.Unlock()
+	if m != stamp.UnixNano() {
+		t.Fatalf("mtime %d", m)
+	}
+}
+
+func TestOpenWithTruncateEmptiesTheView(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "t", "old content")
+	h := r.openExisting(ino, true)
+	if h.Size() != 0 {
+		t.Fatalf("size %d", h.Size())
+	}
+	wbPut(t, h, 0, "new")
+	h.Close()
+	r.drain()
+	if r.hub.content(ino) != "new" {
+		t.Fatalf("hub %q", r.hub.content(ino))
+	}
 }

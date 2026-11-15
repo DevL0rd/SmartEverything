@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   trayActions,
   updateMenuItems,
+  desktopBootMenuItems,
   updateTrayItems,
   webUpdateMenuItems,
 } from '../../src/updates/update-tray.js';
@@ -80,10 +81,13 @@ const OFFER: AppUpdateCompatible = {
 };
 
 const ASK = (): void => undefined;
+const RETRY = (): void => undefined;
+const ROLL_BACK = (): void => undefined;
+const WEB = { askToRestart: ASK, retry: RETRY, rollBack: ROLL_BACK };
 
 describe('the web update entry in the tray menu', () => {
   it('asks to restart once the update is ready, and the click only asks', () => {
-    const items = webUpdateMenuItems({ state: 'ready', offer: OFFER }, ASK);
+    const items = webUpdateMenuItems({ state: 'ready', offer: OFFER }, WEB);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -94,9 +98,19 @@ describe('the web update entry in the tray menu', () => {
   });
 
   it('offers a separate restart action to restore the built-in interface', () => {
-    expect(webUpdateMenuItems({ state: 'rollback_ready', currentId: OFFER.id }, ASK)).toStrictEqual(
+    expect(webUpdateMenuItems({ state: 'rollback_ready', currentId: OFFER.id }, WEB)).toStrictEqual(
       [{ label: 'Restart to return to the built-in interface', click: ASK }],
     );
+  });
+
+  it('asks the owner to retry or roll back an interface update that did not start', () => {
+    expect(
+      webUpdateMenuItems({ state: 'boot_failed', failedId: OFFER.id, reason: 'crashed' }, WEB),
+    ).toStrictEqual([
+      { label: 'The interface update did not start', enabled: false },
+      { label: 'Try the interface update again', click: RETRY },
+      { label: 'Roll back the interface update', click: ROLL_BACK },
+    ]);
   });
 
   it.each([
@@ -106,7 +120,7 @@ describe('the web update entry in the tray menu', () => {
     [0, 0, 'Downloading interface update · 0%'],
   ])('shows the percent while downloading (%i of %i)', (received, total, label) => {
     expect(
-      webUpdateMenuItems({ state: 'downloading', offer: OFFER, received, total }, ASK),
+      webUpdateMenuItems({ state: 'downloading', offer: OFFER, received, total }, WEB),
     ).toStrictEqual([{ label, enabled: false }]);
   });
 
@@ -118,7 +132,17 @@ describe('the web update entry in the tray menu', () => {
     { state: 'applying' },
     { state: 'failed', reason: 'broke', offer: null },
   ])('adds nothing while %j', (status) => {
-    expect(webUpdateMenuItems(status, ASK)).toStrictEqual([]);
+    expect(webUpdateMenuItems(status, WEB)).toStrictEqual([]);
+  });
+});
+
+describe('a desktop version that did not finish its first start', () => {
+  it('asks the owner to keep it or roll back', () => {
+    expect(desktopBootMenuItems('0.4.2', { keep: ASK, rollBack: ROLL_BACK })).toStrictEqual([
+      { label: 'Desktop version 0.4.2 did not finish its first start', enabled: false },
+      { label: 'Keep this desktop version', click: ASK },
+      { label: 'Roll back to the previous desktop version', click: ROLL_BACK },
+    ]);
   });
 });
 
@@ -130,7 +154,7 @@ describe('the tray update section', () => {
         check: () => Promise.resolve(status({})),
         install: () => Promise.resolve(status({})),
       },
-      { status: () => ({ state: 'ready', offer: OFFER }), askToRestart: ASK },
+      { status: () => ({ state: 'ready', offer: OFFER }), ...WEB },
     );
 
     expect(items.map((item) => item.label)).toStrictEqual([

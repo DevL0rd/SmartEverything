@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { systemDataSpace } from '../../src/drive/data-space';
 import { ensureDrives } from '../../src/drive/spaces';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
+import { PushCommandChannel } from '../../src/extensions/push/commands';
 import type { Caller } from '../../src/server/auth';
 import { driveRoutes } from '../../src/server/handlers/drive';
 import { createDrive, type DriveRuntime } from '../../src/server/handlers/drive-wiring';
@@ -77,6 +78,7 @@ beforeEach(async () => {
     localUrl: () => 'http://hub.local:8080',
     links: new MediaLinks(() => NOW),
     nodes: new ComputerNodeAccess(store, () => NOW),
+    pushCommands: new PushCommandChannel(),
     probe: systemDataSpace,
     now: () => NOW,
     log,

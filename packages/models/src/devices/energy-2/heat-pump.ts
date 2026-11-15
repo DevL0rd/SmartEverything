@@ -56,7 +56,7 @@ export const HEAT_PUMP_MODEL: ModelSpec = {
   title: 'Heat pump',
   category: 'climate',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.414, height: HEIGHT },
   framing: house('fan', 28, 14),
   shots: [
     shot('running', RUNNING, 'fan', { zoom: 1.6, yaw: 14, pitch: 6, loopS: 1, symmetry: 60 }),

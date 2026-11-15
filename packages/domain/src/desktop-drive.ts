@@ -31,8 +31,6 @@ export const DESKTOP_DRIVE_COMMAND = z
     z.strictObject({ kind: z.literal('unpin'), mount: NAME, path: NAME }),
     z.strictObject({ kind: z.literal('sync-pause') }),
     z.strictObject({ kind: z.literal('sync-resume') }),
-    z.strictObject({ kind: z.literal('first-run-mounted') }),
-    z.strictObject({ kind: z.literal('first-run-dismissed') }),
   ])
   .readonly();
 
@@ -54,7 +52,13 @@ export type DesktopDriveFuse = z.infer<typeof FUSE>;
 
 export const DESKTOP_DRIVE_STATE = z
   .strictObject({
-    mount: z.strictObject({ status: NAME, mounted: z.boolean() }).nullable(),
+    mount: z
+      .strictObject({
+        status: NAME,
+        mounted: z.boolean(),
+        points: z.array(z.strictObject({ placementId: NAME, point: NAME }).readonly()).readonly(),
+      })
+      .nullable(),
     sync: z
       .strictObject({
         placements: COUNT,
@@ -65,7 +69,6 @@ export const DESKTOP_DRIVE_STATE = z
       })
       .nullable(),
     fuse: FUSE,
-    firstRun: z.strictObject({ pending: z.boolean(), defaultParent: NAME }),
     cache: DESKTOP_DRIVE_CACHE,
   })
   .readonly();
@@ -77,5 +80,6 @@ export const DESKTOP_DRIVE_CHANGED = 'desktop:drive-changed';
 export interface DesktopDrive {
   state(): Promise<DesktopDriveState | null>;
   run(command: DesktopDriveCommand): Promise<DesktopDriveState>;
+  open(placementId: string): Promise<void>;
   onChange(listener: (state: DesktopDriveState | null) => void): () => void;
 }

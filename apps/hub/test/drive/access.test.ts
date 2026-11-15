@@ -9,6 +9,7 @@ import {
   driveAccess,
   driveFilter,
   itemAccess,
+  rootVisible,
   type DriveActor,
   type ItemAccess,
 } from '../../src/drive/access';
@@ -78,6 +79,21 @@ describe('drive access', () => {
     expect(driveAccess(robin, store.driveRoots.byId(SAM_DRIVE))).toBe('none');
     expect(driveAccess(sam, store.driveRoots.byId(SAM_DRIVE))).toBe('own');
   });
+
+  it('shows another person drive only while a grant inside it is held', () => {
+    const { store } = opened;
+    const samDrive = store.driveRoots.byId(SAM_DRIVE);
+    expect(rootVisible(store, robin, samDrive)).toBe(false);
+    const grant = store.driveGrants.set(
+      { itemId: TRIP_DEEP, profileId: robin.profileId, role: 'view', expiresAt: null },
+      sam.profileId,
+    );
+    expect(rootVisible(store, robin, samDrive)).toBe(true);
+    expect(rootVisible(store, kim, samDrive)).toBe(false);
+    expect(rootVisible(store, robin, store.driveRoots.byId(HOME))).toBe(true);
+    store.driveGrants.remove(grant.id);
+    expect(rootVisible(store, robin, samDrive)).toBe(false);
+  });
 });
 
 describe('item access', () => {
@@ -91,7 +107,7 @@ describe('item access', () => {
 
   it('lets a grant on a folder cover everything inside it but not a sibling with the same prefix', () => {
     opened.store.driveGrants.set(
-      { itemId: TRIP, profileId: robin.profileId, role: 'view' },
+      { itemId: TRIP, profileId: robin.profileId, role: 'view', expiresAt: null },
       sam.profileId,
     );
     expect(accessTo(robin, TRIP)).toBe('view');
@@ -105,24 +121,42 @@ describe('item access', () => {
   it('lets a grant on a file cover only that file and takes the strongest of several grants', () => {
     const { driveGrants } = opened.store;
     driveGrants.set(
-      { itemId: OTHER_FILE, profileId: robin.profileId, role: 'edit' },
+      { itemId: OTHER_FILE, profileId: robin.profileId, role: 'edit', expiresAt: null },
       sam.profileId,
     );
     expect(accessTo(robin, OTHER_FILE)).toBe('edit');
     expect(accessTo(robin, TRIP_FILE)).toBe('none');
-    driveGrants.set({ itemId: TRIP, profileId: robin.profileId, role: 'view' }, sam.profileId);
-    driveGrants.set({ itemId: TRIP_FILE, profileId: robin.profileId, role: 'edit' }, sam.profileId);
+    driveGrants.set(
+      { itemId: TRIP, profileId: robin.profileId, role: 'view', expiresAt: null },
+      sam.profileId,
+    );
+    driveGrants.set(
+      { itemId: TRIP_FILE, profileId: robin.profileId, role: 'edit', expiresAt: null },
+      sam.profileId,
+    );
     expect(accessTo(robin, TRIP_FILE)).toBe('edit');
     expect(accessTo(robin, TRIP_DEEP)).toBe('view');
   });
 
   it('ends cover when the grant is removed', () => {
     const grant = opened.store.driveGrants.set(
-      { itemId: TRIP, profileId: robin.profileId, role: 'view' },
+      { itemId: TRIP, profileId: robin.profileId, role: 'view', expiresAt: null },
       sam.profileId,
     );
     opened.store.driveGrants.remove(grant.id);
     expect(accessTo(robin, TRIP_FILE)).toBe('none');
+  });
+
+  it('gives nobody access to the Locked folder unless the caller opened it', () => {
+    const { store } = opened;
+    putItem(store, { rootId: SAM_DRIVE, id: id(20), relPath: '.locked', kind: 'folder' });
+    putItem(store, { rootId: SAM_DRIVE, id: id(21), relPath: '.locked/a.jpg', kind: 'document' });
+    putItem(store, { rootId: SAM_DRIVE, id: id(22), relPath: '.lockedout', kind: 'folder' });
+    expect([id(20), id(21)].map((itemId) => accessTo(sam, itemId))).toEqual(['none', 'none']);
+    expect(accessTo(sam, id(22))).toBe('own');
+    const unlocked: DriveActor = { ...sam, lockedFolder: 'open' };
+    expect([id(20), id(21)].map((itemId) => accessTo(unlocked, itemId))).toEqual(['own', 'own']);
+    expect(accessTo({ ...robin, lockedFolder: 'open' }, id(21))).toBe('none');
   });
 
   it('says what each level may do', () => {
@@ -166,8 +200,14 @@ describe('the SQL filter', () => {
   it('agrees with the item rule for every person before and after grants', () => {
     for (const actor of [robin, sam, kim]) expect(reachable(actor)).toEqual(reachableByRule(actor));
     const { driveGrants } = opened.store;
-    driveGrants.set({ itemId: TRIP, profileId: robin.profileId, role: 'view' }, sam.profileId);
-    driveGrants.set({ itemId: OTHER_FILE, profileId: kim.profileId, role: 'edit' }, sam.profileId);
+    driveGrants.set(
+      { itemId: TRIP, profileId: robin.profileId, role: 'view', expiresAt: null },
+      sam.profileId,
+    );
+    driveGrants.set(
+      { itemId: OTHER_FILE, profileId: kim.profileId, role: 'edit', expiresAt: null },
+      sam.profileId,
+    );
     for (const actor of [robin, sam, kim]) expect(reachable(actor)).toEqual(reachableByRule(actor));
     expect(reachable(robin)).toEqual(
       [SHARED_FILE, ROBIN_FILE, TRIP, TRIP_FILE, id(8), TRIP_DEEP].sort(),

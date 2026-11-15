@@ -6,7 +6,7 @@ import {
   CALL_KEY,
   callInputs,
   calleeOf,
-} from '../../src/interpret/calls';
+} from '../../src/interpret/call-state';
 import { completeFrame, makeEnv } from '../../src/interpret/frames';
 import type { PlanRef } from '../../src/state/run-state';
 import {

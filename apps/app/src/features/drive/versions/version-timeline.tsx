@@ -2,7 +2,6 @@ import type { ReactElement, ReactNode } from 'react';
 import { memo } from 'react';
 import { View } from 'react-native';
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
-import type { DriveRoot } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { Sparkline } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
@@ -22,7 +21,7 @@ import { useSettings } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 import { SERIES_LOOK, VIA_LOOK } from '../activity/via-model';
-import { useByName } from '../folder/folder-list';
+import { useByName } from '../components/use-by-name';
 import {
   CURRENT,
   byOf,
@@ -350,14 +349,21 @@ export function TimelineLoading(): ReactNode {
   );
 }
 
-export function OneVersion({ root }: { readonly root: DriveRoot }): ReactNode {
-  return root.versions ? (
-    <EmptyState
-      compact
-      icon="layers"
-      title="One version so far"
-      body="When this file changes, the old copy is kept here for a year."
-    />
+const ONE_VERSION_BODY = 'When this file changes, the old copy is kept here for a year.';
+
+export function OneVersion({ kept }: { readonly kept: boolean | null }): ReactNode {
+  if (kept === null) {
+    return (
+      <EmptyState
+        compact
+        icon="layers"
+        title="One version so far"
+        body="Earlier copies show here when this file changes and its drive keeps versions."
+      />
+    );
+  }
+  return kept ? (
+    <EmptyState compact icon="layers" title="One version so far" body={ONE_VERSION_BODY} />
   ) : (
     <EmptyState
       compact

@@ -13,7 +13,7 @@ const log = new Logger('app.drive');
 
 export const LINK_RENEW_LEAD_MS = 60_000;
 
-export type DriveLinkSize = 'file' | 'thumb' | 'preview' | 'playable';
+export type DriveLinkSize = 'file' | 'thumb' | 'preview' | 'playable' | 'download' | 'icon';
 
 interface Entry {
   readonly generation: number;
@@ -58,16 +58,28 @@ function subscribeGeneration(listener: () => void): () => void {
 
 const PURPOSE: Readonly<Record<DriveLinkSize, NativeHubResourcePurpose>> = {
   file: 'attachment',
+  download: 'attachment',
   playable: 'attachment',
+  icon: 'image',
   thumb: 'image',
   preview: 'image',
 };
 
-export async function readRoutedDriveLinks(
+type MediaClient = ReturnType<ReturnType<typeof api>['forMedia']>;
+
+export function readRoutedDriveLinks(
   itemIds: readonly string[],
 ): Promise<readonly DriveItemLink[]> {
+  return routedDriveLinks((client) =>
+    client.call(E.itemLinks, { body: { itemIds: [...itemIds] } }),
+  );
+}
+
+export async function routedDriveLinks(
+  read: (client: MediaClient) => Promise<readonly DriveItemLink[]>,
+): Promise<readonly DriveItemLink[]> {
   const client = api().forMedia();
-  const links = await client.call(E.itemLinks, { body: { itemIds: [...itemIds] } });
+  const links = await read(client);
   const present = async (
     link: DriveItemLink['file'],
     size: DriveLinkSize,
@@ -82,13 +94,15 @@ export async function readRoutedDriveLinks(
     link === null ? Promise.resolve(null) : present(link, size);
   return Promise.all(
     links.map(async (link) => {
-      const [file, thumb, preview, playable] = await Promise.all([
+      const [file, download, icon, thumb, preview, playable] = await Promise.all([
         present(link.file, 'file'),
+        optional(link.download, 'download'),
+        optional(link.icon, 'icon'),
         optional(link.thumb, 'thumb'),
         optional(link.preview, 'preview'),
         optional(link.playable, 'playable'),
       ]);
-      return { ...link, file, thumb, preview, playable };
+      return { ...link, file, download, icon, thumb, preview, playable };
     }),
   );
 }
@@ -153,6 +167,8 @@ export class DriveLinkCache {
     this.sweep();
     for (const link of links) {
       this.put(link, 'file', link.file, generation);
+      if (link.download !== null) this.put(link, 'download', link.download, generation);
+      if (link.icon !== null) this.put(link, 'icon', link.icon, generation);
       if (link.thumb !== null) this.put(link, 'thumb', link.thumb, generation);
       if (link.preview !== null) this.put(link, 'preview', link.preview, generation);
       if (link.playable !== null) this.put(link, 'playable', link.playable, generation);
@@ -183,6 +199,10 @@ export class DriveLinkCache {
 
 export const driveLinks = new DriveLinkCache(readRoutedDriveLinks, Date.now, routeGeneration);
 
+export function useRouteGeneration(): number {
+  return useSyncExternalStore(subscribeGeneration, routeGeneration, routeGeneration);
+}
+
 export function useDriveLink(
   itemId: string | null,
   rev: number,
@@ -191,7 +211,7 @@ export function useDriveLink(
   const [resolved, setResolved] = useState<{ readonly key: string; readonly url: string } | null>(
     null,
   );
-  const generation = useSyncExternalStore(subscribeGeneration, routeGeneration, routeGeneration);
+  const generation = useRouteGeneration();
   const key = itemId === null ? null : keyOf(itemId, rev, size, generation);
   useEffect(() => {
     if (itemId === null || key === null) return undefined;

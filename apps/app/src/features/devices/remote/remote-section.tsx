@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { IrRemoteRow } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
@@ -19,7 +19,6 @@ import { RemoteExtras } from './remote-extras';
 import { RemoteFace } from './remote-face';
 import { RemotePad } from './remote-pad';
 import { useLearnedSource, useDeviceRemoteSource, type RemoteSource } from './remote-source';
-import { SceneSheet } from './scene-sheet';
 import { useRemoteSend } from './use-remote-send';
 
 interface Remotes {
@@ -148,7 +147,6 @@ function BlasterRemotes({
   readonly blaster: Device;
   readonly remotes: readonly IrRemoteRow[];
 }): ReactNode {
-  const [scene, setScene] = useState(false);
   const settings = href.settings.device(blaster.id, 'remotes');
   return (
     <>
@@ -166,23 +164,13 @@ function BlasterRemotes({
         <View className="flex-row flex-wrap gap-2">
           <Button label="Add a remote" icon="plus" variant="tonal" href={settings} />
           <Button
-            label="Make a scene"
-            icon="film"
+            label="Set up an automation"
+            icon="automations"
             variant="tonal"
-            onPress={() => {
-              setScene(true);
-            }}
+            href={href.automationNewFor({ deviceId: blaster.id })}
           />
         </View>
       )}
-      {scene ? (
-        <SceneSheet
-          blaster={blaster}
-          onClose={() => {
-            setScene(false);
-          }}
-        />
-      ) : null}
     </>
   );
 }

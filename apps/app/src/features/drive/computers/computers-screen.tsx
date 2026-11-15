@@ -4,17 +4,16 @@ import type { DrivePlacement } from '@smarteverything/domain';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
 import { useDevices, useIsOwner, useLoaded, useSyncStatus } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
-import { PairComputerSheet } from '../../computers';
+import { computersOf, PairComputerSheet } from '../../computers';
 import { useDrivePlacementRows } from '../data';
 import { DriveFrame } from '../components/drive-frame';
 import { ComputerCard } from './computer-card';
-import { computersOf, computersSubtitleOf } from './computers-model';
+import { computersSubtitleOf } from './computers-model';
 import { ConflictsCard } from './conflicts-card';
-import { FirstRunCard } from './first-run-card';
 import { MountPanel } from './mount-panel';
 import { mountSummaryOf } from './mount-summary';
 import { placementsOn } from './placement-model';
@@ -25,12 +24,12 @@ import {
   type ThisComputer,
 } from './this-computer';
 
-const NO_ACTIONS: readonly HeaderAction[] = [];
+const NO_ACTIONS: readonly ShellAction[] = [];
 
 export const MEMBER_PAIRING =
   'Open SmartEverything Desktop on your computer and sign in. The home owner then pairs it under Computers, and it shows here.';
 
-export function pairActionsOf(owner: boolean, pair: () => void): readonly HeaderAction[] {
+export function pairActionsOf(owner: boolean, pair: () => void): readonly ShellAction[] {
   return owner ? [{ icon: 'plus', label: 'Pair a computer', onPress: pair }] : NO_ACTIONS;
 }
 
@@ -69,14 +68,21 @@ export function ThisComputerCard({
   here,
   drive,
   placements,
+  compact = false,
 }: {
   readonly device: Device;
   readonly here: ThisComputer;
   readonly drive: DesktopDriveView;
   readonly placements: readonly DrivePlacement[];
+  readonly compact?: boolean;
 }): ReactNode {
   return (
-    <ComputerCard device={device} placements={placementsOn(device.id, placements)} here>
+    <ComputerCard
+      device={device}
+      placements={placementsOn(device.id, placements)}
+      here
+      compact={compact}
+    >
       <MountPanel
         platform={here.platform}
         summary={mountSummaryOf(device.id, placements)}
@@ -92,9 +98,6 @@ function ComputerCards({ computers }: { readonly computers: readonly Device[] })
   const drive = useDesktopDrive();
   return (
     <View className="gap-4">
-      {here === null || drive === null ? null : (
-        <FirstRunCard deviceId={here.deviceId} drive={drive} />
-      )}
       {computers.map((device) =>
         here !== null && drive !== null && device.id === here.deviceId ? (
           <ThisComputerCard

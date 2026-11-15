@@ -265,6 +265,17 @@ describe('trash', () => {
     expect(trash.due('2027-11-01T00:00:00.000Z', 10)).toHaveLength(1);
   });
 
+  it('never lists an entry that left the Locked folder', () => {
+    trash.insert(trashEntry(1));
+    trash.insert(trashEntry(2, { originalRelPath: '.locked/f2.jpg' }));
+    trash.insert(trashEntry(3, { originalRelPath: '.locked', isFolder: true }));
+    trash.insert(trashEntry(4, { originalRelPath: '.lockedout/f4.jpg' }));
+    expect(trash.inRoot(ROOT, null, 10).entries.map((entry) => entry.itemId)).toEqual([
+      itemId(4),
+      itemId(1),
+    ]);
+  });
+
   it('removes an entry, reports bytes per adder and has no soonest purge when empty', () => {
     expect(trash.soonestPurge()).toBeNull();
     trash.insert(trashEntry(1));

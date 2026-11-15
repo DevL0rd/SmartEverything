@@ -40,7 +40,7 @@ function tufts(): ModelSpecPart[] {
 export const OTTOMAN_MODEL = furniture({
   id: 'cat.living.ottoman',
   title: 'Ottoman',
-  footprint: { width: 0.9, depth: OTTOMAN_DEPTH, height: OTTOMAN_TOP },
+  footprint: { width: 0.9, depth: OTTOMAN_DEPTH, height: 0.418 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: { display: 'Ottoman', synonyms: ['footstool', 'footrest', 'upholstered bench'] },

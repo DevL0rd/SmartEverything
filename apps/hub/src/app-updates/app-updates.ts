@@ -52,13 +52,16 @@ export class AppUpdates {
   }
 
   report(client: ClientRow, outcome: AppUpdateOutcome): void {
-    this.log.info('app_update.outcome', {
+    const fields = {
       clientId: client.id,
       platform: client.platform,
       updateId: outcome.updateId,
       outcome: outcome.outcome,
       reason: outcome.reason,
-    });
+    };
+    if (outcome.outcome === 'fell_back')
+      this.log.warn('app_update.fell_back_awaiting_decision', fields);
+    else this.log.info('app_update.outcome', fields);
   }
 
   private compatible(entry: AppUpdateEntry): AppUpdateCompatible {

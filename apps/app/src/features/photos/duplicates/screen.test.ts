@@ -74,7 +74,10 @@ vi.mock('../../../store/selectors', () => ({
     status: seen.live ? 'live' : 'interrupted',
   }),
 }));
-vi.mock('../../../design/size-class', () => ({ useAreaWidth: (): number => seen.width }));
+vi.mock('../../../design/size-class', async (original) => ({
+  ...(await original<object>()),
+  useAreaWidth: (): number => seen.width,
+}));
 vi.mock('../../../settings/settings-frame', () => ({
   SettingsFrame: (props: {
     readonly page: string;

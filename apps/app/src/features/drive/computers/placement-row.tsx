@@ -16,7 +16,13 @@ import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
 import { useDriveItem, useDriveRoots, useViewerId } from '../data';
 import { usePlacementWrites, type PlacementWrites } from './placement-change';
-import { changedBodyOf, drivePathOf, parentPath, type DriveNames } from './placement-model';
+import {
+  changedBodyOf,
+  drivePathOf,
+  locationOf,
+  parentPath,
+  type DriveNames,
+} from './placement-model';
 import {
   MODE_ICON,
   lineToneOf,
@@ -25,6 +31,9 @@ import {
   syncedShareOf,
   type PlacementWords,
 } from './placement-words';
+import { useDesktopDrive, useThisComputer } from './this-computer';
+
+const NOT_MOUNTED = 'Mounts in the network drive place when the computer is on';
 
 export interface PlacedFolder {
   readonly path: string;
@@ -49,10 +58,11 @@ export function removePlacement(
   writes: PlacementWrites,
   onDone?: () => void,
 ): void {
+  const location = locationOf(placement);
   const body =
     placement.mode === 'synced'
-      ? `The files stay in ${placement.localPath} on this computer; they stop syncing.`
-      : `${placement.localPath} is unmounted. Nothing in the drive is deleted.`;
+      ? `The files stay in ${location ?? 'the folder'} on this computer; they stop syncing.`
+      : `${location ?? 'The folder'} is unmounted. Nothing in the drive is deleted.`;
   background(
     confirm({
       title: placement.mode === 'synced' ? 'Stop syncing this folder?' : 'Unmount this folder?',
@@ -117,6 +127,61 @@ function menuItemsOf(
   ];
 }
 
+export function PlacementLocation({
+  placement,
+}: {
+  readonly placement: DrivePlacement;
+}): ReactNode {
+  const location = locationOf(placement);
+  return (
+    <Text
+      variant="footnote"
+      tone="variant"
+      numberOfLines={1}
+      className={location === null ? '' : 'font-mono'}
+      selectable={location !== null}
+    >
+      {location ?? NOT_MOUNTED}
+    </Text>
+  );
+}
+
+export interface OpenHereAction {
+  readonly busy: boolean;
+  readonly open: () => void;
+}
+
+export function useOpenHere(placement: DrivePlacement): OpenHereAction | null {
+  const here = useThisComputer();
+  const drive = useDesktopDrive();
+  if (
+    here?.deviceId !== placement.deviceId ||
+    drive === null ||
+    placement.mode !== 'mounted' ||
+    placement.status.mountPoint === null
+  ) {
+    return null;
+  }
+  return {
+    busy: drive.busy,
+    open: (): void => {
+      drive.open(placement.id);
+    },
+  };
+}
+
+export function OpenHereButton({ action }: { readonly action: OpenHereAction }): ReactNode {
+  return (
+    <Button
+      label="Open in file manager"
+      icon="externalLink"
+      variant="text"
+      loading={action.busy}
+      onPress={action.open}
+    />
+  );
+}
+
 function Actions({
   placement,
   words,
@@ -128,16 +193,21 @@ function Actions({
 }): ReactNode {
   const router = useRouter();
   const paused = !placement.enabled;
+  const location = locationOf(placement);
+  const openHere = useOpenHere(placement);
   return (
     <View className="flex-row items-center gap-1">
-      <Button
-        label="Open on computer"
-        icon="folder"
-        variant="text"
-        href={href.settings.device(placement.deviceId, 'files', {
-          path: placement.mode === 'synced' ? placement.localPath : parentPath(placement.localPath),
-        })}
-      />
+      {openHere === null ? null : <OpenHereButton action={openHere} />}
+      {location === null ? null : (
+        <Button
+          label="Open on computer"
+          icon="folder"
+          variant="text"
+          href={href.settings.device(placement.deviceId, 'files', {
+            path: placement.mode === 'synced' ? location : parentPath(location),
+          })}
+        />
+      )}
       <IconButton
         icon={paused ? 'play' : 'pause'}
         label={paused ? 'Resume' : 'Pause'}
@@ -150,7 +220,7 @@ function Actions({
         }}
       />
       <OverflowButton
-        label={`More for ${placement.localPath}`}
+        label={`More for ${location ?? placement.mountName ?? 'this folder'}`}
         items={menuItemsOf(placement, writes, (to) => {
           router.push(to);
         })}
@@ -176,9 +246,7 @@ function Heading({
         </Text>
         <Badge label={words.chip.label} tone={words.chip.tone} />
       </View>
-      <Text variant="footnote" tone="variant" numberOfLines={1} className="font-mono">
-        {placement.localPath}
-      </Text>
+      <PlacementLocation placement={placement} />
       <Text variant="footnote" tone={lineToneOf(words)} numberOfLines={2}>
         {sentenceOf(placement.mode, words)}
       </Text>

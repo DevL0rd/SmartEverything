@@ -129,14 +129,16 @@ async function removeStalePublications(work: string): Promise<void> {
   }
 }
 
-export async function settleStaleUpdateJobs(
+async function settleJobs(
   layout: HubLayout,
-  now: () => Date = () => new Date(),
+  now: () => Date,
+  include: (job: Job) => boolean,
 ): Promise<readonly JobSettlement[]> {
   const work = layout.system.updates.selfUpdate;
   const ledger = await readHubUpdateLedger(layout);
   const settled: JobSettlement[] = [];
   for (const { file, job } of await readJobs(join(work, 'jobs'))) {
+    if (!include(job)) continue;
     const settlement = await settlementOf(job, work, ledger);
     if (settlement === null) continue;
     const text = await readFile(file, 'utf8');
@@ -151,8 +153,27 @@ export async function settleStaleUpdateJobs(
     log.warn('update_job.settled', { runId: settlement.runId, phase: settlement.phase });
     settled.push(settlement);
   }
-  await removeStalePublications(work).catch((cause: unknown) => {
+  return settled;
+}
+
+export async function settleStaleUpdateJobs(
+  layout: HubLayout,
+  now: () => Date = () => new Date(),
+): Promise<readonly JobSettlement[]> {
+  const settled = await settleJobs(layout, now, () => true);
+  await removeStalePublications(layout.system.updates.selfUpdate).catch((cause: unknown) => {
     if (!isMissing(cause)) throw cause;
   });
   return settled;
+}
+
+export function settleHubJobsFromLedger(
+  layout: HubLayout,
+  now: () => Date = () => new Date(),
+): Promise<readonly JobSettlement[]> {
+  return settleJobs(
+    layout,
+    now,
+    (job) => job.action === 'hub' && HUB_RESULT.safeParse(job.result).success,
+  );
 }

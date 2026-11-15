@@ -98,7 +98,7 @@ function filler(): ModelSpecPart[] {
 export const FREESTANDING_BATH_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.freestanding-bath',
   title: 'Freestanding bath',
-  footprint: { width: 1.7, depth: WIDTH, height: RIM_Y + 0.2 },
+  footprint: { width: 1.7, depth: WIDTH, height: 0.796 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

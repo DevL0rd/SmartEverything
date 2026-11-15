@@ -15,6 +15,7 @@ import {
   isWasmModule,
 } from './native-binary.ts';
 import { ServiceRuntimeError } from './service-runtime.ts';
+import { readVisionPin } from './vision-models.ts';
 
 const log = new Logger('tool.service-target');
 
@@ -40,6 +41,7 @@ const WAKE_MODEL_FILES = ['bpe.vocab'];
 const IR_LIBRARY_FILES = ['index.bin', 'models.bin'];
 const FFMPEG_PACKAGE = 'ffmpeg-static';
 const GO2RTC_DIRECTORY = 'go2rtc';
+export const PLACES_DATASET = join('places', 'cities.tsv.gz');
 
 export class ServiceTargetError extends Error {
   override readonly name = 'ServiceTargetError';
@@ -147,6 +149,18 @@ function irLibraryProblems(directory: string): string[] {
   );
 }
 
+function visionModelProblems(directory: string): string[] {
+  const pin = readVisionPin();
+  return pin.models
+    .map((model) => join(pin.directory, model.file))
+    .filter((file) => !existsSync(join(directory, file)))
+    .map((file) => `${file} is missing`);
+}
+
+function placesDatasetProblems(directory: string): string[] {
+  return existsSync(join(directory, PLACES_DATASET)) ? [] : [`${PLACES_DATASET} is missing`];
+}
+
 function binaryProblems(directory: string, target: ServiceTarget): string[] {
   return [
     ...requiredFile(directory, join('node_modules', FFMPEG_PACKAGE, 'ffmpeg'), target),
@@ -171,6 +185,8 @@ export function serviceTargetProblems(
       ...wasmProblems(directory),
       ...wakeModelProblems(directory),
       ...irLibraryProblems(directory),
+      ...visionModelProblems(directory),
+      ...placesDatasetProblems(directory),
       ...(options.binaries ? binaryProblems(directory, target) : []),
     ]),
   ];

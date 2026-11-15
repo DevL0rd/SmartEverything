@@ -41,7 +41,7 @@ export class HarnessStorage {
   reader(id: string, runtimeInstance: string): string {
     const metadata = this.store.dshSessions.ownerOf(id);
     if (metadata === undefined)
-      throw new ApiError('not_found', 'This native session is not stored.');
+      throw new ApiError('forbidden', 'This runtime may not read this native session.');
     const parent =
       metadata.header.origin === 'subagent' ? metadata.header.parentSession : undefined;
     if (

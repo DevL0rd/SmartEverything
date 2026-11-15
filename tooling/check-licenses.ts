@@ -17,7 +17,9 @@ function refusedBy(list: readonly ProductionPackage[]): readonly string[] {
   return [
     ...new Set(
       list
-        .filter((one) => !isPermitted(one.licence, allowed))
+        .filter(
+          (one) => policy.exceptions[one.name] === undefined && !isPermitted(one.licence, allowed),
+        )
         .map((one) => `${one.name} (${one.licence})`),
     ),
   ];

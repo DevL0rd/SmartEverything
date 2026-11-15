@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AUDIO_STATE } from './computer-audio';
 import { DISPLAY_STATE } from './computer-displays';
+import { FILE_PATH } from './computer-files';
 import { PROCESS_WINDOW, PROCESSES_PART, PROCESSES_UPDATE } from './computer-processes';
 import { COMPUTER_SESSION } from './computer-session-state';
 import {
@@ -40,6 +41,7 @@ export const STATE_TOPICS = [
   'tiling',
   'services',
   'drive_mounts',
+  'files',
 ] as const;
 
 export const COMPUTER_TOPICS = [...SAMPLE_TOPICS, ...STATE_TOPICS] as const;
@@ -77,6 +79,7 @@ export type NodeDemandTopics = z.infer<typeof NODE_DEMAND_TOPICS>;
 export const NODE_DEMAND = z.strictObject({
   topics: NODE_DEMAND_TOPICS,
   processes: PROCESS_WINDOW.optional(),
+  files: z.array(FILE_PATH).optional(),
   history: HISTORY_POLICY.optional(),
 });
 
@@ -86,6 +89,7 @@ export const WATCH_DEMAND = z.strictObject({
   deviceId: DEVICE_ID,
   topics: z.array(z.enum(WATCH_TOPICS)).min(1),
   processes: PROCESS_WINDOW.optional(),
+  files: FILE_PATH.optional(),
 });
 
 export type WatchDemand = z.infer<typeof WATCH_DEMAND>;
@@ -147,3 +151,18 @@ export const COMPUTER_LIVE_NOTICE = z.strictObject({
 });
 
 export type ComputerLiveNotice = z.infer<typeof COMPUTER_LIVE_NOTICE>;
+
+export const COMPUTER_FILES_CHANGED_NOTICE = z.strictObject({
+  type: z.literal('computer_files_changed'),
+  deviceId: DEVICE_ID,
+  path: FILE_PATH,
+});
+
+export type ComputerFilesChangedNotice = z.infer<typeof COMPUTER_FILES_CHANGED_NOTICE>;
+
+export const NODE_FILES_CHANGED = z.strictObject({
+  type: z.literal('files_changed'),
+  path: FILE_PATH,
+});
+
+export type NodeFilesChanged = z.infer<typeof NODE_FILES_CHANGED>;

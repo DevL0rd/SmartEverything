@@ -63,7 +63,7 @@ function book(shape: Book, index: number): ModelSpecPart[] {
 export const BOOK_STACK_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.book-stack',
   title: 'Book stack',
-  footprint: { width: 0.26, depth: 0.19, height: 0.162 },
+  footprint: { width: 0.26, depth: 0.1999, height: 0.162 },
   meta: {
     names: {
       display: 'Book stack',

@@ -23,7 +23,13 @@ import {
   withinBuffer,
   type QueuedRecord,
 } from './log-batch';
-import { combineGaps, readLogOutbox, writeLogOutbox, type LogGap } from './log-offload';
+import {
+  combineGaps,
+  readLogOutbox,
+  recordKeyOf,
+  writeLogOutbox,
+  type LogGap,
+} from './log-offload';
 import { shipLevelOf, wantsShipped, type ShipLevel } from './ship-level';
 import { bindStartupLogs, keepStartupLog } from './startup-logs';
 
@@ -94,6 +100,10 @@ export class LogShip {
   private inFlight: readonly QueuedRecord[] = [];
   private gap: LogGap | null = null;
   private sendingGap: LogGap | null = null;
+  private readonly keys = new Map<QueuedRecord, string>();
+  private readonly written = new Set<QueuedRecord>();
+  private storedGap = 'null';
+  private sequence = 0;
   private loaded: Promise<void> | null = null;
   private saving: Promise<void> = Promise.resolve();
   private saveQueued = false;
@@ -233,9 +243,16 @@ export class LogShip {
 
   private restore(): Promise<void> {
     this.loaded ??= readLogOutbox(this.scope)
-      .then(({ records, gap }) => {
+      .then(({ records, gap, next }) => {
         this.gap = combineGaps(this.gap, gap);
-        const recovered = records.map(queued);
+        this.storedGap = JSON.stringify(gap);
+        this.sequence = next;
+        const recovered = records.map(({ key, record }) => {
+          const item = queued(record);
+          this.keys.set(item, key);
+          this.written.add(item);
+          return item;
+        });
         this.queue = [...recovered, ...this.queue];
         this.queueBytes += sizeOf(recovered);
         this.boundQueue();
@@ -254,15 +271,44 @@ export class LogShip {
       await this.restore().finally(() => {
         this.saveQueued = false;
       });
-      await writeLogOutbox(this.scope, {
-        records: this.queue.map((item) => item.record),
-        gap: combineGaps(this.gap, this.sendingGap),
-      });
+      await this.persist();
     });
     this.pendingSave = saving;
     this.saving = saving.catch((cause: unknown) => {
       log.warn('logs.not_kept', { reason: String(cause) });
     });
+  }
+
+  private keyOf(item: QueuedRecord): string {
+    const known = this.keys.get(item);
+    if (known !== undefined) return known;
+    const key = recordKeyOf(this.scope, this.sequence);
+    this.sequence += 1;
+    this.keys.set(item, key);
+    return key;
+  }
+
+  private async persist(): Promise<void> {
+    const live = new Set(this.queue);
+    const remove = [...this.keys].filter(([item]) => !live.has(item));
+    const add = this.queue
+      .filter((item) => !this.written.has(item))
+      .map((item) => ({ item, key: this.keyOf(item), record: item.record }));
+    const gap = combineGaps(this.gap, this.sendingGap);
+    const gapText = JSON.stringify(gap);
+    const gapChanged = gapText !== this.storedGap;
+    if (add.length === 0 && remove.length === 0 && !gapChanged) return;
+    await writeLogOutbox(this.scope, {
+      add,
+      remove: remove.map(([, key]) => key),
+      ...(gapChanged ? { gap } : {}),
+    });
+    for (const [item] of remove) {
+      this.keys.delete(item);
+      this.written.delete(item);
+    }
+    for (const { item } of add) this.written.add(item);
+    this.storedGap = gapText;
   }
 
   private arm(delayMs: number): void {

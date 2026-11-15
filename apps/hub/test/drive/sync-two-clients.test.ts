@@ -28,6 +28,7 @@ import {
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
 import { packBlockHashes } from '../../src/store/repositories/drive-blocks';
 import { testLogger } from '../support/logs';
+import { nsOf, syncPosixOf } from './sync-posix';
 import type { StoredDrive } from '../../src/store/repositories/drive-roots';
 import { sharedDriveRoot } from '../store/drive-roots-fixture';
 import type { TestStore } from '../support/store';
@@ -107,6 +108,7 @@ beforeEach(async () => {
     log: testLogger('drive-sync'),
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
+    posix: syncPosixOf(opened.store, () => NOW),
     conflicts: {
       insert: (conflict): void => {
         conflictRows.set(conflict.id, conflict);
@@ -228,6 +230,7 @@ function placeFolder(deviceId: string, folderItemId: string | null, localPath: s
     folderItemId,
     mode: 'synced',
     localPath: `/sync/${localPath}`,
+    mountName: null,
     enabled: true,
     createdBy: ownerId,
     excluded: [],
@@ -275,10 +278,14 @@ function pushOf(opId: string, relPath: string, baseRev: number | null, bytes: Bu
     meta: {
       bytes: bytes.length,
       mtime: NOW.toISOString(),
+      mtimeNs: nsOf(NOW.toISOString()),
       blockSize: BLOCK,
       blocksHash: blocksHashOf(packedToBytes(packed)),
     },
     blocks: packed,
+    mode: 0o644,
+    xattrs: [],
+    linkOf: null,
   };
 }
 
@@ -397,6 +404,50 @@ async function onDisk(relPath: string): Promise<Buffer> {
 }
 
 describe('two computers on one folder', () => {
+  it('shows the second computer modes, extended attributes, links and later metadata changes', async () => {
+    const a = await connectAs(pair('A'));
+    const b = await connectAs(pair('B'));
+    const bytes = bytesOf(1, 'm');
+    const note = { name: 'user.note', value: Buffer.from('hi').toString('base64') };
+    const edit = pushOf('op-a1', 'tool.sh', null, bytes);
+    send(a, { ...edit, mode: 0o750, xattrs: [note] });
+    const need = await answerFirst(a, 'op-a1');
+    if (need.type !== 'need_blocks') throw new Error('expected need_blocks');
+    await upload(a, need, bytes);
+    send(a, { type: 'commit', opId: 'op-a1', txn: need.txn });
+    const accepted = await answerSettled(a, 'op-a1');
+    if (accepted.type !== 'accept') throw new Error('expected accept');
+    send(a, {
+      ...pushOf('op-a2', 'tool2.sh', null, bytes),
+      linkOf: 'tool.sh',
+      mode: 0o750,
+      xattrs: [note],
+    });
+    await answerFirst(a, 'op-a2');
+    send(a, { type: 'push_link', opId: 'op-a3', relPath: 'to-tool', target: 'tool.sh' });
+    await answerSettled(a, 'op-a3');
+    const entry = await learns(b, 'tool.sh', accepted.rev);
+    expect(entry).toMatchObject({ kind: 'file', mode: 0o750, xattrs: [note] });
+    const second = await learns(b, 'tool2.sh', 1);
+    expect(second.kind === 'file' && entry.kind === 'file' && second.inode === entry.inode).toBe(
+      true,
+    );
+    expect(await learns(b, 'to-tool', 1)).toMatchObject({ kind: 'link', target: 'tool.sh' });
+    send(a, {
+      type: 'push_meta',
+      opId: 'op-a4',
+      relPath: 'tool.sh',
+      baseRev: accepted.rev,
+      mode: 0o600,
+      mtimeNs: '1767323045123456789',
+      xattrs: [],
+    });
+    await answerSettled(a, 'op-a4');
+    await until(() => seen(b, 'tool.sh')?.mode === 0o600, 'B sees the new mode');
+    expect(seen(b, 'tool.sh')).toMatchObject({ xattrs: [], mtimeNs: '1767323045123456789' });
+    expect(seen(b, 'tool.sh')?.rev).toBe(accepted.rev);
+  });
+
   it('shows the second computer a pushed file with its blocks, fetched and equal', async () => {
     const a = await connectAs(pair('A'));
     const b = await connectAs(pair('B'));

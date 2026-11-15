@@ -1,7 +1,9 @@
 import type { ReactNode, RefObject } from 'react';
 import { createContext, use, useRef } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
+import type { EntryOrExitLayoutType } from 'react-native-reanimated';
 import { useLiveAnimationGate, useScreenLive, type AnimationGate } from './animation-gate';
+import { exiting, useMotion } from './motion';
 import { useLiveViewport, useViewport, type ViewportVisibility } from './viewport';
 
 const PREWARM_MARGIN = 48;
@@ -23,6 +25,14 @@ export function VisualVisibility({
 
 export function useScopeVisible(): boolean {
   return use(ScopeVisible);
+}
+
+export function useShownExit(animation: EntryOrExitLayoutType): {
+  readonly exiting?: EntryOrExitLayoutType;
+} {
+  const motion = useMotion();
+  const shown = use(ScopeVisible);
+  return shown ? exiting(motion, animation) : {};
 }
 
 export function useOnScreen(

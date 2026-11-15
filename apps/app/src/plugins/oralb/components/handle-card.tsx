@@ -22,6 +22,7 @@ import {
 import { probeStatus } from '../model/settings-model';
 import { oralbModeOf } from '../model/wave-model';
 import { ModeChip } from '../../toothbrush/components/mode-chip';
+import { isBrushing } from '../../toothbrush/model/live-frame';
 import { borderColorStyle, sizeStyle } from '../charts/style';
 
 function Swatch({ hex }: { readonly hex: string | null }): ReactNode {
@@ -60,7 +61,10 @@ function Ring({ view }: { readonly view: BrushStateView }): ReactNode {
 
 function Slots({ view }: { readonly view: BrushStateView }): ReactNode {
   const handle = view.handle.oralb;
-  const slots = slotsOf(handle?.modeSlots ?? [], oralbModeOf(view.frame.mode));
+  const slots = slotsOf(
+    handle?.modeSlots ?? [],
+    isBrushing(view.frame) ? oralbModeOf(view.frame.mode) : null,
+  );
   return (
     <View className="gap-1.5">
       <Text variant="caption" tone="variant">

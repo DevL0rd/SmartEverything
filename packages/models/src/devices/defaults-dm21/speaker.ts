@@ -31,7 +31,7 @@ export const SMART_SPEAKER_MODEL: ModelSpec = {
   title: 'Smart speaker',
   category: 'audio',
   family: 'speaker',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: RADIUS * 2, depth: 0.1006, height: 0.1636 },
   framing: house('body', 30, 18),
   shots: [shot('play', PLAY_SHOT_WHEN, 'cap', { zoom: 1.45, yaw: 22, pitch: 38, loopS: 2 })],
   meta: {

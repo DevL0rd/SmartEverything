@@ -4,7 +4,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../extensions';
 import { reconcileHubUpdateNotes } from './completion';
-import { settleStaleUpdateJobs } from './stale-jobs';
+import { settleHubJobsFromLedger, settleStaleUpdateJobs } from './stale-jobs';
 import { hubUpdateStatusOf, readHubUpdateLedger } from './recovery';
 
 const log = new Logger('hub.self-update');
@@ -44,6 +44,7 @@ export async function startHubUpdateCompletion(
           context.live.announce({ type: 'hub_update_status_changed' }, 'owners');
         previousStatus = status;
         reconcileHubUpdateNotes(context.store, ledger);
+        await settleHubJobsFromLedger(context.layout);
       })
       .catch((cause: unknown) => {
         log.error('update_completion.read_failed', cause);

@@ -25,21 +25,20 @@ const OWNER = SESSION.parse({
 
 function seeding(
   plugin: string,
-  stream: string,
-  value: unknown,
+  streams: Readonly<Record<string, unknown>>,
   owner: boolean,
 ): (state: StoreState) => StoreState {
-  const key = pluginStreamKey(plugin, stream);
-  const row = {
+  const rows = Object.entries(streams).map(([stream, value]) => ({
     plugin_id: plugin,
     stream,
     value: JSON_ROUNDTRIP.parse(JSON.parse(JSON.stringify(value))),
     at: '2026-10-16T08:00:00.000Z',
-  };
+  }));
+  const byId = Object.fromEntries(rows.map((row) => [pluginStreamKey(plugin, row.stream), row]));
   return (state) => ({
     ...state,
     ...(owner ? { session: OWNER } : {}),
-    tables: { ...state.tables, plugin_streams: makeTable({ [key]: row }, [key], 1) },
+    tables: { ...state.tables, plugin_streams: makeTable(byId, Object.keys(byId), 1) },
   });
 }
 
@@ -59,14 +58,39 @@ function face(name: string, kind: Face['kind'], seed: (state: StoreState) => Sto
 }
 
 export function routerFace(snapshot: RouterSnapshot, owner = false): Face {
-  return face('router', 'router', seeding('router', 'router.snapshot', snapshot, owner));
+  return face(
+    'router',
+    'router',
+    seeding(
+      'router',
+      {
+        'router.live': {
+          at: snapshot.at,
+          connection: snapshot.connection,
+          cadence: snapshot.cadence,
+          intervalSeconds: snapshot.intervalSeconds,
+          system: snapshot.system,
+          network: snapshot.network,
+          stations: snapshot.stations,
+        },
+        'router.snapshot': {
+          at: snapshot.at,
+          info: snapshot.info,
+          radios: snapshot.radios,
+          clients: snapshot.clients,
+          people: snapshot.people,
+        },
+      },
+      owner,
+    ),
+  );
 }
 
 export function adguardFace(snapshot: AdGuardSnapshot, owner = false): Face {
   return face(
     'adguard home',
     'dns_filter',
-    seeding('adguard', 'adguard.snapshot', snapshot, owner),
+    seeding('adguard', { 'adguard.snapshot': snapshot }, owner),
   );
 }
 
@@ -74,6 +98,6 @@ export function syncthingFace(snapshot: SyncthingSnapshot, owner = false): Face 
   return face(
     'syncthing',
     'file_sync',
-    seeding('syncthing', 'syncthing.snapshot', snapshot, owner),
+    seeding('syncthing', { 'syncthing.snapshot': snapshot }, owner),
   );
 }

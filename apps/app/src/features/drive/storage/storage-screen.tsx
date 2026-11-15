@@ -6,26 +6,23 @@ import { startDriveScrub } from '../../../api/drive';
 import { Banner } from '../../../components/banner';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
 import { notify } from '../../../components/toast-store';
 import { percent } from '../../../format/number';
-import { joinParts, plural } from '../../../format/text';
+import { joinParts } from '../../../format/text';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { useDriveHealth, useDriveStats } from '../data';
 import { DriveFrame, storageSummaryOf } from '../components/drive-frame';
+import { damagedText } from './scrub-progress';
 import { StorageColumns } from './storage-columns';
 
 type Scrub = DriveHealth['scrub'];
 
-const NO_ACTIONS: readonly HeaderAction[] = [];
-
-function damageText(corrupt: number): string {
-  return corrupt === 0 ? 'no damage' : plural(corrupt, 'damaged file');
-}
+const NO_ACTIONS: readonly ShellAction[] = [];
 
 function checkedShare(checked: number, total: number): string {
   return percent(total === 0 ? 0 : checked / total);
@@ -39,7 +36,7 @@ export function scrubTextOf(scrub: Scrub, now: number): string {
     return `Scrub stopped at ${checkedShare(scrub.checked, scrub.total)}`;
   }
   if (scrub.lastFinishedAt === null) return 'Never scrubbed';
-  return `Last scrub ${relative(scrub.lastFinishedAt, now)}, ${damageText(scrub.corrupt)}`;
+  return `Last scrub ${relative(scrub.lastFinishedAt, now)}, ${damagedText(scrub.corrupt)}`;
 }
 
 export function storageSubtitleOf(
@@ -60,13 +57,13 @@ export function scrubActionsOf(
   owner: boolean,
   scrub: Scrub | undefined,
   start: () => void,
-): readonly HeaderAction[] {
+): readonly ShellAction[] {
   if (!owner || scrub === undefined || scrub.state === 'running') return NO_ACTIONS;
   return [{ icon: 'shield', label: 'Scrub now', onPress: start }];
 }
 
 function useScrubActions(owner: boolean): {
-  readonly actions: readonly HeaderAction[];
+  readonly actions: readonly ShellAction[];
   readonly scrub: Scrub | undefined;
 } {
   const health = useDriveHealth();
@@ -77,7 +74,7 @@ function useScrubActions(owner: boolean): {
       failure: 'The scrub did not start',
       label: 'drive.storage.scrub',
       onDone: () => {
-        notify({ message: 'Scrub started' });
+        notify({ message: 'Scrub started · reading every file back from the disk' });
         background(health.refetch(), 'drive.storage.health_refetch_failed');
       },
     });

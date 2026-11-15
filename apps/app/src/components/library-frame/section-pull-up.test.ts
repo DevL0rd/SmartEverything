@@ -20,6 +20,10 @@ vi.mock('react-native', () => ({
     createElement('div', {}, children),
   ScrollView: (): null => null,
   StyleSheet: { create: <T>(styles: T): T => styles },
+  Platform: {
+    OS: 'android',
+    select: <T>(options: { readonly android?: T }): T | undefined => options.android,
+  },
 }));
 vi.mock('../bottom-sheet', () => ({
   BottomSheet: (props: { readonly children: ReactNode; readonly open: boolean }): ReactNode => {

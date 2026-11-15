@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Share, View } from 'react-native';
+import { ScrollView, Share, View } from 'react-native';
 import type { DriveItem, DriveShareCreated } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { AdaptivePanel, usePanelFrame } from '../../../components/adaptive-panel';
@@ -17,6 +17,9 @@ import { useDriveOf, useDriveSettings } from '../data';
 import type { DriveOfItem } from '../model/drive-access';
 import { revokeLink } from '../shared/revoke-link';
 import { PeopleSection, SectionTitle } from './people-section';
+import { RequestsSection } from './requests-section';
+import { TransferSection } from './transfer-section';
+import { PeopleLink, ViewOnlyRow } from './view-only-row';
 import { makeShareLink } from './share-data';
 import { LinkForm } from './share-form';
 import {
@@ -145,9 +148,17 @@ function Body(props: BodyProps): ReactNode {
   const owner = useProfiles().find((profile) => profile.id === drive.root?.ownerProfileId);
   return (
     <View className="gap-4">
+      <RequestsSection itemId={opened.item.id} />
       {drive.root === null ? null : (
-        <PeopleSection item={opened.item} root={drive.root} access={drive.access} />
+        <PeopleSection
+          item={opened.item}
+          ownerProfileId={drive.root.ownerProfileId}
+          access={drive.access}
+        />
       )}
+      <ViewOnlyRow item={opened.item} access={drive.access} />
+      {drive.access === 'own' ? <View className="h-px bg-outline-variant" /> : null}
+      <TransferSection item={opened.item} access={drive.access} />
       <View className="h-px bg-outline-variant" />
       {props.link === 'owner-only' ? null : (
         <>
@@ -156,6 +167,7 @@ function Body(props: BodyProps): ReactNode {
           <View className="h-px bg-outline-variant" />
         </>
       )}
+      <PeopleLink itemId={opened.item.id} access={drive.access} />
       <Text variant="footnote" tone="variant">
         {footerLineOf(drive.access, owner?.name ?? null)}
       </Text>
@@ -198,18 +210,25 @@ function PanelBody({
   readonly onClose: () => void;
 }): ReactNode {
   const sheet = usePanelFrame().presentation === 'sheet';
+  if (sheet) {
+    return (
+      <View className="gap-4 pb-2">
+        <Body {...body} />
+      </View>
+    );
+  }
   return (
-    <View className={sheet ? 'gap-4 pb-2' : 'gap-4 p-4'}>
-      {sheet ? null : (
-        <View className="flex-row items-center gap-2">
-          <Text variant="title-3" numberOfLines={1} className="min-w-0 flex-1">
-            {shareTitleOf(body.opened.item)}
-          </Text>
-          <IconButton icon="close" label="Close" onPress={onClose} />
-        </View>
-      )}
-      <Body {...body} />
-      {sheet ? null : footer}
+    <View className="min-h-0 flex-1">
+      <View className="flex-row items-center gap-2 px-4 pt-4 pb-2">
+        <Text variant="title-3" numberOfLines={1} className="min-w-0 flex-1">
+          {shareTitleOf(body.opened.item)}
+        </Text>
+        <IconButton icon="close" label="Close" onPress={onClose} />
+      </View>
+      <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-4 px-4 pb-4">
+        <Body {...body} />
+      </ScrollView>
+      <View className="border-t border-outline-variant px-4 py-3">{footer}</View>
     </View>
   );
 }
@@ -276,6 +295,7 @@ function ShareHost({
   readonly close: () => void;
 }): ReactNode {
   const loose = useRef<View>(null);
+  const touch = useIdiom() === 'touch';
   const live = useSyncStatus().status === 'live';
   const drive = useDriveOf(opened.item);
   const link = useLinkState(drive);
@@ -303,7 +323,7 @@ function ShareHost({
       label={shareTitleOf(opened.item)}
       pointerPlacement={opened.anchorRef === null ? 'center' : 'below'}
       sheetFooter={footer}
-      scroll
+      scroll={touch}
     >
       <PanelBody body={bodyOf(opened, drive, link, setOpened)} footer={footer} onClose={close} />
     </AdaptivePanel>

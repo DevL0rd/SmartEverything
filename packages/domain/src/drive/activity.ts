@@ -15,6 +15,11 @@ export const DRIVE_ACTIVITY_ENTRY = z
   .strictObject({
     row: DRIVE_FEED_ROW,
     item: DRIVE_ACTIVITY_ITEM.nullable(),
+    outsiderName: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe('The name an outsider typed when they uploaded this file through a file request'),
   })
   .readonly();
 

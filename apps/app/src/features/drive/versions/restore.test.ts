@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
 import type { ToastInput } from '../../../components/toast-store';
-import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
+import { documentFixture } from '../data/fixtures';
 
 interface Seen {
   restored: (readonly [string, string])[];
@@ -30,29 +30,16 @@ const { RESTORED_DETAIL, RESTORED_MESSAGE, RESTORE_FAILED, restoreVersion } =
 const ITEM_ID = 'e1b2c3d4-0000-4000-8000-000000000004';
 const VERSION_ID = 'e1b2c3d4-0000-4000-8000-000000000005';
 
-const ITEM: DriveItem = DRIVE_ITEM.parse({
+const ITEM: DriveItem = documentFixture({
   id: ITEM_ID,
-  rootId: ROOT_ID,
-  parentId: FOLDER_ID,
   relPath: 'Home/Notes.md',
   name: 'Notes.md',
   modifiedAt: '2026-11-07T09:10:00.000Z',
   addedAt: '2026-11-02T09:10:00.000Z',
-  openedAt: null,
-  starred: false,
-  shared: false,
   rev: 4,
-  etag: 'etag',
-  outside: false,
-  addedByProfileId: null,
-  remoteId: null,
-  remoteRev: null,
-  kind: 'document',
   mime: 'text/markdown',
   bytes: 4200,
-  sha256: null,
   integrity: 'ok',
-  thumb: { state: 'none' },
 });
 
 describe('restoreVersion', () => {

@@ -11,9 +11,12 @@ import {
 } from '@smarteverything/domain/drive-sync';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { BlockUploader } from './block-upload.js';
+import type { FileRecord } from './db/index.js';
 import { isHashedFile, type PushIntent } from './push-intents.js';
 import {
   PushQueue,
+  mtimeNsOf,
+  mtimeOf,
   outcomeOf,
   type Decoded,
   type PushOutcome,
@@ -77,6 +80,10 @@ interface Waiter {
   readonly reject: (cause: Error) => void;
 }
 
+function metaSignature(record: FileRecord): string {
+  return `${String(record.mode)}|${mtimeNsOf(record)}|${JSON.stringify(record.xattrs)}`;
+}
+
 function sha256Of(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -100,6 +107,7 @@ export class PlacementPusher {
   readonly #options: PlacementPusherOptions;
   readonly #queue: PushQueue;
   readonly #waiters = new Map<string, Waiter>();
+  readonly #sent = new Map<string, string>();
   #chain: Promise<void> = Promise.resolve();
 
   constructor(options: PlacementPusherOptions) {
@@ -120,6 +128,7 @@ export class PlacementPusher {
   interrupted(): void {
     const waiting = [...this.#waiters.values()];
     this.#waiters.clear();
+    this.#sent.clear();
     for (const waiter of waiting) waiter.reject(new ChannelClosedError(this.#options.placementId));
   }
 
@@ -193,7 +202,59 @@ export class PlacementPusher {
     if (decoded.kind === 'tombstone') {
       return finalOf(await this.#call({ type: 'tombstone', opId, ...decoded.payload }));
     }
+    if (decoded.kind === 'meta') return this.#exchangeMeta(decoded);
+    if (decoded.kind === 'link') return this.#exchangeLink(decoded);
     return this.#exchangePush(decoded, decoded.payload);
+  }
+
+  async #exchangeMeta(
+    decoded: Extract<Decoded, { readonly kind: 'meta' }>,
+  ): Promise<Final | undefined> {
+    const { opId } = decoded.op;
+    const { relPath } = decoded.payload;
+    const record = this.#options.database.files.get(this.#options.placementId, relPath);
+    if (record === undefined || record.kind === 'link' || record.hubRev === null) {
+      this.#drop(decoded, relPath);
+      return undefined;
+    }
+    this.#sent.set(opId, metaSignature(record));
+    return finalOf(
+      await this.#call({
+        type: 'push_meta',
+        opId,
+        relPath,
+        baseRev: record.hubRev,
+        mode: record.mode,
+        mtimeNs: mtimeNsOf(record),
+        xattrs: record.xattrs,
+      }),
+    );
+  }
+
+  async #exchangeLink(
+    decoded: Extract<Decoded, { readonly kind: 'link' }>,
+  ): Promise<Final | undefined> {
+    const { opId } = decoded.op;
+    const { relPath } = decoded.payload;
+    const record = this.#options.database.files.get(this.#options.placementId, relPath);
+    if (record?.kind !== 'link' || record.linkTarget === null) {
+      this.#drop(decoded, relPath);
+      return undefined;
+    }
+    return finalOf(
+      await this.#call({ type: 'push_link', opId, relPath, target: record.linkTarget }),
+    );
+  }
+
+  #linkOf(record: FileRecord): string | null {
+    if (record.linkKey === null || record.hubRev !== null) return null;
+    const names = this.#options.database.files
+      .list(this.#options.placementId)
+      .filter((other) => other.kind === 'file' && other.linkKey === record.linkKey);
+    const [primary] = names.sort((first, second) => (first.relPath < second.relPath ? -1 : 1));
+    return primary !== undefined && primary.relPath !== record.relPath && primary.hubRev !== null
+      ? primary.relPath
+      : null;
   }
 
   async #exchangePush(decoded: Decoded, payload: PushPayload): Promise<Final | undefined> {
@@ -203,14 +264,18 @@ export class PlacementPusher {
       this.#drop(decoded, payload.relPath);
       return undefined;
     }
+    this.#sent.set(opId, metaSignature(record));
     let reply = await this.#call(
       SYNC_PUSH.parse({
         type: 'push',
         opId,
         relPath: payload.relPath,
         baseRev: record.hubRev,
-        meta: payload.meta,
+        meta: { ...payload.meta, mtime: mtimeOf(record), mtimeNs: mtimeNsOf(record) },
         blocks: payload.blocks,
+        mode: record.mode,
+        xattrs: record.xattrs,
+        linkOf: this.#linkOf(record),
       }),
     );
     while (reply.type === 'need_blocks') {
@@ -267,12 +332,15 @@ export class PlacementPusher {
   #settle(decoded: Decoded, reply: Final): void {
     const { database, placementId, sink, log } = this.#options;
     const outcome = outcomeOf(decoded);
-    database.transaction(() => {
-      if (reply.type === 'accept') this.#applyRev(decoded, reply.rev);
+    const unsettled = database.transaction(() => {
+      const applied = reply.type !== 'accept' || this.#applyRev(decoded, reply.rev);
       database.pendingOps.acknowledge(decoded.op.opId);
+      return !applied;
     });
+    this.#sent.delete(decoded.op.opId);
     if (reply.type === 'accept') {
       sink.accepted({ ...outcome, rev: reply.rev, seq: reply.seq });
+      if (unsettled) sink.stale(outcome.relPath);
       return;
     }
     log.info('drive_sync.push.conflict', {
@@ -288,14 +356,23 @@ export class PlacementPusher {
     });
   }
 
-  #applyRev(decoded: Decoded, rev: number): void {
+  #applyRev(decoded: Decoded, rev: number): boolean {
     const { files } = this.#options.database;
     const { placementId } = this.#options;
-    if (decoded.kind === 'push') files.setHubRev(placementId, decoded.payload.relPath, rev);
     if (decoded.kind === 'move') {
       files.rename(placementId, decoded.payload.from, decoded.payload.to);
       files.setHubRev(placementId, decoded.payload.to, rev);
+      return true;
     }
+    if (decoded.kind === 'tombstone') return true;
+    const { relPath } = decoded.payload;
+    files.setHubRev(placementId, relPath, rev);
+    const record = files.get(placementId, relPath);
+    const sent = this.#sent.get(decoded.op.opId);
+    if (record === undefined || (sent !== undefined && sent !== metaSignature(record)))
+      return false;
+    files.setMetaDirty(placementId, relPath, false);
+    return true;
   }
 
   #drop(decoded: Decoded, relPath: string): void {

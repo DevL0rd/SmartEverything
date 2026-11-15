@@ -57,6 +57,7 @@ export const adguardAppPlugin: AppPlugin = {
       title: 'Query log',
       icon: 'list',
       scrolls: true,
+      search: { placeholder: 'Domain or device' },
       applies: isAdBlocker,
       render: () => <QueriesSection />,
     },

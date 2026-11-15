@@ -13,7 +13,7 @@ import { useKeyboard } from '../../../../app-shell/shortcuts';
 import { AdaptivePanel, usePanelFrame } from '../../../../components/adaptive-panel';
 import { COMPACT_PANEL_INSET } from '../../../../components/compact-panel';
 import { SheetBody } from '../../../../components/sheet-body';
-import { EscapeScopeVisible } from '../../../../components/use-escape';
+import { EscapeScopeVisible } from '../../../../components/escape-scope';
 import { cn } from '../../../../design/cn';
 import { useEngineAccessory } from '../../chats/engine-accessories';
 import { DraftEngineChoices } from '../../chats/draft-engine-picker';
@@ -24,7 +24,7 @@ import { ImageSettingsPage } from './image-settings-panel';
 import { FolderPage, MachinePage } from './machine-panel';
 import { InlinePanelLibrary, libraryPanelSize, type PanelLibraryProps } from './panel-library';
 import { MainPage } from './panel-main';
-import { PanelSubpageContext } from './panel-subpage';
+import { PanelSubpageContext } from './panel-subpage-context';
 import { usePlanFirst, type PlanFirst } from './plan-first-row';
 import {
   isLibraryPage,

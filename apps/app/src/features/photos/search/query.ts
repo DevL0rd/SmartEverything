@@ -1,5 +1,5 @@
 import type { SmartRule, SmartRuleLeaf } from '@smarteverything/domain';
-import { SEARCH_MEDIA, tokenKey, type SearchToken } from './tokens';
+import { SEARCH_MEDIA, isSmartToken, tokenKey, type BaseToken, type SearchToken } from './tokens';
 
 export interface SearchInput {
   readonly tokens: readonly SearchToken[];
@@ -20,6 +20,10 @@ export function isSearching(input: SearchInput): boolean {
 }
 
 function ruleOf(token: SearchToken): SmartRuleLeaf | null {
+  return isSmartToken(token) ? null : baseRuleOf(token);
+}
+
+function baseRuleOf(token: BaseToken): SmartRuleLeaf | null {
   switch (token.kind) {
     case 'date':
       return { kind: 'date_range', field: 'takenAt', from: token.from, to: token.to };

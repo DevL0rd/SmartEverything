@@ -17,7 +17,7 @@ export const AWNING_MODEL: ModelSpec = {
   title: 'Retractable awning',
   category: 'cover',
   family: 'cover',
-  footprint: { width: WIDTH, depth: REACH + PIVOT_Z, height: 0.44 },
+  footprint: { width: WIDTH, depth: 1.1093, height: 0.3003 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

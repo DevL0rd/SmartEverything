@@ -11,7 +11,7 @@ Read the computer before changing it: the `computer_read` view gives the ids and
 
 - Find the computer with `device_find` (family computer); its `deviceId` is what every computer tool takes. A member's AI reaches only that person's own computers; the owner's reaches all.
 - Read: `computer_read` (views for load and temperatures, sound, screens, system, USB, windows, tiling, services, startup apps, installed apps, history and permissions), `process_read` for running programs, `file_read` for files.
-- Change: `computer_audio_set` (volumes, mute, default output or input, an app's output), `computer_display_set` (screens), `computer_system_set` (power mode, Do Not Disturb, keyboard, Wi-Fi, Bluetooth, startup apps, services), `computer_app_control` (apps and windows), `process_control` (end, pause, resume, priority), `file_edit` (folders, rename, move, copy, Trash, save an attachment).
+- Change: `computer_audio_set` (volumes, mute, default output or input, an app's output), `computer_display_set` (screens), `computer_system_set` (power mode, Do Not Disturb, keyboard, Wi-Fi, Bluetooth, startup apps, services), `computer_app_control` (apps and windows), `process_control` (end, pause, resume, priority), `file_edit` (folders, rename, move, copy, Trash, delete from Trash, save an attachment).
 - Power actions (shut down, restart, sleep, lock, ring, open a link or file) are device capabilities sent with `device_control`; the person's AI power switch can disallow them.
 - `computer_use` drives the pointer and keyboard only when nothing above reaches the job.
 
@@ -23,7 +23,7 @@ Names, actions and fields come from `tool_read`; the reads give the values to us
 - Screens: call `computer_display_set` action keep only after the person confirms the screen looks right, and never keep a change that turned every screen off unless they asked for exactly that; revert undoes it at once. Automations use the `computer.audio` and `computer.display` nodes instead (smarteverything-automation-nodes).
 - System: on the hub computer, stopping or restarting the hub's own service or ending its process is refused; the person does that from the hub's page. Bluetooth off drops a Bluetooth keyboard and mouse.
 - Programs: force quitting can lose unsaved work, so say so before you do it.
-- Files: `file_read` reads anywhere the computer's user can read, files up to 5 MB; view download prepares a short-lived signed link of any size (a folder or several items as one zip) for the person to open, so tell them where to tap or point them to Files. `file_edit` never deletes for good and never overwrites unless replace is true.
+- Files: `file_read` reads anywhere the computer's user can read, files up to 5 MB; view folder can sort by name, size or date; view search finds names, and with contents true also the text inside files (each hit shows its line and a snippet); view trash lists what is in the Trash and view zip lists the files inside a zip archive; view download prepares a short-lived signed link of any size (a folder or several items as one zip) for the person to open, so tell them where to tap or point them to Files. `file_edit` moves things to the Trash and never overwrites unless replace is true; only action delete_now removes items from the Trash for good, so ask the person first. Windows and macOS offer no Trash, search or writing; the place list reports what each computer can do.
 
 ## Pointer and keyboard
 

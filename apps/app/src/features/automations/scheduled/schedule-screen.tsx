@@ -10,8 +10,7 @@ import { EmptyState } from '../../../components/empty-state';
 import { Grid } from '../../../components/grid';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { dateFormat } from '../../../format/locale';
@@ -153,8 +152,8 @@ function ScheduleBody(): ReactNode {
 
 export function ScheduleScreen(): ReactNode {
   return (
-    <Screen header={<PageHeader title="Week view" />}>
+    <PageShell title="Week view">
       <ScheduleBody />
-    </Screen>
+    </PageShell>
   );
 }

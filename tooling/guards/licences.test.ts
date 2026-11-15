@@ -41,7 +41,11 @@ describe('the licence policy', () => {
   });
 
   it('names an override that no installed package uses', () => {
-    const policy = { allowedLicenses: ['MIT'], overrides: { used: 'MIT', gone: 'MIT' } };
+    const policy = {
+      allowedLicenses: ['MIT'],
+      overrides: { used: 'MIT', gone: 'MIT' },
+      exceptions: {},
+    };
     expect(unusedOverrides(policy, [{ name: 'used', version: '1.0.0', licence: 'MIT' }])).toEqual([
       'gone',
     ]);

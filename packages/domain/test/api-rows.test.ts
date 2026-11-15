@@ -27,7 +27,6 @@ import {
   RECORDING_KINDS,
   RECORDING_ROW,
   ROOM_ROW,
-  SCENE_ROW,
   SETTINGS_ROW,
   STATE_ROW,
   TELEVISION_SETTINGS_ROW,
@@ -62,7 +61,6 @@ import {
   PUSH_TOKEN,
   RECORDING_KIND,
   REMOTE_NAME,
-  SCENE_NAME,
 } from '../src/api/rows-media';
 
 const FIRST = '00000000-0000-4000-8000-000000000001';
@@ -241,15 +239,6 @@ const irCode = {
   button: 'Power',
   format: 'pulses',
   code: '9000,4500',
-  created_at: AT,
-};
-
-const scene = {
-  id: FIRST,
-  name: 'Movie night',
-  icon: 'film',
-  actions: [{ type: 'command', deviceId: SECOND, capability: 'power', value: false }],
-  position: 1,
   created_at: AT,
 };
 
@@ -486,7 +475,7 @@ describe('home rows', () => {
   });
 
   it('COMMAND_ROW keeps a command from every source', () => {
-    expect(COMMAND_SOURCES).toStrictEqual(['app', 'automation', 'scene', 'assistant']);
+    expect(COMMAND_SOURCES).toStrictEqual(['app', 'automation', 'assistant']);
     for (const source of COMMAND_SOURCES) {
       expect(COMMAND_SOURCE.parse(source)).toBe(source);
       expectRoundTrip(COMMAND_ROW, { ...command, source });
@@ -559,11 +548,6 @@ describe('media rows', () => {
       expectRoundTrip(IR_CODE_ROW, { ...irCode, format });
     }
     expectRefused(IR_CODE_ROW, irCode, [{ format: 'hex' }, { code: '' }]);
-  });
-
-  it('SCENE_ROW keeps its stored actions', () => {
-    expectRoundTrip(SCENE_ROW, scene);
-    expectRefused(SCENE_ROW, scene, [{ icon: '' }, { actions: {} }]);
   });
 
   it('LAYOUT_ROW keeps a layout of a page', () => {
@@ -699,7 +683,6 @@ describe('named texts', () => {
     ['DEVICE_NAME', DEVICE_NAME, 120],
     ['REMOTE_NAME', REMOTE_NAME, 80],
     ['BUTTON_NAME', BUTTON_NAME, 60],
-    ['SCENE_NAME', SCENE_NAME, 80],
     ['AUTOMATION_NAME', AUTOMATION_NAME, 80],
     ['HEALTH_SOURCE_NAME', HEALTH_SOURCE_NAME, 80],
     ['TOKEN_NAME', TOKEN_NAME, 80],
@@ -739,7 +722,6 @@ const ROW_SAMPLES = {
   recordings: recording,
   ir_remotes: irRemote,
   ir_codes: irCode,
-  scenes: scene,
   automations: automationV3,
   layouts: layout,
   push_targets: pushTarget,
@@ -775,7 +757,6 @@ describe('live tables', () => {
       'recordings',
       'ir_remotes',
       'ir_codes',
-      'scenes',
       'automations',
       'automation_values',
       'automation_runs',
@@ -812,12 +793,20 @@ describe('live tables', () => {
       'drive_albums',
       'drive_grants',
       'drive_placements',
+      'drive_notifications',
+      'drive_access_requests',
+      'drive_file_requests',
+      'drive_transfers',
+      'drive_offline_items',
       'planner_collections',
       'planner_items',
       'planner_occurrences',
       'planner_alarms',
       'planner_timers',
       'planner_stopwatches',
+      'planner_collection_shares',
+      'planner_guests',
+      'planner_booking_pages',
       'google_accounts',
     ]);
     expect(Object.keys(TABLE_ROWS)).toStrictEqual(LIVE_TABLES);
@@ -839,7 +828,6 @@ describe('live tables', () => {
       ['recordings', RECORDING_ROW],
       ['ir_remotes', IR_REMOTE_ROW],
       ['ir_codes', IR_CODE_ROW],
-      ['scenes', SCENE_ROW],
       ['automations', AUTOMATION_ROW],
       ['layouts', LAYOUT_ROW],
       ['push_targets', PUSH_TARGET_ROW],

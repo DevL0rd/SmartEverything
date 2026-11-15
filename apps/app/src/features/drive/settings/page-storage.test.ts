@@ -42,7 +42,6 @@ const {
   QUOTAS_KEY,
   REPORT_ADDRESS,
   backupLineOf,
-  liveScrubShare,
   quotaLineOf,
   saveQuota,
   scrubLineOf,
@@ -159,28 +158,26 @@ describe('scrub and backups', () => {
   });
 
   it('describes each scrub state', () => {
-    expect(scrubLineOf(HEALTH.scrub, NOW)).toEqual({ text: 'Not checked yet', tone: 'variant' });
+    expect(scrubLineOf(HEALTH.scrub, NOW)).toEqual({
+      text: 'Not checked yet · reads every file back from the disk and checks it against its stored fingerprint, so damage on the disk is found',
+      tone: 'variant',
+    });
     const finished = '2026-11-04T03:00:00.000Z';
     expect(scrubLineOf({ state: 'idle', lastFinishedAt: finished, corrupt: 2 }, NOW)).toEqual({
-      text: `Last checked ${moment(finished, NOW)} · 2 files damaged`,
+      text: `Last checked ${moment(finished, NOW)} · 2 files damaged or unreadable`,
       tone: 'critical',
     });
-    expect(scrubLineOf({ ...RUNNING, checked: 100 }, NOW).text).toBe(
-      'Checking · 100 of 400 · nothing damaged',
+    expect(scrubLineOf({ state: 'idle', lastFinishedAt: finished, corrupt: 0 }, NOW).text).toBe(
+      `Last checked ${moment(finished, NOW)} · nothing damaged or unreadable`,
     );
-    expect(scrubLineOf({ ...RUNNING, state: 'stopped', checked: 100 }, NOW).text).toBe(
-      'Stopped at 100 of 400 · Scrub now carries on',
-    );
-  });
-
-  it('follows live scrub progress across library folders', () => {
-    expect(liveScrubShare({})).toBeNull();
-    expect(
-      liveScrubShare({
-        [ANA]: { scrub: { done: 1, total: 4 }, scan: { done: 0, total: 10 } },
-        [BEN]: { scrub: { done: 3, total: 4 } },
-      }),
-    ).toBe(0.5);
+    expect(scrubLineOf({ ...RUNNING, checked: 100 }, NOW)).toEqual({
+      text: `Reading every file back from the disk · started ${moment(RUNNING.startedAt, NOW)}`,
+      tone: 'variant',
+    });
+    expect(scrubLineOf({ ...RUNNING, state: 'stopped', checked: 100, corrupt: 1 }, NOW)).toEqual({
+      text: `Stopped · started ${moment(RUNNING.startedAt, NOW)} · Scrub now carries on`,
+      tone: 'critical',
+    });
   });
 
   it('says what the last backup report was and how a backup reports in', () => {

@@ -1,8 +1,12 @@
 import { MEDIA_PATHS } from '@smarteverything/domain';
+import { serveFolderIcon } from '../../drive/content/folder-icon/icon-route';
+import { serveZipEntry } from '../../drive/content/zip-entry-route';
 import { UPLOADS_PATH } from '../../drive/uploads-tus-wire';
 import { serveDriveDerived } from '../drive-derived';
-import { serveDriveFile } from '../drive-files';
+import { serveDriveFile, type DriveExchange } from '../drive-files';
+import { fileRequestRoutes } from '../file-request-route';
 import type { RawRoute } from '../http-server';
+import { driveDownloadRawRoute } from './drive-download';
 import { shareRoutes } from '../share-route';
 import type { DriveDeps, DriveRuntime } from './drive-wiring';
 import type { UploadSweeper } from './drive-upload-sweep';
@@ -34,6 +38,35 @@ function fileRoute(runtime: DriveRuntime): RawRoute {
   };
 }
 
+function exchangeOf(
+  request: Parameters<RawRoute['handle']>[0],
+  response: Parameters<RawRoute['handle']>[1],
+): DriveExchange {
+  return { request, response, url: new URL(request.url ?? '/', 'http://drive') };
+}
+
+function contentRoutes(runtime: DriveRuntime): readonly RawRoute[] {
+  const { extras } = runtime;
+  return [
+    {
+      method: 'GET',
+      path: MEDIA_PATHS.driveZipEntry,
+      handle: (request, response, params) =>
+        serveZipEntry(extras.zipServing, exchangeOf(request, response), {
+          itemId: params['itemId'] ?? '',
+          index: params['index'] ?? '',
+        }),
+    },
+    {
+      method: 'GET',
+      path: MEDIA_PATHS.driveFolderIcon,
+      handle: (request, response, params) =>
+        serveFolderIcon(extras.iconServing, exchangeOf(request, response), params['itemId'] ?? ''),
+    },
+    ...fileRequestRoutes({ requests: extras.requests, intake: extras.intake }),
+  ];
+}
+
 export function driveRawRoutes(
   deps: DriveDeps,
   runtime: DriveRuntime,
@@ -42,6 +75,8 @@ export function driveRawRoutes(
   return [
     ...uploadRoutes(runtime, sweeper),
     fileRoute(runtime),
+    driveDownloadRawRoute(deps.links, runtime.extras.downloads),
+    ...contentRoutes(runtime),
     {
       method: 'GET',
       path: MEDIA_PATHS.driveThumb,

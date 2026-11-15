@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OTHER_ROOT_ID, ROOT_ID } from '../../drive/data/fixtures';
+import { OTHER_ROOT_ID, ROOT_ID } from '../../drive/testing';
 import { activityOf } from './activity';
 
 describe('library activity', () => {

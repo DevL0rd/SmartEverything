@@ -16,6 +16,7 @@ export const FIXTURE_STATUS: DrivePlacementStatus = {
   lastSyncedAt: null,
   errors: [],
   reason: null,
+  mountPoint: null,
   reportedAt: '2026-11-14T00:00:00.000Z',
 };
 
@@ -26,7 +27,8 @@ export function mountedPlacement(change: Partial<DrivePlacement> = {}): DrivePla
     rootId: FIXTURE_ID,
     folderItemId: null,
     mode: 'mounted',
-    localPath: '/home/u/SmartEverything/My Drive',
+    localPath: null,
+    mountName: 'My Drive',
     enabled: true,
     hold: null,
     createdBy: FIXTURE_ID,
@@ -47,6 +49,7 @@ export function syncedPlacement(
     ignorePatterns: [],
     conflictCopies: true,
     localPath,
+    mountName: null,
     ...change,
   };
 }

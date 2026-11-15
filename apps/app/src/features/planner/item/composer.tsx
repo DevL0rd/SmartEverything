@@ -13,12 +13,12 @@ import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import {
   usePlannerClockWrites,
-  usePlannerCollections,
   usePlannerWrites,
   type ClockWrites,
   type PlannerPerson,
   type PlannerWrites,
 } from '../data';
+import { useWritableCollections } from '../data/assignment';
 import type { QuickAddTarget } from '../frame/quick-add-bar';
 import { TokenField, composerTokens, type ComposerToken } from './composer-tokens';
 import {
@@ -239,7 +239,7 @@ function useSubmit(
 function useComposer(props: ComposerProps): ComposerState {
   const timeZone = useSettings().time_zone;
   const now = useMinute();
-  const collections = usePlannerCollections(props.person);
+  const collections = useWritableCollections(props.person);
   const [text, setText] = useState(props.text);
   const [chosen, choose] = useState<ComposerKind | null>(props.kind);
   const [ruleOn, setRuleOn] = useState(true);

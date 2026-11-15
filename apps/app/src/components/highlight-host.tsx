@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, findNodeHandle, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, findNodeHandle, View } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -104,7 +105,7 @@ function Spotlight({ entry }: { readonly entry: AnchorEntry }): ReactNode {
   const box = useTrackedBox(entry);
   const glow = usePulses();
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.get() }));
-  const viewport = useWindowDimensions();
+  const viewport = useWindowSize();
   useKeyDismiss();
   useAnnounce(entry);
   if (box === null) {

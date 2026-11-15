@@ -19,6 +19,7 @@ import {
   weekdayShort,
 } from '../../../format/time';
 import { compareText } from '../../../format/text';
+import type { StepView } from '../item/item-steps';
 
 export type SmartList = (typeof PLANNER_SMART_LISTS)[number];
 
@@ -35,8 +36,12 @@ export interface TaskSteps {
   readonly total: number;
 }
 
+export type AssignedSide = 'to_me' | 'by_me';
+
 export interface TaskEntry {
   readonly item: PlannerItemRow;
+  readonly assigned: AssignedSide | null;
+  readonly children: readonly StepView[];
   readonly occurrenceKey: string | null;
   readonly dueDay: string | null;
   readonly dueAt: string | null;
@@ -49,6 +54,7 @@ export interface TaskInput {
   readonly items: readonly PlannerItemRow[];
   readonly occurrences: readonly PlannerOccurrenceRow[];
   readonly day: PlannerDay | undefined;
+  readonly me?: string | null;
 }
 
 export interface SmartChip {
@@ -61,6 +67,7 @@ const SMART_CHIP: Readonly<Record<SmartChoice, SmartChip>> = {
   today: { list: 'today', label: 'Today' },
   upcoming: { list: 'upcoming', label: 'Upcoming' },
   overdue: { list: 'overdue', label: 'Overdue' },
+  assigned: { list: 'assigned', label: 'Assigned', icon: 'users' },
   device_tasks: { list: 'device_tasks', label: 'Device tasks', icon: 'zap' },
   habits: { list: 'habits', label: 'Habits', icon: 'flame' },
   someday: { list: 'someday', label: 'Someday' },
@@ -74,6 +81,7 @@ const SMART_MATCH: Readonly<Record<SmartChoice, Match>> = {
   today: (entry, today) => entry.open && entry.dueDay === today,
   upcoming: (entry, today) => entry.open && entry.dueDay !== null && entry.dueDay > today,
   overdue: (entry, today) => entry.open && entry.dueDay !== null && entry.dueDay < today,
+  assigned: (entry) => entry.open && entry.assigned !== null,
   device_tasks: (entry) => entry.open && entry.item.completion.kind === 'signal',
   habits: (entry) => entry.item.status === 'open' && entry.item.rrule !== null,
   someday: (entry) => entry.open && entry.dueDay === null && entry.item.rrule === null,
@@ -88,19 +96,6 @@ function isTopTask(item: PlannerItemRow): boolean {
     item.parent_id === null &&
     (item.status === 'open' || item.status === 'done')
   );
-}
-
-function stepsByParent(items: readonly PlannerItemRow[]): ReadonlyMap<string, TaskSteps> {
-  const steps = new Map<string, TaskSteps>();
-  for (const item of items) {
-    if (item.parent_id === null || item.deleted_at !== null || item.kind !== 'task') continue;
-    const current = steps.get(item.parent_id) ?? { done: 0, total: 0 };
-    steps.set(item.parent_id, {
-      done: current.done + (item.status === 'done' ? 1 : 0),
-      total: current.total + 1,
-    });
-  }
-  return steps;
 }
 
 function closedKeys(occurrences: readonly PlannerOccurrenceRow[]): ReadonlyMap<string, string> {
@@ -119,6 +114,41 @@ export function todayKeysOf(day: PlannerDay | undefined): ReadonlyMap<string, st
     keys.set(view.item_id, view.occurrence_key);
   }
   return keys;
+}
+
+function stepsByParent(
+  items: readonly PlannerItemRow[],
+  closed: ReadonlyMap<string, string>,
+): ReadonlyMap<string, readonly StepView[]> {
+  const steps = new Map<string, StepView[]>();
+  for (const item of items) {
+    if (item.parent_id === null || item.deleted_at !== null || item.kind !== 'task') continue;
+    if (item.status === 'cancelled') continue;
+    const done =
+      item.status === 'done' || closed.get(`${item.id}\n${PLANNER_OCCURRENCE_SINGLE}`) === 'done';
+    const list = steps.get(item.parent_id) ?? [];
+    list.push({ item, done });
+    steps.set(item.parent_id, list);
+  }
+  for (const list of steps.values()) {
+    list.sort(
+      (left, right) =>
+        left.item.position - right.item.position ||
+        compareText(left.item.created_at, right.item.created_at),
+    );
+  }
+  return steps;
+}
+
+function countsOf(steps: readonly StepView[] | undefined): TaskSteps | null {
+  if (steps === undefined || steps.length === 0) return null;
+  return { done: steps.filter((step) => step.done).length, total: steps.length };
+}
+
+export function assignedSideOf(item: PlannerItemRow, me: string | null): AssignedSide | null {
+  if (me === null || item.assignee_id === null || item.assignee_id === item.profile_id) return null;
+  if (item.assignee_id === me) return 'to_me';
+  return item.profile_id === me ? 'by_me' : null;
 }
 
 function momentKey(key: string): boolean {
@@ -159,13 +189,22 @@ function singleEntry(item: PlannerItemRow, closed: ReadonlyMap<string, string>):
   };
 }
 
-export function taskEntriesOf({ items, occurrences, day }: TaskInput): readonly TaskEntry[] {
-  const steps = stepsByParent(items);
+const NO_STEPS: readonly StepView[] = [];
+
+export function taskEntriesOf({
+  items,
+  occurrences,
+  day,
+  me = null,
+}: TaskInput): readonly TaskEntry[] {
   const closed = closedKeys(occurrences);
+  const steps = stepsByParent(items, closed);
   const todayKeys = todayKeysOf(day);
   return items.filter(isTopTask).map((item) => ({
     item,
-    steps: steps.get(item.id) ?? null,
+    assigned: assignedSideOf(item, me),
+    children: steps.get(item.id) ?? NO_STEPS,
+    steps: countsOf(steps.get(item.id)),
     ...(item.rrule === null
       ? singleEntry(item, closed)
       : recurringEntry(item, todayKeys.get(item.id), closed)),
@@ -224,89 +263,6 @@ function byPriority(left: TaskEntry, right: TaskEntry): number {
 
 export function byTaskOrder(left: TaskEntry, right: TaskEntry): number {
   return byDue(left, right) || byPriority(left, right) || left.item.position - right.item.position;
-}
-
-function byLatest(left: TaskEntry, right: TaskEntry): number {
-  return Date.parse(right.item.updated_at) - Date.parse(left.item.updated_at);
-}
-
-export interface TaskGroup {
-  readonly key: string;
-  readonly collection: PlannerCollectionRow | null;
-  readonly entries: readonly TaskEntry[];
-}
-
-export interface GroupInput {
-  readonly entries: readonly TaskEntry[];
-  readonly filter: TaskFilter;
-  readonly collections: readonly PlannerCollectionRow[];
-  readonly today: string;
-}
-
-function groupOrder(collections: readonly PlannerCollectionRow[]): ReadonlyMap<string, number> {
-  return new Map(
-    [...collections]
-      .sort((left, right) => left.position - right.position)
-      .map((row, index) => [row.id, index]),
-  );
-}
-
-export function taskGroupsOf({
-  entries,
-  filter,
-  collections,
-  today,
-}: GroupInput): readonly TaskGroup[] {
-  const order = groupOrder(collections);
-  const byId = new Map(collections.map((row) => [row.id, row]));
-  const grouped = new Map<string, TaskEntry[]>();
-  for (const entry of entries) {
-    if (!matchesFilter(entry, filter, today)) continue;
-    const members = grouped.get(entry.item.collection_id) ?? [];
-    members.push(entry);
-    grouped.set(entry.item.collection_id, members);
-  }
-  const sorter = filter.kind === 'smart' && filter.list === 'completed' ? byLatest : byTaskOrder;
-  return [...grouped]
-    .sort(
-      ([left], [right]) =>
-        (order.get(left) ?? order.size) - (order.get(right) ?? order.size) ||
-        compareText(left, right),
-    )
-    .map(([key, members]) => ({
-      key,
-      collection: byId.get(key) ?? null,
-      entries: members.sort(sorter),
-    }));
-}
-
-export type RowEdge = 'only' | 'first' | 'middle' | 'last';
-
-export type TaskListRow =
-  | { readonly kind: 'head'; readonly key: string; readonly group: TaskGroup }
-  | {
-      readonly kind: 'task';
-      readonly key: string;
-      readonly entry: TaskEntry;
-      readonly edge: RowEdge;
-    };
-
-function edgeOf(index: number, length: number): RowEdge {
-  if (length === 1) return 'only';
-  if (index === 0) return 'first';
-  return index === length - 1 ? 'last' : 'middle';
-}
-
-export function taskListRowsOf(groups: readonly TaskGroup[]): readonly TaskListRow[] {
-  return groups.flatMap((group): TaskListRow[] => [
-    { kind: 'head', key: `head:${group.key}`, group },
-    ...group.entries.map((entry, index) => ({
-      kind: 'task' as const,
-      key: `task:${entry.item.id}`,
-      entry,
-      edge: edgeOf(index, group.entries.length),
-    })),
-  ]);
 }
 
 const WEEK_AHEAD = 6;

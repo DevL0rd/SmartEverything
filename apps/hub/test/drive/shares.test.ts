@@ -395,7 +395,7 @@ describe('opening links', () => {
     updateDriveSettings(opened.store, { membersMayShare: true });
     const made = await create(PERSONAL_FILE, { actor: member });
     opened.store.driveGrants.set(
-      { itemId: PERSONAL_FILE, profileId: owner.profileId, role: 'edit' },
+      { itemId: PERSONAL_FILE, profileId: owner.profileId, role: 'edit', expiresAt: null },
       member.profileId,
     );
     expect(shares.list(owner, PERSONAL_FILE)).toEqual([]);
@@ -604,5 +604,30 @@ describe('outside links and location', () => {
     const { token } = await create(PHOTO);
     const response = await fetch(`${base}/s/${token}`);
     expect(Buffer.from(await response.arrayBuffer()).equals(original)).toBe(true);
+  });
+});
+
+describe('the Locked folder', () => {
+  function lockPhoto(): void {
+    item(PHOTO, null, '.locked/exif-full.jpg', 'image');
+  }
+
+  it('refuses a new link on a locked item', async () => {
+    lockPhoto();
+    await expect(create(PHOTO)).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('stops serving a link whose item moved into the Locked folder', async () => {
+    const { token } = await create(PHOTO);
+    expect((await fetch(`${base}/s/${token}`)).status).toBe(200);
+    lockPhoto();
+    expect((await fetch(`${base}/s/${token}`)).status).toBe(404);
+  });
+
+  it('does not reach a locked item through a folder link', async () => {
+    const { token } = await create(FOLDER);
+    const access = shares.open(token);
+    item(INSIDE, FOLDER, '.locked/inside.txt', 'document');
+    expect(() => shares.within(access, INSIDE)).toThrow(ApiError);
   });
 });

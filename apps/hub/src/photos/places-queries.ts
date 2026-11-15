@@ -5,7 +5,8 @@ import { found, type StoreContext } from '../store/context';
 import { DrivePlacesRepository, type DrivePlaceRow } from '../store/repositories/drive-places';
 import { starredBy } from '../store/repositories/drive-stars';
 import type { SqlParameters } from '../store/sql';
-import { PHOTO_VISIBLE, photoVisible } from './membership';
+import { folderShown, folderShownSql } from './folder-scope';
+import { LIBRARY_VISIBLE, photoVisible } from './membership';
 import type {
   PhotoMapClusters,
   PhotoMapMonths,
@@ -15,6 +16,12 @@ import type {
   PhotoPlaceList,
   PhotoPlaceVisit,
 } from './places-schema';
+
+const PLACE_SHOWN = `${LIBRARY_VISIBLE} and ${folderShownSql()}`;
+
+function shownFor(actor: DriveActor): SqlParameters {
+  return { ...photoVisible(actor).parameters, ...folderShown(actor).parameters };
+}
 
 const ALPHABET = '0123456789bcdefghjkmnpqrstuvwxyz';
 
@@ -174,7 +181,7 @@ export class PlaceQueries {
          from drive_items i
            join drive_roots r on r.id = i.root_id
            left join drive_media m on m.item_id = i.id
-         where i.place_lat is not null and ${PHOTO_VISIBLE}${filter.text}
+         where i.place_lat is not null and ${PLACE_SHOWN}${filter.text}
        ), ranked as (
          select *,
            row_number() over (partition by x, y order by unixepoch(taken_at) desc nulls last, id) as newest,
@@ -187,7 +194,7 @@ export class PlaceQueries {
          max(case when newest = 1 then id end) as cover_item_id,
          max(case when newest = 1 then place_id end) as cover_place_id
        from ranked group by x, y order by total desc, x, y`,
-      { ...photoVisible(actor).parameters, ...filter.parameters, lonCells, latCells },
+      { ...shownFor(actor), ...filter.parameters, lonCells, latCells },
     );
     const clusters = rows.map((row) => ({
       key: geohashOf(row.x, row.y, precision),
@@ -216,9 +223,9 @@ export class PlaceQueries {
        from drive_items i
          join drive_roots r on r.id = i.root_id
          left join drive_media m on m.item_id = i.id
-       where i.place_lat is not null and i.taken_at is not null and ${PHOTO_VISIBLE}
+       where i.place_lat is not null and i.taken_at is not null and ${PLACE_SHOWN}
        group by month order by month`,
-      photoVisible(actor).parameters,
+      shownFor(actor),
     );
     return { months: rows };
   }
@@ -232,14 +239,14 @@ export class PlaceQueries {
          from drive_media m
            join drive_items i on i.id = m.item_id
            join drive_roots r on r.id = i.root_id
-         where m.place_id is not null and ${PHOTO_VISIBLE}
+         where m.place_id is not null and ${PLACE_SHOWN}
        )
        select p.id, p.name, p.admin, p.country, p.lat, p.lon, count(*) as total,
          max(case when newest = 1 then taken_at end) as latest,
          max(case when newest = 1 then l.id end) as cover_item_id
        from located l join drive_places p on p.id = l.place_id
        group by p.id order by total desc, p.name, p.id`,
-      photoVisible(actor).parameters,
+      shownFor(actor),
     );
     const byCountry = new Map<string, (typeof rows)[number][]>();
     for (const row of rows) appendTo(byCountry, row.country, row);
@@ -261,7 +268,7 @@ export class PlaceQueries {
 
   detail(actor: DriveActor, placeId: string): PhotoPlaceDetail {
     const place = this.places.byId(placeId);
-    const parameters = { ...photoVisible(actor).parameters, placeId };
+    const parameters = { ...shownFor(actor), placeId };
     const totals = this.totals(parameters, placeId);
     const days = this.days(parameters);
     return {
@@ -289,7 +296,7 @@ export class PlaceQueries {
            from drive_media m
              join drive_items i on i.id = m.item_id
              join drive_roots r on r.id = i.root_id
-           where m.place_id = $placeId and ${PHOTO_VISIBLE}
+           where m.place_id = $placeId and ${PLACE_SHOWN}
          )
          select count(*) as items,
            count(case when kind = 'image' then 1 end) as images,
@@ -313,7 +320,7 @@ export class PlaceQueries {
        from drive_media m
          join drive_items i on i.id = m.item_id
          join drive_roots r on r.id = i.root_id
-       where m.place_id = $placeId and i.taken_at is not null and ${PHOTO_VISIBLE}
+       where m.place_id = $placeId and i.taken_at is not null and ${PLACE_SHOWN}
        group by day order by day`,
       parameters,
     );

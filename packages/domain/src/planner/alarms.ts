@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CLOCK_TIME } from '../zoned-clock';
 import { PLANNER_LOCAL_DATE } from './items';
+import { PLANNER_ALARM_SOUND } from './sounds';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
@@ -39,6 +40,39 @@ export const PLANNER_WATCH_LINK = z
 
 export type PlannerWatchLink = z.infer<typeof PLANNER_WATCH_LINK>;
 
+export const PLANNER_MATHS_DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
+
+export const PLANNER_CHALLENGE = z
+  .discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('none') }),
+    z.strictObject({
+      kind: z.literal('maths'),
+      difficulty: z.enum(PLANNER_MATHS_DIFFICULTIES),
+      count: z.int().positive(),
+    }),
+    z.strictObject({ kind: z.literal('qr'), code: z.string().min(1) }),
+    z.strictObject({ kind: z.literal('steps'), steps: z.int().positive() }),
+  ])
+  .readonly();
+
+export type PlannerChallenge = z.infer<typeof PLANNER_CHALLENGE>;
+
+export const PLANNER_SUNRISE = z
+  .strictObject({
+    lights: z
+      .array(ID)
+      .min(1)
+      .refine((lights) => new Set(lights).size === lights.length, {
+        message: 'a light is listed once',
+      })
+      .readonly(),
+    minutes: z.int().positive(),
+    colour: z.boolean(),
+  })
+  .readonly();
+
+export type PlannerSunrise = z.infer<typeof PLANNER_SUNRISE>;
+
 export const PLANNER_ALARM_SOURCES = ['planner', 'watch'] as const;
 
 export const PLANNER_ALARM_ROW = z
@@ -51,12 +85,15 @@ export const PLANNER_ALARM_ROW = z
     once_on: PLANNER_LOCAL_DATE.nullable(),
     skip_on: PLANNER_LOCAL_DATE.nullable(),
     enabled: z.boolean(),
-    sound: z.string().trim().min(1),
+    sound: PLANNER_ALARM_SOUND,
     ramp_seconds: z.int().nonnegative(),
     vibrate: z.boolean(),
     snooze_minutes: z.int().positive(),
+    snooze_limit: z.int().positive().nullable(),
+    challenge: PLANNER_CHALLENGE,
+    sunrise: PLANNER_SUNRISE.nullable(),
     smart_minutes: z.int().positive().nullable(),
-    wake_scene_id: ID.nullable(),
+    wake_automation_id: ID.nullable(),
     wake_lead_minutes: z.int().nonnegative().nullable(),
     targets: PLANNER_RING_TARGETS,
     watch: z.array(PLANNER_WATCH_LINK).readonly(),
@@ -72,11 +109,11 @@ export const PLANNER_ALARM_ROW = z
         message: 'an alarm rings once on a date or on weekdays, not both',
       });
     }
-    if ((row.wake_scene_id === null) !== (row.wake_lead_minutes === null)) {
+    if ((row.wake_automation_id === null) !== (row.wake_lead_minutes === null)) {
       context.addIssue({
         code: 'custom',
         path: ['wake_lead_minutes'],
-        message: 'a wake scene and its lead time are set together',
+        message: 'a wake automation and its lead time are set together',
       });
     }
     const devices = row.watch.map((link) => link.deviceId);

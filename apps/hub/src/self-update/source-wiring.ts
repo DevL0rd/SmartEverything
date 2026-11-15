@@ -10,7 +10,7 @@ import {
   saveConfiguredSource,
   startConfiguredSource,
 } from './source';
-import { findUpdateSource } from './update-source';
+import { findCheckoutSource } from './update-source';
 import { watchHubUpdateSource, watchSourceCheckout } from './source-watch';
 
 export function hubUpdateSourceWiring(
@@ -32,7 +32,7 @@ export function hubUpdateSourceWiring(
   return {
     routes,
     watch: (live): (() => Promise<void>) => {
-      const configured = findUpdateSource(layout);
+      const configured = findCheckoutSource(layout);
       if (configured === undefined) return () => Promise.resolve();
       const source = watchHubUpdateSource({
         probe: (signal) => configuredSourceTip(layout, signal),

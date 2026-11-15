@@ -1,4 +1,5 @@
 import { clip, payloadOf, type LogPayload } from './payload';
+import { redactedPayload } from './redaction';
 import type { FailureDetail, LogContext, LogRecord } from './record';
 import type { Runtime } from './scope';
 
@@ -52,7 +53,7 @@ function textOf(value: string, longest: number): string {
 }
 
 function payloadFor(payload: LogPayload): LogPayload {
-  return payloadOf(payload);
+  return redactedPayload(payloadOf(payload));
 }
 
 function failureOf(cause: FailureDetail | undefined): Record<string, FailureDetail> {

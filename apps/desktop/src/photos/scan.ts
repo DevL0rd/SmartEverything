@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, realpath } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { DesktopPhotoItem, DesktopPhotoLibrary } from '@smarteverything/domain';
 
 const TYPES: Readonly<Record<string, string>> = {
@@ -56,6 +56,7 @@ async function entryOf(path: string): Promise<PhotoFile | null> {
       takenAt: info.birthtimeMs > 0 ? info.birthtimeMs : info.mtimeMs,
       uri: `app://smarteverything/local-media/${id}`,
       video: mimeType.startsWith('video/'),
+      folder: dirname(canonical),
     },
   };
 }

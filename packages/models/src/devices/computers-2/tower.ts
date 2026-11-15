@@ -73,7 +73,7 @@ export const TOWER_MODEL: ModelSpec = {
   title: 'Tower PC',
   category: 'computer',
   family: 'computer',
-  footprint: { width: W, depth: D, height: FOOT + H },
+  footprint: { width: W, depth: 0.443, height: 0.4746 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

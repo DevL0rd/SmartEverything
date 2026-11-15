@@ -4,7 +4,7 @@ import { Banner } from '../../../components/banner';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { useSectionParam } from '../../../components/use-section-param';
 import { useAreaWidth } from '../../../design/size-class';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
 import { useMinute } from '../../../store/clock';
 import { useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useSharedByMe, useSharedWithMe } from '../data';
@@ -44,7 +44,7 @@ function useSubtitle(view: SharedView): string | undefined {
 export function SharedScreen(): ReactNode {
   const [param, setParam] = useSectionParam('view');
   const view = sharedViewOf(param);
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = useAreaWidth() < SHELL_BREAKPOINTS.compactMax;
   const live = useSyncStatus().status === 'live';
   const subtitle = useSubtitle(view);
   const sheet = useShareSheet();

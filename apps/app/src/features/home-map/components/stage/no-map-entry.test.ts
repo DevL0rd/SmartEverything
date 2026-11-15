@@ -60,13 +60,12 @@ describe('blank map', () => {
 describe('no-map entry', () => {
   it('creates content for the shown map and names it', () => {
     probe.devices.splice(0, probe.devices.length, { kind: 'light' });
-    const props = shown({ map: CABIN, className: 'rounded-none' });
+    const props = shown({ map: CABIN });
     expect(probe.created.at(-1)).toBe('cabin');
     expect(props).toMatchObject({
       mapName: 'Cabin',
       hasVacuum: false,
       create: CREATE,
-      className: 'rounded-none',
     });
   });
 

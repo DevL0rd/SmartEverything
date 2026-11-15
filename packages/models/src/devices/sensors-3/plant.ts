@@ -16,7 +16,7 @@ export const PLANT_SENSOR_MODEL: ModelSpec = {
   title: 'Plant sensor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: DEPTH, height: 0.1493 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

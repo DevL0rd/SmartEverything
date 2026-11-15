@@ -10,7 +10,7 @@ describe('Kingsmith G15 model', () => {
 
   it('folds the mast on its hinge from the param', () => {
     const hinge = KINGSMITH_G15_MODEL.parts.find((part) => part.id === 'hinge');
-    expect(hinge?.transform?.rotation?.[0]).toEqual({ param: 'folded', scale: 80 });
+    expect(hinge?.transform?.rotation?.[0]).toEqual({ param: 'folded', scale: 70 });
     const onHinge = KINGSMITH_G15_MODEL.parts.filter((part) => part.parent === 'hinge');
     expect(onHinge.map((part) => part.id).sort()).toEqual(
       ['console', 'handlebar', 'uprightLeft', 'uprightRight'].sort(),

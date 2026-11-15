@@ -1,6 +1,7 @@
 import type { DriveRoot, DriveScrubState } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  DriveFileTooLargeError,
   DriveFreeSpaceError,
   DriveQuotaExceededError,
   DriveQuotaMeter,
@@ -139,10 +140,10 @@ describe('usage per member', () => {
   it('shows a member only their own usage and zeros when they have none', () => {
     file(HOME, robin, 100);
     expect(readDriveUsage(quotas, { role: 'member', profileId: robin })).toEqual([
-      { profileId: robin, items: 1, folders: 0, live: 100, versions: 0, trash: 0 },
+      { profileId: robin, items: 1, folders: 0, live: 100, versions: 0, trash: 0, quota: null },
     ]);
     expect(readDriveUsage(quotas, { role: 'member', profileId: sam })).toEqual([
-      { profileId: sam, items: 0, folders: 0, live: 0, versions: 0, trash: 0 },
+      { profileId: sam, items: 0, folders: 0, live: 0, versions: 0, trash: 0, quota: null },
     ]);
   });
 });
@@ -219,6 +220,13 @@ describe('free space check', () => {
     const request = { profileId: null, path: '/srv/0001', addBytes: 500, releasedBytes: 0 };
     await expect(checkDriveWrite(guard(500), request)).resolves.toBeUndefined();
     await expect(checkDriveWrite(guard(499), request)).rejects.toBeInstanceOf(DriveFreeSpaceError);
+  });
+
+  it('refuses a length larger than the whole disk as too large for any file', async () => {
+    const request = { profileId: null, path: '/srv/0001', addBytes: 1001, releasedBytes: 0 };
+    await expect(checkDriveWrite(guard(1000), request)).rejects.toBeInstanceOf(
+      DriveFileTooLargeError,
+    );
   });
 
   it('checks the quota before the disk', async () => {

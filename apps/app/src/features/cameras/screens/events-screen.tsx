@@ -3,9 +3,8 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Logger } from '@smarteverything/logging';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
 import { dayLabel } from '../../../format/time';
 import { daysOf } from '../../activity';
@@ -48,15 +47,17 @@ function sectionsOf(
   }));
 }
 
-interface ToolbarProps {
+function EventsToolbar({
+  filter,
+  setFilter,
+  cameras,
+}: {
   readonly filter: TimelineFilter;
   readonly setFilter: (filter: TimelineFilter) => void;
   readonly cameras: readonly CameraEntry[];
-}
-
-function Toolbar({ filter, setFilter, cameras }: ToolbarProps): ReactNode {
+}): ReactNode {
   return (
-    <View className="flex-row px-gutter pb-2">
+    <View className="flex-row">
       <FilterButton filter={filter} onChange={setFilter} cameras={cameras} />
     </View>
   );
@@ -135,10 +136,14 @@ export function EventsScreen(): ReactNode {
   const nameOf = cameraNameOf(cameras);
   useEventsLog({ cameras: cameras.length, feed, filter, open: open.size });
   return (
-    <Screen header={<PageHeader title="Events" />} scroll={false}>
-      <View className="w-full max-w-reading flex-1 self-start">
+    <PageShell
+      title="Events"
+      width="reading"
+      scroll={false}
+      toolbar={<EventsToolbar filter={filter} setFilter={setFilter} cameras={cameras} />}
+    >
+      <View className="-mx-gutter min-h-0 flex-1">
         <VirtualList
-          header={<Toolbar filter={filter} setFilter={setFilter} cameras={cameras} />}
           sections={sectionsOf(feed, open, deleting.hidden, now)}
           keyOf={(row) => row.entry.id}
           empty={
@@ -164,6 +169,6 @@ export function EventsScreen(): ReactNode {
           )}
         />
       </View>
-    </Screen>
+    </PageShell>
   );
 }

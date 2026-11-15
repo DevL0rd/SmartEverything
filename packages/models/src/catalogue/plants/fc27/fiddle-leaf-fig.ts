@@ -43,7 +43,7 @@ function leaves(): ModelSpecPart[] {
 export const FIDDLE_LEAF_FIG_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.fiddle-leaf-fig',
   title: 'Fiddle-leaf fig',
-  footprint: { width: 0.7, depth: 0.7, height: 1.6 },
+  footprint: { width: 0.7142, depth: 0.7156, height: 1.6066 },
   names: {
     display: 'Fiddle-leaf fig',
     synonyms: ['fiddle leaf fig', 'ficus lyrata', 'fig tree', 'indoor tree', 'houseplant'],

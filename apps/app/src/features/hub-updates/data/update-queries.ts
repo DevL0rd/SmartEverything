@@ -7,6 +7,9 @@ import {
   type HubUpdateSourceSaved,
   type HubUpdateSourceStart,
   type HubUpdateRecoveryStatus,
+  type BuildSourceSettings,
+  type BuildSourceSettingsUpdate,
+  type ReleaseUpload,
   type UpdatePipeline,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
@@ -26,6 +29,8 @@ import { HUB_UPDATE_SOURCE_KEY } from './source-notices';
 
 const RECOVERY_KEY = ['hub-updates', 'recovery'] as const;
 const REVISIONS_KEY = ['hub-updates', 'revisions'] as const;
+const BUILD_SOURCES_KEY = ['hub-updates', 'build-sources'] as const;
+const UPLOADS_KEY = ['hub-updates', 'uploads'] as const;
 
 function sourceKey(home: string | null, id: string | null): readonly unknown[] {
   return [...HUB_UPDATE_SOURCE_KEY, home, id];
@@ -51,7 +56,7 @@ export function refreshSourceAfterRelease(
 export const HUB_UPDATE_NOTICES = noticeHandler(
   ['hub_update_status_changed'],
   (_notice, { client }) => {
-    for (const queryKey of [RECOVERY_KEY, REVISIONS_KEY]) {
+    for (const queryKey of [RECOVERY_KEY, REVISIONS_KEY, UPLOADS_KEY]) {
       const filter = { queryKey };
       background(
         client.cancelQueries(filter).then(() => client.invalidateQueries(filter)),
@@ -166,4 +171,52 @@ export function useSaveHubUpdateSource(): UseMutationResult<
     retry: false,
     mutationFn: (body) => api().call(E.saveHubUpdateSource, { body }),
   });
+}
+
+export function useBuildSources(automatic = true): UseQueryResult<BuildSourceSettings> {
+  const { home, id, owner } = useUpdateScope();
+  return useScreenQuery({
+    queryKey: [...BUILD_SOURCES_KEY, home, id],
+    enabled: automatic && home !== null && owner,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: true,
+    queryFn: ({ signal }) => api().call(E.readBuildSources, {}, { signal }),
+  });
+}
+
+export function useChangeBuildSources(): UseMutationResult<
+  BuildSourceSettings,
+  Error,
+  BuildSourceSettingsUpdate
+> {
+  const { home, id } = useUpdateScope();
+  const queries = useQueryClient();
+  return useMutation({
+    networkMode: 'always',
+    retry: false,
+    mutationFn: (body) => api().call(E.updateBuildSources, { body }),
+    onSuccess: (sources) => {
+      queries.setQueryData([...BUILD_SOURCES_KEY, home, id], sources);
+    },
+  });
+}
+
+export function useReleaseUploads(): UseQueryResult<{ readonly uploads: ReleaseUpload[] }> {
+  const { home, id, owner } = useUpdateScope();
+  return useScreenQuery({
+    queryKey: [...UPLOADS_KEY, home, id],
+    enabled: home !== null && owner,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    queryFn: ({ signal }) => api().call(E.listReleaseUploads, {}, { signal }),
+  });
+}
+
+export function useUpdateHome(): string | null {
+  const connection = useConnection();
+  if (connection.status !== 'paired') return null;
+  return connection.connection.trustedMetadata?.identity.id ?? connection.connection.url;
 }

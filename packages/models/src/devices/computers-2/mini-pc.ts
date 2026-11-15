@@ -18,7 +18,7 @@ export const MINI_PC_MODEL: ModelSpec = {
   title: 'Mini PC',
   category: 'computer',
   family: 'computer',
-  footprint: { width: W, depth: D, height: H },
+  footprint: { width: W, depth: 0.1139, height: 0.0392 },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

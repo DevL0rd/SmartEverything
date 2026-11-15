@@ -94,12 +94,6 @@ const CORE_ROUTES = {
     path: '/api/ir-library/appliances',
     access: 'member',
   },
-  listScenes: { method: 'GET', path: '/api/scenes', access: 'member' },
-  createScene: { method: 'POST', path: '/api/scenes', access: 'member' },
-  updateScene: { method: 'PATCH', path: '/api/scenes/:sceneId', access: 'member' },
-  orderScenes: { method: 'PUT', path: '/api/scenes/order', access: 'member' },
-  removeScene: { method: 'DELETE', path: '/api/scenes/:sceneId', access: 'member' },
-  runScene: { method: 'POST', path: '/api/scenes/:sceneId/run', access: 'member' },
   readLayout: { method: 'GET', path: '/api/layouts/:page', access: 'member' },
   saveLayout: { method: 'PUT', path: '/api/layouts/:page', access: 'member' },
   listPushTargets: { method: 'GET', path: '/api/push-targets', access: 'owner' },
@@ -154,16 +148,25 @@ const SAMPLE_PARAMS: Readonly<Record<string, string>> = {
   mapRoomId: '3',
   robotMapId: '2',
   revision: '1',
+  month: '2026-01',
+  placeId: '3',
+  fingerprint: 'a'.repeat(64),
   hash: 'a'.repeat(64),
   sha256: 'a'.repeat(64),
 };
 
-function sampleParam(name: string): string {
-  return SAMPLE_PARAMS[name] ?? FIRST;
+const PATH_SAMPLE_PARAMS: readonly (readonly [string, Readonly<Record<string, string>>])[] = [
+  ['/api/drive/photos/sources/', { source: 'cameras' }],
+  ['/api/planner/proposals/', { id: FIRST }],
+];
+
+function sampleParam(name: string, path: string): string {
+  const scoped = PATH_SAMPLE_PARAMS.find(([prefix]) => path.startsWith(prefix))?.[1][name];
+  return scoped ?? SAMPLE_PARAMS[name] ?? FIRST;
 }
 
 function paramsOf(path: string): Record<string, string> {
-  return Object.fromEntries(placeholdersOf(path).map((name) => [name, sampleParam(name)]));
+  return Object.fromEntries(placeholdersOf(path).map((name) => [name, sampleParam(name, path)]));
 }
 
 function accepts(name: Name, part: 'params' | 'query' | 'body', value: unknown): boolean {
@@ -240,9 +243,6 @@ describe('endpoint parameters', () => {
       'rebindIrAppliance',
       'applyIrAppliance',
       'removeIrAppliance',
-      'updateScene',
-      'removeScene',
-      'runScene',
       'revokeHealthSource',
       'revokeMcpToken',
     ] as const) {

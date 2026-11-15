@@ -23,6 +23,7 @@ const STATUS = {
   lastSyncedAt: null,
   errors: [],
   reason: null,
+  mountPoint: '/run/user/1000/smarteverything/Roms',
   reportedAt: AT,
 } as const;
 
@@ -32,7 +33,8 @@ const PLACEMENT = {
   rootId: C,
   folderItemId: D,
   mode: 'mounted',
-  localPath: '/home/me/Games/Roms',
+  localPath: null,
+  mountName: 'Roms',
   enabled: true,
   hold: null,
   createdBy: B,
@@ -52,6 +54,9 @@ describe('drive placement', () => {
   const SYNCED = {
     ...PLACEMENT,
     mode: 'synced',
+    localPath: '/home/me/Games/Roms',
+    mountName: null,
+    status: { ...STATUS, mountPoint: null },
     excluded: ['Videos'],
     ignorePatterns: ['*.tmp'],
     conflictCopies: true,
@@ -68,6 +73,16 @@ describe('drive placement', () => {
     expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, conflictCopies: true }).success).toBe(false);
     expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, excluded: [] }).success).toBe(false);
     expect(DRIVE_PLACEMENT.safeParse({ ...SYNCED, ignorePatterns: [''] }).success).toBe(false);
+  });
+
+  it('names a folder on the computer only for synced and a mount name only for mounted', () => {
+    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, localPath: '/home/me/Roms' }).success).toBe(
+      false,
+    );
+    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, mountName: null }).success).toBe(false);
+    expect(DRIVE_PLACEMENT.safeParse({ ...SYNCED, localPath: null }).success).toBe(false);
+    expect(DRIVE_PLACEMENT.safeParse({ ...SYNCED, mountName: 'Roms' }).success).toBe(false);
+    expect(DRIVE_PLACEMENT.safeParse({ ...PLACEMENT, mountName: '' }).success).toBe(false);
   });
 
   it('reports the sync numbers in the status and refuses a bad error entry', () => {
@@ -125,7 +140,8 @@ describe('setPlacement input', () => {
     rootId: C,
     folderItemId: D,
     mode: 'mounted',
-    localPath: '/home/me/Roms',
+    localPath: null,
+    mountName: 'Roms',
     enabled: true,
   };
 
@@ -136,8 +152,17 @@ describe('setPlacement input', () => {
   });
 
   it('allows a synced folder with its sync settings and refuses synced without them', () => {
-    const settings = { excluded: [], ignorePatterns: [], conflictCopies: false };
+    const settings = {
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: false,
+      localPath: '/home/me/Roms',
+      mountName: null,
+    };
     expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced' }).success).toBe(false);
+    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, localPath: '/home/me/Roms' }).success).toBe(
+      false,
+    );
     expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced', ...settings }).success).toBe(
       true,
     );
@@ -161,6 +186,8 @@ describe('placement frames', () => {
     const frame = { type: 'placement_state', placementId: A, ...STATUS };
     expect(NODE_FRAME.safeParse(frame).success).toBe(true);
     expect(NODE_FRAME.safeParse({ ...frame, state: 'gone' }).success).toBe(false);
+    const { mountPoint: _point, ...withoutPoint } = frame;
+    expect(NODE_FRAME.safeParse(withoutPoint).success).toBe(false);
   });
 
   it('refuses an unknown frame kind', () => {

@@ -16,6 +16,7 @@ function revision(n: number, status: UpdateRevision['status'] = 'queued'): Updat
     tip: String(n).repeat(40),
     pushedFrom: null,
     base: null,
+    changedPaths: null,
     status,
     steps: [],
     notes: null,

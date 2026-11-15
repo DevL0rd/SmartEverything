@@ -65,7 +65,7 @@ function stemSet(entry: (typeof STEMS)[number], index: number): ModelSpecPart[] 
 export const FLOWER_VASE_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.flower-vase',
   title: 'Flower vase',
-  footprint: { width: 0.38, depth: 0.38, height: 0.76 },
+  footprint: { width: 0.381, depth: 0.3806, height: 0.7616 },
   names: {
     display: 'Flower vase',
     synonyms: ['flower vase', 'bouquet', 'cut flowers', 'vase of flowers', 'flowers'],

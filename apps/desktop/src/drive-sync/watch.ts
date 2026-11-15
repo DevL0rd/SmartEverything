@@ -1,9 +1,9 @@
-import { watch, type FSWatcher } from 'node:fs';
+import { watch, type BigIntStats as Stats, type FSWatcher } from 'node:fs';
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { normalizeSyncPath } from '@smarteverything/domain/drive-sync';
-import type { DirtyTracker, EntryIdentity } from './dirty.js';
+import type { DirtyTracker, EntryIdentity, EntryKind } from './dirty.js';
 
 const QUEUE_LIMIT_FILE = '/proc/sys/fs/inotify/max_queued_events';
 const QUEUE_LIMIT = z.coerce.number().int().positive();
@@ -81,13 +81,19 @@ export function startWatch(directory: string, options: WatchOptions): WatchStart
   };
 }
 
+function entryKindOf(stats: Stats): EntryKind {
+  if (stats.isFile()) return 'file';
+  if (stats.isDirectory()) return 'folder';
+  return stats.isSymbolicLink() ? 'link' : 'other';
+}
+
 export function statProbe(
   directory: string,
 ): (relPath: string) => Promise<EntryIdentity | undefined> {
   return async (relPath) => {
     try {
       const stats = await lstat(path.join(directory, ...relPath.split('/')), { bigint: true });
-      const kind = stats.isFile() ? 'file' : stats.isDirectory() ? 'folder' : 'other';
+      const kind = entryKindOf(stats);
       return { kind, bytes: kind === 'file' ? Number(stats.size) : 0, mtimeNs: stats.mtimeNs };
     } catch (error) {
       const code = errorCode(error);

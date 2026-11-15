@@ -1,12 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Keyboard, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Keyboard, ScrollView, View } from 'react-native';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { focusDecisionHeading } from '../../../components/decision-keyboard';
 import { Icon } from '../../../components/icon';
 import { ReasonLine } from '../../../components/reason-line';
 import { Text } from '../../../components/text';
-import { useSizeClass } from '../../../design/size-class';
+import { useSizeClass, useWindowSize } from '../../../design/size-class';
 import { DockAnnouncer } from './dock-announcer';
 import { DockPager } from './dock-pager';
 import { DockScopeContext } from './dock-scope';
@@ -192,7 +192,7 @@ export function NeedsYouDock(props: NeedsYouDockProps): ReactNode {
   const headingId = useId();
   const root = useRef<View>(null);
   const activeBody = useRef<View>(null);
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight } = useWindowSize();
   const short = useSizeClass().height === 'compact';
   const [expanded, setExpanded] = useState(false);
   const cursor = useDockCursor(

@@ -4,12 +4,7 @@ import type { QualitySettings } from '../live-visibility/quality-scaler';
 import type { EditEvent } from './map-3d-edit-protocol';
 import { gizmoBreakpointOf, type YieldZones } from './edit/overlay-model';
 import { EditStage, type OverlaySink, type StageEdit } from './render-core-edit';
-import {
-  applyPixelRatio,
-  canvasPixelRatio,
-  createRenderer,
-  releaseRenderer,
-} from './render-core-renderer';
+import { coreSurface, type CoreSurface } from './render-core-surface';
 import type { RealisticView } from './render-core-realistic';
 import { realisticViewOf, sceneLights } from './render-core-parts';
 import {
@@ -20,6 +15,7 @@ import {
 } from './vacuum-geometry';
 import { LayerSlot } from './render-core-layers';
 import { FrameLoop } from './render-core-frame';
+import { FrameCost } from './render-core-cost';
 import { RoomHighlight } from './render-core-selection';
 import { LiveLayer } from './render-core-live';
 import { screenMarks, type ScreenMarks } from './render-core-marks';
@@ -42,6 +38,7 @@ export * from './render-core-orbit';
 
 export interface RenderCoreOptions {
   readonly canvas: HTMLCanvasElement;
+  readonly sharedRenderer?: boolean;
   readonly onPickRoom: (roomId: string | null) => void;
   readonly onPickDevice?: ((deviceId: string) => void) | undefined;
   readonly onMenu?: ((pick: ScenePick) => void) | undefined;
@@ -58,6 +55,7 @@ export interface RenderCoreOptions {
 export type RenderPainter = OverlaySink & LoupeSink;
 
 export class RenderCore {
+  private readonly surface: CoreSurface;
   private readonly renderer: WebGLRenderer;
   private ratio = 1;
   private renderScale = 1;
@@ -84,10 +82,12 @@ export class RenderCore {
   private readonly rig: CameraRig;
   private reducedMotion = false;
   private readonly frames = new FrameLoop((nowMs) => this.onFrame(nowMs));
+  private readonly cost = new FrameCost();
   private disposed = false;
 
   constructor(private readonly options: RenderCoreOptions) {
-    this.renderer = createRenderer(options.canvas);
+    this.surface = coreSurface(options.canvas, options.sharedRenderer === true);
+    this.renderer = this.surface.renderer;
     this.rig = new CameraRig(options.preset ?? 'angled', options.canvas, (): void => {
       this.requestRender();
     });
@@ -205,9 +205,10 @@ export class RenderCore {
 
   resize(width: number, height: number, ratio: number): void {
     this.ratio = ratio;
-    this.renderer.setPixelRatio(canvasPixelRatio(ratio, this.renderScale));
-    this.renderer.setSize(Math.max(width, 1), Math.max(height, 1), false);
+    this.surface.setPixelRatio(ratio, this.renderScale);
+    this.surface.resize(width, height);
     this.rig.resize(width, height);
+    this.cost.resized();
   }
 
   setInsets(insets: ViewInsets): void {
@@ -216,7 +217,7 @@ export class RenderCore {
 
   setQuality(quality: QualitySettings): void {
     this.renderScale = quality.renderScale;
-    if (applyPixelRatio(this.renderer, this.ratio, quality.renderScale)) {
+    if (this.surface.setPixelRatio(this.ratio, quality.renderScale)) {
       this.requestRender();
     }
     this.objects?.setLodBias(quality.lodBias);
@@ -249,7 +250,7 @@ export class RenderCore {
     this.objects?.dispose();
     this.live.dispose();
     this.realistic.dispose();
-    releaseRenderer(this.renderer);
+    this.surface.release();
   }
 
   private fitScene(geometry: SceneGeometry, resetView = false): void {
@@ -356,21 +357,25 @@ export class RenderCore {
     if (this.cutaway?.update(this.rig.state, full) === true) this.live.walls(this.cutaway.view());
     const camera = this.rig.camera();
     const animating = this.live.tick(nowMs, camera);
-    this.draw(camera);
-    const marks = this.marks(camera);
-    this.edit.paint(camera, marks);
-    this.drawLoupe(camera);
+    const marks = this.surface.frame(() => {
+      this.draw(camera);
+      const shown = this.marks(camera);
+      this.edit.paint(camera, shown);
+      this.drawLoupe(camera);
+      return shown;
+    });
     this.options.onMarks?.(marks);
     return animating;
   }
 
   private draw(camera: PerspectiveCamera): void {
-    const started = performance.now();
-    const under = this.realistic.render(this.renderer, camera, this.rig.viewport);
-    this.renderer.autoClear = !under;
-    this.renderer.render(this.scene, camera);
-    this.renderer.autoClear = true;
-    this.options.onFrameTime?.(performance.now() - started);
+    const cost = this.cost.measure(this.renderer.info, () => {
+      const under = this.realistic.render(this.renderer, camera, this.rig.viewport);
+      this.renderer.autoClear = !under;
+      this.renderer.render(this.scene, camera);
+      this.renderer.autoClear = true;
+    });
+    if (cost !== null) this.options.onFrameTime?.(cost);
   }
 
   private drawLoupe(camera: PerspectiveCamera): void {

@@ -45,7 +45,7 @@ describe('the hub scope of a Library tab', () => {
         countryCode: 'PT',
         camera: 'Sony A7 IV',
         albumId: ALBUM_ID,
-        text: 'beach',
+        meaning: 'beach',
         from: '2026-01-01',
         to: '2026-12-31',
       },

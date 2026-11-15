@@ -126,8 +126,10 @@ export class TasksSync {
         position: collections.list(profileId).length,
         visible: true,
         default_reminders: [],
+        audience: 'personal',
         source: 'google',
         google,
+        feed: null,
       });
     }
   }

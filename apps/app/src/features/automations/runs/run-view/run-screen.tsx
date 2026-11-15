@@ -1,12 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import type { AutomationRunSummary } from '@smarteverything/domain';
 import { Button } from '../../../../components/button';
 import { ErrorState } from '../../../../components/error-state';
 import { Skeleton } from '../../../../components/skeleton';
 import { confirm } from '../../../../components/confirm-store';
 import { notifyFailure } from '../../../../components/toast-store';
-import { useSizeClass } from '../../../../design/size-class';
+import { useSizeClass, useWindowSize } from '../../../../design/size-class';
 import { useStableCallback } from '../../../../design/use-stable-callback';
 import { background } from '@smarteverything/logging';
 import { useRunActions } from '../../data/use-runs';
@@ -116,7 +116,7 @@ function Bottom({
 }: BodyProps & { readonly selected: string | null }): ReactNode {
   const pane = activationFor(model.activations, model.chosen, selected);
   const compact = useSizeClass().width === 'compact';
-  const [open, setOpen] = useState(timelineStartsOpen(compact, useWindowDimensions().height));
+  const [open, setOpen] = useState(timelineStartsOpen(compact, useWindowSize().height));
   return (
     <ScrollView className="max-h-80 shrink-0" style={NO_GROW}>
       <View className="w-full max-w-detail gap-2 px-gutter py-2">

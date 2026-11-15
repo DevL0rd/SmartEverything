@@ -71,13 +71,7 @@ describe('what a search result offers to pin', () => {
     ).toStrictEqual({ kind: 'camera', deviceId: ID });
   });
 
-  it('offers a scene or an automation by what it runs, not by the page it opens', () => {
-    const scene = nodeOf(
-      'scene',
-      { kind: 'page', path: 'scenes#edit' },
-      { kind: 'scene', sceneId: ID },
-    );
-    expect(pinTargetOfNode(scene)).toStrictEqual({ kind: 'scene', sceneId: ID });
+  it('offers an automation by what it runs, not by the page it opens', () => {
     const automation = nodeOf(
       'automation',
       { kind: 'page', path: 'automations#edit' },

@@ -25,6 +25,7 @@ export async function locateMedia(deps: PhotoPipelineDeps, item: DriveItem): Pro
 
 export class PhotoPipeline {
   readonly runner: MediaJobRunner;
+  readonly decoders = new PreviewDecoders();
   private readonly media: DriveMediaRepository;
   private readonly pool: HeicPool;
   private reconciling = false;
@@ -43,9 +44,8 @@ export class PhotoPipeline {
         announcePhotosProgress(deps.store.feed, progress);
       },
     });
-    const decoders = new PreviewDecoders();
     for (const decoder of [SHARP_DECODER, heicDecoder(this.pool), RAW_DECODER])
-      decoders.register(decoder);
+      this.decoders.register(decoder);
     const env = {
       store: { ...deps.store, driveMedia: this.media },
       layout: deps.layout,
@@ -55,7 +55,7 @@ export class PhotoPipeline {
         this.writeThumb(itemId, thumb);
       },
     };
-    this.runner.register('preview', new PreviewHandler({ ...env, decoders }));
+    this.runner.register('preview', new PreviewHandler({ ...env, decoders: this.decoders }));
     this.runner.register('poster', new PosterHandler(env));
     const playable = { ...env, jobs, request: this.runner.request.bind(this.runner) };
     this.runner.register('playable', new PlayableHandler(playable, 'primary'));

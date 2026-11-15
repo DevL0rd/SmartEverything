@@ -15,9 +15,10 @@ export interface ConflictCompareProps {
 function useTarget(conflict: DriveConflict): VersionsTarget | null {
   const root = useDriveRoots().find((one) => one.id === conflict.rootId) ?? null;
   const { item, versions, settled } = useConflictFacts(conflict);
-  if (root === null || item === null || !settled) return null;
+  if (item === null || !settled) return null;
+  const versionsKept = root?.versions ?? null;
   const picks = comparePicksOf(conflict, item, versions);
-  return picks === null ? { root, item } : { root, item, picks };
+  return picks === null ? { versionsKept, item } : { versionsKept, item, picks };
 }
 
 function bannerSlotOf(onClose: () => void): NonNullable<VersionsSlots['conflict']> {

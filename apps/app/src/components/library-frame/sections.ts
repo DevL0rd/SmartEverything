@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { frameLayoutMath } from '../frame-layout';
+import { frameLayoutMath } from '../page-shell/layout';
 import type { IconName } from '../icon';
-import type { RailEntry, RailGroup } from '../section-rail';
+import type { RailEntry, RailGroup } from '../page-shell/section-rail';
 import { count as formatCount } from '../../format/number';
 
 export interface LibrarySection {

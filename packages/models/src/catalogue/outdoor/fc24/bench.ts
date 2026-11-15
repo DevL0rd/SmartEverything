@@ -48,7 +48,7 @@ function frames(): ModelSpecPart[] {
 export const GARDEN_BENCH_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.garden-bench',
   title: 'Garden bench',
-  footprint: { width: 1.5, depth: 0.62, height: 0.93 },
+  footprint: { width: 1.5, depth: 0.619, height: 0.9286 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

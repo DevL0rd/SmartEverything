@@ -15,10 +15,10 @@ import {
   rampOptions,
   reminderOptions,
   shownCount,
-  soundOptions,
 } from './options';
+import { DefaultSnoozeLimitRow, DefaultSoundRow } from '../clock/default-rows';
 import { PrefMinutesRow } from './rows';
-import { GoogleRow, WakeSceneRow } from './source-rows';
+import { GoogleRow, WakeAutomationRow } from './source-rows';
 import { WatchSettingsRow } from './watch-row';
 
 function shownCalendars(state: StoreState): string {
@@ -85,18 +85,10 @@ export const CALENDAR: readonly SettingDefinition[] = [
 ];
 
 export const CLOCK: readonly SettingDefinition[] = [
-  choose(
-    'clock.sound',
-    at('Clock'),
-    {
-      title: 'Alarm sound',
-      icon: 'bell',
-      get: (prefs) => prefs.clock.sound,
-      set: (sound) => ({ clock: { sound } }),
-      options: soundOptions,
-    },
-    ['alarm', 'sound', 'ringtone'],
-  ),
+  custom('clock.sound', at('Clock'), ['alarm', 'sound', 'ringtone', 'music', 'radio', 'song'], {
+    title: 'Alarm sound',
+    render: () => createElement(DefaultSoundRow),
+  }),
   choose(
     'clock.ramp',
     at('Clock'),
@@ -121,6 +113,10 @@ export const CLOCK: readonly SettingDefinition[] = [
         },
       }),
   }),
+  custom('clock.snooze-limit', at('Clock'), ['snooze', 'limit', 'alarm', 'times'], {
+    title: 'Snooze limit',
+    render: () => createElement(DefaultSnoozeLimitRow),
+  }),
   link(
     'clock.ring-on',
     at('Clock'),
@@ -132,16 +128,16 @@ export const CLOCK: readonly SettingDefinition[] = [
     },
     ['ring', 'phone', 'targets', 'devices'],
   ),
-  custom('clock.wake', at('Clock'), ['wake', 'scene', 'morning', 'lights'], {
+  custom('clock.wake', at('Clock'), ['wake', 'automation', 'morning', 'lights'], {
     title: 'Wake routine',
     render: () =>
-      createElement(WakeSceneRow, {
+      createElement(WakeAutomationRow, {
         spec: {
           title: 'Wake routine',
           icon: 'sun',
-          description: 'Scene before new alarms',
-          get: (prefs) => prefs.clock.wake_scene_id ?? NONE,
-          set: (id) => ({ clock: { wake_scene_id: idOrNull(id) } }),
+          description: 'Automation before new alarms',
+          get: (prefs) => prefs.clock.wake_automation_id ?? NONE,
+          set: (id) => ({ clock: { wake_automation_id: idOrNull(id) } }),
         },
       }),
   }),

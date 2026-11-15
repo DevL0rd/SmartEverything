@@ -83,7 +83,16 @@ export function computerSessionRoutes(
       return service.ask({ caller, deviceId: params.deviceId, request }, APP_CLOSED);
     }),
     listComputerFiles: bound(E.listComputerFiles, ({ params, query, caller }) => {
-      const request = { verb: 'files', path: query.path ?? null, cursor: query.cursor } as const;
+      const sort =
+        query.sort === undefined || query.direction === undefined
+          ? {}
+          : { sort: { field: query.sort, direction: query.direction } };
+      const request = {
+        verb: 'files',
+        path: query.path ?? null,
+        cursor: query.cursor,
+        ...sort,
+      } as const;
       return service.ask({ caller, deviceId: params.deviceId, request }, FILE_LIST);
     }),
     readComputerFile: bound(E.readComputerFile, ({ params, query, caller }) => {

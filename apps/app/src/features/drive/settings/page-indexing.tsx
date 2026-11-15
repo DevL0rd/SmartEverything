@@ -14,14 +14,15 @@ import { ProgressBar } from '../../../components/charts/progress-bar';
 import { ErrorState } from '../../../components/error-state';
 import { ListRow } from '../../../components/list-row';
 import { SwitchRow } from '../../../components/rows';
-import { List } from '../../../components/section';
+import { FilterChip } from '../../../components/filter-chip';
+import { List, Section } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
 import { usePausable } from '../../../design/external-store';
 import { count, percent } from '../../../format/number';
 import { driveKey } from '../../../queries/keys';
 import { useMutationState } from '../../../store/mutation';
 import type { RowOf } from '../../../store/state';
-import { trackSetting } from '../../settings/settings-log';
+import { trackSetting } from '../../settings';
 import {
   driveProgress,
   useDriveHealth,
@@ -32,6 +33,7 @@ import {
 } from '../data';
 import { driveLabelOf } from '../model/drive-access';
 import { DriveSettingsSection } from './page';
+import { ocrChoicesOf, ocrLanguagesAfter, ocrLineOf } from './ocr-languages';
 import { watcherLineOf } from './watcher-line';
 
 type Phase = DriveProgressNotice['phase'];
@@ -42,6 +44,7 @@ const PHASE_WORD: Readonly<Record<Phase, string>> = {
   scan: 'Reading folders',
   hash: 'Finding duplicates',
   scrub: 'Checking for damage',
+  text: 'Reading text inside files',
 };
 
 export interface ProgressLine {
@@ -193,6 +196,66 @@ function DuplicatesRow({
   );
 }
 
+export const CONTENT_LINE_ON =
+  'Search finds words inside documents and text in pictures. Nothing leaves the Hub.';
+
+export const CONTENT_LINE_OFF = 'Search finds names only. Turn this on to read text inside files.';
+
+function ContentRow({ settings }: { readonly settings: DriveSettings }): ReactNode {
+  const client = useQueryClient();
+  const mutation = useMutationState();
+  return (
+    <SwitchRow
+      title="Read text inside files"
+      icon="fileText"
+      subtitle={settings.contentIndexing ? CONTENT_LINE_ON : CONTENT_LINE_OFF}
+      wrapSubtitle
+      value={settings.contentIndexing}
+      disabled={mutation.busy}
+      onChange={(next) => {
+        mutation.run(() => saveDriveSettings(client, { contentIndexing: next }), {
+          failure: 'Reading text inside files did not change',
+          label: 'drive_settings.content_indexing',
+        });
+      }}
+    />
+  );
+}
+
+function OcrLanguages({ settings }: { readonly settings: DriveSettings }): ReactNode {
+  const client = useQueryClient();
+  const mutation = useMutationState();
+  const chosen = settings.ocrLanguages;
+  const off = mutation.busy || !settings.contentIndexing;
+  return (
+    <Section title="Languages for text in pictures" caption={ocrLineOf(chosen)}>
+      <View
+        role="group"
+        aria-label="Languages for text in pictures"
+        className="flex-row flex-wrap gap-2"
+      >
+        {ocrChoicesOf(chosen).map((choice) => (
+          <FilterChip
+            key={choice.code}
+            label="Language"
+            value={choice.name}
+            active={choice.chosen}
+            disabled={off || (choice.chosen && chosen.length === 1)}
+            onPress={() => {
+              const next = ocrLanguagesAfter(chosen, choice.code, !choice.chosen);
+              if (next === null) return;
+              mutation.run(() => saveDriveSettings(client, { ocrLanguages: [...next] }), {
+                failure: 'The languages did not change',
+                label: 'drive_settings.ocr_languages',
+              });
+            }}
+          />
+        ))}
+      </View>
+    </Section>
+  );
+}
+
 function WatcherRow({ state }: { readonly state: DriveWatcherState }): ReactNode {
   const line = watcherLineOf(state);
   return (
@@ -231,8 +294,10 @@ function IndexingBody({ settings }: { readonly settings: DriveSettings }): React
       <List inset>
         <PauseRow settings={settings} working={working} />
         <DuplicatesRow settings={settings} hashedShare={health?.hashedShare} />
+        <ContentRow settings={settings} />
         {health === undefined ? null : <WatcherRow state={health.watcher} />}
       </List>
+      <OcrLanguages settings={settings} />
       {lines.length === 0 ? null : (
         <List inset title="Working now">
           {lines.map((line) => (

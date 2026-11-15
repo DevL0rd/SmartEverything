@@ -8,7 +8,12 @@ import { useSyncStatus } from '../../../store/selectors';
 import { unsupportedAdapter, type UpdateAdapter } from '../model/adapter';
 import { safeReason } from '../model/safe-reason';
 import { busyNow, watchBusy } from './busy';
-import { appUpdatePrefs, changeAppUpdatePrefs } from './update-prefs';
+import {
+  appUpdateFallback,
+  appUpdatePrefs,
+  changeAppUpdateFallback,
+  changeAppUpdatePrefs,
+} from './update-prefs';
 import { desktopUpdateAdapter } from './desktop-updates';
 import {
   readAppUpdateKey,
@@ -55,6 +60,8 @@ function controllerOf(adapter: UpdateAdapter): AppUpdateController {
     report: reportAppUpdateOutcome,
     prefs: appUpdatePrefs,
     changePrefs: changeAppUpdatePrefs,
+    fallback: appUpdateFallback,
+    changeFallback: changeAppUpdateFallback,
     token: currentToken,
     busy: busyNow,
     ask: askToRestart,

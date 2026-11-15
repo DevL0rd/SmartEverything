@@ -162,6 +162,21 @@ describe('buildModel', () => {
     expect(resources.materials.size).toBe(0);
   });
 
+  it('computes pattern pixels once across separate resources, each with its own texture', () => {
+    const first = createModelResources();
+    const second = createModelResources();
+    const a = buildModel(lampSpec(), { lod: 2, finish: 'black', resources: first });
+    const b = buildModel(lampSpec(), { lod: 2, finish: 'black', resources: second });
+    const one = first.patterns.get('brushed:256');
+    const two = second.patterns.get('brushed:256');
+    expect(two?.pixels).toBe(one?.pixels);
+    expect(two?.texture).not.toBe(one?.texture);
+    a.dispose();
+    b.dispose();
+    first.dispose();
+    second.dispose();
+  });
+
   it('grows its triangle count with LOD', () => {
     const counts = MODEL_LOD_LEVELS.map((lod) => buildModel(lampSpec(), { lod }).triangles);
     expect(counts[0]).toBeLessThan(counts[1] ?? 0);

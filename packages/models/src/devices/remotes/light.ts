@@ -13,6 +13,7 @@ export const LIGHT_REMOTE_MODEL: ModelSpec = remote({
   title: 'Light remote',
   synonyms: ['lamp remote', 'dimmer remote', 'LED strip remote', 'bulb remote', 'light controller'],
   size: SIZE,
+  footprint: { width: 0.1014, depth: SIZE.width, height: 0.0217 },
   materials: { ...LIGHT_BODY, body: { finish: 'graphite', clearcoat: 0.4 } },
   finishes: { black: {}, white: { body: { finish: 'matte-white' } } },
   defaultFinish: 'black',

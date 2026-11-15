@@ -1,3 +1,9 @@
+import {
+  DRIVE_SORT_FIELDS,
+  type DriveItem,
+  type DriveRecentEntry,
+  type DriveSort,
+} from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
 import { DRIVE_PAGE_SIZE, DriveReadService } from '../../src/drive/service-read';
@@ -150,21 +156,112 @@ describe('browsing a folder', () => {
     );
   });
 
-  it('refuses a sort the item store cannot page', () => {
+  const SORTED = DRIVE_PAGE_SIZE + 5;
+
+  function sortedFolder(): void {
+    for (let index = 0; index < SORTED; index += 1) {
+      const id = `0d000000-0000-4000-8000-${String(2000 + index).padStart(12, '0')}`;
+      const day = String(1 + (index % 11)).padStart(2, '0');
+      const added = String(1 + (index % 13)).padStart(2, '0');
+      opened.store.driveItems.write({
+        item: {
+          ...COMMON,
+          id,
+          rootId: MEMBER_ROOT,
+          parentId: null,
+          relPath: `sorted-${String(index).padStart(4, '0')}.txt`,
+          name: `sorted-${String(index).padStart(4, '0')}.txt`,
+          kind: 'document',
+          mime: 'text/plain',
+          bytes: (index * 37) % 7,
+          modifiedAt: `2026-10-${day}T00:00:00.000Z`,
+          addedAt: `2026-09-${added}T00:00:00.000Z`,
+          sha256: null,
+          integrity: 'unknown',
+          thumb: { state: 'none' },
+          addedByProfileId: memberProfile,
+        },
+        identity: { dev: '1', ino: `s${String(index)}` },
+      });
+      if (index % 3 === 0) {
+        opened.store.driveOpens.record(
+          memberProfile,
+          id,
+          `2026-11-${String(1 + (index % 5)).padStart(2, '0')}T00:00:00.000Z`,
+        );
+      }
+    }
+  }
+
+  function keyOf(item: DriveItem, field: DriveSort['field']): string | number {
+    switch (field) {
+      case 'name':
+        return item.name;
+      case 'bytes':
+        return item.bytes;
+      case 'modifiedAt':
+        return item.modifiedAt;
+      case 'addedAt':
+        return item.addedAt;
+      case 'openedAt':
+        return item.openedAt ?? '';
+      case 'takenAt':
+        return 'takenAt' in item ? (item.takenAt ?? '') : '';
+    }
+  }
+
+  function compared(a: string | number, b: string | number): number {
+    if (a === b) return 0;
+    return a < b ? -1 : 1;
+  }
+
+  const ORDERS = DRIVE_SORT_FIELDS.flatMap((field) =>
+    (['asc', 'desc'] as const).map((direction) => ({ field, direction })),
+  );
+
+  it.each(ORDERS)('pages every item by $field $direction in order', ({ field, direction }) => {
+    sortedFolder();
+    const pages: DriveItem[] = [];
+    let cursor: string | undefined;
+    let rounds = 0;
+    do {
+      const page = service.browseFolder(asMember(), {
+        rootId: MEMBER_ROOT,
+        sortField: field,
+        sortDirection: direction,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      pages.push(...page.items);
+      cursor = page.next ?? undefined;
+      rounds += 1;
+    } while (cursor !== undefined);
+    expect(rounds).toBe(2);
+    expect(new Set(pages.map((item) => item.id)).size).toBe(SORTED);
+    const sign = direction === 'asc' ? 1 : -1;
+    const expected = [...pages].sort(
+      (a, b) => sign * (compared(keyOf(a, field), keyOf(b, field)) || compared(a.name, b.name)),
+    );
+    expect(pages.map((item) => item.id)).toEqual(expected.map((item) => item.id));
+  });
+
+  it('refuses a cursor that another sort or no listing gave out', () => {
+    sortedFolder();
+    const bySize = service.browseFolder(asMember(), {
+      rootId: MEMBER_ROOT,
+      sortField: 'bytes',
+      sortDirection: 'desc',
+    });
     expect(() =>
-      service.browseFolder(asOwner(), {
-        rootId: HOME_ROOT,
-        sortField: 'bytes',
+      service.browseFolder(asMember(), {
+        rootId: MEMBER_ROOT,
+        sortField: 'modifiedAt',
         sortDirection: 'desc',
+        cursor: bySize.next ?? '',
       }),
-    ).toThrow(/by name/);
-    expect(
-      service.browseFolder(asOwner(), {
-        rootId: HOME_ROOT,
-        sortField: 'name',
-        sortDirection: 'asc',
-      }).items,
-    ).toHaveLength(2);
+    ).toThrow(/cursor/);
+    expect(() =>
+      service.browseFolder(asMember(), { rootId: MEMBER_ROOT, cursor: 'not-a-cursor' }),
+    ).toThrow(/cursor/);
   });
 
   it('pages a large folder by cursor without losing or repeating a name', () => {
@@ -246,9 +343,14 @@ describe('recent files', () => {
     appended(FILE, HOME_ROOT, 'update', 2);
   });
 
+  function itemIds(entries: readonly DriveRecentEntry[]): string[] {
+    return entries.map((entry) => (entry.kind === 'shortcut' ? entry.shortcut.id : entry.item.id));
+  }
+
   it('answers added, changed and everything, newest first', () => {
     const added = service.readRecent(asOwner(), { filter: 'added' });
-    expect(added.entries.map((entry) => [entry.kind, entry.item.id])).toEqual([['added', FILE]]);
+    expect(added.entries.map((entry) => entry.kind)).toEqual(['added']);
+    expect(itemIds(added.entries)).toEqual([FILE]);
     const changed = service.readRecent(asOwner(), { filter: 'changed' });
     expect(changed.entries.map((entry) => entry.kind)).toEqual(['changed']);
     expect(service.readRecent(asOwner(), { filter: 'everything' }).entries).toHaveLength(2);
@@ -256,14 +358,21 @@ describe('recent files', () => {
 
   it('hides other members’ files from a member', () => {
     const everything = service.readRecent(asMember(), { filter: 'everything' });
-    expect(everything.entries.map((entry) => entry.item.id)).toEqual([FILE, FILE]);
+    expect(itemIds(everything.entries)).toEqual([FILE, FILE]);
   });
 
-  it('refuses a cursor it did not give out and the unavailable opened filter', () => {
+  it('refuses a cursor it did not give out', () => {
     expect(() => service.readRecent(asOwner(), { filter: 'added', cursor: 'abc' })).toThrow(
       /cursor/,
     );
-    expect(() => service.readRecent(asOwner(), { filter: 'opened' })).toThrow(/opened/);
+  });
+
+  it('lists what the person opened, and only theirs', () => {
+    service.recordOpen(asOwner(), FILE, '2026-11-08T00:00:00.000Z');
+    expect(
+      service.readRecent(asOwner(), { filter: 'opened' }).entries.map((entry) => entry.kind),
+    ).toEqual(['opened']);
+    expect(service.readRecent(asMember(), { filter: 'opened' }).entries).toEqual([]);
   });
 });
 

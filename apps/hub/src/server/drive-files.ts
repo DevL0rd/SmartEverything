@@ -2,11 +2,22 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError, type ComputerNodeRow, type DriveItem } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { DrivePathError, openResolved, resolveInRoot } from '../drive/paths';
-import { canRead, itemAccess, type DriveActor } from '../drive/access';
+import { isFileItem, type FileItem } from '../drive/file-item';
+import {
+  canRead,
+  inLockedFolder,
+  itemAccess,
+  type DriveActor,
+  type ItemAccess,
+} from '../drive/access';
+import { mayExportItem, requireExport } from '../drive/sharing/export-guard';
+import { isLockedLink, verifyLockedLink } from '../photos/organise/locked-links';
+import { PHOTO_VISIBLE } from '../photos/membership';
 import type { Store } from '../store/store';
+import { z } from 'zod';
 import { serveBytes } from './file-serve';
 import { bearerOf } from './http';
-import type { MediaLinks } from './media-links';
+import type { MediaLinks, VerifiedDriveLink } from './media-links';
 
 const log = new Logger('hub.drive');
 
@@ -16,7 +27,10 @@ export interface DriveFileNodes {
 }
 
 export interface DriveFiles {
-  readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants'>;
+  readonly store: Pick<
+    Store,
+    'context' | 'driveRoots' | 'driveItems' | 'driveGrants' | 'photoLocked'
+  >;
   readonly links: MediaLinks;
   readonly nodes: DriveFileNodes;
   readonly now: () => Date;
@@ -29,23 +43,60 @@ export interface DriveExchange {
 }
 
 interface Located {
-  readonly item: Exclude<DriveItem, { readonly kind: 'folder' }>;
+  readonly item: FileItem;
   readonly rootPath: string;
+  readonly access: ItemAccess | null;
 }
 
 function hidden(): ApiError {
   return new ApiError('not_found', 'There is no such file for this caller.');
 }
 
-function locate(files: DriveFiles, itemId: string, actor: DriveActor | null): Located {
+function noBytes(item: DriveItem): ApiError {
+  return new ApiError(
+    'invalid_request',
+    item.kind === 'folder'
+      ? 'A folder has no bytes to download.'
+      : 'A link or special file has no bytes to download; the hub never follows links.',
+  );
+}
+
+const SHOWN = z.strictObject({ id: z.string() });
+
+function reach(
+  files: DriveFiles,
+  actor: DriveActor,
+  root: Parameters<typeof itemAccess>[2],
+  item: DriveItem,
+): ItemAccess {
+  const access = itemAccess(files.store, actor, root, item);
+  if (canRead(access)) return access;
+  const shown = files.store.context.sql.get(
+    SHOWN,
+    `select i.id from drive_items i join drive_roots r on r.id = i.root_id
+      where i.id = $itemId and ${PHOTO_VISIBLE}`,
+    { itemId: item.id, profile: actor.profileId },
+  );
+  return shown === undefined ? access : 'view';
+}
+
+function readable(
+  files: DriveFiles,
+  itemId: string,
+  actor: DriveActor | null,
+): (Omit<Located, 'item'> & { readonly item: DriveItem }) | null {
   const item = files.store.driveItems.find(itemId, actor?.profileId ?? null);
   const root = item === undefined ? undefined : files.store.driveRoots.find(item.rootId);
-  if (item === undefined || root === undefined) throw hidden();
-  if (actor !== null && !canRead(itemAccess(files.store, actor, root, item))) throw hidden();
-  if (item.kind === 'folder') {
-    throw new ApiError('invalid_request', 'A folder has no bytes to download.');
-  }
-  return { item, rootPath: root.path };
+  if (item === undefined || root === undefined || inLockedFolder(item)) return null;
+  const access = actor === null ? null : reach(files, actor, root, item);
+  return access !== null && !canRead(access) ? null : { item, rootPath: root.path, access };
+}
+
+function locate(files: DriveFiles, itemId: string, actor: DriveActor | null): Located {
+  const located = readable(files, itemId, actor);
+  if (located === null) throw hidden();
+  if (!isFileItem(located.item)) throw noBytes(located.item);
+  return { ...located, item: located.item };
 }
 
 function lifetimeSeconds(files: DriveFiles, expiresAt: Date): number {
@@ -60,9 +111,15 @@ function pathFailure(cause: unknown): never {
   throw cause;
 }
 
+function dispositionOf(item: FileItem, download: boolean): Record<string, string> {
+  return download
+    ? { 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}` }
+    : {};
+}
+
 async function serveLocated(
   { item, rootPath }: Located,
-  cacheControl: string,
+  delivery: { readonly cacheControl: string; readonly download: boolean },
   { request, response }: DriveExchange,
 ): Promise<void> {
   const resolved = await resolveInRoot(rootPath, item.relPath).catch(pathFailure);
@@ -72,7 +129,11 @@ async function serveLocated(
       {
         size: (await handle.stat()).size,
         etag: item.etag,
-        headers: { 'content-type': item.mime, 'cache-control': cacheControl },
+        headers: {
+          'content-type': item.mime,
+          'cache-control': delivery.cacheControl,
+          ...dispositionOf(item, delivery.download),
+        },
         stream: (range) => handle.createReadStream({ autoClose: false, ...range }),
       },
       request,
@@ -90,7 +151,27 @@ async function serveByNode(
   exchange: DriveExchange,
 ): Promise<void> {
   const actor = files.nodes.actorOf(files.nodes.authenticate(token));
-  await serveLocated(locate(files, itemId, actor), 'private, no-cache', exchange);
+  const located = locate(files, itemId, actor);
+  if (located.access !== null) requireExport(located.access, located.item);
+  await serveLocated(located, { cacheControl: 'private, no-cache', download: false }, exchange);
+}
+
+interface Signed {
+  readonly link: VerifiedDriveLink;
+  readonly located: Located;
+}
+
+function lockedSigned(files: DriveFiles, itemId: string, url: URL): Signed {
+  const { item, link } = verifyLockedLink(files.store, files.links, url, itemId);
+  if (!isFileItem(item)) throw noBytes(item);
+  const root = files.store.driveRoots.byId(item.rootId);
+  return { link, located: { item, rootPath: root.path, access: null } };
+}
+
+function signed(files: DriveFiles, itemId: string, url: URL): Signed {
+  if (isLockedLink(url)) return lockedSigned(files, itemId, url);
+  const link = files.links.verifyDrive(url);
+  return { link, located: locate(files, itemId, null) };
 }
 
 async function serveBySignature(
@@ -98,8 +179,7 @@ async function serveBySignature(
   itemId: string,
   exchange: DriveExchange,
 ): Promise<void> {
-  const link = files.links.verifyDrive(exchange.url);
-  const located = locate(files, itemId, null);
+  const { link, located } = signed(files, itemId, exchange.url);
   if (located.item.rev !== link.rev) {
     throw new ApiError(
       'link_expired',
@@ -107,7 +187,11 @@ async function serveBySignature(
     );
   }
   const seconds = lifetimeSeconds(files, link.expiresAt);
-  await serveLocated(located, `private, max-age=${String(seconds)}, immutable`, exchange);
+  await serveLocated(
+    located,
+    { cacheControl: `private, max-age=${String(seconds)}, immutable`, download: link.download },
+    exchange,
+  );
 }
 
 export async function serveDriveFile(
@@ -121,6 +205,17 @@ export async function serveDriveFile(
     : serveByNode(files, itemId, token, exchange));
 }
 
+export function readableItem(
+  files: DriveFiles,
+  actor: DriveActor,
+  itemId: string,
+): { readonly item: DriveItem; readonly access: ItemAccess } {
+  const located = readable(files, itemId, actor);
+  const access = located?.access ?? null;
+  if (located === null || access === null) throw hidden();
+  return { item: located.item, access };
+}
+
 export function driveFileLink(
   files: DriveFiles,
   actor: DriveActor,
@@ -128,4 +223,15 @@ export function driveFileLink(
 ): ReturnType<MediaLinks['driveFile']> {
   const { item } = locate(files, itemId, actor);
   return files.links.driveFile(item.id, item.rev);
+}
+
+export function driveDownloadLink(
+  files: DriveFiles,
+  actor: DriveActor,
+  itemId: string,
+): ReturnType<MediaLinks['driveDownload']> | null {
+  const { item, access } = locate(files, itemId, actor);
+  return access !== null && !mayExportItem(access, item)
+    ? null
+    : files.links.driveDownload(item.id, item.rev);
 }

@@ -40,7 +40,6 @@ function titlesFor(query: string): readonly string[] {
     rooms: [],
     pages: pagesOf(linksOf()),
     settings: [],
-    scenes: [],
     automations: [],
     irRemotes: [],
     cameras: [],

@@ -1,3 +1,4 @@
+import { LOD_THRESHOLDS } from '../../model/canvas/lod';
 import type { GraphScene, GraphSceneNode } from '../../model/graph/scene-contract';
 
 export const OPENING_ZOOM: Readonly<Record<'touch' | 'pointer', number>> = {
@@ -20,6 +21,10 @@ export const FOCUS_MAX_ZOOM = 1;
 export const FOCUS_MIN_ZOOM = 0.85;
 
 export const FIT_MAX_ZOOM = 1;
+
+export const READABLE_ZOOM = LOD_THRESHOLDS.small;
+
+export const PHONE_PANEL_WIDTH = 600;
 
 export interface Padding {
   readonly top: number;
@@ -165,7 +170,12 @@ export function framedViewport(
 ): Viewport {
   const graph = framing === 'whole' ? sceneBounds(scene.nodes) : null;
   if (graph === null) return openingViewport(scene, frame, idiom);
-  return wholeViewport(graph, frame);
+  const start = scene.nodes.find((node) => node.family === 'start');
+  return wholeOpeningViewport(
+    graph,
+    start === undefined ? null : { x: start.x, y: start.y, width: start.w, height: start.h },
+    frame,
+  );
 }
 
 function wholeRoom(frame: Frame): Frame {
@@ -190,9 +200,25 @@ export function wholeViewport(graph: Box, frame: Frame): Viewport {
   };
 }
 
+function opensReadable(zoom: number, frame: Frame): boolean {
+  return frame.width < PHONE_PANEL_WIDTH && zoom < READABLE_ZOOM;
+}
+
+export function wholeOpeningViewport(graph: Box, start: Box | null, frame: Frame): Viewport {
+  const whole = wholeViewport(graph, frame);
+  if (!opensReadable(whole.zoom, frame)) return whole;
+  const anchor = start ?? graph;
+  return {
+    x: frame.width / 2 - (anchor.x + anchor.width / 2) * READABLE_ZOOM,
+    y: frame.height / 2 - (anchor.y + anchor.height / 2) * READABLE_ZOOM,
+    zoom: READABLE_ZOOM,
+  };
+}
+
 export function wholeHeight(graph: Box, width: number, available: number): number {
-  const byWidth = wholeZoom(graph, { width, height: Number.POSITIVE_INFINITY });
-  const fitted = graph.height * byWidth + WHOLE_PADDING.top + WHOLE_PADDING.bottom;
+  const fit = wholeZoom(graph, { width, height: Number.POSITIVE_INFINITY });
+  const zoom = opensReadable(fit, { width, height: available }) ? READABLE_ZOOM : fit;
+  const fitted = graph.height * zoom + WHOLE_PADDING.top + WHOLE_PADDING.bottom;
   return Math.min(Math.ceil(fitted), available);
 }
 

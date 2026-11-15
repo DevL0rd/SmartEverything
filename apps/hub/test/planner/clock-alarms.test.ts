@@ -9,6 +9,7 @@ import type { PlannerAlarmInput } from '../../src/store/repositories/planner-ala
 import { SimulatedClock } from '../../src/clock/simulated';
 import { AlarmScheduler, nextRing, ringsBetween } from '../../src/planner/alarms';
 import { RingDesk } from '../../src/planner/rings';
+import { SunriseRamp } from '../../src/planner/sunrise';
 import { WakeRoutine } from '../../src/planner/wake-routine';
 import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
@@ -25,7 +26,7 @@ let owner: TestPerson;
 let other: TestPerson;
 let signals: SignalInput[];
 let notices: PlannerRingNotice[];
-let scenes: ReturnType<typeof vi.fn<(sceneId: string, profileId: string) => Promise<void>>>;
+let scenes: ReturnType<typeof vi.fn<(automationId: string, profileId: string) => Promise<void>>>;
 let scheduler: AlarmScheduler;
 
 function build(): AlarmScheduler {
@@ -37,8 +38,14 @@ function build(): AlarmScheduler {
     },
     log: testLogger(),
   });
-  const wake = new WakeRoutine({ clock, runScene: scenes, log: testLogger() });
-  return new AlarmScheduler({ store: test.store, clock, rings, wake, log: testLogger() });
+  const wake = new WakeRoutine({ clock, runAutomation: scenes, log: testLogger() });
+  const sunrise = new SunriseRamp({
+    store: test.store,
+    clock,
+    submit: (): never[] => [],
+    log: testLogger(),
+  });
+  return new AlarmScheduler({ store: test.store, clock, rings, wake, sunrise, log: testLogger() });
 }
 
 function alarm(change: Partial<PlannerAlarmInput> = {}): PlannerAlarmRow {
@@ -54,12 +61,15 @@ function base(): PlannerAlarmInput {
     once_on: null,
     skip_on: null,
     enabled: true,
-    sound: 'sunrise',
+    sound: { kind: 'tone', id: 'sunrise' },
     ramp_seconds: 30,
     vibrate: true,
     snooze_minutes: 9,
+    snooze_limit: null,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: null,
+    wake_automation_id: null,
     wake_lead_minutes: null,
     targets: [],
     watch: [],
@@ -79,7 +89,9 @@ beforeEach(async () => {
   other = addPerson(test, 'Other', 'member');
   signals = [];
   notices = [];
-  scenes = vi.fn<(sceneId: string, profileId: string) => Promise<void>>(() => Promise.resolve());
+  scenes = vi.fn<(automationId: string, profileId: string) => Promise<void>>(() =>
+    Promise.resolve(),
+  );
   test.store.feed.subscribeNotices((notice) => {
     if (notice.type === 'planner_ring') notices.push(PLANNER_RING_NOTICE.parse(notice));
   });
@@ -219,6 +231,25 @@ describe('snooze and dismiss', () => {
     expect(() => scheduler.dismiss(owner.profileId, ringId)).toThrow(/no longer ringing/);
   });
 
+  it('refuses a snooze past the alarm limit and keeps the ring open', () => {
+    const saved = alarm({ snooze_limit: 2 });
+    scheduler.start();
+    clock.advanceTo('2026-11-09T06:00:00.000Z');
+    const [ring] = rings(saved.id);
+    if (ring === undefined) throw new Error('the alarm did not ring');
+    scheduler.snooze(owner.profileId, ring.id);
+    scheduler.snooze(owner.profileId, ring.id);
+    expect(() => scheduler.snooze(owner.profileId, ring.id)).toThrow(/2 snoozes/);
+    expect(test.store.plannerRings.find(ring.id)?.snoozes).toBe(2);
+    expect(scheduler.dismiss(owner.profileId, ring.id).dismissed_at).not.toBeNull();
+  });
+
+  it('allows unlimited snoozes when the alarm has no limit', () => {
+    const { ringId } = ringOnce();
+    for (let count = 0; count < 5; count += 1) scheduler.snooze(owner.profileId, ringId);
+    expect(test.store.plannerRings.find(ringId)?.snoozes).toBe(5);
+  });
+
   it('keeps one person from dismissing another person ring', () => {
     const { ringId } = ringOnce();
     expect(() => scheduler.dismiss(other.profileId, ringId)).toThrow(/does not exist/);
@@ -227,7 +258,7 @@ describe('snooze and dismiss', () => {
 
 describe('wake routine', () => {
   it('runs the scene the lead minutes before the ring', () => {
-    alarm({ wake_scene_id: SCENE, wake_lead_minutes: 20 });
+    alarm({ wake_automation_id: SCENE, wake_lead_minutes: 20 });
     scheduler.start();
     expect(clock.pending()).toEqual(['2026-11-09T05:40:00.000Z', '2026-11-09T06:00:00.000Z']);
     clock.advanceTo('2026-11-09T05:40:00.000Z');
@@ -239,7 +270,7 @@ describe('wake routine', () => {
     clock.jumpTo('2026-11-07T07:50:00.000Z');
     scheduler.start();
     test.store.plannerAlarms.update(saved.id, owner.profileId, {
-      wake_scene_id: SCENE,
+      wake_automation_id: SCENE,
       wake_lead_minutes: 30,
     });
     clock.advanceTo('2026-11-07T08:00:00.000Z');

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { LegacyAction as Action } from '@smarteverything/domain';
+import type { StepAction as Action } from '@smarteverything/domain';
 import type { Catalog } from './catalog';
 import { ACTION_TYPES, blankAction, type ActionType, type Choices } from './action-blanks';
 import { describeAction } from './describe-action';
@@ -13,7 +13,6 @@ import { BlockProblems, StepCard, movesOf } from './step-card';
 function choicesOf(catalog: Catalog): Choices {
   return {
     devices: catalog.devices,
-    sceneIds: catalog.scenes.map((scene) => scene.id),
     wakeProfileId: catalog.wakeProfileId,
   };
 }

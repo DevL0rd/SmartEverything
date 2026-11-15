@@ -7,7 +7,8 @@ import {
 } from '@smarteverything/shelly';
 import { presenceFixture } from '../plugins/shelly-presence/presence-fixture';
 import { makeTable, type Device, type StoreState } from '../store/state';
-import { sameSearchDevices, sameSearchStreams } from './table-equality';
+import { storedAutomationRow, timeTrigger } from '../test-support/automation-rows';
+import { sameSearchAutomations, sameSearchDevices, sameSearchStreams } from './table-equality';
 
 const FULL = [
   'wifi_scan',
@@ -95,5 +96,78 @@ describe('sameSearchDevices', () => {
       false,
     );
     expect(sameSearchDevices(devices, makeTable({}, [], 2))).toBe(false);
+  });
+});
+
+describe('search equality on heartbeats', () => {
+  it('ignores a device heartbeat that only moves liveness details', () => {
+    const before = {
+      ...DEVICE,
+      details: {
+        lastSeenAt: '2026-10-17T00:00:00.000Z',
+        uptimeSeconds: 10,
+        pushSince: '2026-10-17T00:00:00.000Z',
+      },
+    };
+    const after = {
+      ...DEVICE,
+      details: {
+        lastSeenAt: '2026-10-17T00:00:30.000Z',
+        uptimeSeconds: 40,
+        pushSince: '2026-10-17T00:00:20.000Z',
+      },
+      updated_at: '2026-10-17T00:00:30.000Z',
+    };
+    expect(
+      sameSearchDevices(
+        makeTable({ [DEVICE.id]: before }, [DEVICE.id], 1),
+        makeTable({ [DEVICE.id]: after }, [DEVICE.id], 2),
+      ),
+    ).toBe(true);
+  });
+
+  it('notices other detail changes and a liveness field that appears', () => {
+    const before = { ...DEVICE, details: { firmware: '1.0', lastSeenAt: null } };
+    const firmware = { ...DEVICE, details: { firmware: '1.1', lastSeenAt: null } };
+    const seen = {
+      ...DEVICE,
+      details: { firmware: '1.0', lastSeenAt: '2026-10-17T00:00:00.000Z' },
+    };
+    const table = makeTable({ [DEVICE.id]: before }, [DEVICE.id], 1);
+    expect(sameSearchDevices(table, makeTable({ [DEVICE.id]: firmware }, [DEVICE.id], 2))).toBe(
+      false,
+    );
+    expect(sameSearchDevices(table, makeTable({ [DEVICE.id]: seen }, [DEVICE.id], 2))).toBe(false);
+  });
+
+  const AUTOMATION = storedAutomationRow({
+    index: 1,
+    name: 'Morning',
+    triggers: [timeTrigger('07:00')],
+    nodes: [],
+  });
+
+  function automations(row: typeof AUTOMATION): StoreState['tables']['automations'] {
+    return makeTable({ [row.id]: row }, [row.id], 1);
+  }
+
+  it('ignores an automation run that only moves run_count and last_run_at', () => {
+    const ran = {
+      ...AUTOMATION,
+      run_count: AUTOMATION.run_count + 1,
+      last_run_at: '2026-10-17T07:00:00.000Z',
+      updated_at: '2026-10-17T07:00:00.000Z',
+    };
+    expect(sameSearchAutomations(automations(AUTOMATION), automations(ran))).toBe(true);
+  });
+
+  it('notices an automation rename or toggle', () => {
+    const table = automations(AUTOMATION);
+    expect(sameSearchAutomations(table, automations({ ...AUTOMATION, name: 'Evening' }))).toBe(
+      false,
+    );
+    expect(sameSearchAutomations(table, automations({ ...AUTOMATION, enabled: false }))).toBe(
+      false,
+    );
   });
 });

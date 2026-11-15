@@ -75,7 +75,7 @@ export const SMART_BOTTLE_MODEL: ModelSpec = {
   title: 'Smart bottle',
   category: 'kitchen',
   family: 'bottle',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: 0.2616 },
   framing: house('body', 30, 12),
   shots: [
     shot('remind', whenAll(leaf('phase', 'eq', 'reminder')), 'ring', {

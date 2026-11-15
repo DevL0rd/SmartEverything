@@ -10,6 +10,7 @@ export const PROJECTOR_REMOTE_MODEL: ModelSpec = remote({
   title: 'Projector remote',
   synonyms: ['beamer remote', 'projector controller', 'home cinema remote', 'presentation remote'],
   size: SIZE,
+  footprint: { width: 0.1335, depth: SIZE.width, height: 0.0212 },
   materials: LIGHT_BODY,
   finishes: { white: {}, black: { body: { finish: 'satin-black' }, keys: { finish: 'graphite' } } },
   defaultFinish: 'white',

@@ -169,6 +169,18 @@ describe('statistics view', () => {
     expect(view.unit).toBe('pages');
   });
 
+  it('counts people only inside the chosen range', () => {
+    seedHistory();
+    const day = PRINTER_STATS_VIEW.parse(
+      setup.service.read({ view: 'stats', period: 'day', anchor: '2026-10-16' }, OWNER),
+    );
+    expect(day.people).toStrictEqual([{ label: 'anna', jobs: 1, mine: false }]);
+    const earlier = PRINTER_STATS_VIEW.parse(
+      setup.service.read({ view: 'stats', period: 'week', anchor: '2026-10-04' }, OWNER),
+    );
+    expect(earlier.people).toStrictEqual([]);
+  });
+
   it('shows a member only their own count and no bests', () => {
     seedHistory();
     const view = PRINTER_STATS_VIEW.parse(

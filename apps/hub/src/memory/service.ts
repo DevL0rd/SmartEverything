@@ -135,10 +135,12 @@ export class MemoryService {
       found,
       this.memories.embeddings(who.profileId, this.embedder.model),
     );
-    this.memories.recalled(
-      ranked.map((memory) => memory.id),
-      new Date().toISOString(),
-    );
+    if (query.trim() !== '') {
+      this.memories.recalled(
+        ranked.map((memory) => memory.id),
+        new Date().toISOString(),
+      );
+    }
     return ranked.map(lineOf);
   }
 

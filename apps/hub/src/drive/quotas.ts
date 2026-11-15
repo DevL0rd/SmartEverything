@@ -25,7 +25,7 @@ export class DriveQuotaExceededError extends Error {
 }
 
 export class DriveFreeSpaceError extends Error {
-  override readonly name = 'DriveFreeSpaceError';
+  override readonly name: string = 'DriveFreeSpaceError';
 
   constructor(
     readonly path: string,
@@ -35,6 +35,20 @@ export class DriveFreeSpaceError extends Error {
     super(
       `The disk holding ${path} has ${String(freeBytes)} bytes free, which is not enough for ${String(requestedBytes)} bytes.`,
     );
+  }
+}
+
+export class DriveFileTooLargeError extends DriveFreeSpaceError {
+  override readonly name = 'DriveFileTooLargeError';
+
+  constructor(
+    path: string,
+    freeBytes: number,
+    requestedBytes: number,
+    readonly totalBytes: number,
+  ) {
+    super(path, freeBytes, requestedBytes);
+    this.message = `The disk holding ${path} holds ${String(totalBytes)} bytes in all, so ${String(requestedBytes)} bytes can never fit on it.`;
   }
 }
 
@@ -58,7 +72,10 @@ export async function checkDriveFreeSpace(
   path: string,
   bytes: number,
 ): Promise<void> {
-  const { freeBytes } = await space(path);
+  const { freeBytes, totalBytes } = await space(path);
+  if (bytes > totalBytes) {
+    throw new DriveFileTooLargeError(path, freeBytes, bytes, totalBytes);
+  }
   if (bytes > freeBytes) {
     throw new DriveFreeSpaceError(path, freeBytes, bytes);
   }

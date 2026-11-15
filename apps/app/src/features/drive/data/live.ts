@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { LiveChange, PhotosProgressNotice } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { DRIVE_PREFIX } from '../../../queries/keys';
+import { DRIVE_PREFIX, type DriveWindowKind } from '../../../queries/keys';
 import { clearDriveProgress } from './progress';
 import { invalidateDriveReach } from './windows';
 
@@ -9,14 +9,39 @@ const NO_IDS: readonly string[] = [];
 
 type RootChange = Extract<LiveChange, { readonly table: 'drive_roots' }>;
 type AlbumChange = Extract<LiveChange, { readonly table: 'drive_albums' }>;
+type TransferChange = Extract<LiveChange, { readonly table: 'drive_transfers' }>;
 
-function invalidateAll(client: QueryClient): void {
+export function invalidateDriveKinds(client: QueryClient, kinds: readonly DriveWindowKind[]): void {
+  background(
+    client.invalidateQueries({
+      queryKey: DRIVE_PREFIX,
+      predicate: (query) => kinds.some((kind) => query.queryKey[2] === kind),
+    }),
+    'queries.invalidate_failed',
+  );
+}
+
+export function invalidateDriveItemKind(
+  client: QueryClient,
+  kind: DriveWindowKind,
+  itemId: string,
+): void {
+  background(
+    client.invalidateQueries({
+      queryKey: [...DRIVE_PREFIX, kind],
+      predicate: (query) => query.queryKey[4] === itemId,
+    }),
+    'queries.invalidate_failed',
+  );
+}
+
+export function invalidateAllDrive(client: QueryClient): void {
   background(client.invalidateQueries({ queryKey: DRIVE_PREFIX }), 'queries.invalidate_failed');
 }
 
 function rootChanged(client: QueryClient, change: RootChange): void {
   if (change.operation !== 'UPDATE') {
-    invalidateAll(client);
+    invalidateAllDrive(client);
     return;
   }
   const { record, oldRecord } = change;
@@ -39,17 +64,29 @@ function albumChanged(client: QueryClient, change: AlbumChange): void {
   );
 }
 
+function transferChanged(client: QueryClient, change: TransferChange): void {
+  invalidateDriveKinds(client, ['transfers']);
+  const { record, oldRecord } = change;
+  if (record?.state === 'accepted' || oldRecord?.state === 'accepted') invalidateAllDrive(client);
+}
+
 export function applyDriveChanges(client: QueryClient, changes: readonly LiveChange[]): void {
   for (const change of changes) {
     if (change.table === 'drive_roots') rootChanged(client, change);
-    else if (change.table === 'drive_grants') invalidateAll(client);
+    else if (change.table === 'drive_grants') invalidateAllDrive(client);
     else if (change.table === 'drive_albums') albumChanged(client, change);
+    else if (change.table === 'drive_access_requests')
+      invalidateDriveKinds(client, ['access-requests', 'open-item']);
+    else if (change.table === 'drive_file_requests')
+      invalidateDriveKinds(client, ['file-requests', 'file-request-uploads']);
+    else if (change.table === 'drive_transfers') transferChanged(client, change);
+    else if (change.table === 'drive_offline_items') invalidateDriveKinds(client, ['offline']);
   }
 }
 
 export function driveReconnected(client: QueryClient): void {
   clearDriveProgress();
-  invalidateAll(client);
+  invalidateAllDrive(client);
 }
 
 export type PhotosProgressListener = (notice: PhotosProgressNotice) => void;

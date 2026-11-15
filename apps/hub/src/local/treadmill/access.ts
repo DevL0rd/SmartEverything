@@ -8,7 +8,7 @@ export interface AccessDeps {
   readonly walkerOf: (device: DeviceRow) => string | null;
 }
 
-const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation', 'scene']);
+const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation']);
 
 export function starterOf(deps: AccessDeps, device: DeviceRow, commandId: string): Starter {
   const row = deps.store.commands.byId(commandId);

@@ -6,14 +6,14 @@ import { Card } from '../../../components/card';
 import { Glow } from '../../../components/glow';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { clock } from '../../../format/time';
 import type { Device } from '../../../store/state';
 import { ServiceMedallion } from '../../../plugins/shared/service-medallion';
 import { useHeadline } from '../data/computer-headlines';
 import { useComputerSelect } from '../data/computer-metrics';
 import { computerGlyph, isHub, offersAction, useComputerCommand } from '../data/computer-device';
-import { useScreenshotToChat } from '../files/screenshot';
+import { useScreenshotToChat } from '../data/screenshot';
 import { factsLine, type ComputerStatus } from '../model/computer-view';
 
 const STACK_BELOW = 600;

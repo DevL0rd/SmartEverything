@@ -11,7 +11,8 @@ export type DriveSharePermission = (typeof DRIVE_SHARE_PERMISSIONS)[number];
 export const DRIVE_SHARE = z
   .strictObject({
     id: ID,
-    itemId: ID,
+    itemId: ID.nullable(),
+    albumId: ID.nullable(),
     permission: z.enum(DRIVE_SHARE_PERMISSIONS),
     expiresAt: MOMENT.nullable(),
     hasPassword: z.boolean(),
@@ -21,16 +22,25 @@ export const DRIVE_SHARE = z
     downloads: COUNT,
     lastOpenedAt: MOMENT.nullable(),
   })
+  .refine((share) => (share.itemId === null) !== (share.albumId === null), {
+    message: 'a link opens an item or an album, not both',
+    path: ['albumId'],
+  })
   .readonly();
 
 export type DriveShare = z.infer<typeof DRIVE_SHARE>;
 
 export const DRIVE_SHARE_CREATE = z
   .strictObject({
-    itemId: ID,
+    itemId: ID.optional(),
+    albumId: ID.optional(),
     permission: z.enum(DRIVE_SHARE_PERMISSIONS),
     expiresAt: MOMENT.nullable(),
     password: z.string().min(1).nullable(),
+  })
+  .refine((create) => (create.itemId === undefined) !== (create.albumId === undefined), {
+    message: 'name an item or an album to share, not both',
+    path: ['albumId'],
   })
   .readonly();
 

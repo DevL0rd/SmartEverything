@@ -7,6 +7,7 @@ import { PUSH_RELEASES_PAGE, PushReleasesScreen } from '../features/hub-updates'
 import { BackupSettingsScreen } from '../features/photos/backup';
 import { DuplicatesSettingsScreen } from '../features/photos/duplicates';
 import { PhotosSettingsScreen } from '../features/photos/settings/screen';
+import { SmartFeaturesScreen } from '../features/photos/smart';
 import { DevicesSettingsScreen } from '../features/settings/devices/devices-settings-screen';
 import { SetupScreen } from '../features/setup';
 import { ChannelEditorScreen } from '../features/talk';
@@ -26,6 +27,7 @@ export const CUSTOM_SETTINGS_SCREENS: Readonly<Record<string, ComponentType>> = 
   photos: PhotosSettingsScreen,
   'photos/backup': BackupSettingsScreen,
   'photos/duplicates': DuplicatesSettingsScreen,
+  'photos/smart': SmartFeaturesScreen,
   setup: SetupScreen,
   'cameras/remote-viewing': RemoteViewingScreen,
   'talk/channels/[channelId]': ChannelEditorScreen,

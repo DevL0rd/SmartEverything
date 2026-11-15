@@ -25,7 +25,8 @@ function placement(
     folderItemId,
     mode,
     ...(mode === 'synced' ? { excluded: [], ignorePatterns: [], conflictCopies: true } : {}),
-    localPath: `/data/${id}`,
+    localPath: mode === 'synced' ? `/data/${id}` : null,
+    mountName: mode === 'synced' ? null : id,
     enabled: true,
     hold: null,
     createdBy: PERSON_ID,
@@ -44,6 +45,7 @@ function placement(
       lastSyncedAt: null,
       errors: [],
       reason: null,
+      mountPoint: null,
       reportedAt: '2026-11-07T10:00:00Z',
     },
   };

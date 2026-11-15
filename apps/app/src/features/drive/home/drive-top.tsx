@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import type { DriveRoot } from '@smarteverything/domain';
 import { MyDriveHero, SharedDriveHero } from './drive-hero';
 import type { DriveUse } from './hero-model';
-import { QuickAccessRow } from './quick-access';
+import { SuggestedRow } from './suggested-row';
 
 export function DriveTop({
   root,
@@ -19,7 +19,7 @@ export function DriveTop({
       ) : (
         <MyDriveHero root={root} use={use} />
       )}
-      <QuickAccessRow rootId={root.id} />
+      <SuggestedRow rootId={root.scope === 'home' ? root.id : null} />
     </View>
   );
 }

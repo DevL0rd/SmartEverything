@@ -8,7 +8,7 @@ import { useKindOf } from '../detail/use-detail-data';
 import { manifestFor } from '../detail/detail-model';
 import { SecretsScreen } from '../secrets/secrets-screen';
 import { usersBySecret } from '../secrets/secrets-model';
-import { PageShell } from './page-shell';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { useFunctionLookup } from './use-environment';
 
 function useUsersOfSecrets(): ReadonlyMap<string, readonly AutomationSecretUser[]> {
@@ -36,7 +36,7 @@ export function SecretsHost(): ReactNode {
   const now = useMinute();
   const entries = useMemo(() => secrets.data ?? [], [secrets.data]);
   return (
-    <PageShell title="Secrets" maxWidth={owner && entries.length > 0 ? 'full' : 'reading'}>
+    <PageShell title="Secrets" width={owner && entries.length > 0 ? 'full' : 'reading'}>
       <SecretsScreen
         owner={owner}
         entries={entries}

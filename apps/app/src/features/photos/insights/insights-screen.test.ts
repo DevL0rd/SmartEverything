@@ -63,6 +63,7 @@ vi.mock('./insights-charts', () => ({
   WeekCard: stub('week'),
 }));
 vi.mock('./insights-lists', () => ({
+  BusiestDays: stub('busiest'),
   CamerasCard: stub('cameras'),
   CoverageCard: stub('coverage'),
   FoldersCard: stub('folders'),
@@ -142,6 +143,7 @@ describe('Insights screen states', () => {
       'growth',
       'kinds',
       'calendar',
+      'busiest',
       'week',
       'season',
       'places',

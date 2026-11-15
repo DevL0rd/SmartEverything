@@ -1,10 +1,6 @@
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import type {
-  LegacyAction as Action,
-  ScheduleRow,
-  ScheduleStepInput,
-} from '@smarteverything/domain';
+import type { StepAction as Action, ScheduleRow, ScheduleStepInput } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
 import { useMutationState } from '../../../store/mutation';
 import { changeList, type ListChange } from '../shared/list-change';

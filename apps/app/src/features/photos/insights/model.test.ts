@@ -75,6 +75,9 @@ const COUNTS = {
   duplicates: 0,
   backupDevices: 1,
   deleted: 0,
+  people: 0,
+  sharing: 0,
+  archive: 0,
 };
 
 describe('Insights stat tiles', () => {

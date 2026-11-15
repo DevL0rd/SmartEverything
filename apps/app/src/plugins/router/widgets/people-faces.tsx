@@ -123,13 +123,11 @@ function Chip({
 function Chips({ people, ready, stale }: PeopleFaceProps): ReactNode {
   return (
     <View className="gap-1">
-      <View className={cn(stale !== null && 'opacity-60')}>
-        <HScroller label="People">
-          {people.map((person) => (
-            <Chip key={person.id} person={person} ready={ready} />
-          ))}
-        </HScroller>
-      </View>
+      <HScroller label="People">
+        {people.map((person) => (
+          <Chip key={person.id} person={person} ready={ready} />
+        ))}
+      </HScroller>
       <StaleNote stale={stale} short={false} />
     </View>
   );
@@ -168,7 +166,7 @@ function Rows({ people, ready, layout, stale }: PeopleFaceProps): ReactNode {
   const { shown, more } = fitRows(people, capacity);
   return (
     <View className="flex-1 gap-1">
-      <View className={cn('flex-1', stale !== null && 'opacity-60')}>
+      <View className="flex-1">
         {shown.map((person) => (
           <Row key={person.id} person={person} ready={ready} />
         ))}

@@ -1,16 +1,15 @@
 import type { AutomationFunctionSummary } from '@smarteverything/domain';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../../components/button';
 import { ChoiceChip } from '../../../../components/choice-chip';
 import { EmptyState } from '../../../../components/empty-state';
 import { usePrimaryActionPlacement } from '../../../../components/primary-action';
-import { SearchField } from '../../../../components/search-field';
+import type { ShellSearchConfig } from '../../../../components/page-shell/search-slot';
 import { List } from '../../../../components/section';
 import { Text } from '../../../../components/text';
 import { LibraryRowView } from './library-row';
 import {
-  EMPTY_FILTER,
   categoriesOf,
   libraryEmpty,
   libraryRows,
@@ -23,6 +22,8 @@ export interface LibraryScreenProps {
   readonly functions: readonly AutomationFunctionSummary[];
   readonly userId: string | null;
   readonly needsMapping: ReadonlySet<string>;
+  readonly filter: LibraryFilter;
+  readonly onFilter: (filter: LibraryFilter) => void;
   readonly onOpen: (functionId: string) => void;
   readonly onCreate: () => void;
 }
@@ -52,32 +53,22 @@ function Filters({
   readonly categories: readonly string[];
   readonly onChange: (filter: LibraryFilter) => void;
 }): ReactNode {
+  if (categories.length === 0) return null;
   return (
-    <View className="gap-2">
-      <SearchField
-        value={filter.query}
-        placeholder="Search Custom Nodes"
-        onChange={(query) => {
-          onChange({ ...filter, query });
+    <View className="flex-row flex-wrap gap-2">
+      <ChoiceChip
+        label="Category"
+        icon="automations"
+        all={ALL}
+        value={filter.category ?? ALL}
+        options={[
+          { value: ALL, label: 'All categories' },
+          ...categories.map((name) => ({ value: name, label: name })),
+        ]}
+        onChange={(value) => {
+          onChange({ ...filter, category: value === ALL ? null : value });
         }}
       />
-      {categories.length === 0 ? null : (
-        <View className="flex-row flex-wrap gap-2">
-          <ChoiceChip
-            label="Category"
-            icon="automations"
-            all={ALL}
-            value={filter.category ?? ALL}
-            options={[
-              { value: ALL, label: 'All categories' },
-              ...categories.map((name) => ({ value: name, label: name })),
-            ]}
-            onChange={(value) => {
-              onChange({ ...filter, category: value === ALL ? null : value });
-            }}
-          />
-        </View>
-      )}
     </View>
   );
 }
@@ -135,14 +126,28 @@ function Empty({
   );
 }
 
+export function librarySearchOf(
+  filter: LibraryFilter,
+  onFilter: (filter: LibraryFilter) => void,
+): ShellSearchConfig {
+  return {
+    value: filter.query,
+    placeholder: 'Search Custom Nodes',
+    onChange: (query): void => {
+      onFilter({ ...filter, query });
+    },
+  };
+}
+
 export function LibraryScreen({
   functions,
   userId,
   needsMapping,
+  filter,
+  onFilter,
   onOpen,
   onCreate,
 }: LibraryScreenProps): ReactNode {
-  const [filter, setFilter] = useState<LibraryFilter>(EMPTY_FILTER);
   const rows = useMemo(
     () => libraryRows(functions, { userId, needsMapping }),
     [functions, userId, needsMapping],
@@ -153,7 +158,7 @@ export function LibraryScreen({
     <View className="gap-section-gap">
       <View className="w-full max-w-reading gap-section-gap">
         <Heading onCreate={onCreate} />
-        <Filters filter={filter} categories={categoriesOf(rows)} onChange={setFilter} />
+        <Filters filter={filter} categories={categoriesOf(rows)} onChange={onFilter} />
         {empty === 'none-yet' || empty === 'no-match' ? (
           <Empty kind={empty} onCreate={onCreate} />
         ) : null}

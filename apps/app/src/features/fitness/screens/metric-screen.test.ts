@@ -2,7 +2,7 @@ import type { HealthRecord } from '@smarteverything/domain';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { ScreenProps } from '../../../components/screen';
+import type { StandardShellProps } from '../../../components/page-shell/page-shell';
 import type { SeriesView } from '../data/series';
 import { MetricScreen } from './metric-screen';
 
@@ -43,10 +43,9 @@ vi.mock('../../../components/list-row', () => ({
     readonly wrapSubtitle: boolean;
   }): ReactNode => createElement('p', { 'data-wrap': wrapTitle && wrapSubtitle }, title),
 }));
-vi.mock('../../../components/page-header', () => ({ PageHeader: (): null => null }));
-vi.mock('../../../components/screen', () => ({
-  Screen: ({ children, maxWidth }: ScreenProps): ReactNode =>
-    createElement('main', { 'data-width': maxWidth }, children),
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: ({ children, width }: StandardShellProps): ReactNode =>
+    createElement('main', { 'data-width': width }, children),
 }));
 vi.mock('../../../components/section', () => ({
   List: ({ title, children }: Children & { readonly title: string }): ReactNode =>

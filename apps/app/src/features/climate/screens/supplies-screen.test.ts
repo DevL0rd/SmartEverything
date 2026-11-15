@@ -3,14 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type * as GridModule from '../../../components/grid';
 import type { GridProps } from '../../../components/grid';
-import type { ScreenProps } from '../../../components/screen';
+import type { StandardShellProps } from '../../../components/page-shell/shell-types';
 import { deviceFixture } from '../../../store/device-fixture';
 import type { Device } from '../../../store/state';
 import { SuppliesScreen } from './supplies-screen';
 
 const fixture = vi.hoisted(() => ({ width: 0, devices: new Array<Device>() }));
 const PaneWidth = createContext(0);
-const paneLimit = { reading: 720, detail: 1120, full: Infinity, dashboard: Infinity } as const;
+const paneLimit = { reading: 720, detail: 1120, full: Infinity, dashboard: 1440 } as const;
 
 function none(): null {
   return null;
@@ -32,17 +32,16 @@ vi.mock('../../../components/grid', async (importOriginal) => {
       createElement(Grid, { ...props, measuredWidth: useContext(PaneWidth) }),
   };
 });
-vi.mock('../../../components/screen', () => ({
-  Screen: ({ maxWidth, children }: ScreenProps): ReactNode =>
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: ({ width, children }: StandardShellProps): ReactNode =>
     createElement(
       PaneWidth.Provider,
-      { value: Math.min(fixture.width, paneLimit[maxWidth ?? 'dashboard']) },
+      { value: Math.min(fixture.width, paneLimit[width ?? 'dashboard']) },
       children,
     ),
 }));
 vi.mock('../../../components/button', () => ({ Button: none }));
 vi.mock('../../../components/empty-state', () => ({ EmptyState: none }));
-vi.mock('../../../components/page-header', () => ({ PageHeader: none }));
 vi.mock('../../../components/text', () => ({
   Text: ({ children }: { readonly children: ReactNode }): ReactNode => children,
 }));

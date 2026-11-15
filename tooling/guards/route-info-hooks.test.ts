@@ -14,13 +14,17 @@ const ONE_INSTANCE: Readonly<Record<string, string>> = {
     'the shell page-pin tracker, mounted once; headers read a store and build the pin item only when their menu opens',
   'src/app-shell/settings-navigation.ts':
     'settings page frames read whether Settings was opened from another tab; settings remounts on every visit',
-  'src/features/root/crash-trail-host.tsx': 'a root host, mounted once',
+  'src/features/root/log-ship-host.tsx': 'a root host, mounted once',
+  'src/app-shell/back-host.ts': 'the global back host, mounted once',
+  'src/app-shell/shell.tsx': 'the shell layout, mounted once',
+  'src/components/back-navigation.ts':
+    'every page header picks its own back step from the path of the screen it sits on',
+  'src/features/automations/hosts/list-hosts.tsx':
+    'the automations master and layout hosts, each mounted once',
   'src/features/connections/consent/consent-host.tsx': 'a global host, mounted once',
   'src/features/connections/flows/tuya-handoff.tsx': 'inside the consent host, mounted once',
   'src/features/assistant/browser/browser-runtime-host.tsx': 'a global host, mounted once',
   'src/features/assistant/overlay/overlay-surface.ts': 'used by the overlay host, mounted once',
-  'src/settings/settings-nav.tsx':
-    'the settings master pane highlights the open page; settings remounts on every visit',
   'src/perf/perf-host.tsx': 'the dev profiler host, mounted once',
   'src/dev/profiling-host.tsx': 'the dev profiling host, mounted once',
 };

@@ -49,7 +49,7 @@ function rails(): ModelSpecPart[] {
 export const SHELVING_UNIT_MODEL: ModelSpec = storageItem({
   id: 'cat.storage.shelving-unit',
   title: 'Shelving unit',
-  footprint: { width: 0.9128, depth: DEPTH, height: 1.8 },
+  footprint: { width: 0.9128, depth: 0.3328, height: 1.8 },
   size: {
     width: { param: 'width', extra: 0.0128, resizes: true },
     height: { param: 'height', extra: 0, resizes: true },

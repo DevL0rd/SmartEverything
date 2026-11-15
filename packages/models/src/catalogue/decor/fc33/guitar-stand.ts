@@ -136,7 +136,7 @@ function stand(): ModelSpecPart[] {
 export const GUITAR_STAND_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.guitar-stand',
   title: 'Guitar on stand',
-  footprint: { width: 0.52, depth: 0.45, height: 1.52 },
+  footprint: { width: 0.5383, depth: 0.4395, height: 1.5329 },
   meta: {
     names: {
       display: 'Guitar on stand',

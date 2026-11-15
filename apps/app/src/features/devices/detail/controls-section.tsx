@@ -10,11 +10,9 @@ import type { Device } from '../../../store/state';
 import { FAMILY_CONTROLS } from '../controls/family-controls';
 import { CapabilityRow } from '../controls/capability-row';
 import { offlineReason } from '../controls/guard';
-import { usePrimaryControls } from '../controls/primary-controls';
 import { controlGroupsOf, extrasOf, type ControlGroup } from '../model/control-groups';
 import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
-import { stagedRoles } from './stage-level';
 
 const MIN_CONTROL_GROUP_WIDTH = 420;
 
@@ -104,27 +102,17 @@ function ControlLists({
   );
 }
 
-export function ControlsSection({
-  device,
-  beside,
-}: {
-  readonly device: Device;
-  readonly beside: boolean;
-}): ReactNode {
+export function ControlsSection({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
   const name = useDisplayName(device.id);
-  const primary = usePrimaryControls(device, stagedRoles(model));
   const reason = device.online ? null : offlineReason(name);
-  const shown = new Set(beside ? primary.map((presented) => presented.key) : []);
   const custom = FAMILY_CONTROLS[model.family];
   const all = controlGroupsOf(model.presentation);
   const extras = extrasOf(model.presentation);
   const groups = all
     .map((group) => ({
       ...group,
-      controls: group.controls.filter(
-        (presented) => !shown.has(presented.key) && custom?.managed.has(presented.key) !== true,
-      ),
+      controls: group.controls.filter((presented) => custom?.managed.has(presented.key) !== true),
     }))
     .filter((group) => group.controls.length > 0);
   return (
@@ -136,21 +124,15 @@ export function ControlsSection({
           body={`${name} only reports readings.`}
         />
       ) : null}
-      <CustomControls device={device} beside={beside} />
+      <CustomControls device={device} />
       <ControlLists device={device} reason={reason} groups={groups} extras={extras} />
     </View>
   );
 }
 
-function CustomControls({
-  device,
-  beside,
-}: {
-  readonly device: Device;
-  readonly beside: boolean;
-}): ReactNode {
+function CustomControls({ device }: { readonly device: Device }): ReactNode {
   const Custom = FAMILY_CONTROLS[useDeviceModel(device).family]?.controls;
-  return Custom === undefined || beside ? null : (
+  return Custom === undefined ? null : (
     <List title="Cooking">
       <View className="p-4">
         <Custom device={device} />

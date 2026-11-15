@@ -81,7 +81,7 @@ function banana(): ModelSpecPart {
 export const FRUIT_BOWL_MODEL: ModelSpec = kitchenItem({
   id: 'cat.kitchen.fruit-bowl',
   title: 'Fruit bowl',
-  footprint: { width: 2 * RIM, depth: 2 * RIM, height: 0.15 },
+  footprint: { width: 2 * RIM, depth: 2 * RIM, height: 0.1345 },
   size: {
     width: { param: 'diameter', extra: 0, resizes: true },
     depth: { param: 'diameter', extra: 0, resizes: true },

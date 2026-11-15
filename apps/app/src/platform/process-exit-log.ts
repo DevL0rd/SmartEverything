@@ -15,11 +15,11 @@ const NORMAL_EXITS: ReadonlySet<string> = new Set([
 function exitFailure(exit: ClientProcessExit): LogRecord['failure'] {
   if (NORMAL_EXITS.has(exit.reason)) return undefined;
   if (exit.nativeTrace?.state === 'java') {
-    const { name, message, frame } = exit.nativeTrace;
+    const { name, message, frames } = exit.nativeTrace;
     return {
       name,
       message: message ?? `An uncaught ${name} ended the app`,
-      ...(frame === null ? {} : { stack: frame }),
+      ...(frames.length === 0 ? {} : { stack: frames.join('\n') }),
     };
   }
   return { name: 'AppProcessExit', message: `The app process ended: ${exit.reason}` };

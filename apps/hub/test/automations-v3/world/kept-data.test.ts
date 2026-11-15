@@ -18,7 +18,6 @@ import { migrate } from '../../../src/store/migrate';
 import { MIGRATIONS } from '../../../src/store/migrations';
 import { AutomationNodeStateRepository } from '../../../src/store/repositories/automation-node-state';
 import { AutomationValuesRepository } from '../../../src/store/repositories/automation-values';
-import { ScenesRepository } from '../../../src/store/repositories/scenes';
 import { Sql } from '../../../src/store/sql';
 import { captureLogs, testLogger } from '../../support/logs';
 import { graphFunction } from '../support/graph-of';
@@ -214,11 +213,7 @@ function portsWith(store: KeptData): Parameters<typeof effectHandlers>[0] {
     setter: { set: unused, setTogether: unused },
     http: { request: unused },
     toggler: { toggle: unused },
-    issuer: { issue: unused, confirm: unused },
-    store: {
-      automationValues: new AutomationValuesRepository(context),
-      scenes: new ScenesRepository(context),
-    },
+    store: { automationValues: new AutomationValuesRepository(context) },
     owned: { list: unused, write: unused },
     kept: store,
     extra: {},

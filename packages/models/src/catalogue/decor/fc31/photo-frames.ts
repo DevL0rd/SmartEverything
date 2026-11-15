@@ -66,7 +66,7 @@ function frame(shape: Frame, index: number): ModelSpecPart[] {
 export const PHOTO_FRAMES_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.photo-frames',
   title: 'Photo frames',
-  footprint: { width: 0.5, depth: 0.1, height: 0.2 },
+  footprint: { width: 0.47, depth: 0.0983, height: 0.2007 },
   meta: {
     names: {
       display: 'Photo frames',

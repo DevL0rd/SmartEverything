@@ -3,15 +3,18 @@ import { z } from 'zod';
 import {
   API_ENDPOINTS as E,
   ApiError,
+  type DriveItem,
   type DriveItemLink,
   type DriveRoot,
   type DriveTrashEntry,
 } from '@smarteverything/domain';
 import { decodeCursor, encodeCursor } from '../../drive/search';
-import type { DriveActor } from '../../drive/access';
+import { mayExport, type DriveActor } from '../../drive/access';
+import { isFileItem } from '../../drive/file-item';
 import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import type { Store } from '../../store/store';
-import { driveFileLink } from '../drive-files';
+import { driveFileLink, readableItem } from '../drive-files';
+import { shortcutsForQuery } from '../../drive/social/shortcuts';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
 import {
@@ -26,6 +29,7 @@ type DriveLibraryRoute =
   | 'updateRoot'
   | 'scanRoot'
   | 'itemLinks'
+  | 'recordDriveOpen'
   | 'searchDrive'
   | 'changeDrive'
   | 'readDriveStats'
@@ -37,6 +41,19 @@ const TRASH_CURSOR = z.strictObject({
   after: z.strictObject({ deletedAt: z.string().min(1), itemId: z.string().min(1) }).nullable(),
 });
 
+function derivedLinks(
+  links: DriveServices['files']['links'],
+  item: DriveItem,
+  playable: boolean,
+): Pick<DriveItemLink, 'thumb' | 'playable' | 'preview'> {
+  const ready = isFileItem(item) && item.thumb.state === 'ready';
+  return {
+    thumb: ready ? links.driveThumb(item.id, 'thumb', item.rev) : null,
+    playable: playable ? links.driveThumb(item.id, 'playable', item.rev) : null,
+    preview: ready ? links.driveThumb(item.id, 'preview', item.rev) : null,
+  };
+}
+
 function linksOf(
   services: DriveServices,
   actor: DriveActor,
@@ -44,21 +61,20 @@ function linksOf(
   store: Store,
 ): DriveItemLink[] {
   return itemIds.map((itemId) => {
-    const item = services.read.readItem(actor, itemId);
-    const file = driveFileLink(services.files, actor, itemId);
-    const ready = item.kind !== 'folder' && item.thumb.state === 'ready';
+    const { item, access } = readableItem(services.files, actor, itemId);
+    const exportable = mayExport(access, item.locked);
     const { links } = services.files;
+    const playable =
+      item.kind === 'video' &&
+      new DriveMediaRepository(store.context).find(item.id)?.playable_state === 'ready';
     return {
       itemId,
       rev: item.rev,
-      file,
-      thumb: ready ? links.driveThumb(itemId, 'thumb', item.rev) : null,
-      playable:
-        item.kind === 'video' &&
-        new DriveMediaRepository(store.context).find(item.id)?.playable_state === 'ready'
-          ? links.driveThumb(itemId, 'playable', item.rev)
-          : null,
-      preview: ready ? links.driveThumb(itemId, 'preview', item.rev) : null,
+      file: driveFileLink(services.files, actor, itemId),
+      download: exportable && item.kind !== 'folder' ? links.driveDownload(itemId, item.rev) : null,
+      icon:
+        item.kind === 'folder' && item.iconHint ? links.driveFolderIcon(itemId, item.rev) : null,
+      ...derivedLinks(links, item, playable),
     };
   });
 }
@@ -133,8 +149,20 @@ export function driveLibraryRoutes(
     itemLinks: bound(E.itemLinks, ({ body, caller }) =>
       refusing(() => linksOf(services, actorOf(store, caller), body.itemIds, store)),
     ),
+    recordDriveOpen: bound(E.recordDriveOpen, ({ params, caller }) =>
+      refusing(() => {
+        services.read.recordOpen(actorOf(store, caller), params.itemId, store.context.now());
+        return DONE_REPLY;
+      }),
+    ),
     searchDrive: bound(E.searchDrive, ({ body, caller }) =>
-      refusing(() => store.driveSearch.search(actorOf(store, caller), body, DRIVE_PAGE_SIZE)),
+      refusing(() => {
+        const actor = actorOf(store, caller);
+        return {
+          ...store.driveSearch.search(actor, body, DRIVE_PAGE_SIZE),
+          shortcuts: shortcutsForQuery({ store, context: store.context }, actor, body),
+        };
+      }),
     ),
     changeDrive: bound(E.changeDrive, ({ body, caller }) =>
       refusing(() => write.change(callerOf(store, caller), body)),

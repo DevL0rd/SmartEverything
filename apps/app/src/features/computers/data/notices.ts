@@ -1,9 +1,13 @@
 import { replaceEqualDeep, type QueryClient } from '@tanstack/react-query';
 import { noticeHandler, type NoticeOf } from '../../../store/notice-registry';
 import { background } from '@smarteverything/logging';
+import { receiveFilesNotice } from '../source/computer-notices';
 
 type ComputerNotice = NoticeOf<
-  'computer_ai_status' | 'computer_runtime_status' | 'computer_runtime_native'
+  | 'computer_ai_status'
+  | 'computer_runtime_status'
+  | 'computer_runtime_native'
+  | 'computer_files_changed'
 >;
 
 function receiveRuntimeNotice(
@@ -36,9 +40,18 @@ function receiveAiNotice(client: QueryClient, message: NoticeOf<'computer_ai_sta
 }
 
 export const COMPUTER_NOTICES = noticeHandler(
-  ['computer_ai_status', 'computer_runtime_status', 'computer_runtime_native'],
+  [
+    'computer_ai_status',
+    'computer_runtime_status',
+    'computer_runtime_native',
+    'computer_files_changed',
+  ],
   (message: ComputerNotice, { client }) => {
-    if (message.type === 'computer_runtime_status' || message.type === 'computer_runtime_native')
+    if (message.type === 'computer_files_changed') receiveFilesNotice(client, message);
+    else if (
+      message.type === 'computer_runtime_status' ||
+      message.type === 'computer_runtime_native'
+    )
       receiveRuntimeNotice(client, message);
     else receiveAiNotice(client, message);
   },

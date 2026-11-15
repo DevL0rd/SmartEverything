@@ -103,7 +103,7 @@ export const EXERCISE_BIKE_MODEL: ModelSpec = {
   title: 'Exercise bike',
   category: 'fitness',
   family: 'generic',
-  footprint: { width: 0.58, depth: 1.05, height: 1.02 },
+  footprint: { width: 0.56, depth: 1.067, height: 1.0175 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

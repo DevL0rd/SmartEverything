@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   AI_CHAT_ROW,
-  SCENE_ROW,
   type AiChatRow,
   type NavOpenTarget,
   type NavPinTarget,
@@ -26,11 +25,11 @@ vi.mock('./routes', () => ({
       href: '/fitness/sleep',
     },
     {
-      key: 'automations.scenes',
+      key: 'automations.runs',
       tab: 'automations',
-      title: 'Scenes',
-      icon: 'sparkles',
-      href: '/automations/scenes',
+      title: 'Runs',
+      icon: 'activity',
+      href: '/automations/runs',
     },
     {
       key: 'settings-appearance',
@@ -108,7 +107,6 @@ function stateOf(parts: {
   readonly device?: boolean;
   readonly room?: boolean;
   readonly chat?: number;
-  readonly scene?: boolean;
 }): StoreState {
   const base = emptyState();
   const single = <R extends { readonly id: string }>(row: R): Table<R> =>
@@ -123,19 +121,6 @@ function stateOf(parts: {
           : base.tables.devices,
       rooms: parts.room === true ? single(roomRow()) : base.tables.rooms,
       ai_chats: parts.chat === undefined ? base.tables.ai_chats : single(chatRow(parts.chat)),
-      scenes:
-        parts.scene === true
-          ? single(
-              SCENE_ROW.parse({
-                id: ID,
-                name: 'Movie',
-                icon: 'tv',
-                actions: [],
-                position: 0,
-                created_at: STAMP,
-              }),
-            )
-          : base.tables.scenes,
     },
   };
 }
@@ -211,11 +196,10 @@ describe('knowing the page a pin stands for', () => {
       [{ kind: 'camera', deviceId: ID }, `/cameras/${ID}`],
       [{ kind: 'room', roomId: ID }, `/rooms/${ID}/lights`],
       [{ kind: 'group', groupId: ID }, `/groups/${ID}`],
-      [{ kind: 'scene', sceneId: ID }, `/automations/scenes/${ID}`],
       [{ kind: 'automation', automationId: ID, focus: null }, `/automations/${ID}/runs`],
       [{ kind: 'chat', chatId: ID }, `/assistant/chat/${ID}`],
       [{ kind: 'page', path: 'fitness-sleep' }, '/fitness/sleep'],
-      [{ kind: 'page', path: 'automations.scenes' }, '/automations/scenes'],
+      [{ kind: 'page', path: 'automations.runs' }, '/automations/runs'],
       [
         { kind: 'setting', page: 'appearance/navigation', setting: null },
         '/settings/appearance/navigation',
@@ -232,7 +216,7 @@ describe('knowing the page a pin stands for', () => {
       '/cameras/events',
       '/groups/new',
       '/automations/runs',
-      '/automations/scenes',
+      '/automations/variables',
     ]) {
       expect(leafKeyOfPath(address)).toMatch(/^page:/u);
     }
@@ -253,7 +237,6 @@ describe('the pin a page offers', () => {
       [`/cameras/${ID}`, { kind: 'camera', deviceId: ID }],
       [`/rooms/${ID}/lights`, { kind: 'room', roomId: ID }],
       [`/groups/${ID}`, { kind: 'group', groupId: ID }],
-      [`/automations/scenes/${ID}`, { kind: 'scene', sceneId: ID }],
       [`/automations/${ID}/runs`, { kind: 'automation', automationId: ID, focus: null }],
     ];
     for (const [address, target] of pairs) {
@@ -266,9 +249,9 @@ describe('the pin a page offers', () => {
       kind: 'page',
       path: 'fitness-sleep',
     });
-    expect(pinTargetOfPath('/automations/scenes')).toStrictEqual({
+    expect(pinTargetOfPath('/automations/runs')).toStrictEqual({
       kind: 'page',
-      path: 'automations.scenes',
+      path: 'automations.runs',
     });
     expect(pinTargetOfPath('/plugins/garden/overview')).toStrictEqual({
       kind: 'page',
@@ -334,12 +317,11 @@ describe('what a pin shows', () => {
     });
   });
 
-  it('marks a removed room, group, scene, automation, chat and device as not found', () => {
+  it('marks a removed room, group, automation, chat and device as not found', () => {
     const state = stateOf({});
     const targets: NavOpenTarget[] = [
       { kind: 'room', roomId: ID },
       { kind: 'group', groupId: ID },
-      { kind: 'scene', sceneId: ID },
       { kind: 'automation', automationId: ID, focus: null },
       { kind: 'chat', chatId: ID },
       { kind: 'device', deviceId: ID, focus: null },
@@ -350,8 +332,8 @@ describe('what a pin shows', () => {
     }
   });
 
-  it('names a room, counts the unread messages of a chat and uses the icon of a scene', () => {
-    const state = stateOf({ room: true, chat: 3, scene: true });
+  it('names a room and counts the unread messages of a chat', () => {
+    const state = stateOf({ room: true, chat: 3 });
     expect(targetFactsOf({ kind: 'room', roomId: ID }, state)).toMatchObject({
       title: 'Living room',
       icon: 'grid',
@@ -359,10 +341,6 @@ describe('what a pin shows', () => {
     expect(targetFactsOf({ kind: 'chat', chatId: ID }, state)).toMatchObject({
       title: 'Dinner plan',
       count: 3,
-    });
-    expect(targetFactsOf({ kind: 'scene', sceneId: ID }, state)).toMatchObject({
-      title: 'Movie',
-      icon: 'tv',
     });
   });
 

@@ -6,6 +6,7 @@ import { useAreaWidth } from '../../../design/size-class';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { usePlannerDay, usePlannerItems, usePlannerOccurrences } from '../data';
+import { usePlannerProfile, useTaskRows } from '../data/assignment';
 import { usePlannerShownPerson } from '../frame/person';
 import { PlannerFrame } from '../frame/planner-frame';
 import { frameLayoutOf } from '../frame/sections';
@@ -53,10 +54,10 @@ interface PageState {
 function useShownEntries(): { readonly entries: readonly TaskEntry[]; readonly today: string } {
   const person = usePlannerShownPerson();
   const today = useMinuteOf(dayKeyOf);
-  const items = usePlannerItems(person);
-  const occurrences = usePlannerOccurrences(person);
+  const rows = useTaskRows(person, usePlannerItems(person), usePlannerOccurrences(person));
+  const me = usePlannerProfile(person);
   const day = usePlannerDay(person, today).data;
-  return { entries: taskEntriesOf({ items, occurrences, day }), today };
+  return { entries: taskEntriesOf({ ...rows, day, me }), today };
 }
 
 const VIEW_WORDS: Readonly<Record<Exclude<TaskView, 'habits' | 'board'>, string | null>> = {

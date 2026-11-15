@@ -67,7 +67,6 @@ const AVAILABILITY = {
   hasClimate: false,
   hasCameras: true,
   hasHealth: true,
-  hasScenes: false,
   hasEnergy: false,
   hasSecurity: false,
   hasIr: false,

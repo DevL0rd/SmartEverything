@@ -1,3 +1,5 @@
+import type { LocalFolder } from './folders';
+
 export type LocalMediaAccess = 'all' | 'limited' | 'none';
 
 export interface LocalMediaItem {
@@ -9,6 +11,7 @@ export interface LocalMediaItem {
   readonly height: number | null;
   readonly durationMs: number | null;
   readonly video: boolean;
+  readonly folder: LocalFolder | null;
 }
 
 export interface LocalMediaSource {

@@ -1,7 +1,8 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition, cubicBezier } from 'react-native-reanimated';
-import { DURATION, EASING, entering, exiting, useMotion } from '../design/motion';
+import { DURATION, EASING, entering, useMotion } from '../design/motion';
+import { useShownExit } from '../design/visibility';
 import { Icon } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
@@ -10,6 +11,8 @@ import type { Tone } from './tone';
 export const COLLAPSE_LAYOUT = LinearTransition.duration(DURATION.mediumOut).easing(
   EASING.standard,
 );
+
+const BODY_OUT = FadeOut.duration(DURATION.short);
 
 export function CollapseRoot({
   children,
@@ -37,10 +40,11 @@ export function CollapseBody({
   readonly className?: string;
 }): ReactNode {
   const motion = useMotion();
+  const exit = useShownExit(BODY_OUT);
   return (
     <Animated.View
       {...entering(motion, FadeIn.duration(DURATION.mediumOut).easing(EASING.standard))}
-      {...exiting(motion, FadeOut.duration(DURATION.short))}
+      {...exit}
       {...(className === undefined ? {} : { className })}
     >
       {children}
@@ -120,9 +124,8 @@ function DisclosureHeader({
         label={accessibleLabel}
         expanded={open}
         hint={hint}
-        hitSlop={10}
         onPress={onToggle}
-        className="min-h-6 flex-row items-center gap-1.5 self-start rounded-sm px-1"
+        className="min-h-touch-min flex-row items-center gap-1.5 self-start rounded-sm px-1"
         layerClassName="rounded-sm"
       >
         <TurnChevron open={open} />

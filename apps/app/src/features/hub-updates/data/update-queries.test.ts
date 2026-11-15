@@ -15,6 +15,9 @@ const RESTARTING: HubUpdateRecoveryStatus = {
     startedAt: '2026-11-06T00:00:00.000Z',
     updatedAt: '2026-11-06T00:00:00.000Z',
     finishedAt: null,
+    reason: null,
+    failedChecks: [],
+    backupKept: false,
   },
 };
 
@@ -75,6 +78,9 @@ const DONE: HubUpdateRecoveryStatus = {
     startedAt: '2026-11-06T00:00:00.000Z',
     updatedAt: '2026-11-06T00:00:01.000Z',
     finishedAt: '2026-11-06T00:00:01.000Z',
+    reason: null,
+    failedChecks: [],
+    backupKept: false,
   },
 };
 

@@ -1,7 +1,6 @@
 import {
   traceSubjectOf,
   type AutomationRunRecord,
-  type ProcessWindow,
   type RunNodeRecord,
   type TraceNodeState,
   type TraceRun,
@@ -9,7 +8,7 @@ import {
 } from '@smarteverything/domain';
 import type { LiveSinkParts } from '../automations/driver/live-sink';
 import { traceWatchSource } from '../automations/driver/live-sink';
-import type { Viewers } from '../metrics/viewers';
+import type { Viewers, DeviceDetail } from '../metrics/viewers';
 import type { AutomationRunNodesRepository } from '../store/repositories/automation-run-nodes';
 import type { AutomationRunRecordsRepository } from '../store/repositories/automation-run-records';
 import { StoreNotFoundError } from '../store/context';
@@ -20,7 +19,7 @@ export interface AutomationTraceWiringParts {
   readonly live: {
     readonly watches: Pick<LiveWatch<WatchConnection>, 'attachTrace' | 'publish'>;
   };
-  readonly viewers: Viewers<ProcessWindow>;
+  readonly viewers: Viewers<DeviceDetail>;
   readonly owners: TraceOwners;
   readonly store: TraceProfiles;
   readonly records: Pick<AutomationRunRecordsRepository, 'active' | 'byId'>;

@@ -46,11 +46,11 @@ import { TalkDesktop } from './talk/talk-desktop.js';
 import type { UpdateController } from './updates/update-controller.js';
 import { desktopUpdateFetch } from './updates/update-fetch.js';
 import {
-  confirmBootWhenLoaded,
   createDesktopUpdates,
   followHubNotices,
   followUpdates,
-  recoverDesktopBoot,
+  reviewDesktopBoot,
+  type DesktopBoot,
 } from './updates/update-shell.js';
 import { runShutdown, type ShutdownStep } from './shutdown.js';
 import { DesktopDriveLink } from './drive-mount/desktop-drive-link.js';
@@ -71,6 +71,7 @@ process.on('unhandledRejection', (cause: unknown) => {
 interface Updates {
   readonly updates: UpdateController;
   readonly web: WebUpdateShell;
+  readonly boot: DesktopBoot;
 }
 
 class DesktopShell {
@@ -171,7 +172,7 @@ class DesktopShell {
   }
 
   async launch(): Promise<void> {
-    if (await recoverDesktopBoot()) return;
+    const boot = await reviewDesktopBoot(() => this.#tray?.refresh());
     const platform = currentPlatform();
     const variant = this.#variant;
     const paths = desktopPaths();
@@ -210,13 +211,13 @@ class DesktopShell {
       network.onRouteReady,
     );
     startPlannerRings(service.controller, network);
-    this.#registerIpc(platform, service, { updates, web });
+    this.#registerIpc(platform, service, { updates, web, boot });
     this.#closeOverlayIpc = registerOverlayIpc(this.#overlay.controller, variant.startUrl);
     if (variant.managedBy === undefined) {
       startComputer(service.controller).catch(logControlFailure);
     }
     await this.#startAgent();
-    this.#open(paths, service, { updates, web }, network.capabilities);
+    this.#open(paths, service, { updates, web, boot }, network.capabilities);
   }
 
   #registerIpc(
@@ -278,7 +279,7 @@ class DesktopShell {
   #open(
     paths: ReturnType<typeof desktopPaths>,
     service: DesktopService,
-    { updates, web }: Updates,
+    { updates, web, boot }: Updates,
     capabilities: NativeHubCapabilities,
   ): void {
     const window = createMainWindow({
@@ -294,7 +295,7 @@ class DesktopShell {
       isQuitting: () => this.#quitting,
     });
     this.#window = window;
-    confirmBootWhenLoaded(window);
+    boot.confirmWhenLoaded(window);
     log.info('window.opened', {
       startHidden: process.argv.includes(HIDDEN_START_ARGUMENT) || wasOpenedAtLogin(),
     });
@@ -309,7 +310,7 @@ class DesktopShell {
         this.#talk.send(command);
       },
       overlayItems: () => this.#overlay.menuItems(),
-      updateItems: () => web.trayItems(updates),
+      updateItems: () => [...boot.trayItems(), ...web.trayItems(updates)],
       service: trayServiceOf(service.controller),
       drive: this.#drive.tray.commands,
       quit: () => {

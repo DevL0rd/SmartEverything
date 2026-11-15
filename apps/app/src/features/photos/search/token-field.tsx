@@ -9,7 +9,7 @@ import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { tokenIconOf, tokenKey, type SearchToken } from './tokens';
 
-export const SEARCH_HINT = "Search by place, date or what's in the photo";
+export const SEARCH_HINT = "Search by person, place, date or what's in the photo";
 
 export interface TokenFieldProps {
   readonly tokens: readonly SearchToken[];
@@ -71,8 +71,10 @@ function FieldInput({
   onSubmit,
   onKey,
   onFocus,
+  pointer,
 }: Pick<TokenFieldProps, 'tokens' | 'value' | 'inputRef' | 'onChange' | 'onSubmit' | 'onKey'> & {
   readonly onFocus: (focused: boolean) => void;
+  readonly pointer: boolean;
 }): ReactNode {
   return (
     <TextInput
@@ -97,8 +99,19 @@ function FieldInput({
       autoCorrect={false}
       placeholderTextColorClassName="accent-on-surface-variant"
       cursorColorClassName="accent-primary"
-      className="h-8 min-w-32 flex-1 font-sans text-body text-on-surface web:outline-none"
+      className={cn(
+        'min-w-32 flex-1 py-0 font-sans text-body text-on-surface web:outline-none',
+        pointer ? 'h-8' : 'h-11',
+      )}
     />
+  );
+}
+
+function frameClass(pointer: boolean, focused: boolean): string {
+  return cn(
+    'min-h-control-h flex-row items-center gap-2 rounded-md bg-surface-3 pl-3 pr-1',
+    pointer ? 'py-1.5' : 'py-0',
+    focused ? 'border-2 border-primary' : 'border-2 border-transparent',
   );
 }
 
@@ -118,13 +131,7 @@ export function TokenField({
   const [focused, setFocused] = useState(false);
   const filled = tokens.length > 0 || value !== '';
   return (
-    <View
-      accessibilityRole="search"
-      className={cn(
-        'min-h-control-h flex-row items-center gap-2 rounded-md bg-surface-3 py-1.5 pl-3 pr-1',
-        focused ? 'border-2 border-primary' : 'border-2 border-transparent',
-      )}
-    >
+    <View accessibilityRole="search" className={frameClass(pointer, focused)}>
       <Icon name="search" size={pointer ? 16 : 24} tone="variant" />
       <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-1.5">
         {tokens.map((token) => (
@@ -142,6 +149,7 @@ export function TokenField({
           onChange={onChange}
           onSubmit={onSubmit}
           onKey={onKey}
+          pointer={pointer}
           onFocus={(next) => {
             setFocused(next);
             if (next) onFocus();

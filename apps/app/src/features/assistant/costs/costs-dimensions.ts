@@ -80,6 +80,7 @@ const WORK_ICONS: Readonly<Record<UsageWork, IconName>> = {
   transcribe: 'list',
   embed: 'search',
   speak: 'speaker',
+  photos: 'image',
 };
 
 export function partTitle(part: UsagePart): string {

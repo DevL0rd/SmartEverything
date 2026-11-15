@@ -28,7 +28,7 @@ const FINISHES = Object.fromEntries(
 export const GAMING_CHAIR_MODEL: ModelSpec = officeItem({
   id: 'cat.office.gaming-chair',
   title: 'Gaming chair',
-  footprint: { width: 0.72, depth: 0.72, height: 1.3518 },
+  footprint: { width: 0.745, depth: 0.7277, height: 1.3518 },
   size: { height: { param: 'lift', extra: 0.8818, resizes: true } },
   meta: {
     names: {

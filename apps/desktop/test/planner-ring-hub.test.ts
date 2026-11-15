@@ -19,7 +19,7 @@ interface Seen {
 
 const servers: Server[] = [];
 
-function row(rangAt: string | null): unknown {
+function row(rangAt: string | null, changes: Record<string, unknown> = {}): unknown {
   return {
     id: RING,
     kind: 'alarm',
@@ -32,6 +32,7 @@ function row(rangAt: string | null): unknown {
     target: null,
     outcome: 'rang',
     missed_reason: null,
+    ...changes,
   };
 }
 
@@ -57,6 +58,11 @@ async function hubWith(
         };
         seen.push(entry);
         const { status, json } = answer(entry);
+        if (typeof json === 'string') {
+          response.writeHead(status, { 'content-type': 'audio/mpeg' });
+          response.end(json);
+          return;
+        }
         response.writeHead(status, { 'content-type': 'application/json' });
         response.end(JSON.stringify(json));
       })
@@ -84,7 +90,22 @@ const alarm: DesktopRing = {
   dueAt: DUE,
   label: null,
   rampSeconds: 0,
+  sound: { kind: 'tone', id: 'default' },
+  snoozeLimit: 3,
+  snoozes: 0,
+  challenge: { kind: 'none' },
 };
+
+const SONG = '2c1f0a52-6a7b-4a4a-9f0e-0d4a6b1c2e06';
+const NOW = new Date('2030-01-01T07:01:00.000Z');
+
+function link(path: string): unknown {
+  return { url: path, expiresAt: '2030-01-01T08:00:00.000Z' };
+}
+
+async function textOf(stream: ReadableStream<Uint8Array>): Promise<string> {
+  return new Response(stream).text();
+}
 
 afterEach(async () => {
   for (const server of servers.splice(0)) {
@@ -121,14 +142,63 @@ describe('desktop ring hub', () => {
     await expect(hub.snooze(alarm, DUE)).rejects.toBeInstanceOf(RingNotFoundError);
   });
 
-  it('snoozes and returns when the alarm will ring again', async () => {
+  it('snoozes and returns when the alarm will ring again and how often it was snoozed', async () => {
     const later = '2030-01-01T07:09:00.000Z';
     const { hub } = await hubWith(({ url }) =>
       url.startsWith('/api/planner/rings')
         ? { status: 200, json: [row(null)] }
-        : { status: 200, json: row(later) },
+        : { status: 200, json: row(later, { snoozes: 2 }) },
     );
-    await expect(hub.snooze(alarm, DUE)).resolves.toEqual({ until: later });
+    await expect(hub.snooze(alarm, DUE)).resolves.toEqual({ until: later, snoozes: 2 });
+  });
+
+  it('tells whether another device stopped or snoozed the ring', async () => {
+    const later = '2030-01-01T07:09:00.000Z';
+    const answers = [
+      row(null),
+      row(null, { dismissed_at: '2030-01-01T07:00:30.000Z' }),
+      row(later, { snoozes: 1 }),
+    ];
+    const { hub } = await hubWith(() => ({ status: 200, json: [answers.shift()] }));
+    await expect(hub.elsewhere(alarm, DUE, NOW)).resolves.toEqual({ kind: 'ringing' });
+    await expect(hub.elsewhere(alarm, DUE, NOW)).resolves.toEqual({ kind: 'dismissed' });
+    await expect(hub.elsewhere(alarm, DUE, NOW)).resolves.toEqual({
+      kind: 'snoozed',
+      until: later,
+      snoozes: 1,
+    });
+  });
+
+  it('downloads a sound file through its signed Drive link', async () => {
+    const file = `/media/drive/${SONG}/file?sig=abc`;
+    const { hub, seen } = await hubWith(({ url }) => {
+      if (url === '/api/drive/items/links') {
+        return {
+          status: 200,
+          json: [
+            {
+              itemId: SONG,
+              rev: 1,
+              file: link(file),
+              download: null,
+              icon: null,
+              thumb: null,
+              preview: null,
+              playable: null,
+            },
+          ],
+        };
+      }
+      return url === file ? { status: 200, json: 'song bytes' } : { status: 404, json: {} };
+    });
+    await expect(textOf(await hub.soundFile(SONG))).resolves.toBe('song bytes');
+    expect(JSON.parse(seen[0]?.body ?? '')).toEqual({ itemIds: [SONG] });
+    expect(seen[1]?.url).toBe(file);
+  });
+
+  it('refuses a sound file the Hub will not serve', async () => {
+    const { hub } = await hubWith(() => ({ status: 200, json: [] }));
+    await expect(hub.soundFile(SONG)).rejects.toThrow('the Hub sent no link');
   });
 
   it('reads the client id once and treats a stale acknowledgement as false', async () => {

@@ -13,6 +13,7 @@ describe('placement body', () => {
       target: TARGET,
       mode: 'synced',
       localPath: '/home/a/Projects',
+      mountName: null,
       sync: { excluded: ['Big'], ignorePatterns: ['*.tmp'], conflictCopies: false },
     });
     expect(body.excluded).toEqual(['Big']);
@@ -24,14 +25,16 @@ describe('placement body', () => {
       deviceId: DEVICE,
       target: { rootId: OTHER_ROOT_ID, folderItemId: null },
       mode: 'mounted',
-      localPath: '/mnt/d',
+      localPath: null,
+      mountName: 'Projects',
     });
     expect(body).toEqual({
       deviceId: DEVICE,
       rootId: OTHER_ROOT_ID,
       folderItemId: null,
       mode: 'mounted',
-      localPath: '/mnt/d',
+      localPath: null,
+      mountName: 'Projects',
       enabled: true,
     });
     expect(DRIVE_PLACEMENT_SET.safeParse(body).success).toBe(true);

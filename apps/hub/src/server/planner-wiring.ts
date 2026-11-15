@@ -1,10 +1,14 @@
 import { ApiError } from '@smarteverything/domain';
 import type { RunningExtension } from '../extensions';
+import type { OwnerAlerts } from '../extensions/owner-alerts';
 import type { WatchOutcome } from '../local/watch-actions';
+import { alertOf } from '../planner/sharing/notice-alerts';
 import { isWatchDevice } from '../planner/watch-projection';
 import type { PlannerChannels } from '../planner/runtime';
 import type { Core } from '../services';
 import type { ServerContext } from './context';
+import { collabOf, followCollab } from './planner-collab';
+import { plannerPublicRoutes } from './planner-public-routes';
 
 function refused(cause: unknown): WatchOutcome {
   if (cause instanceof ApiError) return { ok: false, reason: 'refused', detail: cause.message };
@@ -42,18 +46,27 @@ function profileOfWatch(context: ServerContext, deviceId: string): string | null
   }
 }
 
-function plannerChannels(context: ServerContext): PlannerChannels {
+function plannerChannels(
+  context: ServerContext,
+  alerts: Pick<OwnerAlerts, 'raise'>,
+): PlannerChannels {
   const { live } = context;
   return {
     phone: {
       send: async (clientId) => (await live.deliver(clientId, { type: 'planner_phone_rings' })) > 0,
+    },
+    bedtime: {
+      deliver: async (clientId, notice) => (await live.deliver(clientId, notice)) > 0,
+      push: (alert): void => {
+        alerts.raise(alert);
+      },
     },
     watch: { send: (deviceId, action) => sendToWatch(context, deviceId, action) },
     profileOfWatch: (deviceId) => profileOfWatch(context, deviceId),
   };
 }
 
-function forwardNotices(context: ServerContext): () => void {
+function forwardNotices(context: ServerContext, alerts: Pick<OwnerAlerts, 'raise'>): () => void {
   const { live, store } = context;
   return store.feed.subscribeNotices((notice) => {
     if (notice.type === 'planner_summary') {
@@ -61,6 +74,13 @@ function forwardNotices(context: ServerContext): () => void {
     } else if (notice.type === 'planner_ring') {
       const ring = store.plannerRings.find(notice.ringId);
       if (ring !== undefined) live.profileNotice(notice, ring.profile_id, 'everyone');
+    } else if (
+      notice.type === 'planner_invited' ||
+      notice.type === 'planner_rsvp' ||
+      notice.type === 'planner_assigned'
+    ) {
+      live.profileNotice(notice, notice.personId, 'everyone');
+      alerts.raise(alertOf(notice));
     }
   });
 }
@@ -68,13 +88,18 @@ function forwardNotices(context: ServerContext): () => void {
 export function startPlanner(
   core: Pick<Core, 'planner'>,
   context: ServerContext,
+  alerts: Pick<OwnerAlerts, 'raise'>,
+  now: () => Date,
 ): RunningExtension {
-  core.planner.start(plannerChannels(context));
-  const stopForwarding = forwardNotices(context);
+  core.planner.start(plannerChannels(context, alerts));
+  const stopForwarding = forwardNotices(context, alerts);
+  const collab = collabOf(context, now);
+  const stopCollab = followCollab(collab, context, alerts);
   return {
     endpoints: {},
-    routes: [],
+    routes: plannerPublicRoutes(collab),
     stop: (): Promise<void> => {
+      stopCollab();
       stopForwarding();
       core.planner.stop();
       return Promise.resolve();

@@ -131,7 +131,7 @@ export const GENERIC_TREADMILL_MODEL: ModelSpec = {
   title: 'Treadmill',
   category: 'fitness',
   family: 'treadmill',
-  footprint: { width: 0.74, depth: 1.62, height: 1.28 },
+  footprint: { width: 0.74, depth: 1.605, height: 1.2646 },
   framing: {
     tile: { ...HOUSE, padding: 0.06, focus: 'rearFrame' },
     card: { ...HOUSE, focus: 'rearFrame' },

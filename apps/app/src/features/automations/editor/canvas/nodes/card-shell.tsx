@@ -1,11 +1,4 @@
-import {
-  createContext,
-  use,
-  useState,
-  type CSSProperties,
-  type MouseEvent,
-  type ReactNode,
-} from 'react';
+import { use, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import type {
   GraphSceneNode,
   PinGroup,
@@ -18,6 +11,7 @@ import type { GraphNodeRun } from '../graph-context';
 import { ExecIn, ExecOut, ExecRow } from '../pins/exec-pin';
 import { ValueInRow, ValueOutRow } from '../pins/value-pin';
 import { PluginCardBadge } from './plugin-badge';
+import { FoldContext } from './fold-context';
 
 type AccentStyle = CSSProperties & Record<'--gc-accent', string>;
 
@@ -35,8 +29,6 @@ export function cardStyle(scene: GraphSceneNode): AccentStyle {
     width: scene.w,
   };
 }
-
-const FoldContext = createContext(false);
 
 export function moreOutputsText(hidden: number, open: boolean): string {
   if (open) return 'Fewer outputs';

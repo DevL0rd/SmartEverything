@@ -5,7 +5,7 @@ import { background, Logger } from '@smarteverything/logging';
 import { restoreDriveVersion } from '../../../api/drive';
 import { Button } from '../../../components/button';
 import { notify } from '../../../components/toast-store';
-import { openItemFile } from '../folder/folder-footer';
+import { downloadItem } from '../model/item-commands';
 import { downloadableOf, restorePlanOf, type VersionEntry } from './versions-model';
 
 const log = new Logger('app.drive');
@@ -89,7 +89,7 @@ export function RestoreButtons({
       size={size}
       grow={!pointer}
       onPress={() => {
-        openItemFile(item, true);
+        downloadItem(item);
       }}
     />
   ) : null;

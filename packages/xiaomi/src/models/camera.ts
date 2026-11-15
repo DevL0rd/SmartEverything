@@ -25,7 +25,7 @@ export const XIAOMI_CAMERA_083AE2_MODEL: ModelSpec = {
   title: 'Xiaomi camera 083ae2',
   category: 'security',
   family: 'camera',
-  footprint: { width: 0.08, depth: 0.08, height: 0.115 },
+  footprint: { width: 0.0812, depth: 0.0812, height: 0.115 },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

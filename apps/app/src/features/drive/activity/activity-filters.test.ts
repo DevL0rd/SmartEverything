@@ -44,6 +44,7 @@ function feedOf(seq: number, rootId: string, relPath: string): DriveActivityEntr
       deviceId: null,
     },
     item: { kind: 'document', name: relPath.split('/').at(-1), parentId: null, relPath },
+    outsiderName: null,
   });
 }
 

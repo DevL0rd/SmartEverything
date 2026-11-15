@@ -53,7 +53,7 @@ export const BIKE_RACK_MODEL: ModelSpec = catalogueModel({
   id: 'cat.outdoor.bike-rack',
   title: 'Bike rack',
   category: 'outdoor',
-  footprint: { width: 3, depth: 0.12, height: 0.87 },
+  footprint: { width: 3, depth: 0.12, height: 0.872 },
   view: { yaw: 25, pitch: 20, fov: 28, padding: 0.08 },
   meta: {
     names: {

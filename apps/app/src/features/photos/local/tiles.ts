@@ -9,6 +9,7 @@ import { useBackupHandle } from '../backup/handle';
 import type { BackupHandle } from '../backup/handle';
 import type { LedgerEntry } from '../backup/model/ledger';
 import { backupStatus } from '../backup/model/status';
+import { useHiddenFolderKeys, useShowAllFolders } from '../folders/data';
 import { localLibrary, localTilesOf } from './store';
 import type { LocalMediaItem } from './types';
 import { useLocalLibrary } from './use-local-library';
@@ -32,17 +33,38 @@ export function localMatches(item: LocalMediaItem, search: SourceSearch): boolea
   return (search.from === null || day >= search.from) && (search.to === null || day <= search.to);
 }
 
+export function shownLocalItems(
+  items: readonly LocalMediaItem[],
+  scope: LibraryScope,
+  hidden: ReadonlySet<string>,
+  all: boolean,
+): readonly LocalMediaItem[] {
+  const { folder } = scope;
+  if (folder !== undefined) return items.filter((item) => item.folder?.key === folder);
+  if (all || hidden.size === 0) return items;
+  return items.filter((item) => item.folder === null || !hidden.has(item.folder.key));
+}
+
 function searchOfScope(scope: LibraryScope): SourceSearch {
-  return { text: scope.text ?? null, from: scope.from ?? null, to: scope.to ?? null };
+  return {
+    text: scope.meaning ?? scope.text ?? null,
+    from: scope.from ?? null,
+    to: scope.to ?? null,
+  };
+}
+
+const HUB_ONLY_FIELDS = ['placeId', 'countryCode', 'camera', 'albumId', 'photoText'] as const;
+
+function noneOf(list: readonly unknown[] | undefined): boolean {
+  return list === undefined || list.length === 0;
 }
 
 function mergesLocal(scope: LibraryScope): boolean {
   return (
     (scope.filter === 'all' || scope.filter === 'videos') &&
-    scope.placeId === undefined &&
-    scope.countryCode === undefined &&
-    scope.camera === undefined &&
-    scope.albumId === undefined
+    HUB_ONLY_FIELDS.every((field) => scope[field] === undefined) &&
+    noneOf(scope.groupIds) &&
+    noneOf(scope.labels)
   );
 }
 
@@ -117,11 +139,13 @@ export function useLocalTiles(
   const library = useLocalLibrary();
   const uploaded = useLocalBackupEntries();
   const pref = usePref(PREFS.photos);
+  const hidden = useHiddenFolderKeys();
+  const all = useShowAllFolders();
   const shown = pref.status !== 'ready' || pref.value.showNotBackedUp;
   const videos = pref.status !== 'ready' || pref.value.showVideos;
   return useMemo(() => {
     const items = localItemsForScope(
-      library.items,
+      shownLocalItems(library.items, scope, hidden, all),
       scope,
       uploaded,
       new Set(hub.map((tile) => tile.id)),
@@ -131,17 +155,26 @@ export function useLocalTiles(
       (item) => (videos || !item.video) && (shown || backedUp.has(item.id)),
     );
     return localTilesOf(visible, backedUp);
-  }, [shown, videos, library.items, scope, uploaded, hub]);
+  }, [shown, videos, library.items, scope, uploaded, hub, hidden, all]);
 }
 
-export function useDeviceTiles(search: SourceSearch): readonly MediaTile[] {
+const ALL_LOCAL: LibraryScope = { filter: 'all' };
+
+export function useDeviceTiles(
+  search: SourceSearch,
+  scope: LibraryScope = ALL_LOCAL,
+): readonly MediaTile[] {
   const library = useLocalLibrary();
   const uploaded = useLocalBackupEntries();
+  const hidden = useHiddenFolderKeys();
+  const all = useShowAllFolders();
   return useMemo(() => {
     const backedUp = new Set(uploaded.map((entry) => entry.localId));
     return localTilesOf(
-      library.items.filter((item) => localMatches(item, search)),
+      shownLocalItems(library.items, scope, hidden, all).filter((item) =>
+        localMatches(item, search),
+      ),
       backedUp,
     );
-  }, [library.items, uploaded, search]);
+  }, [library.items, uploaded, search, scope, hidden, all]);
 }

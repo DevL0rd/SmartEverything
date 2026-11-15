@@ -13,6 +13,7 @@ import { DRIVE_SHARE } from '../../../../packages/domain/src/drive/share';
 import { DRIVE_TRASH_ENTRY } from '../../../../packages/domain/src/drive/trash';
 import { DRIVE_USAGE } from '../../../../packages/domain/src/drive/usage';
 import { DRIVE_VERSION } from '../../../../packages/domain/src/drive/version';
+import { isFileItem } from '../../src/drive/file-item';
 import { generateDriveFixture, type DriveFixture } from '../fixtures/drive-fixture';
 
 const SEED = 20261107;
@@ -114,7 +115,11 @@ function expectRelations(fixture: DriveFixture): void {
   expect(fixture.trash.every((entry) => !ids.has(entry.itemId))).toBe(true);
   expect(trashed.size).toBe(fixture.trash.length);
   expect(fixture.versions.every((version) => ids.has(version.itemId))).toBe(true);
-  expect(fixture.shares.every((share) => ids.has(share.itemId))).toBe(true);
+  expect(
+    fixture.shares.every((share) =>
+      share.itemId === null ? share.albumId !== null : ids.has(share.itemId),
+    ),
+  ).toBe(true);
   expect(fixture.albumItems.every((entry) => ids.has(entry.itemId))).toBe(true);
   for (const conflict of fixture.conflicts) {
     expect(ids.has(conflict.itemId)).toBe(true);
@@ -217,7 +222,7 @@ describe('drive fixture generator', () => {
     });
 
     it('carries corrupt, outside and unhashed items', () => {
-      const files = fixture.items.filter((item) => item.kind !== 'folder');
+      const files = fixture.items.filter(isFileItem);
       expect(files.some((item) => item.integrity === 'corrupt')).toBe(true);
       expect(files.some((item) => item.sha256 === null)).toBe(true);
       expect(fixture.items.some((item) => item.outside && item.addedByProfileId === null)).toBe(

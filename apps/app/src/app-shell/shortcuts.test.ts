@@ -113,8 +113,8 @@ describe('the spaces and the browser-reserved keys', () => {
   });
 
   it('names the reserved keys of each layout', () => {
-    expect(reservedKeys(true)).toBe('⌘⇧L, ⌘⇧D and ⌘L');
-    expect(reservedKeys(false)).toBe('Ctrl+Shift+L, Ctrl+Shift+D and Ctrl+L');
+    expect(reservedKeys(true)).toBe('⌘⇧L and ⌘L');
+    expect(reservedKeys(false)).toBe('Ctrl+Shift+L and Ctrl+L');
   });
 });
 

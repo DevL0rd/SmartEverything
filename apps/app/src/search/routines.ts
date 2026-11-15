@@ -3,18 +3,16 @@ import { automationRowsOf, routineEntryOf } from '../features/automations';
 import { rowsOf, type StoreState } from '../store/state';
 
 interface RoutineTables {
-  readonly scenes: StoreState['tables']['scenes'];
   readonly automations: StoreState['tables']['automations'];
 }
 
 export function routinesOf(
   tables: RoutineTables,
   kinds: NodeKindLookup,
-): Pick<SearchSources, 'scenes' | 'automations'> {
+): Pick<SearchSources, 'automations'> {
   const stored = rowsOf(tables.automations);
   const readable = new Map(automationRowsOf(stored, kinds).rows.map((row) => [row.id, row]));
   return {
-    scenes: rowsOf(tables.scenes).map((scene) => ({ id: scene.id, name: scene.name, path: '' })),
     automations: stored.map((automation) => {
       const row = readable.get(automation.id);
       return row === undefined

@@ -5,6 +5,7 @@ import {
   type ClientRow,
   type EndpointName,
 } from '@smarteverything/domain';
+import { inLockedFolder } from '../../../drive/access';
 import { effectiveClientById } from '../../../server/person-access';
 import { profileIdOf, roleOfCaller, type Caller } from '../../../server/auth';
 import type { OperationInput } from '../../../server/operations';
@@ -146,7 +147,17 @@ export function operate(
     throw new ToolError(`Only an owner may use ${name}`, 'forbidden');
   }
   admitArea(context, name);
+  refuseLocked(context, caller, input);
   return context.operations.run(name, caller, input);
+}
+
+function refuseLocked(context: OperatingContext, caller: Caller, input: OperationInput): void {
+  const itemId = input.params?.['itemId'];
+  if (itemId === undefined) return;
+  const item = context.store.driveItems.find(itemId, profileIdOf(context.store, caller));
+  if (item !== undefined && inLockedFolder(item)) {
+    throw new ToolError('There is no such file or folder for this caller.', 'not_found');
+  }
 }
 
 function admitArea(context: OperatingContext, name: EndpointName): void {

@@ -50,13 +50,6 @@ export const PLUGIN_PAGE: LeafRoute = {
   href: (params) =>
     `/(app)/(home)/plugins/${segment(params, 'pluginId')}/${segment(params, 'page')}`,
 };
-export const SCENE: LeafRoute = {
-  group: '(automations)',
-  route: 'scenes/[sceneId]',
-  keys: ['sceneId'],
-  nested: true,
-  href: (params) => `/(app)/(automations)/automations/scenes/${segment(params, 'sceneId')}`,
-};
 export const AUTOMATION: LeafRoute = {
   group: '(automations)',
   route: '[automationId]/index',
@@ -90,7 +83,6 @@ export const LEAF_ROUTES: readonly LeafRoute[] = [
   ROOM,
   GROUP,
   PLUGIN_PAGE,
-  SCENE,
   AUTOMATION,
   ...STATIC_PAGES.values(),
 ];

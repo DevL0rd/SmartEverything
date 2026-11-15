@@ -19,7 +19,7 @@ export type WatchContent = Pick<WatchAlarm, 'time' | 'days' | 'enabled' | 'smart
 
 export type WatchProjectable = Pick<
   PlannerAlarmRow,
-  'time' | 'days' | 'once_on' | 'skip_on' | 'enabled' | 'smart_minutes'
+  'time' | 'days' | 'once_on' | 'skip_on' | 'enabled' | 'smart_minutes' | 'challenge'
 >;
 
 export type Projection =
@@ -50,6 +50,12 @@ export function watchHash(content: WatchContent): string {
 }
 
 export function projectAlarm(alarm: WatchProjectable): Projection {
+  if (alarm.challenge.kind !== 'none') {
+    return {
+      representable: false,
+      reason: 'Has a dismiss challenge',
+    };
+  }
   if (alarm.once_on !== null) {
     return {
       representable: false,

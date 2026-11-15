@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { isFileItem } from '../../src/drive/file-item';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
@@ -10,6 +11,7 @@ import {
   driveEtag,
   type DriveItemDraft,
 } from '../../src/store/repositories/drive-items';
+import { DriveOpensRepository } from '../../src/store/repositories/drive-opens';
 import { DriveGrantsRepository } from '../../src/store/repositories/drive-grants';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { DriveStarsRepository, starredBy } from '../../src/store/repositories/drive-stars';
@@ -29,6 +31,7 @@ let database: DatabaseSync;
 let sql: Sql;
 let roots: DriveRootsRepository;
 let items: DriveItemsRepository;
+let opens: DriveOpensRepository;
 let stars: DriveStarsRepository;
 let grants: DriveGrantsRepository;
 let profile: string;
@@ -52,6 +55,7 @@ beforeEach(() => {
   migrate(sql, MIGRATIONS, NOW, log);
   roots = new DriveRootsRepository(context, drivePathOf);
   items = new DriveItemsRepository(context);
+  opens = new DriveOpensRepository(context);
   stars = new DriveStarsRepository(context);
   grants = new DriveGrantsRepository(context);
   const profiles = new ProfilesRepository(context);
@@ -197,14 +201,16 @@ describe('items', () => {
     expect(moved.item.rev).toBe(3);
   });
 
-  it('keeps the opened time and rev when an item is opened', () => {
+  it('shows each viewer their own opened time and keeps the rev when an item is opened', () => {
     items.write({ item: file(itemId(1), 'a.txt'), identity });
-    items.markOpened(itemId(1), LATER);
-    expect(items.byId(itemId(1), null).openedAt).toBe(LATER);
-    expect(items.byId(itemId(1), null).rev).toBe(1);
+    opens.record(profile, itemId(1), LATER);
+    expect(items.byId(itemId(1), profile).openedAt).toBe(LATER);
+    expect(items.byId(itemId(1), friend).openedAt).toBeNull();
+    expect(items.byId(itemId(1), null).openedAt).toBeNull();
+    expect(items.byId(itemId(1), profile).rev).toBe(1);
     const rewritten = items.write({ item: file(itemId(1), 'a.txt', { bytes: 11 }), identity });
-    expect(rewritten.item.openedAt).toBe(LATER);
     expect(rewritten.item.rev).toBe(2);
+    expect(items.byId(itemId(1), profile).openedAt).toBe(LATER);
   });
 
   it('round-trips media metadata and folders', () => {
@@ -227,7 +233,7 @@ describe('items', () => {
     const photo = items.byId(itemId(2), null);
     expect(photo.kind === 'image' && photo.camera?.make).toBe('Pixel');
     expect(photo.kind === 'image' && photo.place).toEqual({ lat: 1.5, lon: 2.5 });
-    expect(photo.kind !== 'folder' && photo.thumb).toEqual({ state: 'failed', reason: 'corrupt' });
+    expect(isFileItem(photo) && photo.thumb).toEqual({ state: 'failed', reason: 'corrupt' });
     items.write({
       item: {
         id: itemId(3),
@@ -374,25 +380,38 @@ describe('grants', () => {
   });
 
   it('upserts one grant per item and person and emits only real changes', () => {
-    const view = grants.set({ itemId: itemId(1), profileId: friend, role: 'view' }, profile);
+    const view = grants.set(
+      { itemId: itemId(1), profileId: friend, role: 'view', expiresAt: null },
+      profile,
+    );
     expect(view).toMatchObject({
       itemId: itemId(1),
       profileId: friend,
       role: 'view',
       grantedBy: profile,
     });
-    const same = grants.set({ itemId: itemId(1), profileId: friend, role: 'view' }, profile);
+    const same = grants.set(
+      { itemId: itemId(1), profileId: friend, role: 'view', expiresAt: null },
+      profile,
+    );
     expect(same.id).toBe(view.id);
-    const edit = grants.set({ itemId: itemId(1), profileId: friend, role: 'edit' }, profile);
+    const edit = grants.set(
+      { itemId: itemId(1), profileId: friend, role: 'edit', expiresAt: null },
+      profile,
+    );
     expect(edit.id).toBe(view.id);
     expect(edit.role).toBe('edit');
-    expect(changes.map((change) => change.operation)).toEqual(['INSERT', 'UPDATE']);
+    expect(changes.map((change) => [change.table, change.operation])).toEqual([
+      ['drive_grants', 'INSERT'],
+      ['drive_roots', 'UPDATE'],
+      ['drive_grants', 'UPDATE'],
+    ]);
     expect(grants.forItem(itemId(1))).toHaveLength(1);
     expect(grants.forPerson(itemId(1), friend)?.role).toBe('edit');
   });
 
   it('lists the grants an item has, a person received and a person made', () => {
-    grants.set({ itemId: itemId(1), profileId: friend, role: 'view' }, profile);
+    grants.set({ itemId: itemId(1), profileId: friend, role: 'view', expiresAt: null }, profile);
     expect(grants.receivedBy(friend).map((grant) => grant.itemId)).toEqual([itemId(1)]);
     expect(grants.receivedBy(profile)).toEqual([]);
     expect(grants.madeBy(profile).map((grant) => grant.profileId)).toEqual([friend]);
@@ -400,7 +419,10 @@ describe('grants', () => {
   });
 
   it('removes a grant and emits a delete with the old row', () => {
-    const grant = grants.set({ itemId: itemId(1), profileId: friend, role: 'view' }, profile);
+    const grant = grants.set(
+      { itemId: itemId(1), profileId: friend, role: 'view', expiresAt: null },
+      profile,
+    );
     grants.remove(grant.id);
     expect(grants.find(grant.id)).toBeUndefined();
     expect(changes.at(-1)).toMatchObject({ table: 'drive_grants', operation: 'DELETE' });
@@ -411,9 +433,9 @@ describe('grants', () => {
 
   it('refuses a grant to oneself and drops the grants of an item that is gone for good', () => {
     expect(() =>
-      grants.set({ itemId: itemId(1), profileId: profile, role: 'view' }, profile),
+      grants.set({ itemId: itemId(1), profileId: profile, role: 'view', expiresAt: null }, profile),
     ).toThrow();
-    grants.set({ itemId: itemId(1), profileId: friend, role: 'view' }, profile);
+    grants.set({ itemId: itemId(1), profileId: friend, role: 'view', expiresAt: null }, profile);
     items.remove(itemId(1));
     grants.sweepOrphans();
     expect(grants.receivedBy(friend)).toEqual([]);
@@ -421,7 +443,10 @@ describe('grants', () => {
 
   it('marks an item shared by an active grant or an active link only', () => {
     expect(items.byId(itemId(1), profile).shared).toBe(false);
-    const grant = grants.set({ itemId: itemId(1), profileId: friend, role: 'view' }, profile);
+    const grant = grants.set(
+      { itemId: itemId(1), profileId: friend, role: 'view', expiresAt: null },
+      profile,
+    );
     expect(items.byId(itemId(1), profile).shared).toBe(true);
     grants.remove(grant.id);
     expect(items.byId(itemId(1), profile).shared).toBe(false);

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, symlink, unlink, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import { ApiError, type ComputerNodeRow, type DriveItem } from '@smarteverything/domain';
@@ -148,6 +148,31 @@ afterEach(async () => {
   await opened.close();
 });
 
+describe('the Locked folder', () => {
+  const LOCKED_FILE = '0d000000-0000-4000-8000-0000000000f5';
+
+  async function lock(): Promise<void> {
+    await mkdir(join(opened.layout.person(memberProfile).drive, '.locked'), { recursive: true });
+    await writeFile(join(opened.layout.person(memberProfile).drive, '.locked', 'photo.txt'), BODY);
+    writeFileItem(LOCKED_FILE, MEMBER_ROOT, BODY.length, '.locked/photo.txt');
+  }
+
+  it('serves no bytes of a locked item by signed link or by node token', async () => {
+    await lock();
+    const link = links.driveFile(LOCKED_FILE, 1);
+    expect((await fetch(pathOf(link.url))).status).toBe(404);
+    const response = await fetch(`${base}/media/drive/${LOCKED_FILE}/file`, {
+      headers: { authorization: `Bearer ${MEMBER_TOKEN}` },
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it('mints no link for a locked item', async () => {
+    await lock();
+    expect(() => driveFileLink(files, { profileId: memberProfile }, LOCKED_FILE)).toThrow(ApiError);
+  });
+});
+
 describe('signed driveFile links', () => {
   it('serves the bytes with the rev in the signed link', async () => {
     const link = links.driveFile(MEMBER_FILE, 1);
@@ -286,5 +311,54 @@ describe('driveFile with a computer node token', () => {
     const signed = pathOf(links.driveFile(MEMBER_FILE, 1).url);
     const response = await fetch(signed, { headers: bearer('revoked-node') });
     expect(response.status).toBe(401);
+  });
+});
+
+describe('links on the disk', () => {
+  const LINK = '0d000000-0000-4000-8000-0000000000f5';
+
+  function writeLinkItem(): void {
+    opened.store.driveItems.write({
+      item: {
+        id: LINK,
+        rootId: MEMBER_ROOT,
+        parentId: null,
+        relPath: 'shortcut',
+        name: 'shortcut',
+        kind: 'link',
+        bytes: 6,
+        linkTarget: 'secret',
+        modifiedAt: STAMP,
+        addedAt: STAMP,
+        starred: false,
+        shared: false,
+        outside: false,
+        remoteId: null,
+        remoteRev: null,
+        addedByProfileId: null,
+      },
+      identity: { dev: '1', ino: '77' },
+    });
+  }
+
+  it('is never signed or served as a file', async () => {
+    writeLinkItem();
+    expect(() => driveFileLink(files, { profileId: memberProfile }, LINK)).toThrow(
+      /never follows links/u,
+    );
+    const response = await fetch(`${base}/media/drive/${LINK}/file`, {
+      headers: { authorization: `Bearer ${MEMBER_TOKEN}` },
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it('is not followed when the disk object of a file was replaced by a link', async () => {
+    const member = opened.layout.person(memberProfile).drive;
+    const other = opened.layout.person(otherProfile).drive;
+    await unlink(join(member, 'note.txt'));
+    await symlink(join(other, 'note.txt'), join(member, 'note.txt'));
+    const response = await fetch(pathOf(links.driveFile(MEMBER_FILE, 1).url));
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('private to Ida');
   });
 });

@@ -15,6 +15,7 @@ import {
   type ViewCamera,
 } from '../../../components/models/three/framing';
 import type { StageTheme } from '../../../components/models/three/stage';
+import { ProgramPins, type ProgramInfo } from '../../../components/house-map/3d/render-core-cost';
 import { inspectPose, type LiveInspect } from './inspect';
 import { createInstanceGroups, type InstanceGroup, type InstanceGroups } from './instancing';
 import { createModelCache, type LiveModelKey, type ModelCache } from './model-cache';
@@ -28,6 +29,7 @@ export type LiveGl = Pick<
   'setPixelRatio' | 'setSize' | 'setScissorTest' | 'setScissor' | 'setViewport' | 'clear'
 > & {
   autoClear: boolean;
+  readonly info: ProgramInfo;
   readonly render: (scene: Scene, camera: Camera) => void;
 };
 
@@ -160,7 +162,9 @@ class RendererCore implements LiveRenderer {
   private readonly views = new Map<string, ViewEntry>();
   private surface: Surface = { width: 0, height: 0, dpr: 1 };
   private applied: Surface | null = null;
-  private resized = false;
+  private unmeasured = false;
+  private blank = false;
+  private readonly pins = new ProgramPins();
   private scale = 1;
   private quality: QualityState = initialQuality();
   private serial = 0;
@@ -196,6 +200,8 @@ class RendererCore implements LiveRenderer {
     const { gl, surface } = this;
     this.serial += 1;
     this.applyScale();
+    if (this.views.size === 0) return this.blankOnce();
+    this.blank = false;
     gl.setScissorTest(false);
     gl.clear();
     gl.setScissorTest(true);
@@ -210,12 +216,13 @@ class RendererCore implements LiveRenderer {
       moving = moving || result;
     }
     gl.setScissorTest(false);
+    if (this.pins.keep(gl.info)) this.unmeasured = true;
     return { moving, drawn };
   };
 
   readonly recordFrame = (frameMs: number): boolean => {
-    if (this.resized) {
-      this.resized = false;
+    if (this.unmeasured) {
+      this.unmeasured = false;
       return false;
     }
     const before = this.quality.level;
@@ -260,13 +267,24 @@ class RendererCore implements LiveRenderer {
     this.cache.dispose();
   };
 
+  private blankOnce(): LiveDraw {
+    if (!this.blank) {
+      this.blank = true;
+      this.gl.setScissorTest(false);
+      this.gl.clear();
+    }
+    return { moving: false, drawn: [] };
+  }
+
   private applyScale(): void {
-    const { width, height } = this.surface;
-    const dpr = this.surface.dpr * this.scale;
+    const idle = this.views.size === 0;
+    const width = idle ? 1 : this.surface.width;
+    const height = idle ? 1 : this.surface.height;
+    const dpr = idle ? 1 : this.surface.dpr * this.scale;
     const { applied } = this;
     if (applied?.width === width && applied.height === height && applied.dpr === dpr) return;
     this.applied = { width, height, dpr };
-    this.resized = true;
+    this.unmeasured = true;
     this.gl.setPixelRatio(dpr);
     this.gl.setSize(width, height, false);
   }

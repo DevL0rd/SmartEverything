@@ -34,7 +34,7 @@ export const COMMAND_INPUT = z.strictObject({
   device_id: ID.nullable(),
   capability: z.string().min(1).max(120),
   value: JSON_VALUE,
-  source: z.enum(['app', 'automation', 'scene']).default('app'),
+  source: z.enum(['app', 'automation']).default('app'),
   effect_policy: z.enum(['keep', 'cancel']).optional(),
 });
 

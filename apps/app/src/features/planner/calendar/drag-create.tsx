@@ -12,7 +12,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { SPRING, useMotion } from '../../../design/motion';
 import { clockOfMinutes } from '../../../format/time';
-import { eventFill } from './event-block';
+import { eventFill } from './event-look';
 import {
   SNAP_MINUTES,
   dragActivation,
@@ -159,7 +159,7 @@ function DraftBlock({
           className={cn(
             'flex-1 overflow-hidden rounded-sm',
             touch ? 'px-1.5 py-1' : 'px-2 py-1',
-            eventFill(null, true),
+            eventFill(null, true, 'plain'),
           )}
         >
           <Text variant="caption" numberOfLines={1}>

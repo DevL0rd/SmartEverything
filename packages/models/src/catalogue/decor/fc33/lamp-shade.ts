@@ -25,7 +25,7 @@ const LEVEL = 0.29;
 export const LAMP_SHADE_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.lamp-shade',
   title: 'Table lamp shade',
-  footprint: { width: 0.4, depth: 0.4, height: 0.58 },
+  footprint: { width: 0.38, depth: 0.38, height: 0.567 },
   meta: {
     names: {
       display: 'Table lamp shade',

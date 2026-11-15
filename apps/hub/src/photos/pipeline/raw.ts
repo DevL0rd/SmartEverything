@@ -3,6 +3,7 @@ import { extname } from 'node:path';
 import sharp, { type Sharp } from 'sharp';
 import { DERIVED_LONG_EDGE } from './derived-paths';
 import type { DecodeOutcome, PreviewDecoder, PreviewFile } from './preview';
+import { UNLIMITED_PIXELS } from '../../media/sharp-input';
 
 export interface RangeReader {
   readonly size: number;
@@ -343,7 +344,7 @@ export async function renderRawPreview(
   jpeg: Buffer,
   rawOrientation: number | null,
 ): Promise<{ readonly data: Uint8Array; readonly width: number; readonly height: number }> {
-  const image = sharp(jpeg);
+  const image = sharp(jpeg, UNLIMITED_PIXELS);
   const { orientation } = await image.metadata();
   const upright =
     orientation === undefined || orientation === 1

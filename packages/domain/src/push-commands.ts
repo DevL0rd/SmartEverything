@@ -12,6 +12,7 @@ export const PUSH_COMMANDS = [
   'ai_speech',
   'ai_ring',
   'ai_ring_cancel',
+  'drive_offline_changed',
 ] as const;
 
 export type PushCommand = (typeof PUSH_COMMANDS)[number];
@@ -26,6 +27,8 @@ export const PUSH_ACTION_ANSWER_SECONDS = 25;
 
 const PUSH_CANCEL_TTL_SECONDS = 60;
 
+const DRIVE_OFFLINE_CHANGED_TTL_SECONDS = 28 * 24 * 60 * 60;
+
 export const MACHINE_APPROVAL_SECONDS = 60;
 
 export const PUSH_COMMAND_TTL_SECONDS: Readonly<Record<PushCommand, number>> = {
@@ -39,6 +42,7 @@ export const PUSH_COMMAND_TTL_SECONDS: Readonly<Record<PushCommand, number>> = {
   ai_speech: AI_SPEECH_FETCH_SECONDS,
   ai_ring: OUTREACH_RING_SECONDS,
   ai_ring_cancel: PUSH_CANCEL_TTL_SECONDS,
+  drive_offline_changed: DRIVE_OFFLINE_CHANGED_TTL_SECONDS,
 };
 
 export const PUSH_COMMANDS_OVER_LIVE: readonly PushCommand[] = [
@@ -49,4 +53,5 @@ export const PUSH_COMMANDS_OVER_LIVE: readonly PushCommand[] = [
   'treadmill_action',
   'bottle_action',
   'toothbrush_action',
+  'drive_offline_changed',
 ];

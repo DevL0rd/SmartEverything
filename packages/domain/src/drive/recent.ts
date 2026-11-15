@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DRIVE_VIA } from './feed';
 import { DRIVE_ITEM } from './item';
+import { DRIVE_SHORTCUT } from './shortcut';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
@@ -31,6 +32,14 @@ export const DRIVE_RECENT_ENTRY = z
     z.strictObject({ kind: z.literal('opened'), item: DRIVE_ITEM, at: MOMENT }),
     z.strictObject({ kind: z.literal('added'), ...WRITTEN }),
     z.strictObject({ kind: z.literal('changed'), ...WRITTEN }),
+    z.strictObject({
+      kind: z.literal('shortcut'),
+      shortcut: DRIVE_SHORTCUT,
+      at: MOMENT,
+      actorProfileId: ID.nullable(),
+      via: z.enum(DRIVE_VIA),
+      deviceId: ID.nullable(),
+    }),
   ])
   .readonly();
 

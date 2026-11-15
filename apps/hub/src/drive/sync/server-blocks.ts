@@ -14,6 +14,7 @@ import { sendError } from '../../server/http';
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
 import { hashHandle } from '../blocks';
 import { canRead, itemAccess } from '../access';
+import { requireExport } from '../sharing/export-guard';
 import { DriveWriteError, locate, type DriveWriteRoot } from '../intents';
 import { openResolved, resolveInRoot } from '../paths';
 import { blocksHashOf } from './server-index';
@@ -332,9 +333,11 @@ export class SyncBlockRoutes {
     if (drive === undefined || found?.rootId !== drive.id) {
       throw new ApiError('not_found', 'There is no such file for this person.');
     }
-    if (!canRead(itemAccess(this.env.store, node.actor, drive, found))) {
+    const access = itemAccess(this.env.store, node.actor, drive, found);
+    if (!canRead(access)) {
       throw new ApiError('not_found', 'There is no such file for this person.');
     }
+    requireExport(access, found);
     const item = fileOf(found);
     if (item === null) throw new ApiError('invalid_request', 'A folder has no blocks.');
     return { root: drive, item };

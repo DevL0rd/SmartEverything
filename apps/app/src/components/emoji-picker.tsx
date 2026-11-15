@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Text as Glyph, useWindowDimensions, View, type LayoutRectangle } from 'react-native';
+import { Text as Glyph, View, type LayoutRectangle } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import type { EmojiChoice } from '@smarteverything/domain';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { cn } from '../design/cn';
@@ -188,7 +189,7 @@ function usePickerPage(): {
   readonly count: number;
 } {
   const state = usePicker();
-  const viewport = useWindowDimensions();
+  const viewport = useWindowSize();
   const insets = useSafeAreaInsets();
   const pointer = useIdiom() === 'pointer';
   const [controls, setControls] = useState<Pick<LayoutRectangle, 'width' | 'height'>>(NO_LAYOUT);

@@ -7,7 +7,7 @@ import {
   monthToken,
   type DateContext,
 } from './dates';
-import { cameraLabelOf, suggestionsOf, type SearchSources } from './suggest';
+import { cameraLabelOf, NO_SMART_HITS, suggestionsOf, type SearchSources } from './suggest';
 import { tryChipsOf } from './try-chips';
 
 const DATES: DateContext = {
@@ -67,7 +67,7 @@ const SOURCES: SearchSources = {
 
 describe('photo search suggestions', () => {
   it('suggests places, albums and cameras with their counts', () => {
-    const groups = suggestionsOf('si', SOURCES, []);
+    const groups = suggestionsOf('si', SOURCES, [], NO_SMART_HITS);
     expect(groups.map((group) => group.id)).toStrictEqual(['places', 'albums']);
     expect(groups[0]?.items.map((item) => [item.token.label, item.count])).toStrictEqual([
       ['Sintra, Portugal', 204],
@@ -78,14 +78,16 @@ describe('photo search suggestions', () => {
 
   it('matches without accents or case and leaves out tokens already chosen', () => {
     const country = { kind: 'country' as const, countryCode: 'PT', label: 'Portugal' };
-    expect(suggestionsOf('PÓRT', SOURCES, [])[0]?.items[0]?.token).toStrictEqual(country);
-    expect(suggestionsOf('port', SOURCES, [country])).toStrictEqual([]);
+    expect(suggestionsOf('PÓRT', SOURCES, [], NO_SMART_HITS)[0]?.items[0]?.token).toStrictEqual(
+      country,
+    );
+    expect(suggestionsOf('port', SOURCES, [country], NO_SMART_HITS)).toStrictEqual([]);
   });
 
   it('suggests kinds and favourites only when the library has them', () => {
     const none = { ...SOURCES, videos: 0 };
-    expect(suggestionsOf('vid', SOURCES, [])[0]?.items[0]?.count).toBe(80);
-    expect(suggestionsOf('vid', none, [])).toStrictEqual([]);
+    expect(suggestionsOf('vid', SOURCES, [], NO_SMART_HITS)[0]?.items[0]?.count).toBe(80);
+    expect(suggestionsOf('vid', none, [], NO_SMART_HITS)).toStrictEqual([]);
   });
 
   it('names cameras once even when the model repeats the maker', () => {

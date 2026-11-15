@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
 import { Grid, useGridLayout } from '../../../components/grid';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { refreshWeather } from '../../../api/weather';
 import { useMinute } from '../../../store/clock';
@@ -120,7 +120,7 @@ function Forecast({ view }: { readonly view: Ready }): ReactNode {
   );
 }
 
-function useRefreshAction(view: WeatherView): HeaderAction[] {
+function useRefreshAction(view: WeatherView): ShellAction[] {
   const refresh = useMutationState();
   if (view.kind !== 'ready' && view.kind !== 'failed') {
     return [];
@@ -141,7 +141,7 @@ export function WeatherScreen(): ReactNode {
   const actions = useRefreshAction(view);
   const place = useSettings().home_name;
   return (
-    <Screen header={<PageHeader title="Weather" subtitle={place} wrapSubtitle actions={actions} />}>
+    <PageShell title="Weather" subtitle={place} actions={actions}>
       {view.kind === 'ready' ? (
         <Forecast view={view} />
       ) : (
@@ -149,6 +149,6 @@ export function WeatherScreen(): ReactNode {
           <WeatherNotice view={view} />
         </Card>
       )}
-    </Screen>
+    </PageShell>
   );
 }

@@ -213,6 +213,7 @@ export const GLYPHS = {
   chooser: ChevronsUpDownGlyph,
   plus: PlusGlyph,
   smile: SmileGlyph,
+  heart: HeartGlyph,
   minus: MinusGlyph,
   grid: LayoutGridGlyph,
   activity: ActivityGlyph,

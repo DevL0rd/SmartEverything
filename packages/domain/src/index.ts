@@ -36,8 +36,8 @@ export * from './sun';
 
 export { MissingLocationError, TIME_ZONE, nextOccurrence } from './automations';
 export type { Place, TimedTrigger } from './automations';
-export { COMMAND_ACTION, LEGACY_ACTION, SCENE_ACTIONS } from './scene-actions';
-export type { CommandAction, LegacyAction } from './scene-actions';
+export { COMMAND_ACTION, STEP_ACTION, STEP_ACTION_KINDS, STEP_ACTION_NODE } from './step-actions';
+export type { CommandAction, StepAction } from './step-actions';
 
 export * from './comparison';
 
@@ -134,7 +134,6 @@ export type {
   SearchIrRemote,
   SearchPage,
   SearchRoom,
-  SearchScene,
   SearchSetting,
   SearchSources,
   SearchTarget,
@@ -280,7 +279,11 @@ export * from './reach';
 export * from './claude-contracts';
 export * from './chat-widgets';
 export * from './chat-action-file';
+export * from './self-update-input';
 export * from './self-update';
+export * from './release-sources';
+export * from './build-source-settings';
+export * from './release-bundle';
 export * from './repair-work-claim';
 export * from './chat-file-send';
 export * from './hub-update-source';
@@ -397,8 +400,6 @@ export * from './home-map-set';
 export * from './home-map-diff';
 export * from './home-map-scan';
 export * from './api/endpoints-home-map-scan';
-export * from './api/endpoints-drive';
-export * from './api/endpoints-drive-storage';
 export * from './api/endpoints-photos';
 export * from './drive/index';
 export * from './photos/index';
@@ -409,9 +410,8 @@ export * from './ai-deepseek';
 export * from './planner/index';
 export * from './google-accounts';
 export * from './api/endpoints-google';
-export * from './api/endpoints-planner';
-export * from './api/endpoints-planner-items';
-export * from './api/endpoints-planner-clock';
+export * from './api/endpoints-mail';
+export * from './mail';
 export * from './computer-service';
 
 export * from './desktop-photos';

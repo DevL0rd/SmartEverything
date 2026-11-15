@@ -97,6 +97,7 @@ describe('backup cycle planning', () => {
     expect(t.upload.started).toEqual([]);
     expect(ledger.lastSeen).toBe(0);
     expect(t.storage.values.size).toBe(0);
+    expect(t.ledgerFile.text).toBeNull();
   });
 
   it('plans a repeated media identity only once across scan pages', async () => {

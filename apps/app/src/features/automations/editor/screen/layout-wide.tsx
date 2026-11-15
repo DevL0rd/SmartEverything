@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
 export interface LayoutWideProps {
-  readonly top: ReactNode;
   readonly sentence: ReactNode;
   readonly banner: ReactNode;
   readonly left: ReactNode;
@@ -12,7 +11,6 @@ export interface LayoutWideProps {
 }
 
 export function LayoutWide({
-  top,
   sentence,
   banner,
   left,
@@ -21,8 +19,7 @@ export function LayoutWide({
   right,
 }: LayoutWideProps): ReactNode {
   return (
-    <View className="min-h-0 flex-1 bg-surface-1 pt-safe">
-      {top}
+    <View className="min-h-0 flex-1 bg-surface-1">
       {sentence}
       {banner}
       <View className="min-h-0 flex-1 flex-row">

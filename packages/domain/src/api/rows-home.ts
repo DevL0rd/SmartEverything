@@ -200,7 +200,7 @@ export const HISTORY_ROW = STATE_ROW.extend({ id: z.int().positive() });
 
 export type HistoryRow = z.infer<typeof HISTORY_ROW>;
 
-export const COMMAND_SOURCES = ['app', 'automation', 'scene', 'assistant'] as const;
+export const COMMAND_SOURCES = ['app', 'automation', 'assistant'] as const;
 
 export const COMMAND_SOURCE = z.enum(COMMAND_SOURCES);
 

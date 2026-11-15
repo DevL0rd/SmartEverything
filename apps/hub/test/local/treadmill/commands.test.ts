@@ -175,23 +175,23 @@ describe('starting the belt', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('lets automations and scenes start it like the owner once remote start is on', async () => {
+  it('lets automations start it like the owner once remote start is on', async () => {
     await setPolicy({ remoteStart: true });
     await run('belt_command', 'start', { source: 'automation', client: null });
-    await run('belt_command', 'resume', { source: 'scene', client: null });
+    await run('belt_command', 'resume', { source: 'automation', client: null });
     expect(sent).toHaveLength(2);
   });
 });
 
 describe('who a command is from', () => {
-  it('does not let a member pass as the owner by naming the automation or scene as the source', async () => {
+  it('does not let a member pass as the owner by naming the automation as the source', async () => {
     await setPolicy({ remoteStart: true });
     await expect(
       run('belt_command', 'start', { source: 'automation', client: rig.member }),
     ).rejects.toThrow('owner only');
-    await expect(run('belt_max_speed', 7, { source: 'scene', client: rig.member })).rejects.toThrow(
-      'only the owner',
-    );
+    await expect(
+      run('belt_max_speed', 7, { source: 'automation', client: rig.member }),
+    ).rejects.toThrow('only the owner');
     await expect(
       run('child_lock', true, { source: 'automation', client: rig.member }),
     ).rejects.toThrow('only the owner');

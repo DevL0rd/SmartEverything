@@ -1,4 +1,4 @@
-import type { PlannerCollectionRow, PlannerItemRow } from '@smarteverything/domain';
+import type { PlannerCollectionRow, PlannerItemRow, ProfileRow } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
@@ -10,6 +10,7 @@ import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { TextField } from '../../../components/text-field';
 import { TimeField } from '../../../components/time-field';
 import { duration } from '../../../format/time';
+import { AssigneeField } from './item-assignee';
 import {
   timeOfLocal,
   whenTextOf,
@@ -106,6 +107,8 @@ export interface ItemFieldsProps {
   readonly collections: readonly PlannerCollectionRow[];
   readonly today: FieldsToday;
   readonly personName: string;
+  readonly profiles: readonly ProfileRow[];
+  readonly me: string | null;
   readonly whenCaption: string | null;
   readonly reminderCaption: string | null;
   readonly disabled: boolean;
@@ -298,12 +301,16 @@ function RepeatField({ item, disabled, onChange }: ItemFieldsProps): ReactNode {
   );
 }
 
-function CollectionField({ item, collections, disabled, onChange }: ItemFieldsProps): ReactNode {
+function CollectionField(props: ItemFieldsProps): ReactNode {
+  const { item, collections, disabled, onChange } = props;
   const kind = item.kind === 'event' ? 'calendar' : 'list';
+  const title = kind === 'calendar' ? 'Calendar' : 'List';
+  if (!collections.some((row) => row.id === item.collection_id))
+    return <ValueRow wrapTitle title={title} icon="list" value={`${props.personName}’s ${kind}`} />;
   return (
     <SelectRow
       wrapTitle
-      title={kind === 'calendar' ? 'Calendar' : 'List'}
+      title={title}
       icon="list"
       options={collections
         .filter((row) => row.kind === kind)
@@ -361,6 +368,14 @@ function ReminderField({ item, disabled, reminderCaption, onChange }: ItemFields
   );
 }
 
+function OwnerRow({ item, me, personName }: ItemFieldsProps): ReactNode {
+  if (item.profile_id === me) {
+    return <ValueRow wrapTitle title="For" icon="user" value={personName} />;
+  }
+  if (item.kind === 'task') return null;
+  return <ValueRow wrapTitle title="Organiser" icon="user" value={personName} />;
+}
+
 export function ItemFields(props: ItemFieldsProps): ReactNode {
   return (
     <List>
@@ -371,7 +386,14 @@ export function ItemFields(props: ItemFieldsProps): ReactNode {
       <TagsRow {...props} />
       <EstimateField {...props} />
       <ReminderField {...props} />
-      <ValueRow wrapTitle title="For" icon="user" value={props.personName} />
+      <OwnerRow {...props} />
+      <AssigneeField
+        item={props.item}
+        profiles={props.profiles}
+        me={props.me}
+        disabled={props.disabled}
+        onChange={props.onChange}
+      />
     </List>
   );
 }

@@ -49,7 +49,6 @@ describe('home kinds', () => {
         'device.operation',
         'room.info',
         'group.members',
-        'scene.run',
         'timing.cooldown',
         'timing.hysteresis',
         'state.history',
@@ -65,7 +64,7 @@ describe('home kinds', () => {
 
   it('shows in the catalogue by group', () => {
     const registry = buildRegistry(ALL);
-    expect(nodeCatalogue(registry, { group: 'devices' })).toHaveLength(11);
+    expect(nodeCatalogue(registry, { group: 'devices' })).toHaveLength(10);
     expect(nodeCatalogue(registry, { group: 'state' }).map((entry) => entry.id)).toEqual([
       'state.history',
       'timing.cooldown',
@@ -95,11 +94,6 @@ describe('device kinds', () => {
       budget: 'command',
     });
     expect(kind('device.operation').effect).toEqual({ retry: 'external', budget: 'effects' });
-    expect(kind('scene.run').effect).toEqual({
-      retry: 'idempotent',
-      budget: 'command',
-      mode: 'fire_and_forget',
-    });
   });
 
   it('gives set_temporarily a body region that is never checkpointed', () => {

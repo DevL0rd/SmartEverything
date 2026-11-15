@@ -25,6 +25,7 @@ import {
 import { testStore, type TestStore } from '../support/store';
 
 const NOTICE_REQUEST = '3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73';
+const ACTION_REQUEST = '3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b74';
 const WEBP = Buffer.from('RIFF0000WEBPVP8 payload', 'latin1');
 const HASH = createHash('sha256').update(WEBP).digest('hex');
 
@@ -72,6 +73,7 @@ beforeEach(async () => {
         return Promise.resolve(outcome);
       },
       answer: (): void => undefined,
+      has: (requestId): boolean => requestId === ACTION_REQUEST,
     },
     approvals: { has: (): boolean => false, answer: (): void => undefined },
     notifications: {
@@ -220,6 +222,21 @@ describe('asking a phone to act', () => {
       testLogger(),
     );
     expect(shown).toEqual([NOTICE_REQUEST]);
+  });
+
+  it('says a receipt nobody waits for already finished, naming no broker', async () => {
+    await expect(
+      routes.answerPhoneAction.run(
+        caller(dana),
+        raw({
+          body: { requestId: '3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b75', ok: true, detail: 'Shown' },
+        }),
+        testLogger(),
+      ),
+    ).rejects.toMatchObject({
+      code: 'not_found',
+      message: 'This request already finished or was never sent.',
+    });
   });
 
   it('sends a file as its name, type and signed link, not the bare id', async () => {

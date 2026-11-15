@@ -217,7 +217,7 @@ function cabinetObjects(): ModelSpecPart[] {
 export const DISPLAY_CABINET_MODEL = furniture({
   id: 'cat.living.display-cabinet',
   title: 'Display cabinet',
-  footprint: { width: 0.92, depth: CABINET_DEPTH, height: 1.8 },
+  footprint: { width: 0.92, depth: 0.425, height: 1.8 },
   size: {
     width: { param: 'width', extra: 0.02, resizes: true },
     height: { param: 'height', extra: 0, resizes: true },

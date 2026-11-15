@@ -107,7 +107,6 @@ describe('This computer settings page', () => {
         hasClimate: false,
         hasCameras: false,
         hasHealth: false,
-        hasScenes: false,
         hasEnergy: false,
         hasSecurity: false,
         hasIr: false,

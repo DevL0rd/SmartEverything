@@ -15,6 +15,8 @@ const SETTINGS: DriveSettings = {
   membersMayShare: true,
   duplicatesHashing: true,
   indexingPaused: false,
+  contentIndexing: true,
+  ocrLanguages: ['eng'],
 };
 
 const seen = vi.hoisted((): Seen => ({ updates: [], saved: null }));
@@ -99,6 +101,15 @@ describe('indexing lines', () => {
         share: 0.75,
       },
     ]);
+  });
+
+  it('names the text reading phase', () => {
+    const lines = progressLinesOf(
+      { [MINE]: { text: { done: 1, total: 4 } } },
+      [personalRootRow(MINE, ME)],
+      ME,
+    );
+    expect(lines.map((line) => line.subtitle)).toEqual(['Reading text inside files · 1 of 4']);
   });
 
   it('says whether indexing is paused, idle or working', () => {

@@ -1,8 +1,9 @@
-import type { ComposerKind } from '../../planner/item/parse-preview';
+import type { ComposerKind } from '../../planner';
 import type { ClockSection } from '../model/section-routes';
 
 const CLOCK_SECTION_KIND: Readonly<Record<ClockSection, ComposerKind>> = {
   index: 'alarm',
+  bedtime: 'alarm',
   timers: 'timer',
   stopwatch: 'timer',
   world: 'alarm',

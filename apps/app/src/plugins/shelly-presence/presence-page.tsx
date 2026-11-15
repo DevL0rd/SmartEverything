@@ -1,5 +1,5 @@
 import { useCallback, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { HomeMapStageView } from '@smarteverything/domain';
 import { SHELLY_PAGES, type ShellyDevice, type ShellyPage } from '@smarteverything/shelly';
@@ -10,7 +10,7 @@ import { EmptyState } from '../../components/empty-state';
 import { visibilityRegistry } from '../../components/house-map/live-visibility/registry';
 import { Skeleton } from '../../components/skeleton';
 import { Text } from '../../components/text';
-import { useIsPhone } from '../../design/size-class';
+import { useIsPhone, useWindowSize } from '../../design/size-class';
 import { DeviceSettingsFrame } from '../../features/devices/device-settings/settings-frame';
 import { useHomeMap } from '../../features/home-map/data/home-map-query';
 import { NoMapEntry, mapIsBlank } from '../../features/home-map/components/stage/no-map-entry';
@@ -125,7 +125,7 @@ function PlacedSensorMap({
 }): ReactNode {
   const router = useRouter();
   const phone = useIsPhone();
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const { map } = useHomeMap();
   const views = useStageViews(SHELLY_STAGE_PAGE, heroViewFacts(map, true));
   const lights = useStageLights();

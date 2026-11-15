@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
 import { ListRow } from '../../../components/list-row';
-import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { joinParts, plural } from '../../../format/text';
@@ -26,8 +25,17 @@ export function LicencesScreen(): ReactNode {
   const search = useDeferredValue(query).trim();
   const shown = matchingLicences(search);
   return (
-    <SettingsFrame page="about/licences" scroll={false}>
-      <View className="w-full max-w-detail flex-1 self-start">
+    <SettingsFrame
+      page="about/licences"
+      scroll={false}
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: 'Search packages',
+        label: 'Search packages',
+      }}
+    >
+      <View className="-mx-gutter min-h-0 flex-1">
         <VirtualList
           sections={
             shown.length === 0
@@ -37,12 +45,9 @@ export function LicencesScreen(): ReactNode {
           keyOf={(entry) => `${entry.name}@${entry.version}`}
           renderItem={(entry) => <LicenceRow entry={entry} />}
           header={
-            <View className="gap-2 px-gutter pt-2">
-              <SearchField value={query} onChange={setQuery} placeholder="Search packages" />
-              <Text variant="footnote" tone="variant">
-                SmartEverything is built on these projects. Thank you.
-              </Text>
-            </View>
+            <Text variant="footnote" tone="variant" className="px-gutter pb-2">
+              SmartEverything is built on these projects. Thank you.
+            </Text>
           }
           empty={
             <Text

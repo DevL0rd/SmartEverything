@@ -7,22 +7,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/smarteverything/drive-mount/wire"
 )
 
 type fileState struct {
-	Root   mountRoot `json:"root"`
-	Path   string    `json:"path"`
-	Size   int64     `json:"size"`
-	Etag   string    `json:"etag"`
-	Block  int64     `json:"block"`
-	Pinned bool      `json:"pinned"`
-	Have   []byte    `json:"have"`
+	Root   string `json:"root"`
+	Ino    uint64 `json:"ino"`
+	Size   int64  `json:"size"`
+	Etag   string `json:"etag"`
+	Block  int64  `json:"block"`
+	Pinned bool   `json:"pinned"`
+	Have   []byte `json:"have"`
 }
 
 type loadedState struct {
@@ -31,16 +32,35 @@ type loadedState struct {
 	at  time.Time
 }
 
+type storedDir struct {
+	Order    []string          `json:"order"`
+	Names    map[string]uint64 `json:"names"`
+	Complete bool              `json:"complete"`
+}
+
+type storedInode struct {
+	Attr wire.Attr  `json:"attr"`
+	Link *string    `json:"link,omitempty"`
+	Dir  *storedDir `json:"dir,omitempty"`
+}
+
+type storedRoot struct {
+	Root      string                 `json:"root"`
+	Placement string                 `json:"placement"`
+	Ino       uint64                 `json:"ino"`
+	Inodes    map[uint64]storedInode `json:"inodes"`
+}
+
 func digest(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:16])
 }
 
-func fileKey(root mountRoot, filePath string, size int64, etag string) string {
-	return digest(root.RootID, root.FolderID, filePath, fmt.Sprint(size), etag)
+func fileKey(ino uint64, etag string, size int64) string {
+	return digest(strconv.FormatUint(ino, 10), etag, strconv.FormatInt(size, 10))
 }
 
-func writeJSON[T fileState | mountListings | journalRecord](target string, value T) error {
+func writeJSON[T any](target string, value T) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -52,7 +72,7 @@ func writeJSON[T fileState | mountListings | journalRecord](target string, value
 	return os.Rename(temp, target)
 }
 
-func readJSON[T fileState | mountListings | journalRecord](source string) (T, error) {
+func readJSON[T any](source string) (T, error) {
 	var value T
 	raw, err := os.ReadFile(source)
 	if err != nil {
@@ -92,89 +112,29 @@ func loadStates(dir string) ([]loadedState, error) {
 	return out, nil
 }
 
-type mountListings struct {
-	Root mountRoot          `json:"root"`
-	Dirs map[string][]entry `json:"dirs"`
-}
+func rootFile(dir, root string) string { return filepath.Join(dir, digest(root)+".json") }
 
-type listingStore struct {
-	dir    string
-	mu     sync.Mutex
-	mounts map[mountRoot]*mountListings
-	fresh  map[mountRoot]map[string]bool
-}
-
-func openListings(dir string) (*listingStore, error) {
+func loadRoots(dir string) ([]storedRoot, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	store := &listingStore{dir: dir, mounts: map[mountRoot]*mountListings{}, fresh: map[mountRoot]map[string]bool{}}
 	names, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	if err != nil {
 		return nil, err
 	}
+	out := make([]storedRoot, 0, len(names))
 	for _, name := range names {
-		loaded, err := readJSON[mountListings](name)
+		loaded, err := readJSON[storedRoot](name)
 		if err != nil {
-			return nil, fmt.Errorf("cache listings %s: %w", filepath.Base(name), err)
+			return nil, fmt.Errorf("cache metadata %s: %w", filepath.Base(name), err)
 		}
-		store.mounts[loaded.Root] = &loaded
+		out = append(out, loaded)
 	}
-	return store, nil
+	return out, nil
 }
 
-func (s *listingStore) file(root mountRoot) string {
-	return filepath.Join(s.dir, digest(root.RootID, root.FolderID)+".json")
-}
-
-func (s *listingStore) get(root mountRoot, dir string, freshOnly bool) ([]entry, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m := s.mounts[root]
-	if m == nil || (freshOnly && !s.fresh[root][dir]) {
-		return nil, false
-	}
-	items, ok := m.Dirs[dir]
-	return slices.Clone(items), ok
-}
-
-func (s *listingStore) put(root mountRoot, dir string, items []entry) ([]entry, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m := s.mounts[root]
-	if m == nil {
-		m = &mountListings{Root: root, Dirs: map[string][]entry{}}
-		s.mounts[root] = m
-	}
-	if s.fresh[root] == nil {
-		s.fresh[root] = map[string]bool{}
-	}
-	s.fresh[root][dir] = true
-	previous, had := m.Dirs[dir]
-	if had && slices.Equal(previous, items) {
-		return previous, nil
-	}
-	m.Dirs[dir] = slices.Clone(items)
-	return previous, writeJSON(s.file(root), *m)
-}
-
-func (s *listingStore) invalidate(root mountRoot, paths []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(paths) == 0 {
-		delete(s.fresh, root)
-		return
-	}
-	for _, p := range paths {
-		clean := path.Clean("/" + p)
-		delete(s.fresh[root], clean)
-		delete(s.fresh[root], path.Dir(clean))
-		for dir := range s.fresh[root] {
-			if strings.HasPrefix(dir, strings.TrimSuffix(clean, "/")+"/") {
-				delete(s.fresh[root], dir)
-			}
-		}
-	}
+func saveRoot(dir string, root storedRoot) error {
+	return writeJSON(rootFile(dir, root.Root), root)
 }
 
 type lruNode struct {
@@ -244,4 +204,3 @@ func (p *pool) remove(id blockID) {
 		p.used -= n.bytes
 	}
 }
-

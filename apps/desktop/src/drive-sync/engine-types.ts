@@ -2,6 +2,7 @@ import type { IgnoreMatcher } from '@smarteverything/domain/drive-sync';
 import type { Logger } from '@smarteverything/logging';
 import type { BlockHasher } from './blocks.js';
 import type { BlockUploader } from './block-upload.js';
+import type { MetaPort } from './meta-port.js';
 import type { ConflictResult } from './conflicts.js';
 import type { DriveSyncDatabase } from './db/index.js';
 import type { PullProgress, PullSink } from './pull.js';
@@ -43,6 +44,7 @@ export interface EngineOptions {
   readonly database: DriveSyncDatabase;
   readonly socket: EngineSocket;
   readonly hasher: BlockHasher;
+  readonly meta: MetaPort;
   readonly source: BlockSource;
   readonly uploader: BlockUploader;
   readonly ignore: IgnoreMatcher;

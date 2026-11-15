@@ -10,7 +10,7 @@ const body = (
       title="Scenes"
       icon="sparkles"
       accent="primary"
-      action={<Button label="Edit" variant="text" />}
+      badge={<Button label="Edit" variant="text" />}
     />
   </Col>
 );

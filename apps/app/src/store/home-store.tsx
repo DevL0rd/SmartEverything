@@ -28,6 +28,7 @@ import { LiveSync } from './live-sync';
 import { noticeRouter } from './notice-registry';
 import { followPageVisibility } from './page-visibility';
 import { persistSnapshots, restoreSnapshot } from './persistence';
+import { PickerSourceProvider } from './picker-source';
 import { StoreProvider } from './store-context';
 import type { StoreRuntime } from './store-runtime';
 import {
@@ -152,7 +153,11 @@ export function HomeStore({
     return runtimeOf(connection, client);
   });
   useEffect(() => runtime.start(), [runtime]);
-  return <StoreProvider runtime={runtime}>{children}</StoreProvider>;
+  return (
+    <StoreProvider runtime={runtime}>
+      <PickerSourceProvider>{children}</PickerSourceProvider>
+    </StoreProvider>
+  );
 }
 
 interface RuntimeStartup {

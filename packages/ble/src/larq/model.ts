@@ -43,7 +43,7 @@ export const LARQ_PUREVIS_2_MODEL: ModelSpec = {
   title: 'LARQ PureVis 2 · 680 ml',
   category: 'kitchen',
   family: 'bottle',
-  footprint: { width: 0.0745, depth: 0.0745, height: 0.254 },
+  footprint: { width: 0.0745, depth: 0.0745, height: 0.2586 },
   framing: {
     tile: { ...TALL, padding: 0.08 },
     card: TALL,

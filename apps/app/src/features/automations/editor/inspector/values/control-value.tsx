@@ -7,7 +7,7 @@ import { Segmented } from '../../../../../components/segmented';
 import { Slider } from '../../../../../components/slider';
 import { Text } from '../../../../../components/text';
 import { deviceRegionSource } from '../../../../../platform/device-region';
-import { useRegionPref } from '../../../../region/data/use-money';
+import { useRegionPref } from '../../../../region';
 import type { FieldControl } from '../schema-fields';
 import {
   ACTION_TAKES_NOTHING,

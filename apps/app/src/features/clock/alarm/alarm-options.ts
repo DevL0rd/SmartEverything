@@ -1,4 +1,5 @@
 import type { SelectOption } from '../../../components/select-picker';
+import { plural } from '../../../format/text';
 import type { RepeatMode } from './alarm-draft';
 
 export const OFF = 'off';
@@ -44,4 +45,8 @@ export function leadText(minutes: number): string {
 
 export function leadOptions(current: number | null): readonly SelectOption<string>[] {
   return minuteOptions(LEAD_MINUTES, current, leadText);
+}
+
+export function snoozeLimitText(limit: number): string {
+  return limit === 0 ? 'Off' : plural(limit, 'time');
 }

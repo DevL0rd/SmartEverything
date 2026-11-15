@@ -84,7 +84,7 @@ const PARTS: ModelSpec['parts'] = [
 export const LIGHT_BAR_MODEL: ModelSpec = lightModel({
   id: 'dev.light.light-bar',
   title: 'Light bar',
-  footprint: { width: 0.078, depth: 0.064, height: BAR_Y + BAR_H / 2 + 0.004 },
+  footprint: { width: 0.078, depth: 0.064, height: 0.2688 },
   framing: { tile: VIEW, card: VIEW, hero: { ...VIEW, padding: 0.1 } },
   shots: [glowShot({ focus: 'bar', zoom: 1.15, yaw: 26, pitch: 10 })],
   meta: {

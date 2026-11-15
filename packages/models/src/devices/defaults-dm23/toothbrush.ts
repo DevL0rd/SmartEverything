@@ -68,7 +68,7 @@ export const ELECTRIC_TOOTHBRUSH_MODEL: ModelSpec = {
   title: 'Electric toothbrush',
   category: 'personal-care',
   family: 'toothbrush',
-  footprint: { width: 0.064, depth: 0.064, height: HEIGHT },
+  footprint: { width: 0.062, depth: 0.062, height: 0.226 },
   framing: house('handle', 30, 12),
   shots: [
     shot('brush', whenAll(BRUSHING), 'head', { zoom: 1.5, yaw: 30, pitch: 16, loopS: 1 }),

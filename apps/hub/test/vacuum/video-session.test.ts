@@ -1,10 +1,5 @@
 import { createSocket } from 'node:dgram';
-import {
-  ApiError,
-  type JsonValue,
-  type ProcessWindow,
-  type VacuumVideoOpening,
-} from '@smarteverything/domain';
+import { ApiError, type JsonValue, type VacuumVideoOpening } from '@smarteverything/domain';
 import {
   parseToken,
   pv11glCatalog,
@@ -15,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { lanIo } from '../../src/adapters/xiaomi/device-io';
 import { MessageIds, MiioClient } from '../../src/adapters/xiaomi/miio-client';
 import { Go2rtcError } from '../../src/cameras/go2rtc-client';
-import { Viewers, deviceTarget } from '../../src/metrics/viewers';
+import { Viewers, deviceTarget, type DeviceDetail } from '../../src/metrics/viewers';
 import type { VacuumCommandIo } from '../../src/vacuum/command-service';
 import {
   UNLOCK_WINDOW_MS,
@@ -50,7 +45,7 @@ type Step =
 let opened: TestStore;
 let logs: CapturedLogs;
 let gate: Gate;
-let viewers: Viewers<ProcessWindow>;
+let viewers: Viewers<DeviceDetail>;
 let putStream: () => Promise<void>;
 let steps: Step[];
 let go2rtc: string[];
@@ -166,7 +161,7 @@ beforeEach(async () => {
   logs = captureLogs();
   opened = await testStore();
   gate = { switchOn: false, rejectPage: null, lock: true, password: true, verdict: '0' };
-  viewers = new Viewers<ProcessWindow>();
+  viewers = new Viewers<DeviceDetail>();
   putStream = (): Promise<void> => Promise.resolve();
   steps = [];
   go2rtc = [];

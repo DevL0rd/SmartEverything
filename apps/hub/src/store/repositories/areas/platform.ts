@@ -1,5 +1,6 @@
 import type { StoreContext } from '../../context';
 import { ExchangeRatesRepository } from '../exchange-rates';
+import { MailLogRepository } from '../mail-log';
 import { PluginDataRepository } from '../plugin-data';
 import { PluginPeopleRepository } from '../plugin-people';
 import { PluginsRepository } from '../plugins';
@@ -14,6 +15,7 @@ export const platformRepositories = (context: StoreContext) =>
     settingsKv: new SettingsKvRepository(context),
     weather: new WeatherRepository(context),
     exchangeRates: new ExchangeRatesRepository(context),
+    mailLog: new MailLogRepository(context),
     plugins: new PluginsRepository(context),
     pluginData: new PluginDataRepository(context),
     pluginPeople: new PluginPeopleRepository(context),

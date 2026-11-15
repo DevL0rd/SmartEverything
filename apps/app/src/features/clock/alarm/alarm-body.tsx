@@ -5,20 +5,28 @@ import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { profileIn } from '../../planner/data/person';
-import { useStoreSelector } from '../../../store/store-context';
 import {
+  profileIn,
   alarmLabelOf,
   skipDayOf,
   weekdayNameOf,
   weekdayOfKey,
-} from '../../planner/clock/alarm-text';
-import type { PlannerPerson } from '../../planner/data';
+  type PlannerPerson,
+} from '../../planner';
+import { useStoreSelector } from '../../../store/store-context';
 import { useHubOffline } from '../frame/hub-status';
 import { draftOf, newAlarmTimeOf, newDraftOf, toggledTargetsEdit } from './alarm-draft';
 import { AlarmFields, AlarmTime, type AlarmFieldProps } from './alarm-fields';
+import { AlarmChallenge } from './alarm-challenge';
+import { AlarmSunrise } from './alarm-sunrise';
 import { SmartWakeRow, WakeRoutine } from './alarm-wake';
-import { RingTargets, hasPersonWatch, ringPlacesOf, useRingSources } from './ring-targets';
+import {
+  RingTargets,
+  hasPersonWatch,
+  reachesPhone,
+  ringPlacesOf,
+  useRingSources,
+} from './ring-targets';
 import { useAlarmEdit, type AlarmEditing } from './use-alarm-edit';
 
 export interface AlarmBodyTarget {
@@ -99,30 +107,34 @@ function useProfileOf(target: AlarmBodyTarget): string | null {
 export function AlarmBody({
   target,
   screen,
-  defaultSceneId,
+  defaultAutomationId,
 }: {
   readonly target: AlarmBodyTarget;
   readonly screen: AlarmScreen;
-  readonly defaultSceneId: string | null;
+  readonly defaultAutomationId: string | null;
 }): ReactNode {
-  const { editing, fields } = screen;
+  const { fields } = screen;
   const sources = useRingSources(useProfileOf(target));
   const watch = target.alarm?.watch ?? [];
-  const places = ringPlacesOf(sources, { targets: fields.draft.targets, watch });
+  const rings = ringPlacesOf(sources, { targets: fields.draft.targets, watch });
   const wake = {
     draft: fields.draft,
     compact: fields.compact,
     disabled: fields.disabled,
     onChange: fields.onChange,
   };
+  const watched = hasPersonWatch(sources) || watch.length > 0;
+  const places = { phone: reachesPhone(sources, fields.draft.targets), watch: watched };
   return (
     <View className="gap-4">
       <AlarmTime {...fields} />
       <AlarmFields {...fields} />
-      {hasPersonWatch(sources) || watch.length > 0 ? <SmartWakeRow {...wake} /> : null}
-      <WakeRoutine {...wake} defaultSceneId={defaultSceneId} />
+      {watched ? <SmartWakeRow {...wake} /> : null}
+      <AlarmSunrise {...wake} />
+      <WakeRoutine {...wake} defaultAutomationId={defaultAutomationId} />
+      <AlarmChallenge {...wake} places={places} />
       <RingTargets
-        places={places}
+        places={rings}
         targets={fields.draft.targets}
         watch={watch}
         disabled={fields.disabled}
@@ -130,17 +142,22 @@ export function AlarmBody({
           fields.onChange(toggledTargetsEdit(fields.draft.targets, ring));
         }}
       />
-      {editing.alarm === null ? null : (
-        <View className="items-start border-t-hairline border-outline-variant pt-3">
-          <Button
-            label="Delete alarm"
-            icon="trash"
-            variant="destructive"
-            disabled={fields.disabled}
-            onPress={editing.remove}
-          />
-        </View>
-      )}
+      <AlarmDelete screen={screen} />
+    </View>
+  );
+}
+
+function AlarmDelete({ screen }: { readonly screen: AlarmScreen }): ReactNode {
+  if (screen.editing.alarm === null) return null;
+  return (
+    <View className="items-start border-t-hairline border-outline-variant pt-3">
+      <Button
+        label="Delete alarm"
+        icon="trash"
+        variant="destructive"
+        disabled={screen.fields.disabled}
+        onPress={screen.editing.remove}
+      />
     </View>
   );
 }
@@ -155,7 +172,7 @@ export function AlarmCreateBar({
   const { editing, fields } = screen;
   if (editing.alarm !== null) return null;
   return (
-    <View className="flex-row gap-2">
+    <View className="w-full flex-row gap-2">
       <Button label="Cancel" variant="outlined" grow onPress={onCancel} />
       <Button
         label="Add alarm"

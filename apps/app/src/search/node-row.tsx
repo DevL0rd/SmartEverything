@@ -8,7 +8,7 @@ import { ListRow } from '../components/list-row';
 import { Switch } from '../components/switch';
 import { joinParts } from '../format/text';
 import { usePinMenuItems } from '../app-shell/pin-menu';
-import { runSceneNow, toggleAutomation } from '../features/automations';
+import { toggleAutomation } from '../features/automations';
 import {
   CapabilityRow,
   PowerToggle,
@@ -54,17 +54,6 @@ function ExpandButton(props: NodeRowProps): ReactNode {
 
 function InlineControl({ action }: { readonly action: InlineAction | null }): ReactNode {
   switch (action?.kind) {
-    case 'scene':
-      return (
-        <Button
-          label="Run"
-          icon="play"
-          variant="tonal"
-          onPress={() => {
-            runSceneNow({ id: action.sceneId, name: action.name });
-          }}
-        />
-      );
     case 'automation':
       return (
         <Switch

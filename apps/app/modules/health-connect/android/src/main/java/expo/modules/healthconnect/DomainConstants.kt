@@ -15,6 +15,7 @@ object DomainConstants {
   const val PUSH_COMMAND_AI_SPEECH = "ai_speech"
   const val PUSH_COMMAND_AI_RING = "ai_ring"
   const val PUSH_COMMAND_AI_RING_CANCEL = "ai_ring_cancel"
+  const val PUSH_COMMAND_DRIVE_OFFLINE_CHANGED = "drive_offline_changed"
 
   val WATCH_SPORTS: List<String> = listOf(
     "treadmill",

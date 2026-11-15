@@ -40,7 +40,12 @@ export function NavSheetSearch({
       model={panel.model}
       onScroll={onScroll}
       contentClassName="px-4 pb-6"
-      footer={spacer}
+      footer={
+        <>
+          {panel.content}
+          {spacer}
+        </>
+      }
     />
   );
 }

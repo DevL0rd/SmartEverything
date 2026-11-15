@@ -21,7 +21,7 @@ import { testLayout } from '../../apps/hub/test/support/test-layout.ts';
 import {
   backUpRelease,
   builtServiceProblems,
-  checkMigrations,
+  serviceMigrationCheck,
   directorySize,
   freeSpaceProblem,
   hubInstall,
@@ -39,7 +39,12 @@ import {
 } from '../release-hub-files.ts';
 import { hubUnitText, HUB_OOM_SCORE_ADJUST } from '../../apps/hub/src/data-layout/unit.ts';
 import { hubUnitSpec, type TransitionEnvironment } from '../release-hub-transition.ts';
-import { failedChecks, releasePlan, rollbackWith } from '../release-hub.ts';
+import {
+  failedChecks,
+  ReleaseAwaitingDecision,
+  releasePlan,
+  rollbackWith,
+} from '../release-hub.ts';
 import {
   awaitHub,
   errorEventsSince,
@@ -331,7 +336,7 @@ describe('the release plan', () => {
     expect(existsSync(data.backups.releases)).toBe(false);
   });
 
-  it('restores the old service when verification throws after swapping', async () => {
+  it('stops with the new service and the backup kept when verification throws after swapping', async () => {
     const calls: string[] = [];
     const built = join(scratch, 'built');
     writeService(built, 'new');
@@ -352,13 +357,23 @@ describe('the release plan', () => {
       'new service.mjs',
     );
     devicesResponses = ['{'];
-    await expect(plan.find((step) => step.title.startsWith('verify'))?.run()).rejects.toThrow(
-      SyntaxError,
-    );
+    const failure = await plan
+      .find((step) => step.title.startsWith('verify'))
+      ?.run()
+      .then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+    expect(failure).toBeInstanceOf(ReleaseAwaitingDecision);
+    if (!(failure instanceof ReleaseAwaitingDecision)) return;
+    expect(failure.cause).toBeInstanceOf(SyntaxError);
+    expect(failure.rollback).toContain(`release-hub.ts rollback --backup ${failure.backup}`);
+    expect(failure.message).toContain('without rolling back');
+    expect(existsSync(join(failure.backup, 'service', 'service.mjs'))).toBe(true);
     expect(readFileSync(join(target.install.service, 'service.mjs'), 'utf8')).toBe(
-      'old service.mjs',
+      'new service.mjs',
     );
-    expect(calls).toEqual([`stop ${HUB_UNIT}`, `stop ${HUB_UNIT}`, `start ${HUB_UNIT}`]);
+    expect(calls).toEqual([`stop ${HUB_UNIT}`]);
   });
 
   it('stops at the first problem with the built service and touches nothing', async () => {
@@ -381,7 +396,14 @@ describe('the release plan', () => {
 });
 
 describe('the migration check', () => {
-  it('runs the real migrations twice on a copy and leaves the live database alone', async () => {
+  function builtService(entry: string): string {
+    const service = join(scratch, 'migration-service');
+    mkdirSync(join(service, 'update'), { recursive: true });
+    writeFileSync(join(service, 'update', 'migration-check.mjs'), entry);
+    return service;
+  }
+
+  it('runs the built service entry on the live database and leaves it alone', () => {
     const empty = new DatabaseSync(data.system.database.file);
     empty.exec('drop table schema_version');
     empty.exec(
@@ -389,11 +411,21 @@ describe('the migration check', () => {
     );
     empty.close();
     const before = readFileSync(data.system.database.file);
-    const { from, to } = await checkMigrations(data);
+    const service = builtService(
+      "process.stdout.write(JSON.stringify({ from: 0, to: 120 }) + '\\n');",
+    );
+    const { from, to } = serviceMigrationCheck(process.execPath, service, data);
     expect(from).toBe(0);
-    expect(to).toBeGreaterThan(100);
+    expect(to).toBe(120);
     expect(readFileSync(data.system.database.file).equals(before)).toBe(true);
-  }, 60_000);
+  });
+
+  it('fails when the built service entry exits non-zero', () => {
+    const service = builtService("process.stderr.write('broken'); process.exit(2);");
+    expect(() => serviceMigrationCheck(process.execPath, service, data)).toThrow(
+      /status 2.*broken/u,
+    );
+  });
 });
 
 function backupWith(
@@ -504,7 +536,7 @@ describe('the hub unit on release', () => {
     expect(calls).toEqual(['reload', 'prepare', `start ${HUB_UNIT}`]);
   });
 
-  it('rolls back when the unit cannot be reloaded', async () => {
+  it('stops for the owner without rolling back when the unit cannot be reloaded', async () => {
     const calls: string[] = [];
     const built = join(scratch, 'built');
     writeService(built, 'new');
@@ -525,9 +557,10 @@ describe('the hub unit on release', () => {
     await plan[0]?.run();
     await plan.find((step) => step.title.startsWith('back up'))?.run();
     await plan[3]?.run();
+    await expect(plan[4]?.run()).rejects.toThrow(ReleaseAwaitingDecision);
     await expect(plan[4]?.run()).rejects.toThrow('reload refused');
     expect(readFileSync(join(target.install.service, 'service.mjs'), 'utf8')).toBe(
-      'old service.mjs',
+      'new service.mjs',
     );
   });
 });
@@ -541,62 +574,57 @@ describe('preflight space', () => {
   });
 });
 
-describe('a failed rollback', () => {
-  it('reports the original failure together with the rollback failure', async () => {
-    const built = join(scratch, 'built');
-    writeService(built, 'new');
-    let stops = 0;
-    const units = {
-      ...fakeUnits([]),
-      stop: (): void => {
-        stops += 1;
-        if (stops > 1) throw new Error('stop refused');
-      },
-    };
-    const plan = releasePlan({
-      environment,
-      transition: null,
-      target,
-      units,
-      name: 'release18',
-      built,
-      url,
-      schema: 5,
-      epoch: 1,
-    });
-    await plan.find((step) => step.title.startsWith('back up'))?.run();
-    await plan[3]?.run();
-    devicesReply = '{';
-    const failure = await plan[5]?.run().then(
-      () => null,
-      (cause: unknown) => cause,
-    );
-    expect(failure).toBeInstanceOf(AggregateError);
-    expect(failure instanceof AggregateError && failure.message).toContain('stop refused');
-    expect(failure instanceof AggregateError && failure.errors[0]).toBeInstanceOf(SyntaxError);
+async function failedRelease(name: string, epoch: number): Promise<ReleaseAwaitingDecision> {
+  const built = join(scratch, 'built');
+  writeService(built, 'new');
+  const plan = releasePlan({
+    environment,
+    transition: null,
+    target,
+    units: fakeUnits([]),
+    name,
+    built,
+    url,
+    schema: 5,
+    epoch,
   });
+  await plan.find((step) => step.title.startsWith('back up'))?.run();
+  await plan[3]?.run();
+  devicesResponses = ['{'];
+  const failure = await plan[5]?.run().then(
+    () => null,
+    (cause: unknown) => cause,
+  );
+  if (!(failure instanceof ReleaseAwaitingDecision)) throw new Error('the release did not stop');
+  return failure;
+}
 
-  it('does not restore the database when the migration left the schema unchanged', async () => {
-    const built = join(scratch, 'built');
-    writeService(built, 'new');
-    const plan = releasePlan({
+describe('a failed release', () => {
+  it('restores the service only when the owner orders the rollback afterwards', async () => {
+    const failure = await failedRelease('release18', 1);
+    expect(readFileSync(join(target.install.service, 'service.mjs'), 'utf8')).toBe(
+      'new service.mjs',
+    );
+    await rollbackWith({
       environment,
-      transition: null,
       target,
       units: fakeUnits([]),
-      name: 'release18',
-      built,
+      backup: failure.backup,
       url,
-      schema: 5,
-      epoch: 1,
+      withDatabase: false,
+      stamp: '1',
     });
-    await plan.find((step) => step.title.startsWith('back up'))?.run();
-    await plan[3]?.run();
+    expect(readFileSync(join(target.install.service, 'service.mjs'), 'utf8')).toBe(
+      'old service.mjs',
+    );
+  });
+
+  it('leaves the database alone and names no database restore when the schema did not move', async () => {
     const database = new DatabaseSync(data.system.database.file);
     database.exec("insert into schema_version values (5000, 'live write', 'now')");
     database.close();
-    devicesResponses = ['{'];
-    await expect(plan[5]?.run()).rejects.toThrow(SyntaxError);
+    const failure = await failedRelease('release18', 1);
+    expect(failure.rollback).not.toContain('--with-database');
     expect(schemaVersionOf(data.system.database.file)).toBe(5000);
     expect(existsSync(`${data.system.database.file}.rolled-back-1`)).toBe(false);
   });
@@ -697,7 +725,7 @@ function expectPhotoRestored(paths: { readonly original: string; readonly moved:
 }
 
 describe('same-schema Photos rollback', () => {
-  it('restores retained201 filesystem receipts and database paths on automatic release failure', async () => {
+  it('keeps relocated Photos files on a failed release until the owner orders the rollback', async () => {
     const photos = photoRelocation();
     const built = join(scratch, 'built');
     writeService(built, 'new');
@@ -717,13 +745,25 @@ describe('same-schema Photos rollback', () => {
     await plan.find((step) => step.title.startsWith('swap'))?.run();
     devicesResponses = ['{'];
     await expect(plan.find((step) => step.title.startsWith('verify'))?.run()).rejects.toThrow(
-      SyntaxError,
+      ReleaseAwaitingDecision,
     );
+    expect(existsSync(photos.moved)).toBe(true);
+    const backup = join(data.backups.releases, 'photos-12');
+    expect(existsSync(backup)).toBe(true);
+    await rollbackWith({
+      target,
+      environment,
+      units: fakeUnits([]),
+      backup,
+      url,
+      withDatabase: false,
+      stamp: 'photos',
+    });
     expectPhotoRestored(photos);
-    expect(existsSync(join(data.backups.releases, 'photos-12'))).toBe(false);
+    expect(existsSync(backup)).toBe(false);
   });
 
-  it('rolls back offline preparation failures before starting the prior service', async () => {
+  it('starts nothing and keeps the backup when offline preparation fails', async () => {
     const photos = photoRelocation();
     const built = join(scratch, 'built');
     writeService(built, 'new');
@@ -739,9 +779,8 @@ describe('same-schema Photos rollback', () => {
       epoch: 12,
       units: {
         ...base,
-        start: (unit) => {
-          expectPhotoRestored(photos);
-          base.start(unit);
+        start: () => {
+          throw new Error('must not start a service after a failed preparation');
         },
       },
       prepareData: () => {
@@ -752,8 +791,8 @@ describe('same-schema Photos rollback', () => {
     await plan.find((step) => step.title.startsWith('back up'))?.run();
     await plan.find((step) => step.title.startsWith('swap'))?.run();
     await expect(plan[4]?.run()).rejects.toThrow('preparation refused');
-    expectPhotoRestored(photos);
-    expect(existsSync(join(data.backups.releases, 'photos-12'))).toBe(false);
+    expect(existsSync(photos.moved)).toBe(true);
+    expect(existsSync(join(data.backups.releases, 'photos-12'))).toBe(true);
   });
 
   it('does not start normal service until offline preparation completes', async () => {

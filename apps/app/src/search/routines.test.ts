@@ -25,7 +25,6 @@ function unreadable(index: number, name: string): Automation {
 
 function tablesOf(rows: readonly Automation[]): Parameters<typeof routinesOf>[0] {
   return {
-    scenes: makeTable({}, [], 0),
     automations: makeTable(
       Object.fromEntries(rows.map((row) => [row.id, row])),
       rows.map((row) => row.id),

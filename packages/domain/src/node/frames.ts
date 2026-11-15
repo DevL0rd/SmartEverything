@@ -18,7 +18,7 @@ import { APP_EVENTS_FRAME } from './computer-app-events';
 import { COMPUTER_SCOPES } from './computer-scopes';
 import { COMPUTER_FEATURE_LIST } from './computer-features';
 import { CORE_KINDS } from './computer-snapshot';
-import { NODE_DEMAND, SAMPLE_PARTS, STATE_PARTS } from './computer-live';
+import { NODE_DEMAND, NODE_FILES_CHANGED, SAMPLE_PARTS, STATE_PARTS } from './computer-live';
 import { MACHINE_ACTION_SUPPORTS, MACHINE_PERMISSION_STATES } from '../machine-actions';
 import { NODE_REQUEST, NODE_RESULT, POWER_ACTIONS } from './node-requests';
 import { HUB_PLACEMENTS_FRAME, NODE_PLACEMENT_STATE_FRAME } from './placement-frames';
@@ -27,7 +27,7 @@ import { RELAY_HUB_FRAMES, RELAY_NODE_FRAMES } from './relay-frames';
 
 export const NODE_HEARTBEAT_MS = 30_000;
 
-export const NODE_PROTOCOL_VERSION = 1;
+export const NODE_PROTOCOL_VERSION = 2;
 
 export const NODE_INTERFACE = z.object({
   name: z.string().min(1),
@@ -97,6 +97,7 @@ export const NODE_FRAME = z.discriminatedUnion('type', [
   z.object({ type: z.literal('features'), features: COMPUTER_FEATURE_LIST }),
   NODE_SAMPLE_FRAME,
   NODE_STATE_FRAME,
+  NODE_FILES_CHANGED,
   APP_EVENTS_FRAME,
   NODE_PLACEMENT_STATE_FRAME,
   z.object({ type: z.literal('reply'), id: REQUEST_ID, result: NODE_RESULT }),

@@ -11,8 +11,9 @@ import {
 import { DriveAlbumsService } from '../../src/drive/albums';
 import { commitContent, folderDraft, identityOf, isoOf, recordItem } from '../../src/drive/changes';
 import type { ConflictEnv } from '../../src/drive/conflicts';
-import { DriveFsApi, type FsCaller } from '../../src/drive/fs-api';
-import type { FsSpaceEnv } from '../../src/drive/fs-space';
+import { PosixScope, type PosixEnv } from '../../src/drive/posix/env';
+import type { OpenTarget } from '../../src/drive/posix/open';
+import { DrivePosix } from '../../src/drive/posix/service';
 import { DriveReadService } from '../../src/drive/service-read';
 import { DriveWriteService } from '../../src/drive/service-write';
 import { DriveShares } from '../../src/drive/shares';
@@ -36,10 +37,13 @@ export interface FsRig {
   readonly mine: StoredDrive;
   readonly theirs: StoredDrive;
   readonly service: DriveWriteService;
-  readonly api: DriveFsApi;
+  readonly posix: DrivePosix;
   readonly changeEnv: () => ConflictEnv;
-  readonly owner: () => FsCaller;
-  readonly member: () => FsCaller;
+  readonly readable: (
+    reader: { readonly profileId: string; readonly nodeId: string },
+    root: StoredDrive,
+    target: { readonly itemId: string; readonly baseId?: string | undefined },
+  ) => Promise<OpenTarget>;
   readonly mount: (nodeId: string, profileId: string, root: StoredDrive, base?: string) => void;
   readonly seedFolder: (root: StoredDrive, relPath: string) => Promise<DriveItem>;
   readonly seedFile: (root: StoredDrive, relPath: string, text: string) => Promise<DriveItem>;
@@ -102,7 +106,8 @@ function mountingOf(store: TestStore['store']): FsRig['mount'] {
       rootId: root.id,
       folderItemId: base ?? null,
       mode: 'mounted',
-      localPath: `/mnt/drive-${String(mounts)}`,
+      localPath: null,
+      mountName: `drive-${String(mounts)}`,
       enabled: true,
       createdBy: profileId,
       status: status(),
@@ -147,16 +152,38 @@ function seedingOf(opened: TestStore, ownerId: string, changeEnv: () => Conflict
 
 export const DISK_FREE = 10 ** 12;
 
-export function spaceEnvOf(rig: FsRig): FsSpaceEnv {
-  const { store } = rig.opened;
-  return {
-    read: new DriveReadService(store),
-    store,
-    quota: (profileId) => store.driveQuotas.status(profileId),
-    probe: {
-      space: (): Promise<{ totalBytes: number; freeBytes: number }> =>
-        Promise.resolve({ totalBytes: 2 * DISK_FREE, freeBytes: DISK_FREE }),
+function posixOf(opened: TestStore, changeEnv: () => ConflictEnv): DrivePosix {
+  const { store } = opened;
+  const space = (): Promise<{ totalBytes: number; freeBytes: number }> =>
+    Promise.resolve({ totalBytes: 2 * DISK_FREE, freeBytes: DISK_FREE });
+  const env: PosixEnv = {
+    change: { ...changeEnv(), store },
+    guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
+    space: {
+      read: new DriveReadService(store),
+      store,
+      quota: (profileId) => store.driveQuotas.status(profileId),
+      probe: { space },
+      inodes: () => Promise.resolve({ files: 1000, free: 900 }),
     },
+    holds: () => false,
+  };
+  return new DrivePosix(env);
+}
+
+function readableOf(opened: TestStore, posix: DrivePosix): FsRig['readable'] {
+  const { store } = opened;
+  return async (reader, root, target) => {
+    const base = target.baseId === undefined ? undefined : store.driveInodes.ofItem(target.baseId);
+    const rootInode = base ?? store.driveInodes.rootOf(root.id);
+    const scope = new PosixScope(reader, randomUUID(), {
+      drive: root,
+      baseId: target.baseId ?? null,
+      rootInode: rootInode.id,
+    });
+    const inode = store.driveInodes.ofItem(target.itemId);
+    if (inode === undefined) throw new Error('the item has no inode');
+    return posix.openTarget(scope, inode.id, false);
   };
 }
 
@@ -174,6 +201,7 @@ export async function openFsRig(): Promise<FsRig> {
   const ownerNode = pairComputer(store, ownerId);
   const memberNode = pairComputer(store, memberId);
   const mount = mountingOf(store);
+  const posix = posixOf(opened, changeEnv);
   const rig: FsRig = {
     opened,
     ownerId,
@@ -184,10 +212,9 @@ export async function openFsRig(): Promise<FsRig> {
     mine: personalDrive(store, ownerId),
     theirs: personalDrive(store, memberId),
     service,
-    api: new DriveFsApi({ env: changeEnv(), store, read, write: service, ops: store.driveSyncOps }),
+    posix,
     changeEnv,
-    owner: (): FsCaller => ({ profileId: ownerId, nodeId: ownerNode }),
-    member: (): FsCaller => ({ profileId: memberId, nodeId: memberNode }),
+    readable: readableOf(opened, posix),
     mount,
     ...seedingOf(opened, ownerId, changeEnv),
   };

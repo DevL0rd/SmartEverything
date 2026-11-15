@@ -13,8 +13,7 @@ import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
 import { notify } from '../../../components/toast-store';
@@ -179,14 +178,11 @@ export function RemoteViewingScreen(): ReactNode {
   const settings = useSettings();
   const owner = useIsOwner();
   return (
-    <Screen
-      header={<PageHeader title="Camera connection" breadcrumbs={CRUMBS} />}
-      maxWidth="reading"
-    >
+    <PageShell title="Camera connection" breadcrumbs={CRUMBS} width="reading">
       <List footer="Video connects automatically using WebRTC. On supported devices, it can recover through your server if that path cannot carry video. Talk needs WebRTC.">
         <ListRow title="Live viewing" value="Automatic" icon="globe" />
       </List>
       {owner ? <Advanced settings={settings} /> : null}
-    </Screen>
+    </PageShell>
   );
 }

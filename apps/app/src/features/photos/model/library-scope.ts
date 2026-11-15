@@ -1,7 +1,7 @@
 import type { LibraryFilter, LibraryScope, PhotoSource } from '@smarteverything/domain';
 import type { SourceSearch } from '../../../api/photos';
 import { typedTextOf, type SearchInput } from '../search/query';
-import type { SearchToken } from '../search/tokens';
+import { isSmartToken, type BaseToken, type SearchToken } from '../search/tokens';
 import type { LibraryTab } from './library-tabs';
 
 export interface TabUse {
@@ -29,9 +29,14 @@ function firstOf(
   return tokens.find((token) => token.kind === kind);
 }
 
-type Narrowing = Omit<LibraryScope, 'filter' | 'text'>;
+type Narrowing = Omit<LibraryScope, 'filter' | 'text' | 'meaning'>;
 
 function narrowingOf(token: SearchToken): Narrowing {
+  if (!isSmartToken(token)) return baseNarrowingOf(token);
+  return token.kind === 'photoText' ? { photoText: token.text } : {};
+}
+
+function baseNarrowingOf(token: BaseToken): Narrowing {
   switch (token.kind) {
     case 'place':
       return { placeId: token.placeId };
@@ -49,13 +54,33 @@ function narrowingOf(token: SearchToken): Narrowing {
   }
 }
 
-const NARROWING_KINDS = ['place', 'country', 'camera', 'album', 'date'] as const;
+const NARROWING_KINDS = ['place', 'country', 'camera', 'album', 'date', 'photoText'] as const;
 
-function hubQuery(tabFilter: LibraryFilter, input: SearchInput): TabQuery {
-  const { tokens } = input;
-  const used = NARROWING_KINDS.map((kind) => firstOf(tokens, kind)).filter(
-    (token): token is SearchToken => token !== undefined,
+function smartNarrowingOf(tokens: readonly SearchToken[]): Narrowing {
+  const groupIds = tokens.flatMap((token) =>
+    token.kind === 'person' || token.kind === 'pet' ? [token.groupId] : [],
   );
+  const labels = tokens.flatMap((token) => (token.kind === 'thing' ? [token.label] : []));
+  return {
+    ...(groupIds.length === 0 ? {} : { groupIds }),
+    ...(labels.length === 0 ? {} : { labels }),
+  };
+}
+
+function isGroupOrThing(token: SearchToken): boolean {
+  return token.kind === 'person' || token.kind === 'pet' || token.kind === 'thing';
+}
+
+type HubQuery = Extract<TabQuery, { readonly kind: 'hub' }>;
+
+function hubQuery(tabFilter: LibraryFilter, input: SearchInput): HubQuery {
+  const { tokens } = input;
+  const used = [
+    ...NARROWING_KINDS.map((kind) => firstOf(tokens, kind)).filter(
+      (token): token is SearchToken => token !== undefined,
+    ),
+    ...tokens.filter(isGroupOrThing),
+  ];
   const claimed = tokens.map(filterOf).find((filter) => filter !== null) ?? 'all';
   const filter = tabFilter === 'all' ? claimed : tabFilter;
   const text = typedTextOf(input);
@@ -67,7 +92,8 @@ function hubQuery(tabFilter: LibraryFilter, input: SearchInput): TabQuery {
         (narrowing, token) => ({ ...narrowing, ...narrowingOf(token) }),
         {},
       ),
-      ...(text === null ? {} : { text }),
+      ...smartNarrowingOf(tokens),
+      ...(text === null ? {} : { meaning: text }),
     },
     unused: tokens.filter(
       (token) => !used.includes(token) && (filter === 'all' || filterOf(token) !== filter),
@@ -89,6 +115,10 @@ export function textAndDatesOf(input: SearchInput): {
 
 export function scopeOf(tab: LibraryTab, input: SearchInput): TabQuery {
   if (tab.kind === 'hub') return hubQuery(tab.filter, input);
+  if (tab.kind === 'partner') {
+    const query = hubQuery('all', input);
+    return { ...query, scope: { ...query.scope, partnerShareId: tab.shareId } };
+  }
   const { search, unused } = textAndDatesOf(input);
   if (tab.kind === 'source') return { kind: 'source', source: tab.source, search, unused };
   return { kind: 'device', search, unused };

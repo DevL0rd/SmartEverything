@@ -3,7 +3,7 @@ import type { RootPlan } from './plans';
 import { cycle, HISTORY_MS, iso, NOW_MS } from './random';
 import type { Random } from './random';
 
-export type FileItem = Exclude<DriveItem, { readonly kind: 'folder' }>;
+export type FileItem = Exclude<DriveItem, { readonly kind: 'folder' | 'link' | 'special' }>;
 export type DocumentItem = Extract<DriveItem, { readonly kind: 'document' }>;
 
 export interface ConflictPair {
@@ -45,6 +45,9 @@ type BaseFields = Pick<
   | 'openedAt'
   | 'starred'
   | 'shared'
+  | 'locked'
+  | 'lockedHere'
+  | 'openComments'
   | 'rev'
   | 'etag'
   | 'outside'
@@ -162,6 +165,9 @@ function baseFields(random: Random, plan: RootPlan, place: Place, index: number)
     openedAt: random.chance(0.3) ? iso(random.between(modified, NOW_MS)) : null,
     starred: random.chance(STARRED_SHARE),
     shared: false,
+    locked: false,
+    lockedHere: false,
+    openComments: 0,
     rev,
     etag: `${String(rev)}-${random.hex(8)}`,
     outside,
@@ -324,6 +330,8 @@ function folderItems(
       kind: 'folder',
       childCount: totals.children,
       bytes: totals.bytes,
+      colour: null,
+      iconHint: false,
     };
   });
 }

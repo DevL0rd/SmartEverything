@@ -1,16 +1,16 @@
 import type {
   AdapterSink,
+  ComputerFilesChangedNotice,
   ComputerLiveNotice,
   ComputerScopes,
   DeviceCommand,
   HistoryPolicy,
   JsonValue,
-  ProcessWindow,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { DeviceDriver, DeviceDriverContext } from '../local/device-driver';
 import type { MetricHistory } from '../metrics/history';
-import type { Viewers } from '../metrics/viewers';
+import type { Viewers, DeviceDetail } from '../metrics/viewers';
 import type { HubLink } from '../node/link';
 import type { SignalBus } from '../signals/bus';
 import type { AppTime } from './app-focus';
@@ -25,9 +25,9 @@ import { startLocalComputer, type LocalComputerFactory } from './local-computer'
 
 export interface ComputerDriverOptions {
   readonly history: MetricHistory;
-  readonly viewers: Viewers<ProcessWindow>;
+  readonly viewers: Viewers<DeviceDetail>;
   readonly policyOf: (deviceId: string) => HistoryPolicy;
-  readonly publish: (notice: ComputerLiveNotice) => void;
+  readonly publish: (notice: ComputerLiveNotice | ComputerFilesChangedNotice) => void;
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly scopesOf: (deviceId: string) => ComputerScopes;
   readonly directory: ComputerDirectory;

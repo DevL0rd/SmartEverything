@@ -8,8 +8,8 @@ import { ColourLiteral } from './literal-colour';
 import { AnyLiteral, EntriesLiteral } from './literal-any';
 import { CompositeLiteral, ListLiteral, RecordLiteral } from './literal-composite';
 import { isCompositeEditor } from './composite-model';
+import { PortScopeContext } from './port-scope-context';
 import {
-  PortScopeContext,
   editorControl,
   isAnnotatedControl,
   isScalarControl,

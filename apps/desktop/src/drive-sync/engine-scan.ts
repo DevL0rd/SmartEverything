@@ -9,6 +9,7 @@ import {
   type DirtySource,
   type EntryIdentity,
 } from './dirty.js';
+import type { MetaPort } from './meta-port.js';
 import { fileViewOf, isHashedFile, pushIntents, type PushIntent } from './push-intents.js';
 import {
   isEngineTempName,
@@ -24,6 +25,7 @@ export interface TreeScannerOptions {
   readonly placementId: string;
   readonly rootPath: string;
   readonly platform: NodeJS.Platform;
+  readonly meta: MetaPort;
   readonly portablePaths: boolean;
   readonly database: Pick<DriveSyncDatabase, 'files' | 'transaction'>;
   readonly hasher: BlockHasher;
@@ -37,7 +39,7 @@ export interface TreeScannerOptions {
 type ScanMode = 'full' | 'targeted';
 
 function isReady(record: FileRecord | undefined): boolean {
-  return record === undefined || record.kind === 'folder' || isHashedFile(record);
+  return record?.kind !== 'file' || isHashedFile(record);
 }
 
 function isInside(path: string, folder: string): boolean {
@@ -50,6 +52,10 @@ export class TreeScanner {
 
   constructor(options: TreeScannerOptions) {
     this.#options = options;
+  }
+
+  get toleranceNs(): bigint {
+    return this.#tolerance;
   }
 
   async prepare(): Promise<void> {
@@ -72,12 +78,13 @@ export class TreeScanner {
     const before = this.#tracked();
     for (const rename of batch.renames) database.files.rename(placementId, rename.from, rename.to);
     const result = await this.#scan('targeted');
-    this.#apply(result, batch.deleted);
+    const deleted = withoutDescendants([...batch.deleted, ...vanishedLinks(before, result)]);
+    this.#apply(result, deleted);
     const targets = batch.renames.map((rename) => rename.to);
     const changed = result.upserts
       .map((input) => input.relPath)
       .filter((path) => !targets.some((target) => isInside(path, target)));
-    return this.#intents({ renames: batch.renames, changed, deleted: batch.deleted }, before);
+    return this.#intents({ renames: batch.renames, changed, deleted }, before);
   }
 
   #tracked(): readonly FileRecord[] {
@@ -87,8 +94,17 @@ export class TreeScanner {
   }
 
   async #scan(mode: ScanMode): Promise<ScanResult> {
-    const { placementId, rootPath, platform, portablePaths, hasher, ignore, writeQuietMs, log } =
-      this.#options;
+    const {
+      placementId,
+      rootPath,
+      platform,
+      meta,
+      portablePaths,
+      hasher,
+      ignore,
+      writeQuietMs,
+      log,
+    } = this.#options;
     await this.#options.settled();
     const result = await scanRoot({
       placementId,
@@ -97,6 +113,7 @@ export class TreeScanner {
       ignore,
       hasher,
       platform,
+      meta,
       portablePaths,
       mtimeToleranceNs: this.#tolerance,
       quietMs: mode === 'full' ? writeQuietMs : 0,
@@ -112,7 +129,11 @@ export class TreeScanner {
     database.transaction(() => {
       for (const input of result.upserts) {
         const current = database.files.get(placementId, input.relPath);
-        database.files.upsert({ ...input, hubRev: current?.hubRev ?? input.hubRev });
+        database.files.upsert({
+          ...input,
+          hubRev: current?.hubRev ?? input.hubRev,
+          hubInode: current?.hubInode ?? input.hubInode,
+        });
       }
       for (const relPath of removals) database.files.removeSubtree(placementId, relPath);
     });
@@ -128,9 +149,19 @@ export class TreeScanner {
   }
 }
 
+function vanishedLinks(before: readonly FileRecord[], result: ScanResult): readonly string[] {
+  const links = new Set(before.filter((record) => record.kind === 'link').map((r) => r.relPath));
+  const upserted = new Set(result.upserts.map((input) => input.relPath));
+  return result.removed.filter((path) => links.has(path) && !upserted.has(path));
+}
+
 function identityOf(record: FileRecord | undefined): EntryIdentity | undefined {
   if (record === undefined || isPlaceholder(record)) return undefined;
-  return { kind: record.kind, bytes: record.bytes, mtimeNs: record.mtimeNs };
+  return {
+    kind: record.kind,
+    bytes: record.bytes,
+    mtimeNs: record.mtimeNs,
+  };
 }
 
 export function dirtySourceOf(options: {

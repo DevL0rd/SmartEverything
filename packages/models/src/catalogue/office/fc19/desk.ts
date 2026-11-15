@@ -38,7 +38,7 @@ function frame(): ModelSpecPart[] {
 export const DESK_MODEL: ModelSpec = officeItem({
   id: 'cat.office.desk',
   title: 'Desk',
-  footprint: { width: 1.4, depth: 0.7, height: HEIGHT },
+  footprint: { width: 1.4, depth: 0.7, height: 0.746 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     depth: { param: 'depth', extra: 0, resizes: true },

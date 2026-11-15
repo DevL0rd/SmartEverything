@@ -18,7 +18,6 @@ vi.mock('../../../components/error-state', () => ({ ErrorState: (): null => null
 vi.mock('../../../components/rows', () => ({
   SwitchRow: ({ label }: { readonly label: string }): ReactNode => label,
 }));
-vi.mock('../../../components/search-field', () => ({ SearchField: (): null => null }));
 vi.mock('../../../components/skeleton', () => ({ Skeleton: (): null => null }));
 
 vi.mock('../../../app-shell/hrefs', () => ({

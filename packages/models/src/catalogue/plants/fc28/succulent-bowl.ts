@@ -71,7 +71,7 @@ function hearts(): ModelSpecPart[] {
 export const SUCCULENT_BOWL_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.succulent-bowl',
   title: 'Succulent bowl',
-  footprint: { width: 0.46, depth: 0.46, height: 0.16 },
+  footprint: { width: 0.464, depth: 0.464, height: 0.1649 },
   view: { yaw: 30, pitch: 28, fov: 28, padding: 0.08 },
   names: {
     display: 'Succulent bowl',

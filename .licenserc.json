@@ -8,18 +8,29 @@
     "0BSD",
     "CC0-1.0",
     "CC-BY-4.0",
+    "CC-BY-SA-4.0",
     "Unlicense",
     "Python-2.0",
     "BlueOak-1.0.0",
     "MIT-0",
     "WTFPL",
-    "MPL-2.0"
+    "MPL-2.0",
+    "LGPL-3.0",
+    "LGPL-3.0-or-later"
   ],
   "overrides": {
     "@nornagon/put": "MIT",
+    "argparse": "Python-2.0",
     "bufferpack": "BSD-3-Clause",
+    "combine-errors": "MIT",
     "jsbi": "Apache-2.0",
     "map-stream": "MIT",
     "parse-cache-control": "BSD-3-Clause"
+  },
+  "exceptions": {
+    "@anthropic-ai/claude-agent-sdk": "Anthropic commercial terms, used as the licensed Claude Code agent runtime",
+    "@anthropic-ai/claude-agent-sdk-linux-arm64": "Anthropic commercial terms, the platform binary of the Claude agent SDK",
+    "@anthropic-ai/claude-agent-sdk-linux-x64": "Anthropic commercial terms, the platform binary of the Claude agent SDK",
+    "ffmpeg-static": "GPL-3.0-or-later ffmpeg binary run as a separate process, never linked into the service"
   }
 }

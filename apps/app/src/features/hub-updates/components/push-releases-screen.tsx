@@ -28,7 +28,7 @@ function RevisionList({ revisions }: { readonly revisions: readonly UpdateRevisi
               compact
               icon="upload"
               title="No pushes yet"
-              body="Each push to the update branch shows here with what it releases and how far it got."
+              body="Each push to the update branch shows here with the builds it waits for and how far it got."
             />
           ) : (
             revisions.map((revision) => <RevisionCard key={revision.id} revision={revision} />)

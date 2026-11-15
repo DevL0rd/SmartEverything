@@ -80,8 +80,10 @@ function collection(id: string, name: string, colour: 'work' | 'family'): Planne
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
     created_at: STAMP,
     updated_at: STAMP,
   });

@@ -4,7 +4,7 @@ import type { SearchEntry } from '@smarteverything/domain';
 import type { NavPinTarget } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
 import { notify } from '../components/toast-store';
-import { runSceneNow, toggleAutomation } from '../features/automations';
+import { toggleAutomation } from '../features/automations';
 import { useEntityStore, useLedger } from '../store/store-context';
 import type { Device } from '../store/state';
 import type { SearchCatalogue } from './catalogue';
@@ -15,14 +15,10 @@ import { background } from '@smarteverything/logging';
 
 export type InlineAction =
   | { readonly kind: 'power'; readonly device: Device }
-  | { readonly kind: 'scene'; readonly sceneId: string; readonly name: string }
   | { readonly kind: 'automation'; readonly automationId: string; readonly enabled: boolean }
   | { readonly kind: 'command'; readonly entry: SearchEntry };
 
 function routineAction(entry: SearchEntry): InlineAction | null {
-  if (entry.run?.kind === 'scene') {
-    return { kind: 'scene', sceneId: entry.run.sceneId, name: entry.title };
-  }
   if (entry.run?.kind === 'automation') {
     return {
       kind: 'automation',
@@ -41,7 +37,7 @@ export function inlineOf(node: ResultNode, catalogue: SearchCatalogue): InlineAc
     return null;
   }
   const { entry } = node.item;
-  if (entry.group === 'scene' || entry.group === 'automation') {
+  if (entry.group === 'automation') {
     return routineAction(entry);
   }
   if (entry.group !== 'device' || entry.run?.kind !== 'command') {
@@ -101,9 +97,6 @@ export function useSearchActions(
     switch (action?.kind) {
       case 'command':
         command(action.entry);
-        return;
-      case 'scene':
-        runSceneNow({ id: action.sceneId, name: action.name });
         return;
       case 'automation':
         toggleAutomation(action.automationId, !action.enabled);

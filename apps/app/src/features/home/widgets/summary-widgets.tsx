@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { SceneRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Figure, type FigureSize } from '../../../components/figure';
 import { Icon, type IconName } from '../../../components/icon';
@@ -22,7 +21,8 @@ import type { SecurityLine } from '../model/security';
 import { activityRowCount, consumerRowCount, securityRowCount } from '../model/widget-fit';
 import { ActivityLatest, ActivityRows } from './activity-rows';
 import { ConsumerRows } from './energy-rows';
-import { SceneChipGrid, SceneGlance, SceneScroller } from './scene-chips';
+import type { ByHand } from '../../automations';
+import { RunChipGrid, RunGlance, RunScroller } from './run-chips';
 import { FitnessSetupWidget, useFitnessReady } from '../../profiles';
 
 export function ActivityWidget(): ReactNode {
@@ -44,37 +44,38 @@ export function ActivityWidget(): ReactNode {
   );
 }
 
-function SceneFace({ scenes }: { readonly scenes: readonly SceneRow[] }): ReactNode {
+function RunFace({ automations }: { readonly automations: readonly ByHand[] }): ReactNode {
   const { frame, cls, sizes } = useWidgetFace();
   if (cls === 's') {
-    return <SceneGlance scenes={scenes} />;
+    return <RunGlance automations={automations} />;
   }
   if (cls === 'l' || cls === 'xl') {
     return (
-      <SceneChipGrid
-        scenes={scenes}
+      <RunChipGrid
+        automations={automations}
         columns={cls === 'xl' ? 3 : 2}
         body={widgetBodyHeight(frame)}
         sizes={sizes}
       />
     );
   }
-  return <SceneScroller scenes={scenes} />;
+  return <RunScroller automations={automations} />;
 }
 
-export function ScenesWidget(): ReactNode {
-  const scenes = useHome((view) => view.scenes);
+export function AutomationsWidget(): ReactNode {
+  const automations = useHome((view) => view.byHand);
   return (
-    <WidgetFrame title="Scenes" icon="sparkles" accent="primary" href={href.scenes()}>
-      {scenes.length === 0 ? (
+    <WidgetFrame title="Automations" icon="automations" accent="primary" href={href.automations()}>
+      {automations.length === 0 ? (
         <WidgetEmpty
-          icon="sparkles"
+          icon="automations"
           colour="primary"
-          title="No scenes yet"
-          body="Scenes you create show up here."
+          title="Nothing to run by hand yet"
+          body="Automations you can start yourself show up here."
+          action={{ label: 'Set up an automation', href: href.automationNew() }}
         />
       ) : (
-        <SceneFace scenes={scenes} />
+        <RunFace automations={automations} />
       )}
     </WidgetFrame>
   );

@@ -13,14 +13,16 @@ import { useAreaWidth } from '../../../design/size-class';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { usePlannerCollections, usePlannerRange } from '../data';
+import { usePlannerRange } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { QueryBody } from '../frame/query-body';
 import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
+import { useCalendarLooks } from './calendar-looks';
+import type { EventLook } from './calendars-model';
 import { AgendaDayHead, AgendaItem } from './agenda-list';
+import { agendaRowsOf } from './agenda-model';
 import {
-  agendaRowsOf,
   countsOf,
   dayLabelOf,
   dayMapOf,
@@ -36,11 +38,12 @@ const BARS_THAT_FIT = { compact: 3, wide: 4 } as const;
 
 type CellSize = keyof typeof BARS_THAT_FIT;
 
-type ColourOf = (collectionId: string) => PlannerColourKey | null;
+type ColourOf = (view: PlannerOccurrenceView) => string;
 
-function dotOf(view: PlannerOccurrenceView, colours: ColourOf): string {
-  const colour = colours(view.collection_id);
-  return colour === null ? 'bg-on-surface-variant' : LIST_DOT[colour];
+export function paintOf(colour: PlannerColourKey | null, look: EventLook): string {
+  const fill = colour === null ? 'bg-on-surface-variant' : LIST_DOT[colour];
+  if (look !== 'invited' && look !== 'maybe') return fill;
+  return cn('border border-on-surface-variant', look === 'invited' ? 'bg-transparent' : fill);
 }
 
 function Bars({
@@ -53,7 +56,7 @@ function Bars({
   return cell.shown.map((view) => (
     <View
       key={`${view.item_id}:${view.occurrence_key}`}
-      className={cn('mt-0.5 h-1 rounded-xs', dotOf(view, colours))}
+      className={cn('mt-0.5 h-1 rounded-xs', colours(view))}
     />
   ));
 }
@@ -70,7 +73,7 @@ function Chips({
       key={`${view.item_id}:${view.occurrence_key}`}
       className="h-4 flex-row items-center gap-1"
     >
-      <View className={cn('size-1.5 rounded-full', dotOf(view, colours))} />
+      <View className={cn('size-1.5 rounded-full', colours(view))} />
       <Text variant="caption" numberOfLines={1} className="min-w-0 flex-1">
         {view.title}
       </Text>
@@ -190,8 +193,12 @@ interface GridProps {
 
 function useColours(): ColourOf {
   const { person } = usePlannerFrame();
-  const collections = usePlannerCollections(person);
-  return (collectionId) => collections.find((row) => row.id === collectionId)?.colour ?? null;
+  const looks = useCalendarLooks(person);
+  return (view) =>
+    paintOf(
+      looks.collections.find((row) => row.id === view.collection_id)?.colour ?? null,
+      looks.lookOf(view),
+    );
 }
 
 function Grid({ month, days, selected, size, onPress, onOpenDay }: GridProps): ReactNode {
@@ -223,8 +230,16 @@ function SelectedDay({ days, day }: { readonly days: DayMap; readonly day: strin
   const { person } = usePlannerFrame();
   const timeZone = useSettings().time_zone;
   const today = useMinuteOf(dayKeyOf);
-  const collections = usePlannerCollections(person);
-  const rows = agendaRowsOf({ days, window: [day, day], today, collections, timeZone, query: '' });
+  const looks = useCalendarLooks(person);
+  const rows = agendaRowsOf({
+    days,
+    window: [day, day],
+    today,
+    collections: looks.collections,
+    timeZone,
+    query: '',
+    lookOf: looks.lookOf,
+  });
   if (rows.length === 0) {
     return (
       <AgendaDayHead
@@ -257,7 +272,8 @@ function MonthBody({ range, day, onOpenDay }: MonthBodyProps): ReactNode {
   const month = monthOf(day);
   const [picked, pick] = useState(day);
   const selected = monthOf(picked) === month ? picked : day;
-  const days = dayMapOf(range.occurrences, timeZone, monthBoundsOf(month));
+  const looks = useCalendarLooks(usePlannerFrame().person);
+  const days = dayMapOf(looks.shown(range.occurrences), timeZone, monthBoundsOf(month));
   if (size === 'wide') {
     return (
       <Grid

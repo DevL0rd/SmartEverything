@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Device } from '../../../store/state';
 import type { PhoneReadingsInput } from '../card/phone-face-fixtures';
 
-vi.mock('../../../components/section-body', () => ({
+vi.mock('../../../components/page-shell/body-width', () => ({
   useFrameBodyWidth: (): number => 380,
 }));
 

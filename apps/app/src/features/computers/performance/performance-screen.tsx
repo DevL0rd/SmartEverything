@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { gridColumnsOf } from '../../../components/frame-layout';
+import { gridColumnsOf } from '../../../components/page-shell/layout';
 import { Segmented } from '../../../components/segmented';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { ComputerFrame } from '../components/computer-frame';

@@ -6,9 +6,10 @@ import {
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { clock } from '../../../format/time';
+import { agendaRowsOf, type AgendaRow } from './agenda-model';
+import type { EventLook } from './calendars-model';
 import {
   agendaDaysOf,
-  agendaRowsOf,
   agendaWindowOf,
   dayMapOf,
   monthBoundsOf,
@@ -17,7 +18,6 @@ import {
   monthWindowOf,
   yearHeatOf,
   yearWindowOf,
-  type AgendaRow,
 } from './month-model';
 
 const PROFILE = 'a1b2c3d4-0000-4000-8000-000000000001';
@@ -50,8 +50,10 @@ function calendar(
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
     created_at: STAMP,
     updated_at: STAMP,
   });
@@ -224,7 +226,10 @@ describe('the agenda', () => {
     }),
   ];
   const window = agendaDaysOf(TODAY);
-  const rowsFor = (query: string): readonly AgendaRow[] =>
+  const rowsFor = (
+    query: string,
+    lookOf: (view: PlannerOccurrenceView) => EventLook = () => 'plain',
+  ): readonly AgendaRow[] =>
     agendaRowsOf({
       days: dayMapOf(occurrences, ZONE, window),
       window,
@@ -232,6 +237,7 @@ describe('the agenda', () => {
       collections: CALENDARS,
       timeZone: ZONE,
       query,
+      lookOf,
     });
 
   it('runs one month from the shown day', () => {
@@ -328,6 +334,27 @@ describe('the agenda', () => {
     expect(heads(rowsFor('health'))).toEqual(['Today, Saturday 7: 1 task']);
     expect(heads(rowsFor('  FLIGHT '))).toEqual(['Sunday 8: 1 event', 'Monday 9: 1 event']);
     expect(rowsFor('nothing like this')).toEqual([]);
+  });
+
+  it('leaves declined events out and carries the invited and maybe looks', () => {
+    const looks: Readonly<Record<string, EventLook>> = {
+      'Walk on the treadmill': 'declined',
+      'Dinner with Alex and Priya': 'invited',
+      'Night flight': 'maybe',
+    };
+    const entries = rowsFor('', (view) => looks[view.title] ?? 'plain').flatMap((row) =>
+      row.kind === 'entry' ? [[row.entry.occurrence.title, row.entry.look]] : [],
+    );
+    expect(entries).toEqual([
+      ['Dinner with Alex and Priya', 'invited'],
+      ['Brush teeth', 'plain'],
+      ['Night flight', 'maybe'],
+      ['Night flight', 'maybe'],
+      ['Advent market', 'plain'],
+    ]);
+    expect(heads(rowsFor('', (view) => looks[view.title] ?? 'plain'))[0]).toBe(
+      'Today, Saturday 7: 1 event · 1 task',
+    );
   });
 });
 

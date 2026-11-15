@@ -59,7 +59,7 @@ export function activityItemOf(feed: DriveActivityEntry, names: ActivityNames): 
       itemName: item?.name ?? 'Removed item',
       folderId: item?.parentId ?? null,
       folderPath: item === null ? 'Location unavailable' : drivePathOf(chip, item.relPath),
-      actorName: nameOf(names.people, row.actorProfileId),
+      actorName: nameOf(names.people, row.actorProfileId) ?? feed.outsiderName,
       deviceName: nameOf(names.devices, row.deviceId),
     },
   };
@@ -264,6 +264,8 @@ const KIND_OPTIONS: readonly SelectOption<ActivityKind | typeof ALL>[] = [
   { value: 'document', label: 'Documents' },
   { value: 'audio', label: 'Audio' },
   { value: 'other', label: 'Other' },
+  { value: 'link', label: 'Links' },
+  { value: 'special', label: 'Special files' },
 ];
 
 export interface ActivityFiltersProps {

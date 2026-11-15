@@ -1,6 +1,7 @@
 export type { NativeInputHistory } from './host/input-history';
 export type { ApiKeyVault } from './plugins/providers';
-export { createHarnessRuntime, HarnessRuntime } from './host/runtime';
+export { HarnessRuntime } from './host/runtime';
+export { createHarnessRuntime } from './host/create-runtime';
 export { bindCompactionPolicy } from './composition/compaction-policy';
 export type { HarnessRuntimeOptions } from './host/runtime';
 export type {

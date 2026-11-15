@@ -23,6 +23,7 @@ import { QuickControlsHost } from '../features/devices';
 import { BackgroundAlertsHost, PushRegistrationHost } from '../features/settings';
 import { PhotosBackupHost } from '../features/photos/backup/runner/host';
 import { HealthSyncHost } from '../features/fitness';
+import { DriveProviderHost } from '../features/drive/phone';
 import { PhoneRingsHost } from '../features/planner/data/phone-rings-host';
 import { EntryDeliveryHost } from '../features/health-log';
 import { BakeHost, LiveSurfaceHost } from '../features/models';
@@ -81,6 +82,7 @@ function PhoneDataHosts(): ReactNode {
       <BrushLinkHost />
       <BottleLinkHost />
       <PhoneRingsHost />
+      <DriveProviderHost />
     </>
   );
 }

@@ -54,7 +54,7 @@ export const WALKING_PAD_MODEL: ModelSpec = {
   title: 'Walking pad',
   category: 'fitness',
   family: 'treadmill',
-  footprint: { width: 0.5, depth: 1.3, height: 0.12 },
+  footprint: { width: 0.5, depth: 1.3, height: 0.1205 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

@@ -112,7 +112,7 @@ function CaptionAction({
     <Interactive
       label={`${text}. ${label}`}
       href={GOOGLE_SYNC_LOG}
-      className="-my-1 rounded-sm px-1 py-1"
+      className="min-h-11 min-w-11 items-center justify-center rounded-sm px-2"
       layerClassName="rounded-sm"
     >
       <Text variant="footnote" tone="primary">

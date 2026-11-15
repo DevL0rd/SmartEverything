@@ -7,7 +7,7 @@ const DEEP = 0.2;
 export const FLOATING_SHELF_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.floating-shelf',
   title: 'Floating shelf',
-  footprint: { width: 0.9, depth: DEEP, height: 0.2 },
+  footprint: { width: 0.9, depth: DEEP, height: 0.2311 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

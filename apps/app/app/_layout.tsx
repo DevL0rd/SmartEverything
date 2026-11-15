@@ -8,7 +8,11 @@ import { installCrashGuard } from '../src/platform/crash-guard';
 import { startLogging } from '../src/platform/logging';
 import { provideRandomValues } from '../src/platform/random-values';
 import { APP_FONTS } from '../src/design/fonts';
-import { FLOWS_PRESENTATION, SEARCH_PRESENTATION } from '../src/app-shell/root-presentation';
+import {
+  FLOWS_PRESENTATION,
+  RING_PRESENTATION,
+  SEARCH_PRESENTATION,
+} from '../src/app-shell/root-presentation';
 import { isNative } from '../src/design/platform';
 import { BackRulesProvider } from '../src/components/back-navigation';
 import { BACK_RULES } from '../src/app-shell/back-host';
@@ -67,6 +71,14 @@ export default function RootLayout(): ReactNode {
                 <Stack.Screen name="(app)" />
                 <Stack.Screen name="pair" />
                 <Stack.Screen name="search" options={{ presentation: SEARCH_PRESENTATION }} />
+                <Stack.Screen
+                  name="ring/[ringId]"
+                  options={{
+                    presentation: RING_PRESENTATION,
+                    animation: 'fade',
+                    gestureEnabled: false,
+                  }}
+                />
                 <Stack.Screen
                   name="(flows)"
                   options={{

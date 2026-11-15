@@ -1,5 +1,4 @@
 import {
-  createContext,
   use,
   useId,
   useEffectEvent,
@@ -14,6 +13,7 @@ import { Keyboard, type View } from 'react-native';
 import { isNative } from '../design/platform';
 import type { Detent } from './bottom-sheet';
 import { focusView } from './focus-request';
+import { SheetNavigationContext } from './sheet-navigation-context';
 
 export interface SheetSubpage {
   readonly title: string;
@@ -34,12 +34,10 @@ interface PageEntry {
   readonly focusBack: boolean;
 }
 
-interface SheetNavigation {
+export interface SheetNavigation {
   readonly show: (id: string, page: SheetSubpage) => void;
   readonly remove: (id: string) => void;
 }
-
-const SheetNavigationContext = createContext<SheetNavigation | null>(null);
 
 export function useSheetSubpage(open: boolean, page: SheetSubpage): boolean {
   const navigation = use(SheetNavigationContext);

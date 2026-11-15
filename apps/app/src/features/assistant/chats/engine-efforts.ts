@@ -1,5 +1,5 @@
 import type { AiRouteInfo, Engine } from '@smarteverything/domain';
-import { useRouteInfo } from '../data/route-info';
+import { useEngineRouteInfo } from '../data/route-info';
 import { effortSteps, type EffortSteps } from '../model/composer-state';
 import { effortLabel } from '../picker/efforts';
 import { useEngineCatalogue } from '../provider/provider-data';
@@ -25,7 +25,7 @@ export function routeThinking(info: AiRouteInfo | undefined): EngineThinking {
 
 export function useEngineThinking(engine: Engine): EngineThinking {
   const native = useEngineCatalogue();
-  const route = useRouteInfo(engine);
+  const route = useEngineRouteInfo(engine);
   if (engine.kind === 'dsh') return routeThinking(route.data);
   return nativeThinking(engine, native.data);
 }

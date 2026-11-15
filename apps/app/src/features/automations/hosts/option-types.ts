@@ -45,7 +45,6 @@ export interface HomeData {
   readonly devices: readonly Device[];
   readonly rooms: readonly Named[];
   readonly groups: readonly DeviceGroupRow[];
-  readonly scenes: readonly Named[];
   readonly people: readonly Named[];
   readonly chats: readonly { readonly id: string; readonly title: string }[];
   readonly channels: readonly Named[];

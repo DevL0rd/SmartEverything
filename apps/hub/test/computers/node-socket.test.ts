@@ -15,7 +15,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { RemoteComputerRuntimeHost } from '../../src/computers/remote-runtime-host';
-import { bootServer, type Booted } from '../support/booted';
+import type { Booted } from '../support/booted';
+import { bootSecureHub } from '../support/paired-computer';
 import { call, temporaryDirectory } from '../support/server';
 
 const MACHINE_ID = 'a'.repeat(32);
@@ -39,11 +40,12 @@ const UPDATE_REQUIRED = 4003;
 
 let directory: { path: string; remove: () => Promise<void> };
 let booted: Booted;
+let hubUrl: string;
 const sockets: WebSocket[] = [];
 
 beforeEach(async () => {
   directory = await temporaryDirectory();
-  booted = await bootServer(directory.path);
+  ({ booted, hubUrl } = await bootSecureHub(directory.path));
 });
 
 afterEach(async () => {
@@ -56,7 +58,7 @@ async function pair(): Promise<{ readonly token: string; readonly deviceId: stri
   const issued = await call(booted.base, booted.owner, {
     method: 'POST',
     path: '/api/nodes/pairing',
-    body: { url: booted.base },
+    body: { url: hubUrl },
   });
   const { code } = API_ENDPOINTS.pairComputerNode.response.parse(issued.body);
   const claimed = await call(booted.base, null, {

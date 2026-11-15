@@ -1,7 +1,14 @@
-import type { PlannerFreeSlot, PlannerOccurrenceView } from '@smarteverything/domain';
+import type {
+  PlannerFreeSlot,
+  PlannerItemRow,
+  PlannerOccurrenceView,
+} from '@smarteverything/domain';
+import type { Store } from '../store/store';
 import { isoOf } from './instants';
 import { expandOccurrences } from './occurrences';
 import { loadWindow, type PlannerReader } from './range';
+
+export type BusyReader = PlannerReader & Pick<Store, 'plannerGuests'>;
 
 const MINUTE_MS = 60_000;
 
@@ -75,18 +82,28 @@ export function freeSlots(
   return slots;
 }
 
-export function freeSlotsFromStore(
-  store: PlannerReader,
-  query: FreeSlotQuery,
-): readonly PlannerFreeSlot[] {
+function blocks(store: BusyReader, profileId: string, item: PlannerItemRow): boolean {
+  if (item.profile_id === profileId) return true;
+  const guest = store.plannerGuests.ofPerson(item.series_id ?? item.id, profileId);
+  return guest !== undefined && (guest.response === 'yes' || guest.response === 'maybe');
+}
+
+export function busySpansOf(store: BusyReader, query: Omit<FreeSlotQuery, 'minutes'>): Span[] {
   const window = { from: query.from, to: query.to, timeZone: query.timeZone };
-  const loaded = loadWindow(store, query.profileId, window);
+  const loaded = loadWindow(store, query.profileId, window, 'shown');
+  const items = loaded.items.filter((item) => blocks(store, query.profileId, item));
   const views = expandOccurrences({
-    items: loaded.items,
+    items,
     stored: loaded.stored,
     window,
     now: query.now,
   });
-  const busy = views.map(busySpan).filter((span) => span !== null);
-  return freeSlots(busy, { from: query.from, to: query.to }, query.minutes);
+  return views.map(busySpan).filter((span) => span !== null);
+}
+
+export function freeSlotsFromStore(
+  store: BusyReader,
+  query: FreeSlotQuery,
+): readonly PlannerFreeSlot[] {
+  return freeSlots(busySpansOf(store, query), { from: query.from, to: query.to }, query.minutes);
 }

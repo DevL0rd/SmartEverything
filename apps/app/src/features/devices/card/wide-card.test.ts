@@ -214,9 +214,13 @@ describe('the wide card geometry', () => {
     for (const name of ['mt-1.5', 'justify-end', 'flex-wrap', 'flex-row']) {
       expect(classOf(band)).toContain(name);
     }
-    expect(content.children.some((child) => classOf(child).split(' ').includes('flex-1'))).toBe(
-      true,
-    );
+    expect(
+      content.children.some((child) =>
+        classOf(child)
+          .split(' ')
+          .some((name) => name === 'flex-1' || name === 'grow'),
+      ),
+    ).toBe(true);
   });
 
   it('pushes the band down with a lead when nothing above it fills the lane', () => {
@@ -235,10 +239,26 @@ describe('the wide card geometry', () => {
 
   it('places the graph beside the info in the wide class and below it elsewhere', () => {
     const wide = treeOf(html('w', { graph: mark('graph') }));
-    expect(classOf(parentOf(parentOf(parentOf(slot(wide, 'graph')))))).toContain('flex-row');
+    expect(classOf(parentOf(parentOf(parentOf(parentOf(slot(wide, 'graph'))))))).toContain(
+      'flex-row',
+    );
     const medium = treeOf(html('m', { graph: mark('graph') }));
     const holder = parentOf(parentOf(slot(medium, 'graph')));
     expect(parentOf(holder)).toBe(lane(medium));
     expect(classOf(holder)).toContain('flex-1');
+  });
+
+  it('keeps the info beside the graph at full height so the ticker gives way at W', () => {
+    const root = treeOf(html('w', { ...FULL, figures: [mark('figure-0'), mark('figure-1')] }));
+    const row = parentOf(parentOf(parentOf(parentOf(slot(root, 'graph')))));
+    const rowClasses = classOf(row).split(' ');
+    expect(rowClasses).toContain('shrink-0');
+    expect(rowClasses).not.toContain('flex-1');
+    expect(rowClasses).not.toContain('min-h-0');
+    expect(classOf(parentOf(parentOf(slot(root, 'graph'))))).toContain('absolute');
+    const ticker = parentOf(parentOf(slot(root, 'ticker')));
+    expect(parentOf(ticker)).toBe(lane(root));
+    expect(classOf(ticker).split(' ')).toEqual(expect.arrayContaining(['min-h-0', 'shrink']));
+    expect(parentOf(slot(root, 'figure-1')).parent?.parent?.parent).toBe(row);
   });
 });

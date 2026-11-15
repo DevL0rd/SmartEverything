@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
+import { driveItemFixture } from '../../drive/testing';
 import { bytes } from '../../../format/number';
 import {
   addedLine,
@@ -27,7 +28,7 @@ import {
 const AT = '2026-11-07T10:42:18.000Z';
 
 function photo(patch: Partial<Record<string, unknown>> = {}): MediaItem {
-  const item: DriveItem = DRIVE_ITEM.parse({
+  const item: DriveItem = driveItemFixture(patch['kind'] === 'video' ? 'video' : 'image', {
     id: '00000000-0000-4000-8000-0000000000a1',
     rootId: '00000000-0000-4000-8000-0000000000b1',
     parentId: null,
@@ -35,18 +36,9 @@ function photo(patch: Partial<Record<string, unknown>> = {}): MediaItem {
     name: 'IMG_4821.HEIC',
     modifiedAt: AT,
     addedAt: AT,
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e1',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
     mime: 'image/heic',
     bytes: 3_565_158,
-    sha256: null,
     integrity: 'ok',
     thumb: { state: 'ready' },
     takenAt: AT,
@@ -56,7 +48,6 @@ function photo(patch: Partial<Record<string, unknown>> = {}): MediaItem {
     camera: { make: 'Apple', model: 'iPhone 15 Pro', lens: null },
     exposure: { iso: 80, aperture: 1.78, shutter: 0.0008, focal: 24 },
     place: { lat: 38.71, lon: -9.13 },
-    kind: 'image',
     ...patch,
   });
   if (!isMediaItem(item)) throw new TypeError('not a media item');

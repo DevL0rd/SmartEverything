@@ -1,9 +1,9 @@
 ---
 name: smarteverything-automations
-description: 'Creates, changes, checks, runs and stops automations, Custom Nodes, scenes, Values and one-off scheduled steps, and explains what an automation did. Use for “when the door opens at night turn on the hall light”, “remind me in 20 minutes”, “make a movie scene” or “why didn’t my automation run”. Load smarteverything-automation-triggers and smarteverything-automation-nodes for the details. Not for one immediate device change (smarteverything-home).'
+description: 'Creates, changes, checks, runs and stops automations, Custom Nodes, Values and one-off scheduled steps, and explains what an automation did. Use for “when the door opens at night turn on the hall light”, “remind me in 20 minutes”, “make a movie night button” or “why didn’t my automation run”. Load smarteverything-automation-triggers and smarteverything-automation-nodes for the details. Not for one immediate device change (smarteverything-home).'
 ---
 
-# Scenes, automations and schedules
+# Automations and schedules
 
 Checklist before saving anything, because an automation acts on the home without anyone watching:
 
@@ -14,7 +14,7 @@ Checklist before saving anything, because an automation acts on the home without
 
 ## Choose the mechanism
 
-- A scene is a flat list of device commands: `scene_find`, `scene_edit`, `scene_run`.
+- There are no scenes. A set of device changes the person starts by hand is an automation with a `trigger.called` entry and `device.set` nodes; it shows on the Home Automations widget.
 - An automation is a program of connected nodes: triggers that start it, then logic and first-class nodes for devices, people, computers, phones and plugins. Look in the catalog for the node that does the job before reaching for `tool.call`. `automation_read` reads, `automation_edit` writes. A program with a `trigger.called` entry and no other trigger is started by `automation_run` or an `automation.run` node; declare its inputs there.
 - A Custom Node is the same kind of program with an interface (inputs and outputs) that other programs place as a node, for example one per-room routine. It is read with `automation_read` view `functions` and written with `automation_edit` like an automation.
 - Every hub starts with six Custom Nodes made of ordinary nodes; everyone can open them and an owner can change them: Say it, or push it; Switch devices; Lights off after no motion; Flash the lights; Wake-up light; Leave home check. Find their ids with view `functions`, reuse them with `fn.call` before building the same steps again.
@@ -60,7 +60,7 @@ Everything the person does in the editor has a tool path:
 
 ## Run mode and failures
 
-Plain device commands (`device.set`, `light.set`, `scene.run` and the like) send and continue at once (`fire_and_forget`); reads and questions wait. In the catalog `modes` gives each step's default and what it allows. Choose `wait_for_result` when a later step needs the outcome or must not start before the device confirms (a read-back, an output marked `waitOnly`), and give it a `timeout`; a wait that runs out fails with `Timeout`. Every node that can fail has the If it fails exit: wire `onError` to a notify or a fallback so a failure is handled where it happens. A step with no wired exit behaves as its `policy.onError` says (`fail` or `continue`), and the `flow.on_failure` node still catches what is left.
+Plain device commands (`device.set`, `light.set` and the like) send and continue at once (`fire_and_forget`); reads and questions wait. In the catalog `modes` gives each step's default and what it allows. Choose `wait_for_result` when a later step needs the outcome or must not start before the device confirms (a read-back, an output marked `waitOnly`), and give it a `timeout`; a wait that runs out fails with `Timeout`. Every node that can fail has the If it fails exit: wire `onError` to a notify or a fallback so a failure is handled where it happens. A step with no wired exit behaves as its `policy.onError` says (`fail` or `continue`), and the `flow.on_failure` node still catches what is left.
 
 ## Memory and questions
 
@@ -80,4 +80,4 @@ Saving a program proves it is valid, not that the trigger fires. `automation_run
 
 A `device.set` node to a room or group skips offline or unsupported members and says which; it fails when nothing could be sent or a command was refused or left uncertain. Check the linked commands before repeating anything whose physical outcome is unknown.
 
-Active temporary changes are listed by the `listDeviceEffects` operation (`operation_call`; `tool_read` gives its input) and one is ended with `endDeviceEffect`. Use `widget_show` with returned scene, automation or schedule ids to let the user open the result.
+Active temporary changes are listed by the `listDeviceEffects` operation (`operation_call`; `tool_read` gives its input) and one is ended with `endDeviceEffect`. Use `widget_show` with returned automation or schedule ids to let the user open the result.

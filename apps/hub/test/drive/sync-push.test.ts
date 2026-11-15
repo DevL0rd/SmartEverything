@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -13,18 +13,24 @@ import {
 import {
   packedToBytes,
   SYNC_HUB_MESSAGE,
+  SYNC_INDEX_ENTRY,
   type SyncHubMessage,
+  type SyncIndexEntry,
 } from '@smarteverything/domain/drive-sync';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { commitContent } from '../../src/drive/changes';
 import { TMP_DIRECTORY } from '../../src/drive/intents';
+import { specialDraft } from '../../src/drive/posix/drafts';
+import { resolveScope } from '../../src/drive/sync/placement-scope';
+import { entriesForRows, indexPages } from '../../src/drive/sync/server-index';
 import { createDriveSync, type DriveSyncParts } from '../../src/drive/sync/server-push';
 import { syncAuthentication, type SyncEnv } from '../../src/drive/sync/server-ops';
 import type { SyncOperation, SyncSession } from '../../src/drive/sync/server-socket';
 import { commitTrash } from '../../src/drive/trash-purge';
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
 import { testLogger } from '../support/logs';
+import { nsOf, syncPosixOf } from './sync-posix';
 import type { StoredDrive } from '../../src/store/repositories/drive-roots';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 import type { TestStore } from '../support/store';
@@ -173,6 +179,7 @@ beforeEach(async () => {
     log: testLogger('drive-sync'),
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
+    posix: syncPosixOf(opened.store, () => NOW),
     conflicts: {
       insert: (conflict): void => {
         conflictRows.set(conflict.id, conflict);
@@ -231,6 +238,7 @@ function enroll(
     folderItemId: null,
     mode: 'synced',
     localPath: `/sync/${rootId}`,
+    mountName: null,
     enabled: true,
     createdBy: peer.profileId,
     excluded: [],
@@ -259,10 +267,14 @@ function pushOf(opId: string, relPath: string, baseRev: number | null, bytes: Bu
     meta: {
       bytes: bytes.length,
       mtime: '2026-01-02T03:04:05.000Z',
+      mtimeNs: nsOf('2026-01-02T03:04:05.000Z'),
       blockSize: BLOCK,
       blocksHash: shaOf(packedToBytes(packed)),
     },
     blocks: packed,
+    mode: 0o644,
+    xattrs: [],
+    linkOf: null,
   };
 }
 
@@ -492,7 +504,10 @@ describe('what a push may not do', () => {
     const root = await syncedRoot({ ownerProfileId: samId });
     putItem(opened.store, { rootId: root.id, id: randomUUID(), relPath: 'shared', kind: 'folder' });
     const folder = item(root, 'shared');
-    opened.store.driveGrants.set({ itemId: folder.id, profileId: ownerId, role: 'view' }, samId);
+    opened.store.driveGrants.set(
+      { itemId: folder.id, profileId: ownerId, role: 'view', expiresAt: null },
+      samId,
+    );
     const placed = opened.store.drivePlacements.insert({
       id: randomUUID(),
       deviceId: laptop.row.device_id,
@@ -500,6 +515,7 @@ describe('what a push may not do', () => {
       folderItemId: folder.id,
       mode: 'synced',
       localPath: '/sync/shared',
+      mountName: null,
       enabled: true,
       createdBy: ownerId,
       excluded: [],
@@ -514,7 +530,10 @@ describe('what a push may not do', () => {
         pushOf('op-1', 'a.txt', null, bytesOf(1, 'a')),
       ),
     ).rejects.toMatchObject({ code: 'forbidden' });
-    opened.store.driveGrants.set({ itemId: folder.id, profileId: ownerId, role: 'edit' }, samId);
+    opened.store.driveGrants.set(
+      { itemId: folder.id, profileId: ownerId, role: 'edit', expiresAt: null },
+      samId,
+    );
     await open(laptop, root, pushOf('op-2', 'new.txt', null, bytesOf(1, 'n')));
     expect(lastOf(laptop, 'need_blocks').indexes).toEqual([0]);
   });
@@ -965,6 +984,7 @@ describe('a folder placed on a computer', () => {
       folderItemId: folder.id,
       mode: 'synced',
       localPath: '/sync/docs',
+      mountName: null,
       enabled: true,
       createdBy: ownerId,
       excluded,
@@ -1078,5 +1098,387 @@ describe('a folder placed on a computer', () => {
         pushOf('op-1', 'a.txt', null, bytesOf(1, 'a')),
       ),
     ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+});
+
+const MOMENT = '2026-01-02T03:04:05.123Z';
+const MOMENT_NS = '1767323045123456789';
+const NOTE = { name: 'user.note', value: Buffer.from('hello').toString('base64') };
+const TAG = { name: 'user.tag', value: Buffer.from('x').toString('base64') };
+
+function withMeta(
+  message: Push,
+  meta: { mode?: number; xattrs?: Push['xattrs']; linkOf?: string },
+): Push {
+  return {
+    ...message,
+    meta: { ...message.meta, mtime: MOMENT, mtimeNs: MOMENT_NS },
+    ...(meta.mode === undefined ? {} : { mode: meta.mode }),
+    ...(meta.xattrs === undefined ? {} : { xattrs: meta.xattrs }),
+    ...(meta.linkOf === undefined ? {} : { linkOf: meta.linkOf }),
+  };
+}
+
+function inodeOf(
+  root: StoredDrive,
+  relPath: string,
+): ReturnType<typeof opened.store.driveInodes.byId> {
+  const inode = opened.store.driveInodes.ofItem(item(root, relPath).id);
+  if (inode === undefined) throw new Error(`${relPath} has no inode`);
+  return inode;
+}
+
+function indexed(placement: DrivePlacement): readonly SyncIndexEntry[] {
+  const scope = resolveScope(opened.store, placement.id, placement.deviceId, 'sync');
+  return [...indexPages(opened.store, scope)].flat();
+}
+
+async function sendMeta(
+  peer: Peer,
+  root: StoredDrive,
+  message: Extract<SyncOperation, { readonly type: 'push_meta' | 'push_link' }>,
+): Promise<SyncHubMessage> {
+  await sync.operations.handle(peer.session(root.id), message);
+  return last(peer);
+}
+
+describe('metadata on pushed files', () => {
+  it('stores the mode, the extended attributes and the exact modified time of a pushed file', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'm');
+    await transfer(
+      laptop,
+      root,
+      withMeta(pushOf('op-1', 'run.sh', null, bytes), { mode: 0o750, xattrs: [NOTE] }),
+      bytes,
+    );
+    const inode = inodeOf(root, 'run.sh');
+    expect(inode.mode).toBe(0o750);
+    expect(inode.mtimeNs).toBe(BigInt(MOMENT_NS));
+    expect(item(root, 'run.sh').modifiedAt).toBe(MOMENT);
+    expect((await stat(join(root.path, 'run.sh'))).mode & 0o7777).toBe(0o750);
+    expect(Buffer.from(opened.store.driveXattrs.get(inode.id, NOTE.name) ?? []).toString()).toBe(
+      'hello',
+    );
+  });
+
+  it('keeps the hub-only bits readable on disk for a mode without owner access', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'r');
+    await transfer(
+      laptop,
+      root,
+      withMeta(pushOf('op-1', 'ro.txt', null, bytes), { mode: 0o444 }),
+      bytes,
+    );
+    expect(inodeOf(root, 'ro.txt').mode).toBe(0o444);
+    expect((await stat(join(root.path, 'ro.txt'))).mode & 0o7777).toBe(0o644);
+  });
+
+  it('applies the metadata to the conflict copy of a stale push', async () => {
+    const root = await syncedRoot();
+    const first = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'c.txt', null, first), first);
+    await hubWrite(root, 'c.txt', bytesOf(1, 'h'));
+    const mine = bytesOf(1, 'z');
+    const result = await transfer(
+      laptop,
+      root,
+      withMeta(pushOf('op-2', 'c.txt', 1, mine), { mode: 0o700, xattrs: [TAG] }),
+      mine,
+    );
+    const conflict = SYNC_HUB_MESSAGE.parse(result);
+    if (conflict.type !== 'conflict' || conflict.conflictPath === null) throw new Error('no copy');
+    expect(inodeOf(root, conflict.conflictPath).mode).toBe(0o700);
+    const tag = opened.store.driveXattrs.get(inodeOf(root, conflict.conflictPath).id, TAG.name);
+    expect(Buffer.from(tag ?? []).toString()).toBe('x');
+  });
+});
+
+describe('pushing metadata alone', () => {
+  it('changes the mode, replaces the extended attributes and sets the modified time', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'a');
+    await transfer(
+      laptop,
+      root,
+      withMeta(pushOf('op-1', 'f.txt', null, bytes), { xattrs: [NOTE] }),
+      bytes,
+    );
+    const stored = item(root, 'f.txt');
+    const reply = await sendMeta(laptop, root, {
+      type: 'push_meta',
+      opId: 'op-2',
+      relPath: 'f.txt',
+      baseRev: stored.rev,
+      mode: 0o755,
+      mtimeNs: '1767323099999999999',
+      xattrs: [TAG],
+    });
+    expect(reply).toMatchObject({ type: 'accept', opId: 'op-2', rev: stored.rev });
+    const inode = inodeOf(root, 'f.txt');
+    expect(inode.mode).toBe(0o755);
+    expect(inode.mtimeNs).toBe(1767323099999999999n);
+    expect(opened.store.driveXattrs.names(inode.id)).toEqual([TAG.name]);
+    expect((await stat(join(root.path, 'f.txt'))).mode & 0o7777).toBe(0o755);
+  });
+
+  it('applies to folders too', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'dir/a.txt', null, bytes), bytes);
+    const folder = item(root, 'dir');
+    const reply = await sendMeta(laptop, root, {
+      type: 'push_meta',
+      opId: 'op-2',
+      relPath: 'dir',
+      baseRev: folder.rev,
+      mode: 0o700,
+      mtimeNs: MOMENT_NS,
+      xattrs: [NOTE],
+    });
+    expect(reply.type).toBe('accept');
+    expect(inodeOf(root, 'dir').mode).toBe(0o700);
+    expect((await stat(join(root.path, 'dir'))).mode & 0o7777).toBe(0o700);
+  });
+
+  it('answers a stale base, a missing path and a link without changing anything', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'f.txt', null, bytes), bytes);
+    await sendMeta(laptop, root, {
+      type: 'push_link',
+      opId: 'op-l',
+      relPath: 'l',
+      target: 'f.txt',
+    });
+    const meta = { mode: 0o700, mtimeNs: MOMENT_NS, xattrs: [] } as const;
+    expect(
+      await sendMeta(laptop, root, {
+        type: 'push_meta',
+        opId: 'a',
+        relPath: 'f.txt',
+        baseRev: 99,
+        ...meta,
+      }),
+    ).toMatchObject({ type: 'conflict', reason: 'stale' });
+    expect(
+      await sendMeta(laptop, root, {
+        type: 'push_meta',
+        opId: 'b',
+        relPath: 'nope',
+        baseRev: 1,
+        ...meta,
+      }),
+    ).toMatchObject({ type: 'conflict', reason: 'missing' });
+    expect(
+      await sendMeta(laptop, root, {
+        type: 'push_meta',
+        opId: 'c',
+        relPath: 'l',
+        baseRev: 1,
+        ...meta,
+      }),
+    ).toMatchObject({ type: 'conflict', reason: 'path' });
+    expect(inodeOf(root, 'f.txt').mode).toBe(0o644);
+  });
+
+  it('answers a repeated operation from memory', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'f.txt', null, bytes), bytes);
+    const message = {
+      type: 'push_meta',
+      opId: 'same',
+      relPath: 'f.txt',
+      baseRev: item(root, 'f.txt').rev,
+      mode: 0o600,
+      mtimeNs: MOMENT_NS,
+      xattrs: [],
+    } as const;
+    await sendMeta(laptop, root, message);
+    const again = await sendMeta(laptop, root, { ...message, mode: 0o777 });
+    expect(again.type).toBe('accept');
+    expect(inodeOf(root, 'f.txt').mode).toBe(0o600);
+  });
+});
+
+describe('pushing links', () => {
+  it('makes a real symbolic link and every missing folder above it', async () => {
+    const root = await syncedRoot();
+    const reply = await sendMeta(laptop, root, {
+      type: 'push_link',
+      opId: 'op-1',
+      relPath: 'a/b/link',
+      target: '../outside.txt',
+    });
+    expect(reply.type).toBe('accept');
+    const stored = item(root, 'a/b/link');
+    expect(stored).toMatchObject({ kind: 'link', linkTarget: '../outside.txt' });
+    expect(await readlink(join(root.path, 'a/b/link'))).toBe('../outside.txt');
+    expect(item(root, 'a/b').kind).toBe('folder');
+  });
+
+  it('accepts the same target again and refuses another one or a file in the way', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-0', 'f.txt', null, bytes), bytes);
+    const link = { type: 'push_link', relPath: 'l', target: 'f.txt' } as const;
+    await sendMeta(laptop, root, { ...link, opId: 'op-1' });
+    const rev = item(root, 'l').rev;
+    expect(await sendMeta(laptop, root, { ...link, opId: 'op-2' })).toMatchObject({
+      type: 'accept',
+      rev,
+    });
+    expect(await sendMeta(laptop, root, { ...link, opId: 'op-3', target: 'other' })).toMatchObject({
+      type: 'conflict',
+      reason: 'exists',
+    });
+    expect(await sendMeta(laptop, root, { ...link, opId: 'op-4', relPath: 'f.txt' })).toMatchObject(
+      { type: 'conflict', reason: 'exists' },
+    );
+    expect(await readlink(join(root.path, 'l'))).toBe('f.txt');
+  });
+
+  it('never follows a link a push or a later push goes through', async () => {
+    const root = await syncedRoot();
+    const outside = join(directory, 'outside');
+    await mkdir(outside);
+    await sendMeta(laptop, root, {
+      type: 'push_link',
+      opId: 'op-1',
+      relPath: 'out',
+      target: outside,
+    });
+    const bytes = bytesOf(1, 'a');
+    const reply = await transfer(laptop, root, pushOf('op-2', 'out/x.txt', null, bytes), bytes);
+    expect(reply).toMatchObject({ type: 'conflict', reason: 'exists' });
+    expect(await readdir(outside)).toEqual([]);
+  });
+
+  it('refuses a push over an existing link with a conflict', async () => {
+    const root = await syncedRoot();
+    await sendMeta(laptop, root, { type: 'push_link', opId: 'op-1', relPath: 'l', target: 'x' });
+    const bytes = bytesOf(1, 'a');
+    const reply = await transfer(laptop, root, pushOf('op-2', 'l', null, bytes), bytes);
+    expect(reply).toMatchObject({ type: 'conflict', reason: 'exists' });
+  });
+});
+
+describe('pushing hard links', () => {
+  it('names an existing file a second time on one inode without sending blocks', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(2, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'one.bin', null, bytes), bytes);
+    await open(laptop, root, { ...pushOf('op-2', 'sub/two.bin', null, bytes), linkOf: 'one.bin' });
+    const accepted = lastOf(laptop, 'accept');
+    expect(accepted.rev).toBe(item(root, 'sub/two.bin').rev);
+    expect(inodeOf(root, 'sub/two.bin').id).toBe(inodeOf(root, 'one.bin').id);
+    expect(opened.store.driveInodes.linkCount(inodeOf(root, 'one.bin').id)).toBe(2);
+    const [first, second] = await Promise.all([
+      stat(join(root.path, 'one.bin'), { bigint: true }),
+      stat(join(root.path, 'sub/two.bin'), { bigint: true }),
+    ]);
+    expect(first.ino).toBe(second.ino);
+    expect(await tmpFiles(root)).toEqual([]);
+  });
+
+  it('accepts the same link again, refuses another file at the name and a missing source', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'one.bin', null, bytes), bytes);
+    await transfer(laptop, root, pushOf('op-2', 'other.bin', null, bytes), bytes);
+    await open(laptop, root, { ...pushOf('op-3', 'two.bin', null, bytes), linkOf: 'one.bin' });
+    await open(laptop, root, { ...pushOf('op-4', 'two.bin', null, bytes), linkOf: 'one.bin' });
+    expect(lastOf(laptop, 'accept').rev).toBe(item(root, 'two.bin').rev);
+    await open(laptop, root, { ...pushOf('op-5', 'other.bin', null, bytes), linkOf: 'one.bin' });
+    expect(lastOf(laptop, 'conflict').reason).toBe('exists');
+    await open(laptop, root, { ...pushOf('op-6', 'three.bin', null, bytes), linkOf: 'gone.bin' });
+    expect(lastOf(laptop, 'conflict').reason).toBe('missing');
+    await open(laptop, root, { ...pushOf('op-7', 'four.bin', null, bytes), linkOf: '../x' });
+    expect(lastOf(laptop, 'conflict').reason).toBe('missing');
+  });
+
+  it('refuses to link a folder', async () => {
+    const root = await syncedRoot();
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'dir/a.bin', null, bytes), bytes);
+    await open(laptop, root, { ...pushOf('op-2', 'again', null, bytes), linkOf: 'dir' });
+    expect(lastOf(laptop, 'conflict').reason).toBe('path');
+  });
+});
+
+describe('the index carries the metadata', () => {
+  it('leaves special files out of the index', async () => {
+    const root = await syncedRoot();
+    const placement = enroll(laptop, root);
+    opened.store.driveItems.write({
+      item: specialDraft({
+        rootId: root.id,
+        parentId: null,
+        relPath: 'pipe',
+        modifiedAt: NOW.toISOString(),
+        addedAt: NOW.toISOString(),
+        outside: false,
+        addedByProfileId: null,
+      }),
+      identity: { dev: '0', ino: '0' },
+      inode: { specialType: 'fifo' },
+    });
+    expect(item(root, 'pipe').kind).toBe('special');
+    expect(indexed(placement)).toEqual([]);
+  });
+
+  it('lists mode, nanosecond time, extended attributes, links and hard link identity', async () => {
+    const root = await syncedRoot();
+    const placement = enroll(laptop, root);
+    const bytes = bytesOf(1, 'a');
+    await transfer(
+      laptop,
+      root,
+      withMeta(pushOf('op-1', 'one.bin', null, bytes), { mode: 0o750, xattrs: [NOTE] }),
+      bytes,
+    );
+    await open(laptop, root, { ...pushOf('op-2', 'two.bin', null, bytes), linkOf: 'one.bin' });
+    await sendMeta(laptop, root, {
+      type: 'push_link',
+      opId: 'op-3',
+      relPath: 'sym',
+      target: 'one.bin',
+    });
+    const entries = indexed(placement);
+    const byPath = new Map(entries.map((entry) => [entry.relPath, entry]));
+    const one = byPath.get('one.bin');
+    const two = byPath.get('two.bin');
+    expect(one).toMatchObject({
+      kind: 'file',
+      mode: 0o750,
+      mtimeNs: MOMENT_NS,
+      mtime: MOMENT,
+      xattrs: [NOTE],
+    });
+    expect(two).toMatchObject({ kind: 'file', mode: 0o750, xattrs: [NOTE] });
+    expect(one?.kind === 'file' && two?.kind === 'file' && one.inode === two.inode).toBe(true);
+    expect(byPath.get('sym')).toMatchObject({ kind: 'link', target: 'one.bin' });
+    expect(entries.every((entry) => SYNC_INDEX_ENTRY.safeParse(entry).success)).toBe(true);
+  });
+
+  it('sends a deleted entry with the defaults', async () => {
+    const root = await syncedRoot();
+    const placement = enroll(laptop, root);
+    const bytes = bytesOf(1, 'a');
+    await transfer(laptop, root, pushOf('op-1', 'gone.txt', null, bytes), bytes);
+    const stored = item(root, 'gone.txt');
+    await sync.operations.handle(laptop.session(root.id), {
+      type: 'tombstone',
+      opId: 'op-2',
+      relPath: 'gone.txt',
+      baseRev: stored.rev,
+    });
+    const scope = resolveScope(opened.store, placement.id, placement.deviceId, 'sync');
+    const rows = opened.store.driveFeed.sinceInRoot(root.id, 0, 1000).rows;
+    const removed = entriesForRows(opened.store, scope, rows).find((entry) => entry.deleted);
+    expect(removed).toMatchObject({ kind: 'file', mode: 0o644, xattrs: [], inode: null });
+    expect(removed?.mtimeNs).toMatch(/^\d+$/);
   });
 });

@@ -5,7 +5,6 @@ import {
   type ComputerFeature,
   type HubFrame,
   type NodeHello,
-  type ProcessWindow,
   type RemoteEarNodeMessage,
   NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
@@ -13,7 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerSession } from '../../src/computers/computer-session';
 import type { EarHostSend, SessionEarHosts } from '../../src/listening/ear-hosts';
-import { Viewers } from '../../src/metrics/viewers';
+import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import type { HubLink } from '../../src/node/link';
 import { captureLogs, testLogger } from '../support/logs';
 
@@ -97,7 +96,7 @@ function rig(): Rig {
     link,
     sink,
     history: { push: (): void => undefined },
-    viewers: new Viewers<ProcessWindow>(),
+    viewers: new Viewers<DeviceDetail>(),
     policyOf: (): typeof DEFAULT_HISTORY_POLICY => DEFAULT_HISTORY_POLICY,
     publish: (): void => undefined,
     deviceIdOf: (): string => 'device-1',

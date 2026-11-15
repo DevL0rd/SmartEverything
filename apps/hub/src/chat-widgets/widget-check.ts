@@ -48,7 +48,6 @@ const EXISTS: Readonly<Record<IdWidget['kind'], Exists>> = {
   device_settings_link: (store, id) => store.devices.find(id) !== undefined,
   remote: listed((store) => store.infrared.remotes()),
   automation_link: (store, id) => store.automations.find(id) !== undefined,
-  scene_link: listed((store) => store.scenes.list()),
   room_link: listed((store) => store.rooms.list()),
   scheduled_link: listed((store) => store.schedules.list()),
 };
@@ -113,9 +112,6 @@ function dataReason(store: Store, widget: ChatWidget, viewer: WidgetViewer): str
     return widget.part !== 'macros' || hasDaily(store, viewer, MACROS, 0)
       ? null
       : 'No macros are logged today';
-  }
-  if (widget.kind === 'scenes') {
-    return store.scenes.list().length > 0 ? null : 'There are no scenes';
   }
   return null;
 }

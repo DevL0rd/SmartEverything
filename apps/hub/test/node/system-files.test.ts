@@ -18,6 +18,7 @@ import { FilePropertiesReader } from '../../src/node/controls/linux/file-propert
 import { FileScope } from '../../src/node/controls/linux/file-scope';
 import { FileSearch, type SearchClock } from '../../src/node/controls/linux/file-search';
 import { FileUploads } from '../../src/node/controls/linux/file-upload';
+import { TrashBins } from '../../src/node/controls/linux/file-trash';
 import { FileWriter } from '../../src/node/controls/linux/file-write';
 import { XdgTrash } from '../../src/node/controls/linux/trash';
 
@@ -31,6 +32,12 @@ interface World {
   readonly trash: XdgTrash;
 }
 
+function localStamp(date: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  const day = `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 let world: World;
 
 beforeEach(async () => {
@@ -39,7 +46,16 @@ beforeEach(async () => {
   await mkdir(home);
   const trash = new XdgTrash(join(root, 'data'), () => NOW);
   const scope = new FileScope([home, trash.root]);
-  world = { root, home, scope, writer: new FileWriter(scope, trash), trash };
+  world = {
+    root,
+    home,
+    scope,
+    writer: new FileWriter(
+      scope,
+      new TrashBins(trash, { mounts: join(root, 'mounts'), uid: 1000 }),
+    ),
+    trash,
+  };
 });
 
 afterEach(async () => {
@@ -233,7 +249,7 @@ describe('Trash', () => {
     await expect(lstat(a)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readFile(join(world.trash.root, 'files', id), 'utf8')).toBe('keep me');
     expect(await readFile(join(world.trash.root, 'info', 'a.txt.trashinfo'), 'utf8')).toBe(
-      `[Trash Info]\nPath=${a}\nDeletionDate=2026-10-17T10:00:00\n`,
+      `[Trash Info]\nPath=${a}\nDeletionDate=${localStamp(NOW)}\n`,
     );
     const restored = await write({ action: 'restore', items: [id] });
     expect(restored.done).toEqual([{ path: a, newPath: null, trashId: id }]);
@@ -425,9 +441,14 @@ describe('search', () => {
   it('finds matches case-insensitively at any depth, shallow ones first, and flags hidden ones', async () => {
     await tree();
     const search = new FileSearch(world.scope, clock());
-    const result = await search.search({ path: world.home, text: 'report', cursor: null });
+    const result = await search.search({
+      path: world.home,
+      text: 'report',
+      contents: false,
+      cursor: null,
+    });
     expect(result.next).toBeNull();
-    expect(result.matches.map((match) => [match.name, match.hidden])).toEqual([
+    expect(result.matches.map((match) => [match.entry.name, match.entry.hidden])).toEqual([
       ['Report.txt', false],
       ['REPORT', false],
       ['old report.md', false],
@@ -447,6 +468,7 @@ describe('search', () => {
       const page: Awaited<ReturnType<FileSearch['search']>> = await search.search({
         path: world.home,
         text: 'match-',
+        contents: false,
         cursor,
       });
       sizes.push(page.matches.length);
@@ -462,9 +484,10 @@ describe('search', () => {
     const result = await new FileSearch(world.scope, clock()).search({
       path: world.home,
       text: 'report',
+      contents: false,
       cursor: null,
     });
-    expect(result.matches.map((match) => match.name)).toEqual([]);
+    expect(result.matches.map((match) => match.entry.name)).toEqual([]);
   });
 
   it('tells the caller when a search has expired or never existed', async () => {
@@ -472,26 +495,38 @@ describe('search', () => {
     const time = clock();
     const search = new FileSearch(world.scope, time);
     time.step = 1000;
-    const first = await search.search({ path: world.home, text: 'zzz', cursor: null });
+    const first = await search.search({
+      path: world.home,
+      text: 'zzz',
+      contents: false,
+      cursor: null,
+    });
     time.step = 0;
     expect(first.next).not.toBeNull();
     await expect(
-      search.search({ path: world.home, text: 'zzz', cursor: 'never' }),
+      search.search({ path: world.home, text: 'zzz', contents: false, cursor: 'never' }),
     ).rejects.toMatchObject({ code: 'not_found' });
     time.advance(11 * 60_000);
     await expect(
-      search.search({ path: world.home, text: 'zzz', cursor: first.next }),
+      search.search({ path: world.home, text: 'zzz', contents: false, cursor: first.next }),
     ).rejects.toMatchObject({ code: 'not_found' });
   });
 
   it('rejects a start folder that is a file or missing', async () => {
     const search = new FileSearch(world.scope, clock());
     const a = await file(join(world.home, 'a.txt'));
-    await expect(search.search({ path: a, text: 'x', cursor: null })).rejects.toMatchObject({
+    await expect(
+      search.search({ path: a, text: 'x', contents: false, cursor: null }),
+    ).rejects.toMatchObject({
       code: 'not_supported',
     });
     await expect(
-      search.search({ path: join(world.home, 'missing'), text: 'x', cursor: null }),
+      search.search({
+        path: join(world.home, 'missing'),
+        text: 'x',
+        contents: false,
+        cursor: null,
+      }),
     ).rejects.toMatchObject({ code: 'not_found' });
   });
 });

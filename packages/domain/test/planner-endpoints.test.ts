@@ -139,7 +139,7 @@ describe('planner clock bodies', () => {
     ).toBe(false);
     expect(PLANNER_ALARM_CREATE.safeParse({ time: '6:30' }).success).toBe(false);
     expect(
-      PLANNER_ALARM_CREATE.safeParse({ time: '06:30', wake_scene_id: COLLECTION }).success,
+      PLANNER_ALARM_CREATE.safeParse({ time: '06:30', wake_automation_id: COLLECTION }).success,
     ).toBe(false);
   });
 

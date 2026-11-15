@@ -10,7 +10,6 @@ import type {
   SearchIndex,
   SearchPage,
   SearchRoom,
-  SearchScene,
   SearchSetting,
   SearchSources,
   SearchTarget,
@@ -210,22 +209,6 @@ function settingEntry(setting: SearchSetting): SearchEntry {
   };
 }
 
-function sceneEntry(scene: SearchScene): SearchEntry {
-  return {
-    id: `scene:${scene.id}`,
-    group: 'scene',
-    title: scene.name,
-    detail: 'Scene',
-    keywords: ['scene', 'mode', 'run', 'activate', 'start'],
-    state: null,
-    run: { kind: 'scene', sceneId: scene.id },
-    runLabel: 'Run',
-    open: { kind: 'page', path: scene.path },
-    openLabel: 'Edit',
-    suggested: false,
-  };
-}
-
 function automationEntry(automation: SearchAutomation): SearchEntry {
   return {
     id: `automation:${automation.id}`,
@@ -268,7 +251,6 @@ export function buildSearchIndex(sources: SearchSources): SearchIndex {
     ...sources.rooms.map(roomEntry),
     ...sources.pages.map(pageEntry),
     ...sources.settings.map(settingEntry),
-    ...sources.scenes.map(sceneEntry),
     ...sources.automations.map(automationEntry),
     ...devicePageEntries(sources),
     ...cameraEntries(sources),

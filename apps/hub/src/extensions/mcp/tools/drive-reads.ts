@@ -1,6 +1,7 @@
 import {
   DRIVE_ALBUM_SURFACES,
   DRIVE_ITEM_KINDS,
+  DRIVE_MATCHES,
   DRIVE_READ_VIEWS,
   DRIVE_RECENT_FILTERS,
   DRIVE_SORT_FIELDS,
@@ -9,6 +10,9 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { operate, profileFor } from './acting';
+import { SOCIAL_READ_FIELDS, SOCIAL_READS } from './drive-social-reads';
+import { PHOTO_READ_FIELDS, PHOTO_READS, library } from './drive-photos-reads';
+import { FOLDER_KEY, photoFolders } from './photo-folder-tools';
 import { PERSON as ANY_PERSON, READS, ToolError } from './registry';
 import { selection, type SelectedToolDefinition, type Selection } from './selected-tool';
 
@@ -82,15 +86,28 @@ export const DRIVE_READ_INPUT = z.strictObject({
   surface: DRIVE_FIELDS.surface.optional().describe('photos or drive albums, for view albums'),
   month: DRIVE_FIELDS.month
     .optional()
-    .describe('One month of the Photos Library, for view library'),
+    .describe('One month (YYYY-MM) of photos, for views library, archive and person'),
   libraryFilter: z
     .enum(LIBRARY_FILTERS)
     .optional()
-    .describe('For view library: all, favourites, videos or screenshots (default all)'),
+    .describe(
+      'For views library, archive and person: all, favourites, videos or screenshots (default all)',
+    ),
   countryCode: DRIVE_FIELDS.countryCode
     .optional()
-    .describe('Two-letter country code, for view library'),
-  camera: DRIVE_FIELDS.camera.optional().describe('Camera make and model text, for view library'),
+    .describe('Two-letter country code, for views library and archive'),
+  camera: DRIVE_FIELDS.camera
+    .optional()
+    .describe('Camera make and model text, for views library and archive'),
+  folderKey: FOLDER_KEY.optional().describe(
+    'For views library and archive: only the photos of this folder, hidden or not',
+  ),
+  allFolders: z
+    .boolean()
+    .optional()
+    .describe('For views library and archive: true includes photos of folders hidden from Photos'),
+  ...PHOTO_READ_FIELDS,
+  ...SOCIAL_READ_FIELDS,
 });
 
 function plain(name: EndpointName): Selection {
@@ -139,6 +156,7 @@ function versions(): Selection {
 
 const SEARCH_FIELDS = {
   text: DRIVE_FIELDS.text.optional(),
+  match: z.enum(DRIVE_MATCHES).default('all'),
   rootId: DRIVE_FIELDS.rootId.optional(),
   folderId: DRIVE_FIELDS.folderId.optional(),
   kinds: DRIVE_FIELDS.kinds.optional(),
@@ -159,6 +177,7 @@ function orNull<T>(value: T | undefined): T | null {
 function searchBody(input: z.output<typeof SEARCH>): Record<string, unknown> {
   return {
     text: orNull(input.text),
+    match: input.match,
     rootId: orNull(input.rootId),
     folderId: orNull(input.folderId),
     kinds: orNull(input.kinds),
@@ -206,45 +225,6 @@ function stacks(): Selection {
   });
 }
 
-const LIBRARY = z.strictObject({
-  month: DRIVE_FIELDS.month.optional(),
-  libraryFilter: z.enum(LIBRARY_FILTERS).default('all'),
-  text: DRIVE_FIELDS.text.optional(),
-  from: DAY.optional(),
-  to: DAY.optional(),
-  placeId: DRIVE_FIELDS.placeId.optional(),
-  countryCode: DRIVE_FIELDS.countryCode.optional(),
-  camera: DRIVE_FIELDS.camera.optional(),
-  albumId: DRIVE_FIELDS.albumId.optional(),
-  cursor: DRIVE_FIELDS.cursor.optional(),
-});
-
-function libraryScope(input: z.output<typeof LIBRARY>): Record<string, unknown> {
-  const { month: _month, libraryFilter, cursor: _cursor, ...rest } = input;
-  return { filter: libraryFilter, ...rest };
-}
-
-function library(): Selection {
-  return selection({
-    input: LIBRARY,
-    run: (context, input, as) =>
-      input.month === undefined
-        ? operate(context, 'readLibraryBuckets', { query: libraryScope(input) }, as)
-        : operate(
-            context,
-            'readLibraryPage',
-            {
-              params: { month: input.month },
-              query: {
-                ...libraryScope(input),
-                ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
-              },
-            },
-            as,
-          ),
-  });
-}
-
 function folder(): Selection {
   return selection({
     input: z
@@ -285,7 +265,10 @@ function recent(): Selection {
 }
 
 function shares(): Selection {
-  return paged('listShares', { itemId: DRIVE_FIELDS.itemId.optional() });
+  return paged('listShares', {
+    itemId: DRIVE_FIELDS.itemId.optional(),
+    albumId: DRIVE_FIELDS.albumId.optional(),
+  });
 }
 
 export const DRIVE_READ: SelectedToolDefinition = {
@@ -317,5 +300,8 @@ export const DRIVE_READ: SelectedToolDefinition = {
     health: plain('readHealth'),
     placements: plain('listPlacements'),
     conflicts: rootPaged('listConflicts'),
+    photo_folders: photoFolders(),
+    ...SOCIAL_READS,
+    ...PHOTO_READS,
   }),
 };

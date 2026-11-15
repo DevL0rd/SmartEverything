@@ -40,7 +40,7 @@ function doors(): ModelSpecPart[] {
 export const UTILITY_SINK_MODEL: ModelSpec = storageItem({
   id: 'cat.storage.utility-sink',
   title: 'Utility sink',
-  footprint: { width: 0.8, depth: DEPTH, height: TOP + 0.26 + 0.012 },
+  footprint: { width: 0.8, depth: 0.536, height: 1.1029 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

@@ -26,7 +26,7 @@ const STONES = [
 export const DECORATIVE_BOWL_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.decorative-bowl',
   title: 'Decorative bowl',
-  footprint: { width: 0.33, depth: 0.33, height: 0.11 },
+  footprint: { width: 0.324, depth: 0.324, height: 0.108 },
   meta: {
     names: {
       display: 'Decorative bowl',

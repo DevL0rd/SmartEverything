@@ -19,6 +19,9 @@ inline fun <reified T> Map<String, String>.pushPayload(): T =
   HubJson.decode(this[DomainConstants.PUSH_PAYLOAD_KEY].orEmpty())
 
 @Serializable
+class DriveOfflineChangedPayload(val itemIds: List<String>)
+
+@Serializable
 class AiSpeechPayload(val id: String)
 
 @Serializable

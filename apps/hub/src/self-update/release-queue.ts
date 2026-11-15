@@ -1,6 +1,7 @@
 import {
   revisionFinished,
   type PipelineComponent,
+  type ReleaseSource,
   type UpdateRevision,
   type UpdateRevisionFailure,
   type UpdateRevisionStep,
@@ -36,6 +37,7 @@ export interface QueuePorts {
   readonly record: Pick<RevisionRecord, 'list' | 'save'>;
   readonly now: () => Date;
   readonly newId: () => string;
+  readonly sourceOf: (component: PipelineComponent) => ReleaseSource;
   readonly prepare: (revision: UpdateRevision) => Promise<Prepared>;
   readonly execute: (revision: UpdateRevision, step: UpdateRevisionStep) => Promise<StepOutcome>;
   readonly changed: (revision: UpdateRevision) => void;
@@ -45,11 +47,17 @@ export interface QueuePorts {
 export interface PushedRevision {
   readonly tip: string;
   readonly pushedFrom: string | null;
+  readonly paths: readonly string[] | null;
 }
 
 const LIVE_STATUSES: ReadonlySet<string> = new Set(['queued', 'running', 'done']);
 
 const MESSAGE_LIMIT = 2000;
+
+const WAITING_DETAIL: Readonly<Record<Exclude<ReleaseSource, 'hub'>, string>> = {
+  provided: 'waiting for a provided build',
+  github: 'waiting for the GitHub release',
+};
 
 function bounded(message: string): string {
   return message.length === 0
@@ -79,6 +87,7 @@ export class ReleaseQueue {
       tip: push.tip,
       pushedFrom: push.pushedFrom,
       base: null,
+      changedPaths: push.paths === null ? null : [...push.paths],
       status: 'queued',
       steps: [],
       notes: null,
@@ -175,18 +184,12 @@ export class ReleaseQueue {
     const running = await this.change(revision, { status: 'running' });
     try {
       const prepared = await this.ports.prepare(running);
-      const steps = prepared.components.map((component): UpdateRevisionStep => ({
-        component,
-        status: 'pending',
-        runId: null,
-        offered: false,
-        detail: null,
-      }));
+      const steps = prepared.components.map((component) => this.planned(component));
       return await this.change(running, {
         base: prepared.base,
         notes: prepared.notes,
         steps,
-        status: steps.length === 0 ? 'done' : 'running',
+        status: steps.length === 0 ? 'done' : settledStatus(steps),
       });
     } catch (cause) {
       if (!(cause instanceof PipelineRefusal)) throw cause;
@@ -195,15 +198,45 @@ export class ReleaseQueue {
     }
   }
 
+  private planned(component: PipelineComponent): UpdateRevisionStep {
+    const source = this.ports.sourceOf(component);
+    return {
+      component,
+      status: source === 'hub' ? 'pending' : 'waiting',
+      runId: null,
+      offered: false,
+      detail: source === 'hub' ? null : WAITING_DETAIL[source],
+    };
+  }
+
+  async completeWaiting(component: PipelineComponent, commit: string): Promise<void> {
+    await this.settled();
+    const waiting = (await this.ports.record.list()).filter(
+      (entry) =>
+        entry.tip === commit &&
+        entry.status === 'waiting' &&
+        entry.steps.some((step) => step.component === component && step.status === 'waiting'),
+    );
+    for (const revision of waiting) {
+      const steps = revision.steps.map((step): UpdateRevisionStep =>
+        step.component === component && step.status === 'waiting'
+          ? { ...step, status: 'done', offered: true, detail: null }
+          : step,
+      );
+      await this.change(revision, { steps, status: settledStatus(steps) });
+    }
+  }
+
   private async walk(revision: UpdateRevision): Promise<void> {
     let current = revision;
     for (const planned of revision.steps) {
       const step = current.steps.find((entry) => entry.component === planned.component);
       if (step === undefined || step.status === 'done') continue;
+      if (step.status === 'waiting') continue;
       current = await this.stepped(current, step);
       if (current.status !== 'running') return;
     }
-    await this.change(current, { status: 'done' });
+    await this.change(current, { status: settledStatus(current.steps) });
   }
 
   private async stepped(
@@ -244,7 +277,9 @@ export class ReleaseQueue {
     const steps = revision.steps.map((entry): UpdateRevisionStep => {
       if (entry.component === step?.component)
         return { ...entry, status: 'failed', detail: bounded(message) };
-      return entry.status === 'pending' ? { ...entry, status: 'skipped' } : entry;
+      return entry.status === 'pending' || entry.status === 'waiting'
+        ? { ...entry, status: 'skipped' }
+        : entry;
     });
     const failure = {
       component: step?.component ?? null,
@@ -253,6 +288,12 @@ export class ReleaseQueue {
     };
     return this.change(revision, { status: 'failed', steps, failure });
   }
+}
+
+function settledStatus(steps: readonly UpdateRevisionStep[]): 'running' | 'waiting' | 'done' {
+  if (steps.some((step) => step.status === 'pending' || step.status === 'running'))
+    return 'running';
+  return steps.some((step) => step.status === 'waiting') ? 'waiting' : 'done';
 }
 
 function replaced(steps: UpdateRevisionStep[], next: UpdateRevisionStep): UpdateRevisionStep[] {

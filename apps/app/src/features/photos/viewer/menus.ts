@@ -5,6 +5,8 @@ export interface MoreMenuInput {
   readonly onDownload: () => void;
   readonly onShowInDrive: () => void;
   readonly onTrash: () => void;
+  readonly onRevert: (() => void) | null;
+  readonly organise: readonly MenuItem[];
 }
 
 export function albumMenuItems(
@@ -31,6 +33,10 @@ export function moreMenuItems(input: MoreMenuInput): readonly MenuItem[] {
   return [
     { label: 'Download original', icon: 'download', onPress: input.onDownload },
     { label: 'Show in Drive', icon: 'folder', onPress: input.onShowInDrive },
+    ...(input.onRevert === null
+      ? []
+      : [{ label: 'Revert to original', icon: 'undo' as const, onPress: input.onRevert }]),
+    ...input.organise,
     { label: 'Move to trash', icon: 'trash', destructive: true, onPress: input.onTrash },
   ];
 }

@@ -25,7 +25,7 @@ const FINISHES = Object.fromEntries(
 export const DESK_MAT_MODEL: ModelSpec = officeItem({
   id: 'cat.office.desk-mat',
   title: 'Desk mat',
-  footprint: { width: 0.9, depth: 0.4, height: 0.008 },
+  footprint: { width: 0.9, depth: 0.4, height: 0.007 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     depth: { param: 'depth', extra: 0, resizes: true },

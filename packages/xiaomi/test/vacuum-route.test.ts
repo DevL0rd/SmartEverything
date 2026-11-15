@@ -31,7 +31,7 @@ describe('the map path of the scrubbed current map', () => {
       Array.from({ length: 41 }, (_, index) => index),
     );
     expect(route?.points[0]).toMatchObject({ penDown: false, mode: 'sweep' });
-    expect(route?.points.filter((item) => item.penDown)).toHaveLength(26);
+    expect(route?.points.filter((item) => item.penDown)).toHaveLength(40);
     expect(route?.points.every((item) => item.yaw !== null)).toBe(true);
   });
 
@@ -56,7 +56,7 @@ describe('the map path of the scrubbed current map', () => {
     });
   });
 
-  it('reads the mop mode and refuses an unknown pen type or sweep mode by name', () => {
+  it('reads the mop mode, reads mode 0 as idle and refuses an unknown pen type or sweep mode by name', () => {
     const mop = decodeMapRoute({
       pose_id: 1,
       points: [{ x: 0, y: 0, type: 1, sweep_mop_mode: 2 }],
@@ -71,7 +71,11 @@ describe('the map path of the scrubbed current map', () => {
       }
     };
     expect(bad(2, 1)).toBe('route point: type 2');
-    expect(bad(1, 0)).toBe('route point: mode 0');
+    expect(bad(1, 0)).toBe('ok');
+    expect(
+      decodeMapRoute({ pose_id: 1, points: [{ x: 0, y: 0, type: 1, sweep_mop_mode: 0 }] })
+        ?.points[0]?.mode,
+    ).toBe('idle');
     expect(bad(1, 4)).toBe('route point: mode 4');
   });
 });

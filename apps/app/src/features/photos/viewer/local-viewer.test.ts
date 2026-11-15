@@ -86,6 +86,7 @@ beforeEach(() => {
       height: 30,
       durationMs: null,
       video: false,
+      folder: null,
     },
   ];
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);

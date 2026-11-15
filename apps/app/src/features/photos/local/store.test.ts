@@ -15,6 +15,7 @@ function item(id: string, takenAt: number, video = false): LocalMediaItem {
     height: 480,
     durationMs: video ? 1200 : null,
     video,
+    folder: null,
   };
 }
 

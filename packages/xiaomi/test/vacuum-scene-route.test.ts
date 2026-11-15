@@ -113,6 +113,18 @@ describe('trail runs', () => {
     expect(runs.map((run) => run.points.length)).toEqual([2, 3, 3]);
   });
 
+  it('draws idle points as an unmopped trail', () => {
+    const runs = buildTrail(
+      routeOf([
+        point(0, { mode: 'idle' }),
+        point(1, { mode: 'idle' }),
+        point(2, { mode: 'sweep' }),
+      ]),
+    );
+    expect(runs.every((run) => !run.mopping)).toBe(true);
+    expect(runs.map((run) => run.points.length)).toEqual([3]);
+  });
+
   it('rebuilding from the merged route gives the same trail as the whole route at once', () => {
     const whole = [point(0), point(1), point(2), point(3, { penDown: false }), point(4)];
     expect(buildTrail(routeOf(whole.slice(0, 3)))).toEqual(buildTrail(routeOf(whole)).slice(0, 1));

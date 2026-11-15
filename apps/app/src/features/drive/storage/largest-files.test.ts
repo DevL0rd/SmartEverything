@@ -1,6 +1,7 @@
-import { DRIVE_ITEM, DRIVE_QUERY, type DriveItem } from '@smarteverything/domain';
+import { DRIVE_QUERY, type DriveItem } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { bytes } from '../../../format/number';
+import { documentFixture } from '../data/fixtures';
 import { driveChipsOf } from '../model/drive-chip';
 import { LARGEST_QUERY, inOwnDrives, largestEntriesOf } from './largest-files';
 
@@ -16,7 +17,7 @@ const CHIPS = driveChipsOf({
 const GB = 1024 ** 3;
 
 function file(id: string, relPath: string, size: number): DriveItem {
-  return DRIVE_ITEM.parse({
+  return documentFixture({
     id,
     rootId: ROOT,
     parentId: null,
@@ -24,21 +25,8 @@ function file(id: string, relPath: string, size: number): DriveItem {
     name: relPath.split('/').at(-1),
     modifiedAt: '2026-11-07T10:00:00.000Z',
     addedAt: '2026-11-07T10:00:00.000Z',
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
-    mime: 'application/pdf',
     bytes: size,
-    sha256: null,
-    integrity: 'unknown',
-    thumb: { state: 'none' },
-    kind: 'document',
   });
 }
 

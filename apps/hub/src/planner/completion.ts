@@ -1,4 +1,5 @@
 import {
+  PLANNER_OCCURRENCE_SINGLE,
   PLANNER_SIGNAL,
   PLANNER_SIGNAL_SOURCE,
   signalMatchesMatcher,
@@ -26,6 +27,40 @@ export interface CompletionWatcherOptions {
   readonly clock: Pick<Clock, 'now'>;
   readonly emit: (signal: SignalInput) => void;
   readonly log: Logger;
+}
+
+export interface StepCompletion {
+  readonly at: string;
+  readonly by: PlannerOccurrenceRow['completed_by'];
+  readonly evidence: PlannerEvidence | null;
+}
+
+export function completeOpenSteps(
+  store: Pick<Store, 'plannerItems' | 'plannerOccurrences'>,
+  parent: PlannerItemRow,
+  completion: StepCompletion,
+): PlannerOccurrenceRow[] {
+  if (parent.rrule !== null) return [];
+  const done: PlannerOccurrenceRow[] = [];
+  for (const step of store.plannerItems.children(parent.id, parent.profile_id)) {
+    if (step.kind !== 'task' || step.status !== 'open' || step.rrule !== null) continue;
+    const existing = store.plannerOccurrences.find(step.id, PLANNER_OCCURRENCE_SINGLE);
+    if (existing?.status === 'done' || existing?.status === 'skipped') continue;
+    done.push(
+      store.plannerOccurrences.save({
+        item_id: step.id,
+        occurrence_key: PLANNER_OCCURRENCE_SINGLE,
+        status: 'done',
+        completed_at: completion.at,
+        completed_by: completion.by,
+        evidence: completion.evidence,
+        moved_start: null,
+        moved_end: null,
+      }),
+    );
+    store.plannerItems.update(step.id, step.profile_id, { status: 'done' });
+  }
+  return done;
 }
 
 export interface SignalSource {
@@ -197,7 +232,14 @@ export class CompletionWatcher {
       moved_start: existing?.moved_start ?? null,
       moved_end: existing?.moved_end ?? null,
     });
-    if (item.rrule === null) plannerItems.update(item.id, item.profile_id, { status: 'done' });
+    if (item.rrule === null) {
+      plannerItems.update(item.id, item.profile_id, { status: 'done' });
+      completeOpenSteps(this.options.store, item, {
+        at: signal.at,
+        by: 'signal',
+        evidence: evidenceOf(signal),
+      });
+    }
     this.options.log.info('planner.completed_by_signal', {
       itemId: item.id,
       occurrenceKey: view.occurrence_key,

@@ -36,7 +36,7 @@ export const DEHUMIDIFIER_MODEL: ModelSpec = {
   title: 'Dehumidifier',
   category: 'climate',
   family: 'dehumidifier',
-  footprint: { width: WIDTH, depth: DEPTH + 0.012, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.266, height: 0.566 },
   framing: house('tank', 28, 16),
   shots: [
     shot('drying', RUNNING, 'tank', { zoom: 1.4, yaw: 18, pitch: 10, loopS: 3, stillAt: 1.5 }),

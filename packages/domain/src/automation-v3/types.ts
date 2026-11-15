@@ -7,7 +7,6 @@ export const REF_KINDS = [
   'device',
   'room',
   'group',
-  'scene',
   'person',
   'computer',
   'phone',

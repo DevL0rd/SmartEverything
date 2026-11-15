@@ -22,9 +22,8 @@ const seen = vi.hoisted((): Seen => ({
   statsKnown: true,
 }));
 
-vi.mock('../../../design/size-class', async (original) => ({
-  ...(await original<object>()),
-  useSizeClass: (): { readonly width: Seen['width'] } => ({ width: seen.width }),
+vi.mock('../../../components/page-shell/body-width', () => ({
+  useFrameBodyWidth: (): number => (seen.width === 'large' ? 900 : 380),
 }));
 vi.mock('../../../store/selectors', () => ({
   useIsOwner: (): boolean => seen.owner,

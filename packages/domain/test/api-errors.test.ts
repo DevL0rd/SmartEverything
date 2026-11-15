@@ -25,6 +25,7 @@ const STATUS_BY_CODE: readonly (readonly [string, number])[] = [
   ['camera_busy', 429],
   ['claude_not_ready', 503],
   ['computer_update_required', 426],
+  ['hub_starting', 503],
 ];
 
 describe('api error codes', () => {

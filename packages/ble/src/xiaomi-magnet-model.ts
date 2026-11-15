@@ -21,7 +21,7 @@ export const XIAOMI_MAGNET_DW2HL_MODEL: ModelSpec = {
   title: 'Xiaomi Door and Window Sensor 2',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: TOTAL_W, depth: DEPTH, height: SENSOR_H },
+  footprint: { width: TOTAL_W, depth: 0.0154, height: SENSOR_H },
   framing: {
     tile: { ...HOUSE, padding: 0.18 },
     card: HOUSE,

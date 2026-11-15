@@ -16,10 +16,14 @@ import { ComputerService } from './computer-service';
 import { computerSystemRoutes } from './computer-system-routes';
 import { ComputerDownloads } from './computer-downloads';
 import { computerDownloadRoute } from './file-download';
+import { ComputerFileLinker } from './file-links';
+import { ComputerThumbs } from './file-thumbs';
+import { computerZipEntryRoute } from './zip-entry-route';
 import { computerDriver, type ComputerDriverOptions } from './computer-driver';
 import { computerMachineId } from '../node/identity';
 import { localComputerFactory } from './local-computer';
 import type { HubLayout } from '../data-layout';
+import type { RawRoute } from '../server/http-server';
 
 const HUB_MACHINE_ID_NAME = 'hub-machine.id';
 
@@ -115,6 +119,16 @@ function watchLive(wiring: Wiring): () => void {
   });
 }
 
+function fileMediaOf(
+  context: ExtensionContext,
+  service: ComputerService,
+): { readonly linker: ComputerFileLinker; readonly routes: readonly RawRoute[] } {
+  const media = { service, links: context.links };
+  const linker = new ComputerFileLinker(media);
+  const thumbs = new ComputerThumbs({ ...media, layout: context.layout });
+  return { linker, routes: [linker.fileRoute(), thumbs.route(), computerZipEntryRoute(media)] };
+}
+
 export function computersExtension(now: () => Date): ServerExtension {
   return async (context): Promise<RunningExtension> => {
     const { store } = context;
@@ -134,15 +148,22 @@ export function computersExtension(now: () => Date): ServerExtension {
     });
     const routes = { store, service, directory };
     const downloads = new ComputerDownloads({ service, directory, links: context.links, now });
+    const fileMedia = fileMediaOf(context, service);
     return {
       endpoints: {
         ...computerRoutes({ ...routes, history: context.hub.drivers.metrics }),
         ...computerSessionRoutes({ ...routes, now }),
-        ...computerSystemRoutes({ ...routes, downloads, sources: context.hub.drivers.sources }),
+        ...computerSystemRoutes({
+          ...routes,
+          downloads,
+          fileLinks: fileMedia.linker,
+          sources: context.hub.drivers.sources,
+        }),
       },
       routes: [
         computerDownloadRoute({ store, directory }),
         downloads.route(),
+        ...fileMedia.routes,
         ...serverRelayRoutes(routes),
       ],
       stop: (): Promise<void> => {

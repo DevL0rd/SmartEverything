@@ -21,6 +21,7 @@ import {
   onceOnEdit,
   repeatEdit,
   repeatModeOf,
+  snoozeLimitEdit,
   toggledDayEdit,
   toggledTargetsEdit,
   wakeEdit,
@@ -44,12 +45,15 @@ function alarmOf(change: Partial<PlannerAlarmRow>): PlannerAlarmRow {
     once_on: null,
     skip_on: null,
     enabled: true,
-    sound: 'default',
+    sound: { kind: 'tone', id: 'default' },
     ramp_seconds: 60,
     vibrate: true,
     snooze_minutes: 9,
+    snooze_limit: null,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: null,
+    wake_automation_id: null,
     wake_lead_minutes: null,
     targets: [{ kind: 'client', clientId: PHONE }],
     watch: [],
@@ -61,11 +65,12 @@ function alarmOf(change: Partial<PlannerAlarmRow>): PlannerAlarmRow {
 }
 
 const CLOCK: PlannerPreferences['clock'] = {
-  sound: 'default',
+  sound: { kind: 'tone', id: 'default' },
   ramp_seconds: 30,
   snooze_minutes: 10,
+  snooze_limit: 3,
   targets: [{ kind: 'client', clientId: PHONE }],
-  wake_scene_id: null,
+  wake_automation_id: null,
   world_clocks: [],
 };
 
@@ -74,26 +79,45 @@ describe('a new alarm draft', () => {
     const draft = newDraftOf(CLOCK, '06:30');
     expect(draft).toMatchObject({
       time: '06:30',
-      sound: 'default',
+      sound: { kind: 'tone', id: 'default' },
       ramp_seconds: 30,
       snooze_minutes: 10,
+      snooze_limit: 3,
+      challenge: { kind: 'none' },
+      sunrise: null,
       targets: [{ kind: 'client', clientId: PHONE }],
       enabled: true,
       vibrate: true,
-      wake_scene_id: null,
+      wake_automation_id: null,
       wake_lead_minutes: null,
     });
   });
 
   it('starts the preferred wake scene with the default lead so both are set together', () => {
-    const draft = newDraftOf({ ...CLOCK, wake_scene_id: SCENE }, '06:30');
-    expect(draft.wake_scene_id).toBe(SCENE);
+    const draft = newDraftOf({ ...CLOCK, wake_automation_id: SCENE }, '06:30');
+    expect(draft.wake_automation_id).toBe(SCENE);
     expect(draft.wake_lead_minutes).toBe(DEFAULT_WAKE_LEAD_MINUTES);
   });
 
   it('becomes a create body the hub contract accepts', () => {
-    const body = createBodyOf(newDraftOf({ ...CLOCK, wake_scene_id: SCENE }, '06:30'));
+    const body = createBodyOf(newDraftOf({ ...CLOCK, wake_automation_id: SCENE }, '06:30'));
     expect(PLANNER_ALARM_CREATE.safeParse(body).success).toBe(true);
+  });
+
+  it('carries a sunrise and a challenge into a create body the hub contract accepts', () => {
+    const draft = {
+      ...newDraftOf(CLOCK, '06:30'),
+      sunrise: { lights: [WATCH], minutes: 20, colour: true },
+      challenge: { kind: 'maths', difficulty: 'hard', count: 2 },
+      sound: { kind: 'playlist', item_id: WATCH, shuffle: true },
+    } as const;
+    const body = createBodyOf(draft);
+    expect(PLANNER_ALARM_CREATE.parse(body)).toMatchObject({
+      sunrise: { lights: [WATCH], minutes: 20, colour: true },
+      challenge: { kind: 'maths', difficulty: 'hard', count: 2 },
+      sound: { kind: 'playlist', item_id: WATCH, shuffle: true },
+      snooze_limit: 3,
+    });
   });
 
   it('starts at the next whole hour in the home time zone', () => {
@@ -107,6 +131,30 @@ describe('changes to a saved alarm', () => {
   it('is nothing when the edit keeps every value', () => {
     const alarm = alarmOf({});
     expect(changeOf(alarm, { time: '07:00', days: [1, 2, 3, 4, 5] })).toBeNull();
+  });
+
+  it('turns a snooze limit of zero into no limit', () => {
+    expect(snoozeLimitEdit(0)).toEqual({ snooze_limit: null });
+    expect(snoozeLimitEdit(2)).toEqual({ snooze_limit: 2 });
+    expect(changeOf(alarmOf({ snooze_limit: 2 }), snoozeLimitEdit(0))).toEqual({
+      snooze_limit: null,
+    });
+  });
+
+  it('sees a changed sound, challenge or sunrise as a change', () => {
+    const alarm = alarmOf({});
+    const radio = {
+      kind: 'radio',
+      station_id: 'station',
+      name: 'Radio One',
+      url: 'https://radio.example.com/live',
+    } as const;
+    expect(changeOf(alarm, { sound: radio })).toEqual({ sound: radio });
+    expect(changeOf(alarm, { challenge: { kind: 'steps', steps: 40 } })).toEqual({
+      challenge: { kind: 'steps', steps: 40 },
+    });
+    expect(changeOf(alarm, { sound: { kind: 'tone', id: 'default' } })).toBeNull();
+    expect(PLANNER_ALARM_CHANGES.safeParse({ sound: radio }).success).toBe(true);
   });
 
   it('sends the edited fields as a change body the hub contract accepts', () => {
@@ -160,8 +208,8 @@ describe('repeat and ring once', () => {
 
 describe('wake routine, ring places and label', () => {
   it('sets the wake scene and its lead together and clears both together', () => {
-    expect(wakeEdit(SCENE, 15)).toEqual({ wake_scene_id: SCENE, wake_lead_minutes: 15 });
-    expect(wakeEdit(null, 15)).toEqual({ wake_scene_id: null, wake_lead_minutes: null });
+    expect(wakeEdit(SCENE, 15)).toEqual({ wake_automation_id: SCENE, wake_lead_minutes: 15 });
+    expect(wakeEdit(null, 15)).toEqual({ wake_automation_id: null, wake_lead_minutes: null });
   });
 
   it('adds and removes a ring place', () => {

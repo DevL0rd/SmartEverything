@@ -1,0 +1,326 @@
+diff --git a/build/three.module.js b/build/three.module.js
+index c52087acfabae80efabb8cc05e3a1d96e35a1426..006f45f613898c82817d9a8b9cf608168702dfc5 100644
+--- a/build/three.module.js
++++ b/build/three.module.js
+@@ -9096,6 +9096,8 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 		_distanceMaterial = new MeshDistanceMaterial(),
+ 
+ 		_materialCache = {},
++		_materialDisposeRefs = new WeakMap(),
++		_materialsListened = new Set(),
+ 
+ 		_maxTextureSize = capabilities.maxTextureSize;
+ 
+@@ -9137,6 +9139,20 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 	this.autoUpdate = true;
+ 	this.needsUpdate = false;
+ 
++	this.dispose = function () {
++
++		for ( const ref of _materialsListened ) {
++
++			const material = ref.deref();
++
++			if ( material !== undefined ) material.removeEventListener( 'dispose', onMaterialDispose );
++
++		}
++
++		_materialsListened.clear();
++
++	};
++
+ 	this.type = PCFShadowMap;
+ 	let _previousType = this.type;
+ 
+@@ -9518,6 +9534,9 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 					cachedMaterial = result.clone();
+ 					materialsForVariant[ keyB ] = cachedMaterial;
+ 					material.addEventListener( 'dispose', onMaterialDispose );
++					const materialRef = new WeakRef( material );
++					_materialDisposeRefs.set( material, materialRef );
++					_materialsListened.add( materialRef );
+ 
+ 				}
+ 
+@@ -9635,6 +9654,8 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 		const material = event.target;
+ 
+ 		material.removeEventListener( 'dispose', onMaterialDispose );
++		_materialsListened.delete( _materialDisposeRefs.get( material ) );
++		_materialDisposeRefs.delete( material );
+ 
+ 		// make sure to remove the unique distance/depth materials used for shadow map rendering
+ 
+@@ -11030,6 +11051,8 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 	const _imageDimensions = new Vector2();
+ 	const _videoTextures = new WeakMap();
+ 	const _htmlTextures = new Set();
++	const _textureDisposeRefs = new WeakMap();
++	const _texturesListened = new Set();
+ 	let _canvas;
+ 
+ 	const _sources = new WeakMap(); // maps WebglTexture objects to instances of TextureSource
+@@ -11344,6 +11367,8 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 		const texture = event.target;
+ 
+ 		texture.removeEventListener( 'dispose', onTextureDispose );
++		_texturesListened.delete( _textureDisposeRefs.get( texture ) );
++		_textureDisposeRefs.delete( texture );
+ 
+ 		deallocateTexture( texture );
+ 
+@@ -11735,6 +11760,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 			textureProperties.__webglInit = true;
+ 
+ 			texture.addEventListener( 'dispose', onTextureDispose );
++			const textureRef = new WeakRef( texture );
++			_textureDisposeRefs.set( texture, textureRef );
++			_texturesListened.add( textureRef );
+ 
+ 		}
+ 
+@@ -12803,6 +12831,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 
+ 				textureProperties.__webglInit = true;
+ 				renderTarget.depthTexture.addEventListener( 'dispose', onTextureDispose );
++				const textureRef = new WeakRef( renderTarget.depthTexture );
++				_textureDisposeRefs.set( renderTarget.depthTexture, textureRef );
++				_texturesListened.add( textureRef );
+ 
+ 			}
+ 
+@@ -13526,6 +13557,20 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 	this.setupFrameBufferTexture = setupFrameBufferTexture;
+ 	this.useMultisampledRTT = useMultisampledRTT;
+ 
++	this.dispose = function () {
++
++		for ( const ref of _texturesListened ) {
++
++			const texture = ref.deref();
++
++			if ( texture !== undefined ) texture.removeEventListener( 'dispose', onTextureDispose );
++
++		}
++
++		_texturesListened.clear();
++
++	};
++
+ 	this.isReversedDepthBuffer = function () {
+ 
+ 		return state.buffers.depth.getReversed();
+@@ -16336,6 +16381,8 @@ class WebGLRenderer {
+ 		// internal properties
+ 
+ 		const _this = this;
++		const _materialDisposeRefs = new WeakMap();
++		const _materialsListened = new Set();
+ 
+ 		let _isContextLost = false;
+ 		let _nodesHandler = null;
+@@ -17135,6 +17182,18 @@ class WebGLRenderer {
+ 			bindingStates.dispose();
+ 			uniformsGroups.dispose();
+ 			programCache.dispose();
++			textures.dispose();
++			shadowMap.dispose();
++
++			for ( const ref of _materialsListened ) {
++
++				const material = ref.deref();
++
++				if ( material !== undefined ) material.removeEventListener( 'dispose', onMaterialDispose );
++
++			}
++
++			_materialsListened.clear();
+ 
+ 			xr.dispose();
+ 
+@@ -17190,6 +17249,8 @@ class WebGLRenderer {
+ 			const material = event.target;
+ 
+ 			material.removeEventListener( 'dispose', onMaterialDispose );
++			_materialsListened.delete( _materialDisposeRefs.get( material ) );
++			_materialDisposeRefs.delete( material );
+ 
+ 			deallocateMaterial( material );
+ 
+@@ -18251,6 +18312,9 @@ class WebGLRenderer {
+ 				// new material
+ 
+ 				material.addEventListener( 'dispose', onMaterialDispose );
++				const materialRef = new WeakRef( material );
++				_materialDisposeRefs.set( material, materialRef );
++				_materialsListened.add( materialRef );
+ 
+ 				programs = new Map();
+ 				materialProperties.programs = programs;
+diff --git a/src/renderers/WebGLRenderer.js b/src/renderers/WebGLRenderer.js
+index bb101cfc282f2f874f0766243129911c95af8c2a..ffccbc1cc95dbcb0690c6cd036ac97ac7c10f242 100644
+--- a/src/renderers/WebGLRenderer.js
++++ b/src/renderers/WebGLRenderer.js
+@@ -299,6 +299,8 @@ class WebGLRenderer {
+ 		// internal properties
+ 
+ 		const _this = this;
++		const _materialDisposeRefs = new WeakMap();
++		const _materialsListened = new Set();
+ 
+ 		let _isContextLost = false;
+ 		let _nodesHandler = null;
+@@ -1098,6 +1100,18 @@ class WebGLRenderer {
+ 			bindingStates.dispose();
+ 			uniformsGroups.dispose();
+ 			programCache.dispose();
++			textures.dispose();
++			shadowMap.dispose();
++
++			for ( const ref of _materialsListened ) {
++
++				const material = ref.deref();
++
++				if ( material !== undefined ) material.removeEventListener( 'dispose', onMaterialDispose );
++
++			}
++
++			_materialsListened.clear();
+ 
+ 			xr.dispose();
+ 
+@@ -1153,6 +1167,8 @@ class WebGLRenderer {
+ 			const material = event.target;
+ 
+ 			material.removeEventListener( 'dispose', onMaterialDispose );
++			_materialsListened.delete( _materialDisposeRefs.get( material ) );
++			_materialDisposeRefs.delete( material );
+ 
+ 			deallocateMaterial( material );
+ 
+@@ -2214,6 +2230,9 @@ class WebGLRenderer {
+ 				// new material
+ 
+ 				material.addEventListener( 'dispose', onMaterialDispose );
++				const materialRef = new WeakRef( material );
++				_materialDisposeRefs.set( material, materialRef );
++				_materialsListened.add( materialRef );
+ 
+ 				programs = new Map();
+ 				materialProperties.programs = programs;
+diff --git a/src/renderers/webgl/WebGLShadowMap.js b/src/renderers/webgl/WebGLShadowMap.js
+index a94ac763d67fdceced04b983e44bdfb27dec5714..b1d2457b2854a1d31c80017290455f735cc4e0d3 100644
+--- a/src/renderers/webgl/WebGLShadowMap.js
++++ b/src/renderers/webgl/WebGLShadowMap.js
+@@ -45,6 +45,8 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 		_distanceMaterial = new MeshDistanceMaterial(),
+ 
+ 		_materialCache = {},
++		_materialDisposeRefs = new WeakMap(),
++		_materialsListened = new Set(),
+ 
+ 		_maxTextureSize = capabilities.maxTextureSize;
+ 
+@@ -86,6 +88,20 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 	this.autoUpdate = true;
+ 	this.needsUpdate = false;
+ 
++	this.dispose = function () {
++
++		for ( const ref of _materialsListened ) {
++
++			const material = ref.deref();
++
++			if ( material !== undefined ) material.removeEventListener( 'dispose', onMaterialDispose );
++
++		}
++
++		_materialsListened.clear();
++
++	};
++
+ 	this.type = PCFShadowMap;
+ 	let _previousType = this.type;
+ 
+@@ -467,6 +483,9 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 					cachedMaterial = result.clone();
+ 					materialsForVariant[ keyB ] = cachedMaterial;
+ 					material.addEventListener( 'dispose', onMaterialDispose );
++					const materialRef = new WeakRef( material );
++					_materialDisposeRefs.set( material, materialRef );
++					_materialsListened.add( materialRef );
+ 
+ 				}
+ 
+@@ -584,6 +603,8 @@ function WebGLShadowMap( renderer, objects, capabilities ) {
+ 		const material = event.target;
+ 
+ 		material.removeEventListener( 'dispose', onMaterialDispose );
++		_materialsListened.delete( _materialDisposeRefs.get( material ) );
++		_materialDisposeRefs.delete( material );
+ 
+ 		// make sure to remove the unique distance/depth materials used for shadow map rendering
+ 
+diff --git a/src/renderers/webgl/WebGLTextures.js b/src/renderers/webgl/WebGLTextures.js
+index fc6383c665355daa23a2a9eba2cabfded761f74f..12b945e05a1de5bfde640d1e36b6517d0ca3ee6c 100644
+--- a/src/renderers/webgl/WebGLTextures.js
++++ b/src/renderers/webgl/WebGLTextures.js
+@@ -12,6 +12,8 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 	const _imageDimensions = new Vector2();
+ 	const _videoTextures = new WeakMap();
+ 	const _htmlTextures = new Set();
++	const _textureDisposeRefs = new WeakMap();
++	const _texturesListened = new Set();
+ 	let _canvas;
+ 
+ 	const _sources = new WeakMap(); // maps WebglTexture objects to instances of TextureSource
+@@ -326,6 +328,8 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 		const texture = event.target;
+ 
+ 		texture.removeEventListener( 'dispose', onTextureDispose );
++		_texturesListened.delete( _textureDisposeRefs.get( texture ) );
++		_textureDisposeRefs.delete( texture );
+ 
+ 		deallocateTexture( texture );
+ 
+@@ -717,6 +721,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 			textureProperties.__webglInit = true;
+ 
+ 			texture.addEventListener( 'dispose', onTextureDispose );
++			const textureRef = new WeakRef( texture );
++			_textureDisposeRefs.set( texture, textureRef );
++			_texturesListened.add( textureRef );
+ 
+ 		}
+ 
+@@ -1785,6 +1792,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 
+ 				textureProperties.__webglInit = true;
+ 				renderTarget.depthTexture.addEventListener( 'dispose', onTextureDispose );
++				const textureRef = new WeakRef( renderTarget.depthTexture );
++				_textureDisposeRefs.set( renderTarget.depthTexture, textureRef );
++				_texturesListened.add( textureRef );
+ 
+ 			}
+ 
+@@ -2508,6 +2518,20 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
+ 	this.setupFrameBufferTexture = setupFrameBufferTexture;
+ 	this.useMultisampledRTT = useMultisampledRTT;
+ 
++	this.dispose = function () {
++
++		for ( const ref of _texturesListened ) {
++
++			const texture = ref.deref();
++
++			if ( texture !== undefined ) texture.removeEventListener( 'dispose', onTextureDispose );
++
++		}
++
++		_texturesListened.clear();
++
++	};
++
+ 	this.isReversedDepthBuffer = function () {
+ 
+ 		return state.buffers.depth.getReversed();

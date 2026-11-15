@@ -24,6 +24,7 @@ describe('backup pause ownership', () => {
           return stored.promise;
         },
         setItem: (key, value): Promise<void> => t.storage.setItem(key, value),
+        removeItem: (key): Promise<void> => t.storage.removeItem(key),
       },
     });
     const running = runner.request();
@@ -50,6 +51,7 @@ describe('backup pause ownership', () => {
           if (key === PAUSED_STORAGE_KEY) await saved.promise;
           await t.storage.setItem(key, value);
         },
+        removeItem: (key): Promise<void> => t.storage.removeItem(key),
       },
       native: {
         statMedia: (ids, signal): ReturnType<typeof t.ports.native.statMedia> =>
@@ -126,6 +128,7 @@ describe('backup pause ownership', () => {
           }
           await t.storage.setItem(key, value);
         },
+        removeItem: (key): Promise<void> => t.storage.removeItem(key),
       },
     });
     const paused = runner.pause();

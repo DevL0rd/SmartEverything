@@ -1,5 +1,6 @@
-import { createContext, use, useEffect, useEffectEvent, type RefObject } from 'react';
+import { use, useEffect, useEffectEvent, type RefObject } from 'react';
 import { isNative } from '../design/platform';
+import { EscapeScopeVisible } from './escape-scope';
 
 interface EscapeHandler {
   readonly run: () => void;
@@ -84,8 +85,6 @@ function focusInside(scope: RefObject<unknown>): boolean {
   const node = scope.current;
   return node instanceof Node && node.contains(document.activeElement);
 }
-
-export const EscapeScopeVisible = createContext(true);
 
 export function useEscape(active: boolean, onEscape: () => void, scope?: RefObject<unknown>): void {
   const visible = use(EscapeScopeVisible);

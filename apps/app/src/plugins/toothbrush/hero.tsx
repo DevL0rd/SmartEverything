@@ -8,7 +8,7 @@ import { useMeasuredWidth } from '../../components/use-measured-width';
 import { cn } from '../../design/cn';
 import { useMinute } from '../../store/clock';
 import type { Device } from '../../store/state';
-import { brandUi } from './brands';
+import { brandUi, heroShowsLastSession } from './brands';
 import { BrushVisual } from './components/brush-visual';
 import { HeroChips } from './components/hero-chips';
 import { LiveStage } from './components/live-stage';
@@ -28,7 +28,7 @@ function Resting({
   const wide = restBesideBrush(width);
   const now = useMinute();
   const { HandleStrip, RestHero } = brandUi(view.profile.brand);
-  if (RestHero !== null && view.mine && view.lastSession !== null) {
+  if (RestHero !== null && view.lastSession !== null && heroShowsLastSession(view)) {
     return <RestHero deviceId={device.id} view={view} session={view.lastSession} />;
   }
   return (

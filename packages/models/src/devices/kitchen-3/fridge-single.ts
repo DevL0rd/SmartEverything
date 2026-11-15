@@ -98,7 +98,7 @@ export const SINGLE_DOOR_FRIDGE_MODEL: ModelSpec = {
   title: 'Fridge',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT + 0.01 },
+  footprint: { width: WIDTH, depth: 0.689, height: HEIGHT + 0.01 },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: FRIDGE_SHOTS,
   meta: {

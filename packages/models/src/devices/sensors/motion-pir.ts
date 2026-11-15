@@ -27,7 +27,7 @@ export const MOTION_PIR_MODEL: ModelSpec = {
   title: 'Motion sensor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.0586, depth: DEPTH, height: HEIGHT },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

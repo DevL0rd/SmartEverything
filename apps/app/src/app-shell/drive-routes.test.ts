@@ -25,6 +25,7 @@ describe('drive links', () => {
     expect(landing('/drive/starred/a1')).toBe('(drive) > drive/starred/[albumId]');
     expect(landing('/drive/computers/d1')).toBe('(drive) > drive/computers/[deviceId]');
     expect(landing('/drive/placement/p1')).toBe('(drive) > drive/placement/[placementId]');
+    expect(landing('/drive/open/i1')).toBe('(drive) > drive/open/[itemId]');
   });
 
   it('open the Drive tab from any other tab', () => {
@@ -38,6 +39,7 @@ describe('drive links', () => {
     expect(leafParams('/drive/starred/a1')).toEqual({ albumId: 'a1' });
     expect(leafParams('/drive/computers/d1')).toEqual({ deviceId: 'd1' });
     expect(leafParams('/drive/placement/p1')).toEqual({ placementId: 'p1' });
+    expect(leafParams('/drive/open/i1')).toEqual({ itemId: 'i1' });
   });
 });
 
@@ -47,8 +49,10 @@ describe('drive entry points', () => {
       'index',
       'shared-drive',
       'shared',
+      'priority',
       'recent',
       'starred',
+      'notifications',
       'activity',
       'computers',
       'storage',
@@ -80,6 +84,16 @@ describe('drive entry points', () => {
     );
   });
 
+  it('finds Priority, Notifications and file requests by their words', () => {
+    const words = (key: string): readonly string[] =>
+      DRIVE.find((route) => route.key === key)?.keywords ?? [];
+    expect(words('drive-priority')).toEqual(expect.arrayContaining(['suggested', 'priority']));
+    expect(words('drive-notifications')).toEqual(expect.arrayContaining(['inbox', 'alerts']));
+    expect(words('drive-shared')).toEqual(
+      expect.arrayContaining(['file requests', 'upload link', 'collect files']),
+    );
+  });
+
   it('puts the Drive pages on matching hrefs', () => {
     expect(href.drive()).toBe('/drive');
     expect(href.drive({ item: 'i1' })).toStrictEqual({
@@ -101,6 +115,10 @@ describe('drive entry points', () => {
     expect(href.driveComputer('d1')).toStrictEqual({
       pathname: '/drive/computers/[deviceId]',
       params: { deviceId: 'd1' },
+    });
+    expect(href.driveComputer('d1', '/home/dana/Projects')).toStrictEqual({
+      pathname: '/drive/computers/[deviceId]',
+      params: { deviceId: 'd1', path: '/home/dana/Projects' },
     });
     expect(href.drivePlacement('p1')).toStrictEqual({
       pathname: '/drive/placement/[placementId]',

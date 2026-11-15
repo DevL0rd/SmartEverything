@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
@@ -8,8 +7,7 @@ import { TimeSeriesChart } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { Grid } from '../../../components/grid';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Segmented } from '../../../components/segmented';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
@@ -29,6 +27,8 @@ import { background } from '@smarteverything/logging';
 
 const CHART_HEIGHT = 192;
 const MIN_CHART_WIDTH = 420;
+
+const TITLE = 'Air history';
 
 function MetricChart({
   metric,
@@ -99,42 +99,40 @@ export function AirScreen(): ReactNode {
     const first = found[0];
     return first === undefined ? [] : [{ metric, sources: found, title: first.presented.label }];
   });
-  const header = <PageHeader title="Air history" />;
   if (metrics.length === 0) {
     return (
-      <Screen header={header} maxWidth="full">
-        <View className="w-full max-w-reading self-start">
-          <EmptyState
-            icon="activity"
-            title="No air readings yet"
-            body="Purifiers and air sensors keep a history here."
-            action={<Button label="Back to Devices" href={href.devices()} />}
-          />
-        </View>
-      </Screen>
+      <PageShell title={TITLE} width="reading">
+        <EmptyState
+          icon="activity"
+          title="No air readings yet"
+          body="Purifiers and air sensors keep a history here."
+          action={<Button label="Back to Devices" href={href.devices()} />}
+        />
+      </PageShell>
     );
   }
   return (
-    <Screen header={header} maxWidth="full">
-      <View className="gap-section-gap">
-        <Segmented label="Period" options={AIR_RANGES} value={range} onChange={setRange} />
-        <Grid
-          minItemWidth={MIN_CHART_WIDTH}
-          maxColumns={metrics.length}
-          cellClassName="max-w-detail"
-          stretchLastRow={false}
-        >
-          {metrics.map((entry) => (
-            <MetricCard
-              key={entry.metric}
-              title={entry.title}
-              metric={entry.metric}
-              sources={entry.sources}
-              range={range}
-            />
-          ))}
-        </Grid>
-      </View>
-    </Screen>
+    <PageShell
+      title={TITLE}
+      width="full"
+      toolbar={<Segmented label="Period" options={AIR_RANGES} value={range} onChange={setRange} />}
+    >
+      <Grid
+        minItemWidth={MIN_CHART_WIDTH}
+        maxColumns={metrics.length}
+        cellClassName="max-w-detail"
+        stretchLastRow={false}
+      >
+        {metrics.map((entry) => (
+          <MetricCard
+            key={entry.metric}
+            title={entry.title}
+            metric={entry.metric}
+            sources={entry.sources}
+            range={range}
+          />
+        ))}
+      </Grid>
+    </PageShell>
   );
 }

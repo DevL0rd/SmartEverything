@@ -12,6 +12,7 @@ import {
   type GalleryFlow,
 } from '../../../components/widget-board/edit/use-gallery-flow';
 import { usePickerSource } from '../../../components/widget-board/picker-source';
+import { PickerSourceProvider } from '../../../store/picker-source';
 import { CommandLedger } from '../../../store/command-ledger';
 import { deviceFixture } from '../../../store/device-fixture';
 import { EntityStore } from '../../../store/entity-store';
@@ -79,7 +80,6 @@ function snapshotOf(seq: number, groups: readonly DeviceGroupRow[]): Snapshot {
       devices: groups.includes(GROUP) ? [FIRST_DEVICE, SECOND_DEVICE] : [SECOND_DEVICE],
       device_state: [],
       cameras: [],
-      scenes: [],
       automations: [],
       provider_links: [],
       ir_remotes: [],
@@ -172,14 +172,18 @@ async function mount(groups: readonly DeviceGroupRow[]): Promise<{
     root.render(
       createElement(StoreProvider, {
         runtime: { store, ledger: new CommandLedger(store) },
-        children: createElement(Reader, {
-          onAdd: (request) => {
-            added.push(request);
-          },
-          observe: (view) => {
-            views.push(view);
-          },
-        }),
+        children: createElement(
+          PickerSourceProvider,
+          null,
+          createElement(Reader, {
+            onAdd: (request) => {
+              added.push(request);
+            },
+            observe: (view) => {
+              views.push(view);
+            },
+          }),
+        ),
       }),
     );
     return Promise.resolve();

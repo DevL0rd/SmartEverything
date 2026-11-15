@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { LoadedQuery } from '../../components/loaded-query';
 import type { Device } from '../../store/state';
+import { heroShowsLastSession } from './brands';
 import { LastSession } from './components/last-session';
 import { TodayCard } from './components/today-card';
 import { useBrushState, useFrameSelect } from './data/brush-data';
@@ -19,7 +20,7 @@ function Body({
   return (
     <View className="gap-section-gap">
       <TodayCard deviceId={deviceId} view={view} />
-      {brushing ? null : <LastSession view={view} />}
+      {brushing || heroShowsLastSession(view) ? null : <LastSession view={view} />}
     </View>
   );
 }

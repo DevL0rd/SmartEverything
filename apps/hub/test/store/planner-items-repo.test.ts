@@ -37,8 +37,10 @@ function collectionInput(profileId: string, name: string): PlannerCollectionInpu
     position: 1,
     visible: true,
     default_reminders: [{ minutes_before: 10 }],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
   };
 }
 
@@ -78,6 +80,10 @@ function timed(
     attachments: [],
     reminders: [{ minutes_before: 5 }],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
   };
 }

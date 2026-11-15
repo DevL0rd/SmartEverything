@@ -7,6 +7,7 @@ import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
 import type { Store } from '../../store/store';
 import { DERIVED_LONG_EDGE, pruneDerived, writeDerived, type DerivedLayout } from './derived-paths';
 import type { JobHandler } from './jobs';
+import { UNLIMITED_PIXELS } from '../../media/sharp-input';
 import { thumbHashOf } from './thumbhash';
 
 export const PREVIEW_QUALITY = 82;
@@ -72,7 +73,7 @@ export const SHARP_DECODER: PreviewDecoder = {
 export interface RenderedDerived {
   readonly preview: Buffer;
   readonly thumb: Buffer;
-  readonly thumbhash: Uint8Array;
+  readonly thumbhash: Uint8Array<ArrayBuffer>;
   readonly width: number;
   readonly height: number;
 }
@@ -81,8 +82,9 @@ const RGBA_CHANNELS = 4;
 
 function inputOf(source: DecodedSource): Sharp {
   return source.kind === 'encoded'
-    ? sharp(source.path)
+    ? sharp(source.path, UNLIMITED_PIXELS)
     : sharp(source.data, {
+        ...UNLIMITED_PIXELS,
         raw: { width: source.width, height: source.height, channels: RGBA_CHANNELS },
       });
 }
@@ -111,7 +113,7 @@ export async function renderDerived(source: DecodedSource): Promise<RenderedDeri
 }
 
 export type DerivedOutcome =
-  | { readonly state: 'ready'; readonly thumbhash: Uint8Array }
+  | { readonly state: 'ready'; readonly thumbhash: Uint8Array<ArrayBuffer> }
   | { readonly state: 'failed' | 'unsupported'; readonly reason: string };
 
 export type ThumbWriter = (itemId: string, thumb: DriveThumb) => void;
@@ -137,9 +139,7 @@ function thumbOf(outcome: DerivedOutcome): DriveThumb {
 function mediaPatchOf(outcome: DerivedOutcome): Parameters<DriveMediaRepository['update']>[1] {
   return outcome.state === 'ready'
     ? {
-        // The media row schema narrows thumbhash to ArrayBuffer-backed storage;
-        // the thumbhash helper returns the generic Uint8Array type.
-        thumbhash: outcome.thumbhash as Uint8Array<ArrayBuffer>,
+        thumbhash: outcome.thumbhash,
         preview_state: 'ready',
         preview_reason: null,
       }

@@ -154,7 +154,7 @@ export const SKYLIGHT_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Skylight',
   category: 'structure',
-  footprint: { width: 1.04, depth: 1.44, height: 0.47 },
+  footprint: { width: 1.04, depth: 1.44, height: 0.484 },
   size: {
     width: { param: 'width', extra: 0.24, resizes: true },
     depth: { param: 'depth', extra: 0.24, resizes: true },

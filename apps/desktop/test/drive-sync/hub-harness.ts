@@ -12,6 +12,7 @@ import { syncAuthentication, type SyncEnv } from '../../../hub/src/drive/sync/se
 import { createDriveSync, type DriveSyncParts } from '../../../hub/src/drive/sync/server-push';
 import { DriveSyncServer } from '../../../hub/src/drive/sync/server-socket';
 import { status } from '../../../hub/test/drive/placement-fixture';
+import { syncPosixOf } from '../../../hub/test/drive/sync-posix';
 import { driveTestStore } from '../../../hub/test/drive/spaces-fixture';
 import { testLogger } from '../../../hub/test/support/logs';
 import type { TestStore } from '../../../hub/test/support/store';
@@ -107,6 +108,7 @@ function syncEnv(opened: TestStore, conflicts: Map<string, DriveConflict>): Sync
     log: testLogger('drive-sync'),
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
+    posix: syncPosixOf(opened.store, () => NOW),
     conflicts: {
       insert: (conflict): void => {
         conflicts.set(conflict.id, conflict);
@@ -176,6 +178,7 @@ function peerOn(world: PeerWorld, name: string, count: number, placement: PeerPl
     folderItemId: placement.folderItemId ?? null,
     mode: 'synced',
     localPath: `/sync/${name}`,
+    mountName: null,
     enabled: true,
     createdBy: world.ownerId,
     excluded: placement.excluded ?? [],

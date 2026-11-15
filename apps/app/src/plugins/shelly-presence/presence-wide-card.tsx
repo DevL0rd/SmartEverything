@@ -4,7 +4,6 @@ import { SHELLY_DETECTION_CAPABILITY, type ShellyDevice } from '@smarteverything
 import { background } from '@smarteverything/logging';
 import { Badge } from '../../components/badge';
 import { Button } from '../../components/button';
-import { StateTimeline } from '../../components/charts';
 import { SwitchTrack } from '../../components/switch';
 import { Text } from '../../components/text';
 import { ActionBand, frameClassOf, type WidgetFrameBox } from '../../components/widget-board';
@@ -19,6 +18,7 @@ import { useControl } from '../../store/control';
 import { useSyncStatus } from '../../store/selectors';
 import type { Device } from '../../store/state';
 import { usePresence } from './presence-data';
+import { FittedOccupancy, OccupancyGraph } from './presence-occupancy';
 import {
   chipOf,
   faceSwitchOf,
@@ -43,12 +43,8 @@ import { PresenceTile, PresenceWaiting } from './presence-tile';
 import { modelFor } from './room-geometry';
 import { RoomMap } from './room-map';
 import { MapLegend, useZoneColours } from './room-map-legend';
-import { useOccupancy } from './use-occupancy';
 import { useLivePresence, type LivePresence } from './use-live-presence';
 import type { TrackingLease } from './use-tracking-lease';
-
-const TIMELINE_HEIGHT = 14;
-const PANEL_TIMELINE_HEIGHT = 22;
 
 function DetectionAction({ device }: { readonly device: Device }): ReactNode {
   const control = useControl(device.id, SHELLY_DETECTION_CAPABILITY);
@@ -73,40 +69,6 @@ function DetectionAction({ device }: { readonly device: Device }): ReactNode {
         Detection
       </Text>
     </Pressable>
-  );
-}
-
-function OccupancyGraph({
-  device,
-  live,
-  wide,
-  offline,
-}: {
-  readonly device: Device;
-  readonly live: boolean;
-  readonly wide: boolean;
-  readonly offline: boolean;
-}): ReactNode {
-  const { segments, from, to } = useOccupancy(device, live);
-  const height = wide ? PANEL_TIMELINE_HEIGHT : TIMELINE_HEIGHT;
-  const empty = offline ? 'Offline' : 'Nobody in the last 24 h';
-  return (
-    <View className="gap-1">
-      <StateTimeline
-        segments={segments}
-        colours={{ occupied: 'primary' }}
-        label="Occupied in the last 24 hours"
-        from={from}
-        to={to}
-        height={height}
-        track="surface-2"
-        empty={empty}
-        {...(wide ? { captions: ['24 h', 'Now'] } : {})}
-      />
-      <Text variant="caption" tone="variant" numberOfLines={1}>
-        Occupied, last 24 h
-      </Text>
-    </View>
   );
 }
 
@@ -312,14 +274,12 @@ function MapFace({
       <MapStage view={view} presence={presence} side={side} device={device} />
       <View className="min-w-0 flex-1 gap-1.5" pointerEvents="box-none">
         <MapInfo title={device.label} chip={chipOf(sensor, zone)} line={line} />
-        <View className="min-h-0 flex-1 justify-end" aria-hidden pointerEvents="none">
-          <OccupancyGraph
-            device={device}
-            live={live}
-            wide={cls === 'l' || cls === 'xl'}
-            offline={lease.support === 'offline'}
-          />
-        </View>
+        <FittedOccupancy
+          device={device}
+          live={live}
+          wide={cls === 'l' || cls === 'xl'}
+          offline={lease.support === 'offline'}
+        />
         <ActionBand>{actionsOf(device, lease, toggle)}</ActionBand>
       </View>
     </View>

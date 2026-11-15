@@ -95,6 +95,19 @@ describe('the live demand registry', () => {
     });
   });
 
+  it('carries the demanded folder of the latest holder and drops it on release', () => {
+    const { watch, sent } = connected();
+    const release = watch.hold(PC, ['files'], undefined, '/home/dana');
+    vi.advanceTimersByTime(WATCH_DEBOUNCE_MS);
+    expect(sent[0]).toStrictEqual({
+      type: 'watch',
+      demands: [{ deviceId: PC, topics: ['files'], files: '/home/dana' }],
+    });
+    release();
+    vi.advanceTimersByTime(WATCH_DEBOUNCE_MS);
+    expect(sent[1]).toStrictEqual({ type: 'watch', demands: [] });
+  });
+
   it('replays the held set at once on reconnect and sends nothing while detached', () => {
     const { watch, sent } = connected();
     watch.hold(PC, ['summary']);

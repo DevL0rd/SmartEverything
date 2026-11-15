@@ -1,12 +1,20 @@
-import type { PlannerColourKey, PlannerDay, PlannerRingRow } from '@smarteverything/domain';
+import type {
+  PlannerColourKey,
+  PlannerDay,
+  PlannerRingRow,
+  PlannerSleep,
+} from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useIsFocused } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { BackHandler } from 'react-native';
+import type { RingStatus } from '../../../../modules/health-connect';
+import { readPlannerSleep } from '../../../api/planner';
 import { href } from '../../../app-shell/hrefs';
 import { notifyFailure } from '../../../components/toast-store';
-import { MINUTE_MS, dayKeyOf } from '../../../format/time';
-import { plannerKeys } from '../../../queries/keys';
+import { DAY_MS, MINUTE_MS, dayKeyOf } from '../../../format/time';
+import { PLANNER_PREFIX, plannerKeys } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useMinute, useMinuteOf } from '../../../store/clock';
 import {
@@ -19,15 +27,20 @@ import {
   usePlannerDay,
   usePlannerItems,
   usePlannerTimers,
-} from '../../planner/data';
-import { dueWindowOf, useShownRing } from '../../planner/data/ring';
+  dueWindowOf,
+  useShownRing,
+} from '../../planner';
 import { useHubOffline } from '../frame/hub-status';
+import { snoozeOnPhone, stopOnPhone, usePhoneRing } from './ring-device';
+import { phoneRingKeyOf, refKeyOf, ringIdOf, ringRefOf, type RingRef } from './ring-keys';
 import {
   ringDueOf,
   ringStateOf,
   ringSubjectOf,
+  type LocalRing,
   type RingState,
   type RingSubject,
+  type RingSubjectRef,
 } from './ring-model';
 
 export interface RingDay {
@@ -36,9 +49,25 @@ export interface RingDay {
   readonly today: string;
 }
 
+export interface RingLive {
+  readonly state: RingState;
+  readonly phoneKey: string | null;
+  readonly phone: RingStatus | null;
+}
+
+export interface RingTarget {
+  readonly hubRing: PlannerRingRow | null;
+  readonly phoneKey: string | null;
+  readonly phone: RingStatus | null;
+}
+
+const SLEEP_LOOKBACK_DAYS = 8;
+
+export type RingRoute = 'hub' | 'phone' | 'none';
+
 export interface RingActions {
   readonly busy: boolean;
-  readonly offline: boolean;
+  readonly route: RingRoute;
   readonly stop: () => void;
   readonly snooze: () => void;
 }
@@ -57,22 +86,67 @@ function useRingRows(due: string | null | undefined): {
   return { rows: window === null ? NO_ROWS : query.data, failed: query.isError };
 }
 
-export function useRingState(
-  ringId: string,
+function localOf(
+  ref: RingRef,
+  hubRow: PlannerRingRow | undefined,
+  key: string | null,
+  phone: RingStatus | null,
+): LocalRing | null {
+  if (key === null || phone?.ringing !== true) return null;
+  if (ref.kind === 'key') return { key, kind: ref.ring, refId: ref.refId };
+  if (hubRow === undefined || hubRow.kind === 'reminder') return null;
+  return { key, kind: hubRow.kind, refId: hubRow.ref_id };
+}
+
+export function useRingLive(
+  param: string,
   day: PlannerDay | undefined,
   dayFailed: boolean,
-): RingState {
+): RingLive {
   const now = useMinute();
-  const due = ringDueOf(ringId, useIncomingPlannerRing(), day?.rings);
+  const ref = ringRefOf(param);
+  const incoming = useIncomingPlannerRing();
+  const ringId = ringIdOf(ref, incoming, day?.rings);
+  const due = typeof ringId === 'string' ? ringDueOf(ringId, incoming, day?.rings) : ringId;
   const { rows, failed } = useRingRows(due);
-  useShownRing(ringId, useIsFocused());
-  return ringStateOf({
+  const hubRow = rows?.find((row) => row.id === ringId);
+  const phoneKey =
+    refKeyOf(ref) ?? (hubRow === undefined ? null : phoneRingKeyOf(hubRow.kind, hubRow.ref_id));
+  const phone = usePhoneRing(phoneKey);
+  useShownRing(typeof ringId === 'string' ? ringId : param, useIsFocused());
+  const state = ringStateOf({
     ringId,
     due,
     rows,
     failed: failed || (due === undefined && dayFailed),
     now,
+    local: localOf(ref, hubRow, phoneKey, phone),
   });
+  return { state, phoneKey, phone };
+}
+
+function readRecentSleep(): Promise<PlannerSleep> {
+  const to = Date.now();
+  const from = to - SLEEP_LOOKBACK_DAYS * DAY_MS;
+  return readPlannerSleep(undefined, new Date(from).toISOString(), new Date(to).toISOString());
+}
+
+export function useRingSleep(today: string, wanted: boolean): PlannerSleep | undefined {
+  return useScreenQuery({
+    queryKey: [...PLANNER_PREFIX, 'sleep', null, today],
+    queryFn: readRecentSleep,
+    enabled: wanted,
+  }).data;
+}
+
+export function useHoldBack(ringing: boolean): void {
+  useEffect(() => {
+    if (!ringing) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return (): void => {
+      subscription.remove();
+    };
+  }, [ringing]);
 }
 
 export function useRingDay(): RingDay & { readonly failed: boolean } {
@@ -86,11 +160,11 @@ export function useRingDay(): RingDay & { readonly failed: boolean } {
   return { day: query.data, colours, today, failed: query.isError };
 }
 
-export function useRingSubject(ring: PlannerRingRow): RingSubject {
+export function useRingSubject(ref: RingSubjectRef): RingSubject {
   const alarms = usePlannerAlarms(null);
   const timers = usePlannerTimers(null);
   const items = usePlannerItems(null);
-  return ringSubjectOf(ring, { alarms, timers, items });
+  return ringSubjectOf(ref, { alarms, timers, items });
 }
 
 export function leaveRing(): void {
@@ -121,17 +195,56 @@ function snoozeWork(
   return writes.addTimerTime(ring.ref_id, MINUTE_MS);
 }
 
-export function useRingActions(ring: PlannerRingRow, subject: RingSubject): RingActions {
+function phoneSnoozeMinutes(subject: RingSubject): number {
+  return subject.snooze?.kind === 'alarm' ? subject.snooze.minutes : 1;
+}
+
+interface Work {
+  readonly route: Exclude<RingRoute, 'none'>;
+  readonly stop: () => Promise<unknown>;
+  readonly snooze: () => Promise<unknown>;
+}
+
+function workOf(
+  target: RingTarget,
+  subject: RingSubject,
+  writes: ReturnType<typeof usePlannerClockWrites>,
+  offline: boolean,
+): Work | null {
+  const { hubRing, phoneKey, phone } = target;
+  const onPhone = phoneKey !== null && phone?.ringing === true && (hubRing === null || offline);
+  if (onPhone) {
+    return {
+      route: 'phone',
+      stop: () => stopOnPhone(phoneKey),
+      snooze: () => snoozeOnPhone(phoneKey, phoneSnoozeMinutes(subject)),
+    };
+  }
+  if (hubRing === null || offline) return null;
+  return {
+    route: 'hub',
+    stop: () => stopWork(writes, hubRing),
+    snooze: () => snoozeWork(writes, hubRing, subject),
+  };
+}
+
+export function useRingActions(target: RingTarget, subject: RingSubject): RingActions {
   const writes = usePlannerClockWrites(null);
   const client = useQueryClient();
   const offline = useHubOffline();
   const [busy, setBusy] = useState(false);
-  const run = (work: () => Promise<unknown>, failure: string, event: string): void => {
+  const work = workOf(target, subject, writes, offline);
+  const run = (
+    task: (() => Promise<unknown>) | undefined,
+    failure: string,
+    event: string,
+  ): void => {
+    if (task === undefined) return;
     setBusy(true);
     background(
-      work()
+      task()
         .then(async () => {
-          clearPlannerRing(ring.id);
+          if (target.hubRing !== null) clearPlannerRing(target.hubRing.id);
           await client.invalidateQueries({ queryKey: plannerKeys.prefix('rings') });
           leaveRing();
         })
@@ -144,16 +257,12 @@ export function useRingActions(ring: PlannerRingRow, subject: RingSubject): Ring
   };
   return {
     busy,
-    offline,
+    route: work?.route ?? 'none',
     stop: (): void => {
-      run(() => stopWork(writes, ring), 'Couldn’t stop it', 'clock.ring_stop_failed');
+      run(work?.stop, 'Couldn’t stop it', 'clock.ring_stop_failed');
     },
     snooze: (): void => {
-      run(
-        () => snoozeWork(writes, ring, subject),
-        'Couldn’t snooze it',
-        'clock.ring_snooze_failed',
-      );
+      run(work?.snooze, 'Couldn’t snooze it', 'clock.ring_snooze_failed');
     },
   };
 }

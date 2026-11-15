@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hubLayout, type HubLayout } from '../../src/data-layout';
+import { isFileItem } from '../../src/drive/file-item';
 import { ffmpegPath } from '../../src/media/ffmpeg-path';
 import { derivedPath } from '../../src/photos/pipeline/derived-paths';
 import {
@@ -36,7 +37,7 @@ import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { DriveMediaJobsRepository } from '../../src/store/repositories/drive-media-jobs';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { insertDriveRow } from './photo-rows';
+import { insertDriveRow, insertInode } from './photo-rows';
 
 const run = promisify(execFile);
 const FIXTURES = resolve(import.meta.dirname, '../fixtures/photos');
@@ -144,7 +145,7 @@ function itemId(n: number): string {
 }
 
 function thumbOf(item: ReturnType<DriveItemsRepository['find']>): unknown {
-  return item === undefined || item.kind === 'folder' ? undefined : item.thumb;
+  return item === undefined || !isFileItem(item) ? undefined : item.thumb;
 }
 
 function insert(table: string, fields: Record<string, string | number | null>): void {
@@ -161,6 +162,7 @@ function seed(n: number, kind: 'image' | 'video', name: string, mime: string): s
   insert('drive_items', {
     id,
     root_id: ROOT,
+    inode_id: insertInode(database, ROOT),
     rel_path: name,
     name,
     kind,
@@ -580,7 +582,10 @@ describe('video posters', () => {
       poster_state: 'failed',
       preview_reason: 'the file is gone',
     });
-    expect(thumbOf(items.find(missing.id, null))).toEqual({ state: 'failed', reason: 'the file is gone' });
+    expect(thumbOf(items.find(missing.id, null))).toEqual({
+      state: 'failed',
+      reason: 'the file is gone',
+    });
   });
 
   it('skips a job for a changed revision', async () => {

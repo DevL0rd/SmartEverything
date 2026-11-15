@@ -185,7 +185,7 @@ export class NvidiaStream {
         this.latest.set(parsed[0], parsed[1]);
       }
     });
-    child.once('error', (cause) => {
+    child.on('error', (cause) => {
       this.stopped = true;
       this.log.warn('node.nvidia_unavailable', { reason: cause.message });
     });

@@ -6,6 +6,8 @@ import type { StoreContext } from '../store/context';
 import { DriveAlbumsRepository } from '../store/repositories/drive-albums';
 import { starredBy } from '../store/repositories/drive-stars';
 import type { SqlParameters } from '../store/sql';
+import { folderNarrowing } from './folder-scope';
+import { searchNarrowing } from './people/scope';
 
 export interface Statement {
   readonly text: string;
@@ -77,7 +79,10 @@ export class AlbumScopes {
 
   statement(actor: DriveActor, albumId: string): Statement {
     const album = this.albums.byId(albumId);
-    if (!albumVisibleTo(actor, album)) throw new ApiError('not_found', 'There is no such album.');
+    const member = this.albums.contributions.memberRole(albumId, actor.profileId) !== null;
+    if (!albumVisibleTo(actor, album) && !member) {
+      throw new ApiError('not_found', 'There is no such album.');
+    }
     if (album.kind === 'manual') {
       return {
         text: ' and i.id in (select a.item_id from drive_album_items a where a.album_id = $albumId)',
@@ -96,7 +101,24 @@ export class AlbumScopes {
   }
 }
 
-export function narrowing(actor: DriveActor, scope: LibraryScope, albums: AlbumScopes): Statement {
+function partnerNarrowing(scope: LibraryScope): readonly Statement[] {
+  if (scope.partnerShareId === undefined) return [];
+  return [
+    {
+      text: ` and r.scope = 'person' and exists (select 1 from photo_partner_shares ps
+        where ps.id = $partnerShareId and ps.recipient_id = $profile and ps.state = 'accepted'
+          and ps.sharer_id = r.owner_profile_id)`,
+      parameters: { partnerShareId: scope.partnerShareId },
+    },
+  ];
+}
+
+export function narrowing(
+  actor: DriveActor,
+  scope: LibraryScope,
+  albums: AlbumScopes,
+  meaningItemIds: readonly string[] = [],
+): Statement {
   const parts: Statement[] = [{ text: FILTER_SQL[scope.filter], parameters: {} }];
   if (scope.placeId !== undefined) {
     parts.push({
@@ -122,6 +144,9 @@ export function narrowing(actor: DriveActor, scope: LibraryScope, albums: AlbumS
   }
   if (scope.text !== undefined) parts.push(textStatement(scope.text));
   if (scope.albumId !== undefined) parts.push(albums.statement(actor, scope.albumId));
+  parts.push(...partnerNarrowing(scope));
+  parts.push(searchNarrowing(actor.profileId, scope, meaningItemIds));
+  parts.push(folderNarrowing(actor, scope));
   parts.push(dayRange(scope.from ?? null, scope.to ?? null));
   return joined(parts);
 }

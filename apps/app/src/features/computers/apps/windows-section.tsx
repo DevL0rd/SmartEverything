@@ -13,7 +13,7 @@ import { DemandRegion } from '../../../store/demand-region';
 import { StateMissing } from '../components/state-missing';
 import { useStateSeed } from '../data/computer-state';
 import { useOpenWindows, useWindowChange } from '../data/computer-windows';
-import { useScreenshotToChat } from '../files/screenshot';
+import { useScreenshotToChat } from '../data/screenshot';
 import { windowLine } from './apps-model';
 
 const TOPICS = ['windows'] as const;

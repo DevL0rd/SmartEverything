@@ -44,9 +44,13 @@ describe('editing the navigation', () => {
       'section:devices',
       'section:cameras',
       'section:fitness',
+      'section:planner',
+      'section:clock',
       'section:assistant',
       'section:talk',
       'section:automations',
+      'section:photos',
+      'section:drive',
     ]);
   });
 
@@ -71,9 +75,13 @@ describe('editing the navigation', () => {
       'section:devices',
       'section:cameras',
       'section:home',
+      'section:planner',
+      'section:clock',
       'section:assistant',
       'section:talk',
       'section:automations',
+      'section:photos',
+      'section:drive',
     ]);
   });
 

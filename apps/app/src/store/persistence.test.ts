@@ -113,7 +113,6 @@ function snapshotOf(role: 'owner' | 'member', seq: number, room = 'Kitchen'): Sn
         },
       ],
       cameras: [],
-      scenes: [],
       automations: [],
       provider_links: [],
       ir_remotes: [],

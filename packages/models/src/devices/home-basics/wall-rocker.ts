@@ -83,7 +83,7 @@ export const WALL_ROCKER_MODEL: ModelSpec = {
   title: 'Wall switch',
   category: 'energy',
   family: 'switch',
-  footprint: { width: PLATE, depth: DEPTH, height: PLATE },
+  footprint: { width: PLATE, depth: 0.0177, height: PLATE },
   framing: house('plate', 20, 10),
   shots: [
     shot('switched', whenAll(leaf('power', 'eq', true)), 'plate', {

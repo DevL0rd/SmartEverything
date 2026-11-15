@@ -1,8 +1,10 @@
-import { useState, type ReactNode, type ReactElement } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useIsFocused, useLocalSearchParams } from 'expo-router';
 import { List } from '../../../components/section';
 import { Select } from '../../../components/select';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import { TranscriptFeed, type TranscriptFeedProps } from '../../../components/transcript-feed';
+import type { TranscriptFeedState } from '../../../components/transcript-feed/state';
 import { useFeedController } from '../../../queries/transcript-reader/use-feed-controller';
 import type { TranscriptSelection } from '../../../queries/transcript-reader/selection';
 import { useTranscriptRemoval } from '../../../queries/transcript-reader/use-transcript-removal';
@@ -43,19 +45,19 @@ function CameraControls({
   );
 }
 
-export function CameraTranscriptFeed({
-  entry,
-  header,
-  pageHeader,
-  banner,
-  headerWidth = 'full',
-}: {
-  readonly entry?: CameraEntry;
-  readonly header: ReactNode;
-  readonly pageHeader?: ReactElement;
-  readonly banner?: ReactNode;
-  readonly headerWidth?: TranscriptFeedProps['headerWidth'];
-}): ReactNode {
+export interface CameraTranscripts {
+  readonly feed: TranscriptFeedState;
+  readonly entry: CameraEntry | undefined;
+  readonly sourceId: string | undefined;
+  readonly filter: string;
+  readonly filterCamera: (cameraId: string) => void;
+  readonly focus: string | undefined;
+}
+
+export function useCameraTranscripts(
+  entry: CameraEntry | undefined,
+  enabled: boolean,
+): CameraTranscripts {
   const { focus } = useLocalSearchParams<{ focus?: string }>();
   const [filter, filterCamera] = useState(ALL_CAMERAS);
   const sourceId = entry?.device.id ?? (filter === ALL_CAMERAS ? undefined : filter);
@@ -63,7 +65,36 @@ export function CameraTranscriptFeed({
     source: 'camera',
     ...(sourceId === undefined ? {} : { sourceId }),
   };
-  const feed = useFeedController(selection, useIsFocused());
+  const feed = useFeedController(selection, useIsFocused() && enabled);
+  return { feed, entry, sourceId, filter, filterCamera, focus };
+}
+
+export function transcriptSearchOf(transcripts: CameraTranscripts): ShellSearchConfig {
+  return {
+    value: transcripts.feed.words,
+    onChange: transcripts.feed.changeWords,
+    placeholder: 'Search what was said',
+    label: 'Search transcripts',
+    focusOnMount: transcripts.focus === 'transcript-search',
+  };
+}
+
+export function CameraTranscriptFeed({
+  transcripts,
+  header,
+  spacer,
+  banner,
+  headerWidth = 'full',
+  shellSearch = false,
+}: {
+  readonly transcripts: CameraTranscripts;
+  readonly header: ReactNode;
+  readonly spacer?: TranscriptFeedProps['pageHeader'];
+  readonly banner?: ReactNode;
+  readonly headerWidth?: TranscriptFeedProps['headerWidth'];
+  readonly shellSearch?: boolean;
+}): ReactNode {
+  const { feed, entry, sourceId, filter, filterCamera, focus } = transcripts;
   const { time_zone: timeZone } = useSettings();
   const remove = useTranscriptRemoval();
   return (
@@ -73,14 +104,15 @@ export function CameraTranscriptFeed({
       grouped={sourceId !== undefined}
       {...(remove === undefined ? {} : { remove })}
       header={header}
-      {...(pageHeader === undefined ? {} : { pageHeader })}
+      {...(spacer === undefined ? {} : { pageHeader: spacer })}
       banner={banner}
       controls={<CameraControls entry={entry} filter={filter} filterCamera={filterCamera} />}
       inlineControls={entry === undefined}
       compactRows
       headerWidth={headerWidth}
+      shellSearch={shellSearch}
       focus={focus === 'transcripts' || focus === 'transcript-search'}
-      focusSearch={focus === 'transcript-search'}
+      focusSearch={!shellSearch && focus === 'transcript-search'}
     />
   );
 }

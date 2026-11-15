@@ -58,7 +58,7 @@ function knobs(): ModelSpecPart[] {
 export const BARBECUE_GRILL_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.barbecue-grill',
   title: 'Barbecue grill',
-  footprint: { width: 1.6, depth: BODY_D + 0.1, height: 1.22 },
+  footprint: { width: 1.58, depth: 0.564, height: 1.16 },
   meta: {
     names: {
       display: 'Barbecue grill',

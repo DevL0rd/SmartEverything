@@ -4,6 +4,7 @@ import {
   OFFER_TITLE,
   QUIET_OFFER,
   offerAction,
+  type OfferAction,
   releaseCopy,
   type OfferTone,
   type ReleaseOffer,
@@ -32,6 +33,11 @@ export const WITHDRAWN_SENTENCE =
   'This update was withdrawn. Restart to go back to the version built into the app.';
 
 export const ROLLED_BACK_SENTENCE = 'SmartEverything went back to the version that worked.';
+
+export function fellBackSentence(failedId: string | null, reason: string): string {
+  const update = failedId === null ? 'The last update' : `Update ${failedId}`;
+  return `${update} could not start, so SmartEverything went back to the version it ran before. ${reason} Nothing changes until you choose.`;
+}
 
 export function runningLabel(running: RunningVersion | null): string {
   if (running === null) return 'Version not reported yet';
@@ -137,6 +143,21 @@ function rolledBackOffer(
   };
 }
 
+function fellBackOffer(
+  state: Extract<AppUpdateState, { readonly kind: 'fell_back' }>,
+): ReleaseOffer {
+  return {
+    ...quiet(`fell_back:${state.failedId ?? ''}`, 'critical', OFFER_TITLE.fellBack),
+    sentence: fellBackSentence(state.failedId, state.reason),
+    action: offerAction('retry_update', state.deciding),
+    dismissible: false,
+  };
+}
+
+export function fallbackChoiceOf(state: AppUpdateState): OfferAction | null {
+  return state.kind === 'fell_back' ? offerAction('stay_built_in', state.deciding) : null;
+}
+
 type IdleKind = 'unsupported' | 'idle' | 'checking' | 'up_to_date' | 'needs_new_app';
 
 type IdleState = Extract<AppUpdateState, { readonly kind: IdleKind }>;
@@ -178,6 +199,8 @@ function activeOffer(state: ActiveState): ReleaseOffer {
       return failedOffer(state);
     case 'rolled_back':
       return rolledBackOffer(state);
+    case 'fell_back':
+      return fellBackOffer(state);
   }
 }
 
@@ -215,6 +238,7 @@ const LOOK_NOW = 'Checks for an update for this device';
 function heldSubtitle(state: AppUpdateState): string {
   if (state.kind === 'downloading') return 'Downloading an update now';
   if (state.kind === 'restarting') return 'Restarting now';
+  if (state.kind === 'fell_back') return 'Choose what to do with the update that crashed first';
   return restartTargetOf(state)?.kind === 'built_in'
     ? 'Restart to go back to the built-in version first'
     : 'An update is ready. Restart to finish it first';

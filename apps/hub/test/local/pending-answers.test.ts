@@ -89,4 +89,14 @@ describe('PendingAnswers', () => {
     await expect(Promise.all([first, second])).resolves.toEqual(['stopped', 'stopped']);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('settles a replaced request and leaves no stale timer behind', async () => {
+    const first = ask('r1');
+    const second = ask('r1');
+    await expect(first).resolves.toBe('unanswered');
+    expect(vi.getTimerCount()).toBe(1);
+    answers.answer('phone-1', 'r1', 'yes');
+    await expect(second).resolves.toBe('yes');
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

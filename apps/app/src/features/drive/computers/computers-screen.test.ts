@@ -30,7 +30,11 @@ vi.mock('../../../store/selectors', () => ({
   useLoaded: (): boolean => seen.loaded,
   useSyncStatus: (): unknown => ({ status: seen.status }),
 }));
-vi.mock('../../computers', () => ({ PairComputerSheet: (): null => null }));
+vi.mock('../../computers', () => ({
+  PairComputerSheet: (): null => null,
+  computersOf: (devices: readonly Device[]): readonly Device[] =>
+    devices.filter((device) => device.kind === 'computer'),
+}));
 vi.mock('../data', () => ({ useDrivePlacementRows: (): readonly never[] => [] }));
 vi.mock('./this-computer', () => ({
   useThisComputer: (): null => null,
@@ -39,7 +43,6 @@ vi.mock('./this-computer', () => ({
 vi.mock('./conflicts-card', () => ({
   ConflictsCard: (): ReactNode => createElement('aside', {}, 'conflicts'),
 }));
-vi.mock('./first-run-card', () => ({ FirstRunCard: (): null => null }));
 vi.mock('./mount-panel', () => ({ MountPanel: (): null => null }));
 vi.mock('../../../components/banner', () => ({
   Banner: ({ title }: { readonly title: string }): ReactNode => createElement('aside', {}, title),

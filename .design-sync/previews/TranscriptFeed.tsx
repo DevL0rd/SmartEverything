@@ -3,7 +3,7 @@ import { Stage, TranscriptFeed } from 'smarteverything-kit';
 import { feedState } from '../transcript-demo';
 
 const feed = (overrides?: Parameters<typeof feedState>[0]): ReactNode => (
-  <TranscriptFeed feed={feedState(overrides)} timeZone="UTC" grouped={false} maxWidth="detail" />
+  <TranscriptFeed feed={feedState(overrides)} timeZone="UTC" grouped={false} headerWidth="detail" />
 );
 export const Latest = (): ReactNode => (
   <Stage theme="dark" width={760} height={520}>

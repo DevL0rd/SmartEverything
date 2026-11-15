@@ -11,8 +11,8 @@ import {
   useChosenOptions,
   useOptionPages,
   type OptionFeed,
-} from '../../../../plugins/data/option-queries';
-import { OptionVisual } from '../../../../plugins/picker/option-visual';
+  OptionVisual,
+} from '../../../../plugins';
 import {
   NO_PLUGIN_REASON,
   chosenNote,

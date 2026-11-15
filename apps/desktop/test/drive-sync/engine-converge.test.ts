@@ -126,6 +126,7 @@ function excludeOnHub(placementId: string, excluded: readonly string[]): void {
   lab.hub.store.drivePlacements.retarget(placementId, {
     mode: placement.mode,
     localPath: placement.localPath,
+    mountName: placement.mountName,
     enabled: placement.enabled,
     readOnly: placement.status.readOnly,
     excluded,

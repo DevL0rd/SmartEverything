@@ -21,6 +21,7 @@ import {
 import { commitConflictCopy, type ConflictEnv } from '../conflicts';
 import { DriveWriteError, locate, type DriveWriteRoot } from '../intents';
 import { checkDriveWrite } from '../quotas';
+import { applyMeta, type SyncCall, type WantedMeta } from './server-meta';
 import type { StagedBytes } from '../versions';
 import {
   assertWritable,
@@ -239,7 +240,7 @@ export class SyncCommitter {
     const plan = planOf(file, await hubEntryOf(this.env, root, existing), spec);
     if (plan.kind === 'noop') return acceptOf(this.env, spec.rootId, spec.opId, plan.rev);
     const assembled = await verifyAssembled(root, txn);
-    if (plan.kind === 'replace') return this.replace(txn, root, plan.file, assembled);
+    if (plan.kind === 'replace') return this.replace(txn, scope, plan.file, assembled);
     if (scope.placement.conflictCopies !== true) {
       return conflictOf(spec.opId, 'stale', plan.hub.rev, null);
     }
@@ -273,11 +274,12 @@ export class SyncCommitter {
 
   private async replace(
     txn: SyncTxn,
-    root: DriveWriteRoot,
+    scope: SyncScope,
     hub: FileItem | null,
     assembled: Assembled,
   ): Promise<AcceptMessage | ConflictMessage> {
     const { spec } = txn;
+    const root = scope.drive;
     const actor = syncActor(spec);
     await this.admit(root, spec, assembled, hub?.bytes ?? 0);
     try {
@@ -289,6 +291,7 @@ export class SyncCommitter {
         actor,
         alongside: carryBlocks(this.env, spec),
       });
+      await applyMeta(this.callOf(spec, scope), written.item, this.wantedOf(spec));
       return acceptOf(this.env, spec.rootId, spec.opId, written.item.rev);
     } catch (cause) {
       if (cause instanceof DriveWriteError && cause.failure === 'exists') {
@@ -296,6 +299,14 @@ export class SyncCommitter {
       }
       throw cause;
     }
+  }
+
+  private callOf(spec: TxnSpec, scope: SyncScope): SyncCall {
+    return { env: this.env, origin: spec, scope };
+  }
+
+  private wantedOf(spec: TxnSpec): WantedMeta {
+    return { mode: spec.mode, mtimeNs: spec.meta.mtimeNs, xattrs: spec.xattrs };
   }
 
   private async copy(
@@ -314,6 +325,8 @@ export class SyncCommitter {
       deviceId: spec.deviceId,
       actor: syncActor(spec),
     });
+    const kept = this.env.store.driveItems.byId(conflict.conflictItemId, null);
+    await applyMeta(this.callOf(spec, scope), kept, this.wantedOf(spec));
     return conflictOf(spec.opId, 'stale', hub.rev, toWirePath(scope, conflict.conflictRelPath));
   }
 }

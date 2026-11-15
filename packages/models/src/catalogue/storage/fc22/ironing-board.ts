@@ -49,7 +49,7 @@ function feet(): ModelSpecPart[] {
 export const IRONING_BOARD_MODEL: ModelSpec = storageItem({
   id: 'cat.storage.ironing-board',
   title: 'Ironing board',
-  footprint: { width: 1.4, depth: 0.36, height: 0.8663 },
+  footprint: { width: 1.303, depth: 0.368, height: 0.8663 },
   size: { height: { param: 'height', extra: 0.0163, resizes: true } },
   meta: {
     names: {

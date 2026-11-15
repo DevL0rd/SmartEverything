@@ -1,11 +1,11 @@
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useEffect, useMemo } from 'react';
 import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import { scheduleOnUI } from 'react-native-worklets';
 import type { DeviceGroupRow, MemberOutcome } from '@smarteverything/domain';
 import { Banner } from '../../../components/banner';
 import { bringIntoView } from '../../../components/bring-into-view';
-import { PageHeader } from '../../../components/page-header';
+import type { StandardShellProps } from '../../../components/page-shell/shell-types';
 import { useScreen } from '../../../components/screen-context';
 import { Section } from '../../../components/section';
 import { plural } from '../../../format/text';
@@ -219,7 +219,12 @@ export function Overlays({
   );
 }
 
-export function Header({
+export type GroupShell = Pick<
+  StandardShellProps,
+  'title' | 'subtitle' | 'back' | 'actions' | 'overflow'
+>;
+
+export function groupShellOf({
   data,
   group,
   uses,
@@ -231,7 +236,7 @@ export function Header({
   readonly uses: readonly string[];
   readonly page: GroupPageState;
   readonly addToHome: AddToHome;
-}): ReactElement {
+}): GroupShell {
   const noun = memberNoun(data.lights);
   const menu = pageMenu({
     target: data.target,
@@ -242,14 +247,11 @@ export function Header({
     },
     addToHome,
   });
-  return (
-    <PageHeader
-      title={data.name}
-      titleLines="wrap"
-      subtitle={pageSummary(data.view.state, noun)}
-      back
-      actions={powerAction(data, noun)}
-      overflow={menu}
-    />
-  );
+  return {
+    title: data.name,
+    subtitle: pageSummary(data.view.state, noun),
+    back: true,
+    actions: powerAction(data, noun),
+    overflow: menu,
+  };
 }

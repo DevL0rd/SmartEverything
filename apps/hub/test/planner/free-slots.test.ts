@@ -92,6 +92,10 @@ describe('from the store', () => {
       attachments: [],
       reminders: [],
       google: null,
+      assignee_id: null,
+      ical_uid: null,
+      ical_sequence: 0,
+      booking_page_id: null,
       created_by: 'person',
       ...change,
     };
@@ -111,8 +115,10 @@ describe('from the store', () => {
       position: 0,
       visible: true,
       default_reminders: [],
+      audience: 'personal',
       source: 'local',
       google: null,
+      feed: null,
     }).id;
   });
 
@@ -177,6 +183,42 @@ describe('from the store', () => {
     ]);
     expect(times(freeSlotsFromStore(test.store, query(61)))).toEqual(['13:30-16:00:150']);
   });
+
+  it('blocks on shared events only when the person answered yes or maybe', () => {
+    const answers = ['needs_action', 'no', 'yes', 'maybe'] as const;
+    answers.forEach((answer, index) => {
+      const hour = String(9 + index).padStart(2, '0');
+      const invited = add(
+        {
+          title: `Invited ${answer}`,
+          start_local: `2026-11-09T${hour}:00`,
+          end_local: `2026-11-09T${hour}:30`,
+        },
+        other.profileId,
+      );
+      const guest = test.store.plannerGuests.insert({
+        item_id: invited.id,
+        kind: 'person',
+        profile_id: owner.profileId,
+        email: null,
+        name: null,
+        delivery: 'not_sent',
+        delivery_detail: null,
+        token_hash: null,
+      });
+      if (answer !== 'needs_action') {
+        test.store.plannerGuests.update(guest.id, {
+          response: answer,
+          responded_at: '2026-11-09T06:00:00.000Z',
+        });
+      }
+    });
+    expect(times(freeSlotsFromStore(test.store, query(30)))).toEqual([
+      '08:00-10:00:120',
+      '10:30-11:00:30',
+      '11:30-16:00:270',
+    ]);
+  });
 });
 
 describe('proposals', () => {
@@ -216,6 +258,10 @@ describe('proposals', () => {
       attachments: [],
       reminders: [],
       google: null,
+      assignee_id: null,
+      ical_uid: null,
+      ical_sequence: 0,
+      booking_page_id: null,
       created_by: 'ai',
     };
     return test.store.plannerItems.insert({ ...base, ...instantsOf(base) });
@@ -234,8 +280,10 @@ describe('proposals', () => {
       position: 0,
       visible: true,
       default_reminders: [],
+      audience: 'personal',
       source: 'local',
       google: null,
+      feed: null,
     }).id;
   });
 

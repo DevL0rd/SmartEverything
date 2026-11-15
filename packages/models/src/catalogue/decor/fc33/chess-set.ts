@@ -148,7 +148,7 @@ function figure(entry: Piece): ModelSpecPart[] {
 export const CHESS_SET_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.chess-set',
   title: 'Chess set',
-  footprint: { width: 0.4, depth: 0.4, height: 0.1 },
+  footprint: { width: 0.4, depth: 0.4, height: 0.1125 },
   meta: {
     names: {
       display: 'Chess set',

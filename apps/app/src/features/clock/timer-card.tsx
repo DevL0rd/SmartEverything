@@ -22,7 +22,7 @@ import { useVisibleLive } from '../../design/use-visible-live';
 import { useScopeVisible } from '../../design/visibility';
 import { MINUTE_MS, clock } from '../../format/time';
 import { useDevice, useRow } from '../../store/selectors';
-import { usePlannerClockWrites } from '../planner/data';
+import { usePlannerClockWrites } from '../planner';
 import { useHubOffline } from './frame/hub-status';
 import { lengthText, timerNameOf, timerSourceOf, type TimerView } from './lap-model';
 import { TickingTime, useTickingMs, type FaceSize } from './stopwatch-face';

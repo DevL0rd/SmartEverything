@@ -30,7 +30,7 @@ export const SLEEP_SENSOR_MODEL: ModelSpec = {
   title: 'Bed sensor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.7223, depth: DEPTH, height: HEIGHT },
   framing: house('pad', 22, 38),
   shots: [shot('asleep', ASLEEP, 'pad', { zoom: 1.2, yaw: 18, pitch: 40, loopS: 4, stillAt: 2 })],
   meta: {

@@ -5,7 +5,8 @@ import { shortDate } from '../../../format/time';
 
 export type OfferTone = 'info' | 'positive' | 'warning' | 'critical';
 
-export type OfferActionKind = 'update' | 'restart' | 'retry' | 'check' | 'cancel';
+export type OfferActionKind =
+  'update' | 'restart' | 'retry' | 'check' | 'cancel' | 'retry_update' | 'stay_built_in';
 
 export interface OfferAction {
   readonly kind: OfferActionKind;
@@ -49,6 +50,7 @@ export const OFFER_TITLE = {
   downloadFailed: 'Update didn’t download',
   restartFailed: 'Update couldn’t restart',
   launchFailed: 'Update couldn’t start',
+  fellBack: 'Running the built-in version',
   installFailed: 'Update couldn’t install',
 } as const;
 
@@ -58,6 +60,8 @@ const LABELS: Readonly<Record<OfferActionKind, string>> = {
   retry: 'Try again',
   check: 'Check for updates',
   cancel: 'Cancel',
+  retry_update: 'Try the update again',
+  stay_built_in: 'Stay on the built-in version',
 };
 
 export function offerAction(kind: OfferActionKind, busy = false): OfferAction {

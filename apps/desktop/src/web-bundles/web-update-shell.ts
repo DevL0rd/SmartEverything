@@ -5,7 +5,7 @@ import type {
   WebUpdateApplyTarget,
   WebUpdateStatus,
 } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
+import { background, Logger } from '@smarteverything/logging';
 import type { BrowserWindow, MenuItemConstructorOptions } from 'electron';
 import { revealWindow } from '../window.js';
 import { updateTrayItems } from '../updates/update-tray.js';
@@ -95,7 +95,6 @@ export class WebUpdateShell {
   readonly #mode: WebUpdateMode;
   #root: string;
   #window: WebUpdateWindow | undefined;
-  #reverting: Promise<void> | undefined;
 
   private constructor(mode: WebUpdateMode, controller: WebUpdateController, embeddedRoot: string) {
     this.#mode = mode;
@@ -132,10 +131,16 @@ export class WebUpdateShell {
       if (!window.isDestroyed()) window.send(STATUS_CHANNEL, status);
     });
     window.onRendererGone((reason) => {
-      this.#rollBackInBackground(`The window process ended: ${reason}.`);
+      background(
+        this.#bootFailed(`The window process ended: ${reason}.`),
+        'web_update.boot_failure_not_recorded',
+      );
     });
     window.onMainFrameLoadFailed((code, description) => {
-      this.#rollBackInBackground(`The window failed to load (${String(code)}): ${description}.`);
+      background(
+        this.#bootFailed(`The window failed to load (${String(code)}): ${description}.`),
+        'web_update.boot_failure_not_recorded',
+      );
     });
   }
 
@@ -148,10 +153,7 @@ export class WebUpdateShell {
   }
 
   async apply(target: WebUpdateApplyTarget): Promise<WebUpdateStatus> {
-    const status = await this.#controller.apply(target, async () => {
-      await this.#refreshRoot();
-      this.#reload('apply');
-    });
+    const status = await this.#controller.apply(target, () => this.#reloadFor('apply'));
     if (status.state === 'failed') {
       await this.#refreshRoot();
     }
@@ -163,7 +165,15 @@ export class WebUpdateShell {
   }
 
   reportFailure(reason: string): Promise<void> {
-    return this.#rollBack(reason);
+    return this.#bootFailed(reason);
+  }
+
+  retry(): Promise<WebUpdateStatus> {
+    return this.#controller.retry(() => this.#reloadFor('retry'));
+  }
+
+  rollBack(): Promise<WebUpdateStatus> {
+    return this.#controller.rollBack(() => this.#reloadFor('rollback'));
   }
 
   askToRestart(): void {
@@ -181,29 +191,22 @@ export class WebUpdateShell {
       askToRestart: () => {
         this.askToRestart();
       },
+      retry: () => {
+        background(this.retry(), 'web_update.retry_failed');
+      },
+      rollBack: () => {
+        background(this.rollBack(), 'web_update.rollback_failed');
+      },
     });
   }
 
-  #rollBackInBackground(reason: string): void {
-    this.#rollBack(reason).catch((cause: unknown) => {
-      log.error('web_update.rollback_failed', cause);
-    });
+  async #bootFailed(reason: string): Promise<void> {
+    await this.#controller.bootFailed(reason);
   }
 
-  #rollBack(reason: string): Promise<void> {
-    this.#reverting ??= this.#revert(reason).finally(() => {
-      this.#reverting = undefined;
-    });
-    return this.#reverting;
-  }
-
-  async #revert(reason: string): Promise<void> {
-    if (this.#mode.kind === 'disabled' || (await this.#mode.store.trialId()) === null) return;
-    const status = await this.#controller.bootFailed(reason);
-    if (status.state !== 'rolled_back') return;
-    log.warn('web_update.boot_failed', { reason });
+  async #reloadFor(cause: 'apply' | 'retry' | 'rollback'): Promise<void> {
     await this.#refreshRoot();
-    this.#reload('rollback');
+    this.#reload(cause);
   }
 
   async #refreshRoot(): Promise<void> {
@@ -212,7 +215,7 @@ export class WebUpdateShell {
     }
   }
 
-  #reload(cause: 'apply' | 'rollback'): void {
+  #reload(cause: 'apply' | 'retry' | 'rollback'): void {
     const window = this.#window;
     if (window === undefined || window.isDestroyed()) {
       throw new WebUpdateWindowError(`reload after ${cause}`);

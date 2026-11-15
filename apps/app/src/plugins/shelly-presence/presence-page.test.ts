@@ -28,7 +28,6 @@ const mark = (name: string) => (): null => {
 
 vi.mock('react-native', () => ({
   View: pass,
-  useWindowDimensions: (): { height: number } => ({ height: 800 }),
 }));
 vi.mock('expo-router', () => ({ useRouter: (): { push: () => void } => ({ push: none }) }));
 vi.mock('@smarteverything/shelly', () => ({ SHELLY_PAGES: [] }));
@@ -45,7 +44,10 @@ vi.mock('../../components/house-map/live-visibility/registry', () => ({
     getStage: (): { live: boolean } => ({ live: true }),
   },
 }));
-vi.mock('../../design/size-class', () => ({ useIsPhone: (): boolean => true }));
+vi.mock('../../design/size-class', () => ({
+  useIsPhone: (): boolean => true,
+  useWindowSize: (): { height: number } => ({ height: 800 }),
+}));
 vi.mock('../../features/devices/device-settings/settings-frame', () => ({
   DeviceSettingsFrame: pass,
 }));

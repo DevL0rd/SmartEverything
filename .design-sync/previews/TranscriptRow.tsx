@@ -8,6 +8,7 @@ const body = (
       hit={hits[0]}
       timeZone="UTC"
       showSource={false}
+      compact={false}
       highlighted={false}
       ready={undefined}
       open={() => undefined}
@@ -17,6 +18,7 @@ const body = (
       hit={hits[3]}
       timeZone="UTC"
       showSource={false}
+      compact={false}
       highlighted
       ready={undefined}
       open={() => undefined}
@@ -26,6 +28,7 @@ const body = (
       hit={hits[4]}
       timeZone="UTC"
       showSource={false}
+      compact={false}
       highlighted={false}
       ready={undefined}
       open={undefined}

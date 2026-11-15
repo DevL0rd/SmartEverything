@@ -66,6 +66,16 @@ export const CONNECTION_PAGES: readonly SettingsPageDefinition[] = [
     visible: ownerOnly,
   },
   {
+    id: 'connections/email',
+    title: 'Email',
+    icon: 'atSign',
+    parent: null,
+    group: 'Connections',
+    subtitle: 'Send Planner invitations and booking confirmations',
+    keywords: ['smtp', 'mail server', 'outgoing email', 'invitations', 'send a test'],
+    visible: ownerOnly,
+  },
+  {
     id: 'connections/add',
     title: 'Add account',
     icon: 'plus',

@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
-import { lstat, open, rename, rm, stat, utimes, type FileHandle } from 'node:fs/promises';
+import { lstat, open, readlink, rename, rm, stat, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { HASH_BYTES, blockCount, blockRange } from '@smarteverything/domain/drive-sync';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { DriveSyncDatabase, FileRecord, Transfer } from './db/index.js';
+import { ALL_META, applyHubMeta, hubXattrsOf, modeOf, type HubMeta } from './meta-apply.js';
+import { linkKeyOf, type MetaPort } from './meta-port.js';
 import { diskPathFor } from './scan.js';
 
 export interface RemoteFile {
@@ -343,10 +345,6 @@ export async function downloadFile(options: TransferOptions): Promise<Uint8Array
   return packed;
 }
 
-export function modeOf(platform: NodeJS.Platform, mode: bigint): number {
-  return platform === 'win32' ? 0 : Number(mode & 0o777n);
-}
-
 export type DiskState = 'absent' | 'same' | 'changed';
 
 export async function diskStateOf(
@@ -358,6 +356,10 @@ export async function diskStateOf(
     throw cause;
   });
   if (info === undefined) return 'absent';
+  if (record?.kind === 'link') {
+    const target = info.isSymbolicLink() ? await readlink(disk) : null;
+    return target === record.linkTarget ? 'same' : 'changed';
+  }
   const same =
     record !== undefined &&
     info.isFile() &&
@@ -369,13 +371,14 @@ export async function diskStateOf(
 export type Placement = 'placed' | 'new_on_both' | 'local_edit';
 
 export interface PlaceOptions {
+  readonly meta: MetaPort;
+  readonly hub: HubMeta;
   readonly database: Pick<DriveSyncDatabase, 'files' | 'transfers' | 'transaction'>;
   readonly placementId: string;
   readonly txn: string;
   readonly remote: RemoteFile;
   readonly relPath: string;
   readonly platform: NodeJS.Platform;
-  readonly mtime: string;
   readonly rev: number;
   readonly local: FileRecord | undefined;
   readonly target: string;
@@ -389,8 +392,11 @@ export async function placeFile(options: PlaceOptions): Promise<Placement> {
   if (local === undefined ? state !== 'absent' : state !== 'same') {
     return local === undefined ? 'new_on_both' : 'local_edit';
   }
-  const modified = new Date(options.mtime);
-  await utimes(tempPath, modified, modified);
+  await applyHubMeta(
+    { meta: options.meta, platform: options.platform, disk: tempPath },
+    options.hub,
+    ALL_META,
+  );
   await rename(tempPath, target);
   const info = await lstat(target, { bigint: true });
   database.transaction(() => {
@@ -400,11 +406,16 @@ export async function placeFile(options: PlaceOptions): Promise<Placement> {
       kind: 'file',
       bytes: remote.bytes,
       mtimeNs: info.mtimeNs,
-      mode: modeOf(options.platform, info.mode),
+      mode: modeOf(options.platform, info.mode, options.hub.mode),
       hubRev: options.rev,
       localHashState: 'hashed',
       blockSize: remote.blockSize,
       blocks: options.blocks,
+      linkTarget: null,
+      linkKey: linkKeyOf(options.platform, info),
+      hubInode: options.hub.inode,
+      xattrs: hubXattrsOf(options.hub.xattrs),
+      metaDirty: false,
     });
     finishTransfer(database, options.txn, remote);
   });

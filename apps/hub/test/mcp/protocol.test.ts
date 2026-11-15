@@ -273,7 +273,6 @@ describe('the MCP endpoint', () => {
       'room_edit',
       'group_edit',
       'transcript_edit',
-      'scene_edit',
       'schedule_edit',
       'automation_edit',
       'automation_versions_edit',

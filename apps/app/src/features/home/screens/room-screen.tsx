@@ -8,8 +8,7 @@ import { renameRoom } from '../../../api/settings';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import type { MenuItem } from '../../../components/menu';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Section } from '../../../components/section';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { CONTAINER_WIDTH } from '../../../design/tokens';
@@ -20,7 +19,7 @@ import { LightGroupCard } from '../../device-groups';
 import { RoomDeviceGrid, splitRoomLights } from '../../device-list';
 import { useRoomClimate } from '../components/room-card';
 import { RoomMapHeader } from '../components/room-map-header';
-import { RoomScenes } from '../components/room-scenes';
+import { RoomAutomations } from '../components/room-automations';
 import { useTurnOff } from '../data/turn-off';
 
 type Room = TableRow<'rooms'>;
@@ -121,16 +120,11 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
   const split = useMemo(() => splitRoomLights(devices), [devices]);
   const tiles = split === null ? devices : split.rest;
   return (
-    <Screen
-      header={
-        <PageHeader
-          title={room.name}
-          titleLines="wrap"
-          {...(climate === undefined ? {} : { subtitle: climate })}
-          actions={[pin]}
-          overflow={overflow}
-        />
-      }
+    <PageShell
+      title={room.name}
+      {...(climate === undefined ? {} : { subtitle: climate })}
+      actions={[pin]}
+      overflow={overflow}
     >
       <RoomOverview
         room={room}
@@ -150,14 +144,14 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
           <RoomDeviceGrid devices={tiles} />
         </Section>
       )}
-      <RoomScenes devices={devices} />
+      <RoomAutomations roomId={room.id} />
       <TextEditSheet
         request={renaming}
         onClose={() => {
           setRenaming(null);
         }}
       />
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -165,14 +159,14 @@ export function RoomScreen({ roomId }: { readonly roomId: string }): ReactNode {
   const room = useRoom(roomId);
   if (room === null) {
     return (
-      <Screen header={<PageHeader title="Room" />} maxWidth="reading">
+      <PageShell title="Room" width="reading">
         <EmptyState
           icon="grid"
           title="This room is gone"
           body="It may have been removed or renamed."
           action={<Button label="Go home" href={href.home()} />}
         />
-      </Screen>
+      </PageShell>
     );
   }
   return <RoomBody room={room} />;

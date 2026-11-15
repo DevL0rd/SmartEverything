@@ -33,6 +33,13 @@ object PlannerSystem {
     context.startActivity(Intent(action, packageUri(context)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
   }
 
+  fun notificationPolicyAllowed(context: Context): Boolean =
+    context.getSystemService(NotificationManager::class.java).isNotificationPolicyAccessGranted
+
+  fun openNotificationPolicySettings(context: Context) {
+    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+  }
+
   fun nextSystemAlarm(context: Context): String? {
     val next = context.getSystemService(AlarmManager::class.java).nextAlarmClock ?: return null
     if (next.showIntent?.creatorPackage == context.packageName) {

@@ -351,6 +351,8 @@ async function upgrade(
   options.cameraSockets.relay(request, socket, head, options.go2rtc.socketOf(deviceId));
 }
 
+const UNBOUNDED_REQUEST = { requestTimeout: 0 } as const;
+
 export function createHttpServer(options: HttpServerOptions, tls?: TlsOptions): Server {
   const serving: Serving = { ...options, thumbnails: new Thumbnails() };
   const observer = new ServerObserver(tls === undefined ? 'http' : 'https');
@@ -367,7 +369,10 @@ export function createHttpServer(options: HttpServerOptions, tls?: TlsOptions): 
       sendError(response, failure.error);
     });
   };
-  const server = tls === undefined ? createServer(handler) : createSecureServer(tls, handler);
+  const server =
+    tls === undefined
+      ? createServer(UNBOUNDED_REQUEST, handler)
+      : createSecureServer({ ...tls, ...UNBOUNDED_REQUEST }, handler);
   server.on('connection', (socket) => {
     observer.connected(socket);
   });

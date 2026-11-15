@@ -11,7 +11,6 @@ const ROOTS = [
   'cameras',
   'climate',
   'rooms',
-  'scenes',
   'weather',
   'watches',
   'body',

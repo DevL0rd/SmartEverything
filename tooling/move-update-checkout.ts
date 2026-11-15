@@ -7,7 +7,7 @@ import { env } from 'node:process';
 import { parseArgs, promisify } from 'node:util';
 import { z } from 'zod';
 import { lockHeld } from '../apps/hub/src/self-update/stale-jobs.ts';
-import { findUpdateSource } from '../apps/hub/src/self-update/update-source.ts';
+import { findCheckoutSource } from '../apps/hub/src/self-update/update-source.ts';
 import { applyBuildHost, pnpmProgram } from './build-host.ts';
 import { configureUpdateSource } from './configure-update-source.ts';
 import { dataRootOf } from './data-root.ts';
@@ -44,6 +44,7 @@ export function relinkDependencies(checkout: string, data: string): void {
   const result = spawnSync(pnpmProgram(), ['install', '--frozen-lockfile'], {
     cwd: checkout,
     stdio: 'inherit',
+    env: { ...env, CI: 'true' },
   });
   if (result.status !== 0)
     throw new MoveCheckoutError(
@@ -87,10 +88,10 @@ export async function moveUpdateCheckout(
   ports: MovePorts,
 ): Promise<{ readonly from: string; readonly to: string }> {
   const to = resolve(input.to);
-  const source = findUpdateSource(dataLayoutOf(input.data));
+  const source = findCheckoutSource(dataLayoutOf(input.data));
   if (source === undefined)
     throw new MoveCheckoutError(
-      'No update source is configured; run tooling/configure-update-source.ts first.',
+      'No update checkout is configured; run tooling/configure-update-source.ts --checkout first.',
     );
   const from = source.checkout;
   requireDestination(from, to, input.data);

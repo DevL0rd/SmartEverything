@@ -55,7 +55,6 @@ export interface DeviceLine {
 
 export interface AttachmentNames {
   readonly devices: ReadonlyMap<string, DeviceLine>;
-  readonly scenes: ReadonlyMap<string, string>;
   readonly automations: ReadonlyMap<string, string>;
 }
 
@@ -111,8 +110,6 @@ export function attachmentKeyOf(attachment: PlannerAttachment): string {
   switch (attachment.kind) {
     case 'device':
       return `device:${attachment.deviceId}`;
-    case 'scene':
-      return `scene:${attachment.sceneId}`;
     case 'automation':
       return `automation:${attachment.automationId}`;
     case 'file':
@@ -143,12 +140,6 @@ export function attachmentViewOf(
   switch (attachment.kind) {
     case 'device':
       return deviceView(attachment, names);
-    case 'scene':
-      return {
-        key,
-        label: `Scene · ${names.scenes.get(attachment.sceneId) ?? 'removed'}`,
-        icon: 'sparkles',
-      };
     case 'automation':
       return {
         key,
@@ -222,20 +213,15 @@ export function deviceGroupsOf(
   };
 }
 
-const NAMED_ICONS: Readonly<Record<'scene' | 'automation', IconName>> = {
-  scene: 'sparkles',
-  automation: 'automations',
-};
-
 export function namedGroupsOf(
   rows: readonly { readonly id: string; readonly name: string }[],
-  kind: 'scene' | 'automation',
+  kind: 'automation',
   { taken, text }: PickFilter,
 ): PickGroups {
   const needle = text.trim().toLocaleLowerCase();
   const rest = rows
     .filter((row) => !taken.has(`${kind}:${row.id}`))
-    .map((row) => ({ id: row.id, title: row.name, subtitle: null, icon: NAMED_ICONS[kind] }))
+    .map((row): PickEntry => ({ id: row.id, title: row.name, subtitle: null, icon: 'automations' }))
     .filter((entry) => matches(entry, needle))
     .sort(byTitle);
   return { suggested: [], rest };
@@ -272,12 +258,6 @@ function chosenPending(picked: Picked, names: AttachmentNames): Pending | null {
     return {
       attachments: [{ kind: 'device', deviceId: id, face: picked.face }],
       label: `Attach ${name}`,
-    };
-  }
-  if (picked.kind === 'scene') {
-    return {
-      attachments: [{ kind: 'scene', sceneId: id }],
-      label: `Attach ${names.scenes.get(id) ?? 'scene'}`,
     };
   }
   const name = names.automations.get(id) ?? 'automation';
@@ -332,15 +312,13 @@ export function useDeviceLines(): ReadonlyMap<string, DeviceLine> {
 
 export function useAttachmentNames(): AttachmentNames {
   const devices = useDeviceLines();
-  const scenes = useRows('scenes');
   const automations = useRows('automations');
   return useMemo(
     () => ({
       devices,
-      scenes: new Map(scenes.map((scene) => [scene.id, scene.name])),
       automations: new Map(automations.map((automation) => [automation.id, automation.name])),
     }),
-    [devices, scenes, automations],
+    [devices, automations],
   );
 }
 

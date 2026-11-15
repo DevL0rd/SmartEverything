@@ -35,10 +35,7 @@ export const LIST_LINKS: ListLinks = {
     { id: 'variables', label: 'Variables', icon: 'customize', href: links.variables() },
     { id: 'schedule', label: 'Schedule', icon: 'calendar', href: links.schedule() },
   ],
-  extras: [
-    { id: 'scenes', label: 'Scenes', icon: 'sparkles', href: links.scenes() },
-    { id: 'timers', label: 'Timers', icon: 'timer', href: links.scheduled() },
-  ],
+  extras: [{ id: 'timers', label: 'Timers', icon: 'timer', href: links.scheduled() }],
 };
 
 export function workspaceSectionOf(pathname: string): string {

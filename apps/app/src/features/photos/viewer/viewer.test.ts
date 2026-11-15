@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { albumRow } from '../../drive/data/fixtures';
+import { albumRow } from '../../drive/testing';
 import { ViewerScreen, viewerParamsOf, viewerTargetOf } from './index';
+import { viewerFromParams } from './params';
 import { albumMenuItems, moreMenuItems } from './menus';
 import { photoLookOf } from './photo';
 import { stackCaption } from './stack-strip';
@@ -18,7 +19,11 @@ describe('photo viewer', () => {
     expect(viewerTargetOf({ itemId: ITEM })).toEqual({
       itemId: ITEM,
       scope: { filter: 'all' },
+      from: 'library',
     });
+    expect(viewerTargetOf({ itemId: ITEM, origin: 'archive' })?.from).toBe('archive');
+    expect(viewerFromParams('archive')).toEqual({ origin: 'archive' });
+    expect(viewerFromParams('library')).toEqual({});
     const target = viewerTargetOf({ itemId: ITEM, filter: 'videos', placeId: '7' });
     expect(target?.scope).toEqual({ filter: 'videos', placeId: 7 });
     expect(viewerParamsOf({ filter: 'videos', placeId: 7 })).toEqual({
@@ -32,6 +37,7 @@ describe('photo viewer', () => {
     expect(viewerTargetOf({ itemId: 'nope' })).toBeNull();
     expect(viewerTargetOf({ itemId: ITEM, sort: 'name' })).toBeNull();
     expect(viewerTargetOf({ itemId: ITEM, filter: 'raw' })).toBeNull();
+    expect(viewerTargetOf({ itemId: ITEM, origin: 'trash' })).toBeNull();
   });
 
   it('shows the picture once the preview is ready and the RAW note when it cannot be made', () => {
@@ -63,8 +69,34 @@ describe('photo viewer', () => {
     items[0]?.onPress();
     expect(add).toHaveBeenCalledWith(ITEM, 'Trip');
     expect(albumMenuItems([], add)[0]?.disabled).toBe(true);
-    const more = moreMenuItems({ onDownload: vi.fn(), onShowInDrive: vi.fn(), onTrash: vi.fn() });
+    const archive = { label: 'Archive', onPress: vi.fn() };
+    const more = moreMenuItems({
+      onDownload: vi.fn(),
+      onShowInDrive: vi.fn(),
+      onTrash: vi.fn(),
+      onRevert: null,
+      organise: [archive],
+    });
+    expect(more.at(-2)).toBe(archive);
     expect(more.at(-1)).toMatchObject({ label: 'Move to trash', destructive: true });
+    expect(more.some((entry) => entry.label === 'Revert to original')).toBe(false);
+    const revert = vi.fn();
+    const edited = moreMenuItems({
+      onDownload: vi.fn(),
+      onShowInDrive: vi.fn(),
+      onTrash: vi.fn(),
+      onRevert: revert,
+      organise: [archive],
+    });
+    expect(edited.map((entry) => entry.label)).toEqual([
+      'Download original',
+      'Show in Drive',
+      'Revert to original',
+      'Archive',
+      'Move to trash',
+    ]);
+    edited[2]?.onPress();
+    expect(revert).toHaveBeenCalledOnce();
   });
 
   it('names the stack', () => {

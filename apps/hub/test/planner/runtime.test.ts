@@ -15,6 +15,7 @@ import type { PlannerItemInput } from '../../src/store/repositories/planner-item
 import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
+import type { Submission } from '../../src/automations/driver/admission';
 
 const START = '2026-11-07T08:00:00.000Z';
 const ZONE = 'UTC';
@@ -42,6 +43,10 @@ const sync = vi.fn((profileId: string): Promise<'synced'> => {
 function channels(watchProfile: string | null): PlannerChannels {
   return {
     phone: { send: (): Promise<boolean> => Promise.resolve(true) },
+    bedtime: {
+      deliver: (): Promise<boolean> => Promise.resolve(true),
+      push: (): void => undefined,
+    },
     watch: {
       send: (_deviceId, action): Promise<WatchOutcome> => {
         order.push(`watch:${action.type}`);
@@ -84,6 +89,10 @@ function event(change: Partial<PlannerItemInput>): PlannerItemRow {
     attachments: [],
     reminders: [{ minutes_before: 10 }],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     ...change,
   };
@@ -130,8 +139,10 @@ beforeEach(async () => {
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
   }).id;
   order = [];
   summaries = [];
@@ -157,6 +168,7 @@ beforeEach(async () => {
       },
     },
     submit: (): never[] => [],
+    automations: { start: (): Submission => ({ kind: 'started', runId: 'run-1' }) },
     google: { reminderPull, sync },
     log: testLogger(),
   });
@@ -220,12 +232,15 @@ describe('planner runtime', () => {
       once_on: null,
       skip_on: null,
       enabled: true,
-      sound: 'sunrise',
+      sound: { kind: 'tone', id: 'sunrise' },
       ramp_seconds: 30,
       vibrate: true,
       snooze_minutes: 9,
+      snooze_limit: null,
+      challenge: { kind: 'none' },
+      sunrise: null,
       smart_minutes: null,
-      wake_scene_id: null,
+      wake_automation_id: null,
       wake_lead_minutes: null,
       targets: [],
       watch: [],

@@ -6,6 +6,9 @@ import {
   type NodeHello,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach } from 'vitest';
+import { NodeRouteAuthority } from '../../src/client-network/route-authority';
+import { nodeHubTransport, type NodeHubTransport } from '../../src/client-network/node-transport';
+import type { NetworkEventBus } from '../../src/client-network/route-events';
 import { NodeAiRuntime } from '../../src/node/ai-runtime';
 import { ComputerNode } from '../../src/node/computer-node';
 import type { ComputerControls } from '../../src/node/controls/controls';
@@ -17,13 +20,31 @@ import { pairNode } from '../../src/node/setup';
 import { nodeLayout } from '../../src/data-layout';
 import { bootServer, pairPhone, verifiedPublicUrl, type Booted } from './booted';
 import { captureLogs, testLogger } from './logs';
-import { call, temporaryDirectory } from './server';
+import { MemoryNetwork } from './memory-mdns';
+import { call, freePort, temporaryDirectory } from './server';
 
 export interface Paired {
   readonly token: string;
   readonly deviceId: string;
   readonly hello: NodeHello;
+  readonly hubUrl: string;
+  readonly transport: NodeHubTransport;
 }
+
+const LAN_HOST = '127.0.0.2';
+
+const LAN_INTERFACES = {
+  lan: [
+    {
+      address: LAN_HOST,
+      netmask: '255.0.0.0',
+      family: 'IPv4',
+      mac: '02:00:00:00:00:02',
+      internal: false,
+      cidr: `${LAN_HOST}/8`,
+    },
+  ],
+} as const;
 
 const READ_AT = '2026-10-17T09:00:00.000Z';
 
@@ -103,35 +124,75 @@ export interface ComputerHub {
 
 type Directory = Awaited<ReturnType<typeof temporaryDirectory>>;
 
-async function pairComputer(
-  booted: Booted,
-  nodeDirectory: Directory,
-  windowToken?: string,
-): Promise<Paired> {
+export interface SecureHub {
+  readonly booted: Booted;
+  readonly hubUrl: string;
+}
+
+export async function bootSecureHub(directory: string): Promise<SecureHub> {
+  const port = await freePort();
+  const booted = await bootServer(directory, {
+    lan: { port, host: LAN_HOST, advertise: false },
+    interfaces: LAN_INTERFACES,
+  });
+  return { booted, hubUrl: `https://${LAN_HOST}:${String(port)}` };
+}
+
+function quietBus(): NetworkEventBus {
+  return {
+    call: () => Promise.resolve(['/fake']),
+    watch: () => Promise.resolve(() => undefined),
+    onError: () => undefined,
+    close: () => undefined,
+  };
+}
+
+interface Pairing {
+  readonly booted: Booted;
+  readonly hubUrl: string;
+  readonly nodeDirectory: Directory;
+  readonly authorities: NodeRouteAuthority[];
+}
+
+async function pairComputer(pairing: Pairing, windowToken?: string): Promise<Paired> {
+  const { booted, hubUrl } = pairing;
   const issued = await call(booted.base, windowToken ?? booted.owner, {
     method: 'POST',
     path: '/api/nodes/pairing',
-    body: { url: booted.base },
+    body: { url: hubUrl },
   });
-  const { code } = API_ENDPOINTS.pairComputerNode.response.parse(issued.body);
-  const layout = nodeLayout(nodeDirectory.path);
-  await pairNode({ layout, hubUrl: booted.base, code, windowToken });
+  const { code, pin } = API_ENDPOINTS.pairComputerNode.response.parse(issued.body);
+  const layout = nodeLayout(pairing.nodeDirectory.path);
+  await pairNode({ layout, hubUrl, code, pin: pin ?? undefined, windowToken });
   const { node } = COMPUTER_SERVICE_CONFIG.parse(JSON.parse(await readFile(layout.config, 'utf8')));
+  const authority = new NodeRouteAuthority({
+    hubUrl: node.hub_url,
+    token: node.node_token,
+    deviceId: node.device_id,
+    directory: layout.nodeRoute,
+    log: testLogger('node-route'),
+    bus: quietBus,
+    mdns: new MemoryNetwork().host('192.0.2.2'),
+  });
+  pairing.authorities.push(authority);
+  await authority.start();
   return {
     token: node.node_token,
     deviceId: node.device_id,
     hello: await nodeIdentity(layout.computerNodeId),
+    hubUrl: node.hub_url,
+    transport: nodeHubTransport(authority, node.hub_url),
   };
 }
 
 function startComputer(
-  booted: Booted,
   paired: Paired,
   controls: ComputerControls,
   extras: ComputerExtras,
 ): NodeAiRuntime {
   const runtime = new NodeAiRuntime({
-    hubUrl: booted.base,
+    hubUrl: paired.hubUrl,
+    transport: paired.transport,
     token: paired.token,
     deviceId: paired.deviceId,
     hello: paired.hello,
@@ -172,17 +233,20 @@ export function useComputerHub(): ComputerHub {
   let hub: Directory;
   let nodeDirectory: Directory;
   let booted: Booted;
+  let hubUrl: string;
   const runtimes: NodeAiRuntime[] = [];
+  const authorities: NodeRouteAuthority[] = [];
 
   beforeEach(async () => {
     captureLogs();
     hub = await temporaryDirectory();
     nodeDirectory = await temporaryDirectory();
-    booted = await bootServer(hub.path);
+    ({ booted, hubUrl } = await bootSecureHub(hub.path));
   });
 
   afterEach(async () => {
     for (const runtime of runtimes.splice(0)) runtime.stop();
+    for (const authority of authorities.splice(0)) await authority.stop();
     await booted.server.stop();
     await hub.remove();
     await nodeDirectory.remove();
@@ -190,9 +254,10 @@ export function useComputerHub(): ComputerHub {
 
   return {
     booted: () => booted,
-    pair: (windowToken) => pairComputer(booted, nodeDirectory, windowToken),
+    pair: (windowToken) =>
+      pairComputer({ booted, hubUrl, nodeDirectory, authorities }, windowToken),
     run: (paired, controls, extras = {}): NodeAiRuntime => {
-      const runtime = startComputer(booted, paired, controls, extras);
+      const runtime = startComputer(paired, controls, extras);
       runtimes.push(runtime);
       return runtime;
     },

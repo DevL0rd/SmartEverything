@@ -1,6 +1,8 @@
 import {
   weatherLabelOf,
   type PlannerAlarmRow,
+  type PlannerAlarmSound,
+  type PlannerChallenge,
   type PlannerColourKey,
   type PlannerDay,
   type PlannerItemRow,
@@ -13,8 +15,9 @@ import {
 import type { IconName } from '../../../components/icon';
 import { compareText, plural } from '../../../format/text';
 import { clock, hourOf, longDate } from '../../../format/time';
-import { ringPhaseOf } from '../../planner/data/ring';
-import { degrees } from '../../weather/model/present';
+import { ringPhaseOf } from '../../planner';
+import { degrees } from '../../weather';
+import type { PhoneRingKind } from './ring-keys';
 
 const MORNING_ENDS_HOUR = 12;
 const AFTERNOON_ENDS_HOUR = 18;
@@ -25,15 +28,25 @@ export type RingState =
   | { readonly kind: 'missing' }
   | { readonly kind: 'stopped'; readonly ring: PlannerRingRow }
   | { readonly kind: 'snoozed'; readonly ring: PlannerRingRow; readonly until: string }
-  | { readonly kind: 'ringing'; readonly ring: PlannerRingRow };
+  | { readonly kind: 'ringing'; readonly ring: PlannerRingRow }
+  | { readonly kind: 'local'; readonly local: LocalRing };
+
+export interface LocalRing {
+  readonly key: string;
+  readonly kind: PhoneRingKind;
+  readonly refId: string;
+}
 
 export interface RingLookup {
-  readonly ringId: string;
+  readonly ringId: string | null | undefined;
   readonly due: string | null | undefined;
   readonly rows: readonly PlannerRingRow[] | undefined;
   readonly failed: boolean;
   readonly now: number;
+  readonly local: LocalRing | null;
 }
+
+export type RingSubjectRef = Pick<PlannerRingRow, 'kind' | 'ref_id'>;
 
 export type RingSnooze =
   { readonly kind: 'alarm'; readonly minutes: number } | { readonly kind: 'timer' } | null;
@@ -42,7 +55,14 @@ export interface RingSubject {
   readonly label: string;
   readonly icon: IconName;
   readonly snooze: RingSnooze;
+  readonly limit: number | null;
+  readonly challenge: PlannerChallenge;
+  readonly sound: PlannerAlarmSound | null;
 }
+
+const NO_CHALLENGE: PlannerChallenge = { kind: 'none' };
+
+const PLAIN = { limit: null, challenge: NO_CHALLENGE, sound: null } as const;
 
 export interface RingRefs {
   readonly alarms: readonly PlannerAlarmRow[];
@@ -67,10 +87,10 @@ export function ringDueOf(
   return dayRings.find((ring) => ring.id === ringId)?.due_at ?? null;
 }
 
-export function ringStateOf({ ringId, due, rows, failed, now }: RingLookup): RingState {
+function hubStateOf({ ringId, due, rows, failed, now }: RingLookup): RingState {
   if (failed) return { kind: 'unreachable' };
-  if (due === null) return { kind: 'missing' };
-  if (due === undefined || rows === undefined) return { kind: 'loading' };
+  if (ringId === null || due === null) return { kind: 'missing' };
+  if (ringId === undefined || due === undefined || rows === undefined) return { kind: 'loading' };
   const ring = rows.find((row) => row.id === ringId);
   if (ring === undefined) return { kind: 'missing' };
   const phase = ringPhaseOf(ring, now);
@@ -78,31 +98,50 @@ export function ringStateOf({ ringId, due, rows, failed, now }: RingLookup): Rin
   return { kind: phase.kind, ring };
 }
 
-function alarmSubjectOf(ring: PlannerRingRow, alarms: RingRefs['alarms']): RingSubject {
-  const alarm = alarms.find((row) => row.id === ring.ref_id);
-  if (alarm === undefined) return { label: 'Alarm', icon: 'alarmClock', snooze: null };
+export function ringStateOf(lookup: RingLookup): RingState {
+  const hub = hubStateOf(lookup);
+  if (lookup.local === null || hub.kind === 'ringing' || hub.kind === 'snoozed') return hub;
+  return { kind: 'local', local: lookup.local };
+}
+
+function alarmSubjectOf(ref: RingSubjectRef, alarms: RingRefs['alarms']): RingSubject {
+  const alarm = alarms.find((row) => row.id === ref.ref_id);
+  if (alarm === undefined) return { label: 'Alarm', icon: 'alarmClock', snooze: null, ...PLAIN };
   return {
     label: alarm.label ?? 'Alarm',
     icon: 'alarmClock',
     snooze: { kind: 'alarm', minutes: alarm.snooze_minutes },
+    limit: alarm.snooze_limit,
+    challenge: alarm.challenge,
+    sound: alarm.sound,
   };
 }
 
-function timerSubjectOf(ring: PlannerRingRow, timers: RingRefs['timers']): RingSubject {
-  const timer = timers.find((row) => row.id === ring.ref_id);
-  if (timer === undefined) return { label: 'Timer', icon: 'timer', snooze: null };
-  return { label: timer.label ?? 'Timer', icon: 'timer', snooze: { kind: 'timer' } };
+function timerSubjectOf(ref: RingSubjectRef, timers: RingRefs['timers']): RingSubject {
+  const timer = timers.find((row) => row.id === ref.ref_id);
+  if (timer === undefined) return { label: 'Timer', icon: 'timer', snooze: null, ...PLAIN };
+  return { label: timer.label ?? 'Timer', icon: 'timer', snooze: { kind: 'timer' }, ...PLAIN };
 }
 
-export function ringSubjectOf(ring: PlannerRingRow, refs: RingRefs): RingSubject {
-  if (ring.kind === 'alarm') return alarmSubjectOf(ring, refs.alarms);
-  if (ring.kind === 'timer') return timerSubjectOf(ring, refs.timers);
-  const item = refs.items.find((row) => row.id === ring.ref_id);
-  return { label: item?.title ?? 'Reminder', icon: 'bell', snooze: null };
+export function ringSubjectOf(ref: RingSubjectRef, refs: RingRefs): RingSubject {
+  if (ref.kind === 'alarm') return alarmSubjectOf(ref, refs.alarms);
+  if (ref.kind === 'timer') return timerSubjectOf(ref, refs.timers);
+  const item = refs.items.find((row) => row.id === ref.ref_id);
+  return { label: item?.title ?? 'Reminder', icon: 'bell', snooze: null, ...PLAIN };
 }
 
-export function snoozeLabelOf(snooze: Exclude<RingSnooze, null>): string {
-  return snooze.kind === 'alarm' ? `Snooze ${String(snooze.minutes)} min` : 'Add 1 min';
+export function snoozesLeftOf(
+  limit: number | null,
+  snoozes: number,
+  phone: { readonly ringing: boolean; readonly snoozesLeft: number | null } | null,
+): number | null {
+  if (phone?.ringing === true) return phone.snoozesLeft;
+  return limit === null ? null : Math.max(0, limit - snoozes);
+}
+
+export function snoozeLabelOf(snooze: Exclude<RingSnooze, null>, left: number | null): string {
+  const base = snooze.kind === 'alarm' ? `Snooze ${String(snooze.minutes)} min` : 'Add 1 min';
+  return left === null ? base : `${base} · ${String(left)} left`;
 }
 
 export function greetingOf(hour: number): string {
@@ -183,4 +222,15 @@ export function dateLineOf(now: number, weather: string | null): string {
 
 export function greetingAt(now: number): string {
   return greetingOf(hourOf(new Date(now)));
+}
+
+export interface ClockParts {
+  readonly digits: string;
+  readonly period: string | null;
+}
+
+export function clockPartsOf(text: string): ClockParts {
+  const digits = text.replace(/[^\d:.]/g, '');
+  const period = text.replace(/[\d:.]/g, '').trim();
+  return { digits, period: period === '' ? null : period };
 }

@@ -16,7 +16,7 @@ export const TEMP_HUMIDITY_MODEL: ModelSpec = {
   title: 'Temperature and humidity sensor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: SIDE, depth: DEPTH + 0.004, height: HEIGHT },
+  footprint: { width: SIDE, depth: 0.0166, height: HEIGHT },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { IconButton } from '../../../../components/icon-button';
 import { Overlay, useOverlayShown } from '../../../../components/overlay';
-import { Text } from '../../../../components/text';
+import { PageShell } from '../../../../components/page-shell/page-shell';
 
 export const FULL_SCREEN_LABEL = 'Full screen map';
 
@@ -19,15 +18,16 @@ function Screen({ title, onClose, children }: StageFullScreenProps): ReactNode {
       accessibilityViewIsModal
       accessibilityLabel={FULL_SCREEN_LABEL}
       onLayout={shown}
-      className="flex-1 gap-2 bg-bg px-2 pb-safe-offset-2 pt-safe-offset-2"
+      className="flex-1 bg-bg"
     >
-      <View className="flex-row items-center gap-2">
-        <IconButton icon="minimize" label="Close full screen" onPress={onClose} />
-        <Text variant="body-strong" accessibilityRole="header" numberOfLines={1} className="shrink">
-          {title}
-        </Text>
-      </View>
-      {children}
+      <PageShell
+        variant="overlay"
+        title={title}
+        back={false}
+        actions={[{ icon: 'minimize', label: 'Close full screen', onPress: onClose }]}
+      >
+        <View className="flex-1 px-2 pb-safe-offset-2 pt-safe-offset-14">{children}</View>
+      </PageShell>
     </View>
   );
 }

@@ -10,6 +10,8 @@ const OPTIONAL = z
 const SESSION_ENVIRONMENT = z.object({
   DBUS_SESSION_BUS_ADDRESS: OPTIONAL,
   XDG_RUNTIME_DIR: OPTIONAL,
+  WAYLAND_DISPLAY: OPTIONAL,
+  DISPLAY: OPTIONAL,
   XDG_CURRENT_DESKTOP: OPTIONAL,
   XDG_DATA_HOME: OPTIONAL,
   XDG_DATA_DIRS: OPTIONAL,
@@ -31,4 +33,9 @@ export function runtimeDirectory(): string {
 
 export function isKdePlasma(): boolean {
   return sessionEnvironment().XDG_CURRENT_DESKTOP?.split(':').includes('KDE') === true;
+}
+
+export function hasGraphicalSession(): boolean {
+  const { WAYLAND_DISPLAY, DISPLAY } = sessionEnvironment();
+  return isKdePlasma() || WAYLAND_DISPLAY !== null || DISPLAY !== null;
 }

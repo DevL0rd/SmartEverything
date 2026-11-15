@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import { Button } from './button';
 import { IconButton } from './icon-button';
 import { Text } from './text';
@@ -76,7 +77,7 @@ function useNavigation(requests: readonly DecisionRequest[]): {
 }
 export function DecisionFrame({ source, requests, unavailable, retry }: FrameProps): ReactNode {
   const { index, id, change } = useNavigation(requests);
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const limit = { maxHeight: height * 0.52 };
   if (requests.length === 0) return null;
   return (

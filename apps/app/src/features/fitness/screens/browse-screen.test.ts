@@ -16,14 +16,13 @@ vi.mock('react-native', () => ({
 vi.mock('../../../app-shell/hrefs', () => ({
   href: { logHealth: (): string => '/log' },
 }));
-vi.mock('../../../components/page-header', () => ({ PageHeader: (): null => null }));
 vi.mock('../../../components/rows', () => ({
   NavRow: ({ title, href }: { readonly title: string; readonly href: string }): ReactNode =>
     createElement('a', { href }, title),
 }));
-vi.mock('../../../components/screen', () => ({
-  Screen: ({ children, maxWidth }: Children & { readonly maxWidth: string }): ReactNode =>
-    createElement('main', { 'data-width': maxWidth }, children),
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: ({ children, width }: Children & { readonly width: string }): ReactNode =>
+    createElement('main', { 'data-width': width }, children),
 }));
 vi.mock('../../../components/section', () => ({
   List: ({ children }: Children): ReactNode => createElement('section', null, children),

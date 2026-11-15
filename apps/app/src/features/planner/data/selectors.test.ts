@@ -24,8 +24,10 @@ function collection(id: string, profile: string): PlannerCollectionRow {
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
     created_at: AT,
     updated_at: AT,
   });

@@ -17,6 +17,8 @@ export interface AppUpdateActions {
   readonly download: (expectedOfferId: AppUpdateSummary['id']) => void;
   readonly retry: (expectedOfferId?: AppUpdateSummary['id']) => void;
   readonly restart: (expectedOfferId?: AppUpdateSummary['id'], restoreFocus?: () => void) => void;
+  readonly tryUpdateAgain: () => void;
+  readonly stayOnBuiltIn: () => void;
 }
 
 function withController<Args extends readonly unknown[]>(
@@ -57,6 +59,8 @@ export const APP_UPDATE_ACTIONS: AppUpdateActions = {
       controller.requestRestart(expectedOfferId, restoreFocus);
     },
   ),
+  tryUpdateAgain: withController('try_update_again', (controller) => controller.tryUpdateAgain()),
+  stayOnBuiltIn: withController('stay_on_built_in', (controller) => controller.stayOnBuiltIn()),
 };
 
 function subscribeView(listener: () => void): () => void {

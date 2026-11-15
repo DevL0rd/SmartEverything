@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
 import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
-import { SearchField } from '../../../components/search-field';
 import { List } from '../../../components/section';
 import { useRevealed } from '../../../components/show-more';
 import { Badge } from '../../../components/badge';
@@ -78,13 +77,11 @@ function Rows({
 export function AppsList({
   rows,
   query,
-  onQuery,
   notificationsOf,
   onPick,
 }: {
   readonly rows: readonly AppRow[];
   readonly query: string;
-  readonly onQuery: (query: string) => void;
   readonly notificationsOf: (app: string) => number;
   readonly onPick: (row: AppRow) => void;
 }): ReactNode {
@@ -101,7 +98,6 @@ export function AppsList({
   }
   return (
     <View className="gap-3">
-      <SearchField value={query} onChange={onQuery} placeholder="Search apps" variant="field" />
       {found.length === 0 ? (
         <EmptyState
           compact

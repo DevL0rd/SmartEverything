@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
-import { Logger } from '@smarteverything/logging';
+import { Logger, shippedRecord } from '@smarteverything/logging';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEBUG_LOG_DATA_LIMIT,
@@ -71,7 +71,12 @@ describe('debug.log effect', () => {
 
   it('keeps secrets out of the recorded data', async () => {
     const { logs } = await logged({ message: 'm', data: { token: 'abc', fine: 1 } });
-    expect(JSON.stringify(logs.records[0]?.payload)).not.toContain('abc');
+    const [record] = logs.records;
+    expect(record).toBeDefined();
+    if (record === undefined) return;
+    const shipped = shippedRecord(record, 'server');
+    expect(JSON.stringify(shipped.payload)).not.toContain('abc');
+    expect(shipped.payload).toMatchObject({ data: { fine: 1 } });
   });
 
   it('caps a long message and says so', async () => {

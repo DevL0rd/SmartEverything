@@ -1,12 +1,10 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { View, type TextInput } from 'react-native';
+import type { TextInput } from 'react-native';
 import { useLocalSearchParams, useNavigation, type NativeStackNavigationProp } from 'expo-router';
-import Head from 'expo-router/head';
 import { closeFlow } from '../app-shell/close-flow';
 import { ShellGate } from '../app-shell/shell-gate';
-import { IconButton } from '../components/icon-button';
-import { SearchField } from '../components/search-field';
+import { PageShell } from '../components/page-shell/page-shell';
 import { ResultList } from './result-list';
 import { useSearchPanel } from './search-panel';
 
@@ -39,25 +37,26 @@ function SearchBody({ initial }: { readonly initial: string }): ReactNode {
     onEscape: leave,
   });
   return (
-    <View className="flex-1 bg-bg">
-      <View className="px-gutter pt-safe-offset-2 pb-2">
-        <View className="w-full max-w-reading flex-row items-center gap-1">
-          <IconButton icon="arrowLeft" label="Back" onPress={leave} />
-          <View className="min-w-0 flex-1">
-            <SearchField
-              inputRef={input}
-              value={query}
-              onChange={setQuery}
-              {...(panel.submit === null ? {} : { onSubmit: panel.submit })}
-              placeholder="Search your home"
-              focusOnMount
-              variant="bar"
-            />
-          </View>
-        </View>
-      </View>
-      <ResultList model={panel.model} contentClassName="px-gutter pt-2 pb-safe-offset-6" fullPage />
-    </View>
+    <PageShell
+      title="Search"
+      width="reading"
+      scroll={false}
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: 'Search your home',
+        inputRef: input,
+        focusOnMount: true,
+        ...(panel.submit === null ? {} : { onSubmit: panel.submit }),
+      }}
+    >
+      <ResultList
+        model={panel.model}
+        contentClassName="pt-2 pb-safe-offset-6"
+        fullPage
+        footer={panel.content ?? undefined}
+      />
+    </PageShell>
   );
 }
 
@@ -65,9 +64,6 @@ export function SearchScreen(): ReactNode {
   const { q } = useLocalSearchParams<{ q?: string }>();
   return (
     <ShellGate>
-      <Head>
-        <title>Search · SmartEverything</title>
-      </Head>
       <SearchBody initial={q ?? ''} />
     </ShellGate>
   );

@@ -223,6 +223,13 @@ describe('the learner gates', () => {
     expect(manager.calls).toEqual([]);
   });
 
+  it('skips a message that has no wording, such as one carrying only an attachment', async () => {
+    for (const text of ['', ' ', '\n  \n']) {
+      await finish(turn(text, 'That looks like a photo of my sister Mia in Leeds'), 'Reply');
+    }
+    expect(manager.calls).toEqual([]);
+  });
+
   it('keeps short messages that hold a name or a quote', async () => {
     await finish(turn('Call Mia', 'Calling'), 'Calling');
     await finish(turn('I said "bonkers"', 'Got it'), 'Got it');

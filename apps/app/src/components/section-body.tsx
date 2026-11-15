@@ -1,27 +1,14 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { cn } from '../design/cn';
 
 import { useSizeClass } from '../design/size-class';
 import { useThemeSetting } from '../design/theme';
 import { gutterOf } from '../design/tokens';
-import { frameBodyWidthOf, type FrameWidth, type RailWidth } from './frame-layout';
+import { BodyWidthContext } from './page-shell/body-width';
+import { frameBodyWidthOf, type FrameWidth, type RailWidth } from './page-shell/layout';
 
-export type { FrameWidth } from './frame-layout';
-
-const BodyWidthContext = createContext<number | null>(null);
-
-class FrameBodyWidthUnavailable extends Error {
-  constructor() {
-    super('Frame body width is only available inside a section frame.');
-  }
-}
-
-export function useFrameBodyWidth(): number {
-  const width = useContext(BodyWidthContext);
-  if (width === null) throw new FrameBodyWidthUnavailable();
-  return width;
-}
+export type { FrameWidth } from './page-shell/layout';
 
 export function FrameBodyWidth({
   scroll,

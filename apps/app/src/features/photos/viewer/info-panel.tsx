@@ -3,9 +3,35 @@ import { ScrollView, View } from 'react-native';
 import { BottomSheet } from '../../../components/bottom-sheet';
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
+import { Button } from '../../../components/button';
+import { openMetaEdit } from '../organise/meta/meta-request';
+import { ItemSmartRows } from '../smart/item-rows';
 import { InfoRows, type InfoContent } from './info-rows';
+import { metaCurrentOf } from './use-viewer-controls';
 
 const INFO_DETENTS = ['full'] as const;
+
+function MetaEntry({
+  content,
+  onOpened,
+}: {
+  readonly content: InfoContent;
+  readonly onOpened?: () => void;
+}): ReactNode {
+  return (
+    <View className="flex-row pb-2">
+      <Button
+        label="Edit date and location"
+        icon="calendar"
+        variant="tonal"
+        onPress={() => {
+          onOpened?.();
+          openMetaEdit({ itemIds: [content.item.id], current: metaCurrentOf(content) });
+        }}
+      />
+    </View>
+  );
+}
 
 export function InfoPanel({
   content,
@@ -21,7 +47,9 @@ export function InfoPanel({
         <IconButton icon="close" label="Close info" onPress={onClose} shortcut="I" />
       </View>
       <ScrollView contentContainerClassName="px-5 pb-5">
+        <MetaEntry content={content} />
         <InfoRows content={content} />
+        <ItemSmartRows itemId={content.item.id} />
       </ScrollView>
     </View>
   );
@@ -45,7 +73,9 @@ export function InfoSheet({
       detents={INFO_DETENTS}
       scroll
     >
+      <MetaEntry content={content} onOpened={onClose} />
       <InfoRows content={content} />
+      <ItemSmartRows itemId={content.item.id} onOpened={onClose} />
     </BottomSheet>
   );
 }

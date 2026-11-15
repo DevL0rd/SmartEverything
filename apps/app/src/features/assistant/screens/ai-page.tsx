@@ -6,10 +6,9 @@ import { Logger } from '@smarteverything/logging';
 import { setAiChatRead } from '../../../api/ai';
 import { href } from '../../../app-shell/hrefs';
 import { mainPageSettings } from '../../../app-shell/main-pages';
-import { IconButton } from '../../../components/icon-button';
 import { OverlayPane } from '../../../components/master-detail';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useForeground } from '../../../design/animation-gate';
 import { localPref, setLocalPref } from '../../../store/local-prefs';
 import { ChatFrame } from '../chats/chat-frame';
@@ -40,7 +39,7 @@ import { showChatOnScreen } from '../voice-message/voice-request';
 
 const log = new Logger('app.assistant');
 
-const NO_ACTIONS: readonly HeaderAction[] = [];
+const NO_ACTIONS: readonly ShellAction[] = [];
 
 function openChat(chatId: string, inPlace: boolean, messageId?: string): void {
   if (inPlace) {
@@ -93,7 +92,7 @@ function Thread({
 }: {
   readonly chatId: string;
   readonly wide: boolean;
-  readonly leading: readonly HeaderAction[];
+  readonly leading: readonly ShellAction[];
 }): ReactNode {
   const chat = useAiChat(chatId);
   const rows = useChatMessages(chatId);
@@ -119,7 +118,7 @@ function Thread({
   return <ChatThread chat={chat} rows={rows} back={!wide} leading={leading} />;
 }
 
-function useListToggle(shown: boolean): HeaderAction {
+function useListToggle(shown: boolean): ShellAction {
   return {
     icon: 'panelLeft',
     label: shown ? 'Hide chats' : 'Show chats',
@@ -146,7 +145,7 @@ function SlideOverList({
   useOpenerFocus(open);
   return (
     <OverlayPane open={open} onDismiss={closeChatListSlideOver} label="Chats">
-      <View className="flex-1 pt-safe">
+      <View className="flex-1">
         <ChatList
           kind="slide-over"
           focusSearch
@@ -174,7 +173,7 @@ function Conversation({
 }: {
   readonly selected: string | null;
   readonly wide: boolean;
-  readonly toggle: HeaderAction;
+  readonly toggle: ShellAction;
   readonly onStarted: (chatId: string) => void;
 }): ReactNode {
   if (areaBlocked(useAreaStatus())) {
@@ -277,22 +276,23 @@ function SplitPage({
   );
 }
 
-function BlockedPane({ toggle }: { readonly toggle: HeaderAction }): ReactNode {
+function BlockedPane({ toggle }: { readonly toggle: ShellAction }): ReactNode {
+  const name = useAssistantName();
   const state = useAreaStatus();
   if (!areaBlocked(state)) {
     return null;
   }
   return (
-    <View className="flex-1">
-      {toggle.selected === true ? null : (
-        <View className="items-start px-1 pt-safe">
-          <IconButton icon={toggle.icon} label={toggle.label} onPress={toggleChatList} />
-        </View>
-      )}
+    <PageShell
+      variant="pane"
+      title={name}
+      back={false}
+      leading={toggle.selected === true ? [] : [toggle]}
+    >
       <View className="flex-1 justify-center">
         <BlockedChat state={state} />
       </View>
-    </View>
+    </PageShell>
   );
 }
 
@@ -303,14 +303,11 @@ function Blocked(): ReactNode {
     return null;
   }
   return (
-    <Screen
-      scroll={false}
-      header={<PageHeader settings={mainPageSettings('assistant')} title={name} />}
-    >
+    <PageShell title={name} back={false} settings={mainPageSettings('assistant')} scroll={false}>
       <View className="flex-1 justify-center">
         <BlockedChat state={state} />
       </View>
-    </Screen>
+    </PageShell>
   );
 }
 

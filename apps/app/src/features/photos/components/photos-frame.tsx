@@ -25,12 +25,18 @@ import { useLibraryRefresh } from '../../drive';
 import { PAUSE_LABELS } from '../backup/model/conditions';
 import { useBackupStatus, type BackupStatus } from '../backup/model/status';
 import { usePhotoInsights, usePhotoRailCounts } from '../data';
+import { MetaEditHost } from '../organise/meta/meta-sheet';
 
 export const PHOTOS_RAIL_HREF = {
   library: href.photos(),
+  people: href.photosPage('people'),
   albums: href.photosPage('albums'),
+  sharing: href.photosPage('sharing'),
   map: href.photosPage('map'),
+  folders: href.photosPage('folders'),
   insights: href.photosPage('insights'),
+  archive: href.photosPage('archive'),
+  locked: href.photosPage('locked'),
   deleted: href.photosPage('deleted'),
 } as const satisfies Readonly<Record<string, AppHref>>;
 
@@ -52,15 +58,20 @@ interface RailSpec {
 
 const SPEC: Readonly<Record<PhotosRailId, RailSpec>> = {
   library: { label: 'Library', icon: 'image' },
+  people: { label: 'People and pets', short: 'People', icon: 'users' },
   albums: { label: 'Albums', icon: 'layers' },
+  sharing: { label: 'Sharing', icon: 'share' },
   map: { label: 'Map and places', short: 'Map', icon: 'mapPin' },
+  folders: { label: 'Folders', icon: 'folder' },
   insights: { label: 'Insights', icon: 'trendUp' },
+  archive: { label: 'Archive', icon: 'archive' },
+  locked: { label: 'Locked folder', short: 'Locked', icon: 'lock' },
   deleted: { label: 'Recently deleted', short: 'Deleted', icon: 'trash' },
 };
 
-const TOP: readonly PhotosRailId[] = ['library', 'albums', 'map'];
+const TOP: readonly PhotosRailId[] = ['library', 'people', 'albums', 'sharing', 'map'];
 
-const MANAGE: readonly PhotosRailId[] = ['insights', 'deleted'];
+const MANAGE: readonly PhotosRailId[] = ['folders', 'archive', 'locked', 'insights', 'deleted'];
 
 type Count = LibrarySection['count'];
 
@@ -75,9 +86,14 @@ const NO_COUNT = (): Count => null;
 
 const COUNT_OF: Readonly<Record<PhotosRailId, (view: PhotosRailView) => Count>> = {
   library: (view) => view.counts?.library ?? null,
+  people: (view) => view.counts?.people ?? null,
   albums: (view) => view.counts?.albums ?? null,
+  sharing: (view) => view.counts?.sharing ?? null,
   map: (view) => view.counts?.places ?? null,
+  folders: NO_COUNT,
   insights: NO_COUNT,
+  archive: (view) => view.counts?.archive ?? null,
+  locked: NO_COUNT,
   deleted: (view) => view.counts?.deleted ?? null,
 };
 
@@ -92,9 +108,14 @@ function insightsSummary(view: PhotosRailView): string | null {
 
 const SUMMARY_OF: Readonly<Record<PhotosRailId, (view: PhotosRailView) => string | null>> = {
   library: (view) => amountOf(view.counts?.library, 'item'),
+  people: (view) => amountOf(view.counts?.people, 'person or pet', 'people and pets'),
   albums: (view) => amountOf(view.counts?.albums, 'album'),
+  sharing: (view) => amountOf(view.counts?.sharing, 'new update', 'new updates'),
   map: (view) => amountOf(view.counts?.places, 'place'),
+  folders: () => null,
   insights: insightsSummary,
+  archive: (view) => amountOf(view.counts?.archive, 'item'),
+  locked: () => null,
   deleted: (view) => amountOf(view.counts?.deleted, 'item'),
 };
 
@@ -131,8 +152,10 @@ export function photosRailGroups(view: PhotosRailView): readonly LibrarySectionG
 
 export const PHOTOS_PHONE_TABS: readonly TabItem[] = [
   { key: 'library', label: 'Library', href: PHOTOS_RAIL_HREF.library },
+  { key: 'people', label: 'People', href: PHOTOS_RAIL_HREF.people },
   { key: 'albums', label: 'Albums', href: PHOTOS_RAIL_HREF.albums },
   { key: 'map', label: 'Places', href: PHOTOS_RAIL_HREF.map },
+  { key: 'folders', label: 'Folders', href: PHOTOS_RAIL_HREF.folders },
 ];
 
 const HREFS: ReadonlyMap<string, AppHref> = new Map(Object.entries(PHOTOS_RAIL_HREF));
@@ -337,21 +360,24 @@ export function PhotosFrame({ active, title, ...frame }: PhotosFrameProps): Reac
   const { view, summary } = usePhotosFrameData();
   const refresh = useLibraryRefresh(null);
   return (
-    <LibraryFrame
-      {...frame}
-      settings={frame.settings ?? mainPageSettings('photos')}
-      refresh={refresh}
-      area="photos"
-      title={title ?? photosTitleOf(active)}
-      sections={photosRailGroups(view)}
-      active={active}
-      hrefOf={photosHrefOf}
-      chips={
-        frame.breadcrumbs === undefined ? (
-          <TabsBar items={PHOTOS_PHONE_TABS} active={active} label="Photos sections" />
-        ) : undefined
-      }
-      summary={view.compact ? <PullUpSummary {...summary} /> : <RailSummary {...summary} />}
-    />
+    <>
+      <LibraryFrame
+        {...frame}
+        settings={frame.settings ?? mainPageSettings('photos')}
+        refresh={refresh}
+        area="photos"
+        title={title ?? photosTitleOf(active)}
+        sections={photosRailGroups(view)}
+        active={active}
+        hrefOf={photosHrefOf}
+        chips={
+          frame.breadcrumbs === undefined ? (
+            <TabsBar items={PHOTOS_PHONE_TABS} active={active} label="Photos sections" />
+          ) : undefined
+        }
+        summary={view.compact ? <PullUpSummary {...summary} /> : <RailSummary {...summary} />}
+      />
+      <MetaEditHost />
+    </>
   );
 }

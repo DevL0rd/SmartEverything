@@ -214,6 +214,8 @@ describe('the list of areas', () => {
       'settings',
       'people',
       'plugins',
+      'drive',
+      'planner',
       'system',
       'everything',
     ]);

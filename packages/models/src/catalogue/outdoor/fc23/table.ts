@@ -1,7 +1,6 @@
 import type { ModelSpec, ModelSpecPart } from '@smarteverything/domain';
 import { OUTDOOR_FRAME, block, by, corners, legs, outdoorItem, piece } from './kit';
 
-const DEPTH = 0.8;
 const HEIGHT = 0.74;
 const TOP_T = 0.03;
 const LEG_H = HEIGHT - TOP_T;
@@ -31,7 +30,7 @@ function aprons(): ModelSpecPart[] {
 export const PATIO_TABLE_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.patio-table',
   title: 'Patio table',
-  footprint: { width: 1.6, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 1.6, depth: 0.788, height: HEIGHT },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

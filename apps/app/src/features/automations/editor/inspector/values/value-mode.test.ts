@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FieldControl } from '../schema-fields';
+import { NO_PORT_SCOPE } from './port-scope-context';
 import {
-  NO_PORT_SCOPE,
   defaultLiteral,
   editorControl,
   sampleControl,

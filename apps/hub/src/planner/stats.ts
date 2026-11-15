@@ -8,9 +8,9 @@ import {
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { isoOf } from './instants';
-import { composeRange, type PlannerReader } from './range';
+import { composeRange, type RangeReader } from './range';
 
-export type StatsReader = PlannerReader & Pick<Store, 'plannerRings' | 'plannerTimers'>;
+export type StatsReader = RangeReader & Pick<Store, 'plannerRings' | 'plannerTimers'>;
 
 export interface StatsQuery {
   readonly profileId: string;

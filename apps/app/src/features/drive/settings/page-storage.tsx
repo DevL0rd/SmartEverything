@@ -18,8 +18,7 @@ import { CopyButton } from '../../../components/copy-button';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import type { Tone } from '../../../components/tone';
-import { usePausable } from '../../../design/external-store';
-import { bytes, count } from '../../../format/number';
+import { bytes } from '../../../format/number';
 import { moment } from '../../../format/time';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useMinute } from '../../../store/clock';
@@ -27,15 +26,9 @@ import { useMutationState } from '../../../store/mutation';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { useIsOwner } from '../../../store/selectors';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { trackSetting } from '../../settings/settings-log';
-import {
-  driveProgress,
-  useDriveBackupStatus,
-  useDriveHealth,
-  useDriveQuotas,
-  useDriveUsage,
-  type DriveProgress,
-} from '../data';
+import { trackSetting } from '../../settings';
+import { useDriveBackupStatus, useDriveHealth, useDriveQuotas, useDriveUsage } from '../data';
+import { SCRUB_EXPLAINER, ScrubProgress, damagedText } from '../storage/scrub-progress';
 import { gigabytesInitialOf, gigabytesOf, gigabytesProblemOf } from './gigabytes';
 import { DriveSettingsSection } from './page';
 import { SettingsQueryState } from './page-indexing';
@@ -104,35 +97,27 @@ export async function scrubNow(client: QueryClient): Promise<DriveScrubState> {
   return scrub;
 }
 
-export function liveScrubShare(progress: DriveProgress): number | null {
-  const steps = Object.values(progress).flatMap((root) =>
-    root.scrub === undefined ? [] : [root.scrub],
-  );
-  const total = steps.reduce((sum, step) => sum + step.total, 0);
-  if (total === 0) return null;
-  return steps.reduce((sum, step) => sum + step.done, 0) / total;
-}
-
-function damagedLine(corrupt: number): StatusLine {
-  if (corrupt === 0) return { text: 'nothing damaged', tone: 'variant' };
-  const files = corrupt === 1 ? '1 file' : `${count(corrupt)} files`;
-  return { text: `${files} damaged`, tone: 'critical' };
-}
-
 export function scrubLineOf(scrub: DriveScrubState, now: number): StatusLine {
-  const damaged = damagedLine(scrub.corrupt);
-  if (scrub.state === 'idle') {
-    if (scrub.lastFinishedAt === null) return { text: 'Not checked yet', tone: 'variant' };
+  const tone: Tone = scrub.corrupt === 0 ? 'variant' : 'critical';
+  if (scrub.state === 'running') {
     return {
-      text: `Last checked ${moment(scrub.lastFinishedAt, now)} · ${damaged.text}`,
-      tone: damaged.tone,
+      text: `Reading every file back from the disk · started ${moment(scrub.startedAt, now)}`,
+      tone,
     };
   }
-  const reached = `${count(scrub.checked)} of ${count(scrub.total)}`;
-  if (scrub.state === 'running') {
-    return { text: `Checking · ${reached} · ${damaged.text}`, tone: damaged.tone };
+  if (scrub.state === 'stopped') {
+    return {
+      text: `Stopped · started ${moment(scrub.startedAt, now)} · Scrub now carries on`,
+      tone,
+    };
   }
-  return { text: `Stopped at ${reached} · Scrub now carries on`, tone: damaged.tone };
+  if (scrub.lastFinishedAt === null) {
+    return { text: `Not checked yet · ${SCRUB_EXPLAINER.toLowerCase()}`, tone: 'variant' };
+  }
+  return {
+    text: `Last checked ${moment(scrub.lastFinishedAt, now)} · ${damagedText(scrub.corrupt)}`,
+    tone,
+  };
 }
 
 export function backupLineOf(status: DriveBackupStatus, now: number): StatusLine {
@@ -258,35 +243,21 @@ function ScrubTrailing({
 }): ReactNode {
   const client = useQueryClient();
   const mutation = useMutationState();
-  const share = liveScrubShare(usePausable(driveProgress.subscribe, driveProgress.get));
-  const running = scrub.state === 'running';
+  if (!owner) return null;
   return (
-    <View className="flex-row items-center gap-3">
-      {running ? (
-        <View className="w-24">
-          <ProgressBar
-            progress={share ?? (scrub.total === 0 ? 0 : scrub.checked / scrub.total)}
-            colour="info"
-            label="Checking for damage"
-          />
-        </View>
-      ) : null}
-      {owner ? (
-        <Button
-          label="Scrub now"
-          icon="shield"
-          variant="tonal"
-          loading={mutation.busy}
-          disabled={running}
-          onPress={() => {
-            mutation.run(() => scrubNow(client), {
-              failure: 'The check did not start',
-              label: 'drive_scrub.start',
-            });
-          }}
-        />
-      ) : null}
-    </View>
+    <Button
+      label="Scrub now"
+      icon="shield"
+      variant="tonal"
+      loading={mutation.busy}
+      disabled={scrub.state === 'running'}
+      onPress={() => {
+        mutation.run(() => scrubNow(client), {
+          failure: 'The check did not start',
+          label: 'drive_scrub.start',
+        });
+      }}
+    />
   );
 }
 
@@ -297,17 +268,25 @@ function ScrubRow({
   readonly health: DriveHealth;
   readonly owner: boolean;
 }): ReactNode {
-  const line = scrubLineOf(health.scrub, useMinute());
+  const scrub = health.scrub;
+  const line = scrubLineOf(scrub, useMinute());
   return (
-    <ListRow
-      title="Check files for damage"
-      icon="shield"
-      iconTone={health.corrupt > 0 ? 'critical' : 'variant'}
-      subtitle={line.text}
-      subtitleTone={line.tone}
-      wrapSubtitle
-      trailing={<ScrubTrailing scrub={health.scrub} owner={owner} />}
-    />
+    <View>
+      <ListRow
+        title="Check files for damage"
+        icon="shield"
+        iconTone={health.corrupt > 0 ? 'critical' : 'variant'}
+        subtitle={line.text}
+        subtitleTone={line.tone}
+        wrapSubtitle
+        trailing={<ScrubTrailing scrub={scrub} owner={owner} />}
+      />
+      {scrub.state === 'idle' ? null : (
+        <View className="px-4 pb-3">
+          <ScrubProgress scrub={scrub} />
+        </View>
+      )}
+    </View>
   );
 }
 

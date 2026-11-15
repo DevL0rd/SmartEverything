@@ -14,19 +14,21 @@ export interface FeedChromeProps {
   readonly latest: () => void;
   readonly controls: ReactNode;
   readonly inlineControls: boolean;
+  readonly search: boolean;
   readonly focusSearch: boolean;
 }
 
 function FeedInputs(props: FeedChromeProps): ReactNode {
-  const search = props.context ? null : (
-    <SearchField
-      value={props.words}
-      onChange={props.changeWords}
-      placeholder="Search what was said"
-      variant="field"
-      focusOnMount={props.focusSearch}
-    />
-  );
+  const search =
+    props.context || !props.search ? null : (
+      <SearchField
+        value={props.words}
+        onChange={props.changeWords}
+        placeholder="Search what was said"
+        variant="field"
+        focusOnMount={props.focusSearch}
+      />
+    );
   if (props.inlineControls) {
     return (
       <View className="flex-row flex-wrap items-end gap-x-2 gap-y-1">

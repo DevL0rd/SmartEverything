@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OpenRouterAccount } from '@smarteverything/domain';
-import { moneyOf } from '../../region/model/money';
+import { moneyOf } from '../../region';
 import { balanceOf, isLow, usedLine } from './credit-balance';
 
 const dollars = moneyOf({

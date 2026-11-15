@@ -49,6 +49,17 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
       storage.set(key, value);
       return Promise.resolve();
     },
+    getAllKeys: (): Promise<string[]> => Promise.resolve([...storage.keys()]),
+    multiGet: (keys: readonly string[]): Promise<[string, string | null][]> =>
+      Promise.resolve(keys.map((key) => [key, storage.get(key) ?? null])),
+    multiSet: (pairs: readonly (readonly [string, string])[]): Promise<void> => {
+      for (const [key, value] of pairs) storage.set(key, value);
+      return Promise.resolve();
+    },
+    multiRemove: (keys: readonly string[]): Promise<void> => {
+      for (const key of keys) storage.delete(key);
+      return Promise.resolve();
+    },
   },
 }));
 
@@ -60,7 +71,7 @@ import {
   sizeOf,
   withinBuffer,
 } from '../../src/platform/log-batch';
-import { readLogOutbox, writeLogOutbox } from '../../src/platform/log-offload';
+import { readLogOutbox, recordKeyOf, writeLogOutbox } from '../../src/platform/log-offload';
 import { activateFlags } from '../../src/developer/flags';
 import { allOff } from '../../src/developer/toggles';
 import { shipLevelOf, wantsShipped } from '../../src/platform/ship-level';
@@ -242,7 +253,9 @@ describe('draining the kept records to the hub', () => {
       ship.stop();
     }
     expect(transport.calls).toEqual([]);
-    expect((await readLogOutbox(SCOPE)).records).toEqual([sent(3, 'error')]);
+    expect((await readLogOutbox(SCOPE)).records.map((item) => item.record)).toEqual([
+      sent(3, 'error'),
+    ]);
     original.resume(send);
     await original.flush();
     expect(transport.calls.flatMap((call) => call.records)).toEqual([sent(3, 'error')]);
@@ -308,7 +321,9 @@ describe('draining the kept records to the hub', () => {
     ship.resume(send);
     await ship.flush();
     expect(transport.calls).toEqual([]);
-    expect((await readLogOutbox(SCOPE)).records).toEqual([sent(2, 'error')]);
+    expect((await readLogOutbox(SCOPE)).records.map((item) => item.record)).toEqual([
+      sent(2, 'error'),
+    ]);
     ship.stop();
 
     transport.refuses = false;
@@ -317,7 +332,7 @@ describe('draining the kept records to the hub', () => {
     restarted.resume(send);
     await restarted.flush();
     expect(transport.calls.flatMap((call) => call.records)).toEqual([sent(2, 'error')]);
-    expect((await readLogOutbox(SCOPE)).records).toEqual([]);
+    expect((await readLogOutbox(SCOPE)).records.map((item) => item.record)).toEqual([]);
     expect(restarted.buffered).toBe(0);
     restarted.stop();
   });
@@ -340,16 +355,21 @@ describe('draining the kept records to the hub', () => {
   });
 
   it('leaves the batch on disk when the hub acknowledges only part of it', async () => {
-    await writeLogOutbox(SCOPE, { records: [sent(10, 'exception')], gap: null });
+    await writeLogOutbox(SCOPE, {
+      add: [{ key: recordKeyOf(SCOPE, 0), record: sent(10, 'exception') }],
+      remove: [],
+    });
     const ship = new LogShip(OWNER);
     ship.start();
     ship.resume(send);
     transport.partial = true;
     await ship.flush();
-    expect((await readLogOutbox(SCOPE)).records).toEqual([sent(10, 'exception')]);
+    expect((await readLogOutbox(SCOPE)).records.map((item) => item.record)).toEqual([
+      sent(10, 'exception'),
+    ]);
     transport.partial = false;
     await ship.flush();
-    expect((await readLogOutbox(SCOPE)).records).toEqual([]);
+    expect((await readLogOutbox(SCOPE)).records.map((item) => item.record)).toEqual([]);
     ship.stop();
   });
 

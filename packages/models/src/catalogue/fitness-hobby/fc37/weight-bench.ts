@@ -74,7 +74,7 @@ export const WEIGHT_BENCH_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.weight-bench',
   title: 'Weight bench',
   category: 'fitness-hobby',
-  footprint: { width: 0.55, depth: 1.305, height: PAD_Y + PAD_T / 2 },
+  footprint: { width: 0.55, depth: 1.305, height: 0.4993 },
   size: { depth: { param: 'length', extra: 0.105, resizes: true } },
   view: { yaw: 40, pitch: 20, fov: 28, padding: 0.08 },
   meta: {

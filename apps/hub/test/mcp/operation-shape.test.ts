@@ -21,9 +21,8 @@ describe('the fields an operation tool takes', () => {
     const shape = operationShape('showCameraInCall');
     expect(Object.keys(shape.input.shape)).toContain('deviceId');
     expect(Object.keys(shape.input.shape)).not.toContain('cameraId');
-    expect(operationInput(shape, { callId: ID, deviceId: ID })).toMatchObject({
-      body: { cameraId: ID },
-    });
+    expect(operationInput(shape, { deviceId: ID })).toMatchObject({ body: { cameraId: ID } });
+    expect(shape.input.safeParse({ deviceId: ID }).success).toBe(true);
   });
 
   it('adds personId to a personal operation that has no person field, and only acts as that person there', () => {

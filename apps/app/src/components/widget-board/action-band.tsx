@@ -1,10 +1,11 @@
-import { Children, createContext, use, useReducer, type ReactNode } from 'react';
+import { Children, use, useReducer, type ReactNode } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import { cn } from '../../design/cn';
 import { useIdiom } from '../../design/platform';
 import { useThemeSetting } from '../../design/theme';
 import { SEMANTIC_SIZES } from '../../design/tokens';
 import { BandMember, bandValueOf } from './band-context';
+import { Tail } from './band-tail';
 import {
   BAND_FIT_START,
   bandFitAfter,
@@ -15,8 +16,6 @@ import {
 } from './band-fit';
 import { frameClassOf } from './frame-class';
 import { useWidgetFrame } from './widget-scope';
-
-const Tail = createContext<ReactNode>(null);
 
 export function ActionBandTail({
   tail,

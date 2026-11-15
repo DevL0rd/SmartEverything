@@ -11,7 +11,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { insertDriveRow, recordLibraryRow } from './photo-rows';
+import { insertDriveRow, recordLibraryRow, insertInode } from './photo-rows';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const HOME_ROOT = '0f000000-0000-4000-8000-000000000001';
@@ -43,6 +43,7 @@ function seed(n: number, takenAt: string, root = HOME_ROOT): void {
   insert('drive_items', {
     id,
     root_id: root,
+    inode_id: insertInode(database, root),
     rel_path: `${String(n)}.jpg`,
     name: `${String(n)}.jpg`,
     kind: 'image',

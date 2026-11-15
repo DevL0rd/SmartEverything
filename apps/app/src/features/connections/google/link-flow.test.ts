@@ -13,6 +13,7 @@ const platform = { OS: 'android' };
 vi.mock('expo-web-browser', () => ({ openAuthSessionAsync }));
 vi.mock('react-native', () => ({ Platform: platform }));
 vi.mock('../../../design/platform', () => ({ desktopBridge: (): null => null }));
+vi.mock('../../planner', () => vi.importActual('../../planner/data/desktop-bridge'));
 
 const {
   ANDROID_REDIRECT_URI,

@@ -54,7 +54,6 @@ function tablesOf(devices: readonly Device[], groups: readonly DeviceGroupRow[])
       groups.map((group) => group.id),
       1,
     ),
-    scenes: tables.scenes,
     automations: tables.automations,
     scheduled: tables.scheduled_actions,
     plugins: tables.plugins,

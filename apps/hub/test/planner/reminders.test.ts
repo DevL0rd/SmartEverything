@@ -45,13 +45,24 @@ const PREFERENCES: PlannerPreferences = {
     show_free_time: false,
   },
   clock: {
-    sound: 'default',
+    sound: { kind: 'tone', id: 'default' },
     ramp_seconds: 0,
     snooze_minutes: 9,
+    snooze_limit: null,
     targets: [],
-    wake_scene_id: null,
+    wake_automation_id: null,
     world_clocks: [],
   },
+  bedtime: {
+    enabled: false,
+    schedule: [],
+    reminder_minutes: null,
+    wind_down_minutes: null,
+    wind_down_automation_id: null,
+    do_not_disturb: false,
+    sleep_sound: null,
+  },
+  sleep_sounds: { sound: null, timer_minutes: null, fade_seconds: 0 },
   watch: { watch_alarm_sync: false, watch_calendar_push: false },
   ai: { briefing: 'off', evening_review: false, plan_suggestions: false },
 };
@@ -110,6 +121,10 @@ function add(change: Partial<PlannerItemInput>): PlannerItemRow {
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     ...change,
   };
@@ -143,8 +158,10 @@ beforeEach(async () => {
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
   }).id;
   signals = [];
   notices = [];
@@ -318,6 +335,57 @@ describe('reminders', () => {
     await vi.waitFor(() => {
       expect(rings(meeting.id)).toHaveLength(1);
     });
+  });
+});
+
+describe('reminders for people the item involves', () => {
+  it('rings for a member guest on their own profile and not for a decliner', () => {
+    const ann = addPerson(test, 'Ann', 'member');
+    const bob = addPerson(test, 'Bob', 'member');
+    const meeting = standup();
+    for (const person of [ann, bob]) {
+      test.store.plannerGuests.insert({
+        item_id: meeting.id,
+        kind: 'person',
+        profile_id: person.profileId,
+        email: null,
+        name: null,
+        delivery: 'not_sent',
+        delivery_detail: null,
+        token_hash: null,
+      });
+    }
+    const [bobGuest] = test.store.plannerGuests.forProfile(bob.profileId);
+    if (bobGuest === undefined) throw new Error('no guest');
+    test.store.plannerGuests.update(bobGuest.id, {
+      response: 'no',
+      responded_at: '2026-11-07T08:00:00.000Z',
+    });
+    scheduler.start();
+    clock.advanceTo('2026-11-07T08:50:00.000Z');
+    expect(
+      rings(meeting.id)
+        .map((ring) => ring.profile_id)
+        .sort(),
+    ).toEqual([owner.profileId, ann.profileId].sort());
+  });
+
+  it('rings for the assignee of a task as well as its owner', () => {
+    const ann = addPerson(test, 'Ann', 'member');
+    const chore = add({
+      kind: 'task',
+      title: 'Bins',
+      due_at: '2026-11-07T12:00:00.000Z',
+      reminders: [{ minutes_before: 60 }],
+      assignee_id: ann.profileId,
+    });
+    scheduler.start();
+    clock.advanceTo('2026-11-07T11:00:00.000Z');
+    expect(
+      rings(chore.id)
+        .map((ring) => ring.profile_id)
+        .sort(),
+    ).toEqual([owner.profileId, ann.profileId].sort());
   });
 });
 

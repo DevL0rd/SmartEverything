@@ -33,11 +33,22 @@ export function isNative(): boolean {
 
 const COARSE = '(pointer: coarse)';
 
+let coarse: MediaQueryList | null | undefined;
+
 function coarseQuery(): MediaQueryList | null {
-  if (isNative() || typeof window.matchMedia !== 'function') {
-    return null;
+  if (coarse === undefined) {
+    coarse =
+      isNative() || typeof window.matchMedia !== 'function' ? null : window.matchMedia(COARSE);
   }
-  return window.matchMedia(COARSE);
+  return coarse;
+}
+
+const idiomListeners = new Set<() => void>();
+
+function notifyIdiom(): void {
+  for (const listener of [...idiomListeners]) {
+    listener();
+  }
 }
 
 export function idiomNow(): Idiom {
@@ -52,9 +63,15 @@ export function onIdiomChange(listener: () => void): () => void {
   if (query === null) {
     return (): void => undefined;
   }
-  query.addEventListener('change', listener);
+  if (idiomListeners.size === 0) {
+    query.addEventListener('change', notifyIdiom);
+  }
+  idiomListeners.add(listener);
   return (): void => {
-    query.removeEventListener('change', listener);
+    if (!idiomListeners.delete(listener) || idiomListeners.size > 0) {
+      return;
+    }
+    query.removeEventListener('change', notifyIdiom);
   };
 }
 

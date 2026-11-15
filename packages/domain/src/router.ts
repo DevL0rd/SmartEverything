@@ -109,18 +109,37 @@ const ROUTER_CONNECTION = z.discriminatedUnion('state', [
 
 const ROUTER_CADENCE = z.enum(['fast', 'slow', 'paused']);
 
-export const ROUTER_SNAPSHOT = z.strictObject({
+const ROUTER_LIVE_FIELDS = {
   at: z.iso.datetime({ offset: true }),
   connection: ROUTER_CONNECTION,
   cadence: ROUTER_CADENCE,
   intervalSeconds: z.number().positive().nullable(),
-  info: ROUTER_INFO.nullable(),
   system: ROUTER_SYSTEM.nullable(),
   network: ROUTER_NETWORK.nullable(),
-  radios: z.array(WIFI_RADIO),
   stations: z.array(WIFI_STATION),
+};
+
+const ROUTER_INVENTORY_FIELDS = {
+  info: ROUTER_INFO.nullable(),
+  radios: z.array(WIFI_RADIO),
   clients: z.array(NETWORK_CLIENT),
   people: z.array(PRESENCE_PERSON).default([]),
+};
+
+export const ROUTER_LIVE = z.strictObject(ROUTER_LIVE_FIELDS);
+
+export type RouterLive = z.output<typeof ROUTER_LIVE>;
+
+export const ROUTER_INVENTORY = z.strictObject({
+  at: z.iso.datetime({ offset: true }),
+  ...ROUTER_INVENTORY_FIELDS,
+});
+
+export type RouterInventory = z.output<typeof ROUTER_INVENTORY>;
+
+export const ROUTER_SNAPSHOT = z.strictObject({
+  ...ROUTER_LIVE_FIELDS,
+  ...ROUTER_INVENTORY_FIELDS,
 });
 
 export type RouterSnapshot = z.output<typeof ROUTER_SNAPSHOT>;

@@ -1,7 +1,7 @@
 import {
   API_ENDPOINTS as E,
   ApiError,
-  type DriveFeedRow,
+  type DriveActivityEntry,
   type DriveVersion,
 } from '@smarteverything/domain';
 import type { DriveActor } from '../../drive/access';
@@ -70,7 +70,7 @@ function activityPage(
   services: DriveServices,
   actor: DriveActor,
   request: VersionPageRequest,
-): { readonly items: readonly DriveFeedRow[]; readonly next: string | null } {
+): { readonly items: readonly DriveActivityEntry[]; readonly next: string | null } {
   services.read.readItem(actor, request.itemId);
   const window = store.driveFeed.recentOfItem(
     request.itemId,
@@ -78,7 +78,7 @@ function activityPage(
     DRIVE_PAGE_SIZE,
   );
   return {
-    items: window.rows,
+    items: window.rows.map((row) => services.read.activityEntryOf(actor, row)),
     next: window.next === null ? null : String(window.next),
   };
 }
@@ -127,7 +127,7 @@ function driveShareRoutes(store: Store, services: DriveServices): Routes<DriveSh
         const access = shares.open(params.token);
         await shares.verifyPassword(access, body.password);
         shares.record(access, 'open');
-        return shares.link(access, params.token, access.item.id);
+        return shares.link(access, params.token, access.entryId);
       }),
     ),
   };

@@ -253,6 +253,7 @@ function status(fields: Partial<DrivePlacementStatus> = {}): DrivePlacementStatu
     lastSyncedAt: null,
     errors: [],
     reason: null,
+    mountPoint: null,
     reportedAt: NOW,
     ...fields,
   };
@@ -266,6 +267,7 @@ describe('placements', () => {
     folderItemId: null,
     mode: 'synced',
     localPath: '/home/robin/Drive',
+    mountName: null,
     enabled: true,
     createdBy: '',
     excluded: ['Videos'],
@@ -291,7 +293,8 @@ describe('placements', () => {
       rootId: ROOT,
       folderItemId: folder,
       mode: 'mounted',
-      localPath: '/mnt/folder',
+      localPath: null,
+      mountName: 'folder',
       enabled: true,
       createdBy: robin,
       status: status(),
@@ -313,9 +316,29 @@ describe('placements', () => {
 
   it('refuses sync settings on a mounted placement and none on a synced one', () => {
     const placements = repositories.drivePlacements;
-    expect(() => placements.insert({ ...synced, createdBy: robin, mode: 'mounted' })).toThrow(
-      StoreConflictError,
-    );
+    expect(() =>
+      placements.insert({
+        ...synced,
+        createdBy: robin,
+        mode: 'mounted',
+        localPath: null,
+        mountName: 'Drive',
+      }),
+    ).toThrow(StoreConflictError);
+    expect(() =>
+      placements.insert({
+        id: PLACEMENT,
+        deviceId: DEVICE,
+        rootId: ROOT,
+        folderItemId: null,
+        mode: 'mounted',
+        localPath: '/mnt/drive',
+        mountName: 'Drive',
+        enabled: true,
+        createdBy: robin,
+        status: status(),
+      }),
+    ).toThrow(StoreConflictError);
     expect(() =>
       placements.insert({
         id: PLACEMENT,
@@ -324,6 +347,7 @@ describe('placements', () => {
         folderItemId: null,
         mode: 'synced',
         localPath: '/home/robin/Drive',
+        mountName: null,
         enabled: true,
         createdBy: robin,
         status: status(),
@@ -339,12 +363,51 @@ describe('placements', () => {
     ).toThrow(StoreConflictError);
   });
 
+  it('keeps the reported mount point of a mounted placement and drops it on a switch to synced', () => {
+    const placements = repositories.drivePlacements;
+    placements.insert({ ...synced, createdBy: robin });
+    expect(() =>
+      placements.writeStatus(PLACEMENT, status({ mountPoint: '/run/user/1000/x' })),
+    ).toThrow(StoreConflictError);
+    placements.retarget(PLACEMENT, {
+      mode: 'mounted',
+      localPath: null,
+      mountName: 'Drive',
+      enabled: true,
+      readOnly: false,
+    });
+    const point = '/run/user/1000/smarteverything/Drive';
+    expect(placements.writeStatus(PLACEMENT, status({ mountPoint: point })).status.mountPoint).toBe(
+      point,
+    );
+    const paused = placements.retarget(PLACEMENT, {
+      mode: 'mounted',
+      localPath: null,
+      mountName: 'Drive',
+      enabled: false,
+      readOnly: false,
+    });
+    expect(paused.status.mountPoint).toBe(point);
+    const back = placements.retarget(PLACEMENT, {
+      mode: 'synced',
+      localPath: '/home/robin/Drive',
+      mountName: null,
+      enabled: true,
+      readOnly: false,
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: true,
+    });
+    expect(back.status.mountPoint).toBeNull();
+  });
+
   it('retargets between modes and replaces the sync settings', () => {
     const placements = repositories.drivePlacements;
     placements.insert({ ...synced, createdBy: robin });
     const mounted = placements.retarget(PLACEMENT, {
       mode: 'mounted',
-      localPath: '/mnt/drive',
+      localPath: null,
+      mountName: 'Drive',
       enabled: true,
       readOnly: true,
     });
@@ -353,6 +416,7 @@ describe('placements', () => {
     const back = placements.retarget(PLACEMENT, {
       mode: 'synced',
       localPath: '/home/robin/Drive',
+      mountName: null,
       enabled: false,
       readOnly: false,
       excluded: [],
@@ -412,6 +476,7 @@ describe('sync operations', () => {
       folderItemId: null,
       mode: 'synced',
       localPath: '/home/robin/Drive',
+      mountName: null,
       enabled: true,
       createdBy: robin,
       excluded: [],
@@ -426,6 +491,7 @@ describe('sync operations', () => {
       folderItemId: addItem(1, null),
       mode: 'synced',
       localPath: '/home/robin/Folder',
+      mountName: null,
       enabled: true,
       createdBy: robin,
       excluded: [],

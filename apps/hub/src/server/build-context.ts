@@ -38,6 +38,7 @@ import { MediaLinks } from './media-links';
 import { PublicUrlVerifier } from './public-url';
 import { WatchCaptureStore } from '../watch-captures/capture-store';
 import { DeveloperDevices } from '../watch-captures/developer-devices';
+import { ReleasePublications } from '../self-update/release-publications';
 
 export function statusOf(options: BuildOptions): {
   status: () => HubStatus;
@@ -325,8 +326,13 @@ function harnessSocketsOf(
   );
 }
 
-function connectionContext(options: BuildOptions): Pick<ServerContext, 'connections'> {
-  return options.connections === undefined ? {} : { connections: options.connections };
+function connectionContext(
+  options: BuildOptions,
+): Pick<ServerContext, 'connections' | 'publications'> {
+  const publications = new ReleasePublications();
+  return options.connections === undefined
+    ? { publications }
+    : { connections: options.connections, publications };
 }
 
 function foodLookupOf(options: BuildOptions, log: Logger): FoodLookup {

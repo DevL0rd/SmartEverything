@@ -1,5 +1,8 @@
-import { lstat, readdir, statfs } from 'node:fs/promises';
-import { join } from 'node:path';
+import type { BigIntStats } from 'node:fs';
+import { lstat, readdir, readlink, statfs } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { appendTo } from '@smarteverything/domain';
+import { LINK_TARGET } from '@smarteverything/domain/drive-mount';
 import {
   checkSyncPath,
   normalizeSyncPath,
@@ -7,10 +10,13 @@ import {
   packedToBytes,
   type IgnoreMatcher,
   type SyncPathRefusal,
+  type SyncXattr,
 } from '@smarteverything/domain/drive-sync';
 import type { Logger } from '@smarteverything/logging';
 import { FileChangedWhileHashingError, type BlockHasher } from './blocks.js';
 import type { FileInput, FileRecord } from './db/index.js';
+import { linkKeyOf, mergedXattrs, sameXattrs, type MetaPort } from './meta-port.js';
+import { folderInput, hubOf, linkInput, reusedInput } from './scan-inputs.js';
 
 export const ENGINE_TEMP_SUFFIX = '.sync-tmp';
 
@@ -24,6 +30,7 @@ export type ScanSkipReason =
   | 'recently_modified'
   | 'changed_during_hash'
   | 'symlink'
+  | 'link_unsupported'
   | 'special'
   | 'duplicate_name'
   | 'unreadable'
@@ -48,6 +55,7 @@ export interface ScanOptions {
   readonly ignore: IgnoreMatcher;
   readonly hasher: BlockHasher;
   readonly platform: NodeJS.Platform;
+  readonly meta: MetaPort;
   readonly portablePaths: boolean;
   readonly mtimeToleranceNs: bigint;
   readonly quietMs: number;
@@ -55,14 +63,20 @@ export interface ScanOptions {
   readonly log: Logger;
 }
 
-interface Found {
+export interface Found {
   readonly relPath: string;
   readonly diskPath: string;
-  readonly kind: 'file' | 'folder';
+  readonly kind: 'file' | 'folder' | 'link';
   readonly bytes: number;
   readonly mtimeNs: bigint;
   readonly mode: number;
+  readonly linkTarget: string | null;
+  readonly linkKey: string | null;
+  readonly xattrs: readonly SyncXattr[];
 }
+
+const DEFAULT_FILE_MODE = 0o644;
+const DEFAULT_FOLDER_MODE = 0o755;
 
 export function isEngineTempName(name: string): boolean {
   return (
@@ -84,8 +98,14 @@ export function diskPathFor(platform: NodeJS.Platform, full: string): string {
   return full.startsWith('\\\\') ? `\\\\?\\UNC\\${full.slice(2)}` : `\\\\?\\${full}`;
 }
 
-function modeOf(platform: NodeJS.Platform, mode: bigint): number {
-  return platform === 'win32' ? 0 : Number(mode & 0o777n);
+function modeOf(
+  platform: NodeJS.Platform,
+  mode: bigint,
+  kind: Found['kind'],
+  previous: FileRecord | undefined,
+): number {
+  if (platform !== 'win32') return Number(mode & 0o7777n);
+  return previous?.mode ?? (kind === 'folder' ? DEFAULT_FOLDER_MODE : DEFAULT_FILE_MODE);
 }
 
 function mtimeMatches(previous: bigint, current: bigint, tolerance: bigint): boolean {
@@ -93,37 +113,37 @@ function mtimeMatches(previous: bigint, current: bigint, tolerance: bigint): boo
   return gap <= tolerance;
 }
 
-function isUnchanged(
-  previous: FileRecord | undefined,
-  found: Found,
-  options: ScanOptions,
-): boolean {
-  if (previous?.kind !== found.kind || previous.mode !== found.mode) return false;
-  if (found.kind === 'folder') return true;
+function metaUnchanged(previous: FileRecord, found: Found): boolean {
   return (
+    previous.mode === found.mode &&
+    sameXattrs(previous.xattrs, found.xattrs) &&
+    previous.linkKey === found.linkKey &&
+    !(previous.metaDirty && previous.hubRev !== null)
+  );
+}
+
+function contentUnchanged(previous: FileRecord, found: Found, options: ScanOptions): boolean {
+  return (
+    previous.kind === 'file' &&
     previous.localHashState === 'hashed' &&
     previous.bytes === found.bytes &&
     mtimeMatches(previous.mtimeNs, found.mtimeNs, options.mtimeToleranceNs)
   );
 }
 
-function folderInput(
-  found: Found,
+function isUnchanged(
   previous: FileRecord | undefined,
-  placementId: string,
-): FileInput {
-  return {
-    placementId,
-    relPath: found.relPath,
-    kind: 'folder',
-    bytes: 0,
-    mtimeNs: found.mtimeNs,
-    mode: found.mode,
-    hubRev: previous?.hubRev ?? null,
-    localHashState: 'hashed',
-    blockSize: null,
-    blocks: null,
-  };
+  found: Found,
+  options: ScanOptions,
+): boolean {
+  if (previous?.kind !== found.kind) return false;
+  if (found.kind === 'link') {
+    return (
+      previous.linkTarget === found.linkTarget && !(previous.metaDirty && previous.hubRev !== null)
+    );
+  }
+  if (!metaUnchanged(previous, found)) return false;
+  return found.kind === 'folder' || contentUnchanged(previous, found, options);
 }
 
 function codeOf(cause: unknown): string | undefined {
@@ -138,10 +158,38 @@ class TreeWalk {
   readonly seen = new Set<string>();
   readonly unreadable: string[] = [];
 
-  constructor(private readonly options: ScanOptions) {}
+  readonly #previous: ReadonlyMap<string, FileRecord>;
+
+  constructor(private readonly options: ScanOptions) {
+    this.#previous = new Map(options.previous.map((record) => [record.relPath, record]));
+  }
 
   async run(): Promise<void> {
     await this.directory('', this.options.rootPath);
+    await this.#readXattrs();
+  }
+
+  async #readXattrs(): Promise<void> {
+    const { meta, platform } = this.options;
+    const byFolder = new Map<string, Found[]>();
+    for (const found of this.found) {
+      if (found.kind !== 'link') appendTo(byFolder, dirname(found.diskPath), found);
+    }
+    const read = new Map<string, readonly SyncXattr[] | null>();
+    for (const [, members] of byFolder) {
+      const targets = members.map((found) => diskPathFor(platform, found.diskPath));
+      for (const [path, xattrs] of await meta.xattrsOf(targets)) read.set(path, xattrs);
+    }
+    this.found.splice(
+      0,
+      this.found.length,
+      ...this.found.map((found) => {
+        if (found.kind === 'link') return found;
+        const local = read.get(diskPathFor(platform, found.diskPath)) ?? null;
+        const previous = this.#previous.get(found.relPath)?.xattrs ?? [];
+        return { ...found, xattrs: local === null ? previous : mergedXattrs(local, previous) };
+      }),
+    );
   }
 
   private skip(relPath: string, reason: ScanSkipReason): null {
@@ -152,22 +200,55 @@ class TreeWalk {
 
   private async stat(relPath: string, diskPath: string): Promise<Found | null> {
     const { platform } = this.options;
+    const previous = this.#previous.get(relPath);
     let info;
     try {
       info = await lstat(diskPathFor(platform, diskPath), { bigint: true });
     } catch (cause) {
       return this.skip(relPath, codeOf(cause) === 'ENOENT' ? 'vanished' : 'unreadable');
     }
-    if (info.isSymbolicLink()) return this.skip(relPath, 'symlink');
+    if (info.isSymbolicLink()) return this.symlink(relPath, diskPath, info);
     if (!info.isFile() && !info.isDirectory()) return this.skip(relPath, 'special');
+    const kind = info.isDirectory() ? 'folder' : 'file';
     this.seen.add(relPath);
     return {
       relPath,
       diskPath,
-      kind: info.isDirectory() ? 'folder' : 'file',
-      bytes: info.isDirectory() ? 0 : Number(info.size),
+      kind,
+      bytes: kind === 'folder' ? 0 : Number(info.size),
       mtimeNs: info.mtimeNs,
-      mode: modeOf(platform, info.mode),
+      mode: modeOf(platform, info.mode, kind, previous),
+      linkTarget: null,
+      linkKey: linkKeyOf(platform, info),
+      xattrs: [],
+    };
+  }
+
+  private async symlink(
+    relPath: string,
+    diskPath: string,
+    info: BigIntStats,
+  ): Promise<Found | null> {
+    const { platform } = this.options;
+    if (platform === 'win32') return this.skip(relPath, 'symlink');
+    let target: string;
+    try {
+      target = await readlink(diskPath);
+    } catch (cause) {
+      return this.skip(relPath, codeOf(cause) === 'ENOENT' ? 'vanished' : 'unreadable');
+    }
+    if (!LINK_TARGET.safeParse(target).success) return this.skip(relPath, 'unreadable');
+    this.seen.add(relPath);
+    return {
+      relPath,
+      diskPath,
+      kind: 'link',
+      bytes: 0,
+      mtimeNs: info.mtimeNs,
+      mode: Number(info.mode & 0o7777n),
+      linkTarget: target,
+      linkKey: null,
+      xattrs: [],
     };
   }
 
@@ -236,10 +317,13 @@ async function hashed(
       bytes: found.bytes,
       mtimeNs: found.mtimeNs,
       mode: found.mode,
-      hubRev: previous?.hubRev ?? null,
+      ...hubOf(found, previous),
       localHashState: 'hashed',
       blockSize,
       blocks: packedToBytes(packHashes(hashes)),
+      linkTarget: null,
+      linkKey: found.linkKey,
+      xattrs: found.xattrs,
     };
   } catch (cause) {
     if (cause instanceof FileChangedWhileHashingError) return 'changed_during_hash';
@@ -261,6 +345,10 @@ export async function scanRoot(options: ScanOptions): Promise<ScanResult> {
       unchanged += 1;
     } else if (found.kind === 'folder') {
       upserts.push(folderInput(found, previous, options.placementId));
+    } else if (found.kind === 'link') {
+      upserts.push(linkInput(found, previous, options.placementId));
+    } else if (previous !== undefined && contentUnchanged(previous, found, options)) {
+      upserts.push(reusedInput(found, previous, options.placementId));
     } else if (isWriting(found, options)) {
       skipped.push({ relPath: found.relPath, reason: 'recently_modified' });
     } else {

@@ -27,6 +27,15 @@ type AlarmSignalKind = Extract<
   'alarm_rang' | 'alarm_dismissed' | 'alarm_snoozed'
 >;
 
+function assertSnoozeLeft(limit: number | null, used: number): void {
+  if (limit !== null && used >= limit) {
+    throw new ApiError(
+      'conflict',
+      `This alarm allows ${String(limit)} ${limit === 1 ? 'snooze' : 'snoozes'} and they are used up.`,
+    );
+  }
+}
+
 export class RingDesk {
   private readonly snoozing = new Map<string, Cancel>();
 
@@ -77,6 +86,7 @@ export class RingDesk {
   snooze(profileId: string, ringId: string, minutes?: number): PlannerRingRow {
     const ring = this.open(profileId, ringId);
     const alarm = this.options.store.plannerAlarms.find(ring.ref_id, profileId);
+    assertSnoozeLeft(alarm?.snooze_limit ?? null, ring.snoozes);
     const length = minutes ?? alarm?.snooze_minutes;
     if (length === undefined) {
       throw new ApiError('invalid_request', 'The alarm is gone, so say how long to snooze.');

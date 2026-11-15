@@ -5,11 +5,15 @@ import {
   type PlannerPreferences,
   type TriggerCatalogue,
 } from '@smarteverything/domain';
-import { composeDayFromStore } from '../../planner/day';
+import { composeDayFromStore, frameOf } from '../../planner/day';
+import type { FeedService } from '../../planner/feeds';
 import { freeSlotsFromStore } from '../../planner/free-slots';
 import { parsePlannerText } from '../../planner/parse';
 import { acceptProposal, rejectProposal } from '../../planner/proposals';
 import { composeRange } from '../../planner/range';
+import { isoOf } from '../../planner/instants';
+import { visibleCollections, writableCollections } from '../../planner/sharing/visibility';
+import { sleepSpansOn } from '../../planner/sleep-nights';
 import { composeStats } from '../../planner/stats';
 import { suggestCompletions } from '../../planner/suggest-completion';
 import type { Caller } from '../auth';
@@ -20,6 +24,7 @@ export interface PlannerCoreDependencies {
   readonly now: () => Date;
   readonly preferencesOf: (profileId: string) => PlannerPreferences;
   readonly catalogueOf: (caller: Caller) => TriggerCatalogue;
+  readonly feeds: Pick<FeedService, 'registry'>;
 }
 
 export type PlannerCoreContext = PlannerContext;
@@ -40,16 +45,22 @@ function dayRoute(
 ): RouteOf<'readPlannerDay'> {
   return bound(E.readPlannerDay, ({ query, caller }) => {
     const profileId = plannerProfileOf(context, caller, query.personId);
-    return composeDayFromStore(context.store, {
+    const day = {
       profileId,
       date: query.date,
       timeZone: zoneOf(context),
       now: instantOf(deps.now),
       lastOpen: null,
       preferences: deps.preferencesOf(profileId),
-      sleep: [],
+      sleep: sleepSpansOn(context.store, profileId, query.date, zoneOf(context)),
       sessions: [],
+    };
+    const frame = frameOf(day);
+    deps.feeds.registry.prepare(visibleCollections(context.store, profileId), {
+      from: isoOf(frame.lookbackFrom),
+      to: isoOf(frame.dayEnd),
     });
+    return composeDayFromStore(context.store, day);
   });
 }
 
@@ -57,9 +68,14 @@ function rangeRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'readPlannerRange'> {
-  return bound(E.readPlannerRange, ({ query, caller }) =>
-    composeRange(context.store, {
-      profileId: plannerProfileOf(context, caller, query.personId),
+  return bound(E.readPlannerRange, ({ query, caller }) => {
+    const profileId = plannerProfileOf(context, caller, query.personId);
+    deps.feeds.registry.prepare(visibleCollections(context.store, profileId), {
+      from: query.from,
+      to: query.to,
+    });
+    return composeRange(context.store, {
+      profileId,
       window: {
         from: Temporal.Instant.from(query.from),
         to: Temporal.Instant.from(query.to),
@@ -67,8 +83,8 @@ function rangeRoute(
       },
       now: instantOf(deps.now),
       collectionIds: query.collections,
-    }),
-  );
+    });
+  });
 }
 
 function statsRoute(
@@ -115,7 +131,7 @@ function parseRoute(
 ): RouteOf<'parsePlannerText'> {
   return bound(E.parsePlannerText, ({ query, body, caller }) => {
     const profileId = plannerProfileOf(context, caller, query.personId);
-    const collections = context.store.plannerCollections.list(profileId);
+    const collections = writableCollections(context.store, profileId);
     const target = targetCollection(
       collections,
       body.collection_id,

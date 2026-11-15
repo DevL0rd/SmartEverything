@@ -77,6 +77,7 @@ const REVISION: UpdateRevision = {
   tip: TIP,
   pushedFrom: null,
   base: null,
+  changedPaths: null,
   status: 'running',
   steps: [],
   notes: 'Notes',
@@ -118,6 +119,18 @@ describe('Hub step', () => {
       status: 'failed',
       message: `The Hub did not answer its health check. Hub update ${RUN} ended as reverted.`,
       rollback: 'reverted',
+    });
+  });
+
+  it('reports a release waiting for the owner as failed without any rollback', async () => {
+    const deps = await ledgerHolds(
+      release('awaiting_decision', { reason: 'The Hub did not answer its health check.' }),
+    );
+    const outcome = await executeHub(deps, REVISION, step);
+    expect(outcome).toEqual({
+      status: 'failed',
+      message: `The Hub did not answer its health check. Hub update ${RUN} waits for the owner's decision with its backup kept; nothing was rolled back.`,
+      rollback: 'none',
     });
   });
 

@@ -194,7 +194,7 @@ vi.mock('../devices', async (importOriginal) => ({
   useLastSeen: (): null => null,
 }));
 
-vi.mock('./files/screenshot', () => ({
+vi.mock('./data/screenshot', () => ({
   useScreenshotToChat: (): { run: () => undefined; pending: boolean; reason: null } => ({
     run: (): undefined => undefined,
     pending: false,
@@ -220,6 +220,7 @@ const { computerLive } = await import('../../store/computer-live');
 const { computerRings } = await import('../../store/computer-rings');
 const { liveWatch } = await import('../../store/live-watch');
 const { ScreenPause, ScreenPausedContext } = await import('../../design/screen-pause');
+const { BodyWidthContext } = await import('../../components/page-shell/body-width');
 const { DemandRegion } = await import('../../store/demand-region');
 const { Adapters } = await import('./network/adapters');
 const { Wireless } = await import('./network/wireless');
@@ -233,6 +234,7 @@ const { ServicesSection } = await import('./system/services-section');
 const { TimersSection, UsbSection } = await import('./system/info-sections');
 const { ComputerOverviewScreen } = await import('./screens/computer-overview');
 
+const BODY_WIDTH = 820;
 const ROLES = Object.keys(COLOUR_VARIABLE);
 const PALETTE: Palette = new Proxy(COLOUR_VARIABLE, {
   get: (_target, role): string =>
@@ -457,7 +459,8 @@ function mountElement(build: (device: Device) => ReactNode, paused = false): Mou
   const pause = new ScreenPause(null);
   pause.setOwn(paused);
   const gated = createElement(ScreenPausedContext, { value: pause }, build(device));
-  const palette = createElement(PaletteContext, { value: PALETTE }, gated);
+  const sized = createElement(BodyWidthContext, { value: BODY_WIDTH }, gated);
+  const palette = createElement(PaletteContext, { value: PALETTE }, sized);
   const client = new QueryClient();
   act(() => {
     root.render(
@@ -587,7 +590,13 @@ const WINDOWS: Part = {
 const PROCESSES: Part = {
   name: 'processes',
   topics: ['processes'],
-  build: () => createElement(ProcessResults, { deviceId: DEVICE, offline: false }),
+  build: () =>
+    createElement(ProcessResults, {
+      deviceId: DEVICE,
+      offline: false,
+      query: '',
+      onQuery: (): undefined => undefined,
+    }),
 };
 
 const PARTS: readonly Part[] = [DRIVES, ADAPTERS, SETTINGS, AUDIO, DISPLAYS, WINDOWS, PROCESSES];

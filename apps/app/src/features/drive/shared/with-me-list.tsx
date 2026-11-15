@@ -1,39 +1,34 @@
 import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
-import { router } from 'expo-router';
-import type { DriveItem, ProfileRow } from '@smarteverything/domain';
+import type {
+  DriveSharedWithMeEntry as SharedWithMeEntry,
+  ProfileRow,
+} from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
 import { EmptyState } from '../../../components/empty-state';
-import { FileGlyph } from '../../../components/files/file-glyph';
 import { ListLoader } from '../../../components/list-loader';
-import { ListRow } from '../../../components/list-row';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { useMinute } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { flattenPages, useSharedWithMe } from '../data';
-import { openItemFile } from '../folder/folder-footer';
-import { entryKindOf } from '../folder/folder-list';
 import { ROLE_LABEL } from '../share/share-model';
 import { ProfileAvatar } from '../../profiles';
+import { FileRow, type FileBrowserHandle } from '../../files';
+import { DriveListFrame, useDriveNodeList } from '../source/drive-lists';
+import { driveNodeOf, type DriveNode, type DriveOrigin } from '../source/drive-node';
 import { GroupFrame } from './group-frame';
 import { PagesUnloaded } from './pages-unloaded';
 import {
-  sharedAgoOf,
   sharerGroupsOf,
   sharerLineOf,
   withMeKeyOf,
+  withMeLineOf,
   withMeRowsOf,
   type SharerGroup,
   type WithMeRow,
 } from './shared-model';
-
-function openShared(item: DriveItem): void {
-  if (item.kind === 'folder') router.push(href.driveFolder(item.id));
-  else openItemFile(item, false);
-}
 
 function SharerHead({ group }: { readonly group: SharerGroup<ProfileRow> }): ReactNode {
   return (
@@ -53,28 +48,51 @@ function SharerHead({ group }: { readonly group: SharerGroup<ProfileRow> }): Rea
   );
 }
 
-function renderRow(row: WithMeRow<ProfileRow>, now: number): ReactElement {
+class MissingSharedNodeError extends Error {
+  override readonly name = 'MissingSharedNodeError';
+  constructor(itemId: string) {
+    super(`The shared item ${itemId} has no file node.`);
+  }
+}
+
+interface WithMeNodes {
+  readonly browser: FileBrowserHandle<DriveOrigin>;
+  readonly nodeOf: ReadonlyMap<string, DriveNode>;
+}
+
+function GrantBadges({ item, grant }: SharedWithMeEntry): ReactNode {
+  return (
+    <View className="flex-row items-center gap-1">
+      {item.locked && grant.role === 'view' ? <Badge icon="eyeOff" label="View only" /> : null}
+      <Badge label={ROLE_LABEL[grant.role]} tone={grant.role === 'edit' ? 'primary' : 'neutral'} />
+    </View>
+  );
+}
+
+function renderRow(row: WithMeRow<ProfileRow>, now: number, list: WithMeNodes): ReactElement {
   if (row.kind === 'sharer') return <SharerHead group={row.group} />;
-  const { item, grant } = row.entry;
+  const node = list.nodeOf.get(row.entry.item.id);
+  if (node === undefined) throw new MissingSharedNodeError(row.entry.item.id);
   return (
     <GroupFrame edge={row.edge}>
-      <ListRow
-        title={item.name}
-        leading={<FileGlyph kind={entryKindOf(item)} name={item.name} />}
-        subtitle={sharedAgoOf(grant.createdAt, now)}
-        chevron={item.kind === 'folder'}
-        trailing={
-          <Badge
-            label={ROLE_LABEL[grant.role]}
-            tone={grant.role === 'edit' ? 'primary' : 'neutral'}
-          />
-        }
-        onPress={() => {
-          openShared(item);
+      <FileRow
+        node={node}
+        browser={list.browser}
+        wide={false}
+        look={{
+          caption: withMeLineOf(row.entry.grant, now),
+          trailing: <GrantBadges item={row.entry.item} grant={row.entry.grant} />,
         }}
       />
     </GroupFrame>
   );
+}
+
+function useWithMeNodes(entries: readonly SharedWithMeEntry[]): WithMeNodes {
+  const { browser, nodes } = useDriveNodeList('shared-with-me', (context) =>
+    entries.map((entry) => driveNodeOf(entry.item, context)),
+  );
+  return { browser, nodeOf: new Map(nodes.map((node) => [node.key, node])) };
 }
 
 export function NothingWithMe(): ReactElement {
@@ -91,23 +109,24 @@ export function WithMeList(): ReactNode {
   const pages = useSharedWithMe();
   const profiles = useProfiles();
   const now = useMinute();
+  const entries = flattenPages(pages.data, (page) => page.items);
+  const list = useWithMeNodes(entries);
   if (pages.data === undefined) return <PagesUnloaded pages={pages} label="shared_with_me" />;
-  const groups = sharerGroupsOf(
-    flattenPages(pages.data, (page) => page.items),
-    profiles,
-  );
+  const groups = sharerGroupsOf(entries, profiles);
   return (
-    <VirtualList
-      sections={[{ key: 'with-me', title: null, data: withMeRowsOf(groups) }]}
-      keyOf={withMeKeyOf}
-      typeOf={(row) => row.kind}
-      renderItem={(row) => renderRow(row, now)}
-      empty={<NothingWithMe />}
-      footer={<ListLoader loading={pages.isFetchingNextPage} />}
-      onEndReached={() => {
-        if (!pages.hasNextPage || pages.isFetchingNextPage) return;
-        background(pages.fetchNextPage(), 'drive.shared_with_me.page_failed');
-      }}
-    />
+    <DriveListFrame browser={list.browser}>
+      <VirtualList
+        sections={[{ key: 'with-me', title: null, data: withMeRowsOf(groups) }]}
+        keyOf={withMeKeyOf}
+        typeOf={(row) => row.kind}
+        renderItem={(row) => renderRow(row, now, list)}
+        empty={<NothingWithMe />}
+        footer={<ListLoader loading={pages.isFetchingNextPage} />}
+        onEndReached={() => {
+          if (!pages.hasNextPage || pages.isFetchingNextPage) return;
+          background(pages.fetchNextPage(), 'drive.shared_with_me.page_failed');
+        }}
+      />
+    </DriveListFrame>
   );
 }

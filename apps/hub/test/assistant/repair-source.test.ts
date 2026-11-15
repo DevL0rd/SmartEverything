@@ -54,7 +54,12 @@ it('seals committed source bytes even if the checkout changes and refuses links'
       'Repair source fixture',
     );
     writeFileSync(join(root, path), 'export const example = 2;\n');
-    const layout = layoutWith(data, { checkout: root, remote: 'origin', branch: 'main' });
+    const layout = layoutWith(data, {
+      repository: 'owner/repo',
+      checkout: root,
+      remote: 'origin',
+      branch: 'main',
+    });
     const input = { requestId: randomUUID(), revision } as const;
 
     await expect(sealRepairSource(layout, { ...input, paths: [path] })).resolves.toEqual({

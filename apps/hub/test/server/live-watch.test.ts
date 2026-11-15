@@ -4,10 +4,9 @@ import {
   type ComputerLiveNotice,
   type PhoneDetailNotice,
   type ProcessesUpdate,
-  type ProcessWindow,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { Viewers } from '../../src/metrics/viewers';
+import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import { LiveWatch, type WatchNotice } from '../../src/server/live-watch';
 import { testLogger } from '../support/logs';
 
@@ -61,10 +60,10 @@ const SYSTEM_PART = notice({ windows: WINDOWS });
 
 function rig(keyframe: ComputerLiveNotice | null = null): {
   readonly watch: LiveWatch<Fake>;
-  readonly viewers: Viewers<ProcessWindow>;
+  readonly viewers: Viewers<DeviceDetail>;
   readonly sent: [number, WatchNotice][];
 } {
-  const viewers = new Viewers<ProcessWindow>();
+  const viewers = new Viewers<DeviceDetail>();
   const sent: [number, WatchNotice][] = [];
   const watch = new LiveWatch<Fake>({
     send: (to, message): void => {
@@ -208,7 +207,7 @@ function detail(parts: PhoneDetailNotice['parts'], deviceId = HANDSET): PhoneDet
 describe('live watch of a phone', () => {
   function phoneRig(keyframe: (client: ClientRow) => PhoneDetailNotice | null = () => null): {
     readonly watch: LiveWatch<Fake>;
-    readonly viewers: Viewers<ProcessWindow>;
+    readonly viewers: Viewers<DeviceDetail>;
     readonly sent: [number, WatchNotice][];
   } {
     const made = rig();

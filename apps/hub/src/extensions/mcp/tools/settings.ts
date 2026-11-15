@@ -1,5 +1,6 @@
 import { CLIENT_PREFS, CLIENT_PREF_KEYS } from '@smarteverything/domain';
 import { z } from 'zod';
+import { readDriveSettings } from '../../../drive/settings';
 import { operate, ownerOf, profileFor, type ActingAs } from './acting';
 import { readPref, writePref } from './prefs';
 import {
@@ -69,6 +70,7 @@ async function settings(context: ToolContext, as: ActingAs): Promise<Record<stri
   return {
     home: await operate(context, 'readSettings', {}),
     push: await operate(context, 'readPushStatus', {}),
+    drive_settings: readDriveSettings(context.store),
     person: context.store.profiles.byId(profileId),
     preferences: await preferences(context, as),
     layouts: context.store.personal

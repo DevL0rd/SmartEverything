@@ -95,7 +95,7 @@ const SHADE_PARTS: ModelSpec['parts'] = [
 export const FLOOR_LAMP_MODEL: ModelSpec = lightModel({
   id: 'dev.light.floor-lamp',
   title: 'Floor lamp',
-  footprint: { width: 0.4, depth: 0.4, height: 1.5622 },
+  footprint: { width: 0.4044, depth: 0.4044, height: 1.5622 },
   size: { height: { param: 'height', extra: -0.0378, resizes: true } },
   framing: { tile: VIEW, card: VIEW, hero: { ...VIEW, padding: 0.08 } },
   shots: [glowShot({ focus: 'shade', zoom: 1.6, yaw: 30, pitch: 10 })],

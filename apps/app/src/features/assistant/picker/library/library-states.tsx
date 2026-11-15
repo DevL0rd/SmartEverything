@@ -6,7 +6,7 @@ import { Icon } from '../../../../components/icon';
 import { Skeleton } from '../../../../components/skeleton';
 import { Text } from '../../../../components/text';
 import type { LibraryView } from './library-rows';
-import { CatalogueFit } from './catalogue-fit';
+import { CatalogueFit } from './catalogue-fit-context';
 import { cn } from '../../../../design/cn';
 
 const SKELETON_ROWS = 6;

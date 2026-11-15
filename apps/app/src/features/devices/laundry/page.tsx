@@ -4,13 +4,12 @@ import { View } from 'react-native';
 import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
 import { Icon } from '../../../components/icon';
-import { Screen } from '../../../components/screen';
-import { TabsBar } from '../../../components/tabs-bar';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellTabs } from '../../../components/page-shell/shell-sections';
 import { Text } from '../../../components/text';
 import { atLeast, useSizeClass, type WidthClass } from '../../../design/size-class';
 import type { Device } from '../../../store/state';
-import { DeviceBanner } from '../detail/device-overview';
-import { DeviceHeader } from '../detail/device-header';
+import { DeviceBanners, useDeviceShell } from '../detail/device-shell';
 import { AdviceSheet } from './advice-sheet';
 import { CareCard } from './care';
 import { HistoryCard } from './history';
@@ -93,7 +92,7 @@ function Setup({ laundry, draft }: Pick<Parts, 'laundry' | 'draft'>): ReactNode 
   );
 }
 
-function Banners({
+function FaultBanner({
   laundry,
   onAdvice,
   opener,
@@ -103,19 +102,14 @@ function Banners({
   readonly onAdvice: () => void;
 }): ReactNode {
   const { fault } = laundry.state;
-  return (
-    <View className="gap-2">
-      <DeviceBanner device={laundry.device} />
-      {fault === null ? null : (
-        <Banner
-          tone="critical"
-          title={`${fault.title} (E${String(fault.code)})`}
-          body={fault.advice}
-          wrapBody
-          action={{ label: 'What to do', onPress: onAdvice, ref: opener }}
-        />
-      )}
-    </View>
+  return fault === null ? null : (
+    <Banner
+      tone="critical"
+      title={`${fault.title} (E${String(fault.code)})`}
+      body={fault.advice}
+      wrapBody
+      action={{ label: 'What to do', onPress: onAdvice, ref: opener }}
+    />
   );
 }
 
@@ -233,8 +227,21 @@ function TabBody({ tab, parts }: { readonly tab: Tab; readonly parts: Parts }): 
   }
 }
 
-function Expanded({ parts }: { readonly parts: Parts }): ReactNode {
-  const [tab, setTab] = useState<Tab>('program');
+function tabsOf(tab: Tab, onTab: (tab: Tab) => void): ShellTabs {
+  return {
+    label: 'Washer pages',
+    active: tab,
+    items: TABS.map((entry) => ({
+      key: entry.key,
+      label: entry.label,
+      onPress: (): void => {
+        onTab(entry.key);
+      },
+    })),
+  };
+}
+
+function Expanded({ parts, tab }: { readonly parts: Parts; readonly tab: Tab }): ReactNode {
   const { laundry, draft, cycles, runner } = parts;
   return (
     <View className="flex-row items-start gap-section-gap">
@@ -249,26 +256,23 @@ function Expanded({ parts }: { readonly parts: Parts }): ReactNode {
         <CareCard laundry={laundry} />
       </View>
       <View className="min-w-0 flex-1 gap-section-gap">
-        <TabsBar
-          label="Washer pages"
-          active={tab}
-          items={TABS.map((entry) => ({
-            key: entry.key,
-            label: entry.label,
-            onPress: (): void => {
-              setTab(entry.key);
-            },
-          }))}
-        />
         <TabBody tab={tab} parts={parts} />
       </View>
     </View>
   );
 }
 
-function Body({ width, parts }: { readonly width: WidthClass; readonly parts: Parts }): ReactNode {
+function Body({
+  width,
+  parts,
+  tab,
+}: {
+  readonly width: WidthClass;
+  readonly parts: Parts;
+  readonly tab: Tab;
+}): ReactNode {
   if (atLeast(width, 'expanded')) {
-    return <Expanded parts={parts} />;
+    return <Expanded parts={parts} tab={tab} />;
   }
   return atLeast(width, 'medium') ? <Medium parts={parts} /> : <Compact parts={parts} />;
 }
@@ -282,25 +286,30 @@ export function LaundryPage({ device }: { readonly device: Device }): ReactNode 
   const runner = useRunner(laundry, () => {
     setAdvice('action');
   });
+  const [tab, setTab] = useState<Tab>('program');
+  const shell = useDeviceShell(device, 'overview');
   const { width } = useSizeClass();
   const parts: Parts = { laundry, draft, cycles, runner };
   const sticky = !atLeast(width, 'medium') && laundry.state.resting;
   return (
-    <Screen
-      header={<DeviceHeader device={device} sectionTitle={null} />}
-      maxWidth="detail"
+    <PageShell
+      {...shell.props}
+      width="detail"
+      {...(atLeast(width, 'expanded') ? { tabs: tabsOf(tab, setTab) } : {})}
       banner={
-        <Banners
-          laundry={laundry}
-          opener={bannerOpener}
-          onAdvice={() => {
-            setAdvice('banner');
-          }}
-        />
+        <DeviceBanners device={device} schedule={shell.schedule}>
+          <FaultBanner
+            laundry={laundry}
+            opener={bannerOpener}
+            onAdvice={() => {
+              setAdvice('banner');
+            }}
+          />
+        </DeviceBanners>
       }
       {...(sticky ? { footer: <StartButton laundry={laundry} draft={draft} /> } : {})}
     >
-      <Body width={width} parts={parts} />
+      <Body width={width} parts={parts} tab={tab} />
       {advice === null ? null : (
         <AdviceSheet
           laundry={laundry}
@@ -311,6 +320,6 @@ export function LaundryPage({ device }: { readonly device: Device }): ReactNode 
           }}
         />
       )}
-    </Screen>
+    </PageShell>
   );
 }

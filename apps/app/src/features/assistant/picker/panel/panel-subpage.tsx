@@ -1,12 +1,11 @@
-import { createContext, use, useLayoutEffect } from 'react';
-import { EscapeScopeVisible } from '../../../../components/use-escape';
+import { use, useLayoutEffect } from 'react';
+import { EscapeScopeVisible } from '../../../../components/escape-scope';
+import { PanelSubpageContext } from './panel-subpage-context';
 
-interface PanelSubpage {
+export interface PanelSubpage {
   readonly registerBack: (back: () => void) => () => void;
   readonly setTitle: (title: string | null) => void;
 }
-
-export const PanelSubpageContext = createContext<PanelSubpage | null>(null);
 
 export function usePanelSubpage(title: string | null, back: (() => void) | null): void {
   const panel = use(PanelSubpageContext);

@@ -79,7 +79,7 @@ function purgeFolder(itemId: string): void {
 }
 
 function share(itemId: string, profileId: string, role: 'view' | 'edit'): void {
-  world.store.driveGrants.set({ itemId, profileId, role }, world.robin.profileId);
+  world.store.driveGrants.set({ itemId, profileId, role, expiresAt: null }, world.robin.profileId);
 }
 
 beforeEach(async () => {
@@ -124,7 +124,7 @@ describe('trash', () => {
   it('keeps the other placements of the drive untouched', () => {
     const music = place(world, world.owner, world.ownerDesk, {
       folderItemId: MUSIC,
-      localPath: '/home/owner/Music',
+      mountName: 'Music',
     });
     place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
     trashFolder(ROMS, HOME_DRIVE, 'Roms');
@@ -154,7 +154,7 @@ describe('access', () => {
     const placed = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
       folderItemId: ROBIN_TRIP,
-      localPath: '/home/ida/Trip',
+      mountName: 'Trip',
     });
     const grant = world.store.driveGrants.forPerson(ROBIN_TRIP, world.ida.profileId);
     world.store.driveGrants.remove(grant?.id ?? '');
@@ -171,7 +171,7 @@ describe('access', () => {
     const placed = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
       folderItemId: ROBIN_TRIP_DEEP,
-      localPath: '/home/ida/Photos',
+      mountName: 'Photos',
     });
     expect(placed.status.readOnly).toBe(true);
     world.store.context.write(() => {
@@ -194,7 +194,7 @@ describe('read only', () => {
     const placed = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
       folderItemId: ROBIN_TRIP,
-      localPath: '/home/ida/Trip',
+      mountName: 'Trip',
     });
     expect(current(placed.id).status.readOnly).toBe(false);
     share(ROBIN_TRIP, world.ida.profileId, 'view');
@@ -208,7 +208,7 @@ describe('read only', () => {
     place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
       folderItemId: ROBIN_TRIP,
-      localPath: '/home/ida/Trip',
+      mountName: 'Trip',
     });
     const heard: (readonly string[])[] = [];
     world.placements.onDeviceChanged((deviceIds) => heard.push(deviceIds));

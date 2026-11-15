@@ -16,7 +16,7 @@ const PLINTH = 0.05;
 export const ABSTRACT_SCULPTURE_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.abstract-sculpture',
   title: 'Abstract sculpture',
-  footprint: { width: 0.22, depth: 0.18, height: 0.4 },
+  footprint: { width: 0.2266, depth: 0.16, height: 0.3472 },
   meta: {
     names: {
       display: 'Abstract sculpture',

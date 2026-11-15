@@ -5,6 +5,7 @@ import Svg, { Line, Path } from 'react-native-svg';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
 import { loopStyle, sway } from '../../../design/loops';
+import { ORALB_MODE_COLOUR } from '../../toothbrush/model/oralb-mode-colour';
 import { sizeStyle } from './style';
 import {
   angleTag,
@@ -35,7 +36,9 @@ export function Wave({
   readonly moving: boolean;
   readonly tooHard: boolean;
 }): ReactNode {
-  const stroke = useColour(tooHard ? 'critical' : 'primary');
+  const stroke = useColour(
+    tooHard ? 'critical' : mode === null ? 'on-surface-variant' : ORALB_MODE_COLOUR[mode],
+  );
   const axis = useColour('outline-variant');
   const travel = scrollPx(mode);
   const motion = loopStyle({ name: sway(travel), ms: travel * MS_PER_PX }, moving);

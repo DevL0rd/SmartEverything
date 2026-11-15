@@ -9,14 +9,55 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 )
 
+func (m *fuseMount) node(ino uint64) *fs.Inode {
+	if found, ok := m.nodes.Load(ino); ok {
+		return found.(*fs.Inode)
+	}
+	return nil
+}
+
+func (m *fuseMount) apply(change Change) error {
+	if change.Reset {
+		return m.dropAll()
+	}
+	var failures []error
+	for _, ino := range change.Inodes {
+		failures = append(failures, m.dropInode(ino))
+	}
+	for _, ino := range change.Removed {
+		failures = append(failures, m.dropInode(ino))
+	}
+	for _, ref := range change.Entries {
+		if parent := m.node(ref.Parent); parent != nil {
+			failures = append(failures, notifyEntry(parent, ref.Name))
+		}
+	}
+	return errors.Join(failures...)
+}
+
+func (m *fuseMount) dropInode(ino uint64) error {
+	if inode := m.node(ino); inode != nil {
+		return notifyChanged(inode)
+	}
+	return nil
+}
+
+func (m *fuseMount) dropAll() error {
+	var failures []error
+	m.nodes.Range(func(_, value any) bool {
+		failures = append(failures, notifyNode(value.(*fs.Inode)))
+		return true
+	})
+	return errors.Join(failures...)
+}
+
 func (s *mountSet) invalidate(id string, paths []string) error {
 	active, err := s.take(id)
 	if err != nil {
 		return err
 	}
-	s.source.Invalidate(active.root, paths)
 	if len(paths) == 0 {
-		return notifySubtree(&active.top.Inode)
+		return active.mount.dropAll()
 	}
 	var failures []error
 	for _, path := range paths {
@@ -48,15 +89,37 @@ func notifyPath(top *fs.Inode, path string) error {
 }
 
 func notifySubtree(inode *fs.Inode) error {
+	var failures []error
 	for name, child := range inode.Children() {
-		if err := notifySubtree(child); err != nil {
-			return err
-		}
-		if err := notifyEntry(inode, name); err != nil {
-			return err
-		}
+		failures = append(failures, notifySubtree(child), notifyEntry(inode, name))
 	}
+	failures = append(failures, notifyChanged(inode))
+	return errors.Join(failures...)
+}
+
+func notifyNode(inode *fs.Inode) error {
+	var failures []error
+	for name := range inode.Children() {
+		failures = append(failures, notifyEntry(inode, name))
+	}
+	failures = append(failures, notifyChanged(inode))
+	return errors.Join(failures...)
+}
+
+func notifyContent(inode *fs.Inode) error {
 	return notifyErrno("content", inode.NotifyContent(0, 0))
+}
+
+func notifyChanged(inode *fs.Inode) error {
+	failures := []error{notifyContent(inode)}
+	if inode.IsRoot() {
+		return errors.Join(failures...)
+	}
+	if name, parent := inode.Parent(); parent != nil {
+		failures = append(failures, notifyEntry(parent, name))
+	}
+	failures = append(failures, notifyErrno("prune", inode.NotifyPrune([]*fs.Inode{inode})))
+	return errors.Join(failures...)
 }
 
 func notifyEntry(parent *fs.Inode, name string) error {

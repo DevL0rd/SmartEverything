@@ -74,6 +74,11 @@ it('resolves when the ledger shows the release reached a final phase, not before
   expect(failures).toEqual([]);
 });
 
+it('resolves for a release that waits for the owner decision', async () => {
+  await writeLedger(release('awaiting_decision'));
+  expect((await watch.finished(RUN)).phase).toBe('awaiting_decision');
+});
+
 it('resolves at once for a release that already finished', async () => {
   await writeLedger(release('done'));
   expect((await watch.finished(RUN)).phase).toBe('done');

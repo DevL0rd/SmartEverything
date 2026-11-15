@@ -34,7 +34,6 @@ describe('the pin leaves', () => {
       { kind: 'camera', deviceId: ID },
       { kind: 'room', roomId: ID },
       { kind: 'group', groupId: ID },
-      { kind: 'scene', sceneId: ID },
       { kind: 'automation', automationId: ID, focus: null },
     ];
     const leaves = targets.map((target) => pinLeafOf(target));
@@ -44,14 +43,12 @@ describe('the pin leaves', () => {
       '(home)',
       '(home)',
       '(automations)',
-      '(automations)',
     ]);
     expect(leaves.map((leaf) => leaf?.href)).toEqual([
       `/(app)/(home)/device/${ID}`,
       `/(app)/(cameras)/cameras/${ID}`,
       `/(app)/(home)/rooms/${ID}`,
       `/(app)/(home)/groups/${ID}`,
-      `/(app)/(automations)/automations/scenes/${ID}`,
       `/(app)/(automations)/automations/${ID}`,
     ]);
   });

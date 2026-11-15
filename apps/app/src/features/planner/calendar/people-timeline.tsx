@@ -10,25 +10,21 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { useAreaWidth } from '../../../design/size-class';
+import { percentOf } from '../../../format/percent';
 import { clockOfMinutes, shiftDay, zonedStartOfDay } from '../../../format/time';
 import { useRows, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { ProfileAvatar } from '../../profiles';
-import { rangeQuery, usePlannerCollections, usePlannerRange, type PlannerPerson } from '../data';
+import { rangeQuery, usePlannerRange, type PlannerPerson } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
 import type { Prefs } from '../settings/preferences';
-import { eventFill } from './event-block';
+import { useCalendarLooks } from './calendar-looks';
+import { eventFill } from './event-look';
 import type { MinuteSpan } from './grid-gestures';
-import {
-  FreeTimeWell,
-  busyOf,
-  dayWindowOf,
-  freeGapsOf,
-  openWindowOf,
-  useNowMinute,
-} from './calendar-stats';
+import { busyOf, dayWindowOf, freeGapsOf, openWindowOf } from './booked-model';
+import { FreeTimeWell, useNowMinute } from './calendar-stats';
 import { timedSpansOn, type GridSpan } from './time-grid-layout';
 
 export type TimelineMode = 'people' | 'calendars';
@@ -43,7 +39,7 @@ interface TimelineRow {
 const HOUR_WIDTH_TOUCH = 64;
 
 function share(minutes: number, window: MinuteSpan): `${number}%` {
-  return `${(minutes / (window.to - window.from)) * 100}%`;
+  return percentOf(minutes / (window.to - window.from));
 }
 
 export function barOf(
@@ -106,11 +102,10 @@ function useCalendarRows(
   const { person } = usePlannerFrame();
   const { from, to } = useDayWindow(day);
   const query = usePlannerRange(person, from, to, calendars);
-  const shown = usePlannerCollections(person).filter(
-    (collection) => collection.kind === 'calendar' && collection.visible,
-  );
+  const looks = useCalendarLooks(person);
+  const shown = looks.collections.filter((collection) => collection.visible);
   if (query.data === undefined) return null;
-  const spans = timedSpansOn(busyOf(query.data.occurrences), day, timeZone);
+  const spans = timedSpansOn(busyOf(looks.shown(query.data.occurrences)), day, timeZone);
   return shown.map((collection) => ({
     key: collection.id,
     name: collection.name,
@@ -169,7 +164,7 @@ function Bars({
   const colourOf = useColours();
   return row.spans.map((span) => {
     const place = barOf(span, window);
-    const fill = eventFill(colourOf(span.occurrence.collection_id), false);
+    const fill = eventFill(colourOf(span.occurrence.collection_id), false, 'plain');
     return place === null ? null : (
       <Bar key={span.key} place={place} title={span.occurrence.title} fill={fill} />
     );

@@ -44,7 +44,7 @@ export const IR_PUCK_MODEL: ModelSpec = {
   title: 'IR blaster',
   category: 'infrared',
   family: 'ir_blaster',
-  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: HEIGHT },
+  footprint: { width: RADIUS * 2, depth: RADIUS * 2, height: 0.0422 },
   framing: house('dome', 30, 24),
   shots: [
     shot('sending', SENDING, 'dome', { zoom: 1.4, yaw: 18, pitch: 20, loopS: 1, stillAt: 0.5 }),

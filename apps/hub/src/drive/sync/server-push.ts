@@ -3,8 +3,6 @@ import { open } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import type { DriveItem } from '@smarteverything/domain';
 import {
-  checkSyncPath,
-  collidesWith,
   decideMove,
   decideTombstone,
   packedToBytes,
@@ -25,6 +23,8 @@ import {
   type SyncScope,
 } from './placement-scope';
 import { commitTrash } from '../trash-purge';
+import { hardLink, pushLink, pushMeta, type Reply } from './server-links';
+import { pathReason } from './server-paths';
 import { fillFromHub, hubEntryOf, SyncBlockRoutes } from './server-blocks';
 import { discardTxn, ensureFolders, planOf, SyncCommitter } from './server-commit';
 import { blocksHashOf } from './server-index';
@@ -39,9 +39,7 @@ import {
   SyncTxn,
   SyncTxns,
   syncActor,
-  type AcceptMessage,
   type ConflictMessage,
-  type ConflictReason,
   type NeedBlocksMessage,
   type SyncEnv,
   type TxnSpec,
@@ -49,65 +47,9 @@ import {
 import type { SyncOperation, SyncOperations, SyncSession } from './server-socket';
 
 type FileItem = Exclude<DriveItem, { readonly kind: 'folder' }>;
-type Reply = AcceptMessage | ConflictMessage | NeedBlocksMessage;
 type Push = Extract<SyncOperation, { readonly type: 'push' }>;
 type Move = Extract<SyncOperation, { readonly type: 'move' }>;
 type Tombstone = Extract<SyncOperation, { readonly type: 'tombstone' }>;
-
-const PORTABLE_OS = /windows|mac|darwin/iu;
-
-function portableRoot(env: SyncEnv, rootId: string): boolean {
-  return env.store.drivePlacements
-    .forRoot(rootId)
-    .filter((placement) => placement.mode === 'synced' && placement.enabled)
-    .some((placement) => {
-      const os = env.store.devices.find(placement.deviceId)?.details['os'];
-      return typeof os === 'string' && PORTABLE_OS.test(os);
-    });
-}
-
-function* namesIn(env: SyncEnv, rootId: string, parent: DriveItem | null): Generator<string> {
-  let after: string | null = null;
-  do {
-    const window = env.store.driveItems.children({
-      rootId,
-      parentId: parent?.id ?? null,
-      after,
-      limit: DRIVE_PAGE_SIZE,
-      viewer: null,
-    });
-    for (const { item } of window.entries) yield item.name;
-    after = window.next;
-  } while (after !== null);
-}
-
-function ancestryReason(
-  env: SyncEnv,
-  rootId: string,
-  relPath: string,
-  portable: boolean,
-): ConflictReason | null {
-  const segments = relPath.split('/');
-  let parent: DriveItem | null = null;
-  let prefix = '';
-  for (const [at, segment] of segments.entries()) {
-    if (portable && collidesWith(segment, namesIn(env, rootId, parent)) !== null) return 'path';
-    prefix = prefix === '' ? segment : `${prefix}/${segment}`;
-    const next = env.store.driveItems.byPath(rootId, prefix, null);
-    if (next === undefined) return null;
-    if (at < segments.length - 1 && next.kind !== 'folder') return 'exists';
-    parent = next;
-  }
-  return null;
-}
-
-function pathReason(env: SyncEnv, scope: SyncScope, wirePath: string): ConflictReason | null {
-  const rootId = scope.drive.id;
-  const portable = portableRoot(env, rootId);
-  const drivePath = toDrivePath(scope, wirePath);
-  if (!inScope(scope, drivePath) || !checkSyncPath(wirePath, { portable }).ok) return 'path';
-  return ancestryReason(env, rootId, drivePath, portable);
-}
 
 function verifiedBlocks(message: Push): readonly string[] {
   const hashes = unpackHashes(message.blocks);
@@ -137,6 +79,7 @@ function* filesUnder(env: SyncEnv, item: DriveItem): Generator<FileItem> {
     yield file;
     return;
   }
+  if (item.kind !== 'folder') return;
   let after: string | null = null;
   do {
     const window = env.store.driveItems.children({
@@ -191,6 +134,14 @@ export class DriveSyncOperations implements SyncOperations {
     switch (message.type) {
       case 'push':
         return this.answer(session, message.opId, (scope) => this.push(session, scope, message));
+      case 'push_meta':
+        return this.answer(session, message.opId, (scope) =>
+          pushMeta({ env: this.env, origin: session, scope }, message),
+        );
+      case 'push_link':
+        return this.answer(session, message.opId, (scope) =>
+          pushLink({ env: this.env, origin: session, scope }, message),
+        );
       case 'move':
         return this.answer(session, message.opId, (scope) => this.move(session, scope, message));
       case 'tombstone':
@@ -231,15 +182,31 @@ export class DriveSyncOperations implements SyncOperations {
     });
   }
 
+  private pushRefusal(
+    scope: SyncScope,
+    message: Push,
+    existing: DriveItem | undefined,
+  ): ConflictMessage | null {
+    const reason = pathReason(this.env, scope, message.relPath);
+    if (reason !== null) return conflictOf(message.opId, reason, existing?.rev ?? 0, null);
+    if (message.linkOf === null && existing !== undefined && fileOf(existing) === null) {
+      return conflictOf(message.opId, 'exists', existing.rev, null);
+    }
+    return null;
+  }
+
   private async push(session: SyncSession, scope: SyncScope, message: Push): Promise<Reply> {
     const { env } = this;
     const root = scope.drive;
     const hashes = verifiedBlocks(message);
     const relPath = toDrivePath(scope, message.relPath);
     const existing = env.store.driveItems.byPath(root.id, relPath, null);
-    const reason = pathReason(env, scope, message.relPath);
-    if (reason !== null) return conflictOf(message.opId, reason, existing?.rev ?? 0, null);
-    if (existing?.kind === 'folder') return conflictOf(message.opId, 'exists', existing.rev, null);
+    const refused = this.pushRefusal(scope, message, existing);
+    if (refused !== null) return refused;
+    if (message.linkOf !== null) {
+      const call = { env, origin: session, scope };
+      return hardLink(call, { message, linkOf: message.linkOf, existing });
+    }
     const file = existing === undefined ? null : fileOf(existing);
     const plan = planOf(file, await hubEntryOf(env, root, existing), message);
     if (plan.kind === 'noop') return acceptOf(env, root.id, message.opId, plan.rev);
@@ -271,6 +238,8 @@ export class DriveSyncOperations implements SyncOperations {
       relPath: push.relPath,
       baseRev: message.baseRev,
       meta: message.meta,
+      mode: message.mode,
+      xattrs: message.xattrs,
       hashes: push.hashes,
       tmpRel: tmpRelPath(),
     };

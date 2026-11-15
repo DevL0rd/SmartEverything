@@ -103,12 +103,19 @@ describe('takenMonths', () => {
   function asItems(
     drafts: readonly ReturnType<typeof fileDraft>[],
   ): Parameters<typeof takenMonths>[0] {
-    return drafts.map((draft, index) => ({
-      ...draft,
-      rev: 1,
-      etag: `e${String(index)}`,
-      openedAt: null,
-    }));
+    return drafts.map((draft, index) => {
+      const derived = {
+        rev: 1,
+        etag: `e${String(index)}`,
+        openedAt: null,
+        locked: false,
+        lockedHere: false,
+        openComments: 0,
+      };
+      return draft.kind === 'folder'
+        ? { ...draft, ...derived, colour: null, iconHint: false }
+        : { ...draft, ...derived };
+    });
   }
 
   it('lists each month once, oldest first, in UTC', () => {

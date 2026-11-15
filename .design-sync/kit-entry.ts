@@ -9,7 +9,7 @@ export { Frame } from '../apps/app/src/components/brand-frame';
 export { BrandGlyph } from '../apps/app/src/components/brand-glyphs';
 export { BrandMark } from '../apps/app/src/components/brand-mark';
 export { Breadcrumbs } from '../apps/app/src/components/breadcrumbs';
-export { Button } from '../apps/app/src/components/button';
+export { Button, ButtonSample } from '../apps/app/src/components/button';
 export { CardGrid } from '../apps/app/src/components/card-grid';
 export { Card } from '../apps/app/src/components/card';
 export { Arc, DrawnStroke } from '../apps/app/src/components/charts/arc';
@@ -61,9 +61,9 @@ export {
 export { GutterLabels, Plot } from '../apps/app/src/components/charts/night-trace-parts';
 export { NightTrace } from '../apps/app/src/components/charts/night-trace';
 export { ProgressBar } from '../apps/app/src/components/charts/progress-bar';
-export { SegmentBar } from '../apps/app/src/components/charts/segment-bar';
 export { RangeBars } from '../apps/app/src/components/charts/range-bars';
 export { Rings } from '../apps/app/src/components/charts/rings';
+export { BarMarker, SegmentBar } from '../apps/app/src/components/charts/segment-bar';
 export { SleepWindowBars } from '../apps/app/src/components/charts/sleep-window-bars';
 export {
   Bands,
@@ -93,6 +93,7 @@ export { DecisionFrame, DecisionStatus } from '../apps/app/src/components/decisi
 export { DecisionOptions } from '../apps/app/src/components/decision-options';
 export { DecisionQuestions } from '../apps/app/src/components/decision-questions';
 export { DialogFrame } from '../apps/app/src/components/dialog-frame';
+export { DiffCode } from '../apps/app/src/components/diff-code';
 export {
   CollapseBody,
   CollapseRoot,
@@ -108,7 +109,11 @@ export { EmptyState } from '../apps/app/src/components/empty-state';
 export { EndFade } from '../apps/app/src/components/end-fade';
 export { ErrorState } from '../apps/app/src/components/error-state';
 export { Figure, FigureText } from '../apps/app/src/components/figure';
+export { EntryRow } from '../apps/app/src/components/files/entry-row';
+export { FileGlyph } from '../apps/app/src/components/files/file-glyph';
+export { SelectionBar } from '../apps/app/src/components/files/selection-bar';
 export { FilterChip } from '../apps/app/src/components/filter-chip';
+export { FlatChoice } from '../apps/app/src/components/flat-choice';
 export { FloatingSheetViewport } from '../apps/app/src/components/floating-sheet-viewport';
 export { FlowFrame } from '../apps/app/src/components/flow-frame';
 export { Glow } from '../apps/app/src/components/glow';
@@ -118,26 +123,7 @@ export { HighlightRegistry } from '../apps/app/src/components/highlight-anchors'
 export { HighlightHost } from '../apps/app/src/components/highlight-host';
 export { Highlighted } from '../apps/app/src/components/highlighted';
 export { HoldButton } from '../apps/app/src/components/hold-button';
-export {
-  BaseLayer,
-  RoomsLayer,
-  TrailLayer,
-  WallsLayer,
-} from '../apps/app/src/components/house-map/2d/layers';
-export {
-  LightDuskVeil,
-  LightPoolsLayer,
-} from '../apps/app/src/components/house-map/2d/light-pools';
-export { Map2d, Map2dCanvas } from '../apps/app/src/components/house-map/2d/map-2d';
-export { OpeningsLive } from '../apps/app/src/components/house-map/2d/openings-live';
-export { OverlayLayers } from '../apps/app/src/components/house-map/2d/overlay-layers';
-export { LabelsLayer, RobotLayer } from '../apps/app/src/components/house-map/2d/overlay';
-export {
-  DevicesLayer,
-  ObjectsLayer,
-  OpeningsLayer,
-} from '../apps/app/src/components/house-map/2d/plan-layers';
-export { WallMarksLayer } from '../apps/app/src/components/house-map/2d/wall-marks';
+export { HostedSheetPages } from '../apps/app/src/components/hosted-sheet-pages';
 export {
   EditOverlayLayer,
   OverlayPainter,
@@ -148,6 +134,7 @@ export {
 } from '../apps/app/src/components/house-map/3d/edit/pointer-scene';
 export { EditPointer } from '../apps/app/src/components/house-map/3d/edit/pointer';
 export { HandleDragUnavailableError } from '../apps/app/src/components/house-map/3d/edit/sessions-factory';
+export { RoomGrabMissingError } from '../apps/app/src/components/house-map/3d/edit/sessions-room';
 export {
   ShapeSession,
   ShapeTargetMissingError,
@@ -162,9 +149,10 @@ export {
   HandleSlot,
   Map3dBridge,
 } from '../apps/app/src/components/house-map/3d/map-3d-bridge';
-export { Marks } from '../apps/app/src/components/house-map/3d/map-3d-marks';
+export { DeviceMarks, Marks } from '../apps/app/src/components/house-map/3d/map-3d-marks';
 export { ScanSender } from '../apps/app/src/components/house-map/3d/map-3d-protocol';
 export { Map3dSession } from '../apps/app/src/components/house-map/3d/map-3d-session';
+export { CameraRig } from '../apps/app/src/components/house-map/3d/render-core-camera';
 export { WallCutaway } from '../apps/app/src/components/house-map/3d/render-core-cutaway';
 export {
   EditStage,
@@ -174,6 +162,11 @@ export { FrameLoop } from '../apps/app/src/components/house-map/3d/render-core-f
 export { GestureTracker } from '../apps/app/src/components/house-map/3d/render-core-gestures';
 export { LayerSlot } from '../apps/app/src/components/house-map/3d/render-core-layers';
 export { LiveLayer } from '../apps/app/src/components/house-map/3d/render-core-live';
+export {
+  FingerTracker,
+  LoupeLens,
+} from '../apps/app/src/components/house-map/3d/render-core-loupe';
+export { ObjectsLayer } from '../apps/app/src/components/house-map/3d/render-core-objects';
 export { RealisticView } from '../apps/app/src/components/house-map/3d/render-core-realistic';
 export { WebglUnavailableError } from '../apps/app/src/components/house-map/3d/render-core-renderer';
 export { RoomHighlight } from '../apps/app/src/components/house-map/3d/render-core-selection';
@@ -205,6 +198,10 @@ export { LiveFigure } from '../apps/app/src/components/live-figure';
 export { LoadedImage } from '../apps/app/src/components/loaded-image';
 export { LoadedQuery } from '../apps/app/src/components/loaded-query';
 export { MasterDetail, OverlayPane } from '../apps/app/src/components/master-detail';
+export { DayHead } from '../apps/app/src/components/media-grid/day-head';
+export { MediaGrid } from '../apps/app/src/components/media-grid/media-grid';
+export { Scrubber } from '../apps/app/src/components/media-grid/scrubber';
+export { MediaTileView } from '../apps/app/src/components/media-grid/tile';
 export { LiftMenu, MenuPreview } from '../apps/app/src/components/menu-lift';
 export { MenuRows, QuickRow } from '../apps/app/src/components/menu-rows';
 export { Menu, OverflowButton } from '../apps/app/src/components/menu';
@@ -218,6 +215,7 @@ export { Popover, PopoverFrame } from '../apps/app/src/components/popover';
 export { PrimaryAction } from '../apps/app/src/components/primary-action';
 export { ProfileGate } from '../apps/app/src/components/profile-gate';
 export { ProgressSteps } from '../apps/app/src/components/progress-steps';
+export { PullUpHandle } from '../apps/app/src/components/pull-up-handle';
 export { PullUpPanel } from '../apps/app/src/components/pull-up-panel';
 export { QrCode } from '../apps/app/src/components/qr-code';
 export { RankedList } from '../apps/app/src/components/ranked-list';
@@ -225,6 +223,7 @@ export { ReasonLine } from '../apps/app/src/components/reason-line';
 export { ReorderableList } from '../apps/app/src/components/reorderable-list';
 export { ActionRow, NavRow, SelectRow, SwitchRow, ValueRow } from '../apps/app/src/components/rows';
 export { SchemaEditor } from '../apps/app/src/components/schema-editor';
+export { FieldRow } from '../apps/app/src/components/schema-field-row';
 export { SchemaForm } from '../apps/app/src/components/schema-form';
 export { Scalar } from '../apps/app/src/components/schema-scalar';
 export { SchemaSettingsSheet } from '../apps/app/src/components/schema-settings-sheet';
@@ -232,7 +231,7 @@ export { ScreenScrollContext } from '../apps/app/src/components/screen-context';
 export { Screen } from '../apps/app/src/components/screen';
 export { SearchField } from '../apps/app/src/components/search-field';
 export { CompactBody, FrameBodyWidth, WideBody } from '../apps/app/src/components/section-body';
-export { SectionRail } from '../apps/app/src/components/section-rail';
+export { SectionRail } from '../apps/app/src/components/page-shell/section-rail';
 export { List, Section, SectionAction } from '../apps/app/src/components/section';
 export { Segmented } from '../apps/app/src/components/segmented';
 export { SelectPicker } from '../apps/app/src/components/select-picker';
@@ -241,7 +240,7 @@ export { ChoiceRow } from '../apps/app/src/components/setup/choice-row';
 export { SetupFlow } from '../apps/app/src/components/setup/setup-flow';
 export { StepBar } from '../apps/app/src/components/setup/step-bar';
 export { SheetBody } from '../apps/app/src/components/sheet-body';
-export { SheetHeader } from '../apps/app/src/components/sheet-header';
+export { SheetHandle, SheetHeader } from '../apps/app/src/components/sheet-header';
 export { SheetNavigationProvider } from '../apps/app/src/components/sheet-navigation';
 export { Sheet } from '../apps/app/src/components/sheet';
 export { ShowMore } from '../apps/app/src/components/show-more';
@@ -263,18 +262,26 @@ export { Text } from '../apps/app/src/components/text';
 export { TimeField } from '../apps/app/src/components/time-field';
 export { ClockText } from '../apps/app/src/components/time-text';
 export { ToastCard } from '../apps/app/src/components/toast-card';
-export { Toasts } from '../apps/app/src/components/toasts';
+export { ToastModal } from '../apps/app/src/components/toast-modal';
+export { ToastLayer, Toasts } from '../apps/app/src/components/toasts';
 export { Tooltip } from '../apps/app/src/components/tooltip';
 export { FeedChrome } from '../apps/app/src/components/transcript-feed/feed-chrome';
 export { ReaderState } from '../apps/app/src/components/transcript-feed/reader-state';
 export { SessionHeader } from '../apps/app/src/components/transcript-feed/session-header';
 export { TranscriptFeed } from '../apps/app/src/components/transcript-feed/transcript-feed';
 export { TranscriptRow } from '../apps/app/src/components/transcript-feed/transcript-row';
+export { UpdateDetailsFallbackFocus } from '../apps/app/src/components/update-details-focus';
+export { UpdateDetails } from '../apps/app/src/components/update-details';
 export { UpdateNotice } from '../apps/app/src/components/update-notice';
-export { EscapeScopeVisible, EscapeStack } from '../apps/app/src/components/use-escape';
+export { UpdateProgress } from '../apps/app/src/components/update-progress';
+export { EscapeScopeVisible } from '../apps/app/src/components/escape-scope';
+export { EscapeStack } from '../apps/app/src/components/use-escape';
 export { SectionHeader } from '../apps/app/src/components/virtual-list-header';
 export { RowScope } from '../apps/app/src/components/virtual-list-visibility';
 export { VirtualList } from '../apps/app/src/components/virtual-list';
+export { ActionBand, ActionBandTail } from '../apps/app/src/components/widget-board/action-band';
+export { BandMember } from '../apps/app/src/components/widget-board/band-context';
+export { BoardRowLayers } from '../apps/app/src/components/widget-board/board-row-layers';
 export { WidgetBoard } from '../apps/app/src/components/widget-board/board';
 export { EditCanvas } from '../apps/app/src/components/widget-board/edit/edit-canvas';
 export { AddTile, EditToolbar } from '../apps/app/src/components/widget-board/edit/edit-toolbar';
@@ -291,8 +298,8 @@ export {
 } from '../apps/app/src/components/widget-board/edit/widget-chrome';
 export { WidgetGallery } from '../apps/app/src/components/widget-board/edit/widget-gallery';
 export { WidgetOptions } from '../apps/app/src/components/widget-board/edit/widget-options';
-export { WidgetPickerSource } from '../apps/app/src/components/widget-board/picker-source';
 export { SkeletonBoard } from '../apps/app/src/components/widget-board/skeleton-board';
+export { StaticTiles } from '../apps/app/src/components/widget-board/static-tiles';
 export {
   WidgetFrame,
   WidgetHeader,
@@ -304,5 +311,9 @@ export {
   WidgetStat,
   WidgetStats,
 } from '../apps/app/src/components/widget-board/widget-parts';
-export { RevealedMember } from '../apps/app/src/components/widget-board/widget-scope';
+export {
+  RevealedMember,
+  WidgetMotionFrameContext,
+} from '../apps/app/src/components/widget-board/widget-scope';
+export { Zoomable } from '../apps/app/src/components/zoomable';
 export * from './kit-extras';

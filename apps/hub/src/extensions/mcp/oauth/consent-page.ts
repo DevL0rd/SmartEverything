@@ -74,7 +74,7 @@ function consentBody(view: ConsentView): string {
   const wait = `${FORM_ACTION}?request=${encodeURIComponent(view.requestId)}`;
   return `<h1>Allow ${escapeHtml(view.clientName)} to use ${escapeHtml(view.homeName)}?</h1>
 <p>It will be able to see every device, camera snapshot, automation and health figure in this
-home, and to control devices, scenes and automations as the owner.</p>
+home, and to control devices and automations as the owner.</p>
 <dl><dt>Assistant</dt><dd>${escapeHtml(view.clientName)}</dd>${website}
 <dt>Returns to</dt><dd>${escapeHtml(redirect.host)}</dd></dl>
 <p id="waiting" class="waiting" role="status" data-wait="${escapeHtml(wait)}">Allow or deny it in

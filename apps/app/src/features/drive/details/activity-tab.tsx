@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo } from 'react';
 import { View } from 'react-native';
-import type { DriveFeedRow } from '@smarteverything/domain';
+import type { DriveActivityEntry } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
@@ -35,12 +35,11 @@ export interface ActivityDay {
 }
 
 export function activityDaysOf(
-  rows: readonly DriveFeedRow[],
-  subject: DetailsSubject,
+  rows: readonly DriveActivityEntry[],
   names: ActivityNames,
   today: { readonly zone: string | null; readonly day: string },
 ): readonly ActivityDay[] {
-  const entries = rows.map((row) => activityItemOf({ row, item: subject.item }, names).entry);
+  const entries = rows.map((row) => activityItemOf(row, names).entry);
   const days: { head: FeedHead; lines: FeedLine[] }[] = [];
   for (const feed of feedRowsOf(entries, today.zone, today.day)) {
     if (feed.kind === 'head') days.push({ head: feed, lines: [] });
@@ -159,10 +158,10 @@ function Feed({
   rows,
 }: {
   readonly subject: DetailsSubject;
-  readonly rows: readonly DriveFeedRow[];
+  readonly rows: readonly DriveActivityEntry[];
 }): ReactNode {
   const me = useSession().client.profile_id;
-  const days = activityDaysOf(rows, subject, useNames(), useToday());
+  const days = activityDaysOf(rows, useNames(), useToday());
   if (days.length === 0) {
     return (
       <EmptyState
@@ -189,7 +188,7 @@ function Feed({
 }
 
 export function ActivityTab({ subject }: { readonly subject: DetailsSubject }): ReactNode {
-  const pages = useDriveItemActivity(subject.item.id, subject.root.id);
+  const pages = useDriveItemActivity(subject.item.id, subject.rootId);
   useWholeItemFeed(pages);
   if (pages.data === undefined) return <Unloaded pages={pages} />;
   return <Feed subject={subject} rows={flattenPages(pages.data, (page) => page.items)} />;

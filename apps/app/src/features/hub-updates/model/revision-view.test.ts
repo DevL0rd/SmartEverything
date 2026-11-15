@@ -19,6 +19,7 @@ function revision(patch: Partial<UpdateRevision>): UpdateRevision {
     tip: TIP,
     pushedFrom: 'b'.repeat(40),
     base: BASE,
+    changedPaths: null,
     status: 'running',
     steps: [],
     notes: 'Camera previews reconnect.\n\n- Faster.',
@@ -31,6 +32,28 @@ function revision(patch: Partial<UpdateRevision>): UpdateRevision {
 }
 
 describe('a pushed revision as shown in Updates', () => {
+  it('names each artifact that waits for its build and where the build comes from', () => {
+    const view = revisionView(
+      revision({
+        status: 'waiting',
+        steps: [
+          { ...step('hub', 'waiting'), detail: 'waiting for a provided build' },
+          step('ui', 'done'),
+          { ...step('desktop', 'waiting'), detail: 'waiting for the GitHub release' },
+        ],
+      }),
+    );
+    expect(view.look.label).toBe('Waiting for a build');
+    expect(view.steps.map((entry) => entry.look.label)).toEqual([
+      'Waiting for a build',
+      'Done',
+      'Waiting for a build',
+    ]);
+    expect(view.waiting).toBe(
+      'Hub: waiting for a provided build · Desktop app: waiting for the GitHub release',
+    );
+  });
+
   it('shows each planned component with its own state in release order', () => {
     const view = revisionView(
       revision({

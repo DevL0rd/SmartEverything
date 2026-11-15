@@ -3,6 +3,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { DeviceRecord, EventInsert, HubDatabase } from '../database/port';
 import type { Inventory } from './inventory';
 import { RepeatLog } from '../providers/repeat-log';
+import { refusedByStore } from './permanent-failure';
 import { WriteQueue, logQueueNotice } from './write-queue';
 import { background } from '@smarteverything/logging';
 
@@ -16,7 +17,7 @@ export interface RecordedEvent {
 
 export interface EventRouterOptions {
   readonly store: Pick<HubDatabase, 'insertEvents' | 'enrichEvent' | 'recordEventOccurrence'>;
-  readonly inventory: Pick<Inventory, 'deviceOf'>;
+  readonly inventory: Pick<Inventory, 'deviceOf' | 'deviceById'>;
   readonly log: Logger;
   readonly recorded: (event: RecordedEvent) => void;
   readonly claim?: (device: DeviceRecord, event: DeviceEvent) => boolean;
@@ -42,6 +43,10 @@ export class EventRouter {
     this.queue = new WriteQueue<EventInsert, string>({
       write: (rows): Promise<readonly string[]> => options.store.insertEvents(rows),
       keyOf: (): null => null,
+      stale: (row): boolean => this.removed(row),
+      dropped: (rows): void => {
+        this.dropped(rows.length);
+      },
       failed: (rows, cause): void => {
         options.log.error('event.write_failed', cause, { count: rows.length });
       },
@@ -54,6 +59,11 @@ export class EventRouter {
       },
       keyOf: (): null => null,
       append: EVENT_APPEND_POLICY,
+      stale: (row): boolean => this.removed(row.event),
+      dropped: (rows): void => {
+        this.dropped(rows.length);
+      },
+      permanent: refusedByStore,
       observe: (notice): void => {
         logQueueNotice(options.log, 'event', notice);
       },
@@ -61,6 +71,16 @@ export class EventRouter {
         options.log.error('event.commit_failed', cause, { count: rows.length });
       },
     });
+  }
+
+  private removed(event: EventInsert): boolean {
+    return (
+      event.deviceId !== null && this.options.inventory.deviceById(event.deviceId) === undefined
+    );
+  }
+
+  private dropped(count: number): void {
+    this.options.log.info('event.rows_dropped', { reason: 'device_removed', count });
   }
 
   fromProvider(provider: Provider, event: DeviceEvent): void {

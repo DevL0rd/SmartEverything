@@ -10,7 +10,7 @@ const BELT_REPEAT = 6;
 const TOP_SPEED_MPS = 15 / 3.6;
 const HINGE_Y = 0.252;
 const HINGE_Z = -0.716;
-const FOLD_DEG = 80;
+const FOLD_DEG = 70;
 const BLUR_FROM_KMH = 8;
 const BLUR_FULL_KMH = 10;
 const RUNNING = { power: true, online: true, phase: 'running' } as const;
@@ -111,7 +111,7 @@ export const KINGSMITH_G15_MODEL: ModelSpec = {
   title: 'Kingsmith G15 treadmill',
   category: 'fitness',
   family: 'treadmill',
-  footprint: { width: 0.7, depth: 1.632, height: 1.1 },
+  footprint: { width: 0.7, depth: 1.658, height: 1.1208 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

@@ -45,7 +45,7 @@ export function homeDefaults(
   return {
     compact: [
       widget('weather', 'W'),
-      widget('scenes', 'W'),
+      widget('automations', 'W'),
       ...spotlights(digest, 'XL'),
       ...lightGroupWidgets(lightGroups),
       widget('favourites', 'XL'),
@@ -56,7 +56,7 @@ export function homeDefaults(
     ],
     medium: [
       widget('weather', 'M'),
-      widget('scenes', 'M'),
+      widget('automations', 'M'),
       ...spotlights(digest, 'XL'),
       ...lightGroupWidgets(lightGroups),
       widget('favourites', 'XL'),
@@ -67,7 +67,7 @@ export function homeDefaults(
     ],
     expanded: [
       widget('weather', 'M'),
-      widget('scenes', 'M'),
+      widget('automations', 'M'),
       ...spotlights(digest, 'XL'),
       ...lightGroupWidgets(lightGroups),
       widget('favourites', 'XL'),

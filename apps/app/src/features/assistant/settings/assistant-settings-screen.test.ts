@@ -46,8 +46,7 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('../../../design/platform', () => ({ isNative: (): boolean => platform.native }));
 vi.mock('../../../components/empty-state', () => ({ EmptyState: (): null => null }));
-vi.mock('../../../components/page-header', () => ({ PageHeader: (): null => null }));
-vi.mock('../../../components/screen', () => ({ Screen: (): null => null }));
+vi.mock('../../../components/page-shell/page-shell', () => ({ PageShell: (): null => null }));
 vi.mock('../../../components/rows', () => ({ NavRow: (): null => null }));
 vi.mock('../../../components/section', () => ({
   List: ({ title, children }: ViewProps & { readonly title: string }): ReactNode =>
@@ -55,7 +54,11 @@ vi.mock('../../../components/section', () => ({
 }));
 vi.mock('../../../settings/custom-screens', () => ({ CUSTOM_SETTINGS_SCREENS: {} }));
 vi.mock('../../../settings/env', () => ({ useSettingEnv: (): null => null }));
-vi.mock('../../../settings/settings-nav', () => ({ SettingsNav: (): null => null }));
+vi.mock('../../../settings/settings-nav', () => ({
+  SettingsNav: (): null => null,
+  useSettingsRail: (): boolean => false,
+  useSettingsSearch: (): null => null,
+}));
 vi.mock('../../../settings/availability', () => ({
   pageReachable: (): boolean => true,
   useBuiltSettingsPages: (): ReadonlySet<string> => new Set([PAGE.id]),

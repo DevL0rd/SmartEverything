@@ -65,10 +65,13 @@ function rowBody(emit: Emit, row: AssistantMessageRow, turn: number): void {
   );
 }
 
-function legacyEvents(rows: readonly AssistantMessageRow[]): readonly DshSessionEvent[] {
+function legacyEvents(
+  rows: readonly AssistantMessageRow[],
+  base: number,
+): readonly DshSessionEvent[] {
   const events: DshSessionEvent[] = [];
   const emit: Emit = (type, data, extra = {}) => {
-    events.push({ type, seq: events.length, time: 1_000 + events.length, data, ...extra });
+    events.push({ type, seq: base + events.length, time: 1_000 + events.length, data, ...extra });
   };
   emit(
     'system/message',
@@ -109,7 +112,11 @@ export function seedConversation(
   );
   const { store } = rig.opened;
   store.dshSessions.append(
-    { claim: open.claim, operation_id: randomUUID(), events: legacyEvents(rows) },
+    {
+      claim: open.claim,
+      operation_id: randomUUID(),
+      events: legacyEvents(rows, nextSeq(rig, open.claim.session_id)),
+    },
     principal,
   );
   return { chat: store.aiChats.chat(chat.id), rows, sessionId: open.claim.session_id };
@@ -240,9 +247,15 @@ function exchangeEvents(
   return events;
 }
 
-const SYSTEM_EVENT: DshSessionEvent = {
+function nextSeq(rig: Rig, sessionId: string): number {
+  const metadata = rig.opened.store.dshSessions.stat(sessionId, rig.owner.profileId);
+  if (metadata === undefined) throw new Error('The native session is absent.');
+  return metadata.next_seq;
+}
+
+const systemEvent = (seq: number): DshSessionEvent => ({
   type: 'system/message',
-  seq: 0,
+  seq,
   time: 1,
   surfaceOp: 'append',
   data: {
@@ -250,7 +263,7 @@ const SYSTEM_EVENT: DshSessionEvent = {
     step: 0,
     message: { id: 'system', role: 'system', source: { kind: 'system-prompt' }, content: [] },
   },
-};
+});
 
 function admitExchange(
   rig: Rig,
@@ -291,11 +304,12 @@ export function nativeConversation(
   const chat = rig.newChat(target);
   const { store } = rig.opened;
   const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
-  const events: DshSessionEvent[] = [SYSTEM_EVENT];
+  const first = nextSeq(rig, open.claim.session_id);
+  const events: DshSessionEvent[] = [systemEvent(first)];
   const rows: AssistantMessageRow[] = [];
   const deliveries: string[] = [];
   for (const [turn, exchange] of exchanges.entries()) {
-    const held = { chatId: chat.id, sessionId: open.claim.session_id, next: events.length };
+    const held = { chatId: chat.id, sessionId: open.claim.session_id, next: first + events.length };
     const admitted = admitExchange(rig, held, exchange, turn + 1);
     events.push(...admitted.events);
     rows.push(...admitted.rows);

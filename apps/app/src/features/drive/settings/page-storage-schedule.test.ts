@@ -116,7 +116,7 @@ describe('scrub schedule', () => {
       `Every 30 days · next ${moment('2026-12-07T12:00:00.000Z', now, 'UTC')}`,
     );
     expect(scheduleLineOf(rowOf({ state: 'running' }), now, 'UTC')).toBe(
-      'Every 30 days · checking now',
+      'Every 30 days · reading files back now',
     );
   });
 });

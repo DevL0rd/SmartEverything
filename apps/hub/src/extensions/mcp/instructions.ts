@@ -7,7 +7,7 @@ export const SERVER_INFO = {
 } as const;
 
 const INSTRUCTION_LINES: readonly string[] = [
-  'SmartEverything runs one home: devices, rooms, cameras, automations, scenes, health data and settings for each person. Ids are shared by every tool.',
+  'SmartEverything runs one home: devices, rooms, cameras, automations, health data and settings for each person. Ids are shared by every tool.',
   'home_read gives the home, rooms, people and providers.',
   'home_search and device_find find things.',
   'device_read describes a device’s capabilities, allowed values and units.',

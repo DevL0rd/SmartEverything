@@ -5,10 +5,11 @@ import type { AppHref } from '../../../components/app-href';
 import type { IconName } from '../../../components/icon';
 import type { MenuItem } from '../../../components/menu';
 import { showPlannerPerson, type PersonChoice } from './person';
+import { PLANNER_SECTION_DEFS } from './sections';
 
 export interface PlannerMenuInput {
   readonly people: readonly PersonChoice[];
-  readonly insights: boolean;
+  readonly sections: boolean;
   readonly googleNeedsAttention: boolean;
 }
 
@@ -22,6 +23,10 @@ function link(id: string, label: string, icon: IconName, target: AppHref): MenuI
     },
   };
 }
+
+const MENU_SECTIONS: readonly MenuItem[] = PLANNER_SECTION_DEFS.filter((def) => !def.phoneTab).map(
+  (def) => link(def.id, def.label, def.icon, def.href),
+);
 
 function personItem(choice: PersonChoice): MenuItem {
   return {
@@ -37,13 +42,13 @@ function personItem(choice: PersonChoice): MenuItem {
 
 export function plannerMenu({
   people,
-  insights,
+  sections,
   googleNeedsAttention,
 }: PlannerMenuInput): readonly MenuItem[] {
   const settings = mainPageSettings('planner');
   return [
     ...people.map(personItem),
-    ...(insights ? [link('insights', 'Insights', 'trendUp', href.planner.insights())] : []),
+    ...(sections ? MENU_SECTIONS : []),
     ...(googleNeedsAttention
       ? [
           link(

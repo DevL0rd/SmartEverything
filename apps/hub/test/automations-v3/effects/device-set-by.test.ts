@@ -72,7 +72,6 @@ async function rig(
     toggler: new DeviceToggler(ports, (deviceId, capability) =>
       home.db.store.state.value(deviceId, capability),
     ),
-    issuer,
     store: home.db.store,
     owned: { list: unused, write: unused },
     kept: { read: unused, write: unused },

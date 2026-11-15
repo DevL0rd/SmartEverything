@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { createContext, use } from 'react';
+import { use } from 'react';
 import { Image, View } from 'react-native';
 import type { AssistantAttachment, ImageOperationPreview } from '@smarteverything/domain';
 import { Text } from '../../../../components/text';
@@ -7,14 +7,13 @@ import { DURATION } from '../../../../design/motion';
 import { useRows } from '../../../../store/selectors';
 import { useImageOperations } from '../data/image-queries';
 import { previewBlur } from '../model/image-generation';
+import { RevealContext } from './reveal-context';
 
 export interface ImageReveal {
   readonly preview: ImageOperationPreview;
   readonly seen: number;
   readonly attachmentIds: ReadonlySet<string>;
 }
-
-const RevealContext = createContext<ImageReveal | null>(null);
 
 export function ImageRevealProvider({
   reveal,

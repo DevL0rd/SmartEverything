@@ -36,7 +36,7 @@ function canopyProfile(): [number, number][] {
 export const PARASOL_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.parasol',
   title: 'Parasol',
-  footprint: { width: 2.708, depth: 2.708, height: POLE_H + 0.05 },
+  footprint: { width: 2.708, depth: 2.708, height: 2.485 },
   size: {
     width: { param: 'diameter', scale: 1.003, extra: -0.0001, resizes: true },
     depth: { param: 'diameter', scale: 1.003, extra: -0.0001, resizes: true },

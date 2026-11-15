@@ -1,119 +1,112 @@
 import type { ReactNode } from 'react';
 import { useDeferredValue, useState } from 'react';
-import { View } from 'react-native';
-import { useNavigation, usePathname, useRouter } from 'expo-router';
-import type { AppHref } from '../components/app-href';
-import { StackActions, useRoute } from 'expo-router/react-navigation';
 import { mainSettingsFirst } from '../app-shell/main-pages';
 import { href } from '../app-shell/hrefs';
-import { useSizeClass } from '../design/size-class';
+import type { AppHref } from '../components/app-href';
+import { shellRailOf } from '../components/page-shell/layout';
+import type { ShellSearchConfig } from '../components/page-shell/search-slot';
+import type { RailGroup } from '../components/page-shell/section-rail';
+import type { ShellSections } from '../components/page-shell/shell-sections';
 import { NavRow } from '../components/rows';
-import { SearchField } from '../components/search-field';
 import { List } from '../components/section';
 import { Text } from '../components/text';
+import { useSizeClass } from '../design/size-class';
 import { useStoreSelector } from '../store/store-context';
 import { useSettingEnv } from './env';
 import { pageReachable, useBuiltSettingsPages } from './availability';
 import { visibleSettings } from './registry';
-import { SETTINGS_GROUPS, SETTINGS_TREE, pageHref, settingsTrail } from './tree';
+import { SETTINGS_GROUPS, SETTINGS_TREE, breadcrumbOf, pageHref, settingsTrail } from './tree';
 import type { SettingEnv, SettingsPageDefinition } from './types';
 
-function currentPage(pathname: string): string | null {
-  if (pathname === '/settings') {
-    return 'home';
-  }
-  const match = /^\/settings\/(.+)$/.exec(pathname);
-  return match?.[1] ?? null;
+interface SettingsGroupPages {
+  readonly title: string;
+  readonly pages: readonly SettingsPageDefinition[];
 }
 
-function useOpenSection(): (target: AppHref) => void {
-  const router = useRouter();
-  const navigation = useNavigation();
-  const route = useRoute();
-  return (target) => {
-    const nested = navigation.getState()?.routes.find((entry) => entry.key === route.key)?.state;
-    if (nested?.key !== undefined && (nested.index ?? 0) > 0) {
-      navigation.dispatch({ ...StackActions.popToTop(), target: nested.key });
-    }
-    router.push(target);
+function useGroupPages(): readonly SettingsGroupPages[] {
+  const env = useSettingEnv();
+  const built = useBuiltSettingsPages();
+  return SETTINGS_GROUPS.map((group) => {
+    const pages = SETTINGS_TREE.filter(
+      (page) => page.group === group && pageReachable(page, { env, built }),
+    );
+    return { title: group, pages: group === 'App' ? mainSettingsFirst(pages) : pages };
+  }).filter((group) => group.pages.length > 0);
+}
+
+export function useSettingsRail(): boolean {
+  const size = useSizeClass();
+  return size.header !== 'large' && shellRailOf(size.area, 'master') !== null;
+}
+
+function RailSummary({ page }: { readonly page: SettingsPageDefinition }): ReactNode {
+  const summary = useStoreSelector((state) => page.summary?.(state) ?? null);
+  if (summary === null) return null;
+  return (
+    <Text variant="caption" tone="variant" numberOfLines={1}>
+      {summary}
+    </Text>
+  );
+}
+
+function topPageOf(page: string, groups: readonly SettingsGroupPages[]): string {
+  const top = breadcrumbOf(page)[0]?.id;
+  if (top !== undefined) return top;
+  const owner = groups
+    .flatMap((group) => group.pages)
+    .find((entry) => page === entry.id || page.startsWith(`${entry.id}/`));
+  return owner?.id ?? page;
+}
+
+export function useSettingsSections(page: string): ShellSections {
+  const groups = useGroupPages();
+  const hrefs = new Map<string, AppHref>(
+    groups.flatMap((group) => group.pages.map((entry) => [entry.id, pageHref(entry)] as const)),
+  );
+  const railGroups: readonly RailGroup[] = groups.map((group) => ({
+    title: group.title,
+    entries: group.pages.map((entry) => ({
+      id: entry.id,
+      label: entry.title,
+      short: entry.title.replace(/ settings$/, ''),
+      icon: entry.icon,
+      missing: null,
+      detail: <RailSummary page={entry} />,
+    })),
+  }));
+  return {
+    groups: railGroups,
+    active: topPageOf(page, groups),
+    hrefOf: (id) => hrefs.get(id) ?? href.settings.page(id),
+    navigation: 'replace',
+    label: 'Settings',
+    master: true,
   };
 }
 
-function TopRow({
-  page,
-  selected,
-  split,
-}: {
-  readonly page: SettingsPageDefinition;
-  readonly selected: boolean;
-  readonly split: boolean;
-}): ReactNode {
-  const open = useOpenSection();
+function TopRow({ page }: { readonly page: SettingsPageDefinition }): ReactNode {
   const summary = useStoreSelector((state) => page.summary?.(state) ?? null);
-  const target = pageHref(page);
   return (
     <NavRow
       title={page.title}
       icon={page.icon}
-      selected={selected}
-      {...(split
-        ? {
-            onPress: (): void => {
-              if (!selected) {
-                open(target);
-              }
-            },
-          }
-        : { href: target })}
+      href={pageHref(page)}
       {...(summary === null ? {} : { subtitle: summary })}
     />
   );
 }
 
-function orderedGroupPages(
-  pages: readonly SettingsPageDefinition[],
-  group: string,
-): readonly SettingsPageDefinition[] {
-  return group === 'App' ? mainSettingsFirst(pages) : pages;
-}
-
-function Groups({
-  env,
-  current,
-  split,
-}: {
-  readonly env: SettingEnv;
-  readonly current: string | null;
-  readonly split: boolean;
-}): ReactNode {
-  const built = useBuiltSettingsPages();
+export function SettingsNav(): ReactNode {
+  const groups = useGroupPages();
   return (
     <>
-      {SETTINGS_GROUPS.map((group) => {
-        const pages = orderedGroupPages(
-          SETTINGS_TREE.filter(
-            (page) => page.group === group && pageReachable(page, { env, built }),
-          ),
-          group,
-        );
-        if (pages.length === 0) {
-          return null;
-        }
-        return (
-          <List key={group} title={group} inset>
-            {pages.map((page) => (
-              <TopRow
-                key={page.id}
-                page={page}
-                split={split}
-                selected={
-                  current !== null && (current === page.id || current.startsWith(`${page.id}/`))
-                }
-              />
-            ))}
-          </List>
-        );
-      })}
+      {groups.map((group) => (
+        <List key={group.title} title={group.title} inset>
+          {group.pages.map((page) => (
+            <TopRow key={page.id} page={page} />
+          ))}
+        </List>
+      ))}
     </>
   );
 }
@@ -139,10 +132,9 @@ function Results({ env, query }: { readonly env: SettingEnv; readonly query: str
   const settings = visibleSettings(env).filter((setting) =>
     [setting.title, ...setting.keywords].some((word) => matches(word, needle)),
   );
-  const total = pages.length + settings.length;
-  if (total === 0) {
+  if (pages.length + settings.length === 0) {
     return (
-      <Text variant="body" tone="variant" className="px-4 py-6">
+      <Text variant="body" tone="variant" className="py-6" accessibilityLiveRegion="polite">
         {`Nothing in Settings matches “${query.trim()}”.`}
       </Text>
     );
@@ -172,21 +164,15 @@ function Results({ env, query }: { readonly env: SettingEnv; readonly query: str
   );
 }
 
-export function SettingsNav(): ReactNode {
+export function useSettingsSearch(): ShellSearchConfig {
   const env = useSettingEnv();
-  const { split } = useSizeClass();
-  const pathname = usePathname();
-  const current = split ? currentPage(pathname) : null;
   const [query, setQuery] = useState('');
   const shown = useDeferredValue(query);
-  return (
-    <View className="gap-section-gap">
-      <SearchField value={query} onChange={setQuery} placeholder="Search settings" />
-      {shown.trim() === '' ? (
-        <Groups env={env} current={current} split={split} />
-      ) : (
-        <Results env={env} query={shown} />
-      )}
-    </View>
-  );
+  return {
+    value: query,
+    onChange: setQuery,
+    placeholder: 'Search settings',
+    label: 'Search settings',
+    panel: <Results env={env} query={shown} />,
+  };
 }

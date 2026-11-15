@@ -95,6 +95,14 @@ function insertParameters(root: DriveRoot, now: string): Record<string, SQLInput
   };
 }
 
+export function driveRootRow(context: StoreContext, id: string): DriveRoot {
+  return found(
+    context.sql.get(STORED_ROOT, `select ${COLUMNS} from drive_roots where id = $id`, { id }),
+    'drive',
+    id,
+  );
+}
+
 export interface DriveRootPatch {
   readonly versions?: boolean | undefined;
   readonly indexId?: string;
@@ -196,7 +204,7 @@ export class DriveRootsRepository {
   }
 
   private rowOf(id: string): DriveRoot {
-    return found(this.row(id), 'drive', id);
+    return driveRootRow(this.context, id);
   }
 
   private stored(root: DriveRoot): StoredDrive {

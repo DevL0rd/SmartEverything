@@ -176,7 +176,7 @@ export const FIREPLACE_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Fireplace',
   category: 'structure',
-  footprint: { width: WIDTH + 0.2, depth: DEPTH + 0.26, height: HEIGHT },
+  footprint: { width: WIDTH + 0.2, depth: DEPTH + 0.26, height: 1.08 },
   framing: framingOf({ ...HOUSE, yaw: 24 }),
   shots: [
     {

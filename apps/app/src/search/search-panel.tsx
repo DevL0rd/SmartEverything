@@ -8,6 +8,7 @@ import { useStableCallback } from '../design/use-stable-callback';
 import { inlineOf, useSearchActions, type SearchActions } from './actions';
 import { useSearchCatalogue, type SearchCatalogue } from './catalogue';
 import { DriveResults } from './drive-results';
+import { PlannerResults } from './planner-results';
 import { useResultNavigation, type ResultNavigation } from './navigation';
 import { useRecentSearches } from './recent';
 import type { SearchListModel } from './result-list';
@@ -143,7 +144,7 @@ export function useSettledSearchPanel(
 ): {
   readonly model: SearchListModel;
   readonly submit: (() => void) | null;
-  readonly drive: ReactElement | null;
+  readonly content: ReactElement | null;
 } {
   const pointer = useIdiom() === 'pointer';
   const catalogue = useSearchCatalogue();
@@ -177,11 +178,14 @@ export function useSettledSearchPanel(
       activate(keys);
     }
   };
-  const drive =
+  const content =
     query === '' || props.pick !== undefined ? null : (
-      <DriveResults query={query} look={props.look} onDone={props.onDone} />
+      <>
+        <PlannerResults query={query} look={props.look} onDone={props.onDone} />
+        <DriveResults query={query} look={props.look} onDone={props.onDone} />
+      </>
     );
-  return { model, submit: pointer ? null : submit, drive };
+  return { model, submit: pointer ? null : submit, content };
 }
 
 export function useSearchPanel(props: SearchPanelProps): ReturnType<typeof useSettledSearchPanel> {

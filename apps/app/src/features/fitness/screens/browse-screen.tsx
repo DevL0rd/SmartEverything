@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
-import { PageHeader } from '../../../components/page-header';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { NavRow } from '../../../components/rows';
-import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
@@ -58,7 +57,7 @@ export function BrowseScreen(): ReactNode {
     </View>
   ));
   return (
-    <Screen header={<PageHeader title="All health data" />} maxWidth="full">
+    <PageShell title="All health data" width="full">
       {presence.loaded ? null : <Skeleton shape="block" className="h-72 w-full max-w-reading" />}
       {lists.length === 0 ? null : (
         <View className="flex-row flex-wrap items-start gap-grid-gap">{lists}</View>
@@ -72,6 +71,6 @@ export function BrowseScreen(): ReactNode {
           {`Showing data from the last ${String(PRESENCE_DAYS)} days. More kinds appear when an app shares them with Health Connect.`}
         </Text>
       </View>
-    </Screen>
+    </PageShell>
   );
 }

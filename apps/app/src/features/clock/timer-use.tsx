@@ -11,7 +11,7 @@ import { Skeleton } from '../../components/skeleton';
 import { Text } from '../../components/text';
 import { dayKeyOf } from '../../format/time';
 import { useMinuteOf } from '../../store/clock';
-import { usePlannerStats } from '../planner/data';
+import { usePlannerStats } from '../planner';
 import {
   timedText,
   timerUseBucketsOf,

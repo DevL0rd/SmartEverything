@@ -33,7 +33,6 @@ import { AUTOMATION_QUESTION_ENDPOINTS } from './endpoints-automation-questions'
 import { AUTOMATION_RUN_ENDPOINTS } from './endpoints-automation-runs';
 import { AUTOMATION_SECRET_ENDPOINTS } from './endpoints-automation-secrets';
 import { CLIENT_ENDPOINTS } from './endpoints-client';
-import { SCENE_ENDPOINTS } from './endpoints-scenes';
 import { CALL_ENDPOINTS } from './endpoints-calls';
 import { CLAUDE_CLI_ENDPOINTS } from './endpoints-claude-cli';
 import { CLAUDE_ENDPOINTS } from './endpoints-claude';
@@ -43,6 +42,7 @@ import { AI_REPAIR_ENDPOINTS } from './endpoints-ai-repair';
 import { COMPUTER_AI_ENDPOINTS } from './endpoints-computer-ai';
 import { COMPUTER_NODE_ENDPOINTS } from './endpoints-computer-nodes';
 import { MACHINE_UPDATE_ENDPOINTS } from './endpoints-machine-updates';
+import { RELEASE_ENDPOINTS } from './endpoints-releases';
 import { APP_UPDATE_ENDPOINTS } from './endpoints-app-updates';
 import { COMPUTER_ENDPOINTS } from './endpoints-computers';
 import { COMPUTER_SESSION_ENDPOINTS } from './endpoints-computer-session';
@@ -82,12 +82,15 @@ import { LISTENING_ENDPOINTS } from './endpoints-listening';
 import { CLIPBOARD_ENDPOINTS } from './endpoints-clipboard';
 import { APP_VIEW_ENDPOINTS } from './endpoints-app-view';
 import { DRIVE_LIBRARY_ENDPOINTS } from './endpoints-drive';
+import { DRIVE_CONTENT_ENDPOINTS } from './endpoints-drive-content';
+import { DRIVE_SOCIAL_ENDPOINTS } from './endpoints-drive-social';
 import { DRIVE_STORAGE_ENDPOINTS } from './endpoints-drive-storage';
 import { PHOTOS_ENDPOINTS } from './endpoints-photos';
 import { GOOGLE_ENDPOINTS } from './endpoints-google';
 import { PLANNER_ENDPOINTS } from './endpoints-planner';
 import { PLANNER_ITEM_ENDPOINTS } from './endpoints-planner-items';
 import { PLANNER_CLOCK_ENDPOINTS } from './endpoints-planner-clock';
+import { MAIL_ENDPOINTS } from './endpoints-mail';
 
 const AI_ENDPOINTS = {
   ...AI_REFERENCE_ENDPOINTS,
@@ -121,6 +124,7 @@ const COMPUTER_REGISTRY = {
   ...COMPUTER_AI_ENDPOINTS,
   ...COMPUTER_NODE_ENDPOINTS,
   ...MACHINE_UPDATE_ENDPOINTS,
+  ...RELEASE_ENDPOINTS,
   ...APP_UPDATE_ENDPOINTS,
   ...COMPUTER_SESSION_ENDPOINTS,
   ...COMPUTER_SYSTEM_ENDPOINTS,
@@ -139,7 +143,6 @@ const HOME_ENDPOINTS = {
   ...AUTOMATION_RUN_ENDPOINTS,
   ...AUTOMATION_QUESTION_ENDPOINTS,
   ...AUTOMATION_SECRET_ENDPOINTS,
-  ...SCENE_ENDPOINTS,
   ...CLIENT_ENDPOINTS,
   ...SCHEDULE_ENDPOINTS,
   ...SIGNAL_ENDPOINTS,
@@ -164,6 +167,8 @@ const HOME_ENDPOINTS = {
   ...MODEL_AREA_ENDPOINTS,
   ...TALK_AREA_ENDPOINTS,
   ...DRIVE_LIBRARY_ENDPOINTS,
+  ...DRIVE_CONTENT_ENDPOINTS,
+  ...DRIVE_SOCIAL_ENDPOINTS,
   ...DRIVE_STORAGE_ENDPOINTS,
   ...PHOTOS_ENDPOINTS,
 } satisfies Readonly<Record<string, EndpointShape>>;
@@ -187,6 +192,7 @@ const PEOPLE_REGISTRY = {
   ...PLANNER_ENDPOINTS,
   ...PLANNER_ITEM_ENDPOINTS,
   ...PLANNER_CLOCK_ENDPOINTS,
+  ...MAIL_ENDPOINTS,
   ...GOOGLE_ENDPOINTS,
 } satisfies Readonly<Record<string, EndpointShape>>;
 

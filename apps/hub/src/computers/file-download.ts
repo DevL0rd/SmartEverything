@@ -45,6 +45,11 @@ export function attachment(name: string): string {
   return `attachment; filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
+export function inline(name: string): string {
+  const plain = name.replace(/[^A-Za-z0-9._ -]/g, '_');
+  return `inline; filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 export function computerDownloadRoute({ store, directory }: Options): RawRoute {
   const access = new ComputerAccess(store);
   return {

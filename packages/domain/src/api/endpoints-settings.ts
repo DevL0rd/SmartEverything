@@ -3,6 +3,7 @@ import { PROVIDER } from '../devices';
 import { PROVIDER_CREDENTIALS } from '../hub-commands';
 import { PLACE_NAME } from '../places';
 import { TIME_ZONE } from '../automations';
+import { BUILD_SOURCE_SETTINGS, BUILD_SOURCE_SETTINGS_UPDATE } from '../build-source-settings';
 import { FITNESS_SETTINGS_CHANGE } from '../fitness-settings';
 import { HISTORY_SETTINGS_CHANGE } from '../history-settings';
 import { TRIGGER_SETTINGS_CHANGE } from '../trigger-settings';
@@ -118,6 +119,28 @@ const SETTINGS_ENDPOINTS = {
     query: NOTHING,
     body: HISTORY_SETTINGS_CHANGE,
     response: SETTINGS_ROW,
+  }),
+  readBuildSources: endpoint({
+    method: 'GET',
+    path: '/api/settings/build-sources',
+    access: 'owner',
+    summary:
+      'Where each release artifact (hub, apk, ui, desktop) comes from: provided (built on a dev machine and uploaded), github (a GitHub release the Hub downloads) or hub (built on the Hub; refused unless chosen here)',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: BUILD_SOURCE_SETTINGS,
+  }),
+  updateBuildSources: endpoint({
+    method: 'PATCH',
+    path: '/api/settings/build-sources',
+    access: 'owner',
+    summary:
+      'Change where one or more release artifacts (hub, apk, ui, desktop) come from: provided, github or hub; only hub lets the Hub build that artifact',
+    params: NOTHING,
+    query: NOTHING,
+    body: BUILD_SOURCE_SETTINGS_UPDATE,
+    response: BUILD_SOURCE_SETTINGS,
   }),
   updateTriggerSettings: endpoint({
     method: 'PATCH',

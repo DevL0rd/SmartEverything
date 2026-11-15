@@ -248,7 +248,6 @@ export interface Availability {
   readonly hasClimate: boolean;
   readonly hasCameras: boolean;
   readonly hasHealth: boolean;
-  readonly hasScenes: boolean;
   readonly hasEnergy: boolean;
   readonly hasSecurity: boolean;
   readonly hasIr: boolean;
@@ -262,7 +261,6 @@ const availabilityInputs = (state: StoreState): readonly unknown[] => [
   state.tables.devices,
   state.tables.health_daily,
   state.tables.health_sources,
-  state.tables.scenes,
   state.tables.ir_remotes,
   state.tables.provider_links,
 ];
@@ -277,7 +275,6 @@ export const availabilityOf = memoOnInputs(availabilityInputs, (state): Availabi
       state.tables.health_daily.ids.length > 0 ||
       state.tables.health_sources.ids.length > 0 ||
       devices.some((device) => isWearable(device) || isScale(device)),
-    hasScenes: state.tables.scenes.ids.length > 0,
     hasEnergy: devices.some((device) =>
       device.capabilities.some((capability) => capability.key === 'power_draw'),
     ),
@@ -297,7 +294,6 @@ const AVAILABILITY_KEYS: readonly (keyof Availability)[] = [
   'hasClimate',
   'hasCameras',
   'hasHealth',
-  'hasScenes',
   'hasEnergy',
   'hasSecurity',
   'hasIr',

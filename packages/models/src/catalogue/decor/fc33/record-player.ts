@@ -60,7 +60,7 @@ function tonearm(): ModelSpecPart[] {
 export const RECORD_PLAYER_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.record-player',
   title: 'Record player',
-  footprint: { width: 0.44, depth: 0.38, height: 0.36 },
+  footprint: { width: 0.44, depth: 0.4005, height: 0.3587 },
   meta: {
     names: {
       display: 'Record player',

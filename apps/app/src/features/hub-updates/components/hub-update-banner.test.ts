@@ -16,6 +16,7 @@ const hooks = vi.hoisted(() => ({
   useIsOwner: vi.fn(() => true),
   useHubUpdateSource: vi.fn(),
   useHubUpdateStatus: vi.fn(),
+  useBuildSources: vi.fn(),
   useHubUpdateStarting: vi.fn(() => false),
   useStartHubUpdateSource: vi.fn(() => ({ isPending: false })),
   useForeground: vi.fn(() => true),
@@ -75,6 +76,9 @@ const RUN: NonNullable<HubUpdateRecoveryStatus['release']> = {
   startedAt: '2026-11-06T00:00:00.000Z',
   updatedAt: '2026-11-06T00:00:00.000Z',
   finishedAt: null,
+  reason: null,
+  failedChecks: [],
+  backupKept: false,
 };
 
 beforeEach(() => {
@@ -85,6 +89,9 @@ beforeEach(() => {
   hooks.useSyncStatus.mockReturnValue({ status: 'live' });
   hooks.useHubUpdateSource.mockReturnValue({ data: SOURCE });
   hooks.useHubUpdateStatus.mockReturnValue({ data: { release: null } });
+  hooks.useBuildSources.mockReturnValue({
+    data: { hub: 'hub', apk: 'provided', ui: 'provided', desktop: 'provided' },
+  });
 });
 
 function banner(): string {
@@ -176,6 +183,31 @@ describe('the shell hub update banner', () => {
     expect(banner()).not.toContain('Hub update available');
     expect(releaseNoticeOf(RUN, false, false)?.title).toBe('Waiting for the hub to reconnect');
     expect(releaseNoticeOf({ ...RUN, phase: 'done' }, false, true)).toBeNull();
+  });
+
+  it('never offers the Git source release while the hub service is not built on the hub', () => {
+    hooks.useBuildSources.mockReturnValue({
+      data: { hub: 'provided', apk: 'provided', ui: 'provided', desktop: 'provided' },
+    });
+    expect(banner()).toBe('');
+    expect(hooks.useHubUpdateSource).toHaveBeenLastCalledWith(false);
+  });
+
+  it('warns that a failed release waits for the owner decision', () => {
+    hooks.useHubUpdateStatus.mockReturnValue({
+      data: { release: { ...RUN, phase: 'awaiting_decision', backupKept: true } },
+    });
+    const html = banner();
+    expect(html).toContain('Hub update failed and waits for your decision');
+    expect(hooks.updateNotice.mock.lastCall?.[0]).toMatchObject({ tone: 'warning' });
+  });
+
+  it('tells a kept failed release as a warning outcome from the hub state', () => {
+    hooks.useHubUpdateStatus.mockReturnValue({
+      data: { release: { ...RUN, phase: 'kept', finishedAt: RUN.updatedAt } },
+    });
+    expect(banner()).toContain('Failed hub update kept as it is');
+    expect(hooks.updateNotice.mock.lastCall?.[0]).toMatchObject({ tone: 'warning' });
   });
 
   it('shows request progress when Settings starts a release', () => {

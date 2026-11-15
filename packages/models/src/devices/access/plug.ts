@@ -32,7 +32,7 @@ export const SMART_PLUG_MODEL: ModelSpec = {
   title: 'Smart plug',
   category: 'energy',
   family: 'plug',
-  footprint: { width: W, depth: D, height: H },
+  footprint: { width: W, depth: 0.0384, height: H },
   framing: house('button', 24, 16),
   shots: [
     shot('powered', whenAll(leaf('power', 'eq', true)), 'button', {

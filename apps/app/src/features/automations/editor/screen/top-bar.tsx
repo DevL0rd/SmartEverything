@@ -200,17 +200,22 @@ function Actions({
   );
 }
 
-export const TopBar = memo(function TopBar({ focusRef, ...props }: TopBarProps): ReactNode {
+export const TopBarTitle = memo(function TopBarTitle({
+  focusRef,
+  ...props
+}: TopBarProps): ReactNode {
   const model = topBarModel(props);
   return (
-    <View
-      ref={focusRef}
-      accessibilityRole="toolbar"
-      accessibilityLabel="Editor"
-      className="flex-row items-center gap-1 border-b border-outline-variant bg-surface-1 px-2 py-1"
-    >
-      <IconButton icon="arrowLeft" label="Back" onPress={props.onBack} />
+    <View ref={focusRef} accessibilityLabel="Editor" className="min-w-0 flex-1 flex-row">
       <Title bar={props} model={model} />
+    </View>
+  );
+});
+
+export const TopBarActions = memo(function TopBarActions(props: TopBarProps): ReactNode {
+  const model = topBarModel(props);
+  return (
+    <View accessibilityRole="toolbar" className="shrink-0 flex-row items-center gap-1">
       {props.layout !== 'wide' ? null : (
         <View className="self-center">
           <Badge label={props.status} tone="neutral" />

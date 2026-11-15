@@ -10,7 +10,8 @@ import {
 import { screenPause } from '../../../app-shell/screen-pause';
 import { useStackOptions } from '../../../app-shell/tab-stack';
 import { MasterDetail } from '../../../components/master-detail';
-import { useSizeClass } from '../../../design/size-class';
+import { ShellInsetContext } from '../../../components/page-shell/shell-inset';
+import { MASTER_WIDTH, useSizeClass } from '../../../design/size-class';
 import { useRooms } from '../../../store/selectors';
 import { AutomationsScreen } from '../list/automations-screen';
 import { AutomationsMaster, AutomationsOverviewPane } from '../list/master';
@@ -88,14 +89,17 @@ export function AutomationsLayoutHost(): ReactNode {
       <Stack.Screen name="[automationId]/index" dangerouslySingular={idOf('automationId')} />
       <Stack.Screen name="nodes/[functionId]/index" dangerouslySingular={idOf('functionId')} />
       <Stack.Screen name="variables/[variableId]" dangerouslySingular={idOf('variableId')} />
-      <Stack.Screen name="scenes/[sceneId]" dangerouslySingular={idOf('sceneId')} />
     </Stack>
   );
   return (
     <MasterDetail
       split={split}
       master={<AutomationsMasterHost />}
-      detail={<View className="flex-1">{stack}</View>}
+      detail={
+        <ShellInsetContext value={split ? MASTER_WIDTH : 0}>
+          <View className="flex-1">{stack}</View>
+        </ShellInsetContext>
+      }
     />
   );
 }

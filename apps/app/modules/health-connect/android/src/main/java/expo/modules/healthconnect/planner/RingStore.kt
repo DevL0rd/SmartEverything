@@ -22,16 +22,19 @@ class PhoneRing(
   val kind: RingKind,
   val refId: String,
   val dueAt: Instant,
-  val sound: String,
+  val sound: RingSound,
   val rampSeconds: Int,
   val vibrate: Boolean,
   val label: String?,
   val rule: AlarmRule?,
-  val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES
+  val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,
+  val snoozeLimit: Int? = null,
+  val challenge: RingChallenge = RingChallenge.None
 ) {
   init {
     require(snoozeMinutes > 0) { "a ring snoozes for a positive number of minutes, got $snoozeMinutes" }
-    require((kind == RingKind.ALARM) == (rule != null)) { "an alarm ring carries its rule and a timer ring does not" }
+    require(snoozeLimit == null || snoozeLimit > 0) { "a snooze limit is a positive count, got $snoozeLimit" }
+    require(rule == null || kind == RingKind.ALARM) { "only an alarm ring carries a rule" }
   }
 
   val repeats: Boolean get() = rule?.repeats == true
@@ -45,11 +48,13 @@ class PhoneRing(
     .put("kind", kind.wire)
     .put("refId", refId)
     .put("dueAt", dueAt.toString())
-    .put("sound", sound)
+    .put("sound", sound.toJson())
     .put("rampSeconds", rampSeconds)
     .put("vibrate", vibrate)
     .put("label", label ?: JSONObject.NULL)
     .put("snoozeMinutes", snoozeMinutes)
+    .put("snoozeLimit", snoozeLimit ?: JSONObject.NULL)
+    .put("challenge", challenge.toJson())
     .also { json -> rule?.let { json.put("rule", ruleJson(it)) } }
 
   companion object {
@@ -58,12 +63,14 @@ class PhoneRing(
       RingKind.of(json.getString("kind")),
       json.getString("refId"),
       Instant.parse(json.getString("dueAt")),
-      json.getString("sound"),
+      RingSound.of(json.getJSONObject("sound")),
       json.getInt("rampSeconds"),
       json.getBoolean("vibrate"),
       if (json.isNull("label")) null else json.getString("label"),
       json.optJSONObject("rule")?.let(::ruleOf),
-      json.optInt("snoozeMinutes", DEFAULT_SNOOZE_MINUTES)
+      json.optInt("snoozeMinutes", DEFAULT_SNOOZE_MINUTES),
+      if (json.isNull("snoozeLimit")) null else json.getInt("snoozeLimit"),
+      RingChallenge.of(json.getJSONObject("challenge"))
     )
 
     const val DEFAULT_SNOOZE_MINUTES = 9
@@ -89,7 +96,7 @@ class PhoneRing(
   }
 }
 
-class RingSet(val hash: String, val rings: List<PhoneRing>) {
+class RingSet(val hash: String, val rings: List<PhoneRing>, val bedtimeWindows: List<BedtimeWindow>) {
   init {
     require(rings.map { it.ringKey }.toSet().size == rings.size) { "ring keys must not repeat" }
   }
@@ -98,7 +105,11 @@ class RingSet(val hash: String, val rings: List<PhoneRing>) {
     fun parse(text: String): RingSet {
       val json = JSONObject(text)
       val rings = json.getJSONArray("rings")
-      return RingSet(json.getString("hash"), (0 until rings.length()).map { PhoneRing.of(rings.getJSONObject(it)) })
+      return RingSet(
+        json.getString("hash"),
+        (0 until rings.length()).map { PhoneRing.of(rings.getJSONObject(it)) },
+        BedtimeWindow.allOf(json.getJSONArray("bedtimeWindows"))
+      )
     }
   }
 }
@@ -108,14 +119,18 @@ class RingState(
   val hash: String?,
   val rings: List<PhoneRing>,
   val armed: Map<String, Long>,
-  val settled: Set<String>
+  val settled: Set<String>,
+  val snoozes: Map<String, Int> = emptyMap()
 ) {
+  fun withSnoozes(next: Map<String, Int>): RingState = RingState(clientId, hash, rings, armed, settled, next)
+
   fun toJson(): JSONObject = JSONObject()
     .put("clientId", clientId ?: JSONObject.NULL)
     .put("hash", hash ?: JSONObject.NULL)
     .put("rings", JSONArray(rings.map { it.toJson() }))
     .put("armed", JSONObject(armed))
     .put("settled", JSONArray(settled.sorted()))
+    .put("snoozes", JSONObject(snoozes))
 
   companion object {
     val EMPTY = RingState(null, null, emptyList(), emptyMap(), emptySet())
@@ -124,12 +139,14 @@ class RingState(
       val rings = json.getJSONArray("rings")
       val armed = json.getJSONObject("armed")
       val settled = json.getJSONArray("settled")
+      val snoozes = json.getJSONObject("snoozes")
       return RingState(
         if (json.isNull("clientId")) null else json.getString("clientId"),
         if (json.isNull("hash")) null else json.getString("hash"),
         (0 until rings.length()).map { PhoneRing.of(rings.getJSONObject(it)) },
         armed.keys().asSequence().associateWith { armed.getLong(it) },
-        (0 until settled.length()).map { settled.getString(it) }.toSet()
+        (0 until settled.length()).map { settled.getString(it) }.toSet(),
+        snoozes.keys().asSequence().associateWith { snoozes.getInt(it) }
       )
     }
   }
@@ -145,6 +162,6 @@ class RingStore(private val preferences: SharedPreferences) {
 
   companion object {
     const val PREFERENCES = "expo.modules.healthconnect.planner-rings"
-    private const val STATE = "state"
+    private const val STATE = "state.v2"
   }
 }

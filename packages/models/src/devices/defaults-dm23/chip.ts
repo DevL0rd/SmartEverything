@@ -57,7 +57,7 @@ export const GENERIC_CHIP_MODEL: ModelSpec = {
   title: 'Smart device',
   category: 'generic',
   family: 'generic',
-  footprint: { width: SIDE + 0.004, depth: SIDE + 0.004, height: HEIGHT },
+  footprint: { width: 0.0606, depth: 0.0606, height: 0.0204 },
   framing: house('body', 30, 26),
   shots: [
     shot('alert', whenAll(leaf('alarm', 'eq', true)), 'led', {

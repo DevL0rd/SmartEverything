@@ -117,7 +117,7 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     icon: 'automations',
     tab: 'automations',
     parent: null,
-    keywords: ['rules', 'schedules', 'scenes'],
+    keywords: ['rules', 'schedules', 'routines'],
     available: always,
     searchable: true,
     actions: AUTOMATIONS_ACTIONS,

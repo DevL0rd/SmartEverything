@@ -15,7 +15,7 @@
 
 ## Excluded components (componentSrcMap null)
 
-Internal pieces with no standalone render: Axes, Extremes, MarkerLabel, MarkerLine (chart internals needing a model), DrawnStroke (needs a reanimated shared value), Frame (SVG path helper for brand glyphs), KeyboardViewport (keyboard-avoidance wrapper), LinkIntentProvider (context provider), ListTop and SectionHeader and RowScope (VirtualList internals), EditCanvas and EditableWidget and ResizeHandle (widget-board edit internals that need drag state and a PanGesture; shown through `WidgetBoard` Editing). Non-component exports (contexts, stores, hooks, gesture and keyboard utilities, ALL_CAPS constants) were never included: `ScreenContext`, `HeaderSlotContext`, `OverlayShown`, `HeaderSearchProvider`, `HeaderStatusProvider`, `ToastClock`, `RowVisibility` are listed in `.design-sync/kit-exclude.json`; the rest never match the PascalCase component rule.
+Internal pieces with no standalone render: Axes, Extremes, MarkerLabel, MarkerLine (chart internals needing a model), DrawnStroke (needs a reanimated shared value), Frame (SVG path helper for brand glyphs), KeyboardViewport (keyboard-avoidance wrapper), LinkIntentProvider (context provider), ListTop and SectionHeader and RowScope (VirtualList internals), EditCanvas and EditableWidget and ResizeHandle (widget-board edit internals that need drag state and a PanGesture; shown through `WidgetBoard` Editing). Non-component exports (contexts, stores, hooks, gesture and keyboard utilities, ALL_CAPS constants) were never included: `ScreenContext`, `HeaderSlotContext`, `OverlayShown`, `HeaderStatusProvider`, `ToastClock`, `RowVisibility` are listed in `.design-sync/kit-exclude.json`; the rest never match the PascalCase component rule.
 
 ## Known render warns
 

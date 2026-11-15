@@ -1,4 +1,4 @@
-import { act, createElement, type ReactNode } from 'react';
+import { act, createElement, Fragment, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 import type { SelectProps } from '../../../components/select';
@@ -21,8 +21,15 @@ function childrenOf({ children }: { readonly children: ReactNode }): ReactNode {
 
 vi.mock('react-native', () => ({ View: childrenOf }));
 vi.mock('../../../components/empty-state', () => ({ EmptyState: (): null => null }));
-vi.mock('../../../components/page-header', () => ({ PageHeader: (): null => null }));
-vi.mock('../../../components/screen', () => ({ Screen: childrenOf }));
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: ({
+    toolbar,
+    children,
+  }: {
+    readonly toolbar?: ReactNode;
+    readonly children: ReactNode;
+  }): ReactNode => createElement(Fragment, null, toolbar, children),
+}));
 vi.mock('../../../components/select', () => ({
   Select: (props: SelectProps<Shown>): null => {
     state.selector(props);
@@ -30,9 +37,9 @@ vi.mock('../../../components/select', () => ({
   },
 }));
 vi.mock('../../../components/virtual-list', () => ({
-  VirtualList: ({ header, sections }: VirtualListProps<ActivityItem>): ReactNode => {
+  VirtualList: ({ sections }: VirtualListProps<ActivityItem>): null => {
     state.visible = sections.flatMap((section) => section.data.map((item) => item.id));
-    return header;
+    return null;
   },
 }));
 vi.mock('../../../store/clock', () => ({ useMinute: (): number => Date.parse(AT) }));

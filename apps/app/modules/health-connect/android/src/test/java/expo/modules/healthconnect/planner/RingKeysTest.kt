@@ -11,7 +11,7 @@ import org.junit.Test
 
 class RingKeysTest {
   private val alarm = PhoneRing(
-    "alarm:1", RingKind.ALARM, "ref", Instant.parse("2026-11-07T07:00:00Z"), "default", 30, true, "Wake",
+    "alarm:1", RingKind.ALARM, "ref", Instant.parse("2026-11-07T07:00:00Z"), RingSound.Tone("default"), 30, true, "Wake",
     AlarmRule(LocalTime.of(7, 0), setOf(1), null, null), 5
   )
 
@@ -46,10 +46,25 @@ class RingKeysTest {
 
   @Test fun theSnoozeLengthMustBePositiveAndDefaultsWhenTheSetStatesNone() {
     assertThrows(IllegalArgumentException::class.java) {
-      PhoneRing("k", RingKind.TIMER, "r", Instant.EPOCH, "default", 0, false, null, null, 0)
+      PhoneRing("k", RingKind.TIMER, "r", Instant.EPOCH, RingSound.Tone("default"), 0, false, null, null, 0)
     }
     val json = alarm.toJson()
     json.remove("snoozeMinutes")
     assertEquals(PhoneRing.DEFAULT_SNOOZE_MINUTES, PhoneRing.of(json).snoozeMinutes)
+  }
+
+  @Test fun theDeepLinkOpensTheRingScreenOfTheBaseKey() {
+    assertEquals("smarteverything://ring/alarm:1", RingKeys.linkTextOf("smarteverything", "alarm:1"))
+    assertEquals("smarteverything://ring/alarm:1", RingKeys.linkTextOf("smarteverything", RingKeys.snoozeOf("alarm:1")))
+  }
+
+  @Test fun aSnoozedRingKeepsItsLimitAndChallenge() {
+    val limited = PhoneRing(
+      "alarm:1", RingKind.ALARM, "ref", Instant.parse("2026-11-07T07:00:00Z"), RingSound.Tone("default"), 0, true, null, null, 5, 2,
+      RingChallenge.Steps(20)
+    )
+    val snoozed = RingSnooze.ringOf(limited, Instant.parse("2026-11-07T07:00:10Z"), 5)
+    assertEquals(2, snoozed.snoozeLimit)
+    assertTrue(snoozed.challenge.blocksStop)
   }
 }

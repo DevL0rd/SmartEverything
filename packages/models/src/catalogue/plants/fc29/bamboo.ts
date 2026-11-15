@@ -75,7 +75,7 @@ function cane(entry: Cane, index: number): ModelSpecPart[] {
 export const BAMBOO_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.bamboo',
   title: 'Bamboo',
-  footprint: { width: 0.66, depth: 0.86, height: 2.21 },
+  footprint: { width: 0.6571, depth: 0.8636, height: 2.214 },
   names: {
     display: 'Bamboo',
     synonyms: ['bamboo', 'lucky bamboo', 'potted bamboo', 'bamboo plant', 'cane plant'],

@@ -2,7 +2,7 @@ import type { ClientRow } from '@smarteverything/domain';
 import { effectiveRow } from '../../server/person-access';
 import type { Store } from '../../store/store';
 
-const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation', 'scene']);
+const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation']);
 
 export function commandRoleOf(
   store: Pick<Store, 'commands' | 'clients' | 'profiles' | 'personAccess'>,

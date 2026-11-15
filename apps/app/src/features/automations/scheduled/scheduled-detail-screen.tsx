@@ -8,8 +8,8 @@ import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import type { MenuItem } from '../../../components/menu';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
 import { joinParts } from '../../../format/text';
@@ -122,7 +122,7 @@ function Detail({ row }: { readonly row: ScheduleRow }): ReactNode {
   const touch = useIdiom() === 'touch';
   const commands = useCommands(row);
   const editable = canEdit(row);
-  const actions: HeaderAction[] =
+  const actions: ShellAction[] =
     touch || !editable
       ? []
       : [
@@ -134,16 +134,11 @@ function Detail({ row }: { readonly row: ScheduleRow }): ReactNode {
     ? []
     : [{ label: 'Remove', icon: 'trash', destructive: true, onPress: commands.remove }];
   return (
-    <Screen
-      header={
-        <PageHeader
-          title={titleOf(row)}
-          titleLines="wrap"
-          subtitle={STATE_LOOK[row.state].label}
-          actions={actions}
-          overflow={overflow}
-        />
-      }
+    <PageShell
+      title={titleOf(row)}
+      subtitle={STATE_LOOK[row.state].label}
+      actions={actions}
+      overflow={overflow}
     >
       <View className="flex-row flex-wrap gap-section-gap">
         <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">
@@ -154,7 +149,7 @@ function Detail({ row }: { readonly row: ScheduleRow }): ReactNode {
           <StepRows row={row} zone={zone} />
         </View>
       </View>
-    </Screen>
+    </PageShell>
   );
 }
 

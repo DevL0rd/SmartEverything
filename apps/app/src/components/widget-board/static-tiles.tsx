@@ -1,5 +1,6 @@
+import { useWindowSize } from '../../design/size-class';
 import { memo, useEffect, useMemo, type ReactNode } from 'react';
-import { useWindowDimensions } from 'react-native';
+
 import { Logger } from '@smarteverything/logging';
 import { LogTally } from '../../design/log-tally';
 import { useIdiom } from '../../design/platform';
@@ -93,7 +94,7 @@ export function StaticTiles({
   readonly rowLayer: BoardRowLayer | undefined;
 }): ReactNode {
   const idiom = useIdiom();
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const mounted = useBoardStagger(page, placements, cell.height + cell.gap, height);
   const order = mountOrder(placements);
   const render = (placement: Placement, originTop: number): ReactNode => {

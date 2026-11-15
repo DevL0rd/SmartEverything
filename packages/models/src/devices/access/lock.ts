@@ -29,7 +29,7 @@ export const DEADBOLT_LOCK_MODEL: ModelSpec = {
   title: 'Smart deadbolt',
   category: 'security',
   family: 'lock',
-  footprint: { width: PLATE, depth: DEPTH, height: HEIGHT },
+  footprint: { width: PLATE, depth: 0.0495, height: HEIGHT },
   framing: house('knob', 22, 12),
   shots: [
     shot('turning', whenAll(leaf('locked', 'eq', true)), 'knob', {

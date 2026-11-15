@@ -1,14 +1,9 @@
-//go:build linux
-
 package main
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/smarteverything/drive-mount/integration/fakehub"
 )
 
 func TestConflictNameKeepsTheExtension(t *testing.T) {
@@ -31,60 +26,76 @@ func TestConflictNameKeepsTheExtension(t *testing.T) {
 }
 
 func TestEditOnAStaleBaseIsKeptBesideTheNewerHubVersion(t *testing.T) {
-	h := fakehub.New(t)
-	h.Put("/a.txt", "abcdef")
-	dir := writeDir(t)
-	w := openFake(t, h, dir)
-	t.Cleanup(w.Close)
-	changes := observe(w)
-	handle, err := w.OpenWrite(context.Background(), writeRoot, "/a.txt", false)
-	if err != nil {
-		t.Fatal(err)
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "a.txt", "abcdef")
+	r.w.nameOf = func(i uint64) (uint64, string, bool) { return 1, "a.txt", i == ino }
+	var created []string
+	r.w.SetCreated(func(parent uint64, name string) { created = append(created, name) })
+	h := r.openExisting(ino, false)
+	buf := make([]byte, 6)
+	if _, err := h.ReadAt(buf, 0); err != nil || string(buf) != "abcdef" {
+		t.Fatalf("%q %v", buf, err)
 	}
-	h.Edit("/a.txt", "hub changed it")
-	writeAll(t, handle, 0, "Q")
-	handle.Close()
-	var copied string
-	until(t, changes, "the conflict copy", func() bool {
-		for _, name := range h.Names("/") {
-			if strings.Contains(name, ".sync-conflict-") {
-				copied = "/" + name
-			}
-		}
-		return copied != "" && w.Pending(writeRoot) == 0
-	})
-	if got, _ := h.Content("/a.txt"); got != "hub changed it" {
-		t.Fatalf("hub version overwritten: %q", got)
+	wbPut(t, h, 1, "XY")
+	r.hub.change(ino, "other computer")
+	h.Close()
+	r.drain()
+	if got := r.hub.content(ino); got != "other computer" {
+		t.Fatalf("the newer hub version was overwritten: %q", got)
 	}
-	if got, _ := h.Content(copied); got != "Qbcdef" || !strings.HasSuffix(copied, "-mount.txt") {
-		t.Fatalf("copy %s %q", copied, got)
+	if len(created) != 1 || !strings.HasPrefix(created[0], "a.sync-conflict-") || !strings.HasSuffix(created[0], ".txt") {
+		t.Fatalf("created %v", created)
 	}
-	if left := journalFiles(t, dir); len(left) != 0 {
-		t.Fatalf("journal %v", left)
+	copyIno, ok := r.hub.lookupName(1, created[0])
+	if !ok {
+		t.Fatal("no conflict copy on the hub")
+	}
+	if got := r.hub.content(copyIno); got != "aXYdef" {
+		t.Fatalf("copy %q", got)
+	}
+	wbEventually(t, "journal clean", func() bool { return len(wbJournalFiles(t, r.dir)) == 0 })
+}
+
+func TestStaleBaseWithoutAKnownNameStaysInTheJournal(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "a.txt", "abcdef")
+	h := r.openExisting(ino, false)
+	wbPut(t, h, 1, "XY")
+	r.hub.change(ino, "other")
+	h.Close()
+	wbEventually(t, "stuck", func() bool { return r.w.Pending("") == 1 && r.hub.count("END") >= 1 })
+	if len(wbJournalFiles(t, r.dir)) == 0 {
+		t.Fatal("the edit was dropped")
+	}
+	if r.hub.content(ino) != "other" {
+		t.Fatal("the hub version was overwritten")
 	}
 }
 
-func TestEditOfAFileDeletedOnTheHubIsKeptAsACopy(t *testing.T) {
-	h := fakehub.New(t)
-	h.Put("/a.txt", "abc")
-	w := openFake(t, h, writeDir(t))
-	t.Cleanup(w.Close)
-	changes := observe(w)
-	handle, err := w.OpenWrite(context.Background(), writeRoot, "/a.txt", false)
-	if err != nil {
-		t.Fatal(err)
+func TestSmallStaleEditBecomesAConflictCopyThroughPut(t *testing.T) {
+	r := newWbRig(t)
+	r.online()
+	ino := r.hub.addFile(1, "n.txt", "")
+	r.w.nameOf = func(i uint64) (uint64, string, bool) { return 1, "n.txt", i == ino }
+	h := r.openExisting(ino, true)
+	wbPut(t, h, 0, "mine")
+	r.hub.change(ino, "theirs")
+	h.Close()
+	r.drain()
+	if got := r.hub.content(ino); got != "theirs" {
+		t.Fatalf("hub %q", got)
 	}
-	if err := w.hub.remove(context.Background(), writeRoot, entry{ID: h.ID("/a.txt")}); err != nil {
-		t.Fatal(err)
+	found := false
+	r.hub.mu.Lock()
+	for name, i := range r.hub.nodes[1].names {
+		if strings.HasPrefix(name, "n.sync-conflict-") && string(r.hub.nodes[i].data) == "mine" {
+			found = true
+		}
 	}
-	writeAll(t, handle, 0, "Z")
-	handle.Close()
-	until(t, changes, "the copy", func() bool { return len(h.Names("/")) == 1 && w.Pending(writeRoot) == 0 })
-	copied := "/" + h.Names("/")[0]
-	if got, _ := h.Content(copied); got != "Zbc" || !strings.Contains(copied, ".sync-conflict-") {
-		t.Fatalf("copy %s %q", copied, got)
-	}
-	if h.Exists("/a.txt") {
-		t.Fatal("the deleted file came back")
+	r.hub.mu.Unlock()
+	if !found {
+		t.Fatal("no conflict copy with the edit")
 	}
 }

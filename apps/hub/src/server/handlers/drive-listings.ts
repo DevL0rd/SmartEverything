@@ -66,6 +66,7 @@ export function driveListings(sources: ListingSources): DriveListings {
         store.driveShares.madeBy({
           createdBy: actor.profileId,
           itemId: query.itemId,
+          albumId: query.albumId,
           after: shareAfter(store, actor, query.cursor),
           limit: DRIVE_PAGE_SIZE + 1,
         }),

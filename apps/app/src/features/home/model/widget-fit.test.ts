@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SEMANTIC_SIZES } from '../../../design/tokens';
-import { activityRowCount, consumerRowCount, sceneGrid, securityRowCount } from './widget-fit';
+import { activityRowCount, consumerRowCount, chipGrid, securityRowCount } from './widget-fit';
 
 const TOUCH = SEMANTIC_SIZES.touch.comfortable;
 const POINTER = SEMANTIC_SIZES.pointer.comfortable;
@@ -24,14 +24,14 @@ describe('activityRowCount', () => {
   });
 });
 
-describe('sceneGrid', () => {
-  it('shows every scene when the rows fit', () => {
-    expect(sceneGrid(272, 7, 2, TOUCH)).toEqual({ shown: 7, more: 0 });
+describe('chipGrid', () => {
+  it('shows every chip when the rows fit', () => {
+    expect(chipGrid(272, 7, 2, TOUCH)).toEqual({ shown: 7, more: 0 });
   });
 
-  it('counts the scenes that did not fit and keeps room for the more link', () => {
-    expect(sceneGrid(140, 7, 2, TOUCH)).toEqual({ shown: 2, more: 5 });
-    expect(sceneGrid(272, 20, 2, TOUCH)).toEqual({ shown: 6, more: 14 });
+  it('counts the chips that did not fit and keeps room for the more link', () => {
+    expect(chipGrid(140, 7, 2, TOUCH)).toEqual({ shown: 2, more: 5 });
+    expect(chipGrid(272, 20, 2, TOUCH)).toEqual({ shown: 6, more: 14 });
   });
 });
 

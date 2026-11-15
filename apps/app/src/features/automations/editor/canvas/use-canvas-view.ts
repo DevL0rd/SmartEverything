@@ -12,6 +12,7 @@ import {
   ZOOM_LIMITS,
   commandKey,
   fitViewport,
+  wholeOpeningViewport,
   wholeViewport,
   portsAreTargets,
   type GraphFraming,
@@ -22,25 +23,26 @@ function useFlowApi(): ReturnType<typeof useReactFlow<GraphFlowNode, GraphFlowEd
   return useReactFlow<GraphFlowNode, GraphFlowEdge>();
 }
 
-export function useFitGraph(framing: GraphFraming): () => Promise<boolean> {
+export type GraphFit = 'open' | 'whole';
+
+export function useFitGraph(framing: GraphFraming): (fit: GraphFit) => Promise<boolean> {
   const flow = useFlowApi();
   const store = useStoreApi();
-  return useStableCallback((): Promise<boolean> => {
+  return useStableCallback((fit: GraphFit): Promise<boolean> => {
     const nodes = flow.getNodes();
     if (nodes.length === 0) return Promise.resolve(false);
-    const start = nodes.find((node) => node.type === 'start');
+    const first = nodes.find((node) => node.type === 'start');
+    const start = first === undefined ? null : flow.getNodesBounds([first]);
     const { width, height, setMinZoom } = store.getState();
+    const frame = { width, height };
     const graph = flow.getNodesBounds(nodes);
     const view =
-      framing === 'whole'
-        ? wholeViewport(graph, { width, height })
-        : fitViewport(
-            graph,
-            start === undefined ? null : flow.getNodesBounds([start]),
-            { width, height },
-            FIT_PADDING,
-          );
-    setMinZoom(Math.min(ZOOM_LIMITS.min, view.zoom));
+      framing === 'opening'
+        ? fitViewport(graph, start, frame, FIT_PADDING)
+        : fit === 'open'
+          ? wholeOpeningViewport(graph, start, frame)
+          : wholeViewport(graph, frame);
+    setMinZoom(Math.min(ZOOM_LIMITS.min, wholeViewport(graph, frame).zoom, view.zoom));
     return flow.setViewport(view);
   });
 }

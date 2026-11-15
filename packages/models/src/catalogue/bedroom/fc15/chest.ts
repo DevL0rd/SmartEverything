@@ -16,6 +16,7 @@ const TOP = 0.03;
 const GAP = 0.006;
 const MARGIN = 0.015;
 const FRONT_T = 0.02;
+const PULL_REACH = { knob: 0.014, bar: 0.013 } as const;
 
 interface Range {
   readonly min: number;
@@ -124,7 +125,7 @@ export function chest(shape: ChestShape): ModelSpec {
     title: shape.title,
     footprint: {
       width: shape.width.default + shape.extra.width,
-      depth: shape.depth + 0.04,
+      depth: shape.depth + 0.02 + PULL_REACH[shape.pull],
       height: shape.height.default + shape.extra.height,
     },
     size: {

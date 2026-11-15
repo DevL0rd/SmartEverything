@@ -8,12 +8,12 @@ import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
 import { FilterChip } from '../../components/filter-chip';
 import { HScroller } from '../../components/h-scroller';
-import { SearchField } from '../../components/search-field';
 import { Skeleton } from '../../components/skeleton';
 import { Text } from '../../components/text';
 import { VirtualList } from '../../components/virtual-list';
 import { useMinute } from '../../store/clock';
 import { PluginStreamSection } from '../shared/plugin-stream-section';
+import { useSectionSearch } from '../shared/section-search';
 import { useSectionParam } from '../../components/use-section-param';
 import { adguardNotice, useAdGuardSnapshot, useQueryLog, type QueryLogView } from './adguard-data';
 import { ClientSheet } from './client-sheet';
@@ -32,7 +32,6 @@ import { periodText } from './stats-period';
 
 interface Controls {
   readonly search: string;
-  readonly onSearch: (search: string) => void;
   readonly filter: QueryLogFilter;
   readonly onFilter: (filter: QueryLogFilter) => void;
   readonly stats: AdGuardSnapshot['stats'];
@@ -47,16 +46,10 @@ function CountsNote({
   return <Text variant="caption" tone="variant">{`Counts cover the ${periodText(stats)}.`}</Text>;
 }
 
-function ListControls({ search, onSearch, filter, onFilter, stats, log }: Controls): ReactNode {
+function ListControls({ search, filter, onFilter, stats, log }: Controls): ReactNode {
   const counts = stats === null || search.trim() !== '' ? null : filterCounts(stats);
   return (
     <View className="w-full max-w-reading gap-3 self-start px-gutter py-2">
-      <SearchField
-        value={search}
-        onChange={onSearch}
-        placeholder="Domain or device"
-        variant="field"
-      />
       <HScroller label="Filter lookups" fade>
         <View
           className="flex-row"
@@ -125,7 +118,6 @@ function Empty({ log }: { readonly log: QueryLogView }): ReactNode {
 }
 
 interface Initial {
-  readonly search: string;
   readonly filter: QueryLogFilter;
   readonly client: string | null;
 }
@@ -171,7 +163,6 @@ function LookupSheets({
 
 interface ListState {
   readonly search: string;
-  readonly onSearch: (search: string) => void;
   readonly filter: QueryLogFilter;
   readonly onFilter: (filter: QueryLogFilter) => void;
 }
@@ -215,11 +206,11 @@ function QueryLog({
   readonly snapshot: AdGuardSnapshot;
   readonly initial: Initial;
 }): ReactNode {
-  const [search, setSearch] = useState(initial.search);
+  const search = useSectionSearch();
   const [filter, setFilter] = useState(initial.filter);
   const [open, setOpen] = useState<AdGuardQuery | null>(null);
   const [client, setClient] = useState(initial.client);
-  const state = { search, onSearch: setSearch, filter, onFilter: setFilter };
+  const state = { search: search.value, filter, onFilter: setFilter };
   return (
     <View className="-mx-gutter flex-1">
       <LookupList state={state} stats={snapshot.stats} onOpen={setOpen} />
@@ -229,7 +220,7 @@ function QueryLog({
         client={client}
         onOpen={setOpen}
         onClient={setClient}
-        onSearch={setSearch}
+        onSearch={search.onChange}
       />
     </View>
   );
@@ -237,10 +228,9 @@ function QueryLog({
 
 export function QueriesSection(): ReactNode {
   usePluginScreen('adguard', 'QueriesSection');
-  const [search] = useSectionParam('search');
   const [client] = useSectionParam('client');
   const [filter] = useSectionParam('filter');
-  const initial = { search: search ?? '', filter: filterOf(filter), client };
+  const initial = { filter: filterOf(filter), client };
   return (
     <PluginStreamSection
       stream={useAdGuardSnapshot()}
@@ -251,7 +241,7 @@ export function QueriesSection(): ReactNode {
       {(snapshot) =>
         snapshot.connection.state === 'online' ? (
           <QueryLog
-            key={`${initial.filter}|${initial.search}|${initial.client ?? ''}`}
+            key={`${initial.filter}|${initial.client ?? ''}`}
             snapshot={snapshot}
             initial={initial}
           />

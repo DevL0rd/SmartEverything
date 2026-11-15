@@ -16,7 +16,7 @@ export const VIBRATION_SENSOR_MODEL: ModelSpec = {
   title: 'Vibration sensor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: SIDE, depth: FRONT, height: SIDE },
+  footprint: { width: SIDE, depth: 0.0172, height: SIDE },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

@@ -5,6 +5,7 @@ import {
   applyTriggerSettingsChange,
 } from '@smarteverything/domain';
 import type { ServerContext } from '../context';
+import { readBuildSources, updateBuildSources } from '../../self-update/build-source';
 import { bound } from '../router';
 import { clipboardRoutes } from './clipboard';
 import { providerRoutes } from './providers';
@@ -42,6 +43,10 @@ export const settingsRoutes = (context: ServerContext, now: () => Date) =>
       const pause = body.end_of_speech_pause_ms;
       return pause === undefined ? settings.read() : settings.setEndOfSpeechPause(pause);
     }),
+    readBuildSources: bound(E.readBuildSources, () => readBuildSources(context.store)),
+    updateBuildSources: bound(E.updateBuildSources, ({ body }) =>
+      updateBuildSources(context.store, body),
+    ),
     updateHistorySettings: bound(E.updateHistorySettings, ({ body }) => {
       const { settings } = context.store;
       const current = settings.read().history_settings;

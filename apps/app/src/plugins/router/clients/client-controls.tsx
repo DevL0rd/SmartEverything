@@ -6,7 +6,6 @@ import type { IconName } from '../../../components/icon-glyphs';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { useAnchoredMenu } from '../../../components/menu';
-import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import {
   CLIENT_FILTERS,
@@ -60,8 +59,6 @@ function SortButton({
 }
 
 export interface ClientControlsProps {
-  readonly query: string;
-  readonly onQuery: (query: string) => void;
   readonly sort: ClientSort;
   readonly onSort: (sort: ClientSort) => void;
   readonly filter: ClientFilter;
@@ -114,8 +111,6 @@ function ClientFilters({
 }
 
 export function ClientControls({
-  query,
-  onQuery,
   sort,
   onSort,
   filter,
@@ -125,25 +120,17 @@ export function ClientControls({
   onClearBand,
 }: ClientControlsProps): ReactNode {
   return (
-    <View className="gap-3 px-gutter py-2">
-      <View className="w-full max-w-reading flex-row items-center gap-2 self-start">
-        <View className="flex-1">
-          <SearchField
-            value={query}
-            onChange={onQuery}
-            placeholder="Name, address or MAC"
-            variant="field"
-          />
-        </View>
-        <SortButton sort={sort} onSort={onSort} />
+    <View className="flex-row items-center gap-2 px-gutter py-2">
+      <View className="min-w-0 flex-1">
+        <ClientFilters
+          filter={filter}
+          onFilter={onFilter}
+          counts={counts}
+          band={band}
+          onClearBand={onClearBand}
+        />
       </View>
-      <ClientFilters
-        filter={filter}
-        onFilter={onFilter}
-        counts={counts}
-        band={band}
-        onClearBand={onClearBand}
-      />
+      <SortButton sort={sort} onSort={onSort} />
     </View>
   );
 }

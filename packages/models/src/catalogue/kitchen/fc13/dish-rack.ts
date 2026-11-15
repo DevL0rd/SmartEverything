@@ -172,7 +172,7 @@ function cutleryParts(): ModelSpecPart[] {
 export const DISH_RACK_MODEL: ModelSpec = kitchenItem({
   id: 'cat.kitchen.dish-rack',
   title: 'Dish rack',
-  footprint: { width: 0.46, depth: DEPTH, height: 0.27 },
+  footprint: { width: 0.46, depth: 0.385, height: 0.265 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

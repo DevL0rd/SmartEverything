@@ -7,6 +7,7 @@ import expo.modules.healthconnect.NativeGuard
 import expo.modules.healthconnect.calls.IncomingCallCancelPush
 import expo.modules.healthconnect.calls.IncomingCallPush
 import expo.modules.healthconnect.diagnostics.NativeLog
+import expo.modules.healthconnect.drive.DriveOfflineChangedPush
 import expo.modules.healthconnect.phone.PhoneActionPush
 import expo.modules.healthconnect.phone.PhoneApprovalCancelPush
 import expo.modules.healthconnect.phone.PhoneApprovalPush
@@ -28,6 +29,7 @@ object PushCommands {
     DomainConstants.PUSH_COMMAND_AI_SPEECH to AiSpeechPush,
     DomainConstants.PUSH_COMMAND_AI_RING to IncomingCallPush,
     DomainConstants.PUSH_COMMAND_AI_RING_CANCEL to IncomingCallCancelPush,
+    DomainConstants.PUSH_COMMAND_DRIVE_OFFLINE_CHANGED to DriveOfflineChangedPush,
   )
 
   fun run(context: Context, data: Map<String, String>) {

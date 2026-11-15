@@ -110,7 +110,7 @@ export const TREE_DECIDUOUS_MODEL: ModelSpec = catalogueModel({
   id: 'cat.outdoor.tree-deciduous',
   title: 'Deciduous tree',
   category: 'outdoor',
-  footprint: { width: 4.5, depth: 4.3, height: 6.05 },
+  footprint: { width: 4.5, depth: 4.3, height: 6.045 },
   view: TALL_VIEW,
   meta: {
     names: {

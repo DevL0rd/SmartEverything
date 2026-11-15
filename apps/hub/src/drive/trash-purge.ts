@@ -1,4 +1,5 @@
-import type { DriveItem } from '@smarteverything/domain';
+import type { DriveItem, DriveTrashEntry } from '@smarteverything/domain';
+import type { DriveIntent } from '../store/repositories/drive-intents';
 import { messageOf } from '@smarteverything/logging';
 import {
   announce,
@@ -10,11 +11,64 @@ import {
   isoOf,
   type ChangeActor,
   type ChangeEnv,
+  type NewItem,
   type PurgeSchedule,
 } from './changes';
-import { DriveWriteError, locate, type DriveWriteRoot } from './intents';
+import {
+  abandonIntent,
+  DriveWriteError,
+  locate,
+  manifestPath,
+  type DriveWriteRoot,
+  type FileStamp,
+} from './intents';
+import { linkDraft, NO_IDENTITY, specialDraft } from './posix/drafts';
+import type { DriveItemDraft } from '../store/repositories/drive-items';
+import type { StashedRoot } from '../store/repositories/drive-trash-rows';
 import { moveToTrash, removeTrashEntry, restoreFromTrash } from './trash';
 import { purgeVersions } from './versions';
+
+export interface StagedTrash {
+  readonly record: () => void;
+  readonly undo: () => Promise<void>;
+}
+
+export async function stageTrash(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  itemId: string,
+  actor: ChangeActor,
+): Promise<StagedTrash> {
+  const item = env.store.driveItems.byId(itemId, null);
+  const move = await moveToTrash(env, root, {
+    itemId,
+    relPath: item.relPath,
+    name: item.name,
+    isFolder: item.kind === 'folder',
+    onDisk: item.kind !== 'special',
+    bytes: item.bytes,
+    deletedBy: actor.actorProfileId,
+    addedByProfileId: item.addedByProfileId,
+  });
+  return {
+    record: (): void => {
+      env.store.driveTrash.insert(move.entry);
+      env.store.driveTrash.stash(itemId);
+      appendFeed(env, { ...item, rev: item.rev + 1 }, 'trash', actor);
+      env.store.driveItems.remove(itemId);
+      if (move.intent !== null) env.store.driveIntents.clear(move.intent.id);
+      announce(env, root.id, item.parentId, [item]);
+      env.purge.rearm();
+    },
+    undo: async (): Promise<void> => {
+      if (move.intent === null) {
+        await env.files.remove(await locate(root, manifestPath(move.entry.trashRelPath)));
+        return;
+      }
+      await abandonIntent(env, root, move.intent);
+    },
+  };
+}
 
 export async function commitTrash(
   env: ChangeEnv,
@@ -22,30 +76,78 @@ export async function commitTrash(
   itemId: string,
   actor: ChangeActor,
 ): Promise<void> {
-  const item = env.store.driveItems.byId(itemId, null);
-  const move = await moveToTrash(env, root, {
-    itemId,
-    relPath: item.relPath,
-    name: item.name,
-    isFolder: item.kind === 'folder',
-    bytes: item.bytes,
-    deletedBy: actor.actorProfileId,
-    addedByProfileId: item.addedByProfileId,
-  });
-  env.store.write(() => {
-    env.store.driveTrash.insert(move.entry);
-    env.store.driveTrash.stash(itemId);
-    appendFeed(env, { ...item, rev: item.rev + 1 }, 'trash', actor);
-    env.store.driveItems.remove(itemId);
-    env.store.driveIntents.clear(move.intent.id);
-    announce(env, root.id, item.parentId, [item]);
-  });
-  env.purge.rearm();
+  const staged = await stageTrash(env, root, itemId, actor);
+  env.store.write(staged.record);
 }
 
 export interface Restored {
   readonly item: DriveItem;
   readonly rescan: boolean;
+}
+
+function restoredDraft(
+  stashed: StashedRoot,
+  base: NewItem,
+  sizes: { readonly folder: number; readonly file: number },
+): DriveItemDraft {
+  switch (stashed.kind) {
+    case 'folder':
+      return folderDraft(base, sizes.folder);
+    case 'special':
+      return specialDraft(base);
+    case 'link':
+      if (stashed.linkTarget === null) {
+        throw new DriveWriteError('missing', 'The trashed link has no target.');
+      }
+      return linkDraft(base, stashed.linkTarget);
+    default:
+      return fileDraft(base, { bytes: sizes.file, sha256: null });
+  }
+}
+
+interface RestoreInput {
+  readonly entry: DriveTrashEntry;
+  readonly stashed: StashedRoot;
+  readonly stamp: FileStamp | null;
+  readonly relPath: string;
+  readonly intent: DriveIntent | null;
+}
+
+function restoredBase(env: ChangeEnv, root: DriveWriteRoot, input: RestoreInput): NewItem {
+  const { entry, stamp, relPath } = input;
+  return {
+    id: entry.itemId,
+    rootId: root.id,
+    parentId: parentOf(env, root.id, relPath)?.id ?? null,
+    relPath,
+    modifiedAt: stamp === null ? env.now().toISOString() : isoOf(stamp.mtimeNs),
+    addedAt: env.now().toISOString(),
+    outside: false,
+    addedByProfileId: entry.addedByProfileId,
+  };
+}
+
+function reinstateItem(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  input: RestoreInput,
+  actor: ChangeActor,
+): DriveItem {
+  const { entry, stashed, stamp, relPath, intent } = input;
+  const rows = env.store.driveTrash.stashed(entry.itemId);
+  env.store.driveTrash.remove(entry.itemId);
+  env.store.driveTrash.reinstateInodes(rows);
+  const base = restoredBase(env, root, input);
+  const written = env.store.driveItems.write({
+    item: restoredDraft(stashed, base, { folder: entry.bytes, file: stamp?.size ?? 0 }),
+    identity: stamp === null ? NO_IDENTITY : identityOf(stamp),
+    ...(stashed.inodeId === null ? {} : { shareInode: stashed.inodeId }),
+  }).item;
+  env.store.driveTrash.reinstate(entry.itemId, rows, relPath);
+  appendFeed(env, written, 'restore', actor);
+  if (intent !== null) env.store.driveIntents.clear(intent.id);
+  announce(env, root.id, base.parentId, [written]);
+  return written;
 }
 
 export async function commitRestore(
@@ -55,37 +157,15 @@ export async function commitRestore(
   actor: ChangeActor,
 ): Promise<Restored> {
   const entry = env.store.driveTrash.byId(itemId);
-  const restored = await restoreFromTrash(env, root, entry);
-  const stamp = await env.files.stamp(await locate(root, restored.relPath));
-  if (stamp === null) {
+  const stashed = env.store.driveTrash.stashedRoot(itemId);
+  const onDisk = stashed.kind !== 'special';
+  const restored = await restoreFromTrash(env, root, { entry, onDisk });
+  const stamp = onDisk ? await env.files.stamp(await locate(root, restored.relPath)) : null;
+  if (onDisk && stamp === null) {
     throw new DriveWriteError('missing', 'The restored item is missing after the move.');
   }
-  const item = env.store.write(() => {
-    const stashed = env.store.driveTrash.stashed(itemId);
-    env.store.driveTrash.remove(itemId);
-    const parent = parentOf(env, root.id, restored.relPath);
-    const base = {
-      id: itemId,
-      rootId: root.id,
-      parentId: parent?.id ?? null,
-      relPath: restored.relPath,
-      modifiedAt: isoOf(stamp.mtimeNs),
-      addedAt: env.now().toISOString(),
-      outside: false,
-      addedByProfileId: entry.addedByProfileId,
-    };
-    const written = env.store.driveItems.write({
-      item: entry.isFolder
-        ? folderDraft(base, entry.bytes)
-        : fileDraft(base, { bytes: stamp.size, sha256: null }),
-      identity: identityOf(stamp),
-    }).item;
-    env.store.driveTrash.reinstate(itemId, stashed, restored.relPath);
-    appendFeed(env, written, 'restore', actor);
-    env.store.driveIntents.clear(restored.intent.id);
-    announce(env, root.id, parent?.id ?? null, [written]);
-    return written;
-  });
+  const input = { entry, stashed, stamp, relPath: restored.relPath, intent: restored.intent };
+  const item = env.store.write(() => reinstateItem(env, root, input, actor));
   env.purge.rearm();
   return { item, rescan: entry.isFolder };
 }

@@ -119,3 +119,25 @@ export function SelectionBar({
     </View>
   );
 }
+
+export function SelectionHead({ summary }: { readonly summary: SelectionSummary }): ReactNode {
+  return (
+    <View className="min-h-15 flex-row items-center gap-2 border-b border-outline-variant bg-chrome px-gutter py-2">
+      <Summary summary={summary} summaryRef={undefined} />
+    </View>
+  );
+}
+
+export function SelectionActions({
+  actions,
+}: {
+  readonly actions: readonly SelectionAction[];
+}): ReactNode {
+  return (
+    <View className="flex-row flex-wrap items-center justify-end gap-2">
+      {actions.map((action) => (
+        <ActionButton key={action.label} action={action} primaryRef={undefined} />
+      ))}
+    </View>
+  );
+}

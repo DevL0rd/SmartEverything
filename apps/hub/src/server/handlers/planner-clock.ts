@@ -1,33 +1,37 @@
 import {
   API_ENDPOINTS as E,
   ApiError,
-  PLANNER_ALARM_CHANGES,
-  type PlannerPhoneRingSet,
+  type PLANNER_ALARM_CHANGES,
   type PlannerPreferences,
   type PlannerRingRow,
-  type PlannerRingTarget,
 } from '@smarteverything/domain';
 import { ZodError, type z } from 'zod';
-import { nextRing, type AlarmScheduler } from '../../planner/alarms';
-import type { PhoneRingSet, PhoneRings } from '../../planner/phone-rings';
+import type { AlarmSounds } from '../../planner/alarm-sound';
+import type { AlarmScheduler } from '../../planner/alarms';
+import type { PhoneRings } from '../../planner/phone-rings';
+import type { RadioDirectory } from '../../planner/radio';
 import type { StopwatchService } from '../../planner/stopwatch';
 import type { TimerService } from '../../planner/timers';
 import type { PlannerAlarmPatch } from '../../store/repositories/planner-alarms';
-import type { Store } from '../../store/store';
-import type { Caller } from '../auth';
 import { invalid } from '../errors';
-import { assertDevicesReach } from '../person-scope';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
-import { sceneDeviceIds } from '../snapshot-reach';
+import {
+  requireChallenge,
+  requireAutomation,
+  requireSound,
+  requireSunrise,
+  requireTargets,
+} from './planner-alarm-checks';
 import { plannerProfileOf, type PlannerContext } from './planner-items';
 
 export interface PlannerClockDependencies {
-  readonly now: () => Date;
   readonly preferencesOf: (profileId: string) => PlannerPreferences;
   readonly alarms: Pick<AlarmScheduler, 'skipNext' | 'snooze' | 'dismiss'>;
   readonly timers: Pick<TimerService, 'begin' | 'pause' | 'resume' | 'addTime' | 'cancelTimer'>;
   readonly stopwatch: Pick<StopwatchService, 'begin' | 'pause' | 'lap' | 'reset'>;
-  readonly phoneRings: Pick<PhoneRings, 'desired' | 'acknowledge'>;
+  readonly phoneRings: Pick<PhoneRings, 'read' | 'acknowledge'>;
+  readonly sounds: Pick<AlarmSounds, 'assertUsable'>;
+  readonly radio: Pick<RadioDirectory, 'search'>;
 }
 
 function validated<T>(what: string, work: () => T): T {
@@ -45,28 +49,6 @@ function alarmPatch(changes: z.infer<typeof PLANNER_ALARM_CHANGES>): PlannerAlar
     if (value !== undefined) Object.assign(patch, { [field]: value });
   }
   return patch;
-}
-
-function requireTargets(store: Store, targets: readonly PlannerRingTarget[] | undefined): void {
-  for (const target of targets ?? []) {
-    const known =
-      target.kind === 'client'
-        ? store.clients.find(target.clientId)
-        : store.devices.find(target.deviceId);
-    if (known === undefined) {
-      throw new ApiError('not_found', 'A place the alarm should ring on does not exist.');
-    }
-  }
-}
-
-function requireScene(
-  context: PlannerContext,
-  caller: Caller,
-  sceneId: string | null | undefined,
-): void {
-  if (sceneId === null || sceneId === undefined) return;
-  const scene = context.store.scenes.byId(sceneId);
-  assertDevicesReach(context.store, caller, sceneDeviceIds(scene.actions));
 }
 
 function ringOf(
@@ -92,7 +74,10 @@ function createAlarmRoute(
     const { clock } = deps.preferencesOf(profileId);
     const targets = body.targets ?? clock.targets;
     requireTargets(store, targets);
-    requireScene(context, caller, body.wake_scene_id);
+    requireAutomation(context, caller, body.wake_automation_id);
+    requireSound(deps.sounds, profileId, body.sound);
+    requireSunrise(context, caller, body.sunrise);
+    requireChallenge(store, body.challenge, targets);
     return validated('alarm', () =>
       store.plannerAlarms.insert({
         profile_id: profileId,
@@ -106,8 +91,11 @@ function createAlarmRoute(
         ramp_seconds: body.ramp_seconds ?? clock.ramp_seconds,
         vibrate: body.vibrate ?? true,
         snooze_minutes: body.snooze_minutes ?? clock.snooze_minutes,
+        snooze_limit: body.snooze_limit === undefined ? clock.snooze_limit : body.snooze_limit,
+        challenge: body.challenge,
+        sunrise: body.sunrise,
         smart_minutes: body.smart_minutes,
-        wake_scene_id: body.wake_scene_id,
+        wake_automation_id: body.wake_automation_id,
         wake_lead_minutes: body.wake_lead_minutes,
         targets,
         watch: [],
@@ -130,7 +118,13 @@ function alarmRoutes(
     updatePlannerAlarm: bound(E.updatePlannerAlarm, ({ params, query, body, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
       requireTargets(store, body.targets);
-      requireScene(context, caller, body.wake_scene_id);
+      requireAutomation(context, caller, body.wake_automation_id);
+      requireSound(deps.sounds, profileId, body.sound);
+      requireSunrise(context, caller, body.sunrise);
+      if (body.challenge !== undefined || body.targets !== undefined) {
+        const alarm = store.plannerAlarms.byId(params.alarmId, profileId);
+        requireChallenge(store, body.challenge ?? alarm.challenge, body.targets ?? alarm.targets);
+      }
       return validated('alarm', () =>
         store.plannerAlarms.update(params.alarmId, profileId, alarmPatch(body)),
       );
@@ -240,49 +234,6 @@ function ownClient(context: PlannerContext, profileId: string, clientId: string)
   }
 }
 
-function alarmRing(
-  alarm: PhoneRingSet['alarms'][number],
-  dueAt: Date,
-): PlannerPhoneRingSet['rings'][number] {
-  return {
-    ringKey: `alarm:${alarm.id}`,
-    kind: 'alarm',
-    refId: alarm.id,
-    dueAt: dueAt.toISOString(),
-    sound: alarm.sound,
-    rampSeconds: alarm.rampSeconds,
-    vibrate: alarm.vibrate,
-    label: alarm.label,
-  };
-}
-
-function ringSetOf(
-  set: PhoneRingSet,
-  clock: PlannerPreferences['clock'],
-  now: Date,
-  zone: string,
-): PlannerPhoneRingSet {
-  const alarms = set.alarms.flatMap((alarm) => {
-    const dueAt = nextRing(
-      { time: alarm.time, days: alarm.days, once_on: alarm.onceOn, skip_on: alarm.skipOn },
-      now,
-      zone,
-    );
-    return dueAt === null ? [] : [alarmRing(alarm, dueAt)];
-  });
-  const timers = set.timers.map((timer) => ({
-    ringKey: `timer:${timer.id}`,
-    kind: 'timer' as const,
-    refId: timer.id,
-    dueAt: timer.endsAt,
-    sound: clock.sound,
-    rampSeconds: 0,
-    vibrate: true,
-    label: timer.label,
-  }));
-  return { hash: set.version, rings: [...alarms, ...timers] };
-}
-
 export const plannerRingRoutes = (context: PlannerContext, deps: PlannerClockDependencies) =>
   ({
     listPlannerRings: bound(E.listPlannerRings, ({ query, caller }) =>
@@ -294,13 +245,9 @@ export const plannerRingRoutes = (context: PlannerContext, deps: PlannerClockDep
     readPlannerPhoneRings: bound(E.readPlannerPhoneRings, ({ query, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
       ownClient(context, profileId, query.clientId);
-      return ringSetOf(
-        deps.phoneRings.desired(query.clientId),
-        deps.preferencesOf(profileId).clock,
-        deps.now(),
-        context.store.settings.read().time_zone,
-      );
+      return deps.phoneRings.read(query.clientId, profileId);
     }),
+    searchPlannerRadio: bound(E.searchPlannerRadio, ({ query }) => deps.radio.search(query.text)),
     ackPlannerPhoneRings: bound(E.ackPlannerPhoneRings, ({ query, body, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
       ownClient(context, profileId, body.clientId);

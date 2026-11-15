@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
-import { findUpdateSource } from '../apps/hub/src/self-update/update-source.ts';
+import { findCheckoutSource } from '../apps/hub/src/self-update/update-source.ts';
 import { pnpmProgram } from './build-host.ts';
 import {
   branchRef,
@@ -34,10 +34,10 @@ const REGISTERED_PORTS: CheckoutPorts = {
 };
 
 function configuredSource(layout: HubLayout, root: string): HubUpdateSource {
-  const configured = findUpdateSource(layout);
+  const configured = findCheckoutSource(layout);
   if (configured === undefined)
     throw new SyncedCheckoutError(
-      'This hub has no update source configured: run tooling/configure-update-source.ts.',
+      'This hub has no update checkout: run tooling/configure-update-source.ts --checkout.',
     );
   if (resolve(configured.checkout) !== resolve(root))
     throw new SyncedCheckoutError(

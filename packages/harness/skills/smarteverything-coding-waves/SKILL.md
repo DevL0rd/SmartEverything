@@ -24,6 +24,7 @@ Each task starts the moment its dependencies finish, from one shared pool, never
 
 - Concurrency caps come from memory headroom: parallel helpers have run a machine out of memory. Raise a cap only after checking free memory.
 - Resume a stopped run with its saved plan and run id: unchanged prompts replay from cache, only edited ones rerun. Estimate as tasks divided by slots times task length plus review stages; claim no queue that does not exist (each run has its own pool; only memory is shared).
+- While helpers run, wait for their reports and for the person's messages: end your turn or use the report wait, and never fill the time with sleep or polling commands. A command that blocks for minutes also holds back the person's new messages.
 - Measure real minutes per task in the first wave and cut the waste before the next.
 
 ## Checks inside a run

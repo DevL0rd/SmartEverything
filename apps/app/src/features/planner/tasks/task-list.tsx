@@ -1,4 +1,4 @@
-import { memo, type ReactElement, type ReactNode } from 'react';
+import { memo, useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
 import { DoneMark } from '../../../components/done-mark';
@@ -10,17 +10,10 @@ import { usePlannerCollections } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { LIST_DOT } from '../item/composer-tokens';
 import { ListTrend } from './list-trend';
-import {
-  smartCountOf,
-  taskGroupsOf,
-  taskListRowsOf,
-  type SmartChoice,
-  type TaskEntry,
-  type TaskFilter,
-  type TaskGroup,
-  type TaskListRow,
-} from './task-grouping';
+import { smartCountOf, type SmartChoice, type TaskEntry, type TaskFilter } from './task-grouping';
 import { TaskRow } from './task-row';
+import { taskGroupsOf, taskListRowsOf, type TaskGroup, type TaskListRow } from './task-rows';
+import { TaskStepRow } from './task-step-row';
 
 function ListDot({ group }: { readonly group: TaskGroup }): ReactNode {
   return (
@@ -34,7 +27,7 @@ function ListDot({ group }: { readonly group: TaskGroup }): ReactNode {
 }
 
 const GroupHead = memo(function GroupHead({ group }: { readonly group: TaskGroup }): ReactNode {
-  const name = group.collection?.name ?? 'No list';
+  const name = group.title;
   return (
     <View className="flex-row items-center gap-2 pb-1 pt-4">
       <ListDot group={group} />
@@ -53,7 +46,13 @@ const GroupHead = memo(function GroupHead({ group }: { readonly group: TaskGroup
 });
 
 function sameSteps(left: TaskEntry, right: TaskEntry): boolean {
-  return left.steps?.done === right.steps?.done && left.steps?.total === right.steps?.total;
+  return (
+    left.children.length === right.children.length &&
+    left.children.every((step, index) => {
+      const other = right.children[index];
+      return step.item === other?.item && step.done === other.done;
+    })
+  );
 }
 
 function sameEntry(left: TaskEntry, right: TaskEntry): boolean {
@@ -64,20 +63,42 @@ function sameEntry(left: TaskEntry, right: TaskEntry): boolean {
     left.dueAt === right.dueAt &&
     left.open === right.open &&
     left.done === right.done &&
+    left.assigned === right.assigned &&
     sameSteps(left, right)
   );
 }
 
+type RowOf<K extends TaskListRow['kind']> = Extract<TaskListRow, { kind: K }>;
+
+function sameHead(left: RowOf<'head'>, right: RowOf<'head'>): boolean {
+  return (
+    left.group.collection === right.group.collection &&
+    left.group.title === right.group.title &&
+    left.group.entries.length === right.group.entries.length
+  );
+}
+
+function sameTask(left: RowOf<'task'>, right: RowOf<'task'>): boolean {
+  return (
+    left.edge === right.edge &&
+    left.above === right.above &&
+    left.expanded === right.expanded &&
+    sameEntry(left.entry, right.entry)
+  );
+}
+
+function sameStep(left: RowOf<'step'>, right: RowOf<'step'>): boolean {
+  return (
+    left.edge === right.edge &&
+    left.step.item === right.step.item &&
+    left.step.done === right.step.done
+  );
+}
+
 export function sameTaskListRow(left: TaskListRow, right: TaskListRow): boolean {
-  if (left.kind === 'head' && right.kind === 'head') {
-    return (
-      left.group.collection === right.group.collection &&
-      left.group.entries.length === right.group.entries.length
-    );
-  }
-  if (left.kind === 'task' && right.kind === 'task') {
-    return left.edge === right.edge && sameEntry(left.entry, right.entry);
-  }
+  if (left.kind === 'head' && right.kind === 'head') return sameHead(left, right);
+  if (left.kind === 'task' && right.kind === 'task') return sameTask(left, right);
+  if (left.kind === 'step' && right.kind === 'step') return sameStep(left, right);
   return false;
 }
 
@@ -92,6 +113,10 @@ const EMPTY_COPY: Readonly<Record<SmartChoice, { readonly title: string; readonl
     },
     habits: { title: 'No habits yet', body: 'Tasks that repeat show up here with their streak.' },
     someday: { title: 'Nothing for someday', body: 'Tasks without a date show up here.' },
+    assigned: {
+      title: 'Nothing assigned',
+      body: 'Tasks you give to someone in the home, and tasks they give you, show up here.',
+    },
     completed: { title: 'Nothing done yet', body: 'Tasks you finish show up here.' },
     all: {
       title: 'No open tasks',
@@ -136,6 +161,13 @@ export interface TaskListProps {
   readonly header?: ReactElement;
 }
 
+export function toggledKey(keys: ReadonlySet<string>, key: string): ReadonlySet<string> {
+  const next = new Set(keys);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
 function keyOf(row: TaskListRow): string {
   return row.key;
 }
@@ -148,13 +180,25 @@ export function TaskList(props: TaskListProps): ReactNode {
   const { entries, today, filter, header } = props;
   const { person } = usePlannerFrame();
   const collections = usePlannerCollections(person);
-  const rows = taskListRowsOf(taskGroupsOf({ entries, filter, collections, today }));
-  const renderItem = (row: TaskListRow): ReactElement =>
-    row.kind === 'head' ? (
-      <GroupHead group={row.group} />
-    ) : (
-      <TaskRow entry={row.entry} edge={row.edge} today={today} />
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (itemId: string): void => {
+    setExpanded((current) => toggledKey(current, itemId));
+  };
+  const rows = taskListRowsOf(taskGroupsOf({ entries, filter, collections, today }), expanded);
+  const renderItem = (row: TaskListRow): ReactElement => {
+    if (row.kind === 'head') return <GroupHead group={row.group} />;
+    if (row.kind === 'step') return <TaskStepRow step={row.step} edge={row.edge} />;
+    return (
+      <TaskRow
+        entry={row.entry}
+        edge={row.edge}
+        today={today}
+        above={row.above}
+        expanded={row.expanded}
+        onExpand={toggle}
+      />
     );
+  };
   return (
     <View className="-mx-gutter min-h-0 flex-1">
       <VirtualList

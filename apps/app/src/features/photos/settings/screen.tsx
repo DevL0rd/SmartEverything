@@ -11,6 +11,7 @@ import { useSyncStatus } from '../../../store/selectors';
 import { usePhotoRailCounts } from '../data/queries';
 import { localMediaSource } from '../local/source';
 import { PHOTOS_PAGE } from '../settings';
+import { SmartLinkCard } from '../smart/link-card';
 import { BackupLinkCard, DuplicatesLinkCard } from './link-cards';
 import { offlineText, summaryText } from './model';
 
@@ -47,6 +48,7 @@ function LinkCards(): ReactNode {
     <View className="gap-3 large:flex-row large:items-stretch">
       <BackupLinkCard />
       <DuplicatesLinkCard />
+      <SmartLinkCard />
     </View>
   );
 }

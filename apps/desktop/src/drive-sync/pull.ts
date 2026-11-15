@@ -1,11 +1,20 @@
-import { createHash } from 'node:crypto';
-import { lstat, mkdir, rm, rmdir } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { mkdir, rm, rmdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { SyncHubMessage, SyncIndexEntry } from '@smarteverything/domain/drive-sync';
 import { messageOf, type Logger } from '@smarteverything/logging';
-import type { DriveSyncDatabase, FileInput, FileRecord } from './db/index.js';
+import { inputOf, type DriveSyncDatabase, type FileRecord } from './db/index.js';
+import type { MetaPort } from './meta-port.js';
+import {
+  decideLive,
+  hubMetaOf,
+  metaMatches,
+  type Context,
+  type FileEntry,
+  type PullContention,
+} from './pull-decide.js';
+import { EntryWriter, codeOf, tempNameOf } from './pull-write.js';
 import { decode } from './push-queue.js';
-import { ENGINE_TEMP_SUFFIX, diskPathFor } from './scan.js';
+import { diskPathFor, type ScanSkip } from './scan.js';
 import type { PlacementHello } from './socket.js';
 import {
   DiskFullError,
@@ -14,7 +23,6 @@ import {
   abandonTransfer,
   diskStateOf,
   downloadFile,
-  modeOf,
   placeFile,
   type BlockSource,
   type LocalBlocks,
@@ -22,9 +30,7 @@ import {
   type TransferProgress,
 } from './transfer.js';
 
-type FileEntry = Extract<SyncIndexEntry, { readonly kind: 'file' }>;
-
-export type PullContention = 'local_edit' | 'kind_changed' | 'new_on_both' | 'not_empty';
+export type { PullContention };
 
 export type PullChange = 'created' | 'updated' | 'deleted';
 
@@ -39,6 +45,8 @@ export interface PullSink {
     readonly reason: PullContention;
   }) => void;
   readonly deferred: (relPath: string) => void;
+  readonly skipped: (skips: readonly ScanSkip[]) => void;
+  readonly dirtied: () => void;
   readonly progress: (progress: PullProgress) => void;
   readonly blocked: (result: { readonly relPath: string; readonly reason: 'disk_full' }) => void;
   readonly failed: (failure: { readonly relPath: string | null; readonly message: string }) => void;
@@ -54,20 +62,13 @@ export interface PlacementPullerOptions {
   readonly driveId: string;
   readonly rootPath: string;
   readonly platform: NodeJS.Platform;
+  readonly meta: MetaPort;
+  readonly tolerance: () => bigint;
   readonly database: PullDatabase;
   readonly source: BlockSource;
   readonly wants: (relPath: string) => boolean;
   readonly sink: PullSink;
   readonly log: Logger;
-}
-
-type Decision =
-  | { readonly action: 'have' | 'adopt' | 'fetch' }
-  | { readonly action: 'contended'; readonly reason: PullContention };
-
-interface Context {
-  readonly pending: ReadonlySet<string>;
-  readonly blocks: () => LocalBlocks;
 }
 
 interface FullIndex {
@@ -82,33 +83,8 @@ class UnexpectedUpdateError extends Error {
   }
 }
 
-function sha256Of(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-function codeOf(cause: unknown): string | undefined {
-  return cause instanceof Error && 'code' in cause && typeof cause.code === 'string'
-    ? cause.code
-    : undefined;
-}
-
 function depthOf(entry: SyncIndexEntry): number {
   return entry.relPath.split('/').length;
-}
-
-function inputOf(record: FileRecord, hubRev: number | null): FileInput {
-  return {
-    placementId: record.placementId,
-    relPath: record.relPath,
-    kind: record.kind,
-    bytes: record.bytes,
-    mtimeNs: record.mtimeNs,
-    mode: record.mode,
-    hubRev,
-    localHashState: record.localHashState,
-    blockSize: record.blockSize,
-    blocks: record.blocks,
-  };
 }
 
 function pendingPaths(database: PullDatabase): ReadonlySet<string> {
@@ -125,35 +101,6 @@ function pendingPaths(database: PullDatabase): ReadonlySet<string> {
   return paths;
 }
 
-function sameContent(local: FileRecord, entry: FileEntry): boolean {
-  return (
-    local.bytes === entry.bytes &&
-    local.blocks !== null &&
-    sha256Of(local.blocks) === entry.blocksHash
-  );
-}
-
-function decideFile(local: FileRecord, entry: FileEntry, pending: ReadonlySet<string>): Decision {
-  if (local.hubRev === entry.rev) return { action: 'have' };
-  if (sameContent(local, entry)) return { action: 'adopt' };
-  if (local.hubRev === null) return { action: 'contended', reason: 'new_on_both' };
-  if (local.localHashState !== 'hashed' || pending.has(entry.relPath)) {
-    return { action: 'contended', reason: 'local_edit' };
-  }
-  return { action: 'fetch' };
-}
-
-function decideLive(
-  local: FileRecord | undefined,
-  entry: SyncIndexEntry,
-  pending: ReadonlySet<string>,
-): Decision {
-  if (local === undefined) return { action: 'fetch' };
-  if (local.kind !== entry.kind) return { action: 'contended', reason: 'kind_changed' };
-  if (entry.kind === 'folder') return { action: local.hubRev === entry.rev ? 'have' : 'adopt' };
-  return decideFile(local, entry, pending);
-}
-
 function remoteOf(driveId: string, entry: FileEntry): RemoteFile {
   return {
     driveId,
@@ -164,10 +111,6 @@ function remoteOf(driveId: string, entry: FileEntry): RemoteFile {
   };
 }
 
-function tempNameOf(target: string): string {
-  return join(dirname(target), `.${basename(target)}${ENGINE_TEMP_SUFFIX}`);
-}
-
 export class PlacementPuller {
   readonly #options: PlacementPullerOptions;
   readonly #txn: string;
@@ -175,10 +118,12 @@ export class PlacementPuller {
   #halted = false;
   #full: FullIndex | null = null;
   #active: string | null = null;
+  readonly #writer: EntryWriter;
 
   constructor(options: PlacementPullerOptions) {
     this.#options = options;
     this.#txn = `pull:${options.placementId}`;
+    this.#writer = new EntryWriter(options);
   }
 
   hello(): PlacementHello {
@@ -263,7 +208,7 @@ export class PlacementPuller {
     const { database, placementId } = this.#options;
     for (const record of database.files.list(placementId)) {
       if (record.hubRev !== null && !seen.has(record.relPath)) {
-        database.files.upsert(inputOf(record, null));
+        database.files.upsert(inputOf(record, { hubRev: null }));
       }
     }
   }
@@ -273,6 +218,7 @@ export class PlacementPuller {
     let index: LocalBlockIndex | null = null;
     return {
       pending: pendingPaths(database),
+      tolerance: this.#options.tolerance(),
       blocks: (): LocalBlocks => {
         index ??= new LocalBlockIndex({
           records: database.files.list(placementId),
@@ -294,48 +240,61 @@ export class PlacementPuller {
       await this.#remove(entry.relPath, context);
     }
     const live = latest.filter((entry) => !entry.deleted);
+    const folders: SyncIndexEntry[] = [];
     for (const entry of live.sort((first, second) => depthOf(first) - depthOf(second))) {
       this.#active = entry.relPath;
-      await this.#live(entry, context);
+      await this.#live(entry, context, folders);
+    }
+    for (const entry of folders.sort((first, second) => depthOf(second) - depthOf(first))) {
+      this.#active = entry.relPath;
+      await this.#writer.folderMeta(entry);
     }
   }
 
-  async #live(entry: SyncIndexEntry, context: Context): Promise<void> {
+  async #live(entry: SyncIndexEntry, context: Context, folders: SyncIndexEntry[]): Promise<void> {
     const { database, placementId, sink, wants } = this.#options;
     const local = database.files.get(placementId, entry.relPath);
-    const decision = decideLive(local, entry, context.pending);
-    if (decision.action === 'have') return;
-    if (decision.action === 'contended') {
+    const decision = decideLive(local, entry, context);
+    if (decision.action === 'have' || decision.action === 'adopt') {
+      this.#settledRev(entry, local, decision.action, context);
+    } else if (decision.action === 'contended') {
       sink.contended({ relPath: entry.relPath, reason: decision.reason });
-    } else if (decision.action === 'adopt') {
-      database.files.setHubRev(placementId, entry.relPath, entry.rev);
     } else if (entry.kind === 'folder') {
-      await this.#folder(entry);
+      folders.push(entry);
+      if (local === undefined) await this.#writer.folder(entry);
+    } else if (decision.action === 'meta') {
+      await this.#writer.fileMeta(entry, local);
+    } else if (entry.kind === 'link') {
+      await this.#writer.linkEntry(entry, local);
     } else if (wants(entry.relPath)) {
-      await this.#fetch(entry, local, context);
+      await this.#file(entry, local, context);
     } else {
       sink.deferred(entry.relPath);
     }
   }
 
-  async #folder(entry: SyncIndexEntry): Promise<void> {
-    const { database, placementId, rootPath, platform } = this.#options;
-    const disk = diskPathFor(platform, join(rootPath, ...entry.relPath.split('/')));
-    await mkdir(disk, { recursive: true });
-    const info = await lstat(disk, { bigint: true });
-    database.files.upsert({
-      placementId,
-      relPath: entry.relPath,
-      kind: 'folder',
-      bytes: 0,
-      mtimeNs: info.mtimeNs,
-      mode: modeOf(platform, info.mode),
-      hubRev: entry.rev,
-      localHashState: 'hashed',
-      blockSize: null,
-      blocks: null,
-    });
-    this.#options.sink.pulled({ relPath: entry.relPath, change: 'created' });
+  #settledRev(
+    entry: SyncIndexEntry,
+    local: FileRecord | undefined,
+    action: 'have' | 'adopt',
+    context: Context,
+  ): void {
+    const { database, placementId, sink } = this.#options;
+    if (local === undefined) return;
+    if (action === 'adopt') database.files.setHubRev(placementId, entry.relPath, entry.rev);
+    const inode = entry.kind === 'folder' ? null : entry.inode;
+    if (inode !== local.hubInode) database.files.setHubInode(placementId, entry.relPath, inode);
+    const unpushed =
+      local.metaDirty &&
+      local.localHashState === 'hashed' &&
+      !context.pending.has(entry.relPath) &&
+      !metaMatches(local, entry, context.tolerance);
+    if (unpushed) sink.dirtied();
+  }
+
+  async #file(entry: FileEntry, local: FileRecord | undefined, context: Context): Promise<void> {
+    if (await this.#writer.hardLink(entry, local)) return;
+    await this.#fetch(entry, local, context);
   }
 
   async #fetch(entry: FileEntry, local: FileRecord | undefined, context: Context): Promise<void> {
@@ -380,7 +339,8 @@ export class PlacementPuller {
       remote: remoteOf(driveId, entry),
       relPath: entry.relPath,
       platform,
-      mtime: entry.mtime,
+      meta: this.#options.meta,
+      hub: hubMetaOf(entry),
       rev: entry.rev,
       local,
       target,
@@ -421,7 +381,7 @@ export class PlacementPuller {
     if (record.hubRev === null || record.localHashState !== 'hashed') return 'local_edit';
     if (context.pending.has(record.relPath)) return 'local_edit';
     const disk = diskPathFor(platform, join(rootPath, ...record.relPath.split('/')));
-    if (record.kind === 'file') {
+    if (record.kind !== 'folder') {
       if ((await diskStateOf(disk, record)) === 'changed') return 'local_edit';
       await rm(disk, { force: true });
     } else {

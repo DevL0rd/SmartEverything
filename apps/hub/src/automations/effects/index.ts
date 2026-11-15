@@ -14,8 +14,6 @@ export { HttpEffectError, HttpEffects } from './http';
 export { Notifier } from './notify';
 export { sendIrButton } from './ir-send';
 export { reportedWithin } from './reported-value';
-export { runScene, UnknownSceneError } from './scene';
-export { actionsOfSnapshot, captureScene } from './scene-capture';
 export { callTool, ToolActionError } from './tool';
 export { wakeAssistant } from './ai-wake';
 export { applyValueChange } from './value-ops';

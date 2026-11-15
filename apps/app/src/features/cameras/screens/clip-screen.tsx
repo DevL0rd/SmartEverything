@@ -8,10 +8,12 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { PageHeader } from '../../../components/page-header';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import { ShellTitle } from '../../../components/page-shell/shell-parts';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
-import { Screen } from '../../../components/screen';
 import { Skeleton } from '../../../components/skeleton';
+import { Text } from '../../../components/text';
+import { ThemeScope } from '../../../design/theme-scope';
 import { joinParts } from '../../../format/text';
 import { duration, moment } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
@@ -178,12 +180,27 @@ function ClipView({
     recording.duration_ms === null ? null : duration(recording.duration_ms / 1000),
   ]);
   return (
-    <Screen header={<PageHeader title={what} subtitle={subtitle} wrapSubtitle />} maxWidth="detail">
-      <View className="aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-black">
-        <Picture recording={recording} label={`${what} from ${cameraName}`} />
+    <ThemeScope theme="dark">
+      <View className="flex-1 bg-black">
+        <PageShell
+          variant="overlay"
+          title={what}
+          heading={
+            <View className="min-w-0">
+              <ShellTitle title={what} size="bar" />
+              <Text variant="footnote" tone="variant" numberOfLines={1}>
+                {subtitle}
+              </Text>
+            </View>
+          }
+          footer={<ClipActions recording={recording} />}
+        >
+          <View className="flex-1 items-center justify-center overflow-hidden">
+            <Picture recording={recording} label={`${what} from ${cameraName}`} />
+          </View>
+        </PageShell>
       </View>
-      <ClipActions recording={recording} />
-    </Screen>
+    </ThemeScope>
   );
 }
 
@@ -203,14 +220,14 @@ export function ClipScreen(): ReactNode {
   }, [cameraId, recordingId, found]);
   if (recording === null || entry === null) {
     return (
-      <Screen header={<PageHeader title="Clip" />} maxWidth="reading">
+      <PageShell title="Clip" width="reading">
         <EmptyState
           icon="film"
           title="This clip isn’t here any more"
           body="It may have been deleted, or it’s older than what your server keeps on hand."
           action={<Button label="All events" href={href.cameraEvents()} />}
         />
-      </Screen>
+      </PageShell>
     );
   }
   return <ClipView recording={recording} cameraName={entry.name} />;

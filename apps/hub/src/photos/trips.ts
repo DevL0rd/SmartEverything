@@ -12,6 +12,7 @@ import {
   visibility,
   type Statement,
 } from './library';
+import { folderShown, folderShownSql } from './folder-scope';
 
 export const TRIP_GAP_DAYS = 1;
 
@@ -94,12 +95,12 @@ export function daysStatement(actor: DriveActor, range: DayRangeQuery): Statemen
              partition by ${LOCAL_DAY} order by ${starredBy()} desc, i.taken_at, i.id
            ) as rank
          from ${PHOTO_FROM}
-         where ${PHOTO_SHOWN}${window.text}
+         where ${PHOTO_SHOWN} and ${folderShownSql()}${window.text}
        )
        select day, count(*) as count, count(place_lat) as located, avg(place_lat) as lat,
          avg(place_lon) as lon, max(case when rank = 1 then id end) as cover_item_id
        from shown group by day order by day`,
-    parameters: { ...visibility(actor), ...window.parameters },
+    parameters: { ...visibility(actor), ...folderShown(actor).parameters, ...window.parameters },
   };
 }
 
@@ -130,9 +131,9 @@ export function readDayPlaces(
       DAY_PLACE_ROW,
       `select ${LOCAL_DAY} as day, m.place_id as place_id, count(*) as count
        from ${PHOTO_FROM}
-       where ${PHOTO_SHOWN} and m.place_id is not null${window.text}
+       where ${PHOTO_SHOWN} and ${folderShownSql()} and m.place_id is not null${window.text}
        group by day, m.place_id`,
-      { ...visibility(actor), ...window.parameters },
+      { ...visibility(actor), ...folderShown(actor).parameters, ...window.parameters },
     )
     .map((row) => ({ day: row.day, placeId: row.place_id, count: row.count }));
 }

@@ -22,7 +22,7 @@ const THICK = 0.014;
 export const RUG_RECTANGLE_MODEL: ModelSpec = rugItem({
   id: 'cat.rugs.rug-rectangle',
   title: 'Rug rectangle',
-  footprint: { width: 2.52, depth: 1.7, height: 0.02 },
+  footprint: { width: 2.52, depth: 1.7, height: 0.0215 },
   size: {
     width: { param: 'width', extra: 0.12, resizes: true },
     depth: { param: 'depth', extra: 0, resizes: true },

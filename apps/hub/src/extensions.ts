@@ -14,6 +14,7 @@ import type { ExtensionRouteTable } from './server/router';
 import type { LiveHub } from './server/live';
 import type { Operations } from './server/operations';
 import type { ComputerNodeSockets } from './server/node-socket';
+import type { ReleasePublications } from './self-update/release-publications';
 import type { Store } from './store/store';
 import type { MediaNotes } from './transcripts/media-notes';
 
@@ -32,6 +33,7 @@ export interface ExtensionContext {
   readonly mediaNotes: MediaNotes;
   readonly links: MediaLinks;
   readonly operations: Operations;
+  readonly publications: ReleasePublications;
   readonly layout: HubLayout;
   readonly log: Logger;
 }

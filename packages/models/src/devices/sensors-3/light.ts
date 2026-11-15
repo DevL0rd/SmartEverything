@@ -15,7 +15,7 @@ export const LIGHT_SENSOR_MODEL: ModelSpec = {
   title: 'Light sensor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: 2 * R, depth: 2 * R, height: HEIGHT },
+  footprint: { width: 2 * R, depth: 2 * R, height: 0.0315 },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

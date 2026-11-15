@@ -1,5 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { createServer, request as httpRequest, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -175,7 +186,7 @@ async function addLockedFolder(rootId: string, dir: string): Promise<void> {
   await mkdir(join(dir, 'Locked'));
   putItem(opened.store, { rootId, id, relPath: 'Locked', kind: 'folder' });
   opened.store.driveGrants.set(
-    { itemId: id, profileId: memberProfile, role: 'view' },
+    { itemId: id, profileId: memberProfile, role: 'view', expiresAt: null },
     ownerProfile,
   );
 }
@@ -478,6 +489,58 @@ describe('WebDAV path safety', () => {
       expect((await propfind(path, '0')).status).toBe(403);
     }
     expect((await at('GET', '.smarteverything-note')).status).toBe(404);
+  });
+});
+
+describe('WebDAV links on the disk', () => {
+  async function plantLink(name: string, target: string): Promise<void> {
+    await symlink(target, own(name));
+    const id = randomUUID();
+    opened.store.driveItems.write({
+      item: {
+        id,
+        rootId: memberRoot,
+        parentId: null,
+        relPath: name,
+        name,
+        modifiedAt: NOW.toISOString(),
+        addedAt: NOW.toISOString(),
+        starred: false,
+        shared: false,
+        outside: false,
+        addedByProfileId: null,
+        remoteId: null,
+        remoteRev: null,
+        kind: 'link',
+        bytes: target.length,
+        linkTarget: target,
+      },
+      identity: { dev: '1', ino: id.slice(-8) },
+    });
+  }
+
+  it('lists a link without a content type and refuses to download it', async () => {
+    const secret = join(base, 'secret.txt');
+    await writeFile(secret, 'top secret');
+    await plantLink('shortcut', secret);
+    const listing = await propfind('', '1');
+    expect(listing.body).toContain(`<D:href>/dav/${memberRoot}/shortcut</D:href>`);
+    const entry = listing.body.slice(listing.body.indexOf('shortcut</D:href>'));
+    expect(entry.slice(0, entry.indexOf('</D:response>'))).not.toContain('getcontenttype');
+    const read = await at('GET', 'shortcut');
+    expect(read.status).toBe(405);
+    expect(read.body).not.toContain('top secret');
+    expect((await at('HEAD', 'shortcut')).status).toBe(405);
+  });
+
+  it('refuses to read a file whose disk object was replaced by a link', async () => {
+    await put('a.txt', 'first');
+    await put('b.txt', 'second');
+    await unlink(own('a.txt'));
+    await symlink(own('b.txt'), own('a.txt'));
+    const read = await at('GET', 'a.txt');
+    expect(read.status).toBe(403);
+    expect(read.body).not.toContain('second');
   });
 });
 

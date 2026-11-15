@@ -183,7 +183,7 @@ describe('the systemd unit', () => {
       go2rtcBinary: join(installed, 'resources', 'go2rtc', 'go2rtc'),
     });
     expect(statSync(config).mode & 0o777).toBe(0o600);
-    const rootId = readJson(marker).rootId;
+    const rootId = readJson(marker)['rootId'];
     expect(readJson(marker)).toMatchObject({ version: 1, state: 'active' });
     expect(readJson(pointer)).toEqual({
       root: data,
@@ -212,7 +212,7 @@ describe('the systemd unit', () => {
     expect(existsSync(join(bootstrap, 'location.json'))).toBe(false);
     const chosen = join(home, 'disks', 'hub-data');
     expect(install(undefined, ['--data', chosen]).status).toBe(0);
-    expect(readJson(join(bootstrap, 'location.json')).root).toBe(chosen);
+    expect(readJson(join(bootstrap, 'location.json'))['root']).toBe(chosen);
     expect(existsSync(join(chosen, 'layout.json'))).toBe(true);
     expect(existsSync(join(chosen, 'system', 'config', 'service.json'))).toBe(true);
     expect(existsSync(join(data, 'layout.json'))).toBe(false);
@@ -266,7 +266,7 @@ describe('the systemd unit', () => {
     const id = '33333333-3333-4333-8333-333333333333';
     writeFileSync(join(data, 'layout.json'), markerText(id));
     expect(install().status).toBe(0);
-    expect(readJson(join(bootstrap, 'location.json')).rootId).toBe(id);
+    expect(readJson(join(bootstrap, 'location.json'))['rootId']).toBe(id);
   });
 
   it('refuses to install while SMARTEVERYTHING_HUB_HOME overrides the bootstrap folder', () => {
@@ -295,6 +295,44 @@ describe('the systemd unit', () => {
       checkout,
     ]);
     expect(existsSync(installed)).toBe(true);
+  });
+
+  it('saves only the repository as the update source when --repository is given, with no checkout', () => {
+    const { data, installed, install } = installFixture();
+    expect(install(undefined, ['--repository', 'owner/name', '--branch', 'release']).status).toBe(
+      0,
+    );
+    expect(
+      JSON.parse(readFileSync(join(data, 'system', 'config', 'service.json'), 'utf8')),
+    ).toMatchObject({ updateSource: { repository: 'owner/name', branch: 'release' } });
+    expect(existsSync(installed)).toBe(true);
+  });
+
+  it('defaults the branch to main', () => {
+    const { data, install } = installFixture();
+    expect(install(undefined, ['--repository', 'owner/name']).status).toBe(0);
+    expect(
+      JSON.parse(readFileSync(join(data, 'system', 'config', 'service.json'), 'utf8')),
+    ).toMatchObject({ updateSource: { repository: 'owner/name', branch: 'main' } });
+  });
+
+  it('saves no update source without --repository', () => {
+    const { data, install } = installFixture();
+    expect(install().status).toBe(0);
+    expect(
+      JSON.parse(readFileSync(join(data, 'system', 'config', 'service.json'), 'utf8')),
+    ).not.toHaveProperty('updateSource');
+  });
+
+  it('refuses a malformed repository, or a repository together with a checkout, and installs nothing', () => {
+    const { installed, install } = installFixture();
+    expect(install(undefined, ['--repository', 'Owner/Name']).status).toBe(1);
+    expect(install(undefined, ['--repository', 'noslash']).status).toBe(1);
+    expect(install(undefined, ['--repository']).status).toBe(1);
+    expect(
+      install(undefined, ['--repository', 'owner/name', '--update-source', scratch]).status,
+    ).toBe(1);
+    expect(existsSync(installed)).toBe(false);
   });
 
   it('removes everything the install created when configuring the update source fails', () => {

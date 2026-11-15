@@ -272,7 +272,6 @@ describe('the navigation schema', () => {
       { kind: 'camera', deviceId: DEVICE },
       { kind: 'room', roomId: ROOM },
       { kind: 'group', groupId: ROOM },
-      { kind: 'scene', sceneId: ROOM },
       { kind: 'automation', automationId: ROOM, focus: null },
       { kind: 'drive', rootId: ROOM, path: '/', itemId: null, focus: null },
     ] as const;
@@ -325,10 +324,6 @@ describe('pins made from search results and chat links', () => {
     [
       { kind: 'room', roomId: ROOM },
       { kind: 'room', roomId: ROOM },
-    ],
-    [
-      { kind: 'scene', sceneId: ROOM },
-      { kind: 'scene', sceneId: ROOM },
     ],
     [
       { kind: 'automation', automationId: ROOM, enabled: true },

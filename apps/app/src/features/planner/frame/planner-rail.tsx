@@ -1,9 +1,12 @@
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { RailWidth } from '../../../components/frame-layout';
-import { SectionRail, type RailEntry } from '../../../components/section-rail';
+import type { RailWidth } from '../../../components/page-shell/layout';
+import { SectionRail, type RailEntry } from '../../../components/page-shell/section-rail';
 import { Text } from '../../../components/text';
+import { upcomingBookingsOf } from '../booking/booking-model';
 import {
+  useBookingGuests,
+  usePlannerBookingPages,
   usePlannerDay,
   usePlannerItems,
   usePlannerStats,
@@ -13,6 +16,7 @@ import {
 import type { PlannerSection } from '../model/section-routes';
 import { usePlannerShownPerson } from './person';
 import {
+  bookingSummaryOf,
   calendarSummaryOf,
   insightsSummaryOf,
   tasksSummaryOf,
@@ -53,11 +57,25 @@ function InsightsSummary(): ReactNode {
   return <SummaryText text={insightsSummaryOf(stats)} />;
 }
 
+function BookingSummary(): ReactNode {
+  const ref = useRef<View>(null);
+  const { value: now, onLayout } = useVisibleMinute(ref);
+  const person = usePlannerShownPerson();
+  const enabled = usePlannerBookingPages(person).filter((page) => page.enabled).length;
+  const ahead = upcomingBookingsOf(usePlannerItems(person), useBookingGuests(), now).length;
+  return (
+    <View ref={ref} onLayout={onLayout}>
+      <SummaryText text={bookingSummaryOf(enabled, ahead)} />
+    </View>
+  );
+}
+
 const SUMMARY: Readonly<Record<PlannerSection, () => ReactNode>> = {
   index: TodaySummary,
   tasks: TasksSummary,
   calendar: CalendarSummary,
   insights: InsightsSummary,
+  booking: BookingSummary,
 };
 
 const ENTRIES: readonly RailEntry[] = PLANNER_SECTION_DEFS.map((def) => {

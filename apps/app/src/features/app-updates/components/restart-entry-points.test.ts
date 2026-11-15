@@ -70,6 +70,7 @@ vi.mock('../../../design/platform', () => ({
 }));
 vi.mock('./desktop-installer-rows', () => ({ DesktopInstallerRows: (): null => null }));
 vi.mock('../../hub-updates', () => ({ HubUpdateCards: (): null => null }));
+vi.mock('./android-fallback-card', () => ({ AndroidFallbackCard: (): null => null }));
 vi.mock('./android-apk-offer', () => ({
   AndroidApkOffer: (): null => null,
   AndroidApkBanner: (): null => null,
@@ -124,6 +125,8 @@ function updater(outcome: CheckOutcome = OFFERED): {
     report: done,
     prefs: (): AppUpdatePrefs => ({ channel: 'release', launchedId: null, pendingId: null }),
     changePrefs: (): void => undefined,
+    fallback: (): null => null,
+    changeFallback: (): void => undefined,
     token: (): null => null,
     busy: (): boolean => false,
     ask: askToRestart,

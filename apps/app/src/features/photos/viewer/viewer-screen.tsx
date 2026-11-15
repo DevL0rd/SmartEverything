@@ -16,7 +16,7 @@ import { useIsPhone } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
 import { LocalViewer } from './local-viewer';
 import { closeViewer } from './close';
-import { viewerParamsOf, viewerTargetOf, type ViewerTarget } from './params';
+import { viewerFromParams, viewerParamsOf, viewerTargetOf, type ViewerTarget } from './params';
 import { ReadyViewer } from './ready-viewer';
 import { useViewerItem, type ViewerItem } from './use-viewer-item';
 
@@ -79,13 +79,18 @@ function ViewerBody({ target }: { readonly target: ViewerTarget }): ReactNode {
     );
   }
   const open = (itemId: string): void => {
-    router.setParams({ itemId, ...viewerParamsOf(target.scope) });
+    router.setParams({
+      itemId,
+      ...viewerParamsOf(target.scope),
+      ...viewerFromParams(target.from),
+    });
   };
   return (
     <ReadyViewer
       key={viewer.item.id}
       viewer={viewer}
       scope={target.scope}
+      from={target.from}
       phone={phone}
       infoOpen={infoOpen}
       onInfo={() => {

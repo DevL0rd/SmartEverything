@@ -27,6 +27,7 @@ const log = new Logger('desktop.web-update');
 const BUNDLE_FILE = 'bundle.json';
 const NOT_CONNECTED = 'Connect this computer to your home to get updates.';
 const UNFINISHED_START = 'The last start of this update never finished.';
+const RESTART_FAILED = 'The window could not restart into the update:';
 
 const RUNNING_FILE = z.object({
   id: WEB_UPDATE_RUNNING.shape.id,
@@ -244,38 +245,79 @@ export class WebUpdateController {
       );
     }
     this.#set({ state: 'applying' });
+    if (current.state === 'ready') return this.#applyUpdate(mode, channel, current.offer, reload);
     try {
-      if (current.state === 'ready') {
-        await this.#signed(mode, channel, current.offer);
-        await this.#applyBundle(mode, current.offer, reload);
-      } else {
-        await this.#applyEmbedded(mode, channel, current.currentId, reload);
-      }
+      await this.#applyEmbedded(mode, channel, current.currentId, reload);
     } catch (cause) {
-      const offer = current.state === 'ready' ? current.offer : null;
-      const id = current.state === 'ready' ? current.offer.id : current.currentId;
-      log.error('web_update.apply_failed', cause, { id });
-      return this.#set({
-        state: 'failed',
-        reason: `The update could not be applied: ${messageOf(cause)}`,
-        offer,
-      });
+      return this.#applyFailed(cause, current.currentId, null);
     }
     return this.#status;
   }
 
-  async #applyBundle(
+  async #applyUpdate(
     mode: EnabledMode,
+    channel: AppUpdateChannel,
     offer: AppUpdateCompatible,
     reload: WebReload,
-  ): Promise<void> {
-    await mode.store.begin(offer.id);
+  ): Promise<WebUpdateStatus> {
+    try {
+      await this.#signed(mode, channel, offer);
+      await mode.store.begin(offer.id);
+    } catch (cause) {
+      return this.#applyFailed(cause, offer.id, offer);
+    }
+    return this.#startTrial(offer.id, reload);
+  }
+
+  #applyFailed(cause: unknown, id: string, offer: AppUpdateCompatible | null): WebUpdateStatus {
+    log.error('web_update.apply_failed', cause, { id });
+    return this.#set({
+      state: 'failed',
+      reason: `The update could not be applied: ${messageOf(cause)}`,
+      offer,
+    });
+  }
+
+  async retry(reload: WebReload): Promise<WebUpdateStatus> {
+    const current = this.#bootFailure('trying the update again');
+    this.#set({ state: 'applying' });
+    return this.#startTrial(current.failedId, reload);
+  }
+
+  async rollBack(reload: WebReload): Promise<WebUpdateStatus> {
+    const mode = this.#enabled();
+    const current = this.#bootFailure('rolling back the update');
+    if (mode === null) return this.#status;
+    const result = await mode.store.revert(current.reason);
+    if (result.kind === 'not_in_trial') {
+      throw new UpdateInstallError('rolling back the update', 'the update is no longer on trial');
+    }
+    this.#held = null;
+    this.#set({ state: 'rolled_back', failedId: result.failedId, reason: current.reason });
+    await reload();
+    return this.#status;
+  }
+
+  #bootFailure(step: string): Extract<WebUpdateStatus, { state: 'boot_failed' }> {
+    const current = this.#status;
+    if (current.state !== 'boot_failed') {
+      throw new UpdateInstallError(step, `the desktop app is ${current.state}`);
+    }
+    return current;
+  }
+
+  async #startTrial(id: string, reload: WebReload): Promise<WebUpdateStatus> {
     try {
       await reload();
     } catch (cause) {
-      await mode.store.revert('The window could not restart into the update.');
-      throw cause;
+      log.error('web_update.trial_restart_failed', cause, { id });
+      return this.#set({
+        state: 'boot_failed',
+        failedId: id,
+        reason: `${RESTART_FAILED} ${messageOf(cause)}`,
+      });
     }
+    return this.#status;
   }
 
   async #applyEmbedded(
@@ -300,7 +342,7 @@ export class WebUpdateController {
 
   async confirm(): Promise<WebUpdateStatus> {
     const mode = this.#enabled();
-    if (mode === null) return this.#status;
+    if (mode === null || this.#status.state === 'boot_failed') return this.#status;
     const trial = await mode.store.trialId();
     await mode.store.confirm();
     if (trial !== null || this.#status.state === 'applying') {
@@ -310,21 +352,18 @@ export class WebUpdateController {
     return this.#set(idle(await runningOf(mode)));
   }
 
-  bootFailed(reason: string): Promise<WebUpdateStatus> {
-    return this.#revert(reason);
+  async bootFailed(reason: string): Promise<WebUpdateStatus> {
+    const mode = this.#enabled();
+    if (mode === null) return this.#status;
+    const trial = await mode.store.trialId();
+    if (trial === null) return this.#status;
+    log.warn('web_update.boot_failed', { id: trial, reason });
+    this.#held = null;
+    return this.#set({ state: 'boot_failed', failedId: trial, reason });
   }
 
   launchCheck(): Promise<WebUpdateStatus> {
-    return this.#revert(UNFINISHED_START);
-  }
-
-  async #revert(reason: string): Promise<WebUpdateStatus> {
-    const mode = this.#enabled();
-    if (mode === null) return this.#status;
-    const result = await mode.store.revert(reason);
-    if (result.kind === 'not_in_trial') return this.#status;
-    this.#held = null;
-    return this.#set({ state: 'rolled_back', failedId: result.failedId, reason });
+    return this.bootFailed(UNFINISHED_START);
   }
 
   async #looked(
@@ -387,7 +426,12 @@ export class WebUpdateController {
 
   #busy(): boolean {
     const { state } = this.#status;
-    return state === 'checking' || state === 'downloading' || state === 'applying';
+    return (
+      state === 'checking' ||
+      state === 'downloading' ||
+      state === 'applying' ||
+      state === 'boot_failed'
+    );
   }
 
   #set(status: WebUpdateStatus): WebUpdateStatus {

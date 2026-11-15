@@ -1,5 +1,6 @@
 import { use, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { PixelRatio, useWindowDimensions, type View } from 'react-native';
+import { PixelRatio, type View } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 import { useNavigationContainerRef } from 'expo-router';
 import Animated, {
   makeMutable,
@@ -30,7 +31,8 @@ import {
 import { liveSurface } from './live-surface';
 import { RoutePaint } from './route-paint';
 import { NativeModelFace } from './native-model-face';
-import { ScrollModelContext, ScrollModelLayer } from './scroll-model-layer';
+import { ScrollModelContext } from './scroll-model-context';
+import { ScrollModelLayer } from './scroll-model-layer';
 import { ScrollModelView } from './scroll-model-view';
 import { useForegroundBinding, useLiveView, type LiveModelViewProps } from './use-live-view';
 
@@ -92,19 +94,21 @@ function useMounted(): boolean {
   return useSyncExternalStore(subscribeWanted, readWanted, readWanted);
 }
 
+type OverlayNavigation = Pick<
+  ReturnType<typeof useNavigationContainerRef>,
+  'isReady' | 'addListener'
+> & {
+  readonly getCurrentRoute: () => { readonly key: string } | undefined;
+};
+
 function useOverlayWire(
   ready: boolean,
   routePaint: RoutePaint,
   visible: SharedValue<boolean>,
 ): void {
   const sent = useRef(new Set<string>());
-  const { width, height } = useWindowDimensions();
-  const navigation: Pick<
-    ReturnType<typeof useNavigationContainerRef>,
-    'isReady' | 'addListener'
-  > & {
-    readonly getCurrentRoute: () => { readonly key: string } | undefined;
-  } = useNavigationContainerRef();
+  const { width, height } = useWindowSize();
+  const navigation: OverlayNavigation = useNavigationContainerRef();
   useEffect(() => {
     sent.current = new Set();
     const sync = (): void => {

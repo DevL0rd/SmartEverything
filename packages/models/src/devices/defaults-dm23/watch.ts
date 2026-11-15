@@ -84,7 +84,7 @@ export const ROUND_WATCH_MODEL: ModelSpec = {
   title: 'Smartwatch',
   category: 'wearable',
   family: 'wearable',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.0487, depth: DEPTH, height: HEIGHT },
   framing: house('case', 30, 34),
   shots: [
     shot('workout', whenAll(leaf('mode', 'eq', 'workout')), 'face', {

@@ -22,6 +22,16 @@ export interface LoopbackListenerOptions<Owner, Value> {
     entry: LoopbackEntry<Owner, Value>,
   ) => Promise<void>;
 }
+export class BindError extends HubTransportError {
+  readonly code: string | null;
+  constructor(
+    readonly port: number,
+    cause: NodeJS.ErrnoException,
+  ) {
+    super(`cannot listen on 127.0.0.1:${String(port)}: ${cause.code ?? cause.message}`);
+    this.code = cause.code ?? null;
+  }
+}
 export class LoopbackListener<Owner, Value> {
   private server: Server | null = null;
   private authority = '';
@@ -36,7 +46,7 @@ export class LoopbackListener<Owner, Value> {
   get running(): boolean {
     return this.server !== null;
   }
-  async start(): Promise<void> {
+  async start(port: number): Promise<void> {
     if (this.server !== null)
       throw new HubTransportError(`${this.options.name} is already running`);
     const server = createServer((request, response): void => {
@@ -51,9 +61,11 @@ export class LoopbackListener<Owner, Value> {
       socket.destroy();
     });
     await new Promise<void>((resolve, reject): void => {
-      server.once('error', reject);
-      server.listen(0, '127.0.0.1', (): void => {
-        server.removeListener('error', reject);
+      server.once('error', (cause: NodeJS.ErrnoException): void => {
+        reject(new BindError(port, cause));
+      });
+      server.listen(port, '127.0.0.1', (): void => {
+        server.removeAllListeners('error');
         resolve();
       });
     });
@@ -71,7 +83,19 @@ export class LoopbackListener<Owner, Value> {
     signal: AbortSignal | undefined,
     retire: (id: string) => void,
   ): string {
-    const id = randomBytes(32).toString('hex');
+    return this.addAs(randomBytes(32).toString('hex'), { owner, value, signal, retire });
+  }
+  addAs(
+    id: string,
+    grant: {
+      readonly owner: Owner;
+      readonly value: Value;
+      readonly signal: AbortSignal | undefined;
+      readonly retire: (id: string) => void;
+    },
+  ): string {
+    const { owner, value, signal, retire } = grant;
+    this.release(id);
     const onAbort = (): void => {
       retire(id);
     };

@@ -20,7 +20,6 @@ const AVAILABILITY: Availability = {
   hasClimate: false,
   hasCameras: false,
   hasHealth: false,
-  hasScenes: false,
   hasEnergy: false,
   hasSecurity: false,
   hasIr: false,

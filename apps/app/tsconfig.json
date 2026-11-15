@@ -10,7 +10,6 @@
     "types": ["react", "node", "expo/types"]
   },
   "include": [
-    "app-identity.json",
     "package.json",
     "assets/licences.json",
     "assets/maps/countries-110m.json",

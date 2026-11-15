@@ -76,7 +76,7 @@ func startHelper(t *testing.T, hub *fakehub.Hub) *helper {
 	}
 	t.Cleanup(h.stop)
 	h.send(map[string]string{"op": "route", "url": hub.URL})
-	h.send(map[string]string{"op": "mount", "mount": "m", "root": "r", "folder": "f1", "point": h.point})
+	h.send(map[string]string{"op": "mount", "mount": "00000000-0000-4000-8000-000000000001", "root": "r", "folder": "", "point": h.point})
 	h.awaitStatus(stdout.Name(), "mounted")
 	return h
 }

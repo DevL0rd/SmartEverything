@@ -381,6 +381,10 @@ export interface DesktopInvokeChannels {
     readonly request: DesktopDriveCommand;
     readonly response: DesktopDriveState;
   };
+  readonly 'desktop:drive-open': {
+    readonly request: string;
+    readonly response: undefined;
+  };
   readonly 'desktop:clipboard-read': {
     readonly request: undefined;
     readonly response: string | null;

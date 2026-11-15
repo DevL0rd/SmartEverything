@@ -10,10 +10,12 @@ import { useAreaWidth } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useDriveChips, useDriveSearch } from '../data';
 import { ChipRow } from '../../../components/library-frame';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
 import { DriveFilterChips } from '../components/drive-chip';
 import { DriveFrame } from '../components/drive-frame';
-import { runChange } from '../folder/folder-footer';
+import type { FileBrowserHandle } from '../../files';
+import { DriveListFrame, useDriveItemList, type DriveItemList } from '../source/drive-lists';
+import { itemOf, type DriveNode, type DriveOrigin } from '../source/drive-node';
 import {
   driveFilterCounts,
   folderTrailOf,
@@ -36,7 +38,7 @@ import {
   type ChipCounts,
   type StarredChip,
 } from './starred-model';
-import { StarredRow } from './starred-row';
+import { StarredFileRow } from './starred-look';
 import {
   StarredEmpty,
   StarredFooter,
@@ -144,25 +146,21 @@ function ListTop(props: TopProps): ReactNode {
   );
 }
 
-function unstar(item: DriveItem): void {
-  runChange({ action: 'unstar', itemIds: [item.id] }, 'Could not remove the star.');
-}
-
-function renderItem(
+function renderNode(
+  browser: FileBrowserHandle<DriveOrigin>,
   chipOf: DriveChipOf,
   wide: boolean,
-  live: boolean,
-): (item: DriveItem) => ReactElement {
-  return function RenderedStarred(item: DriveItem): ReactElement {
-    const chip = chipOf(item.rootId);
+): (node: DriveNode) => ReactElement {
+  return function RenderedStarred(node: DriveNode): ReactElement {
+    const item = itemOf(node);
+    const chip = chipOf(item?.rootId ?? '');
     return (
-      <StarredRow
-        item={item}
+      <StarredFileRow
+        node={node}
+        browser={browser}
         chip={chip}
-        where={folderTrailOf(chip, item.relPath)}
+        where={folderTrailOf(chip, item?.relPath ?? '')}
         wide={wide}
-        live={live}
-        onUnstar={unstar}
       />
     );
   };
@@ -181,7 +179,7 @@ function primaryOf(open: () => void): PrimaryActionProps {
 
 interface ListProps {
   readonly feed: StarredFeed;
-  readonly items: readonly DriveItem[];
+  readonly list: DriveItemList;
   readonly scope: DriveScope;
   readonly top: ReactElement;
   readonly chip: StarredChip;
@@ -189,32 +187,35 @@ interface ListProps {
   readonly live: boolean;
 }
 
-function StarredList({ feed, items, scope, top, chip, compact, live }: ListProps): ReactNode {
+function StarredList({ feed, list, scope, top, chip, compact, live }: ListProps): ReactNode {
+  const { browser, nodes } = list;
   return (
-    <View className="-mx-gutter flex-1">
-      <VirtualList
-        sections={items.length === 0 ? [] : [{ key: 'starred', title: null, data: items }]}
-        keyOf={(item) => item.id}
-        renderItem={renderItem(scope.chipOf, !compact, live)}
-        header={top}
-        empty={
-          <StarredEmpty
-            pages={feed.pages}
-            chip={chip}
-            drive={scope.drive}
-            onAllDrives={() => {
-              scope.onDrive('all');
-            }}
-            live={live}
-          />
-        }
-        footer={<StarredFooter pages={feed.pages} />}
-        onEndReached={() => {
-          loadMoreStarred(feed.pages);
-        }}
-        probe="drive-starred"
-      />
-    </View>
+    <DriveListFrame browser={browser}>
+      <View className="-mx-gutter flex-1">
+        <VirtualList
+          sections={nodes.length === 0 ? [] : [{ key: 'starred', title: null, data: nodes }]}
+          keyOf={(node) => node.key}
+          renderItem={renderNode(browser, scope.chipOf, !compact)}
+          header={top}
+          empty={
+            <StarredEmpty
+              pages={feed.pages}
+              chip={chip}
+              drive={scope.drive}
+              onAllDrives={() => {
+                scope.onDrive('all');
+              }}
+              live={live}
+            />
+          }
+          footer={<StarredFooter pages={feed.pages} />}
+          onEndReached={() => {
+            loadMoreStarred(feed.pages);
+          }}
+          probe="drive-starred"
+        />
+      </View>
+    </DriveListFrame>
   );
 }
 
@@ -225,9 +226,10 @@ export function StarredScreen(): ReactNode {
   const chipOf = useDriveChips();
   const scope: DriveScope = { drive, onDrive: setDrive, chipOf };
   const items = inDrive(feed.items, drive, (item) => chipOf(item.rootId));
+  const list = useDriveItemList('starred', items);
   const folders = useSmartFolders();
   const saver = useSaveSmartFolder();
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = useAreaWidth() < SHELL_BREAKPOINTS.compactMax;
   const live = useSyncStatus().status === 'live';
   useStarredLog(chip, feed.items.length, folders.length);
   return (
@@ -245,7 +247,7 @@ export function StarredScreen(): ReactNode {
     >
       <StarredList
         feed={feed}
-        items={items}
+        list={list}
         scope={scope}
         live={live}
         top={

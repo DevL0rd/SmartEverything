@@ -79,7 +79,7 @@ function braid(index: number): ModelSpecPart {
 export const JUTE_RUG_MODEL: ModelSpec = rugItem({
   id: 'cat.rugs.jute-rug',
   title: 'Jute rug',
-  footprint: { width: 2, depth: 2, height: 0.035 },
+  footprint: { width: 2, depth: 2, height: 0.032 },
   size: {
     width: { param: 'diameter', extra: 0, resizes: true },
     depth: { param: 'diameter', extra: 0, resizes: true },

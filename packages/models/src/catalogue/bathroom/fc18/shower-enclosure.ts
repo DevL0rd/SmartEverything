@@ -98,7 +98,7 @@ function shower(): ModelSpecPart[] {
 export const SHOWER_ENCLOSURE_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.shower-enclosure',
   title: 'Shower enclosure',
-  footprint: { width: 0.9, depth: 0.921, height: 2 },
+  footprint: { width: 0.9, depth: 0.921, height: 1.975 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     depth: { param: 'depth', extra: 0.021, resizes: true },

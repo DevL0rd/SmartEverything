@@ -48,7 +48,10 @@ export function statsView(
       target: session.record.settings.printLessTarget,
     },
     cost: cost.mono === null && cost.colour === null ? null : costView(session, cost),
-    people: peopleOf(finished, caller),
+    people: peopleOf(
+      finished.filter((record) => withinWindow(record, stats, ledger.zone)),
+      caller,
+    ),
     bests: bestsOf(finished, caller),
     states: statesOf(session, now),
     events: ledger
@@ -82,6 +85,17 @@ function costView(
     currency: session.record.settings.currency,
     months: months.map((month) => ({ month, amount: Math.round(amount(month) * 100) / 100 })),
   };
+}
+
+function withinWindow(
+  record: JobRecord,
+  window: { readonly from: string; readonly to: string },
+  zone: string,
+): boolean {
+  const at = record.completedAt ?? record.createdAt;
+  if (at === null) return false;
+  const day = dayKeyOf(new Date(at), zone);
+  return day >= window.from && day <= window.to;
 }
 
 function peopleOf(finished: readonly JobRecord[], caller: ToolCaller): PrinterStatsView['people'] {

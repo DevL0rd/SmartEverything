@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from 'react-native';
+import type * as React from 'react';
 import type * as ExternalStore from '../design/external-store';
 import type * as DeferredAction from './deferred-action';
 import type * as ToastStore from './toast-store';
 
+vi.mock('react', async (original) => ({
+  ...(await original<typeof React>()),
+  useSyncExternalStore: <T>(_subscribe: unknown, read: () => T): T => read(),
+}));
 vi.mock('../design/external-store', async (original) => ({
   ...(await original<typeof ExternalStore>()),
   useValue: <T>(store: { get: () => T }): T => store.get(),

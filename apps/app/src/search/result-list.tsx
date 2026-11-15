@@ -201,7 +201,7 @@ interface ResultListProps {
   readonly contentClassName?: string;
   readonly fullPage?: boolean;
   readonly onScroll?: ReturnType<typeof useAnimatedScrollHandler>;
-  readonly footer?: ReactElement;
+  readonly footer?: ReactElement | undefined;
   readonly grow?: boolean;
 }
 

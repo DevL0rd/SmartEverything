@@ -1,15 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
 import { nodeToolCommand, pnpmProgram } from './build-host.ts';
+import { requireHubSource } from './hub-build-gate.ts';
 import { commitOf, gitSourceText, HubSourceError } from './hub-update-source.ts';
 import {
-  checkMigrations,
-  dataLayoutOf,
   ReleaseStepError,
-  schemaVersionOf,
-  vacuumInto,
+  serviceMigrationCheck,
   type MigrationCheck,
 } from './release-hub-files.ts';
 import {
@@ -37,10 +34,6 @@ const APPROVED_CANDIDATE = z.strictObject({
 });
 type ApprovedCandidate = z.infer<typeof APPROVED_CANDIDATE>;
 
-const MIGRATION_CHECK = z.strictObject({
-  from: z.number().int().nonnegative(),
-  to: z.number().int().nonnegative(),
-});
 const BUILD_FAILURE_TAIL = 2000;
 
 function request(
@@ -99,8 +92,15 @@ async function sourceIdentity(root: string): Promise<string> {
   return JSON.stringify([head, await candidateIdentity(root, 'watch')]);
 }
 
-export function localHubBuild(root: string, run: RunSteps): HubBuild {
+export function localHubBuild(
+  layout: HubLayout,
+  root: string,
+  run: RunSteps,
+  node: string,
+): HubBuild {
+  requireHubSource(layout, 'hub');
   let reviewed: string | undefined;
+  let built: string | undefined;
   async function stableSource(): Promise<void> {
     const current = await sourceIdentity(root);
     reviewed ??= current;
@@ -124,8 +124,13 @@ export function localHubBuild(root: string, run: RunSteps): HubBuild {
         const result = run(serviceBuild(root, output));
         if (result.status !== 0)
           throw new Error(`the service build failed: ${result.output.slice(-BUILD_FAILURE_TAIL)}`);
+        built = output;
       }),
-    checkMigrations: (layout): Promise<MigrationCheck> => prepare(() => checkMigrations(layout)),
+    checkMigrations: (target): Promise<MigrationCheck> =>
+      prepare(() => {
+        if (built === undefined) throw new Error('Build the service before checking it.');
+        return serviceMigrationCheck(node, built, target);
+      }),
   };
 }
 
@@ -153,56 +158,17 @@ function candidateStep(run: RunSteps, step: StepRequest): string {
   return result.output;
 }
 
-function checkResult(output: string, from: number): MigrationCheck {
-  const line = output.split('\n').findLast((value) => value.trimStart().startsWith('{"from":'));
-  if (line === undefined) {
-    throw new ReleaseStepError(
-      'migration check',
-      'the approved checkout returned no schema result',
-    );
-  }
-  const result = MIGRATION_CHECK.parse(JSON.parse(line));
-  if (result.from !== from || result.to < from) {
-    throw new ReleaseStepError(
-      'migration check',
-      `expected schema ${String(from)} or newer, got ${String(result.from)} → ${String(result.to)}`,
-    );
-  }
-  return result;
-}
-
-function checkCandidateMigrations(
-  layout: HubLayout,
-  root: string,
-  scratchRoot: string,
-  run: RunSteps,
-): MigrationCheck {
-  mkdirSync(scratchRoot, { recursive: true, mode: 0o700 });
-  const scratch = mkdtempSync(join(scratchRoot, 'candidate-migrations-'));
-  try {
-    const copy = dataLayoutOf(scratch).system.database.file;
-    mkdirSync(dirname(copy), { recursive: true });
-    vacuumInto(layout.system.database.file, copy);
-    const from = schemaVersionOf(copy);
-    const step = toolRequest(root, 'check candidate migrations', 'tooling/release-hub.ts', [
-      'check',
-      '--data',
-      scratch,
-    ]);
-    return checkResult(candidateStep(run, step), from);
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
-}
-
 export function approvedRemoteHubBuild(
+  layout: HubLayout,
   input: unknown,
-  scratchRoot: string,
   run: RunSteps,
+  node: string,
 ): HubBuild {
+  requireHubSource(layout, 'hub');
   const candidate = APPROVED_CANDIDATE.parse(input);
   const { root, source } = candidate;
   const checkouts = [root, source];
+  let built: string | undefined;
   return {
     typeErrors: async (): Promise<number> => {
       await verifyCandidate(candidate);
@@ -224,11 +190,12 @@ export function approvedRemoteHubBuild(
       assertCandidateDestination(checkouts, output, true);
       candidateStep(run, serviceBuild(root, output));
       await verifyCandidate(candidate);
+      built = output;
     },
-    checkMigrations: async (layout): Promise<MigrationCheck> => {
+    checkMigrations: async (target): Promise<MigrationCheck> => {
       await verifyCandidate(candidate);
-      assertCandidateDestination(checkouts, scratchRoot, false);
-      const result = checkCandidateMigrations(layout, root, scratchRoot, run);
+      if (built === undefined) throw new Error('Build the service before checking it.');
+      const result = serviceMigrationCheck(node, built, target);
       await verifyCandidate(candidate);
       return result;
     },

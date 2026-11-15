@@ -66,7 +66,11 @@ function reachesPastFeatureIndex(edge: Edge): boolean {
     to.layer === 'features' &&
     to.area !== '' &&
     from.area !== to.area;
-  const publicSurface = to.inner.length === 0 || (to.inner.length === 1 && to.inner[0] === 'index');
+  const onlyEntry = to.inner.length === 1 ? to.inner[0] : undefined;
+  const publicSurface =
+    to.inner.length === 0 ||
+    onlyEntry === 'index' ||
+    (onlyEntry === 'testing' && /\.test\.tsx?$/.test(edge.from));
   return crosses && !publicSurface;
 }
 
@@ -111,6 +115,14 @@ describe('the layers of the application', () => {
       reachesPastFeatureIndex({ ...throughIndex, to: `${source}/features/devices/index` }),
     ).toBe(false);
     expect(reachesPastFeatureIndex(sameFeature)).toBe(false);
+    const testing = {
+      from: `${source}/features/home/home.test.ts`,
+      to: `${source}/features/devices/testing`,
+    };
+    expect(reachesPastFeatureIndex(testing)).toBe(false);
+    expect(reachesPastFeatureIndex({ ...testing, from: `${source}/features/home/home.ts` })).toBe(
+      true,
+    );
     expect(reachesIntoKit(skipsIndex)).toBe(false);
   });
 });

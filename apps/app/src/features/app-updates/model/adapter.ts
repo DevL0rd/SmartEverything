@@ -45,6 +45,11 @@ export interface RestartRequest extends CheckRequest {
   readonly onApplying?: () => void;
 }
 
+export interface FallbackControls {
+  readonly keepBuiltIn: () => Promise<void>;
+  readonly relaunch: (updateId: string) => Promise<void>;
+}
+
 export interface UpdateAdapter {
   readonly platform: AppUpdatePlatform;
   readonly app: NewAppKind;
@@ -57,6 +62,7 @@ export interface UpdateAdapter {
   readonly prepareRollback: () => Promise<void>;
   readonly restart: (request: RestartRequest) => Promise<void>;
   readonly onConfirmRequested?: (listener: () => void) => () => void;
+  readonly fallback?: FallbackControls;
 }
 
 export function unsupportedAdapter(platform: AppUpdatePlatform, reason: string): UpdateAdapter {

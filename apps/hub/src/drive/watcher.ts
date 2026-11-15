@@ -5,20 +5,17 @@ import type { Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
 import type { DriveRootsRepository } from '../store/repositories/drive-roots';
 import { MARKER_DIRECTORY } from './root-marker';
+import { LOCKED_FOLDER } from './access';
 
 export interface WatchHandle {
   readonly close: () => void;
   readonly onError: (listener: (cause: Error) => void) => void;
 }
 
-export type WatchFactory = (
-  directory: string,
-  recursive: boolean,
-  onEvent: (name: string) => void,
-) => WatchHandle;
+export type WatchFactory = (directory: string, onEvent: (name: string) => void) => WatchHandle;
 
-export const systemWatch: WatchFactory = (directory, recursive, onEvent) => {
-  const watcher = fsWatch(directory, { recursive }, (_type, name) => {
+export const systemWatch: WatchFactory = (directory, onEvent) => {
+  const watcher = fsWatch(directory, (_type, name) => {
     onEvent(name ?? '');
   });
   return {
@@ -56,8 +53,9 @@ const PROBLEM_TEXT: Readonly<Record<string, string>> = {
     'The system limit on open files is reached, so changes are found only when you open or rescan.',
 };
 
-function isFolder(path: string): boolean {
-  return statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+function folderInode(path: string): number | undefined {
+  const stats = statSync(path, { throwIfNoEntry: false });
+  return stats?.isDirectory() === true ? stats.ino : undefined;
 }
 
 function childFolders(directory: string): readonly string[] {
@@ -70,7 +68,14 @@ function ignoredByRoot(root: StoredDrive, relPath: string): boolean {
   if (relPath === '') return false;
   if (relPath.split('/')[0] === MARKER_DIRECTORY) return true;
   const segments = relPath.split('/');
-  if (!root.includeHidden && segments.some((segment) => segment.startsWith('.'))) return true;
+  if (
+    !root.includeHidden &&
+    segments.some(
+      (segment, index) => segment.startsWith('.') && !(index === 0 && segment === LOCKED_FOLDER),
+    )
+  ) {
+    return true;
+  }
   const name = segments.at(-1) ?? relPath;
   return root.skipPatterns.some(
     (pattern) =>
@@ -79,8 +84,10 @@ function ignoredByRoot(root: StoredDrive, relPath: string): boolean {
 }
 
 class RootWatch {
-  private handles: WatchHandle[] = [];
-  private readonly attached = new Set<string>();
+  private readonly watched = new Map<
+    string,
+    { readonly handle: WatchHandle; readonly ino: number }
+  >();
   private readonly unreadable = new Set<string>();
   private timer: NodeJS.Timeout | undefined;
   private problem: string | null = null;
@@ -97,7 +104,7 @@ class RootWatch {
     this.attach(this.root.path);
     this.env.log.info('drive.watch_started', {
       rootId: this.root.id,
-      watchers: this.handles.length,
+      watchers: this.watched.size,
       unreadable: this.unreadable.size,
       problem: this.problem,
     });
@@ -106,13 +113,13 @@ class RootWatch {
   close(): void {
     this.closed = true;
     clearTimeout(this.timer);
-    for (const handle of this.handles.splice(0)) handle.close();
-    this.attached.clear();
+    for (const { handle } of this.watched.values()) handle.close();
+    this.watched.clear();
   }
 
   status(): WatchStatus {
     return {
-      watching: !this.closed && this.handles.length > 0,
+      watching: !this.closed && this.watched.size > 0,
       unreadable: [...this.unreadable],
       problem: this.problem,
     };
@@ -123,47 +130,39 @@ class RootWatch {
   }
 
   private attach(directory: string): void {
-    if (this.exhausted || this.attached.has(directory)) return;
+    if (this.exhausted || this.watched.has(directory)) return;
     try {
-      this.add(directory, true);
-      return;
-    } catch (cause) {
-      if (fsCode(cause) !== 'EACCES') {
-        this.refused(directory, cause);
-        return;
-      }
-    }
-    try {
-      this.add(directory, false);
-    } catch (cause) {
-      this.refused(directory, cause);
-      return;
-    }
-    this.attachChildren(directory);
-  }
-
-  private attachChildren(directory: string): void {
-    try {
+      const ino = folderInode(directory);
+      if (ino === undefined) return;
+      this.add(directory, ino);
       for (const child of childFolders(directory)) this.attach(child);
     } catch (cause) {
       this.refused(directory, cause);
     }
   }
 
-  private add(directory: string, recursive: boolean): void {
-    const handle = this.env.watch(directory, recursive, (name) => {
-      this.changed(directory, recursive, name);
+  private add(directory: string, ino: number): void {
+    const handle = this.env.watch(directory, (name) => {
+      this.changed(directory, name);
     });
     handle.onError((cause) => {
       this.failed(directory, cause);
     });
-    this.handles.push(handle);
-    this.attached.add(directory);
+    this.watched.set(directory, { handle, ino });
+  }
+
+  private detach(directory: string): void {
+    const prefix = `${directory}/`;
+    for (const [path, entry] of [...this.watched]) {
+      if (path !== directory && !path.startsWith(prefix)) continue;
+      entry.handle.close();
+      this.watched.delete(path);
+    }
   }
 
   private refused(directory: string, cause: unknown): void {
     const code = fsCode(cause) ?? 'UNKNOWN';
-    if (code === 'ENOENT') return;
+    if (code === 'ENOENT' || code === 'ENAMETOOLONG') return;
     if (code === 'EACCES') {
       this.unreadable.add(directory);
       this.env.log.warn('drive.watch_unreadable', { rootId: this.root.id, directory });
@@ -188,11 +187,24 @@ class RootWatch {
     this.env.enqueueScan(this.root.id);
   }
 
-  private changed(base: string, recursive: boolean, name: string): void {
+  private follow(absolute: string): void {
+    const known = this.watched.get(absolute);
+    let ino: number | undefined;
+    try {
+      ino = folderInode(absolute);
+    } catch (cause) {
+      this.refused(absolute, cause);
+      return;
+    }
+    if (known !== undefined && known.ino !== ino) this.detach(absolute);
+    if (ino !== undefined) this.attach(absolute);
+  }
+
+  private changed(base: string, name: string): void {
     if (this.closed) return;
     const absolute = name === '' ? base : join(base, name);
     const relPath = absolute.slice(this.root.path.length).replace(/^\/+/, '');
-    if (!recursive && name !== '' && isFolder(absolute)) this.attach(absolute);
+    if (name !== '') this.follow(absolute);
     if (ignoredByRoot(this.root, relPath)) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {

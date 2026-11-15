@@ -1,4 +1,15 @@
-export const PHOTOS_SECTIONS = ['index', 'albums/index', 'map', 'insights', 'deleted'] as const;
+export const PHOTOS_SECTIONS = [
+  'index',
+  'people',
+  'albums/index',
+  'sharing',
+  'map',
+  'folders',
+  'insights',
+  'archive',
+  'locked',
+  'deleted',
+] as const;
 
 export type PhotosSection = (typeof PHOTOS_SECTIONS)[number];
 

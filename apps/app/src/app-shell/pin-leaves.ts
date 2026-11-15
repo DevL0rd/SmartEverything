@@ -9,7 +9,6 @@ import {
   leafIdOf,
   PLUGIN_PAGE,
   ROOM,
-  SCENE,
   STATIC_PAGES,
   type LeafRoute,
 } from './pin-routes';
@@ -53,8 +52,6 @@ export function pinLeafOf(target: NavPinTarget): PinLeaf | null {
       return made(ROOM, { roomId: target.roomId });
     case 'group':
       return made(GROUP, { groupId: target.groupId });
-    case 'scene':
-      return made(SCENE, { sceneId: target.sceneId });
     case 'automation':
       return made(AUTOMATION, { automationId: target.automationId });
     case 'page':

@@ -1,5 +1,6 @@
+import { useWindowSize } from '../../../../design/size-class';
 import type { ReactNode } from 'react';
-import { useWindowDimensions } from 'react-native';
+
 import Animated, { SlideInRight } from 'react-native-reanimated';
 import { Sheet } from '../../../../components/sheet';
 import { entering, useMotion } from '../../../../design/motion';
@@ -15,7 +16,7 @@ export interface CallSettingsProps {
 const SHORT_HEIGHT = 560;
 
 export function CallSettingsSheet({ open, call, onClose }: CallSettingsProps): ReactNode {
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   return (
     <Sheet
       open={open}

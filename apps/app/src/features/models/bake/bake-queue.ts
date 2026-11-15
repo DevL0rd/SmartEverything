@@ -1,5 +1,6 @@
 import type { ModelSpec } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
+import { ValueStore } from '../../../design/external-store';
 import {
   bakeKeyHash,
   type BakeCache,
@@ -37,6 +38,7 @@ export interface BakeTicket {
 export interface BakeQueue {
   readonly want: (job: BakeJob, listener: BakeListener) => BakeTicket;
   readonly pruneOnce: (inUse: () => BakesInUse | null) => void;
+  readonly busy: ValueStore<boolean>;
 }
 
 export interface BakeQueueDeps {
@@ -93,6 +95,7 @@ export function nextEntry(
 }
 
 class Queue implements BakeQueue {
+  readonly busy = new ValueStore(false);
   private readonly entries = new Map<string, Entry>();
   private readonly states = new Map<string, EntryState>();
   private readonly outcomes = new Map<string, BakeOutcome>();
@@ -164,6 +167,7 @@ class Queue implements BakeQueue {
       return;
     }
     this.states.set(entry.hash, 'waiting');
+    this.settleBusy();
     log.info('model.bake_waiting', {
       hash: entry.hash,
       view: entry.key.view,
@@ -183,6 +187,7 @@ class Queue implements BakeQueue {
         this.baking = false;
         if (entry.holders.size === 0) this.forget(entry.hash);
         this.pump();
+        this.settleBusy();
       }),
       'model.bake_run_failed',
     );
@@ -238,6 +243,15 @@ class Queue implements BakeQueue {
     this.entries.delete(hash);
     this.states.delete(hash);
     this.outcomes.delete(hash);
+    this.settleBusy();
+  }
+
+  private settleBusy(): void {
+    let pending = false;
+    for (const state of this.states.values()) {
+      if (state === 'waiting' || state === 'baking') pending = true;
+    }
+    this.busy.set(pending);
   }
 
   private measure(screen: string): void {

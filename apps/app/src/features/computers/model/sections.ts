@@ -1,5 +1,4 @@
 import type { ComputerFeature } from '@smarteverything/domain';
-import { frameLayoutMath } from '../../../components/frame-layout';
 import type { IconName } from '../../../components/icon';
 
 export interface SectionDef {
@@ -74,12 +73,4 @@ export function offersSection(
   return def.feature === null || features === undefined || features.includes(def.feature);
 }
 
-export function notAvailableOn(os: string | null): string {
-  return os === null ? 'Not available yet' : `Not available on ${os} yet`;
-}
-
-export const { frameLayoutOf, railWidthOf } = frameLayoutMath({
-  compactMax: 600,
-  iconRailMax: 900,
-  wideRailMin: 1024,
-});
+export const NOT_AVAILABLE = 'Not available on this computer yet';

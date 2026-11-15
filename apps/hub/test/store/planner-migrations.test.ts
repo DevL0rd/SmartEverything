@@ -67,8 +67,8 @@ function collection(database: DatabaseSync, colour = 'work', source = 'local'): 
   database
     .prepare(
       `insert into planner_collections
-       (id, profile_id, kind, name, colour, icon, position, visible, default_reminders, source, google, created_at, updated_at)
-       values (?, ?, 'calendar', 'Work', ?, 'briefcase', 0, 1, '[]', ?, null, ?, ?)`,
+       (id, profile_id, kind, name, colour, icon, position, visible, default_reminders, audience, source, google, feed, created_at, updated_at)
+       values (?, ?, 'calendar', 'Work', ?, 'briefcase', 0, 1, '[]', 'personal', ?, null, null, ?, ?)`,
     )
     .run(COLLECTION, PERSON, colour, source, NOW, NOW);
 }
@@ -82,9 +82,9 @@ function item(
     .prepare(
       `insert into planner_items
        (id, profile_id, collection_id, kind, title, notes, tags, all_day, exdates, start, status, position,
-        completion, attachments, reminders, created_by, created_at, updated_at, series_id, original_start)
+        completion, attachments, reminders, ical_sequence, created_by, created_at, updated_at, series_id, original_start)
        values (?, ?, ?, 'event', 'Standup', '', '[]', 0, '[]', ?, 'open', 0,
-        '{"kind":"manual"}', '[]', '[]', 'person', ?, ?, ?, ?)`,
+        '{"kind":"manual"}', '[]', '[]', 0, 'person', ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -110,7 +110,9 @@ describe('the planner and Google account migrations', () => {
     expect(MIGRATIONS).toContain(PLANNER_TABLES_MIGRATION);
     expect(MIGRATIONS).toContain(GOOGLE_ACCOUNTS_MIGRATION);
     expect(GOOGLE_ACCOUNTS_MIGRATION.version).toBe(PLANNER_TABLES_MIGRATION.version + 1);
-    expect(Math.max(...versions)).toBe(GOOGLE_ACCOUNTS_MIGRATION.version);
+    const created = MIGRATIONS.filter(
+      (migration) => migration.version <= GOOGLE_ACCOUNTS_MIGRATION.version,
+    );
     const old = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
     const sql = new Sql(old);
     migrate(
@@ -121,7 +123,7 @@ describe('the planner and Google account migrations', () => {
     );
     old.prepare(`insert into rooms (id, name, position) values ('kitchen', 'Kitchen', 0)`).run();
     expect(tableNames(old)).toStrictEqual([]);
-    migrate(sql, MIGRATIONS, NOW, testLogger());
+    migrate(sql, created, NOW, testLogger());
     expect(NAMES.parse(old.prepare('select name from rooms').get()).name).toBe('Kitchen');
     expect(tableNames(old)).toStrictEqual([...GOOGLE_TABLES, ...PLANNER_TABLES].sort());
   });
@@ -198,7 +200,13 @@ describe('the planner and Google account migrations', () => {
     item(database, first);
     database.prepare('delete from profiles where id = ?').run(PERSON);
     expect(total(database, 'planner_items')).toBe(0);
-    expect(total(database, 'planner_collections')).toBe(0);
+    expect(
+      COUNT.parse(
+        database
+          .prepare('select count(*) as total from planner_collections where profile_id = ?')
+          .get(PERSON),
+      ).total,
+    ).toBe(0);
   });
 
   it('keeps Google status with no token column and one channel per push id', () => {

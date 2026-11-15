@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChildHost } from '../../../src/plugins/isolation/child-host';
 import type { Frame } from '../../../src/plugins/isolation/frames';
 import type { ChildHandle } from '../../../src/plugins/isolation/spawn';
-import type { EarsFrame } from '../../../src/node/ear/ear-host';
+import type { EarsFrame } from '../../../src/node/ear-link';
 import { EarProcess } from '../../../src/node/ear/process/ear-process';
 import { captureLogs, type CapturedLogs } from '../../support/logs';
 import { FakeClock } from '../../support/fake-clock';

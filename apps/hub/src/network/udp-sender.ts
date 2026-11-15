@@ -4,7 +4,7 @@ export function udpSender(address: string, port: number): (packet: Uint8Array) =
   return (packet) =>
     new Promise((resolve, reject) => {
       const socket = createSocket('udp4');
-      socket.once('error', (cause) => {
+      socket.on('error', (cause) => {
         socket.close();
         reject(cause);
       });

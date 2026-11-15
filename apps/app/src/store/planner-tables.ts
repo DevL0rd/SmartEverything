@@ -9,6 +9,9 @@ export type PlannerTables = Pick<
   | 'planner_alarms'
   | 'planner_timers'
   | 'planner_stopwatches'
+  | 'planner_collection_shares'
+  | 'planner_guests'
+  | 'planner_booking_pages'
   | 'google_accounts'
 >;
 
@@ -21,6 +24,9 @@ export function plannerTablesOf(snapshot: Snapshot, next: NextTable): PlannerTab
     planner_alarms: next('planner_alarms', t.planner_alarms),
     planner_timers: next('planner_timers', t.planner_timers),
     planner_stopwatches: next('planner_stopwatches', t.planner_stopwatches),
+    planner_collection_shares: next('planner_collection_shares', t.planner_collection_shares),
+    planner_guests: next('planner_guests', t.planner_guests),
+    planner_booking_pages: next('planner_booking_pages', t.planner_booking_pages),
     google_accounts: next('google_accounts', t.google_accounts),
   };
 }

@@ -74,7 +74,7 @@ function bloom(entry: (typeof BLOOMS)[number], index: number): ModelSpecPart[] {
 export const PEACE_LILY_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.peace-lily',
   title: 'Peace lily',
-  footprint: { width: 0.87, depth: 0.8, height: 0.88 },
+  footprint: { width: 0.8688, depth: 0.805, height: 0.8823 },
   names: {
     display: 'Peace lily',
     synonyms: ['peace lily', 'spathiphyllum', 'white flower plant', 'houseplant', 'lily plant'],

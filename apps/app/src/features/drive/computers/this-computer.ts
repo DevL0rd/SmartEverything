@@ -70,6 +70,7 @@ export interface DesktopDriveView {
   readonly busy: boolean;
   readonly problem: string | null;
   readonly run: (command: DesktopDriveCommand, failure: string, onDone?: () => void) => void;
+  readonly open: (placementId: string) => void;
 }
 
 export function useDesktopDrive(): DesktopDriveView | null {
@@ -87,6 +88,13 @@ export function useDesktopDrive(): DesktopDriveView | null {
         label: `drive.desktop.${command.kind}`,
         inline: true,
         ...(onDone === undefined ? {} : { onDone }),
+      });
+    },
+    open: (placementId): void => {
+      mutation.run(() => drive.open(placementId), {
+        failure: 'The folder did not open in the file manager',
+        label: 'drive.desktop.open',
+        inline: true,
       });
     },
   };

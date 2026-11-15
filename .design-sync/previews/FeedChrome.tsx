@@ -14,6 +14,7 @@ export const Feed = (): ReactNode => (
       controls={null}
       inlineControls={false}
       focusSearch={false}
+      search
     />
   </Stage>
 );
@@ -29,6 +30,7 @@ export const Context = (): ReactNode => (
       controls={null}
       inlineControls={false}
       focusSearch={false}
+      search
     />
   </Stage>
 );
@@ -44,6 +46,7 @@ export const LightTheme = (): ReactNode => (
       controls={null}
       inlineControls={false}
       focusSearch={false}
+      search
     />
   </Stage>
 );

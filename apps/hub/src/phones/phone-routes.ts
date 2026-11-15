@@ -1,5 +1,6 @@
 import {
   API_ENDPOINTS as E,
+  ApiError,
   machineActionOfPhoneAction,
   type DeviceRow,
   type PhoneAction,
@@ -32,7 +33,7 @@ export type PhoneEndpointName =
 export interface PhoneRouteContext {
   readonly store: Store;
   readonly hub: Pick<RunningHub, 'phones'>;
-  readonly actions: Pick<PhoneActionBroker, 'run' | 'answer'>;
+  readonly actions: Pick<PhoneActionBroker, 'run' | 'answer' | 'has'>;
   readonly approvals: Pick<MachineApprovals, 'has' | 'answer'>;
   readonly notifications: Pick<LiveNotifications, 'has' | 'answer'>;
   readonly now: () => Date;
@@ -81,8 +82,10 @@ function answerRequest(
     approvals.answer(answerer, requestId, result);
   } else if (notifications.has(requestId)) {
     notifications.answer(answerer, requestId, result);
-  } else {
+  } else if (actions.has(requestId)) {
     actions.answer(answerer, requestId, result);
+  } else {
+    throw new ApiError('not_found', 'This request already finished or was never sent.');
   }
 }
 

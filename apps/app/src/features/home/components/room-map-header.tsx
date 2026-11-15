@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 import { useRouter } from 'expo-router';
 import type { HomeMap, HomeMapLookPref } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
@@ -175,7 +176,7 @@ function RoomMapFrame({
   readonly sideBySide: boolean;
   readonly children: ReactNode;
 }): ReactNode {
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const maxHeight = Math.max(ROOM_MAP_MIN_HEIGHT, Math.round(height * ROOM_MAP_MAX_WINDOW_SHARE));
   const frameStyle = { maxHeight };
   return (

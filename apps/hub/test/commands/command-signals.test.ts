@@ -52,12 +52,18 @@ describe('device command signals', () => {
     const lamp = deviceIdOf(started.store, 'lamp-1');
     started.hub.submit([
       { deviceId: lamp, capability: 'power', value: true, source: 'assistant', requestedBy: null },
-      { deviceId: lamp, capability: 'power', value: false, source: 'scene', requestedBy: null },
+      {
+        deviceId: lamp,
+        capability: 'power',
+        value: false,
+        source: 'automation',
+        requestedBy: null,
+      },
     ]);
     await started.hub.settled();
     expect(heard.filter((signal) => signal.data['status'] === 'sent')).toHaveLength(2);
     expect(heard.map((signal) => signal.data['cause'])).toStrictEqual(
-      expect.arrayContaining(['assistant', 'scene']),
+      expect.arrayContaining(['assistant', 'automation']),
     );
   });
 

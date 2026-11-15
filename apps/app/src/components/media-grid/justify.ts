@@ -72,6 +72,13 @@ function closesBefore(
   return withTile <= geometry.target && closer(without, withTile, geometry.target);
 }
 
+const LAST_LINE_STRETCH = 1.5;
+
+function lastHeight(geometry: GridGeometry, open: readonly MediaTile[], aspects: number): number {
+  const fit = fitHeight(geometry, open.length, aspects);
+  return fit <= geometry.target * LAST_LINE_STRETCH ? fit : geometry.target;
+}
+
 export function justifyDay(tiles: readonly MediaTile[], geometry: GridGeometry): readonly Line[] {
   const lines: Line[] = [];
   let open: MediaTile[] = [];
@@ -91,7 +98,7 @@ export function justifyDay(tiles: readonly MediaTile[], geometry: GridGeometry):
       aspects = 0;
     }
   }
-  if (open.length > 0) lines.push({ tiles: open, height: geometry.target });
+  if (open.length > 0) lines.push({ tiles: open, height: lastHeight(geometry, open, aspects) });
   return lines;
 }
 

@@ -103,7 +103,7 @@ function cushionParts(): ModelSpecPart[] {
 export const LOUNGE_CHAIR_MODEL = furniture({
   id: 'cat.living.lounge-chair',
   title: 'Lounge chair',
-  footprint: { width: 0.84, depth: 0.84, height: 0.92 },
+  footprint: { width: 0.83, depth: 0.7808, height: 0.9214 },
   meta: {
     names: {
       display: 'Lounge chair',

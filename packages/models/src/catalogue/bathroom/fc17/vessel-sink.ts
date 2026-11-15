@@ -108,7 +108,7 @@ function stand(): ModelSpecPart[] {
 export const VESSEL_SINK_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.vessel-sink',
   title: 'Vessel sink',
-  footprint: { width: WIDTH, depth: DEPTH, height: TOP + 0.34 },
+  footprint: { width: WIDTH, depth: DEPTH, height: 1.202 },
   meta: {
     names: {
       display: 'Vessel sink',

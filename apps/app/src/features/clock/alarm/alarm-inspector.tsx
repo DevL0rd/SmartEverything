@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Card } from '../../../components/card';
 import { IconButton } from '../../../components/icon-button';
-import { usePlannerPreferences } from '../../planner/data';
-import { QueryBody } from '../../planner/frame/query-body';
+import { usePlannerPreferences, QueryBody } from '../../planner';
 import {
   AlarmBody,
   AlarmCreateBar,
@@ -31,7 +30,11 @@ function OpenInspector({
         <AlarmSkip screen={screen} />
         <IconButton icon="close" label="Close the alarm" onPress={target.onClose} />
       </View>
-      <AlarmBody target={target} screen={screen} defaultSceneId={prefs.clock.wake_scene_id} />
+      <AlarmBody
+        target={target}
+        screen={screen}
+        defaultAutomationId={prefs.clock.wake_automation_id}
+      />
       <AlarmCreateBar screen={screen} onCancel={target.onClose} />
     </>
   );

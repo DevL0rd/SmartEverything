@@ -68,7 +68,7 @@ function oliveParts(): ModelSpecPart[] {
 export const OLIVE_TREE_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.olive-tree',
   title: 'Olive tree',
-  footprint: { width: 1, depth: 0.8, height: 1.92 },
+  footprint: { width: 1.0133, depth: 0.7921, height: 1.9197 },
   names: {
     display: 'Olive tree',
     synonyms: ['olive tree', 'potted olive', 'mediterranean tree', 'indoor tree', 'olea'],

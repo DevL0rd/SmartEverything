@@ -10,7 +10,7 @@ export const HOME_WIDGET_SIZES = {
   favourites: { sizes: ['XL'], defaultSize: 'XL' },
   rooms: { sizes: ['M', 'W', 'XL'], defaultSize: 'M' },
   activity: { sizes: ['M', 'XL'], defaultSize: 'XL' },
-  scenes: { sizes: ['M', 'W'], defaultSize: 'M' },
+  automations: { sizes: ['M', 'W'], defaultSize: 'M' },
   energy: { sizes: ['M'], defaultSize: 'M' },
   security: { sizes: ['M', 'XL'], defaultSize: 'M' },
   'fitness-today': { sizes: ['M', 'W'], defaultSize: 'M' },

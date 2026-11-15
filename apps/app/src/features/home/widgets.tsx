@@ -18,9 +18,9 @@ import { RoomsWidget } from './widgets/rooms-widget';
 import { SPOTLIGHT_WIDGET } from './widgets/spotlight';
 import {
   ActivityWidget,
+  AutomationsWidget,
   EnergyWidget,
   FitnessTodayWidget,
-  ScenesWidget,
   SecurityWidget,
 } from './widgets/summary-widgets';
 
@@ -95,14 +95,14 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
     ),
   },
   {
-    type: 'scenes',
-    title: 'Scenes',
-    icon: 'sparkles',
+    type: 'automations',
+    title: 'Automations',
+    icon: 'automations',
     group: 'Home',
-    ...layoutOf('scenes'),
+    ...layoutOf('automations'),
     render: () => (
-      <HomeScope field="scenes">
-        <ScenesWidget />
+      <HomeScope field="byHand">
+        <AutomationsWidget />
       </HomeScope>
     ),
   },

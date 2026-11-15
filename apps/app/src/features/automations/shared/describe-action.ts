@@ -1,9 +1,9 @@
-import type { LegacyAction } from '@smarteverything/domain';
+import type { StepAction } from '@smarteverything/domain';
 import { duration } from '../../../format/time';
 import { deviceName, personName, type Names } from './describe-names';
 import { subjectLabel, subjectOf, subjectValue } from './present';
 
-function commandPhrase(names: Names, action: Extract<LegacyAction, { type: 'command' }>): string {
+function commandPhrase(names: Names, action: Extract<StepAction, { type: 'command' }>): string {
   const subject = subjectOf(names.devices, action.deviceId, action.capability);
   const device = deviceName(names, action.deviceId);
   if (action.capability === 'power' && typeof action.value === 'boolean') {
@@ -15,7 +15,7 @@ function commandPhrase(names: Names, action: Extract<LegacyAction, { type: 'comm
   return `set ${device} ${subjectLabel(subject)} to ${subjectValue(subject, action.value)}`;
 }
 
-function wakePhrase(names: Names, action: Extract<LegacyAction, { type: 'wake_ai' }>): string {
+function wakePhrase(names: Names, action: Extract<StepAction, { type: 'wake_ai' }>): string {
   const chat =
     action.chatId === null
       ? 'a new chat'
@@ -23,12 +23,10 @@ function wakePhrase(names: Names, action: Extract<LegacyAction, { type: 'wake_ai
   return `wake ${personName(names, action.profileId)}’s AI in ${chat}`;
 }
 
-export function describeAction(names: Names, action: LegacyAction): string {
+export function describeAction(names: Names, action: StepAction): string {
   switch (action.type) {
     case 'command':
       return commandPhrase(names, action);
-    case 'scene':
-      return `run ${names.scenes.find((scene) => scene.id === action.sceneId)?.name ?? 'a deleted scene'}`;
     case 'delay':
       return `wait ${duration(action.seconds)}`;
     case 'notify':

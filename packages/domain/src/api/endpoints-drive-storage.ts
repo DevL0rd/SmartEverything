@@ -7,7 +7,6 @@ import {
   DRIVE_SCRUB_STATE,
 } from '../drive/health';
 import { DRIVE_ACTIVITY_ENTRY } from '../drive/activity';
-import { DRIVE_FEED_ROW } from '../drive/feed';
 import { DRIVE_CONFLICT, DRIVE_CONFLICT_RESOLVE } from '../drive/conflict';
 import { DRIVE_QUOTA, DRIVE_QUOTA_SET } from '../drive/quota';
 import { DRIVE_SETTINGS, DRIVE_SETTINGS_UPDATE } from '../drive/settings';
@@ -44,7 +43,7 @@ export const DRIVE_CHANGED_NOTICE = z.strictObject({
 
 export type DriveChangedNotice = z.infer<typeof DRIVE_CHANGED_NOTICE>;
 
-export const DRIVE_PROGRESS_PHASES = ['scan', 'hash', 'scrub'] as const;
+export const DRIVE_PROGRESS_PHASES = ['scan', 'hash', 'text', 'scrub'] as const;
 
 export const DRIVE_PROGRESS_NOTICE = z
   .strictObject({
@@ -95,7 +94,7 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     params: DRIVE_ITEM_PARAMS,
     query: CURSOR_QUERY,
     body: NO_BODY,
-    response: pageOf(DRIVE_FEED_ROW),
+    response: pageOf(DRIVE_ACTIVITY_ENTRY),
   }),
   restoreVersion: endpoint({
     method: 'POST',
@@ -111,9 +110,18 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     method: 'GET',
     path: '/api/drive/shares',
     access: 'member',
-    summary: 'Share links the caller made, for one item or all, one page at a time',
+    summary: 'Share links the caller made, for one item, one album or all, one page at a time',
     params: NOTHING,
-    query: z.strictObject({ itemId: ID.optional(), cursor: DRIVE_CURSOR.optional() }),
+    query: z
+      .strictObject({
+        itemId: ID.optional(),
+        albumId: ID.optional(),
+        cursor: DRIVE_CURSOR.optional(),
+      })
+      .refine((query) => query.itemId === undefined || query.albumId === undefined, {
+        message: 'filter by an item or an album, not both',
+        path: ['albumId'],
+      }),
     body: NO_BODY,
     response: pageOf(DRIVE_SHARE),
   }),

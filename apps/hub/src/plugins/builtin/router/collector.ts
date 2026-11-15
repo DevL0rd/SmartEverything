@@ -18,7 +18,7 @@ interface CollectorOptions {
   readonly pingTarget: string;
   readonly log: Logger;
   readonly record: (snapshot: RouterSnapshot) => void;
-  readonly publish: (snapshot: RouterSnapshot) => void;
+  readonly publish: (snapshot: RouterSnapshot, full: boolean) => void;
 }
 
 const EMPTY_PARTS: FrameParts = {
@@ -64,7 +64,7 @@ export class RouterCollector {
     this.#loop.setCadence(cadence);
     if (cadence === 'paused') {
       this.#connection = { state: 'paused' };
-      this.#emit(true);
+      this.#emit(true, true);
     }
   }
 
@@ -88,17 +88,17 @@ export class RouterCollector {
       this.#connection = { state: 'online' };
       this.#failures = 0;
       this.#loop.setSampleSeconds(SAMPLE_SECONDS);
-      this.#emit(changed);
+      this.#emit(changed, slowTick);
     } catch (error) {
       this.#markUnreachable(error);
     }
   }
 
-  #emit(force: boolean): void {
+  #emit(force: boolean, full: boolean): void {
     const snapshot = this.#snapshot();
     this.options.record(snapshot);
     if (this.#wire.due(this.#loop.viewed, force)) {
-      this.options.publish(snapshot);
+      this.options.publish(snapshot, force || full);
     }
   }
 
@@ -119,7 +119,7 @@ export class RouterCollector {
       this.options.log.warn('router.unreachable', { reason });
     }
     this.#connection = { state: 'unreachable', reason, since };
-    this.#emit(changed);
+    this.#emit(changed, changed);
   }
 
   #snapshot(): RouterSnapshot {

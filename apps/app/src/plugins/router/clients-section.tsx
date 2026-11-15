@@ -12,6 +12,7 @@ import { useMinute } from '../../store/clock';
 import { useProfiles } from '../../store/people';
 import { PluginStreamSection } from '../shared/plugin-stream-section';
 import { useSectionParam } from '../../components/use-section-param';
+import { useSectionSearch } from '../shared/section-search';
 import {
   clientEntries,
   clientKey,
@@ -81,13 +82,13 @@ function useClientListState(snapshot: RouterSnapshot, mac: string | null): Clien
   const [filter, setFilter] = useState<ClientFilter>(() =>
     initialFilter(snapshot.clients, initial, mac),
   );
-  const [query, setQuery] = useState('');
+  const search = useSectionSearch();
   const [sort, setSort] = useState<ClientSort>('online');
   const [offlineOpen, setOfflineOpen] = useState(false);
   return {
-    view: { filter, band, query, sort, offlineOpen },
+    view: { filter, band, query: search.value, sort, offlineOpen },
     setFilter,
-    setQuery,
+    setQuery: search.onChange,
     setSort,
     setOfflineOpen,
     clearBand,
@@ -161,8 +162,6 @@ function ClientList({ snapshot }: { readonly snapshot: RouterSnapshot }): ReactN
           <>
             {view.filter === 'people' ? <PeopleManager snapshot={snapshot} /> : null}
             <ClientControls
-              query={view.query}
-              onQuery={state.setQuery}
               sort={view.sort}
               onSort={state.setSort}
               filter={view.filter}

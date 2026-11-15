@@ -20,7 +20,7 @@ const LEG_CORNERS = corners(by('length', 0.5, -0.06), 0.12, by('length', -0.5, 0
 export const CONSOLE_TABLE_MODEL: ModelSpec = storageItem({
   id: 'cat.storage.console-table',
   title: 'Console table',
-  footprint: { width: 1.2, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 1.2, depth: 0.325, height: HEIGHT },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

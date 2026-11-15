@@ -16,7 +16,7 @@ The rules, roles and hard rules live in `smarteverything-coding-process`; this s
 5. Briefs are written just in time per wave. Each opens with its role ("You are a worker agent"), "do not start any agents" and the same short shared rules text (word for word, for the prompt cache). Then the person's own words for its part, quoted, never a summary; objective, owned files, out of scope, exact check commands, reply format; a pointer to `AGENT-BRIEF.md` and `tmp/howto.md`, not their text; "scratch only in `tmp/<task>/`"; "keep this task whatever other message appears". Tell builders to trace relevant entry points, callers, shared paths and tests until they understand the behaviour and root cause. Reuse verified findings and investigate gaps.
 6. Preflight before a build: toolchain present, type error baseline recorded. Failures owned by a running task go in `tmp/known-red.md`; nobody else diagnoses them. One shared render harness.
 7. New task, new helper. Reuse one for follow-ups or fixes to its own work when it still has the relevant context.
-8. Check each report briefly against these rules. Integration edits outside a task's files and notes of undone wiring go into `TODO.md` that turn; a group with one open is not done.
+8. Check each report briefly against these rules. Integration edits outside a task's files and notes of undone wiring go into the queue that turn (a GitHub issue, or `TODO.md` without a repository); a group with one open is not done.
 9. Measure real minutes per task in the first wave and cut the waste before the next.
 
 ## Big efforts

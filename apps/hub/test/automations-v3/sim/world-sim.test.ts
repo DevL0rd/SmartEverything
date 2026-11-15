@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { LiveChange } from '@smarteverything/domain';
 import type { EffectRequest } from '@smarteverything/flow/interpret/frames';
@@ -122,6 +123,34 @@ describe('EffectsSim', () => {
       outcome: 'ok',
     });
     expect(deviceGet(home.lampA.id, 'brightness')['value']).toBe(60);
+  });
+
+  it('applies light.set to the lights of a room and reports what it left out', async () => {
+    const sim = effects();
+    const result = await sim.perform(
+      request('light.set', { target: { room: home.kitchen.id }, power: 'on', brightness: 30 }),
+      scope,
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(sim.sent[0]?.targets).toEqual(expect.arrayContaining([home.lampA.id, home.lampB.id]));
+    expect(deviceGet(home.lampA.id, 'brightness')['value']).toBe(30);
+    expect(deviceGet(home.lampA.id)['value']).toBe(true);
+  });
+
+  it('restores a snapshot into the scenario world with device.restore', async () => {
+    world.setDevice(home.lampA.id, 'brightness', 80);
+    const snapshot = world
+      .reads()
+      .read(
+        'device.snapshot',
+        { target: { device: home.lampA.id }, controls: ['brightness'] },
+        SCOPE,
+      ).outputs['snapshot'];
+    assert.ok(snapshot !== undefined);
+    world.setDevice(home.lampA.id, 'brightness', 5);
+    const result = await effects().perform(request('device.restore', { snapshot }), scope);
+    expect(result).toMatchObject({ ok: true, value: { sent: [home.lampA.id] } });
+    expect(deviceGet(home.lampA.id, 'brightness')['value']).toBe(80);
   });
 
   it('adds a relative change to the simulated value', async () => {

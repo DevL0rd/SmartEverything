@@ -9,8 +9,7 @@ import { useRows } from '../../../store/selectors';
 import type { Device, RowOf } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceIcon } from '../../device-visuals';
-import { watchDotOf } from '../../planner/clock/alarm-text';
-import { WatchStateLines } from '../../planner/clock/watch-state-line';
+import { watchDotOf, WatchStateLines } from '../../planner';
 import { isLocalWatch } from '../../watches';
 import { hasTarget, targetKeyOf } from './alarm-draft';
 
@@ -82,7 +81,10 @@ function targetPlace(
 
 function offeredTargets(sources: RingSources): readonly PlannerRingTarget[] {
   const clients = sources.clients
-    .filter((client) => client.profile_id === sources.profileId && isRingingKind(client.kind))
+    .filter(
+      (client) =>
+        !client.built_in && client.profile_id === sources.profileId && isRingingKind(client.kind),
+    )
     .map((client) => ({ kind: 'client' as const, clientId: client.id }));
   const watches = sources.devices
     .filter((device) => isPersonWatch(device, sources.profileId))
@@ -104,6 +106,14 @@ export function useRingSources(profileId: string | null): RingSources {
   const devices = useRows('devices');
   const selfId = useStoreSelector((state) => state.session?.client.id ?? null);
   return { clients, devices, selfId, profileId };
+}
+
+export function reachesPhone(sources: RingSources, targets: readonly PlannerRingTarget[]): boolean {
+  return targets.some((target) =>
+    target.kind === 'client'
+      ? sources.clients.find((row) => row.id === target.clientId)?.platform === 'android'
+      : sources.devices.find((row) => row.id === target.deviceId)?.kind === 'phone',
+  );
 }
 
 export function hasPersonWatch(sources: RingSources): boolean {

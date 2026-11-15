@@ -64,8 +64,10 @@ function collection(
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: googleId === null ? 'local' : 'google',
     google: googleId === null ? null : { id: googleId, etag: null, syncToken: null },
+    feed: null,
     created_at: '2026-11-01T00:00:00.000Z',
     updated_at: '2026-11-01T00:00:00.000Z',
   };

@@ -1,11 +1,12 @@
 import { PHOTO_RAIL_COUNTS, type PhotoRailCounts } from '@smarteverything/domain';
-import { driveSql, type DriveActor } from '../drive/access';
+import { driveSql, lockedTrashSql, type DriveActor } from '../drive/access';
 import { starredBy } from '../store/repositories/drive-stars';
 import type { StoreContext } from '../store/context';
 import type { SqlParameters } from '../store/sql';
 import { z } from 'zod';
 import { FILTER_SQL, PHOTO_FROM, PHOTO_SHOWN, visibility } from './library';
 import { trashedPhotoMembership } from './membership';
+import { PEOPLE_COUNT_SQL } from './people/counts';
 
 const COUNT_FIELD = z.number().int().nonnegative();
 
@@ -22,7 +23,10 @@ const ONE = z.strictObject({ total: COUNT_FIELD });
 const SCREENSHOT_SQL = FILTER_SQL.screenshots.replace(/^ and /, '');
 
 export class RailCountsReader {
-  constructor(private readonly context: StoreContext) {}
+  constructor(
+    private readonly context: StoreContext,
+    private readonly unreadShared: (actor: DriveActor) => number,
+  ) {}
 
   read(actor: DriveActor): PhotoRailCounts {
     return PHOTO_RAIL_COUNTS.parse({
@@ -39,8 +43,15 @@ export class RailCountsReader {
       ),
       deleted: this.total(
         `select count(*) as total from drive_trash t join drive_roots r on r.id = t.root_id
-         where t.is_folder = 0 and ${trashedPhotoMembership()} and ${driveSql()}`,
+         where t.is_folder = 0 and ${trashedPhotoMembership()} and ${driveSql()}
+           and not ${lockedTrashSql()}`,
         visibility(actor),
+      ),
+      people: this.total(PEOPLE_COUNT_SQL, { profile: actor.profileId }),
+      sharing: this.unreadShared(actor),
+      archive: this.total(
+        'select count(*) as total from photo_archive where profile_id = $profile',
+        { profile: actor.profileId },
       ),
     });
   }

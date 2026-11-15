@@ -1,11 +1,15 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { type IncomingMessage, type ServerResponse } from 'node:http';
 import { COMPUTER_MCP_TOKEN, type ComputerAiRuntime } from '@smarteverything/domain';
+import type { Logger } from '@smarteverything/logging';
+import { isMissing } from '../fs-util';
 import type { HubFetchLease } from './stream-fetch';
 import { HubRefusalError, HubTransportError } from './policy';
 import { guestRequestTarget } from './guest-contract';
 import { relayGuestRequest } from './guest-http';
-import { LoopbackListener, type LoopbackEntry } from './loopback-listener';
+import { BindError, LoopbackListener, type LoopbackEntry } from './loopback-listener';
 import type { McpGrantAddress } from './node-transport';
 
 export interface GuestLeaseAuthority {
@@ -45,6 +49,8 @@ interface BrokerGrant {
   readonly credentials: BrokerGrantCredentials;
 }
 
+export const CLAUDE_MCP_PORT = 42069;
+const GRANT_ID = /^[0-9a-f]{64}$/;
 const FAMILY_KIND = /^[a-z]+$/;
 const MCP_KIND = 'guest';
 
@@ -91,9 +97,49 @@ export class HubGuestBroker {
   constructor(
     readonly authority: GuestLeaseAuthority,
     readonly canonicalOrigin: string,
+    private readonly options: {
+      readonly port: number;
+      readonly directory: string;
+      readonly log: Logger;
+    },
   ) {}
   async start(): Promise<void> {
-    await this.listener.start();
+    try {
+      await this.listener.start(this.options.port);
+    } catch (cause) {
+      if (cause instanceof BindError)
+        this.options.log.error('guest_broker.bind_failed', cause, {
+          port: cause.port,
+          code: cause.code,
+        });
+      throw cause;
+    }
+  }
+  private grantFile(runtime: ComputerAiRuntime): string {
+    return join(this.options.directory, `mcp-${runtime}.grant-id`);
+  }
+  private persistedId(runtime: ComputerAiRuntime): string {
+    const file = this.grantFile(runtime);
+    try {
+      const stored = readFileSync(file, 'utf8').trim();
+      if (GRANT_ID.test(stored)) return stored;
+    } catch (cause) {
+      if (!isMissing(cause)) throw cause;
+    }
+    const created = randomBytes(32).toString('hex');
+    mkdirSync(this.options.directory, { recursive: true, mode: 0o700 });
+    const temporary = `${file}.${randomBytes(8).toString('hex')}.tmp`;
+    try {
+      writeFileSync(temporary, `${created}\n`, { mode: 0o600 });
+      renameSync(temporary, file);
+    } finally {
+      rmSync(temporary, { force: true });
+    }
+    return created;
+  }
+  revokeMcp(runtime: ComputerAiRuntime): void {
+    this.closeOwner(`mcp:${runtime}`);
+    rmSync(this.grantFile(runtime), { force: true });
   }
   register(family: BrokerFamily): void {
     if (!FAMILY_KIND.test(family.kind))
@@ -125,14 +171,14 @@ export class HubGuestBroker {
     this.closeOwner(owner);
     const lease = this.authority.lease(url);
     lease.signal.throwIfAborted();
-    const id = this.listener.add(
+    const id = this.listener.addAs(this.persistedId(runtime), {
       owner,
-      { family: mcpFamily, credentials: { url, token } },
-      lease.signal,
-      (retired) => {
+      value: { family: mcpFamily, credentials: { url, token } },
+      signal: lease.signal,
+      retire: (retired) => {
         this.listener.release(retired);
       },
-    );
+    });
     return this.mcpUrl(id);
   }
   private admittedMcpUrl(address: McpGrantAddress): string {

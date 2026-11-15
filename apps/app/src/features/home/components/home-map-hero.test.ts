@@ -1,7 +1,15 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type * as StageView from '../../home-map/model/stage-view';
+import type { StageViews } from '../../home-map';
+
+interface StageViewModule {
+  readonly stageViewsOf: (facts: { readonly hasScan: boolean }) => StageViews['views'];
+  readonly shownStageView: (
+    remembered: StageViews['view'] | undefined,
+    views: StageViews['views'],
+  ) => StageViews['view'];
+}
 
 interface Floor {
   readonly id: string;
@@ -52,7 +60,7 @@ interface Solid extends Record<string, unknown> {
 }
 
 interface Picked {
-  remembered: StageView.StageViews['view'] | undefined;
+  remembered: StageViews['view'] | undefined;
   lastFloor: string | null;
   stage: StageProbe | null;
 }
@@ -98,7 +106,6 @@ vi.mock('react-native', () => ({
   View,
   Platform: { OS: 'android' },
   Dimensions: { get: (): typeof probe.viewport => probe.viewport },
-  useWindowDimensions: (): typeof probe.viewport => probe.viewport,
 }));
 vi.mock('react-native-svg', () => ({ default: none, Path: none }));
 vi.mock('expo-router', () => ({
@@ -174,7 +181,7 @@ vi.mock('../../home-map/components/stage/stage', () => ({
   },
 }));
 vi.mock('../../home-map/model/stage-view', async (actual) => {
-  const real = await actual<typeof StageView>();
+  const real = await actual<StageViewModule>();
   return {
     ...real,
     useStageLights: (): unknown => ({ on: true, onToggle: none }),

@@ -10,6 +10,7 @@ import {
   SHELLY_PRESENCE_GEN4_MODEL,
   type ShellyDevice,
   type ShellyTrack,
+  type ShellyZone,
 } from '@smarteverything/shelly';
 import { cameraScene, overlayTracks } from '../../components/house-map/overlays/model';
 import {
@@ -33,7 +34,9 @@ import type { StageViewOption } from '../../features/home-map/components/stage/s
 import { StageStillView } from '../../features/home-map/components/stage/stage-states';
 import { useHomeMap } from '../../features/home-map/data/home-map-query';
 import { mapHasContent } from '../../features/home/model/hero';
-import { useDevices, useRooms } from '../../store/selectors';
+import { useStableValue } from '../../components/use-stable-value';
+import { useHomeMapSceneLive } from '../../features/home-map/data/map-scene';
+import { sameJson } from '../../store/same-json';
 import { SensorStageBody } from './presence-stage';
 
 export interface SensorSpot {
@@ -98,7 +101,7 @@ export function coverageCone(spot: SensorSpot): readonly RenderPoint[] {
 }
 
 export function sensorZoneShapes(
-  sensor: ShellyDevice,
+  sensor: Pick<ShellyDevice, 'zones'>,
   pose: ShellyHousePose,
 ): readonly SensorZoneShape[] {
   const shapes = sensor.zones.flatMap((zone) => {
@@ -124,7 +127,7 @@ export function focusBounds(spot: SensorSpot, cone: readonly RenderPoint[]): Ren
 
 export function sensorMapView(
   floors: readonly RenderFloor[],
-  sensor: ShellyDevice,
+  sensor: Pick<ShellyDevice, 'zones'>,
   deviceId: string,
 ): SensorMapView | null {
   const spot = sensorSpot(floors, deviceId);
@@ -157,27 +160,36 @@ export function advanceTrackHistory(
   };
 }
 
+const ALL_DEVICES = { includeHidden: true } as const;
+
+export function sameZoneShapes(kept: readonly ShellyZone[], next: readonly ShellyZone[]): boolean {
+  return (
+    kept.length === next.length &&
+    kept.every((zone, index) => {
+      const other = next[index];
+      return (
+        zone.key === other?.key &&
+        zone.main === other.main &&
+        zone.config.enable === other.config.enable &&
+        zone.status?.value === other.status?.value &&
+        sameJson(zone.config.area, other.config.area)
+      );
+    })
+  );
+}
+
 export function useSensorView(sensor: ShellyDevice, deviceId: string | null): SensorMapView | null {
   const { map } = useHomeMap();
   const shown = mapHasContent(map) ? map : null;
-  const rooms = useRooms();
-  const devices = useDevices({ includeHidden: true });
-  const floors = useMemo(() => {
-    if (shown === null) return [];
-    return homeMapRenderScene({
-      map: shown,
-      live: {
-        homeRoomName: (roomId) => rooms.find((room) => room.id === roomId)?.name ?? null,
-        device: (id) => {
-          const device = devices.find((item) => item.id === id);
-          return device === undefined ? null : { name: device.label, kind: device.kind };
-        },
-      },
-    }).floors;
-  }, [shown, rooms, devices]);
+  const live = useHomeMapSceneLive(ALL_DEVICES);
+  const floors = useMemo(
+    () => (shown === null ? [] : homeMapRenderScene({ map: shown, live }).floors),
+    [shown, live],
+  );
+  const zones = useStableValue(sensor.zones, sameZoneShapes);
   return useMemo(
-    () => (deviceId === null ? null : sensorMapView(floors, sensor, deviceId)),
-    [floors, sensor, deviceId],
+    () => (deviceId === null ? null : sensorMapView(floors, { zones }, deviceId)),
+    [floors, zones, deviceId],
   );
 }
 

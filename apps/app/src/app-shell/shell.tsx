@@ -6,13 +6,11 @@ import { Tabs, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { usePrewarmChat } from '../features/assistant/screens/open-last-chat';
 import { APP_UPDATES_PATH, AppUpdateBanner } from '../features/app-updates';
 import { HubUpdateBanner } from '../features/hub-updates';
-import { HeaderSearchProvider } from '../components/header-search';
 import { HeaderStatusProvider } from '../components/header-status';
 import { UpdateDetailsFallbackFocus } from '../components/update-details-focus';
 import { useColour } from '../design/colour';
 import { isNative } from '../design/platform';
 import { useSizeClass } from '../design/size-class';
-import { openSearch } from '../search/open-search';
 import { AdaptiveNav } from './adaptive-nav';
 import { useBackOrigins } from './back-host';
 import { screenPause } from './screen-pause';
@@ -31,10 +29,6 @@ import { useTabReplacement } from './tab-replacement-host';
 const log = new Logger('app.nav');
 
 const SYNC_INDICATOR = <SyncIndicator />;
-
-function openHeaderSearch(): void {
-  openSearch();
-}
 
 function TabPrewarm(props: BottomTabBarProps): ReactNode {
   useTabPrewarm({
@@ -91,33 +85,31 @@ function ShellTabs(): ReactNode {
   }, []);
   const scene = { backgroundColor: useColour('bg') };
   return (
-    <HeaderSearchProvider value={openHeaderSearch}>
-      <HeaderStatusProvider value={SYNC_INDICATOR}>
-        <ShellUpdateNotices />
-        <PagePinHost>
-          <Tabs
-            tabBar={renderTabBar}
-            backBehavior={shellTabBackBehavior(isNative())}
-            screenLayout={screenPause}
-            UNSTABLE_router={anchorTabRoots}
-            screenOptions={{
-              headerShown: false,
-              tabBarPosition: nav === 'bar' ? 'bottom' : 'left',
-              lazy: true,
-              freezeOnBlur: false,
-              sceneStyle: scene,
-            }}
-          >
-            {TAB_NAMES.map((name) => (
-              <Tabs.Screen key={name} name={name} />
-            ))}
-          </Tabs>
-        </PagePinHost>
-        <NavigationEffects />
-        {nav === 'bar' ? <NavSheetHost /> : null}
-        <GlobalHosts />
-      </HeaderStatusProvider>
-    </HeaderSearchProvider>
+    <HeaderStatusProvider value={SYNC_INDICATOR}>
+      <ShellUpdateNotices />
+      <PagePinHost>
+        <Tabs
+          tabBar={renderTabBar}
+          backBehavior={shellTabBackBehavior(isNative())}
+          screenLayout={screenPause}
+          UNSTABLE_router={anchorTabRoots}
+          screenOptions={{
+            headerShown: false,
+            tabBarPosition: nav === 'bar' ? 'bottom' : 'left',
+            lazy: true,
+            freezeOnBlur: false,
+            sceneStyle: scene,
+          }}
+        >
+          {TAB_NAMES.map((name) => (
+            <Tabs.Screen key={name} name={name} />
+          ))}
+        </Tabs>
+      </PagePinHost>
+      <NavigationEffects />
+      {nav === 'bar' ? <NavSheetHost /> : null}
+      <GlobalHosts />
+    </HeaderStatusProvider>
   );
 }
 

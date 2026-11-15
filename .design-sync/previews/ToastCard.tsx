@@ -2,7 +2,14 @@ import type { ReactNode } from 'react';
 import { Stage, ToastCard } from 'smarteverything-kit';
 import { Col } from '../preview-helpers';
 
-const base = { id: 1, count: 1, leaving: false, held: false, undoable: false };
+const base = {
+  id: 1,
+  count: 1,
+  leaving: false,
+  held: false,
+  undoable: false,
+  expanded: false,
+};
 const body = (
   <Col>
     <ToastCard

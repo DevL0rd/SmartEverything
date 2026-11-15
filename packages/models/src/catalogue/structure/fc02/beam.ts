@@ -117,7 +117,7 @@ export const BASEBOARD_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Baseboard run',
   category: 'structure',
-  footprint: { width: 1.2024, depth: PROFILE_D, height: 0.1024 },
+  footprint: { width: 1.2024, depth: 0.0188, height: 0.1024 },
   size: {
     width: { param: 'length', extra: 0.0024, resizes: true },
     height: { param: 'height', scale: 1.0242, extra: 0, resizes: true },

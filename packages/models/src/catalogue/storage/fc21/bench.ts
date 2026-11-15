@@ -21,7 +21,7 @@ const LEG_CORNERS = corners(by('length', 0.5, -0.07), 0.12, by('length', -0.5, 0
 export const HALLWAY_BENCH_MODEL: ModelSpec = storageItem({
   id: 'cat.storage.hallway-bench',
   title: 'Hallway bench',
-  footprint: { width: 1.1, depth: DEPTH, height: 0.47 },
+  footprint: { width: 1.1, depth: DEPTH, height: 0.475 },
   size: { width: { param: 'length', extra: 0, resizes: true } },
   meta: {
     names: {

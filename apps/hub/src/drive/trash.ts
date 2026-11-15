@@ -1,6 +1,7 @@
 import { dirname, extname, basename } from 'node:path';
 import { DRIVE_TRASH_ENTRY, type DriveTrashEntry } from '@smarteverything/domain';
 import type { DriveIntent } from '../store/repositories/drive-intents';
+import type { Store } from '../store/store';
 import {
   abandonIntent,
   DriveWriteError,
@@ -9,7 +10,9 @@ import {
   moveWithin,
   purgeDeadline,
   TRASH_DIRECTORY,
+  tmpRelPath,
   writeManifest,
+  type DriveFileStore,
   type DriveWriteRoot,
   type FileEnv,
 } from './intents';
@@ -20,18 +23,23 @@ export interface TrashRequest {
   readonly relPath: string;
   readonly name: string;
   readonly isFolder: boolean;
+  readonly onDisk: boolean;
   readonly bytes: number;
   readonly deletedBy: string | null;
   readonly addedByProfileId: string | null;
 }
 
+export interface RestoreEnv extends FileEnv {
+  readonly store: DriveFileStore & Pick<Store, 'driveItems'>;
+}
+
 export interface TrashMove {
-  readonly intent: DriveIntent;
+  readonly intent: DriveIntent | null;
   readonly entry: DriveTrashEntry;
 }
 
 export interface RestoreMove {
-  readonly intent: DriveIntent;
+  readonly intent: DriveIntent | null;
   readonly relPath: string;
 }
 
@@ -39,16 +47,21 @@ export function trashRelPath(itemId: string): string {
   return `${TRASH_DIRECTORY}/${itemId}`;
 }
 
-export async function moveToTrash(
+async function dropName(
   env: FileEnv,
   root: DriveWriteRoot,
-  request: TrashRequest,
-): Promise<TrashMove> {
-  if ((await env.files.stamp(await locate(root, request.relPath))) === null) {
-    throw new DriveWriteError('missing', 'The item to trash does not exist.');
-  }
+  relPath: string,
+  trashRelPath: string,
+): Promise<void> {
+  const live = await locate(root, relPath);
+  await env.files.clone(live, await locate(root, trashRelPath), await locate(root, tmpRelPath()));
+  await env.files.unlink(live);
+  await env.files.syncDirectory(dirname(live));
+}
+
+function entryOf(env: FileEnv, root: DriveWriteRoot, request: TrashRequest): DriveTrashEntry {
   const deletedAt = env.now().toISOString();
-  const entry = DRIVE_TRASH_ENTRY.parse({
+  return DRIVE_TRASH_ENTRY.parse({
     itemId: request.itemId,
     rootId: root.id,
     name: request.name,
@@ -61,6 +74,23 @@ export async function moveToTrash(
     deletedBy: request.deletedBy,
     addedByProfileId: request.addedByProfileId,
   });
+}
+
+export async function moveToTrash(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  request: TrashRequest,
+): Promise<TrashMove> {
+  const live = await locate(root, request.relPath);
+  const stamp = request.onDisk ? await env.files.stamp(live) : null;
+  if (request.onDisk && stamp === null) {
+    throw new DriveWriteError('missing', 'The item to trash does not exist.');
+  }
+  const entry = entryOf(env, root, request);
+  if (!request.onDisk) {
+    await writeManifest(env.files, root, entry.trashRelPath, entry);
+    return { intent: null, entry };
+  }
   const intent = env.store.driveIntents.open({
     rootId: root.id,
     op: 'trash',
@@ -70,11 +100,15 @@ export async function moveToTrash(
   });
   try {
     await writeManifest(env.files, root, entry.trashRelPath, entry);
-    await moveWithin(env.files, root, {
-      from: request.relPath,
-      to: entry.trashRelPath,
-      mode: 'replace',
-    });
+    if (stamp !== null && stamp.nlink > 1 && !stamp.directory && !stamp.symlink) {
+      await dropName(env, root, request.relPath, entry.trashRelPath);
+    } else {
+      await moveWithin(env.files, root, {
+        from: request.relPath,
+        to: entry.trashRelPath,
+        mode: 'replace',
+      });
+    }
   } catch (cause) {
     await abandonIntent(env, root, intent);
     throw cause;
@@ -98,7 +132,7 @@ async function parentOrRoot(env: FileEnv, root: DriveWriteRoot, relPath: string)
 }
 
 async function freeTarget(
-  env: FileEnv,
+  env: RestoreEnv,
   root: DriveWriteRoot,
   entry: DriveTrashEntry,
 ): Promise<string> {
@@ -108,21 +142,29 @@ async function freeTarget(
   for (let attempt = -1; ; attempt += 1) {
     const candidate =
       attempt < 0 ? original : join(restoredName(entry.name, entry.isFolder, attempt));
-    if ((await env.files.stamp(await locate(root, candidate))) === null) {
+    const free =
+      env.store.driveItems.byPath(root.id, candidate, null) === undefined &&
+      (await env.files.stamp(await locate(root, candidate))) === null;
+    if (free) {
       return candidate;
     }
   }
 }
 
 export async function restoreFromTrash(
-  env: FileEnv,
+  env: RestoreEnv,
   root: DriveWriteRoot,
-  entry: DriveTrashEntry,
+  request: { readonly entry: DriveTrashEntry; readonly onDisk: boolean },
 ): Promise<RestoreMove> {
-  if ((await env.files.stamp(await locate(root, entry.trashRelPath))) === null) {
+  const { entry, onDisk } = request;
+  if (onDisk && (await env.files.stamp(await locate(root, entry.trashRelPath))) === null) {
     throw new DriveWriteError('missing', 'The trashed item is missing from the trash folder.');
   }
   const relPath = await freeTarget(env, root, entry);
+  if (!onDisk) {
+    await env.files.remove(await locate(root, manifestPath(entry.trashRelPath)));
+    return { intent: null, relPath };
+  }
   const intent = env.store.driveIntents.open({
     rootId: root.id,
     op: 'restore',
@@ -146,6 +188,7 @@ export async function removeTrashEntry(env: FileEnv, entry: DriveTrashEntry): Pr
     env.store.driveTrash.forgetPhoto(entry.itemId);
     env.store.driveTrash.remove(entry.itemId);
     env.store.driveGrants.sweepOrphans();
+    env.store.driveShortcuts.sweepOrphans();
     return env.store.driveVersions.purgeItem(entry.itemId);
   });
   await env.files.remove(await locate(root, entry.trashRelPath));

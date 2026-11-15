@@ -6,6 +6,7 @@ import { Logger } from '@smarteverything/logging';
 import type * as fsPromises from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openDriveSyncDatabase, type DriveSyncDatabase } from '../../src/drive-sync/db/index.js';
+import { NoXattrPort } from '../../src/drive-sync/meta-port.js';
 import { PlacementPuller } from '../../src/drive-sync/pull.js';
 import { FakeHubFiles, bytesOf, fileEntry } from './pull-support.js';
 
@@ -62,6 +63,8 @@ describe('pulling onto a full disk', () => {
       driveId: ROOT,
       rootPath: join(scratch, 'library'),
       platform: process.platform,
+      meta: new NoXattrPort(),
+      tolerance: (): bigint => 0n,
       database,
       source: hub,
       wants: (): boolean => true,
@@ -69,6 +72,8 @@ describe('pulling onto a full disk', () => {
         pulled: (): void => undefined,
         contended: (): void => undefined,
         deferred: (): void => undefined,
+        skipped: (): void => undefined,
+        dirtied: (): void => undefined,
         progress: (): void => undefined,
         blocked: (result): void => {
           blocked.push(result);

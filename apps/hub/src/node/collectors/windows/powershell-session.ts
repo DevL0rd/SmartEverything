@@ -44,7 +44,10 @@ export const spawnPowerShell: SpawnShell = () => {
       createInterface({ input: child.stdout }).on('line', listener);
     },
     onExit: (listener): void => {
-      child.once('error', (cause) => {
+      child.on('error', (cause) => {
+        listener(cause.message);
+      });
+      child.stdin.on('error', (cause) => {
         listener(cause.message);
       });
       child.once('exit', (code, signal) => {

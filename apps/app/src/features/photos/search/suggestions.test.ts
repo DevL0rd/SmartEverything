@@ -28,6 +28,10 @@ vi.mock('../../../components/interactive', () => ({
     ),
 }));
 vi.mock('../../../design/platform', () => ({ useIdiom: (): string => idiom.value }));
+vi.mock('../people/face-avatar', () => ({
+  FaceAvatar: ({ itemId }: { readonly itemId: string }): ReactNode =>
+    createElement('i', { 'data-face': itemId }),
+}));
 
 const { Suggestions } = await import('./suggestions');
 
@@ -79,6 +83,49 @@ describe('the suggestion pop', () => {
 
   it('highlights the words row after the last suggestion', () => {
     expect(render(3)).toContain('aria-label="Search for “si”" data-hot="yes"');
+  });
+
+  it('leads a person with their face and shows the text snippet under a text hit', () => {
+    const html = renderToStaticMarkup(
+      createElement(Suggestions, {
+        groups: [
+          {
+            id: 'people',
+            title: 'People',
+            items: [
+              {
+                token: {
+                  kind: 'person',
+                  groupId: '6b9e1d1a-8f6e-4a43-9a1c-0e4a3c1f2b11',
+                  label: 'Anna',
+                },
+                count: 12,
+                face: { itemId: 'cover-1', box: null, kind: 'person' },
+              },
+            ],
+          },
+          {
+            id: 'text',
+            title: 'Text in photos',
+            items: [
+              {
+                token: { kind: 'photoText', text: 'menu', label: 'Text “menu”' },
+                count: null,
+                detail: 'Lunch menu of the day',
+              },
+            ],
+          },
+        ],
+        words: 'an',
+        highlight: 0,
+        onPick: () => undefined,
+        onWords: () => undefined,
+      }),
+    );
+    expect(html).toContain('data-face="cover-1"');
+    expect(html).toContain('aria-label="Anna, 12"');
+    expect(html).toContain('Lunch menu of the day');
+    expect(html).toContain('Text in photos');
   });
 
   it('shows the Enter and Backspace hints only with a pointer', () => {

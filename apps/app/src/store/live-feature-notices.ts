@@ -7,8 +7,13 @@ import {
 } from '../features/assistant';
 import { APP_UPDATE_NOTICES } from '../features/app-updates';
 import { CLIPBOARD_NOTICE } from '../features/clipboard';
+import { BEDTIME_NOTICES } from '../features/clock/bedtime/notices';
 import { COMPUTER_NOTICES } from '../features/computers';
 import { DRIVE_NOTICE_HANDLERS } from '../features/drive';
+import { PHOTO_EDIT_NOTICES } from '../features/photos/editor/notices';
+import { PHOTO_FOLDER_NOTICES } from '../features/photos/folders/notices';
+import { PHOTO_SHARING_NOTICES } from '../features/photos/sharing';
+import { PHOTO_AI_NOTICES } from '../features/photos/smart';
 import { PHONE_RINGS_NOTICE, PLANNER_NOTICES } from '../features/planner/data';
 import { HUB_UPDATE_NOTICES, HUB_UPDATE_SOURCE_NOTICES } from '../features/hub-updates';
 import { PHONE_DETAIL_NOTICES } from '../features/phone';
@@ -55,6 +60,11 @@ export const FEATURE_NOTICES: readonly NoticeHandler[] = [
   HUB_UPDATE_NOTICES,
   HUB_UPDATE_SOURCE_NOTICES,
   ...DRIVE_NOTICE_HANDLERS,
+  PHOTO_FOLDER_NOTICES,
+  PHOTO_AI_NOTICES,
+  PHOTO_EDIT_NOTICES,
+  PHOTO_SHARING_NOTICES,
   ...PLANNER_NOTICES,
+  ...BEDTIME_NOTICES,
   PHONE_RINGS_NOTICE,
 ];

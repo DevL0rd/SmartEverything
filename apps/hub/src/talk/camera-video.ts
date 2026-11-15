@@ -86,7 +86,7 @@ export class CameraVideo {
     child.stdout.on('data', (chunk: Buffer) => {
       splitter.push(chunk);
     });
-    child.once('error', (cause) => {
+    child.on('error', (cause) => {
       this.options.log.warn('talk.camera_video_failed', { cameraId, reason: cause.message });
     });
     watching.attach(() => {

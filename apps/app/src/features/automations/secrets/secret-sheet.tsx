@@ -102,7 +102,7 @@ function Form({ initial, replacing, entries, onClose, onSave }: FormProps): Reac
     });
   };
   const footer = (
-    <View className="flex-row gap-2">
+    <View className="flex-1 flex-row gap-2">
       <Button label="Cancel" variant="text" onPress={onClose} disabled={busy} />
       <Button label={copy.submit} icon="lock" grow loading={busy} onPress={submit} />
     </View>

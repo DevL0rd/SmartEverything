@@ -20,6 +20,8 @@ export function sourceLinksOf(
         itemId: id,
         rev: SOURCE_REV,
         file,
+        download: file,
+        icon: null,
         thumb: thumbs[id] ?? null,
         preview: null,
         playable: null,

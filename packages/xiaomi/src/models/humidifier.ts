@@ -55,7 +55,7 @@ export const MIJIA_EVAPORATIVE_HUMIDIFIER_PRO_MODEL: ModelSpec = {
   title: 'Mijia Smart Evaporative Humidifier Pro',
   category: 'climate',
   family: 'humidifier',
-  footprint: { width: 0.23, depth: 0.23, height: HEIGHT },
+  footprint: { width: 0.2308, depth: 0.2308, height: 0.4372 },
   framing: {
     tile: HOUSE,
     card: { ...HOUSE, pitch: 24 },

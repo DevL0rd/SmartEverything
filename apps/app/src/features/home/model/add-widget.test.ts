@@ -9,7 +9,7 @@ import { withoutRetired } from '../../../components/widget-board/retired';
 import { withWidgetAdded } from './add-widget';
 import { HOME_RETIRED, homeDefaults } from './defaults';
 
-const scenes: BoardWidget = { key: 'scenes', type: 'scenes', size: 'W' };
+const automations: BoardWidget = { key: 'automations', type: 'automations', size: 'W' };
 const weather: BoardWidget = { key: 'weather', type: 'weather', size: 'M' };
 const added: BoardWidget = {
   key: 'group:1',
@@ -18,8 +18,8 @@ const added: BoardWidget = {
   options: { target: { kind: 'group', groupId: '1' } },
 };
 const defaults = {
-  compact: [scenes],
-  medium: [scenes, weather],
+  compact: [automations],
+  medium: [automations, weather],
   expanded: [weather],
 };
 const empty: BoardLayout = { version: BOARD_LAYOUT_VERSION, classes: {} };
@@ -28,9 +28,9 @@ describe('adding a widget to the Home layout', () => {
   it('overlays the widget on the defaults of every board that was never edited', () => {
     const layout = withWidgetAdded(empty, defaults, added);
     expect(layout?.classes).toStrictEqual({});
-    expect(arrangementOf(layout ?? null, 'compact', defaults)).toStrictEqual([scenes, added]);
+    expect(arrangementOf(layout ?? null, 'compact', defaults)).toStrictEqual([automations, added]);
     expect(arrangementOf(layout ?? null, 'medium', defaults)).toStrictEqual([
-      scenes,
+      automations,
       weather,
       added,
     ]);
@@ -39,8 +39,8 @@ describe('adding a widget to the Home layout', () => {
 
   it('lets later default changes still reach the boards the person did not customise', () => {
     const layout = withWidgetAdded(empty, defaults, added) ?? empty;
-    const changed = { ...defaults, medium: [weather, scenes] };
-    expect(arrangementOf(layout, 'medium', changed)).toStrictEqual([weather, scenes, added]);
+    const changed = { ...defaults, medium: [weather, automations] };
+    expect(arrangementOf(layout, 'medium', changed)).toStrictEqual([weather, automations, added]);
   });
 
   it('keeps an edited board as the person left it and appends at the end', () => {
@@ -51,7 +51,7 @@ describe('adding a widget to the Home layout', () => {
     const layout = withWidgetAdded(stored, defaults, added);
     expect(layout?.classes.compact?.widgets).toStrictEqual([weather, added]);
     expect(arrangementOf(layout ?? null, 'medium', defaults)).toStrictEqual([
-      scenes,
+      automations,
       weather,
       added,
     ]);
@@ -88,7 +88,7 @@ describe('the retired Indoors glance', () => {
       (widget) => widget.type,
     );
     expect(types).not.toContain('glance');
-    expect(types.slice(0, 2)).toStrictEqual(['weather', 'scenes']);
+    expect(types.slice(0, 2)).toStrictEqual(['weather', 'automations']);
   });
 
   it('is dropped from a saved layout and from its added widgets', () => {

@@ -74,7 +74,7 @@ export function OfferButton({
     <Button
       {...(buttonRef === undefined ? {} : { ref: buttonRef })}
       label={action.label}
-      variant={action.kind === 'cancel' ? 'outlined' : 'filled'}
+      variant={action.kind === 'cancel' || action.kind === 'stay_built_in' ? 'outlined' : 'filled'}
       icon={offerIcon(action)}
       loading={action.busy}
       disabled={onPress === undefined && !action.busy}

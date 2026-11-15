@@ -70,7 +70,7 @@ export const NAVIGATION_SETTINGS: readonly SettingDefinition[] = [
     section: 'Pins and pages',
     title: 'Add a pin',
     icon: 'pin',
-    keywords: ['pin', 'add', 'shortcut', 'device', 'room', 'camera', 'scene'],
+    keywords: ['pin', 'add', 'shortcut', 'device', 'room', 'camera', 'automation'],
     scope: 'client',
     control: 'action',
     run: openPicker,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
-import { FOLDER_ID, ROOT_ID } from '../data/fixtures';
+import type { DriveItem } from '@smarteverything/domain';
+import { FOLDER_ID, ROOT_ID, documentFixture, imageFixture } from '../data/fixtures';
 import {
   SWIPE_STEP,
   UNCHANGED_CONTEXT,
@@ -32,45 +32,16 @@ function base(name: string): object {
     name,
     modifiedAt: AT,
     addedAt: AT,
-    openedAt: null,
-    starred: false,
-    shared: false,
     rev: 3,
-    etag: 'etag',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
-    sha256: null,
-    integrity: 'unknown',
   };
 }
 
 function document(name: string, mime: string): DriveItem {
-  return DRIVE_ITEM.parse({
-    ...base(name),
-    kind: 'document',
-    mime,
-    bytes: 2048,
-    thumb: { state: 'none' },
-  });
+  return documentFixture({ ...base(name), mime, bytes: 2048 });
 }
 
 function image(name: string, mime: string): DriveItem {
-  return DRIVE_ITEM.parse({
-    ...base(name),
-    kind: 'image',
-    mime,
-    bytes: 4096,
-    takenAt: null,
-    width: null,
-    height: null,
-    orientation: null,
-    camera: null,
-    exposure: null,
-    place: null,
-    thumb: { state: 'ready' },
-  });
+  return imageFixture({ ...base(name), mime, bytes: 4096, thumb: { state: 'ready' } });
 }
 
 function numbered(count: number, prefix = 'line'): string {

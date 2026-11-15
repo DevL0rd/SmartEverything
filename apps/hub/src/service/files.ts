@@ -1,4 +1,11 @@
-import { createWriteStream, watch, type FSWatcher, type WriteStream } from 'node:fs';
+import {
+  createWriteStream,
+  openSync,
+  renameSync,
+  watch,
+  type FSWatcher,
+  type WriteStream,
+} from 'node:fs';
 import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import type { ComputerServiceReady } from '@smarteverything/domain';
@@ -31,18 +38,29 @@ export async function openAppendStream(path: string): Promise<WriteStream> {
   if ((await sizeOf(path)) > LOG_ROTATE_BYTES) {
     await rename(path, `${path}.1`);
   }
-  return createWriteStream(path, { flags: 'a', mode: 0o600 });
+  return appendStream(path);
+}
+
+function appendStream(path: string): WriteStream {
+  return createWriteStream(path, { fd: openSync(path, 'a', 0o600) });
 }
 
 export async function openLogFile(path: string): Promise<LogFile> {
-  const stream = await openAppendStream(path);
+  let stream = await openAppendStream(path);
+  let written = await sizeOf(path);
   const lines = new LogLines();
   return {
     sink: (record): void => {
-      const line = renderJson(record);
-      stream.write(`${line}\n`);
-      lines.record(record);
-      lines.write(line);
+      const line = `${renderJson(record)}\n`;
+      if (written > LOG_ROTATE_BYTES) {
+        stream.end();
+        renameSync(path, `${path}.1`);
+        stream = appendStream(path);
+        written = 0;
+      }
+      stream.write(line);
+      written += Buffer.byteLength(line);
+      lines.write(line.slice(0, -1));
     },
     lines,
     close: () =>

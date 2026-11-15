@@ -5,6 +5,8 @@ import { COMMAND_WAIT_MS } from '../commands/command-budgets';
 import type { RunningHub } from '../hub';
 import type { Operations } from '../server/operations';
 import { recordingPathIn } from '../services';
+import type { ReleasePublications } from '../self-update/release-publications';
+import type { ReleaseSecrets } from '../extensions/mcp/tools/registry';
 import type { Store } from '../store/store';
 import type { MediaNotes } from '../transcripts/media-notes';
 import { SeTools } from './se-tools';
@@ -15,6 +17,8 @@ export interface ToolHubOptions {
   readonly store: Store;
   readonly hub: RunningHub;
   readonly operations: Operations;
+  readonly publications: ReleasePublications;
+  readonly releaseSecrets: ReleaseSecrets;
   readonly layout: HubLayout;
   readonly clock: Clock;
   readonly mediaNotes: MediaNotes;
@@ -44,6 +48,8 @@ export function createToolHub(options: ToolHubOptions): ToolHub {
           hub: options.hub,
           clock: options.clock,
           operations: options.operations,
+          publications: options.publications,
+          releaseSecrets: options.releaseSecrets,
           commandWaitMs: COMMAND_WAIT_MS,
           recordingPath: recordingPathIn(options.layout),
           caller: null,

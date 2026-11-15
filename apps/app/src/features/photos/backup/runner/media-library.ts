@@ -118,6 +118,23 @@ export const mediaLibraryPort: MediaLibraryPort = {
     return ids;
   },
   pagesFrom: scopedPages,
+  async modificationTimes(localIds, signal): Promise<ReadonlyMap<string, number>> {
+    const lib = await library();
+    const times = new Map<string, number>();
+    for (let at = 0; at < localIds.length; at += MEDIA_PAGE_ROWS) {
+      if (mediaScanCancelled(signal)) break;
+      await Promise.all(
+        localIds.slice(at, at + MEDIA_PAGE_ROWS).map(async (id) => {
+          const time = await new lib.Asset(id).getModificationTime().catch((cause: unknown) => {
+            log.warn('backup.modification_time_unreadable', { localId: id, reason: String(cause) });
+            return null;
+          });
+          if (time !== null) times.set(id, time);
+        }),
+      );
+    }
+    return times;
+  },
   onChange(listener): () => void {
     let subscription: { remove(): void } | null = null;
     let removed = false;

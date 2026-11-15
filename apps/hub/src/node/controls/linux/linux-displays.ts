@@ -17,7 +17,7 @@ import { describeChange, isOnlyActive, planDisplayChange } from './display-plan'
 import type { DisplayRevert, Schedule } from './display-revert';
 import { KscreenDisplays } from './kscreen-displays';
 import type { LineSubscriber } from './line-stream';
-import type { KwinNightLight } from './night-light';
+import { UNSUPPORTED_NIGHT_LIGHT, type KwinNightLight } from './night-light';
 import type { ProgramProbe } from './program-probe';
 import type { RevertNotice } from './revert-notice';
 import { DdcBrightness } from './screen-brightness';
@@ -84,7 +84,7 @@ export class LinuxDisplays implements DisplayControl {
   async features(): Promise<readonly ComputerFeature[]> {
     const backend = await this.backend();
     if (backend === null) {
-      return [];
+      return this.noSession() ? ['displays'] : [];
     }
     const outputs = await this.outputs(backend);
     const night = await this.options.nightLight.read();
@@ -105,7 +105,13 @@ export class LinuxDisplays implements DisplayControl {
   }
 
   async read(): Promise<DisplayState> {
-    const backend = await this.require();
+    const backend = await this.backend();
+    if (backend === null && this.noSession()) {
+      return { outputs: [], nightLight: UNSUPPORTED_NIGHT_LIGHT, pendingRevert: null };
+    }
+    if (backend === null) {
+      throw new NodeFailureError('not_supported', UNSUPPORTED_TEXT);
+    }
     return {
       outputs: [...(await this.outputs(backend))],
       nightLight: await this.options.nightLight.read(),
@@ -171,6 +177,11 @@ export class LinuxDisplays implements DisplayControl {
       await backend?.restore(restore);
       log.warn('display.change_reverted', { reason: 'agent_stopped' });
     }
+  }
+
+  private noSession(): boolean {
+    const { kde, wayland, x11 } = this.options.environment();
+    return !kde && !wayland && !x11;
   }
 
   private backend(): Promise<DisplayBackend | null> {

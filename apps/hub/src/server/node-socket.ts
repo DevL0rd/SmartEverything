@@ -32,7 +32,7 @@ const CLOSE_UPDATE_REQUIRED = 4003;
 
 const HELLO_PROTOCOL = z.looseObject({
   type: z.literal('hello'),
-  hello: z.looseObject({ protocol: z.unknown() }),
+  hello: z.looseObject({ protocol: z.unknown().optional() }),
 });
 
 type ComputerAttach = (identity: ComputerNodeRow, link: HubLink) => () => void;

@@ -11,7 +11,7 @@ export const AQUARIUM_STAND_MODEL: ModelSpec = catalogueItem({
   id: 'cat.kids-pets.aquarium-stand',
   title: 'Aquarium stand',
   category: 'kids-pets',
-  footprint: { width: 1, depth: DEPTH + 0.02, height: TANK_Y + TANK_H + 0.04 },
+  footprint: { width: 1, depth: 0.437, height: TANK_Y + TANK_H + 0.04 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

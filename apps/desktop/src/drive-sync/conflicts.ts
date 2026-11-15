@@ -1,7 +1,7 @@
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
-import type { DriveSyncDatabase, FileInput, FileRecord } from './db/index.js';
+import { inputOf, type DriveSyncDatabase } from './db/index.js';
 import { isHashedFile, pushIntentOf, type PushIntent } from './push-intents.js';
 import type { PushConflict } from './push.js';
 import { diskPathFor } from './scan.js';
@@ -38,21 +38,6 @@ function isUnder(relPath: string, folder: string): boolean {
   return relPath === folder || relPath.startsWith(`${folder}/`);
 }
 
-function inputOf(record: FileRecord, relPath: string, hubRev: number | null): FileInput {
-  return {
-    placementId: record.placementId,
-    relPath,
-    kind: record.kind,
-    bytes: record.bytes,
-    mtimeNs: record.mtimeNs,
-    mode: record.mode,
-    hubRev,
-    localHashState: record.localHashState,
-    blockSize: record.blockSize,
-    blocks: record.blocks,
-  };
-}
-
 export class ConflictResolver {
   readonly #options: ConflictOptions;
 
@@ -81,7 +66,26 @@ export class ConflictResolver {
   #outcomeOf(conflict: PushConflict): Promise<ConflictOutcome> {
     if (conflict.kind === 'push') return this.#push(conflict);
     if (conflict.kind === 'move') return this.#move(conflict.relPath);
+    if (conflict.kind === 'meta') return this.#meta(conflict);
+    if (conflict.kind === 'link') return Promise.resolve(this.#link());
     return Promise.resolve(this.#tombstone(conflict));
+  }
+
+  async #meta(conflict: PushConflict): Promise<ConflictOutcome> {
+    if (conflict.reason === 'stale') {
+      this.#options.reindex();
+      return 'hub_won';
+    }
+    if (conflict.reason === 'missing') {
+      await this.#repush([conflict.relPath]);
+      return 'repushed';
+    }
+    return 'unresolved';
+  }
+
+  #link(): ConflictOutcome {
+    this.#options.reindex();
+    return 'unresolved';
   }
 
   #disk(relPath: string): string {
@@ -129,7 +133,7 @@ export class ConflictResolver {
     }
     database.transaction(() => {
       database.files.remove(placementId, relPath);
-      database.files.upsert(inputOf(record, copyPath, null));
+      database.files.upsert(inputOf(record, { relPath: copyPath, hubRev: null }));
     });
   }
 
@@ -163,7 +167,7 @@ export class ConflictResolver {
     database.transaction(() => {
       for (const relPath of relPaths) {
         const record = database.files.get(placementId, relPath);
-        if (record !== undefined) database.files.upsert(inputOf(record, relPath, null));
+        if (record !== undefined) database.files.upsert(inputOf(record, { hubRev: null }));
       }
     });
     const intents = relPaths.flatMap((relPath) => {

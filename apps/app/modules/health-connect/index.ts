@@ -227,15 +227,48 @@ export {
 } from './src/bottle';
 export type { BottleCandidate, BottlePermissions, BottleReadout, BottleStatus } from './src/bottle';
 export {
+  PLANNER_NATIVE_EVENT,
+  RING_STATUS,
+  SLEEP_SOUND_REQUEST,
+  SLEEP_SOUND_STATE,
+  addPlannerEventListener,
   batteryOptimizationIgnored,
   dismissRing,
   fullScreenAlarmAllowed,
   installPhoneRings,
   nextSystemAlarm,
+  notificationPolicyAllowed,
   openBatterySettings,
   openFullScreenAlarmSettings,
+  openNotificationPolicySettings,
   plannerLinked,
+  requestStepCounterPermission,
+  ringStatus,
   ringingRings,
+  sleepSoundState,
   snoozeRing,
+  startSleepSound,
+  startStepCount,
+  stepCounterAvailable,
+  stepCounterPermitted,
   stopRing,
+  stopSleepSound,
+  stopStepCount,
 } from './src/planner';
+export type {
+  PlannerNativeEvent,
+  RingStatus,
+  SleepSoundRequest,
+  SleepSoundState,
+} from './src/planner';
+export {
+  DRIVE_OFFLINE_STATUS,
+  clearDriveOffline,
+  configureDriveDocuments,
+  driveDocumentsLinked,
+  driveOfflineStatus,
+  forgetDriveDocuments,
+  notifyDriveDocumentsChanged,
+  syncDriveOffline,
+} from './src/drive-documents';
+export type { DriveOfflineStatus } from './src/drive-documents';

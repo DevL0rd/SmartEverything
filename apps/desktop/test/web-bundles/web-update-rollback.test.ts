@@ -27,7 +27,7 @@ describe('rolling back', () => {
     return harness;
   }
 
-  it('reverts to the embedded bundle when the new one fails to boot', async () => {
+  it('keeps the new bundle on trial and waits for the owner when it fails to boot', async () => {
     const id = randomUUID();
     const { fetch } = homeServing(offerFor(id, '2026-10-20T00:00:00.000Z'));
     const { controller } = await appliedController(fetch, id);
@@ -35,15 +35,51 @@ describe('rolling back', () => {
     const status = await controller.bootFailed('the render process crashed');
 
     expect(status).toStrictEqual({
+      state: 'boot_failed',
+      failedId: id,
+      reason: 'the render process crashed',
+    });
+    expect(await stateOf(rig)).toMatchObject({ active: id, trial: true, failed: [] });
+    expect(await controller.confirm()).toStrictEqual(status);
+    expect(await controller.check('release')).toStrictEqual(status);
+    expect(await stateOf(rig)).toMatchObject({ active: id, trial: true, failed: [] });
+    expect(await rig.store.rootFor(rig.build)).toBe(path.join(rig.store.directory, id));
+  });
+
+  it('reverts to the embedded bundle only when the owner orders the rollback', async () => {
+    const id = randomUUID();
+    const { fetch } = homeServing(offerFor(id, '2026-10-20T00:00:00.000Z'));
+    const { controller } = await appliedController(fetch, id);
+    await controller.bootFailed('the render process crashed');
+    let reloads = 0;
+
+    const status = await controller.rollBack(() => {
+      reloads += 1;
+    });
+
+    expect(reloads).toBe(1);
+    expect(status).toStrictEqual({
       state: 'rolled_back',
       failedId: id,
       reason: 'the render process crashed',
     });
     expect(await stateOf(rig)).toMatchObject({ active: 'embedded', trial: false, failed: [id] });
     expect(await rig.store.rootFor(rig.build)).toBe(rig.build.embeddedRoot);
+    await expect(controller.rollBack(() => undefined)).rejects.toThrow('rolled_back');
   });
 
-  it('reverts at launch when the last trial never confirmed', async () => {
+  it('starts the trial again when the owner retries and confirms it once it loads', async () => {
+    const id = randomUUID();
+    const { fetch } = homeServing(offerFor(id, '2026-10-20T00:00:00.000Z'));
+    const { controller } = await appliedController(fetch, id);
+    await controller.bootFailed('the window failed to load');
+
+    expect(await controller.retry(() => undefined)).toStrictEqual({ state: 'applying' });
+    expect(await controller.confirm()).toMatchObject({ state: 'idle', running: { id } });
+    expect(await stateOf(rig)).toMatchObject({ active: id, trial: false, failed: [] });
+  });
+
+  it('waits for the owner at launch when the last trial never confirmed', async () => {
     const id = randomUUID();
     const { fetch } = homeServing(offerFor(id, '2026-10-20T00:00:00.000Z'));
     await appliedController(fetch, id);
@@ -52,9 +88,9 @@ describe('rolling back', () => {
 
     const status = await relaunched.launchCheck();
 
-    expect(status.state).toBe('rolled_back');
-    expect(status.state === 'rolled_back' && status.failedId).toBe(id);
-    expect(await stateOf(rig)).toMatchObject({ active: 'embedded', trial: false, failed: [id] });
+    expect(status.state).toBe('boot_failed');
+    expect(status.state === 'boot_failed' && status.failedId).toBe(id);
+    expect(await stateOf(rig)).toMatchObject({ active: id, trial: true, failed: [] });
   });
 
   it('does nothing at launch or on a boot failure when no trial is running', async () => {
@@ -104,6 +140,7 @@ describe('rolling back', () => {
     const { fetch } = homeServing(offerFor(id, '2026-10-20T00:00:00.000Z'));
     const { controller } = await appliedController(fetch, id);
     await controller.bootFailed('the app crashed');
+    await controller.rollBack(() => undefined);
 
     const checked = await controller.check('release');
     expect(checked.state).toBe('rolled_back');

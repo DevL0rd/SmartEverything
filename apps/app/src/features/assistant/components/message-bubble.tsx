@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { exiting, useMotion } from '../../../design/motion';
+import { useShownExit } from '../../../design/visibility';
 import type { MessageItem } from '../data/thread';
 import { isAssistantParticipant } from '../model/speaker';
 import { CallCard } from './call-card';
@@ -37,12 +37,14 @@ function Row({
   }
 }
 
+const FLASH_OUT = FadeOut.duration(450);
+
 function Flash(): ReactNode {
   return (
     <Animated.View
       pointerEvents="none"
       entering={FadeIn.duration(150)}
-      exiting={FadeOut.duration(450)}
+      {...useShownExit(FLASH_OUT)}
       className="absolute -inset-x-2 inset-y-0 rounded-lg bg-primary/12"
     />
   );
@@ -55,9 +57,8 @@ function Exit({
   readonly item: MessageItem;
   readonly children: ReactNode;
 }): ReactNode {
-  const motion = useMotion();
   const sink = isAssistantParticipant(item.row) ? REPLY_SINK : ROW_EXIT;
-  return <Animated.View {...exiting(motion, sink)}>{children}</Animated.View>;
+  return <Animated.View {...useShownExit(sink)}>{children}</Animated.View>;
 }
 
 export function MessageBubble({

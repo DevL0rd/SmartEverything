@@ -1,5 +1,6 @@
 import type { PhotosBackupPref } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
+import { backupOriginOf } from '../../local/folders';
 import type { Ledger } from '../model/ledger';
 import { freshRows, identityOf, lastModified, removedIds, unknownIds } from '../model/plan';
 import { patchBackupStatus } from '../model/status';
@@ -86,20 +87,17 @@ export class BackupCycle {
       0,
     );
     const end = await this.transfer(plan);
-    if (!this.interrupted()) await saveLedger(this.ports.storage, this.ledger);
+    if (!this.interrupted()) await saveLedger(this.ports, this.ledger);
     return end;
   }
 
   private async reconcileIdentities(): Promise<void> {
     const entries = this.ledger.uploaded().filter((entry) => entry.itemId === null);
     if (entries.length === 0) return;
-    const answer = await this.ports.hub.checkHashes(
-      {
-        deviceId: this.ports.identity.deviceId,
-        assets: entries.map((entry) => ({ localId: entry.localId, sha256: entry.sha256 })),
-      },
-      'lookup',
-    );
+    const answer = await this.ports.hub.lookupHashes({
+      deviceId: this.ports.identity.deviceId,
+      assets: entries.map((entry) => ({ localId: entry.localId, sha256: entry.sha256 })),
+    });
     if (this.interrupted()) return;
     for (const entry of answer.have) this.ledger.identifyUploaded(entry.localId, entry.itemId);
   }
@@ -153,7 +151,7 @@ export class BackupCycle {
     } else {
       this.frozen = true;
     }
-    if (!this.interrupted()) await saveLedger(this.ports.storage, this.ledger);
+    if (!this.interrupted()) await saveLedger(this.ports, this.ledger);
     return end;
   }
 
@@ -235,13 +233,15 @@ export class BackupCycle {
   private async settle(items: readonly HashedItem[]): Promise<CycleEnd> {
     if (this.interrupted()) return 'interrupted';
     if (items.length === 0) return 'complete';
-    const answer = await this.ports.hub.checkHashes(
-      {
-        deviceId: this.ports.identity.deviceId,
-        assets: items.map((item) => ({ localId: item.row.id, sha256: item.sha256 })),
-      },
-      'backup',
-    );
+    const { platform } = this.ports.identity;
+    const answer = await this.ports.hub.checkBackup({
+      deviceId: this.ports.identity.deviceId,
+      assets: items.map((item) => ({
+        localId: item.row.id,
+        sha256: item.sha256,
+        folder: backupOriginOf(platform, item.stat.relativePath),
+      })),
+    });
     if (this.interrupted()) return 'interrupted';
     const held = new Map(answer.have.map((entry) => [entry.localId, entry.itemId]));
     for (const item of items) {

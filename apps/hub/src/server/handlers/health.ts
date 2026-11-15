@@ -13,6 +13,11 @@ import { failureLine } from '@smarteverything/logging';
 function syncingSourceOf(context: ServerContext, caller: Caller): HealthSourceRow {
   const source = context.store.healthSources.find(clientOf(caller).id);
   if (source === undefined) {
+    context.log.warn('health.ingest_refused', {
+      clientId: clientOf(caller).id,
+      reason: 'phone_not_registered_as_health_source',
+      registeredSources: context.store.healthSources.list().length,
+    });
     throw new ApiError(
       'forbidden',
       'This phone is not syncing health data; connect it again in the Fitness settings.',

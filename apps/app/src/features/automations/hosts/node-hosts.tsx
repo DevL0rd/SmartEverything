@@ -6,9 +6,8 @@ import type { FunctionDetail } from '../data/graph-adapter';
 import { background, Logger } from '@smarteverything/logging';
 import { confirm } from '../../../components/confirm-store';
 import { LoadedQuery } from '../../../components/loaded-query';
-import { PageHeader } from '../../../components/page-header';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { usePrimaryActionPlacement } from '../../../components/primary-action';
-import { Screen } from '../../../components/screen';
 import { notify } from '../../../components/toast-store';
 import { useActiveProfile } from '../../../store/people';
 import { useAutomations } from '../data/use-automations';
@@ -20,11 +19,12 @@ import {
 } from '../data/use-functions';
 import { NewNodeDialog } from '../functions/edit/new-node-dialog';
 import { FunctionDetailScreen } from '../functions/detail/detail-screen';
-import { LibraryScreen } from '../functions/library/library-screen';
+import { LibraryScreen, librarySearchOf } from '../functions/library/library-screen';
+import { EMPTY_FILTER, type LibraryFilter } from '../functions/library/library-model';
 import { callersBehind } from '../functions/library/callers-behind';
 import { copyName } from '../list/copy-name';
 import { links } from '../routes';
-import { NotFound } from './page-shell';
+import { NotFound } from '../shared/not-found';
 
 const log = new Logger('app.automations');
 
@@ -46,10 +46,14 @@ function useNeedsMapping(functions: readonly AutomationFunctionSummary[]): Reado
 
 function Library({
   functions,
+  filter,
+  onFilter,
   onOpen,
   onCreate,
 }: {
   readonly functions: readonly AutomationFunctionSummary[];
+  readonly filter: LibraryFilter;
+  readonly onFilter: (filter: LibraryFilter) => void;
   readonly onOpen: (functionId: string) => void;
   readonly onCreate: () => void;
 }): ReactNode {
@@ -60,6 +64,8 @@ function Library({
       functions={functions}
       userId={userId}
       needsMapping={needsMapping}
+      filter={filter}
+      onFilter={onFilter}
       onOpen={onOpen}
       onCreate={onCreate}
     />
@@ -71,14 +77,17 @@ export function NodesHost(): ReactNode {
   const functions = useFunctions();
   const actions = useFunctionActions();
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState<LibraryFilter>(EMPTY_FILTER);
   const placement = usePrimaryActionPlacement();
+  const loaded = !functions.isError && functions.data !== undefined;
   const openCreate = (): void => {
     setCreating(true);
   };
   return (
-    <Screen
-      header={<PageHeader title="Custom Nodes" back />}
-      {...(placement === 'fab' && !functions.isError && functions.data !== undefined
+    <PageShell
+      title="Custom Nodes"
+      {...(loaded ? { search: librarySearchOf(filter, setFilter) } : {})}
+      {...(placement === 'fab' && loaded
         ? { primaryAction: { label: 'New node', icon: 'plus', onPress: openCreate } }
         : {})}
     >
@@ -86,6 +95,8 @@ export function NodesHost(): ReactNode {
         {(entries) => (
           <Library
             functions={entries}
+            filter={filter}
+            onFilter={setFilter}
             onOpen={(functionId) => {
               router.push(links.node(functionId));
             }}
@@ -105,7 +116,7 @@ export function NodesHost(): ReactNode {
           router.push(links.nodeEdit(reply.id));
         }}
       />
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -196,11 +207,8 @@ export function NodeDetailHost(): ReactNode {
     return <NotFound title="Custom Node not found" body="This link doesn’t point to a node." />;
   }
   return (
-    <Screen
-      header={<PageHeader title={title} titleLines="wrap" back />}
-      maxWidth={query.isError || query.data === undefined ? 'reading' : 'full'}
-    >
+    <PageShell title={title} width={query.isError || query.data === undefined ? 'reading' : 'full'}>
       <LoadedQuery query={query}>{(detail) => <Detail detail={detail} />}</LoadedQuery>
-    </Screen>
+    </PageShell>
   );
 }

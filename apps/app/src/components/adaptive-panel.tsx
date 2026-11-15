@@ -7,7 +7,8 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { Keyboard, useWindowDimensions, type View } from 'react-native';
+import { Keyboard, type View } from 'react-native';
+import { useWindowSize } from '../design/size-class';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIdiom } from '../design/platform';
 import {
@@ -76,7 +77,7 @@ function usePanelPlacement(
   size: PanelSize,
   pointerPlacement: PointerPanelPlacement,
 ): PanelPlacement | null {
-  const window = useWindowDimensions();
+  const window = useWindowSize();
   const insets = useSafeAreaInsets();
   const idiom = useIdiom();
   const [placement, setPlacement] = useState<PanelPlacement | null>(null);

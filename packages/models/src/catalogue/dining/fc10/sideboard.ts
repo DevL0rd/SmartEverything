@@ -41,7 +41,7 @@ function fronts(): ModelSpecPart[] {
 export const SIDEBOARD_MODEL: ModelSpec = diningFurniture({
   id: 'cat.dining.sideboard',
   title: 'Sideboard',
-  footprint: { width: 1.6, depth: 0.45, height: 0.78 },
+  footprint: { width: 1.6, depth: 0.472, height: 0.78 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {

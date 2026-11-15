@@ -142,12 +142,13 @@ export class DriveUploadsRepository {
     });
   }
 
-  setOffset(id: string, offset: number): DriveUpload {
+  setOffset(id: string, offset: number, expiresAt?: string): DriveUpload {
     return this.context.write(() => {
       const changed = this.context.sql.run(
         'advance the drive upload',
-        "update drive_uploads set offset = $offset where id = $id and state = 'open'",
-        { id, offset },
+        `update drive_uploads set offset = $offset, expires_at = coalesce($expiresAt, expires_at)
+          where id = $id and state = 'open'`,
+        { id, offset, expiresAt: expiresAt ?? null },
       );
       return this.afterGuarded(id, changed, 'open');
     });

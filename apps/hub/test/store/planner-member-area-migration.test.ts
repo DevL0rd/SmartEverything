@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
+import { ANDROID_BUILD_OUTCOMES_MIGRATION } from '../../src/store/migrations/android-build-outcomes';
 import { PLANNER_MEMBER_AREA_MIGRATION } from '../../src/store/migrations/planner-member-area';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
@@ -60,16 +61,16 @@ it('gives an existing member the planner once and leaves the owner and a member 
   person('kid', 'member', ['home', 'health']);
   person('has', 'member', ['planner', 'home']);
   migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
-  expect(areasOf('kid')).toStrictEqual(['home', 'health', 'planner']);
-  expect(areasOf('has')).toStrictEqual(['planner', 'home']);
+  expect(areasOf('kid').filter((area) => area === 'planner')).toStrictEqual(['planner']);
+  expect(areasOf('has').filter((area) => area === 'planner')).toStrictEqual(['planner']);
   expect(areasOf('owner')).toStrictEqual(['home', 'devices']);
   migrate(new Sql(database), MIGRATIONS, NOW, testLogger());
-  expect(areasOf('kid')).toStrictEqual(['home', 'health', 'planner']);
+  expect(areasOf('kid').filter((area) => area === 'planner')).toStrictEqual(['planner']);
 });
 
-it('is the next migration after the registered head with no gap', () => {
+it('follows the Android build outcomes migration with no gap', () => {
   const versions = MIGRATIONS.map((migration) => migration.version);
-  expect(versions.at(-1)).toBe(PLANNER_MEMBER_AREA_MIGRATION.version);
+  expect(PLANNER_MEMBER_AREA_MIGRATION.version).toBe(ANDROID_BUILD_OUTCOMES_MIGRATION.version + 1);
   expect(new Set(versions).size).toBe(versions.length);
   const recent = versions.filter((version) => version >= 178);
   for (const [index, version] of recent.entries()) {

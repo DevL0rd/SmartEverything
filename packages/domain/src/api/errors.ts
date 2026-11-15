@@ -24,6 +24,7 @@ export const API_ERROR_CODES = [
   'camera_busy',
   'claude_not_ready',
   'computer_update_required',
+  'hub_starting',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -52,6 +53,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   camera_busy: 429,
   claude_not_ready: 503,
   computer_update_required: 426,
+  hub_starting: 503,
 };
 
 export const API_ERROR = z.strictObject({

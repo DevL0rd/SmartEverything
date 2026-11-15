@@ -155,7 +155,7 @@ describe('creating items', () => {
     const bobs = await calendar(bob, 'Bob work');
     await expect(
       call(items.createPlannerItem, ann, { body: timed(bobs.id) }),
-    ).rejects.toMatchObject({ name: 'StoreNotFoundError' });
+    ).rejects.toMatchObject({ code: 'not_found' });
   });
 });
 
@@ -165,7 +165,7 @@ describe('member scope', () => {
     const mine = await item(ann, timed(work.id));
     await expect(
       call(items.deletePlannerItem, bob, { params: { itemId: mine.id } }),
-    ).rejects.toMatchObject({ name: 'StoreNotFoundError' });
+    ).rejects.toMatchObject({ code: 'not_found' });
     await expect(
       call(items.createPlannerItem, ann, {
         query: { personId: bob.profileId },

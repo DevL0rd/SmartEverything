@@ -4,7 +4,7 @@ import { env } from 'node:process';
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
 import { dataRootOf } from './data-root.ts';
-import { AndroidApkPublicationError } from './android-apk-publish.ts';
+import { AndroidApkPublicationError } from '../apps/hub/src/releases/publish-apk.ts';
 import { registerAndroidBaseline } from './android-apk-baseline.ts';
 import { readAndroidUpdateHome } from './android-update-home.ts';
 import { dataLayoutOf } from './release-hub-files.ts';

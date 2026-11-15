@@ -1,12 +1,11 @@
-import { createContext, use } from 'react';
+import { use } from 'react';
 import { controlHitSlop, type Density, type Idiom } from '../../design/tokens';
+import { InBand } from './in-band';
 
 export interface Band {
   readonly slop: number | undefined;
   readonly compact: boolean;
 }
-
-const InBand = createContext<Band | null>(null);
 
 export const BandMember = InBand;
 

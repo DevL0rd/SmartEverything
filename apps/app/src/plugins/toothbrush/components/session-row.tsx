@@ -5,7 +5,14 @@ import { Badge } from '../../../components/badge';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { hasExcess, localTime, resultOf, sessionLine, sessionTitle } from '../model/session-model';
+import {
+  EXCESS_WORD,
+  hasExcess,
+  localTime,
+  resultOf,
+  sessionLine,
+  sessionTitle,
+} from '../model/session-model';
 
 export function SessionRow({
   session,
@@ -15,10 +22,13 @@ export function SessionRow({
   readonly onPress: () => void;
 }): ReactNode {
   const result = resultOf(session);
+  const line = hasExcess(session)
+    ? `${sessionLine(session)} · ${EXCESS_WORD}`
+    : sessionLine(session);
   return (
     <Interactive
       role="button"
-      label={`${sessionTitle(session)}, ${localTime(session)}, ${sessionLine(session)}, ${result.word}`}
+      label={`${sessionTitle(session)}, ${localTime(session)}, ${line}, ${result.word}`}
       onPress={onPress}
       className="min-h-11 flex-row items-center gap-3 rounded-md bg-surface-1 p-3"
     >
@@ -26,11 +36,10 @@ export function SessionRow({
         <Text variant="body-strong" numberOfLines={1}>
           {sessionTitle(session)}
         </Text>
-        <Text variant="footnote" tone="variant" className="tabular" numberOfLines={1}>
-          {localTime(session)} · {sessionLine(session)}
+        <Text variant="footnote" tone="variant" className="tabular" numberOfLines={2}>
+          {localTime(session)} · {line}
         </Text>
       </View>
-      {hasExcess(session) ? <Icon name="warning" size={16} tone="warning" /> : null}
       <View className="shrink-0">
         <Badge label={result.word} tone={result.tone} />
       </View>

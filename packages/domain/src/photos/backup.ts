@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PHOTO_FOLDER_ORIGIN } from './folders';
 import { COUNT, ID, MOMENT, NAME } from './shared';
 
 export const BACKUP_PLATFORMS = ['android', 'ios', 'desktop'] as const;
@@ -57,6 +58,26 @@ export const BACKUP_HAVE = z
   .readonly();
 
 export type BackupHave = z.infer<typeof BACKUP_HAVE>;
+
+export const BACKUP_CHECK = z
+  .strictObject({
+    deviceId: z.string().min(1),
+    assets: z
+      .array(
+        z
+          .strictObject({
+            localId: z.string().min(1),
+            sha256: SHA256,
+            folder: PHOTO_FOLDER_ORIGIN.nullable(),
+          })
+          .readonly(),
+      )
+      .min(1)
+      .readonly(),
+  })
+  .readonly();
+
+export type BackupCheck = z.infer<typeof BACKUP_CHECK>;
 
 export const BACKUP_HAVE_RESULT = z
   .strictObject({

@@ -67,6 +67,7 @@ beforeEach(async () => {
     'tooling',
   );
   await git(checkout, 'branch', '--set-upstream-to=origin/main');
+  await git(checkout, 'remote', 'set-url', 'origin', 'https://github.com/owner/repo.git');
   data = (await testLayout(join(scratch, 'data'))).root;
   const file = dataLayoutOf(data).system.config.service;
   mkdirSync(dirname(file), { recursive: true });

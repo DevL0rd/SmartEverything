@@ -4,7 +4,7 @@ import { bytes } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { clock, dayLabel } from '../../../format/time';
 import type { ActivitySeries } from '../activity/via-model';
-import type { ByName } from '../folder/folder-model';
+import type { ByName } from '../../files';
 
 export const CURRENT = 'current';
 

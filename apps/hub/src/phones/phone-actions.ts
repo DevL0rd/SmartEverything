@@ -38,6 +38,10 @@ export class PhoneActionBroker {
     this.asks = new PushAsks('phone action', push);
   }
 
+  has(requestId: string): boolean {
+    return this.asks.has(requestId);
+  }
+
   run(
     target: PhoneActionTarget,
     action: PhoneRunAction,

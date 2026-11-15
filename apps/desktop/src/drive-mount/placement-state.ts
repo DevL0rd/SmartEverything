@@ -33,7 +33,7 @@ export function parseHelperLine(raw: string): HelperLine {
 
 export type PlacementFields = Pick<
   DrivePlacementStatus,
-  'state' | 'tier' | 'basicLimits' | 'readOnly' | 'route' | 'reason'
+  'state' | 'tier' | 'basicLimits' | 'readOnly' | 'route' | 'reason' | 'mountPoint'
 >;
 
 export type PlacementCounters = Pick<
@@ -68,6 +68,7 @@ const FIRST_FIELDS: PlacementFields = {
   readOnly: false,
   route: null,
   reason: null,
+  mountPoint: null,
 };
 
 const NO_COUNTERS: PlacementCounters = {
@@ -164,6 +165,7 @@ export type HelperState = 'starting' | 'mounted' | 'stopped' | 'failed';
 
 export interface Running {
   readonly placement: DrivePlacement;
+  readonly point: string | null;
   helperState: HelperState;
   reason: string | null;
 }
@@ -177,6 +179,7 @@ export function specOf(placement: DrivePlacement): string {
     placement.folderItemId,
     placement.mode,
     placement.localPath,
+    placement.mountName,
   ]);
 }
 
@@ -192,14 +195,26 @@ export function mountFields(running: Running, route: RouteKind): PlacementFields
   const base = { tier: 'full', basicLimits: null, readOnly: MOUNT_READ_ONLY, route } as const;
   switch (running.helperState) {
     case 'starting':
-      return { ...base, state: 'starting', reason: null };
-    case 'mounted':
+      return { ...base, state: 'starting', reason: null, mountPoint: null };
+    case 'mounted': {
+      const mounted = { ...base, mountPoint: running.point };
       return route === null
-        ? { ...base, state: 'offline', reason: OFFLINE_REASON }
-        : { ...base, state: 'mounted', reason: null };
+        ? { ...mounted, state: 'offline', reason: OFFLINE_REASON }
+        : { ...mounted, state: 'mounted', reason: null };
+    }
     case 'stopped':
-      return { ...base, state: 'stopped', reason: running.reason ?? 'The mount stopped' };
+      return {
+        ...base,
+        state: 'stopped',
+        reason: running.reason ?? 'The mount stopped',
+        mountPoint: null,
+      };
     case 'failed':
-      return { ...base, state: 'failed', reason: running.reason ?? 'The mount failed' };
+      return {
+        ...base,
+        state: 'failed',
+        reason: running.reason ?? 'The mount failed',
+        mountPoint: null,
+      };
   }
 }

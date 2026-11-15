@@ -94,7 +94,7 @@ function put(
 describe('sending placements to a computer', () => {
   it('sends the active placements of the device when its session opens', () => {
     const mine = put(world.robinDesk, 'robin');
-    put(world.idaDesk, 'ida', { localPath: '/home/ida/Games' });
+    put(world.idaDesk, 'ida', { mountName: 'Games' });
     const { session, sent } = link();
     session.open(world.robinDesk);
     expect(frames(sent)).toEqual([[mine.id]]);
@@ -156,7 +156,7 @@ describe('placement state from a computer', () => {
   });
 
   it('refuses and logs a placement of another computer', () => {
-    const foreign = put(world.idaDesk, 'ida', { localPath: '/home/ida/Games' });
+    const foreign = put(world.idaDesk, 'ida', { mountName: 'Games' });
     const { session, logged } = link();
     session.open(world.robinDesk);
     session.received(stateFrame(foreign.id));

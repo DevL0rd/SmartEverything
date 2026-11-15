@@ -77,13 +77,13 @@ describe('ListRow trailing controls', () => {
       }),
     );
     expect(tree.views).toContain('min-w-0 flex-1 gap-0.5');
-    expect(tree.views).not.toContain('min-w-40 flex-1 gap-0.5');
+    expect(tree.views).not.toContain('min-w-0 shrink grow basis-auto gap-0.5');
   });
 
-  it('retains the title minimum when a chevron follows a value', () => {
+  it('sizes the title to its words when a chevron follows a value, so a short title keeps the value beside it', () => {
     tree.views.length = 0;
     renderToStaticMarkup(createElement(ListRow, { title: 'Home', value: 'A home', chevron: true }));
-    expect(tree.views).toContain('min-w-40 flex-1 gap-0.5');
+    expect(tree.views).toContain('min-w-0 shrink grow basis-auto gap-0.5');
   });
 
   it('keeps trailing controls outside the pressable row so buttons never nest', () => {
@@ -113,7 +113,9 @@ describe('ListRow trailing controls', () => {
     expect(tree.nodes[0]?.['className']).toContain('relative');
     const value = tree.nodes.find((node) => node['className'] === 'min-w-0 max-w-48 shrink');
     expect(value).toMatchObject({ pointerEvents: 'none', 'aria-hidden': true });
-    const body = tree.nodes.find((node) => node['className'] === 'min-w-40 flex-1 gap-0.5');
+    const body = tree.nodes.find(
+      (node) => node['className'] === 'min-w-0 shrink grow basis-auto gap-0.5',
+    );
     expect(body).toMatchObject({ pointerEvents: 'none' });
     const tail = tree.nodes.find((node) => String(node['className']).startsWith('ml-auto'));
     expect(tail).toMatchObject({ pointerEvents: 'box-none' });

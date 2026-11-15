@@ -30,6 +30,11 @@ export function sweepRetention(sql: Sql, now: Date): Record<string, number> {
     ...sweepBottleRetention(sql, now),
     ...sweepAutomationRetention(sql, now),
     ...sweepRuntimeLogs(sql, now),
+    photo_unlocks: sql.run(
+      'drop the expired Locked folder sessions',
+      'delete from photo_unlocks where expires_at <= $now',
+      { now: now.toISOString() },
+    ),
     treadmill_samples: sql.run(
       'forget old treadmill samples',
       `delete from treadmill_samples where session_id in

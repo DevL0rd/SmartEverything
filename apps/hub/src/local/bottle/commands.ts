@@ -24,7 +24,7 @@ import { BOTTLE_DRIVER, entryConfigOf, saveConfig } from './config';
 
 const CHANNEL_MAX = 255;
 
-const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation', 'scene']);
+const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation']);
 
 class BottleCommandFailedError extends Error {
   override readonly name = 'BottleCommandFailedError';

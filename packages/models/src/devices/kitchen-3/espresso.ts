@@ -202,7 +202,7 @@ export const ESPRESSO_MACHINE_MODEL: ModelSpec = {
   title: 'Espresso machine',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH + 0.03, depth: DEPTH + 0.04, height: HEIGHT + 0.006 },
+  footprint: { width: 0.267, depth: 0.3781, height: HEIGHT + 0.006 },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: [
     {

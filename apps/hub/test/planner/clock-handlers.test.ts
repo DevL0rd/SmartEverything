@@ -8,46 +8,29 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SimulatedClock } from '../../src/clock/simulated';
-import { AlarmScheduler } from '../../src/planner/alarms';
-import { PhoneRings } from '../../src/planner/phone-rings';
+import type { SimulatedClock } from '../../src/clock/simulated';
+import type { PhoneRings } from '../../src/planner/phone-rings';
 import { plannerPreferencesOf } from '../../src/planner/preferences';
-import { RingDesk } from '../../src/planner/rings';
-import { StopwatchService } from '../../src/planner/stopwatch';
-import { TimerService } from '../../src/planner/timers';
-import { WakeRoutine } from '../../src/planner/wake-routine';
-import type { Caller } from '../../src/server/auth';
-import { plannerClockRoutes } from '../../src/server/handlers/planner-clock';
 import type { Bound } from '../../src/server/router';
-import { testLogger } from '../support/logs';
-import { addPerson, type TestPerson } from '../support/phone-fixtures';
-import { testStore, type TestStore } from '../support/store';
-
-const START = '2026-11-07T08:00:00.000Z';
-const MISSING = '7f3b7c9e-2a41-4d0e-9a53-1f1d5c8e6a10';
+import type { plannerClockRoutes } from '../../src/server/handlers/planner-clock';
+import {
+  buildClockHarness,
+  call,
+  MISSING,
+  START,
+  type ClockHarness,
+} from '../support/clock-harness';
+import type { TestPerson } from '../support/phone-fixtures';
+import type { TestStore } from '../support/store';
 
 let test: TestStore;
 let clock: SimulatedClock;
 let owner: TestPerson;
 let ann: TestPerson;
 let bob: TestPerson;
-let scheduler: AlarmScheduler;
-let timers: TimerService;
 let phoneRings: PhoneRings;
 let routes: ReturnType<typeof plannerClockRoutes>;
-
-const as = (person: TestPerson): Caller => ({ kind: 'client', client: person.client });
-
-const call = (
-  route: Bound,
-  person: TestPerson,
-  raw: { params?: unknown; query?: unknown; body?: unknown } = {},
-): Promise<unknown> =>
-  route.run(
-    as(person),
-    { params: {}, query: {}, body: undefined, remote: 'test', headers: {}, ...raw },
-    testLogger(),
-  );
+let close: ClockHarness['close'];
 
 const alarm = async (person: TestPerson, body: object): Promise<PlannerAlarmRow> =>
   PLANNER_ALARM_ROW.parse(await call(routes.createPlannerAlarm, person, { body }));
@@ -58,58 +41,11 @@ const timer = async (person: TestPerson, durationMs: number): Promise<{ id: stri
   );
 
 beforeEach(async () => {
-  clock = new SimulatedClock(START);
-  test = await testStore(() => clock.now());
-  test.store.settings.updateHome({ time_zone: 'UTC' });
-  owner = addPerson(test, 'Owner', 'owner');
-  ann = addPerson(test, 'Ann', 'member');
-  bob = addPerson(test, 'Bob', 'member');
-  const rings = new RingDesk({
-    store: test.store,
-    clock,
-    emit: (): void => undefined,
-    log: testLogger(),
-  });
-  const wake = new WakeRoutine({
-    clock,
-    runScene: (): Promise<void> => Promise.resolve(),
-    log: testLogger(),
-  });
-  scheduler = new AlarmScheduler({ store: test.store, clock, rings, wake, log: testLogger() });
-  timers = new TimerService({
-    store: test.store,
-    clock,
-    ports: { ring: (): void => undefined, signal: (): void => undefined },
-    log: testLogger(),
-  });
-  phoneRings = new PhoneRings({
-    store: test.store,
-    channel: { send: (): Promise<boolean> => Promise.resolve(true) },
-    now: clock.now,
-    log: testLogger(),
-  });
-  scheduler.start();
-  timers.start();
-  phoneRings.start();
-  routes = plannerClockRoutes(
-    { store: test.store },
-    {
-      now: clock.now,
-      preferencesOf: (profileId): ReturnType<typeof plannerPreferencesOf> =>
-        plannerPreferencesOf(test.store, profileId),
-      alarms: scheduler,
-      timers,
-      stopwatch: new StopwatchService({ store: test.store, clock }),
-      phoneRings,
-    },
-  );
+  ({ test, clock, owner, ann, bob, phoneRings, routes, close } = await buildClockHarness());
 });
 
 afterEach(async () => {
-  phoneRings.stop();
-  timers.stop();
-  scheduler.stop();
-  await test.close();
+  await close();
 });
 
 describe('alarms', () => {
@@ -128,7 +64,7 @@ describe('alarms', () => {
     });
   });
 
-  it('refuses a ring target and a wake scene that do not exist', async () => {
+  it('refuses a ring target and a wake automation that do not exist', async () => {
     await expect(
       call(routes.createPlannerAlarm, ann, {
         body: { time: '07:00', targets: [{ kind: 'client', clientId: MISSING }] },
@@ -136,9 +72,9 @@ describe('alarms', () => {
     ).rejects.toMatchObject({ code: 'not_found' });
     await expect(
       call(routes.createPlannerAlarm, ann, {
-        body: { time: '07:00', wake_scene_id: MISSING, wake_lead_minutes: 10 },
+        body: { time: '07:00', wake_automation_id: MISSING, wake_lead_minutes: 10 },
       }),
-    ).rejects.toMatchObject({ name: 'StoreNotFoundError' });
+    ).rejects.toMatchObject({ code: 'not_found' });
   });
 
   it('changes and deletes an alarm and keeps another member out', async () => {

@@ -77,7 +77,7 @@ export class SpeakerPlayback {
         reason: cause.message,
       });
     });
-    child.once('error', (cause: Error) => {
+    child.on('error', (cause: Error) => {
       ended = true;
       log.error('computer_ear.speaker_failed', cause, { program: tool.program });
     });

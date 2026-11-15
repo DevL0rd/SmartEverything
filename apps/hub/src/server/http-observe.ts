@@ -14,7 +14,7 @@ import { Logger, passesThreshold, type LogLevel } from '@smarteverything/logging
 import { InvalidResponseError, type HttpFailure } from './errors';
 import { HttpTally, SLOW_REQUEST_MS } from './http-tally';
 import { RepeatGate } from './repeat-gate';
-import { noteFailure, remoteKind, type RequestTrace } from './request-trace';
+import { noteFailure, requestRemoteKind, type RequestTrace } from './request-trace';
 
 export const log = new Logger('hub.server');
 export const refusals = new RepeatGate(30_000);
@@ -55,7 +55,7 @@ function describeUpgrade(request: IncomingMessage): Record<string, unknown> {
   const protocols = (request.headers['sec-websocket-protocol'] ?? '').split(',');
   return {
     route: upgradeRoute(request),
-    remote: remoteKind(request.socket.remoteAddress),
+    remote: requestRemoteKind(request),
     protocolsOffered: protocols.filter((value) => value.trim() !== '').length,
     hasOrigin: request.headers.origin !== undefined,
     hasBearer: protocols.some((value) => value.trim().startsWith(BEARER_PROTOCOL_PREFIX)),
@@ -78,7 +78,7 @@ function requestPayload(
     status: response.statusCode,
     durationMs: Math.round(performance.now() - trace.startedAt),
     clientId: trace.clientId,
-    remote: remoteKind(request.socket.remoteAddress),
+    remote: requestRemoteKind(request),
     bytesIn: numberHeader(request.headers['content-length']) ?? 0,
     bytesOut: length === undefined ? null : numberHeader(length),
     errorCode: trace.errorCode,

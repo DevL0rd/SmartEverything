@@ -81,7 +81,7 @@ describe('the local hub computer', () => {
       viewers: new Viewers(),
       policyOf: () => ({ window_ms: 3_600_000, interval_ms: 1_000 }),
       publish: (notice) => {
-        notices.push(notice);
+        if (notice.type === 'computer_live') notices.push(notice);
       },
       deviceIdOf,
       scopesOf: () => DEFAULT_COMPUTER_SCOPES,

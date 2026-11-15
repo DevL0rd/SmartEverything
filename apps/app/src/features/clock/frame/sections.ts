@@ -1,6 +1,6 @@
 import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
-import { frameLayoutMath } from '../../../components/frame-layout';
+import { frameLayoutMath } from '../../../components/page-shell/layout';
 import type { IconName } from '../../../components/icon';
 import type { ClockSection } from '../model/section-routes';
 
@@ -22,6 +22,14 @@ export const CLOCK_SECTION_DEFS: readonly ClockSectionDef[] = [
     short: 'Alarms',
     icon: 'alarmClock',
     href: href.clock.alarms(),
+    hint: 'New alarm. Try: wake me 06:30 weekdays',
+  },
+  {
+    id: 'bedtime',
+    label: 'Bedtime',
+    short: 'Bedtime',
+    icon: 'moon',
+    href: href.clock.bedtime(),
     hint: 'New alarm. Try: wake me 06:30 weekdays',
   },
   {

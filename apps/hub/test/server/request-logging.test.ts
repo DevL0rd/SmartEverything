@@ -4,7 +4,7 @@ import { isEventName } from '@smarteverything/logging';
 import { describe, expect, it } from 'vitest';
 import { HttpTally } from '../../src/server/http-tally';
 import { RepeatGate } from '../../src/server/repeat-gate';
-import { remoteKind } from '../../src/server/request-trace';
+import { remoteKind, requestRemoteKind, type RemoteRequest } from '../../src/server/request-trace';
 
 describe('RepeatGate', () => {
   it('lets the first hit through and counts what it suppresses until the interval passes', () => {
@@ -71,6 +71,19 @@ describe('request trace helpers', () => {
     expect(remoteKind('172.20.0.1')).toBe('private');
     expect(remoteKind('8.8.8.8')).toBe('public');
     expect(remoteKind(undefined)).toBe('unknown');
+  });
+
+  it('labels loopback requests that carry tunnel headers as tunnel traffic', () => {
+    const request = (address: string, headers: Record<string, string>): RemoteRequest => ({
+      socket: { remoteAddress: address },
+      headers,
+    });
+    expect(requestRemoteKind(request('127.0.0.1', {}))).toBe('loopback');
+    expect(requestRemoteKind(request('::1', { 'cf-ray': 'abc' }))).toBe('tunnel');
+    expect(requestRemoteKind(request('127.0.0.1', { 'cf-connecting-ip': '8.8.8.8' }))).toBe(
+      'tunnel',
+    );
+    expect(requestRemoteKind(request('192.168.1.5', { 'cf-ray': 'abc' }))).toBe('private');
   });
 });
 

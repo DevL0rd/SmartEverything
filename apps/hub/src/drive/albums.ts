@@ -111,10 +111,27 @@ export class DriveAlbumsService {
 
   get(id: string, viewer: DriveActor): DriveAlbum {
     const album = this.deps.albums.byId(id);
+    const member = this.deps.albums.contributions.memberRole(id, viewer.profileId) !== null;
+    if (!albumVisibleTo(viewer, album) && !member) {
+      throw new DriveAlbumAccessError(id);
+    }
+    return this.viewedBy(album, viewer);
+  }
+
+  private owned(id: string, viewer: DriveActor): DriveAlbum {
+    const album = this.deps.albums.byId(id);
     if (!albumVisibleTo(viewer, album)) {
       throw new DriveAlbumAccessError(id);
     }
     return this.viewedBy(album, viewer);
+  }
+
+  private contributing(id: string, viewer: DriveActor): DriveAlbum {
+    const role = this.deps.albums.contributions.memberRole(id, viewer.profileId);
+    if (role === 'viewer') {
+      throw new DriveAlbumAccessError(id);
+    }
+    return role === 'contributor' ? this.get(id, viewer) : this.owned(id, viewer);
   }
 
   create(input: NewAlbum, viewer: DriveActor): DriveAlbum {
@@ -137,18 +154,18 @@ export class DriveAlbumsService {
   }
 
   rename(id: string, title: string, viewer: DriveActor): DriveAlbum {
-    this.get(id, viewer);
+    this.owned(id, viewer);
     return this.deps.albums.update(id, { title });
   }
 
   setRule(id: string, rule: SmartRule, viewer: DriveActor): DriveAlbum {
-    this.get(id, viewer);
+    this.owned(id, viewer);
     this.deps.albums.update(id, { rule });
     return this.viewedBy(this.refresh(id), viewer);
   }
 
   setCover(id: string, itemId: string | null, viewer: DriveActor): DriveAlbum {
-    const album = this.get(id, viewer);
+    const album = this.owned(id, viewer);
     if (itemId !== null) {
       this.assertJoinable(album, itemId, viewer);
     }
@@ -156,20 +173,23 @@ export class DriveAlbumsService {
   }
 
   remove(id: string, viewer: DriveActor): void {
-    this.get(id, viewer);
+    this.owned(id, viewer);
     this.deps.albums.remove(id);
   }
 
   addItems(id: string, itemIds: readonly string[], viewer: DriveActor): DriveAlbum {
-    const album = this.get(id, viewer);
+    const album = this.contributing(id, viewer);
     for (const itemId of itemIds) {
       this.assertJoinable(album, itemId, viewer);
     }
-    return this.deps.albums.addItems(id, itemIds);
+    return this.deps.albums.addItems(id, itemIds, viewer.profileId);
   }
 
   removeItems(id: string, itemIds: readonly string[], viewer: DriveActor): DriveAlbum {
-    this.get(id, viewer);
+    const album = this.contributing(id, viewer);
+    if (album.ownerProfileId !== viewer.profileId && album.scope !== 'home') {
+      this.assertContributor(album, itemIds, viewer);
+    }
     return this.deps.albums.removeItems(id, itemIds);
   }
 
@@ -179,7 +199,7 @@ export class DriveAlbumsService {
     between: { readonly before: string | null; readonly after: string | null },
     viewer: DriveActor,
   ): DriveAlbum {
-    this.get(id, viewer);
+    this.owned(id, viewer);
     return this.deps.albums.moveItem(id, itemId, between);
   }
 
@@ -262,6 +282,23 @@ export class DriveAlbumsService {
     };
   }
 
+  private shared(albumId: string): boolean {
+    return this.deps.albums.contributions.hasMembers(albumId);
+  }
+
+  private assertContributor(
+    album: DriveAlbum,
+    itemIds: readonly string[],
+    viewer: DriveActor,
+  ): void {
+    const adders = this.deps.albums.contributions.contributedBy(album.id, itemIds);
+    for (const itemId of itemIds) {
+      if (adders.get(itemId) !== viewer.profileId) {
+        throw new DriveAlbumAccessError(album.id);
+      }
+    }
+  }
+
   private assertJoinable(album: DriveAlbum, itemId: string, viewer: DriveActor): void {
     const item = this.deps.items.find(itemId, viewer.profileId);
     if (item === undefined) {
@@ -271,6 +308,13 @@ export class DriveAlbumsService {
       throw new DriveAlbumItemError(itemId, 'folder');
     }
     const root = this.deps.roots.byId(item.rootId);
+    if (
+      this.shared(album.id) &&
+      root.scope === 'person' &&
+      root.ownerProfileId !== viewer.profileId
+    ) {
+      throw new DriveAlbumItemError(itemId, 'out-of-reach');
+    }
     const reachable =
       root.scope === 'home' ||
       (album.scope === 'person' &&

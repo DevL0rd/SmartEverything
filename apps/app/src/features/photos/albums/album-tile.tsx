@@ -7,9 +7,10 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { Cover } from '../places/cover';
+import { useWhoSees } from '../sharing/album-who';
 import { loadedItems, usePhotoAlbumItems } from './album-data';
 import { mosaicOf, spanOf } from './album-items';
-import { itemsText, ruleLine, visibilityOf } from './model';
+import { itemsText, ruleLine, type Visibility } from './model';
 
 export type AlbumLook = 'card' | 'row';
 
@@ -42,11 +43,12 @@ function countLine(album: DriveAlbum, span: string | null): string {
 function AlbumText({
   album,
   span,
+  who,
 }: {
   readonly album: DriveAlbum;
   readonly span: string | null;
+  readonly who: Visibility;
 }): ReactNode {
-  const who = visibilityOf(album.scope);
   return (
     <View className="min-w-0 flex-1 gap-0.5">
       <View className="flex-row items-center gap-1.5">
@@ -73,9 +75,9 @@ function AlbumText({
   );
 }
 
-export function tileLabel(album: DriveAlbum): string {
+export function tileLabel(album: DriveAlbum, who: Visibility): string {
   const kind = album.kind === 'smart' ? 'Smart album' : 'Album';
-  return `${kind} ${album.title}, ${itemsText(album.itemCount)}, ${visibilityOf(album.scope).label}`;
+  return `${kind} ${album.title}, ${itemsText(album.itemCount)}, ${who.label}`;
 }
 
 export function AlbumTile({
@@ -89,10 +91,11 @@ export function AlbumTile({
   const ids = mosaicOf(album.coverItemId, loaded?.items ?? []);
   const span = loaded?.complete === true ? spanOf(loaded.items) : null;
   const card = look === 'card';
+  const who = useWhoSees(album);
   return (
     <Interactive
       href={href.photosAlbum(album.id)}
-      label={tileLabel(album)}
+      label={tileLabel(album, who)}
       className={cn(
         'overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1',
         card ? 'gap-0' : 'flex-row items-center gap-3 p-3',
@@ -101,7 +104,7 @@ export function AlbumTile({
     >
       {card ? <CardMosaic ids={ids} /> : <RowMosaic ids={ids} />}
       <View className={card ? 'px-3 py-2.5' : 'min-w-0 flex-1'}>
-        <AlbumText album={album} span={span} />
+        <AlbumText album={album} span={span} who={who} />
       </View>
     </Interactive>
   );

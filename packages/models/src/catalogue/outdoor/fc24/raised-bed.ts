@@ -81,7 +81,7 @@ function crops(): ModelSpecPart[] {
 export const RAISED_BED_MODEL: ModelSpec = outdoorItem({
   id: 'cat.outdoor.raised-bed',
   title: 'Raised bed',
-  footprint: { width: 1.2, depth: 0.8, height: 0.45 },
+  footprint: { width: 1.2, depth: 0.8, height: 0.4225 },
   size: {
     width: { param: 'length', extra: 0, resizes: true },
     depth: { param: 'width', extra: 0, resizes: true },

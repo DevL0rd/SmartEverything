@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { View } from 'react-native';
 import type { DeviceGroupRow } from '@smarteverything/domain';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Section, SectionAction } from '../../../components/section';
 import { useSizeClass } from '../../../design/size-class';
 import { MemberRows } from '../components/member-rows';
@@ -11,7 +11,7 @@ import { useAutomationUses } from '../data/use-automation-uses';
 import { isVirtual } from '../model/member-rows';
 import type { GroupData } from '../widget/use-group-data';
 import {
-  Header,
+  groupShellOf,
   LostBanner,
   Overlays,
   Stage,
@@ -104,9 +104,7 @@ function ScrollGroupPage(props: LivePageProps): ReactNode {
   const names = useMemo(() => uses.map((use) => use.name), [uses]);
   const memberIds = useMemo(() => data.members.map((member) => member.id), [data.members]);
   return (
-    <Screen
-      header={<Header data={data} group={group} uses={names} page={page} addToHome={addToHome} />}
-    >
+    <PageShell {...groupShellOf({ data, group, uses: names, page, addToHome })}>
       <Layout
         wide={wide}
         stage={<Stage data={data} page={page} focus={params.focus} />}
@@ -116,7 +114,7 @@ function ScrollGroupPage(props: LivePageProps): ReactNode {
         automations={<AutomationsSection uses={uses} />}
       />
       <Overlays {...props} page={page} uses={names} />
-    </Screen>
+    </PageShell>
   );
 }
 

@@ -82,8 +82,10 @@ function work(): PlannerCollectionRow {
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
     created_at: STAMP,
     updated_at: STAMP,
   });
@@ -99,12 +101,15 @@ function alarm(patch: Partial<PlannerAlarmRow>): PlannerAlarmRow {
     once_on: null,
     skip_on: null,
     enabled: true,
-    sound: 'sunrise',
+    sound: { kind: 'tone', id: 'sunrise' },
     ramp_seconds: 30,
     vibrate: true,
     snooze_minutes: 9,
+    snooze_limit: null,
+    challenge: { kind: 'none' },
+    sunrise: null,
     smart_minutes: null,
-    wake_scene_id: null,
+    wake_automation_id: null,
     wake_lead_minutes: null,
     targets: [],
     watch: [],
@@ -210,6 +215,7 @@ describe('grid days', () => {
       collections: [work()],
       workingHours: null,
       readOnlyOf: (occurrence) => occurrence.item_id === birthday.item_id,
+      lookOf: () => 'plain',
       minMinutes: 0,
     });
     expect(day?.today).toBe(true);
@@ -233,9 +239,40 @@ describe('grid days', () => {
       collections: [],
       workingHours: null,
       readOnlyOf: () => false,
+      lookOf: () => 'plain',
       minMinutes: 0,
     });
     expect(days.map((day) => day.date)).toEqual([SATURDAY, SUNDAY, MONDAY]);
+  });
+
+  it('carries each look and leaves declined events off the grid', () => {
+    const invited = event('Brunch', '2026-11-07T09:00:00.000Z', '2026-11-07T10:00:00.000Z');
+    const declined = event('Match', '2026-11-07T12:00:00.000Z', '2026-11-07T13:00:00.000Z');
+    const holiday = event('Holiday', '2026-11-06T23:00:00.000Z', '2026-11-07T23:00:00.000Z', {
+      all_day: true,
+    });
+    const looks = new Map([
+      [invited.item_id, 'invited'],
+      [declined.item_id, 'declined'],
+      [holiday.item_id, 'holiday'],
+    ] as const);
+    const [day] = gridDaysOf({
+      days: [SATURDAY],
+      timeZone: ZONE,
+      today: SATURDAY,
+      occurrences: [invited, declined, holiday],
+      collections: [],
+      workingHours: null,
+      readOnlyOf: () => false,
+      lookOf: (occurrence) => looks.get(occurrence.item_id) ?? 'plain',
+      minMinutes: 0,
+    });
+    expect(day?.blocks.map((block) => [block.occurrence.title, block.look])).toEqual([
+      ['Brunch', 'invited'],
+    ]);
+    expect(day?.allDay.map((entry) => [entry.occurrence.title, entry.look])).toEqual([
+      ['Holiday', 'holiday'],
+    ]);
   });
 
   it('spreads an all day event over every day it covers', () => {

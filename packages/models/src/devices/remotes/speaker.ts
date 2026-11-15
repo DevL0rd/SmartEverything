@@ -19,6 +19,7 @@ export const SPEAKER_REMOTE_MODEL: ModelSpec = remote({
     'hi-fi remote',
   ],
   size: SIZE,
+  footprint: { width: 0.1514, depth: SIZE.width, height: 0.0197 },
   materials: {
     body: { finish: 'brushed-aluminium', roughness: 0.36 },
     keys: { finish: 'satin-black', roughness: 0.5 },

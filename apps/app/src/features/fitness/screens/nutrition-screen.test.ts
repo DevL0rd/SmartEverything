@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { FitnessFrameProps } from '../components/fitness-frame';
+import type { FitnessShellProps } from '../components/fitness-shell';
 import { NutritionScreen } from './nutrition-screen';
 
 const scenario = vi.hoisted(() => ({ started: false }));
@@ -12,8 +12,8 @@ vi.mock('../../nutrition', () => ({
   useNutritionStarted: (): boolean => scenario.started,
   NutritionDay: (): ReactNode => createElement('section', null, 'Nutrition day'),
 }));
-vi.mock('../components/fitness-frame', () => ({
-  FitnessFrame: ({ width, primaryAction, children }: FitnessFrameProps): ReactNode =>
+vi.mock('../components/fitness-shell', () => ({
+  FitnessShell: ({ width, primaryAction, children }: FitnessShellProps): ReactNode =>
     createElement('main', { 'data-width': width, 'data-action': primaryAction?.label }, children),
 }));
 vi.mock('../components/fitness-toolbar', () => ({ FitnessToolbar: (): null => null }));

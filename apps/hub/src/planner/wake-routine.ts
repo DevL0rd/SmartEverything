@@ -4,11 +4,11 @@ import type { Cancel, Clock } from '../clock';
 
 const MINUTE_MS = 60_000;
 
-export type SceneRunner = (sceneId: string, profileId: string) => Promise<void>;
+export type AutomationRunner = (automationId: string, profileId: string) => Promise<void>;
 
 export interface WakeRoutineOptions {
   readonly clock: Pick<Clock, 'now' | 'at'>;
-  readonly runScene: SceneRunner;
+  readonly runAutomation: AutomationRunner;
   readonly log: Logger;
 }
 
@@ -18,7 +18,7 @@ interface Armed {
 }
 
 export function wakeLeadAt(alarm: PlannerAlarmRow, ringAt: Date): Date | null {
-  if (alarm.wake_scene_id === null || alarm.wake_lead_minutes === null) {
+  if (alarm.wake_automation_id === null || alarm.wake_lead_minutes === null) {
     return null;
   }
   return new Date(ringAt.getTime() - alarm.wake_lead_minutes * MINUTE_MS);
@@ -30,24 +30,24 @@ export class WakeRoutine {
   constructor(private readonly options: WakeRoutineOptions) {}
 
   arm(alarm: PlannerAlarmRow, ringAt: Date): void {
-    const sceneId = alarm.wake_scene_id;
+    const automationId = alarm.wake_automation_id;
     const leadAt = wakeLeadAt(alarm, ringAt);
     if (
-      sceneId === null ||
+      automationId === null ||
       leadAt === null ||
       leadAt.getTime() <= this.options.clock.now().getTime()
     ) {
       this.cancel(alarm.id);
       return;
     }
-    const key = `${sceneId}|${leadAt.toISOString()}`;
+    const key = `${automationId}|${leadAt.toISOString()}`;
     if (this.armed.get(alarm.id)?.key === key) {
       return;
     }
     this.cancel(alarm.id);
     const cancel = this.options.clock.at(leadAt, () => {
       this.armed.delete(alarm.id);
-      this.run(sceneId, alarm);
+      this.run(automationId, alarm);
     });
     this.armed.set(alarm.id, { key, cancel });
   }
@@ -63,8 +63,11 @@ export class WakeRoutine {
     }
   }
 
-  private run(sceneId: string, alarm: PlannerAlarmRow): void {
-    this.options.log.info('planner.wake_routine', { alarmId: alarm.id, sceneId });
-    background(this.options.runScene(sceneId, alarm.profile_id), 'planner.wake_routine_failed');
+  private run(automationId: string, alarm: PlannerAlarmRow): void {
+    this.options.log.info('planner.wake_routine', { alarmId: alarm.id, automationId });
+    background(
+      this.options.runAutomation(automationId, alarm.profile_id),
+      'planner.wake_routine_failed',
+    );
   }
 }

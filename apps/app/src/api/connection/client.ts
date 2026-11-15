@@ -240,11 +240,13 @@ export class ApiClient {
     options: {
       readonly signal?: AbortSignal;
       readonly onSequence?: (seq: number | null) => void;
+      readonly headers?: Readonly<Record<string, string>>;
     } = {},
   ): Promise<z.output<R>> {
     let sequence: number | null = null;
     const answer = await this.answerOf(endpoint, input, {
       signal: options.signal,
+      headers: options.headers,
       sequence: (value) => {
         sequence = value;
       },
@@ -310,6 +312,7 @@ export class ApiClient {
       readonly sequence?: ((seq: number | null) => void) | undefined;
       readonly reading?: Reading;
       readonly upload?: UploadBody;
+      readonly headers?: Readonly<Record<string, string>> | undefined;
     } = {},
   ): Promise<unknown> {
     const route = routeOf(endpoint);
@@ -328,6 +331,7 @@ export class ApiClient {
       signal: read.signal,
       sequence: read.sequence,
       reading: read.reading ?? 'json',
+      headers: read.headers,
     });
   }
 
@@ -341,6 +345,7 @@ export class ApiClient {
       readonly signal: AbortSignal | undefined;
       readonly sequence: ((seq: number | null) => void) | undefined;
       readonly reading: Reading;
+      readonly headers: Readonly<Record<string, string>> | undefined;
     },
   ): Promise<unknown> {
     const trace = new RequestTrace(options.route, method, options.signal);
@@ -356,6 +361,7 @@ export class ApiClient {
           lease,
           signal: options.signal,
           trace,
+          headers: options.headers,
         }),
       );
       trace.status = response.status;
@@ -385,6 +391,7 @@ export class ApiClient {
       readonly lease: HubRouteLease | undefined;
       readonly signal: AbortSignal | undefined;
       readonly trace: RequestTrace;
+      readonly headers: Readonly<Record<string, string>> | undefined;
     },
   ): Promise<Response> {
     const { lease, signal } = options;
@@ -402,6 +409,7 @@ export class ApiClient {
         ...(signal === undefined ? {} : { signal }),
         headers: {
           ...authorization,
+          ...options.headers,
           ...(value === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(value === undefined ? {} : { body: JSON.stringify(value) }),

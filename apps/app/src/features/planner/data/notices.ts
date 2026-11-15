@@ -8,6 +8,7 @@ import { noticeHandler, type NoticeHandler } from '../../../store/notice-registr
 import { ringsQuery } from './queries';
 import { openRingWhenRinging, receivePlannerRing, type RingOpener } from './ring';
 import { receivePlannerSummary } from './summary';
+import { receiveAssigned, receiveInvited, receiveRsvp } from './collab-notices';
 
 function ringOpener(client: QueryClient): RingOpener {
   return {
@@ -33,5 +34,14 @@ export const PLANNER_NOTICES: readonly NoticeHandler[] = [
     if (live) {
       background(openRingWhenRinging(message, ringOpener(client)), 'planner.ring_open_failed');
     }
+  }),
+  noticeHandler(['planner_invited'], (message, { store, live }) => {
+    if (live) receiveInvited(message, store.get());
+  }),
+  noticeHandler(['planner_assigned'], (message, { store, live }) => {
+    if (live) receiveAssigned(message, store.get());
+  }),
+  noticeHandler(['planner_rsvp'], (message, { store, live }) => {
+    if (live) receiveRsvp(message, store.get());
   }),
 ];

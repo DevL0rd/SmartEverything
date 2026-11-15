@@ -4,11 +4,10 @@ import { bytes } from '../../../format/number';
 import { deletedByLabel, deletedByOf, personToneOf } from './deleted-by';
 import { leavingLabel, leavingShapes, leavingTotals, type LeavingMonth } from './leaving-bars';
 import { TABLE_MIN_WIDTH, tableSnap, trashLayoutOf } from './trash-layout';
-import { keptPicks, pickStateOf, toggleAll, togglePicked } from './selection';
+import { pickStateOf } from './selection';
 import {
   deleterOf,
   leavesText,
-  rowLabelOf,
   sizeText,
   totalsText,
   trashItemsOf,
@@ -86,7 +85,6 @@ describe('trash items', () => {
     expect(wasInOf(item, 'Projects')).toBe('Projects › Home › Kitchen remodel');
     expect(wasInOf(item, null)).toBe('Home › Kitchen remodel');
     expect(sizeText(item)).toBe(bytes(220_000));
-    expect(rowLabelOf(item, 'Projects › Home')).toContain('deleted by you');
   });
 
   it('shows no size for a folder and totals the bytes', () => {
@@ -177,23 +175,10 @@ describe('leaving each month', () => {
 });
 
 describe('selection', () => {
-  const items = trashItemsOf([entry({}), entry({})], TODAY, PEOPLE);
-
-  it('ticks rows, reports mixed and toggles all', () => {
-    const first = items[0]?.id ?? '';
-    const one = togglePicked(new Set(), first);
-    expect(pickStateOf(one, items)).toBe('mixed');
-    const all = toggleAll(one, items);
-    expect(pickStateOf(all, items)).toBe(true);
-    expect(pickStateOf(toggleAll(all, items), items)).toBe(false);
-    expect(pickStateOf(togglePicked(one, first), items)).toBe(false);
-  });
-
-  it('drops picks whose items left the trash', () => {
-    const picks = new Set([items[0]?.id ?? '', 'gone']);
-    expect([...keptPicks(picks, items)]).toEqual([items[0]?.id]);
-    const whole = new Set(items.map((item) => item.id));
-    expect(keptPicks(whole, items)).toBe(whole);
+  it('reports none, mixed and all of the shown rows', () => {
+    expect(pickStateOf(0, 3)).toBe(false);
+    expect(pickStateOf(1, 3)).toBe('mixed');
+    expect(pickStateOf(3, 3)).toBe(true);
   });
 });
 

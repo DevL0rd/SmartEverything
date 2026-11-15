@@ -19,6 +19,7 @@ const OPENED: RecentHow = { text: 'Opened', colour: 'viz-blue' };
 const UNKNOWN_DEVICE = 'a computer';
 
 function verbOf(entry: Written): string {
+  if (entry.kind === 'shortcut') return 'Shortcut created';
   return entry.kind === 'added' ? 'Added' : 'Changed';
 }
 

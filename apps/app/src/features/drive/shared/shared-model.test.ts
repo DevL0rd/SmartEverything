@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DRIVE_ITEM,
   type DriveGrant,
   type DriveItem,
   type DriveShare,
@@ -8,6 +7,7 @@ import {
   type DriveSharedWithMeEntry,
 } from '@smarteverything/domain';
 import { DAY_MS, HOUR_MS } from '../../../format/time';
+import { folderFixture } from '../data/fixtures';
 import {
   accessLabelOf,
   activeLinksOf,
@@ -47,6 +47,7 @@ function share(id: number, extra: Partial<DriveShare> = {}): DriveShare {
   return {
     id: `00000000-0000-4000-8000-0000000001${String(id).padStart(2, '0')}`,
     itemId: itemId(1),
+    albumId: null,
     permission: 'view',
     expiresAt: null,
     hasPassword: false,
@@ -64,24 +65,15 @@ function itemId(id: number): string {
 }
 
 function folder(id: number, name: string): DriveItem {
-  return DRIVE_ITEM.parse({
-    kind: 'folder',
+  return folderFixture({
     id: itemId(id),
     rootId: ROOT,
     parentId: null,
-    relPath: name,
     name,
     modifiedAt: at(-DAY_MS),
     addedAt: at(-DAY_MS),
-    openedAt: null,
-    starred: false,
     shared: true,
-    rev: 1,
     etag: 'e',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
     childCount: 2,
     bytes: 10,
   });
@@ -95,6 +87,7 @@ function grant(id: number, item: number, by: string, ago: number): DriveGrant {
     role: id % 2 === 0 ? 'edit' : 'view',
     grantedBy: by,
     createdAt: at(-ago),
+    expiresAt: null,
   };
 }
 
@@ -215,10 +208,12 @@ describe('shared by me', () => {
   };
 
   it('shows a chip per person with their role and per active link', () => {
-    expect(personChipsOf(entry.grants, PROFILES)).toEqual([
+    expect(personChipsOf(entry.grants, PROFILES, NOW)).toEqual([
       { key: entry.grants[0]?.id, name: 'Sam', role: 'Can edit' },
     ]);
-    expect(personChipsOf(entry.grants, [])[0]?.name).toBe('A former member');
+    expect(personChipsOf(entry.grants, [], NOW)[0]?.name).toBe('A former member');
+    const ending = entry.grants.map((each) => ({ ...each, expiresAt: at(2 * DAY_MS) }));
+    expect(personChipsOf(ending, PROFILES, NOW)[0]?.role).toBe('Can edit · Ends in 2 days');
     expect(linkChipsOf(entry.links, NOW)).toEqual([
       { key: share(1).id, label: 'Link with password', detail: 'Ends in 3 days · 4 opens' },
     ]);

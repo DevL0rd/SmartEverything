@@ -7,7 +7,7 @@ const DEPTH = 0.14;
 export const MIRROR_CABINET_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.mirror-cabinet',
   title: 'Mirror cabinet',
-  footprint: { width: 0.6, depth: DEPTH, height: 0.7 },
+  footprint: { width: 0.6, depth: 0.162, height: 0.7 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     height: { param: 'height', extra: 0, resizes: true },

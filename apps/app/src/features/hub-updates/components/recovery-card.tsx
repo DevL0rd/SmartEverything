@@ -14,10 +14,10 @@ import { confirm } from '../../../components/confirm-store';
 import { Text } from '../../../components/text';
 import { clock, shortDate } from '../../../format/time';
 import type { useHubUpdateStatus } from '../data/update-queries';
-import { PHASE_LABEL, RECOVERY_REFUSAL } from '../model/update-copy';
+import { PHASE_LABEL, RECOVERY_REFUSAL, waitsForDecision } from '../model/update-copy';
+import { RECOVERY_HOLD_SECONDS, ReleaseDecision } from './release-decision';
 
 type Release = NonNullable<HubUpdateRecoveryStatus['release']>;
-const RECOVERY_HOLD_SECONDS = 120;
 
 function ReleaseSummary({ release }: { readonly release: Release }): ReactNode {
   return (
@@ -96,18 +96,33 @@ function RecoveryMessage({
   );
 }
 
+function ReleaseActions({
+  release,
+  refresh,
+}: {
+  readonly release: Release;
+  readonly refresh: () => Promise<unknown>;
+}): ReactNode {
+  if (waitsForDecision(release))
+    return <ReleaseDecision key={release.runId} release={release} refresh={refresh} />;
+  return release.interrupted && release.finishedAt === null ? (
+    <RecoverButton key={release.runId} runId={release.runId} refresh={refresh} />
+  ) : null;
+}
+
 export function RecoveryCard({
   status,
 }: {
   readonly status: ReturnType<typeof useHubUpdateStatus>;
 }): ReactNode {
   const release = status.data?.release ?? null;
-  const recoverable =
-    release !== null &&
-    ((release.interrupted && release.finishedAt === null) || release.phase === 'unrecoverable');
+  const deciding = release !== null && waitsForDecision(release);
   return (
-    <Card title="Latest release" icon="activity">
+    <Card title="Latest release" icon="activity" tone={deciding ? 'critical' : 'default'}>
       <ReleaseState release={release} loading={status.isPending} failed={status.isError} />
+      {release === null || status.isError ? null : (
+        <ReleaseActions release={release} refresh={status.refetch} />
+      )}
       <View className="flex-row flex-wrap gap-2">
         <Button
           label="Refresh status"
@@ -119,9 +134,6 @@ export function RecoveryCard({
           }}
         />
       </View>
-      {!recoverable || status.isError ? null : (
-        <RecoverButton key={release.runId} runId={release.runId} refresh={status.refetch} />
-      )}
     </Card>
   );
 }

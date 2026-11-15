@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { open } from 'node:fs/promises';
@@ -14,6 +15,7 @@ import {
   type HashEnvironment,
 } from '../../src/drive/hasher';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { updateDriveSettings } from '../../src/drive/settings';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
@@ -89,11 +91,13 @@ async function scan(): Promise<void> {
     store: {
       driveRoots: roots,
       driveItems: items,
+      driveInodes: new DriveInodesRepository(context),
       feed,
       write: (work) => context.write(work),
       now: () => new Date(NOW),
     },
     availability: () => Promise.resolve('online'),
+    mounted: (): boolean => false,
     workerScript: scannerScript,
     log: testLogger(),
   };
@@ -107,6 +111,7 @@ function hashEnvironment(): HashEnvironment {
       driveItems: items,
       driveBlocks: blocks,
       drivePlacements: fixture.placements,
+      driveOpens: fixture.opens,
       settingsKv: settings,
       feed,
       write: (work) => context.write(work),
@@ -352,10 +357,16 @@ describe('the backlog order', () => {
     put('opened-new.bin', Buffer.alloc(9000));
     await scan();
     const idOf = (path: string): string => indexed(path).id;
-    items.markOpened(idOf('opened-old.bin'), '2026-01-01T00:00:00.000Z');
-    items.markOpened(idOf('opened-new.bin'), '2026-06-01T00:00:00.000Z');
+    const reader = fixture.profiles.create({ name: 'Robin' }).id;
+    fixture.opens.record(reader, idOf('opened-old.bin'), '2026-01-01T00:00:00.000Z');
+    fixture.opens.record(reader, idOf('opened-new.bin'), '2026-06-01T00:00:00.000Z');
     const backlog = collectBacklog(
-      { driveItems: items, driveBlocks: blocks, drivePlacements: fixture.placements },
+      {
+        driveItems: items,
+        driveBlocks: blocks,
+        drivePlacements: fixture.placements,
+        driveOpens: fixture.opens,
+      },
       roots.byId(ROOT),
     );
     expect(backlog.candidates.map((candidate) => candidate.relPath)).toEqual([
@@ -365,6 +376,27 @@ describe('the backlog order', () => {
       'big.bin',
     ]);
     expect(backlog).toMatchObject({ files: 4, hashed: 0 });
+  });
+
+  it('leaves links and special files out of the backlog and the file count', async () => {
+    useRoot(false);
+    put('real.bin', Buffer.alloc(10));
+    symlinkSync(join(tree, 'real.bin'), join(tree, 'link.bin'));
+    execFileSync('mkfifo', [join(tree, 'pipe')]);
+    await scan();
+    expect(indexed('link.bin').kind).toBe('link');
+    expect(indexed('pipe').kind).toBe('special');
+    const backlog = collectBacklog(
+      {
+        driveItems: items,
+        driveBlocks: blocks,
+        drivePlacements: fixture.placements,
+        driveOpens: fixture.opens,
+      },
+      roots.byId(ROOT),
+    );
+    expect(backlog.candidates.map((candidate) => candidate.relPath)).toEqual(['real.bin']);
+    expect(backlog).toMatchObject({ files: 1, hashed: 0 });
   });
 
   it('orders two equal files by path', () => {

@@ -31,6 +31,7 @@ export const USAGE_WORKS = [
   'transcribe',
   'embed',
   'speak',
+  'photos',
 ] as const;
 
 export type UsageWork = (typeof USAGE_WORKS)[number];
@@ -48,6 +49,7 @@ export const USAGE_WORK_LABELS: Readonly<Record<UsageWork, string>> = {
   transcribe: 'Transcripts',
   embed: 'Search index',
   speak: 'Spoken lines',
+  photos: 'Photos analysis',
 };
 
 export const COST_STATES = ['estimated', 'reported', 'reconciled'] as const;

@@ -4,7 +4,7 @@ import { applicationSource, filesUnder, insideApp } from './repository-files';
 
 const LOOP = /withRepeat\(|useFrameCallback\(|loopStyle\(/;
 
-const GATE = /from '[./]*design\/animation-gate'/;
+const GATE = /from '[./]*design\/(animation-gate|visibility)'/;
 
 const GATED_BY_CALLER: Readonly<Record<string, string>> = {
   'src/features/device-visuals/': 'model-visual.tsx gates every model overlay and passes moving',
@@ -12,6 +12,11 @@ const GATED_BY_CALLER: Readonly<Record<string, string>> = {
   'src/plugins/printer/components/supply-tank.tsx':
     'supply-band.tsx gates every tank row and passes running',
   'src/components/widget-board/edit/use-widget-motion.ts': 'editable-widget.tsx gates the jiggle',
+  'src/features/assistant/voice-message/clip-waveform.tsx':
+    'voice-clip.tsx passes onScreen from the viewport of the clip',
+  'src/features/clock/stopwatch-face.tsx':
+    'timer-card.tsx and the stopwatch pass live from the animation gate of the card',
+  'src/plugins/oralb/charts/': 'live-stage.tsx gates the stage and passes moving to every chart',
   'src/components/widget-board/edit/drag-state.ts':
     'the auto-scroll frame callback runs only while dragging',
 };
@@ -21,7 +26,6 @@ function gatedByCaller(file: string): boolean {
 }
 
 const ALWAYS_ON_SCREEN = [
-  'src/components/skeleton.tsx',
   'src/components/widget-board/edit/editable-widget.tsx',
   'src/features/assistant/call/components/call-wave.tsx',
 ];

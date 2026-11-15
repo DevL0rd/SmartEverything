@@ -19,7 +19,10 @@ const IDLE: SyncWaiting = { needBytes: 0, pendingOps: 0 };
 function placement(
   id: string,
   over: Partial<
-    Pick<DrivePlacement, 'mode' | 'enabled' | 'hold' | 'localPath' | 'excluded' | 'ignorePatterns'>
+    Pick<
+      DrivePlacement,
+      'mode' | 'enabled' | 'hold' | 'localPath' | 'mountName' | 'excluded' | 'ignorePatterns'
+    >
   > = {},
 ): DrivePlacement {
   return {
@@ -32,6 +35,7 @@ function placement(
     ignorePatterns: [],
     conflictCopies: true,
     localPath: `/data/${id}`,
+    mountName: null,
     enabled: true,
     hold: null,
     createdBy: PERSON_ID,
@@ -50,6 +54,7 @@ function placement(
       lastSyncedAt: null,
       errors: [],
       reason: null,
+      mountPoint: null,
       reportedAt: '2026-11-07T10:00:00Z',
     },
     ...over,
@@ -76,7 +81,14 @@ describe('sync placement intake', () => {
   it('starts every enabled synced placement and ignores mounted ones', async () => {
     const port = engine();
     const intake = new SyncPlacementIntake(port, log);
-    await intake.accept([placement(FIRST_ID), placement(SECOND_ID, { mode: 'mounted' })]);
+    await intake.accept([
+      placement(FIRST_ID),
+      placement(SECOND_ID, {
+        mode: 'mounted',
+        localPath: null,
+        mountName: 'Second',
+      }),
+    ]);
     expect(port.start).toHaveBeenCalledTimes(1);
     expect(port.start).toHaveBeenCalledWith({
       placementId: FIRST_ID,
@@ -125,7 +137,7 @@ describe('sync placement intake', () => {
     ['sync_off hold', { hold: 'sync_off' as const }],
     ['trashed hold', { hold: 'trashed' as const }],
     ['disabled', { enabled: false }],
-    ['switched to mounted', { mode: 'mounted' as const }],
+    ['switched to mounted', { mode: 'mounted' as const, localPath: null, mountName: 'First' }],
   ])('stops a running placement on %s', async (_name, over) => {
     const port = engine();
     const intake = new SyncPlacementIntake(port, log);

@@ -10,6 +10,7 @@ import {
   confirmBoot,
   installRootOf,
   reviewBoot,
+  rollBackBoot,
   type FolderUpdateOptions,
 } from '../../src/updates/folder-update.js';
 
@@ -218,7 +219,7 @@ describe('applying a downloaded app folder', () => {
           cause: blocked,
         });
         expect(await readFile(join(root, 'version'), 'utf8')).toBe('old');
-        expect(events).toStrictEqual(['run unzip', 'restart old']);
+        expect(events).toStrictEqual(['run unzip']);
       } finally {
         remove.mockRestore();
       }
@@ -259,15 +260,17 @@ describe('applying a downloaded app folder', () => {
     expect(events).toStrictEqual(['run unzip']);
   });
 
-  it('goes back to the old folder when the services will not restart on the new one', async () => {
+  it('keeps the new folder and the old copy when the services will not restart on it', async () => {
     let attempts = 0;
     const { options, events } = rig(() => {
       attempts += 1;
       return attempts === 1 ? Promise.reject(new Error('unit failed')) : Promise.resolve();
     });
     await expect(applyFolderUpdate(options, '/tmp/app.zip')).rejects.toThrow('unit failed');
-    expect(await readFile(join(root, 'version'), 'utf8')).toBe('old');
-    expect(events).toStrictEqual(['run unzip', 'restart new', 'restart old']);
+    expect(await readFile(join(root, 'version'), 'utf8')).toBe('new');
+    expect(await readFile(join(`${root}.rollback`, 'version'), 'utf8')).toBe('old');
+    expect(events).toStrictEqual(['run unzip', 'restart new']);
+    expect(await reviewBoot(root, '0.4.2', false)).toBe('awaiting_decision');
   });
 
   it('keeps the old app when the download holds no app folder', async () => {
@@ -283,8 +286,8 @@ describe('applying a downloaded app folder', () => {
   });
 });
 
-describe('recovering from a failed relaunch', () => {
-  it('swaps the old app back when the relaunch fails and reports the failure', async () => {
+describe('a failed relaunch', () => {
+  it('reports the failure and leaves the rollback to the owner', async () => {
     const { options, events } = rig();
     const failing: FolderUpdateOptions = {
       ...options,
@@ -293,9 +296,14 @@ describe('recovering from a failed relaunch', () => {
     await expect(applyFolderUpdate(failing, '/tmp/app.zip')).rejects.toThrow(
       'the app would not quit',
     );
-    expect(await readFile(join(root, 'version'), 'utf8')).toBe('old');
-    expect(events).toStrictEqual(['run unzip', 'restart new', 'restart old']);
-    expect((await readdir(base)).sort()).toStrictEqual(['SmartEverything']);
+    expect(await readFile(join(root, 'version'), 'utf8')).toBe('new');
+    expect(events).toStrictEqual(['run unzip', 'restart new']);
+    expect((await readdir(base)).sort()).toStrictEqual([
+      'SmartEverything',
+      'SmartEverything.boot',
+      'SmartEverything.rollback',
+    ]);
+    expect(await reviewBoot(root, '0.4.2', false)).toBe('awaiting_decision');
   });
 });
 
@@ -309,9 +317,18 @@ describe('confirming the first start of an updated app', () => {
     expect(await reviewBoot(root, '0.4.2', false)).toBe('none');
   });
 
-  it('swaps back to the old app when a later start finds the update unconfirmed', async () => {
+  it('waits for the owner when a later start finds the update unconfirmed', async () => {
     await applyFolderUpdate(rig().options, '/tmp/app.zip');
-    expect(await reviewBoot(root, '0.4.2', false)).toBe('rolled-back');
+    expect(await reviewBoot(root, '0.4.2', false)).toBe('awaiting_decision');
+    expect(await readFile(join(root, 'version'), 'utf8')).toBe('new');
+    expect(await readFile(join(`${root}.rollback`, 'version'), 'utf8')).toBe('old');
+    expect(await reviewBoot(root, '0.4.2', false)).toBe('awaiting_decision');
+  });
+
+  it('swaps the old app back only when the owner orders the rollback', async () => {
+    await applyFolderUpdate(rig().options, '/tmp/app.zip');
+    expect(await reviewBoot(root, '0.4.2', false)).toBe('awaiting_decision');
+    await rollBackBoot(root);
     expect(await readFile(join(root, 'version'), 'utf8')).toBe('old');
     expect((await readdir(base)).sort()).toStrictEqual(['SmartEverything']);
     expect(await reviewBoot(root, '0.1.0', false)).toBe('none');

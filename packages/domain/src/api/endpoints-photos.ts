@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   PHOTO_UPLOAD_TARGET_REQUEST,
   PHOTO_UPLOAD_TARGET,
+  BACKUP_CHECK,
   BACKUP_HAVE,
   BACKUP_HAVE_RESULT,
   BACKUP_REGISTER,
@@ -15,7 +16,13 @@ import {
   DUPLICATE_NOT,
   DUPLICATE_STATS,
 } from '../photos/duplicates';
-import { PHOTO_INSIGHTS, PHOTO_INSIGHTS_QUERY } from '../photos/insights';
+import {
+  PHOTO_BUSIEST_DAY,
+  PHOTO_INSIGHTS,
+  PHOTO_INSIGHTS_QUERY,
+  PHOTO_LARGEST_VIDEO,
+  PHOTO_RANKING_QUERY,
+} from '../photos/insights';
 import { LIBRARY_BUCKET, LIBRARY_PAGE, LIBRARY_PAGE_QUERY, LIBRARY_SCOPE } from '../photos/library';
 import { MEDIA_INFO, MEDIA_PROCESSING } from '../photos/media';
 import {
@@ -35,6 +42,12 @@ import {
 import { STACK, STACK_COVER, STACK_PARAMS } from '../photos/stacks';
 import { TRIP } from '../photos/trips';
 import { NO_BODY, endpoint } from './endpoint';
+import { PHOTOS_EDIT_ENDPOINTS } from './endpoints-photos-edits';
+import { PHOTOS_FOLDER_ENDPOINTS } from './endpoints-photos-folders';
+import { PHOTOS_ORGANISE_ENDPOINTS } from './endpoints-photos-organise';
+import { PHOTOS_PEOPLE_ENDPOINTS } from './endpoints-photos-people';
+import { PHOTOS_SHARING_ENDPOINTS } from './endpoints-photos-sharing';
+import { PHOTOS_SMART_ENDPOINTS } from './endpoints-photos-smart';
 import { CURSOR_QUERY, DRIVE_ITEM_PARAMS, pageOf } from './endpoints-drive';
 import { COUNT, DONE, ID, NOTHING } from './primitives';
 
@@ -69,12 +82,30 @@ export const PHOTO_RAIL_COUNTS = z
     duplicates: COUNT,
     backupDevices: COUNT,
     deleted: COUNT,
+    people: COUNT,
+    sharing: COUNT,
+    archive: COUNT,
   })
   .readonly();
 
 export type PhotoRailCounts = z.infer<typeof PHOTO_RAIL_COUNTS>;
 
+export {
+  PHOTOS_EDIT_ENDPOINTS,
+  PHOTOS_FOLDER_ENDPOINTS,
+  PHOTOS_ORGANISE_ENDPOINTS,
+  PHOTOS_PEOPLE_ENDPOINTS,
+  PHOTOS_SHARING_ENDPOINTS,
+  PHOTOS_SMART_ENDPOINTS,
+};
+
 export const PHOTOS_ENDPOINTS = {
+  ...PHOTOS_SMART_ENDPOINTS,
+  ...PHOTOS_PEOPLE_ENDPOINTS,
+  ...PHOTOS_SHARING_ENDPOINTS,
+  ...PHOTOS_EDIT_ENDPOINTS,
+  ...PHOTOS_ORGANISE_ENDPOINTS,
+  ...PHOTOS_FOLDER_ENDPOINTS,
   resolvePhotoUploadTarget: endpoint({
     method: 'POST',
     path: '/api/drive/photos/uploads/target',
@@ -185,6 +216,26 @@ export const PHOTOS_ENDPOINTS = {
     query: PHOTO_INSIGHTS_QUERY,
     body: NO_BODY,
     response: PHOTO_INSIGHTS,
+  }),
+  listPhotoLargestVideos: endpoint({
+    method: 'GET',
+    path: '/api/drive/photos/insights/largest-videos',
+    access: 'member',
+    summary: 'Every video in a range from the largest down, one page at a time',
+    params: NOTHING,
+    query: PHOTO_RANKING_QUERY,
+    body: NO_BODY,
+    response: pageOf(PHOTO_LARGEST_VIDEO),
+  }),
+  listPhotoBusiestDays: endpoint({
+    method: 'GET',
+    path: '/api/drive/photos/insights/busiest-days',
+    access: 'member',
+    summary: 'Every day in a range from the one with the most photos down, one page at a time',
+    params: NOTHING,
+    query: PHOTO_RANKING_QUERY,
+    body: NO_BODY,
+    response: pageOf(PHOTO_BUSIEST_DAY),
   }),
   listPhotoDuplicates: endpoint({
     method: 'GET',
@@ -306,7 +357,7 @@ export const PHOTOS_ENDPOINTS = {
     summary: 'Tell which of the device’s photos the hub already has by their content hash',
     params: NOTHING,
     query: NOTHING,
-    body: BACKUP_HAVE,
+    body: BACKUP_CHECK,
     response: BACKUP_HAVE_RESULT,
   }),
   readBackupState: endpoint({

@@ -1,9 +1,8 @@
 import type { Core, HubParts } from '../hub-assembly';
-import type { ProcessWindow } from '@smarteverything/domain';
 import { MetricHistory } from '../metrics/history';
 import { sourcePolicyOf } from '../metrics/history-policy';
 import { SourceHistory } from '../metrics/source-history';
-import type { Viewers } from '../metrics/viewers';
+import type { Viewers, DeviceDetail } from '../metrics/viewers';
 import type { DeviceDriverRegistry } from './device-driver';
 import { DriverHost } from './driver-host';
 import { localDriverSink } from './driver-sink';
@@ -11,7 +10,7 @@ import { localDriverSink } from './driver-sink';
 export interface RunningDrivers {
   readonly registry: DeviceDriverRegistry;
   readonly metrics: MetricHistory;
-  readonly viewers: Viewers<ProcessWindow>;
+  readonly viewers: Viewers<DeviceDetail>;
   readonly sources: SourceHistory;
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly stop: () => Promise<void>;

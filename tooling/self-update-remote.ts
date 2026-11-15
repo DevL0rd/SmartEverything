@@ -135,15 +135,15 @@ async function candidateFor(
   return {
     identity,
     candidate: approvedRemoteHubBuild(
+      tools.target.data,
       {
         source: source.folder,
         root,
-        installedService: tools.target.install.service,
         tip,
         identity,
       },
-      tools.paths.work,
       tools.runSteps,
+      tools.node,
     ),
   };
 }

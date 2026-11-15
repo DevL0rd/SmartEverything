@@ -8,7 +8,6 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
-import { cn } from '../../../design/cn';
 import { useLocalPref } from '../../../store/local-prefs';
 import { useSession } from '../../../store/selectors';
 import { useChannelActivity } from '../data/channel-activity';
@@ -39,25 +38,18 @@ function JoinButton({ channelId }: { readonly channelId: string }): ReactNode {
 
 export interface ChannelCardProps {
   readonly channel: TalkChannelRow;
-  readonly selected: boolean;
   readonly onOpen: () => void;
 }
 
-export function ChannelCard({ channel, selected, onOpen }: ChannelCardProps): ReactNode {
+export function ChannelCard({ channel, onOpen }: ChannelCardProps): ReactNode {
   const activity = useChannelActivity(channel.id);
   const member = useOwnMembership(channel.id) !== null;
   const enabled = useLocalPref('talkEnabled');
   return (
-    <View
-      className={cn(
-        'flex-row items-center gap-3 rounded-lg border-hairline p-3 elevation-1',
-        selected ? 'border-primary bg-primary-container' : 'border-outline-variant bg-surface-1',
-      )}
-    >
+    <View className="flex-row items-center gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-3 elevation-1">
       <Interactive
         label={`${channel.name}, ${activity.line}`}
         onPress={onOpen}
-        selected={selected}
         className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-3 rounded-md"
         layerClassName="rounded-md"
       >

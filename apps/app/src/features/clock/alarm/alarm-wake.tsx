@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { href } from '../../../app-shell/hrefs';
+import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { SelectRow } from '../../../components/rows';
 import { Switch } from '../../../components/switch';
@@ -41,14 +43,14 @@ export function SmartWakeRow({ draft, compact, disabled, onChange }: WakeProps):
   );
 }
 
-interface SceneOption {
+interface AutomationOption {
   readonly value: string;
   readonly label: string;
 }
 
-function routineText(scene: SceneOption | undefined, lead: number | null): string {
-  if (scene === undefined || lead === null) return 'Run a scene before the alarm rings.';
-  return `${scene.label} starts ${leadText(lead)}.`;
+function routineText(automation: AutomationOption | undefined, lead: number | null): string {
+  if (automation === undefined || lead === null) return 'Run an automation before the alarm rings.';
+  return `${automation.label} starts ${leadText(lead)}.`;
 }
 
 function WakeChoices({
@@ -56,21 +58,21 @@ function WakeChoices({
   compact,
   disabled,
   onChange,
-  scenes,
-}: WakeProps & { readonly scenes: readonly SceneOption[] }): ReactNode {
+  automations,
+}: WakeProps & { readonly automations: readonly AutomationOption[] }): ReactNode {
   const lead = draft.wake_lead_minutes ?? DEFAULT_WAKE_LEAD_MINUTES;
   return (
     <FieldRows compact={compact}>
       <SelectRow
-        title="Scene"
-        icon="sun"
+        title="Automation"
+        icon="automations"
         compact={compact}
-        options={scenes}
-        value={draft.wake_scene_id}
+        options={automations}
+        value={draft.wake_automation_id}
         searchable
         disabled={disabled}
-        onChange={(sceneId) => {
-          onChange(wakeEdit(sceneId, lead));
+        onChange={(automationId) => {
+          onChange(wakeEdit(automationId, lead));
         }}
       />
       <SelectRow
@@ -81,7 +83,7 @@ function WakeChoices({
         value={String(lead)}
         disabled={disabled}
         onChange={(minutes) => {
-          onChange(wakeEdit(draft.wake_scene_id, Number(minutes)));
+          onChange(wakeEdit(draft.wake_automation_id, Number(minutes)));
         }}
       />
     </FieldRows>
@@ -89,13 +91,17 @@ function WakeChoices({
 }
 
 export function WakeRoutine(
-  props: WakeProps & { readonly defaultSceneId: string | null },
+  props: WakeProps & { readonly defaultAutomationId: string | null },
 ): ReactNode {
-  const { draft, disabled, onChange, defaultSceneId } = props;
-  const scenes = useRows('scenes').map((scene) => ({ value: scene.id, label: scene.name }));
-  const on = draft.wake_scene_id !== null;
-  const first = scenes.find((entry) => entry.value === defaultSceneId) ?? scenes[0];
-  const scene = scenes.find((entry) => entry.value === draft.wake_scene_id);
+  const { draft, disabled, onChange, defaultAutomationId } = props;
+  const automations = useRows('automations').map((automation) => ({
+    value: automation.id,
+    label: automation.name,
+  }));
+  const on = draft.wake_automation_id !== null;
+  const first = automations.find((entry) => entry.value === defaultAutomationId) ?? automations[0];
+  const chosen = automations.find((entry) => entry.value === draft.wake_automation_id);
+  const none = first === undefined && !on;
   return (
     <View className="gap-3 rounded-md bg-surface-2 p-3">
       <View className="flex-row items-center gap-2">
@@ -106,18 +112,28 @@ export function WakeRoutine(
         <Switch
           label="Wake routine"
           value={on}
-          disabled={disabled || (!on && first === undefined)}
+          disabled={disabled || none}
           onChange={(next) => {
             onChange(wakeEdit(next ? (first?.value ?? null) : null, DEFAULT_WAKE_LEAD_MINUTES));
           }}
         />
       </View>
       <Text variant="footnote" tone="variant">
-        {first === undefined && !on
-          ? 'Make a scene first to start it before the alarm.'
-          : routineText(scene, draft.wake_lead_minutes)}
+        {none
+          ? 'Set up an automation to start it before the alarm.'
+          : routineText(chosen, draft.wake_lead_minutes)}
       </Text>
-      {on ? <WakeChoices {...props} scenes={scenes} /> : null}
+      {none ? (
+        <View className="flex-row">
+          <Button
+            label="Set up an automation"
+            icon="automations"
+            variant="tonal"
+            href={href.automationNew()}
+          />
+        </View>
+      ) : null}
+      {on ? <WakeChoices {...props} automations={automations} /> : null}
     </View>
   );
 }

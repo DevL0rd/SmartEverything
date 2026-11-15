@@ -14,7 +14,6 @@ const AVAILABILITY: SettingEnv['availability'] = {
   hasClimate: false,
   hasCameras: true,
   hasHealth: false,
-  hasScenes: false,
   hasEnergy: false,
   hasSecurity: false,
   hasIr: false,

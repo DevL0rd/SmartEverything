@@ -8,7 +8,6 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Grid, useGridLayout } from '../../../components/grid';
 import { ListRow } from '../../../components/list-row';
-import { SearchField } from '../../../components/search-field';
 import { List, Section } from '../../../components/section';
 import { Switch } from '../../../components/switch';
 import { SettingsFrame } from '../../../settings/settings-frame';
@@ -180,16 +179,16 @@ export function PluginsScreen(): ReactNode {
     matchesDevicePlugin(row, query),
   );
   return (
-    <SettingsFrame page="plugins" contentWidth="full">
-      <View className="w-full max-w-reading gap-3">
-        <SearchField
-          value={search}
-          onChange={setSearch}
-          placeholder="Search plugins"
-          variant="field"
-        />
-        <CatalogStatus status={status} />
-      </View>
+    <SettingsFrame
+      page="plugins"
+      contentWidth="full"
+      search={{ value: search, onChange: setSearch, placeholder: 'Search plugins' }}
+    >
+      {status === 'ready' ? null : (
+        <View className="w-full max-w-reading">
+          <CatalogStatus status={status} />
+        </View>
+      )}
       {status === 'ready' && query !== '' && hub.length === 0 && device.length === 0 ? (
         <View className="w-full max-w-reading">
           <EmptyState

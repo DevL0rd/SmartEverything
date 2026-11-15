@@ -42,7 +42,6 @@ import type { ItemChanges } from './repeat-scope-bar';
 
 const KIND_OPTIONS: readonly SegmentedOption<PlannerAttachmentKind>[] = [
   { value: 'device', label: 'Device' },
-  { value: 'scene', label: 'Scene' },
   { value: 'automation', label: 'Automation' },
   { value: 'file', label: 'File' },
   { value: 'link', label: 'Link' },
@@ -53,9 +52,8 @@ const FACE_OPTIONS: readonly SegmentedOption<DeviceFaceChoice>[] = DEVICE_FACES.
   label: FACE_LABEL[face],
 }));
 
-const SEARCH_HINT: Readonly<Record<'device' | 'scene' | 'automation', string>> = {
+const SEARCH_HINT: Readonly<Record<'device' | 'automation', string>> = {
   device: 'Search devices',
-  scene: 'Search scenes',
   automation: 'Search automations',
 };
 
@@ -179,7 +177,7 @@ interface ChoicePaneProps extends PaneProps {
 }
 
 function ChoicePane({ picked, onPick, groups, search, onSearch }: ChoicePaneProps): ReactNode {
-  const hint = picked.kind === 'scene' || picked.kind === 'automation' ? picked.kind : 'device';
+  const hint = picked.kind === 'automation' ? picked.kind : 'device';
   return (
     <View className="gap-3">
       <SearchField
@@ -233,10 +231,8 @@ function usePickGroups(
   search: string,
 ): PickGroups {
   const devices = useDevices();
-  const scenes = useRows('scenes');
   const automations = useRows('automations');
   const filter = { taken: new Set(item.attachments.map(attachmentKeyOf)), text: search };
-  if (picked.kind === 'scene') return namedGroupsOf(scenes, 'scene', filter);
   if (picked.kind === 'automation') return namedGroupsOf(automations, 'automation', filter);
   return deviceGroupsOf(devices, names, filter, subjectOf(item.completion));
 }

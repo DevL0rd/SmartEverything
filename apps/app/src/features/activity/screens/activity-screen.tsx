@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Select } from '../../../components/select';
 import { VirtualList } from '../../../components/virtual-list';
 import { useMinute } from '../../../store/clock';
@@ -27,15 +26,12 @@ function Filter({
   readonly value: Shown;
   readonly onChange: (value: Shown) => void;
 }): ReactNode {
-  if (categories.length < 2) {
-    return null;
-  }
   const options = [
     { value: 'all' as const, label: 'All activity' },
     ...categories.map((category) => ({ value: category, label: CATEGORY_LABELS[category] })),
   ];
   return (
-    <View className="max-w-dialog px-gutter pb-2 pt-1">
+    <View className="max-w-dialog">
       <Select<Shown> label="Show" options={options} value={value} onChange={onChange} />
     </View>
   );
@@ -65,20 +61,29 @@ export function ActivityScreen(): ReactNode {
     data: day.items,
   }));
   return (
-    <Screen header={<PageHeader title="Activity" />} scroll={false}>
-      <VirtualList
-        header={<Filter categories={categories} value={active} onChange={setShown} />}
-        sections={sections}
-        keyOf={(item) => item.id}
-        renderItem={(item) => <ActivityRow item={item} flush timeline />}
-        empty={
-          <EmptyState
-            icon="activity"
-            title="No activity yet"
-            body="Changes and events show up here as they happen."
-          />
-        }
-      />
-    </Screen>
+    <PageShell
+      title="Activity"
+      scroll={false}
+      {...(categories.length < 2
+        ? {}
+        : {
+            toolbar: <Filter categories={categories} value={active} onChange={setShown} />,
+          })}
+    >
+      <View className="-mx-gutter min-h-0 flex-1">
+        <VirtualList
+          sections={sections}
+          keyOf={(item) => item.id}
+          renderItem={(item) => <ActivityRow item={item} flush timeline />}
+          empty={
+            <EmptyState
+              icon="activity"
+              title="No activity yet"
+              body="Changes and events show up here as they happen."
+            />
+          }
+        />
+      </View>
+    </PageShell>
   );
 }

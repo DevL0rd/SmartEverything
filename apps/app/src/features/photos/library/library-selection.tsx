@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { Icon, type IconName } from '../../../components/icon';
@@ -13,11 +13,24 @@ import { useEscape } from '../../../components/use-escape';
 import { allFavourite, pickedText } from './library-model';
 import type { MediaActions } from './use-media-actions';
 import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
+import { organiseMenuItems, useOrganiseActions } from '../organise/actions';
+
+export const NOTHING_PICKED = 'Select items';
+
+export interface SelectionExtra {
+  readonly id: string;
+  readonly label: string;
+  readonly short: string;
+  readonly icon: IconName;
+  readonly disabled: boolean;
+  readonly onPress: (ids: readonly string[]) => void;
+}
 
 export interface LibrarySelectionProps {
   readonly controls: MediaSelectionControls;
   readonly tiles: readonly MediaTile[];
   readonly media: MediaActions;
+  readonly extras?: readonly SelectionExtra[];
 }
 
 interface Picked {
@@ -32,6 +45,8 @@ interface PickedProps {
   readonly picked: Picked;
   readonly onTrashed: () => void;
 }
+
+const NO_EXTRAS: readonly SelectionExtra[] = [];
 
 interface SelectionAction {
   readonly id: string;
@@ -119,6 +134,37 @@ function AlbumButton({ media, picked }: PickedProps): ReactNode {
   );
 }
 
+function useOrganiseMenu(picked: Picked, onDone: () => void): ReturnType<typeof useAnchoredMenu> {
+  const actions = useOrganiseActions();
+  return useAnchoredMenu(
+    organiseMenuItems({
+      actions,
+      itemIds: picked.ids,
+      current: null,
+      archived: false,
+      onGone: onDone,
+      onSaved: onDone,
+    }),
+    'Organise',
+  );
+}
+
+function OrganiseButton({ picked, onTrashed }: PickedProps): ReactNode {
+  const { ref, open, menu } = useOrganiseMenu(picked, onTrashed);
+  return (
+    <View ref={ref} collapsable={false}>
+      <Button
+        label="Organise"
+        icon="archive"
+        variant="outlined"
+        disabled={picked.none}
+        onPress={open}
+      />
+      {menu}
+    </View>
+  );
+}
+
 function Summary({ controls, tiles }: LibrarySelectionProps): ReactNode {
   const ids = controls.selection.ids;
   return (
@@ -136,7 +182,7 @@ function Summary({ controls, tiles }: LibrarySelectionProps): ReactNode {
           className="tabular-nums"
           numberOfLines={1}
         >
-          {pickedText(ids, tiles)}
+          {ids.size === 0 ? NOTHING_PICKED : pickedText(ids, tiles)}
         </Text>
         {ids.size < tiles.length ? (
           <Button label="Select all" variant="text" onPress={controls.all} />
@@ -158,7 +204,12 @@ function LocalSelection({ picked }: { readonly picked: Picked }): ReactNode {
   );
 }
 
-function DeskActions({ media, picked, onTrashed }: PickedProps): ReactNode {
+function DeskActions({
+  media,
+  picked,
+  onTrashed,
+  extras,
+}: PickedProps & { readonly extras: readonly SelectionExtra[] }): ReactNode {
   return (
     <>
       <LocalSelection picked={picked} />
@@ -171,6 +222,19 @@ function DeskActions({ media, picked, onTrashed }: PickedProps): ReactNode {
           variant="outlined"
           disabled={action.disabled}
           onPress={action.onPress}
+        />
+      ))}
+      <OrganiseButton media={media} picked={picked} onTrashed={onTrashed} />
+      {extras.map((extra) => (
+        <Button
+          key={extra.id}
+          label={extra.label}
+          icon={extra.icon}
+          variant="outlined"
+          disabled={picked.none || extra.disabled}
+          onPress={() => {
+            extra.onPress(picked.ids);
+          }}
         />
       ))}
       <View className="mx-1 h-5 w-px bg-on-primary-container/30" />
@@ -187,7 +251,12 @@ function DeskActions({ media, picked, onTrashed }: PickedProps): ReactNode {
   );
 }
 
-export function LibrarySelection({ controls, tiles, media }: LibrarySelectionProps): ReactNode {
+export function LibrarySelection({
+  controls,
+  tiles,
+  media,
+  extras = NO_EXTRAS,
+}: LibrarySelectionProps): ReactNode {
   useEscape(controls.selection.active, controls.clear);
   return (
     <View className="min-h-15 flex-row flex-wrap items-center gap-2 bg-primary-container px-gutter py-2">
@@ -196,6 +265,7 @@ export function LibrarySelection({ controls, tiles, media }: LibrarySelectionPro
         media={media}
         picked={selectedItems(controls.selection.ids, tiles)}
         onTrashed={controls.clear}
+        extras={extras}
       />
     </View>
   );
@@ -245,16 +315,43 @@ function BarAlbum({ media, picked }: PickedProps): ReactNode {
   );
 }
 
-export function LibraryActionRow({ controls, tiles, media }: LibrarySelectionProps): ReactNode {
+function BarOrganise({ picked, onTrashed }: PickedProps): ReactNode {
+  const { ref, open, menu } = useOrganiseMenu(picked, onTrashed);
+  return (
+    <View ref={ref} collapsable={false} className="flex-1">
+      <BarAction icon="more" label="More" disabled={picked.none} onPress={open} />
+      {menu}
+    </View>
+  );
+}
+
+export function LibraryActionRow({
+  controls,
+  tiles,
+  media,
+  extras = NO_EXTRAS,
+}: LibrarySelectionProps): ReactNode {
   const picked = selectedItems(controls.selection.ids, tiles);
   const input: PickedProps = { media, picked, onTrashed: controls.clear };
   return (
-    <View className="-mx-gutter border-t border-outline-variant bg-surface-2 px-2 pb-safe-offset-2 pt-2">
+    <View className="gap-2">
       <LocalSelection picked={picked} />
       <View className="flex-row">
         <BarAction {...shareAction(input)} />
         <BarAlbum media={media} picked={picked} onTrashed={controls.clear} />
         <BarAction {...chatAction(input)} />
+        <BarOrganise media={media} picked={picked} onTrashed={controls.clear} />
+        {extras.map((extra) => (
+          <BarAction
+            key={extra.id}
+            icon={extra.icon}
+            label={extra.short}
+            disabled={picked.none || extra.disabled}
+            onPress={() => {
+              extra.onPress(picked.ids);
+            }}
+          />
+        ))}
         <BarAction
           icon="trash"
           label="Trash"
@@ -267,4 +364,18 @@ export function LibraryActionRow({ controls, tiles, media }: LibrarySelectionPro
       </View>
     </View>
   );
+}
+
+export interface SelectionFrame {
+  readonly selection: ReactElement | null;
+  readonly footer: ReactElement | null;
+}
+
+export function selectionFrameOf(compact: boolean, props: LibrarySelectionProps): SelectionFrame {
+  const { selection } = props.controls;
+  const head = compact ? <LibrarySelectionHead {...props} /> : <LibrarySelection {...props} />;
+  return {
+    selection: selection.active ? head : null,
+    footer: compact && selection.ids.size > 0 ? <LibraryActionRow {...props} /> : null,
+  };
 }

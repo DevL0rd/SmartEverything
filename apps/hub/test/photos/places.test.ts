@@ -37,7 +37,7 @@ import {
   DrivePlacesRepository,
   type DrivePlaceRow,
 } from '../../src/store/repositories/drive-places';
-import { insertDriveRow, recordLibraryRow } from './photo-rows';
+import { insertDriveRow, insertInode, recordLibraryRow } from './photo-rows';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger } from '../support/logs';
@@ -127,6 +127,7 @@ function seed(item: Seed): string {
   const kind = item.kind ?? 'image';
   insert('drive_items', {
     id,
+    inode_id: insertInode(database, placed(item.root).rootId),
     root_id: placed(item.root).rootId,
     rel_path: `${String(item.n)}.bin`,
     name: `${String(item.n)}.bin`,

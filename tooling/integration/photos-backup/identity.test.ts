@@ -92,12 +92,8 @@ function runner(): BackupRunner {
     identity: { ...local.ports.identity, deviceId: phoneId },
     hub: {
       register: (): Promise<unknown> => Promise.resolve({}),
-      checkHashes: (input, purpose) =>
-        Promise.resolve(
-          purpose === 'lookup'
-            ? service.lookupHashes(profileId, input)
-            : service.checkHashes(profileId, input),
-        ),
+      lookupHashes: (input) => Promise.resolve(service.lookupHashes(profileId, input)),
+      checkBackup: (input) => Promise.resolve(service.checkHashes(profileId, input)),
       resolveTarget: (deviceId, takenAt) => service.backupTarget(profileId, deviceId, takenAt),
     },
   });
@@ -131,7 +127,7 @@ describe('legacy backup identity lookup against the actual backup service', () =
       expect(local.native.hashed).toEqual([]);
       expect(local.upload.started).toEqual([]);
       expect(backupStatus.get()).toMatchObject({ total: 0, done: 0, failed: 0, bytesLeft: 0 });
-      const ledger = await loadLedger(local.storage);
+      const ledger = await loadLedger(local);
       expect(ledger.lastSeen).toBe(5000);
       expect(ledger.find('a')).toMatchObject({ itemId, uploadedAt: UPLOADED_AT });
     },

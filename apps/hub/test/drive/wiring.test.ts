@@ -35,6 +35,7 @@ import { DrivePlacements } from '../../src/drive/placements';
 import { DriveShares } from '../../src/drive/shares';
 import { DriveWriteService } from '../../src/drive/service-write';
 import { DriveReadService } from '../../src/drive/service-read';
+import { MOUNT_SUBPROTOCOL } from '@smarteverything/domain/drive-mount';
 import { DRIVE_SYNC_PROTOCOL } from '../../src/drive/sync/server-socket';
 import { nodeFiles } from '../../src/drive/versions';
 import { CLASS2_METHODS } from '../../src/server/dav';
@@ -48,6 +49,7 @@ import type { RawRoute } from '../../src/server/http-server';
 import {
   createDriveSurfaces,
   DAV_PATH,
+  MOUNT_SOCKET_PATH,
   SYNC_BLOCK_PATH,
   SYNC_COMMIT_PATH,
   SYNC_PUT_BLOCK_PATH,
@@ -282,6 +284,30 @@ function open(token: string | null): Promise<number> {
   });
 }
 
+function openMount(token: string | null): Promise<number> {
+  const socket = new WebSocket(
+    `ws://127.0.0.1:${String(port)}${MOUNT_SOCKET_PATH}`,
+    [MOUNT_SUBPROTOCOL],
+    token === null ? {} : { headers: { authorization: `Bearer ${token}` } },
+  );
+  sockets.push(socket);
+  return new Promise((resolve) => {
+    socket.once('open', () => {
+      resolve(101);
+    });
+    socket.once('unexpected-response', (_request, response) => {
+      resolve(response.statusCode ?? 0);
+    });
+    socket.once('error', () => {
+      resolve(0);
+    });
+  });
+}
+
+function routesOf(): string[] {
+  return surfaces.routes.map((route) => route.path);
+}
+
 const fill = (pattern: string): string =>
   pattern
     .replace(':rootId', ROOT)
@@ -301,14 +327,6 @@ const SYNC_PATHS: readonly Call[] = [
 ];
 
 const PERSON_PATHS: readonly Call[] = [
-  { method: 'GET', path: `/drive/fs/${ROOT}/list` },
-  { method: 'GET', path: `/drive/fs/${ROOT}/stat?path=a` },
-  { method: 'GET', path: `/drive/fs/${ROOT}/read/${ITEM}` },
-  { method: 'POST', path: `/drive/fs/${ROOT}/mkdir` },
-  { method: 'POST', path: `/drive/fs/${ROOT}/rename` },
-  { method: 'POST', path: `/drive/fs/${ROOT}/unlink` },
-  { method: 'POST', path: `/drive/fs/${ROOT}/rmdir` },
-  { method: 'POST', path: `/drive/fs/${ROOT}/utimens` },
   ...CLASS2_METHODS.filter((method) => method !== 'OPTIONS').map((method) => ({
     method,
     path: `/dav/${ROOT}/folder/file.txt`,
@@ -443,7 +461,9 @@ describe('Drive hub wiring', () => {
     expect(new Set(keys).size).toBe(keys.length);
     const dav = surfaces.routes.filter((route) => route.path === DAV_PATH);
     expect(dav.map((route) => route.method).sort()).toEqual([...CLASS2_METHODS].sort());
-    expect(surfaces.routes.filter((route) => route.upgrade !== undefined)).toHaveLength(1);
+    expect(
+      surfaces.routes.filter((route) => route.upgrade !== undefined).map((route) => route.path),
+    ).toEqual([SYNC_SOCKET_PATH, MOUNT_SOCKET_PATH]);
   });
 
   it.each(EVERY_PATH)('answers $method $path with sign-in required', async ({ method, path }) => {
@@ -488,19 +508,22 @@ describe('Drive hub wiring', () => {
     }
   });
 
-  it('lists a synced root through the mount API for a paired computer', async () => {
+  it.each([
+    { method: 'GET', path: `/drive/fs/${ROOT}/list` },
+    { method: 'GET', path: `/drive/fs/${ROOT}/stat?path=a` },
+    { method: 'GET', path: `/drive/fs/${ROOT}/read/${ITEM}` },
+    { method: 'POST', path: `/drive/fs/${ROOT}/mkdir` },
+    { method: 'POST', path: `/drive/fs/${ROOT}/rename` },
+    { method: 'POST', path: `/drive/fs/${ROOT}/unlink` },
+    { method: 'POST', path: `/drive/fs/${ROOT}/rmdir` },
+    { method: 'POST', path: `/drive/fs/${ROOT}/utimens` },
+    { method: 'GET', path: `/drive/fs/${ROOT}/space` },
+  ])('no longer serves $method $path for a paired computer', async ({ method, path }) => {
     myDrive();
     const owner = opened.store.profiles.first().id;
-    const reply = await send('GET', `/drive/fs/${ROOT}/list`, pairNode(owner).token);
-    expect(reply.status).toBe(200);
-    expect(JSON.parse(reply.body)).toMatchObject({ entries: [], next: null });
-  });
-
-  it('hides a person’s drive from another person’s computer, the Hub owner included', async () => {
-    myDrive();
-    const other = opened.store.profiles.create({ name: 'Sam' }).id;
-    const reply = await send('GET', `/drive/fs/${ROOT}/list`, pairNode(other).token);
+    const reply = await send(method, path, pairNode(owner).token);
     expect(reply.status).toBe(404);
+    expect(routesOf()).not.toContain(path.split('?')[0]);
   });
 
   it('serves a DAV PROPFIND on a root for a paired computer', async () => {
@@ -508,6 +531,42 @@ describe('Drive hub wiring', () => {
     const owner = opened.store.profiles.first().id;
     const reply = await send('PROPFIND', `/dav/${ROOT}/`, pairNode(owner).token, { depth: '0' });
     expect(reply.status).toBe(207);
+  });
+
+  it('refuses a plain request to the mount socket address', async () => {
+    const reply = await send('GET', MOUNT_SOCKET_PATH);
+    expect(reply.status).toBe(400);
+  });
+
+  it('upgrades the mount socket for a paired computer and refuses everything else', async () => {
+    const owner = opened.store.profiles.first().id;
+    expect(await openMount(pairNode(owner).token)).toBe(101);
+    expect(await openMount(null)).toBe(401);
+    expect(await openMount(pairNode(null).token)).not.toBe(101);
+  });
+
+  it('refuses a mount socket opened without its subprotocol', async () => {
+    const owner = opened.store.profiles.first().id;
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${String(port)}${MOUNT_SOCKET_PATH}`,
+      [DRIVE_SYNC_PROTOCOL],
+      {
+        headers: { authorization: `Bearer ${pairNode(owner).token}` },
+      },
+    );
+    sockets.push(socket);
+    const status = await new Promise<number>((resolve) => {
+      socket.once('open', () => {
+        resolve(101);
+      });
+      socket.once('unexpected-response', (_request, response) => {
+        resolve(response.statusCode ?? 0);
+      });
+      socket.once('error', () => {
+        resolve(0);
+      });
+    });
+    expect(status).not.toBe(101);
   });
 
   it('refuses a plain request to the sync socket address', async () => {

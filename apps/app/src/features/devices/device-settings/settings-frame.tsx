@@ -3,8 +3,8 @@ import type { AppHref } from '../../../components/app-href';
 import { useTabGroup } from '../../../app-shell/tab-group';
 import { href } from '../../../app-shell/hrefs';
 import type { Crumb } from '../../../components/breadcrumbs';
-import { PageHeader } from '../../../components/page-header';
-import { Screen, type ScreenProps } from '../../../components/screen';
+import type { ShellWidth } from '../../../components/page-shell/layout';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { useDevice } from '../../../store/selectors';
 
 const ORIGINS: Readonly<Record<string, Crumb>> = {
@@ -36,29 +36,25 @@ export function DeviceSettingsFrame({
   deviceId,
   name,
   title,
-  maxWidth = 'reading',
+  width = 'reading',
   children,
 }: {
   readonly deviceId: string;
   readonly name: string;
   readonly title: string;
-  readonly maxWidth?: ScreenProps['maxWidth'];
+  readonly width?: ShellWidth;
   readonly children: ReactNode;
 }): ReactNode {
   const sub = title !== name;
   const crumbs = useDeviceSettingsCrumbs(deviceId, name, sub);
   return (
-    <Screen
-      header={
-        <PageHeader
-          title={sub ? title : `${name} settings`}
-          {...(sub ? { subtitle: name } : {})}
-          breadcrumbs={crumbs}
-        />
-      }
-      maxWidth={maxWidth}
+    <PageShell
+      title={sub ? title : `${name} settings`}
+      {...(sub ? { subtitle: name } : {})}
+      breadcrumbs={crumbs}
+      width={width}
     >
       {children}
-    </Screen>
+    </PageShell>
   );
 }

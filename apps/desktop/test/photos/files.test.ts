@@ -16,6 +16,7 @@ const item = {
   takenAt: 1,
   uri: `app://smarteverything/local-media/${id}`,
   video: true,
+  folder: '/home/person/Videos',
 };
 const library = {
   file: (): Promise<PhotoFile> => Promise.resolve({ path: join(root, 'video.mp4'), item }),

@@ -13,7 +13,7 @@ import { PhoneRingsSync, syncPhoneRings, type PhoneRingsLink } from './phone-rin
 const CLIENT = '5d7b1d8e-6a43-4c1c-8d1f-2a9b3c4d5e6f';
 
 function set(hash: string): PlannerPhoneRingSet {
-  return { hash, rings: [] };
+  return { hash, rings: [], bedtimeWindows: [] };
 }
 
 function link(overrides: Partial<PhoneRingsLink> = {}): PhoneRingsLink & {

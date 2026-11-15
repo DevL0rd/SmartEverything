@@ -17,6 +17,7 @@ export const SET_TOP_REMOTE_MODEL: ModelSpec = remote({
     'decoder remote',
   ],
   size: SIZE,
+  footprint: { width: 0.1916, depth: SIZE.width, height: 0.0222 },
   materials: DARK_BODY,
   finishes: { black: {}, white: { body: { finish: 'matte-white' }, keys: { color: '#AEB2B8' } } },
   defaultFinish: 'black',

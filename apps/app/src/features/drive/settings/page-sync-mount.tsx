@@ -21,7 +21,7 @@ function SyncMountBody(): ReactNode {
   return (
     <View className="gap-4">
       <ThisComputerMount />
-      <CacheSettings cache={state.cache} parent={state.firstRun.defaultParent} />
+      <CacheSettings cache={state.cache} />
     </View>
   );
 }

@@ -1,12 +1,15 @@
 import type {
   DriveItem,
   DrivePlacement,
+  DrivePlacementMode,
   DrivePlacementSet,
   DriveRoot,
 } from '@smarteverything/domain';
 import { compareText } from '../../../format/text';
 import { driveLabelOf } from '../model/drive-access';
 import { placementBodyOf, type SyncSettings } from '../model/placement-body';
+import type { PickerChoice } from '../../files';
+import { itemOf, type DriveOrigin } from '../source/drive-node';
 
 export interface DriveNames {
   readonly roots: readonly DriveRoot[];
@@ -22,7 +25,9 @@ export function placementsOn(
   return placements
     .filter((placement) => placement.deviceId === deviceId)
     .slice()
-    .sort((left, right) => compareText(left.localPath, right.localPath));
+    .sort((left, right) =>
+      compareText(left.localPath ?? left.mountName ?? '', right.localPath ?? right.mountName ?? ''),
+    );
 }
 
 export function drivePathOf(
@@ -62,8 +67,11 @@ export function syncSettingsOf(placement: DrivePlacement): SyncSettings | undefi
   };
 }
 
+export function locationOf(placement: DrivePlacement): string | null {
+  return placement.mode === 'synced' ? placement.localPath : placement.status.mountPoint;
+}
+
 export interface PlacementChange {
-  readonly localPath?: string;
   readonly enabled?: boolean;
   readonly sync?: Partial<SyncSettings>;
 }
@@ -77,7 +85,8 @@ export function changedBodyOf(
     deviceId: placement.deviceId,
     target: { rootId: placement.rootId, folderItemId: placement.folderItemId },
     mode: placement.mode,
-    localPath: change.localPath ?? placement.localPath,
+    localPath: placement.localPath,
+    mountName: placement.mountName,
     enabled: change.enabled ?? placement.enabled,
     ...(sync === undefined ? {} : { sync: { ...sync, ...change.sync } }),
   });
@@ -90,4 +99,43 @@ export function pausedBodiesOf(
   return placements
     .filter((placement) => placement.hold === null && placement.enabled !== enabled)
     .map((placement) => changedBodyOf(placement, { enabled }));
+}
+
+export interface PickedFolder {
+  readonly rootId: string;
+  readonly folderItemId: string | null;
+  readonly name: string;
+}
+
+export function pickedFolderOf(
+  choice: PickerChoice<DriveOrigin>,
+  topRootId: (place: string) => string | null,
+): PickedFolder | null {
+  if (choice.kind !== 'folder') return null;
+  const item = choice.folder === null ? null : itemOf(choice.folder);
+  const rootId = item?.rootId ?? topRootId(choice.location.place);
+  if (rootId === null) return null;
+  return { rootId, folderItemId: choice.location.folder, name: choice.label };
+}
+
+export function sheetBodyOf(
+  deviceId: string,
+  mode: DrivePlacementMode,
+  picked: PickedFolder | null,
+  localPath: string | null,
+): DrivePlacementSet | null {
+  if (picked === null || (mode === 'synced' && localPath === null)) return null;
+  return placementBodyOf({
+    deviceId,
+    target: { rootId: picked.rootId, folderItemId: picked.folderItemId },
+    mode,
+    localPath: mode === 'synced' ? localPath : null,
+    mountName: mode === 'mounted' ? picked.name : null,
+  });
+}
+
+export function mountPlaceOf(computer: string, picked: PickedFolder | null): string {
+  return picked === null
+    ? `Mounts where ${computer} keeps network drives`
+    : `Mounts as ${picked.name} where ${computer} keeps network drives`;
 }

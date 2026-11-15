@@ -25,7 +25,7 @@ export const HOME_BATTERY_MODEL: ModelSpec = {
   title: 'Home battery',
   category: 'energy',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.2052, height: HEIGHT },
   framing: house('face', 22, 10),
   shots: [
     shot('charging', CHARGING, 'cell0', { zoom: 1.3, yaw: 20, pitch: 8, loopS: 2.4, stillAt: 1.2 }),

@@ -3,11 +3,15 @@ import { GoogleAccountsRepository } from '../google-accounts';
 import { GoogleSyncLogRepository } from '../google-sync-log';
 import { GoogleSyncStateRepository } from '../google-sync-state';
 import { PlannerAlarmsRepository } from '../planner-alarms';
+import { PlannerBookingPagesRepository } from '../planner-booking-pages';
 import { PlannerCollectionsRepository } from '../planner-collections';
+import { PlannerExportLinksRepository } from '../planner-export-links';
+import { PlannerGuestsRepository } from '../planner-guests';
 import { PlannerItemsRepository } from '../planner-items';
 import { PlannerOccurrencesRepository } from '../planner-occurrences';
 import { PlannerPreferencesRepository } from '../planner-preferences';
 import { PlannerRingsRepository } from '../planner-rings';
+import { PlannerSharesRepository } from '../planner-shares';
 import { PlannerStopwatchRepository } from '../planner-stopwatch';
 import { PlannerTimersRepository } from '../planner-timers';
 
@@ -20,6 +24,10 @@ export interface PlannerRepositories {
   readonly plannerTimers: PlannerTimersRepository;
   readonly plannerStopwatch: PlannerStopwatchRepository;
   readonly plannerPreferences: PlannerPreferencesRepository;
+  readonly plannerShares: PlannerSharesRepository;
+  readonly plannerGuests: PlannerGuestsRepository;
+  readonly plannerBookingPages: PlannerBookingPagesRepository;
+  readonly plannerExportLinks: PlannerExportLinksRepository;
   readonly googleAccounts: GoogleAccountsRepository;
   readonly googleSyncState: GoogleSyncStateRepository;
   readonly googleSyncLog: GoogleSyncLogRepository;
@@ -37,6 +45,10 @@ export function plannerRepositories(context: StoreContext): PlannerRepositories 
     plannerTimers: new PlannerTimersRepository(context),
     plannerStopwatch: new PlannerStopwatchRepository(context),
     plannerPreferences: new PlannerPreferencesRepository(context),
+    plannerShares: new PlannerSharesRepository(context),
+    plannerGuests: new PlannerGuestsRepository(context),
+    plannerBookingPages: new PlannerBookingPagesRepository(context),
+    plannerExportLinks: new PlannerExportLinksRepository(context),
     googleAccounts: new GoogleAccountsRepository(context),
     googleSyncState: new GoogleSyncStateRepository(context),
     googleSyncLog: new GoogleSyncLogRepository(context),

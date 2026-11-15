@@ -1,6 +1,6 @@
-import identity from '../../../../app-identity.json';
+import { APP_IDENTITY } from '@smarteverything/domain/app-identity';
 
-export const ANDROID_PACKAGE: string = identity.applicationId;
+export const ANDROID_PACKAGE: string = APP_IDENTITY.applicationId;
 
 export type GoogleClientPlatform = 'android' | 'desktop';
 

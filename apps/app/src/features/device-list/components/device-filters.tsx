@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { View, type LayoutChangeEvent } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 import { DEVICE_FAMILIES } from '@smarteverything/domain';
 import { ChoiceChip } from '../../../components/choice-chip';
 import { FilterChip } from '../../../components/filter-chip';
 import { HScroller } from '../../../components/h-scroller';
 import type { IconName } from '../../../components/icon-glyphs';
-import { SearchField } from '../../../components/search-field';
 import type { SelectOption } from '../../../components/select-picker';
 import { familyIcon } from '../../device-visuals';
 import type { DeviceQuery } from '../model/device-filter';
@@ -122,44 +122,28 @@ function FilterChips({
   );
 }
 
-const SEARCH_MIN_WIDTH = 256;
 const NARROW_FILTER_WIDTH = 400;
-const FILTER_GAP = 8;
 
 export function DeviceFilters(props: DeviceFiltersProps): ReactNode {
-  const { query, onChange } = props;
-  const { fontScale } = useWindowDimensions();
+  const { fontScale } = useWindowSize();
   const [width, setWidth] = useState(0);
   const [chips, setChips] = useState(0);
   const narrow = width > 0 && width < NARROW_FILTER_WIDTH * fontScale;
-  const inline = !narrow && chips > 0 && width >= SEARCH_MIN_WIDTH * fontScale + FILTER_GAP + chips;
   return (
     <View
-      className={inline ? 'flex-row items-center gap-2 pb-2' : 'gap-2 pb-2'}
       onLayout={(event) => {
         setWidth(event.nativeEvent.layout.width);
       }}
     >
-      <View className={inline ? 'min-w-0 flex-1' : ''}>
-        <SearchField
-          value={query.text}
-          onChange={(text) => {
-            onChange({ ...query, text });
-          }}
-          placeholder="Find a device"
-        />
-      </View>
-      <View style={inline ? { width: chips } : undefined}>
-        <FilterChips
-          {...props}
-          narrow={narrow}
-          width={width}
-          overflows={!narrow && width > 0 && chips > width}
-          measure={(event) => {
-            setChips(Math.ceil(event.nativeEvent.layout.width));
-          }}
-        />
-      </View>
+      <FilterChips
+        {...props}
+        narrow={narrow}
+        width={width}
+        overflows={!narrow && width > 0 && chips > width}
+        measure={(event) => {
+          setChips(Math.ceil(event.nativeEvent.layout.width));
+        }}
+      />
     </View>
   );
 }

@@ -14,10 +14,15 @@ import {
   type HubUpdatePhase,
   type HubUpdateRelease,
 } from '@smarteverything/domain';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import type { WatchdogOptions } from './self-update-watchdog-contract.ts';
 import { ledgerReason } from './self-update-ledger.ts';
+import {
+  HUB_NODE_EXECUTABLE,
+  UPDATE_ENTRY_DIRECTORY,
+  UPDATE_ENTRY_FILES,
+} from './hub-install-layout.ts';
 
 export type { WatchdogOptions } from './self-update-watchdog-contract.ts';
 
@@ -285,20 +290,82 @@ async function restoreService(flow: Flow): Promise<string | null> {
   }
 }
 
-export async function revert(flow: Flow, reason: string): Promise<HubUpdateRelease> {
-  transition(flow, 'reverting', { reason });
+export function reportFile(flow: Flow): string {
+  return join(dirname(flow.options.ledger), `${flow.options.runId}-report.json`);
+}
+
+function decisionInput(flow: Flow, action: 'rollback' | 'recover'): string {
+  const input =
+    action === 'rollback'
+      ? { action, artifact: 'hub', id: flow.options.runId }
+      : { action, id: flow.options.runId };
+  return JSON.stringify(input);
+}
+
+function writeReport(flow: Flow, release: HubUpdateRelease): void {
+  const { install, service, data } = flow.options;
+  const entry = join(service, UPDATE_ENTRY_DIRECTORY, UPDATE_ENTRY_FILES.hubCommand);
+  const report = {
+    runId: release.runId,
+    phase: release.phase,
+    reason: release.reason,
+    failedChecks: release.failedChecks,
+    checks: release.checks,
+    backup: release.backup,
+    startingSchema: release.startingSchema,
+    service,
+    data,
+    at: flow.now().toISOString(),
+    choices: ['rollback', 'recover', 'keep'],
+    commands: {
+      environment: { SMARTEVERYTHING_SELF_UPDATE_INSTALL: install },
+      node: join(install, HUB_NODE_EXECUTABLE),
+      entry,
+      rollback: [data, decisionInput(flow, 'rollback')],
+      recover: [data, decisionInput(flow, 'recover')],
+    },
+  };
+  flow.storage.makeDirectory(dirname(reportFile(flow)));
+  flow.storage.write(reportFile(flow), `${JSON.stringify(report, null, 2)}\n`);
+}
+
+export function clearReport(flow: Flow): void {
+  flow.storage.removeAny(reportFile(flow));
+}
+
+export function awaitDecision(
+  flow: Flow,
+  reason: string,
+  failedChecks: readonly HubUpdateCheck[],
+): HubUpdateRelease {
   flow.storage.removeAny(flow.options.health);
+  const release = transition(flow, 'awaiting_decision', {
+    reason,
+    failedChecks: [...failedChecks],
+  });
+  writeReport(flow, release);
+  flow.note('hub_update.awaiting_decision', { runId: release.runId, reason: release.reason });
+  return release;
+}
+
+export async function rollBack(flow: Flow, release: HubUpdateRelease): Promise<HubUpdateRelease> {
+  const reason = `the owner ordered a rollback${release.reason === null ? '' : ` after: ${release.reason}`}`;
+  flow.storage.removeAny(flow.options.health);
+  flow.note('hub_update.rollback_started', { runId: release.runId });
   const failure = await restoreService(flow);
   if (failure === null) {
     flow.note('hub_update.reverted', {});
-    const release = transition(flow, 'reverted', { reason });
+    const reverted = transition(flow, 'reverted', { reason });
+    clearReport(flow);
     cleanVerifiedBackup(flow);
-    return release;
+    return reverted;
   }
   flow.note('hub_update.unrecoverable', { reason, failure });
-  return transition(flow, 'unrecoverable', {
+  const unrecoverable = transition(flow, 'unrecoverable', {
     reason: `${reason}; restoring the saved release failed: ${failure}`,
   });
+  writeReport(flow, unrecoverable);
+  return unrecoverable;
 }
 
 export function cleanVerifiedBackup(flow: Flow): void {

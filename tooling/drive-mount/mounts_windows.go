@@ -7,33 +7,59 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
+	"github.com/smarteverything/drive-mount/wire"
 	"github.com/winfsp/cgofuse/fuse"
+	"golang.org/x/sys/windows"
 )
 
-var mountOptions = []string{"-o", "ro,volname=SmartEverything Drive,FileSystemName=smarteverything-drive"}
+const attachTimeout = 30 * time.Second
+
+var mountOptions = []string{"-o", "uid=-1,gid=-1,volname=SmartEverything Drive,FileSystemName=smarteverything-drive"}
 
 type activeMount struct {
-	id     string
-	root   mountRoot
-	host   *fuse.FileSystemHost
-	cancel context.CancelFunc
-	done   chan struct{}
+	id      string
+	root    mountRoot
+	hubRoot string
+	rootIno uint64
+	host    *fuse.FileSystemHost
+	fs      *winFS
+	open    *openCounter
+	cancel  context.CancelFunc
+	done    chan struct{}
 }
 
 type mountSet struct {
-	source Filesystem
+	source InodeFilesystem
 	report *reporter
 	mu     sync.Mutex
 	mounts map[string]*activeMount
 }
 
-func newMountSet(source Filesystem, report *reporter) *mountSet {
-	return &mountSet{source: source, report: report, mounts: map[string]*activeMount{}}
+func newMountSet(source InodeFilesystem, report *reporter) *mountSet {
+	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}}
+	source.OnChange(set.sourceChanged)
+	return set
+}
+
+func (s *mountSet) sourceChanged(change Change) {
+	s.mu.Lock()
+	var affected []*activeMount
+	for _, active := range s.mounts {
+		if active.hubRoot == change.Root {
+			affected = append(affected, active)
+		}
+	}
+	s.mu.Unlock()
+	for _, active := range affected {
+		active.fs.apply(active.host, change)
+		s.publish(active)
+	}
 }
 
 func (s *mountSet) route(spec routeSpec) error {
-	return s.source.SwitchRoute(spec)
+	return s.source.SwitchRoute(wire.Route{URL: spec.URL, Server: spec.Server, Pin: spec.Pin})
 }
 
 func (s *mountSet) fail(id string, err error) error {
@@ -41,9 +67,30 @@ func (s *mountSet) fail(id string, err error) error {
 	return err
 }
 
+func driveLetterIndex(point string) (uint32, bool) {
+	if len(point) != 2 || point[1] != ':' {
+		return 0, false
+	}
+	letter := point[0] | 0x20
+	if letter < 'a' || letter > 'z' {
+		return 0, false
+	}
+	return uint32(letter - 'a'), true
+}
+
 func checkMountPoint(point string) error {
+	if index, ok := driveLetterIndex(point); ok {
+		inUse, err := windows.GetLogicalDrives()
+		if err != nil {
+			return err
+		}
+		if inUse&(1<<index) != 0 {
+			return fmt.Errorf("drive %s is already in use", point)
+		}
+		return nil
+	}
 	if !filepath.IsAbs(point) {
-		return fmt.Errorf("mount point %q is not absolute", point)
+		return fmt.Errorf("mount point %q is neither a drive letter nor an absolute path", point)
 	}
 	_, err := os.Lstat(point)
 	if err == nil {
@@ -68,19 +115,29 @@ func serveMount(host *fuse.FileSystemHost, point string, finished chan<- error) 
 	finished <- errors.New("WinFsp refused the mount")
 }
 
-func (s *mountSet) mount(id string, root mountRoot, point string) error {
+func (s *mountSet) mount(id string, root mountRoot, point string, options mountOptions) error {
 	if err := checkMountPoint(point); err != nil {
 		return s.fail(id, err)
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.mounts[id]; exists {
+	_, exists := s.mounts[id]
+	s.mu.Unlock()
+	if exists {
 		return fmt.Errorf("mount %q already exists", id)
 	}
+	attachCtx, attachCancel := context.WithTimeout(context.Background(), attachTimeout)
+	attached, err := s.source.Attach(attachCtx, id)
+	attachCancel()
+	if err != nil {
+		return s.fail(id, err)
+	}
+	if r, ok := s.source.(legacyPinRestorer); ok {
+		r.RestoreLegacyPins(root, attached.Ino)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	system := newWinFS(ctx, s.source, root)
+	open := &openCounter{}
+	system := newWinFS(ctx, options.source(s.source), attached.Ino, open, options)
 	host := fuse.NewFileSystemHost(system)
-	host.SetCapCaseInsensitive(true)
 	host.SetCapReaddirPlus(true)
 	finished := make(chan error, 1)
 	go serveMount(host, point, finished)
@@ -90,11 +147,19 @@ func (s *mountSet) mount(id string, root mountRoot, point string) error {
 		cancel()
 		return s.fail(id, err)
 	}
-	active := &activeMount{id: id, root: root, host: host, cancel: cancel, done: make(chan struct{})}
+	active := &activeMount{id: id, root: root, hubRoot: attached.Root, rootIno: attached.Ino, host: host, fs: system, open: open, cancel: cancel, done: make(chan struct{})}
+	open.changed = func() { s.publish(active) }
+	s.mu.Lock()
 	s.mounts[id] = active
+	s.mu.Unlock()
 	go s.watch(active, finished)
 	s.report.status(id, stateMounted, "")
+	s.publish(active)
 	return nil
+}
+
+func (s *mountSet) publish(active *activeMount) {
+	s.report.usage(active.id, s.source.Usage(active.hubRoot), s.source.PinnedBytes(active.hubRoot), active.open.count.Load(), s.source.Pending(active.hubRoot))
 }
 
 func (s *mountSet) watch(active *activeMount, finished <-chan error) {
@@ -163,7 +228,12 @@ func (s *mountSet) pin(id, filePath string) error {
 	if err != nil {
 		return err
 	}
-	return s.source.Pin(context.Background(), active.root, filePath)
+	defer s.publish(active)
+	e, err := active.fs.resolve(filePath)
+	if err != nil {
+		return err
+	}
+	return s.source.Pin(context.Background(), e.Ino)
 }
 
 func (s *mountSet) unpin(id, filePath string) error {
@@ -171,7 +241,12 @@ func (s *mountSet) unpin(id, filePath string) error {
 	if err != nil {
 		return err
 	}
-	return s.source.Unpin(context.Background(), active.root, filePath)
+	defer s.publish(active)
+	e, err := active.fs.resolve(filePath)
+	if err != nil {
+		return err
+	}
+	return s.source.Unpin(context.Background(), e.Ino)
 }
 
 func (s *mountSet) cache(policy cachePolicy) error {

@@ -19,7 +19,7 @@ const SHIPPED_NOTHING: readonly RegExp[] = [
 ];
 
 const NATIVE_APP =
-  /^apps\/app\/(?:modules\/|plugins\/|android\/|certs\/|app\.config\.ts$|app-identity\.json$|fingerprint\.config\.js$|google-services\.json$|package\.json$)/u;
+  /^apps\/app\/(?:modules\/|plugins\/|android\/|certs\/|app\.config\.ts$|fingerprint\.config\.js$|google-services\.json$|package\.json$)/u;
 
 const RULES: readonly Rule[] = [
   [
@@ -27,6 +27,7 @@ const RULES: readonly Rule[] = [
     EVERYTHING,
   ],
   [NATIVE_APP, ['app', 'ui']],
+  [/^packages\/domain\/src\/app-identity\.ts$/u, ['hub', 'app', 'ui']],
   [/^apps\/app\//u, ['ui']],
   [/^apps\/desktop\//u, ['desktop']],
   [/^apps\/hub\/src\/(?:node|client-network|network|data-layout|service)\//u, ['hub', 'desktop']],

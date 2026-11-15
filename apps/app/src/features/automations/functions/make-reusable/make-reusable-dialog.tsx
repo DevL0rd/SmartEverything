@@ -67,7 +67,7 @@ function Footer({
   readonly onSubmit: () => void;
 }): ReactNode {
   return (
-    <View className="flex-row gap-2">
+    <View className="flex-1 flex-row gap-2">
       <Button label="Cancel" variant="text" onPress={onCancel} disabled={busy} />
       <Button label="Make Custom Node" icon="box" grow loading={busy} onPress={onSubmit} />
     </View>

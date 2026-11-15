@@ -4,8 +4,10 @@ import { background } from '@smarteverything/logging';
 import {
   batteryOptimizationIgnored,
   fullScreenAlarmAllowed,
+  notificationPolicyAllowed,
   openBatterySettings,
   openFullScreenAlarmSettings,
+  openNotificationPolicySettings,
   plannerLinked,
 } from '../../../../modules/health-connect';
 import { ValueStore, useValue } from '../../../design/external-store';
@@ -17,16 +19,23 @@ const alarmPhone = new ValueStore<AlarmPhoneFacts>(UNKNOWN_ALARM_PHONE);
 const OPENERS: Readonly<Record<SystemSetting, () => Promise<void>>> = {
   full_screen_alarms: openFullScreenAlarmSettings,
   background_alarms: openBatterySettings,
+  do_not_disturb: openNotificationPolicySettings,
 };
 
 async function refreshAlarmPhone(): Promise<void> {
-  const [fullScreen, unrestricted] = await Promise.all([
+  const [fullScreen, unrestricted, quiet] = await Promise.all([
     fullScreenAlarmAllowed(),
     batteryOptimizationIgnored(),
+    notificationPolicyAllowed(),
   ]);
   const current = alarmPhone.get();
-  if (current.fullScreen === fullScreen && current.unrestricted === unrestricted) return;
-  alarmPhone.set({ fullScreen, unrestricted });
+  if (
+    current.fullScreen === fullScreen &&
+    current.unrestricted === unrestricted &&
+    current.quiet === quiet
+  )
+    return;
+  alarmPhone.set({ fullScreen, unrestricted, quiet });
 }
 
 export function useAlarmPhone(): AlarmPhoneFacts {

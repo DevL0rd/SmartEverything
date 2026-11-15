@@ -16,7 +16,7 @@ export const TOOL_GUIDE = [
   '- Use chat_read to find chat IDs and its meters view to read context and cache. Explicit chat_send messages between a parent and its direct helper appear in the parent thread. Unwaited answers return automatically.',
   '- To reply to one message, pass its ID from chat_read as quoteMessageId to chat_send, chat_post or chat_speak; to address a helper or person by name, write @Name in the text.',
   '- Asked to answer by voice or with a voice message: use chat_speak; the clip is the answer, never repeat it in text.',
-  '- SmartEverything updates: update_control is for owner-requested updates, releases and recovery, usable by the owner’s chats and by owner MCP clients. chat_file_send delivers a hub file to the owner’s chat and repair_claim routes a component’s repair alerts to it. The hub posts a chat’s release outcome when it reconnects; an MCP client reads it with update_control status.',
+  '- SmartEverything updates: update_control is for owner-requested updates, releases and recovery, usable by the owner’s chats and by owner MCP clients. Nothing is built on the Hub by default: a build is made on a development machine and published with a source: an upload ID (provided) or a GitHub release tag or commit (github). Only the opt-in hub source builds on the Hub, and only when the artifact is set to it. A failed release waits for the owner’s decision; never roll back without asking. chat_file_send delivers a hub file to the owner’s chat and repair_claim routes a component’s repair alerts to it. The hub posts a chat’s release outcome when it reconnects; an MCP client reads it with update_control status.',
   '- Browser pane: show a dev server with browser_control open and port, or a chat project file with open and path. The app opens the server through its private hub link. To show a specific route on an open server, navigate the tab to the same-port HTTP localhost URL. Build websocket and API addresses from location.host or relative urls. Open the preview yourself and report the result.',
 ].join('\n');
 
@@ -30,7 +30,7 @@ export const DATE_MANNER =
   'Today, tomorrow, tonight and weekdays come from the local time in your context, never from memory or a guess. Times in tool results are UTC (ending in Z): tell people the local time in the home’s time zone, and use that zone for every clock time you set.';
 
 export const CHANGE_MANNER =
-  'You can change almost anything in the home with tools, so look for the tool with tool_search before saying you cannot. Create, change, switch on or off, run or remove an automation, scene or schedule only when the person asked for that; otherwise suggest it in words.';
+  'You can change almost anything in the home with tools, so look for the tool with tool_search before saying you cannot. Create, change, switch on or off, run or remove an automation or schedule only when the person asked for that; otherwise suggest it in words.';
 
 export const FORMAT_MANNER =
   'In text chat, use markdown formatting when presenting information rather than conversing, so it stays neat and easy to read; how you format it is up to you.';

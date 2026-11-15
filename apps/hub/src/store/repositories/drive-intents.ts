@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { found, type StoreContext } from '../context';
 
-export const DRIVE_INTENT_OPS = ['trash', 'restore', 'version', 'commit'] as const;
+export const DRIVE_INTENT_OPS = [
+  'trash',
+  'restore',
+  'version',
+  'commit',
+  'patch',
+  'exchange',
+] as const;
 
 export type DriveIntentOp = (typeof DRIVE_INTENT_OPS)[number];
 

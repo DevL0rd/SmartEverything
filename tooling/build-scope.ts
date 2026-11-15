@@ -141,7 +141,11 @@ export function parseHighWater(status: string): number {
 
 const RECORDED_HIGH_WATER = z.strictObject({ bytes: z.number().int().nonnegative() });
 
-export function highWaterFile(layout: Pick<HubLayout, 'cache'>): string {
+export interface BuildScopeLayout {
+  readonly cache: Pick<HubLayout['cache'], 'buildHost'>;
+}
+
+export function highWaterFile(layout: BuildScopeLayout): string {
   return join(layout.cache.buildHost, HUB_HIGH_WATER_FILE);
 }
 
@@ -161,7 +165,7 @@ export function recordHighWater(file: string, bytes: number): void {
   renameSync(staged, file);
 }
 
-export function measureMemory(layout: Pick<HubLayout, 'cache'>): MemoryMeasurement {
+export function measureMemory(layout: BuildScopeLayout): MemoryMeasurement {
   const shown = spawnSync(
     'systemctl',
     ['--user', 'show', HUB_UNIT, '-p', 'MemoryPeak', '-p', 'MemoryCurrent', '-p', 'MainPID'],
@@ -270,7 +274,7 @@ export function scopeCommand(
   };
 }
 
-export function measuredBuildScope(kind: BuildKind, layout: Pick<HubLayout, 'cache'>): BuildScope {
+export function measuredBuildScope(kind: BuildKind, layout: BuildScopeLayout): BuildScope {
   const limitBytes = buildMemoryLimit(measureMemory(layout), kind);
   return {
     kind,
@@ -299,7 +303,7 @@ export function killedByLimit(status: number | null, signal: NodeJS.Signals | nu
 
 function scopeOrSettle(
   kind: BuildKind,
-  layout: Pick<HubLayout, 'cache'>,
+  layout: BuildScopeLayout,
   settle: (error: BuildScopeError) => void,
 ): BuildScope {
   try {
@@ -312,7 +316,7 @@ function scopeOrSettle(
 
 export function runInBuildScope(
   kind: BuildKind,
-  layout: Pick<HubLayout, 'cache'>,
+  layout: BuildScopeLayout,
   settle: (error: BuildScopeError) => void,
 ): number | null {
   if (insideBuildScope()) return null;

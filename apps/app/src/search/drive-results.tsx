@@ -25,11 +25,13 @@ import { DURATION } from '../design/motion';
 import { compact, count } from '../format/number';
 import { joinParts } from '../format/text';
 import { useSyncStatus } from '../store/selectors';
-import { DriveThumb } from '../features/drive/folder/folder-list';
+import { DriveThumb } from '../features/drive/components/drive-thumb';
+import { thumbReadyOf } from '../features/drive/model/item-content';
 import { drivePathOf } from '../features/drive/model/drive-chip';
 import { KIND_LOOK, openHrefOf } from '../features/drive/recent/recent-model';
 import { useSaveSmartFolder } from '../features/drive/starred';
 import { flattenPages, useDriveChips, useDriveRoots, useDriveSearch } from '../features/drive';
+import { driveKindOf, driveWordsOf } from './drive-words';
 import { rangeIn } from './match';
 import { useRecentSearches } from './recent';
 import type { RowEdge } from './result-rows';
@@ -43,18 +45,14 @@ const TILE_PX = 96;
 
 const TILE_GAP_PX = 4;
 
-const WORD = /[\p{L}\p{N}\p{M}]+/gu;
-
-export function driveWordsOf(query: string): readonly string[] {
-  return query.match(WORD) ?? [];
-}
-
 export function driveSearchOf(query: string): Omit<DriveQuery, 'cursor'> {
+  const kind = driveKindOf(query);
   return {
-    text: query.trim(),
+    text: kind === null ? query.trim() : null,
+    match: 'all',
     rootId: null,
     folderId: null,
-    kinds: null,
+    kinds: kind === null ? null : [kind],
     starred: null,
     duration: null,
     taken: null,
@@ -64,7 +62,7 @@ export function driveSearchOf(query: string): Omit<DriveQuery, 'cursor'> {
 
 export function driveSmartRuleOf(query: string): SmartRule | null {
   const words = driveWordsOf(query);
-  return words.length === 0
+  return words.length === 0 || driveKindOf(query) !== null
     ? null
     : {
         match: 'all',
@@ -196,7 +194,7 @@ function PhotoStrip({ photos, more, query, look, open }: StripProps): ReactNode 
 }
 
 function FileLeading({ item }: { readonly item: DriveItem }): ReactNode {
-  if (item.kind !== 'folder' && item.thumb.state === 'ready') {
+  if (thumbReadyOf(item)) {
     return <DriveThumb item={item} className="size-8 rounded-sm" />;
   }
   const look = KIND_LOOK[item.kind];

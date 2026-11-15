@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import { useWindowSize } from '../../../design/size-class';
 import { useIsFocused, useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { ToastModal } from '../../../components/toast-modal';
@@ -7,6 +8,7 @@ import { IconButton } from '../../../components/icon-button';
 import { OverflowButton, type MenuSubpageNavigation } from '../../../components/menu';
 import { CameraDots } from './camera-dots';
 import { EdgeScrim } from '../../../components/edge-scrim';
+import { ShellTitle } from '../../../components/page-shell/shell-parts';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { PlayerControls } from '../player/player-controls';
@@ -31,7 +33,7 @@ function SwitchButton({
   readonly viewer: Viewer;
 }): ReactNode {
   const { switchCamera } = viewer;
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useWindowSize();
   if (switchCamera === null || height > width) {
     return null;
   }
@@ -47,7 +49,7 @@ function SwitchButton({
 }
 
 function PortraitDots({ deviceId }: { readonly deviceId: string }): ReactNode {
-  const { width, height } = useWindowDimensions();
+  const { width, height } = useWindowSize();
   return height > width ? <CameraDots deviceId={deviceId} /> : null;
 }
 
@@ -61,7 +63,7 @@ function LeaveButton({ viewer, immersive }: TopBarProps): ReactNode {
 
 const FILL = { flex: 1 };
 
-function LiveChip(): ReactNode {
+export function LiveChip(): ReactNode {
   return (
     <View className="shrink-0 flex-row items-center gap-1 rounded-full bg-black/60 px-2 py-0.5">
       <Dot tone="critical" />
@@ -99,6 +101,15 @@ function streamInfoSubpage(live: Viewer['live']): (navigation: MenuSubpageNaviga
   };
 }
 
+export function ViewerHeading({ viewer }: { readonly viewer: Viewer }): ReactNode {
+  return (
+    <View className="min-w-0 gap-1">
+      <ShellTitle title={viewer.entry.name} size="bar" />
+      <PortraitDots deviceId={viewer.entry.device.id} />
+    </View>
+  );
+}
+
 function TopBar({ viewer, immersive }: TopBarProps): ReactNode {
   const router = useRouter();
   const { entry } = viewer;
@@ -113,11 +124,8 @@ function TopBar({ viewer, immersive }: TopBarProps): ReactNode {
       <EdgeScrim edge="top" />
       <LeaveButton viewer={viewer} immersive={immersive} />
       <SwitchButton step={-1} viewer={viewer} />
-      <View className="min-w-0 shrink gap-1">
-        <Text variant="title-3" numberOfLines={1} className="px-1">
-          {entry.name}
-        </Text>
-        <PortraitDots deviceId={entry.device.id} />
+      <View className="min-w-0 shrink px-1">
+        <ViewerHeading viewer={viewer} />
       </View>
       <View className="shrink-0 grow flex-row items-center">
         {viewer.live.state.kind === 'live' ? <LiveChip /> : null}
@@ -192,18 +200,17 @@ function Stage({
 
 export interface ViewerPlayerProps {
   readonly viewer: Viewer;
-  readonly topBar: boolean;
   readonly rounded: boolean;
 }
 
-export function ViewerPlayer({ viewer, topBar, rounded }: ViewerPlayerProps): ReactNode {
+export function ViewerPlayer({ viewer, rounded }: ViewerPlayerProps): ReactNode {
   const { fullScreen, hide } = viewer;
   return (
     <View
       onPointerMove={hide.poke}
       className={cn('aspect-video w-full overflow-hidden bg-black', rounded && 'rounded-lg')}
     >
-      {fullScreen.immersive ? null : <Stage viewer={viewer} immersive={false} topBar={topBar} />}
+      {fullScreen.immersive ? null : <Stage viewer={viewer} immersive={false} topBar={false} />}
     </View>
   );
 }

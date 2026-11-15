@@ -6,7 +6,7 @@ const THICK = 0.012;
 export const RUNNER_MODEL: ModelSpec = rugItem({
   id: 'cat.rugs.runner',
   title: 'Runner',
-  footprint: { width: 2.72, depth: 0.7, height: 0.02 },
+  footprint: { width: 2.72, depth: 0.7, height: 0.0175 },
   size: {
     width: { param: 'length', extra: 0.12, resizes: true },
     depth: { param: 'width', extra: 0, resizes: true },

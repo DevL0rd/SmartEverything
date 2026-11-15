@@ -169,7 +169,7 @@ export const RICE_COOKER_MODEL: ModelSpec = {
   title: 'Rice cooker',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.3284, height: 0.263 },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: [
     {

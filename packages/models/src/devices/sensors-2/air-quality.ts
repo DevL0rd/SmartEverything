@@ -24,7 +24,7 @@ export const AIR_QUALITY_MONITOR_MODEL: ModelSpec = {
   title: 'Air quality monitor',
   category: 'sensor',
   family: 'sensor',
-  footprint: { width: 2 * R, depth: 2 * R, height: HEIGHT },
+  footprint: { width: 2 * R, depth: 2 * R, height: 0.097 },
   framing: {
     tile: { ...HOUSE, padding: 0.08 },
     card: HOUSE,

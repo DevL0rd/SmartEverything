@@ -13,6 +13,7 @@ interface CellProps {
   readonly label: string;
   readonly selected?: boolean;
   readonly disabled?: boolean;
+  readonly className?: string;
   readonly onPress: () => void;
 }
 
@@ -22,11 +23,19 @@ interface CalendarSheetProps {
   readonly children: ReactNode;
 }
 
-const seen = vi.hoisted(() => ({
-  buttons: new Array<ButtonProps>(),
-  cells: new Array<CellProps>(),
-  sheets: new Array<CalendarSheetProps>(),
-}));
+const seen = vi.hoisted(
+  (): {
+    buttons: ButtonProps[];
+    cells: CellProps[];
+    sheets: CalendarSheetProps[];
+    idiom: 'pointer' | 'touch';
+  } => ({
+    buttons: new Array<ButtonProps>(),
+    cells: new Array<CellProps>(),
+    sheets: new Array<CalendarSheetProps>(),
+    idiom: 'pointer',
+  }),
+);
 
 vi.mock('react-native', async () => {
   const react = await import('react');
@@ -41,7 +50,7 @@ vi.mock('react-native', async () => {
   };
 });
 
-vi.mock('../design/platform', () => ({ useIdiom: (): string => 'pointer' }));
+vi.mock('../design/platform', () => ({ useIdiom: (): string => seen.idiom }));
 
 vi.mock('./sheet', () => ({
   Sheet: (props: CalendarSheetProps): ReactNode => {
@@ -123,6 +132,7 @@ beforeEach(() => {
   seen.buttons.length = 0;
   seen.cells.length = 0;
   seen.sheets.length = 0;
+  seen.idiom = 'pointer';
 });
 
 describe('DateNav stepping', () => {
@@ -235,5 +245,36 @@ describe('DateNav calendar', () => {
   it('shifts the calendar month with its own previous button', () => {
     render(new Date(2026, 9, 16), 'month');
     expect(seen.buttons.filter((entry) => entry.label === 'Previous month')).toHaveLength(2);
+  });
+
+  it('gives each day a 44 px target on touch and keeps the 40 px cell with a pointer', () => {
+    seen.idiom = 'touch';
+    render(new Date(2026, 9, 16), 'day');
+    expect(dayCells().every((cell) => (cell.className ?? '').split(' ').includes('size-11'))).toBe(
+      true,
+    );
+    seen.idiom = 'pointer';
+    render(new Date(2026, 9, 16), 'day');
+    expect(dayCells().every((cell) => (cell.className ?? '').split(' ').includes('size-10'))).toBe(
+      true,
+    );
+  });
+});
+
+describe('DateNav chip', () => {
+  it('names the year on the day chip when asked, for dates in this year too', () => {
+    const today = new Date();
+    const value = new Date(today.getFullYear(), 10, 10);
+    seen.cells.length = 0;
+    seen.sheets.length = 0;
+    seen.buttons.length = 0;
+    renderToStaticMarkup(
+      createElement(DateNav, { value, range: 'day', onChange: changeSpy(), withYear: true }),
+    );
+    const chip = seen.cells.find((cell) => cell.label.endsWith('choose date'));
+    expect(chip?.label).toContain(String(today.getFullYear()));
+    render(value, 'day');
+    const plain = seen.cells.find((cell) => cell.label.endsWith('choose date'));
+    expect(plain?.label).not.toContain(String(today.getFullYear()));
   });
 });

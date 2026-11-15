@@ -1,6 +1,7 @@
 package expo.modules.healthconnect.planner
 
 import android.net.Uri
+import java.net.URI
 import java.time.Instant
 
 object RingKeys {
@@ -12,8 +13,12 @@ object RingKeys {
 
   fun isSnooze(ringKey: String): Boolean = ringKey.endsWith(SNOOZE_MARK)
 
-  fun linkOf(scheme: String, ringKey: String): Uri =
-    Uri.Builder().scheme(scheme).authority("clock").appendPath("ring").appendPath(baseOf(ringKey)).build()
+  fun linkTextOf(scheme: String, ringKey: String): String =
+    URI(scheme, LINK_HOST, "/" + baseOf(ringKey), null).toString()
+
+  fun linkOf(scheme: String, ringKey: String): Uri = Uri.parse(linkTextOf(scheme, ringKey))
+
+  private const val LINK_HOST = "ring"
 }
 
 object RingSnooze {
@@ -27,7 +32,9 @@ object RingSnooze {
     base.vibrate,
     base.label,
     null,
-    base.snoozeMinutes
+    base.snoozeMinutes,
+    base.snoozeLimit,
+    base.challenge
   )
 
   private const val SECONDS_PER_MINUTE = 60L

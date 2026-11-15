@@ -125,7 +125,6 @@ export {
   PUSH_TARGET_ROW,
   RECORDING_KINDS,
   RECORDING_ROW,
-  SCENE_ROW,
 } from './rows-media';
 export type {
   AutomationAuthor,
@@ -138,7 +137,6 @@ export type {
   PushTargetRow,
   RecordingKind,
   RecordingRow,
-  SceneRow,
 } from './rows-media';
 
 export {
@@ -198,6 +196,8 @@ export type { McpApprovalCode } from './endpoints-health';
 export { COMMAND_INPUT, HISTORY_BUCKET } from './endpoints-devices';
 export type { CommandInput, HistoryBucket } from './endpoints-devices';
 export { MEDIA_LINK, SESSION_DESCRIPTION } from './endpoints-media';
+export { COMPUTER_FILE_LINKS, COMPUTER_ZIP_ENTRY_LINK } from './endpoints-computer-system';
+export type { ComputerFileLinks, ComputerZipEntryLink } from './endpoints-computer-system';
 export { IR_APPLIANCE, IR_APPLIANCE_APPLY } from './endpoints-ir-appliances';
 export type { IrAppliance, IrApplianceApply } from './endpoints-ir-appliances';
 export {
@@ -296,6 +296,7 @@ export * from '../robot';
 export * from './endpoints-computer-ai';
 export * from './endpoints-computer-nodes';
 export * from './endpoints-machine-updates';
+export * from './endpoints-releases';
 export * from './endpoints-app-updates';
 
 export * from './endpoints-ai-provider';
@@ -310,7 +311,6 @@ export { CONNECTION_ENDPOINTS } from './endpoints-connections';
 export * from '../ai-harness-discovery';
 
 export * from './endpoints-device-effects';
-export * from './endpoints-scenes';
 export * from './endpoints-client';
 export * from './endpoints-automation-values';
 export * from './endpoints-device-groups';

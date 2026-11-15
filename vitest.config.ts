@@ -160,6 +160,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'google',
+          root: './packages/google',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
           name: 'models',
           root: './packages/models',
           environment: 'node',
@@ -229,7 +237,7 @@ export default defineConfig({
           name: 'app',
           root: './apps/app',
           environment: 'node',
-          include: ['src/**/*.test.ts', 'plugins/**/*.test.ts'],
+          include: ['src/**/*.test.{ts,tsx}', 'plugins/**/*.test.{ts,tsx}'],
           testTimeout: 30_000,
           hookTimeout: 30_000,
           server: {
@@ -263,6 +271,19 @@ export default defineConfig({
           alias: {
             '@react-native-community/netinfo': `${fileURLToPath(new URL('./node_modules/', import.meta.url))}@react-native-community/netinfo/lib/module/index.js`,
           },
+        },
+      },
+      {
+        test: {
+          name: 'tooling',
+          root: './tooling',
+          environment: 'node',
+          include: [
+            'go2rtc/**/*.test.ts',
+            'drive-fs-rig/**/*.test.ts',
+            'test-hub/**/*.test.ts',
+            'integration/**/*.test.ts',
+          ],
         },
       },
       {

@@ -26,13 +26,7 @@ function Page({
   const { stats } = snapshot;
   const lists =
     stats === null ? null : (
-      <TopLists
-        device={device}
-        stats={stats}
-        lists={ALL_LISTS}
-        limit={FULL_ROWS}
-        stale={snapshot.connection.state !== 'online'}
-      />
+      <TopLists device={device} stats={stats} lists={ALL_LISTS} limit={FULL_ROWS} />
     );
   if (beside) {
     return lists;

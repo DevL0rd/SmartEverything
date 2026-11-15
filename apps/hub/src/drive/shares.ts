@@ -11,6 +11,7 @@ import {
   DRIVE_SHARE_CREATED,
   MEDIA_PATHS,
   buildPath,
+  type DriveAlbum,
   type DriveItem,
   type DriveShare,
   type DriveShareCreate,
@@ -21,8 +22,17 @@ import { z } from 'zod';
 import { LINK_LIFETIME_SECONDS } from '../server/media-links';
 import type { DriveItemWindow } from '../store/repositories/drive-items';
 import type { Store } from '../store/store';
+import { decodeCursor, encodeCursor } from './search';
 import { readDriveSettings } from './settings';
-import { canRead, canShare, itemAccess, type DriveActor, type ItemAccess } from './access';
+import { VIEW_ONLY_REASON } from './sharing/export-guard';
+import {
+  canRead,
+  canShare,
+  itemAccess,
+  inLockedFolder,
+  type DriveActor,
+  type ItemAccess,
+} from './access';
 
 const log = new Logger('hub.drive');
 
@@ -59,18 +69,36 @@ export interface ShareActor extends DriveActor {
 export interface SharesEnv {
   readonly store: Pick<
     Store,
-    'driveShares' | 'driveItems' | 'driveRoots' | 'driveGrants' | 'settingsKv'
+    'driveShares' | 'driveItems' | 'driveRoots' | 'driveGrants' | 'driveAlbums' | 'settingsKv'
   >;
   readonly origin: () => ShareOrigin;
   readonly now: () => Date;
 }
 
-export interface ShareAccess {
+export interface ItemShareAccess {
+  readonly kind: 'item';
   readonly share: DriveShare;
   readonly passwordHash: string | null;
+  readonly entryId: string;
   readonly item: DriveItem;
-  readonly rootPath: string;
 }
+
+export interface AlbumShareAccess {
+  readonly kind: 'album';
+  readonly share: DriveShare;
+  readonly passwordHash: string | null;
+  readonly entryId: string;
+  readonly album: DriveAlbum;
+}
+
+export type ShareAccess = ItemShareAccess | AlbumShareAccess;
+
+export interface AlbumShareWindow {
+  readonly items: readonly DriveItem[];
+  readonly next: string | null;
+}
+
+const ALBUM_AFTER = z.strictObject({ position: z.number(), itemId: z.string().min(1) });
 
 export interface ShareLink {
   readonly url: string;
@@ -110,7 +138,7 @@ export class GuessLimiter {
 
   check(key: string): void {
     if (this.recent(key).length >= GUESS_LIMIT) {
-      throw new ApiError('rate_limited', 'Too many wrong passwords; try again later.');
+      throw new ApiError('rate_limited', 'Too many wrong attempts; try again later.');
     }
   }
 
@@ -136,12 +164,16 @@ export class DriveShares {
   }
 
   async create(actor: ShareActor, input: DriveShareCreate): Promise<DriveShareCreated> {
-    const item = this.visibleItem(actor, input.itemId);
-    if (!canShare(this.accessTo(actor, item))) {
-      throw new ApiError('forbidden', 'Only the person whose drive this is can share it.');
-    }
-    if (!actor.owner && !readDriveSettings(this.env.store).membersMayShare) {
+    const target = this.target(actor, input);
+    if (!this.linksAllowed(actor)) {
       throw new ApiError('forbidden', 'The owner has not allowed members to share links.');
+    }
+    if (target.kind === 'item' && target.item.locked && input.permission === 'download') {
+      throw new ApiError(
+        'invalid_request',
+        'This is view only, so its links can only be view links.',
+        VIEW_ONLY_REASON,
+      );
     }
     if (input.expiresAt !== null && new Date(input.expiresAt) <= this.env.now()) {
       throw new ApiError('invalid_request', 'The expiry must be in the future.');
@@ -149,7 +181,9 @@ export class DriveShares {
     const token = randomBytes(TOKEN_BYTES).toString('base64url');
     const share = this.env.store.driveShares.insert({
       id: randomUUID(),
-      itemId: item.id,
+      ...(target.kind === 'item'
+        ? { itemId: target.item.id }
+        : { itemId: null, albumId: target.album.id }),
       tokenHash: hashToken(token),
       permission: input.permission,
       expiresAt: input.expiresAt,
@@ -161,7 +195,8 @@ export class DriveShares {
     const path = buildPath(MEDIA_PATHS.driveShare, { token });
     log.info('drive_share.created', {
       shareId: share.id,
-      itemId: item.id,
+      itemId: share.itemId,
+      albumId: share.albumId,
       permission: share.permission,
       password: share.hasPassword,
       public: origin.public,
@@ -171,6 +206,43 @@ export class DriveShares {
       url: `${origin.url.replace(/\/+$/u, '')}${path}`,
       public: origin.public,
     });
+  }
+
+  private target(
+    actor: ShareActor,
+    input: DriveShareCreate,
+  ):
+    | { readonly kind: 'item'; readonly item: DriveItem }
+    | { readonly kind: 'album'; readonly album: DriveAlbum } {
+    if (input.albumId !== undefined) {
+      const album = this.env.store.driveAlbums.find(input.albumId);
+      if (
+        album?.surface !== 'photos' ||
+        album.kind !== 'manual' ||
+        album.ownerProfileId !== actor.profileId
+      ) {
+        throw new ApiError('not_found', 'There is no such album of this person to share.');
+      }
+      if (this.env.store.driveAlbums.contributions.unexposedCount(album.id) > 0) {
+        throw new ApiError(
+          'invalid_request',
+          'This album holds photos that belong to someone else, so it cannot be shared.',
+        );
+      }
+      return { kind: 'album', album };
+    }
+    if (input.itemId === undefined) {
+      throw new ApiError('invalid_request', 'Name an item or an album to share.');
+    }
+    const item = this.visibleItem(actor, input.itemId);
+    if (!canShare(this.accessTo(actor, item))) {
+      throw new ApiError('forbidden', 'Only the person whose drive this is can share it.');
+    }
+    return { kind: 'item', item };
+  }
+
+  linksAllowed(actor: ShareActor): boolean {
+    return actor.owner || readDriveSettings(this.env.store).membersMayShare;
   }
 
   list(actor: DriveActor, itemId: string): DriveShare[] {
@@ -183,8 +255,8 @@ export class DriveShares {
 
   revoke(actor: DriveActor, shareId: string): DriveShare {
     const share = this.env.store.driveShares.find(shareId);
-    const item =
-      share === undefined ? undefined : this.env.store.driveItems.find(share.itemId, null);
+    const itemId = share?.itemId ?? null;
+    const item = itemId === null ? undefined : this.env.store.driveItems.find(itemId, null);
     const sharedDrive =
       item !== undefined && this.env.store.driveRoots.byId(item.rootId).scope === 'home';
     if (share === undefined || !(sharedDrive || share.createdBy === actor.profileId)) {
@@ -200,14 +272,17 @@ export class DriveShares {
     const record = parsed.success
       ? this.env.store.driveShares.byTokenHash(hashToken(parsed.data))
       : undefined;
-    if (record === undefined) throw unavailable();
-    const { share } = record;
-    const item = this.env.store.driveItems.find(share.itemId, null);
-    const root = item === undefined ? undefined : this.env.store.driveRoots.find(item.rootId);
-    if (this.lapsed(share) || item === undefined || root === undefined) {
-      throw unavailable();
+    if (record === undefined || this.lapsed(record.share)) throw unavailable();
+    const { share, passwordHash } = record;
+    if (share.albumId !== null) {
+      const album = this.env.store.driveAlbums.find(share.albumId);
+      if (album === undefined) throw unavailable();
+      return { kind: 'album', share, passwordHash, entryId: album.id, album };
     }
-    return { share, passwordHash: record.passwordHash, item, rootPath: root.path };
+    const item =
+      share.itemId === null ? undefined : this.env.store.driveItems.find(share.itemId, null);
+    if (item === undefined || inLockedFolder(item)) throw unavailable();
+    return { kind: 'item', share, passwordHash, entryId: item.id, item };
   }
 
   private lapsed(share: DriveShare): boolean {
@@ -216,15 +291,48 @@ export class DriveShares {
   }
 
   within(access: ShareAccess, itemId: string): DriveItem {
-    if (itemId === access.item.id) return access.item;
+    if (access.kind === 'album') return this.inAlbum(access.album, itemId);
+    const { item } = access;
+    if (itemId === item.id) return item;
     const child = this.env.store.driveItems.find(itemId, null);
     const inside =
       child !== undefined &&
-      access.item.kind === 'folder' &&
-      child.rootId === access.item.rootId &&
-      child.relPath.startsWith(`${access.item.relPath}/`);
+      item.kind === 'folder' &&
+      child.rootId === item.rootId &&
+      !inLockedFolder(child) &&
+      child.relPath.startsWith(`${item.relPath}/`);
     if (!inside) throw unavailable();
     return child;
+  }
+
+  private inAlbum(album: DriveAlbum, itemId: string): DriveItem {
+    const item = this.env.store.driveItems.find(itemId, null);
+    const member = this.env.store.driveAlbums.contributions.exposes(album.id, itemId);
+    if (item === undefined || item.kind === 'folder' || !member || inLockedFolder(item)) {
+      throw unavailable();
+    }
+    return item;
+  }
+
+  rootPathOf(item: DriveItem): string {
+    const root = this.env.store.driveRoots.find(item.rootId);
+    if (root === undefined) throw unavailable();
+    return root.path;
+  }
+
+  albumItems(album: DriveAlbum, after: string | null, limit: number): AlbumShareWindow {
+    const cursor = after === null ? null : decodeCursor(ALBUM_AFTER, after);
+    const window = this.env.store.driveAlbums.members(album.id, cursor, limit);
+    const items = window.members.flatMap((member) => {
+      const item = this.env.store.driveItems.find(member.itemId, null);
+      return item === undefined ||
+        item.kind === 'folder' ||
+        inLockedFolder(item) ||
+        !this.env.store.driveAlbums.contributions.exposes(album.id, item.id)
+        ? []
+        : [item];
+    });
+    return { items, next: window.next === null ? null : encodeCursor(window.next) };
   }
 
   children(folder: DriveItem, after: string | null, limit: number): DriveItemWindow {
@@ -293,7 +401,7 @@ export class DriveShares {
 
   private visibleItem(actor: DriveActor, itemId: string): DriveItem {
     const item = this.env.store.driveItems.find(itemId, actor.profileId);
-    if (item === undefined || !canRead(this.accessTo(actor, item))) {
+    if (item === undefined || inLockedFolder(item) || !canRead(this.accessTo(actor, item))) {
       throw new ApiError('not_found', 'There is no such file or folder for this caller.');
     }
     return item;

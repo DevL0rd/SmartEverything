@@ -1,4 +1,3 @@
-import type { PlannerColourKey } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
@@ -7,32 +6,26 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { percentOf } from '../../../format/percent';
 import { useItemPress } from '../item/item-menu-host';
+import type { EventLook } from './calendars-model';
+import { Hatch, LookMark, eventFill, lookWords } from './event-look';
 import { yOf, type AllDayEntry, type GridBlock } from './time-grid-layout';
-
-const EVENT_TINT: Readonly<Record<PlannerColourKey, string>> = {
-  work: 'bg-viz-6/18',
-  family: 'bg-viz-1/18',
-  personal: 'bg-viz-3/20',
-  health: 'bg-positive/18',
-  home: 'bg-viz-4/18',
-  shopping: 'bg-viz-5/18',
-};
 
 const SUBTITLE_FROM = 36;
 
-export function eventFill(colour: PlannerColourKey | null, proposed: boolean): string {
-  if (proposed) return 'border border-dashed border-primary bg-transparent';
-  return colour === null ? 'bg-surface-3' : EVENT_TINT[colour];
-}
-
 export function eventLabel(
-  entry: { readonly time: string; readonly proposed: boolean; readonly readOnly: boolean },
+  entry: {
+    readonly time: string;
+    readonly proposed: boolean;
+    readonly readOnly: boolean;
+    readonly look: EventLook;
+  },
   title: string,
 ): string {
   const parts = [
     title,
     entry.time,
     ...(entry.proposed ? ['proposed, not booked'] : []),
+    ...lookWords(entry.look),
     ...(entry.readOnly ? ['read only'] : []),
   ];
   return parts.filter((part) => part !== '').join(', ');
@@ -85,10 +78,12 @@ export function EventBlock({
           className={cn(
             'flex-1 overflow-hidden rounded-sm',
             compact ? 'px-1.5 py-1' : 'px-2 py-1',
-            eventFill(block.colour, block.proposed),
+            eventFill(block.colour, block.proposed, block.look),
           )}
         >
+          <Hatch shown={block.look === 'maybe'} />
           <View className="flex-row items-start gap-1">
+            <LookMark look={block.look} />
             <Text variant="caption" numberOfLines={1} className="flex-1">
               {title}
             </Text>
@@ -114,12 +109,17 @@ export function AllDayChip({ entry }: { readonly entry: AllDayEntry }): ReactNod
       {...press.open}
       onLongPress={press.onLongPress}
       onContextMenu={press.onContextMenu}
-      label={eventLabel({ time: 'all day', proposed: false, readOnly: entry.readOnly }, title)}
+      label={eventLabel(
+        { time: 'all day', proposed: false, readOnly: entry.readOnly, look: entry.look },
+        title,
+      )}
       className={cn(
-        'flex-row items-center gap-1 rounded-xs px-1.5 py-0.5',
-        eventFill(entry.colour, entry.occurrence.status === 'proposed'),
+        'flex-row items-center gap-1 overflow-hidden rounded-xs px-1.5 py-0.5',
+        eventFill(entry.colour, entry.occurrence.status === 'proposed', entry.look),
       )}
     >
+      <Hatch shown={entry.look === 'maybe'} />
+      <LookMark look={entry.look} />
       <Text variant="caption" numberOfLines={1} className="flex-1">
         {title}
       </Text>

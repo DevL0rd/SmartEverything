@@ -1,0 +1,9 @@
+export interface AppIdentity {
+  readonly applicationId: string;
+  readonly signingCertificateSha256: string;
+}
+
+export const APP_IDENTITY: AppIdentity = {
+  applicationId: 'com.devl0rd.smarteverything.dev',
+  signingCertificateSha256: 'fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c',
+};

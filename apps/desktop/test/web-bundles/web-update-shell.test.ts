@@ -218,47 +218,61 @@ describe('apply and rollback', () => {
     expect(await stateOf()).toMatchObject({ active: id, trial: false, failed: [] });
   });
 
-  it('rolls back to the embedded bundle when the renderer dies during the trial', async () => {
+  it('keeps the trial and waits for the owner when the renderer dies', async () => {
     const id = randomUUID();
     const shell = await shellFor({ fetch: homeServing(offerFor(id)) });
     const { window } = await applied(shell, id);
 
     window.crash('crashed');
-    await window.untilReloads(2);
+    await vi.waitFor(() => {
+      expect(shell.status()).toMatchObject({ state: 'boot_failed', failedId: id });
+    });
 
-    expect(shell.root()).toBe(embedded);
-    expect(window.reloads).toBe(2);
-    expect(shell.status()).toMatchObject({ state: 'rolled_back', failedId: id });
-    expect(await stateOf()).toMatchObject({ active: 'embedded', trial: false, failed: [id] });
+    expect(window.reloads).toBe(1);
+    expect(shell.root()).toBe(path.join(userData, 'web-bundles', id));
+    expect(await stateOf()).toMatchObject({ active: id, trial: true, failed: [] });
   });
 
-  it('rolls back when the main frame fails to load', async () => {
+  it('waits for the owner when the main frame fails to load', async () => {
     const id = randomUUID();
     const shell = await shellFor({ fetch: homeServing(offerFor(id)) });
     const { window } = await applied(shell, id);
 
     window.failLoad(-6, 'FILE_NOT_FOUND');
-    await window.untilReloads(2);
-
-    expect(window.reloads).toBe(2);
-    expect(shell.root()).toBe(embedded);
-    expect(shell.status()).toMatchObject({
-      state: 'rolled_back',
-      reason: 'The window failed to load (-6): FILE_NOT_FOUND.',
+    await vi.waitFor(() => {
+      expect(shell.status()).toMatchObject({
+        state: 'boot_failed',
+        reason: 'The window failed to load (-6): FILE_NOT_FOUND.',
+      });
     });
+    expect(window.reloads).toBe(1);
   });
 
-  it('reverts once when several failures arrive together', async () => {
+  it('rolls back to the embedded bundle only on the owner action', async () => {
     const id = randomUUID();
     const shell = await shellFor({ fetch: homeServing(offerFor(id)) });
     const { window } = await applied(shell, id);
+    await shell.reportFailure('the app shell threw');
+    await shell.confirm();
 
-    window.crash('crashed');
-    window.failLoad(-2, 'FAILED');
+    expect(await stateOf()).toMatchObject({ active: id, trial: true, failed: [] });
+    expect(await shell.rollBack()).toMatchObject({ state: 'rolled_back', failedId: id });
+    expect(window.reloads).toBe(2);
+    expect(shell.root()).toBe(embedded);
+    expect(await stateOf()).toMatchObject({ active: 'embedded', trial: false, failed: [id] });
+  });
+
+  it('reloads the trial again when the owner retries', async () => {
+    const id = randomUUID();
+    const shell = await shellFor({ fetch: homeServing(offerFor(id)) });
+    const { window } = await applied(shell, id);
     await shell.reportFailure('the app shell threw');
 
+    expect(await shell.retry()).toStrictEqual({ state: 'applying' });
     expect(window.reloads).toBe(2);
-    expect((await stateOf()).failed).toStrictEqual([id]);
+    expect(shell.root()).toBe(path.join(userData, 'web-bundles', id));
+    await shell.confirm();
+    expect(await stateOf()).toMatchObject({ active: id, trial: false, failed: [] });
   });
 
   it('does nothing outside a trial, including after the boot is confirmed', async () => {
@@ -275,7 +289,7 @@ describe('apply and rollback', () => {
     expect(shell.status()).toMatchObject({ state: 'idle', running: { id } });
   });
 
-  it('reverts a trial that never confirmed at launch, before any window exists', async () => {
+  it('keeps a trial that never confirmed at launch and waits for the owner', async () => {
     const id = randomUUID();
     const bundles = path.join(userData, 'web-bundles');
     await mkdir(path.join(bundles, id), { recursive: true });
@@ -288,9 +302,9 @@ describe('apply and rollback', () => {
     const shell = await shellFor();
     await shell.launch();
 
-    expect(shell.root()).toBe(embedded);
-    expect(shell.status()).toMatchObject({ state: 'rolled_back', failedId: id });
-    expect(await stateOf()).toMatchObject({ active: 'embedded', trial: false, failed: [id] });
+    expect(shell.root()).toBe(path.join(bundles, id));
+    expect(shell.status()).toMatchObject({ state: 'boot_failed', failedId: id });
+    expect(await stateOf()).toMatchObject({ active: id, trial: true, failed: [] });
   });
 
   it('serves a confirmed bundle at the next launch', async () => {

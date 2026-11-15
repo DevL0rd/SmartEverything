@@ -63,7 +63,7 @@ export const LITTER_BOX_MODEL: ModelSpec = {
   title: 'Litter box',
   category: 'pet',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.5532, height: 0.6349 },
   framing: house('drum', 30, 16),
   shots: [
     shot('cleaning', CLEANING, 'drum', { zoom: 1.25, yaw: 24, pitch: 14, loopS: 10, stillAt: 0 }),

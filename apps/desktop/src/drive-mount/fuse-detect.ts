@@ -48,7 +48,7 @@ export async function detectFuse(ports: FuseProbePorts): Promise<FuseStatus> {
 
 export async function recoverStaleMount(run: RunCommand, point: string): Promise<boolean> {
   try {
-    await run(FUSERMOUNT, ['-u', point]);
+    await run(FUSERMOUNT, ['-uz', point]);
     return true;
   } catch (cause) {
     if (cause instanceof CommandFailedError) return false;

@@ -65,6 +65,7 @@ const HUB_SECRETS = z.object({
   automationSecrets: z.record(z.uuid(), AUTOMATION_SECRET_RECORD).optional(),
   googleApp: GOOGLE_APP.nullable().default(null),
   googleAccounts: z.record(z.string().min(1), GOOGLE_ACCOUNT_SECRET).default({}),
+  githubReleaseToken: z.string().min(1).nullable().default(null),
 });
 
 export type HubSecrets = z.infer<typeof HUB_SECRETS>;
@@ -87,6 +88,7 @@ const EMPTY: HubSecrets = {
   plugins: {},
   googleApp: null,
   googleAccounts: {},
+  githubReleaseToken: null,
 };
 
 export class SecretStoreError extends Error {
@@ -216,6 +218,14 @@ export class SecretStore {
         Object.entries(secrets.deviceKeys).filter(([name]) => name !== externalId),
       ),
     }));
+  }
+
+  githubReleaseToken(): string | null {
+    return this.current.githubReleaseToken;
+  }
+
+  async saveGithubReleaseToken(token: string | null): Promise<void> {
+    await this.update((secrets) => ({ ...secrets, githubReleaseToken: token }));
   }
 
   apiKey(reference: string): string | null {

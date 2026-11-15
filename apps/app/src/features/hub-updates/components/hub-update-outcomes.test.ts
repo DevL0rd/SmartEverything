@@ -91,6 +91,7 @@ vi.mock('../data/update-queries', () => ({
   } => ({ data: SOURCE, isFetching: observed.fetching, isError: observed.sourceError }),
   useStartHubUpdateSource: (): { readonly isPending: false } => ({ isPending: false }),
   useHubUpdateStarting: (): boolean => observed.starting,
+  useBuildSources: (): { readonly data: { readonly hub: 'hub' } } => ({ data: { hub: 'hub' } }),
 }));
 
 const SOURCE: HubUpdateSourceCheck = {
@@ -109,6 +110,9 @@ const RUN: Release = {
   startedAt: '2026-11-06T00:00:00.000Z',
   updatedAt: '2026-11-06T00:01:00.000Z',
   finishedAt: '2026-11-06T00:01:00.000Z',
+  reason: null,
+  failedChecks: [],
+  backupKept: false,
 };
 
 let root: Root;

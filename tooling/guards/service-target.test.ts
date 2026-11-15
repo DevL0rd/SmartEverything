@@ -20,6 +20,7 @@ import { elfMachine, highestGlibc, isWasmModule } from '../native-binary.ts';
 import { ServiceRuntimeError } from '../service-runtime.ts';
 import {
   OLDEST_SUPPORTED_GLIBC,
+  PLACES_DATASET,
   SERVICE_TARGET_NAME,
   serviceTarget,
   ServiceTargetError,
@@ -73,6 +74,9 @@ function bundle(machine = ARM64): void {
   put(join(WAKE_MODEL_DIRECTORY, 'bpe.vocab'), 'vocab');
   put(join(IR_LIBRARY_DIRECTORY, 'index.bin'), 'index');
   put(join(IR_LIBRARY_DIRECTORY, 'models.bin'), 'models');
+  put('vision/face_detection_yunet_2023mar.onnx', 'detector');
+  put('vision/face_recognition_sface_2021dec.onnx', 'recognizer');
+  put(PLACES_DATASET, 'places');
 }
 
 function problems(binaries = false): readonly string[] {
@@ -196,6 +200,18 @@ describe('a bundle for linux-arm64', () => {
     bundle();
     rmSync(join(scratch, WAKE_MODEL_DIRECTORY, 'bpe.vocab'));
     expect(problems()).toStrictEqual([`${WAKE_MODEL_DIRECTORY}/bpe.vocab is missing`]);
+  });
+
+  it('names each face model and the places dataset that is missing', () => {
+    bundle();
+    rmSync(join(scratch, 'vision', 'face_detection_yunet_2023mar.onnx'));
+    rmSync(join(scratch, 'vision', 'face_recognition_sface_2021dec.onnx'));
+    rmSync(join(scratch, PLACES_DATASET));
+    expect(problems()).toStrictEqual([
+      'vision/face_detection_yunet_2023mar.onnx is missing',
+      'vision/face_recognition_sface_2021dec.onnx is missing',
+      `${PLACES_DATASET} is missing`,
+    ]);
   });
 });
 

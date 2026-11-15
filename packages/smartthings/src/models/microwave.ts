@@ -306,7 +306,7 @@ export const SAMSUNG_MICROWAVE_MODEL: ModelSpec = {
   title: 'Samsung Smart Microwave',
   category: 'kitchen',
   family: 'microwave',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.524, depth: 0.533, height: HEIGHT },
   framing: {
     tile: HOUSE,
     card: { ...HOUSE, padding: 0.1 },

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { SCHEDULE_ROW, type ScheduleRow } from '@smarteverything/domain';
 import { expect, it, vi } from 'vitest';
 import type { ListRowProps } from '../../../components/list-row';
-import { Screen, type ScreenProps } from '../../../components/screen';
+import { PageShell, type StandardShellProps } from '../../../components/page-shell/page-shell';
 import { ScheduledScreen } from './scheduled-screen';
 
 const fixture = vi.hoisted(() => ({ rows: new Array<ScheduleRow>() }));
@@ -15,8 +15,8 @@ vi.mock('./use-scheduled', () => ({
   useScheduledRows: (): readonly ScheduleRow[] => fixture.rows,
   useHomeZone: (): string => 'UTC',
 }));
-vi.mock('../../../components/screen', () => ({
-  Screen: ({ children }: ScreenProps): ReactNode => children,
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: ({ children }: StandardShellProps): ReactNode => children,
 }));
 vi.mock('../../../components/list-row', () => ({
   ListRow: ({ title, wrapTitle }: ListRowProps): ReactNode =>
@@ -25,11 +25,11 @@ vi.mock('../../../components/list-row', () => ({
 
 it('uses the shared screen width for the one-off timers landing', () => {
   const landing = ScheduledScreen();
-  if (!isValidElement<ScreenProps>(landing)) {
-    throw new Error('Expected the scheduled landing to render a Screen element.');
+  if (!isValidElement<StandardShellProps>(landing)) {
+    throw new Error('Expected the scheduled landing to render a PageShell element.');
   }
-  expect(landing.type).toBe(Screen);
-  expect(landing.props.maxWidth).toBeUndefined();
+  expect(landing.type).toBe(PageShell);
+  expect(landing.props.width).toBeUndefined();
 });
 
 it.each(['scheduled', 'failed'] as const)('wraps a long name in the %s timer row', (state) => {

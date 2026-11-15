@@ -32,16 +32,12 @@ const SUBJECT: Readonly<Record<BoardChatWidget['kind'], string>> = {
   nutrition: 'this food and water data',
   board: 'this widget',
   weather: 'the weather',
-  scenes: 'the scenes',
   planner: 'this planner data',
 };
 
 function missingReason(state: StoreState, widget: BoardChatWidget): string | null {
   if (widget.kind === 'device' || widget.kind === 'camera') {
     return state.tables.devices.byId[widget.id] === undefined ? REMOVED : null;
-  }
-  if (widget.kind === 'scenes') {
-    return state.tables.scenes.ids.length === 0 ? 'There are no scenes yet.' : null;
   }
   if (widget.kind === 'weather') {
     return state.weather === null ? 'This home has no weather yet.' : null;

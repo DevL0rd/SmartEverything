@@ -94,7 +94,7 @@ export const ROLLER_BLIND_MODEL: ModelSpec = {
   title: 'Roller blind',
   category: 'cover',
   family: 'cover',
-  footprint: { width: 1.22, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 1.22, depth: 0.076, height: 1.362 },
   size: { width: { param: 'width', extra: 0.02, resizes: true } },
   framing: {
     tile: { ...VIEW, padding: 0.03 },

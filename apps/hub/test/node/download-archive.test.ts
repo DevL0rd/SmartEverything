@@ -19,7 +19,7 @@ import type { DownloadPlan } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FileDownloads, type DownloadClock } from '../../src/node/controls/linux/download-archive';
 import { FileScope } from '../../src/node/controls/linux/file-scope';
-import { zipChunks, type ZipEntry } from '../../src/node/controls/linux/zip-stream';
+import { zipChunks, type ZipEntry } from '../../src/zip/zip-stream';
 
 let root = '';
 let home = '';

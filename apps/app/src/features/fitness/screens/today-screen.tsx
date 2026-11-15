@@ -4,14 +4,13 @@ import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { NavRow } from '../../../components/rows';
-import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
 import { WidgetBoard, useBoardEditor, type BoardEditor } from '../../../components/widget-board';
 import { errorText } from '../../../format/errors';
 import { usePageLayout, useSavePageLayout } from '../../../store/layouts';
-import { FitnessFrame } from '../components/fitness-frame';
+import { FitnessShell } from '../components/fitness-shell';
 import { FitnessToolbar } from '../components/fitness-toolbar';
 import { instanceCheck, useAvailableWidgets } from '../data/availability';
 import { useFitnessParams } from '../data/day';
@@ -23,10 +22,7 @@ import { FITNESS_DEFAULTS, FITNESS_PAGE, FITNESS_WIDGETS } from '../widgets';
 
 function FirstRun(): ReactNode {
   return (
-    <Screen
-      header={<PageHeader title="Fitness" settings={mainPageSettings('fitness')} back={false} />}
-      maxWidth="reading"
-    >
+    <PageShell title="Fitness" settings={mainPageSettings('fitness')} back={false} width="reading">
       {HEALTH_CONNECT_ON_DEVICE ? (
         <EmptyState
           icon="fitness"
@@ -41,7 +37,7 @@ function FirstRun(): ReactNode {
           body="Fitness data comes from Health Connect on your Android phone."
         />
       )}
-    </Screen>
+    </PageShell>
   );
 }
 
@@ -83,7 +79,7 @@ export function TodayScreen(): ReactNode {
   }
   const problem = data.error ?? presence.error;
   return (
-    <FitnessFrame
+    <FitnessShell
       tab="today"
       width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range="day" />}
@@ -105,6 +101,6 @@ export function TodayScreen(): ReactNode {
           <NavRow title="All health data" icon="list" href={href.fitnessPage('browse')} />
         </List>
       )}
-    </FitnessFrame>
+    </FitnessShell>
   );
 }

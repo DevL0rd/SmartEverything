@@ -2,10 +2,13 @@ import type {
   ComputerFeature,
   DownloadChunk,
   DownloadPlan,
+  DriveZipPage,
   FilePlaces,
   FileProperties,
+  FileRange,
   FileSearchQuery,
   FileSearchResult,
+  FileTrashList,
   FileUploadChunk,
   FileUploadResult,
   FileWriteChange,
@@ -45,6 +48,14 @@ export interface FileWriteControl {
   readonly write: (change: FileWriteChange) => Promise<FileWriteResult>;
   readonly upload: (chunk: FileUploadChunk) => Promise<FileUploadResult>;
   readonly places: () => Promise<FilePlaces>;
+  readonly trash: (cursor: number) => Promise<FileTrashList>;
+  readonly zipEntries: (path: string, cursor: string | null) => Promise<DriveZipPage>;
+  readonly zipEntryRange: (
+    path: string,
+    index: number,
+    start: number,
+    length: number,
+  ) => Promise<FileRange>;
   readonly openDownload: (paths: readonly string[]) => Promise<DownloadPlan>;
   readonly readDownload: (id: string, length: number) => Promise<DownloadChunk>;
   readonly closeDownload: (id: string) => Promise<void>;

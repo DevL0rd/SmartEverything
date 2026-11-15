@@ -72,7 +72,7 @@ function axle(sign: -1 | 1): ModelSpecPart {
 export const GLOBE_MODEL: ModelSpec = decorItem({
   id: 'cat.decor.globe',
   title: 'Globe',
-  footprint: { width: 0.36, depth: 0.24, height: 0.44 },
+  footprint: { width: 0.3947, depth: 0.3159, height: 0.4574 },
   meta: {
     names: {
       display: 'Globe',

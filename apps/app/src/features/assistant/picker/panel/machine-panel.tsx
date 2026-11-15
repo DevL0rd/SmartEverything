@@ -7,7 +7,7 @@ import { useFocusRequest } from '../../../../components/focus-request';
 import { Icon } from '../../../../components/icon';
 import { ListRow } from '../../../../components/list-row';
 import { List } from '../../../../components/section';
-import { FolderPicker } from '../../../computers';
+import { ComputerFolderPicker } from '../../../computers';
 import { cn } from '../../../../design/cn';
 import { useEngineAccessory } from '../../chats/engine-accessories';
 import { MachineSource, type MachineChoice, type MachineView } from '../../chats/machine-choices';
@@ -145,9 +145,8 @@ function InlineFolderPicker({
   readonly onChoose: (path: string) => void;
 }): ReactNode {
   return (
-    <FolderPicker
+    <ComputerFolderPicker
       compact
-      mode="folder"
       deviceId={deviceId}
       start={folder}
       onCancel={onBack}
@@ -279,7 +278,7 @@ export function MachinePage({
         {(machine): ReactNode => (
           <List>
             {machine.choices.length === 0 ? (
-              <ListRow compact title={machine.empty} disabled />
+              <ListRow compact title={machine.empty} />
             ) : (
               machine.choices.map((choice) => (
                 <ChoiceRow key={choice.key} choice={choice} onPicked={onPicked} />

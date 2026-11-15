@@ -16,20 +16,16 @@ import { localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { useMyWatch } from '../../watches';
-import {
-  usePlannerCollections,
-  usePlannerItems,
-  usePlannerPreferences,
-  usePlannerRange,
-  type PlannerPerson,
-} from '../data';
+import { usePlannerPreferences, usePlannerRange, type PlannerPerson } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { LIST_DOT } from './composer-tokens';
 import { askAboutItem } from './item-ask';
 import { reminderSummaryOf } from './item-fields';
 import { useItemMenuItems, useItemActionRunner, type ItemTargetKey } from './item-menu-host';
 import { itemMenuOf, itemShortcutOf, shortcutEntryOf } from './item-menu';
-import { ItemBody, itemIn, useItemEditor } from './item-sheet';
+import { useItemCollections, useVisibleItem } from '../data/assignment';
+import { ItemBody } from './item-body';
+import { useItemEditor } from './item-sheet';
 import {
   dayBarOf,
   dayWindowOf,
@@ -122,16 +118,16 @@ function PanelHeader({
   readonly onDoneEditing: () => void;
 }): ReactNode {
   const { person } = usePlannerFrame();
-  const collection = usePlannerCollections(person).find((row) => row.id === item.collection_id);
+  const collection = useItemCollections(person, item.collection_id).current;
   const { quick, items } = useItemMenuItems(item, target);
   const source = item.google === null ? 'this hub' : 'Google';
   return (
     <View className="flex-row items-center gap-2 pb-1 pl-5 pr-2 pt-3">
-      {collection === undefined ? null : (
+      {collection === null ? null : (
         <View className={cn('size-3 rounded-full', LIST_DOT[collection.colour])} />
       )}
       <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
-        {collection === undefined ? source : `${collection.name} · ${source}`}
+        {collection === null ? source : `${collection.name} · ${source}`}
       </Text>
       {editing ? <Button label="Done editing" variant="text" onPress={onDoneEditing} /> : null}
       <OverflowButton items={[...quick, ...items]} />
@@ -312,7 +308,7 @@ function GonePanel(): ReactNode {
 
 function SelectedPanel({ selection }: { readonly selection: PlannerSelection }): ReactNode {
   const { person } = usePlannerFrame();
-  const item = itemIn(usePlannerItems(person), selection.itemId);
+  const item = useVisibleItem(person, selection.itemId);
   if (item === null) return <GonePanel />;
   return (
     <ItemPanel

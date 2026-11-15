@@ -1,6 +1,7 @@
 import {
   DEFAULT_DESKTOP_DRIVE_CACHE,
   type DesktopDriveCommand,
+  type DrivePlacement,
   type DesktopDriveState,
 } from '@smarteverything/domain';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -12,6 +13,16 @@ import {
   DriveControlClient,
   DriveControlRefusedError,
 } from '../../src/drive-mount/control-client.js';
+import type { FuseStatus } from '../../src/drive-mount/fuse-detect.js';
+import {
+  MountController,
+  type HelperHandle,
+  type MountPlacements,
+} from '../../src/drive-mount/controller.js';
+import { HelperProcess, type HelperChild } from '../../src/drive-mount/helper-process.js';
+import { FIXTURE_ID, FIXTURE_STATUS, mountedPlacement } from './placement-fixture.js';
+import type { MountTray } from '../../src/drive-mount/mount-state.js';
+import type { LinkPort } from '../../src/drive-mount/placements.js';
 import { driveControlAddress } from '../../src/drive-mount/control-protocol.js';
 import { DriveControlServer } from '../../src/drive-mount/control-server.js';
 
@@ -22,7 +33,6 @@ function state(change: Partial<DesktopDriveState> = {}): DesktopDriveState {
     mount: null,
     sync: null,
     fuse: { available: true },
-    firstRun: { pending: false, defaultParent: '/home/u/SmartEverything' },
     cache: DEFAULT_DESKTOP_DRIVE_CACHE,
     ...change,
   };
@@ -73,7 +83,7 @@ describe('drive control channel', () => {
         run: (command): Promise<void> => {
           if (command.kind === 'pin') return Promise.reject(new Error('Pinning needs a mount'));
           commands.push(command);
-          current = state({ mount: { status: 'Mounted', mounted: true } });
+          current = state({ mount: { status: 'Mounted', mounted: true, points: [] } });
           return Promise.resolve();
         },
         onChange: (listener): (() => void) => {
@@ -95,7 +105,7 @@ describe('drive control channel', () => {
     expect(await client.state()).toEqual(state());
     const after = await client.run({ kind: 'again' });
     expect(commands).toEqual([{ kind: 'again' }]);
-    expect(after.mount).toEqual({ status: 'Mounted', mounted: true });
+    expect(after.mount).toEqual({ status: 'Mounted', mounted: true, points: [] });
 
     current = state({
       sync: { placements: 1, paused: false, needBytes: 0, pendingOps: 0, failures: 0 },
@@ -130,5 +140,245 @@ describe('drive control channel', () => {
     await server.stop();
     await until(() => lost.mock.calls.some((call) => call[0] === null));
     expect(client.current).toBeNull();
+  });
+});
+
+const MOUNT = {
+  op: 'mount',
+  mount: 'p1',
+  root: 'r',
+  folder: 'f',
+  point: '/home/u/Drive',
+} as const;
+
+class FakeChild implements HelperChild {
+  readonly written: string[] = [];
+  private exit: (reason: string) => void = () => undefined;
+  ended = false;
+  stdout: ((line: string) => void) | null = null;
+  stderr: ((line: string) => void) | null = null;
+
+  writeControl(line: string): void {
+    this.written.push(line);
+  }
+  endControl(): void {
+    this.ended = true;
+    this.exit('The mount helper stopped (exit code 0)');
+  }
+  sendToken(): Promise<void> {
+    return Promise.resolve();
+  }
+  onStdout(listener: (line: string) => void): void {
+    this.stdout = listener;
+  }
+  onStderr(listener: (line: string) => void): void {
+    this.stderr = listener;
+  }
+  onExit(listener: (reason: string) => void): void {
+    this.exit = listener;
+  }
+  kill(): void {
+    this.ended = true;
+  }
+  die(reason: string): void {
+    this.exit(reason);
+  }
+}
+
+function helperProcess(): { helper: HelperProcess; children: FakeChild[] } {
+  const children: FakeChild[] = [];
+  const helper = new HelperProcess(
+    {
+      binary: 'helper',
+      cacheDirectory: '/cache',
+      token: (): Promise<string> => Promise.resolve('t'),
+      spawn: (): HelperChild => {
+        const child = new FakeChild();
+        children.push(child);
+        return child;
+      },
+    },
+    log,
+  );
+  return { helper, children };
+}
+
+describe('mount helper process', () => {
+  it('reports its mounts failed on a crash and replays them on restart', async () => {
+    const { helper, children } = helperProcess();
+    const lines: string[] = [];
+    helper.onLine((raw) => lines.push(raw));
+    const crashes: string[] = [];
+    helper.onCrash((reason) => crashes.push(reason));
+    helper.send(MOUNT);
+    await until(() => children[0]?.written.length === 1);
+    children[0]?.die('The mount helper stopped (SIGKILL)');
+    expect(crashes).toEqual(['The mount helper stopped (SIGKILL)']);
+    expect(lines.map((raw): unknown => JSON.parse(raw))).toEqual([
+      {
+        type: 'status',
+        mount: 'p1',
+        state: 'failed',
+        reason: 'The mount helper stopped (SIGKILL)',
+      },
+    ]);
+    helper.restart();
+    await until(() => children.length === 2 && children[1]?.written.length === 1);
+    const replayed: unknown = JSON.parse(children[1]?.written[0] ?? '');
+    expect(replayed).toEqual(MOUNT);
+  });
+
+  it('does not replay a mount that was unmounted and does not call a clean close a crash', async () => {
+    const { helper, children } = helperProcess();
+    const crashes = vi.fn();
+    helper.onCrash(crashes);
+    helper.send(MOUNT);
+    helper.send({ op: 'unmount', mount: 'p1' });
+    await until(() => children[0]?.written.length === 2);
+    await helper.close();
+    expect(crashes).not.toHaveBeenCalled();
+    helper.restart();
+    await Promise.resolve();
+    expect(children).toHaveLength(1);
+  });
+});
+
+describe('mount controller', () => {
+  function build(points: string[] = ['/mnt/a']): {
+    controller: MountController;
+    helper: HelperHandle & { crash: () => void; pushLine: (raw: string) => void };
+    recovered: string[];
+    restarts: number[];
+    tray: (MountTray | null)[];
+    sleeps: number[];
+    links: LinkPort[];
+  } {
+    const recovered: string[] = [];
+    const restarts: number[] = [];
+    const tray: (MountTray | null)[] = [];
+    const sleeps: number[] = [];
+    const links: LinkPort[] = [];
+    const crashListeners = new Set<(reason: string) => void>();
+    const lineListeners = new Set<(raw: string) => void>();
+    const helper = {
+      send: (): void => undefined,
+      close: (): Promise<void> => Promise.resolve(),
+      configure: (): void => undefined,
+      onLine: (listener: (raw: string) => void): (() => void) => {
+        lineListeners.add(listener);
+        return (): void => {
+          lineListeners.delete(listener);
+        };
+      },
+      onCrash: (listener: (reason: string) => void): (() => void) => {
+        crashListeners.add(listener);
+        return (): void => {
+          crashListeners.delete(listener);
+        };
+      },
+      restart: (): void => {
+        restarts.push(recovered.length);
+      },
+      crash: (): void => {
+        for (const listener of crashListeners) listener('killed');
+      },
+      pushLine: (raw: string): void => {
+        for (const listener of lineListeners) listener(raw);
+      },
+    };
+    const controller = new MountController({
+      fuse: (): Promise<FuseStatus> => Promise.resolve({ available: true }),
+      recover: (point): Promise<boolean> => {
+        recovered.push(point);
+        return Promise.resolve(true);
+      },
+      stalePoints: (): Promise<readonly string[]> => Promise.resolve(points),
+      known: (): readonly DrivePlacement[] => [mountedPlacement()],
+      helper,
+      link: {
+        onPlacements: (): (() => void) => (): void => undefined,
+        onMountsDemand: (): (() => void) => (): void => undefined,
+        mountsDemanded: (): boolean => false,
+        report: (): void => undefined,
+      },
+      createPlacements: (ports): MountPlacements => {
+        links.push(ports.link);
+        return { start: (): void => undefined, stop: (): void => undefined };
+      },
+      clearCache: (): Promise<void> => Promise.resolve(),
+      sleep: (milliseconds): Promise<void> => {
+        sleeps.push(milliseconds);
+        return Promise.resolve();
+      },
+      tray: (state): void => {
+        tray.push(state);
+      },
+      log,
+    });
+    return { controller, helper, recovered, restarts, tray, sleeps, links };
+  }
+
+  it('cleans stale points on start and again before restarting a crashed helper', async () => {
+    const { controller, helper, recovered, restarts, sleeps } = build();
+    await controller.start();
+    expect(recovered).toEqual(['/mnt/a']);
+    helper.crash();
+    await until(() => restarts.length === 1);
+    expect(recovered).toEqual(['/mnt/a', '/mnt/a']);
+    expect(restarts).toEqual([2]);
+    expect(sleeps).toEqual([1000]);
+  });
+
+  it('backs off repeated crashes and starts over once a mount comes up', async () => {
+    const { controller, helper, restarts, sleeps } = build();
+    await controller.start();
+    helper.crash();
+    await until(() => restarts.length === 1);
+    helper.crash();
+    await until(() => restarts.length === 2);
+    helper.pushLine(JSON.stringify({ type: 'status', mount: FIXTURE_ID, state: 'mounted' }));
+    helper.crash();
+    await until(() => restarts.length === 3);
+    expect(sleeps).toEqual([1000, 2000, 1000]);
+  });
+
+  it('shows journal replay as pending uploads in the tray status', async () => {
+    const { controller, helper, tray, links } = build();
+    await controller.start();
+    links[0]?.report({
+      ...FIXTURE_STATUS,
+      placementId: FIXTURE_ID,
+      state: 'mounted',
+      tier: 'full',
+      route: 'local',
+      mountPoint: '/home/u/Drive',
+    });
+    const counters = (pendingUploads: number): string =>
+      JSON.stringify({
+        type: 'counters',
+        mount: FIXTURE_ID,
+        cacheBytes: 0,
+        pinnedBytes: 0,
+        openFiles: 0,
+        pendingUploads,
+      });
+    helper.pushLine(counters(3));
+    helper.pushLine(counters(1));
+    helper.pushLine(counters(0));
+    expect(tray.map((state) => state?.status)).toEqual([
+      'Mounted',
+      'Mounted · 3 uploads pending',
+      'Mounted · 1 upload pending',
+      'Mounted',
+    ]);
+  });
+
+  it('does not restart a helper after the mount was stopped', async () => {
+    const { controller, helper, restarts } = build();
+    await controller.start();
+    await controller.stop();
+    helper.crash();
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(restarts).toEqual([]);
   });
 });

@@ -4,6 +4,7 @@ import {
   changedBodyOf,
   childPath,
   drivePathOf,
+  locationOf,
   parentPath,
   pausedBodiesOf,
   placementsOn,
@@ -35,13 +36,28 @@ describe('placement model', () => {
     );
   });
 
-  it('lists the placements of one computer by local path', () => {
+  it('lists the placements of one computer by local path or mount name', () => {
     const rows = [
-      placement({ id: 'e0000000-0000-4000-8000-000000000002', localPath: '/z' }),
-      placement({ localPath: '/a' }),
+      placement({ id: 'e0000000-0000-4000-8000-000000000002', mode: 'synced', localPath: '/z' }),
+      placement({ mountName: '/m' }),
+      placement({ id: 'e0000000-0000-4000-8000-000000000004', mode: 'synced', localPath: '/a' }),
       placement({ id: 'e0000000-0000-4000-8000-000000000003', deviceId: LAPTOP }),
     ];
-    expect(placementsOn(WORKSTATION, rows).map((row) => row.localPath)).toEqual(['/a', '/z']);
+    expect(placementsOn(WORKSTATION, rows).map((row) => row.localPath ?? row.mountName)).toEqual([
+      '/a',
+      '/m',
+      '/z',
+    ]);
+  });
+
+  it('shows the chosen folder of a synced placement and the reported point of a mount', () => {
+    expect(locationOf(placement({ mode: 'synced', localPath: '/home/me/Docs' }))).toBe(
+      '/home/me/Docs',
+    );
+    expect(locationOf(placement())).toBeNull();
+    expect(locationOf(placement({}, { mountPoint: '/run/user/1000/smarteverything/Drive' }))).toBe(
+      '/run/user/1000/smarteverything/Drive',
+    );
   });
 
   it('builds local paths in the computer’s own separator', () => {
@@ -60,7 +76,15 @@ describe('placement model', () => {
       conflictCopies: true,
     });
     expect(changedBodyOf(synced, { sync: { conflictCopies: false } }).conflictCopies).toBe(false);
-    expect(changedBodyOf(placement(), { localPath: '/mnt/x' })).not.toHaveProperty('excluded');
+    expect(changedBodyOf(placement(), { enabled: false })).toEqual({
+      deviceId: WORKSTATION,
+      rootId: ROOT,
+      folderItemId: null,
+      mode: 'mounted',
+      localPath: null,
+      mountName: 'Drive',
+      enabled: false,
+    });
   });
 
   it('pauses only the placements that run and are not on hold', () => {

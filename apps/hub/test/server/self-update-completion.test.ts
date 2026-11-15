@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   HUB_UPDATE_LEDGER_FILE,
@@ -10,6 +10,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { reconcileHubUpdateNotes } from '../../src/self-update/completion';
 import { startHubUpdateCompletion } from '../../src/self-update/completion-extension';
 import { hubUpdateStatus, readHubUpdateLedger } from '../../src/self-update/recovery';
+import { saveRepairWorkClaim } from '../../src/store/repositories/repair-work-claims';
 import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
@@ -178,6 +179,37 @@ it('announces distinct watchdog status changes to owners and reconciles completi
   }
 });
 
+it('settles the hub release job when the release finishes after the hub started', async () => {
+  const target = origin();
+  const update = release(target, 'verifying');
+  await record(update);
+  const jobs = join(fixture.layout.system.updates.selfUpdate, 'jobs');
+  await mkdir(jobs, { recursive: true });
+  const file = join(jobs, `${randomUUID()}.json`);
+  const running = {
+    runId: randomUUID(),
+    action: 'hub',
+    phase: 'running',
+    detail: 'the watchdog is starting',
+    result: { runId: update.runId },
+  };
+  await writeFile(file, JSON.stringify(running));
+  const extension = await startHubUpdateCompletion({
+    store: fixture.store,
+    layout: fixture.layout,
+    live: { announce: vi.fn() },
+  });
+  try {
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ phase: 'running' });
+    await record({ ...update, phase: 'done', finishedAt: NOW });
+    await vi.waitFor(async () => {
+      expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ phase: 'applied' });
+    });
+  } finally {
+    await extension.stop();
+  }
+});
+
 it('does not deliver to a member or a chat whose owner does not match the saved binding', async () => {
   const target = origin();
   const member = fixture.store.profiles.create({ name: 'Member' });
@@ -186,4 +218,28 @@ it('does not deliver to a member or a chat whose owner does not match the saved 
   reconcileHubUpdateNotes(fixture.store, await readHubUpdateLedger(fixture.layout));
   expect(messages(target.chatId)).toEqual([]);
   expect(messages(other.chatId)).toEqual([]);
+});
+
+it('asks the requesting chat and the hub repair chat once for a decision on a failed release', async () => {
+  const target = origin();
+  const repair = origin();
+  saveRepairWorkClaim(
+    fixture.store.settingsKv,
+    { component: 'hub.service', ...repair },
+    fixture.store.now(),
+  );
+  const waiting = { ...release(target, 'awaiting_decision'), finishedAt: null };
+  await record(waiting);
+  const ledger = await readHubUpdateLedger(fixture.layout);
+  reconcileHubUpdateNotes(fixture.store, ledger);
+  reconcileHubUpdateNotes(fixture.store, ledger);
+  for (const chat of [target, repair]) {
+    expect(messages(chat.chatId)).toHaveLength(1);
+    expect(messages(chat.chatId)[0]?.text).toContain('waits for your decision');
+    expect(messages(chat.chatId)[0]?.text).toContain(waiting.runId);
+  }
+  expect(JSON.stringify(messages(target.chatId))).not.toContain(PRIVATE);
+  await record({ ...waiting, revision: waiting.revision + 1 });
+  reconcileHubUpdateNotes(fixture.store, await readHubUpdateLedger(fixture.layout));
+  expect(messages(target.chatId)).toHaveLength(2);
 });

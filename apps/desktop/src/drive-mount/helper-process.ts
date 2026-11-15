@@ -104,6 +104,8 @@ export const nodeSpawnHelper: SpawnHelper = (file, args) => {
   return wrapped;
 };
 
+type MountLine = Extract<ControlLine, { readonly op: 'mount' }>;
+
 interface Running {
   readonly child: HelperChild;
   readonly exited: Promise<void>;
@@ -111,7 +113,8 @@ interface Running {
 
 export class HelperProcess implements HelperPort {
   private readonly listeners = new Set<(raw: string) => void>();
-  private readonly mounts = new Set<string>();
+  private readonly crashListeners = new Set<(reason: string) => void>();
+  private readonly mounts = new Map<string, MountLine>();
   private readonly settings = new Map<HelperSetting['op'], HelperSetting>();
   private current: Running | null = null;
   private queue: Promise<void> = Promise.resolve();
@@ -128,6 +131,17 @@ export class HelperProcess implements HelperPort {
   configure(setting: HelperSetting): void {
     this.settings.set(setting.op, setting);
     this.current?.child.writeControl(JSON.stringify(setting));
+  }
+
+  onCrash(listener: (reason: string) => void): () => void {
+    this.crashListeners.add(listener);
+    return () => {
+      this.crashListeners.delete(listener);
+    };
+  }
+
+  restart(): void {
+    for (const line of [...this.mounts.values()]) this.send(line);
   }
 
   onLine(listener: (raw: string) => void): () => void {
@@ -151,7 +165,7 @@ export class HelperProcess implements HelperPort {
     try {
       const running = await this.running();
       running.child.writeControl(JSON.stringify(line));
-      if (line.op === 'mount') this.mounts.add(line.mount);
+      if (line.op === 'mount') this.mounts.set(line.mount, line);
       if (line.op === 'unmount') this.mounts.delete(line.mount);
     } catch (cause) {
       this.log.error('drive_mount.helper_send_failed', cause, { op: line.op });
@@ -193,6 +207,7 @@ export class HelperProcess implements HelperPort {
       if (this.current === running) {
         this.current = null;
         this.failAll(reason);
+        for (const listener of [...this.crashListeners]) listener(reason);
       }
       finish();
     });
@@ -201,8 +216,7 @@ export class HelperProcess implements HelperPort {
 
   private failAll(reason: string): void {
     this.log.warn('drive_mount.helper_exited', { reason, mounts: this.mounts.size });
-    for (const mount of [...this.mounts]) this.fail(mount, reason);
-    this.mounts.clear();
+    for (const mount of [...this.mounts.keys()]) this.fail(mount, reason);
   }
 
   private fail(mount: string, reason: string): void {

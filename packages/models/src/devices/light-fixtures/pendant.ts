@@ -60,7 +60,7 @@ const PARTS: ModelSpec['parts'] = [
 export const PENDANT_MODEL: ModelSpec = lightModel({
   id: 'dev.light.pendant',
   title: 'Pendant light',
-  footprint: { width: RIM * 2, depth: RIM * 2, height: 0.5282 },
+  footprint: { width: 0.3254, depth: 0.3254, height: 0.5282 },
   size: { height: { param: 'drop', extra: 0.2282, resizes: true } },
   framing: { tile: VIEW, card: VIEW, hero: { ...VIEW, padding: 0.1 } },
   shots: [glowShot({ focus: 'bulb', zoom: 1.3, yaw: 30, pitch: -18 })],

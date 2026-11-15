@@ -1,4 +1,4 @@
-import { DRIVE_ITEM, type DriveItem } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { bytes } from '../../../format/number';
 import {
@@ -9,6 +9,7 @@ import {
   ownDuplicatesOf,
   placesOf,
 } from './duplicate-group-row';
+import { documentFixture } from '../data/fixtures';
 import { driveChipsOf } from '../model/drive-chip';
 
 const ROOT_A = '00000000-0000-4000-8000-0000000000a1';
@@ -28,7 +29,7 @@ const SHA = 'a'.repeat(64);
 const MB = 1024 ** 2;
 
 function file(id: string, rootId: string, relPath: string): DriveItem {
-  return DRIVE_ITEM.parse({
+  return documentFixture({
     id,
     rootId,
     parentId: null,
@@ -36,21 +37,10 @@ function file(id: string, rootId: string, relPath: string): DriveItem {
     name: relPath.split('/').at(-1),
     modifiedAt: '2026-11-07T10:00:00.000Z',
     addedAt: '2026-11-07T10:00:00.000Z',
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
-    mime: 'application/pdf',
     bytes: 4 * MB,
     sha256: SHA,
     integrity: 'ok',
-    thumb: { state: 'none' },
-    kind: 'document',
   });
 }
 

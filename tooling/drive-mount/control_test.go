@@ -21,8 +21,8 @@ func (r *recorder) record(format string, args ...any) error {
 	return r.fail
 }
 
-func (r *recorder) mount(id string, root mountRoot, point string) error {
-	return r.record("mount %s %s %s %s", id, root.RootID, root.FolderID, point)
+func (r *recorder) mount(id string, root mountRoot, point string, options mountOptions) error {
+	return r.record("mount %s %s %s %s %d %t", id, root.RootID, root.FolderID, point, options.atime, options.readOnly)
 }
 func (r *recorder) unmount(id string) error { return r.record("unmount %s", id) }
 func (r *recorder) invalidate(id string, paths []string) error {
@@ -50,7 +50,7 @@ func TestControlDispatch(t *testing.T) {
 	rec := &recorder{}
 	input := strings.Join([]string{
 		`{"op":"mount","mount":"m1","root":"r1","folder":"f1","point":"/mnt/a"}`,
-		`{"op":"mount","mount":"m2","root":"r2","point":"/mnt/b"}`,
+		`{"op":"mount","mount":"m2","root":"r2","point":"/mnt/b","options":["noatime","ro"]}`,
 		`{"op":"invalidate","mount":"m1","paths":["/a","/b/c"]}`,
 		`{"op":"pin","mount":"m1","path":"/x"}`,
 		`{"op":"unpin","mount":"m1","path":"/x"}`,
@@ -64,7 +64,7 @@ func TestControlDispatch(t *testing.T) {
 		t.Fatalf("unexpected output %s", out)
 	}
 	want := []string{
-		"mount m1 r1 f1 /mnt/a", "mount m2 r2  /mnt/b", "invalidate m1 /a,/b/c",
+		"mount m1 r1 f1 /mnt/a 0 false", "mount m2 r2  /mnt/b 2 true", "invalidate m1 /a,/b/c",
 		"pin m1 /x", "unpin m1 /x", "cache 9223372036854775807 1h0m0s 0 1m0s", "cache 1000 1m0s 500 5s",
 		"route   ", "route https://192.168.1.2:8443 smarteverything-x.local ab", "unmount m1",
 	}

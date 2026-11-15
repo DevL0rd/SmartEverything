@@ -7,7 +7,6 @@ interface Named {
 
 export interface Names {
   readonly devices: readonly DeviceLike[];
-  readonly scenes: readonly Named[];
   readonly people: readonly Named[];
   readonly chats: readonly { readonly id: string; readonly title: string }[];
 }

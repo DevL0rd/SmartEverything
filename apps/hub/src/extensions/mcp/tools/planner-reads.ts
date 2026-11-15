@@ -1,37 +1,31 @@
-import {
-  PLANNER_LOCAL_DATE,
-  PLANNER_READ_VIEWS,
-  PLANNER_STATS_RANGES,
-} from '@smarteverything/domain';
+import { PLANNER_READ_VIEWS } from '@smarteverything/domain';
 import { z } from 'zod';
+import { resolveItem } from '../../../planner/sharing/visibility';
 import { operate, profileFor, type ActingAs, type ActingContext } from './acting';
-import { MOMENT_ARGUMENT, PERSON, READS } from './registry';
+import { bedtime, sleep } from './planner-reads-clock';
+import { bookingPages, feeds, guests, search, sharing } from './planner-reads-calendar';
+import { READ_FIELDS } from './planner-reads-fields';
+import { PERSON, READS } from './registry';
 import { selection, type SelectedToolDefinition, type Selection } from './selected-tool';
-
-const COLLECTIONS = z.array(z.uuid()).min(1);
-
-const READ_FIELDS = {
-  date: PLANNER_LOCAL_DATE,
-  from: MOMENT_ARGUMENT,
-  to: MOMENT_ARGUMENT,
-  collections: COLLECTIONS,
-  itemId: z.uuid(),
-  range: z.enum(PLANNER_STATS_RANGES),
-  minutes: z.int().positive(),
-} as const;
 
 export const PLANNER_READ_INPUT = z.strictObject({
   view: z.enum(PLANNER_READ_VIEWS).describe('What to read'),
   personId: PERSON,
   date: READ_FIELDS.date.optional().describe('The day for view day, as YYYY-MM-DD'),
-  from: READ_FIELDS.from.optional().describe('Start moment for range and free_slots'),
-  to: READ_FIELDS.to.optional().describe('End moment for range and free_slots'),
+  from: READ_FIELDS.from.optional().describe('Start moment for range, free_slots and sleep'),
+  to: READ_FIELDS.to.optional().describe('End moment for range, free_slots and sleep'),
   collections: READ_FIELDS.collections
     .optional()
-    .describe('Calendar or list ids to keep, from view tasks; all when left out'),
-  itemId: READ_FIELDS.itemId.optional().describe('The task or event id for view item'),
+    .describe('Calendar or list ids to keep, for views tasks, range and search; all when left out'),
+  itemId: READ_FIELDS.itemId.optional().describe('The task or event id for views item and guests'),
   range: READ_FIELDS.range.optional().describe('week, month or year for view stats'),
   minutes: READ_FIELDS.minutes.optional().describe('Length in minutes the gap must fit'),
+  text: READ_FIELDS.text.optional().describe('The words to look for, for view search'),
+  when: READ_FIELDS.when
+    .optional()
+    .describe('all, upcoming or past events for view search; all when left out'),
+  kinds: READ_FIELDS.kinds.optional().describe('event and or task to keep, for view search'),
+  cursor: READ_FIELDS.cursor.optional().describe('The next value of the previous search page'),
 });
 
 function listed<T>(rows: readonly T[]): { readonly rows: readonly T[] } {
@@ -90,10 +84,16 @@ function item(): Selection {
   return selection({
     input: z.strictObject({ itemId: READ_FIELDS.itemId }),
     run: (context, input, as) => {
-      const profileId = profileFor(context, as);
+      const { item, role } = resolveItem(
+        context.store,
+        profileFor(context, as),
+        input.itemId,
+        'read',
+      );
       return {
-        item: context.store.plannerItems.byId(input.itemId, profileId),
-        children: context.store.plannerItems.children(input.itemId, profileId),
+        item,
+        role,
+        children: context.store.plannerItems.children(item.id, item.profile_id),
       };
     },
   });
@@ -148,6 +148,13 @@ export const PLANNER_READ: SelectedToolDefinition = {
     }),
     stats: stats(),
     free_slots: freeSlots(),
+    search: search(),
+    sharing: sharing(),
+    guests: guests(),
+    feeds: feeds(),
+    booking_pages: bookingPages(),
+    bedtime: bedtime(),
+    sleep: sleep(),
     google_status: nothing((context, as) => {
       const account = context.store.googleAccounts.find(profileFor(context, as));
       return { linked: account !== undefined, account: account ?? null };

@@ -1,9 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ApiError, PHOTOS_CLIENT_PREFS, type DriveChange } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { PlacementLifecycle } from '../drive/placement-lifecycle';
-import { DrivePlacements } from '../drive/placements';
+import type { DrivePlacements } from '../drive/placements';
 import type { DriveActor } from '../drive/access';
 import type { ScrubCorruption } from '../drive/scrub';
 import type { OwnerAlert } from '../extensions/owner-alerts';
@@ -19,7 +18,12 @@ import { drivePlacementRoutes, type DrivePlacementRoutes } from './handlers/driv
 import { startDrive, type RunningDrive } from './handlers/drive-start';
 import { createDriveSurfaces } from './handlers/drive-surface-routes';
 import type { DriveDeps } from './handlers/drive-wiring';
-import { photoHubRoutes, type PhotoHubRoutes } from './handlers/photos-hub';
+import { startPhotoAi } from '../photos/ai/wiring';
+import { photoHubRoutes, type PhotoHubInputs, type PhotoHubRoutes } from './handlers/photos-hub';
+import type { PhotoAi } from '../photos/ai/service';
+import { photoSharing, type PhotoSharingHub } from '../photos/sharing/wiring';
+import { PlacesService, placesDatasetPath } from '../photos/places';
+import { PhotoSearchIndexer } from '../photos/search-index';
 import type { RawRoute } from './http-server';
 
 const WATCH_SETTLE_MS = 500;
@@ -52,6 +56,16 @@ class WriteSlot {
 function corruptionAlert(store: Store, corruption: ScrubCorruption): OwnerAlert {
   const drive = store.driveRoots.byId(corruption.rootId);
   const data = { rootId: corruption.rootId, itemId: corruption.itemId };
+  if (corruption.cause === 'filesystem') {
+    return {
+      title: 'The disk could not read a drive file',
+      body: 'The filesystem failed a checksum while reading a file back. Open the drive health page to see which.',
+      data,
+      ...(drive.scope === 'home' || drive.ownerProfileId === null
+        ? {}
+        : { person: drive.ownerProfileId }),
+    };
+  }
   if (drive.scope === 'home') {
     return {
       title: 'A Shared Drive file changed on disk',
@@ -110,6 +124,7 @@ function depsOf(
     localUrl: () => lanUrlOf(context),
     links: context.links,
     nodes: context.computerNodes,
+    pushCommands: context.pushCommands,
     probe: systemDataSpace,
     now: options.clock.now,
     log: options.log.forArea('hub.drive'),
@@ -122,12 +137,7 @@ interface StartedPlacements {
   readonly stop: () => void;
 }
 
-function placementsOf(store: Store, log: Logger): StartedPlacements {
-  const placements = new DrivePlacements({
-    store,
-    context: store.context,
-    newId: randomUUID,
-  });
+function placementsOf(store: Store, placements: DrivePlacements, log: Logger): StartedPlacements {
   const lifecycle = new PlacementLifecycle({
     store,
     placements,
@@ -152,6 +162,81 @@ function duplicatesOf(store: Store, slot: WriteSlot): DuplicatesService {
   });
 }
 
+function photoInputsOf(
+  options: BuildOptions,
+  context: ServerContext,
+  drive: RunningDrive,
+  shared: {
+    readonly duplicates: DuplicatesService;
+    readonly ai: PhotoAi;
+    readonly places: PlacesService;
+    readonly sharing: PhotoSharingHub;
+  },
+): PhotoHubInputs {
+  const { services, env } = drive.runtime;
+  return {
+    store: options.store,
+    env,
+    read: services.read,
+    write: services.write,
+    layout: options.layout,
+    decoders: drive.runtime.media.decoders,
+    openRouter: context.openRouter,
+    duplicates: shared.duplicates,
+    recordingPath: options.core.recordingPath,
+    attachmentPath: (storagePath) => join(options.layout.system.ai.assistant, storagePath),
+    permittedCameras: permittedCameras(options.store, context),
+    ai: shared.ai,
+    places: shared.places,
+    sharing: shared.sharing,
+    links: context.links,
+  };
+}
+
+interface PhotoServices {
+  readonly shared: {
+    readonly ai: PhotoAi;
+    readonly places: PlacesService;
+    readonly sharing: PhotoSharingHub;
+  };
+  readonly stop: () => Promise<void>;
+}
+
+function startPhotoServices(
+  options: BuildOptions,
+  context: ServerContext,
+  drive: RunningDrive,
+  log: Logger,
+): PhotoServices {
+  const { store } = options;
+  const photoAi = startPhotoAi({
+    store,
+    layout: options.layout,
+    log,
+    pipeline: drive.runtime.media,
+    openRouter: context.openRouter,
+  });
+  const places = new PlacesService({
+    context: store.context,
+    datasetPath: placesDatasetPath(),
+    log,
+  });
+  places.load().catch((cause: unknown) => {
+    log.error('photos.places_load_failed', cause);
+  });
+  const sharing = photoSharing({ store, now: options.clock.now });
+  const searchIndex = new PhotoSearchIndexer(store);
+  searchIndex.start();
+  return {
+    shared: { ai: photoAi.ai, places, sharing },
+    stop: async (): Promise<void> => {
+      sharing.autoSaver.stop();
+      searchIndex.stop();
+      await photoAi.stop();
+    },
+  };
+}
+
 export interface RunningDriveHub {
   readonly routes: RunningDrive['routes'] & DrivePlacementRoutes & PhotoHubRoutes;
   readonly rawRoutes: readonly RawRoute[];
@@ -169,21 +254,14 @@ export async function startDriveHub(
   const drive = await startDrive(depsOf(options, context, duplicates));
   slot.attach(drive.runtime.services.write);
   const log = options.log.forArea('hub.drive');
-  const placed = placementsOf(store, log);
+  const placed = placementsOf(store, drive.runtime.placements, log);
   const { services, env } = drive.runtime;
+  const photos = startPhotoServices(options, context, drive, log);
   const surfaces = createDriveSurfaces({ store, env, services, nodes: context.computerNodes, log });
   const routes = {
     ...drive.routes,
     ...drivePlacementRoutes(store, placed.placements),
-    ...photoHubRoutes({
-      store,
-      env,
-      read: services.read,
-      duplicates,
-      recordingPath: options.core.recordingPath,
-      attachmentPath: (storagePath) => join(options.layout.system.ai.assistant, storagePath),
-      permittedCameras: permittedCameras(store, context),
-    }),
+    ...photoHubRoutes(photoInputsOf(options, context, drive, { duplicates, ...photos.shared })),
   };
   const rawRoutes: readonly RawRoute[] = [...drive.rawRoutes, ...surfaces.routes];
   return {
@@ -193,6 +271,7 @@ export async function startDriveHub(
     stop: async (): Promise<void> => {
       surfaces.stop();
       placed.stop();
+      await photos.stop();
       await drive.stop();
     },
   };

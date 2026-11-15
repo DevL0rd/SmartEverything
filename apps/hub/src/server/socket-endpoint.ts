@@ -7,7 +7,7 @@ import type { z } from 'zod';
 import type { Store } from '../store/store';
 import { SocketStats } from './live-stats';
 import { EndpointLog } from './endpoint-log';
-import { remoteKind } from './request-trace';
+import { requestRemoteKind } from './request-trace';
 import { socketClient } from './socket-auth';
 import { clientSocketsOf } from './client-sockets';
 import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
@@ -154,7 +154,7 @@ export class SocketEndpoint<Message> {
       stats: new SocketStats(),
     };
     this.connections.add(connection);
-    events.connected(connection, remoteKind(request.socket.remoteAddress), this.connections.size);
+    events.connected(connection, requestRemoteKind(request), this.connections.size);
     socket.on('pong', () => {
       connection.alive = true;
       connection.stats.ponged();

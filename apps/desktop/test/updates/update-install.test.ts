@@ -85,20 +85,23 @@ describe('unpacking a downloaded app', () => {
 });
 
 describe('swapping the app folder', () => {
-  it('keeps the old folder as .previous and puts the new one in place', async () => {
+  it('keeps the old folder as a unique previous sibling and puts the new one in place', async () => {
     const root = await app('SmartEverything', 'old');
     const next = await app('next', 'new');
     const replaced = await swapIn(root, next);
     expect(await readFile(join(root, 'version'), 'utf8')).toBe('new');
     expect(await readFile(join(replaced.previous, 'version'), 'utf8')).toBe('old');
-    expect(replaced.previous).toBe(siblingOf(root, 'previous'));
+    expect(replaced.previous).toMatch(
+      new RegExp(`^${siblingOf(root, 'previous-').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}[0-9a-f-]{36}$`, 'u'),
+    );
   });
 
-  it('replaces an older .previous', async () => {
+  it('removes an older previous folder', async () => {
     const root = await app('SmartEverything', 'two');
-    await app('SmartEverything.previous', 'one');
-    await swapIn(root, await app('next', 'three'));
-    expect(await readFile(join(base, 'SmartEverything.previous', 'version'), 'utf8')).toBe('two');
+    await app('SmartEverything.previous-older', 'one');
+    const replaced = await swapIn(root, await app('next', 'three'));
+    expect(await readFile(join(replaced.previous, 'version'), 'utf8')).toBe('two');
+    expect((await readdir(base)).filter((name) => name.includes('older'))).toStrictEqual([]);
   });
 
   it('puts the old folder back when the new one cannot be moved in', async () => {

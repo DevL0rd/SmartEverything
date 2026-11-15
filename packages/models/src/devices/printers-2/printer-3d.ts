@@ -33,7 +33,7 @@ export const PRINTER_3D_MODEL: ModelSpec = {
   title: '3D printer',
   category: 'printer',
   family: 'printer',
-  footprint: { width: W, depth: D, height: HEIGHT },
+  footprint: { width: W, depth: 0.3908, height: 0.6115 },
   framing: {
     tile: { ...HOUSE, padding: 0.06, focus: 'case' },
     card: HOUSE,

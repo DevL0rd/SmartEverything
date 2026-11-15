@@ -81,6 +81,7 @@ export interface HomeMap3dProps {
   readonly chrome: readonly ChromeBox[];
   readonly insets: StageInsets;
   readonly label: string;
+  readonly sharedRenderer?: boolean;
   readonly selection: readonly string[];
   readonly frameRooms?: readonly string[] | undefined;
   readonly selectedItem: string | null;
@@ -210,6 +211,7 @@ function Surface(props: SurfaceProps): ReactNode {
       keepOut={stage.chrome}
       insets={stage.insets}
       label={stage.label}
+      sharedRenderer={stage.sharedRenderer ?? false}
       onReady={wiring.ready}
       onPickRoom={onPickRoom}
       onPickDevice={onPickDevice}

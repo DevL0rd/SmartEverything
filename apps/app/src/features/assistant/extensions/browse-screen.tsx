@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
-import { SearchField } from '../../../components/search-field';
 import { NavRow } from '../../../components/rows';
 import { ListRow } from '../../../components/list-row';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
@@ -106,13 +105,19 @@ export function BrowseAiExtensionsScreen({
       : 'browse online sources or add extensions',
   );
   const inspection = useSkillInspection(kind);
+  const model = useBrowse(kind);
   return (
     <SettingsFrame
       page={kind === 'skill' ? 'assistant/skills/add' : 'assistant/extensions/add'}
       scroll={false}
+      search={{
+        value: model.query,
+        onChange: model.changeQuery,
+        placeholder: kind === 'skill' ? 'Search skills' : 'Search extensions',
+      }}
       {...(banner === undefined ? {} : { banner })}
     >
-      <BrowseList kind={kind} onImport={inspection.open} />
+      <BrowseList kind={kind} model={model} onImport={inspection.open} />
       <TextEditSheet request={inspection.request} onClose={inspection.close} />
     </SettingsFrame>
   );
@@ -132,26 +137,21 @@ function useBrowseSections(
 
 function BrowseList({
   kind,
+  model,
   onImport,
 }: {
   readonly kind: DiscoverySelection['kind'];
+  readonly model: BrowseModel;
   readonly onImport: () => void;
 }): ReactNode {
-  const model = useBrowse(kind);
   const installed = useExtensions();
   const sections = useBrowseSections(model, installed);
   const noun = kind === 'skill' ? 'skills' : 'extensions';
   const source = model.selection.source;
   return (
     <>
-      <View className="w-full max-w-reading gap-3 px-gutter pb-3">
-        <SearchField
-          value={model.query}
-          onChange={model.changeQuery}
-          placeholder={`Search ${noun}`}
-          variant="field"
-        />
-        {source === undefined ? null : (
+      {source === undefined ? null : (
+        <View className="w-full max-w-reading pb-3">
           <Banner
             tone="info"
             title="Browsing one source"
@@ -159,11 +159,11 @@ function BrowseList({
             wrapBody
             action={{ label: 'All sources', onPress: model.clearSource, variant: 'outlined' }}
           />
-        )}
-      </View>
+        </View>
+      )}
       <VirtualList
         header={
-          <View className="gap-3 px-gutter pb-3">
+          <View className="gap-3 pb-3">
             <BrowseStatus kind={kind} installed={installed} model={model} />
             <ImportRow kind={kind} onImport={onImport} />
           </View>

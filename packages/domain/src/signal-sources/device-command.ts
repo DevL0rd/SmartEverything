@@ -21,7 +21,6 @@ export const COMMAND_CAUSE_LABELS: Readonly<Record<CommandSource, string>> = {
   app: 'Someone in the app',
   assistant: 'The AI',
   automation: 'An automation',
-  scene: 'A scene',
 };
 
 export const DEVICE_COMMAND_SIGNAL: SignalKindSpec = {

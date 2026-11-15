@@ -24,6 +24,7 @@ const API_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   camera_busy: 'Too many people are watching this camera.',
   claude_not_ready: 'Claude Desktop needs the SmartEverything link for this.',
   computer_update_required: 'This computer needs a SmartEverything Desktop update to connect.',
+  hub_starting: 'The hub is starting up. It will be ready in a few seconds.',
 };
 
 export interface ErrorText {

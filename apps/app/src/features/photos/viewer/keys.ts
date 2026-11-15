@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent } from 'react';
 import { keyPressOf, type KeyPress } from '../../../design/keyboard';
 import { isNative } from '../../../design/platform';
 
-export type ViewerKeyAction = 'previous' | 'next' | 'favourite' | 'info';
+export type ViewerKeyAction = 'previous' | 'next' | 'favourite' | 'info' | 'edit';
 
 const KEYS: Readonly<Record<string, ViewerKeyAction>> = {
   ArrowLeft: 'previous',
@@ -11,6 +11,8 @@ const KEYS: Readonly<Record<string, ViewerKeyAction>> = {
   F: 'favourite',
   i: 'info',
   I: 'info',
+  e: 'edit',
+  E: 'edit',
 };
 
 export function viewerKeyAction(press: KeyPress): ViewerKeyAction | null {

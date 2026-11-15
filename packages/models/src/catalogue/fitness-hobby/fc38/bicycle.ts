@@ -146,7 +146,7 @@ export const BICYCLE_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.bicycle',
   title: 'Bicycle',
   category: 'fitness-hobby',
-  footprint: { width: 0.56, depth: 1.7, height: 1.05 },
+  footprint: { width: 0.54, depth: 1.66, height: 1.0494 },
   view: { yaw: 55, pitch: 14, fov: 28, padding: 0.08 },
   meta: {
     names: {

@@ -12,8 +12,11 @@ import {
   UpdateCommandError,
   UpdateUnavailableError,
 } from '../../src/self-update/command';
-import { findUpdateSource } from '../../src/self-update/update-source';
+import { updateBuildSources } from '../../src/self-update/build-source';
+import { findCheckoutSource, findUpdateSource } from '../../src/self-update/update-source';
 import { ServiceConfigError } from '../../src/service/configuration';
+import { openStore } from '../../src/store/store';
+import { testLogger } from '../support/logs';
 import { testLayout } from '../support/test-layout';
 
 const TSX = fileURLToPath(new URL('../../../../node_modules/tsx', import.meta.url));
@@ -40,12 +43,24 @@ function writeConfig(extra: Readonly<Record<string, unknown>>): void {
 }
 
 function configure(): void {
-  writeConfig({ updateSource: { checkout, remote: 'origin', branch: 'main' } });
+  writeConfig({
+    updateSource: { repository: 'owner/repo', checkout, remote: 'origin', branch: 'main' },
+  });
 }
 
 beforeEach(async () => {
   scratch = mkdtempSync(join(tmpdir(), 'update-source-'));
   layout = await testLayout(join(scratch, 'data'));
+  mkdirSync(dirname(layout.system.database.file), { recursive: true });
+  const store = openStore({
+    path: layout.system.database.file,
+    log: testLogger('store'),
+    now: () => new Date('2026-11-14T10:00:00.000Z'),
+    systemTimeZone: 'UTC',
+    drivePathOf: () => scratch,
+  });
+  updateBuildSources(store, { hub: 'hub', apk: 'hub', ui: 'hub', desktop: 'hub' });
+  store.close();
   checkout = join(scratch, 'checkout');
   mkdirSync(join(checkout, 'tooling'), { recursive: true });
   mkdirSync(join(checkout, 'node_modules'));
@@ -61,6 +76,7 @@ describe('the configured update source', () => {
   it('reads the source from the service configuration', () => {
     configure();
     expect(findUpdateSource(layout)).toStrictEqual({
+      repository: 'owner/repo',
       checkout,
       remote: 'origin',
       branch: 'main',
@@ -72,11 +88,18 @@ describe('the configured update source', () => {
     });
   });
 
+  it('reads a repository-only source, which has no checkout', () => {
+    writeConfig({ updateSource: { repository: 'owner/repo', branch: 'main' } });
+    expect(findUpdateSource(layout)).toStrictEqual({ repository: 'owner/repo', branch: 'main' });
+    expect(findCheckoutSource(layout)).toBeUndefined();
+    expect(() => requireUpdateSource(layout)).toThrow(UpdateUnavailableError);
+  });
+
   it('treats a missing service configuration as no source', () => {
     expect(findUpdateSource(layout)).toBeUndefined();
   });
 
-  it('names the configure tool when no source is configured', () => {
+  it('names the configure tool when no checkout is configured', () => {
     writeConfig({});
     expect(findUpdateSource(layout)).toBeUndefined();
     expect(() => requireUpdateSource(layout)).toThrow(UpdateUnavailableError);
@@ -84,10 +107,15 @@ describe('the configured update source', () => {
   });
 
   it('refuses a relative checkout, a bad remote and unknown keys', () => {
+    const repository = 'owner/repo';
     for (const source of [
-      { checkout: 'relative', remote: 'origin', branch: 'main' },
-      { checkout, remote: 'not a remote', branch: 'main' },
-      { checkout, remote: 'origin', branch: 'main', allowRemote: true },
+      { repository, checkout: 'relative', remote: 'origin', branch: 'main' },
+      { repository, checkout, remote: 'not a remote', branch: 'main' },
+      { repository, checkout, remote: 'origin', branch: 'main', allowRemote: true },
+      { repository, checkout, branch: 'main' },
+      { repository, remote: 'origin', branch: 'main' },
+      { repository: 'Not A Repository', branch: 'main' },
+      { checkout, remote: 'origin', branch: 'main' },
     ]) {
       writeConfig({ updateSource: source });
       expect(() => findUpdateSource(layout)).toThrow(ServiceConfigError);

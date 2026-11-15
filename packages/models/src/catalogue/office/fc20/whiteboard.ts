@@ -69,7 +69,7 @@ function tray(): ModelSpecPart[] {
 export const WHITEBOARD_MODEL: ModelSpec = officeItem({
   id: 'cat.office.whiteboard',
   title: 'Whiteboard',
-  footprint: { width: 1.2, depth: 0.1, height: 0.9 },
+  footprint: { width: 1.2, depth: 0.09, height: 0.9 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     height: { param: 'height', extra: 0, resizes: true },

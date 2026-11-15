@@ -88,7 +88,23 @@ afterEach(() => {
   database.close();
 });
 
+function inodeOf(rootId: string | number | Uint8Array | null): number {
+  const now = 1_000_000_000;
+  return Number(
+    database
+      .prepare(
+        `insert into drive_inodes (root_id, is_root, type, mode, atime_ns, mtime_ns, ctime_ns, btime_ns, orphan)
+         values (?, 0, 'file', 420, ?, ?, ?, ?, 0) returning id`,
+      )
+      .get(rootId, now, now, now, now)?.['id'],
+  );
+}
+
 function insert(table: string, fields: Fields): void {
+  if (table === 'drive_items' && fields['inode_id'] === undefined) {
+    insert(table, { ...fields, inode_id: inodeOf(fields['root_id'] ?? null) });
+    return;
+  }
   const columns = Object.keys(fields);
   database
     .prepare(
@@ -592,8 +608,8 @@ describe('paging', () => {
     const statements = [
       database.prepare(
         `insert into drive_items (id, root_id, rel_path, name, kind, mime, bytes, integrity, modified_at,
-           added_at, rev, etag, outside, thumb_state, taken_at, width, height)
-         values (?, ?, ?, ?, 'image', 'image/jpeg', 1, 'unknown', ?, ?, 1, 'e', 0, 'none', ?, 4, 3)`,
+           added_at, rev, etag, outside, thumb_state, taken_at, width, height, inode_id)
+         values (?, ?, ?, ?, 'image', 'image/jpeg', 1, 'unknown', ?, ?, 1, 'e', 0, 'none', ?, 4, 3, ?)`,
       ),
       database.prepare(
         `insert into drive_media (item_id, time_source, preview_state, poster_state, playable_state)
@@ -605,7 +621,16 @@ describe('paging', () => {
     for (let n = 1; n <= count; n += 1) {
       const id = itemId(n);
       const takenAt = new Date(Date.UTC(2026, 2, 1) + n * 1000).toISOString();
-      statements[0].run(id, HOME_ROOT, `${String(n)}.jpg`, `${String(n)}.jpg`, NOW, NOW, takenAt);
+      statements[0].run(
+        id,
+        HOME_ROOT,
+        `${String(n)}.jpg`,
+        `${String(n)}.jpg`,
+        NOW,
+        NOW,
+        takenAt,
+        inodeOf(HOME_ROOT),
+      );
       statements[1].run(id);
       statements[2].run(id, HOME_ROOT);
     }
@@ -654,8 +679,8 @@ describe('query plans on a 100k library', () => {
   it('reads a month through the capture-time index and counts months in one pass with keyed lookups', () => {
     const insertItem = database.prepare(
       `insert into drive_items (id, root_id, rel_path, name, kind, mime, bytes, integrity, modified_at,
-         added_at, rev, etag, outside, thumb_state, taken_at, width, height)
-       values (?, ?, ?, ?, 'image', 'image/jpeg', 1, 'unknown', ?, ?, 1, 'e', 0, 'none', ?, 4, 3)`,
+         added_at, rev, etag, outside, thumb_state, taken_at, width, height, inode_id)
+       values (?, ?, ?, ?, 'image', 'image/jpeg', 1, 'unknown', ?, ?, 1, 'e', 0, 'none', ?, 4, 3, ?)`,
     );
     const insertMedia = database.prepare(
       `insert into drive_media (item_id, time_source, preview_state, poster_state, playable_state)
@@ -668,7 +693,16 @@ describe('query plans on a 100k library', () => {
     for (let n = 1; n <= ROWS; n += 1) {
       const id = itemId(n);
       const takenAt = new Date(Date.UTC(2016, 0, 1) + n * 3_000_000).toISOString();
-      insertItem.run(id, HOME_ROOT, `${String(n)}.jpg`, `${String(n)}.jpg`, NOW, NOW, takenAt);
+      insertItem.run(
+        id,
+        HOME_ROOT,
+        `${String(n)}.jpg`,
+        `${String(n)}.jpg`,
+        NOW,
+        NOW,
+        takenAt,
+        inodeOf(HOME_ROOT),
+      );
       insertMedia.run(id);
       insertLibrary.run(id, HOME_ROOT);
     }

@@ -7,6 +7,7 @@ import type {
   LiveTable,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rootVisible } from '../../src/drive/access';
 import { driveNoticeSeenBy } from '../../src/server/live-access';
 import { driveRowVisible, seenBy, visible, type Hearing } from '../../src/server/live-visibility';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
@@ -85,9 +86,19 @@ function profileOf(clientId: string): string {
   return test.store.profiles.activeOf(clientId).id;
 }
 
+function memberOf(albumId: string, profileId: string): boolean {
+  return test.store.driveAlbums.contributions.memberRole(albumId, profileId) !== null;
+}
+
 function personOfDevice(deviceId: string): string | null {
   return test.store.computerNodes.personOf(deviceId);
 }
+
+function rootSeen(root: DriveRoot, profileId: string): boolean {
+  return rootVisible(test.store, { profileId }, root);
+}
+
+const lookups = { profileOf, personOfDevice, albumMember: memberOf, rootVisible: rootSeen };
 
 function rootChange(row: DriveRoot): LiveChange {
   return {
@@ -144,6 +155,18 @@ describe('drive roots in the live scope', () => {
     expect(seen).toEqual([HOME_ROOT, OWNER_ROOT]);
   });
 
+  it('shows a person drive to someone holding a grant inside it, and to nobody else', () => {
+    test.store.driveGrants.set(
+      { itemId: BOB_FOLDER, profileId: ann.profileId, role: 'view', expiresAt: null },
+      bob.profileId,
+    );
+    const bobRoot = test.store.driveRoots.byId(BOB_ROOT);
+    expect(shownTo(ann, bobRoot)).toBe(true);
+    expect(shownTo(owner, bobRoot)).toBe(false);
+    expect(driveRowVisible(hearing(ann), bobRoot, lookups)).toBe(true);
+    expect(shownTo(ann, test.store.driveRoots.byId(OWNER_ROOT))).toBe(false);
+  });
+
   it('judges a deleted root by the old row', () => {
     const change: LiveChange = {
       type: 'change',
@@ -168,18 +191,24 @@ describe('drive roots in the live scope', () => {
 describe('drive albums and grants in the live scope', () => {
   it('shows a member home albums and their own albums only', () => {
     const seen = [HOME_ALBUM, ANN_ALBUM, BOB_ALBUM].filter((id) =>
-      driveRowVisible(hearing(ann), test.store.driveAlbums.byId(id), profileOf, personOfDevice),
+      driveRowVisible(hearing(ann), test.store.driveAlbums.byId(id), lookups),
     );
     expect(seen).toEqual([HOME_ALBUM, ANN_ALBUM]);
   });
 
+  it('shows a shared album to the person it was shared with', () => {
+    const album = test.store.driveAlbums.byId(BOB_ALBUM);
+    expect(driveRowVisible(hearing(ann), album, lookups)).toBe(false);
+    test.store.photoAlbumMembers.invite(BOB_ALBUM, ann.profileId, 'viewer', bob.profileId);
+    expect(driveRowVisible(hearing(ann), album, lookups)).toBe(true);
+  });
+
   it('shows a grant to the person who made it and the person who received it only', () => {
     const grant = test.store.driveGrants.set(
-      { itemId: BOB_FOLDER, profileId: ann.profileId, role: 'view' },
+      { itemId: BOB_FOLDER, profileId: ann.profileId, role: 'view', expiresAt: null },
       bob.profileId,
     );
-    const shown = (person: TestPerson): boolean =>
-      driveRowVisible(hearing(person), grant, profileOf, personOfDevice);
+    const shown = (person: TestPerson): boolean => driveRowVisible(hearing(person), grant, lookups);
     expect(shown(ann)).toBe(true);
     expect(shown(bob)).toBe(true);
     expect(shown(owner)).toBe(false);
@@ -200,7 +229,7 @@ describe('drive albums and grants in the live scope', () => {
       operation: 'INSERT',
       table: 'drive_grants',
       record: test.store.driveGrants.set(
-        { itemId: BOB_FOLDER, profileId: owner.profileId, role: 'edit' },
+        { itemId: BOB_FOLDER, profileId: owner.profileId, role: 'edit', expiresAt: null },
         bob.profileId,
       ),
       oldRecord: null,
@@ -230,7 +259,7 @@ describe('drive notices in the live scope', () => {
 
   it('lets a person hear about a folder shared with them and nothing else of that drive', () => {
     test.store.driveGrants.set(
-      { itemId: BOB_FOLDER, profileId: ann.profileId, role: 'view' },
+      { itemId: BOB_FOLDER, profileId: ann.profileId, role: 'view', expiresAt: null },
       bob.profileId,
     );
     expect(
@@ -267,6 +296,13 @@ describe('drive notices in the live scope', () => {
     expect(seenBy(hearing(ann), progress(HOME_ROOT), test.store)).toEqual(progress(HOME_ROOT));
     expect(seenBy(hearing(ann), progress(BOB_ROOT), test.store)).toBeNull();
     expect(seenBy(hearing(owner), progress(BOB_ROOT), test.store)).toBeNull();
+  });
+
+  it('tells only the person whose hidden photo folders changed', () => {
+    const notice = { type: 'photos_folders_changed', profileId: ann.profileId } as const;
+    expect(seenBy(hearing(ann), notice, test.store)).toEqual(notice);
+    expect(seenBy(hearing(bob), notice, test.store)).toBeNull();
+    expect(seenBy(hearing(owner), notice, test.store)).toBeNull();
   });
 
   it('hides a notice about a root that no longer exists from a member', () => {

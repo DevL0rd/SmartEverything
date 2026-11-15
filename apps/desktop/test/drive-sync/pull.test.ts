@@ -17,15 +17,17 @@ import {
   type PullContention,
   type PullProgress,
 } from '../../src/drive-sync/pull.js';
+import { NoXattrPort } from '../../src/drive-sync/meta-port.js';
 import { scanRoot } from '../../src/drive-sync/scan.js';
 import {
   BLOCK,
-  FakeHubFiles,
   blockHashes,
   bytesOf,
   deletedOf,
+  FakeHubFiles,
   fileEntry,
   folderEntry,
+  NO_META,
 } from './pull-support.js';
 
 const log = new Logger('desktop.drive-sync');
@@ -68,6 +70,8 @@ beforeEach(async () => {
       driveId: ROOT,
       rootPath,
       platform: process.platform,
+      meta: new NoXattrPort(),
+      tolerance: (): bigint => 0n,
       database,
       source: hub,
       wants: (relPath): boolean => !unwanted.has(relPath),
@@ -81,6 +85,8 @@ beforeEach(async () => {
         deferred: (relPath): void => {
           deferred.push(relPath);
         },
+        skipped: (): void => undefined,
+        dirtied: (): void => undefined,
         progress: (entry): void => {
           progress.push(entry);
         },
@@ -144,6 +150,7 @@ async function localFile(relPath: string, content: Buffer, hubRev: number | null
   await writeFile(disk(relPath), content);
   const info = await lstat(disk(relPath), { bigint: true });
   rig.database.files.upsert({
+    ...NO_META,
     placementId: ROOT,
     relPath,
     kind: 'file',
@@ -154,6 +161,7 @@ async function localFile(relPath: string, content: Buffer, hubRev: number | null
     localHashState: 'hashed',
     blockSize: BLOCK,
     blocks: blockHashes(content),
+    metaDirty: hubRev === null,
   });
 }
 
@@ -232,6 +240,7 @@ describe('echo suppression', () => {
       ignore: createIgnoreMatcher([]),
       hasher,
       platform: process.platform,
+      meta: new NoXattrPort(),
       portablePaths: false,
       mtimeToleranceNs: 0n,
       quietMs: 0,
@@ -306,6 +315,7 @@ describe('index updates', () => {
         meta: {
           bytes: 1,
           mtime: '2026-11-01T10:00:00.000Z',
+          mtimeNs: '1793527200000000000',
           blockSize: BLOCK,
           blocksHash: 'a'.repeat(64),
         },

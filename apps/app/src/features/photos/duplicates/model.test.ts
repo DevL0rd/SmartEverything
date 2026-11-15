@@ -17,6 +17,7 @@ import {
   sourceSegmentsOf,
   summaryOf,
 } from './model';
+import { imageFixture } from '../../drive/testing';
 
 const ROOT_PHONE = '00000000-0000-4000-8000-000000000001';
 const ROOT_IMPORT = '00000000-0000-4000-8000-000000000002';
@@ -66,25 +67,14 @@ function image(
     rootId: string;
   }> = {},
 ): Extract<DriveItem, { readonly kind: 'image' }> {
-  return {
-    kind: 'image',
+  return imageFixture({
     id,
     rootId: overrides.rootId ?? ROOT_PHONE,
     parentId: null,
-    relPath: name,
     name,
     modifiedAt: '2026-04-19T21:00:00.000Z',
     addedAt: '2026-04-19T21:00:00.000Z',
-    openedAt: null,
-    starred: false,
-    shared: false,
-    rev: 1,
     etag: 'e1',
-    outside: false,
-    addedByProfileId: null,
-    remoteId: null,
-    remoteRev: null,
-    mime: 'image/jpeg',
     bytes: overrides.bytes ?? 18_200_000,
     sha256: 'a'.repeat(64),
     integrity: 'ok',
@@ -92,11 +82,7 @@ function image(
     takenAt: '2026-04-19T20:00:00.000Z',
     width: overrides.width === undefined ? 8000 : overrides.width,
     height: overrides.height === undefined ? 6000 : overrides.height,
-    orientation: null,
-    camera: null,
-    exposure: null,
-    place: null,
-  };
+  });
 }
 
 const STATS: DuplicateStats = {

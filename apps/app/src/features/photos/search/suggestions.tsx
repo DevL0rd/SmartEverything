@@ -6,7 +6,13 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { count } from '../../../format/number';
-import { flatSuggestions, type Suggestion, type SuggestionGroup } from './suggest';
+import { FaceAvatar } from '../people/face-avatar';
+import {
+  flatSuggestions,
+  type Suggestion,
+  type SuggestionFace,
+  type SuggestionGroup,
+} from './suggest';
 import { tokenIconOf, tokenKey } from './tokens';
 
 export interface SuggestionsProps {
@@ -17,19 +23,32 @@ export interface SuggestionsProps {
   readonly onWords: () => void;
 }
 
-function Row({
-  icon,
-  label,
-  quantity,
-  hot,
-  onPress,
-}: {
+interface RowProps {
   readonly icon: IconName;
   readonly label: string;
   readonly quantity: number | null;
   readonly hot: boolean;
   readonly onPress: () => void;
+  readonly face?: SuggestionFace | undefined;
+  readonly detail?: string | undefined;
+}
+
+function Lead({
+  icon,
+  face,
+  pointer,
+}: {
+  readonly icon: IconName;
+  readonly face: SuggestionFace | undefined;
+  readonly pointer: boolean;
 }): ReactNode {
+  if (face === undefined) return <Icon name={icon} size={pointer ? 16 : 20} tone="variant" />;
+  return (
+    <FaceAvatar itemId={face.itemId} box={face.box} kind={face.kind} size={pointer ? 24 : 32} />
+  );
+}
+
+function Row({ icon, label, quantity, hot, onPress, face, detail }: RowProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   return (
     <Interactive
@@ -44,10 +63,17 @@ function Row({
       )}
       layerClassName="rounded-sm"
     >
-      <Icon name={icon} size={pointer ? 16 : 20} tone="variant" />
-      <Text variant={pointer ? 'footnote' : 'body'} className="flex-1" numberOfLines={1}>
-        {label}
-      </Text>
+      <Lead icon={icon} face={face} pointer={pointer} />
+      <View className="min-w-0 flex-1">
+        <Text variant={pointer ? 'footnote' : 'body'} numberOfLines={1}>
+          {label}
+        </Text>
+        {detail === undefined ? null : (
+          <Text variant="caption" tone="variant" numberOfLines={1}>
+            {detail}
+          </Text>
+        )}
+      </View>
       {quantity === null ? null : (
         <Text variant="caption" tone="variant" className="tabular">
           {count(quantity)}
@@ -104,6 +130,8 @@ export function Suggestions(props: SuggestionsProps): ReactNode {
               icon={tokenIconOf(item.token)}
               label={item.token.label}
               quantity={item.count}
+              face={item.face}
+              detail={item.detail}
               hot={positions.get(tokenKey(item.token)) === props.highlight}
               onPress={() => {
                 props.onPick(item);

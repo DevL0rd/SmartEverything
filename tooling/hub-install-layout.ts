@@ -7,6 +7,15 @@ export const HUB_SERVICE_DIRECTORY = 'resources/service';
 export const HUB_SERVICE_ENTRY = 'service.mjs';
 export const HUB_NODE_EXECUTABLE = 'node/bin/node';
 
+export const UPDATE_ENTRY_DIRECTORY = 'update';
+
+export const UPDATE_ENTRY_FILES = {
+  hubCommand: 'hub-command.mjs',
+  watchdog: 'watchdog.mjs',
+  step: 'step.mjs',
+  migrationCheck: 'migration-check.mjs',
+} as const;
+
 const DESKTOP_PAYLOAD = [
   'app.asar',
   'resources/app.asar',

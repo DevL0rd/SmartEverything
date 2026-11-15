@@ -5,6 +5,7 @@ import { env } from 'node:process';
 import { parseArgs } from 'node:util';
 import { UPDATE_PUSH_SECRET_BYTES, UPDATE_PUSH_SECRET_FILE } from '@smarteverything/domain';
 import { z } from 'zod';
+import { repositoryOf } from '../apps/hub/src/self-update/push-webhook.ts';
 import {
   parseServiceConfigText,
   UPDATE_SOURCE,
@@ -14,12 +15,22 @@ import { dataRootOf } from './data-root.ts';
 import { gitSource } from './hub-update-source.ts';
 import { dataLayoutOf } from './release-hub-files.ts';
 
-const OPTIONS = z.strictObject({
-  checkout: z.string().refine(isAbsolute, { message: 'must be an absolute path' }),
-  data: z.string().min(1).optional(),
-  'rotate-push-secret': z.boolean().optional(),
-});
+const OPTIONS = z
+  .strictObject({
+    checkout: z.string().refine(isAbsolute, { message: 'must be an absolute path' }).optional(),
+    repository: z.string().min(1).optional(),
+    branch: z.string().min(1).optional(),
+    data: z.string().min(1).optional(),
+    'rotate-push-secret': z.boolean().optional(),
+  })
+  .refine((options) => (options.checkout === undefined) !== (options.repository === undefined), {
+    message: 'give exactly one of --checkout (hub build source) or --repository (owner/name)',
+  })
+  .refine((options) => options.checkout === undefined || options.branch === undefined, {
+    message: '--branch goes with --repository; a checkout reads its branch from its upstream',
+  });
 const APP_COMMAND = join('tooling', 'self-update-app-command.ts');
+const DEFAULT_BRANCH = 'main';
 const UPSTREAM = /^([^/\s]+)\/(\S+)$/u;
 
 export class ConfigureUpdateSourceError extends Error {
@@ -53,15 +64,31 @@ export async function updateSourceOf(checkout: string): Promise<UpdateSource> {
   );
   const match = UPSTREAM.exec(upstream);
   const [, remote, branch] = match ?? [];
-  return UPDATE_SOURCE.parse({ checkout: resolve(checkout), remote, branch });
+  const repository = repositoryOf(
+    await gitText(
+      checkout,
+      ['remote', 'get-url', remote ?? ''],
+      `The remote ${remote ?? ''} could not be read.`,
+    ),
+  );
+  if (repository === undefined)
+    throw new ConfigureUpdateSourceError(`The remote ${remote ?? ''} is not a GitHub repository.`);
+  return UPDATE_SOURCE.parse({ repository, branch, checkout: resolve(checkout), remote });
+}
+
+export function repositorySourceOf(repository: string, branch: string): UpdateSource {
+  return UPDATE_SOURCE.parse({ repository: repository.toLowerCase(), branch });
 }
 
 export async function configureUpdateSource(input: {
   readonly checkout: string;
   readonly data: string;
 }): Promise<UpdateSource> {
-  const source = await updateSourceOf(input.checkout);
-  const file = dataLayoutOf(input.data).system.config.service;
+  return saveUpdateSource(input.data, await updateSourceOf(input.checkout));
+}
+
+export function saveUpdateSource(data: string, source: UpdateSource): UpdateSource {
+  const file = dataLayoutOf(data).system.config.service;
   const current: unknown = JSON.parse(readFileSync(file, 'utf8'));
   const next = JSON.stringify(
     { ...z.record(z.string(), z.unknown()).parse(current), updateSource: source },
@@ -98,15 +125,23 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       checkout: { type: 'string' },
+      repository: { type: 'string' },
+      branch: { type: 'string' },
       data: { type: 'string' },
       'rotate-push-secret': { type: 'boolean' },
     },
   });
   const options = OPTIONS.parse(values);
   const data = await dataRootOf(options.data, env);
-  const source = await configureUpdateSource({ checkout: options.checkout, data });
+  const source =
+    options.checkout === undefined
+      ? saveUpdateSource(
+          data,
+          repositorySourceOf(options.repository ?? '', options.branch ?? DEFAULT_BRANCH),
+        )
+      : await configureUpdateSource({ checkout: options.checkout, data });
   process.stdout.write(
-    `Update source saved: ${source.checkout} (${source.remote}/${source.branch}). Restart the Hub so the source watcher uses it.\n`,
+    `Update source saved: ${source.repository} (${source.branch})${source.checkout === undefined ? '' : `, checkout ${source.checkout}`}. Restart the Hub so it uses it.\n`,
   );
   process.stdout.write(
     pushSecretNotice(ensurePushSecret(data, options['rotate-push-secret'] === true)),

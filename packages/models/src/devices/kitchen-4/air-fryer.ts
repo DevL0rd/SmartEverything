@@ -187,7 +187,7 @@ export const AIR_FRYER_MODEL: ModelSpec = {
   title: 'Air fryer',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.4273, height: 0.3212 },
   framing: { tile: FRAME, card: FRAME, hero: { ...FRAME, padding: 0.12 } },
   shots: [
     {

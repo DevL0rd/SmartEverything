@@ -11,6 +11,7 @@ import type {
   FileContent,
   FileList,
   FileRange,
+  FileSort,
   InstalledApp,
   MachineActionSupport,
   MachineOpenTarget,
@@ -42,7 +43,7 @@ export interface AppControl {
 }
 
 export interface FileControl {
-  readonly list: (path: string | null, cursor: number) => Promise<FileList>;
+  readonly list: (path: string | null, cursor: number, sort?: FileSort) => Promise<FileList>;
   readonly read: (path: string) => Promise<FileContent>;
   readonly range: (path: string, start: number, length: number) => Promise<FileRange>;
 }

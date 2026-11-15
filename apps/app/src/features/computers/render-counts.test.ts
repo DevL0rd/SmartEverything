@@ -166,7 +166,7 @@ vi.mock('../../components/use-measured-width', () => ({
 
 vi.mock('../devices', () => ({ useLastSeen: (): null => null }));
 
-vi.mock('./files/screenshot', () => ({
+vi.mock('./data/screenshot', () => ({
   useScreenshotToChat: (): { run: () => undefined; pending: boolean; reason: null } => ({
     run: (): undefined => undefined,
     pending: false,
@@ -195,6 +195,7 @@ const { computerLive } = await import('../../store/computer-live');
 const { computerRings } = await import('../../store/computer-rings');
 const { liveWatch } = await import('../../store/live-watch');
 const { ScreenPause, ScreenPausedContext } = await import('../../design/screen-pause');
+const { BodyWidthContext } = await import('../../components/page-shell/body-width');
 const { ComputerFace } = await import('./card/computer-faces');
 const { ComputerHero } = await import('./overview/hero');
 const { ComputerStrip } = await import('./overview/computer-strip');
@@ -210,6 +211,7 @@ const { PowerCard } = await import('./performance/power-card');
 const { SensorsList } = await import('./performance/sensors-list');
 const { statusOf } = await import('./model/computer-view');
 
+const BODY_WIDTH = 380;
 const ROLES = Object.keys(COLOUR_VARIABLE);
 const PALETTE: Palette = new Proxy(COLOUR_VARIABLE, {
   get: (_target, role): string =>
@@ -446,7 +448,8 @@ function mountElement(build: (device: Device) => ReactNode, paused = false): Mou
   const pause = new ScreenPause(null);
   pause.setOwn(paused);
   const gated = createElement(ScreenPausedContext, { value: pause }, build(device));
-  const palette = createElement(PaletteContext, { value: PALETTE }, gated);
+  const sized = createElement(BodyWidthContext, { value: BODY_WIDTH }, gated);
+  const palette = createElement(PaletteContext, { value: PALETTE }, sized);
   const client = new QueryClient();
   act(() => {
     root.render(

@@ -10,6 +10,7 @@ export const CLIENT_NATIVE_TRACE = z.discriminatedUnion('state', [
     name: z.string().min(1).max(120),
     message: z.string().max(240).nullable(),
     frame: z.string().max(240).nullable(),
+    frames: z.array(z.string().max(240)).max(24),
   }),
   z.object({
     state: z.literal('captured'),

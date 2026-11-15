@@ -28,7 +28,7 @@ import {
   type LoggedConnection,
 } from './live-log';
 import { LiveTally, SocketStats } from './live-stats';
-import { remoteKind } from './request-trace';
+import { requestRemoteKind } from './request-trace';
 import { closeClientSockets } from './live-closing';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import { z } from 'zod';
@@ -131,7 +131,7 @@ export class LiveHub {
     this.options.log.debug('live.authenticated', () => ({
       clientId: client.id,
       role: client.role,
-      remote: remoteKind(request.socket.remoteAddress),
+      remote: requestRemoteKind(request),
     }));
     this.server.handleUpgrade(request, socket, head, (ws) => {
       this.accept(client, ws, request);
@@ -160,7 +160,9 @@ export class LiveHub {
       (connection) =>
         connection.client.id === clientId && (reach === 'any' || !this.backgrounds.has(connection)),
     );
-    const reached = await answering(own, this.options.log, notice.type);
+    const alive = await answering(own, this.options.log, notice.type);
+    const chosen = this.chosen(alive);
+    const reached = chosen === undefined ? [] : [chosen];
     reached.forEach((connection) => {
       this.send(connection, notice);
     });
@@ -169,10 +171,21 @@ export class LiveHub {
       noticeType: notice.type,
       reach,
       sockets: own.length,
+      alive: alive.length,
       delivered: reached.length,
       durationMs: Math.round(performance.now() - startedAt),
     }));
     return reached.length;
+  }
+
+  private chosen(connections: readonly LiveConnection[]): LiveConnection | undefined {
+    const rank = (connection: LiveConnection): number =>
+      (this.backgrounds.has(connection) ? 0 : 1e15) + connection.openedAt;
+    return connections.reduce<LiveConnection | undefined>(
+      (best, connection) =>
+        best === undefined || rank(connection) > rank(best) ? connection : best,
+      undefined,
+    );
   }
 
   presence(): void {
@@ -261,7 +274,7 @@ export class LiveHub {
       alive: true,
       id: this.sequence,
       openedAt: performance.now(),
-      remote: remoteKind(request.socket.remoteAddress),
+      remote: requestRemoteKind(request),
       stats: new SocketStats(),
     };
     this.connections.add(connection);

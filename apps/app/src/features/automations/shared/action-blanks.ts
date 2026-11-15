@@ -1,17 +1,16 @@
 import type {
-  LegacyAction as Action,
+  StepAction as Action,
   CommandAction,
   DeviceCapability,
 } from '@smarteverything/domain';
 import { defaultValue, writableCapabilities, type DeviceLike } from './capability-choices';
 
-export const ACTION_TYPES = ['command', 'scene', 'delay', 'notify', 'wake_ai'] as const;
+export const ACTION_TYPES = ['command', 'delay', 'notify', 'wake_ai'] as const;
 
 export type ActionType = Action['type'];
 
 export interface Choices {
   readonly devices: readonly DeviceLike[];
-  readonly sceneIds: readonly string[];
   readonly wakeProfileId: string | null;
 }
 
@@ -48,10 +47,6 @@ export function blankAction(type: ActionType, choices: Choices): Action | null {
     case 'command': {
       const target = firstTarget(choices.devices);
       return target === null ? null : commandAction(target.device, target.capability);
-    }
-    case 'scene': {
-      const sceneId = choices.sceneIds[0];
-      return sceneId === undefined ? null : { type, sceneId };
     }
     case 'delay':
       return { type, seconds: 60 };

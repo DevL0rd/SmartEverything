@@ -73,6 +73,13 @@ function targetFits(value: JsonValue): boolean {
   );
 }
 
+function refText(of: RefKind, value: JsonValue): string | undefined {
+  if (isText(value)) return value;
+  if (!isObject(value) || Object.keys(value).length !== 1) return undefined;
+  const held = value[of];
+  return isText(held) ? held : undefined;
+}
+
 function recordFits(type: Extract<FlowType, { readonly t: 'record' }>, value: JsonValue): boolean {
   if (!isObject(value)) return false;
   const declared = type.fields;
@@ -92,7 +99,8 @@ function recordFits(type: Extract<FlowType, { readonly t: 'record' }>, value: Js
 export function literalFits(type: FlowType, value: JsonValue): boolean {
   if (type.t === 'number') return numberFits(type, value);
   if (type.t === 'choice') return type.options.some((option) => option.id === value);
-  if (type.t === 'ref') return type.of === 'target' ? targetFits(value) : isText(value);
+  if (type.t === 'ref')
+    return type.of === 'target' ? targetFits(value) : refText(type.of, value) !== undefined;
   if (type.t === 'list') return isList(value) && value.every((item) => literalFits(type.of, item));
   if (type.t === 'optional') return literalFits(type.of, value);
   if (type.t === 'record') return recordFits(type, value);
@@ -100,7 +108,10 @@ export function literalFits(type: FlowType, value: JsonValue): boolean {
 }
 
 function referenceIds(of: RefKind, value: JsonValue): readonly string[] {
-  if (of !== 'target') return isText(value) ? [value] : [];
+  if (of !== 'target') {
+    const held = refText(of, value);
+    return held === undefined ? [] : [held];
+  }
   if (!isObject(value)) return [];
   return TARGET_KEYS.filter((key) => key !== 'families').flatMap((key) => {
     const item = value[key];

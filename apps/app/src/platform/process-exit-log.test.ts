@@ -27,6 +27,7 @@ describe('Android exit logs', () => {
         name: 'IllegalStateException',
         message: 'Invalid state',
         frame: 'Example.run(Example.java:12)',
+        frames: ['Example.run(Example.java:12)', 'Example.main(Example.java:5)'],
       },
     });
     expect(record).toMatchObject({
@@ -36,7 +37,7 @@ describe('Android exit logs', () => {
       failure: {
         name: 'IllegalStateException',
         message: 'Invalid state',
-        stack: 'Example.run(Example.java:12)',
+        stack: 'Example.run(Example.java:12)\nExample.main(Example.java:5)',
       },
       payload: { processExit: { reason: 'crash', nativeTrace: { state: 'java' } } },
     });

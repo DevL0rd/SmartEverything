@@ -595,6 +595,17 @@ describe('the recall block and the per-turn prepare', () => {
     expect(counted()).toBe(2);
   });
 
+  it('counts no recall for a message or a search with no wording', async () => {
+    await remember(service, ida, { scope: 'person', text: 'Ida takes the bus to work' });
+    const counts = (): number[] =>
+      opened.store.aiMemories.visible(ida.profileId).map((m) => m.recall_count);
+    await service.prepare(ida, { id: 'm1', text: '   ' });
+    await service.search(ida, '  ', undefined);
+    expect(counts()).toStrictEqual([0]);
+    await service.search(ida, 'bus', undefined);
+    expect(counts()).toStrictEqual([1]);
+  });
+
   it('ranks by keyword alone when the embedding fails and logs it', async () => {
     await remember(service, ida, { scope: 'person', text: 'Rex is the dog' });
     embedder.failing = true;

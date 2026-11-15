@@ -102,7 +102,7 @@ export const HANGING_POTHOS_MODEL: ModelSpec = catalogueModel({
   id: 'cat.plants.hanging-pothos',
   title: 'Hanging pothos',
   category: 'plants',
-  footprint: { width: 0.6, depth: 0.64, height: 1.52 },
+  footprint: { width: 0.5934, depth: 0.6369, height: 1.5183 },
   mount: 'ceiling',
   view: TALL_VIEW,
   meta: {

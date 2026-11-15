@@ -128,7 +128,7 @@ export function chairParts(site: ChairSite): ModelSpecPart[] {
   ];
 }
 
-export const CHAIR_FOOTPRINT = { width: 0.42, depth: 0.52, height: 0.87 } as const;
+export const CHAIR_FOOTPRINT = { width: 0.413, depth: 0.5185, height: 0.868 } as const;
 
 export const DINING_CHAIR_MODEL: ModelSpec = diningFurniture({
   id: 'cat.dining.dining-chair',

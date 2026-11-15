@@ -189,7 +189,7 @@ export const DOOR_POCKET_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Pocket door',
   category: 'structure',
-  footprint: { width: 1.06, depth: 0.16, height: 2.153 },
+  footprint: { width: 1.006, depth: 0.158, height: 2.153 },
   size: { height: { param: 'height', extra: 0.113, resizes: true } },
   framing: framingOf(HOUSE),
   shots: [openShot('leaf')],

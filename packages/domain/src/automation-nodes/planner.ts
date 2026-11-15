@@ -27,6 +27,12 @@ export const PLANNER_EVENT_LABELS: Readonly<Record<PlannerSignalKind, string>> =
   alarm_snoozed: 'An alarm was snoozed',
   timer_done: 'A timer finished',
   event_starting: 'An event is starting',
+  guest_responded: 'A guest answered an invitation',
+  task_assigned: 'A task was assigned',
+  booking_made: 'Someone booked a time',
+  bedtime_reminder: 'The bedtime reminder is due',
+  wind_down_started: 'Wind-down started',
+  wake_time: 'The wake time came',
 };
 
 const PLANNER_EVENT_TYPE: FlowType = {

@@ -11,9 +11,12 @@
     "**/*.ts",
     "../*.ts",
     "../claude-hook/*.ts",
+    "../drive-mount/*.ts",
     "../../apps/app/app.config.ts",
     "../../apps/desktop/packaging/web-runtime.ts",
-    "../../apps/app/app-identity.json",
+    "../../apps/desktop/src/package-layout.ts",
+    "../../apps/desktop/src/variant.ts",
+    "../../apps/desktop/src/origin.ts",
     "../../apps/app/package.json"
   ],
   "references": [

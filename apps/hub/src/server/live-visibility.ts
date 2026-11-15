@@ -27,13 +27,16 @@ import {
 } from '../phones/phone-visibility';
 import type { Store } from '../store/store';
 import {
+  accessRequestSeenBy,
   driveChange,
   driveChangeVisible,
   driveNoticeSeenBy,
   floorsSeenBy,
   hiddenByAccess,
+  type DriveNotice,
   type DriveStore,
 } from './live-access';
+import { plannerShared, visibleShared } from './live-planner-visibility';
 import { profileSeenBy, readingVisibleTo, type Viewer } from './person-privacy';
 
 export { driveRowVisible } from './live-access';
@@ -114,11 +117,10 @@ function visibleUsage(
 }
 
 const PERSON_OWNED_TABLES: ReadonlySet<LiveTable> = new Set([
-  'planner_collections',
-  'planner_items',
   'planner_alarms',
   'planner_timers',
   'planner_stopwatches',
+  'planner_booking_pages',
   'google_accounts',
 ]);
 
@@ -154,11 +156,10 @@ type PersonOwned = Extract<
   LiveChange,
   {
     table:
-      | 'planner_collections'
-      | 'planner_items'
       | 'planner_alarms'
       | 'planner_timers'
       | 'planner_stopwatches'
+      | 'planner_booking_pages'
       | 'google_accounts';
   }
 >;
@@ -179,28 +180,8 @@ function visiblePlannerOwner(
   );
 }
 
-function visibleOccurrence(
-  connection: Hearing,
-  change: Extract<LiveChange, { table: 'planner_occurrences' }>,
-  store: LiveStore,
-): boolean {
-  const row = change.record ?? change.oldRecord;
-  return (
-    row !== null &&
-    (connection.client.role === 'owner' ||
-      store.plannerItems.find(row.item_id, store.profiles.activeOf(connection.client.id).id) !==
-        undefined)
-  );
-}
-
-function visiblePlanner(
-  connection: Hearing,
-  change: PersonOwned | Extract<LiveChange, { table: 'planner_occurrences' }>,
-  store: LiveStore,
-): boolean {
-  return change.table === 'planner_occurrences'
-    ? visibleOccurrence(connection, change, store)
-    : visiblePlannerOwner(connection, change.record ?? change.oldRecord, store);
+function visiblePlanner(connection: Hearing, change: PersonOwned, store: LiveStore): boolean {
+  return visiblePlannerOwner(connection, change.record ?? change.oldRecord, store);
 }
 
 function hiddenDevice(connection: Hearing, row: DeviceRow | null, store: LiveStore): boolean {
@@ -281,6 +262,8 @@ export function projected(
   if (change.table === 'profiles') return seenProfileChange(connection, change, store);
   if (change.table === 'body_readings') return seenReadingChange(connection, change, store);
   if (change.table === 'events') return seenEventChange(connection, change, store);
+  if (change.table === 'drive_access_requests')
+    return accessRequestSeenBy(connection, change, store);
   return change;
 }
 
@@ -303,6 +286,9 @@ export type LiveStore = Pick<
   | 'infrared'
   | 'localDevices'
   | 'plannerItems'
+  | 'plannerCollections'
+  | 'plannerShares'
+  | 'plannerGuests'
 > &
   DriveStore;
 
@@ -328,9 +314,8 @@ function otherRowVisible(connection: Hearing, change: LiveChange, store: LiveSto
   if (profileScoped(change)) {
     return ownRow(connection, change.record ?? change.oldRecord, profileOf);
   }
-  if (personOwned(change) || change.table === 'planner_occurrences') {
-    return visiblePlanner(connection, change, store);
-  }
+  if (plannerShared(change)) return visibleShared(connection, change, store);
+  if (personOwned(change)) return visiblePlanner(connection, change, store);
   if (change.table === 'body_readings') {
     return bodyReadingVisible(connection, change, store);
   }
@@ -342,16 +327,43 @@ function otherRowVisible(connection: Hearing, change: LiveChange, store: LiveSto
 
 type ProfileLookup = (clientId: string) => string;
 
+const DRIVE_NOTICES: ReadonlySet<LiveMessage['type']> = new Set([
+  'drive_changed',
+  'drive_progress',
+  'drive_comments_changed',
+  'drive_notification',
+]);
+
+function driveNotice(message: LiveMessage): message is DriveNotice {
+  return DRIVE_NOTICES.has(message.type);
+}
+
+function photoSharingSeenBy(
+  connection: Hearing,
+  message: LiveMessage,
+  store: LiveStore,
+): LiveMessage | null {
+  if (message.type === 'photos_activity' && message.profileId !== undefined) {
+    return store.profiles.activeOf(connection.client.id).id === message.profileId ? message : null;
+  }
+  if (message.type === 'photos_partner') {
+    const viewer = store.profiles.activeOf(connection.client.id).id;
+    return viewer === message.sharerId || viewer === message.recipientId ? message : null;
+  }
+  return message;
+}
+
 export function seenBy(
   connection: Hearing,
   message: LiveMessage,
   store: LiveStore,
 ): LiveMessage | null {
   if (message.type === 'talk_floors') return floorsSeenBy(connection, message, store);
-  if (message.type === 'drive_changed' || message.type === 'drive_progress') {
-    return driveNoticeSeenBy(connection, message, store);
+  if (driveNotice(message)) return driveNoticeSeenBy(connection, message, store);
+  if (message.type === 'photos_folders_changed' || message.type === 'photos_edit_job') {
+    return store.profiles.activeOf(connection.client.id).id === message.profileId ? message : null;
   }
-  return message;
+  return photoSharingSeenBy(connection, message, store);
 }
 
 export interface TraceOwners {

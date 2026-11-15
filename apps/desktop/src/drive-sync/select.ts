@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SyncIndexEntry } from '@smarteverything/domain/drive-sync';
 import type { Logger } from '@smarteverything/logging';
-import type { DriveSyncDatabase, FileInput, FileRecord } from './db/index.js';
+import { inputOf, type DriveSyncDatabase, type FileInput, type FileRecord } from './db/index.js';
 import { decode } from './push-queue.js';
 import { diskPathFor } from './scan.js';
 import { diskStateOf } from './transfer.js';
@@ -69,22 +69,16 @@ function placeholderOf(placementId: string, entry: SyncIndexEntry): FileInput | 
     localHashState: 'unhashed',
     blockSize: null,
     blocks: null,
+    linkTarget: null,
+    linkKey: null,
+    hubInode: entry.inode,
+    xattrs: [],
+    metaDirty: false,
   };
 }
 
 function evictedOf(record: FileRecord): FileInput {
-  return {
-    placementId: record.placementId,
-    relPath: record.relPath,
-    kind: 'file',
-    bytes: record.bytes,
-    mtimeNs: record.mtimeNs,
-    mode: record.mode,
-    hubRev: record.hubRev,
-    localHashState: 'unhashed',
-    blockSize: null,
-    blocks: null,
-  };
+  return inputOf(record, { localHashState: 'unhashed', blockSize: null, blocks: null });
 }
 
 export class Exclusions {

@@ -32,9 +32,6 @@ async function clearHome(rig: Rig): Promise<void> {
   for (const row of await rig.request(API_ENDPOINTS.listAutomationValues)) {
     await rig.request(API_ENDPOINTS.removeAutomationValue, { params: { valueId: row.id } });
   }
-  for (const row of await rig.request(API_ENDPOINTS.listScenes)) {
-    await rig.request(API_ENDPOINTS.removeScene, { params: { sceneId: row.id } });
-  }
   for (const row of await rig.request(API_ENDPOINTS.listDeviceGroups)) {
     await rig.request(API_ENDPOINTS.removeDeviceGroup, { params: { groupId: row.id } });
   }

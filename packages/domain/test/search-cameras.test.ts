@@ -56,7 +56,6 @@ const sources: SearchSources = {
   rooms: [],
   pages: [],
   settings: [],
-  scenes: [],
   automations: [],
   irRemotes: [],
   cameras: [doorbell, nursery],

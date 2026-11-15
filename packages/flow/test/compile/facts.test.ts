@@ -341,7 +341,7 @@ describe('manifest of typed ports', () => {
     id: 'x.nested',
     access: 'member',
     inputs: [
-      port('scenes', { t: 'list', of: { t: 'ref', of: 'scene' } }),
+      port('rooms', { t: 'list', of: { t: 'ref', of: 'room' } }),
       port('pair', { t: 'record', fields: { phone: { t: 'ref', of: 'phone' } } }),
       port('byName', { t: 'record', values: { t: 'ref', of: 'camera' } }),
       port('maybe', { t: 'optional', of: { t: 'ref', of: 'chat' } }),
@@ -370,7 +370,7 @@ describe('manifest of typed ports', () => {
 
   it('finds references inside lists, records, values and optionals', () => {
     const plan = nestedPlan({
-      scenes: lit(['s1', 's2']),
+      rooms: lit(['r1', 'r2']),
       pair: lit({ phone: 'ph1', other: 'ignored' }),
       byName: lit({ a: 'cam1', b: 'cam2' }),
       maybe: lit('chat1'),
@@ -379,7 +379,7 @@ describe('manifest of typed ports', () => {
     });
     const manifest = manifestOf(plan, custom, none);
     expect(manifest.uses).toMatchObject({
-      scene: ['s1', 's2'],
+      room: ['r1', 'r2'],
       phone: ['ph1'],
       camera: ['cam1', 'cam2'],
       chat: ['chat1'],
@@ -388,20 +388,20 @@ describe('manifest of typed ports', () => {
   });
 
   it('ignores literals that do not have the declared shape', () => {
-    const plan = nestedPlan({ scenes: lit('s1'), pair: lit(['ph1']), byName: lit(3) });
-    expect(manifestOf(plan, custom, none).uses.scene).toEqual([]);
+    const plan = nestedPlan({ rooms: lit('r1'), pair: lit(['ph1']), byName: lit(3) });
+    expect(manifestOf(plan, custom, none).uses.room).toEqual([]);
   });
 
   it('marks every slot the type can hold as dynamic for a wire', () => {
     const plan = nestedPlan({
-      scenes: wired('a.value'),
+      rooms: wired('a.value'),
       pair: wired('b.value'),
       byName: wired('c.value'),
       maybe: wired('d.value'),
       count: wired('e.value'),
       plain: wired('f.value'),
     });
-    expect(manifestOf(plan, custom, none).dynamic).toEqual(['camera', 'chat', 'phone', 'scene']);
+    expect(manifestOf(plan, custom, none).dynamic).toEqual(['camera', 'chat', 'phone', 'room']);
   });
 
   it('refuses a plan whose node kind is unknown', () => {

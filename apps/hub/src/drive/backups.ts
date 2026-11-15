@@ -11,6 +11,7 @@ import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { fsCode } from '../fs-code';
 import type { DriveBackupsRepository } from '../store/repositories/drive-backups';
+import { isFileItem } from './file-item';
 import type { DriveItemsRepository } from '../store/repositories/drive-items';
 import type { DriveRootsRepository, StoredDrive } from '../store/repositories/drive-roots';
 import type { DriveTrashRepository } from '../store/repositories/drive-trash';
@@ -102,7 +103,7 @@ function* fileLines(
       const lines: BackupManifestLine[] = [];
       for (const { item } of window.entries) {
         if (item.kind === 'folder') pending.push(item.id);
-        else {
+        else if (isFileItem(item)) {
           lines.push({
             kind: 'file',
             rootId,

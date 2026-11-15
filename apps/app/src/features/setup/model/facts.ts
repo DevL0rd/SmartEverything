@@ -33,13 +33,19 @@ export interface StoreFacts {
 export interface AlarmPhoneFacts {
   readonly fullScreen: boolean | null;
   readonly unrestricted: boolean | null;
+  readonly quiet: boolean | null;
 }
 
-export const UNKNOWN_ALARM_PHONE: AlarmPhoneFacts = { fullScreen: null, unrestricted: null };
+export const UNKNOWN_ALARM_PHONE: AlarmPhoneFacts = {
+  fullScreen: null,
+  unrestricted: null,
+  quiet: null,
+};
 
 export interface SetupFacts extends StoreFacts {
   readonly homeOnly: boolean;
   readonly alarmPhone: AlarmPhoneFacts;
+  readonly bedtimeQuiet: boolean;
 }
 
 function firewallFact(state: StoreState): FirewallFact {

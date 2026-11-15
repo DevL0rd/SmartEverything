@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { DRIVE_ALBUM, DRIVE_ALBUM_SCOPES, DRIVE_ALBUM_SURFACES } from '../drive/album';
+import {
+  DRIVE_ALBUM,
+  DRIVE_ALBUM_CHANGE,
+  DRIVE_ALBUM_CREATE,
+  DRIVE_ALBUM_SURFACES,
+} from '../drive/album';
 import { DRIVE_CHANGE, DRIVE_CHANGE_RESULT } from '../drive/change';
 import {
   DRIVE_GRANT,
@@ -9,10 +14,15 @@ import {
 } from '../drive/grant';
 import { DRIVE_ITEM } from '../drive/item';
 import { DRIVE_PLACEMENT, DRIVE_PLACEMENT_SET } from '../drive/placement';
-import { DRIVE_QUERY, DRIVE_QUERY_PAGE, DRIVE_SORT_FIELDS } from '../drive/query';
+import {
+  DRIVE_QUERY,
+  DRIVE_QUERY_PAGE,
+  DRIVE_SEARCH_PAGE,
+  DRIVE_SORT_FIELDS,
+} from '../drive/query';
 import { DRIVE_RECENT_FILTERS, DRIVE_RECENT_PAGE } from '../drive/recent';
 import { DRIVE_ROOT } from '../drive/root';
-import { SMART_RULE } from '../drive/smart-rule';
+import { DRIVE_SHORTCUT } from '../drive/shortcut';
 import { DRIVE_STATS } from '../drive/stats';
 import { DRIVE_TRASH_ENTRY } from '../drive/trash';
 import { NO_BODY, endpoint } from './endpoint';
@@ -42,8 +52,6 @@ export function pageOf<T extends z.ZodType>(
     .readonly();
 }
 
-const TITLE = z.string().trim().min(1);
-
 const PATTERNS = z.array(z.string().min(1)).readonly();
 
 export const DRIVE_ROOT_CHANGE = somethingToChange({
@@ -71,6 +79,10 @@ export const DRIVE_BROWSE_PAGE = z
   .strictObject({
     folder: DRIVE_ITEM.nullable(),
     items: z.array(DRIVE_ITEM).readonly(),
+    shortcuts: z
+      .array(DRIVE_SHORTCUT)
+      .readonly()
+      .describe('Every shortcut of the folder, on the first page only'),
     next: DRIVE_CURSOR.nullable(),
   })
   .readonly();
@@ -80,6 +92,8 @@ export const DRIVE_ITEM_LINK = z
     itemId: ID,
     rev: z.int().positive(),
     file: MEDIA_LINK,
+    download: MEDIA_LINK.nullable().describe('Null when the viewer may only view the file'),
+    icon: MEDIA_LINK.nullable().describe('The icon image a folder holds, shown as its badge'),
     thumb: MEDIA_LINK.nullable(),
     preview: MEDIA_LINK.nullable(),
     playable: MEDIA_LINK.nullable(),
@@ -95,35 +109,6 @@ export const DRIVE_DUPLICATE_GROUP = z
     items: z.array(DRIVE_ITEM).min(2).readonly(),
   })
   .readonly();
-
-export const DRIVE_ALBUM_CREATE = z
-  .discriminatedUnion('kind', [
-    z.strictObject({
-      kind: z.literal('manual'),
-      title: TITLE,
-      surface: z.enum(DRIVE_ALBUM_SURFACES),
-      scope: z.enum(DRIVE_ALBUM_SCOPES),
-      itemIds: z.array(ID).readonly(),
-    }),
-    z.strictObject({
-      kind: z.literal('smart'),
-      title: TITLE,
-      surface: z.enum(DRIVE_ALBUM_SURFACES),
-      scope: z.enum(DRIVE_ALBUM_SCOPES),
-      rule: SMART_RULE,
-    }),
-  ])
-  .readonly();
-
-export type DriveAlbumCreate = z.infer<typeof DRIVE_ALBUM_CREATE>;
-
-export const DRIVE_ALBUM_CHANGE = somethingToChange({
-  title: TITLE,
-  coverItemId: ID.nullable(),
-  rule: SMART_RULE,
-});
-
-export type DriveAlbumChange = z.infer<typeof DRIVE_ALBUM_CHANGE>;
 
 const ROOT_PARAMS = z.strictObject({ rootId: ID });
 const GRANT_PARAMS = z.strictObject({ grantId: ID });
@@ -235,11 +220,12 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     method: 'POST',
     path: '/api/drive/search',
     access: 'member',
-    summary: 'Find files by name and filters, one sorted page at a time',
+    summary:
+      'Find files by name, by the text inside them or inside their images, and by filters, one sorted page at a time, with the place of each match; shortcuts that match by name come with the first page',
     params: NOTHING,
     query: NOTHING,
     body: DRIVE_QUERY,
-    response: DRIVE_QUERY_PAGE,
+    response: DRIVE_SEARCH_PAGE,
   }),
   changeDrive: endpoint({
     method: 'POST',
@@ -264,6 +250,17 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     }),
     body: NO_BODY,
     response: DRIVE_RECENT_PAGE,
+  }),
+  recordDriveOpen: endpoint({
+    method: 'POST',
+    path: '/api/drive/items/:itemId/open',
+    access: 'member',
+    summary:
+      'Note that the person opened this file to look at it, so it leads their recently opened files',
+    params: DRIVE_ITEM_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: DONE,
   }),
   readDriveStats: endpoint({
     method: 'GET',

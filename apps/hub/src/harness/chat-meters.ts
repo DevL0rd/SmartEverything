@@ -1,5 +1,25 @@
-import { harnessContextPercent, type AiHarnessEvent } from '@smarteverything/domain';
+import {
+  harnessContextPercent,
+  type AiHarnessEvent,
+  type AiHarnessSession,
+} from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
+
+const log = new Logger('hub.chat-meters');
+
+type Measured = NonNullable<AiHarnessSession['context']>;
+
+function warnUnmeasurable(chatId: string, context: Measured): void {
+  log.warn('context.unmeasurable', {
+    chatId,
+    provider: context.provider ?? null,
+    model: context.model ?? null,
+    capacityTokens: context.capacity_tokens,
+    inputTokens: context.input_tokens,
+    state: context.state,
+  });
+}
 
 export function noteChatMeters(store: Store, event: AiHarnessEvent): void {
   if (event.kind === 'usage') {
@@ -15,5 +35,7 @@ export function noteChatMeters(store: Store, event: AiHarnessEvent): void {
   }
   if (event.kind !== 'state' || event.session.context === undefined) return;
   const percent = harnessContextPercent(event.session.context);
+  if (percent === null && event.context_update === 'measured')
+    warnUnmeasurable(event.chat_id, event.session.context);
   store.aiChats.noteContext(event.chat_id, percent === null ? null : Math.round(percent));
 }

@@ -14,6 +14,7 @@ const CORE_ONLY = new Set([
   'packages/flow/src/graph/ops/reducer.ts',
   'apps/hub/src/store/migrations/automation-graphs.ts',
   'apps/hub/src/store/migrations/starter-custom-nodes.ts',
+  'apps/hub/src/store/migrations/no-scenes.ts',
   'apps/app/src/features/automations/model/templates/graph-kit.ts',
   'apps/app/src/features/automations/model/fixtures/lint-context.ts',
 ]);

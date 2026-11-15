@@ -81,7 +81,7 @@ class NextTriggerTest {
 
   @Test fun aTimerRingIsItsEndInstantUntilItHasPassed() {
     val end = Instant.parse("2026-11-07T12:10:00Z")
-    val timer = PhoneRing("t", RingKind.TIMER, "r", end, "default", 0, true, null, null)
+    val timer = PhoneRing("t", RingKind.TIMER, "r", end, RingSound.Tone("default"), 0, true, null, null)
     assertEquals(end, NextTrigger.of(timer, Instant.parse("2026-11-07T12:00:00Z"), newYork))
     assertNull(NextTrigger.of(timer, end, newYork))
   }

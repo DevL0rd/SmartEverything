@@ -203,7 +203,7 @@ export const WARDROBE_MODEL: ModelSpec = bedroomItem(
   {
     id: 'cat.bedroom.wardrobe',
     title: 'Wardrobe',
-    footprint: { width: 1.6, depth: DEPTH, height: 2.2 },
+    footprint: { width: 1.6, depth: 0.616, height: 2.2 },
     size: {
       width: { param: 'width', extra: 0, resizes: true },
       height: { param: 'height', extra: 0, resizes: true },

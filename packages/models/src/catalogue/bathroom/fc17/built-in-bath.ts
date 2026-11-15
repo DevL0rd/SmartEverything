@@ -113,7 +113,7 @@ function fittings(): ModelSpecPart[] {
 export const BUILT_IN_BATH_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.built-in-bath',
   title: 'Built-in bath',
-  footprint: { width: 1.716, depth: DEPTH, height: HEIGHT + 0.19 },
+  footprint: { width: 1.716, depth: 0.766, height: 0.69 },
   size: { width: { param: 'length', scale: 1.0094, extra: 0, resizes: true } },
   meta: {
     names: {

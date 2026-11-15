@@ -13,12 +13,15 @@ describe('viewer keys', () => {
     expect(viewerKeyAction(press('f'))).toBe('favourite');
     expect(viewerKeyAction(press('F', { shift: true }))).toBe('favourite');
     expect(viewerKeyAction(press('i'))).toBe('info');
+    expect(viewerKeyAction(press('e'))).toBe('edit');
+    expect(viewerKeyAction(press('E', { shift: true }))).toBe('edit');
   });
 
   it('leaves typing and app shortcuts alone', () => {
     expect(viewerKeyAction(press('f', { typing: true }))).toBeNull();
     expect(viewerKeyAction(press('f', { command: true }))).toBeNull();
     expect(viewerKeyAction(press('i', { alt: true }))).toBeNull();
+    expect(viewerKeyAction(press('e', { command: true }))).toBeNull();
     expect(viewerKeyAction(press('x'))).toBeNull();
   });
 });

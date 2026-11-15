@@ -2,10 +2,13 @@ import type {
   ComputerFeature,
   DownloadChunk,
   DownloadPlan,
+  DriveZipPage,
   FilePlaces,
   FileProperties,
+  FileRange,
   FileSearchQuery,
   FileSearchResult,
+  FileTrashList,
   FileUploadChunk,
   FileUploadResult,
   FileWriteChange,
@@ -22,12 +25,14 @@ import type { FileWriteControl, SystemControls, SystemSettingsControl } from '..
 import { Autostart } from './autostart';
 import { Bluez } from './bluez';
 import { FileDownloads } from './download-archive';
+import { TrashBins } from './file-trash';
 import { FilePlacesReader } from './file-places';
 import { FileScope } from './file-scope';
 import { FileSearch } from './file-search';
 import { FilePropertiesReader } from './file-properties';
 import { FileUploads } from './file-upload';
 import { FileWriter } from './file-write';
+import { ZipEntries } from '../zip-entries';
 import { KeyboardLayouts } from './keyboard-layouts';
 import { NetworkManager } from './network-manager';
 import {
@@ -49,6 +54,8 @@ export interface LinuxSystemOptions {
   readonly run?: RunProgram;
   readonly home?: string;
   readonly dataHome?: string;
+  readonly mounts?: string;
+  readonly uid?: number;
   readonly inhibitor?: NotificationInhibitor;
   readonly usbRoot?: string;
   readonly globalAutostart?: readonly string[];
@@ -169,6 +176,8 @@ interface FileParts {
   readonly uploads: FileUploads;
   readonly downloads: FileDownloads;
   readonly places: FilePlacesReader;
+  readonly bins: TrashBins;
+  readonly zip: ZipEntries;
 }
 
 class LinuxFiles implements FileWriteControl {
@@ -194,6 +203,18 @@ class LinuxFiles implements FileWriteControl {
     return this.parts.places.read();
   }
 
+  trash(cursor: number): Promise<FileTrashList> {
+    return this.parts.bins.list(cursor);
+  }
+
+  zipEntries(path: string, cursor: string | null): Promise<DriveZipPage> {
+    return this.parts.zip.list(path, cursor);
+  }
+
+  zipEntryRange(path: string, index: number, start: number, length: number): Promise<FileRange> {
+    return this.parts.zip.range(path, index, start, length);
+  }
+
   openDownload(paths: readonly string[]): Promise<DownloadPlan> {
     return this.parts.downloads.open(paths);
   }
@@ -207,21 +228,31 @@ class LinuxFiles implements FileWriteControl {
   }
 }
 
+function fileParts(options: LinuxSystemOptions, home: string): FileParts {
+  const trash = new XdgTrash(options.dataHome ?? join(home, '.local', 'share'));
+  const scope = new FileScope([home, trash.root]);
+  const mounts = options.mounts ?? '/proc/self/mounts';
+  const bins = new TrashBins(trash, { mounts, uid: options.uid ?? process.getuid?.() ?? 0 });
+  return {
+    searcher: new FileSearch(scope),
+    reader: new FilePropertiesReader(scope),
+    writer: new FileWriter(scope, bins),
+    uploads: new FileUploads(scope),
+    downloads: new FileDownloads(scope),
+    places: new FilePlacesReader(home, {
+      mounts,
+      userDirs: join(home, '.config', 'user-dirs.dirs'),
+      trash: trash.root,
+    }),
+    bins,
+    zip: new ZipEntries(),
+  };
+}
+
 export function linuxSystemControls(options: LinuxSystemOptions): SystemControls {
   const run = options.run ?? runProgram;
   const home = options.home ?? homedir();
   const probe = new ToolProbe(run);
-  const trash = new XdgTrash(options.dataHome ?? join(home, '.local', 'share'));
-  const scope = new FileScope([home, trash.root]);
-  const writer = new FileWriter(scope, trash);
-  const uploads = new FileUploads(scope);
-  const downloads = new FileDownloads(scope);
-  const places = new FilePlacesReader(home, {
-    mounts: '/proc/self/mounts',
-    userDirs: join(home, '.config', 'user-dirs.dirs'),
-  });
-  const search = new FileSearch(scope);
-  const properties = new FilePropertiesReader(scope);
   const systemd = new SystemdUser(run, probe);
   const autostart = new Autostart(join(home, '.config', 'autostart'), options.globalAutostart);
   const settings = new LinuxSystemSettings({
@@ -239,14 +270,7 @@ export function linuxSystemControls(options: LinuxSystemOptions): SystemControls
     startup: autostart,
     services: systemd,
     processes: new ProcessDetails(),
-    files: new LinuxFiles({
-      searcher: search,
-      reader: properties,
-      writer,
-      uploads,
-      downloads,
-      places,
-    }),
+    files: new LinuxFiles(fileParts(options, home)),
     features: async (): Promise<readonly ComputerFeature[]> => {
       const services: readonly ComputerFeature[] = (await systemd.supported()) ? ['services'] : [];
       return [...(await settings.features()), ...services, ...ALWAYS_FEATURES];

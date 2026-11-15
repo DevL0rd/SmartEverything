@@ -48,6 +48,9 @@ export interface WriteQueueOptions<T, R> {
   readonly keyOf: (item: T) => string | null;
   readonly failed: (items: readonly T[], cause: unknown) => void;
   readonly append?: AppendPolicy;
+  readonly stale?: (item: T) => boolean;
+  readonly dropped?: (items: readonly T[]) => void;
+  readonly permanent?: (cause: unknown) => boolean;
   readonly observe?: (notice: QueueNotice) => void;
 }
 
@@ -170,7 +173,7 @@ export class WriteQueue<T, R> {
     while (this.entries.size > 0) {
       const policy = this.options.append;
       if (policy === undefined) {
-        await this.writeBatch(this.take(Infinity));
+        await this.writeBatch(this.withoutStale(this.take(Infinity)));
       } else if (!(await this.writeAppend(policy))) {
         break;
       }
@@ -190,6 +193,20 @@ export class WriteQueue<T, R> {
     return batch;
   }
 
+  private withoutStale(batch: Pending<T, R>[]): Pending<T, R>[] {
+    const { stale, dropped } = this.options;
+    if (stale === undefined) return batch;
+    const gone = batch.filter(([, entry]) => stale(entry.item));
+    if (gone.length === 0) return batch;
+    gone.forEach(([, entry]) => {
+      entry.waiters.forEach((waiter) => {
+        waiter.reject(new WriteQueueStaleError());
+      });
+    });
+    dropped?.(gone.map(([, entry]) => entry.item));
+    return batch.filter((pair) => !gone.includes(pair));
+  }
+
   private restore(batch: readonly Pending<T, R>[]): void {
     const newer = [...this.entries];
     this.entries.clear();
@@ -206,7 +223,11 @@ export class WriteQueue<T, R> {
   }
 
   private async writeAppend(policy: AppendPolicy): Promise<boolean> {
-    const batch = this.take(policy.batchLimit);
+    const batch = this.withoutStale(this.take(policy.batchLimit));
+    return batch.length === 0 || (await this.attempt(batch, policy));
+  }
+
+  private async attempt(batch: Pending<T, R>[], policy: AppendPolicy): Promise<boolean> {
     const items = batch.map(([, entry]) => entry.item);
     for (let attempt = 1; attempt <= policy.attempts; attempt += 1) {
       try {
@@ -221,6 +242,9 @@ export class WriteQueue<T, R> {
         });
         return true;
       } catch (cause) {
+        if (this.options.permanent?.(cause) === true) {
+          return this.refuse(batch, cause, policy);
+        }
         if (attempt === policy.attempts) {
           this.restore(batch);
           this.fail(items, cause);
@@ -237,6 +261,28 @@ export class WriteQueue<T, R> {
       }
     }
     return false;
+  }
+
+  private async refuse(
+    batch: Pending<T, R>[],
+    cause: unknown,
+    policy: AppendPolicy,
+  ): Promise<boolean> {
+    const [only] = batch;
+    if (only !== undefined && batch.length === 1) {
+      this.options.failed([only[1].item], cause);
+      only[1].waiters.forEach((waiter) => {
+        waiter.reject(cause);
+      });
+      return true;
+    }
+    for (const [index, pair] of batch.entries()) {
+      if (!(await this.attempt([pair], policy))) {
+        this.restore(batch.slice(index + 1));
+        return false;
+      }
+    }
+    return true;
   }
 
   private fail(items: readonly T[], cause: unknown): void {
@@ -283,6 +329,14 @@ class WriteResultMissingError extends Error {
     super(
       `A batched write returned no result for item ${String(index)}; expected one result per item, received ${String(received)}.`,
     );
+  }
+}
+
+class WriteQueueStaleError extends Error {
+  override readonly name = 'WriteQueueStaleError';
+
+  constructor() {
+    super('The queued write was dropped because what it belongs to no longer exists.');
   }
 }
 

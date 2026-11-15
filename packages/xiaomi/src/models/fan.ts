@@ -36,7 +36,7 @@ export const XIAOMI_SMART_TOWER_FAN_2_MODEL: ModelSpec = {
   title: 'Xiaomi Smart Tower Fan 2',
   category: 'climate',
   family: 'tower_fan',
-  footprint: { width: 0.29, depth: 0.29, height: 1.014 },
+  footprint: { width: 0.29, depth: 0.29, height: 1.0152 },
   framing: {
     tile: { ...TALL, padding: 0.06 },
     card: TALL,
@@ -229,7 +229,7 @@ export const XIAOMI_SMART_TOWER_FAN_2_MODEL: ModelSpec = {
       target: 'slotInterior',
       property: 'uvScroll',
       source: 'speed',
-      map: { type: 'speed', in: [0, 1], perSecond: [0.5, 3] },
+      map: { type: 'speed', in: [0, 1], perSecond: [0, 3] },
       motion: { type: 'spin' },
       reduced: 'hold',
     },

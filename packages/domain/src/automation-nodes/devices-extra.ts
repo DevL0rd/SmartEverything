@@ -269,51 +269,10 @@ const deviceIrSend = defineNodeKind({
   tier: 'v1.1',
 });
 
-const sceneCapture = defineNodeKind({
-  id: 'scene.capture',
-  name: 'Save current look',
-  category: 'devices',
-  icon: 'aperture',
-  class: 'effect',
-  description:
-    'Saves the current values of the target devices as a scene. A scene with the same name is replaced only when overwrite is on.',
-  inputs: [
-    TARGET_INPUT,
-    {
-      name: 'name',
-      type: TEXT,
-      required: true,
-      live: true,
-      description: 'The name of the scene.',
-      summary: true,
-    },
-    {
-      name: 'overwrite',
-      type: BOOLEAN,
-      required: false,
-      default: false,
-      static: true,
-      description: 'Replace a scene that already has this name.',
-    },
-  ],
-  outputs: [
-    { name: 'scene', type: { t: 'ref', of: 'scene' }, optional: true, description: 'The scene.' },
-    OK,
-    ERROR_OUT,
-  ],
-  exits: ['next'],
-  effect: { retry: 'external', budget: 'effects' },
-  summary: 'Save {target} as scene {name}',
-  keywords: ['scene', 'save', 'capture', 'look', 'mood'],
-  access: 'member',
-  tier: 'v1.1',
-});
-
 export const DEVICE_EXTRA_KINDS: readonly NodeKind[] = [
   deviceEnsure,
   deviceFade,
   deviceSnapshot,
   deviceRestore,
   deviceIrSend,
-  sceneCapture,
 ];

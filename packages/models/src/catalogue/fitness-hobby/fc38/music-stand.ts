@@ -97,7 +97,7 @@ export const MUSIC_STAND_MODEL: ModelSpec = catalogueItem({
   id: 'cat.fitness-hobby.music-stand',
   title: 'Music stand',
   category: 'fitness-hobby',
-  footprint: { width: 0.7, depth: 0.7, height: 1.1971 },
+  footprint: { width: 0.6033, depth: 0.5224, height: 1.1971 },
   size: { height: { param: 'height', extra: -0.0029, resizes: true } },
   view: TALL_VIEW,
   meta: {

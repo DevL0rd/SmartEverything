@@ -1,21 +1,21 @@
 import type { ComponentProps, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { View, useWindowDimensions, type LayoutChangeEvent, type ViewStyle } from 'react-native';
+import { View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import Head from 'expo-router/head';
 import { Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { PageHeader } from '../../../components/page-header';
+import { PageShell, type VariantShellProps } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
-import { Screen } from '../../../components/screen';
 import { useScreen } from '../../../components/screen-context';
 import { useMeasuredWidth, type MeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
-import { useSizeClass } from '../../../design/size-class';
+import { useSizeClass, useWindowSize } from '../../../design/size-class';
 import { useThemeSetting } from '../../../design/theme';
+import { ThemeScope } from '../../../design/theme-scope';
 import { GUTTER, SEMANTIC_SIZES } from '../../../design/tokens';
 import { useCameraEntry } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
@@ -30,8 +30,13 @@ import {
   viewerUsesFullWidth,
   type ViewerLayout,
 } from '../viewer/viewer-layout';
-import { ViewerOverlays, ViewerPlayer } from '../viewer/viewer-player';
-import { CameraTranscriptFeed } from '../transcripts/camera-transcript-feed';
+import { LiveChip, ViewerHeading, ViewerOverlays, ViewerPlayer } from '../viewer/viewer-player';
+import {
+  CameraTranscriptFeed,
+  transcriptSearchOf,
+  useCameraTranscripts,
+  type CameraTranscripts,
+} from '../transcripts/camera-transcript-feed';
 
 const log = new Logger('app.cameras');
 
@@ -52,28 +57,9 @@ function Panels({
   );
 }
 
-function ViewerHeader({ entry }: { readonly entry: CameraEntry }): ReactNode {
-  const router = useRouter();
-  return (
-    <PageHeader
-      title={entry.name}
-      {...(entry.room === null ? {} : { subtitle: entry.room })}
-      actions={[{ icon: 'film', label: 'Events', href: href.cameraEvents() }]}
-      overflow={[
-        {
-          label: 'Camera settings',
-          icon: 'settings',
-          onPress: (): void => {
-            router.navigate(href.settings.camera(entry.device.id));
-          },
-        },
-      ]}
-    />
-  );
-}
-
 interface ViewerContentProps {
   readonly viewer: Viewer;
+  readonly transcripts: CameraTranscripts;
   readonly answering: boolean;
   readonly layout: ViewerLayout;
   readonly onLayout: MeasuredWidth['onLayout'];
@@ -91,7 +77,7 @@ interface PlayerSlotLayout {
 }
 
 function usePlayerSlot({ full, gap, gutter, compact }: ViewerContentProps): PlayerSlotLayout {
-  const { height } = useWindowDimensions();
+  const { height } = useWindowSize();
   const [headerHeight, setHeaderHeight] = useState(0);
   const [width, setWidth] = useState(0);
   const slot = playerSlot({ height, headerHeight, gap, gutter, width, full, compact });
@@ -155,8 +141,9 @@ function PlayerColumns({
 }
 
 function ViewerContent(props: ViewerContentProps): ReactNode {
-  const { viewer, answering, compact, layout, full } = props;
+  const { viewer, transcripts, answering, compact, layout, full } = props;
   const slot = usePlayerSlot(props);
+  const searchRow = useSizeClass().header !== 'desktop';
   const header = compact ? (
     <View className="gap-grid-gap pt-grid-gap">
       <Panels viewer={viewer} answering={answering} />
@@ -171,24 +158,68 @@ function ViewerContent(props: ViewerContentProps): ReactNode {
         className={compact ? 'bg-black pt-safe' : 'absolute z-10'}
         style={slot.placement}
       >
-        <ViewerPlayer viewer={viewer} topBar={compact} rounded={!compact} />
+        <ViewerPlayer viewer={viewer} rounded={!compact} />
       </Animated.View>
       <CameraTranscriptFeed
-        entry={viewer.entry}
+        transcripts={transcripts}
         {...(compact
           ? {}
           : {
-              pageHeader: (
-                <View onLayout={slot.onHeaderLayout}>
-                  <ViewerHeader entry={viewer.entry} />
+              spacer: (
+                <View onLayout={slot.onHeaderLayout} className="pt-safe">
+                  <View className="h-14" />
+                  {searchRow ? <View className="mb-2 h-control-h" /> : null}
                 </View>
               ),
             })}
         headerWidth={compact ? 'full' : viewerClasses(layout, full).width}
         header={header}
+        shellSearch
       />
     </View>
   );
+}
+
+function useViewerBar(
+  viewer: Viewer,
+  transcripts: CameraTranscripts,
+  compact: boolean,
+): Omit<VariantShellProps, 'variant' | 'children'> {
+  const router = useRouter();
+  const { entry } = viewer;
+  const [searching, setSearching] = useState(
+    transcripts.focus === 'transcript-search' || transcripts.feed.words !== '',
+  );
+  const events: ShellAction = { icon: 'film', label: 'Events', href: href.cameraEvents() };
+  const toggleSearch: ShellAction = {
+    icon: 'search',
+    label: 'Search what was said',
+    selected: searching,
+    onPress: (): void => {
+      if (searching) transcripts.feed.changeWords('');
+      setSearching(!searching);
+    },
+  };
+  return {
+    title: entry.name,
+    ...(compact && !searching ? {} : { search: transcriptSearchOf(transcripts) }),
+    ...(compact
+      ? {
+          heading: <ViewerHeading viewer={viewer} />,
+          trailing: viewer.live.state.kind === 'live' ? <LiveChip /> : null,
+        }
+      : {}),
+    actions: compact ? [toggleSearch, events] : [events],
+    overflow: [
+      {
+        label: 'Camera settings',
+        icon: 'settings',
+        onPress: (): void => {
+          router.navigate(href.settings.camera(entry.device.id));
+        },
+      },
+    ],
+  };
 }
 
 function CameraViewer({ entry }: { readonly entry: CameraEntry }): ReactNode {
@@ -208,31 +239,27 @@ function CameraViewer({ entry }: { readonly entry: CameraEntry }): ReactNode {
     log.debug('viewer.layout_changed', { deviceId, layout, answering });
   }, [deviceId, layout, answering]);
   const compact = size.nav === 'bar';
+  const transcripts = useCameraTranscripts(entry, true);
+  const bar = useViewerBar(viewer, transcripts, compact);
   return (
-    <>
-      {compact ? (
-        <Head>
-          <title>{`${entry.name} · SmartEverything`}</title>
-        </Head>
-      ) : null}
-      <Screen
-        {...(compact ? {} : { header: <ViewerHeader entry={entry} /> })}
-        scroll={false}
-        externalScroll
-      >
-        <ViewerContent
-          viewer={viewer}
-          answering={answering}
-          layout={regular}
-          onLayout={pane.onLayout}
-          full={full}
-          gap={sizes.sectionGap}
-          gutter={gutter}
-          compact={compact}
-        />
-      </Screen>
-      <ViewerOverlays viewer={viewer} />
-    </>
+    <ThemeScope theme="dark">
+      <View className="flex-1 bg-bg">
+        <PageShell variant="overlay" {...bar}>
+          <ViewerContent
+            viewer={viewer}
+            transcripts={transcripts}
+            answering={answering}
+            layout={regular}
+            onLayout={pane.onLayout}
+            full={full}
+            gap={sizes.sectionGap}
+            gutter={gutter}
+            compact={compact}
+          />
+        </PageShell>
+        <ViewerOverlays viewer={viewer} />
+      </View>
+    </ThemeScope>
   );
 }
 
@@ -248,14 +275,14 @@ export function ViewerScreen(): ReactNode {
   }, [cameraId, found]);
   if (entry === null) {
     return (
-      <Screen header={<PageHeader title="Camera" />} maxWidth="reading">
+      <PageShell title="Camera" width="reading">
         <EmptyState
           icon="cameraOff"
           title="Camera not found"
           body="It may have been removed or hidden."
           action={<Button label="All cameras" href={href.cameras()} />}
         />
-      </Screen>
+      </PageShell>
     );
   }
   return <CameraViewer key={entry.device.id} entry={entry} />;

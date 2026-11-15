@@ -23,9 +23,10 @@ import { bound } from '../router';
 import { channelHidden, presenceInScope, scopesOfClient } from '../person-scope';
 import { bodyTables } from '../person-privacy';
 import { reachableSnapshot } from '../snapshot-reach';
-import { driveAccess } from '../../drive/access';
+import { rootVisible } from '../../drive/access';
 import { wireMessages } from '../../assistant/wire-message';
 import { DAY_MS } from '../../metrics/minute';
+import { visibleCollections } from '../../planner/sharing/visibility';
 
 function dayOf(moment: Date): string {
   return moment.toISOString().slice(0, 10);
@@ -59,7 +60,7 @@ function homeTables(
 function visibleDriveRoots(store: Store, { profileId }: Viewer): DriveRoot[] {
   return store.driveRoots
     .list()
-    .filter((root) => driveAccess({ profileId }, root) !== 'none')
+    .filter((root) => rootVisible(store, { profileId }, root))
     .map(({ path: _path, ...root }) => root);
 }
 
@@ -93,6 +94,9 @@ type PlannerSnapshot = Pick<
   | 'planner_alarms'
   | 'planner_timers'
   | 'planner_stopwatches'
+  | 'planner_collection_shares'
+  | 'planner_guests'
+  | 'planner_booking_pages'
   | 'google_accounts'
 >;
 
@@ -100,17 +104,42 @@ function present<Row>(row: Row | undefined): Row[] {
   return row === undefined ? [] : [row];
 }
 
+function sharesOf(
+  store: Store,
+  people: readonly string[],
+): PlannerSnapshot['planner_collection_shares'] {
+  const shares = people.flatMap((person) => [
+    ...store.plannerShares.forProfile(person),
+    ...store.plannerCollections
+      .list(person)
+      .flatMap((collection) => store.plannerShares.forCollection(collection.id)),
+  ]);
+  return [
+    ...new Map(
+      shares.map((share) => [`${share.collection_id}/${share.profile_id}`, share]),
+    ).values(),
+  ];
+}
+
 export function plannerTablesOf(store: Store, { client, profileId }: Viewer): PlannerSnapshot {
   const people =
     client.role === 'owner' ? store.profiles.list().map((profile) => profile.id) : [profileId];
-  const items = people.flatMap((person) => store.plannerItems.list(person));
+  const everything = client.role === 'owner';
+  const items = everything
+    ? people.flatMap((person) => store.plannerItems.list(person))
+    : store.plannerItems.list(profileId, { scope: 'visible' });
   return {
-    planner_collections: people.flatMap((person) => store.plannerCollections.list(person)),
+    planner_collections: everything
+      ? people.flatMap((person) => store.plannerCollections.list(person))
+      : visibleCollections(store, profileId),
     planner_items: items,
     planner_occurrences: store.plannerOccurrences.forItems(items.map((item) => item.id)),
     planner_alarms: people.flatMap((person) => store.plannerAlarms.list(person)),
     planner_timers: people.flatMap((person) => store.plannerTimers.list(person)),
     planner_stopwatches: people.flatMap((person) => present(store.plannerStopwatch.find(person))),
+    planner_collection_shares: sharesOf(store, people),
+    planner_guests: store.plannerGuests.forItems(items.map((item) => item.id)),
+    planner_booking_pages: people.flatMap((person) => store.plannerBookingPages.list(person)),
     google_accounts: people.flatMap((person) => present(store.googleAccounts.find(person))),
   };
 }
@@ -134,7 +163,6 @@ function unfilteredTablesOf(
     ...homeTables(store, client),
     device_groups: store.deviceGroups.list(),
     cameras: store.cameras.list(),
-    scenes: store.scenes.list(),
     automations: store.automations.list(),
     automation_values: store.automationValues.list(),
     automation_plugin_kinds: store.pluginKinds.all(),

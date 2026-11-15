@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import {
   API_ENDPOINTS,
   DEFAULT_COMPUTER_SCOPES,
+  MCP_OPERATION_TOOLS,
   MCP_ROUTES,
   PROCESS_QUERY,
   type AudioState,
@@ -472,6 +473,17 @@ describe('windows, programs and files', () => {
     });
   });
 
+  it('deletes items from the Trash for good only by their trash ids', async () => {
+    const answer = await changeFiles(context, {
+      deviceId: DEVICE,
+      change: { action: 'delete_now', items: ['trash-1'] },
+    });
+    expect(calls[0]?.name).toBe('writeComputerFiles');
+    expect(calls[0]?.body).toEqual({ action: 'delete_now', items: ['trash-1'] });
+    expect(answer['ok']).toBe(true);
+    expect(JSON.stringify(toolNamed('file_edit')?.listing.inputSchema)).toContain('delete_now');
+  });
+
   it('saves a chat attachment onto the computer', async () => {
     const id = randomUUID();
     const stored = context.layout.person(ownerProfile.id).attachment(id, 'up.txt');
@@ -552,6 +564,30 @@ describe('the served tools', () => {
     });
     expect(MCP_ROUTES.get('computer_app_control')).toMatchObject({
       branches: { window_focus: { part: 'focus_window' }, window_close: { part: 'close_window' } },
+    });
+  });
+});
+
+describe('the computer file views', () => {
+  it('serve the Trash, the inside of a zip and the text search next to the folder and file views', () => {
+    expect(MCP_ROUTES.get('file_read')).toMatchObject({
+      branches: {
+        folder: { part: 'list_files' },
+        search: { part: 'search_files' },
+        trash: { part: 'list_trash_files' },
+        zip: { part: 'list_zip_files' },
+        download: { part: 'prepare_download' },
+      },
+    });
+  });
+
+  it('read the Trash and a zip through their own endpoints', () => {
+    expect(MCP_OPERATION_TOOLS).toContainEqual(['list_trash_files', 'listComputerTrash']);
+    expect(MCP_OPERATION_TOOLS).toContainEqual(['list_zip_files', 'listComputerZipEntries']);
+    expect(
+      API_ENDPOINTS.searchComputerFiles.query.parse({ path: '/home/sam', text: 'a' }),
+    ).toMatchObject({
+      contents: false,
     });
   });
 });

@@ -38,6 +38,9 @@ vi.mock('../features/settings', () => ({
   PushRegistrationHost: hosts.none,
 }));
 vi.mock('../features/fitness', () => ({ HealthSyncHost: hosts.none }));
+vi.mock('../features/photos/backup/runner/host', () => ({ PhotosBackupHost: hosts.none }));
+vi.mock('../features/planner/data/phone-rings-host', () => ({ PhoneRingsHost: hosts.none }));
+vi.mock('../features/drive/phone', () => ({ DriveProviderHost: hosts.none }));
 vi.mock('../features/health-log', () => ({ EntryDeliveryHost: hosts.none }));
 vi.mock('../features/profiles', () => ({
   ScaleListenerHost: hosts.none,

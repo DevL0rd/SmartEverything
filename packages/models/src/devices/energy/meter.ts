@@ -29,7 +29,7 @@ export const ENERGY_METER_MODEL: ModelSpec = {
   title: 'Energy meter',
   category: 'energy',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.0763, depth: 0.0697, height: 0.102 },
   framing: house('window', 22, 12),
   shots: [
     shot('drawing', DRAWING, 'window', { zoom: 1.2, yaw: 16, pitch: 8, loopS: 1, stillAt: 0.5 }),

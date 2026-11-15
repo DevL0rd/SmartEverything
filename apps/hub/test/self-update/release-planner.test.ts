@@ -20,12 +20,15 @@ describe('release planner', () => {
       'apps/app/modules/health-connect/android/A.kt',
       'apps/app/plugins/android-build/index.js',
       'apps/app/app.config.ts',
-      'apps/app/app-identity.json',
       'apps/app/fingerprint.config.js',
       'apps/app/package.json',
       'apps/app/android/app/build.gradle',
     ])
       expect(plan(path)).toEqual(['app', 'ui']);
+  });
+
+  it('releases the Hub, the APK and the UI update for the app identity', () => {
+    expect(plan('packages/domain/src/app-identity.ts')).toEqual(['hub', 'app', 'ui']);
   });
 
   it('releases the Desktop for its own code and the Hub node and network code it embeds', () => {

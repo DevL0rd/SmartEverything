@@ -1,4 +1,3 @@
-import { createContext } from 'react';
 import type { JsonValue, PortEditorId, PortValue } from '@smarteverything/domain';
 import type { FieldControl } from '../schema-fields';
 import { controlTypingOf, type ControlTyping } from './control-model';
@@ -12,10 +11,6 @@ export interface PortScope extends DeviceScope {
   readonly ports: Readonly<Record<string, PortValue>>;
   readonly controls: Readonly<Record<string, FieldControl>>;
 }
-
-export const NO_PORT_SCOPE: PortScope = { ports: {}, controls: {}, target: [], wholeHome: false };
-
-export const PortScopeContext = createContext<PortScope>(NO_PORT_SCOPE);
 
 const FALLBACK_MIN = -Number.MAX_SAFE_INTEGER;
 const FALLBACK_MAX = Number.MAX_SAFE_INTEGER;

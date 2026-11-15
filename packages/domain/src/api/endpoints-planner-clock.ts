@@ -1,8 +1,22 @@
 import { z } from 'zod';
 import { CLOCK_TIME } from '../zoned-clock';
-import { PLANNER_ALARM_ROW, PLANNER_DAYS, PLANNER_RING_TARGETS } from '../planner/alarms';
+import {
+  PLANNER_ALARM_ROW,
+  PLANNER_CHALLENGE,
+  PLANNER_DAYS,
+  PLANNER_RING_TARGETS,
+  PLANNER_SUNRISE,
+} from '../planner/alarms';
+import { PLANNER_BEDTIME_WINDOW } from '../planner/bedtime';
 import { PLANNER_LOCAL_DATE } from '../planner/items';
 import { PLANNER_RING_ROW } from '../planner/rings';
+import { PLANNER_SLEEP } from '../planner/sleep';
+import {
+  PLANNER_ALARM_SOUND,
+  PLANNER_RADIO_RESULT,
+  PLANNER_RESOLVED_SOUND,
+  PLANNER_SLEEP_SOUND,
+} from '../planner/sounds';
 import { PLANNER_STOPWATCH_ROW } from '../planner/stopwatch';
 import { PLANNER_TIMER_ROW } from '../planner/timers';
 import { NO_BODY, endpoint } from './endpoint';
@@ -16,12 +30,15 @@ const ALARM_FIELDS = {
   once_on: PLANNER_LOCAL_DATE.nullable(),
   skip_on: PLANNER_LOCAL_DATE.nullable(),
   enabled: z.boolean(),
-  sound: z.string().trim().min(1),
+  sound: PLANNER_ALARM_SOUND,
   ramp_seconds: z.int().nonnegative(),
   vibrate: z.boolean(),
   snooze_minutes: z.int().positive(),
+  snooze_limit: z.int().positive().nullable(),
+  challenge: PLANNER_CHALLENGE,
+  sunrise: PLANNER_SUNRISE.nullable(),
   smart_minutes: z.int().positive().nullable(),
-  wake_scene_id: ID.nullable(),
+  wake_automation_id: ID.nullable(),
   wake_lead_minutes: z.int().nonnegative().nullable(),
   targets: PLANNER_RING_TARGETS,
 } as const;
@@ -37,8 +54,11 @@ export const PLANNER_ALARM_CREATE = z
     ramp_seconds: ALARM_FIELDS.ramp_seconds.optional(),
     vibrate: ALARM_FIELDS.vibrate.optional(),
     snooze_minutes: ALARM_FIELDS.snooze_minutes.optional(),
+    snooze_limit: ALARM_FIELDS.snooze_limit.optional(),
+    challenge: ALARM_FIELDS.challenge.default({ kind: 'none' }),
+    sunrise: ALARM_FIELDS.sunrise.default(null),
     smart_minutes: ALARM_FIELDS.smart_minutes.default(null),
-    wake_scene_id: ALARM_FIELDS.wake_scene_id.default(null),
+    wake_automation_id: ALARM_FIELDS.wake_automation_id.default(null),
     wake_lead_minutes: ALARM_FIELDS.wake_lead_minutes.default(null),
     targets: ALARM_FIELDS.targets.optional(),
   })
@@ -46,9 +66,9 @@ export const PLANNER_ALARM_CREATE = z
     path: ['once_on'],
     message: 'an alarm rings once on a date or on weekdays, not both',
   })
-  .refine((alarm) => (alarm.wake_scene_id === null) === (alarm.wake_lead_minutes === null), {
+  .refine((alarm) => (alarm.wake_automation_id === null) === (alarm.wake_lead_minutes === null), {
     path: ['wake_lead_minutes'],
-    message: 'a wake scene and its lead time are set together',
+    message: 'a wake automation and its lead time are set together',
   });
 
 export const PLANNER_ALARM_CHANGES = somethingToChange(ALARM_FIELDS);
@@ -89,9 +109,11 @@ export const PLANNER_PHONE_RING = z
     kind: z.enum(['alarm', 'timer']),
     refId: ID,
     dueAt: MOMENT,
-    sound: z.string().min(1),
+    sound: PLANNER_RESOLVED_SOUND,
     rampSeconds: z.int().nonnegative(),
     vibrate: z.boolean(),
+    snoozeLimit: z.int().positive().nullable(),
+    challenge: PLANNER_CHALLENGE,
     label: z.string().min(1).nullable(),
   })
   .readonly();
@@ -100,6 +122,7 @@ export const PLANNER_PHONE_RING_SET = z
   .strictObject({
     hash: z.string().min(1),
     rings: z.array(PLANNER_PHONE_RING).readonly(),
+    bedtimeWindows: z.array(PLANNER_BEDTIME_WINDOW).readonly(),
   })
   .readonly();
 
@@ -109,6 +132,25 @@ export const PLANNER_PHONE_RING_ACK = z.strictObject({
   clientId: ID,
   hash: z.string().min(1),
 });
+
+export const PLANNER_SLEEP_QUERY = z.strictObject({
+  personId: ID.optional(),
+  from: MOMENT,
+  to: MOMENT,
+});
+
+export const PLANNER_RADIO_QUERY = z.strictObject({ text: z.string().trim().min(1) });
+
+export const PLANNER_SLEEP_SOUND_BODY = z.discriminatedUnion('action', [
+  z.strictObject({
+    action: z.literal('play'),
+    sound: PLANNER_SLEEP_SOUND.optional(),
+    timer_minutes: z.int().positive().nullable().optional(),
+    fade_seconds: z.int().nonnegative().optional(),
+    clientId: ID.optional(),
+  }),
+  z.strictObject({ action: z.literal('stop'), clientId: ID.optional() }),
+]);
 
 const ALARM_ACTIONS = {
   snoozePlannerAlarm: endpoint({
@@ -277,6 +319,36 @@ export const PLANNER_CLOCK_ENDPOINTS = {
     query: PLANNER_PHONE_RINGS_QUERY,
     body: NO_BODY,
     response: PLANNER_PHONE_RING_SET,
+  }),
+  readPlannerSleep: endpoint({
+    method: 'GET',
+    path: '/api/planner/sleep',
+    access: 'member',
+    summary: 'The nights slept between two moments and the week average',
+    params: NOTHING,
+    query: PLANNER_SLEEP_QUERY,
+    body: NO_BODY,
+    response: PLANNER_SLEEP,
+  }),
+  searchPlannerRadio: endpoint({
+    method: 'GET',
+    path: '/api/planner/radio',
+    access: 'member',
+    summary: 'Search radio stations by name for an alarm or a sleep sound',
+    params: NOTHING,
+    query: PLANNER_RADIO_QUERY,
+    body: NO_BODY,
+    response: z.array(PLANNER_RADIO_RESULT),
+  }),
+  playPlannerSleepSound: endpoint({
+    method: 'POST',
+    path: '/api/planner/sleep-sound',
+    access: 'member',
+    summary: 'Start or stop the sleep sound on a phone of the person',
+    params: NOTHING,
+    query: PLANNER_PERSON_QUERY,
+    body: PLANNER_SLEEP_SOUND_BODY,
+    response: DONE,
   }),
   ackPlannerPhoneRings: endpoint({
     method: 'POST',

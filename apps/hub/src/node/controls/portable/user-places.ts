@@ -1,10 +1,12 @@
-import type { FilePlaces } from '@smarteverything/domain';
+import type { FileAbility, FilePlaces } from '@smarteverything/domain';
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { orElse, UNREADABLE } from '../linux/fs-fallback';
 
 type Place = FilePlaces['places'][number];
+
+export const PORTABLE_FILE_ABILITIES: readonly FileAbility[] = ['zip', 'watch'];
 
 const USER_FOLDERS: readonly string[] = ['Downloads', 'Desktop', 'Documents'];
 
@@ -28,6 +30,7 @@ export async function userPlaces(
   );
   return {
     home,
+    abilities: [...PORTABLE_FILE_ABILITIES],
     places: [
       { label: 'Home', path: home, kind: 'home' },
       ...found.filter((place) => place !== null),

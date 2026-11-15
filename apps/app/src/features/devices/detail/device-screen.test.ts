@@ -1,7 +1,7 @@
-import { createElement, type ReactNode } from 'react';
+import { createElement, use, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TabItem } from '../../../components/tabs-bar';
+import { SectionSearchContext } from '../../../plugins/shared/section-search';
 import type { DeviceSection } from './sections';
 
 interface Props {
@@ -9,22 +9,33 @@ interface Props {
   readonly className?: string;
 }
 
+interface Shell {
+  readonly scroll?: boolean;
+  readonly width?: string;
+  readonly banner?: ReactNode;
+  readonly search?: { readonly value: string; readonly placeholder: string };
+  readonly children?: ReactNode;
+}
+
 interface Scene {
   family: string;
-  width: string;
+  bodyWidth: number;
   details: boolean;
   selfScrolling: boolean;
-  tabs: readonly TabItem[];
+  shell: Shell | null;
+  active: string | null;
+  searchParam: string | null;
 }
 
 const scene = vi.hoisted((): Scene => ({
   family: 'plug',
-  width: 'compact',
+  bodyWidth: 380,
   details: false,
   selfScrolling: false,
-  tabs: [],
+  shell: null,
+  active: null,
+  searchParam: null,
 }));
-const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), dismissTo: vi.fn() }));
 
 function marker(name: string): (props: Props) => ReactNode {
   function Marker(props: Props): ReactNode {
@@ -40,11 +51,8 @@ function box(): (props: Props) => ReactNode {
   return Box;
 }
 
-vi.mock('react-native', () => ({ View: box(), ScrollView: marker('scroll') }));
-vi.mock('expo-router', () => ({
-  Redirect: marker('redirect'),
-  useRouter: (): typeof router => router,
-}));
+vi.mock('react-native', () => ({ View: box() }));
+vi.mock('expo-router', () => ({ Redirect: marker('redirect') }));
 vi.mock('@smarteverything/domain', () => ({ isCamera: (): boolean => false }));
 vi.mock('../../../components/after-paint', () => ({ AfterPaint: marker('after-paint') }));
 vi.mock('../../../components/button', () => ({
@@ -60,47 +68,30 @@ vi.mock('../../../components/empty-state', () => ({
     readonly action: ReactNode;
   }): ReactNode => createElement('div', null, title, action),
 }));
-vi.mock('../../../components/screen', () => ({
-  Screen: ({
-    header,
-    banner,
-    children,
-  }: {
-    readonly header: ReactNode;
-    readonly banner?: ReactNode;
-    readonly children: ReactNode;
-  }): ReactNode =>
-    createElement(
-      'div',
-      { 'data-part': 'screen' },
-      header,
-      banner === undefined ? null : createElement('div', { 'data-part': 'banner-slot' }, banner),
-      children,
-    ),
-}));
-vi.mock('../../../components/tabs-bar', () => ({
-  TabsBar: ({
-    items,
-    active,
-  }: {
-    readonly items: readonly TabItem[];
-    readonly active: string;
-  }): ReactNode => {
-    scene.tabs = items;
-    return createElement('div', { 'data-part': 'tabs', 'data-active': active });
+vi.mock('../../../components/page-shell/page-shell', () => ({
+  PageShell: (props: Shell): ReactNode => {
+    scene.shell = props;
+    return createElement(
+      'main',
+      { 'data-part': 'shell' },
+      createElement('div', { 'data-part': 'banner-slot' }, props.banner),
+      props.children,
+    );
   },
+}));
+vi.mock('../../../components/page-shell/body-width', () => ({
+  useFrameBodyWidth: (): number => scene.bodyWidth,
+}));
+vi.mock('../../../components/page-shell/layout', () => ({
+  twoFrameColumnsAt: (width: number): boolean => width >= 640,
+}));
+vi.mock('../../../components/use-section-param', () => ({
+  useSectionParam: (): readonly [string | null] => [scene.searchParam],
 }));
 vi.mock('../../../components/use-lifecycle-log', () => ({
   useLifecycleLog: (): void => undefined,
 }));
 vi.mock('../../../app-shell/hrefs', () => ({ href: { device: (): string => '/device' } }));
-vi.mock('../../../design/size-class', () => ({
-  atLeast: (width: string, floor: string): boolean => {
-    const order = ['compact', 'medium', 'expanded'];
-    return order.indexOf(width) >= order.indexOf(floor);
-  },
-  useSizeClass: (): { width: string } => ({ width: scene.width }),
-}));
 vi.mock('../../../store/selectors', () => ({
   useDevice: (): { id: string } => ({ id: 'device-1' }),
 }));
@@ -110,12 +101,14 @@ vi.mock('../model/device-model', () => ({
     device,
   }),
 }));
-vi.mock('./device-header', () => ({
-  DeviceHeader: ({ titleLines }: { readonly titleLines?: string }): ReactNode =>
-    createElement('div', { 'data-part': 'header', 'data-title-lines': titleLines }),
+vi.mock('./device-shell', () => ({
+  useDeviceShell: (_device: unknown, active: string): object => {
+    scene.active = active;
+    return { props: { title: 'Device' }, schedule: null };
+  },
+  DeviceBanners: marker('banner'),
 }));
 vi.mock('./device-overview', () => ({
-  DeviceBanner: marker('banner'),
   Hero: marker('hero'),
   PrimaryCard: marker('primary-card'),
 }));
@@ -129,18 +122,32 @@ function section(key: string, scrolls = false): DeviceSection {
   };
 }
 
+function SearchedBody(): ReactNode {
+  return createElement('p', null, `Searching ${use(SectionSearchContext)?.value ?? 'nothing'}`);
+}
+
+function searchedSection(): DeviceSection {
+  return {
+    key: 'queries',
+    title: 'queries',
+    icon: 'info',
+    scrolls: true,
+    search: { placeholder: 'Domain or device' },
+    render: () => createElement(SearchedBody),
+  };
+}
+
 vi.mock('./sections', () => ({
-  sectionHref: (deviceId: string, key: string): string => `/device/${deviceId}/${key}`,
   sectionsOf: (): readonly DeviceSection[] => [
     section('overview'),
     section('history'),
     section('activity', scene.selfScrolling),
+    searchedSection(),
   ],
   useHasOverviewDetails: (): boolean => scene.details,
   OverviewDetails: marker('details'),
 }));
 vi.mock('./missing-device', () => ({ MissingDevice: marker('missing') }));
-vi.mock('./shortcuts', () => ({ Shortcuts: marker('shortcuts') }));
 vi.mock('../laundry/page', () => ({ LaundryPage: marker('laundry-page') }));
 vi.mock('../television/lead', () => ({ TelevisionLead: marker('tv-lead') }));
 vi.mock('../vacuum/page', () => ({ VacuumPage: marker('vacuum-page') }));
@@ -152,69 +159,68 @@ function html(section: string): string {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   scene.family = 'plug';
-  scene.width = 'compact';
+  scene.bodyWidth = 380;
   scene.details = false;
   scene.selfScrolling = false;
-  scene.tabs = [];
+  scene.shell = null;
+  scene.active = null;
+  scene.searchParam = null;
 });
 
-describe('device detail width', () => {
-  it('wraps the stacked overview title and places its notice in the content flow', () => {
+describe('device page shell', () => {
+  it('puts the device notices in the shell banner and the hero in the body', () => {
     const page = html('overview');
-    expect(page).toContain('data-part="header" data-title-lines="wrap"');
-    expect(page).toContain('data-part="banner"');
-    expect(page).not.toContain('data-part="banner-slot"');
+    expect(page).toContain('data-part="banner-slot"><div data-part="banner">');
     expect(page.indexOf('data-part="banner"')).toBeLessThan(page.indexOf('data-part="hero"'));
+    expect(scene.shell).toMatchObject({ width: 'detail', scroll: true });
+    expect(scene.active).toBe('overview');
   });
 
-  it('uses the available viewport for the wide overview split', () => {
-    scene.width = 'expanded';
+  it('shows the overview details beside the lead when the body is wide enough', () => {
     scene.details = true;
+    expect(html('overview')).not.toContain('flex-row items-start');
+    scene.bodyWidth = 820;
     const page = html('overview');
-    expect(page).toContain('data-class="w-full flex-1 px-gutter flex-row gap-section-gap"');
-    expect(page).not.toContain('max-w-detail');
-    expect(page).toContain('data-part="tabs"');
+    expect(page).toContain('gap-section-gap flex-row items-start');
+    expect(page).toContain('data-part="details"');
   });
 
-  it('aligns self-scrolling sections to the same frame without adding a scroll view', () => {
+  it('leaves the details out when the device has none', () => {
+    expect(html('overview')).not.toContain('data-part="after-paint"');
+  });
+
+  it('lets a self-scrolling section own its scroll inside the shell body', () => {
     scene.selfScrolling = true;
     const page = html('activity');
-    expect(page).toContain('data-class="w-full flex-1 px-gutter"');
     expect(page).toContain('<p>Section</p>');
-    expect(page).not.toContain('data-part="scroll"');
-  });
-});
-
-describe('device section routes', () => {
-  beforeEach(() => {
-    scene.width = 'expanded';
-    scene.details = true;
+    expect(scene.shell?.scroll).toBe(false);
+    expect(scene.active).toBe('activity');
   });
 
-  it('shows a missing-page state with a path back to the device on wide screens', () => {
+  it('scrolls a plain section in the shell', () => {
+    expect(html('history')).toContain('<p>Section</p>');
+    expect(scene.shell?.scroll).toBe(true);
+  });
+
+  it('puts a section search in the top shell and shares its value with the section', () => {
+    scene.searchParam = 'ads.example';
+    expect(html('queries')).toContain('Searching ads.example');
+    expect(scene.shell?.search).toMatchObject({
+      value: 'ads.example',
+      placeholder: 'Domain or device',
+    });
+  });
+
+  it('shows no shell search on a section without one', () => {
+    expect(html('history')).not.toContain('Searching');
+    expect(scene.shell?.search).toBeUndefined();
+  });
+
+  it('shows a missing-page state with a path back to the device', () => {
     const page = html('retired');
     expect(page).toContain('This page isn’t here');
     expect(page).toContain('<button>Back to device</button>');
-    expect(page).not.toContain('data-part="tabs"');
-  });
-
-  it('pushes a section from Overview and replaces it when switching to another section', () => {
-    expect(html('overview')).toContain('data-active="overview"');
-    scene.tabs.find(({ key }) => key === 'history')?.onPress?.();
-    expect(router.push).toHaveBeenCalledExactlyOnceWith('/device/device-1/history');
-
-    expect(html('history')).toContain('data-active="history"');
-    scene.tabs.find(({ key }) => key === 'history')?.onPress?.();
-    scene.tabs.find(({ key }) => key === 'activity')?.onPress?.();
-    expect(router.replace).toHaveBeenCalledExactlyOnceWith('/device/device-1/activity');
-  });
-
-  it('returns to the canonical device overview when selecting Overview from a section', () => {
-    expect(html('activity')).toContain('data-active="activity"');
-    scene.tabs.find(({ key }) => key === 'overview')?.onPress?.();
-    expect(router.dismissTo).toHaveBeenCalledExactlyOnceWith('/device');
   });
 });
 
@@ -253,8 +259,8 @@ describe('family page registry', () => {
     expect(page).not.toContain('tv-lead');
   });
 
-  it('keeps the television single column on a medium window and others in two columns', () => {
-    scene.width = 'medium';
+  it('keeps the television in one column on a wide body and others in two', () => {
+    scene.bodyWidth = 820;
     scene.details = true;
     scene.family = 'television';
     expect(html('overview')).not.toContain('flex-row items-start');

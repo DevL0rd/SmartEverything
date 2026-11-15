@@ -18,7 +18,6 @@ describe('LayoutWide', () => {
   it('floats the Add panel over the canvas so the canvas keeps its whole area', () => {
     const markup = renderToStaticMarkup(
       createElement(LayoutWide, {
-        top: null,
         sentence: null,
         banner: null,
         left: null,

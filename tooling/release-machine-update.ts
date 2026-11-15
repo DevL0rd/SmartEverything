@@ -226,7 +226,10 @@ async function packagedVersion(archive: string, entry: string): Promise<string> 
   }
 }
 
-async function artifactOf(file: ReleaseFile, version: string): Promise<MachineUpdateArtifact> {
+export async function artifactOf(
+  file: ReleaseFile,
+  version: string,
+): Promise<MachineUpdateArtifact> {
   if (file.kind === 'zip' || file.kind === 'nupkg') {
     const embedded = await packagedVersion(file.path, await archiveApp(file));
     if (embedded !== version) throw new DesktopPackageVersionError(file.path, version, embedded);

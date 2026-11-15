@@ -1,14 +1,16 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
+import { View } from 'react-native';
 import type { AppHref } from '../app-href';
 import type { Crumb } from '../breadcrumbs';
-import type { RailWidth } from '../frame-layout';
+import type { RailWidth } from '../page-shell/layout';
 import { PageHeader, type HeaderAction, type HeaderEditing } from '../page-header';
 import type { PageSettingsLink } from '../page-settings-button';
 import type { PrimaryActionProps } from '../primary-action';
 import { Screen } from '../screen';
+import { useHeaderSlot } from '../screen-context';
 import { CompactBody, WideBody, type FrameWidth } from '../section-body';
-import { SectionRail } from '../section-rail';
-import { useAreaWidth } from '../../design/size-class';
+import { SectionRail } from '../page-shell/section-rail';
+import { useAreaWidth, useSizeClass } from '../../design/size-class';
 import { SectionPullUp } from './section-pull-up';
 import {
   libraryLayoutOf,
@@ -32,7 +34,6 @@ export interface LibraryFrameProps {
   readonly actions?: readonly HeaderAction[];
   readonly settings: PageSettingsLink;
   readonly refresh: LibraryRefresh;
-  readonly search?: boolean;
   readonly editing?: HeaderEditing | null;
   readonly sections: readonly LibrarySectionGroup[];
   readonly active: string;
@@ -43,6 +44,7 @@ export interface LibraryFrameProps {
   readonly chips?: ReactNode;
   readonly banner?: ReactNode;
   readonly selection?: ReactElement | null;
+  readonly footer?: ReactNode;
   readonly primaryAction?: PrimaryActionProps;
   readonly width?: FrameWidth;
   readonly scroll?: boolean;
@@ -130,13 +132,46 @@ function FrameHeader({
       title={frame.title}
       settings={frame.settings}
       back={false}
-      search={frame.search ?? true}
       actions={headerActionsOf(compact, frame.actions ?? NO_ACTIONS, refresh)}
       editing={frame.editing ?? null}
       {...(frame.subtitle === undefined ? {} : { subtitle: frame.subtitle })}
       {...(frame.breadcrumbs === undefined ? {} : { breadcrumbs: frame.breadcrumbs })}
       {...(compact ? { onTitlePress } : {})}
     />
+  );
+}
+
+function SelectionHeader({ children }: { readonly children: ReactElement }): ReactNode {
+  const slot = useHeaderSlot();
+  const desktop = useSizeClass().header === 'desktop';
+  if ((slot === 'large') !== desktop) return null;
+  return desktop ? children : <View className="z-10 pt-safe">{children}</View>;
+}
+
+function screenExtrasOf(frame: LibraryFrameProps): {
+  readonly footer?: ReactNode;
+  readonly primaryAction?: PrimaryActionProps;
+} {
+  const selection = frame.selection ?? null;
+  const footer = frame.footer ?? null;
+  return {
+    ...(footer === null ? {} : { footer }),
+    ...(frame.primaryAction === undefined || selection !== null
+      ? {}
+      : { primaryAction: frame.primaryAction }),
+  };
+}
+
+function headerOf(
+  frame: LibraryFrameProps,
+  compact: boolean,
+  refresh: () => void,
+  openPullUp: () => void,
+): ReactElement {
+  const selection = frame.selection ?? null;
+  if (selection !== null) return <SelectionHeader>{selection}</SelectionHeader>;
+  return (
+    <FrameHeader frame={frame} compact={compact} refresh={refresh} onTitlePress={openPullUp} />
   );
 }
 
@@ -153,22 +188,13 @@ export function LibraryFrame(frame: LibraryFrameProps): ReactNode {
     <Screen
       maxWidth={compact ? (frame.width ?? 'dashboard') : 'full'}
       scroll={scrolls}
-      header={
-        frame.selection ?? (
-          <FrameHeader
-            frame={frame}
-            compact={compact}
-            refresh={refresh}
-            onTitlePress={() => {
-              setPullUp(true);
-            }}
-          />
-        )
-      }
+      header={headerOf(frame, compact, refresh, () => {
+        setPullUp(true);
+      })}
       onRefresh={refresh}
       refreshing={refreshing}
       banner={frame.banner}
-      {...(frame.primaryAction === undefined ? {} : { primaryAction: frame.primaryAction })}
+      {...screenExtrasOf(frame)}
     >
       <FrameBody frame={frame} area={area} />
       {compact ? (

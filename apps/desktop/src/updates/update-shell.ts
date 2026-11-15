@@ -1,4 +1,4 @@
-import { app, autoUpdater, type BrowserWindow } from 'electron';
+import { app, autoUpdater, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import type { MachineUpdateStatus } from '@smarteverything/domain';
 import { background, Logger, messageOf } from '@smarteverything/logging';
 import type { DesktopService } from '../service/desktop-service.js';
@@ -10,8 +10,11 @@ import {
   confirmBoot,
   installRootOf,
   reviewBoot,
+  rollBackBoot,
   UPDATE_FIRST_BOOT_ARGUMENT,
+  type BootReview,
 } from './folder-update.js';
+import { desktopBootMenuItems } from './update-tray.js';
 import { createUpdates } from './update-desktop.js';
 import { MachineNoticeWatch, type NoticeRoute } from './update-notices.js';
 
@@ -68,30 +71,65 @@ function installRoot(): string | null {
   return app.isPackaged ? installRootOf(process.platform, process.execPath) : null;
 }
 
-export async function recoverDesktopBoot(): Promise<boolean> {
+export interface DesktopBoot {
+  readonly confirmWhenLoaded: (window: BrowserWindow) => void;
+  readonly trayItems: () => MenuItemConstructorOptions[];
+}
+
+class InstalledBoot implements DesktopBoot {
+  readonly #root: string | null;
+  readonly #changed: () => void;
+  #review: BootReview;
+
+  constructor(root: string | null, review: BootReview, changed: () => void) {
+    this.#root = root;
+    this.#review = review;
+    this.#changed = changed;
+  }
+
+  confirmWhenLoaded(window: BrowserWindow): void {
+    const root = this.#root;
+    if (root === null || this.#review !== 'confirming') return;
+    window.webContents.once('did-finish-load', () => {
+      background(this.#confirm(root), 'update.boot_confirm_failed');
+    });
+  }
+
+  trayItems(): MenuItemConstructorOptions[] {
+    const root = this.#root;
+    if (root === null || this.#review !== 'awaiting_decision') return [];
+    return desktopBootMenuItems(app.getVersion(), {
+      keep: () => {
+        background(this.#confirm(root).then(this.#changed), 'update.boot_confirm_failed');
+      },
+      rollBack: () => {
+        background(this.#rollBack(root), 'update.owner_rollback_failed');
+      },
+    });
+  }
+
+  async #confirm(root: string): Promise<void> {
+    await confirmBoot(root);
+    this.#review = 'none';
+  }
+
+  async #rollBack(root: string): Promise<void> {
+    await rollBackBoot(root);
+    log.warn('update.rolled_back_to_previous', { version: app.getVersion() });
+    app.relaunch({ execPath: process.execPath, args: carriedArguments() });
+    app.exit(0);
+  }
+}
+
+export async function reviewDesktopBoot(changed: () => void): Promise<DesktopBoot> {
   const root = installRoot();
-  if (root === null) return false;
+  if (root === null) return new InstalledBoot(null, 'none', changed);
   const review = await reviewBoot(
     root,
     app.getVersion(),
     process.argv.includes(UPDATE_FIRST_BOOT_ARGUMENT),
   );
-  if (review !== 'rolled-back') return false;
-  log.warn('update.rolled_back_to_previous', { version: app.getVersion() });
-  app.relaunch({ execPath: process.execPath, args: carriedArguments() });
-  app.exit(0);
-  return true;
-}
-
-export async function confirmDesktopBoot(): Promise<void> {
-  const root = installRoot();
-  if (root !== null) await confirmBoot(root);
-}
-
-export function confirmBootWhenLoaded(window: BrowserWindow): void {
-  window.webContents.once('did-finish-load', () => {
-    background(confirmDesktopBoot(), 'update.boot_confirm_failed');
-  });
+  return new InstalledBoot(root, review, changed);
 }
 
 export function createDesktopUpdates(

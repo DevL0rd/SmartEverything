@@ -5,7 +5,7 @@ import { Card } from '../../../components/card';
 import { ErrorState } from '../../../components/error-state';
 import { List } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
-import { FitnessFrame } from '../components/fitness-frame';
+import { FitnessShell } from '../components/fitness-shell';
 import { FitnessToolbar } from '../components/fitness-toolbar';
 import { NoDataRow } from '../components/no-data-row';
 import { StatList } from '../components/stat-list';
@@ -68,7 +68,7 @@ export function WorkoutsScreen(): ReactNode {
     if (start === '1') router.setParams({ start: undefined });
   });
   return (
-    <FitnessFrame
+    <FitnessShell
       tab="workouts"
       width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range={window.range} ranges={RANGES} />}
@@ -92,6 +92,6 @@ export function WorkoutsScreen(): ReactNode {
           side={<Records workouts={list.workouts} />}
         />
       )}
-    </FitnessFrame>
+    </FitnessShell>
   );
 }

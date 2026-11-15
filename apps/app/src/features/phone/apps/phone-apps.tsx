@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { PhoneDetail } from '@smarteverything/domain';
@@ -98,6 +98,29 @@ function OwnSheet({
   );
 }
 
+function OwnList({
+  device,
+  rows,
+  query,
+}: {
+  readonly device: Device;
+  readonly rows: readonly AppRow[];
+  readonly query: string;
+}): ReactNode {
+  const [, pick] = useSectionParam('app');
+  const notificationsOf = useNotificationCounts(device.id);
+  return (
+    <AppsList
+      rows={rows}
+      query={query}
+      notificationsOf={notificationsOf}
+      onPick={(app) => {
+        pick(app.package);
+      }}
+    />
+  );
+}
+
 function OwnApps({
   section,
   device,
@@ -105,10 +128,7 @@ function OwnApps({
   readonly section: AppsSection;
   readonly device: Device;
 }): ReactNode {
-  const [, pick] = useSectionParam('app');
-  const [query, setQuery] = useState('');
   const rows = useMemo(() => appRowsOf(section), [section]);
-  const notificationsOf = useNotificationCounts(device.id);
   const usageAllowed = featureState(featuresOf(device.details), 'usage') !== 'needs_permission';
   const front = rows.find((entry) => entry.package === section.front)?.label ?? null;
   const minutes = weekMinutesOf(usePhoneSection(device.id, 'screen'));
@@ -123,15 +143,7 @@ function OwnApps({
           )}
         </View>
         <View className="w-full max-w-reading">
-          <AppsList
-            rows={rows}
-            query={query}
-            onQuery={setQuery}
-            notificationsOf={notificationsOf}
-            onPick={(app) => {
-              pick(app.package);
-            }}
-          />
+          <OwnList device={device} rows={rows} query="" />
         </View>
       </View>
       <OwnSheet device={device} rows={rows} usageAllowed={usageAllowed} />
@@ -176,5 +188,26 @@ export function PhoneApps({ device }: { readonly device: Device }): ReactNode {
         )
       }
     </DetailSectionGate>
+  );
+}
+
+export function PhoneAppsSearch({
+  section,
+  device,
+  query,
+}: {
+  readonly section: AppsSection;
+  readonly device: Device;
+  readonly query: string;
+}): ReactNode {
+  const rows = useMemo(() => appRowsOf(section), [section]);
+  const usageAllowed = featureState(featuresOf(device.details), 'usage') !== 'needs_permission';
+  return (
+    <>
+      <View className="w-full max-w-reading">
+        <OwnList device={device} rows={rows} query={query} />
+      </View>
+      <OwnSheet device={device} rows={rows} usageAllowed={usageAllowed} />
+    </>
   );
 }

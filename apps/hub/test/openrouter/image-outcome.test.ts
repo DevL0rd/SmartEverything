@@ -40,6 +40,8 @@ describe('waiting for an image outcome', () => {
     expect(receipt.state).toBe('completed');
     expect(receipt.results).toHaveLength(1);
     expect(receipt.results[0]?.attachment.id).toEqual(expect.any(String));
+    expect(receipt.results[0]?.attachment.id).not.toBe(receipt.id);
+    expect(receipt.request.model).toBe('vendor/m1');
   });
 
   it('returns the final receipt of an operation that already finished', async () => {

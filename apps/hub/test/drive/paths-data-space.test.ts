@@ -117,12 +117,16 @@ describe('resolver', () => {
     expect(resolved.identity).toBeNull();
   });
 
-  it('follows a symlink that stays inside the root', async () => {
+  it('refuses a symlink that stays inside the root, since links are never followed', async () => {
     const root = await directory('root');
     await directory('root', 'real');
     await writeFile(join(root, 'real', 'f.txt'), 'x');
     await symlink(join(root, 'real'), join(root, 'alias'));
-    expect((await resolveInRoot(root, 'alias/f.txt')).absolute).toBe(join(root, 'real', 'f.txt'));
+    expect(await failureOf(resolveInRoot(root, 'alias/f.txt'))).toMatchObject({
+      failure: 'escape',
+    });
+    expect(await failureOf(resolveInRoot(root, 'alias'))).toMatchObject({ failure: 'escape' });
+    expect((await resolveInRoot(root, 'real/f.txt')).absolute).toBe(join(root, 'real', 'f.txt'));
   });
 
   it('refuses a symlinked directory that leaves the root', async () => {

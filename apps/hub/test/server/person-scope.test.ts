@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import {
+  AUTOMATION_VALUE_ID,
   ApiError,
   MCP_TOOL_AREAS,
   NOTHING_IN_SCOPE,
@@ -436,21 +437,20 @@ describe('the live tables of an area a person lacks', () => {
     const change: LiveChange = {
       type: 'change',
       seq: 1,
-      table: 'scenes',
+      table: 'automation_values',
       operation: 'INSERT',
       record: {
-        id: '22222222-2222-4222-8222-222222222222',
-        name: 'Night',
-        icon: 'moon',
-        actions: [],
-        position: 0,
+        id: AUTOMATION_VALUE_ID.parse('22222222-2222-4222-8222-222222222222'),
+        content: { kind: 'boolean', name: 'Night', value: true },
+        revision: 1,
         created_at: NOW.toISOString(),
+        updated_at: NOW.toISOString(),
       },
       oldRecord: null,
     };
     const hearing = (person: Person): Hearing => ({
       client: person.client,
-      tables: new Set<LiveTable>(['scenes']),
+      tables: new Set<LiveTable>(['automation_values']),
     });
     expect(visible(hearing(kid), change, opened.store)).toBe(false);
     expect(visible(hearing(parent), change, opened.store)).toBe(true);

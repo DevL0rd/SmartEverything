@@ -11,6 +11,7 @@ import {
   FILE_CHUNK_BYTES,
   FILE_PATH,
   FILE_SEARCH_QUERY,
+  FILE_SORT,
   FILE_UPLOAD_CHUNK,
   FILE_WRITE_CHANGE,
 } from './computer-files';
@@ -57,6 +58,7 @@ export const NODE_REQUEST = z.discriminatedUnion('verb', [
     verb: z.literal('files'),
     path: FILE_PATH.nullable(),
     cursor: z.int().nonnegative(),
+    sort: FILE_SORT.optional(),
   }),
   z.strictObject({ verb: z.literal('file'), path: FILE_PATH }),
   z.strictObject({
@@ -97,6 +99,19 @@ export const NODE_REQUEST = z.discriminatedUnion('verb', [
   z.strictObject({ verb: z.literal('file_write'), change: FILE_WRITE_CHANGE }),
   z.strictObject({ verb: z.literal('file_upload'), chunk: FILE_UPLOAD_CHUNK }),
   z.strictObject({ verb: z.literal('file_places') }),
+  z.strictObject({ verb: z.literal('trash_list'), cursor: z.int().nonnegative() }),
+  z.strictObject({
+    verb: z.literal('zip_entries'),
+    path: FILE_PATH,
+    cursor: z.string().min(1).nullable(),
+  }),
+  z.strictObject({
+    verb: z.literal('zip_entry_range'),
+    path: FILE_PATH,
+    index: z.int().nonnegative(),
+    start: z.int().nonnegative(),
+    length: z.int().min(1).max(FILE_CHUNK_BYTES),
+  }),
   z.strictObject({ verb: z.literal('download_open'), paths: DOWNLOAD_PATHS }),
   z.strictObject({
     verb: z.literal('download_read'),
@@ -180,6 +195,9 @@ export const NODE_VERB_SCOPES: Readonly<Record<NodeVerb, ComputerScope | null>> 
   file_write: 'files',
   file_upload: 'files',
   file_places: 'files',
+  trash_list: 'files',
+  zip_entries: 'files',
+  zip_entry_range: 'files',
   download_open: 'files',
   download_read: 'files',
   download_close: 'files',

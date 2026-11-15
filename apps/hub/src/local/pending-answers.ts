@@ -5,6 +5,7 @@ export const ANSWER_TIMEOUT_MS = PUSH_ACTION_ANSWER_SECONDS * 1000;
 interface Pending<R> {
   readonly clients: readonly string[];
   readonly resolve: (result: R) => void;
+  readonly unanswered: () => R;
   readonly timer: NodeJS.Timeout;
 }
 
@@ -22,12 +23,26 @@ export class PendingAnswers<R> {
 
   wait(request: AnswerWait<R>): Promise<R> {
     return new Promise((resolve) => {
+      this.replace(request.requestId);
       const timer = setTimeout(() => {
         this.pending.delete(request.requestId);
         resolve(request.unanswered());
       }, request.timeoutMs);
-      this.pending.set(request.requestId, { clients: request.clients, resolve, timer });
+      this.pending.set(request.requestId, {
+        clients: request.clients,
+        resolve,
+        unanswered: request.unanswered,
+        timer,
+      });
     });
+  }
+
+  private replace(requestId: string): void {
+    const previous = this.pending.get(requestId);
+    if (previous === undefined) return;
+    clearTimeout(previous.timer);
+    this.pending.delete(requestId);
+    previous.resolve(previous.unanswered());
   }
 
   has(requestId: string): boolean {

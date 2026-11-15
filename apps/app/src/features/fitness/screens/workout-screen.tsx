@@ -6,8 +6,7 @@ import { Sparkline } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { Figure } from '../../../components/figure';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
@@ -185,8 +184,8 @@ export function WorkoutScreen(): ReactNode {
       ? ((showCustomTitle ? null : detail.workout.title) ?? detail.workout.name)
       : 'Workout';
   return (
-    <Screen header={<PageHeader title={title} titleLines={2} />}>
+    <PageShell title={title}>
       <Body detail={detail} showCustomTitle={showCustomTitle} />
-    </Screen>
+    </PageShell>
   );
 }

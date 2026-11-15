@@ -3,15 +3,27 @@ import type { AppHref } from '../../../components/app-href';
 import type { IconName } from '../../../components/icon';
 import type { SettingEnv } from '../../../settings/types';
 import type { DriveSection } from '../model/section-routes';
+import {
+  PUSH_KINDS_CAPTION,
+  PUSH_KINDS_SETTING_ID,
+  PUSH_KINDS_TITLE,
+} from '../notifications/push-kinds';
 
 export const DRIVE_SETTINGS_PAGE = 'drive';
 
 export type DriveSettingsSectionId =
-  'drives' | 'sync-mount' | 'sharing' | 'indexing' | 'storage' | 'google';
+  | 'drives'
+  | 'sync-mount'
+  | 'phone'
+  | 'sharing'
+  | 'notifications'
+  | 'indexing'
+  | 'storage'
+  | 'google';
 
 type SectionEnv = Pick<SettingEnv, 'owner' | 'platform'>;
 
-type Audience = 'everyone' | 'owner' | 'member' | 'desktop';
+type Audience = 'everyone' | 'owner' | 'member' | 'desktop' | 'android';
 
 export interface DriveSettingsRowSpec {
   readonly settingId: string;
@@ -81,12 +93,6 @@ const SYNC_MOUNT: DriveSettingsSectionSpec = {
   audience: 'desktop',
   rows: [
     row(
-      'drive.sync-mount.parent',
-      'Folder for new mounts',
-      ['parent folder', 'mount folder', 'location', 'where'],
-      'desktop',
-    ),
-    row(
       'drive.sync-mount.cache-age',
       'Remove unused cache after',
       ['cache age', 'max age', 'evict', 'expire', 'unused files'],
@@ -122,6 +128,67 @@ const SYNC_MOUNT: DriveSettingsSectionSpec = {
       ['computers', 'synced folders', 'placements', 'selective sync'],
       'desktop',
     ),
+  ],
+};
+
+const PHONE: DriveSettingsSectionSpec = {
+  id: 'phone',
+  settingId: 'drive.phone',
+  title: 'On this phone',
+  caption: 'Files kept on this phone and your drives in the Files app.',
+  icon: 'smartphone',
+  keywords: [
+    'offline',
+    'offline files',
+    'available offline',
+    'files app',
+    'file picker',
+    'documents',
+    'this phone',
+  ],
+  scope: 'device-local',
+  audience: 'android',
+  rows: [
+    row(
+      'drive.phone.space',
+      'Space used on this phone',
+      ['space', 'storage used', 'phone storage', 'kept files'],
+      'android',
+    ),
+    row(
+      'drive.phone.remove-all',
+      'Remove all offline files',
+      ['remove all', 'clear offline', 'free up space', 'delete copies'],
+      'android',
+    ),
+    row(
+      'drive.phone.files-app',
+      'In the Files app',
+      ['files app', 'file picker', 'open with', 'documents provider', 'share sheet'],
+      'android',
+    ),
+  ],
+};
+
+const NOTIFICATIONS: DriveSettingsSectionSpec = {
+  id: 'notifications',
+  settingId: PUSH_KINDS_SETTING_ID,
+  title: 'Notifications',
+  caption: PUSH_KINDS_CAPTION,
+  icon: 'bell',
+  keywords: ['notifications', 'push', 'alerts', 'inbox', 'buzz', 'phone notifications'],
+  scope: 'server',
+  audience: 'everyone',
+  rows: [
+    row(`${PUSH_KINDS_SETTING_ID}.push`, PUSH_KINDS_TITLE, [
+      'push kinds',
+      'shared with you',
+      'comments',
+      'mentions',
+      'access requests',
+      'transfers',
+      'uploads',
+    ]),
   ],
 };
 
@@ -165,6 +232,18 @@ const INDEXING: DriveSettingsSectionSpec = {
       'drive.indexing.duplicates',
       'Find duplicate files',
       ['duplicates', 'hashing', 'copies', 'same file'],
+      'owner',
+    ),
+    row(
+      'drive.indexing.contents',
+      'Read text inside files',
+      ['search inside files', 'content search', 'full text', 'document text', 'ocr'],
+      'owner',
+    ),
+    row(
+      'drive.indexing.ocr',
+      'Languages for text in pictures',
+      ['ocr', 'text in images', 'languages', 'scanned text', 'photos text'],
       'owner',
     ),
     row(
@@ -226,7 +305,9 @@ const GOOGLE: DriveSettingsSectionSpec = {
 export const DRIVE_SETTINGS_SECTIONS: readonly DriveSettingsSectionSpec[] = [
   DRIVES,
   SYNC_MOUNT,
+  PHONE,
   SHARING,
+  NOTIFICATIONS,
   INDEXING,
   STORAGE,
   GOOGLE,
@@ -258,6 +339,8 @@ export function audienceSees(audience: Audience, env: SectionEnv): boolean {
       return !env.owner;
     case 'desktop':
       return env.platform === 'desktop';
+    case 'android':
+      return env.platform === 'android';
   }
 }
 
@@ -281,6 +364,7 @@ const SECTION_OF_PAGE: Readonly<Partial<Record<DriveSection, DriveSettingsSectio
   index: 'drives',
   'shared-drive': 'drives',
   shared: 'sharing',
+  notifications: 'notifications',
   computers: 'sync-mount',
   storage: 'storage',
 };

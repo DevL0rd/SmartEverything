@@ -144,6 +144,18 @@ function ListFoot({ footer }: { readonly footer: ReactElement | undefined }): Re
   return <View className="pb-section-gap">{footer}</View>;
 }
 
+function useTileActions({ resolveThumb, onOpen, onMenu, badgeOf }: TileActions): TileActions {
+  return useMemo(
+    (): TileActions => ({
+      resolveThumb,
+      onOpen,
+      ...(onMenu === undefined ? {} : { onMenu }),
+      ...(badgeOf === undefined ? {} : { badgeOf }),
+    }),
+    [resolveThumb, onOpen, onMenu, badgeOf],
+  );
+}
+
 export function MediaGrid({
   tiles,
   step,
@@ -156,18 +168,13 @@ export function MediaGrid({
   onEndReached,
   probe,
   onPrefetchTiles,
-  resolveThumb,
-  onOpen,
-  onMenu,
+  ...tileActions
 }: MediaGridProps): ReactNode {
   const measured = useMeasuredWidth();
   const gridRows = useGridRows(tiles, step, grouping, measured.width);
   const { rows, pairs } = useRowTracking(useThumbnailWindow(gridRows, onPrefetchTiles));
   const sticky = useMemo(() => headIndices(gridRows), [gridRows]);
-  const actions = useMemo(
-    (): TileActions => ({ resolveThumb, onOpen, ...(onMenu === undefined ? {} : { onMenu }) }),
-    [resolveThumb, onOpen, onMenu],
-  );
+  const actions = useTileActions(tileActions);
   const renderRow: ListRenderItem<MediaGridRow> = ({ item }) => (
     <GridRow row={item} rows={rows} today={today} decor={decor} actions={actions} />
   );

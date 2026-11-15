@@ -25,6 +25,7 @@ const ITEM = {
   takenAt: 500,
   uri: 'app://smarteverything/local-media/test',
   video: true,
+  folder: '/home/person/Pictures/Trip',
 };
 
 beforeEach(async () => {

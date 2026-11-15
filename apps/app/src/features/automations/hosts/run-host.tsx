@@ -3,8 +3,7 @@ import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { z } from 'zod';
 import type { AutomationRunSummary } from '@smarteverything/domain';
 import { background, Logger } from '@smarteverything/logging';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { notify } from '../../../components/toast-store';
 import { useAutomations } from '../data/use-automations';
 import { useRunActions } from '../data/use-runs';
@@ -12,7 +11,7 @@ import { RunScreen } from '../runs/run-view/run-screen';
 import { links } from '../routes';
 import { runHref, runPageTitle } from './host-links';
 import { useEditorContext } from './editor-context';
-import { NotFound } from './page-shell';
+import { NotFound } from '../shared/not-found';
 import { usePlace } from './use-environment';
 
 const log = new Logger('app.automations');
@@ -52,7 +51,7 @@ function Run({
   const onReplay = useReplay();
   const name = useAutomations().byId.get(automationId)?.name ?? null;
   return (
-    <Screen header={<PageHeader title={runPageTitle(name)} back />} maxWidth="full" scroll={false}>
+    <PageShell title={runPageTitle(name)} width="full" scroll={false}>
       <RunScreen
         runId={runId}
         options={options}
@@ -65,7 +64,7 @@ function Run({
           );
         }}
       />
-    </Screen>
+    </PageShell>
   );
 }
 

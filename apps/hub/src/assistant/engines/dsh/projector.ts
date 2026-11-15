@@ -119,7 +119,11 @@ export class ConversationProjector {
     });
     stream.bindTimeline(
       (timeline): void => {
-        this.conversation.progress(turn.replyId, stream.spoken, timeline);
+        const spoken =
+          turn.restored && stream.spoken === ''
+            ? this.conversation.savedText(turn.replyId)
+            : stream.spoken;
+        this.conversation.progress(turn.replyId, spoken, timeline);
       },
       (listener) => this.conversation.onMessage(chat.id, listener),
     );

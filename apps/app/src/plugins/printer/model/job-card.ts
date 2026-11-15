@@ -1,7 +1,9 @@
 import type { PrinterJob } from '@smarteverything/domain';
 import { clockLabel, countLabel } from './format';
 
-export type JobCardKind = 'printing' | 'stopped' | 'held' | 'waiting';
+export type JobCardKind = 'printing' | 'stopped' | 'offline' | 'held' | 'waiting';
+
+export type PrinterHalt = 'ready' | 'stopped' | 'offline';
 
 export interface JobCard {
   readonly kind: JobCardKind;
@@ -29,6 +31,16 @@ function stoppedText(job: PrinterJob): string {
   return `${at} · waiting for the printer`;
 }
 
+function offlineText(job: PrinterJob): string {
+  const done = job.pagesDone;
+  const total = job.pages;
+  const at =
+    done === null || total === null
+      ? 'Last seen printing'
+      : `Last seen at page ${String(done)} of ${String(total)}`;
+  return `${at} · the printer is offline`;
+}
+
 function remainingOf(job: PrinterJob, ppm: number | null): string | null {
   if (ppm === null || ppm <= 0 || job.pages === null || job.pagesDone === null) return null;
   const left = Math.max(0, job.pages - job.pagesDone);
@@ -40,22 +52,30 @@ function elapsedOf(job: PrinterJob, now: number): string | null {
   return clockLabel(Math.max(0, (now - Date.parse(job.startedAt)) / 1000));
 }
 
-export function jobCardOf(
-  job: PrinterJob,
-  options: { readonly stopped: boolean; readonly now: number; readonly ppm: number | null },
-): JobCard {
+function haltedCard(job: PrinterJob, printer: PrinterHalt): JobCard | null {
   const progress = job.progress === null ? null : job.progress / 100;
-  if (options.stopped || job.state === 'stopped') {
+  const quiet = { progress, elapsed: null, remaining: null, pageLabel: null };
+  if (printer === 'offline') {
+    return { kind: 'offline', headline: offlineText(job), detail: null, ...quiet };
+  }
+  if (printer === 'stopped' || job.state === 'stopped') {
     return {
       kind: 'stopped',
-      progress,
       headline: stoppedText(job),
       detail: job.cause ?? job.message,
-      elapsed: null,
-      remaining: null,
-      pageLabel: null,
+      ...quiet,
     };
   }
+  return null;
+}
+
+export function jobCardOf(
+  job: PrinterJob,
+  options: { readonly printer: PrinterHalt; readonly now: number; readonly ppm: number | null },
+): JobCard {
+  const halted = haltedCard(job, options.printer);
+  if (halted !== null) return halted;
+  const progress = job.progress === null ? null : job.progress / 100;
   if (job.state === 'held') {
     return {
       kind: 'held',

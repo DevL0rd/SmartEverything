@@ -104,7 +104,7 @@ export const ROWER_MODEL: ModelSpec = {
   title: 'Rowing machine',
   category: 'fitness',
   family: 'generic',
-  footprint: { width: 0.56, depth: 2.07, height: 1 },
+  footprint: { width: 0.56, depth: 2.067, height: 1 },
   framing: {
     tile: { ...HOUSE, padding: 0.06 },
     card: HOUSE,

@@ -62,10 +62,10 @@ function mediaColumns(item: DriveItem): Columns {
 }
 
 function contentColumns(item: DriveItem): Columns {
-  if (item.kind === 'folder') {
+  if (item.kind === 'folder' || item.kind === 'link' || item.kind === 'special') {
     return {
       mime: null,
-      child_count: item.childCount,
+      child_count: item.kind === 'folder' ? item.childCount : null,
       sha256: null,
       integrity: 'unknown',
       thumb_state: 'none',

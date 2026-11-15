@@ -94,24 +94,32 @@ node --import tsx tooling/build-headless-hub.ts --target "$target" --out "$out/s
 node --import tsx tooling/release-headless.ts --target "$target" --service "$out/service" --node "$node_bundle" --out "$out"
 ```
 
-For a fresh installation as the Hub user:
+For a fresh installation as the Hub user, no checkout, `node_modules` or build tool is needed:
 
-1. Clone this repository into `~/Github/SmartEverything` and give its checkout an upstream branch
-   (`git branch --set-upstream-to`), since the Hub's update source is that checkout's upstream.
-2. Extract the resulting `smarteverything-hub-<version>-<target>.tar.gz` on the target machine.
-3. Install the dependencies with the bundled Node runtime, from the checkout:
-   `PATH="<extracted directory>/node/bin:$PATH" npx --yes pnpm@11.3.0 install --frozen-lockfile`.
-4. From the extracted directory, run `./install.sh --update-source ~/Github/SmartEverything`
-   (add `--data <absolute folder>` to keep the Hub data elsewhere). The installer stores the
-   checkout as the Hub's update source, installs the Hub and its bundled Node runtime in
-   `~/.local/opt/SmartEverything-Hub`, keeps Hub data in `~/.config/SmartEverything` and starts the
-   `smarteverything.service` user unit. A failure rolls the whole installation back.
-5. Provision the build tools from the checkout, without root:
-   `~/.local/opt/SmartEverything-Hub/node/bin/node --import tsx tooling/provision-build-host.ts --accept-android-sdk-licenses`.
-   It installs pinned zip and unzip, a JDK and the Android SDK under the Hub data folder and
-   reports anything still missing. Without `--accept-android-sdk-licenses` it stops and names the
-   Android SDK licences it would accept. If it reports `apps/app/google-services.json` missing, copy
-   that file from the development PC into the checkout.
+1. Extract the resulting `smarteverything-hub-<version>-<target>.tar.gz` on the target machine.
+2. From the extracted directory, run `./install.sh --repository <owner/name>` (add `--branch <branch>`
+   when it is not `main`, and `--data <absolute folder>` to keep the Hub data elsewhere). The installer
+   saves the GitHub repository as the Hub's update source, which is all the `github` build source
+   needs, installs the Hub and its bundled Node runtime in `~/.local/opt/SmartEverything-Hub`, keeps
+   Hub data in `~/.config/SmartEverything` and starts the `smarteverything.service` user unit. A failure
+   rolls the whole installation back. Without `--repository` no update source is saved, and the
+   `provided` source still works.
+
+Only the opt-in `hub` build source needs a checkout and build tools. To enable it, clone this
+repository into `~/Github/SmartEverything` with an upstream branch (`git branch --set-upstream-to`),
+install its dependencies with the bundled Node runtime
+(`PATH="<extracted directory>/node/bin:$PATH" npx --yes pnpm@11.3.0 install --frozen-lockfile`), run
+`~/.local/opt/SmartEverything-Hub/node/bin/node --import tsx tooling/configure-update-source.ts --checkout ~/Github/SmartEverything`
+(or pass `--update-source ~/Github/SmartEverything` to `install.sh` instead of `--repository`; the
+repository is read from the checkout's remote) and provision the build tools without root:
+`~/.local/opt/SmartEverything-Hub/node/bin/node --import tsx tooling/provision-build-host.ts --accept-android-sdk-licenses`.
+It installs pinned zip and unzip, a JDK and the Android SDK under the Hub data folder and reports
+anything still missing. Without `--accept-android-sdk-licenses` it stops and names the Android SDK
+licences it would accept. If it reports `apps/app/google-services.json` missing, copy that file from
+the development PC into the checkout.
+
+To change the update source of an installed Hub without a checkout, edit `updateSource` in its
+`service.json` to `{ "repository": "<owner/name>", "branch": "<branch>" }` and restart the Hub.
 
 `--data` can point at a folder on another disk; the installer refuses a folder that holds another
 data folder's marker. A small pointer file in
@@ -120,9 +128,42 @@ folder. `SMARTEVERYTHING_HUB_HOME` names a different pointer folder for containe
 launches; unset it for the systemd install. The data folder can be moved later in Settings.
 Run `loginctl enable-linger "$(id -un)"` to start the Hub at boot without signing in.
 
-The Hub publishes its own releases from that checkout. The `update_control` actions `ui`, `app` and
-`desktop` build the pushed `main` tip, so the checkout must be clean and pushed before publishing.
-The owner’s assistant and any owner MCP client, such as Claude Code on a paired computer, can call them.
+Nothing is built on the Hub. A release is built on a dev machine or by GitHub and delivered through
+`update_control` with a build source:
+
+- `provided`: on a dev machine, with the machine key made once by
+  `node --import tsx tooling/provide-release.ts --init-key`, run
+  `node --import tsx tooling/provide-release.ts <hub|app|ui|desktop> --notes "<notes>" --hub <hub url>`.
+  It type checks, builds, signs and uploads the bundle and prints an upload ID. Then call
+  `update_control` with the action, `source: "provided"` and `upload: "<upload ID>"`. Trust the machine's
+  public key on the Hub once with `update_control` action `release_keys`, operation `trust`, role `machine`.
+- `github`: `.github/workflows/release.yml` builds every artifact on GitHub, signs the bundles in the
+  protected `release` environment with the `RELEASE_SIGNING_KEY` secret and attaches them to a GitHub
+  release. Start it by pushing a `v*` tag (the tag message is the release notes) or by a manual dispatch.
+  Then call `update_control` with `source: "github"` and `tag` (or the release's `commit`). The Hub
+  downloads the assets from the repository of its update source and verifies them with the
+  trusted `github` key. A public repository needs no token. For a private repository, store a
+  token that can only read the repository's releases with `update_control` action `release_keys`,
+  operation `set` and `token`, called from the owner's own MCP connection (never from an AI
+  chat). The Hub keeps it encrypted in its secret store and never shows it again; operation `list`
+  says whether one is stored (`githubTokenStored`) and `clear` deletes it.
+- `hub`: building on the Hub machine is an explicit opt-in and is not part of a normal release.
+
+To set up `github` once, configure the `release` environment exactly: deployment branches and tags limited to `main` and `v*`, and a required reviewer (the owner). A manual dispatch from any other branch runs that branch's copy of the workflow, so without this restriction a modified copy could reach the signing key. The `sign-and-publish` job also refuses to run outside `main` and `v*` tags, and it does not restore the pnpm store cache, so build jobs cannot poison it. Then make an Ed25519 key without printing the private part, store it as the
+`RELEASE_SIGNING_KEY` secret of the `release` environment and trust its public key on the Hub.
+
+```sh
+key=tmp/github-release.key
+node -e "const c=require('node:crypto'),f=require('node:fs');const k=c.generateKeyPairSync('ed25519');f.writeFileSync(process.argv[1],k.privateKey.export({type:'pkcs8',format:'pem'}),{mode:0o600,flag:'wx'});console.log(Buffer.from(c.createPublicKey(k.privateKey).export({format:'jwk'}).x,'base64url').toString('base64'))" "$key"
+gh secret set RELEASE_SIGNING_KEY --env release < "$key"
+rm "$key"
+```
+
+The printed line is the public key: trust it with `update_control` action `release_keys`, operation
+`trust`, role `github`, a label, and check the fingerprint with operation `list`. `GOOGLE_SERVICES_JSON`
+is the secret of the `android-build` environment. A failed release is reported and stops; a rollback
+runs only when the owner orders it (`update_control` action `rollback`).
+The owner’s assistant and any owner MCP client, such as Claude Code on a paired computer, can call `update_control`.
 
 The owner’s production Hub runs on the NAS (`ssh nas`, `192.168.50.254`), at
 `https://smarteverything.devl0rd.com`. This desktop’s Hub stays disabled by default; start a test Hub only on demand with isolated scratch data.
@@ -130,7 +171,7 @@ Use Git to exchange accepted changes between the machines and follow the product
 process in [docs/STANDARDS.md](docs/STANDARDS.md#git-handoff-and-releases).
 
 For an installed standalone Hub, review releases in the Hub section of the app's **Updates**
-settings. The Hub checks its configured Git source and applies updates to its own service.
+settings. The Hub applies the hub releases that were staged for it; it does not build them.
 
 ## Install Desktop and Computer
 

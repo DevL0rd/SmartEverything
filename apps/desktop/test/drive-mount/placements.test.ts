@@ -8,11 +8,12 @@ import {
   type PlacementsPorts,
   type SubscribeHandlers,
 } from '../../src/drive-mount/placements.js';
+import { MountLocations } from '../../src/drive-mount/mount-location.js';
+import type { MountPlace } from '../../src/drive-mount/mount-places.js';
 import {
   pathRefusal,
   type FolderState,
   type PathFacts,
-  type PathFs,
 } from '../../src/drive-mount/placement-paths.js';
 import type { PlacementReport, RouteEndpointState } from '../../src/drive-mount/placement-state.js';
 
@@ -40,8 +41,11 @@ const STATUS = {
   lastSyncedAt: null,
   errors: [],
   reason: null,
+  mountPoint: null,
   reportedAt: '2026-11-07T00:00:00.000Z',
 } as const;
+
+const AREA = '/run/user/1000/smarteverything';
 
 function placement(n: number, change: Partial<DrivePlacement> = {}): DrivePlacement {
   return {
@@ -50,7 +54,8 @@ function placement(n: number, change: Partial<DrivePlacement> = {}): DrivePlacem
     rootId: ROOT,
     folderItemId: FOLDER,
     mode: 'mounted',
-    localPath: `/home/u/roms${String(n)}`,
+    localPath: null,
+    mountName: `Roms ${String(n)}`,
     enabled: true,
     hold: null,
     createdBy: USER,
@@ -76,6 +81,7 @@ interface Harness {
     stopped: boolean;
   }[];
   readonly folders: Map<string, FolderState>;
+  readonly places: (readonly MountPlace[])[];
 }
 
 interface Options {
@@ -91,6 +97,7 @@ function harness(options: Options = {}): Harness {
   const cached = { current: options.cache ?? [], cleared: 0 };
   const channels: Harness['channels'] = [];
   const folders = new Map<string, FolderState>();
+  const places: (readonly MountPlace[])[] = [];
   let demanded = options.demanded ?? false;
   let route: RouteEndpointState = options.route ?? { endpoint: { kind: 'lan' } };
   const placementListeners = new Set<(placements: readonly DrivePlacement[]) => void>();
@@ -144,13 +151,20 @@ function harness(options: Options = {}): Harness {
       };
     },
     facts: FACTS,
-    fs: {
-      inspect: (folder) => Promise.resolve(folders.get(folder) ?? 'absent'),
-      create: (folder) => {
-        folders.set(folder, []);
-        return Promise.resolve();
+    locations: new MountLocations(
+      { platform: 'linux', runtimeDirectory: '/run/user/1000' },
+      {
+        fs: {
+          inspect: (folder) => Promise.resolve(folders.get(folder) ?? 'absent'),
+          create: (folder): Promise<void> => {
+            folders.set(folder, []);
+            return Promise.resolve();
+          },
+        },
+        letterInUse: () => Promise.resolve(false),
       },
-    },
+    ),
+    places: (shown) => places.push(shown),
     synced: (placements) => synced.push(placements),
     now: () => new Date('2026-11-07T01:00:00.000Z'),
     log: new Logger('desktop.test'),
@@ -165,6 +179,7 @@ function harness(options: Options = {}): Harness {
     cached,
     channels,
     folders,
+    places,
     pushPlacements: (placements: readonly DrivePlacement[]): void => {
       for (const listener of placementListeners) listener(placements);
     },
@@ -186,74 +201,40 @@ async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-const emptyFs = {
-  inspect: (): Promise<FolderState> => Promise.resolve('absent'),
-  create: (): Promise<void> => Promise.resolve(),
-};
+function syncedAt(n: number, localPath: string): DrivePlacement {
+  return placement(n, {
+    mode: 'synced',
+    folderItemId: null,
+    localPath,
+    mountName: null,
+    excluded: [],
+    ignorePatterns: [],
+    conflictCopies: true,
+  });
+}
 
-describe('path rules', () => {
-  const check = (
-    path: string,
-    earlier: DrivePlacement[] = [],
-    mode: 'mounted' | 'synced' = 'mounted',
-  ): Promise<string | null> =>
-    pathRefusal(
-      {
-        placement: placement(1, {
-          localPath: path,
-          mode,
-          folderItemId: mode === 'synced' ? null : FOLDER,
-        }),
-        earlier,
-        requireEmpty: true,
-      },
-      FACTS,
-      emptyFs,
-    );
+describe('path rules for synced folders', () => {
+  const check = (path: string, earlier: readonly string[] = []): string | null =>
+    pathRefusal({ path, earlier }, FACTS);
 
-  it('accepts an absent absolute folder', async () => {
-    expect(await check('/home/u/roms')).toBeNull();
+  it('accepts an absolute folder', () => {
+    expect(check('/home/u/roms')).toBeNull();
   });
 
-  it('refuses relative paths, drive tops and system folders', async () => {
-    expect(await check('roms')).toMatch(/absolute/);
-    expect(await check('/')).toMatch(/top of a drive/);
-    expect(await check('/usr/share/roms')).toMatch(/system folder/);
+  it('refuses relative paths, drive tops and system folders', () => {
+    expect(check('roms')).toMatch(/absolute/);
+    expect(check('/')).toMatch(/top of a drive/);
+    expect(check('/usr/share/roms')).toMatch(/system folder/);
   });
 
-  it('refuses the service data folder and its parents', async () => {
-    expect(await check('/home/u/.config/SmartEverything/x')).toMatch(/data folder/);
-    expect(await check('/home/u/.config')).toMatch(/data folder/);
+  it('refuses the service data folder and its parents', () => {
+    expect(check('/home/u/.config/SmartEverything/x')).toMatch(/data folder/);
+    expect(check('/home/u/.config')).toMatch(/data folder/);
   });
 
-  it('refuses overlap with an earlier placement in both directions', async () => {
-    const earlier = [placement(2, { localPath: '/home/u/roms' })];
-    expect(await check('/home/u/roms/n64', earlier)).toMatch(/another folder/);
-    expect(await check('/home/u/roms/../roms', earlier)).toMatch(/another folder/);
-  });
-
-  it('refuses a mount folder that is not empty or is a file', async () => {
-    const fs = (state: FolderState): PathFs => ({
-      inspect: (): Promise<FolderState> => Promise.resolve(state),
-      create: (): Promise<void> => Promise.resolve(),
-    });
-    const target = placement(1, { localPath: '/home/u/roms' });
-    const run = (state: FolderState): Promise<string | null> =>
-      pathRefusal({ placement: target, earlier: [], requireEmpty: true }, FACTS, fs(state));
-    expect(await run(['a.txt'])).toMatch(/empty/);
-    expect(await run('file')).toMatch(/file/);
-    expect(await run([])).toBeNull();
-  });
-
-  it('does not require an empty folder for a synced placement', async () => {
-    const synced = placement(1, { mode: 'synced', folderItemId: null, localPath: '/home/u/docs' });
-    const fs = {
-      inspect: (): Promise<FolderState> => Promise.resolve(['a.txt']),
-      create: (): Promise<void> => Promise.resolve(),
-    };
-    expect(
-      await pathRefusal({ placement: synced, earlier: [], requireEmpty: true }, FACTS, fs),
-    ).toBeNull();
+  it('refuses overlap with an earlier placement in both directions', () => {
+    expect(check('/home/u/roms/n64', ['/home/u/roms'])).toMatch(/another folder/);
+    expect(check('/home/u/roms/../roms', ['/home/u/roms'])).toMatch(/another folder/);
   });
 });
 
@@ -262,10 +243,16 @@ describe('PlacementsController', () => {
     const h = harness({ cache: [placement(1)] });
     await settle();
     expect(h.lines).toEqual([
-      { op: 'mount', mount: placement(1).id, root: ROOT, folder: FOLDER, point: '/home/u/roms1' },
+      {
+        op: 'mount',
+        mount: placement(1).id,
+        root: ROOT,
+        folder: FOLDER,
+        point: `${AREA}/Roms 1`,
+      },
     ]);
     expect(h.channels).toHaveLength(1);
-    expect(h.folders.get('/home/u/roms1')).toEqual([]);
+    expect(h.folders.get(`${AREA}/Roms 1`)).toEqual([]);
   });
 
   it('caches pushed placements and mounts only enabled, unheld ones', async () => {
@@ -281,28 +268,61 @@ describe('PlacementsController', () => {
     expect(h.lines.map((line) => line.op === 'mount' && line.mount)).toEqual([placement(1).id]);
   });
 
-  it('reports blocked with the reason and mounts nothing for a refused path', async () => {
+  it('blocks a synced placement on a refused path and syncs nothing', async () => {
     const h = harness();
-    h.pushPlacements([placement(1, { localPath: '/usr/roms' })]);
+    h.pushPlacements([syncedAt(1, '/usr/roms')]);
     await settle();
-    expect(h.lines).toEqual([]);
+    expect(h.synced).toEqual([]);
     expect(h.reports.at(-1)).toMatchObject({
       state: 'blocked',
       reason: 'The path is a system folder or inside one',
     });
   });
 
-  it('blocks the later overlapping placement only', async () => {
+  it('blocks the later overlapping synced placement only', async () => {
     const h = harness();
-    h.pushPlacements([
-      placement(1, { localPath: '/home/u/a' }),
-      placement(2, { localPath: '/home/u/a/b' }),
-    ]);
+    h.pushPlacements([syncedAt(1, '/home/u/a'), syncedAt(2, '/home/u/a/b')]);
     await settle();
-    expect(h.lines).toHaveLength(1);
+    expect(h.synced.at(-1)?.map((one) => one.id)).toEqual([placement(1).id]);
     expect(h.reports.find((report) => report.placementId === placement(2).id)?.state).toBe(
       'blocked',
     );
+  });
+
+  it('mounts in the runtime mount area under the drive name, numbering a repeated name', async () => {
+    const h = harness();
+    h.folders.set(`${AREA}/Photos`, ['left behind']);
+    h.pushPlacements([
+      placement(1, { mountName: 'Photos' }),
+      placement(2, { mountName: 'Photos', folderItemId: null }),
+      placement(3, { mountName: 'a/b' }),
+    ]);
+    await settle();
+    expect(h.lines.flatMap((line) => (line.op === 'mount' ? [line.point] : []))).toEqual([
+      `${AREA}/Photos 2`,
+      `${AREA}/Photos 3`,
+      `${AREA}/a-b`,
+    ]);
+  });
+
+  it('reports where the folder is mounted and lists it in the file manager places', async () => {
+    const h = harness();
+    h.pushPlacements([placement(1)]);
+    await settle();
+    expect(h.reports.at(-1)?.mountPoint).toBeNull();
+    expect(h.places).toEqual([]);
+    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    expect(h.reports.at(-1)).toMatchObject({ state: 'mounted', mountPoint: `${AREA}/Roms 1` });
+    expect(h.places.at(-1)).toEqual([
+      { placementId: placement(1).id, point: `${AREA}/Roms 1`, name: 'Roms 1' },
+    ]);
+    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'stopped' }));
+    expect(h.reports.at(-1)).toMatchObject({ state: 'stopped', mountPoint: null });
+    expect(h.places.at(-1)).toEqual([]);
+    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    h.pushPlacements([]);
+    await settle();
+    expect(h.places.at(-1)).toEqual([]);
   });
 
   it('reports transitions only', async () => {
@@ -395,8 +415,11 @@ describe('PlacementsController', () => {
       relPath,
       kind: 'folder',
       mtime: '2026-11-07T00:00:00.000Z',
+      mtimeNs: '1794009600000000000',
       rev: 1,
       deleted: false,
+      mode: 0o755,
+      xattrs: [],
     });
     h.channels[0]?.handlers.message({
       type: 'index',
@@ -427,18 +450,19 @@ describe('PlacementsController', () => {
     expect(h.channels[0]?.stopped).toBe(true);
   });
 
-  it('remounts a placement whose path changed', async () => {
+  it('remounts a placement whose mount name changed', async () => {
     const h = harness();
     h.pushPlacements([placement(1)]);
     await settle();
-    h.pushPlacements([placement(1, { localPath: '/home/u/other' })]);
+    h.pushPlacements([placement(1, { mountName: 'Other' })]);
     await settle();
     expect(h.lines.map((line) => line.op)).toEqual(['mount', 'unmount', 'mount']);
+    expect(h.lines.at(-1)).toMatchObject({ point: `${AREA}/Other` });
   });
 
   it('hands synced placements to the sync engine only when they change', async () => {
     const h = harness();
-    const synced = placement(1, { mode: 'synced', folderItemId: null, localPath: '/home/u/docs' });
+    const synced = syncedAt(1, '/home/u/docs');
     h.pushPlacements([synced]);
     await settle();
     expect(h.synced).toEqual([[synced]]);
@@ -453,7 +477,7 @@ describe('PlacementsController', () => {
 
   it('revocation unmounts everything and clears the cache', async () => {
     const h = harness();
-    h.pushPlacements([placement(1), placement(2, { localPath: '/home/u/b' })]);
+    h.pushPlacements([placement(1), placement(2)]);
     await settle();
     h.controller.revoke();
     expect(h.lines.filter((line) => line.op === 'unmount')).toHaveLength(2);

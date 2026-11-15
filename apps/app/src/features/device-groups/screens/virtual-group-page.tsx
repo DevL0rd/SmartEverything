@@ -1,7 +1,7 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import { View } from 'react-native';
-import { Screen } from '../../../components/screen';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { VirtualList, type VirtualListHandle } from '../../../components/virtual-list';
 import { useIdiom } from '../../../design/platform';
@@ -13,7 +13,7 @@ import { VirtualMemberRow } from '../components/virtual-member-rows';
 import { ActivitySection, AutomationsSection } from '../components/page-sections';
 import { columnsFor, groupKeyOf, rowGroups, sameGroup, type RowGroup } from '../model/member-rows';
 import {
-  Header,
+  groupShellOf,
   LostBanner,
   Overlays,
   Stage,
@@ -134,11 +134,8 @@ export function VirtualGroupPage(props: LivePageProps): ReactNode {
   const names = useMemo(() => uses.map((use) => use.name), [uses]);
   const { width, onLayout } = useMeasuredWidth(Math.round);
   return (
-    <Screen
-      scroll={false}
-      header={<Header data={data} group={group} uses={names} page={page} addToHome={addToHome} />}
-    >
-      <View className="flex-1" onLayout={onLayout}>
+    <PageShell {...groupShellOf({ data, group, uses: names, page, addToHome })} scroll={false}>
+      <View className="-mx-gutter flex-1" onLayout={onLayout}>
         {width === 0 ? null : (
           <Rows
             data={data}
@@ -151,6 +148,6 @@ export function VirtualGroupPage(props: LivePageProps): ReactNode {
         )}
       </View>
       <Overlays {...props} page={page} uses={names} />
-    </Screen>
+    </PageShell>
   );
 }

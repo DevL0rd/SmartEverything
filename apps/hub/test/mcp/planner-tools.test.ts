@@ -9,7 +9,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { profileFor } from '../../src/extensions/mcp/tools/acting';
+import { profileFor, type OperatingContext } from '../../src/extensions/mcp/tools/acting';
 import { plannerHits } from '../../src/extensions/mcp/tools/search';
 import type { ToolActor } from '../../src/extensions/mcp/tools/registry';
 import { toolInScope } from '../../src/extensions/mcp/tools/visibility';
@@ -172,7 +172,7 @@ describe('planner scope of a member AI', () => {
   });
 
   function member(areas: readonly McpToolArea[]): {
-    readonly context: { store: TestStore['store']; actor: ToolActor; caller: null };
+    readonly context: OperatingContext;
     readonly profileId: string;
   } {
     const { store } = opened;
@@ -204,7 +204,10 @@ describe('planner scope of a member AI', () => {
       role: 'member',
       chatId: null,
     };
-    return { context: { store, actor, caller: null }, profileId: profile.id };
+    const operations = {
+      run: (): Promise<never> => Promise.reject(new Error('the planner area is closed')),
+    };
+    return { context: { store, actor, caller: null, operations }, profileId: profile.id };
   }
 
   function bins(profileId: string): void {
@@ -218,7 +221,9 @@ describe('planner scope of a member AI', () => {
       position: 0,
       visible: true,
       default_reminders: [],
+      audience: 'personal',
       source: 'local',
+      feed: null,
       google: null,
     });
     const draft = PLANNER_ITEM_CREATE.parse({
@@ -235,6 +240,9 @@ describe('planner scope of a member AI', () => {
       original_start: null,
       status: 'open',
       google: null,
+      ical_uid: null,
+      ical_sequence: 0,
+      booking_page_id: null,
       created_by: 'person',
     });
   }
@@ -245,15 +253,13 @@ describe('planner scope of a member AI', () => {
     expect(() => profileFor(context, { personId: opened.store.profiles.first().id })).toThrow(
       'Only an owner may act for another person or app.',
     );
-    bins(profileId);
-    expect(plannerHits(context, { query: 'bins', limit: 10 })).toMatchObject([{ title: 'Bins' }]);
   });
 
-  it('hides the planner tools and the planner search lines without the planner area', () => {
+  it('hides the planner tools and the planner search lines without the planner area', async () => {
     const { context, profileId } = member(['home']);
     expect(toolInScope(context, 'planner_read')).toBe(false);
     expect(toolInScope(context, 'planner_edit')).toBe(false);
     bins(profileId);
-    expect(plannerHits(context, { query: 'bins', limit: 10 })).toEqual([]);
+    await expect(plannerHits(context, { query: 'bins', limit: 10 })).resolves.toEqual([]);
   });
 });

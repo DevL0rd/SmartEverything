@@ -49,25 +49,11 @@ async function handlers(): Promise<{
 }
 
 describe('device extra effect handlers', () => {
-  it('captures the target as a scene, and refuses a duplicate name without overwrite', async () => {
-    const { run, home } = await handlers();
-    home.db.store.state.write([
-      { deviceId: home.lampId, capability: 'power', value: true, observedAt: NOW.toISOString() },
-    ]);
-    const ask = { target: { device: home.lampId }, name: 'Evening' };
-    const first = await run['scene.capture']?.(ask, requestOf('scene.capture', {}), testRun());
-    expect(first).toMatchObject({ ok: true });
-    expect(home.db.store.scenes.list().map((scene) => scene.name)).toEqual(['Evening']);
-    const again = await run['scene.capture']?.(ask, requestOf('scene.capture', {}), testRun());
-    expect(again).toMatchObject({ ok: false, class: 'Refused' });
-  });
-
-  it('registers the setter based kinds and scene capture', async () => {
+  it('registers the setter based kinds', async () => {
     expect(Object.keys((await handlers()).run).sort()).toEqual([
       'device.ensure',
       'device.fade',
       'device.restore',
-      'scene.capture',
     ]);
   });
 

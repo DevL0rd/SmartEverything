@@ -20,7 +20,6 @@ import { EffectBudgetExceededError } from './effects/effect-budget';
 import { HttpEffectError } from './effects/http';
 import { IntegrationError } from './effects/integration-error';
 import { AutomationRunCancelledError } from './effects/run-abort';
-import { UnknownSceneError } from './effects/scene';
 
 export type EffectFailureResult = Extract<NodeResult, { readonly ok: false }> & {
   readonly code?: string;
@@ -58,6 +57,7 @@ const API_CLASSES: Readonly<Record<ApiErrorCode, ErrorClass>> = {
   camera_busy: 'LimitExceeded',
   claude_not_ready: 'Unreachable',
   computer_update_required: 'Refused',
+  hub_starting: 'Unreachable',
 };
 
 const NODE_CLASSES: Readonly<Record<NodeFailureCode, ErrorClass>> = {
@@ -100,7 +100,6 @@ const CLASSIFIERS: readonly Classifier[] = [
   when(ComputerScopeOffError, () => ({ class: 'Forbidden', code: 'scope_off' })),
   when(ComputerCommandUnsupportedError, () => ({ class: 'Refused', code: 'not_supported' })),
   when(EffectBudgetExceededError, () => ({ class: 'LimitExceeded', code: 'effect_budget' })),
-  when(UnknownSceneError, () => ({ class: 'NotFound', code: 'unknown_scene' })),
   when(Error, (cause) => (cause.name === 'TimeoutError' ? { class: 'Timeout' } : undefined)),
 ];
 

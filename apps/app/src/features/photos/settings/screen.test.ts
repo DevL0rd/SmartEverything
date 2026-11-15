@@ -88,6 +88,9 @@ vi.mock('./link-cards', () => ({
   BackupLinkCard: (): ReactNode => createElement('a', null, 'Backup card'),
   DuplicatesLinkCard: (): ReactNode => createElement('a', null, 'Duplicates card'),
 }));
+vi.mock('../smart/link-card', () => ({
+  SmartLinkCard: (): ReactNode => createElement('a', null, 'Smart features card'),
+}));
 vi.mock('../data/queries', () => ({
   usePhotoRailCounts: (): { readonly data: RailCounts | undefined } => ({
     data: harness.counts,
@@ -115,10 +118,11 @@ describe('Photos settings screen', () => {
     harness.counts = undefined;
   });
 
-  it('leads with the Backup and Duplicates link cards for every person', () => {
+  it('leads with the Backup, Duplicates and Smart features link cards for every person', () => {
     const html = render();
     expect(html.indexOf('Backup card')).toBeLessThan(html.indexOf('Sources'));
     expect(html).toContain('Duplicates card');
+    expect(html.indexOf('Smart features card')).toBeLessThan(html.indexOf('Sources'));
   });
 
   it('keeps one reading column on the phone', () => {

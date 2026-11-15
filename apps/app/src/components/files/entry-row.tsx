@@ -22,8 +22,9 @@ export interface EntryRowProps {
   readonly name: string;
   readonly kind: EntryKind;
   readonly caption: string | null;
+  readonly detail?: ReactNode;
   readonly size: number | null;
-  readonly modifiedAt: string;
+  readonly modifiedAt: string | null;
   readonly wide: boolean;
   readonly selecting: boolean;
   readonly selected: boolean;
@@ -33,6 +34,8 @@ export interface EntryRowProps {
   readonly marks?: readonly EntryMark[];
   readonly by?: string | null;
   readonly nameHighlight?: TextRange | null;
+  readonly below?: ReactNode;
+  readonly trailing?: ReactNode;
   readonly onContextMenu?: ((point: Point) => void) | undefined;
   readonly onOpen: () => void;
   readonly onSelect: () => void;
@@ -74,11 +77,15 @@ function Title({
   caption,
   marks,
   highlight,
+  below,
+  detail,
 }: {
   readonly name: string;
   readonly caption: string | null;
   readonly marks: readonly EntryMark[];
   readonly highlight: TextRange | null;
+  readonly below: ReactNode;
+  readonly detail: ReactNode;
 }): ReactNode {
   const marked = marks.length > 0;
   const title = (
@@ -96,11 +103,13 @@ function Title({
       ) : (
         title
       )}
-      {caption === null ? null : (
-        <Text variant="caption" tone="variant" numberOfLines={1}>
-          {caption}
-        </Text>
-      )}
+      {below ??
+        (caption === null ? null : (
+          <Text variant="caption" tone="variant" numberOfLines={1}>
+            {caption}
+          </Text>
+        ))}
+      {detail}
     </View>
   );
 }
@@ -121,7 +130,7 @@ function Columns({
         {size === null ? '—' : bytes(size)}
       </Text>
       <Text variant="callout" tone="variant" align="end" className="tabular w-22">
-        {shortDate(modifiedAt)}
+        {modifiedAt === null ? '—' : shortDate(modifiedAt)}
       </Text>
     </>
   );
@@ -131,7 +140,7 @@ export function EntryRow(props: EntryRowProps): ReactNode {
   const { name, kind, caption, size, modifiedAt, wide, selecting, selected, marks, by } = props;
   const { openLabel, menu, thumbnail, onOpen, onSelect, onContextMenu } = props;
   return (
-    <View className="h-14 flex-row items-center border-t border-outline-variant pl-4 pr-1">
+    <View className="min-h-14 flex-row items-center border-t border-outline-variant pl-4 pr-1">
       <Interactive
         label={selecting ? `Select ${name}` : openLabel}
         selected={selecting ? selected : undefined}
@@ -153,10 +162,13 @@ export function EntryRow(props: EntryRowProps): ReactNode {
             caption={caption}
             marks={marks ?? NO_MARKS}
             highlight={props.nameHighlight ?? null}
+            below={props.below}
+            detail={props.detail}
           />
-          {wide ? (
-            <Columns size={size} modifiedAt={modifiedAt} {...(by === undefined ? {} : { by })} />
-          ) : null}
+          {props.trailing ??
+            (wide ? (
+              <Columns size={size} modifiedAt={modifiedAt} {...(by === undefined ? {} : { by })} />
+            ) : null)}
         </View>
       </Interactive>
       <OverflowButton items={menu} label={`Actions for ${name}`} />

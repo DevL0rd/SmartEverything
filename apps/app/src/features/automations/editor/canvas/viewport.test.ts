@@ -4,6 +4,7 @@ import { automation, start } from '../../model/graph/graph-scene-fixtures';
 import { babyProgram } from '../../model/graph/graph-baby-fixture';
 import { projectGraphScene } from '../../model/graph/project-graph-scene';
 import type { GraphFlowNode } from './graph-canvas-types';
+import { levelForZoom } from '../../model/canvas/lod';
 import { measuredSizes } from './measure';
 import { buildGraphNodes } from './scene-to-flow';
 import {
@@ -13,6 +14,7 @@ import {
   FIT_PADDING,
   OPENING_MARGIN,
   OPENING_ZOOM,
+  READABLE_ZOOM,
   WHOLE_PADDING,
   ZOOM_LIMITS,
   fitViewport,
@@ -21,6 +23,7 @@ import {
   openingViewport,
   sceneBounds,
   wholeHeight,
+  wholeOpeningViewport,
   wholeViewport,
 } from './viewport';
 
@@ -132,6 +135,8 @@ describe('fit', () => {
 
 describe('whole framing', () => {
   const bounds = sceneBounds(baby.nodes);
+  const startNode = nodeOf('start');
+  const startBox = { x: startNode.x, y: startNode.y, width: startNode.w, height: startNode.h };
 
   it('bounds every card of the scene', () => {
     if (bounds === null) throw new Error('no bounds');
@@ -144,7 +149,7 @@ describe('whole framing', () => {
     expect(sceneBounds([])).toBeNull();
   });
 
-  it.each([348, 1100, 1600])(
+  it.each([884, 1100, 1600])(
     'fits the whole graph in a %d px wide panel and sizes its height to the graph',
     (width) => {
       if (bounds === null) throw new Error('no bounds');
@@ -163,7 +168,7 @@ describe('whole framing', () => {
     },
   );
 
-  it('fits a wide graph entirely at a small zoom with no lower bound', () => {
+  it('keeps the whole-graph fit on the button with no lower bound', () => {
     if (bounds === null) throw new Error('no bounds');
     const wide = { ...bounds, width: bounds.width * 10 };
     const height = wholeHeight(wide, 412, 900);
@@ -175,6 +180,35 @@ describe('whole framing', () => {
     expect((wide.y + wide.height) * view.zoom + view.y).toBeLessThanOrEqual(
       height - WHOLE_PADDING.bottom + 1,
     );
+  });
+
+  it('opens a wide graph on a phone panel at a readable zoom centred on Start', () => {
+    if (bounds === null) throw new Error('no bounds');
+    const wide = { ...bounds, width: bounds.width * 10 };
+    const height = wholeHeight(wide, 412, 900);
+    expect(height).toBe(
+      Math.min(
+        Math.ceil(wide.height * READABLE_ZOOM + WHOLE_PADDING.top + WHOLE_PADDING.bottom),
+        900,
+      ),
+    );
+    const view = wholeOpeningViewport(wide, startBox, { width: 412, height });
+    expect(view.zoom).toBe(READABLE_ZOOM);
+    expect(levelForZoom(view.zoom)).not.toBe('mid');
+    expect((startBox.x + startBox.width / 2) * view.zoom + view.x).toBeCloseTo(412 / 2);
+    expect((startBox.y + startBox.height / 2) * view.zoom + view.y).toBeCloseTo(height / 2);
+    const phone = { width: 348, height: wholeHeight(bounds, 348, 900) };
+    expect(framedViewport(baby, phone, 'touch', 'whole').zoom).toBe(READABLE_ZOOM);
+  });
+
+  it('opens with the whole graph when it already fits readably or the panel is wide', () => {
+    if (bounds === null) throw new Error('no bounds');
+    const wide = { ...bounds, width: bounds.width * 10 };
+    const desk = { width: 1440, height: wholeHeight(wide, 1440, 900) };
+    expect(wholeOpeningViewport(wide, startBox, desk)).toEqual(wholeViewport(wide, desk));
+    const small = { ...bounds, width: 200, height: 100 };
+    const phone = { width: 412, height: wholeHeight(small, 412, 900) };
+    expect(wholeOpeningViewport(small, startBox, phone)).toEqual(wholeViewport(small, phone));
   });
 
   it('fits a tall graph entirely when the panel cannot grow past the window', () => {

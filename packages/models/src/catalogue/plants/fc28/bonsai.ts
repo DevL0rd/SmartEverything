@@ -121,7 +121,7 @@ export function bonsaiParts(): ModelSpecPart[] {
 export const BONSAI_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.bonsai',
   title: 'Bonsai',
-  footprint: { width: 0.54, depth: 0.29, height: 0.59 },
+  footprint: { width: 0.4992, depth: 0.278, height: 0.5946 },
   view: { yaw: 30, pitch: 20, fov: 28, padding: 0.08 },
   names: {
     display: 'Bonsai',

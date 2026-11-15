@@ -3,9 +3,11 @@ import {
   areaInScope,
   type ClientRow,
   type DriveAlbum,
-  type DrivePlacement,
   type DriveChangedNotice,
+  type DriveCommentsChangedNotice,
   type DriveGrant,
+  type DriveNotificationNotice,
+  type DrivePlacement,
   type DriveProgressNotice,
   type DriveRoot,
   type LiveChange,
@@ -13,10 +15,17 @@ import {
   type LiveTable,
   type TalkFloorsNotice,
 } from '@smarteverything/domain';
-import { albumVisibleTo, canRead, driveAccess, itemAccess, type DriveActor } from '../drive/access';
+import {
+  albumVisibleTo,
+  canRead,
+  driveAccess,
+  itemAccess,
+  rootVisible,
+  type DriveActor,
+} from '../drive/access';
+import { requestSeenBy } from '../store/repositories/drive-access-requests';
 import type { Store } from '../store/store';
 import { channelHidden, deviceIdReachable, presenceInScope, scopesOfClient } from './person-scope';
-import { sceneDeviceIds } from './snapshot-reach';
 
 export type ReachStore = Pick<
   Store,
@@ -79,8 +88,6 @@ function remoteDevices(change: LiveChange, store: ReachStore): readonly string[]
 function listedDevices(change: LiveChange): readonly string[] | null {
   if (change.table === 'device_groups')
     return (change.record ?? change.oldRecord)?.device_ids ?? [];
-  if (change.table === 'scenes')
-    return sceneDeviceIds((change.record ?? change.oldRecord)?.actions);
   return null;
 }
 
@@ -133,16 +140,19 @@ function rootShown(hearer: Pick<Hearer, 'client'>, rootId: string, store: DriveS
 
 function albumShown(hearer: Pick<Hearer, 'client'>, albumId: string, store: DriveStore): boolean {
   const album = store.driveAlbums.find(albumId);
-  return album !== undefined && albumVisibleTo(actorOf(hearer, store), album);
+  if (album === undefined) return false;
+  const actor = actorOf(hearer, store);
+  return (
+    albumVisibleTo(actor, album) ||
+    store.driveAlbums.contributions.memberRole(album.id, actor.profileId) !== null
+  );
 }
 
-function folderShown(hearer: Pick<Hearer, 'client'>, folderId: string, store: DriveStore): boolean {
+function itemShown(hearer: Pick<Hearer, 'client'>, itemId: string, store: DriveStore): boolean {
   const actor = actorOf(hearer, store);
-  const folder = store.driveItems.find(folderId, actor.profileId);
-  const root = folder === undefined ? undefined : store.driveRoots.find(folder.rootId);
-  return (
-    folder !== undefined && root !== undefined && canRead(itemAccess(store, actor, root, folder))
-  );
+  const item = store.driveItems.find(itemId, actor.profileId);
+  const root = item === undefined ? undefined : store.driveRoots.find(item.rootId);
+  return item !== undefined && root !== undefined && canRead(itemAccess(store, actor, root, item));
 }
 
 function changedSeenBy(
@@ -151,57 +161,132 @@ function changedSeenBy(
   store: DriveStore,
 ): DriveChangedNotice | null {
   const rootIds = notice.rootIds.filter((id) => rootShown(hearer, id, store));
-  const folderIds = notice.folderIds.filter((id) => folderShown(hearer, id, store));
+  const folderIds = notice.folderIds.filter((id) => itemShown(hearer, id, store));
   const albumIds = notice.albumIds.filter((id) => albumShown(hearer, id, store));
   return rootIds.length + folderIds.length + albumIds.length === 0
     ? null
     : { ...notice, rootIds, folderIds, albumIds };
 }
 
+export type DriveNotice =
+  DriveChangedNotice | DriveProgressNotice | DriveCommentsChangedNotice | DriveNotificationNotice;
+
 export function driveNoticeSeenBy(
   hearer: Pick<Hearer, 'client'>,
-  notice: DriveChangedNotice | DriveProgressNotice,
+  notice: DriveNotice,
   store: DriveStore,
 ): LiveMessage | null {
-  if (notice.type === 'drive_progress') {
-    return rootShown(hearer, notice.rootId, store) ? notice : null;
+  switch (notice.type) {
+    case 'drive_progress':
+      return rootShown(hearer, notice.rootId, store) ? notice : null;
+    case 'drive_comments_changed':
+      return itemShown(hearer, notice.itemId, store) ? notice : null;
+    case 'drive_notification':
+      return actorOf(hearer, store).profileId === notice.profileId ? notice : null;
+    case 'drive_changed':
+      return changedSeenBy(hearer, notice, store);
   }
-  return changedSeenBy(hearer, notice, store);
 }
+
+const DRIVE_TABLES: ReadonlySet<LiveTable> = new Set<LiveTable>([
+  'drive_roots',
+  'drive_albums',
+  'drive_grants',
+  'drive_placements',
+  'drive_notifications',
+  'drive_access_requests',
+  'drive_file_requests',
+  'drive_transfers',
+  'drive_offline_items',
+]);
 
 export type DriveChange = Extract<
   LiveChange,
-  { table: 'drive_roots' | 'drive_albums' | 'drive_grants' | 'drive_placements' }
+  {
+    table:
+      | 'drive_roots'
+      | 'drive_albums'
+      | 'drive_grants'
+      | 'drive_placements'
+      | 'drive_notifications'
+      | 'drive_access_requests'
+      | 'drive_file_requests'
+      | 'drive_transfers'
+      | 'drive_offline_items';
+  }
 >;
 
 export function driveChange(change: LiveChange): change is DriveChange {
-  return (
-    change.table === 'drive_roots' ||
-    change.table === 'drive_albums' ||
-    change.table === 'drive_grants' ||
-    change.table === 'drive_placements'
-  );
+  return DRIVE_TABLES.has(change.table);
 }
 
 export type DriveRow = DriveRoot | DriveAlbum | DriveGrant | DrivePlacement;
 
+type OwnChange = Extract<
+  DriveChange,
+  {
+    table:
+      | 'drive_notifications'
+      | 'drive_access_requests'
+      | 'drive_file_requests'
+      | 'drive_transfers'
+      | 'drive_offline_items';
+  }
+>;
+
+function ownChangeVisible(profileId: string, change: OwnChange): boolean {
+  switch (change.table) {
+    case 'drive_notifications':
+    case 'drive_offline_items':
+      return [change.record, change.oldRecord].some((row) => row?.profileId === profileId);
+    case 'drive_access_requests':
+      return [change.record, change.oldRecord].some(
+        (row) => row?.requesterProfileId === profileId || row?.ownerProfileId === profileId,
+      );
+    case 'drive_file_requests':
+      return [change.record, change.oldRecord].some((row) => row?.createdBy === profileId);
+    case 'drive_transfers':
+      return [change.record, change.oldRecord].some(
+        (row) => row?.fromProfileId === profileId || row?.toProfileId === profileId,
+      );
+  }
+}
+
+export interface DriveRowLookups {
+  readonly profileOf: (clientId: string) => string;
+  readonly personOfDevice: (deviceId: string) => string | null;
+  readonly albumMember: (albumId: string, profileId: string) => boolean;
+  readonly rootVisible: (root: DriveRoot, profileId: string) => boolean;
+}
+
 export function driveRowVisible(
   hearer: Pick<Hearer, 'client'>,
   row: DriveRow,
-  profileOf: (clientId: string) => string,
-  personOfDevice: (deviceId: string) => string | null,
+  lookups: DriveRowLookups,
 ): boolean {
-  const actor: DriveActor = { profileId: profileOf(hearer.client.id) };
+  const actor: DriveActor = { profileId: lookups.profileOf(hearer.client.id) };
   if ('localPath' in row) {
-    return personOfDevice(row.deviceId) === actor.profileId;
+    return lookups.personOfDevice(row.deviceId) === actor.profileId;
   }
   if ('grantedBy' in row) {
     return row.grantedBy === actor.profileId || row.profileId === actor.profileId;
   }
   if ('title' in row) {
-    return albumVisibleTo(actor, row);
+    return albumVisibleTo(actor, row) || lookups.albumMember(row.id, actor.profileId);
   }
-  return driveAccess(actor, row) !== 'none';
+  return lookups.rootVisible(row, actor.profileId);
+}
+
+const OWN_TABLES: ReadonlySet<LiveTable> = new Set<LiveTable>([
+  'drive_notifications',
+  'drive_access_requests',
+  'drive_file_requests',
+  'drive_transfers',
+  'drive_offline_items',
+]);
+
+function ownChange(change: DriveChange): change is OwnChange {
+  return OWN_TABLES.has(change.table);
 }
 
 export function driveChangeVisible(
@@ -209,14 +294,31 @@ export function driveChangeVisible(
   change: DriveChange,
   store: DriveStore,
 ): boolean {
+  if (ownChange(change)) return ownChangeVisible(actorOf(hearer, store).profileId, change);
   const row = change.record ?? change.oldRecord;
   return (
     row !== null &&
-    driveRowVisible(
-      hearer,
-      row,
-      (id) => store.profiles.activeOf(id).id,
-      (deviceId) => store.computerNodes.personOf(deviceId),
-    )
+    driveRowVisible(hearer, row, {
+      profileOf: (id) => store.profiles.activeOf(id).id,
+      personOfDevice: (deviceId) => store.computerNodes.personOf(deviceId),
+      albumMember: (albumId, profileId) =>
+        store.driveAlbums.contributions.memberRole(albumId, profileId) !== null,
+      rootVisible: (root, profileId) => rootVisible(store, { profileId }, root),
+    })
   );
+}
+
+type AccessRequestChange = Extract<LiveChange, { table: 'drive_access_requests' }>;
+
+export function accessRequestSeenBy(
+  hearer: Pick<Hearer, 'client'>,
+  change: AccessRequestChange,
+  store: DriveStore,
+): AccessRequestChange {
+  const viewer = actorOf(hearer, store).profileId;
+  return {
+    ...change,
+    record: change.record === null ? null : requestSeenBy(change.record, viewer),
+    oldRecord: change.oldRecord === null ? null : requestSeenBy(change.oldRecord, viewer),
+  };
 }

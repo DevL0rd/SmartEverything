@@ -75,7 +75,6 @@ function effectPorts(ports: EngineAssemblyPorts): EffectPorts {
       { store, executor: ports.executor, issuer: ports.issuer },
       ports.world.observed,
     ),
-    issuer: ports.issuer,
     temporary:
       ports.effects === undefined
         ? undefined

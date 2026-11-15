@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Banner } from '../../../components/banner';
-import { useAreaWidth } from '../../../design/size-class';
+import { useShellRailShown } from '../../../components/page-shell/rail-shown';
 import { HOUR_MS } from '../../../format/time';
 import type { Device } from '../../../store/state';
 import { usePhoneFace } from '../card/use-phone-face';
@@ -8,7 +8,6 @@ import { ParkedCard } from '../activity/parked-card';
 import { DoingTodayCard } from '../activity/today-card';
 import { PhoneCardGrid } from '../frame/phone-grid';
 import { PhonePage } from '../frame/phone-page';
-import { frameLayoutOf } from '../model/sections';
 import { AppsCard } from '../overview/apps-card';
 import { BatteryCard } from '../overview/battery-card';
 import { ConnectionsCard, TodayCard } from '../overview/extras-card';
@@ -67,7 +66,7 @@ function PrivacyBanner({ device }: { readonly device: Device }): ReactNode {
 }
 
 export function PhoneOverviewBody({ device }: { readonly device: Device }): ReactNode {
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = !useShellRailShown();
   const { access } = usePhoneFace(device);
   return (
     <>

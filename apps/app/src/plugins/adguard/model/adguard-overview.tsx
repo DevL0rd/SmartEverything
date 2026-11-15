@@ -27,13 +27,7 @@ export function AdGuardOverview({ device }: { readonly device: Device }): ReactN
     <View className="gap-section-gap">
       <LookupsCard device={device} snapshot={snapshot} stats={stats} />
       <AdGuardStrip device={device} snapshot={snapshot} stats={stats} />
-      <TopLists
-        device={device}
-        stats={stats}
-        lists={['blocked']}
-        limit={PREVIEW_ROWS}
-        stale={snapshot.connection.state !== 'online'}
-      />
+      <TopLists device={device} stats={stats} lists={['blocked']} limit={PREVIEW_ROWS} />
       <AdGuardFooter snapshot={snapshot} />
     </View>
   );

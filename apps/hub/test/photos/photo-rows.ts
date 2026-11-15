@@ -49,3 +49,14 @@ export function recordLibraryRow(
       .run(String(profile.id), item.id);
   }
 }
+
+export function insertInode(database: DatabaseSync, rootId: string): number {
+  const now = 1_000_000_000;
+  const row = database
+    .prepare(
+      `insert into drive_inodes (root_id, is_root, type, mode, atime_ns, mtime_ns, ctime_ns, btime_ns, orphan)
+        values (?, 0, 'file', 420, ?, ?, ?, ?, 0) returning id`,
+    )
+    .get(rootId, now, now, now, now);
+  return Number(row?.['id']);
+}

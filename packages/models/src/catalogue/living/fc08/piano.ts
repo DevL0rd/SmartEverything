@@ -136,7 +136,7 @@ function keyParts(): ModelSpecPart[] {
 export const UPRIGHT_PIANO_MODEL = furniture({
   id: 'cat.living.upright-piano',
   title: 'Upright piano',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 1.52, depth: 0.615, height: HEIGHT },
   meta: {
     names: { display: 'Upright piano', synonyms: ['piano', 'vertical piano', 'console piano'] },
     sizeClass: 'large',

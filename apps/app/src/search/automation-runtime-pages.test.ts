@@ -36,7 +36,6 @@ function tablesOf(rows: readonly Automation[]): SearchTables {
     devices: tables.devices,
     rooms: tables.rooms,
     deviceGroups: tables.device_groups,
-    scenes: tables.scenes,
     automations: makeTable(
       Object.fromEntries(rows.map((row) => [row.id, row])),
       rows.map((row) => row.id),

@@ -33,6 +33,12 @@ const SAMPLE_DATA = {
     startsAt: AT,
     minutesBefore: 10,
   },
+  guest_responded: { itemId: ID, guestId: ID, title: 'Dentist', response: 'yes' },
+  task_assigned: { itemId: ID, title: 'Bins', assigneeId: ID, assignerId: null },
+  booking_made: { itemId: ID, pageId: ID, title: 'Intro call', startsAt: AT, bookerName: 'Ida' },
+  bedtime_reminder: { bedAt: AT, minutesBefore: 30 },
+  wind_down_started: { bedAt: AT, wakeAt: AT, minutes: 30 },
+  wake_time: { wakeAt: AT },
 } as const;
 
 function signalOf(kind: (typeof PLANNER_SIGNAL_KINDS)[number]): SignalInput {

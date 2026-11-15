@@ -31,6 +31,9 @@ const ITEM = {
   openedAt: null,
   starred: false,
   shared: false,
+  locked: false,
+  lockedHere: false,
+  openComments: 0,
   rev: 1,
   etag: '1-abc',
   outside: false,
@@ -203,6 +206,7 @@ describe('DRIVE_CONFLICT', () => {
 describe('DRIVE_QUERY', () => {
   const query = {
     text: null,
+    match: 'all',
     rootId: null,
     folderId: null,
     kinds: null,
@@ -217,6 +221,7 @@ describe('DRIVE_QUERY', () => {
     expect(
       DRIVE_QUERY.safeParse({
         text: 'plumber',
+        match: 'names',
         rootId: A,
         folderId: B,
         kinds: ['video', 'document'],
@@ -258,9 +263,19 @@ describe('DRIVE_QUERY', () => {
   });
 
   it('pages items with a next cursor', () => {
-    expect(DRIVE_QUERY_PAGE.safeParse({ items: [ITEM], next: null }).success).toBe(true);
     expect(
-      DRIVE_QUERY_PAGE.safeParse({ items: [{ ...ITEM, kind: 'hologram' }], next: null }).success,
+      DRIVE_QUERY_PAGE.safeParse({
+        items: [ITEM],
+        hits: [{ itemId: A, where: 'name', snippet: null }],
+        next: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      DRIVE_QUERY_PAGE.safeParse({
+        items: [{ ...ITEM, kind: 'hologram' }],
+        hits: [{ itemId: A, where: 'name', snippet: null }],
+        next: null,
+      }).success,
     ).toBe(false);
   });
 });
@@ -293,6 +308,31 @@ describe('DRIVE_RECENT_ENTRY', () => {
       ).toBe(true);
     }
     expect(DRIVE_RECENT_ENTRY.safeParse({ kind: 'changed', item: ITEM, at: AT }).success).toBe(
+      false,
+    );
+  });
+
+  it('lists a created shortcut with who made it and how', () => {
+    const shortcut = {
+      id: C,
+      rootId: B,
+      parentId: null,
+      name: 'a.pdf',
+      createdBy: A,
+      createdAt: AT,
+      target: { state: 'available', item: ITEM },
+    };
+    const entry = {
+      kind: 'shortcut',
+      shortcut,
+      at: AT,
+      actorProfileId: A,
+      via: 'automation',
+      deviceId: null,
+    };
+    expect(DRIVE_RECENT_ENTRY.safeParse(entry).success).toBe(true);
+    expect(DRIVE_RECENT_ENTRY.safeParse({ ...entry, shortcut: ITEM }).success).toBe(false);
+    expect(DRIVE_RECENT_ENTRY.safeParse({ kind: 'shortcut', shortcut, at: AT }).success).toBe(
       false,
     );
   });
@@ -402,6 +442,7 @@ describe('DRIVE_SHARE', () => {
   const share = {
     id: A,
     itemId: B,
+    albumId: null,
     permission: 'view',
     expiresAt: null,
     hasPassword: false,
@@ -562,6 +603,8 @@ describe('DRIVE_SETTINGS', () => {
     membersMayShare: false,
     duplicatesHashing: true,
     indexingPaused: false,
+    contentIndexing: true,
+    ocrLanguages: ['eng'],
   };
 
   it('has no defaults, so a missing setting is refused', () => {

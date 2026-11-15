@@ -30,7 +30,7 @@ export const STAIRS_STRAIGHT_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Straight stairs',
   category: 'structure',
-  footprint: { width: 0.9, depth: TOTAL_RUN + NOSING, height: 2.816 },
+  footprint: { width: 0.9, depth: 3.676, height: 2.816 },
   size: {
     width: { param: 'width', extra: 0, resizes: true },
     height: { param: 'height', scale: 1.0021, extra: 0.0101, resizes: true },

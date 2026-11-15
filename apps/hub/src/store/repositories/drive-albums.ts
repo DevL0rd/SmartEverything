@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
+import { AlbumContributions } from './drive-album-contributions';
 
 export class DriveAlbumKindError extends Error {
   override readonly name = 'DriveAlbumKindError';
@@ -61,6 +62,7 @@ const MEMBER = z.strictObject({
   item_id: z.string(),
   position: z.number(),
   added_at: z.string(),
+  added_by: z.string().nullable(),
 });
 
 const POSITION = z.object({ edge: z.number().nullable() });
@@ -81,6 +83,7 @@ export interface DriveAlbumMember {
   readonly itemId: string;
   readonly position: number;
   readonly addedAt: string;
+  readonly addedBy: string | null;
 }
 
 export interface DriveAlbumCursor {
@@ -99,7 +102,12 @@ export interface DriveAlbumWindow {
 }
 
 function memberOf(row: z.output<typeof MEMBER>): DriveAlbumMember {
-  return { itemId: row.item_id, position: row.position, addedAt: row.added_at };
+  return {
+    itemId: row.item_id,
+    position: row.position,
+    addedAt: row.added_at,
+    addedBy: row.added_by,
+  };
 }
 
 function insertColumns(
@@ -120,7 +128,11 @@ function insertColumns(
 }
 
 export class DriveAlbumsRepository {
-  constructor(private readonly context: StoreContext) {}
+  readonly contributions: AlbumContributions;
+
+  constructor(private readonly context: StoreContext) {
+    this.contributions = new AlbumContributions(context);
+  }
 
   listAll(): DriveAlbum[] {
     return this.context.sql.all(
@@ -141,7 +153,9 @@ export class DriveAlbumsRepository {
     return this.context.sql.all(
       STORED_ALBUM,
       `select ${COLUMNS} from drive_albums
-        where surface = $surface and (scope = 'home' or owner_profile_id = $profileId)
+        where surface = $surface and (scope = 'home' or owner_profile_id = $profileId
+          or exists (select 1 from photo_album_members m
+            where m.album_id = drive_albums.id and m.profile_id = $profileId))
         order by title, id`,
       { profileId, surface },
     );
@@ -224,7 +238,7 @@ export class DriveAlbumsRepository {
   members(id: string, after: DriveAlbumCursor | null, limit: number): DriveAlbumWindow {
     const rows = this.context.sql.all(
       MEMBER,
-      `select item_id, position, added_at from drive_album_items
+      `select item_id, position, added_at, added_by from drive_album_items
         where album_id = $id
           ${after === null ? '' : 'and (position, item_id) > ($position, $itemId)'}
         order by position, item_id limit $limit`,
@@ -255,20 +269,24 @@ export class DriveAlbumsRepository {
       .map((row) => row.album_id);
   }
 
-  addItems(id: string, itemIds: readonly string[]): DriveAlbum {
+  addItems(id: string, itemIds: readonly string[], addedBy: string | null = null): DriveAlbum {
     return this.context.write(() => {
       const before = this.manual(id);
       let position = this.edge(id, 'max') ?? 0;
+      let recorded = false;
       for (const itemId of itemIds) {
         position += 1;
-        this.context.sql.run(
+        const inserted = this.context.sql.run(
           'add the item to the drive album',
-          `insert into drive_album_items (album_id, item_id, position, added_at)
-            values ($id, $itemId, $position, $now)
+          `insert into drive_album_items (album_id, item_id, position, added_at, added_by)
+            values ($id, $itemId, $position, $now,
+              coalesce($addedBy, (select owner_profile_id from drive_albums where id = $id)))
             on conflict (album_id, item_id) do nothing`,
-          { id, itemId, position, now: this.context.now() },
+          { id, itemId, position, now: this.context.now(), addedBy },
         );
+        if (inserted > 0 && this.contributions.record(id, itemId)) recorded = true;
       }
+      if (recorded) this.context.notice({ type: 'photos_activity', albumId: id, kind: 'added' });
       return this.recount(id, before);
     });
   }
@@ -283,13 +301,20 @@ export class DriveAlbumsRepository {
           { id, itemId },
         );
       }
+      this.clearCover(id);
+      return this.recount(id, before);
+    });
+  }
+
+  removeContributions(id: string, profileId: string): DriveAlbum {
+    return this.context.write(() => {
+      const before = this.manual(id);
       this.context.sql.run(
-        'clear the drive album cover',
-        `update drive_albums set cover_item_id = null
-          where id = $id and cover_item_id is not null
-            and cover_item_id not in (select item_id from drive_album_items where album_id = $id)`,
-        { id },
+        'remove the photos a person added to the drive album',
+        'delete from drive_album_items where album_id = $id and added_by = $profileId',
+        { id, profileId },
       );
+      this.clearCover(id);
       return this.recount(id, before);
     });
   }
@@ -316,6 +341,16 @@ export class DriveAlbumsRepository {
         }
       }
     });
+  }
+
+  private clearCover(id: string): void {
+    this.context.sql.run(
+      'clear the drive album cover',
+      `update drive_albums set cover_item_id = null
+        where id = $id and cover_item_id is not null
+          and cover_item_id not in (select item_id from drive_album_items where album_id = $id)`,
+      { id },
+    );
   }
 
   private manual(id: string): DriveAlbum {

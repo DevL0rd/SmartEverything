@@ -87,6 +87,7 @@ function statusFor(random: Random, index: number): DrivePlacement['status'] {
         ? [{ relPath: null, message: 'The folder is not writable', at: iso(NOW_MS - HOUR_MS) }]
         : [],
     reason: null,
+    mountPoint: null,
     reportedAt: iso(NOW_MS - MINUTE_MS),
   };
 }
@@ -99,7 +100,6 @@ function placementFor(random: Random, entry: BuiltRoot, slot: PlacementSlot): Dr
     deviceId: slot.deviceId,
     rootId: entry.plan.id,
     folderItemId: (index === 1 ? topFolder(entry.items) : undefined)?.id ?? null,
-    localPath: `/home/user/Drive ${String(index + 1)}`,
     enabled: !mounted,
     hold: null,
     createdBy: slot.createdBy,
@@ -107,10 +107,12 @@ function placementFor(random: Random, entry: BuiltRoot, slot: PlacementSlot): Dr
     status: statusFor(random, index),
   };
   return mounted
-    ? { ...target, mode: 'mounted' }
+    ? { ...target, mode: 'mounted', localPath: null, mountName: `Drive ${String(index + 1)}` }
     : {
         ...target,
         mode: 'synced',
+        localPath: `/home/user/Drive ${String(index + 1)}`,
+        mountName: null,
         excluded: index === 1 ? ['Documents 1'] : [],
         ignorePatterns: ['*.tmp', '.DS_Store'],
         conflictCopies: true,

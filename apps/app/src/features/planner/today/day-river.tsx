@@ -12,7 +12,10 @@ import {
   usePlannerPreferences,
   useVisibleMinuteOf,
 } from '../data';
+import { useRows } from '../../../store/selectors';
+import { usePlannerProfile } from '../data/assignment';
 import { usePlannerFrame } from '../frame/frame-context';
+import { ResponseBadge } from '../item/guest-row';
 import { LIST_DOT } from '../item/composer-tokens';
 import { useItemPress } from '../item/item-menu-host';
 import { bookedMinutesOf } from './day-strip-model';
@@ -106,6 +109,21 @@ function GoogleMark({ row }: { readonly row: RiverRow }): ReactNode {
   );
 }
 
+function GuestMark({ row }: { readonly row: RiverRow }): ReactNode {
+  if (row.invite !== null) {
+    return row.invite === 'yes' ? null : <ResponseBadge response={row.invite} />;
+  }
+  if (row.guests === 0) return null;
+  return (
+    <View className="flex-row items-center gap-1">
+      <Icon name="users" size={12} tone="variant" />
+      <Text variant="caption" tone="variant" className="tabular">
+        {String(row.guests)}
+      </Text>
+    </View>
+  );
+}
+
 function Body({ row, step }: { readonly row: RiverRow; readonly step: RiverStep }): ReactNode {
   const bright = BRIGHT.has(step);
   return (
@@ -129,6 +147,7 @@ function Body({ row, step }: { readonly row: RiverRow; readonly step: RiverStep 
           </Text>
         )}
       </View>
+      <GuestMark row={row} />
       <CalendarPill row={row} />
       <GoogleMark row={row} />
     </View>
@@ -197,6 +216,8 @@ function useRiverRows(day: PlannerDay, hidden: ReadonlySet<string>): readonly Ri
     collections: usePlannerCollections(person),
     items: usePlannerItems(person),
     hidden,
+    guests: useRows('planner_guests'),
+    me: usePlannerProfile(person),
   });
 }
 

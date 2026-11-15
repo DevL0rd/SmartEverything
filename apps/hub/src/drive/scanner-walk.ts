@@ -1,6 +1,8 @@
-import { lstatSync, opendirSync, type BigIntStats, type Dir } from 'node:fs';
+import { lstatSync, opendirSync, readlinkSync, type BigIntStats, type Dir } from 'node:fs';
 import { join, matchesGlob } from 'node:path';
 import { z } from 'zod';
+import { LOCKED_FOLDER } from './access';
+import { ORPHAN_DIRECTORY } from './paths';
 
 export const WALK_BATCH_ROWS = 1000;
 export const BATCHES_IN_FLIGHT = 2;
@@ -19,14 +21,39 @@ const IDENTITY = {
   parentRelPath: z.string().min(1).nullable(),
   bytes: COUNT,
   modifiedMs: z.number().nonnegative(),
+  mtimeNs: DIGITS,
+  mode: z.int().min(0).max(0o7777),
   dev: DIGITS,
   ino: DIGITS,
 };
 
+interface EntryIdentity {
+  readonly relPath: string;
+  readonly name: string;
+  readonly parentRelPath: string | null;
+  readonly bytes: number;
+  readonly modifiedMs: number;
+  readonly mtimeNs: string;
+  readonly mode: number;
+  readonly dev: string;
+  readonly ino: string;
+}
+
+export const SPECIAL_KINDS = ['fifo', 'socket', 'char', 'block'] as const;
+
+export type SpecialKind = (typeof SPECIAL_KINDS)[number];
+
 export const WALK_ENTRY = z
   .discriminatedUnion('kind', [
-    z.strictObject({ ...IDENTITY, kind: z.literal('file') }),
+    z.strictObject({ ...IDENTITY, kind: z.literal('file'), nlink: z.int().positive() }),
     z.strictObject({ ...IDENTITY, kind: z.literal('folder'), childCount: COUNT.nullable() }),
+    z.strictObject({ ...IDENTITY, kind: z.literal('link'), target: z.string().min(1) }),
+    z.strictObject({
+      ...IDENTITY,
+      kind: z.literal('special'),
+      special: z.enum(SPECIAL_KINDS),
+      rdev: COUNT,
+    }),
   ])
   .readonly();
 
@@ -107,6 +134,18 @@ export class CallClock {
   }
 }
 
+function modeOf(stats: BigIntStats): number {
+  return Number(stats.mode & 0o7777n);
+}
+
+function specialOf(stats: BigIntStats): SpecialKind | null {
+  if (stats.isFIFO()) return 'fifo';
+  if (stats.isSocket()) return 'socket';
+  if (stats.isCharacterDevice()) return 'char';
+  if (stats.isBlockDevice()) return 'block';
+  return null;
+}
+
 function isSkipped(patterns: readonly string[], relPath: string, name: string): boolean {
   return patterns.some(
     (pattern) =>
@@ -122,7 +161,7 @@ class Walker {
   private readonly clock: CallClock;
   private buffer: WalkEntry[] = [];
   private sequence = 0;
-  private skippedSpecial = 0;
+  private skippedUnknown = 0;
 
   constructor(
     private readonly data: WalkData,
@@ -141,7 +180,7 @@ class Walker {
       pending.push(...[...this.visit(folder)].reverse());
     }
     this.flush();
-    return { skipped: this.skippedSpecial };
+    return { skipped: this.skippedUnknown };
   }
 
   private visit(folder: Folder): readonly Folder[] {
@@ -155,7 +194,7 @@ class Walker {
       this.add(this.folderEntry(folder, listing.childCount, listing.bytes));
     }
     for (const file of listing.files) this.add(file);
-    this.skippedSpecial += listing.skipped;
+    this.skippedUnknown += listing.skipped;
     return listing.folders;
   }
 
@@ -167,6 +206,8 @@ class Walker {
       parentRelPath: folder.parentRelPath,
       bytes,
       modifiedMs: Number(folder.stats.mtimeMs),
+      mtimeNs: folder.stats.mtimeNs.toString(),
+      mode: modeOf(folder.stats),
       dev: folder.stats.dev.toString(),
       ino: folder.stats.ino.toString(),
       childCount,
@@ -221,7 +262,7 @@ class Walker {
     const files: WalkEntry[] = [];
     const folders: Folder[] = [];
     let bytes = 0;
-    let special = 0;
+    let unknown = 0;
     for (
       let item = this.clock.around(() => directory.readSync());
       item !== null;
@@ -243,15 +284,19 @@ class Walker {
         bytes += Number(stats.size);
         files.push(this.fileEntry(folder, name, relPath, stats));
       } else {
-        special += 1;
+        const entry = this.otherEntry(folder, name, relPath, stats);
+        if (entry === null) unknown += 1;
+        else files.push(entry);
       }
     }
-    return { files, folders, childCount: files.length + folders.length, bytes, skipped: special };
+    return { files, folders, childCount: files.length + folders.length, bytes, skipped: unknown };
   }
 
   private excluded(name: string, relPath: string, root: boolean): boolean {
-    if (root && this.data.reserved.includes(name)) return true;
-    if (!this.data.includeHidden && name.startsWith('.')) return true;
+    if (root && (this.data.reserved.includes(name) || name === ORPHAN_DIRECTORY)) return true;
+    if (!this.data.includeHidden && name.startsWith('.') && !(root && name === LOCKED_FOLDER)) {
+      return true;
+    }
     return isSkipped(this.data.skip, relPath, name);
   }
 
@@ -267,12 +312,54 @@ class Walker {
 
   private fileEntry(folder: Folder, name: string, relPath: string, stats: BigIntStats): WalkEntry {
     return {
+      ...this.identityOf(folder, name, relPath, stats),
       kind: 'file',
+      nlink: Number(stats.nlink),
+    };
+  }
+
+  private otherEntry(
+    folder: Folder,
+    name: string,
+    relPath: string,
+    stats: BigIntStats,
+  ): WalkEntry | null {
+    const identity = this.identityOf(folder, name, relPath, stats);
+    if (stats.isSymbolicLink()) {
+      const target = this.target(join(folder.absolute, name), relPath);
+      return target === null ? null : { ...identity, kind: 'link', target };
+    }
+    const special = specialOf(stats);
+    return special === null
+      ? null
+      : { ...identity, kind: 'special', special, rdev: Number(stats.rdev) };
+  }
+
+  private target(absolute: string, relPath: string): string | null {
+    try {
+      const target = this.clock.around(() => readlinkSync(absolute, { encoding: 'utf8' }));
+      return target === '' ? null : target;
+    } catch (cause) {
+      const code = codeOf(cause);
+      if (code !== 'ENOENT') this.sink.problem(relPath, code);
+      return null;
+    }
+  }
+
+  private identityOf(
+    folder: Folder,
+    name: string,
+    relPath: string,
+    stats: BigIntStats,
+  ): EntryIdentity {
+    return {
       relPath,
       name,
       parentRelPath: folder.relPath === '' ? null : folder.relPath,
       bytes: Number(stats.size),
       modifiedMs: Number(stats.mtimeMs),
+      mtimeNs: stats.mtimeNs.toString(),
+      mode: modeOf(stats),
       dev: stats.dev.toString(),
       ino: stats.ino.toString(),
     };

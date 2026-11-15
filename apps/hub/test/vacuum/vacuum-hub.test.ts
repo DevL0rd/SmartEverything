@@ -6,7 +6,6 @@ import {
   type DeviceCapability,
   type DeviceEvent,
   type JsonValue,
-  type ProcessWindow,
   type Provider,
   type StateUpdate,
 } from '@smarteverything/domain';
@@ -14,7 +13,7 @@ import { pv11glCatalog, stopCleaning } from '@smarteverything/xiaomi';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { DeviceRecord } from '../../src/database/port';
-import { Viewers, deviceTarget } from '../../src/metrics/viewers';
+import { Viewers, deviceTarget, type DeviceDetail } from '../../src/metrics/viewers';
 import type { VacuumDeviceIo } from '../../src/vacuum/link';
 import { MapCache } from '../../src/vacuum/map-cache';
 import { VacuumHub } from '../../src/vacuum/vacuum-hub';
@@ -53,7 +52,7 @@ let opened: TestStore;
 let values: Map<string, JsonValue>;
 let pushed: Pushed[];
 let recorded: Recorded[];
-let viewers: Viewers<ProcessWindow>;
+let viewers: Viewers<DeviceDetail>;
 let timer: FakeRouteTimer;
 let hub: VacuumHub;
 let robot: DeviceRecord;
@@ -180,7 +179,7 @@ beforeEach(async () => {
   streams = [];
   writes = 0;
   routeEnd = 0;
-  viewers = new Viewers<ProcessWindow>();
+  viewers = new Viewers<DeviceDetail>();
   timer = new FakeRouteTimer();
   hub = new VacuumHub({
     store: opened.store,

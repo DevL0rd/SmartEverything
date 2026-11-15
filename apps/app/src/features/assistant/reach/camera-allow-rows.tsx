@@ -9,7 +9,7 @@ export function CameraAllowRows(): ReactNode {
   const entries = useCameraEntries();
   const update = useReachUpdate();
   if (entries.length === 0) {
-    return <ListRow title="No cameras yet" icon="cameras" disabled />;
+    return <ListRow title="No cameras yet" icon="cameras" />;
   }
   return (
     <ReachLoaded>

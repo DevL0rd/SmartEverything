@@ -1,4 +1,4 @@
-import type { CalendarView } from './calendar-page';
+import type { CalendarView } from './calendar-view-model';
 
 export function openingViewOf(
   preferred: CalendarView,

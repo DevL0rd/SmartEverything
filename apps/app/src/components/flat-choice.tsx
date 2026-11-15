@@ -9,7 +9,7 @@ import { Text } from './text';
 
 interface FlatChoiceProps extends Pick<
   InteractiveProps,
-  'href' | 'onPress' | 'ref' | 'expanded' | 'disabled'
+  'href' | 'navigation' | 'onPress' | 'ref' | 'expanded' | 'disabled'
 > {
   readonly label: string;
   readonly spoken?: string | undefined;

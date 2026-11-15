@@ -57,7 +57,7 @@ function frond(entry: Frond, index: number): ModelSpecPart[] {
 export const MONSTERA_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.monstera',
   title: 'Monstera',
-  footprint: { width: 1.76, depth: 1.72, height: 0.86 },
+  footprint: { width: 1.7557, depth: 1.7182, height: 0.8614 },
   names: {
     display: 'Monstera',
     synonyms: [

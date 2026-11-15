@@ -11,10 +11,9 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { syncContribution, type PluginKindCatalog } from './catalog';
+import { PLUGIN_ORIGIN_ICON } from './triggers';
 
 const log = new Logger('hub.plugin-kinds');
-
-export const PLUGIN_ORIGIN_ICON = 'puzzle';
 
 export interface AutomationContribution {
   readonly owner: AutomationOwner;

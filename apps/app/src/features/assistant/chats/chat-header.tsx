@@ -8,12 +8,11 @@ import {
   type AssistantMessageRow,
   type Engine,
 } from '@smarteverything/domain';
-import { useHeaderStatus } from '../../../components/header-status';
-import { PageSettingsButton } from '../../../components/page-settings-button';
+import type { PageSettingsLink } from '../../../components/page-settings-button';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { IconButton } from '../../../components/icon-button';
 import { Icon, type IconName } from '../../../components/icon';
-import type { HeaderAction } from '../../../components/page-header';
-import { useHeaderSlot } from '../../../components/screen-context';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { useSizeClass } from '../../../design/size-class';
@@ -71,10 +70,6 @@ const SUBLINE_TONE: Readonly<
   reconnecting: 'critical',
   failed: 'critical',
 };
-
-function Back(): ReactNode {
-  return <IconButton icon="arrowLeft" label="Back" onPress={leaveChat} />;
-}
 
 type StatusLineKind = keyof typeof SUBLINE_ICON;
 
@@ -141,44 +136,39 @@ function TitleText({
   );
 }
 
-function Frame({
+function ChatPane({
+  title,
   back,
   leading,
-  title,
+  heading,
   trailing,
-  menu,
+  banner,
+  settings,
+  children,
 }: {
+  readonly title: string;
   readonly back: boolean;
-  readonly leading: readonly HeaderAction[];
-  readonly title: ReactNode;
+  readonly leading: readonly ShellAction[];
+  readonly heading: ReactNode;
   readonly trailing: ReactNode;
-  readonly menu: ReactNode;
+  readonly banner?: ReactNode;
+  readonly settings?: PageSettingsLink;
+  readonly children: ReactNode;
 }): ReactNode {
-  const slot = useHeaderSlot();
-  const status = useHeaderStatus();
-  if (slot === 'large') {
-    return null;
-  }
   return (
-    <View className="z-10 border-b border-outline-variant bg-chrome/95 pt-safe">
-      <View className="min-h-14 flex-row items-center gap-1 px-1">
-        {back ? <Back /> : null}
-        {leading.map((action) => (
-          <IconButton
-            key={action.label}
-            icon={action.icon}
-            label={action.label}
-            selected={action.selected ?? false}
-            {...(action.onPress === undefined ? {} : { onPress: action.onPress })}
-          />
-        ))}
-        {back || leading.length > 0 ? null : <View className="w-2" />}
-        <View className="min-w-0 flex-1">{title}</View>
-        {status}
-        {trailing}
-        {menu}
-      </View>
-    </View>
+    <PageShell
+      variant="pane"
+      title={title}
+      back={back}
+      {...(back ? { onBack: leaveChat } : {})}
+      leading={leading}
+      heading={heading}
+      trailing={trailing}
+      {...(banner === undefined ? {} : { banner })}
+      {...(settings === undefined ? {} : { settings })}
+    >
+      {children}
+    </PageShell>
   );
 }
 
@@ -217,15 +207,16 @@ function HeaderMark({
   return <SourceMark source={source} size={28} />;
 }
 
-export interface ChatHeaderProps {
+export interface ChatShellProps {
   readonly chat: AiChatRow;
   readonly rows: readonly AssistantMessageRow[];
   readonly working: boolean;
   readonly waiting: number;
   readonly back: boolean;
-  readonly leading?: readonly HeaderAction[];
+  readonly leading?: readonly ShellAction[];
   readonly panel: PanelToggle | null;
   readonly ref?: Ref<View>;
+  readonly children: ReactNode;
 }
 
 function sameWork(left: WorkStatus | null, right: WorkStatus | null): boolean {
@@ -270,7 +261,7 @@ function browserToggleLabel(panel: PanelToggle): string {
   return panel.docked ? 'Close browser' : 'Back to chat';
 }
 
-export function ChatHeader({
+export function ChatShell({
   chat,
   rows,
   working,
@@ -279,14 +270,15 @@ export function ChatHeader({
   leading = [],
   panel,
   ref,
-}: ChatHeaderProps): ReactNode {
+  children,
+}: ChatShellProps): ReactNode {
   const line = useSubline(chat, rows, waiting);
   return (
-    <Frame
+    <ChatPane
+      title={chat.title}
       back={back}
       leading={leading}
-      menu={<ChatHeaderMenu chatId={chat.id} />}
-      title={
+      heading={
         <View className="min-w-0 flex-row items-center gap-2 py-1">
           <HeaderMark chat={chat} working={working} />
           <TitleText title={chat.title} line={<SublineText line={line} />} />
@@ -307,53 +299,66 @@ export function ChatHeader({
               onPress={panel.toggle}
             />
           ) : null}
+          <ChatHeaderMenu chatId={chat.id} />
         </>
       }
-    />
+    >
+      {children}
+    </ChatPane>
   );
 }
 
-export function ChatHistoryHeader({
+export function ChatHistoryShell({
   title,
   back,
   leading,
+  banner,
+  children,
 }: {
   readonly title: string;
   readonly back: boolean;
-  readonly leading: readonly HeaderAction[];
+  readonly leading: readonly ShellAction[];
+  readonly banner: ReactNode;
+  readonly children: ReactNode;
 }): ReactNode {
   return (
-    <Frame
+    <ChatPane
+      title={title}
       back={back}
       leading={leading}
-      trailing={null}
-      menu={null}
-      title={
-        <Text variant="title-3" numberOfLines={1} role="heading" aria-level={1} className="px-1">
+      heading={
+        <Text variant="title-3" numberOfLines={1} role="heading" aria-level={1}>
           {title}
         </Text>
       }
-    />
+      trailing={null}
+      banner={banner}
+    >
+      {children}
+    </ChatPane>
   );
 }
 
-export function DraftHeader({
+export function DraftShell({
   engine,
   back,
   leading = [],
+  children,
 }: {
   readonly engine: Engine;
   readonly back: boolean;
-  readonly leading?: readonly HeaderAction[];
+  readonly leading?: readonly ShellAction[];
+  readonly children: ReactNode;
 }): ReactNode {
   const model = useChatModel(engine);
   const compact = useSizeClass().width === 'compact';
   return (
-    <Frame
+    <ChatPane
+      title="New chat"
       back={back}
       leading={leading}
-      menu={<PageSettingsButton settings={mainPageSettings('assistant')} />}
-      title={
+      settings={mainPageSettings('assistant')}
+      heading={
         <View className="min-w-0 flex-row items-center gap-2 py-1">
           <View aria-hidden className="size-8 items-center justify-center">
             <AssistantOrb state="idle" size={MARK_SIZE} />
@@ -374,6 +379,8 @@ export function DraftHeader({
           <CallAction chatId={null} />
         </>
       }
-    />
+    >
+      {children}
+    </ChatPane>
   );
 }

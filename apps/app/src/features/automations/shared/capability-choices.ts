@@ -1,7 +1,6 @@
 import {
   numberPresets,
   pickableControls,
-  presentDevice,
   type DeviceCapability,
   type JsonValue,
   type ValueDescriptor,
@@ -20,17 +19,6 @@ export function isWritable(capability: DeviceCapability): boolean {
 
 export function writableCapabilities(device: DeviceLike): DeviceCapability[] {
   return pickableControls(device).map((presented) => presented.capability);
-}
-
-const SCENE_TIERS: ReadonlySet<string> = new Set(['primary', 'control']);
-
-export function sceneCapabilities(device: DeviceLike): DeviceCapability[] {
-  const allowed = new Set(writableCapabilities(device).map((capability) => capability.key));
-  return presentDevice(device)
-    .capabilities.filter(
-      (presented) => SCENE_TIERS.has(presented.tier) && allowed.has(presented.capability.key),
-    )
-    .map((presented) => presented.capability);
 }
 
 const DEFAULT_COLOUR = { hue: 32, saturation: 52, value: 100 } as const;

@@ -113,7 +113,7 @@ export interface CommandInsert {
   readonly deviceId: string | null;
   readonly capability: CapabilityKey;
   readonly value: JsonValue;
-  readonly source: 'automation' | 'scene';
+  readonly source: 'automation';
 }
 
 export type CommandOutcome =

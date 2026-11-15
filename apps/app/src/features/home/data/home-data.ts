@@ -1,6 +1,5 @@
-import { createContext, use, useLayoutEffect, useState } from 'react';
+import { createContext, use, useLayoutEffect, useMemo, useState } from 'react';
 import { usePausable } from '../../../design/external-store';
-import type { SceneRow } from '@smarteverything/domain';
 import { DAY_MS, localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useAvailability, useRows, useSession, useSettings } from '../../../store/selectors';
@@ -22,6 +21,7 @@ import { powerOf, samePower, type PowerUse } from '../model/power';
 import { roomSummaries, sameRooms, type RoomSummary } from '../model/rooms';
 import { sameSecurity, securityLines, type SecurityLine } from '../model/security';
 import { homeSummary, type HomeSummary } from '../model/summary';
+import { byHandOf, type ByHand } from '../../automations';
 
 const HOME_METRICS: readonly ComfortMetric[] = ['temperature', 'humidity', 'pm25', 'co2'];
 
@@ -32,7 +32,7 @@ export interface HomeData {
   readonly rooms: readonly RoomSummary[];
   readonly cameras: readonly CameraEntry[];
   readonly activity: readonly ActivityItem[];
-  readonly scenes: readonly SceneRow[];
+  readonly byHand: readonly ByHand[];
   readonly security: readonly SecurityLine[];
   readonly fitness: FitnessDay | null;
   readonly scale: boolean;
@@ -76,8 +76,9 @@ export function useHomeSecurity(): readonly SecurityLine[] {
   return useStoreSelector(securityLines, sameSecurity);
 }
 
-export function useHomeScenes(): readonly SceneRow[] {
-  return useRows('scenes');
+export function useHomeByHand(): readonly ByHand[] {
+  const automations = useRows('automations');
+  return useMemo(() => byHandOf(automations), [automations]);
 }
 
 export function useHomeFitness(): FitnessDay | null {
@@ -95,7 +96,7 @@ export function useHomeData(): HomeData {
     rooms: useHomeRooms(),
     cameras,
     activity: useActivity(),
-    scenes: useHomeScenes(),
+    byHand: useHomeByHand(),
     security: useHomeSecurity(),
     fitness: useHomeFitness(),
     scale: useHasScale(),
@@ -111,7 +112,7 @@ export const NO_HOME_DATA: HomeView = {
   rooms: [],
   cameras: [],
   activity: [],
-  scenes: [],
+  byHand: [],
   security: [],
   fitness: null,
   scale: false,
@@ -198,7 +199,7 @@ export function unspotlighted(
 
 export function availableWidgets(data: HomeView): ReadonlySet<string> {
   const entries: readonly (readonly [string, boolean])[] = [
-    ['scenes', data.scenes.length > 0],
+    ['automations', true],
     [
       'favourites',
       unspotlighted(data.favourites, data.spotlighted).length >=

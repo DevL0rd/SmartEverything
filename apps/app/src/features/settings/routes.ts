@@ -15,6 +15,7 @@ const PAGES = [
   'photos',
   'photos/backup',
   'photos/duplicates',
+  'photos/smart',
   'about',
   'about/licences',
   'about/privacy',

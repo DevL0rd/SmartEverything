@@ -154,7 +154,6 @@ function controlState(change: Partial<DesktopDriveState> = {}): DesktopDriveStat
     mount: null,
     sync: SYNC,
     fuse: { available: true },
-    firstRun: { pending: false, defaultParent: '/home/u/SmartEverything' },
     cache: DEFAULT_DESKTOP_DRIVE_CACHE,
     ...change,
   };
@@ -223,9 +222,9 @@ describe('drive tray link to the Computer service', () => {
     const stop = link.follow({ sync, mount });
     expect(sync).toHaveBeenLastCalledWith({ status: 'Up to date', paused: false });
     expect(mount).toHaveBeenLastCalledWith(null);
-    emit(controlState({ mount: { status: 'Mounted', mounted: true }, sync: null }));
+    emit(controlState({ mount: { status: 'Mounted', mounted: true, points: [] }, sync: null }));
     expect(sync).toHaveBeenLastCalledWith(null);
-    expect(mount).toHaveBeenLastCalledWith({ status: 'Mounted', mounted: true });
+    expect(mount).toHaveBeenLastCalledWith({ status: 'Mounted', mounted: true, points: [] });
     emit(null);
     expect(sync).toHaveBeenLastCalledWith(null);
     expect(mount).toHaveBeenLastCalledWith(null);

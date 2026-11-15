@@ -20,6 +20,7 @@ import { PRESENCE_DAYS, healthKeys, olderDailyQuery, sightingsSince } from './qu
 import { seriesReads } from './series';
 import { LIST_TYPES } from './workout-list';
 
+vi.mock('../../watches', () => ({ useMyLiveToday: (): never[] => [] }));
 vi.mock('./reads', () => ({
   readSightings: vi.fn(() =>
     Promise.resolve([

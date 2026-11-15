@@ -83,7 +83,7 @@ export const ROUTER_MODEL: ModelSpec = {
   title: 'Wi-Fi router',
   category: 'network',
   family: 'router',
-  footprint: { width: W, depth: D, height: HEIGHT },
+  footprint: { width: 0.2504, depth: 0.177, height: 0.1878 },
   framing: house('shell', 30, 18),
   shots: [shot('busy', BUSY, 'lights', { zoom: 1.5, yaw: 16, pitch: 10, loopS: 2, stillAt: 1 })],
   meta: {

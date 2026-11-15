@@ -2,18 +2,21 @@ import {
   failedBecause,
   hubUpdateFinished,
   HUB_UNIT,
+  HUB_UPDATE_WAITING,
   type HubUpdateRelease,
 } from '@smarteverything/domain';
 import { dirname, join } from 'node:path';
 import { withHubReleaseLock } from '../apps/hub/src/self-update/release-lock.ts';
 import {
+  awaitDecision,
   captureBackup,
   cleanVerifiedBackup,
   checksOf,
+  clearReport,
   current,
   ledgerOf,
   message,
-  revert,
+  rollBack,
   transition,
   verifyNew,
   type Flow,
@@ -25,9 +28,12 @@ import { assertStandaloneHubUnit } from './release-hub-verify.ts';
 import { flowOf } from './self-update-watchdog-live.ts';
 import { dataLayoutOf } from './release-hub-files.ts';
 
-async function failed(flow: Flow, verdict: Verdict): Promise<HubUpdateRelease> {
-  transition(flow, 'verifying', { failedChecks: verdict.checks.filter((check) => !check.ok) });
-  return await revert(flow, `the new release failed its checks: ${failedBecause(verdict.checks)}`);
+function failed(flow: Flow, verdict: Verdict): HubUpdateRelease {
+  return awaitDecision(
+    flow,
+    `the new release failed its checks: ${failedBecause(verdict.checks)}`,
+    verdict.checks.filter((check) => !check.ok),
+  );
 }
 
 async function hold(flow: Flow, initial: Verdict): Promise<Verdict> {
@@ -46,7 +52,7 @@ async function hold(flow: Flow, initial: Verdict): Promise<Verdict> {
 async function kept(flow: Flow): Promise<HubUpdateRelease> {
   const expected = flow.options.expectedSchema;
   const verdict = await hold(flow, await verifyNew(flow, expected));
-  if (!verdict.ok) return await failed(flow, verdict);
+  if (!verdict.ok) return failed(flow, verdict);
 
   flow.storage.makeDirectory(dirname(flow.options.health));
   flow.storage.write(flow.options.health, 'healthy\n');
@@ -57,6 +63,7 @@ async function kept(flow: Flow): Promise<HubUpdateRelease> {
     changedDatabase: flow.health.schema(flow.options.database) !== flow.options.startingSchema,
     failedChecks: [],
   });
+  clearReport(flow);
   cleanVerifiedBackup(flow);
   return release;
 }
@@ -99,6 +106,18 @@ async function backupOrResume(flow: Flow, release: HubUpdateRelease): Promise<Hu
   }
 }
 
+async function run(flow: Flow, release: HubUpdateRelease): Promise<HubUpdateRelease> {
+  try {
+    if (release.phase === 'backed_up') await apply(flow, release);
+    if (release.phase !== 'verifying') flow.units.act('start', HUB_UNIT);
+    transition(flow, 'verifying');
+    return await kept(flow);
+  } catch (cause) {
+    flow.note('hub_update.guard', { reason: message(cause) });
+    return awaitDecision(flow, `the update failed: ${message(cause)}`, []);
+  }
+}
+
 async function finishPrepared(flow: Flow, release: HubUpdateRelease): Promise<HubUpdateRelease> {
   if (release.phase === 'built') {
     try {
@@ -111,36 +130,60 @@ async function finishPrepared(flow: Flow, release: HubUpdateRelease): Promise<Hu
   }
   const ready = await backupOrResume(flow, release);
   if (hubUpdateFinished(ready)) return ready;
-  try {
-    if (ready.phase === 'backed_up') await apply(flow, ready);
-    if (ready.phase !== 'verifying') flow.units.act('start', HUB_UNIT);
-    transition(flow, 'verifying');
-    return await kept(flow);
-  } catch (cause) {
-    flow.note('hub_update.guard', { reason: message(cause) });
-    return await revert(flow, `the update failed: ${message(cause)}`);
+  return await run(flow, ready);
+}
+
+const DECIDED: ReadonlySet<HubUpdateRelease['phase']> = new Set([
+  'awaiting_decision',
+  'unrecoverable',
+]);
+
+async function orderedRollback(flow: Flow, release: HubUpdateRelease): Promise<HubUpdateRelease> {
+  if (DECIDED.has(release.phase) && release.backup !== null) return await rollBack(flow, release);
+  flow.note('hub_update.rollback_refused', { runId: release.runId, phase: release.phase });
+  return release;
+}
+
+function orderedKeep(flow: Flow, release: HubUpdateRelease): HubUpdateRelease {
+  if (release.phase !== 'awaiting_decision') {
+    flow.note('hub_update.keep_refused', { runId: release.runId, phase: release.phase });
+    return release;
   }
+  flow.note('hub_update.kept', { runId: release.runId });
+  const kept = transition(flow, 'kept', {
+    reason: `the owner kept the new release as it is${release.reason === null ? '' : ` after: ${release.reason}`}`,
+  });
+  clearReport(flow);
+  return kept;
 }
 
-function recoveryReason(flow: Flow, release: HubUpdateRelease): string | null {
-  if (release.phase === 'unrecoverable' && flow.options.retryUnrecoverable)
-    return release.reason ?? 'retrying the recorded backup restoration';
-  if (release.phase === 'applying' || release.phase === 'reverting')
-    return release.reason ?? 'the update stopped while replacing the service';
-  return null;
-}
-
-export async function handle(flow: Flow): Promise<HubUpdateRelease> {
-  const release = current(flow);
-  const reason = recoveryReason(flow, release);
-  if (reason !== null) return await revert(flow, reason);
-  if (hubUpdateFinished(release)) {
+async function watched(flow: Flow, release: HubUpdateRelease): Promise<HubUpdateRelease> {
+  if (release.phase === 'applying')
+    return awaitDecision(
+      flow,
+      release.reason ?? 'the update stopped while replacing the service',
+      release.failedChecks,
+    );
+  if (hubUpdateFinished(release) || HUB_UPDATE_WAITING.has(release.phase)) {
     if (release.phase === 'done' || release.phase === 'reverted') cleanVerifiedBackup(flow);
     return release;
   }
   if (release.phase === 'planned' || (release.phase === 'built' && release.backup === null))
     return transition(flow, 'failed', { reason: 'the update stopped before a backup was ready' });
   return await finishPrepared(flow, release);
+}
+
+export async function handle(flow: Flow): Promise<HubUpdateRelease> {
+  const release = current(flow);
+  const { order } = flow.options;
+  if (order === 'rollback') return await orderedRollback(flow, release);
+  if (order === 'keep') return orderedKeep(flow, release);
+  if (
+    order === 'recover' &&
+    (release.phase === 'awaiting_decision' || release.phase === 'applying')
+  )
+    return await run(flow, { ...release, phase: 'backed_up' });
+  return await watched(flow, release);
 }
 
 export async function resume(text: string): Promise<void> {

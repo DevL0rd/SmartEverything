@@ -13,11 +13,13 @@ import { describe, expect, it } from 'vitest';
 import { clock } from '../../../format/time';
 import {
   briefingLinesOf,
+  clockPartsOf,
   greetingOf,
   ringDueOf,
   ringStateOf,
   ringSubjectOf,
   snoozeLabelOf,
+  snoozesLeftOf,
   todayRowsOf,
   weatherLineOf,
 } from './ring-model';
@@ -61,12 +63,15 @@ const ALARM_ROW = PLANNER_ALARM_ROW.parse({
   once_on: null,
   skip_on: null,
   enabled: true,
-  sound: 'dawn',
+  sound: { kind: 'tone', id: 'dawn' },
   ramp_seconds: 30,
   vibrate: true,
   snooze_minutes: 9,
+  snooze_limit: 3,
+  challenge: { kind: 'maths', difficulty: 'easy', count: 2 },
+  sunrise: null,
   smart_minutes: null,
-  wake_scene_id: null,
+  wake_automation_id: null,
   wake_lead_minutes: null,
   targets: [],
   watch: [],
@@ -156,11 +161,15 @@ describe('ring lookup', () => {
   });
 
   it('names each state of the ring screen', () => {
-    const base = { ringId: RING, due: DUE, failed: false, now: NOW };
+    const base = { ringId: RING, due: DUE, failed: false, now: NOW, local: null };
     expect(ringStateOf({ ...base, rows: [ring()] }).kind).toBe('ringing');
     expect(ringStateOf({ ...base, rows: undefined }).kind).toBe('loading');
     expect(ringStateOf({ ...base, due: null, rows: [] }).kind).toBe('missing');
     expect(ringStateOf({ ...base, rows: [] }).kind).toBe('missing');
+    expect(ringStateOf({ ...base, ringId: null, due: null, rows: [] }).kind).toBe('missing');
+    expect(ringStateOf({ ...base, ringId: undefined, due: undefined, rows: [] }).kind).toBe(
+      'loading',
+    );
     expect(ringStateOf({ ...base, failed: true, rows: undefined }).kind).toBe('unreachable');
     expect(ringStateOf({ ...base, rows: [ring({ dismissed_at: DUE })] }).kind).toBe('stopped');
     expect(
@@ -186,6 +195,27 @@ describe('ring lookup', () => {
   });
 });
 
+describe('phone ringing on its own', () => {
+  const local = { key: `alarm:${ALARM}`, kind: 'alarm', refId: ALARM } as const;
+  const base = { ringId: RING, due: DUE, now: NOW, local };
+
+  it('shows the phone ring when the hub cannot find it, cannot be reached or calls it stopped', () => {
+    expect(ringStateOf({ ...base, failed: true, rows: undefined })).toEqual({
+      kind: 'local',
+      local,
+    });
+    expect(ringStateOf({ ...base, failed: false, rows: [] }).kind).toBe('local');
+    expect(ringStateOf({ ...base, failed: false, rows: undefined }).kind).toBe('local');
+    expect(ringStateOf({ ...base, failed: false, rows: [ring({ dismissed_at: DUE })] }).kind).toBe(
+      'local',
+    );
+  });
+
+  it('keeps the hub ring while the hub has it ringing or snoozed', () => {
+    expect(ringStateOf({ ...base, failed: false, rows: [ring()] }).kind).toBe('ringing');
+  });
+});
+
 describe('ring subject', () => {
   const refs = { alarms: [ALARM_ROW], timers: [TIMER_ROW], items: [] };
 
@@ -195,11 +225,18 @@ describe('ring subject', () => {
       label: 'Wake up',
       icon: 'alarmClock',
       snooze: { kind: 'alarm', minutes: 9 },
+      limit: 3,
+      challenge: { kind: 'maths', difficulty: 'easy', count: 2 },
+      sound: { kind: 'tone', id: 'dawn' },
     });
-    expect(alarm.snooze === null ? null : snoozeLabelOf(alarm.snooze)).toBe('Snooze 9 min');
-    const timer = ringSubjectOf(ring({ kind: 'timer', ref_id: TIMER }), refs);
+    expect(alarm.snooze === null ? null : snoozeLabelOf(alarm.snooze, null)).toBe('Snooze 9 min');
+    expect(alarm.snooze === null ? null : snoozeLabelOf(alarm.snooze, 2)).toBe(
+      'Snooze 9 min · 2 left',
+    );
+    const timer = ringSubjectOf({ kind: 'timer', ref_id: TIMER }, refs);
     expect(timer.label).toBe('Pasta');
-    expect(timer.snooze === null ? null : snoozeLabelOf(timer.snooze)).toBe('Add 1 min');
+    expect(timer.challenge).toEqual({ kind: 'none' });
+    expect(timer.snooze === null ? null : snoozeLabelOf(timer.snooze, null)).toBe('Add 1 min');
   });
 
   it('offers no snooze when the alarm is gone', () => {
@@ -207,7 +244,30 @@ describe('ring subject', () => {
       label: 'Alarm',
       icon: 'alarmClock',
       snooze: null,
+      limit: null,
+      challenge: { kind: 'none' },
+      sound: null,
     });
+  });
+});
+
+describe('snoozes left', () => {
+  it('counts down from the limit with the snoozes the hub saw', () => {
+    expect(snoozesLeftOf(null, 4, null)).toBeNull();
+    expect(snoozesLeftOf(3, 1, null)).toBe(2);
+    expect(snoozesLeftOf(3, 5, null)).toBe(0);
+  });
+
+  it('trusts the phone count while the phone is ringing it', () => {
+    expect(snoozesLeftOf(3, 0, { ringing: true, snoozesLeft: 1 })).toBe(1);
+    expect(snoozesLeftOf(3, 0, { ringing: false, snoozesLeft: 1 })).toBe(3);
+  });
+});
+
+describe('ring clock', () => {
+  it('splits the day period off so the digits can be drawn large', () => {
+    expect(clockPartsOf('07:05')).toEqual({ digits: '07:05', period: null });
+    expect(clockPartsOf('7:05\u202fAM')).toEqual({ digits: '7:05', period: 'AM' });
   });
 });
 

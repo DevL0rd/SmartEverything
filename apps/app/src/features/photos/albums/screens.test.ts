@@ -20,6 +20,8 @@ const TRIP: Trip = {
   perDay: [{ day: '2026-11-03', count: 1 }],
 };
 
+const ME = 'a1b2c3d4-0000-4000-8000-000000000066';
+
 function albumOf(kind: DriveAlbum['kind']): DriveAlbum {
   return DRIVE_ALBUM.parse({
     id: 'a1b2c3d4-0000-4000-8000-000000000005',
@@ -41,14 +43,28 @@ function albumOf(kind: DriveAlbum['kind']): DriveAlbum {
 describe('albums screens', () => {
   it('keeps Edit rules on the rule line and offers Rename only for manual albums', () => {
     const noop = (): void => undefined;
-    expect(actionsOf(null, noop, noop)).toStrictEqual([]);
-    expect(actionsOf(albumOf('smart'), noop, noop).map((action) => action.label)).toStrictEqual([
-      'Delete album',
-    ]);
-    expect(actionsOf(albumOf('manual'), noop, noop).map((action) => action.label)).toStrictEqual([
-      'Rename',
-      'Delete album',
-    ]);
+    expect(actionsOf(null, ME, noop, noop)).toStrictEqual([]);
+    expect(actionsOf(albumOf('smart'), ME, noop, noop).map((action) => action.label)).toStrictEqual(
+      ['Delete album'],
+    );
+    expect(
+      actionsOf(albumOf('manual'), ME, noop, noop).map((action) => action.label),
+    ).toStrictEqual(['Rename', 'Delete album']);
+  });
+
+  it('offers no rename or delete on an album someone else shared with the person', () => {
+    const noop = (): void => undefined;
+    const shared = DRIVE_ALBUM.parse({
+      ...albumOf('manual'),
+      scope: 'person',
+      ownerProfileId: 'a1b2c3d4-0000-4000-8000-000000000077',
+    });
+    expect(actionsOf(shared, ME, noop, noop)).toStrictEqual([]);
+    expect(
+      actionsOf(shared, 'a1b2c3d4-0000-4000-8000-000000000077', noop, noop).map(
+        (action) => action.label,
+      ),
+    ).toStrictEqual(['Rename', 'Delete album']);
   });
 
   it('keeps New album as the one primary next to New smart album', () => {

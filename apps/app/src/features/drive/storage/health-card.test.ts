@@ -22,9 +22,9 @@ function health(patch: Partial<Record<keyof DriveHealth, unknown>>): DriveHealth
 
 describe('Drive health', () => {
   it('rings the checked share after a clean scrub', () => {
-    expect(scrubViewOf(health({}), NOW)).toEqual({
+    expect(scrubViewOf(health({}), NOW, {})).toEqual({
       title: 'Scrub · 3 d ago',
-      detail: `${percent(0.8)} of files checked · no damaged files`,
+      detail: `${percent(0.8)} of files read back · nothing damaged or unreadable`,
       ring: 0.8,
       colour: 'positive',
     });
@@ -37,9 +37,10 @@ describe('Drive health', () => {
         scrub: { state: 'idle', lastFinishedAt: '2026-11-07T11:00:00.000Z', corrupt: 2 },
       }),
       NOW,
+      {},
     );
     expect(view.colour).toBe('critical');
-    expect(view.detail).toContain('2 damaged files');
+    expect(view.detail).toContain('2 files damaged or unreadable');
   });
 
   it('follows a running scrub by files checked', () => {
@@ -54,16 +55,64 @@ describe('Drive health', () => {
         },
       }),
       NOW,
+      {},
     );
-    expect(view).toMatchObject({ title: 'Scrubbing now', ring: 0.25, colour: 'info' });
+    expect(view).toMatchObject({
+      title: 'Scrubbing now',
+      detail: 'Reading every file back from the disk',
+      ring: 0.25,
+      colour: 'info',
+    });
+  });
+
+  it('follows the live scrub progress ahead of the last health answer', () => {
+    const running = health({
+      scrub: {
+        state: 'running',
+        startedAt: '2026-11-07T11:00:00.000Z',
+        checked: 25,
+        total: 100,
+        corrupt: 0,
+      },
+    });
+    const live = { root: { scrub: { done: 60, total: 100 } } };
+    expect(scrubViewOf(running, NOW, live).ring).toBe(0.6);
+  });
+
+  it('keeps the stopped point of a stopped scrub', () => {
+    const view = scrubViewOf(
+      health({
+        scrub: {
+          state: 'stopped',
+          startedAt: '2026-11-07T11:00:00.000Z',
+          checked: 40,
+          total: 100,
+          corrupt: 1,
+        },
+      }),
+      NOW,
+      { root: { scrub: { done: 90, total: 100 } } },
+    );
+    expect(view).toMatchObject({
+      title: `Scrub stopped at ${percent(0.4)}`,
+      ring: 0.4,
+      colour: 'warning',
+    });
   });
 
   it('says the drives were never scrubbed', () => {
     const view = scrubViewOf(
       health({ verifiedShare: 0, scrub: { state: 'idle', lastFinishedAt: null, corrupt: 0 } }),
       NOW,
+      {},
     );
-    expect(view).toMatchObject({ title: 'Never scrubbed', ring: 0, colour: 'track' });
+    expect(view).toMatchObject({
+      title: 'Never scrubbed',
+      detail:
+        'Reads every file back from the disk and checks it against its stored fingerprint, so damage on the disk is found',
+      ring: 0,
+      colour: 'track',
+    });
   });
 
   it('lists damage, drives ready, the watcher and the last backup', () => {

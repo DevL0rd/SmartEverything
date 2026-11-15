@@ -76,7 +76,6 @@ type HomeResolver = (home: HomeData, context: OptionContext) => OptionResult;
 const HOME_RESOLVERS: Partial<Record<OptionSourceId, HomeResolver>> = {
   rooms: (home) => ready(named(home.rooms)),
   groups: (home) => ready(named(home.groups)),
-  scenes: (home) => ready(named(home.scenes)),
   people: (home) => ready(named(home.people)),
   computers: (home) => ready(computersOf(home.devices)),
   voices: () => ready(plain(SPEECH_VOICES)),

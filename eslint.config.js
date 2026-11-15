@@ -184,6 +184,11 @@ export default tseslint.config(
             'Svg ignores className on Android; wrap it in a View that carries the layout classes.',
         },
         {
+          selector: "ImportSpecifier[imported.name='useWindowDimensions']",
+          message:
+            'useWindowDimensions re-renders paused screens on every resize. Use useWindowSize from design/size-class.',
+        },
+        {
           selector: 'Literal[value=/(^|\\s|:)-?[a-z][a-z0-9-]*-\\[[^\\]]+\\]/]',
           message:
             'Arbitrary Tailwind values are forbidden; use a design token or the spacing scale.',
@@ -319,6 +324,7 @@ export default tseslint.config(
     files: [
       'apps/app/src/features/cameras/player/video-surface.web.tsx',
       'apps/app/src/features/drive/quick-look/media-player.web.tsx',
+      'apps/app/src/features/files/quick-look/media-player.web.tsx',
     ],
     rules: { 'jsx-a11y/media-has-caption': 'off' },
   },

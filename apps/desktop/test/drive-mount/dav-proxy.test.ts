@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { createServer, request, type IncomingHttpHeaders, type Server } from 'node:http';
+import { createServer, get, request, type IncomingHttpHeaders, type Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startDavProxy, type DavProxy } from '../../src/drive-mount/dav-proxy.js';
 
@@ -285,6 +285,86 @@ describe('loopback WebDAV proxy', () => {
     const response = await fetch(`${stack.sessionUrl}x`, { method: 'PROPFIND' });
     expect(response.status).toBe(502);
   });
+
+  it('streams a multi-gigabyte PUT to the hub and a multi-gigabyte GET back without refusing or buffering it', async () => {
+    const GIB = 1024 ** 3;
+    const piece = Buffer.alloc(4 * 1024 * 1024);
+    const total = 3 * GIB;
+    let uploaded = 0;
+    const hub = createServer((req, res) => {
+      if (req.method === 'PUT') {
+        req.on('data', (chunk: Buffer) => {
+          uploaded += chunk.length;
+        });
+        req.on('end', () => {
+          res.writeHead(204, { 'content-length': 0 });
+          res.end();
+        });
+        return;
+      }
+      res.writeHead(200, { 'content-length': total, 'content-type': 'application/octet-stream' });
+      let sent = 0;
+      const push = (): void => {
+        while (sent < total) {
+          sent += piece.length;
+          if (!res.write(piece)) {
+            res.once('drain', push);
+            return;
+          }
+        }
+        res.end();
+      };
+      push();
+    });
+    hub.listen(0, '127.0.0.1');
+    await once(hub, 'listening');
+    const address = hub.address();
+    if (address === null || typeof address === 'string') throw new Error('hub is not TCP');
+    const proxy = await startDavProxy({
+      hubOrigin: `http://127.0.0.1:${String(address.port)}`,
+      rootId: ROOT,
+      token: TOKEN,
+    });
+    stacks.push({ hub, seen: [], proxy, sessionUrl: proxy.url, reply: () => undefined });
+    const put = await new Promise<number>((resolve, reject) => {
+      const req = request(
+        `${proxy.url}big.bin`,
+        { method: 'PUT', headers: { 'content-length': total } },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        },
+      );
+      req.on('error', reject);
+      let sent = 0;
+      const push = (): void => {
+        while (sent < total) {
+          sent += piece.length;
+          if (!req.write(piece)) {
+            req.once('drain', push);
+            return;
+          }
+        }
+        req.end();
+      };
+      push();
+    });
+    expect(put).toBe(204);
+    expect(uploaded).toBe(total);
+    const read = await new Promise<number>((resolve, reject) => {
+      get(`${proxy.url}big.bin`, (res) => {
+        let bytes = 0;
+        res.on('data', (chunk: Buffer) => {
+          bytes += chunk.length;
+        });
+        res.on('end', () => {
+          resolve(bytes);
+        });
+        res.on('error', reject);
+      }).on('error', reject);
+    });
+    expect(read).toBe(total);
+  }, 120_000);
 
   it('stops listening when stopped', async () => {
     const stack = await startStack();

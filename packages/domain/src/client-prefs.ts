@@ -417,6 +417,7 @@ export const CLIENT_PREF_KEYS: readonly ClientPrefKey[] = [
   'photos',
   'photos_backup',
   'drive_hints',
+  'drive_notifications',
 ];
 
 export const RESERVED_LAYOUT_KEYS: ReadonlySet<string> = new Set(

@@ -1,6 +1,7 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { plannerPreferencesOf } from '../../planner/preferences';
 import { bound, type RouteOf } from '../router';
+import { requireTargets } from './planner-alarm-checks';
 import { plannerProfileOf, type PlannerContext } from './planner-items';
 
 export type PreferencesChanged = (profileId: string) => void;
@@ -12,6 +13,7 @@ function writeRoute(
   const { store } = context;
   return bound(E.writePlannerPreferences, ({ query, body, caller }) => {
     const profileId = plannerProfileOf(context, caller, query.personId);
+    requireTargets(store, body.clock.targets);
     const saved = store.write(() => {
       if (body.tasks.default_collection_id !== null) {
         store.plannerCollections.byId(body.tasks.default_collection_id, profileId);

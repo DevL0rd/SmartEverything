@@ -22,20 +22,36 @@ export interface ComposerKeyPress {
 
 const COMPOSER_KEY = 'n';
 
+const SEARCH_KEY = '/';
+
 const PLANNER_SECTION_KIND: Readonly<Record<PlannerSection, ComposerKind | null>> = {
   index: null,
   tasks: 'task',
   calendar: 'event',
   insights: null,
+  booking: null,
 };
 
 export function plannerComposerKindOf(section: PlannerSection): ComposerKind | null {
   return PLANNER_SECTION_KIND[section];
 }
 
+export function isTextEntry(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
 export function opensComposer(press: ComposerKeyPress, editing: boolean): boolean {
   if (editing || press.ctrlKey || press.metaKey || press.altKey) return false;
   return press.key.toLowerCase() === COMPOSER_KEY;
+}
+
+export function opensSearch(press: ComposerKeyPress, editing: boolean): boolean {
+  if (editing || press.ctrlKey || press.metaKey || press.altKey) return false;
+  return press.key === SEARCH_KEY;
 }
 
 export function useComposerControl(): ComposerControl {

@@ -48,7 +48,7 @@ const PARTS: ModelSpec['parts'] = [
 export const CEILING_ROUND_MODEL: ModelSpec = lightModel({
   id: 'dev.light.ceiling-round',
   title: 'Round ceiling light',
-  footprint: { width: 0.4034, depth: 0.4034, height: HEIGHT },
+  footprint: { width: 0.4034, depth: 0.4034, height: 0.085 },
   size: {
     width: { param: 'diameter', scale: 1.0085, extra: 0, resizes: true },
     depth: { param: 'diameter', scale: 1.0085, extra: 0, resizes: true },

@@ -236,6 +236,7 @@ export interface Map3dDomProps {
   readonly keepOut: readonly ChromeBox[];
   readonly insets: ViewInsets;
   readonly label: string;
+  readonly sharedRenderer?: boolean;
   readonly onReady: () => Promise<void>;
   readonly onPickRoom: (roomId: string | null) => Promise<void>;
   readonly onPickDevice?: (deviceId: string) => Promise<void>;

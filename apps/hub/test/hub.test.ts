@@ -313,11 +313,10 @@ describe('hub core on the SQLite store', () => {
     await hub.stop();
   });
 
-  it('reloads automations on real changes and on a new home location, not on scenes or run bookkeeping', async () => {
+  it('reloads automations on real changes and on a new home location, not on run bookkeeping', async () => {
     const { store, hub } = await start();
     const reload = vi.spyOn(hub.automationEngine, 'reload');
     const sync = vi.spyOn(hub.automationEngine, 'sync');
-    store.scenes.create({ name: 'Evening', icon: 'moon', actions: [], position: 0 });
     store.settings.updateHome({ home_name: 'Flat' });
     expect(sync).not.toHaveBeenCalled();
     store.settings.updateHome({ time_zone: 'Europe/Berlin' });
@@ -393,20 +392,14 @@ describe('hub core on the SQLite store', () => {
     await hub.stop();
   });
 
-  it('runs an automation by hand: feed note, scene, toggle, run bookkeeping and outputs', async () => {
+  it('runs an automation by hand: feed note, device change, toggle, run bookkeeping and outputs', async () => {
     const { store, fake, hub } = await start();
     const lamp = deviceId(store, 'lamp-1');
-    const scene = store.scenes.create({
-      name: 'Evening',
-      icon: 'moon',
-      actions: [{ type: 'command', deviceId: lamp, capability: 'brightness', value: 30 }],
-      position: 0,
-    });
     const automation = saveAutomation(store, {
       name: 'By hand',
       body: [
         node('notify.feed', { message: 'Hello' }),
-        node('scene.run', { scene: scene.id }),
+        node('device.set', { target: { device: lamp }, control: 'brightness', to: 30 }),
         node('device.toggle', { target: { device: lamp }, control: 'power' }),
       ],
     });

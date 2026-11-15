@@ -43,7 +43,7 @@ export const INKJET_PRINTER_MODEL: ModelSpec = {
   title: 'Inkjet printer',
   category: 'printer',
   family: 'printer',
-  footprint: { width: W, depth: D + 0.1, height: HEIGHT },
+  footprint: { width: 0.421, depth: 0.4127, height: 0.2522 },
   framing: house('body', 30, 22),
   shots: [
     shot('print', PRINTING, 'sheet', { zoom: 1.2, yaw: 16, pitch: 16, loopS: 3, stillAt: 1.5 }),

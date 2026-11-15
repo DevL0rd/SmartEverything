@@ -10,6 +10,8 @@ import type { TrashItem } from './trash-model';
 import type { TrashRowProps } from './trash-row';
 import type { TableTopProps } from './trash-table';
 import type { TrashView } from './use-trash';
+import { MINE, VIEWER_ID } from '../source/drive-fixture';
+import { trashNodeOf, type DriveNode } from '../source/drive-node';
 
 interface Seen {
   owner: boolean;
@@ -19,7 +21,8 @@ interface Seen {
   frame: DriveFrameProps | null;
   top: TableTopProps | null;
   rows: TrashRowProps[];
-  restored: (readonly TrashItem[])[];
+  picked: number;
+  selection: string[];
   removedAll: (readonly TrashItem[])[];
 }
 
@@ -38,7 +41,11 @@ const ITEM: TrashItem = {
   deleter: { kind: 'you' },
 };
 
-function viewOf(items: readonly TrashItem[], status: TrashView['status'] = 'ready'): TrashView {
+function viewOf(
+  items: readonly TrashItem[],
+  status: TrashView['status'] = 'ready',
+  mine = true,
+): TrashView {
   return {
     status,
     error: status === 'error' ? new Error('hub down') : null,
@@ -50,7 +57,32 @@ function viewOf(items: readonly TrashItem[], status: TrashView['status'] = 'read
     months: [],
     rootLabelOf: (rootId) => (rootId === ROOT_ID ? 'Projects' : null),
     chipOf: () => ({ key: 'mine', label: 'Projects', icon: 'hardDrive', tone: 'primary' }),
+    nodeOf: new Map(items.map((item): [string, DriveNode] => [item.id, nodeOf(item, mine)])),
   };
+}
+
+function nodeOf(item: TrashItem, mine: boolean): DriveNode {
+  const rights = {
+    owner: seen.owner,
+    viewerId: VIEWER_ID,
+    roots: mine ? [{ ...MINE, id: item.rootId }] : [],
+  };
+  return trashNodeOf(
+    {
+      itemId: item.id,
+      rootId: item.rootId,
+      name: item.name,
+      originalRelPath: [...item.folders, item.name].join('/'),
+      trashRelPath: `.trash/${item.name}`,
+      isFolder: item.isFolder,
+      bytes: item.bytes,
+      deletedAt: new Date(item.deletedAt).toISOString(),
+      purgeAt: '2027-11-01T10:00:00Z',
+      deletedBy: item.deleter.kind === 'you' ? VIEWER_ID : 'someone-else',
+      addedByProfileId: null,
+    },
+    rights,
+  );
 }
 
 const seen = vi.hoisted((): Seen => ({
@@ -68,11 +100,13 @@ const seen = vi.hoisted((): Seen => ({
     months: null,
     rootLabelOf: () => null,
     chipOf: () => ({ key: 'mine', label: 'My Drive', icon: 'hardDrive', tone: 'primary' }),
+    nodeOf: new Map(),
   },
   frame: null,
   top: null,
   rows: [],
-  restored: [],
+  picked: 0,
+  selection: [],
   removedAll: [],
 }));
 
@@ -108,7 +142,20 @@ vi.mock('../../../components/empty-state', () => ({
 vi.mock('../../../components/banner', () => ({
   Banner: ({ title }: { readonly title: string }): ReactNode => createElement('aside', {}, title),
 }));
-vi.mock('../../../components/files/selection-bar', () => ({ SelectionBar: text('picked') }));
+vi.mock('../source/drive-lists', () => ({
+  useDriveList: (): object => ({
+    picked: Array.from({ length: seen.picked }),
+    commands: {
+      clearSelection: (): void => {
+        seen.selection.push('clear');
+      },
+      selectAll: (): void => {
+        seen.selection.push('all');
+      },
+    },
+  }),
+  DriveListFrame: ({ children }: { readonly children: ReactNode }): ReactNode => children,
+}));
 vi.mock('./trash-filter', async (original) => ({
   ...(await original<object>()),
   get NO_FILTER(): TrashFilter {
@@ -119,10 +166,6 @@ vi.mock('./use-trash', () => ({ useTrash: (): TrashView => seen.view }));
 vi.mock('./trash-actions', () => ({
   useTrashActions: (): TrashActions => ({
     busy: false,
-    restore: (items): void => {
-      seen.restored.push(items);
-    },
-    deleteNow: (): void => undefined,
     deleteAll: (items): void => {
       seen.removedAll.push(items);
     },
@@ -180,7 +223,8 @@ describe('Trash screen', () => {
     seen.frame = null;
     seen.top = null;
     seen.rows = [];
-    seen.restored = [];
+    seen.picked = 0;
+    seen.selection = [];
     seen.removedAll = [];
   });
 
@@ -190,18 +234,22 @@ describe('Trash screen', () => {
     expect(seen.frame?.title).toBe('Trash');
     expect(seen.frame?.subtitle).toMatch(/^1 item · .+ · each item is kept a year, then deleted$/);
     expect(html).toContain('Old tile quote.pdf in Projects › Home › Kitchen remodel');
-    expect(html).not.toContain('picked');
   });
 
-  it('gives the owner Delete all now over the whole list and restores a single row', () => {
+  it('gives the owner Delete all now over the whole list and selects through the shared rows', () => {
     const html = render();
     expect(html).toContain('top with Delete all now');
     expect(html).toContain('Shared Drive trash is seen by everyone in the home');
     seen.top?.deleteAll?.onPress();
     expect(seen.removedAll).toEqual([[ITEM]]);
-    seen.rows[0]?.onRestore(ITEM);
-    expect(seen.restored).toEqual([[ITEM]]);
+    expect(seen.rows[0]?.node.key).toBe(ITEM.id);
     expect(seen.top?.pickState).toBe(false);
+    seen.top?.onToggleAll();
+    seen.picked = 1;
+    render();
+    expect(seen.top?.pickState).toBe(true);
+    seen.top?.onToggleAll();
+    expect(seen.selection).toEqual(['all', 'clear']);
     expect(seen.top?.layout).toBe('list');
     expect(seen.rows[0]?.layout).toBe('list');
   });
@@ -211,9 +259,8 @@ describe('Trash screen', () => {
     const html = render();
     expect(seen.top?.deleteAll).not.toBeNull();
     expect(html).toContain('In the Shared Drive you delete for good only what you deleted');
-    expect(seen.rows[0]?.disabled).toBe(false);
     seen.view = {
-      ...viewOf([{ ...ITEM, deleter: { kind: 'person', id: 'sam', name: 'Sam' } }]),
+      ...viewOf([{ ...ITEM, deleter: { kind: 'person', id: 'sam', name: 'Sam' } }], 'ready', false),
       chipOf: (): DriveChip => ({
         key: 'shared-drive',
         label: 'Shared Drive',
@@ -236,7 +283,6 @@ describe('Trash screen', () => {
     const html = render();
     expect(html).toContain('Offline · showing the last snapshot');
     expect(seen.top?.deleteAll?.disabled).toBe(true);
-    expect(seen.rows[0]?.disabled).toBe(true);
   });
 
   it('shows the empty, loading and error states without the table top', () => {
@@ -265,8 +311,19 @@ describe('Trash screen', () => {
     expect(html).toContain('Quotes in Projects');
     expect(html).not.toContain('Old tile quote.pdf');
     const row = seen.top?.filterRow;
-    expect(isValidElement<TrashFilterRowProps>(row) ? row.props.shown : null).toBe(1);
+    expect(isValidElement<TrashFilterRowProps>(row) ? row.props.filter.chip : null).toBe('folders');
+    expect(seen.frame?.search).toMatchObject({ placeholder: 'Find in trash', status: '1 of 2' });
     expect(seen.top?.pickState).toBe(false);
+  });
+
+  it('puts Find in trash in the shell search while trash holds items and leaves it out when empty', () => {
+    seen.view = viewOf([ITEM]);
+    render();
+    expect(seen.frame?.search).toMatchObject({ value: '', placeholder: 'Find in trash' });
+    expect(seen.frame?.search?.status).toBeUndefined();
+    seen.view = viewOf([]);
+    render();
+    expect(seen.frame?.search).toBeUndefined();
   });
 
   it('says nothing matches and keeps the table top when the filter hides every item', () => {

@@ -1,5 +1,6 @@
-import { createContext, use, type ReactNode } from 'react';
+import { use, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { KeyboardRootContext, LiftedContext } from './keyboard-contexts';
 import Animated, {
   measure,
   useAnimatedReaction,
@@ -8,13 +9,25 @@ import Animated, {
   useSharedValue,
   type AnimatedRef,
 } from 'react-native-reanimated';
-import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import { keyboardLift } from './keyboard-lift';
+import {
+  useKeyboardHandler,
+  useReanimatedKeyboardAnimation,
+} from 'react-native-keyboard-controller';
+import { scheduleOnRN } from 'react-native-worklets';
+import { Logger } from '@smarteverything/logging';
+import { keyboardLift, liftReport, type LiftReport } from './keyboard-lift';
+
+const log = new Logger('app.keyboard');
+
+function reportLift(report: LiftReport): void {
+  if (report.covered !== null && report.covered > 0) {
+    log.warn('keyboard.lift_short', { ...report });
+    return;
+  }
+  log.debug('keyboard.lift_settled', () => ({ ...report }));
+}
 
 type RootRef = AnimatedRef<Animated.View>;
-
-const KeyboardRootContext = createContext<RootRef | null>(null);
-const LiftedContext = createContext(false);
 
 class KeyboardRootMissingError extends Error {
   override readonly name = 'KeyboardRootMissingError';
@@ -56,6 +69,19 @@ function LiftedViewport({
     ({ keyboard }) => {
       lift.set(keyboard > 0 ? keyboardLift(keyboard, measure(ref), measure(root)) : 0);
     },
+  );
+  useKeyboardHandler(
+    {
+      onEnd: (event) => {
+        'worklet';
+        const keyboard = event.height;
+        const view = measure(ref);
+        const frame = measure(root);
+        const applied = keyboard > 0 ? keyboardLift(keyboard, view, frame) : 0;
+        scheduleOnRN(reportLift, liftReport(keyboard, view, frame, applied));
+      },
+    },
+    [],
   );
   const style = useAnimatedStyle(() => ({ paddingBottom: lift.get() }));
   return (

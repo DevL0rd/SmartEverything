@@ -1,14 +1,16 @@
 import { API_ENDPOINTS as E, type DriveItem } from '@smarteverything/domain';
 import { z } from 'zod';
+import { itemAccess } from '../../../drive/access';
 import { DrivePathError, openResolved, resolveInRoot } from '../../../drive/paths';
-import { operate, type OperatingContext } from './acting';
+import { requireExport } from '../../../drive/sharing/export-guard';
+import { operate, profileFor, type OperatingContext } from './acting';
 import { ToolError } from './registry';
 import { selection, SelectionImages, type Selection } from './selected-tool';
 
 const INLINE_BYTES_MAX = 4 * 1024 * 1024;
 const LOOKABLE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
-type DriveFile = Exclude<DriveItem, { readonly kind: 'folder' }>;
+type DriveFile = Extract<DriveItem, { readonly kind: 'image' }>;
 
 function lookable(item: DriveItem): DriveFile {
   if (item.kind !== 'image' || !LOOKABLE.has(item.mime)) {
@@ -52,6 +54,16 @@ export function attachToChat(): Selection {
         await operate(context, 'readItem', { params: { itemId: input.itemId } }, as),
       );
       const file = lookable(item);
+      const { store } = context;
+      requireExport(
+        itemAccess(
+          store,
+          { profileId: profileFor(context, as) },
+          store.driveRoots.byId(file.rootId),
+          file,
+        ),
+        file,
+      );
       const content = await bytesOf(context, file);
       return new SelectionImages(
         { itemId: file.id, name: file.name, mime: file.mime, bytes: file.bytes },

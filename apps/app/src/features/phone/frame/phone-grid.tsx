@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { CardGrid as KitCardGrid } from '../../../components/card-grid';
-import { gridColumnsOf } from '../../../components/frame-layout';
-import { useFrameBodyWidth } from '../../../components/section-body';
+import { gridColumnsOf } from '../../../components/page-shell/layout';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 
 function columnsOfBody(bodyWidth: number): 1 | 2 {
   return gridColumnsOf(bodyWidth) === 1 ? 1 : 2;

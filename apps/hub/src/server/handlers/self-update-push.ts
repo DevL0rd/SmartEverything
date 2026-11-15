@@ -9,7 +9,11 @@ const GITHUB_PUSH_LIMIT = 25 * 1024 * 1024;
 export interface PushIntake {
   readonly secret: () => Promise<string | null>;
   readonly target: () => Promise<PushTarget>;
-  readonly submit: (push: { readonly tip: string; readonly pushedFrom: string }) => Promise<string>;
+  readonly submit: (push: {
+    readonly tip: string;
+    readonly pushedFrom: string;
+    readonly paths: readonly string[] | null;
+  }) => Promise<string>;
 }
 
 export async function readPushSecret(file: string): Promise<string | null> {
@@ -59,7 +63,11 @@ export function updatePushRoute(intake: PushIntake): RawRoute {
         sendJson(response, 200, decision);
         return;
       }
-      const revisionId = await intake.submit({ tip: decision.tip, pushedFrom: decision.before });
+      const revisionId = await intake.submit({
+        tip: decision.tip,
+        pushedFrom: decision.before,
+        paths: decision.paths,
+      });
       sendJson(response, 202, { kind: 'queued', revisionId });
     },
   };

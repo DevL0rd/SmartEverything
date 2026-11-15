@@ -116,7 +116,11 @@ export class StoreContext {
   changedWithSequence<T extends LiveTable>(
     table: T,
     operation: RowOperation,
-    rows: { readonly record: TableRow<T> | null; readonly oldRecord: TableRow<T> | null },
+    rows: {
+      readonly record: TableRow<T> | null;
+      readonly oldRecord: TableRow<T> | null;
+      readonly guests?: readonly string[];
+    },
     onSequence?: (seq: number) => void,
   ): void {
     this.feed.emit({ type: 'change', table, operation, ...rows }, onSequence);

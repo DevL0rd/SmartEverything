@@ -5,11 +5,13 @@ import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import { ProgressBar, SegmentBar, type BarSegment } from '../../../components/charts';
 import type { IconName } from '../../../components/icon';
-import { NavRow } from '../../../components/rows';
-import type { FrameWidth } from '../../../components/section-body';
-import { TabsBar, type TabItem } from '../../../components/tabs-bar';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
+import type { RailGroup } from '../../../components/page-shell/section-rail';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import type { ShellSections } from '../../../components/page-shell/shell-sections';
 import { Text } from '../../../components/text';
-import { atLeast, useAreaWidth, useSizeClass } from '../../../design/size-class';
+import { useSizeClass } from '../../../design/size-class';
 import type { ColourRole } from '../../../design/tokens';
 import { bytes, count } from '../../../format/number';
 import { plural } from '../../../format/text';
@@ -24,14 +26,10 @@ import {
   useLibraryRefresh,
   useMyDrive,
   useSharedDrive,
+  useUnreadDriveNotifications,
   useViewerId,
 } from '../data';
-import {
-  LibraryFrame,
-  SummaryWell,
-  type LibrarySectionGroup,
-} from '../../../components/library-frame';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { SummaryWell } from '../../../components/library-frame';
 import { kindSegmentsOf } from '../model/item-kinds';
 import type { DriveSection } from '../model/section-routes';
 import { DriveHeaderStatus, useDriveHeader, type DriveHeaderProps } from './drive-header';
@@ -47,8 +45,8 @@ export interface DriveFrameProps extends DriveHeaderProps {
   readonly iconRail?: boolean;
   readonly banner?: ReactNode;
   readonly reconcileRootId?: string | null;
-  readonly width?: FrameWidth;
   readonly scroll?: boolean;
+  readonly search?: ShellSearchConfig;
   readonly children: ReactNode;
 }
 
@@ -70,11 +68,18 @@ export const DRIVE_SECTION_GROUPS: readonly GroupDef[] = [
       { id: 'index', label: 'My Drive', icon: 'hardDrive' },
       { id: 'shared-drive', label: 'Shared Drive', icon: 'users' },
       { id: 'shared', label: 'Shared with me', icon: 'share' },
+      { id: 'priority', label: 'Priority', icon: 'sparkles' },
       { id: 'recent', label: 'Recent', icon: 'history' },
       { id: 'starred', label: 'Starred', icon: 'star' },
     ],
   },
-  { title: 'Activity', sections: [{ id: 'activity', label: 'Activity', icon: 'activity' }] },
+  {
+    title: 'Activity',
+    sections: [
+      { id: 'notifications', label: 'Notifications', icon: 'bell' },
+      { id: 'activity', label: 'Activity', icon: 'activity' },
+    ],
+  },
   { title: 'Computers', sections: [{ id: 'computers', label: 'Computers', icon: 'laptop' }] },
   {
     title: 'Space',
@@ -86,6 +91,14 @@ export const DRIVE_SECTION_GROUPS: readonly GroupDef[] = [
 ];
 
 const SECTION_DEFS: readonly SectionDef[] = DRIVE_SECTION_GROUPS.flatMap((group) => group.sections);
+
+const PHONE_TABS: readonly DriveSection[] = [
+  'index',
+  'shared-drive',
+  'shared',
+  'recent',
+  'starred',
+];
 
 const SECTION_HREF: ReadonlyMap<string, AppHref> = new Map(
   SECTION_DEFS.map((def) => [def.id, def.id === 'index' ? href.drive() : href.drivePage(def.id)]),
@@ -117,6 +130,7 @@ export interface RailInputs {
   readonly sharedDrive: DriveRoot | null;
   readonly smartFolders: number;
   readonly sharedWithMe: number;
+  readonly unread: number;
   readonly computerProblems: number;
   readonly trash: CountUpTo;
   readonly sync: string | null;
@@ -147,6 +161,7 @@ export function driveRailOf(inputs: RailInputs): DriveRail {
     index: { count: null, detail: filesText(inputs.myDrive) },
     'shared-drive': { count: null, detail: filesText(inputs.sharedDrive) },
     shared: { count: badgeOf(inputs.sharedWithMe), detail: null },
+    notifications: { count: badgeOf(inputs.unread), detail: null },
     starred: {
       count: null,
       detail: inputs.smartFolders === 0 ? null : plural(inputs.smartFolders, 'smart folder'),
@@ -200,21 +215,26 @@ function detailOf(
   return text === null ? undefined : <DetailText text={text} />;
 }
 
+function countTextOf(value: number | string | null): string | undefined {
+  if (value === null) return undefined;
+  return typeof value === 'number' ? count(value) : value;
+}
+
 export function driveSectionGroupsOf(
   rail: DriveRail,
   space: SpaceMeter | null,
-): readonly LibrarySectionGroup[] {
+): readonly RailGroup[] {
   return DRIVE_SECTION_GROUPS.map((group) => ({
     title: group.title,
-    sections: group.sections.map((def) => {
+    entries: group.sections.map((def) => {
       const entry = rail[def.id];
-      const detail = detailOf(def.id, entry?.detail ?? null, space);
       return {
         id: def.id,
         label: def.label,
         icon: def.icon,
-        count: entry?.count ?? null,
-        ...(detail === undefined ? {} : { detail }),
+        missing: null,
+        detail: detailOf(def.id, entry?.detail ?? null, space) ?? null,
+        count: countTextOf(entry?.count ?? null),
       };
     }),
   }));
@@ -243,7 +263,7 @@ function useSpace(myDrive: DriveRoot | null, stats: DriveStats | undefined): Spa
   });
 }
 
-function useRailSections(stats: DriveStats | undefined): readonly LibrarySectionGroup[] {
+function useRailGroups(stats: DriveStats | undefined): readonly RailGroup[] {
   const viewerId = useViewerId();
   const myDrive = useMyDrive();
   const rail = driveRailOf({
@@ -251,6 +271,7 @@ function useRailSections(stats: DriveStats | undefined): readonly LibrarySection
     sharedDrive: useSharedDrive(),
     smartFolders: useDriveAlbums('drive').filter((album) => album.kind === 'smart').length,
     sharedWithMe: useDriveGrantRows().filter((grant) => grant.profileId === viewerId).length,
+    unread: useUnreadDriveNotifications(),
     computerProblems: useComputerProblems(),
     trash: useTrashCount(),
     sync: useDriveSyncSummary()?.line ?? null,
@@ -305,67 +326,67 @@ function DrivesWell({
   );
 }
 
-function PullUpFooter({
-  settings,
-  stats,
-  close,
-}: {
-  readonly settings: AppHref;
-  readonly stats: DriveStats | undefined;
-  readonly close: () => void;
-}): ReactNode {
-  const sync = useDriveSyncSummary();
+function DrivesFooter({ stats }: { readonly stats: DriveStats | undefined }): ReactNode {
   return (
-    <View className="gap-2 pt-2">
-      <DrivesWell stats={stats} sync={sync} />
-      <NavRow title="Drive settings" icon="settings" href={settings} onPress={close} />
+    <View className="pt-2">
+      <DrivesWell stats={stats} sync={useDriveSyncSummary()} />
     </View>
   );
 }
 
-function RailWell({ stats }: { readonly stats: DriveStats | undefined }): ReactNode {
-  return <DrivesWell stats={stats} sync={useDriveSyncSummary()} />;
+export function driveSectionsOf(
+  active: DriveSection,
+  groups: readonly RailGroup[],
+  footer: ReactNode,
+  iconRail: boolean,
+): ShellSections {
+  return {
+    label: 'Drive sections',
+    active,
+    hrefOf: driveSectionHref,
+    phoneTabs: PHONE_TABS,
+    groups,
+    footer,
+    ...(iconRail ? { iconRail } : {}),
+  };
 }
 
-const CHIP_ITEMS: readonly TabItem[] = SECTION_DEFS.map((def) => ({
-  key: def.id,
-  label: def.label,
-  href: driveSectionHref(def.id),
-}));
-
-function useIconRail(asked: boolean | undefined): boolean {
-  const wide = atLeast(useSizeClass().width, 'large');
-  return asked === true || !wide;
+export function frameActionsOf(
+  phone: boolean,
+  actions: readonly ShellAction[],
+  refresh: () => void,
+): readonly ShellAction[] {
+  return phone
+    ? actions
+    : [...actions, { icon: 'refresh', label: 'Refresh', iconOnly: true, onPress: refresh }];
 }
 
 export function DriveFrame(frame: DriveFrameProps): ReactNode {
   const header = useDriveHeader(frame);
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
-  const iconRail = useIconRail(frame.iconRail);
+  const phone = useSizeClass().header === 'large';
   const stats = useDriveStats().data;
-  const sections = useRailSections(stats);
+  const groups = useRailGroups(stats);
   const refresh = useLibraryRefresh(frame.reconcileRootId ?? null);
   return (
-    <DriveHeaderStatus pill={!compact}>
-      <LibraryFrame
-        area="drive"
+    <DriveHeaderStatus pill={!phone}>
+      <PageShell
         {...header}
-        refresh={refresh}
-        sections={sections}
-        active={frame.section}
-        hrefOf={driveSectionHref}
-        iconRail={iconRail}
-        {...(compact ? {} : { summary: <RailWell stats={stats} /> })}
-        renderPullUpFooter={(close) => (
-          <PullUpFooter settings={header.settings.href} stats={stats} close={close} />
+        back={false}
+        actions={frameActionsOf(phone, header.actions, refresh.refresh)}
+        sections={driveSectionsOf(
+          frame.section,
+          groups,
+          <DrivesFooter stats={stats} />,
+          frame.iconRail === true,
         )}
-        chips={<TabsBar items={CHIP_ITEMS} active={frame.section} label="Drive sections" />}
+        onRefresh={refresh.refresh}
+        refreshing={refresh.refreshing}
         {...(frame.banner === undefined ? {} : { banner: frame.banner })}
-        {...(frame.width === undefined ? {} : { width: frame.width })}
         {...(frame.scroll === undefined ? {} : { scroll: frame.scroll })}
+        {...(frame.search === undefined ? {} : { search: frame.search })}
       >
         {frame.children}
-      </LibraryFrame>
+      </PageShell>
     </DriveHeaderStatus>
   );
 }

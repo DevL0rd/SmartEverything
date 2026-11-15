@@ -270,11 +270,11 @@ export interface View {
   readonly padding: number;
 }
 
-export function framingOf(view: View): ModelSpec['framing'] {
+export function framingOf(view: View, heroFocus?: string): ModelSpec['framing'] {
   return {
     tile: { ...view, padding: 0.06 },
     card: view,
-    hero: { ...view, padding: 0.1 },
+    hero: { ...view, padding: 0.1, ...(heroFocus === undefined ? {} : { focus: heroFocus }) },
   };
 }
 
@@ -337,6 +337,7 @@ export interface CatalogueInput {
   readonly anchorParent?: string;
   readonly mount?: Mount;
   readonly view?: View;
+  readonly heroFocus?: string;
   readonly shots?: ModelSpecShot[];
   readonly channels?: ModelSpecChannel[];
   readonly states?: ModelSpec['states'];
@@ -350,7 +351,7 @@ export function catalogueModel(input: CatalogueInput): ModelSpec {
     title: input.title,
     category: input.category,
     footprint: input.footprint,
-    framing: framingOf(input.view ?? GROUND_VIEW),
+    framing: framingOf(input.view ?? GROUND_VIEW, input.heroFocus),
     ...(input.shots === undefined ? {} : { shots: input.shots }),
     meta: { ...input.meta, variants: Object.keys(input.finish.finishes) },
     ...(input.params === undefined ? {} : { params: input.params }),

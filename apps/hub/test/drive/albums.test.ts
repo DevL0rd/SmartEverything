@@ -408,7 +408,7 @@ describe('smart rule compiler', () => {
     expect(matchedNames(everything, member.profileId)).not.toContain('private.jpg');
     const privateId = ids[17] ?? '';
     opened.store.driveGrants.set(
-      { itemId: privateId, profileId: member.profileId, role: 'view' },
+      { itemId: privateId, profileId: member.profileId, role: 'view', expiresAt: null },
       owner.profileId,
     );
     expect(matchedNames(everything, member.profileId)).toContain('private.jpg');
@@ -501,7 +501,7 @@ describe('albums', () => {
     const privateId = ids[17] ?? '';
     expect(() => service.addItems(album.id, [privateId], member)).toThrow(DriveAlbumItemError);
     opened.store.driveGrants.set(
-      { itemId: privateId, profileId: member.profileId, role: 'view' },
+      { itemId: privateId, profileId: member.profileId, role: 'view', expiresAt: null },
       owner.profileId,
     );
     expect(service.addItems(album.id, [privateId], member).itemCount).toBe(1);

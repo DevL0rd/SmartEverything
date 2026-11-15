@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   PHOTOS_ENDPOINTS as E,
   type HubConnectionMetadata,
+  type BackupCheck,
   type BackupHave,
   type BackupRegister,
   type PhotosBackupPref,
@@ -12,7 +13,8 @@ import { routeFor } from '../../../../api/connection/active-route';
 import { connectionState } from '../../../../api/connection/connection';
 import { readHubTrust } from '../../../../api/connection/trust-storage';
 import { appStateSource } from './app-state';
-import { scopedBackupStorage } from './scoped-storage';
+import { ledgerFileOf } from './ledger-file';
+import { currentLedgerFile, scopedBackupStorage } from './scoped-storage';
 import type { BackupDeviceIdentity } from '../model/types';
 import type { BackupHubPort, BackupPorts, SettingsPort } from './ports';
 import type { BackupScope } from './sessions';
@@ -56,16 +58,13 @@ function hubPort(signal: AbortSignal, current: () => boolean): BackupHubPort {
       checked();
       return client.call(E.registerBackupDevice, { body }, { signal });
     },
-    checkHashes(
-      body: BackupHave,
-      purpose: 'lookup' | 'backup',
-    ): ReturnType<BackupHubPort['checkHashes']> {
+    lookupHashes(body: BackupHave): ReturnType<BackupHubPort['lookupHashes']> {
       checked();
-      return client.call(
-        purpose === 'lookup' ? E.lookupPhotoBackupHashes : E.checkBackupHashes,
-        { body },
-        { signal },
-      );
+      return client.call(E.lookupPhotoBackupHashes, { body }, { signal });
+    },
+    checkBackup(body: BackupCheck): ReturnType<BackupHubPort['checkBackup']> {
+      checked();
+      return client.call(E.checkBackupHashes, { body }, { signal });
     },
     resolveTarget(deviceId: string, takenAt: string): ReturnType<BackupHubPort['resolveTarget']> {
       checked();
@@ -93,6 +92,7 @@ function portsOf(
     available: () => current() && backupAvailable(),
     now: () => new Date(),
     storage: scopedBackupStorage(AsyncStorage, key, current),
+    ledgerFile: currentLedgerFile(ledgerFileOf(key), current),
     hub: hubPort(signal, current),
   };
 }

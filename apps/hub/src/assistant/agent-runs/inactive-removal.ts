@@ -18,6 +18,10 @@ interface InactiveRemoval {
   readonly status: (chat: AiChatRow) => EngineStatus | null;
 }
 
+export function removalNeedsInactive(store: Store, chatId: string, requested: boolean): boolean {
+  return requested || store.aiChats.find(chatId)?.kind === 'subagent';
+}
+
 function admitChildRun(deps: InactiveRemoval, id: string): void {
   const { store, owner, chatId } = deps;
   const run = store.aiAgentRuns.find(id);

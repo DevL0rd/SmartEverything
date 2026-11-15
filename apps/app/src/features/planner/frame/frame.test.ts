@@ -11,8 +11,9 @@ import { clock } from '../../../format/time';
 import { PLANNER_SECTION_ROUTES } from '../model/section-routes';
 import { openPlannerSection } from './open-section';
 import { personChoicesOf, shownPersonFor } from './person';
-import { opensComposer, plannerComposerKindOf } from './quick-add';
+import { opensComposer, opensSearch, plannerComposerKindOf } from './quick-add';
 import {
+  bookingSummaryOf,
   calendarSummaryOf,
   insightsSummaryOf,
   plannerSubtitleOf,
@@ -43,6 +44,7 @@ vi.mock('expo-router', async (importOriginal) => ({
 }));
 
 const { plannerMenu } = await import('./planner-menu');
+const { PLANNER_SEARCH_ACTION } = await import('./search-key');
 const { shownPlannerPerson } = await import('./person');
 
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -81,6 +83,10 @@ function task(patch: Partial<PlannerItemRow>): PlannerItemRow {
     attachments: [],
     reminders: [],
     google: null,
+    assignee_id: null,
+    ical_uid: null,
+    ical_sequence: 0,
+    booking_page_id: null,
     created_by: 'person',
     created_at: AT,
     updated_at: AT,
@@ -144,10 +150,11 @@ describe('the planner sections', () => {
       'Tasks',
       'Calendar',
       'Insights',
+      'Booking',
     ]);
   });
 
-  it('put Today, Tasks and Calendar on the phone tabs and Insights in the menu', () => {
+  it('put Today, Tasks and Calendar on the phone tabs and Insights and Booking in the menu', () => {
     expect(PLANNER_SECTION_DEFS.filter((def) => def.phoneTab).map((def) => def.label)).toEqual([
       'Today',
       'Tasks',
@@ -160,6 +167,7 @@ describe('the planner sections', () => {
     expect(plannerHrefOf('tasks')).toBe(href.planner.tasks());
     expect(plannerHrefOf('calendar')).toBe(href.planner.calendar());
     expect(plannerHrefOf('insights')).toBe(href.planner.insights());
+    expect(plannerHrefOf('booking')).toBe(href.planner.booking());
     expect(() => plannerHrefOf('timers')).toThrow('The Planner has no section timers.');
   });
 
@@ -175,6 +183,8 @@ describe('the planner sections', () => {
     expect(plannerTitleOf('tasks', 804)).toBe('Planner');
     expect(plannerTitleOf('index', 1360)).toBe('Planner');
     expect(plannerTitleOf('calendar', 1360)).toBe('Calendar');
+    expect(plannerTitleOf('booking', 1360)).toBe('Booking');
+    expect(plannerTitleOf('booking', 412)).toBe('Planner');
   });
 
   it('shows the rail in icon width at 884 and wide on desktop', () => {
@@ -190,6 +200,13 @@ describe('the planner rail summaries', () => {
     expect(todaySummaryOf({ ...summary, missed: 0 })).toBe('5 left');
     expect(todaySummaryOf({ ...summary, missed: 0, left: 0 })).toBeNull();
     expect(todaySummaryOf(null)).toBeNull();
+  });
+
+  it('count booking pages that are on and bookings ahead, and hide nothing to say', () => {
+    expect(bookingSummaryOf(2, 3)).toBe('2 on · 3 booked');
+    expect(bookingSummaryOf(0, 1)).toBe('1 booked');
+    expect(bookingSummaryOf(1, 0)).toBe('1 on');
+    expect(bookingSummaryOf(0, 0)).toBeNull();
   });
 
   it('count open top-level tasks only', () => {
@@ -289,27 +306,33 @@ describe('the planner menu', () => {
     null,
   );
 
-  it('starts with the person picker on phone, then Insights and Planner settings', () => {
-    const menu = plannerMenu({ people, insights: true, googleNeedsAttention: false });
+  it('starts with the person picker on phone, then Insights, Booking and Planner settings', () => {
+    const menu = plannerMenu({ people, sections: true, googleNeedsAttention: false });
     expect(menu.map((item) => item.label)).toEqual([
       'Showing: Owner',
       'Show Alex',
       'Insights',
+      'Booking',
       'Planner settings',
     ]);
     pushed.hrefs.length = 0;
     menu[2]?.onPress();
     menu[3]?.onPress();
-    expect(pushed.hrefs).toEqual([href.planner.insights(), mainPageSettings('planner').href]);
+    menu[4]?.onPress();
+    expect(pushed.hrefs).toEqual([
+      href.planner.insights(),
+      href.planner.booking(),
+      mainPageSettings('planner').href,
+    ]);
     menu[1]?.onPress();
     expect(shownPlannerPerson.get()).toBe(ALEX);
     shownPlannerPerson.set(null);
   });
 
   it('shows Google needs attention only when the link has a problem', () => {
-    const quiet = plannerMenu({ people: [], insights: false, googleNeedsAttention: false });
+    const quiet = plannerMenu({ people: [], sections: false, googleNeedsAttention: false });
     expect(quiet.map((item) => item.label)).toEqual(['Planner settings']);
-    const loud = plannerMenu({ people: [], insights: false, googleNeedsAttention: true });
+    const loud = plannerMenu({ people: [], sections: false, googleNeedsAttention: true });
     expect(loud.map((item) => item.label)).toEqual(['Google needs attention', 'Planner settings']);
     pushed.hrefs.length = 0;
     loud[0]?.onPress();
@@ -354,6 +377,25 @@ describe('the planner frame', () => {
     expect(plannerComposerKindOf('tasks')).toBe('task');
     expect(plannerComposerKindOf('calendar')).toBe('event');
     expect(plannerComposerKindOf('insights')).toBeNull();
+    expect(plannerComposerKindOf('booking')).toBeNull();
+  });
+
+  it('opens the Planner search on a plain slash, never while typing or with a modifier', () => {
+    const press = { key: '/', ctrlKey: false, metaKey: false, altKey: false };
+    expect(opensSearch(press, false)).toBe(true);
+    expect(opensSearch(press, true)).toBe(false);
+    expect(opensSearch({ ...press, ctrlKey: true }, false)).toBe(false);
+    expect(opensSearch({ ...press, metaKey: true }, false)).toBe(false);
+    expect(opensSearch({ ...press, key: 'n' }, false)).toBe(false);
+  });
+
+  it('offers the Planner search in the header with its slash shortcut', () => {
+    expect(PLANNER_SEARCH_ACTION.href).toBe(href.planner.search());
+    expect(PLANNER_SEARCH_ACTION.shortcut).toBe('/');
+    expect(href.planner.search('dentist')).toEqual({
+      pathname: '/planner/search',
+      params: { q: 'dentist' },
+    });
   });
 
   it('opens the composer on a plain N, never while typing or with a modifier', () => {

@@ -14,7 +14,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { modeOf } from '../../../src/automations/effects/action-mode';
 import { DeviceSetter } from '../../../src/automations/effects/device-set';
 import { DeviceToggler } from '../../../src/automations/effects/device-toggle';
-import { captureScene } from '../../../src/automations/effects/scene-capture';
 import { effectHandlers } from '../../../src/automations/engine-v3-effects';
 import { deviceExtraHandlers } from '../../../src/automations/engine-v3-effects-devices';
 import { CommandIssuer } from '../../../src/automations/issue-commands';
@@ -149,7 +148,6 @@ async function home(): Promise<Rig> {
       setter,
       http: { request: unused },
       toggler,
-      issuer,
       store: db.store,
       owned: { list: unused, write: unused },
       kept: { read: unused, write: unused },
@@ -249,28 +247,11 @@ describe('bulk device nodes send to every member at once', () => {
       Array.from({ length: LAMPS }, () => 40),
     );
   });
-
-  it('runs a scene with several controls per lamp as one together call per lamp', async () => {
-    const rig = await home();
-    const scene = captureScene(rig.db.store, {
-      name: 'Evening',
-      overwrite: false,
-      actions: rig.lampIds.flatMap((deviceId) => [
-        { type: 'command' as const, deviceId, capability: 'brightness', value: 30 },
-        { type: 'command' as const, deviceId, capability: 'power', value: true },
-      ]),
-    });
-    expect(await rig.perform('scene.run', { scene: scene.id })).toMatchObject({ ok: true });
-    expect(rig.adapter.together).toHaveLength(LAMPS);
-    expect(rig.adapter.together.every((commands) => commands.length === 2)).toBe(true);
-    expect(rig.adapter.executed).toStrictEqual([]);
-  });
 });
 
 describe('action modes', () => {
   it('defaults plain device commands to fire and forget and everything else to wait', () => {
     expect(modeOf(request('device.set'))).toBe('fire_and_forget');
-    expect(modeOf(request('scene.run'))).toBe('fire_and_forget');
     expect(modeOf(request('device.set', 'wait_for_result'))).toBe('wait_for_result');
     expect(modeOf(request('notify.ask'))).toBe('wait_for_result');
     expect(modeOf(request('notify.ask', 'fire_and_forget'))).toBe('wait_for_result');

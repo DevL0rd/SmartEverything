@@ -8,7 +8,9 @@ import {
   type PluginKindProblems,
   type PluginTrigger,
 } from '@smarteverything/domain';
-import { PLUGIN_ORIGIN_ICON, type AutomationContribution } from './contributions';
+import type { AutomationContribution } from './contributions';
+
+export const PLUGIN_ORIGIN_ICON = 'puzzle';
 
 export interface PluginTriggers {
   readonly triggers: readonly PluginTrigger[];

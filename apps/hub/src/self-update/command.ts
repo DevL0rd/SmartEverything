@@ -1,12 +1,20 @@
 import { execFile, spawn } from 'node:child_process';
 import { access, mkdir, open, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { HUB_UPDATE_HOST_PLATFORM, type HubUpdateOrigin } from '@smarteverything/domain';
+import {
+  HUB_UPDATE_HOST_PLATFORM,
+  RELEASE_SOURCE,
+  type HubUpdateOrigin,
+  type PipelineComponent,
+  type ReleaseSource,
+} from '@smarteverything/domain';
 import type { HubLayout } from '../data-layout';
 import { isMissing } from '../fs-util';
-import { findUpdateSource } from './update-source';
+import { buildSourceOf } from './build-source';
+import { findCheckoutSource } from './update-source';
 
 const execute = promisify(execFile);
 const REPLY = z.record(z.string(), z.unknown());
@@ -15,6 +23,7 @@ const LOCK_BUSY = 75;
 const LOG_TAIL_LINES = 20;
 const RUN_INPUT = z.object({ input: z.object({ runId: z.uuid() }) });
 const TSX_IMPORT = ['--import', 'tsx'];
+const INSTALLED_HUB_COMMAND = fileURLToPath(new URL('./update/hub-command.mjs', import.meta.url));
 
 type ConfiguredUpdateScript =
   | 'self-update-hub-command.ts'
@@ -33,7 +42,58 @@ const BUILD_SCRIPTS: ReadonlySet<ConfiguredUpdateScript> = new Set<BuildScript>(
 ]);
 
 export class UpdateUnavailableError extends Error {
-  override readonly name = 'UpdateUnavailableError';
+  override readonly name: string = 'UpdateUnavailableError';
+}
+
+export class HubBuildRefusedError extends UpdateUnavailableError {
+  override readonly name: string = 'HubBuildRefusedError';
+}
+
+const ARTIFACT_NAMES: Readonly<Record<PipelineComponent, string>> = {
+  hub: 'the Hub service',
+  app: 'the Android app',
+  ui: 'the app UI update',
+  desktop: 'the Desktop release',
+};
+
+const SOURCE_GUIDANCE: Readonly<Record<Exclude<ReleaseSource, 'hub'>, string>> = {
+  provided: 'Build it on a dev machine and provide that build to the Hub instead.',
+  github: 'Publish it as a GitHub release for the Hub to download instead.',
+};
+
+const HUB_NON_BUILD = z.object({ action: z.enum(['recover', 'rollback', 'keep']) });
+const HUB_RELEASE = z.object({ action: z.literal('hub'), source: RELEASE_SOURCE.optional() });
+const PUBLICATION_STATUS = z.strictObject({ runId: z.uuid() });
+const PUBLICATION_ACTION = z.object({
+  input: z.object({ action: z.enum(['app', 'ui', 'desktop']) }),
+});
+
+export function hubBuildRefusal(layout: HubLayout, artifact: PipelineComponent): string | null {
+  const source = buildSourceOf(layout, artifact);
+  if (source === 'hub') return null;
+  return `The Hub does not build ${ARTIFACT_NAMES[artifact]}: its build source is ${source}, not hub. ${SOURCE_GUIDANCE[source]}`;
+}
+
+export function requireHubBuild(layout: HubLayout, artifact: PipelineComponent): void {
+  const refusal = hubBuildRefusal(layout, artifact);
+  if (refusal !== null) throw new HubBuildRefusedError(refusal);
+}
+
+function builtArtifact(
+  script: ConfiguredUpdateScript,
+  layout: HubLayout,
+  input: unknown,
+): PipelineComponent | null {
+  if (script === 'self-update-hub-command.ts') {
+    if (HUB_NON_BUILD.safeParse(input).success) return null;
+    const release = HUB_RELEASE.safeParse(input);
+    if (!release.success) return 'hub';
+    return (release.data.source ?? buildSourceOf(layout, 'hub')) === 'hub' ? 'hub' : null;
+  }
+  if (!BUILD_SCRIPTS.has(script) || PUBLICATION_STATUS.safeParse(input).success) return null;
+  const publication = PUBLICATION_ACTION.safeParse(input);
+  if (publication.success) return publication.data.input.action;
+  return script === 'self-update-desktop-command.ts' ? 'desktop' : 'app';
 }
 
 export class UpdateBusyError extends Error {
@@ -142,10 +202,10 @@ export function requireUpdateSource(layout: HubLayout): {
   readonly remote: string;
   readonly branch: string;
 } {
-  const source = findUpdateSource(layout);
+  const source = findCheckoutSource(layout);
   if (source === undefined)
     throw new UpdateUnavailableError(
-      'This hub has no update source configured. On the hub machine, run tooling/configure-update-source.ts from the SmartEverything checkout.',
+      'This hub has no update checkout. Only the hub build source needs one: on the hub machine, run tooling/configure-update-source.ts --checkout from a SmartEverything checkout.',
     );
   return { root: source.checkout, remote: source.remote, branch: source.branch };
 }
@@ -165,6 +225,16 @@ export async function configuredUpdateEntry(
   return { root, entry };
 }
 
+async function installedHubEntry(): Promise<{ readonly root: string; readonly entry: string }> {
+  try {
+    await access(INSTALLED_HUB_COMMAND);
+  } catch (cause) {
+    if (!isMissing(cause)) throw cause;
+    throw new UpdateUnavailableError('The installed Hub service has no update/hub-command.mjs.');
+  }
+  return { root: dirname(INSTALLED_HUB_COMMAND), entry: INSTALLED_HUB_COMMAND };
+}
+
 export async function runConfiguredUpdateCommand(
   script: Exclude<
     ConfiguredUpdateScript,
@@ -174,18 +244,25 @@ export async function runConfiguredUpdateCommand(
   input: unknown,
   origin?: HubUpdateOrigin,
 ): Promise<Readonly<Record<string, unknown>>> {
+  const artifact = builtArtifact(script, layout, input);
+  if (artifact !== null) requireHubBuild(layout, artifact);
   if (process.platform !== HUB_UPDATE_HOST_PLATFORM)
     throw new UpdateUnavailableError(
       'Hub updates require a Linux hub with a systemd user service.',
     );
-  const { root, entry } = await configuredUpdateEntry(layout, script);
+  const installed = artifact === null && script === 'self-update-hub-command.ts';
+  const { root, entry } = installed
+    ? await installedHubEntry()
+    : await configuredUpdateEntry(layout, script);
   const args = [
     entry,
     layout.root,
     JSON.stringify(input),
     ...(origin === undefined ? [] : [JSON.stringify(origin)]),
   ];
-  const stdout = await invoke(root, layout, { script, args, input });
+  const stdout = installed
+    ? (await execute(process.execPath, args, { cwd: root, maxBuffer: OUTPUT_BYTES })).stdout
+    : await invoke(root, layout, { script, args, input });
   const last = stdout.trim().split('\n').at(-1);
   if (last === undefined || last.length === 0)
     throw new Error(

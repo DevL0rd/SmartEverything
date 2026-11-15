@@ -84,6 +84,7 @@ export function buildShares(
   return files.slice(0, Math.ceil(files.length * SHARES_SHARE)).map((item, index) => ({
     id: random.uuid(),
     itemId: item.id,
+    albumId: null,
     permission: index % 2 === 0 ? ('view' as const) : ('download' as const),
     expiresAt: iso(NOW_MS + (index % 4 === 1 ? -DAY_MS : 14 * DAY_MS)),
     hasPassword: index % 5 === 0,

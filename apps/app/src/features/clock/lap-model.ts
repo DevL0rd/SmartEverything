@@ -8,12 +8,7 @@ import type {
 import { twoDigits } from '../../format/number';
 import { compareText } from '../../format/text';
 import { HOUR_MS, MINUTE_MS, duration } from '../../format/time';
-import {
-  bucketLabel,
-  chunksFromEnd,
-  loadStepOf,
-  rangeDaysOf,
-} from '../planner/insights/insights-model';
+import { bucketLabel, chunksFromEnd, loadStepOf, rangeDaysOf } from '../planner';
 
 const SECOND_MS = 1000;
 const CENTI_MS = 10;

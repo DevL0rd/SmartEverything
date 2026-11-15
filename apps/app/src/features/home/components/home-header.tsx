@@ -8,7 +8,6 @@ import { joinParts } from '../../../format/text';
 import { hourOf, longDate } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { openSearch } from '../../../search/open-search';
 import { useHomeSummary } from '../data/home-data';
 import type { HomeSummary } from '../model/summary';
 
@@ -47,24 +46,6 @@ export function SummaryLine(): ReactNode {
   );
 }
 
-function SearchBar(): ReactNode {
-  return (
-    <Interactive
-      label="Search your home"
-      onPress={() => {
-        openSearch();
-      }}
-      className="h-14 flex-row items-center gap-3 rounded-full bg-surface-3 px-4"
-      layerClassName="rounded-full"
-    >
-      <Icon name="search" size={24} tone="variant" />
-      <Text variant="body" tone="faint" numberOfLines={1}>
-        Search your home
-      </Text>
-    </Interactive>
-  );
-}
-
 const MORNING = 5;
 const AFTERNOON = 12;
 const EVENING = 17;
@@ -90,14 +71,11 @@ function Greeting(): ReactNode {
   );
 }
 
-export function HeaderBelow({ search }: { readonly search: boolean }): ReactNode {
+export function HeaderBelow(): ReactNode {
   return (
-    <View className="gap-4">
-      <View className="gap-1">
-        <Greeting />
-        <SummaryLine />
-      </View>
-      {search ? <SearchBar /> : null}
+    <View className="gap-1">
+      <Greeting />
+      <SummaryLine />
     </View>
   );
 }

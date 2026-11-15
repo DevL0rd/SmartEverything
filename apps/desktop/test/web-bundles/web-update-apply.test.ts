@@ -50,7 +50,7 @@ describe('applying', () => {
     expect(await rig.store.rootFor(rig.build)).toBe(rig.build.embeddedRoot);
   });
 
-  it('clears the trial and restores the root when restarting throws', async () => {
+  it('keeps the trial and waits for the owner when restarting throws', async () => {
     const id = randomUUID();
     const { fetch } = homeServing(offerFor(id, '2026-10-20T00:00:00.000Z'));
     const { controller } = await controllerFor(rig, fetch);
@@ -61,7 +61,8 @@ describe('applying', () => {
       throw new Error('The window has closed');
     });
 
-    expect(status.state === 'failed' && status.reason).toContain('window has closed');
-    expect(await stateOf(rig)).toMatchObject({ active: 'embedded', trial: false, failed: [id] });
+    expect(status).toMatchObject({ state: 'boot_failed', failedId: id });
+    expect(status.state === 'boot_failed' && status.reason).toContain('window has closed');
+    expect(await stateOf(rig)).toMatchObject({ active: id, trial: true, failed: [] });
   });
 });

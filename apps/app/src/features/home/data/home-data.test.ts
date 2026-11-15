@@ -14,6 +14,7 @@ describe('Home widget availability', () => {
   it('offers both Walkie-talkie widgets on supported clients before any channels exist', () => {
     expect([...availableWidgets(NO_HOME_DATA)]).toEqual([
       'device-group',
+      'automations',
       'talk-channel',
       'talk-channels',
     ]);

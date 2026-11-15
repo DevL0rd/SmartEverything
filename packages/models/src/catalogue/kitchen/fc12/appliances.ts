@@ -10,7 +10,7 @@ const DOOR_Z = 0.285;
 export const FRIDGE_ENCLOSURE_MODEL: ModelSpec = kitchenFurniture({
   id: 'cat.kitchen.fridge-enclosure',
   title: 'Fridge enclosure',
-  footprint: { width: 0.72, depth: 0.64, height: HEIGHT },
+  footprint: { width: 0.72, depth: 0.65, height: HEIGHT },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   meta: {
     names: {
@@ -90,7 +90,7 @@ const OVEN_Y = 1.24;
 export const OVEN_COLUMN_MODEL: ModelSpec = kitchenFurniture({
   id: 'cat.kitchen.oven-column',
   title: 'Oven column',
-  footprint: { width: 0.6, depth: 0.62, height: HEIGHT },
+  footprint: { width: 0.6, depth: 0.639, height: 2.19 },
   meta: {
     names: {
       display: 'Oven column',

@@ -2,7 +2,7 @@ import type { promises, Stats } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { MACHINE_UPDATE_VERSION } from '@smarteverything/domain';
-import { Logger, messageOf } from '@smarteverything/logging';
+import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import {
   appRootIn,
@@ -100,7 +100,7 @@ const BUNDLE_MARKER = '.app/';
 
 export const UPDATE_FIRST_BOOT_ARGUMENT = '--first-boot-after-update';
 
-export type BootReview = 'none' | 'confirming' | 'rolled-back';
+export type BootReview = 'none' | 'confirming' | 'awaiting_decision';
 
 function bootMarkerOf(root: string): string {
   return siblingOf(root, 'boot');
@@ -117,12 +117,10 @@ export function installRootOf(platform: NodeJS.Platform, execPath: string): stri
   return cut < 0 ? null : execPath.slice(0, cut + BUNDLE_MARKER.length - 1);
 }
 
-async function keepForRollback(replaced: Replacement, version: string): Promise<Replacement> {
+async function keepForRollback(replaced: Replacement, version: string): Promise<void> {
   const previous = rollbackOf(replaced.root);
-  await removeAppFolder(previous);
   await writeFile(bootMarkerOf(replaced.root), JSON.stringify({ version }), { mode: 0o600 });
   await rename(replaced.previous, previous);
-  return { root: replaced.root, previous };
 }
 
 async function readBootMarker(root: string): Promise<z.infer<typeof BOOT_MARKER> | null> {
@@ -151,12 +149,16 @@ export async function reviewBoot(
   }
   if (afterUpdate) return 'confirming';
   log.warn('update.boot_unconfirmed', { version: marker.version });
+  return 'awaiting_decision';
+}
+
+export async function rollBackBoot(root: string): Promise<void> {
   const failed = await swapBack({ root, previous: rollbackOf(root) });
   await rm(bootMarkerOf(root), { force: true });
+  log.warn('update.rolled_back_by_owner');
   await removeAppFolder(failed).catch((cause: unknown) => {
     log.error('update.failed_candidate_cleanup_failed', cause);
   });
-  return 'rolled-back';
 }
 
 export async function confirmBoot(root: string): Promise<void> {
@@ -167,23 +169,16 @@ export async function confirmBoot(root: string): Promise<void> {
 export async function applyFolderUpdate(options: FolderUpdateOptions, zip: string): Promise<void> {
   const { root, platform } = options;
   const next = await prepareReplacement(options, zip);
+  await removeAppFolder(rollbackOf(root));
   const restartComputer = await options.prepareComputerRestart();
-  let replaced = await swapIn(root, next);
+  const replaced = await swapIn(root, next);
   log.info('update.swapped', { platform });
   try {
-    replaced = await keepForRollback(replaced, options.version);
+    await keepForRollback(replaced, options.version);
     await restartComputer();
     await options.relaunch(join(root, options.executable));
   } catch (cause) {
     log.error('update.restart_failed', cause);
-    const failed = await swapBack(replaced);
-    await rm(bootMarkerOf(root), { force: true });
-    await restartComputer().catch((again: unknown) => {
-      log.error('update.restart_after_rollback_failed', again, { reason: messageOf(cause) });
-    });
-    await removeAppFolder(failed).catch((again: unknown) => {
-      log.error('update.failed_candidate_cleanup_failed', again);
-    });
     throw cause;
   }
 }

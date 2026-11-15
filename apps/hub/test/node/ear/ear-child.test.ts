@@ -9,7 +9,7 @@ import { configOf, packetsOf } from './ear-fakes';
 const UPSAMPLE = 3;
 const CHUNK = 1600;
 const INIT = {
-  dataDirectory: null,
+  wakeDiagnosticsDirectory: null,
   logPath: '/nonexistent/service.log',
   level: 'info',
   release: '1',

@@ -51,8 +51,10 @@ function collection(id: string, colour: PlannerCollectionRow['colour']): Planner
     position: 0,
     visible: true,
     default_reminders: [],
+    audience: 'personal',
     source: 'local',
     google: null,
+    feed: null,
     created_at: STAMP,
     updated_at: STAMP,
   });

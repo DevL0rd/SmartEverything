@@ -215,6 +215,48 @@ describe('bake queue', () => {
     });
   });
 
+  it('is busy only while a cache miss waits or bakes, never for a cache hit', async () => {
+    const cache = memoryCache();
+    await cache.write(keyOf('hit'), image('old'));
+    const baker = controlledBaker();
+    const queue = createBakeQueue({ cache, bake: baker.bake });
+    const seen: boolean[] = [];
+    queue.busy.subscribe(() => {
+      seen.push(queue.busy.get());
+    });
+    queue.want({ key: keyOf('hit'), spec: SPEC, screen: 's', priority: 'screen' }, vi.fn());
+    await settle();
+    expect(queue.busy.get()).toBe(false);
+    expect(seen).toEqual([]);
+    queue.want({ key: keyOf('a'), spec: SPEC, screen: 's', priority: 'screen' }, vi.fn());
+    queue.want({ key: keyOf('b'), spec: SPEC, screen: 's', priority: 'page' }, vi.fn());
+    await settle();
+    expect(queue.busy.get()).toBe(true);
+    baker.finish();
+    await settle();
+    expect(queue.busy.get()).toBe(true);
+    baker.finish();
+    await settle();
+    expect(queue.busy.get()).toBe(false);
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('goes idle when the only waiting request is released', async () => {
+    const baker = controlledBaker();
+    const queue = createBakeQueue({ cache: memoryCache(), bake: baker.bake });
+    queue.want({ key: keyOf('a'), spec: SPEC, screen: 's', priority: 'screen' }, vi.fn());
+    const gone = queue.want(
+      { key: keyOf('b'), spec: SPEC, screen: 's', priority: 'page' },
+      vi.fn(),
+    );
+    await settle();
+    gone.release();
+    expect(queue.busy.get()).toBe(true);
+    baker.finish();
+    await settle();
+    expect(queue.busy.get()).toBe(false);
+  });
+
   it('prunes once at start with the bakes in use, after the home has loaded', async () => {
     const prune = vi.fn<(inUse: BakesInUse) => Promise<number>>(() => Promise.resolve(3));
     const queue = createBakeQueue({

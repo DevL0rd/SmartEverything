@@ -101,14 +101,29 @@ describe('the drive endpoints', () => {
 
   it('shares an item with a person by role and refuses an unknown role', () => {
     expect(
-      API_ENDPOINTS.setGrant.body.safeParse({ itemId: A, profileId: B, role: 'view' }).success,
+      API_ENDPOINTS.setGrant.body.safeParse({
+        itemId: A,
+        profileId: B,
+        role: 'view',
+        expiresAt: null,
+      }).success,
     ).toBe(true);
     expect(
-      API_ENDPOINTS.setGrant.body.safeParse({ itemId: A, profileId: B, role: 'owner' }).success,
+      API_ENDPOINTS.setGrant.body.safeParse({
+        itemId: A,
+        profileId: B,
+        role: 'owner',
+        expiresAt: null,
+      }).success,
     ).toBe(false);
     expect(
-      API_ENDPOINTS.setGrant.body.safeParse({ itemId: A, profileId: B, role: 'edit', extra: 1 })
-        .success,
+      API_ENDPOINTS.setGrant.body.safeParse({
+        itemId: A,
+        profileId: B,
+        role: 'edit',
+        expiresAt: null,
+        extra: 1,
+      }).success,
     ).toBe(false);
     expect(API_ENDPOINTS.listGrants.params.safeParse({ itemId: A }).success).toBe(true);
     expect(API_ENDPOINTS.removeGrant.params.safeParse({ grantId: A }).success).toBe(true);
@@ -250,12 +265,17 @@ describe('the drive request bodies', () => {
 });
 
 describe('the drive live tables and notices', () => {
-  it('lists the four tables and gives each its row schema', () => {
+  it('lists the nine tables and gives each its row schema', () => {
     for (const table of [
       'drive_roots',
       'drive_albums',
       'drive_grants',
       'drive_placements',
+      'drive_notifications',
+      'drive_access_requests',
+      'drive_file_requests',
+      'drive_transfers',
+      'drive_offline_items',
     ] as const) {
       expect(LIVE_TABLES).toContain(table);
       expect(TABLE_ROWS[table]).toBeDefined();
@@ -271,6 +291,7 @@ describe('the drive live tables and notices', () => {
       role: 'edit',
       grantedBy: B,
       createdAt: '2026-11-07T10:00:00.000Z',
+      expiresAt: null,
     };
     const change = {
       type: 'change',

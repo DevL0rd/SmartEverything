@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { HubGuestBroker } from '../../src/client-network/guest-broker';
 import type { HubLeasePort } from '../../src/client-network/lease';
 import { HubResourceBroker } from '../../src/client-network/resource-broker';
-import { captureLogs } from '../support/logs';
+import { captureLogs, testLogger } from '../support/logs';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const closers: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
@@ -76,6 +79,7 @@ async function guestBroker(
       view: { trust },
     },
     origin,
+    { port: 0, directory: await mkdtemp(join(tmpdir(), 'guest-broker-')), log: testLogger() },
   );
   await broker.start();
   closers.push(() => {
@@ -376,15 +380,15 @@ describe('brokers on the shared listener', () => {
     expect((await fetch(resource.localUrl)).status).toBe(409);
   });
 
-  it('reuses the MCP grant for the same credential and replaces it for a new one', async () => {
+  it('keeps the MCP URL for a new credential and refuses the old credential on it', async () => {
     const hub = await upstream(() => ({ status: 200, body: '{}' }));
     const { broker, mcpUrl } = await guest(hub.origin);
     const canonical = { url: new URL('/mcp', hub.origin).href, pin: null };
     const again = broker.openMcp('claude', canonical, TOKEN);
     expect(again).toBe(mcpUrl);
     const other = broker.openMcp('claude', canonical, `scg_${'B'.repeat(43)}`);
-    expect(other).not.toBe(mcpUrl);
+    expect(other).toBe(mcpUrl);
     const old = await fetch(mcpUrl, { headers: { authorization: `Bearer ${TOKEN}` } });
-    expect(old.status).toBe(409);
+    expect(old.status).toBe(403);
   });
 });

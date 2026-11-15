@@ -191,7 +191,7 @@ export const RANGE_HOOD_MODEL: ModelSpec = {
   title: 'Range hood',
   category: 'kitchen',
   family: 'generic',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: WIDTH, depth: 0.5077, height: 0.6806 },
   size: { width: { param: 'width', extra: 0, resizes: true } },
   framing: {
     tile: FRAME,

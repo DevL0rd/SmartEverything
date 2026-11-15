@@ -11,12 +11,14 @@ import type { MenuItem } from '../../../components/menu-rows';
 import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { notify } from '../../../components/toast-store';
-import { useHubOffline } from '../../clock/frame/hub-status';
-import { usePlannerItems, usePlannerWrites, type PlannerWrites } from '../data';
+import { useHubOffline } from '../../clock';
+import { usePlannerWrites, type PlannerWrites } from '../data';
+import { useVisibleItem } from '../data/assignment';
 import { usePlannerShownPerson } from '../frame/person';
 import { askAboutItem } from './item-ask';
 import { deleteChoicesOf, type DeleteChoice } from './item-delete';
-import { ItemBody, itemIn, useItemEditor, type ItemTarget } from './item-sheet';
+import { ItemBody } from './item-body';
+import { useItemEditor, type ItemTarget } from './item-sheet';
 
 export interface ItemScreenProps {
   readonly itemId: string;
@@ -144,7 +146,7 @@ function GoneItemScreen(): ReactNode {
 export function ItemScreen({ itemId, occurrenceKey }: ItemScreenProps): ReactNode {
   const person = usePlannerShownPerson();
   const [leaving, setLeaving] = useState<PlannerItemRow | null>(null);
-  const item = itemIn(usePlannerItems(person), itemId) ?? leaving;
+  const item = useVisibleItem(person, itemId) ?? leaving;
   if (item === null) return <GoneItemScreen />;
   return (
     <OpenItemScreen

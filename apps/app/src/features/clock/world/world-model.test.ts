@@ -1,6 +1,6 @@
 import { TIME_ZONE } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { dayLabelOf } from '../../planner/calendar/month-model';
+import { dayLabelOf } from '../../planner';
 import {
   addedClock,
   canMove,

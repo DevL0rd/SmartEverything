@@ -1,19 +1,18 @@
-import { memo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { IconWell } from '../../../components/icon-well';
-import { ListRow } from '../../../components/list-row';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
 import type { ColourRole } from '../../../design/tokens';
 import { joinParts } from '../../../format/text';
-import type { RecentHow } from './recent-how';
-import { useDriveRoots } from '../data';
+import { FileRow, type FileBrowserHandle } from '../../files';
 import { DriveChipBadge } from '../components/drive-chip';
 import type { DriveChip } from '../model/drive-chip';
-import { KIND_LOOK, openHrefOf, type RecentLine } from './recent-model';
+import type { DriveNode, DriveOrigin } from '../source/drive-node';
+import type { RecentHow } from './recent-how';
 
 export interface RecentRowProps {
-  readonly line: RecentLine;
+  readonly node: DriveNode;
+  readonly browser: FileBrowserHandle<DriveOrigin>;
   readonly how: RecentHow;
   readonly chip: DriveChip;
   readonly where: string;
@@ -67,32 +66,29 @@ function CompactTrailing({
   );
 }
 
-export const RecentRow = memo(function RecentRow({
-  line,
+export function RecentRow({
+  node,
+  browser,
   how,
   chip,
   where,
   time,
   wide,
 }: RecentRowProps): ReactNode {
-  const { item } = line.entry;
-  const roots = useDriveRoots();
-  const look = KIND_LOOK[item.kind];
-  const subtitle = wide ? where : joinParts([how.text, where]);
+  const caption = wide ? where : joinParts([how.text, where]);
   return (
-    <ListRow
-      title={item.name}
-      leading={<IconWell icon={look.icon} colour={look.colour} size={wide ? 's' : 'm'} />}
-      href={openHrefOf(item, roots)}
-      label={joinParts([item.name, how.text, chip.label, where, time])}
-      trailing={
-        wide ? (
+    <FileRow
+      node={node}
+      browser={browser}
+      wide={wide}
+      look={{
+        caption: caption === '' ? null : caption,
+        trailing: wide ? (
           <WideTrailing how={how} chip={chip} time={time} />
         ) : (
           <CompactTrailing how={how} chip={chip} time={time} />
-        )
-      }
-      {...(subtitle === '' ? {} : { subtitle })}
+        ),
+      }}
     />
   );
-});
+}

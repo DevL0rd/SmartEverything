@@ -1,20 +1,29 @@
 import { useState, type ReactNode } from 'react';
+import { href } from '../../../app-shell/hrefs';
 import { View } from 'react-native';
 import type { DrivePlacement } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
+import { Icon } from '../../../components/icon';
+import { Sheet } from '../../../components/sheet';
 import { ProgressBar } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import { useMinute } from '../../../store/clock';
 import { DemandRegion } from '../../../store/demand-region';
 import { sameJson } from '../../../store/same-json';
 import type { Device } from '../../../store/state';
-import { Ident } from '../../computers/card/card-parts';
-import { useComputerPlaces } from '../../computers/data/computer-files';
-import { useComputerSelect } from '../../computers/data/computer-metrics';
+import {
+  Ident,
+  homeUsageOf,
+  osLineOf,
+  usePlacesData,
+  useReach,
+  useComputerSelect,
+} from '../../computers';
 import { useLastSeen } from '../../devices';
-import { homeUsageOf, osLineOf, seenTextOf } from './computers-model';
+import { cardActionsOf, placementCountOf } from './card-model';
+import { seenTextOf } from './computers-model';
 import { PlacementRow } from './placement-row';
 import { PlacementSheet, type PlacementSheetTarget } from './placement-sheet';
 
@@ -53,7 +62,7 @@ function HomeBar({ device, home }: { readonly device: Device; readonly home: str
 }
 
 function DiskBar({ device }: { readonly device: Device }): ReactNode {
-  const home = useComputerPlaces(device.id, device.online).data?.home;
+  const home = usePlacesData(device.id, device.online).data?.home;
   if (home === undefined || !device.online) return null;
   return (
     <DemandRegion deviceId={device.id} topics={DISKS}>
@@ -115,58 +124,140 @@ function Placements({
   );
 }
 
-function Actions({ onOpen }: { readonly onOpen: (mode: 'synced' | 'mounted') => void }): ReactNode {
+function Actions({
+  device,
+  onOpen,
+  browse,
+}: {
+  readonly device: Device;
+  readonly onOpen: (mode: 'synced' | 'mounted') => void;
+  readonly browse: boolean;
+}): ReactNode {
+  const scope = useReach(device.id).scope;
+  const actions = cardActionsOf(browse ? scope : false);
   return (
     <View className="flex-row flex-wrap gap-2">
+      {actions.map((action) => (
+        <Button
+          key={action.id}
+          label={action.label}
+          icon={action.icon}
+          variant={action.variant}
+          grow
+          {...(action.id === 'browse'
+            ? { href: href.driveComputer(device.id) }
+            : {
+                onPress: (): void => {
+                  onOpen(action.id === 'synced' ? 'synced' : 'mounted');
+                },
+              })}
+        />
+      ))}
+    </View>
+  );
+}
+
+interface CardProps {
+  readonly device: Device;
+  readonly placements: readonly DrivePlacement[];
+  readonly here?: boolean;
+  readonly compact?: boolean;
+  readonly children?: ReactNode;
+}
+
+function OfflineLine({ device }: { readonly device: Device }): ReactNode {
+  if (device.online) return null;
+  return (
+    <Text variant="footnote" tone="variant">
+      Offline. These are the last states it reported.
+    </Text>
+  );
+}
+
+function ManageSheet({
+  open,
+  card,
+  onClose,
+  onOpen,
+}: {
+  readonly open: boolean;
+  readonly card: CardProps;
+  readonly onClose: () => void;
+  readonly onOpen: (mode: 'synced' | 'mounted') => void;
+}): ReactNode {
+  const { device, placements } = card;
+  return (
+    <Sheet open={open} onClose={onClose} title={`Folders on ${device.label}`} wide>
+      <View className="gap-4 px-4 pb-6">
+        {card.children}
+        <Placements device={device} placements={placements} />
+        <Actions
+          device={device}
+          browse={false}
+          onOpen={(mode) => {
+            onClose();
+            onOpen(mode);
+          }}
+        />
+      </View>
+    </Sheet>
+  );
+}
+
+function CompactPlacements({
+  card,
+  onOpen,
+}: {
+  readonly card: CardProps;
+  readonly onOpen: (mode: 'synced' | 'mounted') => void;
+}): ReactNode {
+  const [managing, setManaging] = useState(false);
+  const { device, placements } = card;
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+      <Icon name="folderSync" size={20} tone="variant" />
+      <Text variant="footnote" tone="variant" numberOfLines={2} className="min-w-0 flex-1 basis-40">
+        {placementCountOf(device.label, placements)}
+      </Text>
       <Button
-        label="Sync a folder"
-        icon="folderSync"
-        grow
+        label="Manage"
+        variant="tonal"
         onPress={() => {
-          onOpen('synced');
+          setManaging(true);
         }}
       />
-      <Button
-        label="Mount a folder"
-        icon="cloud"
-        variant="tonal"
-        grow
-        onPress={() => {
-          onOpen('mounted');
+      <ManageSheet
+        open={managing}
+        card={card}
+        onOpen={onOpen}
+        onClose={() => {
+          setManaging(false);
         }}
       />
     </View>
   );
 }
 
-export function ComputerCard({
-  device,
-  placements,
-  here = false,
-  children,
-}: {
-  readonly device: Device;
-  readonly placements: readonly DrivePlacement[];
-  readonly here?: boolean;
-  readonly children?: ReactNode;
-}): ReactNode {
+export function ComputerCard(props: CardProps): ReactNode {
+  const { device, placements, here = false, compact = false } = props;
   const [sheet, setSheet] = useState<PlacementSheetTarget | null>(null);
+  const open = (mode: 'synced' | 'mounted'): void => {
+    setSheet({ deviceId: device.id, computer: device.label, mode });
+  };
   return (
     <Card>
       <Head device={device} here={here} />
       <DiskBar device={device} />
-      {device.online ? null : (
-        <Text variant="footnote" tone="variant">
-          Offline. These are the last states it reported.
-        </Text>
+      <OfflineLine device={device} />
+      {compact ? (
+        <CompactPlacements card={props} onOpen={open} />
+      ) : (
+        <>
+          {props.children}
+          <Placements device={device} placements={placements} />
+          <Actions device={device} browse onOpen={open} />
+        </>
       )}
-      {children}
-      <Placements device={device} placements={placements} />
-      <Actions
-        onOpen={(mode) => {
-          setSheet({ deviceId: device.id, computer: device.label, mode });
-        }}
-      />
       <PlacementSheet
         target={sheet}
         onClose={() => {

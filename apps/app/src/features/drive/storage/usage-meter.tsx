@@ -35,16 +35,23 @@ export function UsageMeter(props: UsageMeterProps): ReactNode {
       <View className="flex-row items-center gap-3">
         {leading}
         <View className="min-w-0 flex-1">
-          <Text variant="body-strong" numberOfLines={1}>
-            {title}
-          </Text>
+          <View className="flex-row items-baseline gap-3">
+            <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
+              {title}
+            </Text>
+            <Text
+              variant="footnote"
+              tone={line.tone}
+              numberOfLines={1}
+              className="tabular shrink-0"
+            >
+              {line.used}
+            </Text>
+          </View>
           <Text variant="footnote" tone="variant" numberOfLines={1} className="tabular">
             {line.counts}
           </Text>
         </View>
-        <Text variant="footnote" tone={line.tone} numberOfLines={1} className="tabular shrink-0">
-          {line.used}
-        </Text>
         {trailing}
       </View>
       <SegmentBar

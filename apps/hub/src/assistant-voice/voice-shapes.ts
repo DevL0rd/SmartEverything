@@ -28,10 +28,6 @@ function present(entries: Json): Json {
   );
 }
 
-function unique(values: readonly unknown[]): string[] {
-  return [...new Set(values.filter((value): value is string => typeof value === 'string'))];
-}
-
 const deviceRow = (row: Json, rows: readonly Json[]): Json => {
   if (isRecord(row['device'])) {
     return row;
@@ -60,18 +56,6 @@ const automationRow = (row: Json, _rows: readonly Json[], args: Json): Json => {
   });
 };
 
-const sceneRow: Row = (row) =>
-  present({
-    id: row['id'],
-    name: row['name'],
-    devices: Array.isArray(row['actions'])
-      ? unique(
-          row['actions'].map((action: unknown) => (isRecord(action) ? action['device'] : null)),
-        )
-      : undefined,
-    problem: row['problem'],
-  });
-
 const clientRow: Row = (row) =>
   present({
     name: row['name'],
@@ -84,7 +68,6 @@ const clientRow: Row = (row) =>
 const VOICE_LISTS: ReadonlyMap<string, VoiceList> = new Map([
   ['device_find', { key: 'devices', row: deviceRow }],
   ['automation_read', { key: 'automations', row: automationRow }],
-  ['scene_find', { key: 'scenes', row: sceneRow }],
   [pluginToolName('router', 'list_clients'), { key: 'clients', row: clientRow }],
 ]);
 

@@ -9,6 +9,8 @@ export const VOICE_DEFERRED_TOOLS: ReadonlySet<string> = new Set([
   'chat_speak',
   'weather_read',
   'person_notify',
+  'machine_read',
+  'machine_switch',
 ]);
 
 export const VOICE_DECLARED_TOOLS: ReadonlySet<string> = new Set([

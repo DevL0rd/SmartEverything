@@ -24,6 +24,7 @@ const item: DesktopPhotoItem = {
   takenAt: 1000,
   uri: `app://smarteverything/local-media/${'a'.repeat(64)}`,
   video: true,
+  folder: '/home/person/Videos',
 };
 const list = vi.fn<DesktopPhotos['list']>();
 const hash = vi.fn<DesktopPhotos['hash']>();

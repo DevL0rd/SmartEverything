@@ -21,7 +21,11 @@ import {
   VOICE_ASSET_PACKAGE_NAMES,
   VOICE_ASSET_PREFIX,
 } from './copy-voice-assets.ts';
+import { UPDATE_ENTRY_DIRECTORY } from './hub-install-layout.ts';
+import { UPDATE_ENTRIES } from './self-update-files.ts';
 import { HUB_SERVICE_VERSION_FILE, readReleaseVersion } from './release-version.ts';
+import { PLACES_DATASET } from './service-target.ts';
+import { stageVisionModels } from './vision-models.ts';
 import {
   copyRuntimePackages,
   matchesPattern,
@@ -102,6 +106,12 @@ const BUNDLES: readonly Bundle[] = [
     banner: SERVICE_BANNER,
   },
   {
+    entry: join(hub, 'src', 'photos', 'edits', 'colour-worker.ts'),
+    file: 'colour-worker.mjs',
+    external: [],
+    banner: SERVICE_BANNER,
+  },
+  {
     entry: join(hub, 'src', 'service', 'loop-watchdog', 'worker.ts'),
     file: 'loop-watchdog.mjs',
     external: [],
@@ -122,6 +132,24 @@ const BUNDLES: readonly Bundle[] = [
     file: 'hasher-worker.mjs',
     external: [],
   },
+  {
+    entry: join(hub, 'src', 'drive', 'content', 'content-worker.ts'),
+    file: 'content-worker.mjs',
+    external: ['tesseract.js', 'sharp'],
+    banner: SERVICE_BANNER,
+  },
+  {
+    entry: join(hub, 'src', 'vision', 'faces', 'worker.ts'),
+    file: 'faces-worker.mjs',
+    external: [],
+    banner: SERVICE_BANNER,
+  },
+  ...UPDATE_ENTRIES.map(({ entry, file }): Bundle => ({
+    entry,
+    file: `${UPDATE_ENTRY_DIRECTORY}/${file}`,
+    external: SERVICE_EXTERNALS,
+    banner: SERVICE_BANNER,
+  })),
 ];
 
 function isBareExternal(path: string, patterns: readonly string[]): boolean {
@@ -290,6 +318,12 @@ function checkStage(stage: string, targetName: ServiceTargetName | undefined): v
     startServiceBundle(stage);
 }
 
+function stagePlacesDataset(stage: string): void {
+  const target = join(stage, PLACES_DATASET);
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(join(root, 'apps', 'hub', 'assets', PLACES_DATASET), target);
+}
+
 async function buildStage(
   stage: string,
   targetName: ServiceTargetName,
@@ -302,6 +336,8 @@ async function buildStage(
   log.debug('packages.named', { roots: names.length });
   const count = copyPackages(stage, names, target);
   copyServiceAssets(stage, target);
+  stageVisionModels(stage);
+  stagePlacesDataset(stage);
   log.debug('assets.copied');
   const missing = missingFromOutput(found, stage);
   if (missing.length > 0)

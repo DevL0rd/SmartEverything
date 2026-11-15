@@ -255,8 +255,8 @@ describe('have-hash answers', () => {
     const result = service.checkHashes(alice, {
       deviceId: alicePhone,
       assets: [
-        { localId: 'content://1', sha256: sha('held') },
-        { localId: 'content://2', sha256: sha('new') },
+        { localId: 'content://1', sha256: sha('held'), folder: null },
+        { localId: 'content://2', sha256: sha('new'), folder: null },
       ],
     });
     expect(result).toEqual({
@@ -277,8 +277,8 @@ describe('have-hash answers', () => {
     const result = service.checkHashes(alice, {
       deviceId: alicePhone,
       assets: [
-        { localId: 'a', sha256: sha('bob') },
-        { localId: 'b', sha256: sha('shared') },
+        { localId: 'a', sha256: sha('bob'), folder: null },
+        { localId: 'b', sha256: sha('shared'), folder: null },
       ],
     });
     expect(result.have).toEqual([{ localId: 'b', itemId: shared.id }]);
@@ -289,7 +289,7 @@ describe('have-hash answers', () => {
     addItem(aliceRoot, 'unhashed.jpg', null, alice);
     const result = service.checkHashes(alice, {
       deviceId: alicePhone,
-      assets: [{ localId: 'a', sha256: sha('unhashed') }],
+      assets: [{ localId: 'a', sha256: sha('unhashed'), folder: null }],
     });
     expect(result.have).toEqual([]);
     expect(result.missing).toEqual(['a']);
@@ -300,7 +300,7 @@ describe('have-hash answers', () => {
     const ask = (): ReturnType<BackupService['checkHashes']> =>
       service.checkHashes(alice, {
         deviceId: alicePhone,
-        assets: [{ localId: 'x', sha256: sha('held') }],
+        assets: [{ localId: 'x', sha256: sha('held'), folder: null }],
       });
     expect(ask().have).toHaveLength(1);
     store.driveItems.remove(held.id);
@@ -314,7 +314,7 @@ describe('have-hash answers', () => {
     expect(() =>
       service.checkHashes(alice, {
         deviceId: bobPhone,
-        assets: [{ localId: 'a', sha256: sha('a') }],
+        assets: [{ localId: 'a', sha256: sha('a'), folder: null }],
       }),
     ).toThrow(/not registered/);
   });
@@ -325,7 +325,7 @@ describe('verified on the hub after the upload lands', () => {
     service.registerDevice(alice, register(alicePhone));
     service.checkHashes(alice, {
       deviceId: alicePhone,
-      assets: [{ localId: 'content://9', sha256: sha('late') }],
+      assets: [{ localId: 'content://9', sha256: sha('late'), folder: null }],
     });
   });
 
@@ -372,9 +372,9 @@ describe('coverage per phone', () => {
     service.checkHashes(alice, {
       deviceId: alicePhone,
       assets: [
-        { localId: '1', sha256: sha('one') },
-        { localId: '2', sha256: sha('two') },
-        { localId: '3', sha256: sha('three') },
+        { localId: '1', sha256: sha('one'), folder: null },
+        { localId: '2', sha256: sha('two'), folder: null },
+        { localId: '3', sha256: sha('three'), folder: null },
       ],
     });
     const device = store.driveBackup.findDeviceByHubDevice(alicePhone);
@@ -562,7 +562,7 @@ describe('routes', () => {
     addItem(aliceRoot, 'held.jpg', sha('held'), alice);
     const have = await bound.checkBackupHashes.run(
       caller(alice),
-      raw({ deviceId: alicePhone, assets: [{ localId: 'a', sha256: sha('held') }] }),
+      raw({ deviceId: alicePhone, assets: [{ localId: 'a', sha256: sha('held'), folder: null }] }),
       log,
     );
     expect(have).toMatchObject({ missing: [] });
@@ -601,7 +601,7 @@ describe('routes', () => {
     await expect(
       bound.checkBackupHashes.run(
         otherPhone,
-        raw({ deviceId: alicePhone, assets: [{ localId: 'x', sha256: sha('x') }] }),
+        raw({ deviceId: alicePhone, assets: [{ localId: 'x', sha256: sha('x'), folder: null }] }),
         log,
       ),
     ).rejects.toThrow(/paired phone/);
@@ -646,7 +646,7 @@ describe('backup publication into Photos', () => {
     await writeFile(join(root.path, 'purge.jpg'), 'purge');
     service.checkHashes(alice, {
       deviceId: alicePhone,
-      assets: [{ localId: 'purge', sha256: sha('purge') }],
+      assets: [{ localId: 'purge', sha256: sha('purge'), folder: null }],
     });
     const membership = (): unknown =>
       database.prepare('select item_id from drive_photo_library where item_id = ?').get(item.id);
@@ -669,7 +669,7 @@ describe('backup publication into Photos', () => {
     const unsubscribe = store.feed.subscribeNotices((notice) => notices.push(notice));
     service.checkHashes(alice, {
       deviceId: alicePhone,
-      assets: [{ localId: 'held', sha256: sha('held') }],
+      assets: [{ localId: 'held', sha256: sha('held'), folder: null }],
     });
     expect(reader.page(actor, '2026-02', { filter: 'all' }).ids).toEqual([held.id]);
     expect(notices).toContainEqual(
@@ -682,7 +682,7 @@ describe('backup publication into Photos', () => {
     service.registerDevice(alice, register(alicePhone));
     service.checkHashes(alice, {
       deviceId: alicePhone,
-      assets: [{ localId: 'new', sha256: sha('new') }],
+      assets: [{ localId: 'new', sha256: sha('new'), folder: null }],
     });
     const item = datedItem('new.jpg', sha('new'));
     const notices: CommittedNotice[] = [];
@@ -715,7 +715,7 @@ describe('committed backup invalidation', () => {
     expect(
       service.checkHashes(alice, {
         deviceId: alicePhone,
-        assets: [{ localId: 'held', sha256: sha('held') }],
+        assets: [{ localId: 'held', sha256: sha('held'), folder: null }],
       }).missing,
     ).toEqual([]);
     expect(notices).toHaveLength(3);
@@ -734,7 +734,7 @@ describe('committed backup invalidation', () => {
     service.registerDevice(alice, register(alicePhone));
     service.checkHashes(alice, {
       deviceId: alicePhone,
-      assets: [{ localId: 'late', sha256: sha('late') }],
+      assets: [{ localId: 'late', sha256: sha('late'), folder: null }],
     });
     const notices: CommittedNotice[] = [];
     const unsubscribe = store.feed.subscribeNotices((notice) => {
@@ -768,7 +768,7 @@ describe('committed backup invalidation', () => {
       store.write(() => {
         service.checkHashes(alice, {
           deviceId: alicePhone,
-          assets: [{ localId: 'missing', sha256: sha('missing') }],
+          assets: [{ localId: 'missing', sha256: sha('missing'), folder: null }],
         });
         throw new Error('isolated aborted hash check');
       }),
@@ -928,7 +928,7 @@ describe('existing photo and video folder migration', () => {
     const other = await legacy(bobRoot, 'Camera roll/Bob/2025/2025-01/a.jpg', 'other');
     service.checkHashes(alice, {
       deviceId: alicePhone,
-      assets: [{ localId: 'original', sha256: sha('image') }],
+      assets: [{ localId: 'original', sha256: sha('image'), folder: null }],
     });
     enqueue();
     await migratePhotosFolder(env);
@@ -952,7 +952,7 @@ describe('existing photo and video folder migration', () => {
     expect(
       service.checkHashes(alice, {
         deviceId: alicePhone,
-        assets: [{ localId: 'original', sha256: sha('image') }],
+        assets: [{ localId: 'original', sha256: sha('image'), folder: null }],
       }).have,
     ).toEqual([{ localId: 'original', itemId: image.id }]);
     await migratePhotosFolder(env);

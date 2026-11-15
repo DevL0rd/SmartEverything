@@ -1,7 +1,6 @@
 import { Logger } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { z } from 'zod';
 import { ApiError, factsOf, type FoodCandidate, type FoodRow } from '@smarteverything/domain';
@@ -10,7 +9,7 @@ import { lookupBarcode } from '../../../api/nutrition';
 import { FlowFrame } from '../../../components/flow-frame';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
-import { SearchField } from '../../../components/search-field';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
@@ -161,39 +160,17 @@ function QuickRows({
   );
 }
 
-function SearchBar({
-  query,
-  onQuery,
-  params,
-}: {
-  readonly query: string;
-  readonly onQuery: (query: string) => void;
-  readonly params: AddParams;
-}): ReactNode {
-  const android = useSizeClass().platform === 'android';
+function ScanButton({ params }: { readonly params: AddParams }): ReactNode {
   return (
-    <View className="flex-row items-center gap-2">
-      <View className="flex-1">
-        <SearchField
-          value={query}
-          onChange={onQuery}
-          placeholder="Search foods and drinks"
-          focusOnMount
-          variant="field"
-        />
-      </View>
-      {android ? (
-        <IconButton
-          icon="scanBarcode"
-          label="Scan a barcode"
-          variant="tonal"
-          href={href.scanFood({
-            day: params.day,
-            ...(params.meal === null ? {} : { meal: params.meal }),
-          })}
-        />
-      ) : null}
-    </View>
+    <IconButton
+      icon="scanBarcode"
+      label="Scan a barcode"
+      size="control"
+      href={href.scanFood({
+        day: params.day,
+        ...(params.meal === null ? {} : { meal: params.meal }),
+      })}
+    />
   );
 }
 
@@ -211,6 +188,24 @@ function useScannedBarcode(
   }, [barcode, lookup, savedKnown]);
 }
 
+function useFoodSearch(params: AddParams): {
+  readonly query: string;
+  readonly search: ShellSearchConfig;
+} {
+  const android = useSizeClass().platform === 'android';
+  const [query, setQuery] = useState('');
+  return {
+    query,
+    search: {
+      value: query,
+      onChange: setQuery,
+      placeholder: 'Search foods and drinks',
+      focusOnMount: true,
+      ...(android ? { trailing: <ScanButton params={params} /> } : {}),
+    },
+  };
+}
+
 function SearchStep({
   params,
   onChoose,
@@ -219,7 +214,7 @@ function SearchStep({
   readonly onChoose: (target: PortionTarget) => void;
 }): ReactNode {
   const router = useRouter();
-  const [query, setQuery] = useState('');
+  const { query, search } = useFoodSearch(params);
   const foods = useFoods();
   const saved = foods.data ?? [];
   const lookup = useBarcodeLookup(params, onChoose, saved);
@@ -227,11 +222,11 @@ function SearchStep({
   return (
     <FlowFrame
       title={params.meal === null ? 'Add food' : `Add to ${MEAL_INFO[params.meal].label}`}
+      search={search}
       onCancel={() => {
         router.back();
       }}
     >
-      <SearchBar query={query} onQuery={setQuery} params={params} />
       <QuickRows query={query.trim()} params={params} />
       {foods.error === null ? null : (
         <Text variant="callout" tone="critical">

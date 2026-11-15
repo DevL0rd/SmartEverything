@@ -3,11 +3,11 @@ import { rgbaToThumbHash } from 'thumbhash';
 
 export const THUMBHASH_EDGE = 100;
 
-export async function thumbHashOf(image: Uint8Array): Promise<Uint8Array> {
+export async function thumbHashOf(image: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   const { data, info } = await sharp(image)
     .resize({ width: THUMBHASH_EDGE, height: THUMBHASH_EDGE, fit: 'inside' })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  return rgbaToThumbHash(info.width, info.height, data);
+  return Uint8Array.from(rgbaToThumbHash(info.width, info.height, data));
 }

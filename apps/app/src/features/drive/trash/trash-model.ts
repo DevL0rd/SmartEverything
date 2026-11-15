@@ -1,6 +1,6 @@
 import type { DriveTrashEntry } from '@smarteverything/domain';
 import { bytes, count } from '../../../format/number';
-import { joinParts, plural } from '../../../format/text';
+import { plural } from '../../../format/text';
 import { daysBetween, localDayKey, monthShort } from '../../../format/time';
 
 export interface TrashPeople {
@@ -116,21 +116,6 @@ export function leavesText(daysLeft: number, compact: boolean): string {
   const unit = leaveUnitOf(daysLeft);
   if (compact && unit.short !== unit.long) return `${count(unit.value)} ${unit.short}`;
   return plural(unit.value, unit.long);
-}
-
-export function rowLabelOf(item: TrashItem, wasIn: string): string {
-  const who = deleterName(item.deleter);
-  const leaves =
-    item.daysLeft === 0
-      ? 'leaves for good today'
-      : `leaves for good in ${plural(item.daysLeft, 'day')}`;
-  return joinParts([
-    item.name,
-    wasIn === '' ? null : `was in ${wasIn}`,
-    `deleted by ${who === 'You' ? 'you' : who}`,
-    item.isFolder ? null : bytes(item.bytes),
-    leaves,
-  ]);
 }
 
 export function monthLabel(key: string): string {

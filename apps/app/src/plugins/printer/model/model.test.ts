@@ -39,7 +39,7 @@ const NOW = Date.parse('2026-10-18T10:01:42.000Z');
 
 describe('the stopped job card', () => {
   it('shows page, ETA and elapsed time for a job that is printing', () => {
-    const card = jobCardOf(JOB, { stopped: false, now: NOW, ppm: 6 });
+    const card = jobCardOf(JOB, { printer: 'ready', now: NOW, ppm: 6 });
     expect(card).toMatchObject({
       kind: 'printing',
       pageLabel: 'Page 7 of 18',
@@ -49,7 +49,7 @@ describe('the stopped job card', () => {
   });
 
   it('freezes time, hides the ETA and says where it stopped when the printer is stopped', () => {
-    const card = jobCardOf(JOB, { stopped: true, now: NOW, ppm: 6 });
+    const card = jobCardOf(JOB, { printer: 'stopped', now: NOW, ppm: 6 });
     expect(card).toMatchObject({
       kind: 'stopped',
       headline: 'Stopped at page 6 of 18 · waiting for the printer',
@@ -57,33 +57,50 @@ describe('the stopped job card', () => {
       remaining: null,
     });
     expect(
-      jobCardOf({ ...JOB, cause: 'Paper jam' }, { stopped: true, now: NOW, ppm: 6 }).detail,
+      jobCardOf({ ...JOB, cause: 'Paper jam' }, { printer: 'stopped', now: NOW, ppm: 6 }).detail,
     ).toBe('Paper jam');
-    expect(jobCardOf({ ...JOB, state: 'stopped' }, { stopped: false, now: NOW, ppm: 6 }).kind).toBe(
-      'stopped',
-    );
+    expect(
+      jobCardOf({ ...JOB, state: 'stopped' }, { printer: 'ready', now: NOW, ppm: 6 }).kind,
+    ).toBe('stopped');
+  });
+
+  it('drops the timer and the ETA and says the printer is offline when it stops answering', () => {
+    const card = jobCardOf(JOB, { printer: 'offline', now: NOW, ppm: 6 });
+    expect(card).toMatchObject({
+      kind: 'offline',
+      headline: 'Last seen at page 6 of 18 · the printer is offline',
+      elapsed: null,
+      remaining: null,
+      progress: 0.33,
+    });
+    expect(
+      jobCardOf(
+        { ...JOB, state: 'stopped', pages: null, pagesDone: null },
+        { printer: 'offline', now: NOW, ppm: 6 },
+      ).headline,
+    ).toBe('Last seen printing · the printer is offline');
   });
 
   it('handles held and waiting jobs and unknown page counts', () => {
     expect(
-      jobCardOf({ ...JOB, state: 'held' }, { stopped: false, now: NOW, ppm: null }),
+      jobCardOf({ ...JOB, state: 'held' }, { printer: 'ready', now: NOW, ppm: null }),
     ).toMatchObject({ kind: 'held', headline: 'On hold' });
     expect(
-      jobCardOf({ ...JOB, state: 'pending', ahead: 2 }, { stopped: false, now: NOW, ppm: null }),
+      jobCardOf({ ...JOB, state: 'pending', ahead: 2 }, { printer: 'ready', now: NOW, ppm: null }),
     ).toMatchObject({ kind: 'waiting', detail: '2 jobs ahead' });
     expect(
-      jobCardOf({ ...JOB, state: 'pending', ahead: 0 }, { stopped: false, now: NOW, ppm: null })
+      jobCardOf({ ...JOB, state: 'pending', ahead: 0 }, { printer: 'ready', now: NOW, ppm: null })
         .detail,
     ).toBe('Next in line');
     expect(
       jobCardOf(
         { ...JOB, pages: null, pagesDone: null, startedAt: null },
-        { stopped: true, now: NOW, ppm: 6 },
+        { printer: 'stopped', now: NOW, ppm: 6 },
       ).headline,
     ).toBe('Stopped · waiting for the printer');
     const quiet = jobCardOf(
       { ...JOB, pages: null, pagesDone: null, startedAt: null, progress: null },
-      { stopped: false, now: NOW, ppm: 6 },
+      { printer: 'ready', now: NOW, ppm: 6 },
     );
     expect(quiet).toMatchObject({
       headline: 'Printing',
@@ -92,7 +109,7 @@ describe('the stopped job card', () => {
       progress: null,
     });
     expect(
-      jobCardOf({ ...JOB, pagesDone: 18 }, { stopped: false, now: NOW, ppm: 6 }).remaining,
+      jobCardOf({ ...JOB, pagesDone: 18 }, { printer: 'ready', now: NOW, ppm: 6 }).remaining,
     ).toBeNull();
   });
 });

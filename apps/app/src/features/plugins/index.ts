@@ -6,3 +6,5 @@ export { PluginScreen } from './screens/plugin-screen';
 export { PluginsScreen } from './screens/plugins-screen';
 export { PluginToolsScreen } from './screens/plugin-tools-screen';
 export { pluginIcon } from './model/plugin-look';
+export { useChosenOptions, useOptionPages, type OptionFeed } from './data/option-queries';
+export { OptionVisual } from './picker/option-visual';

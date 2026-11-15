@@ -37,9 +37,19 @@ vi.mock('../../app-shell/hrefs', () => ({
 vi.mock('../../components/banner', () => ({ Banner: (): null => null }));
 vi.mock('../../components/button', () => ({ Button: (): null => null }));
 vi.mock('../../components/empty-state', () => ({ EmptyState: (): null => null }));
-vi.mock('../../components/page-header', () => ({ PageHeader: (): null => null }));
-vi.mock('../../components/screen', () => ({ Screen: childrenOf }));
-vi.mock('../../components/text', () => ({ Text: childrenOf }));
+vi.mock('../../settings/settings-frame', () => ({
+  SettingsFrame: ({
+    search,
+    children,
+  }: {
+    readonly search?: { readonly focusOnMount?: boolean };
+    readonly children: ReactNode;
+  }): ReactNode => {
+    if (search !== undefined) controls.search(search.focusOnMount === true);
+    return children;
+  },
+}));
+vi.mock('../../components/text', () => ({ Text: (): null => null }));
 vi.mock('../../components/select', () => ({
   Select: ({
     value,
@@ -56,21 +66,16 @@ vi.mock('../../components/select', () => ({
   },
 }));
 vi.mock('../../components/transcript-feed', () => ({
-  TranscriptFeed: ({
-    header,
-    focusSearch,
-  }: {
-    readonly header: ReactNode;
-    readonly focusSearch: boolean;
-  }): ReactNode => {
-    controls.search(focusSearch);
-    return header;
-  },
+  TranscriptFeed: ({ header }: { readonly header: ReactNode }): ReactNode => header,
 }));
 vi.mock('../../queries/transcript-reader/use-feed-controller', () => ({
-  useFeedController: ({ sessionId }: { readonly sessionId: string }): undefined => {
+  useFeedController: ({
+    sessionId,
+  }: {
+    readonly sessionId: string;
+  }): { readonly words: string; readonly changeWords: () => void } => {
     controls.reader(sessionId);
-    return undefined;
+    return { words: '', changeWords: vi.fn() };
   },
 }));
 vi.mock('../../queries/transcript-reader/use-transcript-removal', () => ({
@@ -86,7 +91,7 @@ vi.mock('../../store/selectors', () => ({
 const { DiscordTranscriptScreen } = await import('./transcript-screen');
 
 describe('Discord transcript call selection', () => {
-  it('hands focus from the deep-linked search to the selector after choosing a call', () => {
+  it('hands focus from the deep-linked shell search to the selector after choosing a call', () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.stubGlobal('window', {
       event: undefined,

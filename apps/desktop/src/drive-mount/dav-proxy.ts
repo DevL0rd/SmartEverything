@@ -276,7 +276,7 @@ export async function startDavProxy(config: DavProxyConfig): Promise<DavProxy> {
     hubOrigin: new URL(config.hubOrigin),
     token: config.token,
   };
-  const server = createServer();
+  const server = createServer({ requestTimeout: 0 });
   const port = await listenOnLoopback(server);
   const allowedHosts = new Set([`${LOOPBACK}:${String(port)}`, `localhost:${String(port)}`]);
   server.on('request', handler(map, allowedHosts));

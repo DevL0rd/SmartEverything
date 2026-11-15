@@ -4,13 +4,11 @@ import { bathroomItem } from './kit';
 import { seatParts } from './seat';
 
 const WIDTH = 0.38;
-const DEPTH = 0.68;
-const HEIGHT = 0.81;
 
 export const TOILET_MODEL: ModelSpec = bathroomItem({
   id: 'cat.bathroom.toilet',
   title: 'Toilet',
-  footprint: { width: WIDTH, depth: DEPTH, height: HEIGHT },
+  footprint: { width: 0.4, depth: 0.69, height: 0.812 },
   meta: {
     names: {
       display: 'Toilet',

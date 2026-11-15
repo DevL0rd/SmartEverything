@@ -79,7 +79,7 @@ function handleParts(): ModelSpecPart[] {
 export const KNIFE_BLOCK_MODEL: ModelSpec = kitchenItem({
   id: 'cat.kitchen.knife-block',
   title: 'Knife block',
-  footprint: { width: WIDTH, depth: 2 * HALF_DEPTH, height: HIGH + 0.02 },
+  footprint: { width: 0.158, depth: 0.208, height: 0.2961 },
   meta: {
     names: {
       display: 'Knife block',

@@ -22,12 +22,13 @@ import { TokenField, UNUSED_NOTE } from './token-field';
 import { tokenKey, type SearchToken } from './tokens';
 import { tryChipsOf, type TryChip } from './try-chips';
 import { useSearchSources } from './use-search-sources';
+import { useSmartHits } from './use-smart-hits';
 
 const NOTED: ReadonlySet<SearchAction['type']> = new Set(['pick', 'commit', 'apply']);
 
 const CLOSING: ReadonlySet<SearchAction['type']> = new Set(['pick', 'commit', 'apply', 'clear']);
 
-const LOADING_GROUPS = ['places', 'dates', 'albums', 'cameras'] as const;
+const LOADING_GROUPS = ['people', 'places', 'dates', 'things'] as const;
 
 export interface LibrarySearch {
   readonly state: SearchState;
@@ -70,9 +71,11 @@ interface SuggestionView {
 
 function useSuggestionGroups(state: SearchState, offline: boolean): SuggestionView {
   const { sources, loading } = useSearchSources();
+  const typing = isTyping(state) && !offline;
+  const smart = useSmartHits(state.input, typing);
   const groups = useMemo(
-    () => (isTyping(state) && !offline ? suggestionsOf(state.input, sources, state.tokens) : []),
-    [state, sources, offline],
+    () => (typing ? suggestionsOf(state.input, sources, state.tokens, smart) : []),
+    [typing, state, sources, smart],
   );
   const chips = useMemo(() => tryChipsOf(sources), [sources]);
   return { groups, loading, chips };

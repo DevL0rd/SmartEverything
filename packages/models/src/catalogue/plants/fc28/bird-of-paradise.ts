@@ -72,7 +72,7 @@ function flower(): ModelSpecPart[] {
 export const BIRD_OF_PARADISE_MODEL: ModelSpec = plantModel({
   id: 'cat.plants.bird-of-paradise',
   title: 'Bird of paradise',
-  footprint: { width: 1.03, depth: 1.11, height: 1.75 },
+  footprint: { width: 1.0268, depth: 1.1068, height: 1.75 },
   names: {
     display: 'Bird of paradise',
     synonyms: [

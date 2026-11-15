@@ -1,3 +1,4 @@
+import { percentOf } from '../../../format/percent';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useVisibleMinuteOf } from '../data';
@@ -12,8 +13,8 @@ interface NowStyle {
 export function nowStyleOf(place: NowPlace, columns: number, hourHeight: number): NowStyle {
   return {
     top: yOf(place.minute, hourHeight),
-    left: `${(place.index / columns) * 100}%`,
-    width: `${100 / columns}%`,
+    left: percentOf(place.index / columns),
+    width: percentOf(1 / columns),
   };
 }
 

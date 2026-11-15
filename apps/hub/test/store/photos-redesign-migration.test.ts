@@ -64,7 +64,7 @@ const PREF_BEFORE = {
 };
 
 const PREF_AFTER = {
-  version: 3,
+  version: 4,
   value: {
     showCameras: true,
     showAi: false,
@@ -74,6 +74,9 @@ const PREF_AFTER = {
     showNotBackedUp: true,
     map: true,
     removeLocationOutside: true,
+    smartSearch: false,
+    faceGrouping: true,
+    albumActivity: true,
   },
 };
 
@@ -256,7 +259,7 @@ function run(): void {
 }
 
 describe('the Photos redesign migration', () => {
-  it('moves a version 2 Photos pref that still has the excluded albums to version 3', () => {
+  it('moves a version 2 Photos pref that still has the excluded albums to the current version', () => {
     database.prepare("update layouts set layout = ? where page = 'photos'").run(
       JSON.stringify({
         version: 2,
@@ -268,7 +271,7 @@ describe('the Photos redesign migration', () => {
     expect(layouts().profile['photos']).toStrictEqual(PREF_AFTER);
   });
 
-  it('moves the Photos pref to version 3 and removes the Memories fields', () => {
+  it('moves the Photos pref through to the current version and removes the Memories fields', () => {
     run();
 
     expect(layouts().profile['photos']).toStrictEqual(PREF_AFTER);

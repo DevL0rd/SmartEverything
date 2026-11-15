@@ -8,6 +8,7 @@ export const REPOSITORY_ROOT = join(import.meta.dirname, '..');
 const POLICY = z.object({
   allowedLicenses: z.array(z.string().min(1)).min(1),
   overrides: z.record(z.string().min(1), z.string().min(1)).default({}),
+  exceptions: z.record(z.string().min(1), z.string().min(1)).default({}),
 });
 
 const REPORT = z.record(

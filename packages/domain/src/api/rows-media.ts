@@ -1,14 +1,5 @@
 import { z } from 'zod';
-import {
-  COUNT,
-  FLAG,
-  ID,
-  JSON_LIST,
-  JSON_OBJECT,
-  MOMENT,
-  POSITION,
-  boundedText,
-} from './primitives';
+import { COUNT, FLAG, ID, JSON_OBJECT, MOMENT, boundedText } from './primitives';
 import { DEFAULT_WAKE_SENSITIVITY, WAKE_SENSITIVITY } from '../wake-sensitivity';
 
 export const DEFAULT_CAMERA_KEEP_DAYS = 15;
@@ -105,19 +96,6 @@ export const IR_APPLIANCE_KEY_ROW = z.object({
 });
 
 export type IrApplianceKeyRow = z.infer<typeof IR_APPLIANCE_KEY_ROW>;
-
-export const SCENE_NAME = boundedText(80);
-
-export const SCENE_ROW = z.object({
-  id: ID,
-  name: SCENE_NAME,
-  icon: z.string().min(1),
-  actions: JSON_LIST,
-  position: POSITION,
-  created_at: MOMENT,
-});
-
-export type SceneRow = z.infer<typeof SCENE_ROW>;
 
 export const AUTOMATION_NAME_LENGTH = 80;
 export const AUTOMATION_NAME = boundedText(AUTOMATION_NAME_LENGTH);

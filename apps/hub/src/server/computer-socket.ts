@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { ComputerNodeAccess } from '../computers/node-access';
 import { bearerOf } from './http';
 import { ComputerLog } from './computer-log';
-import { remoteKind } from './request-trace';
+import { requestRemoteKind } from './request-trace';
 import { messageOf } from '@smarteverything/logging';
 import { afterPendingInput, pingWhenOpen } from '../network/guarded-socket';
 
@@ -144,7 +144,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
     events.connected(
       connection,
       identity.device_id,
-      remoteKind(request.socket.remoteAddress),
+      requestRemoteKind(request),
       this.connections.size,
     );
     socket.on('message', (raw: RawData, binary: boolean) => {

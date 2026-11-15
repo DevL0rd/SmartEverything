@@ -2,7 +2,7 @@ import type { RouteDefinition } from '../../app-shell/route-types';
 
 interface PageSpec {
   readonly key: string;
-  readonly path: 'tasks' | 'calendar' | 'insights';
+  readonly path: 'tasks' | 'calendar' | 'insights' | 'booking' | 'search';
   readonly title: string;
   readonly icon: RouteDefinition['icon'];
   readonly keywords: readonly string[];
@@ -43,5 +43,19 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Insights',
     icon: 'trendUp',
     keywords: ['stats', 'streaks', 'on time', 'trends'],
+  }),
+  page({
+    key: 'planner-booking',
+    path: 'booking',
+    title: 'Booking pages',
+    icon: 'share',
+    keywords: ['booking', 'appointments', 'schedule a meeting', 'pick a time', 'availability'],
+  }),
+  page({
+    key: 'planner-search',
+    path: 'search',
+    title: 'Search events and tasks',
+    icon: 'search',
+    keywords: ['find event', 'find task', 'planner search'],
   }),
 ];

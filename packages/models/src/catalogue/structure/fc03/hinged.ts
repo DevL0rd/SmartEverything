@@ -144,7 +144,7 @@ export const DOOR_HINGED_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Interior door',
   category: 'structure',
-  footprint: { width: 1.006, depth: 0.16, height: 2.153 },
+  footprint: { width: 1.006, depth: 0.158, height: 2.153 },
   size: {
     width: { param: 'width', extra: 0.186, resizes: true },
     height: { param: 'height', extra: 0.113, resizes: true },
@@ -170,7 +170,7 @@ export const DOOR_DOUBLE_MODEL: ModelSpec = {
   version: '1.0.0',
   title: 'Double door',
   category: 'structure',
-  footprint: { width: 1.786, depth: 0.16, height: 2.153 },
+  footprint: { width: 1.786, depth: 0.158, height: 2.153 },
   size: {
     width: { param: 'width', extra: 0.186, resizes: true },
     height: { param: 'height', extra: 0.113, resizes: true },

@@ -3,7 +3,7 @@ import type { BarSegment } from '../../../components/charts';
 import type { ConfirmRequest } from '../../../components/confirm-store';
 import type { ColourRole } from '../../../design/tokens';
 import { bytes, count, decimal } from '../../../format/number';
-import { driveLabelOf, isDriveOwner } from '../../drive/model/drive-access';
+import { driveLabelOf, isDriveOwner } from '../../drive';
 
 export const SOURCE_COLOURS: readonly ColourRole[] = [
   'viz-6',

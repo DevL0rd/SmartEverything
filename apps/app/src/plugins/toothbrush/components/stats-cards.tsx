@@ -38,20 +38,36 @@ const DONUT_PX = 112;
 const SPARK_HEIGHT = 56;
 const FULL = 100;
 
+type Kpi = ReturnType<typeof kpisOf>[number];
+
+function KpiTile({ kpi }: { readonly kpi: Kpi }): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 gap-1 rounded-md bg-surface-1 p-3">
+      <Text variant="footnote" tone="variant">
+        {kpi.label}
+      </Text>
+      <Text variant="title-2" className="tabular">
+        {kpi.value}
+      </Text>
+      {kpi.delta === null && kpi.key === 'goal' ? null : (
+        <Badge label={deltaText(kpi.delta)} tone={deltaTone(kpi.delta)} />
+      )}
+    </View>
+  );
+}
+
 export function KpiGrid({ stats }: { readonly stats: BrushingStats }): ReactNode {
+  const kpis = kpisOf(stats);
+  const pairs = kpis.filter((_, index) => index % 2 === 0).map((kpi, index) => ({
+    first: kpi,
+    second: kpis[index * 2 + 1],
+  }));
   return (
     <View className="flex-row flex-wrap gap-3">
-      {kpisOf(stats).map((kpi) => (
-        <View key={kpi.key} className="min-w-36 flex-1 gap-1 rounded-md bg-surface-1 p-3">
-          <Text variant="footnote" tone="variant">
-            {kpi.label}
-          </Text>
-          <Text variant="title-2" className="tabular">
-            {kpi.value}
-          </Text>
-          {kpi.delta === null && kpi.key === 'goal' ? null : (
-            <Badge label={deltaText(kpi.delta)} tone={deltaTone(kpi.delta)} />
-          )}
+      {pairs.map(({ first, second }) => (
+        <View key={first.key} className="min-w-72 flex-1 flex-row gap-3">
+          <KpiTile kpi={first} />
+          {second === undefined ? null : <KpiTile kpi={second} />}
         </View>
       ))}
     </View>

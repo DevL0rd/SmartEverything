@@ -62,7 +62,6 @@ export const CHAT_WIDGET = z.discriminatedUnion('kind', [
     id: z.string().min(1).max(80),
   }),
   z.strictObject({ kind: z.literal('weather') }),
-  z.strictObject({ kind: z.literal('scenes') }),
   z.strictObject({
     kind: z.literal('setting_link'),
     setting: z.string().min(1).max(120),
@@ -70,7 +69,6 @@ export const CHAT_WIDGET = z.discriminatedUnion('kind', [
   }),
   z.strictObject({ kind: z.literal('device_settings_link'), id: ID, value: LINK_VALUE }),
   z.strictObject({ kind: z.literal('automation_link'), id: ID, value: LINK_VALUE }),
-  z.strictObject({ kind: z.literal('scene_link'), id: ID, value: LINK_VALUE }),
   z.strictObject({ kind: z.literal('room_link'), id: ID, value: LINK_VALUE }),
   z.strictObject({ kind: z.literal('scheduled_link'), id: ID, value: LINK_VALUE }),
   z.strictObject({
@@ -89,7 +87,6 @@ export const CHAT_LINK_KINDS = [
   'setting_link',
   'device_settings_link',
   'automation_link',
-  'scene_link',
   'room_link',
   'scheduled_link',
   'page_link',
@@ -117,12 +114,10 @@ export const CHAT_WIDGET_GUIDE: Readonly<Record<ChatWidgetKind, string>> = {
   planner: `view (${PLANNER_WIDGET_VIEWS.join(', ')}), id (item, alarm or timer id from the planner reads; not for day), optional day (YYYY-MM-DD, for day): the person's planner day, one task or event, an alarm or a timer`,
   photos: `view (${PHOTOS_WIDGET_VIEWS.join(', ')}), id (a file id, an album id or a month as YYYY-MM from drive_read): a photo, an album or a month of the person's library`,
   weather: 'the current weather and forecast',
-  scenes: 'the scenes of the home, to run with a tap',
   setting_link:
     'setting (a settings page id or setting id from the app’s settings), value (what it was set to, or null): a button that opens that setting',
   device_settings_link: 'id (deviceId), value or null: a button that opens the device’s settings',
   automation_link: 'id (automation id), value or null: a button that opens the automation',
-  scene_link: 'id (scene id), value or null: a button that opens the scene',
   room_link: 'id (room id), value or null: a button that opens the room',
   scheduled_link: 'id (scheduleId), value or null: a button that opens the scheduled step',
   page_link: `page (${CHAT_LINK_PAGES.join(', ')}), id or null, value or null: a button that opens that page`,

@@ -26,7 +26,7 @@ export function activityRowCount(
   return Math.max(1, Math.floor(room / Math.max(sizes.rowH2, content)));
 }
 
-export interface SceneGrid {
+export interface ChipGrid {
   readonly shown: number;
   readonly more: number;
 }
@@ -35,12 +35,12 @@ function chipRows(room: number, chip: number): number {
   return Math.floor((room + CHIP_GAP) / (chip + CHIP_GAP));
 }
 
-export function sceneGrid(
+export function chipGrid(
   body: number,
   count: number,
   columns: number,
   sizes: SemanticSizes,
-): SceneGrid {
+): ChipGrid {
   if (Math.ceil(count / columns) <= chipRows(body, sizes.touchMin)) {
     return { shown: count, more: 0 };
   }
