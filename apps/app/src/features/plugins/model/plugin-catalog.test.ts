@@ -64,8 +64,12 @@ it('keeps device plugin setup descriptions searchable', () => {
 });
 
 it('allows an empty state only when the installed list has synced successfully', () => {
-  function sync(status: SyncStatus['status'], outdated: readonly string[] = []): SyncStatus {
-    return { status, problem: null, outdated };
+  function sync(status: SyncStatus['status'], sections: readonly string[] = []): SyncStatus {
+    return {
+      status,
+      problem: null,
+      failed: sections.map((section) => ({ section, reason: 'the server did not send this table' })),
+    };
   }
   expect(pluginCatalogStatus(sync('loading'))).toBe('loading');
   expect(pluginCatalogStatus(sync('interrupted'))).toBe('unavailable');

@@ -4,7 +4,7 @@ import { SettingsPageBody } from '../../../../../src/settings/settings-page';
 
 export default function LayoutsSettingsRoute(): ReactNode {
   return (
-    <SettingsFrame page="home/layouts" contentWidth="full">
+    <SettingsFrame page="home/layouts">
       <SettingsPageBody page="home/layouts" />
     </SettingsFrame>
   );

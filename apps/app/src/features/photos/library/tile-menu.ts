@@ -3,6 +3,7 @@ import { hasPhotoFlag } from '@smarteverything/domain';
 import type { MenuItem } from '../../../components/menu';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
+import { SAVE_LABEL } from './save-target';
 
 type TileAction = (tile: MediaTile) => void;
 
@@ -83,7 +84,7 @@ function rowsOf(tile: MediaTile, actions: TileMenuActions): Rows {
     album: row('album', 'Add to album', 'layers', on(actions.album)),
     chat: chatRow(tile, actions),
     share: row('share', 'Share link', 'share', on(actions.share)),
-    download: row('download', 'Download original', 'download', on(actions.download)),
+    download: row('download', SAVE_LABEL, 'download', on(actions.download)),
     drive: row('drive', 'Show in Drive', 'folder', on(actions.drive)),
     ask: askRow(tile, actions),
     select: row('select', 'Select', 'circleCheck', on(actions.select)),
@@ -138,20 +139,34 @@ export function tileMenu(tile: MediaTile, actions: TileMenuActions, touch: boole
         { ...rows.share, label: 'Share' },
         { ...rows.trash, label: 'Trash' },
       ],
-      items: [rows.info, rows.album, rows.select],
+      items: [rows.info, rows.album, rows.download, rows.select],
     };
   }
+  const hint = actions.chatHint;
+  const chat: readonly MenuItem[] =
+    hint === null
+      ? [rows.chat]
+      : [
+          {
+            id: 'chat',
+            label: 'Send to chat or ask about it',
+            icon: 'messageCircle',
+            disabled: true,
+            description: hint,
+            onPress: (): void => undefined,
+          },
+        ];
   return {
     quick: [],
     items: [
       rows.info,
       rows.favourite,
       rows.album,
-      rows.chat,
+      ...chat,
       rows.share,
       rows.download,
       rows.drive,
-      rows.ask,
+      ...(hint === null ? [rows.ask] : []),
       rows.trash,
     ],
   };

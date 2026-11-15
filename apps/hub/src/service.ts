@@ -1,11 +1,12 @@
 import process, { argv, env, exit } from 'node:process';
 import { Logger } from '@smarteverything/logging';
-import { layoutForLocation, resolveHubRoot, type Location } from './data-layout';
+import { layoutForLocation, resolveHubRootSync, type Location } from './data-layout';
 import {
   PREPARE_DATA_ARGUMENT,
   preparationLayout,
   prepareHubData,
 } from './service/data-preparation';
+import { applyFileIoThreads } from './service/file-io-threads';
 import { runService } from './service/runner';
 
 const STARTUP_FAILED = 1;
@@ -40,12 +41,16 @@ async function start(): Promise<void> {
   }
   if (argv.length > 2)
     throw new Error('Use --prepare-data <absolute data root> or no service arguments.');
-  const location = await resolveHubRoot(env);
+  const location = resolveHubRootSync(env);
   const layout = layoutForLocation(location, env);
+  const fileIoThreads = applyFileIoThreads(
+    location.state === 'pending-v1' ? null : layout.system.database.file,
+  );
   await prepare(layout, location);
   await runService({
     layout,
     pointer: location,
+    fileIoThreads,
     exit,
     onSignal: (signal, handler) => {
       process.once(signal, handler);

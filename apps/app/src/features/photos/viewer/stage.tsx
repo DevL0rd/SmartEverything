@@ -63,13 +63,11 @@ function usePlayableLink(item: MediaItem, media: MediaInfo | null): string | nul
 export function ViewerStage({
   item,
   media,
-  tile,
   moves,
   touch,
 }: {
   readonly item: MediaItem;
   readonly media: MediaInfo | null;
-  readonly tile: MediaTile | null;
   readonly moves: StageMoves;
   readonly touch: boolean;
 }): ReactNode {
@@ -100,7 +98,7 @@ export function ViewerStage({
               onScrubbing={setZoomed}
             />
           ) : (
-            <ViewerPhoto item={item} media={media} tile={tile} onZoomed={setZoomed} />
+            <ViewerPhoto item={item} media={media} onZoomed={setZoomed} />
           )}
         </Animated.View>
       </GestureDetector>

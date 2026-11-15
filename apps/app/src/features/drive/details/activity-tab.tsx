@@ -15,7 +15,7 @@ import { plural } from '../../../format/text';
 import { localDayKey } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
-import { useDevices, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
+import { useDeviceNames, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useDriveChips, useDriveItemActivity } from '../data';
 import {
   activityItemOf,
@@ -55,12 +55,12 @@ export function itemActivityHref(subject: DetailsSubject): ReturnType<typeof hre
 function useNames(): ActivityNames {
   const chipOf = useDriveChips();
   const profiles = useProfiles();
-  const devices = useDevices({ includeHidden: true });
+  const devices = useDeviceNames('name');
   return useMemo(
     () => ({
       chipOf,
       people: new Map(profiles.map((profile) => [profile.id, profile.name])),
-      devices: new Map(devices.map((device) => [device.id, device.name])),
+      devices,
     }),
     [chipOf, profiles, devices],
   );

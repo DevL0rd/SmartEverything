@@ -12,16 +12,17 @@ import { useMemo, type ReactNode, type Ref } from 'react';
 import { View } from 'react-native';
 import { z } from 'zod';
 import { Button } from '../../../components/button';
-import { FilterChip } from '../../../components/filter-chip';
 import type { IconName } from '../../../components/icon';
+import { IconButton } from '../../../components/icon-button';
 import { Section } from '../../../components/section';
 import { compareText, hostOf } from '../../../format/text';
 import { useDevices, useRooms, useRows } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
-import { readyAttachments, type Upload } from '../../assistant/data/uploads';
+import { readyAttachments, type Upload } from '../../assistant';
 import { familyIcon } from '../../device-visuals';
 import { DeviceFace } from '../../devices';
 import { modelSubjectOf, resolvedModelOf, useModelCatalog, useModelOverrides } from '../../models';
+import { OutlinedChip } from './outlined-chip';
 
 const log = new Logger('app.planner');
 
@@ -124,10 +125,9 @@ function deviceView(
   names: AttachmentNames,
 ): AttachmentView {
   const line = names.devices.get(attachment.deviceId);
-  const face = FACE_LABEL[faceOf(attachment.face)].toLocaleLowerCase();
   return {
     key: attachmentKeyOf(attachment),
-    label: `${line?.label ?? 'Removed device'} · ${face}`,
+    label: line?.label ?? 'Removed device',
     icon: line?.icon ?? 'cpu',
   };
 }
@@ -322,24 +322,49 @@ export function useAttachmentNames(): AttachmentNames {
   );
 }
 
+function hasWidget(attachment: PlannerAttachment, names: AttachmentNames): boolean {
+  return attachment.kind === 'device' && names.devices.has(attachment.deviceId);
+}
+
+export interface AttachedWidgetsProps {
+  readonly attachments: readonly PlannerAttachment[];
+  readonly names: AttachmentNames;
+  readonly disabled: boolean;
+  readonly onRemove: ((key: string) => void) | null;
+}
+
 export function AttachedWidgets({
   attachments,
-}: {
-  readonly attachments: readonly PlannerAttachment[];
-}): ReactNode {
+  names,
+  disabled,
+  onRemove,
+}: AttachedWidgetsProps): ReactNode {
   const devices = attachments.flatMap((attachment) =>
-    attachment.kind === 'device' ? [attachment] : [],
+    attachment.kind === 'device' && hasWidget(attachment, names) ? [attachment] : [],
   );
   if (devices.length === 0) return null;
   return (
     <View className="gap-2">
       {devices.map((attachment) => (
-        <DeviceFace
-          key={attachment.deviceId}
-          deviceId={attachment.deviceId}
-          face={faceOf(attachment.face)}
-          context="standalone"
-        />
+        <View key={attachment.deviceId} className="flex-row items-start gap-1">
+          <View className="min-w-0 flex-1">
+            <DeviceFace
+              deviceId={attachment.deviceId}
+              face={faceOf(attachment.face)}
+              context="standalone"
+            />
+          </View>
+          {onRemove === null ? null : (
+            <IconButton
+              icon="x"
+              label={`Remove ${names.devices.get(attachment.deviceId)?.label ?? 'device'}`}
+              disabled={disabled}
+              onPress={() => {
+                onRemove(attachmentKeyOf(attachment));
+              }}
+            />
+          )}
+        </View>
       ))}
     </View>
   );
@@ -376,28 +401,36 @@ export function AttachmentChips(props: AttachmentChipsProps): ReactNode {
       </View>
     );
   }
+  const chips = attachments.filter((attachment) => !hasWidget(attachment, names));
   return (
     <Section title="Attached" action={<AddButton {...props} />}>
       <View className="gap-3">
-        <AttachedWidgets attachments={attachments} />
-        <View className="flex-row flex-wrap gap-2 px-4">
-          {attachments.map((attachment) => {
-            const view = attachmentViewOf(attachment, names);
-            return (
-              <FilterChip
-                key={view.key}
-                label="Remove attachment"
-                value={view.label}
-                icon={view.icon}
-                active
-                affordance={disabled ? undefined : 'remove'}
-                onPress={() => {
-                  if (!disabled) onRemove(view.key);
-                }}
-              />
-            );
-          })}
-        </View>
+        <AttachedWidgets
+          attachments={attachments}
+          names={names}
+          disabled={disabled}
+          onRemove={onRemove}
+        />
+        {chips.length === 0 ? null : (
+          <View className="flex-row flex-wrap gap-2">
+            {chips.map((attachment) => {
+              const view = attachmentViewOf(attachment, names);
+              return (
+                <OutlinedChip
+                  key={view.key}
+                  label={view.label}
+                  spoken={`Remove ${view.label}`}
+                  icon={view.icon}
+                  trailing="close"
+                  disabled={disabled}
+                  onPress={() => {
+                    onRemove(view.key);
+                  }}
+                />
+              );
+            })}
+          </View>
+        )}
       </View>
     </Section>
   );

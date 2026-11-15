@@ -441,6 +441,13 @@ func (s *session) flush() error {
 	if err := s.seal(); err != nil {
 		return err
 	}
+	if live.load().closeWaitsForUpload {
+		err := s.w.awaitCommits(s.w.ctx, s.ino())
+		if errors.Is(err, wire.ErrNoRoute) {
+			return nil
+		}
+		return err
+	}
 	return failure
 }
 
@@ -462,7 +469,7 @@ func (s *session) seal() error {
 	}
 	s.mu.Unlock()
 	if queue {
-		s.w.enqueue(s)
+		s.w.enqueueSealed(s)
 	}
 	return err
 }

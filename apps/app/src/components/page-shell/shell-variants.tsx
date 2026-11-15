@@ -129,20 +129,26 @@ function VariantProviders({
   );
 }
 
+function OverlayTop({ shell }: { readonly shell: VariantShellProps }): ReactNode {
+  return (
+    <View testID="shell-top" className="absolute inset-x-0 top-0 pt-safe">
+      <EdgeScrim edge="top" />
+      <BarRow shell={shell} />
+      <SearchRow shell={shell} />
+      {shell.toolbar === undefined ? null : (
+        <View testID="shell-toolbar" className="px-gutter pb-2">
+          {shell.toolbar}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function OverlayShell(props: VariantShellProps): ReactNode {
   return (
     <VariantProviders shell={props} head>
       <VariantBody shell={props} />
-      <View testID="shell-top" className="absolute inset-x-0 top-0 pt-safe">
-        <EdgeScrim edge="top" />
-        <BarRow shell={props} />
-        <SearchRow shell={props} />
-        {props.toolbar === undefined ? null : (
-          <View testID="shell-toolbar" className="px-gutter pb-2">
-            {props.toolbar}
-          </View>
-        )}
-      </View>
+      {props.bare === true ? null : <OverlayTop shell={props} />}
       {props.footer === undefined ? null : <ShellFooter>{props.footer}</ShellFooter>}
     </VariantProviders>
   );

@@ -58,6 +58,7 @@ import {
 } from '../../src/server/handlers/drive-surface-routes';
 import { actorOf } from '../../src/server/handlers/drive-services';
 import { MediaLinks } from '../../src/server/media-links';
+import { DriveActivity } from '../../src/drive/activity';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { personalDriveRoot } from '../store/drive-roots-fixture';
@@ -176,6 +177,7 @@ beforeEach(async () => {
   const { store } = opened;
   surfaces = createDriveSurfaces({
     store,
+    activity: new DriveActivity(),
     env: {
       files: nodeFiles,
       store,

@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { FlatChoice } from '../../../components/flat-choice';
-import { ChipRow } from '../../../components/library-frame';
 import { Text } from '../../../components/text';
 import type { SearchInput } from './query';
 import type { RecentSearch } from './recent';
@@ -33,7 +32,7 @@ function RecentRow({
         </Text>
         <Button label="Clear recent searches" variant="text" onPress={onClearRecent} />
       </View>
-      <ChipRow label="Recent searches">
+      <View accessibilityLabel="Recent searches" className="flex-row flex-wrap gap-2">
         {recent.map((entry) => (
           <FlatChoice
             key={entry.key}
@@ -47,7 +46,7 @@ function RecentRow({
             }}
           />
         ))}
-      </ChipRow>
+      </View>
     </View>
   );
 }
@@ -59,7 +58,7 @@ function TryRow({ chips, onApply }: Pick<SearchStartProps, 'chips' | 'onApply'>)
       <Text variant="caption" tone="variant">
         Try
       </Text>
-      <ChipRow label="Try a search">
+      <View accessibilityLabel="Try a search" className="flex-row flex-wrap gap-2">
         {chips.map((chip) => (
           <FlatChoice
             key={chip.label}
@@ -72,7 +71,7 @@ function TryRow({ chips, onApply }: Pick<SearchStartProps, 'chips' | 'onApply'>)
             }}
           />
         ))}
-      </ChipRow>
+      </View>
     </View>
   );
 }

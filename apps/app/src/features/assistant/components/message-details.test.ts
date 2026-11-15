@@ -23,7 +23,7 @@ vi.mock('../../../components/list-row', () => ({
   ListRow: ({ title }: Content): ReactNode => createElement('a', null, title),
 }));
 vi.mock('../../../components/sheet', () => ({ Sheet: Box }));
-vi.mock('../../../store/clock', () => ({ useMinute: (): number => 0 }));
+vi.mock('../../../store/clock', () => ({ useDayNow: (): number => 0 }));
 vi.mock('../../../store/store-context', () => ({ useStoreSelector: (): null => null }));
 vi.mock('../../region', () => ({
   useMoney: (): object => ({

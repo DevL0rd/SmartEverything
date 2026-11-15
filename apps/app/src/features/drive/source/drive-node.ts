@@ -57,7 +57,7 @@ export function isStoredItem(item: Pick<DriveItem, 'kind'>): boolean {
   return STORED_KINDS.has(item.kind);
 }
 
-function kindOfItem(item: DriveItem): FileNodeKind {
+export function kindOfItem(item: DriveItem): FileNodeKind {
   switch (item.kind) {
     case 'folder':
     case 'image':

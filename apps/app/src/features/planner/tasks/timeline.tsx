@@ -19,7 +19,7 @@ import { selectionTick } from '../../../platform/haptics';
 import { useMinute } from '../../../store/clock';
 import { usePlannerCollections, usePlannerWrites } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { LIST_DOT } from '../item/composer-tokens';
 import { useItemPress } from '../item/item-menu-host';
 import type { TaskEntry, TaskFilter } from './task-grouping';
@@ -362,7 +362,7 @@ export function TaskTimeline({ entries, today, filter, header }: TaskTimelinePro
   const { person } = usePlannerFrame();
   const collections = usePlannerCollections(person);
   const now = useMinute();
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const [width, setWidth] = useState(0);
   const window = { from: today, days: compact ? DAYS.compact : DAYS.wide };
   const geometry: Geometry = { compact, width, window };

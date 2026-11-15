@@ -4,7 +4,7 @@ import { PhoneSetup } from '../setup/phone-setup';
 
 export function PhoneSetupScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   return (
-    <PhonePage deviceId={deviceId} title="Setup" width="detail">
+    <PhonePage deviceId={deviceId} title="Setup">
       {(device) => <PhoneSetup device={device} />}
     </PhonePage>
   );

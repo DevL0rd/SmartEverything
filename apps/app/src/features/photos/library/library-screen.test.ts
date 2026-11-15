@@ -5,14 +5,16 @@ import {
 } from '../../../components/media-grid/selection';
 import { INITIAL_BACKUP_STATUS, type BackupStatus } from '../backup/model/status';
 
-function controlsOf(begin: () => void): MediaSelectionControls {
+function controlsOf(begin: () => void, active = false): MediaSelectionControls {
   const noop = (): void => undefined;
   return {
-    selection: NO_SELECTION,
+    selection: { ...NO_SELECTION, active },
+    everything: false,
     begin,
     clear: noop,
     all: noop,
     press: () => false,
+    pick: noop,
     day: noop,
     dragStart: noop,
     dragOver: noop,
@@ -52,6 +54,18 @@ describe('library page modules', () => {
     expect(begin).toHaveBeenCalledTimes(1);
     const compact = libraryActions(true, controlsOf(vi.fn()));
     expect(compact.every((action) => action.iconOnly === true)).toBe(true);
+  });
+
+  it('leaves the selection bar close as the only way out of selection mode', async () => {
+    const { libraryActions } = await import('./hub-tab');
+    const { deviceActions } = await import('./device-tab');
+    const selecting = controlsOf(vi.fn(), true);
+    expect(libraryActions(false, selecting).map((action) => action.label)).toEqual(['Upload']);
+    expect(libraryActions(true, selecting)).toEqual([]);
+    expect(deviceActions(true, selecting)).toEqual([]);
+    expect(deviceActions(true, controlsOf(vi.fn())).map((action) => action.label)).toEqual([
+      'Select',
+    ]);
   });
 
   it('shows Turn on backup when backup is off and a warning when photo access is off', async () => {

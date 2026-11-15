@@ -1,6 +1,10 @@
-import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { DEFAULT_DESKTOP_DRIVE_CACHE, type DrivePlacement } from '@smarteverything/domain';
+import {
+  DEFAULT_DESKTOP_DRIVE_CACHE,
+  DEFAULT_DESKTOP_DRIVE_TUNING,
+  type DrivePlacement,
+} from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ComputerDrive, type ComputerDriveContext } from '../../src/drive-mount/computer-drive.js';
@@ -89,6 +93,38 @@ describe('ComputerDrive', () => {
     expect((await drive.state()).cache).toEqual(cache);
   });
 
+  it('saves the tuning with the cache, keeps it across restarts and reports it in the state', async () => {
+    drive = new ComputerDrive(context());
+    await drive.start();
+    expect((await drive.state()).tuning).toEqual({
+      saved: DEFAULT_DESKTOP_DRIVE_TUNING,
+      applied: [],
+      limits: null,
+    });
+    const tuning = { ...DEFAULT_DESKTOP_DRIVE_TUNING, maxBackground: 128, attrSeconds: 60 };
+    await drive.run({ kind: 'tuning', tuning });
+    expect((await drive.state()).tuning.saved).toEqual(tuning);
+    await drive.stop();
+    drive = new ComputerDrive(context());
+    await drive.start();
+    const state = await drive.state();
+    expect(state.tuning.saved).toEqual(tuning);
+    expect(state.cache).toEqual(DEFAULT_DESKTOP_DRIVE_CACHE);
+  });
+
+  it('migrates the old cache-only file once at start', async () => {
+    const root = join(folder, 'node');
+    await mkdir(root, { recursive: true });
+    const cache = { maxAgeSeconds: 7200, maxBytes: null, minFreeBytes: 5, cleanupSeconds: 60 };
+    await writeFile(join(root, 'drive-cache.json'), JSON.stringify(cache));
+    drive = new ComputerDrive(context());
+    await drive.start();
+    const state = await drive.state();
+    expect(state.cache).toEqual(cache);
+    expect(state.tuning.saved).toEqual(DEFAULT_DESKTOP_DRIVE_TUNING);
+    await expect(stat(join(root, 'drive-cache.json'))).rejects.toThrow('ENOENT');
+  });
+
   it('runs a synced placement from the hub feed and answers the desktop over its control socket', async () => {
     drive = new ComputerDrive(context());
     await drive.start();
@@ -120,6 +156,8 @@ describe('ComputerDrive', () => {
       cleanupSeconds: 30,
     };
     expect((await client.run({ kind: 'cache', cache })).cache).toEqual(cache);
+    const tuning = { ...DEFAULT_DESKTOP_DRIVE_TUNING, uploadFiles: 8 };
+    expect((await client.run({ kind: 'tuning', tuning })).tuning.saved).toEqual(tuning);
 
     feed.push([]);
     await until(() => client?.current?.sync === null);

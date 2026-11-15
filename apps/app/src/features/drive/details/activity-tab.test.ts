@@ -51,14 +51,14 @@ vi.mock('../../../store/people', () => ({
   useProfiles: (): readonly object[] => [{ id: ME, name: 'Dana Moss' }],
 }));
 vi.mock('../../../store/selectors', () => ({
-  useDevices: (): readonly object[] => [],
+  useDeviceNames: (): ReadonlyMap<string, string> => new Map(),
   useSession: (): object => ({ client: { profile_id: ME } }),
   useSettings: (): object => ({ time_zone: 'UTC' }),
   useSyncStatus: (): { readonly status: string } => ({ status: hub.live ? 'live' : 'offline' }),
 }));
 vi.mock('../../../components/choice-chip', () => ({ ChoiceChip: (): null => null }));
 vi.mock('../../../components/filter-chip', () => ({ FilterChip: (): null => null }));
-vi.mock('../../../components/library-frame/chip-row', () => ({ ChipRow: (): null => null }));
+vi.mock('../../../components/chip-row', () => ({ ChipRow: (): null => null }));
 vi.mock('../activity/via-chips', () => ({ ViaChips: (): null => null }));
 vi.mock('../activity/person-picker', () => ({
   EVERYONE_VALUE: 'everyone',

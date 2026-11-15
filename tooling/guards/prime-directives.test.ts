@@ -36,11 +36,15 @@ const MEASURED_PACKAGES = [
   'tuya',
   'smartthings',
   'shelly',
+  'models',
+  'flow',
 ];
 
 const UNMEASURED_PACKAGES: Readonly<Record<string, string>> = {
   harness:
     'hosts the vendored agent runtime and is checked by behaviour tests, not held to the shared-package 100% rule',
+  google:
+    'the Google Calendar and sign-in client of the Planner, checked by its own tests and not yet held to the shared-package 100% rule',
 };
 
 async function projectsOf(file: string): Promise<readonly string[]> {
@@ -272,12 +276,12 @@ describe('the enforced limits', () => {
 });
 
 describe('the gates themselves', () => {
-  it('ships mobile releases only as store binaries', () => {
+  it('offers mobile updates only from the owner’s own hub and keeps them off everywhere else', () => {
     const config = readFileSync(join(root, 'apps/app/app.config.ts'), 'utf8');
-    const packageJson = readFileSync(join(root, 'apps/app/package.json'), 'utf8');
 
-    expect(config).toContain('updates: { enabled: false }');
-    expect(packageJson).not.toContain('expo-updates');
+    expect(config).toContain('return { enabled: false }');
+    expect(config).toContain('/api/app-update/manifest');
+    expect(config).not.toMatch(/expo\.dev|expo\.io/);
   });
 
   it('runs every directive gate in one local command', () => {

@@ -60,8 +60,9 @@ describe('photos settings model', () => {
   });
 
   it('names the chosen albums and toggles them', () => {
-    expect(albumsText([])).toBe('All photos and videos');
-    expect(albumsText(['camera'])).toBe('1 album');
+    expect(albumsText([], 'album')).toBe('All photos and videos');
+    expect(albumsText(['camera'], 'album')).toBe('1 album');
+    expect(albumsText(['/a', '/b'], 'folder')).toBe('2 folders');
     expect(toggled(['a'], 'b', true)).toEqual(['a', 'b']);
     expect(toggled(['a', 'b'], 'a', false)).toEqual(['b']);
   });
@@ -116,7 +117,7 @@ describe('the Duplicates link card', () => {
       'No duplicates',
     );
     const view = duplicatesCardOf({ groups: 3, extraCopies: 4, bytesBack: 2048 });
-    expect(view.headline).toMatch(/^3 groups · .+ to win back$/);
+    expect(view.headline).toMatch(/^3 groups · .+ to free$/);
     expect(view.detail).toBe('4 extra copies');
   });
 });

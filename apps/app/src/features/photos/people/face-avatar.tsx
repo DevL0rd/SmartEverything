@@ -4,11 +4,8 @@ import { Image, type ImageLoadEventData } from 'expo-image';
 import type { PhotoBox, PhotoGroupKind } from '@smarteverything/domain';
 import { Icon, type IconProps } from '../../../components/icon';
 import { cn } from '../../../design/cn';
-import { useMotion } from '../../../design/motion';
 import { useCoverUrl } from '../places/cover';
 import { faceCropOf } from './model';
-
-const FADE_MS = 120;
 
 const GLYPH_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40] as const satisfies readonly NonNullable<
   IconProps['size']
@@ -44,7 +41,6 @@ function Crop({
   readonly size: number;
 }): ReactNode {
   const [aspect, setAspect] = useState<number | null>(null);
-  const motion = useMotion();
   const crop = aspect === null ? null : faceCropOf(box, aspect, size);
   const placed =
     crop === null
@@ -54,9 +50,8 @@ function Crop({
     <Image
       source={{ uri: url }}
       contentFit="cover"
-      cachePolicy="disk"
+      cachePolicy="memory-disk"
       accessible={false}
-      transition={motion.reduced ? 0 : FADE_MS}
       onLoad={(event) => {
         setAspect(aspectOf(event));
       }}

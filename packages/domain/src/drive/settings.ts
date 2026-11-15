@@ -10,6 +10,8 @@ const OCR_LANGUAGES = z
   })
   .readonly();
 
+export const MAX_FILE_IO_THREADS = 1024;
+
 const SHAPE = {
   uploadExpiryDays: z.int().positive(),
   membersMayShare: z.boolean(),
@@ -17,6 +19,9 @@ const SHAPE = {
   indexingPaused: z.boolean(),
   contentIndexing: z.boolean(),
   ocrLanguages: OCR_LANGUAGES,
+  fileIoThreads: z.int().min(1).max(MAX_FILE_IO_THREADS),
+  cpuWorkers: z.int().positive(),
+  listingCacheSeconds: z.int().nonnegative(),
 };
 
 export const DRIVE_SETTINGS = z.strictObject(SHAPE).readonly();
@@ -31,6 +36,9 @@ export const DRIVE_SETTINGS_UPDATE = z
     indexingPaused: SHAPE.indexingPaused.optional(),
     contentIndexing: SHAPE.contentIndexing.optional(),
     ocrLanguages: SHAPE.ocrLanguages.optional(),
+    fileIoThreads: SHAPE.fileIoThreads.optional(),
+    cpuWorkers: SHAPE.cpuWorkers.optional(),
+    listingCacheSeconds: SHAPE.listingCacheSeconds.optional(),
   })
   .refine((update) => Object.values(update).some((value) => value !== undefined), {
     message: 'an update changes at least one setting',
@@ -38,3 +46,13 @@ export const DRIVE_SETTINGS_UPDATE = z
   .readonly();
 
 export type DriveSettingsUpdate = z.infer<typeof DRIVE_SETTINGS_UPDATE>;
+
+export const DEFAULT_FILE_IO_THREADS = 8;
+
+export const DEFAULT_LISTING_CACHE_SECONDS = 300;
+
+export const DRIVE_SETTINGS_RUNNING = z
+  .strictObject({ fileIoThreads: SHAPE.fileIoThreads })
+  .readonly();
+
+export type DriveSettingsRunning = z.infer<typeof DRIVE_SETTINGS_RUNNING>;

@@ -66,10 +66,16 @@ export interface NewRecord {
   readonly inode: DriveInodePatch;
 }
 
+function adopted(env: PosixChangeEnv, draft: DriveItemDraft): DriveItemDraft {
+  const taken = env.store.driveItems.byPath(draft.rootId, draft.relPath, null);
+  if (taken?.kind !== draft.kind) return draft;
+  return { ...draft, id: taken.id, addedAt: taken.addedAt };
+}
+
 export function recordNew(env: PosixChangeEnv, caller: PosixCaller, record: NewRecord): DriveItem {
   return env.store.write(() => {
     const written = env.store.driveItems.write({
-      item: record.draft,
+      item: adopted(env, record.draft),
       identity: record.identity,
       inode: record.inode,
     });

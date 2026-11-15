@@ -1,14 +1,15 @@
 import { background } from '@smarteverything/logging';
-import Head from 'expo-router/head';
+import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { href } from '../../../app-shell/hrefs';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { ListRow } from '../../../components/list-row';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
-import { SearchField } from '../../../components/search-field';
+import type { MenuItem } from '../../../components/menu';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { List } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
 import { useDebouncedValue } from '../../../design/use-debounced-value';
@@ -31,6 +32,18 @@ import {
 import type { PlannerCollectionRow } from '@smarteverything/domain';
 
 const SETTLE_MS = 200;
+const LOOKING_ROWS = 5;
+
+const OVERFLOW: readonly MenuItem[] = [
+  {
+    id: 'ask-ai',
+    label: 'Ask AI',
+    icon: 'sparkles',
+    onPress: (): void => {
+      router.push(href.assistantChat());
+    },
+  },
+];
 
 function GroupList({
   group,
@@ -51,12 +64,30 @@ function GroupList({
   );
 }
 
+function LookingRow(): ReactNode {
+  return (
+    <View className="min-h-touch-min flex-row items-center gap-3 px-4 py-3">
+      <Skeleton shape="circle" className="size-11 rounded-sm" />
+      <View className="min-w-0 flex-1 gap-2">
+        <Skeleton className="w-1/2" />
+        <Skeleton shape="text" />
+      </View>
+    </View>
+  );
+}
+
 function Looking(): ReactNode {
   return (
-    <View className="gap-3">
-      <Skeleton shape="block" />
-      <Skeleton shape="block" />
-      <Skeleton shape="block" />
+    <View className="gap-2">
+      <Skeleton shape="text" className="w-20" />
+      <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
+        {Array.from({ length: LOOKING_ROWS }, (_, index) => (
+          <View key={index}>
+            {index === 0 ? null : <View className="h-hairline bg-outline-variant" />}
+            <LookingRow />
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -94,6 +125,7 @@ function Results({ pages, filter, collections, onClear }: ResultsProps): ReactNo
         retry={() => {
           background(pages.refetch(), 'planner.search_retry_failed');
         }}
+        page
       />
     );
   }
@@ -140,40 +172,6 @@ function Offline(): ReactNode {
   );
 }
 
-interface HeaderProps {
-  readonly text: string;
-  readonly onText: (text: string) => void;
-  readonly subtitle: string | undefined;
-  readonly filter: PlannerSearchFilter;
-  readonly collections: readonly PlannerCollectionRow[];
-  readonly onFilter: (filter: PlannerSearchFilter) => void;
-}
-
-function SearchHeader(props: HeaderProps): ReactNode {
-  return (
-    <PageHeader
-      title="Search the Planner"
-      {...(props.subtitle === undefined ? {} : { subtitle: props.subtitle })}
-      below={
-        <View className="gap-3">
-          <SearchField
-            value={props.text}
-            onChange={props.onText}
-            placeholder="Search events and tasks"
-            focusOnMount
-            variant="bar"
-          />
-          <SearchFilters
-            filter={props.filter}
-            collections={props.collections}
-            onChange={props.onFilter}
-          />
-        </View>
-      }
-    />
-  );
-}
-
 interface BodyProps {
   readonly settled: string;
   readonly live: boolean;
@@ -187,6 +185,10 @@ function SearchBody({ settled, live, pages, filter, collections, onClear }: Body
   if (settled === '') return <Start />;
   if (!live && pages.data === undefined) return <Offline />;
   return <Results pages={pages} filter={filter} collections={collections} onClear={onClear} />;
+}
+
+function showsNoMatches(settled: string, pages: PlannerSearchPages): boolean {
+  return settled !== '' && pages.data !== undefined && hitsOf(pages.data.pages).length === 0;
 }
 
 function subtitleOf(settled: string, pages: PlannerSearchPages): string | undefined {
@@ -206,23 +208,29 @@ export function PlannerSearchScreen({ initial }: { readonly initial: string }): 
     usePlannerCalendars(person),
     usePlannerCollections(person),
   );
+  const subtitle = subtitleOf(settled, pages);
   return (
-    <Screen
-      maxWidth="detail"
-      header={
-        <SearchHeader
-          text={text}
-          onText={setText}
-          subtitle={subtitleOf(settled, pages)}
+    <PageShell
+      title="Search the Planner"
+      search={{
+        value: text,
+        onChange: setText,
+        placeholder: 'Search events and tasks',
+        label: 'Search the Planner',
+        focusOnMount: true,
+      }}
+      toolbar={
+        <SearchFilters
           filter={filter}
           collections={collections}
-          onFilter={setFilter}
+          onChange={setFilter}
+          clearable={!showsNoMatches(settled, pages)}
         />
       }
+      overflow={OVERFLOW}
+      settings={mainPageSettings('planner')}
+      {...(subtitle === undefined ? {} : { subtitle })}
     >
-      <Head>
-        <title>Search the Planner · SmartEverything</title>
-      </Head>
       <SearchBody
         settled={settled}
         live={live}
@@ -233,6 +241,6 @@ export function PlannerSearchScreen({ initial }: { readonly initial: string }): 
           setFilter(emptyFilter(settled));
         }}
       />
-    </Screen>
+    </PageShell>
   );
 }

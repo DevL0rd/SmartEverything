@@ -16,18 +16,14 @@ async function receiver(token: string): Promise<Receiver> {
     body: { name: 'Sam' },
   });
   const personId = API_ENDPOINTS.createProfile.response.parse(created.body).id;
-  await call(bench.booted.base, token, {
-    method: 'PUT',
-    path: API_ENDPOINTS.selectProfile.path,
-    body: { profileId: personId },
-  });
+  await bench.registerPhone(token, personId);
   return { personId };
 }
 
 describe('POST /api/reach/notify to the phone', () => {
   it('shows the notification with the tag and sound and carries the link', async () => {
     await bench.saveAccount();
-    const { personId } = await receiver((await bench.registerPhone('fcm-a')).token);
+    const { personId } = await receiver('fcm-a');
     const sent = await call(bench.booted.base, bench.booted.owner, {
       method: 'POST',
       path: API_ENDPOINTS.notifyPerson.path,
@@ -55,7 +51,7 @@ describe('POST /api/reach/notify to the phone', () => {
 
   it('keeps a plain message a data-only push', async () => {
     await bench.saveAccount();
-    const { personId } = await receiver((await bench.registerPhone('fcm-a')).token);
+    const { personId } = await receiver('fcm-a');
     await call(bench.booted.base, bench.booted.owner, {
       method: 'POST',
       path: API_ENDPOINTS.notifyPerson.path,

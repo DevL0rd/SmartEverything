@@ -11,6 +11,7 @@ import { Text } from '../../../components/text';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { bytes } from '../../../format/number';
 import type { FileNode, FileSource, ZipListing } from '../source/types';
+import { useSourceZip } from '../source/source-hooks';
 import { VIEW_ONLY_LINE, type ExportState } from './export-model';
 import { ZipEntryView } from './zip-entry';
 import {
@@ -165,7 +166,7 @@ export function ZipPane<O>({
   readonly source: FileSource<O>;
   readonly exports: ExportState;
 }): ReactNode {
-  const listing = source.useZip(node);
+  const listing = useSourceZip(source, node);
   const [opened, setOpened] = useState<DriveZipEntry | null>(null);
   useWholeArchive(listing);
   if (opened !== null) {

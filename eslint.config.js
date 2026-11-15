@@ -17,6 +17,36 @@ const separationExceptions = JSON.parse(
 const separationIgnores = (rule) =>
   separationExceptions.filter((entry) => entry.rule === rule).map((entry) => entry.path);
 
+const pausableStoreInfrastructure = [
+  'apps/app/src/design/external-store.ts',
+  'apps/app/src/store/store-context.tsx',
+  'apps/app/src/design/theme.ts',
+  'apps/app/src/design/platform.ts',
+  'apps/app/src/design/animation-gate.ts',
+  'apps/app/src/app-shell/tab-prewarm.ts',
+  'apps/app/src/app-shell/stack-handles.ts',
+  'apps/app/src/components/toast-store.ts',
+  'apps/app/src/components/toast-layers.ts',
+];
+
+const rawExternalStoreUnconverted = [
+  'apps/app/src/components/back-navigation.ts',
+  'apps/app/src/components/house-map/live-visibility/stage-host.tsx',
+  'apps/app/src/features/app-updates/data/desktop-install-action.ts',
+  'apps/app/src/features/app-updates/data/update-store.ts',
+  'apps/app/src/features/assistant/data/area-status.ts',
+  'apps/app/src/features/assistant/voice-message/voice-pill-transcript-state.ts',
+  'apps/app/src/features/devices/vacuum/components/map-view-parts.tsx',
+  'apps/app/src/features/drive/data/links.ts',
+  'apps/app/src/features/home-map/data/scan-upload.ts',
+  'apps/app/src/features/models/live/live-view.tsx',
+  'apps/app/src/features/models/live/scroll-model-layer.tsx',
+  'apps/app/src/features/models/live/use-live-view.ts',
+  'apps/app/src/features/photos/organise/locked/session.ts',
+  'apps/app/src/plugins/shelly-presence/presence-face-choice.ts',
+  'apps/app/src/plugins/shelly-presence/presence-page.tsx',
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -148,6 +178,9 @@ export default tseslint.config(
       ...jsxA11y.flatConfigs.strict.rules,
       'local/worklet-calls-worklets': 'error',
       'local/frame-budget': 'error',
+      'local/prefer-minute-selector': 'error',
+      'local/no-device-list-slice': 'error',
+      'local/thumbnail-size': 'error',
       'local/no-stray-text': ['error', { textComponents: ['Overline'] }],
       'react/jsx-no-leaked-render': 'error',
       'react/no-unstable-nested-components': 'error',
@@ -315,6 +348,78 @@ export default tseslint.config(
       'apps/app/**/*.test.tsx',
     ],
     rules: { 'local/frame-budget': 'off' },
+  },
+  {
+    files: [
+      'apps/app/src/**/*.{ts,tsx}',
+      'apps/app/app/**/*.{ts,tsx}',
+      'apps/app/plugins/**/*.{ts,tsx}',
+    ],
+    ignores: [
+      'apps/app/**/*.test.ts',
+      'apps/app/**/*.test.tsx',
+      ...pausableStoreInfrastructure,
+      ...rawExternalStoreUnconverted,
+    ],
+    rules: { 'local/no-raw-external-store': 'error' },
+  },
+  {
+    files: [
+      'apps/app/src/**/*.{ts,tsx}',
+      'apps/app/app/**/*.{ts,tsx}',
+      'apps/app/plugins/**/*.{ts,tsx}',
+    ],
+    ignores: [
+      'apps/app/**/*.test.ts',
+      'apps/app/**/*.test.tsx',
+      'apps/app/src/components/toast-modal.tsx',
+    ],
+    rules: { 'local/no-raw-modal': 'error' },
+  },
+  {
+    files: ['apps/app/src/features/**/*.{ts,tsx}', 'apps/app/src/plugins/**/*.{ts,tsx}'],
+    rules: {
+      'local/no-whole-store-subscribe': [
+        'error',
+        {
+          allow: [
+            'apps/app/src/features/devices/microwave/send-program.ts',
+            'apps/app/src/features/devices/laundry/send-plan.ts',
+            'apps/app/src/features/cameras/player/use-ptz.ts',
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      'apps/app/src/features/**/*.tsx',
+      'apps/app/src/features/**/use*.ts',
+      'apps/app/src/plugins/**/*.tsx',
+      'apps/app/src/plugins/**/use*.ts',
+    ],
+    ignores: ['apps/app/**/*.test.ts', 'apps/app/**/*.test.tsx'],
+    rules: {
+      'local/no-component-interval': [
+        'error',
+        {
+          allow: [
+            'apps/app/src/features/devices/television/hold-repeat.ts',
+            'apps/app/src/features/cameras/player/stream-info-sheet.tsx',
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/app/src/**/*.{ts,tsx}'],
+    ignores: ['apps/app/**/*.test.ts', 'apps/app/**/*.test.tsx'],
+    rules: {
+      'local/no-frame-measure': [
+        'error',
+        { allow: ['apps/app/src/components/widget-board/edit/drag-state.ts'] },
+      ],
+    },
   },
   {
     files: ['apps/app/src/features/assistant/call/components/use-call-level.ts'],

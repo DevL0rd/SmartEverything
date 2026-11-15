@@ -113,7 +113,11 @@ function Action<O>({
   );
 }
 
-function Actions<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
+export function SelectionActions<O>({
+  browser,
+}: {
+  readonly browser: FileBrowserHandle<O>;
+}): ReactNode {
   const specs = [...browser.barActions.actions, ...browser.barActions.danger];
   const fit = useFit(specs);
   const hidden = specs.slice(fit.shown);
@@ -163,7 +167,7 @@ export function SelectionRow<O>({
       {picked.length < order.length ? (
         <Button label="Select all" variant="text" onPress={commands.selectAll} />
       ) : null}
-      <Actions browser={browser} />
+      <SelectionActions browser={browser} />
     </View>
   );
 }

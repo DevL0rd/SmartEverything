@@ -13,7 +13,8 @@ import { jsonText } from '../../format/json-text';
 import { WIRE_QUERY, wireQueryOf, type CallInput, type TypedEndpoint } from './request';
 import { Logger } from '@smarteverything/logging';
 import { rawErrorText } from '../../format/errors';
-import { readLeniently, readTablesLeniently, type UnreadableSection } from './readable';
+import { readLeniently, readTablesLeniently, type SectionFailure } from './readable';
+import { noteFailed, noteNewerFields } from './section-log';
 import { assertHubLease, type HubRouteLease } from './active-route';
 import { hubNetwork } from './route-platform';
 import { presentMediaResource } from './media-resources';
@@ -111,24 +112,12 @@ function answered<S extends z.ZodType>(route: string, schema: S, value: unknown)
 
 export interface TablesAnswer<T> {
   readonly data: T;
-  readonly skipped: readonly string[];
-  readonly unreadable: readonly UnreadableSection[];
+  readonly failed: readonly SectionFailure[];
 }
 
 export interface TablesScope {
   readonly roots: readonly string[];
   readonly sections: readonly string[];
-}
-
-const reportedSections = new Set<string>();
-
-function noteUnreadable(route: string, sections: readonly UnreadableSection[]): void {
-  for (const unreadable of sections) {
-    const key = `${route}|${unreadable.section}|${unreadable.path}`;
-    if (reportedSections.has(key)) continue;
-    reportedSections.add(key);
-    log.warn('api.section_unreadable', { route, ...unreadable });
-  }
 }
 
 function answeredTables<S extends z.ZodType>(
@@ -143,7 +132,7 @@ function answeredTables<S extends z.ZodType>(
     log.warn('api.answer_unreadable', { route, issues: issuesOf(read.error), roots });
     throw new UnreadableAnswerError(route, issuesOf(read.error));
   }
-  noteIgnored(route, read.ignored);
+  noteNewerFields(route, read.ignored);
   read.dropped.forEach((rows) => {
     log.warn('api.rows_skipped', {
       route,
@@ -152,12 +141,8 @@ function answeredTables<S extends z.ZodType>(
       reason: rows.reason,
     });
   });
-  const wholly = read.skipped.filter((table) => !read.dropped.some((rows) => rows.table === table));
-  if (wholly.length > 0) {
-    log.warn('api.tables_skipped', { route, tables: wholly.join(', ') });
-  }
-  noteUnreadable(route, read.unreadable);
-  return { data: read.data, skipped: read.skipped, unreadable: read.unreadable };
+  noteFailed(route, read.failed);
+  return { data: read.data, failed: read.failed };
 }
 
 function routeOf(endpoint: EndpointShape): string {

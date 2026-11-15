@@ -92,7 +92,12 @@ function Columns(part: Part): ReactNode {
 function captionOf({ item, wasIn, layout }: Part): string | null {
   if (layout === 'table') return null;
   const by = deleterName(item.deleter);
-  return wasIn === '' ? by : `${by} · ${wasIn}`;
+  const parts = [
+    by,
+    ...(wasIn === '' ? [] : [wasIn]),
+    ...(layout === 'compact' ? [sizeText(item)] : []),
+  ];
+  return parts.join(' · ');
 }
 
 export function TrashRow(props: TrashRowProps): ReactNode {

@@ -3,6 +3,7 @@ import type { FileHandle } from 'node:fs/promises';
 import type { PosixScope, PosixCaller } from '../posix/env';
 import { posix } from '../posix/errors';
 import type { Store } from '../../store/store';
+import { Lanes } from './lanes';
 
 export interface MountLink {
   readonly send: (bytes: Uint8Array) => void;
@@ -84,7 +85,7 @@ export class MountSession {
   readonly inflight = new Map<bigint, Cancellable>();
   readonly helperSeqs = new Map<string, number>();
   private ledger = new Set<number>();
-  private tail: Promise<unknown> = Promise.resolve();
+  readonly lanes = new Lanes();
   private handleCounter = 0;
 
   constructor(
@@ -105,10 +106,6 @@ export class MountSession {
   expireIn(timer: NodeJS.Timeout | null): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = timer;
-  }
-
-  enqueue(run: () => Promise<void>): void {
-    this.tail = this.tail.then(run);
   }
 
   get journal(): ReadonlySet<number> {

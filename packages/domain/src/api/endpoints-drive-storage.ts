@@ -9,7 +9,7 @@ import {
 import { DRIVE_ACTIVITY_ENTRY } from '../drive/activity';
 import { DRIVE_CONFLICT, DRIVE_CONFLICT_RESOLVE } from '../drive/conflict';
 import { DRIVE_QUOTA, DRIVE_QUOTA_SET } from '../drive/quota';
-import { DRIVE_SETTINGS, DRIVE_SETTINGS_UPDATE } from '../drive/settings';
+import { DRIVE_SETTINGS, DRIVE_SETTINGS_RUNNING, DRIVE_SETTINGS_UPDATE } from '../drive/settings';
 import { DRIVE_SHARE, DRIVE_SHARE_CREATE, DRIVE_SHARE_CREATED } from '../drive/share';
 import { DRIVE_USAGE_TOTALS } from '../drive/usage';
 import { DRIVE_VERSION } from '../drive/version';
@@ -105,6 +105,16 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: DRIVE_ITEM,
+  }),
+  versionLink: endpoint({
+    method: 'GET',
+    path: '/api/drive/items/:itemId/versions/:versionId/link',
+    access: 'member',
+    summary: 'A short-lived signed path that streams the bytes of one earlier version of a file',
+    params: z.strictObject({ itemId: ID, versionId: ID }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: MEDIA_LINK,
   }),
   listShares: endpoint({
     method: 'GET',
@@ -256,6 +266,16 @@ export const DRIVE_STORAGE_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: DRIVE_SETTINGS,
+  }),
+  readDriveSettingsRunning: endpoint({
+    method: 'GET',
+    path: '/api/drive/settings/running',
+    access: 'member',
+    summary: 'The drive settings the running hub process applied at its start',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: DRIVE_SETTINGS_RUNNING,
   }),
   updateDriveSettings: endpoint({
     method: 'PATCH',

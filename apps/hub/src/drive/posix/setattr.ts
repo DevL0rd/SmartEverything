@@ -1,6 +1,7 @@
 import { lutimes } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { SETATTR_VALID, type Attr, type RequestMeta } from '@smarteverything/domain/drive-mount';
+import type { DriveDiskStat, DriveInodeTimes } from '../../store/repositories/drive-inodes';
 import { diskModeOf, locate } from '../intents';
 import { commitPatchContent } from '../patch-content';
 import { checkDriveWrite } from '../quotas';
@@ -49,11 +50,18 @@ export class PosixSetattr {
 
   async stampWrite(scope: PosixScope, ino: number, writtenNs: bigint): Promise<void> {
     const node = this.nodes.node(scope, ino);
-    await this.mirror(scope, node, { mode: undefined, atimeNs: undefined, mtimeNs: writtenNs });
-    this.env.change.store.driveInodes.setTimes(node.inode.id, {
+    const disk = await this.mirror(scope, node, {
+      mode: undefined,
+      atimeNs: undefined,
       mtimeNs: writtenNs,
-      ctimeNs: writtenNs,
     });
+    this.writeTimes(node, { mtimeNs: writtenNs, ctimeNs: writtenNs }, disk);
+  }
+
+  private writeTimes(node: PosixNode, times: DriveInodeTimes, disk: DriveDiskStat | null): void {
+    const inodes = this.env.change.store.driveInodes;
+    if (disk === null) inodes.setTimes(node.inode.id, times);
+    else inodes.setTimesOnDisk(node.inode.id, times, disk);
   }
 
   private async apply(
@@ -77,10 +85,10 @@ export class PosixSetattr {
       times.atimeNs !== undefined ||
       times.mtimeNs !== undefined;
     if (!metadata) return false;
-    await this.mirror(scope, node, { mode: attributes.mode, ...times });
+    const disk = await this.mirror(scope, node, { mode: attributes.mode, ...times });
     this.env.change.store.write(() => {
       inodes.setAttributes(node.inode.id, attributes);
-      inodes.setTimes(node.inode.id, { ...times, ctimeNs: after(node.inode.ctimeNs, now) });
+      this.writeTimes(node, { ...times, ctimeNs: after(node.inode.ctimeNs, now) }, disk);
     });
     return true;
   }
@@ -89,9 +97,9 @@ export class PosixSetattr {
     scope: PosixScope,
     node: PosixNode,
     change: { mode: number | undefined; atimeNs: bigint | undefined; mtimeNs: bigint | undefined },
-  ): Promise<void> {
+  ): Promise<DriveDiskStat | null> {
     const { item, inode } = node;
-    if (item === null || (inode.type !== 'file' && inode.type !== 'dir')) return;
+    if (item === null || (inode.type !== 'file' && inode.type !== 'dir')) return null;
     const path = await locate(this.nodes.root(scope), item.relPath);
     if (change.mode !== undefined) {
       await this.env.change.files.chmod(
@@ -99,7 +107,15 @@ export class PosixSetattr {
         diskModeOf(change.mode & PERMISSION_BITS, inode.type === 'dir'),
       );
     }
-    if (change.atimeNs === undefined && change.mtimeNs === undefined) return;
+    if (change.atimeNs === undefined && change.mtimeNs === undefined) return null;
+    return this.stampDisk(path, inode, change);
+  }
+
+  private async stampDisk(
+    path: string,
+    inode: PosixNode['inode'],
+    change: { atimeNs: bigint | undefined; mtimeNs: bigint | undefined },
+  ): Promise<DriveDiskStat> {
     const stamp = await this.env.change.files.stamp(path);
     if (stamp === null) throw posix('ENOENT', 'The item is missing from disk.');
     await lutimes(
@@ -107,6 +123,9 @@ export class PosixSetattr {
       new Date(Number((change.atimeNs ?? inode.atimeNs) / NS_PER_MS)),
       new Date(Number((change.mtimeNs ?? stamp.mtimeNs) / NS_PER_MS)),
     );
+    const landed = await this.env.change.files.stamp(path);
+    if (landed === null) throw posix('ENOENT', 'The item left the disk while its times were set.');
+    return { mtimeNs: landed.mtimeNs, bytes: inode.type === 'file' ? landed.size : null };
   }
 
   private async truncate(scope: PosixScope, node: PosixNode, size: number): Promise<void> {

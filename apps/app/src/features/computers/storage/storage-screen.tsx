@@ -11,7 +11,7 @@ const TOPICS = ['disks'] as const;
 function Storage({ device }: { readonly device: Device }): ReactNode {
   const offered = useSectionOffered(device, 'storage');
   return (
-    <ComputerFrame deviceId={device.id} title="Storage" subtitle={device.label} width="dashboard">
+    <ComputerFrame deviceId={device.id} title="Storage" subtitle={device.label}>
       {offered ? (
         <DemandRegion deviceId={device.id} topics={TOPICS}>
           <Drives device={device} />

@@ -7,6 +7,7 @@ import type { Duplex } from 'node:stream';
 import {
   LIVE_HEARTBEAT_MS,
   LIVE_PROTOCOL,
+  LIVE_PROTOCOL_MISMATCH,
   type ClientRow,
   type FirewallStatus,
   type HubStatus,
@@ -30,6 +31,7 @@ import {
 import { LiveTally, SocketStats } from './live-stats';
 import { requestRemoteKind } from './request-trace';
 import { closeClientSockets } from './live-closing';
+import { chosenLiveProtocol, mismatchedLiveProtocol } from './live-protocol';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import { z } from 'zod';
 import type { Store } from '../store/store';
@@ -61,8 +63,7 @@ export interface LiveOptions {
 export class LiveHub {
   private readonly server = new WebSocketServer({
     noServer: true,
-    handleProtocols: (protocols: Set<string>): string | false =>
-      protocols.has(LIVE_PROTOCOL) ? LIVE_PROTOCOL : false,
+    handleProtocols: chosenLiveProtocol,
   });
   readonly watches: LiveWatch<LiveConnection>;
   readonly voice: LiveVoice<LiveConnection>;
@@ -127,6 +128,14 @@ export class LiveHub {
   }
 
   upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const offered = mismatchedLiveProtocol(request);
+    if (offered !== null) {
+      this.options.log.warn('live.protocol_mismatch', { offered, expected: LIVE_PROTOCOL });
+      this.server.handleUpgrade(request, socket, head, (ws) => {
+        ws.close(LIVE_PROTOCOL_MISMATCH.code, LIVE_PROTOCOL_MISMATCH.reason);
+      });
+      return;
+    }
     const client = socketClient(this.options.store, request, LIVE_PROTOCOL, '/live');
     this.options.log.debug('live.authenticated', () => ({
       clientId: client.id,

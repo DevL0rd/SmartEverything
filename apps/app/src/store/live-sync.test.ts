@@ -1,4 +1,9 @@
-import { LIVE_HEARTBEAT_MS, LIVE_TABLES, SNAPSHOT } from '@smarteverything/domain';
+import {
+  LIVE_HEARTBEAT_MS,
+  LIVE_PROTOCOL_MISMATCH,
+  LIVE_TABLES,
+  SNAPSHOT,
+} from '@smarteverything/domain';
 import { snapshotWire } from './snapshot-fixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerConnection } from '../api/transport';
@@ -58,6 +63,7 @@ const { EntityStore } = await import('./entity-store');
 const { liveWatch } = await import('./live-watch');
 const { backoffOf } = await import('./live-socket');
 const { hubAnswered } = await import('../api/connection/hub-answers');
+const { UnreadableAnswerError } = await import('../api/connection/client');
 
 const CONNECTION: ServerConnection = {
   url: 'http://hub.test:7880',
@@ -149,18 +155,93 @@ describe('the live connection after the hub stops answering', () => {
     subscribed(0);
     snapshotCalls[0]?.resolve({
       data: SNAPSHOT.parse(snapshotWire(null)),
-      skipped: [],
-      unreadable: [{ section: 'firewall', path: 'firewall.openings.0', reason: 'bad' }],
+      failed: [{ section: 'firewall', reason: 'firewall.openings.0 bad' }],
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(opened[0]?.closed).toBe(false);
     expect(store.get().sync.status).toBe('live');
-    expect(store.get().sync.outdated).toStrictEqual(['firewall']);
+    expect(store.get().sync.failed).toStrictEqual([
+      { section: 'firewall', reason: 'firewall.openings.0 bad' },
+    ]);
     expect(store.get().firewall).toBeNull();
     expect(store.get().tables.rooms.ids).toHaveLength(1);
     vi.advanceTimersByTime(5000);
     expect(opened).toHaveLength(1);
     expect(snapshotCalls).toHaveLength(1);
+  });
+
+  it('marks a table the server refuses as failed and keeps the connection', async () => {
+    const { sync, store } = await started();
+    const index = LIVE_TABLES.indexOf('rooms');
+    opened[0]?.handlers.onMessage({
+      kind: 'message',
+      message: {
+        type: 'refused',
+        error: { code: 'invalid_request', message: `tables.${String(index)}: Invalid option` },
+      },
+    });
+    expect(store.get().sync.status).not.toBe('refused');
+    expect(store.get().sync.failed.map((failure) => failure.section)).toStrictEqual([
+      'tables.rooms',
+    ]);
+    opened[0]?.handlers.onClose(1008, 'invalid message');
+    vi.advanceTimersByTime(1000);
+    expect(opened).toHaveLength(2);
+    expect(opened[1]?.target).not.toMatchObject({ subscribe: { tables: [...LIVE_TABLES] } });
+    subscribed(1);
+    snapshotCalls[0]?.resolve({ data: SNAPSHOT.parse(snapshotWire()), failed: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.get().sync.status).toBe('live');
+    expect(store.get().sync.failed.map((failure) => failure.section)).toStrictEqual([
+      'tables.rooms',
+    ]);
+    sync.stop();
+  });
+
+  it('marks only the table of an unreadable change as failed without reloading', async () => {
+    const { sync, store } = await started();
+    subscribed(0);
+    snapshotCalls[0]?.resolve({ data: SNAPSHOT.parse(snapshotWire()), failed: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    opened[0]?.handlers.onMessage({
+      kind: 'unreadable',
+      reason: 'row.name Invalid',
+      table: 'rooms',
+    });
+    opened[0]?.handlers.onMessage({
+      kind: 'unreadable',
+      reason: 'row.name Invalid',
+      table: 'rooms',
+    });
+    expect(store.get().sync.status).toBe('live');
+    expect(store.get().sync.failed).toHaveLength(1);
+    expect(store.get().sync.failed[0]?.section).toBe('tables.rooms');
+    expect(store.get().tables.rooms.ids).toHaveLength(1);
+    expect(snapshotCalls).toHaveLength(1);
+    sync.stop();
+  });
+
+  it('asks for an app update when the whole snapshot is unreadable', async () => {
+    const { sync, store } = await started();
+    subscribed(0);
+    snapshotCalls[0]?.reject(new UnreadableAnswerError('GET /api/snapshot', 'session Invalid'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.get().sync.status).toBe('interrupted');
+    expect(store.get().sync.problem?.remedy).toBe('update-app');
+    expect(store.get().sync.problem?.text).toContain('Update the app');
+    sync.stop();
+  });
+
+  it('asks for an app update and stops reconnecting when the hub speaks another protocol', async () => {
+    const { sync, store } = await started();
+    opened[0]?.handlers.onClose(LIVE_PROTOCOL_MISMATCH.code, LIVE_PROTOCOL_MISMATCH.reason);
+    expect(store.get().sync.status).toBe('interrupted');
+    expect(store.get().sync.problem?.remedy).toBe('update-app');
+    expect(store.get().sync.problem?.text).toContain('Update the app');
+    vi.advanceTimersByTime(120_000);
+    hubAnswered();
+    expect(opened).toHaveLength(1);
+    sync.stop();
   });
 
   it('stops retrying once stopped', async () => {

@@ -6,10 +6,9 @@ import { href } from '../../../app-shell/hrefs';
 import { copyText } from '../../../components/copy-button';
 import { notify } from '../../../components/toast-store';
 import { count } from '../../../format/number';
-import { downloadFile } from '../../../platform/file-actions';
 import type { PickedFile } from '../../../platform/pick-files';
 import { attachFiles } from '../../assistant';
-import { driveLinks, openHrefOf } from '../../drive';
+import { openHrefOf } from '../../drive';
 import { pickedOf } from '../model/ask-actions';
 
 const log = new Logger('app.photos');
@@ -17,16 +16,12 @@ const log = new Logger('app.photos');
 export interface ItemDeps {
   readonly read: (itemId: string) => Promise<DriveItem>;
   readonly attach: (files: readonly PickedFile[], chatId: string) => void;
-  readonly fileUrl: (item: DriveItem) => Promise<string | null>;
-  readonly save: (url: string, name: string) => void;
   readonly openChat: (chatId: string) => void;
 }
 
 const LIVE: ItemDeps = {
   read: readDriveItem,
   attach: attachFiles,
-  fileUrl: (item) => driveLinks.resolve(item.id, item.rev, 'file'),
-  save: downloadFile,
   openChat: (chatId) => {
     router.push(href.assistantChat(chatId));
   },
@@ -87,29 +82,6 @@ export async function askAbout(
     failed('Could not ask about it in the chat', error);
     return false;
   }
-}
-
-async function downloadOne(itemId: string, deps: ItemDeps): Promise<void> {
-  const item = await deps.read(itemId);
-  const url = await deps.fileUrl(item);
-  if (url === null) throw new Error(`The hub gave no link for ${item.name}`);
-  deps.save(url, item.name);
-}
-
-export async function downloadItems(
-  itemIds: readonly string[],
-  deps: ItemDeps = LIVE,
-): Promise<void> {
-  const results = await Promise.allSettled(itemIds.map((itemId) => downloadOne(itemId, deps)));
-  const rejected = results.filter((result) => result.status === 'rejected');
-  const first = rejected[0];
-  if (first === undefined) return;
-  failed(
-    rejected.length === 1
-      ? 'A photo could not be downloaded'
-      : `${count(rejected.length)} could not be downloaded`,
-    first.reason,
-  );
 }
 
 export async function shareLink(itemId: string): Promise<void> {

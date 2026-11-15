@@ -61,3 +61,15 @@ export function keptSplitOf(
   }
   return { kept: Math.max(0, total - away), excluded: away };
 }
+
+export function parentOf(path: string): string | null {
+  const slash = path.lastIndexOf('/');
+  return slash === -1 ? null : path.slice(0, slash);
+}
+
+export function excludedChildrenOf(
+  folder: string | null,
+  excluded: readonly string[],
+): readonly string[] {
+  return excluded.filter((path) => parentOf(path) === folder);
+}

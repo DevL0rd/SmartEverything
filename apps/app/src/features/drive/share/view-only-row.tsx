@@ -32,18 +32,19 @@ export function ViewOnlyRow({
   if (!viewOnlyShownOf(access)) return null;
   return (
     <View className="gap-1">
-      <SwitchRow
-        title={VIEW_ONLY_TITLE}
-        subtitle={viewOnlyLineOf(current)}
-        wrapSubtitle
-        icon={locked ? 'eyeOff' : 'download'}
-        value={!locked}
-        disabled={!live || lock.busy || viewOnlyInherited(current)}
-        onChange={(allowed) => {
-          lock.run({ itemId: item.id, locked: !allowed });
-        }}
-      />
-      <Text variant="caption" tone="variant" className="px-1">
+      <View className="-mx-4">
+        <SwitchRow
+          title={VIEW_ONLY_TITLE}
+          subtitle={viewOnlyLineOf(current)}
+          wrapSubtitle
+          value={!locked}
+          disabled={!live || lock.busy || viewOnlyInherited(current)}
+          onChange={(allowed) => {
+            lock.run({ itemId: item.id, locked: !allowed });
+          }}
+        />
+      </View>
+      <Text variant="caption" tone="variant">
         {SCREENSHOT_LINE}
       </Text>
       {lock.problem === null ? null : (

@@ -121,7 +121,6 @@ function seed(item: Seed): string {
     item_id: id,
     time_source: 'metadata',
     tz_offset_min: null,
-    thumbhash: null,
     preview_state: 'none',
     preview_reason: null,
     poster_state: 'none',

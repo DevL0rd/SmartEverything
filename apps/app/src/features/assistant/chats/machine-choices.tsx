@@ -66,10 +66,10 @@ function ChatSource({
 }): ReactNode {
   const device = useHarnessDevice(chat);
   const choices = device.items.map((item): MachineChoice => {
-    const [label = item.label, ...reason] = item.label.split(' · ');
+    const [first, ...reason] = item.label.split(' · ');
     return {
       key: item.label,
-      label,
+      label: first ?? item.label,
       reason: reason.length === 0 ? null : reason.join(' · '),
       note: item.description ?? null,
       selected: item.icon === 'check',

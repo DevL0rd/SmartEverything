@@ -20,6 +20,7 @@ import {
   minuteAt,
   pixelsOf,
   stepFeedback,
+  touchActionOf,
   type MinuteSpan,
 } from './grid-gestures';
 import { DAY_MINUTES } from './time-grid-layout';
@@ -182,7 +183,7 @@ export function SlotLayer(props: SlotLayerProps): ReactNode {
   const gesture = useCreateGesture(props, ghost, setActive);
   const draft = props.draft?.date === props.date ? props.draft : null;
   return (
-    <GestureDetector gesture={gesture}>
+    <GestureDetector gesture={gesture} touchAction={touchActionOf(props.touch)}>
       <View className="absolute inset-0">
         {draft === null ? null : (
           <DraftBlock ghost={ghost} draft={draft} active={active} layer={props} />

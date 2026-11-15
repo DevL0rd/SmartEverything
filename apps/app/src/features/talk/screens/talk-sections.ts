@@ -7,7 +7,7 @@ import { useSizeClass } from '../../../design/size-class';
 import { useMyChannels, useTalkChannels } from '../data/talk-data';
 
 function entryOf(channel: TalkChannelRow): RailEntry {
-  return { id: channel.id, label: channel.name, icon: channel.icon, missing: null, detail: null };
+  return { id: channel.id, label: channel.name, icon: channel.icon, missing: null };
 }
 
 export function talkSectionsOf(
@@ -26,7 +26,6 @@ export function talkSectionsOf(
     groups: groups.filter((group) => group.entries.length > 0),
     active: active ?? '',
     hrefOf: href.talkChannel,
-    master: true,
   };
 }
 
@@ -34,5 +33,5 @@ export function useTalkSections(active: string | null): ShellSections | undefine
   const { area } = useSizeClass();
   const mine = useMyChannels();
   const all = useTalkChannels();
-  return shellRailOf(area, 'master') === null ? undefined : talkSectionsOf(mine, all, active);
+  return shellRailOf(area, 'sections') === null ? undefined : talkSectionsOf(mine, all, active);
 }

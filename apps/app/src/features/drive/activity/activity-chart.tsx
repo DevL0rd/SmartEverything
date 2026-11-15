@@ -31,6 +31,7 @@ export interface ActivityChartProps {
   readonly columns: readonly ActivityColumn[];
   readonly range: ActivityRange;
   readonly peopleName: string;
+  readonly filtered: boolean;
 }
 
 const PLOT_HEIGHT = 150;
@@ -112,41 +113,90 @@ function Reveal({
   );
 }
 
-function Plot({ columns }: { readonly columns: readonly ActivityColumn[] }): ReactNode {
+function Scale({ peak }: { readonly peak: number }): ReactNode {
+  return (
+    <View style={PLOT_BOX} className="items-end justify-between">
+      <Text variant="caption" tone="variant" className="tabular -mt-2">
+        {count(peak)}
+      </Text>
+      <Text variant="caption" tone="variant" className="tabular -mb-2">
+        0
+      </Text>
+    </View>
+  );
+}
+
+function Gridline({ width }: { readonly width: number }): ReactNode {
+  const grid = useColour('outline-variant');
+  return (
+    <View className="absolute inset-0">
+      <Svg width={width} height={PLOT_HEIGHT}>
+        <Line
+          x1={0}
+          x2={width}
+          y1={0.5}
+          y2={0.5}
+          stroke={grid}
+          strokeWidth={1}
+          strokeDasharray="4 4"
+        />
+      </Svg>
+    </View>
+  );
+}
+
+function Plot({
+  columns,
+  peak,
+}: {
+  readonly columns: readonly ActivityColumn[];
+  readonly peak: number;
+}): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
   const fills = useFills();
   const baseline = useColour('outline');
   const grow = useDraw(1, !useMotion().reduced);
   return (
-    <View aria-hidden className="gap-1">
-      <View style={PLOT_BOX} onLayout={onLayout}>
-        {width > 0 ? (
-          <Reveal grow={grow}>
-            <Svg width={width} height={PLOT_HEIGHT}>
-              <BarMarks shapes={stackShapes(columns, width, fills)} fill={fills.you} />
-              <Line
-                x1={0}
-                x2={width}
-                y1={PLOT_HEIGHT - 0.5}
-                y2={PLOT_HEIGHT - 0.5}
-                stroke={baseline}
-                strokeWidth={1}
-              />
-            </Svg>
-          </Reveal>
-        ) : null}
+    <View aria-hidden className="flex-row gap-2">
+      <Scale peak={peak} />
+      <View className="min-w-0 flex-1 gap-1">
+        <View style={PLOT_BOX} onLayout={onLayout}>
+          {width > 0 ? <Gridline width={width} /> : null}
+          {width > 0 ? (
+            <Reveal grow={grow}>
+              <Svg width={width} height={PLOT_HEIGHT}>
+                <BarMarks shapes={stackShapes(columns, width, fills)} fill={fills.you} />
+                <Line
+                  x1={0}
+                  x2={width}
+                  y1={PLOT_HEIGHT - 0.5}
+                  y2={PLOT_HEIGHT - 0.5}
+                  stroke={baseline}
+                  strokeWidth={1}
+                />
+              </Svg>
+            </Reveal>
+          ) : null}
+        </View>
+        <BarLabels bars={columns} width={width} />
       </View>
-      <BarLabels bars={columns} width={width} />
     </View>
   );
 }
 
-function legendOf(labels: Readonly<Record<ActivitySeries, string>>): ChartSeries[] {
-  return ACTIVITY_SERIES.map((series) => ({
+function legendOf(
+  keys: readonly ActivitySeries[],
+  labels: Readonly<Record<ActivitySeries, string>>,
+): ChartSeries[] {
+  return keys.map((series) => ({
     points: [],
     colour: SERIES_LOOK[series].colour,
     label: labels[series],
   }));
+}
+
+function emptyText(filtered: boolean, phrase: string): string {
+  return filtered ? 'No changes match these filters' : `No changes ${phrase}`;
 }
 
 function ChartHead({
@@ -174,6 +224,7 @@ export const ActivityChart = memo(function ActivityChart({
   columns,
   range,
   peopleName,
+  filtered,
 }: ActivityChartProps): ReactNode {
   const labels = {
     you: SERIES_LOOK.you.label,
@@ -184,7 +235,8 @@ export const ActivityChart = memo(function ActivityChart({
     outside: SERIES_LOOK.outside.label,
   };
   const totals = seriesTotals(columns);
-  const series = legendOf(labels);
+  const keys = ACTIVITY_SERIES.filter((key) => totals[key] > 0);
+  const series = legendOf(keys, labels);
   const busiest = busiestOf(columns);
   const look = RANGE_LOOK[range];
   return (
@@ -197,18 +249,19 @@ export const ActivityChart = memo(function ActivityChart({
       >
         <ChartHead unit={look.unit} busiest={busiest} />
         {busiest === null ? (
-          <EmptyGraph text={`No changes ${look.phrase}`} height={PLOT_HEIGHT} />
+          <EmptyGraph text={emptyText(filtered, look.phrase)} height={PLOT_HEIGHT} />
         ) : (
-          <Plot columns={columns} />
+          <Plot columns={columns} peak={busiest.total} />
         )}
-        <ChartLegend
-          series={series}
-          valueOf={(entry) => {
-            const index = series.indexOf(entry);
-            const key = ACTIVITY_SERIES[index];
-            return key === undefined ? null : count(totals[key]);
-          }}
-        />
+        {keys.length === 0 ? null : (
+          <ChartLegend
+            series={series}
+            valueOf={(entry) => {
+              const key = keys[series.indexOf(entry)];
+              return key === undefined ? null : count(totals[key]);
+            }}
+          />
+        )}
       </View>
     </Card>
   );

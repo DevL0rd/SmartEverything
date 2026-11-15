@@ -6,7 +6,6 @@ import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { EmptyState } from '../../../components/empty-state';
-import type { ShellWidth } from '../../../components/page-shell/layout';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import type { ShellSections } from '../../../components/page-shell/shell-sections';
@@ -34,7 +33,6 @@ export interface PhoneFrameProps {
   readonly title: string;
   readonly subtitle?: string;
   readonly crumbs?: readonly Crumb[];
-  readonly width?: ShellWidth;
   readonly scroll?: boolean;
   readonly search?: ShellSearchConfig;
   readonly children: ReactNode;
@@ -72,7 +70,6 @@ function useSections(device: Device): ShellSections {
   return phoneSectionsOf({
     deviceId: device.id,
     active,
-    online: device.online,
     hidden: hasBattery ? NO_HIDDEN : NO_BATTERY,
   });
 }
@@ -86,9 +83,16 @@ function crumbsOf(device: Device, crumbs: readonly Crumb[] | undefined): readonl
   );
 }
 
+function subtitleOf(
+  head: Pick<PhoneFrameProps, 'title' | 'subtitle'>,
+  device: Device,
+): { readonly subtitle?: string } {
+  if (head.subtitle !== undefined) return { subtitle: head.subtitle };
+  return head.title === device.label ? {} : { subtitle: device.label };
+}
+
 function LiveFrame({
   device,
-  width = 'reading',
   scroll = true,
   search,
   children,
@@ -103,11 +107,10 @@ function LiveFrame({
   return (
     <PageShell
       title={head.title}
-      subtitle={head.subtitle ?? device.label}
+      {...subtitleOf(head, device)}
       breadcrumbs={crumbsOf(device, head.crumbs)}
       overflow={menu}
       sections={sections}
-      width={width}
       scroll={scroll}
       banner={<FrameBanner device={device} />}
       {...(search === undefined ? {} : { search })}
@@ -136,7 +139,7 @@ export function PhoneFrame({ deviceId, ...frame }: PhoneFrameProps): ReactNode {
   const device = useDevice(deviceId);
   if (device === null) {
     return (
-      <PageShell title={frame.title} width="reading">
+      <PageShell title={frame.title}>
         <EmptyState
           icon="smartphone"
           title="Phone unavailable"

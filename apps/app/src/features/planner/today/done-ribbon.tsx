@@ -7,7 +7,7 @@ import type {
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { HScroller } from '../../../components/h-scroller';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
@@ -144,11 +144,11 @@ function Marks({
   readonly marks: readonly RibbonMark[];
   readonly timeZone: string;
 }): ReactNode {
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const chips = marks.map((mark) => <Mark key={mark.key} mark={mark} timeZone={timeZone} />);
   if (compact) {
     return (
-      <HScroller label="Done today, scrolls sideways" fade fadeSurface="bg">
+      <HScroller label="Done today, scrolls sideways" fade>
         {chips}
       </HScroller>
     );

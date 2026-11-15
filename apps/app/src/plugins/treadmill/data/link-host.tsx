@@ -5,7 +5,7 @@ import {
   startTreadmills,
   syncTreadmills,
 } from '../../../../modules/health-connect';
-import { useDevices } from '../../../store/selectors';
+import { useDeviceIds } from '../../../store/selectors';
 import { usePairedServer } from '../../../features/profiles';
 import { connectPermitted } from './bluetooth-permission';
 import { isTreadmill } from './use-treadmill-device';
@@ -25,10 +25,7 @@ async function bringUp(url: string, token: string): Promise<void> {
 }
 
 function useTreadmillKey(): string {
-  return useDevices({ includeHidden: true })
-    .filter(isTreadmill)
-    .map((device) => device.id)
-    .join(',');
+  return useDeviceIds(isTreadmill, { includeHidden: true });
 }
 
 export function TreadmillLinkHost(): null {

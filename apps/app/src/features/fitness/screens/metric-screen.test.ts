@@ -44,8 +44,7 @@ vi.mock('../../../components/list-row', () => ({
   }): ReactNode => createElement('p', { 'data-wrap': wrapTitle && wrapSubtitle }, title),
 }));
 vi.mock('../../../components/page-shell/page-shell', () => ({
-  PageShell: ({ children, width }: StandardShellProps): ReactNode =>
-    createElement('main', { 'data-width': width }, children),
+  PageShell: ({ children }: StandardShellProps): ReactNode => createElement('main', null, children),
 }));
 vi.mock('../../../components/section', () => ({
   List: ({ title, children }: Children & { readonly title: string }): ReactNode =>

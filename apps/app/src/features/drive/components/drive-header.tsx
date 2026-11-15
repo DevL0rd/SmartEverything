@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { HeaderStatusProvider, useHeaderStatus } from '../../../components/header-status';
-import type { PageSettingsLink } from '../../../components/page-settings-button';
+import type { PageSettingsLink } from '../../../components/page-menu';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import type { PrimaryActionProps } from '../../../components/primary-action';
+import { useSizeClass } from '../../../design/size-class';
 import { useSettingEnv } from '../../../settings/env';
 import type { DriveSection } from '../model/section-routes';
 import { driveSettingsHref } from '../settings/sections';
@@ -47,6 +48,10 @@ export function useDriveHeader(header: DriveHeaderProps): DriveHeaderSlots {
     ...(header.breadcrumbs === undefined ? {} : { breadcrumbs: header.breadcrumbs }),
     ...(header.primary === undefined ? {} : { primaryAction: header.primary }),
   };
+}
+
+export function useSyncPillShown(): boolean {
+  return useSizeClass().header !== 'large';
 }
 
 export function DriveHeaderStatus({

@@ -4,7 +4,6 @@ import { useLocalSearchParams } from 'expo-router';
 import type { PartnerShare, PhotoSharing } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -18,6 +17,7 @@ import { ActivityFeed } from './activity-feed';
 import { feedOf, sharingStateOf, unreadText, type SharingState } from './model';
 import { PartnerCard } from './partner-card';
 import { draftOfGroup, draftOfShare, newDraft, type PartnerDraft } from './partner-draft';
+import { OfflineBanner } from './offline-banner';
 import { PartnerSetup } from './partner-setup';
 import { usePhotoSharing } from './queries';
 import { SharedAlbumCard } from './shared-album-card';
@@ -162,14 +162,7 @@ export function SharingScreen(): ReactNode {
       {...(live || query.data === undefined
         ? {}
         : {
-            banner: (
-              <Banner
-                tone="info"
-                title="Offline · showing the last snapshot"
-                body="Comments, likes and partner changes wait for your home hub."
-                wrapBody
-              />
-            ),
+            banner: <OfflineBanner />,
           })}
     >
       <Body

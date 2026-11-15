@@ -128,6 +128,11 @@ const BUNDLES: readonly Bundle[] = [
     external: [],
   },
   {
+    entry: join(hub, 'src', 'drive', 'mount', 'hash-worker.ts'),
+    file: 'mount-hash-worker.mjs',
+    external: [],
+  },
+  {
     entry: join(hub, 'src', 'drive', 'hasher-worker.ts'),
     file: 'hasher-worker.mjs',
     external: [],

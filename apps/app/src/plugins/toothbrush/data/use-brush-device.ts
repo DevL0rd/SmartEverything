@@ -1,5 +1,5 @@
 import { deviceFamily } from '@smarteverything/domain';
-import { useDevices } from '../../../store/selectors';
+import { useFirstDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 
 export function isToothbrush(device: Device): boolean {
@@ -7,5 +7,5 @@ export function isToothbrush(device: Device): boolean {
 }
 
 export function useBrushDevice(): Device | null {
-  return useDevices().find(isToothbrush) ?? null;
+  return useFirstDevice(isToothbrush);
 }

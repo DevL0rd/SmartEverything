@@ -95,13 +95,19 @@ export function useDriveItemList(list: string, items: readonly DriveItem[]): Dri
 
 export function DriveListFrame({
   browser,
+  inlineSelection,
   children,
 }: {
   readonly browser: FileBrowserHandle<DriveOrigin>;
+  readonly inlineSelection?: true;
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <NodeListFrame browser={browser} from="Drive">
+    <NodeListFrame
+      browser={browser}
+      from="Drive"
+      selection={inlineSelection === true ? 'inline' : 'top'}
+    >
       {children}
     </NodeListFrame>
   );

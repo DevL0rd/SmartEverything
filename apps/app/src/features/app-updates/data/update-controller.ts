@@ -82,7 +82,7 @@ function downloadableOffer(state: AppUpdateState): AppUpdateSummary | null {
   return state.kind === 'failed' && state.cause === 'download' ? state.offer : null;
 }
 
-export type CheckTrigger = 'live' | 'notice' | 'button' | 'retry';
+export type CheckTrigger = 'paired' | 'notice' | 'button' | 'retry';
 
 const MANUAL: ReadonlySet<CheckTrigger> = new Set(['button', 'retry']);
 

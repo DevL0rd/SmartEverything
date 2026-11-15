@@ -71,7 +71,7 @@ describe('photo viewer', () => {
     expect(albumMenuItems([], add)[0]?.disabled).toBe(true);
     const archive = { label: 'Archive', onPress: vi.fn() };
     const more = moreMenuItems({
-      onDownload: vi.fn(),
+      onSave: vi.fn(),
       onShowInDrive: vi.fn(),
       onTrash: vi.fn(),
       onRevert: null,
@@ -82,14 +82,14 @@ describe('photo viewer', () => {
     expect(more.some((entry) => entry.label === 'Revert to original')).toBe(false);
     const revert = vi.fn();
     const edited = moreMenuItems({
-      onDownload: vi.fn(),
+      onSave: vi.fn(),
       onShowInDrive: vi.fn(),
       onTrash: vi.fn(),
       onRevert: revert,
       organise: [archive],
     });
     expect(edited.map((entry) => entry.label)).toEqual([
-      'Download original',
+      'Save to this device',
       'Show in Drive',
       'Revert to original',
       'Archive',

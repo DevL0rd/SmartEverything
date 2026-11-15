@@ -77,14 +77,7 @@ export const DRIVE_PLACEMENT_STATUS = z.strictObject(DRIVE_PLACEMENT_STATUS_FIEL
 
 export type DrivePlacementStatus = z.infer<typeof DRIVE_PLACEMENT_STATUS>;
 
-export const DRIVE_PLACEMENT_TARGET_FIELDS = {
-  rootId: ID,
-  folderItemId: ID.nullable(),
-  mode: DRIVE_PLACEMENT_MODE,
-  localPath: z.string().min(1).nullable(),
-  mountName: z.string().min(1).nullable(),
-  enabled: z.boolean(),
-} as const;
+export const DRIVE_MOUNT_NAME = 'My Drive';
 
 const SYNC_SETTING_FIELDS = {
   excluded: z.array(z.string().min(1)).readonly().optional(),
@@ -121,7 +114,7 @@ function fieldsMatchMode(
       code: 'custom',
       message: synced
         ? 'a synced placement names its folder on the computer'
-        : 'a mounted placement has no chosen folder; the computer mounts it in its standard place',
+        : 'a mounted drive has no chosen folder; the computer mounts it in its standard place',
       path: ['localPath'],
     });
   }
@@ -129,8 +122,8 @@ function fieldsMatchMode(
     context.addIssue({
       code: 'custom',
       message: synced
-        ? 'only a mounted placement carries a mount name'
-        : 'a mounted placement carries the name it is mounted under',
+        ? 'only a mounted drive carries a mount name'
+        : 'a mounted drive carries the name it is mounted under',
       path: ['mountName'],
     });
   }
@@ -140,7 +133,12 @@ export const DRIVE_PLACEMENT = z
   .strictObject({
     id: ID,
     deviceId: ID,
-    ...DRIVE_PLACEMENT_TARGET_FIELDS,
+    rootId: ID,
+    folderItemId: ID.nullable(),
+    mode: DRIVE_PLACEMENT_MODE,
+    localPath: z.string().min(1).nullable(),
+    mountName: z.string().min(1).nullable(),
+    enabled: z.boolean(),
     ...SYNC_SETTING_FIELDS,
     hold: DRIVE_PLACEMENT_HOLD.nullable(),
     createdBy: ID,
@@ -153,8 +151,20 @@ export const DRIVE_PLACEMENT = z
 export type DrivePlacement = z.infer<typeof DRIVE_PLACEMENT>;
 
 export const DRIVE_PLACEMENT_SET = z
-  .strictObject({ deviceId: ID, ...DRIVE_PLACEMENT_TARGET_FIELDS, ...SYNC_SETTING_FIELDS })
-  .superRefine(fieldsMatchMode)
+  .strictObject({
+    deviceId: ID,
+    rootId: ID,
+    folderItemId: ID.nullable(),
+    localPath: z.string().min(1),
+    enabled: z.boolean(),
+    excluded: z.array(z.string().min(1)).readonly(),
+    ignorePatterns: z.array(z.string().min(1)).readonly(),
+    conflictCopies: z.boolean(),
+  })
   .readonly();
 
 export type DrivePlacementSet = z.infer<typeof DRIVE_PLACEMENT_SET>;
+
+export const DRIVE_MOUNT_SET = z.strictObject({ deviceId: ID, enabled: z.boolean() }).readonly();
+
+export type DriveMountSet = z.infer<typeof DRIVE_MOUNT_SET>;

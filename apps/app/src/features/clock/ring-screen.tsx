@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { plannerMathsSeedOf, type PlannerDay } from '@smarteverything/domain';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
 import { Glow } from '../../components/glow';
+import { PageShell } from '../../components/page-shell/page-shell';
 import { Text } from '../../components/text';
+import { useMinute } from '../../store/clock';
+import { usePlannerTimers } from '../planner';
 import { ChallengeArea } from './ring/challenge-area';
 import { challengePlanOf } from './ring/challenge-model';
 import { ringsOnThisPhone } from './ring/ring-device';
@@ -13,6 +16,7 @@ import { sleepLineOf, soundLineOf } from './ring/ring-lines';
 import {
   snoozeLabelOf,
   snoozesLeftOf,
+  timerDoneLineOf,
   type RingState,
   type RingSubject,
   type RingSubjectRef,
@@ -26,6 +30,7 @@ import {
   useRingActions,
   useRingDay,
   useRingLive,
+  useRingRetry,
   useRingSleep,
   useRingSubject,
   type RingActions,
@@ -34,7 +39,7 @@ import {
   type RingTarget,
 } from './ring/use-ring';
 
-const STOP_HINT = 'Stopping here stops it on the watch and desktop too';
+const STOP_HINT = 'Stops it on every device';
 
 const CAPTIONS: Readonly<Record<RingActions['route'], string>> = {
   hub: STOP_HINT,
@@ -105,7 +110,7 @@ function SnoozeControl({
     <Button
       variant="tonal"
       size="lg"
-      icon="moon"
+      icon={subject.snooze.kind === 'alarm' ? 'moon' : 'plus'}
       label={snoozeLabelOf(subject.snooze, left)}
       disabled={!enabled}
       onPress={onSnooze}
@@ -169,11 +174,20 @@ function Morning({
   readonly brief: boolean;
 }): ReactNode {
   if (!brief) return <MorningCard day={day} sleep={sleep} />;
-  return sleep === null ? null : <SleepLine sleep={sleep} />;
+  return sleep === null ? null : <SleepLine sleep={sleep} centred />;
+}
+
+function useTimerDoneLine(shown: Shown): string | null {
+  const timers = usePlannerTimers(null);
+  const now = useMinute();
+  if (shown.ref.kind !== 'timer') return null;
+  const timer = timers.find((row) => row.id === shown.ref.ref_id);
+  return timerDoneLineOf(timer, shown.target.hubRing, now);
 }
 
 function Ringing({ shown, day }: { readonly shown: Shown; readonly day: RingDay }): ReactNode {
   const subject = useRingSubject(shown.ref);
+  const doneLine = useTimerDoneLine(shown);
   const sleep = useRingSleep(day.today, shown.ref.kind === 'alarm');
   const sound = shown.ref.kind === 'alarm' ? soundLineOf(shown.target.phone, subject.sound) : null;
   const seed = plannerMathsSeedOf(shown.ref.kind, shown.ref.ref_id, day.today);
@@ -191,9 +205,10 @@ function Ringing({ shown, day }: { readonly shown: Shown; readonly day: RingDay 
       <View className="gap-3">
         <RingHeading
           icon={subject.icon}
-          label={subject.label}
+          label={shown.ref.kind === 'timer' ? `${subject.label} is done` : subject.label}
           today={day.today}
           compact={challenged}
+          subtitle={doneLine}
         />
         {sound === null ? null : <SoundLineRow line={sound} />}
       </View>
@@ -214,7 +229,7 @@ function Ringing({ shown, day }: { readonly shown: Shown; readonly day: RingDay 
 const QUIET = {
   loading: {
     icon: 'alarmClock',
-    title: 'Finding the alarm',
+    title: 'Finding what is ringing',
     body: 'Asking the hub what is ringing.',
   },
   stopped: {
@@ -234,6 +249,21 @@ const QUIET = {
   },
 } as const;
 
+function QuietAction({ state }: { readonly state: Exclude<RingState, Live>['kind'] }): ReactNode {
+  const { retrying, retry } = useRingRetry();
+  if (state === 'loading') {
+    return <ActivityIndicator size="large" colorClassName="accent-primary" />;
+  }
+  const open = <Button variant="tonal" icon="alarmClock" label="Open Clock" onPress={leaveRing} />;
+  if (state !== 'unreachable') return open;
+  return (
+    <View className="flex-row flex-wrap justify-center gap-3">
+      <Button variant="filled" icon="reset" label="Try again" loading={retrying} onPress={retry} />
+      {open}
+    </View>
+  );
+}
+
 function Quiet({ state }: { readonly state: Exclude<RingState, Live>['kind'] }): ReactNode {
   const copy = QUIET[state];
   return (
@@ -245,11 +275,7 @@ function Quiet({ state }: { readonly state: Exclude<RingState, Live>['kind'] }):
         icon={copy.icon}
         title={copy.title}
         body={copy.body}
-        action={
-          state === 'loading' ? undefined : (
-            <Button variant="tonal" icon="alarmClock" label="Open Clock" onPress={leaveRing} />
-          )
-        }
+        action={<QuietAction state={state} />}
       />
     </ScrollView>
   );
@@ -265,11 +291,19 @@ export function RingScreen(): ReactNode {
   const live = useRingLive(ringId, day.day, day.failed);
   const { state } = live;
   useHoldBack(isLive(state));
-  if (!isLive(state)) return <Quiet state={state.kind} />;
+  if (!isLive(state)) {
+    return (
+      <PageShell variant="overlay" title="Clock" back={false} bare>
+        <Quiet state={state.kind} />
+      </PageShell>
+    );
+  }
   return (
-    <View className="flex-1 bg-bg">
-      <Glow colour="primary" breathing x="50%" y="100%" radius="70%" strength={0.38} />
-      <Ringing shown={shownOf(state, live)} day={day} />
-    </View>
+    <PageShell variant="overlay" title="Clock" back={false} bare>
+      <View className="flex-1 bg-bg">
+        <Glow colour="primary" breathing x="50%" y="100%" radius="70%" strength={0.38} />
+        <Ringing shown={shownOf(state, live)} day={day} />
+      </View>
+    </PageShell>
   );
 }

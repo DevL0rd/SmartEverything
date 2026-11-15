@@ -48,6 +48,11 @@ function VisualView(props: VisualViewProps): ReactNode {
   );
 }
 
+export function useVisualDrawn(device: Device, family: DeviceFamily): boolean {
+  const models = use(WidgetModelsContext);
+  return family === 'camera' || (models !== null && models.planFor(device, family) !== null);
+}
+
 function EmptyVisual({ px }: { readonly px: VisualPx }): ReactNode {
   return <View aria-hidden pointerEvents="none" className={cn('shrink-0', SIZE_CLASS[px])} />;
 }

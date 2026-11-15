@@ -68,17 +68,63 @@ function Trailing({
   );
 }
 
-function shapeOf(variant: SearchFieldProps['variant'], active: boolean): string {
-  if (variant === 'bar')
-    return active ? 'h-14 rounded-full border-2 border-primary pl-3.5' : 'h-14 rounded-full pl-4';
-  return active
-    ? 'h-control-h rounded-md border-2 border-primary pl-2.5'
-    : 'h-control-h rounded-md pl-3';
+function shapeOf(variant: SearchFieldProps['variant'], active: boolean, wraps: boolean): string {
+  const height = wraps ? 'py-1' : '';
+  if (variant === 'bar') {
+    const bar = wraps ? 'min-h-14' : 'h-14';
+    return cn(
+      bar,
+      height,
+      active ? 'rounded-full border-2 border-primary pl-3.5' : 'rounded-full pl-4',
+    );
+  }
+  const field = wraps ? 'min-h-control-h' : 'h-control-h';
+  return cn(
+    field,
+    height,
+    active ? 'rounded-md border-2 border-primary pl-2.5' : 'rounded-md pl-3',
+  );
+}
+
+function SearchInput({
+  field,
+  wraps,
+}: {
+  readonly field: SearchFieldProps;
+  readonly wraps: boolean;
+}): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  const ref = useFocusOnMount(field.focusOnMount === true, field.inputRef);
+  return (
+    <TextInput
+      ref={ref}
+      accessibilityLabel={field.label ?? field.placeholder}
+      value={field.value}
+      onChangeText={field.onChange}
+      onSubmitEditing={field.onSubmit}
+      onFocus={field.onFocus}
+      onBlur={field.onBlur}
+      onKeyPress={(event) => {
+        field.onKey?.(event.nativeEvent.key);
+      }}
+      placeholder={field.placeholder}
+      returnKeyType="search"
+      autoCapitalize="none"
+      autoCorrect={false}
+      placeholderTextColorClassName="accent-on-surface-variant"
+      cursorColorClassName="accent-primary"
+      className={cn(
+        'min-w-0 flex-1 font-sans text-body text-on-surface web:outline-none',
+        wraps ? cn('min-w-32 py-0', pointer ? 'h-8' : 'h-11') : 'self-stretch',
+      )}
+    />
+  );
 }
 
 export function SearchField(props: SearchFieldProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const ref = useFocusOnMount(props.focusOnMount === true, props.inputRef);
+  const wraps = props.leading !== undefined;
+  const input = <SearchInput field={props} wraps={wraps} />;
   return (
     <View
       accessibilityRole="search"
@@ -86,7 +132,7 @@ export function SearchField(props: SearchFieldProps): ReactNode {
         'flex-row items-center gap-2',
         'web:input-focus-visible:outline-2 web:input-focus-visible:outline-focus web:input-focus-visible:-outline-offset-2',
         'bg-surface-3',
-        shapeOf(props.variant, props.active === true),
+        shapeOf(props.variant, props.active === true, wraps),
       )}
     >
       <Icon
@@ -94,26 +140,14 @@ export function SearchField(props: SearchFieldProps): ReactNode {
         size={pointer ? 16 : 24}
         tone={props.active === true ? 'primary' : 'variant'}
       />
-      {props.leading}
-      <TextInput
-        ref={ref}
-        accessibilityLabel={props.label ?? props.placeholder}
-        value={props.value}
-        onChangeText={props.onChange}
-        onSubmitEditing={props.onSubmit}
-        onFocus={props.onFocus}
-        onBlur={props.onBlur}
-        onKeyPress={(event) => {
-          props.onKey?.(event.nativeEvent.key);
-        }}
-        placeholder={props.placeholder}
-        returnKeyType="search"
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholderTextColorClassName="accent-on-surface-variant"
-        cursorColorClassName="accent-primary"
-        className="min-w-0 flex-1 self-stretch font-sans text-body text-on-surface web:outline-none"
-      />
+      {wraps ? (
+        <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-1.5">
+          {props.leading}
+          {input}
+        </View>
+      ) : (
+        input
+      )}
       <Trailing
         value={props.value}
         shortcut={props.shortcut}

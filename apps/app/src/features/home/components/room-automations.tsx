@@ -5,7 +5,7 @@ import { List } from '../../../components/section';
 
 export function RoomAutomations({ roomId }: { readonly roomId: string }): ReactNode {
   return (
-    <List title="Automations" inset className="w-full max-w-reading self-start">
+    <List title="Automations" inset className="w-full self-start">
       <ListRow
         title="Set up an automation"
         subtitle="Start from a template for this room"

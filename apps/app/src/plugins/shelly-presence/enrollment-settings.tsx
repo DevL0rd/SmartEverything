@@ -165,6 +165,53 @@ export function EnrollmentSettings(): ReactNode {
   );
 }
 
+async function enrollLine(candidate: Candidate, password: string, count: number): Promise<string> {
+  try {
+    const request = SHELLY_ENROLL_REQUEST.parse({
+      address: candidate.address,
+      password: password === '' ? null : password,
+    });
+    const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'enroll', request);
+    const line = `${SHELLY_ENROLL_RESULT.parse(reply.result).device.name} connected.`;
+    log.info('sensor.enrolled', { candidates: count });
+    return line;
+  } catch (error) {
+    log.warn('sensor.enroll_failed', {
+      error: error instanceof Error ? error.name : typeof error,
+      hasPassword: password !== '',
+    });
+    return `${candidate.name}: ${failure(error)}`;
+  }
+}
+
+type Discovered =
+  | {
+      readonly ok: true;
+      readonly candidates: ReturnType<typeof SHELLY_DISCOVERY_RESULT.parse>['candidates'];
+      readonly message: string | null;
+    }
+  | { readonly ok: false; readonly message: string };
+
+async function discoverSensors(): Promise<Discovered> {
+  try {
+    const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'discover', {});
+    const result = SHELLY_DISCOVERY_RESULT.parse(reply.result);
+    log.info('sensor.discovered', { candidates: result.candidates.length });
+    return {
+      ok: true,
+      candidates: result.candidates,
+      message:
+        result.reason ??
+        (result.candidates.length === 0 ? 'No configured Shelly sensors found.' : null),
+    };
+  } catch (error) {
+    log.warn('sensor.discover_failed', {
+      error: error instanceof Error ? error.name : typeof error,
+    });
+    return { ok: false, message: failure(error) };
+  }
+}
+
 function usePairing(): {
   readonly password: string;
   readonly setPassword: (value: string) => void;
@@ -180,21 +227,7 @@ function usePairing(): {
     setReport(null);
     const lines: string[] = [];
     for (const candidate of list) {
-      try {
-        const request = SHELLY_ENROLL_REQUEST.parse({
-          address: candidate.address,
-          password: password === '' ? null : password,
-        });
-        const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'enroll', request);
-        lines.push(`${SHELLY_ENROLL_RESULT.parse(reply.result).device.name} connected.`);
-        log.info('sensor.enrolled', { candidates: list.length });
-      } catch (error) {
-        log.warn('sensor.enroll_failed', {
-          error: error instanceof Error ? error.name : typeof error,
-          hasPassword: password !== '',
-        });
-        lines.push(`${candidate.name}: ${failure(error)}`);
-      }
+      lines.push(await enrollLine(candidate, password, list.length));
     }
     setReport(lines.join('\n'));
     setPairing(false);
@@ -215,23 +248,10 @@ function useDiscovery(): {
   const [message, setMessage] = useState<string | null>(null);
   const discover = useCallback(async (): Promise<void> => {
     setBusy(true);
-    try {
-      const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'discover', {});
-      const result = SHELLY_DISCOVERY_RESULT.parse(reply.result);
-      log.info('sensor.discovered', { candidates: result.candidates.length });
-      setCandidates(result.candidates);
-      setMessage(
-        result.reason ??
-          (result.candidates.length === 0 ? 'No configured Shelly sensors found.' : null),
-      );
-    } catch (error) {
-      log.warn('sensor.discover_failed', {
-        error: error instanceof Error ? error.name : typeof error,
-      });
-      setMessage(failure(error));
-    } finally {
-      setBusy(false);
-    }
+    const found = await discoverSensors();
+    if (found.ok) setCandidates(found.candidates);
+    setMessage(found.message);
+    setBusy(false);
   }, []);
   return { candidates, busy, message, discover };
 }

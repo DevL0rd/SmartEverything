@@ -180,9 +180,7 @@ export function MapPage({
 }): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
   const columns = width >= MAP_SETTINGS_COLUMNS_MIN;
-  const section = columns
-    ? 'min-w-0 flex-1 max-w-reading gap-section-gap'
-    : 'w-full max-w-reading gap-section-gap';
+  const section = columns ? 'min-w-0 flex-1 gap-section-gap' : 'w-full gap-section-gap';
   return (
     <View
       onLayout={onLayout}

@@ -84,10 +84,6 @@ export function canOfferOf(room: TransferRoom, live: boolean): boolean {
   return live && room.kind !== 'short';
 }
 
-export function offerTitleOf(transfer: DriveTransfer, fromName: string): string {
-  return `${fromName} offers you ${transfer.itemName}`;
-}
-
 export function offerBodyOf(transfer: DriveTransfer, fromName: string): string {
   const what = transfer.itemKind === 'folder' ? 'The folder and everything in it' : 'It';
   return `${what} (${bytes(transfer.bytes)}) moves into your My Drive and counts towards your space. ${fromName} keeps edit access.`;

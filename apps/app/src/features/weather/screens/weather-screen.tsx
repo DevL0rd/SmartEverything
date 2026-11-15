@@ -4,7 +4,6 @@ import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
 import { Grid, useGridLayout } from '../../../components/grid';
 import { PageShell } from '../../../components/page-shell/page-shell';
-import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { refreshWeather } from '../../../api/weather';
 import { useMinute } from '../../../store/clock';
@@ -51,8 +50,8 @@ function Warnings({ view, now }: { readonly view: Ready; readonly now: number })
 function Hero({ view, now }: { readonly view: Ready; readonly now: number }): ReactNode {
   const { forecast } = view;
   return (
-    <Card>
-      <View className="gap-3">
+    <Card className="flex-1">
+      <View className="flex-1 justify-between gap-3">
         <WeatherHero forecast={forecast} now={now} scale="l" stale={view.stale} />
         <View className="flex-row flex-wrap items-center gap-x-6 gap-y-2">
           {forecast.air === null ? null : <AirChip air={forecast.air} />}
@@ -76,12 +75,7 @@ function ForecastDetails({ view, now }: { readonly view: Ready; readonly now: nu
   const groupAirAndSun = air !== null && sun !== null && columns < FORECAST_COLUMNS;
   return (
     <View onLayout={onLayout}>
-      <Grid
-        measuredWidth={width}
-        minItemWidth={FORECAST_COLUMN_MIN}
-        maxColumns={FORECAST_COLUMNS}
-        cellClassName="max-w-detail"
-      >
+      <Grid measuredWidth={width} minItemWidth={FORECAST_COLUMN_MIN} maxColumns={FORECAST_COLUMNS}>
         <DailySection forecast={forecast} now={now} />
         {groupAirAndSun ? (
           <View className="gap-grid-gap">
@@ -104,48 +98,50 @@ function Forecast({ view }: { readonly view: Ready }): ReactNode {
   return (
     <View className="gap-section-gap">
       <Warnings view={view} now={now} />
-      <View className="flex-row flex-wrap items-start gap-grid-gap">
-        <View className="min-w-0 max-w-reading grow shrink basis-80">
+      <View className="flex-row flex-wrap items-stretch gap-grid-gap">
+        <View className="min-w-0 grow shrink basis-80">
           <Hero view={view} now={now} />
         </View>
-        <View className="min-w-0 max-w-detail grow shrink basis-96">
+        <View className="min-w-0 grow-2 shrink basis-96">
           <HourlySection forecast={forecast} now={now} />
         </View>
       </View>
       <ForecastDetails view={view} now={now} />
-      <View className="w-full max-w-detail">
+      <View className="w-full">
         <Attribution fetchedAt={view.fetchedAt} timeZone={forecast.timeZone} />
       </View>
     </View>
   );
 }
 
-function useRefreshAction(view: WeatherView): ShellAction[] {
+interface WeatherRefresh {
+  readonly onRefresh?: () => void;
+  readonly refreshing?: boolean;
+}
+
+function useRefresh(view: WeatherView): WeatherRefresh {
   const refresh = useMutationState();
   if (view.kind !== 'ready' && view.kind !== 'failed') {
-    return [];
+    return {};
   }
-  return [
-    {
-      icon: 'refresh',
-      label: refresh.busy ? 'Refreshing…' : 'Refresh',
-      onPress: (): void => {
-        refresh.run(refreshWeather, { failure: 'The weather couldn’t be fetched' });
-      },
+  return {
+    onRefresh: (): void => {
+      refresh.run(refreshWeather, { failure: 'The weather couldn’t be fetched' });
     },
-  ];
+    refreshing: refresh.busy,
+  };
 }
 
 export function WeatherScreen(): ReactNode {
   const view = useWeather();
-  const actions = useRefreshAction(view);
+  const refresh = useRefresh(view);
   const place = useSettings().home_name;
   return (
-    <PageShell title="Weather" subtitle={place} actions={actions}>
+    <PageShell title="Weather" subtitle={place} {...refresh}>
       {view.kind === 'ready' ? (
         <Forecast view={view} />
       ) : (
-        <Card className="w-full max-w-reading">
+        <Card className="w-full">
           <WeatherNotice view={view} />
         </Card>
       )}

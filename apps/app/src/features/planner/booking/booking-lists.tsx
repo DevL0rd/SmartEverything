@@ -9,8 +9,12 @@ import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { joinParts, plural } from '../../../format/text';
 import { clock, startOfDayKey, weekdayShort } from '../../../format/time';
-import { weekdayLetterOf } from '../clock/alarm-text';
 import { bookerNameOf, type BookingDay, type UpcomingBooking } from './booking-model';
+
+export function bookingDayLabelOf(day: BookingDay): string {
+  const start = startOfDayKey(day.day);
+  return `${weekdayShort(start)} ${String(new Date(start).getDate())}`;
+}
 
 export function BookingWeekCard({
   week,
@@ -22,7 +26,7 @@ export function BookingWeekCard({
   const total = week.reduce((sum, day) => sum + day.count, 0);
   const nextText =
     next === null
-      ? 'Nothing booked yet'
+      ? null
       : `Next ${weekdayShort(next.start)} ${clock(next.start)} · ${bookerNameOf(next)}`;
   return (
     <Card title="Bookings, next 7 days" icon="calendar">
@@ -30,15 +34,16 @@ export function BookingWeekCard({
         bars={week.map((day) => ({
           key: day.day,
           value: day.count,
-          label: weekdayLetterOf(new Date(startOfDayKey(day.day)).getDay()),
+          label: bookingDayLabelOf(day),
         }))}
         colour="primary"
         label={`Bookings per day for the next 7 days, ${plural(total, 'booking')}`}
         height={56}
+        peakLabel={false}
         formatValue={(value) => plural(value, 'booking')}
       />
       <Text variant="footnote" tone="variant">
-        {nextText}
+        {joinParts([`Next 7 days · ${plural(total, 'booking')}`, nextText])}
       </Text>
     </Card>
   );
@@ -63,6 +68,13 @@ function bookingTimeOf(booking: UpcomingBooking): string {
   return end === null ? clock(booking.start) : `${clock(booking.start)}–${end}`;
 }
 
+function emailCaptionOf(
+  booking: UpcomingBooking,
+): { readonly caption: string; readonly captionEllipsize: 'middle' } | Record<never, never> {
+  const email = booking.booker?.email ?? null;
+  return email === null || email === '' ? {} : { caption: email, captionEllipsize: 'middle' };
+}
+
 export function UpcomingBookings({
   bookings,
   calendars,
@@ -70,17 +82,6 @@ export function UpcomingBookings({
   readonly bookings: readonly UpcomingBooking[];
   readonly calendars: readonly PlannerCollectionRow[];
 }): ReactNode {
-  if (bookings.length === 0) {
-    return (
-      <List title="Upcoming bookings">
-        <ListRow
-          title="Nothing booked yet"
-          subtitle="Bookings show here as people pick a time."
-          icon="calendar"
-        />
-      </List>
-    );
-  }
   return (
     <List title="Upcoming bookings" caption={plural(bookings.length, 'booking')}>
       {bookings.map((booking) => (
@@ -88,11 +89,11 @@ export function UpcomingBookings({
           key={booking.item.id}
           leading={<DateBlock start={booking.start} />}
           title={bookerNameOf(booking)}
-          subtitle={bookingTimeOf(booking)}
-          caption={joinParts([
-            booking.booker?.email,
+          subtitle={joinParts([
+            bookingTimeOf(booking),
             calendars.find((calendar) => calendar.id === booking.item.collection_id)?.name,
           ])}
+          {...emailCaptionOf(booking)}
           href={href.planner.item(booking.item.id, null)}
           chevron
         />

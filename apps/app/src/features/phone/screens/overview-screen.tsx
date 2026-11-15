@@ -4,6 +4,7 @@ import { useShellRailShown } from '../../../components/page-shell/rail-shown';
 import { HOUR_MS } from '../../../format/time';
 import type { Device } from '../../../store/state';
 import { usePhoneFace } from '../card/use-phone-face';
+import { usePhoneSection } from '../data/phone-detail';
 import { ParkedCard } from '../activity/parked-card';
 import { DoingTodayCard } from '../activity/today-card';
 import { PhoneCardGrid } from '../frame/phone-grid';
@@ -52,6 +53,19 @@ function CardOf({
   }
 }
 
+function useOverviewCards(device: Device): readonly OverviewCard[] {
+  const { readings, access } = usePhoneFace(device);
+  const bluetooth = usePhoneSection(device.id, 'connections')?.bluetooth;
+  return CARDS.filter((card) => {
+    if (card === 'battery') return readings.battery !== null;
+    if (card === 'connections') {
+      return access.view.own && bluetooth !== undefined && bluetooth.length > 0;
+    }
+    if (card === 'today') return access.view.own;
+    return true;
+  });
+}
+
 function PrivacyBanner({ device }: { readonly device: Device }): ReactNode {
   const { access } = usePhoneFace(device);
   if (access.view.own) return null;
@@ -68,6 +82,7 @@ function PrivacyBanner({ device }: { readonly device: Device }): ReactNode {
 export function PhoneOverviewBody({ device }: { readonly device: Device }): ReactNode {
   const compact = !useShellRailShown();
   const { access } = usePhoneFace(device);
+  const cards = useOverviewCards(device);
   return (
     <>
       <PhoneHero device={device} />
@@ -75,7 +90,7 @@ export function PhoneOverviewBody({ device }: { readonly device: Device }): Reac
       <PrivacyBanner device={device} />
       {access.view.here ? <ParkedCard maxAgeMs={PARKED_WITHIN_MS} /> : null}
       <PhoneCardGrid
-        items={CARDS}
+        items={cards}
         keyOf={(card) => card}
         render={(card) => <CardOf card={card} device={device} />}
       />
@@ -86,7 +101,7 @@ export function PhoneOverviewBody({ device }: { readonly device: Device }): Reac
 
 export function PhoneOverviewScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   return (
-    <PhonePage deviceId={deviceId} title={null} width="dashboard" root>
+    <PhonePage deviceId={deviceId} title={null} root>
       {(device) => <PhoneOverviewBody device={device} />}
     </PhonePage>
   );

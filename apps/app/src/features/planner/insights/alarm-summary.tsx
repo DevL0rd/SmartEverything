@@ -71,7 +71,10 @@ function SnoozeBars({
 }): ReactNode {
   const unit = range === 'week' ? 'day' : 'week';
   return (
-    <View className="gap-1">
+    <>
+      <Text variant="caption" tone="variant" className="tabular" numberOfLines={2}>
+        {`Snoozes per ${unit}`}
+      </Text>
       <Bars
         bars={summary.snoozeBars}
         colour="primary"
@@ -79,10 +82,7 @@ function SnoozeBars({
         height={48}
         formatValue={(value) => `${rounded(value, 0)} snoozes`}
       />
-      <Text variant="caption" tone="variant">
-        {`Snoozes per ${unit}`}
-      </Text>
-    </View>
+    </>
   );
 }
 

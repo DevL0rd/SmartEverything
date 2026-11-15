@@ -1,3 +1,7 @@
+import { PHOTO_VISION_REFUSED_RETRY_MIGRATION } from './photo-vision-refused-retry';
+import { PHOTOS_THUMBHASH_DROP_MIGRATION } from './photos-thumbhash-drop';
+import { DRIVE_ROOT_MOUNT_MIGRATION } from './drive-root-mount';
+import { DRIVE_MOUNT_TUNING_MIGRATION } from './drive-mount-tuning';
 import { DRIVE_MEMBER_AREA_MIGRATION } from './drive-member-area';
 import { ROUTER_LIVE_STREAM_MIGRATION } from './router-live-stream';
 import { AI_USAGE_PHOTOS_MIGRATION } from './ai-usage-photos';
@@ -187,4 +191,8 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   DRIVE_SHORTCUT_ORIGIN_MIGRATION,
   ROUTER_LIVE_STREAM_MIGRATION,
   DRIVE_MEMBER_AREA_MIGRATION,
+  DRIVE_MOUNT_TUNING_MIGRATION,
+  DRIVE_ROOT_MOUNT_MIGRATION,
+  PHOTO_VISION_REFUSED_RETRY_MIGRATION,
+  PHOTOS_THUMBHASH_DROP_MIGRATION,
 ];

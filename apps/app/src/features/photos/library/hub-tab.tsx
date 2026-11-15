@@ -8,7 +8,7 @@ import {
   type MediaSelectionControls,
 } from '../../../components/media-grid/selection';
 import type { MediaDay, MediaGrouping } from '../../../components/media-grid/tiles';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { notify } from '../../../components/toast-store';
 import { pickFiles, PickerMissingError, type PickedBlob } from '../../../platform/pick-files';
 import { useSyncStatus } from '../../../store/selectors';
@@ -22,13 +22,14 @@ import { NoResults } from '../search/no-results';
 import { DropZone } from './drop-zone';
 import { LibraryGrid } from './library-grid';
 import { LibraryShell, type LibraryHeadProps, type ZoomControl } from './library-head';
+import { LibraryActionRow } from './library-action-row';
 import {
-  LibraryActionRow,
   LibrarySelection,
   LibrarySelectionHead,
   type LibrarySelectionProps,
 } from './library-selection';
 import { LibraryEmpty, LibraryError, LibraryLoading, OfflineBanner } from './library-states';
+import { scopeTotal } from './library-model';
 import { resultLineOf, type HubTabId } from './library-tabs-view';
 import { LocalLibraryStatus } from './local-library-status';
 import { matchLineOf } from '../search/match-line';
@@ -63,11 +64,16 @@ function pickAndUpload(): void {
 export function libraryActions(
   compact: boolean,
   controls: MediaSelectionControls,
-): readonly HeaderAction[] {
-  return [
-    { icon: 'upload', label: 'Upload', primary: true, iconOnly: compact, onPress: pickAndUpload },
-    { icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin },
-  ];
+): readonly ShellAction[] {
+  const upload: ShellAction = {
+    icon: 'upload',
+    label: 'Upload',
+    primary: true,
+    iconOnly: compact,
+    onPress: pickAndUpload,
+  };
+  if (controls.selection.active) return compact ? [] : [upload];
+  return [upload, { icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin }];
 }
 
 export function selectionHeadOf(
@@ -203,6 +209,26 @@ function scopeWith(
   return tab === 'videos' && bucket !== null ? { ...scope, duration: bucket } : scope;
 }
 
+function selectionOf(
+  feed: LibraryFeed,
+  controls: MediaSelectionControls,
+  media: MediaActions,
+): LibrarySelectionProps {
+  return {
+    controls,
+    tiles: feed.tiles,
+    media,
+    scope: {
+      total: scopeTotal(feed.buckets, feed.tiles.length, feed.complete),
+      complete: feed.complete,
+      onAll: (): void => {
+        feed.loadAll();
+        controls.all();
+      },
+    },
+  };
+}
+
 export function HubTab(props: HubTabProps): ReactNode {
   const { head, tab } = props;
   const [bucket, setBucket] = useState<DriveDurationBucket | null>(null);
@@ -213,13 +239,13 @@ export function HubTab(props: HubTabProps): ReactNode {
   useClearOnChange(scopeKeyOf(scope), controls.clear);
   const media = useMediaActions();
   const offline = isOffline(useSyncStatus().status);
-  const selection: LibrarySelectionProps = { controls, tiles: feed.tiles, media };
+  const selection = selectionOf(feed, controls, media);
   const localLoading = tab === 'all' && local.state === 'loading';
   return (
     <LibraryShell
       head={head}
       frame={{
-        subtitle: props.subtitle,
+        subtitle: isSearching(head.search.input) ? null : props.subtitle,
         actions: libraryActions(head.compact, controls),
         selection: selectionHeadOf(head.compact, selection),
         banner: offline ? <OfflineBanner seenAt={feed.seenAt} /> : null,

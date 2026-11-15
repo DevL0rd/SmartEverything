@@ -6,7 +6,7 @@ import type * as ExpoVideo from 'expo-video';
 import { Logger } from '@smarteverything/logging';
 import { IconButton } from '../../../components/icon-button';
 import { isNative } from '../../../design/platform';
-import type { VideoModule } from '../viewer/live-photo';
+import { useModulePlayer, type VideoModule } from '../viewer/live-photo';
 import type { FrameSource } from './trim-bar';
 import { frameTimes, type Trim } from './trim-model';
 
@@ -85,7 +85,7 @@ function usePlayback(player: Player, props: VideoPreviewProps): boolean {
 
 export function VideoPreview(props: VideoPreviewProps): ReactNode {
   const { VideoView } = props.module;
-  const player = props.module.useVideoPlayer({ uri: props.uri, contentType: 'progressive' }, setUp);
+  const player = useModulePlayer(props.module, props.uri, setUp);
   const playing = usePlayback(player, props);
   const frames = useNativeFrames(player, props.frameCount, props.trim.durationMs);
   const { onFrames } = props;

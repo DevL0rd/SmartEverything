@@ -13,9 +13,8 @@ import { fileEnv, stageBytes } from '../../../src/drive/versions';
 import type { StoredDrive } from '../../../src/store/repositories/drive-roots';
 import { testLogger } from '../../support/logs';
 import type { TestStore } from '../../support/store';
-import { newId, pairComputer } from '../placement-fixture';
+import { insertMount, newId, pairComputer } from '../placement-fixture';
 import { driveTestStore } from '../spaces-fixture';
-import { DrivePlacements } from '../../../src/drive/placements';
 
 export const NOW = new Date('2026-11-07T00:00:00.000Z');
 
@@ -84,20 +83,17 @@ function envOf(store: TestStore['store'], controls: Controls): PosixEnv {
 }
 
 function attacherOf(store: TestStore['store'], posix: DrivePosix): PosixRig['attach'] {
-  const placements = new DrivePlacements({ store, context: store.context, newId });
   let mounts = 0;
   return async (nodeId, profileId, root, base) => {
     mounts += 1;
-    const placement = placements.set(
+    const placement = insertMount(
+      store,
       { profileId },
       {
         deviceId: nodeId,
         rootId: root.id,
         folderItemId: base ?? null,
-        mode: 'mounted',
-        localPath: null,
         mountName: `drive-${String(mounts)}`,
-        enabled: true,
       },
     );
     return (await posix.attach({ profileId, nodeId }, placement.id)).scope;

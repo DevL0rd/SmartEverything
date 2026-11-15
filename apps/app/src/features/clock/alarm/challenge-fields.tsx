@@ -1,6 +1,6 @@
 import type { PlannerChallenge } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
-import { Modal, View } from 'react-native';
+import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { CodeScanner } from '../../../components/code-scanner';
 import { Icon } from '../../../components/icon';
@@ -8,6 +8,7 @@ import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
 import { Text } from '../../../components/text';
+import { ToastModal } from '../../../components/toast-modal';
 import {
   DIFFICULTY_OPTIONS,
   mathsEdit,
@@ -43,6 +44,7 @@ export function MathsFields({
       <View>
         <ListRow
           title="Problems"
+          disabled={disabled}
           icon="calculator"
           compact
           trailing={
@@ -132,7 +134,7 @@ function QrScan({
   readonly onScanned: (challenge: PlannerChallenge) => void;
 }): ReactNode {
   return (
-    <Modal visible={open} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <ToastModal visible={open} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <CodeScanner
         types={['qr']}
         shape="square"
@@ -146,7 +148,7 @@ function QrScan({
         }}
         onClose={onClose}
       />
-    </Modal>
+    </ToastModal>
   );
 }
 
@@ -174,6 +176,7 @@ export function StepsFields({
       <View>
         <ListRow
           title="Steps"
+          disabled={disabled}
           icon="footprints"
           compact
           trailing={

@@ -8,7 +8,6 @@ import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
-import { isNative } from '../../../design/platform';
 import { useSettings } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { TOOL_GROUPS, groupState, withGroup, withTool, type ToolGroup } from '../model/tools';
@@ -97,7 +96,7 @@ export function ToolsScreen(): ReactNode {
   const { disabled, change } = useDisabledTools();
   const [shown, setShown] = useState<Tool | null>(null);
   return (
-    <SettingsFrame page="integrations/tools" contentWidth={isNative() ? 'reading' : 'full'}>
+    <SettingsFrame page="integrations/tools">
       <Text variant="callout" tone="variant" className="px-4">
         Assistants can use these tools. New tools are on by default.
       </Text>

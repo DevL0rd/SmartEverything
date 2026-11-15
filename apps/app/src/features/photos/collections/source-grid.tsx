@@ -2,12 +2,9 @@ import { memo, useMemo, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import type { PhotoSource } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
 import { dayText } from '../../../components/media-grid/day-text';
 import { rowHeight, TILE_GAP } from '../../../components/media-grid/justify';
 import {
-  dayActionText,
-  dayMark,
   type MediaSelection,
 } from '../../../components/media-grid/selection';
 import { Text } from '../../../components/text';
@@ -31,7 +28,6 @@ export interface SourceGridProps extends SourceTileHandlers {
   readonly names: ReadonlyMap<string, string>;
   readonly today: string;
   readonly selection: MediaSelection;
-  readonly onSelectDay: (ids: readonly string[]) => void;
   readonly onEnd: () => void;
   readonly header: ReactElement;
   readonly footer: ReactElement;
@@ -42,11 +38,6 @@ interface RowContext extends SourceTileHandlers {
   readonly names: ReadonlyMap<string, string>;
   readonly today: string;
   readonly selection: MediaSelection;
-  readonly onSelectDay: (ids: readonly string[]) => void;
-}
-
-function dayActionLabel(selection: MediaSelection, ids: readonly string[]): string {
-  return dayActionText(selection.active ? dayMark(selection, ids) : 'none');
 }
 
 function Head({
@@ -57,7 +48,6 @@ function Head({
   readonly context: RowContext;
 }): ReactNode {
   const title = dayText(row.day, row.ids.length, context.today).title;
-  const action = dayActionLabel(context.selection, row.ids);
   return (
     <View className="flex-row items-center gap-2 pb-2 pt-4">
       <View className="min-w-0 flex-1 flex-row items-baseline gap-2">
@@ -68,14 +58,6 @@ function Head({
           {sourceDayDetail(context.source, row.tiles, context.names)}
         </Text>
       </View>
-      <Button
-        label={action}
-        spoken={`${action} ${title}`}
-        variant="text"
-        onPress={() => {
-          context.onSelectDay(row.ids);
-        }}
-      />
     </View>
   );
 }
@@ -131,7 +113,7 @@ function rowTypeOf(row: SourceRow): string {
 }
 
 export function SourceGrid(props: SourceGridProps): ReactNode {
-  const { source, days, names, today, selection, onPress, onLongPress, onSelectDay } = props;
+  const { source, days, names, today, selection, onPress, onLongPress } = props;
   const measured = useMeasuredWidth();
   const target = rowHeight('days', useIdiom());
   const rows = useMemo(
@@ -140,8 +122,8 @@ export function SourceGrid(props: SourceGridProps): ReactNode {
     [days, measured.width, target, source],
   );
   const context = useMemo(
-    (): RowContext => ({ source, names, today, selection, onPress, onLongPress, onSelectDay }),
-    [source, names, today, selection, onPress, onLongPress, onSelectDay],
+    (): RowContext => ({ source, names, today, selection, onPress, onLongPress }),
+    [source, names, today, selection, onPress, onLongPress],
   );
   const renderRow: ListRenderItem<SourceRow> = ({ item }) => (
     <GridRow row={item} context={context} />

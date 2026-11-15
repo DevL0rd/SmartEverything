@@ -9,7 +9,7 @@ import { usePlannerDay, usePlannerItems, usePlannerOccurrences } from '../data';
 import { usePlannerProfile, useTaskRows } from '../data/assignment';
 import { usePlannerShownPerson } from '../frame/person';
 import { PlannerFrame } from '../frame/planner-frame';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { BoardGroupChip, TaskBoard } from './board';
 import { TaskHabits } from './habit-row';
 import { habitEntriesOf } from './habits';
@@ -165,7 +165,7 @@ export function TasksPage(): ReactNode {
   const [view, setView] = useState<TaskView>('list');
   const [filter, setFilter] = useState<TaskFilter>(ALL_OPEN);
   const [grouping, setGrouping] = useState<BoardGrouping>('list');
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const pointer = useIdiom() === 'pointer';
   const state: PageState = { view, filter, grouping, ...useShownEntries() };
   const board = <BoardGroupChip grouping={grouping} onGrouping={setGrouping} />;

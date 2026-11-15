@@ -48,8 +48,8 @@ export async function loadHeadlessBackupScope(
   const snapshot = await readBackupSnapshot(connection);
   if (!ownsConnection(connection)) return null;
   const data = replaceWith(emptyState(), snapshot);
-  const owner = backupOwner(data);
   const pref = prefOf(data, PREFS.photosBackup);
+  const owner = backupOwner(data, pref);
   if (owner === null || pref.status === 'invalid' || !pref.value.enabled) {
     await syncBackupSlot(false);
     return null;

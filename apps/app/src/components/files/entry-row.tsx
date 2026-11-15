@@ -45,7 +45,7 @@ const NO_MARKS: readonly EntryMark[] = [];
 
 type LeadingProps = Pick<EntryRowProps, 'kind' | 'name' | 'selecting' | 'selected' | 'thumbnail'>;
 
-function Leading({ kind, name, selecting, selected, thumbnail }: LeadingProps): ReactNode {
+function LeadingMark({ kind, name, selecting, selected, thumbnail }: LeadingProps): ReactNode {
   if (selecting) {
     return (
       <Icon
@@ -56,6 +56,14 @@ function Leading({ kind, name, selecting, selected, thumbnail }: LeadingProps): 
     );
   }
   return thumbnail ?? <FileGlyph kind={kind} name={name} />;
+}
+
+function Leading(props: LeadingProps): ReactNode {
+  return (
+    <View className="w-8 items-center justify-center">
+      <LeadingMark {...props} />
+    </View>
+  );
 }
 
 function Marks({ marks }: { readonly marks: readonly EntryMark[] }): ReactNode {

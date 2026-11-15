@@ -35,6 +35,7 @@ export interface ApplyRequest {
   readonly staged: string;
   readonly ranges: readonly ByteRange[];
   readonly size: number;
+  readonly digest: () => Promise<string>;
   readonly actor: ChangeActor;
   readonly settled: (item: DriveItem) => void;
 }
@@ -52,7 +53,7 @@ export async function applyContent(env: PosixChangeEnv, request: ApplyRequest): 
   const { root, relPath, staged, actor } = request;
   if (coversRanges(request.ranges, request.size)) {
     await truncate(await locate(root, staged), request.size);
-    const bytes = await stageInPlace(env, root, staged);
+    const bytes = await stageInPlace(env, root, staged, await request.digest());
     const written = await commitContent(env, {
       root,
       staged: bytes,

@@ -37,7 +37,7 @@ function timed(command: string, args: readonly string[]): Promise<string> {
 
 async function bencher(target: Probed, args: readonly string[]): Promise<string> {
   const wrapped = target.wrap(bench.binary, args);
-  return timed('env', ['GODEBUG=asyncpreemptoff=1', wrapped.command, ...wrapped.args]);
+  return timed(wrapped.command, wrapped.args);
 }
 
 function drainFlags(target: Probed): string[] {

@@ -12,20 +12,20 @@ import { IconWell } from '../../../components/icon-well';
 import { Interactive } from '../../../components/interactive';
 import { SwipeRow, type SwipeAction } from '../../../components/swipe-row';
 import { Text } from '../../../components/text';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { entering, exiting, useMotion } from '../../../design/motion';
-import { useAreaWidth } from '../../../design/size-class';
 import { useRow } from '../../../store/selectors';
 import { askAssistantWith } from '../../assistant';
 import { usePlannerAlarms } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { occurrenceWhenOf } from '../frame/occurrence-list';
-import { frameLayoutOf } from '../frame/sections';
 import { useItemPress } from '../item/item-menu-host';
 import type { ItemOpen } from '../item/selection';
 import {
   catchUpCardsOf,
   fitPromptOf,
   ghostStackOf,
+  missedAlarmNameOf,
   missedAlarmTitleOf,
   missedReasonOf,
   type AlarmCard,
@@ -33,7 +33,7 @@ import {
   type GhostStack,
   type ItemCard,
 } from './catch-up-model';
-import { useHiddenKeys, useOccurrenceActions, type OccurrenceActions } from './now-lens';
+import { useTodayActions, type OccurrenceActions } from './today-actions';
 
 const DECK_BUTTONS: readonly {
   readonly action: keyof OccurrenceActions;
@@ -51,6 +51,7 @@ const SWIPES = {
   skip: { label: 'Skip', icon: 'skipForward', tone: 'neutral' },
 } as const;
 
+const STACK_BELOW = 560;
 const DECK_MS = 220;
 const DONE_MS = 260;
 
@@ -63,11 +64,11 @@ function useDeviceNameOf(occurrence: PlannerOccurrenceView): string | null {
 function DeckButtons({
   card,
   actions,
-  compact,
+  stacked,
 }: {
   readonly card: ItemCard;
   readonly actions: OccurrenceActions;
-  readonly compact: boolean;
+  readonly stacked: boolean;
 }): ReactNode {
   const { offline } = usePlannerFrame();
   return (
@@ -78,7 +79,7 @@ function DeckButtons({
           label={button.label}
           {...(button.icon === undefined ? {} : { icon: button.icon })}
           variant={button.variant}
-          grow={compact}
+          grow={stacked}
           disabled={offline}
           onPress={() => {
             actions[button.action](card.key, card.occurrence);
@@ -93,23 +94,26 @@ type FaceOpen = { readonly href: AppHref } | { readonly onPress: () => void };
 
 function ItemFace({
   card,
-  timeZone,
+  day,
   actions,
-  compact,
   open,
 }: {
   readonly card: ItemCard;
-  readonly timeZone: string;
+  readonly day: PlannerDay;
   readonly actions: OccurrenceActions;
-  readonly compact: boolean;
   readonly open: FaceOpen;
 }): ReactNode {
   const device = useDeviceNameOf(card.occurrence);
-  const subtitle = [occurrenceWhenOf(card.occurrence, timeZone), device, card.occurrence.location]
+  const measured = useMeasuredWidth();
+  const stacked = measured.width < STACK_BELOW;
+  const subtitle = [occurrenceWhenOf(card.occurrence, day), device, card.occurrence.location]
     .filter((part) => part !== null)
     .join(' · ');
   return (
-    <View className={compact ? 'gap-3' : 'flex-row items-center gap-3'}>
+    <View
+      onLayout={measured.onLayout}
+      className={stacked ? 'gap-3' : 'flex-row items-center gap-3'}
+    >
       <Interactive
         {...open}
         label={card.occurrence.title}
@@ -121,7 +125,7 @@ function ItemFace({
           colour="critical"
         />
         <View className="min-w-0 flex-1 gap-0.5">
-          <Text variant="label" numberOfLines={1}>
+          <Text variant="label" numberOfLines={2}>
             {card.occurrence.title}
           </Text>
           <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
@@ -129,24 +133,24 @@ function ItemFace({
           </Text>
         </View>
       </Interactive>
-      <DeckButtons card={card} actions={actions} compact={compact} />
+      <DeckButtons card={card} actions={actions} stacked={stacked} />
     </View>
   );
 }
 
 function AlarmFace({
   card,
-  timeZone,
+  day,
 }: {
   readonly card: AlarmCard;
-  readonly timeZone: string;
+  readonly day: PlannerDay;
 }): ReactNode {
   const hubRan =
     card.ring.missed_reason !== 'hub_down' && (card.alarm?.wake_automation_id ?? null) !== null;
   return (
     <View className="gap-2">
       <View className="flex-row items-center justify-between gap-2">
-        <Badge label={missedAlarmTitleOf(card, timeZone)} tone="critical" icon="alarmClock" />
+        <Badge label={missedAlarmTitleOf(card, day)} tone="critical" icon="alarmClock" />
         <Text variant="caption" tone="variant">
           {missedReasonOf(card.ring)}
         </Text>
@@ -166,7 +170,6 @@ interface CardProps {
   readonly card: CatchUpCard;
   readonly day: PlannerDay;
   readonly actions: OccurrenceActions;
-  readonly compact: boolean;
   readonly onPress: (() => void) | undefined;
 }
 
@@ -179,7 +182,6 @@ function ItemDeckCard({
   card,
   day,
   actions,
-  compact,
   onPress,
 }: CardProps & { readonly card: ItemCard }): ReactNode {
   const { offline } = usePlannerFrame();
@@ -197,13 +199,7 @@ function ItemDeckCard({
   return (
     <SwipeRow surface="bg" leading={swipe('done')} trailing={swipe('skip')}>
       <Card>
-        <ItemFace
-          card={card}
-          timeZone={day.time_zone}
-          actions={actions}
-          compact={compact}
-          open={open}
-        />
+        <ItemFace card={card} day={day} actions={actions} open={open} />
       </Card>
     </SwipeRow>
   );
@@ -214,7 +210,7 @@ function DeckCard(props: CardProps): ReactNode {
   if (card.kind === 'alarm') {
     return (
       <Card tone="critical">
-        <AlarmFace card={card} timeZone={props.day.time_zone} />
+        <AlarmFace card={card} day={props.day} />
       </Card>
     );
   }
@@ -262,17 +258,17 @@ function Header({ cards }: { readonly cards: readonly CatchUpCard[] }): ReactNod
 function MoreButton({
   cards,
   fanned,
-  timeZone,
+  day,
   onPress,
 }: {
   readonly cards: readonly CatchUpCard[];
   readonly fanned: boolean;
-  readonly timeZone: string;
+  readonly day: PlannerDay;
   readonly onPress: () => void;
 }): ReactNode {
   const next = cards[1];
   if (next === undefined) return null;
-  const title = next.kind === 'item' ? next.occurrence.title : missedAlarmTitleOf(next, timeZone);
+  const title = next.kind === 'item' ? next.occurrence.title : missedAlarmNameOf(next, day);
   return (
     <View className="flex-row">
       <Button
@@ -295,7 +291,6 @@ interface StackProps {
 
 function Stack({ cards, day, actions, fanned, onFan }: StackProps): ReactNode {
   const motion = useMotion();
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
   const shown = fanned ? cards : cards.slice(0, 1);
   const stack = ghostStackOf(cards.length);
   return (
@@ -311,7 +306,7 @@ function Stack({ cards, day, actions, fanned, onFan }: StackProps): ReactNode {
           {...(index === 0 ? {} : entering(motion, FadeInDown.duration(DECK_MS)))}
           {...exiting(motion, ZoomOut.duration(DONE_MS))}
         >
-          <DeckCard card={card} day={day} actions={actions} compact={compact} onPress={onFan} />
+          <DeckCard card={card} day={day} actions={actions} onPress={onFan} />
         </Animated.View>
       ))}
     </Animated.View>
@@ -320,9 +315,8 @@ function Stack({ cards, day, actions, fanned, onFan }: StackProps): ReactNode {
 
 export function CatchUpDeck({ day }: { readonly day: PlannerDay }): ReactNode {
   const { person } = usePlannerFrame();
-  const [hidden, hide] = useHiddenKeys();
+  const { hidden, actions } = useTodayActions();
   const [open, setOpen] = useState(false);
-  const actions = useOccurrenceActions(day, hide);
   const cards = catchUpCardsOf(day, usePlannerAlarms(person), hidden);
   if (cards.length === 0) return null;
   const several = cards.length > 1;
@@ -340,7 +334,7 @@ export function CatchUpDeck({ day }: { readonly day: PlannerDay }): ReactNode {
         fanned={fanned}
         onFan={fanned || !several ? undefined : toggle}
       />
-      <MoreButton cards={cards} fanned={fanned} timeZone={day.time_zone} onPress={toggle} />
+      <MoreButton cards={cards} fanned={fanned} day={day} onPress={toggle} />
     </View>
   );
 }

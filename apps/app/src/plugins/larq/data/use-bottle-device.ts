@@ -1,5 +1,5 @@
 import { deviceFamily } from '@smarteverything/domain';
-import { useDevices } from '../../../store/selectors';
+import { useMatchingDevices } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { activeProfileIn } from '../../../store/people';
 import type { Device, StoreState } from '../../../store/state';
@@ -12,6 +12,6 @@ export function isBottle(device: Device): boolean {
 const selectProfileId = (state: StoreState): string | null => activeProfileIn(state)?.id ?? null;
 
 export function useBottleDevice(): Device | null {
-  const bottles = useDevices().filter(isBottle);
+  const bottles = useMatchingDevices(isBottle);
   return bottleOfPerson(bottles, useStoreSelector(selectProfileId));
 }

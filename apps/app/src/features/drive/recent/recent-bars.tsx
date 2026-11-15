@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 import { Card } from '../../../components/card';
 import { BarLabels, BarMarks } from '../../../components/charts/bar-marks';
-import { Swatch } from '../../../components/charts/chart-legend';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useColour } from '../../../design/colour';
@@ -53,12 +52,17 @@ interface LegendEntry {
   readonly value: number;
 }
 
+function BarSwatch({ colour }: { readonly colour: ColourRole }): ReactNode {
+  const fill = { backgroundColor: useColour(colour) };
+  return <View style={fill} className="size-2.5 rounded-xs" />;
+}
+
 function Legend({ entries }: { readonly entries: readonly LegendEntry[] }): ReactNode {
   return (
     <View aria-hidden className="flex-row flex-wrap gap-x-4 gap-y-1">
       {entries.map((entry) => (
         <View key={entry.label} className="flex-row items-center gap-1.5">
-          <Swatch colour={entry.colour} />
+          <BarSwatch colour={entry.colour} />
           <Text variant="footnote" tone="variant">
             {entry.label}
           </Text>

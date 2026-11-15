@@ -8,7 +8,7 @@ import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { decimal } from '../../../format/number';
 import { dayLabel, clock } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useDayNow } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
 import { useProfiles } from '../../../store/people';
 import { useActiveProfileId, useTimeZone } from './use-scale';
@@ -52,8 +52,8 @@ function Step({
   readonly total: number;
   readonly onDone: () => void;
 }): ReactNode {
-  const now = useMinute();
   const zone = useTimeZone();
+  const now = useDayNow(zone);
   const profiles = useProfiles();
   const mutation = useMutationState();
   const choices = choicesOf(target, profiles, useActiveProfileId());

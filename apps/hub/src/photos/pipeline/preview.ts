@@ -8,7 +8,6 @@ import type { Store } from '../../store/store';
 import { DERIVED_LONG_EDGE, pruneDerived, writeDerived, type DerivedLayout } from './derived-paths';
 import type { JobHandler } from './jobs';
 import { UNLIMITED_PIXELS } from '../../media/sharp-input';
-import { thumbHashOf } from './thumbhash';
 
 export const PREVIEW_QUALITY = 82;
 
@@ -73,7 +72,6 @@ export const SHARP_DECODER: PreviewDecoder = {
 export interface RenderedDerived {
   readonly preview: Buffer;
   readonly thumb: Buffer;
-  readonly thumbhash: Uint8Array<ArrayBuffer>;
   readonly width: number;
   readonly height: number;
 }
@@ -106,14 +104,13 @@ export async function renderDerived(source: DecodedSource): Promise<RenderedDeri
   return {
     preview: preview.data,
     thumb,
-    thumbhash: await thumbHashOf(preview.data),
     width: preview.info.width,
     height: preview.info.height,
   };
 }
 
 export type DerivedOutcome =
-  | { readonly state: 'ready'; readonly thumbhash: Uint8Array<ArrayBuffer> }
+  | { readonly state: 'ready' }
   | { readonly state: 'failed' | 'unsupported'; readonly reason: string };
 
 export type ThumbWriter = (itemId: string, thumb: DriveThumb) => void;
@@ -138,11 +135,7 @@ function thumbOf(outcome: DerivedOutcome): DriveThumb {
 
 function mediaPatchOf(outcome: DerivedOutcome): Parameters<DriveMediaRepository['update']>[1] {
   return outcome.state === 'ready'
-    ? {
-        thumbhash: outcome.thumbhash,
-        preview_state: 'ready',
-        preview_reason: null,
-      }
+    ? { preview_state: 'ready', preview_reason: null }
     : { preview_state: outcome.state, preview_reason: outcome.reason };
 }
 
@@ -176,7 +169,7 @@ export class PreviewHandler implements JobHandler {
       { itemId: job.item_id, rev: job.rev, size: 'thumb' },
       rendered.thumb,
     );
-    if (this.record(job, { state: 'ready', thumbhash: rendered.thumbhash })) {
+    if (this.record(job, { state: 'ready' })) {
       await pruneDerived(this.env.layout, job.item_id, job.rev);
     }
   }

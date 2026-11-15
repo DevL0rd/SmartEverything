@@ -12,12 +12,15 @@ const TODAY_ENTRY: RailEntry = {
   label: 'Today',
   icon: 'fitness',
   missing: null,
-  detail: null,
 };
 
 function domainEntry(domain: FitnessDomain): RailEntry {
   const info = DOMAIN_INFO[domain];
-  return { id: domain, label: info.title, icon: info.icon, missing: null, detail: null };
+  return { id: domain, label: info.title, icon: info.icon, missing: null };
+}
+
+export function fitnessTitleOf(tab: FitnessTab): string {
+  return tab === 'today' ? TODAY_ENTRY.label : DOMAIN_INFO[tab].title;
 }
 
 export function fitnessHrefOf(id: string): AppHref {

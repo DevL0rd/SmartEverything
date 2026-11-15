@@ -4,18 +4,11 @@ import { useScreenPaused } from '../../../design/screen-pause';
 import { useDayKey } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useIsOwner, useSession } from '../../../store/selectors';
-import {
-  flattenPages,
-  useDriveChips,
-  useDriveRoots,
-  useDriveStats,
-  useDriveTrash,
-  useViewerId,
-} from '../data';
+import { flattenPages, useDriveChips, useDriveRoots, useDriveTrash, useViewerId } from '../data';
 import type { DriveChipOf } from '../model/drive-chip';
 import { trashNodeOf, type DriveNode } from '../source/drive-node';
 import { deletedByOf, type DeletedByShare } from './deleted-by';
-import type { LeavingMonth } from './leaving-bars';
+import { leavingMonthsOf, type LeavingMonth } from './leaving-bars';
 import {
   totalsOf,
   trashItemsOf,
@@ -32,7 +25,7 @@ export interface TrashView {
   readonly items: readonly TrashItem[];
   readonly totals: TrashTotals;
   readonly deletedBy: readonly DeletedByShare[];
-  readonly months: readonly LeavingMonth[] | null;
+  readonly months: readonly LeavingMonth[];
   readonly rootLabelOf: (rootId: string) => string | null;
   readonly chipOf: DriveChipOf;
   readonly nodeOf: ReadonlyMap<string, DriveNode>;
@@ -69,7 +62,6 @@ export function useTrash(): TrashView {
   const today = useDayKey();
   const people = usePeople();
   const chipOf = useDriveChips();
-  const months = useDriveStats().data?.purges ?? null;
   const { data } = query;
   const entries = useMemo(() => flattenPages(data, (page) => page.items), [data]);
   const items = useMemo(() => trashItemsOf(entries, today, people), [entries, today, people]);
@@ -81,6 +73,7 @@ export function useTrash(): TrashView {
     return new Map(entries.map((entry) => [entry.itemId, trashNodeOf(entry, rights)]));
   }, [entries, owner, viewerId, roots]);
   const deletedBy = useMemo(() => deletedByOf(items), [items]);
+  const months = useMemo(() => leavingMonthsOf(items, today), [items, today]);
   return {
     status: statusOf(query),
     error: query.error,

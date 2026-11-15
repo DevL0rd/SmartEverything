@@ -3,7 +3,7 @@ import { queryList } from '../api/primitives';
 import { DRIVE_DURATION_BUCKETS } from '../drive/query';
 import { PHOTO_FOLDER_KEY, PHOTO_FOLDER_SHOWS } from './folders';
 import { PHOTO_LABEL } from './people';
-import { COUNT, DAY, ID, MONTH, NAME, QUERY_PLACE_ID, THUMBHASH } from './shared';
+import { COUNT, DAY, ID, MONTH, NAME, QUERY_PLACE_ID } from './shared';
 
 export const PHOTO_FLAGS = {
   favourite: 1,
@@ -81,7 +81,6 @@ const COLUMNS = {
   takenAt: z.array(z.int()).readonly(),
   offsetMin: z.array(z.int().min(-1440).max(1440).nullable()).readonly(),
   durationMs: z.array(COUNT.nullable()).readonly(),
-  thumbhash: z.array(THUMBHASH.nullable()).readonly(),
   flags: z.array(FLAG_VALUE).readonly(),
 };
 
@@ -93,15 +92,9 @@ export const LIBRARY_PAGE = z
   })
   .refine(
     (page) =>
-      [
-        page.revs,
-        page.aspect,
-        page.takenAt,
-        page.offsetMin,
-        page.durationMs,
-        page.thumbhash,
-        page.flags,
-      ].every((column) => column.length === page.ids.length),
+      [page.revs, page.aspect, page.takenAt, page.offsetMin, page.durationMs, page.flags].every(
+        (column) => column.length === page.ids.length,
+      ),
     { message: 'every column holds one value per item', path: ['ids'] },
   )
   .readonly();

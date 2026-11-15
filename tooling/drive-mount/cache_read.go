@@ -217,6 +217,8 @@ func (c *blockCache) store(f *cachedFile, idx int64, buf []byte) error {
 
 func (c *blockCache) noteRead(wh *wireHandle, f *cachedFile, off, n int64) {
 	bs := f.st.Block
+	ahead := live.load().readAheadBytes
+	var missing []int64
 	c.mu.Lock()
 	if off == f.next {
 		f.run++
@@ -224,21 +226,64 @@ func (c *blockCache) noteRead(wh *wireHandle, f *cachedFile, off, n int64) {
 		f.run = 0
 	}
 	f.next = off + n
-	following := (off+n-1)/bs + 1
-	ahead := f.run >= 1 && following < blockTotal(f.st.Size, bs) && !f.has(following) && !c.offline.Load()
-	c.mu.Unlock()
-	if !ahead {
-		return
+	if f.run >= 1 && ahead > 0 && !c.offline.Load() {
+		total := blockTotal(f.st.Size, bs)
+		limit := off + n + ahead
+		for idx := (off+n-1)/bs + 1; idx < total && idx*bs < limit; idx++ {
+			if _, running := c.blocks[blockID{f.key, idx}]; !f.has(idx) && !running {
+				missing = append(missing, idx)
+			}
+		}
 	}
-	wh.acquire()
-	if !c.spawn(func() { c.prefetch(wh, f, following) }) {
-		wh.drop()
+	c.mu.Unlock()
+	for _, idx := range missing {
+		wh.acquire()
+		if !c.spawn(func() { c.prefetch(wh, f, idx) }) {
+			wh.drop()
+		}
 	}
 }
 
 func (c *blockCache) prefetch(wh *wireHandle, f *cachedFile, idx int64) {
 	defer wh.drop()
-	if _, err := c.fetch(c.ctx, wh, f, idx); err != nil && !errors.Is(err, errOffline) && !errors.Is(err, context.Canceled) {
+	c.warm(c.ctx, wh, f, idx)
+}
+
+func (c *blockCache) warm(ctx context.Context, wh *wireHandle, f *cachedFile, idx int64) {
+	if _, err := c.fetch(ctx, wh, f, idx); err != nil && !errors.Is(err, errOffline) && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "prefetch:", f.st.Ino, err)
 	}
+}
+
+func (c *blockCache) prefetchSmall(entries []wire.DirEntry) {
+	if !live.load().prefetchSmallFiles || c.offline.Load() {
+		return
+	}
+	for _, e := range entries {
+		if e.Attr.Type != wire.InodeTypeFile || e.Attr.Size == 0 || e.Attr.Size > wire.MaxPayloadBytes {
+			continue
+		}
+		attr := e.Attr
+		c.spawn(func() { c.prefetchWhole(attr) })
+	}
+}
+
+func (c *blockCache) prefetchWhole(attr wire.Attr) {
+	f := c.fileFor(attr)
+	c.mu.Lock()
+	cached := f.has(0)
+	c.mu.Unlock()
+	if cached {
+		return
+	}
+	ctx := wire.WithBulk(c.ctx)
+	wh, err := c.openWire(ctx, attr.Ino)
+	if err != nil {
+		if !unreachable(err) && !remoteCode(err, wire.ErrENOENT) && !errors.Is(err, context.Canceled) {
+			fmt.Fprintln(os.Stderr, "prefetch:", attr.Ino, err)
+		}
+		return
+	}
+	defer wh.drop()
+	c.warm(ctx, wh, f, 0)
 }

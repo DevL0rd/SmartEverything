@@ -1,5 +1,5 @@
 import { count } from '../../../format/number';
-import type { DriveChipKey, DriveFilter } from '../model/drive-chip';
+import { driveFilterCounts, type DriveChipKey, type DriveFilter } from '../model/drive-chip';
 import type { TrashItem } from './trash-model';
 
 export type TrashChip = 'everything' | 'mine' | 'folders';
@@ -62,6 +62,16 @@ export function chipCountsOf(
     if (chipMatches('folders', item)) counted.folders += 1;
   }
   return counted;
+}
+
+export function driveCountsOf(
+  items: readonly TrashItem[],
+  filter: Pick<TrashFilter, 'chip' | 'query'>,
+  driveOf: TrashDriveOf,
+): Readonly<Record<DriveFilter, number>> {
+  return driveFilterCounts(filterTrash(items, { ...filter, drive: 'all' }, driveOf), (item) => ({
+    key: driveOf(item),
+  }));
 }
 
 export function isFiltered(filter: TrashFilter): boolean {

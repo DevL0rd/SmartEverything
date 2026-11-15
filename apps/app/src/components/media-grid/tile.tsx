@@ -4,9 +4,8 @@ import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import type { VideoThumbnail } from 'expo-video';
 import { Logger } from '@smarteverything/logging';
-import { useMotion } from '../../design/motion';
+import { cn } from '../../design/cn';
 import { ThemeScope } from '../../design/theme-scope';
-import { useScopeVisible } from '../../design/visibility';
 import { Icon } from '../icon';
 import { Interactive, type Point } from '../interactive';
 import { Text } from '../text';
@@ -22,14 +21,17 @@ import type { MediaTile } from './tiles';
 
 const log = new Logger('app.media');
 
-export const TILE_FADE_MS = 120;
-
 export type Thumbnail = string | VideoThumbnail;
-export type ResolveThumb = (tile: MediaTile) => Promise<Thumbnail | null>;
+
+export interface ThumbSource {
+  readonly peek: (tile: MediaTile) => string | null;
+  readonly resolve: (tile: MediaTile) => Promise<Thumbnail | null>;
+}
+
 export type TileBadge = (tile: MediaTile) => ReactElement | null;
 
 export interface TileActions {
-  readonly resolveThumb: ResolveThumb;
+  readonly thumbs: ThumbSource;
   readonly onOpen: (tile: MediaTile) => void;
   readonly onMenu?: (tile: MediaTile, point: Point | null) => void;
   readonly badgeOf?: TileBadge;
@@ -48,15 +50,15 @@ function boxOf(width: number, height: number): ViewStyle {
   return { width, height };
 }
 
-function useThumb(tile: MediaTile, resolve: ResolveThumb, wanted: boolean): Thumbnail | null {
-  const visible = useScopeVisible();
+function useThumb(tile: MediaTile, thumbs: ThumbSource, wanted: boolean): Thumbnail | null {
   const key = tileKey(tile);
   const [resolved, setResolved] = useState<Resolved | null>(null);
-  const due = wanted && visible && resolved?.key !== key;
+  const due = wanted && resolved?.key !== key;
   useEffect(() => {
     if (!due) return undefined;
     let current = true;
-    resolve(tile)
+    thumbs
+      .resolve(tile)
       .then((url) => {
         if (current) setResolved({ key, url });
         else if (url !== null && typeof url !== 'string') url.release();
@@ -67,7 +69,7 @@ function useThumb(tile: MediaTile, resolve: ResolveThumb, wanted: boolean): Thum
     return (): void => {
       current = false;
     };
-  }, [due, key, resolve, tile]);
+  }, [due, key, thumbs, tile]);
   useEffect(
     () => (): void => {
       const url = resolved?.url;
@@ -75,8 +77,8 @@ function useThumb(tile: MediaTile, resolve: ResolveThumb, wanted: boolean): Thum
     },
     [resolved],
   );
-  if (!visible && resolved !== null) setResolved(null);
-  return resolved?.key === key ? resolved.url : null;
+  if (resolved?.key === key) return resolved.url;
+  return wanted ? thumbs.peek(tile) : null;
 }
 
 type MarkIcon = 'play' | 'layers' | 'radio' | 'cloudOff';
@@ -140,27 +142,21 @@ interface PictureProps {
   readonly onFailed: () => void;
 }
 
-type PictureSource =
-  | { readonly uri: string; readonly cacheKey: string }
-  | { readonly thumbhash: string }
-  | VideoThumbnail;
+type PictureSource = { readonly uri: string; readonly cacheKey: string } | VideoThumbnail;
 
 function sourceOf(tile: MediaTile, url: Thumbnail | null): PictureSource | null {
-  if (url !== null) return typeof url === 'string' ? { uri: url, cacheKey: tileKey(tile) } : url;
-  return tile.thumbhash === null ? null : { thumbhash: tile.thumbhash };
+  if (url === null) return null;
+  return typeof url === 'string' ? { uri: url, cacheKey: tileKey(tile) } : url;
 }
 
 function Picture({ tile, url, onFailed }: PictureProps): ReactNode {
-  const motion = useMotion();
   return (
     <Image
       source={sourceOf(tile, url)}
-      placeholder={tile.thumbhash === null ? null : { thumbhash: tile.thumbhash }}
-      placeholderContentFit="cover"
       contentFit="cover"
       recyclingKey={tileKey(tile)}
-      cachePolicy="disk"
-      transition={motion.reduced ? 0 : TILE_FADE_MS}
+      cachePolicy="memory-disk"
+      loading="eager"
       onError={(event) => {
         log.warn('thumb.load_failed', { local: tile.local, reason: event.error });
         onFailed();
@@ -175,19 +171,39 @@ export interface MediaTileProps extends TileActions {
   readonly tile: MediaTile;
   readonly width: number;
   readonly height: number;
+  readonly selecting?: boolean;
+  readonly selected?: boolean;
+}
+
+const SHRUNK: ViewStyle = { transform: [{ scale: 0.9 }] };
+
+function Check({ selected }: { readonly selected: boolean }): ReactNode {
+  return (
+    <View
+      pointerEvents="none"
+      className={cn(
+        'absolute left-1.5 top-1.5 size-6 items-center justify-center rounded-full border-2',
+        selected ? 'border-primary bg-primary' : 'border-white/90 bg-black/25',
+      )}
+    >
+      {selected ? <Icon name="check" size={16} tone="onPrimary" /> : null}
+    </View>
+  );
 }
 
 function Overlays({
   tile,
   ready,
   badgeOf,
+  selecting,
 }: {
   readonly tile: MediaTile;
   readonly ready: boolean;
   readonly badgeOf: TileBadge | undefined;
+  readonly selecting: boolean;
 }): ReactNode {
   const marks = ready ? tileMarks(tile) : null;
-  const badge = badgeOf?.(tile) ?? null;
+  const badge = selecting ? null : (badgeOf?.(tile) ?? null);
   return (
     <>
       {marks !== null && hasMarks(marks) ? <Marks marks={marks} /> : null}
@@ -218,41 +234,72 @@ function menuHandlers(
   };
 }
 
+function Frame({
+  selected,
+  children,
+}: {
+  readonly selected: boolean;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <View
+      style={selected ? SHRUNK : undefined}
+      className={cn(
+        'size-full overflow-hidden rounded-xs bg-surface-3',
+        selected && 'rounded-sm border-2 border-primary',
+      )}
+    >
+      {children}
+    </View>
+  );
+}
+
 function Tile({
   tile,
   width,
   height,
-  resolveThumb,
+  thumbs,
   onOpen,
   onMenu,
   badgeOf,
+  selecting = false,
+  selected = false,
 }: MediaTileProps): ReactNode {
   const [failed, setFailed] = useState<string | null>(null);
   const key = tileKey(tile);
   const state = failed === key ? 'unreadable' : tileState(tile);
-  const url = useThumb(tile, resolveThumb, state === 'ready');
+  const url = useThumb(tile, thumbs, state === 'ready');
   return (
-    <View style={boxOf(width, height)}>
+    <View style={boxOf(width, height)} className={cn('rounded-xs', selected && 'bg-primary/15')}>
       <Interactive
         label={tileLabel(tile)}
-        className="size-full rounded-xs bg-surface-3"
+        {...(selecting ? { role: 'checkbox' as const, checked: selected } : {})}
+        className="size-full rounded-xs"
         onPress={() => {
           onOpen(tile);
         }}
         {...menuHandlers(tile, onMenu)}
       >
-        {state === 'unreadable' ? (
-          <Unreadable />
-        ) : (
-          <Picture
+        <Frame selected={selected}>
+          {state === 'unreadable' ? (
+            <Unreadable />
+          ) : (
+            <Picture
+              tile={tile}
+              url={url}
+              onFailed={() => {
+                setFailed(key);
+              }}
+            />
+          )}
+          <Overlays
             tile={tile}
-            url={url}
-            onFailed={() => {
-              setFailed(key);
-            }}
+            ready={state === 'ready'}
+            badgeOf={badgeOf}
+            selecting={selecting}
           />
-        )}
-        <Overlays tile={tile} ready={state === 'ready'} badgeOf={badgeOf} />
+        </Frame>
+        {selecting ? <Check selected={selected} /> : null}
       </Interactive>
     </View>
   );

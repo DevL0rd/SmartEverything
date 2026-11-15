@@ -54,7 +54,9 @@ function segmentClass(
   return cn(
     'shrink flex-row items-center justify-center gap-1.5',
     fill && 'flex-auto',
-    pointer ? cn(pointerHeight(size), 'min-w-0 rounded-xs') : touchPadding(compact),
+    pointer
+      ? cn(pointerHeight(size), compact ? 'min-w-8' : 'min-w-0', 'rounded-xs')
+      : touchPadding(compact),
     selected ? 'border border-primary bg-primary-container' : 'border border-transparent',
   );
 }

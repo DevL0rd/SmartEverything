@@ -24,7 +24,7 @@ import { ValueStore, useValue } from '../../design/external-store';
 import { rawErrorText } from '../../format/errors';
 import { sameJson } from '../../store/same-json';
 import { useActiveProfile } from '../../store/people';
-import { useDevices } from '../../store/selectors';
+import { useMatchingDevices } from '../../store/selectors';
 import { usePairedServer, type RelayServer } from '../profiles';
 import { bridgeOf } from './watch-bridge';
 
@@ -235,13 +235,13 @@ export async function keepInBackground(deviceId: string): Promise<void> {
 
 function useWatchKey(): string {
   const profileId = useActiveProfile()?.id ?? null;
-  return useDevices({ includeHidden: true })
-    .filter(
-      (device) =>
-        device.provider === 'local' &&
-        device.details['driver'] === 'xiaomi_watch' &&
-        device.details['profileId'] === profileId,
-    )
+  return useMatchingDevices(
+    (device) =>
+      device.provider === 'local' &&
+      device.details['driver'] === 'xiaomi_watch' &&
+      device.details['profileId'] === profileId,
+    { includeHidden: true },
+  )
     .map((device) => `${device.id}:${bridgeOf(device)?.clientId ?? ''}`)
     .join(',');
 }

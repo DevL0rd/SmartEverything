@@ -6,14 +6,12 @@ function LocationBlocks({ children }: { readonly children: ReactNode }): ReactNo
   return (
     <View className="flex-row flex-wrap items-start gap-section-gap">
       {Children.map(children, (block) => (
-        <View className="min-w-0 max-w-reading grow shrink basis-96">{block}</View>
+        <View className="min-w-0 grow shrink basis-96">{block}</View>
       ))}
     </View>
   );
 }
 
 export function LocationSettingsScreen(): ReactNode {
-  return (
-    <SettingsPageScreen page="home/location" contentWidth="full" BlocksLayout={LocationBlocks} />
-  );
+  return <SettingsPageScreen page="home/location" BlocksLayout={LocationBlocks} />;
 }

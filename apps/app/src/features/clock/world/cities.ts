@@ -1,11 +1,14 @@
 import { TIME_ZONE, type GeoPoint, type PlannerPreferences } from '@smarteverything/domain';
 import type { SelectOption } from '../../../components/select-picker';
 import { compareText } from '../../../format/text';
-import { cityOf } from '../frame/rail-summary';
 import { zonePointOf, zonesWithPoints } from './zone-points';
 import { offsetToHomeOf } from './world-time';
 
 export type WorldClock = PlannerPreferences['clock']['world_clocks'][number];
+
+export function cityOf(world: WorldClock): string {
+  return world.label ?? world.time_zone.split('/').at(-1)?.replaceAll('_', ' ') ?? world.time_zone;
+}
 
 export interface WorldCity {
   readonly key: string;

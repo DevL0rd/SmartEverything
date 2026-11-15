@@ -58,7 +58,7 @@ function Areas({ readiness }: { readonly readiness: Readiness }): ReactNode {
 export function SetupScreen(): ReactNode {
   const readiness = useReadiness();
   return (
-    <PageShell title="Setup" breadcrumbs={settingsTrail('setup').slice(0, -1)} width="reading">
+    <PageShell title="Setup" breadcrumbs={settingsTrail('setup').slice(0, -1)}>
       {readiness.entries.length === 0 ? (
         <EmptyState
           icon="circleCheck"

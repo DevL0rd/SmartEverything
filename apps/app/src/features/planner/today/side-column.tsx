@@ -48,8 +48,11 @@ import {
   type TodayRing,
 } from './day-strip-model';
 import { TodayRings, useTodayRings } from './today-rings';
+import { isOpenDay } from './today-states';
 
 export type SideLayout = 'column' | 'grid';
+
+const FILL = 'flex-1 justify-center';
 
 const WET: ReadonlySet<string> = new Set(['drizzle', 'rain', 'snow', 'storm']);
 
@@ -60,7 +63,7 @@ function Cell({
   readonly grid: boolean;
   readonly children: ReactNode;
 }): ReactNode {
-  return <View className={cn(grid && 'min-w-64 flex-1')}>{children}</View>;
+  return <View className={cn(grid && 'min-w-64 flex-1 self-stretch')}>{children}</View>;
 }
 
 function failed(message: string): (error: unknown) => void {
@@ -74,6 +77,13 @@ function OnTimeBars(): ReactNode {
   const stats = usePlannerStats(person, 'week').data;
   if (stats === undefined) return null;
   const model = onTimeOf(stats);
+  if (model.share === null) {
+    return (
+      <Text variant="caption" tone="variant">
+        {`Done on time, last 7 days: ${model.label.toLowerCase()}`}
+      </Text>
+    );
+  }
   return (
     <View className="gap-1.5">
       <View className="flex-row items-center justify-between gap-2">
@@ -105,7 +115,7 @@ function RingsCard({
 }): ReactNode {
   return (
     <Cell grid={layout === 'grid'}>
-      <Card>
+      <Card className={cn(layout === 'grid' && FILL)}>
         {layout === 'column' ? <Text variant="label">Today</Text> : null}
         <TodayRings rings={rings} size={layout === 'column' ? 'card' : 'grid'} />
         {layout === 'column' ? (
@@ -168,7 +178,7 @@ function WeatherCard({
   const change = changeOf(forecast, now);
   return (
     <Cell grid={grid}>
-      <Card href={href.weather()} label="Open weather">
+      <Card href={href.weather()} label="Open weather" className={cn(grid && FILL)}>
         <View className="flex-row items-center gap-3">
           <Icon name={conditionIcon(forecast.now.code, forecast.now.isDay)} size={28} />
           <View className="min-w-0 flex-1">
@@ -198,7 +208,7 @@ function AlarmCard({ day, grid }: { readonly day: PlannerDay; readonly grid: boo
   const minutes = Math.max(0, Math.round((Date.parse(at) - now) / MINUTE_MS));
   return (
     <Cell grid={grid}>
-      <Card>
+      <Card className={cn(grid && FILL)}>
         <View className="flex-row items-center gap-3">
           <IconWell icon="alarmClock" colour="primary" />
           <View className="min-w-0 flex-1">
@@ -255,7 +265,7 @@ function TimerCard({
   const name = timer.label ?? 'Timer';
   return (
     <Cell grid={grid}>
-      <Card>
+      <Card className={cn(grid && FILL)}>
         <View className="flex-row items-center gap-3">
           <View accessible accessibilityLabel={`${name}, ${playTime(left / 1000)} left`}>
             <Arc
@@ -305,7 +315,7 @@ function PlanCard({ day, grid }: { readonly day: PlannerDay; readonly grid: bool
   };
   return (
     <Cell grid={grid}>
-      <Card className="bg-primary-container/40">
+      <Card className={cn('bg-primary-container/40', grid && FILL)}>
         <View className="flex-row items-center gap-2">
           <Icon name="sparkles" size={16} tone="primary" />
           <Text variant="label">Plan the rest of today</Text>
@@ -343,7 +353,7 @@ export function TodaySideColumn({
   const grid = layout === 'grid';
   return (
     <View className={cn(grid ? 'flex-row flex-wrap gap-3' : 'w-84 gap-4')}>
-      <RingsCard rings={rings} layout={layout} />
+      {isOpenDay(day) ? null : <RingsCard rings={rings} layout={layout} />}
       <WeatherCard day={day} grid={grid} />
       <AlarmCard day={day} grid={grid} />
       {timers.map((timer) => (

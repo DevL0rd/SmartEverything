@@ -13,6 +13,8 @@ import {
   NATIVE_HUB_RESOURCE_DOWNLOAD_RESULT,
   NATIVE_HUB_RESOURCE_ID,
   NATIVE_HUB_RESOURCE_OPEN,
+  NATIVE_HUB_RESOURCE_RESTORE,
+  NATIVE_HUB_RESOURCE_RESTORED,
   NATIVE_HUB_RESPONSE,
   NATIVE_HUB_ROUTE_CONFIGURATION,
   NATIVE_HUB_ROUTE_SNAPSHOT,
@@ -30,6 +32,7 @@ import {
   type NativeHubNetwork,
   type NativeHubResourceDownload,
   type NativeHubResourceDownloadResult,
+  type NativeHubResourceRestore,
   type NativeHubResourceOpen,
   type NativeHubRouteAuthority,
 } from '@smarteverything/domain';
@@ -105,6 +108,16 @@ export const hubNetwork: NativeHubNetwork & HubPairingNetwork = {
               NATIVE_HUB_RESOURCE_DOWNLOAD.parse(value),
             ),
           );
+        },
+        restoreResource: async (value: NativeHubResourceRestore) =>
+          NATIVE_HUB_RESOURCE_RESTORED.parse(
+            await ipcRenderer.invoke(
+              'desktop:hub-resource-restore',
+              NATIVE_HUB_RESOURCE_RESTORE.parse(value),
+            ),
+          ),
+        revealRestored: async (location: string): Promise<void> => {
+          await ipcRenderer.invoke('desktop:hub-resource-reveal', location);
         },
       }
     : {}),

@@ -183,7 +183,9 @@ export function placementWordsOf(
 }
 
 export function sentenceOf(mode: DrivePlacementMode, words: PlacementWords): string {
-  return words.held ? words.line : `${MODE_WORD[mode]} · ${words.line}`;
+  if (words.held) return words.line;
+  const joint = words.line.endsWith('.') ? ': ' : ' · ';
+  return `${MODE_WORD[mode]}${joint}${words.line}`;
 }
 
 export function lineToneOf(words: PlacementWords): Tone {

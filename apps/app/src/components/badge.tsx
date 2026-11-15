@@ -31,10 +31,13 @@ export interface BadgeProps {
 export function Badge({ label, tone = 'neutral', icon }: BadgeProps): ReactNode {
   return (
     <View
-      className={cn('flex-row items-center gap-1 self-start rounded-full px-2 py-0.5', FRAME[tone])}
+      className={cn(
+        'min-w-0 shrink flex-row items-center gap-1 self-start rounded-full px-2 py-0.5',
+        FRAME[tone],
+      )}
     >
       {icon === undefined ? null : <Icon name={icon} size={16} tone={TEXT_TONE[tone]} />}
-      <Text variant="caption" tone={TEXT_TONE[tone]} numberOfLines={1}>
+      <Text variant="caption" tone={TEXT_TONE[tone]} ellipsize="middle" className="shrink">
         {label}
       </Text>
     </View>

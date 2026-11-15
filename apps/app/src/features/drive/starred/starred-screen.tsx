@@ -3,15 +3,21 @@ import { View } from 'react-native';
 import type { DriveItem } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { FilterChip } from '../../../components/filter-chip';
-import type { PrimaryActionProps } from '../../../components/primary-action';
+import {
+  usePrimaryActionPlacement,
+  type PrimaryActionProps,
+} from '../../../components/primary-action';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { VirtualList } from '../../../components/virtual-list';
 import { useAreaWidth } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useDriveChips, useDriveSearch } from '../data';
-import { ChipRow } from '../../../components/library-frame';
+import { ChipRow } from '../../../components/chip-row';
 import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
-import { DriveFilterChips } from '../components/drive-chip';
+import { DriveFilterRow } from '../components/drive-chip';
+import { DriveColumnHead } from '../components/drive-columns';
+import { placeColumns } from '../model/drive-columns';
 import { DriveFrame } from '../components/drive-frame';
 import type { FileBrowserHandle } from '../../files';
 import { DriveListFrame, useDriveItemList, type DriveItemList } from '../source/drive-lists';
@@ -25,7 +31,7 @@ import {
 } from '../model/drive-chip';
 import { recentStale } from '../recent/recent-states';
 import { useSaveSmartFolder } from './save-smart-folder';
-import { SectionHead, StarredColumns } from './section-head';
+import { SectionHead } from './section-head';
 import { useSmartFolders } from './smart-data';
 import { SmartFolders, type RenameSmartFolder } from './smart-folders';
 import type { SmartFolder } from './smart-model';
@@ -38,7 +44,7 @@ import {
   type ChipCounts,
   type StarredChip,
 } from './starred-model';
-import { StarredFileRow } from './starred-look';
+import { StarredFileRow, starredColumnsOf, type StarredColumns } from './starred-look';
 import {
   StarredEmpty,
   StarredFooter,
@@ -122,45 +128,56 @@ interface TopProps {
   readonly items: readonly DriveItem[];
   readonly scope: DriveScope;
   readonly compact: boolean;
+  readonly columns: StarredColumns;
+  readonly rows: number;
 }
 
 function ListTop(props: TopProps): ReactNode {
-  const { folders, onRename, chip, counts, onChip, items, scope, compact } = props;
+  const { folders, onRename, chip, counts, onChip, items, scope, compact, columns, rows } = props;
   const driveCounts = driveFilterCounts(items, (item) => scope.chipOf(item.rootId));
   return (
     <View>
       <View className="gap-4 px-gutter pb-2">
-        <SmartFolders folders={folders} onRename={onRename} />
+        <SmartFolders folders={folders} onRename={onRename} compact={compact} />
         <View className="gap-2">
           <SectionHead title="Starred" note={STAR_NOTE} />
-          <StarredChips chip={chip} counts={counts} onChip={onChip} />
+          {chip === 'all' && items.length === 0 ? null : (
+            <StarredChips chip={chip} counts={counts} onChip={onChip} />
+          )}
           {items.length === 0 ? null : (
-            <ChipRow label="Starred files by drive">
-              <DriveFilterChips value={scope.drive} counts={driveCounts} onChange={scope.onDrive} />
-            </ChipRow>
+            <DriveFilterRow
+              label="Starred files by drive"
+              value={scope.drive}
+              counts={driveCounts}
+              onChange={scope.onDrive}
+            />
           )}
         </View>
       </View>
-      {compact ? null : <StarredColumns />}
+      {columns === null || rows === 0 ? null : <DriveColumnHead columns={columns} />}
     </View>
   );
+}
+
+function whereOf(chipOf: DriveChipOf, node: DriveNode): string {
+  const item = itemOf(node);
+  return folderTrailOf(chipOf(item?.rootId ?? ''), item?.relPath ?? '');
 }
 
 function renderNode(
   browser: FileBrowserHandle<DriveOrigin>,
   chipOf: DriveChipOf,
-  wide: boolean,
+  columns: StarredColumns,
 ): (node: DriveNode) => ReactElement {
   return function RenderedStarred(node: DriveNode): ReactElement {
     const item = itemOf(node);
-    const chip = chipOf(item?.rootId ?? '');
     return (
       <StarredFileRow
         node={node}
         browser={browser}
-        chip={chip}
-        where={folderTrailOf(chip, item?.relPath ?? '')}
-        wide={wide}
+        chip={chipOf(item?.rootId ?? '')}
+        where={whereOf(chipOf, node)}
+        columns={columns}
       />
     );
   };
@@ -181,22 +198,28 @@ interface ListProps {
   readonly feed: StarredFeed;
   readonly list: DriveItemList;
   readonly scope: DriveScope;
-  readonly top: ReactElement;
+  readonly top: (columns: StarredColumns) => ReactElement;
   readonly chip: StarredChip;
-  readonly compact: boolean;
   readonly live: boolean;
 }
 
-function StarredList({ feed, list, scope, top, chip, compact, live }: ListProps): ReactNode {
+function FabRoom(): ReactNode {
+  return usePrimaryActionPlacement() === 'fab' ? <View className="h-18" /> : null;
+}
+
+function StarredList({ feed, list, scope, top, chip, live }: ListProps): ReactNode {
   const { browser, nodes } = list;
+  const row = useMeasuredWidth();
+  const trails = nodes.some((node) => whereOf(scope.chipOf, node) !== '');
+  const columns = placeColumns(row.width, starredColumnsOf(trails));
   return (
     <DriveListFrame browser={browser}>
-      <View className="-mx-gutter flex-1">
+      <View className="-mx-gutter flex-1" onLayout={row.onLayout}>
         <VirtualList
           sections={nodes.length === 0 ? [] : [{ key: 'starred', title: null, data: nodes }]}
           keyOf={(node) => node.key}
-          renderItem={renderNode(browser, scope.chipOf, !compact)}
-          header={top}
+          renderItem={renderNode(browser, scope.chipOf, columns)}
+          header={top(columns)}
           empty={
             <StarredEmpty
               pages={feed.pages}
@@ -208,7 +231,12 @@ function StarredList({ feed, list, scope, top, chip, compact, live }: ListProps)
               live={live}
             />
           }
-          footer={<StarredFooter pages={feed.pages} />}
+          footer={
+            <View>
+              <StarredFooter pages={feed.pages} />
+              <FabRoom />
+            </View>
+          }
           onEndReached={() => {
             loadMoreStarred(feed.pages);
           }}
@@ -250,7 +278,7 @@ export function StarredScreen(): ReactNode {
         list={list}
         scope={scope}
         live={live}
-        top={
+        top={(columns) => (
           <ListTop
             folders={folders}
             onRename={saver.rename}
@@ -260,10 +288,11 @@ export function StarredScreen(): ReactNode {
             items={feed.items}
             scope={scope}
             compact={compact}
+            columns={columns}
+            rows={list.nodes.length}
           />
-        }
+        )}
         chip={chip}
-        compact={compact}
       />
       {saver.host}
     </DriveFrame>

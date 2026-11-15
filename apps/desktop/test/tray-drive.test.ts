@@ -1,4 +1,8 @@
-import { DEFAULT_DESKTOP_DRIVE_CACHE, type DesktopDriveState } from '@smarteverything/domain';
+import {
+  DEFAULT_DESKTOP_DRIVE_CACHE,
+  DEFAULT_DESKTOP_DRIVE_TUNING,
+  type DesktopDriveState,
+} from '@smarteverything/domain';
 import { BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -155,6 +159,7 @@ function controlState(change: Partial<DesktopDriveState> = {}): DesktopDriveStat
     sync: SYNC,
     fuse: { available: true },
     cache: DEFAULT_DESKTOP_DRIVE_CACHE,
+    tuning: { saved: DEFAULT_DESKTOP_DRIVE_TUNING, applied: [], limits: null },
     ...change,
   };
 }

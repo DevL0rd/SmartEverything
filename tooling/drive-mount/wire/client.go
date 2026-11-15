@@ -27,6 +27,7 @@ type pending struct {
 	op       Op
 	frame    []byte
 	recovery bool
+	bulk     bool
 	replies  []Reply
 	err      error
 	done     chan struct{}
@@ -43,8 +44,11 @@ type Client struct {
 	route       Route
 	routeCtx    context.Context
 	routeCancel context.CancelFunc
-	conn        Conn
-	recoverConn Conn
+	out         *sender
+	recoverOut  *sender
+	ping        time.Duration
+	dead        time.Duration
+	liveChanged chan struct{}
 	session     []byte
 	hadSession  bool
 	nextID      uint64
@@ -70,6 +74,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if cfg.PongTimeout == 0 {
 		cfg.PongTimeout = PongTimeoutMs * time.Millisecond
 	}
+	if err := validateLiveness(cfg.PingInterval, cfg.PongTimeout); err != nil {
+		return nil, err
+	}
 	if cfg.BackoffMin == 0 {
 		cfg.BackoffMin = 100 * time.Millisecond
 	}
@@ -88,11 +95,55 @@ func NewClient(cfg Config) (*Client, error) {
 		pushes:  newPushQueue(cfg.Handler),
 		route:   cfg.Route,
 		table:   map[uint64]*pending{},
+
+		ping:        cfg.PingInterval,
+		dead:        cfg.PongTimeout,
+		liveChanged: make(chan struct{}),
 	}
 	c.routeCtx, c.routeCancel = context.WithCancel(ctx)
 	go c.pushes.run()
 	go c.supervise()
 	return c, nil
+}
+
+func validateLiveness(ping, dead time.Duration) error {
+	if ping <= 0 {
+		return fmt.Errorf("drive mount ping interval %s must be positive", ping)
+	}
+	if dead <= ping {
+		return fmt.Errorf("drive mount dead-after %s must be greater than the ping interval %s", dead, ping)
+	}
+	return nil
+}
+
+func (c *Client) SetLiveness(ping, dead time.Duration) error {
+	if err := validateLiveness(ping, dead); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.ping, c.dead = ping, dead
+	changed := c.liveChanged
+	c.liveChanged = make(chan struct{})
+	c.mu.Unlock()
+	close(changed)
+	return nil
+}
+
+func (c *Client) Liveness() (time.Duration, time.Duration) {
+	ping, dead, _ := c.liveness()
+	return ping, dead
+}
+
+func (c *Client) liveness() (time.Duration, time.Duration, <-chan struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ping, c.dead, c.liveChanged
+}
+
+func (c *Client) deadAfter() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.dead
 }
 
 func validateRoute(route Route) error {
@@ -140,7 +191,7 @@ func (c *Client) SwitchRoute(route Route) error {
 func (c *Client) Connected() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.conn != nil
+	return c.out != nil
 }
 
 func (c *Client) SessionID() []byte {
@@ -217,6 +268,19 @@ func (r recoveryCaller) Do(ctx context.Context, op Op, meta Meta, payload []byte
 	return r.c.do(ctx, op, meta, payload, true)
 }
 
+type bulkKey struct{}
+
+func WithBulk(ctx context.Context) context.Context {
+	return context.WithValue(ctx, bulkKey{}, true)
+}
+
+func isBulk(ctx context.Context, op Op) bool {
+	if op == OpWrite || op == OpPut {
+		return true
+	}
+	return ctx.Value(bulkKey{}) != nil
+}
+
 func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recovery bool) ([]Reply, error) {
 	if probe != nil {
 		defer probe.record(op, time.Now())
@@ -233,10 +297,10 @@ func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recov
 		c.mu.Unlock()
 		return nil, ErrClosed
 	}
-	conn := c.conn
+	out := c.out
 	if recovery {
-		conn = c.recoverConn
-		if conn == nil {
+		out = c.recoverOut
+		if out == nil {
 			c.mu.Unlock()
 			return nil, ErrConnLost
 		}
@@ -245,7 +309,7 @@ func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recov
 		return nil, ErrNoRoute
 	}
 	c.nextID++
-	p := &pending{id: c.nextID, op: op, recovery: recovery, done: make(chan struct{})}
+	p := &pending{id: c.nextID, op: op, recovery: recovery, bulk: isBulk(ctx, op), done: make(chan struct{})}
 	p.frame, err = EncodeFrame(Frame{Type: FrameRequest, Op: op, RequestID: p.id, Meta: metaBytes, Payload: payload})
 	if err != nil {
 		c.mu.Unlock()
@@ -253,8 +317,8 @@ func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recov
 	}
 	c.table[p.id] = p
 	c.mu.Unlock()
-	if conn != nil {
-		c.send(conn, p)
+	if out != nil {
+		out.enqueue(p.frame, p.bulk, p)
 	}
 	select {
 	case <-p.done:
@@ -264,27 +328,19 @@ func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recov
 	c.mu.Lock()
 	_, stillPending := c.table[p.id]
 	delete(c.table, p.id)
-	live := c.conn
+	live := c.out
 	c.mu.Unlock()
 	if !stillPending {
 		<-p.done
 		return p.replies, p.err
 	}
-	if live != nil {
+	if live != nil && !live.remove(p) {
 		c.sendCancel(live, p.id)
 	}
 	return nil, ctx.Err()
 }
 
-func (c *Client) send(conn Conn, p *pending) {
-	ctx, cancel := context.WithTimeout(c.ctx, c.cfg.PongTimeout)
-	defer cancel()
-	if err := conn.Write(ctx, p.frame); err != nil {
-		_ = conn.Close()
-	}
-}
-
-func (c *Client) sendCancel(conn Conn, target uint64) {
+func (c *Client) sendCancel(out *sender, target uint64) {
 	meta, err := EncodeMeta(Meta{KeyRequestId: target})
 	if err != nil {
 		return
@@ -297,11 +353,7 @@ func (c *Client) sendCancel(conn Conn, target uint64) {
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.ctx, c.cfg.PongTimeout)
-	defer cancel()
-	if err := conn.Write(ctx, frame); err != nil {
-		_ = conn.Close()
-	}
+	out.enqueue(frame, false, nil)
 }
 
 func (c *Client) supervise() {
@@ -343,7 +395,7 @@ type helloReply struct {
 }
 
 func (c *Client) hello(ctx context.Context, conn Conn) (helloReply, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.PongTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.deadAfter())
 	defer cancel()
 	c.mu.Lock()
 	session := c.session
@@ -418,9 +470,11 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 		return false, err
 	}
 	readFailed := make(chan error, 1)
+	out := newSender(ctx, conn, c.deadAfter)
+	go out.run()
 	c.mu.Lock()
 	c.session = greeting.session
-	c.recoverConn = conn
+	c.recoverOut = out
 	hadSession := c.hadSession
 	c.hadSession = true
 	var lost []*pending
@@ -446,7 +500,7 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 		return true, err
 	}
 	c.mu.Lock()
-	c.conn = conn
+	c.out = out
 	ids := make([]uint64, 0, len(c.table))
 	for id, p := range c.table {
 		if !p.recovery {
@@ -461,7 +515,7 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 	}
 	c.mu.Unlock()
 	for _, p := range resend {
-		c.send(conn, p)
+		out.enqueue(p.frame, p.bulk, p)
 	}
 	select {
 	case err = <-readFailed:
@@ -469,7 +523,7 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 		err = ctx.Err()
 	}
 	c.mu.Lock()
-	c.conn = nil
+	c.out = nil
 	c.mu.Unlock()
 	c.dropRecovery()
 	return true, err
@@ -477,7 +531,7 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 
 func (c *Client) dropRecovery() {
 	c.mu.Lock()
-	c.recoverConn = nil
+	c.recoverOut = nil
 	dropped := c.takeLocked(func(p *pending) bool { return p.recovery })
 	c.mu.Unlock()
 	finish(dropped, ErrConnLost)
@@ -560,15 +614,19 @@ func (c *Client) deliver(f Frame) error {
 }
 
 func (c *Client) pingLoop(ctx context.Context, cancel context.CancelFunc, conn Conn) {
-	ticker := time.NewTicker(c.cfg.PingInterval)
-	defer ticker.Stop()
 	for {
+		ping, dead, changed := c.liveness()
+		timer := time.NewTimer(ping)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-changed:
+			timer.Stop()
+			continue
+		case <-timer.C:
 		}
-		pingCtx, stop := context.WithTimeout(ctx, c.cfg.PongTimeout)
+		pingCtx, stop := context.WithTimeout(ctx, dead)
 		err := conn.Ping(pingCtx)
 		stop()
 		if err != nil {

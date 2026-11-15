@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRIVE_PLACEMENT, DRIVE_PLACEMENT_SET } from '../../src/drive/placement';
+import { DRIVE_MOUNT_SET, DRIVE_PLACEMENT, DRIVE_PLACEMENT_SET } from '../../src/drive/placement';
 import { COMPUTER_TOPICS, NODE_DEMAND, STATE_TOPICS } from '../../src/node/computer-live';
 import { HUB_FRAME, NODE_FRAME } from '../../src/node/frames';
 
@@ -139,38 +139,36 @@ describe('setPlacement input', () => {
     deviceId: B,
     rootId: C,
     folderItemId: D,
-    mode: 'mounted',
-    localPath: null,
-    mountName: 'Roms',
+    localPath: '/home/me/Roms',
     enabled: true,
+    excluded: [],
+    ignorePatterns: [],
+    conflictCopies: false,
   };
 
-  it('parses and never carries hold or status', () => {
+  it('parses a synced folder and never carries hold or status', () => {
     expect(DRIVE_PLACEMENT_SET.safeParse(INPUT).success).toBe(true);
+    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, folderItemId: null }).success).toBe(true);
     expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, hold: null }).success).toBe(false);
     expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, status: STATUS }).success).toBe(false);
   });
 
-  it('allows a synced folder with its sync settings and refuses synced without them', () => {
-    const settings = {
-      excluded: [],
-      ignorePatterns: [],
-      conflictCopies: false,
-      localPath: '/home/me/Roms',
-      mountName: null,
-    };
-    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced' }).success).toBe(false);
-    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, localPath: '/home/me/Roms' }).success).toBe(
+  it('refuses a mount, a missing folder on the computer and missing sync settings', () => {
+    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'mounted' }).success).toBe(false);
+    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mountName: 'Roms' }).success).toBe(false);
+    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, localPath: null }).success).toBe(false);
+    const { excluded: _excluded, ...unset } = INPUT;
+    expect(DRIVE_PLACEMENT_SET.safeParse(unset).success).toBe(false);
+  });
+});
+
+describe('setComputerMount input', () => {
+  it('takes only the computer and whether its mount is on', () => {
+    expect(DRIVE_MOUNT_SET.safeParse({ deviceId: B, enabled: true }).success).toBe(true);
+    expect(DRIVE_MOUNT_SET.safeParse({ deviceId: B, enabled: true, rootId: C }).success).toBe(
       false,
     );
-    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced', ...settings }).success).toBe(
-      true,
-    );
-    expect(
-      DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, mode: 'synced', folderItemId: null, ...settings })
-        .success,
-    ).toBe(true);
-    expect(DRIVE_PLACEMENT_SET.safeParse({ ...INPUT, ...settings }).success).toBe(false);
+    expect(DRIVE_MOUNT_SET.safeParse({ deviceId: B, folderItemId: D }).success).toBe(false);
   });
 });
 

@@ -10,6 +10,7 @@ import { detailLinks, runHref } from './host-links';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import { NotFound } from '../shared/not-found';
 import { useFunctionLookup, useLintContext, usePlace, useRefNames } from './use-environment';
+import { workspaceSectionsOf } from './workspace-sections';
 
 const PARAMS = z.object({ automationId: z.string() });
 
@@ -43,7 +44,7 @@ function Detail({ automationId }: { readonly automationId: string }): ReactNode 
   const environment = useDetailEnvironment();
   const onOpenRun = useOpenRun();
   return (
-    <PageShell title={row?.name ?? 'Automation'} width={row === null ? 'reading' : 'full'}>
+    <PageShell title={row?.name ?? 'Automation'}>
       <DetailScreen
         automationId={automationId}
         environment={environment}
@@ -67,9 +68,12 @@ function Runs({ automationId }: { readonly automationId: string | null }): React
   const { row } = useAutomation(automationId ?? '');
   const { timeZone } = usePlace();
   const onOpenRun = useOpenRun();
-  const title = automationId === null ? 'Run history' : row === null ? 'Runs' : `${row.name} runs`;
+  const title = automationId === null ? 'Runs' : row === null ? 'Runs' : `${row.name} runs`;
   return (
-    <PageShell title={title} width="full">
+    <PageShell
+      title={title}
+      {...(automationId === null ? { back: false, sections: workspaceSectionsOf('runs') } : {})}
+    >
       <RunsScreen automationId={automationId} timeZone={timeZone} onOpenRun={onOpenRun} />
     </PageShell>
   );

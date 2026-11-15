@@ -1,5 +1,6 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { readDriveSettings } from '../../drive/settings';
+import { runningFileIoThreads } from '../../service/file-io-threads';
 import type { Store } from '../../store/store';
 import { bound, type Routes } from '../router';
 import { driveAlbumRoutes } from './drive-albums';
@@ -21,6 +22,7 @@ type DriveReadRoute =
   | 'readItem'
   | 'readRecent'
   | 'readDriveSettings'
+  | 'readDriveSettingsRunning'
   | 'updateDriveSettings';
 
 function driveReadRoutes(store: Store, services: DriveServices): Routes<DriveReadRoute> {
@@ -37,6 +39,7 @@ function driveReadRoutes(store: Store, services: DriveServices): Routes<DriveRea
       refusing(() => read.readRecent(actorOf(store, caller), query)),
     ),
     readDriveSettings: bound(E.readDriveSettings, () => readDriveSettings(store)),
+    readDriveSettingsRunning: bound(E.readDriveSettingsRunning, () => runningFileIoThreads()),
     updateDriveSettings: bound(E.updateDriveSettings, ({ body, caller }) =>
       refusing(() => services.write.updateSettings(callerOf(store, caller), body)),
     ),

@@ -320,6 +320,45 @@ describe('have-hash answers', () => {
   });
 });
 
+describe('where a backed-up photo came from', () => {
+  beforeEach(() => {
+    service.registerDevice(alice, register(alicePhone));
+  });
+
+  it('names the folder on this phone for its own photos and none for the rest', () => {
+    const camera = addItem(aliceRoot, 'camera.jpg', sha('camera'), alice);
+    const loose = addItem(aliceRoot, 'loose.jpg', sha('loose'), alice);
+    const other = addItem(aliceRoot, 'other.jpg', sha('other'), alice);
+    service.checkHashes(alice, {
+      deviceId: alicePhone,
+      assets: [
+        {
+          localId: 'content://1',
+          sha256: sha('camera'),
+          folder: { key: 'phone:DCIM/Camera', name: 'Camera' },
+        },
+        { localId: 'content://2', sha256: sha('loose'), folder: null },
+      ],
+    });
+    expect(
+      service.origins(alice, { deviceId: alicePhone, itemIds: [camera.id, loose.id, other.id] }),
+    ).toEqual({
+      origins: [
+        { itemId: camera.id, folder: { key: 'phone:DCIM/Camera', name: 'Camera' } },
+        { itemId: loose.id, folder: null },
+        { itemId: other.id, folder: null },
+      ],
+    });
+  });
+
+  it('names no folder for a device that does not back up for this person', () => {
+    const camera = addItem(aliceRoot, 'camera.jpg', sha('camera'), alice);
+    expect(service.origins(bob, { deviceId: alicePhone, itemIds: [camera.id] })).toEqual({
+      origins: [{ itemId: camera.id, folder: null }],
+    });
+  });
+});
+
 describe('verified on the hub after the upload lands', () => {
   beforeEach(() => {
     service.registerDevice(alice, register(alicePhone));

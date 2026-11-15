@@ -13,9 +13,10 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { joinParts, plural } from '../../../format/text';
-import { clockOfMinutes, startOfDayKey } from '../../../format/time';
+import { clockOfMinutes } from '../../../format/time';
 import { weekdayLetterOf } from '../clock/alarm-text';
 import type { BookingWrites } from '../data';
+import { bookingDayLabelOf } from './booking-lists';
 import {
   availabilitySummaryOf,
   hourSpanOf,
@@ -88,10 +89,19 @@ function DayTrack({
   );
 }
 
-function WeekStrip({ page, order }: Pick<PageCardProps, 'page' | 'order'>): ReactNode {
+function WeekStrip({
+  page,
+  order,
+  label,
+}: Pick<PageCardProps, 'page' | 'order'> & { readonly label: string }): ReactNode {
   const span = hourSpanOf(page.availability);
   return (
-    <View className="flex-row items-stretch gap-2" accessible={false}>
+    <View
+      className="flex-row items-stretch gap-2"
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={label}
+    >
       <View className="justify-between pb-5">
         <Text variant="caption" tone="faint" className="tabular">
           {clockOfMinutes(span.from)}
@@ -117,20 +127,28 @@ function PageBookings({
   readonly week: readonly BookingDay[];
 }): ReactNode {
   const total = week.reduce((sum, day) => sum + day.count, 0);
+  if (total === 0) {
+    return (
+      <Text variant="footnote" tone="variant">
+        No bookings from this page in the next 7 days
+      </Text>
+    );
+  }
   return (
     <View className="gap-1">
       <Text variant="footnote" tone="variant">
-        {total === 0 ? 'No bookings from this page in the next 7 days' : 'This page, next 7 days'}
+        {`This page, next 7 days · ${plural(total, 'booking')}`}
       </Text>
       <Bars
         bars={week.map((day) => ({
           key: day.day,
           value: day.count,
-          label: weekdayLetterOf(new Date(startOfDayKey(day.day)).getDay()),
+          label: bookingDayLabelOf(day),
         }))}
         colour="primary"
         label={`Bookings of ${title} per day for the next 7 days, ${plural(total, 'booking')}`}
         height={40}
+        peakLabel={false}
         formatValue={(value) => plural(value, 'booking')}
       />
     </View>
@@ -172,7 +190,15 @@ function menuOf(page: PlannerBookingPageRow, writes: BookingWrites): readonly Me
       description: 'The old link stops working',
       icon: 'refresh',
       onPress: (): void => {
-        run(() => writes.resetLink(page.id), 'The link could not be reset');
+        run(async () => {
+          const sure = await confirm({
+            title: `Reset the link to ${page.title}?`,
+            body: 'The old link stops working. People who have it can no longer book.',
+            confirmLabel: 'Reset link',
+            tone: 'destructive',
+          });
+          if (sure) await writes.resetLink(page.id);
+        }, 'The link could not be reset');
       },
     },
     {
@@ -222,20 +248,15 @@ function EnabledSwitch({ page, writes }: Pick<PageCardProps, 'page' | 'writes'>)
 export function PageCard(props: PageCardProps): ReactNode {
   const { page, link, calendar, order, week, dayName, writes, onEdit } = props;
   return (
-    <Card
-      title={page.title}
-      icon="share"
-      metadata={
-        <Text variant="footnote" tone="variant">
-          {joinParts([spanTextOf(page.minutes), page.enabled ? null : 'Off', calendar])}
-        </Text>
-      }
-      action={<EnabledSwitch page={page} writes={writes} />}
-    >
-      <WeekStrip page={page} order={order} />
-      <Text variant="footnote" tone={page.enabled ? 'default' : 'variant'}>
-        {availabilitySummaryOf(page.availability, order, dayName)}
+    <Card title={page.title} icon="share" action={<EnabledSwitch page={page} writes={writes} />}>
+      <Text variant="footnote" tone="variant">
+        {joinParts([spanTextOf(page.minutes), page.enabled ? null : 'Off', calendar])}
       </Text>
+      <WeekStrip
+        page={page}
+        order={order}
+        label={`Open times: ${availabilitySummaryOf(page.availability, order, dayName)}`}
+      />
       <PageBookings title={page.title} week={week} />
       {page.enabled ? <LinkRow link={link} title={page.title} /> : null}
       <View className="flex-row items-center justify-between gap-2">

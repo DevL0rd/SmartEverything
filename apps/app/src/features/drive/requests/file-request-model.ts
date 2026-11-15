@@ -13,7 +13,7 @@ import { bytes } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { shortDate } from '../../../format/time';
 import type { DriveAccess } from '../model/drive-access';
-import { endLabelOf } from '../share/grant-expiry';
+import { endLabelOf, NO_END_LABEL } from '../share/grant-expiry';
 import { expiryOf, linkStateOf, type LinkEnd } from '../share/share-model';
 
 export type RequestEnd = LinkEnd | 'keep';
@@ -36,21 +36,21 @@ export function requestEndOptionsOf(
   current: DriveFileRequest | null,
   now: number,
 ): readonly SelectOption<RequestEnd>[] {
-  const keep: readonly SelectOption<RequestEnd>[] =
+  const never: SelectOption<RequestEnd> = { value: 'never', label: NO_END_LABEL };
+  const head: readonly SelectOption<RequestEnd>[] =
     current === null
-      ? []
-      : [
-          {
-            value: 'keep',
-            label:
-              current.expiresAt === null
-                ? 'Keep: no end'
-                : `Keep: ${shortDate(current.expiresAt)} · ${endLabelOf(current.expiresAt, now)}`,
-          },
-        ];
+      ? [never]
+      : current.expiresAt === null
+        ? [{ value: 'keep', label: NO_END_LABEL }]
+        : [
+            {
+              value: 'keep',
+              label: `${endLabelOf(current.expiresAt, now)} (${shortDate(current.expiresAt)})`,
+            },
+            never,
+          ];
   return [
-    ...keep,
-    { value: 'never', label: 'Never' },
+    ...head,
     { value: 'day', label: '1 day' },
     { value: 'week', label: '7 days' },
     { value: 'month', label: '30 days' },
@@ -133,14 +133,6 @@ export function receivedLineOf(request: Pick<DriveFileRequest, 'uploads' | 'byte
   return joinParts([plural(request.uploads, 'file'), bytes(request.bytes)]);
 }
 
-export function bytesShareOf(
-  request: Pick<DriveFileRequest, 'bytes'>,
-  all: readonly Pick<DriveFileRequest, 'bytes'>[],
-): number {
-  const largest = all.reduce((most, each) => Math.max(most, each.bytes), 0);
-  return largest === 0 ? 0 : request.bytes / largest;
-}
-
 export interface FileRequestGroups {
   readonly open: readonly DriveFileRequest[];
   readonly ended: readonly DriveFileRequest[];
@@ -160,8 +152,11 @@ export function fileRequestGroupsOf(
   };
 }
 
-export function sheetTitleOf(folderName: string, editing: boolean): string {
-  return editing ? 'Change file request' : `Request files for ${folderName}`;
+export function sheetTitleOf(
+  folderName: string,
+  editing: Pick<DriveFileRequest, 'title'> | null,
+): string {
+  return editing === null ? `Request files for ${folderName}` : `Change ‘${editing.title}’`;
 }
 
 export const REQUEST_HOW_LINE =
@@ -175,7 +170,7 @@ export const REQUESTS_LINK_LINE =
 
 export function closeQuestionOf(title: string): ConfirmRequest {
   return {
-    title: `Close ${title}?`,
+    title: `Close ‘${title}’?`,
     body: 'The link stops taking files. The files it received stay in the folder.',
     confirmLabel: 'Close request',
     cancelLabel: 'Keep open',

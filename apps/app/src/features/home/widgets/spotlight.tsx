@@ -10,7 +10,7 @@ import {
   type WidgetDefinition,
   type WidgetSize,
 } from '../../../components/widget-board';
-import { useDevice, useDevices } from '../../../store/selectors';
+import { useDevice, useMatchingDevices } from '../../../store/selectors';
 import { deviceOf } from '../../../store/state';
 import {
   DeviceSpotlightWidget,
@@ -42,7 +42,7 @@ function SpotlightEditor({
   readonly value: SpotlightOptions;
   readonly onChange: (value: SpotlightOptions) => void;
 }): ReactNode {
-  const devices = useDevices().filter(spotlightable);
+  const devices = useMatchingDevices(spotlightable);
   const chosen = useDevice(value.deviceId);
   return (
     <>

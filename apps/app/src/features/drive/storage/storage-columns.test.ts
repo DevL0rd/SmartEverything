@@ -47,7 +47,12 @@ vi.mock('../../../store/people', () => ({
   ],
 }));
 vi.mock('../data', () => ({
-  useDriveUsage: (): { readonly data: readonly DriveUsage[] | undefined } => ({ data: seen.usage }),
+  useDriveUsage: (): object => ({
+    data: seen.usage,
+    isError: false,
+    error: null,
+    refetch: () => Promise.resolve(),
+  }),
   useDriveQuotas: (enabled: boolean): { readonly data: readonly unknown[] | undefined } => ({
     data: enabled ? [] : undefined,
   }),
@@ -68,6 +73,14 @@ vi.mock('./purge-bars', () => ({ PurgeBars: part('purges') }));
 vi.mock('./health-card', () => ({ HealthCard: part('health') }));
 vi.mock('./duplicate-group-row', () => ({ StorageDuplicates: part('duplicates') }));
 vi.mock('./largest-files', () => ({ LargestFiles: part('largest') }));
+vi.mock('./storage-card-state', () => ({
+  StorageCardState: ({ title }: { readonly title: string }): ReactNode =>
+    createElement('i', { 'data-part': `waiting ${title}` }),
+}));
+vi.mock('../../../components/card', () => ({
+  Card: ({ children }: { readonly children: ReactNode }): ReactNode =>
+    createElement('div', {}, children),
+}));
 
 function stats(items: number): DriveStats {
   return DRIVE_STATS.parse({
@@ -99,7 +112,7 @@ beforeEach(() => {
 });
 
 describe('Storage columns', () => {
-  it('gives the owner the People totals beside the disk, drives, kinds and freeing', async () => {
+  it('gives the owner the other people’s totals beside the disk, drives, kinds and freeing', async () => {
     expect(await parts(true)).toEqual([
       'disk',
       'drives',
@@ -110,17 +123,31 @@ describe('Storage columns', () => {
       'duplicates',
       'largest',
     ]);
-    expect(seen.people).toMatchObject([
-      { person: { name: 'Sam' }, you: false, usage: { live: 40 * GB } },
-      { person: { name: 'Dana' }, you: true, usage: { live: 10 * GB } },
-    ]);
+    expect(seen.people).toMatchObject([{ person: { name: 'Sam' }, usage: { live: 40 * GB } }]);
+    expect(seen.people).toHaveLength(1);
+  });
+
+  it('puts drive health right after the disk in one column', async () => {
+    seen.width = 999;
+    expect((await parts(true)).slice(0, 3)).toEqual(['disk', 'health', 'drives']);
   });
 
   it('never shows a member the People list', async () => {
     expect(await parts(false)).not.toContain('people');
   });
 
-  it('shows the empty state instead of kinds, duplicates and largest files when nothing is stored', async () => {
-    expect(await parts(false, 0)).toEqual(['disk', 'drives', 'empty', 'purges', 'health']);
+  it('waits on the drives and people cards while usage loads instead of hiding them', async () => {
+    seen.usage = undefined;
+    const shown = await parts(true);
+    expect(shown).toContain('waiting Your drives');
+    expect(shown).toContain('waiting People');
+    expect(shown).not.toContain('drives');
+  });
+
+  it('shows the empty card instead of the drives, kinds, freeing, duplicates and largest files when nothing is stored', async () => {
+    seen.usage = [usage(ME, 0), { ...usage(SAM, 0), items: 0 }];
+    expect(await parts(true, 0)).toEqual(['disk', 'empty', 'health']);
+    seen.usage = [usage(ME, 0), usage(SAM, 40)];
+    expect(await parts(true, 0)).toEqual(['disk', 'empty', 'people', 'health']);
   });
 });

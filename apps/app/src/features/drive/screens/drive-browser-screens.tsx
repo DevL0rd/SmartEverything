@@ -10,6 +10,7 @@ import { useIsOwner, useLoaded, useSyncStatus } from '../../../store/selectors';
 import {
   type BrowserHeader,
   type FileBrowserHandle,
+  useBrowserShellParts,
   useBrowserPanels,
   FileBrowser,
   shellSearchOf,
@@ -162,6 +163,7 @@ function DriveBrowser({
   const browser = useDriveFileBrowser(location);
   const { top, banner } = useTop(location, root, browser.filter.active);
   const slots = useBrowserPanels(browser, { from: 'Drive', top });
+  const shellParts = useBrowserShellParts(browser);
   const { header } = browser;
   return (
     <DriveFrame
@@ -171,6 +173,7 @@ function DriveBrowser({
       iconRail={browser.state.panels.has('details')}
       reconcileRootId={root?.id ?? null}
       scroll={false}
+      {...shellParts}
       {...headerPartsOf(header)}
       {...(banner === undefined ? {} : { banner })}
     >

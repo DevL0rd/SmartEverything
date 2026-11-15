@@ -16,9 +16,12 @@ import {
   nowIn,
   type DayStripModel,
   type StripMarkTone,
+  type StripState,
 } from './day-strip-model';
 
 const TRACK = { compact: 20, wide: 26 } as const;
+
+const AMBIENT: ReadonlySet<StripState> = new Set(['daylight', 'sleep']);
 
 const MARK: Readonly<Record<StripMarkTone, string>> = {
   done: 'bg-positive',
@@ -103,6 +106,15 @@ function NowMarker({ placed, now }: { readonly placed: Placed; readonly now: num
   );
 }
 
+function EmptyTrack({ height }: { readonly height: number }): ReactNode {
+  const box = { height };
+  return (
+    <View aria-hidden style={box} className="w-full justify-center">
+      <View className="border-t border-dashed border-outline" />
+    </View>
+  );
+}
+
 export function DayStrip({
   model,
   compact,
@@ -115,28 +127,40 @@ export function DayStrip({
   const { width, onLayout } = useMeasuredWidth();
   const placed = { model, width };
   const now = nowIn(model, minute.value);
+  const empty = model.segments.length === 0;
+  const height = compact ? TRACK.compact : TRACK.wide;
   return (
-    <View
-      ref={ref}
-      onLayout={(event) => {
-        onLayout(event);
-        minute.onLayout?.();
-      }}
-      className="relative"
-    >
-      <AlarmPins placed={placed} />
-      <StateTimeline
-        segments={model.segments}
-        colours={STRIP_COLOURS}
-        label={model.label}
-        empty="Nothing booked today"
-        height={compact ? TRACK.compact : TRACK.wide}
-        from={model.from}
-        to={model.to}
-      />
-      <TaskMarks placed={placed} />
-      <HourLabels placed={placed} />
-      {now === null || width === 0 ? null : <NowMarker placed={placed} now={now} />}
+    <View className="gap-1">
+      <View
+        ref={ref}
+        onLayout={(event) => {
+          onLayout(event);
+          minute.onLayout?.();
+        }}
+        className="relative"
+      >
+        <AlarmPins placed={placed} />
+        {empty ? (
+          <EmptyTrack height={height} />
+        ) : (
+          <StateTimeline
+            segments={model.segments}
+            colours={STRIP_COLOURS}
+            label={model.label}
+            height={height}
+            from={model.from}
+            to={model.to}
+          />
+        )}
+        <TaskMarks placed={placed} />
+        <HourLabels placed={placed} />
+        {now === null || width === 0 ? null : <NowMarker placed={placed} now={now} />}
+      </View>
+      {empty ? (
+        <Text variant="caption" tone="variant" className="text-center">
+          Nothing booked today
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -177,9 +201,13 @@ function StripHeader({
         {model.sleepMinutes > 0 ? (
           <LegendDot dot="bg-sleep-band" label={`Slept ${hoursMinutes(model.sleepMinutes)}`} />
         ) : null}
-        <LegendDot dot="bg-viz-3" label="Events" />
-        <LegendDot dot="bg-primary" label="Alarms" />
-        <LegendDot dot="bg-critical" label="Missed" />
+        {model.segments.some((segment) => !AMBIENT.has(segment.state)) ? (
+          <LegendDot dot="bg-viz-3" label="Events" />
+        ) : null}
+        {model.alarms.length > 0 ? <LegendDot dot="bg-primary" label="Alarms" /> : null}
+        {model.marks.some((mark) => mark.tone === 'missed') ? (
+          <LegendDot dot="bg-critical" label="Missed" />
+        ) : null}
       </View>
     </View>
   );

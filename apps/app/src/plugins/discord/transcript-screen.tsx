@@ -106,7 +106,6 @@ function CallPage({
               restoreFocus={focusSelector}
             />
           }
-          headerWidth="detail"
           inlineControls
           shellSearch
           controls={MISTAKES_NOTE}

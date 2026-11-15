@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
-import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import type { IconName } from '../../../components/icon';
 import { Icon } from '../../../components/icon';
@@ -89,13 +88,12 @@ export function TemplateCard({ entry, preview, taken, onUse }: TemplateCardProps
             />
           )}
         </View>
-        <Button
-          label={taken === null ? 'Use template' : 'Make another'}
-          variant={taken === null ? 'tonal' : 'text'}
-          onPress={() => {
-            onUse(entry);
-          }}
-        />
+        <View className="flex-row items-center gap-1">
+          <Text variant="label" tone="primary">
+            {taken === null ? 'Use template' : 'Make another'}
+          </Text>
+          <Icon name="chevronRight" size={16} tone="primary" />
+        </View>
       </View>
     </Card>
   );

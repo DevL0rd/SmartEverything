@@ -1,17 +1,19 @@
 package expo.modules.healthconnect.listening
 
+import expo.modules.healthconnect.voice.VoiceProbability
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceGateTest {
-  private val frame = VoiceGate.FRAME_SAMPLES
+  private val frame = VoiceFrames.FRAME_SAMPLES
   private val counters = ListeningCounters({ 0 }, {})
   private val fed = ArrayList<Short>()
   private var restarts = 0
   private var voiced = false
-  private val gate = VoiceGate({ voiced }, counters, { restarts += 1 }, { chunk -> chunk.forEach { fed.add(it) } })
+  private val frames = VoiceFrames(Steady { voiced })
+  private val gate = VoiceGate(counters, { restarts += 1 }, { chunk -> chunk.forEach { fed.add(it) } })
   private var heard = 0
 
   private fun hear(samples: Int, voice: Boolean, chunk: Int = frame) {
@@ -19,7 +21,8 @@ class VoiceGateTest {
     while (left > 0) {
       val size = minOf(chunk, left)
       voiced = voice
-      gate.hear(ShortArray(size) { (heard + it).toShort() })
+      val pcm = ShortArray(size) { (heard + it).toShort() }
+      gate.hear(pcm, frames.split(pcm))
       heard += size
       left -= size
     }
@@ -95,6 +98,7 @@ class VoiceGateTest {
   fun `resting closes the gate and forgets the preroll`() {
     hear(frame * 10, voice = false)
     gate.rest()
+    frames.restart()
     hear(frame, voice = true)
     assertArrayEquals(expected(frame * 10, frame * 11), fed.toShortArray())
     assertEquals(1, restarts)
@@ -113,11 +117,19 @@ class VoiceGateTest {
   @Test
   fun `opening reports how far back the sentence reaches, once per sentence`() {
     val opened = ArrayList<Int>()
-    val reporting = VoiceGate({ voiced }, counters, {}, {}, opened = { opened.add(it) })
+    val reporting = VoiceGate(counters, {}, {}, opened = { opened.add(it) })
     voiced = false
-    repeat(100) { reporting.hear(ShortArray(frame)) }
+    repeat(100) { ShortArray(frame).let { reporting.hear(it, frames.split(it)) } }
     voiced = true
-    repeat(4) { reporting.hear(ShortArray(frame)) }
+    repeat(4) { ShortArray(frame).let { reporting.hear(it, frames.split(it)) } }
     assertEquals(listOf(640 * WakePreroll.SAMPLES_PER_MS), opened)
   }
+}
+
+class Steady(private val voiced: () -> Boolean) : VoiceProbability {
+  override fun probability(frame: ShortArray): Float = if (voiced()) 1f else 0f
+
+  override fun reset() = Unit
+
+  override fun close() = Unit
 }

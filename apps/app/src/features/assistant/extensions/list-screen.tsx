@@ -124,22 +124,26 @@ function InstalledList({
   const items = installedCatalogueItems(catalogue.data, kind);
   return (
     <>
-      <VirtualList
-        header={
-          <InstalledHeader
-            configuration={configuration}
-            catalogue={catalogue}
-            onDevices={() => {
-              setDevices(true);
-            }}
-            kind={kind}
-          />
-        }
-        sections={sectionsOf(items.filter((item) => matchesCatalogueItem(item, query.trim())))}
-        keyOf={(item) => item.id}
-        renderItem={(item) => <InstalledRow item={item} />}
-        empty={<CatalogueEmpty kind={kind} query={query.trim()} clear={onClear} />}
-      />
+      <View className="-mx-gutter min-h-0 flex-1">
+        <VirtualList
+          header={
+            <View className="px-gutter">
+              <InstalledHeader
+                configuration={configuration}
+                catalogue={catalogue}
+                onDevices={() => {
+                  setDevices(true);
+                }}
+                kind={kind}
+              />
+            </View>
+          }
+          sections={sectionsOf(items.filter((item) => matchesCatalogueItem(item, query.trim())))}
+          keyOf={(item) => item.id}
+          renderItem={(item) => <InstalledRow item={item} />}
+          empty={<CatalogueEmpty kind={kind} query={query.trim()} clear={onClear} />}
+        />
+      </View>
       {configuration.data === undefined ? null : (
         <ExtensionDevicesSheet
           open={devices}

@@ -84,7 +84,7 @@ function handles(services: MountServices): Executors {
       }
       return {};
     }),
-    COPY: operation('COPY', (call) => services.commits.copy(call.session, call.meta)),
+    COPY: operation('COPY', (call) => services.copy.copy(call.session, call.meta)),
     ACCESS: operation('ACCESS', async (call) => ({
       attr: await posix.access(call.session.scopeOf(store, call.meta.ino), call.meta),
     })),

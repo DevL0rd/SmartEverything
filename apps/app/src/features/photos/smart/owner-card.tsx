@@ -110,13 +110,16 @@ export function reanalyseConfirmOf(
   status: PhotoAiStatus,
   money: Money,
 ): Parameters<typeof confirm>[0] {
+  if (status.estimateMicros === 0) {
+    return {
+      title: 'Redo search and pet matching?',
+      body: 'Every photo already has tags and captions from the current vision model, so this costs nothing. Only search and pet matching made with an older model are redone.',
+      confirmLabel: 'Redo',
+    };
+  }
   return {
     title: 'Re-analyse the library?',
-    body: `Photos analysed with an older model are analysed again with the current ones. ${
-      status.estimateMicros === 0
-        ? 'Nothing is left to pay for.'
-        : `This costs about ${money.cost(status.estimateMicros)}.`
-    }`,
+    body: `Photos without tags and captions from the current vision model are analysed again. This costs about ${money.cost(status.estimateMicros)}.`,
     confirmLabel: 'Re-analyse',
   };
 }

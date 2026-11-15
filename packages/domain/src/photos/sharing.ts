@@ -133,6 +133,12 @@ export const PARTNER_SAVED = z.strictObject({ saved: COUNT }).readonly();
 
 export const PARTNER_AUTO_SAVE = z.strictObject({ autoSave: z.boolean() });
 
+export const SHARED_ALBUM_MEMBER = z
+  .strictObject({ profileId: ID, role: z.enum(ALBUM_MEMBER_ROLES) })
+  .readonly();
+
+export type SharedAlbumMember = z.infer<typeof SHARED_ALBUM_MEMBER>;
+
 export const SHARED_ALBUM = z
   .strictObject({
     albumId: ID,
@@ -140,7 +146,7 @@ export const SHARED_ALBUM = z
     coverItemId: ID.nullable(),
     ownerProfileId: ID,
     role: z.enum([...ALBUM_MEMBER_ROLES, 'owner']),
-    memberIds: z.array(ID).readonly(),
+    members: z.array(SHARED_ALBUM_MEMBER).readonly(),
     joined: z.boolean(),
     itemCount: COUNT,
     unread: COUNT,

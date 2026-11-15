@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { open, type FileHandle } from 'node:fs/promises';
 import { SEEK_WHENCE } from '@smarteverything/domain/drive-mount';
 import { fsCode } from '../../fs-code';
 import type { DriveFiles, DriveWriteRoot } from '../intents';
@@ -70,6 +70,15 @@ export class HandleTable {
     const buffer = Buffer.allocUnsafe(range.length);
     const { bytesRead } = await fd.read(buffer, 0, range.length, range.offset);
     return buffer.subarray(0, bytesRead);
+  }
+
+  async source(
+    session: MountSession,
+    id: number,
+  ): Promise<{ readonly fd: FileHandle; readonly size: number; readonly rootId: string }> {
+    const handle = this.find(session, id);
+    const fd = await this.current(handle);
+    return { fd, size: (await fd.stat()).size, rootId: handle.scope.drive.id };
   }
 
   async seek(

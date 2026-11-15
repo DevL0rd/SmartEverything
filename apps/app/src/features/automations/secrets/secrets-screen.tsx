@@ -57,7 +57,7 @@ function Rows(props: {
       {props.rows.map((row) => {
         const verdict = props.refusedId === row.id ? removeVerdict(row) : null;
         return (
-          <View key={row.id} className="min-w-0 max-w-reading grow shrink basis-96">
+          <View key={row.id} className="min-w-0 grow shrink basis-96">
             <SecretRow
               row={row}
               readOnly={false}
@@ -122,7 +122,7 @@ export function SecretsScreen({
   const listed = owner && rows.length > 0;
   return (
     <View className="gap-section-gap">
-      <View className="w-full max-w-reading gap-section-gap">
+      <View className="w-full gap-section-gap">
         <Heading owner={owner} onAdd={flow.add} />
         {flow.failure === null ? null : (
           <Banner tone="critical" title="Not removed" body={flow.failure} wrapBody />

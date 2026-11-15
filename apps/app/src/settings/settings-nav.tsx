@@ -7,6 +7,7 @@ import { shellRailOf } from '../components/page-shell/layout';
 import type { ShellSearchConfig } from '../components/page-shell/search-slot';
 import type { RailGroup } from '../components/page-shell/section-rail';
 import type { ShellSections } from '../components/page-shell/shell-sections';
+import type { IconName } from '../components/icon';
 import { NavRow } from '../components/rows';
 import { List } from '../components/section';
 import { Text } from '../components/text';
@@ -15,8 +16,15 @@ import { useStoreSelector } from '../store/store-context';
 import { useSettingEnv } from './env';
 import { pageReachable, useBuiltSettingsPages } from './availability';
 import { visibleSettings } from './registry';
-import { SETTINGS_GROUPS, SETTINGS_TREE, breadcrumbOf, pageHref, settingsTrail } from './tree';
-import type { SettingEnv, SettingsPageDefinition } from './types';
+import {
+  SETTINGS_GROUPS,
+  SETTINGS_TREE,
+  breadcrumbOf,
+  pageHref,
+  settingsPage,
+  settingsTrail,
+} from './tree';
+import type { SettingDefinition, SettingEnv, SettingsPageDefinition } from './types';
 
 interface SettingsGroupPages {
   readonly title: string;
@@ -36,17 +44,7 @@ function useGroupPages(): readonly SettingsGroupPages[] {
 
 export function useSettingsRail(): boolean {
   const size = useSizeClass();
-  return size.header !== 'large' && shellRailOf(size.area, 'master') !== null;
-}
-
-function RailSummary({ page }: { readonly page: SettingsPageDefinition }): ReactNode {
-  const summary = useStoreSelector((state) => page.summary?.(state) ?? null);
-  if (summary === null) return null;
-  return (
-    <Text variant="caption" tone="variant" numberOfLines={1}>
-      {summary}
-    </Text>
-  );
+  return size.header !== 'large' && shellRailOf(size.area, 'sections') !== null;
 }
 
 function topPageOf(page: string, groups: readonly SettingsGroupPages[]): string {
@@ -68,10 +66,9 @@ export function useSettingsSections(page: string): ShellSections {
     entries: group.pages.map((entry) => ({
       id: entry.id,
       label: entry.title,
-      short: entry.title.replace(/ settings$/, ''),
+      short: entry.short ?? entry.title.replace(/ settings$/, ''),
       icon: entry.icon,
       missing: null,
-      detail: <RailSummary page={entry} />,
     })),
   }));
   return {
@@ -80,7 +77,6 @@ export function useSettingsSections(page: string): ShellSections {
     hrefOf: (id) => hrefs.get(id) ?? href.settings.page(id),
     navigation: 'replace',
     label: 'Settings',
-    master: true,
   };
 }
 
@@ -121,6 +117,14 @@ function trail(page: string): string {
     .join(' › ');
 }
 
+function resultIconOf(setting: SettingDefinition): IconName {
+  if (setting.icon !== undefined) return setting.icon;
+  const page = settingsPage(setting.page);
+  if (page === undefined)
+    throw new Error(`setting ${setting.id} names a missing page ${setting.page}`);
+  return page.icon;
+}
+
 function Results({ env, query }: { readonly env: SettingEnv; readonly query: string }): ReactNode {
   const needle = query.trim().toLowerCase();
   const built = useBuiltSettingsPages();
@@ -155,6 +159,7 @@ function Results({ env, query }: { readonly env: SettingEnv; readonly query: str
           <NavRow
             key={setting.id}
             title={setting.title}
+            icon={resultIconOf(setting)}
             subtitle={trail(setting.page)}
             href={href.settings.focus(setting.page, setting.id)}
           />
@@ -173,6 +178,6 @@ export function useSettingsSearch(): ShellSearchConfig {
     onChange: setQuery,
     placeholder: 'Search settings',
     label: 'Search settings',
-    panel: <Results env={env} query={shown} />,
+    panel: query.trim() === '' ? null : <Results env={env} query={shown} />,
   };
 }

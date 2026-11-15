@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { View } from 'react-native';
 import { useQueryClient, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type {
@@ -14,9 +14,11 @@ import { ProgressBar } from '../../../components/charts/progress-bar';
 import { ErrorState } from '../../../components/error-state';
 import { ListRow } from '../../../components/list-row';
 import { SwitchRow } from '../../../components/rows';
-import { FilterChip } from '../../../components/filter-chip';
-import { List, Section } from '../../../components/section';
+import { Icon } from '../../../components/icon';
+import { List } from '../../../components/section';
+import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
+import { Text } from '../../../components/text';
 import { usePausable } from '../../../design/external-store';
 import { count, percent } from '../../../format/number';
 import { driveKey } from '../../../queries/keys';
@@ -33,7 +35,7 @@ import {
 } from '../data';
 import { driveLabelOf } from '../model/drive-access';
 import { DriveSettingsSection } from './page';
-import { ocrChoicesOf, ocrLanguagesAfter, ocrLineOf } from './ocr-languages';
+import { ocrChoicesOf, ocrLanguagesAfter, ocrLineOf, ocrValueOf } from './ocr-languages';
 import { watcherLineOf } from './watcher-line';
 
 type Phase = DriveProgressNotice['phase'];
@@ -146,7 +148,7 @@ function PauseRow({
   const paused = settings.indexingPaused;
   return (
     <ListRow
-      title="Indexing"
+      title="Status"
       icon={paused ? 'pause' : 'search'}
       iconTone={paused ? 'warning' : 'variant'}
       subtitle={indexingLineOf(paused, working)}
@@ -222,25 +224,32 @@ function ContentRow({ settings }: { readonly settings: DriveSettings }): ReactNo
   );
 }
 
-function OcrLanguages({ settings }: { readonly settings: DriveSettings }): ReactNode {
+function OcrLanguageSheet({
+  settings,
+  opener,
+  onClose,
+}: {
+  readonly settings: DriveSettings;
+  readonly opener: RefObject<View | null>;
+  readonly onClose: () => void;
+}): ReactNode {
   const client = useQueryClient();
   const mutation = useMutationState();
   const chosen = settings.ocrLanguages;
-  const off = mutation.busy || !settings.contentIndexing;
   return (
-    <Section title="Languages for text in pictures" caption={ocrLineOf(chosen)}>
-      <View
-        role="group"
-        aria-label="Languages for text in pictures"
-        className="flex-row flex-wrap gap-2"
-      >
+    <Sheet open onClose={onClose} title="Languages for text in pictures" subpage={{ opener }}>
+      <Text variant="footnote" tone="variant">
+        {ocrLineOf(chosen)}
+      </Text>
+      <List inset>
         {ocrChoicesOf(chosen).map((choice) => (
-          <FilterChip
+          <ListRow
             key={choice.code}
-            label="Language"
-            value={choice.name}
-            active={choice.chosen}
-            disabled={off || (choice.chosen && chosen.length === 1)}
+            title={choice.name}
+            role="checkbox"
+            checked={choice.chosen}
+            disabled={mutation.busy || (choice.chosen && chosen.length === 1)}
+            trailing={choice.chosen ? <Icon name="check" size={20} tone="primary" /> : undefined}
             onPress={() => {
               const next = ocrLanguagesAfter(chosen, choice.code, !choice.chosen);
               if (next === null) return;
@@ -251,8 +260,44 @@ function OcrLanguages({ settings }: { readonly settings: DriveSettings }): React
             }}
           />
         ))}
-      </View>
-    </Section>
+      </List>
+    </Sheet>
+  );
+}
+
+function OcrLanguagesRow({ settings }: { readonly settings: DriveSettings }): ReactNode {
+  const opener = useRef<View>(null);
+  const [open, setOpen] = useState(false);
+  const on = settings.contentIndexing;
+  return (
+    <>
+      <ListRow
+        title="Languages for text in pictures"
+        icon="globe"
+        subtitle={
+          on
+            ? 'A new language downloads once to the Hub'
+            : 'Turn on reading text inside files first'
+        }
+        wrapSubtitle
+        value={ocrValueOf(settings.ocrLanguages)}
+        chevron
+        disabled={!on}
+        pressRef={opener}
+        onPress={() => {
+          setOpen(true);
+        }}
+      />
+      {open ? (
+        <OcrLanguageSheet
+          settings={settings}
+          opener={opener}
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -295,9 +340,9 @@ function IndexingBody({ settings }: { readonly settings: DriveSettings }): React
         <PauseRow settings={settings} working={working} />
         <DuplicatesRow settings={settings} hashedShare={health?.hashedShare} />
         <ContentRow settings={settings} />
+        <OcrLanguagesRow settings={settings} />
         {health === undefined ? null : <WatcherRow state={health.watcher} />}
       </List>
-      <OcrLanguages settings={settings} />
       {lines.length === 0 ? null : (
         <List inset title="Working now">
           {lines.map((line) => (
@@ -312,7 +357,7 @@ function IndexingBody({ settings }: { readonly settings: DriveSettings }): React
 export function IndexingSection(): ReactNode {
   const settings = useDriveSettings();
   return (
-    <DriveSettingsSection section="indexing">
+    <DriveSettingsSection>
       {settings.data === undefined ? (
         <SettingsQueryState query={settings} event="drive_settings.indexing_refetch_failed" />
       ) : (

@@ -125,7 +125,7 @@ function Page({ row }: { readonly row: PluginRow }): ReactNode {
         },
       }}
     >
-      <View className="w-full max-w-reading flex-1 self-start">
+      <View className="-mx-gutter min-h-0 flex-1">
         <People row={row} open={setRequest} />
       </View>
       <PersonSheet

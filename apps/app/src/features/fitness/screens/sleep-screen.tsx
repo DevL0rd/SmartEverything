@@ -23,7 +23,6 @@ export function SleepScreen(): ReactNode {
   return (
     <FitnessShell
       tab="sleep"
-      width="detail"
       toolbar={<FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />}
     >
       <NightCard day={day} quiet={range !== 'day'} />

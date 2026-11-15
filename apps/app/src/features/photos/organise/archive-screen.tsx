@@ -6,13 +6,13 @@ import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { IconWell } from '../../../components/icon-well';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
 import {
   useMediaSelection,
   type MediaSelectionControls,
 } from '../../../components/media-grid/selection';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { percentOf } from '../../../format/percent';
@@ -168,12 +168,12 @@ function pickActions(
   ];
 }
 
-function selectAction(feed: OrganiseFeed, begin: () => void): readonly HeaderAction[] {
+function selectAction(feed: OrganiseFeed, begin: () => void): readonly ShellAction[] {
   return feed.tiles.length === 0 ? [] : [{ icon: 'circleCheck', label: 'Select', onPress: begin }];
 }
 
 export function ArchiveScreen(): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const live = useSyncStatus().status === 'live';
   const feed = useMonthFeed(ARCHIVE_SOURCE);
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));

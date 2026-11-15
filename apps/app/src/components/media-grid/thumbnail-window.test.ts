@@ -28,7 +28,7 @@ function idsOf(source: readonly MediaGridRow[]): readonly string[] {
 
 describe('thumbnail lookahead', () => {
   it('warms tiles beyond the visible viewport without loading the whole library', () => {
-    const ahead = thumbnailWindow(rows, windowOf(1, 3, 1));
+    const ahead = thumbnailWindow(rows, windowOf(1, 3, 1), 0);
     const visible = idsOf(rows.slice(1, 4));
     expect(ahead.length).toBeGreaterThan(0);
     expect(ahead.every((tile) => !visible.includes(tile.id))).toBe(true);
@@ -46,20 +46,36 @@ describe('thumbnail lookahead', () => {
     );
   });
 
+  it('skips the rows the list already draws and warms the same height past them', () => {
+    const drawn = 250;
+    const ahead = thumbnailWindow(rows, windowOf(1, 3, 1), drawn);
+    const ids = new Set(ahead.map((tile) => tile.id));
+    const after = rows.slice(4);
+    let covered = 0;
+    const skipped = after.filter((row) => {
+      if (covered >= drawn) return false;
+      covered += row.kind === 'tiles' ? row.height + 3 : 0;
+      return true;
+    });
+    expect(idsOf(skipped).some((id) => ids.has(id))).toBe(false);
+    expect(ahead[0]?.id).toBe(idsOf(after.slice(skipped.length))[0]);
+    expect(ahead.length).toBeGreaterThan(thumbnailWindow(rows, windowOf(1, 3, 1), 0).length);
+  });
+
   it('looks above the viewport when scrolling back up', () => {
-    const ahead = thumbnailWindow(rows, windowOf(8, 10, -1));
+    const ahead = thumbnailWindow(rows, windowOf(8, 10, -1), 0);
     expect(ahead[0]?.id).toBe(idsOf(rows.slice(7, 8))[0]);
     expect(ahead.every((tile) => idsOf(rows.slice(0, 8)).includes(tile.id))).toBe(true);
   });
 
   it('does no work before measurement or after the feed replaces visible rows', () => {
-    expect(thumbnailWindow(rows, null)).toEqual([]);
-    expect(thumbnailWindow(rows.slice(20), windowOf(1, 3, 1))).toEqual([]);
+    expect(thumbnailWindow(rows, null, 0)).toEqual([]);
+    expect(thumbnailWindow(rows.slice(20), windowOf(1, 3, 1), 0)).toEqual([]);
   });
 
   it('stops at the library edges and does not duplicate tiles', () => {
-    expect(thumbnailWindow(rows, windowOf(rows.length - 1, rows.length - 1, 1))).toEqual([]);
-    const ahead = thumbnailWindow(rows, windowOf(1, 3, 1));
+    expect(thumbnailWindow(rows, windowOf(rows.length - 1, rows.length - 1, 1), 0)).toEqual([]);
+    const ahead = thumbnailWindow(rows, windowOf(1, 3, 1), 0);
     expect(new Set(ahead.map((tile) => tile.id)).size).toBe(ahead.length);
   });
 });

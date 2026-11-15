@@ -47,8 +47,10 @@ function render(props: Partial<SelectionHeaderProps>): string {
   return renderToStaticMarkup(
     createElement(SelectionHeader, {
       picked: { count: 4, bytes: 58_000_000 },
+      total: 9,
       disabled: false,
       onClear: () => undefined,
+      onSelectAll: () => undefined,
       onRestore: () => undefined,
       onDeleteNow: () => undefined,
       ...props,
@@ -64,15 +66,20 @@ describe('Recently deleted selection bar', () => {
     expect(html).toContain('data-variant="destructive" data-off="no">Delete now');
   });
 
+  it('offers Select all until every item is picked', () => {
+    expect(render({})).toContain('data-variant="text" data-off="no">Select all');
+    expect(render({ picked: { count: 9, bytes: 1 } })).not.toContain('Select all');
+  });
+
   it('never offers Delete now to a member', () => {
     const html = render({ onDeleteNow: null });
     expect(html).toContain('>Restore<');
     expect(html).not.toContain('Delete now');
   });
 
-  it('turns the actions off with nothing picked or the hub away', () => {
-    expect(render({ picked: { count: 0, bytes: 0 } })).toContain('data-off="yes">Restore');
-    expect(render({ disabled: true })).toContain('data-off="yes">Delete now');
+  it('leaves the actions out with nothing picked or the hub away', () => {
+    expect(render({ picked: { count: 0, bytes: 0 } })).not.toContain('Restore');
+    expect(render({ disabled: true })).not.toContain('Delete now');
   });
 });
 

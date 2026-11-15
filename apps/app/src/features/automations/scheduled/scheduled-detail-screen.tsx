@@ -141,11 +141,11 @@ function Detail({ row }: { readonly row: ScheduleRow }): ReactNode {
       overflow={overflow}
     >
       <View className="flex-row flex-wrap gap-section-gap">
-        <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">
+        <View className="min-w-0 grow shrink basis-80 gap-section-gap">
           <Summary row={row} zone={zone} />
           {touch ? <Buttons row={row} commands={commands} /> : null}
         </View>
-        <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">
+        <View className="min-w-0 grow shrink basis-80 gap-section-gap">
           <StepRows row={row} zone={zone} />
         </View>
       </View>

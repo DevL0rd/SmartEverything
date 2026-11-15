@@ -232,7 +232,7 @@ function Load({ functionId }: { readonly functionId: string }): ReactNode {
     );
   }
   return (
-    <PageShell title="Custom Node" width="reading">
+    <PageShell title="Custom Node">
       <LoadedQuery query={query}>{() => null}</LoadedQuery>
     </PageShell>
   );

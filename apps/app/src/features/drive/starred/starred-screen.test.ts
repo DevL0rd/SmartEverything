@@ -78,7 +78,14 @@ vi.mock('./smart-folders', () => ({
       folders.map((folder) => createElement('li', { key: folder.id }, folder.title)),
     ),
 }));
-vi.mock('./starred-look', () => ({
+vi.mock('../../../components/use-measured-width', () => ({
+  useMeasuredWidth: (): { width: number; onLayout: () => void } => ({
+    width: 1336,
+    onLayout: (): void => undefined,
+  }),
+}));
+vi.mock('./starred-look', async (original) => ({
+  ...(await original<object>()),
   StarredFileRow: ({
     node,
     chip,

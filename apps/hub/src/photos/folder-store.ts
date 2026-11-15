@@ -5,12 +5,18 @@ import {
   type PhotoHiddenFolder,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { Sql } from '../store/sql';
+import { inList, type Sql } from '../store/sql';
 
 const HIDDEN_ROW = z.strictObject({
   folder_key: PHOTO_FOLDER_KEY,
   name: z.string().trim().min(1),
   hidden_at: z.string().min(1),
+});
+
+const ORIGIN_ROW = z.strictObject({
+  item_id: z.string().min(1),
+  folder_key: PHOTO_FOLDER_KEY,
+  folder_name: z.string().trim().min(1),
 });
 
 export interface HiddenChange {
@@ -42,6 +48,28 @@ export class PhotoFolderStore {
          folder_key = excluded.folder_key, folder_name = excluded.folder_name`,
       { backupDeviceId, localId, key: origin.key, name: origin.name },
     );
+  }
+
+  originsOf(
+    backupDeviceId: string,
+    itemIds: readonly string[],
+  ): ReadonlyMap<string, PhotoFolderOrigin> {
+    const items = inList('a.item_id', 'itemIds', [...new Set(itemIds)]);
+    const rows = this.sql.all(
+      ORIGIN_ROW,
+      `select a.item_id, f.folder_key, f.folder_name from drive_backup_assets a
+       join photo_asset_folders f
+         on f.backup_device_id = a.backup_device_id and f.local_id = a.local_id
+       where a.backup_device_id = $backupDeviceId and ${items.text}
+       order by a.item_id, f.folder_key`,
+      { backupDeviceId, ...items.parameters },
+    );
+    const origins = new Map<string, PhotoFolderOrigin>();
+    for (const row of rows) {
+      if (!origins.has(row.item_id))
+        origins.set(row.item_id, { key: row.folder_key, name: row.folder_name });
+    }
+    return origins;
   }
 
   hiddenOf(profileId: string): readonly PhotoHiddenFolder[] {

@@ -138,14 +138,22 @@ export function waitingTilesOf(inputs: WaitingInputs): readonly WaitingTile[] {
   ];
 }
 
+function filesText(shown: number, more: boolean): string {
+  if (more) return `${count(shown)}+ files`;
+  return shown === 1 ? '1 file' : `${count(shown)} files`;
+}
+
 export function prioritySubtitleOf(
-  shown: number,
+  shown: number | null,
   more: boolean,
   waiting: readonly WaitingTile[],
-): string {
+): string | undefined {
   const waits = waiting.reduce((sum, entry) => sum + entry.count, 0);
-  const files = more ? `${count(shown)}+ files` : shown === 1 ? '1 file' : `${count(shown)} files`;
-  return waits === 0 ? files : `${files} · ${count(waits)} waiting for you`;
+  const parts = [
+    ...(shown === null ? [] : [filesText(shown, more)]),
+    ...(waits === 0 ? [] : [`${count(waits)} waiting for you`]),
+  ];
+  return parts.length === 0 ? undefined : parts.join(' · ');
 }
 
 export const PRIORITY_EMPTY_TITLE = 'Nothing to suggest yet';

@@ -9,14 +9,14 @@ import { WEEKDAY_ROWS } from '../../../components/charts/heatmap-model';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useAreaWidth } from '../../../design/size-class';
+import { useIdiom } from '../../../design/platform';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerRange } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { QueryBody } from '../frame/query-body';
-import { frameLayoutOf } from '../frame/sections';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { LIST_DOT } from '../item/composer-tokens';
 import { useCalendarLooks } from './calendar-looks';
 import type { EventLook } from './calendars-model';
@@ -35,6 +35,14 @@ import {
 } from './month-model';
 
 const BARS_THAT_FIT = { compact: 3, wide: 4 } as const;
+
+const WIDE_CELL_FROM = 120;
+
+const WEEK_DAYS = 7;
+
+export function cellSizeOf(bodyWidth: number): CellSize {
+  return bodyWidth / WEEK_DAYS >= WIDE_CELL_FROM ? 'wide' : 'compact';
+}
 
 type CellSize = keyof typeof BARS_THAT_FIT;
 
@@ -100,21 +108,35 @@ function More({
   readonly cell: MonthCell;
   readonly onOpenDay: (day: string) => void;
 }): ReactNode {
+  const pointer = useIdiom() === 'pointer';
   if (cell.more === 0) return null;
   return (
-    <Interactive
-      label={`Open ${dayLabelOf(cell.day, true)}, ${String(cell.more)} more`}
-      onPress={() => {
-        onOpenDay(cell.day);
-      }}
-      hitSlop={6}
-      className="self-start rounded-xs px-0.5"
-      layerClassName="rounded-xs"
-    >
-      <Text variant="caption" tone="variant" className="tabular">
-        {`+${String(cell.more)}`}
-      </Text>
-    </Interactive>
+    <View className="absolute right-0.5 top-0">
+      <Interactive
+        label={`Open ${dayLabelOf(cell.day, true)}, ${String(cell.more)} more`}
+        onPress={() => {
+          onOpenDay(cell.day);
+        }}
+        className={cn(
+          'justify-center rounded-sm px-1.5',
+          pointer ? 'h-8 min-w-8' : 'h-11 min-w-11',
+        )}
+        layerClassName="rounded-sm"
+      >
+        <Text variant="caption" tone="variant" className="tabular">
+          {`+${String(cell.more)} more`}
+        </Text>
+      </Interactive>
+    </View>
+  );
+}
+
+function CompactMore({ cell }: { readonly cell: MonthCell }): ReactNode {
+  if (cell.more === 0) return null;
+  return (
+    <Text variant="caption" tone="variant" className="tabular">
+      {`+${String(cell.more)}`}
+    </Text>
   );
 }
 
@@ -126,27 +148,42 @@ interface CellProps {
   readonly onOpenDay: (day: string) => void;
 }
 
+function cellClassOf(cell: MonthCell, compact: boolean, pointer: boolean): string {
+  if (compact)
+    return cn(
+      'h-15 min-w-0 flex-1 overflow-hidden rounded-md',
+      cell.selected && 'bg-primary-container',
+    );
+  return cn(
+    'min-w-0 flex-1 overflow-hidden rounded-md border-hairline border-outline-variant',
+    pointer ? 'h-30' : 'h-33',
+    cell.selected ? 'bg-primary-container' : 'bg-surface-1',
+  );
+}
+
+function dateRowOf(compact: boolean, pointer: boolean): string {
+  if (compact) return '';
+  return cn('justify-center', pointer ? 'h-8' : 'h-11');
+}
+
 function Cell({ cell, size, colours, onPress, onOpenDay }: CellProps): ReactNode {
   const compact = size === 'compact';
+  const pointer = useIdiom() === 'pointer';
   return (
-    <View
-      className={cn(
-        'min-w-0 flex-1 overflow-hidden rounded-md',
-        compact ? 'h-15' : 'min-h-24 border-hairline border-outline-variant',
-        cell.selected ? 'bg-primary-container' : compact ? '' : 'bg-surface-1',
-      )}
-    >
+    <View className={cellClassOf(cell, compact, pointer)}>
       <Interactive
         label={cell.spoken}
         selected={cell.selected}
         onPress={() => {
           onPress(cell.day);
         }}
-        className={cn('flex-1 px-1 pt-1', !compact && 'gap-0.5 px-2 pt-1.5')}
+        className={cn('flex-1 px-1 pt-1', !compact && 'gap-0.5 px-2')}
         layerClassName="rounded-md"
         focusInset
       >
-        <DateMark cell={cell} />
+        <View className={dateRowOf(compact, pointer)}>
+          <DateMark cell={cell} />
+        </View>
         <View className={cn(!compact && 'gap-0.5', !cell.inMonth && 'opacity-60')}>
           {compact ? (
             <Bars cell={cell} colours={colours} />
@@ -154,10 +191,9 @@ function Cell({ cell, size, colours, onPress, onOpenDay }: CellProps): ReactNode
             <Chips cell={cell} colours={colours} />
           )}
         </View>
+        {compact ? <CompactMore cell={cell} /> : null}
       </Interactive>
-      <View className={compact ? 'px-1' : 'px-2 pb-1'}>
-        <More cell={cell} onOpenDay={onOpenDay} />
-      </View>
+      {compact ? null : <More cell={cell} onOpenDay={onOpenDay} />}
     </View>
   );
 }
@@ -268,7 +304,7 @@ interface MonthBodyProps {
 
 function MonthBody({ range, day, onOpenDay }: MonthBodyProps): ReactNode {
   const timeZone = useSettings().time_zone;
-  const size: CellSize = frameLayoutOf(useAreaWidth()) === 'compact' ? 'compact' : 'wide';
+  const size = cellSizeOf(useFrameBodyWidth());
   const month = monthOf(day);
   const [picked, pick] = useState(day);
   const selected = monthOf(picked) === month ? picked : day;

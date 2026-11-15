@@ -1,33 +1,17 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { MenuItem } from '../../../components/menu';
 
-const { push, navigate, renderedMenu } = vi.hoisted(() => ({
-  push: vi.fn(),
-  navigate: vi.fn(),
-  renderedMenu: vi.fn<(items: readonly MenuItem[]) => void>(),
-}));
+const { push, navigate } = vi.hoisted(() => ({ push: vi.fn(), navigate: vi.fn() }));
 
 vi.mock('expo-router', () => ({ router: { push, navigate } }));
-vi.mock('../../../components/menu', () => ({
-  OverflowButton: ({ items }: { readonly items: readonly MenuItem[] }): null => {
-    renderedMenu(items);
-    return null;
-  },
-}));
+vi.mock('../../../components/menu', () => ({ OverflowButton: (): null => null }));
 
-const { ChatHeaderMenu } = await import('./chat-header-menu');
-
-function menuItems(): readonly MenuItem[] {
-  renderedMenu.mockClear();
-  renderToStaticMarkup(createElement(ChatHeaderMenu, { chatId: 'chat-a' }));
-  return renderedMenu.mock.calls[0]?.[0] ?? [];
-}
+const { chatMenuItems } = await import('./chat-header-menu');
+const { pageMenuOf } = await import('../../../components/page-menu');
+const { mainPageSettings } = await import('../../../app-shell/main-pages');
 
 describe('the chat shell menu', () => {
   it('opens the current chat’s Files page on the stack', () => {
-    menuItems()
+    chatMenuItems('chat-a')
       .find((item) => item.icon === 'folder')
       ?.onPress();
     expect(push).toHaveBeenCalledExactlyOnceWith({
@@ -36,10 +20,11 @@ describe('the chat shell menu', () => {
     });
   });
 
-  it('offers Assistant settings without duplicating sidebar or composer controls', () => {
-    const items = menuItems();
-    expect(items.map((item) => item.icon)).toEqual(['folder', 'sparkles']);
-    items.find((item) => item.icon === 'sparkles')?.onPress();
+  it('ends the one shell menu with Assistant settings', () => {
+    const menu = pageMenuOf(chatMenuItems('chat-a'), mainPageSettings('assistant'), null);
+    const items = menu?.items ?? [];
+    expect(items.map((item) => item.icon)).toEqual(['folder', 'settings']);
+    items.at(-1)?.onPress();
     expect(navigate).toHaveBeenCalledExactlyOnceWith({
       pathname: '/settings/[...page]',
       params: { page: ['assistant'] },

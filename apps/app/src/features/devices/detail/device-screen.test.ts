@@ -21,6 +21,7 @@ interface Scene {
   family: string;
   bodyWidth: number;
   details: boolean;
+  lead: boolean;
   selfScrolling: boolean;
   shell: Shell | null;
   active: string | null;
@@ -31,6 +32,7 @@ const scene = vi.hoisted((): Scene => ({
   family: 'plug',
   bodyWidth: 380,
   details: false,
+  lead: true,
   selfScrolling: false,
   shell: null,
   active: null,
@@ -111,7 +113,9 @@ vi.mock('./device-shell', () => ({
 vi.mock('./device-overview', () => ({
   Hero: marker('hero'),
   PrimaryCard: marker('primary-card'),
+  useOverviewLeadShown: (): boolean => scene.lead,
 }));
+vi.mock('../model/display-name', () => ({ useDisplayName: (): string => 'Lamp' }));
 function section(key: string, scrolls = false): DeviceSection {
   return {
     key,
@@ -162,6 +166,7 @@ beforeEach(() => {
   scene.family = 'plug';
   scene.bodyWidth = 380;
   scene.details = false;
+  scene.lead = true;
   scene.selfScrolling = false;
   scene.shell = null;
   scene.active = null;
@@ -173,7 +178,8 @@ describe('device page shell', () => {
     const page = html('overview');
     expect(page).toContain('data-part="banner-slot"><div data-part="banner">');
     expect(page.indexOf('data-part="banner"')).toBeLessThan(page.indexOf('data-part="hero"'));
-    expect(scene.shell).toMatchObject({ width: 'detail', scroll: true });
+    expect(scene.shell).toMatchObject({ scroll: true });
+    expect(scene.shell).not.toHaveProperty('width');
     expect(scene.active).toBe('overview');
   });
 
@@ -184,6 +190,15 @@ describe('device page shell', () => {
     const page = html('overview');
     expect(page).toContain('gap-section-gap flex-row items-start');
     expect(page).toContain('data-part="details"');
+  });
+
+  it('explains an overview with no reading, control or detail instead of an empty card', () => {
+    scene.lead = false;
+    const page = html('overview');
+    expect(page).toContain('Nothing to show yet');
+    expect(page).not.toContain('data-part="hero"');
+    scene.details = true;
+    expect(html('overview')).not.toContain('Nothing to show yet');
   });
 
   it('leaves the details out when the device has none', () => {

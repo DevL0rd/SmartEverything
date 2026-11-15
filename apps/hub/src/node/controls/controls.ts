@@ -15,6 +15,7 @@ import type { Tick } from '../collectors/tick';
 import { NodeFailureError } from '../node-failure';
 import { darwinControls } from './darwin/darwin-controls';
 import { linuxControls } from './linux/linux-controls';
+import type { MediaPlayersFactory } from './linux/media-players';
 import type {
   AppControl,
   AudioControl,
@@ -64,6 +65,7 @@ export interface ComputerControls {
 
 export interface ControlOptions {
   readonly role?: ComputerRole;
+  readonly media?: MediaPlayersFactory | undefined;
   readonly now: () => Date;
   readonly log: Logger;
 }

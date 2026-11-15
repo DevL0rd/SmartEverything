@@ -12,6 +12,7 @@ import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import type { SelectOption } from '../../../components/select';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
+import { longDate } from '../../../format/time';
 import type { ItemChange } from '../data/writes';
 
 export type ItemChanges = ItemChange['changes'];
@@ -22,6 +23,16 @@ const SCOPE_OPTIONS: Readonly<Record<PlannerItemScope, SegmentedOption<PlannerIt
   this: { value: 'this', label: 'This one' },
   following: { value: 'following', label: 'This and later' },
   all: { value: 'all', label: 'All' },
+};
+
+const DAY_LONG: Readonly<Record<PlannerRruleWeekday, string>> = {
+  MO: 'Monday',
+  TU: 'Tuesday',
+  WE: 'Wednesday',
+  TH: 'Thursday',
+  FR: 'Friday',
+  SA: 'Saturday',
+  SU: 'Sunday',
 };
 
 const DAY_NAMES: Readonly<Record<PlannerRruleWeekday, string>> = {
@@ -53,29 +64,42 @@ function everyOf(rule: PlannerRrule): string {
   return rule.interval === 1 ? `Every ${one}` : `Every ${String(rule.interval)} ${many}`;
 }
 
+function listText(names: readonly string[]): string {
+  const last = names.at(-1);
+  if (names.length < 2 || last === undefined) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${last}`;
+}
+
 function weekDaysOf(rule: PlannerRrule): string | null {
   if (rule.freq !== 'WEEKLY' || rule.by_day.length === 0) return null;
   if (rule.by_day.some((day) => day.ordinal !== null)) return null;
   const days = WEEK_ORDER.filter((day) => rule.by_day.some(({ weekday }) => weekday === day));
-  if (days.join(',') === WORK_DAYS) return 'Weekdays';
-  return days.map((day) => DAY_NAMES[day]).join(', ');
+  if (days.join(',') === WORK_DAYS) return 'weekday';
+  const [only] = days;
+  if (days.length === 1 && only !== undefined) return DAY_LONG[only];
+  return listText(days.map((day) => DAY_NAMES[day]));
 }
 
 function endOf(rule: PlannerRrule): string {
   if (rule.count !== null) return ` · ${String(rule.count)} times`;
-  if (rule.until !== null) return ` · until ${rule.until.value.slice(0, 10)}`;
+  if (rule.until !== null) {
+    return ` · until ${longDate(`${rule.until.value.slice(0, 10)}T12:00:00Z`, 'UTC')}`;
+  }
   return '';
+}
+
+function headOf(rule: PlannerRrule): string {
+  const days = weekDaysOf(rule);
+  if (days === null) return everyOf(rule);
+  if (rule.interval !== 1) return `${everyOf(rule)} on ${days === 'weekday' ? 'weekdays' : days}`;
+  return days === 'weekday' ? 'Weekdays' : `Every ${days}`;
 }
 
 export function repeatTextOf(rrule: string | null): string {
   if (rrule === null) return 'Doesn’t repeat';
   const parsed = parsePlannerRrule(rrule);
   if (!parsed.success) return 'Custom repeat';
-  const rule = parsed.data;
-  const days = weekDaysOf(rule);
-  const head =
-    days === null ? everyOf(rule) : rule.interval === 1 ? days : `${everyOf(rule)} · ${days}`;
-  return `${head}${endOf(rule)}`;
+  return `${headOf(parsed.data)}${endOf(parsed.data)}`;
 }
 
 export const NO_REPEAT = 'none';
@@ -185,29 +209,38 @@ export function RepeatScopeBar(props: RepeatScopeBarProps): ReactNode {
       onChange={props.onScope}
       label="Which repeats change"
       disabled={props.busy}
-      fill
+      fill={!pointer}
     />
   );
-  return (
-    <View className="gap-2">
-      <Text variant="callout" tone="variant">
-        {leadOf(props.kind, props.choices)}
-      </Text>
-      {pointer ? (
-        <View className="flex-row items-center gap-2">
-          <View className="flex-1">{segmented}</View>
+  const lead = (
+    <Text
+      variant="callout"
+      tone="variant"
+      {...(pointer ? { className: 'min-w-0 shrink grow basis-48' } : {})}
+    >
+      {leadOf(props.kind, props.choices)}
+    </Text>
+  );
+  if (pointer) {
+    return (
+      <View className="flex-row flex-wrap items-center gap-x-4 gap-y-2 border-t border-outline-variant pt-3">
+        {lead}
+        <View className="ml-auto flex-row flex-wrap items-center justify-end gap-2">
+          {segmented}
           <Button label="Cancel" variant="text" onPress={props.onCancel} />
           <SaveButton {...props} grow={false} />
         </View>
-      ) : (
-        <>
-          {segmented}
-          <View className="flex-row gap-2">
-            <Button label="Cancel" variant="outlined" grow onPress={props.onCancel} />
-            <SaveButton {...props} grow />
-          </View>
-        </>
-      )}
+      </View>
+    );
+  }
+  return (
+    <View className="gap-2 border-t border-outline-variant pt-3">
+      {lead}
+      {segmented}
+      <View className="flex-row gap-2">
+        <Button label="Cancel" variant="outlined" grow onPress={props.onCancel} />
+        <SaveButton {...props} grow />
+      </View>
     </View>
   );
 }

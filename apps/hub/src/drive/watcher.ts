@@ -1,11 +1,14 @@
-import { readdirSync, statSync, watch as fsWatch } from 'node:fs';
+import { readdirSync, statSync, watch as fsWatch, type Dirent } from 'node:fs';
 import { join, matchesGlob } from 'node:path';
 import type { StoredDrive } from '../store/repositories/drive-roots';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
 import type { DriveRootsRepository } from '../store/repositories/drive-roots';
 import { MARKER_DIRECTORY } from './root-marker';
 import { LOCKED_FOLDER } from './access';
+import { ORPHAN_DIRECTORY } from './paths';
+import type { DriveActivity } from './activity';
+import { firstOutside, type IndexReader, type OutsideChange } from './watch-reflect';
 
 export interface WatchHandle {
   readonly close: () => void;
@@ -30,7 +33,12 @@ export const systemWatch: WatchFactory = (directory, onEvent) => {
 
 export interface WatchEnvironment {
   readonly roots: Pick<DriveRootsRepository, 'find' | 'update'>;
+  readonly index: IndexReader;
+  readonly activity: DriveActivity;
+  readonly mounted: (rootId: string) => boolean;
+  readonly onPlacementChange: (listener: (rootId: string) => void) => () => void;
   readonly enqueueScan: (rootId: string) => void;
+  readonly enqueueFollowUps: (rootId: string) => void;
   readonly watch: WatchFactory;
   readonly settleMs: number;
   readonly log: Logger;
@@ -58,18 +66,12 @@ function folderInode(path: string): number | undefined {
   return stats?.isDirectory() === true ? stats.ino : undefined;
 }
 
-function childFolders(directory: string): readonly string[] {
-  return readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => join(directory, entry.name));
-}
-
-function ignoredByRoot(root: StoredDrive, relPath: string): boolean {
+function ignoredByRoot(root: StoredDrive, relPath: string, includeHidden: boolean): boolean {
   if (relPath === '') return false;
-  if (relPath.split('/')[0] === MARKER_DIRECTORY) return true;
   const segments = relPath.split('/');
+  if (segments[0] === MARKER_DIRECTORY || segments[0] === ORPHAN_DIRECTORY) return true;
   if (
-    !root.includeHidden &&
+    !includeHidden &&
     segments.some(
       (segment, index) => segment.startsWith('.') && !(index === 0 && segment === LOCKED_FOLDER),
     )
@@ -89,6 +91,11 @@ class RootWatch {
     { readonly handle: WatchHandle; readonly ino: number }
   >();
   private readonly unreadable = new Set<string>();
+  private touched = new Set<string>();
+  private unknown = false;
+  private opened = false;
+  private mounted: boolean;
+  private readonly unsubscribe: () => void;
   private timer: NodeJS.Timeout | undefined;
   private problem: string | null = null;
   private exhausted = false;
@@ -98,10 +105,16 @@ class RootWatch {
     private readonly env: WatchEnvironment,
     private readonly root: StoredDrive,
     private readonly report: (reason: string | null) => void,
-  ) {}
+  ) {
+    this.mounted = env.mounted(root.id);
+    this.unsubscribe = env.onPlacementChange((rootId) => {
+      if (rootId === root.id) this.mounted = env.mounted(rootId);
+    });
+  }
 
   open(): void {
     this.attach(this.root.path);
+    this.opened = true;
     this.env.log.info('drive.watch_started', {
       rootId: this.root.id,
       watchers: this.watched.size,
@@ -112,6 +125,7 @@ class RootWatch {
 
   close(): void {
     this.closed = true;
+    this.unsubscribe();
     clearTimeout(this.timer);
     for (const { handle } of this.watched.values()) handle.close();
     this.watched.clear();
@@ -135,10 +149,16 @@ class RootWatch {
       const ino = folderInode(directory);
       if (ino === undefined) return;
       this.add(directory, ino);
-      for (const child of childFolders(directory)) this.attach(child);
+      for (const child of readdirSync(directory, { withFileTypes: true })) this.child(child);
     } catch (cause) {
       this.refused(directory, cause);
     }
+  }
+
+  private child(entry: Dirent): void {
+    const absolute = join(entry.parentPath, entry.name);
+    if (this.opened) this.touch(this.relOf(absolute));
+    if (entry.isDirectory()) this.attach(absolute);
   }
 
   private add(directory: string, ino: number): void {
@@ -202,15 +222,87 @@ class RootWatch {
 
   private changed(base: string, name: string): void {
     if (this.closed) return;
-    const absolute = name === '' ? base : join(base, name);
-    const relPath = absolute.slice(this.root.path.length).replace(/^\/+/, '');
-    if (name !== '') this.follow(absolute);
-    if (ignoredByRoot(this.root, relPath)) return;
+    if (name === '') {
+      if (this.ignored(this.relOf(base))) return;
+      this.unknown = true;
+      this.arm();
+      return;
+    }
+    const absolute = join(base, name);
+    this.follow(absolute);
+    this.touch(this.relOf(absolute));
+  }
+
+  private relOf(absolute: string): string {
+    return absolute.slice(this.root.path.length).replace(/^\/+/, '');
+  }
+
+  private ignored(relPath: string): boolean {
+    return ignoredByRoot(this.root, relPath, this.root.includeHidden || this.mounted);
+  }
+
+  private touch(relPath: string): void {
+    if (this.ignored(relPath)) return;
+    this.touched.add(relPath);
+    this.arm();
+  }
+
+  private arm(): void {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
-      this.env.enqueueScan(this.root.id);
+      this.settle();
     }, this.env.settleMs);
     this.timer.unref();
+  }
+
+  private settle(): void {
+    const touched = this.touched;
+    const unknown = this.unknown;
+    this.touched = new Set();
+    this.unknown = false;
+    if (unknown) {
+      this.env.enqueueScan(this.root.id);
+      return;
+    }
+    background(this.check([...touched]), 'drive.watch_check_crashed', {
+      rootId: this.root.id,
+    });
+  }
+
+  private async check(touched: readonly string[]): Promise<void> {
+    const { activity } = this.env;
+    let remaining = touched;
+    for (;;) {
+      await activity.quiet();
+      if (this.stopped()) return;
+      const generation = activity.generation;
+      const outside = await this.outside(remaining);
+      if (outside === 'failed' || this.stopped()) return;
+      if (outside === null) {
+        this.env.enqueueFollowUps(this.root.id);
+        return;
+      }
+      if (activity.quietSince(generation)) {
+        this.env.log.info('drive.watch_outside_change', { rootId: this.root.id, ...outside });
+        this.env.enqueueScan(this.root.id);
+        return;
+      }
+      remaining = remaining.slice(remaining.indexOf(outside.relPath));
+    }
+  }
+
+  private stopped(): boolean {
+    return this.closed;
+  }
+
+  private async outside(touched: readonly string[]): Promise<OutsideChange | null | 'failed'> {
+    try {
+      return await firstOutside(this.env.index, this.root, touched);
+    } catch (cause) {
+      this.env.log.error('drive.watch_check_failed', cause, { rootId: this.root.id });
+      this.env.enqueueScan(this.root.id);
+      return 'failed';
+    }
   }
 }
 

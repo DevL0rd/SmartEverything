@@ -9,7 +9,6 @@ import { ErrorState } from '../../../components/error-state';
 import { Grid } from '../../../components/grid';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
-import { Section } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
@@ -34,13 +33,12 @@ import {
   type SuggestionGroup,
   type WaitingTile,
 } from './priority-model';
+import { SectionHead } from '../starred/section-head';
 import { SuggestionCard, suggestionKeyOf } from './suggestion-card';
-
-export const PRIORITY_OFFLINE_TITLE = 'Showing the last known suggestions · reconnecting';
 
 const CARD_MIN_WIDTH = 300;
 
-const PLACEHOLDERS = ['a', 'b', 'c', 'd'] as const;
+const PLACEHOLDERS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
 
 function WaitingCard({ tile }: { readonly tile: WaitingTile }): ReactNode {
   return (
@@ -69,20 +67,22 @@ function WaitingCard({ tile }: { readonly tile: WaitingTile }): ReactNode {
 function Waiting({ tiles }: { readonly tiles: readonly WaitingTile[] }): ReactNode {
   if (tiles.length === 0) return null;
   return (
-    <Section title="Waiting for you">
-      <Grid minItemWidth={240} maxColumns={tiles.length}>
+    <View className="gap-2">
+      <SectionHead title="Waiting for you" />
+      <Grid minItemWidth={240} maxColumns={tiles.length} stretchLastRow={false}>
         {tiles.map((tile) => (
           <WaitingCard key={tile.kind} tile={tile} />
         ))}
       </Grid>
-    </Section>
+    </View>
   );
 }
 
 function Group({ group }: { readonly group: SuggestionGroup }): ReactNode {
   const nameOf = useByName();
   return (
-    <Section title={group.label}>
+    <View className="gap-2">
+      <SectionHead title={group.label} />
       <Grid minItemWidth={CARD_MIN_WIDTH} maxColumns={3} stretchLastRow={false}>
         {group.suggestions.map((suggestion) => (
           <SuggestionCard
@@ -93,16 +93,28 @@ function Group({ group }: { readonly group: SuggestionGroup }): ReactNode {
           />
         ))}
       </Grid>
-    </Section>
+    </View>
   );
 }
 
 function Loading(): ReactNode {
   return (
-    <View aria-busy className="gap-3">
-      {PLACEHOLDERS.map((key) => (
-        <Skeleton key={key} shape="tile" className="h-16" />
-      ))}
+    <View aria-busy aria-label="Loading suggestions" className="gap-2">
+      <Skeleton shape="text" className="mx-1 h-4 w-24" />
+      <Grid minItemWidth={CARD_MIN_WIDTH} maxColumns={3} stretchLastRow={false}>
+        {PLACEHOLDERS.map((key) => (
+          <View
+            key={key}
+            className="min-w-0 flex-1 flex-row items-center gap-3 rounded-md border-hairline border-outline-variant bg-surface-1 p-2"
+          >
+            <Skeleton className="h-12 w-16 rounded-sm" />
+            <View className="min-w-0 flex-1 gap-2">
+              <Skeleton shape="text" className="w-3/5" />
+              <Skeleton shape="text" className="w-4/5" />
+            </View>
+          </View>
+        ))}
+      </Grid>
     </View>
   );
 }
@@ -110,15 +122,27 @@ function Loading(): ReactNode {
 function Suggestions({
   query,
   groups,
+  live,
 }: {
   readonly query: ReturnType<typeof useDriveSuggested>;
   readonly groups: readonly SuggestionGroup[];
+  readonly live: boolean;
 }): ReactNode {
   if (query.data === undefined) {
+    if (!live) {
+      return (
+        <EmptyState
+          icon="wifiOff"
+          title="The hub is offline"
+          body="Suggestions come back when the hub reconnects. Your files stay on the hub as they are."
+        />
+      );
+    }
     if (!query.isError) return <Loading />;
     return (
       <ErrorState
         error={query.error}
+        page
         retry={() => {
           background(query.refetch(), 'drive.priority_refetch_failed');
         }}
@@ -126,7 +150,14 @@ function Suggestions({
     );
   }
   if (groups.length === 0) {
-    return <EmptyState icon="sparkles" title={PRIORITY_EMPTY_TITLE} body={PRIORITY_EMPTY_BODY} />;
+    return (
+      <EmptyState
+        icon="sparkles"
+        title={PRIORITY_EMPTY_TITLE}
+        body={PRIORITY_EMPTY_BODY}
+        action={<Button label="Open My Drive" variant="tonal" href={href.drive()} />}
+      />
+    );
   }
   return (
     <>
@@ -149,6 +180,17 @@ function Suggestions({
   );
 }
 
+function PriorityStaleBanner(): ReactNode {
+  return (
+    <Banner
+      wrapBody
+      tone="info"
+      title="Offline · showing the last suggestions"
+      body="New suggestions appear when the hub is back."
+    />
+  );
+}
+
 export function PriorityScreen(): ReactNode {
   const query = useDriveSuggested();
   const now = useMinute();
@@ -163,16 +205,21 @@ export function PriorityScreen(): ReactNode {
     notifications: useDriveNotificationRows(),
   });
   const shown = groups.reduce((sum, group) => sum + group.suggestions.length, 0);
+  const subtitle = prioritySubtitleOf(
+    query.data === undefined ? null : shown,
+    query.hasNextPage,
+    tiles,
+  );
   return (
     <DriveFrame
       section="priority"
       title="Priority"
-      subtitle={prioritySubtitleOf(shown, query.hasNextPage, tiles)}
-      {...(live ? {} : { banner: <Banner tone="info" title={PRIORITY_OFFLINE_TITLE} /> })}
+      {...(subtitle === undefined ? {} : { subtitle })}
+      {...(!live && query.data !== undefined ? { banner: <PriorityStaleBanner /> } : {})}
     >
       <View className="gap-6">
         <Waiting tiles={tiles} />
-        <Suggestions query={query} groups={groups} />
+        <Suggestions query={query} groups={groups} live={live} />
       </View>
     </DriveFrame>
   );

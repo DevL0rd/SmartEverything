@@ -319,7 +319,7 @@ export function LookSection(): ReactNode {
 }
 
 function MapsOverview({ selectedId }: { readonly selectedId: string | undefined }): ReactNode {
-  const column = 'min-w-0 max-w-reading grow shrink basis-96';
+  const column = 'min-w-0 grow shrink basis-96';
   return (
     <View className="flex-row flex-wrap items-start gap-section-gap">
       <View className={column}>
@@ -347,7 +347,7 @@ export function MapsListScreen({ selectedId, detail }: MapsListScreenProps): Rea
   const twoColumns = useTwoColumns(detail !== undefined);
   if (!twoColumns) {
     return (
-      <SettingsFrame page={HOME_MAP_SETTINGS_PAGE} title={HOME_MAPS_TITLE} contentWidth="full">
+      <SettingsFrame page={HOME_MAP_SETTINGS_PAGE} title={HOME_MAPS_TITLE}>
         <MapsOverview selectedId={selectedId} />
       </SettingsFrame>
     );

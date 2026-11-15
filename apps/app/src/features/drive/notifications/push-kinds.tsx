@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { CLIENT_PREFS } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { SwitchRow } from '../../../components/rows';
+import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { usePref } from '../../../store/prefs';
 import { KIND_LABEL, KIND_LOOK, PUSH_KIND_ORDER, pushKindsAfter } from './notification-model';
@@ -30,7 +31,7 @@ export function PushKindsSetting(): ReactNode {
   }
   const chosen = new Set(pref.value.pushKinds);
   return (
-    <View role="list" aria-label={PUSH_KINDS_TITLE}>
+    <List inset title={PUSH_KINDS_TITLE} footer={PUSH_KINDS_CAPTION}>
       {PUSH_KIND_ORDER.map((kind) => (
         <SwitchRow
           key={kind}
@@ -43,6 +44,6 @@ export function PushKindsSetting(): ReactNode {
           }}
         />
       ))}
-    </View>
+    </List>
   );
 }

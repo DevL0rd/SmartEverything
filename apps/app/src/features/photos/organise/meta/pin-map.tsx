@@ -13,6 +13,7 @@ import {
   zoomedBy,
   type MapView,
 } from '../../places/map-view';
+import { useMapWheel } from '../../places/use-map-wheel';
 import { NATURAL_EARTH_ATTRIBUTION } from '../../world-map';
 import type { FrameSize, GeoPoint } from '../../world-map/projection';
 import { useMapFrame } from '../../world-map/use-map-frame';
@@ -112,6 +113,7 @@ function Layers({
 
 export function PinMap(props: PinMapProps): ReactNode {
   const { ref, frame, onLayout } = useMapFrame();
+  useMapWheel(ref, 'ctrl-wheel', props, frame);
   return (
     <View
       ref={ref}

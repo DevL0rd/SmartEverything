@@ -520,7 +520,6 @@ describe('video posters', () => {
     await posterHandler().run(job, NO_ABORT);
 
     expect(media.byId(id)).toMatchObject({ preview_state: 'ready', poster_state: 'ready' });
-    expect(media.byId(id).thumbhash).not.toBeNull();
     expect(thumbOf(items.find(id, null))).toEqual({ state: 'ready' });
     const preview = await readFile(derivedPath(layout, { itemId: id, rev: 1, size: 'preview' }));
     expect(await sharp(preview).metadata()).toMatchObject({

@@ -147,6 +147,8 @@ vi.mock('../../../design/colour', () => ({
 }));
 vi.mock('../../../store/selectors', () => ({
   useDevices: (): [] => [],
+  useFirstDevice: (): null => null,
+  useHasDevice: (): boolean => false,
   useRooms: (): [] => [],
   useSyncStatus: (): { status: string } => ({ status: 'live' }),
 }));

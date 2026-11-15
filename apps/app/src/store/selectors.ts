@@ -24,6 +24,7 @@ import {
   type DeviceValues,
   type ListTable,
   type RowOf,
+  type SectionFailure,
   type Session,
   type StoreState,
   type SyncState,
@@ -65,12 +66,20 @@ function sameSyncStatus(left: SyncStatus, right: SyncStatus): boolean {
   return (
     left.status === right.status &&
     left.problem === right.problem &&
-    shallowEqual(left.outdated, right.outdated)
+    shallowEqual(left.failed, right.failed)
   );
 }
 
 export function useSyncStatus(): SyncStatus {
   return useStoreSelector(selectSync, sameSyncStatus);
+}
+
+export function sectionFailureOf(sync: SyncStatus, section: string): SectionFailure | null {
+  return sync.failed.find((failure) => failure.section === section) ?? null;
+}
+
+export function useSectionFailure(section: string): SectionFailure | null {
+  return sectionFailureOf(useSyncStatus(), section);
 }
 
 const selectHub = (state: StoreState): HubStatus | null => state.hub;
@@ -138,6 +147,87 @@ export function devicesIn(state: StoreState, filter: DeviceFilter): readonly Dev
 
 export function useDevices(filter: DeviceFilter = {}): readonly Device[] {
   return useStoreSelector(deviceSelector(filter), shallowEqual);
+}
+
+export type DeviceNameField = 'name' | 'label';
+
+function deviceNamesSelector(
+  field: DeviceNameField,
+): (state: StoreState) => ReadonlyMap<string, string> {
+  let held: ReadonlyMap<string, string> = new Map();
+  return memoOnInputs(devicesTable, (state) => {
+    const devices = rowsOf(state.tables.devices);
+    if (
+      held.size === devices.length &&
+      devices.every((device) => held.get(device.id) === device[field])
+    ) {
+      return held;
+    }
+    held = new Map(devices.map((device) => [device.id, device[field]]));
+    return held;
+  });
+}
+
+const DEVICE_NAMES: Readonly<
+  Record<DeviceNameField, (state: StoreState) => ReadonlyMap<string, string>>
+> = {
+  name: deviceNamesSelector('name'),
+  label: deviceNamesSelector('label'),
+};
+
+export function deviceNamesIn(
+  state: StoreState,
+  field: DeviceNameField,
+): ReadonlyMap<string, string> {
+  return DEVICE_NAMES[field](state);
+}
+
+export function useDeviceNames(field: DeviceNameField): ReadonlyMap<string, string> {
+  return useStoreSelector(DEVICE_NAMES[field], Object.is, [field]);
+}
+
+export type DevicePredicate = (device: Device) => boolean;
+
+export function useDeviceIds(predicate: DevicePredicate, filter: DeviceFilter = {}): string {
+  return useStoreSelector(
+    (state) =>
+      devicesIn(state, filter)
+        .filter(predicate)
+        .map((device) => device.id)
+        .join(','),
+    Object.is,
+    [predicate, filter.room, filter.includeHidden],
+  );
+}
+
+export function useMatchingDevices(
+  predicate: DevicePredicate,
+  filter: DeviceFilter = {},
+): readonly Device[] {
+  return useStoreSelector((state) => devicesIn(state, filter).filter(predicate), shallowEqual, [
+    predicate,
+    filter.room,
+    filter.includeHidden,
+  ]);
+}
+
+export function useFirstDevice(
+  predicate: DevicePredicate,
+  filter: DeviceFilter = {},
+): Device | null {
+  return useStoreSelector((state) => devicesIn(state, filter).find(predicate) ?? null, Object.is, [
+    predicate,
+    filter.room,
+    filter.includeHidden,
+  ]);
+}
+
+export function useHasDevice(predicate: DevicePredicate, filter: DeviceFilter = {}): boolean {
+  return useStoreSelector((state) => devicesIn(state, filter).some(predicate), Object.is, [
+    predicate,
+    filter.room,
+    filter.includeHidden,
+  ]);
 }
 
 export const listedDevicesIn = memoOnInputs(devicesTable, (state): readonly Device[] => {

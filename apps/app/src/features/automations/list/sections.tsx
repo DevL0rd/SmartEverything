@@ -11,7 +11,8 @@ import type { ListLinks } from './list-links';
 import type { Section } from './list-view';
 
 export const ROWS_AT_ONCE = { first: 6, batch: 6 } as const;
-const ROW_MIN_WIDTH = 520;
+const ROW_MIN_WIDTH = 400;
+const MOST_COLUMNS = 3;
 
 export function mountedIds(sections: readonly Section[], count: number): ReadonlySet<string> {
   return new Set(
@@ -29,7 +30,6 @@ export interface SectionsProps {
   readonly links: ListLinks;
   readonly actions: ListActions;
   readonly timeZone: string | null;
-  readonly selectedId?: string | null;
 }
 
 export function Sections({
@@ -39,7 +39,6 @@ export function Sections({
   links,
   actions,
   timeZone,
-  selectedId = null,
 }: SectionsProps): ReactNode {
   const count = useProgressiveCount(total, true, ROWS_AT_ONCE);
   const mounted = mountedIds(sections, count);
@@ -52,7 +51,7 @@ export function Sections({
             <Text variant="label" tone="variant" accessibilityRole="header" className="px-1">
               {`${section.title} · ${String(section.entries.length)}`}
             </Text>
-            <Grid minItemWidth={ROW_MIN_WIDTH} maxColumns={2}>
+            <Grid minItemWidth={ROW_MIN_WIDTH} maxColumns={MOST_COLUMNS} stretchLastRow={false}>
               {shown.map((entry) => (
                 <AutomationRow
                   key={entry.id}
@@ -61,7 +60,6 @@ export function Sections({
                   links={links}
                   actions={actions}
                   timeZone={timeZone}
-                  selected={entry.id === selectedId}
                 />
               ))}
             </Grid>

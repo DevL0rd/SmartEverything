@@ -102,14 +102,14 @@ describe('reading the snapshot section by section', () => {
     expect(data.firewall).toBeNull();
     expect(data.tables.rooms).toHaveLength(1);
     expect(data.seq).toBe(7);
-    expect(answer.unreadable).toHaveLength(1);
-    expect(answer.unreadable[0]?.section).toBe('firewall');
-    expect(answer.unreadable[0]?.path.startsWith('firewall.openings.0')).toBe(true);
+    expect(answer.failed).toHaveLength(1);
+    expect(answer.failed[0]?.section).toBe('firewall');
+    expect(answer.failed[0]?.reason.startsWith('firewall.openings.0')).toBe(true);
   });
 
-  it('reads a healthy snapshot with nothing unreadable', async () => {
+  it('reads a healthy snapshot with nothing failed', async () => {
     const answer = await read(snapshotWire());
-    expect(answer.unreadable).toHaveLength(0);
+    expect(answer.failed).toHaveLength(0);
     expect(answer.data.firewall).not.toBeNull();
   });
 
@@ -122,13 +122,61 @@ describe('reading the snapshot section by section', () => {
     );
     const { automations, rooms } = answer.data.tables;
     expect(automations.map((kept) => kept.id)).toEqual([GOOD_ID]);
-    expect(answer.skipped).toEqual(['tables.automations']);
-    expect(answer.unreadable).toHaveLength(0);
+    expect(answer.failed.map((failure) => failure.section)).toEqual(['tables.automations']);
+    expect(answer.failed[0]?.reason.startsWith('1 unreadable row:')).toBe(true);
     expect(rooms).toHaveLength(1);
     expect(answer.data.seq).toBe(7);
     const parsed = parseAutomationRows(automations, STATIC_KIND_LOOKUP);
     expect(parsed.rejected).toBe(0);
     expect(parsed.rows.map((kept) => kept.id)).toEqual([GOOD_ID]);
+  });
+
+  it('connects with a removed table and a malformed table and names only those', async () => {
+    const wire = snapshotWire();
+    const tables = wire['tables'];
+    if (typeof tables !== 'object' || tables === null) throw new Error('the fixture has no tables');
+    const { rooms: _removed, ...kept } = Object.fromEntries(Object.entries(tables));
+    const answer = await read({ ...wire, tables: { ...kept, cameras: 'not a table' } });
+    expect(answer.data.seq).toBe(7);
+    expect(answer.data.firewall).not.toBeNull();
+    expect(answer.data.tables.settings.home_name).toBe('Home');
+    expect(answer.data.tables.rooms).toEqual([]);
+    expect(answer.data.tables.cameras).toEqual([]);
+    expect(answer.failed).toEqual([
+      expect.objectContaining({
+        section: 'tables.rooms',
+        reason: 'the server did not send this table',
+      }),
+      expect.objectContaining({ section: 'tables.cameras' }),
+    ]);
+    expect(answer.failed[1]?.reason).toContain('expected array');
+  });
+
+  it('names an unknown table and an unknown section without failing the rest', async () => {
+    const wire = snapshotWire();
+    const tables = wire['tables'];
+    if (typeof tables !== 'object' || tables === null) throw new Error('the fixture has no tables');
+    const answer = await read({ ...wire, scenes_v2: {}, tables: { ...tables, scenes: [] } });
+    expect(answer.data.tables.rooms).toHaveLength(1);
+    expect(answer.failed).toEqual([
+      { section: 'scenes_v2', reason: 'this app does not know this section' },
+      { section: 'tables.scenes', reason: 'this app does not know this table' },
+    ]);
+  });
+
+  it('keeps a table working when its rows carry fields this app does not know', async () => {
+    const wire = snapshotWire();
+    const tables = wire['tables'];
+    if (typeof tables !== 'object' || tables === null) throw new Error('the fixture has no tables');
+    const { rooms, ...kept } = Object.fromEntries(Object.entries(tables));
+    if (!Array.isArray(rooms)) throw new Error('the fixture has no rooms');
+    const newer = rooms.map((room: unknown) =>
+      typeof room === 'object' && room !== null ? { ...room, from_a_newer_hub: true } : room,
+    );
+    const answer = await read({ ...wire, tables: { ...kept, rooms: newer } });
+    expect(answer.data.tables.rooms).toHaveLength(1);
+    expect(answer.data.tables.rooms[0]).not.toHaveProperty('from_a_newer_hub');
+    expect(answer.failed).toEqual([]);
   });
 
   it('still refuses a snapshot whose essential session part is unreadable', async () => {

@@ -73,10 +73,10 @@ const MODEL: SearchListModel = {
 };
 
 describe('Search result presentation', () => {
-  it('applies the detail measure to each full-page result while keeping the list viewport fluid', () => {
+  it('lets each full-page result fill the list viewport', () => {
     const page = renderToStaticMarkup(createElement(ResultList, { model: MODEL, fullPage: true }));
     expect(page).toContain('<div class="flex-1"><div data-list="true">');
-    expect(page.match(/class="w-full max-w-detail"/gu)).toHaveLength(MODEL.rows.length);
+    expect(page).not.toContain('max-w-');
     expect(page).toContain('<p data-wrap="true">First result</p>');
     expect(page.indexOf('First result')).toBeLessThan(page.indexOf('Second result'));
   });

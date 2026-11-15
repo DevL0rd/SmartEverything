@@ -250,30 +250,39 @@ function useGrantChange(person: SharedPerson<ProfileRow>, live: boolean): GrantC
   return { change, set, expiry };
 }
 
-function RoleControls({
+function PersonHead({
+  person,
+  children,
+}: {
+  readonly person: SharedPerson<ProfileRow>;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <View className="min-h-11 flex-row items-center gap-3">
+      {person.profile === null ? null : <ProfileAvatar profile={person.profile} />}
+      <Text variant="callout" numberOfLines={1} className="min-w-0 flex-1">
+        {person.name}
+      </Text>
+      {children}
+    </View>
+  );
+}
+
+function ManagedPerson({
   person,
   live,
+  now,
 }: {
   readonly person: SharedPerson<ProfileRow>;
   readonly live: boolean;
+  readonly now: number;
 }): ReactNode {
   const { change, set, expiry } = useGrantChange(person, live);
   const remove = useGrantRemove();
   const { grant } = person;
   return (
-    <>
-      <View className="ml-auto flex-row flex-wrap items-center justify-end gap-1">
-        <Segmented
-          options={ROLE_OPTIONS}
-          value={grant.role}
-          label={`What ${person.name} can do`}
-          compact
-          disabled={!live || change.busy}
-          onChange={(role) => {
-            set(role, grant.expiresAt);
-          }}
-        />
-        {expiry.chip}
+    <View className="gap-1 py-1">
+      <PersonHead person={person}>
         <IconButton
           icon="close"
           label={`Stop sharing with ${person.name}`}
@@ -283,12 +292,26 @@ function RoleControls({
             remove.run(grant.id);
           }}
         />
-      </View>
-      <View className="w-full items-end gap-1">
+      </PersonHead>
+      <View className={cn('gap-2', person.profile !== null && 'pl-11')}>
+        <View className="flex-row flex-wrap items-center gap-2">
+          <Segmented
+            options={ROLE_OPTIONS}
+            value={grant.role}
+            label={`What ${person.name} can do`}
+            compact
+            disabled={!live || change.busy}
+            onChange={(role) => {
+              set(role, grant.expiresAt);
+            }}
+          />
+          {expiry.chip}
+        </View>
         {expiry.picker}
+        <TimeLeft person={person} now={now} />
         <Problem text={change.problem ?? remove.problem} />
       </View>
-    </>
+    </View>
   );
 }
 
@@ -302,25 +325,20 @@ function PersonRow({
   readonly live: boolean;
 }): ReactNode {
   const now = useMinute();
+  if (manage) return <ManagedPerson person={person} live={live} now={now} />;
   return (
-    <View className="min-h-row-h flex-row flex-wrap items-center gap-x-3 gap-y-1 py-1">
-      <View className="min-w-36 flex-1 flex-row items-center gap-3">
-        {person.profile === null ? null : <ProfileAvatar profile={person.profile} />}
-        <Text variant="callout" numberOfLines={1} className="min-w-0 shrink">
-          {person.name}
-        </Text>
-      </View>
-      {manage ? (
-        <RoleControls person={person} live={live} />
-      ) : (
-        <View className="flex-row flex-wrap gap-1">
+    <View className="gap-1 py-1">
+      <PersonHead person={person}>
+        <View className="flex-row flex-wrap justify-end gap-1">
           <Badge label={ROLE_LABEL[person.grant.role]} />
           {person.grant.expiresAt === null ? null : (
             <Badge icon="clock" label={endLabelOf(person.grant.expiresAt, now)} />
           )}
         </View>
-      )}
-      <TimeLeft person={person} now={now} />
+      </PersonHead>
+      <View className={cn(person.profile !== null && 'pl-11')}>
+        <TimeLeft person={person} now={now} />
+      </View>
     </View>
   );
 }
@@ -335,7 +353,7 @@ function TimeLeft({
   const share = timeLeftShareOf(person.grant, now);
   if (share === null) return null;
   return (
-    <View className="w-full pb-1">
+    <View className="w-full">
       <ProgressBar
         progress={share}
         colour={timeLeftColourOf(person.grant.expiresAt, now)}

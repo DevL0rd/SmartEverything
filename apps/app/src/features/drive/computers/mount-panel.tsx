@@ -9,22 +9,18 @@ import { Button } from '../../../components/button';
 import { SegmentBar } from '../../../components/charts';
 import { confirm } from '../../../components/confirm-store';
 import { CopyField } from '../../../components/copy-field';
-import { IconWell } from '../../../components/icon-well';
 import { MetricStrip, type MetricItem } from '../../../components/metric-strip';
 import { ProgressSteps } from '../../../components/progress-steps';
 import { Text } from '../../../components/text';
 import { bytes, count } from '../../../format/number';
-import { plural } from '../../../format/text';
 import {
   HEALTH_LOOK,
   ROUTE_LOOK,
-  mountLocationsOf,
   offlineBodyOf,
   setupCopyOf,
   setupOf,
   uploadWaitOf,
   TIER_WORD,
-  type MountLocation,
   type MountSetup,
   type MountSummary,
 } from './mount-summary';
@@ -185,80 +181,6 @@ export function MountSetupSteps({
   );
 }
 
-function LocationRow({
-  location,
-  drive,
-  explained,
-}: {
-  readonly location: MountLocation;
-  readonly drive: DesktopDriveView;
-  readonly explained: boolean;
-}): ReactNode {
-  return (
-    <View className="flex-row flex-wrap items-center gap-3 rounded-md bg-surface-3 p-3">
-      <IconWell icon="hardDrive" colour="viz-blue" size="m" />
-      <View className="min-w-0 flex-1 basis-48 gap-0.5">
-        <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-          <Text variant="callout" numberOfLines={1} className="min-w-0 shrink">
-            {location.name}
-          </Text>
-          <Badge label={location.chip.label} tone={location.chip.tone} />
-        </View>
-        <Text
-          variant="footnote"
-          tone="variant"
-          numberOfLines={1}
-          className={location.point === null ? '' : 'font-mono'}
-          selectable={location.point !== null}
-        >
-          {location.point ??
-            (location.chip.tone === 'positive' ? 'Place not reported yet' : 'Not mounted')}
-        </Text>
-        {explained || location.chip.tone === 'positive' ? null : (
-          <Text variant="footnote" tone={location.lineTone} numberOfLines={2}>
-            {location.line}
-          </Text>
-        )}
-      </View>
-      {location.openable ? (
-        <Button
-          label="Open in file manager"
-          icon="externalLink"
-          variant="tonal"
-          loading={drive.busy}
-          spoken={`Open ${location.name} in the file manager`}
-          onPress={() => {
-            drive.open(location.id);
-          }}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-function Locations({
-  summary,
-  drive,
-}: {
-  readonly summary: MountSummary;
-  readonly drive: DesktopDriveView;
-}): ReactNode {
-  const locations = mountLocationsOf(summary);
-  if (locations.length === 0) return null;
-  return (
-    <View className="gap-2">
-      {locations.map((location) => (
-        <LocationRow
-          key={location.id}
-          location={location}
-          drive={drive}
-          explained={location.id === summary.stopped?.id}
-        />
-      ))}
-    </View>
-  );
-}
-
 function Header({ summary }: { readonly summary: MountSummary }): ReactNode {
   const health = HEALTH_LOOK[summary.health];
   const route =
@@ -300,7 +222,6 @@ export function MountPanel({
           <Header summary={summary} />
           <Stopped summary={summary} drive={drive} />
           <Offline summary={summary} />
-          <Locations summary={summary} drive={drive} />
           {summary.active ? <CacheBar summary={summary} /> : null}
           {summary.active ? (
             <MetricStrip items={mountTilesOf(summary)} columns={TILE_COLUMNS} />
@@ -311,7 +232,7 @@ export function MountPanel({
               icon="eraser"
               variant="outlined"
               loading={drive.busy}
-              spoken={`Clear the mount cache, ${plural(summary.placements.length, 'folder')}`}
+              spoken="Clear the mount cache"
               onPress={() => {
                 clearCache(summary, drive);
               }}

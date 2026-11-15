@@ -11,7 +11,7 @@ import {
 describe('the app update controller downloads', () => {
   it('restarts by itself after the download when no call is active', async () => {
     const world = setup();
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await world.controller.download(OFFER.id);
     expect(world.ask).not.toHaveBeenCalled();
     expect(world.adapter.restart).toHaveBeenCalledTimes(1);
@@ -21,7 +21,7 @@ describe('the app update controller downloads', () => {
 
   it('holds the restart during a call and restarts without asking when it ends', async () => {
     const world = setup();
-    await world.controller.check('live');
+    await world.controller.check('paired');
     world.setBusy(true);
     await world.controller.download(OFFER.id);
     expect(world.controller.state().kind).toBe('waiting_for_call');
@@ -37,7 +37,7 @@ describe('the app update controller downloads', () => {
   it('keeps the offer, cause and a report when a download fails', async () => {
     const world = setup();
     vi.mocked(world.adapter.download).mockRejectedValueOnce(new Error('Disk full'));
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await world.controller.download(OFFER.id);
     expect(world.controller.state()).toMatchObject({
       kind: 'failed',
@@ -55,7 +55,7 @@ describe('the app update controller downloads', () => {
   it('resumes the same download on Try again without checking again', async () => {
     const world = setup();
     vi.mocked(world.adapter.download).mockRejectedValueOnce(new Error('Disk full'));
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await world.controller.download(OFFER.id);
     await world.controller.retry(OFFER.id);
     expect(world.adapter.check).toHaveBeenCalledTimes(1);
@@ -66,7 +66,7 @@ describe('the app update controller downloads', () => {
   it('ignores a Try again for another offer', async () => {
     const world = setup();
     vi.mocked(world.adapter.download).mockRejectedValueOnce(new Error('Disk full'));
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await world.controller.download(OFFER.id);
     await world.controller.retry(REPLACEMENT.id);
     expect(world.adapter.download).toHaveBeenCalledTimes(1);
@@ -75,7 +75,7 @@ describe('the app update controller downloads', () => {
   it('keeps the failed notice when a background check finds the same offer', async () => {
     const world = setup();
     vi.mocked(world.adapter.download).mockRejectedValueOnce(new Error('Disk full'));
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await world.controller.download(OFFER.id);
     await world.controller.check('notice');
     expect(world.controller.state()).toMatchObject({ kind: 'failed', cause: 'download' });
@@ -84,10 +84,10 @@ describe('the app update controller downloads', () => {
   it('offers a download failure again to a new session', async () => {
     const world = setup();
     vi.mocked(world.adapter.download).mockRejectedValueOnce(new Error('Disk full'));
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await world.controller.download(OFFER.id);
     const next = setup({ prefs: world.prefs() });
-    await next.controller.check('live');
+    await next.controller.check('paired');
     expect(next.controller.state()).toEqual({ kind: 'available', offer: OFFER });
   });
 
@@ -96,7 +96,7 @@ describe('the app update controller downloads', () => {
     await world.controller.check('button');
     const finishCheck = deferCheck(world);
     const finishNotice = deferCheck(world);
-    const checking = world.controller.check('live');
+    const checking = world.controller.check('paired');
     const downloading = world.controller.download(OFFER.id);
     const notice = noticeFor(REPLACEMENT.id);
     world.controller.receiveNotice(notice);
@@ -117,7 +117,7 @@ describe('the app update controller downloads', () => {
     const world = setup();
     await world.controller.download(OFFER.id);
     expect(world.adapter.download).not.toHaveBeenCalled();
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await world.controller.download(OFFER.id);
     await world.controller.download(OFFER.id);
     expect(world.adapter.download).toHaveBeenCalledTimes(1);

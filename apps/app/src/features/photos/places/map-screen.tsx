@@ -7,14 +7,12 @@ import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import type { HeaderAction } from '../../../components/page-header';
-import { SearchField } from '../../../components/search-field';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoPlaces } from '../data';
 import { NATURAL_EARTH_ATTRIBUTION } from '../world-map';
@@ -22,7 +20,14 @@ import { ClusterCard } from './cluster-card';
 import { ClusterMap } from './cluster-map';
 import { MonthRangeCard } from './month-range';
 import type { MapBounds } from './map-view';
-import { inViewLine, libraryLine, placesIn, sideCountries } from './place-model';
+import {
+  countriesWhere,
+  inViewLine,
+  libraryLine,
+  placeMatches,
+  placesByCount,
+  sideCountries,
+} from './place-model';
 import { PhonePlacesPanel } from './phone-places-panel';
 import { CountryList, PlaceCards } from './places-list';
 import { useMapState, type MapState } from './use-map-state';
@@ -54,14 +59,10 @@ export const MAP_COPY = {
   noneInView: 'No places in this part of the map. Zoom out to see more.',
 } as const;
 
-const MAP_ACTIONS: readonly HeaderAction[] = [
-  {
-    icon: 'settings',
-    label: 'Map settings',
-    iconOnly: true,
-    href: href.settings.focus('photos', 'photos.map.enabled'),
-  },
-];
+const MAP_SETTINGS = {
+  href: href.settings.focus('photos', 'photos.map.enabled'),
+  label: 'Map settings',
+} as const;
 
 const WIDE_COLUMNS_FROM = 1200;
 
@@ -70,7 +71,7 @@ type PlacesQuery = ReturnType<typeof usePhotoPlaces>;
 const MAP_LABEL = 'World map of where your photos were taken';
 
 function columnsOf(area: number, wide: number): number {
-  if (libraryLayoutOf(area) === 'compact') return 1;
+  if (shellLayoutOf(area) === 'compact') return 1;
   return area >= WIDE_COLUMNS_FROM ? wide : 2;
 }
 
@@ -120,13 +121,14 @@ function countOf(countries: readonly PlaceCountry[]): number {
 function SidePlaces({
   countries,
   bounds,
+  text,
   fill,
 }: {
   readonly countries: readonly PlaceCountry[];
   readonly bounds: MapBounds;
+  readonly text: string;
   readonly fill: boolean;
 }): ReactNode {
-  const [text, setText] = useState('');
   const shown = sideCountries(countries, bounds, text);
   const searching = text.trim() !== '';
   const list =
@@ -147,7 +149,6 @@ function SidePlaces({
       }
       {...(fill ? { className: 'absolute inset-0' } : {})}
     >
-      <SearchField value={text} onChange={setText} placeholder={MAP_COPY.find} />
       {fill ? <ScrollView className="-mx-2.5 flex-1">{list}</ScrollView> : list}
     </Card>
   );
@@ -155,9 +156,11 @@ function SidePlaces({
 
 function WideMap({
   countries,
+  text,
   area,
 }: {
   readonly countries: readonly PlaceCountry[];
+  readonly text: string;
   readonly area: number;
 }): ReactNode {
   const state = useMapState(true);
@@ -176,39 +179,57 @@ function WideMap({
       </View>
       {side ? (
         <View className="w-80">
-          <SidePlaces countries={countries} bounds={state.bounds} fill />
+          <SidePlaces countries={countries} bounds={state.bounds} text={text} fill />
         </View>
       ) : (
-        <SidePlaces countries={countries} bounds={state.bounds} fill={false} />
+        <SidePlaces countries={countries} bounds={state.bounds} text={text} fill={false} />
       )}
     </View>
   );
 }
 
-function PhoneMap({ countries }: { readonly countries: readonly PlaceCountry[] }): ReactNode {
+function PhoneMap({
+  countries,
+  text,
+}: {
+  readonly countries: readonly PlaceCountry[];
+  readonly text: string;
+}): ReactNode {
   const state = useMapState(true);
   return (
     <View className="min-h-0 flex-1">
       <WorldCard state={state} countries={countries} className="flex-1" />
-      <PhonePlacesPanel places={placesIn(countries, state.bounds)} total={countOf(countries)} />
+      <PhonePlacesPanel
+        places={placesByCount(sideCountries(countries, state.bounds, text))}
+        total={countOf(countries)}
+      />
     </View>
   );
+}
+
+function matchingOf(countries: readonly PlaceCountry[], text: string): readonly PlaceCountry[] {
+  if (text.trim() === '') return countries;
+  return countriesWhere(countries, (place) => placeMatches(place, text));
 }
 
 function Body({
   mode,
   countries,
+  text,
 }: {
   readonly mode: MapMode;
   readonly countries: readonly PlaceCountry[];
+  readonly text: string;
 }): ReactNode {
   const area = useAreaWidth();
   if (countries.length === 0) {
     return <EmptyState icon="mapPin" title={MAP_COPY.empty.title} body={MAP_COPY.empty.body} />;
   }
-  if (mode === 'places') return <PlaceCards countries={countries} columns={columnsOf(area, 3)} />;
-  if (libraryLayoutOf(area) === 'compact') return <PhoneMap countries={countries} />;
-  return <WideMap countries={countries} area={area} />;
+  if (mode === 'places') {
+    return <PlaceCards countries={matchingOf(countries, text)} columns={columnsOf(area, 3)} />;
+  }
+  if (shellLayoutOf(area) === 'compact') return <PhoneMap countries={countries} text={text} />;
+  return <WideMap countries={countries} text={text} area={area} />;
 }
 
 function Loading({ places }: { readonly places: PlacesQuery }): ReactNode {
@@ -243,20 +264,24 @@ function OfflineNote(): ReactNode {
 
 export function MapScreen(): ReactNode {
   const [mode, setMode] = useState<MapMode>('map');
+  const [text, setText] = useState('');
   const places = usePhotoPlaces();
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const countries = places.data;
   return (
     <PhotosFrame
       active="map"
-      actions={MAP_ACTIONS}
+      settings={MAP_SETTINGS}
       {...(countries === undefined ? {} : { subtitle: libraryLine(countries) })}
+      {...(countries === undefined || countries.length === 0
+        ? {}
+        : { search: { value: text, onChange: setText, placeholder: MAP_COPY.find } })}
       scroll={!(compact && mode === 'map' && countries !== undefined && countries.length > 0)}
     >
       <View className="min-h-0 flex-1 gap-section-gap">
         <Segmented options={MODES} value={mode} onChange={setMode} label="View" />
         {countries === undefined ? <Loading places={places} /> : <OfflineNote />}
-        {countries === undefined ? null : <Body mode={mode} countries={countries} />}
+        {countries === undefined ? null : <Body mode={mode} countries={countries} text={text} />}
       </View>
     </PhotosFrame>
   );

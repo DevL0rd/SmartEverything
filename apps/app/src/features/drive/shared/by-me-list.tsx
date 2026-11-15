@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import type { DriveFileRequest, DriveItem, DriveSharedByMeEntry } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
@@ -14,7 +15,7 @@ import { useMinute } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useSharedByMe } from '../data';
-import { DriveKindGlyph } from '../components/folder-glyph';
+import { DriveGlyph } from '../components/folder-glyph';
 import { FileRequestsSection, useMyFileRequests } from '../requests/file-request-list';
 import { useFileRequestSheet } from '../requests/file-request-sheet';
 import { LinkStats } from './link-stats';
@@ -76,7 +77,7 @@ function SharedCard({
   return (
     <View className="mb-3 gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-card-pad">
       <View className="flex-row items-center gap-3">
-        <DriveKindGlyph item={item} well="m" />
+        <DriveGlyph item={item} well="m" />
         <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
           {item.name}
         </Text>
@@ -117,6 +118,7 @@ export function NothingByMe(): ReactElement {
       icon="share"
       title="You have not shared anything yet"
       body="Open a file or folder and choose Share."
+      action={<Button label="Go to My Drive" variant="tonal" href={href.drive()} />}
     />
   );
 }
@@ -134,28 +136,34 @@ function useCardContext(onManage: ManageShare): CardContext {
   };
 }
 
-function Header({
-  entries,
+function SharedItemsHead({
   groups,
   now,
-  onEditRequest,
 }: {
-  readonly entries: number;
   readonly groups: ReturnType<typeof linkGroupsOf>;
   readonly now: number;
-  readonly onEditRequest: (request: DriveFileRequest) => void;
 }): ReactElement {
   return (
     <View className="gap-4 px-gutter pb-3">
-      <FileRequestsSection onEdit={onEditRequest} />
-      {entries === 0 ? null : (
-        <>
-          <Text variant="title-3" accessibilityRole="header">
-            Shared items
-          </Text>
-          <LinkStats groups={groups} now={now} />
-        </>
-      )}
+      <Text variant="title-3" accessibilityRole="header">
+        Shared items
+      </Text>
+      <LinkStats groups={groups} now={now} />
+    </View>
+  );
+}
+
+function RequestsFoot({
+  shown,
+  onEdit,
+}: {
+  readonly shown: boolean;
+  readonly onEdit: (request: DriveFileRequest) => void;
+}): ReactNode {
+  if (!shown) return null;
+  return (
+    <View className="px-gutter pt-4">
+      <FileRequestsSection onEdit={onEdit} />
     </View>
   );
 }
@@ -165,29 +173,36 @@ export function ByMeList({ onManage }: { readonly onManage: ManageShare }): Reac
   const context = useCardContext(onManage);
   const requests = useMyFileRequests();
   const requestSheet = useFileRequestSheet();
-  if (pages.data === undefined) return <PagesUnloaded pages={pages} label="shared_by_me" />;
+  const foot = <RequestsFoot shown={requests.length > 0} onEdit={requestSheet.edit} />;
+  if (pages.data === undefined) {
+    return (
+      <>
+        <ScrollView className="flex-1" contentContainerClassName="pb-section-gap">
+          <PagesUnloaded pages={pages} label="shared_by_me" shape="cards" />
+          {foot}
+        </ScrollView>
+        {requestSheet.host}
+      </>
+    );
+  }
   const entries = flattenPages(pages.data, (page) => page.items);
   const groups = linkGroupsOf(byMeLinksOf(entries), context.now);
   return (
     <>
       <VirtualList
-        {...(entries.length === 0 && requests.length === 0
+        {...(entries.length === 0
           ? {}
-          : {
-              header: (
-                <Header
-                  entries={entries.length}
-                  groups={groups}
-                  now={context.now}
-                  onEditRequest={requestSheet.edit}
-                />
-              ),
-            })}
+          : { header: <SharedItemsHead groups={groups} now={context.now} /> })}
         sections={[{ key: 'by-me', title: null, data: entries }]}
         keyOf={(entry) => entry.item.id}
         renderItem={(entry) => <SharedCard entry={entry} context={context} />}
         empty={<NothingByMe />}
-        footer={<ListLoader loading={pages.isFetchingNextPage} />}
+        footer={
+          <>
+            <ListLoader loading={pages.isFetchingNextPage} />
+            {foot}
+          </>
+        }
         onEndReached={() => {
           if (!pages.hasNextPage || pages.isFetchingNextPage) return;
           background(pages.fetchNextPage(), 'drive.shared_by_me.page_failed');

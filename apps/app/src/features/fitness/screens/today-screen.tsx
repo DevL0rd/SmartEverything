@@ -22,7 +22,7 @@ import { FITNESS_DEFAULTS, FITNESS_PAGE, FITNESS_WIDGETS } from '../widgets';
 
 function FirstRun(): ReactNode {
   return (
-    <PageShell title="Fitness" settings={mainPageSettings('fitness')} back={false} width="reading">
+    <PageShell title="Fitness" settings={mainPageSettings('fitness')} back={false}>
       {HEALTH_CONNECT_ON_DEVICE ? (
         <EmptyState
           icon="fitness"
@@ -81,7 +81,6 @@ export function TodayScreen(): ReactNode {
   return (
     <FitnessShell
       tab="today"
-      width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range="day" />}
       actions={editor.editing ? [] : [editor.editAction]}
       editing={editor.header}

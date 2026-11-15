@@ -64,11 +64,7 @@ vi.mock('../../../settings/availability', () => ({
   useBuiltSettingsPages: (): ReadonlySet<string> => new Set([PAGE.id]),
 }));
 vi.mock('../../../settings/settings-frame', () => ({
-  SettingsFrame: ({
-    contentWidth = 'reading',
-    children,
-  }: ViewProps & { readonly contentWidth?: string }): ReactNode =>
-    createElement('main', { 'data-width': contentWidth }, children),
+  SettingsFrame: ({ children }: ViewProps): ReactNode => createElement('main', null, children),
 }));
 vi.mock('../../../settings/tree', () => ({
   childrenOf: (): readonly SettingsPageDefinition[] => [],
@@ -94,9 +90,9 @@ const { SettingsPageScreen } = await import('../../../settings/settings-screen')
 describe('Assistant settings block layout', () => {
   it('uses the full web pane and keeps each ordered settings block intact and readable', () => {
     const html = renderToStaticMarkup(createElement(AssistantSettingsScreen));
-    expect(html).toContain('data-width="full"');
     expect(html).toContain('web:columns-(--spacing-picker)');
-    expect(html.match(/max-w-reading web:break-inside-avoid/g)).toHaveLength(3);
+    expect(html.match(/min-w-0 web:break-inside-avoid/g)).toHaveLength(3);
+    expect(html).not.toContain('max-w-');
     expect(html).toContain(
       '<section><h2>Assistant</h2><button>Name</button><button>Instructions</button></section>',
     );
@@ -110,7 +106,6 @@ describe('Assistant settings block layout', () => {
     try {
       const native = renderToStaticMarkup(createElement(AssistantSettingsScreen));
       expect(native).toBe(defaultPage);
-      expect(native).toContain('data-width="reading"');
       expect(native).not.toContain('web:columns-');
     } finally {
       platform.native = false;

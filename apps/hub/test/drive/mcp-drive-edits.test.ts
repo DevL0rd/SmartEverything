@@ -226,25 +226,30 @@ describe('drive_edit', () => {
     expect(calls[0]?.params).toEqual({ itemId: ITEM, versionId });
   });
 
-  it('places and unplaces a drive folder on a computer', async () => {
+  it('syncs, mounts and unplaces on a computer', async () => {
+    const deviceId = randomUUID();
     const placement = {
-      deviceId: randomUUID(),
+      deviceId,
       rootId: ROOT,
       folderItemId: FOLDER,
-      mode: 'synced',
       localPath: '/home/robin/Trips',
-      mountName: null,
       enabled: true,
       excluded: [],
       ignorePatterns: [],
       conflictCopies: true,
     };
     await edit('placement_set', { placement });
+    await edit('mount_set', { mount: { deviceId, enabled: true } });
     const placementId = randomUUID();
     await edit('placement_remove', { placementId });
-    expect(calls.map((call) => call.name)).toEqual(['setPlacement', 'removePlacement']);
+    expect(calls.map((call) => call.name)).toEqual([
+      'setPlacement',
+      'setComputerMount',
+      'removePlacement',
+    ]);
     expect(calls[0]?.body).toEqual(placement);
-    expect(calls[1]?.params).toEqual({ placementId });
+    expect(calls[1]?.body).toEqual({ deviceId, enabled: true });
+    expect(calls[2]?.params).toEqual({ placementId });
   });
 
   it('shares with a person, changes the role and stops sharing', async () => {

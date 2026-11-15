@@ -16,7 +16,7 @@ import (
 
 const attachTimeout = 30 * time.Second
 
-var mountOptions = []string{"-o", "uid=-1,gid=-1,volname=SmartEverything Drive,FileSystemName=smarteverything-drive"}
+var winfspOptions = []string{"-o", "uid=-1,gid=-1,volname=SmartEverything Drive,FileSystemName=smarteverything-drive"}
 
 type activeMount struct {
 	id      string
@@ -35,10 +35,11 @@ type mountSet struct {
 	report *reporter
 	mu     sync.Mutex
 	mounts map[string]*activeMount
+	tuning *tuningState
 }
 
 func newMountSet(source InodeFilesystem, report *reporter) *mountSet {
-	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}}
+	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}, tuning: newTuningState(report)}
 	source.OnChange(set.sourceChanged)
 	return set
 }
@@ -108,7 +109,7 @@ func serveMount(host *fuse.FileSystemHost, point string, finished chan<- error) 
 			finished <- fmt.Errorf("%v", recovered)
 		}
 	}()
-	if host.Mount(point, mountOptions) {
+	if host.Mount(point, winfspOptions) {
 		finished <- nil
 		return
 	}
@@ -124,6 +125,9 @@ func (s *mountSet) mount(id string, root mountRoot, point string, options mountO
 	s.mu.Unlock()
 	if exists {
 		return fmt.Errorf("mount %q already exists", id)
+	}
+	if _, err := s.tuning.forMount(); err != nil {
+		return s.fail(id, err)
 	}
 	attachCtx, attachCancel := context.WithTimeout(context.Background(), attachTimeout)
 	attached, err := s.source.Attach(attachCtx, id)
@@ -154,7 +158,24 @@ func (s *mountSet) mount(id string, root mountRoot, point string, options mountO
 	s.mu.Unlock()
 	go s.watch(active, finished)
 	s.report.status(id, stateMounted, "")
+	s.report.applied(id, nil, live.load())
 	s.publish(active)
+	return nil
+}
+
+func (s *mountSet) tune(t tuning) error {
+	if err := s.tuning.apply(t); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	mounted := make([]*activeMount, 0, len(s.mounts))
+	for _, active := range s.mounts {
+		mounted = append(mounted, active)
+	}
+	s.mu.Unlock()
+	for _, active := range mounted {
+		s.report.applied(active.id, nil, live.load())
+	}
 	return nil
 }
 

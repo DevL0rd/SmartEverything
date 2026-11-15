@@ -1,12 +1,20 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import type { AlbumMemberRole, DriveAlbum, ProfileRow } from '@smarteverything/domain';
+import type {
+  AlbumMemberRole,
+  DriveAlbum,
+  ProfileRow,
+  SharedAlbumMember,
+} from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
+import { CheckboxMark } from '../../../components/checkbox';
 import { confirm } from '../../../components/confirm-store';
+import { FlatChoice } from '../../../components/flat-choice';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
+import { useAnchoredMenu } from '../../../components/menu';
 import { Segmented } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
@@ -22,9 +30,11 @@ const ROLE_OPTIONS = [
   { value: 'viewer', label: 'Can view' },
 ] as const;
 
+export const MEMBERS_TITLE = 'People in this album';
+
 export interface MembersSheetProps {
   readonly album: DriveAlbum;
-  readonly memberIds: readonly string[];
+  readonly members: readonly SharedAlbumMember[];
   readonly owner: boolean;
   readonly open: boolean;
   readonly onClose: () => void;
@@ -40,14 +50,73 @@ export function outsidersOf(
   );
 }
 
-function Member({
+export function youName(profile: ProfileRow, me: string | null): string {
+  return profile.id === me ? `${profile.name} (you)` : profile.name;
+}
+
+function RolePicker({
   album,
   profile,
-  owner,
+  role,
+  disabled,
 }: {
   readonly album: DriveAlbum;
   readonly profile: ProfileRow;
+  readonly role: AlbumMemberRole;
+  readonly disabled: boolean;
+}): ReactNode {
+  const mutation = useMutationState();
+  const client = useQueryClient();
+  const { ref, open, menu } = useAnchoredMenu(
+    ROLE_OPTIONS.map((option) => ({
+      id: option.value,
+      label: option.label,
+      selected: option.value === role,
+      onPress: () => {
+        if (option.value === role) return;
+        mutation.run(
+          () =>
+            setAlbumMembers(album.id, { members: [{ profileId: profile.id, role: option.value }] }),
+          {
+            failure: `${profile.name}’s role did not change`,
+            label: 'photos.album_member.role',
+            onDone: () => {
+              invalidateSharing(client);
+            },
+          },
+        );
+      },
+    })),
+    `What ${profile.name} can do`,
+  );
+  return (
+    <View ref={ref} collapsable={false}>
+      <FlatChoice
+        label={ROLE_LABEL[role]}
+        spoken={`${profile.name}: ${ROLE_LABEL[role]}, change`}
+        trailing="chevronDown"
+        menu
+        active={false}
+        disabled={disabled || mutation.busy}
+        onPress={open}
+      />
+      {menu}
+    </View>
+  );
+}
+
+function Member({
+  album,
+  profile,
+  role,
+  owner,
+  me,
+}: {
+  readonly album: DriveAlbum;
+  readonly profile: ProfileRow;
+  readonly role: AlbumMemberRole;
   readonly owner: boolean;
+  readonly me: string | null;
 }): ReactNode {
   const mutation = useMutationState();
   const client = useQueryClient();
@@ -73,18 +142,28 @@ function Member({
   };
   return (
     <ListRow
-      title={profile.name}
+      title={youName(profile, me)}
       leading={<ProfileAvatar profile={profile} />}
-      trailing={
-        owner ? (
-          <IconButton
-            icon="x"
-            label={`Remove ${profile.name}`}
-            disabled={mutation.busy}
-            onPress={remove}
-          />
-        ) : undefined
-      }
+      {...(owner
+        ? {
+            trailing: (
+              <View className="flex-row items-center">
+                <RolePicker
+                  album={album}
+                  profile={profile}
+                  role={role}
+                  disabled={mutation.busy}
+                />
+                <IconButton
+                  icon="x"
+                  label={`Remove ${profile.name}`}
+                  disabled={mutation.busy}
+                  onPress={remove}
+                />
+              </View>
+            ),
+          }
+        : { value: ROLE_LABEL[role] })}
     />
   );
 }
@@ -107,6 +186,7 @@ function Checklist({
           leading={<ProfileAvatar profile={profile} />}
           role="checkbox"
           checked={chosen.has(profile.id)}
+          trailing={<CheckboxMark checked={chosen.has(profile.id)} />}
           onPress={() => {
             onToggle(profile.id);
           }}
@@ -174,7 +254,7 @@ function AddButton({
   const mutation = useMutationState();
   const client = useQueryClient();
   return (
-    <View className="flex-row justify-end">
+    <View className="flex-1 flex-row justify-end">
       <Button
         label={chosen.size === 0 ? 'Add' : `Add ${String(chosen.size)}`}
         icon="plus"
@@ -199,7 +279,7 @@ function AddButton({
 
 export function MembersSheet({
   album,
-  memberIds,
+  members,
   owner,
   open,
   onClose,
@@ -207,20 +287,31 @@ export function MembersSheet({
   const profiles = useProfiles();
   const me = useActiveProfile()?.id ?? null;
   const albumOwner = profiles.find((profile) => profile.id === album.ownerProfileId);
-  const members = memberIds.flatMap((id) => profiles.filter((profile) => profile.id === id));
+  const rows = members.flatMap((member) => {
+    const profile = profiles.find((candidate) => candidate.id === member.profileId);
+    return profile === undefined ? [] : [{ profile, role: member.role }];
+  });
+  const memberIds = members.map((member) => member.profileId);
   return (
-    <Sheet open={open} onClose={onClose} title={owner ? 'People in this album' : 'In this album'}>
+    <Sheet open={open} onClose={onClose} title={MEMBERS_TITLE}>
       <View className="gap-section-gap">
         <View className="gap-1">
           {albumOwner === undefined ? null : (
             <ListRow
-              title={albumOwner.id === me ? `${albumOwner.name} (you)` : albumOwner.name}
+              title={youName(albumOwner, me)}
               leading={<ProfileAvatar profile={albumOwner} />}
               value={ROLE_LABEL.owner}
             />
           )}
-          {members.map((profile) => (
-            <Member key={profile.id} album={album} profile={profile} owner={owner} />
+          {rows.map(({ profile, role }) => (
+            <Member
+              key={profile.id}
+              album={album}
+              profile={profile}
+              role={role}
+              owner={owner}
+              me={me}
+            />
           ))}
         </View>
         {owner ? <Invite album={album} people={outsidersOf(profiles, album, memberIds)} /> : null}

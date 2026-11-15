@@ -186,18 +186,20 @@ function Form({
       />
       {opened.mode === 'create' ? <Rules opened={opened} onDraft={onDraft} /> : null}
       {opened.mode === 'create' ? (
-        <SwitchRow
-          title="Only I see it"
-          subtitle={
-            draft.scope === 'person'
-              ? 'Other people at home don’t see this smart folder'
-              : 'Everyone at home sees it, each with the files they can open'
-          }
-          value={draft.scope === 'person'}
-          onChange={(only) => {
-            onDraft({ ...draft, scope: only ? 'person' : 'home' });
-          }}
-        />
+        <View className="-mx-4">
+          <SwitchRow
+            title="Only I see it"
+            subtitle={
+              draft.scope === 'person'
+                ? 'Other people at home don’t see this smart folder'
+                : 'Everyone at home sees it, each with the files they can open'
+            }
+            value={draft.scope === 'person'}
+            onChange={(only) => {
+              onDraft({ ...draft, scope: only ? 'person' : 'home' });
+            }}
+          />
+        </View>
       ) : null}
       {opened.mode === 'create' ? (
         <Text variant="caption" tone="variant">
@@ -335,6 +337,7 @@ export function useSaveSmartFolder(): SaveSmartFolder {
           label={panelTitleOf(opened.mode)}
           pointerPlacement={opened.anchorRef === null ? 'center' : 'below'}
           sheetFooter={footer}
+          fit
           scroll
         >
           <PanelBody

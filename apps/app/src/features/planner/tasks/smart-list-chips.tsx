@@ -7,7 +7,7 @@ import { useAreaWidth } from '../../../design/size-class';
 import { usePlannerCollections, usePlannerPreferences } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { LIST_DOT } from '../item/composer-tokens';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import {
   listCountOf,
   smartChipsOf,
@@ -107,10 +107,10 @@ function Chips({ entries, today, filter, onFilter }: SmartListChipsProps): React
 }
 
 export function SmartListChips(props: SmartListChipsProps): ReactNode {
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   if (compact) {
     return (
-      <HScroller label="Smart lists, scrolls sideways" fade fadeSurface="bg" arrows={false}>
+      <HScroller label="Smart lists, scrolls sideways" fade arrows={false}>
         <View className="flex-row items-center gap-2">
           <Chips {...props} />
         </View>

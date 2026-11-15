@@ -5,7 +5,8 @@ import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
 import { actorOf } from './drive-services';
 
-type DrivePlacementRoute = 'listPlacements' | 'setPlacement' | 'removePlacement';
+type DrivePlacementRoute =
+  'listPlacements' | 'setPlacement' | 'setComputerMount' | 'removePlacement';
 
 export type DrivePlacementRoutes = Routes<DrivePlacementRoute>;
 
@@ -19,6 +20,9 @@ export function drivePlacementRoutes(
     ),
     setPlacement: bound(E.setPlacement, ({ body, caller }) =>
       refusing(() => placements.set(actorOf(store, caller), body)),
+    ),
+    setComputerMount: bound(E.setComputerMount, ({ body, caller }) =>
+      refusing(() => placements.setMount(actorOf(store, caller), body)),
     ),
     removePlacement: bound(E.removePlacement, ({ params, caller }) =>
       refusing(() => {

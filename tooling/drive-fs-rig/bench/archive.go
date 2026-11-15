@@ -55,7 +55,7 @@ func untar(dir string, sizes Sizes, sources Sources) (Outcome, error) {
 			total += header.Size
 		case tar.TypeSymlink:
 			err = os.Symlink(header.Linkname, target)
-			if err != nil && sizes.TolerateEIO && (errors.Is(err, syscall.EIO) || errors.Is(err, syscall.EOPNOTSUPP)) {
+			if err != nil && sizes.TolerateEIO && (errors.Is(err, syscall.EIO) || unsupported(err)) {
 				retried++
 				continue
 			}

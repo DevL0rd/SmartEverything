@@ -1,4 +1,7 @@
 import { randomBytes } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { ComputerNodeRow } from '@smarteverything/domain';
@@ -23,11 +26,12 @@ import {
   type RequestOpName,
 } from '@smarteverything/domain/drive-mount';
 import WebSocket from 'ws';
-import { DrivePlacements } from '../../../src/drive/placements';
 import { DriveMount } from '../../../src/drive/mount/service';
+import { DriveActivity } from '../../../src/drive/activity';
 import { DriveMountSocket, type MountAccess } from '../../../src/drive/mount/socket';
 import { testLogger } from '../../support/logs';
-import { newId } from '../placement-fixture';
+import { bundleWorker } from '../drive-fixture';
+import { insertMount } from '../placement-fixture';
 import { openPosixRig, type PosixRig } from '../posix/posix-rig';
 
 export class MountFailure extends Error {
@@ -176,6 +180,7 @@ export class TestClient {
 export interface MountRig {
   readonly posix: PosixRig;
   readonly mount: DriveMount;
+  readonly activity: DriveActivity;
   readonly port: number;
   readonly tokenOf: (nodeId: string) => string;
   readonly placementOf: (
@@ -241,7 +246,6 @@ async function listen(socket: DriveMountSocket): Promise<{ server: Server; port:
 
 function placerOf(posix: PosixRig): MountRig['placementOf'] {
   const { store } = posix.opened;
-  const placements = new DrivePlacements({ store, context: store.context, newId });
   let mounts = 0;
   return (nodeId, profileId, rootId, base): string => {
     const known = store.drivePlacements
@@ -249,29 +253,35 @@ function placerOf(posix: PosixRig): MountRig['placementOf'] {
       .find((row) => row.rootId === rootId && row.folderItemId === (base ?? null));
     if (known !== undefined) return known.id;
     mounts += 1;
-    const wanted = {
-      deviceId: nodeId,
-      rootId,
-      folderItemId: base ?? null,
-      mode: 'mounted',
-      localPath: null,
-      mountName: `mount-${String(mounts)}`,
-      enabled: true,
-    } as const;
-    return placements.set({ profileId }, wanted).id;
+    return insertMount(
+      store,
+      { profileId },
+      {
+        deviceId: nodeId,
+        rootId,
+        folderItemId: base ?? null,
+        mountName: `mount-${String(mounts)}`,
+      },
+    ).id;
   };
 }
 
 export async function openMountRig(leaseMs = 90_000, history = false): Promise<MountRig> {
   const posix = await openPosixRig(history);
   const { access, tokenOf } = tokensOf();
+  const workers = await mkdtemp(join(tmpdir(), 'mount-hash-'));
+  const hashWorker = join(workers, 'mount-hash-worker.mjs');
+  await bundleWorker('mount/hash-worker.ts', hashWorker);
+  const activity = new DriveActivity();
   const mount = new DriveMount({
     store: posix.opened.store,
     change: posix.env.change,
     guard: posix.env.guard,
     space: posix.env.space,
+    activity,
     log: testLogger('drive'),
     leaseMs,
+    hashWorker,
   });
   const socket = new DriveMountSocket(posix.opened.store, access, mount, testLogger('drive'));
   const { server, port } = await listen(socket);
@@ -279,6 +289,7 @@ export async function openMountRig(leaseMs = 90_000, history = false): Promise<M
   return {
     posix,
     mount,
+    activity,
     port,
     tokenOf,
     placementOf: placerOf(posix),
@@ -297,6 +308,7 @@ export async function openMountRig(leaseMs = 90_000, history = false): Promise<M
       server.closeAllConnections();
       server.close();
       await posix.close();
+      await rm(workers, { recursive: true, force: true });
     },
   };
 }

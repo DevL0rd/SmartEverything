@@ -25,10 +25,7 @@ function gatedByCaller(file: string): boolean {
   return Object.keys(GATED_BY_CALLER).some((prefix) => file.startsWith(prefix));
 }
 
-const ALWAYS_ON_SCREEN = [
-  'src/components/widget-board/edit/editable-widget.tsx',
-  'src/features/assistant/call/components/call-wave.tsx',
-];
+const ALWAYS_ON_SCREEN = ['src/features/assistant/call/components/call-wave.tsx'];
 
 const sources = filesUnder(applicationSource).filter(
   (file) =>

@@ -17,7 +17,6 @@ export interface ViewerClasses {
   readonly side: string;
   readonly panels: string;
   readonly recent: string;
-  readonly width: 'dashboard' | 'detail' | 'full';
 }
 
 const GAP = 'gap-section-gap';
@@ -42,7 +41,6 @@ export function viewerClasses({ wide, columns }: ViewerLayout, full = false): Vi
       side: `flex-row items-start ${GAP}`,
       panels: `w-inspector ${GAP}`,
       recent: 'w-inspector',
-      width: 'full',
     };
   }
   const recent = split ? 'min-w-0 flex-1' : '';
@@ -52,7 +50,6 @@ export function viewerClasses({ wide, columns }: ViewerLayout, full = false): Vi
     side: wide ? `w-inspector ${GAP}` : split ? `flex-row items-start ${GAP}` : GAP,
     panels: cn(recent, GAP),
     recent,
-    width: wide ? 'dashboard' : 'detail',
   };
 }
 

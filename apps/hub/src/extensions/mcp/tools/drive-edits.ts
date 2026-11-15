@@ -5,6 +5,7 @@ import {
   DRIVE_CONFLICT_RESOLUTIONS,
   DRIVE_EDIT_ACTIONS,
   DRIVE_GRANT_ROLES,
+  DRIVE_MOUNT_SET,
   DRIVE_PLACEMENT_SET,
   DRIVE_ROOT_CHANGE,
   DRIVE_SHARE_CREATE,
@@ -61,7 +62,10 @@ export const DRIVE_EDIT_INPUT = z.strictObject({
     .optional()
     .describe('view or edit to share with that person, none to stop sharing, for share_people'),
   placement: DRIVE_PLACEMENT_SET.optional().describe(
-    'The folder placement on one of your computers, for action placement_set',
+    'The synced folder on one of your computers, for action placement_set',
+  ),
+  mount: DRIVE_MOUNT_SET.optional().describe(
+    'The computer and whether its mounted My Drive is on, for action mount_set',
   ),
   placementId: z.uuid().optional().describe('A placement id from drive_read view placements'),
   folderKey: FOLDER_KEY.optional().describe('The folder, for actions folder_hide and folder_show'),
@@ -118,7 +122,11 @@ function star(): Selection {
   });
 }
 
-function bodied(name: 'createAlbum' | 'setPlacement', key: string, field: z.ZodType): Selection {
+function bodied(
+  name: 'createAlbum' | 'setPlacement' | 'setComputerMount',
+  key: string,
+  field: z.ZodType,
+): Selection {
   return selection({
     input: z.strictObject({ [key]: field }),
     run: (context, input, as) => operate(context, name, { body: input[key] }, as),
@@ -280,6 +288,7 @@ export const DRIVE_EDIT: SelectedToolDefinition = {
     share_people: sharePeople(),
     conflict_resolve: conflictResolve(),
     placement_set: bodied('setPlacement', 'placement', DRIVE_PLACEMENT_SET),
+    mount_set: bodied('setComputerMount', 'mount', DRIVE_MOUNT_SET),
     placement_remove: placementRemove(),
     scrub_start: scrubStart(),
     folder_hide: folderHidden(true),

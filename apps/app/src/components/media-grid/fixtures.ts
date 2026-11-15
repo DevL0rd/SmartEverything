@@ -4,13 +4,6 @@ import type { MediaTile } from './tiles';
 
 const ASPECTS = [1.5, 0.75, 1.33, 1.78, 1, 0.5625, 1.2, 2.4] as const;
 
-const THUMBHASHES = [
-  '3OcRJYB4d3h/iIeHeEh3eIhw+j3A',
-  'HBkSHYSIeHiPiHh8eJd4eTN0EEQG',
-  'VvYRNQRod313B4h3eHhYiHeAiQUo',
-  '1QcSHQRnh493V4dIh4eXh1h4kJUI',
-] as const;
-
 const FLAG_SETS: readonly (readonly PhotoFlag[])[] = [
   [],
   ['live'],
@@ -46,7 +39,6 @@ export function fixtureTile(index: number, perDay: number): MediaTile {
     takenAt,
     offsetMin: 0,
     durationMs: flags.includes('video') ? 4_000 + (index % 90) * 1_000 : null,
-    thumbhash: pick(THUMBHASHES, index),
     flags: photoFlags(flags),
     local: index % 17 === 5,
   };

@@ -10,13 +10,14 @@ import type { SessionControl } from '../session-controls';
 import { SessionBus } from './dbus-session';
 import type { DesktopEntries } from './desktop-entries';
 import { KdeBridge, type FocusedWindow } from './kde-bridge';
-import { MprisPlayers } from './mpris';
+import type { MediaPlayers, MediaPlayersFactory } from './media-players';
 import type { PulseAudio } from './pulse-audio';
 import { watchScreenSaver } from './screensaver';
 import { messageOf } from '@smarteverything/logging';
 
 export interface LinuxSessionOptions {
   readonly role?: ComputerRole;
+  readonly players?: MediaPlayersFactory | undefined;
   readonly entries: DesktopEntries;
   readonly audio: PulseAudio;
   readonly now: () => Date;
@@ -25,7 +26,7 @@ export interface LinuxSessionOptions {
 
 interface Parts {
   readonly bus: SessionBus;
-  readonly players: MprisPlayers;
+  readonly players: MediaPlayers | null;
   readonly bridge: KdeBridge;
   readonly unwatch: (() => void)[];
 }
@@ -51,7 +52,7 @@ export class LinuxSession implements SessionControl {
     const parts = this.assemble(bus);
     this.parts = parts;
     await Promise.all([
-      this.attempt('media', () => parts.players.start()),
+      this.attempt('media', () => parts.players?.start() ?? Promise.resolve()),
       this.attempt('focus', () => parts.bridge.start()),
       this.attempt('lock', async () => {
         const unwatch = await watchScreenSaver(bus, (locked) => {
@@ -75,7 +76,7 @@ export class LinuxSession implements SessionControl {
     if (parts === null) {
       return;
     }
-    parts.players.stop();
+    parts.players?.stop();
     parts.unwatch.forEach((unwatch) => {
       unwatch();
     });
@@ -107,7 +108,13 @@ export class LinuxSession implements SessionControl {
   }
 
   playback(status: MediaStatus): Promise<void> {
-    return this.require().players.control(status);
+    const { players } = this.require();
+    if (players === null)
+      throw new NodeFailureError(
+        'not_supported',
+        'This computer does not control its media players.',
+      );
+    return players.control(status);
   }
 
   private require(): Parts {
@@ -120,15 +127,16 @@ export class LinuxSession implements SessionControl {
   private assemble(bus: SessionBus): Parts {
     return {
       bus,
-      players: new MprisPlayers(
-        bus,
-        () => {
-          this.changed();
-        },
-        (cause) => {
-          this.options.failed('media', cause);
-        },
-      ),
+      players:
+        this.options.players?.(
+          bus,
+          () => {
+            this.changed();
+          },
+          (cause) => {
+            this.options.failed('media', cause);
+          },
+        ) ?? null,
       bridge: new KdeBridge(
         bus,
         (window) => {
@@ -205,7 +213,7 @@ export class LinuxSession implements SessionControl {
         at: this.options.now().toISOString(),
         user: userInfo().username,
         ...this.readings,
-        media: parts.players.current(),
+        media: parts.players?.current() ?? null,
       });
     });
   }

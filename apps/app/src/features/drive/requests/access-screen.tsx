@@ -3,6 +3,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveAccessRequest, DriveGrantRole, DriveItem } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import { href } from '../../../app-shell/hrefs';
+import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -24,6 +26,7 @@ import {
 import { DriveFrame } from '../components/drive-frame';
 import { openHrefOf } from '../recent/recent-model';
 import {
+  ASK_AGAIN_LINE,
   ASK_TITLE,
   UNAVAILABLE_BODY,
   UNAVAILABLE_TITLE,
@@ -38,7 +41,7 @@ import {
 
 function Card({ children }: { readonly children: ReactNode }): ReactNode {
   return (
-    <View className="w-full max-w-xl gap-4 self-center rounded-lg border-hairline border-outline-variant bg-surface-1 p-card-pad">
+    <View className="w-full gap-4 rounded-lg border-hairline border-outline-variant bg-surface-1 p-card-pad">
       {children}
     </View>
   );
@@ -102,6 +105,21 @@ function AskFields({
   );
 }
 
+function DeclinedBanner({
+  declined,
+  ownerName,
+  now,
+}: {
+  readonly declined: DriveAccessRequest | null;
+  readonly ownerName: string | null;
+  readonly now: number;
+}): ReactNode {
+  if (declined === null) return null;
+  return (
+    <Banner tone="warning" title={declinedLineOf(declined, now, ownerName)} body={ASK_AGAIN_LINE} />
+  );
+}
+
 function Ask({
   itemId,
   ownerName,
@@ -118,9 +136,10 @@ function Ask({
   const [message, setMessage] = useState('');
   return (
     <Card>
+      <DeclinedBanner declined={declined} ownerName={ownerName} now={now} />
       <Head icon="key" title={ASK_TITLE} />
       <Text variant="callout" tone="variant">
-        {declined === null ? askBodyOf(ownerName) : declinedLineOf(declined, now, ownerName)}
+        {askBodyOf(ownerName)}
       </Text>
       <AskFields
         role={role}
@@ -149,6 +168,32 @@ function Ask({
   );
 }
 
+const SHARED_HREF = href.drivePage('shared');
+
+const CRUMBS = [{ label: 'Shared', href: SHARED_HREF }, { label: 'Request access' }] as const;
+
+function BackToShared(): ReactNode {
+  return <Button label="Back to Shared" icon="arrowLeft" variant="tonal" href={SHARED_HREF} />;
+}
+
+function CardSkeleton(): ReactNode {
+  return (
+    <View
+      aria-busy
+      accessibilityLabel="Loading"
+      className="w-full gap-4 rounded-lg border-hairline border-outline-variant bg-surface-1 p-card-pad"
+    >
+      <View className="flex-row items-center gap-3">
+        <Skeleton shape="circle" className="size-12" />
+        <Skeleton shape="line" className="h-6 w-48" />
+      </View>
+      <Skeleton shape="line" className="w-3/4" />
+      <Skeleton shape="block" className="h-10 w-40" />
+      <Skeleton shape="block" className="h-24" />
+    </View>
+  );
+}
+
 function Sent({
   request,
   ownerName,
@@ -168,6 +213,9 @@ function Sent({
           {`Your message: “${request.message}”`}
         </Text>
       )}
+      <View className="flex-row">
+        <BackToShared />
+      </View>
     </Card>
   );
 }
@@ -231,9 +279,7 @@ function Content({ itemId }: { readonly itemId: string }): ReactNode {
         }}
       />
     ) : (
-      <View aria-busy accessibilityLabel="Loading" className="gap-3">
-        <Skeleton shape="block" className="h-row-h-2" />
-      </View>
+      <CardSkeleton />
     );
   }
   switch (state.kind) {
@@ -242,7 +288,14 @@ function Content({ itemId }: { readonly itemId: string }): ReactNode {
     case 'sent':
       return <Sent request={state.request} ownerName={ownerName} />;
     case 'unavailable':
-      return <EmptyState icon="ban" title={UNAVAILABLE_TITLE} body={UNAVAILABLE_BODY} />;
+      return (
+        <EmptyState
+          icon="ban"
+          title={UNAVAILABLE_TITLE}
+          body={UNAVAILABLE_BODY}
+          action={<BackToShared />}
+        />
+      );
     case 'declined':
       return <Ask itemId={itemId} ownerName={ownerName} declined={state.request} />;
     case 'ask':
@@ -252,7 +305,7 @@ function Content({ itemId }: { readonly itemId: string }): ReactNode {
 
 export function AccessScreen({ itemId }: { readonly itemId: string }): ReactNode {
   return (
-    <DriveFrame section="shared" title="Shared item">
+    <DriveFrame section="shared" title="Request access" breadcrumbs={CRUMBS} back>
       <Content itemId={itemId} />
     </DriveFrame>
   );

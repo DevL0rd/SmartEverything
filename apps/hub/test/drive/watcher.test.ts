@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { DriveActivity } from '../../src/drive/activity';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import {
@@ -34,6 +35,7 @@ let roots: DriveFixture['roots'];
 let items: DriveFixture['items'];
 let context: DriveFixture['context'];
 let scans: string[];
+let followUps: string[];
 let watchers: DriveWatchers | undefined;
 
 beforeEach(() => {
@@ -41,6 +43,7 @@ beforeEach(() => {
   fixture = openDriveFixture();
   ({ roots, items, context } = fixture);
   scans = [];
+  followUps = [];
   watchers = undefined;
 });
 
@@ -50,15 +53,15 @@ afterEach(() => {
   rmSync(base, { recursive: true, force: true });
 });
 
-function nextScan(): Promise<void> {
-  const seen = scans.length;
+function nextOf(list: readonly string[], what: string): Promise<void> {
+  const seen = list.length;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       clearInterval(poll);
-      reject(new Error('no scan was requested'));
+      reject(new Error(`no ${what} was requested`));
     }, 5000);
     const poll = setInterval(() => {
-      if (scans.length > seen) {
+      if (list.length > seen) {
         clearTimeout(timer);
         clearInterval(poll);
         resolve();
@@ -66,6 +69,8 @@ function nextScan(): Promise<void> {
     }, 5);
   });
 }
+
+const nextScan = (): Promise<void> => nextOf(scans, 'scan');
 
 const pause = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -81,7 +86,14 @@ function watchersOver(
   fixture.addDrive(driveRoot(ROOT, { skipPatterns }), folder);
   const environment: WatchEnvironment = {
     roots,
+    index: { items, inodes: new DriveInodesRepository(context) },
+    activity: new DriveActivity(),
+    mounted: (): boolean => false,
+    onPlacementChange: (): (() => void) => (): undefined => undefined,
     enqueueScan: enqueue,
+    enqueueFollowUps: (rootId): void => {
+      followUps.push(rootId);
+    },
     watch: factory,
     settleMs: SETTLE_MS,
     log: testLogger(),
@@ -187,7 +199,7 @@ describe('the root watcher', () => {
     const pool = watchersOver(root);
     pool.start(roots.byId(ROOT));
     rmSync(join(root, 'work'), { recursive: true });
-    await nextScan();
+    await nextOf(followUps, 'follow-up');
     mkdirSync(join(root, 'work/inner'), { recursive: true });
     await nextScan();
     await pause(SETTLE_MS * 3);
@@ -298,7 +310,7 @@ describe('a hub write seen again by the watcher', () => {
     rmSync(bundleFolder, { recursive: true, force: true });
   });
 
-  it('produces no second rev when the stored post-rename stat matches', async () => {
+  it('asks for no scan when the stored post-rename stat matches, and scans an outside edit', async () => {
     const environment: ScanEnvironment = {
       store: {
         driveRoots: roots,
@@ -356,8 +368,8 @@ describe('a hub write seen again by the watcher', () => {
         remoteRev: null,
       },
     });
-    await nextScan();
-    await queue.idle();
+    await nextOf(followUps, 'follow-up');
+    expect(scans).toEqual([ROOT]);
     expect(items.byPath(ROOT, 'doc.txt', null)).toMatchObject({ id, rev: 1, outside: false });
     writeFileSync(file, 'hello world');
     await nextScan();

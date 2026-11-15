@@ -229,13 +229,14 @@ export async function stageInPlace(
   env: FileEnv,
   root: DriveWriteRoot,
   relPath: string,
+  sha256?: string,
 ): Promise<StagedBytes> {
   const path = await locate(root, relPath);
   const stamp = await env.files.stamp(path);
   if (stamp === null || stamp.directory) {
     throw new DriveWriteError('missing', 'The file to put in place is missing from disk.');
   }
-  return { relPath, bytes: stamp.size, sha256: await hashOf(env, path) };
+  return { relPath, bytes: stamp.size, sha256: sha256 ?? (await hashOf(env, path)) };
 }
 
 export interface CommitRequest {

@@ -59,12 +59,14 @@ function GrowthRow({ series }: { readonly series: GrowthSeries }): ReactNode {
 
 export function GrowthCard({
   growth,
+  className,
 }: {
   readonly growth: NonNullable<PhotoInsights['growth']>;
+  readonly className: string;
 }): ReactNode {
   const ticks = growthTicks(growth);
   return (
-    <Card title="Library growth by kind">
+    <Card title="Library growth by kind" className={className}>
       {growthSeries(growth).map((series) => (
         <GrowthRow key={series.group} series={series} />
       ))}
@@ -79,9 +81,15 @@ export function GrowthCard({
   );
 }
 
-export function KindsCard({ insights }: { readonly insights: PhotoInsights }): ReactNode {
+export function KindsCard({
+  insights,
+  className,
+}: {
+  readonly insights: PhotoInsights;
+  readonly className: string;
+}): ReactNode {
   return (
-    <Card title="Kinds">
+    <Card title="Kinds" className={className}>
       <Donut slices={kindSlices(insights)} size={112} label="Kinds by number of items">
         <Text variant="title-3" className="tabular">
           {photoShare(insights)}
@@ -116,11 +124,18 @@ export function CalendarCard({
   );
 }
 
-export function WeekCard({ insights }: { readonly insights: PhotoInsights }): ReactNode {
+export function WeekCard({
+  insights,
+  className,
+}: {
+  readonly insights: PhotoInsights;
+  readonly className: string;
+}): ReactNode {
   const matrix = weekMatrix(insights.weekdayByHour);
   return (
-    <Card title="Weekday by hour">
+    <Card title="Weekday by hour" className={className}>
       <HourHeatmap
+        fill
         matrix={matrix}
         rows={WEEK_ROWS}
         unit="photos"
@@ -131,11 +146,18 @@ export function WeekCard({ insights }: { readonly insights: PhotoInsights }): Re
   );
 }
 
-export function SeasonCard({ insights }: { readonly insights: PhotoInsights }): ReactNode {
+export function SeasonCard({
+  insights,
+  className,
+}: {
+  readonly insights: PhotoInsights;
+  readonly className: string;
+}): ReactNode {
   const matrix = seasonMatrix(insights.seasonByHour);
   return (
-    <Card title="Season by hour">
+    <Card title="Season by hour" className={className}>
       <HourHeatmap
+        fill
         matrix={matrix}
         rows={SEASON_ROWS}
         unit="photos"

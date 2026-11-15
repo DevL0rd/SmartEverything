@@ -18,6 +18,7 @@ function item(change: Partial<TrashItem> & Pick<TrashItem, 'id' | 'name'>): Tras
     deletedAt: 0,
     daysLeft: 300,
     kept: 0.8,
+    purgeMonth: '2027-09',
     folders: [],
     deleter: { kind: 'you' },
     ...change,

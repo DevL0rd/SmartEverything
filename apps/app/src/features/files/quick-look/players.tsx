@@ -26,6 +26,7 @@ export function PictureAt({
 }): ReactNode {
   return (
     <Zoomable
+      wheel="wheel"
       className="size-full overflow-hidden"
       {...(onZoomed === undefined ? {} : { onZoomed })}
     >

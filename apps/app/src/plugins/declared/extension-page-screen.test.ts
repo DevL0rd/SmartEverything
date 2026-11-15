@@ -10,8 +10,6 @@ import { uiRowFixture } from './ui-fixture';
 
 const fixture = vi.hoisted(() => ({ width: 0 }));
 const PaneWidth = createContext(0);
-const paneLimits = { dashboard: 1440, full: Infinity, detail: 1120, reading: 720 } as const;
-
 function none(): null {
   return null;
 }
@@ -35,12 +33,8 @@ vi.mock('../../components/grid', async (importOriginal) => {
   };
 });
 vi.mock('../../components/page-shell/page-shell', () => ({
-  PageShell: ({ width, children }: StandardShellProps): ReactNode =>
-    createElement(
-      PaneWidth.Provider,
-      { value: Math.min(fixture.width, paneLimits[width ?? 'dashboard']) },
-      children,
-    ),
+  PageShell: ({ children }: StandardShellProps): ReactNode =>
+    createElement(PaneWidth.Provider, { value: fixture.width }, children),
 }));
 vi.mock('../../app-shell/hrefs', () => ({ href: { home: (): '/' => '/' } }));
 vi.mock('../../components/button', () => ({ Button: none }));
@@ -78,7 +72,7 @@ describe('Extension page layout', () => {
       createElement(ExtensionPageScreen, { pluginId: 'garden', pageId: 'overview' }),
     );
     expect(page.match(/class="flex-row items-stretch gap-grid-gap"/gu)).toHaveLength(rows);
-    expect(page.match(/max-w-reading/gu)).toHaveLength(7);
+    expect(page).not.toContain('max-w-');
     expect(page).toContain('Reading 7');
   });
 });

@@ -147,7 +147,13 @@ export function LapBars({
   readonly compact: boolean;
 }): ReactNode {
   return (
-    <Card title="Lap times" action={<Legend average={averageSplitOf(laps)} />}>
+    <Card>
+      <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+        <Text variant="title-3" accessibilityRole="header" className="grow">
+          Lap times
+        </Text>
+        <Legend average={averageSplitOf(laps)} />
+      </View>
       <Chart laps={laps} height={compact ? COMPACT_HEIGHT : WIDE_HEIGHT} />
     </Card>
   );

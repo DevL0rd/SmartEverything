@@ -69,8 +69,7 @@ export function ValueEditor({ row, initialKind, lockKind }: ValueEditorProps): R
   return (
     <EditorFocusProvider>
       <PageShell
-        width="reading"
-        title={editor.row === null ? 'New value' : editor.row.content.name}
+        title={editor.row === null ? 'New variable' : editor.row.content.name}
         overflow={
           editor.row === null
             ? []

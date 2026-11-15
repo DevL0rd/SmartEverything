@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  masterBeside,
   planChipGrid,
   planChips,
   planRows,
   rowColumns,
   rowMetrics,
   spanParts,
+  topHeight,
 } from './group-layout';
 
 const PHONE_L = {
@@ -136,6 +138,25 @@ describe('spanParts', () => {
   });
 });
 
+describe('master controls beside the rows', () => {
+  it('moves the master controls into the last column from three columns', () => {
+    expect(masterBeside(2)).toBe(false);
+    expect(masterBeside(3)).toBe(true);
+  });
+
+  it('gives the rows the height the header no longer takes', () => {
+    const wide = { ...PHONE_L, width: 1200, idiom: 'pointer', wide: true, total: 60 } as const;
+    const metrics = rowMetrics('pointer');
+    expect(topHeight(metrics, true)).toBeLessThan(topHeight(metrics, false));
+    expect(planRows(wide).count).toBe(
+      3 *
+        Math.floor(
+          (wide.height - topHeight(metrics, true) - wide.footer) / (metrics.row + metrics.gap),
+        ),
+    );
+  });
+});
+
 describe('planRows on the capped Devices card', () => {
   const caps = [
     { idiom: 'touch', height: 324, width: 326, wide: false, footer: 48 },
@@ -150,10 +171,7 @@ describe('planRows on the capped Devices card', () => {
         const metrics = rowMetrics(cap.idiom);
         const rows = Math.ceil(plan.count / plan.columns);
         const used =
-          metrics.header +
-          metrics.master +
-          metrics.white +
-          metrics.gap * 3 +
+          topHeight(metrics, masterBeside(plan.columns)) +
           rows * (metrics.row + metrics.gap) +
           cap.footer;
         expect(used).toBeLessThanOrEqual(cap.height);

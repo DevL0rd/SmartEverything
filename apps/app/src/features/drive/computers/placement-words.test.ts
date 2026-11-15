@@ -28,6 +28,11 @@ describe('placement state words', () => {
   it('gives the reason of a failure and of a hold', () => {
     const failed = placementWordsOf(placement({}, { state: 'failed', reason: 'No space' }), null);
     expect(sentenceOf('mounted', failed)).toBe('Mount · No space');
+    const full = placementWordsOf(
+      placement({}, { state: 'failed', reason: 'The disk on Laptop is full.' }),
+      null,
+    );
+    expect(sentenceOf('synced', full)).toBe('Sync: The disk on Laptop is full.');
     const held = placementWordsOf(placement({ hold: 'trashed' }), null);
     expect(held.held).toBe(true);
     expect(sentenceOf('synced', held)).toBe('The folder is in the trash. Restore it to carry on.');

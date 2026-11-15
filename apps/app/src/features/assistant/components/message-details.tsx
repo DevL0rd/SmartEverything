@@ -9,7 +9,7 @@ import { Sheet, type SheetProps } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { joinParts } from '../../../format/text';
 import { clock, dayLabel } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useDayNow } from '../../../store/clock';
 import { useStoreSelector } from '../../../store/store-context';
 import { moneyNoteOf, useMoney, type Money } from '../../region';
 import { useAiChat, useChatMessages } from '../data/chat-store';
@@ -198,8 +198,8 @@ function TurnChart({
 }
 
 function Heading({ row }: { readonly row: AssistantMessageRow }): ReactNode {
-  const now = useMinute();
   const timeZone = useStoreSelector((state) => state.settings?.time_zone ?? null);
+  const now = useDayNow(timeZone);
   return (
     <View className="flex-row items-baseline justify-between gap-3">
       <Text variant="label" numberOfLines={1} className="shrink-0">

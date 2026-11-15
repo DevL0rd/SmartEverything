@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react';
-import { PickerSourceContext } from '../components/widget-board/picker-source';
+import { useMemo, type ReactNode } from 'react';
+import { PickerSourceContext, type PickerSource } from '../components/widget-board/picker-source';
 import type { PickerState } from '../components/widget-board/types';
+import type { EntityStore } from './entity-store';
 import { rowsOf, type StoreState } from './state';
-import { useEntityStore, useStoreSelector } from './store-context';
+import { useEntityStore } from './store-context';
+import { trackReads } from './subscriptions';
 
 function pickerStateOf(state: StoreState): PickerState {
   return {
@@ -18,12 +20,21 @@ function sameState(left: PickerState, right: PickerState): boolean {
   );
 }
 
+export function pickerSourceOf(store: EntityStore): PickerSource {
+  const first = trackReads(store.get(), pickerStateOf);
+  const slices = [...first.reads];
+  let last = first.value;
+  const read = (): PickerState => {
+    const next = pickerStateOf(store.get());
+    if (!sameState(last, next)) last = next;
+    return last;
+  };
+  const subscribe = (wake: () => void): (() => void) => store.subscribeSlices(slices, wake);
+  return { read, subscribe };
+}
+
 export function PickerSourceProvider({ children }: { readonly children: ReactNode }): ReactNode {
   const store = useEntityStore();
-  const state = useStoreSelector(pickerStateOf, sameState);
-  return (
-    <PickerSourceContext value={{ state, read: () => pickerStateOf(store.get()) }}>
-      {children}
-    </PickerSourceContext>
-  );
+  const source = useMemo(() => pickerSourceOf(store), [store]);
+  return <PickerSourceContext value={source}>{children}</PickerSourceContext>;
 }

@@ -29,7 +29,11 @@ import {
 } from './insights-states';
 import { phaseOf, rangeOptions, statItems } from './model';
 
-const STAT_COLUMNS = { compact: 2, medium: 3, expanded: 6 } as const;
+const STAT_COLUMNS = { compact: 2, medium: 3, expanded: 3 } as const;
+
+const ROW = 'gap-4 large:flex-row';
+
+const HALF = 'min-w-0 large:flex-1';
 
 interface Shown {
   readonly insights: PhotoInsights;
@@ -47,48 +51,64 @@ function FullInsights({
   compact,
   owner,
 }: Shown & { readonly growth: NonNullable<PhotoInsights['growth']> }): ReactNode {
+  const ranked = insights.busiestDays.length > 0 || insights.largestVideos.length > 0;
   return (
     <>
-      <View className="gap-4 large:flex-row large:items-start">
-        <View className="min-w-0 large:flex-1">
-          <GrowthCard growth={growth} />
-        </View>
-        <View className="min-w-0 large:w-80">
-          <KindsCard insights={insights} />
-        </View>
+      <View className={ROW}>
+        <GrowthCard growth={growth} className={HALF} />
+        <KindsCard insights={insights} className="min-w-0 large:w-80" />
       </View>
       <CalendarCard insights={insights} range={range} today={today} compact={compact} />
-      <BusiestDays days={insights.busiestDays} range={range} />
-      <View className="gap-4 large:flex-row large:items-start">
-        <View className="min-w-0 large:flex-1">
-          <WeekCard insights={insights} />
+      {ranked ? (
+        <View className={ROW}>
+          <BusiestDays
+            days={insights.busiestDays}
+            range={range}
+            compact={compact}
+            className={HALF}
+          />
+          <LargestVideos
+            videos={insights.largestVideos}
+            range={range}
+            compact={compact}
+            className={HALF}
+          />
         </View>
-        <View className="min-w-0 large:flex-1">
-          <SeasonCard insights={insights} />
-        </View>
+      ) : null}
+      <View className={ROW}>
+        <WeekCard insights={insights} className={HALF} />
+        <SeasonCard insights={insights} className={HALF} />
       </View>
-      <View className="gap-4 large:flex-row large:items-start">
-        <View className="min-w-0 large:flex-1">
-          <PlacesCard places={insights.places} />
-        </View>
-        <View className="min-w-0 large:flex-1">
-          <CamerasCard insights={insights} />
-        </View>
-        <View className="min-w-0 gap-4 large:flex-1">
-          <CoverageCard coverage={insights.backupCoverage} />
-          <LargestVideos videos={insights.largestVideos} range={range} />
-        </View>
+      <View className={ROW}>
+        <PlacesCard places={insights.places} className={HALF} />
+        <CamerasCard insights={insights} className={HALF} />
       </View>
-      {owner ? <FoldersCard roots={insights.roots} /> : null}
+      {insights.backupCoverage.length > 0 || owner ? (
+        <View className={ROW}>
+          <CoverageCard coverage={insights.backupCoverage} className={HALF} />
+          {owner ? <FoldersCard roots={insights.roots} className={HALF} /> : null}
+        </View>
+      ) : null}
     </>
   );
 }
 
-function LoadedInsights(shown: Shown): ReactNode {
+function LoadedInsights({
+  onRange,
+  ...shown
+}: Shown & { readonly onRange: (range: PhotoInsightRange) => void }): ReactNode {
   const counts = usePhotoRailCounts().data;
   const phase = phaseOf(shown.insights, counts?.library);
   if (phase === 'empty') return <InsightsEmpty />;
-  if (phase === 'range-empty') return <RangeEmpty />;
+  if (phase === 'range-empty') {
+    return (
+      <RangeEmpty
+        onAllTime={() => {
+          onRange('all_time');
+        }}
+      />
+    );
+  }
   const { growth } = shown.insights;
   return (
     <>
@@ -104,12 +124,13 @@ function LoadedInsights(shown: Shown): ReactNode {
 
 interface BodyProps {
   readonly range: PhotoInsightRange;
+  readonly onRange: (range: PhotoInsightRange) => void;
   readonly compact: boolean;
   readonly live: boolean;
   readonly query: ReturnType<typeof usePhotoInsights>;
 }
 
-function InsightsBody({ range, compact, live, query }: BodyProps): ReactNode {
+function InsightsBody({ range, onRange, compact, live, query }: BodyProps): ReactNode {
   const owner = useIsOwner();
   const today = useDayKey();
   const insights = query.data;
@@ -118,6 +139,7 @@ function InsightsBody({ range, compact, live, query }: BodyProps): ReactNode {
       <LoadedInsights
         insights={insights}
         range={range}
+        onRange={onRange}
         today={today}
         compact={compact}
         owner={owner}
@@ -144,7 +166,10 @@ export function InsightsScreen(): ReactNode {
   const compact = useSizeClass().width === 'compact';
   const live = useSyncStatus().status === 'live';
   const query = usePhotoInsights(range);
+  const library = usePhotoRailCounts().data?.library;
   const stale = query.data !== undefined && (query.isError || !live);
+  const empty =
+    query.data !== undefined && library !== undefined && phaseOf(query.data, library) === 'empty';
   return (
     <PhotosFrame
       active="insights"
@@ -152,14 +177,22 @@ export function InsightsScreen(): ReactNode {
       banner={stale ? <StaleBanner /> : null}
     >
       <View className="gap-section-gap">
-        <Segmented
-          options={rangeOptions(compact)}
-          value={range}
-          onChange={setRange}
-          label="Range"
-          fill={compact}
+        {empty ? null : (
+          <Segmented
+            options={rangeOptions(compact)}
+            value={range}
+            onChange={setRange}
+            label="Range"
+            fill={compact}
+          />
+        )}
+        <InsightsBody
+          range={range}
+          onRange={setRange}
+          compact={compact}
+          live={live}
+          query={query}
         />
-        <InsightsBody range={range} compact={compact} live={live} query={query} />
       </View>
     </PhotosFrame>
   );

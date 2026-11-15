@@ -16,6 +16,7 @@ import { nodeRuntimeHosts } from './runtime-hosts';
 import { collectorFor, UnsupportedPlatformError } from './collectors/collector';
 import { ComputerNode } from './computer-node';
 import { controlsFor } from './controls/controls';
+import { mprisPlayers } from './controls/linux/mpris';
 import type { EarHostFactory } from './ear/ear-host';
 import type { EarPipelineFactory } from './ear/ear-pipeline';
 import { computerEarFor } from './ear/linux-ear';
@@ -225,7 +226,7 @@ function createComputerNode(
   try {
     const computer = new ComputerNode({
       collector: collectorFor(process.platform, { log, machineId, now: Date.now }),
-      controls: controlsFor(process.platform, { now, log }),
+      controls: controlsFor(process.platform, { now, log, media: mprisPlayers }),
       link,
       now,
       log,

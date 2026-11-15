@@ -33,19 +33,21 @@ function StatusFilters({
 }): ReactNode {
   if (narrow) {
     return (
-      <ChoiceChip
-        label="Filter automations"
-        icon="filter"
-        options={choices.map((choice) => ({
-          value: choice.id,
-          label: `${choice.label} · ${count(choice.count)}`,
-        }))}
-        value={view.filter}
-        all={DEFAULT_VIEW.filter}
-        onChange={(filter) => {
-          onChange({ ...view, filter });
-        }}
-      />
+      <View className="flex-row">
+        <ChoiceChip
+          label="Filter automations"
+          icon="filter"
+          options={choices.map((choice) => ({
+            value: choice.id,
+            label: `${choice.label} · ${count(choice.count)}`,
+          }))}
+          value={view.filter}
+          all={DEFAULT_VIEW.filter}
+          onChange={(filter) => {
+            onChange({ ...view, filter });
+          }}
+        />
+      </View>
     );
   }
   return (

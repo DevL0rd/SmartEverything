@@ -29,8 +29,15 @@ const NO_ACTIONS: readonly ShellAction[] = [];
 export const MEMBER_PAIRING =
   'Open SmartEverything Desktop on your computer and sign in. The home owner then pairs it under Computers, and it shows here.';
 
-export function pairActionsOf(owner: boolean, pair: () => void): readonly ShellAction[] {
-  return owner ? [{ icon: 'plus', label: 'Pair a computer', onPress: pair }] : NO_ACTIONS;
+export interface PairInputs {
+  readonly owner: boolean;
+  readonly computers: number;
+  readonly live: boolean;
+}
+
+export function pairActionsOf(inputs: PairInputs, pair: () => void): readonly ShellAction[] {
+  if (!inputs.owner || inputs.computers === 0) return NO_ACTIONS;
+  return [{ icon: 'plus', label: 'Pair a computer', onPress: pair, disabled: !inputs.live }];
 }
 
 export function ComputersSkeleton(): ReactNode {
@@ -55,7 +62,7 @@ function NoComputers({
       title="No computers yet"
       body={
         owner
-          ? 'Pair a computer to sync folders of your drives to it or mount them in its file manager.'
+          ? 'Pair a computer to sync folders to it or mount your My Drive in its file manager.'
           : MEMBER_PAIRING
       }
       {...(owner ? { action: <Button label="Pair a computer" icon="plus" onPress={pair} /> } : {})}
@@ -153,19 +160,19 @@ export function ComputersScreen(): ReactNode {
   const pair = (): void => {
     setPairing(true);
   };
-  const subtitle = computersSubtitleOf(computers);
+  const subtitle = loaded ? computersSubtitleOf(computers) : undefined;
   return (
     <DriveFrame
       section="computers"
       title="Computers"
-      actions={pairActionsOf(owner, pair)}
+      actions={pairActionsOf({ owner, computers: computers.length, live }, pair)}
       banner={
         loaded && !live ? (
           <Banner
             wrapBody
             tone="info"
             title="Showing the last known state"
-            body="The Hub is offline. Computers update when it is back."
+            body="The Hub is offline. Computers update, and you can change them again, when it is back."
           />
         ) : null
       }

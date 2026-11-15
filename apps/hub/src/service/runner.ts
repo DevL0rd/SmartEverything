@@ -5,6 +5,7 @@ import { verifyMarker, type HubLayout, type Location } from '../data-layout';
 import type { startServer, RunningServer } from '../start';
 import { HUB_VERSION } from '../version';
 import { hubBootRun } from '../self-update/boot-receipt';
+import type { FileIoThreadsStart } from './file-io-threads';
 import { stopOnUncaught } from './uncaught';
 import { RESTART_EXIT_CODE, readServiceConfig, type HubServiceConfig } from './configuration';
 import { migrateHubServiceConfig } from './config-migration';
@@ -23,6 +24,7 @@ import {
 export interface ServiceHost {
   readonly layout: HubLayout;
   readonly pointer: Pick<Location, 'rootId' | 'state'>;
+  readonly fileIoThreads: FileIoThreadsStart;
   readonly exit: (code: number) => void;
   readonly onSignal: (signal: 'SIGTERM' | 'SIGINT', handler: () => void) => void;
 }
@@ -152,6 +154,7 @@ export async function runService(host: ServiceHost): Promise<RunningService> {
   const migrated = await migrateHubServiceConfig(configFiles.service);
   const config = await readServiceConfig(configFiles.service);
   const { log, logFile, pidFile } = await openServiceFiles(host, config);
+  log.info('service.file_io_threads', { ...host.fileIoThreads });
   if (migrated) log.info('hub.config_migrated', { file: configFiles.service });
   const lifecycle = new Lifecycle(host, log, { logFile, pidFile });
   const watching = stopOnUncaught(process, log, (code) => lifecycle.shutdown(code));

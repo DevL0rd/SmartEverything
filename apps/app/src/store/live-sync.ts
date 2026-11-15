@@ -14,8 +14,9 @@ import { loadOwnerConsents } from './live-consents';
 import { attachWatches, detachWatches } from './live-watches';
 import { rejectedTables } from './live-subscription';
 import { UnreadableChangeError } from './live-reducers';
+import type { SyncProblem } from './state';
+import { PROBLEMS, SectionFailures } from './live-failures';
 import { TOKEN_WITHDRAWN, backoffOf, openLiveSocket, type Received } from './live-socket';
-import { rawErrorText } from '../format/errors';
 import type { LiveSyncHooks } from './live-sync-hooks';
 export type { LiveSyncHooks } from './live-sync-hooks';
 import { routeFor } from '../api/connection/active-route';
@@ -48,7 +49,7 @@ export class LiveSync {
   private activityBuffer: ActivityNotice[] = [];
   private batch: LiveChange[] = [];
   private snapshotRun = 0;
-  private outdated: ReadonlySet<string> = new Set();
+  private readonly failures: SectionFailures;
   private unsupportedTables: ReadonlySet<string> = new Set();
   private sentTables: readonly LiveTable[] = [];
   private suspended = false;
@@ -59,6 +60,7 @@ export class LiveSync {
     private readonly store: EntityStore,
     private readonly hooks: LiveSyncHooks,
   ) {
+    this.failures = new SectionFailures(store);
     this.snapshotCommands = hooks.onSnapshotCommands ?? ((): void => undefined);
   }
 
@@ -108,7 +110,7 @@ export class LiveSync {
       },
       failed: (error): void => {
         log.error('live.route_failed', error, this.ids());
-        this.store.setSync({ status: 'interrupted', problem: rawErrorText(error) });
+        this.store.setSync({ status: 'interrupted', problem: PROBLEMS.server(error) });
       },
     });
   }
@@ -216,9 +218,10 @@ export class LiveSync {
 
   private receive(received: Received): void {
     if (received.kind === 'unreadable') {
-      this.unreadable(received.reason, received.table);
+      this.failures.unreadableChange(received.table, received.reason);
       return;
     }
+    if (this.dropUnsupported(received.message)) return;
     recordNotice();
     if (logEnabled('debug')) {
       traffic.bump(
@@ -230,33 +233,21 @@ export class LiveSync {
     this.handle(received.message);
   }
 
-  private unreadable(reason: string, table: string | null): void {
-    if (table !== null && this.outdated.has(`tables.${table}`)) {
-      log.debug('live.outdated_change_skipped', { table });
-      return;
-    }
-    if (table === null) {
-      log.warn('live.notice_ignored', { reason });
-      return;
-    }
-    log.warn('live.unreadable', { reason, table });
-    this.resnapshot(`The server sent something this app cannot read: ${reason}`);
-  }
-
   private subscriptionTables(): LiveTable[] {
     this.sentTables = LIVE_TABLES.filter((table) => !this.unsupportedTables.has(table));
     return [...this.sentTables];
   }
 
-  private dropUnsupported(reason: string): void {
-    const rejected = rejectedTables(this.sentTables, reason);
-    if (rejected.length === 0) return;
-    log.warn('live.tables_unsupported', { tables: rejected });
+  private dropUnsupported(message: LiveMessage): boolean {
+    if (message.type !== 'refused') return false;
+    const rejected = rejectedTables(this.sentTables, message.error.message);
+    if (rejected.length === 0) return false;
     this.unsupportedTables = new Set([...this.unsupportedTables, ...rejected]);
+    this.failures.unsupported(rejected, message.error.message);
+    return true;
   }
 
   private handle(message: LiveMessage): void {
-    if (message.type === 'refused') this.dropUnsupported(message.error.message);
     if (message.type === 'change') {
       this.change(message);
       return;
@@ -324,15 +315,16 @@ export class LiveSync {
       this.store.apply(changes);
     } catch (error) {
       if (!(error instanceof UnreadableChangeError)) throw error;
-      log.warn('live.change_unreadable', { table: error.table, reason: error.reason });
-      this.resnapshot(error.message);
+      log.error('live.change_unreadable', error, { table: error.table, reason: error.reason });
+      this.failures.live([{ section: `tables.${error.table}`, reason: error.reason }]);
+      this.resnapshot(null);
       return;
     }
     this.hooks.onChanges(changes);
   }
 
-  private resnapshot(problem: string | null): void {
-    log.warn('live.resnapshot', { ...this.ids(), reasonLength: problem?.length ?? 0 });
+  private resnapshot(problem: SyncProblem | null): void {
+    log.warn('live.resnapshot', { ...this.ids(), reasonLength: problem?.text.length ?? 0 });
     this.enter('buffering');
     this.buffer = [];
     this.activityBuffer = [];
@@ -348,7 +340,7 @@ export class LiveSync {
     this.deadline.rearm(LINK_DEADLINE_MS);
     this.store.setSync({ status: this.store.get().loaded ? 'interrupted' : 'loading' });
     try {
-      const { snapshot, outdated } = await readLiveSnapshot();
+      const { snapshot, failed } = await readLiveSnapshot();
       if (run !== this.snapshotRun || this.phase === 'closed') {
         log.info('live.snapshot_discarded', { ...this.ids(), run, durationMs: Date.now() - begun });
         return;
@@ -356,7 +348,7 @@ export class LiveSync {
       const readMs = Date.now() - begun;
       this.store.replace(snapshot);
       this.snapshotCommands(snapshot.tables.commands);
-      this.outdated = new Set(outdated);
+      this.failures.snapshot(failed);
       const replay = this.buffer.filter((change) => change.seq > snapshot.seq);
       this.buffer = [];
       this.enter('live');
@@ -364,13 +356,13 @@ export class LiveSync {
       this.applyAll(replay);
       this.replayActivity();
       this.attempt = 0;
-      this.store.setSync({ status: 'live', problem: null, outdated });
+      this.store.setSync({ status: 'live', problem: null, failed: this.failures.all() });
       this.hooks.onSynchronized?.(replay, snapshot);
       log.info('live.ready', {
         ...this.ids(),
         seq: snapshot.seq,
         replayed: replay.length,
-        outdated: outdated.length,
+        failed: failed.length,
         durationMs: readMs,
       });
       loadOwnerConsents(
@@ -386,7 +378,7 @@ export class LiveSync {
 
   private snapshotFailed(error: unknown, begun: number): void {
     log.error('live.snapshot_failed', error, { ...this.ids(), durationMs: Date.now() - begun });
-    this.store.setSync({ status: 'interrupted', problem: rawErrorText(error) });
+    this.store.setSync({ status: 'interrupted', problem: PROBLEMS.snapshot(error) });
     this.stopSocket?.();
     this.closed(0, 'snapshot failed');
   }
@@ -399,7 +391,7 @@ export class LiveSync {
   private timedOut(): void {
     log.warn('live.link_timed_out', this.ids());
     this.stopSocket?.();
-    this.store.setSync({ status: 'interrupted', problem: 'The server did not answer in time' });
+    this.store.setSync({ status: 'interrupted', problem: PROBLEMS.timedOut });
     this.closed(0, 'link timed out');
   }
 
@@ -417,6 +409,11 @@ export class LiveSync {
     log.info('live.closed', { code, reason });
     if (code === TOKEN_WITHDRAWN) {
       connectionRefused(this.connection);
+      return;
+    }
+    const final = PROBLEMS.closing(code, reason);
+    if (final !== null) {
+      this.store.setSync({ problem: final });
       return;
     }
     const wait = backoffOf(this.attempt);

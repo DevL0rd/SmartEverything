@@ -45,7 +45,7 @@ function LogBody({ row }: { readonly row: PluginRow }): ReactNode {
     return <CodeBlock code={textOf(log.data)} label={`${row.manifest.name} log`} />;
   }
   return (
-    <View className="w-full max-w-reading">
+    <View className="w-full">
       <LogStatus log={log} />
     </View>
   );
@@ -65,7 +65,6 @@ export function PluginLogScreen({
       page="plugins"
       title="Log"
       detail
-      contentWidth="detail"
       trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
     >
       <LogBody row={row} />

@@ -3,6 +3,7 @@ import {
   checkStateOf,
   drivePathOfWire,
   insideExcluded,
+  excludedChildrenOf,
   keptSplitOf,
   sameExcluded,
   toggledExcluded,
@@ -38,5 +39,14 @@ describe('selective sync as excluded folders', () => {
     const sizes = new Map([['Films', 60]]);
     expect(keptSplitOf(100, ['Films'], sizes)).toEqual({ kept: 40, excluded: 60 });
     expect(keptSplitOf(100, ['Unknown'], sizes)).toBeNull();
+  });
+
+  it('finds the excluded folders right inside a folder', () => {
+    const excluded = ['Projects/Website/node_modules', 'Projects/Raw', 'Films'];
+    expect(excludedChildrenOf('Projects', excluded)).toEqual(['Projects/Raw']);
+    expect(excludedChildrenOf('Projects/Website', excluded)).toEqual([
+      'Projects/Website/node_modules',
+    ]);
+    expect(excludedChildrenOf(null, excluded)).toEqual(['Films']);
   });
 });

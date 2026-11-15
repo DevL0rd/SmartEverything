@@ -103,7 +103,7 @@ export function FilterBar({
     onChange(next);
   };
   return (
-    <HScroller label="Chat filters" fade fadeSurface="bg">
+    <HScroller label="Chat filters" fade>
       <View
         className="flex-row items-center px-gutter"
         accessibilityRole="radiogroup"

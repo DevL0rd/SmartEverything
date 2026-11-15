@@ -10,11 +10,15 @@ export function revealedAt(spans: Spans, span: Span, viewport: number): number {
   if (needed <= 0) {
     return 0;
   }
-  const starts = Object.values(spans).map((other) => other.x);
-  return Math.min(
-    span.x,
-    starts.sort((left, right) => left - right).find((x) => x >= needed) ?? span.x,
-  );
+  const all = Object.values(spans);
+  const end = Math.max(...all.map((other) => other.x + other.width));
+  const last = Math.max(0, end - viewport);
+  const snapped = all
+    .map((other) => other.x)
+    .filter((x) => x >= needed && x <= last)
+    .sort((left, right) => left - right)
+    .at(0);
+  return Math.min(span.x, snapped ?? last);
 }
 
 function sameSpan(left: Span | undefined, right: Span): boolean {

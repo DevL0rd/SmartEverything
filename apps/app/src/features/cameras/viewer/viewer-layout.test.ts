@@ -48,8 +48,6 @@ describe('viewerClasses', () => {
   it('puts the inspector beside the player only when wide', () => {
     expect(viewerClasses({ wide: true, columns: true }).row).toContain('flex-row');
     expect(viewerClasses({ wide: false, columns: true }).row).not.toContain('flex-row');
-    expect(viewerClasses({ wide: true, columns: true }).width).toBe('dashboard');
-    expect(viewerClasses({ wide: false, columns: false }).width).toBe('detail');
   });
 
   it('splits panels and recent into columns only at the expanded width', () => {
@@ -73,7 +71,7 @@ describe('viewerLayoutFor', () => {
   it('uses the full page only with room for a detail player and both inspector columns', () => {
     expect(viewerUsesFullWidth(1447, 24)).toBe(false);
     expect(viewerUsesFullWidth(1448, 24)).toBe(true);
-    expect(viewerClasses({ wide: true, columns: true }, true).width).toBe('full');
+    expect(viewerClasses({ wide: true, columns: true }, true).row).toContain('flex-row');
   });
 
   it('docks the inspector only with room for the detail pane and its gap', () => {

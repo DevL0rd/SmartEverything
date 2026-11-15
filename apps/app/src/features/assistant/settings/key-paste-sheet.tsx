@@ -38,6 +38,23 @@ interface KeyDraft {
   readonly submit: () => Promise<void>;
 }
 
+interface SaveReport {
+  readonly done: () => void;
+  readonly failed: (cause: unknown) => void;
+  readonly settle: () => void;
+}
+
+async function saveKey(write: () => Promise<unknown>, report: SaveReport): Promise<void> {
+  try {
+    await write();
+    report.done();
+  } catch (cause) {
+    report.failed(cause);
+  } finally {
+    report.settle();
+  }
+}
+
 function useKeyDraft({
   saved,
   save,
@@ -48,19 +65,22 @@ function useKeyDraft({
   const [key, setKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const submit = async (): Promise<void> => {
+  const submit = (): Promise<void> => {
     setSaving(true);
     setError(null);
-    try {
-      await save(key.trim());
-      notify({ message: saved, tone: 'positive' });
-      setKey('');
-      onClose();
-    } catch (cause) {
-      setError(errorText(cause).title);
-    } finally {
-      setSaving(false);
-    }
+    return saveKey(() => save(key.trim()), {
+      done: () => {
+        notify({ message: saved, tone: 'positive' });
+        setKey('');
+        onClose();
+      },
+      failed: (cause) => {
+        setError(errorText(cause).title);
+      },
+      settle: () => {
+        setSaving(false);
+      },
+    });
   };
   return { key, setKey, error, saving, submit };
 }

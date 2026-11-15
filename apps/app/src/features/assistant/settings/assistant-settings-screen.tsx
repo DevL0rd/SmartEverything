@@ -8,20 +8,12 @@ function AssistantSettingsBlocks({ children }: { readonly children: ReactNode })
   return (
     <View className="gap-section-gap web:block web:columns-(--spacing-picker)">
       {Children.map(children, (block) => (
-        <View className="min-w-0 max-w-reading web:break-inside-avoid web:not-last:pb-section-gap">
-          {block}
-        </View>
+        <View className="min-w-0 web:break-inside-avoid web:not-last:pb-section-gap">{block}</View>
       ))}
     </View>
   );
 }
 
 export function AssistantSettingsScreen(): ReactNode {
-  return (
-    <SettingsPageScreen
-      page="assistant"
-      contentWidth={isNative() ? 'reading' : 'full'}
-      BlocksLayout={AssistantSettingsBlocks}
-    />
-  );
+  return <SettingsPageScreen page="assistant" BlocksLayout={AssistantSettingsBlocks} />;
 }

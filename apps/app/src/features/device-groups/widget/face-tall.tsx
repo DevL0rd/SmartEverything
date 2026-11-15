@@ -10,6 +10,7 @@ import type { WidgetFrameBox } from '../../../components/widget-board';
 import type { Device } from '../../../store/state';
 import { DeviceFace, deviceModelOf } from '../../devices';
 import {
+  masterBeside,
   planRows,
   rowMetrics,
   spanParts,
@@ -186,6 +187,40 @@ function Bands({ data }: { readonly data: GroupData }): ReactNode {
   );
 }
 
+function Top({
+  data,
+  titleHref,
+  columns,
+  metrics,
+}: {
+  readonly data: GroupData;
+  readonly titleHref: AppHref | undefined;
+  readonly columns: number;
+  readonly metrics: RowMetrics;
+}): ReactNode {
+  if (!masterBeside(columns)) {
+    return (
+      <>
+        <Header data={data} titleHref={titleHref} />
+        <Bands data={data} />
+      </>
+    );
+  }
+  const row = { columnGap: metrics.column };
+  const lead = { flexGrow: columns - 1, flexBasis: (columns - 2) * metrics.column };
+  const lane = { gap: metrics.gap };
+  return (
+    <View className="flex-row items-start" style={row}>
+      <View className="min-w-0 shrink" style={lead}>
+        <Header data={data} titleHref={titleHref} />
+      </View>
+      <View className="min-w-0 flex-1" style={lane}>
+        <Bands data={data} />
+      </View>
+    </View>
+  );
+}
+
 function Footer({
   data,
   controls,
@@ -242,11 +277,11 @@ export function TallFace({
       ? planFor({ data, frame, wide, expanded, footer })
       : { columns: allColumns, start: 0, count: data.members.length, hidden: 0 };
   const note = data.lights ? colourNote(data.view.state, memberNoun(data.lights)) : null;
-  const stack = { gap: rowMetrics(frame.idiom).gap };
+  const metrics = rowMetrics(frame.idiom);
+  const stack = { gap: metrics.gap };
   return (
     <View className="flex-1" style={stack}>
-      <Header data={data} titleHref={titleHref} />
-      <Bands data={data} />
+      <Top data={data} titleHref={titleHref} columns={plan.columns} metrics={metrics} />
       <Notices data={data} />
       <Rows
         data={data}

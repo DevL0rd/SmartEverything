@@ -67,11 +67,11 @@ describe('run stats', () => {
     );
   });
 
-  it('counts today and the waiting runs for the health strip', () => {
+  it('counts today, the waiting runs and the week of outcomes for the overview', () => {
     const health = healthOf(runs, NOW, ZONE);
     expect(health).toMatchObject({ runsToday: 2, failedToday: 1, waiting: 1 });
-    expect(health.perHour).toHaveLength(24);
-    expect(health.perHour.reduce((sum, point) => sum + point.v, 0)).toBe(2);
+    expect(health.week).toHaveLength(7);
+    expect(health.week.at(-1)).toMatchObject({ day: TODAY, succeeded: 1, failed: 1 });
   });
 });
 

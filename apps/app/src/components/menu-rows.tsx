@@ -27,6 +27,8 @@ export interface MenuItem {
   readonly destructive?: boolean;
   readonly disabled?: boolean;
   readonly shortcut?: string;
+  readonly selected?: boolean;
+  readonly group?: string;
 }
 
 type StandardMenuLayout = 'touch-popover' | 'popover';
@@ -51,7 +53,22 @@ function compactRowClass(item: MenuItem): string {
 
 export type MenuEntry =
   | { readonly kind: 'item'; readonly item: MenuItem }
-  | { readonly kind: 'divider'; readonly key: string };
+  | { readonly kind: 'divider'; readonly key: string }
+  | { readonly kind: 'heading'; readonly key: string; readonly label: string };
+
+function groupedEntries(items: readonly MenuItem[]): MenuEntry[] {
+  const entries: MenuEntry[] = [];
+  items.forEach((item, index) => {
+    const before = items[index - 1];
+    const changed = before !== undefined && before.group !== item.group;
+    if (changed) entries.push({ kind: 'divider', key: `group-divider-${String(index)}` });
+    if (item.group !== undefined && (before === undefined || changed)) {
+      entries.push({ kind: 'heading', key: `group-${item.group}`, label: item.group });
+    }
+    entries.push({ kind: 'item', item });
+  });
+  return entries;
+}
 
 export function arrangeEntries(
   quick: readonly MenuItem[],
@@ -60,7 +77,7 @@ export function arrangeEntries(
   const plain = items.filter((item) => item.destructive !== true);
   const destructive = items.filter((item) => item.destructive === true);
   const lead = [...quick, ...plain];
-  const entries: MenuEntry[] = lead.map((item) => ({ kind: 'item', item }));
+  const entries = groupedEntries(lead);
   if (destructive.length > 0 && lead.length > 0) {
     entries.push({ kind: 'divider', key: 'destructive-divider' });
   }
@@ -162,6 +179,7 @@ function MenuRow({
         label={item.label}
         hint={item.description}
         disabled={item.disabled}
+        selected={item.selected}
         role="menuitem"
         focusInset={compact}
         className={cn(COMPACT_ROW_FRAME, compact ? compactRowClass(item) : ROW[layout])}
@@ -175,13 +193,37 @@ function MenuRow({
           />
         )}
         <MenuItemBody item={item} critical={critical} wrap={compact} />
-        {item.shortcut === undefined || !showShortcut ? null : (
-          <Text variant="caption" tone={compact ? 'variant' : 'faint'}>
-            {item.shortcut}
-          </Text>
-        )}
+        <RowTrailing item={item} layout={layout} showShortcut={showShortcut} />
       </Interactive>
       {page}
+    </>
+  );
+}
+
+function RowTrailing({
+  item,
+  layout,
+  showShortcut,
+}: {
+  readonly item: MenuItem;
+  readonly layout: MenuLayout;
+  readonly showShortcut: boolean;
+}): ReactNode {
+  const compact = layout === 'compact' || layout === 'compact-pointer';
+  return (
+    <>
+      {item.shortcut === undefined || !showShortcut ? null : (
+        <Text variant="caption" tone={compact ? 'variant' : 'faint'}>
+          {item.shortcut}
+        </Text>
+      )}
+      {item.selected === true ? (
+        <Icon
+          name="check"
+          size={compact ? COMPACT_ROW_ICON_SIZE : ICON_SIZE[layout]}
+          tone="primary"
+        />
+      ) : null}
     </>
   );
 }
@@ -224,10 +266,24 @@ export function MenuRows({
   readonly layout: MenuLayout;
   readonly subpages?: boolean;
 }): ReactNode {
-  return entries.map((entry) =>
-    entry.kind === 'divider' ? (
-      <View key={entry.key} className="my-1 h-hairline bg-outline-variant" />
-    ) : (
+  return entries.map((entry) => {
+    if (entry.kind === 'divider') {
+      return <View key={entry.key} className="my-1 h-hairline bg-outline-variant" />;
+    }
+    if (entry.kind === 'heading') {
+      return (
+        <Text
+          key={entry.key}
+          variant="caption"
+          tone="variant"
+          role="heading"
+          className="mx-1 px-3 pb-1 pt-2"
+        >
+          {entry.label}
+        </Text>
+      );
+    }
+    return (
       <MenuRow
         key={entry.item.id ?? entry.item.label}
         item={entry.item}
@@ -235,8 +291,8 @@ export function MenuRows({
         layout={layout}
         subpages={subpages}
       />
-    ),
-  );
+    );
+  });
 }
 
 function QuickButton({ item, close, subpages }: MenuControlProps): ReactNode {
@@ -247,6 +303,7 @@ function QuickButton({ item, close, subpages }: MenuControlProps): ReactNode {
         {...press}
         label={item.label}
         disabled={item.disabled}
+        selected={item.selected}
         role="menuitem"
         className="min-h-touch-min min-w-0 flex-1 items-center gap-1 rounded-md px-1 pb-2 pt-2.5"
         layerClassName="rounded-md"

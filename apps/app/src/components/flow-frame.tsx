@@ -12,7 +12,7 @@ import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
 import { useSizeClass } from '../design/size-class';
 import { useThemeSetting } from '../design/theme';
-import { CONTAINER_WIDTH, gutterOf } from '../design/tokens';
+import { gutterOf } from '../design/tokens';
 import { IconButton } from './icon-button';
 import { KeyboardViewport } from './keyboard-viewport';
 import { ShellSearch, type ShellSearchConfig } from './page-shell/search-slot';
@@ -30,8 +30,6 @@ export interface FlowFrameProps {
   readonly wide?: boolean;
   readonly children: ReactNode;
 }
-
-const COLUMN: ViewStyle = { width: '100%', maxWidth: CONTAINER_WIDTH.reading };
 
 function FlowBody({
   steps,
@@ -84,7 +82,7 @@ function StickySearch({
   return (
     <View style={gutter} className="pb-2 pt-2">
       <TopSurface scrollY={scrollY} from={stuckAt - SURFACE_AT} to={stuckAt} />
-      <View testID="shell-search" style={COLUMN}>
+      <View testID="shell-search">
         <ShellSearch search={search} />
       </View>
     </View>
@@ -120,9 +118,7 @@ function TouchFooter({
 }): ReactNode {
   return (
     <View style={gutter} className="border-t border-outline-variant pt-3 pb-safe-offset-3">
-      <View style={COLUMN} className="flex-row gap-3">
-        {children}
-      </View>
+      <View className="flex-row gap-3">{children}</View>
     </View>
   );
 }
@@ -159,17 +155,13 @@ function TouchFlow({
             setTitleHeight(event.nativeEvent.layout.height);
           }}
         >
-          <View style={COLUMN}>
-            <ShellTitle title={title} size="large" testID="shell-title" />
-          </View>
+          <ShellTitle title={title} size="large" testID="shell-title" />
         </View>
         {search === undefined ? null : (
           <StickySearch search={search} scrollY={scrollY} stuckAt={titleHeight} gutter={gutter} />
         )}
         <View style={gutter} className="pt-2">
-          <View style={COLUMN}>
-            <FlowBody steps={steps}>{children}</FlowBody>
-          </View>
+          <FlowBody steps={steps}>{children}</FlowBody>
         </View>
       </Animated.ScrollView>
       {footer === undefined ? null : <TouchFooter gutter={gutter}>{footer}</TouchFooter>}

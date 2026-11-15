@@ -40,6 +40,15 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
+export function useModulePlayer(
+  module: VideoModule,
+  uri: string,
+  setUp?: (player: Player) => void,
+): Player {
+  'use no memo';
+  return module.useVideoPlayer({ uri, contentType: 'progressive' }, setUp);
+}
+
 export function loadVideoModule(): Promise<VideoModule> {
   loading ??= import('expo-video');
   return loading;
@@ -234,7 +243,7 @@ function Clip({
   readonly held: boolean;
   readonly phone: boolean;
 }): ReactNode {
-  const player = module.useVideoPlayer({ uri: clip, contentType: 'progressive' });
+  const player = useModulePlayer(module, clip);
   const state = useClip(player, held);
   const { VideoView } = module;
   return (

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   beginSelecting,
-  dayActionText,
   dayMark,
   dragTo,
   NO_SELECTION,
@@ -49,15 +48,13 @@ describe('media selection', () => {
     expect(rangeOf(ORDER, 'a', 'gone')).toEqual([]);
   });
 
-  it('day Select picks the whole day, and a full day deselects', () => {
+  it('the day check picks the whole day, and a full day clears', () => {
     const day = ['c', 'd', 'e'];
     const some = toggleItem(NO_SELECTION, 'd');
     expect(dayMark(some, day)).toBe('some');
-    expect(dayActionText(dayMark(some, day))).toBe('Select');
     const full = toggleDay(some, day);
     expect(ids(full)).toEqual(['c', 'd', 'e']);
     expect(dayMark(full, day)).toBe('all');
-    expect(dayActionText('all')).toBe('Deselect');
     expect(ids(toggleDay(full, day))).toEqual([]);
     expect(dayMark(NO_SELECTION, day)).toBe('none');
   });

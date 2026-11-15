@@ -123,29 +123,41 @@ export function healthLinesOf(health: DriveHealth, now: number): readonly Health
   ];
 }
 
-function ScrubRing({ view }: { readonly view: ScrubView }): ReactNode {
+function ScrubRing({
+  view,
+  ring,
+}: {
+  readonly view: ScrubView;
+  readonly ring: boolean;
+}): ReactNode {
   return (
     <View className="flex-row items-center gap-4">
-      <View className="shrink-0 items-center justify-center">
-        <Arc
-          value={view.ring}
-          size={RING_SIZE}
-          thickness={RING_THICKNESS}
-          colour={view.colour}
-          trackColour="surface-3"
-        />
-        <View className="absolute">
-          <Text variant="caption" className="tabular">
-            {percent(view.ring)}
-          </Text>
-        </View>
-      </View>
+      {ring ? <RingDial view={view} /> : null}
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="callout" className="font-sans-medium">
           {view.title}
         </Text>
         <Text variant="footnote" tone="variant">
           {view.detail}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function RingDial({ view }: { readonly view: ScrubView }): ReactNode {
+  return (
+    <View className="shrink-0 items-center justify-center">
+      <Arc
+        value={view.ring}
+        size={RING_SIZE}
+        thickness={RING_THICKNESS}
+        colour={view.colour}
+        trackColour="surface-3"
+      />
+      <View className="absolute">
+        <Text variant="caption" className="tabular">
+          {percent(view.ring)}
         </Text>
       </View>
     </View>
@@ -167,7 +179,7 @@ export function HealthBody({
         accessibilityRole="image"
         accessibilityLabel={`${scrub.title}, ${scrub.detail}`}
       >
-        <ScrubRing view={scrub} />
+        <ScrubRing view={scrub} ring={health.scrub.state === 'idle'} />
       </View>
       {health.scrub.state === 'idle' ? null : <ScrubProgress scrub={health.scrub} />}
       <View className="-mx-card-pad -mb-card-pad">

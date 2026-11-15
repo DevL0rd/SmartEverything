@@ -75,6 +75,21 @@ describe('the Library tabs', () => {
     ]);
   });
 
+  it('shows no count on an empty tab, like the Photos rail', () => {
+    const chips = tabChipsOf(shownTabs(true, BOTH), {
+      rail: { ...RAIL, screenshots: 0 },
+      cameras: 0,
+      ai: 0,
+      device: 0,
+    });
+    expect(chips.filter((chip) => chip.count === null).map((chip) => chip.id)).toEqual([
+      'screenshots',
+      'device',
+      'cameras',
+      'ai',
+    ]);
+  });
+
   it('names the hub tabs and refuses the others', () => {
     expect(hubTabOf('screenshots')).toBe('screenshots');
     expect(() => hubTabOf('device')).toThrow(RangeError);

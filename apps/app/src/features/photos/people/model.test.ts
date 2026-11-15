@@ -7,7 +7,10 @@ import type {
 import { describe, expect, it } from 'vitest';
 import {
   compareGroups,
+  emptyReasonOf,
   faceCropOf,
+  faceScanTextOf,
+  groupingTextOf,
   faceProgressOf,
   groupLabelOf,
   groupTitleOf,
@@ -56,6 +59,7 @@ function status(patch: Partial<PhotoAiStatus> = {}): PhotoAiStatus {
     faces: PROGRESS,
     tags: PROGRESS,
     index: PROGRESS,
+    people: { faces: 0, grouped: 0 },
     spentMicros: 0,
     estimateMicros: 0,
     models: { vision: 'v', embedding: 'e', petEmbedding: 'p', eraser: 'x' },
@@ -182,6 +186,43 @@ describe('the people page state', () => {
     expect(peopleStateOf({ ...base, people: none, status: busy })).toBe('indexing');
     expect(faceProgressOf(busy)).toBe(0.25);
     expect(peopleStateOf({ ...base, people: none, status: status() })).toBe('empty');
+  });
+
+  it('shows the scan progress with the photos analysed and the faces found', () => {
+    const busy = status({
+      total: 636,
+      faces: { ...PROGRESS, done: 120, queued: 516 },
+      people: { faces: 14, grouped: 0 },
+    });
+    expect(peopleStateOf({ ...base, people: none, status: busy })).toBe('indexing');
+    expect(faceScanTextOf(busy)).toBe('Analysed 120 of 636 photos · 14 faces found');
+  });
+
+  it('says faces are being sorted when the scan is done and they are not grouped yet', () => {
+    const found = status({
+      total: 636,
+      faces: { ...PROGRESS, done: 635 },
+      people: { faces: 61, grouped: 0 },
+    });
+    expect(peopleStateOf({ ...base, people: none, status: found })).toBe('grouping');
+    expect(groupingTextOf(found)).toBe(
+      '61 faces found in 635 photos are being sorted into people.',
+    );
+  });
+
+  it('says why nothing is grouped once the scan is done', () => {
+    expect(emptyReasonOf(status({ total: 0 })).title).toBe('No photos yet');
+    expect(emptyReasonOf(status({ total: 4 })).title).toBe('Waiting for previews');
+    expect(emptyReasonOf(status({ total: 4, faces: { ...PROGRESS, failed: 4 } }))).toEqual({
+      title: 'Face analysis failed',
+      body: 'Your home hub could not analyse 4 photos.',
+    });
+    expect(emptyReasonOf(status({ total: 4, faces: { ...PROGRESS, done: 3, failed: 1 } }))).toEqual(
+      {
+        title: 'No faces found',
+        body: 'Your home hub analysed 3 photos and found no people in them. Face analysis failed on 1 photo.',
+      },
+    );
   });
 
   it('waits, fails and goes offline honestly', () => {

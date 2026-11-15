@@ -129,7 +129,7 @@ export function PluginToolsScreen({
         ? { search: { value: query, onChange: setQuery, placeholder: 'Search tools' } }
         : {})}
     >
-      <View className="w-full max-w-reading flex-1 self-start">
+      <View className="-mx-gutter min-h-0 flex-1">
         <ToolList row={row} query={query} />
       </View>
     </SettingsFrame>

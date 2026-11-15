@@ -56,7 +56,7 @@ function BalanceView({ account }: { readonly account: OpenRouterAccount }): Reac
         colour={low ? 'warning' : 'positive'}
         label={usedLine(balance, money)}
       />
-      <Text variant="caption" tone="faint" numberOfLines={1}>
+      <Text variant="caption" tone="faint">
         {usedLine(balance, money)}
       </Text>
     </View>

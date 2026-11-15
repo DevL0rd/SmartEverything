@@ -1,6 +1,6 @@
 import { deviceCardOf } from '../../../plugins/device-contributions';
 import type { ReactNode } from 'react';
-import type { CapabilityRole } from '@smarteverything/domain';
+import type { CapabilityRole, DeviceFamily } from '@smarteverything/domain';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import type { Device } from '../../../store/state';
@@ -11,7 +11,7 @@ import { DiffuserHero } from '../diffuser/diffuser-page';
 import { MicrowaveHero } from '../microwave/hero';
 import { RemoteHero } from '../remote/remote-hero';
 import { WatchHero } from '../../watches';
-import { DeviceHero } from './device-hero';
+import { DeviceHero, useDeviceHeroShown } from './device-hero';
 import { ScaleHero } from './scale-hero';
 import { FAMILY_PRIMARY_CARDS } from './primary-card-families';
 import { stagedRoles } from './stage-level';
@@ -20,29 +20,23 @@ import { ApplianceBanner } from '../appliance/appliance-banner';
 import { applianceOf } from '../appliance/appliance-model';
 import { useOfflineHint } from '../model/offline-hint';
 
+const FAMILY_HEROES: Partial<
+  Readonly<Record<DeviceFamily, (props: { readonly device: Device }) => ReactNode>>
+> = {
+  scale: ScaleHero,
+  button: ButtonHero,
+  diffuser: DiffuserHero,
+  microwave: MicrowaveHero,
+  ir_remote: RemoteHero,
+  wearable: WatchHero,
+};
+
 export function Hero({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
   const card = deviceCardOf(device);
   if (card?.hero !== undefined) return card.hero(device);
-  if (model.family === 'scale') {
-    return <ScaleHero device={device} />;
-  }
-  if (model.family === 'button') {
-    return <ButtonHero device={device} />;
-  }
-  if (model.family === 'diffuser') {
-    return <DiffuserHero device={device} />;
-  }
-  if (model.family === 'microwave') {
-    return <MicrowaveHero device={device} />;
-  }
-  if (model.family === 'ir_remote') {
-    return <RemoteHero device={device} />;
-  }
-  if (model.family === 'wearable') {
-    return <WatchHero device={device} />;
-  }
-  return <DeviceHero device={device} />;
+  const Custom = FAMILY_HEROES[model.family];
+  return Custom === undefined ? <DeviceHero device={device} /> : <Custom device={device} />;
 }
 
 function CardControls({
@@ -60,14 +54,28 @@ function CardControls({
   );
 }
 
+function usePrimaryCardShown(device: Device): boolean {
+  const model = useDeviceModel(device);
+  const controls = usePrimaryControls(device, stagedRoles(model));
+  const custom = FAMILY_PRIMARY_CARDS[model.family];
+  return custom === undefined ? controls.length > 0 : custom.present(model);
+}
+
+export function useOverviewLeadShown(device: Device): boolean {
+  const model = useDeviceModel(device);
+  const hero = useDeviceHeroShown(device);
+  const primary = usePrimaryCardShown(device);
+  const custom =
+    deviceCardOf(device)?.hero !== undefined || FAMILY_HEROES[model.family] !== undefined;
+  return custom || hero || primary;
+}
+
 export function PrimaryCard({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
   const staged = stagedRoles(model);
-  const controls = usePrimaryControls(device, staged);
-  const custom = FAMILY_PRIMARY_CARDS[model.family];
-  const empty = custom === undefined ? controls.length === 0 : !custom.present(model);
+  const shown = usePrimaryCardShown(device);
   const hint = useOfflineHint(device);
-  if (empty) {
+  if (!shown) {
     return null;
   }
   return (

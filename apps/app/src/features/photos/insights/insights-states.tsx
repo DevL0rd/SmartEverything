@@ -73,13 +73,13 @@ export function InsightsEmpty(): ReactNode {
   );
 }
 
-export function RangeEmpty(): ReactNode {
+export function RangeEmpty({ onAllTime }: { readonly onAllTime: () => void }): ReactNode {
   return (
     <EmptyState
-      compact
       icon="calendar"
       title="Nothing in this range"
-      body="No photos or videos were taken in this range. Pick a longer one to see your library."
+      body="No photos or videos were taken in this range."
+      action={<Button label="Show all time" variant="tonal" onPress={onAllTime} />}
     />
   );
 }

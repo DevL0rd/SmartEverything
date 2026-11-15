@@ -5,7 +5,7 @@ import { Pressable, View } from 'react-native';
 import { Logger } from '@smarteverything/logging';
 import { cn } from '../design/cn';
 import { isNative } from '../design/platform';
-import { focusView } from './focus-request';
+import { focusView, type FocusTarget } from './focus-request';
 import { KeyboardRoot, KeyboardViewport } from './keyboard-viewport';
 import { ToastModal } from './toast-modal';
 import { useEscape } from './use-escape';
@@ -76,9 +76,46 @@ export interface OverlayProps {
   readonly scrim: boolean;
   readonly className?: string | undefined;
   readonly backdropLabel?: string | undefined;
-  readonly initialFocus?: RefObject<View | null> | undefined;
+  readonly initialFocus?: RefObject<FocusTarget | null> | undefined;
   readonly pointerBackdrop?: boolean | undefined;
   readonly children: ReactNode;
+}
+
+function Backdrop({
+  panel,
+  initialFocus,
+  backdropLabel,
+  onClose,
+  scrim,
+  pointerBackdrop,
+}: Pick<OverlayProps, 'initialFocus' | 'onClose' | 'scrim' | 'pointerBackdrop'> & {
+  readonly panel: RefObject<View | null>;
+  readonly backdropLabel: string;
+}): ReactNode {
+  const look = cn('absolute inset-0 -z-10', scrim && 'bg-scrim');
+  if (pointerBackdrop === true) {
+    return (
+      <View
+        aria-hidden
+        importantForAccessibility="no-hide-descendants"
+        onStartShouldSetResponder={() => true}
+        onResponderRelease={onClose}
+        className={look}
+      />
+    );
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={backdropLabel}
+      onFocus={() => {
+        if (!isNative()) focusView(initialFocus?.current ?? panel.current);
+      }}
+      onPress={onClose}
+      tabIndex={-1}
+      className={look}
+    />
+  );
 }
 
 function OverlaySurface({
@@ -101,29 +138,22 @@ function OverlaySurface({
   return (
     <KeyboardRoot>
       <KeyboardViewport className="z-0 flex-1">
-        <View ref={panel} pointerEvents="box-none" className={cn('flex-1', className)}>
+        <View
+          ref={panel}
+          tabIndex={-1}
+          pointerEvents="box-none"
+          className={cn('flex-1 web:outline-none', className)}
+        >
           <OverlayShown value={signal}>{children}</OverlayShown>
         </View>
-        {pointerBackdrop === true ? (
-          <View
-            aria-hidden
-            importantForAccessibility="no-hide-descendants"
-            onStartShouldSetResponder={() => true}
-            onResponderRelease={onClose}
-            className={cn('absolute inset-0 -z-10', scrim && 'bg-scrim')}
-          />
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={backdropLabel}
-            onFocus={() => {
-              if (!isNative()) focusView(initialFocus?.current ?? panel.current);
-            }}
-            onPress={onClose}
-            tabIndex={-1}
-            className={cn('absolute inset-0 -z-10', scrim && 'bg-scrim')}
-          />
-        )}
+        <Backdrop
+          panel={panel}
+          initialFocus={initialFocus}
+          backdropLabel={backdropLabel}
+          onClose={onClose}
+          scrim={scrim}
+          pointerBackdrop={pointerBackdrop}
+        />
       </KeyboardViewport>
     </KeyboardRoot>
   );
@@ -169,7 +199,9 @@ export function Overlay({
       animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
-      onShow={() => focusOverlayEntry(initialFocus, pointerBackdrop === true)}
+      onShow={() => {
+        focusOverlayEntry(initialFocus, pointerBackdrop === true);
+      }}
     >
       <OverlaySurface
         className={className}

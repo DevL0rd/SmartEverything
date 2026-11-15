@@ -211,7 +211,7 @@ describe('conflict', () => {
     };
     store.apply(level(5));
     await model.settle();
-    await model.useTheirs();
+    await model.takeTheirs();
     expect(
       store.state
         .get()

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Linking, View } from 'react-native';
 import { background } from '@smarteverything/logging';
 import type { SourceSearch } from '../../../api/photos';
@@ -6,17 +6,22 @@ import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
-import { useMediaSelection } from '../../../components/media-grid/selection';
+import {
+  useMediaSelection,
+  type MediaSelectionControls,
+} from '../../../components/media-grid/selection';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import type { MediaGrouping, MediaTile } from '../../../components/media-grid/tiles';
 import { useDeviceTiles } from '../local/tiles';
 import { useLocalLibrary, type LocalLibraryView } from '../local/use-local-library';
 import { removeLastOf } from '../search/library-search';
 import { isSearching } from '../search/query';
 import { NoResults } from '../search/no-results';
-import { DeviceSelection } from './device-selection';
+import { DeviceActionBar, DeviceSelection } from './device-selection';
 import { LibraryGrid } from './library-grid';
 import { LibraryShell, type LibraryHeadProps, type ZoomControl } from './library-head';
-import { LibraryLoading } from './library-states';
+import { LibraryLoading, LoadError } from './library-states';
+import { LOCAL_COPY } from './local-library-status';
 import { loadedLineOf, TAB_EMPTY } from './library-tabs-view';
 import { deviceViewOf, type DeviceView } from './local-scope';
 import { ResultLine } from './result-line';
@@ -54,12 +59,12 @@ function AccessCard({
       <EmptyState
         compact
         icon="image"
-        title="Show photos and videos on this device"
-        body="Allow access to browse this device’s photos and videos here. This does not turn on backup."
+        title={LOCAL_COPY.ask.title}
+        body={LOCAL_COPY.ask.body}
         action={
           <ActionRow>
             <Button
-              label="Allow access"
+              label={LOCAL_COPY.ask.label}
               variant="tonal"
               onPress={() => {
                 background(library.requestAccess().then(onAsked), 'photos.device.access_failed');
@@ -78,12 +83,12 @@ function SettingsCard(): ReactNode {
       <EmptyState
         compact
         icon="lock"
-        title="Photo access is off"
-        body="Turn on photo and video access for SmartEverything in the system settings to see this device’s library."
+        title={LOCAL_COPY.settings.title}
+        body={LOCAL_COPY.settings.body}
         action={
           <ActionRow>
             <Button
-              label="Open system settings"
+              label={LOCAL_COPY.settings.label}
               variant="tonal"
               onPress={() => {
                 background(Linking.openSettings(), 'photos.device.settings_failed');
@@ -110,25 +115,13 @@ function StateCard({
   if (view.kind === 'settings') return <SettingsCard />;
   if (view.kind === 'error') {
     return (
-      <WideCard>
-        <EmptyState
-          compact
-          icon="warning"
-          title="Photos on this device did not load"
-          body={view.message}
-          action={
-            <ActionRow>
-              <Button
-                label="Try again"
-                variant="tonal"
-                onPress={() => {
-                  library.retry();
-                }}
-              />
-            </ActionRow>
-          }
-        />
-      </WideCard>
+      <LoadError
+        title={LOCAL_COPY.failed.title}
+        body={view.message}
+        onRetry={() => {
+          library.retry();
+        }}
+      />
     );
   }
   const empty = TAB_EMPTY.device;
@@ -151,11 +144,11 @@ function ReadyNotes({
       {view.limited ? (
         <Banner
           tone="info"
-          title="Showing the photos and videos you chose"
-          body="Choose more to see them here. Backup is optional."
+          title={LOCAL_COPY.limited.title}
+          body={LOCAL_COPY.limited.body}
           wrapBody
           action={{
-            label: 'Choose more',
+            label: LOCAL_COPY.limited.label,
             onPress: () => {
               background(library.requestAccess(), 'photos.device.access_failed');
             },
@@ -165,11 +158,11 @@ function ReadyNotes({
       {view.issue === null ? null : (
         <Banner
           tone="warning"
-          title="Some photos on this device did not load"
+          title={LOCAL_COPY.partial.title}
           body={view.issue}
           wrapBody
           action={{
-            label: 'Try again',
+            label: LOCAL_COPY.partial.label,
             onPress: () => {
               library.retry();
             },
@@ -216,6 +209,29 @@ function DeviceGrid({ page, tiles, controls }: GridProps): ReactNode {
   );
 }
 
+export function deviceActions(
+  ready: boolean,
+  controls: MediaSelectionControls,
+): readonly ShellAction[] {
+  if (!ready || controls.selection.active) return [];
+  return [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin }];
+}
+
+function deviceSelectionFrame(
+  compact: boolean,
+  controls: MediaSelectionControls,
+  tiles: readonly MediaTile[],
+  library: LocalLibraryView,
+): { readonly head: ReactElement | null; readonly footer: ReactElement | null } {
+  if (!controls.selection.active) return { head: null, footer: null };
+  const props = { controls, tiles, items: library.items, compact };
+  return {
+    head: <DeviceSelection {...props} />,
+    footer:
+      compact && controls.selection.ids.size > 0 ? <DeviceActionBar {...props} /> : null,
+  };
+}
+
 export function DeviceTab(props: DeviceTabProps): ReactNode {
   const library = useLocalLibrary();
   const [asked, setAsked] = useState(false);
@@ -224,18 +240,19 @@ export function DeviceTab(props: DeviceTabProps): ReactNode {
   const controls = useMediaSelection(tiles.map((tile) => tile.id));
   useClearOnChange(JSON.stringify(props.search), controls.clear);
   const ready = view.kind === 'ready';
+  const selection = deviceSelectionFrame(props.head.compact, controls, tiles, library);
   return (
     <LibraryShell
       head={props.head}
       frame={{
-        subtitle: ready ? `${loadedLineOf(library.items.length, true)} on this device` : null,
-        actions: ready
-          ? [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin }]
-          : [],
-        selection: controls.selection.active ? (
-          <DeviceSelection controls={controls} items={library.items} />
-        ) : null,
+        subtitle:
+          ready && !isSearching(props.head.search.input)
+            ? `${loadedLineOf(library.items.length, true)} on this device`
+            : null,
+        actions: deviceActions(ready, controls),
+        selection: selection.head,
         banner: null,
+        footer: selection.footer,
       }}
     >
       {view.kind === 'ready' ? (

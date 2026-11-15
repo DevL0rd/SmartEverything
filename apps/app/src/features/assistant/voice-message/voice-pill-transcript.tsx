@@ -28,7 +28,7 @@ export function VoiceTranscript({
     <Text selectable variant="footnote" tone="variant" className="mt-1.5 px-1">
       {sentences.map((sentence, index) =>
         index === spoken ? (
-          <Text key={index} variant="footnote" className="rounded-xs bg-primary/14 text-on-surface">
+          <Text key={index} variant="footnote" tone="default" className="rounded-xs bg-primary/14">
             {sentence}
           </Text>
         ) : (

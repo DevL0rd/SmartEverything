@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 
 type Issue = z.core.$ZodIssue;
 
@@ -13,9 +13,8 @@ export type Readable<T> =
   | { readonly ok: true; readonly data: T; readonly ignored: readonly string[] }
   | { readonly ok: false; readonly error: z.ZodError };
 
-export interface UnreadableSection {
+export interface SectionFailure {
   readonly section: string;
-  readonly path: string;
   readonly reason: string;
 }
 
@@ -30,9 +29,8 @@ export type ReadableTables<T> =
       readonly ok: true;
       readonly data: T;
       readonly ignored: readonly string[];
-      readonly skipped: readonly string[];
       readonly dropped: readonly DroppedRows[];
-      readonly unreadable: readonly UnreadableSection[];
+      readonly failed: readonly SectionFailure[];
     }
   | { readonly ok: false; readonly error: z.ZodError };
 
@@ -132,41 +130,60 @@ interface Address {
   readonly table: string;
   readonly row: number | null;
   readonly reason: string;
-  readonly section: UnreadableSection | null;
+  readonly list: boolean;
+  readonly whole: boolean;
+}
+
+function pathText(path: readonly Key[]): string {
+  return path.map(String).join('.');
+}
+
+function expectsList(issue: Issue): boolean {
+  return issue.code === 'invalid_type' && issue.expected === 'array';
 }
 
 function addressOf(
   issue: Issue,
+  value: unknown,
   roots: readonly string[],
   sections: readonly string[],
 ): Address | null {
   const [root, table, row] = issue.path;
   if (typeof root === 'string' && sections.includes(root)) {
-    const reason = issue.message;
     return {
       table: root,
       row: null,
-      reason,
-      section: { section: root, path: issue.path.map(String).join('.'), reason },
+      reason: `${pathText(issue.path)} ${issue.message}`,
+      list: false,
+      whole: true,
     };
   }
   if (typeof root !== 'string' || !roots.includes(root) || typeof table !== 'string') {
     return null;
   }
+  return tableAddress(issue, value, `${root}.${table}`, row);
+}
+
+function tableAddress(issue: Issue, value: unknown, name: string, row: Key | undefined): Address {
+  const missing = issue.path.length === 2 && rowListOf(value, name) === undefined;
   return {
-    table: `${root}.${table}`,
+    table: name,
     row: typeof row === 'number' ? row : null,
-    reason: `${issue.path.slice(2).join('.') || 'value'} ${issue.message}`,
-    section: null,
+    reason: missing
+      ? 'the server did not send this table'
+      : `${pathText(issue.path.slice(2)) || 'value'} ${issue.message}`,
+    list: issue.path.length === 2 && expectsList(issue),
+    whole: false,
   };
 }
 
 function addressesOf(
   error: z.ZodError,
+  value: unknown,
   roots: readonly string[],
   sections: readonly string[],
 ): readonly Address[] | null {
-  const found = error.issues.map((issue) => addressOf(issue, roots, sections));
+  const found = error.issues.map((issue) => addressOf(issue, value, roots, sections));
   return found.every((address) => address !== null) ? found : null;
 }
 
@@ -174,13 +191,13 @@ function withoutSection(value: unknown, section: string): unknown {
   return isRecord(value) ? { ...value, [section]: null } : value;
 }
 
-function withoutTable(value: unknown, table: string): unknown {
+function withoutTable(value: unknown, table: string, list: boolean): unknown {
   const [root = '', name = ''] = table.split('.');
   if (!isRecord(value) || !isRecord(value[root])) {
     return value;
   }
   const { [name]: dropped, ...kept } = value[root];
-  return { ...value, [root]: Array.isArray(dropped) ? { ...kept, [name]: [] } : kept };
+  return { ...value, [root]: Array.isArray(dropped) || list ? { ...kept, [name]: [] } : kept };
 }
 
 function withoutRows(value: unknown, table: string, rows: ReadonlySet<number>): unknown {
@@ -200,25 +217,28 @@ function withoutRows(value: unknown, table: string, rows: ReadonlySet<number>): 
 
 interface Trimmed {
   readonly value: unknown;
-  readonly skipped: Set<string>;
   readonly dropped: Map<string, { rows: Set<number>; reason: string }>;
-  readonly unreadable: Map<string, UnreadableSection>;
+  readonly failed: Map<string, string>;
+}
+
+function noteFailure(into: Trimmed, section: string, reason: string): void {
+  if (!into.failed.has(section)) {
+    into.failed.set(section, reason);
+  }
 }
 
 function trimmed(value: unknown, addresses: readonly Address[], into: Trimmed): Trimmed {
   const rowsOf = new Map<string, Set<number>>();
   let current = value;
   for (const address of addresses) {
-    if (address.section !== null) {
-      current = withoutSection(current, address.section.section);
-      if (!into.unreadable.has(address.section.section)) {
-        into.unreadable.set(address.section.section, address.section);
-      }
+    if (address.whole) {
+      current = withoutSection(current, address.table);
+      noteFailure(into, address.table, address.reason);
       continue;
     }
     if (address.row === null || !Array.isArray(rowListOf(value, address.table))) {
-      current = withoutTable(current, address.table);
-      into.skipped.add(address.table);
+      current = withoutTable(current, address.table, address.list);
+      noteFailure(into, address.table, address.reason);
       continue;
     }
     const rows = rowsOf.get(address.table) ?? new Set<number>();
@@ -233,7 +253,6 @@ function trimmed(value: unknown, addresses: readonly Address[], into: Trimmed): 
   }
   for (const [table, rows] of rowsOf) {
     current = withoutRows(current, table, rows);
-    into.skipped.add(table);
   }
   return { ...into, value: current };
 }
@@ -241,6 +260,46 @@ function trimmed(value: unknown, addresses: readonly Address[], into: Trimmed): 
 function rowListOf(value: unknown, table: string): unknown {
   const [root = '', name = ''] = table.split('.');
   return isRecord(value) && isRecord(value[root]) ? value[root][name] : undefined;
+}
+
+function shapeOf(schema: z.core.$ZodType): Readonly<Record<string, z.core.$ZodType>> | null {
+  if (schema instanceof z.ZodObject) {
+    return schema.shape;
+  }
+  if (schema instanceof z.ZodNullable || schema instanceof z.ZodOptional) {
+    return shapeOf(schema.unwrap());
+  }
+  return null;
+}
+
+function unknownKeys(shape: Readonly<Record<string, z.core.$ZodType>>, value: unknown): string[] {
+  return isRecord(value) ? Object.keys(value).filter((key) => !(key in shape)) : [];
+}
+
+function unknownSections(
+  schema: z.ZodType,
+  value: unknown,
+  roots: readonly string[],
+): readonly SectionFailure[] {
+  const shape = shapeOf(schema);
+  if (shape === null || !isRecord(value)) {
+    return [];
+  }
+  const top = unknownKeys(shape, value).map((section) => ({
+    section,
+    reason: 'this app does not know this section',
+  }));
+  const tables = roots.flatMap((root) => {
+    const inner = shape[root];
+    const innerShape = inner === undefined ? null : shapeOf(inner);
+    return innerShape === null
+      ? []
+      : unknownKeys(innerShape, value[root]).map((table) => ({
+          section: `${root}.${table}`,
+          reason: 'this app does not know this table',
+        }));
+  });
+  return [...top, ...tables];
 }
 
 const TABLE_ROUNDS = 4;
@@ -251,15 +310,10 @@ export function readTablesLeniently<S extends z.ZodType>(
   roots: readonly string[],
   sections: readonly string[] = [],
 ): ReadableTables<z.output<S>> {
-  let state: Trimmed = {
-    value,
-    skipped: new Set(),
-    dropped: new Map(),
-    unreadable: new Map(),
-  };
+  let state: Trimmed = { value, dropped: new Map(), failed: new Map() };
   let read = readLeniently(schema, state.value);
   for (let round = 0; round < TABLE_ROUNDS && !read.ok; round += 1) {
-    const addresses = addressesOf(read.error, roots, sections);
+    const addresses = addressesOf(read.error, state.value, roots, sections);
     if (addresses === null) {
       return read;
     }
@@ -269,14 +323,24 @@ export function readTablesLeniently<S extends z.ZodType>(
   if (!read.ok) {
     return read;
   }
+  const dropped = [...state.dropped].map(([table, entry]) => ({
+    table,
+    count: entry.rows.size,
+    reason: entry.reason,
+  }));
+  dropped.forEach((rows) => {
+    noteFailure(
+      state,
+      rows.table,
+      `${String(rows.count)} unreadable ${rows.count === 1 ? 'row' : 'rows'}: ${rows.reason}`,
+    );
+  });
+  unknownSections(schema, value, roots).forEach((failure) => {
+    noteFailure(state, failure.section, failure.reason);
+  });
   return {
     ...read,
-    skipped: [...state.skipped],
-    dropped: [...state.dropped].map(([table, entry]) => ({
-      table,
-      count: entry.rows.size,
-      reason: entry.reason,
-    })),
-    unreadable: [...state.unreadable.values()],
+    dropped,
+    failed: [...state.failed].map(([section, reason]) => ({ section, reason })),
   };
 }

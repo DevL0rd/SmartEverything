@@ -7,7 +7,14 @@ import {
   type BrowserState,
 } from './browser-state';
 import { nodeOfEntry } from '../source/fixture-tree';
-import { focusedOf, pickedOf, pressModeOf, selectAllOf, selectOne } from './selection-model';
+import {
+  focusedOf,
+  NO_KEYS,
+  pickedOf,
+  pressModeOf,
+  selectAllOf,
+  selectOne,
+} from './selection-model';
 
 const HOME = { place: '/home/dana', folder: null };
 const PROJECTS = { place: '/home/dana', folder: '/home/dana/Projects' };
@@ -61,9 +68,14 @@ describe('browser state', () => {
     state = act(state, { kind: 'panel', panel: 'quickLook', open: true });
     expect(pickedOf(nodes, state.selection)).toEqual([]);
     expect(focusedOf(nodes, state.selection)?.key).toBe('a');
-    expect([state.selecting, pressModeOf(nodes, state.selection, false)]).toEqual([false, 'open']);
+    expect([state.selecting, pressModeOf(nodes, state.selection, NO_KEYS)]).toEqual([
+      false,
+      'open',
+    ]);
+    expect(pressModeOf(nodes, state.selection, { shift: false, toggle: true })).toBe('pick');
+    expect(pressModeOf(nodes, state.selection, { shift: true, toggle: false })).toBe('pick');
     state = act(state, { kind: 'panel', panel: 'quickLook', open: false });
-    expect([state.selection.keys.size, pressModeOf(nodes, state.selection, false)]).toEqual([
+    expect([state.selection.keys.size, pressModeOf(nodes, state.selection, NO_KEYS)]).toEqual([
       0,
       'open',
     ]);

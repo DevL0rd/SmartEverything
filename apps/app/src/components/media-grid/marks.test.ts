@@ -11,7 +11,6 @@ function tile(flags: readonly PhotoFlag[], extra: Partial<MediaTile> = {}): Medi
     takenAt: 0,
     offsetMin: 0,
     durationMs: null,
-    thumbhash: null,
     flags: photoFlags(flags),
     local: false,
     ...extra,

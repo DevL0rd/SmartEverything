@@ -7,6 +7,7 @@ import {
   reuseGridRows,
   rowHeight,
   TILE_GAP,
+  PACK_GAP,
   type GridGeometry,
   type TileRow,
 } from './justify';
@@ -21,7 +22,6 @@ function tile(id: string, aspect: number): MediaTile {
     takenAt: Date.UTC(2026, 10, 7, 12),
     offsetMin: 0,
     durationMs: null,
-    thumbhash: null,
     flags: 0,
     local: false,
   };
@@ -128,5 +128,67 @@ describe('the grid rows', () => {
     const placed = rows.flatMap((row) => (row.kind === 'tiles' ? row.tiles : []));
     expect(placed).toHaveLength(100_000);
     expect(new Set(rows.map((row) => row.key)).size).toBe(rows.length);
+  });
+});
+
+function dayTile(id: string, aspect: number, day: number): MediaTile {
+  return { ...tile(id, aspect), takenAt: Date.UTC(2026, 10, 7 - day, 12) };
+}
+
+describe('packing short days', () => {
+  const PACKED: GridGeometry = { ...GEOMETRY, width: 500, pack: true };
+
+  it('shares one row between days that do not fill it, each keeping its own heading', () => {
+    const days = groupDays([dayTile('a', 1, 0), dayTile('b', 1, 1), dayTile('c', 1.5, 2)]);
+    const rows = layoutGrid(days, PACKED);
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    if (row?.kind !== 'tiles') throw new Error('expected one packed tile row');
+    expect(row.days?.map((packed) => packed.day.key)).toEqual([
+      '2026-11-07',
+      '2026-11-06',
+      '2026-11-05',
+    ]);
+    expect(row.days?.map((packed) => packed.tiles.map((placed) => placed.tile.id))).toEqual([
+      ['a'],
+      ['b'],
+      ['c'],
+    ]);
+    const used = (row.days ?? []).reduce((sum, packed) => sum + packed.width, 0);
+    expect(used + PACK_GAP * 2).toBeLessThanOrEqual(PACKED.width);
+    expect(headIndices(rows)).toEqual([]);
+  });
+
+  it('starts a new row when the next day does not fit and lays a full day out on its own', () => {
+    const full = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'].map((id) => dayTile(id, 1, 3));
+    const days = groupDays([
+      dayTile('a', 1.5, 0),
+      dayTile('b', 1.5, 1),
+      dayTile('c', 2.5, 2),
+      ...full,
+    ]);
+    const rows = layoutGrid(days, PACKED);
+    expect(rows.slice(0, 4).map((row) => row.key)).toEqual([
+      '2026-11-07:pack',
+      '2026-11-05:head',
+      '2026-11-05:c',
+      '2026-11-04:head',
+    ]);
+    expect(rows.slice(4).every((row) => row.kind === 'tiles' && row.days === undefined)).toBe(true);
+  });
+
+  it('keeps a lone short day in the plain layout with its sticky heading', () => {
+    const rows = layoutGrid(groupDays([dayTile('a', 1, 0)]), PACKED);
+    expect(rows.map((row) => row.kind)).toEqual(['head', 'tiles']);
+  });
+
+  it('keeps one day per row when packing is off', () => {
+    const days = groupDays([dayTile('a', 1, 0), dayTile('b', 1, 1)]);
+    expect(layoutGrid(days, GEOMETRY).map((row) => row.kind)).toEqual([
+      'head',
+      'tiles',
+      'head',
+      'tiles',
+    ]);
   });
 });

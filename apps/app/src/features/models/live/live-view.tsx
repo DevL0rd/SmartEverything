@@ -8,8 +8,8 @@ import Animated, {
   useAnimatedRef,
   type MeasuredDimensions,
   type SharedValue,
+  useAnimatedReaction,
   useAnimatedStyle,
-  useFrameCallback,
   useSharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -252,56 +252,78 @@ function useClipMeasure(): ClipMeasure {
   };
 }
 
+function placementBox(
+  box: MeasuredDimensions | null,
+  clip: MeasuredDimensions | null,
+): readonly number[] {
+  'worklet';
+  if (box === null || clip === null) return [0, 0, 0, 0];
+  return [
+    box.pageX,
+    box.pageY,
+    box.width,
+    box.height,
+    clip.pageX,
+    clip.pageY,
+    clip.width,
+    clip.height,
+  ];
+}
+
+interface PlacementSync {
+  readonly positioned: ReturnType<typeof useAnimatedRef<View>>;
+  readonly onLayout: () => void;
+}
+
 function usePlacementSync(
   id: string,
   live: boolean,
   measureClip: ClipMeasure,
-): ReturnType<typeof useAnimatedRef<View>> {
-  const ref = useAnimatedRef<View>();
+  layoutSeen: (() => void) | undefined,
+): PlacementSync {
+  const positioned = useAnimatedRef<View>();
   const last = useSharedValue<readonly number[]>([]);
+  const ownLayout = useSharedValue(0);
+  const scroll = use(ScreenScrollContext);
+  const offset = scroll?.scrollY;
+  const clipLayout = scroll?.layout;
   const foreground = useForeground();
   const moving = live && foreground;
-  const frame = useFrameCallback(() => {
-    'worklet';
-    const box = measure(ref);
-    const clip = measureClip(box);
-    const next =
-      box === null || clip === null
-        ? [0, 0, 0, 0]
-        : [
-            box.pageX,
-            box.pageY,
-            box.width,
-            box.height,
-            clip.pageX,
-            clip.pageY,
-            clip.width,
-            clip.height,
-          ];
-    const prev = last.get();
-    if (next.length === prev.length && next.every((value, index) => value === prev[index])) return;
-    last.set(next);
-    placeOnNextBridgeTurn(id, next);
-  }, false);
+  useAnimatedReaction(
+    () => (moving ? [ownLayout.get(), clipLayout?.get(), offset?.get()] : null),
+    (events) => {
+      if (events === null) return;
+      const box = measure(positioned);
+      const next = placementBox(box, measureClip(box));
+      const prev = last.get();
+      if (next.length === prev.length && next.every((value, index) => value === prev[index]))
+        return;
+      last.set(next);
+      placeOnNextBridgeTurn(id, next);
+    },
+    [moving, id, offset, clipLayout],
+  );
   useEffect(() => {
-    frame.setActive(moving);
     if (!moving) {
       last.set([]);
       placements.delete(id);
     }
     return (): void => {
-      frame.setActive(false);
       placements.delete(id);
     };
-  }, [frame, id, moving, last]);
-  return ref;
+  }, [id, moving, last]);
+  const onLayout = (): void => {
+    layoutSeen?.();
+    ownLayout.set((current) => current + 1);
+  };
+  return { positioned, onLayout };
 }
 
 function OverlayModelView(props: LiveModelViewProps): ReactNode {
   const { id, px, still } = props;
   const frame = useRef<View>(null);
-  const { live, drawn, onLayout } = useLiveView(props, frame);
-  const positioned = usePlacementSync(id, live, useClipMeasure());
+  const { live, drawn, onLayout: layoutSeen } = useLiveView(props, frame);
+  const { positioned, onLayout } = usePlacementSync(id, live, useClipMeasure(), layoutSeen);
   return (
     <NativeModelFace
       frame={frame}

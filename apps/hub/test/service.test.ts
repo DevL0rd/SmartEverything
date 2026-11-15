@@ -73,6 +73,7 @@ function host(): Host & { readonly value: Parameters<typeof runService>[0] } {
     value: {
       layout,
       pointer,
+      fileIoThreads: { threads: 8, source: 'saved' },
       exit: (code): void => {
         exited(code);
       },

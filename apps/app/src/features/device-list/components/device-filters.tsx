@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
-import { useWindowSize } from '../../../design/size-class';
 import { DEVICE_FAMILIES } from '@smarteverything/domain';
 import { ChoiceChip } from '../../../components/choice-chip';
 import { FilterChip } from '../../../components/filter-chip';
@@ -31,15 +30,12 @@ function kindIcon(kind: string, all: string): IconName {
 function StatusChip({
   query,
   onChange,
-  narrow,
-}: Pick<DeviceFiltersProps, 'query' | 'onChange'> & {
-  readonly narrow: boolean;
-}): ReactNode {
+}: Pick<DeviceFiltersProps, 'query' | 'onChange'>): ReactNode {
   return (
     <FilterChip
       label="Status"
       value={query.offline ? 'Offline only' : 'Any status'}
-      icon={narrow ? undefined : 'wifi'}
+      icon="wifi"
       active={query.offline}
       onPress={() => {
         onChange({ ...query, offline: !query.offline });
@@ -49,8 +45,6 @@ function StatusChip({
 }
 
 type FilterChipsProps = DeviceFiltersProps & {
-  readonly width: number;
-  readonly narrow: boolean;
   readonly overflows: boolean;
   readonly measure: (event: LayoutChangeEvent) => void;
 };
@@ -61,17 +55,13 @@ function RoomFilter({
   all,
   selection,
   onChange,
-  narrow,
-}: Pick<
-  FilterChipsProps,
-  'query' | 'rooms' | 'all' | 'selection' | 'onChange' | 'narrow'
->): ReactNode {
+}: Pick<FilterChipsProps, 'query' | 'rooms' | 'all' | 'selection' | 'onChange'>): ReactNode {
   if (selection !== null) return <SelectionChip chip={selection} />;
   if (rooms.length <= 2) return null;
   return (
     <ChoiceChip
       label="Room"
-      icon={narrow ? undefined : 'sofa'}
+      icon="sofa"
       options={rooms}
       value={query.room}
       all={all}
@@ -89,46 +79,32 @@ function FilterChips({
   all,
   selection,
   onChange,
-  width,
-  narrow,
   measure,
   overflows,
 }: FilterChipsProps): ReactNode {
-  const slot = narrow ? 'min-w-0 flex-1' : undefined;
-  const hasRoom = selection !== null || rooms.length > 2;
   return (
-    <HScroller label="Filters" arrows={overflows} fade={overflows} fadeSurface="bg">
-      <View className="flex-row" style={narrow ? { width } : undefined} onLayout={measure}>
-        {hasRoom ? (
-          <View {...(slot === undefined ? {} : { className: slot })}>
-            <RoomFilter {...{ query, rooms, all, selection, onChange, narrow }} />
-          </View>
-        ) : null}
-        <View {...(slot === undefined ? {} : { className: slot })}>
-          <ChoiceChip
-            label="Kind"
-            icon={narrow ? undefined : kindIcon(query.kind, all)}
-            options={kinds}
-            value={query.kind}
-            all={all}
-            onChange={(kind) => {
-              onChange({ ...query, kind });
-            }}
-          />
-        </View>
-        <StatusChip query={query} onChange={onChange} narrow={narrow} />
+    <HScroller label="Filters" arrows={overflows} fade={overflows}>
+      <View className="flex-row gap-2" onLayout={measure}>
+        <RoomFilter {...{ query, rooms, all, selection, onChange }} />
+        <ChoiceChip
+          label="Kind"
+          icon={kindIcon(query.kind, all)}
+          options={kinds}
+          value={query.kind}
+          all={all}
+          onChange={(kind) => {
+            onChange({ ...query, kind });
+          }}
+        />
+        <StatusChip query={query} onChange={onChange} />
       </View>
     </HScroller>
   );
 }
 
-const NARROW_FILTER_WIDTH = 400;
-
 export function DeviceFilters(props: DeviceFiltersProps): ReactNode {
-  const { fontScale } = useWindowSize();
   const [width, setWidth] = useState(0);
   const [chips, setChips] = useState(0);
-  const narrow = width > 0 && width < NARROW_FILTER_WIDTH * fontScale;
   return (
     <View
       onLayout={(event) => {
@@ -137,9 +113,7 @@ export function DeviceFilters(props: DeviceFiltersProps): ReactNode {
     >
       <FilterChips
         {...props}
-        narrow={narrow}
-        width={width}
-        overflows={!narrow && width > 0 && chips > width}
+        overflows={width > 0 && chips > width}
         measure={(event) => {
           setChips(Math.ceil(event.nativeEvent.layout.width));
         }}

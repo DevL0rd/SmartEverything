@@ -13,7 +13,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
 import { useSyncStatus } from '../../../store/selectors';
-import { ChipRow } from '../../../components/library-frame';
+import { ChipRow } from '../../../components/chip-row';
 import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoBuckets, usePhotoPlace } from '../data';
 import { MiniMap } from '../world-map';

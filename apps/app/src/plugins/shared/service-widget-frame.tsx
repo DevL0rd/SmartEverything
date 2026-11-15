@@ -33,10 +33,9 @@ export interface ServiceReady<T> {
   readonly now: number;
 }
 
-export interface ServiceWidget<T> {
+export interface ServiceWidget {
   readonly pluginId: string;
   readonly deviceKind: string;
-  readonly useSnapshot: () => PluginStream<T>;
   readonly offTitle: string;
   readonly setUpTitle: string;
   readonly setUpIcon: IconName;
@@ -229,11 +228,7 @@ function offShown(title: string, owner: boolean, remove: (() => void) | null): S
   };
 }
 
-function problemShown<T>(
-  stream: PluginStream<T>,
-  service: ServiceWidget<T>,
-  owner: boolean,
-): Shown {
+function problemShown<T>(stream: PluginStream<T>, service: ServiceWidget, owner: boolean): Shown {
   switch (stream.state) {
     case 'waiting':
       return { band: undefined, body: () => <Waiting /> };
@@ -284,7 +279,8 @@ function useRemove(hideWhenSmall: boolean, cls: FrameClass): (() => void) | null
 }
 
 interface ServiceWidgetFrameProps<T> {
-  readonly service: ServiceWidget<T>;
+  readonly service: ServiceWidget;
+  readonly stream: PluginStream<T>;
   readonly title: string;
   readonly icon: IconName;
   readonly accent: ColourRole;
@@ -294,13 +290,13 @@ interface ServiceWidgetFrameProps<T> {
 
 export function ServiceWidgetFrame<T extends { readonly connection: { readonly state: string } }>({
   service,
+  stream,
   title,
   icon,
   accent,
   actions,
   children,
 }: ServiceWidgetFrameProps<T>): ReactNode {
-  const stream = service.useSnapshot();
   const device = usePluginDevice(service.deviceKind);
   const off = usePluginOff(service.pluginId);
   const now = useMinute();

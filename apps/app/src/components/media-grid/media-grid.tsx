@@ -1,6 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { memo, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { View, type ViewStyle } from 'react-native';
 import { FlashList, type FlashListProps, type ListRenderItem } from '@shopify/flash-list';
 import { useIdiom } from '../../design/platform';
 import { useListProbe } from '../../perf/list-probe';
@@ -17,15 +17,17 @@ import {
   TILE_GAP,
   type MediaGridRow,
   type MediaZoomStep,
+  type PackedDay,
+  type PlacedTile,
   type TileRow,
 } from './justify';
+import { dayMark, type DayMark, type MediaSelection } from './selection';
 import { MediaTileView, type TileActions } from './tile';
 import { useThumbnailWindow } from './thumbnail-window';
 import { groupTiles, type MediaDay, type MediaGrouping, type MediaTile } from './tiles';
 
 export interface DayDecor {
   readonly placeOf: (day: MediaDay) => string | null;
-  readonly actionOf: (day: MediaDay) => ReactElement | null;
   readonly textOf?: (day: MediaDay) => DayText;
 }
 
@@ -41,6 +43,13 @@ export interface MediaGridProps extends TileActions {
   readonly onEndReached?: () => void;
   readonly probe?: string;
   readonly onPrefetchTiles?: (tiles: readonly MediaTile[]) => void;
+  readonly selection?: MediaSelection;
+  readonly onDay?: (ids: readonly string[]) => void;
+}
+
+interface Picking {
+  readonly selection: MediaSelection | undefined;
+  readonly onDay: ((ids: readonly string[]) => void) | undefined;
 }
 
 interface RowProps {
@@ -49,23 +58,31 @@ interface RowProps {
   readonly today: string;
   readonly decor: DayDecor | undefined;
   readonly actions: TileActions;
+  readonly picking: Picking;
 }
 
-function Tiles({
-  row,
+function TileLine({
+  tiles,
+  height,
   actions,
+  selection,
 }: {
-  readonly row: TileRow;
+  readonly tiles: readonly PlacedTile[];
+  readonly height: number;
   readonly actions: TileActions;
+  readonly selection: MediaSelection | undefined;
 }): ReactNode {
+  const picked = selection?.active === true ? selection.ids : null;
   return (
-    <View className="flex-row gap-0.75 px-gutter pb-0.75">
-      {row.tiles.map((placed) => (
+    <View className="flex-row gap-0.75">
+      {tiles.map((placed, slot) => (
         <MediaTileView
-          key={placed.tile.id}
+          key={slot}
           tile={placed.tile}
           width={placed.width}
-          height={row.height}
+          height={height}
+          selecting={picked !== null}
+          selected={picked?.has(placed.tile.id) === true}
           {...actions}
         />
       ))}
@@ -73,21 +90,100 @@ function Tiles({
   );
 }
 
-function Row({ row, rows, today, decor, actions }: RowProps): ReactNode {
+function markOf(day: MediaDay, picking: Picking): DayMark | null {
+  if (picking.selection?.active !== true || picking.onDay === undefined) return null;
+  return dayMark(
+    picking.selection,
+    day.tiles.map((tile) => tile.id),
+  );
+}
+
+function Head({
+  day,
+  today,
+  decor,
+  picking,
+  packed,
+}: {
+  readonly day: MediaDay;
+  readonly today: string;
+  readonly decor: DayDecor | undefined;
+  readonly picking: Picking;
+  readonly packed: boolean;
+}): ReactNode {
+  const text = decor?.textOf?.(day) ?? dayText(day.key, day.tiles.length, today);
+  const { onDay } = picking;
+  return (
+    <DayHead
+      title={text.title}
+      detail={text.detail}
+      place={decor?.placeOf(day) ?? null}
+      mark={markOf(day, picking)}
+      packed={packed}
+      onMark={() => {
+        onDay?.(day.tiles.map((tile) => tile.id));
+      }}
+    />
+  );
+}
+
+function widthOf(width: number): ViewStyle {
+  return { width };
+}
+
+function Packed({
+  row,
+  days,
+  today,
+  decor,
+  actions,
+  picking,
+}: Omit<RowProps, 'rows' | 'row'> & {
+  readonly row: TileRow;
+  readonly days: readonly PackedDay[];
+}): ReactNode {
+  return (
+    <View className="flex-row gap-3 px-gutter pb-0.75">
+      {days.map((packed) => (
+        <View key={packed.day.key} style={widthOf(packed.width)}>
+          <Head day={packed.day} today={today} decor={decor} picking={picking} packed />
+          <TileLine
+            tiles={packed.tiles}
+            height={row.height}
+            actions={actions}
+            selection={picking.selection}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function Row({ row, rows, today, decor, actions, picking }: RowProps): ReactNode {
   if (row.kind === 'head') {
-    const text = decor?.textOf?.(row.day) ?? dayText(row.day.key, row.day.tiles.length, today);
-    return (
-      <DayHead
-        title={text.title}
-        detail={text.detail}
-        place={decor?.placeOf(row.day) ?? null}
-        action={decor?.actionOf(row.day) ?? null}
-      />
-    );
+    return <Head day={row.day} today={today} decor={decor} picking={picking} packed={false} />;
   }
   return (
     <RowScope rows={rows} rowKey={row.key}>
-      <Tiles row={row} actions={actions} />
+      {row.days === undefined ? (
+        <View className="px-gutter pb-0.75">
+          <TileLine
+            tiles={row.tiles}
+            height={row.height}
+            actions={actions}
+            selection={picking.selection}
+          />
+        </View>
+      ) : (
+        <Packed
+          row={row}
+          days={row.days}
+          today={today}
+          decor={decor}
+          actions={actions}
+          picking={picking}
+        />
+      )}
     </RowScope>
   );
 }
@@ -109,6 +205,10 @@ function useStableRows(next: readonly MediaGridRow[]): readonly MediaGridRow[] {
   return stable;
 }
 
+function packsDays(step: MediaZoomStep, grouping: MediaGrouping): boolean {
+  return grouping === 'day' && step !== 'comfortable';
+}
+
 function useGridRows(
   tiles: readonly MediaTile[],
   step: MediaZoomStep,
@@ -117,9 +217,10 @@ function useGridRows(
 ): readonly MediaGridRow[] {
   const target = rowHeight(step, useIdiom());
   const days = useMemo(() => groupTiles(tiles, grouping), [tiles, grouping]);
+  const pack = packsDays(step, grouping);
   const next = useMemo(
-    () => layoutGrid(days, { width, target, gap: TILE_GAP }),
-    [days, width, target],
+    () => layoutGrid(days, { width, target, gap: TILE_GAP, pack }),
+    [days, width, target, pack],
   );
   return useStableRows(next);
 }
@@ -144,16 +245,63 @@ function ListFoot({ footer }: { readonly footer: ReactElement | undefined }): Re
   return <View className="pb-section-gap">{footer}</View>;
 }
 
-function useTileActions({ resolveThumb, onOpen, onMenu, badgeOf }: TileActions): TileActions {
+function useTileActions({ thumbs, onOpen, onMenu, badgeOf }: TileActions): TileActions {
   return useMemo(
     (): TileActions => ({
-      resolveThumb,
+      thumbs,
       onOpen,
       ...(onMenu === undefined ? {} : { onMenu }),
       ...(badgeOf === undefined ? {} : { badgeOf }),
     }),
-    [resolveThumb, onOpen, onMenu, badgeOf],
+    [thumbs, onOpen, onMenu, badgeOf],
   );
+}
+
+function useLaidOut(
+  tiles: readonly MediaTile[],
+  step: MediaZoomStep,
+  grouping: MediaGrouping,
+  width: number,
+): { readonly gridRows: readonly MediaGridRow[]; readonly sticky: number[] } {
+  const gridRows = useGridRows(tiles, step, grouping, width);
+  const pack = packsDays(step, grouping);
+  const sticky = useMemo(() => (pack ? [] : headIndices(gridRows)), [gridRows, pack]);
+  return { gridRows, sticky };
+}
+
+interface RowRendering {
+  readonly rows: RowVisibility;
+  readonly today: string;
+  readonly decor: DayDecor | undefined;
+  readonly tileActions: TileActions;
+  readonly input: Picking;
+}
+
+function useRowRenderer({ rows, today, decor, tileActions, input }: RowRendering): {
+  readonly renderRow: ListRenderItem<MediaGridRow>;
+  readonly picking: Picking;
+} {
+  const actions = useTileActions(tileActions);
+  const { selection, onDay } = input;
+  const picking = useMemo((): Picking => ({ selection, onDay }), [selection, onDay]);
+  const renderRow: ListRenderItem<MediaGridRow> = ({ item }) => (
+    <GridRow
+      row={item}
+      rows={rows}
+      today={today}
+      decor={decor}
+      actions={actions}
+      picking={picking}
+    />
+  );
+  return { renderRow, picking };
+}
+
+function useTracked(
+  gridRows: readonly MediaGridRow[],
+  onPrefetchTiles: MediaGridProps['onPrefetchTiles'],
+): ReturnType<typeof useRowTracking> {
+  return useRowTracking(useThumbnailWindow(gridRows, DRAW_DISTANCE, onPrefetchTiles));
 }
 
 export function MediaGrid({
@@ -168,16 +316,20 @@ export function MediaGrid({
   onEndReached,
   probe,
   onPrefetchTiles,
+  selection,
+  onDay,
   ...tileActions
 }: MediaGridProps): ReactNode {
   const measured = useMeasuredWidth();
-  const gridRows = useGridRows(tiles, step, grouping, measured.width);
-  const { rows, pairs } = useRowTracking(useThumbnailWindow(gridRows, onPrefetchTiles));
-  const sticky = useMemo(() => headIndices(gridRows), [gridRows]);
-  const actions = useTileActions(tileActions);
-  const renderRow: ListRenderItem<MediaGridRow> = ({ item }) => (
-    <GridRow row={item} rows={rows} today={today} decor={decor} actions={actions} />
-  );
+  const { gridRows, sticky } = useLaidOut(tiles, step, grouping, measured.width);
+  const { rows, pairs } = useTracked(gridRows, onPrefetchTiles);
+  const { renderRow, picking } = useRowRenderer({
+    rows,
+    today,
+    decor,
+    tileActions,
+    input: { selection, onDay },
+  });
   return (
     <View className="flex-1">
       <View pointerEvents="none" className="px-gutter">
@@ -191,6 +343,7 @@ export function MediaGrid({
         viewabilityConfigCallbackPairs={pairs}
         {...useProbeProps(probe, gridRows.length)}
         stickyHeaderIndices={sticky}
+        extraData={picking}
         drawDistance={DRAW_DISTANCE}
         ListHeaderComponent={header}
         ListEmptyComponent={tiles.length === 0 ? empty : undefined}

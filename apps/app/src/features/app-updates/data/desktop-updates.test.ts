@@ -104,7 +104,7 @@ describe('desktop updates in the renderer', () => {
     await controller.check('button');
     await controller.download(ID);
     expect(controller.state()).toMatchObject({ kind: 'failed', offer: { id: ID } });
-    await controller.check('live');
+    await controller.check('paired');
     expect(controller.state()).toMatchObject({ kind: 'failed', offer: { id: ID } });
     expect(download).toHaveBeenCalledTimes(1);
 

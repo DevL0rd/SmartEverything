@@ -1,7 +1,7 @@
 import type { DriveItem, DriveQuery } from '@smarteverything/domain';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { Card } from '../../../components/card';
 import { RankedList, type RankedEntry } from '../../../components/ranked-list';
 import { useRevealed } from '../../../components/show-more';
 import { bytes } from '../../../format/number';
@@ -72,9 +72,9 @@ export function LargestFiles(): ReactNode {
   if (entries.length === 0) return null;
   const byId = new Map(items.map((item) => [item.id, item]));
   return (
-    <View>
+    <Card title="Largest files" icon="hardDrive">
       <RankedList
-        title="Largest files"
+        inCard
         entries={shown}
         bar="info"
         onPress={(itemId) => {
@@ -83,6 +83,6 @@ export function LargestFiles(): ReactNode {
         }}
       />
       {more}
-    </View>
+    </Card>
   );
 }

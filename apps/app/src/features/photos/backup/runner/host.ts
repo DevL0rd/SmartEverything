@@ -4,7 +4,9 @@ import { useEffect } from 'react';
 import { Logger, background } from '@smarteverything/logging';
 import { useConnection, type ServerConnection } from '../../../../api/transport';
 import { connectionState } from '../../../../api/connection/connection';
+import type { LayoutRow } from '@smarteverything/domain';
 import type { EntityStore } from '../../../../store/entity-store';
+import type { StoreState } from '../../../../store/state';
 import { useEntityStore } from '../../../../store/store-context';
 import { prefOf, PREFS } from '../../../../store/prefs';
 import { backupStatus, INITIAL_BACKUP_STATUS } from '../model/status';
@@ -19,6 +21,20 @@ import { appPlatform, desktopBridge } from '../../../../design/platform';
 
 const log = new Logger('app.photos');
 
+const LAYOUTS = 'tables.layouts';
+const OWNER_READS = ['session', 'loaded', LAYOUTS, 'tables.devices'];
+
+function storedBackupPref(store: EntityStore): LayoutRow | undefined {
+  return store.get().tables.layouts.byId[PREFS.photosBackup.storageKey];
+}
+
+function currentOwner(
+  state: StoreState,
+  desktopDeviceId: string | null | undefined,
+): BackupOwner | null {
+  return backupOwner(state, prefOf(state, PREFS.photosBackup), desktopDeviceId);
+}
+
 function settingsOf(store: EntityStore): SettingsPort {
   return {
     read(): ReturnType<SettingsPort['read']> {
@@ -27,9 +43,9 @@ function settingsOf(store: EntityStore): SettingsPort {
       return pref.value;
     },
     subscribe(listener): () => void {
-      let seen = JSON.stringify(prefOf(store.get(), PREFS.photosBackup));
-      return store.subscribe(() => {
-        const next = JSON.stringify(prefOf(store.get(), PREFS.photosBackup));
+      let seen = storedBackupPref(store);
+      return store.subscribeSlices([LAYOUTS], () => {
+        const next = storedBackupPref(store);
         if (next === seen) return;
         seen = next;
         listener();
@@ -57,7 +73,10 @@ class BackupHost {
   };
 
   start(): () => void {
-    const offs = [this.store.subscribe(this.refresh), connectionState.subscribe(this.refresh)];
+    const offs = [
+      this.store.subscribeSlices(OWNER_READS, this.refresh),
+      connectionState.subscribe(this.refresh),
+    ];
     const bridge = desktopBridge();
     if (bridge !== null) {
       offs.push(bridge.onServiceStatus(this.refreshIdentity));
@@ -96,8 +115,9 @@ class BackupHost {
 
   private refresh = (): void => {
     const state = this.store.get();
-    const key = this.current() ? backupOwnerKey(state, this.desktopDeviceId) : null;
     const pref = prefOf(state, PREFS.photosBackup);
+    const owner = this.current() ? backupOwner(state, pref, this.desktopDeviceId) : null;
+    const key = backupOwnerKey(owner);
     const enabled = key !== null && pref.status !== 'invalid' && pref.value.enabled;
     if (appPlatform() === 'android')
       background(syncBackupSlot(enabled && backupAvailable()), 'backup.slot_failed');
@@ -105,7 +125,6 @@ class BackupHost {
     this.seen = key;
     this.revision += 1;
     background(backupSessions.setForeground(null), 'backup.stop_failed');
-    const owner = this.current() ? backupOwner(state, this.desktopDeviceId) : null;
     if (owner !== null) this.open(owner, key);
     else {
       backupStatus.set({
@@ -118,7 +137,8 @@ class BackupHost {
   private open(owner: BackupOwner, key: string | null): void {
     const run = this.revision;
     const valid = (): boolean =>
-      this.current() && key === backupOwnerKey(this.store.get(), this.desktopDeviceId);
+      this.current() &&
+      key === backupOwnerKey(currentOwner(this.store.get(), this.desktopDeviceId));
     const scope = createBackupScope({
       ...owner,
       connection: this.connection,

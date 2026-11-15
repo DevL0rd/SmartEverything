@@ -9,13 +9,13 @@ import { Button } from '../../../../components/button';
 import { confirm } from '../../../../components/confirm-store';
 import { EmptyState } from '../../../../components/empty-state';
 import { ErrorState } from '../../../../components/error-state';
-import { libraryLayoutOf } from '../../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../../components/page-shell/layout';
 import { MediaGrid } from '../../../../components/media-grid/media-grid';
 import {
   useMediaSelection,
   type MediaSelectionControls,
 } from '../../../../components/media-grid/selection';
-import type { HeaderAction } from '../../../../components/page-header';
+import type { ShellAction } from '../../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../../components/skeleton';
 import { notify } from '../../../../components/toast-store';
 import { useAreaWidth } from '../../../../design/size-class';
@@ -31,7 +31,7 @@ import { useMonthFeed, type OrganiseFeed } from '../month-feed';
 import { PickBar, PickHead, PickRow, type PickAction, type PickBarProps } from '../selection-bar';
 import { LockedChangePin } from './change-pin';
 import { LockedSetup, LockedUnlock } from './locked-gate';
-import { resolveLockedThumb } from './links';
+import { lockedThumbs } from './links';
 import { landingAfter } from './locked-model';
 import { LockedViewer } from './locked-viewer';
 import { closeLockedSession, forgetLockedSession, useLockedSession } from './session';
@@ -126,7 +126,7 @@ function OpenBody({
         step="days"
         today={today}
         empty={<Empty />}
-        resolveThumb={resolveLockedThumb}
+        thumbs={lockedThumbs}
         onOpen={(tile) => {
           if (!controls.press(tile.id, { shift: false })) onView(tile.id);
         }}
@@ -233,7 +233,7 @@ function openActions(
   feed: OrganiseFeed,
   controls: MediaSelectionControls,
   onChangePin: () => void,
-): readonly HeaderAction[] {
+): readonly ShellAction[] {
   return [
     { icon: 'lock', label: 'Lock', primary: true, onPress: closeLockedSession },
     { icon: 'key', label: 'Change PIN', iconOnly: true, onPress: onChangePin },
@@ -257,7 +257,7 @@ function Opened({
   readonly session: LockedUnlocked;
   readonly onChangePin: () => void;
 }): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const live = useSyncStatus().status === 'live';
   const feed = useMonthFeed({ kind: 'locked', token: session.token });
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));

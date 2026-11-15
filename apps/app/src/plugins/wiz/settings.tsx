@@ -6,7 +6,7 @@ import { ListRow } from '../../components/list-row';
 import { List } from '../../components/section';
 import { Text } from '../../components/text';
 import { PowerToggle } from '../../features/devices/controls/power-toggle';
-import { useDevices, useRow } from '../../store/selectors';
+import { useMatchingDevices, useRow } from '../../store/selectors';
 import type { Device } from '../../store/state';
 import { useWizDiscovery } from './discovery';
 import { background } from '@smarteverything/logging';
@@ -16,9 +16,9 @@ export const WIZ_LIGHTS = 'lights';
 
 export function WizSettings(): ReactNode {
   const plugin = useRow('plugins', 'wiz');
-  const devices = useDevices({ includeHidden: true }).filter(
-    (device) => device.details['pluginId'] === 'wiz',
-  );
+  const devices = useMatchingDevices((device) => device.details['pluginId'] === 'wiz', {
+    includeHidden: true,
+  });
   const { state, discover } = useWizDiscovery();
   const { focus } = useLocalSearchParams<{ focus?: string }>();
   const running = plugin?.status === 'running';

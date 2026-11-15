@@ -31,7 +31,8 @@ import { found, type StoreContext } from '../../store/context';
 import type { Store } from '../../store/store';
 import type { MediaLinks } from '../media-links';
 import { availabilityOf } from './drive-availability';
-import { driveJobHandlers } from './drive-jobs';
+import { driveJobHandlers, mountedRoot } from './drive-jobs';
+import { DriveActivity } from '../../drive/activity';
 import { extrasOf, iconsOf, placementsOf, textOf, type DriveExtras } from './drive-extras';
 import { actorOf, type DriveListings, type DriveServices } from './drive-services';
 import { photoBackupService } from './photos-hub';
@@ -64,6 +65,7 @@ export interface DriveDeps {
 }
 
 export interface DriveRuntime {
+  readonly activity: DriveActivity;
   readonly media: PhotoPipeline;
   readonly services: DriveServices;
   readonly env: ConflictEnv;
@@ -174,10 +176,7 @@ function queueOf(
         media.reconcile();
         queue.enqueue({ kind: 'text', rootId: job.rootId });
       }
-      if (job.kind === 'scan' && !signal.aborted) {
-        queue.enqueue({ kind: 'hash', rootId: job.rootId });
-        queue.enqueue({ kind: 'metadata', rootId: job.rootId });
-      }
+      if (job.kind === 'scan' && !signal.aborted) followUps(queue, job.rootId);
     },
     failed: (job, cause): void => {
       deps.log.error('drive.job_failed', cause, { kind: job.kind, rootId: job.rootId });
@@ -186,11 +185,34 @@ function queueOf(
   return queue;
 }
 
-function watchersOf(deps: DriveDeps, queue: WorkQueue<DriveJob>): DriveWatchers {
+function followUps(queue: WorkQueue<DriveJob>, rootId: string): void {
+  queue.enqueue({ kind: 'hash', rootId });
+  queue.enqueue({ kind: 'metadata', rootId });
+}
+
+function watchersOf(
+  deps: DriveDeps,
+  queue: WorkQueue<DriveJob>,
+  activity: DriveActivity,
+): DriveWatchers {
+  const { store } = deps;
   return new DriveWatchers({
-    roots: deps.store.driveRoots,
+    roots: store.driveRoots,
+    index: { items: store.driveItems, inodes: store.driveInodes },
+    activity,
+    mounted: (rootId) => mountedRoot(store, rootId),
+    onPlacementChange: (listener) =>
+      store.feed.subscribe((change) => {
+        if (change.table !== 'drive_placements') return;
+        for (const row of [change.record, change.oldRecord]) {
+          if (row !== null) listener(row.rootId);
+        }
+      }),
     enqueueScan: (rootId): void => {
       queue.enqueue({ kind: 'scan', rootId });
+    },
+    enqueueFollowUps: (rootId): void => {
+      followUps(queue, rootId);
     },
     watch: systemWatch,
     settleMs: deps.watchSettleMs,
@@ -312,10 +334,11 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
   const media = new PhotoPipeline(deps);
   const icons = iconsOf(deps);
   const queue = queueOf(deps, availability, media, textOf(deps, availability, icons));
+  const activity = new DriveActivity();
   const core: Core = {
     env,
     queue,
-    watchers: watchersOf(deps, queue),
+    watchers: watchersOf(deps, queue, activity),
     scrubber: scrubberOf(deps, availability),
     backups: new DriveBackups({
       database: deps.parts.database,
@@ -326,6 +349,7 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
   const services = servicesOf(deps, core);
   const placements = placementsOf(deps);
   return {
+    activity,
     env,
     media,
     queue,

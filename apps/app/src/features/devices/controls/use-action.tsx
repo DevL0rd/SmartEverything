@@ -23,6 +23,33 @@ interface ActionSender {
   readonly send: (value: JsonValue) => void;
 }
 
+interface ActionRun {
+  readonly where: { readonly deviceId: string; readonly capability: string };
+  readonly control: Control;
+  readonly presented: PresentedCapability;
+  readonly name: string;
+  readonly value: JsonValue;
+  readonly startedAt: number;
+}
+
+async function submitAction(run: ActionRun, settle: () => void): Promise<void> {
+  const { where, control, presented, value, startedAt } = run;
+  try {
+    if (await approved(presented, run.name)) {
+      log.info('action.sending', { ...where, danger: presented.danger.tier });
+      const sent = await control.set(value);
+      log.info('action.settled', { ...where, sent, latencyMs: Date.now() - startedAt });
+    } else {
+      log.info('action.declined', { ...where, danger: presented.danger.tier });
+    }
+  } catch (error) {
+    log.error('action.failed', error, { ...where, latencyMs: Date.now() - startedAt });
+    throw error;
+  } finally {
+    settle();
+  }
+}
+
 function useActionSender(
   deviceId: string,
   control: Control,
@@ -43,25 +70,14 @@ function useActionSender(
     }
     busy.current = true;
     setSending(true);
-    const startedAt = Date.now();
-    const submit = async (): Promise<void> => {
-      try {
-        if (await approved(presented, nameOf())) {
-          log.info('action.sending', { ...where, danger: presented.danger.tier });
-          const sent = await control.set(value);
-          log.info('action.settled', { ...where, sent, latencyMs: Date.now() - startedAt });
-        } else {
-          log.info('action.declined', { ...where, danger: presented.danger.tier });
-        }
-      } catch (error) {
-        log.error('action.failed', error, { ...where, latencyMs: Date.now() - startedAt });
-        throw error;
-      } finally {
+    const run = { where, control, presented, name: nameOf(), value, startedAt: Date.now() };
+    background(
+      submitAction(run, () => {
         busy.current = false;
         setSending(false);
-      }
-    };
-    background(submit(), 'use_action.submit_failed');
+      }),
+      'use_action.submit_failed',
+    );
   };
   return { send, pending: sending || control.pending };
 }

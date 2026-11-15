@@ -23,8 +23,10 @@ export interface ListRowProps {
   readonly overline?: string;
   readonly titleHighlight?: TextRange | null;
   readonly wrapTitle?: boolean;
+  readonly titleEllipsize?: 'middle' | 'end';
   readonly subtitle?: string;
   readonly caption?: string;
+  readonly captionEllipsize?: 'middle';
   readonly subtitleTone?: Tone;
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
@@ -75,22 +77,23 @@ function Trailing({
   chevron,
   trailing,
   passive,
-  compact,
 }: {
   readonly value: string | undefined;
   readonly chevron: boolean | undefined;
   readonly trailing: ReactNode;
   readonly passive: boolean;
-  readonly compact: boolean;
 }): ReactNode {
   return (
     <View
-      className="ml-auto shrink-0 flex-row items-center gap-1"
+      className={cn(
+        'ml-auto flex-row items-center gap-1',
+        trailing === undefined && value !== undefined ? 'min-w-0 shrink' : 'shrink-0',
+      )}
       {...(passive ? { pointerEvents: 'box-none' } : {})}
     >
       {value === undefined ? null : (
         <View className="min-w-0 max-w-48 shrink" {...(passive ? PASSIVE : {})}>
-          <Text variant="callout" tone="variant" {...(compact ? {} : { numberOfLines: 1 })}>
+          <Text variant="callout" tone="variant" numberOfLines={1}>
             {value}
           </Text>
         </View>
@@ -113,9 +116,12 @@ type BodyProps = { readonly passive: boolean; readonly canShrink: boolean } & Pi
   | 'overline'
   | 'titleHighlight'
   | 'wrapTitle'
+  | 'titleEllipsize'
   | 'subtitle'
   | 'subtitleTone'
   | 'caption'
+  | 'captionEllipsize'
+  | 'trailing'
   | 'wrapSubtitle'
   | 'destructive'
   | 'compact'
@@ -134,34 +140,68 @@ function BodySubtitle({ subtitle, subtitleTone, compact, wrapSubtitle }: BodyPro
   );
 }
 
-function bodyClassOf(shrinks: boolean): string {
-  return shrinks ? 'min-w-0 flex-1 gap-0.5' : 'min-w-0 shrink grow basis-auto gap-0.5';
+function bodyClassOf(shrinks: boolean, columned: boolean): string {
+  if (shrinks) return 'min-w-0 flex-1 gap-0.5';
+  return columned ? 'min-w-0 flex-1 basis-32 gap-0.5' : 'min-w-0 shrink grow basis-auto gap-0.5';
+}
+
+function BodyTitle(props: BodyProps): ReactNode {
+  const { title, titleHighlight, destructive, compact } = props;
+  const tone = destructive === true ? 'critical' : 'default';
+  if (props.titleEllipsize === 'middle') {
+    return (
+      <Text variant="body" tone={tone} ellipsize="middle">
+        {title}
+      </Text>
+    );
+  }
+  const wrapTitle = compact === true || props.wrapTitle === true;
+  const lines = props.titleEllipsize === 'end' ? 1 : 2;
+  return (
+    <Text
+      variant="body"
+      tone={tone}
+      {...(wrapTitle && lines === 2 ? {} : { numberOfLines: lines })}
+      {...(props.wrapTitle === true ? { className: 'web:wrap-anywhere' } : {})}
+    >
+      <Highlighted text={title} range={titleHighlight ?? null} />
+    </Text>
+  );
+}
+
+function BodyCaption({ caption, captionEllipsize }: BodyProps): ReactNode {
+  if (caption === undefined) return null;
+  if (captionEllipsize === 'middle') {
+    return (
+      <Text variant="caption" tone="variant" ellipsize="middle">
+        {caption}
+      </Text>
+    );
+  }
+  return (
+    <Text variant="caption" tone="variant" numberOfLines={2}>
+      {caption}
+    </Text>
+  );
 }
 
 function Body(props: BodyProps): ReactNode {
-  const { title, overline, titleHighlight, caption, destructive, passive, compact } = props;
+  const { overline, passive, compact } = props;
   const wrapTitle = compact === true || props.wrapTitle === true;
+  const columned = props.subtitle !== undefined || props.trailing !== undefined;
   return (
-    <View className={bodyClassOf(wrapTitle || props.canShrink)} {...(passive ? PASSIVE : {})}>
+    <View
+      className={bodyClassOf(wrapTitle || props.canShrink, columned)}
+      {...(passive ? PASSIVE : {})}
+    >
       {overline === undefined ? null : (
         <Text variant="caption" tone="variant">
           {overline}
         </Text>
       )}
-      <Text
-        variant="body"
-        tone={destructive === true ? 'critical' : 'default'}
-        {...(wrapTitle ? {} : { numberOfLines: 2 })}
-        {...(props.wrapTitle === true ? { className: 'web:wrap-anywhere' } : {})}
-      >
-        <Highlighted text={title} range={titleHighlight ?? null} />
-      </Text>
+      <BodyTitle {...props} />
       <BodySubtitle {...props} />
-      {caption === undefined ? null : (
-        <Text variant="caption" tone="variant" numberOfLines={2}>
-          {caption}
-        </Text>
-      )}
+      <BodyCaption {...props} />
     </View>
   );
 }
@@ -202,7 +242,8 @@ function frameOf(props: ListRowProps): string {
     );
   }
   return cn(
-    'flex-row flex-wrap content-center items-center gap-x-4 gap-y-2 px-4 py-2',
+    'flex-row content-center items-center gap-x-4 gap-y-2 px-4 py-2',
+    props.trailing !== undefined && 'flex-wrap',
     props.subtitle === undefined ? 'min-h-row-h' : 'min-h-row-h-2',
     props.selected === true && 'bg-primary-container',
   );
@@ -225,7 +266,7 @@ function RowLead({
     />
   );
   const hasSlot = row.leading !== undefined || row.icon !== undefined;
-  const canShrink = row.chevron === true && row.trailing === undefined && row.value === undefined;
+  const canShrink = row.trailing === undefined && row.value === undefined;
   return (
     <>
       {passive && hasSlot ? <View {...PASSIVE}>{slot}</View> : slot}
@@ -247,7 +288,6 @@ function RowTrailing({
       chevron={row.chevron}
       trailing={row.trailing}
       passive={passive}
-      compact={row.compact === true}
     />
   );
 }

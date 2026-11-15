@@ -9,13 +9,20 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
 import { flattenPages, useDriveFolderPages } from '../data';
-import { checkStateOf, insideExcluded, toggledExcluded } from './excluded-model';
+import {
+  checkStateOf,
+  excludedChildrenOf,
+  insideExcluded,
+  toggledExcluded,
+} from './excluded-model';
 
 type FolderItem = Extract<DriveItem, { readonly kind: 'folder' }>;
 
 export interface ExcludedTreeProps {
   readonly rootId: string;
   readonly baseId: string | null;
+  readonly basePath: string | null;
+  readonly baseName: string;
   readonly excluded: readonly string[];
   readonly disabled: boolean;
   readonly onSize: (path: string, size: number) => void;
@@ -77,7 +84,7 @@ function Folder({
   readonly tree: ExcludedTreeProps;
   readonly folder: FolderItem;
 }): ReactNode {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => checkStateOf(folder.relPath, tree.excluded) === 'mixed');
   const { onSize } = tree;
   useEffect(() => {
     onSize(folder.relPath, folder.bytes);
@@ -87,9 +94,45 @@ function Folder({
       <FolderLine tree={tree} folder={folder} open={open} onOpen={setOpen} />
       {open ? (
         <View className="pl-7">
-          <Level tree={tree} folderId={folder.id} />
+          <Level tree={tree} folderId={folder.id} path={folder.relPath} name={folder.name} />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function useGoneSizes(
+  tree: ExcludedTreeProps,
+  path: string | null,
+  folders: readonly FolderItem[] | null,
+): void {
+  const { onSize, excluded } = tree;
+  useEffect(() => {
+    if (folders === null) return;
+    const listed = new Set(folders.map((folder) => folder.relPath));
+    for (const gone of excludedChildrenOf(path, excluded)) {
+      if (!listed.has(gone)) onSize(gone, 0);
+    }
+  }, [onSize, excluded, path, folders]);
+}
+
+function LevelFailed({ onRetry }: { readonly onRetry: () => void }): ReactNode {
+  return (
+    <View className="flex-row flex-wrap items-center gap-2 py-2">
+      <Text variant="footnote" tone="critical" className="min-w-0 flex-1">
+        The folders could not be listed. The Hub did not answer.
+      </Text>
+      <Button label="Try again" variant="text" onPress={onRetry} />
+    </View>
+  );
+}
+
+function NoFolders({ name }: { readonly name: string }): ReactNode {
+  return (
+    <View className="min-h-row-h justify-center border-t border-outline-variant">
+      <Text variant="footnote" tone="variant">
+        {`No folders inside ${name}`}
+      </Text>
     </View>
   );
 }
@@ -97,29 +140,29 @@ function Folder({
 function Level({
   tree,
   folderId,
+  path,
+  name,
 }: {
   readonly tree: ExcludedTreeProps;
   readonly folderId: string | null;
+  readonly path: string | null;
+  readonly name: string;
 }): ReactNode {
   const pages = useDriveFolderPages(tree.rootId, folderId, null);
   const folders = flattenPages(pages.data, (page) => page.items).filter(isFolder);
+  const complete = pages.isSuccess && !pages.hasNextPage;
+  useGoneSizes(tree, path, complete ? folders : null);
   if (pages.isPending) return <Skeleton shape="block" className="h-row-h" />;
   if (pages.isError) {
     return (
-      <View className="flex-row flex-wrap items-center gap-2 py-2">
-        <Text variant="footnote" tone="critical" className="min-w-0 flex-1">
-          The folders could not be listed. The Hub did not answer.
-        </Text>
-        <Button
-          label="Try again"
-          variant="text"
-          onPress={() => {
-            background(pages.refetch(), 'drive.excluded_tree.retry');
-          }}
-        />
-      </View>
+      <LevelFailed
+        onRetry={() => {
+          background(pages.refetch(), 'drive.excluded_tree.retry');
+        }}
+      />
     );
   }
+  if (complete && folders.length === 0) return <NoFolders name={name} />;
   return (
     <>
       {folders.map((folder) => (
@@ -142,7 +185,7 @@ function Level({
 export function ExcludedTree(tree: ExcludedTreeProps): ReactNode {
   return (
     <View accessibilityRole="list" accessibilityLabel="Folders kept on this computer">
-      <Level tree={tree} folderId={tree.baseId} />
+      <Level tree={tree} folderId={tree.baseId} path={tree.basePath} name={tree.baseName} />
     </View>
   );
 }

@@ -10,6 +10,10 @@ export type PaneSide = 'left' | 'right';
 
 export const PANE_KEY_STEP = 24;
 
+export const PANE_HANDLE_WIDTH = 12;
+
+const HANDLE_STYLE = { width: PANE_HANDLE_WIDTH };
+
 const DRAG_ACTIVATION = 4;
 
 export function clampPaneWidth(width: number, min: number, max: number): number {
@@ -97,7 +101,8 @@ function Handle({
         accessibilityHint="Drag to resize. Double tap to hide."
         accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }, { name: 'activate' }]}
         onAccessibilityAction={step}
-        className="h-full w-3 items-center justify-center"
+        style={HANDLE_STYLE}
+        className="h-full items-center justify-center"
       >
         <View className="h-10 w-1 rounded-full bg-outline-variant" />
       </View>

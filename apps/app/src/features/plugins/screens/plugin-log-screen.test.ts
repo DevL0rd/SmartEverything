@@ -65,10 +65,11 @@ describe('Plugin log', () => {
     });
   });
 
-  it('names the compact pending state within the reading measure', () => {
+  it('names the pending state across the page column', () => {
     view.log.mockReturnValue(undefined);
     const html = renderToStaticMarkup(createElement(PluginLogScreen, { pluginId: 'fixture' }));
-    expect(html).toContain('class="w-full max-w-reading"');
+    expect(html).toContain('class="w-full"');
+    expect(html).not.toContain('max-w-');
     expect(html).toContain('aria-label="Loading plugin log"');
   });
 });

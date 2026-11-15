@@ -5,8 +5,9 @@ import type {
   PlannerOccurrenceView,
   PlannerRingRow,
 } from '@smarteverything/domain';
-import { clock } from '../../../format/time';
+import { momentWhenOf, type DayContext } from '../frame/occurrence-list';
 import { byTime } from './done-ribbon';
+import { occurrenceKeyOf } from './river-model';
 
 export type CatchUpCard =
   | {
@@ -52,7 +53,7 @@ export function catchUpCardsOf(
   const cards: CatchUpCard[] = [
     ...day.missed.map((occurrence) => ({
       kind: 'item' as const,
-      key: `item:${occurrence.item_id}:${occurrence.occurrence_key}`,
+      key: occurrenceKeyOf(occurrence),
       at: missedAt(occurrence),
       occurrence,
     })),
@@ -99,8 +100,13 @@ export function fitPromptOf(cards: readonly CatchUpCard[]): string | null {
   return `Fit what I missed into the rest of today: ${titles.join(', ')}.`;
 }
 
-export function missedAlarmTitleOf(card: AlarmCard, timeZone: string): string {
-  return `Missed alarm ${clock(card.ring.due_at, timeZone)}`;
+export function missedAlarmTitleOf(card: AlarmCard, day: DayContext): string {
+  return `Missed alarm ${momentWhenOf(card.ring.due_at, day, false)}`;
+}
+
+export function missedAlarmNameOf(card: AlarmCard, day: DayContext): string {
+  const label = card.alarm?.label ?? 'Alarm';
+  return `${label} · ${momentWhenOf(card.ring.due_at, day, true)}`;
 }
 
 export function missedReasonOf(ring: PlannerRingRow): string {

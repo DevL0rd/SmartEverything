@@ -69,12 +69,7 @@ function ControlLists({
   const columns = groups.length + Number(extras.length > 0);
   if (columns === 0) return null;
   return (
-    <Grid
-      minItemWidth={MIN_CONTROL_GROUP_WIDTH}
-      maxColumns={columns}
-      cellClassName="max-w-reading"
-      stretchLastRow={false}
-    >
+    <Grid minItemWidth={MIN_CONTROL_GROUP_WIDTH} maxColumns={columns} stretchLastRow={false}>
       {groups.map((group) => (
         <List key={group.label} title={group.label}>
           {group.controls.map((presented) => (

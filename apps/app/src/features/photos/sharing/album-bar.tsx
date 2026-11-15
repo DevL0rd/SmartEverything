@@ -1,14 +1,15 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import type { DriveAlbum, DriveItem } from '@smarteverything/domain';
+import type { DriveAlbum, DriveItem, SharedAlbumMember } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
 import type { IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
+import type { MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { useMutationState } from '../../../store/mutation';
 import { useActiveProfile } from '../../../store/people';
@@ -22,40 +23,62 @@ import { MembersSheet } from './members-sheet';
 import { canAddPhotos, membersLine, roleOf, unreadText, type AlbumRole } from './model';
 import { invalidateSharing, usePhotoSharing } from './queries';
 
-type Opened = 'members' | 'link' | 'activity' | 'add' | null;
+export type AlbumOpened = 'members' | 'link' | 'activity' | 'add' | null;
+
+type Opened = AlbumOpened;
+
+type Run = ReturnType<typeof useMutationState>['run'];
+
+function declineInvite(album: DriveAlbum, run: Run, refresh: () => void): void {
+  run(() => leaveAlbum(album.id), {
+    failure: 'The invitation was not declined',
+    label: 'photos.album.decline',
+    onDone: () => {
+      refresh();
+      router.replace(href.photosPage('sharing'));
+    },
+  });
+}
 
 function JoinCard({ album }: { readonly album: DriveAlbum }): ReactNode {
   const mutation = useMutationState();
   const client = useQueryClient();
+  const refresh = (): void => {
+    invalidateSharing(client);
+  };
   return (
     <View className="flex-row flex-wrap items-center gap-3 rounded-lg bg-primary-container/40 px-4 py-3">
       <Text variant="body" className="min-w-48 flex-1">
         {`You were invited to ${album.title}. Join to add photos, comment and get its activity.`}
       </Text>
-      <Button
-        label="Join album"
-        icon="check"
-        variant="filled"
-        loading={mutation.busy}
-        onPress={() => {
-          mutation.run(() => joinAlbum(album.id), {
-            failure: 'You did not join the album',
-            label: 'photos.album.join',
-            onDone: () => {
-              invalidateSharing(client);
-            },
-          });
-        }}
-      />
+      <View className="flex-row flex-wrap items-center gap-2">
+        <Button
+          label="Decline"
+          variant="text"
+          disabled={mutation.busy}
+          onPress={() => {
+            declineInvite(album, mutation.run, refresh);
+          }}
+        />
+        <Button
+          label="Join album"
+          icon="check"
+          variant="filled"
+          loading={mutation.busy}
+          onPress={() => {
+            mutation.run(() => joinAlbum(album.id), {
+              failure: 'You did not join the album',
+              label: 'photos.album.join',
+              onDone: refresh,
+            });
+          }}
+        />
+      </View>
     </View>
   );
 }
 
-function leave(
-  album: DriveAlbum,
-  run: ReturnType<typeof useMutationState>['run'],
-  refresh: () => void,
-): void {
+function leave(album: DriveAlbum, run: Run, refresh: () => void): void {
   background(
     confirm({
       title: `Leave ${album.title}?`,
@@ -77,11 +100,17 @@ function leave(
   );
 }
 
-interface ActionsProps {
-  readonly album: DriveAlbum;
-  readonly role: AlbumRole;
-  readonly unread: number;
-  readonly onOpen: (opened: Opened) => void;
+export function useLeaveAlbum(album: DriveAlbum): { readonly busy: boolean; readonly leave: () => void } {
+  const mutation = useMutationState();
+  const client = useQueryClient();
+  return {
+    busy: mutation.busy,
+    leave: () => {
+      leave(album, mutation.run, () => {
+        invalidateSharing(client);
+      });
+    },
+  };
 }
 
 interface ActionSpec {
@@ -89,49 +118,95 @@ interface ActionSpec {
   readonly label: string;
   readonly icon: IconName;
   readonly primary: boolean;
+  readonly menu: boolean;
 }
 
-export function actionSpecsOf(role: AlbumRole, unread: number): readonly ActionSpec[] {
+export function actionSpecsOf(
+  role: AlbumRole,
+  unread: number,
+  shared: boolean,
+): readonly ActionSpec[] {
   const owner = role === 'owner';
   const comments = unreadText(unread);
   const specs: (ActionSpec | null)[] = [
-    canAddPhotos(role) ? { key: 'add', label: 'Add photos', icon: 'plus', primary: true } : null,
-    { key: 'members', label: owner ? 'Add people' : 'People', icon: 'users', primary: false },
-    owner ? { key: 'link', label: 'Link', icon: 'link', primary: false } : null,
+    canAddPhotos(role)
+      ? { key: 'add', label: 'Add photos', icon: 'plus', primary: true, menu: false }
+      : null,
     {
-      key: 'activity',
-      label: comments === null ? 'Comments and likes' : `Comments and likes · ${comments}`,
-      icon: 'messageCircle',
+      key: 'members',
+      label: owner ? 'Add people' : 'People',
+      icon: 'users',
       primary: false,
+      menu: false,
     },
+    owner ? { key: 'link', label: 'Link', icon: 'link', primary: false, menu: true } : null,
+    shared
+      ? {
+          key: 'activity',
+          label: comments === null ? 'Comments and likes' : `Comments and likes · ${comments}`,
+          icon: 'messageCircle',
+          primary: false,
+          menu: true,
+        }
+      : null,
   ];
   return specs.filter((spec): spec is ActionSpec => spec !== null);
 }
 
-function LeaveButton({ album }: { readonly album: DriveAlbum }): ReactNode {
-  const mutation = useMutationState();
-  const client = useQueryClient();
-  return (
-    <View className="flex-1 flex-row justify-end">
-      <Button
-        label="Leave"
-        icon="signOut"
-        variant="text"
-        loading={mutation.busy}
-        onPress={() => {
-          leave(album, mutation.run, () => {
-            invalidateSharing(client);
-          });
-        }}
-      />
-    </View>
-  );
+export interface AlbumShare {
+  readonly role: AlbumRole | null;
+  readonly members: readonly SharedAlbumMember[];
+  readonly memberIds: readonly string[];
+  readonly invited: boolean;
+  readonly unread: number;
 }
 
-function Actions({ album, role, unread, onOpen }: ActionsProps): ReactNode {
+function specsOfShare(share: AlbumShare): readonly ActionSpec[] {
+  return share.role === null || share.invited
+    ? []
+    : actionSpecsOf(share.role, share.unread, share.memberIds.length > 0);
+}
+
+export function albumMenuOf(
+  album: DriveAlbum,
+  share: AlbumShare,
+  onOpen: (opened: Opened) => void,
+  onLeave: () => void,
+): readonly MenuItem[] {
+  if (!sharesAlbum(album)) return [];
+  const opens: MenuItem[] = specsOfShare(share)
+    .filter((spec) => spec.menu)
+    .map((spec) => ({
+      id: spec.key,
+      label: spec.label,
+      icon: spec.icon,
+      onPress: () => {
+        onOpen(spec.key);
+      },
+    }));
+  const leaving: MenuItem[] =
+    share.role === null || share.role === 'owner' || share.invited
+      ? []
+      : [{ id: 'leave', label: 'Leave album', icon: 'signOut', destructive: true, onPress: onLeave }];
+  return [...opens, ...leaving];
+}
+
+function Actions({
+  album,
+  share,
+  compact,
+  onOpen,
+}: {
+  readonly album: DriveAlbum;
+  readonly share: AlbumShare;
+  readonly compact: boolean;
+  readonly onOpen: (opened: Opened) => void;
+}): ReactNode {
+  const leaving = useLeaveAlbum(album);
+  const specs = specsOfShare(share).filter((spec) => !compact || !spec.menu);
   return (
     <View className="flex-row flex-wrap items-center gap-2">
-      {actionSpecsOf(role, unread).map((spec) => (
+      {specs.map((spec) => (
         <Button
           key={spec.key}
           label={spec.label}
@@ -142,7 +217,15 @@ function Actions({ album, role, unread, onOpen }: ActionsProps): ReactNode {
           }}
         />
       ))}
-      {role === 'owner' ? null : <LeaveButton album={album} />}
+      {compact || share.role === 'owner' ? null : (
+        <Button
+          label="Leave"
+          icon="signOut"
+          variant="text"
+          loading={leaving.busy}
+          onPress={leaving.leave}
+        />
+      )}
     </View>
   );
 }
@@ -172,38 +255,31 @@ function PeopleLine({
   );
 }
 
-export interface AlbumSharingBarProps {
-  readonly album: DriveAlbum;
-  readonly items: readonly DriveItem[];
-  readonly complete: boolean;
-}
-
-function Sheets({
+export function AlbumSheets({
   album,
-  role,
-  memberIds,
+  share,
   opened,
   onClose,
 }: {
   readonly album: DriveAlbum;
-  readonly role: AlbumRole;
-  readonly memberIds: readonly string[];
+  readonly share: AlbumShare;
   readonly opened: Opened;
   readonly onClose: () => void;
 }): ReactNode {
-  const owner = role === 'owner';
+  if (!sharesAlbum(album) || share.role === null) return null;
+  const owner = share.role === 'owner';
   return (
     <>
       <MembersSheet
         album={album}
-        memberIds={memberIds}
+        members={share.members}
         owner={owner}
         open={opened === 'members'}
         onClose={onClose}
       />
       {owner ? <AlbumLinkSheet album={album} open={opened === 'link'} onClose={onClose} /> : null}
       <ActivityPanel album={album} open={opened === 'activity'} onClose={onClose} />
-      {canAddPhotos(role) ? (
+      {canAddPhotos(share.role) ? (
         <AddPhotosSheet album={album} open={opened === 'add'} onClose={onClose} />
       ) : null}
     </>
@@ -214,49 +290,53 @@ export function sharesAlbum(album: DriveAlbum): boolean {
   return album.kind === 'manual' && album.scope === 'person';
 }
 
-interface AlbumShare {
-  readonly role: AlbumRole | null;
-  readonly memberIds: readonly string[];
-  readonly invited: boolean;
-  readonly unread: number;
-}
-
-function useAlbumShare(album: DriveAlbum): AlbumShare {
+export function useAlbumShare(album: DriveAlbum): AlbumShare {
   const me = useActiveProfile()?.id ?? null;
   const shared = usePhotoSharing().data?.albums.find((entry) => entry.albumId === album.id);
+  const members = shared?.members ?? [];
   return {
     role: roleOf(album, shared, me),
-    memberIds: shared?.memberIds ?? [],
+    members,
+    memberIds: members.map((member) => member.profileId),
     invited: shared?.joined === false,
     unread: shared?.unread ?? 0,
   };
 }
 
-export function AlbumSharingBar({ album, items, complete }: AlbumSharingBarProps): ReactNode {
-  const { role, memberIds, invited, unread } = useAlbumShare(album);
-  const [opened, setOpened] = useState<Opened>(null);
-  if (!sharesAlbum(album) || role === null) return null;
+export function canAddToAlbum(album: DriveAlbum, share: AlbumShare): boolean {
+  return sharesAlbum(album) && !share.invited && canAddPhotos(share.role);
+}
+
+export interface AlbumSharingBarProps {
+  readonly album: DriveAlbum;
+  readonly items: readonly DriveItem[];
+  readonly complete: boolean;
+  readonly share: AlbumShare;
+  readonly compact: boolean;
+  readonly onOpen: (opened: Opened) => void;
+}
+
+export function AlbumSharingBar({
+  album,
+  items,
+  complete,
+  share,
+  compact,
+  onOpen,
+}: AlbumSharingBarProps): ReactNode {
+  if (!sharesAlbum(album) || share.role === null) return null;
+  if (share.invited) return <JoinCard album={album} />;
   return (
     <View className="gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 px-4 py-3">
-      {invited ? <JoinCard album={album} /> : null}
       <PeopleLine
         album={album}
-        memberIds={memberIds}
+        memberIds={share.memberIds}
         onOpen={() => {
-          setOpened('members');
+          onOpen('members');
         }}
       />
-      {memberIds.length === 0 ? null : <Contributors items={items} complete={complete} />}
-      <Actions album={album} role={role} unread={unread} onOpen={setOpened} />
-      <Sheets
-        album={album}
-        role={role}
-        memberIds={memberIds}
-        opened={opened}
-        onClose={() => {
-          setOpened(null);
-        }}
-      />
+      {share.memberIds.length === 0 ? null : <Contributors items={items} complete={complete} />}
+      <Actions album={album} share={share} compact={compact} onOpen={onOpen} />
     </View>
   );
 }

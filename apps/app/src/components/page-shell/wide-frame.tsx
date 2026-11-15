@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { cn } from '../../design/cn';
 import type { RailWidth } from './layout';
 import { SectionRail } from './section-rail';
-import { BodyColumn, ShellScroll, StaticBody } from './shell-body';
+import { BodyColumn, ShellFooter, ShellScroll, StaticBody } from './shell-body';
 import {
   bodyOf,
   refreshOf,
@@ -21,22 +21,20 @@ import {
   ShellRows,
   shellRowsShown,
   TopSurface,
-  asideStyle,
   columnStyle,
-  railOffsetStyle,
+  touchControlsPlaceOf,
+  widthStyle,
 } from './top-shell';
 
 function ShellRail({
   sections,
   rail,
-  gutter,
 }: {
   readonly sections: ShellSections;
   readonly rail: RailWidth;
-  readonly gutter: number;
 }): ReactNode {
   return (
-    <View testID="shell-rail" style={railOffsetStyle(gutter)} className="flex-row pt-2">
+    <View testID="shell-rail" className="flex-row">
       <SectionRail
         groups={sections.groups}
         active={sections.active}
@@ -59,24 +57,56 @@ function WideTitle({ frame }: { readonly frame: FrameProps }): ReactNode {
   return desktop ? (
     <DesktopTitleRow row={row} search={shell.search} column={layout.column} />
   ) : (
-    <AppBar row={row} large={false} scrollY={scrollY} column={layout.column} />
+    <AppBar
+      row={row}
+      title="bar"
+      scrollY={scrollY}
+      column={layout.column}
+      controls={touchControlsPlaceOf(shell.search, tabRowsOf(shell, layout)) === 'title'}
+    />
   );
 }
 
-function WideTop({ frame }: { readonly frame: FrameProps }): ReactNode {
-  const { shell, layout, scrollY } = frame;
+type TopPart = 'all' | 'title' | 'rows';
+
+function WideRows({ frame }: { readonly frame: FrameProps }): ReactNode {
+  const { shell, layout } = frame;
   const desktop = layout.header === 'desktop';
   const search = desktop ? undefined : shell.search;
   const tabs = tabRowsOf(shell, layout);
+  if (!shellRowsShown(search, tabs, shell.toolbar)) return null;
   return (
-    <View testID="shell-top" className={cn('z-10', desktop ? 'pb-2' : 'pt-safe')}>
+    <View className={desktop ? 'pt-2' : ''}>
+      <ShellRows
+        search={search}
+        tabs={tabs}
+        toolbar={shell.toolbar}
+        controls={desktop ? undefined : shell.controls}
+        column={layout.column}
+      />
+    </View>
+  );
+}
+
+function WideTop({
+  frame,
+  part,
+}: {
+  readonly frame: FrameProps;
+  readonly part: TopPart;
+}): ReactNode {
+  const { layout, scrollY } = frame;
+  const desktop = layout.header === 'desktop';
+  const rows = part === 'title' ? null : <WideRows frame={frame} />;
+  if (part === 'rows' && rows === null) return null;
+  return (
+    <View
+      testID={part === 'rows' ? 'shell-top-rows' : 'shell-top'}
+      className={cn('z-10', desktop && 'pb-2', !desktop && part !== 'rows' && 'pt-safe')}
+    >
       <TopSurface scrollY={scrollY} from={0} to={SURFACE_AT} />
-      <WideTitle frame={frame} />
-      {shellRowsShown(search, tabs, shell.toolbar) ? (
-        <View className={desktop ? 'pt-2' : ''}>
-          <ShellRows search={search} tabs={tabs} toolbar={shell.toolbar} column={layout.column} />
-        </View>
-      ) : null}
+      {part === 'rows' ? null : <WideTitle frame={frame} />}
+      {rows}
     </View>
   );
 }
@@ -85,7 +115,7 @@ function DockedAside({ aside }: { readonly aside: ShellAside }): ReactNode {
   return (
     <View
       testID="shell-aside"
-      style={asideStyle()}
+      style={widthStyle(aside.width)}
       className="border-l border-outline-variant bg-surface-1"
     >
       {aside.children}
@@ -123,7 +153,10 @@ function BodyRow({ frame }: { readonly frame: FrameProps }): ReactNode {
   const { shell, layout } = frame;
   return (
     <View className="min-h-0 flex-1 flex-row">
-      <WideBody frame={frame} />
+      <View className="min-h-0 min-w-0 flex-1">
+        <WideBody frame={frame} />
+        {shell.footer === undefined ? null : <ShellFooter>{shell.footer}</ShellFooter>}
+      </View>
       {layout.docked && shell.aside !== undefined ? <DockedAside aside={shell.aside} /> : null}
     </View>
   );
@@ -142,30 +175,23 @@ export function WideFrame(frame: FrameProps): ReactNode {
   if (layout.rail === null || shell.sections === undefined) {
     return (
       <>
-        <WideTop frame={frame} />
+        <WideTop frame={frame} part="all" />
         <BodyRow frame={frame} />
       </>
     );
   }
-  const rail = <ShellRail sections={shell.sections} rail={layout.rail} gutter={layout.gutter} />;
-  if (layout.header === 'desktop') {
-    const beside = besideRail(frame);
-    return (
+  const rail = <ShellRail sections={shell.sections} rail={layout.rail} />;
+  const beside = besideRail(frame);
+  const desktop = layout.header === 'desktop';
+  return (
+    <>
+      {desktop ? null : <WideTop frame={frame} part="title" />}
       <View className="min-h-0 flex-1 flex-row">
         {rail}
         <View className="min-h-0 min-w-0 flex-1">
-          <WideTop frame={beside} />
+          <WideTop frame={beside} part={desktop ? 'all' : 'rows'} />
           <BodyRow frame={beside} />
         </View>
-      </View>
-    );
-  }
-  return (
-    <>
-      <WideTop frame={frame} />
-      <View className="min-h-0 flex-1 flex-row">
-        {rail}
-        <BodyRow frame={frame} />
       </View>
     </>
   );

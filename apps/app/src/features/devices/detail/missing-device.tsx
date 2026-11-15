@@ -6,7 +6,7 @@ import { href } from '../../../app-shell/hrefs';
 
 export function MissingDevice(): ReactNode {
   return (
-    <PageShell title="Device" width="reading">
+    <PageShell title="Device">
       <EmptyState
         icon="alert"
         title="This device isn't in your home"

@@ -49,7 +49,7 @@ vi.mock('../data', () => ({
 vi.mock('../../../store/selectors', () => ({
   useSession: (): unknown => ({ client: { profile_id: seen.me } }),
   useRows: (): readonly unknown[] => seen.people,
-  useDevices: (): readonly unknown[] => [],
+  useDeviceNames: (): ReadonlyMap<string, string> => new Map(),
   useSettings: (): unknown => ({ time_zone: 'Europe/Berlin' }),
   useSyncStatus: (): unknown => ({ status: seen.status }),
 }));
@@ -69,11 +69,7 @@ vi.mock('../components/drive-frame', () => ({
 }));
 vi.mock('../../../components/segmented', () => ({ Segmented: (): null => null }));
 vi.mock('../components/drive-chip', () => ({
-  DriveFilterChips: ({
-    counts,
-  }: {
-    readonly counts: Readonly<Record<string, number>>;
-  }): ReactNode =>
+  DriveFilterRow: ({ counts }: { readonly counts: Readonly<Record<string, number>> }): ReactNode =>
     createElement(
       'nav',
       {},
@@ -86,6 +82,7 @@ vi.mock('./recent-bars', () => ({
   RecentBars: (): ReactNode => createElement('figure', {}, 'chart'),
 }));
 vi.mock('./recent-row', () => ({
+  RECENT_COLUMNS: [],
   RecentRow: ({
     how,
     chip,

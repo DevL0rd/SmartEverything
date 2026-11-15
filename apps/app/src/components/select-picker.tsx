@@ -28,6 +28,7 @@ export interface SelectOption<T extends string> {
   readonly description?: string;
   readonly wrapDescription?: boolean;
   readonly disabled?: boolean;
+  readonly leading?: ReactNode;
 }
 
 export interface SelectPickerProps<T extends string> {
@@ -39,6 +40,7 @@ export interface SelectPickerProps<T extends string> {
   readonly onClose: () => void;
   readonly searchable?: boolean;
   readonly opener?: RefObject<View | null>;
+  readonly width?: number;
 }
 
 interface OptionRowProps<T extends string> {
@@ -72,6 +74,7 @@ function OptionRow<T extends string>({
       )}
       layerClassName="rounded-sm"
     >
+      {option.leading}
       <View className="min-w-0 flex-1">
         <Text
           variant="body"
@@ -161,6 +164,7 @@ export function SelectPicker<T extends string>({
   onClose,
   searchable = false,
   opener,
+  width,
 }: SelectPickerProps<T>): ReactNode {
   const touch = useIdiom() === 'touch';
   const close = (): void => {
@@ -194,7 +198,7 @@ export function SelectPicker<T extends string>({
   });
   if (subpage && touch) return null;
   return (
-    <SelectSurface touch={touch} anchor={anchor} label={label} onClose={close}>
+    <SelectSurface touch={touch} anchor={anchor} label={label} width={width} onClose={close}>
       {body}
     </SelectSurface>
   );
@@ -204,12 +208,14 @@ function SelectSurface({
   touch,
   anchor,
   label,
+  width,
   onClose,
   children,
 }: {
   readonly touch: boolean;
   readonly anchor: Rect | null;
   readonly label: string;
+  readonly width: number | undefined;
   readonly onClose: () => void;
   readonly children: ReactNode;
 }): ReactNode {
@@ -233,7 +239,7 @@ function SelectSurface({
       onClose={onClose}
       anchor={anchor}
       label={label}
-      width={Math.max(240, anchor?.width ?? 0)}
+      width={width ?? Math.max(240, anchor?.width ?? 0)}
     >
       {children}
     </Popover>

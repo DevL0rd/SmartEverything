@@ -1,6 +1,6 @@
 import { usePathname } from 'expo-router';
 import type { NavPinTarget } from '@smarteverything/domain';
-import type { HeaderAction } from '../components/page-header';
+import type { ShellAction } from '../components/page-shell/shell-actions';
 import type { MenuItem } from '../components/menu';
 import { useNavPins, usePinned, type NavPins } from './nav-layout';
 import { pinTargetOfPath } from './nav-targets';
@@ -41,12 +41,12 @@ export function pinAction(
   target: NavPinTarget,
   pinned: boolean,
   pins: Pick<NavPins, 'pin' | 'unpin'>,
-): HeaderAction {
+): ShellAction {
   const { label, onPress } = pinMenuItem(target, 'page', pinned, pins);
   return { icon: pinned ? 'pinOff' : 'pin', label, onPress, selected: pinned, iconOnly: true };
 }
 
-export function usePinAction(target: NavPinTarget): HeaderAction {
+export function usePinAction(target: NavPinTarget): ShellAction {
   return pinAction(target, usePinned(target), useNavPins());
 }
 

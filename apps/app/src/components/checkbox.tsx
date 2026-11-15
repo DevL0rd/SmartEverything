@@ -18,7 +18,7 @@ export interface CheckboxProps {
   readonly className?: string;
 }
 
-function CheckboxMark({
+export function CheckboxMark({
   checked,
   disabled,
 }: Pick<CheckboxProps, 'checked' | 'disabled'>): ReactNode {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { HomeMapId } from '@smarteverything/domain';
-import { useDevices } from '../../../../store/selectors';
+import { useHasDevice } from '../../../../store/selectors';
+import type { Device } from '../../../../store/state';
 import type { MenuItem } from '../../../../components/menu';
 import { NoMapState, type NoMapRobot } from './no-map-state';
 import { useCreateMap } from '../../model/create-map';
@@ -24,9 +25,13 @@ export interface NoMapEntryProps {
   readonly menu?: readonly MenuItem[] | undefined;
 }
 
+function isVacuum(device: Device): boolean {
+  return device.kind === 'vacuum';
+}
+
 export function NoMapEntry({ map, robot, menu }: NoMapEntryProps): ReactNode {
   const create = useCreateMap(map?.id);
-  const hasVacuum = useDevices().some((device) => device.kind === 'vacuum');
+  const hasVacuum = useHasDevice(isVacuum);
   return (
     <NoMapState
       mapName={map?.name ?? null}

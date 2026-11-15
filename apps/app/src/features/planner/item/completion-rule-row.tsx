@@ -67,12 +67,19 @@ type Sentence = (completion: PlannerSignalCompletion, label: string) => string;
 
 const SENTENCES: Readonly<Partial<Record<DeviceFamily, Sentence>>> = {
   treadmill: (completion) => `a ${treadmillNoun(completion)}${minutesOf(completion)} ends`,
-  toothbrush: (completion) => `brushing${minutesOf(completion)} ends`,
+  toothbrush: (completion) => `a brushing session${minutesOf(completion)} ends`,
   bottle: (completion, label) =>
     `${label} ${bottleTextOf(fact(completion, 'activity') ?? 'drink')}`,
 };
 
-function sentenceOf(completion: PlannerSignalCompletion, device: RuleDevice | null): string {
+function withArticle(word: string): string {
+  return `${/^[aeiou]/iu.test(word) ? 'an' : 'a'} ${word}`;
+}
+
+export function sentenceOf(completion: PlannerSignalCompletion, device: RuleDevice | null): string {
+  if (completion.matcher.subject === undefined) {
+    return `any device reports ${withArticle(completion.matcher.kind)}`;
+  }
   if (device === null) return `a device that was removed reports ${completion.matcher.kind}`;
   const sentence = SENTENCES[device.family];
   return sentence === undefined
@@ -110,6 +117,31 @@ export function ruleDetailOf(
   const where = device === null ? '' : ` on the ${device.label}`;
   if (whose !== null) return `${whose}${where}, ${when}`;
   return device === null ? `Counts ${when}` : `${device.label}, ${when}`;
+}
+
+interface FamilyRule {
+  readonly window: PlannerCompletionWindow;
+  readonly match: Readonly<Record<string, string>>;
+}
+
+const FAMILY_RULES: Readonly<Partial<Record<DeviceFamily, FamilyRule>>> = {
+  toothbrush: { window: 'occurrence', match: { brushing: 'finished' } },
+  treadmill: { window: 'day', match: { phase: 'finished' } },
+  bottle: { window: 'day', match: { activity: 'drink' } },
+};
+
+export function hasFamilyRule(family: DeviceFamily): boolean {
+  return FAMILY_RULES[family] !== undefined;
+}
+
+export function familyRuleOf(device: RuleDevice): PlannerSignalCompletion | null {
+  const rule = FAMILY_RULES[device.family];
+  if (rule === undefined) return null;
+  return {
+    kind: 'signal',
+    matcher: { source: 'event', kind: 'activity', subject: device.id, match: { ...rule.match } },
+    window: rule.window,
+  };
 }
 
 export function ruleMinutesOf(device: RuleDevice | null): readonly number[] {

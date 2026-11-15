@@ -49,7 +49,14 @@ export function groupHits(hits: readonly PlannerSearchHit[]): readonly HitGroup[
 
 export interface HitTime {
   readonly at: number | null;
+  readonly day: string | null;
+  readonly overdue: boolean;
   readonly text: string;
+}
+
+export interface HitNow {
+  readonly now: number;
+  readonly today: string;
 }
 
 export interface HitFormat {
@@ -67,18 +74,55 @@ function spanOf(occurrence: PlannerOccurrenceView, format: HitFormat): string {
   return `${format.day(start)} · ${time}`;
 }
 
-export function hitTimeOf(occurrence: PlannerOccurrenceView, format: HitFormat): HitTime {
+function isOverdue(occurrence: PlannerOccurrenceView, clock: HitNow): boolean {
+  if (occurrence.kind !== 'task') return false;
+  if (occurrence.status === 'missed') return true;
+  if (occurrence.status !== 'open') return false;
+  if (occurrence.due_at !== null) return Date.parse(occurrence.due_at) < clock.now;
+  return occurrence.due_date !== null && occurrence.due_date < clock.today;
+}
+
+function dueWord(overdue: boolean): string {
+  return overdue ? 'Overdue ·' : 'Due';
+}
+
+export function hitTimeOf(
+  occurrence: PlannerOccurrenceView,
+  format: HitFormat,
+  clock: HitNow,
+): HitTime {
   if (occurrence.start !== null) {
-    return { at: Date.parse(occurrence.start), text: spanOf(occurrence, format) };
+    return {
+      at: Date.parse(occurrence.start),
+      day: null,
+      overdue: false,
+      text: spanOf(occurrence, format),
+    };
   }
+  const overdue = isOverdue(occurrence, clock);
   if (occurrence.due_at !== null) {
     const due = Date.parse(occurrence.due_at);
-    return { at: due, text: `Due ${format.day(due)} · ${format.time(due)}` };
+    return {
+      at: due,
+      day: null,
+      overdue,
+      text: `${dueWord(overdue)} ${format.day(due)} · ${format.time(due)}`,
+    };
   }
   if (occurrence.due_date !== null) {
-    return { at: null, text: `Due ${format.date(occurrence.due_date)}` };
+    return {
+      at: null,
+      day: occurrence.due_date,
+      overdue,
+      text: `${dueWord(overdue)} ${format.date(occurrence.due_date)}`,
+    };
   }
-  return { at: null, text: occurrence.kind === 'task' ? 'No date' : '' };
+  return {
+    at: null,
+    day: null,
+    overdue: false,
+    text: occurrence.kind === 'task' ? 'No date' : '',
+  };
 }
 
 const FIELD_TEXT: Readonly<Record<PlannerSearchField, string>> = {
@@ -117,10 +161,15 @@ export function choiceOfKinds(kinds: readonly PlannerItemKind[] | null): KindCho
 export function toggledCollection(
   chosen: readonly string[] | null,
   id: string,
+  all: readonly string[],
 ): readonly string[] | null {
-  const current = chosen ?? [];
+  const current = chosen ?? all;
   const next = current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id];
-  return next.length === 0 ? null : next;
+  return next.length === 0 || all.every((entry) => next.includes(entry)) ? null : next;
+}
+
+export function isCollectionChosen(chosen: readonly string[] | null, id: string): boolean {
+  return chosen === null || chosen.includes(id);
 }
 
 export function calendarChipTextOf(

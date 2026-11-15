@@ -34,6 +34,7 @@ export function RequestAnswerButtons({
           label="Approve"
           spoken={`Approve ${name}`}
           icon="check"
+          variant="tonal"
           loading={answer.busy}
           disabled={!live}
           onPress={() => {

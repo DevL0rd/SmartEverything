@@ -18,6 +18,7 @@ import type {
   SourceActionSpec,
   SourceInfoSpec,
 } from '../source/types';
+import { useSourceInfo, useSourceLinks } from '../source/source-hooks';
 import { previewableOf } from './details-model';
 import type { DetailsProps } from './details-host';
 import { InfoCard, InfoFact, InfoValue } from './info-facts';
@@ -209,8 +210,8 @@ export function InfoTab<O>({
   pane,
 }: DetailsProps<O> & { readonly pane: boolean }): ReactNode {
   const { source, abilities } = host;
-  const links = source.useLinks(node);
-  const rows = source.useInfo(node);
+  const links = useSourceLinks(source, node);
+  const rows = useSourceInfo(source, node);
   const exports = exportStateOf(node, abilities);
   return (
     <View className="gap-4">

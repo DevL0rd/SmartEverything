@@ -7,9 +7,9 @@ import type {
 } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { Button } from '../../../components/button';
 import { copyText } from '../../../components/copy-button';
-import { FilterChip } from '../../../components/filter-chip';
-import { Section } from '../../../components/section';
+import { List, Section } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { cn } from '../../../design/cn';
@@ -26,13 +26,13 @@ import {
   inviteeChoicesOf,
   responseCountsOf,
   shownSuggestionsOf,
-  toggledPerson,
   withGuest,
   withoutGuest,
   type GuestView,
   type ResponseCounts,
 } from './guests-model';
 import { reported } from './item-actions';
+import { OutlinedChip } from './outlined-chip';
 
 const SEGMENTS = [
   ['yes', 'bg-positive'],
@@ -47,7 +47,7 @@ function ResponseBar({ counts }: { readonly counts: ResponseCounts }): ReactNode
   );
   if (cells.length === 0) return null;
   return (
-    <View aria-hidden className="mx-4 h-1.5 flex-row gap-0.5">
+    <View aria-hidden className="h-1.5 flex-row gap-0.5">
       {cells.map((cell) => (
         <View key={cell.key} className={cn('h-full min-w-1 flex-1 rounded-full', cell.colour)} />
       ))}
@@ -107,21 +107,18 @@ function PeopleChips({
   readonly disabled: boolean;
 }): ReactNode {
   if (people.length === 0) return null;
-  const invited = new Set(
-    editor.entries.flatMap((entry) => (entry.kind === 'person' ? [entry.profile_id] : [])),
-  );
   return (
-    <View accessibilityLabel="People in the home" className="flex-row flex-wrap gap-2 px-4">
+    <View accessibilityLabel="People in the home" className="flex-row flex-wrap gap-2">
       {people.map((profile) => (
-        <FilterChip
+        <OutlinedChip
           key={profile.id}
-          label="Invite"
-          value={profile.name}
+          label={profile.name}
+          spoken={`Invite ${profile.name}`}
           icon="user"
-          active={invited.has(profile.id)}
+          trailing="plus"
           disabled={disabled}
           onPress={() => {
-            editor.save(toggledPerson(editor.entries, profile.id));
+            editor.save(withGuest(editor.entries, { kind: 'person', profile_id: profile.id }));
           }}
         />
       ))}
@@ -142,12 +139,12 @@ function Suggestions({
   return (
     <View accessibilityLabel="People you invited before" className="flex-row flex-wrap gap-2">
       {shown.map((suggestion) => (
-        <FilterChip
+        <OutlinedChip
           key={suggestion.email}
-          label="Invite"
-          value={suggestion.name ?? suggestion.email}
+          label={suggestion.name ?? suggestion.email}
+          spoken={`Invite ${suggestion.name ?? suggestion.email}`}
           icon="atSign"
-          active={false}
+          trailing="plus"
           disabled={disabled}
           onPress={() => {
             onPick(suggestion);
@@ -156,6 +153,41 @@ function Suggestions({
       ))}
     </View>
   );
+}
+
+function useEmailEntry(
+  person: PlannerPerson,
+  editor: GuestEditor,
+): {
+  readonly text: string;
+  readonly change: (value: string) => void;
+  readonly invalid: boolean;
+  readonly suggestions: readonly PlannerGuestSuggestion[];
+  readonly add: (next: PlannerGuestEntry | null) => void;
+  readonly submit: () => void;
+} {
+  const [text, setText] = useState('');
+  const [invalid, setInvalid] = useState(false);
+  const suggestions = useGuestSuggestions(person, text).data ?? [];
+  const add = (next: PlannerGuestEntry | null): void => {
+    setInvalid(next === null);
+    if (next === null) return;
+    editor.save(withGuest(editor.entries, next));
+    setText('');
+  };
+  return {
+    text,
+    change: (value): void => {
+      setText(value);
+      setInvalid(false);
+    },
+    invalid,
+    suggestions,
+    add,
+    submit: (): void => {
+      if (text.trim() !== '') add(emailEntryOf(text));
+    },
+  };
 }
 
 function EmailEntry({
@@ -167,33 +199,26 @@ function EmailEntry({
   readonly editor: GuestEditor;
   readonly disabled: boolean;
 }): ReactNode {
-  const [text, setText] = useState('');
-  const [invalid, setInvalid] = useState(false);
-  const suggestions = useGuestSuggestions(person, text).data ?? [];
-  const entry = emailEntryOf(text);
-  const add = (next: PlannerGuestEntry | null): void => {
-    setInvalid(next === null);
-    if (next === null) return;
-    editor.save(withGuest(editor.entries, next));
-    setText('');
-  };
+  const { text, change, invalid, suggestions, add, submit } = useEmailEntry(person, editor);
   return (
-    <View className="gap-2 px-4">
+    <View className="gap-2">
       <TextField
         label="Invite by email"
         kind="email"
         value={text}
-        onChange={(value) => {
-          setText(value);
-          setInvalid(false);
-        }}
-        onSubmit={() => {
-          if (text.trim() !== '') add(entry);
-        }}
+        onChange={change}
+        onSubmit={submit}
         placeholder="name@example.com"
         disabled={disabled}
         error={invalid ? 'That isn’t an email address' : null}
-        showLabel={false}
+        action={
+          <Button
+            label="Invite"
+            variant="tonal"
+            disabled={disabled || text.trim() === ''}
+            onPress={submit}
+          />
+        }
       />
       <Suggestions
         shown={shownSuggestionsOf(suggestions, editor.entries)}
@@ -215,22 +240,25 @@ export interface ItemGuestsProps {
 function GuestList({
   rows,
   profiles,
+  viewer,
   editor,
   organiser,
   disabled,
 }: {
   readonly rows: readonly PlannerGuestRow[];
   readonly profiles: readonly ProfileRow[];
+  readonly viewer: string | null;
   readonly editor: GuestEditor;
   readonly organiser: boolean;
   readonly disabled: boolean;
 }): ReactNode {
+  if (rows.length === 0) return null;
   const remove = (removed: GuestView): void => {
     editor.save(withoutGuest(editor.entries, removed.key));
   };
   return (
-    <View>
-      {guestViewsOf(rows, profiles).map((view) => (
+    <List>
+      {guestViewsOf(rows, profiles, viewer).map((view) => (
         <GuestRow
           key={view.key}
           view={view}
@@ -240,7 +268,7 @@ function GuestList({
           onCopyLink={organiser ? editor.copyLink : null}
         />
       ))}
-    </View>
+    </List>
   );
 }
 
@@ -260,7 +288,7 @@ function OrganiserTools({
   return (
     <>
       <PeopleChips
-        people={inviteeChoicesOf(profiles, item.profile_id)}
+        people={inviteeChoicesOf(profiles, item.profile_id, editor.entries)}
         editor={editor}
         disabled={disabled}
       />
@@ -285,6 +313,14 @@ export function ItemGuests({ item, person, disabled }: ItemGuestsProps): ReactNo
     <Section title="Guests" {...(caption === null ? {} : { caption })}>
       <View className="gap-3">
         <ResponseBar counts={counts} />
+        <GuestList
+          rows={rows}
+          profiles={profiles}
+          viewer={me}
+          editor={editor}
+          organiser={organiser}
+          disabled={locked}
+        />
         {organiser ? (
           <OrganiserTools
             item={item}
@@ -294,15 +330,8 @@ export function ItemGuests({ item, person, disabled }: ItemGuestsProps): ReactNo
             disabled={locked}
           />
         ) : null}
-        <GuestList
-          rows={rows}
-          profiles={profiles}
-          editor={editor}
-          organiser={organiser}
-          disabled={locked}
-        />
         {emailed ? (
-          <Text variant="footnote" tone="variant" className="px-4">
+          <Text variant="footnote" tone="variant">
             Guests answer from the links in the invitation; replies to the email are not read.
           </Text>
         ) : null}

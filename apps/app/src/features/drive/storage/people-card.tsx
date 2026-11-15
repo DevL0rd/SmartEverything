@@ -1,13 +1,13 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { Button } from '../../../components/button';
+import { IconButton } from '../../../components/icon-button';
 import { Card } from '../../../components/card';
 import { Text } from '../../../components/text';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
 import { ProfileAvatar } from '../../profiles';
 import { useQuotaRequest } from '../settings/page-storage';
 import { peopleCaptionOf, usageLineOf, type PersonUsage } from './usage-model';
-import { UsageMeter } from './usage-meter';
+import { UsageLegend, UsageMeter } from './usage-meter';
 
 export const PEOPLE_NOTE =
   'Totals only · nobody sees the names or contents of another person’s drive';
@@ -26,11 +26,9 @@ function SetQuota({ entry }: { readonly entry: PersonUsage }): ReactNode {
   return (
     <>
       <View ref={opener} collapsable={false}>
-        <Button
-          label="Set quota"
-          spoken={`Set the space limit for ${entry.person.name}`}
+        <IconButton
           icon="gauge"
-          variant="tonal"
+          label={`Set the space limit for ${entry.person.name}`}
           onPress={() => {
             setOpen(true);
           }}
@@ -46,28 +44,40 @@ function SetQuota({ entry }: { readonly entry: PersonUsage }): ReactNode {
   );
 }
 
-function PersonRow({ entry }: { readonly entry: PersonUsage }): ReactNode {
-  const title = entry.you ? `${entry.person.name} (you)` : entry.person.name;
+function PersonRow({
+  entry,
+  freeBytes,
+}: {
+  readonly entry: PersonUsage;
+  readonly freeBytes: number;
+}): ReactNode {
   return (
     <UsageMeter
       leading={<ProfileAvatar profile={entry.person} />}
-      title={title}
-      line={usageLineOf(entry.usage, entry.quota)}
-      action={<SetQuota entry={entry} />}
+      title={entry.person.name}
+      line={usageLineOf(entry.usage, entry.quota, freeBytes)}
+      trailing={<SetQuota entry={entry} />}
     />
   );
 }
 
-export function PeopleCard({ people }: { readonly people: readonly PersonUsage[] }): ReactNode {
+export function PeopleCard({
+  people,
+  freeBytes,
+}: {
+  readonly people: readonly PersonUsage[];
+  readonly freeBytes: number;
+}): ReactNode {
   if (people.length === 0) return null;
   return (
     <Card title="People" icon="users">
       <Text variant="footnote" tone="variant">
         {`${peopleCaptionOf(people)} · ${PEOPLE_NOTE}`}
       </Text>
+      <UsageLegend />
       <View className="gap-5">
         {people.map((entry) => (
-          <PersonRow key={entry.person.id} entry={entry} />
+          <PersonRow key={entry.person.id} entry={entry} freeBytes={freeBytes} />
         ))}
       </View>
     </Card>

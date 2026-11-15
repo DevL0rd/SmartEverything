@@ -88,7 +88,6 @@ const PAGE_ROW = z.strictObject({
   taken_at: z.string(),
   tz_offset_min: NUMBER,
   duration_ms: NUMBER,
-  thumbhash: z.instanceof(Uint8Array).nullable(),
   flags: z.number(),
 });
 
@@ -168,7 +167,7 @@ export function pageStatement(
   const after = afterCursor(query.cursor, '<');
   return {
     text: `select i.id, i.rev, i.width, i.height, i.orientation, i.taken_at, m.tz_offset_min,
-        i.duration_ms, m.thumbhash, ${FLAGS_SQL} as flags
+        i.duration_ms, ${FLAGS_SQL} as flags
       from ${PHOTO_FROM}
       where ${shownBy(query)}${filter.text}
         and i.taken_at >= $monthFrom and i.taken_at < $monthTo
@@ -208,9 +207,6 @@ export function pageOf(month: string, rows: readonly PageRow[]): LibraryPage {
     takenAt: shown.map((row) => Date.parse(row.taken_at)),
     offsetMin: shown.map((row) => row.tz_offset_min),
     durationMs: shown.map((row) => row.duration_ms),
-    thumbhash: shown.map((row) =>
-      row.thumbhash === null ? null : Buffer.from(row.thumbhash).toString('base64'),
-    ),
     flags: shown.map((row) => row.flags),
     next:
       rows.length > LIBRARY_PAGE_SIZE && last !== undefined

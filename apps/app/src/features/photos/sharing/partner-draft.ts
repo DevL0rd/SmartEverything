@@ -19,8 +19,20 @@ export interface PartnerDraft {
   readonly fromDay: string;
 }
 
+export function yearBefore(day: string): string {
+  const year = String(Number(day.slice(0, 4)) - 1).padStart(4, '0');
+  const rest = day.slice(4);
+  return rest === '-02-29' ? `${year}-02-28` : `${year}${rest}`;
+}
+
 export function newDraft(today: string): PartnerDraft {
-  return { step: 'person', recipientId: null, scope: 'all', groupIds: [], fromDay: today };
+  return {
+    step: 'person',
+    recipientId: null,
+    scope: 'all',
+    groupIds: [],
+    fromDay: yearBefore(today),
+  };
 }
 
 export function draftOfGroup(today: string, groupId: string): PartnerDraft {

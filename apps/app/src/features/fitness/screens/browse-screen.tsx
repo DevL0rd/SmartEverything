@@ -39,7 +39,7 @@ export function BrowseScreen(): ReactNode {
     specs: SERIES.filter((spec) => spec.group === group.group && presence.types.has(spec.type)),
   })).filter((group) => group.specs.length > 0);
   const lists = groups.map((group) => (
-    <View key={group.group} className="min-w-0 max-w-reading grow shrink basis-96">
+    <View key={group.group} className="min-w-0 grow shrink basis-96">
       <List title={group.label} inset>
         {group.specs.map((spec) => {
           const value = latestText(spec, rows.figures, today);
@@ -57,12 +57,12 @@ export function BrowseScreen(): ReactNode {
     </View>
   ));
   return (
-    <PageShell title="All health data" width="full">
-      {presence.loaded ? null : <Skeleton shape="block" className="h-72 w-full max-w-reading" />}
+    <PageShell title="All health data">
+      {presence.loaded ? null : <Skeleton shape="block" className="h-72 w-full" />}
       {lists.length === 0 ? null : (
         <View className="flex-row flex-wrap items-start gap-grid-gap">{lists}</View>
       )}
-      <View className="w-full max-w-reading gap-2">
+      <View className="w-full gap-2">
         <List inset>
           <NavRow title="Log health data" icon="plus" href={href.logHealth()} />
         </List>

@@ -357,7 +357,6 @@ export function MusicTab(props: SoundTabProps): ReactNode {
         value={text}
         onChange={setText}
         placeholder="Search songs and folders"
-        icon="music"
         variant="field"
       />
       {query === null ? (

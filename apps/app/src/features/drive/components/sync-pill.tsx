@@ -7,7 +7,7 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { bytes, count } from '../../../format/number';
 import { plural } from '../../../format/text';
-import { useDevices } from '../../../store/selectors';
+import { useDeviceNames } from '../../../store/selectors';
 import { flattenPages, useDriveConflicts, useDrivePlacementRows } from '../data';
 
 export type DriveSyncTone = 'positive' | 'info' | 'warning' | 'critical';
@@ -141,7 +141,7 @@ export function useOpenConflicts(): OpenConflicts {
 
 export function useDriveSyncSummary(): DriveSyncSummary | null {
   const placements = useDrivePlacementRows();
-  const names = new Map(useDevices().map((device) => [device.id, device.label]));
+  const names = useDeviceNames('label');
   return driveSyncSummaryOf({ placements, names, conflicts: useOpenConflicts() });
 }
 

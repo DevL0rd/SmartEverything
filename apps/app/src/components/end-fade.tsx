@@ -6,7 +6,6 @@ import { cn } from '../design/cn';
 const FADE_EDGE = 2;
 
 const FADE_FROM = {
-  bg: 'from-bg',
   card: 'from-surface-1',
 } as const;
 

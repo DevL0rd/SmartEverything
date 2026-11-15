@@ -52,11 +52,11 @@ describe('the access screen', () => {
     expect(askBodyOf('Alex')).toMatch(/^Ask Alex to share it with you/);
     expect(askBodyOf(null)).toMatch(/^Ask its owner/);
     expect(sentLineOf(request, now, 'Alex')).toBe(
-      'Request sent 3 h ago. Alex gets a notification and can approve it.',
+      'Sent 3 h ago. Alex gets a notification and can approve it.',
     );
     const declined = accessRequestRow({ state: 'declined', ...ANSWERED });
     expect(declinedLineOf(declined, Date.parse(ANSWERED.answeredAt), null)).toBe(
-      'The owner declined your request just now. You can ask again.',
+      'The owner declined your request just now',
     );
   });
 

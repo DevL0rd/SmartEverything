@@ -26,6 +26,7 @@ import {
   type PluginCatalogStatus,
 } from '../model/plugin-catalog';
 import { background } from '@smarteverything/logging';
+import { SectionFailureBanner } from '../../../app-shell/section-failure';
 
 const PLUGIN_CARD_MIN_WIDTH = 390;
 const ADD = href.settings.page('plugins/add');
@@ -88,12 +89,7 @@ function Catalog({
     >
       {columns > 1 ? (
         <Section title={title}>
-          <Grid
-            measuredWidth={width}
-            minItemWidth={PLUGIN_CARD_MIN_WIDTH}
-            cellClassName="max-w-reading"
-            stretchLastRow={false}
-          >
+          <Grid measuredWidth={width} minItemWidth={PLUGIN_CARD_MIN_WIDTH} stretchLastRow={false}>
             {rows.map((row) => (
               <List key={row.key} inset>
                 {row}
@@ -119,7 +115,7 @@ function HubPlugins({
 }): ReactNode {
   if (empty) {
     return (
-      <Section title="Hub plugins" className="max-w-reading">
+      <Section title="Hub plugins">
         <EmptyState
           icon="puzzle"
           title="No plugins yet"
@@ -181,16 +177,16 @@ export function PluginsScreen(): ReactNode {
   return (
     <SettingsFrame
       page="plugins"
-      contentWidth="full"
       search={{ value: search, onChange: setSearch, placeholder: 'Search plugins' }}
     >
+      <SectionFailureBanner section="owner.plugins" />
       {status === 'ready' ? null : (
-        <View className="w-full max-w-reading">
+        <View className="w-full">
           <CatalogStatus status={status} />
         </View>
       )}
       {status === 'ready' && query !== '' && hub.length === 0 && device.length === 0 ? (
-        <View className="w-full max-w-reading">
+        <View className="w-full">
           <EmptyState
             icon="search"
             title={`No plugins match “${search.trim()}”`}

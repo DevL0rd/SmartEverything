@@ -40,16 +40,6 @@ export function withGuest(
   return entries.some((other) => guestKeyOf(other) === key) ? entries : [...entries, entry];
 }
 
-export function toggledPerson(
-  entries: readonly PlannerGuestEntry[],
-  profileId: string,
-): readonly PlannerGuestEntry[] {
-  const key = `person:${profileId}`;
-  return entries.some((entry) => guestKeyOf(entry) === key)
-    ? withoutGuest(entries, key)
-    : [...entries, { kind: 'person', profile_id: profileId }];
-}
-
 const NAMED = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/u;
 
 export function emailEntryOf(text: string): PlannerGuestEntry | null {
@@ -92,9 +82,9 @@ export function responseCountsOf(rows: readonly PlannerGuestRow[]): ResponseCoun
 
 export function countsTextOf(counts: ResponseCounts): string | null {
   const parts = [
-    counts.yes === 0 ? null : `${String(counts.yes)} yes`,
+    counts.yes === 0 ? null : `${String(counts.yes)} going`,
     counts.maybe === 0 ? null : `${String(counts.maybe)} maybe`,
-    counts.no === 0 ? null : `${String(counts.no)} no`,
+    counts.no === 0 ? null : `${String(counts.no)} not going`,
     counts.waiting === 0 ? null : `${String(counts.waiting)} waiting`,
   ].filter((part) => part !== null);
   return parts.length === 0 ? null : parts.join(' · ');
@@ -147,7 +137,12 @@ export interface GuestView {
   readonly profile: ProfileRow | null;
 }
 
-function nameOf(row: PlannerGuestRow, profile: ProfileRow | null): string {
+function isViewer(row: PlannerGuestRow, viewer: string | null): boolean {
+  return row.kind === 'person' && viewer !== null && row.profile_id === viewer;
+}
+
+function nameOf(row: PlannerGuestRow, profile: ProfileRow | null, viewer: string | null): string {
+  if (isViewer(row, viewer)) return 'You';
   if (row.kind === 'person') return profile?.name ?? 'Someone in the home';
   return row.name ?? row.email ?? 'Guest';
 }
@@ -162,11 +157,13 @@ const RESPONSE_ORDER: Readonly<Record<PlannerGuestResponse, number>> = {
 export function guestViewsOf(
   rows: readonly PlannerGuestRow[],
   profiles: readonly ProfileRow[],
+  viewer: string | null,
 ): readonly GuestView[] {
+  const first = (view: GuestView): number => (isViewer(view.row, viewer) ? 0 : 1);
   return rows
     .map((row) => {
       const profile = profiles.find((one) => one.id === row.profile_id) ?? null;
-      const name = nameOf(row, profile);
+      const name = nameOf(row, profile, viewer);
       return {
         key: guestKeyOf(row),
         row,
@@ -177,6 +174,7 @@ export function guestViewsOf(
     })
     .sort(
       (left, right) =>
+        first(left) - first(right) ||
         RESPONSE_ORDER[left.row.response] - RESPONSE_ORDER[right.row.response] ||
         compareText(left.name, right.name),
     );
@@ -185,9 +183,11 @@ export function guestViewsOf(
 export function inviteeChoicesOf(
   profiles: readonly ProfileRow[],
   organiser: string,
+  entries: readonly PlannerGuestEntry[],
 ): readonly ProfileRow[] {
+  const invited = new Set(entries.map(guestKeyOf));
   return profiles
-    .filter((profile) => profile.id !== organiser)
+    .filter((profile) => profile.id !== organiser && !invited.has(`person:${profile.id}`))
     .sort((left, right) => left.position - right.position);
 }
 

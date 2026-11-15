@@ -8,16 +8,9 @@ import type {
 import type { BadgeTone } from '../../../components/badge';
 import type { IconName } from '../../../components/icon';
 import type { ProgressStep } from '../../../components/progress-steps';
-import type { Tone } from '../../../components/tone';
 import { bytes } from '../../../format/number';
 import { plural } from '../../../format/text';
-import {
-  lineToneOf,
-  placementWordsOf,
-  upgradeOf,
-  type PlacementChip,
-  type PlacementUpgrade,
-} from './placement-words';
+import { upgradeOf, type PlacementUpgrade } from './placement-words';
 
 export type MountTier = NonNullable<DrivePlacementStatus['tier']>;
 
@@ -101,38 +94,16 @@ function routeOf(active: readonly DrivePlacement[]): MountRoute | null {
   return routes.includes('remote') ? 'remote' : (routes[0] ?? null);
 }
 
-export interface MountLocation {
-  readonly id: string;
-  readonly name: string;
-  readonly point: string | null;
-  readonly openable: boolean;
-  readonly chip: PlacementChip;
-  readonly line: string;
-  readonly lineTone: Tone;
-}
-
 const OPENABLE_STATES: ReadonlySet<DrivePlacementStatus['state']> = new Set(['mounted', 'offline']);
 
-export function mountLocationsOf(summary: MountSummary): readonly MountLocation[] {
-  return summary.placements.flatMap((placement) => {
-    if (placement.mountName === null) return [];
-    const words = placementWordsOf(placement, null);
-    return [
-      {
-        id: placement.id,
-        name: placement.mountName,
-        point: placement.status.mountPoint,
-        openable:
-          placement.status.mountPoint !== null &&
-          placement.enabled &&
-          placement.hold === null &&
-          OPENABLE_STATES.has(placement.status.state),
-        chip: words.chip,
-        line: words.line,
-        lineTone: lineToneOf(words),
-      },
-    ];
-  });
+export function mountOpenable(placement: DrivePlacement): boolean {
+  return (
+    placement.mode === 'mounted' &&
+    placement.status.mountPoint !== null &&
+    placement.enabled &&
+    placement.hold === null &&
+    OPENABLE_STATES.has(placement.status.state)
+  );
 }
 
 const UPLOAD_WAIT: Readonly<Record<MountHealth, string>> = {
@@ -194,7 +165,9 @@ export function setupOf(
   fuse: DesktopDriveFuse | null,
   summary: MountSummary,
 ): MountSetup | null {
-  if (platform === 'darwin') return 'macos';
+  const fullMount = summary.active && summary.tier === 'full';
+  if (fullMount && summary.health === 'ready') return null;
+  if (platform === 'darwin') return fullMount ? null : 'macos';
   if (platform === 'linux' && fuse !== null && !fuse.available) return 'fuse3';
   return summary.upgrade;
 }

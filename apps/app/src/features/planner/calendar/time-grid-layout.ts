@@ -11,7 +11,7 @@ import type { EventLook } from './calendars-model';
 import { compareText } from '../../../format/text';
 import {
   HOUR_MS,
-  clock,
+  clock24,
   clockOfMinutes,
   dayBoundsOf,
   localDayKey,
@@ -33,6 +33,8 @@ const WALL_FORMAT = zonedDateFormat(
 );
 
 const DAY_NUMBER = zonedDateFormat({ day: 'numeric' });
+
+const WEEKDAY_LETTER = zonedDateFormat({ weekday: 'narrow' });
 
 export type WorkingHours = PlannerPreferences['general']['working_hours'];
 
@@ -62,12 +64,24 @@ export interface AllDayEntry {
   readonly look: EventLook;
 }
 
+export interface MinuteBand {
+  readonly from: number;
+  readonly to: number;
+}
+
+export interface SleepNight {
+  readonly bed_at: string;
+  readonly woke_at: string;
+}
+
 export interface GridDay {
   readonly date: string;
   readonly weekday: string;
+  readonly letter: string;
   readonly number: string;
   readonly today: boolean;
-  readonly working: { readonly from: number; readonly to: number } | null;
+  readonly working: MinuteBand | null;
+  readonly sleep: readonly MinuteBand[];
   readonly blocks: readonly GridBlock[];
   readonly allDay: readonly AllDayEntry[];
 }
@@ -88,6 +102,7 @@ export interface GridInput {
   readonly occurrences: readonly PlannerOccurrenceView[];
   readonly collections: readonly PlannerCollectionRow[];
   readonly workingHours: WorkingHours | null;
+  readonly sleep: readonly SleepNight[];
   readonly readOnlyOf: (occurrence: PlannerOccurrenceView) => boolean;
   readonly lookOf: (occurrence: PlannerOccurrenceView) => EventLook;
   readonly minMinutes: number;
@@ -215,10 +230,10 @@ export function laneSpans(spans: readonly GridSpan[], minMinutes: number): reado
 export function blockTimeOf(occurrence: PlannerOccurrenceView, timeZone: string): string {
   const begin = startOf(occurrence);
   if (begin === null) return '';
-  const from = clock(begin, timeZone);
+  const from = clock24(begin, timeZone);
   return occurrence.end === null || occurrence.end === begin
     ? from
-    : `${from} to ${clock(occurrence.end, timeZone)}`;
+    : `${from} to ${clock24(occurrence.end, timeZone)}`;
 }
 
 function coloursOf(
@@ -256,6 +271,22 @@ export function workingWindowOn(
   return hours.days.includes(weekday) && to > from ? { from, to } : null;
 }
 
+export function sleepBandsOn(
+  nights: readonly SleepNight[],
+  date: string,
+  timeZone: string,
+): readonly MinuteBand[] {
+  const bounds = dayBoundsOf(date, timeZone);
+  return nights.flatMap((night) => {
+    const bed = Date.parse(night.bed_at);
+    const woke = Date.parse(night.woke_at);
+    if (woke <= bounds.start || bed >= bounds.end) return [];
+    const from = bed <= bounds.start ? 0 : wallMinuteOf(bed, timeZone);
+    const to = woke >= bounds.end ? DAY_MINUTES : wallMinuteOf(woke, timeZone);
+    return to > from ? [{ from, to }] : [];
+  });
+}
+
 function gridDayOf(input: GridInput, date: string): GridDay {
   const colours = coloursOf(input.collections);
   const colourOf = (occurrence: PlannerOccurrenceView): PlannerColourKey | null =>
@@ -268,9 +299,11 @@ function gridDayOf(input: GridInput, date: string): GridDay {
   return {
     date,
     weekday: weekdayShort(noon),
+    letter: WEEKDAY_LETTER(null).format(new Date(noon)),
     number: DAY_NUMBER(null).format(new Date(noon)),
     today: date === input.today,
     working: workingWindowOn(date, input.workingHours),
+    sleep: sleepBandsOn(input.sleep, date, input.timeZone),
     blocks: spans.map((span) => ({
       ...span,
       colour: colourOf(span.occurrence),
@@ -293,6 +326,10 @@ function gridDayOf(input: GridInput, date: string): GridDay {
 
 export function gridDaysOf(input: GridInput): readonly GridDay[] {
   return input.days.map((date) => gridDayOf(input, date));
+}
+
+export function anyAllDay(days: readonly GridDay[]): boolean {
+  return days.some((day) => day.allDay.length > 0);
 }
 
 export function daysFrom(first: string, count: number): readonly string[] {

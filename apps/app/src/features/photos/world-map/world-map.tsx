@@ -58,7 +58,7 @@ function Layers({
 }): ReactNode {
   const shades = map.mode === 'countries' ? countryShades(map.countries) : undefined;
   return (
-    <Zoomable onZoomed={map.onZoomed}>
+    <Zoomable wheel="ctrl-wheel" onZoomed={map.onZoomed}>
       <View accessible accessibilityRole="image" accessibilityLabel={map.label}>
         <WorldBase view={WORLD_VIEW} frame={frame} shades={shades} />
       </View>

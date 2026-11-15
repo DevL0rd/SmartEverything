@@ -2,9 +2,6 @@ import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import type { DriveConflict, DriveItem } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
-import { EmptyState } from '../../../components/empty-state';
-import { ErrorState } from '../../../components/error-state';
 import { FileGlyph } from '../../../components/files/file-glyph';
 import { IconButton } from '../../../components/icon-button';
 import { Overlay, useOverlayShown } from '../../../components/overlay';
@@ -22,17 +19,26 @@ import {
 } from '../data';
 import { entryKindOf } from '../model/item-content';
 import { canWrite } from '../model/drive-access';
+import { VERSION_NAMES, type CompareNames } from './diff-model';
 import { RestoreButtons } from './restore';
+import { VersionCompare } from './version-compare';
+import { driveVersionLink } from './version-link';
+import {
+  PickCaptions,
+  SheetTitle,
+  TouchFooter,
+  Unloaded,
+  type ComparedPair,
+} from './versions-sheet-parts';
 import {
   OneVersion,
   SizeOverYear,
-  TimelineLoading,
   VersionTimeline,
   useTimelineLook,
   type TimelineLook,
 } from './version-timeline';
 import {
-  captionOf,
+  copyEntryOf,
   entriesOf,
   entryOf,
   initialPicks,
@@ -46,20 +52,20 @@ import {
   type VersionPicks,
 } from './versions-model';
 
+export interface VersionsVersus {
+  readonly copy: DriveItem;
+  readonly deviceId: string;
+  readonly names: CompareNames;
+}
+
 export interface VersionsTarget {
   readonly versionsKept: boolean | null;
   readonly item: DriveItem;
   readonly picks?: VersionPicks;
-}
-
-export interface CompareInput {
-  readonly item: DriveItem;
-  readonly a: VersionEntry;
-  readonly b: VersionEntry;
+  readonly versus?: VersionsVersus;
 }
 
 export interface VersionsSlots {
-  readonly compare?: (input: CompareInput) => ReactNode;
   readonly conflict?: (conflict: DriveConflict) => ReactNode;
 }
 
@@ -99,125 +105,97 @@ function usePicks(
   return [settlePicks(chosen ?? initialPicks(entries), entries), choose];
 }
 
-function PickCaptions({
-  a,
-  b,
-  look,
-}: {
-  readonly a: VersionEntry;
-  readonly b: VersionEntry;
-  readonly look: TimelineLook;
-}): ReactNode {
-  return (
-    <View className="gap-1">
-      <Text variant="footnote" tone="variant" numberOfLines={1}>
-        {`A · ${captionOf(a, look.namers, look.time)}`}
-      </Text>
-      <Text variant="footnote" tone="variant" numberOfLines={1}>
-        {`B · ${captionOf(b, look.namers, look.time)}`}
-      </Text>
-    </View>
-  );
-}
-
 interface PanelParts {
   readonly target: VersionsTarget;
   readonly data: VersionsData;
   readonly picks: VersionPicks;
+  readonly versus: VersionsVersus | null;
   readonly look: TimelineLook;
   readonly slots: VersionsSlots;
   readonly onPick: (key: string) => void;
   readonly reset: () => void;
 }
 
-function CompareArea({ parts }: { readonly parts: PanelParts }): ReactNode {
-  const { data, picks, look, slots } = parts;
+function pairOf(parts: PanelParts): ComparedPair | null {
+  const { data, picks, versus } = parts;
   const a = entryOf(data.entries, picks.a);
+  if (a === null) return null;
+  const item = data.item;
+  if (versus !== null) {
+    const b = copyEntryOf(versus.copy, versus.deviceId);
+    return {
+      a,
+      b,
+      names: versus.names,
+      link: (entry) => driveVersionLink(entry.key === b.key ? versus.copy : item, entry),
+    };
+  }
   const b = entryOf(data.entries, picks.b);
-  if (a === null || b === null) return <OneVersion kept={parts.target.versionsKept} />;
+  if (b === null) return null;
+  return { a, b, names: VERSION_NAMES, link: (entry) => driveVersionLink(item, entry) };
+}
+
+function restorableOf(parts: PanelParts): VersionEntry | null {
+  return parts.versus === null ? entryOf(parts.data.entries, parts.picks.b) : null;
+}
+
+function CompareArea({ parts }: { readonly parts: PanelParts }): ReactNode {
+  const { data, look } = parts;
+  const pair = pairOf(parts);
+  if (pair === null) {
+    return (
+      <View className="min-h-0 flex-1 justify-center">
+        <OneVersion kept={parts.target.versionsKept} />
+      </View>
+    );
+  }
   return (
     <View className="min-h-0 flex-1 gap-3">
-      {slots.compare === undefined ? null : (
-        <View className="min-h-0 flex-1">{slots.compare({ item: data.item, a, b })}</View>
-      )}
-      <PickCaptions a={a} b={b} look={look} />
+      <View className={cn(look.pointer && 'min-h-0 flex-1')}>
+        <VersionCompare
+          item={data.item}
+          a={pair.a}
+          b={pair.b}
+          link={pair.link}
+          names={pair.names}
+        />
+      </View>
+      <PickCaptions pair={pair} look={look} />
     </View>
   );
 }
 
-function Restore({ parts }: { readonly parts: PanelParts }): ReactNode {
-  const { data, picks, look, target } = parts;
+function Restore({
+  parts,
+  b,
+}: {
+  readonly parts: PanelParts;
+  readonly b: VersionEntry;
+}): ReactNode {
+  const { data, look, target } = parts;
   const access = useDriveOf(target.item).access;
   const writable = useSyncStatus().status === 'live' && canWrite(access);
   return (
     <RestoreButtons
       item={data.item}
-      b={entryOf(data.entries, picks.b)}
+      b={b}
       conflicted={data.conflict !== null}
       writable={writable}
       pointer={look.pointer}
+      time={look.time}
       onRestored={parts.reset}
     />
   );
 }
 
-function footerOf(parts: PanelParts): string {
-  const b = entryOf(parts.data.entries, parts.picks.b);
+function footerOf(parts: PanelParts, b: VersionEntry): string {
   return restorePlanOf(b, parts.data.conflict !== null).footer;
-}
-
-function Unloaded({ data }: { readonly data: VersionsData }): ReactNode {
-  const live = useSyncStatus().status === 'live';
-  if (!live) {
-    return (
-      <EmptyState
-        compact
-        icon="wifiOff"
-        title="The hub is offline"
-        body="Versions come back when the hub reconnects. Nothing is lost while it is away."
-      />
-    );
-  }
-  if (data.pages.isError) {
-    return (
-      <ErrorState
-        error={data.pages.error}
-        retry={() => {
-          background(data.pages.refetch(), 'drive_versions.refetch_failed');
-        }}
-      />
-    );
-  }
-  return <TimelineLoading />;
 }
 
 function ConflictSlot({ parts }: { readonly parts: PanelParts }): ReactNode {
   const { conflict } = parts.data;
   if (conflict === null || parts.slots.conflict === undefined) return null;
   return <View className="px-5 pb-3">{parts.slots.conflict(conflict)}</View>;
-}
-
-function Title({
-  parts,
-  large,
-}: {
-  readonly parts: PanelParts;
-  readonly large: boolean;
-}): ReactNode {
-  const { data } = parts;
-  const subtitle = data.settled
-    ? `${data.item.name} · ${totalText(totalOf(data.entries))}`
-    : data.item.name;
-  return (
-    <View className="min-w-0 flex-1 gap-0.5">
-      <Text variant={large ? 'large-title' : 'title-3'} role="heading" numberOfLines={1}>
-        Versions
-      </Text>
-      <Text variant={large ? 'callout' : 'footnote'} tone="variant" numberOfLines={1}>
-        {subtitle}
-      </Text>
-    </View>
-  );
 }
 
 function Timeline({
@@ -232,7 +210,7 @@ function Timeline({
   return (
     <VersionTimeline
       entries={parts.data.entries}
-      picks={parts.picks}
+      picks={parts.versus === null ? parts.picks : { a: parts.picks.a, b: null }}
       onPick={parts.onPick}
       look={parts.look}
       header={header}
@@ -251,6 +229,7 @@ function PointerPanel({
   const { data, look } = parts;
   const shown = useOverlayShown();
   const total = totalText(totalOf(data.entries));
+  const b = restorableOf(parts);
   return (
     <View
       onLayout={shown}
@@ -258,7 +237,7 @@ function PointerPanel({
     >
       <View className="flex-row items-center gap-3 pb-3 pl-5 pr-3 pt-4">
         <FileGlyph kind={entryKindOf(data.item)} name={data.item.name} />
-        <Title parts={parts} large={false} />
+        <SheetTitle data={data} large={false} />
         <IconButton icon="close" label="Close versions" shortcut="Esc" onPress={close} />
       </View>
       <ConflictSlot parts={parts} />
@@ -270,17 +249,19 @@ function PointerPanel({
               header={<SizeOverYear entries={data.entries} total={total} now={look.time.now} />}
             />
           ) : (
-            <Unloaded data={data} />
+            <Unloaded pages={data.pages} />
           )}
         </View>
         <View className="min-w-0 flex-1 gap-3 px-5 py-4">
           {data.settled ? <CompareArea parts={parts} /> : <View className="flex-1" />}
-          <View className="flex-row flex-wrap items-center gap-2 border-t border-outline-variant pt-3">
-            <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
-              {footerOf(parts)}
-            </Text>
-            {data.settled ? <Restore parts={parts} /> : null}
-          </View>
+          {data.settled && b !== null ? (
+            <View className="flex-row flex-wrap items-center gap-2 border-t border-outline-variant pt-3">
+              <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
+                {footerOf(parts, b)}
+              </Text>
+              <Restore parts={parts} b={b} />
+            </View>
+          ) : null}
         </View>
       </View>
     </View>
@@ -296,13 +277,14 @@ function TouchPanel({
 }): ReactNode {
   const { data } = parts;
   const shown = useOverlayShown();
+  const b = restorableOf(parts);
   return (
     <View onLayout={shown} className="size-full bg-chrome pt-safe">
       <View className="flex-row items-center px-1">
         <IconButton icon="chevronLeft" label="Back" onPress={close} />
       </View>
       <View className="px-4 pb-2 pt-1">
-        <Title parts={parts} large />
+        <SheetTitle data={data} large />
       </View>
       <ConflictSlot parts={parts} />
       <View className="min-h-0 flex-1">
@@ -314,19 +296,17 @@ function TouchPanel({
                 <CompareArea parts={parts} />
               </View>
             }
-            footer={
-              <Text variant="footnote" tone="variant" className="px-4 py-4">
-                {footerOf(parts)}
-              </Text>
-            }
+            {...(b === null ? {} : { footer: <TouchFooter text={footerOf(parts, b)} /> })}
           />
         ) : (
-          <Unloaded data={data} />
+          <View className="px-4">
+            <Unloaded pages={data.pages} />
+          </View>
         )}
       </View>
-      {data.settled ? (
+      {data.settled && b !== null ? (
         <View className="gap-2 border-t border-outline-variant bg-chrome px-4 pb-safe pt-3">
-          <Restore parts={parts} />
+          <Restore parts={parts} b={b} />
         </View>
       ) : null}
     </View>
@@ -346,14 +326,20 @@ function Panel({
 }): ReactNode {
   const data = useVersionsData(target);
   const [picks, choose] = usePicks(target.picks, data.entries);
+  const [copyShown, showCopy] = useState(true);
+  const versus = target.versus === undefined || !copyShown ? null : target.versus;
   const parts: PanelParts = {
     target,
     data,
     picks,
-    look: useTimelineLook(data.entries),
+    versus,
+    look: useTimelineLook(
+      versus === null ? data.entries : [...data.entries, copyEntryOf(versus.copy, versus.deviceId)],
+    ),
     slots,
     onPick: (key) => {
-      choose(pickOf(picks, key));
+      choose(pickOf(versus === null ? picks : { a: picks.a, b: null }, key));
+      showCopy(false);
     },
     reset: () => {
       choose(null);

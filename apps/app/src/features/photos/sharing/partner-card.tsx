@@ -11,6 +11,7 @@ import { Icon } from '../../../components/icon';
 import { SwitchRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { useMutationState, type MutationState } from '../../../store/mutation';
+import { useSyncStatus } from '../../../store/selectors';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { ProfileAvatar } from '../../profiles';
 import { partnerTabIdOf } from '../model/library-tabs';
@@ -75,13 +76,17 @@ function PartnerHead({
   );
 }
 
+function useLive(): boolean {
+  return useSyncStatus().status === 'live';
+}
+
 function stopQuestion(name: string, sharing: boolean): Promise<boolean> {
   return confirm({
     title: sharing ? `Stop sharing with ${name}?` : `Stop seeing ${name}’s photos?`,
     body: sharing
       ? 'They no longer see your photos. Photos they saved stay in their library.'
       : 'Their tab leaves your Library. Photos you saved stay in your library.',
-    confirmLabel: 'Stop sharing',
+    confirmLabel: sharing ? 'Stop sharing' : 'Stop seeing',
     tone: 'destructive',
   });
 }
@@ -99,10 +104,12 @@ function StopButton({
 }): ReactNode {
   const mutation = useMutationState();
   const after = useRefreshAfter();
+  const live = useLive();
   return (
     <Button
       label={label}
       variant="text"
+      disabled={!live}
       loading={mutation.busy}
       onPress={() => {
         background(
@@ -129,6 +136,7 @@ export interface PartnerRowProps {
 
 function Outgoing({ share, onChange }: PartnerRowProps): ReactNode {
   const name = nameOf(share.recipientId, useProfiles(), null);
+  const live = useLive();
   return (
     <View className="gap-3">
       <PartnerHead share={share} other={share.recipientId} />
@@ -137,6 +145,7 @@ function Outgoing({ share, onChange }: PartnerRowProps): ReactNode {
           label="Change"
           icon="pencil"
           variant="tonal"
+          disabled={!live}
           onPress={() => {
             onChange(share);
           }}
@@ -150,6 +159,7 @@ function Outgoing({ share, onChange }: PartnerRowProps): ReactNode {
 function Offered({ share }: { readonly share: PartnerShare }): ReactNode {
   const mutation = useMutationState();
   const after = useRefreshAfter();
+  const live = useLive();
   return (
     <View className="gap-3 rounded-md bg-primary-container/40 p-3">
       <PartnerHead share={share} other={share.sharerId} />
@@ -158,6 +168,7 @@ function Offered({ share }: { readonly share: PartnerShare }): ReactNode {
           label="Accept"
           icon="check"
           variant="filled"
+          disabled={!live}
           loading={mutation.busy}
           onPress={() => {
             after(
@@ -171,7 +182,7 @@ function Offered({ share }: { readonly share: PartnerShare }): ReactNode {
         <Button
           label="Decline"
           variant="text"
-          disabled={mutation.busy}
+          disabled={!live || mutation.busy}
           onPress={() => {
             after(
               mutation,
@@ -190,24 +201,27 @@ function Receiving({ share }: { readonly share: PartnerShare }): ReactNode {
   const mutation = useMutationState();
   const after = useRefreshAfter();
   const name = nameOf(share.sharerId, useProfiles(), null);
+  const live = useLive();
   return (
     <View className="gap-3">
       <PartnerHead share={share} other={share.sharerId} />
-      <SwitchRow
-        title="Auto-save to my library"
-        subtitle={`Every new photo ${name} shares lands in your library by itself.`}
-        wrapSubtitle
-        value={share.autoSave}
-        disabled={mutation.busy}
-        onChange={(on) => {
-          after(
-            mutation,
-            () => setPartnerAutoSave(share.id, on),
-            'Auto-save did not change',
-            'photos.partner.auto_save',
-          );
-        }}
-      />
+      <View className="-mx-4">
+        <SwitchRow
+          title="Auto-save to my library"
+          subtitle={`Every new photo ${name} shares lands in your library by itself.`}
+          wrapSubtitle
+          value={share.autoSave}
+          disabled={!live || mutation.busy}
+          onChange={(on) => {
+            after(
+              mutation,
+              () => setPartnerAutoSave(share.id, on),
+              'Auto-save did not change',
+              'photos.partner.auto_save',
+            );
+          }}
+        />
+      </View>
       <View className="flex-row flex-wrap gap-2">
         <Button
           label={`Open ${name}’s photos`}
@@ -215,13 +229,14 @@ function Receiving({ share }: { readonly share: PartnerShare }): ReactNode {
           variant="tonal"
           href={href.photos({ tab: partnerTabIdOf(share.id) })}
         />
-        <StopButton share={share} name={name} sharing={false} label="Stop" />
+        <StopButton share={share} name={name} sharing={false} label="Stop seeing" />
       </View>
     </View>
   );
 }
 
 function NoPartner({ onStart }: { readonly onStart: () => void }): ReactNode {
+  const live = useLive();
   return (
     <View className="gap-3">
       <Text variant="body" tone="variant">
@@ -229,7 +244,13 @@ function NoPartner({ onStart }: { readonly onStart: () => void }): ReactNode {
         reach them by themselves.
       </Text>
       <View className="flex-row">
-        <Button label="Share with a partner" icon="plus" variant="filled" onPress={onStart} />
+        <Button
+          label="Share with a partner"
+          icon="plus"
+          variant="filled"
+          disabled={!live}
+          onPress={onStart}
+        />
       </View>
     </View>
   );
@@ -270,13 +291,20 @@ export function PartnerCard({
 }): ReactNode {
   const me = useActiveProfile()?.id ?? null;
   const sides = partnerSidesOf(partners, me);
+  const live = useLive();
   return (
     <Card
       title="Partner sharing"
       icon="users"
       action={
         sidesEmpty(sides) ? undefined : (
-          <Button label="Add partner" icon="plus" variant="text" onPress={onStart} />
+          <Button
+            label="Add partner"
+            icon="plus"
+            variant="text"
+            disabled={!live}
+            onPress={onStart}
+          />
         )
       }
     >

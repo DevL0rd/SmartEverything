@@ -148,6 +148,7 @@ describe('waiting for you', () => {
       ['mention', 1, 'Unread mention'],
     ]);
     expect(prioritySubtitleOf(12, false, tiles)).toBe('12 files · 3 waiting for you');
+    expect(prioritySubtitleOf(null, false, tiles)).toBe('3 waiting for you');
   });
 
   it('shows nothing while nothing waits or nobody is signed in', () => {
@@ -156,5 +157,6 @@ describe('waiting for you', () => {
     expect(waitingTilesOf({ viewerId: null, ...none, notifications: [mention({})] })).toEqual([]);
     expect(prioritySubtitleOf(1, false, [])).toBe('1 file');
     expect(prioritySubtitleOf(40, true, [])).toBe('40+ files');
+    expect(prioritySubtitleOf(null, false, [])).toBeUndefined();
   });
 });

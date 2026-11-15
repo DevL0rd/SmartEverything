@@ -63,7 +63,7 @@ function ActionKey({
       label={label}
       disabled={!enabled}
       onTone={primary ? 'primary' : 'surface'}
-      className={cn(KEY_FRAME, primary ? 'bg-primary' : 'bg-surface-1')}
+      className={cn(KEY_FRAME, primary ? 'bg-primary' : 'bg-surface-2')}
       onPress={onPress}
     >
       <Icon name={icon} size={24} tone={primary ? 'onPrimary' : 'default'} />

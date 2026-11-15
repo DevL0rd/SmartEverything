@@ -13,7 +13,7 @@ export function PhoneAssistantScreen(): ReactNode {
   const steps = setupSteps(useSetupFacts());
   const progress = setupProgress(steps);
   return (
-    <SettingsFrame page={PAGE} contentWidth="detail">
+    <SettingsFrame page={PAGE}>
       <SetupHero steps={steps} progress={progress} />
       <View className="flex-row flex-wrap items-start gap-section-gap">
         <View className="min-w-0 grow shrink basis-96">

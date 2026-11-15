@@ -12,10 +12,9 @@ import { ROUTER_PLUGIN, useRouterSnapshot } from '../router-data';
 
 export type RouterReady = ServiceReady<RouterSnapshot>;
 
-const ROUTER_WIDGET: ServiceWidget<RouterSnapshot> = {
+const ROUTER_WIDGET: ServiceWidget = {
   pluginId: ROUTER_PLUGIN,
   deviceKind: ROUTER_PLUGIN,
-  useSnapshot: useRouterSnapshot,
   offTitle: 'The router plugin is off',
   setUpTitle: 'Set up the router',
   setUpIcon: 'router',
@@ -31,5 +30,6 @@ interface RouterWidgetFrameProps {
 }
 
 export function RouterWidgetFrame(props: RouterWidgetFrameProps): ReactNode {
-  return <ServiceWidgetFrame service={ROUTER_WIDGET} {...props} />;
+  const stream = useRouterSnapshot();
+  return <ServiceWidgetFrame service={ROUTER_WIDGET} stream={stream} {...props} />;
 }

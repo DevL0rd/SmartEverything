@@ -8,7 +8,7 @@ import { PageShell } from '../../../components/page-shell/page-shell';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
 import { dayLabel } from '../../../format/time';
 import { daysOf } from '../../activity';
-import { useMinute } from '../../../store/clock';
+import { useDayNow } from '../../../store/clock';
 import { EventRow } from '../components/event-row';
 import { cameraNameOf } from '../components/recent-events';
 import { FilterButton } from '../components/filter-sheet';
@@ -132,13 +132,12 @@ export function EventsScreen(): ReactNode {
     filter,
   );
   const deleting = useDeleteWithUndo();
-  const now = useMinute();
+  const now = useDayNow(feed.timeZone);
   const nameOf = cameraNameOf(cameras);
   useEventsLog({ cameras: cameras.length, feed, filter, open: open.size });
   return (
     <PageShell
       title="Events"
-      width="reading"
       scroll={false}
       toolbar={<EventsToolbar filter={filter} setFilter={setFilter} cameras={cameras} />}
     >

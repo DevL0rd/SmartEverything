@@ -236,6 +236,7 @@ describe('media paths', () => {
       driveThumb: '/media/drive/:itemId/thumb/:size',
       driveFile: '/media/drive/:itemId/file',
       driveZipEntry: '/media/drive/:itemId/zip/:index',
+      driveVersion: '/media/drive/:itemId/versions/:versionId',
       driveFolderIcon: '/media/drive/:itemId/icon',
       driveShare: '/s/:token',
       driveFileRequest: '/r/:token',

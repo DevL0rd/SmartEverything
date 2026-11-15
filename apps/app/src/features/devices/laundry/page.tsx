@@ -294,7 +294,6 @@ export function LaundryPage({ device }: { readonly device: Device }): ReactNode 
   return (
     <PageShell
       {...shell.props}
-      width="detail"
       {...(atLeast(width, 'expanded') ? { tabs: tabsOf(tab, setTab) } : {})}
       banner={
         <DeviceBanners device={device} schedule={shell.schedule}>

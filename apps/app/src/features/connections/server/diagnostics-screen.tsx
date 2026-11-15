@@ -95,7 +95,7 @@ export function DiagnosticsScreen(): ReactNode {
   const bridge = desktopBridge();
   const owner = useIsOwner();
   return (
-    <SettingsFrame page="server/diagnostics" contentWidth="full">
+    <SettingsFrame page="server/diagnostics">
       <ServerPanels>
         <ServerRows />
         {owner ? (

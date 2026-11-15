@@ -17,7 +17,7 @@ import {
   currentLapSourceOf,
   digitAt,
   facePlacesOf,
-  hourDigitsOf,
+  leadDigitsOf,
   lapTime,
   stopwatchSourceOf,
   tickValueAt,
@@ -25,9 +25,10 @@ import {
   type TickSource,
 } from './lap-model';
 
-export type FaceSize = 'footnote' | 's' | 'm' | 'l' | 'xl';
+export type FaceSize = 'caption' | 'footnote' | 's' | 'm' | 'l' | 'xl';
 
 const FACE_TEXT: Readonly<Record<FaceSize, string>> = {
+  caption: 'font-sans text-caption',
   footnote: 'font-sans text-footnote',
   s: 'font-sans-medium text-figure-s',
   m: 'font-sans-medium text-figure-m tracking-tight',
@@ -127,8 +128,8 @@ export function TickingTime({
   const own = useTickingMs(source, live && shared === undefined);
   const ms = shared ?? own;
   const ticking = live && source.since !== null;
-  const hours = useSecondOf((now) => hourDigitsOf(tickValueAt(source, now)), ticking);
-  const places = facePlacesOf(hours, hundredths !== null);
+  const lead = useSecondOf((now) => leadDigitsOf(tickValueAt(source, now)), ticking);
+  const places = facePlacesOf(lead, hundredths !== null);
   const split = places.findIndex((place) => place.key === 'sc');
   const main = split < 0 ? places : places.slice(0, split);
   const rest = split < 0 ? [] : places.slice(split);

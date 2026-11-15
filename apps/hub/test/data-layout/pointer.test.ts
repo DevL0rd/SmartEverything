@@ -8,6 +8,7 @@ import {
   readLocation,
   readMarker,
   resolveHubRoot,
+  resolveHubRootSync,
   verifyMarker,
   writeLocation,
   writeMarker,
@@ -51,6 +52,15 @@ describe('location pointer', () => {
     const location = { root: join(work, 'data'), rootId: ROOT_ID, state: 'active' } as const;
     await writeLocation(work, location);
     expect(await resolveHubRoot({ SMARTEVERYTHING_HUB_HOME: work })).toEqual(location);
+  });
+
+  it('resolves the same pointer synchronously and names a missing file', async () => {
+    expect(() => resolveHubRootSync({ SMARTEVERYTHING_HUB_HOME: work })).toThrow(
+      join(work, 'location.json'),
+    );
+    const location = { root: join(work, 'data'), rootId: ROOT_ID, state: 'active' } as const;
+    await writeLocation(work, location);
+    expect(resolveHubRootSync({ SMARTEVERYTHING_HUB_HOME: work })).toEqual(location);
   });
 
   it('names the file when the pointer is missing', async () => {

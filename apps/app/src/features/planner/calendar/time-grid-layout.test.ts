@@ -6,7 +6,6 @@ import {
   type PlannerOccurrenceView,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { clock } from '../../../format/time';
 import {
   DAY_MINUTES,
   alarmPinsOf,
@@ -14,6 +13,7 @@ import {
   gridDaysOf,
   laneSpans,
   nowPlaceOf,
+  sleepBandsOn,
   timedSpansOn,
   wallMinuteOf,
   workingWindowOn,
@@ -201,6 +201,15 @@ describe('timed spans', () => {
   });
 });
 
+describe('sleep bands', () => {
+  it('splits a night over the two days it touches', () => {
+    const night = { bed_at: '2026-11-07T22:30:00.000Z', woke_at: '2026-11-08T06:15:00.000Z' };
+    expect(sleepBandsOn([night], SATURDAY, ZONE)).toEqual([{ from: 1410, to: DAY_MINUTES }]);
+    expect(sleepBandsOn([night], SUNDAY, ZONE)).toEqual([{ from: 0, to: 435 }]);
+    expect(sleepBandsOn([night], MONDAY, ZONE)).toEqual([]);
+  });
+});
+
 describe('grid days', () => {
   it('marks proposed and read only blocks and colours them by calendar', () => {
     const birthday = event('Alex birthday', '2026-11-07T10:00:00.000Z', '2026-11-07T11:00:00.000Z');
@@ -214,6 +223,7 @@ describe('grid days', () => {
       occurrences: [birthday, proposal],
       collections: [work()],
       workingHours: null,
+      sleep: [],
       readOnlyOf: (occurrence) => occurrence.item_id === birthday.item_id,
       lookOf: () => 'plain',
       minMinutes: 0,
@@ -226,8 +236,7 @@ describe('grid days', () => {
       ['Descale', false, true],
     ]);
     expect(day?.blocks[0]?.colour).toBe('work');
-    const from = clock('2026-11-07T10:00:00.000Z', ZONE);
-    expect(day?.blocks[0]?.time).toBe(`${from} to ${clock('2026-11-07T11:00:00.000Z', ZONE)}`);
+    expect(day?.blocks[0]?.time).toBe('11:00 to 12:00');
   });
 
   it('renders only the days it is given', () => {
@@ -238,6 +247,7 @@ describe('grid days', () => {
       occurrences: [],
       collections: [],
       workingHours: null,
+      sleep: [],
       readOnlyOf: () => false,
       lookOf: () => 'plain',
       minMinutes: 0,
@@ -263,6 +273,7 @@ describe('grid days', () => {
       occurrences: [invited, declined, holiday],
       collections: [],
       workingHours: null,
+      sleep: [],
       readOnlyOf: () => false,
       lookOf: (occurrence) => looks.get(occurrence.item_id) ?? 'plain',
       minMinutes: 0,

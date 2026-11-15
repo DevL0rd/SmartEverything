@@ -2,6 +2,7 @@ import type { Logger } from '@smarteverything/logging';
 import { ApiError } from '@smarteverything/domain';
 import type { ConflictEnv } from '../../drive/conflicts';
 import { nodeInodeProbe } from '../../drive/fs-space';
+import type { DriveActivity } from '../../drive/activity';
 import { DriveMount } from '../../drive/mount/service';
 import { DriveMountSocket } from '../../drive/mount/socket';
 import { createDriveSync } from '../../drive/sync/server-push';
@@ -33,6 +34,7 @@ export interface DriveSurfaceServices {
 
 export interface DriveSurfaceInputs {
   readonly store: Store;
+  readonly activity: DriveActivity;
   readonly env: ConflictEnv;
   readonly services: DriveSurfaceServices;
   readonly nodes: ComputerNodeAccess;
@@ -122,6 +124,7 @@ function mountEnvOf(inputs: DriveSurfaceInputs): ConstructorParameters<typeof Dr
     change: { ...inputs.env, store },
     guard: { status: quota, space: services.probe.space },
     space: { read: services.read, store, quota, probe: services.probe, inodes: nodeInodeProbe },
+    activity: inputs.activity,
     log: inputs.log,
   };
 }

@@ -1,6 +1,8 @@
-import type { PlannerOccurrenceView, PlannerRange } from '@smarteverything/domain';
-import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import type { PlannerOccurrenceView, PlannerRange, PlannerSleep } from '@smarteverything/domain';
+import type { UseQueryResult } from '@tanstack/react-query';
+import { useEffect, type ReactNode } from 'react';
+import { ScrollView, View } from 'react-native';
+import { readPlannerSleep } from '../../../api/planner';
 import { SegmentBar, type BarSegment } from '../../../components/charts/segment-bar';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/checkbox';
@@ -10,17 +12,23 @@ import { notify } from '../../../components/toast-store';
 import { Text } from '../../../components/text';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
 import { useIdiom } from '../../../design/platform';
-import { useAreaWidth } from '../../../design/size-class';
-import { clock, clockOfMinutes, localDayKey, zonedStartOfDay } from '../../../format/time';
+import { clock24, clockOfMinutes, localDayKey, zonedStartOfDay } from '../../../format/time';
+import { PLANNER_PREFIX } from '../../../queries/keys';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { usePlannerAlarms, usePlannerRange, usePlannerWrites } from '../data';
+import {
+  apiPerson,
+  usePlannerAlarms,
+  usePlannerRange,
+  usePlannerWrites,
+  type PlannerPerson,
+} from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
 import type { CalendarShowKey } from '../settings/options';
 import type { Prefs } from '../settings/preferences';
-import type { MinuteSpan } from './grid-gestures';
+import { changedTimes, type BlockChange, type MinuteSpan } from './grid-gestures';
 import { useCalendarLookEdit } from './calendar-edit';
 import { useCalendarLooks } from './calendar-looks';
 import { ShowChips } from './show-chips';
@@ -39,8 +47,9 @@ import {
   type Booked,
 } from './booked-model';
 import { addDays } from './month-model';
+import { useCalendarWide } from './pane-width';
 import { TimeGrid } from './time-grid';
-import { timedSpansOn, wallMinuteOf } from './time-grid-layout';
+import { timedSpansOn, wallMinuteOf, type SleepNight } from './time-grid-layout';
 
 export function useNowMinute(day: string): number | null {
   const timeZone = useSettings().time_zone;
@@ -133,9 +142,19 @@ export function TimeStats(props: TimeStatsProps): ReactNode {
         </View>
         <SegmentBar segments={segmentsOf(booked)} label="Hours booked by calendar" />
       </View>
-      <View className="w-full flex-row flex-wrap items-center gap-1">
-        <CalendarChips booked={booked} />
-        <ShowChips prefs={props.prefs} keys={STATS_OVERLAYS} />
+      <View className="w-full flex-row items-center gap-2">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          className="min-w-0 flex-1"
+          contentContainerClassName="items-center gap-1"
+        >
+          <CalendarChips booked={booked} />
+        </ScrollView>
+        <View aria-hidden className="h-6 w-px bg-outline-variant" />
+        <View className="flex-row items-center gap-1">
+          <ShowChips prefs={props.prefs} keys={STATS_OVERLAYS} />
+        </View>
       </View>
     </View>
   );
@@ -195,7 +214,7 @@ function DueRows({ tasks }: { readonly tasks: readonly PlannerOccurrenceView[] }
       checked={task.status === 'done'}
       disabled={task.status === 'done'}
       label={task.title}
-      caption={task.due_at === null ? 'Any time' : clock(task.due_at, timeZone)}
+      caption={task.due_at === null ? 'Any time' : clock24(task.due_at, timeZone)}
       onChange={() => {
         writes
           .completeItem(task.item_id, { occurrence_key: task.occurrence_key })
@@ -261,11 +280,56 @@ export function shownOf(range: PlannerRange, prefs: Prefs): readonly PlannerOccu
     : range.occurrences.filter((view) => view.kind !== 'task');
 }
 
+function useGridSleep(
+  person: PlannerPerson,
+  days: readonly string[],
+  shown: boolean,
+): UseQueryResult<PlannerSleep> {
+  const timeZone = useSettings().time_zone;
+  const first = days[0];
+  const last = days.at(-1);
+  if (first === undefined || last === undefined) throw new Error('The time grid has no days');
+  const from = new Date(zonedStartOfDay(addDays(first, -1), timeZone)).toISOString();
+  const to = new Date(zonedStartOfDay(addDays(last, 1), timeZone)).toISOString();
+  const query = useScreenQuery({
+    queryKey: [...PLANNER_PREFIX, 'sleep', person, from, to],
+    queryFn: () => readPlannerSleep(apiPerson(person), from, to),
+    enabled: shown,
+  });
+  const { error } = query;
+  useEffect(() => {
+    if (error !== null) notify({ message: 'Sleep could not be read', error, tone: 'critical' });
+  }, [error]);
+  return query;
+}
+
+function nightsOf(query: UseQueryResult<PlannerSleep>, shown: boolean): readonly SleepNight[] {
+  if (!shown || query.data === undefined) return [];
+  return query.data.nights;
+}
+
+function useMove(person: PlannerPerson): (change: BlockChange) => Promise<unknown> {
+  const writes = usePlannerWrites(person);
+  const timeZone = useSettings().time_zone;
+  return (change) => {
+    const { occurrence } = change.block;
+    const times = changedTimes(occurrence, change, timeZone);
+    return writes.moveItem(occurrence.item_id, {
+      occurrence_key: occurrence.occurrence_key,
+      start: times.at,
+      end: times.end,
+    });
+  };
+}
+
 function TimeGridOf({ input }: { readonly input: TimeInput }): ReactNode {
   const { person } = usePlannerFrame();
   const alarms = usePlannerAlarms(person);
   const { prefs } = input;
   const looks = useCalendarLooks(person);
+  const showSleep = prefs.calendar.show_sleep;
+  const sleep = useGridSleep(person, input.days, showSleep);
+  const move = useMove(person);
   return (
     <TimeGrid
       days={input.days}
@@ -273,10 +337,13 @@ function TimeGridOf({ input }: { readonly input: TimeInput }): ReactNode {
       collections={looks.collections}
       alarms={prefs.calendar.show_alarms ? alarms : []}
       workingHours={prefs.calendar.show_free_time ? prefs.general.working_hours : null}
+      sleep={nightsOf(sleep, showSleep)}
       timeZone={useSettings().time_zone}
       startMinute={clockMinutesOf(prefs.general.day_start)}
       readOnlyOf={looks.readOnlyOf}
       lookOf={looks.lookOf}
+      onCreate={input.onCompose}
+      onMove={move}
     />
   );
 }
@@ -290,7 +357,7 @@ export function TimeContent({
   readonly previous: string;
   readonly side: boolean;
 }): ReactNode {
-  const wide = frameLayoutOf(useAreaWidth()) !== 'compact';
+  const wide = useCalendarWide();
   if (!wide) return <TimeGridOf input={input} />;
   return (
     <View className="min-h-0 flex-1 gap-3">

@@ -121,7 +121,7 @@ export class PeopleGrouper {
       created += await this.place(profileId, kind, part, rejected);
     this.tidy(profileId, kind);
     this.changed(profileId);
-    this.deps.log.debug('groups.reclustered', { profileId, kind, faces: faces.length, created });
+    this.deps.log.info('groups.reclustered', { profileId, kind, faces: faces.length, created });
     return created;
   }
 

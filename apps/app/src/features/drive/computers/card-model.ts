@@ -1,8 +1,9 @@
 import type { DrivePlacement } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
-import { joinParts } from '../../../format/text';
+import type { Tone } from '../../../components/tone';
+import { joinParts, plural } from '../../../format/text';
 
-export type CardActionId = 'browse' | 'synced' | 'mounted';
+export type CardActionId = 'browse' | 'synced';
 
 export interface CardAction {
   readonly id: CardActionId;
@@ -18,26 +19,41 @@ const BROWSE: CardAction = {
   variant: 'filled',
 };
 
+const SYNC: CardAction = {
+  id: 'synced',
+  label: 'Sync a folder',
+  icon: 'folderSync',
+  variant: 'tonal',
+};
+
 export function cardActionsOf(filesScope: boolean | null): readonly CardAction[] {
-  const browsing = filesScope === true;
-  return [
-    ...(browsing ? [BROWSE] : []),
-    {
-      id: 'synced',
-      label: 'Sync a folder',
-      icon: 'folderSync',
-      variant: browsing ? 'tonal' : 'filled',
-    },
-    { id: 'mounted', label: 'Mount a folder', icon: 'cloud', variant: 'tonal' },
-  ];
+  return filesScope === true ? [BROWSE, SYNC] : [SYNC];
 }
 
-export function placementCountOf(computer: string, placements: readonly DrivePlacement[]): string {
-  const synced = placements.filter((placement) => placement.mode === 'synced').length;
-  const mounted = placements.length - synced;
-  if (placements.length === 0) return `Nothing is synced or mounted on ${computer} yet.`;
-  return joinParts([
-    synced === 0 ? null : `${String(synced)} synced`,
-    mounted === 0 ? null : `${String(mounted)} mounted`,
+export interface PlacementCount {
+  readonly line: string;
+  readonly tone: Tone;
+}
+
+function failedOf(placement: DrivePlacement): boolean {
+  return placement.hold === null && placement.enabled && placement.status.state === 'failed';
+}
+
+export function placementCountOf(
+  computer: string,
+  placements: readonly DrivePlacement[],
+): PlacementCount {
+  const synced = placements.filter((placement) => placement.mode === 'synced');
+  if (synced.length === 0) {
+    return { line: `No folders are synced to ${computer} yet.`, tone: 'variant' };
+  }
+  const failed = synced.filter(failedOf).length;
+  const held = synced.filter((placement) => placement.hold !== null).length;
+  const line = joinParts([
+    plural(synced.length, 'synced folder'),
+    failed === 0 ? null : `${String(failed)} failed`,
+    held === 0 ? null : `${String(held)} on hold`,
   ]);
+  if (failed > 0) return { line, tone: 'critical' };
+  return { line, tone: held > 0 ? 'warning' : 'variant' };
 }

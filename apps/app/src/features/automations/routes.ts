@@ -137,7 +137,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   {
     key: 'automations.schedule',
     href: links.schedule(),
-    title: 'Week view',
+    title: 'Schedule',
     icon: 'calendar',
     tab: 'automations',
     parent: 'automations',
@@ -148,7 +148,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   {
     key: 'automations.scheduled',
     href: links.scheduled(),
-    title: 'One-off timers',
+    title: 'Timers',
     icon: 'timer',
     tab: 'automations',
     parent: 'automations',
@@ -178,7 +178,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   {
     key: 'automations.runs',
     href: links.runs(),
-    title: 'Run history',
+    title: 'Runs',
     icon: 'activity',
     tab: 'automations',
     parent: 'automations',

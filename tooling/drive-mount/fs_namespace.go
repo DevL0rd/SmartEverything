@@ -188,6 +188,7 @@ func (n *node) setattrArgs(ctx context.Context, in *fuse.SetAttrIn) SetattrArgs 
 }
 
 func (n *node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	ctx = uninterruptible(ctx)
 	args := n.setattrArgs(ctx, in)
 	if h, ok := f.(*fileHandle); ok && h.write != nil && args.Valid&wire.SetattrValidSize != 0 {
 		if err := h.write.Truncate(args.Size); err != nil {
@@ -209,5 +210,6 @@ func (n *node) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn,
 		a.Size = uint64(h.write.Size())
 	}
 	n.m.fillAttr(&out.Attr, a)
+	out.SetTimeout(live.load().attr.duration())
 	return 0
 }

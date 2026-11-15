@@ -166,6 +166,25 @@ function Group({ children }: { readonly children: ReactNode }): ReactNode {
   );
 }
 
+function ActiveGroup({
+  shares,
+  context,
+}: {
+  readonly shares: readonly DriveShare[];
+  readonly context: RowContext;
+}): ReactNode {
+  if (shares.length === 0) return null;
+  return (
+    <Group>
+      {shares.map((share, index) => (
+        <View key={share.id} className={index === 0 ? '' : 'border-t border-outline-variant'}>
+          <LinkRow share={share} context={context} />
+        </View>
+      ))}
+    </Group>
+  );
+}
+
 function Ended({
   shares,
   context,
@@ -213,7 +232,6 @@ function NewLink({
       icon="link"
       variant="filled"
       size={pointer ? 'md' : 'lg'}
-      grow={!pointer}
       disabled={!allowed || !live}
       onPress={() => {
         onShare(item);
@@ -242,18 +260,42 @@ function Links({
   return (
     <View className="gap-3">
       <MetricStrip items={itemLinkStatsOf(groups)} columns={STAT_COLUMNS} />
-      {groups.active.length === 0 ? null : (
-        <Group>
-          {groups.active.map((share, index) => (
-            <View key={share.id} className={index === 0 ? '' : 'border-t border-outline-variant'}>
-              <LinkRow share={share} context={context} />
-            </View>
-          ))}
-        </Group>
-      )}
+      <ActiveGroup shares={groups.active} context={context} />
       <Ended shares={groups.ended} context={context} />
     </View>
   );
+}
+
+export interface ItemLinks {
+  readonly pages: SharePages;
+  readonly groups: LinkGroups | null;
+}
+
+export function useItemLinks(itemId: string, now: number): ItemLinks {
+  const pages = useDriveShares(itemId);
+  useWholeList(pages);
+  return {
+    pages,
+    groups:
+      pages.data === undefined
+        ? null
+        : linkGroupsOf(
+            flattenPages(pages.data, (page) => page.items),
+            now,
+          ),
+  };
+}
+
+export function ActiveLinks({
+  item,
+  links,
+}: {
+  readonly item: DriveItem;
+  readonly links: ItemLinks;
+}): ReactNode {
+  const context = useRowContext(item);
+  if (links.groups === null) return <Unloaded pages={links.pages} />;
+  return <ActiveGroup shares={links.groups.active} context={context} />;
 }
 
 function LinksPart({
@@ -265,9 +307,8 @@ function LinksPart({
   readonly onShare: ShareItem;
   readonly link: Exclude<LinkState, 'owner-only'>;
 }): ReactNode {
-  const pages = useDriveShares(item.id);
-  useWholeList(pages);
   const context = useRowContext(item);
+  const links = useItemLinks(item.id, context.now);
   return (
     <>
       <View className="h-px bg-outline-variant" />
@@ -280,16 +321,10 @@ function LinksPart({
           {LINK_STATE_LINE[link]}
         </Text>
       )}
-      {pages.data === undefined ? (
-        <Unloaded pages={pages} />
+      {links.groups === null ? (
+        <Unloaded pages={links.pages} />
       ) : (
-        <Links
-          groups={linkGroupsOf(
-            flattenPages(pages.data, (page) => page.items),
-            context.now,
-          )}
-          context={context}
-        />
+        <Links groups={links.groups} context={context} />
       )}
     </>
   );
@@ -312,6 +347,7 @@ export function SharingTab({
       {link === 'owner-only' ? null : <LinksPart item={item} onShare={onShare} link={link} />}
       <View className="h-px bg-outline-variant" />
       <PeopleLink itemId={item.id} access={subject.access} />
+      {subject.access === 'own' ? <View className="h-px bg-outline-variant" /> : null}
       <TransferSection item={item} access={subject.access} />
     </View>
   );

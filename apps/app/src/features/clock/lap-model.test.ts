@@ -13,8 +13,8 @@ import {
   deltaToneOf,
   digitAt,
   facePlacesOf,
-  hourDigitsOf,
   lapExtremesOf,
+  leadDigitsOf,
   lapFloorOf,
   lapRowsOf,
   lapTime,
@@ -182,29 +182,26 @@ describe('ticking digits', () => {
   });
 
   it('reads each digit of the face from the time', () => {
-    const ms = 723_470;
-    const places = facePlacesOf(0, true);
-    const shown = places
-      .map((place) =>
-        place.kind === 'mark' ? place.text : String(digitAt(ms, place.unit, place.base)),
-      )
-      .join('');
-    expect(shown).toBe('12:03.47');
-    expect(facePlacesOf(0, false).map((place) => place.key)).toEqual([
-      'm0',
-      'm1',
-      'ms',
-      's0',
-      's1',
-    ]);
+    const shownAt = (ms: number, hundredths: boolean): string =>
+      facePlacesOf(leadDigitsOf(ms), hundredths)
+        .map((place) =>
+          place.kind === 'mark' ? place.text : String(digitAt(ms, place.unit, place.base)),
+        )
+        .join('');
+    expect(shownAt(723_470, true)).toBe('12:03.47');
+    expect(shownAt(451_600, true)).toBe('7:31.60');
+    expect(shownAt(451_600, true)).toBe(lapTime(451_600));
+    expect(facePlacesOf(1, false).map((place) => place.key)).toEqual(['m1', 'ms', 's0', 's1']);
   });
 
   it('adds hour digits only when the time reaches an hour', () => {
-    expect(hourDigitsOf(3_599_999)).toBe(0);
-    expect(hourDigitsOf(3_600_000)).toBe(1);
-    expect(hourDigitsOf(36_000_000)).toBe(2);
+    expect(leadDigitsOf(599_999)).toBe(1);
+    expect(leadDigitsOf(600_000)).toBe(2);
+    expect(leadDigitsOf(3_599_999)).toBe(2);
+    expect(leadDigitsOf(3_600_000)).toBe(3);
+    expect(leadDigitsOf(36_000_000)).toBe(4);
     const ms = 37_230_000;
-    const shown = facePlacesOf(hourDigitsOf(ms), false)
+    const shown = facePlacesOf(leadDigitsOf(ms), false)
       .map((place) =>
         place.kind === 'mark' ? place.text : String(digitAt(ms, place.unit, place.base)),
       )
@@ -300,7 +297,7 @@ describe('timer use', () => {
     expect(buckets.map((bucket) => bucket.ms)).toEqual([0, 5_100_000, 0, 0, 0, 0, 3_000_000]);
   });
 
-  it('groups the days into weeks for longer ranges', () => {
+  it('groups the days into calendar weeks for longer ranges', () => {
     const month = Array.from(
       { length: 14 },
       (_, index) => `2026-10-${String(index + 18).padStart(2, '0')}`,
@@ -308,7 +305,7 @@ describe('timer use', () => {
     const buckets = timerUseBucketsOf(
       stats('month', month, [{ day: '2026-10-30', label: null, count: 1, total_ms: 60_000 }]),
     );
-    expect(buckets.map((bucket) => bucket.key)).toEqual(['2026-10-18', '2026-10-25']);
+    expect(buckets.map((bucket) => bucket.key)).toEqual(['2026-10-19', '2026-10-26']);
     expect(buckets.map((bucket) => bucket.ms)).toEqual([0, 60_000]);
   });
 

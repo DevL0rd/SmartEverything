@@ -153,7 +153,7 @@ export function photosLine(total: number): string {
 export interface SmartLink {
   readonly headline: string;
   readonly detail: string;
-  readonly progress: number | null;
+  readonly progress: number;
 }
 
 const PHASE_DETAIL: Readonly<Record<SmartPhase, string>> = {
@@ -169,10 +169,10 @@ export function smartLinkOf(status: PhotoAiStatus): SmartLink {
   const rings = stageRingsOf(status);
   const done = rings.reduce((sum, ring) => sum + ring.done, 0);
   const total = rings.reduce((sum, ring) => sum + ring.total, 0);
-  if (phase === 'off') return { headline: 'Off', detail: PHASE_DETAIL.off, progress: null };
+  if (phase === 'off') return { headline: 'Off', detail: PHASE_DETAIL.off, progress: 0 };
   return {
     headline: total === 0 ? 'Nothing to analyse yet' : `${donePercent(done, total)} analysed`,
     detail: PHASE_DETAIL[phase],
-    progress: phase === 'running' && total > 0 ? done / total : null,
+    progress: total === 0 ? 1 : done / total,
   };
 }

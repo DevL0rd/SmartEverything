@@ -90,9 +90,10 @@ function activeItem(active: readonly DriveShare[], now: number): MetricItem {
     key: 'active',
     label: 'Active links',
     value: count(active.length),
-    ...(ending === 0
-      ? {}
-      : { caption: `${count(ending)} ${ending === 1 ? 'ends' : 'end'} this week` }),
+    caption:
+      ending === 0
+        ? 'none end this week'
+        : `${count(ending)} ${ending === 1 ? 'ends' : 'end'} this week`,
   };
 }
 
@@ -106,8 +107,14 @@ export function linkStatsOf(groups: LinkGroups, now: number): readonly MetricIte
       key: 'last-open',
       label: 'Last opened',
       value: latest === null ? 'Not yet' : shortDate(latest),
+      caption: latest === null ? 'no link opened' : relative(new Date(latest), now),
     },
-    { key: 'ended', label: 'Ended links', value: count(groups.ended.length) },
+    {
+      key: 'ended',
+      label: 'Ended links',
+      value: count(groups.ended.length),
+      caption: 'stopped or expired',
+    },
   ];
 }
 
@@ -243,13 +250,13 @@ export function byMeLinksOf(entries: readonly DriveSharedByMeEntry[]): readonly 
   return entries.flatMap((entry) => entry.links);
 }
 
-export function withMeSubtitleOf(entries: readonly DriveSharedWithMeEntry[]): string {
-  if (entries.length === 0) return 'Nothing shared with you yet';
+export function withMeSubtitleOf(entries: readonly DriveSharedWithMeEntry[]): string | undefined {
+  if (entries.length === 0) return undefined;
   const people = new Set(entries.map((entry) => entry.grant.grantedBy)).size;
   return joinParts([plural(entries.length, 'item'), `from ${plural(people, 'person', 'people')}`]);
 }
 
-export function byMeSubtitleOf(items: number, groups: LinkGroups): string {
-  if (items === 0) return 'You have not shared anything yet';
+export function byMeSubtitleOf(items: number, groups: LinkGroups): string | undefined {
+  if (items === 0) return undefined;
   return joinParts([plural(items, 'item'), plural(groups.active.length, 'active link')]);
 }

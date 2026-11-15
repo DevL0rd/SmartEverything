@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useEventListener } from 'expo';
 import { Text } from '../../../components/text';
-import { usePlaybackLive, useVideoModule, type VideoModule } from './live-photo';
+import { useModulePlayer, usePlaybackLive, useVideoModule, type VideoModule } from './live-photo';
 
 function Playback({
   module,
@@ -11,7 +11,7 @@ function Playback({
   readonly module: VideoModule;
   readonly uri: string;
 }): ReactNode {
-  const player = module.useVideoPlayer({ uri, contentType: 'progressive' });
+  const player = useModulePlayer(module, uri);
   const live = usePlaybackLive();
   const [failed, setFailed] = useState(false);
   useEventListener(player, 'statusChange', (event) => {

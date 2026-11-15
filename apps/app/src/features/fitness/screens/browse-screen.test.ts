@@ -21,8 +21,7 @@ vi.mock('../../../components/rows', () => ({
     createElement('a', { href }, title),
 }));
 vi.mock('../../../components/page-shell/page-shell', () => ({
-  PageShell: ({ children, width }: Children & { readonly width: string }): ReactNode =>
-    createElement('main', { 'data-width': width }, children),
+  PageShell: ({ children }: Children): ReactNode => createElement('main', null, children),
 }));
 vi.mock('../../../components/section', () => ({
   List: ({ children }: Children): ReactNode => createElement('section', null, children),
@@ -52,9 +51,9 @@ describe('Fitness Browse footer', () => {
   it('keeps the log, permissions and guidance together with compact spacing in the full-width page', () => {
     const markup = renderToStaticMarkup(createElement(BrowseScreen));
 
-    expect(markup).toContain('<main data-width="full">');
+    expect(markup).toContain('<main>');
     expect(markup).toContain(
-      '<div class="w-full max-w-reading gap-2"><section><a href="/log">Log health data</a></section><div>More you can add</div><p>Showing data from the last',
+      '<div class="w-full gap-2"><section><a href="/log">Log health data</a></section><div>More you can add</div><p>Showing data from the last',
     );
   });
 });

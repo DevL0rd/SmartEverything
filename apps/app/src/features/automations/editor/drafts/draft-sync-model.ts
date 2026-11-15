@@ -185,7 +185,7 @@ export class DraftSyncModel {
     this.start();
   };
 
-  readonly useTheirs = async (): Promise<void> => {
+  readonly takeTheirs = async (): Promise<void> => {
     const theirs = this.conflict;
     if (theirs === null) return;
     this.adopt(theirs);

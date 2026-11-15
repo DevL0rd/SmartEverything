@@ -1,15 +1,21 @@
 import { background } from '@smarteverything/logging';
-import { useMemo, useState, type ReactNode } from 'react';
-import { useIsFocused } from 'expo-router';
-import { ScrollView, View } from 'react-native';
+import { use, useMemo, useState, type ReactNode } from 'react';
+import { router, useIsFocused } from 'expo-router';
+import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { Banner } from '../../../components/banner';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
-import { cn } from '../../../design/cn';
-import { CompactBody, WideBody, type FrameWidth } from '../../../components/section-body';
+import type { MenuItem } from '../../../components/menu';
+import { PANE_HANDLE_WIDTH } from '../../../components/docked-pane';
+import { asideFitOf, type AsideFit } from '../../../components/page-shell/layout';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import { ShellInsetContext } from '../../../components/page-shell/shell-inset';
+import type { ShellSections } from '../../../components/page-shell/shell-sections';
+import type { ShellAside } from '../../../components/page-shell/shell-types';
 import { useIdiom } from '../../../design/platform';
-import { useAreaWidth } from '../../../design/size-class';
+import { useSizeClass } from '../../../design/size-class';
 import { longDate } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useHubOffline } from '../../clock';
@@ -19,38 +25,57 @@ import {
   usePlannerSummary,
   usePlannerSyncOnVisible,
 } from '../data';
-import { PlannerItemPanel } from '../item/side-panel';
-import { usePlannerSelection } from '../item/selection';
+import { PLANNER_ITEM_PANEL, PlannerItemPanel } from '../item/side-panel';
+import {
+  clearPlannerSelection,
+  usePanelHost,
+  usePanelWidth,
+  usePlannerSelection,
+} from '../item/selection';
 import type { PlannerSection } from '../model/section-routes';
 import { PlannerFrameContext, type PlannerFrameValue } from './frame-context';
 import { usePersonChoices, usePlannerShownPerson, type PersonChoice } from './person';
 import { PersonPicker } from './person-picker';
 import { plannerMenu } from './planner-menu';
-import { PlannerRail } from './planner-rail';
-import { PlannerTabs } from './planner-tabs';
+import { plannerSectionsOf } from './planner-sections';
 import { QuickAddBar, QuickAddComposer, ScrollAwayBar } from './quick-add-bar';
 import { plannerComposerKindOf, useComposerControl, type ComposerControl } from './quick-add';
 import { plannerSubtitleOf, todaySummaryOf } from './rail-summary';
-import { PLANNER_SEARCH_ACTION, usePlannerSearchKey } from './search-key';
-import {
-  PLANNER_QUICK_ADD_TARGET,
-  frameLayoutOf,
-  plannerSectionOf,
-  plannerTitleOf,
-  railWidthOf,
-} from './sections';
+import { usePlannerSearchKey, withPlannerSearch } from './search-key';
+import { PLANNER_QUICK_ADD_TARGET, plannerSectionOf } from './sections';
 
 export interface PlannerFrameProps {
   readonly section: PlannerSection;
   readonly subtitle?: string;
-  readonly actions?: readonly HeaderAction[];
+  readonly actions?: readonly ShellAction[];
   readonly toolbar?: ReactNode;
-  readonly width?: FrameWidth;
+  readonly search?: ShellSearchConfig;
   readonly scroll?: boolean;
+  readonly menu?: readonly MenuItem[];
+  readonly summary?: boolean;
   readonly children: ReactNode;
 }
 
-const ASK_AI: HeaderAction = { icon: 'sparkles', label: 'Ask AI', href: href.assistantChat() };
+const ASK_AI: ShellAction = { icon: 'sparkles', label: 'Ask AI', href: href.assistantChat() };
+
+const ASK_AI_ITEM: MenuItem = {
+  id: 'ask-ai',
+  label: 'Ask AI',
+  icon: 'sparkles',
+  onPress: (): void => {
+    router.push(href.assistantChat());
+  },
+};
+
+function refreshItemOf(refresh: Refresh): MenuItem {
+  return {
+    id: 'refresh',
+    label: refresh.refreshing ? 'Refreshing…' : 'Refresh',
+    icon: 'refresh',
+    disabled: refresh.refreshing,
+    onPress: refresh.onRefresh,
+  };
+}
 
 function OfflineBanner(): ReactNode {
   return (
@@ -63,7 +88,12 @@ function OfflineBanner(): ReactNode {
   );
 }
 
-function useRefresh(): { readonly refreshing: boolean; readonly onRefresh: () => void } {
+interface Refresh {
+  readonly refreshing: boolean;
+  readonly onRefresh: () => void;
+}
+
+function useRefresh(): Refresh {
   const reload = usePlannerReload();
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = (): void => {
@@ -78,109 +108,22 @@ function useRefresh(): { readonly refreshing: boolean; readonly onRefresh: () =>
   return { refreshing, onRefresh };
 }
 
-function useSubtitle(section: PlannerSection, subtitle: string | undefined): string {
+function refreshPropsOf(
+  refresh: Refresh,
+  shown: boolean,
+): { readonly onRefresh?: () => void; readonly refreshing?: boolean } {
+  return shown ? { onRefresh: refresh.onRefresh, refreshing: refresh.refreshing } : {};
+}
+
+function useSubtitle(
+  section: PlannerSection,
+  subtitle: string | undefined,
+  counted: boolean,
+): string {
   const date = useMinuteOf((now) => longDate(new Date(now)));
   const summary = usePlannerSummary(usePlannerShownPerson());
   if (subtitle !== undefined) return subtitle;
-  return plannerSubtitleOf(date, section === 'index' ? todaySummaryOf(summary) : null);
-}
-
-interface QuickAddSlot {
-  readonly section: PlannerSection;
-  readonly frame: PlannerFrameValue;
-}
-
-function PlannerQuickAdd({ section, frame }: QuickAddSlot): ReactNode {
-  return (
-    <QuickAddBar
-      target={PLANNER_QUICK_ADD_TARGET}
-      hint={plannerSectionOf(section).hint}
-      onOpen={frame.focusQuickAdd}
-      disabled={frame.offline}
-    />
-  );
-}
-
-function PanelSlot(): ReactNode {
-  const selected = usePlannerSelection() !== null;
-  return (
-    <View className={cn(selected && 'pb-section-gap pr-gutter pt-2')}>
-      <PlannerItemPanel />
-    </View>
-  );
-}
-
-function WideColumn({
-  scroll,
-  quickAdd,
-  children,
-}: {
-  readonly scroll: boolean;
-  readonly quickAdd: ReactNode;
-  readonly children: ReactNode;
-}): ReactNode {
-  return (
-    <>
-      {scroll ? (
-        <ScrollView className="flex-1" contentContainerClassName="gap-section-gap pb-section-gap">
-          {children}
-        </ScrollView>
-      ) : (
-        <View className="flex-1 gap-section-gap">{children}</View>
-      )}
-      {quickAdd}
-    </>
-  );
-}
-
-interface BodyProps {
-  readonly section: PlannerSection;
-  readonly scroll: boolean;
-  readonly width: FrameWidth;
-  readonly quickAdd: ReactNode;
-  readonly children: ReactNode;
-}
-
-function FrameBody({ section, scroll, width, quickAdd, children }: BodyProps): ReactNode {
-  const area = useAreaWidth();
-  if (frameLayoutOf(area) === 'compact') {
-    return (
-      <CompactBody scroll={scroll} width={width}>
-        {children}
-      </CompactBody>
-    );
-  }
-  const railWidth = railWidthOf(area);
-  return (
-    <View className="w-full flex-1 flex-row">
-      <WideBody
-        scroll={false}
-        width={width}
-        rail={<PlannerRail active={section} width={railWidth} />}
-        railWidth={railWidth}
-      >
-        <WideColumn scroll={scroll} quickAdd={quickAdd}>
-          {children}
-        </WideColumn>
-      </WideBody>
-      <PanelSlot />
-    </View>
-  );
-}
-
-function headerBelow(
-  compact: boolean,
-  people: readonly PersonChoice[],
-  toolbar: ReactNode,
-): ReactNode {
-  if (compact) return toolbar;
-  if (people.length === 0 && toolbar === undefined) return undefined;
-  return (
-    <View className="flex-row flex-wrap items-center gap-2">
-      {people.length === 0 ? null : <PersonPicker people={people} />}
-      {toolbar}
-    </View>
-  );
+  return plannerSubtitleOf(date, section === 'index' && counted ? todaySummaryOf(summary) : null);
 }
 
 function useFrameValue(section: PlannerSection, composer: ComposerControl): PlannerFrameValue {
@@ -199,36 +142,110 @@ function useFrameValue(section: PlannerSection, composer: ComposerControl): Plan
   );
 }
 
-interface HeaderInput {
-  readonly section: PlannerSection;
-  readonly subtitle: string | undefined;
-  readonly actions: readonly HeaderAction[];
-  readonly toolbar: ReactNode;
+function useAsideFit(): AsideFit {
+  const size = useSizeClass();
+  const area = size.area - use(ShellInsetContext);
+  const width = usePanelWidth() + PANE_HANDLE_WIDTH;
+  return size.header === 'large' ? 'sheet' : asideFitOf(area, 'sections', width);
 }
 
-function FrameHeader({ section, subtitle, actions, toolbar }: HeaderInput): ReactNode {
-  const area = useAreaWidth();
-  const compact = frameLayoutOf(area) === 'compact';
+function sectionsOf(section: PlannerSection, fit: AsideFit, open: boolean): ShellSections {
+  const sections = plannerSectionsOf(section);
+  return fit === 'beside-icon-rail' && open ? { ...sections, iconRail: true } : sections;
+}
+
+function PanelHost(): null {
+  usePanelHost();
+  return null;
+}
+
+function useItemAside(): ShellAside {
+  const open = usePlannerSelection() !== null;
+  const width = usePanelWidth() + PANE_HANDLE_WIDTH;
+  return {
+    label: PLANNER_ITEM_PANEL,
+    open,
+    width,
+    onClose: clearPlannerSelection,
+    children: <PlannerItemPanel />,
+  };
+}
+
+function toolbarOf(people: readonly PersonChoice[], toolbar: ReactNode): ReactNode {
+  if (people.length === 0) return toolbar;
+  return (
+    <View className="flex-row flex-wrap items-center gap-2">
+      <PersonPicker people={people} />
+      {toolbar}
+    </View>
+  );
+}
+
+interface TopInput {
+  readonly section: PlannerSection;
+  readonly actions: readonly ShellAction[];
+  readonly toolbar: ReactNode;
+  readonly search: ShellSearchConfig | undefined;
+  readonly menu: readonly MenuItem[] | undefined;
+  readonly refresh: Refresh;
+}
+
+function useTop({ section, actions, toolbar, search, menu, refresh }: TopInput): {
+  readonly title: string;
+  readonly actions: readonly ShellAction[];
+  readonly overflow: readonly MenuItem[];
+  readonly toolbar: ReactNode;
+} {
   const pointer = useIdiom() === 'pointer';
+  const inline = useSizeClass().header !== 'large';
   const people = usePersonChoices();
   const google = useGoogleAccount();
   const focused = useIsFocused();
-  usePlannerSearchKey(pointer && focused);
+  usePlannerSearchKey(pointer && focused && search === undefined);
+  const base = plannerMenu({
+    people: inline ? [] : people,
+    googleNeedsAttention: google.needsAttention,
+  });
+  const searched = withPlannerSearch(actions, search !== undefined);
+  return {
+    title: plannerSectionOf(section).label,
+    actions: menu === undefined ? [...searched, ASK_AI] : searched,
+    overflow: menu === undefined ? base : [...menu, ASK_AI_ITEM, refreshItemOf(refresh), ...base],
+    toolbar: toolbarOf(inline ? people : [], toolbar),
+  };
+}
+
+function PlannerQuickAdd({
+  section,
+  frame,
+  phone,
+}: {
+  readonly section: PlannerSection;
+  readonly frame: PlannerFrameValue;
+  readonly phone: boolean;
+}): ReactNode {
+  const def = plannerSectionOf(section);
   return (
-    <PageHeader
-      title={plannerTitleOf(section, area)}
-      subtitle={useSubtitle(section, subtitle)}
-      back={false}
-      actions={[...actions, PLANNER_SEARCH_ACTION, ASK_AI]}
-      overflow={plannerMenu({
-        people: pointer ? [] : people,
-        sections: compact,
-        googleNeedsAttention: google.needsAttention,
-      })}
-      belowStrip={compact ? <PlannerTabs active={section} /> : undefined}
-      below={headerBelow(compact, pointer ? people : [], toolbar)}
+    <QuickAddBar
+      target={PLANNER_QUICK_ADD_TARGET}
+      hint={phone ? def.phoneHint : def.hint}
+      onOpen={frame.focusQuickAdd}
+      disabled={frame.offline}
     />
   );
+}
+
+function PlannerFooter({
+  section,
+  frame,
+  phone,
+}: {
+  readonly section: PlannerSection;
+  readonly frame: PlannerFrameValue;
+  readonly phone: boolean;
+}): ReactNode {
+  const quickAdd = <PlannerQuickAdd section={section} frame={frame} phone={phone} />;
+  return phone ? <ScrollAwayBar>{quickAdd}</ScrollAwayBar> : quickAdd;
 }
 
 export function PlannerFrame({
@@ -236,39 +253,48 @@ export function PlannerFrame({
   subtitle,
   actions = [],
   toolbar,
-  width = 'detail',
+  search,
   scroll = true,
+  menu,
+  summary = true,
   children,
 }: PlannerFrameProps): ReactNode {
   usePlannerSyncOnVisible();
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const phone = useSizeClass().header === 'large';
+  const fit = useAsideFit();
+  const dockable = fit !== 'sheet';
   const composer = useComposerControl();
   const frame = useFrameValue(section, composer);
-  const { refreshing, onRefresh } = useRefresh();
-  const quickAdd = <PlannerQuickAdd section={section} frame={frame} />;
+  const refresh = useRefresh();
+  const top = useTop({ section, actions, toolbar, search, menu, refresh });
+  const aside = useItemAside();
   return (
     <PlannerFrameContext value={frame}>
-      <Screen
-        maxWidth={compact ? width : 'full'}
-        scroll={compact ? scroll : false}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
+      {dockable ? <PanelHost /> : null}
+      <PageShell
+        title={top.title}
+        subtitle={useSubtitle(section, subtitle, summary)}
+        back={false}
+        actions={top.actions}
+        overflow={top.overflow}
+        settings={mainPageSettings('planner')}
+        sections={sectionsOf(section, fit, aside.open)}
+        scroll={scroll}
+        {...refreshPropsOf(refresh, menu === undefined || phone)}
+        footer={<PlannerFooter section={section} frame={frame} phone={phone} />}
+        {...(dockable ? { aside } : {})}
+        {...(top.toolbar === undefined ? {} : { toolbar: top.toolbar })}
+        {...(search === undefined ? {} : { search })}
         {...(frame.offline ? { banner: <OfflineBanner /> } : {})}
-        {...(compact ? { footer: <ScrollAwayBar>{quickAdd}</ScrollAwayBar> } : {})}
-        header={
-          <FrameHeader section={section} subtitle={subtitle} actions={actions} toolbar={toolbar} />
-        }
       >
-        <FrameBody section={section} scroll={scroll} width={width} quickAdd={quickAdd}>
-          {children}
-        </FrameBody>
+        {children}
         <QuickAddComposer
           control={composer}
           target={PLANNER_QUICK_ADD_TARGET}
           person={frame.person}
           disabled={frame.offline}
         />
-      </Screen>
+      </PageShell>
     </PlannerFrameContext>
   );
 }

@@ -353,6 +353,7 @@ export class PlacementsController {
       }
       return;
     }
+    if (line.type === 'limits' || line.type === 'applied') return;
     const running = line.mount === undefined ? undefined : this.running.get(line.mount);
     if (line.mount === undefined || running === undefined) {
       if (line.type === 'error') {

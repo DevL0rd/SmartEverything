@@ -1,9 +1,11 @@
 import { PLANNER_ITEM_ROW, type PlannerItemRow } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
+import { longDate } from '../../../format/time';
 import { deleteChoicesOf } from './item-delete';
 
 const STAMP = '2026-11-07T08:00:00.000Z';
 const KEY = '2026-11-10T13:30:00.000Z';
+const ZONE = 'Europe/Berlin';
 
 function item(extra: Partial<PlannerItemRow> = {}): PlannerItemRow {
   return PLANNER_ITEM_ROW.parse({
@@ -53,7 +55,7 @@ const WEEKLY = 'FREQ=WEEKLY;BYDAY=TU,TH,SA';
 
 describe('deleteChoicesOf', () => {
   it('offers one plain delete of the whole item when it does not repeat', () => {
-    const choices = deleteChoicesOf(item(), KEY);
+    const choices = deleteChoicesOf(item(), KEY, ZONE);
     expect(choices.map((choice) => [choice.label, choice.scope])).toEqual([
       ['Delete', { scope: 'all' }],
     ]);
@@ -61,19 +63,19 @@ describe('deleteChoicesOf', () => {
   });
 
   it('names an event as an event in the question', () => {
-    expect(deleteChoicesOf(item({ kind: 'event' }), null)[0]?.question).toBe(
+    expect(deleteChoicesOf(item({ kind: 'event' }), null, ZONE)[0]?.question).toBe(
       'The event and its history go.',
     );
   });
 
   it('offers only the whole series when no repeat was opened', () => {
-    expect(deleteChoicesOf(item({ rrule: WEEKLY }), null).map((choice) => choice.scope)).toEqual([
-      { scope: 'all' },
-    ]);
+    expect(
+      deleteChoicesOf(item({ rrule: WEEKLY }), null, ZONE).map((choice) => choice.scope),
+    ).toEqual([{ scope: 'all' }]);
   });
 
   it('offers this one, this and later and every repeat for an opened repeat', () => {
-    const choices = deleteChoicesOf(item({ rrule: WEEKLY }), KEY);
+    const choices = deleteChoicesOf(item({ rrule: WEEKLY }), KEY, ZONE);
     expect(choices.map((choice) => choice.label)).toEqual([
       'Delete this one',
       'Delete this and later',
@@ -86,8 +88,20 @@ describe('deleteChoicesOf', () => {
     ]);
   });
 
+  it('names the opened day in the question of a repeat', () => {
+    const [one, later] = deleteChoicesOf(item({ rrule: WEEKLY }), KEY, ZONE);
+    const day = longDate(KEY, ZONE);
+    expect(one?.question).toBe(`Only the task on ${day} goes. The other repeats stay.`);
+    expect(later?.question).toBe(
+      `The task on ${day} and every later repeat go. Earlier ones stay.`,
+    );
+    expect(deleteChoicesOf(item({ rrule: WEEKLY }), '2026-11-12', ZONE)[0]?.question).toContain(
+      longDate('2026-11-12T12:00:00Z', 'UTC'),
+    );
+  });
+
   it('gives every choice its own id', () => {
-    const ids = deleteChoicesOf(item({ rrule: WEEKLY }), KEY).map((choice) => choice.id);
+    const ids = deleteChoicesOf(item({ rrule: WEEKLY }), KEY, ZONE).map((choice) => choice.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });

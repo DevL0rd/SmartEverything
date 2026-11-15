@@ -91,6 +91,10 @@ interface Approval {
   readonly restoreFocus: RefObject<View | null>;
 }
 
+function sameOffer(approval: Approval | null, offer: SourceOffer | null): boolean {
+  return approval?.offer.id === offer?.id;
+}
+
 function useSourceApproval(
   offer: SourceOffer | null,
   start: Start,
@@ -101,7 +105,7 @@ function useSourceApproval(
 } {
   const [approval, setApproval] = useState<Approval | null>(null);
   const opener = useRef<View>(null);
-  const current = approval?.offer.id === offer?.id ? approval : null;
+  const current = sameOffer(approval, offer) ? approval : null;
   if (approval !== current) setApproval(current);
   const label = 'Update';
   const begin = (restoreFocus: RefObject<View | null>): void => {

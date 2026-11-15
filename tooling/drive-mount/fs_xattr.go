@@ -34,7 +34,7 @@ func (n *node) Getxattr(ctx context.Context, name string, dest []byte) (uint32, 
 	if errno := xattrName(name); errno != 0 {
 		return 0, errno
 	}
-	value, err := n.m.src.Getxattr(ctx, n.ino(), name)
+	value, err := n.m.src.Getxattr(uninterruptible(ctx), n.ino(), name)
 	if err != nil {
 		return 0, errnoFor(err)
 	}

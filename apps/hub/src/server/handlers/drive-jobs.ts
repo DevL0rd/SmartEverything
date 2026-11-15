@@ -24,6 +24,10 @@ export interface DriveJobRunner {
   readonly run: (job: DriveJob, signal: AbortSignal) => Promise<void>;
 }
 
+export function mountedRoot(store: Pick<Store, 'drivePlacements'>, rootId: string): boolean {
+  return store.drivePlacements.forRoot(rootId).some((placement) => placement.mode === 'mounted');
+}
+
 export function driveJobHandlers(deps: DriveJobDeps): DriveJobRunner {
   const { store, availability, log } = deps;
   return {
@@ -32,8 +36,7 @@ export function driveJobHandlers(deps: DriveJobDeps): DriveJobRunner {
       scan: scanHandler({
         store,
         availability,
-        mounted: (rootId) =>
-          store.drivePlacements.forRoot(rootId).some((placement) => placement.mode === 'mounted'),
+        mounted: (rootId) => mountedRoot(store, rootId),
         workerScript: deps.scannerScript,
         log,
       }),

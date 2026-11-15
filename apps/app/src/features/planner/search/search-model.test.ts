@@ -13,6 +13,7 @@ import {
   groupHits,
   hitTimeOf,
   hitsOf,
+  isCollectionChosen,
   kindsOfChoice,
   matchedTextOf,
   searchCollectionsOf,
@@ -24,6 +25,8 @@ const ME = '00000000-0000-4000-8000-000000000001';
 const WORK = '00000000-0000-4000-8000-000000000020';
 const HOME = '00000000-0000-4000-8000-000000000021';
 const AT = '2026-11-14T10:00:00.000Z';
+
+const CLOCK = { now: Date.parse('2026-11-14T10:00:00.000Z'), today: '2026-11-14' };
 
 const FORMAT: HitFormat = {
   day: (moment) => new Date(moment).toISOString().slice(0, 10),
@@ -114,17 +117,45 @@ describe('the planner search results', () => {
   });
 
   it('writes the time of an event, an all day event and a task', () => {
-    expect(hitTimeOf(occurrence(), FORMAT).text).toBe('2026-11-17 · 09:00–09:30');
-    expect(hitTimeOf(occurrence({ all_day: true }), FORMAT).text).toBe('2026-11-17 · All day');
+    expect(hitTimeOf(occurrence(), FORMAT, CLOCK).text).toBe('2026-11-17 · 09:00–09:30');
+    expect(hitTimeOf(occurrence({ all_day: true }), FORMAT, CLOCK).text).toBe(
+      '2026-11-17 · All day',
+    );
     const task = { kind: 'task', start: null, end: null } as const;
     expect(
-      hitTimeOf(occurrence({ ...task, due_at: '2026-11-18T08:00:00.000Z' }), FORMAT).text,
+      hitTimeOf(occurrence({ ...task, due_at: '2026-11-18T08:00:00.000Z' }), FORMAT, CLOCK).text,
     ).toBe('Due 2026-11-18 · 08:00');
-    expect(hitTimeOf(occurrence({ ...task, due_date: '2026-11-19' }), FORMAT)).toEqual({
+    expect(hitTimeOf(occurrence({ ...task, due_date: '2026-11-19' }), FORMAT, CLOCK)).toEqual({
       at: null,
+      day: '2026-11-19',
+      overdue: false,
       text: 'Due on 2026-11-19',
     });
-    expect(hitTimeOf(occurrence(task), FORMAT).text).toBe('No date');
+    expect(hitTimeOf(occurrence(task), FORMAT, CLOCK).text).toBe('No date');
+  });
+
+  it('marks an open task whose day or moment has passed as overdue', () => {
+    const task = { kind: 'task', start: null, end: null, status: 'open' } as const;
+    const late = hitTimeOf(occurrence({ ...task, due_date: '2026-11-12' }), FORMAT, CLOCK);
+    expect(late).toMatchObject({
+      day: '2026-11-12',
+      overdue: true,
+      text: 'Overdue · on 2026-11-12',
+    });
+    expect(
+      hitTimeOf(occurrence({ ...task, due_at: '2026-11-14T08:00:00.000Z' }), FORMAT, CLOCK).overdue,
+    ).toBe(true);
+    expect(
+      hitTimeOf(occurrence({ ...task, status: 'done', due_date: '2026-11-12' }), FORMAT, CLOCK)
+        .overdue,
+    ).toBe(false);
+    expect(
+      hitTimeOf(occurrence({ ...task, status: 'missed', due_date: '2026-11-13' }), FORMAT, CLOCK)
+        .overdue,
+    ).toBe(true);
+    expect(hitTimeOf(occurrence({ ...task, due_date: '2026-11-14' }), FORMAT, CLOCK).overdue).toBe(
+      false,
+    );
   });
 
   it('says where a hit matched when it was not the title', () => {
@@ -144,11 +175,14 @@ describe('the planner search filters', () => {
   const work = collection(WORK, 'Work', 'calendar');
   const home = collection(HOME, 'Home jobs', 'list');
 
-  it('picks calendars one by one and returns to all when none is left', () => {
-    const one = toggledCollection(null, WORK);
-    expect(one).toEqual([WORK]);
-    expect(toggledCollection(one, HOME)).toEqual([WORK, HOME]);
-    expect(toggledCollection(one, WORK)).toBeNull();
+  it('starts from every calendar, leaves one out at a time and returns to all', () => {
+    const all = [WORK, HOME];
+    const one = toggledCollection(null, WORK, all);
+    expect(one).toEqual([HOME]);
+    expect(isCollectionChosen(one, WORK)).toBe(false);
+    expect(isCollectionChosen(null, WORK)).toBe(true);
+    expect(toggledCollection(one, WORK, all)).toBeNull();
+    expect(toggledCollection(one, HOME, all)).toBeNull();
     expect(calendarChipTextOf(null, [work, home])).toBe('All calendars');
     expect(calendarChipTextOf([WORK], [work, home])).toBe('Work');
     expect(calendarChipTextOf([WORK, HOME], [work, home])).toBe('2 calendars');

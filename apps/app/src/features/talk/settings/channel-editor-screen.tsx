@@ -130,8 +130,8 @@ function ChannelEditorBody({
 }): ReactNode {
   return (
     <View className="flex-row flex-wrap items-start gap-section-gap">
-      <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">{fields}</View>
-      <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">{members}</View>
+      <View className="min-w-0 grow shrink basis-80 gap-section-gap">{fields}</View>
+      <View className="min-w-0 grow shrink basis-80 gap-section-gap">{members}</View>
     </View>
   );
 }
@@ -259,7 +259,7 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
         }
         members={<ChannelMembersBlock members={members} onChange={memberSaved(channel.id)} />}
       />
-      <List inset className="max-w-reading">
+      <List inset>
         <ActionRow
           title="Delete channel"
           icon="trash"
@@ -277,7 +277,7 @@ function ChannelById({ channelId }: { readonly channelId: string }): ReactNode {
   const channel = useRow('talk_channels', channelId);
   if (channel === null) {
     return (
-      <PageShell title="Channel" breadcrumbs={CRUMBS} width="reading">
+      <PageShell title="Channel" breadcrumbs={CRUMBS}>
         <EmptyState icon="radio" title="Channel not found" body="It may have been deleted." />
       </PageShell>
     );

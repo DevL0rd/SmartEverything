@@ -9,7 +9,7 @@ import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
 import {
   useMediaSelection,
@@ -117,7 +117,7 @@ function PersonBody({
   readonly group: PhotoGroup;
   readonly live: boolean;
 }): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const scope = useMemo(() => personScopeOf(group.id), [group.id]);
   const feed = useLibraryFeed(scope);
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));

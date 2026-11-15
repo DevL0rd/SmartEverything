@@ -10,5 +10,8 @@ export function whoSeesOf(album: DriveAlbum, memberIds: readonly string[] | unde
 
 export function useWhoSees(album: DriveAlbum): Visibility {
   const shared = usePhotoSharing().data?.albums.find((entry) => entry.albumId === album.id);
-  return whoSeesOf(album, shared?.memberIds);
+  return whoSeesOf(
+    album,
+    shared?.members.map((member) => member.profileId),
+  );
 }

@@ -1,5 +1,5 @@
 import type { PluginRow, PluginSource } from '@smarteverything/domain';
-import type { SyncStatus } from '../../../store/selectors';
+import { sectionFailureOf, type SyncStatus } from '../../../store/selectors';
 import type { DevicePluginRow } from './device-plugins';
 import { pluginSubtitle } from './plugin-look';
 
@@ -34,8 +34,10 @@ function matches(parts: readonly (string | null)[], search: string): boolean {
 
 export type PluginCatalogStatus = 'loading' | 'ready' | 'unavailable';
 
-export function pluginCatalogStatus({ status, outdated }: SyncStatus): PluginCatalogStatus {
-  if (status === 'loading' || status === 'connecting') return 'loading';
-  if (status !== 'live' || outdated.includes('owner.plugins')) return 'unavailable';
+export function pluginCatalogStatus(sync: SyncStatus): PluginCatalogStatus {
+  if (sync.status === 'loading' || sync.status === 'connecting') return 'loading';
+  if (sync.status !== 'live' || sectionFailureOf(sync, 'owner.plugins') !== null) {
+    return 'unavailable';
+  }
   return 'ready';
 }

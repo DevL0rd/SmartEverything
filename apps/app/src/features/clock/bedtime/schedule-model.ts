@@ -207,20 +207,6 @@ export function tonightLineOf(next: NextNight | null, now: number): string {
   return `Bedtime in ${countdownOf(next.bedAt, now)}`;
 }
 
-export function bedtimeSummaryOf(
-  bedtime: PlannerBedtime,
-  now: number,
-  zone: string,
-): string | null {
-  const next = nextNightOf(bedtime, now, zone);
-  if (next === null) return null;
-  const day = localDayKey(next.bedAt, zone);
-  const today = localDayKey(now, zone);
-  if (now >= next.bedAt) return `Wake ${next.night.wake}`;
-  if (day === today) return `Bed ${next.night.bed} tonight`;
-  return `Bed ${next.night.bed} ${dayShortOf(weekdayOfKey(day))}`;
-}
-
 export const OFF = 'off';
 
 const LEAD_CHOICES = [10, 15, 20, 30, 45, 60, 90, 120] as const;

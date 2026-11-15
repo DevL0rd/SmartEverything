@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -44,6 +45,14 @@ var (
 	_ fs.NodeStatfser       = (*node)(nil)
 	_ fs.NodeOnForgetter    = (*node)(nil)
 )
+
+var negativeLifetime time.Duration
+
+func init() {
+	live.subscribe(func(f liveFields) { setNegativeLifetime(f.negative.duration()) })
+}
+
+func setNegativeLifetime(d time.Duration) { atomic.StoreInt64((*int64)(&negativeLifetime), int64(d)) }
 
 func (n *node) ino() uint64 { return n.StableAttr().Ino }
 
@@ -162,6 +171,9 @@ func (m *fuseMount) adopt(ctx context.Context, parent *fs.Inode, e Entry) *fs.In
 
 func (m *fuseMount) entry(ctx context.Context, parent *fs.Inode, e Entry, out *fuse.EntryOut) *fs.Inode {
 	m.fillAttr(&out.Attr, e.Attr)
+	l := live.load()
+	out.SetEntryTimeout(l.entry.duration())
+	out.SetAttrTimeout(l.attr.duration())
 	return m.adopt(ctx, parent, e)
 }
 
@@ -178,6 +190,7 @@ func (n *node) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) 
 		a.Size = uint64(h.write.Size())
 	}
 	n.m.fillAttr(&out.Attr, a)
+	out.SetTimeout(live.load().attr.duration())
 	return 0
 }
 
@@ -190,6 +203,7 @@ func (n *node) Statx(ctx context.Context, f fs.FileHandle, flags, mask uint32, o
 		a.Size = uint64(h.write.Size())
 	}
 	n.m.fillStatx(&out.Statx, a)
+	out.SetTimeout(live.load().attr.duration())
 	return 0
 }
 

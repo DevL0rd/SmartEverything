@@ -1,37 +1,40 @@
 import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
-import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { Segmented } from '../../../components/segmented';
-import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { DRAW_DISTANCE } from '../../../components/virtual-list';
+import { cn } from '../../../design/cn';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { atLeast, useSizeClass } from '../../../design/size-class';
 import { localDayKey } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
-import { useDevices, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
+import { useDeviceNames, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
 import { useDriveActivity, useDriveChips, useDriveRoots } from '../data';
 import { driveLocationHref } from '../model/section-routes';
 import { flattenPages } from '../data/pages';
 import { DriveFrame } from '../components/drive-frame';
+import { GroupFrame } from '../shared/group-frame';
+import { groupEdgeOf } from '../shared/shared-model';
 import { ActivityChart } from './activity-chart';
+import { ActivityLoading } from './activity-loading';
 import {
   ActivityFilters,
   NO_FILTER,
   activityItemOf,
+  calloutItems,
   feedRowsOf,
   emptyCopyOf,
+  isFiltered,
   onlyOutside,
-  scopedItems,
   showsOnlyOutside,
   subtitleOf,
   toggledFolder,
@@ -77,12 +80,12 @@ function useViewer(): Viewer {
 function useNames(): ActivityNames {
   const chipOf = useDriveChips();
   const profiles = useProfiles();
-  const devices = useDevices({ includeHidden: true });
+  const devices = useDeviceNames('name');
   return useMemo(
     () => ({
       chipOf,
       people: new Map(profiles.map((profile) => [profile.id, profile.name])),
-      devices: new Map(devices.map((device) => [device.id, device.name])),
+      devices,
     }),
     [chipOf, profiles, devices],
   );
@@ -138,6 +141,7 @@ interface Parts {
   readonly view: ActivityView;
   readonly viewer: Viewer;
   readonly compact: boolean;
+  readonly wide: boolean;
   readonly setRange: (range: ActivityRange) => void;
   readonly setFilter: (filter: ActivityFilter) => void;
 }
@@ -147,9 +151,10 @@ const RANGE_OPTIONS = ACTIVITY_RANGES.map((range) => ({
   label: RANGE_LOOK[range].label,
 }));
 
-function Overview({ view, viewer, setFilter }: Parts): ReactNode {
+function Overview({ view, viewer, wide, setFilter }: Parts): ReactNode {
   const { range, filter } = view;
-  const outside = outsideOf(scopedItems(view.ranged, filter).map((item) => item.entry));
+  const openFolder = useOpenFolder();
+  const outside = outsideOf(calloutItems(view.ranged, filter, viewer.me).map((item) => item.entry));
   return (
     <View className="gap-4 large:flex-row large:items-start">
       <View className="min-w-0 large:flex-3">
@@ -157,10 +162,11 @@ function Overview({ view, viewer, setFilter }: Parts): ReactNode {
           columns={activityColumns(view.shown, range, viewer)}
           range={range}
           peopleName={peopleLabel(view.shown, viewer.me)}
+          filtered={isFiltered(filter)}
         />
       </View>
-      {outside.count === 0 ? null : (
-        <View className="min-w-0 large:flex-2">
+      <View className="min-w-0 gap-4 large:flex-2">
+        {outside.count === 0 ? null : (
           <OutsideCallout
             summary={outside}
             range={range}
@@ -173,8 +179,9 @@ function Overview({ view, viewer, setFilter }: Parts): ReactNode {
               setFilter(toggledFolder(filter, folder.key));
             }}
           />
-        </View>
-      )}
+        )}
+        {wide ? <MostChanged card folders={folderCounts(view.shown)} onOpen={openFolder} /> : null}
+      </View>
     </View>
   );
 }
@@ -205,7 +212,7 @@ function Controls(parts: Parts): ReactNode {
 
 function Head({ row }: { readonly row: Extract<FeedRow, { kind: 'head' }> }): ReactNode {
   return (
-    <View className="h-12 flex-row items-end justify-between gap-3 px-4 pb-2">
+    <View className="flex-row items-baseline justify-between gap-3 px-4 pb-1 pt-4">
       <Text variant="footnote" tone="variant" accessibilityRole="header" numberOfLines={1}>
         {row.title}
       </Text>
@@ -227,12 +234,20 @@ function Feed({
 }): ReactNode {
   const { view, viewer } = parts;
   const rows = feedRowsOf(view.shown, viewer.zone, viewer.today);
-  const renderRow: ListRenderItem<FeedRow> = ({ item }) =>
+  const line = (item: FeedRow): ReactElement =>
     item.kind === 'head' ? <Head row={item} /> : <ActivityRow entry={item.entry} me={viewer.me} />;
+  const renderRow: ListRenderItem<FeedRow> = ({ item, index }) =>
+    parts.wide ? (
+      <GroupFrame edge={groupEdgeOf(index, rows.length)}>
+        <View className={cn(index === rows.length - 1 && 'pb-2')}>{line(item)}</View>
+      </GroupFrame>
+    ) : (
+      line(item)
+    );
   return (
     <FlashList<FeedRow>
       data={rows}
-      extraData={viewer.me}
+      extraData={[viewer.me, parts.wide, rows.length]}
       keyExtractor={(row) => row.key}
       getItemType={(row) => row.kind}
       renderItem={renderRow}
@@ -253,7 +268,6 @@ function NothingInRange({ parts }: { readonly parts: Parts }): ReactNode {
   return (
     <View className="py-section-gap">
       <EmptyState
-        compact
         icon="activity"
         title={copy.title}
         body={copy.body}
@@ -267,53 +281,31 @@ function NothingInRange({ parts }: { readonly parts: Parts }): ReactNode {
   );
 }
 
-function WideBody(parts: Parts): ReactNode {
-  const openFolder = useOpenFolder();
-  return (
-    <View className="flex-1 gap-4 pb-section-gap">
-      <Controls {...parts} />
-      <View className="min-h-0 flex-1 flex-row items-stretch gap-4">
-        <Card padding="none" className="min-w-0 flex-3 overflow-hidden">
-          <View className="flex-1">
-            <Feed parts={parts} />
-          </View>
-        </Card>
-        <ScrollView className="min-w-0 flex-2">
-          <MostChanged folders={folderCounts(parts.view.shown)} onOpen={openFolder} />
-        </ScrollView>
-      </View>
-    </View>
-  );
-}
-
-function NarrowBody(parts: Parts): ReactNode {
+function ActivityBody(parts: Parts): ReactNode {
   const openFolder = useOpenFolder();
   return (
     <View className="flex-1">
       <Feed
         parts={parts}
         header={
-          <View className="pb-2">
+          <View className={parts.wide ? 'pb-4' : 'pb-2'}>
             <Controls {...parts} />
           </View>
         }
         footer={
-          <View className="pb-section-gap pt-4">
-            <MostChanged folders={folderCounts(parts.view.shown)} onOpen={openFolder} />
-          </View>
+          parts.wide ? (
+            <View className="pb-section-gap" />
+          ) : (
+            <View className="pb-section-gap pt-4">
+              <MostChanged
+                card={false}
+                folders={folderCounts(parts.view.shown)}
+                onOpen={openFolder}
+              />
+            </View>
+          )
         }
       />
-    </View>
-  );
-}
-
-function Loading(): ReactNode {
-  return (
-    <View aria-busy className="gap-4" accessibilityLabel="Loading Activity">
-      <Skeleton shape="block" className="h-10" />
-      <Skeleton shape="tile" className="h-56" />
-      <Skeleton shape="text" className="w-48" />
-      <Skeleton shape="block" className="h-72" />
     </View>
   );
 }
@@ -321,18 +313,26 @@ function Loading(): ReactNode {
 function Unloaded({
   loaded,
   live,
+  parts,
 }: {
   readonly loaded: Loaded;
   readonly live: boolean;
+  readonly parts: Parts;
 }): ReactNode {
-  if (loaded.status === 'loading') return <Loading />;
-  if (live) return <ErrorState page error={loaded.error} retry={loaded.retry} />;
+  if (loaded.status === 'loading')
+    return <ActivityLoading compact={parts.compact} wide={parts.wide} />;
   return (
-    <EmptyState
-      icon="wifiOff"
-      title="The hub is offline"
-      body="Activity comes back when the hub reconnects. Your files stay on the hub as they are."
-    />
+    <View className="flex-1 justify-center">
+      {live ? (
+        <ErrorState page error={loaded.error} retry={loaded.retry} />
+      ) : (
+        <EmptyState
+          icon="wifiOff"
+          title="The hub is offline"
+          body="Activity comes back when the hub reconnects. Your files stay on the hub as they are."
+        />
+      )}
+    </View>
   );
 }
 
@@ -363,17 +363,15 @@ function StaleBanner(): ReactNode {
 function Body({
   loaded,
   live,
-  wide,
   parts,
 }: {
   readonly loaded: Loaded;
   readonly live: boolean;
-  readonly wide: boolean;
   readonly parts: Parts;
 }): ReactNode {
-  if (loaded.status !== 'ready') return <Unloaded loaded={loaded} live={live} />;
+  if (loaded.status !== 'ready') return <Unloaded loaded={loaded} live={live} parts={parts} />;
   if (loaded.items.length === 0) return <NoActivity />;
-  return wide ? <WideBody {...parts} /> : <NarrowBody {...parts} />;
+  return <ActivityBody {...parts} />;
 }
 
 export function ActivityScreen(): ReactNode {
@@ -384,7 +382,14 @@ export function ActivityScreen(): ReactNode {
   const [range, setRange] = useState<ActivityRange>('month');
   const [filter, setFilter] = useState<ActivityFilter>(NO_FILTER);
   const view = viewOf(loaded.items, { range, filter }, viewer);
-  const parts: Parts = { view, viewer, compact: width === 'compact', setRange, setFilter };
+  const parts: Parts = {
+    view,
+    viewer,
+    compact: width === 'compact',
+    wide: atLeast(width, 'large'),
+    setRange,
+    setFilter,
+  };
   const ready = loaded.status === 'ready';
   return (
     <DriveFrame
@@ -394,7 +399,7 @@ export function ActivityScreen(): ReactNode {
       {...(ready ? { subtitle: subtitleOf(view.ranged, range) } : {})}
       {...(ready && !live ? { banner: <StaleBanner /> } : {})}
     >
-      <Body loaded={loaded} live={live} wide={atLeast(width, 'large')} parts={parts} />
+      <Body loaded={loaded} live={live} parts={parts} />
     </DriveFrame>
   );
 }

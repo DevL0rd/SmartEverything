@@ -7,7 +7,7 @@ import type { Tone } from '../../../components/tone';
 import { cn } from '../../../design/cn';
 import { useAreaWidth } from '../../../design/size-class';
 import { useMinuteOf } from '../../../store/clock';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { useItemPress } from '../item/item-menu-host';
 import { matrixOf, type QuadrantKey, type QuadrantModel } from './matrix-model';
 import { TaskCheck, useTaskActions } from './task-card';
@@ -108,7 +108,7 @@ export interface TaskMatrixProps {
 }
 
 export function TaskMatrix({ entries, today, filter }: TaskMatrixProps): ReactNode {
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const quadrants = matrixOf({ entries, filter, today });
   const gap = compact ? 'gap-2' : 'gap-grid-gap';
   return (

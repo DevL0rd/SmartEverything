@@ -5,6 +5,7 @@ import {
   driveSettingsHref,
   visibleDriveSettingsSections,
 } from './sections';
+import { DRIVE_PAGES } from '../../../settings/tree-drive';
 
 const OWNER_DESKTOP = { owner: true, platform: 'desktop' } as const;
 const MEMBER_PHONE = { owner: false, platform: 'android' } as const;
@@ -60,7 +61,6 @@ describe('Drive settings sections', () => {
       'notifications',
       'indexing',
       'storage',
-      'google',
     ]);
     const rows = visibleRows(OWNER_DESKTOP);
     expect(rows).toContain('drive.storage.quotas');
@@ -82,18 +82,43 @@ describe('Drive settings sections', () => {
     expect(rows).not.toContain('drive.indexing.ocr');
   });
 
-  it('opens settings on the section of the Drive page', () => {
+  it('lists every advanced mount row for a desktop and the Hub rows for the owner only', () => {
+    const owner = visibleRows(OWNER_DESKTOP);
+    expect(owner).toContain('drive.sync-mount.advanced');
+    expect(owner).toContain('drive.sync-mount.advanced.max-background');
+    expect(owner).toContain('drive.sync-mount.advanced.dead-after-seconds');
+    expect(owner).toContain('drive.sync-mount.advanced.hub.file-io-threads');
+    const memberDesktop = { owner: false, platform: 'desktop' } as const;
+    const member = DRIVE_SETTINGS_SECTIONS.flatMap((section) =>
+      section.rows
+        .filter((row) => driveRowVisible(section, row, memberDesktop))
+        .map((row) => row.settingId),
+    );
+    expect(member).toContain('drive.sync-mount.advanced.upload-files');
+    expect(member.some((id) => id.startsWith('drive.sync-mount.advanced.hub.'))).toBe(false);
+    expect(visibleRows(MEMBER_PHONE).some((id) => id.includes('advanced'))).toBe(false);
+  });
+
+  it('opens settings on the sub-page of the Drive page section', () => {
     expect(driveSettingsHref('notifications', MEMBER_PHONE)).toMatchObject({
-      params: { page: ['drive'], focus: 'drive.notifications' },
+      params: { page: ['drive', 'notifications'], focus: 'drive.notifications' },
     });
     expect(driveSettingsHref('index', MEMBER_PHONE)).toMatchObject({
-      params: { page: ['drive'], focus: 'drive.drives' },
+      params: { page: ['drive', 'drives'], focus: 'drive.drives' },
     });
     expect(driveSettingsHref('computers', OWNER_DESKTOP)).toMatchObject({
-      params: { page: ['drive'], focus: 'drive.sync-mount' },
+      params: { page: ['drive', 'mount'], focus: 'drive.sync-mount' },
     });
     expect(driveSettingsHref('computers', MEMBER_PHONE)).toMatchObject({
       params: { page: ['drive'] },
     });
+  });
+
+  it('gives every section its own Drive settings sub-page', () => {
+    const pages = DRIVE_SETTINGS_SECTIONS.map((section) => section.page);
+    expect(new Set(pages).size).toBe(pages.length);
+    for (const page of pages) {
+      expect(DRIVE_PAGES.find((one) => one.id === page)?.parent).toBe('drive');
+    }
   });
 });

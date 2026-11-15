@@ -65,14 +65,20 @@ function SubPages({ page, env }: { readonly page: string; readonly env: SettingE
   );
 }
 
-function BlockView({ block }: { readonly block: Block }): ReactNode {
+function BlockView({
+  block,
+  locked,
+}: {
+  readonly block: Block;
+  readonly locked: boolean;
+}): ReactNode {
   if (block.kind === 'custom') {
-    return <AnchoredSettingRow setting={block.setting} />;
+    return <AnchoredSettingRow setting={block.setting} locked={locked} />;
   }
   return (
     <List inset {...(block.section === '' ? {} : { title: block.section })}>
       {block.rows.map((setting) => (
-        <AnchoredSettingRow key={setting.id} setting={setting} />
+        <AnchoredSettingRow key={setting.id} setting={setting} locked={locked} />
       ))}
     </List>
   );
@@ -83,9 +89,11 @@ export type SettingsBlocksLayout = ComponentType<{ readonly children: ReactNode 
 export function SettingsPageBody({
   page,
   BlocksLayout,
+  locked = false,
 }: {
   readonly page: string;
   readonly BlocksLayout?: SettingsBlocksLayout;
+  readonly locked?: boolean;
 }): ReactNode {
   const env = useSettingEnv();
   const settings = settingsOn(page, env);
@@ -98,7 +106,7 @@ export function SettingsPageBody({
   useSettingsFocus(allVisible);
   const definition = settingsPage(page);
   const blocks = blocksOf(allVisible.filter((setting) => setting.control !== 'listed')).map(
-    (block) => <BlockView key={block.key} block={block} />,
+    (block) => <BlockView key={block.key} block={block} locked={locked} />,
   );
   return (
     <>

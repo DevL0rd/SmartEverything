@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Logger, background } from '@smarteverything/logging';
 import { isBottleLinked, syncBottles } from '../../../../modules/health-connect';
 import { usePairedServer } from '../../../features/profiles';
-import { useDevices } from '../../../store/selectors';
+import { useDeviceIds } from '../../../store/selectors';
 import { connectPermitted } from './bluetooth-permission';
 import { isBottle } from './use-bottle-device';
 
@@ -27,10 +27,7 @@ export function bringUpBottles(url: string, token: string): void {
 }
 
 function useBottleKey(): string {
-  return useDevices({ includeHidden: true })
-    .filter(isBottle)
-    .map((device) => device.id)
-    .join(',');
+  return useDeviceIds(isBottle, { includeHidden: true });
 }
 
 export function BottleLinkHost(): null {

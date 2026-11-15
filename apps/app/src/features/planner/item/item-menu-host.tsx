@@ -1,18 +1,28 @@
 import type { PlannerItemRow } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import type { ReactNode } from 'react';
+import { useEffect, useEffectEvent, type ReactNode } from 'react';
 import { Linking, type GestureResponderEvent } from 'react-native';
 import type { Rect } from '../../../components/anchor';
 import { confirm } from '../../../components/confirm-store';
 import type { Point } from '../../../components/interactive';
 import { Menu, useMenuTrigger, type MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
-import { usePlannerWrites, type PlannerWrites } from '../data';
+import { isNative } from '../../../design/platform';
+import { useSettings } from '../../../store/selectors';
+import { usePlannerWrites, type PlannerPerson, type PlannerWrites } from '../data';
 import { useVisibleItem } from '../data/assignment';
 import { usePlannerFrame } from '../frame/frame-context';
 import { askAboutItem } from './item-ask';
 import type { DeleteChoice } from './item-delete';
-import { itemMenuOf, type ItemMenuAction, type ItemMenuEntry } from './item-menu';
+import {
+  itemMenuOf,
+  itemShortcutOf,
+  shortcutEntryOf,
+  type ItemMenuAction,
+  type ItemMenuEntry,
+  type ItemMenuModel,
+  type ItemOpenIntent,
+} from './item-menu';
 import { OUTDENT_CHANGE, indentChangeOf, type NestTarget } from './steps-model';
 import {
   clearPlannerSelection,
@@ -29,6 +39,13 @@ export interface ItemTargetKey {
   readonly nest?: NestTarget | null;
 }
 
+export interface ItemActionScope {
+  readonly person: PlannerPerson;
+  readonly offline: boolean;
+  readonly onOpen: (intent: ItemOpenIntent) => void;
+  readonly onDeleted: (item: PlannerItemRow) => void;
+}
+
 function reported(work: Promise<unknown>, message: string): void {
   background(
     work.catch((error: unknown) => {
@@ -42,6 +59,7 @@ async function deleteConfirmed(
   writes: PlannerWrites,
   item: PlannerItemRow,
   choice: DeleteChoice,
+  onDeleted: (item: PlannerItemRow) => void,
 ): Promise<void> {
   const accepted = await confirm({
     title: `Delete “${item.title}”?`,
@@ -50,16 +68,33 @@ async function deleteConfirmed(
     tone: 'destructive',
   });
   if (!accepted) return;
-  if (readPlannerSelection()?.itemId === item.id) clearPlannerSelection();
+  onDeleted(item);
   await writes.deleteItem(item, choice.scope);
+}
+
+export function useFrameActionScope(target: ItemTargetKey): ItemActionScope {
+  const { person, offline } = usePlannerFrame();
+  const hosted = usePanelHosted();
+  return {
+    person,
+    offline,
+    onOpen: (intent): void => {
+      openPlannerItem(target, intent, hosted);
+    },
+    onDeleted: (item): void => {
+      if (readPlannerSelection()?.itemId === item.id) clearPlannerSelection();
+    },
+  };
 }
 
 export type ItemActionRunner = (action: ItemMenuAction) => void;
 
-export function useItemActionRunner(item: PlannerItemRow, target: ItemTargetKey): ItemActionRunner {
-  const { person } = usePlannerFrame();
-  const writes = usePlannerWrites(person);
-  const hosted = usePanelHosted();
+export function useItemActionRunner(
+  item: PlannerItemRow,
+  target: ItemTargetKey,
+  scope: ItemActionScope,
+): ItemActionRunner {
+  const writes = usePlannerWrites(scope.person);
   return (action): void => {
     switch (action.kind) {
       case 'done':
@@ -75,7 +110,7 @@ export function useItemActionRunner(item: PlannerItemRow, target: ItemTargetKey)
         askAboutItem(item, target.occurrenceKey);
         return;
       case 'open':
-        openPlannerItem(target, action.intent, hosted);
+        scope.onOpen(action.intent);
         return;
       case 'google':
         reported(Linking.openURL(action.url), 'Couldn’t open Google');
@@ -95,7 +130,10 @@ export function useItemActionRunner(item: PlannerItemRow, target: ItemTargetKey)
         );
         return;
       case 'delete':
-        reported(deleteConfirmed(writes, item, action.choice), 'Couldn’t delete that');
+        reported(
+          deleteConfirmed(writes, item, action.choice, scope.onDeleted),
+          'Couldn’t delete that',
+        );
     }
   };
 }
@@ -115,23 +153,61 @@ export function menuItemOf(entry: ItemMenuEntry, run: ItemActionRunner): MenuIte
 }
 
 export interface ItemMenuItems {
+  readonly model: ItemMenuModel;
+  readonly run: ItemActionRunner;
   readonly quick: readonly MenuItem[];
   readonly items: readonly MenuItem[];
 }
 
-export function useItemMenuItems(item: PlannerItemRow, target: ItemTargetKey): ItemMenuItems {
-  const { offline } = usePlannerFrame();
-  const run = useItemActionRunner(item, target);
+export function useItemMenuItems(
+  item: PlannerItemRow,
+  target: ItemTargetKey,
+  scope: ItemActionScope,
+): ItemMenuItems {
+  const timeZone = useSettings().time_zone;
+  const run = useItemActionRunner(item, target, scope);
   const model = itemMenuOf({
     item,
     occurrenceKey: target.occurrenceKey,
-    offline,
+    offline: scope.offline,
+    timeZone,
     nest: target.nest ?? null,
   });
   return {
+    model,
+    run,
     quick: model.quick.map((entry) => menuItemOf(entry, run)),
     items: model.items.map((entry) => menuItemOf(entry, run)),
   };
+}
+
+function isTextEntry(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  );
+}
+
+export function useItemKeys(menu: ItemMenuItems, active: boolean): void {
+  const onKey = useEffectEvent((event: KeyboardEvent): void => {
+    const shortcut = itemShortcutOf(event, isTextEntry(event.target));
+    if (shortcut === null) return;
+    const entry = shortcutEntryOf(menu.model, shortcut);
+    if (entry === null) return;
+    event.preventDefault();
+    menu.run(entry.action);
+  });
+  useEffect(() => {
+    if (!active || isNative()) return undefined;
+    const listen = (event: KeyboardEvent): void => {
+      if (!event.defaultPrevented) onKey(event);
+    };
+    document.addEventListener('keydown', listen);
+    return (): void => {
+      document.removeEventListener('keydown', listen);
+    };
+  }, [active]);
 }
 
 function OpenItemMenu({
@@ -145,7 +221,7 @@ function OpenItemMenu({
   readonly anchor: Rect;
   readonly onClose: () => void;
 }): ReactNode {
-  const { quick, items } = useItemMenuItems(item, target);
+  const { quick, items } = useItemMenuItems(item, target, useFrameActionScope(target));
   return (
     <Menu items={items} options={{ quick }} anchor={anchor} label={item.title} onClose={onClose} />
   );

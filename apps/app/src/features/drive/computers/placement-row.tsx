@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { DriveItem, DrivePlacement } from '@smarteverything/domain';
+import type { DriveItem, DrivePlacement, DrivePlacementSet } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
+import { cn } from '../../../design/cn';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { ProgressBar } from '../../../components/charts';
@@ -15,14 +16,9 @@ import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
 import { useDriveItem, useDriveRoots, useViewerId } from '../data';
+import { mountOpenable } from './mount-summary';
 import { usePlacementWrites, type PlacementWrites } from './placement-change';
-import {
-  changedBodyOf,
-  drivePathOf,
-  locationOf,
-  parentPath,
-  type DriveNames,
-} from './placement-model';
+import { changedBodyOf, drivePathOf, locationOf, type DriveNames } from './placement-model';
 import {
   MODE_ICON,
   lineToneOf,
@@ -32,8 +28,6 @@ import {
   type PlacementWords,
 } from './placement-words';
 import { useDesktopDrive, useThisComputer } from './this-computer';
-
-const NOT_MOUNTED = 'Mounts in the network drive place when the computer is on';
 
 export interface PlacedFolder {
   readonly path: string;
@@ -62,10 +56,10 @@ export function removePlacement(
   const body =
     placement.mode === 'synced'
       ? `The files stay in ${location ?? 'the folder'} on this computer; they stop syncing.`
-      : `${location ?? 'The folder'} is unmounted. Nothing in the drive is deleted.`;
+      : 'My Drive is unmounted. Nothing in the drive is deleted.';
   background(
     confirm({
-      title: placement.mode === 'synced' ? 'Stop syncing this folder?' : 'Unmount this folder?',
+      title: placement.mode === 'synced' ? 'Stop syncing this folder?' : 'Unmount My Drive?',
       body,
       confirmLabel: 'Remove',
       tone: 'destructive',
@@ -106,6 +100,7 @@ function Progress({
 function menuItemsOf(
   placement: DrivePlacement,
   writes: PlacementWrites,
+  live: boolean,
   open: (to: AppHref) => void,
 ): readonly MenuItem[] {
   return [
@@ -120,6 +115,7 @@ function menuItemsOf(
       label: 'Remove',
       icon: 'trash',
       destructive: true,
+      disabled: !live || writes.busy,
       onPress: (): void => {
         removePlacement(placement, writes);
       },
@@ -133,15 +129,10 @@ export function PlacementLocation({
   readonly placement: DrivePlacement;
 }): ReactNode {
   const location = locationOf(placement);
+  if (location === null) return null;
   return (
-    <Text
-      variant="footnote"
-      tone="variant"
-      numberOfLines={1}
-      className={location === null ? '' : 'font-mono'}
-      selectable={location !== null}
-    >
-      {location ?? NOT_MOUNTED}
+    <Text variant="footnote" tone="variant" numberOfLines={1} className="font-mono" selectable>
+      {location}
     </Text>
   );
 }
@@ -151,14 +142,14 @@ export interface OpenHereAction {
   readonly open: () => void;
 }
 
-export function useOpenHere(placement: DrivePlacement): OpenHereAction | null {
+export function useOpenHere(placement: DrivePlacement | null): OpenHereAction | null {
   const here = useThisComputer();
   const drive = useDesktopDrive();
   if (
+    placement === null ||
     here?.deviceId !== placement.deviceId ||
     drive === null ||
-    placement.mode !== 'mounted' ||
-    placement.status.mountPoint === null
+    !mountOpenable(placement)
   ) {
     return null;
   }
@@ -182,46 +173,56 @@ export function OpenHereButton({ action }: { readonly action: OpenHereAction }):
   );
 }
 
+export interface PlacementReach {
+  readonly online: boolean;
+  readonly live: boolean;
+}
+
+export function pauseBodyOf(placement: DrivePlacement): DrivePlacementSet {
+  return changedBodyOf(placement, { enabled: !placement.enabled });
+}
+
+export function pauseFailureOf(placement: DrivePlacement): string {
+  return placement.enabled ? 'The folder was not paused' : 'The folder did not resume';
+}
+
 function Actions({
   placement,
   words,
   writes,
+  reach,
 }: {
   readonly placement: DrivePlacement;
   readonly words: PlacementWords;
   readonly writes: PlacementWrites;
+  readonly reach: PlacementReach;
 }): ReactNode {
   const router = useRouter();
   const paused = !placement.enabled;
   const location = locationOf(placement);
   const openHere = useOpenHere(placement);
   return (
-    <View className="flex-row items-center gap-1">
+    <View className="flex-row flex-wrap items-center gap-1">
       {openHere === null ? null : <OpenHereButton action={openHere} />}
-      {location === null ? null : (
+      {location === null || !reach.online || !reach.live ? null : (
         <Button
           label="Open on computer"
           icon="folder"
           variant="text"
-          href={href.settings.device(placement.deviceId, 'files', {
-            path: placement.mode === 'synced' ? location : parentPath(location),
-          })}
+          href={href.settings.device(placement.deviceId, 'files', { path: location })}
         />
       )}
       <IconButton
         icon={paused ? 'play' : 'pause'}
         label={paused ? 'Resume' : 'Pause'}
-        disabled={writes.busy || words.held}
+        disabled={writes.busy || words.held || !reach.live}
         onPress={() => {
-          writes.set(
-            [changedBodyOf(placement, { enabled: paused })],
-            paused ? 'The folder did not resume' : 'The folder was not paused',
-          );
+          writes.set([pauseBodyOf(placement)], pauseFailureOf(placement));
         }}
       />
       <OverflowButton
-        label={`More for ${location ?? placement.mountName ?? 'this folder'}`}
-        items={menuItemsOf(placement, writes, (to) => {
+        label={`More for ${location ?? 'this folder'}`}
+        items={menuItemsOf(placement, writes, reach.live, (to) => {
           router.push(to);
         })}
       />
@@ -250,27 +251,42 @@ function Heading({
       <Text variant="footnote" tone={lineToneOf(words)} numberOfLines={2}>
         {sentenceOf(placement.mode, words)}
       </Text>
+      <Progress placement={placement} folderBytes={placed.bytes} />
     </View>
   );
 }
 
-export function PlacementRow({ placement }: { readonly placement: DrivePlacement }): ReactNode {
+export function PlacementRow({
+  placement,
+  reach,
+  divided,
+}: {
+  readonly placement: DrivePlacement;
+  readonly reach: PlacementReach;
+  readonly divided: boolean;
+}): ReactNode {
   const placed = usePlacedFolder(placement);
   const writes = usePlacementWrites();
   const words = placementWordsOf(placement, placed.bytes);
   return (
-    <View className="gap-2 border-t border-outline-variant py-3">
-      <View className="flex-row flex-wrap items-start gap-3">
-        <Lead placement={placement} />
-        <Heading placement={placement} placed={placed} words={words} />
-        <Actions placement={placement} words={words} writes={writes} />
-      </View>
-      <Progress placement={placement} folderBytes={placed.bytes} />
-      {writes.problem === null ? null : (
-        <Text variant="footnote" tone="critical">
-          {writes.problem}
-        </Text>
+    <View
+      className={cn(
+        'flex-row items-start gap-3 py-3',
+        divided && 'border-t border-outline-variant',
       )}
+    >
+      <Lead placement={placement} />
+      <View className="min-w-0 flex-1 gap-2">
+        <View className="flex-row flex-wrap items-start gap-x-3 gap-y-1">
+          <Heading placement={placement} placed={placed} words={words} />
+          <Actions placement={placement} words={words} writes={writes} reach={reach} />
+        </View>
+        {writes.problem === null ? null : (
+          <Text variant="footnote" tone="critical">
+            {writes.problem}
+          </Text>
+        )}
+      </View>
     </View>
   );
 }

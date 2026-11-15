@@ -5,7 +5,7 @@ import { background, Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Icon, type IconName } from '../../../components/icon';
-import { MediaTileView, type ResolveThumb } from '../../../components/media-grid/tile';
+import { MediaTileView } from '../../../components/media-grid/tile';
 import { tilesOfPage } from '../../../components/media-grid/tiles';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
@@ -13,7 +13,7 @@ import { cn } from '../../../design/cn';
 import { errorText } from '../../../format/errors';
 import { count } from '../../../format/number';
 import { useSyncStatus } from '../../../store/selectors';
-import { driveLinks, flattenPages, useDriveItem } from '../../drive';
+import { driveThumbs, flattenPages, useDriveItem } from '../../drive';
 import {
   usePhotoAlbum,
   usePhotoAlbumItems,
@@ -110,8 +110,6 @@ function useMonthStrip(month: string): Strip {
   };
 }
 
-const resolveThumb: ResolveThumb = (tile) => driveLinks.resolve(tile.id, tile.rev, 'thumb');
-
 function Note({
   icon,
   tone,
@@ -180,7 +178,7 @@ function Thumbs({ strip }: { readonly strip: ReadyStrip }): ReactNode {
             tile={cell.tile}
             width={cell.width}
             height={layout.height}
-            resolveThumb={resolveThumb}
+            thumbs={driveThumbs}
             onOpen={(opened) => {
               router.push(href.photosItem(opened.id, strip.opens));
             }}

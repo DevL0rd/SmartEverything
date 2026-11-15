@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
-import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
@@ -86,39 +85,28 @@ function SyncSheet({
   );
 }
 
-export function SyncChip({ compact = false }: { readonly compact?: boolean }): ReactNode {
+export function SyncChip(): ReactNode {
   const sources = useSources();
   const [open, setOpen] = useState(false);
   const failed = sources.some((source) => source.last_error !== null);
   const latest = latestSyncOf(sources);
   const label = useMinuteOf((now) => syncedText(latest, now));
   const glyph = failed ? 'warning' : 'refresh';
-  const show = (): void => {
-    setOpen(true);
-  };
   return (
     <>
-      {compact ? (
-        <IconButton
-          icon={glyph}
-          label={`${label}, sync details`}
-          variant="tonal"
-          tone={failed ? 'warning' : 'variant'}
-          onPress={show}
-        />
-      ) : (
-        <Interactive
-          label={`${label}, sync details`}
-          onPress={show}
-          className="h-control-h flex-row items-center gap-2 rounded-full bg-surface-2 px-4"
-          layerClassName="rounded-full"
-        >
-          <Icon name={glyph} size={16} tone={failed ? 'warning' : 'variant'} />
-          <Text variant="label" tone="variant" numberOfLines={1}>
-            {label}
-          </Text>
-        </Interactive>
-      )}
+      <Interactive
+        label={`${label}, sync details`}
+        onPress={() => {
+          setOpen(true);
+        }}
+        className="h-control-h flex-row items-center gap-2 rounded-full bg-surface-2 px-4"
+        layerClassName="rounded-full"
+      >
+        <Icon name={glyph} size={16} tone={failed ? 'warning' : 'variant'} />
+        <Text variant="label" tone="variant" numberOfLines={1}>
+          {label}
+        </Text>
+      </Interactive>
       <SyncSheet
         open={open}
         onClose={() => {

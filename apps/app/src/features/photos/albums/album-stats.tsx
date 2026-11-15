@@ -58,11 +58,6 @@ export function AlbumStatsCard({
       <Stat value={stats?.span ?? UNKNOWN} label="first and latest photo" />
       <Stat value={who.label} label="who sees it" icon={who.icon} />
       <Stat value={stats?.size ?? UNKNOWN} label="on the hub" />
-      {album.kind === 'smart' ? (
-        <View className="flex-1 flex-row justify-end">
-          <Badge label="Smart album" icon="sparkles" tone="primary" />
-        </View>
-      ) : null}
     </View>
   );
 }

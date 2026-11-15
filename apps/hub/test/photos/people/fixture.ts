@@ -29,6 +29,8 @@ export const groups = (): PhotoGroupsRepository => new PhotoGroupsRepository(con
 
 export const analysis = (): PhotoAnalysisRepository => new PhotoAnalysisRepository(context);
 
+export const regrouped: string[] = [];
+
 export function resetConsent(): void {
   consent.face.clear();
   consent.smart.clear();
@@ -46,6 +48,9 @@ export function people(): PeopleService {
     newId: randomUUID,
     log: testLogger('photos'),
     profiles: () => [alice.profileId, bob.profileId],
+    regrouped: (profileId): void => {
+      regrouped.push(profileId);
+    },
   });
 }
 

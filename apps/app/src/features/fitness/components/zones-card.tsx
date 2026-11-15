@@ -61,7 +61,7 @@ export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
   );
   const maximum = maximumHeartRate(useMaxHeartRateSetting(), observed);
   if (records.data === undefined) {
-    return <Skeleton shape="block" className="h-56 w-full max-w-detail" />;
+    return <Skeleton shape="block" className="h-56 w-full" />;
   }
   if (maximum === null || samples.length === 0) {
     return null;
@@ -69,7 +69,7 @@ export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
   const zones = zoneMinutes(samples, maximum.bpm);
   const most = ZONES.reduce((largest, zone) => Math.max(largest, zones[zone.key]), 1);
   return (
-    <Card title="Heart rate zones" icon="gauge" className="w-full max-w-detail">
+    <Card title="Heart rate zones" icon="gauge" className="w-full">
       <View className="gap-2">
         {ZONES.map((zone) => (
           <ZoneRow

@@ -8,6 +8,7 @@ import { Icon } from '../../../components/icon';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { href } from '../../../app-shell/hrefs';
+import { cn } from '../../../design/cn';
 import { MEMBER_NOTE, OWNER_NOTE } from './trash-copy';
 import type { TrashView } from './use-trash';
 
@@ -24,10 +25,17 @@ export function TrashNote({ owner }: { readonly owner: boolean }): ReactNode {
   );
 }
 
-function TrashSkeleton(): ReactNode {
+function TrashSkeleton({ wide }: { readonly wide: boolean }): ReactNode {
   return (
-    <View aria-label="Loading Trash" className="gap-3 px-gutter py-2">
-      <Skeleton shape="block" className="h-24" />
+    <View aria-label="Loading Trash" className="gap-3 px-gutter pb-2">
+      <View className={cn('gap-3', wide && 'flex-row')}>
+        <Skeleton shape="tile" className={cn('h-40', wide && 'flex-1')} />
+        <Skeleton shape="tile" className={cn('h-40', wide && 'flex-1')} />
+      </View>
+      <View className="h-10 w-96 max-w-full justify-center">
+        <Skeleton shape="line" />
+      </View>
+      <View className="h-12" />
       {SKELETON_ROWS.map((key) => (
         <View key={key} className="h-14 flex-row items-center gap-3">
           <Skeleton shape="circle" className="size-7 rounded-sm" />
@@ -44,11 +52,13 @@ function TrashSkeleton(): ReactNode {
 export function TrashEmpty({
   view,
   owner,
+  wide,
 }: {
   readonly view: TrashView;
   readonly owner: boolean;
+  readonly wide: boolean;
 }): ReactNode {
-  if (view.status === 'loading') return <TrashSkeleton />;
+  if (view.status === 'loading') return <TrashSkeleton wide={wide} />;
   if (view.status === 'error') {
     return (
       <View className="px-gutter">
@@ -62,7 +72,9 @@ export function TrashEmpty({
         icon="trash"
         title="Trash is empty"
         body="Files and folders you delete stay here for a year, then leave for good."
-        action={<Button label="Open My Drive" variant="filled" href={href.drive()} />}
+        action={
+          <Button label="Open My Drive" variant="tonal" icon="hardDrive" href={href.drive()} />
+        }
       />
       <TrashNote owner={owner} />
     </View>

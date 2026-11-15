@@ -29,24 +29,26 @@ type controller interface {
 	pin(id, path string) error
 	unpin(id, path string) error
 	route(spec routeSpec) error
+	tune(t tuning) error
 }
 
 type controlLine struct {
-	Op      string   `json:"op"`
-	Mount   string   `json:"mount"`
-	Root    string   `json:"root"`
-	Folder  string   `json:"folder"`
-	Point   string   `json:"point"`
-	Path    string   `json:"path"`
-	Paths   []string `json:"paths"`
-	Options []string `json:"options"`
-	URL     string   `json:"url"`
-	Server  string   `json:"server"`
-	Pin     string   `json:"pin"`
-	MaxAge  *int64   `json:"maxAgeSeconds"`
-	Bytes   *int64   `json:"maxBytes"`
-	MinFree *int64   `json:"minFreeBytes"`
-	Every   *int64   `json:"cleanupSeconds"`
+	Op      string      `json:"op"`
+	Mount   string      `json:"mount"`
+	Root    string      `json:"root"`
+	Folder  string      `json:"folder"`
+	Point   string      `json:"point"`
+	Path    string      `json:"path"`
+	Paths   []string    `json:"paths"`
+	Options []string    `json:"options"`
+	URL     string      `json:"url"`
+	Server  string      `json:"server"`
+	Pin     string      `json:"pin"`
+	MaxAge  *int64      `json:"maxAgeSeconds"`
+	Bytes   *int64      `json:"maxBytes"`
+	MinFree *int64      `json:"minFreeBytes"`
+	Every   *int64      `json:"cleanupSeconds"`
+	Tuning  *tuningLine `json:"tuning"`
 }
 
 func (l controlLine) policy() cachePolicy {
@@ -82,6 +84,13 @@ var operations = map[string]operation{
 	"cache":      {[]string{"maxAgeSeconds", "cleanupSeconds"}, func(c controller, l controlLine) error { return c.cache(l.policy()) }},
 	"pin":        {[]string{"mount", "path"}, func(c controller, l controlLine) error { return c.pin(l.Mount, l.Path) }},
 	"unpin":      {[]string{"mount", "path"}, func(c controller, l controlLine) error { return c.unpin(l.Mount, l.Path) }},
+	"tuning": {[]string{"tuning"}, func(c controller, l controlLine) error {
+		t, err := l.Tuning.resolve()
+		if err != nil {
+			return err
+		}
+		return c.tune(t)
+	}},
 	"route": {nil, func(c controller, l controlLine) error {
 		return c.route(routeSpec{URL: l.URL, Server: l.Server, Pin: l.Pin})
 	}},
@@ -99,6 +108,11 @@ func (l controlLine) field(name string) string {
 		return supplied(l.MaxAge)
 	case "cleanupSeconds":
 		return supplied(l.Every)
+	case "tuning":
+		if l.Tuning == nil {
+			return ""
+		}
+		return "set"
 	default:
 		return l.Path
 	}

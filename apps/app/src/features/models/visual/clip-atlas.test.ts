@@ -1,8 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { cellOffset, clipFrame, heldFrame, rectStyle } from './clip-atlas';
+import {
+  cellOffset,
+  clipFrame,
+  heldFrame,
+  rectStyle,
+  stepClip,
+  type ClipCounter,
+} from './clip-atlas';
+import type { ClipResult } from '../bake/bake-protocol';
 import { clipImage } from './visual-fixture';
 
 const CLIP = clipImage({});
+
+interface CountedCounter extends ClipCounter {
+  readonly writes: number[];
+}
+
+function counter(start: number): CountedCounter {
+  let value = start;
+  const writes: number[] = [];
+  return {
+    writes,
+    get: (): number => value,
+    set: (next): void => {
+      value = next;
+      writes.push(next);
+    },
+  };
+}
+
+interface Played {
+  readonly elapsed: CountedCounter;
+  readonly cell: CountedCounter;
+}
+
+function playFor(clip: ClipResult, rate: number, seconds: number, hz: number): Played {
+  const elapsed = counter(0);
+  const cell = counter(clipFrame(clip, 0, rate));
+  for (let tick = 0; tick < seconds * hz; tick += 1) {
+    stepClip({ elapsed, cell }, clip, rate, 1 / hz);
+  }
+  return { elapsed, cell };
+}
 
 describe('clip atlas playback', () => {
   it('plays the intro frames once, then loops the loop frames by elapsed time', () => {
@@ -31,5 +70,35 @@ describe('clip atlas playback', () => {
 
   it('places the clipped window at the crop rectangle of the bake', () => {
     expect(rectStyle(CLIP.rect)).toEqual({ left: 10, top: 20, width: 30, height: 40 });
+  });
+
+  it('writes the atlas cell 12 times a second at 60 Hz for a 12 frames per second clip', () => {
+    const clip = clipImage({
+      frameS: 1 / 12,
+      introFrames: 10,
+      loopFrames: 36,
+      rows: 4,
+      columns: 12,
+    });
+    const { elapsed, cell } = playFor(clip, 1, 3, 60);
+    expect(elapsed.writes).toHaveLength(180);
+    expect(cell.writes.length).toBeGreaterThanOrEqual(35);
+    expect(cell.writes.length).toBeLessThanOrEqual(36);
+    expect(cell.writes.every((value, index) => value !== (cell.writes[index - 1] ?? -1))).toBe(
+      true,
+    );
+  });
+
+  it('writes the cell only when the loop frame changes at a slower device speed', () => {
+    const clip = clipImage({
+      frameS: 1 / 12,
+      introFrames: 0,
+      loopFrames: 36,
+      rows: 3,
+      columns: 12,
+    });
+    const { cell } = playFor(clip, 0.5, 2, 60);
+    expect(cell.writes.length).toBeGreaterThanOrEqual(11);
+    expect(cell.writes.length).toBeLessThanOrEqual(12);
   });
 });

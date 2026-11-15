@@ -6,155 +6,80 @@ import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { Button } from '../../../components/button';
-import { Card } from '../../../components/card';
-import { Arc, SegmentBar } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
+import { IconWell } from '../../../components/icon-well';
 import { ListRow } from '../../../components/list-row';
-import { MetricStrip, type MetricItem } from '../../../components/metric-strip';
+import type { MenuItem } from '../../../components/menu';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
-import { bytes, count } from '../../../format/number';
+import { useSizeClass } from '../../../design/size-class';
+import { count } from '../../../format/number';
+import { joinParts, sentenceCase } from '../../../format/text';
 import { moment } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { useDevices, useLoaded } from '../../../store/selectors';
+import { useFirstDevice, useLoaded, useSyncStatus } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useDrivePlacementRows } from '../data';
 import { DriveFrame } from '../components/drive-frame';
-import { usePlacementWrites } from './placement-change';
+import { usePlacementWrites, type PlacementWrites } from './placement-change';
+import { locationOf } from './placement-model';
 import {
-  OpenHereButton,
-  PlacementLocation,
+  pauseBodyOf,
+  pauseFailureOf,
   removePlacement,
-  useOpenHere,
   usePlacedFolder,
   type PlacedFolder,
 } from './placement-row';
 import { SelectiveSync, SyncRules } from './placement-sync';
-import {
-  basicLimitsOf,
-  placementWordsOf,
-  sentenceOf,
-  syncedShareOf,
-  type PlacementWords,
-} from './placement-words';
+import { placementWordsOf, type PlacementWords } from './placement-words';
 import { ComputersSkeleton } from './computers-screen';
+import { Hero } from './placement-hero';
 
 const COMPUTERS_CRUMB = { label: 'Computers', href: href.drivePage('computers') } as const;
-const RING_SIZE = 96;
-const TILE_COLUMNS = { compact: 2, medium: 4, expanded: 4 } as const;
 
-function crumbsOf(device: Device | undefined, title: string): readonly Crumb[] {
-  if (device === undefined) return [COMPUTERS_CRUMB, { label: title }];
+function crumbsOf(device: Device | null, path: string): readonly Crumb[] {
+  if (device === null) return [COMPUTERS_CRUMB, { label: path }];
   return [
     COMPUTERS_CRUMB,
     { label: device.label, href: href.driveComputer(device.id) },
-    { label: title },
+    { label: path },
   ];
 }
 
-export function ringShareOf(placement: DrivePlacement, size: number | null): number {
-  if (placement.mode === 'mounted') return placement.status.state === 'mounted' ? 1 : 0;
-  if (placement.status.state === 'up_to_date') return 1;
-  return syncedShareOf(placement.status.needBytes, size) ?? 0;
-}
-
-function modeTilesOf(placement: DrivePlacement, now: number): readonly MetricItem[] {
-  const { status } = placement;
-  if (placement.mode === 'mounted') {
-    return [
-      { key: 'waiting', label: 'Waiting to upload', value: count(status.pendingUploads) },
-      { key: 'open', label: 'Open now', value: count(status.openFiles) },
-    ];
-  }
-  return [
-    { key: 'waiting', label: 'Left to sync', value: bytes(status.needBytes) },
-    {
-      key: 'synced',
-      label: 'Last synced',
-      value: status.lastSyncedAt === null ? 'Not yet' : moment(status.lastSyncedAt, now),
-    },
-  ];
-}
-
-export function heroTilesOf(
-  placement: DrivePlacement,
-  placed: PlacedFolder,
-  now: number,
-): readonly MetricItem[] {
-  return [
-    { key: 'size', label: 'Size', value: placed.bytes === null ? 'Unknown' : bytes(placed.bytes) },
-    ...modeTilesOf(placement, now),
-    { key: 'errors', label: 'Problems', value: count(placement.status.errors.length) },
-  ];
-}
-
-function Hero({
+function FailedBanner({
   placement,
-  placed,
-  words,
+  device,
 }: {
   readonly placement: DrivePlacement;
-  readonly placed: PlacedFolder;
-  readonly words: PlacementWords;
+  readonly device: Device | null;
 }): ReactNode {
-  const now = useMinute();
-  const openHere = useOpenHere(placement);
+  if (placement.status.state !== 'failed' || placement.hold !== null || !placement.enabled) {
+    return null;
+  }
+  const location = locationOf(placement);
+  const computer = device === null ? 'the computer' : device.label;
+  const reachable = location !== null && device?.online === true;
   return (
-    <Card>
-      <View className="flex-row flex-wrap items-center gap-4">
-        <View accessible accessibilityLabel={words.chip.label} className="size-24">
-          <Arc
-            value={ringShareOf(placement, placed.bytes)}
-            size={RING_SIZE}
-            thickness={10}
-            colour={words.tone ?? 'track'}
-          />
-        </View>
-        <View className="min-w-48 flex-1 gap-1">
-          <Text variant="title-2" numberOfLines={2}>
-            {words.chip.label}
-          </Text>
-          <Text variant="callout" tone="variant" numberOfLines={3}>
-            {sentenceOf(placement.mode, words)}
-          </Text>
-          <PlacementLocation placement={placement} />
-          {openHere === null ? null : (
-            <View className="flex-row">
-              <OpenHereButton action={openHere} />
-            </View>
-          )}
-        </View>
-      </View>
-      <MetricStrip items={heroTilesOf(placement, placed, now)} columns={TILE_COLUMNS} />
-      {words.notes.map((note) => (
-        <Text key={note} variant="footnote" tone="variant">
-          {note}
-        </Text>
-      ))}
-    </Card>
-  );
-}
-
-function MountCache({ placement }: { readonly placement: DrivePlacement }): ReactNode {
-  const { status } = placement;
-  if (placement.mode !== 'mounted') return null;
-  return (
-    <Card title="Cache and tier" icon="hardDrive">
-      <Text variant="footnote" tone="variant">
-        {status.basicLimits === null
-          ? 'Full drive: programs open files in place and big files stream. What you read stays in the cache for an hour.'
-          : basicLimitsOf(status.basicLimits)}
-      </Text>
-      <SegmentBar
-        label="Mount cache"
-        segments={[
-          { label: 'Cached', value: status.cacheBytes - status.pinnedBytes, colour: 'primary' },
-          { label: 'Kept offline', value: status.pinnedBytes, colour: 'viz-4' },
-        ]}
-        legend
-        format={bytes}
-      />
-    </Card>
+    <Banner
+      tone="critical"
+      title={`Sync stopped on ${computer}`}
+      body={
+        reachable
+          ? `Open the folder on ${computer} to fix the problem.`
+          : `Fix the problem on ${computer} when it is back online.`
+      }
+      wrapBody
+      {...(reachable
+        ? {
+            action: {
+              label: 'Open on computer',
+              icon: 'folder',
+              variant: 'tonal',
+              href: href.settings.device(placement.deviceId, 'files', { path: location }),
+            },
+          }
+        : {})}
+    />
   );
 }
 
@@ -170,44 +95,12 @@ function Errors({ placement }: { readonly placement: DrivePlacement }): ReactNod
           title={error.relPath ?? 'The whole folder'}
           subtitle={error.message}
           subtitleTone="critical"
-          caption={moment(error.at, now)}
-          icon="warning"
+          caption={sentenceCase(moment(error.at, now))}
+          leading={<IconWell icon="warning" colour="critical" />}
           wrapSubtitle
         />
       ))}
     </List>
-  );
-}
-
-function RemoveSection({ placement }: { readonly placement: DrivePlacement }): ReactNode {
-  const router = useRouter();
-  const writes = usePlacementWrites();
-  return (
-    <View className="gap-2">
-      <Text variant="footnote" tone="variant">
-        {placement.mode === 'synced'
-          ? 'The files stay on this computer; they stop syncing.'
-          : 'The folder is unmounted. Nothing in the drive is deleted.'}
-      </Text>
-      <View className="flex-row">
-        <Button
-          label="Remove from this computer"
-          icon="trash"
-          variant="destructive"
-          loading={writes.busy}
-          onPress={() => {
-            removePlacement(placement, writes, () => {
-              router.replace(href.driveComputer(placement.deviceId));
-            });
-          }}
-        />
-      </View>
-      {writes.problem === null ? null : (
-        <Text variant="footnote" tone="critical">
-          {writes.problem}
-        </Text>
-      )}
-    </View>
   );
 }
 
@@ -229,6 +122,7 @@ function SyncSections({
           key={(placement.excluded ?? []).join('\n')}
           placement={placement}
           base={placed.folder}
+          name={placed.folder === null ? placed.path : placed.folder.name}
           size={placed.bytes}
           editable={editable}
         />
@@ -238,7 +132,7 @@ function SyncSections({
   );
 }
 
-function offlineBannerOf(device: Device | undefined): { readonly banner?: ReactNode } {
+function offlineBannerOf(device: Device | null): { readonly banner?: ReactNode } {
   if (device?.online !== false) return {};
   return {
     banner: (
@@ -252,30 +146,120 @@ function offlineBannerOf(device: Device | undefined): { readonly banner?: ReactN
   };
 }
 
+export interface PlacementMenuInputs {
+  readonly placement: DrivePlacement;
+  readonly words: PlacementWords;
+  readonly online: boolean;
+  readonly live: boolean;
+  readonly busy: boolean;
+}
+
+export function placementMenuOf(
+  inputs: PlacementMenuInputs,
+  act: {
+    readonly pause: () => void;
+    readonly open: (location: string) => void;
+    readonly remove: () => void;
+  },
+): readonly MenuItem[] {
+  const { placement, words } = inputs;
+  const location = locationOf(placement);
+  const paused = !placement.enabled;
+  return [
+    {
+      label: paused ? 'Resume' : 'Pause',
+      icon: paused ? 'play' : 'pause',
+      disabled: words.held || inputs.busy || !inputs.live,
+      onPress: act.pause,
+    },
+    ...(location === null
+      ? []
+      : [
+          {
+            label: 'Open on computer',
+            icon: 'folder' as const,
+            disabled: !inputs.online || !inputs.live,
+            onPress: (): void => {
+              act.open(location);
+            },
+          },
+        ]),
+    {
+      label: 'Remove from this computer',
+      icon: 'trash',
+      destructive: true,
+      disabled: inputs.busy || !inputs.live,
+      onPress: act.remove,
+    },
+  ];
+}
+
+function usePlacementMenu(
+  placement: DrivePlacement,
+  words: PlacementWords,
+  device: Device | null,
+  writes: PlacementWrites,
+): readonly MenuItem[] {
+  const router = useRouter();
+  const live = useSyncStatus().status === 'live';
+  return placementMenuOf(
+    { placement, words, online: device?.online === true, live, busy: writes.busy },
+    {
+      pause: () => {
+        writes.set([pauseBodyOf(placement)], pauseFailureOf(placement));
+      },
+      open: (location) => {
+        router.push(href.settings.device(placement.deviceId, 'files', { path: location }));
+      },
+      remove: () => {
+        removePlacement(placement, writes, () => {
+          router.replace(href.driveComputer(placement.deviceId));
+        });
+      },
+    },
+  );
+}
+
+function headerOf(
+  placed: PlacedFolder,
+  device: Device | null,
+  crumbs: boolean,
+): { readonly title: string; readonly subtitle?: string } {
+  const title = placed.folder === null ? placed.path : placed.folder.name;
+  if (crumbs) return { title };
+  return { title, subtitle: joinParts([placed.path, device === null ? null : device.label]) };
+}
+
 function PlacedView({
   placement,
   device,
 }: {
   readonly placement: DrivePlacement;
-  readonly device: Device | undefined;
+  readonly device: Device | null;
 }): ReactNode {
   const placed = usePlacedFolder(placement);
+  const writes = usePlacementWrites();
   const words = placementWordsOf(placement, placed.bytes);
   const editable = !words.held && !placement.status.readOnly;
+  const crumbs = useSizeClass().header === 'desktop';
   return (
     <DriveFrame
       section="computers"
-      title={placed.path}
-      subtitle={device?.label ?? 'A computer'}
+      {...headerOf(placed, device, crumbs)}
       breadcrumbs={crumbsOf(device, placed.path)}
+      overflow={usePlacementMenu(placement, words, device, writes)}
       {...offlineBannerOf(device)}
     >
       <View className="gap-4">
         <Hero placement={placement} placed={placed} words={words} />
-        <SyncSections placement={placement} placed={placed} editable={editable} />
-        <MountCache placement={placement} />
+        {writes.problem === null ? null : (
+          <Text variant="footnote" tone="critical" className="px-4">
+            {writes.problem}
+          </Text>
+        )}
+        <FailedBanner placement={placement} device={device} />
         <Errors placement={placement} />
-        <RemoveSection placement={placement} />
+        <SyncSections placement={placement} placed={placed} editable={editable} />
       </View>
     </DriveFrame>
   );
@@ -284,8 +268,10 @@ function PlacedView({
 export function PlacementScreen(): ReactNode {
   const { placementId } = useLocalSearchParams<{ placementId: string }>();
   const loaded = useLoaded();
-  const placement = useDrivePlacementRows().find((candidate) => candidate.id === placementId);
-  const device = useDevices().find((candidate) => candidate.id === placement?.deviceId);
+  const placement = useDrivePlacementRows().find(
+    (candidate) => candidate.id === placementId && candidate.mode === 'synced',
+  );
+  const device = useFirstDevice((candidate) => candidate.id === placement?.deviceId);
   if (placement !== undefined) {
     return <PlacedView placement={placement} device={device} />;
   }

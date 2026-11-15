@@ -25,6 +25,7 @@ import { callersBehind } from '../functions/library/callers-behind';
 import { copyName } from '../list/copy-name';
 import { links } from '../routes';
 import { NotFound } from '../shared/not-found';
+import { workspaceSectionsOf } from './workspace-sections';
 
 const log = new Logger('app.automations');
 
@@ -86,6 +87,8 @@ export function NodesHost(): ReactNode {
   return (
     <PageShell
       title="Custom Nodes"
+      back={false}
+      sections={workspaceSectionsOf('nodes')}
       {...(loaded ? { search: librarySearchOf(filter, setFilter) } : {})}
       {...(placement === 'fab' && loaded
         ? { primaryAction: { label: 'New node', icon: 'plus', onPress: openCreate } }
@@ -207,7 +210,7 @@ export function NodeDetailHost(): ReactNode {
     return <NotFound title="Custom Node not found" body="This link doesn’t point to a node." />;
   }
   return (
-    <PageShell title={title} width={query.isError || query.data === undefined ? 'reading' : 'full'}>
+    <PageShell title={title}>
       <LoadedQuery query={query}>{(detail) => <Detail detail={detail} />}</LoadedQuery>
     </PageShell>
   );

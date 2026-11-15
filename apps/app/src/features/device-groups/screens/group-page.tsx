@@ -85,7 +85,7 @@ function Layout({
     );
   return (
     <View className="flex-row items-start gap-6">
-      <View className="max-w-xl flex-1 gap-4">
+      <View className="flex-1 gap-4">
         {stage}
         {today}
       </View>

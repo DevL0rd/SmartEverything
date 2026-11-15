@@ -22,6 +22,7 @@ import {
   type CardSize,
   type MapView,
 } from './map-view';
+import { useMapWheel } from './use-map-wheel';
 
 export interface ClusterMapProps {
   readonly view: MapView;
@@ -150,6 +151,7 @@ function Layers({
 
 export function ClusterMap(props: ClusterMapProps): ReactNode {
   const { ref, frame, onLayout } = useMapFrame();
+  useMapWheel(ref, 'wheel', props, frame);
   return (
     <View
       ref={ref}

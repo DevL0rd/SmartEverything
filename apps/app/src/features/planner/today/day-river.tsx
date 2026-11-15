@@ -5,7 +5,10 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { SwipeRow, type SwipeAction } from '../../../components/swipe-row';
 import { Text } from '../../../components/text';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
+import { useAreaWidth } from '../../../design/size-class';
 import {
   usePlannerCollections,
   usePlannerItems,
@@ -19,7 +22,7 @@ import { ResponseBadge } from '../item/guest-row';
 import { LIST_DOT } from '../item/composer-tokens';
 import { useItemPress } from '../item/item-menu-host';
 import { bookedMinutesOf } from './day-strip-model';
-import { useHiddenKeys, useOccurrenceActions, type OccurrenceActions } from './now-lens';
+import { lensOf } from './now-lens';
 import {
   fadeStepsOf,
   riverCaptionOf,
@@ -28,6 +31,7 @@ import {
   type RiverRow,
   type RiverStep,
 } from './river-model';
+import { useTodayActions, type OccurrenceActions } from './today-actions';
 
 const ROW_HEIGHT: Readonly<Record<RiverStep, string>> = {
   0: 'min-h-14',
@@ -35,6 +39,14 @@ const ROW_HEIGHT: Readonly<Record<RiverStep, string>> = {
   2: 'min-h-11.5',
   3: 'min-h-10.5',
   4: 'min-h-10',
+};
+
+const TOUCH_ROW_HEIGHT: Readonly<Record<RiverStep, string>> = {
+  0: 'min-h-14',
+  1: 'min-h-13',
+  2: 'min-h-11.5',
+  3: 'min-h-11',
+  4: 'min-h-11',
 };
 
 const SPINE: Readonly<Record<RiverStep, string>> = {
@@ -60,13 +72,17 @@ function TimeColumn({
   readonly step: RiverStep;
 }): ReactNode {
   const near = NEAR.has(step);
+  const word = row.at === null;
   return (
-    <View className={cn('w-11', near ? 'pt-1.5' : 'pt-1')}>
+    <View className={cn('w-12', near && !word ? 'pt-1.5' : 'pt-1')}>
       <Text
-        variant={near ? 'callout' : 'caption'}
+        variant={near && !word ? 'callout' : 'caption'}
         tone="variant"
-        numberOfLines={2}
-        className={cn('tabular', near ? 'font-mono-medium' : 'font-mono')}
+        numberOfLines={1}
+        className={cn(
+          !word && 'tabular',
+          word ? 'pt-0.5' : near ? 'font-mono-medium' : 'font-mono',
+        )}
       >
         {row.time}
       </Text>
@@ -126,6 +142,7 @@ function GuestMark({ row }: { readonly row: RiverRow }): ReactNode {
 
 function Body({ row, step }: { readonly row: RiverRow; readonly step: RiverStep }): ReactNode {
   const bright = BRIGHT.has(step);
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   return (
     <View
       className={cn(
@@ -148,7 +165,7 @@ function Body({ row, step }: { readonly row: RiverRow; readonly step: RiverStep 
         )}
       </View>
       <GuestMark row={row} />
-      <CalendarPill row={row} />
+      {compact ? null : <CalendarPill row={row} />}
       <GoogleMark row={row} />
     </View>
   );
@@ -189,6 +206,7 @@ interface RowProps {
 function RiverItem({ row, step, actions }: RowProps): ReactNode {
   const { offline } = usePlannerFrame();
   const press = useItemPress(row.occurrence.item_id, row.occurrence.occurrence_key);
+  const heights = useIdiom() === 'touch' ? TOUCH_ROW_HEIGHT : ROW_HEIGHT;
   return (
     <SwipeRow {...swipesOf(row, actions, offline)}>
       <Interactive
@@ -196,7 +214,7 @@ function RiverItem({ row, step, actions }: RowProps): ReactNode {
         onLongPress={press.onLongPress}
         onContextMenu={press.onContextMenu}
         label={row.spoken}
-        className={cn('flex-row gap-3 rounded-sm', ROW_HEIGHT[step])}
+        className={cn('flex-row gap-3 rounded-sm', heights[step])}
         layerClassName="rounded-sm"
         focusInset
       >
@@ -216,6 +234,7 @@ function useRiverRows(day: PlannerDay, hidden: ReadonlySet<string>): readonly Ri
     collections: usePlannerCollections(person),
     items: usePlannerItems(person),
     hidden,
+    lens: lensOf(day, hidden),
     guests: useRows('planner_guests'),
     me: usePlannerProfile(person),
   });
@@ -230,8 +249,7 @@ export function DayRiver({
 }): ReactNode {
   const { person } = usePlannerFrame();
   const fade = usePlannerPreferences(person).data?.day_planner.fade ?? 'off';
-  const [hidden, hide] = useHiddenKeys();
-  const actions = useOccurrenceActions(day, hide);
+  const { hidden, actions } = useTodayActions();
   const rows = useRiverRows(day, hidden);
   const ref = useRef<View>(null);
   const steps = useVisibleMinuteOf(ref, (now) => fadeStepsOf(rows, now, fade), sameSteps);

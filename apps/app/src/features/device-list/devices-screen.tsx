@@ -61,7 +61,7 @@ function useQuery(): readonly [DeviceQuery, (query: DeviceQuery) => void] {
 
 function NoDevices(): ReactNode {
   return (
-    <PageShell title="Devices" settings={mainPageSettings('devices')} back={false} width="reading">
+    <PageShell title="Devices" settings={mainPageSettings('devices')} back={false}>
       <EmptyState
         icon="bulb"
         title="No devices yet"
@@ -83,7 +83,7 @@ function ListTop({
 }): ReactNode {
   return (
     <View className="gap-3 px-gutter pb-1">
-      <View className="w-full max-w-dashboard gap-3">
+      <View className="w-full gap-3">
         {room === null ? null : <SelectedRoomCard roomId={room} />}
         {allOffline ? (
           <Banner
@@ -280,7 +280,6 @@ export function DevicesScreen(): ReactNode {
       back={false}
       actions={[{ icon: 'plus', label: 'Add a device', href: ADD_DEVICE, primary: true }]}
       scroll={false}
-      width="full"
       search={{
         value: query.text,
         onChange: (text) => {

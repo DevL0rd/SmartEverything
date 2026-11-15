@@ -34,16 +34,21 @@ vi.mock('../components/photos-frame', () => ({
   PhotosFrame: ({
     children,
     title,
-    actions,
+    settings,
+    search,
   }: {
     readonly children: ReactNode;
     readonly title?: string;
-    readonly actions?: readonly { readonly label: string }[];
+    readonly settings?: { readonly label: string };
+    readonly search?: { readonly placeholder: string };
   }): ReactNode =>
     createElement(
       'main',
-      { 'data-title': title ?? '' },
-      (actions ?? []).map((action) => createElement('button', { key: action.label }, action.label)),
+      {
+        'data-title': title ?? '',
+        'data-settings': settings?.label ?? '',
+        'data-search': search?.placeholder ?? '',
+      },
       children,
     ),
 }));
@@ -152,12 +157,12 @@ describe('map and places states', () => {
 });
 
 describe('map with places', () => {
-  it('lists the places in view beside the map with the map settings action', () => {
+  it('lists the places in view beside the map with the place search in the top shell', () => {
     state.places = query<readonly PlaceCountry[]>([
       { countryCode: 'PT', country: 'Portugal', count: 842, coverItemId: null, places: [LISBON] },
     ]);
     const markup = map();
-    expect(markup).toContain('Map settings');
+    expect(markup).toContain('data-settings="Map settings"');
     expect(markup).toContain(MAP_COPY.inView);
     expect(markup).toContain(MAP_COPY.find);
     expect(markup).toContain('Lisbon, Portugal, 842 photos');

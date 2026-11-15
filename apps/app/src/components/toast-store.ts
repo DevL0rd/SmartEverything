@@ -207,6 +207,10 @@ export function releaseToast(id: number, reason: ToastHold): void {
   markHeld(id);
 }
 
+export function updateToast(id: number, patch: Pick<ToastBase, 'message' | 'detail'>): void {
+  change((items) => items.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
+}
+
 export function undoLatestToast(): boolean {
   const { items, capacity } = state.get();
   const target = items.slice(0, capacity).findLast((toast) => toast.undoable && !toast.leaving);

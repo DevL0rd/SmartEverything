@@ -18,7 +18,7 @@ const WITHDRAWN_FAILURE = new UpdateFailure(
 async function failedRestart(failure: Error): Promise<ReturnType<typeof setup>> {
   const world = setup();
   vi.mocked(world.adapter.restart).mockRejectedValueOnce(failure);
-  await world.controller.check('live');
+  await world.controller.check('paired');
   await world.controller.download(OFFER.id);
   return world;
 }
@@ -85,7 +85,7 @@ describe('the app update controller restarts', () => {
   it('restarts from the tray item only when an update waits', async () => {
     const world = setup();
     const stop = world.controller.listenForConfirmRequests();
-    await world.controller.check('live');
+    await world.controller.check('paired');
     world.clickTray();
     await settle();
     expect(world.adapter.restart).not.toHaveBeenCalled();

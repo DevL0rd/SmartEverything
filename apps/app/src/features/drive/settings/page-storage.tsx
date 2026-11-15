@@ -335,7 +335,7 @@ function ChecksList({ owner }: { readonly owner: boolean }): ReactNode {
 export function StorageSection(): ReactNode {
   const owner = useIsOwner();
   return (
-    <DriveSettingsSection section="storage">
+    <DriveSettingsSection>
       <View className="gap-3">
         <QuotaList owner={owner} />
         <ChecksList owner={owner} />

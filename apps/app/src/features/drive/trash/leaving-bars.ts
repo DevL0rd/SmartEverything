@@ -1,88 +1,80 @@
-import type { DriveStats } from '@smarteverything/domain';
 import type { BarShape } from '../../../components/charts/bar-marks';
 import { barSlots } from '../../../components/charts/bar-path';
 import { bytes } from '../../../format/number';
-import { monthLabel } from './trash-model';
+import { monthLabel, type TrashItem } from './trash-model';
 
-export type LeavingMonth = DriveStats['purges'][number];
+export interface LeavingMonth {
+  readonly month: string;
+  readonly bytes: number;
+}
 
 export const BARS_HEIGHT = 56;
 const RADIUS = 3;
 const GAP_SHARE = 0.25;
-const SEGMENT_GAP = 2;
+const MONTHS_IN_YEAR = 12;
 
-export interface LeavingFills {
-  readonly trash: string;
-  readonly versions: string;
+function monthIndexOf(key: string): number {
+  return Number(key.slice(0, 4)) * MONTHS_IN_YEAR + Number(key.slice(5, 7)) - 1;
 }
 
-function monthShapes(
-  month: LeavingMonth,
-  slot: { readonly x: number; readonly width: number },
-  unit: number,
-  fills: LeavingFills,
-): BarShape[] {
-  const base = BARS_HEIGHT;
-  const trashTop = base - month.trashBytes * unit;
-  const shapes: BarShape[] = [];
-  if (month.trashBytes > 0) {
-    shapes.push({
-      key: `${month.month}-trash`,
-      ...slot,
-      top: Math.min(base - 1, trashTop),
-      bottom: base,
-      radii: { top: month.versionBytes > 0 ? 0 : RADIUS, bottom: 0 },
-      opacity: 1,
-      fill: fills.trash,
-    });
+function monthKeyOf(index: number): string {
+  const year = Math.floor(index / MONTHS_IN_YEAR);
+  const month = (index % MONTHS_IN_YEAR) + 1;
+  return `${String(year)}-${String(month).padStart(2, '0')}`;
+}
+
+export function leavingMonthsOf(
+  items: readonly Pick<TrashItem, 'purgeMonth' | 'bytes'>[],
+  today: string,
+): readonly LeavingMonth[] {
+  if (items.length === 0) return [];
+  const first = monthIndexOf(today);
+  const last = Math.max(first, ...items.map((item) => monthIndexOf(item.purgeMonth)));
+  const sums = new Map<number, number>();
+  for (const item of items) {
+    const index = Math.max(first, monthIndexOf(item.purgeMonth));
+    sums.set(index, (sums.get(index) ?? 0) + item.bytes);
   }
-  if (month.versionBytes > 0) {
-    const bottom = month.trashBytes > 0 ? trashTop - SEGMENT_GAP : base;
-    shapes.push({
-      key: `${month.month}-versions`,
-      ...slot,
-      top: Math.min(bottom - 1, bottom - month.versionBytes * unit),
-      bottom,
-      radii: { top: RADIUS, bottom: 0 },
-      opacity: 1,
-      fill: fills.versions,
-    });
-  }
-  return shapes;
+  return Array.from({ length: last - first + 1 }, (_, offset) => ({
+    month: monthKeyOf(first + offset),
+    bytes: sums.get(first + offset) ?? 0,
+  }));
 }
 
 export function leavingShapes(
   months: readonly LeavingMonth[],
   width: number,
-  fills: LeavingFills,
+  fill: string,
 ): readonly BarShape[] {
   const slots = barSlots(months.length, width, { gap: GAP_SHARE, min: 1 });
-  const peak = Math.max(1, ...months.map((month) => month.trashBytes + month.versionBytes));
-  const unit = (BARS_HEIGHT - SEGMENT_GAP) / peak;
+  const peak = Math.max(1, ...months.map((month) => month.bytes));
+  const unit = BARS_HEIGHT / peak;
   return months.flatMap((month, index) => {
     const slot = slots[index];
-    return slot === undefined ? [] : monthShapes(month, slot, unit, fills);
+    if (slot === undefined || month.bytes === 0) return [];
+    return [
+      {
+        key: month.month,
+        ...slot,
+        top: Math.min(BARS_HEIGHT - 1, BARS_HEIGHT - month.bytes * unit),
+        bottom: BARS_HEIGHT,
+        radii: { top: RADIUS, bottom: 0 },
+        opacity: 1,
+        fill,
+      },
+    ];
   });
 }
 
-export function leavingTotals(months: readonly LeavingMonth[]): {
-  readonly trash: number;
-  readonly versions: number;
-} {
-  return {
-    trash: months.reduce((sum, month) => sum + month.trashBytes, 0),
-    versions: months.reduce((sum, month) => sum + month.versionBytes, 0),
-  };
+export function leavingTotalOf(months: readonly LeavingMonth[]): number {
+  return months.reduce((sum, month) => sum + month.bytes, 0);
 }
 
 export function leavingLabel(months: readonly LeavingMonth[]): string {
   const parts = months
-    .filter((month) => month.trashBytes + month.versionBytes > 0)
-    .map(
-      (month) =>
-        `${monthLabel(month.month)}: trash ${bytes(month.trashBytes)}, versions ${bytes(month.versionBytes)}`,
-    );
+    .filter((month) => month.bytes > 0)
+    .map((month) => `${monthLabel(month.month)}: ${bytes(month.bytes)}`);
   return parts.length === 0
     ? 'Nothing leaves for good in the coming months'
-    : `Leaving for good each month. ${parts.join('; ')}`;
+    : `Leaving Trash for good each month. ${parts.join('; ')}`;
 }

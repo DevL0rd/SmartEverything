@@ -1,11 +1,12 @@
 import type { PlannerBookingWindow, PlannerCollectionRow } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
-import { SelectRow } from '../../../components/rows';
-import { List, Section } from '../../../components/section';
+import { NavRow, SelectRow } from '../../../components/rows';
+import { List, SectionAction } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import type { IconName } from '../../../components/icon';
@@ -35,6 +36,7 @@ export interface BookingFieldsProps {
   readonly working: readonly PlannerBookingWindow[];
   readonly day: { readonly start: string; readonly end: string };
   readonly titleError: string | null;
+  readonly calendarError: string | null;
   readonly onChange: (edit: DraftEdit) => void;
 }
 
@@ -111,7 +113,35 @@ function AboutFields({ draft, titleError, onChange }: BookingFieldsProps): React
   );
 }
 
-function TimingRows({ draft, calendars, onChange }: BookingFieldsProps): ReactNode {
+function CalendarRow({ draft, calendars, calendarError, onChange }: BookingFieldsProps): ReactNode {
+  if (calendars.length === 0) {
+    return (
+      <NavRow
+        title="Make a calendar first"
+        subtitle="Bookings land on a calendar. Add one on the Calendar page."
+        wrapSubtitle
+        icon="calendar"
+        href={href.planner.calendar()}
+      />
+    );
+  }
+  return (
+    <SelectRow
+      title="Calendar"
+      icon="calendar"
+      placeholder="Pick a calendar"
+      {...(calendarError === null ? {} : { subtitle: calendarError, subtitleTone: 'critical' })}
+      options={calendars.map((calendar) => ({ value: calendar.id, label: calendar.name }))}
+      value={draft.collection_id}
+      onChange={(collectionId) => {
+        onChange({ collection_id: collectionId });
+      }}
+    />
+  );
+}
+
+function TimingRows(props: BookingFieldsProps): ReactNode {
+  const { draft, onChange } = props;
   return (
     <List title="Meeting">
       <StepRow
@@ -126,16 +156,7 @@ function TimingRows({ draft, calendars, onChange }: BookingFieldsProps): ReactNo
           onChange({ minutes });
         }}
       />
-      <SelectRow
-        title="Calendar"
-        icon="calendar"
-        placeholder="Pick a calendar"
-        options={calendars.map((calendar) => ({ value: calendar.id, label: calendar.name }))}
-        value={draft.collection_id}
-        onChange={(collectionId) => {
-          onChange({ collection_id: collectionId });
-        }}
-      />
+      <CalendarRow {...props} />
     </List>
   );
 }
@@ -205,31 +226,21 @@ function WindowRows({ draft, onChange }: BookingFieldsProps): ReactNode {
 interface GridActionsProps {
   readonly draft: BookingDraft;
   readonly working: readonly PlannerBookingWindow[];
-  readonly zoom: 'day' | 'all' | null;
-  readonly onZoom: () => void;
   readonly onChange: (edit: DraftEdit) => void;
 }
 
-function GridActions({ draft, working, zoom, onZoom, onChange }: GridActionsProps): ReactNode {
+function GridActions({ draft, working, onChange }: GridActionsProps): ReactNode {
   return (
     <View className="flex-row flex-wrap gap-2">
       <Button
         label="Use working hours"
         icon="clock"
-        variant="tonal"
+        variant="text"
         disabled={working.length === 0}
         onPress={() => {
           onChange({ availability: working });
         }}
       />
-      {zoom === null ? null : (
-        <Button
-          label={zoom === 'all' ? 'Show your day' : 'Show all 24 hours'}
-          icon={zoom === 'all' ? 'minimize' : 'maximize'}
-          variant="text"
-          onPress={onZoom}
-        />
-      )}
       <Button
         label="Clear"
         icon="eraser"
@@ -257,8 +268,27 @@ function AvailabilityFields({
 }: BookingFieldsProps): ReactNode {
   const [allHours, setAllHours] = useState(false);
   const span = gridSpanOf(draft.availability, allHours ? null : day);
+  const zoom = zoomOf(allHours, span);
   return (
-    <Section title="When you are free" caption={weeklyTextOf(weeklyMinutesOf(draft.availability))}>
+    <View className="gap-1">
+      <View className="min-h-8 flex-row items-end justify-between gap-2">
+        <View className="min-w-0 flex-1 flex-row flex-wrap items-end gap-x-2">
+          <Text variant="footnote" tone="variant" accessibilityRole="header" className="pb-1">
+            When you are free
+          </Text>
+          <Text variant="footnote" tone="variant" className="shrink pb-1">
+            {weeklyTextOf(weeklyMinutesOf(draft.availability))}
+          </Text>
+        </View>
+        {zoom === null ? null : (
+          <SectionAction
+            label={zoom === 'all' ? 'Show your day' : 'Show all 24 hours'}
+            onPress={() => {
+              setAllHours(!allHours);
+            }}
+          />
+        )}
+      </View>
       <View className="gap-3">
         <Text variant="footnote" tone="variant">
           Tap or drag down a day to open or close half hours.
@@ -271,17 +301,9 @@ function AvailabilityFields({
             onChange({ availability });
           }}
         />
-        <GridActions
-          draft={draft}
-          working={working}
-          zoom={zoomOf(allHours, span)}
-          onZoom={() => {
-            setAllHours(!allHours);
-          }}
-          onChange={onChange}
-        />
+        <GridActions draft={draft} working={working} onChange={onChange} />
       </View>
-    </Section>
+    </View>
   );
 }
 

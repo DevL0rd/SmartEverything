@@ -89,6 +89,8 @@ vi.mock('../../../components/house-map/adapters/home-map-scene', () => ({
 }));
 vi.mock('../../../store/selectors', () => ({
   useDevices: (): [] => [],
+  useFirstDevice: (): null => null,
+  useHasDevice: (): boolean => false,
   useRooms: (): [] => [],
   useSyncStatus: (): { status: string } => ({ status: 'live' }),
 }));

@@ -9,8 +9,6 @@ import { Arc } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
 import { Text } from '../../../components/text';
 import { percent } from '../../../format/number';
-import { useEntityStore } from '../../../store/store-context';
-import { changeBackupEnabled } from './activation';
 import { PREFS, usePref } from '../../../store/prefs';
 import { phoneLeftOf } from '../components/photos-frame';
 import { useBackupStatus, type BackupStatus } from './model/status';
@@ -40,24 +38,11 @@ function UpdateTheApp(): ReactNode {
 }
 
 function TurnOn(): ReactNode {
-  const store = useEntityStore();
-  const pref = usePref(PREFS.photosBackup);
   return (
     <EmptyState
       icon="upload"
       title="Backup is off on this device"
-      body="Turn it on to keep this device’s photos and videos on the hub as originals. Local originals stay on this device."
-      action={
-        <Button
-          label="Turn on backup"
-          variant="filled"
-          disabled={pref.status !== 'ready'}
-          onPress={() => {
-            if (pref.status === 'ready')
-              background(changeBackupEnabled(store, true), 'photos.backup.enable_failed');
-          }}
-        />
-      }
+      body="Switch on Back up this device below to keep this device’s photos and videos on the hub as originals. Local originals stay on this device."
     />
   );
 }
@@ -177,6 +162,18 @@ function LimitedNote(): ReactNode {
   );
 }
 
+function Detail({ parts }: { readonly parts: readonly string[] }): ReactNode {
+  return (
+    <View className="flex-row flex-wrap gap-x-1">
+      {parts.map((part, index) => (
+        <Text key={part} variant="caption" tone="variant" className="tabular-nums">
+          {index === parts.length - 1 ? part : `${part} ·`}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 function Running({
   status,
   name,
@@ -197,17 +194,15 @@ function Running({
         <View className="flex-row items-center gap-4">
           <Ring status={status} />
           <View className="min-w-0 flex-1 gap-1">
-            <Text variant="title-3" numberOfLines={1}>
+            <Text variant="title-3" numberOfLines={2}>
               {copy.title}
             </Text>
+            {chip === null ? null : <Badge label={chip.label} tone={copy.tone} />}
             <Text variant="footnote" className="tabular-nums">
               {copy.left}
             </Text>
-            <Text variant="caption" tone="variant" className="tabular-nums">
-              {copy.detail}
-            </Text>
+            <Detail parts={copy.detail} />
           </View>
-          {chip === null ? null : <Badge label={chip.label} tone={copy.tone} />}
         </View>
         {status.problem === null ? null : (
           <Text variant="footnote" tone="critical">

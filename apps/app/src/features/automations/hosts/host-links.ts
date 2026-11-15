@@ -12,10 +12,6 @@ export function runHref(run: Pick<AutomationRunSummary, 'automation_id' | 'id'>)
   };
 }
 
-export function isEditorPath(pathname: string): boolean {
-  return /^\/automations\/(?:nodes\/)?[^/]+\/edit\/?$/.test(pathname);
-}
-
 export function runPageTitle(automationName: string | null): string {
   return automationName === null ? 'Run' : `${automationName} run`;
 }
@@ -27,25 +23,7 @@ export const LIST_LINKS: ListLinks = {
     pathname: '/automations/[automationId]/runs',
     params: { automationId },
   }),
-  workspace: [
-    { id: 'automations', label: 'Automations', icon: 'automations', href: links.list() },
-    { id: 'nodes', label: 'Custom Nodes', icon: 'box', href: links.nodes() },
-    { id: 'templates', label: 'Templates', icon: 'layers', href: links.templates() },
-    { id: 'runs', label: 'Runs', icon: 'activity', href: links.runs() },
-    { id: 'variables', label: 'Variables', icon: 'customize', href: links.variables() },
-    { id: 'schedule', label: 'Schedule', icon: 'calendar', href: links.schedule() },
-  ],
-  extras: [{ id: 'timers', label: 'Timers', icon: 'timer', href: links.scheduled() }],
 };
-
-export function workspaceSectionOf(pathname: string): string {
-  const selected = [...LIST_LINKS.workspace, ...LIST_LINKS.extras].find((item) => {
-    if (item.id === 'automations') return false;
-    const target = typeof item.href === 'string' ? item.href : item.href.pathname;
-    return pathname === target || pathname.startsWith(`${target}/`);
-  });
-  return selected?.id ?? 'automations';
-}
 
 const USE_LINKS: Partial<Record<UseSlot, (id: string) => AppHref>> = {
   automation: links.detail,

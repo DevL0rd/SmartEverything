@@ -1,13 +1,21 @@
 import { useRef, useState, type ReactNode } from 'react';
-import type { View } from 'react-native';
+import { View } from 'react-native';
 import type { DesktopDrive, DesktopDriveCache } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
+import { SegmentBar } from '../../../components/charts';
+import { confirm } from '../../../components/confirm-store';
 import type { IconName } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
+import { Text } from '../../../components/text';
 import type { FieldKind } from '../../../components/text-field';
 import { desktopBridge } from '../../../design/platform';
+import { bytes } from '../../../format/number';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { trackSetting } from '../../settings';
+import { mountSummaryOf, type MountSummary } from '../computers/mount-summary';
+import { useThisComputer, type DesktopDriveView } from '../computers/this-computer';
+import { useDrivePlacementRows } from '../data';
 import {
   DURATION_HELPER,
   cacheSizeProblemOf,
@@ -162,16 +170,96 @@ function CacheRow({
   );
 }
 
-export function CacheSettings({ cache }: { readonly cache: DesktopDriveCache }): ReactNode {
+function useMountSummary(): MountSummary | null {
+  const here = useThisComputer();
+  const placements = useDrivePlacementRows();
+  return here === null ? null : mountSummaryOf(here.deviceId, placements);
+}
+
+function cachedBytesOf(summary: MountSummary): number {
+  return Math.max(0, summary.cacheBytes - summary.pinnedBytes);
+}
+
+function CacheUsage({ summary }: { readonly summary: MountSummary }): ReactNode {
   return (
-    <List
-      inset
-      title="Mount cache"
-      footer="Files you open are kept here so they open fast next time. Changes apply to the running mount at once."
-    >
-      {CACHE_ROWS.map((spec) => (
-        <CacheRow key={spec.field} spec={spec} cache={cache} />
-      ))}
-    </List>
+    <View className="px-4 py-3">
+      <SegmentBar
+        label="Cache on this computer"
+        segments={[
+          { label: 'Cached', value: cachedBytesOf(summary), colour: 'primary' },
+          { label: 'Kept offline', value: summary.pinnedBytes, colour: 'viz-4' },
+        ]}
+        size="thin"
+        legend
+        format={bytes}
+      />
+    </View>
+  );
+}
+
+function clearLineOf(summary: MountSummary | null): string {
+  const kept = 'Files kept offline, open files and waiting uploads stay';
+  return summary === null
+    ? kept
+    : `${bytes(cachedBytesOf(summary))} cached · ${kept.toLowerCase()}`;
+}
+
+function ClearCacheRow({
+  summary,
+  drive,
+}: {
+  readonly summary: MountSummary | null;
+  readonly drive: DesktopDriveView;
+}): ReactNode {
+  return (
+    <ListRow
+      title="Clear cache"
+      icon="eraser"
+      subtitle={clearLineOf(summary)}
+      wrapSubtitle
+      disabled={drive.busy}
+      onPress={() => {
+        background(
+          confirm({
+            title: 'Clear the mount cache?',
+            body: 'Cached copies are removed and download again when opened. Files kept offline, open files and changes waiting to upload stay.',
+            confirmLabel: 'Clear cache',
+          }).then((accepted) => {
+            if (accepted) drive.run({ kind: 'clear-cache' }, 'The cache was not cleared');
+          }),
+          'drive.mount.clear_cache_confirm_failed',
+        );
+      }}
+    />
+  );
+}
+
+export function CacheSettings({
+  cache,
+  drive,
+}: {
+  readonly cache: DesktopDriveCache;
+  readonly drive: DesktopDriveView;
+}): ReactNode {
+  const summary = useMountSummary();
+  return (
+    <View className="gap-1">
+      <List
+        inset
+        title="Cache"
+        footer="Files you open are kept here so they open fast next time. Changes apply to the running mount at once."
+      >
+        {summary?.active === true ? <CacheUsage summary={summary} /> : null}
+        {CACHE_ROWS.map((spec) => (
+          <CacheRow key={spec.field} spec={spec} cache={cache} />
+        ))}
+        <ClearCacheRow summary={summary} drive={drive} />
+      </List>
+      {drive.problem === null ? null : (
+        <Text variant="footnote" tone="critical" className="px-4">
+          {drive.problem}
+        </Text>
+      )}
+    </View>
   );
 }

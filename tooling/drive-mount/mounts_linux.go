@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,10 +16,7 @@ import (
 )
 
 const (
-	untilInvalidated = time.Duration(math.MaxInt64)
-	attachTimeout    = 30 * time.Second
-	maxTransfer      = 1 << 20
-	backgroundCalls  = 12
+	attachTimeout = 30 * time.Second
 )
 
 type activeMount struct {
@@ -33,6 +29,7 @@ type activeMount struct {
 	mount   *fuseMount
 	open    *openCounter
 	done    chan struct{}
+	applied remountApplied
 }
 
 type mountSet struct {
@@ -40,10 +37,11 @@ type mountSet struct {
 	report *reporter
 	mu     sync.Mutex
 	mounts map[string]*activeMount
+	tuning *tuningState
 }
 
 func newMountSet(source InodeFilesystem, report *reporter) *mountSet {
-	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}}
+	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}, tuning: newTuningState(report)}
 	source.OnChange(set.sourceChanged)
 	return set
 }
@@ -79,6 +77,10 @@ func (s *mountSet) mount(id string, root mountRoot, point string, options mountO
 	if exists {
 		return fmt.Errorf("mount %q already exists", id)
 	}
+	tuned, err := s.tuning.forMount()
+	if err != nil {
+		return s.fail(id, err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), attachTimeout)
 	attached, err := s.source.Attach(ctx, id)
 	cancel()
@@ -94,17 +96,37 @@ func (s *mountSet) mount(id string, root mountRoot, point string, options mountO
 	active := &activeMount{id: id, root: root, hubRoot: attached.Root, rootIno: attached.Ino, top: top, mount: fm, open: open, done: make(chan struct{})}
 	open.changed = func() { s.publish(active) }
 	fm.nodes.Store(attached.Ino, top.EmbeddedInode())
-	server, err := fs.Mount(point, top, serverOptions(point, attached.Ino, options))
+	server, err := fs.Mount(point, top, serverOptions(point, attached.Ino, options, tuned))
 	if err != nil {
 		return s.fail(id, err)
 	}
 	active.server = server
+	settings := server.KernelSettings()
+	s.tuning.offered(int64(settings.MaxReadAhead))
+	active.applied = appliedKernel(tuned, settings.Flags64(), int64(settings.MaxReadAhead))
 	s.mu.Lock()
 	s.mounts[id] = active
 	s.mu.Unlock()
 	go s.watch(active)
 	s.report.status(id, stateMounted, "")
+	s.report.applied(id, &active.applied, live.load())
 	s.publish(active)
+	return nil
+}
+
+func (s *mountSet) tune(t tuning) error {
+	if err := s.tuning.apply(t); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	mounted := make([]*activeMount, 0, len(s.mounts))
+	for _, active := range s.mounts {
+		mounted = append(mounted, active)
+	}
+	s.mu.Unlock()
+	for _, active := range mounted {
+		s.report.applied(active.id, &active.applied, live.load())
+	}
 	return nil
 }
 
@@ -127,32 +149,71 @@ func mountSource(point string) string {
 	return networkSourcePrefix + strings.ReplaceAll(filepath.Base(point), " ", "_")
 }
 
-func serverOptions(point string, rootIno uint64, options mountOptions) *fs.Options {
-	forever := untilInvalidated
+func serverOptions(point string, rootIno uint64, options mountOptions, t tuning) *fs.Options {
+	setNegativeLifetime(t.live.negative.duration())
 	allowOther, directMount := rigMountFlags()
 	kernel := []string{"default_permissions"}
 	if options.readOnly {
 		kernel = append(kernel, "ro")
 	}
+	extra := uint64(fuse.CAP_ATOMIC_O_TRUNC)
+	var disabled uint64
+	if t.writebackCache {
+		extra |= fuse.CAP_WRITEBACK_CACHE
+	}
+	switch t.readdirPlus {
+	case readdirPlusAuto:
+		extra |= fuse.CAP_READDIRPLUS_AUTO
+	case readdirPlusOff:
+		disabled |= fuse.CAP_READDIRPLUS | fuse.CAP_READDIRPLUS_AUTO
+	}
+	if !t.parallelDirops {
+		disabled |= fuse.CAP_PARALLEL_DIROPS
+	}
+	congestion := 0
+	if !t.congestionFollows {
+		congestion = int(t.congestionThreshold)
+	}
 	return &fs.Options{
-		EntryTimeout:    &forever,
-		AttrTimeout:     &forever,
-		NegativeTimeout: &forever,
+		NegativeTimeout: &negativeLifetime,
 		NullPermissions: true,
 		RootStableAttr:  &fs.StableAttr{Ino: rootIno},
 		MountOptions: fuse.MountOptions{
 			FsName:               mountSource(point),
 			Name:                 "smarteverything",
-			MaxReadAhead:         maxTransfer,
-			MaxWrite:             maxTransfer,
-			MaxBackground:        backgroundCalls,
+			MaxReadAhead:         int(t.kernelReadaheadBytes),
+			MaxWrite:             int(t.maxRequestBytes),
+			MaxBackground:        int(t.maxBackground),
+			CongestionThreshold:  congestion,
+			SyncRead:             !t.asyncRead,
 			EnableLocks:          true,
 			EnableSymlinkCaching: true,
-			ExtraCapabilities:    fuse.CAP_WRITEBACK_CACHE | fuse.CAP_ATOMIC_O_TRUNC,
+			ExtraCapabilities:    extra,
+			DisabledCapabilities: disabled,
 			Options:              kernel,
 			DirectMount:          directMount,
 			AllowOther:           allowOther,
 		},
+	}
+}
+
+func appliedKernel(t tuning, offered uint64, readaheadOffer int64) remountApplied {
+	plus := t.readdirPlus
+	switch {
+	case offered&fuse.CAP_READDIRPLUS == 0:
+		plus = readdirPlusOff
+	case plus == readdirPlusAuto && offered&fuse.CAP_READDIRPLUS_AUTO == 0:
+		plus = readdirPlusAlways
+	}
+	return remountApplied{
+		MaxBackground:        t.maxBackground,
+		CongestionThreshold:  min(t.effectiveCongestion(), t.maxBackground),
+		MaxRequestBytes:      t.maxRequestBytes,
+		KernelReadaheadBytes: min(t.kernelReadaheadBytes, readaheadOffer),
+		AsyncRead:            t.asyncRead && offered&fuse.CAP_ASYNC_READ != 0,
+		WritebackCache:       t.writebackCache && offered&fuse.CAP_WRITEBACK_CACHE != 0,
+		ReaddirPlus:          string(plus),
+		ParallelDirops:       t.parallelDirops && offered&fuse.CAP_PARALLEL_DIROPS != 0,
 	}
 }
 

@@ -6,13 +6,15 @@ import { HScroller } from '../../../components/h-scroller';
 import { ActionBand, WidgetFrame, widgetBodyHeight } from '../../../components/widget-board';
 import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import type { Idiom } from '../../../design/tokens';
-import { columnsIn, gridFit } from '../components/fit-math';
+import { columnsIn, gridFit, peekCardWidth } from '../components/fit-math';
 import { GridRows } from '../components/grid-rows';
 import { RoomCard } from '../components/room-card';
 import { useHome } from '../data/home-data';
 import type { RoomSummary } from '../model/rooms';
 
 const CARD_MIN_WIDTH = 140;
+
+const CARD_PEEK = 0.5;
 
 const GRID_ROW_HEIGHT: Readonly<Record<Idiom, number>> = { touch: 118, pointer: 112 };
 
@@ -41,7 +43,7 @@ function Strip({
       </View>
     );
   }
-  const card = Math.floor((width - gap * (across - 1)) / across);
+  const card = peekCardWidth(width, CARD_MIN_WIDTH, gap, CARD_PEEK);
   return (
     <HScroller label="Rooms" fill fade snapTo={card + gap}>
       {rooms.map((room) => (

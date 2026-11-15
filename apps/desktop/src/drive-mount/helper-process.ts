@@ -19,7 +19,12 @@ export interface HelperCacheLine {
   readonly cleanupSeconds: number;
 }
 
-export type HelperSetting = HelperRouteLine | HelperCacheLine;
+export interface HelperTuningLine {
+  readonly op: 'tuning';
+  readonly tuning: Readonly<Record<string, string | number | boolean>>;
+}
+
+export type HelperSetting = HelperRouteLine | HelperCacheLine | HelperTuningLine;
 
 export type HelperLine =
   | ControlLine

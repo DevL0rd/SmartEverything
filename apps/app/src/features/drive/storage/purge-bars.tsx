@@ -8,7 +8,6 @@ import { BarLabels, BarMarks, type BarShape } from '../../../components/charts/b
 import { barSlots } from '../../../components/charts/bar-path';
 import { ChartLegend } from '../../../components/charts/chart-legend';
 import type { ChartSeries } from '../../../components/charts/chart-model';
-import { EmptyGraph } from '../../../components/charts/empty-graph';
 import { Text } from '../../../components/text';
 import { useDraw } from '../../../components/use-draw';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
@@ -163,7 +162,7 @@ const SERIES: readonly ChartSeries[] = [
 
 export function PurgeBars({ purges }: { readonly purges: readonly Purge[] }): ReactNode {
   const totals = purgeTotalsOf(purges);
-  const empty = totals.versionBytes + totals.trashBytes === 0;
+  if (totals.versionBytes + totals.trashBytes === 0) return null;
   return (
     <Card title="What frees when" icon="history">
       <View
@@ -175,11 +174,7 @@ export function PurgeBars({ purges }: { readonly purges: readonly Purge[] }): Re
         <Text variant="footnote" tone="variant">
           Old versions and trash leave on their own, month by month
         </Text>
-        {empty ? (
-          <EmptyGraph text="Nothing is due to leave" height={PLOT_HEIGHT} />
-        ) : (
-          <Plot purges={purges} />
-        )}
+        <Plot purges={purges} />
         <ChartLegend
           series={SERIES}
           valueOf={(entry) =>

@@ -8,7 +8,7 @@ import { FlowFrame } from '../../../components/flow-frame';
 import { ProgressSteps, stepsAt } from '../../../components/progress-steps';
 import { Text } from '../../../components/text';
 import { plural } from '../../../format/text';
-import { useDevices } from '../../../store/selectors';
+import { useMatchingDevices } from '../../../store/selectors';
 import { stepIndexOf } from '../model/link-stage';
 import { problemTitle } from '../model/problems';
 import { PromptBody, type ScanPrompt } from './prompt-body';
@@ -16,9 +16,9 @@ import { leaveFlow } from './leave-flow';
 import type { LinkFlow } from './use-link-flow';
 
 function DevicePreview({ provider }: { readonly provider: Provider }): ReactNode {
-  const devices = useDevices({ includeHidden: true }).filter(
-    (device) => device.provider === provider,
-  );
+  const devices = useMatchingDevices((device) => device.provider === provider, {
+    includeHidden: true,
+  });
   if (devices.length === 0) {
     return null;
   }

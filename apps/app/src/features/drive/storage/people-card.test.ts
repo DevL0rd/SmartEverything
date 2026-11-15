@@ -31,10 +31,12 @@ vi.mock('../../../components/text', () => ({
   Text: ({ children }: { readonly children: ReactNode }): ReactNode =>
     createElement('p', {}, children),
 }));
-vi.mock('../../../components/button', () => ({
-  Button: ({ label }: { readonly label: string }): ReactNode => createElement('button', {}, label),
+vi.mock('../../../components/icon-button', () => ({
+  IconButton: ({ label }: { readonly label: string }): ReactNode =>
+    createElement('button', {}, label),
 }));
 vi.mock('./usage-meter', () => ({
+  UsageLegend: (): null => null,
   UsageMeter: (props: {
     readonly title: string;
     readonly line: UsageLine;
@@ -86,12 +88,12 @@ const PEOPLE: readonly PersonUsage[] = [
 describe('People storage list', () => {
   it('shows each person with their totals and a Set quota action, and nothing to open', async () => {
     const { PeopleCard } = await import('./people-card');
-    const html = renderToStaticMarkup(createElement(PeopleCard, { people: PEOPLE }));
+    const html = renderToStaticMarkup(createElement(PeopleCard, { people: PEOPLE, freeBytes: 0 }));
     expect(html).toContain(
       `Sam: ${bytes(38 * GB)} of ${bytes(200 * GB)} · 4,210 files · 12 folders`,
     );
-    expect(html).toContain('Dana (you)');
-    expect(html.match(/Set quota/gu)).toHaveLength(2);
+    expect(html).toContain('Dana:');
+    expect(html.match(/Set the space limit for/gu)).toHaveLength(2);
     expect(html).toContain('Totals only');
     expect(html).not.toContain('href');
     expect(html).not.toContain('Open');
@@ -100,6 +102,6 @@ describe('People storage list', () => {
 
   it('draws nothing when there is nobody to list', async () => {
     const { PeopleCard } = await import('./people-card');
-    expect(renderToStaticMarkup(createElement(PeopleCard, { people: [] }))).toBe('');
+    expect(renderToStaticMarkup(createElement(PeopleCard, { people: [], freeBytes: 0 }))).toBe('');
   });
 });

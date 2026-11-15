@@ -133,6 +133,17 @@ function copyReference(text: string): void {
   );
 }
 
+function runGesture(run: () => void, store: DocumentStore, gestures: GesturePort): void {
+  gestures.beginGesture();
+  store.beginGesture();
+  try {
+    run();
+  } finally {
+    store.endGesture();
+    gestures.endGesture();
+  }
+}
+
 export interface BindingInput {
   readonly store: DocumentStore;
   readonly context: EditorContext;
@@ -159,14 +170,7 @@ export function useInspectorBinding(input: BindingInput): InspectorBinding {
           store.select(nodeId);
         },
         gesture: (run): void => {
-          gestures.beginGesture();
-          store.beginGesture();
-          try {
-            run();
-          } finally {
-            store.endGesture();
-            gestures.endGesture();
-          }
+          runGesture(run, store, gestures);
         },
         copyReference,
         openHelp: (): void => {

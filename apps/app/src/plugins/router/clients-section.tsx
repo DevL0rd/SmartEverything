@@ -123,7 +123,7 @@ function renderItem(
 
 function NoMatch({ state }: { readonly state: ClientListState }): ReactNode {
   return (
-    <View className="w-full max-w-reading self-start px-gutter">
+    <View className="w-full self-start px-gutter">
       <EmptyState
         icon="search"
         title="No devices here"
@@ -189,7 +189,7 @@ export function ClientsSection(): ReactNode {
     <PluginStreamSection stream={useRouterSnapshot()} pluginId="router" notice={routerNotice} fill>
       {(snapshot) =>
         snapshot.clients.length === 0 ? (
-          <View className="w-full max-w-reading self-start">
+          <View className="w-full self-start">
             <EmptyState
               icon="wifi"
               title="No devices yet"

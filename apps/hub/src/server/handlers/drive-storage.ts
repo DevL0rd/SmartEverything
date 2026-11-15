@@ -10,6 +10,7 @@ import { readDriveUsage } from '../../drive/usage';
 import type { Store } from '../../store/store';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
+import { driveVersionLink } from '../drive-version-file';
 import { actorOf, callerOf, usageViewerOf, type DriveServices } from './drive-services';
 
 type DriveShareRoute =
@@ -31,7 +32,7 @@ type DriveUpkeepRoute =
   | 'reportBackup'
   | 'readBackupStatus';
 
-type DriveSyncRoute = 'listConflicts' | 'resolveConflict';
+type DriveSyncRoute = 'listConflicts' | 'resolveConflict' | 'versionLink';
 
 function revCursor(cursor: string | undefined): number | null {
   if (cursor === undefined) return null;
@@ -165,6 +166,15 @@ function driveSyncRoutes(store: Store, services: DriveServices): Routes<DriveSyn
     ),
     resolveConflict: bound(E.resolveConflict, ({ body, caller }) =>
       refusing(() => write.resolveConflict(callerOf(store, caller), body)),
+    ),
+    versionLink: bound(E.versionLink, ({ params, caller }) =>
+      refusing(() =>
+        driveVersionLink(
+          { files: services.files, versions: store.driveVersions },
+          actorOf(store, caller),
+          params,
+        ),
+      ),
     ),
   };
 }

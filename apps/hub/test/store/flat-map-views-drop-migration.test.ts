@@ -85,7 +85,11 @@ afterEach(() => {
 
 function stored(): readonly (readonly [string, string, unknown])[] {
   return ROWS.parse(
-    database.prepare('select client_id as owner, page, layout from layouts where client_id is not null order by rowid').all(),
+    database
+      .prepare(
+        'select client_id as owner, page, layout from layouts where client_id is not null order by rowid',
+      )
+      .all(),
   ).map((row) => [row.owner, row.page, JSON.parse(row.layout)] as const);
 }
 

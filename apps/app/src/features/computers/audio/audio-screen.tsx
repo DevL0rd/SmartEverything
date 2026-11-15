@@ -238,7 +238,7 @@ export function AudioBody({ device }: { readonly device: Device }): ReactNode {
 export function ComputerAudioScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const device = useDevice(deviceId);
   return (
-    <ComputerFrame deviceId={deviceId} title="Audio" width="detail">
+    <ComputerFrame deviceId={deviceId} title="Audio">
       {device?.kind === 'computer' ? (
         <DemandRegion deviceId={deviceId} topics={TOPICS}>
           <AudioBody device={device} />

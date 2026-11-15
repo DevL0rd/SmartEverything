@@ -1,11 +1,10 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import type { AppHref } from './app-href';
 import { cn } from '../design/cn';
 import { useMotion } from '../design/motion';
 import { useIdiom } from '../design/platform';
-import { EndFade, useEndFade } from './end-fade';
 import { Interactive, type LinkNavigation } from './interactive';
 import { FlatChoice } from './flat-choice';
 import type { IconName } from './icon-glyphs';
@@ -150,6 +149,34 @@ function contentClassOf(pointer: boolean, compact: boolean, count: number): stri
   return count <= DENSE_FROM ? 'gap-1' : '';
 }
 
+const FADE_EDGE = 2;
+
+interface EdgeFades {
+  readonly className: string | undefined;
+  readonly scroll: {
+    readonly scrollEventThrottle: number;
+    readonly onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    readonly onContentSizeChange: (width: number) => void;
+  };
+}
+
+function useEdgeFades(viewport: number): EdgeFades {
+  const [content, setContent] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const start = offset > FADE_EDGE;
+  const end = offset + viewport < content - FADE_EDGE;
+  return {
+    className: cn(start && 'mask-l-from-88%', end && 'mask-r-from-88%'),
+    scroll: {
+      scrollEventThrottle: 32,
+      onScroll: (event): void => {
+        setOffset(event.nativeEvent.contentOffset.x);
+      },
+      onContentSizeChange: setContent,
+    },
+  };
+}
+
 interface TabsBarProps {
   readonly items: readonly TabItem[];
   readonly active: string;
@@ -169,7 +196,7 @@ export function TabsBar({
   const [viewport, setViewport] = useState(0);
   const { spans, measure } = useTabSpans(items);
   const ref = useRevealActive(active, spans, viewport, focused);
-  const fade = useEndFade(viewport);
+  const fade = useEdgeFades(viewport);
   return (
     <View
       accessibilityRole="tablist"
@@ -179,7 +206,7 @@ export function TabsBar({
       <ScrollView
         ref={ref}
         horizontal
-        className="grow-0"
+        className={cn('grow-0', fade.className)}
         showsHorizontalScrollIndicator={false}
         onLayout={(event) => {
           setViewport(event.nativeEvent.layout.width);
@@ -201,7 +228,6 @@ export function TabsBar({
           />
         ))}
       </ScrollView>
-      {fade.shown ? <EndFade surface="bg" /> : null}
     </View>
   );
 }

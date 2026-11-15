@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
@@ -141,7 +141,7 @@ function PlayerColumns({
 }
 
 function ViewerContent(props: ViewerContentProps): ReactNode {
-  const { viewer, transcripts, answering, compact, layout, full } = props;
+  const { viewer, transcripts, answering, compact } = props;
   const slot = usePlayerSlot(props);
   const searchRow = useSizeClass().header !== 'desktop';
   const header = compact ? (
@@ -172,7 +172,6 @@ function ViewerContent(props: ViewerContentProps): ReactNode {
                 </View>
               ),
             })}
-        headerWidth={compact ? 'full' : viewerClasses(layout, full).width}
         header={header}
         shellSearch
       />
@@ -185,7 +184,6 @@ function useViewerBar(
   transcripts: CameraTranscripts,
   compact: boolean,
 ): Omit<VariantShellProps, 'variant' | 'children'> {
-  const router = useRouter();
   const { entry } = viewer;
   const [searching, setSearching] = useState(
     transcripts.focus === 'transcript-search' || transcripts.feed.words !== '',
@@ -210,15 +208,7 @@ function useViewerBar(
         }
       : {}),
     actions: compact ? [toggleSearch, events] : [events],
-    overflow: [
-      {
-        label: 'Camera settings',
-        icon: 'settings',
-        onPress: (): void => {
-          router.navigate(href.settings.camera(entry.device.id));
-        },
-      },
-    ],
+    settings: { href: href.settings.camera(entry.device.id), label: 'Camera settings' },
   };
 }
 
@@ -275,7 +265,7 @@ export function ViewerScreen(): ReactNode {
   }, [cameraId, found]);
   if (entry === null) {
     return (
-      <PageShell title="Camera" width="reading">
+      <PageShell title="Camera">
         <EmptyState
           icon="cameraOff"
           title="Camera not found"

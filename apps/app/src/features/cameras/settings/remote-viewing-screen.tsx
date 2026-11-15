@@ -178,7 +178,7 @@ export function RemoteViewingScreen(): ReactNode {
   const settings = useSettings();
   const owner = useIsOwner();
   return (
-    <PageShell title="Camera connection" breadcrumbs={CRUMBS} width="reading">
+    <PageShell title="Camera connection" breadcrumbs={CRUMBS}>
       <List footer="Video connects automatically using WebRTC. On supported devices, it can recover through your server if that path cannot carry video. Talk needs WebRTC.">
         <ListRow title="Live viewing" value="Automatic" icon="globe" />
       </List>

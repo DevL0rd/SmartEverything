@@ -30,16 +30,43 @@ function Who({ profileId }: { readonly profileId: string }): ReactNode {
 }
 
 function Thumb({ entry }: { readonly entry: AlbumActivity }): ReactNode {
-  if (entry.itemId === null) return null;
   return (
-    <Interactive
-      href={href.photosItem(entry.itemId, { albumId: entry.albumId })}
-      label="Open the photo"
-      className="h-11 w-16 overflow-hidden rounded-sm"
-      layerClassName="rounded-sm"
-    >
-      <Cover itemId={entry.itemId} className="h-full w-full rounded-none" />
-    </Interactive>
+    <View className="h-11 w-16">
+      {entry.itemId === null ? null : (
+        <Interactive
+          href={href.photosItem(entry.itemId, { albumId: entry.albumId })}
+          label="Open the photo"
+          className="h-11 w-16 overflow-hidden rounded-sm"
+          layerClassName="rounded-sm"
+        >
+          <Cover itemId={entry.itemId} className="h-full w-full rounded-none" />
+        </Interactive>
+      )}
+    </View>
+  );
+}
+
+function RemoveSlot({
+  entry,
+  own,
+  onRemove,
+}: {
+  readonly entry: AlbumActivity;
+  readonly own: boolean;
+  readonly onRemove: (entry: AlbumActivity) => void;
+}): ReactNode {
+  return (
+    <View className="size-11 items-center justify-center">
+      {own ? (
+        <IconButton
+          icon="trash"
+          label="Delete your comment"
+          onPress={() => {
+            onRemove(entry);
+          }}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -47,18 +74,15 @@ export function ActivityRow({ entry, onRemove }: ActivityRowProps): ReactNode {
   const people = useProfiles();
   const me = useActiveProfile()?.id ?? null;
   const who = nameOf(entry.profileId, people, me);
-  const own = entry.profileId === me && (entry.kind === 'comment' || entry.kind === 'like');
+  const own = entry.profileId === me && entry.kind === 'comment';
   return (
     <View className="min-h-12 flex-row items-start gap-3 py-1.5">
       <Who profileId={entry.profileId} />
       <View className="min-w-0 flex-1 gap-0.5">
-        <View className="flex-row items-center gap-1.5">
+        <View className="min-h-8 flex-row items-center gap-1.5">
           <Icon name={ACTIVITY_ICON[entry.kind]} size={14} tone="variant" />
           <Text variant="footnote" numberOfLines={2} className="min-w-0 flex-1">
             {activityLine(entry, who)}
-          </Text>
-          <Text variant="caption" tone="variant" className="tabular-nums">
-            {clock(entry.createdAt)}
           </Text>
         </View>
         {entry.text === null ? null : (
@@ -67,16 +91,13 @@ export function ActivityRow({ entry, onRemove }: ActivityRowProps): ReactNode {
           </Text>
         )}
       </View>
+      <View className="min-h-8 justify-center">
+        <Text variant="caption" tone="variant" className="tabular-nums">
+          {clock(entry.createdAt)}
+        </Text>
+      </View>
       <Thumb entry={entry} />
-      {own && onRemove !== undefined ? (
-        <IconButton
-          icon="trash"
-          label={entry.kind === 'like' ? 'Remove your like' : 'Delete your comment'}
-          onPress={() => {
-            onRemove(entry);
-          }}
-        />
-      ) : null}
+      {onRemove === undefined ? null : <RemoveSlot entry={entry} own={own} onRemove={onRemove} />}
     </View>
   );
 }

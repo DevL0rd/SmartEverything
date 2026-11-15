@@ -17,7 +17,6 @@ export function ComputerAppsScreen({ deviceId }: { readonly deviceId: string }):
     <ComputerFrame
       deviceId={deviceId}
       title="Apps and windows"
-      width="dashboard"
       {...(open
         ? {
             search: {
@@ -25,14 +24,15 @@ export function ComputerAppsScreen({ deviceId }: { readonly deviceId: string }):
               onChange: setQuery,
               placeholder: 'Search installed apps',
               label: 'Search installed apps',
-              panel: (
-                <InstalledSearch
-                  deviceId={deviceId}
-                  machine={reach.name}
-                  online={reach.online}
-                  query={query}
-                />
-              ),
+              panel:
+                query.trim() === '' ? null : (
+                  <InstalledSearch
+                    deviceId={deviceId}
+                    machine={reach.name}
+                    online={reach.online}
+                    query={query}
+                  />
+                ),
             },
           }
         : {})}
@@ -46,11 +46,11 @@ export function ComputerAppsScreen({ deviceId }: { readonly deviceId: string }):
           />
         )}
         <View className="flex-row flex-wrap items-start gap-section-gap">
-          <View className="w-full max-w-reading gap-section-gap">
+          <View className="min-w-0 grow shrink basis-96 gap-section-gap">
             <OpenSection deviceId={deviceId} machine={reach.name} online={reach.online} />
             <WindowsSection deviceId={deviceId} online={reach.online} />
           </View>
-          <View className="w-full max-w-detail gap-section-gap">
+          <View className="min-w-0 grow-2 shrink basis-128 gap-section-gap">
             <TilingSection deviceId={deviceId} online={reach.online} />
             <AppsSection deviceId={deviceId} machine={reach.name} online={reach.online} />
           </View>

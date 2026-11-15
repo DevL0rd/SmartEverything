@@ -7,7 +7,7 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { clock, dayLabel } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useDayNow } from '../../../store/clock';
 import { useStoreSelector } from '../../../store/store-context';
 import { useChatIdentity } from '../chats/chat-identity';
 import { SourceMark } from '../chats/source-mark';
@@ -49,8 +49,8 @@ function IntroChip({
 
 function ChatIntroBase({ chat }: { readonly chat: AiChatRow }): ReactNode {
   const model = useChatModel(chat.engine);
-  const now = useMinute();
   const timeZone = useStoreSelector((state) => state.settings?.time_zone ?? null);
+  const now = useDayNow(timeZone);
   const { source, parent } = useChatIdentity(chat);
   const historyOnly = appChatHistoryOnly(chat);
   const when = `${dayLabel(chat.created_at, now, timeZone)} ${clock(chat.created_at, timeZone)}`;

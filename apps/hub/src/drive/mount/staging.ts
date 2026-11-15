@@ -1,14 +1,23 @@
+import { createHash, type Hash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { copyFile, open } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { background } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
 import { TMP_DIRECTORY, locate, mountStagingRelPath, type DriveFiles } from '../intents';
 import type { Store } from '../../store/store';
+import type { HashPool } from './workers';
 
 export interface StagingEnv {
   readonly files: DriveFiles;
   readonly store: Pick<Store, 'driveRoots'>;
+  readonly hashes: () => HashPool;
+}
+
+interface Streamed {
+  readonly hash: Hash;
+  next: number;
+  broken: boolean;
 }
 
 interface Cached {
@@ -23,6 +32,7 @@ const ZERO_CHUNK_BYTES = 1024 * 1024;
 export class Staging {
   private readonly cached = new Map<number, Cached>();
   private readonly opening = new Map<number, Promise<FileHandle>>();
+  private readonly streamed = new Map<number, Streamed>();
 
   constructor(private readonly env: StagingEnv) {}
 
@@ -42,7 +52,14 @@ export class Staging {
       constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW,
       0o600,
     );
-    await handle.close();
+    try {
+      if (!this.streamed.has(commitId)) {
+        const { size } = await handle.stat();
+        this.streamed.set(commitId, { hash: createHash('sha256'), next: 0, broken: size > 0 });
+      }
+    } finally {
+      await handle.close();
+    }
   }
 
   async exists(rootId: string, commitId: number): Promise<boolean> {
@@ -88,11 +105,55 @@ export class Staging {
     bytes: Uint8Array,
   ): Promise<void> {
     const fd = await this.fd(target.rootId, target.commitId);
+    this.absorb(target.commitId, offset, bytes);
     let done = 0;
-    while (done < bytes.length) {
-      const { bytesWritten } = await fd.write(bytes, done, bytes.length - done, offset + done);
-      done += bytesWritten;
+    try {
+      while (done < bytes.length) {
+        const { bytesWritten } = await fd.write(bytes, done, bytes.length - done, offset + done);
+        done += bytesWritten;
+      }
+    } catch (cause) {
+      this.invalidate(target.commitId);
+      throw cause;
     }
+  }
+
+  private absorb(commitId: number, offset: number, bytes: Uint8Array): void {
+    const state = this.streamed.get(commitId);
+    if (state === undefined || state.broken) return;
+    if (offset !== state.next) {
+      state.broken = true;
+      return;
+    }
+    state.hash.update(bytes);
+    state.next += bytes.length;
+  }
+
+  private invalidate(commitId: number): void {
+    const state = this.streamed.get(commitId);
+    if (state !== undefined) state.broken = true;
+  }
+
+  async digest(rootId: string, commitId: number, size: number): Promise<string> {
+    const state = this.streamed.get(commitId);
+    if (state !== undefined && !state.broken && state.next === size) {
+      return state.hash.copy().digest('hex');
+    }
+    await this.close(commitId);
+    return this.env.hashes().hash(await this.path(rootId, commitId));
+  }
+
+  async clone(
+    target: { readonly rootId: string; readonly commitId: number },
+    source: string,
+  ): Promise<void> {
+    await this.fd(target.rootId, target.commitId);
+    this.invalidate(target.commitId);
+    await copyFile(
+      source,
+      await this.path(target.rootId, target.commitId),
+      constants.COPYFILE_FICLONE_FORCE,
+    );
   }
 
   async zero(
@@ -100,6 +161,7 @@ export class Staging {
     range: { readonly offset: number; readonly length: number },
   ): Promise<void> {
     const fd = await this.fd(target.rootId, target.commitId);
+    this.invalidate(target.commitId);
     const end = range.offset + range.length;
     const size = (await fd.stat()).size;
     const inside = Math.min(end, size);
@@ -120,8 +182,14 @@ export class Staging {
     await known.fd.close();
   }
 
+  async release(commitId: number): Promise<void> {
+    this.streamed.delete(commitId);
+    await this.close(commitId);
+  }
+
   async remove(rootId: string, commitId: number): Promise<void> {
     await this.close(commitId);
+    this.streamed.delete(commitId);
     await this.env.files.remove(await this.path(rootId, commitId));
   }
 }

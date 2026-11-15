@@ -12,6 +12,10 @@ export const ZOOM_OPTIONS: readonly { readonly value: MediaZoomStep; readonly la
   { value: 'comfortable', label: 'Comfortable' },
 ];
 
+export function showsZoomChip(tab: string, source: boolean): boolean {
+  return !source && tab !== 'videos';
+}
+
 export function libraryLine(
   buckets: readonly LibraryBucket[],
   size: number | undefined,
@@ -19,7 +23,7 @@ export function libraryLine(
 ): string | null {
   const oldest = buckets.at(-1);
   if (oldest === undefined) return null;
-  const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  const total = bucketTotal(buckets);
   const year = Number(oldest.month.slice(0, 4));
   const span = year >= thisYear ? 'this year' : `${String(year)} to today`;
   const parts = [itemCount(total), size === undefined ? null : bytes(size), span];
@@ -83,15 +87,46 @@ export function allFavourite(ids: ReadonlySet<string>, tiles: readonly MediaTile
   return picked.length > 0 && picked.every((tile) => hasPhotoFlag(tile.flags, 'favourite'));
 }
 
-export function pickedText(ids: ReadonlySet<string>, tiles: readonly MediaTile[]): string {
-  const videos = tiles.filter(
-    (tile) => ids.has(tile.id) && hasPhotoFlag(tile.flags, 'video'),
-  ).length;
-  const head = `${count(ids.size)} selected`;
-  if (videos === 0) return head;
-  return `${head} · ${videos === 1 ? '1 video' : `${count(videos)} videos`}`;
+export function bucketTotal(buckets: readonly LibraryBucket[]): number {
+  return buckets.reduce((sum, bucket) => sum + bucket.count, 0);
 }
 
-export function dayIds(tiles: readonly MediaTile[]): readonly string[] {
-  return tiles.map((tile) => tile.id);
+export interface SelectionScope {
+  readonly total: number;
+  readonly complete: boolean;
+  readonly onAll: () => void;
+}
+
+export function scopeTotal(
+  buckets: readonly LibraryBucket[],
+  loaded: number,
+  complete: boolean,
+): number {
+  return complete ? loaded : Math.max(bucketTotal(buckets), loaded);
+}
+
+export function offersSelectAll(
+  picked: number,
+  loaded: number,
+  everything: boolean,
+  scope: SelectionScope | undefined,
+): boolean {
+  if (scope === undefined) return picked < loaded;
+  if (everything) return false;
+  return !scope.complete || picked < loaded;
+}
+
+function videosOf(ids: ReadonlySet<string>, tiles: readonly MediaTile[]): number {
+  return tiles.filter((tile) => ids.has(tile.id) && hasPhotoFlag(tile.flags, 'video')).length;
+}
+
+export function pickedText(
+  ids: ReadonlySet<string>,
+  tiles: readonly MediaTile[],
+  all: number | null,
+): string {
+  const videos = videosOf(ids, tiles);
+  const head = all === null ? `${count(ids.size)} selected` : `All ${count(all)} selected`;
+  if (videos === 0) return head;
+  return `${head} · ${videos === 1 ? '1 video' : `${count(videos)} videos`}`;
 }

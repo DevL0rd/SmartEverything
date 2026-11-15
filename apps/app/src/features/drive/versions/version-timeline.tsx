@@ -2,7 +2,9 @@ import type { ReactElement, ReactNode } from 'react';
 import { memo } from 'react';
 import { View } from 'react-native';
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
+import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
+import { Button } from '../../../components/button';
 import { Sparkline } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
 import { Icon } from '../../../components/icon';
@@ -20,12 +22,12 @@ import { sameJson } from '../../../store/same-json';
 import { useSettings } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
+import { DRIVE_PAGE } from '../../../settings/tree-drive';
 import { SERIES_LOOK, VIA_LOOK } from '../activity/via-model';
 import { useByName } from '../components/use-by-name';
 import {
   CURRENT,
   byOf,
-  seriesOfEntry,
   sizePoints,
   slotOf,
   whenOf,
@@ -141,7 +143,7 @@ function ViaDot({
   return (
     <View
       aria-hidden
-      className={cn('size-2 rounded-full', SERIES_LOOK[seriesOfEntry(entry, me)].fill)}
+      className={cn('size-2 rounded-full', SERIES_LOOK[whoSeriesOf(entry, me)].fill)}
     />
   );
 }
@@ -349,6 +351,19 @@ export function TimelineLoading(): ReactNode {
   );
 }
 
+function VersionsSettingsButton(): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  return (
+    <Button
+      label="Open Drive settings"
+      icon="settings"
+      variant="tonal"
+      size={pointer ? 'md' : 'lg'}
+      href={href.settings.focus(DRIVE_PAGE.drives, 'drive.drives.versions')}
+    />
+  );
+}
+
 const ONE_VERSION_BODY = 'When this file changes, the old copy is kept here for a year.';
 
 export function OneVersion({ kept }: { readonly kept: boolean | null }): ReactNode {
@@ -370,6 +385,7 @@ export function OneVersion({ kept }: { readonly kept: boolean | null }): ReactNo
       icon="layers"
       title="Versions are off"
       body="Earlier copies of files in this drive are not kept. Versions in Drive settings keeps them, and they use space."
+      action={<VersionsSettingsButton />}
     />
   );
 }

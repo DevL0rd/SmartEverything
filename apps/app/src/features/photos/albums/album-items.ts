@@ -43,7 +43,6 @@ export function tileOfItem(item: MediaItem): MediaTile {
     takenAt: Date.parse(moment),
     offsetMin: offsetOf(moment),
     durationMs: item.kind === 'video' ? item.durationMs : null,
-    thumbhash: null,
     flags: flagsOf(item),
     local: false,
   };

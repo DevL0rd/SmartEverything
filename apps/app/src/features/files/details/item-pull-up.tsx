@@ -9,6 +9,7 @@ import { Text } from '../../../components/text';
 import { downloadNode, nodeKeyOf } from '../quick-look/node-files';
 import { detailLineOf } from '../source/node';
 import type { FileLinks, FileNode, SourceActionSpec } from '../source/types';
+import { useSourceLinks } from '../source/source-hooks';
 import { quickActionsOf, sizeTextOf, type QuickAction } from './details-model';
 import type { DetailsHost, DetailsProps } from './details-host';
 import { DetailsTabs } from './details-tabs';
@@ -159,7 +160,7 @@ function PullUpHeader({
 
 export function ItemPullUp<O>(props: DetailsProps<O>): ReactNode {
   const { node, host } = props;
-  const links = host.source.useLinks(node);
+  const links = useSourceLinks(host.source, node);
   return (
     <BottomSheet open onClose={host.close} label={node.name} detents={PULL_UP_DETENTS} scroll>
       <PullUpHeader node={node} links={links} close={host.close} />

@@ -2,6 +2,8 @@ package expo.modules.healthconnect.assistant
 
 import expo.modules.healthconnect.diagnostics.NativeLog
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import expo.modules.healthconnect.IngestTarget
 import expo.modules.healthconnect.listening.ReplayThenLive
@@ -42,6 +44,7 @@ class AssistantCall(
     this, target = target
   )
   private val devices = CallDevices(context)
+  private val main = Handler(Looper.getMainLooper())
   private val link = CallLink(::lapsed)
   private val replay = CallReplay(System.currentTimeMillis())
   private var capture: AutoCloseable? = null
@@ -271,7 +274,7 @@ class AssistantCall(
       speech.hear(pcm)
       pipe.feed(pcm)
     })
-    capture = VoiceCapture.addConsumer { pcm ->
+    capture = VoiceCapture.addConsumer(VoiceCapture.Mode.Call, { lost -> main.post { failed(lost.reason) } }) { pcm ->
       inputLevel = PcmLevel.of(pcm)
       OverlayStage.levels.input.set(inputLevel)
       if (!muted && !testing) earlier.live(pcm)

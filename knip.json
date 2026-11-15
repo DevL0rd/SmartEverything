@@ -66,6 +66,7 @@
         "src/claude/hook-helper.ts",
         "src/plugins/builtin/discord/voice/isolated/worker.ts",
         "src/drive/hasher-worker.ts",
+        "src/drive/mount/hash-worker.ts",
         "src/photos/edits/colour-worker.ts",
         "src/node/ear/process/worker.ts",
         "src/service/loop-watchdog/worker.ts",

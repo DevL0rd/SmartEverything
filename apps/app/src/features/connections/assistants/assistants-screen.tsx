@@ -10,7 +10,6 @@ import { ActionRow, NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
 import { notifyFailure } from '../../../components/toast-store';
-import { isNative } from '../../../design/platform';
 import { useMinute } from '../../../store/clock';
 import { useConsentRequests, useRows, useSettings } from '../../../store/selectors';
 import { ApprovalCode } from '../consent/approval-code';
@@ -23,7 +22,7 @@ import { confirmRevoke, useHubLive, useOfflineBanner } from './revoke-access';
 import { trackConnection } from '../connections-log';
 import { background } from '@smarteverything/logging';
 
-const SECTION_LANE = 'min-w-0 web:max-w-reading web:basis-picker web:shrink web:grow';
+const SECTION_LANE = 'min-w-0 web:basis-picker web:shrink web:grow';
 
 function Waiting(): ReactNode {
   const requests = useConsentRequests();
@@ -171,11 +170,7 @@ function More(): ReactNode {
 export function AssistantsScreen(): ReactNode {
   const banner = useOfflineBanner();
   return (
-    <SettingsFrame
-      page="integrations"
-      contentWidth={isNative() ? 'reading' : 'full'}
-      {...(banner === undefined ? {} : { banner })}
-    >
+    <SettingsFrame page="integrations" {...(banner === undefined ? {} : { banner })}>
       <View className="gap-section-gap web:flex-row web:flex-wrap web:items-start">
         <Waiting />
         <Assistants />

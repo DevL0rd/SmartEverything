@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { alarmClustersOf, clusterLabel, clusterText } from './alarm-clusters';
+import {
+  alarmClustersOf,
+  clusterLabel,
+  clusterText,
+  laneInsetOf,
+  pillBandOf,
+} from './alarm-clusters';
 import type { AlarmPin } from './time-grid-layout';
 
 function pin(minute: number, label: string | null = null): AlarmPin {
@@ -41,5 +47,17 @@ describe('alarm clusters', () => {
     expect(clusterText(many, false)).toBe('06:15 +2 more');
     expect(clusterText(many, true)).toBe('06:15 +2');
     expect(clusterLabel(many)).toBe('Alarms 06:15 Run, 06:30, 06:45, opens Clock');
+  });
+
+  it('moves only the blocks that share a pill band out of its lane', () => {
+    const [cluster] = alarmClustersOf([pin(420)], 44);
+    if (cluster === undefined) throw new Error('no cluster');
+    const band = pillBandOf(cluster, 44, 20);
+    expect(band).toEqual({ top: 286, bottom: 306, right: 24 });
+    expect(laneInsetOf({ top: 270, bottom: 300, left: 0, width: 100 }, [band])).toBe(24);
+    expect(laneInsetOf({ top: 270, bottom: 300, left: 10, width: 100 }, [band])).toBe(14);
+    expect(laneInsetOf({ top: 310, bottom: 340, left: 0, width: 100 }, [band])).toBe(0);
+    expect(laneInsetOf({ top: 270, bottom: 300, left: 40, width: 100 }, [band])).toBe(0);
+    expect(laneInsetOf({ top: 270, bottom: 300, left: 0, width: 60 }, [band])).toBe(0);
   });
 });

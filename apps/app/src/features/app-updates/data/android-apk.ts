@@ -18,7 +18,6 @@ import { appPlatform } from '../../../design/platform';
 import { rawErrorText } from '../../../format/errors';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { localPref, setLocalPref } from '../../../store/local-prefs';
-import { useSyncStatus } from '../../../store/selectors';
 import { RELEASE_UPDATE_CHANNEL } from '../model/adapter';
 import type { InstallerStage } from '../model/apk-offer';
 import { androidBuild } from './android-build';
@@ -38,12 +37,11 @@ const CHANGED_REASON = 'This update changed on your home. Check it again.';
 
 export function useAndroidApkOffer(): UseQueryResult<AndroidApkRelease | null> {
   const connection = useConnection();
-  const live = useSyncStatus().status === 'live';
   const build = appPlatform() === 'android' && !__DEV__ ? androidBuild() : undefined;
   const home = connection.status === 'paired' ? connection.connection.url : null;
   return useScreenQuery({
     queryKey: [...ANDROID_APK_OFFER_KEY, home, build],
-    enabled: live && home !== null && build !== undefined,
+    enabled: home !== null && build !== undefined,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,

@@ -172,7 +172,15 @@ function UpNextBody({
   const collections = usePlannerCollections(null);
   const guests = useRows('planner_guests');
   const me = usePlannerProfile(null);
-  const rows = riverRowsOf({ day, collections, items, hidden: NO_HIDDEN, guests, me });
+  const rows = riverRowsOf({
+    day,
+    collections,
+    items,
+    hidden: NO_HIDDEN,
+    lens: lensOf(day, NO_HIDDEN),
+    guests,
+    me,
+  });
   const split = isSplit(cls);
   const body = widgetBodyHeight(frame);
   const lead = leadHeightOf(frame.idiom, deviceIdsOf(occurrence).length > 0);

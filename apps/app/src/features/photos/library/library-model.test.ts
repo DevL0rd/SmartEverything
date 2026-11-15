@@ -9,8 +9,10 @@ import {
   feedState,
   feedTiles,
   libraryLine,
+  offersSelectAll,
   offlineBody,
   pickedText,
+  scopeTotal,
   type MonthFeed,
 } from './library-model';
 
@@ -116,12 +118,29 @@ describe('library selection', () => {
     const clip = { ...A, flags: photoFlags(['video']) };
     const still = { ...B, flags: 0 };
     const other = { ...C, flags: photoFlags(['video']) };
-    expect(pickedText(new Set([still.id]), [clip, still, other])).toBe('1 selected');
-    expect(pickedText(new Set([clip.id, still.id]), [clip, still, other])).toBe(
+    expect(pickedText(new Set([still.id]), [clip, still, other], null)).toBe('1 selected');
+    expect(pickedText(new Set([clip.id, still.id]), [clip, still, other], null)).toBe(
       '2 selected · 1 video',
     );
-    expect(pickedText(new Set([clip.id, other.id]), [clip, still, other])).toBe(
+    expect(pickedText(new Set([clip.id, other.id]), [clip, still, other], null)).toBe(
       '2 selected · 2 videos',
     );
+    expect(pickedText(new Set([still.id]), [clip, still, other], 100)).toBe('All 100 selected');
+  });
+
+  it('measures Select all against the whole scope, not the loaded tiles', () => {
+    const buckets = [
+      { month: '2026-11', count: 60 },
+      { month: '2026-10', count: 40 },
+    ];
+    expect(scopeTotal(buckets, 14, false)).toBe(100);
+    expect(scopeTotal(buckets, 102, true)).toBe(102);
+    const loading = { total: 100, complete: false, onAll: (): void => undefined };
+    expect(offersSelectAll(14, 14, false, loading)).toBe(true);
+    expect(offersSelectAll(14, 14, true, loading)).toBe(false);
+    const loaded = { ...loading, complete: true };
+    expect(offersSelectAll(100, 100, false, loaded)).toBe(false);
+    expect(offersSelectAll(99, 100, false, loaded)).toBe(true);
+    expect(offersSelectAll(3, 3, false, undefined)).toBe(false);
   });
 });

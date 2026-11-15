@@ -12,6 +12,7 @@ interface Seen {
   loaded: boolean;
   status: string;
   actions: readonly string[];
+  disabled: readonly boolean[];
   subtitle: string | undefined;
 }
 
@@ -21,6 +22,7 @@ const seen = vi.hoisted((): Seen => ({
   loaded: true,
   status: 'live',
   actions: [],
+  disabled: [],
   subtitle: undefined,
 }));
 
@@ -74,10 +76,11 @@ vi.mock('../components/drive-frame', () => ({
   }: {
     readonly children: ReactNode;
     readonly banner?: ReactNode;
-    readonly actions?: readonly { readonly label: string }[];
+    readonly actions?: readonly { readonly label: string; readonly disabled?: boolean }[];
     readonly subtitle?: string;
   }): ReactNode => {
     seen.actions = (actions ?? []).map((action) => action.label);
+    seen.disabled = (actions ?? []).map((action) => action.disabled === true);
     seen.subtitle = subtitle;
     return createElement('main', {}, banner, children);
   },
@@ -126,11 +129,13 @@ describe('ComputersScreen', () => {
     const html = render();
     expect(html).toContain('Showing the last known state');
     expect(html).toContain('Office PC');
+    expect(seen.disabled).toEqual([true]);
   });
 
   it('asks to pair a computer when there is none, and tells a member who pairs them', () => {
     seen.devices = [deviceFixture(3)];
-    expect(render()).toContain('Pair a computer to sync folders of your drives');
+    expect(render()).toContain('Pair a computer to sync folders to it or mount your My Drive');
+    expect(seen.actions).toEqual([]);
     seen.owner = false;
     const html = render();
     expect(html).toContain('The home owner then pairs it');
@@ -142,5 +147,6 @@ describe('ComputersScreen', () => {
     const html = render();
     expect(html).toContain('aria-busy');
     expect(html).not.toContain('Workstation');
+    expect(seen.subtitle).toBeUndefined();
   });
 });

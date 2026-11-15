@@ -102,7 +102,7 @@ export function ScanHelpScreen(): ReactNode {
         <Text variant="callout" tone="variant" className="max-w-reading">
           {SCAN_HELP_INTRO}
         </Text>
-        <Grid minItemWidth={320} cellClassName="max-w-reading">
+        <Grid minItemWidth={320}>
           {SCAN_HELP_STEPS.map((step, index) => (
             <Step key={step.title} step={step} index={index} />
           ))}

@@ -134,11 +134,11 @@ export class CallClock {
   }
 }
 
-function modeOf(stats: BigIntStats): number {
+export function modeOf(stats: BigIntStats): number {
   return Number(stats.mode & 0o7777n);
 }
 
-function specialOf(stats: BigIntStats): SpecialKind | null {
+export function specialOf(stats: BigIntStats): SpecialKind | null {
   if (stats.isFIFO()) return 'fifo';
   if (stats.isSocket()) return 'socket';
   if (stats.isCharacterDevice()) return 'char';

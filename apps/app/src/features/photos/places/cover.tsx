@@ -5,11 +5,8 @@ import { Image } from 'expo-image';
 import { readDriveLinks } from '../../../api/drive';
 import { Icon } from '../../../components/icon';
 import { cn } from '../../../design/cn';
-import { useMotion } from '../../../design/motion';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
-
-const COVER_FADE_MS = 120;
 
 export function coverKey(itemId: string | null): readonly unknown[] {
   return driveKey('photo-cover', DRIVE_EVERYWHERE, itemId);
@@ -38,7 +35,6 @@ export function Cover({
   readonly className?: string;
 }): ReactNode {
   const url = useCoverUrl(itemId);
-  const motion = useMotion();
   return (
     <View
       accessible={false}
@@ -53,8 +49,7 @@ export function Cover({
         <Image
           source={{ uri: url }}
           contentFit="cover"
-          cachePolicy="disk"
-          transition={motion.reduced ? 0 : COVER_FADE_MS}
+          cachePolicy="memory-disk"
           style={StyleSheet.absoluteFill}
           accessible={false}
         />

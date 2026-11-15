@@ -4,7 +4,7 @@ import { PhoneNotifications } from '../notifications/phone-notifications';
 
 export function PhoneNotificationsScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   return (
-    <PhonePage deviceId={deviceId} title="Notifications" width="detail">
+    <PhonePage deviceId={deviceId} title="Notifications">
       {(device) => <PhoneNotifications device={device} />}
     </PhonePage>
   );

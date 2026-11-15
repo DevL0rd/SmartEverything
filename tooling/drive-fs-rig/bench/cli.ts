@@ -17,7 +17,7 @@ const USAGE = `bench <command>
       --sweep adds the MaxBackground sweep 12, 64, 128 on the drive mount
       --small uses small sizes to check the tooling
       --helper <binary> uses that helper binary on the drive mount instead of building the checkout's
-  local [--kinds nfs,smb,sshfs,...] [--runs 3] [--workloads a,b] [--scale local|small|full]
+  local [--kinds nfs,smb,sshfs,...] [--runs 3] [--workloads a,b] [--scale local|small|full] [--first-run 2]
       runs everything on this PC against one disk folder, in a scratch Hub instance named by DRIVE_RIG_INSTANCE (required)
       kinds: ${LOCAL_KINDS.join(', ')}
   local-report <results prefix without .jsonl>   per workload tables and the drive mount breakdown as markdown
@@ -80,6 +80,7 @@ export function parseLocal(args: readonly string[], now: Date, instance: string)
       runs: { type: 'string' },
       workloads: { type: 'string' },
       scale: { type: 'string' },
+      'first-run': { type: 'string' },
     },
   });
   const kinds = (values.kinds ?? LOCAL_KINDS.join(',')).split(',').filter((kind) => kind !== '');
@@ -93,6 +94,7 @@ export function parseLocal(args: readonly string[], now: Date, instance: string)
     runs: parseRuns(values.runs ?? '3'),
     workloads: parseWorkloads(values.workloads),
     scale,
+    firstRun: values['first-run'] === undefined ? 1 : parseRuns(values['first-run']),
     stamp: stampNow(now),
   };
 }

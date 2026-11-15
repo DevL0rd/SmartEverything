@@ -132,7 +132,7 @@ function SharingBody({ settings }: { readonly settings: DriveSettings }): ReactN
 export function SharingSection(): ReactNode {
   const settings = useDriveSettings();
   return (
-    <DriveSettingsSection section="sharing">
+    <DriveSettingsSection>
       {settings.data === undefined ? (
         <SettingsQueryState query={settings} event="drive_settings.sharing_refetch_failed" />
       ) : (

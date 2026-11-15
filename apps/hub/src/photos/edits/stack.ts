@@ -12,7 +12,6 @@ export function stackWithOriginal(deps: EditDeps, original: DriveItem, copy: Dri
         item_id: id,
         time_source: 'modified',
         tz_offset_min: null,
-        thumbhash: null,
         preview_state: 'none',
         preview_reason: null,
         poster_state: 'none',

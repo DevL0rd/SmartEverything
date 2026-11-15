@@ -9,6 +9,7 @@ import expo.modules.healthconnect.diagnostics.NativeLog
 import expo.modules.healthconnect.voice.OpusEncoderPipe
 import expo.modules.healthconnect.voice.OpusPlayer
 import expo.modules.healthconnect.voice.VoiceCapture
+import expo.modules.healthconnect.voice.VoiceCaptureUnavailable
 import expo.modules.healthconnect.voice.VoiceSocket
 import expo.modules.healthconnect.voice.VoiceSocketListener
 import expo.modules.healthconnect.voice.VoiceTones
@@ -210,7 +211,7 @@ class TalkClient(context: Context) : VoiceSocketListener {
     try {
       val pipe = OpusEncoderPipe { packet(it) }
       encoder = pipe
-      capture = VoiceCapture.addConsumer { pcm ->
+      capture = VoiceCapture.addConsumer(VoiceCapture.Mode.Call, { lost -> handler.post { captureLost(lost) } }) { pcm ->
         pipe.feed(pcm)
         frames += 1
         if (frames % LEVEL_EVERY == 0) {
@@ -223,6 +224,12 @@ class TalkClient(context: Context) : VoiceSocketListener {
       update { it.copy(problem = failure.message) }
       release()
     }
+  }
+
+  private fun captureLost(failure: VoiceCaptureUnavailable) {
+    NativeLog.warn(SCOPE, "capture.lost", failure)
+    update { it.copy(problem = failure.message) }
+    release()
   }
 
   private fun stopCapture() {

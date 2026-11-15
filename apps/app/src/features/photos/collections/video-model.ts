@@ -34,7 +34,7 @@ const MINUTES_PER_HOUR = 60;
 
 export function watchingText(durationMs: number): string | null {
   if (durationMs < DAY_MS) return null;
-  return `about ${decimal(durationMs / DAY_MS, 1)} days of watching`;
+  return `≈${decimal(durationMs / DAY_MS, 1)} days`;
 }
 
 export function lengthText(durationMs: number): string {

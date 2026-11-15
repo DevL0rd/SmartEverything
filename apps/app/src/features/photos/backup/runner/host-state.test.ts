@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { PREFS } from '../../../../store/prefs';
-import { makeTable } from '../../../../store/state';
-import { backupOwner, backupOwnerKey } from './host-state';
+import { prefOf, PREFS } from '../../../../store/prefs';
+import { makeTable, type StoreState } from '../../../../store/state';
+import { backupOwner as ownerWithPref, backupOwnerKey, type BackupOwner } from './host-state';
 import { phoneStoreState } from './lifecycle-fixtures';
+
+function backupOwner(state: StoreState, desktopDeviceId?: string | null): BackupOwner | null {
+  return ownerWithPref(state, prefOf(state, PREFS.photosBackup), desktopDeviceId);
+}
 
 describe('backup phone scope selection', () => {
   it('selects only the phone enrolled by the current client', () => {
@@ -56,11 +60,13 @@ describe('backup phone scope selection', () => {
     const session = state.session;
     if (session === null) throw new Error('Missing fixture session');
     expect(
-      backupOwnerKey({
-        ...state,
-        session: { ...session, client: { ...session.client, profile_id: 'another-person' } },
-      }),
-    ).not.toBe(backupOwnerKey(state));
+      backupOwnerKey(
+        backupOwner({
+          ...state,
+          session: { ...session, client: { ...session.client, profile_id: 'another-person' } },
+        }),
+      ),
+    ).not.toBe(backupOwnerKey(backupOwner(state)));
   });
 });
 

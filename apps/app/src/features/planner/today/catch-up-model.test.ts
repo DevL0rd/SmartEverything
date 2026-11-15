@@ -5,15 +5,23 @@ import type {
   PlannerRingRow,
 } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
-import { clock } from '../../../format/time';
+import { clock, dayLabel, zonedStartOfDay } from '../../../format/time';
 
 vi.mock('../../assistant', () => ({ askAssistantWith: vi.fn() }));
 vi.mock('../../devices', () => ({ DeviceFace: (): null => null }));
 
-const { catchUpCardsOf, fitPromptOf, ghostStackOf, missedAlarmTitleOf, missedReasonOf } =
-  await import('./catch-up-model');
+const {
+  catchUpCardsOf,
+  fitPromptOf,
+  ghostStackOf,
+  missedAlarmNameOf,
+  missedAlarmTitleOf,
+  missedReasonOf,
+} = await import('./catch-up-model');
+const { occurrenceWhenOf } = await import('../frame/occurrence-list');
 const { ribbonLabelOf, ribbonMarksOf } = await import('./done-ribbon');
-const { lensKeyOf, lensOf, lensPillOf, lensTimingOf, lensRuleOf } = await import('./now-lens');
+const { lensOf, lensPillOf, lensTimingOf, lensRuleOf } = await import('./now-lens');
+const { occurrenceKeyOf } = await import('./river-model');
 
 const ME = '00000000-0000-4000-8000-000000000001';
 const ZONE = 'Europe/Berlin';
@@ -103,9 +111,9 @@ describe('the catch-up deck', () => {
     );
     expect(cards.map((card) => card.key)).toEqual([
       `alarm:${alarm.id}`,
-      `item:${dentist.item_id}:single`,
-      `item:${water.item_id}:single`,
-      `item:${someday.item_id}:single`,
+      `${dentist.item_id}:single`,
+      `${water.item_id}:single`,
+      `${someday.item_id}:single`,
     ]);
   });
 
@@ -118,9 +126,9 @@ describe('the catch-up deck', () => {
     const cards = catchUpCardsOf(
       day({ missed: [water, dentist], rings: [rang] }),
       [],
-      new Set([`item:${dentist.item_id}:single`]),
+      new Set([`${dentist.item_id}:single`]),
     );
-    expect(cards.map((card) => card.key)).toEqual([`item:${water.item_id}:single`]);
+    expect(cards.map((card) => card.key)).toEqual([`${water.item_id}:single`]);
   });
 
   it('breaks a tie of the same due time by the card key, so the order never flips', () => {
@@ -151,11 +159,36 @@ describe('the catch-up deck', () => {
     expect(fitPromptOf(alarmsOnly)).toBeNull();
   });
 
+  it('names the day of a missed alarm and a missed task from an earlier day', () => {
+    const earlier = ring('06', { due_at: '2026-11-05T08:00:00.000Z' });
+    const yesterday = ring('07', { due_at: '2026-11-06T08:00:00.000Z' });
+    const overdue = occurrence('15', 'Renew the passport', {
+      due_date: '2026-11-05',
+      status: 'missed',
+    });
+    const today = day({ missed: [overdue], rings: [earlier, yesterday] });
+    const cards = catchUpCardsOf(today, [], new Set());
+    const [first, second, third] = cards;
+    if (first?.kind !== 'alarm' || second?.kind !== 'alarm') throw new Error('alarms first');
+    const time = clock('2026-11-05T08:00:00.000Z', ZONE);
+    const thursday = dayLabel('2026-11-05T08:00:00.000Z', Date.parse(today.now), ZONE);
+    expect(thursday).not.toBe('Today');
+    expect(missedAlarmTitleOf(first, today)).toBe(`Missed alarm ${thursday} ${time}`);
+    expect(missedAlarmTitleOf(second, today)).toBe(
+      `Missed alarm yesterday ${clock('2026-11-06T08:00:00.000Z', ZONE)}`,
+    );
+    expect(missedAlarmNameOf(first, today)).toBe(`Alarm · ${thursday} ${time}`);
+    expect(third?.kind === 'item' && occurrenceWhenOf(third.occurrence, today)).toBe(
+      `Due ${dayLabel(zonedStartOfDay('2026-11-05', ZONE), Date.parse(today.now), ZONE)}`,
+    );
+    expect(occurrenceWhenOf({ ...overdue, due_date: '2026-11-07' }, today)).toBe('Due today');
+  });
+
   it('names a missed alarm by its time and says why it did not ring', () => {
     const [card] = catchUpCardsOf(day({ rings: [ring('05', {})] }), [], new Set());
     expect(card?.kind).toBe('alarm');
     if (card?.kind !== 'alarm') return;
-    expect(missedAlarmTitleOf(card, ZONE)).toBe(
+    expect(missedAlarmTitleOf(card, day({}))).toBe(
       `Missed alarm ${clock('2026-11-07T07:30:00.000Z', ZONE)}`,
     );
     expect(missedReasonOf(card.ring)).toBe('phone was off');
@@ -218,7 +251,7 @@ describe('the now lens', () => {
     const current = occurrence('33', 'Standup', { start: '2026-11-07T13:00:00.000Z' });
     expect(lensOf(day({ current: [current], upcoming: [walk] }), new Set())).toBe(current);
     expect(
-      lensOf(day({ current: [current], upcoming: [walk] }), new Set([lensKeyOf(current)])),
+      lensOf(day({ current: [current], upcoming: [walk] }), new Set([occurrenceKeyOf(current)])),
     ).toBe(walk);
     expect(lensOf(day({}), new Set())).toBeNull();
   });

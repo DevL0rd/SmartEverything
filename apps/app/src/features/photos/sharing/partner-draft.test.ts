@@ -10,6 +10,7 @@ import {
   stepReady,
   toggleGroup,
   withScope,
+  yearBefore,
 } from './partner-draft';
 
 const ANA = 'a1b2c3d4-0000-4000-8000-000000000002';
@@ -29,6 +30,11 @@ describe('partner setup draft', () => {
     const review = nextStep(nextStep(chosen));
     expect(review.step).toBe('review');
     expect(nextStep(review)).toEqual(review);
+  });
+
+  it('starts a new share one year back so the existing library is shared', () => {
+    expect(newDraft('2026-11-15').fromDay).toBe('2025-11-15');
+    expect(yearBefore('2028-02-29')).toBe('2027-02-28');
   });
 
   it('needs at least one person for chosen people and clears them for all photos', () => {
@@ -53,7 +59,7 @@ describe('partner setup draft', () => {
       recipientId: ANA,
       scope: 'people',
       groupIds: [MIA],
-      fromDay: '2026-03-01',
+      fromDay: '2025-03-01',
     });
     expect(bodyOf(newDraft('2026-03-01'))).toBeNull();
     expect(bodyOf({ ...draft, groupIds: [] })).toBeNull();

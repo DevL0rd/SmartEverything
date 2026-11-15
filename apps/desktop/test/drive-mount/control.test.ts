@@ -1,5 +1,6 @@
 import {
   DEFAULT_DESKTOP_DRIVE_CACHE,
+  DEFAULT_DESKTOP_DRIVE_TUNING,
   type DesktopDriveCommand,
   type DrivePlacement,
   type DesktopDriveState,
@@ -34,6 +35,7 @@ function state(change: Partial<DesktopDriveState> = {}): DesktopDriveState {
     sync: null,
     fuse: { available: true },
     cache: DEFAULT_DESKTOP_DRIVE_CACHE,
+    tuning: { saved: DEFAULT_DESKTOP_DRIVE_TUNING, applied: [], limits: null },
     ...change,
   };
 }
@@ -228,6 +230,20 @@ describe('mount helper process', () => {
     expect(replayed).toEqual(MOUNT);
   });
 
+  it('sends the saved tuning to every helper it starts', async () => {
+    const { helper, children } = helperProcess();
+    const line = { op: 'tuning', tuning: { maxBackground: 64 } } as const;
+    helper.configure(line);
+    helper.send(MOUNT);
+    await until(() => children[0]?.written.length === 2);
+    expect(children[0]?.written.map((raw): unknown => JSON.parse(raw))).toEqual([line, MOUNT]);
+    helper.configure({ op: 'tuning', tuning: { maxBackground: 128 } });
+    expect(children[0]?.written.map((raw): unknown => JSON.parse(raw))[2]).toEqual({
+      op: 'tuning',
+      tuning: { maxBackground: 128 },
+    });
+  });
+
   it('does not replay a mount that was unmounted and does not call a clean close a crash', async () => {
     const { helper, children } = helperProcess();
     const crashes = vi.fn();
@@ -250,12 +266,14 @@ describe('mount controller', () => {
     recovered: string[];
     restarts: number[];
     tray: (MountTray | null)[];
+    tuned: number[];
     sleeps: number[];
     links: LinkPort[];
   } {
     const recovered: string[] = [];
     const restarts: number[] = [];
     const tray: (MountTray | null)[] = [];
+    const tuned: number[] = [];
     const sleeps: number[] = [];
     const links: LinkPort[] = [];
     const crashListeners = new Set<(reason: string) => void>();
@@ -313,9 +331,12 @@ describe('mount controller', () => {
       tray: (state): void => {
         tray.push(state);
       },
+      tuningChanged: (): void => {
+        tuned.push(tuned.length);
+      },
       log,
     });
-    return { controller, helper, recovered, restarts, tray, sleeps, links };
+    return { controller, helper, recovered, restarts, tray, tuned, sleeps, links };
   }
 
   it('cleans stale points on start and again before restarting a crashed helper', async () => {
@@ -371,6 +392,111 @@ describe('mount controller', () => {
       'Mounted · 1 upload pending',
       'Mounted',
     ]);
+  });
+
+  const LIMITS = {
+    type: 'limits',
+    platform: 'linux',
+    kernel: true,
+    maxUserBgreq: 20_793,
+    maxUserCongThresh: 15_594,
+    maxPagesLimit: 256,
+    pageSize: 4096,
+    readaheadOffer: 131_072,
+    maxRequestBytes: 1_048_576,
+  };
+
+  function applied(openFiles: number): string {
+    return JSON.stringify({
+      type: 'applied',
+      mount: FIXTURE_ID,
+      platform: 'linux',
+      remount: {
+        maxBackground: 64,
+        congestionThreshold: 48,
+        maxRequestBytes: 1_048_576,
+        kernelReadaheadBytes: 131_072,
+        asyncRead: true,
+        writebackCache: true,
+        readdirPlus: 'auto',
+        parallelDirops: true,
+      },
+      live: {
+        readAheadBytes: openFiles,
+        entrySeconds: 'untilChanged',
+        attrSeconds: 60,
+        negativeSeconds: 'untilChanged',
+        closeWaitsForUpload: false,
+        uploadDelaySeconds: 0,
+        fsyncWaitsForHub: true,
+        uploadFiles: 4,
+        uploadFramesInFlight: 64,
+        pingSeconds: 10,
+        deadAfterSeconds: 30,
+        bulkFrameBytes: 1_048_576,
+        prefetchSmallFiles: false,
+      },
+    });
+  }
+
+  it('folds the helper limits and applied values into the tuning state and announces them', async () => {
+    const { controller, helper, tuned } = build();
+    await controller.start();
+    expect(controller.tuning(DEFAULT_DESKTOP_DRIVE_TUNING).limits).toBeNull();
+    helper.pushLine(JSON.stringify(LIMITS));
+    helper.pushLine(applied(7));
+    expect(tuned.length).toBeGreaterThanOrEqual(2);
+    const folded = controller.tuning(DEFAULT_DESKTOP_DRIVE_TUNING);
+    expect(folded.limits).toEqual({
+      platform: 'linux',
+      pageBytes: 4096,
+      maxUserBackground: 20_793,
+      maxUserCongestionThreshold: 15_594,
+      maxRequestBytes: 1_048_576,
+      kernelReadaheadOfferBytes: 131_072,
+    });
+    expect(folded.applied).toEqual([
+      {
+        placementId: FIXTURE_ID,
+        tuning: {
+          ...DEFAULT_DESKTOP_DRIVE_TUNING,
+          congestionThreshold: 48,
+          readAheadBytes: 7,
+          attrSeconds: 60,
+        },
+      },
+    ]);
+    helper.pushLine(JSON.stringify({ type: 'status', mount: FIXTURE_ID, state: 'stopped' }));
+    expect(controller.tuning(DEFAULT_DESKTOP_DRIVE_TUNING).applied).toEqual([]);
+  });
+
+  it('remounts only while the mount reports no open files', async () => {
+    const { controller, helper, links } = build();
+    await controller.start();
+    links[0]?.report({
+      ...FIXTURE_STATUS,
+      placementId: FIXTURE_ID,
+      state: 'mounted',
+      tier: 'full',
+      route: 'local',
+      mountPoint: '/home/u/Drive',
+    });
+    const counters = (openFiles: number): string =>
+      JSON.stringify({
+        type: 'counters',
+        mount: FIXTURE_ID,
+        cacheBytes: 0,
+        pinnedBytes: 0,
+        openFiles,
+        pendingUploads: 0,
+      });
+    helper.pushLine(counters(2));
+    await expect(controller.run({ kind: 'remount' })).rejects.toThrow(
+      'The mount cannot restart while 2 files are open',
+    );
+    helper.pushLine(counters(0));
+    await controller.run({ kind: 'remount' });
+    expect(links).toHaveLength(2);
   });
 
   it('does not restart a helper after the mount was stopped', async () => {

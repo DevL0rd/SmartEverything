@@ -18,6 +18,7 @@ export interface FolderView {
   readonly latest: number;
   readonly cover: FolderCover;
   readonly hidden: boolean;
+  readonly backupId: string | null;
 }
 
 export type FolderGroupId = 'device' | 'devices' | 'drive';
@@ -31,6 +32,7 @@ export interface FolderGroup {
 interface LocalFolderTotal {
   readonly key: string;
   readonly name: string;
+  readonly backupId: string;
   readonly local: number;
   readonly newest: LocalMediaItem;
 }
@@ -44,6 +46,7 @@ export function localFoldersOf(items: readonly LocalMediaItem[]): readonly Local
     totals.set(item.folder.key, {
       key: item.folder.key,
       name: item.folder.name,
+      backupId: known === undefined ? item.folder.backupId : known.backupId,
       local: (known?.local ?? 0) + 1,
       newest,
     });
@@ -67,6 +70,7 @@ function hubView(folder: PhotoFolder): FolderView {
     latest: hubLatest(folder),
     cover: folder.coverItemId === null ? null : { kind: 'hub', itemId: folder.coverItemId },
     hidden: folder.hidden,
+    backupId: null,
   };
 }
 
@@ -89,6 +93,7 @@ function localView(total: LocalFolderTotal, inputs: FolderInputs): FolderView {
     latest: Math.max(total.newest.takenAt, hubLatest(hub)),
     cover: { kind: 'local', localId: total.newest.id, video: total.newest.video },
     hidden: inputs.hidden.has(total.key),
+    backupId: total.backupId,
   };
 }
 
@@ -151,4 +156,9 @@ export function folderKeyOfParam(param: string): string | null {
   const units = param.match(/.{4}/g) ?? [];
   if (!units.every((unit) => HEX_UNIT.test(unit))) return null;
   return String.fromCharCode(...units.map((unit) => Number.parseInt(unit, 16)));
+}
+
+export function backupIdsOf(groups: readonly FolderGroup[]): readonly string[] {
+  const ids = groups.flatMap((group) => group.folders.map((folder) => folder.backupId));
+  return [...new Set(ids.filter((id): id is string => id !== null))];
 }

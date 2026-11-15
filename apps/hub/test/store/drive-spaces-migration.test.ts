@@ -5,6 +5,7 @@ import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
+import { DRIVE_ROOT_MOUNT_MIGRATION } from '../../src/store/migrations/drive-root-mount';
 import { DRIVE_SPACES_MIGRATION } from '../../src/store/migrations/drive-spaces';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql, SQL_JSON } from '../../src/store/sql';
@@ -508,7 +509,12 @@ function seed(): void {
 
 function migrateAll(): void {
   const log = testLogger();
-  migrate(new Sql(database), MIGRATIONS, NOW, log);
+  migrate(
+    new Sql(database),
+    MIGRATIONS.filter((migration) => migration.version < DRIVE_ROOT_MOUNT_MIGRATION.version),
+    NOW,
+    log,
+  );
 }
 
 describe('migration 202', () => {

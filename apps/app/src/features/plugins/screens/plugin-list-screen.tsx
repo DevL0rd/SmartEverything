@@ -254,7 +254,7 @@ function PluginListPage({
       trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
       primaryAction={{ label: 'Add', icon: 'plus', onPress: add }}
     >
-      <View className="w-full max-w-reading flex-1 self-start">
+      <View className="-mx-gutter min-h-0 flex-1">
         <Items row={row} setting={setting} list={list} query={query} />
       </View>
       {sheets}

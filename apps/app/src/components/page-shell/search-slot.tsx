@@ -12,6 +12,8 @@ export interface ShellSearchConfig {
   readonly placeholder: string;
   readonly label?: string;
   readonly onSubmit?: () => void;
+  readonly onFocus?: () => void;
+  readonly onKey?: (key: string) => void;
   readonly status?: string;
   readonly tokens?: ReactNode;
   readonly trailing?: ReactNode;
@@ -34,7 +36,7 @@ export function escapeStepOf(value: string): EscapeStep {
 }
 
 export function searchPanelShown(search: ShellSearchConfig | undefined): boolean {
-  return search?.panel !== undefined && search.value.trim() !== '';
+  return search?.panel !== undefined && search.panel !== null;
 }
 
 function useSearchShortcut(inputRef: RefObject<TextInput | null>): void {
@@ -82,6 +84,7 @@ function ShellSearchField({
   const pointer = useIdiom() === 'pointer';
   useSearchShortcut(inputRef);
   const onKey = (key: string): void => {
+    search.onKey?.(key);
     if (key !== 'Escape') return;
     if (escapeStepOf(search.value) === 'clear') search.onChange('');
     else inputRef.current?.blur();
@@ -97,6 +100,7 @@ function ShellSearchField({
       {...(search.focusOnMount === true ? { focusOnMount: true } : {})}
       {...(search.label === undefined ? {} : { label: search.label })}
       {...(search.onSubmit === undefined ? {} : { onSubmit: search.onSubmit })}
+      {...(search.onFocus === undefined ? {} : { onFocus: search.onFocus })}
       {...(search.status === undefined ? {} : { status: search.status })}
       {...(search.tokens === undefined ? {} : { leading: search.tokens })}
       {...(trailing === undefined ? {} : { trailing })}

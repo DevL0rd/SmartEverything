@@ -71,6 +71,9 @@ vi.mock('../../../store/selectors', () => ({
   useIsOwner: (): boolean => state.owner,
   useSyncStatus: (): { readonly status: string } => ({ status: state.live ? 'live' : 'offline' }),
 }));
+vi.mock('../../../components/page-shell/body-width', () => ({
+  useFrameBodyWidth: (): number => 800,
+}));
 vi.mock('../../../components/banner', () => ({ Banner: stub('stale') }));
 vi.mock('../../../components/error-state', () => ({ ErrorState: stub('error') }));
 vi.mock('../../../components/skeleton', () => ({ Skeleton: stub('loading') }));
@@ -89,11 +92,12 @@ vi.mock('../../../components/empty-state', () => ({
     ),
 }));
 vi.mock('./storage-columns', () => ({
+  storageTwoColumnsAt: (): boolean => false,
   StorageColumns: ({ owner }: { readonly owner: boolean }): ReactNode =>
     createElement('section', { 'data-part': owner ? 'columns-owner' : 'columns-member' }),
 }));
 
-const { StorageScreen, scrubTextOf, storageSubtitleOf } = await import('./storage-screen');
+const { StorageScreen, storageSubtitleOf } = await import('./storage-screen');
 
 const render = (): string => renderToStaticMarkup(createElement(StorageScreen));
 
@@ -171,27 +175,10 @@ describe('Storage header', () => {
     expect(state.frame?.actions).toEqual([]);
   });
 
-  it('sums the space and the last scrub in the subtitle', () => {
-    const now = Date.parse('2026-11-07T00:00:00Z');
-    expect(storageSubtitleOf(undefined, IDLE, now)).toBeUndefined();
-    expect(storageSubtitleOf({ ...STATS, kinds: [] }, IDLE, now)).toBe(
-      `${bytes(300 * GB)} of ${bytes(1000 * GB)} · ${bytes(700 * GB)} free on the data disk · Last scrub 3 d ago, nothing damaged or unreadable`,
+  it('names the subtitle as your drives and the free space', () => {
+    expect(storageSubtitleOf(undefined)).toBeUndefined();
+    expect(storageSubtitleOf({ ...STATS, kinds: [] })).toBe(
+      `${bytes(STATS.bytes)} in your drives · ${bytes(STATS.space.freeBytes)} free`,
     );
-  });
-
-  it('words every scrub state', () => {
-    const now = Date.parse('2026-11-07T00:00:00Z');
-    expect(scrubTextOf({ state: 'idle', lastFinishedAt: null, corrupt: 0 }, now)).toBe(
-      'Never scrubbed',
-    );
-    expect(scrubTextOf({ ...IDLE, corrupt: 2 }, now)).toBe(
-      'Last scrub 3 d ago, 2 files damaged or unreadable',
-    );
-    expect(
-      scrubTextOf(
-        { state: 'stopped', startedAt: IDLE.lastFinishedAt, checked: 1, total: 4, corrupt: 0 },
-        now,
-      ),
-    ).toBe('Scrub stopped at 25 %');
   });
 });

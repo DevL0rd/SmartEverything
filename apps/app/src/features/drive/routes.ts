@@ -34,7 +34,7 @@ export const ROUTES: readonly RouteDefinition[] = [
   page({
     key: 'drive-shared',
     path: 'shared',
-    title: 'Shared with me',
+    title: 'Shared',
     icon: 'share',
     keywords: [
       'shared with me',

@@ -2,6 +2,7 @@ import { MEDIA_STATUSES, type MediaStatus, type NowPlaying } from '@smarteveryth
 import { z } from 'zod';
 import { NodeFailureError } from '../../node-failure';
 import { variant, type SessionBus } from './dbus-session';
+import type { MediaPlayers, MediaPlayersFactory } from './media-players';
 
 const PREFIX = 'org.mpris.MediaPlayer2.';
 const PLAYER_PATH = '/org/mpris/MediaPlayer2';
@@ -64,7 +65,7 @@ function nowPlaying(name: string, body: readonly unknown[]): NowPlaying {
   };
 }
 
-export class MprisPlayers {
+export class MprisPlayers implements MediaPlayers {
   private readonly players = new Map<string, Player>();
   private readonly stops: (() => void)[] = [];
 
@@ -157,3 +158,6 @@ export class MprisPlayers {
     this.changed();
   }
 }
+
+export const mprisPlayers: MediaPlayersFactory = (bus, changed, failed) =>
+  new MprisPlayers(bus, changed, failed);

@@ -12,7 +12,7 @@ import {
   type SearchQuery,
   type ZipListing,
 } from '../../files';
-import { flattenPages, useDriveLink, useDriveSearch } from '../data';
+import { flattenPages, useDriveChips, useDriveLink, useDriveSearch } from '../data';
 import { useDrivePages } from '../data/pages';
 import { driveQueryOf, infoRowsOf, searchMatchesOf } from './drive-listing';
 import { itemOf, type DriveNode, type DriveOrigin } from './drive-node';
@@ -124,8 +124,10 @@ export function useDriveZip(node: DriveNode | null): ZipListing {
 export function useDriveInfo(node: DriveNode): readonly InfoRow[] {
   const now = useMinute();
   const profiles = useProfiles();
+  const chipOf = useDriveChips();
   return infoRowsOf(node, {
     when: (at) => moment(at, now),
     nameOf: (profileId) => profiles.find((profile) => profile.id === profileId)?.name ?? null,
+    rootLabelOf: (rootId) => chipOf(rootId).label,
   });
 }

@@ -32,7 +32,7 @@ import { useClimateWidgets } from '../../climate';
 import { useLightGroupDefaults } from '../../device-groups';
 import { ScrollModelLayer } from '../../models';
 import { useWeather, weatherShown } from '../../weather';
-import { HeaderBelow, SummaryLine } from '../components/home-header';
+import { SummaryLine, useGreeting } from '../components/home-header';
 import { HomeMapHero } from '../components/home-map-hero';
 import { homeMapRealistic } from '../../home-map';
 import {
@@ -93,7 +93,7 @@ function useReveal(): BoardReveal | undefined {
 
 function EmptyHome({ title }: { readonly title: string }): ReactNode {
   return (
-    <PageShell title={title} settings={mainPageSettings('home')} back={false} width="reading">
+    <PageShell title={title} settings={mainPageSettings('home')} back={false}>
       <EmptyState
         icon="home"
         title="Let’s add your first devices"
@@ -190,7 +190,7 @@ function HomeBoard({
 export function HomeScreen(): ReactNode {
   const { digest, cameras } = useHomeBasics();
   const title = useSettings().home_name;
-  const { header } = useSizeClass();
+  const greeting = useGreeting();
   const lightGroups = useLightGroupDefaults();
   const reveal = useReveal();
   const editor = useBoardEditor({
@@ -220,12 +220,13 @@ export function HomeScreen(): ReactNode {
   return (
     <PageShell
       title={title}
+      subtitle={greeting}
       settings={mainPageSettings('home')}
       back={false}
       actions={editor.editing ? [] : [editor.editAction]}
       editing={editor.header}
     >
-      {header === 'standard' ? <SummaryLine /> : <HeaderBelow />}
+      <SummaryLine />
       <HomeMapHero realistic={homeMapRealistic} />
       <HomeBoard editor={editor} reveal={reveal} />
     </PageShell>

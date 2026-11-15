@@ -9,7 +9,7 @@ import (
 func (s *session) syncSession() error {
 	w := s.w
 	for {
-		if !w.online.Load() {
+		if !w.online.Load() || !live.load().fsyncWaitsForHub {
 			return s.syncLocal()
 		}
 		s.mu.Lock()
@@ -86,11 +86,22 @@ func (w *writeBack) Fsync(ctx context.Context, ino uint64, directory bool) error
 		if s := w.sessionOf(ino); s != nil {
 			return s.syncSession()
 		}
+		if !live.load().fsyncWaitsForHub {
+			return nil
+		}
 	}
 	return w.fsyncRemote(ctx, ino, directory)
 }
 
 func (w *writeBack) awaitCommits(ctx context.Context, ino uint64) error {
+	if s := w.sessionOf(ino); s != nil {
+		s.mu.Lock()
+		ready := s.sealed && !s.sending && (s.needsCommit() || s.resume != nil)
+		s.mu.Unlock()
+		if ready {
+			w.enqueue(s)
+		}
+	}
 	return w.waitUntil(ctx, func() error {
 		s := w.sessionOf(ino)
 		if s == nil {

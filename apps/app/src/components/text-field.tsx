@@ -74,7 +74,7 @@ function Input(props: TextFieldProps & { readonly revealed: boolean }): ReactNod
       selectionColorClassName="accent-primary"
       className={cn(
         'min-w-0 flex-1 self-stretch px-3 text-body text-on-surface web:outline-none',
-        look.mono ? 'font-mono' : 'font-sans',
+        look.mono && props.value !== '' ? 'font-mono' : 'font-sans',
         props.multiline === true && 'py-2',
       )}
     />

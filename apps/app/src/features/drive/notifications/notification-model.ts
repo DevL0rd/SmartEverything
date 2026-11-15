@@ -18,6 +18,7 @@ type Person = Pick<ProfileRow, 'id' | 'name'>;
 export interface NotificationContext {
   readonly actor: string;
   readonly item: string | null;
+  readonly itemPending: boolean;
   readonly request: DriveAccessRequest | null;
   readonly transfer: DriveTransfer | null;
   readonly fileRequest: DriveFileRequest | null;
@@ -32,13 +33,13 @@ export const KIND_LOOK: Readonly<Record<DriveNotificationKind, NotificationLook>
   shared: { icon: 'share', tone: 'primary' },
   edited: { icon: 'pencil', tone: 'info' },
   commented: { icon: 'messageCircle', tone: 'info' },
-  mentioned: { icon: 'messageCircle', tone: 'primary' },
-  replied: { icon: 'messageCircle', tone: 'info' },
+  mentioned: { icon: 'atSign', tone: 'primary' },
+  replied: { icon: 'reply', tone: 'info' },
   access_requested: { icon: 'key', tone: 'warning' },
-  access_answered: { icon: 'key', tone: 'positive' },
+  access_answered: { icon: 'shield-check', tone: 'positive' },
   file_request_upload: { icon: 'upload', tone: 'primary' },
   transfer_offered: { icon: 'user', tone: 'warning' },
-  transfer_answered: { icon: 'user', tone: 'positive' },
+  transfer_answered: { icon: 'checkCheck', tone: 'positive' },
 };
 
 export const KIND_LABEL: Readonly<Record<DriveNotificationKind, string>> = {
@@ -96,9 +97,45 @@ const SENTENCES: Readonly<Record<DriveNotificationKind, Sentence>> = {
     transferAnsweredLine(actor, item, transfer),
 };
 
+function itemNameOf(context: NotificationContext): string | null {
+  return context.item ?? context.transfer?.itemName ?? context.request?.itemName ?? null;
+}
+
 export function sentenceOf(row: DriveNotification, context: NotificationContext): string {
-  const item = context.item ?? context.transfer?.itemName ?? context.request?.itemName ?? SOMETHING;
-  return SENTENCES[row.kind](row, context, item);
+  return SENTENCES[row.kind](row, context, itemNameOf(context) ?? SOMETHING);
+}
+
+export type SentenceItem =
+  | { readonly kind: 'name'; readonly name: string }
+  | { readonly kind: 'pending' }
+  | { readonly kind: 'none' };
+
+export interface SentenceParts {
+  readonly before: string;
+  readonly item: SentenceItem;
+  readonly after: string;
+}
+
+const ITEM_MARK = '\u0000';
+
+function sentenceItemOf(context: NotificationContext): SentenceItem {
+  const name = itemNameOf(context);
+  if (name !== null) return { kind: 'name', name };
+  return context.itemPending ? { kind: 'pending' } : { kind: 'name', name: SOMETHING };
+}
+
+export function sentencePartsOf(
+  row: DriveNotification,
+  context: NotificationContext,
+): SentenceParts {
+  const text = SENTENCES[row.kind](row, context, ITEM_MARK);
+  const mark = text.indexOf(ITEM_MARK);
+  if (mark < 0) return { before: text, item: { kind: 'none' }, after: '' };
+  return {
+    before: text.slice(0, mark),
+    item: sentenceItemOf(context),
+    after: text.slice(mark + ITEM_MARK.length),
+  };
 }
 
 export function actorOf(row: DriveNotification, profiles: readonly Person[]): string {
@@ -189,6 +226,7 @@ export const EMPTY_BODY =
 export interface NotificationLookups {
   readonly profiles: readonly Person[];
   readonly items: ReadonlyMap<string, { readonly name: string }>;
+  readonly pending: ReadonlySet<string>;
   readonly requests: readonly DriveAccessRequest[];
   readonly transfers: readonly DriveTransfer[];
   readonly fileRequests: readonly DriveFileRequest[];
@@ -216,9 +254,11 @@ export function contextOf(
       : null;
   const fileRequest =
     row.kind === 'file_request_upload' ? byRef(lookups.fileRequests, row.refId) : null;
+  const item = lookups.items.get(row.itemId)?.name ?? null;
   return {
     actor: actorOf(row, lookups.profiles),
-    item: lookups.items.get(row.itemId)?.name ?? null,
+    item,
+    itemPending: item === null && lookups.pending.has(row.itemId),
     request,
     transfer,
     fileRequest,
@@ -229,25 +269,25 @@ export function itemIdsOf(rows: readonly DriveNotification[]): readonly string[]
   return [...new Set(rows.map((row) => row.itemId))];
 }
 
-export type InboxRow =
-  | { readonly kind: 'day'; readonly key: string; readonly label: string }
-  | {
-      readonly kind: 'note';
-      readonly row: DriveNotification;
-      readonly edge: GroupEdge;
-    };
-
-export function inboxRowsOf(groups: readonly DayGroup[]): readonly InboxRow[] {
-  return groups.flatMap((group) => [
-    { kind: 'day' as const, key: group.key, label: group.label },
-    ...group.rows.map((row, index) => ({
-      kind: 'note' as const,
-      row,
-      edge: groupEdgeOf(index, group.rows.length),
-    })),
-  ]);
+export interface InboxNote {
+  readonly row: DriveNotification;
+  readonly edge: GroupEdge;
 }
 
-export function inboxKeyOf(row: InboxRow): string {
-  return row.kind === 'day' ? `day:${row.key}` : `note:${row.row.id}`;
+export interface InboxSection {
+  readonly key: string;
+  readonly title: string;
+  readonly data: readonly InboxNote[];
+}
+
+export function inboxSectionsOf(groups: readonly DayGroup[]): readonly InboxSection[] {
+  return groups.map((group) => ({
+    key: group.key,
+    title: group.label,
+    data: group.rows.map((row, index) => ({ row, edge: groupEdgeOf(index, group.rows.length) })),
+  }));
+}
+
+export function inboxKeyOf(note: InboxNote): string {
+  return note.row.id;
 }

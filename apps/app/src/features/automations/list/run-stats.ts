@@ -1,10 +1,8 @@
 import type { AutomationRunSummary } from '@smarteverything/domain';
 import { ACTIVE_RUN_RECORD_STATUSES, appendTo } from '@smarteverything/domain';
-import { HOUR_MS, localDayKey, shiftDay } from '../../../format/time';
-import type { ChartPoint } from '../../../components/charts';
+import { localDayKey, shiftDay } from '../../../format/time';
 
 export const WEEK_DAYS = 7;
-export const DAY_HOURS = 24;
 
 export interface DayBar {
   readonly day: string;
@@ -83,18 +81,7 @@ export interface Health {
   readonly runsToday: number;
   readonly failedToday: number;
   readonly waiting: number;
-  readonly perHour: readonly ChartPoint[];
-  readonly failedPerHour: readonly ChartPoint[];
-}
-
-function hourSeries(times: readonly number[], now: number): readonly ChartPoint[] {
-  const start = now - DAY_HOURS * HOUR_MS;
-  const counts = Array.from({ length: DAY_HOURS }, () => 0);
-  for (const at of times) {
-    const slot = Math.floor((at - start) / HOUR_MS);
-    if (slot >= 0 && slot < DAY_HOURS) counts[slot] = (counts[slot] ?? 0) + 1;
-  }
-  return counts.map((v, slot) => ({ t: start + slot * HOUR_MS, v }));
+  readonly week: readonly DayBar[];
 }
 
 export function healthOf(
@@ -110,13 +97,11 @@ export function healthOf(
     const outcome = OUTCOME[run.status];
     return outcome !== undefined && outcome !== 'ignored';
   };
-  const stamp = (run: AutomationRunSummary): number => Date.parse(run.created_at);
   return {
     runsToday: todays.filter(counted).length,
     failedToday: todays.filter(failed).length,
     waiting: live.filter((run) => run.status === 'waiting').length,
-    perHour: hourSeries(live.filter(counted).map(stamp), now),
-    failedPerHour: hourSeries(live.filter(failed).map(stamp), now),
+    week: statsOf(live, weekKeys(today), timeZone).days,
   };
 }
 

@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { DriveTrashEntry } from '@smarteverything/domain';
 import { bytes } from '../../../format/number';
 import { deletedByLabel, deletedByOf, personToneOf } from './deleted-by';
-import { leavingLabel, leavingShapes, leavingTotals, type LeavingMonth } from './leaving-bars';
-import { TABLE_MIN_WIDTH, tableSnap, trashLayoutOf } from './trash-layout';
+import { leavingLabel, leavingMonthsOf, leavingShapes, leavingTotalOf } from './leaving-bars';
+import {
+  SUMMARY_SIDE_BY_SIDE_MIN,
+  TABLE_MIN_WIDTH,
+  summaryWideOf,
+  trashLayoutOf,
+  trashSnap,
+} from './trash-layout';
 import { pickStateOf } from './selection';
 import {
   deleterOf,
@@ -87,15 +93,15 @@ describe('trash items', () => {
     expect(sizeText(item)).toBe(bytes(220_000));
   });
 
-  it('shows no size for a folder and totals the bytes', () => {
+  it('shows a folder’s size and totals the bytes', () => {
     const items = trashItemsOf(
-      [entry({ isFolder: true, name: 'Quotes' }), entry({})],
+      [entry({ isFolder: true, name: 'Quotes', bytes: 1_400_000_000 }), entry({})],
       TODAY,
       PEOPLE,
     );
     const folder = items.find((item) => item.isFolder);
     if (folder === undefined) throw new Error('no folder');
-    expect(sizeText(folder)).toBe('—');
+    expect(sizeText(folder)).toBe(bytes(1_400_000_000));
     expect(totalsText({ count: 2, bytes: 440_000 })).toBe(`2 items · ${bytes(440_000)}`);
   });
 
@@ -149,27 +155,36 @@ describe('deleted by', () => {
 });
 
 describe('leaving each month', () => {
-  const months: readonly LeavingMonth[] = [
-    { month: '2026-11', trashBytes: 1000, versionBytes: 0 },
-    { month: '2026-12', trashBytes: 0, versionBytes: 0 },
-    { month: '2027-01', trashBytes: 500, versionBytes: 500 },
+  const items = [
+    { purgeMonth: '2026-11', bytes: 1000 },
+    { purgeMonth: '2027-01', bytes: 500 },
+    { purgeMonth: '2027-01', bytes: 250 },
   ];
 
-  it('stacks trash under old versions and skips empty months', () => {
-    const shapes = leavingShapes(months, 300, { trash: 'grey', versions: 'blue' });
-    expect(shapes.map((shape) => [shape.key, shape.fill])).toEqual([
-      ['2026-11-trash', 'grey'],
-      ['2027-01-trash', 'grey'],
-      ['2027-01-versions', 'blue'],
+  it('sums the listed items by the month they leave, from this month on', () => {
+    expect(leavingMonthsOf(items, TODAY)).toEqual([
+      { month: '2026-11', bytes: 1000 },
+      { month: '2026-12', bytes: 0 },
+      { month: '2027-01', bytes: 750 },
     ]);
-    const versions = shapes.find((shape) => shape.key === '2027-01-versions');
-    const trash = shapes.find((shape) => shape.key === '2027-01-trash');
-    expect(versions?.bottom).toBeLessThan(trash?.top ?? 0);
+    expect(leavingMonthsOf([], TODAY)).toEqual([]);
+    expect(leavingMonthsOf([{ purgeMonth: '2026-10', bytes: 5 }], TODAY)).toEqual([
+      { month: '2026-11', bytes: 5 },
+    ]);
+  });
+
+  it('draws one bar per month with items and skips empty months', () => {
+    const shapes = leavingShapes(leavingMonthsOf(items, TODAY), 300, 'grey');
+    expect(shapes.map((shape) => [shape.key, shape.fill])).toEqual([
+      ['2026-11', 'grey'],
+      ['2027-01', 'grey'],
+    ]);
   });
 
   it('totals and describes the months', () => {
-    expect(leavingTotals(months)).toEqual({ trash: 1500, versions: 500 });
-    expect(leavingLabel(months)).toContain(`trash ${bytes(500)}, versions ${bytes(500)}`);
+    const months = leavingMonthsOf(items, TODAY);
+    expect(leavingTotalOf(months)).toBe(1750);
+    expect(leavingLabel(months)).toContain(bytes(750));
     expect(leavingLabel([])).toBe('Nothing leaves for good in the coming months');
   });
 });
@@ -190,8 +205,19 @@ describe('row layout', () => {
     expect(trashLayoutOf(false, 0)).toBe('list');
   });
 
+  it('fits the full table in about 850 px of list width', () => {
+    expect(TABLE_MIN_WIDTH).toBeLessThanOrEqual(850);
+  });
+
   it('snaps the measured width so rows only re-render when the layout changes', () => {
-    expect(tableSnap(TABLE_MIN_WIDTH + 300)).toBe(TABLE_MIN_WIDTH);
-    expect(tableSnap(TABLE_MIN_WIDTH - 300)).toBe(0);
+    expect(trashSnap(TABLE_MIN_WIDTH + 300)).toBe(TABLE_MIN_WIDTH);
+    expect(trashSnap(TABLE_MIN_WIDTH - 1)).toBe(SUMMARY_SIDE_BY_SIDE_MIN);
+    expect(trashSnap(SUMMARY_SIDE_BY_SIDE_MIN - 1)).toBe(0);
+  });
+
+  it('puts the summary cards side by side only when the list is wide enough', () => {
+    expect(summaryWideOf('list', SUMMARY_SIDE_BY_SIDE_MIN)).toBe(true);
+    expect(summaryWideOf('list', SUMMARY_SIDE_BY_SIDE_MIN - 1)).toBe(false);
+    expect(summaryWideOf('compact', 2000)).toBe(false);
   });
 });

@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { use, useCallback, useSyncExternalStore } from 'react';
+import { use, useCallback } from 'react';
 import type { AutomationPluginKindRow, PluginRow } from '@smarteverything/domain';
 import { Badge } from '../../../../../components/badge';
+import { usePausable } from '../../../../../design/external-store';
 import type { EntityStore } from '../../../../../store/entity-store';
 import { StoreContext } from '../../../../../store/store-runtime';
 
@@ -61,7 +62,7 @@ export function usePluginNotice(kindId: string): string | null {
     [store],
   );
   const read = (): string | null => (store === null ? null : storeNotice(store, kindId));
-  return useSyncExternalStore(subscribe, read, read);
+  return usePausable(subscribe, read);
 }
 
 const CARD_BADGE: CSSProperties = {

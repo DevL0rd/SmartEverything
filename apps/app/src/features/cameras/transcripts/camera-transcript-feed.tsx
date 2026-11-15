@@ -84,14 +84,12 @@ export function CameraTranscriptFeed({
   header,
   spacer,
   banner,
-  headerWidth = 'full',
   shellSearch = false,
 }: {
   readonly transcripts: CameraTranscripts;
   readonly header: ReactNode;
   readonly spacer?: TranscriptFeedProps['pageHeader'];
   readonly banner?: ReactNode;
-  readonly headerWidth?: TranscriptFeedProps['headerWidth'];
   readonly shellSearch?: boolean;
 }): ReactNode {
   const { feed, entry, sourceId, filter, filterCamera, focus } = transcripts;
@@ -109,7 +107,6 @@ export function CameraTranscriptFeed({
       controls={<CameraControls entry={entry} filter={filter} filterCamera={filterCamera} />}
       inlineControls={entry === undefined}
       compactRows
-      headerWidth={headerWidth}
       shellSearch={shellSearch}
       focus={focus === 'transcripts' || focus === 'transcript-search'}
       focusSearch={!shellSearch && focus === 'transcript-search'}

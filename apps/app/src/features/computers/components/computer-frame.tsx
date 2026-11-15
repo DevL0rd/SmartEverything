@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import type { Crumb } from '../../../components/breadcrumbs';
-import type { ShellWidth } from '../../../components/page-shell/layout';
+import type { MenuItem } from '../../../components/menu';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import { useShellRailShown } from '../../../components/page-shell/rail-shown';
 import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
@@ -94,12 +94,13 @@ export interface ComputerFrameProps {
   readonly title: string;
   readonly subtitle?: string;
   readonly crumbs?: readonly Crumb[];
-  readonly width?: ShellWidth;
   readonly scroll?: boolean;
   readonly actions?: readonly ShellAction[];
   readonly primary?: PrimaryActionProps;
   readonly search?: ShellSearchConfig;
   readonly iconRail?: boolean;
+  readonly overflow?: readonly MenuItem[];
+  readonly controls?: ReactNode;
   readonly children: ReactNode;
 }
 
@@ -120,20 +121,27 @@ function useSections(device: Device, iconRail: boolean): ReturnType<typeof compu
   const sections = computerSectionsOf({
     deviceId: device.id,
     active,
-    online: device.online,
     features,
   });
   return iconRail ? { ...sections, iconRail } : sections;
 }
 
+function frameMenuOf(
+  page: readonly MenuItem[] | undefined,
+  menu: readonly MenuItem[],
+): readonly MenuItem[] {
+  return page === undefined ? menu : [...page, ...menu];
+}
+
 function LiveFrame({
   device,
-  width = 'reading',
   scroll = true,
   primary,
   search,
   actions,
   iconRail,
+  overflow,
+  controls,
   children,
   ...head
 }: LiveProps): ReactNode {
@@ -148,9 +156,9 @@ function LiveFrame({
       title={head.title}
       subtitle={head.subtitle ?? device.label}
       breadcrumbs={crumbsOf(device, head.crumbs)}
-      overflow={menu}
+      overflow={frameMenuOf(overflow, menu)}
       sections={sections}
-      width={width}
+      controls={controls}
       scroll={scroll}
       {...(actions === undefined ? {} : { actions })}
       {...(search === undefined ? {} : { search })}
@@ -179,11 +187,7 @@ function LiveFrame({
 export function ComputerFrame({ deviceId, ...frame }: ComputerFrameProps): ReactNode {
   const device = useDevice(deviceId);
   if (device === null) {
-    return (
-      <PageShell title={frame.title} width="reading">
-        {frame.children}
-      </PageShell>
-    );
+    return <PageShell title={frame.title}>{frame.children}</PageShell>;
   }
   return <LiveFrame device={device} {...frame} />;
 }

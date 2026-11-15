@@ -9,6 +9,22 @@ const DRIVE_SETTINGS_KEY = 'drive';
 
 type SettingsStore = Pick<Store, 'settingsKv' | 'write'>;
 
+export type DriveSettingsListener = (settings: DriveSettings, previous: DriveSettings) => void;
+
+const LISTENERS = new WeakMap<object, Set<DriveSettingsListener>>();
+
+export function onDriveSettingsChanged(
+  store: Pick<Store, 'settingsKv'>,
+  listener: DriveSettingsListener,
+): () => void {
+  const listeners = LISTENERS.get(store.settingsKv) ?? new Set<DriveSettingsListener>();
+  listeners.add(listener);
+  LISTENERS.set(store.settingsKv, listeners);
+  return (): void => {
+    listeners.delete(listener);
+  };
+}
+
 export class DriveSettingsMissingError extends Error {
   override readonly name = 'DriveSettingsMissingError';
 
@@ -29,12 +45,15 @@ export function updateDriveSettings(
   store: SettingsStore,
   update: DriveSettingsUpdate,
 ): DriveSettings {
-  return store.write(() => {
+  const { previous, next } = store.write(() => {
     const changed = Object.fromEntries(
       Object.entries(update).filter(([, value]) => value !== undefined),
     );
-    const next = DRIVE_SETTINGS.parse({ ...readDriveSettings(store), ...changed });
-    store.settingsKv.save(DRIVE_SETTINGS_KEY, next);
-    return next;
+    const before = readDriveSettings(store);
+    const after = DRIVE_SETTINGS.parse({ ...before, ...changed });
+    store.settingsKv.save(DRIVE_SETTINGS_KEY, after);
+    return { previous: before, next: after };
   });
+  for (const listener of [...(LISTENERS.get(store.settingsKv) ?? [])]) listener(next, previous);
+  return next;
 }

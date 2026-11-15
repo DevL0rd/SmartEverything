@@ -1,8 +1,8 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
-import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
+import { useContextMenu, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { selectionTick } from '../../../platform/haptics';
@@ -27,7 +27,7 @@ function StepCheck({ step, disabled, onDone }: Omit<StepRowProps, 'onOutdent'>):
         selectionTick();
         onDone(step);
       }}
-      className="-m-2 size-11 items-center justify-center rounded-md"
+      className="-mx-0.5 size-11 items-center justify-center rounded-md"
       layerClassName="rounded-md"
       focusInset
     >
@@ -43,16 +43,29 @@ function StepCheck({ step, disabled, onDone }: Omit<StepRowProps, 'onOutdent'>):
   );
 }
 
+function outdentItemsOf(
+  step: StepView,
+  disabled: boolean,
+  onOutdent: StepRowProps['onOutdent'],
+): readonly MenuItem[] {
+  if (onOutdent === null) return [];
+  return [
+    {
+      id: 'outdent',
+      label: 'Make it its own task',
+      icon: 'listTree',
+      disabled,
+      onPress: (): void => {
+        onOutdent(step);
+      },
+    },
+  ];
+}
+
 function StepTitle({ step }: { readonly step: StepView }): ReactNode {
-  const open = useItemOpen(step.item.id, 'single');
   const due = step.item.due_date;
   return (
-    <Interactive
-      {...open}
-      label={`Open step ${step.item.title}`}
-      className="min-h-11 min-w-0 flex-1 flex-row items-center gap-2 rounded-sm"
-      layerClassName="rounded-sm"
-    >
+    <View pointerEvents="none" className="min-w-0 flex-1 flex-row items-center gap-2">
       <Text
         variant="callout"
         tone={step.done ? 'variant' : 'default'}
@@ -64,26 +77,28 @@ function StepTitle({ step }: { readonly step: StepView }): ReactNode {
       {due === null && step.item.notes === '' ? null : (
         <Icon name={due === null ? 'fileText' : 'calendar'} size={12} tone="faint" />
       )}
-    </Interactive>
+    </View>
   );
 }
 
 function Row({ step, disabled, onDone, onOutdent }: StepRowProps): ReactNode {
+  const open = useItemOpen(step.item.id, 'single');
+  const menu = useContextMenu(outdentItemsOf(step, disabled, onOutdent), step.item.title);
   return (
-    <View className="min-h-11 flex-row items-center gap-2 pr-1">
-      <StepCheck step={step} disabled={disabled} onDone={onDone} />
-      <StepTitle step={step} />
-      {onOutdent === null ? null : (
-        <IconButton
-          icon="arrowLeft"
-          label={`Make “${step.item.title}” its own task`}
-          size="control"
-          disabled={disabled}
-          onPress={() => {
-            onOutdent(step);
-          }}
-        />
-      )}
+    <View className="relative min-h-row-h justify-center">
+      <Interactive
+        {...open}
+        label={`Open step ${step.item.title}`}
+        onContextMenu={menu.onContextMenu}
+        className="absolute inset-0"
+      >
+        {null}
+      </Interactive>
+      <View pointerEvents="box-none" className="min-h-row-h flex-row items-center gap-3.5 px-4">
+        <StepCheck step={step} disabled={disabled} onDone={onDone} />
+        <StepTitle step={step} />
+      </View>
+      {menu.host}
     </View>
   );
 }

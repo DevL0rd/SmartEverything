@@ -9,7 +9,8 @@ import type { SelectOption } from '../../../components/select-picker';
 import { count } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { localDayKey, startOfDayKey } from '../../../format/time';
-import { ChipRow } from '../../../components/library-frame/chip-row';
+import { ChipRow } from '../../../components/chip-row';
+import { HScroller } from '../../../components/h-scroller';
 import {
   DRIVE_FILTERS,
   DRIVE_FILTER_LOOK,
@@ -138,13 +139,6 @@ function placeMatches(item: ActivityItem, filter: ActivityFilter): boolean {
   );
 }
 
-export function scopedItems(
-  items: readonly ActivityItem[],
-  filter: ActivityFilter,
-): readonly ActivityItem[] {
-  return items.filter((item) => placeMatches(item, filter));
-}
-
 export function filteredItems(
   items: readonly ActivityItem[],
   filter: ActivityFilter,
@@ -157,6 +151,14 @@ export function filteredItems(
       (filter.vias.size === 0 || filter.vias.has(item.entry.row.via)) &&
       (filter.folderKey === null || folderKeyOf(item.entry) === filter.folderKey),
   );
+}
+
+export function calloutItems(
+  items: readonly ActivityItem[],
+  filter: ActivityFilter,
+  me: string | null,
+): readonly ActivityItem[] {
+  return filteredItems(items, { ...filter, folderKey: null }, me);
 }
 
 export function isFiltered(filter: ActivityFilter): boolean {
@@ -322,7 +324,7 @@ function ClearButton({ filter, onChange }: ActivityFiltersProps): ReactNode {
   );
 }
 
-function WhoAndHow(props: ActivityFiltersProps): ReactNode {
+function WhoAndHow(props: ActivityFiltersProps & { readonly children?: ReactNode }): ReactNode {
   const { filter, onChange } = props;
   return (
     <>
@@ -334,6 +336,7 @@ function WhoAndHow(props: ActivityFiltersProps): ReactNode {
           onChange({ ...filter, person });
         }}
       />
+      {props.children}
       <ViaChips
         vias={filter.vias}
         onAny={() => {
@@ -354,18 +357,19 @@ function PhoneFilters(props: ActivityFiltersProps): ReactNode {
   return (
     <View className="gap-2">
       <ChipRow label="Activity filters">
-        <WhoAndHow {...props} />
-        <FilterChip
-          label="Filters"
-          value="More"
-          icon="filter"
-          affordance="menu"
-          expanded={open}
-          active={placed}
-          onPress={() => {
-            setMore(!open);
-          }}
-        />
+        <WhoAndHow {...props}>
+          <FilterChip
+            label="Filters"
+            value="More"
+            icon="filter"
+            affordance="menu"
+            expanded={open}
+            active={placed}
+            onPress={() => {
+              setMore(!open);
+            }}
+          />
+        </WhoAndHow>
       </ChipRow>
       {open ? (
         <View className="flex-row flex-wrap items-center gap-2">
@@ -380,11 +384,18 @@ function PhoneFilters(props: ActivityFiltersProps): ReactNode {
 export function ActivityFilters(props: ActivityFiltersProps): ReactNode {
   if (props.compact) return <PhoneFilters {...props} />;
   return (
-    <View className="flex-row flex-wrap items-center gap-2" accessibilityRole="toolbar">
-      <WhoAndHow {...props} />
-      <View className="min-w-0 flex-1" />
-      <PlacePickers {...props} />
-      <ClearButton {...props} />
+    <View className="flex-row items-center gap-2" accessibilityRole="toolbar">
+      <View className="min-w-0 flex-1">
+        <HScroller label="Who and how" fade>
+          <View className="flex-row items-center gap-2">
+            <WhoAndHow {...props} />
+          </View>
+        </HScroller>
+      </View>
+      <View className="shrink-0 flex-row items-center gap-2">
+        <PlacePickers {...props} />
+        <ClearButton {...props} />
+      </View>
     </View>
   );
 }

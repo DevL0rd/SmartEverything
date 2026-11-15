@@ -4,7 +4,7 @@ import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import { ValueStore, useSelected, useValue } from '../../../design/external-store';
 
-export type PanelIntent = 'view' | 'edit' | 'attach';
+export type PanelIntent = 'view' | 'edit' | 'reschedule' | 'attach';
 
 export interface PlannerSelection {
   readonly itemId: string;

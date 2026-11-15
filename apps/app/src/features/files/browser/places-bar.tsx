@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { FilterChip } from '../../../components/filter-chip';
 import type { IconName } from '../../../components/icon';
-import { ChipRow } from '../../../components/library-frame';
+import { ChipRow } from '../../../components/chip-row';
 import type { FilePlaceKind } from '../source/types';
 import type { FileBrowserHandle } from './browser-types';
 

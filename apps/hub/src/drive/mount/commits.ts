@@ -18,8 +18,6 @@ export interface CommitEnv {
   readonly handles: HandleTable;
 }
 
-const COPY_CHUNK_BYTES = 1024 * 1024;
-
 export function wireRanges(commit: DriveMountCommit): readonly (readonly [number, number])[] {
   return commit.ranges.map(([start, end]) => [start, end - start] as const);
 }
@@ -38,7 +36,7 @@ export class MountCommits {
     return row;
   }
 
-  private openCommit(session: MountSession, id: number): DriveMountCommit {
+  openCommit(session: MountSession, id: number): DriveMountCommit {
     const row = this.commitOf(session, id);
     if (row.state !== 'open') throw posix('ESTALE', `The commit ${String(id)} is not open.`);
     return row;
@@ -108,25 +106,6 @@ export class MountCommits {
       const row = this.repo.find(id);
       if (row?.nodeId === session.nodeId) this.repo.forget(row.placementId, [id]);
     }
-  }
-
-  async copy(session: MountSession, request: RequestMeta<'COPY'>): Promise<ReplyMeta<'COPY'>> {
-    const row = this.openCommit(session, request.commit);
-    const scope = session.scopeOfPlacement(row.placementId);
-    const target = { rootId: scope.drive.id, commitId: row.id };
-    let copied = 0;
-    while (copied < request.length) {
-      const wanted = Math.min(COPY_CHUNK_BYTES, request.length - copied);
-      const chunk = await this.env.handles.read(session, request.srcHandle, {
-        offset: request.srcOffset + copied,
-        length: wanted,
-      });
-      if (chunk.length === 0) break;
-      await this.env.staging.write(target, request.dstOffset + copied, chunk);
-      copied += chunk.length;
-    }
-    if (copied > 0) this.repo.received(row.id, [request.dstOffset, request.dstOffset + copied]);
-    return { copied };
   }
 
   scopeOf(session: MountSession, row: DriveMountCommit): PosixScope {

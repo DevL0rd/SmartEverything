@@ -14,7 +14,7 @@ import { useOwnPrefs, useSavePrefs, type Prefs, type PrefsChange } from './prefe
 
 export interface RowSpec {
   readonly title: string;
-  readonly icon: IconName;
+  readonly icon?: IconName;
   readonly description?: string;
 }
 
@@ -35,7 +35,7 @@ export interface LinkSpec extends RowSpec {
 
 interface RowBase {
   readonly title: string;
-  readonly icon: IconName;
+  readonly icon?: IconName;
   readonly subtitle?: string;
   readonly wrapSubtitle?: boolean;
 }
@@ -43,7 +43,7 @@ interface RowBase {
 function baseOf(spec: RowSpec): RowBase {
   return {
     title: spec.title,
-    icon: spec.icon,
+    ...(spec.icon === undefined ? {} : { icon: spec.icon }),
     ...(spec.description === undefined ? {} : { subtitle: spec.description, wrapSubtitle: true }),
   };
 }
@@ -118,6 +118,7 @@ export function PrefMinutesRow({
           max={MINUTES_IN_HOUR}
           step={1}
           unit="min"
+          fixedWidth
           onChange={(minutes) => {
             save(() => spec.set(minutes));
           }}

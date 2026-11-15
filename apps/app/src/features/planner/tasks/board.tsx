@@ -10,7 +10,7 @@ import { useThemeSetting } from '../../../design/theme';
 import { SEMANTIC_SIZES } from '../../../design/tokens';
 import { usePlannerCollections } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { BoardColumn } from './board-column';
 import { BOARD_GROUPING_LABEL, boardColumnsOf, type BoardGrouping } from './matrix-model';
 import type { TaskEntry, TaskFilter } from './task-grouping';
@@ -87,7 +87,7 @@ export interface TaskBoardProps {
 export function TaskBoard({ entries, today, filter, grouping }: TaskBoardProps): ReactNode {
   const { person } = usePlannerFrame();
   const collections = usePlannerCollections(person);
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const [available, setAvailable] = useState(0);
   const columns = boardColumnsOf({ entries, filter, collections, today, grouping });
   const gap = useGridGap();
@@ -104,7 +104,6 @@ export function TaskBoard({ entries, today, filter, grouping }: TaskBoardProps):
           label={grouping === 'list' ? 'Board by list' : 'Board by status'}
           {...(compact ? { snapTo: width + gap } : {})}
           fade
-          fadeSurface="bg"
         >
           {columns.map((column) => (
             <View key={column.key} className="self-start">

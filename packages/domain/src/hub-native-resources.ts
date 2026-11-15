@@ -46,6 +46,31 @@ export type NativeHubResourceDownload = z.infer<typeof NATIVE_HUB_RESOURCE_DOWNL
 export const NATIVE_HUB_RESOURCE_DOWNLOAD_RESULT = z.enum(['completed', 'cancelled']);
 export type NativeHubResourceDownloadResult = z.infer<typeof NATIVE_HUB_RESOURCE_DOWNLOAD_RESULT>;
 
+export const NATIVE_HUB_RESTORE_TARGET = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('origin'), folder: z.string().trim().min(1) }),
+  z.strictObject({ kind: z.literal('restored') }),
+]);
+export type NativeHubRestoreTarget = z.infer<typeof NATIVE_HUB_RESTORE_TARGET>;
+
+export const NATIVE_HUB_RESOURCE_RESTORE = z.strictObject({
+  id: NATIVE_HUB_RESOURCE_ID,
+  name: z.string().trim().min(1),
+  mimeType: z.string().regex(/^(image|video)\/[\w.+-]+$/),
+  sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable(),
+  takenAt: z.int().nonnegative().nullable(),
+  target: NATIVE_HUB_RESTORE_TARGET,
+});
+export type NativeHubResourceRestore = z.infer<typeof NATIVE_HUB_RESOURCE_RESTORE>;
+
+export const NATIVE_HUB_RESOURCE_RESTORED = z.strictObject({
+  result: z.enum(['saved', 'present']),
+  location: z.string().min(1),
+});
+export type NativeHubResourceRestored = z.infer<typeof NATIVE_HUB_RESOURCE_RESTORED>;
+
 export const NATIVE_ANDROID_UPDATE_INSTALL = z.strictObject({
   id: NATIVE_HUB_RESOURCE_ID,
   releaseId: APP_UPDATE_SUMMARY.shape.id,

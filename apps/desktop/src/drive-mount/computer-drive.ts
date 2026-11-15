@@ -2,6 +2,7 @@ import { mkdir, readdir, rm } from 'node:fs/promises';
 import { homedir, userInfo } from 'node:os';
 import { env } from 'node:process';
 import { join } from 'node:path';
+import { setTimeout as pause } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import type {
   ComputerServiceConfig,
@@ -23,15 +24,18 @@ import { SyncSocket, type SyncSocketTransport } from '../drive-sync/socket.js';
 import { ignoreMatcherOf } from '../drive-sync/state.js';
 import { HubBlockSource } from '../drive-sync/transfer.js';
 import { nodeSystem } from '../service/system.js';
+import { DriveSyncNotStartedError, ENGINE_TIMINGS } from './computer-drive-sync.js';
 import { MountController } from './controller.js';
 import { driveControlAddress } from './control-protocol.js';
 import { DriveControlServer } from './control-server.js';
 import { detectFuse, nodeFuseExists, recoverStaleMount, type FuseStatus } from './fuse-detect.js';
 import { HelperProcess, nodeSpawnHelper } from './helper-process.js';
+import { validateTuning } from './helper-tuning-report.js';
 import {
-  CacheSettingsFile,
+  DriveSettingsFile,
   helperCacheOf,
   helperRouteOf,
+  helperTuningOf,
   routeWordOf,
   type HelperRouteSource,
 } from './helper-settings.js';
@@ -48,21 +52,20 @@ import { FilePlacementCache } from './placement-cache.js';
 import { nodePathFs, systemDirectories } from './placement-paths.js';
 import { nodeReadText } from './placement-basic.js';
 import type { RouteEndpointState } from './placement-state.js';
-import { PlacementsController, type SubscribeHandlers } from './placements.js';
+import {
+  PlacementsController,
+  type PlacementsPorts,
+  type SubscribeHandlers,
+} from './placements.js';
 import { PlacementRelay, type PlacementFeed } from './relay-link.js';
 import { SocketRouter } from './socket-router.js';
 import { SyncEngineHost, type EngineHandle } from './sync-engines.js';
 import { engineSinkOf } from './sync-sink.js';
 
-const ENGINE_TIMINGS = {
-  changeQuietMs: 1000,
-  deleteHoldMs: 3000,
-  queueLimit: null,
-  writeQuietMs: 2000,
-} as const;
 const NOTIFY_QUIET_MS = 250;
 const PLACEMENT_CACHE_FILE = 'drive-placements.json';
-const CACHE_SETTINGS_FILE = 'drive-cache.json';
+const LEGACY_CACHE_SETTINGS_FILE = 'drive-cache.json';
+const DRIVE_SETTINGS_FILE = 'drive-settings.json';
 const HELPER_FOLDER = 'drive-mount';
 const HELPER_NAME = 'se-drive-mount';
 const NO_MOUNTS: FuseStatus = {
@@ -93,17 +96,11 @@ export function bundledDriveMountHelper(): string {
   return fileURLToPath(new URL(`./${HELPER_FOLDER}/${HELPER_NAME}`, import.meta.url));
 }
 
-function pause(milliseconds: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
 export class ComputerDrive implements ComputerDriveRuntime {
   private readonly relay = new PlacementRelay();
   private readonly router = new SocketRouter();
   private readonly cache: FilePlacementCache;
-  private readonly cacheSettings: CacheSettingsFile;
+  private readonly settings: DriveSettingsFile;
   private stopRoute: (() => void) | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly platform = process.platform;
@@ -132,7 +129,10 @@ export class ComputerDrive implements ComputerDriveRuntime {
   constructor(private readonly context: ComputerDriveContext) {
     const { layout, node, transport, log } = context;
     this.cache = new FilePlacementCache(join(layout.root, PLACEMENT_CACHE_FILE), log);
-    this.cacheSettings = new CacheSettingsFile(join(layout.root, CACHE_SETTINGS_FILE));
+    this.settings = new DriveSettingsFile(
+      join(layout.root, DRIVE_SETTINGS_FILE),
+      join(layout.root, LEGACY_CACHE_SETTINGS_FILE),
+    );
     const area = mountAreaOf(this.locationFacts);
     this.places =
       this.platform === 'linux' && area !== null
@@ -181,7 +181,9 @@ export class ComputerDrive implements ComputerDriveRuntime {
     const { layout, log } = this.context;
     await mkdir(layout.root, { recursive: true });
     this.database = openDriveSyncDatabase(join(layout.root, DRIVE_SYNC_DATABASE_FILE), log);
-    this.helper.configure(helperCacheOf(await this.cacheSettings.read()));
+    const { cache, tuning } = await this.settings.read();
+    this.helper.configure(helperCacheOf(cache));
+    this.helper.configure(helperTuningOf(tuning));
     this.followRoute();
     await this.controller.start();
     await this.server.start();
@@ -216,11 +218,13 @@ export class ComputerDrive implements ComputerDriveRuntime {
 
   async state(): Promise<DesktopDriveState> {
     const summary = await this.host.summary();
+    const { cache, tuning } = await this.settings.read();
     return {
       mount: this.mount,
       sync: summary,
       fuse: this.fuse,
-      cache: await this.cacheSettings.read(),
+      cache,
+      tuning: this.controller.tuning(tuning),
     };
   }
 
@@ -233,11 +237,18 @@ export class ComputerDrive implements ComputerDriveRuntime {
         await this.host.resume();
         return;
       case 'cache':
-        await this.cacheSettings.write(command.cache);
+        await this.settings.writeCache(command.cache);
         this.helper.configure(helperCacheOf(command.cache));
         this.changed();
         return;
+      case 'tuning':
+        validateTuning(command.tuning, this.controller.tuning(command.tuning).limits);
+        await this.settings.writeTuning(command.tuning);
+        this.helper.configure(helperTuningOf(command.tuning));
+        this.changed();
+        return;
       case 'again':
+      case 'remount':
       case 'clear-cache':
       case 'pin':
       case 'unpin':
@@ -271,37 +282,44 @@ export class ComputerDrive implements ComputerDriveRuntime {
       helper: this.helper,
       link: this.relay,
       sleep: pause,
-      createPlacements: (ports) =>
-        new PlacementsController({
-          ...ports,
-          cache: this.cache,
-          route: {
-            state: () => this.context.authority.state,
-            subscribe: (listener) => this.context.authority.subscribe(listener),
-          },
-          openSubscribe: (placementId, handlers) => this.subscribe(placementId, handlers),
-          facts: {
-            platform: this.platform,
-            dataDirectory: layout.root,
-            systemDirectories: systemDirectories(this.platform, env),
-          },
-          locations: this.locations,
-          places: (shown): void => {
-            this.showPlaces(shown);
-          },
-          synced: (placements): void => {
-            this.intake.accept(placements).catch((cause: unknown) => {
-              log.error('drive_sync.intake_failed', cause);
-            });
-          },
-          now: () => new Date(),
-          log,
-        }),
+      createPlacements: (ports) => this.placementsOf(ports),
       clearCache: () => rm(layout.driveMountCache, { recursive: true, force: true }),
       tray: (state): void => {
         this.mount = state;
         this.changed();
       },
+      tuningChanged: (): void => {
+        this.changed();
+      },
+      log,
+    });
+  }
+
+  private placementsOf(ports: Pick<PlacementsPorts, 'helper' | 'link'>): PlacementsController {
+    const { layout, log } = this.context;
+    return new PlacementsController({
+      ...ports,
+      cache: this.cache,
+      route: {
+        state: () => this.context.authority.state,
+        subscribe: (listener) => this.context.authority.subscribe(listener),
+      },
+      openSubscribe: (placementId, handlers) => this.subscribe(placementId, handlers),
+      facts: {
+        platform: this.platform,
+        dataDirectory: layout.root,
+        systemDirectories: systemDirectories(this.platform, env),
+      },
+      locations: this.locations,
+      places: (shown): void => {
+        this.showPlaces(shown);
+      },
+      synced: (placements): void => {
+        this.intake.accept(placements).catch((cause: unknown) => {
+          log.error('drive_sync.intake_failed', cause);
+        });
+      },
+      now: () => new Date(),
       log,
     });
   }
@@ -392,14 +410,6 @@ export class ComputerDrive implements ComputerDriveRuntime {
       for (const listener of this.listeners) listener();
     }, NOTIFY_QUIET_MS);
     this.timer.unref();
-  }
-}
-
-export class DriveSyncNotStartedError extends Error {
-  override readonly name = 'DriveSyncNotStartedError';
-
-  constructor() {
-    super('The sync database is not open');
   }
 }
 

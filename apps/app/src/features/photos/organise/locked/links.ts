@@ -1,6 +1,5 @@
 import { ApiError } from '@smarteverything/domain';
-import type { ResolveThumb } from '../../../../components/media-grid/tile';
-import { DriveLinkCache, routeGeneration } from '../../../drive';
+import { DriveLinkCache, routeGeneration, thumbLinksOf } from '../../../drive';
 import { readLockedLinks } from '../api';
 import { lockedSession, subscribeLockedSession } from './session';
 
@@ -20,5 +19,4 @@ subscribeLockedSession(() => {
   lockedLinks.clear();
 });
 
-export const resolveLockedThumb: ResolveThumb = (tile) =>
-  lockedLinks.resolve(tile.id, tile.rev, 'thumb');
+export const lockedThumbs = thumbLinksOf(lockedLinks);

@@ -4,18 +4,22 @@ import type { DriveItem, DriveNotification, ProfileRow } from '@smarteverything/
 import { Badge } from '../../../components/badge';
 import { IconWell } from '../../../components/icon-well';
 import { Interactive } from '../../../components/interactive';
-import { Text } from '../../../components/text';
+import { Skeleton } from '../../../components/skeleton';
+import { Text, type TextVariant } from '../../../components/text';
 import { TONE_ROLE } from '../../../components/tone';
 import { cn } from '../../../design/cn';
 import { relative } from '../../../format/time';
 import { ProfileAvatar } from '../../profiles';
 import { RequestAnswerButtons } from '../share/requests-section';
+import { offerBodyOf } from '../share/transfer-model';
 import { TransferAnswerButtons } from './transfer-card';
 import {
   KIND_LOOK,
   sentenceOf,
+  sentencePartsOf,
   type NotificationContext,
   type RowAction,
+  type SentenceItem,
 } from './notification-model';
 
 export interface NotificationRowProps {
@@ -23,6 +27,7 @@ export interface NotificationRowProps {
   readonly context: NotificationContext;
   readonly actor: ProfileRow | null;
   readonly item: DriveItem | null;
+  readonly location: string | null;
   readonly action: RowAction;
   readonly now: number;
   readonly onOpen: (row: DriveNotification, item: DriveItem | null) => void;
@@ -36,8 +41,15 @@ function Leading({
   readonly actor: ProfileRow | null;
 }): ReactNode {
   const look = KIND_LOOK[row.kind];
-  if (actor === null) return <IconWell icon={look.icon} colour={TONE_ROLE[look.tone]} size="m" />;
-  return <ProfileAvatar profile={actor} />;
+  return (
+    <View className="w-8 items-center">
+      {actor === null ? (
+        <IconWell icon={look.icon} colour={TONE_ROLE[look.tone]} size="s" />
+      ) : (
+        <ProfileAvatar profile={actor} />
+      )}
+    </View>
+  );
 }
 
 function Action({
@@ -48,37 +60,94 @@ function Action({
   readonly context: NotificationContext;
 }): ReactNode {
   if (action.kind === 'answer-request') {
-    return <RequestAnswerButtons request={action.request} name={context.actor} />;
+    const { message } = action.request;
+    return (
+      <View className="gap-2">
+        {message === null ? null : (
+          <View className="border-l-2 border-outline-variant pl-3">
+            <Text variant="footnote" tone="variant">
+              {message}
+            </Text>
+          </View>
+        )}
+        <RequestAnswerButtons request={action.request} name={context.actor} />
+      </View>
+    );
   }
   if (action.kind === 'answer-transfer') {
-    return <TransferAnswerButtons transfer={action.transfer} fromName={context.actor} />;
+    return (
+      <View className="gap-2">
+        <Text variant="footnote" tone="variant">
+          {offerBodyOf(action.transfer, context.actor)}
+        </Text>
+        <TransferAnswerButtons transfer={action.transfer} fromName={context.actor} />
+      </View>
+    );
   }
   return null;
 }
 
+function ItemPart({
+  item,
+  variant,
+}: {
+  readonly item: SentenceItem;
+  readonly variant: TextVariant;
+}): ReactNode {
+  if (item.kind === 'none') return null;
+  if (item.kind === 'pending') {
+    return (
+      <View className="h-6 justify-center">
+        <Skeleton shape="text" className="w-28" />
+      </View>
+    );
+  }
+  return (
+    <Text variant={variant} ellipsize="middle" className="shrink">
+      {item.name}
+    </Text>
+  );
+}
+
+function Sentence({
+  row,
+  context,
+}: {
+  readonly row: DriveNotification;
+  readonly context: NotificationContext;
+}): ReactNode {
+  const variant = row.readAt === null ? 'body-strong' : 'body';
+  const parts = sentencePartsOf(row, context);
+  const before = parts.before.trim();
+  const after = parts.after.trim();
+  return (
+    <View aria-hidden className="flex-row flex-wrap items-center gap-x-1">
+      {before === '' ? null : <Text variant={variant}>{before}</Text>}
+      <ItemPart item={parts.item} variant={variant} />
+      {after === '' ? null : <Text variant={variant}>{after}</Text>}
+    </View>
+  );
+}
+
 function Summary({
   row,
-  sentence,
-  name,
-  folder,
+  context,
+  location,
   now,
 }: {
   readonly row: DriveNotification;
-  readonly sentence: string;
-  readonly name: string | null;
-  readonly folder: boolean;
+  readonly context: NotificationContext;
+  readonly location: string | null;
   readonly now: number;
 }): ReactNode {
   const unread = row.readAt === null;
   return (
     <>
       <View className="min-w-0 flex-1 gap-1">
-        <Text variant={unread ? 'body-strong' : 'body'} numberOfLines={3}>
-          {sentence}
-        </Text>
-        <View className="flex-row flex-wrap items-center gap-2">
-          {name === null ? null : <Badge icon={folder ? 'folder' : 'fileText'} label={name} />}
-          <Text variant="caption" tone="variant">
+        <Sentence row={row} context={context} />
+        <View className="flex-row items-center gap-2">
+          {location === null ? null : <Badge icon="folder" label={location} />}
+          <Text variant="caption" tone="variant" numberOfLines={1} className="shrink-0">
             {relative(row.updatedAt, now)}
           </Text>
         </View>
@@ -96,30 +165,26 @@ export function NotificationRow({
   context,
   actor,
   item,
+  location,
   action,
   now,
   onOpen,
 }: NotificationRowProps): ReactNode {
   const sentence = sentenceOf(row, context);
   const unread = row.readAt === null ? 'Unread. ' : '';
+  const place = location === null ? '' : `, in ${location}`;
   return (
     <View className="gap-2 px-card-pad py-3">
       <Interactive
         role="button"
-        label={`${unread}${sentence}, ${relative(row.updatedAt, now)}`}
+        label={`${unread}${sentence}${place}, ${relative(row.updatedAt, now)}`}
         onPress={() => {
           onOpen(row, item);
         }}
         className="flex-row items-start gap-3 rounded-md"
       >
         <Leading row={row} actor={actor} />
-        <Summary
-          row={row}
-          sentence={sentence}
-          name={context.item ?? item?.name ?? null}
-          folder={item?.kind === 'folder'}
-          now={now}
-        />
+        <Summary row={row} context={context} location={location} now={now} />
       </Interactive>
       {action.kind === 'none' ? null : (
         <View className="pl-11">

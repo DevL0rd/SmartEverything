@@ -4,12 +4,13 @@ import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutRight } from 'react-na
 import { DockedPane } from '../../../components/docked-pane';
 import { EmptyState } from '../../../components/empty-state';
 import { IconButton } from '../../../components/icon-button';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { DURATION, EASING, entering, exiting, useMotion } from '../../../design/motion';
 import { useAreaWidth, useWindowSize } from '../../../design/size-class';
 import type { FileNode } from '../source/types';
+import { useSourceLinks } from '../source/source-hooks';
 import { DETAILS_WIDTH, presentationOf, setPaneWidth, usePaneWidth } from './details-model';
 import type { DetailsHost, DetailsProps } from './details-host';
 import { DetailsTabs } from './details-tabs';
@@ -27,7 +28,7 @@ const SCRIM_IN = FadeIn.duration(DURATION.mediumOut);
 const SCRIM_OUT = FadeOut.duration(DURATION.mediumOut);
 
 function PaneHeader<O>({ node, host }: DetailsProps<O>): ReactNode {
-  const { icon } = host.source.useLinks(node);
+  const { icon } = useSourceLinks(host.source, node);
   const starred = node.marks.starred;
   return (
     <View className="flex-row items-center gap-2 pb-1 pl-4 pr-2 pt-2">
@@ -149,7 +150,7 @@ export function DetailsPane<O>({
   readonly node: FileNode<O> | null;
   readonly host: DetailsHost<O>;
 }): ReactNode {
-  const presentation = presentationOf(libraryLayoutOf(useAreaWidth()), useWindowSize().width);
+  const presentation = presentationOf(shellLayoutOf(useAreaWidth()), useWindowSize().width);
   if (presentation === 'pull-up') {
     return node === null ? null : <ItemPullUp node={node} host={host} />;
   }

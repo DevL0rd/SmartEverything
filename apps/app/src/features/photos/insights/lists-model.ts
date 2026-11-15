@@ -120,6 +120,6 @@ export function folderBars(
     }))
     .sort((left, right) => right.total - left.total || compareText(left.label, right.label));
   const all = rows.reduce((sum, row) => sum + row.total, 0);
-  const folders = rows.length === 1 ? '1 folder' : `${count(rows.length)} folders`;
-  return { rows, scale: rows[0]?.total ?? 0, summary: `${bytes(all)} in ${folders}` };
+  const drives = rows.length === 1 ? '1 drive' : `${count(rows.length)} drives`;
+  return { rows, scale: rows[0]?.total ?? 0, summary: `${bytes(all)} in ${drives}` };
 }

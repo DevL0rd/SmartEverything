@@ -53,7 +53,7 @@ function pagesOf(items: readonly unknown[] | undefined): object {
   };
 }
 
-vi.mock('react-native', () => ({ View: node('div') }));
+vi.mock('react-native', () => ({ View: node('div'), ScrollView: node('div') }));
 vi.mock('expo-router', () => ({ router: { push: (): void => undefined } }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: (): object => ({}) }));
 vi.mock('../../../components/toast-store', () => ({
@@ -62,7 +62,7 @@ vi.mock('../../../components/toast-store', () => ({
 }));
 vi.mock('./stop-sharing', () => ({ stopSharing: (): Promise<boolean> => Promise.resolve(true) }));
 vi.mock('../model/item-commands', () => ({ openItemFile: (): void => undefined }));
-vi.mock('../components/folder-glyph', () => ({ DriveKindGlyph: (): null => null }));
+vi.mock('../components/folder-glyph', () => ({ DriveGlyph: (): null => null }));
 vi.mock('../requests/file-request-list', () => ({
   FileRequestsSection: (): ReactNode => createElement('section', null, 'file-requests'),
   useMyFileRequests: (): readonly object[] => seen.requests,
@@ -75,7 +75,10 @@ vi.mock('../share', () => ({
   useShareSheet: (): object => ({ open: (): void => undefined, host: null }),
 }));
 vi.mock('../../../app-shell/hrefs', () => ({
-  href: { driveFolder: (id: string): string => `/drive/folder/${id}` },
+  href: {
+    drive: (): string => '/drive',
+    driveFolder: (id: string): string => `/drive/folder/${id}`,
+  },
 }));
 vi.mock('../../../components/use-section-param', () => ({
   useSectionParam: (): readonly unknown[] => [seen.view, (): void => undefined],
@@ -179,6 +182,7 @@ vi.mock('../../../components/virtual-list', () => ({
   VirtualList: <T>(props: {
     readonly header?: ReactElement;
     readonly empty?: ReactElement;
+    readonly footer?: ReactElement;
     readonly sections: readonly { readonly data: readonly T[] }[];
     readonly renderItem: (item: T) => ReactElement;
   }): ReactNode => {
@@ -188,6 +192,7 @@ vi.mock('../../../components/virtual-list', () => ({
       null,
       props.header,
       rows.length === 0 ? props.empty : rows.map(props.renderItem),
+      props.footer,
     );
   },
 }));
@@ -232,13 +237,21 @@ describe('Shared screen', () => {
     seen.requests = [];
   });
 
-  it('shows the file requests above the shared items in By me', () => {
+  it('shows the file requests below the shared items in By me, also while they load', () => {
     seen.view = 'by-me';
     seen.requests = [{}];
-    const markup = render();
-    expect(markup).toContain('<section>file-requests</section>');
-    expect(markup).toContain('You have not shared anything yet');
-    expect(markup).not.toContain('Shared items');
+    const empty = render();
+    expect(empty).toContain('<section>file-requests</section>');
+    expect(empty).toContain('You have not shared anything yet');
+    expect(empty).not.toContain('Shared items');
+    seen.byMe = [{ item: folder(ITEM, 'Holiday'), grants: [], links: [] }];
+    const shared = render();
+    expect(shared.indexOf('Shared items')).toBeLessThan(shared.indexOf('file-requests'));
+    seen.byMe = undefined;
+    seen.failed = true;
+    const failed = render();
+    expect(failed).toContain('error');
+    expect(failed).toContain('<section>file-requests</section>');
   });
 
   it('marks a view only item shared for viewing and names when the access ends', () => {

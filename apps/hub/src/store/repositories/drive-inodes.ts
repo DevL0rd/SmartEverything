@@ -65,6 +65,11 @@ export interface DriveInodeTimes {
   readonly ctimeNs?: bigint | undefined;
 }
 
+export interface DriveDiskStat {
+  readonly mtimeNs: bigint;
+  readonly bytes: number | null;
+}
+
 export interface DriveInodeAttributes {
   readonly mode?: number | undefined;
   readonly uid?: number | null | undefined;
@@ -261,6 +266,25 @@ export class DriveInodesRepository {
     this.context.write(() => {
       this.byId(id);
       writeInodeTimes(this.context, id, times);
+    });
+  }
+
+  setTimesOnDisk(id: number, times: DriveInodeTimes, disk: DriveDiskStat): void {
+    this.context.write(() => {
+      this.byId(id);
+      writeInodeTimes(this.context, id, times);
+      this.context.sql.run(
+        'match the names of the drive inode to the stat on disk',
+        `update drive_items set modified_at = $moment,
+          bytes = case when $setBytes = 1 then $bytes else bytes end
+          where inode_id = $id`,
+        {
+          id,
+          moment: momentOfNs(disk.mtimeNs),
+          setBytes: flag(disk.bytes !== null),
+          bytes: disk.bytes,
+        },
+      );
     });
   }
 

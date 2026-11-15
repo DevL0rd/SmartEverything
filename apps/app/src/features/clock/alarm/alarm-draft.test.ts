@@ -180,10 +180,11 @@ describe('repeat and ring once', () => {
   });
 
   it('sets the days for a mode and clears a ring once date', () => {
-    expect(repeatEdit('weekends', [1])).toEqual({ days: [0, 6], once_on: null });
-    expect(repeatEdit('once', [1])).toEqual({ days: [], once_on: null });
-    expect(repeatEdit('custom', [3, 1])).toEqual({ days: [1, 3], once_on: null });
-    expect(repeatEdit('custom', [])).toEqual({ days: [1, 2, 3, 4, 5], once_on: null });
+    const first = '2026-11-15';
+    expect(repeatEdit('weekends', [1], first)).toEqual({ days: [0, 6], once_on: null });
+    expect(repeatEdit('once', [1], first)).toEqual({ days: [], once_on: first });
+    expect(repeatEdit('custom', [3, 1], first)).toEqual({ days: [1, 3], once_on: null });
+    expect(repeatEdit('custom', [], first)).toEqual({ days: [1, 2, 3, 4, 5], once_on: null });
   });
 
   it('toggles one day dot and keeps the days in order', () => {

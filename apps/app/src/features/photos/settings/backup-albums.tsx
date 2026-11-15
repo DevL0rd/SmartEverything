@@ -12,8 +12,32 @@ import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { PREFS, usePref } from '../../../store/prefs';
+import {
+  BACKUP_CHOICES_KEY,
+  backupChoiceKind,
+  listBackupChoices,
+  type BackupChoice,
+  type BackupChoiceKind,
+} from './backup-choices';
 import { ALL_PHONE_MEDIA, albumsText } from './model';
-import { PHONE_ALBUMS_KEY, listPhoneAlbums, type PhoneAlbum } from './phone-albums';
+
+const COPY: Readonly<
+  Record<
+    BackupChoiceKind,
+    { readonly empty: string; readonly emptyBody: string; readonly all: string }
+  >
+> = {
+  album: {
+    empty: 'No albums on this phone',
+    emptyBody: 'Backup includes everything on this phone.',
+    all: 'New albums are backed up too.',
+  },
+  folder: {
+    empty: 'No photo folders on this computer',
+    emptyBody: 'Backup includes everything in Pictures and Videos.',
+    all: 'New folders are backed up too.',
+  },
+};
 
 export function toggled(chosen: readonly string[], albumId: string, on: boolean): string[] {
   const rest = chosen.filter((id) => id !== albumId);
@@ -22,27 +46,25 @@ export function toggled(chosen: readonly string[], albumId: string, on: boolean)
 
 function AlbumList({
   albums,
+  kind,
   pref,
   onSave,
 }: {
-  readonly albums: readonly PhoneAlbum[];
+  readonly albums: readonly BackupChoice[];
+  readonly kind: BackupChoiceKind;
   readonly pref: PhotosBackupPref;
   readonly onSave: (next: PhotosBackupPref) => void;
 }): ReactNode {
   if (albums.length === 0) {
     return (
-      <EmptyState
-        compact
-        icon="layers"
-        title="No albums on this phone"
-        body="Backup includes everything on this phone."
-      />
+      <EmptyState compact icon="layers" title={COPY[kind].empty} body={COPY[kind].emptyBody} />
     );
   }
   return albums.map((album) => (
     <Checkbox
       key={album.id}
       label={album.title}
+      {...(album.place === null ? {} : { description: album.place })}
       checked={pref.albumIds.includes(album.id)}
       onChange={(on) => {
         onSave({ ...pref, albumIds: toggled(pref.albumIds, album.id, on) });
@@ -58,19 +80,20 @@ function AlbumChoices({
   readonly pref: PhotosBackupPref;
   readonly onSave: (next: PhotosBackupPref) => void;
 }): ReactNode {
-  const albums = useScreenQuery({ queryKey: PHONE_ALBUMS_KEY, queryFn: listPhoneAlbums });
+  const albums = useScreenQuery({ queryKey: BACKUP_CHOICES_KEY, queryFn: listBackupChoices });
+  const kind = backupChoiceKind();
   return (
     <View className="gap-1">
       <Checkbox
         label={ALL_PHONE_MEDIA}
-        description="New albums are backed up too."
+        description={COPY[kind].all}
         checked={pref.albumIds.length === 0}
         onChange={(on) => {
           if (on) onSave({ ...pref, albumIds: [] });
         }}
       />
       {albums.data === undefined ? null : (
-        <AlbumList albums={albums.data} pref={pref} onSave={onSave} />
+        <AlbumList albums={albums.data} kind={kind} pref={pref} onSave={onSave} />
       )}
       {albums.isPending ? <Skeleton shape="line" className="h-10" /> : null}
       {albums.isError ? (
@@ -90,7 +113,7 @@ export function BackupAlbumsRow(): ReactNode {
   const [open, setOpen] = useState(false);
   const opener = useRef<View>(null);
   if (pref.status !== 'ready') {
-    return <ListRow title="Albums and folders" icon="layers" disabled />;
+    return <ListRow title="Albums and folders" disabled />;
   }
   const close = (): void => {
     setOpen(false);
@@ -99,9 +122,8 @@ export function BackupAlbumsRow(): ReactNode {
     <>
       <ListRow
         title="Albums and folders"
-        icon="layers"
         pressRef={opener}
-        value={albumsText(pref.value.albumIds)}
+        subtitle={albumsText(pref.value.albumIds, backupChoiceKind())}
         chevron
         onPress={() => {
           setOpen(true);

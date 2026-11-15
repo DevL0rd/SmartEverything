@@ -15,7 +15,7 @@ describe('the app update controller checks', () => {
   it('shows checking only while a check runs and then the offer', async () => {
     const world = setup();
     const finish = deferCheck(world);
-    const checking = world.controller.check('live');
+    const checking = world.controller.check('paired');
     await settle();
     expect(world.controller.state().kind).toBe('checking');
     finish(FOUND);
@@ -45,7 +45,7 @@ describe('the app update controller checks', () => {
       finishInitial = resolve;
     });
     vi.mocked(world.adapter.check).mockReturnValueOnce(initial).mockResolvedValueOnce(fresh);
-    const checking = world.controller.check('live');
+    const checking = world.controller.check('paired');
     const notice = noticeFor(fresh.compatible?.id ?? null);
     world.controller.receiveNotice(notice);
     world.controller.receiveNotice(notice);
@@ -64,7 +64,7 @@ describe('the app update controller checks', () => {
     const world = setup();
     await world.controller.start();
     const finish = deferCheck(world);
-    const background = world.controller.check('live');
+    const background = world.controller.check('paired');
     await settle();
     const manual = world.controller.check('button');
     expect(world.adapter.check).toHaveBeenCalledTimes(1);
@@ -83,7 +83,7 @@ describe('the app update controller checks', () => {
 
   it('keeps a failed background check silent once an answer is known', async () => {
     const world = setup({ outcome: { compatible: null, newer: null, rollBackToEmbedded: false } });
-    await world.controller.check('live');
+    await world.controller.check('paired');
     vi.mocked(world.adapter.check).mockRejectedValueOnce(new Error('offline'));
     await world.controller.check('notice');
     expect(world.controller.state().kind).toBe('up_to_date');
@@ -92,7 +92,7 @@ describe('the app update controller checks', () => {
   it('shows a failed first check with a plain sentence and no internal detail', async () => {
     const world = setup();
     vi.mocked(world.adapter.check).mockRejectedValueOnce(new Error('ECONNRESET 10.0.0.4'));
-    await world.controller.check('live');
+    await world.controller.check('paired');
     const state = world.controller.state();
     expect(state).toMatchObject({ kind: 'failed', cause: 'check', target: null, offer: null });
     expect(JSON.stringify(state)).not.toContain('ECONNRESET');

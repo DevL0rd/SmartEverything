@@ -4,7 +4,7 @@ import type {
   PlannerOccurrenceView,
 } from '@smarteverything/domain';
 import { joinParts } from '../../../format/text';
-import { clock } from '../../../format/time';
+import { clock24 } from '../../../format/time';
 import { LOOK_WORDS, type EventLook } from './calendars-model';
 import {
   countsOf,
@@ -51,11 +51,14 @@ function timesOf(
 ): { readonly time: string; readonly until: string | null } {
   if (view.all_day) return { time: 'All day', until: null };
   if (view.start === null) {
-    return { time: view.due_at === null ? 'Any time' : clock(view.due_at, timeZone), until: null };
+    return {
+      time: view.due_at === null ? 'Any time' : clock24(view.due_at, timeZone),
+      until: null,
+    };
   }
   const [first, last] = timedSpanOf(view.start, view.end, timeZone);
-  const until = view.end === null || last !== day ? null : clock(view.end, timeZone);
-  if (first === day) return { time: clock(view.start, timeZone), until };
+  const until = view.end === null || last !== day ? null : clock24(view.end, timeZone);
+  if (first === day) return { time: clock24(view.start, timeZone), until };
   return until === null
     ? { time: 'All day', until: null }
     : { time: `Until ${until}`, until: null };

@@ -1,7 +1,7 @@
-import type { PhotoAiStageProgress, PhotoAiStatus } from '@smarteverything/domain';
+import type { PhotoAiPeople, PhotoAiStageProgress, PhotoAiStatus } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Ledger } from '../../ledger/ledger';
-import type { StoreContext } from '../../store/context';
+import { found, type StoreContext } from '../../store/context';
 import type { PhotoConsent } from './consent';
 import { ESTIMATE_MICROS_PER_PHOTO } from './defaults';
 import { ITEMS_OF, librarySubjectScope, subjectOf, type SubjectScope } from './scope';
@@ -17,6 +17,8 @@ const COUNTS = z.strictObject({
 const TOTAL = z.strictObject({ total: z.int() });
 
 const SUBJECT = z.strictObject({ owner: z.string() });
+
+const FACES = z.strictObject({ faces: z.int(), grouped: z.int() });
 
 const EPOCH = '1970-01-01T00:00:00.000Z';
 
@@ -89,6 +91,7 @@ export class PhotoAiStatusReader {
       faces: totals.faces,
       tags: totals.tags,
       index: totals.index,
+      people: this.people(profileId, subjects),
       spentMicros: this.spent(profileId, owner),
       estimateMicros: this.remaining(subjects) * unit,
       models: this.env.models.read(),
@@ -174,6 +177,30 @@ export class PhotoAiStatusReader {
       index = plus(index, this.stage('index', subject.scope));
     }
     return { total, faces, tags, index };
+  }
+
+  private people(viewer: string, subjects: readonly Subject[]): PhotoAiPeople {
+    let faces = 0;
+    let grouped = 0;
+    for (const { scope } of subjects) {
+      const row = found(
+        this.env.context.sql.get(
+          FACES,
+          `select count(*) as faces,
+            count(case when exists (select 1 from photo_group_faces gf
+              where gf.face_id = f.id and gf.profile_id = $viewer and gf.source <> 'rejected')
+              then 1 end) as grouped
+          from ${ITEMS_OF} join photo_faces f on f.item_id = i.id and f.rev = i.rev
+          where f.kind = 'person' and ${librarySubjectScope()} and ${scope.text}`,
+          { ...scope.parameters, viewer },
+        ),
+        'photo face counts',
+        viewer,
+      );
+      faces += row.faces;
+      grouped += row.grouped;
+    }
+    return { faces, grouped };
   }
 
   private count(scope: SubjectScope): number {

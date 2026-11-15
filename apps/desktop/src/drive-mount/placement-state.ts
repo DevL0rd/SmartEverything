@@ -1,5 +1,6 @@
 import type { DrivePlacement, DrivePlacementStatus } from '@smarteverything/domain';
 import { z } from 'zod';
+import { HELPER_APPLIED_LINE, HELPER_LIMITS_LINE } from './helper-tuning-report.js';
 
 const COUNT = z.int().nonnegative();
 
@@ -23,6 +24,8 @@ const HELPER_LINE = z.discriminatedUnion('type', [
     reason: z.string(),
   }),
   z.strictObject({ type: z.literal('counters'), mount: z.string().min(1), ...HELPER_COUNTERS }),
+  HELPER_LIMITS_LINE,
+  HELPER_APPLIED_LINE,
 ]);
 
 export type HelperLine = z.infer<typeof HELPER_LINE>;

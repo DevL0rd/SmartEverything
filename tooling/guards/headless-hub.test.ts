@@ -94,10 +94,12 @@ describe('the hub is a headless server', () => {
     expect(places.filter((place) => FORBIDDEN_FILES.includes(place))).toEqual([]);
   });
 
-  it('keeps the computer node on its own entry, where the ears live', () => {
+  it('keeps the computer node on its own entry, where the ears live in their own process', () => {
     const node = reachedFrom(join(hubSource, 'node', 'bootstrap.ts'));
-    const nodePlaces = [...node.files].map(insideHub);
-    expect(nodePlaces).toContain('node/ear/ear-host.ts');
-    expect(node.names(SPOTTER_PACKAGE).map(insideHub)).toEqual(['node/ear/sherpa.ts']);
+    expect([...node.files].map(insideHub)).toContain('node/ear/process/ear-process-for.ts');
+    expect(node.names(SPOTTER_PACKAGE)).toEqual([]);
+    const ears = reachedFrom(join(hubSource, 'node', 'ear', 'process', 'ear-child.ts'));
+    expect([...ears.files].map(insideHub)).toContain('node/ear/ear-host.ts');
+    expect(ears.names(SPOTTER_PACKAGE).map(insideHub)).toEqual(['node/ear/sherpa.ts']);
   });
 });

@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { backupOriginOf, computerFolderOf, lastSegment, phoneFolderOf } from './folders';
+import {
+  backupOriginOf,
+  computerDeviceFolderOf,
+  computerFolderOf,
+  lastSegment,
+  phoneFolderOf,
+  type LocalFolder,
+} from './folders';
 import { shownLocalItems } from './tiles';
 import type { LocalMediaItem } from './types';
 
-function item(id: string, folder: LocalMediaItem['folder']): LocalMediaItem {
+function item(id: string, origin: LocalFolder | null): LocalMediaItem {
+  const folder = origin === null ? null : { ...origin, backupId: `album-${id}` };
   return {
     id,
     name: `${id}.jpg`,
@@ -39,6 +47,14 @@ describe('local folders', () => {
       name: 'Pictures',
     });
     expect(backupOriginOf('desktop', '')).toBeNull();
+  });
+
+  it('backs up a computer folder by its path', () => {
+    expect(computerDeviceFolderOf('/home/me/Pictures/Trip')).toEqual({
+      key: 'computer:/home/me/Pictures/Trip',
+      name: 'Trip',
+      backupId: '/home/me/Pictures/Trip',
+    });
   });
 
   it('leaves photos of hidden folders out unless everything is shown', () => {

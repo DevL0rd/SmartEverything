@@ -9,9 +9,11 @@ import { describe, expect, it } from 'vitest';
 import { shiftDay, shortDate, startOfDayKey } from '../../../format/time';
 import {
   bestDayOf,
+  bucketsOf,
   calendarSlicesOf,
   dayBarsOf,
   doneByDayOf,
+  doneTrendOf,
   hasInsights,
   heatDaysOf,
   heatSplitOf,
@@ -22,6 +24,7 @@ import {
   peakHourOf,
   rangeDaysOf,
   rangeLabelOf,
+  rangeSpanOf,
 } from './insights-model';
 import { changeFactsOf, changePromptOf, changeTitleOf, kpisOf } from './summary-model';
 
@@ -121,14 +124,26 @@ describe('the insights done heatmap', () => {
 });
 
 describe('the best hours', () => {
-  it('names the busiest hour and labels the axis every six hours', () => {
+  it('names the busiest hour and draws every hour from the first to the last with work', () => {
+    const done: Readonly<Record<number, number>> = { 8: 2, 9: 5, 12: 1 };
     const stats = statsOf('week', {
-      best_hours: Array.from({ length: 24 }, (_, hour) => ({ hour, done: hour === 9 ? 5 : 1 })),
+      best_hours: Array.from({ length: 24 }, (_, hour) => ({ hour, done: done[hour] ?? 0 })),
     });
     expect(peakHourOf(stats)).toBe(9);
     expect(hourWindowOf(9)).toBe('09:00 to 10:00');
-    const labelled = hourBarsOf(stats).filter((bar) => bar.label !== undefined);
-    expect(labelled.map((bar) => bar.label)).toEqual(['00', '06', '12', '18']);
+    const bars = hourBarsOf(stats);
+    expect(bars.map((bar) => bar.label)).toEqual(['08', '09', '10', '11', '12']);
+    expect(bars.map((bar) => bar.value)).toEqual([2, 5, 0, 0, 1]);
+    expect(hourBarsOf(statsOf('week', { best_hours: [{ hour: 17, done: 3 }] }))).toEqual([
+      { key: '17', value: 3, label: '17' },
+    ]);
+  });
+
+  it('shows the waking hours empty before anything is done', () => {
+    const bars = hourBarsOf(statsOf('week'));
+    expect(bars.at(0)?.label).toBe('06');
+    expect(bars.at(-1)?.label).toBe('23');
+    expect(bars.every((bar) => bar.value === 0)).toBe(true);
   });
 
   it('has no best hour before anything is done', () => {
@@ -161,17 +176,34 @@ describe('the load buckets', () => {
     expect(loadBarsOf(buckets).at(-1)?.value).toBe(1);
   });
 
-  it('groups a month into weeks that end on the last day', () => {
+  it('groups a month into calendar weeks and leaves out the partial first week', () => {
     const buckets = loadBucketsOf(statsOf('month'));
-    expect(buckets).toHaveLength(5);
+    expect(buckets).toHaveLength(4);
+    expect(buckets[0]).toMatchObject({ key: '2026-10-12', minutes: 420 });
     expect(buckets.at(-1)).toMatchObject({ key: shiftDay(LAST, -6), minutes: 420 });
-    expect(buckets[0]?.minutes).toBe(120);
   });
 
-  it('covers the whole year in weeks', () => {
+  it('covers the year in full calendar weeks', () => {
     const buckets = loadBucketsOf(statsOf('year'));
-    expect(buckets).toHaveLength(53);
-    expect(buckets.reduce((sum, bucket) => sum + bucket.minutes, 0)).toBe(365 * 60);
+    expect(buckets).toHaveLength(52);
+    expect(buckets.every((bucket) => bucket.minutes === 420)).toBe(true);
+  });
+
+  it('keeps the week in progress at the end', () => {
+    const days = Array.from({ length: 10 }, (_, index) => shiftDay('2026-11-02', index));
+    const weeks = bucketsOf(days, (day) => day, 'month');
+    expect(weeks.map((week) => week.length)).toEqual([7, 3]);
+  });
+
+  it('sums the done sparkline per day, per week for a month and per month for a year', () => {
+    const week = statsOf('week', { list_trends: [trend(WORK, { [LAST]: 3 }, 'week')] });
+    expect(doneTrendOf(week)).toHaveLength(7);
+    const month = statsOf('month', { list_trends: [trend(WORK, { [LAST]: 3 }, 'month')] });
+    expect(doneTrendOf(month)).toHaveLength(4);
+    const year = statsOf('year', { list_trends: [trend(WORK, { [LAST]: 3 }, 'year')] });
+    const points = doneTrendOf(year);
+    expect(points).toHaveLength(12);
+    expect(points.at(-1)).toEqual({ t: 11, v: 3 });
   });
 });
 
@@ -230,6 +262,12 @@ describe('the empty insights page', () => {
 });
 
 describe('the range line', () => {
+  it('works out the range from today before the hub answers', () => {
+    expect(rangeSpanOf('week', LAST)).toEqual({ from: '2026-11-02', to: LAST });
+    expect(rangeSpanOf('month', LAST)).toEqual({ from: '2026-10-10', to: LAST });
+    expect(rangeSpanOf('year', LAST)).toEqual({ from: '2025-11-09', to: LAST });
+  });
+
   it('names the years only when the range crosses one', () => {
     const date = (day: string): string => shortDate(startOfDayKey(day));
     expect(rangeLabelOf(statsOf('week'))).toBe(`${date('2026-11-02')} to ${date(LAST)}`);

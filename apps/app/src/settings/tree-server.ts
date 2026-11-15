@@ -4,6 +4,7 @@ export const SERVER_PAGES: readonly SettingsPageDefinition[] = [
   {
     id: 'server',
     title: 'Server & remote access',
+    short: 'Server',
     icon: 'server',
     parent: null,
     group: 'System',

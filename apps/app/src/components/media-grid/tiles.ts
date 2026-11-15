@@ -8,7 +8,6 @@ export interface MediaTile {
   readonly takenAt: number;
   readonly offsetMin: number | null;
   readonly durationMs: number | null;
-  readonly thumbhash: string | null;
   readonly flags: number;
   readonly local: boolean;
   readonly backedUp?: boolean;
@@ -35,7 +34,6 @@ export function tilesOfPage(page: LibraryPage): readonly MediaTile[] {
     takenAt: cell(page.takenAt, index, 'capture time'),
     offsetMin: cell(page.offsetMin, index, 'time offset'),
     durationMs: cell(page.durationMs, index, 'duration'),
-    thumbhash: cell(page.thumbhash, index, 'placeholder'),
     flags: cell(page.flags, index, 'flags'),
     local: false,
   }));
@@ -84,7 +82,6 @@ export function sameTile(left: MediaTile, right: MediaTile): boolean {
       left.rev === right.rev &&
       left.aspect === right.aspect &&
       left.flags === right.flags &&
-      left.thumbhash === right.thumbhash &&
       left.durationMs === right.durationMs &&
       left.local === right.local &&
       left.backedUp === right.backedUp)

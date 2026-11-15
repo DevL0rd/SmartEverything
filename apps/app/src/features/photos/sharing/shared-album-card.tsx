@@ -10,12 +10,16 @@ import { itemsText } from '../model/media-text';
 import { MemberAvatars } from './member-avatars';
 import { ROLE_LABEL, membersLine, unreadText } from './model';
 
+function memberIdsOf(album: SharedAlbum): readonly string[] {
+  return album.members.map((member) => member.profileId);
+}
+
 export function sharedAlbumLabel(album: SharedAlbum): string {
   const unread = unreadText(album.unread);
   return [
     `Shared album ${album.title}`,
     itemsText(album.itemCount),
-    membersLine(album.memberIds),
+    membersLine(memberIdsOf(album)),
     ROLE_LABEL[album.role],
     ...(unread === null ? [] : [unread]),
   ].join(', ');
@@ -37,7 +41,7 @@ function UnreadDot({ unread }: { readonly unread: number }): ReactNode {
 export function SharedAlbumCard({ album }: { readonly album: SharedAlbum }): ReactNode {
   const people = [
     album.ownerProfileId,
-    ...album.memberIds.filter((id) => id !== album.ownerProfileId),
+    ...memberIdsOf(album).filter((id) => id !== album.ownerProfileId),
   ];
   return (
     <Interactive
@@ -56,7 +60,7 @@ export function SharedAlbumCard({ album }: { readonly album: SharedAlbum }): Rea
             <UnreadDot unread={album.unread} />
           </View>
           <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
-            {`${itemsText(album.itemCount)} · ${membersLine(album.memberIds)}`}
+            {`${itemsText(album.itemCount)} · ${membersLine(memberIdsOf(album))}`}
           </Text>
         </View>
         <View className="flex-row flex-wrap items-center justify-between gap-2">

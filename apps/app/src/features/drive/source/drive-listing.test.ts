@@ -173,6 +173,7 @@ describe('info rows', () => {
   const facts = {
     when: (at: string): string => `at ${at}`,
     nameOf: (): string => 'Dana',
+    rootLabelOf: (): string => 'My Drive',
   };
 
   it('describes a stored item', () => {
@@ -229,5 +230,8 @@ describe('info rows', () => {
       'deleted',
       'purge',
     ]);
+    expect(infoRowsOf(node, facts).find((row) => row.key === 'was')?.value).toBe(
+      'My Drive › Pictures',
+    );
   });
 });

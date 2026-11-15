@@ -12,7 +12,7 @@ function shownImage(item: Extract<DriveItem, { readonly kind: 'image' }>): boole
 
 export function compareKindOf(item: DriveItem): CompareKind {
   if (item.kind === 'image') {
-    return item.thumb.state === 'ready' || shownImage(item) ? 'image' : 'download';
+    return shownImage(item) ? 'image' : 'download';
   }
   const text = (item.kind === 'document' || item.kind === 'other') && isTextMime(item.mime);
   return text ? 'text' : 'download';
@@ -45,16 +45,17 @@ export function zoomPercent(zoom: number): number {
   return Math.round(zoom * 100);
 }
 
-export function swipeCaption(mode: ImageMode): string {
-  return mode === 'side'
-    ? 'Zoom and pan move both sides together.'
-    : 'Drag the line to move between A and B. Zoom and pan move both together.';
+export interface CompareNames {
+  readonly a: string;
+  readonly b: string;
 }
 
-export type VersionLinkSize = 'file' | 'preview';
+export const VERSION_NAMES: CompareNames = { a: 'A', b: 'B' };
 
-export function imageSizeOf(item: DriveItem): VersionLinkSize {
-  return item.kind === 'image' && shownImage(item) ? 'file' : 'preview';
+export function swipeCaption(mode: ImageMode, names: CompareNames): string {
+  return mode === 'side'
+    ? 'Zoom and pan move both sides together.'
+    : `Drag the line to move between ${names.a} and ${names.b}. Zoom and pan move both together.`;
 }
 
 function textLines(text: string): readonly string[] {
@@ -114,6 +115,7 @@ export interface ComparedText {
 export function diffTexts(before: string, after: string): Promise<LineDiff> {
   return new Promise((resolve) => {
     diffLines(before, after, {
+      ignoreNewlineAtEof: true,
       callback: (changes) => {
         resolve(lineDiffOf(changes));
       },
@@ -182,9 +184,10 @@ export function unchangedText(lines: number): string {
   return lines === 1 ? '1 unchanged line' : `${count(lines)} unchanged lines`;
 }
 
-export function changeSummary(diff: LineDiff): string {
-  if (diff.added === 0 && diff.removed === 0) return 'No line changes between B and A';
-  return 'lines between B and A';
+export function changeSummary(diff: LineDiff, names: CompareNames): string {
+  const between = `between ${names.b} and ${names.a}`;
+  if (diff.added === 0 && diff.removed === 0) return `No line changes ${between}`;
+  return `lines ${between}`;
 }
 
 export function signedCount(sign: '+' | '−', value: number): string {

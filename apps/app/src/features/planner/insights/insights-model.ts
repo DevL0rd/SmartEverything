@@ -3,16 +3,24 @@ import type {
   PlannerStats,
   PlannerStatsRange,
 } from '@smarteverything/domain';
-import type { Bar, DonutSlice, HeatDay } from '../../../components/charts';
+import type { Bar, ChartPoint, DonutSlice, HeatDay } from '../../../components/charts';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
 import { rounded } from '../../../format/number';
-import { clockOfMinutes, shortDate, startOfDayKey, weekdayShort } from '../../../format/time';
+import {
+  clockOfMinutes,
+  shiftDay,
+  shortDate,
+  startOfDayKey,
+  weekdayShort,
+} from '../../../format/time';
 
 const TOP_LEVEL = 4;
 const WEEK = 7;
 const HEAT_CELL_STEP = 10;
 const HEAT_WEEKDAY_WIDTH = 30;
-const HOUR_MARKS: ReadonlySet<number> = new Set([0, 6, 12, 18]);
+const QUIET_FIRST_HOUR = 6;
+const QUIET_LAST_HOUR = 23;
+const RANGE_DAYS: Readonly<Record<PlannerStatsRange, number>> = { week: 7, month: 30, year: 365 };
 
 export function hasInsights(stats: PlannerStats): boolean {
   return stats.completion.due > 0 || stats.time_by_calendar.length > 0 || stats.alarms.length > 0;
@@ -71,20 +79,42 @@ export function bestDayOf(days: readonly HeatDay[]): HeatDay | null {
   );
 }
 
+export const BAR_DAYS_MAX = 31;
+
 export function dayBarsOf(days: readonly HeatDay[]): readonly Bar[] {
-  return days.map((entry) => ({
-    key: entry.day,
-    value: entry.pages,
-    label: weekdayShort(startOfDayKey(entry.day)),
-  }));
+  const weekdays = days.length <= WEEK;
+  return days.map((entry) => {
+    const at = startOfDayKey(entry.day);
+    return {
+      key: entry.day,
+      value: entry.pages,
+      label: weekdays ? weekdayShort(at) : shortDate(at),
+    };
+  });
+}
+
+export function habitBarsOf(days: readonly HeatDay[]): readonly Bar[] {
+  if (days.length <= WEEK) return dayBarsOf(days);
+  return days.map((entry) => ({ key: entry.day, value: entry.pages }));
+}
+
+function hourSpanOf(stats: PlannerStats): readonly [number, number] {
+  const active = stats.best_hours.filter((entry) => entry.done > 0).map((entry) => entry.hour);
+  if (active.length === 0) return [QUIET_FIRST_HOUR, QUIET_LAST_HOUR];
+  return [Math.min(...active), Math.max(...active)];
 }
 
 export function hourBarsOf(stats: PlannerStats): readonly Bar[] {
-  return stats.best_hours.map(({ hour, done }) => ({
-    key: String(hour),
-    value: done,
-    ...(HOUR_MARKS.has(hour) ? { label: String(hour).padStart(2, '0') } : {}),
-  }));
+  const [first, last] = hourSpanOf(stats);
+  const done = new Map(stats.best_hours.map((entry) => [entry.hour, entry.done]));
+  return Array.from({ length: last - first + 1 }, (_, index) => {
+    const hour = first + index;
+    return {
+      key: String(hour),
+      value: done.get(hour) ?? 0,
+      label: String(hour).padStart(2, '0'),
+    };
+  });
 }
 
 export function peakHourOf(stats: PlannerStats): number | null {
@@ -132,12 +162,25 @@ export function loadStepOf(range: PlannerStatsRange): number {
   return range === 'week' ? 1 : WEEK;
 }
 
-export function chunksFromEnd<T>(entries: readonly T[], size: number): readonly (readonly T[])[] {
-  const chunks: T[][] = [];
-  for (let end = entries.length; end > 0; end -= size) {
-    chunks.unshift(entries.slice(Math.max(0, end - size), end));
+function weekdayIndexOf(day: string): number {
+  return (new Date(startOfDayKey(day)).getDay() + WEEK - 1) % WEEK;
+}
+
+export function bucketsOf<T>(
+  entries: readonly T[],
+  dayOf: (entry: T) => string,
+  range: PlannerStatsRange,
+): readonly (readonly T[])[] {
+  if (loadStepOf(range) === 1) return entries.map((entry) => [entry]);
+  const weeks: T[][] = [];
+  for (const entry of entries) {
+    const current = weeks.at(-1);
+    if (current === undefined || weekdayIndexOf(dayOf(entry)) === 0) weeks.push([entry]);
+    else current.push(entry);
   }
-  return chunks;
+  const [first, ...rest] = weeks;
+  if (first !== undefined && first.length < WEEK && rest.length > 0) return rest;
+  return weeks;
 }
 
 export function bucketLabel(first: string, step: number): string {
@@ -148,7 +191,7 @@ export function bucketLabel(first: string, step: number): string {
 export function loadBucketsOf(stats: PlannerStats): readonly LoadBucket[] {
   const step = loadStepOf(stats.range);
   const done = doneByDayOf(stats);
-  return chunksFromEnd(stats.weekly_load, step).flatMap((chunk) => {
+  return bucketsOf(stats.weekly_load, (entry) => entry.day, stats.range).flatMap((chunk) => {
     const [first] = chunk;
     if (first === undefined) return [];
     return [
@@ -174,9 +217,41 @@ function yearOf(day: string): string {
   return day.slice(0, 4);
 }
 
-export function rangeLabelOf(stats: PlannerStats): string {
-  const from = shortDate(startOfDayKey(stats.from));
-  const to = shortDate(startOfDayKey(stats.to));
-  if (yearOf(stats.from) === yearOf(stats.to)) return `${from} to ${to}`;
-  return `${from} ${yearOf(stats.from)} to ${to} ${yearOf(stats.to)}`;
+function monthsOf(days: readonly string[]): readonly (readonly string[])[] {
+  const months: string[][] = [];
+  for (const day of days) {
+    const current = months.at(-1);
+    if (current?.[0]?.slice(0, 7) === day.slice(0, 7)) current.push(day);
+    else months.push([day]);
+  }
+  const [first, ...rest] = months;
+  if (first?.[0]?.endsWith('-01') === false && rest.length > 0) return rest;
+  return months;
+}
+
+export function doneTrendOf(stats: PlannerStats): readonly ChartPoint[] {
+  const done = doneByDayOf(stats);
+  const days = rangeDaysOf(stats);
+  const chunks =
+    stats.range === 'year' ? monthsOf(days) : bucketsOf(days, (day) => day, stats.range);
+  return chunks.map((chunk, index) => ({
+    t: index,
+    v: chunk.reduce((sum, day) => sum + (done.get(day) ?? 0), 0),
+  }));
+}
+
+export interface RangeSpan {
+  readonly from: string;
+  readonly to: string;
+}
+
+export function rangeSpanOf(range: PlannerStatsRange, today: string): RangeSpan {
+  return { from: shiftDay(today, 1 - RANGE_DAYS[range]), to: today };
+}
+
+export function rangeLabelOf(span: RangeSpan): string {
+  const from = shortDate(startOfDayKey(span.from));
+  const to = shortDate(startOfDayKey(span.to));
+  if (yearOf(span.from) === yearOf(span.to)) return `${from} to ${to}`;
+  return `${from} ${yearOf(span.from)} to ${to} ${yearOf(span.to)}`;
 }

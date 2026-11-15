@@ -28,7 +28,7 @@ export function PhoneBatteryBody({ device }: { readonly device: Device }): React
 
 export function PhoneBatteryScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   return (
-    <PhonePage deviceId={deviceId} title="Battery" width="detail">
+    <PhonePage deviceId={deviceId} title="Battery">
       {(device) => <PhoneBatteryBody device={device} />}
     </PhonePage>
   );

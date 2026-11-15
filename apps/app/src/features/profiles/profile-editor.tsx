@@ -121,7 +121,7 @@ function Editor({
 }): ReactNode {
   return (
     <View className="gap-section-gap web:flex-row web:flex-wrap web:items-start">
-      <View className="min-w-0 max-w-reading gap-section-gap web:shrink web:grow web:basis-96">
+      <View className="min-w-0 gap-section-gap web:shrink web:grow web:basis-96">
         <ProfileName profile={profile} />
         <List title="Colour">
           <Look profile={profile} />
@@ -130,7 +130,7 @@ function Editor({
           <BodyDetails profile={profile} />
         </List>
       </View>
-      <View className="min-w-0 max-w-reading gap-section-gap web:shrink web:grow web:basis-96 web:empty:hidden">
+      <View className="min-w-0 gap-section-gap web:shrink web:grow web:basis-96 web:empty:hidden">
         {extra}
         <Removal profile={profile} />
       </View>
@@ -147,7 +147,7 @@ export function ProfileEditorScreen({
 }): ReactNode {
   const profile = useRow('profiles', profileId);
   return (
-    <PageShell title={profile?.name ?? 'Person'} width={profile === null ? 'reading' : 'detail'}>
+    <PageShell title={profile?.name ?? 'Person'}>
       {profile === null ? (
         <EmptyState icon="users" title="Person not found" body="They may have been removed." />
       ) : (

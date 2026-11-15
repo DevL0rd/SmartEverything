@@ -55,8 +55,12 @@ export function scrubSegmentsOf(counts: ScrubCounts, running: boolean): readonly
   ];
 }
 
+export function scrubReadTextOf(counts: Pick<ScrubCounts, 'checked' | 'total'>): string {
+  return `${count(counts.checked)} of ${count(counts.total)} files read back`;
+}
+
 export function scrubCountLineOf(counts: ScrubCounts): string {
-  return `${count(counts.checked)} of ${count(counts.total)} files read back · ${damagedText(counts.corrupt)}`;
+  return `${scrubReadTextOf(counts)} · ${damagedText(counts.corrupt)}`;
 }
 
 export function useScrubCounts(scrub: ScrubPass): ScrubCounts {
@@ -65,7 +69,6 @@ export function useScrubCounts(scrub: ScrubPass): ScrubCounts {
 
 export function ScrubProgress({ scrub }: { readonly scrub: ScrubPass }): ReactNode {
   const counts = useScrubCounts(scrub);
-  const line = scrubCountLineOf(counts);
   return (
     <View className="w-full gap-1.5">
       <SegmentBar
@@ -74,13 +77,22 @@ export function ScrubProgress({ scrub }: { readonly scrub: ScrubPass }): ReactNo
         segments={scrubSegmentsOf(counts, scrub.state === 'running')}
         total={counts.total}
       />
-      <Text
-        variant="footnote"
-        tone={counts.corrupt === 0 ? 'variant' : 'critical'}
-        className="tabular"
+      <View
+        accessible
+        accessibilityLabel={scrubCountLineOf(counts)}
+        className="flex-row flex-wrap gap-x-1"
       >
-        {line}
-      </Text>
+        <Text variant="footnote" tone="variant" className="tabular">
+          {`${scrubReadTextOf(counts)} ·`}
+        </Text>
+        <Text
+          variant="footnote"
+          tone={counts.corrupt === 0 ? 'variant' : 'critical'}
+          className="tabular"
+        >
+          {damagedText(counts.corrupt)}
+        </Text>
+      </View>
     </View>
   );
 }

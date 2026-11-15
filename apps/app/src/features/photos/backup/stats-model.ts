@@ -25,11 +25,7 @@ export function addedInMonth(growth: GrowthDays | null, month: string): AddedMon
   const last = days.at(-1);
   if (first === undefined || last === undefined) return null;
   return {
-    bars: days.map((day) => ({
-      key: day.day,
-      value: day.added,
-      label: `${shortDate(startOfDayKey(day.day))}: ${count(day.added)} added`,
-    })),
+    bars: days.map((day) => ({ key: day.day, value: day.added })),
     items: days.reduce((sum, day) => sum + day.added, 0),
     from: shortDate(startOfDayKey(first.day)),
     to: shortDate(startOfDayKey(last.day)),
@@ -103,10 +99,21 @@ export interface ProcessingRow {
   readonly done: boolean;
 }
 
+export interface FailedItem {
+  readonly itemId: string;
+  readonly error: string;
+}
+
+export interface ProcessingQueue {
+  readonly running: number;
+  readonly queued: number;
+}
+
 export interface ProcessingView {
   readonly left: number;
+  readonly queue: ProcessingQueue | null;
   readonly rows: readonly ProcessingRow[];
-  readonly failedItems: readonly string[];
+  readonly failedItems: readonly FailedItem[];
 }
 
 function rowOf(kind: ProcessingKind, progress: Progress): ProcessingRow {
@@ -124,19 +131,40 @@ export function processingOf(
   processing: MediaProcessing,
   kinds: ReadonlyMap<ProcessingKind, Progress>,
 ): ProcessingView {
+  const left = processing.queued + processing.running;
   return {
-    left: processing.queued + processing.running,
+    left,
+    queue: left === 0 ? null : { running: processing.running, queued: processing.queued },
     rows: KIND_ORDER.flatMap((kind) => {
       const progress = kinds.get(kind);
       return progress === undefined ? [] : [rowOf(kind, progress)];
     }),
-    failedItems: [...new Set(processing.failed.map((job) => job.itemId))],
+    failedItems: failedItemsOf(processing.failed),
   };
+}
+
+function failedItemsOf(jobs: MediaProcessing['failed']): FailedItem[] {
+  const errors = new Map<string, string[]>();
+  for (const job of jobs) {
+    if (job.error === null) throw new Error(`failed media job ${job.id} has no error`);
+    const known = errors.get(job.itemId) ?? [];
+    if (!known.includes(job.error)) known.push(job.error);
+    errors.set(job.itemId, known);
+  }
+  return [...errors].map(([itemId, messages]) => ({ itemId, error: messages.join(' · ') }));
 }
 
 export function jobsLeftText(left: number): string {
   if (left === 0) return 'Nothing waiting';
-  return `${count(left)} ${left === 1 ? 'job' : 'jobs'} left · visible items first`;
+  return `${count(left)} ${left === 1 ? 'job' : 'jobs'} left`;
+}
+
+export function queueText(queue: ProcessingQueue): string {
+  return `${count(queue.running)} running now · ${count(queue.queued)} queued`;
+}
+
+export function failedBadgeText(files: number): string {
+  return `${count(files)} failed`;
 }
 
 export function unreadableText(files: number): string {

@@ -37,7 +37,8 @@ export function sunriseTextOf(sunrise: PlannerSunrise): string {
 export function sunriseSummaryOf(sunrise: PlannerSunrise, time: string): string {
   const lights = plural(sunrise.lights.length, 'light');
   const colour = sunrise.colour ? ', warm to daylight' : '';
-  return `${lights} brighten from ${sunriseStartOf(sunrise, time)} to full at ${time}${colour}.`;
+  const verb = sunrise.lights.length === 1 ? 'brightens' : 'brighten';
+  return `${lights} ${verb} from ${sunriseStartOf(sunrise, time)} to full at ${time}${colour}.`;
 }
 
 export function sunriseGradientOf(colour: boolean): string {

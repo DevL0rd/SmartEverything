@@ -4,27 +4,21 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import { router } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { centredRect, pointRect, type Rect } from '../../../components/anchor';
-import { Button } from '../../../components/button';
 import type { Point } from '../../../components/interactive';
 import type { DayText } from '../../../components/media-grid/day-text';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
 import { MediaGrid, type DayDecor } from '../../../components/media-grid/media-grid';
-import {
-  dayActionText,
-  dayMark,
-  type MediaSelectionControls,
-} from '../../../components/media-grid/selection';
+import type { MediaSelectionControls } from '../../../components/media-grid/selection';
 import type { MediaDay, MediaGrouping, MediaTile } from '../../../components/media-grid/tiles';
 import { useZoomSteps } from '../../../components/media-grid/zoom-steps';
 import { Menu } from '../../../components/menu';
 import { useIdiom } from '../../../design/platform';
 import { heavyThud } from '../../../platform/haptics';
 import { useDayKey } from '../../../store/clock';
-import { driveLinks } from '../../drive';
+import { driveThumbs } from '../../drive';
 import { localIdOf } from '../local/store';
 import { localThumbnail } from './local-thumbnail';
-import type { Thumbnail } from '../../../components/media-grid/tile';
-import { dayIds } from './library-model';
+import type { ThumbSource, TileBadge } from '../../../components/media-grid/tile';
 import { tileMenu, type TileMenuActions } from './tile-menu';
 import type { MediaActions } from './use-media-actions';
 import { ThumbnailWarmup } from './thumbnail-warmup';
@@ -41,6 +35,8 @@ export interface LibraryGridProps {
   readonly grouping?: MediaGrouping;
   readonly headText?: (group: MediaDay) => DayText;
   readonly viewer?: Readonly<Record<string, string>>;
+  readonly header?: ReactElement;
+  readonly badgeOf?: TileBadge;
 }
 
 type MenuMode = 'actions' | 'albums';
@@ -51,10 +47,10 @@ interface Opened {
   readonly mode: MenuMode;
 }
 
-function resolveThumb(tile: MediaTile): Promise<Thumbnail | null> {
-  const local = localIdOf(tile);
-  return local === null ? driveLinks.resolve(tile.id, tile.rev, 'thumb') : localThumbnail(tile);
-}
+const libraryThumbs: ThumbSource = {
+  peek: (tile) => (localIdOf(tile) === null ? driveThumbs.peek(tile) : null),
+  resolve: (tile) => (localIdOf(tile) === null ? driveThumbs.resolve(tile) : localThumbnail(tile)),
+};
 
 function openViewer(tile: MediaTile, params: Readonly<Record<string, string>> = {}): void {
   router.push(href.photosItem(tile.id, params));
@@ -72,7 +68,7 @@ export function menuActionsOf(
       media.favourite([tile.id], on);
     },
     select: (tile): void => {
-      selection.day([tile.id]);
+      selection.pick(tile.id);
     },
     album: onAlbums,
     chat: (tile): void => {
@@ -96,29 +92,13 @@ export function menuActionsOf(
   };
 }
 
-function useDecor(
-  selection: MediaSelectionControls,
-  headText: LibraryGridProps['headText'],
-): DayDecor {
-  const { selection: state, day } = selection;
+function useDecor(headText: LibraryGridProps['headText']): DayDecor {
   return useMemo(
     () => ({
       placeOf: () => null,
       ...(headText === undefined ? {} : { textOf: headText }),
-      actionOf: (media): ReactElement => {
-        const ids = dayIds(media.tiles);
-        return (
-          <Button
-            label={state.active ? dayActionText(dayMark(state, ids)) : 'Select'}
-            variant="text"
-            onPress={() => {
-              day(ids);
-            }}
-          />
-        );
-      },
     }),
-    [state, day, headText],
+    [headText],
   );
 }
 
@@ -174,7 +154,7 @@ export function LibraryGrid(props: LibraryGridProps): ReactNode {
     onStep(next);
   });
   const [opened, setOpened] = useState<Opened | null>(null);
-  const decor = useDecor(selection, props.headText);
+  const decor = useDecor(props.headText);
   const today = useDayKey();
   const [upcoming, setUpcoming] = useState<readonly MediaTile[]>([]);
   return (
@@ -188,10 +168,14 @@ export function LibraryGrid(props: LibraryGridProps): ReactNode {
           decor={decor}
           empty={empty}
           footer={footer}
+          {...(props.header === undefined ? {} : { header: props.header })}
+          {...(props.badgeOf === undefined ? {} : { badgeOf: props.badgeOf })}
           onEndReached={onEnd}
           probe="photos.library"
-          resolveThumb={resolveThumb}
+          thumbs={libraryThumbs}
           onPrefetchTiles={setUpcoming}
+          selection={selection.selection}
+          onDay={selection.day}
           onOpen={(tile) => {
             if (!selection.press(tile.id, { shift: false })) openViewer(tile, props.viewer);
           }}

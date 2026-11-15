@@ -1,10 +1,11 @@
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
+import type * as ChildProcess from 'node:child_process';
 
 const spawned: { env: NodeJS.ProcessEnv }[] = [];
 
 vi.mock('node:child_process', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:child_process')>()),
+  ...(await importOriginal<typeof ChildProcess>()),
   spawn: (
     _program: string,
     _args: readonly string[],

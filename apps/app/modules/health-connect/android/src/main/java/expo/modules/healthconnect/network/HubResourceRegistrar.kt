@@ -1,7 +1,9 @@
 package expo.modules.healthconnect.network
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import expo.modules.kotlin.activityresult.AppContextActivityResultLauncher
 import expo.modules.kotlin.functions.Coroutine
@@ -33,6 +35,12 @@ class HubResourceRegistrar(
       true
     } catch (failure: Exception) { initializationFailure = failure; false }
   }
+  private fun gallery(): HubResourceRestore {
+    val app = context()
+    return HubResourceRestore(app.contentResolver) {
+      app.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
+  }
   private fun requireBroker(): HubResourceBroker {
     check(ready()) { "Native resource listener is unavailable: ${initializationFailure?.javaClass?.simpleName}" }
     return broker ?: error("Missing initialized resource listener")
@@ -63,6 +71,15 @@ class HubResourceRegistrar(
       requireBroker()
       val downloader = download ?: error("Missing initialized resource downloads")
       downloader.download(json, activity)
+    }
+    AsyncFunction("restoreResource") Coroutine { json: String ->
+      requireBroker()
+      val downloader = download ?: error("Missing initialized resource downloads")
+      downloader.restore(json, gallery())
+    }
+    AsyncFunction("revealRestored") Coroutine { location: String ->
+      val downloader = download ?: error("Missing initialized resource downloads")
+      downloader.reveal(location, activity)
     }
   }
   private suspend fun requestInstallPermission(): Boolean {

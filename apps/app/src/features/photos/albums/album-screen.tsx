@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { z } from 'zod';
@@ -7,25 +8,47 @@ import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
+import type { MenuItem } from '../../../components/menu';
+import { notify } from '../../../components/toast-store';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import {
   useMediaSelection,
   type MediaSelectionControls,
 } from '../../../components/media-grid/selection';
 import type { MediaTile } from '../../../components/media-grid/tiles';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
 import { useAreaWidth } from '../../../design/size-class';
+import { count } from '../../../format/number';
+import { DRIVE_PREFIX } from '../../../queries/keys';
 import { useMutationState, type MutationState } from '../../../store/mutation';
-import { useActiveProfile } from '../../../store/people';
+import { useActiveProfile, useProfiles } from '../../../store/people';
 import { useLoaded, useSyncStatus } from '../../../store/selectors';
 import { PhotosFrame } from '../components/photos-frame';
-import { selectionFrameOf } from '../library/library-selection';
-import { useMediaActions } from '../library/use-media-actions';
-import { AlbumSharingBar } from '../sharing/album-bar';
-import { deleteAlbum, loadedItems, usePhotoAlbum, usePhotoAlbumItems } from './album-data';
+import { selectionFrameOf, type SelectionExtra } from '../library/library-selection';
+import { useMediaActions, type MediaActions } from '../library/use-media-actions';
+import {
+  AlbumSharingBar,
+  AlbumSheets,
+  albumMenuOf,
+  canAddToAlbum,
+  useAlbumShare,
+  useLeaveAlbum,
+  type AlbumOpened,
+  type AlbumShare,
+} from '../sharing/album-bar';
+import { nameOf } from '../sharing/model';
+import { usePhotoSharing } from '../sharing/queries';
+import {
+  deleteAlbum,
+  loadedItems,
+  removableIds,
+  removeFromAlbum,
+  usePhotoAlbum,
+  usePhotoAlbumItems,
+} from './album-data';
 import { AlbumFeed } from './album-feed';
 import { tilesOfItems } from './album-items';
 import { AlbumSheet, type AlbumSheetRequest } from './album-sheet';
@@ -46,6 +69,10 @@ interface AlbumView {
   readonly loaded: ReturnType<typeof loadedItems>;
   readonly tiles: readonly MediaTile[];
   readonly controls: MediaSelectionControls;
+  readonly media: MediaActions;
+  readonly share: AlbumShare;
+  readonly compact: boolean;
+  readonly onOpen: (opened: AlbumOpened) => void;
 }
 
 function AlbumBody({
@@ -57,7 +84,7 @@ function AlbumBody({
   readonly view: AlbumView;
   readonly onEdit: () => void;
 }): ReactNode {
-  const { pages, loaded } = view;
+  const { pages, loaded, share } = view;
   const live = useSyncStatus().status === 'live';
   if (loaded === null) {
     if (!pages.isError) return <Skeleton shape="block" className="h-45 w-full" />;
@@ -79,8 +106,15 @@ function AlbumBody({
   }
   const header = (
     <View className="gap-3 px-gutter pb-2">
-      <AlbumStatsCard album={album} loaded={loaded} />
-      <AlbumSharingBar album={album} items={loaded.items} complete={loaded.complete} />
+      {album.itemCount === 0 ? null : <AlbumStatsCard album={album} loaded={loaded} />}
+      <AlbumSharingBar
+        album={album}
+        items={loaded.items}
+        complete={loaded.complete}
+        share={share}
+        compact={view.compact}
+        onOpen={view.onOpen}
+      />
       {album.kind === 'smart' ? <RuleLine rule={album.rule} onEdit={onEdit} /> : null}
     </View>
   );
@@ -91,16 +125,36 @@ function AlbumBody({
       items={loaded.items}
       tiles={view.tiles}
       controls={view.controls}
+      media={view.media}
       header={header}
+      onAdd={
+        canAddToAlbum(album, share)
+          ? (): void => {
+              view.onOpen('add');
+            }
+          : null
+      }
     />
   );
 }
 
-function removeAlbum(album: DriveAlbum, mutation: MutationState): void {
+function namesText(names: readonly string[]): string {
+  if (names.length <= 1) return names.join('');
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+}
+
+export function deleteBody(memberNames: readonly string[]): string {
+  if (memberNames.length === 0) {
+    return 'Only the album goes. Its photos and videos stay in your library.';
+  }
+  return `${namesText(memberNames)} can no longer open it. The photos they added stay in their own libraries, and yours stay in your library.`;
+}
+
+function removeAlbum(album: DriveAlbum, mutation: MutationState, memberNames: readonly string[]): void {
   background(
     confirm({
       title: `Delete ${album.title}?`,
-      body: 'Only the album goes. Its photos and videos stay in your library.',
+      body: deleteBody(memberNames),
       confirmLabel: 'Delete album',
       tone: 'destructive',
     }).then((accepted) => {
@@ -126,9 +180,9 @@ export function actionsOf(
   me: string | null,
   edit: () => void,
   remove: () => void,
-): readonly HeaderAction[] {
+): readonly ShellAction[] {
   if (album === null || !ownsAlbum(album, me)) return [];
-  const removeAction: HeaderAction = {
+  const removeAction: ShellAction = {
     icon: 'trash',
     label: 'Delete album',
     iconOnly: true,
@@ -151,8 +205,64 @@ function Missing({ known }: { readonly known: boolean }): ReactNode {
   );
 }
 
-function selectAction(controls: MediaSelectionControls): readonly HeaderAction[] {
+function selectAction(controls: MediaSelectionControls): readonly ShellAction[] {
   return [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin }];
+}
+
+function invalidateAlbumItems(client: QueryClient): void {
+  background(
+    client.invalidateQueries({ queryKey: [...DRIVE_PREFIX, 'album-items'] }),
+    'photos.album_items.invalidate_failed',
+  );
+}
+
+function photosText(total: number): string {
+  return total === 1 ? '1 item' : `${count(total)} items`;
+}
+
+function useRemoveExtra(
+  album: DriveAlbum,
+  share: AlbumShare,
+  loaded: ReturnType<typeof loadedItems>,
+  controls: MediaSelectionControls,
+): readonly SelectionExtra[] {
+  const me = useActiveProfile()?.id ?? null;
+  const mutation = useMutationState();
+  const client = useQueryClient();
+  const owner = ownsAlbum(album, me);
+  if (!owner && (share.role !== 'contributor' || share.invited)) return [];
+  const ids = removableIds(album, owner, me, loaded?.items ?? [], [...controls.selection.ids]);
+  if (ids === null && album.kind === 'smart') return [];
+  return [
+    {
+      id: 'album-remove',
+      label: 'Remove from album',
+      short: 'Remove',
+      icon: 'minus',
+      disabled: ids === null || ids.length === 0 || mutation.busy,
+      onPress: (chosen) => {
+        mutation.run(() => removeFromAlbum(album, chosen), {
+          failure: `Not everything left ${album.title}`,
+          label: 'photos.album_remove',
+          onDone: () => {
+            invalidateAlbumItems(client);
+            controls.clear();
+            notify({ message: `Removed ${photosText(chosen.length)} from ${album.title}` });
+          },
+        });
+      },
+    },
+  ];
+}
+
+function useOverflow(
+  album: DriveAlbum,
+  share: AlbumShare,
+  compact: boolean,
+  onOpen: (opened: AlbumOpened) => void,
+): readonly MenuItem[] {
+  const leaving = useLeaveAlbum(album);
+  return compact ? albumMenuOf(album, share, onOpen, leaving.leave) : [];
 }
 
 function AlbumPage({
@@ -162,17 +272,21 @@ function AlbumPage({
   children,
 }: {
   readonly album: DriveAlbum;
-  readonly actions: readonly HeaderAction[];
+  readonly actions: readonly ShellAction[];
   readonly onEdit: () => void;
   readonly children: ReactNode;
 }): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const pages = usePhotoAlbumItems(album.id);
   const loaded = loadedItems(pages);
   const tiles = loaded === null ? [] : tilesOfItems(loaded.items);
   const controls = useMediaSelection(tiles.map((tile) => tile.id));
   const media = useMediaActions();
-  const frame = selectionFrameOf(compact, { controls, tiles, media });
+  const share = useAlbumShare(album);
+  const [opened, setOpened] = useState<AlbumOpened>(null);
+  const extras = useRemoveExtra(album, share, loaded, controls);
+  const frame = selectionFrameOf(compact, { controls, tiles, media, extras });
+  const overflow = useOverflow(album, share, compact, setOpened);
   const active = controls.selection.active;
   return (
     <PhotosFrame
@@ -181,13 +295,32 @@ function AlbumPage({
       breadcrumbs={CRUMBS}
       scroll={false}
       actions={active ? [] : [...actions, ...(tiles.length === 0 ? [] : selectAction(controls))]}
+      overflow={active ? [] : overflow}
       selection={frame.selection}
       footer={frame.footer}
     >
-      <AlbumBody album={album} view={{ pages, loaded, tiles, controls }} onEdit={onEdit} />
+      <AlbumBody
+        album={album}
+        view={{ pages, loaded, tiles, controls, media, share, compact, onOpen: setOpened }}
+        onEdit={onEdit}
+      />
+      <AlbumSheets
+        album={album}
+        share={share}
+        opened={opened}
+        onClose={() => {
+          setOpened(null);
+        }}
+      />
       {children}
     </PhotosFrame>
   );
+}
+
+function useMemberNames(albumId: string | null): readonly string[] {
+  const people = useProfiles();
+  const shared = usePhotoSharing().data?.albums.find((entry) => entry.albumId === albumId);
+  return (shared?.members ?? []).map((member) => nameOf(member.profileId, people, null));
 }
 
 export function AlbumScreen(): ReactNode {
@@ -197,6 +330,7 @@ export function AlbumScreen(): ReactNode {
   const mutation = useMutationState();
   const me = useActiveProfile()?.id ?? null;
   const [request, setRequest] = useState<AlbumSheetRequest | null>(null);
+  const memberNames = useMemberNames(albumId);
   const edit = (): void => {
     if (album !== null) setRequest({ draft: draftOfAlbum(album), album });
   };
@@ -209,7 +343,7 @@ export function AlbumScreen(): ReactNode {
       <AlbumPage
         album={album}
         actions={actionsOf(album, me, edit, () => {
-          removeAlbum(album, mutation);
+          removeAlbum(album, mutation, memberNames);
         })}
         onEdit={edit}
       >

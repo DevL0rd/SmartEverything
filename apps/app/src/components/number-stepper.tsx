@@ -21,6 +21,7 @@ export interface NumberStepperProps {
   readonly disabled?: boolean;
   readonly unknownValue?: string;
   readonly formatValue?: (value: number) => string;
+  readonly fixedWidth?: boolean;
 }
 
 export function stepFormat(step: number): (value: number) => string {
@@ -31,16 +32,18 @@ export function stepFormat(step: number): (value: number) => string {
 function StepperValue({
   text,
   disabled,
+  fill,
 }: {
   readonly text: string;
   readonly disabled: boolean;
+  readonly fill: boolean;
 }): ReactNode {
   return (
     <Text
       variant="body-strong"
       align="center"
       numberOfLines={1}
-      className={cn('min-w-10 shrink tabular', disabled && 'opacity-40')}
+      className={cn(fill ? 'flex-1' : 'min-w-10 shrink', 'tabular', disabled && 'opacity-40')}
     >
       {text}
     </Text>
@@ -174,6 +177,7 @@ function writtenValue(props: NumberStepperProps): string {
 
 export function NumberStepper(props: NumberStepperProps): ReactNode {
   const { value, min, max, step, onChange, label, unit, disabled = false } = props;
+  const fixed = props.fixedWidth === true;
   const written = writtenValue(props);
   const typable = props.formatValue === undefined;
   const change = (by: number): void => {
@@ -187,7 +191,10 @@ export function NumberStepper(props: NumberStepperProps): ReactNode {
   return (
     <View
       {...(typable ? {} : { accessible: true, ...adjustable(access) })}
-      className="max-w-full flex-row items-center gap-1 self-start rounded-full bg-surface-2"
+      className={cn(
+        'max-w-full flex-row items-center gap-1 self-start rounded-full bg-surface-2',
+        fixed && 'w-52 justify-between',
+      )}
     >
       <IconButton
         icon="minus"
@@ -200,7 +207,7 @@ export function NumberStepper(props: NumberStepperProps): ReactNode {
       {typable ? (
         <ValueInput {...access} unit={unit} onChange={onChange} />
       ) : (
-        <StepperValue text={written} disabled={disabled} />
+        <StepperValue text={written} disabled={disabled} fill={fixed} />
       )}
       <IconButton
         icon="plus"

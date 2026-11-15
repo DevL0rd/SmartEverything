@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Banner } from '../../../components/banner';
 import { LoadedQuery } from '../../../components/loaded-query';
-import { isNative } from '../../../design/platform';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { useIsOwner } from '../../../store/selectors';
 import { ListeningBody } from './listening-body';
@@ -44,11 +43,7 @@ export function ListeningScreen(): ReactNode {
   const offline = useHubOffline();
   const owner = useIsOwner();
   return (
-    <SettingsFrame
-      page={LISTENING_PAGE}
-      contentWidth={isNative() ? 'detail' : 'full'}
-      banner={<Notices offline={offline} owner={owner} />}
-    >
+    <SettingsFrame page={LISTENING_PAGE} banner={<Notices offline={offline} owner={owner} />}>
       <LoadedQuery query={query}>
         {(view) => <ListeningBody view={view} allowed={allowed} offline={offline} />}
       </LoadedQuery>

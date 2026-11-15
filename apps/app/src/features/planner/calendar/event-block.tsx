@@ -8,6 +8,7 @@ import { percentOf } from '../../../format/percent';
 import { useItemPress } from '../item/item-menu-host';
 import type { EventLook } from './calendars-model';
 import { Hatch, LookMark, eventFill, lookWords } from './event-look';
+import { MovableBlock, type BlockDragContext } from './grid-gestures';
 import { yOf, type AllDayEntry, type GridBlock } from './time-grid-layout';
 
 const SUBTITLE_FROM = 36;
@@ -35,42 +36,74 @@ function Lock({ shown }: { readonly shown: boolean }): ReactNode {
   return shown ? <Icon name="lock" size={16} tone="variant" /> : null;
 }
 
-interface Place {
-  readonly top: number;
-  readonly height: number;
+export interface LanePlace {
   readonly left: `${number}%`;
   readonly width: `${number}%`;
 }
 
-function placeOf(block: GridBlock, hourHeight: number, minHeight: number): Place {
+export function laneOf(block: GridBlock): LanePlace {
+  return { left: percentOf(block.lane / block.lanes), width: percentOf(block.width / block.lanes) };
+}
+
+export function blockBandOf(
+  block: GridBlock,
+  hourHeight: number,
+  minHeight: number,
+): { readonly top: number; readonly bottom: number } {
   const top = yOf(block.from, hourHeight);
-  const height = Math.max(minHeight, yOf(block.to, hourHeight) - top);
-  return {
-    top,
-    height,
-    left: percentOf(block.lane / block.lanes),
-    width: percentOf(block.width / block.lanes),
-  };
+  return { top, bottom: top + Math.max(minHeight, yOf(block.to, hourHeight) - top) };
+}
+
+function BlockText({
+  block,
+  tall,
+}: {
+  readonly block: GridBlock;
+  readonly tall: boolean;
+}): ReactNode {
+  const subtitle = block.proposed ? 'Proposed' : block.time;
+  return (
+    <>
+      <Hatch shown={block.look === 'maybe'} />
+      <View className="flex-row items-start gap-1">
+        <LookMark look={block.look} />
+        <Text variant="caption" numberOfLines={1} className="flex-1">
+          {block.occurrence.title}
+        </Text>
+        <Lock shown={block.readOnly} />
+      </View>
+      {tall && subtitle !== '' ? (
+        <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
+          {subtitle}
+        </Text>
+      ) : null}
+    </>
+  );
 }
 
 export function EventBlock({
   block,
+  context,
   hourHeight,
-  minHeight,
-  compact,
+  inset,
 }: {
   readonly block: GridBlock;
+  readonly context: BlockDragContext;
   readonly hourHeight: number;
-  readonly minHeight: number;
-  readonly compact: boolean;
+  readonly inset: number;
 }): ReactNode {
-  const place = placeOf(block, hourHeight, minHeight);
   const title = block.occurrence.title;
-  const subtitle = block.proposed ? 'Proposed' : block.time;
+  const height = blockBandOf(block, hourHeight, context.minHeight);
   const press = useItemPress(block.occurrence.item_id, block.occurrence.occurrence_key);
+  const compact = context.touch;
   return (
-    <View style={place} className={cn('absolute pb-px', compact ? 'px-0.5' : 'px-1')}>
-      <View className="flex-1 rounded-sm bg-surface-1">
+    <MovableBlock
+      block={block}
+      context={context}
+      lane={laneOf(block)}
+      className={cn('pb-px', compact ? 'px-0.5' : 'px-1')}
+    >
+      <View style={insetStyle(inset)} className="flex-1 rounded-sm bg-surface-1">
         <Interactive
           {...press.open}
           onContextMenu={press.onContextMenu}
@@ -81,24 +114,16 @@ export function EventBlock({
             eventFill(block.colour, block.proposed, block.look),
           )}
         >
-          <Hatch shown={block.look === 'maybe'} />
-          <View className="flex-row items-start gap-1">
-            <LookMark look={block.look} />
-            <Text variant="caption" numberOfLines={1} className="flex-1">
-              {title}
-            </Text>
-            <Lock shown={block.readOnly} />
-          </View>
-          {place.height >= SUBTITLE_FROM && subtitle !== '' ? (
-            <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-              {subtitle}
-            </Text>
-          ) : null}
+          <BlockText block={block} tall={height.bottom - height.top >= SUBTITLE_FROM} />
           {press.menu}
         </Interactive>
       </View>
-    </View>
+    </MovableBlock>
   );
+}
+
+function insetStyle(inset: number): { readonly marginLeft: number } {
+  return { marginLeft: inset };
 }
 
 export function AllDayChip({ entry }: { readonly entry: AllDayEntry }): ReactNode {

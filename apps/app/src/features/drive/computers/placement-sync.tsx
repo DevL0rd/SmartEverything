@@ -2,10 +2,10 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveItem, DrivePlacement } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
-import { Card } from '../../../components/card';
 import { SegmentBar } from '../../../components/charts';
 import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
+import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
 import {
@@ -23,6 +23,7 @@ import { SkipPatterns } from './skip-patterns';
 interface SyncProps {
   readonly placement: DrivePlacement;
   readonly base: DriveItem | null;
+  readonly name: string;
   readonly size: number | null;
   readonly editable: boolean;
 }
@@ -44,8 +45,11 @@ function KeptBar({
   readonly excluded: readonly string[];
   readonly sizes: ReadonlyMap<string, number>;
 }): ReactNode {
-  const split = size === null ? null : keptSplitOf(size, excluded, sizes);
-  if (split === null) return null;
+  if (size === null || excluded.length === 0) return null;
+  const split = keptSplitOf(size, excluded, sizes);
+  if (split === null) {
+    return <Skeleton shape="block" className="h-10" />;
+  }
   return (
     <SegmentBar
       label="Kept on this computer"
@@ -60,23 +64,36 @@ function KeptBar({
 }
 
 function SaveRow({
+  shown,
   busy,
+  problem,
   onSave,
   onUndo,
 }: {
+  readonly shown: boolean;
   readonly busy: boolean;
+  readonly problem: string | null;
   readonly onSave: () => void;
   readonly onUndo: () => void;
 }): ReactNode {
   return (
-    <View className="flex-row flex-wrap gap-2">
-      <Button label="Save" icon="check" loading={busy} onPress={onSave} />
-      <Button label="Undo" variant="tonal" disabled={busy} onPress={onUndo} />
-    </View>
+    <>
+      {problem === null ? null : (
+        <Text variant="footnote" tone="critical">
+          {problem}
+        </Text>
+      )}
+      {shown ? (
+        <View className="flex-row flex-wrap gap-2">
+          <Button label="Save" icon="check" loading={busy} onPress={onSave} />
+          <Button label="Undo" variant="tonal" disabled={busy} onPress={onUndo} />
+        </View>
+      ) : null}
+    </>
   );
 }
 
-export function SelectiveSync({ placement, base, size, editable }: SyncProps): ReactNode {
+export function SelectiveSync({ placement, base, name, size, editable }: SyncProps): ReactNode {
   const basePath = base?.relPath ?? null;
   const saved = normalisedExcluded(
     (placement.excluded ?? []).map((wire) => drivePathOfWire(basePath, wire)),
@@ -93,34 +110,33 @@ export function SelectiveSync({ placement, base, size, editable }: SyncProps): R
     );
   };
   return (
-    <Card title="Folders kept on this computer" icon="folderSync">
-      <Text variant="footnote" tone="variant">
-        Untick a folder to keep it on the Hub only. It stays in the drive and leaves this computer.
-      </Text>
-      <KeptBar size={size} excluded={draft} sizes={sizes} />
-      <ExcludedTree
-        rootId={placement.rootId}
-        baseId={placement.folderItemId}
-        excluded={draft}
-        disabled={!editable || writes.busy}
-        onSize={onSize}
-        onChange={setDraft}
-      />
-      {writes.problem === null ? null : (
-        <Text variant="footnote" tone="critical">
-          {writes.problem}
-        </Text>
-      )}
-      {changed ? (
+    <List
+      title="Folders kept on this computer"
+      footer="Untick a folder to keep it on the Hub only. It stays in the drive and leaves this computer."
+    >
+      <View className="gap-3 px-4 py-3">
+        <KeptBar size={size} excluded={draft} sizes={sizes} />
+        <ExcludedTree
+          rootId={placement.rootId}
+          baseId={placement.folderItemId}
+          basePath={basePath}
+          baseName={name}
+          excluded={draft}
+          disabled={!editable || writes.busy}
+          onSize={onSize}
+          onChange={setDraft}
+        />
         <SaveRow
+          shown={changed}
           busy={writes.busy}
+          problem={writes.problem}
           onSave={save}
           onUndo={() => {
             setDraft(saved);
           }}
         />
-      ) : null}
-    </Card>
+      </View>
+    </List>
   );
 }
 

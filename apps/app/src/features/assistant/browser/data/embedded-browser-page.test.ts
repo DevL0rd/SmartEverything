@@ -42,8 +42,16 @@ vi.mock('../../../../api/connection/hub-socket', () => ({
   openHubSocket: (): FakeSocket => new FakeSocket(),
 }));
 vi.mock('../../../../api/connection/active-route', () => ({
-  routeFor: (): { readonly state: { readonly subscribe: () => () => void } } => ({
-    state: { subscribe: (): (() => void) => () => undefined },
+  routeFor: (): {
+    readonly state: {
+      readonly get: () => { readonly generation: number };
+      readonly subscribe: () => () => void;
+    };
+  } => ({
+    state: {
+      get: (): { readonly generation: number } => ({ generation: 0 }),
+      subscribe: (): (() => void) => () => undefined,
+    },
   }),
 }));
 vi.mock('../browser-page-platform', () => ({
@@ -141,6 +149,13 @@ describe('page reading and actions through the channel', () => {
           },
         },
       ],
+    });
+    tabs.attach(TAB, {
+      navigate: vi.fn(),
+      back: vi.fn(),
+      forward: vi.fn(),
+      reload: vi.fn(),
+      stop: vi.fn(),
     });
     channel = new EmbeddedBrowserChannel(
       { url: 'https://hub.test', token: 'token' },

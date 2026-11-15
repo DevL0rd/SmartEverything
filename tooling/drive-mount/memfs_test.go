@@ -22,6 +22,8 @@ type memFS struct {
 	pinned   []uint64
 	unpinned []uint64
 	opens    atomic.Int64
+	lookups  atomic.Int64
+	getattrs atomic.Int64
 	closes   atomic.Int64
 	dirSync  atomic.Int64
 	accesses []bool
@@ -69,10 +71,14 @@ func (m *memFS) Close() {
 func (m *memFS) Attach(context.Context, string) (wire.Root, error) { return m.model.Attach(), nil }
 
 func (m *memFS) Lookup(_ context.Context, parent uint64, name string) (Entry, error) {
+	m.lookups.Add(1)
 	return m.model.Lookup(parent, name)
 }
 
-func (m *memFS) Getattr(_ context.Context, ino uint64) (Attr, error) { return m.model.Getattr(ino) }
+func (m *memFS) Getattr(_ context.Context, ino uint64) (Attr, error) {
+	m.getattrs.Add(1)
+	return m.model.Getattr(ino)
+}
 
 func (m *memFS) Readdir(_ context.Context, ino, cursor uint64) (DirPage, error) {
 	return m.model.Readdir(ino, cursor)

@@ -20,6 +20,9 @@ vi.mock('../../../api/drive', async (importOriginal) => ({
       indexingPaused: false,
       contentIndexing: update.contentIndexing ?? true,
       ocrLanguages: update.ocrLanguages ?? ['eng'],
+      fileIoThreads: update.fileIoThreads ?? 4,
+      cpuWorkers: update.cpuWorkers ?? 2,
+      listingCacheSeconds: update.listingCacheSeconds ?? 0,
     });
   },
 }));

@@ -4,44 +4,66 @@ import { IconButton } from '../components/icon-button';
 import type { IconName } from '../components/icon';
 import { notify } from '../components/toast-store';
 import { useSyncStatus } from '../store/selectors';
-import { href } from './hrefs';
+import type { SectionFailure, SyncProblem } from '../store/state';
+import { href, UPDATES_SETTINGS_PAGE } from './hrefs';
+import { sectionFailureText } from './section-failure';
 
 interface SyncNotice {
   readonly label: string;
   readonly detail: string;
   readonly icon: IconName;
   readonly tone: 'warning' | 'critical';
-  readonly settings: boolean;
+  readonly action: 'server' | 'updates' | null;
 }
 
-const OUTDATED: SyncNotice = {
-  label: 'Update the app to see everything',
-  detail: 'Some of what your server holds is newer than this app can read.',
-  icon: 'download',
-  tone: 'warning',
-  settings: false,
-};
+function failedNotice(failed: readonly SectionFailure[]): SyncNotice {
+  return {
+    label: 'Update the app to see everything',
+    detail: `This app can’t read ${failed.map(sectionFailureText).join('; ')}. Everything else works.`,
+    icon: 'download',
+    tone: 'warning',
+    action: 'updates',
+  };
+}
+
+function problemNotice(problem: SyncProblem): SyncNotice {
+  return problem.remedy === 'update-app'
+    ? {
+        label: 'Update the app to connect',
+        detail: problem.text,
+        icon: 'download',
+        tone: 'critical',
+        action: 'updates',
+      }
+    : {
+        label: 'Can’t reach your server',
+        detail: problem.text,
+        icon: 'warning',
+        tone: 'critical',
+        action: 'server',
+      };
+}
 
 const CONNECTING: SyncNotice = {
   label: 'Connecting',
   detail: 'Reaching your server.',
   icon: 'wifi',
   tone: 'warning',
-  settings: false,
+  action: null,
 };
 
 function useSyncNotice(): SyncNotice | null {
   const sync = useSyncStatus();
   switch (sync.status) {
     case 'live':
-      return sync.outdated.length === 0 ? null : OUTDATED;
+      return sync.failed.length === 0 ? null : failedNotice(sync.failed);
     case 'refused':
       return {
         label: 'Your server refused this device',
-        detail: sync.problem ?? 'The server no longer accepts this device.',
+        detail: sync.problem?.text ?? 'The server no longer accepts this device.',
         icon: 'warning',
         tone: 'critical',
-        settings: true,
+        action: 'server',
       };
     case 'interrupted':
       return sync.problem === null
@@ -50,15 +72,9 @@ function useSyncNotice(): SyncNotice | null {
             detail: 'The connection to your server dropped. Trying again.',
             icon: 'wifi',
             tone: 'warning',
-            settings: false,
+            action: null,
           }
-        : {
-            label: 'Can’t reach your server',
-            detail: sync.problem,
-            icon: 'warning',
-            tone: 'critical',
-            settings: true,
-          };
+        : problemNotice(sync.problem);
     case 'connecting':
     case 'loading':
       return CONNECTING;
@@ -70,16 +86,18 @@ function explain(notice: SyncNotice): void {
     message: notice.label,
     detail: notice.detail,
     tone: notice.tone === 'critical' ? 'critical' : 'default',
-    ...(notice.settings
-      ? {
+    ...(notice.action === null
+      ? {}
+      : {
           action: {
-            label: 'Server settings',
+            label: notice.action === 'updates' ? 'Updates' : 'Server settings',
             onPress: (): void => {
-              router.push(href.settings.page('server'));
+              router.push(
+                href.settings.page(notice.action === 'updates' ? UPDATES_SETTINGS_PAGE : 'server'),
+              );
             },
           },
-        }
-      : {}),
+        }),
   });
 }
 

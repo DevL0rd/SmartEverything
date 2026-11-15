@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { Crumb } from '../components/breadcrumbs';
 import type { MenuItem } from '../components/menu';
 import { PageShell, type StandardShellProps } from '../components/page-shell/page-shell';
-import type { ShellSearchConfig } from '../components/page-shell/search-slot';
+import { searchPanelShown, type ShellSearchConfig } from '../components/page-shell/search-slot';
 import type { ShellAction } from '../components/page-shell/shell-actions';
 import type { PrimaryActionProps } from '../components/primary-action';
 import { useSettingsOrigin } from '../app-shell/settings-navigation';
@@ -18,7 +18,6 @@ export interface SettingsFrameProps {
   readonly overflow?: readonly MenuItem[];
   readonly search?: ShellSearchConfig;
   readonly banner?: ReactNode;
-  readonly contentWidth?: 'reading' | 'detail' | 'full';
   readonly primaryAction?: PrimaryActionProps;
   readonly scroll?: boolean;
   readonly children: ReactNode;
@@ -28,6 +27,8 @@ function crumbsOf(page: string, detail: boolean, trail: readonly Crumb[]): reado
   const crumbs = settingsTrail(page);
   return [...(detail ? crumbs : crumbs.slice(0, -1)), ...trail];
 }
+
+const SEARCH_TITLE = 'Search results';
 
 type ShellChrome = Partial<
   Pick<StandardShellProps, 'back' | 'sections' | 'search' | 'actions' | 'overflow' | 'banner'>
@@ -43,11 +44,10 @@ function useRailChrome(
   const settingsSearch = useSettingsSearch();
   const origin = useSettingsOrigin();
   const topLevel = rail && !detail && settingsPage(page)?.parent === null && !origin;
-  const shown = search ?? (rail ? settingsSearch : undefined);
   return {
     ...(topLevel ? { back: false } : {}),
     ...(rail ? { sections } : {}),
-    ...(shown === undefined ? {} : { search: shown }),
+    search: search ?? settingsSearch,
   };
 }
 
@@ -69,18 +69,17 @@ export function SettingsFrame({
   detail = false,
   trail = [],
   search,
-  contentWidth = 'reading',
   primaryAction,
   scroll = true,
   children,
   ...chrome
 }: SettingsFrameProps): ReactNode {
   const railChrome = useRailChrome(page, detail, search);
+  const searching = searchPanelShown(railChrome.search);
   return (
     <PageShell
-      title={title ?? settingsPage(page)?.title ?? 'Settings'}
-      breadcrumbs={crumbsOf(page, detail, trail)}
-      width={contentWidth}
+      title={searching ? SEARCH_TITLE : (title ?? settingsPage(page)?.title ?? 'Settings')}
+      breadcrumbs={searching ? settingsTrail(page).slice(0, 1) : crumbsOf(page, detail, trail)}
       scroll={scroll}
       {...railChrome}
       {...pageChromeOf(chrome)}

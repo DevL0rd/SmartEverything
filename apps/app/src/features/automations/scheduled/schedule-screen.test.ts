@@ -24,6 +24,7 @@ vi.mock('../../../components/date-nav', () => ({ DateNav: (): null => null }));
 vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
 vi.mock('../../../components/interactive', () => ({ Interactive: pass }));
 vi.mock('../../../components/page-shell/page-shell', () => ({ PageShell: pass }));
+vi.mock('../hosts/workspace-sections', () => ({ workspaceSectionsOf: (): null => null }));
 vi.mock('../../../components/text', () => ({ Text: pass }));
 vi.mock('../../../components/grid', () => ({
   Grid: ({

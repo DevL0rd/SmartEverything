@@ -179,7 +179,7 @@ export function backupSubtitleOf(state: BackupState | undefined, live: LiveProgr
   return joinParts([phones, left === 0 ? 'up to date' : `${count(left)} items left`, kept]);
 }
 
-export type ChipMark = 'ring' | 'check' | 'pause';
+export type ChipMark = 'ring' | 'check' | 'pause' | 'failed';
 
 export interface ChipView {
   readonly mark: ChipMark;
@@ -247,6 +247,16 @@ const PHONE_CHIP: Readonly<
   scanning: workingChip,
   uploading: workingChip,
   idle: (status) => {
+    if (status.failed > 0) {
+      return {
+        mark: 'failed',
+        label: `${count(status.failed)} failed`,
+        progress: phoneProgressOf(status),
+      };
+    }
+    if (status.problem !== null) {
+      return { mark: 'failed', label: 'Needs attention', progress: phoneProgressOf(status) };
+    }
     const left = phoneLeftOf(status) ?? 0;
     return left === 0
       ? { mark: 'check', label: 'Backed up', progress: 1 }

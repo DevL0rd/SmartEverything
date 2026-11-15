@@ -1,21 +1,36 @@
 import type { PlannerItemRow, ProfileRow } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
+import { Icon } from '../../../components/icon';
 import { SelectRow, ValueRow } from '../../../components/rows';
+import type { SelectOption } from '../../../components/select-picker';
+import { PersonBadge } from './person-badge';
 import type { ItemChanges } from './repeat-scope-bar';
 
 const NOBODY = 'nobody';
 
+const MENU_WIDTH = 280;
+
+function NobodyBadge(): ReactNode {
+  return (
+    <View className="size-5 items-center justify-center rounded-full bg-surface-3">
+      <Icon name="user" size={12} tone="variant" />
+    </View>
+  );
+}
+
 export function assigneeOptionsOf(
   profiles: readonly ProfileRow[],
   me: string | null,
-): readonly { value: string; label: string }[] {
+): readonly SelectOption<string>[] {
   return [
-    { value: NOBODY, label: 'Nobody' },
+    { value: NOBODY, label: 'Nobody', leading: <NobodyBadge /> },
     ...[...profiles]
       .sort((left, right) => left.position - right.position)
       .map((profile) => ({
         value: profile.id,
         label: profile.id === me ? `${profile.name} (you)` : profile.name,
+        leading: <PersonBadge profile={profile} name={profile.name} size="xs" />,
       })),
   ];
 }
@@ -61,6 +76,7 @@ export function AssigneeField({
       icon="users"
       options={assigneeOptionsOf(profiles, me)}
       value={item.assignee_id ?? NOBODY}
+      menuWidth={MENU_WIDTH}
       disabled={disabled}
       onChange={(value) => {
         onChange(assigneeChangeOf(value));

@@ -13,8 +13,8 @@ vi.mock('../../nutrition', () => ({
   NutritionDay: (): ReactNode => createElement('section', null, 'Nutrition day'),
 }));
 vi.mock('../components/fitness-shell', () => ({
-  FitnessShell: ({ width, primaryAction, children }: FitnessShellProps): ReactNode =>
-    createElement('main', { 'data-width': width, 'data-action': primaryAction?.label }, children),
+  FitnessShell: ({ primaryAction, children }: FitnessShellProps): ReactNode =>
+    createElement('main', { 'data-action': primaryAction?.label }, children),
 }));
 vi.mock('../components/fitness-toolbar', () => ({ FitnessToolbar: (): null => null }));
 vi.mock('../data/day', () => ({
@@ -30,11 +30,10 @@ vi.mock('../data/day', () => ({
 }));
 
 describe('Nutrition screen frame', () => {
-  it.each([false, true])('uses the available width when tracking has started: %s', (started) => {
+  it.each([false, true])('offers Add food once tracking has started: %s', (started) => {
     scenario.started = started;
     const markup = renderToStaticMarkup(createElement(NutritionScreen));
 
-    expect(markup).toContain('data-width="dashboard"');
     expect(markup.includes('data-action="Add food"')).toBe(started);
     expect(markup).toContain('<section>Nutrition day</section>');
   });

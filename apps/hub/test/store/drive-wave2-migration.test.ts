@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -180,6 +181,9 @@ describe('migrating Drive to wave 2', () => {
       indexingPaused: false,
       contentIndexing: true,
       ocrLanguages: ['eng'],
+      fileIoThreads: 8,
+      cpuWorkers: availableParallelism(),
+      listingCacheSeconds: 300,
     });
   });
 

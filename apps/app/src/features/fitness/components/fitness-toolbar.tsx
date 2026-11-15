@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { DateNav } from '../../../components/date-nav';
-import { useSizeClass } from '../../../design/size-class';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { dayKeyOf, startOfDayKey } from '../../../format/time';
 import { type Range } from '../model/window';
@@ -25,7 +24,6 @@ export interface FitnessToolbarProps {
 export function FitnessToolbar({ day, today, range, ranges }: FitnessToolbarProps): ReactNode {
   const router = useRouter();
   const options = RANGE_OPTIONS.filter((option) => ranges?.includes(option.value) ?? false);
-  const { split } = useSizeClass();
   const segmented =
     options.length === 0 ? null : (
       <Segmented
@@ -43,13 +41,14 @@ export function FitnessToolbar({ day, today, range, ranges }: FitnessToolbarProp
         value={new Date(startOfDayKey(day))}
         range={range}
         max={new Date(startOfDayKey(today))}
+        arrows
         onChange={(date) => {
           router.setParams({ day: dayKeyOf(date.getTime()) });
         }}
       />
       {segmented}
       <View className="ml-auto shrink-0">
-        <SyncChip compact={!split} />
+        <SyncChip />
       </View>
     </View>
   );

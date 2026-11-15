@@ -47,6 +47,7 @@ export class MountSummary {
   private ids: ReadonlySet<string> = new Set();
   private readonly reports = new Map<string, PlacementReport>();
   private readonly pending = new Map<string, number>();
+  private readonly open = new Map<string, number>();
 
   track(placements: readonly DrivePlacement[]): void {
     this.ids = mountedIds(placements);
@@ -56,10 +57,19 @@ export class MountSummary {
     for (const id of [...this.pending.keys()]) {
       if (!this.ids.has(id)) this.pending.delete(id);
     }
+    for (const id of [...this.open.keys()]) {
+      if (!this.ids.has(id)) this.open.delete(id);
+    }
   }
 
-  pendingUploads(placementId: string, count: number): void {
-    if (this.ids.has(placementId)) this.pending.set(placementId, count);
+  counters(placementId: string, pendingUploads: number, openFiles: number): void {
+    if (!this.ids.has(placementId)) return;
+    this.pending.set(placementId, pendingUploads);
+    this.open.set(placementId, openFiles);
+  }
+
+  openFiles(): number {
+    return [...this.open.values()].reduce((total, count) => total + count, 0);
   }
 
   report(report: PlacementReport): void {
@@ -70,6 +80,7 @@ export class MountSummary {
     this.ids = new Set();
     this.reports.clear();
     this.pending.clear();
+    this.open.clear();
   }
 
   tray(): MountTray | null {

@@ -40,21 +40,32 @@ function QuestionRow({
   );
 }
 
+async function sendAnswer(
+  answer: (id: string, text: string) => Promise<unknown>,
+  id: string,
+  text: string,
+  settle: () => void,
+): Promise<void> {
+  try {
+    await answer(id, text);
+  } catch (error) {
+    notify({ message: 'The answer wasn’t sent', tone: 'critical', error });
+  } finally {
+    settle();
+  }
+}
+
 export function QuestionsCard({ timeZone }: { readonly timeZone: string | null }): ReactNode {
   const questions = useQuestions();
   const answer = useAnswerQuestion();
   const [busy, setBusy] = useState<string | null>(null);
   const lines = questionLines(questions.data ?? [], timeZone);
   if (lines.length === 0) return null;
-  const send = async (id: string, text: string): Promise<void> => {
+  const send = (id: string, text: string): Promise<void> => {
     setBusy(id);
-    try {
-      await answer(id, text);
-    } catch (error) {
-      notify({ message: 'The answer wasn’t sent', tone: 'critical', error });
-    } finally {
+    return sendAnswer(answer, id, text, () => {
       setBusy(null);
-    }
+    });
   };
   return (
     <Card title={questionsTitle(lines.length)} icon="messageCircle" tone="attention">

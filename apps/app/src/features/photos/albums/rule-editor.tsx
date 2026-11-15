@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
+import { DateNav } from '../../../components/date-nav';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
+import { localDayKey } from '../../../format/time';
 import { leafIcon, leafText } from './model';
 import {
   addRow,
@@ -20,8 +22,8 @@ import {
 } from './rule-draft';
 
 const MATCHES: readonly SegmentedOption<AlbumDraft['match']>[] = [
-  { value: 'all', label: 'All rules' },
-  { value: 'any', label: 'Any rule' },
+  { value: 'all', label: 'All rules', icon: 'listCheck' },
+  { value: 'any', label: 'Any rule', icon: 'list' },
 ];
 
 const MEDIA: readonly SegmentedOption<MediaChoice>[] = [
@@ -32,9 +34,76 @@ const MEDIA: readonly SegmentedOption<MediaChoice>[] = [
 
 const TEXT_LABEL = { camera: 'Camera has', lens: 'Lens has', name: 'Name has' } as const;
 
-const DAY_HINT = 'Year, month and day, like 2026-11-03';
-
 type Edit = (row: RuleRow) => void;
+
+export function FieldGroup({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <View className="gap-1.5">
+      <Text variant="footnote" tone="variant">
+        {label}
+      </Text>
+      {children}
+    </View>
+  );
+}
+
+function dayDate(day: string): Date {
+  return new Date(`${day}T12:00:00`);
+}
+
+function DayChoice({
+  label,
+  day,
+  onDay,
+}: {
+  readonly label: string;
+  readonly day: string;
+  readonly onDay: (day: string) => void;
+}): ReactNode {
+  const open = day === '';
+  return (
+    <View className="min-w-40 flex-1">
+      <FieldGroup label={label}>
+        <View className="min-h-control-h flex-row flex-wrap items-center gap-1">
+          {open ? (
+            <Button
+              label="Any day"
+              icon="calendar"
+              variant="outlined"
+              onPress={() => {
+                onDay(localDayKey(new Date()));
+              }}
+            />
+          ) : (
+            <>
+              <DateNav
+                value={dayDate(day)}
+                range="day"
+                withYear
+                onChange={(date) => {
+                  onDay(localDayKey(date));
+                }}
+              />
+              <IconButton
+                icon="close"
+                label={`Clear ${label.toLowerCase()} day`}
+                onPress={() => {
+                  onDay('');
+                }}
+              />
+            </>
+          )}
+        </View>
+      </FieldGroup>
+    </View>
+  );
+}
 
 function TakenFields({
   row,
@@ -44,28 +113,21 @@ function TakenFields({
   readonly onEdit: Edit;
 }): ReactNode {
   return (
-    <View className="flex-row flex-wrap gap-2">
-      <View className="min-w-32 flex-1">
-        <TextField
-          label="From"
-          value={row.from}
-          placeholder="2026-11-03"
-          helper={DAY_HINT}
-          onChange={(from) => {
-            onEdit({ ...row, from });
-          }}
-        />
-      </View>
-      <View className="min-w-32 flex-1">
-        <TextField
-          label="To"
-          value={row.to}
-          placeholder="2026-11-07"
-          onChange={(to) => {
-            onEdit({ ...row, to });
-          }}
-        />
-      </View>
+    <View className="flex-row flex-wrap gap-3">
+      <DayChoice
+        label="From"
+        day={row.from}
+        onDay={(from) => {
+          onEdit({ ...row, from });
+        }}
+      />
+      <DayChoice
+        label="To"
+        day={row.to}
+        onDay={(to) => {
+          onEdit({ ...row, to });
+        }}
+      />
     </View>
   );
 }
@@ -185,8 +247,7 @@ export function SmartRuleEditor({
 }): ReactNode {
   return (
     <View className="gap-2">
-      <View className="flex-row flex-wrap items-center gap-2">
-        <Text variant="callout">Match</Text>
+      <FieldGroup label="Match">
         <Segmented
           options={MATCHES}
           value={draft.match}
@@ -196,7 +257,7 @@ export function SmartRuleEditor({
             onDraft({ ...draft, match });
           }}
         />
-      </View>
+      </FieldGroup>
       {draft.rows.map((row) => (
         <RuleRowView key={row.key} row={row} draft={draft} onDraft={onDraft} />
       ))}

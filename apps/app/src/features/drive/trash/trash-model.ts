@@ -22,6 +22,7 @@ export interface TrashItem {
   readonly deletedAt: number;
   readonly daysLeft: number;
   readonly kept: number;
+  readonly purgeMonth: string;
   readonly folders: readonly string[];
   readonly deleter: Deleter;
 }
@@ -35,6 +36,10 @@ const WEEK_DAYS = 7;
 const DAYS_IN_MONTH = 30.44;
 const DAYS_AS_DAYS = 14;
 const DAYS_AS_WEEKS = 60;
+
+export function foldersOf(relPath: string): readonly string[] {
+  return relPath.split('/').slice(0, -1);
+}
 
 export function deleterOf(deletedBy: string | null, people: TrashPeople): Deleter {
   if (deletedBy === null) return { kind: 'unknown' };
@@ -62,7 +67,8 @@ export function trashItemOf(entry: DriveTrashEntry, today: string, people: Trash
     deletedAt: Date.parse(entry.deletedAt),
     daysLeft,
     kept: Math.min(1, daysLeft / span),
-    folders: entry.originalRelPath.split('/').slice(0, -1),
+    purgeMonth: purgeDay.slice(0, 7),
+    folders: foldersOf(entry.originalRelPath),
     deleter: deleterOf(entry.deletedBy, people),
   };
 }
@@ -89,12 +95,16 @@ export function totalsText(totals: TrashTotals): string {
   return `${itemsText(totals.count)} · ${bytes(totals.bytes)}`;
 }
 
+export function wasInText(rootLabel: string | null, folders: readonly string[]): string {
+  return [...(rootLabel === null ? [] : [rootLabel]), ...folders].join(' › ');
+}
+
 export function wasInOf(item: TrashItem, rootLabel: string | null): string {
-  return [...(rootLabel === null ? [] : [rootLabel]), ...item.folders].join(' › ');
+  return wasInText(rootLabel, item.folders);
 }
 
 export function sizeText(item: TrashItem): string {
-  return item.isFolder ? '—' : bytes(item.bytes);
+  return bytes(item.bytes);
 }
 
 interface LeaveUnit {

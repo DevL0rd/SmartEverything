@@ -1,12 +1,11 @@
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AppHref } from '../app-href';
 import type { LinkNavigation } from '../interactive';
 import { BottomSheet } from '../bottom-sheet';
 import type { TabItem } from '../tabs-bar';
-import { Text } from '../text';
 import { PHONE_TAB_LIMIT, type RailForm } from './layout';
-import { RailItem, type RailEntry, type RailGroup } from './section-rail';
+import { RailGroups, type RailEntry, type RailGroup } from './section-rail';
 
 export interface ShellSections {
   readonly groups: readonly RailGroup[];
@@ -16,7 +15,6 @@ export interface ShellSections {
   readonly label?: string;
   readonly footer?: ReactNode;
   readonly phoneTabs?: readonly string[];
-  readonly master?: boolean;
   readonly iconRail?: boolean;
 }
 
@@ -33,8 +31,7 @@ export interface ShellTabRow {
 
 export function railFormOf(sections: ShellSections | undefined): RailForm | null {
   if (sections === undefined) return null;
-  if (sections.iconRail === true) return 'icon';
-  return sections.master === true ? 'master' : 'sections';
+  return sections.iconRail === true ? 'icon' : 'sections';
 }
 
 function entriesOf(sections: ShellSections): readonly RailEntry[] {
@@ -48,6 +45,7 @@ export function sectionsPullUp(sections: ShellSections): boolean {
 export function phoneTabsOf(sections: ShellSections): ShellTabs | null {
   const entries = entriesOf(sections);
   const long = entries.length > PHONE_TAB_LIMIT;
+  if (long && sections.phoneTabs === undefined) return null;
   const pinned = long ? (sections.phoneTabs ?? []) : entries.map((entry) => entry.id);
   const shown = entries.filter(
     (entry) => pinned.includes(entry.id) || (long && entry.id === sections.active),
@@ -90,21 +88,10 @@ export function SectionsPullUp({
       onClose={onClose}
       title={title}
       label={sections.label ?? `${title} sections`}
-      detents={['half', 'full']}
+      detents={['fit', 'full']}
     >
       <View className="gap-1 pb-4">
-        {sections.groups.map((group) => (
-          <Fragment key={group.title ?? ''}>
-            {group.title === null ? null : (
-              <Text variant="footnote" tone="variant" className="px-3 pt-4">
-                {group.title}
-              </Text>
-            )}
-            {group.entries.map((entry) => (
-              <RailItem key={entry.id} entry={entry} rail={rail} onPress={onClose} />
-            ))}
-          </Fragment>
-        ))}
+        <RailGroups rail={rail} onPress={onClose} />
         {sections.footer}
       </View>
     </BottomSheet>

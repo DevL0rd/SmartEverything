@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { Grid } from '../../../components/grid';
 import { Skeleton } from '../../../components/skeleton';
 import { useFitnessParams } from '../data/day';
 import { useHealthPresence } from '../data/presence';
@@ -10,6 +11,9 @@ import { FitnessShell } from './fitness-shell';
 import { FitnessToolbar } from './fitness-toolbar';
 import { MetricSection } from './metric-section';
 import { NoDataRow } from './no-data-row';
+
+const CHART_MIN_WIDTH = 560;
+const CHART_COLUMNS = 3;
 
 export interface SeriesDomainProps {
   readonly domain: FitnessDomain;
@@ -32,30 +36,27 @@ export function SeriesDomain({
   return (
     <FitnessShell
       tab={domain}
-      width="dashboard"
-      toolbar={
-        <View className="w-full max-w-detail">
-          <FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />
-        </View>
-      }
+      toolbar={<FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />}
     >
       {before}
       {keys.length === 0 && !presence.loaded ? (
-        <Skeleton shape="block" className="h-72 w-full max-w-detail" />
+        <Skeleton shape="block" className="h-72 w-full" />
       ) : null}
       {keys.length === 0 && presence.loaded ? (
-        <View className="w-full max-w-detail">
+        <View className="w-full">
           <NoDataRow what={`${info.title.toLowerCase()} data`} lastDay={null} />
         </View>
       ) : null}
       {keys.length === 0 ? null : (
-        <View className="flex-row flex-wrap items-start gap-section-gap">
+        <Grid
+          minItemWidth={CHART_MIN_WIDTH}
+          maxColumns={Math.min(keys.length, CHART_COLUMNS)}
+          stretchLastRow={false}
+        >
           {keys.map((key) => (
-            <View key={key} className="w-full max-w-detail">
-              <MetricSection spec={seriesOf(key)} window={window} />
-            </View>
+            <MetricSection key={key} spec={seriesOf(key)} window={window} className="flex-1" />
           ))}
-        </View>
+        </Grid>
       )}
       {after}
     </FitnessShell>

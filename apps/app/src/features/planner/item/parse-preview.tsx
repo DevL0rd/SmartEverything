@@ -1,4 +1,5 @@
 import type { PlannerCollectionRow, PlannerColourKey } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 import { keepPreviousData } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
@@ -7,11 +8,13 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { clock, clock24, duration, localDayKey, longDate, shiftDay } from '../../../format/time';
+import { clock, clock24, duration, localDayKey } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { usePlannerTools, type PlannerPerson, type PlannerTools } from '../data';
 import type { QuickAddTarget } from '../frame/quick-add-bar';
+import { ruleDetailOf, ruleTitleOf, useRuleDevice } from './completion-rule-row';
 import { LIST_DOT, timerReadingOf, type TimerReading, type TokenReading } from './composer-tokens';
+import { dayLabelOf } from './item-history';
 
 export type ComposerKind = 'task' | 'event' | 'alarm' | 'timer';
 
@@ -178,17 +181,10 @@ export interface Today {
   readonly timeZone: string;
 }
 
-function dayWord(day: string, today: Today): string {
-  const key = localDayKey(today.now, today.timeZone);
-  if (day === key) return 'Today';
-  if (day === shiftDay(key, 1)) return 'Tomorrow';
-  return longDate(`${day}T12:00:00Z`, 'UTC');
-}
-
 function whenChip(draft: Draft, today: Today): WillAddChip | null {
   const start = draft.start_local;
   if (start !== null) {
-    const day = dayWord(start.slice(0, 10), today);
+    const day = dayLabelOf(start.slice(0, 10), today);
     const end = draft.end_local?.slice(11, 16);
     const span = start.includes('T')
       ? ` ${start.slice(11, 16)}${end === undefined ? '' : ` to ${end}`}`
@@ -196,10 +192,10 @@ function whenChip(draft: Draft, today: Today): WillAddChip | null {
     return chip('when', `${day}${span}`, 'clock');
   }
   if (draft.due_at !== null) {
-    const day = dayWord(localDayKey(draft.due_at, today.timeZone), today);
+    const day = dayLabelOf(localDayKey(draft.due_at, today.timeZone), today);
     return chip('when', `${day} ${clock(draft.due_at, today.timeZone)}`, 'clock');
   }
-  return draft.due_date === null ? null : chip('when', dayWord(draft.due_date, today), 'clock');
+  return draft.due_date === null ? null : chip('when', dayLabelOf(draft.due_date, today), 'clock');
 }
 
 function itemChips(
@@ -210,11 +206,6 @@ function itemChips(
   const list = context.collections.find((row) => row.id === body.collection_id);
   const when = parsed.repeat_text === null ? whenChip(body, context.today) : null;
   return [
-    chip(
-      'kind',
-      body.kind === 'event' ? 'Event' : 'Task',
-      body.kind === 'event' ? 'calendar' : 'circleCheck',
-    ),
     ...(parsed.repeat_text === null ? [] : repeatChips(parsed.repeat_text)),
     ...(when === null ? [] : [when]),
     ...(list === undefined
@@ -230,7 +221,7 @@ function itemChips(
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 function alarmDaysText(alarm: AlarmDraft, today: Today): string {
-  if (alarm.once_on !== null) return `Once, ${dayWord(alarm.once_on, today)}`;
+  if (alarm.once_on !== null) return `Once, ${dayLabelOf(alarm.once_on, today)}`;
   if (alarm.days.length === 0) return 'Every day';
   if ([1, 2, 3, 4, 5].every((day) => alarm.days.includes(day)) && alarm.days.length === 5) {
     return 'Weekdays';
@@ -279,9 +270,11 @@ export function nextLineOf(
   today: Today,
 ): string | null {
   if (plan.kind !== 'item' || parsed === null) return null;
+  if (parsed.repeat_text === null && parsed.draft.rrule === null) return null;
   const [next] = parsed.next_occurrences;
   if (next === undefined) return null;
-  return `Next: ${longDate(next, today.timeZone)} ${clock(next, today.timeZone)}`;
+  const day = dayLabelOf(localDayKey(next, today.timeZone), today);
+  return `Next: ${day} ${clock(next, today.timeZone)}`;
 }
 
 export function readingOf(
@@ -303,6 +296,7 @@ export interface ParseState {
   readonly parsed: PlannerParse | null;
   readonly problem: string | null;
   readonly current: boolean;
+  readonly retry: () => void;
   readonly suggestions: readonly PlannerSuggestion[];
 }
 
@@ -311,7 +305,7 @@ function useParsed(
   key: readonly unknown[],
   text: string | null,
   timeZone: string,
-): Pick<ParseState, 'parsed' | 'problem' | 'current'> {
+): Pick<ParseState, 'parsed' | 'problem' | 'current' | 'retry'> {
   const parse = useScreenQuery({
     queryKey: [...key, timeZone, text],
     queryFn: () => tools.parse({ text: text ?? '', time_zone: timeZone }),
@@ -319,9 +313,14 @@ function useParsed(
     placeholderData: keepPreviousData,
     retry: false,
   });
-  if (text === null) return { parsed: null, problem: null, current: false };
-  if (parse.error !== null) return { parsed: null, problem: parse.error.message, current: false };
-  return { parsed: parse.data ?? null, problem: null, current: !parse.isPlaceholderData };
+  const retry = (): void => {
+    background(parse.refetch(), 'planner.parse_retry_failed');
+  };
+  if (text === null) return { parsed: null, problem: null, current: false, retry };
+  if (parse.error !== null) {
+    return { parsed: null, problem: parse.error.message, current: false, retry };
+  }
+  return { parsed: parse.data ?? null, problem: null, current: !parse.isPlaceholderData, retry };
 }
 
 function useSuggestions(
@@ -348,7 +347,7 @@ export function useParsePreview(
   const tools = usePlannerTools(person);
   const trimmed = text.trim();
   const read = kind === 'timer' || trimmed === '' ? null : trimmed;
-  const { parsed, problem, current } = useParsed(
+  const { parsed, problem, current, retry } = useParsed(
     tools,
     ['planner', 'parse', person],
     read,
@@ -356,7 +355,7 @@ export function useParsePreview(
   );
   const title = kind === 'task' ? (parsed?.draft.title ?? null) : null;
   const suggestions = useSuggestions(tools, ['planner', 'suggest-completion', person], title);
-  return { parsed, problem, current, suggestions };
+  return { parsed, problem, current, retry, suggestions };
 }
 
 function ChipDot({ colour }: { readonly colour: PlannerColourKey }): ReactNode {
@@ -401,32 +400,28 @@ export function WillAdd({
   );
 }
 
-const WINDOW_TEXT: Readonly<Record<'occurrence' | 'day', string>> = {
-  occurrence: 'Counts near each time it is due',
-  day: 'Counts any time that day',
-};
-
 export function RuleCard({
   suggestion,
+  personName,
   on,
   onChange,
 }: {
   readonly suggestion: PlannerSuggestion;
+  readonly personName: string;
   readonly on: boolean;
   readonly onChange: (on: boolean) => void;
 }): ReactNode {
-  const window = suggestion.completion.kind === 'signal' ? suggestion.completion.window : null;
-  const title = `Done when ${suggestion.label}`;
+  const device = useRuleDevice(suggestion.completion);
+  const title = ruleTitleOf(suggestion.completion, device);
+  const detail = ruleDetailOf(suggestion.completion, device, personName);
   return (
     <View className="flex-row items-center gap-3 rounded-lg border-hairline border-outline-variant bg-primary/12 py-2 pl-card-pad pr-2">
       <Icon name="zap" size={20} tone="primary" />
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="body-strong">{title}</Text>
-        {window === null ? null : (
-          <Text variant="footnote" tone="variant">
-            {WINDOW_TEXT[window]}
-          </Text>
-        )}
+        <Text variant="footnote" tone="variant">
+          {detail}
+        </Text>
       </View>
       <Switch value={on} onChange={onChange} label={title} />
     </View>

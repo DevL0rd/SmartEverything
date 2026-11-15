@@ -79,7 +79,7 @@ describe('album model', () => {
 
   it('describes every rule kind in plain words', () => {
     expect(ruleLine(TRIP_RULE)).toBe('Taken 3 to 7 Nov 2026 · Camera A7 IV');
-    expect(ruleLine({ ...TRIP_RULE, match: 'any' })).toBe('Taken 3 to 7 Nov 2026 or Camera A7 IV');
+    expect(ruleLine({ ...TRIP_RULE, match: 'any' })).toBe('Taken 3 to 7 Nov 2026 or camera A7 IV');
     expect(ruleLead(TRIP_RULE)).toBe('Updates itself when all rules match');
     expect(ruleLead({ ...TRIP_RULE, match: 'any' })).toBe('Updates itself when any rule matches');
     expect(leafText({ kind: 'item_kind', itemKinds: ['image', 'video'] })).toBe(

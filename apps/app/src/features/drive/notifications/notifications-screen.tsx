@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveItem, DriveNotification, ProfileRow } from '@smarteverything/domain';
-import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import { EmptyState } from '../../../components/empty-state';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
@@ -13,8 +12,9 @@ import { useProfiles } from '../../../store/people';
 import { useSettings, useSyncStatus } from '../../../store/selectors';
 import {
   useDriveAccessRequestRows,
+  useDriveChips,
   useDriveFileRequestRows,
-  useDriveItems,
+  useDriveItemReads,
   useDriveNotificationRows,
   useDriveRoots,
   useDriveTransferRows,
@@ -22,8 +22,8 @@ import {
   useViewerId,
 } from '../data';
 import { DriveFrame } from '../components/drive-frame';
+import { drivePathOf } from '../model/drive-chip';
 import { openHrefOf } from '../recent/recent-model';
-import { DRIVE_SETTINGS_PAGE } from '../settings/sections';
 import { GroupFrame } from '../shared/group-frame';
 import {
   EMPTY_BODY,
@@ -31,43 +31,43 @@ import {
   contextOf,
   dayGroupsOf,
   inboxKeyOf,
-  inboxRowsOf,
+  inboxSectionsOf,
   itemIdsOf,
   rowActionOf,
   subtitleOf,
   unreadIdsOf,
-  type InboxRow,
+  type InboxNote,
   type NotificationLookups,
 } from './notification-model';
 import { NotificationRow } from './notification-row';
-import { PUSH_KINDS_SETTING_ID } from './push-kinds';
 
 export const OFFLINE_TITLE = 'Showing the last known notifications · reconnecting';
 
 type Lookups = Omit<NotificationLookups, 'items'> & {
   readonly items: ReadonlyMap<string, DriveItem>;
+  readonly locationOf: (item: DriveItem) => string;
 };
 
 function useLookups(rows: readonly DriveNotification[]): Lookups {
   const ids = itemIdsOf(rows);
-  const loaded = useDriveItems(ids, null);
+  const reads = useDriveItemReads(ids, null);
+  const chipOf = useDriveChips();
   const items = new Map<string, DriveItem>();
-  for (const item of loaded) if (item !== undefined) items.set(item.id, item);
+  const pending = new Set<string>();
+  reads.forEach((read, index) => {
+    const id = ids[index];
+    if (read.item !== undefined) items.set(read.item.id, read.item);
+    else if (read.pending && id !== undefined) pending.add(id);
+  });
   return {
     profiles: useProfiles(),
     items,
+    pending,
+    locationOf: (item) => drivePathOf(chipOf(item.rootId), item.relPath),
     requests: useDriveAccessRequestRows(),
     transfers: useDriveTransferRows(),
     fileRequests: useDriveFileRequestRows(),
   };
-}
-
-function Day({ label }: { readonly label: string }): ReactElement {
-  return (
-    <View accessibilityRole="header" className="px-1 pb-2 pt-4">
-      <Text variant="body-strong">{label}</Text>
-    </View>
-  );
 }
 
 interface RowEnv {
@@ -78,17 +78,18 @@ interface RowEnv {
   readonly onOpen: (row: DriveNotification, item: DriveItem | null) => void;
 }
 
-function renderRow(entry: InboxRow, env: RowEnv): ReactElement {
-  if (entry.kind === 'day') return <Day label={entry.label} />;
+function renderRow(entry: InboxNote, env: RowEnv): ReactElement {
   const { row } = entry;
   const context = contextOf(row, env.lookups);
+  const item = env.lookups.items.get(row.itemId) ?? null;
   return (
     <GroupFrame edge={entry.edge}>
       <NotificationRow
         row={row}
         context={context}
         actor={env.profiles.find((profile) => profile.id === row.actorProfileId) ?? null}
-        item={env.lookups.items.get(row.itemId) ?? null}
+        item={item}
+        location={item === null ? null : env.lookups.locationOf(item)}
         action={rowActionOf(row, context, env.viewerId)}
         now={env.now}
         onOpen={env.onOpen}
@@ -106,12 +107,16 @@ function useOpen(): (row: DriveNotification, item: DriveItem | null) => void {
   };
 }
 
-function useHeaderActions(unread: number): {
+function useHeaderActions(
+  total: number,
+  unread: number,
+): {
   readonly actions: readonly ShellAction[];
   readonly problem: string | null;
 } {
   const live = useSyncStatus().status === 'live';
   const read = useNotificationsRead();
+  if (total === 0) return { problem: read.problem, actions: [] };
   return {
     problem: read.problem,
     actions: [
@@ -122,12 +127,6 @@ function useHeaderActions(unread: number): {
         onPress: (): void => {
           read.run({ all: true });
         },
-      },
-      {
-        icon: 'settings',
-        label: 'Notification settings',
-        iconOnly: true,
-        href: href.settings.focus(DRIVE_SETTINGS_PAGE, PUSH_KINDS_SETTING_ID),
       },
     ],
   };
@@ -159,7 +158,7 @@ export function NotificationsScreen(): ReactNode {
   const timeZone = useSettings().time_zone;
   const live = useSyncStatus().status === 'live';
   const env = useRowEnv(rows);
-  const { actions, problem } = useHeaderActions(unreadIdsOf(rows).length);
+  const { actions, problem } = useHeaderActions(rows.length, unreadIdsOf(rows).length);
   const header = <Problem text={problem} />;
   return (
     <DriveFrame
@@ -170,18 +169,20 @@ export function NotificationsScreen(): ReactNode {
       actions={actions}
       {...(live ? {} : { banner: <Banner tone="info" title={OFFLINE_TITLE} /> })}
     >
-      <View className="-mx-gutter min-h-0 flex-1">
-        <VirtualList
-          sections={[
-            { key: 'inbox', title: null, data: inboxRowsOf(dayGroupsOf(rows, env.now, timeZone)) },
-          ]}
-          keyOf={inboxKeyOf}
-          typeOf={(entry) => entry.kind}
-          renderItem={(entry) => renderRow(entry, env)}
-          empty={<EmptyState icon="bell" title={EMPTY_TITLE} body={EMPTY_BODY} />}
-          {...(problem === null ? {} : { header })}
-        />
-      </View>
+      {rows.length === 0 ? (
+        <View className="flex-1 justify-center">
+          <EmptyState icon="bell" title={EMPTY_TITLE} body={EMPTY_BODY} />
+        </View>
+      ) : (
+        <View className="-mx-gutter min-h-0 flex-1">
+          <VirtualList
+            sections={inboxSectionsOf(dayGroupsOf(rows, env.now, timeZone))}
+            keyOf={inboxKeyOf}
+            renderItem={(entry) => renderRow(entry, env)}
+            {...(problem === null ? {} : { header })}
+          />
+        </View>
+      )}
     </DriveFrame>
   );
 }

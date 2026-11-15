@@ -130,6 +130,87 @@ func TestPrefetchAfterTwoSequentialReads(t *testing.T) {
 	}
 }
 
+func withLive(t *testing.T, change func(*liveFields)) {
+	t.Helper()
+	before := live.load()
+	next := before
+	change(&next)
+	live.store(next)
+	t.Cleanup(func() { live.store(before) })
+}
+
+func waitPresent(t *testing.T, c *blockCache, ino uint64, idx int64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !present(c, ino, idx) && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !present(c, ino, idx) {
+		t.Fatalf("block %d never arrived", idx)
+	}
+}
+
+func TestSequentialReadAheadFollowsTheLiveWindow(t *testing.T) {
+	withLive(t, func(f *liveFields) { f.readAheadBytes = 3 * testBlock })
+	content := pattern(testBlock * 12)
+	_, c, ino := oneFile(t, content)
+	h := openFile(t, c, ino)
+	readAll(t, h, 0, testBlock)
+	readAll(t, h, testBlock, testBlock)
+	for idx := int64(2); idx <= 4; idx++ {
+		waitPresent(t, c, ino, idx)
+	}
+	c.tasks.Wait()
+	if present(c, ino, 5) {
+		t.Fatal("read-ahead went past its window")
+	}
+	live.store(func() liveFields { f := live.load(); f.readAheadBytes = 6 * testBlock; return f }())
+	readAll(t, h, 2*testBlock, testBlock)
+	waitPresent(t, c, ino, 8)
+}
+
+func TestReadAheadOffFetchesNothingExtra(t *testing.T) {
+	withLive(t, func(f *liveFields) { f.readAheadBytes = 0 })
+	_, c, ino := oneFile(t, pattern(testBlock*6))
+	h := openFile(t, c, ino)
+	for i := int64(0); i < 3; i++ {
+		readAll(t, h, i*testBlock, testBlock)
+	}
+	c.tasks.Wait()
+	if present(c, ino, 3) {
+		t.Fatal("read-ahead is off and block 3 was fetched")
+	}
+}
+
+func TestSmallFilePrefetchOnlyWhenOnAndOnlyOneFrameOrLess(t *testing.T) {
+	hub := newFakeHub()
+	dir := hub.dir(hub.rootIno, "d")
+	hub.file(dir, "small.txt", pattern(1000))
+	hub.file(dir, "frame.bin", pattern(wire.MaxPayloadBytes))
+	hub.file(dir, "large.bin", pattern(wire.MaxPayloadBytes+1))
+	c, _ := attached(t, hub, cacheDirFor(t))
+	list := func() {
+		if _, err := c.Readdir(context.Background(), dir, 0); err != nil {
+			t.Fatal(err)
+		}
+		c.tasks.Wait()
+	}
+	list()
+	if hub.count(wire.OpRead) != 0 {
+		t.Fatal("prefetch ran while off")
+	}
+	withLive(t, func(f *liveFields) { f.prefetchSmallFiles = true })
+	c.mu.Lock()
+	for _, in := range c.inodes {
+		in.attrEpoch = 0
+	}
+	c.mu.Unlock()
+	list()
+	if got := hub.count(wire.OpRead); got != 2 {
+		t.Fatalf("expected the small file and the one-frame file, got %d reads", got)
+	}
+}
+
 func TestPinsAreWholeAndOutsideTheLimit(t *testing.T) {
 	hub := newFakeHub()
 	sub := hub.dir(hub.rootIno, "keep")

@@ -9,6 +9,7 @@ import { ListRow, type ListRowProps } from './list-row';
 import { SelectPicker, type SelectOption } from './select-picker';
 import { selectionTick } from '../platform/haptics';
 import { SwitchTrack } from './switch';
+import { Text } from './text';
 
 interface RowBase {
   readonly title: string;
@@ -19,6 +20,7 @@ interface RowBase {
   readonly caption?: string;
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
+  readonly leading?: ListRowProps['leading'];
   readonly iconTone?: NonNullable<ListRowProps['iconTone']>;
   readonly disabled?: boolean;
   readonly compact?: boolean;
@@ -87,12 +89,34 @@ export function ActionRow({
   return <ListRow {...row} onPress={onPress} destructive={destructive} />;
 }
 
+function shownValueOf<T extends string>(
+  chosen: SelectOption<T> | undefined,
+  placeholder: string,
+): Pick<ListRowProps, 'value' | 'trailing'> {
+  if (chosen?.leading === undefined) return { value: chosen?.label ?? placeholder };
+  return {
+    trailing: (
+      <View className="min-w-0 max-w-48 shrink flex-row items-center gap-2">
+        {chosen.leading}
+        <Text variant="callout" tone="variant" numberOfLines={1} className="shrink">
+          {chosen.label}
+        </Text>
+      </View>
+    ),
+  };
+}
+
+function trailingRect(rect: Rect, width: number | undefined): Rect {
+  return width === undefined ? rect : { ...rect, x: rect.x + rect.width - width, width };
+}
+
 export function SelectRow<T extends string>({
   options,
   value,
   onChange,
   searchable,
   placeholder = 'Not set',
+  menuWidth,
   ...row
 }: RowBase & {
   readonly options: readonly SelectOption<T>[];
@@ -100,20 +124,24 @@ export function SelectRow<T extends string>({
   readonly onChange: (value: T) => void;
   readonly searchable?: boolean;
   readonly placeholder?: string;
+  readonly menuWidth?: number;
 }): ReactNode {
   const ref = useRef<View>(null);
   const opener = useRef<View>(null);
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const chosen = options.find((option) => option.value === value);
+  const shown = shownValueOf(chosen, placeholder);
   return (
     <View ref={ref} collapsable={false}>
       <ListRow
         pressRef={opener}
         {...row}
-        value={chosen?.label ?? placeholder}
+        {...shown}
         chevron
         onPress={() => {
-          measureAnchor(ref, setAnchor);
+          measureAnchor(ref, (rect) => {
+            setAnchor(trailingRect(rect, menuWidth));
+          });
         }}
       />
       <SelectPicker
@@ -123,6 +151,7 @@ export function SelectRow<T extends string>({
         anchor={anchor}
         opener={opener}
         searchable={searchable ?? false}
+        {...(menuWidth === undefined ? {} : { width: menuWidth })}
         onPick={onChange}
         onClose={() => {
           setAnchor(null);

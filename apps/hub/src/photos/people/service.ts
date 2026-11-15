@@ -29,6 +29,7 @@ const DISMISSED = z.strictObject({ group_a: z.string(), group_b: z.string() });
 export interface PeopleDeps extends GroupingDeps {
   readonly faces: PhotoFacesRepository;
   readonly profiles: () => readonly string[];
+  readonly regrouped: (profileId: string) => void;
 }
 
 export class PeopleService {
@@ -43,6 +44,7 @@ export class PeopleService {
     this.views = new GroupViews(deps.context, deps.groups);
     this.grouper = new PeopleGrouper(deps, (profileId) => {
       this.suggested.delete(profileId);
+      deps.regrouped(profileId);
     });
   }
 

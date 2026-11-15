@@ -33,7 +33,6 @@ export function localTilesOf(
       takenAt: item.takenAt,
       offsetMin: null,
       durationMs: item.video ? item.durationMs : null,
-      thumbhash: null,
       flags: photoFlags(item.video ? ['video'] : []),
       local: true,
       backedUp: uploaded.has(item.id),

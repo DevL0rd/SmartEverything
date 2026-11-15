@@ -317,7 +317,7 @@ export function DisplaysBody({ device }: { readonly device: Device }): ReactNode
 export function ComputerDisplaysScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const device = useDevice(deviceId);
   return (
-    <ComputerFrame deviceId={deviceId} title="Displays" width="detail">
+    <ComputerFrame deviceId={deviceId} title="Displays">
       {device?.kind === 'computer' ? (
         <DemandRegion deviceId={deviceId} topics={TOPICS}>
           <DisplaysBody device={device} />

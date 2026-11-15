@@ -1,24 +1,22 @@
 import type { PlannerColourKey, PlannerRange } from '@smarteverything/domain';
-import { memo, useState, type ReactElement, type ReactNode } from 'react';
+import { memo, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { EmptyState } from '../../../components/empty-state';
 import { Interactive } from '../../../components/interactive';
-import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { cn } from '../../../design/cn';
-import { useAreaWidth } from '../../../design/size-class';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerRange } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { QueryBody } from '../frame/query-body';
-import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
 import { agendaRowsOf, type AgendaEntry, type AgendaHead, type AgendaRow } from './agenda-model';
 import { useCalendarLooks } from './calendar-looks';
+import { useCalendarWide } from './pane-width';
 import type { EventLook } from './calendars-model';
 import { LookMark } from './event-look';
 import { agendaDaysOf, agendaWindowOf, dayMapOf, type RowEdge } from './month-model';
@@ -175,25 +173,7 @@ interface AgendaRowsProps {
   readonly range: PlannerRange;
   readonly day: string;
   readonly wide: boolean;
-}
-
-function AgendaSearch({
-  query,
-  onQuery,
-}: {
   readonly query: string;
-  readonly onQuery: (query: string) => void;
-}): ReactElement {
-  return (
-    <View className="px-gutter pb-1">
-      <SearchField
-        value={query}
-        onChange={onQuery}
-        placeholder="Search events and tasks"
-        variant="field"
-      />
-    </View>
-  );
 }
 
 function AgendaEmpty({ searching }: { readonly searching: boolean }): ReactElement {
@@ -223,8 +203,7 @@ function useAgendaRows(range: PlannerRange, day: string, query: string): readonl
   });
 }
 
-function AgendaRows({ range, day, wide }: AgendaRowsProps): ReactNode {
-  const [query, setQuery] = useState('');
+function AgendaRows({ range, day, wide, query }: AgendaRowsProps): ReactNode {
   const rows = useAgendaRows(range, day, query);
   const renderItem = (row: AgendaRow): ReactElement =>
     row.kind === 'head' ? (
@@ -240,7 +219,6 @@ function AgendaRows({ range, day, wide }: AgendaRowsProps): ReactNode {
         typeOf={typeOf}
         renderItem={renderItem}
         sameItem={sameRow}
-        {...(wide ? { header: <AgendaSearch query={query} onQuery={setQuery} /> } : {})}
         empty={<AgendaEmpty searching={query.trim() !== ''} />}
         probe="planner-agenda"
       />
@@ -251,16 +229,17 @@ function AgendaRows({ range, day, wide }: AgendaRowsProps): ReactNode {
 export interface AgendaListProps {
   readonly day: string;
   readonly calendars: readonly string[] | null;
+  readonly query: string;
 }
 
-export function AgendaList({ day, calendars }: AgendaListProps): ReactNode {
+export function AgendaList({ day, calendars, query }: AgendaListProps): ReactNode {
   const { person } = usePlannerFrame();
   const timeZone = useSettings().time_zone;
-  const wide = frameLayoutOf(useAreaWidth()) !== 'compact';
+  const wide = useCalendarWide();
   const { from, to } = agendaWindowOf(day, timeZone);
   return (
     <QueryBody query={usePlannerRange(person, from, to, calendars)}>
-      {(range) => <AgendaRows range={range} day={day} wide={wide} />}
+      {(range) => <AgendaRows range={range} day={day} wide={wide} query={query} />}
     </QueryBody>
   );
 }

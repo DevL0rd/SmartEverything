@@ -19,7 +19,7 @@ export async function refreshLinks(client: QueryClient): Promise<void> {
 
 export function revokeQuestionOf(title: string): ConfirmRequest {
   return {
-    title: `Stop the link to ${title}?`,
+    title: `Stop the link to ‘${title}’?`,
     body: 'People with the link can’t open it any more.',
     confirmLabel: 'Stop link',
     cancelLabel: 'Keep link',

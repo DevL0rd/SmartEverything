@@ -20,7 +20,7 @@ import { loopStyle } from '../../design/loops';
 import type { ColourRole } from '../../design/tokens';
 import { useVisibleLive } from '../../design/use-visible-live';
 import { useScopeVisible } from '../../design/visibility';
-import { MINUTE_MS, clock } from '../../format/time';
+import { HOUR_MS, MINUTE_MS, clock } from '../../format/time';
 import { useDevice, useRow } from '../../store/selectors';
 import { usePlannerClockWrites } from '../planner';
 import { useHubOffline } from './frame/hub-status';
@@ -102,7 +102,7 @@ const DIAL: Readonly<
     }
   >
 > = {
-  row: { px: 56, thickness: 4, frame: 'size-14', digits: 'footnote' },
+  row: { px: 72, thickness: 4, frame: 'size-18', digits: 'footnote' },
   card: { px: 116, thickness: 8, frame: 'size-29', digits: 's' },
   hero: { px: 220, thickness: 10, frame: 'size-55', digits: 'l' },
 };
@@ -113,8 +113,13 @@ export interface TimerDialProps {
   readonly caption?: string;
 }
 
+function digitsOf(dial: DialSize, duration: number): FaceSize {
+  return dial === 'row' && duration >= HOUR_MS ? 'caption' : DIAL[dial].digits;
+}
+
 export function TimerDial({ view, size: dial, caption }: TimerDialProps): ReactNode {
-  const { px: size, thickness, frame, digits } = DIAL[dial];
+  const { px: size, thickness, frame } = DIAL[dial];
+  const digits = digitsOf(dial, view.timer.duration_ms);
   const ref = useRef<View>(null);
   const { live, onLayout } = useVisibleLive(ref);
   const source = timerSourceOf(view.timer);
@@ -204,7 +209,7 @@ export function RingPulse({ ringing }: { readonly ringing: boolean }): ReactNode
   );
 }
 
-function RingingActions({ view }: { readonly view: TimerView }): ReactNode {
+export function RingingActions({ view }: { readonly view: TimerView }): ReactNode {
   const { offline, act, addMinute } = useTimerActions(view.timer);
   return (
     <View className="flex-row flex-wrap items-center gap-2">
@@ -227,7 +232,7 @@ function RingingActions({ view }: { readonly view: TimerView }): ReactNode {
   );
 }
 
-function LiveActions({ view }: { readonly view: TimerView }): ReactNode {
+export function LiveActions({ view }: { readonly view: TimerView }): ReactNode {
   const { offline, act, addMinute } = useTimerActions(view.timer);
   const running = view.phase === 'running';
   return (
@@ -253,6 +258,7 @@ function LiveActions({ view }: { readonly view: TimerView }): ReactNode {
       <IconButton
         icon="close"
         label="Cancel timer"
+        variant="tonal"
         disabled={offline}
         onPress={() => {
           act('cancel');
@@ -273,13 +279,19 @@ function CardTitle({ view }: { readonly view: TimerView }): ReactNode {
   );
 }
 
-export function TimerCard({ view }: { readonly view: TimerView }): ReactNode {
+export function TimerCard({
+  view,
+  dial = 'card',
+}: {
+  readonly view: TimerView;
+  readonly dial?: Exclude<DialSize, 'hero'>;
+}): ReactNode {
   const ringing = view.phase === 'ringing';
   return (
     <View className="relative">
       <Card>
-        <View className="flex-row items-center gap-4">
-          <TimerDial view={view} size="card" />
+        <View className={cn('flex-row items-center', dial === 'row' ? 'gap-3' : 'gap-4')}>
+          <TimerDial view={view} size={dial} />
           <View className="min-w-0 flex-1 gap-2">
             {ringing ? <Badge label="Ringing" tone="primary" icon="bell" /> : null}
             <CardTitle view={view} />
@@ -287,9 +299,9 @@ export function TimerCard({ view }: { readonly view: TimerView }): ReactNode {
               {timerLineOf(view)}
             </Text>
             {view.phase === 'running' ? <TargetChips targets={view.timer.targets} /> : null}
-            {ringing ? <RingingActions view={view} /> : <LiveActions view={view} />}
           </View>
         </View>
+        {ringing ? <RingingActions view={view} /> : <LiveActions view={view} />}
       </Card>
       <RingPulse ringing={ringing} />
     </View>

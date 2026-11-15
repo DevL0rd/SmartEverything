@@ -115,6 +115,7 @@ describe('the secret check', () => {
     expect(textLeaks('token sk-abcdefghijklmnopqrstuvwx', [])).not.toHaveLength(0);
     expect(textLeaks('key AIza0123456789abcdefghijklmnopqrstuvwxyz', [])).not.toHaveLength(0);
     expect(textLeaks('nothing here', [])).toHaveLength(0);
+    expect(textLeaks('Petropavlovsk-Kamchatsky Aleksandrovsk-Sakhalinsky', [])).toHaveLength(0);
     expect(textLeaks('has hunter2-secret inside', ['hunter2-secret'])).toHaveLength(1);
   });
 

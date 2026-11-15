@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
-import { useMinute } from '../../../store/clock';
+import { useDayNow } from '../../../store/clock';
 import { usePendingKeys } from '../../../components/deferred-action';
 import { useRow } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
@@ -64,9 +64,9 @@ export function useThreadRows(
 ): ThreadRows {
   const olderRows = useOlderRows(historyKey);
   const complete = useOlderComplete(historyKey);
-  const now = useMinute();
   const showSteps = useAssistantStatus()?.settings.activity_steps !== false;
   const timeZone = useStoreSelector((state) => state.settings?.time_zone ?? null);
+  const now = useDayNow(timeZone);
   const chat = useRow('ai_chats', historyKey);
   const cast = useCast(historyKey, chat);
   const [opened] = useState(() => ({ at: Date.now(), readAt: chat?.read_at ?? null }));

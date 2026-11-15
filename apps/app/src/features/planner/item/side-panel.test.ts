@@ -118,14 +118,14 @@ const GOOGLE = {
 
 describe('itemMenuOf', () => {
   it('lists the board actions with their shortcuts and no Google entry for a hub item', () => {
-    const model = itemMenuOf({ item: item(), occurrenceKey: null, offline: false });
-    expect(model.quick.map((entry) => entry.label)).toEqual(['Done', 'Skip', 'Ask AI']);
+    const model = itemMenuOf({ item: item(), occurrenceKey: null, offline: false, timeZone: ZONE });
+    expect(model.quick.map((entry) => entry.label)).toEqual(['Done', 'Ask AI']);
     expect(model.items.map((entry) => [entry.label, entry.shortcut ?? null])).toEqual([
       ['Reschedule', 'R'],
       ['Attach a device', 'A'],
-      ['Repeat', null],
       ['Delete', 'Del'],
     ]);
+    expect(model.items[0]?.action).toEqual({ kind: 'open', intent: 'reschedule' });
   });
 
   it('adds Open in Google only for an item Google already knows', () => {
@@ -133,18 +133,25 @@ describe('itemMenuOf', () => {
       item: item({ google: GOOGLE }),
       occurrenceKey: null,
       offline: false,
+      timeZone: ZONE,
     });
     expect(synced.items.some((entry) => entry.label === 'Open in Google')).toBe(true);
     const sending = itemMenuOf({
       item: item({ google: { ...GOOGLE, id: null, state: 'sending' } }),
       occurrenceKey: null,
       offline: false,
+      timeZone: ZONE,
     });
     expect(sending.items.some((entry) => entry.label === 'Open in Google')).toBe(false);
   });
 
   it('offers every repeat scope for one occurrence of a series with Del on the first', () => {
-    const model = itemMenuOf({ item: item({ rrule: WEEKLY }), occurrenceKey: KEY, offline: false });
+    const model = itemMenuOf({
+      item: item({ rrule: WEEKLY }),
+      occurrenceKey: KEY,
+      offline: false,
+      timeZone: ZONE,
+    });
     const deletes = model.items.filter((entry) => entry.destructive === true);
     expect(deletes.map((entry) => [entry.label, entry.shortcut ?? null])).toEqual([
       ['Delete this one', 'Del'],
@@ -158,6 +165,7 @@ describe('itemMenuOf', () => {
       item: item({ rrule: WEEKLY }),
       occurrenceKey: null,
       offline: false,
+      timeZone: ZONE,
     });
     expect(model.quick.filter((entry) => entry.disabled).map((entry) => entry.id)).toEqual([
       'done',
@@ -166,13 +174,30 @@ describe('itemMenuOf', () => {
   });
 
   it('disables every write while offline but keeps Ask AI', () => {
-    const model = itemMenuOf({ item: item(), occurrenceKey: null, offline: true });
+    const model = itemMenuOf({ item: item(), occurrenceKey: null, offline: true, timeZone: ZONE });
     const enabled = [...model.quick, ...model.items].filter((entry) => !entry.disabled);
     expect(enabled.map((entry) => entry.id)).toEqual(['ask']);
   });
 
+  it('offers Skip only for a repeat and blocks Done once the item is no longer open', () => {
+    const series = itemMenuOf({
+      item: item({ rrule: WEEKLY }),
+      occurrenceKey: KEY,
+      offline: false,
+      timeZone: ZONE,
+    });
+    expect(series.quick.map((entry) => entry.id)).toEqual(['done', 'skip', 'ask']);
+    const finished = itemMenuOf({
+      item: item({ status: 'done' }),
+      occurrenceKey: null,
+      offline: false,
+      timeZone: ZONE,
+    });
+    expect(finished.quick.find((entry) => entry.id === 'done')?.disabled).toBe(true);
+  });
+
   it('marks a single item done under the single occurrence key', () => {
-    const model = itemMenuOf({ item: item(), occurrenceKey: null, offline: false });
+    const model = itemMenuOf({ item: item(), occurrenceKey: null, offline: false, timeZone: ZONE });
     expect(model.quick[0]?.action).toEqual({ kind: 'done', key: 'single' });
   });
 });
@@ -208,9 +233,15 @@ describe('item shortcuts', () => {
       item: item({ rrule: WEEKLY }),
       occurrenceKey: KEY,
       offline: false,
+      timeZone: ZONE,
     });
     expect(shortcutEntryOf(series, 'delete')?.id).toBe('delete-this');
-    const offline = itemMenuOf({ item: item(), occurrenceKey: null, offline: true });
+    const offline = itemMenuOf({
+      item: item(),
+      occurrenceKey: null,
+      offline: true,
+      timeZone: ZONE,
+    });
     expect(shortcutEntryOf(offline, 'reschedule')).toBeNull();
   });
 });

@@ -170,6 +170,15 @@ describe('the backup chip', () => {
       'Backing up 6',
     );
     expect(phoneChipOf(status({ phase: 'idle', total: 10, done: 10 }))?.mark).toBe('check');
+    expect(phoneChipOf(status({ phase: 'idle', total: 10, done: 8, failed: 2 }))).toMatchObject({
+      mark: 'failed',
+      label: '2 failed',
+    });
+    expect(
+      phoneChipOf(
+        status({ phase: 'idle', total: 10, done: 8, problem: 'The folder is read-only.' }),
+      ),
+    ).toMatchObject({ mark: 'failed', label: 'Needs attention' });
   });
 
   it('lists the phone conditions in the design wording', () => {

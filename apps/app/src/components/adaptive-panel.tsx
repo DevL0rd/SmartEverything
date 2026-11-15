@@ -176,7 +176,7 @@ function PlacedPanel(props: PlacedPanelProps): ReactNode {
       label={label}
       frame={frame}
       scrim={presentation === 'dialog'}
-      fitContent={compact === true || (chrome && fit === true)}
+      fitContent={compact === true || fit === true}
       {...(scroll === undefined ? {} : { scroll })}
       align={pointerPlacement === 'below' || presentation === 'dialog' ? 'top' : 'bottom'}
       chrome={chrome}

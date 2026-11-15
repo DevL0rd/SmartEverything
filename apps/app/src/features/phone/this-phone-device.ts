@@ -1,5 +1,5 @@
 import { useActiveProfile } from '../../store/people';
-import { useDevices, useSession } from '../../store/selectors';
+import { useMatchingDevices, useSession } from '../../store/selectors';
 import type { Device } from '../../store/state';
 
 export function useIsThisPhone(device: Device): boolean {
@@ -10,8 +10,9 @@ export function useIsThisPhone(device: Device): boolean {
 export function useMyPhone(): Device | null {
   const session = useSession();
   const profileId = useActiveProfile()?.id ?? null;
-  const mine = useDevices({ includeHidden: true }).filter(
+  const mine = useMatchingDevices(
     (device) => device.kind === 'phone' && device.details['profileId'] === profileId,
+    { includeHidden: true },
   );
   return mine.find((device) => device.details['clientId'] === session.client.id) ?? mine[0] ?? null;
 }

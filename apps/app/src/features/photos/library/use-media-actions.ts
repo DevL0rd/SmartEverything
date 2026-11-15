@@ -2,10 +2,12 @@ import { background } from '@smarteverything/logging';
 import type { MenuItem } from '../../../components/menu';
 import { useLastChat } from '../../assistant';
 import { useDriveAlbums, useDriveRoots } from '../../drive';
+import { openNewAlbum } from '../albums/new-album-host';
 import { NO_CHAT_HINT } from '../model/ask-actions';
 import { albumMenuItems } from '../viewer/menus';
 import { addToAlbum, moveToTrash, setFavourite } from './actions';
-import { askAbout, downloadItems, sendToChat, shareLink, showInDrive } from './item-actions';
+import { askAbout, sendToChat, shareLink, showInDrive } from './item-actions';
+import { saveToDevice } from './save-to-device';
 
 type Ids = readonly string[];
 
@@ -29,9 +31,15 @@ export function useMediaActions(): MediaActions {
   return {
     chatHint: chatId === null ? NO_CHAT_HINT : null,
     albums: (ids) =>
-      albumMenuItems(albums, (id, title) => {
-        background(addToAlbum(ids, { id, title }), 'photos.album_add_failed');
-      }),
+      albumMenuItems(
+        albums,
+        (id, title) => {
+          background(addToAlbum(ids, { id, title }), 'photos.album_add_failed');
+        },
+        () => {
+          openNewAlbum(ids);
+        },
+      ),
     favourite: (ids, on): void => {
       background(setFavourite(ids, on), 'photos.favourite_failed');
     },
@@ -42,7 +50,7 @@ export function useMediaActions(): MediaActions {
       background(shareLink(itemId), 'photos.share_failed');
     },
     download: (ids): void => {
-      background(downloadItems(ids), 'photos.download_failed');
+      background(saveToDevice(ids), 'photos.save_to_device_failed');
     },
     showInDrive: (itemId): void => {
       background(showInDrive(itemId, roots), 'photos.show_in_drive_failed');

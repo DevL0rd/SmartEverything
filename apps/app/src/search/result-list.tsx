@@ -156,18 +156,12 @@ const ResultRowView = memo(function ResultRowView(props: ViewProps): ReactNode {
   );
 }, sameView);
 
-function NoMatches({
-  query,
-  rowWidthClassName,
-}: {
-  readonly query: string;
-  readonly rowWidthClassName: string | undefined;
-}): ReactElement | null {
+function NoMatches({ query }: { readonly query: string }): ReactElement | null {
   if (query === '') {
     return null;
   }
   return (
-    <View className={cn('items-center gap-1 px-6 py-10', rowWidthClassName)}>
+    <View className="items-center gap-1 px-6 py-10">
       <Text variant="body-strong" align="center" className="max-w-full">
         {`No matches for “${query}”`}
       </Text>
@@ -216,9 +210,8 @@ export function ResultList({
   const list = useRef<FlashListRef<SearchRow>>(null);
   useScrollToSelected(list, model);
   const padding = useResolveClassNames(contentClassName ?? '');
-  const rowWidthClassName = fullPage ? 'w-full max-w-detail' : undefined;
   const renderRow: ListRenderItem<SearchRow> = ({ item, index }) => {
-    const row = (
+    return (
       <ResultRowView
         key={item.key}
         row={item}
@@ -228,7 +221,6 @@ export function ResultList({
         selected={model.keyboard ? model.selectedKey === item.key : false}
       />
     );
-    return rowWidthClassName === undefined ? row : <View className={rowWidthClassName}>{row}</View>;
   };
   return (
     <View className={grow ? 'flex-1' : 'shrink grow-0'}>
@@ -239,7 +231,7 @@ export function ResultList({
         getItemType={rowType}
         drawDistance={RESULT_DRAW_DISTANCE}
         renderItem={renderRow}
-        ListEmptyComponent={<NoMatches query={model.query} rowWidthClassName={rowWidthClassName} />}
+        ListEmptyComponent={<NoMatches query={model.query} />}
         contentContainerStyle={padding}
         {...(footer === undefined ? {} : { ListFooterComponent: footer })}
         {...(onScroll === undefined ? {} : { onScroll })}

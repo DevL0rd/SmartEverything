@@ -67,6 +67,7 @@ export const DRIVE_EDIT_ACTIONS = [
   'share_people',
   'conflict_resolve',
   'placement_set',
+  'mount_set',
   'placement_remove',
   'scrub_start',
   'comment_add',

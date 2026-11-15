@@ -9,14 +9,13 @@ interface Props {
   readonly title?: string;
   readonly subtitle?: string;
   readonly banner?: ReactNode;
-  readonly width?: string;
   readonly tabs?: TabsProps;
 }
 
 function shell(props: Props): ReactNode {
   return createElement(
     'main',
-    { 'data-width': props.width, 'data-subtitle': props.subtitle },
+    { 'data-subtitle': props.subtitle },
     createElement('header', { 'data-part': 'header' }, props.title),
     props.tabs === undefined ? null : tabsBar(props.tabs),
     props.banner,
@@ -142,13 +141,5 @@ describe('vacuum page', () => {
     for (const hidden of ['schedules', 'history', 'care', 'dock', 'settings']) {
       expect(page).not.toContain(`data-part="${hidden}"`);
     }
-  });
-
-  it('uses the detail width at every size and two columns when expanded', () => {
-    expect(html()).toContain('data-width="detail"');
-    size.width = 'medium';
-    expect(html()).toContain('data-width="detail"');
-    size.width = 'expanded';
-    expect(html()).toContain('data-width="detail"');
   });
 });

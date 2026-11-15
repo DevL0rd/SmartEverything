@@ -60,9 +60,8 @@ function useShellLayout(shell: StandardShellProps): ShellLayout {
   const column = shellColumnOf({
     area,
     gutter,
-    width: shell.width ?? 'dashboard',
     rail,
-    aside: docked,
+    aside: docked ? shell.aside.width : 0,
   });
   return { header: size.header, gutter, rail, docked, column };
 }
@@ -195,7 +194,7 @@ function StandardShell(shell: StandardShellProps): ReactNode {
         {phone ? <PhoneFrame {...frame} /> : <WideFrame {...frame} />}
         {fabAction === undefined ? null : <PrimaryAction {...fabAction} />}
       </View>
-      {shell.footer === undefined ? null : <ShellFooter>{shell.footer}</ShellFooter>}
+      {!phone || shell.footer === undefined ? null : <ShellFooter>{shell.footer}</ShellFooter>}
       <PullUp
         sections={pullUpSections}
         title={shell.title}

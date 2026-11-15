@@ -3,32 +3,34 @@ import type {
   PlannerCollectionRow,
   PlannerOccurrenceView,
 } from '@smarteverything/domain';
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { View } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, type AnimatedRef } from 'react-native-reanimated';
 import { Card } from '../../../components/card';
-import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
+import { notify } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { localDayKey } from '../../../format/time';
 import { useVisibleMinuteOf } from '../data';
 import { PILL_HEIGHT } from './alarm-clusters';
-import { AlarmPins } from './alarm-pin';
 import type { EventLook } from './calendars-model';
-import { AllDayChip, EventBlock } from './event-block';
+import { DayColumn, type Drafting } from './day-column';
+import type { SlotRange } from './drag-create';
+import { DayHeads, HourColumn, HourLines, type HeadShape } from './grid-frame';
+import { touchActionOf, useHourZoom, type BlockChange, type MinuteSpan } from './grid-gestures';
 import { NowLine } from './now-line';
 import {
   DAY_MINUTES,
   HOUR_HEIGHT,
-  MIN_BLOCK_HEIGHT,
   alarmPinsOf,
-  bandStyle,
+  anyAllDay,
   gridDaysOf,
   minMinutesFor,
   samePins,
-  topStyle,
   yOf,
   type AlarmPin as Pin,
   type GridDay,
+  type SleepNight,
   type WorkingHours,
 } from './time-grid-layout';
 
@@ -38,11 +40,13 @@ export interface TimeGridProps {
   readonly collections: readonly PlannerCollectionRow[];
   readonly alarms: readonly PlannerAlarmRow[];
   readonly workingHours: WorkingHours | null;
+  readonly sleep: readonly SleepNight[];
   readonly timeZone: string;
   readonly startMinute: number;
   readonly readOnlyOf: (occurrence: PlannerOccurrenceView) => boolean;
   readonly lookOf: (occurrence: PlannerOccurrenceView) => EventLook;
-  readonly hourHeight?: number;
+  readonly onCreate: (day: string, span: MinuteSpan) => void;
+  readonly onMove: (change: BlockChange) => Promise<unknown>;
 }
 
 interface Live {
@@ -54,172 +58,15 @@ function sameLive(left: Live, right: Live): boolean {
   return left.today === right.today && samePins(left.pins, right.pins);
 }
 
-interface Geometry {
-  readonly compact: boolean;
-  readonly hourHeight: number;
-}
-
-const LABEL_HALF = 8;
-
 const START_ROOM = PILL_HEIGHT + 4;
 
-interface HourLabel {
-  readonly hour: number;
-  readonly label: string;
-}
+const TAPPED_SLOT_MINUTES = 60;
 
-function hourLabelsOf(compact: boolean): readonly HourLabel[] {
-  return Array.from({ length: 23 }, (_, index) => {
-    const hour = index + 1;
-    const label = String(hour).padStart(2, '0');
-    return { hour, label: compact ? label : `${label}:00` };
-  });
-}
-
-const GUTTER = { compact: 'w-10', wide: 'w-13' } as const;
-
-function gutterOf(compact: boolean): string {
-  return compact ? GUTTER.compact : GUTTER.wide;
-}
-
-function DayHead({
-  day,
-  compact,
-}: {
-  readonly day: GridDay;
-  readonly compact: boolean;
-}): ReactNode {
-  const tone = day.today ? 'primary' : 'default';
-  return (
-    <View
-      className={cn(
-        'flex-1 gap-1 border-l border-outline-variant',
-        compact ? 'px-2 py-1.5' : 'px-2.5 pb-2 pt-2.5',
-      )}
-    >
-      {compact ? (
-        <Text variant="label" tone={tone} numberOfLines={1} className="tabular">
-          {`${day.weekday} ${day.number}`}
-        </Text>
-      ) : (
-        <View>
-          <Text variant="caption" tone="variant">
-            {day.weekday}
-          </Text>
-          <Text variant="title-2" tone={tone} className="tabular">
-            {day.number}
-          </Text>
-        </View>
-      )}
-      <View className="min-h-5 gap-1">
-        {day.allDay.map((entry) => (
-          <AllDayChip key={entry.key} entry={entry} />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function DayHeads({
-  days,
-  compact,
-}: {
-  readonly days: readonly GridDay[];
-  readonly compact: boolean;
-}): ReactNode {
-  return (
-    <View className="flex-row border-b border-outline-variant">
-      <View className={gutterOf(compact)} />
-      {days.map((day) => (
-        <DayHead key={day.date} day={day} compact={compact} />
-      ))}
-    </View>
-  );
-}
-
-function HourColumn({ geometry }: { readonly geometry: Geometry }): ReactNode {
-  return (
-    <View aria-hidden className={cn('relative', gutterOf(geometry.compact))}>
-      {hourLabelsOf(geometry.compact).map((hour) => (
-        <View
-          key={hour.hour}
-          style={topStyle(yOf(hour.hour * 60, geometry.hourHeight) - LABEL_HALF)}
-          className="absolute inset-x-0 h-4 items-end pr-1.5"
-        >
-          <Text variant="caption" tone="faint" className="font-mono tabular">
-            {hour.label}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function HourLines({ hourHeight }: { readonly hourHeight: number }): ReactNode {
-  return (
-    <View aria-hidden pointerEvents="none" className="absolute inset-0">
-      {hourLabelsOf(true).map((hour) => (
-        <View
-          key={hour.hour}
-          style={topStyle(yOf(hour.hour * 60, hourHeight))}
-          className="absolute inset-x-0 h-hairline bg-outline-variant"
-        />
-      ))}
-    </View>
-  );
-}
-
-function WorkingTint({
-  day,
-  hourHeight,
-}: {
-  readonly day: GridDay;
-  readonly hourHeight: number;
-}): ReactNode {
-  if (day.working === null) return null;
-  return (
-    <View
-      aria-hidden
-      pointerEvents="none"
-      style={bandStyle(day.working.from, day.working.to, hourHeight)}
-      className="absolute inset-x-0 bg-primary/7"
-    />
-  );
-}
-
-function DayColumn({
-  day,
-  pins,
-  geometry,
-}: {
-  readonly day: GridDay;
-  readonly pins: readonly Pin[];
-  readonly geometry: Geometry;
-}): ReactNode {
-  return (
-    <View className="relative flex-1 border-l border-outline-variant">
-      <WorkingTint day={day} hourHeight={geometry.hourHeight} />
-      {day.blocks.map((block) => (
-        <EventBlock
-          key={block.key}
-          block={block}
-          hourHeight={geometry.hourHeight}
-          minHeight={MIN_BLOCK_HEIGHT}
-          compact={geometry.compact}
-        />
-      ))}
-      <AlarmPins pins={pins} hourHeight={geometry.hourHeight} compact={geometry.compact} />
-    </View>
-  );
-}
-
-interface StartScroll {
-  readonly scroll: RefObject<ScrollView | null>;
-  readonly onViewport: (height: number) => void;
-}
-
-function useStartScroll(startMinute: number, hourHeight: number): StartScroll {
-  const scroll = useRef<ScrollView>(null);
+function useStartScroll(
+  scroll: AnimatedRef<Animated.ScrollView>,
+  startMinute: number,
+  hourHeight: number,
+): (height: number) => void {
   const [viewport, setViewport] = useState(0);
   useEffect(() => {
     if (viewport === 0) return;
@@ -227,53 +74,111 @@ function useStartScroll(startMinute: number, hourHeight: number): StartScroll {
       y: Math.max(0, yOf(startMinute, hourHeight) - START_ROOM),
       animated: false,
     });
-  }, [viewport, startMinute, hourHeight]);
-  return { scroll, onViewport: setViewport };
+  }, [scroll, viewport, startMinute, hourHeight]);
+  return setViewport;
 }
 
-function GridBody({
-  days,
-  pins,
-  view,
-  geometry,
-}: {
-  readonly days: readonly GridDay[];
+function slotSpanOf(minute: number): MinuteSpan {
+  return { from: minute, to: Math.min(DAY_MINUTES, minute + TAPPED_SLOT_MINUTES) };
+}
+
+function useDrafting(onCreate: (day: string, span: MinuteSpan) => void): Drafting {
+  const [draft, setDraft] = useState<SlotRange | null>(null);
+  return {
+    draft,
+    onDraft: setDraft,
+    onCreate: (made): void => {
+      setDraft(null);
+      onCreate(made.date, made);
+    },
+    onSlot: (slot): void => {
+      onCreate(slot.date, slotSpanOf(slot.minute));
+    },
+  };
+}
+
+function useMoves(onMove: (change: BlockChange) => Promise<unknown>): {
+  readonly revision: number;
+  readonly move: (change: BlockChange) => void;
+} {
+  const [revision, setRevision] = useState(0);
+  return {
+    revision,
+    move: (change): void => {
+      onMove(change).catch((error: unknown) => {
+        setRevision((current) => current + 1);
+        notify({
+          message: `${change.block.occurrence.title} was not moved`,
+          error,
+          tone: 'critical',
+        });
+      });
+    },
+  };
+}
+
+interface BodyProps {
   readonly pins: readonly Pin[];
-  readonly view: Pick<TimeGridProps, 'days' | 'timeZone' | 'startMinute'>;
-  readonly geometry: Geometry;
-}): ReactNode {
-  const { scroll, onViewport } = useStartScroll(view.startMinute, geometry.hourHeight);
+  readonly view: TimeGridProps;
+  readonly today: string;
+  readonly compact: boolean;
+  readonly initialHeight: number;
+}
+
+function daysAt(view: TimeGridProps, today: string, hourHeight: number): readonly GridDay[] {
+  return gridDaysOf({ ...view, today, minMinutes: minMinutesFor(hourHeight) });
+}
+
+function GridBody({ pins, view, today, compact, initialHeight }: BodyProps): ReactNode {
+  const { hourHeight, settled, scroll, gesture, onViewport } = useHourZoom(initialHeight);
+  const onStart = useStartScroll(scroll, view.startMinute, initialHeight);
+  const drafting = useDrafting(view.onCreate);
+  const moves = useMoves(view.onMove);
+  const tall = useAnimatedStyle(() => ({ height: (DAY_MINUTES / 60) * hourHeight.get() }));
+  const days = daysAt(view, today, settled);
+  const geometry = { compact, hourHeight: settled };
   return (
-    <ScrollView
-      ref={scroll}
-      nestedScrollEnabled
-      onLayout={(event) => {
-        onViewport(event.nativeEvent.layout.height);
-      }}
-      className="flex-1"
-    >
-      <View style={bandStyle(0, DAY_MINUTES, geometry.hourHeight)} className="flex-row">
-        <HourColumn geometry={geometry} />
-        <View className="relative flex-1 flex-row">
-          <HourLines hourHeight={geometry.hourHeight} />
-          {days.map((day) => (
-            <DayColumn
-              key={day.date}
-              day={day}
-              pins={pins.filter((pin) => pin.date === day.date)}
-              geometry={geometry}
-            />
-          ))}
-          <NowLine days={view.days} timeZone={view.timeZone} hourHeight={geometry.hourHeight} />
-        </View>
-      </View>
-    </ScrollView>
+    <GestureDetector gesture={gesture} touchAction={touchActionOf(compact)}>
+      <Animated.ScrollView
+        ref={scroll}
+        nestedScrollEnabled
+        scrollEventThrottle={16}
+        onLayout={(event) => {
+          const { height } = event.nativeEvent.layout;
+          onStart(height);
+          onViewport(height);
+        }}
+        className="flex-1"
+      >
+        <Animated.View style={tall} className="flex-row">
+          <HourColumn geometry={geometry} />
+          <View className="relative flex-1 flex-row">
+            <HourLines hourHeight={settled} />
+            {days.map((day, index) => (
+              <DayColumn
+                key={day.date}
+                day={day}
+                index={index}
+                count={days.length}
+                pins={pins.filter((pin) => pin.date === day.date)}
+                geometry={geometry}
+                height={hourHeight}
+                drafting={drafting}
+                revision={moves.revision}
+                onMove={moves.move}
+              />
+            ))}
+            <NowLine days={view.days} timeZone={view.timeZone} hourHeight={settled} />
+          </View>
+        </Animated.View>
+      </Animated.ScrollView>
+    </GestureDetector>
   );
 }
 
 export function TimeGrid(props: TimeGridProps): ReactNode {
   const compact = useIdiom() === 'touch';
-  const hourHeight = props.hourHeight ?? (compact ? HOUR_HEIGHT.touch : HOUR_HEIGHT.pointer);
+  const initialHeight = compact ? HOUR_HEIGHT.touch : HOUR_HEIGHT.pointer;
   const ref = useRef<View>(null);
   const live = useVisibleMinuteOf(
     ref,
@@ -283,20 +188,18 @@ export function TimeGrid(props: TimeGridProps): ReactNode {
     }),
     sameLive,
   );
-  const days = gridDaysOf({
-    ...props,
-    today: live.value.today,
-    minMinutes: minMinutesFor(hourHeight),
-  });
+  const heads = daysAt(props, live.value.today, initialHeight);
+  const shape: HeadShape = { compact, columns: heads.length, allDay: anyAllDay(heads) };
   return (
     <Card padding="none" className="flex-1 overflow-hidden">
       <View ref={ref} onLayout={live.onLayout} className="flex-1">
-        <DayHeads days={days} compact={compact} />
+        <DayHeads days={heads} shape={shape} />
         <GridBody
-          days={days}
           pins={live.value.pins}
           view={props}
-          geometry={{ compact, hourHeight }}
+          today={live.value.today}
+          compact={compact}
+          initialHeight={initialHeight}
         />
       </View>
     </Card>

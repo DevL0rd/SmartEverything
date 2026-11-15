@@ -32,6 +32,10 @@ export function offlineLineOf<O>(browser: FileBrowserHandle<O>): string {
   return browser.host.offlineLine ?? OFFLINE_LINE;
 }
 
+function offlineEmptyLineOf<O>(browser: FileBrowserHandle<O>): string {
+  return browser.host.offlineEmptyLine ?? offlineLineOf(browser);
+}
+
 export function OfflineLine<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
   if (!browser.offline || browser.body.kind !== 'entries') return null;
   return (
@@ -173,6 +177,20 @@ function KindEmpty<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): 
 
 const REFUSED_LINE = 'Ask the owner to share these files with you.';
 
+function Refused<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
+  const action = browser.host.refusedAction;
+  return (
+    <EmptyState
+      icon="lock"
+      title="You can’t see these files"
+      body={browser.host.refusedLine ?? REFUSED_LINE}
+      {...(action === undefined
+        ? {}
+        : { action: <Button label={action.label} variant="tonal" href={action.href} /> })}
+    />
+  );
+}
+
 function Fixed<O>({
   browser,
   state,
@@ -182,17 +200,11 @@ function Fixed<O>({
 }): ReactNode {
   switch (state.kind) {
     case 'refused':
-      return (
-        <EmptyState
-          icon="lock"
-          title="You can’t see these files"
-          body={browser.host.refusedLine ?? REFUSED_LINE}
-        />
-      );
+      return <Refused browser={browser} />;
     case 'loading':
       return <BrowserLoading label={`Reading ${browser.header.title}`} />;
     case 'offline':
-      return <EmptyState icon="wifiOff" title="Offline" body={offlineLineOf(browser)} />;
+      return <EmptyState icon="wifiOff" title="Offline" body={offlineEmptyLineOf(browser)} />;
     case 'denied':
       return <Denied browser={browser} />;
     case 'empty':

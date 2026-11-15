@@ -15,7 +15,6 @@ const PAGE = LIBRARY_PAGE.parse({
   takenAt: [Date.UTC(2026, 10, 7, 23, 30), Date.UTC(2026, 10, 7, 22), Date.UTC(2026, 10, 6, 9)],
   offsetMin: [60, -300, null],
   durationMs: [null, 42_000, null],
-  thumbhash: ['3OcRJYB4d3h/iIeHeEh3eIhw+j3A', null, null],
   flags: [photoFlags(['live']), photoFlags(['video', 'favourite']), 0],
   next: null,
 });
@@ -28,7 +27,6 @@ describe('tiles from a columnar timeline page', () => {
       [B, 1, 0.75, 42_000],
       [C, 2, 1, null],
     ]);
-    expect(tiles[0]?.thumbhash).toBe('3OcRJYB4d3h/iIeHeEh3eIhw+j3A');
     expect(tiles.every((tile) => !tile.local)).toBe(true);
   });
 

@@ -24,7 +24,7 @@ export function GroupLoading({ title }: { readonly title: string }): ReactNode {
 
 export function GroupGone({ room }: { readonly room: boolean }): ReactNode {
   return (
-    <PageShell title={room ? 'Room lights' : 'Group'} width="reading">
+    <PageShell title={room ? 'Room lights' : 'Group'}>
       <EmptyState
         icon="bulb"
         title={room ? 'This room no longer exists' : 'This group was removed'}
@@ -47,7 +47,7 @@ export function GroupEmpty({
   readonly onAdd: () => void;
 }): ReactNode {
   return (
-    <PageShell title={title} subtitle="No devices" overflow={menu} width="reading">
+    <PageShell title={title} subtitle="No devices" overflow={menu}>
       {roomName !== null ? (
         <EmptyState
           icon="bulb"

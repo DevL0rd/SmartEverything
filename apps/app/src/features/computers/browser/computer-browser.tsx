@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import { ErrorState } from '../../../components/error-state';
+import type { MenuItem } from '../../../components/menu';
 import { Skeleton } from '../../../components/skeleton';
 import {
   FileBrowser,
+  useBrowserShellParts,
   useBrowserPanels,
   useFileBrowser,
   type BrowserHeader,
@@ -17,6 +20,8 @@ import { useComputerStart, type StartFailure } from './use-computer-start';
 
 export interface ComputerFrameSlots {
   readonly header: BrowserHeader | null;
+  readonly overflow: readonly MenuItem[];
+  readonly controls: ReactNode;
   readonly detailsOpen: boolean;
   readonly children: ReactNode;
 }
@@ -37,13 +42,26 @@ export function offlineLineOf(name: string): string {
   return `${name} is offline. These are the files from the last visit.`;
 }
 
+export function offlineEmptyLineOf(name: string): string {
+  return `${name} is offline. Its files show when it is back.`;
+}
+
+const BARE_BODIES: ReadonlySet<string> = new Set(['offline', 'refused']);
+
 interface LoadedProps extends ComputerBrowserProps {
   readonly source: ComputerSource;
   readonly reach: ComputerReach;
   readonly location: FileLocation;
 }
 
-function Loaded({ source, reach, location, hrefOf, renderFrame }: LoadedProps): ReactNode {
+function Loaded({
+  deviceId,
+  source,
+  reach,
+  location,
+  hrefOf,
+  renderFrame,
+}: LoadedProps): ReactNode {
   const browser = useFileBrowser({
     source,
     location,
@@ -53,13 +71,26 @@ function Loaded({ source, reach, location, hrefOf, renderFrame }: LoadedProps): 
         router.push(hrefOf(paramOfLocation(target)));
       },
       offlineLine: reach.online ? null : offlineLineOf(reach.name),
+      offlineEmptyLine: offlineEmptyLineOf(reach.name),
       refusedLine: refusedLineOf(reach),
+      ...(reach.owner
+        ? {
+            refusedAction: {
+              label: 'Open Access scopes',
+              href: href.settings.device(deviceId, 'scopes'),
+            },
+          }
+        : {}),
     },
   });
   const slots = useBrowserPanels(browser, { from: source.label });
+  const shellParts = useBrowserShellParts(browser);
   const { header } = browser;
+  const bare = BARE_BODIES.has(browser.body.kind);
   return renderFrame({
-    header: browser.abilities.list ? header : null,
+    header: browser.abilities.list && !bare ? header : null,
+    overflow: bare ? [] : shellParts.overflow,
+    controls: bare ? null : shellParts.controls,
     detailsOpen: browser.state.panels.has('details'),
     children: <FileBrowser browser={browser} slots={slots} />,
   });
@@ -74,6 +105,8 @@ function Waiting({
 }): ReactNode {
   return renderFrame({
     header: null,
+    overflow: [],
+    controls: null,
     detailsOpen: false,
     children:
       failure === null ? (

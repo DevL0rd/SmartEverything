@@ -1,5 +1,4 @@
-import { useSyncExternalStore } from 'react';
-import { ValueStore } from '../../../../design/external-store';
+import { usePausable, ValueStore } from '../../../../design/external-store';
 
 export interface MetaCurrent {
   readonly takenAt: string | null;
@@ -25,5 +24,5 @@ export function closeMetaEdit(): void {
 }
 
 export function useMetaRequest(): MetaRequest | null {
-  return useSyncExternalStore(request.subscribe, request.get, request.get);
+  return usePausable(request.subscribe, request.get);
 }

@@ -69,7 +69,7 @@ describe('the app update controller after the update fell back to the built-in b
       recorded: { updateId: OFFER.id, reason: 'The update crashed on start' },
     });
     await world.controller.start();
-    await world.controller.check('live');
+    await world.controller.check('paired');
     expect(world.controller.state()).toMatchObject({ kind: 'fell_back', failedId: OFFER.id });
     expect(world.adapter.check).not.toHaveBeenCalled();
     expect(world.reports).toEqual([

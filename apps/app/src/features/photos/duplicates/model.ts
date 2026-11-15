@@ -84,8 +84,8 @@ export function keepAllConfirmOf(stats: DuplicateStats): ConfirmRequest {
         ? 'Keep best in the 1 group?'
         : `Keep best in all ${count(stats.groups)} groups?`,
     body: `${copies} to Recently deleted. Their ${bytes(stats.bytesBack)} is freed when they leave for good, a year after today. Albums and favourites move to the photo you keep. You can restore any copy until then.`,
-    confirmLabel: `Keep best in ${plural(stats.groups, 'group', 'groups')}`,
-    cancelLabel: 'Keep all copies',
+    confirmLabel: 'Keep best',
+    cancelLabel: 'Cancel',
   };
 }
 
@@ -103,21 +103,6 @@ export function copiesOf(group: DuplicateGroup): readonly DriveItem[] {
 
 export function groupLineOf(group: DuplicateGroup): string {
   return `${plural(group.items.length, 'copy', 'copies')} · saves ${bytes(group.reclaimableBytes)}`;
-}
-
-function listOf(names: readonly string[]): string {
-  const last = names.at(-1);
-  if (names.length < 2 || last === undefined) return names.join('');
-  return `${names.slice(0, -1).join(', ')} and ${last}`;
-}
-
-export function groupSourcesOf(group: DuplicateGroup, labels: SourceLabels): string | null {
-  const names = new Set<string>();
-  for (const item of copiesOf(group)) {
-    const label = labels.get(item.rootId);
-    if (label !== undefined) names.add(label);
-  }
-  return names.size === 0 ? null : listOf([...names]);
 }
 
 function videoSizeOf(width: number, height: number): string {

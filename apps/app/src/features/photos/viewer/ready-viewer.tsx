@@ -3,13 +3,20 @@ import { View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import type { LibraryScope } from '@smarteverything/domain';
 import type { MediaTile } from '../../../components/media-grid/tiles';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
 import { ThemeScope } from '../../../design/theme-scope';
 import { useDayKey } from '../../../store/clock';
 import { closeViewer } from './close';
-import { DesktopHeader, PhoneActions, PhoneHeader } from './header';
+import {
+  DesktopControls,
+  PhoneActions,
+  PhoneControls,
+  ViewerHeading,
+  type HeaderControls,
+  type HeaderText,
+} from './header';
 import { desktopHeaderText, phoneHeaderText } from './header-text';
-import { MetaEditHost } from '../organise/meta/meta-sheet';
 import { InfoPanel, InfoSheet } from './info-panel';
 import { useViewerKeys } from './keys';
 import { usePrefetchNeighbours } from './photo';
@@ -108,7 +115,6 @@ function Stage({
     <ViewerStage
       item={ready.viewer.item}
       media={ready.viewer.media}
-      tile={sequence.current}
       touch={ready.phone}
       moves={{
         previous: sequence.previous,
@@ -117,6 +123,32 @@ function Stage({
         onClose: closeViewer,
       }}
     />
+  );
+}
+
+function ViewerShell({
+  text,
+  controls,
+  phone,
+  children,
+}: {
+  readonly text: HeaderText;
+  readonly controls: HeaderControls;
+  readonly phone: boolean;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <PageShell
+      variant="overlay"
+      title={text.title}
+      heading={<ViewerHeading text={text} />}
+      onBack={controls.onClose}
+      trailing={
+        phone ? <PhoneControls controls={controls} /> : <DesktopControls controls={controls} />
+      }
+    >
+      {children}
+    </PageShell>
   );
 }
 
@@ -135,14 +167,14 @@ export function ReadyViewer(props: ReadyViewerProps): ReactNode {
       <View className="flex-1">
         <ThemeScope theme="dark">
           <View className="flex-1 bg-black">
-            <PhoneHeader text={phoneHeaderText(input)} controls={controls.header} />
-            <Stage ready={props} sequence={sequence} />
-            <Strip ready={props} controls={controls} compact />
-            <PhoneActions controls={controls.header} />
+            <ViewerShell text={phoneHeaderText(input)} controls={controls.header} phone>
+              <Stage ready={props} sequence={sequence} />
+              <Strip ready={props} controls={controls} compact />
+              <PhoneActions controls={controls.header} />
+            </ViewerShell>
           </View>
         </ThemeScope>
         <InfoSheet open={props.infoOpen} content={controls.info} onClose={props.onInfo} />
-        <MetaEditHost />
       </View>
     );
   }
@@ -150,16 +182,16 @@ export function ReadyViewer(props: ReadyViewerProps): ReactNode {
     <View className="flex-1 flex-row">
       <ThemeScope theme="dark">
         <View className="min-w-0 flex-1 bg-black">
-          <DesktopHeader text={desktopHeaderText(input)} controls={controls.header} />
-          <Stage ready={props} sequence={sequence} />
-          <Strip ready={props} controls={controls} compact={false} />
-          <Text variant="caption" tone="variant" align="center" className="px-4 pb-4">
-            {KEY_HINTS}
-          </Text>
+          <ViewerShell text={desktopHeaderText(input)} controls={controls.header} phone={false}>
+            <Stage ready={props} sequence={sequence} />
+            <Strip ready={props} controls={controls} compact={false} />
+            <Text variant="caption" tone="variant" align="center" className="px-4 pb-4">
+              {KEY_HINTS}
+            </Text>
+          </ViewerShell>
         </View>
       </ThemeScope>
       {props.infoOpen ? <InfoPanel content={controls.info} onClose={props.onInfo} /> : null}
-      <MetaEditHost />
     </View>
   );
 }

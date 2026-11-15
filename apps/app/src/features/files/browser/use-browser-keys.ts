@@ -18,7 +18,13 @@ import {
   type BrowserKey,
   type KeyTargets,
 } from './keys-model';
-import { revealOffset, type FileSelection, type ScrollWindow } from './selection-model';
+import {
+  NO_KEYS,
+  revealOffset,
+  type FileSelection,
+  type HeldKeys,
+  type ScrollWindow,
+} from './selection-model';
 
 export function useKeyListener(run: (key: BrowserKey) => boolean, enabled: boolean): void {
   const handle = useEffectEvent(run);
@@ -36,15 +42,15 @@ export function useKeyListener(run: (key: BrowserKey) => boolean, enabled: boole
   }, [enabled]);
 }
 
-export function useShiftHeld(): () => boolean {
-  const held = useRef(false);
+export function useHeldKeys(): () => HeldKeys {
+  const held = useRef<HeldKeys>(NO_KEYS);
   useEffect(() => {
     if (isNative()) return undefined;
     const track = (event: KeyboardEvent): void => {
-      held.current = event.shiftKey;
+      held.current = { shift: event.shiftKey, toggle: event.ctrlKey || event.metaKey };
     };
     const release = (): void => {
-      held.current = false;
+      held.current = NO_KEYS;
     };
     globalThis.addEventListener('keydown', track);
     globalThis.addEventListener('keyup', track);

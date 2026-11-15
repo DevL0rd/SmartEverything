@@ -68,13 +68,13 @@ function coverageOf(insights: PhotoInsights): { readonly done: number; readonly 
   );
 }
 
-function phonesText(phones: number): string {
-  return phones === 1 ? '1 phone' : `${count(phones)} phones`;
+function devicesText(devices: number): string {
+  return devices === 1 ? '1 device' : `${count(devices)} devices`;
 }
 
 export function backedUpItem(insights: PhotoInsights): MetricItem | null {
-  const phones = insights.backupCoverage.length;
-  if (phones === 0) return null;
+  const devices = insights.backupCoverage.length;
+  if (devices === 0) return null;
   const { done, total } = coverageOf(insights);
   const left = total - done;
   return {
@@ -83,8 +83,8 @@ export function backedUpItem(insights: PhotoInsights): MetricItem | null {
     value: percent(total === 0 ? 1 : done / total, done === total ? 0 : 1),
     caption:
       left === 0
-        ? `All ${phonesText(phones)} up to date`
-        : `${count(left)} left on ${phonesText(phones)}`,
+        ? `All ${devicesText(devices)} up to date`
+        : `${count(left)} left on ${devicesText(devices)}`,
     tone: left === 0 ? 'positive' : 'default',
   };
 }

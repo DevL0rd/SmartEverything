@@ -41,7 +41,7 @@ export function useContributorBadges(
 ): TileBadge | undefined {
   const profiles = useProfiles();
   const shared = usePhotoSharing().data?.albums.find((entry) => entry.albumId === album.id);
-  if (!sharesAlbum(album) || shared === undefined || shared.memberIds.length === 0) {
+  if (!sharesAlbum(album) || shared === undefined || shared.members.length === 0) {
     return undefined;
   }
   return contributorBadges(addersOf(items, profiles));

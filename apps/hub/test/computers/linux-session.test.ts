@@ -6,7 +6,7 @@ import { SessionBus } from '../../src/node/controls/linux/dbus-session';
 import { DesktopEntries } from '../../src/node/controls/linux/desktop-entries';
 import { KdeBridge } from '../../src/node/controls/linux/kde-bridge';
 import { LinuxSession } from '../../src/node/controls/linux/linux-session';
-import { MprisPlayers } from '../../src/node/controls/linux/mpris';
+import { MprisPlayers, mprisPlayers } from '../../src/node/controls/linux/mpris';
 import { PulseAudio } from '../../src/node/controls/linux/pulse-audio';
 
 const stopVolume = vi.fn();
@@ -26,6 +26,7 @@ async function privateBus(): Promise<string> {
 
 function newSession(): LinuxSession {
   return new LinuxSession({
+    players: mprisPlayers,
     audio: new PulseAudio({
       run: (): Promise<string> => Promise.resolve(''),
       probe: (): Promise<boolean> => Promise.resolve(false),

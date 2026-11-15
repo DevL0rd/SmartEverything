@@ -15,6 +15,7 @@ export interface JobHandler {
   readonly resource: PipelineResource;
   readonly run: (job: DriveMediaJob, signal: AbortSignal) => Promise<void>;
   readonly fail: (job: DriveMediaJob, cause: unknown) => void;
+  readonly settled?: (job: DriveMediaJob) => void;
 }
 
 export const PROGRESS_KINDS = ['preview', 'poster', 'playable'] as const;
@@ -211,6 +212,7 @@ export class MediaJobRunner {
     } finally {
       this.running[resource] -= 1;
       this.tallyOf(job.kind)?.finish(job);
+      handler.settled?.(job);
       this.pump();
       this.release();
     }

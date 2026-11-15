@@ -44,12 +44,13 @@ class SpeechHysteresis(var speechMs: Int, var silenceMs: Int) {
   }
 }
 
-class SileroVad(
-  context: Context,
-  override var mode: VadMode,
-  speechMs: Int,
-  silenceMs: Int
-) : SpeechVad {
+interface VoiceProbability : AutoCloseable {
+  fun probability(frame: ShortArray): Float
+
+  fun reset()
+}
+
+class SileroModel(context: Context) : VoiceProbability {
   private val vad = Vad(
     context.assets,
     VadModelConfig(
@@ -58,8 +59,33 @@ class SileroVad(
       numThreads = 1
     )
   )
-  private val hysteresis = SpeechHysteresis(speechMs, silenceMs)
   private val samples = FloatArray(WINDOW)
+
+  override fun probability(frame: ShortArray): Float {
+    for (index in samples.indices) samples[index] = frame[index] / FULL_SCALE
+    return vad.compute(samples)
+  }
+
+  override fun reset() = vad.reset()
+
+  override fun close() = vad.release()
+
+  companion object {
+    const val WINDOW = 512
+    private const val MODEL = "silero_vad.onnx"
+    private const val SAMPLE_RATE = 16_000
+    private const val FULL_SCALE = 32_768f
+  }
+}
+
+class SileroVad(
+  context: Context,
+  override var mode: VadMode,
+  speechMs: Int,
+  silenceMs: Int
+) : SpeechVad {
+  private val model = SileroModel(context)
+  private val hysteresis = SpeechHysteresis(speechMs, silenceMs)
 
   override var speechDurationMs: Int
     get() = hysteresis.speechMs
@@ -73,17 +99,7 @@ class SileroVad(
       hysteresis.silenceMs = value
     }
 
-  override fun isSpeech(frame: ShortArray): Boolean {
-    for (index in samples.indices) samples[index] = frame[index] / FULL_SCALE
-    return hysteresis.update(vad.compute(samples) >= mode.threshold)
-  }
+  override fun isSpeech(frame: ShortArray): Boolean = hysteresis.update(model.probability(frame) >= mode.threshold)
 
-  override fun close() = vad.release()
-
-  private companion object {
-    const val MODEL = "silero_vad.onnx"
-    const val WINDOW = 512
-    const val SAMPLE_RATE = 16_000
-    const val FULL_SCALE = 32_768f
-  }
+  override fun close() = model.close()
 }

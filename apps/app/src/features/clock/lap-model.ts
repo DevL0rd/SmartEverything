@@ -8,7 +8,7 @@ import type {
 import { twoDigits } from '../../format/number';
 import { compareText } from '../../format/text';
 import { HOUR_MS, MINUTE_MS, duration } from '../../format/time';
-import { bucketLabel, chunksFromEnd, loadStepOf, rangeDaysOf } from '../planner';
+import { bucketLabel, bucketsOf, loadStepOf, rangeDaysOf } from '../planner';
 
 const SECOND_MS = 1000;
 const CENTI_MS = 10;
@@ -57,28 +57,35 @@ export type FacePlace =
   | { readonly kind: 'digit'; readonly key: string; readonly unit: number; readonly base: number }
   | { readonly kind: 'mark'; readonly key: string; readonly text: string };
 
-export function hourDigitsOf(ms: number): number {
+export function leadDigitsOf(ms: number): number {
   const hours = Math.floor(ms / HOUR_MS);
-  return hours === 0 ? 0 : String(hours).length;
+  if (hours > 0) return String(hours).length + 2;
+  return ms >= 10 * MINUTE_MS ? 2 : 1;
 }
 
 function digit(key: string, unit: number, base: number): FacePlace {
   return { kind: 'digit', key, unit, base };
 }
 
-function hourPlaces(count: number): readonly FacePlace[] {
-  if (count === 0) return [];
-  const digits = Array.from({ length: count }, (_, index) =>
-    digit(`h${String(index)}`, HOUR_MS * 10 ** (count - 1 - index), 10),
-  );
-  return [...digits, { kind: 'mark', key: 'hm', text: ':' }];
-}
+const HOUR_MARK: FacePlace = { kind: 'mark', key: 'hm', text: ':' };
 
-export function facePlacesOf(hourDigits: number, hundredths: boolean): readonly FacePlace[] {
-  const clock: readonly FacePlace[] = [
-    ...hourPlaces(hourDigits),
+function leadPlaces(count: number): readonly FacePlace[] {
+  if (count < 2) return [digit('m1', MINUTE_MS, 10)];
+  const hours = count - 2;
+  const digits = Array.from({ length: hours }, (_, index) =>
+    digit(`h${String(index)}`, HOUR_MS * 10 ** (hours - 1 - index), 10),
+  );
+  return [
+    ...digits,
+    ...(hours === 0 ? [] : [HOUR_MARK]),
     digit('m0', 10 * MINUTE_MS, 6),
     digit('m1', MINUTE_MS, 10),
+  ];
+}
+
+export function facePlacesOf(leadDigits: number, hundredths: boolean): readonly FacePlace[] {
+  const clock: readonly FacePlace[] = [
+    ...leadPlaces(leadDigits),
     { kind: 'mark', key: 'ms', text: ':' },
     digit('s0', 10 * SECOND_MS, 6),
     digit('s1', SECOND_MS, 10),
@@ -295,7 +302,7 @@ export function timerUseBucketsOf(stats: PlannerStats): readonly TimerUseBucket[
   for (const entry of stats.timer_use) {
     byDay.set(entry.day, (byDay.get(entry.day) ?? 0) + entry.total_ms);
   }
-  return chunksFromEnd(rangeDaysOf(stats), step).flatMap((chunk) => {
+  return bucketsOf(rangeDaysOf(stats), (day) => day, stats.range).flatMap((chunk) => {
     const [first] = chunk;
     if (first === undefined) return [];
     const ms = chunk.reduce((sum, day) => sum + (byDay.get(day) ?? 0), 0);

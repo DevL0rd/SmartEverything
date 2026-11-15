@@ -13,7 +13,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
 import { useHiddenFolders } from './data';
-import { useHideAction } from './folder-card';
+import { useHideAction } from './folder-toggles';
 
 const KIND_ICON: Readonly<Record<PhotoHiddenFolder['kind'], IconName>> = {
   phone: 'smartphone',
@@ -101,7 +101,6 @@ export function HiddenFoldersRow(): ReactNode {
         title="Hidden folders"
         subtitle="Kept out of the Library and other views. Backup keeps running."
         wrapSubtitle
-        icon="eyeOff"
         pressRef={opener}
         {...(value === undefined ? {} : { value })}
         chevron
@@ -115,16 +114,17 @@ export function HiddenFoldersRow(): ReactNode {
           open
           onClose={close}
           title="Hidden folders"
-          detents={['half', 'full']}
+          detents={['fit']}
           footer={
-            <View className="flex-row gap-2">
+            <View className="min-w-0 flex-1 flex-row gap-2">
               <Button
-                label="Open Folders"
+                label="Open folders"
                 variant="tonal"
                 icon="folder"
+                grow
                 href={href.photosPage('folders')}
               />
-              <Button label="Done" onPress={close} />
+              <Button label="Done" grow onPress={close} />
             </View>
           }
         >

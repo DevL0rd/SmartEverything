@@ -17,6 +17,7 @@ import { GalleryScreen } from '../templates/gallery-screen';
 import { links } from '../routes';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import { useRefNames } from './use-environment';
+import { workspaceSectionsOf } from './workspace-sections';
 
 const log = new Logger('app.automations');
 
@@ -32,22 +33,37 @@ type Scope = Omit<z.infer<typeof PARAMS>, 'template'>;
 
 const WHOLE_HOME: Scope = {};
 
+async function createAutomation(
+  create: ReturnType<typeof useAutomationActions>['create'],
+  open: (id: string) => void,
+  name: string,
+  definition: AutomationV4,
+): Promise<void> {
+  try {
+    const reply = await create({ name, enabled: false, definition });
+    if (reply.ok && reply.id !== null) {
+      open(reply.id);
+    } else {
+      notify({ message: reply.summary, tone: 'critical' });
+    }
+  } catch (error) {
+    log.error('automations.create_failed', error);
+    notify({ message: 'The automation wasn’t created', tone: 'critical', error });
+  }
+}
+
 function useCreate(): (name: string, definition: AutomationV4) => Promise<void> {
   const router = useRouter();
   const actions = useAutomationActions();
-  return async (name, definition) => {
-    try {
-      const reply = await actions.create({ name, enabled: false, definition });
-      if (reply.ok && reply.id !== null) {
-        router.replace(links.edit(reply.id));
-      } else {
-        notify({ message: reply.summary, tone: 'critical' });
-      }
-    } catch (error) {
-      log.error('automations.create_failed', error);
-      notify({ message: 'The automation wasn’t created', tone: 'critical', error });
-    }
-  };
+  return (name, definition) =>
+    createAutomation(
+      actions.create,
+      (id) => {
+        router.replace(links.edit(id));
+      },
+      name,
+      definition,
+    );
 }
 
 function useTemplates(scope: Scope): readonly Template[] {
@@ -66,7 +82,13 @@ function useTemplates(scope: Scope): readonly Template[] {
   }, [devices, rooms, people, room, device]);
 }
 
-function Gallery({ scope }: { readonly scope: Scope }): ReactNode {
+function Gallery({
+  scope,
+  workspace,
+}: {
+  readonly scope: Scope;
+  readonly workspace: boolean;
+}): ReactNode {
   const templates = useTemplates(scope);
   const names = useRefNames();
   const { lookup } = useAutomationsSource();
@@ -81,7 +103,10 @@ function Gallery({ scope }: { readonly scope: Scope }): ReactNode {
     [templates, rows],
   );
   return (
-    <PageShell title="Templates" width="full">
+    <PageShell
+      title="Templates"
+      {...(workspace ? { back: false, sections: workspaceSectionsOf('templates') } : {})}
+    >
       <GalleryScreen
         templates={templates}
         taken={taken}
@@ -109,15 +134,11 @@ function FromTemplate({ template }: { readonly template: Template }): ReactNode 
     started.current = true;
     background(create(template.name, template.build()), 'automations.create_template');
   }, [create, template]);
-  return (
-    <PageShell title="New automation" width="reading">
-      {null}
-    </PageShell>
-  );
+  return <PageShell title="New automation">{null}</PageShell>;
 }
 
 export function TemplatesHost(): ReactNode {
-  return <Gallery scope={WHOLE_HOME} />;
+  return <Gallery scope={WHOLE_HOME} workspace />;
 }
 
 export function NewHost(): ReactNode {
@@ -127,5 +148,9 @@ export function NewHost(): ReactNode {
   const chosen = params.success
     ? templates.find((entry) => entry.id === params.data.template)
     : undefined;
-  return chosen === undefined ? <Gallery scope={scope} /> : <FromTemplate template={chosen} />;
+  return chosen === undefined ? (
+    <Gallery scope={scope} workspace={false} />
+  ) : (
+    <FromTemplate template={chosen} />
+  );
 }

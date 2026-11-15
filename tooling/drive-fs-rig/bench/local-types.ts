@@ -40,6 +40,7 @@ export interface LocalConfig {
   readonly runs: number;
   readonly workloads: readonly string[] | null;
   readonly scale: string;
+  readonly firstRun: number;
   readonly stamp: string;
 }
 

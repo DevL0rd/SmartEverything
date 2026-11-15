@@ -6,7 +6,6 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { PageShell } from '../../../components/page-shell/page-shell';
-import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useIsOwner } from '../../../store/selectors';
 import { ChannelPanel } from '../components/channel-panel';
 import { useTalkChannel } from '../data/talk-data';
@@ -17,11 +16,7 @@ const PARAMS = z.object({ channelId: z.string().min(1) });
 function Missing({ channelId }: { readonly channelId: string | null }): ReactNode {
   const sections = useTalkSections(channelId);
   return (
-    <PageShell
-      title="Walkie-talkie"
-      width="reading"
-      {...(sections === undefined ? {} : { sections })}
-    >
+    <PageShell title="Walkie-talkie" {...(sections === undefined ? {} : { sections })}>
       <EmptyState
         compact
         icon="radio"
@@ -44,13 +39,17 @@ function Opened({ channelId }: { readonly channelId: string }): ReactNode {
   if (channel === null) {
     return <Missing channelId={channelId} />;
   }
-  const actions: readonly ShellAction[] = owner
-    ? [{ icon: 'settings', label: 'Channel settings', href: href.settings.talkChannel(channel.id) }]
-    : [];
   return (
     <PageShell
       title={channel.name}
-      actions={actions}
+      {...(owner
+        ? {
+            settings: {
+              href: href.settings.talkChannel(channel.id),
+              label: 'Channel settings',
+            },
+          }
+        : {})}
       {...(sections === undefined ? {} : { sections })}
     >
       <ChannelPanel channel={channel} split />

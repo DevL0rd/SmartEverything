@@ -7,7 +7,7 @@ import type { PrimaryActionProps } from '../components/primary-action';
 import { useSettingEnv } from './env';
 import { SettingsNav, useSettingsRail, useSettingsSearch } from './settings-nav';
 import { pageReachable, useBuiltSettingsPages } from './availability';
-import { SettingsFrame, type SettingsFrameProps } from './settings-frame';
+import { SettingsFrame } from './settings-frame';
 import { href } from '../app-shell/hrefs';
 import { legacyHref } from '../app-shell/legacy-routes';
 import { retiredPageTarget } from './retired-pages';
@@ -18,7 +18,7 @@ import type { SettingsPageDefinition } from './types';
 function SettingsList(): ReactNode {
   const search = useSettingsSearch();
   return (
-    <PageShell title="Settings" width="reading" search={search}>
+    <PageShell title="Settings" search={search}>
       <SettingsNav />
     </PageShell>
   );
@@ -49,7 +49,7 @@ function ElsewhereOnly({ page }: { readonly page: SettingsPageDefinition }): Rea
 
 function NotThere(): ReactNode {
   return (
-    <PageShell title="Settings" width="reading">
+    <PageShell title="Settings">
       <EmptyState
         icon="settings"
         title="Page not found"
@@ -62,13 +62,12 @@ function NotThere(): ReactNode {
 export function SettingsPageScreen({
   page,
   primaryAction,
-  contentWidth,
   BlocksLayout,
 }: {
   readonly page: string;
   readonly primaryAction?: PrimaryActionProps;
   readonly BlocksLayout?: SettingsBlocksLayout;
-} & Pick<SettingsFrameProps, 'contentWidth'>): ReactNode {
+}): ReactNode {
   const env = useSettingEnv();
   const built = useBuiltSettingsPages();
   const definition = settingsPage(page);
@@ -79,11 +78,7 @@ export function SettingsPageScreen({
     return <NotThere />;
   }
   return (
-    <SettingsFrame
-      page={page}
-      {...(contentWidth === undefined ? {} : { contentWidth })}
-      {...(primaryAction === undefined ? {} : { primaryAction })}
-    >
+    <SettingsFrame page={page} {...(primaryAction === undefined ? {} : { primaryAction })}>
       <SettingsPageBody
         key={page}
         page={page}

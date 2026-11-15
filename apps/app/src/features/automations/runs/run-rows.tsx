@@ -115,7 +115,7 @@ export function RunDayGroup({ day, now, width, nameOf, ...rest }: RunDayGroupPro
     <RunRow key={run.id} run={run} name={nameOf(run)} {...rest} />
   ));
   return (
-    <View className={cn('w-full gap-2', columns === 1 && 'max-w-reading')}>
+    <View className="w-full gap-2">
       <View
         className={cn('flex-row items-baseline gap-2 px-1', columns === 1 && 'justify-between')}
       >
@@ -136,7 +136,6 @@ export function RunDayGroup({ day, now, width, nameOf, ...rest }: RunDayGroupPro
           maxColumns={MAX_RUN_COLUMNS}
           measuredWidth={width}
           gap="tight"
-          cellClassName="max-w-detail"
         >
           {rows}
         </Grid>

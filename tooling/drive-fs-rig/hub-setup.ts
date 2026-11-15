@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { REPO, SCRATCH, TMP, files } from './paths.ts';
 import { isMissing } from './errors.ts';
+import { isolatedServiceEnvironment } from './isolation.ts';
 import { alive, run, startDetached, waitFor } from './processes.ts';
 
 const GO2RTC = join(REPO, 'tooling', 'go2rtc', 'out', 'go2rtc-linux-amd64');
@@ -56,7 +57,7 @@ export function startHub(): Promise<number> {
     command: 'node',
     args: [join(files.service, 'service.mjs')],
     log: join(files.logs, 'hub.log'),
-    env: { SMARTEVERYTHING_HUB_HOME: files.pointer, TMPDIR: TMP },
+    env: { ...isolatedServiceEnvironment(), SMARTEVERYTHING_HUB_HOME: files.pointer, TMPDIR: TMP },
     cwd: SCRATCH,
   });
 }

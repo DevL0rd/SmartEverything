@@ -20,7 +20,7 @@ const at = (offset: number): string => new Date(NOW + offset).toISOString();
 describe('grant expiry presets', () => {
   it('offers never, 1, 7 and 30 days and a date, the date naming the current end', () => {
     expect(grantEndOptionsOf(null, NOW).map((option) => option.label)).toEqual([
-      'Never',
+      'No end',
       '1 day',
       '7 days',
       '30 days',

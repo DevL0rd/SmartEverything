@@ -11,7 +11,6 @@ import { BackupAlbumsRow } from './settings/backup-albums';
 import { MapAttributionRow } from './settings/map-attribution';
 import { BackupFolderRow, OriginalQualityRow } from './settings/phone-rows';
 import { href } from '../../app-shell/hrefs';
-import type { IconName } from '../../components/icon';
 import type { SettingContext, SettingDefinition, SettingEnv } from '../../settings/types';
 import { PREFS, prefValueOf, savePref } from '../../store/prefs';
 import type { StoreState } from '../../store/state';
@@ -38,7 +37,6 @@ const GROUP_LABELS = { day: 'Day', month: 'Month' } as const satisfies Readonly<
 >;
 
 const localDevice = (env: SettingEnv): boolean => env.platform !== 'web';
-const onAndroid = (env: SettingEnv): boolean => env.platform === 'android';
 const ownerOnly = (env: SettingEnv): boolean => env.owner;
 
 const photosOf = (state: StoreState): PhotosPref => prefValueOf(state, PREFS.photos);
@@ -61,7 +59,6 @@ interface SwitchSpec<T> {
   readonly section: string;
   readonly title: string;
   readonly description?: string;
-  readonly icon?: IconName;
   readonly keywords: readonly string[];
   readonly key: SwitchKey<T>;
 }
@@ -74,7 +71,6 @@ function photosSwitch(spec: SwitchSpec<PhotosPref>): SettingDefinition {
     section: spec.section,
     title: spec.title,
     ...(spec.description === undefined ? {} : { description: spec.description }),
-    ...(spec.icon === undefined ? {} : { icon: spec.icon }),
     keywords: spec.keywords,
     scope: 'server',
     control: 'switch',
@@ -231,7 +227,6 @@ const MAP_SETTINGS: readonly SettingDefinition[] = [
     title: 'Remove location when sharing outside the home',
     description:
       'Links for people outside the home get photos and videos without GPS. People at home and your own downloads keep it.',
-    icon: 'locoff',
     keywords: ['location', 'gps', 'strip', 'privacy', 'share', 'exif', 'links'],
     key: 'removeLocationOutside',
   }),
@@ -253,7 +248,6 @@ const SHARING_SETTINGS: readonly SettingDefinition[] = [
     title: 'Shared album activity',
     description:
       'Get a notification when people add photos, comment or like in albums shared with you.',
-    icon: 'bell',
     keywords: [
       'shared albums',
       'album activity',
@@ -308,7 +302,6 @@ const BACKUP_SETTINGS: readonly SettingDefinition[] = [
     title: 'Albums and folders',
     keywords: ['albums', 'folders', 'camera roll', 'backup'],
     component: BackupAlbumsRow,
-    visible: onAndroid,
   }),
   deviceRow({
     id: 'photos.backup.original',
@@ -336,7 +329,7 @@ const DUPLICATE_SETTINGS: readonly SettingDefinition[] = [
     scope: 'server',
     control: 'link',
     visible: ownerOnly,
-    href: href.settings.focus('drive', 'drive.indexing'),
+    href: href.settings.focus('drive/indexing', 'drive.indexing'),
   },
 ];
 

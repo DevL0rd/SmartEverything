@@ -68,9 +68,10 @@ export function TodayRings({
   );
 }
 
-function summaryOf(rings: readonly TodayRing[]): string {
+function summaryOf(rings: readonly TodayRing[], moveTracked: boolean): string {
   const value = (key: TodayRingKey): string => rings.find((ring) => ring.key === key)?.brief ?? '';
-  return `${value('tasks')} done · ${value('focus')} focus · ${value('move')} move`;
+  const parts = [`${value('tasks')} done`, `${value('focus')} focus`];
+  return [...parts, ...(moveTracked ? [`${value('move')} move`] : [])].join(' · ');
 }
 
 function OnTimeLine(): ReactNode {
@@ -105,13 +106,19 @@ export function WeatherMini(): ReactNode {
   );
 }
 
-export function TodayRingsLine({ rings }: { readonly rings: readonly TodayRing[] }): ReactNode {
+export function TodayRingsLine({
+  rings,
+  moveTracked,
+}: {
+  readonly rings: readonly TodayRing[];
+  readonly moveTracked: boolean;
+}): ReactNode {
   return (
     <View className="flex-row items-center gap-3">
       <Rings rings={shown(rings)} size={SIZE.line} />
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="footnote" numberOfLines={2} className="tabular">
-          {summaryOf(rings)}
+          {summaryOf(rings, moveTracked)}
         </Text>
         <OnTimeLine />
       </View>

@@ -280,23 +280,50 @@ function FaceView({
   const { moving } = gate;
   const layerSignals = faceSignals(spec, face, signals);
   const playing = moving && faceMoves(spec, view, face, layerSignals);
-  const clock = usePlayClock(playing);
   if (face.kind === 'clip') {
     const rate = clipRate(spec, layerSignals);
-    return <ClipAtlas clip={face.clip} clock={clock} playing={playing} rate={rate} />;
+    return <ClipAtlas clip={face.clip} playing={playing} rate={rate} />;
   }
   const heldS = activeShot(spec.shots, signals)?.stillAt ?? 0;
   return (
     <>
-      <LayerStack
+      <LayerFace
         spec={spec}
         view={view}
         image={face.image}
         signals={layerSignals}
-        timing={{ clock, playing, heldS }}
+        playing={playing}
+        heldS={heldS}
       />
       {overlay === undefined ? null : overlay({ spec, anchors: face.image.anchors, gate, px })}
     </>
+  );
+}
+
+function LayerFace({
+  spec,
+  view,
+  image,
+  signals,
+  playing,
+  heldS,
+}: {
+  readonly spec: ModelSpec;
+  readonly view: BakeView;
+  readonly image: LayersResult;
+  readonly signals: LayerSignals;
+  readonly playing: boolean;
+  readonly heldS: number;
+}): ReactNode {
+  const clock = usePlayClock(playing);
+  return (
+    <LayerStack
+      spec={spec}
+      view={view}
+      image={image}
+      signals={signals}
+      timing={{ clock, playing, heldS }}
+    />
   );
 }
 

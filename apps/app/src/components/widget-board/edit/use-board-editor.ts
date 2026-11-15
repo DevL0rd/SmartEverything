@@ -10,7 +10,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { LogTally } from '../../../design/log-tally';
-import type { HeaderAction, HeaderEditing } from '../../page-header';
+import type { ShellAction, ShellEditing } from '../../page-shell/shell-actions';
 import type { BoardDefaults, BoardLayoutState } from '../types';
 
 const log = new Logger('app.widget-board');
@@ -35,8 +35,8 @@ export interface BoardEditor {
   readonly dirty: boolean;
   readonly canUndo: boolean;
   readonly opening: string | null;
-  readonly header: HeaderEditing | null;
-  readonly editAction: HeaderAction;
+  readonly header: ShellEditing | null;
+  readonly editAction: ShellAction;
   readonly begin: (openOptions?: string) => void;
   readonly done: () => void;
   readonly cancel: () => void;

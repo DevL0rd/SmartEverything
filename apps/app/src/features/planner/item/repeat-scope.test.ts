@@ -18,7 +18,18 @@ import {
   whenCaptionOf,
 } from './google-captions';
 import { reminderSummaryOf, toggledReminders } from './item-fields';
-import { itemHistoryOf, whenTextOf, withEndTime, withStartTime } from './item-history';
+import { longDate } from '../../../format/time';
+import {
+  itemAtDay,
+  itemHistoryOf,
+  occurrenceDayOf,
+  seriesChangesOf,
+  whenTextOf,
+  withDueDay,
+  withEndTime,
+  withStartDay,
+  withStartTime,
+} from './item-history';
 import { stepCreateOf, stepsOf } from './item-steps';
 import {
   patchOf,
@@ -227,9 +238,14 @@ describe('repeat rule wording and choices', () => {
   it('reads common rules in plain words', () => {
     expect(repeatTextOf(null)).toBe('Doesn’t repeat');
     expect(repeatTextOf('FREQ=DAILY')).toBe('Every day');
-    expect(repeatTextOf('FREQ=WEEKLY;BYDAY=TU,TH,SA')).toBe('Tue, Thu, Sat');
+    expect(repeatTextOf('FREQ=WEEKLY;BYDAY=TU,TH,SA')).toBe('Every Tue, Thu and Sat');
+    expect(repeatTextOf('FREQ=WEEKLY;BYDAY=TU,TH')).toBe('Every Tue and Thu');
+    expect(repeatTextOf('FREQ=WEEKLY;BYDAY=SA')).toBe('Every Saturday');
     expect(repeatTextOf('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR')).toBe('Weekdays');
-    expect(repeatTextOf('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO')).toBe('Every 2 weeks · Mon');
+    expect(repeatTextOf('FREQ=WEEKLY;INTERVAL=2;BYDAY=MO')).toBe('Every 2 weeks on Monday');
+    expect(repeatTextOf('FREQ=DAILY;UNTIL=20261130T000000Z')).toBe(
+      `Every day · until ${longDate('2026-11-30T12:00:00Z', 'UTC')}`,
+    );
     expect(repeatTextOf('FREQ=MONTHLY;COUNT=5')).toBe('Every month · 5 times');
   });
 
@@ -328,12 +344,51 @@ describe('item fields', () => {
     const reminders = [0, 10, 60].map((minutes) => ({ minutes_before: minutes }));
     expect(reminderSummaryOf(reminders)).toEqual({
       value: '3 reminders',
-      list: 'At the time, 10 min before, 1 h before',
+      list: 'At the time, 10 minutes before, 1 hour before',
     });
     expect(reminderSummaryOf(reminders.slice(1, 2))).toEqual({
-      value: '10 min before',
+      value: '10 minutes before',
       list: null,
     });
+  });
+
+  it('shows and edits a repeat on the day it was opened and saves All on the series days', () => {
+    const day = occurrenceDayOf('2026-11-12T13:30:00.000Z', 'Europe/Berlin');
+    expect(day).toBe('2026-11-12');
+    expect(occurrenceDayOf('single', 'Europe/Berlin')).toBeNull();
+    expect(occurrenceDayOf('2026-11-12', 'Europe/Berlin')).toBe('2026-11-12');
+    const shown = itemAtDay(walk(), day);
+    expect([shown.start_local, shown.end_local]).toEqual([
+      '2026-11-12T14:30:00',
+      '2026-11-12T15:00:00',
+    ]);
+    const change = withStartTime(shown, { hour: 9, minute: 0 });
+    expect(change).toEqual({
+      start_local: '2026-11-12T09:00:00',
+      end_local: '2026-11-12T09:30:00',
+    });
+    expect(seriesChangesOf(change, walk(), day)).toEqual({
+      start_local: '2026-11-07T09:00:00',
+      end_local: '2026-11-07T09:30:00',
+    });
+    expect(seriesChangesOf({ title: 'Run' }, walk(), day)).toEqual({ title: 'Run' });
+  });
+
+  it('moves the date of an event with its length and the due day of a task', () => {
+    expect(withStartDay(walk(), '2026-11-09')).toEqual({
+      start_local: '2026-11-09T14:30:00',
+      end_local: '2026-11-09T15:00:00',
+    });
+    expect(withDueDay(item({ due_date: '2026-11-08' }), '2026-11-20', 'UTC')).toEqual({
+      due_date: '2026-11-20',
+    });
+    expect(withDueDay(item({ due_date: '2026-11-08' }), null, 'UTC')).toEqual({
+      due_date: null,
+      due_at: null,
+    });
+    expect(
+      withDueDay(item({ due_at: '2026-11-08T16:15:00.000Z' }), '2026-11-20', 'Europe/Berlin'),
+    ).toEqual({ due_at: '2026-11-20T16:15:00.000Z' });
   });
 
   it('words the when row', () => {

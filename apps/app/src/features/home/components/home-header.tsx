@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
@@ -35,7 +34,7 @@ export function SummaryLine(): ReactNode {
     <Interactive
       href={href.devices('offline')}
       label={`${text}. Show offline devices`}
-      className="-mx-1 flex-row items-center gap-1 self-start rounded-sm px-1"
+      className="-mx-1 -my-3.5 flex-row items-center gap-1 self-start rounded-sm px-1 py-3.5"
       layerClassName="rounded-sm"
     >
       <Text variant="callout" tone="variant" numberOfLines={2} className="shrink">
@@ -61,21 +60,8 @@ function greetingOf(hour: number): string {
   return hour < EVENING ? 'Good afternoon' : 'Good evening';
 }
 
-function Greeting(): ReactNode {
+export function useGreeting(): string {
   const now = new Date(useMinute());
   const zone = useSettings().time_zone;
-  return (
-    <Text variant="body-strong" tone="primary" numberOfLines={1}>
-      {`${greetingOf(hourOf(now, zone))} · ${longDate(now, zone)}`}
-    </Text>
-  );
-}
-
-export function HeaderBelow(): ReactNode {
-  return (
-    <View className="gap-1">
-      <Greeting />
-      <SummaryLine />
-    </View>
-  );
+  return `${greetingOf(hourOf(now, zone))} · ${longDate(now, zone)}`;
 }

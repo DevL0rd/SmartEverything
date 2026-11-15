@@ -22,7 +22,7 @@ export interface FunctionDetailScreenProps {
   readonly onOpenAutomation: (automationId: string) => void;
 }
 
-const COLUMN = 'min-w-0 max-w-reading grow shrink basis-80 gap-section-gap';
+const COLUMN = 'min-w-0 grow shrink basis-80 gap-section-gap';
 
 function Actions({
   hero,

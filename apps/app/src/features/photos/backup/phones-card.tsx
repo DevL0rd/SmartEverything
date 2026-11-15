@@ -25,12 +25,16 @@ function DeviceLine({ view }: { readonly view: PhoneView }): ReactNode {
         />
       </View>
       <View className="min-w-0 flex-1 gap-1.5">
-        <View className="flex-row flex-wrap items-center gap-2">
-          <Text variant="body-strong" numberOfLines={1} className="shrink">
+        <View className="flex-row items-center gap-2">
+          <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
             {view.title}
           </Text>
-          {view.current ? <Badge label="This device" tone="info" /> : null}
-          <View className="ml-auto">
+          {view.current ? (
+            <View className="shrink-0">
+              <Badge label="This device" tone="info" />
+            </View>
+          ) : null}
+          <View className="shrink-0">
             <Badge label={view.badge.label} tone={view.badge.tone} />
           </View>
         </View>

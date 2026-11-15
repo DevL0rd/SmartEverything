@@ -10,17 +10,18 @@ function wall(day: string, options: Intl.DateTimeFormatOptions): string {
 }
 
 const SHORT = { weekday: 'short', day: 'numeric', month: 'short' } as const;
+const DAY_MONTH = { day: 'numeric', month: 'short' } as const;
 
 describe('day head text', () => {
-  it('names the recent days and keeps the date with the count beside them', () => {
+  it('names the recent days and keeps the date, without the weekday again, beside the count', () => {
     expect(dayText('2026-11-07', 23, TODAY)).toEqual({
       title: 'Today',
-      detail: `${wall('2026-11-07', SHORT)} · 23 items`,
+      detail: `${wall('2026-11-07', DAY_MONTH)} · 23 items`,
     });
     expect(dayText('2026-11-06', 1, TODAY).title).toBe('Yesterday');
     expect(dayText('2026-11-05', 9, TODAY)).toEqual({
       title: wall('2026-11-05', { weekday: 'long' }),
-      detail: `${wall('2026-11-05', SHORT)} · 9 items`,
+      detail: `${wall('2026-11-05', DAY_MONTH)} · 9 items`,
     });
   });
 

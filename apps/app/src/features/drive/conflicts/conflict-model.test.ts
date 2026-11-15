@@ -12,7 +12,10 @@ import { CURRENT } from '../versions/versions-model';
 import {
   UNKNOWN_CLIENT,
   comparePicksOf,
+  compareNamesOf,
   conflictActionsOf,
+  conflictFolderOf,
+  conflictRowLineOf,
   copyWellsOf,
   hubMakerOf,
   keepLabelOf,
@@ -120,6 +123,16 @@ describe('the three buttons', () => {
     );
   });
 
+  it('names no computer on Keep hub version when the same computer made both copies', () => {
+    const same: ConflictSides = { hub: 'Laptop', client: 'Laptop' };
+    expect(keepLabelOf('keep_hub', same)).toBe('Keep hub version');
+    expect(conflictActionsOf(same, true).map((action) => action.label)).toEqual([
+      'Keep hub version',
+      'Keep Laptop version',
+      'Keep both',
+    ]);
+  });
+
   it('says what was kept once the hub settles it', () => {
     expect(resolvedMessageOf('keep_hub', SIDES)).toBe('Kept the hub version');
     expect(resolvedMessageOf('keep_client', SIDES)).toBe('Kept the Laptop version');
@@ -173,9 +186,17 @@ describe('sidesOf', () => {
 });
 
 describe('comparePicksOf', () => {
-  it('picks the hub version as A and the version both started from as B', () => {
-    expect(comparePicksOf(conflict(), { rev: 4 }, HISTORY)).toEqual({ a: CURRENT, b: idOf(3) });
-    expect(comparePicksOf(conflict(), { rev: 6 }, HISTORY)).toEqual({ a: idOf(4), b: idOf(3) });
+  it('picks the hub version the conflict was made against', () => {
+    expect(comparePicksOf(conflict(), { rev: 4 }, HISTORY)).toEqual({ a: CURRENT, b: null });
+    expect(comparePicksOf(conflict(), { rev: 6 }, HISTORY)).toEqual({ a: idOf(4), b: null });
+  });
+
+  it('names the two sides by where each copy lives', () => {
+    expect(compareNamesOf(SIDES)).toEqual({ a: 'Hub version', b: 'Laptop version' });
+    expect(compareNamesOf({ hub: null, client: UNKNOWN_CLIENT })).toEqual({
+      a: 'Hub version',
+      b: 'Other version',
+    });
   });
 
   it('leaves the picks to the sheet when the hub version is not loaded', () => {
@@ -208,6 +229,23 @@ describe('copyWellsOf', () => {
     ]);
   });
 
+  it('calls the hub copy the hub when the same computer made both copies', () => {
+    const [hub, client] = copyWellsOf({
+      conflict: conflict(),
+      sides: { hub: 'Laptop', client: 'Laptop' },
+      item: { rev: 4, modifiedAt: '2026-11-07T12:41:00.000Z', bytes: 88_000 },
+      copy: { modifiedAt: '2026-11-07T12:44:00.000Z', bytes: 91_000 },
+      versions: HISTORY,
+      time: TIME,
+    });
+    expect(hub).toEqual({
+      title: 'Hub version',
+      name: 'The hub',
+      detail: at('Today', '2026-11-07T12:41:00.000Z', 88_000),
+    });
+    expect(client.name).toBe('Laptop');
+  });
+
   it('reads the hub copy from Versions once a newer write replaced it', () => {
     const [hub] = copyWellsOf({
       conflict: conflict({ hubRev: 3, baseRev: 2 }),
@@ -218,6 +256,20 @@ describe('copyWellsOf', () => {
       time: TIME,
     });
     expect(hub.detail).toBe(at('Yesterday', '2026-11-06T09:00:00.000Z', 88_000));
+  });
+});
+
+describe('conflict rows', () => {
+  it('names the folder so two files with the same name can be told apart', () => {
+    expect(conflictFolderOf('Trips/Holiday plan.md')).toBe('Trips');
+    expect(conflictFolderOf('Home/Trips/Holiday plan.md')).toBe('Home/Trips');
+    expect(conflictFolderOf('Holiday plan.md')).toBeNull();
+    expect(conflictRowLineOf('Trips/Holiday plan.md', { hub: 'Laptop', client: 'Laptop' })).toBe(
+      'Trips · Laptop and the hub changed it before they synced',
+    );
+    expect(conflictRowLineOf('Holiday plan.md', SIDES)).toBe(
+      'Laptop and Workstation changed it before they synced',
+    );
   });
 });
 

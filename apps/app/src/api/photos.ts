@@ -6,6 +6,7 @@ import {
   type PhotoInsightRange,
   type PhotoSource,
   type LibraryScope,
+  type PhotoOriginsRequest,
   type PlaceClusterQuery,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
@@ -151,4 +152,8 @@ export function checkBackupHashes(body: BackupCheck): Call<'checkBackupHashes'> 
 
 export function readBackupState(): Call<'readBackupState'> {
   return api().call(P.readBackupState, {});
+}
+
+export function readPhotoOrigins(body: PhotoOriginsRequest): Call<'readPhotoOrigins'> {
+  return api().call(P.readPhotoOrigins, { body });
 }

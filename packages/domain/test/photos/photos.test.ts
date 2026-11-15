@@ -46,7 +46,6 @@ const PAGE = {
   takenAt: [1_782_000_000_000, 1_782_000_100_000],
   offsetMin: [120, null],
   durationMs: [null, 8000],
-  thumbhash: ['YJqGPQw7sFlslqhFafSE+Q6oJ1h2iHB2Rw==', null],
   flags: [photoFlags(['favourite']), photoFlags(['video', 'processing'])],
   next: null,
 };
@@ -58,13 +57,14 @@ describe('the library columns', () => {
 
   it('refuses a column that is shorter than the ids', () => {
     expect(LIBRARY_PAGE.safeParse({ ...PAGE, aspect: [1.5] }).success).toBe(false);
-    expect(LIBRARY_PAGE.safeParse({ ...PAGE, thumbhash: [null] }).success).toBe(false);
+    expect(LIBRARY_PAGE.safeParse({ ...PAGE, durationMs: [null] }).success).toBe(false);
   });
 
   it('refuses unknown flag bits, a flat aspect and extra fields', () => {
     expect(LIBRARY_PAGE.safeParse({ ...PAGE, flags: [64, 0] }).success).toBe(false);
     expect(LIBRARY_PAGE.safeParse({ ...PAGE, aspect: [0, 1] }).success).toBe(false);
     expect(LIBRARY_PAGE.safeParse({ ...PAGE, extra: 1 }).success).toBe(false);
+    expect(LIBRARY_PAGE.safeParse({ ...PAGE, thumbhash: [null, null] }).success).toBe(false);
   });
 
   it('packs and reads flags without confusing them', () => {

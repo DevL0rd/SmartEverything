@@ -11,16 +11,20 @@ import {
 } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { MetricStrip } from '../../../components/metric-strip';
+import { Skeleton } from '../../../components/skeleton';
+import { stripChunks, stripColumnsAt } from '../../../components/strip-rows';
+import { useSizeClass } from '../../../design/size-class';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { dayKeyOf, shortDate, startOfDayKey } from '../../../format/time';
 import { rounded } from '../../../format/number';
 import { useMinuteOf } from '../../../store/clock';
-import { doneSeriesOf } from '../tasks/tasks-metrics';
 import {
+  BAR_DAYS_MAX,
   bestDayOf,
   dayBarsOf,
   doneByDayOf,
+  doneTrendOf,
   heatDaysOf,
   heatSplitOf,
   hourBarsOf,
@@ -36,9 +40,27 @@ import { kpisOf } from './summary-model';
 
 const KPI_COLUMNS = { compact: 2, medium: 3, expanded: 5 } as const;
 const DONUT_SIZE = 112;
+const KPI_KEYS = ['done', 'on-time', 'streak', 'devices', 'missed'] as const;
 
 export function KpiStrip({ stats }: { readonly stats: PlannerStats }): ReactNode {
-  return <MetricStrip items={kpisOf(stats, doneSeriesOf(stats))} columns={KPI_COLUMNS} />;
+  return <MetricStrip items={kpisOf(stats, doneTrendOf(stats))} columns={KPI_COLUMNS} />;
+}
+
+export function KpiSkeleton(): ReactNode {
+  const per = stripColumnsAt(useSizeClass().area, KPI_COLUMNS);
+  return (
+    <View className="gap-2">
+      {stripChunks(KPI_KEYS, per).map((row) => (
+        <View key={row[0]} className="flex-row gap-2">
+          {row.map((key) => (
+            <View key={key} className="min-w-0 flex-1 basis-0">
+              <Skeleton shape="block" className="h-18" />
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function Caption({ text }: { readonly text: string }): ReactNode {
@@ -65,7 +87,7 @@ function DoneChart({
   const today = useMinuteOf(dayKeyOf);
   const { width, onLayout } = useMeasuredWidth();
   const label = `Done per day this ${stats.range}`;
-  if (stats.range === 'week') {
+  if (days.length <= BAR_DAYS_MAX) {
     return (
       <Bars
         bars={dayBarsOf(days)}

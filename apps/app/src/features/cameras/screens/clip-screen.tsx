@@ -220,7 +220,7 @@ export function ClipScreen(): ReactNode {
   }, [cameraId, recordingId, found]);
   if (recording === null || entry === null) {
     return (
-      <PageShell title="Clip" width="reading">
+      <PageShell title="Clip">
         <EmptyState
           icon="film"
           title="This clip isn’t here any more"

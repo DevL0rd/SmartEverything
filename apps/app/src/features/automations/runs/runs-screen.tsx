@@ -77,7 +77,7 @@ function modelOf(
 
 function Empty({ any }: { readonly any: boolean }): ReactNode {
   return (
-    <View className="w-full max-w-reading">
+    <View className="w-full">
       <EmptyState
         icon="activity"
         title={any ? 'No runs match' : 'No runs yet'}
@@ -129,10 +129,10 @@ function RunList(
   };
   return (
     <View className="gap-section-gap">
-      <View className="w-full max-w-detail">
+      <View className="w-full">
         <RunsChart summary={model.summary} />
       </View>
-      <View className="w-full max-w-reading">
+      <View className="w-full">
         <RunFilters
           chosen={chosen}
           counts={model.counts}
@@ -152,7 +152,7 @@ function RunList(
         onOpen={onOpenRun}
       />
       {model.remaining > 0 ? (
-        <View className="w-full max-w-reading">
+        <View className="w-full">
           <ShowMore remaining={model.remaining} onPress={showMore} />
         </View>
       ) : null}
@@ -164,7 +164,7 @@ function Decisions({ automationId }: { readonly automationId: string }): ReactNo
   const query = useDecisions(automationId);
   const now = useMinute();
   return (
-    <View className="w-full max-w-reading">
+    <View className="w-full">
       <LoadedQuery query={query}>
         {(decisions) => <DecisionsTab rows={decisionRows(decisions, now)} />}
       </LoadedQuery>
@@ -184,12 +184,12 @@ export function RunsScreen(props: RunsScreenProps): ReactNode {
             key: value,
             label,
             icon,
-            onPress: () => {
+            onPress: (): void => {
               setTab(value);
             },
           }))}
           active={tab}
-          label="Run history view"
+          label="Runs view"
           compact
         />
       )}

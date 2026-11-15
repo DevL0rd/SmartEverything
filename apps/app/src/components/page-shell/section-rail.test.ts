@@ -9,7 +9,6 @@ const ENTRY: RailEntry = {
   label: 'Albums',
   icon: 'image',
   missing: null,
-  detail: null,
 };
 
 describe('section rail entry label', () => {

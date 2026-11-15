@@ -27,10 +27,10 @@ function DayCards({ day, open }: { readonly day: PlannerDay; readonly open: stri
           body="There are no tasks or events for this day."
         />
       ) : null}
-      <OccurrenceList title="Missed" occurrences={day.missed} timeZone={day.time_zone} />
-      <OccurrenceList title="Now" occurrences={day.current} timeZone={day.time_zone} />
-      <OccurrenceList title="Next" occurrences={day.upcoming} timeZone={day.time_zone} />
-      <OccurrenceList title="Done" occurrences={day.done} timeZone={day.time_zone} />
+      <OccurrenceList title="Missed" occurrences={day.missed} day={day} />
+      <OccurrenceList title="Now" occurrences={day.current} day={day} />
+      <OccurrenceList title="Next" occurrences={day.upcoming} day={day} />
+      <OccurrenceList title="Done" occurrences={day.done} day={day} />
       <View className="flex-row justify-end">
         <Button label={open} href={href.planner.index()} variant="tonal" />
       </View>

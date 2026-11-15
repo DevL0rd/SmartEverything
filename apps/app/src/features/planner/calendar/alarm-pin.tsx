@@ -6,94 +6,114 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import {
-  alarmClustersOf,
+  ICON_PILL,
   clusterLabel,
   clusterText,
-  PILL_HEIGHT,
+  pillTopOf,
   type AlarmCluster,
 } from './alarm-clusters';
 import { topStyle, yOf, type AlarmPin as Pin } from './time-grid-layout';
 
-function PinLine({
-  minute,
+const PILL_SLOP = 8;
+
+const TEXT_PILL_MAX = { maxWidth: '60%' } as const;
+
+export function PinLines({
+  pins,
   hourHeight,
 }: {
-  readonly minute: number;
+  readonly pins: readonly Pin[];
   readonly hourHeight: number;
 }): ReactNode {
-  return (
+  return pins.map((pin) => (
     <View
+      key={pin.key}
+      aria-hidden
       pointerEvents="none"
-      style={topStyle(yOf(minute, hourHeight))}
-      className="absolute inset-x-0 -mt-px h-0.5 bg-primary"
+      style={topStyle(yOf(pin.minute, hourHeight))}
+      className="absolute inset-x-0 h-px bg-on-surface-variant/40"
     />
-  );
+  ));
 }
 
 function ClusterPill({
   cluster,
   hourHeight,
-  compact,
+  text,
+  onWidth,
 }: {
   readonly cluster: AlarmCluster;
   readonly hourHeight: number;
-  readonly compact: boolean;
+  readonly text: boolean;
+  readonly onWidth: (key: string, width: number) => void;
 }): ReactNode {
-  const top = yOf(cluster.minute, hourHeight);
   return (
-    <View pointerEvents="box-none" style={topStyle(top)} className="absolute inset-x-0 h-0">
+    <View
+      pointerEvents="box-none"
+      style={topStyle(pillTopOf(cluster, hourHeight))}
+      className="absolute left-0.5 right-0.5 flex-row"
+    >
       <View
-        pointerEvents="box-none"
-        className={cn(
-          'absolute left-0.5 right-0.5 flex-row',
-          top < PILL_HEIGHT ? 'top-1' : 'bottom-0.5',
-        )}
+        onLayout={(event) => {
+          onWidth(cluster.key, event.nativeEvent.layout.width);
+        }}
+        {...(text ? { style: TEXT_PILL_MAX } : {})}
+        className={cn('rounded-full bg-surface-1', text && 'shrink')}
       >
-        <View className="max-w-full shrink rounded-full bg-surface-1">
-          <Interactive
-            href={href.clock.alarms()}
-            label={clusterLabel(cluster)}
-            className="flex-row items-center gap-1 rounded-full bg-primary-container py-0.5 pl-1.5 pr-2"
-          >
-            <Icon name="alarmClock" size={16} tone="onPrimaryContainer" />
+        <Interactive
+          href={href.clock.alarms()}
+          label={clusterLabel(cluster)}
+          hitSlop={PILL_SLOP}
+          className={cn(
+            'flex-row items-center rounded-full bg-primary-container',
+            text ? 'gap-1 py-0.5 pl-1.5 pr-2' : 'size-5 justify-center',
+          )}
+          layerClassName="rounded-full"
+        >
+          <Icon name="alarmClock" size={text ? 16 : 14} tone="onPrimaryContainer" />
+          {text ? (
             <Text
               variant="caption"
               tone="onPrimaryContainer"
               numberOfLines={1}
               className="tabular shrink"
             >
-              {clusterText(cluster, compact)}
+              {clusterText(cluster, false)}
             </Text>
-          </Interactive>
-        </View>
+          ) : null}
+        </Interactive>
       </View>
     </View>
   );
 }
 
-export function AlarmPins({
-  pins,
+export function AlarmPills({
+  clusters,
   hourHeight,
-  compact,
+  text,
+  onWidth,
 }: {
-  readonly pins: readonly Pin[];
+  readonly clusters: readonly AlarmCluster[];
   readonly hourHeight: number;
-  readonly compact: boolean;
+  readonly text: boolean;
+  readonly onWidth: (key: string, width: number) => void;
 }): ReactNode {
-  const clusters = alarmClustersOf(pins, hourHeight);
-  return (
-    <>
-      {pins.map((pin) => (
-        <PinLine key={pin.key} minute={pin.minute} hourHeight={hourHeight} />
-      ))}
-      {clusters.map((cluster) => (
-        <ClusterPill
-          key={cluster.key}
-          cluster={cluster}
-          hourHeight={hourHeight}
-          compact={compact}
-        />
-      ))}
-    </>
-  );
+  return clusters.map((cluster) => (
+    <ClusterPill
+      key={cluster.key}
+      cluster={cluster}
+      hourHeight={hourHeight}
+      text={text}
+      onWidth={onWidth}
+    />
+  ));
+}
+
+export function pillWidthOf(
+  text: boolean,
+  measured: ReadonlyMap<string, number>,
+  key: string,
+): number {
+  if (!text) return ICON_PILL;
+  return measured.get(key) ?? 0;
 }

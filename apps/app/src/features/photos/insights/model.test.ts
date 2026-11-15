@@ -95,7 +95,7 @@ describe('Insights stat tiles', () => {
     expect(items[2]?.value).toBe('11 h 40');
     expect(items[3]?.caption).toBe('1 country');
     expect(items[4]).toMatchObject({ value: '2.5\u00a0%', caption: '10 photos' });
-    expect(items[5]).toMatchObject({ value: '66.0\u00a0%', caption: '34 left on 1 phone' });
+    expect(items[5]).toMatchObject({ value: '66.0\u00a0%', caption: '34 left on 1 device' });
   });
 
   it('leaves out favourites before counts load and backup when no phone backs up', () => {
@@ -236,7 +236,7 @@ describe('Insights lists', () => {
     expect(bars.rows.map((row) => row.label)).toEqual(['Managed', 'Pictures']);
     expect(bars.scale).toBe(50);
     expect(bars.rows[0]?.note).toBe(`${bytes(20)} photos · ${bytes(30)} videos`);
-    expect(bars.summary).toMatch(/ in 2 folders$/u);
+    expect(bars.summary).toMatch(/ in 2 drives$/u);
   });
 
   it('shows how far each phone is backed up', () => {

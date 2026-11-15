@@ -17,7 +17,8 @@ const CREATE = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../store/selectors', () => ({
-  useDevices: (): readonly { readonly kind: string }[] => probe.devices,
+  useHasDevice: (predicate: (device: { readonly kind: string }) => boolean): boolean =>
+    probe.devices.some(predicate),
 }));
 vi.mock('../../model/create-map', () => ({
   useCreateMap: (mapId: string | undefined): typeof CREATE => {

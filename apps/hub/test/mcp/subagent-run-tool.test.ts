@@ -9,7 +9,7 @@ import { operationRunner, operationTool } from '../../src/extensions/mcp/tools/o
 import type { OperatingContext } from '../../src/extensions/mcp/tools/acting';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
-import { CLAUDE_TEST_ENGINE } from '../support/engine';
+import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
 import { hubLayout } from '../../src/data-layout';
 
 const RESULT = z.object({ chatId: z.uuid(), state: z.string() });
@@ -43,7 +43,7 @@ beforeEach(async () => {
     added: (): void => undefined,
     now,
   });
-  parentId = chats.create(owner, { title: 'Planner', engine: CLAUDE_TEST_ENGINE }).id;
+  parentId = chats.create(owner, { title: 'Planner', engine: TEST_ENGINE }).id;
   context = {
     store,
     caller: null,
@@ -79,6 +79,7 @@ describe('the subagent tool', () => {
       title: 'Garden lights',
       wait: false,
       timeoutSeconds: 60,
+      engine: CLAUDE_TEST_ENGINE,
     });
 
     const result = RESULT.parse(output.structured['result']);

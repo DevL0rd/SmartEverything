@@ -7,7 +7,7 @@ import { useKeyboardRow } from '../../../components/keyboard-list';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useMinute } from '../../../store/clock';
+import { useMinuteOf } from '../../../store/clock';
 import { chatListTime } from '../model/chat-list-time';
 import type { ChatSource } from '../model/chat-source';
 import { SourceMark } from './source-mark';
@@ -30,7 +30,7 @@ function rangeOf(
 }
 
 function Row({ itemKey, hit, source, query, timeZone, onOpen }: HitRowProps): ReactNode {
-  const now = useMinute();
+  const label = useMinuteOf((now) => chatListTime(hit.at, now, timeZone));
   const keyboard = useKeyboardRow(itemKey);
   return (
     <View
@@ -49,7 +49,7 @@ function Row({ itemKey, hit, source, query, timeZone, onOpen }: HitRowProps): Re
               {hit.title}
             </Text>
             <Text variant="caption" tone="variant" className="tabular">
-              {chatListTime(hit.at, now, timeZone)}
+              {label}
             </Text>
           </View>
           <Text variant="footnote" tone="variant" numberOfLines={2}>

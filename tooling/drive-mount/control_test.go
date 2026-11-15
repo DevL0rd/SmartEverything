@@ -33,6 +33,9 @@ func (r *recorder) cache(policy cachePolicy) error {
 }
 func (r *recorder) pin(id, path string) error   { return r.record("pin %s %s", id, path) }
 func (r *recorder) unpin(id, path string) error { return r.record("unpin %s %s", id, path) }
+func (r *recorder) tune(t tuning) error {
+	return r.record("tune %d %t %d %d %s %d %s", t.maxBackground, t.congestionFollows, t.maxRequestBytes, t.live.readAheadBytes, t.readdirPlus, t.live.uploadFiles, t.live.entry.duration())
+}
 func (r *recorder) route(spec routeSpec) error {
 	return r.record("route %s %s %s", spec.URL, spec.Server, spec.Pin)
 }
@@ -57,6 +60,7 @@ func TestControlDispatch(t *testing.T) {
 		`{"op":"cache","maxAgeSeconds":3600,"cleanupSeconds":60}`,
 		`{"op":"cache","maxAgeSeconds":60,"maxBytes":1000,"minFreeBytes":500,"cleanupSeconds":5}`,
 		`{"op":"route"}`,
+		fullLine(),
 		`{"op":"route","url":"https://192.168.1.2:8443","server":"smarteverything-x.local","pin":"ab"}`,
 		`{"op":"unmount","mount":"m1"}`,
 	}, "\n")
@@ -66,7 +70,7 @@ func TestControlDispatch(t *testing.T) {
 	want := []string{
 		"mount m1 r1 f1 /mnt/a 0 false", "mount m2 r2  /mnt/b 2 true", "invalidate m1 /a,/b/c",
 		"pin m1 /x", "unpin m1 /x", "cache 9223372036854775807 1h0m0s 0 1m0s", "cache 1000 1m0s 500 5s",
-		"route   ", "route https://192.168.1.2:8443 smarteverything-x.local ab", "unmount m1",
+		"route   ", "tune 128 true 1048576 16777216 always 8 2562047h47m16.854775807s", "route https://192.168.1.2:8443 smarteverything-x.local ab", "unmount m1",
 	}
 	if strings.Join(rec.calls, "|") != strings.Join(want, "|") {
 		t.Fatalf("calls %v", rec.calls)
@@ -115,6 +119,14 @@ func TestCacheNeedsAgeAndCleanupInterval(t *testing.T) {
 	rec := &recorder{}
 	out := control(t, rec, `{"op":"cache","maxBytes":10}`)
 	if !strings.Contains(out, `"type":"error"`) || len(rec.calls) != 0 {
+		t.Fatalf("out %s calls %v", out, rec.calls)
+	}
+}
+
+func TestTuningLineWithAMissingFieldIsReportedAndNotApplied(t *testing.T) {
+	rec := &recorder{}
+	out := control(t, rec, strings.Replace(fullLine(), `"asyncRead":true,`, ``, 1))
+	if !strings.Contains(out, `"type":"error"`) || !strings.Contains(out, "asyncRead missing") || len(rec.calls) != 0 {
 		t.Fatalf("out %s calls %v", out, rec.calls)
 	}
 }

@@ -20,6 +20,7 @@ import {
   ringSubjectOf,
   snoozeLabelOf,
   snoozesLeftOf,
+  timerDoneLineOf,
   todayRowsOf,
   weatherLineOf,
 } from './ring-model';
@@ -278,19 +279,24 @@ describe('good morning card', () => {
     expect(greetingOf(21)).toBe('Good evening');
   });
 
-  it('names the first booked item, what is left and what was missed', () => {
+  it('leaves what is booked to the today list and names what was missed', () => {
     const day = dayOf({ missed: [view(HOME, 'Water plants', '2026-11-07T15:00:00.000Z')] });
-    expect(briefingLinesOf(day, NOW)).toEqual([
-      `First up at ${clock('2026-11-08T06:30:00.000Z', ZONE)}: Brush teeth.`,
-      '3 things left today.',
-      '1 missed earlier.',
-    ]);
+    expect(briefingLinesOf(day)).toEqual(['1 missed earlier.']);
+    expect(briefingLinesOf(dayOf())).toEqual([]);
   });
 
   it('says when nothing else is booked', () => {
-    expect(briefingLinesOf(dayOf({ upcoming: [] }), NOW)).toEqual([
-      'Nothing else is booked today.',
-    ]);
+    expect(briefingLinesOf(dayOf({ upcoming: [] }))).toEqual(['Nothing else is booked today.']);
+  });
+});
+
+describe('finished timer line', () => {
+  it('names the length and how long ago it finished', () => {
+    const rang = ring({ kind: 'timer', ref_id: TIMER, rang_at: '2026-11-08T05:58:00.000Z' });
+    expect(timerDoneLineOf(TIMER_ROW, rang, NOW)).toBe('10 min timer · finished 2 min ago');
+    expect(timerDoneLineOf(undefined, rang, NOW)).toBe('Finished 2 min ago');
+    expect(timerDoneLineOf(TIMER_ROW, null, NOW)).toBe('10 min timer');
+    expect(timerDoneLineOf(undefined, null, NOW)).toBeNull();
   });
 });
 

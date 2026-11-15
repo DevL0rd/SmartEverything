@@ -9,7 +9,7 @@ import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
@@ -20,11 +20,16 @@ import { setPhotoAiSettings } from '../smart/api';
 import { usePhotoAiStatus, storeAiStatus } from '../smart/queries';
 import { PHOTOS_SMART_PAGE } from '../smart/page';
 import {
+  emptyReasonOf,
+  faceScanTextOf,
+  groupingTextOf,
+  isScanState,
   namingOf,
   peopleSectionsOf,
   peopleStateOf,
   peopleSubtitleOf,
   type PeopleState,
+  type ScanState,
 } from './model';
 import {
   FaceRing,
@@ -78,6 +83,9 @@ function Indexing({ status }: { readonly status: PhotoAiStatus }): ReactNode {
         <FaceRing status={status} size={88} />
         <View className="min-w-48 flex-1 gap-1">
           <Text variant="title-3">Looking for faces</Text>
+          <Text variant="body" className="tabular-nums">
+            {faceScanTextOf(status)}
+          </Text>
           <Text variant="footnote" tone="variant">
             People and pets appear here as your home hub finds them. Nothing needs to stay open.
           </Text>
@@ -85,6 +93,49 @@ function Indexing({ status }: { readonly status: PhotoAiStatus }): ReactNode {
       </View>
     </Card>
   );
+}
+
+function Grouping({ status }: { readonly status: PhotoAiStatus }): ReactNode {
+  return (
+    <Card>
+      <View className="flex-row flex-wrap items-center gap-4">
+        <FaceRing status={status} size={88} />
+        <View className="min-w-48 flex-1 gap-1">
+          <Text variant="title-3">Sorting faces into people</Text>
+          <Text variant="body" className="tabular-nums">
+            {groupingTextOf(status)}
+          </Text>
+          <Text variant="footnote" tone="variant">
+            They appear here as soon as your home hub has grouped them.
+          </Text>
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+function Empty({ status }: { readonly status: PhotoAiStatus }): ReactNode {
+  const reason = emptyReasonOf(status);
+  return (
+    <EmptyState
+      icon="users"
+      title={reason.title}
+      body={reason.body}
+      action={<Button label="Open Library" variant="tonal" href={href.photos()} />}
+    />
+  );
+}
+
+function Scan({
+  state,
+  status,
+}: {
+  readonly state: ScanState;
+  readonly status: PhotoAiStatus;
+}): ReactNode {
+  if (state === 'indexing') return <Indexing status={status} />;
+  if (state === 'grouping') return <Grouping status={status} />;
+  return <Empty status={status} />;
 }
 
 function Loading(): ReactNode {
@@ -108,7 +159,7 @@ function Ready({
   readonly status: PhotoAiStatus | undefined;
 }): ReactNode {
   const [species, setSpecies] = useState<string | null>(null);
-  const size = libraryLayoutOf(useAreaWidth()) === 'compact' ? 80 : 112;
+  const size = shellLayoutOf(useAreaWidth()) === 'compact' ? 80 : 112;
   const sections = peopleSectionsOf(people.groups, species);
   return (
     <View className="gap-section-gap">
@@ -151,6 +202,8 @@ function StateBody({
   readonly failed: unknown;
   readonly retry: () => void;
 }): ReactNode {
+  if (isScanState(state))
+    return status === undefined ? null : <Scan state={state} status={status} />;
   switch (state) {
     case 'ready':
       return people === undefined ? null : <Ready people={people} status={status} />;
@@ -168,17 +221,6 @@ function StateBody({
       return <ErrorState error={failed} retry={retry} page />;
     case 'grouping-off':
       return <GroupingOff />;
-    case 'indexing':
-      return status === undefined ? null : <Indexing status={status} />;
-    case 'empty':
-      return (
-        <EmptyState
-          icon="users"
-          title="No faces yet"
-          body="When photos with people or pets reach your library, your home hub groups them here."
-          action={<Button label="Open Library" variant="tonal" href={href.photos()} />}
-        />
-      );
   }
 }
 

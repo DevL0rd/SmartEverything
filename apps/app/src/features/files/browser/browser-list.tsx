@@ -20,7 +20,7 @@ import { columnSort, sortLabelOf } from './sort-model';
 import { ENTRY_ROW_HEIGHT, useRevealer } from './use-browser-keys';
 
 const COLUMN_CLASS: Readonly<Record<SortField, string>> = {
-  name: 'min-w-0 flex-1 pl-8',
+  name: 'min-w-0 flex-1 pl-11',
   by: 'w-28',
   size: 'w-21 justify-end',
   modifiedAt: 'w-22 justify-end',

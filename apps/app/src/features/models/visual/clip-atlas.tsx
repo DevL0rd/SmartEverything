@@ -1,7 +1,11 @@
 import { Image } from 'expo-image';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
-import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useFrameCallback,
+  useSharedValue,
+} from 'react-native-reanimated';
 import type { ClipResult } from '../bake/bake-protocol';
 
 export type ClipTiming = Pick<ClipResult, 'introFrames' | 'loopFrames' | 'stillFrame' | 'frameS'>;
@@ -34,6 +38,47 @@ export function cellOffset(clip: ClipCells, index: number): CellOffset {
   return { x: -column * clip.rect.width, y: -row * clip.rect.height };
 }
 
+export interface ClipCounter {
+  get(): number;
+  set(value: number): void;
+}
+
+export interface ClipPlayhead {
+  readonly elapsed: ClipCounter;
+  readonly cell: ClipCounter;
+}
+
+export function stepClip(
+  playhead: ClipPlayhead,
+  clip: ClipTiming,
+  rate: number,
+  deltaS: number,
+): void {
+  'worklet';
+  const elapsedS = playhead.elapsed.get() + deltaS;
+  playhead.elapsed.set(elapsedS);
+  const index = clipFrame(clip, elapsedS, rate);
+  if (index !== playhead.cell.get()) playhead.cell.set(index);
+}
+
+function useClipCell(clip: ClipTiming, playing: boolean, rate: number): ClipCounter {
+  const held = heldFrame(clip);
+  const elapsed = useSharedValue(0);
+  const cell = useSharedValue(held);
+  const frame = useFrameCallback((info) => {
+    'worklet';
+    stepClip({ elapsed, cell }, clip, rate, (info.timeSincePreviousFrame ?? 0) / 1000);
+  }, false);
+  useEffect(() => {
+    if (!playing) cell.set(held);
+    frame.setActive(playing);
+    return (): void => {
+      frame.setActive(false);
+    };
+  }, [playing, frame, cell, held]);
+  return cell;
+}
+
 export interface BoxStyle {
   readonly left: number;
   readonly top: number;
@@ -51,12 +96,10 @@ function sheetSize(clip: ClipResult): Pick<BoxStyle, 'width' | 'height'> {
 
 export function ClipAtlas({
   clip,
-  clock,
   playing,
   rate,
 }: {
   readonly clip: ClipResult;
-  readonly clock: SharedValue<number>;
   readonly playing: boolean;
   readonly rate: number;
 }): ReactNode {
@@ -68,9 +111,9 @@ export function ClipAtlas({
     frameS: clip.frameS,
   };
   const cells: ClipCells = { columns: clip.columns, rect };
+  const cell = useClipCell(timing, playing, rate);
   const sheet = useAnimatedStyle(() => {
-    const index = playing ? clipFrame(timing, clock.get(), rate) : heldFrame(timing);
-    const offset = cellOffset(cells, index);
+    const offset = cellOffset(cells, cell.get());
     return { transform: [{ translateX: offset.x }, { translateY: offset.y }] };
   });
   return (

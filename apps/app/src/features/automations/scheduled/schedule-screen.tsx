@@ -23,6 +23,7 @@ import { placeOf, type PlaceReading } from './place';
 import { useScheduledRows } from './use-scheduled';
 import { upcomingOf } from './view';
 import { weekOf, type Day, type OneOff, type TimedRule } from './week';
+import { workspaceSectionsOf } from '../hosts/workspace-sections';
 
 const DAY_MIN_WIDTH = 240;
 
@@ -152,7 +153,7 @@ function ScheduleBody(): ReactNode {
 
 export function ScheduleScreen(): ReactNode {
   return (
-    <PageShell title="Week view">
+    <PageShell title="Schedule" back={false} sections={workspaceSectionsOf('schedule')}>
       <ScheduleBody />
     </PageShell>
   );

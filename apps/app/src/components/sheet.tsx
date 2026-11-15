@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from 'react';
 import type { View } from 'react-native';
+import type { FocusTarget } from './focus-request';
 import { useIdiom } from '../design/platform';
 import type { Rect } from './anchor';
 import { BottomSheet, type Detent } from './bottom-sheet';
@@ -18,10 +19,12 @@ export interface SheetProps {
   readonly kind?: PointerSheetKind;
   readonly anchor?: Rect | null;
   readonly wide?: boolean;
+  readonly large?: boolean;
   readonly footer?: ReactNode;
   readonly scroll?: boolean;
   readonly reading?: boolean;
   readonly subpage?: boolean | { readonly opener: RefObject<View | null> } | undefined;
+  readonly initialFocus?: RefObject<FocusTarget | null>;
   readonly children: ReactNode;
 }
 
@@ -65,24 +68,21 @@ function TouchSheet({
   );
 }
 
-export function Sheet(props: SheetProps): ReactNode {
-  const touch = useIdiom() === 'touch';
-  const name = props.label ?? props.title ?? 'Sheet';
-  if (touch) {
-    return <TouchSheet {...props} name={name} />;
-  }
-  const {
-    open,
-    onClose,
-    title,
-    kind = 'dialog',
-    anchor = null,
-    wide = false,
-    footer,
-    scroll = true,
-    reading = false,
-    children,
-  } = props;
+function PointerSheet({
+  name,
+  open,
+  onClose,
+  title,
+  kind = 'dialog',
+  anchor = null,
+  wide = false,
+  large = false,
+  footer,
+  scroll = true,
+  reading = false,
+  initialFocus,
+  children,
+}: SheetProps & { readonly name: string }): ReactNode {
   if (kind === 'popover') {
     return (
       <Popover open={open} onClose={onClose} anchor={anchor} label={name}>
@@ -101,8 +101,19 @@ export function Sheet(props: SheetProps): ReactNode {
       reading={reading}
       kind={kind}
       wide={wide}
+      large={large}
+      {...(initialFocus === undefined ? {} : { initialFocus })}
     >
       {children}
     </DialogFrame>
   );
+}
+
+export function Sheet(props: SheetProps): ReactNode {
+  const touch = useIdiom() === 'touch';
+  const name = props.label ?? props.title ?? 'Sheet';
+  if (touch) {
+    return <TouchSheet {...props} name={name} />;
+  }
+  return <PointerSheet {...props} name={name} />;
 }

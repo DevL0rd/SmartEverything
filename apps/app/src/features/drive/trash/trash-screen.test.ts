@@ -37,6 +37,7 @@ const ITEM: TrashItem = {
   deletedAt: Date.parse('2026-11-06T12:00:00Z'),
   daysLeft: 364,
   kept: 364 / 365,
+  purgeMonth: '2027-11',
   folders: ['Home', 'Kitchen remodel'],
   deleter: { kind: 'you' },
 };
@@ -97,7 +98,7 @@ const seen = vi.hoisted((): Seen => ({
     items: [],
     totals: { count: 0, bytes: 0 },
     deletedBy: [],
-    months: null,
+    months: [],
     rootLabelOf: () => null,
     chipOf: () => ({ key: 'mine', label: 'My Drive', icon: 'hardDrive', tone: 'primary' }),
     nodeOf: new Map(),
@@ -232,7 +233,7 @@ describe('Trash screen', () => {
     const html = render();
     expect(seen.frame?.section).toBe('trash');
     expect(seen.frame?.title).toBe('Trash');
-    expect(seen.frame?.subtitle).toMatch(/^1 item · .+ · each item is kept a year, then deleted$/);
+    expect(seen.frame?.subtitle).toMatch(/^1 item · .+ · each kept a year$/);
     expect(html).toContain('Old tile quote.pdf in Projects › Home › Kitchen remodel');
   });
 
@@ -252,6 +253,11 @@ describe('Trash screen', () => {
     expect(seen.selection).toEqual(['all', 'clear']);
     expect(seen.top?.layout).toBe('list');
     expect(seen.rows[0]?.layout).toBe('list');
+  });
+
+  it('labels the whole-trash delete as Delete all now', () => {
+    render();
+    expect(seen.top?.deleteAll?.label).toBe('Delete all now');
   });
 
   it('lets a member empty their own drive’s trash and keeps what others deleted in the Shared Drive', () => {
@@ -314,6 +320,9 @@ describe('Trash screen', () => {
     expect(isValidElement<TrashFilterRowProps>(row) ? row.props.filter.chip : null).toBe('folders');
     expect(seen.frame?.search).toMatchObject({ placeholder: 'Find in trash', status: '1 of 2' });
     expect(seen.top?.pickState).toBe(false);
+    expect(seen.top?.deleteAll?.label).toBe('Delete 1 shown now');
+    seen.top?.deleteAll?.onPress();
+    expect(seen.removedAll).toEqual([[folder]]);
   });
 
   it('puts Find in trash in the shell search while trash holds items and leaves it out when empty', () => {
@@ -333,5 +342,7 @@ describe('Trash screen', () => {
     expect(html).not.toContain('Trash is empty');
     expect(html).not.toContain('Shared Drive trash is seen by everyone');
     expect(seen.top).not.toBeNull();
+    expect(seen.top?.empty).toBe(true);
+    expect(seen.top?.deleteAll).toBeNull();
   });
 });

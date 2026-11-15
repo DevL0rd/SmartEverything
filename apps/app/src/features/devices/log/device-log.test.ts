@@ -50,9 +50,10 @@ function render(log: DeviceLogPages): string {
 }
 
 describe('device activity card', () => {
-  it('uses the reading measure for the empty explanation', () => {
+  it('fills the page column for the empty explanation', () => {
     const page = render(EMPTY);
-    expect(page).toContain('w-full max-w-reading self-start');
+    expect(page).toContain('w-full self-start');
+    expect(page).not.toContain('max-w-');
     expect(page).toContain('Nothing yet.');
   });
 
@@ -69,8 +70,8 @@ describe('device activity card', () => {
       ],
     });
     expect(page).toContain('Fixture change');
-    expect(page).not.toContain('max-w-reading');
-    expect(render({ ...EMPTY, loading: true })).not.toContain('max-w-reading');
-    expect(render({ ...EMPTY, failure: new Error('Fixture') })).not.toContain('max-w-reading');
+    expect(page).not.toContain('max-w-');
+    expect(render({ ...EMPTY, loading: true })).not.toContain('max-w-');
+    expect(render({ ...EMPTY, failure: new Error('Fixture') })).not.toContain('max-w-');
   });
 });

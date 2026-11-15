@@ -101,12 +101,7 @@ function Grid({
 function Performance({ device }: { readonly device: Device }): ReactNode {
   const [range, setRange] = useState<ViewRange>('live');
   return (
-    <ComputerFrame
-      deviceId={device.id}
-      title="Performance"
-      subtitle={device.label}
-      width="dashboard"
-    >
+    <ComputerFrame deviceId={device.id} title="Performance" subtitle={device.label}>
       <Segmented label="Range" value={range} onChange={setRange} options={RANGE_OPTIONS} />
       <Grid device={device} range={range} />
       <SensorsList deviceId={device.id} offline={!device.online} />

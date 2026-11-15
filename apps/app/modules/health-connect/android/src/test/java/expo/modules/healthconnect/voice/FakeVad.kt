@@ -8,10 +8,6 @@ class FakeVad(
   override var speechDurationMs: Int,
   override var silenceDurationMs: Int
 ) : SpeechVad {
-  init {
-    lastSilenceMs = silenceDurationMs
-  }
-
   override fun isSpeech(frame: ShortArray): Boolean {
     lastMode = mode
     lastFrame = frame.copyOf()
@@ -25,7 +21,6 @@ class FakeVad(
   companion object {
     var heardSpeech = false
     var closed = false
-    var lastSilenceMs: Int = -1
     var lastMode: VadMode? = null
     var lastFrame: ShortArray = ShortArray(0)
   }

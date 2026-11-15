@@ -4,7 +4,11 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
-import { clock } from '../../../format/time';
+import { useIdiom } from '../../../design/platform';
+import { HOUR_MS, clock } from '../../../format/time';
+import { useMinute } from '../../../store/clock';
+import { IconWell } from '../../../components/icon-well';
+import { CARD_FRAME } from './card-frame';
 import type { ListLinks } from './list-links';
 import {
   groupTimeline,
@@ -12,8 +16,6 @@ import {
   type TimelineEvent,
   type TimelineGroup,
 } from './timeline-model';
-
-const MOST_GROUPS = 4;
 
 function cadence(minutes: number): string {
   return minutes % 60 === 0 ? `every ${String(minutes / 60)} h` : `every ${String(minutes)} min`;
@@ -71,14 +73,15 @@ function GroupRow({
   readonly timeZone: string | null;
 }): ReactNode {
   const detail = groupDetail(group, timeZone);
+  const pointer = useIdiom() === 'pointer';
   return (
     <Interactive
       href={links.open(group.automationId)}
       label={`${group.name}, ${detail}`}
-      className="min-h-8 gap-1"
+      className={cn('justify-center gap-1', pointer ? 'min-h-9' : 'min-h-touch-min')}
     >
       <View className="flex-row items-baseline gap-2">
-        <Text variant="caption" className="min-w-0 flex-1">
+        <Text variant="callout" className="min-w-0 flex-1">
           {group.name}
         </Text>
         <Text variant="caption" tone="variant" numberOfLines={1} className="ml-auto shrink-0">
@@ -87,6 +90,36 @@ function GroupRow({
       </View>
       <Track group={group} />
     </Interactive>
+  );
+}
+
+const AXIS_STEPS = [0, 3, 6, 9, 12] as const;
+const AXIS_LABEL_WIDTH = 48;
+
+function axisStyle(hours: number, width: number): ViewStyle {
+  if (hours === 0) return { left: 0 };
+  if (hours === TIMELINE_HOURS) return { right: 0 };
+  return {
+    left: (hours / TIMELINE_HOURS) * width - AXIS_LABEL_WIDTH / 2,
+    width: AXIS_LABEL_WIDTH,
+  };
+}
+
+function Axis({ timeZone }: { readonly timeZone: string | null }): ReactNode {
+  const now = useMinute();
+  const { width, onLayout } = useMeasuredWidth();
+  return (
+    <View onLayout={onLayout} className="relative mr-2 h-5">
+      {width === 0
+        ? null
+        : AXIS_STEPS.map((hours) => (
+            <View key={hours} style={axisStyle(hours, width)} className="absolute top-0">
+              <Text variant="caption" tone="faint" align="center" className="tabular">
+                {hours === 0 ? 'Now' : clock(now + hours * HOUR_MS, timeZone)}
+              </Text>
+            </View>
+          ))}
+    </View>
   );
 }
 
@@ -100,27 +133,29 @@ export function TimelineBand({
   readonly timeZone: string | null;
 }): ReactNode {
   const groups = groupTimeline(events);
-  const hidden = groups.length - MOST_GROUPS;
   return (
-    <View className="gap-2 overflow-hidden rounded-md border-hairline border-outline-variant bg-surface-1 px-3 py-2">
-      <View className="flex-row items-baseline justify-between">
-        <Text variant="label" tone="variant">
+    <View className={CARD_FRAME}>
+      <View className="flex-row items-baseline justify-between gap-2">
+        <Text variant="title-3">Coming up</Text>
+        <Text variant="caption" tone="variant">
           {`Next ${String(TIMELINE_HOURS)} hours`}
         </Text>
-        {events.length === 0 ? (
-          <Text variant="caption" tone="variant">
-            Nothing is scheduled
-          </Text>
-        ) : null}
       </View>
-      {groups.slice(0, MOST_GROUPS).map((group) => (
-        <GroupRow key={group.key} group={group} links={links} timeZone={timeZone} />
-      ))}
-      {hidden > 0 ? (
-        <Text variant="caption" tone="faint">
-          {`and ${String(hidden)} more`}
-        </Text>
-      ) : null}
+      {groups.length === 0 ? (
+        <View className="flex-row items-center gap-3">
+          <IconWell icon="calendar" colour="primary" size="s" />
+          <Text variant="callout" tone="variant" className="min-w-0 flex-1">
+            {`Nothing is scheduled in the next ${String(TIMELINE_HOURS)} hours`}
+          </Text>
+        </View>
+      ) : (
+        <View className="gap-3">
+          <Axis timeZone={timeZone} />
+          {groups.map((group) => (
+            <GroupRow key={group.key} group={group} links={links} timeZone={timeZone} />
+          ))}
+        </View>
+      )}
     </View>
   );
 }

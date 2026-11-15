@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunk, columnsIn, gridFit, linkedCapacity, rowsThatFit } from './fit-math';
+import { chunk, columnsIn, gridFit, linkedCapacity, peekCardWidth, rowsThatFit } from './fit-math';
 
 describe('columnsIn', () => {
   it('counts only whole items plus their gaps', () => {
@@ -40,5 +40,14 @@ describe('gridFit', () => {
 
   it('trims to the rows that fit beside the link when they do not', () => {
     expect(gridFit(7, space)).toEqual({ shown: 2, more: true });
+  });
+});
+
+describe('peekCardWidth', () => {
+  it('fits whole cards of at least the minimum and shows part of the next one', () => {
+    const card = peekCardWidth(505, 140, 16, 0.5);
+    expect(card).toBe(189);
+    expect(2 * card + 2 * 16 + card / 2).toBeLessThanOrEqual(505);
+    expect(peekCardWidth(350, 140, 16, 0.5)).toBe(222);
   });
 });

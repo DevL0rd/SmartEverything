@@ -60,11 +60,7 @@ export function CamerasSettingsScreen(): ReactNode {
   const entries = useCameraEntries();
   const owner = useIsOwner();
   return (
-    <PageShell
-      title="Camera settings"
-      breadcrumbs={settingsTrail('cameras').slice(0, -1)}
-      width="reading"
-    >
+    <PageShell title="Camera settings" breadcrumbs={settingsTrail('cameras').slice(0, -1)}>
       {entries.length === 0 ? (
         <EmptyState icon="cameras" title="No cameras" body="Cameras you link show up here." />
       ) : (

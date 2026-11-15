@@ -1,17 +1,29 @@
-import type { ReactNode } from 'react';
+import type { PlannerColourKey } from '@smarteverything/domain';
+import { Fragment, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { ColourSwatches } from '../../../components/colour-swatches';
-import { ListRow } from '../../../components/list-row';
+import { rowsOf as childRowsOf } from '../../../components/list-rows';
 import { NavRow, SwitchRow } from '../../../components/rows';
 import { notify } from '../../../components/toast-store';
+import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
 import { rowsOf } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 import { mayChangeLook } from '../calendar/calendar-edit';
 import { sourceText } from '../calendar/calendars-model';
 import { useGoogleAccount, usePlannerCollections } from '../data';
 import { usePlannerSharing, useViewerCalendars, type ViewerLook } from '../data/sharing';
-import { COLOUR_OPTIONS, NONE, googleRowText, ringsOnClient, type Option } from './options';
+import { weekOrderOf } from '../clock/alarm-text';
+import {
+  COLOUR_OPTIONS,
+  DAY_NAMES,
+  NONE,
+  googleRowText,
+  ringsOnClient,
+  type Option,
+} from './options';
+import { useOwnPrefs } from './preferences';
 import { PrefSelectRow, PrefSwitchRow, type ValueSpec } from './rows';
 
 interface Named {
@@ -40,13 +52,59 @@ export function GoogleRow(): ReactNode {
   );
 }
 
+function leadingInsetOf(leading: boolean, pointer: boolean): string {
+  if (!leading) return 'ml-4';
+  return pointer ? 'ml-16' : 'ml-18';
+}
+
+function DividedRows({
+  children,
+  leading,
+}: {
+  readonly children: ReactNode;
+  readonly leading: boolean;
+}): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  return childRowsOf(children).map((row, index) => (
+    <Fragment key={row.key ?? index}>
+      {index === 0 ? null : (
+        <View className={cn('h-hairline bg-outline-variant', leadingInsetOf(leading, pointer))} />
+      )}
+      {row}
+    </Fragment>
+  ));
+}
+
+function ColourLead({ colour }: { readonly colour: PlannerColourKey }): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  const swatch = COLOUR_OPTIONS.find((option) => option.value === colour)?.swatchClassName;
+  return (
+    <View
+      className={cn(
+        'items-center justify-center bg-surface-3',
+        pointer ? 'size-8 rounded-sm' : 'size-10 rounded-full',
+      )}
+    >
+      <View className={cn('size-4 rounded-full', swatch)} />
+    </View>
+  );
+}
+
 export function CalendarRows(): ReactNode {
   const sharing = usePlannerSharing(null);
   const calendars = useViewerCalendars(null).filter(mayChangeLook);
+  const pointer = useIdiom() === 'pointer';
   if (calendars.length === 0) {
-    return <ListRow icon="calendar" title="No calendars yet" />;
+    return (
+      <NavRow
+        icon="calendar"
+        title="No calendars yet"
+        subtitle="Add one from the Calendar page."
+        href={href.planner.calendar()}
+      />
+    );
   }
-  return calendars.map((calendar) => {
+  const rows = calendars.map((calendar) => {
     const { row } = calendar;
     const change = (look: ViewerLook): void => {
       sharing.look(calendar, look).catch((error: unknown) => {
@@ -56,7 +114,7 @@ export function CalendarRows(): ReactNode {
     return (
       <View key={row.id}>
         <SwitchRow
-          icon="calendar"
+          leading={<ColourLead colour={row.colour} />}
           title={row.name}
           subtitle={sourceText(calendar)}
           value={row.visible}
@@ -64,7 +122,7 @@ export function CalendarRows(): ReactNode {
             change({ visible });
           }}
         />
-        <View className="px-4 pb-3">
+        <View className={cn('pb-2 pr-4', pointer ? 'pl-16' : 'pl-18')}>
           <ColourSwatches
             label={`${row.name} colour`}
             value={row.colour}
@@ -77,6 +135,39 @@ export function CalendarRows(): ReactNode {
       </View>
     );
   });
+  return <DividedRows leading>{rows}</DividedRows>;
+}
+
+function weekDaysOf(weekStart: number): readonly { readonly name: string; readonly day: number }[] {
+  const order = weekOrderOf(weekStart);
+  return DAY_NAMES.map((name, day) => ({ name, day })).sort(
+    (left, right) => order.indexOf(left.day) - order.indexOf(right.day),
+  );
+}
+
+export function WorkDayRows(): ReactNode {
+  const prefs = useOwnPrefs();
+  if (prefs === undefined) return null;
+  return (
+    <DividedRows leading={false}>
+      {weekDaysOf(prefs.general.week_start).map(({ name, day }) => (
+        <PrefSwitchRow
+          key={day}
+          spec={{
+            title: name,
+            get: (current) => current.general.working_hours.days.includes(day),
+            set: (on, current) => {
+              const hours = current.general.working_hours;
+              const days = Array.from(DAY_NAMES.keys()).filter((entry) =>
+                entry === day ? on : hours.days.includes(entry),
+              );
+              return { general: { working_hours: { ...hours, days } } };
+            },
+          }}
+        />
+      ))}
+    </DividedRows>
+  );
 }
 
 export function RingOnRows(): ReactNode {
@@ -84,9 +175,16 @@ export function RingOnRows(): ReactNode {
   const clients = useStoreSelector((state) => rowsOf(state.tables.clients));
   const phones = clients.filter((row) => row.kind === 'phone' && row.profile_id === me);
   if (phones.length === 0) {
-    return <ListRow icon="smartphone" title="No phones paired" />;
+    return (
+      <NavRow
+        icon="smartphone"
+        title="No phones paired"
+        subtitle="Pair a phone to ring alarms on it"
+        href={href.settings.page('members')}
+      />
+    );
   }
-  return phones.map((phone) => (
+  const rows = phones.map((phone) => (
     <PrefSwitchRow
       key={phone.id}
       spec={{
@@ -104,6 +202,7 @@ export function RingOnRows(): ReactNode {
       }}
     />
   ));
+  return <DividedRows leading>{rows}</DividedRows>;
 }
 
 export function ShownPersonRow({ spec }: { readonly spec: ValueSpec }): ReactNode {

@@ -5,5 +5,5 @@ export const MAP_ATTRIBUTION =
   'Place names: GeoNames (geonames.org), CC BY 4.0. Map: Natural Earth, public domain.';
 
 export function MapAttributionRow(): ReactNode {
-  return <ListRow title="Map data" icon="info" subtitle={MAP_ATTRIBUTION} wrapSubtitle />;
+  return <ListRow title="Map data" subtitle={MAP_ATTRIBUTION} wrapSubtitle />;
 }

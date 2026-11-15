@@ -56,7 +56,7 @@ function BannerText({
     <View
       className={cn(
         'flex-1 py-1',
-        compact ? 'min-w-0' : body === undefined ? 'min-w-24' : 'min-w-40',
+        compact ? 'min-w-0' : body === undefined ? 'min-w-24' : 'min-w-60',
       )}
     >
       <Text

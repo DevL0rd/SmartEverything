@@ -80,7 +80,6 @@ describe('Walkie-talkie channel sections', () => {
     const sections = talkSectionsOf([JOINED], [JOINED, GUEST], guest.id);
 
     expect(sections?.active).toBe(guest.id);
-    expect(sections?.master).toBe(true);
     expect(sections?.groups.map((group) => group.title)).toEqual([
       'Your channels',
       'Other channels',

@@ -2,30 +2,37 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
 import { Banner } from '../../../components/banner';
+import { Button } from '../../../components/button';
 import { CardGrid } from '../../../components/card-grid';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { isNative } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { count } from '../../../format/number';
 import { useSyncStatus } from '../../../store/selectors';
-import { PhotosFrame } from '../components/photos-frame';
+import { PHOTOS_BACKUP_SETTINGS_HREF, PhotosFrame } from '../components/photos-frame';
 import { localMediaSource } from '../local/source';
 import { useLocalLibrary } from '../local/use-local-library';
+import { useFolderBackup, type FolderBackup } from './backup';
 import { useHiddenFolderKeys, usePhotoFolders } from './data';
 import { FolderCard } from './folder-card';
-import { folderGroupsOf, hiddenCountOf, type FolderGroup } from './model';
+import { backupIdsOf, folderGroupsOf, hiddenCountOf, type FolderGroup } from './model';
 
 const WIDE_COLUMNS_FROM = 1200;
 
-export const FOLDERS_NOTE =
-  'Hidden folders stay out of the Library, search, people and places. Their backup keeps running.';
+const LOADING_TILES = ['a', 'b', 'c', 'd'] as const;
+
+export function foldersNoteOf(local: boolean): string {
+  return local
+    ? 'Choose which folders on this device back up to the hub and which show in Photos. Hidden folders stay out of the Library, search, people and places, and their backup keeps its setting.'
+    : 'Choose which folders show in Photos. Hidden folders stay out of the Library, search, people and places.';
+}
 
 function columnsOf(area: number): number {
-  if (libraryLayoutOf(area) === 'compact') return 1;
+  if (shellLayoutOf(area) === 'compact') return 1;
   return area >= WIDE_COLUMNS_FROM ? 3 : 2;
 }
 
@@ -45,13 +52,15 @@ export function foldersLineOf(groups: readonly FolderGroup[]): string | null {
 function GroupSection({
   group,
   columns,
+  backup,
 }: {
   readonly group: FolderGroup;
   readonly columns: number;
+  readonly backup: FolderBackup;
 }): ReactNode {
   return (
-    <View className="gap-2">
-      <View className="min-h-10 flex-row items-baseline gap-2">
+    <View className="gap-3">
+      <View className="flex-row items-baseline gap-2">
         <Text variant="title-3">{group.title}</Text>
         <Text variant="footnote" tone="variant" className="tabular-nums">
           {count(group.folders.length)}
@@ -61,7 +70,21 @@ function GroupSection({
         items={group.folders}
         columns={columns}
         keyOf={(folder) => folder.key}
-        render={(folder) => <FolderCard folder={folder} />}
+        render={(folder) => <FolderCard folder={folder} backup={backup} />}
+      />
+    </View>
+  );
+}
+
+function FoldersLoading({ columns }: { readonly columns: number }): ReactNode {
+  return (
+    <View aria-busy className="gap-3">
+      <Skeleton shape="line" className="h-6 w-40" />
+      <CardGrid
+        items={LOADING_TILES}
+        columns={columns}
+        keyOf={(tile) => tile}
+        render={() => <Skeleton shape="block" className="h-36 rounded-lg" />}
       />
     </View>
   );
@@ -69,17 +92,21 @@ function GroupSection({
 
 function FoldersBody({ groups }: { readonly groups: readonly FolderGroup[] | null }): ReactNode {
   const columns = columnsOf(useAreaWidth());
-  if (groups === null) return <Skeleton shape="block" className="h-60 w-full" />;
+  const backup = useFolderBackup(groups === null ? [] : backupIdsOf(groups));
+  if (groups === null) return <FoldersLoading columns={columns} />;
   if (groups.length === 0) {
     return (
       <EmptyState
         icon="folder"
         title="No folders yet"
         body="Folders appear here once photos are backed up or found on this device."
+        action={<Button label="Open Backup" variant="tonal" href={PHOTOS_BACKUP_SETTINGS_HREF} />}
       />
     );
   }
-  return groups.map((group) => <GroupSection key={group.id} group={group} columns={columns} />);
+  return groups.map((group) => (
+    <GroupSection key={group.id} group={group} columns={columns} backup={backup} />
+  ));
 }
 
 function useFolderGroups(): {
@@ -123,13 +150,15 @@ export function FoldersScreen(): ReactNode {
       }
     >
       <View className="gap-section-gap">
-        <Text variant="footnote" tone="variant">
-          {FOLDERS_NOTE}
-        </Text>
+        {error === null && groups !== null && groups.length > 0 ? (
+          <Text variant="footnote" tone="variant">
+            {foldersNoteOf(localMediaSource() !== null)}
+          </Text>
+        ) : null}
         {error === null ? (
           <FoldersBody groups={groups} />
         ) : (
-          <ErrorState error={error} retry={retry} />
+          <ErrorState page error={error} retry={retry} />
         )}
       </View>
     </PhotosFrame>

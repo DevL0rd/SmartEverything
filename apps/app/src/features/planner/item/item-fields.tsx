@@ -2,22 +2,28 @@ import type { PlannerCollectionRow, PlannerItemRow, ProfileRow } from '@smarteve
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
-import { FilterChip } from '../../../components/filter-chip';
+import { DateNav } from '../../../components/date-nav';
+import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
 import { SelectRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
+import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
-import { TimeField } from '../../../components/time-field';
-import { duration } from '../../../format/time';
+import { TimeField, type TimeOfDay } from '../../../components/time-field';
+import { duration, localDayKey, startOfDayKey } from '../../../format/time';
 import { AssigneeField } from './item-assignee';
 import {
+  dueDayOf,
   timeOfLocal,
   whenTextOf,
+  withDueDay,
   withEndTime,
+  withStartDay,
   withStartTime,
   type FieldsToday,
 } from './item-history';
+import { OutlinedChip } from './outlined-chip';
 import {
   NO_REPEAT,
   repeatChangeOf,
@@ -51,8 +57,18 @@ export function estimateOptionsOf(
   ];
 }
 
+function unitText(amount: number, one: string): string {
+  return `${String(amount)} ${one}${amount === 1 ? '' : 's'}`;
+}
+
+function spanText(minutes: number): string {
+  if (minutes % 1440 === 0) return unitText(minutes / 1440, 'day');
+  if (minutes % 60 === 0) return unitText(minutes / 60, 'hour');
+  return unitText(minutes, 'minute');
+}
+
 export function reminderTextOf(minutes: number): string {
-  return minutes === 0 ? 'At the time' : `${minutesText(minutes)} before`;
+  return minutes === 0 ? 'At the time' : `${spanText(minutes)} before`;
 }
 
 export function remindersTextOf(reminders: PlannerItemRow['reminders']): string {
@@ -111,52 +127,151 @@ export interface ItemFieldsProps {
   readonly me: string | null;
   readonly whenCaption: string | null;
   readonly reminderCaption: string | null;
+  readonly openWhen: boolean;
   readonly disabled: boolean;
   readonly onChange: (changes: ItemChanges) => void;
 }
 
-function WhenRow({ item, today, whenCaption, onChange }: ItemFieldsProps): ReactNode {
-  const [open, setOpen] = useState(false);
+function dateOfDay(day: string): Date {
+  return new Date(startOfDayKey(day));
+}
+
+function TimeColumn({
+  caption,
+  value,
+  onChange,
+}: {
+  readonly caption: string;
+  readonly value: TimeOfDay;
+  readonly onChange: (value: TimeOfDay) => void;
+}): ReactNode {
+  return (
+    <View className="items-center gap-1">
+      <Text variant="caption" tone="variant">
+        {caption}
+      </Text>
+      <TimeField label={caption} value={value} onChange={onChange} />
+    </View>
+  );
+}
+
+function TimeRange({ item, onChange }: ItemFieldsProps): ReactNode {
   const start = item.start_local;
-  const timed = start?.includes('T') ?? false;
+  if (start === null || !start.includes('T')) return null;
+  const end = item.end_local;
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-4 gap-y-2">
+      <TimeColumn
+        caption="Starts"
+        value={timeOfLocal(start)}
+        onChange={(time) => {
+          onChange(withStartTime(item, time));
+        }}
+      />
+      {end === null ? null : (
+        <>
+          <Text variant="callout" tone="variant" className="mt-5">
+            to
+          </Text>
+          <TimeColumn
+            caption="Ends"
+            value={timeOfLocal(end)}
+            onChange={(time) => {
+              onChange(withEndTime(item, time));
+            }}
+          />
+        </>
+      )}
+    </View>
+  );
+}
+
+function StartDate({ item, onChange }: ItemFieldsProps): ReactNode {
+  const start = item.start_local;
+  if (start === null) return null;
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+      <Text variant="caption" tone="variant">
+        {item.kind === 'event' ? 'Date' : 'Starts on'}
+      </Text>
+      <DateNav
+        value={dateOfDay(start.slice(0, 10))}
+        range="day"
+        arrows
+        onChange={(date) => {
+          onChange(withStartDay(item, localDayKey(date)));
+        }}
+      />
+    </View>
+  );
+}
+
+function DueDate({ item, today, onChange }: ItemFieldsProps): ReactNode {
+  const due = dueDayOf(item, today.timeZone);
+  const pick = (day: string | null): void => {
+    onChange(withDueDay(item, day, today.timeZone));
+  };
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+      <Text variant="caption" tone="variant">
+        {due === null ? 'No date yet, pick one' : 'Due'}
+      </Text>
+      <DateNav
+        value={dateOfDay(due ?? localDayKey(today.now, today.timeZone))}
+        range="day"
+        arrows
+        onChange={(date) => {
+          pick(localDayKey(date));
+        }}
+      />
+      {due === null ? null : (
+        <Button
+          label="No date"
+          icon="close"
+          variant="text"
+          onPress={() => {
+            pick(null);
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function WhenEditor(props: ItemFieldsProps): ReactNode {
+  return (
+    <View className="gap-3 px-4 pb-3">
+      {props.item.start_local === null ? <DueDate {...props} /> : <StartDate {...props} />}
+      <TimeRange {...props} />
+    </View>
+  );
+}
+
+function WhenRow(props: ItemFieldsProps): ReactNode {
+  const { item, today, whenCaption, openWhen, disabled } = props;
+  const [open, setOpen] = useState(openWhen);
+  const text = whenTextOf(item, today);
+  const row = {
+    title: 'When',
+    icon: 'clock',
+    subtitle: text,
+    wrapSubtitle: true,
+    subtitleTone: 'default',
+    ...(whenCaption === null ? {} : { caption: whenCaption }),
+  } as const;
+  if (disabled) return <ListRow {...row} />;
   return (
     <View>
       <ListRow
-        wrapTitle
-        title="When"
-        icon="clock"
-        value={whenTextOf(item, today)}
-        {...(whenCaption === null ? {} : { caption: whenCaption })}
-        {...(timed
-          ? {
-              chevron: true,
-              expanded: open,
-              onPress: (): void => {
-                setOpen(!open);
-              },
-            }
-          : {})}
+        {...row}
+        expanded={open}
+        label={`When, ${text}`}
+        trailing={<Icon name={open ? 'chevronUp' : 'chevronDown'} size={20} tone="faint" />}
+        onPress={() => {
+          setOpen(!open);
+        }}
       />
-      {open && start !== null && timed ? (
-        <View className="flex-row flex-wrap gap-4 px-4 pb-3">
-          <TimeField
-            label="Starts"
-            value={timeOfLocal(start)}
-            onChange={(time) => {
-              onChange(withStartTime(item, time));
-            }}
-          />
-          {item.end_local === null ? null : (
-            <TimeField
-              label="Ends"
-              value={timeOfLocal(item.end_local)}
-              onChange={(time) => {
-                onChange(withEndTime(item, time));
-              }}
-            />
-          )}
-        </View>
-      ) : null}
+      {open ? <WhenEditor {...props} /> : null}
     </View>
   );
 }
@@ -179,7 +294,6 @@ export function priorityValueOf(priority: number | null): PriorityValue {
 function PriorityRow({ item, disabled, onChange }: ItemFieldsProps): ReactNode {
   return (
     <ListRow
-      wrapTitle
       title="Priority"
       icon="flag"
       trailing={
@@ -203,12 +317,12 @@ function TagChips({ item, disabled, onChange }: ItemFieldsProps): ReactNode {
   return (
     <View className="flex-row flex-wrap gap-2 px-4">
       {item.tags.map((tag) => (
-        <FilterChip
+        <OutlinedChip
           key={tag}
-          label="Remove tag"
-          value={`#${tag}`}
-          active
-          affordance="remove"
+          label={`#${tag}`}
+          spoken={`Remove tag ${tag}`}
+          icon="hash"
+          trailing="close"
           disabled={disabled}
           onPress={() => {
             onChange({ tags: item.tags.filter((other) => other !== tag) });
@@ -239,7 +353,7 @@ function NewTag({
         onChange={setText}
         onSubmit={add}
         onBlur={add}
-        placeholder="fitness"
+        placeholder="New tag"
         focusOnMount
         showLabel={false}
       />
@@ -252,7 +366,6 @@ function TagsRow(props: ItemFieldsProps): ReactNode {
   return (
     <View className="gap-2 pb-2">
       <ListRow
-        wrapTitle
         title="Tags"
         icon="hash"
         {...(props.item.tags.length === 0 ? { value: 'None' } : {})}

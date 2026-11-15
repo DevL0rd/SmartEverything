@@ -1,4 +1,4 @@
-import type { DrivePlacementMode, DrivePlacementSet } from '@smarteverything/domain';
+import type { DrivePlacementSet } from '@smarteverything/domain';
 
 export interface PlacementTarget {
   readonly rootId: string;
@@ -20,22 +20,18 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
 export interface PlacementPlan {
   readonly deviceId: string;
   readonly target: PlacementTarget;
-  readonly mode: DrivePlacementMode;
-  readonly localPath: string | null;
-  readonly mountName: string | null;
+  readonly localPath: string;
   readonly sync?: SyncSettings;
   readonly enabled?: boolean;
 }
 
 export function placementBodyOf(plan: PlacementPlan): DrivePlacementSet {
-  const base = {
+  return {
     deviceId: plan.deviceId,
     rootId: plan.target.rootId,
     folderItemId: plan.target.folderItemId,
-    mode: plan.mode,
     localPath: plan.localPath,
-    mountName: plan.mountName,
     enabled: plan.enabled ?? true,
+    ...(plan.sync ?? DEFAULT_SYNC_SETTINGS),
   };
-  return plan.mode === 'synced' ? { ...base, ...(plan.sync ?? DEFAULT_SYNC_SETTINGS) } : base;
 }

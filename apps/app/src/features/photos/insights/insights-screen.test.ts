@@ -94,6 +94,7 @@ const FULL = {
   places: { places: 0, countries: [] },
   backupCoverage: [],
   roots: [],
+  busiestDays: [{ day: '2026-05-05', items: 3 }],
   largestVideos: [],
   videoTotals: { items: 0, bytes: 0, durationMs: 0, longestMs: null },
 };
@@ -125,7 +126,7 @@ describe('Insights screen states', () => {
   it('shows the empty library and the empty range differently', () => {
     state.query = { data: { ...FULL, items: 0 }, isError: false, error: null };
     state.counts = { library: 0, favourites: 0 };
-    expect(parts()).toContain('empty');
+    expect(parts()).toEqual(['empty']);
     state.counts = { library: 10, favourites: 1 };
     expect(parts()).toContain('range-empty');
   });
@@ -144,12 +145,12 @@ describe('Insights screen states', () => {
       'kinds',
       'calendar',
       'busiest',
+      'largest',
       'week',
       'season',
       'places',
       'cameras',
       'coverage',
-      'largest',
       'folders',
     ]);
     state.owner = false;

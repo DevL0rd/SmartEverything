@@ -9,7 +9,7 @@ import { ActionRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { moment } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
-import { useFirewall, useIsOwner, useSettings, useSyncStatus } from '../../../store/selectors';
+import { useFirewall, useIsOwner, useSectionFailure, useSettings } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { BACKEND_LABELS, needsFix } from '../model/firewall';
 import { SettingsFrame } from '../../../settings/settings-frame';
@@ -76,14 +76,14 @@ function StatusRows({ firewall }: { readonly firewall: FirewallStatus }): ReactN
 
 export function FirewallScreen(): ReactNode {
   const firewall = useFirewall();
-  const unreadable = useSyncStatus().outdated.includes('firewall');
+  const failure = useSectionFailure('firewall');
   return (
-    <SettingsFrame page="server/firewall" contentWidth="full">
-      {firewall === null && unreadable ? (
+    <SettingsFrame page="server/firewall">
+      {firewall === null && failure !== null ? (
         <EmptyState
           icon="shield"
           title="This part could not be read"
-          body="Your server sends firewall details this app does not understand. Update the app."
+          body={`Your server sends firewall details this app does not understand (${failure.reason}). Update the app.`}
           compact
         />
       ) : firewall === null ? (

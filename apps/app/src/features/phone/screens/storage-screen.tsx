@@ -44,7 +44,7 @@ export function StorageBody({ device }: { readonly device: Device }): ReactNode 
 export function PhoneStorageScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const device = useDevice(deviceId);
   return (
-    <PhoneFrame deviceId={deviceId} title="Storage" width="detail">
+    <PhoneFrame deviceId={deviceId} title="Storage">
       {device?.kind === 'phone' ? <StorageBody device={device} /> : null}
     </PhoneFrame>
   );

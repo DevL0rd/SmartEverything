@@ -12,7 +12,7 @@ import {
   type VirtualSection,
 } from '../../../components/virtual-list';
 import { useIdiom } from '../../../design/platform';
-import { CONTAINER_WIDTH, type Idiom } from '../../../design/tokens';
+import type { Idiom } from '../../../design/tokens';
 import { LightGroupCard } from '../../device-groups';
 import { ScrollModelLayer } from '../../models';
 import { cn } from '../../../design/cn';
@@ -189,14 +189,13 @@ function LightsRow({
   readonly entry: LightsEntry;
   readonly width: number;
 }): ReactNode {
-  const cardWidth = Math.min(width, CONTAINER_WIDTH.dashboard - BAND_INSET);
-  const cardStyle = { width: cardWidth };
+  const cardStyle = { width };
   return (
     <View className="pb-3" style={cardStyle}>
       <LightGroupCard
         target={entry.card.target}
         rows="capped"
-        availableWidth={cardWidth}
+        availableWidth={width}
         title={`Lights · ${String(entry.card.devices.length)}`}
         {...(entry.link === undefined ? {} : { href: entry.link })}
       />
@@ -302,13 +301,21 @@ interface GridSpace {
   readonly height: number;
 }
 
-function useGridSections(
-  groups: readonly DeviceSection[],
-  perRow: number,
-  status: boolean,
-  selection: Pick<DeviceGridProps, 'selectedDeviceId' | 'selectedRoomId'>,
-  fill: GridSpace,
-): readonly VirtualSection<GridEntry>[] {
+interface GridSectionsInput {
+  readonly groups: readonly DeviceSection[];
+  readonly perRow: number;
+  readonly status: boolean;
+  readonly selection: Pick<DeviceGridProps, 'selectedDeviceId' | 'selectedRoomId'>;
+  readonly fill: GridSpace;
+}
+
+function useGridSections({
+  groups,
+  perRow,
+  status,
+  selection,
+  fill,
+}: GridSectionsInput): readonly VirtualSection<GridEntry>[] {
   const { selectedDeviceId, selectedRoomId } = selection;
   const lone = selectedFillDevice(groups, selectedDeviceId);
   const { width, height } = fill;
@@ -335,10 +342,10 @@ function Grid({
   const perRow = columnsFor(inner, base.gap);
   const cell = { ...base, perRow, column: (inner + base.gap) / perRow - base.gap };
   const fill = {
-    width: Math.min(content, CONTAINER_WIDTH.dashboard),
+    width: content,
     height: base.fill,
   };
-  const sections = useGridSections(groups, perRow, status, selection, fill);
+  const sections = useGridSections({ groups, perRow, status, selection, fill });
   useGridLog({ width, columns: perRow, cell, sections, groups });
   return (
     <VirtualList

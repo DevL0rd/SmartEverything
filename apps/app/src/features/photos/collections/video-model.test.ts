@@ -64,7 +64,7 @@ describe('the Videos figures', () => {
     const stats = videoStatsOf(LIBRARY);
     expect(stats.videos).toBe('2,318');
     expect(stats.totalTime).toBe('61 h 12 min');
-    expect(stats.watching).toMatch(/^about 2\.\d days of watching$/);
+    expect(stats.watching).toMatch(/^≈2\.\d days$/);
     expect(stats.size).toMatch(/B$/);
     expect(stats.longest).toBe('48:10');
     expect(videoStatsOf(insightsOf({})).longest).toBeNull();
@@ -72,7 +72,7 @@ describe('the Videos figures', () => {
 
   it('says days of watching only from a full day of video', () => {
     expect(watchingText(23 * 60 * 60_000)).toBeNull();
-    expect(watchingText(41 * 60 * 60_000)).toBe('about 1.7 days of watching');
+    expect(watchingText(41 * 60 * 60_000)).toBe('≈1.7 days');
   });
 
   it('writes the subtitle only when there are videos', () => {

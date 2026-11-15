@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_PAYLOAD_BYTES } from './drive/mount/ops';
 
 const COUNT = z.int().nonnegative();
 const POSITIVE = z.int().positive();
@@ -22,11 +23,127 @@ export const DEFAULT_DESKTOP_DRIVE_CACHE: DesktopDriveCache = {
   cleanupSeconds: 60,
 };
 
+const KIB = 1024;
+const MIB = 1024 * KIB;
+
+export const MAX_BACKGROUND_WIRE_LIMIT = 65535;
+
+export const DESKTOP_DRIVE_READDIR_PLUS = ['off', 'auto', 'always'] as const;
+
+export const DESKTOP_DRIVE_UNTIL_CHANGED = 'changed';
+
+const KEEP = z.union([z.literal(DESKTOP_DRIVE_UNTIL_CHANGED), COUNT]);
+
+export const DESKTOP_DRIVE_FOLLOW_MAX_BACKGROUND = 'follow';
+
+export const DESKTOP_DRIVE_TUNING = z
+  .strictObject({
+    maxBackground: POSITIVE.max(MAX_BACKGROUND_WIRE_LIMIT),
+    congestionThreshold: z.union([z.literal(DESKTOP_DRIVE_FOLLOW_MAX_BACKGROUND), POSITIVE]),
+    maxRequestBytes: POSITIVE,
+    kernelReadaheadBytes: POSITIVE,
+    readAheadBytes: COUNT,
+    asyncRead: z.boolean(),
+    writebackCache: z.boolean(),
+    readdirPlus: z.enum(DESKTOP_DRIVE_READDIR_PLUS),
+    parallelDirops: z.boolean(),
+    entrySeconds: KEEP,
+    attrSeconds: KEEP,
+    negativeSeconds: KEEP,
+    closeWaitsForUpload: z.boolean(),
+    uploadDelaySeconds: COUNT,
+    fsyncWaitsForHub: z.boolean(),
+    uploadFiles: POSITIVE,
+    uploadFramesInFlight: POSITIVE,
+    pingSeconds: POSITIVE,
+    deadAfterSeconds: POSITIVE,
+    bulkFrameBytes: POSITIVE.max(MAX_PAYLOAD_BYTES),
+    prefetchSmallFiles: z.boolean(),
+  })
+  .refine((tuning) => tuning.deadAfterSeconds > tuning.pingSeconds, {
+    message: 'the dead-after time must be longer than the ping interval',
+    path: ['deadAfterSeconds'],
+  })
+  .readonly();
+
+export type DesktopDriveTuning = z.infer<typeof DESKTOP_DRIVE_TUNING>;
+
+export const DEFAULT_DESKTOP_DRIVE_TUNING: DesktopDriveTuning = {
+  maxBackground: 64,
+  congestionThreshold: DESKTOP_DRIVE_FOLLOW_MAX_BACKGROUND,
+  maxRequestBytes: MIB,
+  kernelReadaheadBytes: 128 * KIB,
+  readAheadBytes: 16 * MIB,
+  asyncRead: true,
+  writebackCache: true,
+  readdirPlus: 'auto',
+  parallelDirops: true,
+  entrySeconds: DESKTOP_DRIVE_UNTIL_CHANGED,
+  attrSeconds: DESKTOP_DRIVE_UNTIL_CHANGED,
+  negativeSeconds: DESKTOP_DRIVE_UNTIL_CHANGED,
+  closeWaitsForUpload: false,
+  uploadDelaySeconds: 0,
+  fsyncWaitsForHub: true,
+  uploadFiles: 4,
+  uploadFramesInFlight: 64,
+  pingSeconds: 10,
+  deadAfterSeconds: 30,
+  bulkFrameBytes: MIB,
+  prefetchSmallFiles: false,
+};
+
+export const DESKTOP_DRIVE_TUNING_REMOUNT_FIELDS = [
+  'maxBackground',
+  'congestionThreshold',
+  'maxRequestBytes',
+  'kernelReadaheadBytes',
+  'asyncRead',
+  'writebackCache',
+  'readdirPlus',
+  'parallelDirops',
+] as const satisfies readonly (keyof DesktopDriveTuning)[];
+
+export const DESKTOP_DRIVE_TUNING_WINDOWS_FIELDS = [
+  'maxBackground',
+  'congestionThreshold',
+  'kernelReadaheadBytes',
+  'readdirPlus',
+] as const satisfies readonly (keyof DesktopDriveTuning)[];
+
+export const DESKTOP_DRIVE_PLATFORMS = ['linux', 'macos', 'windows'] as const;
+
+export const DESKTOP_DRIVE_TUNING_LIMITS = z
+  .strictObject({
+    platform: z.enum(DESKTOP_DRIVE_PLATFORMS),
+    pageBytes: POSITIVE.nullable(),
+    maxUserBackground: POSITIVE.nullable(),
+    maxUserCongestionThreshold: POSITIVE.nullable(),
+    maxRequestBytes: POSITIVE,
+    kernelReadaheadOfferBytes: POSITIVE.nullable(),
+  })
+  .readonly();
+
+export type DesktopDriveTuningLimits = z.infer<typeof DESKTOP_DRIVE_TUNING_LIMITS>;
+
+export const DESKTOP_DRIVE_TUNING_STATE = z
+  .strictObject({
+    saved: DESKTOP_DRIVE_TUNING,
+    applied: z
+      .array(z.strictObject({ placementId: NAME, tuning: DESKTOP_DRIVE_TUNING }).readonly())
+      .readonly(),
+    limits: DESKTOP_DRIVE_TUNING_LIMITS.nullable(),
+  })
+  .readonly();
+
+export type DesktopDriveTuningState = z.infer<typeof DESKTOP_DRIVE_TUNING_STATE>;
+
 export const DESKTOP_DRIVE_COMMAND = z
   .discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('again') }),
+    z.strictObject({ kind: z.literal('remount') }),
     z.strictObject({ kind: z.literal('clear-cache') }),
     z.strictObject({ kind: z.literal('cache'), cache: DESKTOP_DRIVE_CACHE }),
+    z.strictObject({ kind: z.literal('tuning'), tuning: DESKTOP_DRIVE_TUNING }),
     z.strictObject({ kind: z.literal('pin'), mount: NAME, path: NAME }),
     z.strictObject({ kind: z.literal('unpin'), mount: NAME, path: NAME }),
     z.strictObject({ kind: z.literal('sync-pause') }),
@@ -70,6 +187,7 @@ export const DESKTOP_DRIVE_STATE = z
       .nullable(),
     fuse: FUSE,
     cache: DESKTOP_DRIVE_CACHE,
+    tuning: DESKTOP_DRIVE_TUNING_STATE,
   })
   .readonly();
 

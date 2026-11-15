@@ -6,6 +6,7 @@ import {
   LIBRARY_SCOPE,
   LIVE_NOTICE,
   PHOTOS_AI_NOTICE,
+  PHOTOS_PEOPLE_NOTICE,
   PHOTOS_CLIENT_PREFS,
   PHOTOS_ENDPOINTS,
   PHOTO_AI_MODELS_UPDATE,
@@ -146,6 +147,16 @@ describe('smart features', () => {
     expect(LIVE_NOTICE.parse(notice)).toStrictEqual(notice);
     expect(PHOTOS_AI_NOTICE.safeParse({ ...notice, done: 6 }).success).toBe(false);
     expect(PHOTOS_AI_NOTICE.safeParse({ ...notice, stage: 'ocr' }).success).toBe(false);
+  });
+
+  it('registers the people changed notice for one person', () => {
+    const notice = {
+      type: 'photos_people_changed',
+      profileId: '00000000-0000-4000-8000-000000000001',
+    };
+    expect(PHOTOS_PEOPLE_NOTICE.parse(notice)).toStrictEqual(notice);
+    expect(LIVE_NOTICE.parse(notice)).toStrictEqual(notice);
+    expect(PHOTOS_PEOPLE_NOTICE.safeParse({ type: 'photos_people_changed' }).success).toBe(false);
   });
 
   it('adds the Photos analysis usage work', () => {

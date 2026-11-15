@@ -63,6 +63,25 @@ it('scans large desktop originals as metadata and retains photo/video scope with
   expect(await ports.conditions.read()).toMatchObject({ wifi: true, metered: false });
 });
 
+it('backs up only the chosen computer folders when a selection is set', async () => {
+  const picture: DesktopPhotoItem = {
+    ...item,
+    id: 'b'.repeat(64),
+    name: 'trip.jpg',
+    mimeType: 'image/jpeg',
+    video: false,
+    folder: '/home/person/Pictures/Trip',
+  };
+  list.mockResolvedValue({ items: [item, picture], issues: [] });
+  const ports = desktopBackupAdapters(photos, connection, 'scope');
+  expect(
+    await ports.media.listIds({ albumIds: ['/home/person/Pictures/Trip'], includeVideos: true }),
+  ).toEqual(new Set([picture.id]));
+  expect(await ports.media.listIds({ albumIds: [], includeVideos: true })).toEqual(
+    new Set([item.id, picture.id]),
+  );
+});
+
 it('reports folder scan failures instead of marking an incomplete inventory backed up', async () => {
   list.mockResolvedValue({ items: [], issues: [{ folder: 'Pictures', message: 'Access denied' }] });
   const ports = desktopBackupAdapters(photos, connection, 'scope');

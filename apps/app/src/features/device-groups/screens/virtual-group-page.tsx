@@ -57,9 +57,7 @@ function ListTop({
 }): ReactNode {
   return (
     <View className="gap-4 px-gutter pb-2">
-      <View className="max-w-xl">
-        <Stage data={data} page={page} focus={focus} />
-      </View>
+      <Stage data={data} page={page} focus={focus} />
       <LostBanner data={data} group={group} page={page} />
     </View>
   );
@@ -73,7 +71,7 @@ function ListBottom({
   const memberIds = useMemo(() => data.members.map((member) => member.id), [data.members]);
   return (
     <View className="px-gutter">
-      <View className="w-full max-w-detail gap-4 pt-4">
+      <View className="w-full gap-4 pt-4">
         <Today data={data} page={page} />
         <ActivitySection name={data.name} deviceIds={memberIds} />
         <AutomationsSection uses={uses} />

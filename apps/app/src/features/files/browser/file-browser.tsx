@@ -127,7 +127,7 @@ export function FileBrowser<O>({ browser, slots = {} }: FileBrowserProps<O>): Re
     <View onLayout={measured.onLayout} className="min-h-0 flex-1 gap-3">
       {measured.width === 0 ? null : (
         <>
-          <Toolbar browser={browser} session={session} wide={wide} />
+          <Toolbar browser={browser} session={session} />
           {docked ? null : <BrowserSelection browser={browser} docked={false} />}
           <View className="min-h-0 flex-1 flex-row gap-4">
             <Card

@@ -204,7 +204,7 @@ function TokenLists({
           const start = Math.floor((index * tokens.length) / columns);
           const end = Math.floor(((index + 1) * tokens.length) / columns);
           return (
-            <List inset key={index} className="min-w-0 max-w-reading flex-1">
+            <List inset key={index} className="min-w-0 flex-1">
               {tokens.slice(start, end).map((token) => (
                 <TokenRow key={token.id} token={token} now={now} />
               ))}
@@ -227,7 +227,6 @@ export function TokensScreen(): ReactNode {
   return (
     <SettingsFrame
       page="integrations/tokens"
-      contentWidth={isNative() ? 'reading' : 'full'}
       {...(banner === undefined ? {} : { banner })}
       primaryAction={{
         label: 'New token',

@@ -305,6 +305,12 @@ describe('drive notices in the live scope', () => {
     expect(seenBy(hearing(owner), notice, test.store)).toBeNull();
   });
 
+  it('tells only the person whose people and pets were regrouped', () => {
+    const notice = { type: 'photos_people_changed', profileId: ann.profileId } as const;
+    expect(seenBy(hearing(ann), notice, test.store)).toEqual(notice);
+    expect(seenBy(hearing(bob), notice, test.store)).toBeNull();
+  });
+
   it('hides a notice about a root that no longer exists from a member', () => {
     const gone = '0d000000-0000-4000-8000-0000000000ff';
     expect(driveNoticeSeenBy(hearing(ann), changed([gone], [], []), test.store)).toBeNull();

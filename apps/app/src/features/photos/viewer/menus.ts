@@ -1,8 +1,9 @@
 import type { DriveAlbum } from '@smarteverything/domain';
 import type { MenuItem } from '../../../components/menu';
+import { SAVE_LABEL } from '../library/save-target';
 
 export interface MoreMenuInput {
-  readonly onDownload: () => void;
+  readonly onSave: () => void;
   readonly onShowInDrive: () => void;
   readonly onTrash: () => void;
   readonly onRevert: (() => void) | null;
@@ -12,14 +13,10 @@ export interface MoreMenuInput {
 export function albumMenuItems(
   albums: readonly DriveAlbum[],
   onAdd: (albumId: string, title: string) => void,
+  onNew?: () => void,
 ): readonly MenuItem[] {
   const manual = albums.filter((album) => album.kind === 'manual');
-  if (manual.length === 0) {
-    return [
-      { label: 'No albums yet', icon: 'layers', disabled: true, onPress: (): void => undefined },
-    ];
-  }
-  return manual.map((album) => ({
+  const picks: readonly MenuItem[] = manual.map((album) => ({
     id: album.id,
     label: album.title,
     icon: 'layers',
@@ -27,11 +24,18 @@ export function albumMenuItems(
       onAdd(album.id, album.title);
     },
   }));
+  if (onNew !== undefined) {
+    return [...picks, { id: 'new-album', label: 'New album…', icon: 'plus', onPress: onNew }];
+  }
+  if (manual.length > 0) return picks;
+  return [
+    { label: 'No albums yet', icon: 'layers', disabled: true, onPress: (): void => undefined },
+  ];
 }
 
 export function moreMenuItems(input: MoreMenuInput): readonly MenuItem[] {
   return [
-    { label: 'Download original', icon: 'download', onPress: input.onDownload },
+    { label: SAVE_LABEL, icon: 'download', onPress: input.onSave },
     { label: 'Show in Drive', icon: 'folder', onPress: input.onShowInDrive },
     ...(input.onRevert === null
       ? []

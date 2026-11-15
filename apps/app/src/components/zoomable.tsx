@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useRef, useState } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useMotion } from '../design/motion';
+import { useWheelZoom, type WheelTurn, type WheelZoom } from './wheel-zoom';
 
 export const ZOOM_MAX = 5;
 export const ZOOM_TAP = 2.5;
@@ -26,6 +27,23 @@ export function tapZoomOf(zoom: number): number {
   return zoom > 1 ? 1 : ZOOM_TAP;
 }
 
+const WHEEL_DOUBLING_PIXELS = 300;
+
+export interface ZoomView {
+  readonly zoom: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+export function wheelZoomed(view: ZoomView, turn: WheelTurn): ZoomView {
+  const zoom = clampZoom(view.zoom * 2 ** (-turn.pixels / WHEEL_DOUBLING_PIXELS));
+  if (zoom === 1) return { zoom, x: 0, y: 0 };
+  const ratio = zoom / view.zoom;
+  const atX = turn.x - turn.width / 2;
+  const atY = turn.y - turn.height / 2;
+  return { zoom, x: atX - (atX - view.x) * ratio, y: atY - (atY - view.y) * ratio };
+}
+
 export interface ZoomState {
   readonly zoom: SharedValue<number>;
   readonly x: SharedValue<number>;
@@ -34,6 +52,15 @@ export interface ZoomState {
 
 export function useZoomState(): ZoomState {
   return { zoom: useSharedValue(1), x: useSharedValue(0), y: useSharedValue(0) };
+}
+
+function useWheel(frame: RefObject<View | null>, wheel: WheelZoom, state: ZoomState): void {
+  useWheelZoom(frame, wheel, (turn) => {
+    const next = wheelZoomed({ zoom: state.zoom.get(), x: state.x.get(), y: state.y.get() }, turn);
+    state.zoom.set(next.zoom);
+    state.x.set(next.x);
+    state.y.set(next.y);
+  });
 }
 
 interface ZoomGesture extends ZoomState {
@@ -77,6 +104,7 @@ export interface ZoomableProps {
   readonly style?: StyleProp<ViewStyle>;
   readonly className?: string;
   readonly state?: ZoomState;
+  readonly wheel: WheelZoom;
 }
 
 export function Zoomable({
@@ -85,10 +113,14 @@ export function Zoomable({
   style,
   className,
   state,
+  wheel,
 }: ZoomableProps): ReactNode {
   const [zoomed, setZoomed] = useState(false);
+  const frame = useRef<View>(null);
   const own = useZoomState();
-  const { gesture, zoom, x, y } = useZoomGesture(zoomed, state ?? own);
+  const used = state ?? own;
+  useWheel(frame, wheel, used);
+  const { gesture, zoom, x, y } = useZoomGesture(zoomed, used);
   const moved = useAnimatedStyle(() => ({
     transform: [{ translateX: x.get() }, { translateY: y.get() }, { scale: zoom.get() }],
   }));
@@ -106,7 +138,12 @@ export function Zoomable({
   );
   return (
     <GestureDetector gesture={gesture}>
-      <View style={style} className={className ?? 'size-full overflow-hidden'}>
+      <View
+        ref={frame}
+        collapsable={false}
+        style={style}
+        className={className ?? 'size-full overflow-hidden'}
+      >
         <Animated.View style={moved} className="size-full">
           {children}
         </Animated.View>

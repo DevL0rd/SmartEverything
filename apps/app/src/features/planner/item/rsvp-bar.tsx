@@ -2,19 +2,22 @@ import type { PlannerGuestRow, PlannerItemRow, PlannerRsvpAnswer } from '@smarte
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
+import { Card } from '../../../components/card';
 import type { IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
+import { cn } from '../../../design/cn';
+import { useIsPhone } from '../../../design/size-class';
 import { useRow } from '../../../store/selectors';
 import type { PlannerPerson } from '../data';
 import { useGuestWrites, useMyGuest, type RsvpChoice } from '../data/guests';
-import { ANSWER_ORDER } from './guests-model';
+import { ANSWER_ORDER, RESPONSE_TEXT } from './guests-model';
 import { reported } from './item-actions';
 
 const ANSWER: Readonly<Record<PlannerRsvpAnswer, { label: string; icon: IconName }>> = {
-  yes: { label: 'Yes', icon: 'check' },
-  maybe: { label: 'Maybe', icon: 'circle' },
-  no: { label: 'No', icon: 'x' },
+  yes: { label: RESPONSE_TEXT.yes, icon: 'check' },
+  maybe: { label: RESPONSE_TEXT.maybe, icon: 'circleHelp' },
+  no: { label: RESPONSE_TEXT.no, icon: 'x' },
 };
 
 export function noteOf(text: string): string | null {
@@ -37,8 +40,10 @@ interface BarProps {
   readonly guest: PlannerGuestRow;
   readonly organiser: string;
   readonly disabled: boolean;
-  readonly onAnswer: (choice: RsvpChoice) => void;
+  readonly onAnswer: (choice: RsvpChoice) => Promise<unknown>;
 }
+
+const FAILED = 'Couldn’t send your answer';
 
 function Answers({
   guest,
@@ -46,17 +51,19 @@ function Answers({
   onAnswer,
   note,
 }: BarProps & { readonly note: string }): ReactNode {
+  const phone = useIsPhone();
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <View className={cn('flex-row gap-2', !phone && 'self-start')}>
       {ANSWER_ORDER.map((answer) => (
         <Button
           key={answer}
           label={ANSWER[answer].label}
-          icon={ANSWER[answer].icon}
+          {...(phone ? {} : { icon: ANSWER[answer].icon })}
+          grow={phone}
           variant={guest.response === answer ? 'filled' : 'outlined'}
           disabled={disabled}
           onPress={() => {
-            onAnswer({ response: answer, note: noteOf(note) });
+            reported(onAnswer({ response: answer, note: noteOf(note) }), FAILED);
           }}
         />
       ))}
@@ -67,27 +74,37 @@ function Answers({
 function Bar(props: BarProps): ReactNode {
   const { guest, organiser, disabled, onAnswer } = props;
   const [note, setNote] = useState(guest.note ?? '');
+  const [sent, setSent] = useState(false);
   const answered = guest.response !== 'needs_action';
   return (
-    <View className="gap-3 rounded-lg border-hairline border-outline-variant bg-surface-2 p-3">
+    <Card>
       <Text variant="label">{questionOf(guest, organiser)}</Text>
       <Answers {...props} note={note} />
       {answered ? (
         <TextField
           label="Note for the organiser"
           value={note}
-          onChange={setNote}
+          onChange={(value) => {
+            setNote(value);
+            setSent(false);
+          }}
           onBlur={() => {
             const next = noteOf(note);
             if (next !== guest.note && guest.response !== 'needs_action') {
-              onAnswer({ response: guest.response, note: next });
+              reported(
+                onAnswer({ response: guest.response, note: next }).then(() => {
+                  setSent(true);
+                }),
+                FAILED,
+              );
             }
           }}
           placeholder="Running ten minutes late"
           disabled={disabled}
+          {...(sent ? { helper: 'Note sent' } : {})}
         />
       ) : null}
-    </View>
+    </Card>
   );
 }
 
@@ -110,9 +127,7 @@ export function RsvpBar({
       guest={guest}
       organiser={organiser}
       disabled={disabled}
-      onAnswer={(choice) => {
-        reported(writes.respond(guest, choice), 'Couldn’t send your answer');
-      }}
+      onAnswer={(choice) => writes.respond(guest, choice)}
     />
   );
 }

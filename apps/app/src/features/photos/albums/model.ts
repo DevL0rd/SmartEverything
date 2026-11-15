@@ -183,8 +183,13 @@ export function leafIcon(leaf: SmartRuleLeaf): IconName {
   }
 }
 
+function midSentence(text: string): string {
+  return /^[A-Z][a-z]/.test(text) ? `${text.charAt(0).toLowerCase()}${text.slice(1)}` : text;
+}
+
 export function ruleLine(rule: SmartRule): string {
-  return rule.rules.map(leafText).join(rule.match === 'all' ? ' · ' : ' or ');
+  if (rule.match === 'all') return rule.rules.map(leafText).join(' · ');
+  return rule.rules.map((leaf, index) => (index === 0 ? leafText(leaf) : midSentence(leafText(leaf)))).join(' or ');
 }
 
 export function ruleLead(rule: SmartRule): string {

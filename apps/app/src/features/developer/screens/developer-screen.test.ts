@@ -16,7 +16,11 @@ vi.mock('../../../components/rows', () => ({ NavRow: (): null => null }));
 vi.mock('../../../components/section', () => ({ List: childrenOf, Section: childrenOf }));
 vi.mock('../../../components/text', () => ({ Text: childrenOf }));
 vi.mock('../../../settings/env', () => ({
-  useSettingEnv: (): { readonly owner: boolean; readonly developer: boolean; readonly platform: 'web' } => ({
+  useSettingEnv: (): {
+    readonly owner: boolean;
+    readonly developer: boolean;
+    readonly platform: 'web';
+  } => ({
     owner: true,
     developer: fixture.developer,
     platform: 'web',
@@ -24,8 +28,8 @@ vi.mock('../../../settings/env', () => ({
 }));
 vi.mock('../../../settings/settings-focus', () => ({ useSettingsFocus: vi.fn() }));
 vi.mock('../../../settings/settings-frame', () => ({
-  SettingsFrame: ({ contentWidth, children }: SettingsFrameProps): ReactNode =>
-    createElement('main', { 'data-content-width': contentWidth }, children),
+  SettingsFrame: ({ children }: SettingsFrameProps): ReactNode =>
+    createElement('main', null, children),
 }));
 vi.mock('../../../settings/settings-row', () => ({
   AnchoredSettingRow: ({ setting }: { readonly setting: SettingDefinition }): ReactNode =>
@@ -57,7 +61,6 @@ describe('Developer screen layout', () => {
     const html = renderToStaticMarkup(createElement(DeveloperScreen));
     const repair = html.indexOf('developer.error-investigations');
     const logs = html.indexOf('developer.log-level');
-    expect(html).toContain('data-content-width="full"');
     expect(repair).toBeGreaterThan(-1);
     expect(logs).toBeGreaterThan(repair);
     expect(html).toContain('developer.perf.sampling');

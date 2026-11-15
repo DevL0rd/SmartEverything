@@ -43,7 +43,7 @@ export function grantEndOptionsOf(
   now: number,
 ): readonly SelectOption<GrantEnd>[] {
   return [
-    { value: 'never', label: 'Never' },
+    { value: 'never', label: NO_END_LABEL },
     { value: 'day', label: PRESET_LABEL.day },
     { value: 'week', label: PRESET_LABEL.week },
     { value: 'month', label: PRESET_LABEL.month },

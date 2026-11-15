@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { useConnection } from '../../../api/transport';
 import { notifyFailure } from '../../../components/toast-store';
 import { appPlatform, desktopBridge, type DesktopBridge } from '../../../design/platform';
-import { useIsOwner, useSyncStatus } from '../../../store/selectors';
+import { useIsOwner } from '../../../store/selectors';
 import { useHubUpdateSource } from '../../hub-updates';
 import { ANDROID_APK_OFFER_KEY } from './android-apk';
 import { androidBuild } from './android-build';
@@ -13,7 +13,7 @@ import { holdsUpdate, type AppUpdateState } from '../model/update-state';
 
 const log = new Logger('app.app-updates');
 
-export type CheckBlock = 'unpaired' | 'offline';
+export type CheckBlock = 'unpaired';
 
 interface UpdateChecks {
   readonly available: boolean;
@@ -44,21 +44,19 @@ function useCheckRun(work: () => Promise<unknown>): Pick<UpdateChecks, 'check' |
   };
 }
 
-function blockOf(paired: boolean, live: boolean): CheckBlock | null {
-  if (!paired) return 'unpaired';
-  return live ? null : 'offline';
+function blockOf(paired: boolean): CheckBlock | null {
+  return paired ? null : 'unpaired';
 }
 
 export function useUpdateChecks(state: AppUpdateState, actions: AppUpdateActions): UpdateChecks {
   const queries = useQueryClient();
   const paired = useConnection().status === 'paired';
-  const live = useSyncStatus().status === 'live';
   const owner = useIsOwner();
   const hubSource = useHubUpdateSource();
   const installer = desktopBridge();
   const android = appPlatform() === 'android' && !__DEV__ && androidBuild() !== undefined;
   const canCheckHub = paired && owner;
-  const canCheckApk = paired && live && android;
+  const canCheckApk = paired && android;
   const held = holdsUpdate(state);
   const run = useCheckRun(() =>
     Promise.all([
@@ -82,7 +80,7 @@ export function useUpdateChecks(state: AppUpdateState, actions: AppUpdateActions
   );
   return {
     held,
-    blocked: blockOf(paired, live),
+    blocked: blockOf(paired),
     available: canCheckHub || canCheckApk || installer !== null || state.kind !== 'unsupported',
     checking: run.checking,
     installer,

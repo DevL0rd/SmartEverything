@@ -156,7 +156,6 @@ function seed(item: Seed): string {
     item_id: id,
     time_source: 'metadata',
     tz_offset_min: item.offset ?? null,
-    thumbhash: null,
     preview_state: 'none',
     preview_reason: null,
     poster_state: 'none',

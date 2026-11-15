@@ -5,15 +5,17 @@ import { View } from 'react-native';
 import type { PlannerStopwatchAction } from '../../api/planner';
 import { Button } from '../../components/button';
 import { Card } from '../../components/card';
+import { Skeleton } from '../../components/skeleton';
 import { Text } from '../../components/text';
 import type { Tone } from '../../components/tone';
 import { notifyFailure } from '../../components/toast-store';
 import { cn } from '../../design/cn';
 import { useAreaWidth } from '../../design/size-class';
+import { useLoaded } from '../../store/selectors';
 import { usePlannerClockWrites, usePlannerStopwatch } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
 import { useHubOffline } from './frame/hub-status';
-import { frameLayoutOf } from './frame/sections';
+import { shellLayoutOf } from '../../components/page-shell/layout';
 import { LapBars } from './lap-bars';
 import { deltaText, deltaToneOf, lapRowsOf, lapTime, type LapRow } from './lap-model';
 import { StopwatchFace } from './stopwatch-face';
@@ -190,11 +192,11 @@ function Laps({
     );
   }
   return (
-    <View className="flex-row items-start gap-4">
-      <View className="min-w-0 flex-1">
+    <View className="flex-row flex-wrap items-start gap-4">
+      <View className="min-w-72 flex-3">
         <LapBars laps={laps} compact={false} />
       </View>
-      <View className="w-96">
+      <View className="min-w-80 flex-2">
         <LapTable laps={laps} compact={false} />
       </View>
     </View>
@@ -223,15 +225,35 @@ function Dial({
   return compact ? body : <Card>{body}</Card>;
 }
 
+function StopwatchSkeleton({ compact }: { readonly compact: boolean }): ReactNode {
+  const body = (
+    <View aria-busy className="items-center gap-4 py-4">
+      <Skeleton shape="line" className="h-20 w-72 rounded-md" />
+      <Skeleton shape="text" className="w-56" />
+      <View className="flex-row gap-3">
+        <Skeleton shape="line" className="h-12 w-24 rounded-full" />
+        <Skeleton shape="line" className="h-12 w-28 rounded-full" />
+        <Skeleton shape="line" className="h-12 w-24 rounded-full" />
+      </View>
+    </View>
+  );
+  return compact ? body : <Card>{body}</Card>;
+}
+
 export function StopwatchPage(): ReactNode {
   const stopwatch = usePlannerStopwatch(null);
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const loaded = useLoaded();
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   return (
-    <ClockFrame section="stopwatch" subtitle={subtitleOf(stopwatch)}>
-      <View className="gap-4">
-        <Dial stopwatch={stopwatch} compact={compact} />
-        <Laps laps={stopwatch?.laps ?? []} compact={compact} />
-      </View>
+    <ClockFrame section="stopwatch" {...(loaded ? { subtitle: subtitleOf(stopwatch) } : {})}>
+      {loaded ? (
+        <View className="gap-4">
+          <Dial stopwatch={stopwatch} compact={compact} />
+          <Laps laps={stopwatch?.laps ?? []} compact={compact} />
+        </View>
+      ) : (
+        <StopwatchSkeleton compact={compact} />
+      )}
     </ClockFrame>
   );
 }

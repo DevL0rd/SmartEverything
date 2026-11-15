@@ -15,6 +15,7 @@ export const REGION_PAGES: readonly SettingsPageDefinition[] = [
   {
     id: 'region',
     title: 'Region & currency',
+    short: 'Region',
     icon: 'globe',
     parent: null,
     group: 'App',

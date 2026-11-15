@@ -22,6 +22,7 @@ import {
   type SearchQuery,
 } from '../../files';
 import { ENTRY_LABEL, entryLineOf, isContentItem, isEntryItem } from '../model/item-content';
+import { foldersOf, wasInText } from '../trash/trash-model';
 import {
   type DriveNode,
   type DriveNodeContext,
@@ -151,6 +152,7 @@ export function infoRowsOf(
   facts: {
     readonly when: (at: string) => string;
     readonly nameOf: (profileId: string) => string | null;
+    readonly rootLabelOf: (rootId: string) => string | null;
   },
 ): readonly InfoRow[] {
   const { origin } = node;
@@ -158,7 +160,14 @@ export function infoRowsOf(
     return [
       { key: 'kind', label: 'Kind', value: KIND_TEXT[node.kind] },
       ...(node.size === null ? [] : [{ key: 'size', label: 'Size', value: bytes(node.size) }]),
-      { key: 'was', label: 'Was in', value: origin.entry.originalRelPath },
+      {
+        key: 'was',
+        label: 'Was in',
+        value: wasInText(
+          facts.rootLabelOf(origin.entry.rootId),
+          foldersOf(origin.entry.originalRelPath),
+        ),
+      },
       { key: 'deleted', label: 'Deleted', value: facts.when(origin.entry.deletedAt) },
       { key: 'purge', label: 'Gone for good', value: facts.when(origin.entry.purgeAt) },
     ];

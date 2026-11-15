@@ -3,13 +3,14 @@ package expo.modules.healthconnect.listening
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import expo.modules.healthconnect.voice.VoiceProbability
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceGateFixtureTest {
   private val sampleRate = 16_000
-  private val frame = VoiceGate.FRAME_SAMPLES
+  private val frame = VoiceFrames.FRAME_SAMPLES
 
   private fun fixture(name: String): ShortArray {
     val bytes = File("$FIXTURES/$name.pcm").readBytes()
@@ -29,8 +30,8 @@ class VoiceGateFixtureTest {
   private fun fedPositions(pcm: ShortArray, chunk: Int): List<Int> {
     val fedAt = ArrayList<Int>()
     var position = 0
+    val frames = VoiceFrames(Loudness)
     val gate = VoiceGate(
-      { block -> LevelOf.dbfs(block) > VOICE_DBFS },
       ListeningCounters({ 0 }, {}),
       {},
       { block -> repeat(block.size) { fedAt.add(position - block.size + it) } }
@@ -38,7 +39,8 @@ class VoiceGateFixtureTest {
     var offset = 0
     while (offset < pcm.size) {
       position = minOf(offset + chunk, pcm.size)
-      gate.hear(pcm.copyOfRange(offset, position))
+      val chunked = pcm.copyOfRange(offset, position)
+      gate.hear(chunked, frames.split(chunked))
       offset = position
     }
     return fedAt
@@ -62,6 +64,14 @@ class VoiceGateFixtureTest {
       assertTrue("$name preroll", lead >= 0)
       assertTrue("$name gated", gated > 20.0)
     }
+  }
+
+  private object Loudness : VoiceProbability {
+    override fun probability(frame: ShortArray): Float = if (LevelOf.dbfs(frame) > VOICE_DBFS) 1f else 0f
+
+    override fun reset() = Unit
+
+    override fun close() = Unit
   }
 
   companion object {

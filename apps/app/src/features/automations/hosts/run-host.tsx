@@ -51,7 +51,7 @@ function Run({
   const onReplay = useReplay();
   const name = useAutomations().byId.get(automationId)?.name ?? null;
   return (
-    <PageShell title={runPageTitle(name)} width="full" scroll={false}>
+    <PageShell title={runPageTitle(name)} scroll={false}>
       <RunScreen
         runId={runId}
         options={options}

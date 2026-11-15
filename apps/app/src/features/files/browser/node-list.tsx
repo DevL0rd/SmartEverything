@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { createContext, use, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useIdiom } from '../../../design/platform';
@@ -71,13 +71,32 @@ export function useNodeList<O>(input: NodeListInput<O>): FileBrowserHandle<O> {
   });
 }
 
+const DockedContext = createContext<boolean | null>(null);
+
+class NoNodeListFrameError extends Error {
+  override readonly name = 'NoNodeListFrameError';
+  constructor() {
+    super('useSelectionDocked is used outside a NodeListFrame.');
+  }
+}
+
+export function useSelectionDocked(): boolean {
+  const docked = use(DockedContext);
+  if (docked === null) throw new NoNodeListFrameError();
+  return docked;
+}
+
+export type SelectionPlace = 'top' | 'inline';
+
 export function NodeListFrame<O>({
   browser,
   from,
+  selection,
   children,
 }: {
   readonly browser: FileBrowserHandle<O>;
   readonly from: string;
+  readonly selection: SelectionPlace;
   readonly children: ReactNode;
 }): ReactNode {
   const slots = useBrowserPanels(browser, { from });
@@ -86,9 +105,13 @@ export function NodeListFrame<O>({
   const { panels } = browser.state;
   return (
     <View onLayout={measured.onLayout} className="min-h-0 flex-1 gap-3">
-      {docked ? null : <BrowserSelection browser={browser} docked={false} />}
+      {docked || selection === 'inline' ? null : (
+        <BrowserSelection browser={browser} docked={false} />
+      )}
       <View className="min-h-0 flex-1 flex-row gap-4">
-        <View className="min-h-0 min-w-0 flex-1">{children}</View>
+        <View className="min-h-0 min-w-0 flex-1">
+          <DockedContext value={docked}>{children}</DockedContext>
+        </View>
         {panels.has('details') ? slots.details : null}
       </View>
       {docked ? <BrowserSelection browser={browser} docked /> : null}

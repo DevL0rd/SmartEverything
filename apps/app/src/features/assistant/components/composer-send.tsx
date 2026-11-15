@@ -132,7 +132,10 @@ function RoundButton({
         onPress={onPress}
         disabled={look === 'disabled'}
         onTone={look === 'primary' ? 'primary' : 'surface'}
-        className={cn('items-center justify-center rounded-full', pointer ? 'size-8' : 'size-10')}
+        className={cn(
+          'items-center justify-center rounded-full',
+          pointer ? 'size-8' : '-m-1 size-touch-min',
+        )}
         layerClassName="rounded-full"
         hitSlop={TOUCH_SLOP}
       >
@@ -198,7 +201,7 @@ function QueuePill({
         label={`${verb} message`}
         onPress={onPress}
         onTone="primary"
-        className="justify-center"
+        className={cn('justify-center', !pointer && '-my-1 min-h-touch-min')}
         layerClassName="rounded-full"
         hitSlop={TOUCH_SLOP}
       >

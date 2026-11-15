@@ -11,6 +11,7 @@ import type {
   SearchMatch,
   SearchQuery,
 } from '../source/types';
+import { useFileSearch } from '../source/source-hooks';
 import type { BrowserAction, BrowserFilter } from './browser-state';
 import {
   asksSource,
@@ -116,7 +117,7 @@ function useSourceSearch<O>(input: FilterInput<O>, words: readonly string[]): So
   const match = matchOf(input.filter, input.abilities);
   const deferred = useDeferredValue(input.filter.text);
   const asked = input.abilities.searchNames && asksSource(words, input.listing.complete, match);
-  const search = input.source.useSearch(input.location, queryOf(deferred, match, asked));
+  const search = useFileSearch(input.source, input.location, queryOf(deferred, match, asked));
   const state = searchStateOf({
     asked,
     online: input.abilities.searchNames,

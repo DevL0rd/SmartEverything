@@ -258,7 +258,6 @@ export function ComputerProcessesScreen({ deviceId }: { readonly deviceId: strin
     <ComputerFrame
       deviceId={deviceId}
       title="Processes"
-      width="dashboard"
       scroll={false}
       {...(open
         ? {

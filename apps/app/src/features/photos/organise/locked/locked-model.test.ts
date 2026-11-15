@@ -99,7 +99,6 @@ describe('locked folder viewer', () => {
     takenAt: 0,
     offsetMin: null,
     durationMs: null,
-    thumbhash: null,
     flags: 0,
     local: false,
   });

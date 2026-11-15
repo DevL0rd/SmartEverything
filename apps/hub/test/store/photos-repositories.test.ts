@@ -126,7 +126,6 @@ function mediaRow(itemId: string, fields: Partial<DriveMediaRow> = {}): DriveMed
     item_id: itemId,
     time_source: 'metadata',
     tz_offset_min: null,
-    thumbhash: null,
     preview_state: 'none',
     preview_reason: null,
     poster_state: 'none',
@@ -156,17 +155,15 @@ function second(): string {
 }
 
 describe('DriveMediaRepository', () => {
-  it('saves a record with its ThumbHash bytes and reads it back', () => {
+  it('saves a record and reads it back', () => {
     const media = new DriveMediaRepository(context);
     const saved = media.save(
       mediaRow(first(), {
-        thumbhash: new Uint8Array([1, 2, 3]),
         tz_offset_min: 420,
         preview_state: 'ready',
       }),
     );
     expect(media.byId(first())).toEqual(saved);
-    expect(Array.from(media.byId(first()).thumbhash ?? [])).toEqual([1, 2, 3]);
   });
 
   it('replaces the record when saved again', () => {

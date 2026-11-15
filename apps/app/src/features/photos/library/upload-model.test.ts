@@ -36,7 +36,7 @@ describe('upload rows', () => {
       share: 0,
       paused: true,
     });
-    expect(percentText(0.64)).toBe('64 %');
+    expect(percentText(0.64)).toBe('64\u00a0%');
   });
 
   it('says Already in library, Renamed and why a file failed', () => {

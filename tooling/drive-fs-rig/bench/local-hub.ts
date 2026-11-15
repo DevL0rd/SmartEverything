@@ -1,6 +1,6 @@
 import { copyFile, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { hubIdentity, pairComputer, placeDrive, driveRoots, type DriveRoots } from '../hub-api.ts';
+import { hubIdentity, pairComputer, mountDrive, driveRoots, type DriveRoots } from '../hub-api.ts';
 import {
   buildService,
   ownerToken,
@@ -8,6 +8,7 @@ import {
   waitForHub,
   writeServiceConfig,
 } from '../hub-setup.ts';
+import { isolatedServiceEnvironment } from '../isolation.ts';
 import { rememberHub } from '../lifecycle.ts';
 import { SCRATCH, files } from '../paths.ts';
 import { freePorts, startDetached, waitFor } from '../processes.ts';
@@ -41,11 +42,7 @@ export async function startLocalHub(reuseService: boolean): Promise<LocalHub> {
   const roots = await driveRoots(http, key);
   const paired = await pairComputer(http, key, 'A');
   await writeFile(bench.token, `${paired.token}\n`, { mode: 0o600 });
-  const placementId = await placeDrive(http, key, {
-    deviceId: paired.deviceId,
-    rootId: roots.owner,
-    mountName: 'rig-bench',
-  });
+  const placementId = await mountDrive(http, key, paired.deviceId);
   return {
     pid,
     http,
@@ -67,6 +64,7 @@ async function startHubWithProbe(): Promise<number> {
     args: [join(files.service, 'service.mjs')],
     log: join(files.logs, 'hub.log'),
     env: {
+      ...isolatedServiceEnvironment(),
       SMARTEVERYTHING_HUB_HOME: files.pointer,
       TMPDIR: '/var/tmp/claude-agents',
       SMARTEVERYTHING_MOUNT_BENCH: hubProbe,

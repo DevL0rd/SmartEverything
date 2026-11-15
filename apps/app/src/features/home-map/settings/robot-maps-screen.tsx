@@ -228,7 +228,7 @@ function RobotSections(): ReactNode {
   if (robots.length === 0) {
     if (feeds === null) return null;
     return (
-      <View className="w-full max-w-reading self-start">
+      <View className="w-full self-start">
         <EmptyState
           icon="route"
           title="No robot maps yet"
@@ -240,7 +240,7 @@ function RobotSections(): ReactNode {
   return (
     <View className="flex-row flex-wrap items-start gap-section-gap">
       {robots.map((device) => (
-        <View key={device.id} className="min-w-0 max-w-reading grow shrink basis-96">
+        <View key={device.id} className="min-w-0 grow shrink basis-96">
           <RobotSection device={device} />
         </View>
       ))}
@@ -250,7 +250,7 @@ function RobotSections(): ReactNode {
 
 export function RobotMapsScreen(): ReactNode {
   return (
-    <SettingsFrame page={HOME_MAP_SETTINGS_PAGE} title={ROBOT_MAPS_TITLE} contentWidth="full">
+    <SettingsFrame page={HOME_MAP_SETTINGS_PAGE} title={ROBOT_MAPS_TITLE}>
       <Text variant="body" tone="variant" className="w-full max-w-reading self-start px-4">
         {ROBOT_MAPS_INTRO}
       </Text>

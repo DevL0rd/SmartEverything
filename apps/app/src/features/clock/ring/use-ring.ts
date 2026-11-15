@@ -167,6 +167,33 @@ export function useRingSubject(ref: RingSubjectRef): RingSubject {
   return ringSubjectOf(ref, { alarms, timers, items });
 }
 
+export interface RingRetry {
+  readonly retrying: boolean;
+  readonly retry: () => void;
+}
+
+export function useRingRetry(): RingRetry {
+  const client = useQueryClient();
+  const [retrying, setRetrying] = useState(false);
+  return {
+    retrying,
+    retry: (): void => {
+      setRetrying(true);
+      background(
+        Promise.all([
+          client.invalidateQueries({ queryKey: plannerKeys.prefix('rings') }),
+          client.invalidateQueries({ queryKey: plannerKeys.prefix('day') }),
+        ])
+          .catch(notifyFailure('Couldn’t reach the hub'))
+          .finally(() => {
+            setRetrying(false);
+          }),
+        'clock.ring_retry_failed',
+      );
+    },
+  };
+}
+
 export function leaveRing(): void {
   if (router.canGoBack()) {
     router.back();

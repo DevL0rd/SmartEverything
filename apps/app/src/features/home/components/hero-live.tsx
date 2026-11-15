@@ -6,7 +6,7 @@ import { href } from '../../../app-shell/hrefs';
 import type { MenuItem } from '../../../components/menu';
 import { PREFS, prefValueOf, savePref } from '../../../store/prefs';
 import { sameJson } from '../../../store/same-json';
-import { useDevices } from '../../../store/selectors';
+import { useFirstDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
 import { useVacuum } from '../../devices';
@@ -59,8 +59,12 @@ function RobotNoMap({ vacuum, map, menu }: NoMapProps & { readonly vacuum: Devic
   return <NoMapEntry map={map} robot={robot} menu={menu} />;
 }
 
+function isVacuum(device: Device): boolean {
+  return device.kind === 'vacuum';
+}
+
 export function HeroNoMap({ map, menu }: NoMapProps): ReactNode {
-  const vacuum = useDevices().find((device) => device.kind === 'vacuum') ?? null;
+  const vacuum = useFirstDevice(isVacuum);
   return vacuum === null ? (
     <NoMapEntry map={map} menu={menu} />
   ) : (

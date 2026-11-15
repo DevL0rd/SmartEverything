@@ -83,9 +83,9 @@ export class SharingReader {
           ownerProfileId: row.owner_profile_id,
           role: row.role,
           joined: row.joined === 1,
-          memberIds: this.store.photoAlbumMembers
+          members: this.store.photoAlbumMembers
             .forAlbum(row.id)
-            .map((member) => member.profileId),
+            .map((member) => ({ profileId: member.profileId, role: member.role })),
           itemCount: row.item_count,
           unread: this.unreadIn(actor, row.id, seen[row.id] ?? ''),
           updatedAt: row.updated_at,

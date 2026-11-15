@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useWindowSize } from '../../../design/size-class';
-import { useIsFocused, useRouter } from 'expo-router';
+import { useIsFocused } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { ToastModal } from '../../../components/toast-modal';
 import { IconButton } from '../../../components/icon-button';
-import { OverflowButton, type MenuSubpageNavigation } from '../../../components/menu';
+import type { MenuSubpageNavigation } from '../../../components/menu';
+import { PageMenu } from '../../../components/page-menu';
 import { CameraDots } from './camera-dots';
 import { EdgeScrim } from '../../../components/edge-scrim';
 import { ShellTitle } from '../../../components/page-shell/shell-parts';
@@ -111,7 +112,6 @@ export function ViewerHeading({ viewer }: { readonly viewer: Viewer }): ReactNod
 }
 
 function TopBar({ viewer, immersive }: TopBarProps): ReactNode {
-  const router = useRouter();
   const { entry } = viewer;
   return (
     <View
@@ -131,7 +131,7 @@ function TopBar({ viewer, immersive }: TopBarProps): ReactNode {
         {viewer.live.state.kind === 'live' ? <LiveChip /> : null}
       </View>
       <SwitchButton step={1} viewer={viewer} />
-      <OverflowButton
+      <PageMenu
         items={[
           {
             label: 'Stream info',
@@ -141,14 +141,8 @@ function TopBar({ viewer, immersive }: TopBarProps): ReactNode {
             },
             subpage: streamInfoSubpage(viewer.live),
           },
-          {
-            label: 'Camera settings',
-            icon: 'settings',
-            onPress: (): void => {
-              router.navigate(href.settings.camera(entry.device.id));
-            },
-          },
         ]}
+        settings={{ href: href.settings.camera(entry.device.id), label: 'Camera settings' }}
       />
     </View>
   );

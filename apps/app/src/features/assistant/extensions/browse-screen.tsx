@@ -135,6 +135,22 @@ function useBrowseSections(
   return browseSections({ ...model.selection, query }, installed.data, pages, includeLocal);
 }
 
+function SourceBanner({ model }: { readonly model: BrowseModel }): ReactNode {
+  const source = model.selection.source;
+  if (source === undefined) return null;
+  return (
+    <View className="w-full pb-3">
+      <Banner
+        tone="info"
+        title="Browsing one source"
+        body={source.url}
+        wrapBody
+        action={{ label: 'All sources', onPress: model.clearSource, variant: 'outlined' }}
+      />
+    </View>
+  );
+}
+
 function BrowseList({
   kind,
   model,
@@ -147,34 +163,29 @@ function BrowseList({
   const installed = useExtensions();
   const sections = useBrowseSections(model, installed);
   const noun = kind === 'skill' ? 'skills' : 'extensions';
-  const source = model.selection.source;
   return (
     <>
-      {source === undefined ? null : (
-        <View className="w-full max-w-reading pb-3">
-          <Banner
-            tone="info"
-            title="Browsing one source"
-            body={source.url}
-            wrapBody
-            action={{ label: 'All sources', onPress: model.clearSource, variant: 'outlined' }}
-          />
-        </View>
-      )}
-      <VirtualList
-        header={
-          <View className="gap-3 pb-3">
-            <BrowseStatus kind={kind} installed={installed} model={model} />
-            <ImportRow kind={kind} onImport={onImport} />
-          </View>
-        }
-        sections={sections}
-        keyOf={browseItemKey}
-        renderItem={(row) => <BrowseRow row={row} />}
-        {...(model.discovery.error === null ? { onEndReached: model.loadMore } : {})}
-        footer={<BrowseFooter model={model} />}
-        empty={<BrowseEmpty noun={noun} installed={installed} model={model} />}
-      />
+      <SourceBanner model={model} />
+      <View className="-mx-gutter min-h-0 flex-1">
+        <VirtualList
+          header={
+            <View className="gap-3 px-gutter pb-3">
+              <BrowseStatus kind={kind} installed={installed} model={model} />
+              <ImportRow kind={kind} onImport={onImport} />
+            </View>
+          }
+          sections={sections}
+          keyOf={browseItemKey}
+          renderItem={(row) => <BrowseRow row={row} />}
+          {...(model.discovery.error === null ? { onEndReached: model.loadMore } : {})}
+          footer={
+            <View className="px-gutter">
+              <BrowseFooter model={model} />
+            </View>
+          }
+          empty={<BrowseEmpty noun={noun} installed={installed} model={model} />}
+        />
+      </View>
     </>
   );
 }

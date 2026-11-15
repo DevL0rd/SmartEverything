@@ -36,7 +36,9 @@ vi.mock('../../../design/platform', () => ({
 }));
 vi.mock('../../../store/selectors', () => ({
   useIsOwner: hooks.owner,
-  useSyncStatus: (): object => ({ status: 'live' }),
+  useSyncStatus: (): never => {
+    throw new Error('The update check read the live link.');
+  },
 }));
 vi.mock('../../hub-updates', () => ({
   useHubUpdateSource: (): object => ({ isFetching: false, refetch: hooks.hub }),
@@ -89,6 +91,16 @@ it('checks OTA, the Android installer and the hub with one action', async () => 
   expect(hooks.apk).toHaveBeenCalledWith({ queryKey: ['app-updates', 'android-apk'] });
   expect(hooks.hub).toHaveBeenCalledWith({ cancelRefetch: false });
   expect(hooks.desktop).not.toHaveBeenCalled();
+});
+
+it('checks for updates while the live link cannot read the hub', async () => {
+  hooks.platform.mockReturnValue('android');
+  const checks = checksOf({ kind: 'idle' });
+  expect(checks.blocked).toBeNull();
+  await checks.check();
+  expect(hooks.ota).toHaveBeenCalledOnce();
+  expect(hooks.apk).toHaveBeenCalledOnce();
+  expect(hooks.hub).toHaveBeenCalledOnce();
 });
 
 it('checks the desktop installer and the hub while an OTA waits to restart', async () => {

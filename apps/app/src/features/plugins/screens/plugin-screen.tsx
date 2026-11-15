@@ -75,7 +75,7 @@ function PluginControls({ row }: { readonly row: PluginRow }): ReactNode {
 function PluginLayout({ row }: { readonly row: PluginRow }): ReactNode {
   if (Object.keys(row.manifest.contributes.settings).length === 0) {
     return (
-      <View className="max-w-reading gap-section-gap">
+      <View className="gap-section-gap">
         <PluginControls row={row} />
         <UpkeepRows row={row} />
       </View>
@@ -83,10 +83,10 @@ function PluginLayout({ row }: { readonly row: PluginRow }): ReactNode {
   }
   return (
     <View className="flex-row flex-wrap items-start gap-section-gap">
-      <View className="min-w-0 max-w-reading grow shrink basis-96 gap-section-gap">
+      <View className="min-w-0 grow shrink basis-96 gap-section-gap">
         <PluginControls row={row} />
       </View>
-      <View className="min-w-0 max-w-reading grow shrink basis-96 gap-section-gap">
+      <View className="min-w-0 grow shrink basis-96 gap-section-gap">
         <PluginSettingsForm row={row} />
         <UpkeepRows row={row} />
       </View>
@@ -96,7 +96,7 @@ function PluginLayout({ row }: { readonly row: PluginRow }): ReactNode {
 
 function Plugin({ row }: { readonly row: PluginRow }): ReactNode {
   return (
-    <SettingsFrame page="plugins" title={row.manifest.name} detail contentWidth="full">
+    <SettingsFrame page="plugins" title={row.manifest.name} detail>
       <Header row={row} />
       <PluginLayout row={row} />
     </SettingsFrame>

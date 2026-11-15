@@ -4,8 +4,6 @@ import { makeMutable, type AnimatedRef, type SharedValue } from 'react-native-re
 import { inertViewport, type ViewportRegistry } from '../design/viewport-registry';
 import type { PrimaryActionProps } from './primary-action';
 
-export type HeaderSlot = 'bar' | 'large';
-
 export interface ScreenValue {
   readonly scrollable: boolean;
   readonly scrollY: SharedValue<number>;
@@ -32,12 +30,6 @@ export interface ScreenScroll {
 
 export const ScreenScrollContext = createContext<ScreenScroll | null>(null);
 
-export const HeaderSlotContext = createContext<HeaderSlot>('bar');
-
 export function useScreen(): ScreenValue {
   return useContext(ScreenContext);
-}
-
-export function useHeaderSlot(): HeaderSlot {
-  return useContext(HeaderSlotContext);
 }

@@ -1,6 +1,6 @@
 import type { PlannerRingRow, PlannerStats } from '@smarteverything/domain';
 import { MINUTE_MS, localDayKey, zonedStartOfDay } from '../../../format/time';
-import { alarmSummaryOf, bucketLabel, chunksFromEnd, loadStepOf, rangeDaysOf } from '../../planner';
+import { alarmSummaryOf, bucketLabel, bucketsOf, loadStepOf, rangeDaysOf } from '../../planner';
 
 export interface WakeBucket {
   readonly key: string;
@@ -70,9 +70,12 @@ function meanOf(values: readonly number[]): number | null {
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
-function bucketsOf(stats: PlannerStats, days: ReadonlyMap<string, WakeDay>): readonly WakeBucket[] {
+function wakeBucketsOf(
+  stats: PlannerStats,
+  days: ReadonlyMap<string, WakeDay>,
+): readonly WakeBucket[] {
   const step = loadStepOf(stats.range);
-  return chunksFromEnd(rangeDaysOf(stats), step).flatMap((chunk) => {
+  return bucketsOf(rangeDaysOf(stats), (day) => day, stats.range).flatMap((chunk) => {
     const [first] = chunk;
     if (first === undefined) return [];
     const shown = chunk.flatMap((day) => {
@@ -104,7 +107,7 @@ export function wakeInsightsOf(
 ): WakeInsights {
   const summary = alarmSummaryOf(stats, rings);
   return {
-    buckets: bucketsOf(stats, wakeDaysOf(rings, timeZone)),
+    buckets: wakeBucketsOf(stats, wakeDaysOf(rings, timeZone)),
     spread: summary.spread,
     snoozes: summary.snoozes,
     missed: summary.missed,

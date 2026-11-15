@@ -65,8 +65,8 @@ describe('refusals a model can act on', () => {
   });
 
   it('read an operation by its exact camelCase name through tool_read', async () => {
-    const result = await callTool(booted.base, token, 'tool_read', { name: 'listClaudeSessions' });
-    expect(OPERATION.parse(structured(result)).operation.name).toBe('listClaudeSessions');
+    const result = await callTool(booted.base, token, 'tool_read', { name: 'listRooms' });
+    expect(OPERATION.parse(structured(result)).operation.name).toBe('listRooms');
   });
 
   it('refuse a snake_case operation or a tool name in operation_call and say the right one', async () => {

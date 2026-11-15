@@ -3,26 +3,11 @@ import type { DriveStats } from '@smarteverything/domain';
 import { View } from 'react-native';
 import { Card } from '../../../components/card';
 import { Bars } from '../../../components/charts';
-import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
 import { useDayKey } from '../../../store/clock';
 import { useDriveStats } from '../../drive';
-import { usePhotoBackupState } from '../data';
-import { folderOf } from '../settings/model';
 import { addedInMonth, type AddedMonth } from './stats-model';
-
-function FolderLine(): ReactNode {
-  const folder = folderOf(usePhotoBackupState().data);
-  return (
-    <View className="flex-row items-center gap-2 border-t border-outline-variant pt-3">
-      <Icon name="folder" size={16} tone="variant" />
-      <Text variant="footnote" numberOfLines={1} className="min-w-0 flex-1">
-        {`Backup folder · ${folder}`}
-      </Text>
-    </View>
-  );
-}
 
 function DayBars({
   added,
@@ -91,10 +76,7 @@ export function AddedCard({ compact }: { readonly compact: boolean }): ReactNode
         )
       }
     >
-      <View className="gap-3">
-        <AddedBody added={added} growth={stats.data?.growth} compact={compact} />
-        <FolderLine />
-      </View>
+      <AddedBody added={added} growth={stats.data?.growth} compact={compact} />
     </Card>
   );
 }

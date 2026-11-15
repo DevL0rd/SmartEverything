@@ -26,13 +26,17 @@ function Opening(): ReactNode {
   }, []);
   useEffect(() => {
     if (sync.problem !== null) {
-      log.warn('gate.opening_problem', { status: sync.status, problemLength: sync.problem.length });
+      log.warn('gate.opening_problem', {
+        status: sync.status,
+        problemLength: sync.problem.text.length,
+        remedy: sync.problem.remedy,
+      });
     }
   }, [sync.problem, sync.status]);
   if (sync.problem !== null) {
     return (
       <Centered>
-        <ErrorState page error={new Error(sync.problem)} />
+        <ErrorState page error={new Error(sync.problem.text)} />
       </Centered>
     );
   }

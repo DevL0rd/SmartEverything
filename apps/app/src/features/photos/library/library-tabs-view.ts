@@ -41,12 +41,10 @@ export function tabChipsOf(
   tabs: readonly LibraryTab[],
   counts: TabCountInput,
 ): readonly TabChipView[] {
-  return tabs.map((tab) => ({
-    id: tab.id,
-    label: tab.label,
-    icon: tab.icon,
-    count: tabCountOf(tab.id, counts),
-  }));
+  return tabs.map((tab) => {
+    const count = tabCountOf(tab.id, counts);
+    return { id: tab.id, label: tab.label, icon: tab.icon, count: count === 0 ? null : count };
+  });
 }
 
 function monthText(month: string): string {

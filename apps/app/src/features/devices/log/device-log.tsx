@@ -121,11 +121,7 @@ export function DeviceLogCard({ deviceId }: { readonly deviceId: string }): Reac
   const log = useDeviceLogPages(deviceId);
   const empty = !log.loading && log.failure === null && log.entries.length === 0;
   return (
-    <Card
-      title="Activity"
-      icon="activity"
-      className={empty ? 'w-full max-w-reading self-start' : ''}
-    >
+    <Card title="Activity" icon="activity" className={empty ? 'w-full self-start' : ''}>
       <LogBody log={log} />
     </Card>
   );

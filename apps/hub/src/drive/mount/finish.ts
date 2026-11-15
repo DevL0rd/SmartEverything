@@ -16,12 +16,14 @@ import { applyContent, changedElsewhere, clampRanges } from './apply';
 import type { CommitEnv, MountCommits } from './commits';
 import type { MountDedupe } from './dedupe';
 import type { GroupFsync } from './fsync';
+import type { SettleGroup } from './settle-group';
 import type { MountSession } from './session';
 import { coversRanges } from '../../store/repositories/drive-mount-commits';
 
 export interface FinishEnv extends CommitEnv {
   readonly guard: DriveWriteGuard;
   readonly fsync: GroupFsync;
+  readonly settle: SettleGroup;
   readonly dedupe: MountDedupe;
 }
 
@@ -39,17 +41,18 @@ interface Content {
   readonly baseRev: number;
   readonly fsync: boolean;
   readonly writtenNs: bigint;
+  readonly digest: () => Promise<string>;
   readonly settle: (rev: number) => void;
 }
 
 export class MountFinish {
+  private readonly change: PosixChangeEnv;
+
   constructor(
     private readonly env: FinishEnv,
     private readonly commits: MountCommits,
-  ) {}
-
-  private get change(): PosixChangeEnv {
-    return this.env.change;
+  ) {
+    this.change = { ...env.change, settle: env.settle.run };
   }
 
   private async landing(scope: PosixScope, ino: number): Promise<Landing> {
@@ -84,6 +87,7 @@ export class MountFinish {
       staged: content.staged,
       ranges: content.ranges,
       size: content.size,
+      digest: content.digest,
       actor: actorOf(scope.caller),
       settled: (stored) => {
         content.settle(stored.rev);
@@ -170,11 +174,13 @@ export class MountFinish {
         baseRev: row.baseRev,
         fsync: request.fsync,
         writtenNs: request.mtimeNs,
+        digest: () => this.env.staging.digest(scope.drive.id, row.id, request.size),
         settle: (written) => {
           this.change.store.driveMountCommits.finish(row.id, request.size, written);
         },
       },
     );
+    await this.env.staging.release(row.id);
     return this.reply(scope, row.inodeId, rev);
   }
 
@@ -208,6 +214,7 @@ export class MountFinish {
           baseRev: request.baseRev,
           fsync: request.fsync,
           writtenNs: request.mtimeNs,
+          digest: () => Promise.resolve(staged.sha256),
           settle: (): void => undefined,
         },
       );

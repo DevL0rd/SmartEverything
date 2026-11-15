@@ -459,6 +459,9 @@ func (c *blockCache) Readdir(ctx context.Context, ino, cursor uint64) (wire.DirP
 	if cursor >= uint64(len(entries)) {
 		return wire.DirPage{}, nil
 	}
+	if cursor == 0 {
+		c.prefetchSmall(entries)
+	}
 	return wire.DirPage{Entries: entries[cursor:]}, nil
 }
 

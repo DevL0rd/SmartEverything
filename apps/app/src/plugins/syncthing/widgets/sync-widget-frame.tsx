@@ -12,10 +12,9 @@ import { SYNCTHING_PLUGIN, useSyncthingSnapshot } from '../syncthing-data';
 
 export type SyncReady = ServiceReady<SyncthingSnapshot>;
 
-const SYNCTHING_WIDGET: ServiceWidget<SyncthingSnapshot> = {
+const SYNCTHING_WIDGET: ServiceWidget = {
   pluginId: SYNCTHING_PLUGIN,
   deviceKind: 'file_sync',
-  useSnapshot: useSyncthingSnapshot,
   offTitle: 'The Syncthing plugin is off',
   setUpTitle: 'Set up Syncthing',
   setUpIcon: 'folderSync',
@@ -30,5 +29,6 @@ interface SyncWidgetFrameProps {
 }
 
 export function SyncWidgetFrame(props: SyncWidgetFrameProps): ReactNode {
-  return <ServiceWidgetFrame service={SYNCTHING_WIDGET} {...props} />;
+  const stream = useSyncthingSnapshot();
+  return <ServiceWidgetFrame service={SYNCTHING_WIDGET} stream={stream} {...props} />;
 }

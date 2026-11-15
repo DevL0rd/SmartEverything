@@ -49,7 +49,7 @@ export function startClaude(context: ServerContext, options: ClaudeWiring): Star
     log,
     directory: sites.directory,
     launch,
-    cli: systemClaudeCli,
+    cli: systemClaudeCli(sites.home),
     readUrl: (): Promise<string> => readyUrl(sites.ready),
     readMcp: (): ReturnType<typeof localMcp> => localMcp(options, sites, localDeviceId),
     raised: (): void => undefined,

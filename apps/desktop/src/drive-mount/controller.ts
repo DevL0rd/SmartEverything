@@ -1,13 +1,19 @@
-import type { DrivePlacement } from '@smarteverything/domain';
+import type {
+  DesktopDriveTuning,
+  DesktopDriveTuningState,
+  DrivePlacement,
+} from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { FuseStatus } from './fuse-detect.js';
 import type { HelperLine } from './helper-process.js';
+import { TuningReport } from './helper-tuning-report.js';
 import { MountSummary, type MountTray } from './mount-state.js';
 import { parseHelperLine, type PlacementReport } from './placement-state.js';
 import type { HelperPort, LinkPort, PlacementsController, PlacementsPorts } from './placements.js';
 
 export type MountCommand =
   | { readonly kind: 'again' }
+  | { readonly kind: 'remount' }
   | { readonly kind: 'clear-cache' }
   | { readonly kind: 'pin' | 'unpin'; readonly mount: string; readonly path: string };
 
@@ -31,6 +37,7 @@ export interface MountControllerPorts {
   readonly clearCache: () => Promise<void>;
   readonly sleep: (milliseconds: number) => Promise<void>;
   readonly tray: (state: MountTray | null) => void;
+  readonly tuningChanged: () => void;
   readonly log: Logger;
 }
 
@@ -45,8 +52,19 @@ export class MountNotRunningError extends Error {
   }
 }
 
+export class MountHasOpenFilesError extends Error {
+  override readonly name = 'MountHasOpenFilesError';
+
+  constructor(count: number) {
+    super(
+      `The mount cannot restart while ${String(count)} ${count === 1 ? 'file is' : 'files are'} open`,
+    );
+  }
+}
+
 export class MountController {
   private readonly summary = new MountSummary();
+  private readonly tuningReport = new TuningReport();
   private readonly listeners = new Set<(raw: string) => void>();
   private placements: MountPlacements | null = null;
   private fuse: FuseStatus = { available: true };
@@ -70,6 +88,10 @@ export class MountController {
     return this.enqueue(() => this.apply(command));
   }
 
+  tuning(saved: DesktopDriveTuning): DesktopDriveTuningState {
+    return this.tuningReport.state(saved);
+  }
+
   private enqueue(work: () => Promise<void>): Promise<void> {
     const next = this.queue.then(work);
     this.queue = next.catch((cause: unknown) => {
@@ -82,6 +104,11 @@ export class MountController {
     if (command.kind === 'again') {
       await this.down();
       await this.up();
+    } else if (command.kind === 'remount') {
+      const open = this.summary.openFiles();
+      if (open > 0) throw new MountHasOpenFilesError(open);
+      await this.down();
+      await this.up();
     } else if (command.kind === 'clear-cache') {
       await this.down();
       await this.ports.clearCache();
@@ -92,7 +119,7 @@ export class MountController {
   }
 
   private forward(
-    command: Exclude<MountCommand, { readonly kind: 'again' | 'clear-cache' }>,
+    command: Exclude<MountCommand, { readonly kind: 'again' | 'remount' | 'clear-cache' }>,
   ): void {
     if (this.placements === null) throw new MountNotRunningError(command.kind);
     this.ports.helper.send({ op: command.kind, mount: command.mount, path: command.path });
@@ -137,6 +164,8 @@ export class MountController {
     placements?.stop();
     await this.ports.helper.close();
     this.summary.clear();
+    this.tuningReport.clear();
+    this.ports.tuningChanged();
     this.publish();
   }
 
@@ -148,13 +177,37 @@ export class MountController {
       this.ports.log.warn('drive_mount.helper_line_rejected', { error: messageOf(cause) });
       return;
     }
-    if (line.type === 'status' && line.state === 'mounted') this.crashes = 0;
-    if (line.type !== 'counters') return;
-    this.summary.pendingUploads(line.mount, line.pendingUploads);
-    this.publish();
+    switch (line.type) {
+      case 'status':
+        if (line.state === 'mounted') this.crashes = 0;
+        else {
+          this.tuningReport.drop(line.mount);
+          this.ports.tuningChanged();
+        }
+        return;
+      case 'error':
+        this.ports.log.warn('drive_mount.helper_error', {
+          mount: line.mount ?? null,
+          reason: line.reason,
+        });
+        return;
+      case 'limits':
+        this.tuningReport.limit(line);
+        this.ports.tuningChanged();
+        return;
+      case 'applied':
+        this.tuningReport.apply(line);
+        this.ports.tuningChanged();
+        return;
+      case 'counters':
+        this.summary.counters(line.mount, line.pendingUploads, line.openFiles);
+        this.publish();
+    }
   }
 
   private crashed(generation: number): void {
+    this.tuningReport.clear();
+    this.ports.tuningChanged();
     const delay = Math.min(RESTART_FIRST_MS * 2 ** this.crashes, RESTART_LONGEST_MS);
     this.crashes += 1;
     this.ports.log.warn('drive_mount.helper_restart_scheduled', { delay_ms: delay });

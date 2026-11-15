@@ -130,7 +130,15 @@ describe('unread activity', () => {
     expect(asBob.albums).toMatchObject([
       { albumId, role: 'contributor', ownerProfileId: kit.alice.profileId },
     ]);
-    expect(asBob.albums[0]?.memberIds).toEqual([kit.bob.profileId, kit.carol.profileId].sort());
+    const roles = new Map([
+      [kit.bob.profileId, 'contributor'],
+      [kit.carol.profileId, 'viewer'],
+    ]);
+    expect(asBob.albums[0]?.members).toEqual(
+      [kit.bob.profileId, kit.carol.profileId]
+        .sort()
+        .map((profileId) => ({ profileId, role: roles.get(profileId) })),
+    );
     expect(asBob.activity.map((entry) => entry.text)).toEqual(['Hello']);
   });
 });

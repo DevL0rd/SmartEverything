@@ -8,7 +8,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { TabsBar } from '../tabs-bar';
-import { ASIDE_WIDTH, SEARCH_WIDTH, barLeadOf, barTitleStacks, type ShellColumn } from './layout';
+import { SEARCH_WIDTH, barLeadOf, type ShellColumn } from './layout';
 import { ShellSearch, type ShellSearchConfig } from './search-slot';
 import { ShellActions, type ShellActionsProps } from './shell-actions';
 import { useBackAction } from '../back-navigation';
@@ -19,7 +19,9 @@ export const COLLAPSE_AT = 48;
 
 export const SURFACE_AT = 8;
 
-const INLINE_SEARCH_FROM = 720;
+const TITLE_MIN = 240;
+
+const ROW_GAP = 16;
 
 const SEARCH_STYLE: ViewStyle = {
   flexGrow: 1,
@@ -32,7 +34,27 @@ const SEARCH_STYLE: ViewStyle = {
 export interface TitleRowProps {
   readonly title: Omit<ShellTitleProps, 'size'>;
   readonly back: boolean;
+  readonly controls: ReactNode;
   readonly actions: Omit<ShellActionsProps, 'kind'>;
+}
+
+export type ControlsPlace = 'title' | 'search' | 'tabs';
+
+export function touchControlsPlaceOf(
+  search: ShellSearchConfig | undefined,
+  tabs: readonly ShellTabRow[],
+): ControlsPlace {
+  if (search !== undefined) return 'search';
+  return tabs.length > 0 ? 'tabs' : 'title';
+}
+
+function ShellControls({ controls }: { readonly controls: ReactNode }): ReactNode {
+  if (controls === undefined || controls === null) return null;
+  return (
+    <View testID="shell-controls" className="shrink-0 flex-row items-center gap-2">
+      {controls}
+    </View>
+  );
 }
 
 export function columnStyle(column: ShellColumn): ViewStyle {
@@ -41,14 +63,6 @@ export function columnStyle(column: ShellColumn): ViewStyle {
 
 export function widthStyle(width: number): ViewStyle {
   return { width };
-}
-
-export function railOffsetStyle(gutter: number): ViewStyle {
-  return { marginLeft: gutter };
-}
-
-export function asideStyle(): ViewStyle {
-  return widthStyle(ASIDE_WIDTH);
 }
 
 export function TopSurface({
@@ -72,65 +86,66 @@ export function TopSurface({
   );
 }
 
-function useTitleShown(large: boolean, scrollY: SharedValue<number>): boolean {
-  const [shown, setShown] = useState(!large);
+export type BarTitle = 'bar' | 'collapsing' | 'none';
+
+function useTitleShown(title: BarTitle, scrollY: SharedValue<number>): boolean {
+  const [shown, setShown] = useState(title === 'bar');
   useAnimatedReaction(
-    () => !large || scrollY.get() > COLLAPSE_AT - 16,
+    () => title === 'bar' || (title === 'collapsing' && scrollY.get() > COLLAPSE_AT - 16),
     (now, before) => {
       if (now !== before) scheduleOnRN(setShown, now);
     },
-    [large],
+    [title],
   );
   return shown;
 }
 
 export function AppBar({
   row,
-  large,
+  title,
   scrollY,
   column,
+  controls,
 }: {
   readonly row: TitleRowProps;
-  readonly large: boolean;
+  readonly title: BarTitle;
   readonly scrollY: SharedValue<number>;
   readonly column: ShellColumn;
+  readonly controls: boolean;
 }): ReactNode {
   const back = useBackAction(row.back);
-  const stacked = !large && barTitleStacks(column.left, back !== null);
-  const shown = useTitleShown(large, scrollY);
-  const titleStyle = useAnimatedStyle(() => ({
-    opacity: large
-      ? interpolate(scrollY.get(), [COLLAPSE_AT - 16, COLLAPSE_AT], [0, 1], 'clamp')
-      : 1,
-  }));
+  const shown = useTitleShown(title, scrollY);
+  const titleStyle = useAnimatedStyle(() => {
+    if (title === 'bar') return { opacity: 1 };
+    if (title === 'none') return { opacity: 0 };
+    return {
+      opacity: interpolate(scrollY.get(), [COLLAPSE_AT - 16, COLLAPSE_AT], [0, 1], 'clamp'),
+    };
+  });
   return (
-    <>
-      <View className="h-14 flex-row items-center gap-1 px-1">
-        <View style={widthStyle(barLeadOf(column.left, back !== null))} />
-        <ShellBack back={back} />
-        <Animated.View
-          style={titleStyle}
-          aria-hidden={!shown}
-          pointerEvents={shown ? 'auto' : 'none'}
-          className="min-w-0 flex-1 px-1"
-        >
-          {stacked ? null : (
-            <ShellTitle {...row.title} size="bar" {...(large ? {} : { testID: 'shell-title' })} />
-          )}
-        </Animated.View>
-        <ShellActions {...row.actions} kind="touch" />
-      </View>
-      {stacked ? (
-        <View style={columnStyle(column)} className="pb-2">
-          <ShellTitle {...row.title} size="large" testID="shell-title" />
-        </View>
-      ) : null}
-    </>
+    <View className="h-14 flex-row items-center gap-1 px-1">
+      <View style={widthStyle(barLeadOf(column.left, back !== null))} />
+      <ShellBack back={back} />
+      <Animated.View
+        style={titleStyle}
+        aria-hidden={!shown}
+        pointerEvents={shown ? 'auto' : 'none'}
+        className="min-w-0 flex-1 px-1"
+      >
+        <ShellTitle
+          {...row.title}
+          size="bar"
+          {...(title === 'bar' ? { testID: 'shell-title' } : { subtitle: undefined })}
+        />
+      </Animated.View>
+      {controls ? <ShellControls controls={row.controls} /> : null}
+      <ShellActions {...row.actions} kind="touch" />
+    </View>
   );
 }
 
-export function searchInlineAt(column: ShellColumn): boolean {
-  return column.width >= INLINE_SEARCH_FROM;
+export function searchInlineAt(column: ShellColumn, trailing: number): boolean {
+  return column.width >= TITLE_MIN + SEARCH_WIDTH.min + trailing + ROW_GAP * 2;
 }
 
 function SearchBox({
@@ -175,14 +190,23 @@ export function DesktopTitleRow({
   readonly search: ShellSearchConfig | undefined;
   readonly column: ShellColumn;
 }): ReactNode {
-  const inline = searchInlineAt(column);
+  const [trailing, setTrailing] = useState(0);
+  const inline = searchInlineAt(column, trailing);
   const back = useBackAction(row.back);
   return (
     <View style={columnStyle(column)} className="gap-2 pt-2">
       <View className="min-h-12 flex-row flex-wrap items-center gap-x-4 gap-y-2">
         <DesktopTitle row={row} back={back} />
         {search !== undefined && inline ? <SearchBox search={search} inline /> : null}
-        <ShellActions {...row.actions} kind="pointer" />
+        <View
+          className="shrink-0 flex-row items-center gap-4"
+          onLayout={(event) => {
+            setTrailing(event.nativeEvent.layout.width);
+          }}
+        >
+          <ShellControls controls={row.controls} />
+          <ShellActions {...row.actions} kind="pointer" />
+        </View>
       </View>
       {search !== undefined && !inline ? <SearchBox search={search} inline={false} /> : null}
     </View>
@@ -197,29 +221,56 @@ export function shellRowsShown(
   return search !== undefined || tabs.length > 0 || toolbar !== undefined;
 }
 
+function BesideControls({
+  controls,
+  children,
+}: {
+  readonly controls: ReactNode;
+  readonly children: ReactNode;
+}): ReactNode {
+  if (controls === undefined || controls === null) return children;
+  return (
+    <View className="flex-row items-center gap-2">
+      <View className="min-w-0 flex-1">{children}</View>
+      <ShellControls controls={controls} />
+    </View>
+  );
+}
+
 export function ShellRows({
   search,
   tabs,
   toolbar,
+  controls,
   column,
 }: {
   readonly search: ShellSearchConfig | undefined;
   readonly tabs: readonly ShellTabRow[];
   readonly toolbar: ReactNode;
+  readonly controls: ReactNode;
   readonly column: ShellColumn;
 }): ReactNode {
   if (!shellRowsShown(search, tabs, toolbar)) return null;
+  const place = touchControlsPlaceOf(search, tabs);
+  const last = tabs.at(-1)?.key;
   return (
     <View style={columnStyle(column)} className="gap-2 pb-2">
       {search === undefined ? null : (
-        <View testID="shell-search">
-          <ShellSearch search={search} />
-        </View>
+        <BesideControls controls={place === 'search' ? controls : undefined}>
+          <View testID="shell-search">
+            <ShellSearch search={search} />
+          </View>
+        </BesideControls>
       )}
       {tabs.map((row) => (
-        <View key={row.key} testID="shell-tabs">
-          <TabsBar items={row.tabs.items} active={row.tabs.active} label={row.tabs.label} />
-        </View>
+        <BesideControls
+          key={row.key}
+          controls={place === 'tabs' && row.key === last ? controls : undefined}
+        >
+          <View testID="shell-tabs">
+            <TabsBar items={row.tabs.items} active={row.tabs.active} label={row.tabs.label} />
+          </View>
+        </BesideControls>
       ))}
       {toolbar === undefined ? null : <View testID="shell-toolbar">{toolbar}</View>}
     </View>

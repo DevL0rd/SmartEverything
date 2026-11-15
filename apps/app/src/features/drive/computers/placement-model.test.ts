@@ -5,9 +5,9 @@ import {
   childPath,
   drivePathOf,
   locationOf,
-  parentPath,
-  pausedBodiesOf,
+  mountOn,
   placementsOn,
+  syncedOn,
   type DriveNames,
 } from './placement-model';
 import { FOLDER, LAPTOP, ME, OTHER_ROOT, ROOT, WORKSTATION, placement } from './placement-fixture';
@@ -50,21 +50,43 @@ describe('placement model', () => {
     ]);
   });
 
-  it('shows the chosen folder of a synced placement and the reported point of a mount', () => {
+  it('shows the chosen folder of a synced placement and no place for the mount', () => {
     expect(locationOf(placement({ mode: 'synced', localPath: '/home/me/Docs' }))).toBe(
       '/home/me/Docs',
     );
     expect(locationOf(placement())).toBeNull();
-    expect(locationOf(placement({}, { mountPoint: '/run/user/1000/smarteverything/Drive' }))).toBe(
-      '/run/user/1000/smarteverything/Drive',
-    );
+    expect(
+      locationOf(placement({}, { mountPoint: '/run/user/1000/smarteverything/Drive' })),
+    ).toBeNull();
+  });
+
+  it('splits a computer into its synced folders and its one mount', () => {
+    const synced = placement({
+      id: 'e0000000-0000-4000-8000-000000000002',
+      mode: 'synced',
+      localPath: '/a',
+    });
+    const mount = placement();
+    const rows = [
+      synced,
+      mount,
+      placement({ id: 'e0000000-0000-4000-8000-000000000003', deviceId: LAPTOP }),
+    ];
+    expect(syncedOn(WORKSTATION, rows)).toEqual([synced]);
+    expect(mountOn(WORKSTATION, rows, ROOT)).toBe(mount);
+    expect(mountOn(WORKSTATION, [synced], ROOT)).toBeNull();
+    expect(mountOn(WORKSTATION, rows, null)).toBeNull();
+  });
+
+  it('finds only the mount of the viewer’s own My Drive', () => {
+    const shared = placement({ rootId: OTHER_ROOT });
+    expect(mountOn(WORKSTATION, [shared], ROOT)).toBeNull();
+    expect(mountOn(WORKSTATION, [shared], OTHER_ROOT)).toBe(shared);
   });
 
   it('builds local paths in the computer’s own separator', () => {
     expect(childPath('/home/me', 'My Drive')).toBe('/home/me/My Drive');
     expect(childPath('C:\\Users\\Me\\', 'Projects')).toBe('C:\\Users\\Me\\Projects');
-    expect(parentPath('/home/me/Drive')).toBe('/home/me');
-    expect(parentPath('C:\\Drive')).toBe('C:\\');
   });
 
   it('keeps the sync settings when one field changes', () => {
@@ -76,23 +98,6 @@ describe('placement model', () => {
       conflictCopies: true,
     });
     expect(changedBodyOf(synced, { sync: { conflictCopies: false } }).conflictCopies).toBe(false);
-    expect(changedBodyOf(placement(), { enabled: false })).toEqual({
-      deviceId: WORKSTATION,
-      rootId: ROOT,
-      folderItemId: null,
-      mode: 'mounted',
-      localPath: null,
-      mountName: 'Drive',
-      enabled: false,
-    });
-  });
-
-  it('pauses only the placements that run and are not on hold', () => {
-    const rows = [
-      placement(),
-      placement({ id: 'e0000000-0000-4000-8000-000000000002', hold: 'no_access' }),
-      placement({ id: 'e0000000-0000-4000-8000-000000000003', enabled: false }),
-    ];
-    expect(pausedBodiesOf(rows, false)).toHaveLength(1);
+    expect(() => changedBodyOf(placement(), { enabled: false })).toThrow(/toggle/);
   });
 });

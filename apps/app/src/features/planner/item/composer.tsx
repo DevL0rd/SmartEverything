@@ -10,7 +10,7 @@ import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { useMinute } from '../../../store/clock';
-import { useSettings } from '../../../store/selectors';
+import { useRow, useSettings } from '../../../store/selectors';
 import {
   usePlannerClockWrites,
   usePlannerWrites,
@@ -20,6 +20,7 @@ import {
 } from '../data';
 import { useWritableCollections } from '../data/assignment';
 import type { QuickAddTarget } from '../frame/quick-add-bar';
+import { StatusLine, chipsOf, statusOf, useFallbackPlan, type Status } from './composer-status';
 import { TokenField, composerTokens, type ComposerToken } from './composer-tokens';
 import {
   COMPOSER_KINDS,
@@ -29,7 +30,6 @@ import {
   nextLineOf,
   readingOf,
   useParsePreview,
-  willAddOf,
   type ComposerKind,
   type ComposerPlan,
   type WillAddChip,
@@ -150,26 +150,6 @@ function KeyHints({ kind }: { readonly kind: ComposerKind }): ReactNode {
   );
 }
 
-function StatusLine({
-  text,
-  problem,
-}: {
-  readonly text: string | null;
-  readonly problem: boolean;
-}): ReactNode {
-  if (text === null) return null;
-  return (
-    <Text
-      variant="footnote"
-      tone={problem ? 'warning' : 'variant'}
-      accessibilityLiveRegion="polite"
-      className="tabular"
-    >
-      {text}
-    </Text>
-  );
-}
-
 interface ComposerState {
   readonly text: string;
   readonly setText: (text: string) => void;
@@ -178,7 +158,7 @@ interface ComposerState {
   readonly tokens: readonly ComposerToken[];
   readonly colour: PlannerColourKey | null;
   readonly chips: readonly WillAddChip[];
-  readonly status: { readonly text: string | null; readonly problem: boolean };
+  readonly status: Status;
   readonly suggestion: PlannerSuggestion | null;
   readonly ruleOn: boolean;
   readonly setRuleOn: (on: boolean) => void;
@@ -194,14 +174,17 @@ function colourOf(
   return collections.find((row) => row.id === collectionId)?.colour ?? null;
 }
 
-function statusOf(
-  plan: ComposerPlan | null,
-  problem: string | null,
-  next: string | null,
-): ComposerState['status'] {
-  if (problem !== null) return { text: problem, problem: true };
-  if (plan?.kind === 'missing') return { text: plan.reason, problem: true };
-  return { text: next, problem: false };
+function suggestionOf(
+  kind: ComposerKind,
+  suggestions: readonly PlannerSuggestion[],
+): PlannerSuggestion | null {
+  return kind === 'task' ? (suggestions[0] ?? null) : null;
+}
+
+function usePersonName(person: PlannerPerson): string {
+  const profile = useRow('profiles', person);
+  if (person === null) return 'You';
+  return profile?.name ?? 'Someone else';
 }
 
 interface Submission {
@@ -247,13 +230,20 @@ function useComposer(props: ComposerProps): ComposerState {
   const preview = useParsePreview(props.person, text, asked, timeZone);
   const { parsed } = preview;
   const kind = shownKindOf(props.target, chosen, parsed?.draft.kind ?? null);
-  const plan = composerPlanOf({ kind, text, parsed, timeZone });
-  const suggestion = kind === 'task' ? (preview.suggestions[0] ?? null) : null;
+  const fallback = useFallbackPlan({
+    person: props.person,
+    collections,
+    problem: preview.problem,
+    kind,
+    text,
+  });
+  const plan = fallback ?? composerPlanOf({ kind, text, parsed, timeZone });
+  const suggestion = suggestionOf(kind, preview.suggestions);
   const today = { now, timeZone };
   const next = plan === null ? null : nextLineOf(plan, parsed, today);
   const sending = useSubmit(props, {
     plan,
-    current: preview.current,
+    current: preview.current || fallback !== null,
     rule: ruleOn ? suggestion : null,
   });
   return {
@@ -263,8 +253,15 @@ function useComposer(props: ComposerProps): ComposerState {
     choose,
     tokens: composerTokens(text, readingOf(kind, text, parsed, collections)),
     colour: colourOf(collections, parsed?.draft.collection_id ?? null),
-    chips: plan === null ? [] : willAddOf(plan, parsed, { collections, today }),
-    status: statusOf(plan, preview.problem, next),
+    chips: chipsOf(kind, plan, parsed, { collections, today }),
+    status: statusOf({
+      plan,
+      problem: preview.problem,
+      next,
+      kind,
+      retry: preview.retry,
+      choose,
+    }),
     suggestion,
     ruleOn,
     setRuleOn,
@@ -306,10 +303,13 @@ function ComposerField({
   );
 }
 
-function ComposerBody(props: ComposerProps): ReactNode {
+function ComposerBody({
+  inputRef,
+  ...props
+}: ComposerProps & { readonly inputRef: RefObject<TextInput | null> }): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const inputRef = useRef<TextInput | null>(null);
   const state = useComposer(props);
+  const personName = usePersonName(props.person);
   const kinds = COMPOSER_KINDS[props.target];
   return (
     <View className="gap-3">
@@ -329,9 +329,14 @@ function ComposerBody(props: ComposerProps): ReactNode {
         inputRef={inputRef}
       />
       <WillAdd chips={state.chips} labelled={pointer} />
-      <StatusLine text={state.status.text} problem={state.status.problem} />
+      <StatusLine status={state.status} />
       {state.suggestion === null ? null : (
-        <RuleCard suggestion={state.suggestion} on={state.ruleOn} onChange={state.setRuleOn} />
+        <RuleCard
+          suggestion={state.suggestion}
+          personName={personName}
+          on={state.ruleOn}
+          onChange={state.setRuleOn}
+        />
       )}
       <View className="flex-row flex-wrap items-center justify-end gap-3">
         {pointer ? <KeyHints kind={state.kind} /> : null}
@@ -349,6 +354,7 @@ function ComposerBody(props: ComposerProps): ReactNode {
 }
 
 export function Composer(props: ComposerProps): ReactNode {
+  const inputRef = useRef<TextInput | null>(null);
   return (
     <Sheet
       open={props.open}
@@ -356,8 +362,9 @@ export function Composer(props: ComposerProps): ReactNode {
       label={TITLE[props.target]}
       detents={['fit']}
       wide
+      initialFocus={inputRef}
     >
-      {props.open ? <ComposerBody {...props} /> : null}
+      {props.open ? <ComposerBody {...props} inputRef={inputRef} /> : null}
     </Sheet>
   );
 }

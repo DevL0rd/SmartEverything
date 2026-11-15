@@ -9,11 +9,10 @@ import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { ListLoader } from '../../../components/list-loader';
-import type { HeaderAction } from '../../../components/page-header';
-import { isNative } from '../../../design/platform';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useAreaWidth } from '../../../design/size-class';
 import { count, percent } from '../../../format/number';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { SettingsPageBody } from '../../../settings/settings-page';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
@@ -26,13 +25,13 @@ import { KEEP_ALL_LABEL, hashedShareOf, type SourceLabels } from './model';
 import { useDriveLabels } from './use-drive-labels';
 import { useDuplicateActions, type DuplicateActions } from './use-duplicate-actions';
 
-const OPEN_PHOTOS: readonly HeaderAction[] = [
+const OPEN_PHOTOS: readonly ShellAction[] = [
   { icon: 'image', label: 'Open Photos', href: href.photos() },
 ];
 
 const OFFLINE_BODY = 'Keep best and Not duplicates need your home hub.';
 
-const INDEXING_HREF = href.settings.focus('drive', 'drive.indexing');
+const INDEXING_HREF = href.settings.focus('drive/indexing', 'drive.indexing');
 
 function NoDuplicates(): ReactNode {
   return (
@@ -251,7 +250,7 @@ function bannerOf(connected: boolean, data: DuplicatesData): ReactNode {
 }
 
 export function DuplicatesSettingsScreen(): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const connected = useSyncStatus().status === 'live';
   const data = useDuplicatesData();
   const actions = useDuplicateActions();
@@ -260,7 +259,6 @@ export function DuplicatesSettingsScreen(): ReactNode {
     <SettingsFrame
       page={PHOTOS_DUPLICATES_PAGE}
       actions={OPEN_PHOTOS}
-      contentWidth={isNative() ? 'reading' : 'full'}
       {...(banner === undefined ? {} : { banner })}
     >
       <View className="gap-section-gap">

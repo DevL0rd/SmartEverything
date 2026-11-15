@@ -21,7 +21,6 @@ import {
   openConflictOf,
   pickOf,
   restorePlanOf,
-  seriesOfEntry,
   settlePicks,
   sizePoints,
   slotOf,
@@ -202,12 +201,11 @@ describe('who, how and when', () => {
     ]);
   });
 
-  it('colours the via dot by how and the avatar by who', () => {
+  it('colours every timeline mark by who made the copy', () => {
     const [current, mine, ai] = entries;
     if (current === undefined || mine === undefined || ai === undefined) throw new Error('entries');
-    expect(seriesOfEntry(current, ME)).toBe('background');
     expect(whoSeriesOf(current, ME)).toBe('people');
-    expect(seriesOfEntry(mine, ME)).toBe('you');
+    expect(whoSeriesOf(mine, ME)).toBe('you');
     expect(whoSeriesOf(ai, ME)).toBe('ai');
   });
 

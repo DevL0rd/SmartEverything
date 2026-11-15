@@ -5,9 +5,8 @@ import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Banner, type BannerProps } from '../../../components/banner';
 import { ErrorState } from '../../../components/error-state';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
-import { isNative } from '../../../design/platform';
 import { count } from '../../../format/number';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { useMutationState } from '../../../store/mutation';
@@ -22,7 +21,7 @@ import { SwitchesCard } from './switches-card';
 
 const AI_SETTINGS_HREF = href.settings.page('assistant');
 
-const OPEN_PEOPLE: readonly HeaderAction[] = [
+const OPEN_PEOPLE: readonly ShellAction[] = [
   { icon: 'users', label: 'Open People and pets', href: href.photosPage('people') },
 ];
 
@@ -75,11 +74,6 @@ export function phaseBannerOf(phase: SmartPhase, input: PhaseInput): PhaseBanner
   return null;
 }
 
-function PhaseBanner({ phase, ...input }: PhaseInput & { readonly phase: SmartPhase }): ReactNode {
-  const banner = phaseBannerOf(phase, input);
-  return banner === null ? null : <Banner {...banner} wrapBody />;
-}
-
 function useRetryFailed(live: boolean): PhaseInput['retry'] {
   const mutation = useMutationState();
   const store = useAiStatusStore();
@@ -104,11 +98,9 @@ function Body({
   readonly live: boolean;
 }): ReactNode {
   const owner = useIsOwner();
-  const retry = useRetryFailed(live);
   return (
     <View className="gap-section-gap large:flex-row large:items-start">
       <View className="min-w-0 gap-section-gap large:flex-1">
-        <PhaseBanner phase={smartPhaseOf(status)} status={status} owner={owner} retry={retry} />
         <SwitchesCard status={status} live={live} />
         <ProgressCard status={status} />
       </View>
@@ -130,27 +122,41 @@ function Loading(): ReactNode {
   );
 }
 
+function Banners({
+  live,
+  phase,
+}: {
+  readonly live: boolean;
+  readonly phase: PhaseBannerProps | null;
+}): ReactNode {
+  return (
+    <View className="gap-2">
+      {live ? null : (
+        <Banner
+          tone="info"
+          title="Offline · showing the last snapshot"
+          body="Switches and progress come back when your home hub answers."
+          wrapBody
+        />
+      )}
+      {phase === null ? null : <Banner {...phase} wrapBody />}
+    </View>
+  );
+}
+
 export function SmartFeaturesScreen(): ReactNode {
   const query = usePhotoAiStatus();
   const live = useSyncStatus().status === 'live';
+  const owner = useIsOwner();
+  const retry = useRetryFailed(live);
   const status = query.data;
+  const phase =
+    status === undefined ? null : phaseBannerOf(smartPhaseOf(status), { status, owner, retry });
   return (
     <SettingsFrame
       page={PHOTOS_SMART_PAGE}
       actions={OPEN_PEOPLE}
-      contentWidth={isNative() ? 'reading' : 'full'}
-      {...(live
-        ? {}
-        : {
-            banner: (
-              <Banner
-                tone="info"
-                title="Offline · showing the last snapshot"
-                body="Switches and progress come back when your home hub answers."
-                wrapBody
-              />
-            ),
-          })}
+      {...(live && phase === null ? {} : { banner: <Banners live={live} phase={phase} /> })}
     >
       {status !== undefined ? <Body status={status} live={live} /> : null}
       {status === undefined && query.isError ? (

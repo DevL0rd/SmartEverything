@@ -7,7 +7,6 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   addedNight,
-  bedtimeSummaryOf,
   daysTextOf,
   freeDaysOf,
   leadOptionsOf,
@@ -166,12 +165,6 @@ describe('tonight', () => {
       'Sleep time · wake at 08:00',
     );
     expect(tonightLineOf(null, saturdayMorning)).toBe('No bedtime set');
-  });
-
-  it('sums up the next bedtime for the rail', () => {
-    expect(bedtimeSummaryOf(BEDTIME, saturdayMorning, ZONE)).toBe('Bed 23:45 tonight');
-    expect(bedtimeSummaryOf(BEDTIME, Date.parse('2026-11-15T01:00:00Z'), ZONE)).toBe('Wake 08:00');
-    expect(bedtimeSummaryOf({ ...BEDTIME, enabled: false }, saturdayMorning, ZONE)).toBeNull();
   });
 
   it('offers reminder and wind-down leads with the current one kept', () => {

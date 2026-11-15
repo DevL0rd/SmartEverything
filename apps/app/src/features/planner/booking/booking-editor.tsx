@@ -98,6 +98,17 @@ function useSave(
   return { saving, save };
 }
 
+function errorsOf(
+  draft: BookingDraft,
+  touched: boolean,
+): { readonly titleError: string | null; readonly calendarError: string | null } {
+  return {
+    titleError: touched && draftProblemOf(draft) === 'title' ? 'Give the page a name' : null,
+    calendarError:
+      touched && draft.collection_id === null ? 'Pick the calendar bookings land on' : null,
+  };
+}
+
 export function BookingEditor({
   person,
   page,
@@ -115,7 +126,6 @@ export function BookingEditor({
     setTouched(true);
     setDraft((current) => ({ ...current, ...edit }));
   };
-  const titleError = touched && draftProblemOf(draft) === 'title' ? 'Give the page a name' : null;
   return (
     <Sheet
       open={open}
@@ -136,7 +146,7 @@ export function BookingEditor({
       }
     >
       <View className="pb-4 pt-2">
-        <BookingFields {...setup} draft={draft} titleError={titleError} onChange={onChange} />
+        <BookingFields {...setup} draft={draft} {...errorsOf(draft, touched)} onChange={onChange} />
       </View>
     </Sheet>
   );

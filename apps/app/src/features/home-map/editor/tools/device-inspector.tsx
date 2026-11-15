@@ -89,7 +89,8 @@ function ShellyHeightField({
       value={shellyHeightOf(sensor)}
       disabled={disabled || !available || operation.busy}
       onChange={(height): void => {
-        const patch = settingsPatch([row], { [row.path.join('.')]: height }, sensor.config);
+        const path = row.path.join('.');
+        const patch = settingsPatch([row], { [path]: height }, sensor.config);
         const params = settingParams(row.action, { component: row.component, id: null }, patch);
         background(operation.run({ action: row.action, params }), 'home_map.shelly_height_failed');
       }}

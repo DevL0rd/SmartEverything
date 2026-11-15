@@ -1,6 +1,8 @@
 import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { fileDraft, folderDraft, identityOf, isoOf } from '../../../src/drive/changes';
+import type { FileStamp } from '../../../src/drive/intents';
 import {
   create,
   diskLink,
@@ -241,5 +243,54 @@ describe('names and concurrency', () => {
     ]);
     expect(results.filter((code) => code === 'no error')).toHaveLength(1);
     expect(results.filter((code) => code === 'EEXIST')).toHaveLength(2);
+  });
+});
+
+describe('creation racing the scanner', () => {
+  function scannerIndexes(name: string, folder: boolean): { readonly id: () => string | null } {
+    const { files } = rig.env.change;
+    const original = files.stamp.bind(files);
+    let indexed: string | null = null;
+    Object.assign(files, {
+      stamp: async (path: string): Promise<FileStamp | null> => {
+        const stamp = await original(path);
+        if (stamp !== null && indexed === null && path.endsWith(`/${name}`)) {
+          const added = {
+            rootId: rig.mine.id,
+            parentId: null,
+            relPath: name,
+            modifiedAt: isoOf(stamp.mtimeNs),
+            addedAt: '2026-11-06T00:00:00.000Z',
+            outside: true,
+            addedByProfileId: null,
+          };
+          const item = rig.opened.store.driveItems.write({
+            item: folder ? folderDraft(added, 0) : fileDraft(added, { bytes: 0, sha256: null }),
+            identity: identityOf(stamp),
+          }).item;
+          indexed = item.id;
+        }
+        return stamp;
+      },
+    });
+    return { id: () => indexed };
+  }
+
+  it('keeps the row the scanner indexed when a file is created at the same moment', async () => {
+    const raced = scannerIndexes('raced.txt', false);
+    const entry = await rig.posix.create(rig.scope, create('raced.txt', rig.rootIno));
+    expect(raced.id()).not.toBeNull();
+    const item = rig.opened.store.driveItems.byPath(rig.mine.id, 'raced.txt', null);
+    expect(item?.id).toBe(raced.id());
+    expect(entry.attr.type).toBe(1);
+    expect(rig.opened.store.driveInodes.ofItem(item?.id ?? '')?.id).toBe(entry.ino);
+  });
+
+  it('keeps the row the scanner indexed when a folder is made at the same moment', async () => {
+    const raced = scannerIndexes('racedir', true);
+    const entry = await rig.posix.mkdir(rig.scope, mkdir('racedir', rig.rootIno));
+    expect(raced.id()).not.toBeNull();
+    expect(rig.opened.store.driveItems.byPath(rig.mine.id, 'racedir', null)?.id).toBe(raced.id());
+    expect(entry.attr.type).toBe(2);
   });
 });

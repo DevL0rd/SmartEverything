@@ -8,6 +8,8 @@ import {
   BACKUP_REGISTER,
   BACKUP_DEVICE,
   BACKUP_STATE,
+  PHOTO_ORIGINS,
+  PHOTO_ORIGINS_REQUEST,
 } from '../photos/backup';
 import {
   DUPLICATE_GROUP,
@@ -359,6 +361,16 @@ export const PHOTOS_ENDPOINTS = {
     query: NOTHING,
     body: BACKUP_CHECK,
     response: BACKUP_HAVE_RESULT,
+  }),
+  readPhotoOrigins: endpoint({
+    method: 'POST',
+    path: '/api/drive/photos/backup/origins',
+    access: 'member',
+    summary: 'The folder or album on this device that each backed-up photo or video came from',
+    params: NOTHING,
+    query: NOTHING,
+    body: PHOTO_ORIGINS_REQUEST,
+    response: PHOTO_ORIGINS,
   }),
   readBackupState: endpoint({
     method: 'GET',

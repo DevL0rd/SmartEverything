@@ -34,8 +34,6 @@ const STATUS_TONE: Readonly<Record<ProbeStatus, BadgeTone>> = {
   none: 'neutral',
 };
 
-const LIST_MAX = 640;
-
 function ProbeLine({
   row,
   state,
@@ -126,7 +124,7 @@ function Body({
 }): ReactNode {
   const rows = probeRows(brand, brand.identity.firmware);
   return (
-    <View className="gap-4" style={maxWidth(LIST_MAX)}>
+    <View className="gap-4">
       <List inset title="Handle tests" footer={testsLine(brand, brand.identity.firmware)}>
         {rows.map((row) => (
           <ProbeLine
@@ -145,10 +143,6 @@ function Body({
       <RawRecords brand={brand} />
     </View>
   );
-}
-
-function maxWidth(value: number): { readonly maxWidth: number } {
-  return { maxWidth: value };
 }
 
 export function OralbDiagnostics({ deviceId, mayConfigure }: DiagnosticsProps): ReactNode {

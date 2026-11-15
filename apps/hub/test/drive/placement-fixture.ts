@@ -6,6 +6,7 @@ import {
   type DrivePlacementStatus,
 } from '@smarteverything/domain';
 import type { DriveActor } from '../../src/drive/access';
+import { targetAccess } from '../../src/drive/placement-access';
 import { DrivePlacements } from '../../src/drive/placements';
 import type { Store } from '../../src/store/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
@@ -126,19 +127,23 @@ export function placementRequest(
   deviceId: string,
   fields: Partial<DrivePlacementSet> = {},
 ): DrivePlacementSet {
-  const mode = fields.mode ?? 'mounted';
   return DRIVE_PLACEMENT_SET.parse({
     deviceId,
     rootId: HOME_DRIVE,
     folderItemId: null,
-    mode,
-    localPath: mode === 'synced' ? '/home/robin/Games' : null,
-    mountName: mode === 'synced' ? null : 'Games',
+    localPath: '/home/robin/Games',
     enabled: true,
-    ...(mode === 'synced' ? { excluded: [], ignorePatterns: [], conflictCopies: false } : {}),
+    excluded: [],
+    ignorePatterns: [],
+    conflictCopies: false,
     ...fields,
   });
 }
+
+export type PlacementFields = Partial<Omit<DrivePlacementSet, 'deviceId'>> & {
+  readonly mode?: 'synced' | 'mounted';
+  readonly mountName?: string;
+};
 
 export function status(fields: Partial<DrivePlacementStatus> = {}): DrivePlacementStatus {
   return {
@@ -161,11 +166,56 @@ export function status(fields: Partial<DrivePlacementStatus> = {}): DrivePlaceme
   };
 }
 
+export interface MountSpot {
+  readonly deviceId: string;
+  readonly rootId: string;
+  readonly folderItemId: string | null;
+  readonly mountName: string;
+  readonly enabled?: boolean;
+}
+
+export function insertMount(store: Store, actor: DriveActor, spot: MountSpot): DrivePlacement {
+  const target = { rootId: spot.rootId, folderItemId: spot.folderItemId };
+  const readOnly = targetAccess(store, actor, target) === 'view';
+  return store.context.write(() =>
+    store.drivePlacements.insert({
+      id: newId(),
+      deviceId: spot.deviceId,
+      ...target,
+      mode: 'mounted',
+      localPath: null,
+      mountName: spot.mountName,
+      enabled: spot.enabled ?? true,
+      createdBy: actor.profileId,
+      status: status({
+        state: 'starting',
+        tier: null,
+        route: null,
+        readOnly,
+        cacheBytes: 0,
+        pinnedBytes: 0,
+        openFiles: 0,
+        reportedAt: store.context.now(),
+      }),
+    }),
+  );
+}
+
 export function place(
   world: PlacementWorld,
   actor: DriveActor,
   deviceId: string,
-  fields: Partial<DrivePlacementSet> = {},
+  fields: PlacementFields = {},
 ): DrivePlacement {
-  return world.placements.set(actor, placementRequest(deviceId, fields));
+  const { mode, mountName, ...rest } = fields;
+  if (mode === 'mounted' || mountName !== undefined) {
+    return insertMount(world.store, actor, {
+      deviceId,
+      rootId: rest.rootId ?? HOME_DRIVE,
+      folderItemId: rest.folderItemId ?? null,
+      mountName: mountName ?? 'Games',
+      ...(rest.enabled === undefined ? {} : { enabled: rest.enabled }),
+    });
+  }
+  return world.placements.set(actor, placementRequest(deviceId, rest));
 }

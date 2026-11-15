@@ -6,7 +6,7 @@ import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
 import { SelectRow } from '../../components/rows';
 import { isLocalScale, useProfiles } from '../../store/people';
-import { useDevices, useIsOwner, useRows } from '../../store/selectors';
+import { useIsOwner, useMatchingDevices, useRows } from '../../store/selectors';
 import { useProfileSave } from './body-details';
 import { PhoneListeningRows } from './phone-listening-row';
 import { NO_SLOT, slotChoices, slotOf } from './scale-slots';
@@ -49,7 +49,7 @@ function SlotRow({
 export function ScaleBlock(): ReactNode {
   const now = useMinute();
   const owner = useIsOwner();
-  const scales = useDevices({ includeHidden: true }).filter(isLocalScale);
+  const scales = useMatchingDevices(isLocalScale, { includeHidden: true });
   if (scales.length === 0) {
     return owner ? (
       <ListRow

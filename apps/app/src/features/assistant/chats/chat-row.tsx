@@ -20,7 +20,7 @@ import { useIdiom } from '../../../design/platform';
 import { useKeyboardRow } from '../../../components/keyboard-list';
 import { useIsOwner } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
-import { useMinute } from '../../../store/clock';
+import { useMinuteOf } from '../../../store/clock';
 import { chatListTime } from '../model/chat-list-time';
 import { sameEntry, type ChatEntry } from './chat-entry';
 import { AgentMark } from './agent-mark';
@@ -71,12 +71,12 @@ function Trailing({
   readonly timeZone: string | null;
   readonly hovered: boolean;
 }): ReactNode {
-  const now = useMinute();
+  const label = useMinuteOf((now) => chatListTime(entry.at, now, timeZone));
   return (
     <View className="items-end gap-1">
       <View className={cn('flex-row items-center gap-1', hovered && 'opacity-0')}>
         <Text variant="caption" tone="variant" className="tabular">
-          {chatListTime(entry.at, now, timeZone)}
+          {label}
         </Text>
         {entry.pinned && !entry.archived ? <Icon name="pin" size={16} tone="variant" /> : null}
       </View>

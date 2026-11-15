@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bytes } from '../../../format/number';
 import {
-  mountLocationsOf,
+  mountOpenable,
   mountSummaryOf,
   offlineBodyOf,
   setupOf,
@@ -24,38 +24,6 @@ describe('this computer’s mount summary', () => {
   );
   const elsewhere = placement({ id: 'e0000000-0000-4000-8000-000000000003', deviceId: LAPTOP });
   const synced = placement({ id: 'e0000000-0000-4000-8000-000000000004', mode: 'synced' });
-
-  it('lists every mounted folder of this computer with its place and state', () => {
-    const point = '/run/user/1000/smarteverything/Shared';
-    const reported = placement(
-      { id: 'e0000000-0000-4000-8000-000000000002', mountName: 'Shared' },
-      { mountPoint: point, route: 'local' },
-    );
-    const blocked = placement(
-      { id: 'e0000000-0000-4000-8000-000000000005', mountName: 'Music' },
-      { state: 'blocked', reason: 'The mount folder is busy' },
-    );
-    expect(mountLocationsOf(mountSummaryOf(WORKSTATION, [reported, blocked, synced]))).toEqual([
-      {
-        id: reported.id,
-        name: 'Shared',
-        point,
-        openable: true,
-        chip: { label: 'Mounted', tone: 'positive' },
-        line: 'over the home network',
-        lineTone: 'variant',
-      },
-      {
-        id: blocked.id,
-        name: 'Music',
-        point: null,
-        openable: false,
-        chip: { label: 'Blocked', tone: 'warning' },
-        line: 'The mount folder is busy',
-        lineTone: 'warning',
-      },
-    ]);
-  });
 
   it('names the worst state of the mounts and the route they use', () => {
     const remote = placement({}, { route: 'remote' });
@@ -81,14 +49,13 @@ describe('this computer’s mount summary', () => {
     const openable = (
       patch: Parameters<typeof placement>[0],
       status: Parameters<typeof placement>[1],
-    ): boolean | undefined =>
-      mountLocationsOf(mountSummaryOf(WORKSTATION, [placement(patch, { ...at, ...status })]))[0]
-        ?.openable;
+    ): boolean => mountOpenable(placement(patch, { ...at, ...status }));
     expect(openable({}, {})).toBe(true);
     expect(openable({}, { state: 'offline' })).toBe(true);
     expect(openable({}, { state: 'failed' })).toBe(false);
     expect(openable({ enabled: false }, {})).toBe(false);
     expect(openable({ hold: 'trashed' }, {})).toBe(false);
+    expect(mountOpenable(placement())).toBe(false);
   });
 
   it('says when waiting uploads go out', () => {
@@ -139,5 +106,19 @@ describe('this computer’s mount summary', () => {
     expect(setupOf('linux', missing, summary)).toBe('fuse3');
     expect(setupOf('linux', { available: true }, summary)).toBeNull();
     expect(setupOf('darwin', null, summary)).toBe('macos');
+  });
+
+  it('shows no setup steps while a full mount is healthy', () => {
+    const healthy = mountSummaryOf(WORKSTATION, [placement()]);
+    const missing = {
+      available: false,
+      missing: ['fusermount3'],
+      command: null,
+      reason: 'x',
+    } as const;
+    expect(setupOf('linux', missing, healthy)).toBeNull();
+    expect(setupOf('darwin', null, healthy)).toBeNull();
+    const starting = mountSummaryOf(WORKSTATION, [placement({}, { state: 'starting' })]);
+    expect(setupOf('darwin', null, starting)).toBeNull();
   });
 });

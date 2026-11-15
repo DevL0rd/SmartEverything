@@ -1,6 +1,5 @@
 package expo.modules.healthconnect.listening
 
-import android.content.Context
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.KeywordSpotter
 import com.k2fsa.sherpa.onnx.KeywordSpotterConfig
@@ -15,7 +14,6 @@ class WakeEar(
   model: File,
   keywordsFile: File,
   threshold: Float,
-  context: Context,
   counters: ListeningCounters,
   private val onWake: (WakeHeard) -> Unit,
   private val clock: () -> Long = System::currentTimeMillis
@@ -23,19 +21,18 @@ class WakeEar(
   private val spotter = KeywordSpotter(null, configOf(model, keywordsFile, threshold))
   private val streams = listOf(spotter.createStream(""), spotter.createStream(""))
   private val preroll = WakePreroll(WakePreroll.LOOKBACK_MS)
-  private val silero = SileroVoice(context)
-  private val gate = VoiceGate(silero.voice, counters, ::restart, ::feed, opened = preroll::sentenceBegan)
+  private val gate = VoiceGate(counters, ::restart, ::feed, opened = preroll::sentenceBegan)
   private val samples = FloatArray(FRAME_16K)
   private var lagging = STAGGER_SAMPLES
   private var closed = false
 
   @Synchronized
-  fun hear(pcm16k: ShortArray) {
+  fun hear(pcm16k: ShortArray, frames: List<VoiceFrame>) {
     if (closed) {
       return
     }
     preroll.push(pcm16k)
-    gate.hear(pcm16k)
+    gate.hear(pcm16k, frames)
   }
 
   private fun feed(pcm16k: ShortArray) {
@@ -72,7 +69,6 @@ class WakeEar(
       closed = true
       streams.forEach(OnlineStream::release)
       spotter.release()
-      silero.close()
     }
   }
 

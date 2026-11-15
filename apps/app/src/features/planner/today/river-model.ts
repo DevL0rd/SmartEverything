@@ -45,6 +45,7 @@ export interface RiverInput {
   readonly collections: readonly PlannerCollectionRow[];
   readonly items: readonly PlannerItemRow[];
   readonly hidden: ReadonlySet<string>;
+  readonly lens: PlannerOccurrenceView | null;
   readonly guests: readonly PlannerGuestRow[];
   readonly me: string | null;
 }
@@ -53,8 +54,8 @@ function momentOf(value: string | null): number | null {
   return value === null ? null : Date.parse(value);
 }
 
-export function riverKeyOf(occurrence: PlannerOccurrenceView): string {
-  return `river:${occurrence.item_id}:${occurrence.occurrence_key}`;
+export function occurrenceKeyOf(occurrence: PlannerOccurrenceView): string {
+  return `${occurrence.item_id}:${occurrence.occurrence_key}`;
 }
 
 export function anchorOf(occurrence: PlannerOccurrenceView): number | null {
@@ -73,8 +74,11 @@ function byRiverOrder(left: PlannerOccurrenceView, right: PlannerOccurrenceView)
   return (anchorOf(left) ?? 0) - (anchorOf(right) ?? 0);
 }
 
-export function riverOccurrencesOf(day: PlannerDay): readonly PlannerOccurrenceView[] {
-  const [, ...rest] = [...day.current, ...day.upcoming];
+export function riverOccurrencesOf(
+  day: PlannerDay,
+  lens: PlannerOccurrenceView | null,
+): readonly PlannerOccurrenceView[] {
+  const rest = [...day.current, ...day.upcoming].filter((occurrence) => occurrence !== lens);
   const current = new Set(day.current);
   const now = rest.filter((occurrence) => current.has(occurrence));
   const later = rest.filter((occurrence) => !current.has(occurrence)).sort(byRiverOrder);
@@ -88,7 +92,7 @@ function durationOf(minutes: number): string {
 export function riverTimeOf(occurrence: PlannerOccurrenceView, timeZone: string): string {
   if (occurrence.all_day) return 'All day';
   const at = occurrence.start ?? occurrence.due_at;
-  return at === null ? 'Any time' : clock24(at, timeZone);
+  return at === null ? 'Anytime' : clock24(at, timeZone);
 }
 
 export function riverSubtitleOf(
@@ -158,7 +162,7 @@ function rowOf(
   const collection = collections.find((row) => row.id === occurrence.collection_id);
   const item = items.find((row) => row.id === occurrence.item_id);
   const row = {
-    key: riverKeyOf(occurrence),
+    key: occurrenceKeyOf(occurrence),
     occurrence,
     at: anchorOf(occurrence),
     now: current.has(occurrence),
@@ -176,8 +180,8 @@ function rowOf(
 
 export function riverRowsOf(input: RiverInput): readonly RiverRow[] {
   const current: ReadonlySet<PlannerOccurrenceView> = new Set(input.day.current);
-  return riverOccurrencesOf(input.day)
-    .filter((occurrence) => !input.hidden.has(riverKeyOf(occurrence)))
+  return riverOccurrencesOf(input.day, input.lens)
+    .filter((occurrence) => !input.hidden.has(occurrenceKeyOf(occurrence)))
     .map((occurrence) => rowOf(occurrence, input, current));
 }
 

@@ -9,8 +9,6 @@ export const PHONE_ALBUM = z
 
 export type PhoneAlbum = z.infer<typeof PHONE_ALBUM>;
 
-export const PHONE_ALBUMS_KEY = ['window', 'photos-phone-albums'] as const;
-
 let loaded: Promise<typeof MediaLibraryModule> | null = null;
 
 function library(): Promise<typeof MediaLibraryModule> {

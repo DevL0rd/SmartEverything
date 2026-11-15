@@ -1,4 +1,4 @@
-import { bytes, count } from '../../../format/number';
+import { bytes, count, percent } from '../../../format/number';
 import type { UploadEntries, UploadEntry, UploadFailure } from '../../drive';
 
 export const ALREADY_THERE = 'Already in library';
@@ -39,7 +39,7 @@ export function entryStatus(entry: UploadEntry): EntryStatus {
 }
 
 export function percentText(share: number): string {
-  return `${String(Math.round(share * 100))} %`;
+  return percent(share);
 }
 
 export interface PanelSummary {

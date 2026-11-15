@@ -101,7 +101,7 @@ export function WidgetHeader({
         <Interactive
           href={href}
           label={`${title}, see all`}
-          className="-mx-1 flex-1 rounded-sm px-1"
+          className="-m-1 flex-1 rounded-sm p-1"
           layerClassName="rounded-sm"
         >
           <Title title={title} icon={icon} accent={accent} link />
@@ -129,7 +129,7 @@ function CompactHeader({
         <Interactive
           href={href}
           label={`${title}, see all`}
-          className="-m-1 rounded-sm p-1"
+          className="-m-2 rounded-sm p-2"
           layerClassName="rounded-sm"
         >
           {well}

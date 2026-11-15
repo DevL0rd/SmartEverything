@@ -1,4 +1,4 @@
-import { prefOf, PREFS } from '../../../../store/prefs';
+import type { ClientPrefRead, PhotosBackupPref } from '@smarteverything/domain';
 import type { StoreState } from '../../../../store/state';
 import type { BackupDeviceIdentity } from '../model/types';
 
@@ -10,11 +10,11 @@ export interface BackupOwner {
 
 export function backupOwner(
   state: StoreState,
+  pref: ClientPrefRead<PhotosBackupPref>,
   desktopDeviceId?: string | null,
 ): BackupOwner | null {
   const client = state.session?.client;
   if (!state.loaded || client?.profile_id === undefined || client.profile_id === null) return null;
-  const pref = prefOf(state, PREFS.photosBackup);
   if (pref.status === 'invalid') return null;
   const device = state.tables.devices.rows.find((row) =>
     desktopDeviceId === undefined
@@ -33,7 +33,6 @@ export function backupOwner(
   };
 }
 
-export function backupOwnerKey(state: StoreState, desktopDeviceId?: string | null): string | null {
-  const owner = backupOwner(state, desktopDeviceId);
+export function backupOwnerKey(owner: BackupOwner | null): string | null {
   return owner === null ? null : JSON.stringify(owner);
 }

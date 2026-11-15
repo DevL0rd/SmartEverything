@@ -36,7 +36,7 @@ function LedgerFooter({
   }
   if (ledger.isError) {
     return (
-      <View className="w-full px-gutter pb-3 max-w-dashboard">
+      <View className="w-full px-gutter pb-3">
         <Banner
           tone="critical"
           title="Couldn’t load requests"
@@ -137,29 +137,31 @@ export function CostsScreen(): ReactNode {
   const [open, setOpen] = useState<UsageLedgerRow | null>(null);
   return (
     <CostsFrame chatId={state.params.chat}>
-      <VirtualList
-        sections={summary.data?.totals.sum.count === 0 ? [] : sections}
-        keyOf={(row) => row.id}
-        renderItem={(row) => (
-          <LedgerRow row={row} timeZone={timeZone} showPerson={owner} onOpen={setOpen} />
-        )}
-        header={
-          <CostsHeader
-            state={state}
-            window={window}
-            today={today}
-            summary={summary.data}
-            summaryError={summary.isError ? summary.error : null}
-            retry={() => {
-              background(summary.refetch(), 'summary.refetch_failed');
-            }}
-          />
-        }
-        footer={<LedgerFooter ledger={ledger} />}
-        onEndReached={() => {
-          loadMore(ledger);
-        }}
-      />
+      <View className="-mx-gutter min-h-0 flex-1">
+        <VirtualList
+          sections={summary.data?.totals.sum.count === 0 ? [] : sections}
+          keyOf={(row) => row.id}
+          renderItem={(row) => (
+            <LedgerRow row={row} timeZone={timeZone} showPerson={owner} onOpen={setOpen} />
+          )}
+          header={
+            <CostsHeader
+              state={state}
+              window={window}
+              today={today}
+              summary={summary.data}
+              summaryError={summary.isError ? summary.error : null}
+              retry={() => {
+                background(summary.refetch(), 'summary.refetch_failed');
+              }}
+            />
+          }
+          footer={<LedgerFooter ledger={ledger} />}
+          onEndReached={() => {
+            loadMore(ledger);
+          }}
+        />
+      </View>
       <LedgerSheet
         row={open}
         timeZone={timeZone}

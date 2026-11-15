@@ -1,6 +1,5 @@
 import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
-import { frameLayoutMath } from '../../../components/page-shell/layout';
 import type { IconName } from '../../../components/icon';
 import type { PlannerSection } from '../model/section-routes';
 
@@ -10,7 +9,7 @@ export interface PlannerSectionDef {
   readonly icon: IconName;
   readonly href: AppHref;
   readonly hint: string;
-  readonly phoneTab: boolean;
+  readonly phoneHint: string;
 }
 
 export const PLANNER_QUICK_ADD_TARGET = 'planner' as const;
@@ -22,7 +21,7 @@ export const PLANNER_SECTION_DEFS: readonly PlannerSectionDef[] = [
     icon: 'sun',
     href: href.planner.index(),
     hint: 'Add to today. Try: dentist Tue 15:30 #family',
-    phoneTab: true,
+    phoneHint: 'Add to today',
   },
   {
     id: 'tasks',
@@ -30,7 +29,7 @@ export const PLANNER_SECTION_DEFS: readonly PlannerSectionDef[] = [
     icon: 'circleCheck',
     href: href.planner.tasks(),
     hint: 'New task. Try: pay rent on the 1st !2',
-    phoneTab: true,
+    phoneHint: 'New task',
   },
   {
     id: 'calendar',
@@ -38,7 +37,7 @@ export const PLANNER_SECTION_DEFS: readonly PlannerSectionDef[] = [
     icon: 'calendar',
     href: href.planner.calendar(),
     hint: 'New event. Try: dentist Tue 15:30',
-    phoneTab: true,
+    phoneHint: 'New event',
   },
   {
     id: 'insights',
@@ -46,7 +45,7 @@ export const PLANNER_SECTION_DEFS: readonly PlannerSectionDef[] = [
     icon: 'trendUp',
     href: href.planner.insights(),
     hint: 'Add a task or an event. Try: brush teeth every day 07:30 #health',
-    phoneTab: false,
+    phoneHint: 'Add a task or an event',
   },
   {
     id: 'booking',
@@ -54,7 +53,7 @@ export const PLANNER_SECTION_DEFS: readonly PlannerSectionDef[] = [
     icon: 'share',
     href: href.planner.booking(),
     hint: 'Add an event. Try: call with Anna Fri 10:00',
-    phoneTab: false,
+    phoneHint: 'Add an event',
   },
 ];
 
@@ -77,16 +76,4 @@ export function isPlannerSection(id: string): id is PlannerSection {
 export function plannerHrefOf(id: string): AppHref {
   if (!isPlannerSection(id)) throw new UnknownPlannerSection(id);
   return plannerSectionOf(id).href;
-}
-
-export const { frameLayoutOf, railWidthOf } = frameLayoutMath({
-  compactMax: 600,
-  iconRailMax: 900,
-  wideRailMin: 1024,
-});
-
-export function plannerTitleOf(section: PlannerSection, area: number): string {
-  return frameLayoutOf(area) === 'wide' && section !== 'index'
-    ? plannerSectionOf(section).label
-    : 'Planner';
 }

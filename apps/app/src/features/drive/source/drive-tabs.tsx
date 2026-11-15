@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { DriveItem } from '@smarteverything/domain';
 import { useDriveRoots, useViewerId } from '../data';
 import { detailsSubjectOf, type DetailsSubject } from '../details/details-model';
 import { ActivityTab } from '../details/activity-tab';
@@ -25,7 +26,10 @@ const TAB_LABEL: Readonly<Record<DriveTabId, string>> = {
 };
 
 export function useDriveSubject(node: DriveNode): DetailsSubject | null {
-  const item = itemOf(node);
+  return useItemSubject(itemOf(node));
+}
+
+export function useItemSubject(item: DriveItem | null): DetailsSubject | null {
   const roots = useDriveRoots();
   const viewerId = useViewerId();
   const foreign = item !== null && isForeignRoot(roots, item.rootId, viewerId);

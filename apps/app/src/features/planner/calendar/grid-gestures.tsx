@@ -285,15 +285,21 @@ function useBlockPan({ mode, block, context, offsets, reduced }: PanInput): PanG
     });
 }
 
+export function touchActionOf(touch: boolean): 'pan-y' | undefined {
+  return touch ? 'pan-y' : undefined;
+}
+
 function Edge({
   mode,
   gesture,
+  touch,
 }: {
   readonly mode: DragMode;
   readonly gesture: PanGesture;
+  readonly touch: boolean;
 }): ReactNode {
   return (
-    <GestureDetector gesture={gesture}>
+    <GestureDetector gesture={gesture} touchAction={touchActionOf(touch)}>
       <Animated.View
         aria-hidden
         className={cn(
@@ -340,13 +346,13 @@ export function MovableBlock({
     };
   });
   return (
-    <GestureDetector gesture={move}>
+    <GestureDetector gesture={move} touchAction={touchActionOf(context.touch)}>
       <Animated.View style={[lane, placed]} className={cn('absolute', className)}>
         {children}
         {resizable && block.to - block.from >= START_EDGE_FROM ? (
-          <Edge mode="start" gesture={start} />
+          <Edge mode="start" gesture={start} touch={context.touch} />
         ) : null}
-        {resizable ? <Edge mode="end" gesture={end} /> : null}
+        {resizable ? <Edge mode="end" gesture={end} touch={context.touch} /> : null}
       </Animated.View>
     </GestureDetector>
   );

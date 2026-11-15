@@ -7,14 +7,12 @@ import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
 import { bytes } from '../../../format/number';
 import { useDriveLink } from '../../drive';
 import {
   copiesOf,
   copyLabelOf,
   groupLineOf,
-  groupSourcesOf,
   itemLineOf,
   sourceOf,
   type SourceLabels,
@@ -43,13 +41,8 @@ function Thumb({
 }): ReactNode {
   const url = useDriveLink(item.id, item.rev, 'thumb');
   return (
-    <View
-      className={cn(
-        'h-full w-full rounded-md border-2 p-0.5',
-        keeper ? 'border-positive' : 'border-transparent',
-      )}
-    >
-      <View className="flex-1 items-center justify-center overflow-hidden rounded-sm bg-surface-3">
+    <View className="h-full w-full overflow-hidden rounded-md">
+      <View className="flex-1 items-center justify-center bg-surface-3">
         {url === null ? (
           <Icon name={item.kind === 'video' ? 'film' : 'image'} size={24} tone="faint" />
         ) : (
@@ -63,7 +56,13 @@ function Thumb({
         )}
       </View>
       {keeper ? (
-        <View pointerEvents="none" className="absolute left-2 top-2">
+        <View
+          pointerEvents="none"
+          className="absolute inset-0 rounded-md border-2 border-positive"
+        />
+      ) : null}
+      {keeper ? (
+        <View pointerEvents="none" className="absolute left-1.5 top-1.5">
           <Badge label="Keep" tone="positive" icon="check" />
         </View>
       ) : null}
@@ -82,7 +81,11 @@ function WideCopy({
 }): ReactNode {
   const source = sourceOf(item, labels);
   return (
-    <View accessible accessibilityLabel={copyLabelOf(item, keeper, labels)} className="w-50 gap-1">
+    <View
+      accessible
+      accessibilityLabel={copyLabelOf(item, keeper, labels)}
+      className="min-w-0 max-w-60 flex-1 gap-1"
+    >
       <View className="h-30">
         <Thumb item={item} keeper={keeper} />
       </View>
@@ -131,7 +134,7 @@ function WideGroup({ group, labels, handlers }: GroupProps): ReactNode {
   return (
     <Card>
       <View className="flex-row items-center gap-4">
-        <View className="min-w-0 flex-1 flex-row flex-wrap gap-4">
+        <View className="min-w-0 flex-1 flex-row gap-3">
           {copiesOf(group).map((item) => (
             <WideCopy
               key={item.id}
@@ -153,35 +156,58 @@ function WideGroup({ group, labels, handlers }: GroupProps): ReactNode {
   );
 }
 
+function PhoneCopy({
+  item,
+  keeper,
+  labels,
+}: {
+  readonly item: DriveItem;
+  readonly keeper: boolean;
+  readonly labels: SourceLabels;
+}): ReactNode {
+  const source = sourceOf(item, labels);
+  return (
+    <View
+      accessible
+      accessibilityLabel={copyLabelOf(item, keeper, labels)}
+      className="min-w-0 flex-1 gap-0.5"
+    >
+      <View className="h-24">
+        <Thumb item={item} keeper={keeper} />
+      </View>
+      <Text variant="caption" numberOfLines={1}>
+        {item.name}
+      </Text>
+      {source === null ? null : (
+        <Text variant="caption" tone="variant" numberOfLines={1}>
+          {source}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function PhoneGroup({ group, labels, handlers }: GroupProps): ReactNode {
-  const sources = groupSourcesOf(group, labels);
   return (
     <Card>
-      <View className="h-27.5 flex-row gap-2">
+      <View className="flex-row gap-2">
         {copiesOf(group).map((item) => (
-          <View
+          <PhoneCopy
             key={item.id}
-            accessible
-            accessibilityLabel={copyLabelOf(item, item.id === group.keeperItemId, labels)}
-            className="min-w-0 flex-1"
-          >
-            <Thumb item={item} keeper={item.id === group.keeperItemId} />
-          </View>
+            item={item}
+            keeper={item.id === group.keeperItemId}
+            labels={labels}
+          />
         ))}
       </View>
       <View className="flex-row flex-wrap items-center justify-end gap-2">
-        <View className="min-w-40 flex-1">
-          <Text variant="caption" tone="variant" className="tabular-nums" numberOfLines={1}>
-            {groupLineOf(group)}
-          </Text>
-          {sources === null ? null : (
-            <Text variant="caption" tone="variant" numberOfLines={1}>
-              {sources}
-            </Text>
-          )}
+        <Text variant="caption" tone="variant" className="min-w-0 grow tabular-nums">
+          {groupLineOf(group)}
+        </Text>
+        <View className="flex-row items-center gap-2">
+          <NotDuplicatesButton group={group} handlers={handlers} />
+          <KeepBestButton group={group} handlers={handlers} />
         </View>
-        <NotDuplicatesButton group={group} handlers={handlers} />
-        <KeepBestButton group={group} handlers={handlers} />
       </View>
     </Card>
   );

@@ -9,3 +9,11 @@ export const PHOTO_AI_NOTICES: NoticeHandler = noticeHandler(
     if (message.stage === 'faces' && message.done === message.total) invalidatePeople(client);
   },
 );
+
+export const PHOTO_PEOPLE_NOTICES: NoticeHandler = noticeHandler(
+  ['photos_people_changed'],
+  (_message, { client }) => {
+    invalidatePeople(client);
+    invalidateAiStatus(client);
+  },
+);

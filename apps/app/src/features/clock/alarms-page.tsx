@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
-import type { HeaderAction } from '../../components/page-header';
+import type { ShellAction } from '../../components/page-shell/shell-actions';
 import { useAreaWidth } from '../../design/size-class';
 import { useMinute } from '../../store/clock';
 import { useSettings } from '../../store/selectors';
@@ -21,10 +21,10 @@ import { SystemAlarmRow } from './alarm/system-alarm-row';
 import { WakeInsightsCard } from './alarm/wake-chart';
 import { ClockFrame } from './frame/clock-frame';
 import { useHubOffline } from './frame/hub-status';
-import { frameLayoutOf } from './frame/sections';
+import { shellLayoutOf } from '../../components/page-shell/layout';
 import { WatchArrivalsNotice } from './watch-notice';
 
-type Layout = ReturnType<typeof frameLayoutOf>;
+type Layout = ReturnType<typeof shellLayoutOf>;
 
 type Chosen =
   | { readonly kind: 'next' }
@@ -191,7 +191,7 @@ function useAlarmsView(): Omit<AlarmsView, 'prefs'> {
     alarms,
     now: useMinute(),
     timeZone: useSettings().time_zone,
-    layout: frameLayoutOf(useAreaWidth()),
+    layout: shellLayoutOf(useAreaWidth()),
     offline: useHubOffline(),
   };
 }
@@ -203,7 +203,7 @@ export function AlarmsPage(): ReactNode {
   const [editor, setEditor] = useState<EditorState>({ open: false, alarmId: null });
   const wide = base.layout === 'wide';
   const subtitle = alarmsSubtitleOf(base.alarms, base.now, base.timeZone);
-  const newAlarm: HeaderAction = {
+  const newAlarm: ShellAction = {
     icon: 'plus',
     label: 'New alarm',
     primary: true,
@@ -217,7 +217,6 @@ export function AlarmsPage(): ReactNode {
     <ClockFrame
       section="index"
       actions={[newAlarm]}
-      width={wide ? 'dashboard' : 'detail'}
       scroll={!wide}
       {...(subtitle === null ? {} : { subtitle })}
     >

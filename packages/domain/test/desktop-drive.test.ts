@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_DESKTOP_DRIVE_CACHE,
+  DEFAULT_DESKTOP_DRIVE_TUNING,
+  DESKTOP_DRIVE_TUNING,
+  DESKTOP_DRIVE_TUNING_STATE,
   DESKTOP_DRIVE_CACHE,
   DESKTOP_DRIVE_COMMAND,
   DESKTOP_DRIVE_STATE,
 } from '../src/desktop-drive';
+
+const UNTUNED = { saved: DEFAULT_DESKTOP_DRIVE_TUNING, applied: [], limits: null };
 
 describe('desktop drive bridge contract', () => {
   it('keeps the cache an hour, cleans every minute and sets no size or free space floor', () => {
@@ -42,6 +47,7 @@ describe('desktop drive bridge contract', () => {
         reason: 'fuse3 is missing',
       },
       cache: DEFAULT_DESKTOP_DRIVE_CACHE,
+      tuning: UNTUNED,
     });
     expect(state.fuse.available).toBe(false);
     expect(DESKTOP_DRIVE_STATE.safeParse({ ...state, extra: 1 }).success).toBe(false);
@@ -58,6 +64,7 @@ describe('desktop drive bridge contract', () => {
       sync: null,
       fuse: { available: true },
       cache: DEFAULT_DESKTOP_DRIVE_CACHE,
+      tuning: UNTUNED,
     };
     expect(DESKTOP_DRIVE_STATE.parse(state).mount?.points).toHaveLength(1);
     expect(
@@ -70,5 +77,56 @@ describe('desktop drive bridge contract', () => {
         mount: { ...mount, points: [{ placementId: 'p', point: '' }] },
       }).success,
     ).toBe(false);
+  });
+
+  it('defaults the tuning to what NFS, SMB3 and rclone really use', () => {
+    expect(DESKTOP_DRIVE_TUNING.parse(DEFAULT_DESKTOP_DRIVE_TUNING)).toMatchObject({
+      maxBackground: 64,
+      congestionThreshold: 'follow',
+      maxRequestBytes: 1_048_576,
+      kernelReadaheadBytes: 131_072,
+      readAheadBytes: 16_777_216,
+      readdirPlus: 'auto',
+      entrySeconds: 'changed',
+      closeWaitsForUpload: false,
+      fsyncWaitsForHub: true,
+      uploadFiles: 4,
+      uploadFramesInFlight: 64,
+      pingSeconds: 10,
+      deadAfterSeconds: 30,
+      prefetchSmallFiles: false,
+    });
+  });
+
+  it('refuses tuning values outside the real bounds', () => {
+    const bad = (change: object): boolean =>
+      DESKTOP_DRIVE_TUNING.safeParse({ ...DEFAULT_DESKTOP_DRIVE_TUNING, ...change }).success;
+    expect(bad({ maxBackground: 65536 })).toBe(false);
+    expect(bad({ maxBackground: 0 })).toBe(false);
+    expect(bad({ bulkFrameBytes: 1_048_577 })).toBe(false);
+    expect(bad({ deadAfterSeconds: 10 })).toBe(false);
+    expect(bad({ readdirPlus: 'sometimes' })).toBe(false);
+    expect(bad({ attrSeconds: -1 })).toBe(false);
+    expect(bad({ readAheadBytes: 0, attrSeconds: 60, congestionThreshold: 48 })).toBe(true);
+  });
+
+  it('carries the tuning command and the applied tuning per mount', () => {
+    expect(
+      DESKTOP_DRIVE_COMMAND.parse({ kind: 'tuning', tuning: DEFAULT_DESKTOP_DRIVE_TUNING }).kind,
+    ).toBe('tuning');
+    expect(
+      DESKTOP_DRIVE_TUNING_STATE.parse({
+        saved: DEFAULT_DESKTOP_DRIVE_TUNING,
+        applied: [{ placementId: 'p', tuning: DEFAULT_DESKTOP_DRIVE_TUNING }],
+        limits: {
+          platform: 'linux',
+          pageBytes: 4096,
+          maxUserBackground: 20793,
+          maxUserCongestionThreshold: 15594,
+          maxRequestBytes: 1_048_576,
+          kernelReadaheadOfferBytes: 131_072,
+        },
+      }).applied,
+    ).toHaveLength(1);
   });
 });

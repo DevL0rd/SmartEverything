@@ -282,6 +282,9 @@ describe('search inside files', () => {
       indexingPaused: false,
       contentIndexing: true,
       ocrLanguages: ['eng', 'chi_sim'],
+      fileIoThreads: 8,
+      cpuWorkers: 4,
+      listingCacheSeconds: 300,
     };
     expect(DRIVE_SETTINGS.safeParse(settings).success).toBe(true);
     expect(DRIVE_SETTINGS.safeParse({ ...settings, ocrLanguages: [] }).success).toBe(false);

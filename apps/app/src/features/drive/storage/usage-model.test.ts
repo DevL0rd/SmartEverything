@@ -34,7 +34,7 @@ const PEOPLE = [
 
 describe('Storage usage lines', () => {
   it('splits a drive into files, versions and trash against its quota', () => {
-    const line = usageLineOf(usage(ME, 30, 5, 5), { known: true, bytes: 200 * GB });
+    const line = usageLineOf(usage(ME, 30, 5, 5), { known: true, bytes: 200 * GB }, 0);
     expect(line.segments.map((segment) => [segment.label, segment.value])).toEqual([
       ['Files', 30 * GB],
       ['Versions', 5 * GB],
@@ -47,15 +47,20 @@ describe('Storage usage lines', () => {
   });
 
   it('warns near the quota, turns critical when full and fills the bar past it', () => {
-    expect(usageLineOf(usage(ME, 185), { known: true, bytes: 200 * GB }).tone).toBe('warning');
-    const over = usageLineOf(usage(ME, 210), { known: true, bytes: 200 * GB });
+    expect(usageLineOf(usage(ME, 185), { known: true, bytes: 200 * GB }, 0).tone).toBe('warning');
+    const over = usageLineOf(usage(ME, 210), { known: true, bytes: 200 * GB }, 0);
     expect(over.tone).toBe('critical');
     expect(over.total).toBe(210 * GB);
   });
 
+  it('scales a drive with no limit against the free disk space', () => {
+    expect(usageLineOf(usage(ME, 30), NO_QUOTA, 90 * GB).total).toBe(120 * GB);
+    expect(usageLineOf(usage(ME, 30), QUOTA_UNKNOWN, 70 * GB).total).toBe(100 * GB);
+  });
+
   it('says no limit only when the quotas are known, else just the used space', () => {
-    expect(usageLineOf(usage(ME, 30), NO_QUOTA).used).toBe(`${bytes(30 * GB)} · no limit set`);
-    expect(usageLineOf(usage(ME, 30), QUOTA_UNKNOWN).used).toBe(`${bytes(30 * GB)} used`);
+    expect(usageLineOf(usage(ME, 30), NO_QUOTA, 0).used).toBe(`${bytes(30 * GB)} · no limit set`);
+    expect(usageLineOf(usage(ME, 30), QUOTA_UNKNOWN, 0).used).toBe(`${bytes(30 * GB)} used`);
     expect(quotaOf(null, ME)).toEqual(QUOTA_UNKNOWN);
     expect(quotaOf([{ profileId: SAM, bytes: GB }], ME)).toEqual(NO_QUOTA);
   });
@@ -93,32 +98,22 @@ describe('Storage people list', () => {
 describe('Data folder disk', () => {
   const stats = {
     space: { totalBytes: 1000 * GB, freeBytes: 400 * GB, fsType: 'ext4' },
-    liveBytes: 100 * GB,
-    versionBytes: 10 * GB,
-    trashBytes: 10 * GB,
+    bytes: 120 * GB,
   };
 
-  it('splits used space into every drive and other Hub data for the owner', () => {
-    const disk = diskViewOf({ stats, usage: [usage(ME, 100), usage(SAM, 300)], owner: true });
+  it('splits used space into your drives, the same total as the page subtitle, and everything else', () => {
+    const disk = diskViewOf(stats);
     expect(disk.segments.map((segment) => [segment.label, segment.value])).toEqual([
-      ['Drives', 400 * GB],
-      ['Other Hub data', 200 * GB],
+      ['Your drives', 120 * GB],
+      ['Everything else', 480 * GB],
     ]);
     expect(disk.used).toBe(`${bytes(600 * GB)} of ${bytes(1000 * GB)} used`);
     expect(disk.free).toBe(`${bytes(400 * GB)} free`);
     expect(disk.fsType).toBe('ext4');
   });
 
-  it('shows a member only their own drives against everything else on the disk', () => {
-    const disk = diskViewOf({ stats, usage: [usage(ME, 100)], owner: false });
-    expect(disk.segments.map((segment) => [segment.label, segment.value])).toEqual([
-      ['Your drives', 120 * GB],
-      ['Everything else', 480 * GB],
-    ]);
-  });
-
   it('warns when the disk is nearly full', () => {
     const full = { ...stats, space: { ...stats.space, freeBytes: 50 * GB } };
-    expect(diskViewOf({ stats: full, usage: null, owner: false }).tone).toBe('warning');
+    expect(diskViewOf(full).tone).toBe('warning');
   });
 });

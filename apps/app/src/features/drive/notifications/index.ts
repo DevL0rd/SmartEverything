@@ -5,4 +5,3 @@ export {
   PUSH_KINDS_TITLE,
   PushKindsSetting,
 } from './push-kinds';
-export { TransferOfferCard } from './transfer-card';

@@ -113,7 +113,7 @@ function Editor({
       {...(touch ? { footer: <SaveBar editor={editor} label={saveLabel} /> } : {})}
     >
       <View className="flex-row flex-wrap gap-section-gap">
-        <View className="min-w-0 max-w-reading grow shrink basis-80 gap-section-gap">
+        <View className="min-w-0 grow shrink basis-80 gap-section-gap">
           <TextField
             label="Name (optional)"
             value={editor.draft.label}
@@ -122,7 +122,7 @@ function Editor({
           />
           <WhenBlock editor={editor} />
         </View>
-        <View className="min-w-0 max-w-reading grow shrink basis-80">
+        <View className="min-w-0 grow shrink basis-80">
           <StepsBlock editor={editor} />
         </View>
       </View>

@@ -10,7 +10,7 @@ import { DriveSettingsSection } from './page';
 export function DrivesSection(): ReactNode {
   const cards = driveSettingsCardsOf(useDriveRoots(), useViewerId(), useIsOwner());
   return (
-    <DriveSettingsSection section="drives">
+    <DriveSettingsSection>
       {cards.length === 0 ? (
         <EmptyState
           compact

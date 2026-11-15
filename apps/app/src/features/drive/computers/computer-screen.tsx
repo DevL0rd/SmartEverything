@@ -5,6 +5,7 @@ import type { DrivePlacement } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
+import { joinParts } from '../../../format/text';
 import { useDevices, useLoaded } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { ComputerBrowser, computersOf, type ComputerFrameSlots } from '../../computers';
@@ -35,11 +36,17 @@ function CompactCard({
   return <ComputerCard device={device} placements={placementsOn(device.id, placements)} compact />;
 }
 
-function headerPartsOf(header: BrowserHeader | null): Partial<DriveFrameProps> {
+export function computerSubtitleOf(device: string, header: BrowserHeader): string | undefined {
+  const line = joinParts([header.title === device ? null : header.title, header.subtitle]);
+  return line === '' ? undefined : line;
+}
+
+function headerPartsOf(device: Device, header: BrowserHeader | null): Partial<DriveFrameProps> {
   if (header === null) return {};
+  const subtitle = computerSubtitleOf(device.label, header);
   return {
     actions: header.actions,
-    ...(header.subtitle === undefined ? {} : { subtitle: header.subtitle }),
+    ...(subtitle === undefined ? {} : { subtitle }),
     ...(header.primary === undefined ? {} : { primary: header.primary }),
     ...(header.search === null ? {} : { search: shellSearchOf(header.search) }),
   };
@@ -58,11 +65,13 @@ function PageFrame({
   return (
     <DriveFrame
       section="computers"
-      title={header?.title ?? device.label}
+      title={device.label}
       breadcrumbs={[COMPUTERS_CRUMB, { label: device.label, href: href.driveComputer(device.id) }]}
       scroll={false}
       iconRail={slots.detailsOpen}
-      {...headerPartsOf(header)}
+      overflow={slots.overflow}
+      controls={slots.controls}
+      {...headerPartsOf(device, header)}
     >
       <View className="min-h-0 flex-1 gap-4">
         {card}

@@ -1,7 +1,9 @@
 import {
   ApiError,
+  DRIVE_MOUNT_NAME,
   DRIVE_PLACEMENT_STATUS,
   type DriveItem,
+  type DriveMountSet,
   type DrivePlacement,
   type DrivePlacementHold,
   type DrivePlacementSet,
@@ -97,16 +99,15 @@ export class DrivePlacements {
     return this.mutate(input.deviceId, () => {
       const existing = this.deps.store.drivePlacements
         .forDevice(input.deviceId)
-        .find((placement) => sameSpot(placement, input));
+        .find((placement) => placement.mode === 'synced' && sameSpot(placement, input));
       this.refuseNesting(input, existing?.id ?? null);
-      const settings = syncSettingsOf(input);
       const target = {
-        mode: input.mode,
+        mode: 'synced',
         localPath: input.localPath,
-        mountName: input.mountName,
+        mountName: null,
         enabled: input.enabled,
-        ...settings,
-      };
+        ...syncSettingsOf(input),
+      } as const;
       if (existing !== undefined) {
         return this.deps.store.drivePlacements.retarget(existing.id, { ...target, readOnly });
       }
@@ -115,6 +116,34 @@ export class DrivePlacements {
         deviceId: input.deviceId,
         rootId: input.rootId,
         folderItemId: input.folderItemId,
+        createdBy: actor.profileId,
+        status: startingStatus(this.at(), readOnly),
+        ...target,
+      });
+    });
+  }
+
+  setMount(actor: DriveActor, input: DriveMountSet): DrivePlacement {
+    this.requireComputer(actor, input.deviceId);
+    const drive = this.deps.store.driveRoots.byIdentity('person', actor.profileId);
+    if (drive === undefined) throw new ApiError('not_found', 'You have no My Drive to mount yet.');
+    const spot = { rootId: drive.id, folderItemId: null };
+    const readOnly = targetAccess(this.deps.store, actor, spot) === 'view';
+    return this.mutate(input.deviceId, () => {
+      const existing = this.mountOn(input.deviceId, spot);
+      const target = {
+        mode: 'mounted',
+        localPath: null,
+        mountName: DRIVE_MOUNT_NAME,
+        enabled: input.enabled,
+      } as const;
+      if (existing !== undefined) {
+        return this.deps.store.drivePlacements.retarget(existing.id, { ...target, readOnly });
+      }
+      return this.deps.store.drivePlacements.insert({
+        id: this.deps.newId(),
+        deviceId: input.deviceId,
+        ...spot,
         createdBy: actor.profileId,
         status: startingStatus(this.at(), readOnly),
         ...target,
@@ -205,12 +234,22 @@ export class DrivePlacements {
       if (folder?.kind !== 'folder') throw invalid('A placement needs a folder, not a file.');
       requireExport(access, folder);
     }
-    for (const excluded of input.excluded ?? []) refuseExclusion(excluded);
+    for (const excluded of input.excluded) refuseExclusion(excluded);
     return access;
   }
 
+  private mountOn(deviceId: string, spot: PlacementSpot): DrivePlacement | undefined {
+    const mounts = this.deps.store.drivePlacements
+      .forDevice(deviceId)
+      .filter((placement) => placement.mode === 'mounted');
+    const stray = mounts.find((placement) => !sameSpot(placement, spot));
+    if (stray !== undefined) {
+      throw conflicting('This computer has a mounted drive that is not your My Drive.');
+    }
+    return mounts[0];
+  }
+
   private refuseNesting(target: DrivePlacementSet, ownId: string | null): void {
-    if (target.mode !== 'synced') return;
     const others = this.deps.store.drivePlacements
       .forDevice(target.deviceId)
       .filter(

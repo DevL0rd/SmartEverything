@@ -75,7 +75,7 @@ describe('the share request mapping', () => {
       '1 day',
       '7 days',
       '30 days',
-      'Never',
+      'No end',
     ]);
     expect(expiryOf('day', NOW)).toBe(new Date(NOW + DAY_MS).toISOString());
     expect(expiryOf('week', NOW)).toBe('2026-11-14T12:00:00.000Z');
@@ -125,11 +125,17 @@ describe('the share sheet copy', () => {
   });
 
   it('says who can open the item under the sheet', () => {
-    expect(footerLineOf('own', null)).toBe('Only you and the people above can open this');
-    expect(footerLineOf('shared', null)).toBe(
+    expect(footerLineOf('own', null, 0)).toBe('Only you and the people above can open this');
+    expect(footerLineOf('own', null, 2)).toBe(
+      'Only you, the people above and anyone with one of its 2 links can open this',
+    );
+    expect(footerLineOf('edit', null, 1)).toBe(
+      'Only its owner, the people above and anyone with its link can open this',
+    );
+    expect(footerLineOf('shared', null, 0)).toBe(
       'Everyone in the home can already open this; you can still make a link',
     );
-    expect(footerLineOf('edit', 'Sam Moss')).toBe(
+    expect(footerLineOf('edit', 'Sam Moss', 0)).toBe(
       'Only Sam Moss and the people above can open this',
     );
   });

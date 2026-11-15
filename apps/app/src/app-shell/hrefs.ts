@@ -103,6 +103,10 @@ export const href = {
     pathname: '/drive/folder/[folderId]',
     params: { ...params, folderId },
   }),
+  driveOpen: (itemId: string): AppHref => ({
+    pathname: '/drive/open/[itemId]',
+    params: { itemId },
+  }),
   driveSmartFolder: (albumId: string): AppHref => ({
     pathname: '/drive/starred/[albumId]',
     params: { albumId },

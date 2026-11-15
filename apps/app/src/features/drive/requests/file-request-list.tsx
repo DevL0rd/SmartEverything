@@ -3,10 +3,11 @@ import { View } from 'react-native';
 import type { DriveFileRequest } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
-import { ProgressBar } from '../../../components/charts';
 import { confirm } from '../../../components/confirm-store';
 import { Disclosure } from '../../../components/disclosure';
+import { href } from '../../../app-shell/hrefs';
 import { FileGlyph } from '../../../components/files/file-glyph';
+import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
@@ -15,6 +16,8 @@ import { joinParts } from '../../../format/text';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSyncStatus } from '../../../store/selectors';
+import { KIND_ICON } from '../../files/browser/node-glyph';
+import { kindOfFile } from '../../files/source/node';
 import {
   flattenPages,
   useDriveFileRequestRows,
@@ -23,7 +26,6 @@ import {
   useViewerId,
 } from '../data';
 import {
-  bytesShareOf,
   closeQuestionOf,
   fileRequestGroupsOf,
   receivedLineOf,
@@ -53,7 +55,10 @@ function Uploads({ request }: { readonly request: DriveFileRequest }): ReactNode
         <ListRow
           key={upload.itemId}
           title={upload.name}
-          leading={<FileGlyph kind="file" name={upload.name} />}
+          leading={
+            <Icon name={KIND_ICON[kindOfFile(null, upload.name)]} size={20} tone="variant" />
+          }
+          href={href.driveOpen(upload.itemId)}
           subtitle={joinParts([
             `from ${upload.uploaderName}`,
             bytes(upload.bytes),
@@ -138,7 +143,7 @@ function CardActions({
           label="Change"
           spoken={`Change ${request.title}`}
           icon="pencil"
-          variant="filled"
+          variant="tonal"
           disabled={!live}
           onPress={() => {
             onEdit(request);
@@ -172,11 +177,9 @@ function CardActions({
 
 function RequestCard({
   request,
-  all,
   onEdit,
 }: {
   readonly request: DriveFileRequest;
-  readonly all: readonly DriveFileRequest[];
   readonly onEdit: EditFileRequest;
 }): ReactNode {
   const now = useMinute();
@@ -184,16 +187,9 @@ function RequestCard({
   return (
     <View className="mb-3 gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-card-pad">
       <CardHead request={request} now={now} />
-      <View className="gap-1">
-        <Text variant="callout" className="tabular">
-          {receivedLineOf(request)}
-        </Text>
-        <ProgressBar
-          progress={bytesShareOf(request, all)}
-          colour={open ? 'primary' : 'outline'}
-          label={`${request.title}: ${receivedLineOf(request)}`}
-        />
-      </View>
+      <Text variant="callout" className="tabular">
+        {receivedLineOf(request)}
+      </Text>
       <Received request={request} />
       {open ? <CardActions request={request} onEdit={onEdit} /> : null}
     </View>
@@ -202,11 +198,9 @@ function RequestCard({
 
 function Ended({
   requests,
-  all,
   onEdit,
 }: {
   readonly requests: readonly DriveFileRequest[];
-  readonly all: readonly DriveFileRequest[];
   readonly onEdit: EditFileRequest;
 }): ReactNode {
   const [open, setOpen] = useState(false);
@@ -221,7 +215,7 @@ function Ended({
       }}
     >
       {requests.map((request) => (
-        <RequestCard key={request.id} request={request} all={all} onEdit={onEdit} />
+        <RequestCard key={request.id} request={request} onEdit={onEdit} />
       ))}
     </Disclosure>
   );
@@ -237,8 +231,7 @@ export function FileRequestsSection({ onEdit }: { readonly onEdit: EditFileReque
   const now = useMinute();
   const rows = useDriveFileRequestRows();
   const groups = fileRequestGroupsOf(rows, useViewerId(), now);
-  const all = [...groups.open, ...groups.ended];
-  if (all.length === 0) return null;
+  if (groups.open.length === 0 && groups.ended.length === 0) return null;
   return (
     <View className="gap-2">
       <Text variant="title-3" accessibilityRole="header">
@@ -248,9 +241,9 @@ export function FileRequestsSection({ onEdit }: { readonly onEdit: EditFileReque
         {REQUESTS_LINK_LINE}
       </Text>
       {groups.open.map((request) => (
-        <RequestCard key={request.id} request={request} all={all} onEdit={onEdit} />
+        <RequestCard key={request.id} request={request} onEdit={onEdit} />
       ))}
-      <Ended requests={groups.ended} all={all} onEdit={onEdit} />
+      <Ended requests={groups.ended} onEdit={onEdit} />
     </View>
   );
 }

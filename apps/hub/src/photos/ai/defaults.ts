@@ -1,7 +1,7 @@
 import type { PhotoAiModels } from '@smarteverything/domain';
 
 export const PHOTO_AI_DEFAULT_MODELS: PhotoAiModels = {
-  vision: 'google/gemini-3.1-flash-lite',
+  vision: 'qwen/qwen3.6-35b-a3b',
   embedding: 'qwen/qwen3-embedding-8b',
   petEmbedding: 'google/gemini-embedding-2',
   eraser: 'google/gemini-3.1-flash-lite-image',

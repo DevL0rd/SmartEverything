@@ -4,7 +4,7 @@ import { href } from '../../../app-shell/hrefs';
 import { List } from '../../../components/section';
 import { ListRow } from '../../../components/list-row';
 import { isLocalScale } from '../../../store/people';
-import { useDevices } from '../../../store/selectors';
+import { useFirstDevice } from '../../../store/selectors';
 import { HEALTH_CONNECT_ON_DEVICE, type HealthConnectStatus } from '../data/health-connect';
 import { useThisPhoneSource } from '../data/this-phone';
 import { useHealthConnect } from '../data/use-health-connect';
@@ -47,8 +47,8 @@ function HealthConnectRow(): ReactNode {
 }
 
 function ScaleRow(): ReactNode {
-  const scale = useDevices({ includeHidden: true }).find(isLocalScale);
-  return scale === undefined ? (
+  const scale = useFirstDevice(isLocalScale, { includeHidden: true });
+  return scale === null ? (
     <ListRow
       title="Bluetooth scale"
       subtitle="Weight and body composition after every weigh-in"

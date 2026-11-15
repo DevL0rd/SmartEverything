@@ -62,8 +62,8 @@ class PushBench {
     expect(saved.status).toBe(200);
   }
 
-  async registerPhone(token: string): Promise<BenchPhone> {
-    const phone = await pairPhone(this.booted);
+  async registerPhone(token: string, profileId?: string): Promise<BenchPhone> {
+    const phone = await pairPhone(this.booted, 'member', profileId);
     const saved = await call(this.booted.base, phone.token, {
       method: 'PUT',
       path: '/api/push-targets',

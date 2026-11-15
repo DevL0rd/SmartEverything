@@ -1,20 +1,32 @@
 import { createElement, type ComponentType, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 
 interface RailCounts {
   readonly library: number;
   readonly backupDevices: number;
 }
 
+interface BackupDevices {
+  readonly devices: readonly {
+    readonly device: { readonly settings: { readonly enabled: boolean } };
+  }[];
+}
+
 interface Harness {
   native: boolean;
   live: boolean;
   counts: RailCounts | undefined;
+  backup: BackupDevices | undefined;
 }
 
-const harness = vi.hoisted((): Harness => ({ native: false, live: true, counts: undefined }));
+const harness = vi.hoisted((): Harness => ({
+  native: false,
+  live: true,
+  counts: undefined,
+  backup: undefined,
+}));
 
 interface ViewProps {
   readonly className?: string;
@@ -42,18 +54,16 @@ vi.mock('../../../settings/settings-frame', () => ({
   SettingsFrame: ({
     page,
     actions,
-    contentWidth,
     banner,
     children,
   }: ViewProps & {
     readonly page: string;
-    readonly actions: readonly HeaderAction[];
-    readonly contentWidth: string;
+    readonly actions: readonly ShellAction[];
     readonly banner?: ReactNode;
   }): ReactNode =>
     createElement(
       'main',
-      { 'data-page': page, 'data-width': contentWidth },
+      { 'data-page': page },
       actions.map((action) => createElement('button', { key: action.label }, action.label)),
       banner,
       children,
@@ -74,6 +84,8 @@ vi.mock('../../../settings/settings-page', () => ({
 }));
 vi.mock('../settings', () => ({ PHOTOS_PAGE: 'photos' }));
 vi.mock('./model', () => ({
+  backingUpOf: (state: BackupDevices): number =>
+    state.devices.filter((entry) => entry.device.settings.enabled).length,
   offlineText: (local: boolean): string =>
     local
       ? 'Changing these settings needs your home hub. Backup on this device keeps going.'
@@ -95,6 +107,9 @@ vi.mock('../data/queries', () => ({
   usePhotoRailCounts: (): { readonly data: RailCounts | undefined } => ({
     data: harness.counts,
   }),
+  usePhotoBackupState: (): { readonly data: BackupDevices | undefined } => ({
+    data: harness.backup,
+  }),
 }));
 
 const { PhotosSettingsScreen } = await import('./screen');
@@ -105,7 +120,6 @@ describe('Photos settings screen', () => {
   it('opens Photos from the header and lays the sections out in columns on wide screens', () => {
     const html = render();
     expect(html).toContain('data-page="photos"');
-    expect(html).toContain('data-width="full"');
     expect(html).toContain('<button>Open Photos</button>');
     expect(html.match(/web:break-inside-avoid/g)).toHaveLength(2);
   });
@@ -113,9 +127,12 @@ describe('Photos settings screen', () => {
   it('shows the library counts only once the hub has answered', () => {
     harness.counts = undefined;
     expect(render()).not.toContain('items ·');
-    harness.counts = { library: 5, backupDevices: 2 };
+    harness.counts = { library: 5, backupDevices: 3 };
+    const on = { device: { settings: { enabled: true } } };
+    harness.backup = { devices: [on, on, { device: { settings: { enabled: false } } }] };
     expect(render()).toContain('<p>5 items · 2 devices backing up</p>');
     harness.counts = undefined;
+    harness.backup = undefined;
   });
 
   it('leads with the Backup, Duplicates and Smart features link cards for every person', () => {
@@ -129,7 +146,6 @@ describe('Photos settings screen', () => {
     harness.native = true;
     try {
       const html = render();
-      expect(html).toContain('data-width="reading"');
       expect(html).not.toContain('web:columns-');
     } finally {
       harness.native = false;

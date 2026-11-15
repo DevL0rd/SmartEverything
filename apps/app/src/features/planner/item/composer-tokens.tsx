@@ -1,6 +1,12 @@
 import type { PlannerColourKey } from '@smarteverything/domain';
 import type { ReactNode, RefObject } from 'react';
-import { Text as NativeText, TextInput, View, type TextInputKeyPressEvent } from 'react-native';
+import {
+  Text as NativeText,
+  TextInput,
+  View,
+  type TextInputKeyPressEvent,
+  type TextInputProps,
+} from 'react-native';
 import { useFocusOnMount } from '../../../components/use-focus-on-mount';
 import { cn } from '../../../design/cn';
 import { isNative, useIdiom } from '../../../design/platform';
@@ -124,7 +130,7 @@ const LIST_TINT: Readonly<Record<PlannerColourKey, string>> = {
 };
 
 function tokenClass(kind: TokenKind, colour: PlannerColourKey | null): string {
-  if (kind === 'when') return 'rounded-xs bg-primary-container text-primary';
+  if (kind === 'when') return 'rounded-xs bg-primary-container text-on-primary-container';
   if (kind === 'priority') return 'rounded-xs bg-critical/15 text-critical';
   if (kind === 'tag') return 'rounded-xs bg-surface-3';
   if (kind === 'list')
@@ -133,6 +139,16 @@ function tokenClass(kind: TokenKind, colour: PlannerColourKey | null): string {
 }
 
 const FIELD_TEXT = 'font-sans text-body';
+
+const FRAME: Readonly<
+  Record<
+    'pointer' | 'touch',
+    { readonly box: string; readonly input: string; readonly text: string }
+  >
+> = {
+  pointer: { box: 'min-h-10', input: 'min-h-10 py-2', text: 'top-2' },
+  touch: { box: 'min-h-12', input: 'min-h-12 py-3', text: 'top-3' },
+};
 
 export function TokenText({
   tokens,
@@ -185,6 +201,26 @@ function handleKey(event: TextInputKeyPressEvent, keys: FieldKeys): void {
   if (native.key === 'Escape') keys.onEscape();
 }
 
+const INPUT_TEXT = cn(
+  FIELD_TEXT,
+  'px-0 text-transparent web:field-sizing-content web:resize-none web:outline-none',
+);
+
+function keyProps(pointer: boolean, keys: FieldKeys): Partial<TextInputProps> {
+  const press = {
+    onKeyPress: (event: TextInputKeyPressEvent): void => {
+      if (pointer) handleKey(event, keys);
+    },
+  };
+  if (!isNative()) return press;
+  return {
+    ...press,
+    returnKeyType: 'done',
+    submitBehavior: 'submit',
+    onSubmitEditing: keys.onSubmit,
+  };
+}
+
 export function TokenField({
   value,
   onChange,
@@ -198,24 +234,28 @@ export function TokenField({
   onTab,
   onEscape,
 }: TokenFieldProps): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  const native = isNative();
-  useFocusOnMount(true, inputRef);
+  const idiom = useIdiom();
+  const pointer = idiom === 'pointer';
+  useFocusOnMount(!pointer, inputRef);
   return (
-    <View className={cn('relative py-1', pointer ? 'min-h-9' : 'min-h-12')}>
-      <View aria-hidden pointerEvents="none" className="absolute inset-x-0 top-1">
+    <View
+      className={cn(
+        'relative rounded-md border border-outline bg-surface-2 px-3',
+        FRAME[idiom].box,
+      )}
+    >
+      <View
+        aria-hidden
+        pointerEvents="none"
+        className={cn('absolute inset-x-3', FRAME[idiom].text)}
+      >
         <TokenText tokens={tokens} colour={colour} />
       </View>
       <TextInput
         ref={inputRef}
         value={value}
         onChangeText={onChange}
-        onKeyPress={(event) => {
-          if (pointer) handleKey(event, { onSubmit, onTab, onEscape });
-        }}
-        {...(native
-          ? { returnKeyType: 'done', submitBehavior: 'submit', onSubmitEditing: onSubmit }
-          : {})}
+        {...keyProps(pointer, { onSubmit, onTab, onEscape })}
         editable={!disabled}
         multiline
         placeholder={placeholder}
@@ -223,10 +263,7 @@ export function TokenField({
         placeholderTextColorClassName="accent-on-surface-variant"
         cursorColorClassName="accent-primary"
         selectionColorClassName="accent-primary"
-        className={cn(
-          FIELD_TEXT,
-          'p-0 text-transparent web:field-sizing-content web:resize-none web:outline-none',
-        )}
+        className={cn(INPUT_TEXT, FRAME[idiom].input)}
       />
     </View>
   );

@@ -1,8 +1,6 @@
-import type { ReactNode } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import type { RailEntry } from '../../../components/page-shell/section-rail';
 import type { ShellSections } from '../../../components/page-shell/shell-sections';
-import { Text } from '../../../components/text';
 import { sameJson } from '../../../store/same-json';
 import { useDeviceDerived } from '../../../store/selectors';
 import { railReadingsOf, railSummaryOf } from '../model/rail-summary';
@@ -26,43 +24,17 @@ export function usePhoneSummary(
   return online ? live : 'Offline';
 }
 
-function SummaryText({
-  deviceId,
-  id,
-  online,
-}: {
-  readonly deviceId: string;
-  readonly id: PhoneSectionId;
-  readonly online: boolean;
-}): ReactNode {
-  const text = usePhoneSummary(deviceId, id, online);
-  return text === null ? null : (
-    <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-      {text}
-    </Text>
-  );
-}
-
-function entryOf(def: PhoneSectionDef, deviceId: string, online: boolean): RailEntry {
-  return {
-    id: def.id,
-    label: def.label,
-    short: def.short,
-    icon: def.icon,
-    missing: null,
-    detail: <SummaryText deviceId={deviceId} id={def.id} online={online} />,
-  };
+function entryOf(def: PhoneSectionDef): RailEntry {
+  return { id: def.id, label: def.label, short: def.short, icon: def.icon, missing: null };
 }
 
 export function phoneSectionsOf({
   deviceId,
   active,
-  online,
   hidden,
 }: {
   readonly deviceId: string;
   readonly active: string;
-  readonly online: boolean;
   readonly hidden: ReadonlySet<PhoneSectionId>;
 }): ShellSections {
   return {
@@ -74,9 +46,7 @@ export function phoneSectionsOf({
     groups: [
       {
         title: null,
-        entries: PHONE_SECTIONS.filter((def) => !hidden.has(def.id)).map((def) =>
-          entryOf(def, deviceId, online),
-        ),
+        entries: PHONE_SECTIONS.filter((def) => !hidden.has(def.id)).map(entryOf),
       },
     ],
   };

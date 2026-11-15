@@ -3,7 +3,7 @@ import { readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 
 const SECRET_PATTERNS: readonly RegExp[] = [
-  /sk-[A-Za-z0-9_-]{20,}/u,
+  /\bsk-[A-Za-z0-9_-]{20,}/u,
   /AIza[0-9A-Za-z_-]{35}/u,
   /AKIA[0-9A-Z]{16}/u,
   /gh[pousr]_[A-Za-z0-9]{36}/u,

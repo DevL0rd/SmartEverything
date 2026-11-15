@@ -14,7 +14,7 @@ export function NotFound({
   readonly action?: ReactNode;
 }): ReactNode {
   return (
-    <PageShell title="Automations" width="reading">
+    <PageShell title="Automations">
       <EmptyState
         icon="alert"
         title={title}

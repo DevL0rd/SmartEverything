@@ -32,6 +32,7 @@ export function titleRowOf(
 ): TitleRowProps {
   return {
     back: shell.back !== false,
+    controls: shell.controls,
     title: {
       title: shell.title,
       subtitle: shell.subtitle,
@@ -44,6 +45,10 @@ export function titleRowOf(
       settings: shell.settings,
       editing: shell.editing,
       primaryAction: shell.primaryAction,
+      refresh:
+        shell.onRefresh === undefined
+          ? undefined
+          : { onPress: shell.onRefresh, busy: shell.refreshing === true },
     },
   };
 }

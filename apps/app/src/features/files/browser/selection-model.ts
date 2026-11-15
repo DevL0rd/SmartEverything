@@ -112,12 +112,19 @@ export function focusedOf<O>(
 
 export type PressMode = 'pick' | 'open';
 
+export interface HeldKeys {
+  readonly shift: boolean;
+  readonly toggle: boolean;
+}
+
+export const NO_KEYS: HeldKeys = { shift: false, toggle: false };
+
 export function pressModeOf<O>(
   nodes: readonly FileNode<O>[],
   selection: FileSelection,
-  shift: boolean,
+  held: HeldKeys,
 ): PressMode {
-  return shift || pickedOf(nodes, selection).length > 0 ? 'pick' : 'open';
+  return held.shift || held.toggle || pickedOf(nodes, selection).length > 0 ? 'pick' : 'open';
 }
 
 export function selectionLabelOf(selected: number): string {

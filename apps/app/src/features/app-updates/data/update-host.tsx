@@ -4,7 +4,7 @@ import { Logger } from '@smarteverything/logging';
 import { connectionState } from '../../../api/connection/connection';
 import { useForeground } from '../../../design/animation-gate';
 import { appPlatform, desktopBridge } from '../../../design/platform';
-import { useSyncStatus } from '../../../store/selectors';
+import { useConnection } from '../../../api/transport';
 import { unsupportedAdapter, type UpdateAdapter } from '../model/adapter';
 import { safeReason } from '../model/safe-reason';
 import { busyNow, watchBusy } from './busy';
@@ -110,16 +110,20 @@ export async function restartViaUpdates(): Promise<void> {
 
 export function AppUpdateHost(): ReactNode {
   const controller = useController();
-  const live = useSyncStatus().status === 'live';
+  const connection = useConnection();
+  const home = connection.status === 'paired' ? connection.connection.url : null;
   const foreground = useForeground();
-  const checked = useRef<AppUpdateController | null>(null);
+  const checked = useRef<{ readonly controller: AppUpdateController; readonly home: string } | null>(
+    null,
+  );
   useEffect(() => {
-    if (!live) checked.current = null;
-    if (controller === null || !live || !foreground || checked.current === controller) return;
-    checked.current = controller;
-    controller.check('live').catch((error: unknown) => {
-      log.warn('app_update.live_check_failed', { reason: safeReason(error, null) });
+    if (home === null) checked.current = null;
+    if (controller === null || home === null || !foreground) return;
+    if (checked.current?.controller === controller && checked.current.home === home) return;
+    checked.current = { controller, home };
+    controller.check('paired').catch((error: unknown) => {
+      log.warn('app_update.paired_check_failed', { reason: safeReason(error, null) });
     });
-  }, [controller, live, foreground]);
+  }, [controller, home, foreground]);
   return null;
 }

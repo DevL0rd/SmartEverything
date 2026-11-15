@@ -10,13 +10,13 @@ import {
   diffTexts,
   gutterDigits,
   imageModesFor,
-  imageSizeOf,
   readVersionText,
   segmentsOf,
   signedCount,
   swipeCaption,
   unchangedText,
   zoomPercent,
+  VERSION_NAMES,
   type DiffSegment,
   type FetchText,
 } from './diff-model';
@@ -69,9 +69,8 @@ describe('compare kinds', () => {
     expect(imageModesFor(false)).toEqual(['swipe', 'side']);
   });
 
-  it('reads the original of a shown image and the preview of one the app cannot draw', () => {
-    expect(imageSizeOf(image('Island.jpg', 'image/jpeg'))).toBe('file');
-    expect(imageSizeOf(image('Island.heic', 'image/heic'))).toBe('preview');
+  it('offers a download for an image the app cannot draw from its original', () => {
+    expect(compareKindOf(image('Island.heic', 'image/heic'))).toBe('download');
   });
 });
 
@@ -88,8 +87,8 @@ describe('image compare', () => {
   });
 
   it('explains what moves together in each mode', () => {
-    expect(swipeCaption('side')).toBe('Zoom and pan move both sides together.');
-    expect(swipeCaption('swipe')).toContain('Drag the line');
+    expect(swipeCaption('side', VERSION_NAMES)).toBe('Zoom and pan move both sides together.');
+    expect(swipeCaption('swipe', VERSION_NAMES)).toContain('Drag the line');
   });
 });
 
@@ -105,7 +104,10 @@ describe('line diff', () => {
       { kind: 'context', text: 'c', oldLine: 3, newLine: 3 },
       { kind: 'add', text: 'd', oldLine: null, newLine: 4 },
     ]);
-    expect(changeSummary(diff)).toBe('lines between B and A');
+    expect(changeSummary(diff, VERSION_NAMES)).toBe('lines between B and A');
+    expect(changeSummary(diff, { a: 'Hub version', b: 'Laptop version' })).toBe(
+      'lines between Laptop version and Hub version',
+    );
     expect(signedCount('+', diff.added)).toBe('+2');
     expect(signedCount('−', diff.removed)).toBe('−1');
   });
@@ -113,7 +115,16 @@ describe('line diff', () => {
   it('says when the two versions have the same lines', async () => {
     const diff = await diffTexts('same\n', 'same\n');
     expect(diff.added + diff.removed).toBe(0);
-    expect(changeSummary(diff)).toBe('No line changes between B and A');
+    expect(changeSummary(diff, VERSION_NAMES)).toBe('No line changes between B and A');
+  });
+
+  it('keeps a last line without a newline unchanged when lines follow it', async () => {
+    const diff = await diffTexts('a\nb', 'a\nb\nc\n');
+    expect(diff.added).toBe(1);
+    expect(diff.removed).toBe(0);
+    expect(diff.lines.filter((line) => line.kind === 'add').map((line) => line.text)).toEqual([
+      'c',
+    ]);
   });
 
   it('sizes the line number gutter for the widest number on either side', async () => {

@@ -11,31 +11,28 @@ describe('placement body', () => {
     const body = placementBodyOf({
       deviceId: DEVICE,
       target: TARGET,
-      mode: 'synced',
       localPath: '/home/a/Projects',
-      mountName: null,
       sync: { excluded: ['Big'], ignorePatterns: ['*.tmp'], conflictCopies: false },
     });
     expect(body.excluded).toEqual(['Big']);
     expect(DRIVE_PLACEMENT_SET.safeParse(body).success).toBe(true);
   });
 
-  it('carries no sync settings for a mounted folder or the whole drive', () => {
+  it('syncs the whole drive with the default settings, turned on', () => {
     const body = placementBodyOf({
       deviceId: DEVICE,
       target: { rootId: OTHER_ROOT_ID, folderItemId: null },
-      mode: 'mounted',
-      localPath: null,
-      mountName: 'Projects',
+      localPath: '/home/a/Drive',
     });
     expect(body).toEqual({
       deviceId: DEVICE,
       rootId: OTHER_ROOT_ID,
       folderItemId: null,
-      mode: 'mounted',
-      localPath: null,
-      mountName: 'Projects',
+      localPath: '/home/a/Drive',
       enabled: true,
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: true,
     });
     expect(DRIVE_PLACEMENT_SET.safeParse(body).success).toBe(true);
   });

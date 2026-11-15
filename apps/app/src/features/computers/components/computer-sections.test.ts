@@ -6,7 +6,6 @@ import { AI_SECTIONS, NOT_AVAILABLE, SECTIONS } from '../model/sections';
 const INPUT = {
   deviceId: '00000000-0000-4000-8000-0000000000c1',
   active: 'overview',
-  online: true,
   features: undefined,
 } as const;
 

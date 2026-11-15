@@ -4,6 +4,7 @@ import type { LocalMediaItem } from '../local/types';
 import { withFolderShow } from './data';
 import {
   backedUpShare,
+  backupIdsOf,
   countLineOf,
   folderGroupsOf,
   folderKeyOfParam,
@@ -11,7 +12,7 @@ import {
   hiddenCountOf,
 } from './model';
 
-const CAMERA = { key: 'phone:DCIM/Camera', name: 'Camera' } as const;
+const CAMERA = { key: 'phone:DCIM/Camera', name: 'Camera', backupId: 'album-camera' } as const;
 
 function local(id: string, takenAt: number): LocalMediaItem {
   return {
@@ -62,6 +63,7 @@ describe('the Folders page model', () => {
       local: 2,
       backedUp: 1,
       hidden: true,
+      backupId: 'album-camera',
       cover: { kind: 'local', localId: 'b', video: false },
     });
     expect(camera === undefined ? null : countLineOf(camera)).toBe('2 items · 1 backed up');
@@ -74,6 +76,8 @@ describe('the Folders page model', () => {
     const drive = groups[2]?.folders[0];
     expect(drive === undefined ? null : countLineOf(drive)).toBe('7 items');
     expect(drive === undefined ? null : backedUpShare(drive)).toBeNull();
+    expect(drive?.backupId).toBeNull();
+    expect(backupIdsOf(groups)).toEqual(['album-camera']);
   });
 
   it('carries any folder key through the route and back', () => {

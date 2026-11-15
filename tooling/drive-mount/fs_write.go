@@ -65,6 +65,7 @@ func (h *fileHandle) Write(ctx context.Context, data []byte, off int64) (uint32,
 }
 
 func (h *fileHandle) Flush(ctx context.Context) syscall.Errno {
+	ctx = uninterruptible(ctx)
 	var err error
 	if h.write != nil {
 		err = h.write.Flush()
@@ -79,7 +80,7 @@ func (h *fileHandle) Fsync(ctx context.Context, flags uint32) syscall.Errno {
 	if h.write != nil {
 		return errnoFor(h.write.Sync())
 	}
-	return errnoFor(h.n.m.src.Fsync(ctx, h.n.ino(), false))
+	return errnoFor(h.n.m.src.Fsync(uninterruptible(ctx), h.n.ino(), false))
 }
 
 func allocateMode(mode uint32) (uint32, bool) {

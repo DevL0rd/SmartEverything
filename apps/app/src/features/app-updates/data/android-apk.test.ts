@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import {
   cancelAndroidApk,
   installAndroidApk,
+  useAndroidApkOffer,
   installerStage,
   settleAndroidInstall,
   NO_PERMISSION_REASON,
@@ -25,10 +26,14 @@ const mocks = vi.hoisted(() => {
     prefs: new Map<string, unknown>(),
     build: vi.fn((): AndroidAppBuild => ({ applicationId: 'com.example.app', versionCode: '1' })),
     refresh: vi.fn<() => Promise<void>>(),
+    screenQuery: vi.fn((options: { readonly enabled: boolean }) => options),
   };
 });
 
-vi.mock('../../../api/transport', () => ({ api: mocks.api }));
+vi.mock('../../../api/transport', () => ({
+  api: mocks.api,
+  useConnection: (): object => ({ status: 'paired', connection: { url: 'https://home.test' } }),
+}));
 vi.mock('../../../api/connection/media-resources', () => ({
   requestAndroidUpdatePermission: mocks.permission,
   installNativeAndroidUpdate: mocks.install,
@@ -41,9 +46,13 @@ vi.mock('../../../store/local-prefs', () => ({
     mocks.prefs.set(key, value);
   },
 }));
-vi.mock('../../../queries/use-screen-query', () => ({ useScreenQuery: vi.fn() }));
+vi.mock('../../../queries/use-screen-query', () => ({ useScreenQuery: mocks.screenQuery }));
 vi.mock('../../../design/platform', () => ({ appPlatform: (): 'android' => 'android' }));
-vi.mock('../../../store/selectors', () => ({ useSyncStatus: vi.fn() }));
+vi.mock('../../../store/selectors', () => ({
+  useSyncStatus: (): never => {
+    throw new Error('The installer offer read the live link.');
+  },
+}));
 vi.mock('./android-build', () => ({ androidBuild: mocks.build }));
 
 const release: AndroidApkRelease = {
@@ -74,6 +83,22 @@ beforeEach(() => {
   mocks.resourceUrl.mockResolvedValue(localUrl);
   mocks.install.mockResolvedValue({ result: 'installed' });
   mocks.cancel.mockResolvedValue();
+});
+
+it('reads the installer offer from a paired home while the live link is down', () => {
+  vi.stubGlobal('__DEV__', false);
+  useAndroidApkOffer();
+  expect(mocks.screenQuery).toHaveBeenCalledWith(
+    expect.objectContaining({
+      enabled: true,
+      queryKey: [
+        'app-updates',
+        'android-apk',
+        'https://home.test',
+        { applicationId: 'com.example.app', versionCode: '1' },
+      ],
+    }),
+  );
 });
 
 it('continues from permission approval with the selected signed offer and its local resource', async () => {

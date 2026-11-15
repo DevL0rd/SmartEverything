@@ -156,3 +156,23 @@ describe('the web skeleton shimmer', () => {
     mounted.stop();
   });
 });
+
+describe('skeleton size classes', () => {
+  it('lets a caller width, height or radius replace the shape default', async () => {
+    const { skeletonClass } = await import('./skeleton');
+    expect(skeletonClass({ shape: 'line' }).split(' ')).toEqual([
+      'bg-surface-3',
+      'w-full',
+      'h-4',
+      'rounded-xs',
+    ]);
+    const heading = skeletonClass({ shape: 'line', className: 'mb-2 h-5 w-48' }).split(' ');
+    expect(heading).toContain('w-48');
+    expect(heading).toContain('h-5');
+    expect(heading).not.toContain('w-full');
+    expect(heading).not.toContain('h-4');
+    expect(skeletonClass({ shape: 'block', className: 'h-40 rounded-xs' })).not.toContain(
+      'rounded-md',
+    );
+  });
+});

@@ -55,11 +55,17 @@ interface RowBase {
   readonly subtitle?: string;
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
+  readonly disabled: boolean;
 }
 
-function baseOf(setting: SettingDefinition): RowBase {
+function lockedOf(setting: SettingDefinition, locked: boolean): boolean {
+  return locked && setting.scope === 'server';
+}
+
+function baseOf(setting: SettingDefinition, locked: boolean): RowBase {
   return {
     title: setting.title,
+    disabled: lockedOf(setting, locked),
     ...(setting.description === undefined
       ? {}
       : { subtitle: setting.description, wrapSubtitle: true }),
@@ -69,8 +75,10 @@ function baseOf(setting: SettingDefinition): RowBase {
 
 function TextRow({
   setting,
+  locked,
 }: {
   readonly setting: Extract<SettingDefinition, { control: 'text' }>;
+  readonly locked: boolean;
 }): ReactNode {
   const store = useEntityStore();
   const stored = useStoreSelector(setting.read);
@@ -79,7 +87,7 @@ function TextRow({
   return (
     <>
       <ListRow
-        {...baseOf(setting)}
+        {...baseOf(setting, locked)}
         pressRef={opener}
         value={stored}
         chevron
@@ -112,12 +120,19 @@ function TextRow({
   );
 }
 
-function SwitchSettingRow({ setting }: { readonly setting: SwitchSetting }): ReactNode {
+interface LockedProps {
+  readonly locked: boolean;
+}
+
+function SwitchSettingRow({
+  setting,
+  locked,
+}: LockedProps & { readonly setting: SwitchSetting }): ReactNode {
   const write = useWrite();
   const value = useStoreSelector((state) => setting.read(state));
   return (
     <SwitchRow
-      {...baseOf(setting)}
+      {...baseOf(setting, locked)}
       value={value}
       onChange={(next) => {
         write(setting.title, (context) => setting.write(next, context));
@@ -126,7 +141,10 @@ function SwitchSettingRow({ setting }: { readonly setting: SwitchSetting }): Rea
   );
 }
 
-function InlineSelectRow({ setting }: { readonly setting: SelectSetting }): ReactNode {
+function InlineSelectRow({
+  setting,
+  locked,
+}: LockedProps & { readonly setting: SelectSetting }): ReactNode {
   const write = useWrite();
   const value = useStoreSelector((state) => setting.read(state));
   return (
@@ -136,6 +154,7 @@ function InlineSelectRow({ setting }: { readonly setting: SelectSetting }): Reac
         label={setting.title}
         options={setting.options}
         value={value}
+        disabled={lockedOf(setting, locked)}
         onChange={(next) => {
           write(setting.title, (context) => setting.write(next, context));
         }}
@@ -149,12 +168,15 @@ function InlineSelectRow({ setting }: { readonly setting: SelectSetting }): Reac
   );
 }
 
-function SelectSettingRow({ setting }: { readonly setting: SelectSetting }): ReactNode {
+function SelectSettingRow({
+  setting,
+  locked,
+}: LockedProps & { readonly setting: SelectSetting }): ReactNode {
   const write = useWrite();
   const value = useStoreSelector((state) => setting.read(state));
   return (
     <SelectRow
-      {...baseOf(setting)}
+      {...baseOf(setting, locked)}
       options={setting.options}
       value={value}
       searchable={setting.searchable ?? false}
@@ -165,12 +187,15 @@ function SelectSettingRow({ setting }: { readonly setting: SelectSetting }): Rea
   );
 }
 
-function StepperSettingRow({ setting }: { readonly setting: StepperSetting }): ReactNode {
+function StepperSettingRow({
+  setting,
+  locked,
+}: LockedProps & { readonly setting: StepperSetting }): ReactNode {
   const write = useWrite();
   const value = useStoreSelector((state) => setting.read(state));
   return (
     <ListRow
-      {...baseOf(setting)}
+      {...baseOf(setting, locked)}
       trailing={
         <NumberStepper
           label={setting.title}
@@ -191,7 +216,8 @@ function StepperSettingRow({ setting }: { readonly setting: StepperSetting }): R
 
 function ActionSettingRow({
   setting,
-}: {
+  locked,
+}: LockedProps & {
   readonly setting: Extract<SettingDefinition, { control: 'action' }>;
 }): ReactNode {
   const write = useWrite();
@@ -200,6 +226,7 @@ function ActionSettingRow({
       title={setting.title}
       {...(setting.icon === undefined ? {} : { icon: setting.icon })}
       destructive={setting.destructive ?? false}
+      disabled={lockedOf(setting, locked)}
       onPress={() => {
         const ask =
           setting.confirm === undefined ? Promise.resolve(true) : confirm(setting.confirm);
@@ -233,24 +260,30 @@ function LinkSettingRow({
   );
 }
 
-export function SettingsRow({ setting }: { readonly setting: SettingDefinition }): ReactNode {
+export function SettingsRow({
+  setting,
+  locked,
+}: {
+  readonly setting: SettingDefinition;
+  readonly locked: boolean;
+}): ReactNode {
   switch (setting.control) {
     case 'switch':
-      return <SwitchSettingRow setting={setting} />;
+      return <SwitchSettingRow setting={setting} locked={locked} />;
     case 'select':
       return setting.inline === true ? (
-        <InlineSelectRow setting={setting} />
+        <InlineSelectRow setting={setting} locked={locked} />
       ) : (
-        <SelectSettingRow setting={setting} />
+        <SelectSettingRow setting={setting} locked={locked} />
       );
     case 'stepper':
-      return <StepperSettingRow setting={setting} />;
+      return <StepperSettingRow setting={setting} locked={locked} />;
     case 'text':
-      return <TextRow setting={setting} />;
+      return <TextRow setting={setting} locked={locked} />;
     case 'link':
       return <LinkSettingRow setting={setting} />;
     case 'action':
-      return <ActionSettingRow setting={setting} />;
+      return <ActionSettingRow setting={setting} locked={locked} />;
     case 'listed':
       return null;
     case 'custom':
@@ -260,13 +293,15 @@ export function SettingsRow({ setting }: { readonly setting: SettingDefinition }
 
 export function AnchoredSettingRow({
   setting,
+  locked = false,
 }: {
   readonly setting: SettingDefinition;
+  readonly locked?: boolean;
 }): ReactNode {
   const anchor = useHighlightAnchor(anchorKey.setting(setting.id), setting.title);
   return (
     <View {...anchor} className="gap-section-gap">
-      <SettingsRow setting={setting} />
+      <SettingsRow setting={setting} locked={locked} />
     </View>
   );
 }

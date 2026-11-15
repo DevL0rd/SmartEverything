@@ -6,7 +6,6 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hubLayout, type HubLayout } from '../../src/data-layout';
-import { thumbHashToAverageRGBA } from 'thumbhash';
 import {
   DERIVED_CACHE_CONTROL,
   DERIVED_SIZE,
@@ -26,7 +25,6 @@ import {
   renderDerived,
   type PreviewDecoder,
 } from '../../src/photos/pipeline/preview';
-import { thumbHashOf } from '../../src/photos/pipeline/thumbhash';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
@@ -213,18 +211,6 @@ describe('render', () => {
     const rendered = await renderDerived({ kind: 'encoded', path });
 
     expect([rendered.width, rendered.height]).toEqual([400, 600]);
-  });
-
-  it('derives the placeholder from the preview colours', async () => {
-    const path = join(directory, 'red.jpg');
-    await writeFile(path, await photo(300, 200));
-
-    const rendered = await renderDerived({ kind: 'encoded', path });
-    const average = thumbHashToAverageRGBA(rendered.thumbhash);
-
-    expect(average.r * 255).toBeGreaterThan(150);
-    expect(average.g * 255).toBeLessThan(90);
-    expect(await thumbHashOf(rendered.preview)).toEqual(rendered.thumbhash);
   });
 });
 
@@ -440,7 +426,7 @@ async function pending(n: number, rev = 1): Promise<DriveMediaJob> {
 }
 
 describe('preview handler', () => {
-  it('writes the derived files, the placeholder and both states together', async () => {
+  it('writes the derived files and both states together', async () => {
     const queued = await pending(1);
 
     await handlerWith(sharpDecoders()).run(queued, new AbortController().signal);
@@ -448,7 +434,6 @@ describe('preview handler', () => {
     expect(thumbOf(queued.item_id)).toEqual({ state: 'ready', reason: null });
     const row = media.byId(queued.item_id);
     expect(row.preview_state).toBe('ready');
-    expect(row.thumbhash?.length).toBeGreaterThan(0);
     const preview = await sharp(
       derivedPath(layout, { itemId: queued.item_id, rev: 1, size: 'preview' }),
     ).metadata();

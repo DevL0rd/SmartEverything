@@ -45,9 +45,23 @@ export { useFileBrowser, type FileBrowserInput } from './browser/use-file-browse
 export { uploadQueueOf, sendUploads, chooseUploads, runOp } from './browser/browser-commands';
 export { FileBrowser, type BrowserSlots, type FileBrowserProps } from './browser/file-browser';
 export { shellSearchOf } from './browser/filter-field';
+export {
+  BrowserViewControls,
+  browserMenuOf,
+  useBrowserShellParts,
+  type BrowserShellParts,
+} from './browser/view-sort';
 export { useBrowserPanels, type PanelsInput } from './browser/browser-panels';
 export { FileRow, type FileRowLook } from './browser/browser-list';
-export { NodeListFrame, listSourceOf, useNodeList, type NodeListInput } from './browser/node-list';
+export {
+  NodeListFrame,
+  listSourceOf,
+  useNodeList,
+  useSelectionDocked,
+  type NodeListInput,
+  type SelectionPlace,
+} from './browser/node-list';
+export { SelectionRow } from './browser/selection-row';
 export { InfoCard, InfoFact, InfoValue } from './details/info-facts';
 export { VIEW_ONLY_LINE } from './quick-look/export-model';
 export { isTextMime, showsImageFile } from './quick-look/quick-look-model';

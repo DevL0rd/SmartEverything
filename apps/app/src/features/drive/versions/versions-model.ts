@@ -62,6 +62,19 @@ export function entriesOf(item: DriveItem, versions: readonly DriveVersion[]): V
   ];
 }
 
+export function copyEntryOf(copy: DriveItem, deviceId: string): VersionEntry {
+  return {
+    key: `copy:${String(copy.rev)}`,
+    versionId: null,
+    bytes: copy.bytes,
+    madeAt: copy.modifiedAt,
+    keptAt: null,
+    authorId: copy.addedByProfileId,
+    via: 'sync',
+    deviceId,
+  };
+}
+
 export interface VersionPicks {
   readonly a: string;
   readonly b: string | null;
@@ -187,11 +200,6 @@ const VIA_SERIES: Readonly<Record<DriveVia, ActivitySeries | null>> = {
 
 function personSeries(entry: VersionEntry, me: string | null): ActivitySeries {
   return entry.authorId !== null && entry.authorId === me ? 'you' : 'people';
-}
-
-export function seriesOfEntry(entry: VersionEntry, me: string | null): ActivitySeries {
-  const fixed = entry.via === null ? null : VIA_SERIES[entry.via];
-  return fixed ?? personSeries(entry, me);
 }
 
 export function whoSeriesOf(entry: VersionEntry, me: string | null): ActivitySeries {

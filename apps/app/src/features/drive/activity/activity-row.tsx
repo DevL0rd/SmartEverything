@@ -90,12 +90,14 @@ export const ActivityRow = memo(function ActivityRow({ entry, me }: ActivityRowP
           {sentence}
         </Text>
         <Text variant="callout" tone="variant" ellipsize="middle">
-          {pointer ? entry.folderPath : `${time} · ${entry.folderPath}`}
+          {pointer ? entry.folderPath : `${time} · ${entry.folderPath} · ${badge}`}
         </Text>
       </View>
-      <View className="shrink-0">
-        <Badge label={badge} />
-      </View>
+      {pointer ? (
+        <View className="shrink-0">
+          <Badge label={badge} />
+        </View>
+      ) : null}
     </Interactive>
   );
 });

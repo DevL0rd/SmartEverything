@@ -23,7 +23,7 @@ function useRingQueue(
   useEffect(() => {
     const seen = new Set(store.get().tables.events.ids);
     let table = store.get().tables.events;
-    return store.subscribe(() => {
+    return store.subscribeSlices(['tables.events'], () => {
       const next = store.get().tables.events;
       if (next === table) {
         return;

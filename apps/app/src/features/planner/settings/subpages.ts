@@ -1,5 +1,6 @@
 import { createElement } from 'react';
 import { PLANNER_SMART_LISTS } from '@smarteverything/domain';
+import type { IconName } from '../../../components/icon';
 import type { SettingDefinition } from '../../../settings/types';
 import { custom, sub, time, toggle } from './define';
 import {
@@ -10,7 +11,18 @@ import {
   type SmartList,
 } from './options';
 import type { Prefs } from './preferences';
-import { CalendarRows, RingOnRows } from './source-rows';
+import { CalendarRows, RingOnRows, WorkDayRows } from './source-rows';
+
+const SMART_LIST_ICONS: Readonly<Record<SmartList, IconName>> = {
+  today: 'sun',
+  upcoming: 'calendar',
+  overdue: 'alert',
+  assigned: 'users',
+  device_tasks: 'cpu',
+  habits: 'repeat',
+  someday: 'hourglass',
+  completed: 'circleCheck',
+};
 
 function smartListRow(list: SmartList): SettingDefinition {
   return toggle(
@@ -18,7 +30,7 @@ function smartListRow(list: SmartList): SettingDefinition {
     sub('smart-lists'),
     {
       title: SMART_LIST_LABELS[list],
-      icon: 'list',
+      icon: SMART_LIST_ICONS[list],
       get: (prefs) => prefs.tasks.smart_lists.includes(list),
       set: (on, prefs) => ({
         tasks: {
@@ -29,26 +41,6 @@ function smartListRow(list: SmartList): SettingDefinition {
       }),
     },
     ['smart lists', SMART_LIST_LABELS[list].toLowerCase()],
-  );
-}
-
-function workDayRow(name: string, day: number): SettingDefinition {
-  return toggle(
-    `working-hours.day-${String(day)}`,
-    sub('working-hours', 'Days'),
-    {
-      title: name,
-      icon: 'calendar',
-      get: (prefs) => prefs.general.working_hours.days.includes(day),
-      set: (on, prefs) => {
-        const hours = prefs.general.working_hours;
-        const days = Array.from(DAY_NAMES.keys()).filter((entry) =>
-          entry === day ? on : hours.days.includes(entry),
-        );
-        return { general: { working_hours: { ...hours, days } } };
-      },
-    },
-    ['work days', name.toLowerCase()],
   );
 }
 
@@ -104,7 +96,12 @@ const WORKING_HOURS_ROWS: readonly SettingDefinition[] = [
     },
     ['work end'],
   ),
-  ...DAY_NAMES.map(workDayRow),
+  custom(
+    'working-hours.days',
+    sub('working-hours', 'Days'),
+    ['work days', ...DAY_NAMES.map((name) => name.toLowerCase())],
+    { title: 'Work days', render: () => createElement(WorkDayRows) },
+  ),
 ];
 
 function calendarShown(key: CalendarShowKey, on: boolean): Partial<Prefs['calendar']> {

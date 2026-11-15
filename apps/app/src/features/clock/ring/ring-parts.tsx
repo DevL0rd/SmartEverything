@@ -34,11 +34,13 @@ export function RingHeading({
   label,
   today,
   compact,
+  subtitle,
 }: {
   readonly icon: IconName;
   readonly label: string;
   readonly today: string;
   readonly compact: boolean;
+  readonly subtitle: string | null;
 }): ReactNode {
   const now = useMinute();
   const weather = useWeatherLine(today);
@@ -47,7 +49,7 @@ export function RingHeading({
     <View className="items-center gap-1">
       <View className="flex-row items-center gap-2">
         <Icon name={icon} size={16} tone="primary" />
-        <Text variant="callout" tone="variant" numberOfLines={1}>
+        <Text variant="callout" tone="variant" role="heading" numberOfLines={1}>
           {label}
         </Text>
       </View>
@@ -65,7 +67,7 @@ export function RingHeading({
         )}
       </View>
       <Text variant="callout" tone="variant" align="center">
-        {dateLineOf(now, weather)}
+        {subtitle ?? dateLineOf(now, weather)}
       </Text>
     </View>
   );
@@ -86,10 +88,18 @@ export function SoundLineRow({ line }: { readonly line: SoundLine }): ReactNode 
   );
 }
 
-export function SleepLine({ sleep }: { readonly sleep: string }): ReactNode {
+export function SleepLine({
+  sleep,
+  centred,
+}: {
+  readonly sleep: string;
+  readonly centred: boolean;
+}): ReactNode {
   return (
-    <View className="flex-row items-center gap-2">
-      <Icon name="moon" size={14} tone="variant" />
+    <View className={cn('flex-row items-start gap-2', centred && 'self-center')}>
+      <View className="h-5 justify-center">
+        <Icon name="moon" size={14} tone="variant" />
+      </View>
       <Text variant="callout" tone="variant" className="shrink">
         {sleep}
       </Text>
@@ -105,14 +115,15 @@ export function MorningCard({
   readonly sleep: string | null;
 }): ReactNode {
   const now = useMinute();
+  const lines = briefingLinesOf(day);
   return (
     <Card className="gap-2 bg-surface-1/80">
       <View className="flex-row items-center gap-2">
         <Icon name="sparkles" size={16} tone="primary" />
         <Text variant="body-strong">{greetingAt(now)}</Text>
       </View>
-      {sleep === null ? null : <SleepLine sleep={sleep} />}
-      <Text variant="callout">{briefingLinesOf(day, now).join(' ')}</Text>
+      {sleep === null ? null : <SleepLine sleep={sleep} centred={false} />}
+      {lines.length === 0 ? null : <Text variant="callout">{lines.join(' ')}</Text>}
     </Card>
   );
 }

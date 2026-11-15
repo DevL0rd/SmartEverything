@@ -4,7 +4,7 @@ import { DriveSettingsSection } from './page';
 
 export function NotificationsSection(): ReactNode {
   return (
-    <DriveSettingsSection section="notifications">
+    <DriveSettingsSection>
       <PushKindsSetting />
     </DriveSettingsSection>
   );

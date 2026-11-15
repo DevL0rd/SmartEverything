@@ -6,6 +6,7 @@ import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DRIVE_MOUNT_LOCATION_MIGRATION } from '../../src/store/migrations/drive-mount-location';
+import { DRIVE_ROOT_MOUNT_MIGRATION } from '../../src/store/migrations/drive-root-mount';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
@@ -116,7 +117,12 @@ beforeEach(() => {
     result: '{}',
     at: NOW,
   });
-  migrate(sql, MIGRATIONS, NOW, log);
+  migrate(
+    sql,
+    MIGRATIONS.filter((migration) => migration.version < DRIVE_ROOT_MOUNT_MIGRATION.version),
+    NOW,
+    log,
+  );
 });
 
 afterEach(() => {

@@ -65,8 +65,7 @@ const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6] as const;
 const WEEKDAYS = [1, 2, 3, 4, 5] as const;
 const WEEKENDS = [0, 6] as const;
 
-const MODE_DAYS: Readonly<Record<Exclude<RepeatMode, 'custom'>, readonly number[]>> = {
-  once: [],
+const MODE_DAYS: Readonly<Record<Exclude<RepeatMode, 'custom' | 'once'>, readonly number[]>> = {
   every_day: EVERY_DAY,
   weekdays: WEEKDAYS,
   weekends: WEEKENDS,
@@ -162,7 +161,12 @@ export function daysEdit(days: readonly number[]): AlarmEdit {
   return { days: sortedDays(days), once_on: null };
 }
 
-export function repeatEdit(mode: RepeatMode, current: readonly number[]): AlarmEdit {
+export function repeatEdit(
+  mode: RepeatMode,
+  current: readonly number[],
+  firstDate: string,
+): AlarmEdit {
+  if (mode === 'once') return { days: [], once_on: firstDate };
   if (mode === 'custom') return daysEdit(current.length === 0 ? WEEKDAYS : current);
   return daysEdit(MODE_DAYS[mode]);
 }

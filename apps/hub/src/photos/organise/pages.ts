@@ -28,7 +28,6 @@ const PAGE_ROW = z.strictObject({
   taken_at: z.string(),
   tz_offset_min: NUMBER,
   duration_ms: NUMBER,
-  thumbhash: z.instanceof(Uint8Array).nullable(),
   flags: z.number(),
 });
 
@@ -91,7 +90,7 @@ export class OrganisePages {
     const rows = this.context.sql.all(
       PAGE_ROW,
       `select i.id, i.rev, i.width, i.height, i.orientation, i.taken_at, m.tz_offset_min,
-          i.duration_ms, m.thumbhash, ${FLAGS_SQL} as flags
+          i.duration_ms, ${FLAGS_SQL} as flags
         from ${PHOTO_FROM}
         where ${shown}${filter.text}
           and i.taken_at >= $monthFrom and i.taken_at < $monthTo

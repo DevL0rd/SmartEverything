@@ -65,7 +65,7 @@ function render(reset = false): string {
 describe('Appearance columns', () => {
   it('keeps the reset warning above the columns and motion after shape in the same column', () => {
     const html = render(true);
-    expect(html).toContain('<span>Reset</span></div><div');
+    expect(html).toContain('<div class="gap-section-gap"><span>Reset</span><div');
     expect(html).toContain('<span>Preview</span></div><div');
     expect(html).toContain('<span>Shape</span><span>Motion</span></div>');
     expect(html.match(/<span>[^<]+<\/span>/gu)).toHaveLength(5);

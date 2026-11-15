@@ -45,7 +45,7 @@ export function sentLineOf(
   ownerName: string | null,
 ): string {
   const who = ownerName ?? 'The owner';
-  return `Request sent ${relative(request.createdAt, now)}. ${who} gets a notification and can approve it.`;
+  return `Sent ${relative(request.createdAt, now)}. ${who} gets a notification and can approve it.`;
 }
 
 export function declinedLineOf(
@@ -55,9 +55,11 @@ export function declinedLineOf(
 ): string {
   const who = ownerName ?? 'The owner';
   return request.answeredAt === null
-    ? `${who} declined your request.`
-    : `${who} declined your request ${relative(request.answeredAt, now)}. You can ask again.`;
+    ? `${who} declined your request`
+    : `${who} declined your request ${relative(request.answeredAt, now)}`;
 }
+
+export const ASK_AGAIN_LINE = 'You can ask again.';
 
 export const UNAVAILABLE_TITLE = 'This file is not available';
 

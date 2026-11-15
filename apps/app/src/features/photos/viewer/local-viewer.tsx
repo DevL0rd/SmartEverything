@@ -5,7 +5,7 @@ import { Logger } from '@smarteverything/logging';
 import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
-import { IconButton } from '../../../components/icon-button';
+import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
 import { Zoomable } from '../../../components/zoomable';
 import { ThemeScope } from '../../../design/theme-scope';
@@ -54,7 +54,7 @@ function LocalMedia({ item }: { readonly item: LocalMediaItem }): ReactNode {
   if (uri === null) return <Text>Loading…</Text>;
   if (item.video) return <LocalPlayback uri={uri} />;
   return (
-    <Zoomable className="min-h-0 flex-1">
+    <Zoomable wheel="wheel" className="min-h-0 flex-1">
       <Image
         source={{ uri, cacheKey: `${item.id}:${String(item.modificationTime)}` }}
         contentFit="contain"
@@ -102,26 +102,22 @@ export function LocalViewer({ id }: { readonly id: string }): ReactNode {
   return (
     <ThemeScope theme="dark">
       <View className="min-h-0 flex-1 bg-black">
-        <View className="min-h-16 flex-row items-center gap-2 px-4 pt-safe">
-          <IconButton icon="arrowLeft" label="Close viewer" onPress={closeViewer} shortcut="Esc" />
-          <Text variant="label" className="min-w-0 flex-1">
-            {item?.name ?? 'Local media'}
-          </Text>
-        </View>
-        {item === undefined ? (
-          <EmptyState
-            icon="image"
-            title={
-              library.state === 'loading' ? 'Loading local media…' : 'This file is unavailable'
-            }
-            body="Open it again from your Photos library."
-          />
-        ) : (
-          <>
-            <LocalMedia key={`${item.id}:${String(item.modificationTime)}`} item={item} />
-            <LocalDetails item={item} />
-          </>
-        )}
+        <PageShell variant="overlay" title={item?.name ?? 'Local media'} onBack={closeViewer}>
+          {item === undefined ? (
+            <EmptyState
+              icon="image"
+              title={
+                library.state === 'loading' ? 'Loading local media…' : 'This file is unavailable'
+              }
+              body="Open it again from your Photos library."
+            />
+          ) : (
+            <>
+              <LocalMedia key={`${item.id}:${String(item.modificationTime)}`} item={item} />
+              <LocalDetails item={item} />
+            </>
+          )}
+        </PageShell>
       </View>
     </ThemeScope>
   );

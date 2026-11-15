@@ -25,6 +25,7 @@ export interface BarsProps {
   readonly highlightKey?: string;
   readonly formatValue?: (value: number) => string;
   readonly fit?: boolean;
+  readonly peakLabel?: boolean;
 }
 
 const GAP_SHARE = 0.25;
@@ -92,6 +93,15 @@ function heightOf(fit: boolean, plot: Plot, fixed: number): number {
   return fit ? plot.height : fixed;
 }
 
+function PeakLabel({ shown, text }: { readonly shown: boolean; readonly text: string }): ReactNode {
+  if (!shown) return null;
+  return (
+    <Text variant="caption" tone="variant" className="tabular">
+      {text}
+    </Text>
+  );
+}
+
 export const Bars = memo(function Bars({
   bars,
   colour,
@@ -100,6 +110,7 @@ export const Bars = memo(function Bars({
   highlightKey,
   formatValue = plain,
   fit = false,
+  peakLabel,
 }: BarsProps): ReactNode {
   const { plot, onLayout } = usePlot();
   const fill = useColour(colour);
@@ -115,9 +126,7 @@ export const Bars = memo(function Bars({
       accessibilityLabel={label}
       className={cn('gap-1', fit && 'min-h-0 flex-1')}
     >
-      <Text variant="caption" tone="variant" className="tabular">
-        {formatValue(peak)}
-      </Text>
+      <PeakLabel shown={peakLabel !== false} text={formatValue(peak)} />
       <View
         style={plotBoxStyle(fit, height)}
         className={cn(fit && 'min-h-0 flex-1')}

@@ -4,6 +4,7 @@ import { SCHEDULE_ROW, type ScheduleRow } from '@smarteverything/domain';
 import { expect, it, vi } from 'vitest';
 import type { ListRowProps } from '../../../components/list-row';
 import { PageShell, type StandardShellProps } from '../../../components/page-shell/page-shell';
+import { COLOUR_VARIABLE, PaletteContext } from '../../../design/colour-roles';
 import { ScheduledScreen } from './scheduled-screen';
 
 const fixture = vi.hoisted(() => ({ rows: new Array<ScheduleRow>() }));
@@ -11,6 +12,7 @@ const AT = '2026-10-18T18:30:00.000Z';
 const ID = '10000000-0000-4000-8000-000000000001';
 const LABEL = 'Restore the hallway and porch lights after the evening fixture reminder ends';
 
+vi.mock('../hosts/workspace-sections', () => ({ workspaceSectionsOf: (): null => null }));
 vi.mock('./use-scheduled', () => ({
   useScheduledRows: (): readonly ScheduleRow[] => fixture.rows,
   useHomeZone: (): string => 'UTC',
@@ -29,7 +31,7 @@ it('uses the shared screen width for the one-off timers landing', () => {
     throw new Error('Expected the scheduled landing to render a PageShell element.');
   }
   expect(landing.type).toBe(PageShell);
-  expect(landing.props.width).toBeUndefined();
+  expect('width' in landing.props).toBe(false);
 });
 
 it.each(['scheduled', 'failed'] as const)('wraps a long name in the %s timer row', (state) => {
@@ -60,7 +62,9 @@ it.each(['scheduled', 'failed'] as const)('wraps a long name in the %s timer row
     }),
   ];
   try {
-    const markup = renderToStaticMarkup(createElement(ScheduledScreen));
+    const markup = renderToStaticMarkup(
+      createElement(PaletteContext, { value: COLOUR_VARIABLE }, createElement(ScheduledScreen)),
+    );
     expect(markup).toContain(`<span data-title-wrap="true">${LABEL}</span>`);
   } finally {
     fixture.rows = [];

@@ -6,6 +6,7 @@ import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
 import { SOURCE_COPY } from './source-copy';
 import { pickedDetail, pickedLine, type SourceTile } from './source-model';
+import { SelectionGroup, SelectionSurface } from '../components/selection-surface';
 
 export interface SourceSelectionProps {
   readonly source: PhotoSource;
@@ -48,7 +49,7 @@ export function SourceSelection(props: SourceSelectionProps): ReactNode {
   const { source, picked, disabled, chatHint } = props;
   const off = disabled || picked.length === 0;
   return (
-    <View className="min-h-15 flex-row flex-wrap items-center gap-2 bg-primary-container px-gutter py-2">
+    <SelectionSurface>
       <IconButton
         icon="close"
         label="Clear the selection"
@@ -56,22 +57,26 @@ export function SourceSelection(props: SourceSelectionProps): ReactNode {
         onPress={props.onClear}
       />
       <Picked source={source} picked={picked} />
-      {source === 'cameras' ? (
-        <Button
-          label="To chat"
-          icon="messageCircle"
-          variant="outlined"
-          disabled={off || chatHint !== null}
-          onPress={props.onChat}
-        />
-      ) : null}
-      <Button
-        label={SOURCE_COPY[source].keepLabel}
-        icon={source === 'cameras' ? 'folder' : 'check'}
-        variant="tonal"
-        disabled={off || picked.every((tile) => tile.kept)}
-        onPress={props.onKeep}
-      />
-    </View>
+      {off ? null : (
+        <SelectionGroup>
+          {source === 'cameras' && chatHint === null ? (
+            <Button
+              label="To chat"
+              icon="messageCircle"
+              variant="outlined"
+              onPress={props.onChat}
+            />
+          ) : null}
+          {picked.every((tile) => tile.kept) ? null : (
+            <Button
+              label={SOURCE_COPY[source].keepLabel}
+              icon={source === 'cameras' ? 'folder' : 'check'}
+              variant="tonal"
+              onPress={props.onKeep}
+            />
+          )}
+        </SelectionGroup>
+      )}
+    </SelectionSurface>
   );
 }

@@ -140,6 +140,41 @@ function Ticks({
   ));
 }
 
+function ArcValue({
+  target,
+  d,
+  length,
+  start,
+  colour,
+  thickness,
+  tinted,
+  drawn,
+}: {
+  readonly target: number;
+  readonly d: string;
+  readonly length: number;
+  readonly start: XY;
+  readonly colour: ColourRole;
+  readonly thickness: number;
+  readonly tinted: boolean;
+  readonly drawn: SharedValue<number>;
+}): ReactNode {
+  const stroke = useColour(colour);
+  if (target === 0) return null;
+  return (
+    <>
+      <DrawnStroke
+        d={d}
+        length={length}
+        shades={[{ through: Number.POSITIVE_INFINITY, colour: stroke }]}
+        thickness={thickness}
+        drawn={drawn}
+      />
+      {tinted ? <StartDot at={start} colour={colour} thickness={thickness} drawn={drawn} /> : null}
+    </>
+  );
+}
+
 export function Arc({
   value,
   size,
@@ -156,7 +191,6 @@ export function Arc({
   const radius = (size - thickness) / 2;
   const target = Math.min(1, Math.max(0, value));
   const drawn = useDraw(target, !useMotion().reduced);
-  const stroke = useColour(colour);
   const ring = { cx: centre, cy: centre, r: radius };
   const path = arcPath(ring, startAngle, startAngle + sweep);
   return (
@@ -169,22 +203,17 @@ export function Arc({
       {trackColour === null ? null : (
         <ArcStroke d={path} {...trackOf(colour, trackColour, tinted)} thickness={thickness} />
       )}
-      <DrawnStroke
+      <ArcValue
+        target={target}
         d={path}
         length={arcLength(radius, sweep)}
-        shades={[{ through: Number.POSITIVE_INFINITY, colour: stroke }]}
+        start={pointOn(ring, startAngle)}
+        colour={colour}
         thickness={thickness}
+        tinted={tinted}
         drawn={drawn}
       />
       <Ticks ticks={ticks} ring={ring} />
-      {tinted ? (
-        <StartDot
-          at={pointOn(ring, startAngle)}
-          colour={colour}
-          thickness={thickness}
-          drawn={drawn}
-        />
-      ) : null}
     </Svg>
   );
 }

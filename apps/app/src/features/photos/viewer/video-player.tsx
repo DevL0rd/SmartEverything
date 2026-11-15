@@ -14,18 +14,23 @@ import {
 } from 'react-native-reanimated';
 import type { MediaInfo, PhotosProgressNotice } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
-import { Button } from '../../../components/button';
 import { Arc } from '../../../components/charts/arc';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { isNative } from '../../../design/platform';
 import { percent } from '../../../format/number';
-import { downloadFile } from '../../../platform/file-actions';
 import { onPhotosProgress, useDriveLink } from '../../drive';
 import { photoKeys } from '../data/keys';
 import type { MediaItem } from './info-model';
-import { usePlaybackLive, useSpaceToggle, useVideoModule, type VideoModule } from './live-photo';
+import { SaveToDeviceButton } from './save-button';
+import {
+  useModulePlayer,
+  usePlaybackLive,
+  useSpaceToggle,
+  useVideoModule,
+  type VideoModule,
+} from './live-photo';
 import {
   BigPlay,
   FRAME_WIDTH,
@@ -128,21 +133,6 @@ export const VIDEO_TEXT = {
   unavailableBody: 'This version of the app cannot play videos. The original is kept as it is.',
 } as const;
 
-function DownloadOriginal({ item }: { readonly item: MediaItem }): ReactNode {
-  const url = useDriveLink(item.id, item.rev, 'file');
-  return (
-    <Button
-      label="Download original"
-      icon="download"
-      variant="tonal"
-      disabled={url === null}
-      onPress={() => {
-        if (url !== null) downloadFile(url, item.name);
-      }}
-    />
-  );
-}
-
 function Poster({ item }: { readonly item: MediaItem }): ReactNode {
   const url = useDriveLink(item.id, item.rev, 'preview');
   return (
@@ -212,7 +202,7 @@ function NoticeBody({
       <Text variant="callout" tone="variant" align="center" className="max-w-reading">
         {VIDEO_TEXT[`${look}Body`]}
       </Text>
-      <DownloadOriginal item={item} />
+      <SaveToDeviceButton itemId={item.id} variant="tonal" />
     </View>
   );
 }
@@ -383,7 +373,7 @@ function Playback({
   readonly source: string;
   readonly video: ViewerVideoProps;
 }): ReactNode {
-  const player = module.useVideoPlayer({ uri: source, contentType: 'progressive' }, setUp);
+  const player = useModulePlayer(module, source, setUp);
   const live = usePlaybackLive();
   const { item, phone, onScrubbing } = video;
   const state = usePlayerState(player, lengthOf(item), live);

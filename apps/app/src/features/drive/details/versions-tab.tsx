@@ -11,7 +11,7 @@ import { notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useDriveConflicts, useDriveVersions } from '../data';
-import { restoreVersion } from '../versions/restore';
+import { useRestore } from '../versions/restore';
 import {
   CompactTimeline,
   OneVersion,
@@ -91,35 +91,19 @@ export function restoreLineOf(earlier: VersionEntry, conflicted: boolean, time: 
   return conflicted ? footer : `Restores the version from ${whenOf(earlier, time)}. ${footer}`;
 }
 
-function useRestoreRun(item: DriveItem): {
-  readonly busy: boolean;
-  readonly run: (versionId: string) => void;
-} {
-  const [busy, setBusy] = useState(false);
-  return {
-    busy,
-    run: (versionId): void => {
-      setBusy(true);
-      background(
-        restoreVersion(item, versionId).then(() => {
-          setBusy(false);
-        }),
-        'drive_version.restore_failed',
-      );
-    },
-  };
-}
+const NOTHING_AFTER_RESTORE = (): void => undefined;
 
 interface ActionsProps {
   readonly subject: DetailsSubject;
   readonly earlier: VersionEntry;
   readonly conflicted: boolean;
+  readonly time: Clock;
   readonly compare: () => void;
 }
 
-function Actions({ subject, earlier, conflicted, compare }: ActionsProps): ReactNode {
+function Actions({ subject, earlier, conflicted, time, compare }: ActionsProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const restore = useRestoreRun(subject.item);
+  const restore = useRestore(subject.item, NOTHING_AFTER_RESTORE);
   const { versionId, primary } = restorePlanOf(earlier, conflicted);
   const size = pointer ? 'md' : 'lg';
   return (
@@ -141,7 +125,7 @@ function Actions({ subject, earlier, conflicted, compare }: ActionsProps): React
         loading={restore.busy}
         disabled={versionId === null || !subject.writable}
         onPress={() => {
-          if (versionId !== null) restore.run(versionId);
+          if (versionId !== null) restore.run(versionId, whenOf(earlier, time));
         }}
       />
     </View>
@@ -170,7 +154,13 @@ function Settled({
       <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 px-4">
         <CompactTimeline entries={data.entries} look={look} />
       </View>
-      <Actions subject={subject} earlier={earlier} conflicted={data.conflicted} compare={compare} />
+      <Actions
+        subject={subject}
+        earlier={earlier}
+        conflicted={data.conflicted}
+        time={look.time}
+        compare={compare}
+      />
       <Text variant="footnote" tone="variant">
         {restoreLineOf(earlier, data.conflicted, look.time)}
       </Text>

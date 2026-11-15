@@ -2,13 +2,15 @@ import { memo, useRef, type ReactNode, type RefObject } from 'react';
 import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
 import { Bars } from '../../../components/charts';
+import { Grid } from '../../../components/grid';
+import { HScroller } from '../../../components/h-scroller';
 import { IconWell } from '../../../components/icon-well';
 import { Interactive } from '../../../components/interactive';
 import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
+import { cn } from '../../../design/cn';
 import { count } from '../../../format/number';
-import { plural } from '../../../format/text';
 import { RuleBadges } from './rule-chip-view';
 import { SectionHead } from './section-head';
 import { removeSmartFolder, useSmartStats } from './smart-data';
@@ -28,7 +30,11 @@ const NO_MENU: readonly MenuItem[] = [];
 
 export type RenameSmartFolder = (folder: SmartFolder, anchorRef: RefObject<View | null>) => void;
 
-function menuOf(folder: SmartFolder, rename: () => void): readonly MenuItem[] {
+export function smartFolderMenu(
+  folder: SmartFolder,
+  rename: () => void,
+  onRemoved: () => void,
+): readonly MenuItem[] {
   return [
     {
       id: 'rename',
@@ -43,7 +49,11 @@ function menuOf(folder: SmartFolder, rename: () => void): readonly MenuItem[] {
       destructive: true,
       onPress: (): void => {
         background(
-          removeSmartFolder(folder).catch(notifyFailure(`${folder.title} was not removed.`)),
+          removeSmartFolder(folder)
+            .then((removed) => {
+              if (removed) onRemoved();
+            })
+            .catch(notifyFailure(`${folder.title} was not removed.`)),
           'drive.smart_folder_remove_failed',
         );
       },
@@ -59,6 +69,13 @@ function MatchBars({
   readonly stats: SmartStats;
 }): ReactNode {
   const week = thisWeekText(stats);
+  if (stats.thisWeek === 0) {
+    return (
+      <Text variant="caption" tone="variant">
+        No new matches this week
+      </Text>
+    );
+  }
   return (
     <View className="gap-1">
       <View className="flex-row items-center justify-between gap-2">
@@ -84,12 +101,16 @@ function MatchBars({
   );
 }
 
+const NOTHING = (): void => undefined;
+
 export const SmartFolderCard = memo(function SmartFolderCard({
   folder,
   onRename,
+  compact,
 }: {
   readonly folder: SmartFolder;
   readonly onRename: RenameSmartFolder;
+  readonly compact: boolean;
 }): ReactNode {
   const stats = useSmartStats(folder);
   const anchor = useRef<View>(null);
@@ -98,7 +119,10 @@ export const SmartFolderCard = memo(function SmartFolderCard({
     <View
       ref={anchor}
       collapsable={false}
-      className="min-w-0 flex-1 basis-72 gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-4 elevation-1"
+      className={cn(
+        'gap-3 rounded-lg border-hairline border-outline-variant bg-surface-1 p-4 elevation-1',
+        compact ? 'w-72' : 'flex-1',
+      )}
     >
       <View className="flex-row items-center gap-3">
         <Interactive
@@ -120,39 +144,67 @@ export const SmartFolderCard = memo(function SmartFolderCard({
         <OverflowButton
           items={NO_MENU}
           late={() =>
-            menuOf(folder, () => {
-              onRename(folder, anchor);
-            })
+            smartFolderMenu(
+              folder,
+              () => {
+                onRename(folder, anchor);
+              },
+              NOTHING,
+            )
           }
           label={`More for ${folder.title}`}
         />
       </View>
       <RuleBadges rule={folder.rule} />
-      <MatchBars folder={folder} stats={stats} />
+      {compact ? null : <MatchBars folder={folder} stats={stats} />}
     </View>
   );
 });
 
-export function SmartFolders({
+const CARD_MIN_WIDTH = 288;
+
+function Cards({
   folders,
   onRename,
+  compact,
 }: {
   readonly folders: readonly SmartFolder[];
   readonly onRename: RenameSmartFolder;
+  readonly compact: boolean;
+}): ReactNode {
+  const cards = folders.map((folder) => (
+    <SmartFolderCard key={folder.id} folder={folder} onRename={onRename} compact={compact} />
+  ));
+  if (!compact) {
+    return (
+      <Grid minItemWidth={CARD_MIN_WIDTH} stretchLastRow={false}>
+        {cards}
+      </Grid>
+    );
+  }
+  return (
+    <View className="-mx-gutter">
+      <HScroller label="Smart folders" fade>
+        <View className="flex-row items-stretch gap-3 px-gutter pb-1">{cards}</View>
+      </HScroller>
+    </View>
+  );
+}
+
+export function SmartFolders({
+  folders,
+  onRename,
+  compact,
+}: {
+  readonly folders: readonly SmartFolder[];
+  readonly onRename: RenameSmartFolder;
+  readonly compact: boolean;
 }): ReactNode {
   if (folders.length === 0) return null;
   return (
     <View className="gap-2">
-      <SectionHead
-        title="Smart folders"
-        note={SMART_NOTE}
-        detail={plural(folders.length, 'smart folder')}
-      />
-      <View className="flex-row flex-wrap gap-3">
-        {folders.map((folder) => (
-          <SmartFolderCard key={folder.id} folder={folder} onRename={onRename} />
-        ))}
-      </View>
+      <SectionHead title="Smart folders" note={SMART_NOTE} />
+      <Cards folders={folders} onRename={onRename} compact={compact} />
     </View>
   );
 }

@@ -1,7 +1,9 @@
-import { useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, View, type TextInput } from 'react-native';
+import { useMemo, useReducer, useState, type ReactNode } from 'react';
+import { ScrollView, View } from 'react-native';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
+import { IconButton } from '../../../components/icon-button';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useSyncStatus } from '../../../store/selectors';
@@ -18,7 +20,13 @@ import {
 import { hasStart, SearchStart } from './start';
 import { flatSuggestions, suggestionsOf, type SuggestionGroup } from './suggest';
 import { Suggestions } from './suggestions';
-import { TokenField, UNUSED_NOTE } from './token-field';
+import {
+  FILTER_HINT,
+  SEARCH_HINT,
+  SEARCH_PLACEHOLDER,
+  SearchTokens,
+  UNUSED_NOTE,
+} from './token-field';
 import { tokenKey, type SearchToken } from './tokens';
 import { tryChipsOf, type TryChip } from './try-chips';
 import { useSearchSources } from './use-search-sources';
@@ -142,42 +150,60 @@ export function unusedNoteOf(tokens: readonly SearchToken[]): string | null {
   return `${UNUSED_NOTE}: ${tokens.map((token) => token.label).join(', ')}`;
 }
 
-export function LibrarySearchBar({
-  search,
-  unused,
-}: {
-  readonly search: LibrarySearch;
-  readonly unused: readonly SearchToken[];
-}): ReactNode {
-  const inputRef = useRef<TextInput>(null);
-  const { state, act } = search;
-  const note = unusedNoteOf(unused);
+function ClearAll({ search }: { readonly search: LibrarySearch }): ReactNode {
+  if (search.state.tokens.length === 0 || search.state.input !== '') return null;
   return (
-    <View className="w-full max-w-reading gap-1">
-      <TokenField
-        tokens={state.tokens}
-        value={state.input}
-        inputRef={inputRef}
-        unused={new Set(unused.map(tokenKey))}
-        onFocus={search.browse}
-        onChange={(value) => {
-          act({ type: 'type', value });
-        }}
-        onSubmit={search.submit}
-        onKey={search.key}
-        onRemove={(token) => {
-          act({ type: 'remove', token });
-        }}
-        onClear={() => {
-          act({ type: 'clear' });
-        }}
-      />
-      {note === null ? null : (
-        <Text variant="caption" tone="variant" numberOfLines={2}>
-          {note}
-        </Text>
-      )}
-    </View>
+    <IconButton
+      icon="close"
+      label="Clear search"
+      onPress={() => {
+        search.act({ type: 'clear' });
+      }}
+    />
+  );
+}
+
+export function librarySearchConfigOf(
+  search: LibrarySearch,
+  unused: readonly SearchToken[],
+): ShellSearchConfig {
+  const { state, act } = search;
+  const filtered = state.tokens.length > 0;
+  return {
+    value: state.input,
+    onChange: (value): void => {
+      act({ type: 'type', value });
+    },
+    placeholder: filtered ? FILTER_HINT : SEARCH_PLACEHOLDER,
+    label: SEARCH_HINT,
+    onSubmit: search.submit,
+    onKey: search.key,
+    onFocus: search.browse,
+    trailing: <ClearAll search={search} />,
+    ...(filtered
+      ? {
+          tokens: (
+            <SearchTokens
+              tokens={state.tokens}
+              unused={new Set(unused.map(tokenKey))}
+              onRemove={(token) => {
+                act({ type: 'remove', token });
+              }}
+            />
+          ),
+        }
+      : {}),
+    ...(search.open ? { panel: <LibrarySearchPanel search={search} /> } : {}),
+  };
+}
+
+export function UnusedNote({ unused }: { readonly unused: readonly SearchToken[] }): ReactNode {
+  const note = unusedNoteOf(unused);
+  if (note === null) return null;
+  return (
+    <Text variant="caption" tone="variant" numberOfLines={2}>
+      {note}
+    </Text>
   );
 }
 
@@ -221,7 +247,7 @@ export function LibrarySearchPanel({ search }: { readonly search: LibrarySearch 
     <ScrollView
       keyboardShouldPersistTaps="handled"
       className="min-h-0 flex-1"
-      contentContainerClassName="w-full max-w-reading gap-section-gap pb-section-gap pt-2"
+      contentContainerClassName="w-full gap-section-gap pb-section-gap pt-2"
     >
       {search.offline ? (
         <Banner

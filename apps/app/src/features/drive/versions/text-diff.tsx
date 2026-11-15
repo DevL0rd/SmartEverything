@@ -12,6 +12,7 @@ import {
   segmentsOf,
   signedCount,
   unchangedText,
+  type CompareNames,
   type ComparedText,
   type DiffSegment,
   type LineDiff,
@@ -19,7 +20,13 @@ import {
 
 const FRAME = 'overflow-hidden rounded-md border border-outline-variant bg-surface-1 py-2';
 
-function Counts({ diff }: { readonly diff: LineDiff }): ReactNode {
+function Counts({
+  diff,
+  names,
+}: {
+  readonly diff: LineDiff;
+  readonly names: CompareNames;
+}): ReactNode {
   const changed = diff.added + diff.removed > 0;
   return (
     <Text variant="footnote" tone="variant" className="min-w-0 shrink" numberOfLines={1}>
@@ -33,7 +40,7 @@ function Counts({ diff }: { readonly diff: LineDiff }): ReactNode {
           </Text>
         </>
       ) : null}
-      {changeSummary(diff)}
+      {changeSummary(diff, names)}
     </Text>
   );
 }
@@ -94,13 +101,19 @@ function Lines({
   ));
 }
 
-export function TextDiff({ compared }: { readonly compared: ComparedText }): ReactNode {
+export function TextDiff({
+  compared,
+  names,
+}: {
+  readonly compared: ComparedText;
+  readonly names: CompareNames;
+}): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const [all, setAll] = useState(false);
   return (
     <View className={pointer ? 'min-h-0 flex-1 gap-3' : 'gap-3'}>
       <View className="flex-row flex-wrap items-center justify-between gap-2">
-        <Counts diff={compared.diff} />
+        <Counts diff={compared.diff} names={names} />
         <UnchangedSwitch value={all} onChange={setAll} />
       </View>
       {pointer ? (

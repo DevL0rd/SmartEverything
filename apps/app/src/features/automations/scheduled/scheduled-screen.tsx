@@ -16,6 +16,7 @@ import { cancelScheduled, removeScheduled, runScheduledNow } from './actions';
 import { useHomeZone, useScheduledRows } from './use-scheduled';
 import { canEdit, finishedOf, lateLine, runsLine, titleOf, upcomingOf, whenLine } from './view';
 import { background } from '@smarteverything/logging';
+import { workspaceSectionsOf } from '../hosts/workspace-sections';
 
 function useRowMenu(row: ScheduleRow): MenuItem[] {
   const router = useRouter();
@@ -148,7 +149,9 @@ export function ScheduledScreen(): ReactNode {
   };
   return (
     <PageShell
-      title="One-off timers"
+      title="Timers"
+      back={false}
+      sections={workspaceSectionsOf('timers')}
       {...(upcoming === 0 ? {} : { subtitle: `${plural(upcoming, 'action')} coming up` })}
       primaryAction={{ label: 'Schedule', icon: 'plus', onPress: create }}
     >

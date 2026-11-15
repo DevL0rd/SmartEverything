@@ -257,7 +257,14 @@ export async function startDriveHub(
   const placed = placementsOf(store, drive.runtime.placements, log);
   const { services, env } = drive.runtime;
   const photos = startPhotoServices(options, context, drive, log);
-  const surfaces = createDriveSurfaces({ store, env, services, nodes: context.computerNodes, log });
+  const surfaces = createDriveSurfaces({
+    store,
+    activity: drive.runtime.activity,
+    env,
+    services,
+    nodes: context.computerNodes,
+    log,
+  });
   const routes = {
     ...drive.routes,
     ...drivePlacementRoutes(store, placed.placements),

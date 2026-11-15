@@ -49,7 +49,7 @@ function CountsNote({
 function ListControls({ search, filter, onFilter, stats, log }: Controls): ReactNode {
   const counts = stats === null || search.trim() !== '' ? null : filterCounts(stats);
   return (
-    <View className="w-full max-w-reading gap-3 self-start px-gutter py-2">
+    <View className="w-full gap-3 self-start px-gutter py-2">
       <HScroller label="Filter lookups" fade>
         <View
           className="flex-row"
@@ -88,7 +88,7 @@ function ListControls({ search, filter, onFilter, stats, log }: Controls): React
 
 function LoadOlder({ log }: { readonly log: QueryLogView }): ReactNode {
   return log.more ? (
-    <View className="w-full max-w-reading items-center self-start px-gutter py-2">
+    <View className="w-full items-center self-start px-gutter py-2">
       <Button
         label="Load older lookups"
         variant="text"
@@ -103,7 +103,7 @@ function LoadOlder({ log }: { readonly log: QueryLogView }): ReactNode {
 
 function Empty({ log }: { readonly log: QueryLogView }): ReactNode {
   return (
-    <View className="w-full max-w-reading self-start px-gutter">
+    <View className="w-full self-start px-gutter">
       {log.loading ? (
         <Skeleton shape="block" />
       ) : (

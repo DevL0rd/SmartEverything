@@ -38,5 +38,5 @@ export { IR_CATEGORIES, type IrCategory } from './model/ir-category';
 export { chooseVacuumFinish, useVacuumFinish } from './model/vacuum-finish';
 export { FINISHES as VACUUM_FINISH_PAINT } from './visuals/vacuum/finish';
 export { presentedColourCss } from './model/light-colour';
-export { DeviceVisual, FamilyVisual, ownsVisualState } from './device-visual';
+export { DeviceVisual, FamilyVisual, ownsVisualState, useVisualDrawn } from './device-visual';
 export { WidgetModelsProvider } from './model-frame';

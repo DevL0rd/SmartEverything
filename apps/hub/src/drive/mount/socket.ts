@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import type { Duplex } from 'node:stream';
+import { getDefaultHighWaterMark, type Duplex } from 'node:stream';
 import { ApiError, type ComputerNodeRow } from '@smarteverything/domain';
 import {
   FrameError,
@@ -14,8 +14,9 @@ import {
   type Frame,
 } from '@smarteverything/domain/drive-mount';
 import { messageOf, type Logger } from '@smarteverything/logging';
-import { WebSocketServer, WebSocket, type RawData } from 'ws';
+import { WebSocketServer, type WebSocket, type RawData } from 'ws';
 import type { ComputerNodeAccess } from '../../computers/node-access';
+import { pingWhenOpen } from '../../network/guarded-socket';
 import { profileIdOf } from '../../server/auth';
 import { bearerOf } from '../../server/http';
 import type { Store } from '../../store/store';
@@ -23,6 +24,7 @@ import { nodeCaller } from '../node-caller';
 import type { PosixCaller } from '../posix/env';
 import { errorFrame, pushFrame, replyFrame } from './frames';
 import type { DriveMount } from './service';
+import { Outbox } from './outbox';
 import type { MountLink, MountSession } from './session';
 
 const CLOSE_POLICY = 1008;
@@ -137,9 +139,20 @@ export class DriveMountSocket {
   }
 
   private accept(socket: WebSocket, caller: PosixCaller): void {
+    const outbox = new Outbox(
+      {
+        send: (bytes, written): void => {
+          socket.send(bytes, { binary: true }, written);
+        },
+      },
+      (failure): void => {
+        this.log.warn('drive_mount.send_failed', { reason: messageOf(failure) });
+      },
+      getDefaultHighWaterMark(false),
+    );
     const link: MountLink = {
       send: (bytes) => {
-        socket.send(bytes, { binary: true });
+        outbox.send(bytes);
       },
       close: (code, reason) => {
         socket.close(code, reason);
@@ -157,6 +170,7 @@ export class DriveMountSocket {
       this.log.warn('drive_mount.socket_error', { reason: messageOf(cause) });
     });
     socket.on('close', () => {
+      outbox.stop();
       this.connections.delete(connection);
       if (connection.session !== null)
         this.mount.services.registry.detach(connection.session, link);
@@ -233,7 +247,7 @@ export class DriveMountSocket {
         connection.socket.terminate();
         continue;
       }
-      if (connection.socket.readyState === WebSocket.OPEN) connection.socket.ping();
+      pingWhenOpen(connection.socket);
     }
   }
 }

@@ -15,6 +15,7 @@ import type { SegmentedOption } from '../../../components/segmented';
 import { count } from '../../../format/number';
 import { DAY_MS } from '../../../format/time';
 import type { LinkGroups } from '../shared/shared-model';
+import { NO_END_LABEL } from './grant-expiry';
 import { canShareLink, type DriveAccess } from '../model/drive-access';
 
 export const LINK_ENDS = ['day', 'week', 'month', 'never'] as const;
@@ -32,7 +33,7 @@ export const END_OPTIONS: readonly SegmentedOption<LinkEnd>[] = [
   { value: 'day', label: '1 day' },
   { value: 'week', label: '7 days' },
   { value: 'month', label: '30 days' },
-  { value: 'never', label: 'Never' },
+  { value: 'never', label: NO_END_LABEL },
 ];
 
 export function accessOptionsOf(narrow: boolean): readonly SegmentedOption<DriveSharePermission>[] {
@@ -90,14 +91,24 @@ export const OWNER_ONLY = 'Only the owner can share';
 
 export const EVERYONE_LINE = 'Everyone in the home can open and edit this';
 
-export function footerLineOf(access: DriveAccess, ownerName: string | null): string {
+function linkReachOf(activeLinks: number): string {
+  return activeLinks === 1
+    ? 'anyone with its link'
+    : `anyone with one of its ${count(activeLinks)} links`;
+}
+
+export function footerLineOf(
+  access: DriveAccess,
+  ownerName: string | null,
+  activeLinks: number,
+): string {
   if (access === 'shared') {
     return 'Everyone in the home can already open this; you can still make a link';
   }
-  if (access === 'own') return 'Only you and the people above can open this';
-  return ownerName === null
-    ? 'Only its owner and the people above can open this'
-    : `Only ${ownerName} and the people above can open this`;
+  const owner = access === 'own' ? 'you' : (ownerName ?? 'its owner');
+  return activeLinks === 0
+    ? `Only ${owner} and the people above can open this`
+    : `Only ${owner}, the people above and ${linkReachOf(activeLinks)} can open this`;
 }
 
 export const ROLE_LABEL: Readonly<Record<DriveGrantRole, string>> = {

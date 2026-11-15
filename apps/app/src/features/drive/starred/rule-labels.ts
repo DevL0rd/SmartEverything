@@ -6,6 +6,20 @@ import type { RuleKind } from './rule-chips';
 
 export type PlaceOf = (id: string) => string | null;
 
+export interface PlaceSources {
+  readonly extra: ReadonlyMap<string, string>;
+  readonly rootIds: ReadonlySet<string>;
+  readonly rootLabel: (rootId: string) => string;
+}
+
+export function placeOfSources({ extra, rootIds, rootLabel }: PlaceSources): PlaceOf {
+  return (id) => {
+    const named = extra.get(id);
+    if (named !== undefined) return named;
+    return rootIds.has(id) ? rootLabel(id) : null;
+  };
+}
+
 export const KIND_WORD: Readonly<Record<RuleKind, string>> = {
   image: 'Photos',
   video: 'Videos',

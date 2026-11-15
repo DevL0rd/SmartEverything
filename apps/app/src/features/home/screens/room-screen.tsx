@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { usePinAction } from '../../../app-shell/pin-menu';
@@ -38,18 +37,12 @@ function renameRequest(room: Room): TextEditRequest {
   };
 }
 
+const ROOM_SETTINGS = { href: href.settings.page('home/rooms'), label: 'Room settings' } as const;
+
 function useOverflow(room: Room, onRename: () => void): readonly MenuItem[] {
-  const router = useRouter();
   const turnOff = useTurnOff(room.id);
   return [
     { label: 'Rename room', icon: 'pencil', onPress: onRename },
-    {
-      label: 'Room settings',
-      icon: 'settings',
-      onPress: (): void => {
-        router.navigate(href.settings.page('home/rooms'));
-      },
-    },
     ...(turnOff === null ? [] : [turnOff]),
   ];
 }
@@ -102,7 +95,7 @@ function RoomOverview({
       className={sideBySide ? 'flex-row items-start gap-section-gap' : 'gap-section-gap'}
     >
       {map}
-      <View className={sideBySide ? 'min-w-0 max-w-dashboard flex-1' : 'w-full'}>
+      <View className={sideBySide ? 'min-w-0 flex-1' : 'w-full'}>
         <RoomLightsCard room={room} count={lightCount} />
       </View>
     </View>
@@ -125,6 +118,7 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
       {...(climate === undefined ? {} : { subtitle: climate })}
       actions={[pin]}
       overflow={overflow}
+      settings={ROOM_SETTINGS}
     >
       <RoomOverview
         room={room}
@@ -159,7 +153,7 @@ export function RoomScreen({ roomId }: { readonly roomId: string }): ReactNode {
   const room = useRoom(roomId);
   if (room === null) {
     return (
-      <PageShell title="Room" width="reading">
+      <PageShell title="Room">
         <EmptyState
           icon="grid"
           title="This room is gone"

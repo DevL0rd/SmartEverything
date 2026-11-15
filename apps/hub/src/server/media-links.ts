@@ -14,6 +14,13 @@ import { RepeatGate } from './repeat-gate';
 
 export const LINK_LIFETIME_SECONDS = 10 * 60;
 
+export const LINK_WINDOW_SECONDS = LINK_LIFETIME_SECONDS / 2;
+
+export function linkExpiry(now: Date): number {
+  const second = Math.floor(now.getTime() / 1000);
+  return second - (second % LINK_WINDOW_SECONDS) + LINK_LIFETIME_SECONDS;
+}
+
 const CLAIMED_LINK = z.looseObject({
   expires: z.coerce.number().int().positive(),
   signature: z.string().regex(/^[0-9a-f]{64}$/),
@@ -138,6 +145,10 @@ export class MediaLinks {
     );
   }
 
+  driveVersion(itemId: string, versionId: string): MediaLink {
+    return this.sign(buildPath(MEDIA_PATHS.driveVersion, { itemId, versionId }), []);
+  }
+
   driveFolderIcon(itemId: string, rev: number): MediaLink {
     return this.sign(buildPath(MEDIA_PATHS.driveFolderIcon, { itemId }), [revPart(rev)], { rev });
   }
@@ -209,7 +220,7 @@ export class MediaLinks {
     parts: readonly string[],
     query: Readonly<Record<string, string | number>> = {},
   ): MediaLink {
-    const expires = Math.floor(this.now().getTime() / 1000) + LINK_LIFETIME_SECONDS;
+    const expires = linkExpiry(this.now());
     const search = new URLSearchParams({
       expires: String(expires),
       signature: this.signature(path, expires, parts),

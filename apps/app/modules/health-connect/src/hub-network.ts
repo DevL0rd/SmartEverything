@@ -12,6 +12,8 @@ import {
   NATIVE_HUB_RESOURCE_ID,
   NATIVE_HUB_RESOURCE_DOWNLOAD,
   NATIVE_HUB_RESOURCE_DOWNLOAD_RESULT,
+  NATIVE_HUB_RESOURCE_RESTORE,
+  NATIVE_HUB_RESOURCE_RESTORED,
   NATIVE_ANDROID_UPDATE_CANCEL,
   NATIVE_ANDROID_UPDATE_INSTALL,
   NATIVE_ANDROID_UPDATE_PROGRESS,
@@ -42,6 +44,8 @@ declare class HubNetworkNative extends NativeModule<HubNetworkEvents> {
   openResource(json: string): Promise<unknown>;
   releaseResource(id: string): Promise<void>;
   downloadResource(json: string): Promise<unknown>;
+  restoreResource(json: string): Promise<unknown>;
+  revealRestored(location: string): Promise<void>;
   requestAndroidUpdatePermission(): Promise<unknown>;
   installAndroidUpdate(json: string): Promise<unknown>;
   cancelAndroidUpdate(id: string): Promise<void>;
@@ -321,6 +325,14 @@ export const nativeHubNetwork: NativeHubNetwork = {
               JSON.stringify(NATIVE_HUB_RESOURCE_DOWNLOAD.parse(request)),
             ),
           ),
+        restoreResource: async (request) =>
+          NATIVE_HUB_RESOURCE_RESTORED.parse(
+            await moduleForHub().restoreResource(
+              JSON.stringify(NATIVE_HUB_RESOURCE_RESTORE.parse(request)),
+            ),
+          ),
+        revealRestored: async (location) =>
+          moduleForHub().revealRestored(z.string().min(1).parse(location)),
         requestAndroidUpdatePermission: async () =>
           z.boolean().parse(await moduleForHub().requestAndroidUpdatePermission()),
         installAndroidUpdate: async (request) =>

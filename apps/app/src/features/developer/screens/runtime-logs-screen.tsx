@@ -63,7 +63,7 @@ function LogListFooter({ logs }: { readonly logs: ReturnType<typeof useRuntimeLo
   if (logs.isFetchNextPageError) return <ErrorState error={logs.error} retry={more} />;
   if (!logs.hasNextPage) return null;
   return (
-    <View className="items-start px-3 py-2">
+    <View className="items-start py-2">
       <Button
         label="Load older logs"
         variant="tonal"
@@ -86,7 +86,7 @@ function LogList({ logs }: { readonly logs: ReturnType<typeof useRuntimeLogs> })
     return <ErrorState error={logs.error} retry={refresh} />;
   const entries = logs.data.pages.flatMap((page) => page.rows);
   return (
-    <View className="min-h-0 flex-1 overflow-hidden rounded-md border border-outline-variant bg-surface-1">
+    <View className="min-h-0 flex-1">
       <FlashList
         data={entries}
         extraData={open}
@@ -138,7 +138,7 @@ interface LogFilterBarProps {
 
 function LogFilterBar(props: LogFilterBarProps): ReactNode {
   return (
-    <View className="w-full max-w-detail flex-row gap-2">
+    <View className="w-full flex-row gap-2">
       <View className="min-w-0 flex-1">
         <Select
           label="Level"
@@ -183,7 +183,7 @@ function OwnerLogs(): ReactNode {
         placeholder: 'Search logs',
       }}
     >
-      <View className="w-full flex-1 gap-2 px-gutter pb-section-gap">
+      <View className="w-full flex-1 gap-2 pb-section-gap">
         <LogFilterBar
           level={level}
           onLevelChange={setLevel}

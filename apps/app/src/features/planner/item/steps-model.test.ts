@@ -116,13 +116,18 @@ describe('indent and outdent', () => {
   it('offers the nesting choices in the item menu', () => {
     const item = task('Gather receipts');
     const nest = nestTargetOf(item, above, false);
-    const menu = itemMenuOf({ item, occurrenceKey: null, offline: false, nest });
+    const menu = itemMenuOf({ item, occurrenceKey: null, offline: false, timeZone: 'UTC', nest });
     expect(menu.items.find((entry) => entry.id === 'indent')?.action).toEqual({
       kind: 'indent',
       parentId: above.id,
     });
     const step = task('Submit', { parent_id: above.id });
-    const stepMenu = itemMenuOf({ item: step, occurrenceKey: null, offline: true });
+    const stepMenu = itemMenuOf({
+      item: step,
+      occurrenceKey: null,
+      offline: true,
+      timeZone: 'UTC',
+    });
     const outdent = stepMenu.items.find((entry) => entry.id === 'outdent');
     expect(outdent?.action).toEqual({ kind: 'outdent' });
     expect(outdent?.disabled).toBe(true);

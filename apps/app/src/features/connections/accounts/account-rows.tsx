@@ -15,7 +15,7 @@ import { List } from '../../../components/section';
 import { notify, notifyFailure } from '../../../components/toast-store';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { useDevices, useSmartThingsWebhook } from '../../../store/selectors';
+import { useHasDevice, useSmartThingsWebhook } from '../../../store/selectors';
 import { CONNECT_FLOW, isAddable } from '../model/brands';
 import { openInBrowser } from '../flows/prompt-body';
 import { leaveFlow } from '../flows/leave-flow';
@@ -49,9 +49,9 @@ function WebhookRow(): ReactNode {
 }
 
 function useHasScale(provider: Provider): boolean {
-  return useDevices({ includeHidden: true }).some(
-    (device) => device.provider === provider && isScale(device),
-  );
+  return useHasDevice((device) => device.provider === provider && isScale(device), {
+    includeHidden: true,
+  });
 }
 
 function ScaleRow(): ReactNode {

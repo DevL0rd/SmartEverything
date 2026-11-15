@@ -12,7 +12,15 @@ import {
   type FrameProps,
 } from './shell-frame';
 import { ShellTitle } from './shell-parts';
-import { AppBar, COLLAPSE_AT, SURFACE_AT, ShellRows, TopSurface, columnStyle } from './top-shell';
+import {
+  AppBar,
+  COLLAPSE_AT,
+  SURFACE_AT,
+  ShellRows,
+  TopSurface,
+  columnStyle,
+  touchControlsPlaceOf,
+} from './top-shell';
 
 function StickyRows({
   scrollY,
@@ -31,28 +39,47 @@ function StickyRows({
   );
 }
 
+function LargeTitle({ frame }: { readonly frame: FrameProps }): ReactNode {
+  return (
+    <ShellTitle
+      {...titleRowOf(frame.shell, frame.openPullUp).title}
+      size="large"
+      testID="shell-title"
+    />
+  );
+}
+
 function PhoneTop({
   frame,
-  large,
+  scroll,
   rows,
 }: {
   readonly frame: FrameProps;
-  readonly large: boolean;
+  readonly scroll: boolean;
   readonly rows: ReactNode | null;
 }): ReactNode {
   const { shell, layout, scrollY } = frame;
+  const tabs = tabRowsOf(shell, layout);
+  const choosing = selecting(shell);
+  const collapsing = scroll && !choosing;
   return (
     <View testID="shell-top" className="z-10 pt-safe">
-      <TopSurface scrollY={scrollY} from={0} to={large ? COLLAPSE_AT : SURFACE_AT} />
-      {selecting(shell) ? (
+      <TopSurface scrollY={scrollY} from={0} to={collapsing ? COLLAPSE_AT : SURFACE_AT} />
+      {choosing ? (
         shell.selection
       ) : (
         <AppBar
           row={titleRowOf(shell, frame.openPullUp)}
-          large={large}
+          title={scroll ? 'collapsing' : 'none'}
           scrollY={scrollY}
           column={layout.column}
+          controls={touchControlsPlaceOf(shell.search, tabs) === 'title'}
         />
+      )}
+      {scroll || choosing ? null : (
+        <View style={columnStyle(layout.column)} className="pb-2 pt-1">
+          <LargeTitle frame={frame} />
+        </View>
       )}
       {rows}
     </View>
@@ -85,13 +112,7 @@ function PhoneScroll({
           setTitleHeight(event.nativeEvent.layout.height);
         }}
       >
-        {selecting(shell) ? null : (
-          <ShellTitle
-            {...titleRowOf(shell, frame.openPullUp).title}
-            size="large"
-            testID="shell-title"
-          />
-        )}
+        {selecting(shell) ? null : <LargeTitle frame={frame} />}
       </View>
       {pinned ? (
         <StickyRows scrollY={scrollY} stuckAt={titleHeight}>
@@ -110,14 +131,19 @@ function PhoneScroll({
 export function PhoneFrame(frame: FrameProps): ReactNode {
   const { shell, layout } = frame;
   const scroll = shell.scroll !== false;
-  const large = scroll && !selecting(shell);
   const tabs = tabRowsOf(shell, layout);
   const rows = (
-    <ShellRows search={shell.search} tabs={tabs} toolbar={shell.toolbar} column={layout.column} />
+    <ShellRows
+      search={shell.search}
+      tabs={tabs}
+      toolbar={shell.toolbar}
+      controls={shell.controls}
+      column={layout.column}
+    />
   );
   return (
     <>
-      <PhoneTop frame={frame} large={large} rows={scroll ? null : rows} />
+      <PhoneTop frame={frame} scroll={scroll} rows={scroll ? null : rows} />
       {scroll ? (
         <PhoneScroll frame={frame} rows={rows} pinned={pinnedRows(shell, tabs)} />
       ) : (

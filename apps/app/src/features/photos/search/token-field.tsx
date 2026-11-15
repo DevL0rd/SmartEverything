@@ -1,28 +1,15 @@
-import type { ReactNode, RefObject } from 'react';
-import { useState } from 'react';
-import { TextInput, View } from 'react-native';
+import type { ReactNode } from 'react';
 import { Icon } from '../../../components/icon';
-import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useIdiom } from '../../../design/platform';
 import { tokenIconOf, tokenKey, type SearchToken } from './tokens';
 
 export const SEARCH_HINT = "Search by person, place, date or what's in the photo";
 
-export interface TokenFieldProps {
-  readonly tokens: readonly SearchToken[];
-  readonly value: string;
-  readonly inputRef: RefObject<TextInput | null>;
-  readonly onChange: (value: string) => void;
-  readonly onSubmit: () => void;
-  readonly onKey: (key: string) => void;
-  readonly onRemove: (token: SearchToken) => void;
-  readonly onClear: () => void;
-  readonly unused: ReadonlySet<string>;
-  readonly onFocus: () => void;
-}
+export const SEARCH_PLACEHOLDER = 'Search photos';
+
+export const FILTER_HINT = 'Add a filter';
 
 export const UNUSED_NOTE = 'Not used on this tab';
 
@@ -63,100 +50,21 @@ function TokenChip({
   );
 }
 
-function FieldInput({
+export function SearchTokens({
   tokens,
-  value,
-  inputRef,
-  onChange,
-  onSubmit,
-  onKey,
-  onFocus,
-  pointer,
-}: Pick<TokenFieldProps, 'tokens' | 'value' | 'inputRef' | 'onChange' | 'onSubmit' | 'onKey'> & {
-  readonly onFocus: (focused: boolean) => void;
-  readonly pointer: boolean;
-}): ReactNode {
-  return (
-    <TextInput
-      ref={inputRef}
-      accessibilityLabel={SEARCH_HINT}
-      value={value}
-      onChangeText={onChange}
-      onSubmitEditing={onSubmit}
-      onFocus={() => {
-        onFocus(true);
-      }}
-      onBlur={() => {
-        onFocus(false);
-      }}
-      onKeyPress={(event) => {
-        onKey(event.nativeEvent.key);
-      }}
-      placeholder={tokens.length === 0 ? SEARCH_HINT : 'Add a filter'}
-      returnKeyType="search"
-      submitBehavior="submit"
-      autoCapitalize="none"
-      autoCorrect={false}
-      placeholderTextColorClassName="accent-on-surface-variant"
-      cursorColorClassName="accent-primary"
-      className={cn(
-        'min-w-32 flex-1 py-0 font-sans text-body text-on-surface web:outline-none',
-        pointer ? 'h-8' : 'h-11',
-      )}
-    />
-  );
-}
-
-function frameClass(pointer: boolean, focused: boolean): string {
-  return cn(
-    'min-h-control-h flex-row items-center gap-2 rounded-md bg-surface-3 pl-3 pr-1',
-    pointer ? 'py-1.5' : 'py-0',
-    focused ? 'border-2 border-primary' : 'border-2 border-transparent',
-  );
-}
-
-export function TokenField({
-  tokens,
-  value,
-  inputRef,
-  onChange,
-  onSubmit,
-  onKey,
-  onRemove,
-  onClear,
   unused,
-  onFocus,
-}: TokenFieldProps): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  const [focused, setFocused] = useState(false);
-  const filled = tokens.length > 0 || value !== '';
-  return (
-    <View accessibilityRole="search" className={frameClass(pointer, focused)}>
-      <Icon name="search" size={pointer ? 16 : 24} tone="variant" />
-      <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-1.5">
-        {tokens.map((token) => (
-          <TokenChip
-            key={tokenKey(token)}
-            token={token}
-            unused={unused.has(tokenKey(token))}
-            onRemove={onRemove}
-          />
-        ))}
-        <FieldInput
-          tokens={tokens}
-          value={value}
-          inputRef={inputRef}
-          onChange={onChange}
-          onSubmit={onSubmit}
-          onKey={onKey}
-          pointer={pointer}
-          onFocus={(next) => {
-            setFocused(next);
-            if (next) onFocus();
-          }}
-        />
-      </View>
-      {filled ? <IconButton icon="close" label="Clear search" onPress={onClear} /> : null}
-    </View>
-  );
+  onRemove,
+}: {
+  readonly tokens: readonly SearchToken[];
+  readonly unused: ReadonlySet<string>;
+  readonly onRemove: (token: SearchToken) => void;
+}): ReactNode {
+  return tokens.map((token) => (
+    <TokenChip
+      key={tokenKey(token)}
+      token={token}
+      unused={unused.has(tokenKey(token))}
+      onRemove={onRemove}
+    />
+  ));
 }

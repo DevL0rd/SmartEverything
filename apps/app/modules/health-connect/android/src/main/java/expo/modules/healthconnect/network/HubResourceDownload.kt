@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -62,6 +63,33 @@ class HubResourceDownload(
     } finally {
       try { downloaded?.let { if (!it.shared) HubResourceFiles.delete(it.file) } }
       finally { synchronized(this) { busy = false } }
+    }
+  }
+  internal suspend fun restore(json: String, gallery: HubResourceRestore): Map<String, Any> {
+    val request = RestoreRequest.parse(json)
+    synchronized(this) { require(!busy) { "A resource action is already pending" }; busy = true }
+    var downloaded: HubResourceFile? = null
+    try {
+      val grant = broker.grants.get(request.id)
+      require(grant.purpose == "attachment") { "Only original files can be saved to the gallery" }
+      return withContext(broker.io.asCoroutineDispatcher()) {
+        val file = HubResourceFiles.fetch(context, grant, broker.grants)
+        downloaded = file
+        gallery.place(file.file, request, grant::check)
+      }
+    } finally {
+      try { downloaded?.let { if (!it.shared) HubResourceFiles.delete(it.file) } }
+      finally { synchronized(this) { busy = false } }
+    }
+  }
+  suspend fun reveal(location: String, activity: () -> Activity?) {
+    val uri = Uri.parse(location)
+    require(uri.scheme == "content" && uri.authority == MediaStore.AUTHORITY) { "Only gallery items can be shown" }
+    val mime = context.contentResolver.getType(uri) ?: error("The saved gallery item is gone")
+    withContext(Dispatchers.Main) {
+      visibleResourceActivity(activity).startActivity(
+        Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+      )
     }
   }
   internal suspend fun install(json: String, activity: () -> Activity?): AndroidUpdateOutcome {

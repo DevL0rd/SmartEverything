@@ -30,6 +30,12 @@ func (w *writeBack) run() {
 func (w *writeBack) nextSession() *session {
 	for {
 		w.mu.Lock()
+		if w.running > w.target {
+			w.running--
+			w.mu.Unlock()
+			return nil
+		}
+		resized := w.resized
 		if len(w.queue) > 0 && w.online.Load() {
 			s := w.queue[0]
 			w.queue = w.queue[1:]
@@ -47,6 +53,7 @@ func (w *writeBack) nextSession() *session {
 		w.mu.Unlock()
 		select {
 		case <-w.wake:
+		case <-resized:
 		case <-w.ctx.Done():
 			return nil
 		}
@@ -79,7 +86,7 @@ func (w *writeBack) process(s *session) {
 		}
 		if t.fsyncOnly {
 			if err := w.fsyncRemote(w.ctx, s.ino(), false); err != nil {
-				w.settleFailure(s, nil, err)
+				w.settleFsync(s, err)
 				return
 			}
 			s.mu.Lock()
@@ -166,17 +173,21 @@ func (w *writeBack) sendUnit(s *session, unit *unitRecord) (wire.Attr, error) {
 	s.mu.Unlock()
 	ranges, zeros := spansToSet(unit.Ranges), spansToSet(unit.Zeros)
 	all := spansToSet(append(slices.Clone(unit.Ranges), unit.Zeros...))
-	if unit.Commit == 0 && unit.Size <= wire.MaxPayloadBytes && all.covers(0, unit.Size) {
+	if unit.Commit == 0 && int64(unit.Size) <= live.load().bulkFrameBytes && all.covers(0, unit.Size) {
 		payload := make([]byte, unit.Size)
 		for _, span := range ranges.spans {
 			if err := readData(s.data, payload[span[0]:span[1]], span[0]); err != nil {
 				return wire.Attr{}, err
 			}
 		}
+		if err := w.window.acquire(w.ctx); err != nil {
+			return wire.Attr{}, err
+		}
 		reply, err := w.caller.Call(w.ctx, wire.OpPut, wire.Meta{
 			wire.KeyIno: ino, wire.KeyBaseRev: baseRev, wire.KeySize: unit.Size,
 			wire.KeyMtimeNs: unit.WrittenNs, wire.KeyFsync: unit.Fsync, wire.KeyOpKey: keyBytes(unit.EndKey),
 		}, payload)
+		w.window.release()
 		if err != nil {
 			return wire.Attr{}, err
 		}
@@ -276,19 +287,8 @@ func lengthsToSet(spans [][2]uint64) rangeSet {
 }
 
 func (w *writeBack) sendWrites(s *session, commit uint64, spans [][2]uint64) error {
-	type chunk struct{ off, n uint64 }
-	var chunks []chunk
-	for _, span := range spans {
-		for off := span[0]; off < span[1]; off += wire.MaxPayloadBytes {
-			chunks = append(chunks, chunk{off, min(span[1]-off, wire.MaxPayloadBytes)})
-		}
-	}
-	if len(chunks) == 0 {
-		return nil
-	}
 	ctx, cancel := context.WithCancel(w.ctx)
 	defer cancel()
-	jobs := make(chan chunk)
 	var wg sync.WaitGroup
 	var once sync.Once
 	var first error
@@ -298,34 +298,32 @@ func (w *writeBack) sendWrites(s *session, commit uint64, spans [][2]uint64) err
 			cancel()
 		})
 	}
-	for lane := 0; lane < min(commitLanes, len(chunks)); lane++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for c := range jobs {
-				if ctx.Err() != nil {
-					continue
-				}
-				buf := make([]byte, c.n)
-				if err := readData(s.data, buf, c.off); err != nil {
-					fail(err)
-					continue
-				}
-				if _, err := w.caller.Call(ctx, wire.OpWrite, wire.Meta{wire.KeyCommit: commit, wire.KeyOffset: c.off}, buf); err != nil {
-					fail(err)
-				}
-			}
-		}()
-	}
 feed:
-	for _, c := range chunks {
-		select {
-		case jobs <- c:
-		case <-ctx.Done():
-			break feed
+	for _, span := range spans {
+		for off := span[0]; off < span[1]; {
+			n := min(span[1]-off, uint64(live.load().bulkFrameBytes))
+			if err := w.window.acquire(ctx); err != nil {
+				break feed
+			}
+			wg.Add(1)
+			go func(off, n uint64) {
+				defer wg.Done()
+				defer w.window.release()
+				if ctx.Err() != nil {
+					return
+				}
+				buf := make([]byte, n)
+				if err := readData(s.data, buf, off); err != nil {
+					fail(err)
+					return
+				}
+				if _, err := w.caller.Call(ctx, wire.OpWrite, wire.Meta{wire.KeyCommit: commit, wire.KeyOffset: off}, buf); err != nil {
+					fail(err)
+				}
+			}(off, n)
+			off += n
 		}
 	}
-	close(jobs)
 	wg.Wait()
 	if first != nil {
 		return first
@@ -338,7 +336,12 @@ func isTransient(err error) bool {
 		return true
 	}
 	code, ok := wire.CodeOf(err)
-	return ok && code == wire.ErrENETUNREACH
+	return ok && (code == wire.ErrENETUNREACH || code == wire.ErrEAGAIN || code == wire.ErrEINTR)
+}
+
+func isHubInternal(err error) bool {
+	code, ok := wire.CodeOf(err)
+	return ok && code == wire.ErrEIO
 }
 
 func (w *writeBack) park(s *session, unit *unitRecord) {
@@ -352,19 +355,41 @@ func (w *writeBack) park(s *session, unit *unitRecord) {
 	s.mu.Unlock()
 }
 
+func (w *writeBack) settleFsync(s *session, err error) {
+	if w.ctx.Err() != nil || isTransient(err) {
+		if w.ctx.Err() == nil {
+			fmt.Fprintln(os.Stderr, "fsync retry:", s.ino(), err)
+		}
+		s.mu.Lock()
+		s.sending = false
+		s.mu.Unlock()
+		w.broadcast()
+		if w.ctx.Err() == nil {
+			w.retryLater(s)
+		}
+		return
+	}
+	w.settleFailure(s, nil, err)
+}
+
+func (w *writeBack) retryLater(s *session) {
+	time.AfterFunc(retryDelay, func() {
+		if w.ctx.Err() == nil {
+			w.enqueue(s)
+		}
+	})
+}
+
 func (w *writeBack) settle(s *session, unit *unitRecord, err error) bool {
 	if w.ctx.Err() != nil {
 		w.park(s, unit)
 		return false
 	}
-	if isTransient(err) {
+	if isTransient(err) || (isHubInternal(err) && !unit.Fsync) {
+		fmt.Fprintln(os.Stderr, "commit retry:", s.ino(), err)
 		w.park(s, unit)
 		w.broadcast()
-		time.AfterFunc(retryDelay, func() {
-			if w.ctx.Err() == nil {
-				w.enqueue(s)
-			}
-		})
+		w.retryLater(s)
 		return false
 	}
 	if code, ok := wire.CodeOf(err); ok {

@@ -41,17 +41,17 @@ function SpaceTile({ stats, libraryBytes }: StatsProps): ReactNode {
   const share = libraryShareOf(stats.bytesBack, libraryBytes);
   return (
     <View className="min-h-24 gap-1 rounded-lg bg-surface-2 p-3">
-      <View className="flex-row items-center gap-2">
-        <Text variant="footnote" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
-          Space you get back
-        </Text>
+      <Text variant="footnote" tone="variant">
+        Space to free
+      </Text>
+      <View className="flex-row flex-wrap items-baseline gap-x-2">
+        <Figure value={bytes(stats.bytesBack)} size="s" tone="positive" />
         {share === null ? null : (
-          <Text variant="footnote" tone="variant" className="tabular-nums" numberOfLines={1}>
+          <Text variant="footnote" tone="variant" className="tabular-nums">
             {share.total}
           </Text>
         )}
       </View>
-      <Figure value={bytes(stats.bytesBack)} size="s" tone="positive" />
       {share === null ? null : (
         <ProgressBar progress={share.share} colour="positive" label="Share of the library" />
       )}
@@ -83,7 +83,7 @@ function PhoneStats({ stats }: { readonly stats: DuplicateStats }): ReactNode {
     <View className="flex-row flex-wrap gap-4 rounded-lg bg-surface-2 px-4 py-3">
       <PhoneFigure value={count(stats.groups)} label="groups" />
       <PhoneFigure value={count(stats.extraCopies)} label="copies" />
-      <PhoneFigure value={bytes(stats.bytesBack)} label="to get back" positive />
+      <PhoneFigure value={bytes(stats.bytesBack)} label="space to free" positive />
     </View>
   );
 }

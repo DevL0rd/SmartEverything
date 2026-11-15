@@ -8,11 +8,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/smarteverything/drive-mount/wire"
 )
-
-const commitLanes = 8
 
 type baseSource interface {
 	Open(ctx context.Context, ino uint64) (ReadHandle, error)
@@ -45,6 +44,10 @@ type writeBack struct {
 	created   func(parent uint64, name string)
 	changed   chan struct{}
 	locks     lockBook
+	window    *frameWindow
+	target    int64
+	running   int64
+	resized   chan struct{}
 }
 
 func newWriteBack(cfg writeConfig) (*writeBack, error) {
@@ -56,22 +59,40 @@ func newWriteBack(cfg writeConfig) (*writeBack, error) {
 	w := &writeBack{
 		caller: cfg.Caller, base: cfg.Base, journal: j, nameOf: cfg.NameOf, rootOf: cfg.RootOf,
 		ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1),
-		sessions: map[uint64]*session{}, changed: make(chan struct{}),
+		sessions: map[uint64]*session{}, changed: make(chan struct{}), resized: make(chan struct{}),
+		window: newFrameWindow(live.load().uploadFramesInFlight),
 	}
 	if err := w.replay(); err != nil {
 		cancel()
 		return nil, err
 	}
-	for lane := 0; lane < commitLanes; lane++ {
+	w.applyLive(live.load())
+	live.subscribe(w.applyLive)
+	return w, nil
+}
+
+func (w *writeBack) applyLive(f liveFields) {
+	w.window.resize(f.uploadFramesInFlight)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.ctx.Err() != nil {
+		return
+	}
+	w.target = f.uploadFiles
+	for w.running < w.target {
+		w.running++
 		w.workers.Add(1)
 		go w.run()
 	}
-	return w, nil
+	close(w.resized)
+	w.resized = make(chan struct{})
 }
 
 func (w *writeBack) Close() {
 	w.SealAll()
+	w.mu.Lock()
 	w.cancel()
+	w.mu.Unlock()
 	w.workers.Wait()
 	w.mu.Lock()
 	sessions := make([]*session, 0, len(w.sessions))
@@ -85,6 +106,7 @@ func (w *writeBack) Close() {
 }
 
 func (w *writeBack) Drain(ctx context.Context) error {
+	w.expedite()
 	return w.waitUntil(ctx, func() error {
 		if !w.online.Load() {
 			return nil
@@ -166,6 +188,36 @@ func (w *writeBack) enqueue(s *session) {
 	}
 	w.mu.Unlock()
 	w.signal()
+}
+
+func (w *writeBack) enqueueSealed(s *session) {
+	delay := live.load().uploadDelay
+	if delay <= 0 {
+		w.enqueue(s)
+		return
+	}
+	time.AfterFunc(delay, func() {
+		if w.ctx.Err() == nil {
+			w.enqueue(s)
+		}
+	})
+}
+
+func (w *writeBack) expedite() {
+	w.mu.Lock()
+	sessions := make([]*session, 0, len(w.sessions))
+	for _, s := range w.sessions {
+		sessions = append(sessions, s)
+	}
+	w.mu.Unlock()
+	for _, s := range sessions {
+		s.mu.Lock()
+		ready := s.sealed && !s.sending && (s.needsCommit() || s.resume != nil)
+		s.mu.Unlock()
+		if ready {
+			w.enqueue(s)
+		}
+	}
 }
 
 func (w *writeBack) replay() error {

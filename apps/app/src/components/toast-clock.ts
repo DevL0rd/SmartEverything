@@ -1,4 +1,4 @@
-export type ToastHold = 'hover' | 'touch' | 'focus';
+export type ToastHold = 'hover' | 'touch' | 'focus' | 'work';
 
 interface Run {
   readonly remaining: number;

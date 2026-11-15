@@ -27,7 +27,7 @@ vi.mock('../../../components/page-shell/body-width', () => ({
 }));
 vi.mock('../../../store/selectors', () => ({
   useIsOwner: (): boolean => seen.owner,
-  useDevices: (): readonly unknown[] => [],
+  useDeviceNames: (): ReadonlyMap<string, string> => new Map(),
 }));
 vi.mock('../../../store/people', () => ({
   useProfiles: (): readonly unknown[] => [

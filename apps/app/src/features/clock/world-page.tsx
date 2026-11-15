@@ -5,12 +5,12 @@ import { Button } from '../../components/button';
 import { Card } from '../../components/card';
 import { CardGrid, evenColumnsOf } from '../../components/card-grid';
 import { EmptyState } from '../../components/empty-state';
-import type { HeaderAction } from '../../components/page-header';
+import type { ShellAction } from '../../components/page-shell/shell-actions';
 import { useAreaWidth, useWindowSize } from '../../design/size-class';
 import { clock24 } from '../../format/time';
 import { useVisibleMinute, Composer } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
-import { frameLayoutOf } from './frame/sections';
+import { shellLayoutOf } from '../../components/page-shell/layout';
 import { AddCityPicker } from './world/add-city';
 import { CityCard, CityRow, cityViewOf } from './world/city-card';
 import { FindATimeCard, FindATimePhone } from './world/find-a-time-card';
@@ -79,7 +79,7 @@ function Cities({ world, now, columns }: CitiesProps): ReactNode {
 }
 
 function columnsOf(area: number): number | null {
-  const layout = frameLayoutOf(area);
+  const layout = shellLayoutOf(area);
   if (layout === 'compact') return null;
   return layout === 'wide' ? 3 : 2;
 }
@@ -110,7 +110,7 @@ function FindATime({
   return compact ? <FindATimePhone {...props} /> : <FindATimeCard {...props} />;
 }
 
-function addActionOf(open: () => void, offline: boolean): readonly HeaderAction[] {
+function addActionOf(open: () => void, offline: boolean): readonly ShellAction[] {
   return [{ icon: 'plus', label: 'Add city', primary: true, disabled: offline, onPress: open }];
 }
 
@@ -130,7 +130,6 @@ export function WorldPage(): ReactNode {
       section="world"
       subtitle={subtitleOf(world, now, columns === null)}
       actions={addActionOf(openAdd, world.offline)}
-      width="dashboard"
     >
       <View ref={ref} onLayout={onLayout} className="gap-section-gap">
         <Cities world={world} now={now} columns={columns} />

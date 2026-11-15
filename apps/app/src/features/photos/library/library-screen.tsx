@@ -4,7 +4,7 @@ import type { LibraryScope, PhotoSource } from '@smarteverything/domain';
 import { NO_SOURCE_SEARCH } from '../../../api/photos';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
 import type { MediaGrouping } from '../../../components/media-grid/tiles';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { useAreaWidth } from '../../../design/size-class';
 import { useDayKey } from '../../../store/clock';
 import { PREFS, usePref } from '../../../store/prefs';
@@ -25,7 +25,7 @@ import { useLibrarySearch } from '../search/library-search';
 import { DeviceTab } from './device-tab';
 import { HubTab } from './hub-tab';
 import type { LibraryHeadProps, ZoomControl } from './library-head';
-import { libraryLine } from './library-model';
+import { libraryLine, showsZoomChip } from './library-model';
 import { activeTabOf, hubTabOf, shownTabs, tabChipsOf } from './library-tabs-view';
 import { deviceCountOf } from './local-scope';
 
@@ -100,7 +100,7 @@ function LibraryPage({
   readonly q: string;
   readonly tabParam: unknown;
 }): ReactNode {
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const pref = usePref(PREFS.photos);
   const prefs = pref.status === 'ready' ? pref.value : PREFS.photos.defaultValue;
   const tabs = [...shownTabs(localMediaSource() !== null, prefs), ...usePartnerTabs()];
@@ -118,7 +118,7 @@ function LibraryPage({
     active: tab.id,
     onTab: openTab,
     compact,
-    zoom: query.kind === 'source' ? null : zoom,
+    zoom: showsZoomChip(tab.id, query.kind === 'source') ? zoom : null,
   };
   if (query.kind === 'source') {
     return <SourceTab key={query.source} head={head} source={query.source} search={query.search} />;

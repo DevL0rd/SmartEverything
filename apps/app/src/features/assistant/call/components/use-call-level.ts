@@ -1,5 +1,8 @@
 import { useEffect } from 'react';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { useScreenLive } from '../../../../design/animation-gate';
+import { useScreenPaused } from '../../../../design/screen-pause';
+import { useScopeVisible } from '../../../../design/visibility';
 import type { CallPhase } from '../call-state';
 import type { CallLevelListener, LevelFeed } from '../engine/call-engine';
 import { callEngine } from '../engine/engine';
@@ -23,8 +26,12 @@ function watchLevels(feed: LevelFeed, listener: CallLevelListener): () => void {
 
 export function useEngineLevel(source: LevelSource): SharedValue<number> {
   const level = useSharedValue(0);
+  const { focused, foreground } = useScreenLive();
+  const shown = useScopeVisible();
+  const paused = useScreenPaused();
+  const reading = focused && foreground && shown && !paused;
   useEffect(() => {
-    if (source === null) {
+    if (source === null || !reading) {
       level.set(0);
       return undefined;
     }
@@ -35,7 +42,7 @@ export function useEngineLevel(source: LevelSource): SharedValue<number> {
       off();
       level.set(0);
     };
-  }, [source, level]);
+  }, [source, reading, level]);
   return level;
 }
 

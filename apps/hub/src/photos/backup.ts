@@ -9,6 +9,9 @@ import {
   type BackupRegister,
   type BackupState,
   type DriveItem,
+  type PhotoFolderOrigin,
+  type PhotoOrigins,
+  type PhotoOriginsRequest,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import {
@@ -156,6 +159,17 @@ export class BackupService {
       );
     });
     return { have, missing };
+  }
+
+  origins(profileId: string, input: PhotoOriginsRequest): PhotoOrigins {
+    const device = this.env.store.driveBackup.findDeviceByHubDevice(input.deviceId);
+    const found =
+      device?.profile_id === profileId
+        ? new PhotoFolderStore(this.env.sql).originsOf(device.id, input.itemIds)
+        : new Map<string, PhotoFolderOrigin>();
+    return {
+      origins: input.itemIds.map((itemId) => ({ itemId, folder: found.get(itemId) ?? null })),
+    };
   }
 
   settleItem(item: DriveItem): number {

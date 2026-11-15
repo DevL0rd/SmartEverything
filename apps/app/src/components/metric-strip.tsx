@@ -38,7 +38,7 @@ const FRAME =
 function TileText({ item }: { readonly item: MetricItem }): ReactNode {
   const { label, value, unit, tone, caption, stale = false } = item;
   return (
-    <View className="min-w-0 flex-1">
+    <View className="min-w-0 flex-1 self-start">
       <Text variant="caption" tone="variant" numberOfLines={1}>
         {label}
       </Text>

@@ -10,6 +10,7 @@ import android.media.audiofx.AudioEffect
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.util.Log
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 
 object VoiceCapture {
@@ -39,6 +40,7 @@ object VoiceCapture {
 
   private val calls = CopyOnWriteArraySet<(ShortArray) -> Unit>()
   private val ears = CopyOnWriteArraySet<(ShortArray) -> Unit>()
+  private val losses = ConcurrentHashMap<(ShortArray) -> Unit, (VoiceCaptureUnavailable) -> Unit>()
   private var session: Session? = null
   private var noiseSuppression = true
   private var autoGain = true
@@ -58,8 +60,13 @@ object VoiceCapture {
   }
 
   @Synchronized
-  fun addConsumer(mode: Mode = Mode.Call, consumer: (ShortArray) -> Unit): AutoCloseable {
+  fun addConsumer(
+    mode: Mode,
+    lost: (VoiceCaptureUnavailable) -> Unit,
+    consumer: (ShortArray) -> Unit
+  ): AutoCloseable {
     align(mode == Mode.Call || calls.isNotEmpty())
+    losses[consumer] = lost
     (if (mode == Mode.Call) calls else ears).add(consumer)
     return AutoCloseable { remove(consumer) }
   }
@@ -68,6 +75,7 @@ object VoiceCapture {
   private fun remove(consumer: (ShortArray) -> Unit) {
     calls.remove(consumer)
     ears.remove(consumer)
+    losses.remove(consumer)
     if (calls.isEmpty() && ears.isEmpty()) {
       session?.active = false
       session = null
@@ -134,7 +142,12 @@ object VoiceCapture {
       val frame = ShortArray(opened.mode.frameSamples)
       val narrow = Downsample()
       while (opened.active) {
-        if (fill(opened, frame)) {
+        val error = fill(opened, frame)
+        if (error != null) {
+          lose(opened, error)
+          return
+        }
+        if (opened.active) {
           deliver(opened.mode, frame.copyOf(), narrow)
         }
       }
@@ -157,16 +170,28 @@ object VoiceCapture {
     }
   }
 
-  private fun fill(opened: Session, frame: ShortArray): Boolean {
+  private fun fill(opened: Session, frame: ShortArray): Int? {
     var read = 0
     while (read < frame.size && opened.active) {
       val count = opened.record.read(frame, read, frame.size - read)
       if (count <= 0) {
-        return false
+        return count
       }
       read += count
     }
-    return read == frame.size
+    return null
+  }
+
+  private fun lose(opened: Session, error: Int) {
+    val failure = VoiceCaptureUnavailable("the ${opened.mode.name.lowercase()} recording stopped with AudioRecord error $error")
+    Log.e(TAG, "voice capture: ${failure.message}")
+    val told = synchronized(this) {
+      opened.active = false
+      if (session !== opened) return
+      session = null
+      losses.values.toList()
+    }
+    told.forEach { it(failure) }
   }
 
   private const val TAG = "SmartEverythingVoice"

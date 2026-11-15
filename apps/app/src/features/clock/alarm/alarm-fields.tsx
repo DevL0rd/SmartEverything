@@ -46,29 +46,41 @@ export interface AlarmFieldProps {
 
 export function AlarmTime({ draft, weekStart, disabled, onChange }: AlarmFieldProps): ReactNode {
   const [open, setOpen] = useState(false);
+  const picking = open && !disabled;
   return (
     <View className="items-center gap-3">
-      <Interactive
-        label={`Change the time, ${draft.time}`}
-        expanded={open}
-        disabled={disabled}
-        onPress={() => {
-          setOpen(!open);
-        }}
-        className="min-h-touch-min items-center justify-center px-4"
-        layerClassName="rounded-md"
-      >
-        <Figure value={draft.time} size="xl" tone={draft.enabled ? 'default' : 'variant'} />
-      </Interactive>
-      {open ? (
-        <TimeField
-          label="Alarm time"
-          value={timeOfClockText(draft.time)}
-          onChange={(time) => {
-            onChange({ time: clockTextOf(time) });
+      {picking ? (
+        <View className="min-h-touch-min flex-row items-center gap-2">
+          <TimeField
+            label="Alarm time"
+            value={timeOfClockText(draft.time)}
+            onChange={(time) => {
+              onChange({ time: clockTextOf(time) });
+            }}
+          />
+          <IconButton
+            icon="check"
+            label="Done changing the time"
+            variant="tonal"
+            onPress={() => {
+              setOpen(false);
+            }}
+          />
+        </View>
+      ) : (
+        <Interactive
+          label={`Change the time, ${draft.time}`}
+          expanded={false}
+          disabled={disabled}
+          onPress={() => {
+            setOpen(true);
           }}
-        />
-      ) : null}
+          className="min-h-touch-min items-center justify-center px-4"
+          layerClassName="rounded-md"
+        >
+          <Figure value={draft.time} size="xl" tone={draft.enabled ? 'default' : 'variant'} />
+        </Interactive>
+      )}
       <DayDots
         days={draft.days}
         weekStart={weekStart}
@@ -131,7 +143,7 @@ function LabelRow({ draft, compact, disabled, onChange }: AlarmFieldProps): Reac
   );
 }
 
-function RepeatRow({ draft, compact, disabled, onChange }: AlarmFieldProps): ReactNode {
+function RepeatRow({ draft, now, timeZone, compact, disabled, onChange }: AlarmFieldProps): ReactNode {
   return (
     <SelectRow
       title="Repeat"
@@ -141,7 +153,7 @@ function RepeatRow({ draft, compact, disabled, onChange }: AlarmFieldProps): Rea
       value={repeatModeOf(draft)}
       disabled={disabled}
       onChange={(mode) => {
-        onChange(repeatEdit(mode, draft.days));
+        onChange(repeatEdit(mode, draft.days, firstOnceDateOf(draft.time, now, timeZone)));
       }}
     />
   );
@@ -155,16 +167,17 @@ function OnceOnRow({
   disabled,
   onChange,
 }: AlarmFieldProps): ReactNode {
+  if (repeatModeOf(draft) !== 'once') return null;
   if (draft.once_on === null) {
     return (
       <ListRow
-        title="Ring once on"
-        subtitle="A date replaces the repeat days"
+        title="On"
         icon="calendar"
         compact={compact}
-        value="Pick a date"
+        value="Next time it comes round"
         chevron
         disabled={disabled}
+        label="Pick a date for the alarm"
         onPress={() => {
           onChange(onceOnEdit(firstOnceDateOf(draft.time, now, timeZone)));
         }}
@@ -174,10 +187,11 @@ function OnceOnRow({
   if (disabled) {
     return (
       <ListRow
-        title="Ring once on"
-        subtitle={dateTextOf(draft.once_on)}
+        title="On"
         icon="calendar"
         compact={compact}
+        value={dateTextOf(draft.once_on)}
+        disabled
       />
     );
   }
@@ -193,45 +207,25 @@ function OnceOnDate({
   readonly compact: boolean;
   readonly onChange: (edit: AlarmEdit) => void;
 }): ReactNode {
-  const nav = (
-    <DateNav
-      value={new Date(startOfDayKey(day))}
-      range="day"
-      onChange={(date) => {
-        onChange(onceOnEdit(dayKeyOf(date.getTime())));
-      }}
-    />
-  );
-  const remove = (
-    <IconButton
-      icon="close"
-      label="Remove the date"
-      onPress={() => {
-        onChange(onceOnEdit(null));
-      }}
-    />
-  );
-  const row = { title: 'Ring once on', subtitle: dateTextOf(day), icon: 'calendar' } as const;
-  if (compact) {
-    return (
-      <View>
-        <ListRow {...row} compact trailing={remove} />
-        <View className="items-start pb-2 pl-8">{nav}</View>
-      </View>
-    );
-  }
   return (
     <ListRow
-      {...row}
+      title="On"
+      icon="calendar"
+      compact={compact}
       trailing={
-        <View className="flex-row items-center gap-1">
-          {nav}
-          {remove}
-        </View>
+        <DateNav
+          value={new Date(startOfDayKey(day))}
+          range="day"
+          onChange={(date) => {
+            onChange(onceOnEdit(dayKeyOf(date.getTime())));
+          }}
+        />
       }
     />
   );
 }
+
+const minutesText = (minutes: number): string => `${String(minutes)} min`;
 
 function SnoozeRow({ draft, compact, disabled, onChange }: AlarmFieldProps): ReactNode {
   return (
@@ -239,6 +233,7 @@ function SnoozeRow({ draft, compact, disabled, onChange }: AlarmFieldProps): Rea
       title="Snooze"
       icon="timer"
       compact={compact}
+      disabled={disabled}
       trailing={
         <NumberStepper
           label="Snooze"
@@ -246,7 +241,7 @@ function SnoozeRow({ draft, compact, disabled, onChange }: AlarmFieldProps): Rea
           min={1}
           max={MINUTES_IN_HOUR}
           step={1}
-          unit="min"
+          formatValue={minutesText}
           disabled={disabled}
           onChange={(minutes) => {
             onChange({ snooze_minutes: minutes });
@@ -263,6 +258,7 @@ function SnoozeLimitRow({ draft, compact, disabled, onChange }: AlarmFieldProps)
       title="Snooze limit"
       icon="repeat"
       compact={compact}
+      disabled={disabled}
       trailing={
         <NumberStepper
           label="Snooze limit"

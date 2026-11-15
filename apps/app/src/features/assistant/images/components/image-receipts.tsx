@@ -116,6 +116,20 @@ const FAILURE: Readonly<Record<Pending, string | null>> = {
   retry: 'The image request could not start again.',
 };
 
+async function performReported(
+  action: Pending,
+  perform: (action: Pending) => Promise<void>,
+  settle: () => void,
+): Promise<void> {
+  try {
+    await perform(action);
+  } catch (error) {
+    notify({ message: FAILURE[action] ?? errorText(error).title, tone: 'critical' });
+  } finally {
+    settle();
+  }
+}
+
 function useReceiptActions(receipt: ImageOperationReceipt): ReceiptActions {
   const actions = useImageActions();
   const retry = useImageRetry();
@@ -133,14 +147,10 @@ function useReceiptActions(receipt: ImageOperationReceipt): ReceiptActions {
     locked.current = true;
     setPending(action);
     if (action === 'cancel') setRequested(true);
-    try {
-      await perform(action);
-    } catch (error) {
-      notify({ message: FAILURE[action] ?? errorText(error).title, tone: 'critical' });
-    } finally {
+    await performReported(action, perform, () => {
       setPending(null);
       locked.current = false;
-    }
+    });
   };
   return {
     pending,

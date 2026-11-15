@@ -9,17 +9,19 @@ import { EmptyState } from '../../components/empty-state';
 import { Figure } from '../../components/figure';
 import { FilterChip } from '../../components/filter-chip';
 import { IconButton } from '../../components/icon-button';
-import { IconWell } from '../../components/icon-well';
 import { Text } from '../../components/text';
 import { TextField } from '../../components/text-field';
+import { Skeleton } from '../../components/skeleton';
 import { notifyFailure } from '../../components/toast-store';
+import { useMeasuredWidth } from '../../components/use-measured-width';
 import { useAreaWidth } from '../../design/size-class';
 import { playTime } from '../../format/time';
 import { useScreenQuery } from '../../queries/use-screen-query';
+import { useLoaded } from '../../store/selectors';
 import { ringsQuery, usePlannerClockWrites, usePlannerTimers } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
 import { useHubOffline } from './frame/hub-status';
-import { frameLayoutOf } from './frame/sections';
+import { shellLayoutOf, twoFrameColumnsAt } from '../../components/page-shell/layout';
 import {
   STARTING_PRESET,
   TIMER_PRESETS,
@@ -30,7 +32,7 @@ import {
   type TimerPreset,
   type TimerView,
 } from './lap-model';
-import { TimerCard, TimerDial, timerEndOf, timerLineOf, useTimerActions } from './timer-card';
+import { TimerCard, TimerDial, timerEndOf, useTimerActions } from './timer-card';
 import { TimerUseCard } from './timer-use';
 
 const NO_RINGS: readonly PlannerRingRow[] = [];
@@ -94,47 +96,22 @@ function QuickStart(): ReactNode {
   };
   return (
     <Card>
-      <View className="flex-row flex-wrap items-center gap-4">
-        <Figure value={playTime(preset.ms / 1000)} size="m" />
-        <View className="min-w-48 flex-1">
-          <TextField
-            label="Timer label"
-            showLabel={false}
-            value={label}
-            onChange={setLabel}
-            onSubmit={submit}
-            placeholder={preset.name ?? 'Label, for example Pasta'}
-          />
+      <View className="gap-4">
+        <View className="flex-row items-center gap-4">
+          <Figure value={playTime(preset.ms / 1000)} size="m" />
+          <View className="min-w-0 flex-1">
+            <TextField
+              label="Timer label"
+              showLabel={false}
+              value={label}
+              onChange={setLabel}
+              onSubmit={submit}
+              placeholder={preset.name ?? 'Label, for example Pasta'}
+            />
+          </View>
+          <Button label="Start" icon="play" variant="filled" disabled={offline} onPress={submit} />
         </View>
         <PresetChips chosen={preset.key} onChoose={setPreset} />
-        <Button label="Start" icon="play" variant="filled" disabled={offline} onPress={submit} />
-      </View>
-    </Card>
-  );
-}
-
-function RingingBanner({ view }: { readonly view: TimerView }): ReactNode {
-  const { offline, act } = useTimerActions(view.timer);
-  return (
-    <Card>
-      <View className="flex-row items-center gap-3">
-        <IconWell icon="bell" colour="primary" />
-        <View className="min-w-0 flex-1">
-          <Text variant="label" numberOfLines={1}>
-            {`${timerNameOf(view.timer)} is done`}
-          </Text>
-          <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-            {timerLineOf(view)}
-          </Text>
-        </View>
-        <Button
-          label="Dismiss"
-          variant="filled"
-          disabled={offline}
-          onPress={() => {
-            act('cancel');
-          }}
-        />
       </View>
     </Card>
   );
@@ -144,15 +121,17 @@ function HeroActions({ view }: { readonly view: TimerView }): ReactNode {
   const { offline, act, addMinute } = useTimerActions(view.timer);
   const running = view.phase === 'running';
   return (
-    <View className="flex-row flex-wrap justify-center gap-3">
-      <Button
-        label="+1 min"
-        spoken="Add one minute"
-        variant="outlined"
-        size="lg"
-        disabled={offline}
-        onPress={addMinute}
-      />
+    <View className="flex-row flex-wrap items-center justify-center gap-3">
+      {running ? (
+        <Button
+          label="+1 min"
+          spoken="Add one minute"
+          variant="outlined"
+          size="lg"
+          disabled={offline}
+          onPress={addMinute}
+        />
+      ) : null}
       <Button
         label={running ? 'Pause' : 'Resume'}
         icon={running ? 'pause' : 'play'}
@@ -180,41 +159,11 @@ function TimerHero({ view }: { readonly view: TimerView }): ReactNode {
   return (
     <Card>
       <View className="items-center gap-4 py-2">
-        <TimerDial
-          view={view}
-          size="hero"
-          caption={`${timerNameOf(view.timer)} · ${timerEndOf(view)}`}
-        />
+        <Text variant="title-3" align="center" numberOfLines={2}>
+          {timerNameOf(view.timer)}
+        </Text>
+        <TimerDial view={view} size="hero" caption={timerEndOf(view)} />
         <HeroActions view={view} />
-      </View>
-    </Card>
-  );
-}
-
-function TimerRow({ view }: { readonly view: TimerView }): ReactNode {
-  const { offline, act } = useTimerActions(view.timer);
-  const running = view.phase === 'running';
-  return (
-    <Card>
-      <View className="flex-row items-center gap-3">
-        <TimerDial view={view} size="row" />
-        <View className="min-w-0 flex-1">
-          <Text variant="label" numberOfLines={1}>
-            {timerNameOf(view.timer)}
-          </Text>
-          <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-            {timerLineOf(view)}
-          </Text>
-        </View>
-        <IconButton
-          icon={running ? 'pause' : 'play'}
-          label={running ? 'Pause' : 'Resume'}
-          variant="tonal"
-          disabled={offline}
-          onPress={() => {
-            act(running ? 'pause' : 'resume');
-          }}
-        />
       </View>
     </Card>
   );
@@ -253,11 +202,11 @@ function PhoneTimers({ views }: { readonly views: readonly TimerView[] }): React
   return (
     <View className="gap-3">
       {ringing.map((view) => (
-        <RingingBanner key={view.timer.id} view={view} />
+        <TimerCard key={view.timer.id} view={view} />
       ))}
       {hero === undefined ? null : <TimerHero view={hero} />}
       {rest.map((view) => (
-        <TimerRow key={view.timer.id} view={view} />
+        <TimerCard key={view.timer.id} view={view} dial="row" />
       ))}
       {views.length === 0 ? <NoTimers /> : null}
       <PhoneStart />
@@ -266,22 +215,17 @@ function PhoneTimers({ views }: { readonly views: readonly TimerView[] }): React
   );
 }
 
-function WideTimers({
-  views,
-  columns,
-}: {
-  readonly views: readonly TimerView[];
-  readonly columns: number;
-}): ReactNode {
+function WideTimers({ views }: { readonly views: readonly TimerView[] }): ReactNode {
+  const { width, onLayout } = useMeasuredWidth();
   return (
-    <View className="gap-4">
+    <View className="gap-4" onLayout={onLayout}>
       <QuickStart />
       {views.length === 0 ? (
         <NoTimers />
       ) : (
         <CardGrid
           items={views}
-          columns={columns}
+          columns={twoFrameColumnsAt(width) ? 2 : 1}
           keyOf={(view) => view.timer.id}
           render={(view) => <TimerCard view={view} />}
         />
@@ -291,16 +235,52 @@ function WideTimers({
   );
 }
 
+function TimersSkeleton({ compact }: { readonly compact: boolean }): ReactNode {
+  if (compact) {
+    return (
+      <View aria-busy className="gap-3">
+        <Card>
+          <View className="items-center gap-4 py-2">
+            <Skeleton shape="text" />
+            <Skeleton shape="circle" className="size-55" />
+            <Skeleton shape="line" className="h-12 w-48 rounded-full" />
+          </View>
+        </Card>
+        <Skeleton shape="tile" />
+      </View>
+    );
+  }
+  return (
+    <View aria-busy className="gap-4">
+      <Skeleton shape="block" />
+      <View className="flex-row gap-4">
+        <Skeleton shape="tile" className="h-40 flex-1" />
+        <Skeleton shape="tile" className="h-40 flex-1" />
+      </View>
+    </View>
+  );
+}
+
+function TimersBody({
+  views,
+  compact,
+  loaded,
+}: {
+  readonly views: readonly TimerView[];
+  readonly compact: boolean;
+  readonly loaded: boolean;
+}): ReactNode {
+  if (!loaded) return <TimersSkeleton compact={compact} />;
+  return compact ? <PhoneTimers views={views} /> : <WideTimers views={views} />;
+}
+
 export function TimersPage(): ReactNode {
   const views = useTimerViews();
-  const layout = frameLayoutOf(useAreaWidth());
+  const loaded = useLoaded();
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   return (
-    <ClockFrame section="timers" subtitle={timersSubtitleOf(views)} width="dashboard">
-      {layout === 'compact' ? (
-        <PhoneTimers views={views} />
-      ) : (
-        <WideTimers views={views} columns={layout === 'wide' ? 2 : 1} />
-      )}
+    <ClockFrame section="timers" {...(loaded ? { subtitle: timersSubtitleOf(views) } : {})}>
+      <TimersBody views={views} compact={compact} loaded={loaded} />
     </ClockFrame>
   );
 }

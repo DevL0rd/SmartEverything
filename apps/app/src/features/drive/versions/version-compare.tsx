@@ -14,10 +14,9 @@ import { diffLanguage } from '../../../components/diff-language';
 import {
   compareKindOf,
   diffTexts,
-  imageSizeOf,
   readVersionText,
+  type CompareNames,
   type ComparedText,
-  type VersionLinkSize,
 } from './diff-model';
 import { ImageCompare } from './image-compare';
 import { TextDiff } from './text-diff';
@@ -25,11 +24,7 @@ import type { VersionEntry } from './versions-model';
 
 const log = new Logger('app.drive');
 
-export type VersionLink = (
-  item: DriveItem,
-  entry: VersionEntry,
-  size: VersionLinkSize,
-) => Promise<string | null>;
+export type VersionLink = (entry: VersionEntry) => Promise<string | null>;
 
 interface VersionPair<T> {
   readonly a: T;
@@ -45,13 +40,8 @@ class VersionLinkMissingError extends Error {
   override readonly name = 'VersionLinkMissingError';
 }
 
-async function linkOf(
-  link: VersionLink,
-  item: DriveItem,
-  entry: VersionEntry,
-  size: VersionLinkSize,
-): Promise<string> {
-  const url = await link(item, entry, size);
+async function linkOf(link: VersionLink, item: DriveItem, entry: VersionEntry): Promise<string> {
+  const url = await link(entry);
   if (url === null) throw new VersionLinkMissingError(`No link came back for ${item.name}.`);
   return url;
 }
@@ -60,11 +50,11 @@ function pairLinks(
   link: VersionLink,
   item: DriveItem,
   pair: VersionPair<VersionEntry>,
-  size: VersionLinkSize,
 ): Promise<VersionPair<string>> {
-  return Promise.all([linkOf(link, item, pair.a, size), linkOf(link, item, pair.b, size)]).then(
-    ([a, b]) => ({ a, b }),
-  );
+  return Promise.all([linkOf(link, item, pair.a), linkOf(link, item, pair.b)]).then(([a, b]) => ({
+    a,
+    b,
+  }));
 }
 
 interface Settled<T> {
@@ -102,15 +92,39 @@ function pairKey(item: DriveItem, a: VersionEntry, b: VersionEntry): string {
   return `${item.id}\n${String(item.rev)}\n${a.key}\n${b.key}`;
 }
 
+const TEXT_SKELETON_WIDTHS = ['w-3/5', 'w-4/5', 'w-2/5', 'w-11/12', 'w-1/2', 'w-3/4'] as const;
+
+function TextLoading(): ReactNode {
+  return (
+    <View
+      aria-label="Loading the comparison"
+      role="progressbar"
+      className="min-h-48 gap-2.5 rounded-md border border-outline-variant bg-surface-1 px-3 py-3"
+    >
+      {TEXT_SKELETON_WIDTHS.map((width) => (
+        <Skeleton key={width} shape="line" className={width} />
+      ))}
+    </View>
+  );
+}
+
 function LoadedBody<T>({
   loaded,
+  lines,
   children,
 }: {
   readonly loaded: Loaded<T>;
+  readonly lines: boolean;
   readonly children: (value: T) => ReactNode;
 }): ReactNode {
   if (loaded.state === 'loading') {
-    return <Skeleton shape="block" className="min-h-48 flex-1 rounded-md" />;
+    return lines ? (
+      <TextLoading />
+    ) : (
+      <View aria-label="Loading the comparison" role="progressbar" className="min-h-48 flex-1">
+        <Skeleton shape="block" className="h-auto flex-1 rounded-md" />
+      </View>
+    );
   }
   if (loaded.state === 'failed') {
     return <ErrorState error={loaded.error} retry={loaded.retry} />;
@@ -119,7 +133,7 @@ function LoadedBody<T>({
 }
 
 function downloadBoth(link: VersionLink, item: DriveItem, a: VersionEntry, b: VersionEntry): void {
-  pairLinks(link, item, { a, b }, 'file')
+  pairLinks(link, item, { a, b })
     .then(async (urls) => {
       await saveFile(urls.a);
       await saveFile(urls.b);
@@ -129,14 +143,14 @@ function downloadBoth(link: VersionLink, item: DriveItem, a: VersionEntry, b: Ve
 
 function DownloadBoth({ parts }: { readonly parts: VersionCompareProps }): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const { item, a, b, link } = parts;
+  const { item, a, b, link, names } = parts;
   return (
     <View className="flex-1 justify-center">
       <EmptyState
         compact
         icon="fileText"
         title="This kind of file can't be compared here"
-        body="Download A and B to compare them in an app that opens this kind of file."
+        body={`Download ${names.a} and ${names.b} to compare them in an app that opens this kind of file.`}
         action={
           <Button
             label="Download both"
@@ -154,23 +168,22 @@ function DownloadBoth({ parts }: { readonly parts: VersionCompareProps }): React
 }
 
 function Pictures({ parts }: { readonly parts: VersionCompareProps }): ReactNode {
-  const { item, a, b, link } = parts;
-  const size = imageSizeOf(item);
+  const { item, a, b, link, names } = parts;
   const loaded = useLoaded(
-    `${pairKey(item, a, b)}\n${size}`,
-    () => pairLinks(link, item, { a, b }, size),
+    `${pairKey(item, a, b)}\nimage`,
+    () => pairLinks(link, item, { a, b }),
     'version_compare.image_links_failed',
   );
   return (
-    <LoadedBody loaded={loaded}>
-      {(urls) => <ImageCompare item={item} a={a} b={b} urls={urls} />}
+    <LoadedBody loaded={loaded} lines={false}>
+      {(urls) => <ImageCompare item={item} a={a} b={b} urls={urls} names={names} />}
     </LoadedBody>
   );
 }
 
 async function compareTexts(props: VersionCompareProps): Promise<ComparedText> {
   const { item, a, b, link } = props;
-  const urls = await pairLinks(link, item, { a, b }, 'file');
+  const urls = await pairLinks(link, item, { a, b });
   const read = (url: string, total: number): Promise<string> =>
     readVersionText(url, total, (target, init) => fetch(target, init));
   const [after, before] = await Promise.all([read(urls.a, a.bytes), read(urls.b, b.bytes)]);
@@ -186,7 +199,11 @@ function Texts({ parts }: { readonly parts: VersionCompareProps }): ReactNode {
     () => compareTexts(parts),
     'version_compare.text_failed',
   );
-  return <LoadedBody loaded={loaded}>{(compared) => <TextDiff compared={compared} />}</LoadedBody>;
+  return (
+    <LoadedBody loaded={loaded} lines>
+      {(compared) => <TextDiff compared={compared} names={parts.names} />}
+    </LoadedBody>
+  );
 }
 
 export interface VersionCompareProps {
@@ -194,6 +211,7 @@ export interface VersionCompareProps {
   readonly a: VersionEntry;
   readonly b: VersionEntry;
   readonly link: VersionLink;
+  readonly names: CompareNames;
 }
 
 export function VersionCompare(props: VersionCompareProps): ReactNode {

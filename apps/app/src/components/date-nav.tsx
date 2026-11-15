@@ -20,6 +20,7 @@ export interface DateNavProps {
   readonly onChange: (date: Date) => void;
   readonly max?: Date;
   readonly withYear?: boolean;
+  readonly arrows?: boolean;
 }
 
 const CURRENT: Readonly<Record<Exclude<DateRange, 'day'>, string>> = {
@@ -261,6 +262,7 @@ function DateChip({
 export function DateNav(props: DateNavProps): ReactNode {
   const { value, range, onChange, max } = props;
   const pointer = useIdiom() === 'pointer';
+  const arrows = props.arrows === true || pointer;
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState(() => new Date());
@@ -276,11 +278,11 @@ export function DateNav(props: DateNavProps): ReactNode {
   };
   return (
     <View className="flex-row items-center gap-1">
-      {pointer ? (
+      {arrows ? (
         <IconButton icon="chevronLeft" label={`Previous ${range}`} onPress={go(previous)} />
       ) : null}
       <DateChip label={label} opener={opener} open={open} onPress={openCalendar} />
-      {pointer ? (
+      {arrows ? (
         <IconButton
           icon="chevronRight"
           label={`Next ${range}`}

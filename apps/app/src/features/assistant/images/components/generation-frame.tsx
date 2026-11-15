@@ -18,6 +18,7 @@ import { DURATION, EASING } from '../../../../design/motion';
 import { ThemeScope } from '../../../../design/theme-scope';
 import { useOnScreen } from '../../../../design/visibility';
 import { playTime } from '../../../../format/time';
+import { useSecondOf } from '../../../../store/clock';
 import { gridOf } from '../../components/image-grid';
 import { useImagePreview } from '../data/image-queries';
 import { imageReceiptStatus } from '../model/image-receipt';
@@ -44,20 +45,8 @@ export function useKeptPreview(operationId: string): KeptPreview | null {
   return kept;
 }
 
-const SECOND_MS = 1000;
-
 function useLiveSeconds(since: string, running: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return undefined;
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, SECOND_MS);
-    return (): void => {
-      clearInterval(timer);
-    };
-  }, [running]);
-  return elapsedSeconds(since, now);
+  return useSecondOf((now) => elapsedSeconds(since, now), running);
 }
 
 function useLoop(progress: SharedValue<number>, moving: boolean, ms: number): void {

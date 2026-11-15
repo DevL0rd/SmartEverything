@@ -168,7 +168,7 @@ export function AppsSection(reach: Reach): ReactNode {
 
 export function InstalledSearch({ query, ...reach }: SectionProps): ReactNode {
   return (
-    <View className="w-full max-w-detail">
+    <View className="w-full">
       <AppsData reach={reach}>
         {(apps) => <InstalledList reach={reach} apps={apps} query={query} />}
       </AppsData>

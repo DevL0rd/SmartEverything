@@ -4,7 +4,7 @@ import { useGridLayout } from '../../../components/grid';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
 
-const COLUMN = 'min-w-0 max-w-reading gap-section-gap';
+const COLUMN = 'min-w-0 gap-section-gap';
 const MIN_COLUMN_WIDTH = 352;
 
 function appearanceBlocksOf(children: ReactNode): {
@@ -36,7 +36,7 @@ export function AppearanceBlocks({ children }: { readonly children: ReactNode })
   const spread = columns === 3;
   return (
     <View className="gap-section-gap" onLayout={onLayout}>
-      {reset === null ? null : <View className="max-w-reading">{reset}</View>}
+      {reset}
       <View
         className={cn(split && 'flex-row items-start gap-grid-gap', !split && 'gap-section-gap')}
       >

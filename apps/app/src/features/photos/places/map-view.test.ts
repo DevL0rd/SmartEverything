@@ -6,14 +6,19 @@ import {
   clusterQueryOf,
   geohashBounds,
   inside,
+  MAP_WHEEL_PIXELS_PER_STEP,
   MAP_ZOOM_MAX,
   mapBoxOf,
+  mapWheelOf,
   pannedBy,
   pinchSteps,
   WORLD_START,
+  zoomedAt,
   zoomedBy,
   zoomedInto,
+  type MapView,
 } from './map-view';
+import { fitOf, GRID_PER_DEGREE, type GeoPoint } from '../world-map/projection';
 
 const FRAME = { width: 960, height: 460 };
 
@@ -75,5 +80,35 @@ describe('map view', () => {
     const lisbon = geohashBounds('eycs');
     expect(inside({ lat: 38.72, lon: -9.14 }, lisbon)).toBe(true);
     expect(inside({ lat: 41.15, lon: -8.61 }, lisbon)).toBe(false);
+  });
+
+  it('zooms the wheel in around the pointer, keeping the place under it still', () => {
+    const at = { x: 700, y: 120 };
+    const geoAt = (view: MapView): GeoPoint => {
+      const fit = fitOf(mapBoxOf(view, FRAME), FRAME);
+      return {
+        lon: (at.x - fit.dx) / fit.scale / GRID_PER_DEGREE - 180,
+        lat: 90 - (at.y - fit.dy) / fit.scale / GRID_PER_DEGREE,
+      };
+    };
+    for (const from of [WORLD_START, { zoom: 3, lat: 40, lon: 10 }]) {
+      const next = zoomedAt(from, 2, at, FRAME);
+      expect(next.zoom).toBe(from.zoom + 2);
+      expect(geoAt(next).lat).toBeCloseTo(geoAt(from).lat);
+      expect(geoAt(next).lon).toBeCloseTo(geoAt(from).lon);
+    }
+  });
+
+  it('returns to the whole world and stops at the deepest zoom', () => {
+    const near = { zoom: 2, lat: 40, lon: 10 };
+    expect(zoomedAt(near, -5, { x: 10, y: 10 }, FRAME)).toEqual({ ...near, zoom: 0 });
+    const deepest = { zoom: MAP_ZOOM_MAX, lat: 40, lon: 10 };
+    expect(zoomedAt(deepest, 1, { x: 10, y: 10 }, FRAME)).toBe(deepest);
+  });
+
+  it('turns wheel travel into whole zoom steps and keeps the rest for the next turn', () => {
+    expect(mapWheelOf(0, -MAP_WHEEL_PIXELS_PER_STEP * 2.5)).toEqual({ steps: 2, pending: 50 });
+    expect(mapWheelOf(50, -60)).toEqual({ steps: 1, pending: 10 });
+    expect(mapWheelOf(50, 120)).toEqual({ steps: -1, pending: -20 });
   });
 });

@@ -109,7 +109,7 @@ export function faceCropOf(box: PhotoBox, aspect: number, size: number): FaceCro
 }
 
 export type PeopleState =
-  'loading' | 'offline' | 'error' | 'grouping-off' | 'indexing' | 'empty' | 'ready';
+  'loading' | 'offline' | 'error' | 'grouping-off' | 'indexing' | 'grouping' | 'empty' | 'ready';
 
 export interface PeopleStateInput {
   readonly people: PhotoPeople | undefined;
@@ -128,8 +128,63 @@ export function peopleStateOf(input: PeopleStateInput): PeopleState {
   if (!input.live && people === undefined) return 'offline';
   if (input.failed) return 'error';
   if (people === undefined || status === undefined) return 'loading';
+  return scanStateOf(status);
+}
+
+function scanStateOf(status: PhotoAiStatus): PeopleState {
   if (!status.faceGrouping) return 'grouping-off';
-  return facesLeftOf(status) > 0 ? 'indexing' : 'empty';
+  if (facesLeftOf(status) > 0) return 'indexing';
+  return status.people.faces > status.people.grouped ? 'grouping' : 'empty';
+}
+
+export type ScanState = Extract<PeopleState, 'indexing' | 'grouping' | 'empty'>;
+
+const SCAN_STATES: ReadonlySet<PeopleState> = new Set<ScanState>(['indexing', 'grouping', 'empty']);
+
+export function isScanState(state: PeopleState): state is ScanState {
+  return SCAN_STATES.has(state);
+}
+
+function facesText(total: number): string {
+  return total === 1 ? '1 face' : `${count(total)} faces`;
+}
+
+export function faceScanTextOf(status: PhotoAiStatus): string {
+  return `Analysed ${count(status.faces.done)} of ${photosText(status.total)} · ${facesText(status.people.faces)} found`;
+}
+
+export function groupingTextOf(status: PhotoAiStatus): string {
+  const waiting = status.people.faces - status.people.grouped;
+  return `${facesText(waiting)} found in ${photosText(status.faces.done)} are being sorted into people.`;
+}
+
+export interface EmptyReason {
+  readonly title: string;
+  readonly body: string;
+}
+
+export function emptyReasonOf(status: PhotoAiStatus): EmptyReason {
+  const { done, failed } = status.faces;
+  if (status.total === 0)
+    return {
+      title: 'No photos yet',
+      body: 'When photos reach your library, your home hub looks for faces in them.',
+    };
+  if (done === 0 && failed === 0)
+    return {
+      title: 'Waiting for previews',
+      body: `Faces are found once the previews of your ${photosText(status.total)} are ready.`,
+    };
+  if (done === 0)
+    return {
+      title: 'Face analysis failed',
+      body: `Your home hub could not analyse ${photosText(failed)}.`,
+    };
+  const failures = failed === 0 ? '' : ` Face analysis failed on ${photosText(failed)}.`;
+  return {
+    title: 'No faces found',
+    body: `Your home hub analysed ${photosText(done)} and found no people in them.${failures}`,
+  };
 }
 
 export function faceProgressOf(status: PhotoAiStatus): number {

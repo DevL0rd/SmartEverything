@@ -17,7 +17,7 @@ const CAMERA_AUDIO_OUTPUT: readonly OutputRule[] = [
   { pattern: /new\s+TalkFeeds\s*\(/, owners: ['talk/talk-service.ts'] },
   { pattern: /new\s+CameraOutput\s*\(/, owners: ['talk/camera-speaker.ts'] },
   { pattern: /new\s+CameraSpeakers\s*\(/, owners: ['talk/talk-service.ts'] },
-  { pattern: /backchannel/i, owners: [] },
+  { pattern: /go2rtc\s*\.\s*backchannel\s*\(/, owners: ['talk/camera-speaker.ts'] },
 ];
 
 function offenders(): string[] {

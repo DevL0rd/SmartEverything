@@ -116,7 +116,7 @@ vi.mock('../../../components/empty-state', () => ({
 vi.mock('../../../components/banner', () => ({
   Banner: ({ title }: { readonly title: string }): ReactNode => createElement('aside', {}, title),
 }));
-vi.mock('../../../components/library-frame', () => ({
+vi.mock('../../../components/chip-row', () => ({
   ChipRow: ({ children }: { readonly children: ReactNode }): ReactNode =>
     createElement('nav', {}, children),
 }));

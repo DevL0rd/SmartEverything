@@ -16,7 +16,7 @@ vi.mock('../../../api/drive', () => ({
 vi.mock('../../assistant', () => ({ attachFiles: vi.fn(), useLastChat: vi.fn() }));
 vi.mock('expo-router', () => ({ router: { push: vi.fn(), navigate: vi.fn() } }));
 
-import { askAbout, downloadItems, sendToChat, type ItemDeps } from './item-actions';
+import { askAbout, sendToChat, type ItemDeps } from './item-actions';
 
 const ROOT = '00000000-0000-4000-8000-0000000000b1';
 const CHAT = 'chat-1';
@@ -47,20 +47,14 @@ const PDF = item('00000000-0000-4000-8000-0000000000a3', 'document', 'Notes.pdf'
 
 interface Fake extends ItemDeps {
   readonly attached: (readonly PickedFile[])[];
-  readonly saved: string[];
   readonly opened: string[];
 }
 
-function fake(
-  items: readonly DriveItem[],
-  urls: Readonly<Record<string, string | null>> = {},
-): Fake {
+function fake(items: readonly DriveItem[]): Fake {
   const attached: (readonly PickedFile[])[] = [];
-  const saved: string[] = [];
   const opened: string[] = [];
   return {
     attached,
-    saved,
     opened,
     read: (itemId): Promise<DriveItem> => {
       const found = items.find((entry) => entry.id === itemId);
@@ -68,11 +62,6 @@ function fake(
     },
     attach: (files): void => {
       attached.push(files);
-    },
-    fileUrl: (entry): Promise<string | null> =>
-      Promise.resolve(entry.id in urls ? (urls[entry.id] ?? null) : `u/${entry.name}`),
-    save: (url, name): void => {
-      saved.push(`${name}=${url}`);
     },
     openChat: (chatId): void => {
       opened.push(chatId);
@@ -132,15 +121,6 @@ describe('library item actions', () => {
     expect(deps.opened).toEqual([]);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Could not ask about it in the chat', tone: 'critical' }),
-    );
-  });
-
-  it('downloads every original and names the ones that failed', async () => {
-    const deps = fake([PHOTO, SECOND], { [SECOND.id]: null });
-    await downloadItems([PHOTO.id, SECOND.id], deps);
-    expect(deps.saved).toEqual(['Garden.jpg=u/Garden.jpg']);
-    expect(notify).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'A photo could not be downloaded', tone: 'critical' }),
     );
   });
 });

@@ -77,12 +77,12 @@ export const QUOTA_UNKNOWN: QuotaState = { known: false };
 
 export const NO_QUOTA: QuotaState = { known: true, bytes: null };
 
-export function usageLineOf(usage: DriveUsage, quota: QuotaState): UsageLine {
+export function usageLineOf(usage: DriveUsage, quota: QuotaState, freeBytes: number): UsageLine {
   const used = usedOf(usage);
   const limit = quota.known ? quota.bytes : null;
   return {
     segments: usageSegmentsOf(usage),
-    total: Math.max(used, limit ?? used),
+    total: limit === null ? used + freeBytes : Math.max(used, limit),
     used: usedTextOf(used, quota),
     counts: countsTextOf(usage),
     tone: quotaToneOf(used, limit),
@@ -143,11 +143,7 @@ export function sharedDriveUsageOf(
   };
 }
 
-export interface DiskInput {
-  readonly stats: Pick<DriveStats, 'space' | 'liveBytes' | 'versionBytes' | 'trashBytes'>;
-  readonly usage: readonly DriveUsage[] | null;
-  readonly owner: boolean;
-}
+export type DiskStats = Pick<DriveStats, 'space' | 'bytes'>;
 
 export interface DiskView {
   readonly segments: readonly BarSegment[];
@@ -160,29 +156,14 @@ export interface DiskView {
 
 export const DISK_WARNING_SHARE = 0.9;
 
-function drivesBytesOf(input: DiskInput): number {
-  if (input.owner && input.usage !== null) {
-    return input.usage.reduce((all, entry) => all + usedOf(entry), 0);
-  }
-  return input.stats.liveBytes + input.stats.versionBytes + input.stats.trashBytes;
-}
-
-export function diskViewOf(input: DiskInput): DiskView {
-  const { space } = input.stats;
+export function diskViewOf(stats: DiskStats): DiskView {
+  const { space } = stats;
   const used = space.totalBytes - space.freeBytes;
-  const drives = Math.min(used, drivesBytesOf(input));
+  const drives = Math.min(used, stats.bytes);
   return {
     segments: [
-      {
-        label: input.owner ? 'Drives' : 'Your drives',
-        value: drives,
-        colour: 'viz-blue',
-      },
-      {
-        label: input.owner ? 'Other Hub data' : 'Everything else',
-        value: used - drives,
-        colour: 'viz-violet',
-      },
+      { label: 'Your drives', value: drives, colour: 'viz-blue' },
+      { label: 'Everything else', value: used - drives, colour: 'viz-violet' },
     ],
     total: space.totalBytes,
     used: `${bytes(used)} of ${bytes(space.totalBytes)} used`,
@@ -191,6 +172,10 @@ export function diskViewOf(input: DiskInput): DiskView {
     tone:
       space.totalBytes > 0 && used / space.totalBytes >= DISK_WARNING_SHARE ? 'warning' : 'variant',
   };
+}
+
+export function othersHaveData(people: readonly PersonUsage[]): boolean {
+  return people.some((entry) => !entry.you && usedOf(entry.usage) + entry.usage.items > 0);
 }
 
 export function peopleCaptionOf(people: readonly PersonUsage[]): string {

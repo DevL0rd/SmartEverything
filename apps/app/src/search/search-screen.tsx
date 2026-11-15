@@ -39,7 +39,6 @@ function SearchBody({ initial }: { readonly initial: string }): ReactNode {
   return (
     <PageShell
       title="Search"
-      width="reading"
       scroll={false}
       search={{
         value: query,

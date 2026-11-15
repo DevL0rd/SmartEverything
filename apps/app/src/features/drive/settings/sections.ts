@@ -1,25 +1,20 @@
 import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import type { IconName } from '../../../components/icon';
+import { DRIVE_PAGE, type DrivePageId } from '../../../settings/tree-drive';
 import type { SettingEnv } from '../../../settings/types';
 import type { DriveSection } from '../model/section-routes';
+import { COMPUTER_ROWS, HUB_ROWS } from './advanced-rows';
 import {
   PUSH_KINDS_CAPTION,
   PUSH_KINDS_SETTING_ID,
   PUSH_KINDS_TITLE,
 } from '../notifications/push-kinds';
 
-export const DRIVE_SETTINGS_PAGE = 'drive';
+export const DRIVE_SETTINGS_PAGE = DRIVE_PAGE.root;
 
 export type DriveSettingsSectionId =
-  | 'drives'
-  | 'sync-mount'
-  | 'phone'
-  | 'sharing'
-  | 'notifications'
-  | 'indexing'
-  | 'storage'
-  | 'google';
+  'drives' | 'sync-mount' | 'phone' | 'sharing' | 'notifications' | 'indexing' | 'storage';
 
 type SectionEnv = Pick<SettingEnv, 'owner' | 'platform'>;
 
@@ -34,6 +29,7 @@ export interface DriveSettingsRowSpec {
 
 export interface DriveSettingsSectionSpec {
   readonly id: DriveSettingsSectionId;
+  readonly page: DrivePageId;
   readonly settingId: string;
   readonly title: string;
   readonly caption: string;
@@ -55,6 +51,7 @@ function row(
 
 const DRIVES: DriveSettingsSectionSpec = {
   id: 'drives',
+  page: DRIVE_PAGE.drives,
   settingId: 'drive.drives',
   title: 'Drives',
   caption: 'Your own drive and the Shared Drive for the whole home.',
@@ -82,11 +79,31 @@ const DRIVES: DriveSettingsSectionSpec = {
   ],
 };
 
+function kebab(field: string): string {
+  return field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+const ADVANCED_ROWS: readonly DriveSettingsRowSpec[] = [
+  row(
+    'drive.sync-mount.advanced',
+    'Advanced mount settings',
+    ['advanced', 'tuning', 'performance', 'speed', 'kernel', 'fuse'],
+    'desktop',
+  ),
+  ...COMPUTER_ROWS.map((spec) =>
+    row(`drive.sync-mount.advanced.${kebab(spec.field)}`, spec.title, spec.keywords, 'desktop'),
+  ),
+  ...HUB_ROWS.map((spec) =>
+    row(`drive.sync-mount.advanced.hub.${kebab(spec.field)}`, spec.title, spec.keywords, 'owner'),
+  ),
+];
+
 const SYNC_MOUNT: DriveSettingsSectionSpec = {
   id: 'sync-mount',
+  page: DRIVE_PAGE.mount,
   settingId: 'drive.sync-mount',
-  title: 'Sync and mount',
-  caption: 'Your drives in this computer’s file manager and the cache that serves them.',
+  title: 'Mount and cache',
+  caption: 'The cache on this computer and advanced mount settings.',
   icon: 'folderSync',
   keywords: ['sync', 'mount', 'network drive', 'file manager', 'offline', 'this computer'],
   scope: 'device-local',
@@ -124,15 +141,17 @@ const SYNC_MOUNT: DriveSettingsSectionSpec = {
     ),
     row(
       'drive.sync-mount.computers',
-      'Open Computers',
+      'Computers',
       ['computers', 'synced folders', 'placements', 'selective sync'],
       'desktop',
     ),
+    ...ADVANCED_ROWS,
   ],
 };
 
 const PHONE: DriveSettingsSectionSpec = {
   id: 'phone',
+  page: DRIVE_PAGE.phone,
   settingId: 'drive.phone',
   title: 'On this phone',
   caption: 'Files kept on this phone and your drives in the Files app.',
@@ -172,6 +191,7 @@ const PHONE: DriveSettingsSectionSpec = {
 
 const NOTIFICATIONS: DriveSettingsSectionSpec = {
   id: 'notifications',
+  page: DRIVE_PAGE.notifications,
   settingId: PUSH_KINDS_SETTING_ID,
   title: 'Notifications',
   caption: PUSH_KINDS_CAPTION,
@@ -194,6 +214,7 @@ const NOTIFICATIONS: DriveSettingsSectionSpec = {
 
 const SHARING: DriveSettingsSectionSpec = {
   id: 'sharing',
+  page: DRIVE_PAGE.sharing,
   settingId: 'drive.sharing',
   title: 'Sharing',
   caption: 'Who can make links and how long unfinished uploads wait.',
@@ -219,6 +240,7 @@ const SHARING: DriveSettingsSectionSpec = {
 
 const INDEXING: DriveSettingsSectionSpec = {
   id: 'indexing',
+  page: DRIVE_PAGE.indexing,
   settingId: 'drive.indexing',
   title: 'Indexing',
   caption: 'How the drives are read and watched for changes.',
@@ -257,6 +279,7 @@ const INDEXING: DriveSettingsSectionSpec = {
 
 const STORAGE: DriveSettingsSectionSpec = {
   id: 'storage',
+  page: DRIVE_PAGE.storage,
   settingId: 'drive.storage',
   title: 'Storage',
   caption: 'Space, limits, damage checks and backups.',
@@ -290,18 +313,6 @@ const STORAGE: DriveSettingsSectionSpec = {
   ],
 };
 
-const GOOGLE: DriveSettingsSectionSpec = {
-  id: 'google',
-  settingId: 'drive.google',
-  title: 'Import from Google',
-  caption: 'Copy your data from Google once. Nothing stays linked.',
-  icon: 'download',
-  keywords: ['google', 'import', 'copy', 'takeout', 'migrate', 'google drive', 'google photos'],
-  scope: 'server',
-  audience: 'owner',
-  rows: [],
-};
-
 export const DRIVE_SETTINGS_SECTIONS: readonly DriveSettingsSectionSpec[] = [
   DRIVES,
   SYNC_MOUNT,
@@ -310,7 +321,6 @@ export const DRIVE_SETTINGS_SECTIONS: readonly DriveSettingsSectionSpec[] = [
   NOTIFICATIONS,
   INDEXING,
   STORAGE,
-  GOOGLE,
 ];
 
 const BY_ID: ReadonlyMap<DriveSettingsSectionId, DriveSettingsSectionSpec> = new Map(
@@ -382,7 +392,10 @@ export function driveSettingsSectionFor(
 
 export function driveSettingsHref(page: DriveSection, env: SectionEnv): AppHref {
   const id = driveSettingsSectionFor(page, env);
-  return id === null
-    ? href.settings.page(DRIVE_SETTINGS_PAGE)
-    : href.settings.focus(DRIVE_SETTINGS_PAGE, driveSettingsSection(id).settingId);
+  return id === null ? href.settings.page(DRIVE_SETTINGS_PAGE) : driveSettingsFocusHref(id);
+}
+
+export function driveSettingsFocusHref(id: DriveSettingsSectionId): AppHref {
+  const section = driveSettingsSection(id);
+  return href.settings.focus(section.page, section.settingId);
 }

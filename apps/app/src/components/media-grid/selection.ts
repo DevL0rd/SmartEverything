@@ -87,16 +87,14 @@ export function selectedText(selection: MediaSelection): string {
   return `${count(selection.ids.size)} selected`;
 }
 
-export function dayActionText(mark: DayMark): string {
-  return mark === 'all' ? 'Deselect' : 'Select';
-}
-
 export interface MediaSelectionControls {
   readonly selection: MediaSelection;
+  readonly everything: boolean;
   readonly begin: () => void;
   readonly clear: () => void;
   readonly all: () => void;
   readonly press: (id: string, modifiers: PressModifiers) => boolean;
+  readonly pick: (id: string) => void;
   readonly day: (ids: readonly string[]) => void;
   readonly dragStart: (id: string) => void;
   readonly dragOver: (id: string) => void;
@@ -111,39 +109,61 @@ function useLatestOrder(order: readonly string[]): RefObject<readonly string[]> 
   return latest;
 }
 
+interface Held {
+  readonly picked: MediaSelection;
+  readonly everything: boolean;
+}
+
+const NOTHING_HELD: Held = { picked: NO_SELECTION, everything: false };
+
+function shownOf(held: Held, order: readonly string[]): MediaSelection {
+  return held.everything ? selectAll(order) : held.picked;
+}
+
 export function useMediaSelection(order: readonly string[]): MediaSelectionControls {
-  const [selection, setSelection] = useState(NO_SELECTION);
+  const [held, setHeld] = useState(NOTHING_HELD);
   const [drag, setDrag] = useState<DragExtend | null>(null);
   const latest = useLatestOrder(order);
+  const selection = shownOf(held, order);
+  const change = (next: (current: MediaSelection) => MediaSelection): void => {
+    setHeld((current) => ({
+      picked: next(shownOf(current, latest.current)),
+      everything: false,
+    }));
+  };
   return {
     selection,
+    everything: held.everything,
     begin: (): void => {
-      setSelection(beginSelecting);
+      setHeld((current) => ({ ...current, picked: beginSelecting(current.picked) }));
     },
     clear: (): void => {
       setDrag(null);
-      setSelection(NO_SELECTION);
+      setHeld(NOTHING_HELD);
     },
     all: (): void => {
-      setSelection(selectAll(latest.current));
+      setHeld({ picked: selectAll(latest.current), everything: true });
     },
     press: (id, modifiers): boolean => {
       if (!selection.active) return false;
-      setSelection(
-        modifiers.shift ? selectRange(selection, latest.current, id) : toggleItem(selection, id),
+      change((current) =>
+        modifiers.shift ? selectRange(current, latest.current, id) : toggleItem(current, id),
       );
       return true;
     },
+    pick: (id): void => {
+      change((current) => toggleItem(current, id));
+    },
     day: (ids): void => {
-      setSelection((current) => toggleDay(current, ids));
+      change((current) => toggleDay(current, ids));
     },
     dragStart: (id): void => {
       const started = startDrag(selection, id);
       setDrag(started);
-      setSelection(dragTo(started, latest.current, id));
+      change(() => dragTo(started, latest.current, id));
     },
     dragOver: (id): void => {
-      if (drag !== null) setSelection(dragTo(drag, latest.current, id));
+      if (drag !== null) change(() => dragTo(drag, latest.current, id));
     },
     dragEnd: (): void => {
       setDrag(null);

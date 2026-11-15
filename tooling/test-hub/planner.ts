@@ -104,10 +104,10 @@ async function collectionsOf(
 
 type ItemBody = NonNullable<Input<typeof E.createPlannerItem>['body']>;
 
-function eventBody(rng: Random, calendar: string, base: Date): ItemBody {
+function eventBody(rng: Random, calendar: string, base: Date, timed = false): ItemBody {
   const hour = rng.int(7, 19);
   const minutes = rng.pick([30, 45, 60, 90, 120]);
-  const allDay = rng.chance(0.08);
+  const allDay = rng.chance(0.08) && !timed;
   return {
     collection_id: calendar,
     kind: 'event',
@@ -252,7 +252,7 @@ async function invitesOf(context: SeedContext, scene: InviteScene, rng: Random):
     const base = daysAgo(anchor, -(index * 3 + 2));
     const item = await api.call(E.createPlannerItem, {
       query: { personId: owner.id },
-      body: { ...eventBody(rng, calendar, base), title, all_day: false, rrule: null },
+      body: { ...eventBody(rng, calendar, base, true), title, rrule: null },
     });
     await api.call(E.setPlannerGuests, {
       query: { personId: owner.id },

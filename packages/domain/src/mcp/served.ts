@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpToolSummary } from './areas';
 import type { McpPartName } from './names';
 import { SERVED_ASSISTANT } from './served-assistant';
-import { SERVED_AUTOMATIONS } from './served-automations';
+import { SERVED_AUTOMATIONS } from './served-schedules';
 import { SERVED_CAMERAS } from './served-cameras';
 import { SERVED_COMPUTERS } from './served-computers';
 import { SERVED_DRIVE } from './served-drive';

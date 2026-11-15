@@ -134,7 +134,7 @@ export function CameraSettingsScreen({ deviceId }: { readonly deviceId: string }
   const entry = useCameraEntry(deviceId);
   if (entry === null) {
     return (
-      <PageShell title="Camera" width="reading">
+      <PageShell title="Camera">
         <EmptyState
           icon="cameraOff"
           title="Camera not found"

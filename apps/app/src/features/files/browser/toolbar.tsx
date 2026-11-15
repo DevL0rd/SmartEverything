@@ -5,40 +5,35 @@ import { Crumbs } from './crumbs';
 import type { DragSession } from './drop-zone';
 import { KindChips } from './kind-chips';
 import { PlacesBar } from './places-bar';
-import { ViewSort } from './view-sort';
+import { BrowserViewControls, browserChipsShown, useBrowserControlsInShell } from './view-sort';
 
 export interface ToolbarProps<O> {
   readonly browser: FileBrowserHandle<O>;
   readonly session: DragSession<O>;
-  readonly wide: boolean;
 }
 
-export function Toolbar<O>({ browser, session, wide }: ToolbarProps<O>): ReactNode {
+export function Toolbar<O>({ browser, session }: ToolbarProps<O>): ReactNode {
+  const crumbs = browser.listing.crumbs.length > 1;
+  const chips = browserChipsShown(browser);
+  const inShell = useBrowserControlsInShell(browser);
   if (!browser.abilities.list) return null;
-  if (wide) {
-    return (
-      <View className="gap-2">
-        <View className="flex-row items-center gap-3">
-          <Crumbs browser={browser} session={session} />
-          <ViewSort browser={browser} />
-        </View>
-        <PlacesBar browser={browser} />
-        <KindChips browser={browser} />
-      </View>
-    );
-  }
+  if (!crumbs && !chips) return null;
   return (
     <View className="gap-2">
-      {browser.listing.crumbs.length > 1 ? (
+      {crumbs ? (
         <View className="flex-row items-center">
           <Crumbs browser={browser} session={session} />
         </View>
       ) : null}
-      <PlacesBar browser={browser} />
-      <KindChips browser={browser} />
-      <View className="flex-row justify-end">
-        <ViewSort browser={browser} />
-      </View>
+      {chips ? (
+        <View className="flex-row items-center gap-3">
+          <View className="min-w-0 flex-1 gap-2">
+            <PlacesBar browser={browser} />
+            <KindChips browser={browser} />
+          </View>
+          {inShell ? null : <BrowserViewControls browser={browser} />}
+        </View>
+      ) : null}
     </View>
   );
 }

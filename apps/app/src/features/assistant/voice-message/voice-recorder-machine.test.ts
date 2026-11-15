@@ -131,7 +131,13 @@ describe('voice recorder: permission denied', () => {
     const r = rig();
     r.device.granted = false;
     await r.machine.start();
-    expect(r.machine.read()).toStrictEqual({ phase: 'idle', denied: true });
+    expect(r.machine.read()).toStrictEqual({
+      phase: 'idle',
+      denied: true,
+      clip: null,
+      locked: false,
+      seconds: 0,
+    });
     expect(r.calls).toStrictEqual(['permission']);
   });
 
@@ -141,7 +147,13 @@ describe('voice recorder: permission denied', () => {
     await r.machine.start();
     r.device.granted = true;
     await r.machine.start();
-    expect(r.machine.read()).toStrictEqual({ phase: 'recording', denied: false });
+    expect(r.machine.read()).toStrictEqual({
+      phase: 'recording',
+      denied: false,
+      clip: null,
+      locked: false,
+      seconds: 0,
+    });
   });
 });
 

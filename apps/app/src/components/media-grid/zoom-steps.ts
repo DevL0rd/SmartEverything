@@ -3,7 +3,7 @@ import type { View } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import { useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { isNative } from '../../design/platform';
+import { useWheelZoom } from '../wheel-zoom';
 import {
   MEDIA_ZOOM_STEPS,
   rowHeight,
@@ -14,8 +14,6 @@ import {
 } from './justify';
 
 export const WHEEL_PIXELS_PER_STEP = 100;
-
-const WHEEL_LINE_PIXELS = 40;
 
 export interface FocalPoint {
   readonly x: number;
@@ -88,44 +86,18 @@ export function rowIndexOfTile(rows: readonly MediaGridRow[], id: string): numbe
   );
 }
 
-function wheelDelta(event: WheelEvent): number {
-  return event.deltaMode === WheelEvent.DOM_DELTA_PIXEL
-    ? event.deltaY
-    : event.deltaY * WHEEL_LINE_PIXELS;
-}
-
-function useWheelZoom(
+function useWheelSteps(
   frame: RefObject<View | null>,
   step: MediaZoomStep,
   onStep: StepChange,
 ): void {
-  const latest = useRef({ step, onStep });
-  useEffect(() => {
-    latest.current = { step, onStep };
+  const pending = useRef(0);
+  useWheelZoom(frame, 'ctrl-wheel', (turn) => {
+    const index = stepIndex(step);
+    const next = wheelTurn(index, pending.current, turn.pixels);
+    pending.current = next.pending;
+    if (next.shift !== 0) onStep(stepAt(index + next.shift), { x: turn.x, y: turn.y });
   });
-  useEffect(() => {
-    const node = frame.current;
-    if (isNative() || !(node instanceof HTMLElement)) return undefined;
-    let pending = 0;
-    const turn = (event: WheelEvent): void => {
-      if (!event.ctrlKey) return;
-      event.preventDefault();
-      const current = latest.current;
-      const index = stepIndex(current.step);
-      const next = wheelTurn(index, pending, wheelDelta(event));
-      pending = next.pending;
-      if (next.shift === 0) return;
-      const box = node.getBoundingClientRect();
-      current.onStep(stepAt(index + next.shift), {
-        x: event.clientX - box.left,
-        y: event.clientY - box.top,
-      });
-    };
-    node.addEventListener('wheel', turn, { passive: false });
-    return (): void => {
-      node.removeEventListener('wheel', turn);
-    };
-  }, [frame]);
 }
 
 export type ZoomGesture = ReturnType<typeof Gesture.Pinch>;
@@ -158,6 +130,6 @@ export function useZoomSteps(
   step: MediaZoomStep,
   onStep: StepChange,
 ): ZoomGesture {
-  useWheelZoom(frame, step, onStep);
+  useWheelSteps(frame, step, onStep);
   return usePinchZoom(step, onStep);
 }

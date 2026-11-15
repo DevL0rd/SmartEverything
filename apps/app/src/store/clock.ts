@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { AppState } from 'react-native';
-import { dayKeyOf } from '../format/time';
+import { dayKeyOf, localDayKey } from '../format/time';
 import { ValueStore, usePausable, useValue } from '../design/external-store';
 
 const minute = new ValueStore<number>(Date.now());
@@ -63,6 +63,13 @@ export function useMinuteOf<T>(
 
 export function useDayKey(): string {
   return usePausable(minute.subscribe, () => dayKeyOf(minute.get()));
+}
+
+export function useDayNow(timeZone: string | null): number {
+  return useMinuteOf(
+    (now) => now,
+    (left, right) => localDayKey(left, timeZone) === localDayKey(right, timeZone),
+  );
 }
 
 const second = new ValueStore<number>(Date.now());

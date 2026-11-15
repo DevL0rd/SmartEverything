@@ -22,7 +22,6 @@ const FIELDS = {
   item_id: ID,
   time_source: z.enum(DRIVE_TIME_SOURCES),
   tz_offset_min: z.int().min(-1440).max(1440).nullable(),
-  thumbhash: z.instanceof(Uint8Array).nullable(),
   preview_state: DERIVED_STATE,
   preview_reason: REASON,
   poster_state: DERIVED_STATE,

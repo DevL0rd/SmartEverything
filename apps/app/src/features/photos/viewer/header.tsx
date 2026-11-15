@@ -62,7 +62,7 @@ function JobRing({ job }: { readonly job: EditJobView | null }): ReactNode {
   );
 }
 
-function Titles({ text }: { readonly text: HeaderText }): ReactNode {
+export function ViewerHeading({ text }: { readonly text: HeaderText }): ReactNode {
   return (
     <View className="min-w-0 flex-1">
       <Text variant="label" numberOfLines={1}>
@@ -77,17 +77,9 @@ function Titles({ text }: { readonly text: HeaderText }): ReactNode {
   );
 }
 
-export function DesktopHeader({
-  text,
-  controls,
-}: {
-  readonly text: HeaderText;
-  readonly controls: HeaderControls;
-}): ReactNode {
+export function DesktopControls({ controls }: { readonly controls: HeaderControls }): ReactNode {
   return (
-    <View className="h-16 flex-row items-center gap-2 px-4">
-      <IconButton icon="arrowLeft" label="Close viewer" onPress={controls.onClose} shortcut="Esc" />
-      <Titles text={text} />
+    <View className="flex-row items-center gap-1">
       <IconButton
         icon="star"
         label={controls.starred ? 'Remove from favourites' : 'Favourite'}
@@ -125,17 +117,9 @@ export function DesktopHeader({
   );
 }
 
-export function PhoneHeader({
-  text,
-  controls,
-}: {
-  readonly text: HeaderText;
-  readonly controls: HeaderControls;
-}): ReactNode {
+export function PhoneControls({ controls }: { readonly controls: HeaderControls }): ReactNode {
   return (
-    <View className="h-14 flex-row items-center gap-1 px-1 pt-safe">
-      <IconButton icon="arrowLeft" label="Back" onPress={controls.onClose} />
-      <Titles text={text} />
+    <View className="flex-row items-center gap-1">
       <JobRing job={controls.edit.job} />
       <MenuIconButton icon="ellipsisVertical" label="More" items={controls.more} />
     </View>

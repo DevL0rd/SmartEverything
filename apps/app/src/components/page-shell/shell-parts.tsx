@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { BackOutcome } from '../back-navigation';
 import { Breadcrumbs, type Crumb } from '../breadcrumbs';
+import { Icon } from '../icon';
 import { IconButton } from '../icon-button';
 import { Interactive } from '../interactive';
 import { Text, type TextVariant } from '../text';
@@ -93,10 +94,11 @@ function PressableTitle({
     <Interactive
       label={`${title}, sections`}
       onPress={onPress}
-      className="min-h-touch-min min-w-touch-min flex-row items-center self-start rounded-md"
+      className="min-h-touch-min min-w-touch-min flex-row items-center gap-1 self-start rounded-md"
       layerClassName="rounded-md"
     >
       <TitleText title={title} size={size} />
+      <Icon name="chevronDown" size={size === 'large' ? 24 : 20} tone="variant" />
     </Interactive>
   );
 }
@@ -112,8 +114,12 @@ export function ShellTitle(props: ShellTitleProps): ReactNode {
       ) : (
         <PressableTitle title={props.title} size={props.size} onPress={props.onPress} />
       )}
-      {props.subtitle === undefined || props.size === 'bar' ? null : (
-        <Text variant="callout" tone="variant" numberOfLines={2}>
+      {props.subtitle === undefined ? null : (
+        <Text
+          variant={props.size === 'bar' ? 'footnote' : 'callout'}
+          tone="variant"
+          numberOfLines={props.size === 'bar' ? 1 : 2}
+        >
           {props.subtitle}
         </Text>
       )}

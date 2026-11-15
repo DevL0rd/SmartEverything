@@ -37,6 +37,7 @@ export type ChangeStore = DriveFileStore &
 export interface ChangeEnv extends FileEnv {
   readonly store: ChangeStore;
   readonly purge: PurgeSchedule;
+  readonly settle?: <T>(work: () => T) => Promise<T>;
 }
 
 export function isoOf(mtimeNs: bigint): string {
@@ -275,14 +276,16 @@ function writtenDraft(settle: Settle): DriveItemDraft {
   if (existing !== undefined) {
     return replacedDraft(existing, committed.stamp, committed.sha256);
   }
+  const scanned = onlyFile(env.store.driveItems.byPath(root.id, relPath, null));
   const added = {
     rootId: root.id,
     parentId: parent?.id ?? null,
     relPath,
     modifiedAt: isoOf(committed.stamp.mtimeNs),
-    addedAt: env.now().toISOString(),
+    addedAt: scanned?.addedAt ?? env.now().toISOString(),
     outside: false,
     addedByProfileId: actor.actorProfileId,
+    ...(scanned === undefined ? {} : { id: scanned.id }),
   };
   return fileDraft(added, { bytes: committed.stamp.size, sha256: committed.sha256 });
 }
@@ -343,7 +346,7 @@ export async function finishContent(
   committed: CommittedBytes,
   settle: () => ContentResult,
 ): Promise<ContentResult> {
-  const result = env.store.write(settle);
+  const result = env.settle === undefined ? env.store.write(settle) : await env.settle(settle);
   if (committed.intent.op === 'patch') {
     await discardUndo(env, root, committed.intent.fromPath);
   }

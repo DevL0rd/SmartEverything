@@ -26,7 +26,6 @@ function Sections({
       <Grid
         minItemWidth={SECTION_MIN_WIDTH}
         maxColumns={page.sections.length}
-        cellClassName="max-w-reading"
         stretchLastRow={false}
       >
         {page.sections.map((section, index) => (
@@ -45,7 +44,7 @@ function Sections({
 
 function PageGone(): ReactNode {
   return (
-    <PageShell title="Page not available" back width="detail">
+    <PageShell title="Page not available" back>
       <EmptyState
         icon="puzzle"
         title="This page is not available"

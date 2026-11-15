@@ -6,6 +6,7 @@ import { EmptyState } from '../../../components/empty-state';
 import { Skeleton } from '../../../components/skeleton';
 import { clock } from '../../../format/time';
 import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
+import { localMediaSource } from '../local/source';
 import { offlineBody } from './library-model';
 import { TAB_EMPTY, type HubTabId } from './library-tabs-view';
 
@@ -72,17 +73,41 @@ export function LibraryEmpty({
   );
 }
 
-export function LibraryError({ onRetry }: { readonly onRetry: () => void }): ReactNode {
+export function LoadError({
+  title,
+  body,
+  onRetry,
+}: {
+  readonly title: string;
+  readonly body: string;
+  readonly onRetry: () => void;
+}): ReactNode {
   return (
     <View className="pt-4">
       <Banner
         tone="critical"
-        title="The library did not load"
-        body="The hub did not answer. Local photos and videos remain available. Your backed-up library appears when the hub is back."
+        title={title}
+        body={body}
         wrapBody
         action={{ label: 'Try again', onPress: onRetry }}
       />
     </View>
+  );
+}
+
+export function libraryErrorBody(local: boolean): string {
+  return local
+    ? 'The hub did not answer. Photos and videos on this device remain available. Your backed-up library appears when the hub is back.'
+    : 'The hub did not answer. Your backed-up library appears when the hub is back.';
+}
+
+export function LibraryError({ onRetry }: { readonly onRetry: () => void }): ReactNode {
+  return (
+    <LoadError
+      title="The library did not load"
+      body={libraryErrorBody(localMediaSource() !== null)}
+      onRetry={onRetry}
+    />
   );
 }
 

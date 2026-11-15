@@ -6,7 +6,7 @@ import type {
 } from '@smarteverything/domain';
 import { keepPreviousData } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
-import type { View } from 'react-native';
+import { View } from 'react-native';
 import type { PlannerSuggestion } from '../../../api/planner';
 import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
@@ -14,15 +14,18 @@ import { List } from '../../../components/section';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
+import { useIsPhone } from '../../../design/size-class';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { usePlannerTools, type PlannerPerson } from '../data';
 import {
   CompletionRuleRow,
   MANUAL,
   WINDOW_TEXT,
+  ruleDetailOf,
   ruleMinutesOf,
-  ruleTitleOf,
   sameRule,
+  sentenceOf,
+  subjectOf,
   useRuleDevice,
   whoseTextOf,
   withMinutes,
@@ -30,6 +33,7 @@ import {
   type RuleDevice,
 } from './completion-rule-row';
 import type { ItemChanges } from './repeat-scope-bar';
+import { useDeviceChooser, useRuleDevices, type RuleDevices } from './rule-devices';
 
 export interface RuleChoice {
   readonly key: string;
@@ -52,51 +56,47 @@ const MANUAL_CHOICE: RuleChoice = {
 
 const ANY = 'any';
 
-const WINDOW_OPTIONS: readonly SegmentedOption<PlannerCompletionWindow>[] = [
-  { value: 'occurrence', label: 'This slot or later' },
-  { value: 'day', label: 'Any time that day' },
-];
-
 function capitalised(text: string): string {
   return `${text.charAt(0).toLocaleUpperCase()}${text.slice(1)}`;
 }
 
-function countsText(completion: PlannerCompletion): string {
-  return completion.kind === 'signal' ? `Counts ${WINDOW_TEXT[completion.window]}` : 'Manual';
+const WINDOW_OPTIONS: readonly SegmentedOption<PlannerCompletionWindow>[] = [
+  { value: 'occurrence', label: capitalised(WINDOW_TEXT.occurrence) },
+  { value: 'day', label: capitalised(WINDOW_TEXT.day) },
+];
+
+export interface ChoiceContext {
+  readonly devices: RuleDevices;
+  readonly personName: string;
 }
 
-function choiceOf(suggestion: PlannerSuggestion, index: number): RuleChoice {
+function choiceFor(key: string, completion: PlannerCompletion, context: ChoiceContext): RuleChoice {
+  if (completion.kind === 'manual') return { ...MANUAL_CHOICE, key };
+  const device = context.devices.get(subjectOf(completion) ?? '') ?? null;
   return {
-    key: `rule:${String(index)}`,
-    title: capitalised(suggestion.label),
-    subtitle: countsText(suggestion.completion),
-    completion: suggestion.completion,
+    key,
+    title: capitalised(sentenceOf(completion, device)),
+    subtitle: ruleDetailOf(completion, device, context.personName),
+    completion,
   };
 }
 
 export function ruleChoicesOf(
   current: PlannerCompletion,
   suggestions: readonly PlannerSuggestion[],
-  currentTitle: string,
+  context: ChoiceContext,
 ): RuleChoices {
-  const listed = suggestions
-    .map(choiceOf)
-    .map((choice) =>
-      sameRule(choice.completion, current)
-        ? { ...choice, subtitle: countsText(current), completion: current }
-        : choice,
-    );
+  const listed = suggestions.map((suggestion, index) =>
+    choiceFor(
+      `rule:${String(index)}`,
+      sameRule(suggestion.completion, current) ? current : suggestion.completion,
+      context,
+    ),
+  );
   const [first, ...rest] = listed;
   const kept =
     current.kind === 'signal' && !listed.some((choice) => sameRule(choice.completion, current))
-      ? [
-          {
-            key: 'current',
-            title: currentTitle,
-            subtitle: countsText(current),
-            completion: current,
-          },
-        ]
+      ? [choiceFor('current', current, context)]
       : [];
   return { suggested: first ?? null, others: [MANUAL_CHOICE, ...kept, ...rest] };
 }
@@ -145,6 +145,86 @@ interface TuningProps {
   readonly onChange: (completion: PlannerCompletion) => void;
 }
 
+const SHORT_LABEL = 12;
+
+interface ChoiceSettingProps<T extends string> {
+  readonly title: string;
+  readonly options: readonly SegmentedOption<T>[];
+  readonly value: T;
+  readonly disabled: boolean;
+  readonly onChange: (value: T) => void;
+}
+
+function StackedChoice<T extends string>({
+  title,
+  options,
+  value,
+  disabled,
+  onChange,
+}: ChoiceSettingProps<T>): ReactNode {
+  return (
+    <View className="pt-3">
+      <Text variant="body" className="px-4">
+        {title}
+      </Text>
+      {options.map((option) => (
+        <ListRow
+          key={option.value}
+          wrapTitle
+          title={option.label}
+          role="checkbox"
+          checked={option.value === value}
+          selected={option.value === value}
+          disabled={disabled}
+          trailing={option.value === value ? <Icon name="check" size={20} tone="primary" /> : null}
+          onPress={() => {
+            onChange(option.value);
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function ChoiceSetting<T extends string>({
+  title,
+  options,
+  value,
+  disabled,
+  onChange,
+}: ChoiceSettingProps<T>): ReactNode {
+  const stacked = useIsPhone();
+  if (stacked && options.some((option) => option.label.length > SHORT_LABEL)) {
+    return (
+      <StackedChoice
+        title={title}
+        options={options}
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    );
+  }
+  const control = (
+    <Segmented
+      options={options}
+      value={value}
+      onChange={onChange}
+      label={title}
+      disabled={disabled}
+      compact={!stacked}
+      fill={stacked}
+    />
+  );
+  if (!stacked) return <ListRow title={title} trailing={control} />;
+  return (
+    <View className="gap-2 px-4 py-3">
+      <Text variant="body">{title}</Text>
+      {control}
+    </View>
+  );
+}
+
 function RuleTuning({
   completion,
   device,
@@ -157,36 +237,24 @@ function RuleTuning({
   return (
     <List title="How it counts">
       {minutes.length === 0 ? null : (
-        <ListRow
+        <ChoiceSetting
           title="At least"
-          trailing={
-            <Segmented
-              options={minutes}
-              value={minuteValueOf(completion)}
-              onChange={(value) => {
-                onChange(withMinutes(completion, value === ANY ? null : Number(value)));
-              }}
-              label="At least"
-              disabled={disabled}
-              compact
-            />
-          }
+          options={minutes}
+          value={minuteValueOf(completion)}
+          disabled={disabled}
+          onChange={(value) => {
+            onChange(withMinutes(completion, value === ANY ? null : Number(value)));
+          }}
         />
       )}
-      <ListRow
+      <ChoiceSetting
         title="Counts"
-        trailing={
-          <Segmented
-            options={WINDOW_OPTIONS}
-            value={completion.window}
-            onChange={(window) => {
-              onChange(withWindow(completion, window));
-            }}
-            label="Counts"
-            disabled={disabled}
-            compact
-          />
-        }
+        options={WINDOW_OPTIONS}
+        value={completion.window}
+        disabled={disabled}
+        onChange={(window) => {
+          onChange(withWindow(completion, window));
+        }}
       />
       {whose === null ? null : <ListRow wrapTitle title="Whose session" value={whose} />}
     </List>
@@ -205,9 +273,10 @@ function ChoiceRow({ choice, current, disabled, onChoose }: ChoiceRowProps): Rea
   return (
     <ListRow
       wrapTitle
+      wrapSubtitle
       title={choice.title}
       subtitle={choice.subtitle}
-      icon={choice.completion.kind === 'signal' ? 'zap' : 'check'}
+      icon={choice.completion.kind === 'signal' ? 'zap' : 'circleCheck'}
       iconTone={chosen ? 'primary' : 'variant'}
       selected={chosen}
       role="checkbox"
@@ -235,11 +304,12 @@ export interface CompletionRulePickerProps {
 function PickerBody(props: CompletionRulePickerProps): ReactNode {
   const { item, device, disabled } = props;
   const current = item.completion;
-  const choices = ruleChoicesOf(
-    current,
-    useSuggestions(props.person, item),
-    ruleTitleOf(current, device),
-  );
+  const devices = useRuleDevices();
+  const chooser = useDeviceChooser({ devices, current, disabled, onChange: props.onChange });
+  const choices = ruleChoicesOf(current, useSuggestions(props.person, item), {
+    devices,
+    personName: props.personName,
+  });
   const choose = (choice: RuleChoice): void => {
     if (!sameRule(choice.completion, current)) props.onChange(choice.completion);
   };
@@ -271,7 +341,10 @@ function PickerBody(props: CompletionRulePickerProps): ReactNode {
           onChange={props.onChange}
         />
       ) : null}
-      <List title="Other rules">{rows(choices.others)}</List>
+      <List title="Other rules">
+        {rows(choices.others)}
+        {chooser}
+      </List>
     </>
   );
 }
@@ -337,5 +410,14 @@ export function CompletionRuleField({
         />
       ) : null}
     </>
+  );
+}
+
+export function TaskRuleCard(props: CompletionRuleFieldProps): ReactNode {
+  if (props.item.kind !== 'task') return null;
+  return (
+    <List>
+      <CompletionRuleField {...props} />
+    </List>
   );
 }

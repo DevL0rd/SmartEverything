@@ -47,7 +47,6 @@ export function PageCards({ cards }: { readonly cards: readonly (PageCard | null
       measuredWidth={width}
       minItemWidth={CARD_MIN_WIDTH}
       maxColumns={shown.length}
-      cellClassName="max-w-reading"
       stretchLastRow={false}
     >
       {shown.map((card) => (

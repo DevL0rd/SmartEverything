@@ -7,6 +7,7 @@ const WEEK_DAYS = 6;
 
 const WEEKDAY = zonedDateFormat({ weekday: 'long' });
 const DAY_DATE = zonedDateFormat({ weekday: 'short', day: 'numeric', month: 'short' });
+const DAY_MONTH = zonedDateFormat({ day: 'numeric', month: 'short' });
 const DAY_DATE_YEAR = zonedDateFormat({
   weekday: 'short',
   day: 'numeric',
@@ -45,6 +46,6 @@ export function dayText(day: string, total: number, today: string): DayText {
   if (relative === null) return { title: datedTitle(day, today), detail: itemCount(total) };
   return {
     title: relative,
-    detail: `${DAY_DATE(WALL_ZONE).format(wallDate(day))} · ${itemCount(total)}`,
+    detail: `${DAY_MONTH(WALL_ZONE).format(wallDate(day))} · ${itemCount(total)}`,
   };
 }

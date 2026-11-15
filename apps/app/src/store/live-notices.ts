@@ -42,7 +42,10 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   },
   refused: (store, message) => {
     log.warn('live.refused', { code: message.error.code, reason: message.error.message });
-    store.setSync({ status: 'refused', problem: message.error.message });
+    store.setSync({
+      status: 'refused',
+      problem: { text: message.error.message, remedy: 'server-settings' },
+    });
   },
   mcp_consent: (store, message) => {
     store.update((state) => ({
@@ -79,6 +82,7 @@ const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   photos_progress: ignoreNotice,
   photos_folders_changed: ignoreNotice,
   photos_ai: ignoreNotice,
+  photos_people_changed: ignoreNotice,
   photos_edit_job: ignoreNotice,
   photos_activity: ignoreNotice,
   photos_partner: ignoreNotice,

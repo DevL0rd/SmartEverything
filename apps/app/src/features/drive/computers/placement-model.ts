@@ -1,7 +1,6 @@
 import type {
   DriveItem,
   DrivePlacement,
-  DrivePlacementMode,
   DrivePlacementSet,
   DriveRoot,
 } from '@smarteverything/domain';
@@ -30,6 +29,37 @@ export function placementsOn(
     );
 }
 
+export function syncedOn(
+  deviceId: string,
+  placements: readonly DrivePlacement[],
+): readonly DrivePlacement[] {
+  return placementsOn(deviceId, placements).filter((placement) => placement.mode === 'synced');
+}
+
+export function mountOn(
+  deviceId: string,
+  placements: readonly DrivePlacement[],
+  rootId: string | null,
+): DrivePlacement | null {
+  if (rootId === null) return null;
+  return (
+    placements.find(
+      (placement) =>
+        placement.deviceId === deviceId &&
+        placement.mode === 'mounted' &&
+        placement.rootId === rootId &&
+        placement.folderItemId === null,
+    ) ?? null
+  );
+}
+
+class MountIsNotAFolderError extends Error {
+  override readonly name = 'MountIsNotAFolderError';
+  constructor(readonly placementId: string) {
+    super('A mounted drive is turned on or off with its toggle, not changed like a synced folder.');
+  }
+}
+
 export function drivePathOf(
   placement: Pick<DrivePlacement, 'rootId' | 'folderItemId'>,
   folder: Pick<DriveItem, 'name'> | null,
@@ -51,13 +81,6 @@ export function childPath(parent: string, name: string): string {
   return `${base}${separator}${name}`;
 }
 
-export function parentPath(path: string): string {
-  const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-  if (cut < 0) return path;
-  const parent = path.slice(0, cut);
-  return parent === '' || parent.endsWith(':') ? path.slice(0, cut + 1) : parent;
-}
-
 export function syncSettingsOf(placement: DrivePlacement): SyncSettings | undefined {
   if (placement.mode !== 'synced') return undefined;
   return {
@@ -68,7 +91,7 @@ export function syncSettingsOf(placement: DrivePlacement): SyncSettings | undefi
 }
 
 export function locationOf(placement: DrivePlacement): string | null {
-  return placement.mode === 'synced' ? placement.localPath : placement.status.mountPoint;
+  return placement.mode === 'synced' ? placement.localPath : null;
 }
 
 export interface PlacementChange {
@@ -81,24 +104,16 @@ export function changedBodyOf(
   change: PlacementChange,
 ): DrivePlacementSet {
   const sync = syncSettingsOf(placement);
+  if (sync === undefined || placement.localPath === null) {
+    throw new MountIsNotAFolderError(placement.id);
+  }
   return placementBodyOf({
     deviceId: placement.deviceId,
     target: { rootId: placement.rootId, folderItemId: placement.folderItemId },
-    mode: placement.mode,
     localPath: placement.localPath,
-    mountName: placement.mountName,
     enabled: change.enabled ?? placement.enabled,
-    ...(sync === undefined ? {} : { sync: { ...sync, ...change.sync } }),
+    sync: { ...sync, ...change.sync },
   });
-}
-
-export function pausedBodiesOf(
-  placements: readonly DrivePlacement[],
-  enabled: boolean,
-): readonly DrivePlacementSet[] {
-  return placements
-    .filter((placement) => placement.hold === null && placement.enabled !== enabled)
-    .map((placement) => changedBodyOf(placement, { enabled }));
 }
 
 export interface PickedFolder {
@@ -120,22 +135,13 @@ export function pickedFolderOf(
 
 export function sheetBodyOf(
   deviceId: string,
-  mode: DrivePlacementMode,
   picked: PickedFolder | null,
   localPath: string | null,
 ): DrivePlacementSet | null {
-  if (picked === null || (mode === 'synced' && localPath === null)) return null;
+  if (picked === null || localPath === null) return null;
   return placementBodyOf({
     deviceId,
     target: { rootId: picked.rootId, folderItemId: picked.folderItemId },
-    mode,
-    localPath: mode === 'synced' ? localPath : null,
-    mountName: mode === 'mounted' ? picked.name : null,
+    localPath,
   });
-}
-
-export function mountPlaceOf(computer: string, picked: PickedFolder | null): string {
-  return picked === null
-    ? `Mounts where ${computer} keeps network drives`
-    : `Mounts as ${picked.name} where ${computer} keeps network drives`;
 }

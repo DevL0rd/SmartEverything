@@ -17,6 +17,9 @@ const SETTINGS: DriveSettings = {
   indexingPaused: false,
   contentIndexing: true,
   ocrLanguages: ['eng'],
+  fileIoThreads: 8,
+  cpuWorkers: 4,
+  listingCacheSeconds: 300,
 };
 
 const seen = vi.hoisted((): Seen => ({ updates: [], saved: null }));

@@ -48,7 +48,6 @@ describe('contributor badges', () => {
       takenAt: 0,
       offsetMin: 0,
       durationMs: null,
-      thumbhash: null,
       flags: 0,
       local: false,
     });

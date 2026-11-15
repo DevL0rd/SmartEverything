@@ -14,7 +14,8 @@ import { GOOGLE_SERVICE_SECTIONS } from './google-sections';
 import { problemText } from './google-status';
 import { GoogleStatusCard } from './google-status-card';
 import { GoogleSyncLog } from './google-sync-log';
-import type { GoogleLinkState, UseGoogleLink } from './link-slot';
+import { useGoogleLinkFlow } from './link-flow-hook';
+import type { GoogleLinkState } from './link-slot';
 import {
   useGoogleAccountOf,
   useGoogleCollections,
@@ -183,18 +184,12 @@ function Missing(): ReactNode {
   );
 }
 
-export function GoogleScreen({ useLink }: { readonly useLink: UseGoogleLink }): ReactNode {
+export function GoogleScreen(): ReactNode {
   const subject = useGoogleSubject();
-  return subject === null ? <Missing /> : <LinkedSubject subject={subject} useLink={useLink} />;
+  return subject === null ? <Missing /> : <LinkedSubject subject={subject} />;
 }
 
-function LinkedSubject({
-  subject,
-  useLink,
-}: {
-  readonly subject: GoogleSubject;
-  readonly useLink: UseGoogleLink;
-}): ReactNode {
-  const link = useLink(subject.person.id);
+function LinkedSubject({ subject }: { readonly subject: GoogleSubject }): ReactNode {
+  const link = useGoogleLinkFlow(subject.person.id);
   return <GoogleBody subject={subject} link={link} />;
 }

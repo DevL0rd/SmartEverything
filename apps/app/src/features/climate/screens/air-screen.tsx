@@ -101,7 +101,7 @@ export function AirScreen(): ReactNode {
   });
   if (metrics.length === 0) {
     return (
-      <PageShell title={TITLE} width="reading">
+      <PageShell title={TITLE}>
         <EmptyState
           icon="activity"
           title="No air readings yet"
@@ -114,15 +114,9 @@ export function AirScreen(): ReactNode {
   return (
     <PageShell
       title={TITLE}
-      width="full"
       toolbar={<Segmented label="Period" options={AIR_RANGES} value={range} onChange={setRange} />}
     >
-      <Grid
-        minItemWidth={MIN_CHART_WIDTH}
-        maxColumns={metrics.length}
-        cellClassName="max-w-detail"
-        stretchLastRow={false}
-      >
+      <Grid minItemWidth={MIN_CHART_WIDTH} maxColumns={metrics.length} stretchLastRow={false}>
         {metrics.map((entry) => (
           <MetricCard
             key={entry.metric}

@@ -1,7 +1,7 @@
 import { createElement, isValidElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DrivePlacement, DriveRoot, DriveStats } from '@smarteverything/domain';
+import type { DrivePlacement, DriveStats } from '@smarteverything/domain';
 import { useHeaderStatus } from '../../../components/header-status';
 import { bytes, count } from '../../../format/number';
 import type { StandardShellProps } from '../../../components/page-shell/page-shell';
@@ -41,16 +41,11 @@ vi.mock('../../../settings/env', () => ({
 }));
 vi.mock('../../../store/selectors', () => ({
   useIsOwner: (): boolean => true,
-  useDevices: (): readonly { readonly id: string; readonly label: string }[] => [
-    { id: LAPTOP, label: 'Laptop' },
-    { id: DESKTOP, label: 'Desktop' },
-  ],
+  useDeviceNames: (): ReadonlyMap<string, string> => NAMES,
 }));
 vi.mock('../data', () => ({
   useMyDrive: (): null => null,
-  useSharedDrive: (): null => null,
   useViewerId: (): string => VIEWER,
-  useDriveAlbums: (): readonly unknown[] => [],
   useDriveGrantRows: (): readonly unknown[] => [],
   useUnreadDriveNotifications: (): number => seen.unread,
   useDrivePlacementRows: (): readonly DrivePlacement[] => seen.placements,
@@ -75,7 +70,7 @@ vi.mock('../../../components/interactive', () => ({
   Interactive: (props: { readonly label: string; readonly children: ReactNode }): ReactNode =>
     createElement('a', { 'aria-label': props.label }, props.children),
 }));
-vi.mock('../../../components/library-frame', () => ({
+vi.mock('../../../components/summary-well', () => ({
   SummaryWell: ({ title }: { readonly title: string }): ReactNode =>
     createElement('aside', {}, title),
 }));
@@ -149,23 +144,6 @@ function summary(
 ): ReturnType<typeof driveSyncSummaryOf> {
   return driveSyncSummaryOf({ placements, names: NAMES, conflicts });
 }
-
-const ROOT: DriveRoot = {
-  id: '00000000-0000-4000-8000-0000000000a1',
-  scope: 'person',
-  ownerProfileId: VIEWER,
-  indexId: 'index-1',
-  state: 'ready',
-  stateReason: null,
-  items: 12480,
-  folders: 40,
-  bytes: 2048,
-  scannedAt: null,
-  health: { hashedShare: 1, verifiedShare: 1, corrupt: 0, lastScrubAt: null, lastBackupAt: null },
-  versions: true,
-  skipPatterns: [],
-  includeHidden: false,
-};
 
 const STATS: DriveStats = {
   items: 10,
@@ -261,56 +239,40 @@ describe('drive sync summary', () => {
 });
 
 describe('drive rail', () => {
-  it('shows only the lines and badges live rows can back', () => {
+  it('shows only the badges live rows can back', () => {
     const rail = driveRailOf({
-      myDrive: null,
-      sharedDrive: null,
-      smartFolders: 0,
       sharedWithMe: 0,
       unread: 0,
       computerProblems: 0,
       trash: { count: 0, more: false },
-      sync: null,
     });
-    expect(
-      Object.values(rail).every((entry) => entry.count === null && entry.detail === null),
-    ).toBe(true);
+    expect(Object.values(rail).every((value) => value === null)).toBe(true);
   });
 
-  it('badges shared with me, unread notifications, computer problems and trash, and counts each drive', () => {
+  it('badges shared with me, unread notifications, computer problems and trash', () => {
     const rail = driveRailOf({
-      myDrive: ROOT,
-      sharedDrive: { ...ROOT, scope: 'home', ownerProfileId: null, items: 1 },
-      smartFolders: 3,
       sharedWithMe: 4,
       unread: 3,
       computerProblems: 2,
       trash: { count: 50, more: true },
-      sync: 'Synced on Laptop · up to date',
     });
-    expect(rail.index?.detail).toBe(`${count(12480)} files`);
-    expect(rail['shared-drive']?.detail).toBe('1 file');
-    expect(rail.shared?.count).toBe(4);
-    expect(rail.notifications?.count).toBe(3);
-    expect(rail.starred?.detail).toBe('3 smart folders');
-    expect(rail.computers).toEqual({ count: 2, detail: 'Synced on Laptop · up to date' });
-    expect(rail.trash?.count).toBe(`${count(50)}+`);
+    expect(rail).toEqual({ shared: 4, notifications: 3, computers: 2, trash: `${count(50)}+` });
   });
 
-  it('groups the rail as the plan lays it out with a usage bar under Storage', () => {
-    const groups = driveSectionGroupsOf({}, spaceMeterOf({ used: 10, quota: 100, disk: 1000 }));
+  it('groups the rail as the plan lays it out with each badge as the trailing count', () => {
+    const groups = driveSectionGroupsOf({ trash: 3 });
     expect(groups.map((group) => group.title)).toEqual([null, 'Activity', 'Computers', 'Space']);
     expect(groups[0]?.entries.map((entry) => entry.label)).toEqual([
       'My Drive',
       'Shared Drive',
-      'Shared with me',
+      'Shared',
       'Priority',
       'Recent',
       'Starred',
     ]);
     expect(groups[1]?.entries.map((entry) => entry.label)).toEqual(['Notifications', 'Activity']);
-    const storage = groups[3]?.entries.find((entry) => entry.id === 'storage');
-    expect(isValidElement(storage?.detail)).toBe(true);
+    const trash = groups[3]?.entries.find((entry) => entry.id === 'trash');
+    expect(trash?.count).toBe('3');
   });
 
   it('measures your drive against your quota, else against the data disk', () => {
@@ -369,7 +331,7 @@ describe('drive frame', () => {
     render({ primary: { label: 'New', icon: 'folder', onPress: vi.fn() } });
     expect(seen.frame?.settings?.label).toBe('Drive settings');
     expect(seen.frame?.settings?.href).toMatchObject({
-      params: { page: ['drive'], focus: 'drive.sync-mount' },
+      params: { page: ['drive', 'mount'], focus: 'drive.sync-mount' },
     });
     expect(seen.frame?.primaryAction?.label).toBe('New');
     expect(seen.frame?.title).toBe('Drive');
@@ -391,7 +353,8 @@ describe('drive frame', () => {
       'Computers',
       'Space',
     ]);
-    expect(seen.frame?.actions?.map((action) => action.label)).toEqual(['Refresh']);
+    expect(seen.frame?.actions).toEqual([]);
+    expect(seen.frame?.onRefresh).toBeTypeOf('function');
   });
 
   it('badges Notifications while the viewer has unread ones', () => {
@@ -421,20 +384,14 @@ describe('drive frame', () => {
     expect(seen.frame?.sections?.iconRail).toBe(true);
   });
 
-  it('keeps the phone header free of the pill and refresh, with the most used sections as tabs', () => {
+  it('keeps the phone header free of the pill and refresh, with the sections in the pull-up', () => {
     seen.header = 'large';
     render();
     const frame = seen.frame;
     expect(seen.status).toBeNull();
     expect(frame?.actions).toEqual([]);
     expect(frame?.onRefresh).toBeTypeOf('function');
-    expect(frame?.sections?.phoneTabs).toEqual([
-      'index',
-      'shared-drive',
-      'shared',
-      'recent',
-      'starred',
-    ]);
+    expect(frame?.sections?.phoneTabs).toBeUndefined();
   });
 
   it('shows the pill only while a folder is placed and links it to Computers', () => {

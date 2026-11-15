@@ -21,6 +21,7 @@ export function DriveThumb({
           source={{ uri: url }}
           recyclingKey={`${item.id}:${String(item.rev)}`}
           contentFit="cover"
+          cachePolicy="memory-disk"
           accessibilityLabel={item.name}
           style={StyleSheet.absoluteFill}
         />

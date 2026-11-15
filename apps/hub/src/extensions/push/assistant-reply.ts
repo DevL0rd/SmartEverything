@@ -52,7 +52,7 @@ export function replyNotification(
       categoryId: 'assistant_reply',
       ...(extras?.link === undefined ? {} : { link: extras.link }),
     },
-    dataOnly: extras === undefined,
+    dataOnly: extras === undefined || Object.keys(extras).length === 0,
     ...(extras?.tag === undefined ? {} : { tag: extras.tag }),
     ...(extras?.sound === undefined ? {} : { sound: extras.sound }),
   };

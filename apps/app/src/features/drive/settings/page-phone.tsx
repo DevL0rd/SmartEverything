@@ -124,7 +124,7 @@ export function PhoneSection({
   readonly link?: DriveProviderLink;
 }): ReactNode {
   return (
-    <DriveSettingsSection section="phone">
+    <DriveSettingsSection>
       <PhoneBody link={link} />
     </DriveSettingsSection>
   );

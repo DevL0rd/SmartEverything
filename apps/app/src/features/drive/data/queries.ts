@@ -86,19 +86,47 @@ export function useDriveItem(
   });
 }
 
+interface ItemQuery {
+  readonly queryKey: ReturnType<typeof driveKey>;
+  readonly queryFn: () => Promise<DriveItem>;
+  readonly retry: false;
+}
+
+function itemQueries(itemIds: readonly string[], rootId: string | null): ItemQuery[] {
+  return itemIds.map((itemId) => ({
+    queryKey: driveKey('item', inRoot(rootId), itemId),
+    queryFn: (): Promise<DriveItem> => readDriveItem(itemId),
+    retry: false,
+  }));
+}
+
 export function useDriveItems(
   itemIds: readonly string[],
   rootId: string | null,
 ): readonly (DriveItem | undefined)[] {
   const paused = useScreenPaused();
   return useQueries({
-    queries: itemIds.map((itemId) => ({
-      queryKey: driveKey('item', inRoot(rootId), itemId),
-      queryFn: (): Promise<DriveItem> => readDriveItem(itemId),
-      retry: false,
-    })),
+    queries: itemQueries(itemIds, rootId),
     subscribed: !paused,
     combine: (results) => results.map((result) => result.data),
+  });
+}
+
+export interface DriveItemRead {
+  readonly item: DriveItem | undefined;
+  readonly pending: boolean;
+}
+
+export function useDriveItemReads(
+  itemIds: readonly string[],
+  rootId: string | null,
+): readonly DriveItemRead[] {
+  const paused = useScreenPaused();
+  return useQueries({
+    queries: itemQueries(itemIds, rootId),
+    subscribed: !paused,
+    combine: (results) =>
+      results.map((result) => ({ item: result.data, pending: result.isPending })),
   });
 }
 

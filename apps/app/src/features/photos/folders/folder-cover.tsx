@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { Icon } from '../../../components/icon';
 import { cn } from '../../../design/cn';
 import { useScreenQuery } from '../../../queries/use-screen-query';
-import { resolveLocalMedia } from '../local/source';
+import { localPhotoThumbnail } from '../library/local-thumbnail';
 import { Cover } from '../places/cover';
 import type { FolderCover as FolderCoverValue } from './model';
 
@@ -13,7 +13,7 @@ function useLocalCover(localId: string | null): string | null {
   const query = useScreenQuery({
     queryKey: ['window', 'photos-folder-cover', localId],
     queryFn:
-      localId === null ? skipToken : (): Promise<string | null> => resolveLocalMedia(localId),
+      localId === null ? skipToken : (): Promise<string | null> => localPhotoThumbnail(localId),
     retry: false,
   });
   return query.data ?? null;

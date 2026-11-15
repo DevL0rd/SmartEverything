@@ -1,5 +1,6 @@
 import {
   DEFAULT_DESKTOP_DRIVE_CACHE,
+  DEFAULT_DESKTOP_DRIVE_TUNING,
   DESKTOP_DRIVE_CHANGED,
   type DesktopDriveCommand,
   type DesktopDriveState,
@@ -46,6 +47,7 @@ const STATE: DesktopDriveState = {
   sync: null,
   fuse: { available: true },
   cache: DEFAULT_DESKTOP_DRIVE_CACHE,
+  tuning: { saved: DEFAULT_DESKTOP_DRIVE_TUNING, applied: [], limits: null },
 };
 
 function wired(): {

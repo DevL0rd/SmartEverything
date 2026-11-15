@@ -37,7 +37,7 @@ function mutation<Name extends Mutation>(services: MountServices, target: Target
 }
 
 function reads(services: MountServices): Executors {
-  const { posix, store } = services;
+  const { posix, store, listings } = services;
   return {
     LOOKUP: operation('LOOKUP', (call) =>
       posix.lookup(call.session.scopeOf(store, call.meta.parent), call.meta),
@@ -45,9 +45,10 @@ function reads(services: MountServices): Executors {
     GETATTR: operation('GETATTR', async (call) => ({
       attr: await posix.getattr(call.session.scopeOf(store, call.meta.ino), call.meta.ino),
     })),
-    READDIR: operation('READDIR', (call) =>
-      posix.readdir(call.session.scopeOf(store, call.meta.ino), call.meta),
-    ),
+    READDIR: operation('READDIR', (call) => {
+      const scope = call.session.scopeOf(store, call.meta.ino);
+      return listings.page(scope, call.meta, () => posix.readdir(scope, call.meta));
+    }),
     STATFS: operation('STATFS', (call) =>
       posix.statfs(call.session.scopeOf(store, call.meta.ino), call.meta.ino),
     ),

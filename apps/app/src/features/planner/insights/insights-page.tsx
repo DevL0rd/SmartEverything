@@ -3,18 +3,28 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
+import { Skeleton } from '../../../components/skeleton';
 import { cn } from '../../../design/cn';
 import { useAreaWidth } from '../../../design/size-class';
 import { usePlannerCollections, usePlannerStats } from '../data';
 import { usePlannerShownPerson } from '../frame/person';
 import { PlannerFrame } from '../frame/planner-frame';
 import { QueryBody } from '../frame/query-body';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { AlarmSummary } from './alarm-summary';
 import { ChangeCard } from './change-card';
 import { HabitSummary } from './habit-summary';
-import { CalendarCard, DoneHeatCard, HoursCard, KpiStrip, LoadCard } from './insights-cards';
-import { calendarSlicesOf, hasInsights, rangeLabelOf } from './insights-model';
+import {
+  CalendarCard,
+  DoneHeatCard,
+  HoursCard,
+  KpiSkeleton,
+  KpiStrip,
+  LoadCard,
+} from './insights-cards';
+import { calendarSlicesOf, hasInsights, rangeLabelOf, rangeSpanOf } from './insights-model';
+import { dayKeyOf } from '../../../format/time';
+import { useMinuteOf } from '../../../store/clock';
 
 const RANGE_OPTIONS: readonly SegmentedOption<PlannerStatsRange>[] = [
   { value: 'week', label: 'Week' },
@@ -91,6 +101,25 @@ function Insights({
   );
 }
 
+function Loading({ compact }: { readonly compact: boolean }): ReactNode {
+  return (
+    <View className="gap-4">
+      <KpiSkeleton />
+      <Skeleton shape="tile" />
+      {[0, 1].map((row) => (
+        <Pair key={row} compact={compact}>
+          <Cell compact={compact}>
+            <Skeleton shape="tile" />
+          </Cell>
+          <Cell compact={compact}>
+            <Skeleton shape="tile" />
+          </Cell>
+        </Pair>
+      ))}
+    </View>
+  );
+}
+
 function RangeBar({
   range,
   onRange,
@@ -116,17 +145,23 @@ function RangeBar({
 
 export function InsightsPage(): ReactNode {
   const [range, setRange] = useState<PlannerStatsRange>('week');
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const query = usePlannerStats(usePlannerShownPerson(), range);
-  const subtitle = query.data === undefined ? undefined : rangeLabelOf(query.data);
+  const today = useMinuteOf(dayKeyOf);
+  const subtitle = rangeLabelOf(rangeSpanOf(range, today));
   return (
     <PlannerFrame
       section="insights"
-      width="dashboard"
       toolbar={<RangeBar range={range} onRange={setRange} compact={compact} />}
-      {...(subtitle === undefined ? {} : { subtitle })}
+      subtitle={subtitle}
     >
-      <QueryBody query={query}>{(stats) => <Insights stats={stats} compact={compact} />}</QueryBody>
+      {query.data === undefined && !query.isError ? (
+        <Loading compact={compact} />
+      ) : (
+        <QueryBody query={query}>
+          {(stats) => <Insights stats={stats} compact={compact} />}
+        </QueryBody>
+      )}
     </PlannerFrame>
   );
 }

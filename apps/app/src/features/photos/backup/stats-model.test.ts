@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaJob, MediaProcessing } from '@smarteverything/domain';
-import type { UploadEntry } from '../../drive';
 import { bytes } from '../../../format/number';
 import { INITIAL_BACKUP_STATUS } from './model/status';
 import { growthShapeOf } from './growth-model';
@@ -10,16 +9,15 @@ import {
   freeUpConfirmOf,
   freeUpLabelOf,
   fullYearOf,
+  failedBadgeText,
   jobsLeftText,
   monthlyGrowthOf,
   processingOf,
+  queueText,
   storageOf,
   unreadableText,
 } from './stats-model';
 import { thisPhoneCopy } from './this-phone-model';
-import { ALREADY_THERE_PHONE, sheetEntryText, sheetTargetText } from './upload-sheet-model';
-
-const ITEM_ID = 'a1b2c3d4-0000-4000-8000-000000000009';
 
 interface Day {
   readonly day: string;
@@ -39,6 +37,7 @@ describe('uploaded per day', () => {
     const added = addedInMonth(growth, '2026-11');
     expect(added?.items).toBe(10);
     expect(added?.bars.map((bar) => bar.value)).toEqual([4, 6]);
+    expect(added?.bars.every((bar) => bar.label === undefined)).toBe(true);
     expect(addedInMonth(growth, '2026-12')).toBeNull();
     expect(addedInMonth(null, '2026-11')).toBeNull();
   });
@@ -89,12 +88,16 @@ describe('processing', () => {
   it('counts jobs left and lists each unreadable file once', () => {
     const view = processingOf(processing, new Map([['preview', { done: 96, total: 100 }]]));
     expect(view.left).toBe(1204);
-    expect(view.failedItems).toHaveLength(1);
+    expect(view.queue).toEqual({ running: 4, queued: 1200 });
+    expect(view.failedItems).toEqual([{ itemId: ITEM, error: 'unsupported' }]);
     expect(view.rows).toEqual([
       { key: 'preview', label: 'Previews', progress: 0.96, note: '4 left', done: false },
     ]);
-    expect(jobsLeftText(1204)).toBe('1,204 jobs left · visible items first');
+    expect(jobsLeftText(1204)).toBe('1,204 jobs left');
     expect(jobsLeftText(0)).toBe('Nothing waiting');
+    expect(queueText({ running: 4, queued: 1200 })).toBe('4 running now · 1,200 queued');
+    expect(failedBadgeText(3)).toBe('3 failed');
+    expect(processingOf({ queued: 0, running: 0, failed: [] }, new Map()).queue).toBeNull();
     expect(unreadableText(3)).toBe(
       '3 files could not be read. The originals stay and can be downloaded.',
     );
@@ -148,7 +151,7 @@ describe('this phone', () => {
     );
     expect(copy.title).toBe('This phone · Pixel 9');
     expect(copy.left).toBe(`34 left · ${bytes(412 * 1024 ** 2)}`);
-    expect(copy.detail).toBe('12,406 of 12,440 on the hub');
+    expect(copy.detail).toEqual(['12,406 of 12,440 on the hub']);
     expect(copy.tone).toBe('primary');
     expect(thisPhoneCopy({ ...INITIAL_BACKUP_STATUS, phase: 'idle' }, null, 0)).toMatchObject({
       title: 'This phone',
@@ -156,26 +159,24 @@ describe('this phone', () => {
       tone: 'positive',
     });
   });
-});
 
-describe('the upload sheet', () => {
-  it('says where uploads go and marks files the hub already has', () => {
-    expect(sheetTargetText(null, 'Alex')).toBe('Goes to Uploads/Alex in the library folder');
-    expect(sheetTargetText('Uploads/Sam', 'Alex')).toBe(
-      'Goes to Uploads/Sam in the library folder',
+  it('reports failed items once, as failed, not as left', () => {
+    const copy = thisPhoneCopy(
+      {
+        ...INITIAL_BACKUP_STATUS,
+        phase: 'idle',
+        total: 611,
+        done: 599,
+        failed: 12,
+        lastBackupAt: '2026-11-13T22:10:00.000Z',
+      },
+      null,
+      12,
+      'computer',
     );
-    const entry: UploadEntry = {
-      id: '1',
-      name: 'Garden.jpg',
-      size: 10,
-      sent: 10,
-      state: 'settled',
-      outcome: { kind: 'already-have', itemId: ITEM_ID },
-    };
-    expect(sheetEntryText(entry)).toEqual({
-      kind: 'note',
-      text: ALREADY_THERE_PHONE,
-      critical: false,
-    });
+    expect(copy.left).toBe('12 could not back up');
+    expect(copy.detail).toHaveLength(2);
+    expect(copy.detail[0]).toBe('599 of 611 on the hub');
+    expect(copy.tone).toBe('critical');
   });
 });

@@ -201,7 +201,6 @@ describe('the Robot maps screen', () => {
     expect(of(drawn, 'SettingsFrame')[0]).toMatchObject({
       title: 'Robot maps',
       page: 'home/map',
-      contentWidth: 'full',
     });
     expect(of(drawn, 'Text')[0]?.children).toBe(
       'Set this once. Each time the robot finishes a map, the floor it feeds updates on its own.',

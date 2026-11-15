@@ -120,7 +120,6 @@ function mediaRowFor(
     item_id: itemId,
     time_source: moment.source,
     tz_offset_min: moment.offsetMin,
-    thumbhash: null,
     preview_state: 'none',
     preview_reason: null,
     poster_state: 'none',

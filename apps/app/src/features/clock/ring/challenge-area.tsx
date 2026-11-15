@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Button } from '../../../components/button';
 import { Arc } from '../../../components/charts/arc';
 import { CodeScanner } from '../../../components/code-scanner';
 import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
+import { ToastModal } from '../../../components/toast-modal';
 import { qrRefusalOf, stepsProgressOf, type ChallengePlan } from './challenge-model';
 import { MathsPad } from './maths-pad';
 import { useStepCount } from './ring-device';
@@ -41,6 +42,38 @@ function Panel({
   );
 }
 
+function QrScanner({
+  open,
+  code,
+  onClose,
+  onSolved,
+}: {
+  readonly open: boolean;
+  readonly code: string;
+  readonly onClose: () => void;
+  readonly onSolved: () => void;
+}): ReactNode {
+  return (
+    <ToastModal visible={open} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <CodeScanner
+        types={['qr']}
+        shape="square"
+        hint="Point at the code for this alarm"
+        purpose="The camera reads the code that stops this alarm."
+        read={(data) => {
+          const refused = qrRefusalOf(data, code);
+          if (refused === null) {
+            onClose();
+            onSolved();
+          }
+          return refused;
+        }}
+        onClose={onClose}
+      />
+    </ToastModal>
+  );
+}
+
 function QrChallenge({
   code,
   enabled,
@@ -68,23 +101,7 @@ function QrChallenge({
           setScanning(true);
         }}
       />
-      <Modal visible={scanning} animationType="fade" onRequestClose={close} statusBarTranslucent>
-        <CodeScanner
-          types={['qr']}
-          shape="square"
-          hint="Point at the code for this alarm"
-          purpose="The camera reads the code that stops this alarm."
-          read={(data) => {
-            const refused = qrRefusalOf(data, code);
-            if (refused === null) {
-              close();
-              onSolved();
-            }
-            return refused;
-          }}
-          onClose={close}
-        />
-      </Modal>
+      <QrScanner open={scanning} code={code} onClose={close} onSolved={onSolved} />
     </Panel>
   );
 }

@@ -7,7 +7,6 @@ import {
   copyLabelOf,
   driveLabelsOf,
   groupLineOf,
-  groupSourcesOf,
   hashedShareOf,
   itemLineOf,
   keepAllConfirmOf,
@@ -99,8 +98,8 @@ describe('duplicate copy text', () => {
   it('names groups and copies in the confirm and keeps all copies as the safe answer', () => {
     const request = keepAllConfirmOf(STATS);
     expect(request.title).toBe('Keep best in all 37 groups?');
-    expect(request.confirmLabel).toBe('Keep best in 37 groups');
-    expect(request.cancelLabel).toBe('Keep all copies');
+    expect(request.confirmLabel).toBe('Keep best');
+    expect(request.cancelLabel).toBe('Cancel');
     expect(request.body).toContain('112 copies move to Recently deleted.');
     expect(request.body).toContain(bytes(STATS.bytesBack));
     expect(request.body).toContain('a year after today');
@@ -258,15 +257,6 @@ describe('duplicate groups', () => {
     expect(groupLineOf(groupOf([imported, keeper, again], keeper))).toBe(
       `3 copies · saves ${bytes(36_400_000)}`,
     );
-  });
-
-  it('names each source once, keeper first, joined in plain words', () => {
-    const labels = LABELS;
-    expect(groupSourcesOf(groupOf([imported, keeper, again], keeper), labels)).toBe(
-      'My Drive and Shared Drive',
-    );
-    expect(groupSourcesOf(groupOf([imported, again], imported), labels)).toBe('Shared Drive');
-    expect(groupSourcesOf(groupOf([keeper, imported], keeper), NO_LABELS)).toBeNull();
   });
 
   it('reads each copy aloud with its role, name, size and source', () => {

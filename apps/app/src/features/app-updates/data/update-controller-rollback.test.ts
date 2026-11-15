@@ -23,7 +23,7 @@ const BUILT_IN_QUESTION: unknown = expect.objectContaining({
 describe('the app update controller rolls back', () => {
   it('shows the withdrawn update without asking or restarting', async () => {
     const world = setup({ outcome: WITHDRAWN, start: RUNNING_OFFER });
-    await world.controller.check('live');
+    await world.controller.check('paired');
     await settle();
     expect(world.adapter.prepareRollback).toHaveBeenCalledTimes(1);
     expect(world.controller.state()).toEqual({ kind: 'ready', target: { kind: 'built_in' } });
@@ -55,7 +55,7 @@ describe('the app update controller rolls back', () => {
   it('waits out a call and then shows the banner without restarting', async () => {
     const world = setup({ outcome: WITHDRAWN, start: RUNNING_OFFER });
     world.setBusy(true);
-    await world.controller.check('live');
+    await world.controller.check('paired');
     expect(world.controller.state().kind).toBe('waiting_for_call');
     world.setBusy(false);
     await settle();
@@ -67,7 +67,7 @@ describe('the app update controller rolls back', () => {
   it('asks from the tray item for the built-in version', async () => {
     const world = setup({ outcome: WITHDRAWN, start: RUNNING_OFFER });
     world.controller.listenForConfirmRequests();
-    await world.controller.check('live');
+    await world.controller.check('paired');
     world.clickTray();
     await settle();
     expect(world.ask).toHaveBeenCalledExactlyOnceWith(BUILT_IN_QUESTION);
@@ -75,7 +75,7 @@ describe('the app update controller rolls back', () => {
 
   it('offers only the rollback when an in-flight check withdraws the update before download', async () => {
     const world = setup();
-    await world.controller.check('live');
+    await world.controller.check('paired');
     let finish = (): void => undefined;
     vi.mocked(world.adapter.check).mockImplementation(
       () =>
@@ -85,7 +85,7 @@ describe('the app update controller rolls back', () => {
           };
         }),
     );
-    const checking = world.controller.check('live');
+    const checking = world.controller.check('paired');
     const downloading = world.controller.download(OFFER.id);
     await settle();
     finish();
@@ -109,7 +109,7 @@ describe('the app update controller rolls back', () => {
       });
     });
     await world.controller.start();
-    const checking = world.controller.check('live');
+    const checking = world.controller.check('paired');
     await preparing;
     vi.mocked(world.adapter.check).mockResolvedValue(FOUND);
     world.controller.receiveNotice(noticeFor(OFFER.id));
@@ -130,7 +130,7 @@ describe('the app update controller rolls back', () => {
 
   it('reports a rolled back update and explains it in one plain sentence', async () => {
     const world = setup({ prefs: { pendingId: OFFER.id, launchedId: OFFER.id }, start: CRASHED });
-    await world.controller.check('live');
+    await world.controller.check('paired');
     expect(world.controller.state()).toEqual({
       kind: 'rolled_back',
       failedId: OFFER.id,

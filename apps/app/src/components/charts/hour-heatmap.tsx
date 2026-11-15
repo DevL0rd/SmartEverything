@@ -11,6 +11,7 @@ export interface HourHeatmapProps {
   readonly rows: readonly HeatRow[];
   readonly unit: string;
   readonly label: string;
+  readonly fill?: boolean;
 }
 
 const GAP = 2;
@@ -18,6 +19,7 @@ const LABEL_CHAR = 8;
 const LABEL_PAD = 6;
 const HOURS = 24;
 const MAX_CELL = 18;
+const MAX_FILL_HEIGHT = 20;
 const LEVELS = [0, 1, 2, 3, 4] as const;
 const LEVEL_OPACITY: Readonly<Record<number, number>> = { 0: 0.5, 1: 0.3, 2: 0.5, 3: 0.75, 4: 1 };
 const HOUR_MARKS = [0, 6, 12, 18] as const;
@@ -100,11 +102,25 @@ function Axes({
   );
 }
 
-export function HourHeatmap({ matrix, rows, unit, label }: HourHeatmapProps): ReactNode {
+function boxOf(width: number, inset: number, fill: boolean): CellBox {
+  const fit = Math.floor((width - inset) / HOURS) - GAP;
+  if (fill) {
+    const cell = Math.max(4, fit);
+    return { width: cell, height: Math.min(cell, MAX_FILL_HEIGHT), inset };
+  }
+  const cell = Math.max(4, Math.min(MAX_CELL, fit));
+  return { width: cell, height: Math.min(cell + 2, 16), inset };
+}
+
+export function HourHeatmap({
+  matrix,
+  rows,
+  unit,
+  label,
+  fill = false,
+}: HourHeatmapProps): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
-  const inset = labelWidthOf(rows);
-  const cellWidth = Math.max(4, Math.min(MAX_CELL, Math.floor((width - inset) / HOURS) - GAP));
-  const box = { width: cellWidth, height: Math.min(cellWidth + 2, 16), inset };
+  const box = boxOf(width, labelWidthOf(rows), fill);
   return (
     <View
       accessible

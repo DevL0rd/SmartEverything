@@ -11,7 +11,6 @@ import {
   folderFixture,
 } from '../data/fixtures';
 import {
-  bytesShareOf,
   changeBodyOf,
   closeQuestionOf,
   createBodyOf,
@@ -71,8 +70,20 @@ describe('the file request form', () => {
       'month',
     ]);
     const editing = fileRequestRow({ expiresAt: new Date(NOW + 3 * DAY_MS).toISOString() });
-    expect(requestEndOptionsOf(editing, NOW)[0]?.label).toMatch(/^Keep: .* · Ends in 3 days$/);
-    expect(requestEndOptionsOf(fileRequestRow(), NOW)[0]?.label).toBe('Keep: no end');
+    expect(requestEndOptionsOf(editing, NOW).map((option) => option.value)).toEqual([
+      'keep',
+      'never',
+      'day',
+      'week',
+      'month',
+    ]);
+    expect(requestEndOptionsOf(editing, NOW)[0]?.label).toMatch(/^Ends in 3 days \(.+\)$/);
+    expect(requestEndOptionsOf(fileRequestRow(), NOW).map((option) => option.label)).toEqual([
+      'No end',
+      '1 day',
+      '7 days',
+      '30 days',
+    ]);
   });
 
   it('allows a request only on a folder the person may make links for', () => {
@@ -104,13 +115,10 @@ describe('file request cards', () => {
     expect(stateLineOf(fileRequestRow(), NOW)).toBe('No end');
   });
 
-  it('counts what arrived and sizes the bar against the largest request', () => {
+  it('counts what arrived', () => {
     const big = fileRequestRow({ uploads: 14, bytes: 200 * 1024 ** 2 });
-    const small = fileRequestRow({ id: OTHER_ROW_ID, uploads: 3, bytes: 50 * 1024 ** 2 });
     expect(receivedLineOf(fileRequestRow())).toBe('Nothing received yet');
     expect(receivedLineOf(big)).toBe(`14 files · ${bytes(200 * 1024 ** 2)}`);
-    expect(bytesShareOf(small, [big, small])).toBeCloseTo(0.25);
-    expect(bytesShareOf(fileRequestRow(), [fileRequestRow()])).toBe(0);
   });
 
   it('shows the viewer’s own requests, newest first, open ones apart from ended ones', () => {
@@ -128,7 +136,7 @@ describe('file request cards', () => {
 
   it('asks before closing and says the files stay', () => {
     expect(closeQuestionOf('Receipts')).toMatchObject({
-      title: 'Close Receipts?',
+      title: 'Close ‘Receipts’?',
       confirmLabel: 'Close request',
       tone: 'destructive',
     });

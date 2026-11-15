@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Logger } from '@smarteverything/logging';
-import type { LibraryRefresh } from '../../../components/library-frame';
 import { refreshDrive } from './refresh';
 
 const log = new Logger('app.drive');
+
+export interface LibraryRefresh {
+  readonly refreshing: boolean;
+  readonly refresh: () => void;
+}
 
 export function useLibraryRefresh(reconcileRootId: string | null): LibraryRefresh {
   const client = useQueryClient();

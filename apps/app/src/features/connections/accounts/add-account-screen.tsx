@@ -65,7 +65,6 @@ export function AddAccountScreen(): ReactNode {
   return (
     <SettingsFrame
       page="connections/add"
-      contentWidth="detail"
       search={{ value: query, onChange: setQuery, placeholder: 'Search accounts' }}
     >
       {shown.length === 0 ? (

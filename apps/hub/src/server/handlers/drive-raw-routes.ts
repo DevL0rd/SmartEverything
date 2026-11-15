@@ -4,6 +4,7 @@ import { serveZipEntry } from '../../drive/content/zip-entry-route';
 import { UPLOADS_PATH } from '../../drive/uploads-tus-wire';
 import { serveDriveDerived } from '../drive-derived';
 import { serveDriveFile, type DriveExchange } from '../drive-files';
+import { serveDriveVersion } from '../drive-version-file';
 import { fileRequestRoutes } from '../file-request-route';
 import type { RawRoute } from '../http-server';
 import { driveDownloadRawRoute } from './drive-download';
@@ -45,7 +46,7 @@ function exchangeOf(
   return { request, response, url: new URL(request.url ?? '/', 'http://drive') };
 }
 
-function contentRoutes(runtime: DriveRuntime): readonly RawRoute[] {
+function contentRoutes(deps: DriveDeps, runtime: DriveRuntime): readonly RawRoute[] {
   const { extras } = runtime;
   return [
     {
@@ -56,6 +57,16 @@ function contentRoutes(runtime: DriveRuntime): readonly RawRoute[] {
           itemId: params['itemId'] ?? '',
           index: params['index'] ?? '',
         }),
+    },
+    {
+      method: 'GET',
+      path: MEDIA_PATHS.driveVersion,
+      handle: (request, response, params) =>
+        serveDriveVersion(
+          { files: runtime.services.files, versions: deps.store.driveVersions },
+          exchangeOf(request, response),
+          { itemId: params['itemId'] ?? '', versionId: params['versionId'] ?? '' },
+        ),
     },
     {
       method: 'GET',
@@ -76,7 +87,7 @@ export function driveRawRoutes(
     ...uploadRoutes(runtime, sweeper),
     fileRoute(runtime),
     driveDownloadRawRoute(deps.links, runtime.extras.downloads),
-    ...contentRoutes(runtime),
+    ...contentRoutes(deps, runtime),
     {
       method: 'GET',
       path: MEDIA_PATHS.driveThumb,

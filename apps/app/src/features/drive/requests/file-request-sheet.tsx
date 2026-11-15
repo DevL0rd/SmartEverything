@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Share, View } from 'react-native';
+import { ScrollView, Share, View } from 'react-native';
 import type { DriveFileRequest, DriveFileRequestCreated, DriveItem } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import { AdaptivePanel, usePanelFrame } from '../../../components/adaptive-panel';
@@ -268,17 +268,8 @@ function Body({
   readonly onClose: () => void;
 }): ReactNode {
   const sheet = usePanelFrame().presentation === 'sheet';
-  const title = sheetTitleOf(opened.folder.name, opened.editing !== null);
-  return (
-    <View className={sheet ? 'gap-4 pb-2' : 'gap-4 p-4'}>
-      {sheet ? null : (
-        <View className="flex-row items-center gap-2">
-          <Text variant="title-3" numberOfLines={1} className="min-w-0 flex-1">
-            {title}
-          </Text>
-          <IconButton icon="close" label="Close" onPress={onClose} />
-        </View>
-      )}
+  const content = (
+    <>
       {opened.created === null ? (
         <Form opened={opened} disabled={disabled} onDraft={onDraft} />
       ) : (
@@ -289,7 +280,21 @@ function Body({
           {problem}
         </Text>
       )}
-      {sheet ? null : footer}
+    </>
+  );
+  if (sheet) return <View className="gap-4 pb-2">{content}</View>;
+  return (
+    <View className="min-h-0 flex-1">
+      <View className="flex-row items-center gap-2 px-4 pt-4 pb-2">
+        <Text variant="title-3" numberOfLines={1} className="min-w-0 flex-1">
+          {sheetTitleOf(opened.folder.name, opened.editing)}
+        </Text>
+        <IconButton icon="close" label="Close" onPress={onClose} />
+      </View>
+      <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-4 px-4 pb-4">
+        {content}
+      </ScrollView>
+      <View className="border-t border-outline-variant px-4 py-3">{footer}</View>
     </View>
   );
 }
@@ -327,9 +332,10 @@ function Host({
       anchorRef={opened.anchorRef ?? loose}
       open
       onClose={close}
-      label={sheetTitleOf(opened.folder.name, opened.editing !== null)}
+      label={sheetTitleOf(opened.folder.name, opened.editing)}
       pointerPlacement={opened.anchorRef === null ? 'center' : 'below'}
       sheetFooter={footer}
+      scroll={useIdiom() === 'touch'}
       fit
     >
       <Body

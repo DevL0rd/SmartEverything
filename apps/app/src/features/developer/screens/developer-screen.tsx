@@ -16,7 +16,7 @@ import { DEVELOPER_SECTIONS as SECTION, DEVELOPER_SETTINGS } from '../settings';
 
 type SectionName = (typeof SECTION)[keyof typeof SECTION];
 
-const PANEL = 'min-w-0 max-w-reading grow shrink basis-96 gap-section-gap';
+const PANEL = 'min-w-0 grow shrink basis-96 gap-section-gap';
 
 function rowsIn(settings: readonly SettingDefinition[], section: SectionName): ReactNode {
   return settings
@@ -108,7 +108,7 @@ function OwnerDeveloper({ env }: { readonly env: SettingEnv }): ReactNode {
   const settings = DEVELOPER_SETTINGS.filter((setting) => setting.visible?.(env) ?? true);
   useSettingsFocus(settings);
   return (
-    <SettingsFrame page="developer" contentWidth="full">
+    <SettingsFrame page="developer">
       <View className="flex-row flex-wrap items-start gap-section-gap">
         <DeveloperOverview settings={settings} />
         {env.developer ? <DeveloperTools settings={settings} env={env} /> : null}

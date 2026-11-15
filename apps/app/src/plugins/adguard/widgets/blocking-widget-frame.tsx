@@ -12,10 +12,9 @@ import { ADGUARD_PLUGIN, useAdGuardSnapshot } from '../adguard-data';
 
 export type BlockingReady = ServiceReady<AdGuardSnapshot>;
 
-const ADGUARD_WIDGET: ServiceWidget<AdGuardSnapshot> = {
+const ADGUARD_WIDGET: ServiceWidget = {
   pluginId: ADGUARD_PLUGIN,
   deviceKind: 'dns_filter',
-  useSnapshot: useAdGuardSnapshot,
   offTitle: 'The AdGuard Home plugin is off',
   setUpTitle: 'Set up AdGuard Home',
   setUpIcon: 'shield',
@@ -31,5 +30,6 @@ interface BlockingWidgetFrameProps {
 }
 
 export function BlockingWidgetFrame(props: BlockingWidgetFrameProps): ReactNode {
-  return <ServiceWidgetFrame service={ADGUARD_WIDGET} {...props} />;
+  const stream = useAdGuardSnapshot();
+  return <ServiceWidgetFrame service={ADGUARD_WIDGET} stream={stream} {...props} />;
 }

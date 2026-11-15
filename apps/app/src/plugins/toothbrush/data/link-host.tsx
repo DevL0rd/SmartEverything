@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Logger, background } from '@smarteverything/logging';
 import { isBrushLinked, startBrushes, syncBrushes } from '../../../../modules/health-connect';
 import { usePairedServer } from '../../../features/profiles';
-import { useDevices } from '../../../store/selectors';
+import { useDeviceIds } from '../../../store/selectors';
 import { connectPermitted } from './bluetooth-permission';
 import { isToothbrush } from './use-brush-device';
 
@@ -21,10 +21,7 @@ async function bringUp(url: string, token: string): Promise<void> {
 }
 
 function useBrushKey(): string {
-  return useDevices({ includeHidden: true })
-    .filter(isToothbrush)
-    .map((device) => device.id)
-    .join(',');
+  return useDeviceIds(isToothbrush, { includeHidden: true });
 }
 
 export function BrushLinkHost(): null {

@@ -52,7 +52,7 @@ vi.mock('../../../store/selectors', () => ({
   useSyncStatus: (): { readonly status: string } => ({ status: hub.live ? 'live' : 'offline' }),
 }));
 vi.mock('../versions/restore', () => ({
-  restoreVersion: (): Promise<boolean> => Promise.resolve(true),
+  useRestore: (): object => ({ busy: false, run: (): void => undefined }),
 }));
 vi.mock('../versions/versions-sheet', () => ({ VersionsSheet: (): null => null }));
 vi.mock('../versions/version-timeline', () => ({

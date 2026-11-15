@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ocrChoicesOf, ocrLanguagesAfter, ocrLineOf } from './ocr-languages';
+import { ocrChoicesOf, ocrLanguagesAfter, ocrLineOf, ocrValueOf } from './ocr-languages';
 
 describe('picture text languages', () => {
   it('marks the chosen languages and keeps a chosen code the list does not name', () => {
@@ -18,6 +18,12 @@ describe('picture text languages', () => {
     expect(ocrLanguagesAfter(['eng', 'deu'], 'deu', true)).toEqual(['eng', 'deu']);
     expect(ocrLanguagesAfter(['eng', 'deu'], 'eng', false)).toEqual(['deu']);
     expect(ocrLanguagesAfter(['eng'], 'eng', false)).toBeNull();
+  });
+
+  it('sums up the chosen languages for the row value', () => {
+    expect(ocrValueOf(['eng'])).toBe('English');
+    expect(ocrValueOf(['eng', 'deu'])).toBe('English and German');
+    expect(ocrValueOf(['eng', 'deu', 'fra', 'gle'])).toBe('English, German and 2 more');
   });
 
   it('names the languages in the caption', () => {

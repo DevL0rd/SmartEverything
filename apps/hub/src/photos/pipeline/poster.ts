@@ -78,7 +78,6 @@ export async function extractPoster(
 function mediaPatchOf(outcome: DerivedOutcome): Parameters<DriveMediaRepository['update']>[1] {
   return outcome.state === 'ready'
     ? {
-        thumbhash: outcome.thumbhash,
         preview_state: 'ready',
         preview_reason: null,
         poster_state: 'ready',
@@ -123,7 +122,7 @@ export class PosterHandler implements JobHandler {
       const key = { itemId: job.item_id, rev: job.rev };
       await writeDerived(this.env.layout, { ...key, size: 'preview' }, rendered.preview);
       await writeDerived(this.env.layout, { ...key, size: 'thumb' }, rendered.thumb);
-      if (this.record(job, { state: 'ready', thumbhash: rendered.thumbhash })) {
+      if (this.record(job, { state: 'ready' })) {
         await pruneDerived(this.env.layout, job.item_id, job.rev);
       }
     } finally {

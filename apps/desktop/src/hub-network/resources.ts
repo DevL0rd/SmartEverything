@@ -1,21 +1,27 @@
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app, dialog, shell, type WebContents } from 'electron';
 import {
   NATIVE_HUB_RESOURCE_DOWNLOAD,
   NATIVE_HUB_RESOURCE_ID,
   NATIVE_HUB_RESOURCE_OPEN,
+  NATIVE_HUB_RESOURCE_RESTORE,
   type NativeHubResource,
   type NativeHubResourceDownloadResult,
+  type NativeHubResourceRestored,
 } from '@smarteverything/domain';
+import { z } from 'zod';
 import { HubResourceBroker } from '@smarteverything/hub/client-network/resource-broker';
 import { HubResourceDownloads } from '@smarteverything/hub/client-network/resource-download';
 import { HubTransportError } from '@smarteverything/hub/client-network/policy';
 import type { DesktopRouteAuthority } from './authority.js';
 import { originOf } from '../origin.js';
+import { PhotoRestore } from '../photos/restore.js';
 
 export class DesktopHubResources {
   readonly broker: HubResourceBroker;
   private readonly downloads: HubResourceDownloads;
+  private readonly photos = new PhotoRestore(app.getPath('pictures'), app.getPath('videos'));
   constructor(authority: DesktopRouteAuthority, startUrl: string) {
     const origin = originOf(startUrl);
     if (origin === undefined) throw new HubTransportError('Media requires an exact app origin');
@@ -48,5 +54,19 @@ export class DesktopHubResources {
     if (error !== '')
       throw new HubTransportError('Native media player could not open the downloaded file');
     return 'completed';
+  }
+  async restore(owner: WebContents, value: unknown): Promise<NativeHubResourceRestored> {
+    const input = NATIVE_HUB_RESOURCE_RESTORE.parse(value);
+    const admission = this.broker.admit(owner.id, input.id);
+    const file = await this.downloads.write(admission);
+    try {
+      admission.signal.throwIfAborted();
+      return await this.photos.place(file, input);
+    } finally {
+      await rm(file, { force: true });
+    }
+  }
+  reveal(value: unknown): void {
+    shell.showItemInFolder(this.photos.revealable(z.string().min(1).parse(value)));
   }
 }

@@ -18,7 +18,7 @@ export function SuppliesScreen(): ReactNode {
   const sources = useClimateSources(null).filter(hasSupplies);
   if (sources.length === 0) {
     return (
-      <PageShell title={TITLE} width="reading">
+      <PageShell title={TITLE}>
         <EmptyState
           icon="wrench"
           title="Nothing to look after"
@@ -30,12 +30,7 @@ export function SuppliesScreen(): ReactNode {
   }
   return (
     <PageShell title={TITLE}>
-      <Grid
-        minItemWidth={MIN_SUPPLY_CARD_WIDTH}
-        maxColumns={sources.length}
-        cellClassName="max-w-reading"
-        stretchLastRow={false}
-      >
+      <Grid minItemWidth={MIN_SUPPLY_CARD_WIDTH} maxColumns={sources.length} stretchLastRow={false}>
         {sources.map(({ model }) => (
           <View key={model.device.id} className="gap-1">
             <Text variant="footnote" tone="variant" accessibilityRole="header" className="px-4">

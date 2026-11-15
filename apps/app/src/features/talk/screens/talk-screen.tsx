@@ -87,7 +87,7 @@ function ChannelLists(): ReactNode {
 
 function ListPage(): ReactNode {
   return (
-    <PageShell title={TITLE} settings={mainPageSettings('talk')} width="reading">
+    <PageShell title={TITLE} settings={mainPageSettings('talk')}>
       <DeviceStatus />
       <ChannelLists />
     </PageShell>

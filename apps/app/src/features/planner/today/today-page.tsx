@@ -8,8 +8,9 @@ import { useMoveProgress } from '../../fitness';
 import { usePlannerDay } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { PlannerFrame } from '../frame/planner-frame';
+import { usePlannerShownPerson } from '../frame/person';
 import { QueryBody } from '../frame/query-body';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { CatchUpDeck } from './catch-up-deck';
 import { DayRiver } from './day-river';
 import { DayStripCard } from './day-strip';
@@ -17,6 +18,7 @@ import { DoneRibbon } from './done-ribbon';
 import { InvitationsCard } from './invitations-card';
 import { NowLens } from './now-lens';
 import { TodaySideColumn } from './side-column';
+import { TodayActions } from './today-actions';
 import { TodayRingsLine, useTodayRings } from './today-rings';
 import { GoogleAttention, OpenDay, TodaySkeleton, isOpenDay } from './today-states';
 
@@ -36,24 +38,27 @@ function MainColumn({ day, savedAt }: DayProps): ReactNode {
     );
   }
   return (
-    <View className="min-w-0 flex-1 gap-4">
-      <InvitationsCard />
-      <CatchUpDeck day={day} />
-      <NowLens day={day} />
-      <DoneRibbon day={day} />
-      <DayRiver day={day} savedAt={savedAt} />
-      <GoogleAttention />
-    </View>
+    <TodayActions day={day}>
+      <View className="min-w-0 flex-1 gap-4">
+        <InvitationsCard />
+        <CatchUpDeck day={day} />
+        <NowLens day={day} />
+        <DoneRibbon day={day} />
+        <DayRiver day={day} savedAt={savedAt} />
+        <GoogleAttention />
+      </View>
+    </TodayActions>
   );
 }
 
 function CompactDay({ day, savedAt }: DayProps): ReactNode {
-  const rings = useTodayRings(day, useMoveProgress());
+  const move = useMoveProgress();
+  const rings = useTodayRings(day, move);
   return (
     <View className="gap-4">
       {isOpenDay(day) ? null : (
         <DayStripCard day={day} compact>
-          <TodayRingsLine rings={rings} />
+          <TodayRingsLine rings={rings} moveTracked={move !== null} />
         </DayStripCard>
       )}
       <MainColumn day={day} savedAt={savedAt} />
@@ -63,7 +68,7 @@ function CompactDay({ day, savedAt }: DayProps): ReactNode {
 
 function Day({ day, savedAt }: DayProps): ReactNode {
   const move = useMoveProgress();
-  const layout = frameLayoutOf(useAreaWidth());
+  const layout = shellLayoutOf(useAreaWidth());
   if (layout === 'compact') return <CompactDay day={day} savedAt={savedAt} />;
   const wide = layout === 'wide';
   return (
@@ -87,8 +92,10 @@ function TodayBody(): ReactNode {
 }
 
 export function TodayPage(): ReactNode {
+  const today = useMinuteOf(dayKeyOf);
+  const failed = usePlannerDay(usePlannerShownPerson(), today).isError;
   return (
-    <PlannerFrame section="index" width="dashboard">
+    <PlannerFrame section="index" summary={!failed}>
       <TodayBody />
     </PlannerFrame>
   );

@@ -4,12 +4,12 @@ import { href } from '../../../app-shell/hrefs';
 import { useKeyboard, type KeyPress } from '../../../app-shell/shortcuts';
 import { copyText } from '../../../components/copy-button';
 import { useMemo } from 'react';
-import { useMinute } from '../../../store/clock';
 import { useStoreSelector } from '../../../store/store-context';
 import { useChatEntries } from '../data/chat-store';
 import { latestReplyText } from '../model/latest-reply';
 import { sectionsOf } from './chat-entry';
 import { visibleAppChats } from './chat-visibility';
+import { useSectionNow } from './section-now';
 import { NEW_CHAT_ID } from './draft-thread';
 import type { PanelState } from './chat-panel-state';
 import { toggleChatList } from './chat-list-toggle';
@@ -21,14 +21,16 @@ function neighbour(ids: readonly string[], current: string, step: number): strin
 
 function useListOrder(): readonly string[] {
   const entries = useChatEntries();
-  const now = useMinute();
   const zone = useStoreSelector((state) => state.settings?.time_zone ?? null);
-  return useMemo(() => {
-    const visible = visibleAppChats(entries);
-    return sectionsOf(visible, visible, { now, timeZone: zone }).flatMap((section) =>
-      section.data.map((item) => item.entry.id),
-    );
-  }, [entries, now, zone]);
+  const visible = useMemo(() => visibleAppChats(entries), [entries]);
+  const now = useSectionNow(visible, zone);
+  return useMemo(
+    () =>
+      sectionsOf(visible, visible, { now, timeZone: zone }).flatMap((section) =>
+        section.data.map((item) => item.entry.id),
+      ),
+    [visible, now, zone],
+  );
 }
 
 export function useThreadKeys(

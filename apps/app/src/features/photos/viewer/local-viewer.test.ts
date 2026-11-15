@@ -54,7 +54,7 @@ vi.mock('expo-image', () => ({
 }));
 vi.mock('../../../components/text', () => ({ Text: (): null => null }));
 vi.mock('../../../components/button', () => ({ Button: (): null => null }));
-vi.mock('../../../components/icon-button', () => ({ IconButton: (): null => null }));
+vi.mock('../../../components/page-shell/page-shell', () => ({ PageShell: childrenOf }));
 vi.mock('../../../components/empty-state', () => ({
   EmptyState: (): null => {
     shown.unavailable = true;

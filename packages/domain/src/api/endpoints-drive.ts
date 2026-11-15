@@ -13,7 +13,7 @@ import {
   DRIVE_SHARED_WITH_ME_ENTRY,
 } from '../drive/grant';
 import { DRIVE_ITEM } from '../drive/item';
-import { DRIVE_PLACEMENT, DRIVE_PLACEMENT_SET } from '../drive/placement';
+import { DRIVE_MOUNT_SET, DRIVE_PLACEMENT, DRIVE_PLACEMENT_SET } from '../drive/placement';
 import {
   DRIVE_QUERY,
   DRIVE_QUERY_PAGE,
@@ -159,7 +159,7 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     path: '/api/drive/placements',
     access: 'member',
     summary:
-      'The folders of drives placed on the caller’s computers, each synced or mounted, with live status',
+      'The synced folders and the mounted drive on each of the caller’s computers, with live status',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -170,17 +170,29 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     path: '/api/drive/placements',
     access: 'member',
     summary:
-      'Place a drive or one of its folders on a computer, synced or mounted, or change its mode, path, enabled state or sync settings',
+      'Sync a drive or one of its folders to a folder on a computer, or change its path, enabled state or sync settings',
     params: NOTHING,
     query: NOTHING,
     body: DRIVE_PLACEMENT_SET,
+    response: DRIVE_PLACEMENT,
+  }),
+  setComputerMount: endpoint({
+    method: 'PUT',
+    path: '/api/drive/mount',
+    access: 'member',
+    summary:
+      'Turn the mounted drive on a computer on or off; it is always the caller’s whole My Drive in the computer’s network drive place',
+    params: NOTHING,
+    query: NOTHING,
+    body: DRIVE_MOUNT_SET,
     response: DRIVE_PLACEMENT,
   }),
   removePlacement: endpoint({
     method: 'DELETE',
     path: '/api/drive/placements/:placementId',
     access: 'member',
-    summary: 'Stop a folder placement on a computer; files already on its disk stay',
+    summary:
+      'Stop syncing a folder or remove the mounted drive on a computer; files already on its disk stay',
     params: PLACEMENT_PARAMS,
     query: NOTHING,
     body: NO_BODY,

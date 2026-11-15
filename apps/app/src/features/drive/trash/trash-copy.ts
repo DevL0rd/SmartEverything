@@ -11,18 +11,32 @@ export const OWNER_NOTE =
 export const MEMBER_NOTE =
   'Your drive’s trash is only yours. In the Shared Drive you delete for good only what you deleted.';
 
-export function subtitleOf(totals: TrashTotals | null, compact: boolean): string {
-  const kept = compact ? 'each kept a year' : KEPT_NOTE;
-  return totals === null
+export function subtitleOf(totals: TrashTotals | null, short: boolean): string {
+  const kept = short ? 'each kept a year' : KEPT_NOTE;
+  return totals === null || totals.count === 0
     ? `Deleted files and folders · ${kept}`
     : `${totalsText(totals)} · ${kept}`;
 }
 
-export function deleteAllConfirm(totals: TrashTotals): ConfirmRequest {
+export type DeleteScope = 'all' | 'shown';
+
+export function deleteLabelOf(scope: DeleteScope, shown: number): string {
+  return scope === 'all' ? 'Delete all now' : `Delete ${count(shown)} shown now`;
+}
+
+export function deleteConfirmOf(scope: DeleteScope, totals: TrashTotals): ConfirmRequest {
+  if (scope === 'all') {
+    return {
+      title: `Delete all ${itemsText(totals.count)} now?`,
+      body: `Everything in Trash leaves for good and can't be restored. This frees ${bytes(totals.bytes)}.`,
+      confirmLabel: 'Delete all now',
+      tone: 'destructive',
+    };
+  }
   return {
-    title: `Delete all ${itemsText(totals.count)} now?`,
-    body: `Everything in Trash leaves for good and can't be restored. This frees ${bytes(totals.bytes)}.`,
-    confirmLabel: 'Delete all now',
+    title: `Delete the ${itemsText(totals.count)} shown now?`,
+    body: `The items shown leave Trash for good and can't be restored. The rest stay in Trash. This frees ${bytes(totals.bytes)}.`,
+    confirmLabel: deleteLabelOf('shown', totals.count),
     tone: 'destructive',
   };
 }

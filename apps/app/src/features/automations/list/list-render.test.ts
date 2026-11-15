@@ -55,7 +55,8 @@ vi.mock('../../../components/menu', () => ({
   },
 }));
 vi.mock('../../../design/cn', () => ({ cn: (...parts: unknown[]): string => parts.join(' ') }));
-vi.mock('../../../format/time', () => ({ clock: (): string => '12:00' }));
+vi.mock('../../../format/time', () => ({ clock: (): string => '12:00', HOUR_MS: 3_600_000 }));
+vi.mock('../../../store/clock', () => ({ useMinute: (): number => 0 }));
 vi.mock('./row-menu', () => ({ useRowMenu: (): readonly never[] => [] }));
 vi.mock('./run-bars', () => ({ RunBars: (): null => null }));
 
@@ -67,8 +68,6 @@ const LINKS: ListLinks = {
   open: () => '/',
   edit: () => '/',
   runs: () => '/',
-  workspace: [],
-  extras: [],
 };
 const ACTIONS: ListActions = {
   toggle: vi.fn(),
@@ -132,13 +131,15 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (): void => undefined);
 });
 
-it('allows a long automation name to wrap in both the card and the timeline', () => {
+it('allows a long automation name and its run line to wrap in both the card and the timeline', () => {
   const [first] = entries();
   if (first === undefined) throw new Error('Missing the fixture automation.');
   const name = 'Check whether the living room needs additional lighting after sunset';
   render([{ ...first, name }]);
   expect(counts.textLines.has(name)).toBe(true);
   expect(counts.textLines.get(name)).toBeUndefined();
+  expect(counts.textLines.has('Never ran')).toBe(true);
+  expect(counts.textLines.get('Never ran')).toBeUndefined();
   counts.textLines.clear();
   renderToStaticMarkup(
     createElement(TimelineBand, {

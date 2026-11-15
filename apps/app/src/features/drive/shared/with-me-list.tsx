@@ -111,7 +111,8 @@ export function WithMeList(): ReactNode {
   const now = useMinute();
   const entries = flattenPages(pages.data, (page) => page.items);
   const list = useWithMeNodes(entries);
-  if (pages.data === undefined) return <PagesUnloaded pages={pages} label="shared_with_me" />;
+  if (pages.data === undefined)
+    return <PagesUnloaded pages={pages} label="shared_with_me" shape="groups" />;
   const groups = sharerGroupsOf(entries, profiles);
   return (
     <DriveListFrame browser={list.browser}>

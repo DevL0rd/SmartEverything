@@ -6,7 +6,6 @@ import type {
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
-import { ListRow } from '../../../components/list-row';
 import { ReorderableList } from '../../../components/reorderable-list';
 import { Section } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
@@ -125,7 +124,17 @@ function StepList(props: ItemStepsProps): ReactNode {
     <StepRow step={step} disabled={disabled} onDone={onDone} onOutdent={onOutdent} />
   );
   if (disabled || steps.length < 2) {
-    return steps.map((step) => <View key={step.item.id}>{row(step)}</View>);
+    if (steps.length === 0) return null;
+    return (
+      <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
+        {steps.map((step, index) => (
+          <View key={step.item.id}>
+            {index === 0 ? null : <View className="ml-18 h-hairline bg-outline-variant" />}
+            {row(step)}
+          </View>
+        ))}
+      </View>
+    );
   }
   return (
     <ReorderableList
@@ -152,11 +161,9 @@ export function ItemSteps(props: ItemStepsProps): ReactNode {
       title="Steps"
       {...(steps.length === 0 ? {} : { caption: `${String(done)} of ${String(steps.length)}` })}
     >
-      <View className="px-2">
+      <View className="gap-1">
         <StepList {...props} />
-        <View className="px-2">
-          <AddStep disabled={disabled} onAdd={onAdd} />
-        </View>
+        <AddStep disabled={disabled} onAdd={onAdd} />
       </View>
     </Section>
   );
@@ -176,42 +183,17 @@ export function ItemNotes({
     if (text !== notes) onChange({ notes: text });
   };
   return (
-    <TextField
-      label="Notes"
-      value={text}
-      onChange={setText}
-      onBlur={commit}
-      placeholder="Add notes"
-      multiline
-      disabled={disabled}
-    />
-  );
-}
-
-export function StepOfRow({
-  parent,
-  disabled,
-  onOutdent,
-}: {
-  readonly parent: PlannerItemRow;
-  readonly disabled: boolean;
-  readonly onOutdent: () => void;
-}): ReactNode {
-  return (
-    <ListRow
-      wrapTitle
-      title="Step of"
-      icon="listTree"
-      value={parent.title}
-      trailing={
-        <Button
-          label="Make it its own task"
-          icon="arrowLeft"
-          variant="text"
-          disabled={disabled}
-          onPress={onOutdent}
-        />
-      }
-    />
+    <Section title="Notes">
+      <TextField
+        label="Notes"
+        value={text}
+        onChange={setText}
+        onBlur={commit}
+        placeholder="Add notes"
+        multiline
+        disabled={disabled}
+        showLabel={false}
+      />
+    </Section>
   );
 }

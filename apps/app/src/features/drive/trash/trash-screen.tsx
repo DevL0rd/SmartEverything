@@ -9,7 +9,7 @@ import { VirtualList } from '../../../components/virtual-list';
 import { useAreaWidth } from '../../../design/size-class';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { DriveFrame } from '../components/drive-frame';
-import type { FileBrowserHandle } from '../../files';
+import { SelectionRow, type FileBrowserHandle } from '../../files';
 import { DriveListFrame, useDriveList } from '../source/drive-lists';
 import type { DriveNode, DriveOrigin } from '../source/drive-node';
 import { deleterKey, UNKNOWN_TONE } from './deleted-by';
@@ -24,12 +24,12 @@ import {
   type TrashFilter,
 } from './trash-filter';
 import { TrashFilterRow, TrashNoMatch } from './trash-filter-row';
-import { subtitleOf } from './trash-copy';
+import { deleteLabelOf, subtitleOf, type DeleteScope } from './trash-copy';
 import { wasInOf, type TrashItem } from './trash-model';
-import { tableSnap, trashLayoutOf, type TrashLayout } from './trash-layout';
+import { summaryWideOf, trashLayoutOf, trashSnap, type TrashLayout } from './trash-layout';
 import { TrashRow } from './trash-row';
 import { OfflineBanner, TrashEmpty, TrashNote } from './trash-states';
-import { TableTop } from './trash-table';
+import { DeleteAllButton, TableTop, type DeleteAll } from './trash-table';
 import { useTrash, type TrashView } from './use-trash';
 
 const log = new Logger('app.drive');
@@ -42,6 +42,7 @@ interface Body {
   readonly owner: boolean;
   readonly driveOf: TrashDriveOf;
   readonly layout: TrashLayout;
+  readonly wide: boolean;
   readonly disabled: boolean;
   readonly browser: FileBrowserHandle<DriveOrigin>;
   readonly nodes: readonly DriveNode[];
@@ -74,38 +75,52 @@ class MissingTrashItemError extends Error {
   }
 }
 
+function deleteAllOf(body: Body): DeleteAll | null {
+  const { view, shown, filter, disabled, actions } = body;
+  if (shown.length === 0) return null;
+  if (!shown.every((item) => view.nodeOf.get(item.id)?.deletable === true)) return null;
+  const scope: DeleteScope = isFiltered(filter) ? 'shown' : 'all';
+  return {
+    label: deleteLabelOf(scope, shown.length),
+    disabled: disabled || !view.complete,
+    onPress: (): void => {
+      actions.deleteAll(shown, scope);
+    },
+  };
+}
+
 function header(body: Body): ReactElement | undefined {
-  const { view, shown, driveOf, layout, disabled, actions } = body;
+  const { view, shown, driveOf, layout, browser } = body;
   if (view.status !== 'ready' || view.items.length === 0) return undefined;
-  const allDeletable = view.items.every((item) => view.nodeOf.get(item.id)?.deletable === true);
+  const deleteAll = deleteAllOf(body);
+  const picking = browser.picked.length > 0;
+  const trailing =
+    layout === 'table' && deleteAll !== null && !picking ? (
+      <DeleteAllButton deleteAll={deleteAll} />
+    ) : null;
   return (
     <TableTop
       layout={layout}
+      wide={body.wide}
       shares={view.deletedBy}
       months={view.months}
-      pickState={pickStateOf(body.browser.picked.length, shown.length)}
+      pickState={pickStateOf(browser.picked.length, shown.length)}
       onToggleAll={() => {
-        if (body.browser.picked.length >= shown.length) body.browser.commands.clearSelection();
-        else body.browser.commands.selectAll();
+        if (browser.picked.length >= shown.length) browser.commands.clearSelection();
+        else browser.commands.selectAll();
       }}
+      empty={shown.length === 0}
+      selection={picking ? <SelectionRow browser={browser} /> : null}
       filterRow={
         <TrashFilterRow
           items={view.items}
           filter={body.filter}
           onFilter={body.setFilter}
           driveOf={driveOf}
+          {...(trailing === null ? {} : { trailing })}
         />
       }
-      deleteAll={
-        allDeletable
-          ? {
-              disabled: disabled || !view.complete,
-              onPress: (): void => {
-                actions.deleteAll(view.items);
-              },
-            }
-          : null
-      }
+      deleteAll={layout === 'table' ? null : deleteAll}
     />
   );
 }
@@ -123,7 +138,7 @@ interface TrashBody {
   readonly live: boolean;
 }
 
-function useTrashBody(layout: TrashLayout): TrashBody {
+function useTrashBody(layout: TrashLayout, wide: boolean): TrashBody {
   const owner = useIsOwner();
   const live = useSyncStatus().status === 'live';
   const view = useTrash();
@@ -147,6 +162,7 @@ function useTrashBody(layout: TrashLayout): TrashBody {
       owner,
       driveOf,
       layout,
+      wide,
       disabled,
       browser,
       nodes,
@@ -167,7 +183,7 @@ function TrashList({ body }: { readonly body: Body }): ReactNode {
       {...(top === undefined ? {} : { header: top })}
       empty={
         view.items.length === 0 ? (
-          <TrashEmpty view={view} owner={owner} />
+          <TrashEmpty view={view} owner={owner} wide={body.wide} />
         ) : (
           <TrashNoMatch onClear={body.setFilter} />
         )
@@ -194,20 +210,24 @@ function trashSearchOf(body: Body): ShellSearchConfig | undefined {
 
 export function TrashScreen(): ReactNode {
   const compact = useAreaWidth() < SHELL_BREAKPOINTS.compactMax;
-  const { width, onLayout } = useMeasuredWidth(tableSnap);
-  const { body, live } = useTrashBody(trashLayoutOf(compact, width));
+  const { width, onLayout } = useMeasuredWidth(trashSnap);
+  const layout = trashLayoutOf(compact, width);
+  const { body, live } = useTrashBody(layout, summaryWideOf(layout, width));
   const { view } = body;
   const search = trashSearchOf(body);
   return (
     <DriveFrame
       section="trash"
       title="Trash"
-      subtitle={subtitleOf(view.status === 'ready' ? view.totals : null, compact)}
+      subtitle={subtitleOf(
+        view.status === 'ready' ? view.totals : null,
+        compact || search !== undefined,
+      )}
       scroll={false}
       {...(live ? {} : { banner: <OfflineBanner /> })}
       {...(search === undefined ? {} : { search })}
     >
-      <DriveListFrame browser={body.browser}>
+      <DriveListFrame browser={body.browser} inlineSelection>
         <View className="-mx-gutter flex-1" onLayout={onLayout}>
           <TrashList body={body} />
         </View>

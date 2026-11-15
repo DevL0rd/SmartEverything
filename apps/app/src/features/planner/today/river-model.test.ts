@@ -16,7 +16,7 @@ import {
   fadeStepsOf,
   guestMarksOf,
   riverCaptionOf,
-  riverKeyOf,
+  occurrenceKeyOf,
   riverOccurrencesOf,
   riverRowsOf,
   riverSubtitleOf,
@@ -192,12 +192,17 @@ function dayOf(overrides: Partial<PlannerDay> = {}): PlannerDay {
   });
 }
 
+function lensOf(day: PlannerDay): PlannerOccurrenceView | null {
+  return [...day.current, ...day.upcoming][0] ?? null;
+}
+
 function input(day: PlannerDay, hidden: ReadonlySet<string> = new Set()): RiverInput {
   return {
     day,
     collections: COLLECTIONS,
     items: [item(COOK, 45)],
     hidden,
+    lens: lensOf(day),
     guests: [],
     me: PROFILE,
   };
@@ -209,7 +214,8 @@ function titles(occurrences: readonly { readonly title: string }[]): readonly st
 
 describe('riverOccurrencesOf', () => {
   it('leaves out the item the now lens shows and orders the rest of the day by time', () => {
-    expect(titles(riverOccurrencesOf(dayOf()))).toEqual([
+    const day = dayOf();
+    expect(titles(riverOccurrencesOf(day, lensOf(day)))).toEqual([
       'Priya’s birthday',
       'Dentist',
       'Take out the recycling',
@@ -222,11 +228,24 @@ describe('riverOccurrencesOf', () => {
 
   it('keeps items that are happening now ahead of later ones', () => {
     const day = dayOf({ current: [LENS_VIEW, MEETING_VIEW], upcoming: [BRUSH_VIEW, COOK_VIEW] });
-    expect(titles(riverOccurrencesOf(day))).toEqual(['Stand-up', 'Cook dinner', 'Brush teeth']);
+    expect(titles(riverOccurrencesOf(day, lensOf(day)))).toEqual([
+      'Stand-up',
+      'Cook dinner',
+      'Brush teeth',
+    ]);
   });
 
   it('is empty when the lens holds the only item', () => {
-    expect(riverOccurrencesOf(dayOf({ upcoming: [LENS_VIEW] }))).toEqual([]);
+    const day = dayOf({ upcoming: [LENS_VIEW] });
+    expect(riverOccurrencesOf(day, lensOf(day))).toEqual([]);
+  });
+
+  it('leaves out exactly the item the lens moved on to after the first one was hidden', () => {
+    const day = dayOf();
+    const [first, second] = day.upcoming;
+    const shown = titles(riverOccurrencesOf(day, second ?? null));
+    expect(shown).toContain(first?.title);
+    expect(shown).not.toContain(second?.title);
   });
 });
 
@@ -251,7 +270,7 @@ describe('riverRowsOf', () => {
   });
 
   it('drops rows that an action has just hidden', () => {
-    const hidden = new Set([riverKeyOf(COOK_VIEW)]);
+    const hidden = new Set([occurrenceKeyOf(COOK_VIEW)]);
     expect(titles(riverRowsOf(input(dayOf(), hidden)))).not.toContain('Cook dinner');
   });
 
@@ -268,7 +287,7 @@ describe('riverTimeOf and riverSubtitleOf', () => {
       riverTimeOf(view(COOK, 'Cook', null, { due_at: '2026-11-07T07:05:00.000Z' }), ZONE),
     ).toBe('08:05');
     expect(riverTimeOf(BIRTHDAY_VIEW, ZONE)).toBe('All day');
-    expect(riverTimeOf(ANYTIME_VIEW, ZONE)).toBe('Any time');
+    expect(riverTimeOf(ANYTIME_VIEW, ZONE)).toBe('Anytime');
     expect(
       riverTimeOf(view(COOK, 'Cook', null, { due_at: '2026-11-07T17:00:00.000Z' }), ZONE),
     ).toBe(clock24('2026-11-07T17:00:00.000Z', ZONE));

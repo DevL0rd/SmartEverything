@@ -20,6 +20,7 @@ export interface RankedListProps {
   readonly entries: readonly RankedEntry[];
   readonly onPress?: (key: string) => void;
   readonly bar?: 'kind' | 'info';
+  readonly inCard?: true;
 }
 
 const MIN_BAR = 3;
@@ -92,7 +93,24 @@ function RankedRow({
   );
 }
 
-export function RankedList({ title, entries, onPress, bar = 'kind' }: RankedListProps): ReactNode {
+export function RankedList({
+  title,
+  entries,
+  onPress,
+  bar = 'kind',
+  inCard,
+}: RankedListProps): ReactNode {
+  if (inCard === true) {
+    return (
+      <View className="-mx-card-pad">
+        {entries.map((entry) => (
+          <View key={entry.key} className="border-t-hairline border-outline-variant">
+            <RankedRow entry={entry} onPress={onPress} bar={bar} />
+          </View>
+        ))}
+      </View>
+    );
+  }
   return (
     <Section {...(title === undefined ? {} : { title })}>
       <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">

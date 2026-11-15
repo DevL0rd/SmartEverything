@@ -163,6 +163,15 @@ export async function placeDrive(
   return placed.id;
 }
 
+export async function mountDrive(http: number, token: string, deviceId: string): Promise<string> {
+  const mounted = await call(ID_ONLY, `${httpUrl(http)}/api/drive/mount`, {
+    method: 'PUT',
+    token,
+    body: { deviceId, enabled: true },
+  });
+  return mounted.id;
+}
+
 async function findFolder(
   http: number,
   token: string,

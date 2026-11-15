@@ -23,7 +23,7 @@ export function ActivitySection({
     <Section
       title="Activity"
       action={<SectionAction label="See all" href={href.activity()} />}
-      className="w-full max-w-reading self-start"
+      className="w-full self-start"
     >
       <View
         role="list"
@@ -49,11 +49,7 @@ export function AutomationsSection({
 }): ReactNode {
   if (uses.length === 0) return null;
   return (
-    <List
-      title={`Automations · ${String(uses.length)}`}
-      className="w-full max-w-reading self-start"
-      inset
-    >
+    <List title={`Automations · ${String(uses.length)}`} className="w-full self-start" inset>
       {uses.map((use) => (
         <NavRow
           key={use.id}

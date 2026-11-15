@@ -33,7 +33,9 @@ export type PhotosPref = z.infer<typeof PHOTOS_PREF>;
 
 export const PHOTOS_BACKUP_PREF = z.strictObject({
   enabled: z.boolean().describe('Copy this phone’s photos and videos to the server as originals'),
-  albumIds: z.array(z.string().min(1)).describe('Phone albums that are backed up'),
+  albumIds: z
+    .array(z.string().min(1))
+    .describe('Phone albums or computer folders that are backed up; empty backs up everything'),
   wifiOnly: z.boolean().describe('Back up only on Wi-Fi'),
   chargingOnly: z.boolean().describe('Back up only while charging'),
   includeVideos: z.boolean().describe('Back up videos as well as photos'),

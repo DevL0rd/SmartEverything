@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import type { PhotoGroup } from '@smarteverything/domain';
+import type { PartnerShare, PhotoGroup } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { DateNav } from '../../../components/date-nav';
 import { Interactive } from '../../../components/interactive';
@@ -32,16 +32,46 @@ import {
   type PartnerDraft,
 } from './partner-draft';
 import { groupNamesOf, nameOf } from './model';
-import { invalidateSharing } from './queries';
+import { invalidateSharing, usePhotoSharing } from './queries';
 
 interface StepProps {
   readonly draft: PartnerDraft;
   readonly onDraft: (draft: PartnerDraft) => void;
 }
 
+function RadioMark({ on }: { readonly on: boolean }): ReactNode {
+  return (
+    <View
+      className={cn(
+        'size-5 items-center justify-center rounded-full border-2',
+        on ? 'border-primary' : 'border-on-surface-variant',
+      )}
+    >
+      {on ? <View className="size-2.5 rounded-full bg-primary" /> : null}
+    </View>
+  );
+}
+
+export function sharingWith(
+  partners: readonly PartnerShare[],
+  me: string | null,
+  editing: string | null,
+): ReadonlySet<string> {
+  return new Set(
+    partners
+      .filter(
+        (share) =>
+          share.sharerId === me && share.state !== 'stopped' && share.recipientId !== editing,
+      )
+      .map((share) => share.recipientId),
+  );
+}
+
 function PersonStep({ draft, onDraft }: StepProps): ReactNode {
   const me = useActiveProfile()?.id ?? null;
   const people = useProfiles().filter((profile) => profile.id !== me);
+  const partners = usePhotoSharing().data?.partners ?? [];
+  const taken = sharingWith(partners, me, draft.recipientId);
   if (people.length === 0) {
     return (
       <Text variant="body" tone="variant">
@@ -51,17 +81,28 @@ function PersonStep({ draft, onDraft }: StepProps): ReactNode {
   }
   return (
     <View className="gap-1">
-      {people.map((profile) => (
-        <ListRow
-          key={profile.id}
-          title={profile.name}
-          leading={<ProfileAvatar profile={profile} />}
-          selected={draft.recipientId === profile.id}
-          onPress={() => {
-            onDraft({ ...draft, recipientId: profile.id });
-          }}
-        />
-      ))}
+      {people.map((profile) =>
+        taken.has(profile.id) ? (
+          <ListRow
+            key={profile.id}
+            title={profile.name}
+            leading={<ProfileAvatar profile={profile} />}
+            value="Already sharing"
+            disabled
+          />
+        ) : (
+          <ListRow
+            key={profile.id}
+            title={profile.name}
+            leading={<ProfileAvatar profile={profile} />}
+            selected={draft.recipientId === profile.id}
+            trailing={<RadioMark on={draft.recipientId === profile.id} />}
+            onPress={() => {
+              onDraft({ ...draft, recipientId: profile.id });
+            }}
+          />
+        ),
+      )}
     </View>
   );
 }
@@ -159,14 +200,12 @@ function DateStep({ draft, onDraft }: StepProps): ReactNode {
       <DateNav
         value={dayDate(draft.fromDay)}
         range="day"
+        withYear
         max={new Date()}
         onChange={(date) => {
           onDraft({ ...draft, fromDay: localDayKey(date) });
         }}
       />
-      <Text variant="title-3" className="tabular-nums">
-        {longDay(draft.fromDay)}
-      </Text>
     </View>
   );
 }
@@ -221,7 +260,7 @@ function Footer({
     });
   };
   return (
-    <View className="flex-row flex-wrap items-center justify-end gap-2">
+    <View className="flex-1 flex-row flex-wrap items-center justify-end gap-2">
       {back === null ? null : (
         <Button
           label="Back"

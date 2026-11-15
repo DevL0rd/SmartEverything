@@ -46,6 +46,23 @@ export interface BudgetSheetProps {
   readonly onTurnOff: () => Promise<void>;
 }
 
+interface SubmitReport {
+  readonly done: () => void;
+  readonly failed: (cause: unknown) => void;
+  readonly settle: () => void;
+}
+
+async function submitBudget(action: () => Promise<void>, report: SubmitReport): Promise<void> {
+  try {
+    await action();
+    report.done();
+  } catch (cause) {
+    report.failed(cause);
+  } finally {
+    report.settle();
+  }
+}
+
 function useSubmit(onClose: () => void): {
   readonly busy: boolean;
   readonly error: string | null;
@@ -53,17 +70,18 @@ function useSubmit(onClose: () => void): {
 } {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const run = async (action: () => Promise<void>): Promise<void> => {
+  const run = (action: () => Promise<void>): Promise<void> => {
     setBusy(true);
     setError(null);
-    try {
-      await action();
-      onClose();
-    } catch (cause) {
-      setError(errorText(cause).title);
-    } finally {
-      setBusy(false);
-    }
+    return submitBudget(action, {
+      done: onClose,
+      failed: (cause) => {
+        setError(errorText(cause).title);
+      },
+      settle: () => {
+        setBusy(false);
+      },
+    });
   };
   return { busy, error, run };
 }

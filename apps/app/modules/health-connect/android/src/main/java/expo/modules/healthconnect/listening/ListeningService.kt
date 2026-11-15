@@ -15,6 +15,7 @@ import expo.modules.healthconnect.HubJson
 import expo.modules.healthconnect.ServiceStartRefused
 import expo.modules.healthconnect.SyncFailure
 import expo.modules.healthconnect.relayTarget
+import expo.modules.healthconnect.voice.SileroModel
 import expo.modules.healthconnect.voice.VoiceCapture
 import expo.modules.healthconnect.voice.VoiceCaptureUnavailable
 import java.io.File
@@ -32,6 +33,7 @@ class ListeningService : Service() {
   private val counters = ListeningCounters.shared
   private var config: ListeningConfig? = null
   private var ear: WakeEar? = null
+  private var voice: VoiceFrames? = null
   private var segments: EarSegments? = null
   private var reports: HubReports? = null
   private var capture: AutoCloseable? = null
@@ -75,7 +77,9 @@ class ListeningService : Service() {
       WakeReplay.release()
       counters.restEnded()
       Log.d(TAG, counters.summary())
-      ListeningEvents.publish(ListeningState(ListeningStatus.Off))
+      if (ListeningEvents.state.value.status != ListeningStatus.Unavailable) {
+        ListeningEvents.publish(ListeningState(ListeningStatus.Off))
+      }
     }.invokeOnCompletion { scope.cancel() }
     super.onDestroy()
   }
@@ -89,6 +93,7 @@ class ListeningService : Service() {
         stopSelf()
         return
       }
+      voice = if (ear != null || next.transcribe) VoiceFrames(SileroModel(this)) else null
       reports = HubReports(relayTarget(this), scope)
       watchPower(next.powerMode)
       settle()
@@ -111,7 +116,7 @@ class ListeningService : Service() {
       return null
     }
     val keywords = File(cacheDir, KEYWORDS_FILE).apply { writeText(KeywordLines.render(lines)) }
-    return WakeEar(model, keywords, next.threshold, this, counters, ::heard)
+    return WakeEar(model, keywords, next.threshold, counters, ::heard)
   }
 
   private fun watchPower(mode: PowerMode) {
@@ -143,11 +148,12 @@ class ListeningService : Service() {
   private fun listen() {
     try {
       val current = reports
-      val written = config?.takeIf { it.transcribe }?.let { EarSegments(this, it.pauseMs, { current?.segment(it) }) }
+      val written = config?.takeIf { it.transcribe }?.let { EarSegments(it.pauseMs, { current?.segment(it) }) }
       segments = written
       val meter = LevelMeter({ ListeningEvents.levelsWatched }, { current?.level(it) })
-      val intake = EarIntake(ear, written, meter, counters)
-      capture = VoiceCapture.addConsumer(VoiceCapture.Mode.Ear, intake::hear)
+      voice?.restart()
+      val intake = EarIntake(voice, ear, written, meter, counters)
+      capture = VoiceCapture.addConsumer(VoiceCapture.Mode.Ear, { lost -> scope.launch { unavailable(lost) } }, intake::hear)
       paused = null
       counters.restEnded()
       publish(ListeningState(ListeningStatus.Listening, null, config?.transcribe == true))
@@ -190,6 +196,8 @@ class ListeningService : Service() {
     closeCapture()
     ear?.close()
     ear = null
+    voice?.close()
+    voice = null
     reports = null
   }
 
@@ -199,6 +207,8 @@ class ListeningService : Service() {
     config = null
     WakeReplay.release()
     publish(ListeningState(ListeningStatus.Unavailable, failure.message))
+    stopForeground(STOP_FOREGROUND_DETACH)
+    stopSelf()
   }
 
   private fun publish(state: ListeningState) {

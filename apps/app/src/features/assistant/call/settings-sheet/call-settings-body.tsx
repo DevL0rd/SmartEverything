@@ -84,7 +84,7 @@ function ThinkingSection({ call }: { readonly call: CallView }): ReactNode {
   const changed = call.callId !== null && save.changedCall === call.callId;
   return (
     <List title={VOICE_THINKING_COPY.section}>
-      <SettingsRow setting={THINKING_SETTING} />
+      <SettingsRow setting={THINKING_SETTING} locked={false} />
       {changed ? (
         <Text
           variant="footnote"
@@ -110,7 +110,7 @@ function Sections({ call }: { readonly call: CallView }): ReactNode {
           title={section === CALL_AUDIO_SECTIONS.video ? `What ${name} sees` : section}
         >
           {rowsOf(section).map((setting) => (
-            <SettingsRow key={setting.id} setting={setting} />
+            <SettingsRow key={setting.id} setting={setting} locked={false} />
           ))}
           {section === CALL_AUDIO_SECTIONS.video &&
           (pref.video_mode === 'on_demand' || call.looks.length > 0) ? (

@@ -61,6 +61,7 @@ function StationRow({
   return (
     <ListRow
       title={station.name}
+      titleEllipsize="end"
       {...(detail === null ? {} : { subtitle: detail })}
       {...(failed ? { subtitleTone: 'critical' as const } : {})}
       icon="radio"
@@ -172,7 +173,6 @@ export function RadioTab(props: SoundTabProps): ReactNode {
         value={text}
         onChange={setText}
         placeholder="Search stations"
-        icon="radio"
         variant="field"
       />
       <Results {...props} search={search} />

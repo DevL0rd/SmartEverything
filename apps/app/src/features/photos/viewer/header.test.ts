@@ -44,7 +44,7 @@ vi.mock('react-native', async (importOriginal) => ({
   View: stub('View'),
 }));
 
-const { DesktopHeader, PhoneActions, PhoneHeader } = await import('./header');
+const { DesktopControls, PhoneActions, PhoneControls } = await import('./header');
 
 const CONTROLS: HeaderControls = {
   starred: true,
@@ -67,8 +67,6 @@ const CONTROLS: HeaderControls = {
   },
 };
 
-const TEXT = { title: 'Saturday 7 November 2026 · 10:42', detail: 'Lisbon, Portugal' };
-
 function iconsOf(entries: readonly Seen[]): readonly string[] {
   return entries.flatMap((entry) => {
     const icon = entry.kind === 'Icon' ? entry.props.name : entry.props.icon;
@@ -85,8 +83,8 @@ function rendered(node: ReactElement): readonly Seen[] {
 describe('viewer header icons', () => {
   it('draws every desktop and phone control with an icon the app has', () => {
     const all = [
-      ...rendered(createElement(DesktopHeader, { text: TEXT, controls: CONTROLS })),
-      ...rendered(createElement(PhoneHeader, { text: TEXT, controls: CONTROLS })),
+      ...rendered(createElement(DesktopControls, { controls: CONTROLS })),
+      ...rendered(createElement(PhoneControls, { controls: CONTROLS })),
       ...rendered(createElement(PhoneActions, { controls: CONTROLS })),
     ];
     const icons = iconsOf(all);
@@ -95,7 +93,7 @@ describe('viewer header icons', () => {
   });
 
   it('marks a favourite with the one Favourite and Star mark, selected when it is one', () => {
-    const desktop = rendered(createElement(DesktopHeader, { text: TEXT, controls: CONTROLS }));
+    const desktop = rendered(createElement(DesktopControls, { controls: CONTROLS }));
     const favourite = desktop.find((entry) => entry.props.label === 'Remove from favourites');
     expect(favourite?.props.icon).toBe('star');
     expect(favourite?.props.selected).toBe(true);
@@ -108,7 +106,7 @@ describe('viewer header icons', () => {
   });
 
   it('offers Edit on desktop and phone and shows a running video edit', () => {
-    const desktop = rendered(createElement(DesktopHeader, { text: TEXT, controls: CONTROLS }));
+    const desktop = rendered(createElement(DesktopControls, { controls: CONTROLS }));
     expect(desktop.find((entry) => entry.props.label === 'Edit')?.props.icon).toBe('pencil');
     expect(desktop.some((entry) => entry.kind === 'Arc')).toBe(true);
     const phone = rendered(createElement(PhoneActions, { controls: CONTROLS }));
@@ -119,7 +117,7 @@ describe('viewer header icons', () => {
 
   it('hides Edit when the photo cannot be edited', () => {
     const controls = { ...CONTROLS, edit: { ...CONTROLS.edit, available: false } };
-    const desktop = rendered(createElement(DesktopHeader, { text: TEXT, controls }));
+    const desktop = rendered(createElement(DesktopControls, { controls }));
     expect(desktop.some((entry) => entry.props.label === 'Edit')).toBe(false);
     const phone = rendered(createElement(PhoneActions, { controls }));
     expect(

@@ -78,7 +78,7 @@ function request(extra: Partial<VisionRequest> = {}): VisionRequest {
   return {
     profileId: 'p1',
     itemId: 'item-1',
-    model: 'google/gemini-3.1-flash-lite',
+    model: 'qwen/qwen3.6-35b-a3b',
     mime: 'image/jpeg',
     data: Buffer.from('jpeg-bytes'),
     ...extra,
@@ -92,7 +92,7 @@ describe('the photo vision client', () => {
     const [call] = sent;
     expect(call?.url).toBe('https://openrouter.ai/api/v1/chat/completions');
     expect(call?.body).toMatchObject({
-      model: 'google/gemini-3.1-flash-lite',
+      model: 'qwen/qwen3.6-35b-a3b',
       stream: false,
       temperature: 0,
       provider: { zdr: true, data_collection: 'deny', allow_fallbacks: false },
@@ -141,7 +141,7 @@ describe('the photo vision client', () => {
       source: 'openrouter',
       work: 'photos',
       profile_id: 'p1',
-      model_id: 'google/gemini-3.1-flash-lite',
+      model_id: 'qwen/qwen3.6-35b-a3b',
       generation_id: 'gen-1',
       tokens_in: 1400,
       tokens_out: 120,

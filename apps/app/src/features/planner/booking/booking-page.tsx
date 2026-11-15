@@ -2,8 +2,11 @@ import type { PlannerBookingPageRow, PlannerPreferences } from '@smarteverything
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
+import { CardGrid } from '../../../components/card-grid';
 import { EmptyState } from '../../../components/empty-state';
-import type { HeaderAction } from '../../../components/page-header';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
+import { twoFrameColumnsAt } from '../../../components/page-shell/layout';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Section } from '../../../components/section';
 import { dayKeyOf, shiftDay, weekdayShort } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
@@ -52,23 +55,42 @@ interface PagesProps {
   readonly onEdit: (editing: Editing) => void;
 }
 
-function WeekSection({ person }: Pick<PagesProps, 'person'>): ReactNode {
+function useUpcoming(person: PlannerPerson): ReturnType<typeof upcomingBookingsOf> {
   const now = useMinute();
+  return upcomingBookingsOf(usePlannerItems(person), useBookingGuests(), now);
+}
+
+function WeekSection({
+  person,
+  upcoming,
+  wide,
+}: {
+  readonly person: PlannerPerson;
+  readonly upcoming: ReturnType<typeof upcomingBookingsOf>;
+  readonly wide: boolean;
+}): ReactNode {
   const items = usePlannerItems(person);
-  const guests = useBookingGuests();
-  const today = dayKeyOf(now);
-  const days = nextDaysOf(today, shiftDay);
-  const upcoming = upcomingBookingsOf(items, guests, now);
+  const days = nextDaysOf(dayKeyOf(useMinute()), shiftDay);
   const calendars = usePlannerCollections(person);
   return (
-    <>
-      <BookingWeekCard week={bookingWeekOf(items, days, dayKeyOf)} next={upcoming[0] ?? null} />
-      <UpcomingBookings bookings={upcoming} calendars={calendars} />
-    </>
+    <View className={wide ? 'flex-row items-start gap-4' : 'gap-section-gap'}>
+      <View className={wide ? 'min-w-0 flex-1' : ''}>
+        <BookingWeekCard week={bookingWeekOf(items, days, dayKeyOf)} next={upcoming[0] ?? null} />
+      </View>
+      <View className={wide ? 'min-w-0 flex-1' : ''}>
+        <UpcomingBookings bookings={upcoming} calendars={calendars} />
+      </View>
+    </View>
   );
 }
 
-function PageCards({ person, prefs, pages, onEdit }: PagesProps): ReactNode {
+function PageCards({
+  person,
+  prefs,
+  pages,
+  onEdit,
+  wide,
+}: PagesProps & { readonly wide: boolean }): ReactNode {
   const writes = usePlannerBookingWrites(person);
   const base = useBookingLinkBase();
   const calendars = usePlannerCollections(person);
@@ -77,10 +99,12 @@ function PageCards({ person, prefs, pages, onEdit }: PagesProps): ReactNode {
   const order = weekOrderOf(prefs.general.week_start);
   return (
     <Section title="Pages">
-      <View className="gap-3">
-        {bookingPageOrderOf(pages).map((page) => (
+      <CardGrid
+        items={bookingPageOrderOf(pages)}
+        columns={wide ? 2 : 1}
+        keyOf={(page) => page.id}
+        render={(page) => (
           <PageCard
-            key={page.id}
             page={page}
             link={bookingLinkOf(page.token, base)}
             calendar={
@@ -94,8 +118,8 @@ function PageCards({ person, prefs, pages, onEdit }: PagesProps): ReactNode {
               onEdit({ page });
             }}
           />
-        ))}
-      </View>
+        )}
+      />
     </Section>
   );
 }
@@ -112,21 +136,23 @@ function NoPages({ onCreate }: { readonly onCreate: () => void }): ReactNode {
 }
 
 function BookingBody(props: PagesProps): ReactNode {
-  const create = (): void => {
-    props.onEdit({ page: null });
-  };
-  if (props.pages.length === 0) {
-    return (
-      <View className="gap-section-gap">
-        <NoPages onCreate={create} />
-        <WeekSection person={props.person} />
-      </View>
+  const upcoming = useUpcoming(props.person);
+  const wide = twoFrameColumnsAt(useFrameBodyWidth());
+  const week =
+    upcoming.length === 0 ? null : (
+      <WeekSection person={props.person} upcoming={upcoming} wide={wide} />
     );
-  }
   return (
     <View className="gap-section-gap">
-      <WeekSection person={props.person} />
-      <PageCards {...props} />
+      {props.pages.length === 0 ? (
+        <NoPages
+          onCreate={() => {
+            props.onEdit({ page: null });
+          }}
+        />
+      ) : null}
+      {week}
+      {props.pages.length === 0 ? null : <PageCards {...props} wide={wide} />}
     </View>
   );
 }
@@ -137,7 +163,7 @@ export function BookingPage(): ReactNode {
   const pages = usePlannerBookingPages(person);
   const [editing, setEditing] = useState<Editing | null>(null);
   const ready = prefs.data !== undefined;
-  const action: HeaderAction = {
+  const action: ShellAction = {
     icon: 'plus',
     label: 'New booking page',
     primary: true,

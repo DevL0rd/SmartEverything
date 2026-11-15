@@ -1,10 +1,10 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Pressable, View, type AccessibilityActionEvent } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import type { WidgetSize } from '@smarteverything/domain';
-import { useAnimationGate } from '../../../design/animation-gate';
 import { cn } from '../../../design/cn';
+import { useOnScreenGate } from '../../../design/visibility';
 import type { Cell, Frame } from '../board-geometry';
 import { frameBoxOf } from '../frame-class';
 import { renderWidget, WidgetMotionFrameContext } from '../widget-scope';
@@ -143,7 +143,9 @@ function Chrome({
 export function EditableWidget(props: EditableWidgetProps): ReactNode {
   const { widget, frame, cell, order, sizes, drag, handlers, touch, reduced } = props;
   const motion = useWidgetMotion(frame, reduced);
-  const jiggling = useAnimationGate(!reduced && !props.resizing, true).moving;
+  const placed = useRef<View>(null);
+  const gate = useOnScreenGate(placed, !reduced && !props.resizing);
+  const jiggling = gate.moving;
   const rotation = useJiggle(jiggling, order);
   const { style, top } = useWidgetStyle(widget.key, motion, drag, rotation);
   const ref = useAnimatedRef<View>();
@@ -168,7 +170,7 @@ export function EditableWidget(props: EditableWidgetProps): ReactNode {
   return (
     <Animated.View ref={ref} style={style} className="absolute" collapsable={false}>
       <GestureDetector gesture={move}>
-        <View className="h-full">
+        <View ref={placed} onLayout={gate.onLayout} collapsable={false} className="h-full">
           <WidgetMotionFrameContext value={{ ref, top }}>
             <Body {...props} />
           </WidgetMotionFrameContext>

@@ -5,12 +5,9 @@ import type { PhotoSource } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
-import { TILE_FADE_MS } from '../../../components/media-grid/tile';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useMotion } from '../../../design/motion';
 import { ThemeScope } from '../../../design/theme-scope';
-import { useScopeVisible } from '../../../design/visibility';
 import { playTime } from '../../../format/time';
 import { sourceLinks, SOURCE_REV } from './source-links';
 import { sourceTileLabel, type SourceTile } from './source-model';
@@ -41,9 +38,8 @@ function boxOf(width: number, height: number): ViewStyle {
 }
 
 function useThumb(source: PhotoSource, id: string): string | null {
-  const visible = useScopeVisible();
   const [resolved, setResolved] = useState<Resolved | null>(null);
-  const due = visible && resolved?.id !== id;
+  const due = resolved?.id !== id;
   useEffect(() => {
     if (!due) return undefined;
     let current = true;
@@ -59,7 +55,7 @@ function useThumb(source: PhotoSource, id: string): string | null {
       current = false;
     };
   }, [due, id, source]);
-  return resolved?.id === id ? resolved.url : null;
+  return resolved?.id === id ? resolved.url : sourceLinks[source].peek(id, SOURCE_REV, 'thumb');
 }
 
 function Check({ picked }: { readonly picked: boolean }): ReactNode {
@@ -113,7 +109,6 @@ function Picture({
   readonly tile: SourceTile;
 }): ReactNode {
   const url = useThumb(source, tile.id);
-  const motion = useMotion();
   if (url === null) {
     return (
       <View className="absolute inset-0 items-center justify-center">
@@ -126,8 +121,8 @@ function Picture({
       source={{ uri: url, cacheKey: `${source}:${tile.id}` }}
       contentFit="cover"
       recyclingKey={tile.id}
-      cachePolicy="disk"
-      transition={motion.reduced ? 0 : TILE_FADE_MS}
+      cachePolicy="memory-disk"
+      loading="eager"
       onError={(event) => {
         log.warn('photos.sources.thumb_load_failed', { source, reason: event.error });
       }}

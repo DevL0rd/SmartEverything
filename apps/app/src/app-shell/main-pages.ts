@@ -1,4 +1,4 @@
-import type { PageSettingsLink } from '../components/page-settings-button';
+import type { PageSettingsLink } from '../components/page-menu';
 import { settingsPage } from '../settings/tree';
 import type { SettingsPageDefinition } from '../settings/types';
 import { href } from './hrefs';

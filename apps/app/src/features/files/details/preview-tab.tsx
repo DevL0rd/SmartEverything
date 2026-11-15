@@ -15,6 +15,7 @@ import {
 import { downloadNode, nodeKeyOf, openNode } from '../quick-look/node-files';
 import { useTextHead } from '../quick-look/text-head';
 import type { FileLinks, FileNode } from '../source/types';
+import { useSourceLinks } from '../source/source-hooks';
 import {
   PREVIEW_HEAD_BYTES,
   columnNameOf,
@@ -205,7 +206,7 @@ function Body({
 }
 
 export function PreviewTab<O>({ node, host }: DetailsProps<O>): ReactNode {
-  const links = host.source.useLinks(node);
+  const links = useSourceLinks(host.source, node);
   const exports = exportStateOf(node, host.abilities);
   const { quickLook } = host;
   return (

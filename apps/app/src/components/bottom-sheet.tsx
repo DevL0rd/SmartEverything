@@ -266,7 +266,7 @@ function PanelBody({
           {children}
         </SheetBody>
         {footer === undefined ? null : (
-          <View className={cn('flex-row gap-3', footerInset)}>{footer}</View>
+          <View className={cn('flex-row justify-end gap-3', footerInset)}>{footer}</View>
         )}
       </View>
     </EscapeScopeVisible>

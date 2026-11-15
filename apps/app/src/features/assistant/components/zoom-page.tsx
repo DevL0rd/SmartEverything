@@ -183,6 +183,7 @@ export function ZoomPage({
 }): ReactNode {
   return (
     <Zoomable
+      wheel="wheel"
       style={pageStyle(size)}
       className="items-center justify-center overflow-hidden px-2"
       onZoomed={onZoomed}

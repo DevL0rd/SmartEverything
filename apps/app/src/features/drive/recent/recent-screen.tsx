@@ -6,11 +6,13 @@ import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { VirtualList } from '../../../components/virtual-list';
 import { useAreaWidth } from '../../../design/size-class';
-import { useDevices, useRows, useSession, useSyncStatus } from '../../../store/selectors';
-import { ChipRow } from '../../../components/library-frame';
+import { useDeviceNames, useRows, useSession, useSyncStatus } from '../../../store/selectors';
 import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
 import { useDriveChips } from '../data';
-import { DriveFilterChips } from '../components/drive-chip';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { DriveFilterRow } from '../components/drive-chip';
+import { DriveColumnHead } from '../components/drive-columns';
+import { placeColumns } from '../model/drive-columns';
 import { DriveFrame } from '../components/drive-frame';
 import {
   driveFilterCounts,
@@ -32,7 +34,7 @@ import {
   type RecentDays,
   type RecentLine,
 } from './recent-model';
-import { RecentRow } from './recent-row';
+import { RECENT_COLUMNS, RecentRow, type RecentColumns } from './recent-row';
 import type { FileBrowserHandle } from '../../files';
 import { DriveListFrame, useDriveNodeList } from '../source/drive-lists';
 import {
@@ -57,9 +59,7 @@ const FILTERS: readonly SegmentedOption<DriveRecentFilter>[] = [
 function useNames(): RecentNames {
   const me = useSession().client.profile_id;
   const people = new Map(useRows('profiles').map((person) => [person.id, person.name]));
-  const devices = new Map(
-    useDevices({ includeHidden: true }).map((device) => [device.id, device.name]),
-  );
+  const devices = useDeviceNames('name');
   return {
     me,
     personOf: (id) => people.get(id) ?? null,
@@ -80,28 +80,42 @@ interface ListTopProps {
   readonly lines: readonly RecentLine[];
   readonly scope: DriveScope;
   readonly wide: boolean;
+  readonly columns: RecentColumns;
 }
 
 function chipOfLine(chipOf: DriveChipOf): (line: RecentLine) => DriveChip {
   return (line) => chipOf(rootIdOf(line.entry));
 }
 
-function ListTop({ filter, onFilter, feed, lines, scope, wide }: ListTopProps): ReactNode {
+function ListTop(props: ListTopProps): ReactNode {
+  const { filter, onFilter, feed, lines, scope, wide, columns } = props;
   const loaded = feed.pages.data !== undefined && lines.length > 0;
   const counts = driveFilterCounts(feed.lines, chipOfLine(scope.chipOf));
   return (
-    <View className="gap-3 px-gutter pb-3">
-      <View className={wide ? 'self-start' : 'w-full'}>
-        <Segmented options={FILTERS} value={filter} onChange={onFilter} label="Show" fill={!wide} />
+    <View>
+      <View className="gap-3 px-gutter pb-3">
+        <View className={wide ? 'self-start' : 'w-full'}>
+          <Segmented
+            options={FILTERS}
+            value={filter}
+            onChange={onFilter}
+            label="Show"
+            fill={!wide}
+          />
+        </View>
+        {feed.lines.length > 0 ? (
+          <DriveFilterRow
+            label="Show from drive"
+            value={scope.drive}
+            counts={counts}
+            onChange={scope.onDrive}
+          />
+        ) : null}
+        {loaded && chartShown(filter) ? (
+          <RecentBars filter={filter} days={weekBarsOf(lines, feed.days)} />
+        ) : null}
       </View>
-      {feed.lines.length > 0 ? (
-        <ChipRow label="Show from drive">
-          <DriveFilterChips value={scope.drive} counts={counts} onChange={scope.onDrive} />
-        </ChipRow>
-      ) : null}
-      {loaded && chartShown(filter) ? (
-        <RecentBars filter={filter} days={weekBarsOf(lines, feed.days)} />
-      ) : null}
+      {columns === null || lines.length === 0 ? null : <DriveColumnHead columns={columns} />}
     </View>
   );
 }
@@ -117,7 +131,7 @@ interface RowRenderInput {
   readonly names: RecentNames;
   readonly chipOf: DriveChipOf;
   readonly days: RecentDays;
-  readonly wide: boolean;
+  readonly columns: RecentColumns;
   readonly list: RecentList;
 }
 
@@ -125,7 +139,7 @@ function renderLine({
   names,
   chipOf,
   days,
-  wide,
+  columns,
   list,
 }: RowRenderInput): (line: RecentLine) => ReactElement {
   return function RenderedLine(line: RecentLine): ReactElement {
@@ -140,7 +154,7 @@ function renderLine({
         chip={chip}
         where={folderTrailOf(chip, relPathOf(line.entry))}
         time={timeOf(line, days.timeZone)}
-        wide={wide}
+        columns={columns}
       />
     );
   };
@@ -187,33 +201,37 @@ interface RecentListProps {
 }
 
 function RecentLines(props: RecentListProps): ReactNode {
-  const { feed, lines, scope, wide } = props;
+  const { feed, lines, scope } = props;
   const names = useNames();
   const list = useRecentList(lines);
+  const row = useMeasuredWidth();
+  const columns = placeColumns(row.width, RECENT_COLUMNS);
   return (
     <DriveListFrame browser={list.browser}>
-      <VirtualList
-        sections={sectionsOf(lines)}
-        keyOf={(line) => line.key}
-        renderItem={renderLine({ names, chipOf: scope.chipOf, days: feed.days, wide, list })}
-        header={<ListTop {...props} />}
-        empty={
-          <RecentEmpty
-            pages={feed.pages}
-            filter={props.filter}
-            drive={scope.drive}
-            onAllDrives={() => {
-              scope.onDrive('all');
-            }}
-            live={props.live}
-          />
-        }
-        footer={<RecentFooter pages={feed.pages} />}
-        onEndReached={() => {
-          loadMore(feed.pages);
-        }}
-        probe="drive-recent"
-      />
+      <View className="-mx-gutter flex-1" onLayout={row.onLayout}>
+        <VirtualList
+          sections={sectionsOf(lines)}
+          keyOf={(line) => line.key}
+          renderItem={renderLine({ names, chipOf: scope.chipOf, days: feed.days, columns, list })}
+          header={<ListTop {...props} columns={columns} />}
+          empty={
+            <RecentEmpty
+              pages={feed.pages}
+              filter={props.filter}
+              drive={scope.drive}
+              onAllDrives={() => {
+                scope.onDrive('all');
+              }}
+              live={props.live}
+            />
+          }
+          footer={<RecentFooter pages={feed.pages} />}
+          onEndReached={() => {
+            loadMore(feed.pages);
+          }}
+          probe="drive-recent"
+        />
+      </View>
     </DriveListFrame>
   );
 }
@@ -237,17 +255,15 @@ export function RecentScreen(): ReactNode {
         ? { banner: <RecentStaleBanner /> }
         : {})}
     >
-      <View className="-mx-gutter flex-1">
-        <RecentLines
-          filter={filter}
-          onFilter={setFilter}
-          feed={feed}
-          lines={lines}
-          scope={{ drive, onDrive: setDrive, chipOf }}
-          wide={wide}
-          live={live}
-        />
-      </View>
+      <RecentLines
+        filter={filter}
+        onFilter={setFilter}
+        feed={feed}
+        lines={lines}
+        scope={{ drive, onDrive: setDrive, chipOf }}
+        wide={wide}
+        live={live}
+      />
     </DriveFrame>
   );
 }

@@ -34,14 +34,16 @@ function Password({ draft, disabled, onDraft }: Omit<LinkFormProps, 'narrow'>): 
   const asking = draft.password !== null;
   return (
     <View className="gap-2">
-      <SwitchRow
-        title="Ask for a password"
-        value={asking}
-        disabled={disabled}
-        onChange={(on) => {
-          onDraft({ ...draft, password: on ? '' : null });
-        }}
-      />
+      <View className="-mx-4">
+        <SwitchRow
+          title="Ask for a password"
+          value={asking}
+          disabled={disabled}
+          onChange={(on) => {
+            onDraft({ ...draft, password: on ? '' : null });
+          }}
+        />
+      </View>
       {draft.password === null ? null : (
         <TextField
           label="Password"
@@ -50,6 +52,7 @@ function Password({ draft, disabled, onDraft }: Omit<LinkFormProps, 'narrow'>): 
           focusOnMount
           disabled={disabled}
           helper="People with the link type this before it opens"
+          error={draft.password === '' ? 'Type a password' : null}
           onChange={(password) => {
             onDraft({ ...draft, password });
           }}

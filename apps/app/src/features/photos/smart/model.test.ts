@@ -23,6 +23,7 @@ function status(patch: Partial<PhotoAiStatus> = {}): PhotoAiStatus {
     faces: { ...EMPTY, done: 100 },
     tags: { ...EMPTY, done: 100 },
     index: { ...EMPTY, done: 100 },
+    people: { faces: 0, grouped: 0 },
     spentMicros: 80_000,
     estimateMicros: 0,
     models: { vision: 'v', embedding: 'e', petEmbedding: 'p', eraser: 'x' },
@@ -92,12 +93,13 @@ describe('the smart features progress', () => {
     expect(smartLinkOf(status({ smartSearch: false, faceGrouping: false }))).toEqual({
       headline: 'Off',
       detail: 'Turn on face grouping or smart search',
-      progress: null,
+      progress: 0,
     });
     const running = smartLinkOf(status({ tags: { ...EMPTY, done: 50, queued: 50 } }));
     expect(running.detail).toBe('Analysing on your home hub');
     expect(running.progress).toBeCloseTo(250 / 300);
     expect(smartLinkOf(status()).headline).toBe(`${percent(1)} analysed`);
+    expect(smartLinkOf(status()).progress).toBe(1);
   });
 
   it('offers the listed models with their maker and price, and keeps the one in use', () => {

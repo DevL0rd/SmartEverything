@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { appPlatform, isNative } from '../../../design/platform';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { SettingsPageBody } from '../../../settings/settings-page';
@@ -20,7 +20,7 @@ import { ProcessingCard } from './processing-card';
 import { StorageCard } from './storage-card';
 import { ThisPhoneCard } from './this-phone-card';
 
-const OPEN_PHOTOS: readonly HeaderAction[] = [
+const OPEN_PHOTOS: readonly ShellAction[] = [
   { icon: 'image', label: 'Open Photos', href: href.photos() },
 ];
 
@@ -86,7 +86,6 @@ export function BackupSettingsScreen(): ReactNode {
     <SettingsFrame
       page={PHOTOS_BACKUP_PAGE}
       actions={OPEN_PHOTOS}
-      contentWidth={isNative() ? 'reading' : 'full'}
       {...(connected
         ? {}
         : {

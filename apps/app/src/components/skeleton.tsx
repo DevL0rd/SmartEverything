@@ -14,13 +14,23 @@ import { useOnScreenGate } from '../design/visibility';
 
 type SkeletonShape = 'text' | 'line' | 'block' | 'circle' | 'tile';
 
-const SHAPE: Readonly<Record<SkeletonShape, string>> = {
-  text: 'h-3 w-32 rounded-xs',
-  line: 'h-4 w-full rounded-xs',
-  block: 'h-24 w-full rounded-md',
-  circle: 'size-10 rounded-full',
-  tile: 'h-32 w-full rounded-lg',
+interface ShapeClass {
+  readonly width: string;
+  readonly height: string;
+  readonly radius: string;
+}
+
+const SHAPE: Readonly<Record<SkeletonShape, ShapeClass>> = {
+  text: { width: 'w-32', height: 'h-3', radius: 'rounded-xs' },
+  line: { width: 'w-full', height: 'h-4', radius: 'rounded-xs' },
+  block: { width: 'w-full', height: 'h-24', radius: 'rounded-md' },
+  circle: { width: 'w-10', height: 'h-10', radius: 'rounded-full' },
+  tile: { width: 'w-full', height: 'h-32', radius: 'rounded-lg' },
 };
+
+const SETS_WIDTH = /(^|\s)(w|size)-/;
+const SETS_HEIGHT = /(^|\s)(h|size)-/;
+const SETS_RADIUS = /(^|\s)rounded(-|\s|$)/;
 
 const SHIMMER_MS = 1200;
 
@@ -29,8 +39,15 @@ interface SkeletonProps {
   readonly className?: string;
 }
 
-function skeletonClass({ shape = 'line', className }: SkeletonProps): string {
-  return cn('bg-surface-3', SHAPE[shape], className);
+export function skeletonClass({ shape = 'line', className = '' }: SkeletonProps): string {
+  const base = SHAPE[shape];
+  return cn(
+    'bg-surface-3',
+    !SETS_WIDTH.test(className) && base.width,
+    !SETS_HEIGHT.test(className) && base.height,
+    !SETS_RADIUS.test(className) && base.radius,
+    className,
+  );
 }
 
 function StillSkeleton(props: SkeletonProps): ReactNode {

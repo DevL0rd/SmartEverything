@@ -6,7 +6,6 @@ import { RAIL_PX, type RailWidth } from './layout';
 import { Icon, type IconName } from '../icon';
 import { Interactive, type LinkNavigation } from '../interactive';
 import { Text } from '../text';
-import type { Tone } from '../tone';
 
 export interface RailEntry {
   readonly id: string;
@@ -14,7 +13,6 @@ export interface RailEntry {
   readonly short?: string | undefined;
   readonly icon: IconName;
   readonly missing: string | null;
-  readonly detail: ReactNode;
   readonly count?: string | undefined;
 }
 
@@ -33,38 +31,11 @@ export interface SectionRailProps {
 }
 
 const RAIL_WIDTH_STYLE = StyleSheet.create({
-  frame: { flexGrow: 0, flexShrink: 0 },
   list: { flexGrow: 1, flexShrink: 1, flexBasis: 0 },
   icon: { width: RAIL_PX.icon },
   mid: { width: RAIL_PX.mid },
   wide: { width: RAIL_PX.wide },
-  master: { width: RAIL_PX.master },
 });
-
-function entryTone(entry: RailEntry, selected: boolean): Tone {
-  if (selected) return 'primary';
-  return entry.missing === null ? 'variant' : 'faint';
-}
-
-function IconLabel({
-  entry,
-  selected,
-}: {
-  readonly entry: RailEntry;
-  readonly selected: boolean;
-}): ReactNode {
-  return (
-    <Text
-      variant="caption"
-      tone={entryTone(entry, selected)}
-      align="center"
-      numberOfLines={1}
-      className="w-full"
-    >
-      {entry.short ?? entry.label}
-    </Text>
-  );
-}
 
 export function railEntryLabel(entry: RailEntry): string {
   const count = entry.count === undefined || entry.count === '' ? [] : [entry.count];
@@ -72,7 +43,7 @@ export function railEntryLabel(entry: RailEntry): string {
   return [entry.label, ...count, ...missing].join(', ');
 }
 
-function WideLabel({
+function StackedFace({
   entry,
   selected,
 }: {
@@ -81,16 +52,54 @@ function WideLabel({
 }): ReactNode {
   return (
     <>
-      <View className="min-w-0 flex-1">
-        <Text
-          variant="callout"
-          tone={entry.missing === null || selected ? 'default' : 'faint'}
-          numberOfLines={1}
-        >
-          {entry.label}
-        </Text>
-        {entry.detail}
+      <View
+        className={cn(
+          'h-8 w-16 items-center justify-center rounded-full',
+          selected && 'bg-primary-container',
+        )}
+      >
+        <View className={cn(entry.missing !== null && 'opacity-50')}>
+          <Icon name={entry.icon} size={24} tone={selected ? 'primary' : 'variant'} />
+        </View>
       </View>
+      <Text
+        variant="caption"
+        tone={selected ? 'default' : 'variant'}
+        align="center"
+        numberOfLines={1}
+        className="w-full"
+      >
+        {entry.short ?? entry.label}
+      </Text>
+    </>
+  );
+}
+
+function rowTone(entry: RailEntry, selected: boolean): 'primary' | 'default' | 'variant' {
+  if (selected) return 'primary';
+  return entry.missing === null ? 'default' : 'variant';
+}
+
+function RowFace({
+  entry,
+  selected,
+}: {
+  readonly entry: RailEntry;
+  readonly selected: boolean;
+}): ReactNode {
+  return (
+    <>
+      <View className={cn(entry.missing !== null && 'opacity-50')}>
+        <Icon name={entry.icon} size={20} tone={selected ? 'primary' : 'variant'} />
+      </View>
+      <Text
+        variant="label"
+        tone={rowTone(entry, selected)}
+        className="flex-1"
+        numberOfLines={1}
+      >
+        {entry.label}
+      </Text>
       {entry.count === undefined || entry.count === '' ? null : (
         <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
           {entry.count}
@@ -110,7 +119,7 @@ export function RailItem({
   readonly onPress?: () => void;
 }): ReactNode {
   const selected = rail.active === entry.id;
-  const icon = rail.width === 'icon';
+  const stacked = rail.width === 'icon';
   return (
     <Interactive
       href={rail.hrefOf(entry.id)}
@@ -119,19 +128,17 @@ export function RailItem({
       selected={selected}
       label={railEntryLabel(entry)}
       className={cn(
-        'rounded-md',
-        icon
-          ? 'min-h-14 w-22 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5'
-          : 'min-h-12 flex-row items-center gap-3 px-3 py-2',
-        selected && 'bg-primary/12',
+        stacked
+          ? 'min-h-14 w-full items-center justify-center gap-1 px-1 py-1'
+          : 'h-10 min-h-touch-min flex-row items-center gap-3 rounded-full px-4',
+        !stacked && selected && 'bg-primary-container',
       )}
-      layerClassName="rounded-md"
+      layerClassName="rounded-full"
     >
-      <Icon name={entry.icon} size={24} tone={entryTone(entry, selected)} />
-      {icon ? (
-        <IconLabel entry={entry} selected={selected} />
+      {stacked ? (
+        <StackedFace entry={entry} selected={selected} />
       ) : (
-        <WideLabel entry={entry} selected={selected} />
+        <RowFace entry={entry} selected={selected} />
       )}
     </Interactive>
   );
@@ -145,42 +152,56 @@ function GroupHeading({
   readonly width: RailWidth;
 }): ReactNode {
   return width === 'icon' ? (
-    <View className="my-1.5 h-hairline w-10 bg-outline-variant" />
+    <View className="my-1.5 h-hairline w-10 self-center bg-outline-variant" />
   ) : (
-    <Text variant="footnote" tone="variant" className="px-3 pt-4">
+    <Text variant="caption" tone="faint" className="px-4 pb-1 pt-3">
       {title}
     </Text>
   );
 }
 
-function RailList(rail: SectionRailProps): ReactNode {
-  return (
-    <ScrollView
-      accessibilityRole="list"
-      accessibilityLabel="Sections"
-      style={RAIL_WIDTH_STYLE.list}
-      contentContainerClassName={cn(
-        'gap-1 pb-4 pr-2 pt-2',
-        rail.width === 'icon' && 'items-center',
+export function RailGroups({
+  rail,
+  onPress,
+}: {
+  readonly rail: SectionRailProps;
+  readonly onPress?: () => void;
+}): ReactNode {
+  return rail.groups.map((group, index) => (
+    <Fragment key={group.title ?? ''}>
+      {group.title === null || (index === 0 && rail.width === 'icon') ? null : (
+        <GroupHeading title={group.title} width={rail.width} />
       )}
-    >
-      {rail.groups.map((group) => (
-        <Fragment key={group.title ?? ''}>
-          {group.title === null ? null : <GroupHeading title={group.title} width={rail.width} />}
-          {group.entries.map((entry) => (
-            <RailItem key={entry.id} entry={entry} rail={rail} />
-          ))}
-        </Fragment>
+      {group.entries.map((entry) => (
+        <RailItem
+          key={entry.id}
+          entry={entry}
+          rail={rail}
+          {...(onPress === undefined ? {} : { onPress })}
+        />
       ))}
-    </ScrollView>
-  );
+    </Fragment>
+  ));
 }
 
 export function SectionRail(rail: SectionRailProps): ReactNode {
   return (
-    <View style={[RAIL_WIDTH_STYLE.frame, RAIL_WIDTH_STYLE[rail.width]]}>
-      <RailList {...rail} />
-      {rail.footer === undefined ? null : <View className="pb-4 pr-2">{rail.footer}</View>}
+    <View
+      style={RAIL_WIDTH_STYLE[rail.width]}
+      className={cn(
+        'shrink-0 grow-0 border-r border-outline-variant bg-chrome',
+        rail.width === 'icon' ? 'px-1' : 'px-3',
+      )}
+    >
+      <ScrollView
+        accessibilityRole="list"
+        accessibilityLabel="Sections"
+        style={RAIL_WIDTH_STYLE.list}
+        contentContainerClassName="gap-1 pb-3 pt-3"
+      >
+        <RailGroups rail={rail} />
+      </ScrollView>
+      {rail.footer === undefined ? null : <View className="pb-3">{rail.footer}</View>}
     </View>
   );
 }

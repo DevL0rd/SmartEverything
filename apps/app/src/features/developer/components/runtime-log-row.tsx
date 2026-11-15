@@ -32,7 +32,7 @@ export function RuntimeLogEntry({ record, open, onToggle }: RuntimeLogRowProps):
         label={`Details for ${record.event}, ${record.level}, ${time}, ${origin}`}
         expanded={open}
         onPress={onToggle}
-        className="min-h-touch-min flex-row items-center gap-2 px-3 py-2"
+        className="min-h-touch-min flex-row items-center gap-2 py-2"
       >
         <View className="min-w-0 flex-1">
           <View className="flex-row items-baseline gap-2">
@@ -50,7 +50,7 @@ export function RuntimeLogEntry({ record, open, onToggle }: RuntimeLogRowProps):
         <TurnChevron open={open} />
       </Interactive>
       {open ? (
-        <CollapseBody className="gap-1 px-3 pb-2">
+        <CollapseBody className="gap-1 pb-2">
           {record.failure === null ? null : (
             <Text variant="footnote" tone="critical" selectable>
               {record.failure.message}

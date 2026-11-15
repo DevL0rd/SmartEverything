@@ -33,16 +33,24 @@ const EMPTY: Readonly<
   },
 };
 
-function RecentSkeleton(): ReactNode {
+export function DriveRowsSkeleton({ label }: { readonly label: string }): ReactNode {
   return (
-    <View aria-label="Loading recent files" className="gap-2 px-gutter py-2">
+    <View aria-busy aria-label={label}>
       {SKELETON_ROWS.map((key) => (
-        <View key={key} className="min-h-row-h-2 flex-row items-center gap-4">
-          <Skeleton shape="circle" className="size-8 rounded-sm" />
-          <View className="flex-1 gap-2">
-            <Skeleton shape="text" className="w-48" />
-            <Skeleton shape="text" />
+        <View
+          key={key}
+          className="min-h-14 flex-row items-center gap-3 border-t border-outline-variant pl-4 pr-1"
+        >
+          <Skeleton className="size-8 rounded-sm" />
+          <View className="min-w-0 flex-1 gap-2">
+            <Skeleton shape="text" className="w-2/5" />
+            <Skeleton shape="text" className="w-3/4" />
           </View>
+          <View className="items-end gap-2">
+            <Skeleton shape="text" className="w-10" />
+            <Skeleton className="h-5 w-20 rounded-full" />
+          </View>
+          <View className="w-touch-min" />
         </View>
       ))}
     </View>
@@ -142,7 +150,7 @@ export function RecentEmpty({
     live,
   });
   if (state === 'offline') return <RecentOffline />;
-  if (state === 'loading') return <RecentSkeleton />;
+  if (state === 'loading') return <DriveRowsSkeleton label="Loading recent files" />;
   if (state === 'empty' && drive !== 'all') {
     return <RecentNotInDrive drive={drive} onAllDrives={onAllDrives} />;
   }

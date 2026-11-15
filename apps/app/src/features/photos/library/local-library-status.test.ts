@@ -11,11 +11,13 @@ describe('local library browse status', () => {
     expect(localLibraryStatusOf({ ...READY, state: 'denied', access: 'none' })).toMatchObject({
       title: 'Show photos and videos on this device',
       action: 'access',
-      body: 'Allow access to browse your local library. This does not turn on backup.',
+      body: 'Allow access to browse this device’s photos and videos here. This does not turn on backup.',
+      label: 'Allow access',
     });
     expect(localLibraryStatusOf({ ...READY, access: 'limited' })).toMatchObject({
       action: 'access',
-      title: 'Showing selected photos and videos',
+      title: 'Showing the photos and videos you chose',
+      label: 'Choose more',
     });
   });
 
@@ -29,6 +31,7 @@ describe('local library browse status', () => {
     const error = 'Pictures: Access denied';
     expect(localLibraryStatusOf({ ...READY, error })).toMatchObject({
       action: 'retry',
+      title: 'Photos on this device did not load',
       body: error,
     });
     expect(localLibraryStatusOf({ ...READY, state: 'error', error })).toMatchObject({

@@ -245,7 +245,8 @@ describe('signed driveFile links', () => {
     const link = links.driveFile(MEMBER_FILE, 1);
     now = new Date(NOW.getTime() + 400 * 1000);
     const response = await fetch(pathOf(link.url));
-    const remaining = LINK_LIFETIME_SECONDS - 300;
+    const remaining = Date.parse(link.expiresAt) / 1000 - (NOW.getTime() / 1000 + 400);
+    expect(remaining).toBe(LINK_LIFETIME_SECONDS - 400);
     expect(response.headers.get('cache-control')).toBe(
       `private, max-age=${String(remaining)}, immutable`,
     );

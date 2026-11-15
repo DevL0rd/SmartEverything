@@ -51,7 +51,7 @@ class NodeNativePlane {
       log: options.log,
       directory,
       launch,
-      cli: systemClaudeCli,
+      cli: systemClaudeCli(null),
       readUrl: async (): Promise<string> => (await this.connect()).url,
       readMcp: async (): Promise<{ url: string | null; headersCommand: string }> => ({
         url: await this.grant.endpoint(),

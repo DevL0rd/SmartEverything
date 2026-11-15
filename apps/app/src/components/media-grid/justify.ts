@@ -25,7 +25,10 @@ export interface GridGeometry {
   readonly width: number;
   readonly target: number;
   readonly gap: number;
+  readonly pack?: boolean;
 }
+
+export const PACK_GAP = 12;
 
 export interface PlacedTile {
   readonly tile: MediaTile;
@@ -38,11 +41,18 @@ export interface DayHeadRow {
   readonly day: MediaDay;
 }
 
+export interface PackedDay {
+  readonly day: MediaDay;
+  readonly width: number;
+  readonly tiles: readonly PlacedTile[];
+}
+
 export interface TileRow {
   readonly kind: 'tiles';
   readonly key: string;
   readonly height: number;
   readonly tiles: readonly PlacedTile[];
+  readonly days?: readonly PackedDay[];
 }
 
 export type MediaGridRow = DayHeadRow | TileRow;
@@ -112,15 +122,87 @@ function rowOf(day: MediaDay, line: Line): TileRow {
   };
 }
 
+function naturalWidth(tiles: readonly MediaTile[], geometry: GridGeometry): number {
+  const aspects = tiles.reduce((sum, tile) => sum + tile.aspect, 0);
+  return aspects * geometry.target + geometry.gap * Math.max(0, tiles.length - 1);
+}
+
+function headWidth(geometry: GridGeometry): number {
+  return Math.round((geometry.target * 4) / 3);
+}
+
+function dayRows(day: MediaDay, geometry: GridGeometry): MediaGridRow[] {
+  return [
+    { kind: 'head', key: `${day.key}:head`, day },
+    ...justifyDay(day.tiles, geometry).map((line) => rowOf(day, line)),
+  ];
+}
+
+function packedRow(days: readonly PackedDay[], geometry: GridGeometry): TileRow {
+  const first = days[0];
+  return {
+    kind: 'tiles',
+    key: `${first?.day.key ?? ''}:pack`,
+    height: geometry.target,
+    tiles: days.flatMap((packed) => packed.tiles),
+    days,
+  };
+}
+
+function packDays(days: readonly MediaDay[], geometry: GridGeometry): readonly MediaGridRow[] {
+  const rows: MediaGridRow[] = [];
+  let open: PackedDay[] = [];
+  let used = 0;
+  const flush = (): void => {
+    const only = open[0];
+    if (open.length === 1 && only !== undefined) rows.push(...dayRows(only.day, geometry));
+    else if (open.length > 1) rows.push(packedRow(open, geometry));
+    open = [];
+    used = 0;
+  };
+  for (const day of days) {
+    const natural = naturalWidth(day.tiles, geometry);
+    const width = Math.max(natural, headWidth(geometry));
+    if (natural >= geometry.width || width > geometry.width) {
+      flush();
+      rows.push(...dayRows(day, geometry));
+      continue;
+    }
+    if (open.length > 0 && used + PACK_GAP + width > geometry.width) flush();
+    used = open.length === 0 ? width : used + PACK_GAP + width;
+    open.push({
+      day,
+      width,
+      tiles: day.tiles.map((tile) => ({ tile, width: tile.aspect * geometry.target })),
+    });
+  }
+  flush();
+  return rows;
+}
+
 export function layoutGrid(
   days: readonly MediaDay[],
   geometry: GridGeometry,
 ): readonly MediaGridRow[] {
   if (geometry.width <= 0) return [];
-  return days.flatMap((day): MediaGridRow[] => [
-    { kind: 'head', key: `${day.key}:head`, day },
-    ...justifyDay(day.tiles, geometry).map((line) => rowOf(day, line)),
-  ]);
+  if (geometry.pack === true) return packDays(days, geometry);
+  return days.flatMap((day) => dayRows(day, geometry));
+}
+
+function samePacked(left: TileRow, right: TileRow): boolean {
+  const before = left.days ?? [];
+  const after = right.days ?? [];
+  return (
+    before.length === after.length &&
+    before.every((packed, index) => {
+      const other = after[index];
+      return (
+        packed.width === other?.width &&
+        packed.day.key === other.day.key &&
+        packed.day.tiles.length === other.day.tiles.length
+      );
+    })
+  );
 }
 
 function samePlaced(left: PlacedTile, right: PlacedTile | undefined): boolean {
@@ -139,7 +221,8 @@ export function sameRow(left: MediaGridRow, right: MediaGridRow): boolean {
     right.kind === 'tiles' &&
     left.height === right.height &&
     left.tiles.length === right.tiles.length &&
-    left.tiles.every((placed, index) => samePlaced(placed, right.tiles[index]))
+    left.tiles.every((placed, index) => samePlaced(placed, right.tiles[index])) &&
+    samePacked(left, right)
   );
 }
 

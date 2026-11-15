@@ -15,16 +15,14 @@ function ProfileBlocks({ children }: { readonly children: ReactNode }): ReactNod
   });
   return (
     <View className="gap-section-gap web:flex-row web:flex-wrap web:items-start">
-      <View className="min-w-0 max-w-reading gap-section-gap web:shrink web:grow web:basis-96">
-        {people}
-      </View>
+      <View className="min-w-0 gap-section-gap web:shrink web:grow web:basis-96">{people}</View>
       {scale.length === 0 ? null : (
-        <View className="min-w-0 max-w-dialog web:shrink web:grow web:basis-80">{scale}</View>
+        <View className="min-w-0 web:shrink web:grow web:basis-80">{scale}</View>
       )}
     </View>
   );
 }
 
 export function ProfilesScreen(): ReactNode {
-  return <SettingsPageScreen page="profiles" contentWidth="detail" BlocksLayout={ProfileBlocks} />;
+  return <SettingsPageScreen page="profiles" BlocksLayout={ProfileBlocks} />;
 }

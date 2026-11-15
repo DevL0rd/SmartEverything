@@ -13,8 +13,8 @@ import {
   type WeatherForecast,
 } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
-import { compareText, plural } from '../../../format/text';
-import { clock, hourOf, longDate } from '../../../format/time';
+import { compareText } from '../../../format/text';
+import { clock, duration, hourOf, longDate, relative } from '../../../format/time';
 import { ringPhaseOf } from '../../planner';
 import { degrees } from '../../weather';
 import type { PhoneRingKind } from './ring-keys';
@@ -169,26 +169,24 @@ function byStart(left: PlannerOccurrenceView, right: PlannerOccurrenceView): num
   return a === b ? compareText(left.title, right.title) : a - b;
 }
 
-function firstBookedOf(day: PlannerDay, now: number): PlannerOccurrenceView | null {
-  const timed = aheadOf(day).filter((view) => {
-    const start = startOf(view);
-    return !view.all_day && start !== null && Date.parse(start) >= now;
-  });
-  return [...timed].sort(byStart)[0] ?? null;
-}
-
-export function briefingLinesOf(day: PlannerDay, now: number): readonly string[] {
-  const first = firstBookedOf(day, now);
-  const start = first === null ? null : startOf(first);
-  const lines = [
-    first === null || start === null
-      ? 'Nothing else is booked today.'
-      : `First up at ${clock(start, day.time_zone)}: ${first.title}.`,
-  ];
-  const left = aheadOf(day).length;
-  if (left > 0) lines.push(`${plural(left, 'thing')} left today.`);
+export function briefingLinesOf(day: PlannerDay): readonly string[] {
+  const lines = aheadOf(day).length === 0 ? ['Nothing else is booked today.'] : [];
   if (day.missed.length > 0) lines.push(`${String(day.missed.length)} missed earlier.`);
   return lines;
+}
+
+export function timerDoneLineOf(
+  timer: PlannerTimerRow | undefined,
+  ring: PlannerRingRow | null,
+  now: number,
+): string | null {
+  const length = timer === undefined ? null : `${duration(timer.duration_ms / 1000)} timer`;
+  const ended = ring?.rang_at ?? null;
+  const ago = ended === null ? null : `finished ${relative(ended, now)}`;
+  const parts = [length, ago].filter((part) => part !== null);
+  if (parts.length === 0) return null;
+  const line = parts.join(' · ');
+  return `${line.charAt(0).toUpperCase()}${line.slice(1)}`;
 }
 
 export function todayRowsOf(

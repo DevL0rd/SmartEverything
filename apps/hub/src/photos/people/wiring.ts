@@ -30,12 +30,17 @@ export function startPeople(wiring: PeopleWiring): PeopleService {
     log,
     profiles: (): readonly string[] =>
       store.context.sql.all(PROFILE, 'select id from profiles order by id').map((row) => row.id),
+    regrouped: (profileId): void => {
+      store.feed.notice({ type: 'photos_people_changed', profileId });
+    },
   });
-  ai.onFacesIdle(() => {
+  const regroup = (): void => {
     service.drained().catch((cause: unknown) => {
       log.error('groups.regroup_failed', cause);
     });
-  });
+  };
+  ai.onFacesIdle(regroup);
+  regroup();
   return service;
 }
 

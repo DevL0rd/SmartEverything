@@ -37,7 +37,11 @@ class DesktopLibrary {
       );
     this.items.clear();
     for (const item of library.items) this.items.set(item.id, item);
-    return library.items.filter((item) => scope.includeVideos || !item.video);
+    return library.items.filter(
+      (item) =>
+        (scope.includeVideos || !item.video) &&
+        (scope.albumIds.length === 0 || scope.albumIds.includes(item.folder)),
+    );
   }
 
   readonly itemOf = (id: string): DesktopPhotoItem => {

@@ -144,8 +144,8 @@ describe('link stats', () => {
     expect(stats.map((item) => [item.key, item.value, item.caption])).toEqual([
       ['active', '2', '1 ends this week'],
       ['opens', '23', '3 downloads'],
-      ['last-open', 'Not yet', undefined],
-      ['ended', '1', undefined],
+      ['last-open', 'Not yet', 'no link opened'],
+      ['ended', '1', 'stopped or expired'],
     ]);
   });
 });
@@ -180,7 +180,7 @@ describe('shared with me', () => {
 
   it('says how long ago an item was shared and sums the page', () => {
     expect(sharedAgoOf(at(-2 * DAY_MS), NOW)).toBe('Shared 2 d ago');
-    expect(withMeSubtitleOf([])).toBe('Nothing shared with you yet');
+    expect(withMeSubtitleOf([])).toBeUndefined();
     expect(withMeSubtitleOf([withMe(1, SAM, 0), withMe(2, ROBIN, 0)])).toBe(
       '2 items · from 2 people',
     );
@@ -223,7 +223,7 @@ describe('shared by me', () => {
   it('sums the shared items and their active links', () => {
     const groups = linkGroupsOf(byMeLinksOf([entry]), NOW);
     expect(byMeSubtitleOf(1, groups)).toBe('1 item · 1 active link');
-    expect(byMeSubtitleOf(0, linkGroupsOf([], NOW))).toBe('You have not shared anything yet');
+    expect(byMeSubtitleOf(0, linkGroupsOf([], NOW))).toBeUndefined();
   });
 
   it('names a person as You for the viewer', () => {

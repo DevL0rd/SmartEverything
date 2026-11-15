@@ -41,7 +41,12 @@ describe('library tile menu', () => {
       'Trash',
     ]);
     expect(menu.quick.at(-1)?.destructive).toBe(true);
-    expect(menu.items.map((item) => item.label)).toEqual(['Info', 'Add to album', 'Select']);
+    expect(menu.items.map((item) => item.label)).toEqual([
+      'Info',
+      'Add to album',
+      'Save to this device',
+      'Select',
+    ]);
   });
 
   it('lists every row on desktop with Move to trash last and tinted', () => {
@@ -53,7 +58,7 @@ describe('library tile menu', () => {
       'Add to album',
       'Send to chat',
       'Share link',
-      'Download original',
+      'Save to this device',
       'Show in Drive',
       'Ask about this photo',
       'Move to trash',
@@ -89,11 +94,16 @@ describe('library tile menu', () => {
     expect(phone).toMatchObject({ label: 'To chat', disabled: true });
   });
 
-  it('names a video in the Ask row and turns it off with the reason when no chat is open', () => {
+  it('names a video in the Ask row and folds it into one off row with the reason when no chat is open', () => {
     const hint = 'Open a chat first';
     const clip = { ...TILE, flags: photoFlags(['video']) };
-    const ask = tileMenu(clip, actions(hint), false).items.find((item) => item.id === 'ask');
-    expect(ask).toMatchObject({ label: 'Ask about this video', disabled: true, description: hint });
+    const ask = tileMenu(clip, actions(), false).items.find((item) => item.id === 'ask');
+    expect(ask).toMatchObject({ label: 'Ask about this video' });
+    const off = tileMenu(clip, actions(hint), false).items;
+    expect(off.filter((item) => item.description === hint)).toEqual([
+      expect.objectContaining({ label: 'Send to chat or ask about it', disabled: true }),
+    ]);
+    expect(off.find((item) => item.id === 'ask')).toBeUndefined();
   });
 
   it('does nothing until a row is pressed', () => {

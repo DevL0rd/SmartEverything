@@ -34,7 +34,7 @@ function SuggestedBody({
   const nameOf = useByName();
   if (query.data !== undefined) {
     return (
-      <HScroller label="Suggested files" fade fadeSurface="bg">
+      <HScroller label="Suggested files" fade>
         {suggestions.map((suggestion) => (
           <SuggestionCard
             key={suggestionKeyOf(suggestion)}

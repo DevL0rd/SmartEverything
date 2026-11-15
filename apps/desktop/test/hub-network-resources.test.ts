@@ -1,3 +1,5 @@
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BrowserWindow } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,15 +13,20 @@ const shared = vi.hoisted(() => ({
   open: vi.fn(),
   write: vi.fn(),
   admit: vi.fn(),
+  reveal: vi.fn(),
+  home: '/fake-desktop-home',
 }));
 
 vi.mock('electron', () => ({
-  app: { getPath: (): string => '/fake-desktop-user-data' },
+  app: {
+    getPath: (name: string): string =>
+      name === 'userData' ? '/fake-desktop-user-data' : `${shared.home}/${name}`,
+  },
   BrowserWindow: class {
     readonly webContents = { id: 42 };
   },
   dialog: { showSaveDialog: shared.save },
-  shell: { openPath: shared.open },
+  shell: { openPath: shared.open, showItemInFolder: shared.reveal },
 }));
 
 vi.mock('@smarteverything/hub/client-network/resource-broker', () => ({
@@ -101,5 +108,35 @@ describe('desktop resource downloads', () => {
     await expect(
       resources().download(new BrowserWindow().webContents, { id: ID, intent: 'open' }),
     ).rejects.toThrow('Native media player could not open');
+  });
+});
+
+describe('saving a photo back to this computer', () => {
+  it('moves the downloaded original into Pictures/Restored and shows it in its folder', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'desktop-restore-ipc-'));
+    try {
+      shared.home = home;
+      const staged = join(home, 'staged.jpg');
+      await writeFile(staged, 'photo bytes');
+      shared.write.mockResolvedValue(staged);
+      const owner = new BrowserWindow().webContents;
+      const done = await resources().restore(owner, {
+        id: ID,
+        name: 'beach.jpg',
+        mimeType: 'image/jpeg',
+        sha256: null,
+        takenAt: null,
+        target: { kind: 'restored' },
+      });
+      const saved = join(home, 'pictures', 'Restored', 'beach.jpg');
+      expect(done).toEqual({ result: 'saved', location: saved });
+      expect(await readFile(saved, 'utf8')).toBe('photo bytes');
+      await expect(readFile(staged)).rejects.toThrow(/ENOENT/);
+      resources().reveal(saved);
+      expect(shared.reveal).toHaveBeenCalledWith(saved);
+    } finally {
+      shared.home = '/fake-desktop-home';
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });

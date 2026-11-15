@@ -12,6 +12,7 @@ import expo.modules.healthconnect.voice.VoiceCaptureUnavailable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.PI
 import kotlin.math.log10
 import kotlin.math.max
@@ -78,7 +79,8 @@ class EchoTest(private val context: Context, private val devices: CallDevices, p
 
   private fun measure(): EchoMeasurement {
     val gate = SpeechGate(context, countingSink(), { false }, settings.gate().copy(ignoreAssistantAudible = true))
-    val listening = VoiceCapture.addConsumer { pcm -> hear(pcm, gate) }
+    val lost = AtomicReference<VoiceCaptureUnavailable?>(null)
+    val listening = VoiceCapture.addConsumer(VoiceCapture.Mode.Call, lost::set) { pcm -> hear(pcm, gate) }
     try {
       phase = Phase.QUIET
       Thread.sleep(QUIET_MS)
@@ -90,6 +92,7 @@ class EchoTest(private val context: Context, private val devices: CallDevices, p
       listening.close()
       gate.close()
     }
+    lost.get()?.let { throw it }
     return synchronized(this) {
       EchoMeasurement(
         noiseFloor = median(quietLevels),

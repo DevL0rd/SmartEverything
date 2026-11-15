@@ -1,11 +1,12 @@
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from 'react';
 import { useIsFocused } from 'expo-router';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { isNative } from '../../../design/platform';
 import { useSyncStatus } from '../../../store/selectors';
 import { offlineOf, type FileAbilities } from '../source/abilities';
 import { keysOf } from '../source/node';
 import type { FileLocation, FileNode, FilePlace, FileSource } from '../source/types';
+import { useSourceAbilities, useSourceFolder, useSourcePlaces } from '../source/source-hooks';
 import type { DragPayload } from './drag-model';
 import { chooseUploads, runMenuAction, runOp, type MenuTargets } from './browser-commands';
 import { useBrowserFilter, type FilteredNodes } from './browser-filter';
@@ -32,8 +33,9 @@ import {
   selectAllOf,
   tapModeOf,
   tapped,
+  type HeldKeys,
 } from './selection-model';
-import { useBrowserKeys, useShiftHeld, type BrowserReveal } from './use-browser-keys';
+import { useBrowserKeys, useHeldKeys, type BrowserReveal } from './use-browser-keys';
 import { bodyStateOf, type BodyState } from './view-state-model';
 
 export interface FileBrowserInput<O> {
@@ -57,12 +59,12 @@ function useCore<O>(input: FileBrowserInput<O>): Core<O> {
   const { source, location, host } = input;
   const appOffline = useSyncStatus().status !== 'live';
   const offline = appOffline || (host.offlineLine ?? null) !== null;
-  const raw = source.useAbilities(location);
+  const raw = useSourceAbilities(source, location);
   const abilities = offline ? offlineOf(raw) : raw;
-  const places = source.usePlaces();
+  const places = useSourcePlaces(source);
   const place = places.find((candidate) => candidate.key === location.place) ?? null;
   const browser = useBrowserState(location, abilities, host.start);
-  const listing = source.useFolder(location, browser.sort);
+  const listing = useSourceFolder(source, location, browser.sort);
   const filtered = useBrowserFilter({
     source,
     location,
@@ -115,7 +117,7 @@ function headerOf<O>(core: Core<O>, area: (action: AreaAction) => () => void): B
   });
   const picking = pickedOf(core.filtered.visible, core.browser.state.selection).length > 0;
   const { primary, secondary } = picking ? { primary: null, secondary: [] } : model.area;
-  const actions: readonly HeaderAction[] = secondary.map((action) => ({
+  const actions: readonly ShellAction[] = secondary.map((action) => ({
     icon: action === 'upload' ? 'upload' : 'plus',
     label: AREA_LABEL[action],
     onPress: area(action),
@@ -200,7 +202,7 @@ function openerOf<O>(core: Core<O>, panels: Panels<O>): (node: FileNode<O>) => v
 function commandsOf<O>(
   core: Core<O>,
   panels: Panels<O>,
-  shiftHeld: () => boolean,
+  heldKeys: () => HeldKeys,
 ): BrowserCommands<O> {
   const { dispatch, state } = core.browser;
   const order = keysOf(core.filtered.visible);
@@ -209,13 +211,13 @@ function commandsOf<O>(
     dispatch({ kind: 'select', change });
   };
   const pick = (node: FileNode<O>): void => {
-    const mode = tapModeOf({ shift: shiftHeld(), toggle: true, selecting: state.selecting });
+    const mode = tapModeOf({ shift: heldKeys().shift, toggle: true, selecting: state.selecting });
     dispatch({ kind: 'selecting', on: true });
     select((current) => tapped(keptIn(current, order), order, node.key, mode));
   };
   return {
     press: (node): void => {
-      if (pressModeOf(core.filtered.visible, state.selection, shiftHeld()) === 'pick') pick(node);
+      if (pressModeOf(core.filtered.visible, state.selection, heldKeys()) === 'pick') pick(node);
       else open(node);
     },
     pick,
@@ -352,12 +354,12 @@ function bodyOf<O>(core: Core<O>): BodyState {
 function handleOf<O>(
   core: Core<O>,
   panels: Panels<O>,
-  shiftHeld: () => boolean,
+  heldKeys: () => HeldKeys,
 ): Omit<FileBrowserHandle<O>, 'reveal'> {
   const { abilities, listing, filtered, browser, place } = core;
   const inTrash = inTrashOf(place);
   const menuContext = { abilities, inTrash };
-  const commands = commandsOf(core, panels, shiftHeld);
+  const commands = commandsOf(core, panels, heldKeys);
   const picked = pickedOf(filtered.visible, browser.state.selection);
   const actions = (nodes: readonly FileNode<O>[]): ReturnType<FileSource<O>['actions']> =>
     core.input.source.actions(nodes);
@@ -404,9 +406,9 @@ function useRevealRef(): RefObject<BrowserReveal | null> {
 export function useFileBrowser<O>(input: FileBrowserInput<O>): FileBrowserHandle<O> {
   const core = useCore(input);
   const [pending, setPending] = useState<BrowserPending<O> | null>(null);
-  const shiftHeld = useShiftHeld();
+  const heldKeys = useHeldKeys();
   const reveal = useRevealRef();
-  const handle = { ...handleOf(core, { pending, setPending }, shiftHeld), reveal };
+  const handle = { ...handleOf(core, { pending, setPending }, heldKeys), reveal };
   const enabled =
     useIsFocused() && input.host.compact !== true && core.abilities.list && pending === null;
   useKeys(handle, enabled);

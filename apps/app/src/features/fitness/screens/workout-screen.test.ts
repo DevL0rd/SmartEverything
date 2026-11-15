@@ -50,12 +50,8 @@ vi.mock('../../../components/use-measured-width', () => ({
   }),
 }));
 vi.mock('../../../components/page-shell/page-shell', () => ({
-  PageShell: ({
-    children,
-    title,
-    width,
-  }: Children & { readonly title: string; readonly width?: string }): ReactNode =>
-    createElement('main', { 'data-width': width }, createElement('h1', null, title), children),
+  PageShell: ({ children, title }: Children & { readonly title: string }): ReactNode =>
+    createElement('main', null, createElement('h1', null, title), children),
 }));
 vi.mock('../../../components/card', () => ({
   Card: ({ children, title }: Children & { readonly title?: string }): ReactNode =>

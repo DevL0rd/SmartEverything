@@ -1,31 +1,46 @@
 import type { PlannerItemRow, PlannerOccurrenceView } from '@smarteverything/domain';
-import { useEffect, useEffectEvent, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import Animated, { SlideInRight } from 'react-native-reanimated';
 import { Button } from '../../../components/button';
 import { DockedPane } from '../../../components/docked-pane';
 import { EmptyState } from '../../../components/empty-state';
 import { IconButton } from '../../../components/icon-button';
-import { OverflowButton } from '../../../components/menu';
+import { useAnchoredMenu } from '../../../components/menu';
+import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { cn } from '../../../design/cn';
 import { DURATION, EASING, entering, useMotion } from '../../../design/motion';
-import { isNative } from '../../../design/platform';
 import { localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
+import type { StoreState } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
 import { useMyWatch } from '../../watches';
 import { usePlannerPreferences, usePlannerRange, type PlannerPerson } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { LIST_DOT } from './composer-tokens';
-import { askAboutItem } from './item-ask';
 import { reminderSummaryOf } from './item-fields';
-import { useItemMenuItems, useItemActionRunner, type ItemTargetKey } from './item-menu-host';
-import { itemMenuOf, itemShortcutOf, shortcutEntryOf } from './item-menu';
+import {
+  useFrameActionScope,
+  useItemKeys,
+  useItemMenuItems,
+  type ItemMenuItems,
+} from './item-menu-host';
 import { useItemCollections, useVisibleItem } from '../data/assignment';
-import { ItemBody } from './item-body';
-import { useItemEditor } from './item-sheet';
+import { TaskRuleCard } from './completion-rule-picker';
+import {
+  ItemBody,
+  ItemMeta,
+  ItemStepsFor,
+  useItemParent,
+  useOwnerName,
+  type ItemFocus,
+} from './item-body';
+import { ItemGuests } from './item-guests';
+import { useItemEditor } from './item-editor';
+import { RsvpBar } from './rsvp-bar';
 import {
   dayBarOf,
   dayWindowOf,
@@ -40,47 +55,14 @@ import {
   clearPlannerSelection,
   selectPlannerItem,
   setPanelWidth,
-  usePanelHost,
   usePanelWidth,
   usePlannerSelection,
   type PlannerSelection,
 } from './selection';
 
-const LABEL = 'Item details';
+export const PLANNER_ITEM_PANEL = 'Item details';
 
 const SLIDE_IN = SlideInRight.duration(DURATION.mediumOut).easing(EASING.standard);
-
-function isTextEntry(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  );
-}
-
-function usePanelKeys(item: PlannerItemRow, target: ItemTargetKey, active: boolean): void {
-  const { offline } = usePlannerFrame();
-  const run = useItemActionRunner(item, target);
-  const onKey = useEffectEvent((event: KeyboardEvent): void => {
-    const shortcut = itemShortcutOf(event, isTextEntry(event.target));
-    if (shortcut === null) return;
-    const model = itemMenuOf({ item, occurrenceKey: target.occurrenceKey, offline });
-    const entry = shortcutEntryOf(model, shortcut);
-    if (entry === null) return;
-    event.preventDefault();
-    run(entry.action);
-  });
-  useEffect(() => {
-    if (!active || isNative()) return undefined;
-    const listen = (event: KeyboardEvent): void => {
-      if (!event.defaultPrevented) onKey(event);
-    };
-    document.addEventListener('keydown', listen);
-    return (): void => {
-      document.removeEventListener('keydown', listen);
-    };
-  }, [active]);
-}
 
 interface PanelData {
   readonly view: PlannerOccurrenceView | null;
@@ -106,31 +88,48 @@ function usePanelData(
   return { view, views, timeZone, now, watchLine: onWatchCalendar({ view, push, watch, now }) };
 }
 
+function PanelMenuButton({
+  menu,
+  title,
+}: {
+  readonly menu: ItemMenuItems;
+  readonly title: string;
+}): ReactNode {
+  const anchored = useAnchoredMenu(menu.items, title, { quick: menu.quick });
+  return (
+    <View ref={anchored.ref} collapsable={false}>
+      <IconButton icon="ellipsis" label="More options" onPress={anchored.open} />
+      {anchored.menu}
+    </View>
+  );
+}
+
 function PanelHeader({
   item,
-  target,
+  menu,
   editing,
   onDoneEditing,
 }: {
   readonly item: PlannerItemRow;
-  readonly target: ItemTargetKey;
+  readonly menu: ItemMenuItems;
   readonly editing: boolean;
   readonly onDoneEditing: () => void;
 }): ReactNode {
   const { person } = usePlannerFrame();
   const collection = useItemCollections(person, item.collection_id).current;
-  const { quick, items } = useItemMenuItems(item, target);
   const source = item.google === null ? 'this hub' : 'Google';
   return (
-    <View className="flex-row items-center gap-2 pb-1 pl-5 pr-2 pt-3">
+    <View className="flex-row items-center gap-2 pb-1 pl-8 pr-2 pt-3">
       {collection === null ? null : (
         <View className={cn('size-3 rounded-full', LIST_DOT[collection.colour])} />
       )}
       <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
         {collection === null ? source : `${collection.name} · ${source}`}
       </Text>
-      {editing ? <Button label="Done editing" variant="text" onPress={onDoneEditing} /> : null}
-      <OverflowButton items={[...quick, ...items]} />
+      {editing ? (
+        <Button label="Back to details" icon="arrowLeft" variant="text" onPress={onDoneEditing} />
+      ) : null}
+      <PanelMenuButton menu={menu} title={item.title} />
       <IconButton
         icon="close"
         label="Close details"
@@ -170,7 +169,7 @@ function Facts({
 function Notes({ notes }: { readonly notes: string }): ReactNode {
   if (notes === '') return null;
   return (
-    <View className="gap-1">
+    <View className="gap-1 px-4">
       <Text variant="caption" tone="variant">
         Notes
       </Text>
@@ -189,20 +188,37 @@ function ViewBody({
   const { person, offline } = usePlannerFrame();
   const data = usePanelData(item, selection, person);
   const editor = useItemEditor(item, { ...selection, person }, offline);
+  const parent = useItemParent(item, person);
   const shown = editor.shown;
   const bar = data.view === null ? null : dayBarOf(data.views, data.view, data.now);
   const proposal = data.view === null ? null : proposalNear(data.views, data.view);
+  const locked = offline || editor.busy;
   return (
-    <View className="gap-4 px-5 pb-5">
-      <Text variant="title-2">{shown.title}</Text>
-      <Facts item={shown} data={data} />
+    <View className="gap-4 px-4 pb-5">
+      <View className="gap-2 px-4">
+        <Text variant="title-2">{shown.title}</Text>
+        <ItemMeta item={shown} collection={null} parent={parent} inPanel facts />
+      </View>
+      <RsvpBar item={item} person={person} disabled={offline} />
+      <View className="px-4">
+        <Facts item={shown} data={data} />
+      </View>
       {bar === null ? null : <DayBarWell bar={bar} timeZone={data.timeZone} />}
+      <ItemStepsFor item={item} person={person} disabled={offline} />
+      <TaskRuleCard
+        item={shown}
+        person={person}
+        personName={useOwnerName(item)}
+        disabled={locked}
+        onChange={editor.change}
+      />
       <PanelAttachments
         item={shown}
-        disabled={offline || editor.busy}
+        disabled={locked}
         picking={selection.intent === 'attach'}
         onChange={editor.change}
       />
+      {item.kind === 'event' ? <ItemGuests item={item} person={person} disabled={offline} /> : null}
       <Notes notes={shown.notes} />
       {proposal === null ? null : (
         <PlanAroundCard
@@ -217,6 +233,11 @@ function ViewBody({
   );
 }
 
+function focusOf(intent: PlannerSelection['intent']): ItemFocus | null {
+  if (intent === 'reschedule') return { part: 'when', at: 1 };
+  return intent === 'attach' ? { part: 'attach', at: 1 } : null;
+}
+
 function EditBody({
   item,
   selection,
@@ -227,12 +248,17 @@ function EditBody({
   const { person, offline } = usePlannerFrame();
   const target = { ...selection, person };
   const editor = useItemEditor(item, target, offline);
+  const scope = useFrameActionScope(selection);
   return (
     <View className="gap-2 px-3 pb-5">
       <ItemBody
         item={item}
         editor={editor}
         target={target}
+        scope={scope}
+        focus={focusOf(selection.intent)}
+        inPanel
+        columns={false}
         offline={offline}
         onClose={clearPlannerSelection}
       />
@@ -241,19 +267,16 @@ function EditBody({
   );
 }
 
-function PanelFooter({
-  onEdit,
-  onAsk,
-}: {
-  readonly onEdit: () => void;
-  readonly onAsk: () => void;
-}): ReactNode {
+function PanelFooter({ onEdit }: { readonly onEdit: () => void }): ReactNode {
   return (
     <View className="flex-row flex-wrap gap-2 border-t border-outline-variant px-4 py-3">
       <Button label="Edit" icon="pencil" variant="text" onPress={onEdit} />
-      <Button label="Ask AI about this" icon="messageCircle" variant="text" onPress={onAsk} />
     </View>
   );
+}
+
+function isEditing(intent: PlannerSelection['intent']): boolean {
+  return intent === 'edit' || intent === 'reschedule';
 }
 
 function ItemPanel({
@@ -263,16 +286,17 @@ function ItemPanel({
   readonly item: PlannerItemRow;
   readonly selection: PlannerSelection;
 }): ReactNode {
-  const editing = selection.intent === 'edit';
+  const editing = isEditing(selection.intent);
   const target = { itemId: item.id, occurrenceKey: selection.occurrenceKey };
+  const menu = useItemMenuItems(item, target, useFrameActionScope(target));
   const shift = (intent: PlannerSelection['intent']) => (): void => {
     selectPlannerItem({ ...selection, intent });
   };
   useEscape(true, clearPlannerSelection);
-  usePanelKeys(item, target, !editing);
+  useItemKeys(menu, !editing);
   return (
     <>
-      <PanelHeader item={item} target={target} editing={editing} onDoneEditing={shift('view')} />
+      <PanelHeader item={item} menu={menu} editing={editing} onDoneEditing={shift('view')} />
       <ScrollView className="flex-1" contentContainerClassName="pt-1">
         {editing ? (
           <EditBody item={item} selection={selection} />
@@ -280,15 +304,20 @@ function ItemPanel({
           <ViewBody item={item} selection={selection} />
         )}
       </ScrollView>
-      {editing ? null : (
-        <PanelFooter
-          onEdit={shift('edit')}
-          onAsk={() => {
-            askAboutItem(item, selection.occurrenceKey);
-          }}
-        />
-      )}
+      {editing ? null : <PanelFooter onEdit={shift('edit')} />}
     </>
+  );
+}
+
+const selectLoaded = (state: StoreState): boolean => state.loaded;
+
+function LoadingPanel(): ReactNode {
+  return (
+    <View accessible accessibilityLabel="Loading the item" className="gap-4 p-5">
+      <Skeleton shape="line" className="h-8" />
+      <Skeleton shape="text" />
+      <Skeleton shape="block" />
+    </View>
   );
 }
 
@@ -309,7 +338,8 @@ function GonePanel(): ReactNode {
 function SelectedPanel({ selection }: { readonly selection: PlannerSelection }): ReactNode {
   const { person } = usePlannerFrame();
   const item = useVisibleItem(person, selection.itemId);
-  if (item === null) return <GonePanel />;
+  const loaded = useStoreSelector(selectLoaded);
+  if (item === null) return loaded ? <GonePanel /> : <LoadingPanel />;
   return (
     <ItemPanel
       key={`${selection.itemId}:${selection.occurrenceKey ?? ''}:${selection.intent}`}
@@ -320,7 +350,6 @@ function SelectedPanel({ selection }: { readonly selection: PlannerSelection }):
 }
 
 export function PlannerItemPanel(): ReactNode {
-  usePanelHost();
   const motion = useMotion();
   const width = usePanelWidth();
   const selection = usePlannerSelection();
@@ -328,7 +357,7 @@ export function PlannerItemPanel(): ReactNode {
   return (
     <DockedPane
       side="right"
-      label={LABEL}
+      label={PLANNER_ITEM_PANEL}
       open
       width={width}
       minWidth={PANEL_WIDTH.min}
@@ -341,8 +370,8 @@ export function PlannerItemPanel(): ReactNode {
       <Animated.View
         {...entering(motion, SLIDE_IN)}
         role="complementary"
-        aria-label={LABEL}
-        className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-chrome"
+        aria-label={PLANNER_ITEM_PANEL}
+        className="h-full overflow-hidden bg-chrome"
       >
         <SelectedPanel selection={selection} />
       </Animated.View>

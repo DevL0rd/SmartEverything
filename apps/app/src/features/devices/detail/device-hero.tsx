@@ -10,7 +10,9 @@ import { dialReading } from '../controls/dial-block';
 import { usePrimaryControls } from '../controls/primary-controls';
 import { useDeviceModel, valueOf } from '../model/device-model';
 import { airOf, heroReadingOf } from '../model/readings';
+import { useVisualDrawn } from '../../device-visuals';
 import { DeviceStage } from './device-stage';
+import { stageLevelOf } from './stage-level';
 
 export function splitUnit(
   text: string,
@@ -58,7 +60,7 @@ function drawnByVisual(family: DeviceFamily, hero: PresentedCapability | null): 
   return family === 'sensor' && hero?.capability.value.kind === 'number';
 }
 
-export function DeviceHero({ device }: { readonly device: Device }): ReactNode {
+function useHeroReading(device: Device): PresentedCapability | null {
   const model = useDeviceModel(device);
   const values = useDeviceValues(device.id);
   const dialled = usePrimaryControls(device, NO_EXCLUSIONS).flatMap((presented) => {
@@ -66,16 +68,45 @@ export function DeviceHero({ device }: { readonly device: Device }): ReactNode {
     return role === null ? [] : [role];
   });
   const reading = heroReadingOf(model, values);
-  const hero =
-    dialled.some((role) => role === reading?.role) || drawnByVisual(model.family, reading)
-      ? null
-      : reading;
-  const stale = !device.online;
+  return dialled.some((role) => role === reading?.role) || drawnByVisual(model.family, reading)
+    ? null
+    : reading;
+}
+
+interface HeroParts {
+  readonly hero: PresentedCapability | null;
+  readonly values: DeviceValues;
+  readonly stage: boolean;
+  readonly shown: boolean;
+}
+
+function useHeroParts(device: Device): HeroParts {
+  const model = useDeviceModel(device);
+  const values = useDeviceValues(device.id);
+  const hero = useHeroReading(device);
+  const stage = useVisualDrawn(device, model.family) || stageLevelOf(model) !== null;
+  return {
+    hero,
+    values,
+    stage,
+    shown: stage || (hero !== null && valueOf(values, hero) !== undefined),
+  };
+}
+
+export function useDeviceHeroShown(device: Device): boolean {
+  return useHeroParts(device).shown;
+}
+
+export function DeviceHero({ device }: { readonly device: Device }): ReactNode {
+  const { hero, values, stage, shown } = useHeroParts(device);
+  if (!shown) {
+    return null;
+  }
   return (
     <Card>
       <View className="items-center gap-4 py-2">
-        <DeviceStage device={device} />
-        {hero === null ? null : <Reading hero={hero} values={values} stale={stale} />}
+        {stage ? <DeviceStage device={device} /> : null}
+        {hero === null ? null : <Reading hero={hero} values={values} stale={!device.online} />}
       </View>
     </Card>
   );

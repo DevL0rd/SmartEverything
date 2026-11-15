@@ -24,18 +24,19 @@ export function copyText(value: string, what: string): void {
 export function CopyButton({
   value,
   label,
-  what = label.replace(/^Copy /, ''),
+  what,
 }: {
   readonly value: string;
   readonly label: string;
   readonly what?: string;
 }): ReactNode {
+  const named = what ?? label.replace(/^Copy /, '');
   return (
     <IconButton
       icon="copy"
       label={label}
       onPress={() => {
-        copyText(value, what);
+        copyText(value, named);
       }}
     />
   );

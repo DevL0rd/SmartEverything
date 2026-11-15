@@ -4,6 +4,7 @@ import ArrowDownGlyph from 'lucide-react-native/icons/arrow-down';
 import ArrowUpGlyph from 'lucide-react-native/icons/arrow-up';
 import AtSignGlyph from 'lucide-react-native/icons/at-sign';
 import CheckCheckGlyph from 'lucide-react-native/icons/check-check';
+import CircleQuestionMarkGlyph from 'lucide-react-native/icons/circle-question-mark';
 import GitBranchGlyph from 'lucide-react-native/icons/git-branch';
 import PanelRightGlyph from 'lucide-react-native/icons/panel-right';
 import PinGlyph from 'lucide-react-native/icons/pin';
@@ -24,6 +25,7 @@ export const CHAT_GLYPHS = {
   arrowUp: ArrowUpGlyph,
   atSign: AtSignGlyph,
   checkCheck: CheckCheckGlyph,
+  circleHelp: CircleQuestionMarkGlyph,
   textCursor: TextCursorGlyph,
   textWrap: TextWrapGlyph,
   panelRight: PanelRightGlyph,

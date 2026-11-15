@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { isCamera, type TalkMemberKind } from '@smarteverything/domain';
 import { SwitchRow } from '../../../components/rows';
 import { List, Section } from '../../../components/section';
-import { useDevices, useRows } from '../../../store/selectors';
+import { useMatchingDevices, useRows } from '../../../store/selectors';
 import { platformIcon } from '../../settings';
 import { memberKey, type DraftMember } from './channel-draft';
 
@@ -51,7 +51,7 @@ function DeviceRows({ members, onChange }: ChannelMembersProps): ReactNode {
 }
 
 function CameraRows({ members, onChange }: ChannelMembersProps): ReactNode {
-  const cameras = useDevices().filter(isCamera);
+  const cameras = useMatchingDevices(isCamera);
   const byKey = lookup(members);
   if (cameras.length === 0) {
     return null;

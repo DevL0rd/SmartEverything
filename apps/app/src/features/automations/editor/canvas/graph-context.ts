@@ -1,4 +1,5 @@
-import { createContext, use, useMemo, useSyncExternalStore } from 'react';
+import { createContext, use, useMemo } from 'react';
+import { usePausable } from '../../../../design/external-store';
 import type { GraphRunNode, GraphRunOverlay, GraphRunStepper } from '../../model/graph/run-overlay';
 import type { GraphCanvasIntent } from './graph-canvas-types';
 
@@ -120,11 +121,7 @@ export function useGraphRun(id: string): GraphNodeRun {
         store.subscribe(id, listener),
     [store, id],
   );
-  return useSyncExternalStore(
-    subscribe,
-    () => store.read(id),
-    () => store.read(id),
-  );
+  return usePausable(subscribe, () => store.read(id));
 }
 
 export function useGraphEmit(): (intent: GraphCanvasIntent) => void {

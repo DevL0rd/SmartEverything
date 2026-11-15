@@ -10,6 +10,7 @@ import { cn } from '../../../design/cn';
 import { useSizeClass } from '../../../design/size-class';
 import { useScopeVisible } from '../../../design/visibility';
 import type { FileNode, FileSource } from '../source/types';
+import { useSourceLinks } from '../source/source-hooks';
 import { exportStateOf } from './export-model';
 import { QuickLookContent } from './quick-look-content';
 import { QuickLookHeader } from './quick-look-header';
@@ -35,7 +36,7 @@ function Prefetch<O>({
   readonly node: FileNode<O>;
   readonly source: FileSource<O>;
 }): ReactNode {
-  const { thumb } = source.useLinks(node);
+  const { thumb } = useSourceLinks(source, node);
   useEffect(() => {
     if (thumb === null) return;
     Image.prefetch(thumb, 'disk').catch((error: unknown) => {
@@ -143,7 +144,7 @@ function Panel<O>({
 }): ReactNode {
   const shown = useOverlayShown();
   const { source, abilities } = target;
-  const links = source.useLinks(node);
+  const links = useSourceLinks(source, node);
   const place = placeOf(target.nodes, node);
   const exports = exportStateOf(node, abilities);
   return (

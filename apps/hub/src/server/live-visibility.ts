@@ -360,7 +360,11 @@ export function seenBy(
 ): LiveMessage | null {
   if (message.type === 'talk_floors') return floorsSeenBy(connection, message, store);
   if (driveNotice(message)) return driveNoticeSeenBy(connection, message, store);
-  if (message.type === 'photos_folders_changed' || message.type === 'photos_edit_job') {
+  if (
+    message.type === 'photos_folders_changed' ||
+    message.type === 'photos_people_changed' ||
+    message.type === 'photos_edit_job'
+  ) {
     return store.profiles.activeOf(connection.client.id).id === message.profileId ? message : null;
   }
   return photoSharingSeenBy(connection, message, store);

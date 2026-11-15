@@ -10,21 +10,28 @@ object WakeModel {
   const val DECODER = "decoder.int8.onnx"
   const val JOINER = "joiner.int8.onnx"
   const val TOKENS = "tokens.txt"
+  private const val STAMP = "installed-build"
 
   private val FILES = listOf(ENCODER, DECODER, JOINER, TOKENS)
 
   fun install(context: Context): File {
     val directory = File(context.filesDir, ASSET_DIRECTORY)
     directory.mkdirs()
-    for (name in FILES) {
-      val target = File(directory, name)
-      val size = context.assets.openFd("$ASSET_DIRECTORY/$name").use { it.length }
-      if (!target.isFile || target.length() != size) {
-        copy(context, name, target)
-      }
+    val stamp = File(directory, STAMP)
+    val build = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime.toString()
+    if (current(directory, stamp, build)) {
+      return directory
     }
+    stamp.delete()
+    for (name in FILES) {
+      copy(context, name, File(directory, name))
+    }
+    stamp.writeText(build)
     return directory
   }
+
+  fun current(directory: File, stamp: File, build: String): Boolean =
+    stamp.isFile && stamp.readText() == build && FILES.all { File(directory, it).isFile }
 
   fun vocabulary(directory: File): Set<String> = KeywordLines.vocabularyOf(File(directory, TOKENS).readText())
 

@@ -1,11 +1,9 @@
 import { background } from '@smarteverything/logging';
 import { useState, type ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
 import { Banner } from '../../../components/banner';
-import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
-import { CompactBody, WideBody, type FrameWidth } from '../../../components/section-body';
-import { useAreaWidth } from '../../../design/size-class';
+import { PageShell } from '../../../components/page-shell/page-shell';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import { useSizeClass } from '../../../design/size-class';
 import {
   usePlannerReload,
   useComposerControl,
@@ -14,24 +12,16 @@ import {
   ScrollAwayBar,
 } from '../../planner';
 import type { ClockSection } from '../model/section-routes';
-import { clockMenu } from './clock-menu';
-import { ClockRail } from './clock-rail';
-import { ClockStrip } from './clock-strip';
+import { clockMenu, clockSettingsHref } from './clock-menu';
+import { clockSectionsOf } from './clock-sections';
 import { useHubOffline } from './hub-status';
 import { clockComposerKindOf } from './quick-add';
-import {
-  CLOCK_QUICK_ADD_TARGET,
-  clockSectionOf,
-  clockTitleOf,
-  frameLayoutOf,
-  railWidthOf,
-} from './sections';
+import { CLOCK_QUICK_ADD_TARGET, clockSectionOf } from './sections';
 
 export interface ClockFrameProps {
   readonly section: ClockSection;
   readonly subtitle?: string;
-  readonly actions?: readonly HeaderAction[];
-  readonly width?: FrameWidth;
+  readonly actions?: readonly ShellAction[];
   readonly scroll?: boolean;
   readonly children: ReactNode;
 }
@@ -62,118 +52,49 @@ function useRefresh(): { readonly refreshing: boolean; readonly onRefresh: () =>
   return { refreshing, onRefresh };
 }
 
-interface QuickAddSlot {
-  readonly section: ClockSection;
-  readonly offline: boolean;
-  readonly onOpen: () => void;
-}
-
-function ClockQuickAdd({ section, offline, onOpen }: QuickAddSlot): ReactNode {
-  return (
-    <QuickAddBar
-      target={CLOCK_QUICK_ADD_TARGET}
-      hint={clockSectionOf(section).hint}
-      onOpen={onOpen}
-      disabled={offline}
-    />
-  );
-}
-
-interface ColumnProps {
-  readonly scroll: boolean;
-  readonly quickAdd: ReactNode;
-  readonly children: ReactNode;
-}
-
-function WideColumn({ scroll, quickAdd, children }: ColumnProps): ReactNode {
-  return (
-    <>
-      {scroll ? (
-        <ScrollView className="flex-1" contentContainerClassName="gap-section-gap pb-section-gap">
-          {children}
-        </ScrollView>
-      ) : (
-        <View className="flex-1 gap-section-gap">{children}</View>
-      )}
-      {quickAdd}
-    </>
-  );
-}
-
-interface BodyProps extends ColumnProps {
-  readonly section: ClockSection;
-  readonly width: FrameWidth;
-}
-
-function FrameBody({ section, scroll, width, quickAdd, children }: BodyProps): ReactNode {
-  const area = useAreaWidth();
-  if (frameLayoutOf(area) === 'compact') {
-    return (
-      <CompactBody scroll={scroll} width={width}>
-        {children}
-      </CompactBody>
-    );
-  }
-  const railWidth = railWidthOf(area);
-  return (
-    <WideBody
-      scroll={false}
-      width={width}
-      rail={<ClockRail active={section} width={railWidth} />}
-      railWidth={railWidth}
-    >
-      <WideColumn scroll={scroll} quickAdd={quickAdd}>
-        {children}
-      </WideColumn>
-    </WideBody>
-  );
-}
-
 export function ClockFrame({
   section,
   subtitle,
   actions = [],
-  width = 'detail',
   scroll = true,
   children,
 }: ClockFrameProps): ReactNode {
-  const area = useAreaWidth();
-  const compact = frameLayoutOf(area) === 'compact';
+  const phone = useSizeClass().header === 'large';
   const offline = useHubOffline();
-  const { refreshing, onRefresh } = useRefresh();
+  const refresh = useRefresh();
   const composer = useComposerControl();
-  const openComposer = (): void => {
-    composer.open({ text: '', kind: clockComposerKindOf(section) });
-  };
-  const quickAdd = <ClockQuickAdd section={section} offline={offline} onOpen={openComposer} />;
+  const quickAdd = (
+    <QuickAddBar
+      target={CLOCK_QUICK_ADD_TARGET}
+      hint={clockSectionOf(section).hint}
+      onOpen={() => {
+        composer.open({ text: '', kind: clockComposerKindOf(section) });
+      }}
+      disabled={offline}
+    />
+  );
   return (
-    <Screen
-      maxWidth={compact ? width : 'full'}
-      scroll={compact ? scroll : false}
-      onRefresh={onRefresh}
-      refreshing={refreshing}
+    <PageShell
+      title={clockSectionOf(section).label}
+      back={false}
+      actions={actions}
+      overflow={clockMenu()}
+      settings={{ href: clockSettingsHref(), label: 'Clock settings' }}
+      sections={clockSectionsOf(section)}
+      scroll={scroll}
+      onRefresh={refresh.onRefresh}
+      refreshing={refresh.refreshing}
+      footer={phone ? <ScrollAwayBar>{quickAdd}</ScrollAwayBar> : quickAdd}
+      {...(subtitle === undefined ? {} : { subtitle })}
       {...(offline ? { banner: <OfflineBanner /> } : {})}
-      {...(compact ? { footer: <ScrollAwayBar>{quickAdd}</ScrollAwayBar> } : {})}
-      header={
-        <PageHeader
-          title={clockTitleOf(section, area)}
-          {...(subtitle === undefined ? {} : { subtitle })}
-          back={false}
-          actions={actions}
-          overflow={clockMenu()}
-          {...(compact ? { belowStrip: <ClockStrip active={section} /> } : {})}
-        />
-      }
     >
-      <FrameBody section={section} scroll={scroll} width={width} quickAdd={quickAdd}>
-        {children}
-      </FrameBody>
+      {children}
       <QuickAddComposer
         control={composer}
         target={CLOCK_QUICK_ADD_TARGET}
         person={null}
         disabled={offline}
       />
-    </Screen>
+    </PageShell>
   );
 }

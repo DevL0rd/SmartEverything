@@ -8,23 +8,19 @@ import {
   type AssistantMessageRow,
   type Engine,
 } from '@smarteverything/domain';
-import type { PageSettingsLink } from '../../../components/page-settings-button';
+import type { MenuItem } from '../../../components/menu';
+import type { PageSettingsLink } from '../../../components/page-menu';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
-import { IconButton } from '../../../components/icon-button';
 import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { useSizeClass } from '../../../design/size-class';
 import { useStoreSelector } from '../../../store/store-context';
 import { workStatusOf, workingTurnOf, type WorkStatus } from '../../../store/chat-turns';
-import { useProfiles } from '../../../store/people';
-import { startCall } from '../call';
 import { AssistantOrb } from '../call/orb';
-import { ProfileSwitcher } from '../../profiles';
 import { TypingDots } from '../components/typing-dots';
 import { useAgentActivity } from '../data/agent-runs';
-import { useAssistantName } from '../data/assistant-data';
 import { useTurnFeedback } from '../data/turn-feedback';
 import {
   lastReplyFailed,
@@ -35,17 +31,17 @@ import {
 } from '../model/chat-subline';
 import { feedbackKind } from '../model/turn-feedback';
 import { useChatIdentity } from './chat-identity';
-import { ChatHeaderMenu } from './chat-header-menu';
-import { ChatMachineControl } from './chat-machine-control';
+import {
+  CallAction,
+  ChatTrailing,
+  overflowOf,
+  ProfileAction,
+  type PanelToggle,
+} from './chat-header-actions';
+import { useMachineControl, useMachineRef } from './chat-machine-control';
 import { useChatModel } from './chat-model';
 import { leaveChat } from './leave-chat';
 import { SourceMark } from './source-mark';
-
-interface PanelToggle {
-  readonly docked: boolean;
-  readonly open: boolean;
-  readonly toggle: () => void;
-}
 
 const MARK_SIZE = 32;
 
@@ -144,6 +140,7 @@ function ChatPane({
   trailing,
   banner,
   settings,
+  overflow,
   children,
 }: {
   readonly title: string;
@@ -153,6 +150,7 @@ function ChatPane({
   readonly trailing: ReactNode;
   readonly banner?: ReactNode;
   readonly settings?: PageSettingsLink;
+  readonly overflow?: readonly MenuItem[];
   readonly children: ReactNode;
 }): ReactNode {
   return (
@@ -166,26 +164,10 @@ function ChatPane({
       trailing={trailing}
       {...(banner === undefined ? {} : { banner })}
       {...(settings === undefined ? {} : { settings })}
+      {...(overflow === undefined ? {} : { overflow })}
     >
       {children}
     </PageShell>
-  );
-}
-
-function ProfileAction(): ReactNode {
-  return useProfiles().length > 1 ? <ProfileSwitcher compact /> : null;
-}
-
-function CallAction({ chatId }: { readonly chatId: string | null }): ReactNode {
-  const name = useAssistantName();
-  return (
-    <IconButton
-      icon="phone"
-      label={`Call ${name}`}
-      onPress={() => {
-        startCall(chatId === null ? { source: 'chat' } : { source: 'chat', chatId });
-      }}
-    />
   );
 }
 
@@ -256,11 +238,6 @@ function useSubline(
   });
 }
 
-function browserToggleLabel(panel: PanelToggle): string {
-  if (!panel.open) return 'Browser';
-  return panel.docked ? 'Close browser' : 'Back to chat';
-}
-
 export function ChatShell({
   chat,
   rows,
@@ -273,11 +250,17 @@ export function ChatShell({
   children,
 }: ChatShellProps): ReactNode {
   const line = useSubline(chat, rows, waiting);
+  const anchor = useMachineRef();
+  const machine = useMachineControl(chat, anchor);
+  const phone = useSizeClass().header === 'large';
+  const browserInMenu = phone && panel !== null && !panel.open;
   return (
     <ChatPane
       title={chat.title}
       back={back}
       leading={leading}
+      overflow={overflowOf(chat.id, phone, machine, browserInMenu ? panel : null)}
+      settings={mainPageSettings('assistant')}
       heading={
         <View className="min-w-0 flex-row items-center gap-2 py-1">
           <HeaderMark chat={chat} working={working} />
@@ -285,22 +268,15 @@ export function ChatShell({
         </View>
       }
       trailing={
-        <>
-          <ProfileAction />
-          <ChatMachineControl key={chat.id} chat={chat} />
-          <CallAction chatId={chat.id} />
-          {panel !== null ? (
-            <IconButton
-              {...(ref === undefined ? {} : { ref })}
-              icon={panel.open ? 'close' : 'panelRight'}
-              label={browserToggleLabel(panel)}
-              shortcut="Ctrl I"
-              selected={panel.open}
-              onPress={panel.toggle}
-            />
-          ) : null}
-          <ChatHeaderMenu chatId={chat.id} />
-        </>
+        <ChatTrailing
+          chatId={chat.id}
+          machine={machine}
+          anchor={anchor}
+          panel={panel}
+          browserInMenu={browserInMenu}
+          phone={phone}
+          toggleRef={ref}
+        />
       }
     >
       {children}

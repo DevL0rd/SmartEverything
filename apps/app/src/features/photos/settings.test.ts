@@ -67,7 +67,7 @@ describe('photos settings', () => {
       'photos.backup.original',
       'photos.backup.folder',
     ]);
-    expect(shown(backup, env(true, 'desktop'))).not.toContain('photos.backup.albums');
+    expect(shown(backup, env(true, 'desktop'))).toContain('photos.backup.albums');
     expect(shown(backup, env(true, 'web'))).toEqual([]);
   });
 

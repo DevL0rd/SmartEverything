@@ -1,11 +1,17 @@
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { measureAnchor, type Rect } from '../../../components/anchor';
 import { ChoiceChip } from '../../../components/choice-chip';
-import { OverflowButton, type MenuItem } from '../../../components/menu';
+import { IconButton } from '../../../components/icon-button';
+import type { MenuItem } from '../../../components/menu';
 import { Segmented } from '../../../components/segmented';
+import { SelectPicker } from '../../../components/select-picker';
+import { useSizeClass } from '../../../design/size-class';
 import type { FileBrowserHandle } from './browser-types';
+import { kindChipsShown } from './kind-chips';
 import { overflowActionsOf, type OverflowAction } from './menu-specs';
-import { DEFAULT_SORT, sortOfValue, sortOptionsOf, sortValueOf } from './sort-model';
+import { placesShown } from './places-bar';
+import { DEFAULT_SORT, sortLabelOf, sortOfValue, sortOptionsOf, sortValueOf } from './sort-model';
 
 const VIEW_OPTIONS = [
   { value: 'list', label: 'List', icon: 'list' },
@@ -18,7 +24,7 @@ const OVERFLOW_LABEL: Readonly<Record<OverflowAction, string>> = {
   enterPath: 'Go to a path…',
 };
 
-function overflowItemsOf<O>(browser: FileBrowserHandle<O>): readonly MenuItem[] {
+export function browserMenuOf<O>(browser: FileBrowserHandle<O>): readonly MenuItem[] {
   return overflowActionsOf(browser.abilities, browser.state.showHidden).map((action) => ({
     id: action,
     label: OVERFLOW_LABEL[action],
@@ -30,29 +36,91 @@ function overflowItemsOf<O>(browser: FileBrowserHandle<O>): readonly MenuItem[] 
   }));
 }
 
+function pickSort<O>(browser: FileBrowserHandle<O>, value: string): void {
+  const sort = sortOfValue(value, browser.abilities.sort);
+  if (sort !== null) browser.dispatch({ kind: 'sort', sort });
+}
+
 function SortChip<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
-  const fields = browser.abilities.sort;
-  if (fields.length < 2) return null;
   return (
     <ChoiceChip
       label="Sort"
-      options={sortOptionsOf(fields)}
+      options={sortOptionsOf(browser.abilities.sort)}
       value={sortValueOf(browser.sort)}
       all={sortValueOf(DEFAULT_SORT)}
       onChange={(value) => {
-        const sort = sortOfValue(value, fields);
-        if (sort !== null) browser.dispatch({ kind: 'sort', sort });
+        pickSort(browser, value);
       }}
     />
   );
 }
 
-export function ViewSort<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
-  const overflow = overflowItemsOf(browser);
+function SortButton<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
+  const ref = useRef<View>(null);
+  const opener = useRef<View>(null);
+  const [anchor, setAnchor] = useState<Rect | null>(null);
+  return (
+    <View ref={ref} collapsable={false}>
+      <IconButton
+        ref={opener}
+        icon="arrow-up-down"
+        label={`Sort: ${sortLabelOf(browser.sort)}`}
+        selected={sortValueOf(browser.sort) !== sortValueOf(DEFAULT_SORT)}
+        onPress={() => {
+          measureAnchor(ref, setAnchor);
+        }}
+      />
+      <SelectPicker
+        label="Sort"
+        options={sortOptionsOf(browser.abilities.sort)}
+        value={sortValueOf(browser.sort)}
+        anchor={anchor}
+        opener={opener}
+        onClose={() => {
+          setAnchor(null);
+        }}
+        onPick={(value) => {
+          pickSort(browser, value);
+        }}
+      />
+    </View>
+  );
+}
+
+function ViewButton<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): ReactNode {
+  const cards = browser.view === 'cards';
+  return (
+    <IconButton
+      icon={cards ? 'list' : 'grid'}
+      label={cards ? 'Show as a list' : 'Show as cards'}
+      onPress={() => {
+        browser.dispatch({ kind: 'view', view: cards ? 'list' : 'cards' });
+      }}
+    />
+  );
+}
+
+export function BrowserViewControls<O>({
+  browser,
+}: {
+  readonly browser: FileBrowserHandle<O>;
+}): ReactNode {
+  const dense = useSizeClass().header === 'large';
+  const sort = browser.abilities.list && browser.abilities.sort.length > 1;
+  const grid = browser.abilities.list && browser.abilities.grid;
+  if (!sort && !grid) return null;
+  if (dense) {
+    return (
+      <View className="flex-row items-center">
+        {sort ? <SortButton browser={browser} /> : null}
+        {grid ? <ViewButton browser={browser} /> : null}
+      </View>
+    );
+  }
   return (
     <View className="flex-row items-center gap-2">
-      <SortChip browser={browser} />
-      {browser.abilities.grid ? (
+      {sort ? <SortChip browser={browser} /> : null}
+      {grid ? (
         <Segmented
           label="View"
           options={VIEW_OPTIONS}
@@ -63,7 +131,27 @@ export function ViewSort<O>({ browser }: { readonly browser: FileBrowserHandle<O
           size="control"
         />
       ) : null}
-      {overflow.length === 0 ? null : <OverflowButton items={overflow} label="View options" />}
     </View>
   );
+}
+
+export function browserChipsShown<O>(browser: FileBrowserHandle<O>): boolean {
+  return kindChipsShown(browser) || placesShown(browser);
+}
+
+export function useBrowserControlsInShell<O>(browser: FileBrowserHandle<O>): boolean {
+  return useSizeClass().header !== 'desktop' || !browserChipsShown(browser);
+}
+
+export interface BrowserShellParts {
+  readonly overflow: readonly MenuItem[];
+  readonly controls: ReactNode;
+}
+
+export function useBrowserShellParts<O>(browser: FileBrowserHandle<O>): BrowserShellParts {
+  const inShell = useBrowserControlsInShell(browser);
+  return {
+    overflow: browserMenuOf(browser),
+    controls: inShell ? <BrowserViewControls browser={browser} /> : null,
+  };
 }

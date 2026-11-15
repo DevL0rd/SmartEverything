@@ -11,9 +11,10 @@ import { useColour } from '../../../design/colour';
 import type { ColourRole } from '../../../design/tokens';
 import { bytes } from '../../../format/number';
 import { useProfiles } from '../../../store/people';
-import { useDevices, useIsOwner } from '../../../store/selectors';
+import { useDeviceNames, useIsOwner } from '../../../store/selectors';
 import { ProfileAvatar } from '../../profiles';
 import { useDrivePlacementRows, useDriveStats, useRootProgress } from '../data';
+import { useSyncPillShown } from '../components/drive-header';
 import { SyncLine, driveSyncSummaryOf, useOpenConflicts } from '../components/sync-pill';
 import {
   myDriveHeroOf,
@@ -150,9 +151,10 @@ function Heading({
 
 function useDriveSync(rootId: string): ReactNode {
   const placements = useDrivePlacementRows().filter((placement) => placement.rootId === rootId);
-  const names = new Map(useDevices().map((device) => [device.id, device.label]));
+  const names = useDeviceNames('label');
   const summary = driveSyncSummaryOf({ placements, names, conflicts: useOpenConflicts() });
-  return summary === null ? null : <SyncLine summary={summary} />;
+  if (useSyncPillShown() || summary === null) return null;
+  return <SyncLine summary={summary} />;
 }
 
 function Phases({ root }: { readonly root: DriveRoot }): ReactNode {

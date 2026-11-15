@@ -7,32 +7,13 @@ import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { Skeleton } from '../../../components/skeleton';
 import { errorText } from '../../../format/errors';
 import type { DrivePages } from '../data';
 import { DRIVE_FILTER_LOOK, type DriveFilter } from '../model/drive-chip';
-import { recentStateOf } from '../recent/recent-states';
+import { DriveRowsSkeleton, recentStateOf } from '../recent/recent-states';
 import { nothingStarredBody, type StarredChip } from './starred-model';
 
 export type StarredPages = DrivePages<DriveSearchPage>;
-
-const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e'] as const;
-
-function StarredSkeleton(): ReactNode {
-  return (
-    <View aria-label="Loading starred files" className="gap-2 px-gutter py-2">
-      {SKELETON_ROWS.map((key) => (
-        <View key={key} className="min-h-row-h-2 flex-row items-center gap-4">
-          <Skeleton shape="circle" className="size-8 rounded-sm" />
-          <View className="flex-1 gap-2">
-            <Skeleton shape="text" className="w-48" />
-            <Skeleton shape="text" />
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-}
 
 export function StarredStaleBanner(): ReactNode {
   return (
@@ -103,7 +84,7 @@ export function StarredEmpty({
     live,
   });
   if (state === 'offline') return <StarredOffline />;
-  if (state === 'loading') return <StarredSkeleton />;
+  if (state === 'loading') return <DriveRowsSkeleton label="Loading starred files" />;
   if (state === 'empty' && drive !== 'all') {
     return <NotInDrive drive={drive} onAllDrives={onAllDrives} />;
   }

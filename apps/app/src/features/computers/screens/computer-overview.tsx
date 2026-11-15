@@ -112,7 +112,6 @@ function Overview({ device }: { readonly device: Device }): ReactNode {
       deviceId={device.id}
       title={device.label}
       subtitle={subtitle}
-      width="dashboard"
       crumbs={[{ label: 'Devices', href: href.devices() }, { label: device.label }]}
     >
       <DemandRegion

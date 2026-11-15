@@ -175,6 +175,34 @@ function ServerOptions({
     </>
   );
 }
+interface ServerSubmit {
+  readonly name: string;
+  readonly original: string | null;
+  readonly servers: ClaudeMcpServers;
+  readonly fields: ServerFields;
+  readonly save: (servers: ClaudeMcpServers) => void;
+}
+
+function submitServer({ name, original, servers, fields, save }: ServerSubmit): string | null {
+  try {
+    if (name !== original && servers[name] !== undefined)
+      throw new Error('A server with this name already exists.');
+    const value = transportOf(fields);
+    const previous = Object.fromEntries(
+      Object.entries(servers).filter(([key]) => key !== original),
+    );
+    save(CLAUDE_MCP_SERVERS.parse({ ...previous, [name]: value }));
+    log.info('mcp_server.submitted', { renamed: name !== original, created: original === null });
+    return null;
+  } catch (error) {
+    log.warn('mcp_server.invalid', {
+      error: error instanceof Error ? error.name : typeof error,
+      created: original === null,
+    });
+    return error instanceof Error ? error.message : 'Server settings are invalid.';
+  }
+}
+
 export function McpServerForm({
   name: original,
   servers,
@@ -189,22 +217,8 @@ export function McpServerForm({
   const [fields, change] = useState(initialFields(server));
   const [problem, setProblem] = useState<string | null>(null);
   const submit = (): void => {
-    try {
-      if (name !== original && servers[name] !== undefined)
-        throw new Error('A server with this name already exists.');
-      const value = transportOf(fields);
-      const previous = Object.fromEntries(
-        Object.entries(servers).filter(([key]) => key !== original),
-      );
-      save(CLAUDE_MCP_SERVERS.parse({ ...previous, [name]: value }));
-      log.info('mcp_server.submitted', { renamed: name !== original, created: original === null });
-    } catch (error) {
-      log.warn('mcp_server.invalid', {
-        error: error instanceof Error ? error.name : typeof error,
-        created: original === null,
-      });
-      setProblem(error instanceof Error ? error.message : 'Server settings are invalid.');
-    }
+    const refused = submitServer({ name, original, servers, fields, save });
+    if (refused !== null) setProblem(refused);
   };
   return (
     <View className="gap-4">

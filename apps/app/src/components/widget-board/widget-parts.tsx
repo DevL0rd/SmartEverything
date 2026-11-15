@@ -9,9 +9,11 @@ import { IconWell } from '../icon-well';
 import { Text } from '../text';
 import type { Tone } from '../tone';
 import { ActionBand } from './action-band';
+import { oneRowBand } from './band-fit';
+import { frameClassOf, type FrameClass } from './frame-class';
 import type { WidgetSize } from './types';
 import { WidgetSurface } from './widget-frame';
-import { useWidgetActions } from './widget-scope';
+import { useWidgetActions, useWidgetFrame } from './widget-scope';
 
 const HERO: Readonly<Record<WidgetSize, FigureSize>> = {
   M: 'l',
@@ -107,27 +109,67 @@ export interface WidgetEmptyProps {
   readonly action?: { readonly label: string; readonly href: AppHref };
 }
 
+type EmptyForm = 'stacked' | 'row' | 'short';
+
+function emptyFormOf(cls: FrameClass | null, action: boolean): EmptyForm {
+  if (!action || cls === null || !oneRowBand(cls)) return 'stacked';
+  return cls === 'w' ? 'row' : 'short';
+}
+
+function EmptyText({
+  title,
+  body,
+}: {
+  readonly title: string;
+  readonly body: string | undefined;
+}): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 gap-0.5">
+      <Text variant="body-strong" numberOfLines={2}>
+        {title}
+      </Text>
+      {body === undefined ? null : (
+        <Text variant="footnote" tone="variant" numberOfLines={2}>
+          {body}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 export function WidgetEmpty({ icon, colour, title, body, action }: WidgetEmptyProps): ReactNode {
+  const frame = useWidgetFrame();
+  const form = emptyFormOf(frame === null ? null : frameClassOf(frame), action !== undefined);
+  const button =
+    action === undefined ? null : (
+      <Button label={action.label} href={action.href} variant="tonal" />
+    );
+  if (form === 'row') {
+    return (
+      <View className="flex-1 flex-row items-center gap-4">
+        <IconWell icon={icon} colour={colour} size="l" />
+        <EmptyText title={title} body={body} />
+        {button}
+      </View>
+    );
+  }
+  if (form === 'short') {
+    return (
+      <View className="flex-1 gap-2">
+        <Text variant="body-strong" numberOfLines={1}>
+          {title}
+        </Text>
+        <ActionBand>{button}</ActionBand>
+      </View>
+    );
+  }
   return (
     <View className="flex-1 gap-2">
       <View className="flex-row items-center gap-4">
         <IconWell icon={icon} colour={colour} size="l" />
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text variant="body-strong" numberOfLines={2}>
-            {title}
-          </Text>
-          {body === undefined ? null : (
-            <Text variant="footnote" tone="variant" numberOfLines={2}>
-              {body}
-            </Text>
-          )}
-        </View>
+        <EmptyText title={title} body={body} />
       </View>
-      {action === undefined ? null : (
-        <ActionBand>
-          <Button label={action.label} href={action.href} variant="tonal" />
-        </ActionBand>
-      )}
+      {button === null ? null : <ActionBand>{button}</ActionBand>}
     </View>
   );
 }

@@ -4,15 +4,14 @@ import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { MediaInfo } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { Text } from '../../../components/text';
 import { Zoomable } from '../../../components/zoomable';
 import { useScopeVisible } from '../../../design/visibility';
-import { downloadFile } from '../../../platform/file-actions';
 import { driveLinks, useDriveLink } from '../../drive';
 import { noPreviewOf, showsOriginal, type MediaItem } from './info-model';
+import { SaveToDeviceButton } from './save-button';
 
 const log = new Logger('app.photos');
 
@@ -26,7 +25,6 @@ export function photoLookOf(media: MediaInfo | null): PhotoLook {
 }
 
 function NoPreview({ item }: { readonly item: MediaItem }): ReactNode {
-  const url = useDriveLink(item.id, item.rev, 'file');
   const note = noPreviewOf(item);
   return (
     <View className="flex-1 items-center justify-center gap-3 p-6">
@@ -37,35 +35,17 @@ function NoPreview({ item }: { readonly item: MediaItem }): ReactNode {
       <Text variant="callout" tone="variant" align="center" className="max-w-reading">
         {note.text}
       </Text>
-      <Button
-        label="Download original"
-        icon="download"
-        variant="outlined"
-        disabled={url === null}
-        onPress={() => {
-          if (url !== null) downloadFile(url, item.name);
-        }}
-      />
+      <SaveToDeviceButton itemId={item.id} variant="outlined" />
     </View>
   );
 }
 
-type Placeholder = { readonly uri: string } | { readonly thumbhash: string } | null;
-
-function placeholderOf(preview: string | null, tile: MediaTile | null): Placeholder {
-  if (preview !== null) return { uri: preview };
-  const thumbhash = tile?.thumbhash ?? null;
-  return thumbhash === null ? null : { thumbhash };
-}
-
 function Picture({
   item,
-  tile,
   look,
   zoomed,
 }: {
   readonly item: MediaItem;
-  readonly tile: MediaTile | null;
   readonly look: PhotoLook;
   readonly zoomed: boolean;
 }): ReactNode {
@@ -79,7 +59,7 @@ function Picture({
   return (
     <Image
       source={uri === null ? null : { uri }}
-      placeholder={placeholderOf(original === null ? null : preview, tile)}
+      placeholder={original === null || preview === null ? null : { uri: preview }}
       placeholderContentFit="contain"
       contentFit="contain"
       cachePolicy="disk"
@@ -105,12 +85,10 @@ function Processing(): ReactNode {
 export function ViewerPhoto({
   item,
   media,
-  tile,
   onZoomed,
 }: {
   readonly item: MediaItem;
   readonly media: MediaInfo | null;
-  readonly tile: MediaTile | null;
   readonly onZoomed: (zoomed: boolean) => void;
 }): ReactNode {
   const [zoomed, setZoomed] = useState(false);
@@ -118,13 +96,14 @@ export function ViewerPhoto({
   if (look === 'no-preview') return <NoPreview item={item} />;
   return (
     <Zoomable
+      wheel="wheel"
       className="size-full overflow-hidden"
       onZoomed={(value) => {
         setZoomed(value);
         onZoomed(value);
       }}
     >
-      <Picture item={item} tile={tile} look={look} zoomed={zoomed} />
+      <Picture item={item} look={look} zoomed={zoomed} />
       {look === 'processing' ? <Processing /> : null}
     </Zoomable>
   );

@@ -1,5 +1,10 @@
 import type { DriveAlbum, DriveItem } from '@smarteverything/domain';
-import { createDriveAlbum, removeDriveAlbum, updateDriveAlbum } from '../../../api/drive';
+import {
+  changeDrive,
+  createDriveAlbum,
+  removeDriveAlbum,
+  updateDriveAlbum,
+} from '../../../api/drive';
 import type { DriveResult } from '../../../api/drive';
 import { type DrivePages, flattenPages, useDriveAlbumItems, useDriveAlbums } from '../../drive';
 import { changeBody, createBody, type AlbumDraft } from './rule-draft';
@@ -44,4 +49,26 @@ export async function saveAlbum(album: DriveAlbum, draft: AlbumDraft): Promise<D
 
 export async function deleteAlbum(album: DriveAlbum): Promise<void> {
   await removeDriveAlbum(album.id);
+}
+
+export async function removeFromAlbum(album: DriveAlbum, itemIds: readonly string[]): Promise<void> {
+  const result = await changeDrive({ action: 'album_remove', albumId: album.id, itemIds });
+  if (result.failed.length > 0) {
+    throw new Error(`${String(result.failed.length)} of ${String(itemIds.length)} stayed in the album`);
+  }
+}
+
+export function removableIds(
+  album: DriveAlbum,
+  owner: boolean,
+  me: string | null,
+  items: readonly DriveItem[],
+  ids: readonly string[],
+): readonly string[] | null {
+  if (album.kind === 'smart') return null;
+  if (owner) return ids;
+  const mine = new Set(
+    items.filter((item) => me !== null && item.addedByProfileId === me).map((item) => item.id),
+  );
+  return ids.every((id) => mine.has(id)) ? ids : null;
 }

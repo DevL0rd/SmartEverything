@@ -6,17 +6,22 @@ import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { ErrorState } from '../../../components/error-state';
 import { ProgressBar } from '../../../components/charts';
+import { href } from '../../../app-shell/hrefs';
 import { Icon } from '../../../components/icon';
-import { ListRow } from '../../../components/list-row';
+import { Interactive } from '../../../components/interactive';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useDriveItem } from '../../drive';
 import { usePhotoProcessing } from '../data';
 import type { LiveProgress } from './phones-model';
 import {
+  failedBadgeText,
   jobsLeftText,
   processingOf,
+  queueText,
   unreadableText,
+  type FailedItem,
+  type ProcessingQueue,
   type ProcessingRow,
   type ProcessingView,
 } from './stats-model';
@@ -41,12 +46,68 @@ function KindLine({ row }: { readonly row: ProcessingRow }): ReactNode {
   );
 }
 
-function FailedRow({ itemId }: { readonly itemId: string }): ReactNode {
-  const name = useDriveItem(itemId, null).data?.name ?? 'File';
-  return <ListRow title={name} icon="alert" iconTone="critical" compact />;
+function FailedName({ itemId }: { readonly itemId: string }): ReactNode {
+  const query = useDriveItem(itemId, null);
+  if (query.data !== undefined) {
+    return (
+      <Text variant="footnote" numberOfLines={1}>
+        {query.data.name}
+      </Text>
+    );
+  }
+  if (query.isError) {
+    return (
+      <Text variant="footnote" tone="critical" numberOfLines={1}>
+        The file details did not load
+      </Text>
+    );
+  }
+  return <Skeleton shape="text" />;
 }
 
-function Unreadable({ items }: { readonly items: readonly string[] }): ReactNode {
+function FailedRow({ item }: { readonly item: FailedItem }): ReactNode {
+  return (
+    <Interactive
+      href={href.photosItem(item.itemId)}
+      label={`Open the file that failed: ${item.error}`}
+      className="min-h-touch-min flex-row items-center gap-3 rounded-md px-3 py-2"
+      layerClassName="rounded-md"
+    >
+      <Icon name="alert" size={16} tone="critical" />
+      <View className="min-w-0 flex-1 gap-0.5">
+        <FailedName itemId={item.itemId} />
+        <Text variant="caption" tone="variant" numberOfLines={2}>
+          {item.error}
+        </Text>
+      </View>
+      <Icon name="chevronRight" size={16} tone="faint" />
+    </Interactive>
+  );
+}
+
+function QueueLine({
+  queue,
+  left,
+}: {
+  readonly queue: ProcessingQueue;
+  readonly left: number;
+}): ReactNode {
+  return (
+    <View className="flex-row items-start gap-3">
+      <Icon name="refresh" size={16} tone="primary" />
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text variant="footnote" className="tabular-nums">
+          {`${jobsLeftText(left)} · ${queueText(queue)}`}
+        </Text>
+        <Text variant="caption" tone="variant">
+          Items on screen in Photos are processed first.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function Unreadable({ items }: { readonly items: readonly FailedItem[] }): ReactNode {
   const [open, setOpen] = useState(false);
   return (
     <View className="gap-1">
@@ -63,14 +124,21 @@ function Unreadable({ items }: { readonly items: readonly string[] }): ReactNode
           }}
         />
       </View>
-      {open ? items.map((itemId) => <FailedRow key={itemId} itemId={itemId} />) : null}
+      {open ? items.map((item) => <FailedRow key={item.itemId} item={item} />) : null}
     </View>
   );
 }
 
 function ProcessingBody({ view }: { readonly view: ProcessingView }): ReactNode {
+  const quiet = view.queue === null && view.rows.length === 0 && view.failedItems.length === 0;
   return (
     <View className="gap-3">
+      {view.queue === null ? null : <QueueLine queue={view.queue} left={view.left} />}
+      {quiet ? (
+        <Text variant="footnote" tone="variant">
+          {jobsLeftText(0)}
+        </Text>
+      ) : null}
       {view.rows.map((row) => (
         <KindLine key={row.key} row={row} />
       ))}
@@ -79,12 +147,12 @@ function ProcessingBody({ view }: { readonly view: ProcessingView }): ReactNode 
   );
 }
 
-function StateBadge({ left }: { readonly left: number }): ReactNode {
-  return left === 0 ? (
-    <Badge label="Done" tone="positive" icon="check" />
-  ) : (
-    <Badge label="Working" tone="primary" icon="refresh" />
-  );
+function StateBadge({ view }: { readonly view: ProcessingView }): ReactNode {
+  if (view.left > 0) return <Badge label="Working" tone="primary" icon="refresh" />;
+  if (view.failedItems.length > 0) {
+    return <Badge label={failedBadgeText(view.failedItems.length)} tone="critical" icon="alert" />;
+  }
+  return <Badge label="Done" tone="positive" icon="check" />;
 }
 
 function Missing({ query }: { readonly query: ReturnType<typeof usePhotoProcessing> }): ReactNode {
@@ -104,17 +172,7 @@ export function ProcessingCard({ live }: { readonly live: LiveProgress }): React
   const processing = query.data;
   const view = processing === undefined ? undefined : processingOf(processing, live.kinds);
   return (
-    <Card
-      title="Processing"
-      action={view === undefined ? null : <StateBadge left={view.left} />}
-      metadata={
-        view === undefined ? null : (
-          <Text variant="caption" tone="variant" className="tabular-nums">
-            {jobsLeftText(view.left)}
-          </Text>
-        )
-      }
-    >
+    <Card title="Processing" action={view === undefined ? null : <StateBadge view={view} />}>
       {view === undefined ? <Missing query={query} /> : <ProcessingBody view={view} />}
     </Card>
   );

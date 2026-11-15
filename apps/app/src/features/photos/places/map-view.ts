@@ -7,6 +7,7 @@ import {
   type FrameSize,
   type GeoPoint,
   type MapBox,
+  type MapPoint,
 } from '../world-map/projection';
 
 export const MAP_ZOOM_MAX = 24;
@@ -84,6 +85,35 @@ export function pannedBy(view: MapView, dx: number, dy: number, frame: FrameSize
     lat: clamp(view.lat + dy * perPixel, -LAT_EDGE, LAT_EDGE),
     lon: clamp(view.lon - dx * perPixel, -180, 180),
   };
+}
+
+export function zoomedAt(view: MapView, by: number, at: MapPoint, frame: FrameSize): MapView {
+  const zoom = clamp(view.zoom + by, 0, MAP_ZOOM_MAX);
+  if (zoom === view.zoom) return view;
+  if (zoom === 0) return { ...view, zoom };
+  const fit = fitOf(mapBoxOf(view, frame), frame);
+  const perPixel = (spanOf(zoom) * GRID_PER_DEGREE) / frame.width;
+  const x = (at.x - fit.dx) / fit.scale + (frame.width / 2 - at.x) * perPixel;
+  const y = (at.y - fit.dy) / fit.scale + (frame.height / 2 - at.y) * perPixel;
+  return {
+    zoom,
+    lat: clamp(90 - y / GRID_PER_DEGREE, -LAT_EDGE, LAT_EDGE),
+    lon: clamp(x / GRID_PER_DEGREE - 180, -180, 180),
+  };
+}
+
+export const MAP_WHEEL_PIXELS_PER_STEP = 100;
+
+export interface MapWheel {
+  readonly steps: number;
+  readonly pending: number;
+}
+
+export function mapWheelOf(pending: number, pixels: number): MapWheel {
+  const kept = Math.sign(pending) === Math.sign(-pixels) ? pending : 0;
+  const total = kept - pixels;
+  const steps = Math.trunc(total / MAP_WHEEL_PIXELS_PER_STEP);
+  return { steps, pending: total - steps * MAP_WHEEL_PIXELS_PER_STEP };
 }
 
 export function pinchSteps(scale: number): number {

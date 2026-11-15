@@ -15,7 +15,7 @@ import {
   ruleOfDraft,
   startAdding,
 } from './rule-chips';
-import { leafLabel, ruleSummary } from './rule-labels';
+import { leafLabel, placeOfSources, ruleSummary } from './rule-labels';
 
 const ROOT = 'a1b2c3d4-0000-4000-8000-000000000001';
 const FOLDER = 'a1b2c3d4-0000-4000-8000-000000000002';
@@ -134,5 +134,22 @@ describe('rule labels', () => {
         NO_PLACE,
       ),
     ).toBe('Starred · Name has tax');
+  });
+
+  it('names only real roots as drives, so a folder is left for its own name', () => {
+    const placeOf = placeOfSources({
+      extra: new Map(),
+      rootIds: new Set([ROOT]),
+      rootLabel: () => 'My Drive',
+    });
+    expect(placeOf(FOLDER)).toBeNull();
+    expect(leafLabel({ kind: 'in_folder', folderId: FOLDER }, placeOf)).toBe('In one folder');
+    expect(leafLabel({ kind: 'in_root', rootId: ROOT }, placeOf)).toBe('In My Drive');
+    const named = placeOfSources({
+      extra: new Map([[FOLDER, 'Documents']]),
+      rootIds: new Set([ROOT]),
+      rootLabel: () => 'My Drive',
+    });
+    expect(leafLabel({ kind: 'in_folder', folderId: FOLDER }, named)).toBe('In Documents');
   });
 });

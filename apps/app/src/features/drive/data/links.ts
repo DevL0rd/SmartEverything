@@ -123,13 +123,13 @@ export class DriveLinkCache {
   }
 
   async resolve(itemId: string, rev: number, size: DriveLinkSize): Promise<string | null> {
-    const cached = this.fresh(itemId, rev, size);
+    const cached = this.peek(itemId, rev, size);
     if (cached !== null) return cached;
     await this.request(itemId);
-    return this.fresh(itemId, rev, size);
+    return this.peek(itemId, rev, size);
   }
 
-  private fresh(itemId: string, rev: number, size: DriveLinkSize): string | null {
+  peek(itemId: string, rev: number, size: DriveLinkSize): string | null {
     const entry = this.entries.get(keyOf(itemId, rev, size, this.generation()));
     if (entry === undefined) return null;
     return entry.expiresAt - this.now() > LINK_RENEW_LEAD_MS ? entry.url : null;
@@ -230,3 +230,22 @@ export function useDriveLink(
   }, [itemId, rev, size, key]);
   return resolved !== null && resolved.key === key ? resolved.url : null;
 }
+
+export interface LinkedTile {
+  readonly id: string;
+  readonly rev: number;
+}
+
+export interface ThumbLinks {
+  readonly peek: (tile: LinkedTile) => string | null;
+  readonly resolve: (tile: LinkedTile) => Promise<string | null>;
+}
+
+export function thumbLinksOf(cache: DriveLinkCache): ThumbLinks {
+  return {
+    peek: (tile) => cache.peek(tile.id, tile.rev, 'thumb'),
+    resolve: (tile) => cache.resolve(tile.id, tile.rev, 'thumb'),
+  };
+}
+
+export const driveThumbs = thumbLinksOf(driveLinks);

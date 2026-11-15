@@ -7,7 +7,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { cn } from '../design/cn';
 import { entering, useMotion, type MotionPreference } from '../design/motion';
 import { isNative } from '../design/platform';
-import { focusView } from './focus-request';
+import { focusView, type FocusTarget } from './focus-request';
 import { Overlay, useOverlayShown } from './overlay';
 import { SheetHeader, useSheetHeading } from './sheet-header';
 
@@ -18,17 +18,18 @@ export interface DialogFrameProps {
   readonly title?: string | undefined;
   readonly kind: 'dialog' | 'inspector';
   readonly wide?: boolean;
+  readonly large?: boolean;
   readonly footer?: ReactNode;
   readonly scroll?: boolean;
   readonly reading?: boolean;
-  readonly initialFocus?: RefObject<View | null>;
+  readonly initialFocus?: RefObject<FocusTarget | null>;
   readonly children: ReactNode;
 }
 
 function useDialogEntry(
   kind: DialogFrameProps['kind'],
   motion: MotionPreference,
-  initialFocus: RefObject<View | null> | undefined,
+  initialFocus: RefObject<FocusTarget | null> | undefined,
 ): { readonly ref: RefObject<View | null> } & ReturnType<typeof entering> {
   const ref = useRef<View>(null);
   const [entered, setEntered] = useState(false);
@@ -53,11 +54,17 @@ function useDialogEntry(
   return { ref, ...entering(motion, appear) };
 }
 
+function widthClassOf(wide: boolean, large: boolean): string {
+  if (large) return 'max-w-dialog-large';
+  return wide ? 'max-w-dialog-wide' : 'max-w-dialog';
+}
+
 function DialogPanel({
   title,
   onClose,
   kind,
   wide,
+  large,
   footer,
   scroll,
   reading,
@@ -67,6 +74,7 @@ function DialogPanel({
   children,
 }: Omit<DialogFrameProps, 'open' | 'label'> & {
   readonly wide: boolean;
+  readonly large: boolean;
   readonly scroll: boolean;
   readonly titleFocus: RefObject<View | null> | undefined;
   readonly motion: MotionPreference;
@@ -81,7 +89,7 @@ function DialogPanel({
       className={cn(
         'overflow-hidden bg-surface-raised elevation-3',
         dialog ? 'max-h-full w-full rounded-xl' : 'h-full w-inspector max-w-full',
-        dialog && (wide ? 'max-w-dialog-wide' : 'max-w-dialog'),
+        dialog && widthClassOf(wide, large),
       )}
     >
       <View className="pt-4">
@@ -108,6 +116,7 @@ export function DialogFrame({
   title,
   kind,
   wide = false,
+  large = false,
   footer,
   scroll = true,
   reading = false,
@@ -131,6 +140,7 @@ export function DialogFrame({
         title={title}
         kind={kind}
         wide={wide}
+        large={large}
         footer={footer}
         scroll={scroll}
         reading={reading}

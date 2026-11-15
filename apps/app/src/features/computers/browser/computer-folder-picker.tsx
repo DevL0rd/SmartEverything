@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
 import { ErrorState } from '../../../components/error-state';
-import { FilePicker, FilePickerSheet, pickerTitleOf, type PickerChoice } from '../../files';
+import { FilePicker, FilePickerSheet, type PickerChoice } from '../../files';
 import type { ComputerOrigin } from '../source/computer-node';
 import { paramOfLocation } from './computer-route';
 import { useComputerStart } from './use-computer-start';
@@ -43,6 +43,7 @@ export function ComputerFolderPicker(props: ComputerFolderPickerProps): ReactNod
 export interface ComputerFolderPickerSheetProps {
   readonly deviceId: string;
   readonly open: boolean;
+  readonly title: string;
   readonly writableOnly?: boolean;
   readonly onChoose: (path: string) => void;
   readonly onClose: () => void;
@@ -52,7 +53,7 @@ function OpenSheet(props: ComputerFolderPickerSheetProps): ReactNode {
   const { source, location, failure } = useComputerStart(props.deviceId, undefined);
   if (location === null) {
     return (
-      <Sheet open onClose={props.onClose} title={pickerTitleOf('folder')} detents={['half']}>
+      <Sheet open onClose={props.onClose} title={props.title} detents={['half']}>
         <View className="pb-4">
           {failure === null ? (
             <Skeleton shape="tile" className="h-48" />
@@ -69,6 +70,7 @@ function OpenSheet(props: ComputerFolderPickerSheetProps): ReactNode {
       source={source}
       mode="folder"
       start={location}
+      title={props.title}
       writableOnly={props.writableOnly ?? false}
       onClose={props.onClose}
       onChoose={choose(props.onChoose)}

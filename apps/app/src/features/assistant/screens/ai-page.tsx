@@ -6,7 +6,7 @@ import { Logger } from '@smarteverything/logging';
 import { setAiChatRead } from '../../../api/ai';
 import { href } from '../../../app-shell/hrefs';
 import { mainPageSettings } from '../../../app-shell/main-pages';
-import { OverlayPane } from '../../../components/master-detail';
+import { OverlayPane } from '../../../components/overlay-pane';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useForeground } from '../../../design/animation-gate';

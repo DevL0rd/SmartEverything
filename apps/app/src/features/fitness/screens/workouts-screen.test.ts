@@ -25,13 +25,8 @@ vi.mock('../../../components/skeleton', () => ({
     createElement('i', { 'data-skeleton': props.shape, className: props.className }),
 }));
 vi.mock('../components/fitness-shell', () => ({
-  FitnessShell: ({
-    children,
-    width,
-  }: {
-    readonly children: ReactNode;
-    readonly width: string;
-  }): ReactNode => createElement('main', { 'data-width': width }, children),
+  FitnessShell: ({ children }: { readonly children: ReactNode }): ReactNode =>
+    createElement('main', null, children),
 }));
 vi.mock('../components/fitness-toolbar', () => ({ FitnessToolbar: state.none }));
 vi.mock('../components/no-data-row', () => ({
@@ -63,7 +58,6 @@ function render(list: WorkoutList): string {
 describe('workouts list states', () => {
   it('shows the standard block placeholder on the first load', () => {
     const markup = render({ workouts: [], loaded: false, error: null });
-    expect(markup).toContain('data-width="dashboard"');
     expect(markup).toContain('<i data-skeleton="block"></i>');
   });
 

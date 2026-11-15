@@ -1,5 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  Fragment,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { ScrollView, Share, View } from 'react-native';
 import type { DriveItem, DriveShareCreated } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
@@ -9,6 +16,9 @@ import { CopyField } from '../../../components/copy-field';
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
+import { useAreaWidth } from '../../../design/size-class';
+import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
+import { useMinute } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
 import { notifyFailure } from '../../../components/toast-store';
 import { useProfiles } from '../../../store/people';
@@ -16,10 +26,12 @@ import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { useDriveOf, useDriveSettings } from '../data';
 import type { DriveOfItem } from '../model/drive-access';
 import { revokeLink } from '../shared/revoke-link';
+import { useItemSubject } from '../source/drive-tabs';
 import { PeopleSection, SectionTitle } from './people-section';
 import { RequestsSection } from './requests-section';
 import { TransferSection } from './transfer-section';
 import { PeopleLink, ViewOnlyRow } from './view-only-row';
+import { ActiveLinks, useItemLinks, type ItemLinks } from './sharing-tab';
 import { makeShareLink } from './share-data';
 import { LinkForm } from './share-form';
 import {
@@ -32,6 +44,7 @@ import {
   reachOf,
   shareRequestOf,
   shareTitleOf,
+  viewOnlyShownOf,
   type LinkState,
   type ShareDraft,
 } from './share-model';
@@ -120,8 +133,14 @@ interface BodyProps {
   readonly onStopped: () => void;
 }
 
-function LinkPart({ opened, link, onDraft, onStopped }: Omit<BodyProps, 'drive'>): ReactNode {
-  const narrow = usePanelFrame().presentation === 'sheet';
+function LinkPart({
+  opened,
+  link,
+  links,
+  onDraft,
+  onStopped,
+}: Omit<BodyProps, 'drive'> & { readonly links: ItemLinks }): ReactNode {
+  const narrow = useAreaWidth() < SHELL_BREAKPOINTS.compactMax;
   if (link !== 'allowed') {
     return (
       <Text variant="footnote" tone="variant">
@@ -131,6 +150,7 @@ function LinkPart({ opened, link, onDraft, onStopped }: Omit<BodyProps, 'drive'>
   }
   return (
     <>
+      <ActiveLinks item={opened.item} links={links} />
       {opened.created === null ? (
         <LinkForm draft={opened.draft} narrow={narrow} disabled={false} onDraft={onDraft} />
       ) : (
@@ -143,34 +163,51 @@ function LinkPart({ opened, link, onDraft, onStopped }: Omit<BodyProps, 'drive'>
   );
 }
 
+function withDividers(sections: readonly (ReactElement | null)[]): ReactNode {
+  return sections
+    .filter((section) => section !== null)
+    .map((section, index) => (
+      <Fragment key={section.key}>
+        {index === 0 ? null : <View className="h-px bg-outline-variant" />}
+        {section}
+      </Fragment>
+    ));
+}
+
 function Body(props: BodyProps): ReactNode {
   const { opened, drive } = props;
-  const owner = useProfiles().find((profile) => profile.id === drive.root?.ownerProfileId);
+  const ownerProfileId = useItemSubject(opened.item)?.ownerProfileId ?? null;
+  const owner = useProfiles().find((profile) => profile.id === ownerProfileId);
+  const links = useItemLinks(opened.item.id, useMinute());
   return (
     <View className="gap-4">
       <RequestsSection itemId={opened.item.id} />
-      {drive.root === null ? null : (
+      {withDividers([
         <PeopleSection
+          key="people"
           item={opened.item}
-          ownerProfileId={drive.root.ownerProfileId}
+          ownerProfileId={ownerProfileId}
           access={drive.access}
-        />
+        />,
+        viewOnlyShownOf(drive.access) ? (
+          <ViewOnlyRow key="view-only" item={opened.item} access={drive.access} />
+        ) : null,
+        props.link === 'owner-only' ? null : (
+          <View key="link" className="gap-4">
+            <SectionTitle text="Link" />
+            <LinkPart {...props} links={links} />
+          </View>
+        ),
+        <PeopleLink key="people-link" itemId={opened.item.id} access={drive.access} />,
+        drive.access === 'own' ? (
+          <TransferSection key="transfer" item={opened.item} access={drive.access} />
+        ) : null,
+      ])}
+      {links.groups === null ? null : (
+        <Text variant="footnote" tone="variant">
+          {footerLineOf(drive.access, owner?.name ?? null, links.groups.active.length)}
+        </Text>
       )}
-      <ViewOnlyRow item={opened.item} access={drive.access} />
-      {drive.access === 'own' ? <View className="h-px bg-outline-variant" /> : null}
-      <TransferSection item={opened.item} access={drive.access} />
-      <View className="h-px bg-outline-variant" />
-      {props.link === 'owner-only' ? null : (
-        <>
-          <SectionTitle text="Link" />
-          <LinkPart {...props} />
-          <View className="h-px bg-outline-variant" />
-        </>
-      )}
-      <PeopleLink itemId={opened.item.id} access={drive.access} />
-      <Text variant="footnote" tone="variant">
-        {footerLineOf(drive.access, owner?.name ?? null)}
-      </Text>
     </View>
   );
 }
@@ -195,7 +232,14 @@ function Footer({ opened, link, busy, ready, onClose, onMake }: FooterProps): Re
   return (
     <View className="flex-row justify-end gap-2">
       <Button label="Cancel" variant="text" onPress={onClose} />
-      <Button label="Make link" icon="link" loading={busy} disabled={!ready} onPress={onMake} />
+      <Button
+        label="Make link"
+        icon="link"
+        variant="tonal"
+        loading={busy}
+        disabled={!ready}
+        onPress={onMake}
+      />
     </View>
   );
 }
@@ -324,6 +368,7 @@ function ShareHost({
       pointerPlacement={opened.anchorRef === null ? 'center' : 'below'}
       sheetFooter={footer}
       scroll={touch}
+      fit
     >
       <PanelBody body={bodyOf(opened, drive, link, setOpened)} footer={footer} onClose={close} />
     </AdaptivePanel>

@@ -1,4 +1,5 @@
 import type { Turns } from './chat-turns';
+import type { SectionFailure } from '../api/connection/readable';
 import { DeviceValueIndex } from './device-values';
 import { deviceValuesRecord, ledgerOfDevice, rawState } from './subscriptions';
 import type {
@@ -80,11 +81,18 @@ export type DeviceValues = Readonly<Record<string, DeviceValue>>;
 
 type SyncPhase = 'connecting' | 'loading' | 'live' | 'interrupted' | 'refused';
 
+export type { SectionFailure };
+
+export interface SyncProblem {
+  readonly text: string;
+  readonly remedy: 'update-app' | 'server-settings';
+}
+
 export interface SyncState {
   readonly status: SyncPhase;
   readonly seq: number | null;
-  readonly problem: string | null;
-  readonly outdated: readonly string[];
+  readonly problem: SyncProblem | null;
+  readonly failed: readonly SectionFailure[];
   readonly offlineSince: number | null;
 }
 
@@ -233,7 +241,7 @@ export function emptyState(): StoreState {
       status: 'connecting',
       seq: null,
       problem: null,
-      outdated: [],
+      failed: [],
       offlineSince: Date.now(),
     },
     hub: null,

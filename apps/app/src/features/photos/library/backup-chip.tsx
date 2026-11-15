@@ -34,6 +34,7 @@ function Mark({ view }: { readonly view: LibraryChipView }): ReactNode {
   if (view.mark === 'warning') return <Icon name="warning" size={MARK_SIZE} tone="warning" />;
   if (view.mark === 'check') return <Icon name="check" size={MARK_SIZE} tone="positive" />;
   if (view.mark === 'pause') return <Icon name="pause" size={MARK_SIZE} tone="warning" />;
+  if (view.mark === 'failed') return <Icon name="alert" size={MARK_SIZE} tone="critical" />;
   return (
     <View className="size-4">
       <Arc value={view.progress} size={MARK_SIZE} thickness={2} colour="primary" />

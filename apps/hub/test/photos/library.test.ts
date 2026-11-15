@@ -52,7 +52,6 @@ interface Seed {
   readonly height?: number | null;
   readonly orientation?: number | null;
   readonly durationMs?: number;
-  readonly thumbhash?: Uint8Array | null;
   readonly stackId?: string | null;
   readonly motionClipId?: string | null;
   readonly liveId?: string | null;
@@ -141,7 +140,6 @@ const DEFAULTS: Omit<Required<Seed>, 'n' | 'takenAt'> = {
   height: 300,
   orientation: null,
   durationMs: 1000,
-  thumbhash: null,
   stackId: null,
   motionClipId: null,
   liveId: null,
@@ -185,7 +183,6 @@ function mediaFields(input: Seed, id: string): Fields {
     item_id: id,
     time_source: 'metadata',
     tz_offset_min: item.offset,
-    thumbhash: item.thumbhash,
     preview_state: item.preview,
     preview_reason: item.preview === 'failed' ? 'decode failed' : null,
     poster_state: 'ready',
@@ -544,7 +541,6 @@ describe('month page columns', () => {
       takenAt: '2026-03-10T10:00:00.000Z',
       offset: 120,
       starred: true,
-      thumbhash: Uint8Array.from([1, 2, 3, 4]),
     });
     seed({
       n: 2,
@@ -564,7 +560,6 @@ describe('month page columns', () => {
     ]);
     expect(page.offsetMin).toEqual([null, 120]);
     expect(page.durationMs).toEqual([5000, null]);
-    expect(page.thumbhash).toEqual([null, 'AQIDBA==']);
     expect(page.next).toBeNull();
     const [video, photo] = page.flags;
     expect(hasPhotoFlag(video ?? 0, 'video')).toBe(true);

@@ -31,7 +31,7 @@ export function PhoneActivityBody({ device }: { readonly device: Device }): Reac
 
 export function PhoneActivityScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   return (
-    <PhonePage deviceId={deviceId} title="Activity" width="detail">
+    <PhonePage deviceId={deviceId} title="Activity">
       {(device) => <PhoneActivityBody device={device} />}
     </PhonePage>
   );

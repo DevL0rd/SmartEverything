@@ -25,7 +25,13 @@ describe('full ranking lists', () => {
   });
 
   it('words a day and its photo count', () => {
-    expect(busiestRowOf({ day: '2025-07-20', items: 1 }).note).toBe('1 photo');
-    expect(busiestRowOf({ day: '2025-07-20', items: 1234 }).note).toBe('1,234 photos');
+    expect(busiestRowOf({ day: '2025-07-20', items: 1 }, 'this_year').note).toBe('1 photo');
+    expect(busiestRowOf({ day: '2025-07-20', items: 1234 }, 'this_year').note).toBe('1,234 photos');
+  });
+
+  it('adds the year to a day outside this year', () => {
+    expect(busiestRowOf({ day: '2025-07-20', items: 1 }, 'this_year').title).not.toMatch(/2025/u);
+    expect(busiestRowOf({ day: '2025-07-20', items: 1 }, 'last_12_months').title).toMatch(/2025/u);
+    expect(busiestRowOf({ day: '2025-07-20', items: 1 }, 'all_time').title).toMatch(/2025/u);
   });
 });

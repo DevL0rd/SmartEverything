@@ -5,12 +5,12 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { Icon } from '../../../components/icon';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
 import {
   beginSelecting,
   NO_SELECTION,
-  toggleDay,
+  selectAll,
   toggleItem,
   type MediaSelection,
 } from '../../../components/media-grid/selection';
@@ -18,7 +18,7 @@ import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { useAreaWidth } from '../../../design/size-class';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { PhotosFrame } from '../components/photos-frame';
 import { useDeletedActions, type DeletedActions } from './actions';
 import { MEMBER_NOTE, OWNER_NOTE, READ_ONLY_NOTE, subtitleOf } from './copy';
@@ -116,9 +116,6 @@ function Content(body: Body): ReactNode {
       days={view.days}
       today={view.today}
       selection={body.selection}
-      onSelectDay={(ids) => {
-        body.setSelection((selection) => toggleDay(selection, ids));
-      }}
       {...handlersOf(body)}
       header={
         <LeavingCard
@@ -154,7 +151,7 @@ function OfflineBanner(): ReactNode {
   );
 }
 
-function selectAction(view: DeletedView, start: () => void): readonly HeaderAction[] {
+function selectAction(view: DeletedView, start: () => void): readonly ShellAction[] {
   return view.items.length === 0 ? [] : [{ icon: 'circleCheck', label: 'Select', onPress: start }];
 }
 
@@ -169,8 +166,12 @@ function SelectionBar({
   return (
     <SelectionHeader
       picked={totalsOf(picked)}
+      total={body.view.items.length}
       disabled={body.disabled}
       onClear={onClear}
+      onSelectAll={() => {
+        body.setSelection(() => selectAll(body.view.items.map((item) => item.id)));
+      }}
       onRestore={() => {
         body.actions.restore(picked);
       }}
@@ -187,7 +188,7 @@ function SelectionBar({
 
 export function DeletedScreen(): ReactNode {
   const owner = useIsOwner();
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const live = useSyncStatus().status === 'live';
   const view = useDeleted();
   const [selection, setSelection] = useState<MediaSelection>(NO_SELECTION);

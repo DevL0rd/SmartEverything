@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { usePendingKeys } from '../../../components/deferred-action';
 import type { VirtualSection } from '../../../components/virtual-list';
-import { useMinute } from '../../../store/clock';
 import { useLoaded } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { useArchivedChats } from '../data/archived-chats';
@@ -11,6 +10,7 @@ import { completedHelpersOf, sectionsOf, type ChatEntry } from './chat-entry';
 import { matchesChat } from './entries';
 import { hiddenChatIds, visibleAppChats } from './chat-visibility';
 import { itemsOf, type ListItem } from './list-items';
+import { useSectionNow } from './section-now';
 import {
   applyFilter,
   countsOf,
@@ -72,10 +72,10 @@ export function useListModel(
   const archived = useArchivedChats(filter === 'archived');
   const archivedRows = useMemo(() => visibleAppChats(archived.entries), [archived.entries]);
   const loaded = useLoaded();
-  const now = useMinute();
   const timeZone = useStoreSelector((state) => state.settings?.time_zone ?? null);
   const hits = useMessageHits(query, filter === 'archived');
   const base = useBaseEntries(filter, live, archivedRows);
+  const now = useSectionNow(base, timeZone);
   const matched = useMemo(() => visibleOf(base, filter, query), [base, filter, query]);
   const completedHelpers = useMemo(() => completedHelpersOf(matched), [matched]);
   const entries = useMemo(() => new Map(base.map((entry) => [entry.id, entry])), [base]);

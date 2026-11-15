@@ -19,7 +19,7 @@ export function LayoutSizesBlock(): ReactNode {
   }
   if (state.status === 'invalid') {
     return (
-      <View className="w-full max-w-reading">
+      <View className="w-full">
         <ErrorState error={state.reason} retry={state.reset} retryLabel="Reset Home layout" />
       </View>
     );
@@ -33,21 +33,13 @@ export function LayoutSizesBlock(): ReactNode {
         Home keeps a separate arrangement for each screen size, so a folded and an unfolded phone
         can look different. Nothing here changes until you confirm.
       </Text>
-      <Grid
-        minItemWidth={LAYOUT_CARD_MIN_WIDTH}
-        maxColumns={rows.length}
-        cellClassName="max-w-reading"
-        stretchLastRow={false}
-      >
+      <Grid minItemWidth={LAYOUT_CARD_MIN_WIDTH} maxColumns={rows.length} stretchLastRow={false}>
         {rows.map((row) => (
           <LayoutSizeCard key={row.board} row={row} widest={widest} context={context} />
         ))}
       </Grid>
       {state.layout?.previous === undefined ? null : (
-        <List
-          footer="Restores every size to how it was before your last copy or reset."
-          className="max-w-reading"
-        >
+        <List footer="Restores every size to how it was before your last copy or reset.">
           <ListRow
             title="Undo last copy or reset"
             icon="undo"

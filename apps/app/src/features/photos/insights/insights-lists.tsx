@@ -8,12 +8,14 @@ import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Card } from '../../../components/card';
 import { ProgressBar, SegmentBar } from '../../../components/charts';
+import { Interactive } from '../../../components/interactive';
 import { ListRow } from '../../../components/list-row';
 import { RankedList } from '../../../components/ranked-list';
-import { List, SectionAction } from '../../../components/section';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
 import { bytes } from '../../../format/number';
 import { driveLabelOf, useDriveItem, useDriveRoots, useViewerId } from '../../drive';
+import { Cover } from '../places/cover';
 import { NATURAL_EARTH_ATTRIBUTION, WorldMap } from '../world-map';
 import { LegendDot } from './insights-charts';
 import {
@@ -30,16 +32,36 @@ import {
 import { placesLine } from './model';
 import { RANKING_TITLES, busiestRowOf, type RankingId } from './ranking-model';
 
-export function PlacesCard({ places }: { readonly places: PhotoInsights['places'] }): ReactNode {
+const COMPACT_SUMMARY = 5;
+
+function CardRows({ children }: { readonly children: ReactNode }): ReactNode {
+  return <View className="-mx-card-pad">{children}</View>;
+}
+
+function CardRow({ children }: { readonly children: ReactNode }): ReactNode {
+  return <View className="border-t-hairline border-outline-variant">{children}</View>;
+}
+
+const FILL = 'large:flex-1';
+
+export function PlacesCard({
+  places,
+  className,
+}: {
+  readonly places: PhotoInsights['places'];
+  readonly className: string;
+}): ReactNode {
   const countries = places.countries.map((country) => ({
     countryCode: country.countryCode,
     count: country.items,
   }));
+  const ranked = places.countries.length > 0;
   return (
-    <View className="gap-3">
+    <View className={cn('gap-3', className)}>
       <Card
         title="Places"
         padding="card"
+        {...(ranked ? {} : { className: FILL })}
         metadata={
           <Text variant="caption" tone="variant" className="tabular">
             {placesLine(places)}
@@ -55,20 +77,33 @@ export function PlacesCard({ places }: { readonly places: PhotoInsights['places'
         />
       </Card>
       {places.countries.length === 0 ? null : (
-        <RankedList title="Countries" entries={countryEntries(places.countries)} />
+        <Card title="Countries" className={FILL}>
+          <RankedList inCard entries={countryEntries(places.countries)} />
+        </Card>
       )}
     </View>
   );
 }
 
-export function CamerasCard({ insights }: { readonly insights: PhotoInsights }): ReactNode {
+export function CamerasCard({
+  insights,
+  className,
+}: {
+  readonly insights: PhotoInsights;
+  readonly className: string;
+}): ReactNode {
+  if (insights.cameras.length === 0 && insights.lenses.length === 0) return null;
   return (
-    <View className="gap-3">
+    <View className={cn('gap-3', className)}>
       {insights.cameras.length === 0 ? null : (
-        <RankedList title="Cameras" entries={cameraEntries(insights.cameras)} />
+        <Card title="Cameras" {...(insights.lenses.length === 0 ? { className: FILL } : {})}>
+          <RankedList inCard entries={cameraEntries(insights.cameras)} />
+        </Card>
       )}
       {insights.lenses.length === 0 ? null : (
-        <RankedList title="Lenses" entries={lensEntries(insights.lenses)} />
+        <Card title="Lenses" className={FILL}>
+          <RankedList inCard entries={lensEntries(insights.lenses)} />
+        </Card>
       )}
     </View>
   );
@@ -99,11 +134,13 @@ function CoverageLine({ row }: { readonly row: CoverageRow }): ReactNode {
 
 export function CoverageCard({
   coverage,
+  className,
 }: {
   readonly coverage: PhotoInsights['backupCoverage'];
+  readonly className: string;
 }): ReactNode {
   return coverage.length === 0 ? null : (
-    <Card title="Backup coverage">
+    <Card title="Backup coverage" className={className}>
       {coverageRows(coverage).map((row) => (
         <CoverageLine key={row.key} row={row} />
       ))}
@@ -111,17 +148,31 @@ export function CoverageCard({
   );
 }
 
+function RankLead({ rank, itemId }: { readonly rank: number; readonly itemId: string }): ReactNode {
+  return (
+    <View className="shrink-0 flex-row items-center gap-3">
+      <Text variant="footnote" tone="variant" align="end" className="tabular w-6">
+        {String(rank)}
+      </Text>
+      <Cover itemId={itemId} className="size-10 rounded-sm" />
+    </View>
+  );
+}
+
 export function LargestRow({
   video,
+  rank,
 }: {
   readonly video: PhotoInsights['largestVideos'][number];
+  readonly rank: number;
 }): ReactNode {
   const name = useDriveItem(video.itemId, null).data?.name ?? 'Video';
   return (
     <ListRow
       title={name}
+      titleEllipsize="middle"
       subtitle={largestNote(video)}
-      icon="film"
+      leading={<RankLead rank={rank} itemId={video.itemId} />}
       chevron
       href={href.photosItem(video.itemId)}
     />
@@ -129,67 +180,109 @@ export function LargestRow({
 }
 
 function ShowAll({
+  total,
   shown,
   ranking,
   range,
 }: {
+  readonly total: number;
   readonly shown: number;
   readonly ranking: RankingId;
   readonly range: PhotoInsightRange;
 }): ReactNode {
-  return shown < PHOTO_RANKING_SUMMARY ? null : (
-    <SectionAction
-      label="Show all"
-      spoken={`Show all ${RANKING_TITLES[ranking].toLowerCase()}`}
+  return total < PHOTO_RANKING_SUMMARY && shown === total ? null : (
+    <Interactive
+      label={`Show all ${RANKING_TITLES[ranking].toLowerCase()}`}
       href={href.photosRanking(ranking, range)}
-    />
+      className="-mr-2 min-h-touch-min justify-center rounded-sm px-2"
+      layerClassName="rounded-sm"
+    >
+      <Text variant="footnote" tone="primary">
+        Show all
+      </Text>
+    </Interactive>
   );
+}
+
+function summaryOf<T>(entries: readonly T[], compact: boolean): readonly T[] {
+  return compact ? entries.slice(0, COMPACT_SUMMARY) : entries;
 }
 
 export function LargestVideos({
   videos,
   range,
+  compact,
+  className,
 }: {
   readonly videos: PhotoInsights['largestVideos'];
   readonly range: PhotoInsightRange;
+  readonly compact: boolean;
+  readonly className: string;
 }): ReactNode {
+  const shown = summaryOf(videos, compact);
   return videos.length === 0 ? null : (
-    <List
+    <Card
       title="Largest videos"
-      action={<ShowAll shown={videos.length} ranking="largest-videos" range={range} />}
+      className={className}
+      action={
+        <ShowAll
+          total={videos.length}
+          shown={shown.length}
+          ranking="largest-videos"
+          range={range}
+        />
+      }
     >
-      {videos.map((video) => (
-        <LargestRow key={video.itemId} video={video} />
-      ))}
-    </List>
+      <CardRows>
+        {shown.map((video, index) => (
+          <CardRow key={video.itemId}>
+            <LargestRow video={video} rank={index + 1} />
+          </CardRow>
+        ))}
+      </CardRows>
+    </Card>
   );
 }
 
 export function BusiestDayRow({
   entry,
+  range,
 }: {
   readonly entry: PhotoInsights['busiestDays'][number];
+  readonly range: PhotoInsightRange;
 }): ReactNode {
-  const row = busiestRowOf(entry);
+  const row = busiestRowOf(entry, range);
   return <ListRow title={row.title} subtitle={row.note} icon="calendar" />;
 }
 
 export function BusiestDays({
   days,
   range,
+  compact,
+  className,
 }: {
   readonly days: PhotoInsights['busiestDays'];
   readonly range: PhotoInsightRange;
+  readonly compact: boolean;
+  readonly className: string;
 }): ReactNode {
+  const shown = summaryOf(days, compact);
   return days.length === 0 ? null : (
-    <List
+    <Card
       title="Busiest days"
-      action={<ShowAll shown={days.length} ranking="busiest-days" range={range} />}
+      className={className}
+      action={
+        <ShowAll total={days.length} shown={shown.length} ranking="busiest-days" range={range} />
+      }
     >
-      {days.map((entry) => (
-        <BusiestDayRow key={entry.day} entry={entry} />
-      ))}
-    </List>
+      <CardRows>
+        {shown.map((entry) => (
+          <CardRow key={entry.day}>
+            <BusiestDayRow entry={entry} range={range} />
+          </CardRow>
+        ))}
+      </CardRows>
+    </Card>
   );
 }
 
@@ -243,7 +336,13 @@ function KindLegend(): ReactNode {
   );
 }
 
-export function FoldersCard({ roots }: { readonly roots: PhotoInsights['roots'] }): ReactNode {
+export function FoldersCard({
+  roots,
+  className,
+}: {
+  readonly roots: PhotoInsights['roots'];
+  readonly className: string;
+}): ReactNode {
   const known = useDriveRoots();
   const viewerId = useViewerId();
   const labels = new Map(known.map((root) => [root.id, driveLabelOf(root, viewerId)]));
@@ -252,6 +351,7 @@ export function FoldersCard({ roots }: { readonly roots: PhotoInsights['roots'] 
   return (
     <Card
       title="By drive"
+      className={className}
       metadata={
         <Text variant="caption" tone="variant" className="tabular">
           {bars.summary}

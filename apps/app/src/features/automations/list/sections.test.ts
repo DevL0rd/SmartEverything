@@ -39,8 +39,6 @@ const LINKS: ListLinks = {
   open: () => '/',
   edit: () => '/',
   runs: () => '/',
-  workspace: [],
-  extras: [],
 };
 const ACTIONS: ListActions = {
   toggle: vi.fn(),

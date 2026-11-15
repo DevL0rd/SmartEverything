@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { FlatList, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { View } from 'react-native';
 import type { AiChatRow, BrowserConsoleMessage } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
@@ -93,7 +94,7 @@ function ConsoleOutput({
   readonly dropped: number;
 }): ReactNode {
   return (
-    <FlatList
+    <FlashList<BrowserConsoleRow>
       accessibilityLabel="Console output"
       className="h-36 border-t border-outline-variant bg-surface-1"
       data={[...rows].reverse()}

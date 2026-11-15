@@ -40,7 +40,7 @@ describe('revokeLink', () => {
     await expect(revokeLink(client, SHARE_ID, 'Kitchen plan v3.pdf')).resolves.toBe(true);
     expect(seen.asked).toEqual([
       {
-        title: 'Stop the link to Kitchen plan v3.pdf?',
+        title: 'Stop the link to ‘Kitchen plan v3.pdf’?',
         body: 'People with the link can’t open it any more.',
         confirmLabel: 'Stop link',
         cancelLabel: 'Keep link',

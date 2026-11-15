@@ -6,6 +6,8 @@ import {
   type NativeHubResource,
   type NativeHubResourceOpen,
   type NativeHubResourcePurpose,
+  type NativeHubResourceRestore,
+  type NativeHubResourceRestored,
   type NativeHubNetwork,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
@@ -208,6 +210,34 @@ export async function nativeMediaFile(
   )
     throw new NativeMediaPresentationError('This link expired. Open the media again.');
   return 'external';
+}
+
+export type MediaRestore = Omit<NativeHubResourceRestore, 'id'>;
+
+export async function restoreMediaFile(
+  url: string,
+  request: MediaRestore,
+): Promise<NativeHubResourceRestored> {
+  const resource = await currentPresentation(url);
+  if (resource === undefined)
+    throw new NativeMediaPresentationError('Saving to this device needs a secure hub connection.');
+  if (!resource.isCurrent() || resource.expiresAt <= Date.now())
+    throw new NativeMediaPresentationError('This link expired. Open the media again.');
+  const network = hubNetwork();
+  if (network.restoreResource === undefined)
+    throw new NativeMediaPresentationError('This app cannot save photos to this device.');
+  return network.restoreResource({ ...request, id: resource.id });
+}
+
+export function canRestoreMedia(): boolean {
+  return hubNetwork().restoreResource !== undefined;
+}
+
+export function revealRestoredMedia(location: string): Promise<void> {
+  const network = hubNetwork();
+  if (network.revealRestored === undefined)
+    throw new NativeMediaPresentationError('This app cannot show saved photos.');
+  return network.revealRestored(location);
 }
 
 export function requestAndroidUpdatePermission(): Promise<boolean> {

@@ -142,6 +142,7 @@ export function linuxControls(options: ControlOptions): ComputerControls {
   const agent = linuxAgent();
   const session = new LinuxSession({
     role: options.role ?? 'pc',
+    players: options.media,
     entries,
     audio,
     now: options.now,

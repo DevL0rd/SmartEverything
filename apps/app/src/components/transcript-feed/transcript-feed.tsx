@@ -3,7 +3,6 @@ import { View, type LayoutChangeEvent } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Text } from '../text';
 import { cn } from '../../design/cn';
-import { HeaderSlotContext } from '../screen-context';
 import { FeedChrome } from './feed-chrome';
 import { feedItems, sessionRemovable, type FeedItem } from './feed-items';
 import { ReaderState } from './reader-state';
@@ -23,17 +22,10 @@ export interface TranscriptFeedProps {
   readonly controls?: ReactNode;
   readonly inlineControls?: boolean;
   readonly compactRows?: boolean;
-  readonly headerWidth?: 'dashboard' | 'detail' | 'full';
   readonly focus?: boolean;
   readonly focusSearch?: boolean;
   readonly shellSearch?: boolean;
 }
-
-const HEADER_WIDTH = {
-  dashboard: 'max-w-dashboard',
-  detail: 'max-w-detail',
-  full: '',
-} as const;
 
 const READER_WIDTH = 'w-full max-w-detail self-start';
 
@@ -60,15 +52,13 @@ function FeedFooter({ feed }: { readonly feed: TranscriptFeedState }): ReactNode
 function FeedHeaderContent({
   banner,
   header,
-  width,
 }: {
   readonly banner: ReactNode;
   readonly header: ReactNode;
-  readonly width: keyof typeof HEADER_WIDTH;
 }): ReactNode {
   if (banner === undefined && header === undefined) return null;
   return (
-    <View className={cn('gap-section-gap w-full self-start', HEADER_WIDTH[width])}>
+    <View className="w-full gap-section-gap">
       {banner}
       {header}
     </View>
@@ -83,7 +73,6 @@ function FeedHeader({
   inlineControls,
   focusSearch,
   shellSearch,
-  headerWidth = 'full',
   feed,
   layout,
   top,
@@ -98,8 +87,8 @@ function FeedHeader({
   };
   return (
     <View className="gap-section-gap pb-3">
-      <HeaderSlotContext.Provider value="large">{pageHeader}</HeaderSlotContext.Provider>
-      <FeedHeaderContent banner={banner} header={header} width={headerWidth} />
+      {pageHeader}
+      <FeedHeaderContent banner={banner} header={header} />
       <View onLayout={layout} className={READER_WIDTH}>
         <FeedChrome
           words={feed.words}

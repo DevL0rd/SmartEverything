@@ -8,6 +8,7 @@ import { IconWell } from '../../../components/icon-well';
 import { cn } from '../../../design/cn';
 import type { FileAbilities } from '../source/abilities';
 import type { FileNode, FileNodeKind, FileSource } from '../source/types';
+import { useSourceLinks } from '../source/source-hooks';
 
 export const KIND_ICON: Readonly<Record<FileNodeKind, IconName>> = {
   folder: 'folder',
@@ -34,7 +35,7 @@ interface GlyphProps<O> {
 }
 
 function FolderBadge<O>({ node, source, well }: GlyphProps<O>): ReactNode {
-  const icon = source.useLinks(node).icon;
+  const icon = useSourceLinks(source, node).icon;
   return (
     <FolderBadgeImage
       badge={icon === null ? null : { uri: icon, cacheKey: `${source.id}:${node.key}:icon` }}
@@ -68,7 +69,7 @@ export function NodeThumb<O>({
   readonly source: FileSource<O>;
   readonly className: string;
 }): ReactNode {
-  const url = source.useLinks(node).thumb;
+  const url = useSourceLinks(source, node).thumb;
   return (
     <View className={cn('items-center justify-center overflow-hidden bg-surface-3', className)}>
       {url === null ? (

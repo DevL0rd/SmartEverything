@@ -111,7 +111,7 @@ function Conflict({
       }}
       onKeepMine={model.keepMine}
       onUseTheirs={() => {
-        background(model.useTheirs(), 'automations.use_theirs');
+        background(model.takeTheirs(), 'automations.use_theirs');
       }}
     />
   );
@@ -356,7 +356,7 @@ function Load({ automationId }: { readonly automationId: string }): ReactNode {
   const { load, query } = useDraftLoad(automationId);
   if (load === null) {
     return (
-      <PageShell title="Automation" width="reading">
+      <PageShell title="Automation">
         <LoadedQuery query={query}>{() => null}</LoadedQuery>
       </PageShell>
     );

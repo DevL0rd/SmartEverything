@@ -2,14 +2,17 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { SmartRule, SmartRuleLeaf } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
-import { FilterChip } from '../../../components/filter-chip';
-import { useDriveChips, useDriveItem } from '../data';
-import { leafIcon, leafLabel, type PlaceOf } from './rule-labels';
+import { Icon } from '../../../components/icon';
+import { Interactive } from '../../../components/interactive';
+import { Text } from '../../../components/text';
+import { useDriveChips, useDriveItem, useDriveRoots } from '../data';
+import { leafIcon, leafLabel, placeOfSources, type PlaceOf } from './rule-labels';
 import type { RuleChip } from './rule-chips';
 
 export function usePlaceOf(extra: ReadonlyMap<string, string>): PlaceOf {
   const chipOf = useDriveChips();
-  return (id) => extra.get(id) ?? chipOf(id).label;
+  const rootIds = new Set(useDriveRoots().map((root) => root.id));
+  return placeOfSources({ extra, rootIds, rootLabel: (id) => chipOf(id).label });
 }
 
 function folderIdOf(leaf: SmartRuleLeaf): string | null {
@@ -57,16 +60,23 @@ function EditableChip({
 }): ReactNode {
   const text = useLeafLabel(chip.leaf, placeOf);
   return (
-    <FilterChip
-      label="Remove rule"
-      value={text}
-      icon={leafIcon(chip.leaf)}
-      active
-      affordance="remove"
-      onPress={() => {
-        onRemove(chip.key);
-      }}
-    />
+    <View className="min-h-9 max-w-full flex-row items-center self-start rounded-full border-hairline border-outline-variant bg-surface-2 pl-3">
+      <Icon name={leafIcon(chip.leaf)} size={16} tone="variant" />
+      <Text variant="footnote" numberOfLines={1} className="min-w-0 shrink pl-1.5">
+        {text}
+      </Text>
+      <Interactive
+        label={`Remove rule ${text}`}
+        onPress={() => {
+          onRemove(chip.key);
+        }}
+        hitSlop={6}
+        className="size-9 items-center justify-center rounded-full"
+        layerClassName="rounded-full"
+      >
+        <Icon name="close" size={16} tone="variant" />
+      </Interactive>
+    </View>
   );
 }
 
@@ -81,7 +91,7 @@ export function RuleChipRow({
 }): ReactNode {
   if (chips.length === 0) return null;
   return (
-    <View aria-label="Rules" className="flex-row flex-wrap gap-1">
+    <View aria-label="Rules" className="flex-row flex-wrap gap-2">
       {chips.map((chip) => (
         <EditableChip key={chip.key} chip={chip} placeOf={placeOf} onRemove={onRemove} />
       ))}

@@ -1,4 +1,4 @@
-import { useDevices } from '../../../store/selectors';
+import { useMatchingDevices } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 
 export function isPrinter(device: { readonly kind: string }): boolean {
@@ -6,7 +6,7 @@ export function isPrinter(device: { readonly kind: string }): boolean {
 }
 
 export function usePrinters(): readonly Device[] {
-  return useDevices().filter(isPrinter);
+  return useMatchingDevices(isPrinter);
 }
 
 export function usePrimaryPrinter(): Device | null {

@@ -53,7 +53,7 @@ export function DeviceSettingsPage({
   const Page = PAGES[page] ?? (device === null ? undefined : KIND_SCREENS[device.kind]?.[page]);
   if (Page === undefined) {
     return (
-      <PageShell title="Settings" width="reading">
+      <PageShell title="Settings">
         <EmptyState
           icon="settings"
           title="Page not found"

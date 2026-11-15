@@ -6,16 +6,15 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import { Text } from '../../../components/text';
+import { workspaceSectionsOf } from '../hosts/workspace-sections';
 import { Filters, listSearchOf } from './filters';
 import { QuestionsCard } from './questions-card';
-import { HealthStrip } from './health-strip';
 import { useListActions, type ListActions } from './list-actions';
 import type { ListLinks } from './list-links';
 import { headerLine } from './list-view';
+import { Overview } from './overview';
 import { Sections } from './sections';
-import { TimelineBand } from './timeline-band';
 import { useAutomationsList, type AutomationsList, type ListEnvironment } from './use-list';
-import { workspaceTabsOf } from './workspace-rail';
 
 export interface ListProps {
   readonly environment: ListEnvironment;
@@ -23,48 +22,15 @@ export interface ListProps {
   readonly onNew: () => void;
 }
 
-export interface ListBodyProps {
+interface ListBodyProps {
   readonly list: AutomationsList;
   readonly links: ListLinks;
   readonly actions: ListActions;
   readonly onNew: () => void;
-  readonly selectedId?: string | null;
-  readonly overview: boolean;
 }
 
-function Overview({
-  list,
-  links,
-}: {
-  readonly list: AutomationsList;
-  readonly links: ListLinks;
-}): ReactNode {
-  return (
-    <>
-      <QuestionsCard timeZone={list.timeZone} />
-      <HealthStrip
-        health={list.health}
-        next={list.next}
-        timeZone={list.timeZone}
-        onFilter={(filter) => {
-          list.setView({ ...list.view, filter });
-        }}
-      />
-      <TimelineBand events={list.events} links={links} timeZone={list.timeZone} />
-    </>
-  );
-}
-
-export function ListBody({
-  list,
-  links,
-  actions,
-  onNew,
-  selectedId = null,
-  overview,
-}: ListBodyProps): ReactNode {
-  const { entries, view } = list;
-  if (entries.length === 0) {
+function ListBody({ list, links, actions, onNew }: ListBodyProps): ReactNode {
+  if (list.entries.length === 0) {
     return (
       <EmptyState
         icon="automations"
@@ -75,9 +41,9 @@ export function ListBody({
     );
   }
   return (
-    <View className="gap-3">
-      {overview ? <Overview list={list} links={links} /> : null}
-      <Filters choices={list.choices} view={view} onChange={list.setView} />
+    <View className="gap-section-gap">
+      <QuestionsCard timeZone={list.timeZone} />
+      <Overview list={list} links={links} />
       {list.shown === 0 ? (
         <Text variant="body" tone="variant" align="center" className="py-6">
           Nothing matches
@@ -90,7 +56,6 @@ export function ListBody({
           links={links}
           actions={actions}
           timeZone={list.timeZone}
-          selectedId={selectedId}
         />
       )}
     </View>
@@ -101,19 +66,23 @@ export function AutomationsScreen({ environment, links, onNew }: ListProps): Rea
   const list = useAutomationsList(environment);
   const actions = useListActions();
   const search = listSearchOf(list);
+  const filled = list.entries.length > 0;
   return (
     <PageShell
       title="Automations"
+      back={false}
       settings={mainPageSettings('automations')}
-      {...(list.entries.length === 0 ? {} : { subtitle: headerLine(list.entries) })}
+      sections={workspaceSectionsOf('automations')}
+      {...(filled ? { subtitle: headerLine(list.entries) } : {})}
       {...(search === undefined ? {} : { search })}
-      tabs={workspaceTabsOf(links.workspace, links.extras, 'automations')}
-      width="full"
+      {...(filled
+        ? { toolbar: <Filters choices={list.choices} view={list.view} onChange={list.setView} /> }
+        : {})}
       primaryAction={{
         label: 'New automation',
         icon: 'plus',
         onPress: onNew,
-        extended: list.entries.length === 0,
+        extended: !filled,
       }}
       {...(list.rejected === 0
         ? {}
@@ -126,7 +95,7 @@ export function AutomationsScreen({ environment, links, onNew }: ListProps): Rea
             ),
           })}
     >
-      <ListBody list={list} links={links} actions={actions} onNew={onNew} overview />
+      <ListBody list={list} links={links} actions={actions} onNew={onNew} />
     </PageShell>
   );
 }

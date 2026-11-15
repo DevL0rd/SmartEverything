@@ -11,17 +11,16 @@ import { FlatChoice } from '../../../components/flat-choice';
 import {
   beginSelecting,
   NO_SELECTION,
-  toggleDay,
   toggleItem,
   type MediaSelection,
 } from '../../../components/media-grid/selection';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useEscape } from '../../../components/use-escape';
 import { count } from '../../../format/number';
 import { useDayKey } from '../../../store/clock';
 import type { SourceSearch } from '../../../api/photos';
 import { useSyncStatus } from '../../../store/selectors';
-import { ChipRow } from '../../../components/library-frame';
+import { ChipRow } from '../../../components/chip-row';
 import { LibraryShell, type LibraryHeadProps } from '../library/library-head';
 import { LibraryLoading } from '../library/library-states';
 import { loadedLineOf } from '../library/library-tabs-view';
@@ -139,9 +138,6 @@ function Body({ source, view, selection, setSelection, header, head }: BodyProps
       onLongPress={(tile) => {
         setSelection((current) => toggleItem(current, tile.id));
       }}
-      onSelectDay={(ids) => {
-        setSelection((current) => toggleDay(current, ids));
-      }}
       onEnd={view.more}
       header={<View>{header}</View>}
       footer={view.failedMore ? <ErrorState error={view.error} retry={view.retry} /> : <View />}
@@ -161,7 +157,7 @@ function subtitleOf(
   return `${line} from ${from}`;
 }
 
-function selectAction(view: SourceView, start: () => void): readonly HeaderAction[] {
+function selectAction(view: SourceView, start: () => void): readonly ShellAction[] {
   return view.tiles.length === 0
     ? []
     : [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: start }];

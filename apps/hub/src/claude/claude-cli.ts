@@ -34,26 +34,35 @@ async function findClaude(): Promise<string> {
   throw new ClaudeNotReadyError('link', 'the claude program is not installed or not on the PATH');
 }
 
-export const systemClaudeCli: ClaudeCli = async (args) => {
-  const program = await findClaude();
-  return new Promise((resolve, reject) => {
-    execFile(
-      program,
-      [...args],
-      { timeout: TIMEOUT_MS, maxBuffer: MAX_OUTPUT, windowsHide: true, encoding: 'utf8' },
-      (error, stdout, stderr) => {
-        if (error === null) {
-          resolve(stdout);
-          return;
-        }
-        const last = stderr.trim().split('\n').at(-1) ?? '';
-        reject(
-          new ClaudeLinkError(
-            `claude ${args.slice(0, 2).join(' ')}`,
-            last === '' ? error.message : last,
-          ),
-        );
-      },
-    );
-  });
-};
+export function systemClaudeCli(claudeHome: string | null): ClaudeCli {
+  return async (args) => {
+    const program = await findClaude();
+    const environment = claudeHome === null ? env : { ...env, CLAUDE_CONFIG_DIR: claudeHome };
+    return new Promise((resolve, reject) => {
+      execFile(
+        program,
+        [...args],
+        {
+          timeout: TIMEOUT_MS,
+          maxBuffer: MAX_OUTPUT,
+          windowsHide: true,
+          encoding: 'utf8',
+          env: environment,
+        },
+        (error, stdout, stderr) => {
+          if (error === null) {
+            resolve(stdout);
+            return;
+          }
+          const last = stderr.trim().split('\n').at(-1) ?? '';
+          reject(
+            new ClaudeLinkError(
+              `claude ${args.slice(0, 2).join(' ')}`,
+              last === '' ? error.message : last,
+            ),
+          );
+        },
+      );
+    });
+  };
+}

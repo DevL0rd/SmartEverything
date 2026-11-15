@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../../components/text';
+import { playTime } from '../../../../format/time';
+import { useSecondOf } from '../../../../store/clock';
 import { callActive, type CallView } from '../call-state';
 import { sublineOf, statusOf } from '../model/call-copy';
-import { useElapsed } from './use-elapsed';
+
+const SECOND_MS = 1000;
 
 export interface CallStatusProps {
   readonly call: CallView;
@@ -13,7 +16,11 @@ export interface CallStatusProps {
 
 export function CallStatus({ call, name, hidden = false }: CallStatusProps): ReactNode {
   const active = callActive(call);
-  const elapsed = useElapsed(call.startedAt, active);
+  const { startedAt } = call;
+  const elapsed = useSecondOf(
+    (now) => (startedAt === null ? playTime(0) : playTime((now - startedAt) / SECOND_MS)),
+    active,
+  );
   const status = statusOf(call, name);
   if (hidden) {
     return (

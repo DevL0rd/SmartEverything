@@ -1,7 +1,6 @@
 import { createElement, type ComponentType } from 'react';
 import type { SettingDefinition } from '../../settings/types';
 import { DrivesSection } from './settings/page-drives';
-import { GoogleSection } from './settings/page-google';
 import { IndexingSection } from './settings/page-indexing';
 import { NotificationsSection } from './settings/page-notifications';
 import { PhoneSection } from './settings/page-phone';
@@ -9,7 +8,6 @@ import { SharingSection } from './settings/page-sharing';
 import { StorageSection } from './settings/page-storage';
 import { SyncMountSection } from './settings/page-sync-mount';
 import {
-  DRIVE_SETTINGS_PAGE,
   DRIVE_SETTINGS_SECTIONS,
   driveRowVisible,
   driveSectionVisible,
@@ -25,14 +23,13 @@ const SECTION_COMPONENTS: Readonly<Record<DriveSettingsSectionId, ComponentType>
   notifications: NotificationsSection,
   indexing: IndexingSection,
   storage: StorageSection,
-  google: GoogleSection,
 };
 
 function sectionSettings(section: DriveSettingsSectionSpec): readonly SettingDefinition[] {
   return [
     {
       id: section.settingId,
-      page: DRIVE_SETTINGS_PAGE,
+      page: section.page,
       title: section.title,
       description: section.caption,
       icon: section.icon,
@@ -44,7 +41,7 @@ function sectionSettings(section: DriveSettingsSectionSpec): readonly SettingDef
     },
     ...section.rows.map((row): SettingDefinition => ({
       id: row.settingId,
-      page: DRIVE_SETTINGS_PAGE,
+      page: section.page,
       title: row.title,
       keywords: row.keywords,
       scope: section.scope,

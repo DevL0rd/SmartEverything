@@ -31,9 +31,10 @@ function FilesFrame({
   return (
     <ComputerFrame
       deviceId={deviceId}
-      width="dashboard"
       scroll={false}
       iconRail={slots.detailsOpen}
+      overflow={slots.overflow}
+      controls={slots.controls}
       {...frameHeadOf(slots.header, name)}
     >
       <SectionGate deviceId={deviceId} section="files" scope="files">

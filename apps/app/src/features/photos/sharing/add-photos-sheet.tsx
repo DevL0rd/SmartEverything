@@ -118,7 +118,7 @@ function OpenSheet({
       open
       onClose={onClose}
       title={`Add photos to ${album.title}`}
-      wide
+      large
       scroll={false}
       detents={['full']}
       footer={<Footer album={album} picked={picked} onDone={onClose} />}

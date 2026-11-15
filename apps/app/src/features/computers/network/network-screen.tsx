@@ -12,7 +12,7 @@ const TOPICS = ['network', 'system'] as const;
 function Network({ device }: { readonly device: Device }): ReactNode {
   const offered = useSectionOffered(device, 'network');
   return (
-    <ComputerFrame deviceId={device.id} title="Network" subtitle={device.label} width="dashboard">
+    <ComputerFrame deviceId={device.id} title="Network" subtitle={device.label}>
       {offered ? (
         <DemandRegion deviceId={device.id} topics={TOPICS} className="gap-section-gap">
           <Adapters device={device} />

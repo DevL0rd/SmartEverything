@@ -26,9 +26,10 @@ import {
   type DeviceLine,
   type Picked,
 } from './attachment-chips';
-import { minuteOptionsOf, ruleChoicesOf } from './completion-rule-picker';
+import { minuteOptionsOf, ruleChoicesOf, type ChoiceContext } from './completion-rule-picker';
 import {
   MANUAL,
+  familyRuleOf,
   ruleDetailOf,
   ruleTitleOf,
   sameRule,
@@ -94,24 +95,43 @@ const BRUSH_TEETH: readonly PlannerSuggestion[] = [
   suggestion('Oral-B iO9 finishes a brushing session', BRUSHING),
 ];
 
+const KITCHEN: RuleDevice = { id: BOTTLE, label: 'Kitchen bottle', family: 'bottle' };
+
+const CONTEXT: ChoiceContext = {
+  devices: new Map([
+    [BRUSH, ORAL_B],
+    [TREADMILL, G15],
+    [BOTTLE, KITCHEN],
+  ]),
+  personName: 'You',
+};
+
 describe('completion rule picker', () => {
-  it('offers the Oral-B iO9 rule first for brush teeth', () => {
-    const choices = ruleChoicesOf(MANUAL, BRUSH_TEETH, 'I tick it myself');
-    expect(choices.suggested?.title).toBe('Oral-B iO9 finishes a brushing session');
+  it('offers the Oral-B iO9 rule first for brush teeth, worded like the row', () => {
+    const choices = ruleChoicesOf(MANUAL, BRUSH_TEETH, CONTEXT);
+    expect(choices.suggested?.title).toBe('A brushing session ends');
     expect(choices.suggested?.completion).toEqual(BRUSHING);
-    expect(choices.suggested?.subtitle).toBe('Counts in this slot or later today');
+    expect(choices.suggested?.subtitle).toBe(
+      'Only your brushing sessions on the Oral-B iO9, in this slot or later today',
+    );
     expect(choices.others.map((choice) => choice.key)).toEqual(['manual']);
   });
 
   it('keeps a stored rule the hub no longer suggests, after manual and before other rules', () => {
     const others = [...BRUSH_TEETH, suggestion('kitchen bottle is refilled', REFILL)];
-    const choices = ruleChoicesOf(WALKING, others, 'Done when a walk ends');
+    const choices = ruleChoicesOf(WALKING, others, CONTEXT);
     expect(choices.others.map((choice) => choice.title)).toEqual([
       'I tick it myself',
-      'Done when a walk ends',
+      'A walk ends',
       'Kitchen bottle is refilled',
     ]);
-    expect(ruleChoicesOf(MANUAL, [], 'x').suggested).toBeNull();
+    expect(ruleChoicesOf(MANUAL, [], CONTEXT).suggested).toBeNull();
+  });
+
+  it('builds the default rule of a device picked by hand', () => {
+    expect(familyRuleOf(ORAL_B)).toEqual(BRUSHING);
+    expect(familyRuleOf(KITCHEN)).toEqual(signal(BOTTLE, { activity: 'drink' }, 'day'));
+    expect(familyRuleOf({ id: BRUSH, label: 'Lamp', family: 'light' })).toBeNull();
   });
 
   it('words a walk rule with its length the same way everywhere', () => {
@@ -130,12 +150,24 @@ describe('completion rule picker', () => {
 
   it('words brushing, bottle and manual rules', () => {
     expect(ruleTitleOf(withMinutes(BRUSHING, 2), ORAL_B)).toBe(
-      'Done when brushing of 2 min or more ends',
+      'Done when a brushing session of 2 min or more ends',
     );
     const bottle: RuleDevice = { id: BOTTLE, label: 'Kitchen bottle', family: 'bottle' };
     expect(ruleTitleOf(REFILL, bottle)).toBe('Done when Kitchen bottle is refilled');
     expect(ruleDetailOf(REFILL, bottle, 'You')).toBe('Kitchen bottle, any time that day');
     expect(ruleTitleOf(MANUAL, null)).toBe('I tick it myself');
+  });
+
+  it('words a rule for any device apart from one whose device was removed', () => {
+    const any: PlannerCompletion = {
+      kind: 'signal',
+      matcher: { source: 'event', kind: 'workout' },
+      window: 'day',
+    };
+    expect(ruleTitleOf(any, null)).toBe('Done when any device reports a workout');
+    expect(ruleTitleOf(withMinutes(BRUSHING, 2), null)).toBe(
+      'Done when a device that was removed reports activity',
+    );
   });
 
   it('offers the length presets of the device family plus a stored length and Any', () => {
@@ -203,7 +235,7 @@ describe('attachment picker', () => {
 
   it('labels every attachment kind as a chip', () => {
     expect(ATTACHED.map((attachment) => attachmentViewOf(attachment, NAMES).label)).toEqual([
-      'Kingsmith G15 · card',
+      'Kingsmith G15',
       'Automation · Fan on during walks',
       'File',
       'Link · example.com',
@@ -270,6 +302,9 @@ describe('attachment picker', () => {
   it('renders the device widget for a device attachment with its face', () => {
     const markup = renderToStaticMarkup(
       createElement(AttachedWidgets, {
+        names: NAMES,
+        disabled: false,
+        onRemove: null,
         attachments: [
           { kind: 'device', deviceId: BOTTLE, face: 'panel' },
           { kind: 'device', deviceId: TREADMILL, face: null },

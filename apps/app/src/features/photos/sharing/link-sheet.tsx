@@ -106,7 +106,7 @@ function Footer({
   const client = useQueryClient();
   const live = useSyncStatus().status === 'live';
   return (
-    <View className="flex-row justify-end">
+    <View className="flex-1 flex-row justify-end">
       <Button
         label="Create link"
         icon="link"

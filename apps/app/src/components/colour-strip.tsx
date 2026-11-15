@@ -147,6 +147,17 @@ function Swatch({
   );
 }
 
+function eitherOpener(
+  primary: RefObject<View | null>,
+  secondary: RefObject<View | null>,
+): RefObject<View | null> {
+  return {
+    get current(): View | null {
+      return primary.current ?? secondary.current;
+    },
+  };
+}
+
 function CurrentSwatch({
   current,
   idiom,
@@ -170,11 +181,7 @@ function CurrentSwatch({
         disabled={disabled}
         innerRef={opener}
         onPress={() => {
-          onMore({
-            get current(): View | null {
-              return opener.current ?? moreOpener.current;
-            },
-          });
+          onMore(eitherOpener(opener, moreOpener));
         }}
         className={cn('items-center justify-center rounded-md', HIT[idiom])}
       >

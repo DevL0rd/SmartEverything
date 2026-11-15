@@ -1,5 +1,5 @@
 import { deviceFamily } from '@smarteverything/domain';
-import { useDevices } from '../../../store/selectors';
+import { useFirstDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 
 export function isTreadmill(device: Device): boolean {
@@ -7,5 +7,5 @@ export function isTreadmill(device: Device): boolean {
 }
 
 export function useTreadmillDevice(): Device | null {
-  return useDevices().find(isTreadmill) ?? null;
+  return useFirstDevice(isTreadmill);
 }

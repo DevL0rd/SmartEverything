@@ -58,6 +58,12 @@ export function ocrLanguagesAfter(
   return left.length === 0 ? null : left;
 }
 
+export function ocrValueOf(chosen: readonly string[]): string {
+  const names = chosen.map((code) => OCR_LANGUAGE_NAMES[code] ?? code);
+  if (names.length <= 2) return names.join(' and ');
+  return `${names.slice(0, 2).join(', ')} and ${String(names.length - 2)} more`;
+}
+
 export function ocrLineOf(chosen: readonly string[]): string {
   const names = chosen.map((code) => OCR_LANGUAGE_NAMES[code] ?? code);
   return `Reads text in pictures in ${names.join(', ')}. A new language downloads once to the Hub.`;

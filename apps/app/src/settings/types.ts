@@ -110,6 +110,7 @@ type SettingsGroup = 'Home' | 'Connections' | 'App' | 'System';
 export interface SettingsPageDefinition {
   readonly id: string;
   readonly title: string;
+  readonly short?: string;
   readonly icon: IconName;
   readonly parent: string | null;
   readonly group: SettingsGroup | null;

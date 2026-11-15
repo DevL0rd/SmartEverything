@@ -10,7 +10,7 @@ const log = new Logger('app.drive');
 
 export function stopQuestionOf(name: string): ConfirmRequest {
   return {
-    title: `Stop sharing ${name}?`,
+    title: `Stop sharing ‘${name}’?`,
     body: 'The people it is shared with lose access and its links stop opening.',
     confirmLabel: 'Stop sharing',
     cancelLabel: 'Keep sharing',

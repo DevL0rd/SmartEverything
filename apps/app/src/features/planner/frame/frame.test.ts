@@ -1,32 +1,15 @@
-import {
-  type PlannerDay,
-  type PlannerItemRow,
-  type PlannerOccurrenceView,
-  type PlannerStats,
-} from '@smarteverything/domain';
+import type { PlannerItemRow } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { href } from '../../../app-shell/hrefs';
-import { mainPageSettings } from '../../../app-shell/main-pages';
-import { clock } from '../../../format/time';
 import { PLANNER_SECTION_ROUTES } from '../model/section-routes';
-import { openPlannerSection } from './open-section';
 import { personChoicesOf, shownPersonFor } from './person';
 import { opensComposer, opensSearch, plannerComposerKindOf } from './quick-add';
-import {
-  bookingSummaryOf,
-  calendarSummaryOf,
-  insightsSummaryOf,
-  plannerSubtitleOf,
-  tasksSummaryOf,
-  todaySummaryOf,
-} from './rail-summary';
+import { isOpenTask, plannerSubtitleOf, todaySummaryOf } from './rail-summary';
 import {
   PLANNER_QUICK_ADD_TARGET,
   PLANNER_SECTION_DEFS,
   plannerHrefOf,
   plannerSectionOf,
-  plannerTitleOf,
-  railWidthOf,
 } from './sections';
 
 const pushed = vi.hoisted(() => {
@@ -44,7 +27,7 @@ vi.mock('expo-router', async (importOriginal) => ({
 }));
 
 const { plannerMenu } = await import('./planner-menu');
-const { PLANNER_SEARCH_ACTION } = await import('./search-key');
+const { PLANNER_SEARCH_ACTION, withPlannerSearch } = await import('./search-key');
 const { shownPlannerPerson } = await import('./person');
 
 const ME = '00000000-0000-4000-8000-000000000001';
@@ -95,53 +78,6 @@ function task(patch: Partial<PlannerItemRow>): PlannerItemRow {
   };
 }
 
-function event(
-  title: string,
-  start: string | null,
-  patch: Partial<PlannerOccurrenceView> = {},
-): PlannerOccurrenceView {
-  const view: PlannerOccurrenceView = {
-    item_id: '00000000-0000-4000-8000-000000000030',
-    occurrence_key: start ?? 'once',
-    collection_id: '00000000-0000-4000-8000-000000000020',
-    kind: 'event',
-    title,
-    location: null,
-    priority: null,
-    all_day: false,
-    start,
-    end: null,
-    due_at: null,
-    due_date: null,
-    status: 'open',
-    recurring: false,
-    moved: false,
-    completed_at: null,
-    completed_by: null,
-    evidence: null,
-    attachments: [],
-    google_state: null,
-    ...patch,
-  };
-  return view;
-}
-
-function day(upcoming: readonly PlannerOccurrenceView[]): PlannerDay {
-  return {
-    date: '2026-11-07',
-    time_zone: 'Europe/Berlin',
-    now: AT,
-    missed: [],
-    current: [],
-    upcoming,
-    done: [],
-    happened: [],
-    rings: [],
-    next_alarm_at: null,
-    strip: [],
-  };
-}
-
 describe('the planner sections', () => {
   it('cover every section route in the switcher order', () => {
     expect(PLANNER_SECTION_DEFS.map((def) => def.id)).toEqual([...PLANNER_SECTION_ROUTES]);
@@ -151,14 +87,6 @@ describe('the planner sections', () => {
       'Calendar',
       'Insights',
       'Booking',
-    ]);
-  });
-
-  it('put Today, Tasks and Calendar on the phone tabs and Insights and Booking in the menu', () => {
-    expect(PLANNER_SECTION_DEFS.filter((def) => def.phoneTab).map((def) => def.label)).toEqual([
-      'Today',
-      'Tasks',
-      'Calendar',
     ]);
   });
 
@@ -176,24 +104,21 @@ describe('the planner sections', () => {
     expect(plannerSectionOf('index').hint).toBe('Add to today. Try: dentist Tue 15:30 #family');
     expect(plannerSectionOf('tasks').hint).toBe('New task. Try: pay rent on the 1st !2');
     expect(plannerSectionOf('calendar').hint).toBe('New event. Try: dentist Tue 15:30');
+    expect(plannerSectionOf('index').phoneHint).toBe('Add to today');
   });
 
-  it('title the page Planner on phone, at 884 and on desktop Today, else by section', () => {
-    expect(plannerTitleOf('tasks', 412)).toBe('Planner');
-    expect(plannerTitleOf('tasks', 804)).toBe('Planner');
-    expect(plannerTitleOf('index', 1360)).toBe('Planner');
-    expect(plannerTitleOf('calendar', 1360)).toBe('Calendar');
-    expect(plannerTitleOf('booking', 1360)).toBe('Booking');
-    expect(plannerTitleOf('booking', 412)).toBe('Planner');
-  });
-
-  it('shows the rail in icon width at 884 and wide on desktop', () => {
-    expect(railWidthOf(804)).toBe('icon');
-    expect(railWidthOf(1360)).toBe('wide');
+  it('names every section with one label that serves as its title at every size', () => {
+    expect(PLANNER_SECTION_DEFS.map((def) => def.label)).toEqual([
+      'Today',
+      'Tasks',
+      'Calendar',
+      'Insights',
+      'Booking',
+    ]);
   });
 });
 
-describe('the planner rail summaries', () => {
+describe('the planner summaries', () => {
   it('count missed and left for Today, and hide zero', () => {
     const summary = { personId: ME, missed: 2, left: 5, nextAlarmAt: null, runningTimers: 0 };
     expect(todaySummaryOf(summary)).toBe('2 missed · 5 left');
@@ -202,49 +127,17 @@ describe('the planner rail summaries', () => {
     expect(todaySummaryOf(null)).toBeNull();
   });
 
-  it('count booking pages that are on and bookings ahead, and hide nothing to say', () => {
-    expect(bookingSummaryOf(2, 3)).toBe('2 on · 3 booked');
-    expect(bookingSummaryOf(0, 1)).toBe('1 booked');
-    expect(bookingSummaryOf(1, 0)).toBe('1 on');
-    expect(bookingSummaryOf(0, 0)).toBeNull();
-  });
-
   it('count open top-level tasks only', () => {
     const open = task({});
-    expect(tasksSummaryOf([])).toBeNull();
     expect(
-      tasksSummaryOf([
+      [
         open,
         task({ status: 'done' }),
         task({ kind: 'event' }),
         task({ parent_id: open.id }),
         task({ deleted_at: AT }),
-      ]),
-    ).toBe('1 open');
-  });
-
-  it('name the next timed event of the day', () => {
-    const now = Date.parse(AT);
-    const later = '2026-11-07T14:30:00.000Z';
-    const soon = '2026-11-07T11:00:00.000Z';
-    const past = '2026-11-07T09:00:00.000Z';
-    const upcoming = [
-      event('Dentist', later),
-      event('Standup', soon),
-      event('Breakfast', past),
-      event('Holiday', soon, { all_day: true }),
-      event('Call', soon, { kind: 'task' }),
-    ];
-    expect(calendarSummaryOf(day(upcoming), now)).toBe(`Standup ${clock(soon, 'Europe/Berlin')}`);
-    expect(calendarSummaryOf(day([]), now)).toBeNull();
-    expect(calendarSummaryOf(null, now)).toBeNull();
-  });
-
-  it('show the on time share with a space before the percent sign', () => {
-    const stats = { on_time: { on_time: 41, late: 9 } } as const;
-    expect(insightsSummaryOf({ ...emptyStats(), ...stats })).toBe('On time 82 %');
-    expect(insightsSummaryOf(emptyStats())).toBeNull();
-    expect(insightsSummaryOf(null)).toBeNull();
+      ].map(isOpenTask),
+    ).toEqual([true, false, false, false, false]);
   });
 
   it('add the Today summary to the date line', () => {
@@ -254,24 +147,6 @@ describe('the planner rail summaries', () => {
     expect(plannerSubtitleOf('Saturday 7 November', null)).toBe('Saturday 7 November');
   });
 });
-
-function emptyStats(): PlannerStats {
-  return {
-    range: 'week',
-    from: '2026-11-02',
-    to: '2026-11-08',
-    completion: { done: 0, due: 0 },
-    on_time: { on_time: 0, late: 0 },
-    streaks: { current: 0, longest: 0 },
-    best_hours: [],
-    time_by_calendar: [],
-    weekly_load: [],
-    device_share: { by_device: 0, by_hand: 0 },
-    list_trends: [],
-    timer_use: [],
-    alarms: [],
-  };
-}
 
 describe('the planner person picker', () => {
   const profiles = [
@@ -306,34 +181,21 @@ describe('the planner menu', () => {
     null,
   );
 
-  it('starts with the person picker on phone, then Insights, Booking and Planner settings', () => {
-    const menu = plannerMenu({ people, sections: true, googleNeedsAttention: false });
-    expect(menu.map((item) => item.label)).toEqual([
-      'Showing: Owner',
-      'Show Alex',
-      'Insights',
-      'Booking',
-      'Planner settings',
-    ]);
-    pushed.hrefs.length = 0;
-    menu[2]?.onPress();
-    menu[3]?.onPress();
-    menu[4]?.onPress();
-    expect(pushed.hrefs).toEqual([
-      href.planner.insights(),
-      href.planner.booking(),
-      mainPageSettings('planner').href,
-    ]);
+  it('lists the person picker on phone', () => {
+    const menu = plannerMenu({ people, googleNeedsAttention: false });
+    expect(menu.map((item) => item.label)).toEqual(['Owner', 'Alex']);
+    expect(menu.map((item) => item.selected)).toEqual([true, false]);
+    expect(new Set(menu.map((item) => item.group))).toEqual(new Set(['Show the planner of']));
     menu[1]?.onPress();
     expect(shownPlannerPerson.get()).toBe(ALEX);
     shownPlannerPerson.set(null);
   });
 
   it('shows Google needs attention only when the link has a problem', () => {
-    const quiet = plannerMenu({ people: [], sections: false, googleNeedsAttention: false });
-    expect(quiet.map((item) => item.label)).toEqual(['Planner settings']);
-    const loud = plannerMenu({ people: [], sections: false, googleNeedsAttention: true });
-    expect(loud.map((item) => item.label)).toEqual(['Google needs attention', 'Planner settings']);
+    const quiet = plannerMenu({ people: [], googleNeedsAttention: false });
+    expect(quiet.map((item) => item.label)).toEqual([]);
+    const loud = plannerMenu({ people: [], googleNeedsAttention: true });
+    expect(loud.map((item) => item.label)).toEqual(['Google needs attention']);
     pushed.hrefs.length = 0;
     loud[0]?.onPress();
     expect(pushed.hrefs).toEqual([href.settings.page('connections/google')]);
@@ -341,37 +203,6 @@ describe('the planner menu', () => {
 });
 
 describe('the planner frame', () => {
-  it('switches sections inside the section tabs without a push', () => {
-    const dispatched: unknown[] = [];
-    const navigated: unknown[] = [];
-    const navigation = {
-      getState: (): { readonly type: string; readonly key: string } => ({
-        type: 'tab',
-        key: 'sections',
-      }),
-      dispatch: (action: unknown): void => {
-        dispatched.push(action);
-      },
-    };
-    const router = {
-      navigate: (target: unknown): void => {
-        navigated.push(target);
-      },
-    };
-    openPlannerSection({ section: 'tasks', active: 'index', navigation, router });
-    openPlannerSection({ section: 'tasks', active: 'tasks', navigation, router });
-    expect(dispatched).toEqual([
-      { type: 'NAVIGATE', payload: { name: 'tasks' }, target: 'sections' },
-    ]);
-    openPlannerSection({
-      section: 'insights',
-      active: 'index',
-      navigation: { getState: (): undefined => undefined, dispatch: navigation.dispatch },
-      router,
-    });
-    expect(navigated).toEqual([href.planner.insights()]);
-  });
-
   it('opens the composer on each section with the kind that section adds', () => {
     expect(plannerComposerKindOf('index')).toBeNull();
     expect(plannerComposerKindOf('tasks')).toBe('task');
@@ -387,6 +218,11 @@ describe('the planner frame', () => {
     expect(opensSearch({ ...press, ctrlKey: true }, false)).toBe(false);
     expect(opensSearch({ ...press, metaKey: true }, false)).toBe(false);
     expect(opensSearch({ ...press, key: 'n' }, false)).toBe(false);
+  });
+
+  it('drops the header search action when the page shows the shell search', () => {
+    expect(withPlannerSearch([], false)).toEqual([PLANNER_SEARCH_ACTION]);
+    expect(withPlannerSearch([], true)).toEqual([]);
   });
 
   it('offers the Planner search in the header with its slash shortcut', () => {

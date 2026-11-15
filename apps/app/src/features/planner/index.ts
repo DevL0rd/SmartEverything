@@ -58,7 +58,7 @@ export { DayDots } from './clock/day-dots';
 export { MINUTES_IN_HOUR, clockTextOf, rampOptions, timeOfClockText } from './settings/options';
 export { WatchStateLines } from './clock/watch-state-line';
 export { ringWindowOf, spreadWordsOf, alarmSummaryOf } from './insights/alarm-model';
-export { bucketLabel, chunksFromEnd, loadStepOf, rangeDaysOf } from './insights/insights-model';
+export { bucketLabel, bucketsOf, loadStepOf, rangeDaysOf } from './insights/insights-model';
 export { AlarmList } from './clock/alarm-card';
 export { useSavePrefs } from './settings/preferences';
 export { useComposerControl } from './frame/quick-add';

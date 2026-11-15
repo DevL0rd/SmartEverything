@@ -95,7 +95,7 @@ describe('mode and owner', () => {
 });
 
 describe('times', () => {
-  it('sets modify and access times to exact nanoseconds and mirrors the modify time to the disk', async () => {
+  it('sets modify and access times to exact nanoseconds and indexes the modify time the disk holds', async () => {
     const ino = await fileWith('x');
     const mtime = 1_700_000_000_123_000_000n;
     const attr = await rig.posix.setattr(
@@ -108,8 +108,9 @@ describe('times', () => {
     expect(attr.mtimeNs).toBe(mtime);
     expect(attr.atimeNs).toBe(1_600_000_000_000_000_000n);
     expect((await stat(join(rig.mine.path, 'a.txt'))).mtimeMs).toBe(1_700_000_000_123);
+    const disk = await stat(join(rig.mine.path, 'a.txt'), { bigint: true });
     expect(rig.opened.store.driveItems.byPath(rig.mine.id, 'a.txt', null)?.modifiedAt).toBe(
-      '2023-11-14T22:13:20.123Z',
+      new Date(Number(disk.mtimeMs)).toISOString(),
     );
   });
 

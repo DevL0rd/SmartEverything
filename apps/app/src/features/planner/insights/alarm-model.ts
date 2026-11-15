@@ -1,7 +1,7 @@
 import type { PlannerRingRow, PlannerStats } from '@smarteverything/domain';
 import type { Bar } from '../../../components/charts';
 import { dayKeyOf, shiftDay, startOfDayKey } from '../../../format/time';
-import { bucketLabel, chunksFromEnd, loadStepOf, rangeDaysOf } from './insights-model';
+import { bucketLabel, bucketsOf, loadStepOf, rangeDaysOf } from './insights-model';
 
 export interface AlarmSummary {
   readonly spread: number | null;
@@ -45,7 +45,7 @@ function tallyByDay(rings: readonly PlannerRingRow[]): ReadonlyMap<string, DayTa
 
 function snoozeBarsOf(stats: PlannerStats, tallies: ReadonlyMap<string, DayTally>): readonly Bar[] {
   const step = loadStepOf(stats.range);
-  return chunksFromEnd(rangeDaysOf(stats), step).flatMap((chunk) => {
+  return bucketsOf(rangeDaysOf(stats), (day) => day, stats.range).flatMap((chunk) => {
     const [first] = chunk;
     if (first === undefined) return [];
     return [

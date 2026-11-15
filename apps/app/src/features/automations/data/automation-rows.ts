@@ -96,15 +96,21 @@ export interface AutomationList {
   readonly rejected: number;
 }
 
+const LISTS = new WeakMap<AutomationRows, AutomationList>();
+
 export function listOf(snapshot: AutomationRows): AutomationList {
+  const known = LISTS.get(snapshot);
+  if (known !== undefined) return known;
   const rows = [...snapshot.rows].sort(
     (left, right) => compareText(left.name, right.name) || compareText(left.id, right.id),
   );
-  return {
+  const list = {
     rows,
     byId: new Map(rows.map((row) => [row.id, row])),
     rejected: snapshot.rejected,
   };
+  LISTS.set(snapshot, list);
+  return list;
 }
 
 export function hasUnpublishedDraft(row: AutomationRow): boolean {

@@ -5,5 +5,3 @@ export interface GoogleLinkState {
   readonly refusedClient: GoogleClientPlatform | null;
   readonly start: () => void;
 }
-
-export type UseGoogleLink = (personId: string) => GoogleLinkState;

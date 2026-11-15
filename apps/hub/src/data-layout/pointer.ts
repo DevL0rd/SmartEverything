@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
@@ -120,6 +121,20 @@ function parsedJson<T>(file: string, text: string, schema: z.ZodType<T>): T {
     throw new LocationError(file, `is invalid: ${z.prettifyError(parsed.error)}`);
   }
   return parsed.data;
+}
+
+export function resolveHubRootSync(environment: PointerEnvironment): Location {
+  const file = join(bootstrapDirectory(environment), LOCATION_FILE);
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      throw new LocationError(file, 'is missing; set up the hub data folder first');
+    }
+    throw error;
+  }
+  return parsedJson(file, text, LOCATION);
 }
 
 export async function readLocation(directory: string): Promise<Location> {

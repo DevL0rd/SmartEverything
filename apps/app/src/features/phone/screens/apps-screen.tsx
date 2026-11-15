@@ -18,19 +18,17 @@ function useAppsSearch(device: Device): ShellSearchConfig | undefined {
     onChange: setQuery,
     placeholder: 'Search apps',
     label: 'Search apps',
-    panel: <PhoneAppsSearch section={section} device={device} query={query} />,
+    panel:
+      query.trim() === '' ? null : (
+        <PhoneAppsSearch section={section} device={device} query={query} />
+      ),
   };
 }
 
 function Apps({ device }: { readonly device: Device }): ReactNode {
   const search = useAppsSearch(device);
   return (
-    <PhonePage
-      deviceId={device.id}
-      title="Apps"
-      width="dashboard"
-      {...(search === undefined ? {} : { search })}
-    >
+    <PhonePage deviceId={device.id} title="Apps" {...(search === undefined ? {} : { search })}>
       {(phone) => <PhoneApps device={phone} />}
     </PhonePage>
   );
@@ -40,7 +38,7 @@ export function PhoneAppsScreen({ deviceId }: { readonly deviceId: string }): Re
   const device = useDevice(deviceId);
   if (device?.kind !== 'phone') {
     return (
-      <PhonePage deviceId={deviceId} title="Apps" width="dashboard">
+      <PhonePage deviceId={deviceId} title="Apps">
         {(phone) => <PhoneApps device={phone} />}
       </PhonePage>
     );

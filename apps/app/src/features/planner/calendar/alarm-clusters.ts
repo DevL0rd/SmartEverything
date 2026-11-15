@@ -52,3 +52,46 @@ export function clusterLabel(cluster: AlarmCluster): string {
   const noun = cluster.pins.length === 1 ? 'Alarm' : 'Alarms';
   return `${noun} ${names.join(', ')}, opens Clock`;
 }
+
+export const TEXT_PILL_FROM = 180;
+
+export const ICON_PILL = PILL_HEIGHT;
+
+const PILL_EDGE = 2;
+
+export interface PillBand {
+  readonly top: number;
+  readonly bottom: number;
+  readonly right: number;
+}
+
+export function pillTopOf(cluster: AlarmCluster, hourHeight: number): number {
+  const line = yOf(cluster.minute, hourHeight);
+  return line < PILL_HEIGHT ? line + 4 : line - PILL_HEIGHT - PILL_EDGE;
+}
+
+export function pillBandOf(cluster: AlarmCluster, hourHeight: number, width: number): PillBand {
+  const top = pillTopOf(cluster, hourHeight);
+  return { top, bottom: top + PILL_HEIGHT, right: PILL_EDGE + width + PILL_EDGE };
+}
+
+export const MIN_BLOCK_ROOM = 48;
+
+export function laneInsetOf(
+  block: {
+    readonly top: number;
+    readonly bottom: number;
+    readonly left: number;
+    readonly width: number;
+  },
+  bands: readonly PillBand[],
+): number {
+  const inset = bands.reduce(
+    (most, band) =>
+      block.top < band.bottom && band.top < block.bottom
+        ? Math.max(most, band.right - block.left)
+        : most,
+    0,
+  );
+  return block.width - inset < MIN_BLOCK_ROOM ? 0 : inset;
+}

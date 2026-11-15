@@ -1,4 +1,4 @@
-import type { PlannerColourKey, PlannerRange } from '@smarteverything/domain';
+import type { PlannerRange } from '@smarteverything/domain';
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -8,23 +8,22 @@ import { Icon } from '../../../components/icon';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
 import { useScreenPaused } from '../../../design/screen-pause';
-import { useAreaWidth } from '../../../design/size-class';
-import { percentOf } from '../../../format/percent';
 import { clockOfMinutes, shiftDay, zonedStartOfDay } from '../../../format/time';
 import { useRows, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { ProfileAvatar } from '../../profiles';
 import { rangeQuery, usePlannerRange, type PlannerPerson } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { frameLayoutOf } from '../frame/sections';
 import { LIST_DOT } from '../item/composer-tokens';
 import type { Prefs } from '../settings/preferences';
 import { useCalendarLooks } from './calendar-looks';
-import { eventFill } from './event-look';
 import type { MinuteSpan } from './grid-gestures';
 import { busyOf, dayWindowOf, freeGapsOf, openWindowOf } from './booked-model';
 import { FreeTimeWell, useNowMinute } from './calendar-stats';
+import { useCalendarWide } from './pane-width';
+import { Bars, FreeBars, TrackLines, barOf, hourMarksOf } from './timeline-bars';
 import { timedSpansOn, type GridSpan } from './time-grid-layout';
 
 export type TimelineMode = 'people' | 'calendars';
@@ -38,25 +37,6 @@ interface TimelineRow {
 
 const HOUR_WIDTH_TOUCH = 64;
 
-function share(minutes: number, window: MinuteSpan): `${number}%` {
-  return percentOf(minutes / (window.to - window.from));
-}
-
-export function barOf(
-  span: MinuteSpan,
-  window: MinuteSpan,
-): { readonly left: `${number}%`; readonly width: `${number}%` } | null {
-  const from = Math.max(span.from, window.from);
-  const to = Math.min(span.to, window.to);
-  if (to <= from) return null;
-  return { left: share(from - window.from, window), width: share(to - from, window) };
-}
-
-export function hourMarksOf(window: MinuteSpan): readonly number[] {
-  const first = window.from / 60;
-  return Array.from({ length: (window.to - window.from) / 60 }, (_, index) => first + index);
-}
-
 function useDayWindow(day: string): { readonly from: string; readonly to: string } {
   const timeZone = useSettings().time_zone;
   return {
@@ -65,7 +45,7 @@ function useDayWindow(day: string): { readonly from: string; readonly to: string
   };
 }
 
-function usePeopleRows(day: string): readonly TimelineRow[] | null {
+function usePeopleRows(day: string, compact: boolean): readonly TimelineRow[] | null {
   const timeZone = useSettings().time_zone;
   const profiles = useRows('profiles');
   const me = useStoreSelector((state) => state.session?.client.profile_id ?? null);
@@ -89,7 +69,7 @@ function usePeopleRows(day: string): readonly TimelineRow[] | null {
   return people.map(({ profile }, index) => ({
     key: profile.id,
     name: profile.id === me ? 'You' : profile.name,
-    leading: <ProfileAvatar profile={profile} />,
+    leading: <ProfileAvatar profile={profile} size={compact ? 's' : 'm'} />,
     spans: timedSpansOn(busyOf(ranges[index]?.occurrences ?? []), day, timeZone),
   }));
 }
@@ -114,12 +94,6 @@ function useCalendarRows(
   }));
 }
 
-function useColours(): (collectionId: string) => PlannerColourKey | null {
-  const collections = useRows('planner_collections');
-  return (collectionId) =>
-    collections.find((collection) => collection.id === collectionId)?.colour ?? null;
-}
-
 function rowLabelOf(row: TimelineRow): string {
   if (row.spans.length === 0) return `${row.name}: free all day`;
   const parts = row.spans.map(
@@ -128,78 +102,10 @@ function rowLabelOf(row: TimelineRow): string {
   return `${row.name}: ${parts.join(', ')}`;
 }
 
-type Place = NonNullable<ReturnType<typeof barOf>>;
-
-function Bar({
-  place,
-  title,
-  fill,
-}: {
-  readonly place: Place;
-  readonly title: string;
-  readonly fill: string | null;
-}): ReactNode {
-  return (
-    <View
-      style={place}
-      className={cn(
-        'absolute bottom-1.5 top-1.5 justify-center overflow-hidden rounded-sm px-1.5',
-        fill ?? 'border border-outline bg-surface-2',
-      )}
-    >
-      <Text variant="caption" tone={fill === null ? 'variant' : 'default'} numberOfLines={1}>
-        {title}
-      </Text>
-    </View>
-  );
-}
-
-function Bars({
-  row,
-  window,
-}: {
-  readonly row: TimelineRow;
-  readonly window: MinuteSpan;
-}): ReactNode {
-  const colourOf = useColours();
-  return row.spans.map((span) => {
-    const place = barOf(span, window);
-    const fill = eventFill(colourOf(span.occurrence.collection_id), false, 'plain');
-    return place === null ? null : (
-      <Bar key={span.key} place={place} title={span.occurrence.title} fill={fill} />
-    );
-  });
-}
-
-function FreeBars({
-  gaps,
-  window,
-}: {
-  readonly gaps: readonly MinuteSpan[];
-  readonly window: MinuteSpan;
-}): ReactNode {
-  return gaps.map((gap) => {
-    const place = barOf(gap, window);
-    return place === null ? null : (
-      <Bar key={`${String(gap.from)}-${String(gap.to)}`} place={place} title="Free" fill={null} />
-    );
-  });
-}
-
 interface Layout {
   readonly compact: boolean;
   readonly window: MinuteSpan;
   readonly now: number | null;
-}
-
-function TrackLines({ window }: { readonly window: MinuteSpan }): ReactNode {
-  return (
-    <View aria-hidden pointerEvents="none" className="absolute inset-0 flex-row">
-      {hourMarksOf(window).map((hour) => (
-        <View key={hour} className="flex-1 border-l border-outline-variant" />
-      ))}
-    </View>
-  );
 }
 
 function HourHead({ layout }: { readonly layout: Layout }): ReactNode {
@@ -250,7 +156,7 @@ function Tracks({ rows, gaps, layout }: GridProps): ReactNode {
           className={cn('relative border-b border-outline-variant', rowHeight)}
         >
           <TrackLines window={layout.window} />
-          <Bars row={row} window={layout.window} />
+          <Bars spans={row.spans} window={layout.window} />
         </View>
       ))}
       <View className={cn('relative', rowHeight)}>
@@ -271,7 +177,7 @@ function Labels({
 }): ReactNode {
   const rowHeight = compact ? 'h-10' : 'h-11';
   return (
-    <View aria-hidden className={compact ? 'w-24' : 'w-40'}>
+    <View aria-hidden className={compact ? 'w-28' : 'w-40'}>
       <View className="h-7 border-b border-outline-variant" />
       {[
         ...rows,
@@ -280,7 +186,8 @@ function Labels({
         <View
           key={row.key}
           className={cn(
-            'flex-row items-center gap-2 border-b border-outline-variant px-3',
+            'flex-row items-center border-b border-outline-variant',
+            compact ? 'gap-1.5 px-2' : 'gap-2 px-3',
             rowHeight,
           )}
         >
@@ -301,12 +208,13 @@ export function swipeStartOf(layout: Pick<Layout, 'window' | 'now'>): number {
 
 function SwipeTracks(props: GridProps): ReactNode {
   const scroll = useRef<ScrollView>(null);
+  const pointer = useIdiom() === 'pointer';
   const width = { width: hourMarksOf(props.layout.window).length * HOUR_WIDTH_TOUCH };
   return (
     <ScrollView
       ref={scroll}
       horizontal
-      showsHorizontalScrollIndicator={false}
+      showsHorizontalScrollIndicator={pointer}
       onLayout={() => {
         scroll.current?.scrollTo({ x: swipeStartOf(props.layout), animated: false });
       }}
@@ -319,20 +227,37 @@ function SwipeTracks(props: GridProps): ReactNode {
   );
 }
 
+export function swipesAt(width: number, window: MinuteSpan): boolean {
+  return width > 0 && width / hourMarksOf(window).length < HOUR_WIDTH_TOUCH;
+}
+
 function TimelineGrid(props: GridProps): ReactNode {
+  const [width, setWidth] = useState(0);
+  const pointer = useIdiom() === 'pointer';
+  const swipe = swipesAt(width, props.layout.window);
   return (
-    <Card padding="none" className="overflow-hidden">
-      <View className="flex-row">
-        <Labels rows={props.rows} compact={props.layout.compact} />
-        {props.layout.compact ? (
-          <SwipeTracks {...props} />
-        ) : (
-          <View className="flex-1 border-l border-outline-variant">
-            <Tracks {...props} />
+    <>
+      <Card padding="none" className="overflow-hidden">
+        <View className="flex-row">
+          <Labels rows={props.rows} compact={props.layout.compact} />
+          <View
+            onLayout={(event) => {
+              setWidth(event.nativeEvent.layout.width);
+            }}
+            className="flex-1 border-l border-outline-variant"
+          >
+            {swipe ? <SwipeTracks {...props} /> : <Tracks {...props} />}
           </View>
-        )}
-      </View>
-    </Card>
+        </View>
+      </Card>
+      {swipe ? (
+        <Text variant="caption" tone="variant">
+          {pointer
+            ? 'Scroll sideways for the rest of the day.'
+            : 'Swipe sideways for the rest of the day.'}
+        </Text>
+      ) : null}
+    </>
   );
 }
 
@@ -349,7 +274,7 @@ interface BodyProps extends PeopleTimelineProps {
 }
 
 function TimelineBody({ day, prefs, onCreate, mode, rows }: BodyProps): ReactNode {
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = !useCalendarWide();
   const now = useNowMinute(day);
   if (rows === null) return <Skeleton shape="block" />;
   const window = dayWindowOf(prefs.general);
@@ -360,11 +285,6 @@ function TimelineBody({ day, prefs, onCreate, mode, rows }: BodyProps): ReactNod
   return (
     <>
       <TimelineGrid rows={rows} gaps={gaps} layout={{ compact, window, now }} />
-      {compact ? (
-        <Text variant="caption" tone="variant">
-          Swipe sideways for the rest of the day.
-        </Text>
-      ) : null}
       <FreeTimeWell
         gap={gaps[0] ?? null}
         who={mode === 'people' ? 'Everyone is' : 'Every calendar is'}
@@ -377,7 +297,8 @@ function TimelineBody({ day, prefs, onCreate, mode, rows }: BodyProps): ReactNod
 }
 
 function PeopleRows(props: PeopleTimelineProps): ReactNode {
-  return <TimelineBody {...props} mode="people" rows={usePeopleRows(props.day)} />;
+  const compact = !useCalendarWide();
+  return <TimelineBody {...props} mode="people" rows={usePeopleRows(props.day, compact)} />;
 }
 
 function CalendarRows(props: PeopleTimelineProps): ReactNode {

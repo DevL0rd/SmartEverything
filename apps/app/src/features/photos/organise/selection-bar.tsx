@@ -7,6 +7,7 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { count } from '../../../format/number';
+import { SelectionGroup, SelectionSurface } from '../components/selection-surface';
 
 export interface PickAction {
   readonly id: string;
@@ -62,27 +63,30 @@ const VARIANT = { primary: 'filled', plain: 'outlined', destructive: 'destructiv
 export function PickBar(props: PickBarProps): ReactNode {
   const off = props.disabled || props.picked === 0;
   return (
-    <View className="min-h-15 flex-row flex-wrap items-center gap-2 bg-primary-container px-gutter py-2">
+    <SelectionSurface>
       <Summary bar={props} />
-      {props.actions.map((action) => (
-        <Button
-          key={action.id}
-          label={action.label}
-          icon={action.icon}
-          variant={VARIANT[action.look]}
-          disabled={off}
-          onPress={action.onPress}
-        />
-      ))}
-    </View>
+      {off ? null : (
+        <SelectionGroup>
+          {props.actions.map((action) => (
+            <Button
+              key={action.id}
+              label={action.label}
+              icon={action.icon}
+              variant={VARIANT[action.look]}
+              onPress={action.onPress}
+            />
+          ))}
+        </SelectionGroup>
+      )}
+    </SelectionSurface>
   );
 }
 
 export function PickHead(props: PickBarProps): ReactNode {
   return (
-    <View className="min-h-15 flex-row items-center gap-2 bg-primary-container px-gutter py-2">
+    <SelectionSurface>
       <Summary bar={props} />
-    </View>
+    </SelectionSurface>
   );
 }
 

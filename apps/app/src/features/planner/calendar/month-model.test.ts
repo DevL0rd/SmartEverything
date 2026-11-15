@@ -5,7 +5,7 @@ import {
   type PlannerOccurrenceView,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { clock } from '../../../format/time';
+import { clock24 } from '../../../format/time';
 import { agendaRowsOf, type AgendaRow } from './agenda-model';
 import type { EventLook } from './calendars-model';
 import {
@@ -259,7 +259,7 @@ describe('the agenda', () => {
   });
 
   it('shows the times, the calendar and the edges of each day card', () => {
-    const at = (moment: string): string => clock(moment, ZONE);
+    const at = (moment: string): string => clock24(moment, ZONE);
     const entries = rowsFor('').flatMap((row) =>
       row.kind === 'entry'
         ? [

@@ -1,10 +1,11 @@
 import type { DriveStats } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { View, type LayoutChangeEvent } from 'react-native';
 import { Badge } from '../../../components/badge';
 import { Card } from '../../../components/card';
 import { Donut, FillChart, SegmentBar, type DonutSlice } from '../../../components/charts';
 import { Text } from '../../../components/text';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { bytes, count, percent } from '../../../format/number';
 import { shortDate, startOfDayKey } from '../../../format/time';
 import { KIND_COLOUR, KIND_LABEL, kindSegmentsOf } from '../model/item-kinds';
@@ -107,40 +108,56 @@ function DiskDonut({ disk }: { readonly disk: DiskView }): ReactNode {
 export interface StorageHeroProps {
   readonly stats: DriveStats;
   readonly disk: DiskView;
-  readonly wide: boolean;
 }
 
-export function StorageHero({ stats, disk, wide }: StorageHeroProps): ReactNode {
+export const DONUT_ROW_MIN = 520;
+
+function donutSnap(width: number): number {
+  return width >= DONUT_ROW_MIN ? DONUT_ROW_MIN : 0;
+}
+
+function useDonutRow(): {
+  readonly wide: boolean;
+  readonly onLayout: (event: LayoutChangeEvent) => void;
+} {
+  const { width, onLayout } = useMeasuredWidth(donutSnap);
+  return { wide: width >= DONUT_ROW_MIN, onLayout };
+}
+
+export function StorageHero({ stats, disk }: StorageHeroProps): ReactNode {
+  const { wide, onLayout } = useDonutRow();
   return (
-    <Card
-      title="Data folder disk"
-      icon="server"
-      metadata={<Badge label={disk.fsType} icon="hardDrive" />}
-    >
-      <View className={wide ? 'flex-row items-center gap-6' : 'gap-4'}>
-        {wide ? <DiskDonut disk={disk} /> : null}
-        <View className="min-w-0 flex-1 gap-4">
-          <View className="gap-3">
-            <View className="flex-row flex-wrap items-baseline justify-between gap-x-3">
-              <Text variant="title-3" tone={disk.tone} className="tabular">
-                {disk.used}
-              </Text>
-              <Text variant="footnote" tone="variant" className="tabular">
-                {disk.free}
-              </Text>
+    <View onLayout={onLayout}>
+      <Card
+        title="Data folder disk"
+        icon="server"
+        metadata={<Badge label={disk.fsType} icon="hardDrive" />}
+      >
+        <View className={wide ? 'flex-row items-center gap-6' : 'gap-4'}>
+          {wide ? <DiskDonut disk={disk} /> : null}
+          <View className="min-w-0 flex-1 gap-4">
+            <View className="gap-3">
+              <View className="flex-row flex-wrap items-baseline justify-between gap-x-3">
+                <Text variant="title-3" tone={disk.tone} className="tabular">
+                  {disk.used}
+                </Text>
+                <Text variant="footnote" tone="variant" className="tabular">
+                  {disk.free}
+                </Text>
+              </View>
+              <SegmentBar
+                segments={disk.segments}
+                total={disk.total}
+                label="Data folder disk"
+                legend
+                format={bytes}
+              />
             </View>
-            <SegmentBar
-              segments={disk.segments}
-              total={disk.total}
-              label="Data folder disk"
-              legend
-              format={bytes}
-            />
+            <Forecast stats={stats} />
           </View>
-          <Forecast stats={stats} />
         </View>
-      </View>
-    </Card>
+      </Card>
+    </View>
   );
 }
 
@@ -157,26 +174,23 @@ function KindDonut({ stats }: { readonly stats: DriveStats }): ReactNode {
   );
 }
 
-export function KindsCard({
-  stats,
-  wide,
-}: {
-  readonly stats: DriveStats;
-  readonly wide: boolean;
-}): ReactNode {
+export function KindsCard({ stats }: { readonly stats: DriveStats }): ReactNode {
+  const { wide, onLayout } = useDonutRow();
   const segments = kindSegmentsOf(stats.kinds).filter((segment) => segment.value > 0);
   if (segments.length === 0) return null;
   return (
-    <Card title="By kind" icon="layers">
-      <View className={wide ? 'flex-row items-center gap-6' : 'gap-4'}>
-        {wide ? <KindDonut stats={stats} /> : null}
-        <View className="min-w-0 flex-1 gap-2">
-          <Text variant="footnote" tone="variant">
-            The files in your drives and the Shared Drive
-          </Text>
-          <SegmentBar segments={segments} label="Used space by kind" legend format={bytes} />
+    <View onLayout={onLayout}>
+      <Card title="By kind" icon="layers">
+        <View className={wide ? 'flex-row items-center gap-6' : 'gap-4'}>
+          {wide ? <KindDonut stats={stats} /> : null}
+          <View className="min-w-0 flex-1 gap-2">
+            <Text variant="footnote" tone="variant">
+              The files in your drives and the Shared Drive
+            </Text>
+            <SegmentBar segments={segments} label="Used space by kind" legend format={bytes} />
+          </View>
         </View>
-      </View>
-    </Card>
+      </Card>
+    </View>
   );
 }

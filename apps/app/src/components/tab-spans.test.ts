@@ -61,7 +61,12 @@ describe('revealedAt', () => {
     expect(revealedAt(spans, spans.a, 250)).toBe(0);
   });
 
-  it('scrolls so the tab ends at the right edge, snapped to a tab start', () => {
-    expect(revealedAt(spans, spans.c, 250)).toBe(100);
+  it('snaps to a tab start when that start is within the scroll range', () => {
+    const four = { ...spans, d: { x: 300, width: 100 } };
+    expect(revealedAt(four, four.c, 250)).toBe(100);
+  });
+
+  it('scrolls to the end instead of past it when no tab start fits', () => {
+    expect(revealedAt(spans, spans.c, 250)).toBe(50);
   });
 });

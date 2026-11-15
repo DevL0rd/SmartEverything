@@ -60,6 +60,7 @@ describe('parseLocal', () => {
     expect(config.kinds).toContain('se-par');
     expect(config.runs).toBe(3);
     expect(config.scale).toBe('local');
+    expect(config.firstRun).toBe(1);
     expect(config.workloads).toBeNull();
   });
 
@@ -71,6 +72,7 @@ describe('parseLocal', () => {
         'x',
       ),
     ).toMatchObject({ kinds: ['nfs', 'smb'], runs: 2, scale: 'small', workloads: ['create-32'] });
+    expect(parseLocal(['--first-run', '2'], NOW, 'x').firstRun).toBe(2);
     expect(() => parseLocal(['--kinds', 'ftp'], NOW, 'x')).toThrow(/Unknown kind/u);
     expect(() => parseLocal(['--scale', 'huge'], NOW, 'x')).toThrow(/--scale/u);
   });

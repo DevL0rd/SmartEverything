@@ -1,5 +1,6 @@
 import type { PlannerItemRow, PlannerItemScope } from '@smarteverything/domain';
 import type { PlannerDeleteScope } from '../../../api/planner';
+import { longDate } from '../../../format/time';
 
 export interface DeleteChoice {
   readonly id: string;
@@ -18,29 +19,43 @@ function nounOf(kind: PlannerItemRow['kind']): string {
   return kind === 'event' ? 'event' : 'task';
 }
 
-function questionOf(item: PlannerItemRow, scope: PlannerItemScope): string {
+function occurrenceTextOf(occurrenceKey: string, timeZone: string): string {
+  return occurrenceKey.length === 10
+    ? longDate(`${occurrenceKey}T12:00:00Z`, 'UTC')
+    : longDate(occurrenceKey, timeZone);
+}
+
+function everyQuestionOf(item: PlannerItemRow): string {
+  return `Every repeat of the ${nounOf(item.kind)} goes, with its history.`;
+}
+
+function questionOf(item: PlannerItemRow, scope: PlannerItemScope, day: string): string {
   const noun = nounOf(item.kind);
-  if (scope === 'this') return `Only this repeat of the ${noun} goes. The others stay.`;
-  if (scope === 'following') return 'This repeat and every later one go. Earlier ones stay.';
-  return `Every repeat of the ${noun} goes, with its history.`;
+  if (scope === 'this') return `Only the ${noun} on ${day} goes. The other repeats stay.`;
+  if (scope === 'following') {
+    return `The ${noun} on ${day} and every later repeat go. Earlier ones stay.`;
+  }
+  return everyQuestionOf(item);
 }
 
 function seriesChoice(
   item: PlannerItemRow,
   scope: PlannerItemScope,
   occurrenceKey: string,
+  timeZone: string,
 ): DeleteChoice {
   return {
     id: `delete-${scope}`,
     label: LABELS[scope],
     scope: scope === 'all' ? { scope } : { scope, occurrenceKey },
-    question: questionOf(item, scope),
+    question: questionOf(item, scope, occurrenceTextOf(occurrenceKey, timeZone)),
   };
 }
 
 export function deleteChoicesOf(
   item: PlannerItemRow,
   occurrenceKey: string | null,
+  timeZone: string,
 ): readonly DeleteChoice[] {
   if (item.rrule === null) {
     return [
@@ -58,11 +73,11 @@ export function deleteChoicesOf(
         id: 'delete-all',
         label: LABELS.all,
         scope: { scope: 'all' },
-        question: questionOf(item, 'all'),
+        question: everyQuestionOf(item),
       },
     ];
   }
   return (['this', 'following', 'all'] as const).map((scope) =>
-    seriesChoice(item, scope, occurrenceKey),
+    seriesChoice(item, scope, occurrenceKey, timeZone),
   );
 }

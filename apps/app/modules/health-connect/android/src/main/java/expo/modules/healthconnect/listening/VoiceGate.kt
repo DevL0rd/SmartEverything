@@ -1,11 +1,8 @@
 package expo.modules.healthconnect.listening
 
-fun interface Voice {
-  fun isVoice(frame: ShortArray): Boolean
-}
+import expo.modules.healthconnect.voice.VadMode
 
 class VoiceGate(
-  private val voice: Voice,
   private val counters: ListeningCounters,
   private val restart: () -> Unit,
   private val feed: (ShortArray) -> Unit,
@@ -15,37 +12,24 @@ class VoiceGate(
 ) {
   private val preroll = WakePreroll(prerollMs)
   private val reach = prerollMs * WakePreroll.SAMPLES_PER_MS
-  private val frame = ShortArray(FRAME_SAMPLES)
-  private var filled = 0
   private var open = false
   private var quiet = 0
   private var skipped = 0
   private var started = false
 
-  fun hear(pcm: ShortArray) {
+  fun hear(pcm: ShortArray, frames: List<VoiceFrame>) {
     if (open) {
       forward(pcm)
     } else {
       preroll.push(pcm)
       skipped += pcm.size
     }
-    var index = 0
-    while (index < pcm.size) {
-      val count = minOf(pcm.size - index, frame.size - filled)
-      pcm.copyInto(frame, filled, index, index + count)
-      filled += count
-      index += count
-      if (filled == frame.size) {
-        filled = 0
-        decide(voice.isVoice(frame))
-      }
-    }
+    frames.forEach { decide(it.voiced(MODE)) }
   }
 
   fun rest() {
     open = false
     quiet = 0
-    filled = 0
     started = false
     preroll.clear()
   }
@@ -82,7 +66,7 @@ class VoiceGate(
   }
 
   companion object {
-    const val FRAME_SAMPLES = 512
+    val MODE = VadMode.NORMAL
     const val PREROLL_MS = 640
     const val HANGOVER_FRAMES = 19
   }

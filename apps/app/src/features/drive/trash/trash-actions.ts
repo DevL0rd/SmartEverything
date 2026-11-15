@@ -4,12 +4,18 @@ import { changeDrive } from '../../../api/drive';
 import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
 import { useMutationState } from '../../../store/mutation';
-import { deleteAllConfirm, skippedDetail, skippedText, type TrashVerb } from './trash-copy';
+import {
+  deleteConfirmOf,
+  skippedDetail,
+  skippedText,
+  type DeleteScope,
+  type TrashVerb,
+} from './trash-copy';
 import { totalsOf, type TrashItem } from './trash-model';
 
 export interface TrashActions {
   readonly busy: boolean;
-  readonly deleteAll: (items: readonly TrashItem[]) => void;
+  readonly deleteAll: (items: readonly TrashItem[], scope: DeleteScope) => void;
 }
 
 export function reportSkipped(result: DriveChangeResult, verb: TrashVerb): void {
@@ -38,9 +44,12 @@ export function useTrashActions(onDone: () => void): TrashActions {
   };
   return {
     busy: mutation.busy,
-    deleteAll: (items): void => {
+    deleteAll: (items, scope): void => {
       if (items.length === 0) return;
-      background(remove(items, deleteAllConfirm(totalsOf(items))), 'drive_trash.delete_failed');
+      background(
+        remove(items, deleteConfirmOf(scope, totalsOf(items))),
+        'drive_trash.delete_failed',
+      );
     },
   };
 }

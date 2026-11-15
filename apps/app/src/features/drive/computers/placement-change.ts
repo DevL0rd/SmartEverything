@@ -1,6 +1,6 @@
 import type { DrivePlacementSet } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { removeDrivePlacement, setDrivePlacement } from '../../../api/drive';
+import { removeDrivePlacement, setComputerMount, setDrivePlacement } from '../../../api/drive';
 import { useMutationState } from '../../../store/mutation';
 
 const log = new Logger('app.drive');
@@ -14,11 +14,17 @@ export interface PlacementWrites {
     onDone?: () => void,
   ) => void;
   readonly remove: (placementId: string, onDone?: () => void) => void;
+  readonly mount: (deviceId: string, enabled: boolean) => void;
 }
 
 async function setAll(bodies: readonly DrivePlacementSet[]): Promise<void> {
   await Promise.all(bodies.map((body) => setDrivePlacement(body)));
-  log.info('placement.set', { placements: bodies.length, mode: bodies[0]?.mode });
+  log.info('placement.set', { placements: bodies.length });
+}
+
+async function turnMount(deviceId: string, enabled: boolean): Promise<void> {
+  await setComputerMount({ deviceId, enabled });
+  log.info('placement.mount_turned', { deviceId, enabled });
 }
 
 async function removeOne(placementId: string): Promise<void> {
@@ -47,6 +53,13 @@ export function usePlacementWrites(): PlacementWrites {
         label: 'drive.placement.remove',
         inline: true,
         ...finish(onDone),
+      });
+    },
+    mount: (deviceId, enabled): void => {
+      mutation.run(() => turnMount(deviceId, enabled), {
+        failure: enabled ? 'The drive was not mounted' : 'The drive was not unmounted',
+        label: 'drive.placement.mount',
+        inline: true,
       });
     },
   };

@@ -119,7 +119,7 @@ function Bottom({
   const [open, setOpen] = useState(timelineStartsOpen(compact, useWindowSize().height));
   return (
     <ScrollView className="max-h-80 shrink-0" style={NO_GROW}>
-      <View className="w-full max-w-detail gap-2 px-gutter py-2">
+      <View className="w-full gap-2 px-gutter py-2">
         {model.timeline === null ? null : (
           <View className="self-start">
             <Button
@@ -216,7 +216,7 @@ export function RunScreen(props: RunScreenProps): ReactNode {
   const failed = records.isError ? records : pinned.query.isError ? pinned.query : null;
   if (failed !== null) {
     return (
-      <View className="w-full max-w-reading px-gutter">
+      <View className="w-full px-gutter">
         <ErrorState
           error={failed.error}
           retry={() => {

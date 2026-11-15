@@ -10,8 +10,6 @@ import { SuppliesScreen } from './supplies-screen';
 
 const fixture = vi.hoisted(() => ({ width: 0, devices: new Array<Device>() }));
 const PaneWidth = createContext(0);
-const paneLimit = { reading: 720, detail: 1120, full: Infinity, dashboard: 1440 } as const;
-
 function none(): null {
   return null;
 }
@@ -33,12 +31,8 @@ vi.mock('../../../components/grid', async (importOriginal) => {
   };
 });
 vi.mock('../../../components/page-shell/page-shell', () => ({
-  PageShell: ({ width, children }: StandardShellProps): ReactNode =>
-    createElement(
-      PaneWidth.Provider,
-      { value: Math.min(fixture.width, paneLimit[width ?? 'dashboard']) },
-      children,
-    ),
+  PageShell: ({ children }: StandardShellProps): ReactNode =>
+    createElement(PaneWidth.Provider, { value: fixture.width }, children),
 }));
 vi.mock('../../../components/button', () => ({ Button: none }));
 vi.mock('../../../components/empty-state', () => ({ EmptyState: none }));

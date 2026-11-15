@@ -14,6 +14,7 @@ export const CLIPBOARD_PAGES: readonly SettingsPageDefinition[] = [
   {
     id: 'clipboard',
     title: 'Shared clipboard',
+    short: 'Clipboard',
     icon: 'copy',
     parent: null,
     group: 'App',

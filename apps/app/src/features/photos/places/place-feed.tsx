@@ -4,15 +4,12 @@ import type { LibraryBucket, LibraryScope } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { MediaGrid } from '../../../components/media-grid/media-grid';
-import type { ResolveThumb } from '../../../components/media-grid/tile';
 import { tilesOfPage } from '../../../components/media-grid/tiles';
 import { useDayKey } from '../../../store/clock';
 import { usePhotoMonth } from '../data';
 import { viewerParamsOf } from '../viewer/params';
-import { driveLinks } from '../../drive';
+import { driveThumbs } from '../../drive';
 import { feedMonths, feedTiles, type MonthTiles } from './place-model';
-
-const resolveThumb: ResolveThumb = (tile) => driveLinks.resolve(tile.id, tile.rev, 'thumb');
 
 function MonthLoader({
   month,
@@ -68,7 +65,7 @@ export function PlaceFeed({ buckets, scope, month, header, empty }: PlaceFeedPro
         today={today}
         header={header}
         empty={empty}
-        resolveThumb={resolveThumb}
+        thumbs={driveThumbs}
         onOpen={(tile) => {
           router.push(href.photosItem(tile.id, viewerParamsOf(scope)));
         }}

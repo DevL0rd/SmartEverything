@@ -7,6 +7,7 @@ import type {
 import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { clock, dayLabel } from '../../../format/time';
+import type { CompareNames } from '../versions/diff-model';
 import { CURRENT, type Clock, type VersionPicks } from '../versions/versions-model';
 
 export interface ConflictSides {
@@ -78,9 +79,13 @@ function inSentence(name: string): string {
   return name === YOU ? 'you' : name;
 }
 
+function hubMakerName(sides: ConflictSides): string | null {
+  return sides.hub === sides.client ? null : sides.hub;
+}
+
 export function sentenceOf(sides: ConflictSides): string {
-  const other =
-    sides.hub === null || sides.hub === sides.client ? 'the hub' : inSentence(sides.hub);
+  const maker = hubMakerName(sides);
+  const other = maker === null ? 'the hub' : inSentence(maker);
   return `${capitalised(sides.client)} and ${other} changed it before they synced`;
 }
 
@@ -94,8 +99,10 @@ export interface ConflictAction {
 
 export function keepLabelOf(resolution: DriveConflictResolution, sides: ConflictSides): string {
   switch (resolution) {
-    case 'keep_hub':
-      return sides.hub === null ? 'Keep hub version' : `Keep hub version (${sides.hub})`;
+    case 'keep_hub': {
+      const maker = hubMakerName(sides);
+      return maker === null ? 'Keep hub version' : `Keep hub version (${maker})`;
+    }
     case 'keep_client':
       return sides.client === UNKNOWN_CLIENT
         ? 'Keep the other version'
@@ -143,14 +150,22 @@ function versionKeyAt(
 }
 
 export function comparePicksOf(
-  conflict: Pick<DriveConflict, 'hubRev' | 'baseRev'>,
+  conflict: Pick<DriveConflict, 'hubRev'>,
   item: Pick<DriveItem, 'rev'>,
   versions: readonly DriveVersion[],
 ): VersionPicks | null {
   const a = versionKeyAt(item, versions, conflict.hubRev);
-  if (a === null) return null;
-  const b = versionKeyAt(item, versions, conflict.baseRev);
-  return { a, b: b === a ? null : b };
+  return a === null ? null : { a, b: null };
+}
+
+export const HUB_VERSION = 'Hub version';
+
+function clientTitleOf(sides: ConflictSides): string {
+  return sides.client === UNKNOWN_CLIENT ? 'Other version' : `${sides.client} version`;
+}
+
+export function compareNamesOf(sides: ConflictSides): CompareNames {
+  return { a: HUB_VERSION, b: clientTitleOf(sides) };
 }
 
 export interface CopyWell {
@@ -201,13 +216,22 @@ export function copyWellsOf(input: WellInput): readonly [CopyWell, CopyWell] {
     copy === null ? { at: null, bytes: null } : { at: copy.modifiedAt, bytes: copy.bytes };
   const known = sides.client !== UNKNOWN_CLIENT;
   return [
-    { title: 'Hub version', name: sides.hub ?? 'The hub', detail: detailOf(hub, time) },
+    { title: HUB_VERSION, name: hubMakerName(sides) ?? 'The hub', detail: detailOf(hub, time) },
     {
-      title: known ? `${sides.client} version` : 'Other version',
+      title: clientTitleOf(sides),
       name: known ? sides.client : capitalised(UNKNOWN_CLIENT),
       detail: detailOf(client, time),
     },
   ];
+}
+
+export function conflictFolderOf(relPath: string): string | null {
+  const folder = relPath.split('/').slice(0, -1).join('/');
+  return folder === '' ? null : folder;
+}
+
+export function conflictRowLineOf(relPath: string, sides: ConflictSides): string {
+  return joinParts([conflictFolderOf(relPath), sentenceOf(sides)]);
 }
 
 export function openConflictsOf(conflicts: readonly DriveConflict[]): DriveConflict[] {

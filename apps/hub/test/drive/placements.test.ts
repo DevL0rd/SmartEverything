@@ -60,32 +60,76 @@ afterEach(async () => {
 });
 
 describe('setting a placement', () => {
-  it('places the whole Shared Drive as mounted, starting and unreported', () => {
+  it('mounts the whole My Drive of the computer’s person, starting and unreported', () => {
     const seen = changes();
-    const placed = place(world, world.robin, world.robinDesk);
-    expect(placed).toMatchObject({
+    const mounted = world.placements.setMount(world.robin, {
       deviceId: world.robinDesk,
-      rootId: HOME_DRIVE,
+      enabled: true,
+    });
+    expect(mounted).toMatchObject({
+      deviceId: world.robinDesk,
+      rootId: ROBIN_DRIVE,
       folderItemId: null,
       mode: 'mounted',
       localPath: null,
-      mountName: 'Games',
+      mountName: 'My Drive',
       enabled: true,
       hold: null,
       createdBy: world.robin.profileId,
-      status: {
-        state: 'starting',
-        tier: null,
-        route: null,
-        readOnly: false,
-        needBytes: 0,
-        lastSyncedAt: null,
-        errors: [],
-        reason: null,
-      },
+      status: { state: 'starting', tier: null, route: null, readOnly: false, mountPoint: null },
     });
-    expect(placed.excluded).toBeUndefined();
+    expect(mounted.excluded).toBeUndefined();
     expect(seen.map((change) => change.operation)).toEqual(['INSERT']);
+  });
+
+  it('turns the one mount of a computer off and on without a second row', () => {
+    const on = world.placements.setMount(world.robin, { deviceId: world.robinDesk, enabled: true });
+    const off = world.placements.setMount(world.robin, {
+      deviceId: world.robinDesk,
+      enabled: false,
+    });
+    expect(off).toMatchObject({ id: on.id, enabled: false, rootId: ROBIN_DRIVE });
+    const again = world.placements.setMount(world.robin, {
+      deviceId: world.robinDesk,
+      enabled: true,
+    });
+    expect(again).toMatchObject({ id: on.id, enabled: true });
+    expect(world.store.drivePlacements.forDevice(world.robinDesk)).toHaveLength(1);
+  });
+
+  it('starts a mount that was never turned on as off', () => {
+    const off = world.placements.setMount(world.ida, { deviceId: world.idaDesk, enabled: false });
+    expect(off).toMatchObject({ rootId: IDA_DRIVE, enabled: false });
+    expect(world.placements.activeFor(world.idaDesk)).toEqual([]);
+  });
+
+  it('keeps a whole-drive sync beside the whole-drive mount', () => {
+    const mounted = world.placements.setMount(world.robin, {
+      deviceId: world.robinDesk,
+      enabled: true,
+    });
+    const synced = place(world, world.robin, world.robinDesk, { rootId: ROBIN_DRIVE });
+    expect(synced.id).not.toBe(mounted.id);
+    expect(
+      world.placements
+        .activeFor(world.robinDesk)
+        .map((row) => row.mode)
+        .sort(),
+    ).toEqual(['mounted', 'synced']);
+  });
+
+  it('refuses a mount on another person’s computer and a computer with a stray mount', () => {
+    expect(
+      refusal(() =>
+        world.placements.setMount(world.owner, { deviceId: world.idaDesk, enabled: true }),
+      ),
+    ).toMatchObject({ code: 'not_found' });
+    place(world, world.robin, world.robinDesk, { mode: 'mounted', folderItemId: ROMS });
+    expect(
+      refusal(() =>
+        world.placements.setMount(world.robin, { deviceId: world.robinDesk, enabled: true }),
+      ),
+    ).toMatchObject({ code: 'conflict' });
   });
 
   it('places your own whole drive and a folder inside it as synced', () => {
@@ -116,11 +160,6 @@ describe('setting a placement', () => {
       ignorePatterns: ['*.tmp'],
       conflictCopies: true,
     });
-  });
-
-  it('places a folder inside the Shared Drive as mounted', () => {
-    const placed = place(world, world.robin, world.robinDesk, { folderItemId: ROMS_INNER });
-    expect(placed).toMatchObject({ rootId: HOME_DRIVE, folderItemId: ROMS_INNER, mode: 'mounted' });
   });
 
   it('refuses a malformed excluded folder', () => {
@@ -201,11 +240,10 @@ describe('setting a placement', () => {
     ).toMatchObject({ code: 'invalid_request' });
   });
 
-  it('changes mode, path and enabled of the same folder without a second row', () => {
+  it('changes path, enabled and settings of the same folder without a second row', () => {
     const first = place(world, world.owner, world.ownerDesk, { rootId: OWNER_DRIVE });
     const second = place(world, world.owner, world.ownerDesk, {
       rootId: OWNER_DRIVE,
-      mode: 'synced',
       localPath: '/home/owner/Docs',
       enabled: false,
       excluded: ['Old'],
@@ -221,7 +259,7 @@ describe('setting a placement', () => {
     expect(world.store.drivePlacements.list()).toHaveLength(1);
     const back = place(world, world.owner, world.ownerDesk, { rootId: OWNER_DRIVE });
     expect(back.id).toBe(first.id);
-    expect(back.excluded).toBeUndefined();
+    expect(back.excluded).toEqual([]);
   });
 });
 
@@ -240,6 +278,7 @@ describe('what a grant allows', () => {
     const folder = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
       folderItemId: ROBIN_TRIP,
+      mode: 'mounted',
     });
     expect(folder.status.readOnly).toBe(false);
     const inner = place(world, world.ida, world.idaDesk, {

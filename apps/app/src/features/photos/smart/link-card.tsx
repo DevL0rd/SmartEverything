@@ -41,9 +41,7 @@ export function SmartLinkCard(): ReactNode {
           <Text variant="footnote" tone="variant" numberOfLines={1}>
             {view.detail}
           </Text>
-          {view.progress === null ? null : (
-            <ProgressBar progress={view.progress} colour="viz-1" label="Photos analysed so far" />
-          )}
+          <ProgressBar progress={view.progress} colour="viz-1" label="Photos analysed so far" />
         </View>
       )}
     </Card>

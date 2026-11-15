@@ -35,13 +35,17 @@ export function offlineText(local: boolean): string {
 
 export const ALL_PHONE_MEDIA = 'All photos and videos';
 
-export function albumsText(albumIds: readonly string[]): string {
-  return albumIds.length === 0 ? ALL_PHONE_MEDIA : counted(albumIds.length, 'album');
+export function albumsText(albumIds: readonly string[], kind: 'album' | 'folder'): string {
+  return albumIds.length === 0 ? ALL_PHONE_MEDIA : counted(albumIds.length, kind);
+}
+
+export function backingUpOf(state: BackupState): number {
+  return state.devices.filter((entry) => entry.device.settings.enabled).length;
 }
 
 export function devicesLineOf(state: BackupState | undefined): string | null {
   if (state === undefined) return null;
-  const on = state.devices.filter((entry) => entry.device.settings.enabled).length;
+  const on = backingUpOf(state);
   return on === 0 ? 'No devices back up yet' : `${counted(on, 'device')} backing up`;
 }
 
@@ -127,7 +131,7 @@ export function duplicatesCardOf(stats: DuplicatesCardStats): DuplicatesCardView
   if (stats.groups === 0)
     return { headline: 'No duplicates', detail: 'Every photo is stored once' };
   return {
-    headline: `${counted(stats.groups, 'group')} · ${bytes(stats.bytesBack)} to win back`,
+    headline: `${counted(stats.groups, 'group')} · ${bytes(stats.bytesBack)} to free`,
     detail: `${count(stats.extraCopies)} ${stats.extraCopies === 1 ? 'extra copy' : 'extra copies'}`,
   };
 }

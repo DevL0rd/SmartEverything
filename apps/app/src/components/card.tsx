@@ -46,8 +46,8 @@ function CardHeader({
     <View
       className={cn(
         'flex-row items-center gap-2',
-        (!padded || hasAction) && 'min-h-touch-min',
-        !padded && 'px-card-pad',
+        hasAction && 'min-h-touch-min',
+        !padded && 'px-card-pad pt-card-pad',
       )}
     >
       {icon === undefined ? null : <Icon name={icon} size={20} />}

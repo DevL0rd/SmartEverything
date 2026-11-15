@@ -7,7 +7,6 @@ import {
   canOfferOf,
   offerBodyOf,
   offerButtonOf,
-  offerTitleOf,
   offerWaitingLineOf,
   openOfferOf,
   transferCandidatesOf,
@@ -91,7 +90,6 @@ describe('transfer confirm', () => {
 
   it('words an offer for the person who receives it', () => {
     const offer = transferRow({ itemName: 'Projects', itemKind: 'folder', bytes: GB });
-    expect(offerTitleOf(offer, 'Alex')).toBe('Alex offers you Projects');
     expect(offerBodyOf(offer, 'Alex')).toBe(
       `The folder and everything in it (${bytes(GB)}) moves into your My Drive and counts towards your space. Alex keeps edit access.`,
     );

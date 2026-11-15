@@ -3,7 +3,7 @@ import type {
   PlannerAttachmentKind,
   PlannerItemRow,
 } from '@smarteverything/domain';
-import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useState, type ReactNode, type RefObject } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
@@ -15,11 +15,12 @@ import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { notify } from '../../../components/toast-store';
+import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
 import { pickFiles } from '../../../platform/pick-files';
 import { useDevices, useRows } from '../../../store/selectors';
-import { attachFiles, clearUploads, useUploads, type Upload } from '../../assistant/data/uploads';
+import { attachFiles, clearUploads, useUploads, type Upload } from '../../assistant';
 import {
-  AttachmentChips,
   DEFAULT_FACE,
   DEVICE_FACES,
   FACE_LABEL,
@@ -28,17 +29,13 @@ import {
   namedGroupsOf,
   pendingOf,
   uploadStateOf,
-  useAttachmentNames,
-  withoutAttachment,
   type AttachmentNames,
-  type DeviceFaceChoice,
   type Pending,
   type PickEntry,
   type PickGroups,
   type Picked,
 } from './attachment-chips';
 import { subjectOf } from './completion-rule-row';
-import type { ItemChanges } from './repeat-scope-bar';
 
 const KIND_OPTIONS: readonly SegmentedOption<PlannerAttachmentKind>[] = [
   { value: 'device', label: 'Device' },
@@ -46,11 +43,6 @@ const KIND_OPTIONS: readonly SegmentedOption<PlannerAttachmentKind>[] = [
   { value: 'file', label: 'File' },
   { value: 'link', label: 'Link' },
 ];
-
-const FACE_OPTIONS: readonly SegmentedOption<DeviceFaceChoice>[] = DEVICE_FACES.map((face) => ({
-  value: face,
-  label: FACE_LABEL[face],
-}));
 
 const SEARCH_HINT: Readonly<Record<'device' | 'automation', string>> = {
   device: 'Search devices',
@@ -193,22 +185,26 @@ function ChoicePane({ picked, onPick, groups, search, onSearch }: ChoicePaneProp
           onPick({ chosen });
         }}
       />
-      {picked.kind === 'device' && picked.chosen !== null ? (
-        <View className="gap-2">
-          <Text variant="label" tone="variant">
-            Show it as
-          </Text>
-          <Segmented
-            options={FACE_OPTIONS}
-            value={picked.face}
-            onChange={(face) => {
-              onPick({ face });
-            }}
-            label="Widget face"
-            fill
-          />
-        </View>
-      ) : null}
+    </View>
+  );
+}
+
+function FaceChoice({ picked, onPick }: PaneProps): ReactNode {
+  if (picked.kind !== 'device' || picked.chosen === null) return null;
+  return (
+    <View className="gap-2">
+      <Text variant="label" tone="variant">
+        Show it as
+      </Text>
+      <Segmented
+        options={DEVICE_FACES.map((face) => ({ value: face, label: FACE_LABEL[face] }))}
+        value={picked.face}
+        onChange={(face) => {
+          onPick({ face });
+        }}
+        label="Widget face"
+        fill
+      />
     </View>
   );
 }
@@ -222,7 +218,9 @@ export interface AttachmentPickerProps {
   readonly onClose: () => void;
 }
 
-const START: Picked = { kind: 'device', chosen: null, face: DEFAULT_FACE, url: '', title: '' };
+function startOf(kind: PlannerAttachmentKind): Picked {
+  return { kind, chosen: null, face: DEFAULT_FACE, url: '', title: '' };
+}
 
 function usePickGroups(
   item: PlannerItemRow,
@@ -253,7 +251,7 @@ interface PickerState {
 
 function usePickerState(props: AttachmentPickerProps): PickerState {
   const draftKey = `planner:${props.item.id}`;
-  const [picked, setPicked] = useState<Picked>(START);
+  const [picked, setPicked] = useState<Picked>(() => startOf('device'));
   const [search, setSearch] = useState('');
   const uploads = useUploads(draftKey);
   const pending = pendingOf(picked, props.names, uploads);
@@ -273,7 +271,7 @@ function usePickerState(props: AttachmentPickerProps): PickerState {
     },
     pickKind: (kind): void => {
       setSearch('');
-      setPicked({ ...START, kind });
+      setPicked(startOf(kind));
     },
     setSearch,
     close,
@@ -286,6 +284,7 @@ function usePickerState(props: AttachmentPickerProps): PickerState {
 }
 
 export function AttachmentPicker(props: AttachmentPickerProps): ReactNode {
+  const pointer = useIdiom() === 'pointer';
   const state = usePickerState(props);
   const { draftKey, picked, search, uploads, groups, pending, pick, pickKind } = state;
   return (
@@ -294,19 +293,24 @@ export function AttachmentPicker(props: AttachmentPickerProps): ReactNode {
       open
       onClose={state.close}
       title="Attach"
-      detents={['half', 'full']}
+      detents={['fit', 'full']}
       footer={
-        <Button
-          label={pending?.label ?? 'Attach'}
-          icon="paperclip"
-          variant="filled"
-          grow
-          disabled={pending === null || props.disabled}
-          onPress={state.attach}
-        />
+        <View className="flex-1 gap-3">
+          <FaceChoice picked={picked} onPick={pick} />
+          <View className="flex-row">
+            <Button
+              label={pending?.label ?? 'Attach'}
+              icon="paperclip"
+              variant="filled"
+              grow
+              disabled={pending === null || props.disabled}
+              onPress={state.attach}
+            />
+          </View>
+        </View>
       }
     >
-      <View className="gap-4">
+      <View className={cn('gap-4', pointer && 'min-h-96')}>
         <Segmented
           options={KIND_OPTIONS}
           value={picked.kind}
@@ -327,47 +331,5 @@ export function AttachmentPicker(props: AttachmentPickerProps): ReactNode {
         )}
       </View>
     </Sheet>
-  );
-}
-
-export interface ItemAttachmentsProps {
-  readonly item: PlannerItemRow;
-  readonly disabled: boolean;
-  readonly onChange: (changes: ItemChanges) => void;
-}
-
-export function ItemAttachments({ item, disabled, onChange }: ItemAttachmentsProps): ReactNode {
-  const [open, setOpen] = useState(false);
-  const opener = useRef<View>(null);
-  const names = useAttachmentNames();
-  return (
-    <>
-      <AttachmentChips
-        attachments={item.attachments}
-        names={names}
-        disabled={disabled}
-        addRef={opener}
-        onAdd={() => {
-          setOpen(true);
-        }}
-        onRemove={(key) => {
-          onChange({ attachments: withoutAttachment(item.attachments, key) });
-        }}
-      />
-      {open ? (
-        <AttachmentPicker
-          opener={opener}
-          item={item}
-          names={names}
-          disabled={disabled}
-          onAttach={(added) => {
-            onChange({ attachments: [...item.attachments, ...added] });
-          }}
-          onClose={() => {
-            setOpen(false);
-          }}
-        />
-      ) : null}
-    </>
   );
 }

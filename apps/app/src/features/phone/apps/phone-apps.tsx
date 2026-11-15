@@ -135,14 +135,14 @@ function OwnApps({
   return (
     <>
       <View className="flex-row flex-wrap items-start gap-section-gap">
-        <View className="w-full max-w-detail">
+        <View className="min-w-0 grow-2 shrink basis-128">
           {usageAllowed ? (
             <OwnCards rows={rows} front={front} minutes={minutes} />
           ) : (
             <PermissionNeed device={device} feature="usage" />
           )}
         </View>
-        <View className="w-full max-w-reading">
+        <View className="min-w-0 grow shrink basis-96">
           <OwnList device={device} rows={rows} query="" />
         </View>
       </View>
@@ -161,13 +161,11 @@ function OtherApps({
   const person = usePersonName(device);
   const screen = usePhoneSection(device.id, 'screen');
   return (
-    <View className="max-w-detail">
-      <AppsTotals
-        person={person}
-        installed={section.installedCount}
-        minutesByDay={weekMinutesOf(screen)}
-      />
-    </View>
+    <AppsTotals
+      person={person}
+      installed={section.installedCount}
+      minutesByDay={weekMinutesOf(screen)}
+    />
   );
 }
 
@@ -204,9 +202,7 @@ export function PhoneAppsSearch({
   const usageAllowed = featureState(featuresOf(device.details), 'usage') !== 'needs_permission';
   return (
     <>
-      <View className="w-full max-w-reading">
-        <OwnList device={device} rows={rows} query={query} />
-      </View>
+      <OwnList device={device} rows={rows} query={query} />
       <OwnSheet device={device} rows={rows} usageAllowed={usageAllowed} />
     </>
   );

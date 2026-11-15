@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { filesUnder, repositoryRoot } from './repository-files';
@@ -24,10 +24,34 @@ const KOTLIN_SCOPE: Readonly<Record<string, readonly string[]>> = {
   Listening: ['listening'],
   Treadmill: ['treadmill'],
   Larq: ['larq'],
-  Sonicare: ['sonicare'],
+  Toothbrush: ['toothbrush', 'oralb', 'sonicare'],
   HealthConnect: [''],
   Planner: ['planner'],
+  PhotosBackup: ['photos'],
+  DriveDocuments: ['drive'],
 };
+
+const PATCHED_PACKAGES: Readonly<Record<string, string>> = {
+  ExpoUpdates: 'expo-updates@',
+};
+
+const EVENT_EMITTER_MEMBERS: ReadonlySet<string> = new Set([
+  'addListener',
+  'removeListener',
+  'removeAllListeners',
+  'emit',
+  'listenerCount',
+]);
+
+function patchedNames(prefix: string): ReadonlySet<string> {
+  const folder = join(repositoryRoot, 'patches');
+  const added = readdirSync(folder)
+    .filter((name) => name.startsWith(prefix) && name.endsWith('.patch'))
+    .flatMap((name) => readFileSync(join(folder, name), 'utf8').split('\n'))
+    .filter((line) => line.startsWith('+') && !line.startsWith('+++'))
+    .join('\n');
+  return new Set(exportedBy(added));
+}
 
 function exportedBy(text: string): readonly string[] {
   const patterns = [/(?:Async)?Function\("(\w+)"\)/g, /EVENT = "(\w+)"/g];
@@ -43,6 +67,8 @@ function inScope(inside: string, scope: string): boolean {
 }
 
 function kotlinNames(module: string): ReadonlySet<string> {
+  const patched = PATCHED_PACKAGES[module];
+  if (patched !== undefined) return patchedNames(patched);
   const scopes = KOTLIN_SCOPE[module] ?? [];
   const files = filesUnder(kotlinRoot).filter((path) => path.endsWith('.kt'));
   const wanted = files.filter((file) =>
@@ -87,14 +113,17 @@ describe('native module contract', () => {
 
   it('finds every native module the app loads', () => {
     expect(declared.length).toBeGreaterThan(0);
-    for (const entry of declared) expect(Object.keys(KOTLIN_SCOPE)).toContain(entry.module);
+    const known = [...Object.keys(KOTLIN_SCOPE), ...Object.keys(PATCHED_PACKAGES)];
+    for (const entry of declared) expect(known).toContain(entry.module);
   });
 
   it.each(declared.map((entry) => [entry.file.slice(repositoryRoot.length + 1), entry] as const))(
     '%s only calls functions the Kotlin module exports',
     (_name, entry) => {
       const exported = kotlinNames(entry.module);
-      const missing = entry.members.filter((member) => !exported.has(member));
+      const missing = entry.members.filter(
+        (member) => !exported.has(member) && !EVENT_EMITTER_MEMBERS.has(member),
+      );
       expect(missing).toEqual([]);
     },
   );

@@ -19,7 +19,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import { LINK_LIFETIME_SECONDS } from '../server/media-links';
+import { linkExpiry } from '../server/media-links';
 import type { DriveItemWindow } from '../store/repositories/drive-items';
 import type { Store } from '../store/store';
 import { decodeCursor, encodeCursor } from './search';
@@ -368,7 +368,7 @@ export class DriveShares {
   }
 
   link(access: ShareAccess, token: string, itemId: string): ShareLink {
-    const expires = Math.floor(this.env.now().getTime() / 1000) + LINK_LIFETIME_SECONDS;
+    const expires = linkExpiry(this.env.now());
     const search = new URLSearchParams({
       expires: String(expires),
       signature: this.sign(access.share.id, itemId, expires),

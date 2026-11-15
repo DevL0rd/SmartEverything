@@ -180,44 +180,43 @@ async function sharing(scene: Scene): Promise<Counted> {
   return { grants: grants.length, comments: 3, shortcuts: 1 };
 }
 
-const PLACEMENTS: readonly (readonly [
-  string,
-  'owner' | 'home',
-  string | null,
-  'synced' | 'mounted',
-])[] = [
-  ['seed-workstation', 'owner', 'Documents', 'synced'],
-  ['seed-workstation', 'home', null, 'mounted'],
-  ['seed-laptop', 'owner', null, 'mounted'],
+const SYNCED: readonly (readonly [string, 'owner' | 'home', string | null])[] = [
+  ['seed-workstation', 'owner', 'Documents'],
+  ['seed-laptop', 'home', null],
 ];
+
+const MOUNTED: readonly string[] = ['seed-workstation', 'seed-laptop'];
 
 async function mounts(scene: Scene): Promise<Counted> {
   const { api, ownerRoot, homeRoot } = scene;
   const devices = new Map<string, string>();
   for (const hostname of ['seed-workstation', 'seed-laptop'])
     devices.set(hostname, await pair(api, hostname));
-  for (const [hostname, target, folder, mode] of PLACEMENTS) {
-    const rootId = target === 'owner' ? ownerRoot.id : homeRoot.id;
+  const deviceOf = (hostname: string): string => {
     const deviceId = devices.get(hostname);
     if (deviceId === undefined) throw new Error(`The computer ${hostname} was not paired.`);
+    return deviceId;
+  };
+  for (const [hostname, target, folder] of SYNCED) {
+    const rootId = target === 'owner' ? ownerRoot.id : homeRoot.id;
     const folderItemId = folder === null ? null : (await itemAt(api, rootId, folder)).id;
-    const common = { deviceId, rootId, folderItemId, enabled: true };
     await api.call(E.setPlacement, {
-      body:
-        mode === 'synced'
-          ? {
-              ...common,
-              mode,
-              localPath: `/home/seed/${folder ?? 'Drive'}`,
-              mountName: null,
-              excluded: [],
-              ignorePatterns: ['*.tmp'],
-              conflictCopies: true,
-            }
-          : { ...common, mode, localPath: null, mountName: target === 'home' ? 'Home' : 'Drive' },
+      body: {
+        deviceId: deviceOf(hostname),
+        rootId,
+        folderItemId,
+        enabled: true,
+        localPath: `/home/seed/${folder ?? 'Shared Drive'}`,
+        excluded: [],
+        ignorePatterns: ['*.tmp'],
+        conflictCopies: true,
+      },
     });
   }
-  return { computers: devices.size, placements: PLACEMENTS.length };
+  for (const hostname of MOUNTED) {
+    await api.call(E.setComputerMount, { body: { deviceId: deviceOf(hostname), enabled: true } });
+  }
+  return { computers: devices.size, placements: SYNCED.length + MOUNTED.length };
 }
 
 export async function seedDriveApi(context: SeedContext): Promise<Counted> {

@@ -70,7 +70,6 @@ export function WorkoutsScreen(): ReactNode {
   return (
     <FitnessShell
       tab="workouts"
-      width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range={window.range} ranges={RANGES} />}
       primaryAction={workout.action}
     >

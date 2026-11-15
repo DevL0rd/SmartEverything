@@ -23,23 +23,27 @@ function matchesWindow(
   );
 }
 
+function heightOf(row: MediaGridRow | undefined): number {
+  return row?.kind === 'tiles' ? row.height + TILE_GAP : 0;
+}
+
 export function thumbnailWindow(
   rows: readonly MediaGridRow[],
   window: ThumbnailWindow | null,
+  drawn: number,
 ): readonly MediaTile[] {
   if (!matchesWindow(rows, window)) return [];
   const visible = rows.slice(window.first, window.last + 1);
-  let remaining = visible.reduce(
-    (height, row) => height + (row.kind === 'tiles' ? row.height + TILE_GAP : 0),
-    0,
-  );
+  let skipped = drawn;
+  let remaining = visible.reduce((height, row) => height + heightOf(row), 0) + drawn;
   const tiles: MediaTile[] = [];
   let index = window.direction > 0 ? window.last + 1 : window.first - 1;
   while (remaining > 0 && index >= 0 && index < rows.length) {
     const row = rows[index];
-    if (row?.kind === 'tiles') {
+    if (skipped > 0) skipped -= heightOf(row);
+    else if (row?.kind === 'tiles') {
       tiles.push(...row.tiles.map((placed) => placed.tile));
-      remaining -= row.height + TILE_GAP;
+      remaining -= heightOf(row);
     }
     index += window.direction;
   }
@@ -48,6 +52,7 @@ export function thumbnailWindow(
 
 export function useThumbnailWindow(
   rows: readonly MediaGridRow[],
+  drawn: number,
   onChange: ((tiles: readonly MediaTile[]) => void) | undefined,
 ): (change: ViewableChange) => void {
   const [window, setWindow] = useState<ThumbnailWindow | null>(null);
@@ -78,7 +83,7 @@ export function useThumbnailWindow(
     });
   });
   useEffect(() => {
-    onChange?.(thumbnailWindow(rows, window));
-  }, [rows, window, onChange]);
+    onChange?.(thumbnailWindow(rows, window, drawn));
+  }, [rows, window, drawn, onChange]);
   return changed;
 }

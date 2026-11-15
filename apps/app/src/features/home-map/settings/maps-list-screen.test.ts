@@ -250,7 +250,6 @@ describe('the Home maps list', () => {
     expect(of(drawn, 'SettingsFrame')[0]).toMatchObject({
       title: 'Home maps',
       page: 'home/map',
-      contentWidth: 'full',
     });
     expect(of(drawn, 'ScrollView')).toHaveLength(0);
     expect(of(drawn, 'Skeleton')).toHaveLength(1);

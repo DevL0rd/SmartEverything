@@ -101,7 +101,7 @@ export function HistorySection({ device }: { readonly device: Device }): ReactNo
           <MetricChart device={device} metric={metric} range={range} />
         </View>
       </Card>
-      <List className="w-full max-w-reading self-start">
+      <List className="w-full self-start">
         <SwitchRow
           title="Show provider metrics"
           subtitle="Adds the extra numbers your provider reports"

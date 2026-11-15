@@ -1,13 +1,8 @@
 import { memo, useMemo, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
-import { Button } from '../../../components/button';
 import { dayText } from '../../../components/media-grid/day-text';
-import {
-  dayActionText,
-  dayMark,
-  type MediaSelection,
-} from '../../../components/media-grid/selection';
+import type { MediaSelection } from '../../../components/media-grid/selection';
 import { rowHeight, TILE_GAP } from '../../../components/media-grid/justify';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
@@ -21,7 +16,6 @@ export interface DeletedGridProps extends TileHandlers {
   readonly days: readonly DeletedDay[];
   readonly today: string;
   readonly selection: MediaSelection;
-  readonly onSelectDay: (ids: readonly string[]) => void;
   readonly header: ReactElement;
   readonly footer: ReactElement;
 }
@@ -30,11 +24,6 @@ interface RowContext extends TileHandlers {
   readonly today: string;
   readonly selection: MediaSelection;
   readonly pointer: boolean;
-  readonly onSelectDay: (ids: readonly string[]) => void;
-}
-
-function dayActionLabel(selection: MediaSelection, ids: readonly string[]): string {
-  return dayActionText(selection.active ? dayMark(selection, ids) : 'none');
 }
 
 function Head({
@@ -55,14 +44,6 @@ function Head({
           {text.detail}
         </Text>
       </View>
-      <Button
-        label={dayActionLabel(context.selection, row.ids)}
-        spoken={`${dayActionLabel(context.selection, row.ids)} ${text.title}`}
-        variant="text"
-        onPress={() => {
-          context.onSelectDay(row.ids);
-        }}
-      />
     </View>
   );
 }
@@ -120,7 +101,7 @@ function rowTypeOf(row: DeletedRow): string {
 }
 
 export function DeletedGrid(props: DeletedGridProps): ReactNode {
-  const { days, today, selection, onPress, onRestore, onDeleteNow, disabled, onSelectDay } = props;
+  const { days, today, selection, onPress, onRestore, onDeleteNow, disabled } = props;
   const measured = useMeasuredWidth();
   const idiom = useIdiom();
   const target = rowHeight('days', idiom);
@@ -137,9 +118,8 @@ export function DeletedGrid(props: DeletedGridProps): ReactNode {
       onRestore,
       onDeleteNow,
       disabled,
-      onSelectDay,
     }),
-    [today, selection, idiom, onPress, onRestore, onDeleteNow, disabled, onSelectDay],
+    [today, selection, idiom, onPress, onRestore, onDeleteNow, disabled],
   );
   const renderRow: ListRenderItem<DeletedRow> = ({ item }) => (
     <GridRow row={item} context={context} />

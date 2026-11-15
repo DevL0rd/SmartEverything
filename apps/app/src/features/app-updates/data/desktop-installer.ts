@@ -3,7 +3,7 @@ import { background } from '@smarteverything/logging';
 import { useEffect } from 'react';
 import { useUpdateStatus } from '../../../api/desktop-update';
 import type { DesktopBridge } from '../../../design/platform';
-import { useSyncStatus } from '../../../store/selectors';
+import { useConnection } from '../../../api/transport';
 import { installerNotice } from './installer-notice';
 
 function followInstallerOffers(bridge: DesktopBridge): () => void {
@@ -36,10 +36,10 @@ function followInstallerOffers(bridge: DesktopBridge): () => void {
 
 export function useDesktopInstaller(bridge: DesktopBridge | null): MachineUpdateStatus | null {
   const { reading } = useUpdateStatus(bridge);
-  const live = useSyncStatus().status === 'live';
+  const paired = useConnection().status === 'paired';
   useEffect(() => {
-    if (bridge === null || !live) return;
+    if (bridge === null || !paired) return;
     return followInstallerOffers(bridge);
-  }, [bridge, live]);
+  }, [bridge, paired]);
   return reading.kind === 'read' ? reading.status : null;
 }

@@ -3,7 +3,6 @@ import type { AppHref } from '../../../components/app-href';
 import { useTabGroup } from '../../../app-shell/tab-group';
 import { href } from '../../../app-shell/hrefs';
 import type { Crumb } from '../../../components/breadcrumbs';
-import type { ShellWidth } from '../../../components/page-shell/layout';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import { useDevice } from '../../../store/selectors';
 
@@ -36,13 +35,11 @@ export function DeviceSettingsFrame({
   deviceId,
   name,
   title,
-  width = 'reading',
   children,
 }: {
   readonly deviceId: string;
   readonly name: string;
   readonly title: string;
-  readonly width?: ShellWidth;
   readonly children: ReactNode;
 }): ReactNode {
   const sub = title !== name;
@@ -52,7 +49,6 @@ export function DeviceSettingsFrame({
       title={sub ? title : `${name} settings`}
       {...(sub ? { subtitle: name } : {})}
       breadcrumbs={crumbs}
-      width={width}
     >
       {children}
     </PageShell>

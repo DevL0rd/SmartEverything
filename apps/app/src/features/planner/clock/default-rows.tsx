@@ -38,6 +38,7 @@ export function DefaultSnoozeLimitRow(): ReactNode {
           max={Number.MAX_SAFE_INTEGER}
           step={1}
           formatValue={snoozeLimitText}
+          fixedWidth
           onChange={(limit) => {
             save(() => ({ clock: { snooze_limit: limit === 0 ? null : limit } }));
           }}

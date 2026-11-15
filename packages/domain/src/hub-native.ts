@@ -14,6 +14,8 @@ import type {
   NativeHubResource,
   NativeHubResourceDownload,
   NativeHubResourceDownloadResult,
+  NativeHubResourceRestore,
+  NativeHubResourceRestored,
 } from './hub-native-resources';
 export {
   HUB_REQUEST_TIMEOUT_MS,
@@ -214,6 +216,8 @@ export interface NativeHubNetwork extends HubPairingNetwork {
   openResource?(request: NativeHubResourceOpen): Promise<NativeHubResource>;
   releaseResource?(id: string): Promise<void>;
   downloadResource?(request: NativeHubResourceDownload): Promise<NativeHubResourceDownloadResult>;
+  restoreResource?(request: NativeHubResourceRestore): Promise<NativeHubResourceRestored>;
+  revealRestored?(location: string): Promise<void>;
   requestAndroidUpdatePermission?(): Promise<boolean>;
   installAndroidUpdate?(request: NativeAndroidUpdateInstall): Promise<NativeAndroidUpdateResult>;
   cancelAndroidUpdate?(request: NativeAndroidUpdateCancel): Promise<void>;

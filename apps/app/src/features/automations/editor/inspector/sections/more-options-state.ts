@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { usePausable } from '../../../../../design/external-store';
 
 let open = false;
 const listeners = new Set<() => void>();
@@ -21,5 +21,5 @@ export function setMoreOptionsOpen(next: boolean): void {
 }
 
 export function useMoreOptionsOpen(): boolean {
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
+  return usePausable(subscribe, snapshot);
 }

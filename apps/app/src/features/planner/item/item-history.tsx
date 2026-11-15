@@ -1,12 +1,25 @@
-import type { PlannerItemRow, PlannerOccurrenceRow } from '@smarteverything/domain';
-import type { ReactNode } from 'react';
+import {
+  PLANNER_OCCURRENCE_SINGLE,
+  type PlannerItemRow,
+  type PlannerOccurrenceRow,
+} from '@smarteverything/domain';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Section } from '../../../components/section';
 import { Text } from '../../../components/text';
 import type { TimeOfDay } from '../../../components/time-field';
 import { cn } from '../../../design/cn';
 import type { ItemChanges } from './repeat-scope-bar';
-import { clock, localDayKey, longDate, shiftDay } from '../../../format/time';
+import {
+  clock,
+  clock24,
+  daysBetween,
+  localDayKey,
+  longDate,
+  shiftDay,
+  shortDate,
+  zonedInstant,
+} from '../../../format/time';
 
 export interface FieldsToday {
   readonly now: number;
@@ -54,6 +67,83 @@ function localOf(ms: number): string {
 function atTime(date: string, time: TimeOfDay): string {
   const pad = (value: number): string => String(value).padStart(2, '0');
   return `${date}T${pad(time.hour)}:${pad(time.minute)}:00`;
+}
+
+export function occurrenceDayOf(occurrenceKey: string | null, timeZone: string): string | null {
+  if (occurrenceKey === null || occurrenceKey === PLANNER_OCCURRENCE_SINGLE) return null;
+  return occurrenceKey.length === 10 ? occurrenceKey : localDayKey(occurrenceKey, timeZone);
+}
+
+function shiftLocal(value: string, days: number): string {
+  if (days === 0) return value;
+  if (value.length === 10) return shiftDay(value, days);
+  return localOf(localMs(value) + days * 1440 * MINUTE_MS);
+}
+
+function shiftedChanges(changes: ItemChanges, days: number): ItemChanges {
+  const start = changes.start_local;
+  const end = changes.end_local;
+  return {
+    ...changes,
+    ...(start === undefined || start === null ? {} : { start_local: shiftLocal(start, days) }),
+    ...(end === undefined || end === null ? {} : { end_local: shiftLocal(end, days) }),
+  };
+}
+
+function seriesOffsetOf(item: PlannerItemRow, day: string | null): number {
+  const start = item.start_local;
+  if (day === null || start === null) return 0;
+  return daysBetween(start.slice(0, 10), day);
+}
+
+export function itemAtDay(item: PlannerItemRow, day: string | null): PlannerItemRow {
+  const days = seriesOffsetOf(item, day);
+  if (days === 0 || item.start_local === null) return item;
+  return {
+    ...item,
+    start_local: shiftLocal(item.start_local, days),
+    end_local: item.end_local === null ? null : shiftLocal(item.end_local, days),
+  };
+}
+
+export function seriesChangesOf(
+  changes: ItemChanges,
+  item: PlannerItemRow,
+  day: string | null,
+): ItemChanges {
+  const days = seriesOffsetOf(item, day);
+  return days === 0 ? changes : shiftedChanges(changes, -days);
+}
+
+export function withStartDay(item: PlannerItemRow, day: string): ItemChanges {
+  const start = item.start_local;
+  if (start === null) return {};
+  const days = daysBetween(start.slice(0, 10), day);
+  return shiftedChanges(
+    { start_local: start, ...(item.end_local === null ? {} : { end_local: item.end_local }) },
+    days,
+  );
+}
+
+function minuteOfDayIn(moment: string, timeZone: string): number {
+  const text = clock24(moment, timeZone);
+  return Number(text.slice(0, 2)) * 60 + Number(text.slice(3, 5));
+}
+
+export function withDueDay(
+  item: PlannerItemRow,
+  day: string | null,
+  timeZone: string,
+): ItemChanges {
+  if (day === null) return { due_date: null, due_at: null };
+  if (item.due_at === null) return { due_date: day };
+  const at = zonedInstant(day, minuteOfDayIn(item.due_at, timeZone), timeZone);
+  return { due_at: new Date(at).toISOString() };
+}
+
+export function dueDayOf(item: PlannerItemRow, timeZone: string): string | null {
+  if (item.due_at !== null) return localDayKey(item.due_at, timeZone);
+  return item.due_date;
 }
 
 export function timeOfLocal(value: string): TimeOfDay {
@@ -149,7 +239,33 @@ export function historySpokenOf(model: ItemHistoryModel): string {
   return counts.join(', ');
 }
 
-function LatestLine({ latest }: { readonly latest: HistoryEntry | null }): ReactNode {
+function countOf(model: ItemHistoryModel, status: HistoryStatus): number {
+  return model.entries.filter((entry) => entry.status === status).length;
+}
+
+const STATUSES = ['done', 'missed', 'skipped'] as const;
+
+const LEGEND: Readonly<Record<HistoryStatus, string>> = {
+  done: 'Done',
+  missed: 'Missed',
+  skipped: 'Skipped',
+};
+
+function ReadoutLine({
+  latest,
+  focused,
+}: {
+  readonly latest: HistoryEntry | null;
+  readonly focused: HistoryEntry | null;
+}): ReactNode {
+  if (focused !== null) {
+    const what = focused.summary === null ? WORD[focused.status] : focused.summary;
+    return (
+      <Text variant="callout" className="tabular">
+        {`${focused.day} · ${what}`}
+      </Text>
+    );
+  }
   if (latest === null) return null;
   return (
     <Text variant="callout" tone="variant" className="tabular">
@@ -158,24 +274,93 @@ function LatestLine({ latest }: { readonly latest: HistoryEntry | null }): React
   );
 }
 
+function Legend({ model }: { readonly model: ItemHistoryModel }): ReactNode {
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
+      {STATUSES.map((status) => (
+        <View key={status} className="flex-row items-center gap-1.5">
+          <View className={cn('size-2.5 rounded-xs', CELL[status])} />
+          <Text variant="caption" tone="variant" className="tabular">
+            {`${LEGEND[status]} ${String(countOf(model, status))}`}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function Strip({
+  model,
+  focused,
+  onFocus,
+}: {
+  readonly model: ItemHistoryModel;
+  readonly focused: string | null;
+  readonly onFocus: (key: string | null) => void;
+}): ReactNode {
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={historySpokenOf(model)}
+      onPointerLeave={() => {
+        onFocus(null);
+      }}
+      className="flex-row gap-0.5"
+    >
+      {model.entries.map((entry) => (
+        <View
+          key={entry.key}
+          onPointerEnter={() => {
+            onFocus(entry.key);
+          }}
+          onPointerDown={() => {
+            onFocus(entry.key);
+          }}
+          className="h-8 min-w-1.5 max-w-4 flex-1 justify-center"
+        >
+          <View
+            className={cn(
+              'h-6 rounded-xs',
+              CELL[entry.status],
+              focused === entry.key && 'h-8 outline-2 outline-focus',
+            )}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const CELL_SPAN = 18;
+
 export function ItemHistory({ model }: { readonly model: ItemHistoryModel }): ReactNode {
-  if (model.entries.length === 0) return null;
+  const [focused, setFocused] = useState<string | null>(null);
+  const first = model.entries[0];
+  const last = model.entries[model.entries.length - 1];
+  if (first === undefined || last === undefined) return null;
   return (
     <Section
       title="History"
       caption={`${String(model.done)} of ${String(model.entries.length)} done`}
     >
       <View className="gap-2 px-4">
-        <View
-          accessible
-          accessibilityLabel={historySpokenOf(model)}
-          className="flex-row flex-wrap gap-1"
-        >
-          {model.entries.map((entry) => (
-            <View key={entry.key} className={cn('h-6 w-2.5 rounded-xs', CELL[entry.status])} />
-          ))}
+        <View className="w-full gap-1" style={{ maxWidth: model.entries.length * CELL_SPAN }}>
+          <Strip model={model} focused={focused} onFocus={setFocused} />
+          <View className="flex-row justify-between gap-4">
+            <Text variant="caption" tone="faint" className="tabular">
+              {shortDate(first.at)}
+            </Text>
+            <Text variant="caption" tone="faint" className="tabular">
+              {shortDate(last.at)}
+            </Text>
+          </View>
         </View>
-        <LatestLine latest={model.latest} />
+        <Legend model={model} />
+        <ReadoutLine
+          latest={model.latest}
+          focused={model.entries.find((entry) => entry.key === focused) ?? null}
+        />
       </View>
     </Section>
   );

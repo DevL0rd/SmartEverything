@@ -133,7 +133,8 @@ function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNod
 }
 
 export function Gauge(props: GaugeProps): ReactNode {
-  const { size, label, thickness = Math.round(size / 12), children } = props;
+  const { size, label, children } = props;
+  const thickness = props.thickness ?? Math.round(size / 12);
   const box = { width: size, height: size };
   return (
     <View

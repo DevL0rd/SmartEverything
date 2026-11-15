@@ -22,6 +22,7 @@ import {
   type DriveTransferAnswer,
   type DriveTransferOffer,
   type DriveZipEntryLink,
+  type DriveMountSet,
   type DrivePlacementSet,
   type DriveConflictResolve,
   type DriveQuery,
@@ -55,6 +56,10 @@ export function scanDriveRoot(rootId: string): Call<'scanRoot'> {
 
 export function setDrivePlacement(body: DrivePlacementSet): Call<'setPlacement'> {
   return api().call(E.setPlacement, { body });
+}
+
+export function setComputerMount(body: DriveMountSet): Call<'setComputerMount'> {
+  return api().call(E.setComputerMount, { body });
 }
 
 export function removeDrivePlacement(placementId: string): Call<'removePlacement'> {
@@ -172,6 +177,12 @@ export function listDriveItemActivity(
 
 export function restoreDriveVersion(itemId: string, versionId: string): Call<'restoreVersion'> {
   return api().call(E.restoreVersion, { params: { itemId, versionId } });
+}
+
+export async function driveVersionFileUrl(itemId: string, versionId: string): Promise<string> {
+  const client = api().forMedia();
+  const link = await client.call(E.versionLink, { params: { itemId, versionId } });
+  return client.resourceUrl(link.url, link.expiresAt, 'attachment');
 }
 
 export function listDriveShares(itemId: string | null, cursor: string | null): Call<'listShares'> {

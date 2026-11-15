@@ -8,49 +8,22 @@ import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { notify } from '../../../components/toast-store';
-import { percent } from '../../../format/number';
-import { joinParts } from '../../../format/text';
-import { relative } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { bytes } from '../../../format/number';
 import { useMutationState } from '../../../store/mutation';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { useDriveHealth, useDriveStats } from '../data';
-import { DriveFrame, storageSummaryOf } from '../components/drive-frame';
-import { damagedText } from './scrub-progress';
-import { StorageColumns } from './storage-columns';
+import { DriveFrame } from '../components/drive-frame';
+import { StorageColumns, storageTwoColumnsAt } from './storage-columns';
 
 type Scrub = DriveHealth['scrub'];
 
 const NO_ACTIONS: readonly ShellAction[] = [];
 
-function checkedShare(checked: number, total: number): string {
-  return percent(total === 0 ? 0 : checked / total);
-}
-
-export function scrubTextOf(scrub: Scrub, now: number): string {
-  if (scrub.state === 'running') {
-    return `Scrubbing · ${checkedShare(scrub.checked, scrub.total)} checked`;
-  }
-  if (scrub.state === 'stopped') {
-    return `Scrub stopped at ${checkedShare(scrub.checked, scrub.total)}`;
-  }
-  if (scrub.lastFinishedAt === null) return 'Never scrubbed';
-  return `Last scrub ${relative(scrub.lastFinishedAt, now)}, ${damagedText(scrub.corrupt)}`;
-}
-
-export function storageSubtitleOf(
-  stats: DriveStats | undefined,
-  scrub: Scrub | undefined,
-  now: number,
-): string | undefined {
+export function storageSubtitleOf(stats: DriveStats | undefined): string | undefined {
   if (stats === undefined || stats.items === 0) return undefined;
-  const summary = storageSummaryOf(stats);
-  return joinParts([
-    summary.used,
-    summary.caption,
-    scrub === undefined ? null : scrubTextOf(scrub, now),
-  ]);
+  return `${bytes(stats.bytes)} in your drives · ${bytes(stats.space.freeBytes)} free`;
 }
 
 export function scrubActionsOf(
@@ -62,10 +35,7 @@ export function scrubActionsOf(
   return [{ icon: 'shield', label: 'Scrub now', onPress: start }];
 }
 
-function useScrubActions(owner: boolean): {
-  readonly actions: readonly ShellAction[];
-  readonly scrub: Scrub | undefined;
-} {
+function useScrubActions(owner: boolean): readonly ShellAction[] {
   const health = useDriveHealth();
   const mutation = useMutationState();
   const scrub = health.data?.scrub;
@@ -79,15 +49,50 @@ function useScrubActions(owner: boolean): {
       },
     });
   };
-  return { actions: mutation.busy ? NO_ACTIONS : scrubActionsOf(owner, scrub, start), scrub };
+  return mutation.busy ? NO_ACTIONS : scrubActionsOf(owner, scrub, start);
+}
+
+const MAIN_COLUMN = { flexGrow: 3, flexBasis: 0 } as const;
+const SIDE_COLUMN = { flexGrow: 2, flexBasis: 0 } as const;
+
+function MainTiles(): ReactNode {
+  return (
+    <>
+      <Skeleton shape="tile" className="h-64" />
+      <Skeleton shape="tile" className="h-60" />
+      <Skeleton shape="tile" className="h-48" />
+    </>
+  );
+}
+
+function SideTiles(): ReactNode {
+  return (
+    <>
+      <Skeleton shape="tile" className="h-88" />
+      <Skeleton shape="tile" className="h-60" />
+    </>
+  );
 }
 
 export function StorageSkeleton(): ReactNode {
+  const wide = storageTwoColumnsAt(useFrameBodyWidth());
+  if (!wide) {
+    return (
+      <View aria-busy className="gap-4">
+        <Skeleton shape="tile" className="h-64" />
+        <Skeleton shape="tile" className="h-88" />
+        <Skeleton shape="tile" className="h-60" />
+      </View>
+    );
+  }
   return (
-    <View aria-busy className="gap-4">
-      <Skeleton shape="tile" className="h-44" />
-      <Skeleton shape="tile" className="h-40" />
-      <Skeleton shape="tile" className="h-32" />
+    <View aria-busy className="flex-row items-start gap-4">
+      <View style={MAIN_COLUMN} className="min-w-0 gap-4">
+        <MainTiles />
+      </View>
+      <View style={SIDE_COLUMN} className="min-w-0 gap-4">
+        <SideTiles />
+      </View>
     </View>
   );
 }
@@ -141,11 +146,10 @@ function StorageBody({ query, owner, live }: BodyProps): ReactNode {
 export function StorageScreen(): ReactNode {
   const owner = useIsOwner();
   const live = useSyncStatus().status === 'live';
-  const now = useMinute();
   const query = useDriveStats();
-  const { actions, scrub } = useScrubActions(owner);
+  const actions = useScrubActions(owner);
   const stale = query.data !== undefined && (query.isError || !live);
-  const subtitle = storageSubtitleOf(query.data, scrub, now);
+  const subtitle = storageSubtitleOf(query.data);
   return (
     <DriveFrame
       section="storage"

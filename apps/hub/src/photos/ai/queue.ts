@@ -6,6 +6,7 @@ import type {
   DriveMediaJobKind,
   DriveMediaJobRequest,
 } from '../../store/repositories/drive-media-jobs';
+import { inList } from '../../store/sql';
 import type { JobHandler } from '../pipeline/jobs';
 
 export type PhotoAiKind = 'faces' | 'vision' | 'embed' | 'pet_embed';
@@ -42,13 +43,17 @@ class StageTally {
     this.publish();
   }
 
-  finish(jobId: string): boolean {
-    if (!this.pending.delete(jobId)) return false;
+  finish(jobId: string): void {
+    if (!this.pending.delete(jobId)) return;
     this.finished += 1;
     this.publish();
-    if (this.pending.size > 0) return false;
+  }
+
+  reset(): void {
+    const stale = this.pending.size > 0;
+    this.pending.clear();
+    if (stale) this.publish();
     this.finished = 0;
-    return true;
   }
 
   private publish(): void {
@@ -101,8 +106,12 @@ export class PhotoAiQueue {
 
   finished(job: DriveMediaJob): void {
     const kind = kindOf(job.kind);
-    if (!this.tally(kind).finish(job.id)) return;
-    for (const listener of this.drainListeners) listener(STAGE_OF[kind]);
+    const stage = STAGE_OF[kind];
+    const tally = this.tally(kind);
+    tally.finish(job.id);
+    if (this.busy(stage)) return;
+    tally.reset();
+    for (const listener of this.drainListeners) listener(stage);
   }
 
   tracked(handler: JobHandler): JobHandler {
@@ -110,16 +119,28 @@ export class PhotoAiQueue {
       resource: handler.resource,
       run: async (job, signal): Promise<void> => {
         this.started(job);
-        try {
-          await handler.run(job, signal);
-        } finally {
-          this.finished(job);
-        }
+        await handler.run(job, signal);
       },
       fail: (job, cause): void => {
         handler.fail(job, cause);
       },
+      settled: (job): void => {
+        this.finished(job);
+      },
     };
+  }
+
+  private busy(stage: PhotoAiStage): boolean {
+    const kinds = PHOTO_AI_KINDS.filter((kind) => STAGE_OF[kind] === stage);
+    const filter = inList('kind', 'kinds', kinds);
+    return (
+      this.context.sql.get(
+        PRESENT,
+        `select 1 as found from drive_media_jobs
+          where state in ('queued', 'running') and ${filter.text} limit 1`,
+        filter.parameters,
+      ) !== undefined
+    );
   }
 
   private exists(kind: PhotoAiKind, itemId: string, rev: number): boolean {

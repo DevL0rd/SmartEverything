@@ -82,6 +82,10 @@ export const PHOTO_AI_MODELS_UPDATE = z
 
 export type PhotoAiModelsUpdate = z.infer<typeof PHOTO_AI_MODELS_UPDATE>;
 
+export const PHOTO_AI_PEOPLE = z.strictObject({ faces: COUNT, grouped: COUNT }).readonly();
+
+export type PhotoAiPeople = z.infer<typeof PHOTO_AI_PEOPLE>;
+
 export const PHOTO_AI_STATUS = z
   .strictObject({
     smartSearch: z.boolean(),
@@ -91,6 +95,7 @@ export const PHOTO_AI_STATUS = z
     faces: PHOTO_AI_STAGE_PROGRESS,
     tags: PHOTO_AI_STAGE_PROGRESS,
     index: PHOTO_AI_STAGE_PROGRESS,
+    people: PHOTO_AI_PEOPLE,
     spentMicros: COUNT,
     estimateMicros: COUNT,
     models: PHOTO_AI_MODELS,
@@ -173,3 +178,10 @@ export const PHOTOS_AI_NOTICE = z
   });
 
 export type PhotosAiNotice = z.infer<typeof PHOTOS_AI_NOTICE>;
+
+export const PHOTOS_PEOPLE_NOTICE = z.strictObject({
+  type: z.literal('photos_people_changed'),
+  profileId: ID,
+});
+
+export type PhotosPeopleNotice = z.infer<typeof PHOTOS_PEOPLE_NOTICE>;

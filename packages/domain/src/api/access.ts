@@ -55,7 +55,11 @@ export const PAIRING_QR = z.strictObject({
 
 export type PairingQr = z.infer<typeof PAIRING_QR>;
 
-export const LIVE_PROTOCOL = 'smarteverything.live.v1';
+export const LIVE_PROTOCOL_PREFIX = 'smarteverything.live.';
+
+export const LIVE_PROTOCOL = `${LIVE_PROTOCOL_PREFIX}v1`;
+
+export const LIVE_PROTOCOL_MISMATCH = { code: 4003, reason: 'protocol_mismatch' } as const;
 
 export const BEARER_PROTOCOL_PREFIX = 'bearer.';
 
@@ -106,6 +110,7 @@ export const MEDIA_PATHS = {
   driveThumb: '/media/drive/:itemId/thumb/:size',
   driveFile: '/media/drive/:itemId/file',
   driveZipEntry: '/media/drive/:itemId/zip/:index',
+  driveVersion: '/media/drive/:itemId/versions/:versionId',
   driveFolderIcon: '/media/drive/:itemId/icon',
   driveShare: '/s/:token',
   driveFileRequest: '/r/:token',

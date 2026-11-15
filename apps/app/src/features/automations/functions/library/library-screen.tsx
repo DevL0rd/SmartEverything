@@ -156,7 +156,7 @@ export function LibraryScreen({
   const empty = libraryEmpty(rows, sections, filter);
   return (
     <View className="gap-section-gap">
-      <View className="w-full max-w-reading gap-section-gap">
+      <View className="w-full gap-section-gap">
         <Heading onCreate={onCreate} />
         <Filters filter={filter} categories={categoriesOf(rows)} onChange={onFilter} />
         {empty === 'none-yet' || empty === 'no-match' ? (
@@ -166,7 +166,7 @@ export function LibraryScreen({
       </View>
       <View className="flex-row flex-wrap gap-section-gap">
         {sections.map((section) => (
-          <View key={section.id} className="min-w-0 max-w-reading grow shrink basis-96">
+          <View key={section.id} className="min-w-0 grow shrink basis-96">
             <Rows rows={section.rows} title={section.title} onOpen={onOpen} />
           </View>
         ))}

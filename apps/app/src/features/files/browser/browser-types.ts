@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import type { TextInput } from 'react-native';
 import type { AppHref } from '../../../components/app-href';
-import type { HeaderAction } from '../../../components/page-header';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import type { PrimaryActionProps } from '../../../components/primary-action';
 import type { FileAbilities } from '../source/abilities';
 import type { FileOp } from '../source/ops';
@@ -31,9 +31,16 @@ export interface FileBrowserHost<O> {
   readonly byName?: ByName;
   readonly start?: BrowserStart;
   readonly offlineLine?: string | null;
+  readonly offlineEmptyLine?: string;
   readonly refusedLine?: string;
+  readonly refusedAction?: BrowserLinkAction;
   readonly compact?: boolean;
   readonly placesInFrame?: boolean;
+}
+
+export interface BrowserLinkAction {
+  readonly label: string;
+  readonly href: AppHref;
 }
 
 export type BrowserPending<O> =
@@ -61,7 +68,7 @@ export interface BrowserSearchSlot {
 export interface BrowserHeader {
   readonly title: string;
   readonly subtitle?: string;
-  readonly actions: readonly HeaderAction[];
+  readonly actions: readonly ShellAction[];
   readonly primary?: PrimaryActionProps;
   readonly search: BrowserSearchSlot | null;
 }

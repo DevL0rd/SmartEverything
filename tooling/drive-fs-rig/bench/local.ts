@@ -1,7 +1,9 @@
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { env } from 'node:process';
+import { isMissing } from '../errors.ts';
 import { down } from '../lifecycle.ts';
+import { files } from '../paths.ts';
 import { run } from '../processes.ts';
 import { ensureFixtures } from './fixtures.ts';
 import { buildHelper } from './helper.ts';
@@ -93,16 +95,25 @@ async function runTurns(session: Session, targets: Map<string, Probed>): Promise
   const turns = schedule([...targets.keys()], config.runs);
   const lasts = new Map<string, number>();
   for (const item of turns) lasts.set(item.kind, item.run);
-  for (const { run: index, kind } of turns) {
+  for (const { run, kind } of turns) {
+    const index = run + config.firstRun - 1;
     const target = targets.get(kind);
     if (target === undefined) continue;
     try {
       if (!kind.startsWith('se'))
         await rm(join(serveFolder, BENCH_FOLDER), { recursive: true, force: true });
-      await turn({ session, target, index, phases, last: lasts.get(kind) === index });
+      await turn({ session, target, index, phases, last: lasts.get(kind) === run });
     } catch (cause) {
       await recordTurnFailure(session, kind, index, cause);
     }
+  }
+}
+
+async function keepHubLog(destination: string): Promise<void> {
+  try {
+    await copyFile(join(files.data, 'system', 'logs', 'service.log'), destination);
+  } catch (cause) {
+    if (!isMissing(cause)) throw cause;
   }
 }
 
@@ -128,6 +139,7 @@ export async function runLocal(config: LocalConfig): Promise<string> {
     for (const target of targets.values()) await target.setup();
     await runTurns(session, targets);
   } finally {
+    await keepHubLog(`${prefix}.service.log`);
     if (env['DRIVE_BENCH_KEEP'] === undefined) await cleanLocal();
   }
   return session.results;

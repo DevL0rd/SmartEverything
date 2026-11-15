@@ -28,9 +28,9 @@ import {
   imageModesFor,
   swipeCaption,
   zoomPercent,
+  type CompareNames,
   type ImageMode,
 } from './diff-model';
-import { PickKey } from './version-timeline';
 import type { PickSlot, VersionEntry } from './versions-model';
 
 const log = new Logger('app.drive');
@@ -42,23 +42,26 @@ export interface ImageCompareProps {
   readonly a: VersionEntry;
   readonly b: VersionEntry;
   readonly urls: { readonly a: string; readonly b: string };
+  readonly names: CompareNames;
 }
 
 function Picture({
   item,
   entry,
   slot,
+  name,
   url,
   zoom,
 }: {
   readonly item: DriveItem;
   readonly entry: VersionEntry;
   readonly slot: PickSlot;
+  readonly name: string;
   readonly url: string;
   readonly zoom: ZoomState;
 }): ReactNode {
   return (
-    <Zoomable state={zoom} className="size-full overflow-hidden">
+    <Zoomable wheel="wheel" state={zoom} className="size-full overflow-hidden">
       <Image
         source={{ uri: url }}
         contentFit="contain"
@@ -68,7 +71,7 @@ function Picture({
           log.warn('version_compare.image_failed', { slot, reason: event.error });
         }}
         style={StyleSheet.absoluteFill}
-        accessibilityLabel={`${item.name}, version ${slot === 'a' ? 'A' : 'B'}`}
+        accessibilityLabel={`${item.name}, ${name}`}
       />
     </Zoomable>
   );
@@ -76,15 +79,33 @@ function Picture({
 
 function Key({
   slot,
+  name,
   className,
 }: {
   readonly slot: PickSlot;
+  readonly name: string;
   readonly className: string;
 }): ReactNode {
   const pointer = useIdiom() === 'pointer';
   return (
-    <View pointerEvents="none" className={cn('absolute top-2.5 rounded-xs bg-chrome', className)}>
-      <PickKey slot={slot} pointer={pointer} />
+    <View
+      aria-hidden
+      pointerEvents="none"
+      className={cn(
+        'absolute top-2.5 items-center justify-center rounded-xs bg-chrome px-1.5',
+        pointer ? 'h-6 min-w-6' : 'h-7 min-w-7',
+        className,
+      )}
+    >
+      <View
+        className={cn(
+          'absolute inset-0 rounded-xs',
+          slot === 'a' ? 'bg-primary' : 'border border-primary',
+        )}
+      />
+      <Text variant="label" tone={slot === 'a' ? 'onPrimary' : 'primary'} numberOfLines={1}>
+        {name}
+      </Text>
     </View>
   );
 }
@@ -96,16 +117,16 @@ function SideBySide({
   readonly parts: ImageCompareProps;
   readonly zoom: ZoomState;
 }): ReactNode {
-  const { item, a, b, urls } = parts;
+  const { item, a, b, urls, names } = parts;
   return (
     <View className="min-h-0 flex-1 flex-row gap-3">
       <View className="min-w-0 flex-1 overflow-hidden rounded-md border-2 border-primary bg-surface-2">
-        <Picture item={item} entry={a} slot="a" url={urls.a} zoom={zoom} />
-        <Key slot="a" className="left-2.5" />
+        <Picture item={item} entry={a} slot="a" name={names.a} url={urls.a} zoom={zoom} />
+        <Key slot="a" name={names.a} className="left-2.5" />
       </View>
       <View className="min-w-0 flex-1 overflow-hidden rounded-md border border-primary bg-surface-2">
-        <Picture item={item} entry={b} slot="b" url={urls.b} zoom={zoom} />
-        <Key slot="b" className="left-2.5" />
+        <Picture item={item} entry={b} slot="b" name={names.b} url={urls.b} zoom={zoom} />
+        <Key slot="b" name={names.b} className="left-2.5" />
       </View>
     </View>
   );
@@ -130,7 +151,12 @@ function useSwipe(): {
   return { split, width, drag };
 }
 
-function SwipeHandle({ split, width, drag }: ReturnType<typeof useSwipe>): ReactNode {
+function SwipeHandle({
+  split,
+  width,
+  drag,
+  names,
+}: ReturnType<typeof useSwipe> & { readonly names: CompareNames }): ReactNode {
   const placed = useAnimatedStyle(() => ({ left: split.get() * width.get() - HANDLE_HALF_PX }));
   const nudge = (step: number): void => {
     split.set(clampSplit(split.get() + step));
@@ -141,7 +167,7 @@ function SwipeHandle({ split, width, drag }: ReturnType<typeof useSwipe>): React
         style={placed}
         accessible
         accessibilityRole="adjustable"
-        accessibilityLabel="Move between A and B"
+        accessibilityLabel={`Move between ${names.a} and ${names.b}`}
         accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
         onAccessibilityAction={(event) => {
           nudge(event.nativeEvent.actionName === 'increment' ? SWIPE_STEP : -SWIPE_STEP);
@@ -164,7 +190,7 @@ function Swipe({
   readonly parts: ImageCompareProps;
   readonly zoom: ZoomState;
 }): ReactNode {
-  const { item, a, b, urls } = parts;
+  const { item, a, b, urls, names } = parts;
   const swipe = useSwipe();
   const full = useAnimatedStyle(() => ({ width: swipe.width.get() }));
   const clipped = useAnimatedStyle(() => ({ width: (1 - swipe.split.get()) * swipe.width.get() }));
@@ -175,19 +201,19 @@ function Swipe({
       }}
       className="min-h-0 flex-1 overflow-hidden rounded-md bg-surface-2"
     >
-      <Picture item={item} entry={a} slot="a" url={urls.a} zoom={zoom} />
+      <Picture item={item} entry={a} slot="a" name={names.a} url={urls.a} zoom={zoom} />
       <Animated.View
         pointerEvents="none"
         style={clipped}
         className="absolute inset-y-0 right-0 overflow-hidden"
       >
         <Animated.View style={full} className="absolute inset-y-0 right-0">
-          <Picture item={item} entry={b} slot="b" url={urls.b} zoom={zoom} />
+          <Picture item={item} entry={b} slot="b" name={names.b} url={urls.b} zoom={zoom} />
         </Animated.View>
       </Animated.View>
-      <SwipeHandle {...swipe} />
-      <Key slot="a" className="left-2.5" />
-      <Key slot="b" className="right-2.5" />
+      <SwipeHandle {...swipe} names={names} />
+      <Key slot="a" name={names.a} className="left-2.5" />
+      <Key slot="b" name={names.b} className="right-2.5" />
     </View>
   );
 }
@@ -238,7 +264,9 @@ export function ImageCompare(props: ImageCompareProps): ReactNode {
   const zoom = useZoomState();
   return (
     <View className={pointer ? 'min-h-0 flex-1 gap-3' : 'gap-3'}>
-      <View className="flex-row flex-wrap items-center justify-between gap-2">
+      <View
+        className={pointer ? 'flex-row flex-wrap items-center justify-between gap-2' : 'w-full'}
+      >
         <Segmented
           label="Compare"
           options={modes.map((value) => ({ value, label: IMAGE_MODE_LABEL[value] }))}
@@ -257,7 +285,7 @@ export function ImageCompare(props: ImageCompareProps): ReactNode {
         )}
       </View>
       <Text variant="footnote" tone="variant">
-        {swipeCaption(mode)}
+        {swipeCaption(mode, props.names)}
       </Text>
     </View>
   );

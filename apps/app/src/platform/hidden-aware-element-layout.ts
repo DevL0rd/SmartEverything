@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { useScreenPaused } from '../design/screen-pause';
-import { LayoutSettle } from './layout-settle';
+import { LayoutSettle, type SettleHost } from './layout-settle';
 
 interface Layout {
   readonly x: number;
@@ -96,11 +96,15 @@ function deliver(node: Element, first: boolean): boolean {
   return true;
 }
 
-const settler = new LayoutSettle<Element>({
+export const layoutSettleHost: SettleHost<Element> = {
   deliver: (node): boolean => deliver(node, false),
   flush: (run): boolean => flushSync(run),
-  queue: queueMicrotask,
-});
+  queue: (task): void => {
+    queueMicrotask(task);
+  },
+};
+
+const settler = new LayoutSettle<Element>(layoutSettleHost);
 
 const observer =
   typeof ResizeObserver === 'function'

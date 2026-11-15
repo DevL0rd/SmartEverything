@@ -11,6 +11,7 @@ export interface PhotoBackupRoutes {
   readonly lookupPhotoBackupHashes: Bound<typeof E.lookupPhotoBackupHashes>;
   readonly checkBackupHashes: Bound<typeof E.checkBackupHashes>;
   readonly readBackupState: Bound<typeof E.readBackupState>;
+  readonly readPhotoOrigins: Bound<typeof E.readPhotoOrigins>;
   readonly resolvePhotoUploadTarget: Bound<typeof E.resolvePhotoUploadTarget>;
 }
 
@@ -54,6 +55,9 @@ export function photoBackupRoutes(store: Store, service: BackupService): PhotoBa
       service.checkHashes(deviceOf(caller, body.deviceId), body),
     ),
     readBackupState: bound(E.readBackupState, ({ caller }) => service.state(profileOf(caller))),
+    readPhotoOrigins: bound(E.readPhotoOrigins, ({ body, caller }) =>
+      service.origins(deviceOf(caller, body.deviceId), body),
+    ),
     resolvePhotoUploadTarget: bound(E.resolvePhotoUploadTarget, ({ body, caller }) =>
       body.kind === 'backup'
         ? service.backupTarget(deviceOf(caller, body.deviceId), body.deviceId)

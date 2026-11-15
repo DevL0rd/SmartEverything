@@ -24,7 +24,8 @@ import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useDeviceModel, type DeviceModel } from '../model/device-model';
 import { DeviceBanners, useDeviceShell } from './device-shell';
-import { Hero, PrimaryCard } from './device-overview';
+import { Hero, PrimaryCard, useOverviewLeadShown } from './device-overview';
+import { useDisplayName } from '../model/display-name';
 import { sectionsOf, useHasOverviewDetails, OverviewDetails, type DeviceSection } from './sections';
 import { MissingDevice } from './missing-device';
 import { LaundryPage } from '../laundry/page';
@@ -58,13 +59,33 @@ function Lead({ device }: { readonly device: Device }): ReactNode {
   );
 }
 
+function NothingToShow({ device }: { readonly device: Device }): ReactNode {
+  const name = useDisplayName(device.id);
+  return (
+    <EmptyState
+      icon="info"
+      title="Nothing to show yet"
+      body={`${name} has not reported a reading or a control this page can show. Its history is under Activity.`}
+    />
+  );
+}
+
+function useLeadShown({ device, family }: DeviceModel): boolean {
+  const shown = useOverviewLeadShown(device);
+  return shown || FAMILY_PAGES[family]?.lead !== undefined;
+}
+
 function OverviewBody({ model }: { readonly model: DeviceModel }): ReactNode {
   const { device, family } = model;
   const details = useHasOverviewDetails(device);
+  const lead = useLeadShown(model);
   const bodyWidth = useFrameBodyWidth();
   const columns =
     details && FAMILY_PAGES[family]?.singleColumn !== true && twoFrameColumnsAt(bodyWidth);
   const side = cn('gap-section-gap', columns && 'min-w-0 flex-1');
+  if (!lead && !details) {
+    return <NothingToShow device={device} />;
+  }
   return (
     <View className={cn('gap-section-gap', columns && 'flex-row items-start')}>
       <View className={side}>
@@ -137,7 +158,6 @@ function GenericPage({
     <PageShell
       {...shell.props}
       {...shellSearchOf(shown, search)}
-      width="detail"
       scroll={shown?.scrolls !== true}
       banner={<DeviceBanners device={device} schedule={shell.schedule} />}
     >

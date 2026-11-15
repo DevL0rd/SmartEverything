@@ -570,3 +570,173 @@ func TestNewClientValidatesItsInput(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestControlRequestsOvertakeQueuedBulkFrames(t *testing.T) {
+	hub := newFakeHub(t)
+	gates := &gateDialer{inner: WebsocketDialer{}}
+	client := startClient(t, hub.route(), &recordingHandler{}, func(c *Config) { c.Dialer = gates })
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	waitConnected(t, client)
+	gate := gates.arm()
+	out := client.liveSender()
+	const writes = 64
+	payload := make([]byte, 1024)
+	var writeResults []<-chan callResult
+	writeResults = append(writeResults, callAsync(within(t), client, OpWrite, Meta{KeyCommit: uint64(1), KeyOffset: uint64(0)}, payload))
+	gate.waitBlocked(t)
+	for i := 1; i < writes; i++ {
+		writeResults = append(writeResults, callAsync(within(t), client, OpWrite, Meta{KeyCommit: uint64(1), KeyOffset: uint64(i)}, payload))
+	}
+	waitQueued(t, out, writes-1, 0)
+	lookup := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "a"}, nil)
+	waitQueued(t, out, writes-1, 1)
+	gate.release()
+	head, _ := conn.read(t)
+	if head.Op != OpWrite {
+		t.Fatalf("the frame already being written finishes first, got %s", head.Op.Name())
+	}
+	conn.reply(t, head, Meta{}, nil)
+	second, _ := conn.read(t)
+	if second.Op != OpLookup {
+		t.Fatalf("the frame after the one in flight is %s, want the LOOKUP ahead of %d queued WRITEs", second.Op.Name(), writes-1)
+	}
+	conn.reply(t, second, Meta{KeyIno: uint64(2)}, nil)
+	if r := await(t, lookup); r.err != nil {
+		t.Fatal(r.err)
+	}
+	seen := map[uint64]bool{}
+	for i := 1; i < writes; i++ {
+		req, meta := conn.read(t)
+		if req.Op != OpWrite {
+			t.Fatalf("frame %d is %s, want a queued WRITE", i, req.Op.Name())
+		}
+		seen[meta[KeyOffset].(uint64)] = true
+		conn.reply(t, req, Meta{}, nil)
+	}
+	if len(seen) != writes-1 {
+		t.Fatalf("%d distinct WRITEs arrived, want %d", len(seen), writes-1)
+	}
+	for _, ch := range writeResults {
+		if r := await(t, ch); r.err != nil {
+			t.Fatal(r.err)
+		}
+	}
+}
+
+func TestCancelledQueuedBulkFrameIsDroppedWithoutACancelFrame(t *testing.T) {
+	hub := newFakeHub(t)
+	gates := &gateDialer{inner: WebsocketDialer{}}
+	client := startClient(t, hub.route(), &recordingHandler{}, func(c *Config) { c.Dialer = gates })
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	waitConnected(t, client)
+	gate := gates.arm()
+	out := client.liveSender()
+	head := callAsync(within(t), client, OpWrite, Meta{KeyCommit: uint64(1), KeyOffset: uint64(0)}, []byte("h"))
+	gate.waitBlocked(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	dropped := callAsync(ctx, client, OpWrite, Meta{KeyCommit: uint64(1), KeyOffset: uint64(1)}, []byte("x"))
+	waitQueued(t, out, 1, 0)
+	cancel()
+	if r := await(t, dropped); !errors.Is(r.err, context.Canceled) {
+		t.Fatalf("err = %v", r.err)
+	}
+	waitQueued(t, out, 0, 0)
+	kept := callAsync(within(t), client, OpWrite, Meta{KeyCommit: uint64(1), KeyOffset: uint64(2)}, []byte("y"))
+	waitQueued(t, out, 1, 0)
+	gate.release()
+	first, _ := conn.read(t)
+	conn.reply(t, first, Meta{}, nil)
+	req, meta := conn.read(t)
+	if req.Op != OpWrite || meta[KeyOffset] != uint64(2) {
+		t.Fatalf("frame = %s %v, want the kept WRITE and no CANCEL", req.Op.Name(), meta)
+	}
+	conn.reply(t, req, Meta{}, nil)
+	await(t, head)
+	if r := await(t, kept); r.err != nil {
+		t.Fatal(r.err)
+	}
+}
+
+func TestMarkedBulkRequestsGoBehindControlFrames(t *testing.T) {
+	hub := newFakeHub(t)
+	gates := &gateDialer{inner: WebsocketDialer{}}
+	client := startClient(t, hub.route(), &recordingHandler{}, func(c *Config) { c.Dialer = gates })
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	waitConnected(t, client)
+	gate := gates.arm()
+	out := client.liveSender()
+	head := callAsync(within(t), client, OpGetattr, Meta{KeyIno: uint64(1)}, nil)
+	gate.waitBlocked(t)
+	prefetch := callAsync(WithBulk(within(t)), client, OpRead, Meta{KeyHandle: uint64(1), KeyOffset: uint64(0), KeyLength: uint64(4)}, nil)
+	waitQueued(t, out, 1, 0)
+	lookup := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "a"}, nil)
+	waitQueued(t, out, 1, 1)
+	gate.release()
+	first, _ := conn.read(t)
+	second, _ := conn.read(t)
+	third, _ := conn.read(t)
+	if first.Op != OpGetattr || second.Op != OpLookup || third.Op != OpRead {
+		t.Fatalf("order = %s %s %s, want GETATTR LOOKUP then the marked READ", first.Op.Name(), second.Op.Name(), third.Op.Name())
+	}
+	conn.reply(t, first, Meta{}, nil)
+	conn.reply(t, second, Meta{KeyIno: uint64(2)}, nil)
+	conn.reply(t, third, Meta{}, []byte("abcd"))
+	await(t, head)
+	await(t, lookup)
+	await(t, prefetch)
+}
+
+func TestLivenessChangesApplyToTheRunningSocket(t *testing.T) {
+	hub := newFakeHub(t)
+	dialer := &stallingDialer{inner: WebsocketDialer{}}
+	client := startClient(t, hub.route(), &recordingHandler{}, func(c *Config) {
+		c.Dialer = dialer
+		c.PingInterval = time.Hour
+		c.PongTimeout = 2 * time.Hour
+	})
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	go func() {
+		for {
+			if _, _, err := conn.tryRead(); err != nil {
+				return
+			}
+		}
+	}()
+	waitConnected(t, client)
+	dialer.mu.Lock()
+	first := dialer.conns[0]
+	dialer.mu.Unlock()
+	select {
+	case <-first.pings:
+		t.Fatal("an hour-long interval must not have pinged yet")
+	case <-time.After(50 * time.Millisecond):
+	}
+	if err := client.SetLiveness(10*time.Millisecond, 50*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-first.pings:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the new ping interval never applied to the running socket")
+	}
+	second := hub.accept(t)
+	hub.handshake(t, second)
+}
+
+func TestLivenessRefusesDeadAfterNotAbovePing(t *testing.T) {
+	hub := newFakeHub(t)
+	client := startClient(t, hub.route(), &recordingHandler{}, nil)
+	if err := client.SetLiveness(time.Second, time.Second); err == nil {
+		t.Fatal("dead-after equal to the ping interval must be refused")
+	}
+	if err := client.SetLiveness(0, time.Second); err == nil {
+		t.Fatal("a zero ping interval must be refused")
+	}
+	if _, err := NewClient(Config{Route: hub.route(), Handler: &recordingHandler{}, PingInterval: time.Second, PongTimeout: time.Second}); err == nil {
+		t.Fatal("NewClient must refuse dead-after not above the ping interval")
+	}
+}

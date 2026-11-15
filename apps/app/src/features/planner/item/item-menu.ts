@@ -3,11 +3,13 @@ import type { IconName } from '../../../components/icon';
 import { deleteChoicesOf, type DeleteChoice } from './item-delete';
 import type { NestTarget } from './steps-model';
 
+export type ItemOpenIntent = 'reschedule' | 'attach';
+
 export type ItemMenuAction =
   | { readonly kind: 'done'; readonly key: string }
   | { readonly kind: 'skip'; readonly key: string }
   | { readonly kind: 'ask' }
-  | { readonly kind: 'open'; readonly intent: 'edit' | 'attach' }
+  | { readonly kind: 'open'; readonly intent: ItemOpenIntent }
   | { readonly kind: 'google'; readonly url: string }
   | { readonly kind: 'indent'; readonly parentId: string }
   | { readonly kind: 'outdent' }
@@ -32,6 +34,7 @@ export interface ItemMenuInput {
   readonly item: PlannerItemRow;
   readonly occurrenceKey: string | null;
   readonly offline: boolean;
+  readonly timeZone: string;
   readonly nest?: NestTarget | null;
 }
 
@@ -64,23 +67,28 @@ function quickOf({ item, occurrenceKey, offline }: ItemMenuInput): readonly Item
   const key = occurrenceKeyFor(item, occurrenceKey);
   const blocked = offline || key === null || item.status !== 'open';
   const at = key ?? PLANNER_OCCURRENCE_SINGLE;
-  return [
-    {
-      id: 'done',
-      label: 'Done',
-      icon: 'check',
-      action: { kind: 'done', key: at },
-      disabled: blocked,
-    },
-    {
-      id: 'skip',
-      label: 'Skip',
-      icon: 'skipForward',
-      action: { kind: 'skip', key: at },
-      disabled: blocked,
-    },
-    { id: 'ask', label: 'Ask AI', icon: 'sparkles', action: { kind: 'ask' }, disabled: false },
-  ];
+  const done: ItemMenuEntry = {
+    id: 'done',
+    label: 'Done',
+    icon: 'check',
+    action: { kind: 'done', key: at },
+    disabled: blocked,
+  };
+  const skip: ItemMenuEntry = {
+    id: 'skip',
+    label: 'Skip',
+    icon: 'skipForward',
+    action: { kind: 'skip', key: at },
+    disabled: blocked,
+  };
+  const ask: ItemMenuEntry = {
+    id: 'ask',
+    label: 'Ask AI',
+    icon: 'sparkles',
+    action: { kind: 'ask' },
+    disabled: false,
+  };
+  return item.rrule === null ? [done, ask] : [done, skip, ask];
 }
 
 function googleEntry(item: PlannerItemRow): readonly ItemMenuEntry[] {
@@ -103,7 +111,7 @@ function nestEntries({ item, offline, nest }: ItemMenuInput): readonly ItemMenuE
       {
         id: 'outdent',
         label: 'Make it its own task',
-        icon: 'arrowLeft',
+        icon: 'listTree',
         action: { kind: 'outdent' },
         disabled: offline,
       },
@@ -121,8 +129,13 @@ function nestEntries({ item, offline, nest }: ItemMenuInput): readonly ItemMenuE
   ];
 }
 
-function deleteEntries({ item, occurrenceKey, offline }: ItemMenuInput): readonly ItemMenuEntry[] {
-  return deleteChoicesOf(item, occurrenceKey).map((choice, index) => ({
+function deleteEntries({
+  item,
+  occurrenceKey,
+  offline,
+  timeZone,
+}: ItemMenuInput): readonly ItemMenuEntry[] {
+  return deleteChoicesOf(item, occurrenceKey, timeZone).map((choice, index) => ({
     id: choice.id,
     label: choice.label,
     icon: 'trash',
@@ -142,7 +155,7 @@ export function itemMenuOf(input: ItemMenuInput): ItemMenuModel {
         id: 'reschedule',
         label: 'Reschedule',
         icon: 'calendar',
-        action: { kind: 'open', intent: 'edit' },
+        action: { kind: 'open', intent: 'reschedule' },
         disabled: offline,
         shortcut: 'R',
       },
@@ -153,13 +166,6 @@ export function itemMenuOf(input: ItemMenuInput): ItemMenuModel {
         action: { kind: 'open', intent: 'attach' },
         disabled: offline,
         shortcut: 'A',
-      },
-      {
-        id: 'repeat',
-        label: 'Repeat',
-        icon: 'repeat',
-        action: { kind: 'open', intent: 'edit' },
-        disabled: offline,
       },
       ...nestEntries(input),
       ...googleEntry(input.item),

@@ -170,7 +170,7 @@ describe('one map settings page', () => {
     render('map-a');
     expect(seen.some(({ kind }) => kind === 'ScrollView')).toBe(true);
     expect(
-      seen.filter(({ props }) => props['className'] === 'w-full max-w-reading gap-section-gap'),
+      seen.filter(({ props }) => props['className'] === 'w-full gap-section-gap'),
     ).toHaveLength(3);
     expect(seen.find(({ kind }) => kind === 'TextField')?.props).toMatchObject({
       label: 'Map name',
@@ -186,7 +186,7 @@ describe('one map settings page', () => {
     expect(form?.props['className']).toBe('w-full flex-row items-start gap-section-gap pb-6');
     expect(
       seen.filter(
-        ({ props }) => props['className'] === 'min-w-0 flex-1 max-w-reading gap-section-gap',
+        ({ props }) => props['className'] === 'min-w-0 flex-1 gap-section-gap',
       ),
     ).toHaveLength(3);
     expect(rowTitles()).toEqual([

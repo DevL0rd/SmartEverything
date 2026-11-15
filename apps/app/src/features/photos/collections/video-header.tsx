@@ -6,7 +6,7 @@ import { FlatChoice } from '../../../components/flat-choice';
 import { Skeleton } from '../../../components/skeleton';
 import { StatTile } from '../../../components/stat-tile';
 import { Text } from '../../../components/text';
-import { ChipRow } from '../../../components/library-frame';
+import { ChipRow } from '../../../components/chip-row';
 import {
   durationChipsOf,
   hoursBarsOf,
@@ -45,32 +45,23 @@ function HoursTile({ hours }: { readonly hours: HoursAdded }): ReactNode {
   );
 }
 
-function StatTiles({
-  insights,
-  compact,
-}: {
-  readonly insights: PhotoInsights;
-  readonly compact: boolean;
-}): ReactNode {
+function StatTiles({ insights }: { readonly insights: PhotoInsights }): ReactNode {
   const stats = videoStatsOf(insights);
   return (
     <>
-      {compact ? null : (
-        <View className="min-w-0 flex-1">
-          <StatTile label="Videos" value={stats.videos} caption={stats.size} compact={compact} />
-        </View>
-      )}
+      <View className="min-w-0 flex-1">
+        <StatTile label="Videos" value={stats.videos} caption={stats.size} />
+      </View>
       <View className="min-w-0 flex-1">
         <StatTile
           label="Total time"
           value={stats.totalTime}
-          compact={compact}
           {...(stats.watching === null ? {} : { caption: stats.watching })}
         />
       </View>
       {stats.longest === null ? null : (
         <View className="min-w-0 flex-1">
-          <StatTile label="Longest" value={stats.longest} compact={compact} />
+          <StatTile label="Longest" value={stats.longest} />
         </View>
       )}
     </>
@@ -91,7 +82,7 @@ export function VideoStatsRow({ insights, hours, compact }: VideoStatsProps): Re
     return (
       <View className="gap-2">
         <View className="flex-row gap-2">
-          <StatTiles insights={insights} compact />
+          <StatTiles insights={insights} />
         </View>
         {hours === null ? null : <HoursTile hours={hours} />}
       </View>
@@ -99,7 +90,7 @@ export function VideoStatsRow({ insights, hours, compact }: VideoStatsProps): Re
   }
   return (
     <View className="flex-row gap-3">
-      <StatTiles insights={insights} compact={false} />
+      <StatTiles insights={insights} />
       {hours === null ? null : (
         <View className="min-w-0 flex-2">
           <HoursTile hours={hours} />

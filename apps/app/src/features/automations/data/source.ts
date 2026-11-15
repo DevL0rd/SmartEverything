@@ -1,6 +1,7 @@
 import type { NodeKindLookup } from '@smarteverything/domain';
-import { use, useMemo, useSyncExternalStore } from 'react';
+import { use, useMemo } from 'react';
 import type { NodeKind } from '@smarteverything/domain';
+import { usePausable } from '../../../design/external-store';
 import type { EntityStore } from '../../../store/entity-store';
 import { rowsOf } from '../../../store/state';
 import { StoreContext } from '../../../store/store-runtime';
@@ -69,15 +70,21 @@ function storeKinds(store: EntityStore): KindSource {
   };
 }
 
+const HUB_SOURCES = new WeakMap<EntityStore, AutomationsSource>();
+
 export function hubSource(store: EntityStore): AutomationsSource {
+  const known = HUB_SOURCES.get(store);
+  if (known !== undefined) return known;
   const kindSource = storeKinds(store);
-  return {
+  const source: AutomationsSource = {
     api: hubApi,
     automations: storeRows(store, kindSource),
     kindSource,
     trace: automationTrace,
     runChanges: (listener) => store.subscribeSlices(['tables.automation_runs'], listener),
   };
+  HUB_SOURCES.set(store, source);
+  return source;
 }
 
 export function useAutomationsSource(): ResolvedAutomationsSource {
@@ -88,11 +95,7 @@ export function useAutomationsSource(): ResolvedAutomationsSource {
     if (runtime === null) throw new NoAutomationsSourceError();
     return hubSource(runtime.store);
   }, [injected, runtime]);
-  const lookup = useSyncExternalStore(
-    source.kindSource.subscribe,
-    source.kindSource.snapshot,
-    source.kindSource.snapshot,
-  );
+  const lookup = usePausable(source.kindSource.subscribe, source.kindSource.snapshot);
   return useMemo(
     () => ({
       api: source.api,

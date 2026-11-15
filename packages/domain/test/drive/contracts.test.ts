@@ -605,6 +605,9 @@ describe('DRIVE_SETTINGS', () => {
     indexingPaused: false,
     contentIndexing: true,
     ocrLanguages: ['eng'],
+    fileIoThreads: 8,
+    cpuWorkers: 4,
+    listingCacheSeconds: 300,
   };
 
   it('has no defaults, so a missing setting is refused', () => {

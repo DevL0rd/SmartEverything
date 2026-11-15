@@ -10,7 +10,7 @@ import { DRIVE_TRANSFER } from '../drive/transfer';
 import { PHOTOS_EDIT_JOB_NOTICE } from '../photos/edits';
 import { PHOTOS_FOLDERS_NOTICE } from '../photos/folders';
 import { PHOTOS_ACTIVITY_NOTICE, PHOTOS_PARTNER_NOTICE } from '../photos/sharing';
-import { PHOTOS_AI_NOTICE } from '../photos/smart';
+import { PHOTOS_AI_NOTICE, PHOTOS_PEOPLE_NOTICE } from '../photos/smart';
 import { DRIVE_COMMENTS_CHANGED_NOTICE, DRIVE_NOTIFICATION_NOTICE } from './endpoints-drive-social';
 import { DRIVE_CHANGED_NOTICE, DRIVE_PROGRESS_NOTICE } from './endpoints-drive-storage';
 import { PHOTOS_PROGRESS_NOTICE } from './endpoints-photos';
@@ -36,6 +36,7 @@ export const DRIVE_NOTICES = [
   PHOTOS_ACTIVITY_NOTICE,
   PHOTOS_PARTNER_NOTICE,
   PHOTOS_AI_NOTICE,
+  PHOTOS_PEOPLE_NOTICE,
   PHOTOS_FOLDERS_NOTICE,
   PHOTOS_EDIT_JOB_NOTICE,
 ] as const;

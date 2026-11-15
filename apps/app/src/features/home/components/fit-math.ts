@@ -2,6 +2,11 @@ export function columnsIn(width: number, minItem: number, gap: number, max: numb
   return Math.max(1, Math.min(max, Math.floor((width + gap) / (minItem + gap))));
 }
 
+export function peekCardWidth(width: number, minItem: number, gap: number, peek: number): number {
+  const whole = Math.max(1, Math.floor((width - peek * minItem) / (minItem + gap)));
+  return Math.floor((width - gap * whole) / (whole + peek));
+}
+
 export function chunk<T>(items: readonly T[], size: number): T[][] {
   const rows: T[][] = [];
   for (let index = 0; index < items.length; index += size) {

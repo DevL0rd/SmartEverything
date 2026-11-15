@@ -9,8 +9,9 @@ import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { useMutationState, type MutationState } from '../../../store/mutation';
 import { createAlbum, saveAlbum } from './album-data';
-import { visibilityOf } from './model';
-import { SmartRuleEditor } from './rule-editor';
+import { useWhoSees } from '../sharing/album-who';
+import { visibilityOf, type Visibility } from './model';
+import { FieldGroup, SmartRuleEditor } from './rule-editor';
 import { draftReady, withKind, type AlbumDraft } from './rule-draft';
 
 export interface AlbumSheetRequest {
@@ -33,27 +34,31 @@ export function sheetTitle(request: AlbumSheetRequest, kind: DriveAlbum['kind'])
   return kind === 'smart' ? 'New smart album' : 'New album';
 }
 
+function FixedWho({ who }: { readonly who: Visibility }): ReactNode {
+  return (
+    <View className="min-h-control-h flex-row items-center gap-1.5">
+      <Icon name={who.icon} size={16} tone="variant" />
+      <Text variant="callout">{who.label}</Text>
+    </View>
+  );
+}
+
+function AlbumWho({ album }: { readonly album: DriveAlbum }): ReactNode {
+  return <FixedWho who={useWhoSees(album)} />;
+}
+
 function WhoSees({
   draft,
-  fixed,
+  album,
   onDraft,
 }: {
   readonly draft: AlbumDraft;
-  readonly fixed: boolean;
+  readonly album: DriveAlbum | null;
   readonly onDraft: (draft: AlbumDraft) => void;
 }): ReactNode {
-  const who = visibilityOf(draft.scope);
   return (
-    <View className="gap-1">
-      <Text variant="footnote" tone="variant">
-        Who sees it
-      </Text>
-      {fixed ? (
-        <View className="flex-row items-center gap-1.5">
-          <Icon name={who.icon} size={16} tone="variant" />
-          <Text variant="callout">{who.label}</Text>
-        </View>
-      ) : (
+    <FieldGroup label="Who sees it">
+      {album === null ? (
         <Segmented
           options={SCOPES}
           value={draft.scope}
@@ -63,8 +68,10 @@ function WhoSees({
             onDraft({ ...draft, scope });
           }}
         />
+      ) : (
+        <AlbumWho album={album} />
       )}
-    </View>
+    </FieldGroup>
   );
 }
 
@@ -88,18 +95,20 @@ function SheetForm({
         }}
       />
       {request.album === null ? (
-        <Segmented
-          options={KINDS}
-          value={draft.kind}
-          label="How it fills"
-          size="control"
-          onChange={(kind) => {
-            onDraft(withKind(draft, kind));
-          }}
-        />
+        <FieldGroup label="How it fills">
+          <Segmented
+            options={KINDS}
+            value={draft.kind}
+            label="How it fills"
+            size="control"
+            onChange={(kind) => {
+              onDraft(withKind(draft, kind));
+            }}
+          />
+        </FieldGroup>
       ) : null}
       {draft.kind === 'smart' ? <SmartRuleEditor draft={draft} onDraft={onDraft} /> : null}
-      <WhoSees draft={draft} fixed={request.album !== null} onDraft={onDraft} />
+      <WhoSees draft={draft} album={request.album} onDraft={onDraft} />
     </View>
   );
 }
@@ -135,7 +144,7 @@ function SheetFooter({
   readonly onSave: () => void;
 }): ReactNode {
   return (
-    <View className="flex-row justify-end gap-2">
+    <View className="flex-1 flex-row justify-end gap-2">
       <Button label="Cancel" variant="text" onPress={onClose} />
       <Button
         label={opened.request.album === null ? 'Create album' : 'Save'}
@@ -173,7 +182,7 @@ export function AlbumSheet({
       onClose={onClose}
       title={opened === null ? 'Album' : sheetTitle(opened.request, opened.draft.kind)}
       kind="inspector"
-      detents={['full']}
+      detents={opened?.draft.kind === 'smart' ? ['full'] : ['half', 'full']}
       footer={
         opened === null ? null : (
           <SheetFooter

@@ -38,7 +38,7 @@ function SubPages(): ReactNode {
 
 export function ServerScreen(): ReactNode {
   return (
-    <SettingsFrame page="server" contentWidth="full">
+    <SettingsFrame page="server">
       <ServerPanels>
         <PublicUrlSection />
         <ThisDeviceSection />

@@ -4,45 +4,30 @@ import type {
   PlannerItemRow,
   PlannerOccurrenceView,
 } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
-import { useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useRef, type ComponentProps, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Arc } from '../../../components/charts/arc';
 import { Text } from '../../../components/text';
-import { notify } from '../../../components/toast-store';
 import { useAreaWidth } from '../../../design/size-class';
 import { plural } from '../../../format/text';
 import { clock, dayBoundsOf } from '../../../format/time';
 import { DeviceFace } from '../../devices';
-import {
-  usePlannerCollections,
-  usePlannerItems,
-  usePlannerTools,
-  usePlannerWrites,
-  useVisibleMinute,
-  type PlannerTools,
-  type PlannerWrites,
-} from '../data';
+import { usePlannerCollections, usePlannerItems, useVisibleMinute } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { MANUAL, ruleTitleOf, useRuleDevice, type RuleDevice } from '../item/completion-rule-row';
 import { MarkChip } from './happened-chip';
+import { occurrenceKeyOf } from './river-model';
+import { useTodayActions, type OccurrenceActions } from './today-actions';
 
 type FaceName = ComponentProps<typeof DeviceFace>['face'];
 
 const MINUTE_MS = 60_000;
-const ANY_LENGTH_MINUTES = 1;
 const RING = { size: 64, thickness: 5 } as const;
 const FACES: readonly FaceName[] = ['chip', 'row', 'row-expanded', 'tile', 'card', 'panel'];
-
-export interface OccurrenceActions {
-  readonly done: (key: string, occurrence: PlannerOccurrenceView) => void;
-  readonly skip: (key: string, occurrence: PlannerOccurrenceView) => void;
-  readonly later: (key: string, occurrence: PlannerOccurrenceView) => void;
-}
 
 export interface LensTiming {
   readonly phase: 'now' | 'next';
@@ -56,13 +41,9 @@ function momentOf(value: string | null): number | null {
 
 export function lensOf(day: PlannerDay, hidden: ReadonlySet<string>): PlannerOccurrenceView | null {
   const shown = [...day.current, ...day.upcoming].filter(
-    (occurrence) => !hidden.has(lensKeyOf(occurrence)),
+    (occurrence) => !hidden.has(occurrenceKeyOf(occurrence)),
   );
   return shown[0] ?? null;
-}
-
-export function lensKeyOf(occurrence: PlannerOccurrenceView): string {
-  return `lens:${occurrence.item_id}:${occurrence.occurrence_key}`;
 }
 
 function previousEndOf(day: PlannerDay, start: number): number {
@@ -115,84 +96,6 @@ export function lensRuleOf(
 
 function faceOf(face: string | null): FaceName {
   return FACES.find((name) => name === face) ?? 'row';
-}
-
-function lengthMinutesOf(
-  occurrence: PlannerOccurrenceView,
-  item: PlannerItemRow | undefined,
-): number {
-  const start = momentOf(occurrence.start);
-  const end = momentOf(occurrence.end);
-  if (start !== null && end !== null)
-    return Math.max(ANY_LENGTH_MINUTES, (end - start) / MINUTE_MS);
-  return item?.estimate_minutes ?? ANY_LENGTH_MINUTES;
-}
-
-class NoFreeTimeToday extends Error {
-  constructor() {
-    super('No free time is left today.');
-  }
-}
-
-async function moveLater(
-  input: {
-    readonly occurrence: PlannerOccurrenceView;
-    readonly item: PlannerItemRow | undefined;
-    readonly day: PlannerDay;
-  },
-  tools: PlannerTools,
-  writes: PlannerWrites,
-): Promise<void> {
-  const { occurrence, item, day } = input;
-  const minutes = Math.ceil(lengthMinutesOf(occurrence, item));
-  const from = new Date().toISOString();
-  const to = new Date(dayBoundsOf(day.date, day.time_zone).end).toISOString();
-  const [slot] = await tools.freeSlots({ from, to, minutes });
-  if (slot === undefined) throw new NoFreeTimeToday();
-  const sized = occurrence.end !== null || (item?.estimate_minutes ?? null) !== null;
-  await writes.moveItem(occurrence.item_id, {
-    occurrence_key: occurrence.occurrence_key,
-    start: slot.from,
-    end: sized ? new Date(Date.parse(slot.from) + minutes * MINUTE_MS).toISOString() : null,
-  });
-}
-
-export function useOccurrenceActions(
-  day: PlannerDay,
-  hide: (key: string, hidden: boolean) => void,
-): OccurrenceActions {
-  const { person } = usePlannerFrame();
-  const writes = usePlannerWrites(person);
-  const tools = usePlannerTools(person);
-  const items = usePlannerItems(person);
-  const run = (key: string, failure: string, work: () => Promise<unknown>): void => {
-    hide(key, true);
-    background(
-      work().catch((error: unknown) => {
-        hide(key, false);
-        notify({ message: failure, error, tone: 'critical' });
-      }),
-      'planner.today_action_failed',
-    );
-  };
-  return {
-    done: (key, occurrence): void => {
-      run(key, 'Couldn’t mark that done', () =>
-        writes.completeItem(occurrence.item_id, { occurrence_key: occurrence.occurrence_key }),
-      );
-    },
-    skip: (key, occurrence): void => {
-      run(key, 'Couldn’t skip that', () =>
-        writes.skipItem(occurrence.item_id, occurrence.occurrence_key),
-      );
-    },
-    later: (key, occurrence): void => {
-      const item = items.find((row) => row.id === occurrence.item_id);
-      run(key, 'Couldn’t move that to later', () =>
-        moveLater({ occurrence, item, day }, tools, writes),
-      );
-    },
-  };
 }
 
 function Countdown({ timing }: { readonly timing: LensTiming | null }): ReactNode {
@@ -307,9 +210,9 @@ function Lens({ day, occurrence, actions }: LensProps): ReactNode {
   const { person, offline } = usePlannerFrame();
   const ref = useRef<View>(null);
   const minute = useVisibleMinute(ref);
-  const compact = frameLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const item = usePlannerItems(person).find((row) => row.id === occurrence.item_id);
-  const key = lensKeyOf(occurrence);
+  const key = occurrenceKeyOf(occurrence);
   return (
     <View ref={ref} onLayout={minute.onLayout}>
       <Card className="border border-primary/30">
@@ -329,7 +232,7 @@ function Lens({ day, occurrence, actions }: LensProps): ReactNode {
                 key={action}
                 label={action === 'done' ? 'Done' : 'Skip'}
                 {...(action === 'done' ? { icon: 'check' as const } : {})}
-                variant="outlined"
+                variant={action === 'done' ? 'tonal' : 'outlined'}
                 grow={compact}
                 disabled={offline}
                 onPress={() => {
@@ -344,23 +247,8 @@ function Lens({ day, occurrence, actions }: LensProps): ReactNode {
   );
 }
 
-export function useHiddenKeys(): readonly [
-  ReadonlySet<string>,
-  (key: string, hidden: boolean) => void,
-] {
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
-  const hide = (key: string, gone: boolean): void => {
-    setHidden(
-      (current) =>
-        new Set(gone ? [...current, key] : [...current].filter((entry) => entry !== key)),
-    );
-  };
-  return [hidden, hide];
-}
-
 export function NowLens({ day }: { readonly day: PlannerDay }): ReactNode {
-  const [hidden, hide] = useHiddenKeys();
-  const actions = useOccurrenceActions(day, hide);
+  const { hidden, actions } = useTodayActions();
   const occurrence = lensOf(day, hidden);
   if (occurrence === null) return null;
   return <Lens day={day} occurrence={occurrence} actions={actions} />;

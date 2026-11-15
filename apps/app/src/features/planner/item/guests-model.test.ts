@@ -20,7 +20,6 @@ import {
   openInvitationsOf,
   responseCountsOf,
   shownSuggestionsOf,
-  toggledPerson,
   withGuest,
   withoutGuest,
 } from './guests-model';
@@ -144,12 +143,6 @@ describe('guest list edits', () => {
     ]);
   });
 
-  it('toggles a household member in and out', () => {
-    const entries = entriesOf(rows);
-    expect(toggledPerson(entries, SAM)).toEqual([entries[1]]);
-    expect(toggledPerson([], SAM)).toEqual([{ kind: 'person', profile_id: SAM }]);
-  });
-
   it('adds an email once whatever its case and removes it by key', () => {
     const entries = entriesOf(rows);
     const again = withGuest(entries, { kind: 'email', email: 'ANNA@example.com', name: null });
@@ -182,9 +175,12 @@ describe('guest list edits', () => {
     expect(shown.map((one) => one.email)).toEqual(['tomas@example.com']);
   });
 
-  it('offers everyone in the home but the organiser, in household order', () => {
+  it('offers everyone in the home not yet invited but the organiser, in household order', () => {
     const people = [profile(SAM, 'Sam', 2), profile(ALEX, 'Alex', 0), profile(id(), 'Robin', 1)];
-    expect(inviteeChoicesOf(people, ALEX).map((one) => one.name)).toEqual(['Robin', 'Sam']);
+    expect(inviteeChoicesOf(people, ALEX, []).map((one) => one.name)).toEqual(['Robin', 'Sam']);
+    expect(inviteeChoicesOf(people, ALEX, entriesOf(rows)).map((one) => one.name)).toEqual([
+      'Robin',
+    ]);
   });
 });
 
@@ -197,7 +193,7 @@ describe('responses and delivery', () => {
       emailGuest(),
     ]);
     expect(counts).toEqual({ yes: 2, maybe: 1, no: 0, waiting: 1 });
-    expect(countsTextOf(counts)).toBe('2 yes · 1 maybe · 1 waiting');
+    expect(countsTextOf(counts)).toBe('2 going · 1 maybe · 1 waiting');
     expect(countsTextOf({ yes: 0, maybe: 0, no: 0, waiting: 0 })).toBeNull();
   });
 
@@ -224,11 +220,21 @@ describe('responses and delivery', () => {
         personGuest(SAM, { response: 'yes', responded_at: STAMP }),
       ],
       [profile(SAM, 'Sam', 1)],
+      ALEX,
     );
     expect(views.map((view) => [view.name, view.detail])).toEqual([
       ['Sam', null],
       ['x@example.com', null],
     ]);
+  });
+
+  it('names the viewer You and lists them first', () => {
+    const views = guestViewsOf(
+      [personGuest(ALEX), emailGuest({ response: 'yes', responded_at: STAMP })],
+      [profile(ALEX, 'Alex', 0)],
+      ALEX,
+    );
+    expect(views.map((view) => view.name)).toEqual(['You', 'Anna Keller']);
   });
 
   it('records an answer with its note and time', () => {

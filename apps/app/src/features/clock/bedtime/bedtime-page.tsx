@@ -7,7 +7,7 @@ import { useDriveItem } from '../../drive';
 import { usePlannerAlarms, useVisibleMinute, QueryBody } from '../../planner';
 import { ClockFrame } from '../frame/clock-frame';
 import { useHubOffline } from '../frame/hub-status';
-import { frameLayoutOf } from '../frame/sections';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { BeforeBedCard } from './before-bed-card';
 import {
   useBedtimePrefs,
@@ -34,7 +34,7 @@ interface BedtimeView {
 }
 
 function layoutOf(area: number): BedtimeLayout {
-  const frame = frameLayoutOf(area);
+  const frame = shellLayoutOf(area);
   if (frame === 'compact') return 'compact';
   return frame === 'icon' ? 'medium' : 'wide';
 }
@@ -145,7 +145,7 @@ export function BedtimePage(): ReactNode {
   const offline = useHubOffline();
   const saves = useBedtimeSaves();
   return (
-    <ClockFrame section="bedtime" subtitle={subtitleOf(prefs.data, now, zone)} width="dashboard">
+    <ClockFrame section="bedtime" subtitle={subtitleOf(prefs.data, now, zone)}>
       <View ref={ref} onLayout={onLayout}>
         <QueryBody query={prefs}>
           {(loaded) => (

@@ -38,6 +38,7 @@ export interface ChipGridPlan {
 
 const LINE = 24;
 const WIDE_COLUMNS_FROM = 1000;
+const MASTER_BESIDE_FROM = 3;
 const CHIP_WIDTH = 104;
 const CHIP_GAP = 6;
 const MORE_WIDTH = 72;
@@ -54,10 +55,18 @@ export function rowMetrics(idiom: Idiom): RowMetrics {
     : { row: 40, gap: 4, column: 12, header: 36, master: 40, white: 28 };
 }
 
-function stackHeight(metrics: RowMetrics, lines: number): number {
-  return (
-    metrics.header + metrics.master + metrics.white + metrics.gap * 3 + lines * (LINE + metrics.gap)
-  );
+export function masterBeside(columns: number): boolean {
+  return columns >= MASTER_BESIDE_FROM;
+}
+
+export function topHeight(metrics: RowMetrics, beside: boolean): number {
+  return beside
+    ? Math.max(metrics.header, metrics.master + metrics.gap + metrics.white) + metrics.gap
+    : metrics.header + metrics.master + metrics.white + metrics.gap * 3;
+}
+
+function stackHeight(metrics: RowMetrics, lines: number, beside: boolean): number {
+  return topHeight(metrics, beside) + lines * (LINE + metrics.gap);
 }
 
 export function rowColumns(width: number): number {
@@ -69,7 +78,7 @@ export function planRows(input: RowInput): RowPlan {
   const columns = input.wide ? rowColumns(input.width) : 1;
   const free =
     input.height -
-    stackHeight(metrics, input.lines) -
+    stackHeight(metrics, input.lines, masterBeside(columns)) -
     input.footer -
     (input.expandedIndex === null ? 0 : input.expandedExtra);
   const perColumn = Math.max(1, Math.floor(free / (metrics.row + metrics.gap)));

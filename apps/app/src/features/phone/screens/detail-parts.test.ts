@@ -36,7 +36,7 @@ describe('Phone detail cards', () => {
     }));
     const page = renderToStaticMarkup(createElement(PageCards, { cards: [null, ...items] }));
     expect(page.match(/class="flex-row items-stretch gap-grid-gap"/gu)).toHaveLength(rows);
-    expect(page.match(/max-w-reading/gu)).toHaveLength(items.length);
+    expect(page).not.toContain('max-w-');
     for (const { key } of items) expect(page).toContain(key);
   });
 });

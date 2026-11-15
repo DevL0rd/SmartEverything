@@ -227,7 +227,8 @@ export function EntriesLiteral({
         variant="text"
         disabled={disabled}
         onPress={() => {
-          onChange({ ...held, [entryName(names)]: control.item.t === 'json' ? '' : null });
+          const added = entryName(names);
+          onChange({ ...held, [added]: control.item.t === 'json' ? '' : null });
         }}
       />
     </View>

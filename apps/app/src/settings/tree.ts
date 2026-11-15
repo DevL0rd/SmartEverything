@@ -82,6 +82,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
   {
     id: 'members',
     title: 'Paired devices',
+    short: 'Paired',
     icon: 'smartphone',
     parent: null,
     group: 'Home',
@@ -265,6 +266,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
   {
     id: 'this-computer',
     title: 'This computer',
+    short: 'Computer',
     icon: 'monitor',
     parent: null,
     group: 'App',

@@ -240,7 +240,7 @@ function syncChanged(previous: StoreState['sync'], next: StoreState['sync']): bo
   return (
     previous.status !== next.status ||
     previous.problem !== next.problem ||
-    previous.outdated !== next.outdated ||
+    previous.failed !== next.failed ||
     previous.offlineSince !== next.offlineSince
   );
 }

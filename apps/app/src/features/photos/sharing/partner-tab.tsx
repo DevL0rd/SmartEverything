@@ -23,6 +23,7 @@ import { scopeKeyOf, useLibraryFeed, type LibraryFeed } from '../library/use-lib
 import { useMediaActions } from '../library/use-media-actions';
 import { savePartnerPhotos, setPartnerAutoSave } from './api';
 import { invalidateSharing, usePhotoSharing } from './queries';
+import { SelectionSurface } from '../components/selection-surface';
 
 export interface PartnerTabProps {
   readonly head: LibraryHeadProps;
@@ -70,24 +71,35 @@ function SelectionBar({
   const client = useQueryClient();
   const picked = controls.selection.ids.size;
   return (
-    <View className="min-h-14 flex-row flex-wrap items-center gap-2 px-gutter py-2">
-      <IconButton icon="x" label="Cancel selection" onPress={controls.clear} />
-      <Text variant="label" className="min-w-0 flex-1 tabular-nums">
+    <SelectionSurface>
+      <IconButton
+        icon="x"
+        label="Cancel selection"
+        tone="onPrimaryContainer"
+        onPress={controls.clear}
+      />
+      <Text
+        variant="title-3"
+        tone="onPrimaryContainer"
+        className="min-w-0 flex-1 tabular-nums"
+        numberOfLines={1}
+      >
         {picked === 0 ? 'Select photos to save' : `${count(picked)} selected`}
       </Text>
-      <Button
-        label="Save to my library"
-        icon="download"
-        variant="filled"
-        disabled={picked === 0}
-        loading={mutation.busy}
-        onPress={() => {
-          save(mutation, shareId, controls, () => {
-            invalidateSharing(client);
-          });
-        }}
-      />
-    </View>
+      {picked === 0 ? null : (
+        <Button
+          label="Save to my library"
+          icon="download"
+          variant="filled"
+          loading={mutation.busy}
+          onPress={() => {
+            save(mutation, shareId, controls, () => {
+              invalidateSharing(client);
+            });
+          }}
+        />
+      )}
+    </SelectionSurface>
   );
 }
 
@@ -102,7 +114,7 @@ function AutoSaveRow({
   const client = useQueryClient();
   if (share === undefined) return null;
   return (
-    <View className="mx-gutter mb-2 rounded-lg border-hairline border-outline-variant bg-surface-1 px-2">
+    <View className="mb-2 rounded-lg border-hairline border-outline-variant bg-surface-1 px-2">
       <SwitchRow
         title="Auto-save to my library"
         subtitle={`Every new photo ${name} shares lands in your library. Select photos to save older ones.`}

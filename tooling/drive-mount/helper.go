@@ -69,11 +69,14 @@ func newFilesystem(spec routeSpec, token, cacheDir, journalDir string) (*helperF
 	writes.SetCommitted(func(ino uint64, attr wire.Attr) { cache.NoteAttr(attr) })
 	writes.SetCreated(cache.NoteName)
 	fs.SetReachable(spec.URL != "")
+	initial := live.load()
 	client, err := wire.NewClient(wire.Config{
-		Token:   token,
-		Route:   wire.Route{URL: spec.URL, Server: spec.Server, Pin: spec.Pin},
-		Handler: helperHandler{fs: fs},
-		Log:     fs.wireEvent,
+		Token:        token,
+		Route:        wire.Route{URL: spec.URL, Server: spec.Server, Pin: spec.Pin},
+		Handler:      helperHandler{fs: fs},
+		Log:          fs.wireEvent,
+		PingInterval: initial.ping,
+		PongTimeout:  initial.deadAfter,
 	})
 	if err != nil {
 		writes.Close()
@@ -82,6 +85,16 @@ func newFilesystem(spec routeSpec, token, cacheDir, journalDir string) (*helperF
 	}
 	fs.client = client
 	late.client.Store(client)
+	live.subscribe(func(f liveFields) {
+		if err := client.SetLiveness(f.ping, f.deadAfter); err != nil {
+			fmt.Fprintln(os.Stderr, "tuning:", err)
+		}
+	})
+	if current := live.load(); current.ping != initial.ping || current.deadAfter != initial.deadAfter {
+		if err := client.SetLiveness(current.ping, current.deadAfter); err != nil {
+			fmt.Fprintln(os.Stderr, "tuning:", err)
+		}
+	}
 	return fs, nil
 }
 

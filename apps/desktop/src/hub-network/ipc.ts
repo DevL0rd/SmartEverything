@@ -33,6 +33,8 @@ const CHANNELS = [
   'desktop:hub-resource-open',
   'desktop:hub-resource-release',
   'desktop:hub-resource-download',
+  'desktop:hub-resource-restore',
+  'desktop:hub-resource-reveal',
   'desktop:hub-authority-configure',
   'desktop:hub-authority-state',
   'desktop:hub-authority-refresh',
@@ -249,6 +251,12 @@ class HubNetworkIpc {
     this.#handle('desktop:hub-resource-download', (value, owner) =>
       this.#requireResources().download(owner, value),
     );
+    this.#handle('desktop:hub-resource-restore', (value, owner) =>
+      this.#requireResources().restore(owner, value),
+    );
+    this.#handle('desktop:hub-resource-reveal', (value) => {
+      this.#requireResources().reveal(value);
+    });
   }
   close(): void {
     this.#closeHtml?.();

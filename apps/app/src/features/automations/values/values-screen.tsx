@@ -15,6 +15,7 @@ import { defaultOperation } from './value-content';
 import { ValueRowItem } from './value-row';
 import { ValueOperationFields } from './value-operation-fields';
 import { background } from '@smarteverything/logging';
+import { workspaceSectionsOf } from '../hosts/workspace-sections';
 
 interface ValueOperationProps {
   readonly row: AutomationValueRow;
@@ -72,7 +73,7 @@ function ValueRows({ rows, visible, onSelect }: ValueRowsProps): ReactNode {
       />
     );
   if (visible.length === 0)
-    return <EmptyState icon="search" title="No matching Values" body="Try another name." />;
+    return <EmptyState icon="search" title="No matching variables" body="Try another name." />;
   return (
     <List>
       {visible.map((row) => (
@@ -93,13 +94,14 @@ export function ValuesScreen(): ReactNode {
   );
   return (
     <PageShell
-      title="Values"
-      width="reading"
+      title="Variables"
+      back={false}
+      sections={workspaceSectionsOf('variables')}
       {...(rows.length === 0
         ? {}
-        : { search: { value: query, onChange: setQuery, placeholder: 'Find a value' } })}
+        : { search: { value: query, onChange: setQuery, placeholder: 'Find a variable' } })}
       primaryAction={{
-        label: 'New value',
+        label: 'New variable',
         icon: 'plus',
         onPress: () => {
           router.push(href.automationValue('new'));

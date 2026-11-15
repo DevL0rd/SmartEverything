@@ -12,7 +12,8 @@ export type FilePickerSheetProps<O> = Omit<FilePickerProps<O>, 'compact' | 'onCa
 };
 
 export function FilePickerSheet<O>(props: FilePickerSheetProps<O>): ReactNode {
-  const { open, onClose, onChoose, title = pickerTitleOf(props.mode), ...picker } = props;
+  const { open, onClose, onChoose, title: asked, ...picker } = props;
+  const title = asked ?? pickerTitleOf(props.mode);
   const touch = useIdiom() === 'touch';
   const frame = { open, onClose, title, label: title, scroll: false };
   const body = (

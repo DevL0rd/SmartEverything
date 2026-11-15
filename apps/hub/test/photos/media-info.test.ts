@@ -83,7 +83,6 @@ describe('media info', () => {
       item_id: PHOTO,
       time_source: 'metadata',
       tz_offset_min: 60,
-      thumbhash: null,
       preview_state: 'none',
       preview_reason: null,
       poster_state: 'unsupported',

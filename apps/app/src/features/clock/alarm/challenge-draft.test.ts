@@ -110,6 +110,9 @@ describe('sunrise', () => {
     expect(sunriseSummaryOf({ lights: [LAMP, HALL], minutes: 15, colour: false }, '07:00')).toBe(
       '2 lights brighten from 06:45 to full at 07:00.',
     );
+    expect(sunriseSummaryOf({ lights: [LAMP], minutes: 20, colour: true }, '06:30')).toBe(
+      '1 light brightens from 06:10 to full at 06:30, warm to daylight.',
+    );
   });
 
   it('lists lights that left the home', () => {

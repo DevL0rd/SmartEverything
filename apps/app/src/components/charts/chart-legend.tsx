@@ -49,12 +49,12 @@ export function ChartLegend({
   valueOf,
 }: {
   readonly series: readonly ChartSeries[];
-  readonly valueOf?: (entry: ChartSeries) => string | null;
+  readonly valueOf: (entry: ChartSeries) => string | null;
 }): ReactNode {
   return (
     <View aria-hidden className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
       {series.map((entry) => (
-        <LegendEntry key={entry.label} entry={entry} value={valueOf?.(entry) ?? null} />
+        <LegendEntry key={entry.label} entry={entry} value={valueOf(entry)} />
       ))}
     </View>
   );

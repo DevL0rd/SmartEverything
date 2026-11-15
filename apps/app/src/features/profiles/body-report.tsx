@@ -73,7 +73,7 @@ export function BodyReport(): ReactNode {
     return null;
   }
   return (
-    <View className="w-full max-w-detail gap-section-gap">
+    <View className="w-full gap-section-gap">
       <Hero latest={latest} previous={previous} />
       <Composition
         composition={latest.composition}

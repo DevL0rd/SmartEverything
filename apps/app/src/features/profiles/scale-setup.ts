@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { BIND_KEY, BLUETOOTH_ADDRESS, isScale, type DeviceRow } from '@smarteverything/domain';
 import { addManualScale, addXiaomiScale } from '../../api/people';
 import { errorText } from '../../format/errors';
-import { useDevices, useProviderLink } from '../../store/selectors';
+import { useFirstDevice, useProviderLink } from '../../store/selectors';
 import { isLocalScale } from '../../store/people';
 import type { Device } from '../../store/state';
 
@@ -16,16 +16,17 @@ export interface ManualForm {
 export const EMPTY_FORM: ManualForm = { name: 'Scale', address: '', bindKey: '' };
 
 export function useAddedScale(): Device | null {
-  return useDevices({ includeHidden: true }).find(isLocalScale) ?? null;
+  return useFirstDevice(isLocalScale, { includeHidden: true });
+}
+
+function isXiaomiScale(device: Device): boolean {
+  return device.provider === 'xiaomi' && device.external_id.startsWith('blt.') && isScale(device);
 }
 
 export function useXiaomiScale(): Device | null {
   const linked = useProviderLink('xiaomi')?.status === 'linked';
-  const scale = useDevices({ includeHidden: true }).find(
-    (device) =>
-      device.provider === 'xiaomi' && device.external_id.startsWith('blt.') && isScale(device),
-  );
-  return linked && scale !== undefined ? scale : null;
+  const scale = useFirstDevice(isXiaomiScale, { includeHidden: true });
+  return linked ? scale : null;
 }
 
 function problemOf(form: ManualForm): string | null {

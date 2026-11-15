@@ -164,7 +164,6 @@ export function VacuumPage({ device }: { readonly device: Device }): ReactNode {
   return (
     <PageShell
       {...shell.props}
-      width="detail"
       tabs={tabsOf(tab, setTab)}
       banner={<DeviceBanners device={device} schedule={shell.schedule} />}
     >

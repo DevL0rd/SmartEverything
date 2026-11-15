@@ -1,31 +1,32 @@
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import type { PhotoInsightKind, PhotoInsights, PhotoRailCounts } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import type { AppHref } from '../../../components/app-href';
+import type { Crumb } from '../../../components/breadcrumbs';
 import { SegmentBar, type BarSegment } from '../../../components/charts';
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
-import type { PageSettingsLink } from '../../../components/page-settings-button';
-import { TabsBar, type TabItem } from '../../../components/tabs-bar';
+import type { MenuItem } from '../../../components/menu';
+import type { PageSettingsLink } from '../../../components/page-menu';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
+import { PageShell, type StandardShellProps } from '../../../components/page-shell/page-shell';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
+import type { RailEntry, RailGroup } from '../../../components/page-shell/section-rail';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import type { ShellSections } from '../../../components/page-shell/shell-sections';
+import type { PrimaryActionProps } from '../../../components/primary-action';
+import { SummaryWell } from '../../../components/summary-well';
 import { Text } from '../../../components/text';
 import { isNative } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { bytes, count } from '../../../format/number';
 import { joinParts } from '../../../format/text';
-import {
-  LibraryFrame,
-  SummaryWell,
-  type LibraryFrameProps,
-  type LibrarySection,
-  type LibrarySectionGroup,
-} from '../../../components/library-frame';
-import { libraryLayoutOf } from '../../../components/library-frame/sections';
 import { useLibraryRefresh } from '../../drive';
 import { PAUSE_LABELS } from '../backup/model/conditions';
 import { useBackupStatus, type BackupStatus } from '../backup/model/status';
 import { usePhotoInsights, usePhotoRailCounts } from '../data';
-import { MetaEditHost } from '../organise/meta/meta-sheet';
 
 export const PHOTOS_RAIL_HREF = {
   library: href.photos(),
@@ -44,12 +45,6 @@ export const PHOTOS_BACKUP_SETTINGS_HREF: AppHref = href.settings.page('photos/b
 
 export type PhotosRailId = keyof typeof PHOTOS_RAIL_HREF;
 
-export interface PhotosRailView {
-  readonly counts: PhotoRailCounts | undefined;
-  readonly insights: PhotoInsights | undefined;
-  readonly compact: boolean;
-}
-
 interface RailSpec {
   readonly label: string;
   readonly short?: string;
@@ -61,7 +56,7 @@ const SPEC: Readonly<Record<PhotosRailId, RailSpec>> = {
   people: { label: 'People and pets', short: 'People', icon: 'users' },
   albums: { label: 'Albums', icon: 'layers' },
   sharing: { label: 'Sharing', icon: 'share' },
-  map: { label: 'Map and places', short: 'Map', icon: 'mapPin' },
+  map: { label: 'Map and places', short: 'Places', icon: 'mapPin' },
   folders: { label: 'Folders', icon: 'folder' },
   insights: { label: 'Insights', icon: 'trendUp' },
   archive: { label: 'Archive', icon: 'archive' },
@@ -73,7 +68,7 @@ const TOP: readonly PhotosRailId[] = ['library', 'people', 'albums', 'sharing', 
 
 const MANAGE: readonly PhotosRailId[] = ['folders', 'archive', 'locked', 'insights', 'deleted'];
 
-type Count = LibrarySection['count'];
+type Count = number | null;
 
 type Amount = number | null | undefined;
 
@@ -84,79 +79,43 @@ function amountOf(value: Amount, one: string, many = `${one}s`): string | null {
 
 const NO_COUNT = (): Count => null;
 
-const COUNT_OF: Readonly<Record<PhotosRailId, (view: PhotosRailView) => Count>> = {
-  library: (view) => view.counts?.library ?? null,
-  people: (view) => view.counts?.people ?? null,
-  albums: (view) => view.counts?.albums ?? null,
-  sharing: (view) => view.counts?.sharing ?? null,
-  map: (view) => view.counts?.places ?? null,
+type RailCounts = PhotoRailCounts | undefined;
+
+const COUNT_OF: Readonly<Record<PhotosRailId, (counts: RailCounts) => Count>> = {
+  library: (counts) => counts?.library ?? null,
+  people: (counts) => counts?.people ?? null,
+  albums: (counts) => counts?.albums ?? null,
+  sharing: (counts) => counts?.sharing ?? null,
+  map: (counts) => counts?.places ?? null,
   folders: NO_COUNT,
   insights: NO_COUNT,
-  archive: (view) => view.counts?.archive ?? null,
+  archive: (counts) => counts?.archive ?? null,
   locked: NO_COUNT,
-  deleted: (view) => view.counts?.deleted ?? null,
+  deleted: (counts) => counts?.deleted ?? null,
 };
 
-function insightsSummary(view: PhotosRailView): string | null {
-  const places = view.insights?.places;
-  if (places === undefined || places.places === 0) return null;
-  return joinParts([
-    amountOf(places.places, 'place'),
-    amountOf(places.countries.length, 'country', 'countries'),
-  ]);
+function countTextOf(value: Count): string | undefined {
+  return value === null || value === 0 ? undefined : count(value);
 }
 
-const SUMMARY_OF: Readonly<Record<PhotosRailId, (view: PhotosRailView) => string | null>> = {
-  library: (view) => amountOf(view.counts?.library, 'item'),
-  people: (view) => amountOf(view.counts?.people, 'person or pet', 'people and pets'),
-  albums: (view) => amountOf(view.counts?.albums, 'album'),
-  sharing: (view) => amountOf(view.counts?.sharing, 'new update', 'new updates'),
-  map: (view) => amountOf(view.counts?.places, 'place'),
-  folders: () => null,
-  insights: insightsSummary,
-  archive: (view) => amountOf(view.counts?.archive, 'item'),
-  locked: () => null,
-  deleted: (view) => amountOf(view.counts?.deleted, 'item'),
-};
-
-export function railSummaryOf(id: PhotosRailId, view: PhotosRailView): string | null {
-  return SUMMARY_OF[id](view);
-}
-
-function DetailText({ text }: { readonly text: string }): ReactNode {
-  return (
-    <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-      {text}
-    </Text>
-  );
-}
-
-function sectionOf(id: PhotosRailId, view: PhotosRailView): LibrarySection {
+function entryOf(id: PhotosRailId, counts: RailCounts): RailEntry {
   const spec = SPEC[id];
-  const base = { id, label: spec.label, short: spec.short, icon: spec.icon };
-  if (view.compact) return { ...base, count: COUNT_OF[id](view) };
-  const summary = railSummaryOf(id, view);
   return {
-    ...base,
-    count: null,
-    ...(summary === null ? {} : { detail: <DetailText text={summary} /> }),
+    id,
+    label: spec.label,
+    short: spec.short,
+    icon: spec.icon,
+    missing: null,
+    count: countTextOf(COUNT_OF[id](counts)),
   };
 }
 
-export function photosRailGroups(view: PhotosRailView): readonly LibrarySectionGroup[] {
+export function photosRailGroups(counts: RailCounts): readonly RailGroup[] {
   return [
-    { title: null, sections: TOP.map((id) => sectionOf(id, view)) },
-    { title: 'Manage', sections: MANAGE.map((id) => sectionOf(id, view)) },
+    { title: null, entries: TOP.map((id) => entryOf(id, counts)) },
+    { title: 'Manage', entries: MANAGE.map((id) => entryOf(id, counts)) },
   ];
 }
-
-export const PHOTOS_PHONE_TABS: readonly TabItem[] = [
-  { key: 'library', label: 'Library', href: PHOTOS_RAIL_HREF.library },
-  { key: 'people', label: 'People', href: PHOTOS_RAIL_HREF.people },
-  { key: 'albums', label: 'Albums', href: PHOTOS_RAIL_HREF.albums },
-  { key: 'map', label: 'Places', href: PHOTOS_RAIL_HREF.map },
-  { key: 'folders', label: 'Folders', href: PHOTOS_RAIL_HREF.folders },
-];
 
 const HREFS: ReadonlyMap<string, AppHref> = new Map(Object.entries(PHOTOS_RAIL_HREF));
 
@@ -167,7 +126,7 @@ export function photosHrefOf(id: string): AppHref {
 }
 
 export function photosTitleOf(active: PhotosRailId): string {
-  return active === 'library' ? 'Photos' : SPEC[active].label;
+  return SPEC[active].label;
 }
 
 export function phoneLeftOf(status: BackupStatus): number | null {
@@ -312,7 +271,7 @@ export function PullUpSummary({ insights, items, lines }: SummaryProps): ReactNo
   const line = backupLineOf(lines);
   return (
     <SummaryWell
-      title="Photos"
+      title="Library"
       trailing={
         library === '' ? null : (
           <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
@@ -326,17 +285,27 @@ export function PullUpSummary({ insights, items, lines }: SummaryProps): ReactNo
   );
 }
 
-export type PhotosFrameProps = Omit<
-  LibraryFrameProps,
-  'area' | 'title' | 'sections' | 'active' | 'hrefOf' | 'summary' | 'chips' | 'settings' | 'refresh'
-> & {
-  readonly settings?: PageSettingsLink;
+export interface PhotosFrameProps {
   readonly active: PhotosRailId;
   readonly title?: string;
-};
+  readonly subtitle?: string;
+  readonly breadcrumbs?: readonly Crumb[];
+  readonly actions?: readonly ShellAction[];
+  readonly overflow?: readonly MenuItem[];
+  readonly settings?: PageSettingsLink;
+  readonly search?: ShellSearchConfig;
+  readonly toolbar?: ReactNode;
+  readonly selection?: ReactNode;
+  readonly banner?: ReactNode;
+  readonly footer?: ReactNode;
+  readonly primaryAction?: PrimaryActionProps;
+  readonly scroll?: boolean;
+  readonly children: ReactNode;
+}
 
 interface PhotosFrameData {
-  readonly view: PhotosRailView;
+  readonly counts: RailCounts;
+  readonly compact: boolean;
   readonly summary: SummaryProps;
 }
 
@@ -344,10 +313,11 @@ function usePhotosFrameData(): PhotosFrameData {
   const counts = usePhotoRailCounts().data;
   const insights = usePhotoInsights('all_time').data;
   const status = useBackupStatus();
-  const compact = libraryLayoutOf(useAreaWidth()) === 'compact';
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const phone = isNative();
   return {
-    view: { counts, insights, compact },
+    counts,
+    compact,
     summary: {
       insights,
       items: counts?.library,
@@ -356,28 +326,84 @@ function usePhotosFrameData(): PhotosFrameData {
   };
 }
 
+export function photosSectionsOf(
+  active: PhotosRailId,
+  counts: RailCounts,
+  footer: ReactNode,
+): ShellSections {
+  return {
+    label: 'Photos sections',
+    active,
+    hrefOf: photosHrefOf,
+    groups: photosRailGroups(counts),
+    footer,
+  };
+}
+
+const NO_ACTIONS: readonly ShellAction[] = [];
+
+function SelectionRow({ children }: { readonly children: ReactNode }): ReactNode {
+  return <View testID="photos-selection">{children}</View>;
+}
+
+type FrameRest = Omit<PhotosFrameProps, 'active' | 'title'>;
+
+function toolbarOf(frame: FrameRest): ReactNode {
+  const selection = frame.selection ?? null;
+  if (selection !== null) return <SelectionRow>{selection}</SelectionRow>;
+  return frame.toolbar;
+}
+
+function headOf(frame: FrameRest): Partial<StandardShellProps> {
+  const toolbar = toolbarOf(frame);
+  return {
+    ...(frame.subtitle === undefined ? {} : { subtitle: frame.subtitle }),
+    ...(frame.breadcrumbs === undefined ? {} : { breadcrumbs: frame.breadcrumbs }),
+    ...(frame.overflow === undefined || frame.overflow.length === 0
+      ? {}
+      : { overflow: frame.overflow }),
+    ...(frame.search === undefined ? {} : { search: frame.search }),
+    ...(toolbar === undefined || toolbar === null ? {} : { toolbar }),
+  };
+}
+
+function restOf(frame: FrameRest): Partial<StandardShellProps> {
+  const selecting = frame.selection !== undefined && frame.selection !== null;
+  return {
+    ...(frame.banner === undefined || frame.banner === null ? {} : { banner: frame.banner }),
+    ...(frame.footer === undefined || frame.footer === null ? {} : { footer: frame.footer }),
+    ...(frame.primaryAction === undefined || selecting
+      ? {}
+      : { primaryAction: frame.primaryAction }),
+    ...(frame.scroll === undefined ? {} : { scroll: frame.scroll }),
+  };
+}
+
 export function PhotosFrame({ active, title, ...frame }: PhotosFrameProps): ReactNode {
-  const { view, summary } = usePhotosFrameData();
+  const { counts, compact, summary } = usePhotosFrameData();
   const refresh = useLibraryRefresh(null);
+  const switcher = !compact || frame.breadcrumbs === undefined;
   return (
-    <>
-      <LibraryFrame
-        {...frame}
-        settings={frame.settings ?? mainPageSettings('photos')}
-        refresh={refresh}
-        area="photos"
-        title={title ?? photosTitleOf(active)}
-        sections={photosRailGroups(view)}
-        active={active}
-        hrefOf={photosHrefOf}
-        chips={
-          frame.breadcrumbs === undefined ? (
-            <TabsBar items={PHOTOS_PHONE_TABS} active={active} label="Photos sections" />
-          ) : undefined
-        }
-        summary={view.compact ? <PullUpSummary {...summary} /> : <RailSummary {...summary} />}
-      />
-      <MetaEditHost />
-    </>
+    <PageShell
+      title={title ?? photosTitleOf(active)}
+      back={!switcher}
+      settings={frame.settings ?? mainPageSettings('photos')}
+      actions={frame.actions ?? NO_ACTIONS}
+      {...(switcher
+        ? {
+            sections: photosSectionsOf(
+              active,
+              counts,
+              compact ? <PullUpSummary {...summary} /> : <RailSummary {...summary} />,
+            ),
+          }
+        : {})}
+      onRefresh={refresh.refresh}
+      refreshing={refresh.refreshing}
+      {...headOf(frame)}
+      {...restOf(frame)}
+    >
+      {frame.children}
+    </PageShell>
   );
 }

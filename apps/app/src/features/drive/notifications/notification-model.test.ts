@@ -19,11 +19,12 @@ import {
   contextOf,
   dayGroupsOf,
   inboxKeyOf,
-  inboxRowsOf,
+  inboxSectionsOf,
   itemIdsOf,
   pushKindsAfter,
   rowActionOf,
   sentenceOf,
+  sentencePartsOf,
   subtitleOf,
   unreadIdsOf,
   type NotificationContext,
@@ -40,6 +41,7 @@ function context(patch: Partial<NotificationContext> = {}): NotificationContext 
   return {
     actor: 'Alex',
     item: 'Plan.pdf',
+    itemPending: false,
     request: null,
     transfer: null,
     fileRequest: null,
@@ -120,6 +122,33 @@ describe('notification wording per kind', () => {
   });
 });
 
+describe('notification sentence parts', () => {
+  it('splits the item name out of the sentence, and marks it pending while it loads', () => {
+    const row = notificationRow({ kind: 'edited', count: 4 });
+    expect(sentencePartsOf(row, context())).toEqual({
+      before: 'Alex edited ',
+      item: { kind: 'name', name: 'Plan.pdf' },
+      after: ' 4 times',
+    });
+    expect(sentencePartsOf(row, context({ item: null, itemPending: true })).item).toEqual({
+      kind: 'pending',
+    });
+    expect(sentencePartsOf(row, context({ item: null })).item).toEqual({
+      kind: 'name',
+      name: 'a file',
+    });
+    const upload = notificationRow({
+      kind: 'file_request_upload',
+      count: 2,
+      actorProfileId: null,
+      actorName: 'Aunt Maria',
+    });
+    expect(
+      sentencePartsOf(upload, context({ fileRequest: fileRequestRow({ title: 'Photos' }) })),
+    ).toEqual({ before: 'Alex sent 2 files to Photos', item: { kind: 'none' }, after: '' });
+  });
+});
+
 describe('notification context', () => {
   it('names the actor, or the uploader, or a former member', () => {
     expect(actorOf(notificationRow(), PROFILES)).toBe('Alex');
@@ -140,6 +169,7 @@ describe('notification context', () => {
     const found = contextOf(row, {
       profiles: PROFILES,
       items: new Map([[ITEM_ID, { name: 'Plan.pdf' }]]),
+      pending: new Set(),
       requests: [request],
       transfers: [transferRow()],
       fileRequests: [],
@@ -147,6 +177,7 @@ describe('notification context', () => {
     expect(found).toEqual({
       actor: 'Alex',
       item: 'Plan.pdf',
+      itemPending: false,
       request,
       transfer: null,
       fileRequest: null,
@@ -185,7 +216,7 @@ describe('notification context', () => {
 });
 
 describe('the inbox list', () => {
-  it('groups by day, newest first, with a header row per day', () => {
+  it('groups by day, newest first, with a section per day', () => {
     const today = notificationRow({ updatedAt: '2026-11-07T09:00:00.000Z' });
     const later = notificationRow({ id: OTHER_ROW_ID, updatedAt: '2026-11-07T11:00:00.000Z' });
     const earlier = notificationRow({
@@ -202,15 +233,15 @@ describe('the inbox list', () => {
       ['Today', [OTHER_ROW_ID, ROW_ID]],
       [groups[1]?.label, [earlier.id]],
     ]);
-    const rows = inboxRowsOf(groups);
-    expect(rows.map((row) => (row.kind === 'day' ? row.kind : row.edge))).toEqual([
-      'day',
-      'first',
-      'last',
-      'day',
-      'only',
+    const sections = inboxSectionsOf(groups);
+    expect(
+      sections.map((section) => [section.title, section.data.map((note) => note.edge)]),
+    ).toEqual([
+      ['Today', ['first', 'last']],
+      [groups[1]?.label, ['only']],
     ]);
-    expect(new Set(rows.map(inboxKeyOf)).size).toBe(rows.length);
+    const notes = sections.flatMap((section) => section.data);
+    expect(new Set(notes.map(inboxKeyOf)).size).toBe(notes.length);
     expect(unreadIdsOf([today, earlier, later])).toEqual([ROW_ID, OTHER_ROW_ID]);
     expect(subtitleOf([today, earlier, later])).toBe('2 unread');
     expect(subtitleOf([earlier])).toBe('All read');

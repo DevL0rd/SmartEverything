@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
+import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
-import { twoFrameColumnsAt } from '../../../components/page-shell/layout';
 import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { useProfiles } from '../../../store/people';
 import { useDriveQuotas, useDriveUsage, useSharedDrive, useViewerId } from '../data';
@@ -14,10 +14,12 @@ import { HealthCard } from './health-card';
 import { LargestFiles } from './largest-files';
 import { PeopleCard } from './people-card';
 import { PurgeBars } from './purge-bars';
+import { StorageCardState, type CardQuery } from './storage-card-state';
 import { KindsCard, StorageHero } from './storage-hero';
 import {
   QUOTA_UNKNOWN,
   diskViewOf,
+  othersHaveData,
   peopleUsageOf,
   quotaOf,
   sharedDriveUsageOf,
@@ -29,37 +31,51 @@ const MAIN_COLUMN = { flexGrow: 3, flexBasis: 0 } as const;
 const SIDE_COLUMN = { flexGrow: 2, flexBasis: 0 } as const;
 const NO_PEOPLE: readonly PersonUsage[] = [];
 
-export interface StorageUsage {
-  readonly usage: readonly DriveUsage[] | null;
+export const STORAGE_TWO_COLUMNS_BODY = 1000;
+
+export function storageTwoColumnsAt(bodyWidth: number): boolean {
+  return bodyWidth >= STORAGE_TWO_COLUMNS_BODY;
+}
+
+export interface UsageReady {
+  readonly ready: true;
   readonly mine: DriveUsage | null;
   readonly quota: QuotaState;
   readonly shared: DriveUsage | null;
   readonly people: readonly PersonUsage[];
 }
 
+export type StorageUsage = UsageReady | { readonly ready: false; readonly query: CardQuery };
+
 export function useStorageUsage(owner: boolean): StorageUsage {
-  const usage = useDriveUsage().data ?? null;
+  const query = useDriveUsage();
   const quotas = useDriveQuotas(owner).data ?? null;
   const me = useViewerId();
   const people = useProfiles();
   const sharedRoot = useSharedDrive();
+  const usage = query.data;
+  if (usage === undefined) return { ready: false, query };
   return {
-    usage,
-    mine: usage?.find((entry) => entry.profileId === me) ?? null,
+    ready: true,
+    mine: usage.find((entry) => entry.profileId === me) ?? null,
     quota: owner ? quotaOf(quotas, me) : QUOTA_UNKNOWN,
-    shared: sharedDriveUsageOf(usage ?? [], sharedRoot),
-    people: owner && usage !== null ? peopleUsageOf({ usage, quotas, people, me }) : NO_PEOPLE,
+    shared: sharedDriveUsageOf(usage, sharedRoot),
+    people: owner ? peopleUsageOf({ usage, quotas, people, me }) : NO_PEOPLE,
   };
 }
 
 function StorageEmpty(): ReactNode {
   return (
-    <EmptyState
-      icon="hardDrive"
-      title="Nothing stored yet"
-      body="Storage shows how your drives fill the data folder disk. Files you add to My Drive or the Shared Drive show here."
-      action={<Button label="Open My Drive" variant="tonal" icon="hardDrive" href={href.drive()} />}
-    />
+    <Card>
+      <EmptyState
+        icon="hardDrive"
+        title="Nothing stored yet"
+        body="Storage shows how your drives fill the data folder disk. Files you add to My Drive or the Shared Drive show here."
+        action={
+          <Button label="Open My Drive" variant="tonal" icon="hardDrive" href={href.drive()} />
+        }
+      />
+    </Card>
   );
 }
 
@@ -68,55 +84,121 @@ export interface StorageColumnsProps {
   readonly owner: boolean;
 }
 
-function MainColumn({
-  stats,
+const USAGE_FAILURE = 'drive.storage.usage_refetch_failed';
+
+function DrivesPart({
+  usage,
   owner,
-  wide,
-}: StorageColumnsProps & { readonly wide: boolean }): ReactNode {
+  freeBytes,
+}: {
+  readonly usage: StorageUsage;
+  readonly owner: boolean;
+  readonly freeBytes: number;
+}): ReactNode {
+  if (!usage.ready) {
+    return (
+      <StorageCardState
+        title="Your drives"
+        icon="hardDrive"
+        query={usage.query}
+        failure={USAGE_FAILURE}
+      />
+    );
+  }
+  return (
+    <ByDrive
+      mine={usage.mine}
+      quota={usage.quota}
+      shared={usage.shared}
+      owner={owner}
+      freeBytes={freeBytes}
+    />
+  );
+}
+
+function PeoplePart({
+  usage,
+  freeBytes,
+}: {
+  readonly usage: StorageUsage;
+  readonly freeBytes: number;
+}): ReactNode {
+  if (!usage.ready) {
+    return (
+      <StorageCardState title="People" icon="users" query={usage.query} failure={USAGE_FAILURE} />
+    );
+  }
+  if (!othersHaveData(usage.people)) return null;
+  return <PeopleCard people={usage.people.filter((entry) => !entry.you)} freeBytes={freeBytes} />;
+}
+
+interface Parts {
+  readonly hero: ReactNode;
+  readonly main: ReactNode;
+  readonly extras: ReactNode;
+  readonly empty: boolean;
+}
+
+function usePartsOf({ stats, owner }: StorageColumnsProps): Parts {
   const usage = useStorageUsage(owner);
-  const disk = diskViewOf({ stats, usage: usage.usage, owner });
-  return (
-    <>
-      <StorageHero stats={stats} disk={disk} wide={wide} />
-      <ByDrive mine={usage.mine} quota={usage.quota} shared={usage.shared} owner={owner} />
-      {owner ? <PeopleCard people={usage.people} /> : null}
-      {stats.items === 0 ? <StorageEmpty /> : <KindsCard stats={stats} wide={wide} />}
-      <PurgeBars purges={stats.purges} />
-    </>
-  );
-}
-
-function SideColumn({ stats }: { readonly stats: DriveStats }): ReactNode {
-  return (
-    <>
-      <HealthCard />
-      {stats.items === 0 ? null : (
+  const freeBytes = stats.space.freeBytes;
+  const hero = <StorageHero stats={stats} disk={diskViewOf(stats)} />;
+  const people = owner ? <PeoplePart usage={usage} freeBytes={freeBytes} /> : null;
+  if (stats.items === 0) {
+    return {
+      hero,
+      main: (
         <>
-          <StorageDuplicates keepers={null} />
-          <LargestFiles />
+          <StorageEmpty />
+          {people}
         </>
-      )}
-    </>
-  );
+      ),
+      extras: null,
+      empty: true,
+    };
+  }
+  return {
+    hero,
+    main: (
+      <>
+        <DrivesPart usage={usage} owner={owner} freeBytes={freeBytes} />
+        {people}
+        <KindsCard stats={stats} />
+        <PurgeBars purges={stats.purges} />
+      </>
+    ),
+    extras: (
+      <>
+        <StorageDuplicates keepers={null} />
+        <LargestFiles />
+      </>
+    ),
+    empty: false,
+  };
 }
 
-export function StorageColumns({ stats, owner }: StorageColumnsProps): ReactNode {
-  const wide = twoFrameColumnsAt(useFrameBodyWidth());
+export function StorageColumns(props: StorageColumnsProps): ReactNode {
+  const wide = storageTwoColumnsAt(useFrameBodyWidth());
+  const { hero, main, extras, empty } = usePartsOf(props);
   if (!wide) {
     return (
       <View className="gap-4">
-        <MainColumn stats={stats} owner={owner} wide={false} />
-        <SideColumn stats={stats} />
+        {hero}
+        {empty ? main : <HealthCard />}
+        {empty ? <HealthCard /> : main}
+        {extras}
       </View>
     );
   }
   return (
     <View className="flex-row items-start gap-4">
       <View style={MAIN_COLUMN} className="min-w-0 gap-4">
-        <MainColumn stats={stats} owner={owner} wide />
+        {hero}
+        {main}
       </View>
       <View style={SIDE_COLUMN} className="min-w-0 gap-4">
-        <SideColumn stats={stats} />
+        <HealthCard />
+        {extras}
       </View>
     </View>
   );

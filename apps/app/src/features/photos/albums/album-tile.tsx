@@ -14,7 +14,28 @@ import { itemsText, ruleLine, type Visibility } from './model';
 
 export type AlbumLook = 'card' | 'row';
 
-function CardMosaic({ ids }: { readonly ids: readonly string[] }): ReactNode {
+function EmptyCover({
+  album,
+  className,
+}: {
+  readonly album: DriveAlbum;
+  readonly className: string;
+}): ReactNode {
+  return (
+    <View accessible={false} className={cn('items-center justify-center bg-surface-3', className)}>
+      <Icon name={album.kind === 'smart' ? 'sparkles' : 'layers'} size={24} tone="faint" />
+    </View>
+  );
+}
+
+function CardMosaic({
+  album,
+  ids,
+}: {
+  readonly album: DriveAlbum;
+  readonly ids: readonly string[];
+}): ReactNode {
+  if (album.itemCount === 0) return <EmptyCover album={album} className="h-30" />;
   return (
     <View className="h-30 flex-row gap-0.5">
       <Cover itemId={ids[0] ?? null} className="h-full flex-2 rounded-none" />
@@ -26,7 +47,14 @@ function CardMosaic({ ids }: { readonly ids: readonly string[] }): ReactNode {
   );
 }
 
-function RowMosaic({ ids }: { readonly ids: readonly string[] }): ReactNode {
+function RowMosaic({
+  album,
+  ids,
+}: {
+  readonly album: DriveAlbum;
+  readonly ids: readonly string[];
+}): ReactNode {
+  if (album.itemCount === 0) return <EmptyCover album={album} className="h-16 w-27.5 rounded-sm" />;
   return (
     <View className="flex-row gap-0.5">
       <Cover itemId={ids[0] ?? null} className="h-16 w-18 rounded-sm" />
@@ -102,7 +130,7 @@ export function AlbumTile({
       )}
       layerClassName="rounded-lg"
     >
-      {card ? <CardMosaic ids={ids} /> : <RowMosaic ids={ids} />}
+      {card ? <CardMosaic album={album} ids={ids} /> : <RowMosaic album={album} ids={ids} />}
       <View className={card ? 'px-3 py-2.5' : 'min-w-0 flex-1'}>
         <AlbumText album={album} span={span} who={who} />
       </View>

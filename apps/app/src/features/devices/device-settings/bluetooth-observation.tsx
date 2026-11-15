@@ -16,6 +16,28 @@ import { bleStatusOf } from './ble-status';
 
 const log = new Logger('app.devices');
 
+async function changeObservation(
+  deviceId: string,
+  enabled: boolean,
+  refresh: () => Promise<unknown>,
+  settle: () => void,
+): Promise<void> {
+  try {
+    if (enabled) {
+      await enableDoorObservation(deviceId);
+    } else {
+      await disableDoorObservation(deviceId);
+    }
+    await refresh();
+    log.info('observation.changed', { deviceId, enabled });
+  } catch (error) {
+    log.error('observation.change_failed', error, { deviceId, enabled });
+    notify({ message: 'Bluetooth observation was not changed', error, tone: 'critical' });
+  } finally {
+    settle();
+  }
+}
+
 function useChangeObservation(
   deviceId: string,
   refresh: () => Promise<unknown>,
@@ -24,20 +46,9 @@ function useChangeObservation(
   const change = async (enabled: boolean): Promise<void> => {
     setBusy(true);
     log.info('observation.changing', { deviceId, enabled });
-    try {
-      if (enabled) {
-        await enableDoorObservation(deviceId);
-      } else {
-        await disableDoorObservation(deviceId);
-      }
-      await refresh();
-      log.info('observation.changed', { deviceId, enabled });
-    } catch (error) {
-      log.error('observation.change_failed', error, { deviceId, enabled });
-      notify({ message: 'Bluetooth observation was not changed', error, tone: 'critical' });
-    } finally {
+    await changeObservation(deviceId, enabled, refresh, () => {
       setBusy(false);
-    }
+    });
   };
   return { busy, change };
 }

@@ -88,10 +88,12 @@ export function MetricCard({
   spec,
   view,
   link = true,
+  className,
 }: {
   readonly spec: SeriesSpec;
   readonly view: SeriesView;
   readonly link?: boolean;
+  readonly className?: string;
 }): ReactNode {
   const window = view.window;
   if (view.problem !== null) {
@@ -107,6 +109,7 @@ export function MetricCard({
     <Card
       title={spec.label}
       icon={spec.icon}
+      {...(className === undefined ? {} : { className })}
       action={
         link ? (
           <Button
@@ -133,10 +136,12 @@ export function MetricCard({
 export function MetricSection({
   spec,
   window,
+  className,
 }: {
   readonly spec: SeriesSpec;
   readonly window: Window;
+  readonly className?: string;
 }): ReactNode {
   const view = useSeries(spec, window, false);
-  return <MetricCard spec={spec} view={view} />;
+  return <MetricCard spec={spec} view={view} {...(className === undefined ? {} : { className })} />;
 }

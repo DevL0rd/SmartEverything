@@ -1,19 +1,35 @@
 import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
-import { Icon, type IconName } from '../../../components/icon';
+import type { IconName } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
-import { Interactive } from '../../../components/interactive';
 import type { MediaSelectionControls } from '../../../components/media-grid/selection';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import { useAnchoredMenu } from '../../../components/menu';
 import { Text } from '../../../components/text';
-import type { Tone } from '../../../components/tone';
 import { useEscape } from '../../../components/use-escape';
-import { allFavourite, pickedText } from './library-model';
+import { offersSelectAll, pickedText, type SelectionScope } from './library-model';
 import type { MediaActions } from './use-media-actions';
-import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
 import { organiseMenuItems, useOrganiseActions } from '../organise/actions';
+import {
+  SelectionActions,
+  SelectionDivider,
+  SelectionGroup,
+  SelectionSummary,
+  SelectionSurface,
+} from '../components/selection-surface';
+import { LibraryActionRow } from './library-action-row';
+import {
+  keepActions,
+  LocalSelection,
+  NO_EXTRAS,
+  pickedOf,
+  sendActions,
+  shown,
+  type Picked,
+  type PickedProps,
+  type SelectionAction,
+} from './selection-model';
 
 export const NOTHING_PICKED = 'Select items';
 
@@ -31,104 +47,26 @@ export interface LibrarySelectionProps {
   readonly tiles: readonly MediaTile[];
   readonly media: MediaActions;
   readonly extras?: readonly SelectionExtra[];
+  readonly scope?: SelectionScope;
 }
 
-interface Picked {
-  readonly ids: readonly string[];
-  readonly none: boolean;
-  readonly favourite: boolean;
-  readonly localCount: number;
-}
-
-interface PickedProps {
-  readonly media: MediaActions;
-  readonly picked: Picked;
-  readonly onTrashed: () => void;
-}
-
-const NO_EXTRAS: readonly SelectionExtra[] = [];
-
-interface SelectionAction {
-  readonly id: string;
-  readonly label: string;
-  readonly icon: IconName;
-  readonly disabled: boolean;
-  readonly onPress: () => void;
-}
-
-export function selectedItems(selection: ReadonlySet<string>, tiles: readonly MediaTile[]): Picked {
-  const selected = tiles.filter((tile) => selection.has(tile.id));
-  const ids = selected.filter((tile) => !tile.local).map((tile) => tile.id);
-  return {
-    ids,
-    none: ids.length === 0,
-    favourite: allFavourite(new Set(ids), tiles),
-    localCount: selected.filter((tile) => tile.local).length,
-  };
-}
-
-function shareAction({ media, picked }: PickedProps): SelectionAction {
-  const single = picked.ids.length === 1 ? picked.ids[0] : undefined;
-  return {
-    id: 'share',
-    label: 'Share',
-    icon: 'share',
-    disabled: single === undefined,
-    onPress: (): void => {
-      if (single !== undefined) media.share(single);
-    },
-  };
-}
-
-function chatAction({ media, picked }: PickedProps): SelectionAction {
-  return {
-    id: 'chat',
-    label: 'To chat',
-    icon: 'messageCircle',
-    disabled: picked.none || media.chatHint !== null,
-    onPress: (): void => {
-      media.toChat(picked.ids);
-    },
-  };
-}
-
-function deskActions(input: PickedProps): readonly SelectionAction[] {
-  const { media, picked } = input;
-  return [
-    {
-      id: 'favourite',
-      label: picked.favourite ? 'Unfavourite' : 'Favourite',
-      icon: 'star',
-      disabled: picked.none,
-      onPress: (): void => {
-        media.favourite(picked.ids, !picked.favourite);
-      },
-    },
-    chatAction(input),
-    shareAction(input),
-    {
-      id: 'download',
-      label: 'Download',
-      icon: 'download',
-      disabled: picked.none,
-      onPress: (): void => {
-        media.download(picked.ids);
-      },
-    },
-  ];
+function ActionButtons({ actions }: { readonly actions: readonly SelectionAction[] }): ReactNode {
+  return shown(actions).map((action) => (
+    <Button
+      key={action.id}
+      label={action.label}
+      icon={action.icon}
+      variant="outlined"
+      onPress={action.onPress}
+    />
+  ));
 }
 
 function AlbumButton({ media, picked }: PickedProps): ReactNode {
   const { ref, open, menu } = useAnchoredMenu(media.albums(picked.ids), 'Add to album');
   return (
     <View ref={ref} collapsable={false}>
-      <Button
-        label="Add to album"
-        icon="layers"
-        variant="tonal"
-        disabled={picked.none}
-        onPress={open}
-      />
+      <Button label="Add to album" icon="layers" variant="tonal" onPress={open} />
       {menu}
     </View>
   );
@@ -153,54 +91,102 @@ function OrganiseButton({ picked, onTrashed }: PickedProps): ReactNode {
   const { ref, open, menu } = useOrganiseMenu(picked, onTrashed);
   return (
     <View ref={ref} collapsable={false}>
-      <Button
-        label="Organise"
-        icon="archive"
-        variant="outlined"
-        disabled={picked.none}
-        onPress={open}
-      />
+      <Button label="Organise" icon="archive" variant="outlined" onPress={open} />
       {menu}
     </View>
   );
 }
 
-function Summary({ controls, tiles }: LibrarySelectionProps): ReactNode {
+function summaryText(props: LibrarySelectionProps): string {
+  const { controls, tiles, scope } = props;
+  const ids = controls.selection.ids;
+  if (controls.everything && scope !== undefined) return pickedText(ids, tiles, scope.total);
+  return ids.size === 0 ? NOTHING_PICKED : pickedText(ids, tiles, null);
+}
+
+function Summary(props: LibrarySelectionProps): ReactNode {
+  const { controls, tiles, scope } = props;
   const ids = controls.selection.ids;
   return (
-    <>
+    <SelectionSummary>
       <IconButton
         icon="close"
         label="Clear the selection"
         tone="onPrimaryContainer"
         onPress={controls.clear}
       />
-      <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
-        <Text
-          variant="title-3"
-          tone="onPrimaryContainer"
-          className="tabular-nums"
-          numberOfLines={1}
-        >
-          {ids.size === 0 ? NOTHING_PICKED : pickedText(ids, tiles)}
-        </Text>
-        {ids.size < tiles.length ? (
-          <Button label="Select all" variant="text" onPress={controls.all} />
-        ) : null}
-      </View>
-    </>
+      <Text
+        variant="title-3"
+        tone="onPrimaryContainer"
+        className="min-w-0 shrink tabular-nums"
+        numberOfLines={1}
+      >
+        {summaryText(props)}
+      </Text>
+      {offersSelectAll(ids.size, tiles.length, controls.everything, scope) ? (
+        <Button
+          label="Select all"
+          variant="text"
+          onPress={scope === undefined ? controls.all : scope.onAll}
+        />
+      ) : null}
+    </SelectionSummary>
   );
 }
 
-function LocalSelection({ picked }: { readonly picked: Picked }): ReactNode {
-  if (picked.localCount === 0) return null;
+function ManageGroup({
+  media,
+  picked,
+  onTrashed,
+  extras,
+}: PickedProps & { readonly extras: readonly SelectionExtra[] }): ReactNode {
   return (
-    <View className="flex-row flex-wrap items-center gap-2">
-      <Text variant="caption" tone="variant">
-        {picked.localCount} on this device · other actions apply to items in the hub library
-      </Text>
-      <Button label="Back up" icon="upload" variant="tonal" href={PHOTOS_BACKUP_SETTINGS_HREF} />
-    </View>
+    <SelectionGroup>
+      <OrganiseButton media={media} picked={picked} onTrashed={onTrashed} />
+      {extras
+        .filter((extra) => !extra.disabled)
+        .map((extra) => (
+          <Button
+            key={extra.id}
+            label={extra.label}
+            icon={extra.icon}
+            variant="outlined"
+            onPress={() => {
+              extra.onPress(picked.ids);
+            }}
+          />
+        ))}
+      <Button
+        label="Move to trash"
+        icon="trash"
+        variant="destructive"
+        onPress={() => {
+          media.trash(picked.ids, onTrashed);
+        }}
+      />
+    </SelectionGroup>
+  );
+}
+
+function KeepGroup({ media, picked, onTrashed }: PickedProps): ReactNode {
+  return (
+    <SelectionGroup>
+      <AlbumButton media={media} picked={picked} onTrashed={onTrashed} />
+      <ActionButtons actions={keepActions({ media, picked, onTrashed })} />
+    </SelectionGroup>
+  );
+}
+
+function SendGroup(input: PickedProps): ReactNode {
+  const send = shown(sendActions(input));
+  if (send.length === 0) return null;
+  return (
+    <>
+      <SelectionDivider />
+      <SelectionGroup>
+        <ActionButtons actions={send} />
+      </SelectionGroup>
+    </>
   );
 }
 
@@ -210,159 +196,41 @@ function DeskActions({
   onTrashed,
   extras,
 }: PickedProps & { readonly extras: readonly SelectionExtra[] }): ReactNode {
+  if (picked.none) return <LocalSelection picked={picked} />;
   return (
-    <>
+    <SelectionActions>
       <LocalSelection picked={picked} />
-      <AlbumButton media={media} picked={picked} onTrashed={onTrashed} />
-      {deskActions({ media, picked, onTrashed }).map((action) => (
-        <Button
-          key={action.id}
-          label={action.label}
-          icon={action.icon}
-          variant="outlined"
-          disabled={action.disabled}
-          onPress={action.onPress}
-        />
-      ))}
-      <OrganiseButton media={media} picked={picked} onTrashed={onTrashed} />
-      {extras.map((extra) => (
-        <Button
-          key={extra.id}
-          label={extra.label}
-          icon={extra.icon}
-          variant="outlined"
-          disabled={picked.none || extra.disabled}
-          onPress={() => {
-            extra.onPress(picked.ids);
-          }}
-        />
-      ))}
-      <View className="mx-1 h-5 w-px bg-on-primary-container/30" />
-      <Button
-        label="Move to trash"
-        icon="trash"
-        variant="destructive"
-        disabled={picked.none}
-        onPress={() => {
-          media.trash(picked.ids, onTrashed);
-        }}
-      />
-    </>
+      <KeepGroup media={media} picked={picked} onTrashed={onTrashed} />
+      <SendGroup media={media} picked={picked} onTrashed={onTrashed} />
+      <SelectionDivider />
+      <ManageGroup media={media} picked={picked} onTrashed={onTrashed} extras={extras} />
+    </SelectionActions>
   );
 }
 
-export function LibrarySelection({
-  controls,
-  tiles,
-  media,
-  extras = NO_EXTRAS,
-}: LibrarySelectionProps): ReactNode {
+export function LibrarySelection(props: LibrarySelectionProps): ReactNode {
+  const { controls, media, extras = NO_EXTRAS } = props;
   useEscape(controls.selection.active, controls.clear);
   return (
-    <View className="min-h-15 flex-row flex-wrap items-center gap-2 bg-primary-container px-gutter py-2">
-      <Summary controls={controls} tiles={tiles} media={media} />
+    <SelectionSurface>
+      <Summary {...props} />
       <DeskActions
         media={media}
-        picked={selectedItems(controls.selection.ids, tiles)}
+        picked={pickedOf(props)}
         onTrashed={controls.clear}
         extras={extras}
       />
-    </View>
+    </SelectionSurface>
   );
 }
 
-export function LibrarySelectionHead({ controls, tiles, media }: LibrarySelectionProps): ReactNode {
+export function LibrarySelectionHead(props: LibrarySelectionProps): ReactNode {
+  const { controls } = props;
   useEscape(controls.selection.active, controls.clear);
   return (
-    <View className="min-h-15 flex-row items-center gap-2 bg-primary-container px-gutter py-2">
-      <Summary controls={controls} tiles={tiles} media={media} />
-    </View>
-  );
-}
-
-interface BarProps {
-  readonly icon: IconName;
-  readonly label: string;
-  readonly disabled: boolean;
-  readonly tone?: Tone;
-  readonly onPress: () => void;
-}
-
-function BarAction({ icon, label, disabled, tone = 'default', onPress }: BarProps): ReactNode {
-  return (
-    <Interactive
-      label={label}
-      disabled={disabled}
-      onPress={onPress}
-      className="min-h-touch-min flex-1 items-center justify-center gap-1 rounded-md py-1"
-      layerClassName="rounded-md"
-    >
-      <Icon name={icon} size={24} tone={tone} />
-      <Text variant="caption" tone={tone}>
-        {label}
-      </Text>
-    </Interactive>
-  );
-}
-
-function BarAlbum({ media, picked }: PickedProps): ReactNode {
-  const { ref, open, menu } = useAnchoredMenu(media.albums(picked.ids), 'Add to album');
-  return (
-    <View ref={ref} collapsable={false} className="flex-1">
-      <BarAction icon="layers" label="Album" disabled={picked.none} onPress={open} />
-      {menu}
-    </View>
-  );
-}
-
-function BarOrganise({ picked, onTrashed }: PickedProps): ReactNode {
-  const { ref, open, menu } = useOrganiseMenu(picked, onTrashed);
-  return (
-    <View ref={ref} collapsable={false} className="flex-1">
-      <BarAction icon="more" label="More" disabled={picked.none} onPress={open} />
-      {menu}
-    </View>
-  );
-}
-
-export function LibraryActionRow({
-  controls,
-  tiles,
-  media,
-  extras = NO_EXTRAS,
-}: LibrarySelectionProps): ReactNode {
-  const picked = selectedItems(controls.selection.ids, tiles);
-  const input: PickedProps = { media, picked, onTrashed: controls.clear };
-  return (
-    <View className="gap-2">
-      <LocalSelection picked={picked} />
-      <View className="flex-row">
-        <BarAction {...shareAction(input)} />
-        <BarAlbum media={media} picked={picked} onTrashed={controls.clear} />
-        <BarAction {...chatAction(input)} />
-        <BarOrganise media={media} picked={picked} onTrashed={controls.clear} />
-        {extras.map((extra) => (
-          <BarAction
-            key={extra.id}
-            icon={extra.icon}
-            label={extra.short}
-            disabled={picked.none || extra.disabled}
-            onPress={() => {
-              extra.onPress(picked.ids);
-            }}
-          />
-        ))}
-        <BarAction
-          icon="trash"
-          label="Trash"
-          tone="critical"
-          disabled={picked.none}
-          onPress={() => {
-            media.trash(picked.ids, controls.clear);
-          }}
-        />
-      </View>
-    </View>
+    <SelectionSurface>
+      <Summary {...props} />
+    </SelectionSurface>
   );
 }
 
@@ -379,3 +247,4 @@ export function selectionFrameOf(compact: boolean, props: LibrarySelectionProps)
     footer: compact && selection.ids.size > 0 ? <LibraryActionRow {...props} /> : null,
   };
 }
+

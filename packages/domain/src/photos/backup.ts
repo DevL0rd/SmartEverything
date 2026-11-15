@@ -88,6 +88,25 @@ export const BACKUP_HAVE_RESULT = z
 
 export type BackupHaveResult = z.infer<typeof BACKUP_HAVE_RESULT>;
 
+export const PHOTO_ORIGINS_REQUEST = z
+  .strictObject({
+    deviceId: z.string().min(1),
+    itemIds: z.array(ID).min(1).readonly(),
+  })
+  .readonly();
+
+export type PhotoOriginsRequest = z.infer<typeof PHOTO_ORIGINS_REQUEST>;
+
+export const PHOTO_ORIGINS = z
+  .strictObject({
+    origins: z
+      .array(z.strictObject({ itemId: ID, folder: PHOTO_FOLDER_ORIGIN.nullable() }).readonly())
+      .readonly(),
+  })
+  .readonly();
+
+export type PhotoOrigins = z.infer<typeof PHOTO_ORIGINS>;
+
 export const BACKUP_DEVICE_STATE = z
   .strictObject({
     device: BACKUP_DEVICE,
