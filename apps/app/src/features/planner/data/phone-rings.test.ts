@@ -1,4 +1,4 @@
-import { ApiError, type PlannerPhoneRingSet } from '@smarteverything/domain';
+import { type PlannerPhoneRingSet } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../../modules/health-connect', () => ({
@@ -18,21 +18,14 @@ function set(hash: string): PlannerPhoneRingSet {
 
 function link(overrides: Partial<PhoneRingsLink> = {}): PhoneRingsLink & {
   readonly installed: string[];
-  readonly acked: string[];
 } {
   const installed: string[] = [];
-  const acked: string[] = [];
   return {
     installed,
-    acked,
     linked: () => true,
     read: () => Promise.resolve(set('one')),
     install: (value): Promise<void> => {
       installed.push(value.hash);
-      return Promise.resolve();
-    },
-    ack: (_client, hash): Promise<void> => {
-      acked.push(hash);
       return Promise.resolve();
     },
     ...overrides,
@@ -40,30 +33,12 @@ function link(overrides: Partial<PhoneRingsLink> = {}): PhoneRingsLink & {
 }
 
 describe('syncPhoneRings', () => {
-  it('reads, installs and acknowledges the set with its hash', async () => {
-    const calls = link();
+  it('reads the set once and installs it once', async () => {
+    const read = vi.fn(() => Promise.resolve(set('one')));
+    const calls = link({ read });
     expect(await syncPhoneRings(calls, CLIENT)).toBe(true);
+    expect(read).toHaveBeenCalledTimes(1);
     expect(calls.installed).toEqual(['one']);
-    expect(calls.acked).toEqual(['one']);
-  });
-
-  it('reads again after a conflict reply', async () => {
-    const hashes = ['one', 'two'];
-    let refuse = true;
-    const calls = link({
-      read: () => Promise.resolve(set(hashes.shift() ?? 'last')),
-      ack: (_client, hash) => {
-        if (refuse) {
-          refuse = false;
-          return Promise.reject(new ApiError('conflict', 'changed'));
-        }
-        calls.acked.push(hash);
-        return Promise.resolve();
-      },
-    });
-    expect(await syncPhoneRings(calls, CLIENT)).toBe(true);
-    expect(calls.installed).toEqual(['one', 'two']);
-    expect(calls.acked).toEqual(['two']);
   });
 
   it('does nothing without the native module', async () => {
@@ -72,9 +47,10 @@ describe('syncPhoneRings', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('passes other errors on', async () => {
-    const calls = link({ ack: () => Promise.reject(new ApiError('forbidden', 'no')) });
-    await expect(syncPhoneRings(calls, CLIENT)).rejects.toBeInstanceOf(ApiError);
+  it('passes an install failure on', async () => {
+    const failure = new Error('native refused');
+    const calls = link({ install: () => Promise.reject(failure) });
+    await expect(syncPhoneRings(calls, CLIENT)).rejects.toBe(failure);
   });
 });
 

@@ -2417,7 +2417,7 @@
   {
     "name": "argparse",
     "version": "3.0.4",
-    "licence": "PSF-2.0"
+    "licence": "Python-2.0"
   },
   {
     "name": "aria-hidden",
@@ -2877,7 +2877,7 @@
   {
     "name": "combine-errors",
     "version": "3.0.4",
-    "licence": "Unknown"
+    "licence": "MIT"
   },
   {
     "name": "combined-stream",

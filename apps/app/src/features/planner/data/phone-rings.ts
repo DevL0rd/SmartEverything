@@ -1,4 +1,4 @@
-import { API_ENDPOINTS as E, ApiError, type PlannerPhoneRingSet } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, type PlannerPhoneRingSet } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import { useEffect } from 'react';
 import { installPhoneRings, plannerLinked } from '../../../../modules/health-connect';
@@ -13,36 +13,20 @@ export interface PhoneRingsLink {
   readonly linked: () => boolean;
   readonly read: (clientId: string) => Promise<PlannerPhoneRingSet>;
   readonly install: (set: PlannerPhoneRingSet, clientId: string) => Promise<void>;
-  readonly ack: (clientId: string, hash: string) => Promise<void>;
 }
 
 export const nativePhoneRings: PhoneRingsLink = {
   linked: plannerLinked,
   read: (clientId) => api().call(E.readPlannerPhoneRings, { query: { clientId } }),
   install: installPhoneRings,
-  ack: async (clientId, hash) => {
-    await api().call(E.ackPlannerPhoneRings, { body: { clientId, hash } });
-  },
 };
-
-function isStale(error: unknown): boolean {
-  return error instanceof ApiError && error.code === 'conflict';
-}
 
 export async function syncPhoneRings(link: PhoneRingsLink, clientId: string): Promise<boolean> {
   if (!link.linked()) return false;
-  for (;;) {
-    const set = await link.read(clientId);
-    await link.install(set, clientId);
-    try {
-      await link.ack(clientId, set.hash);
-    } catch (error) {
-      if (isStale(error)) continue;
-      throw error;
-    }
-    log.info('planner.phone_rings_synced', { rings: set.rings.length });
-    return true;
-  }
+  const set = await link.read(clientId);
+  await link.install(set, clientId);
+  log.info('planner.phone_rings_synced', { rings: set.rings.length });
+  return true;
 }
 
 export class PhoneRingsSync {
