@@ -19,6 +19,7 @@ import { Text } from '../../../components/text';
 import { Zoomable, clampZoom, useZoomState, type ZoomState } from '../../../components/zoomable';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
+import { useWindowSize } from '../../../design/size-class';
 import {
   IMAGE_MODE_LABEL,
   SWIPE_START,
@@ -257,8 +258,11 @@ function ZoomControls({ zoom }: { readonly zoom: ZoomState }): ReactNode {
   );
 }
 
+const TOUCH_FRAME_SCREEN_SHARE = 0.6;
+
 export function ImageCompare(props: ImageCompareProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
+  const screen = useWindowSize().height;
   const modes = imageModesFor(pointer);
   const [mode, setMode] = useState<ImageMode>(modes[0] ?? 'side');
   const zoom = useZoomState();
@@ -277,7 +281,10 @@ export function ImageCompare(props: ImageCompareProps): ReactNode {
         />
         {pointer ? <ZoomControls zoom={zoom} /> : null}
       </View>
-      <View className={pointer ? 'min-h-0 flex-1' : 'h-75'}>
+      <View
+        style={pointer ? undefined : { maxHeight: screen * TOUCH_FRAME_SCREEN_SHARE }}
+        className={pointer ? 'min-h-0 flex-1' : 'aspect-4/3 w-full'}
+      >
         {mode === 'side' ? (
           <SideBySide parts={props} zoom={zoom} />
         ) : (

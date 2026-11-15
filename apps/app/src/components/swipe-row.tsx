@@ -159,16 +159,6 @@ function Well({ action, translation, armAt }: WellProps): ReactNode {
   );
 }
 
-function useWellsMounted(): readonly [boolean, () => void] {
-  const [mounted, setMounted] = useState(false);
-  return [
-    mounted,
-    (): void => {
-      setMounted(true);
-    },
-  ];
-}
-
 interface SlotProps extends WellProps {
   readonly mounted: boolean;
 }
@@ -186,9 +176,9 @@ export function SwipeRow({
   const pointer = useIdiom() === 'pointer';
   const ref = useRef<SwipeableMethods>(null);
   const { width, onLayout } = useMeasuredWidth();
-  const [mounted, mountWells] = useWellsMounted();
+  const [swiping, setSwiping] = useState(false);
   if (pointer || (leading === undefined && trailing === undefined)) {
-    return <View className={SURFACE[surface]}>{children}</View>;
+    return <View>{children}</View>;
   }
   const armAt = width * ARM_SHARE;
   const threshold = armAt === 0 ? {} : { leftThreshold: armAt, rightThreshold: armAt };
@@ -201,24 +191,27 @@ export function SwipeRow({
         overshootRight
         renderLeftActions={(_progress, translation) =>
           leading === undefined ? null : (
-            <WellSlot mounted={mounted} action={leading} translation={translation} armAt={armAt} />
+            <WellSlot mounted={swiping} action={leading} translation={translation} armAt={armAt} />
           )
         }
         renderRightActions={(_progress, translation) =>
           trailing === undefined ? null : (
-            <WellSlot mounted={mounted} action={trailing} translation={translation} armAt={armAt} />
+            <WellSlot mounted={swiping} action={trailing} translation={translation} armAt={armAt} />
           )
         }
-        onSwipeableOpenStartDrag={mountWells}
+        onSwipeableOpenStartDrag={() => {
+          setSwiping(true);
+        }}
+        onSwipeableClose={() => {
+          setSwiping(false);
+        }}
         onSwipeableOpen={(direction) => {
           const action = direction === SwipeDirection.RIGHT ? leading : trailing;
           action?.onCommit();
           ref.current?.close();
         }}
       >
-        <View onTouchStart={mountWells} className={SURFACE[surface]}>
-          {children}
-        </View>
+        <View className={swiping ? SURFACE[surface] : undefined}>{children}</View>
       </ReanimatedSwipeable>
     </View>
   );

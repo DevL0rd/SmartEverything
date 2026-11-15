@@ -84,17 +84,27 @@ export async function askAbout(
   }
 }
 
-export async function shareLink(itemId: string): Promise<void> {
+export function linksName(count: number, isPublic: boolean): string {
+  const noun = count === 1 ? 'link' : 'links';
+  return isPublic ? `${noun.charAt(0).toUpperCase()}${noun.slice(1)}` : `Home network ${noun}`;
+}
+
+export async function shareLinks(itemIds: readonly string[]): Promise<void> {
   try {
-    const created = await createDriveShare({
-      itemId,
-      permission: 'view',
-      expiresAt: null,
-      password: null,
-    });
-    copyText(created.url, created.public ? 'Link' : 'Home network link');
+    const created = await Promise.all(
+      itemIds.map((itemId) =>
+        createDriveShare({ itemId, permission: 'view', expiresAt: null, password: null }),
+      ),
+    );
+    copyText(
+      created.map((share) => share.url).join('\n'),
+      linksName(
+        created.length,
+        created.every((share) => share.public),
+      ),
+    );
   } catch (error) {
-    failed('The link was not made', error);
+    failed(itemIds.length === 1 ? 'The link was not made' : 'The links were not made', error);
   }
 }
 

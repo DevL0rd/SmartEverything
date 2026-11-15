@@ -114,7 +114,7 @@ function BlockView({
   readonly weekdays: boolean;
 }): ReactNode {
   const inset = weekdays ? WEEKDAY_WIDTH : 0;
-  const size = cellSizeOf(width - inset, block.columns);
+  const size = cellSizeOf(width - inset, block.span);
   const step = size + GAP;
   const faint = useColour('on-surface-faint');
   const shift = { marginLeft: inset };

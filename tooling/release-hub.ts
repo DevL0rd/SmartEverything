@@ -1,6 +1,7 @@
 import { prepareHubData } from './release-hub-prepare.ts';
+import { recordReleasedHub } from './release-hub-ledger.ts';
 import { join } from 'node:path';
-import { rollbackWith } from './release-hub-rollback.ts';
+import { rollbackDryRun, rollbackWith } from './release-hub-rollback.ts';
 export { rollbackWith, type RollbackOptions } from './release-hub-rollback.ts';
 import { parseArgs } from 'node:util';
 import { withIdleHubRelease } from '../apps/hub/src/self-update/release-lock.ts';
@@ -12,7 +13,6 @@ import {
   markBackup,
   ReleaseStepError,
   releaseSceneOf,
-  rollbackPreflight,
   serviceMigrationCheck,
   swapService,
   type ReleaseTarget,
@@ -28,7 +28,6 @@ import {
 } from './release-hub-verify.ts';
 import {
   applyTransition,
-  CROSSING_STEPS,
   environmentFrom,
   hasV1Marker,
   locateBackup,
@@ -50,7 +49,7 @@ import {
 const log = new Logger('tool.release-hub');
 
 const USAGE = `usage:
-  tsx tooling/release-hub.ts release  --name <release18> --service <built service dir> --url <hub https url> [--schema <n>] [--dry-run]
+  tsx tooling/release-hub.ts release  --name <release18> --notes <release notes> --service <built service dir> --url <hub https url> [--schema <n>] [--dry-run]
   tsx tooling/release-hub.ts rollback --backup <backups/releases/name-epoch> --url <hub https url> [--with-database] [--dry-run]
   tsx tooling/release-hub.ts verify   --url <hub https url> [--schema <n>]
   tsx tooling/release-hub.ts backup   --name <release18> [--dry-run]
@@ -64,6 +63,7 @@ export interface ReleaseOptions {
   readonly transition: Transition | null;
   readonly units: Units;
   readonly name: string;
+  readonly notes: string;
   readonly built: string;
   readonly url: string;
   readonly schema: number | null;
@@ -77,6 +77,8 @@ export function failedChecks(checks: readonly Check[]): readonly Check[] {
 interface ReleaseState {
   backup: string;
   schemaMoved: boolean;
+  startingSchema: number | null;
+  startedAt: Date;
 }
 
 export class ReleaseAwaitingDecision extends Error {
@@ -112,7 +114,10 @@ function awaitDecision(cause: unknown, options: ReleaseOptions, state: ReleaseSt
   throw new ReleaseAwaitingDecision(state.backup, rollbackCommand(options, state), cause);
 }
 
-async function verifyRelease(options: ReleaseOptions, state: ReleaseState): Promise<void> {
+async function verifiedChecks(
+  options: ReleaseOptions,
+  state: ReleaseState,
+): Promise<readonly Check[]> {
   const { target, transition, units, url, schema } = options;
   try {
     const checked = await verifyHub(transition?.after ?? target.data, url, units, schema);
@@ -122,11 +127,29 @@ async function verifyRelease(options: ReleaseOptions, state: ReleaseState): Prom
         'verify',
         failed.map((check) => `${check.name}: ${check.detail}`).join('; '),
       );
+    return checked;
   } catch (cause) {
     log.error('release.verify_failed', cause);
-    awaitDecision(cause, options, state);
+    return awaitDecision(cause, options, state);
   }
+}
+
+async function verifyRelease(options: ReleaseOptions, state: ReleaseState): Promise<void> {
+  const { target, transition } = options;
+  const checks = await verifiedChecks(options, state);
   markBackup(locateBackup(target.data.root, state.backup), 'verified');
+  recordReleasedHub({
+    data: transition?.after ?? target.data,
+    install: target.install.directory,
+    notes: options.notes,
+    url: options.url,
+    backup: state.backup,
+    startingSchema: state.startingSchema,
+    changedDatabase: state.schemaMoved,
+    checks,
+    startedAt: state.startedAt,
+    finishedAt: new Date(),
+  });
 }
 
 async function restartRelease(options: ReleaseOptions, state: ReleaseState): Promise<void> {
@@ -179,7 +202,12 @@ async function swapRelease(options: ReleaseOptions, state: ReleaseState): Promis
 export function releasePlan(options: ReleaseOptions): readonly Plan[] {
   const { target, environment, transition, name, built, url } = options;
   const { install, data } = target;
-  const state: ReleaseState = { backup: '', schemaMoved: false };
+  const state: ReleaseState = {
+    backup: '',
+    schemaMoved: false,
+    startingSchema: null,
+    startedAt: new Date(),
+  };
   return [
     {
       title: `check the built service in ${built} and the free space for the backup and the new service`,
@@ -188,12 +216,14 @@ export function releasePlan(options: ReleaseOptions): readonly Plan[] {
           checkBuild(target, built);
         }),
     },
-    migrationStep(target, built, (moved) => {
-      state.schemaMoved = moved;
+    migrationStep(target, built, (from, to) => {
+      state.schemaMoved = from !== to;
+      state.startingSchema = from;
     }),
     {
       title: `back up ${install.service} and ${data.system.database.file} into ${data.backups.releases}`,
       run: async (): Promise<void> => {
+        state.startedAt = new Date();
         state.backup = await captureRelease(options);
       },
     },
@@ -255,6 +285,7 @@ const CLI = {
   allowPositionals: true,
   options: {
     name: { type: 'string' },
+    notes: { type: 'string' },
     service: { type: 'string' },
     backup: { type: 'string' },
     url: { type: 'string' },
@@ -286,31 +317,13 @@ async function release(invocation: Invocation): Promise<void> {
     transition,
     units: systemdUnits,
     name: required(values.name, '--name'),
+    notes: required(values.notes, '--notes'),
     built: required(values.service, '--service'),
     url: required(values.url, '--url'),
     schema,
     epoch,
   });
   await mutateRelease(target, dryRun, () => execute(plan, dryRun));
-}
-
-function rollbackDryRun(
-  target: ReleaseTarget,
-  environment: TransitionEnvironment,
-  backup: string,
-  withDatabase: boolean,
-): void {
-  const { scene, problems } = rollbackPreflight(target, backup, withDatabase, environment);
-  for (const problem of problems) process.stdout.write(`FAIL ${problem}\n`);
-  if (problems.length > 0) {
-    process.exitCode = 1;
-    return;
-  }
-  const steps = scene.undo ? CROSSING_STEPS : [];
-  for (const step of steps) process.stdout.write(`would ${step}\n`);
-  process.stdout.write(
-    `would roll ${target.install.service} back from ${scene.backup}; the backup layout and free space are fine\n`,
-  );
 }
 
 async function rollback({ target, environment, values, dryRun, epoch }: Invocation): Promise<void> {

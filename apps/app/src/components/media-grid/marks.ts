@@ -1,6 +1,22 @@
 import { hasPhotoFlag } from '@smarteverything/domain';
+import { zonedDateFormat } from '../../format/locale';
 import { playTime } from '../../format/time';
 import type { MediaTile } from './tiles';
+
+const MINUTE_MS = 60_000;
+
+const TAKEN = zonedDateFormat({
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+export function takenText(tile: Pick<MediaTile, 'takenAt' | 'offsetMin'>): string {
+  if (tile.offsetMin === null) return TAKEN(null).format(new Date(tile.takenAt));
+  return TAKEN('UTC').format(new Date(tile.takenAt + tile.offsetMin * MINUTE_MS));
+}
 
 export type TileState = 'ready' | 'processing' | 'unreadable';
 
@@ -52,6 +68,7 @@ export function tileLabel(tile: MediaTile): string {
   const marks = tileMarks(tile);
   const parts = [
     kindLabel(tile, marks),
+    takenText(tile),
     marks?.duration ?? null,
     marks?.stack === true ? 'Stack' : null,
     marks?.favourite === true ? 'Favourite' : null,

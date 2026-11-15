@@ -6,10 +6,11 @@ import {
   type DriveItem,
   type DriveItemLink,
   type DriveRoot,
+  type DriveTrashLink,
   type DriveTrashEntry,
 } from '@smarteverything/domain';
 import { decodeCursor, encodeCursor } from '../../drive/search';
-import { mayExport, type DriveActor } from '../../drive/access';
+import { lockedTrash, mayExport, type DriveActor } from '../../drive/access';
 import { isFileItem } from '../../drive/file-item';
 import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
 import type { Store } from '../../store/store';
@@ -29,6 +30,7 @@ type DriveLibraryRoute =
   | 'updateRoot'
   | 'scanRoot'
   | 'itemLinks'
+  | 'trashLinks'
   | 'recordDriveOpen'
   | 'searchDrive'
   | 'changeDrive'
@@ -75,6 +77,26 @@ function linksOf(
       icon:
         item.kind === 'folder' && item.iconHint ? links.driveFolderIcon(itemId, item.rev) : null,
       ...derivedLinks(links, item, playable),
+    };
+  });
+}
+
+function trashLinksOf(
+  store: Store,
+  services: DriveServices,
+  actor: DriveActor,
+  itemIds: readonly string[],
+): DriveTrashLink[] {
+  return itemIds.map((itemId) => {
+    const entry = store.driveTrash.find(itemId);
+    if (entry === undefined || lockedTrash(entry)) {
+      throw new ApiError('not_found', 'There is no such trashed item for this caller.');
+    }
+    services.read.rootFor(actor, entry.rootId);
+    const rev = store.driveTrash.thumbRev(itemId);
+    return {
+      itemId,
+      thumb: rev === null ? null : services.files.links.driveThumb(itemId, 'thumb', rev),
     };
   });
 }
@@ -148,6 +170,9 @@ export function driveLibraryRoutes(
     ),
     itemLinks: bound(E.itemLinks, ({ body, caller }) =>
       refusing(() => linksOf(services, actorOf(store, caller), body.itemIds, store)),
+    ),
+    trashLinks: bound(E.trashLinks, ({ body, caller }) =>
+      refusing(() => trashLinksOf(store, services, actorOf(store, caller), body.itemIds)),
     ),
     recordDriveOpen: bound(E.recordDriveOpen, ({ params, caller }) =>
       refusing(() => {

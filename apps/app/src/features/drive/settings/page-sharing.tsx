@@ -4,6 +4,7 @@ import type { View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import type { DriveSettings } from '@smarteverything/domain';
 import { ListRow } from '../../../components/list-row';
+import { useStackedValue, valueLinesOf } from './value-lines';
 import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { count } from '../../../format/number';
@@ -98,13 +99,19 @@ function UploadExpiryRow({ settings }: { readonly settings: DriveSettings }): Re
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const request = useUploadExpiryRequest(settings, opener);
+  const stacked = useStackedValue();
   return (
     <>
       <ListRow
         title="Unfinished uploads"
         icon="upload"
-        subtitle="How long a stopped upload can resume"
-        value={daysText(settings.uploadExpiryDays)}
+        {...valueLinesOf(
+          stacked,
+          daysText(settings.uploadExpiryDays),
+          'How long a stopped upload can resume',
+        )}
+        wrapSubtitle
+        wrapCaption
         chevron
         pressRef={opener}
         onPress={() => {

@@ -117,9 +117,19 @@ function windowOf(range: ChartRange, times: Extent): Extent {
   return { min: start.getTime(), max: endOf(start, range) };
 }
 
+function thinStep(count: number, width: number, minGap: number): number {
+  return Math.max(1, Math.ceil((count * minGap) / Math.max(width, 1)));
+}
+
 export function thinned<T>(items: readonly T[], width: number, minGap: number): T[] {
-  const every = Math.max(1, Math.ceil((items.length * minGap) / Math.max(width, 1)));
+  const every = thinStep(items.length, width, minGap);
   return items.filter((_, index) => index % every === 0);
+}
+
+export function thinnedFromEnd<T>(items: readonly T[], width: number, minGap: number): T[] {
+  const every = thinStep(items.length, width, minGap);
+  const last = items.length - 1;
+  return items.filter((_, index) => (last - index) % every === 0);
 }
 
 function spaced(

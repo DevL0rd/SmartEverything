@@ -10,6 +10,7 @@ import { useIdiom } from '../../../design/platform';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { useDriveItem } from '../data';
+import { useByName } from '../components/use-by-name';
 import { fileNameOf } from '../model/file-name';
 import { ConflictActions } from './conflict-actions';
 import { COMPARE_LABEL, KEEP_NOTE, copyWellsOf, sentenceOf, type CopyWell } from './conflict-model';
@@ -23,9 +24,11 @@ function Well({ well }: { readonly well: CopyWell }): ReactNode {
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {well.title}
       </Text>
-      <Text variant="body-strong" numberOfLines={1}>
-        {well.name}
-      </Text>
+      {well.name === '' ? null : (
+        <Text variant="body-strong" numberOfLines={1}>
+          {well.name}
+        </Text>
+      )}
       {well.detail === '' ? null : (
         <Text variant="footnote" tone="variant" numberOfLines={1} className="tabular">
           {well.detail}
@@ -48,7 +51,8 @@ function useWells(conflict: DriveConflict): {
   const facts = useConflictFacts(conflict);
   const copy = useDriveItem(conflict.conflictItemId, conflict.rootId).data ?? null;
   const time = { now: useMinute(), zone: useSettings().time_zone };
-  return { facts, wells: copyWellsOf({ ...facts, conflict, copy, time }) };
+  const copyMaker = useByName()(copy === null ? null : copy.addedByProfileId);
+  return { facts, wells: copyWellsOf({ ...facts, conflict, copy, copyMaker, time }) };
 }
 
 function Summary({

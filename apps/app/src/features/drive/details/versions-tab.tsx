@@ -2,23 +2,21 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import type { DriveItem } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
-import { EmptyState } from '../../../components/empty-state';
-import { ErrorState } from '../../../components/error-state';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
-import { useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useDriveConflicts, useDriveVersions } from '../data';
 import { useRestore } from '../versions/restore';
 import {
+  COMPACT_CARD,
   CompactTimeline,
+  CompactTimelineLoading,
   OneVersion,
   SizeOverYear,
-  TimelineLoading,
   useTimelineLook,
 } from '../versions/version-timeline';
+import { Unloaded } from '../versions/versions-sheet-parts';
 import { VersionsSheet, type VersionsSlots, type VersionsTarget } from '../versions/versions-sheet';
 import {
   entriesOf,
@@ -61,34 +59,9 @@ function useTabData(item: DriveItem): TabData {
   };
 }
 
-function Unloaded({ pages }: { readonly pages: VersionPages }): ReactNode {
-  const live = useSyncStatus().status === 'live';
-  if (!live) {
-    return (
-      <EmptyState
-        compact
-        icon="wifiOff"
-        title="The hub is offline"
-        body="Versions come back when the hub reconnects. Nothing is lost while it is away."
-      />
-    );
-  }
-  if (pages.isError) {
-    return (
-      <ErrorState
-        error={pages.error}
-        retry={() => {
-          background(pages.refetch(), 'drive_versions.refetch_failed');
-        }}
-      />
-    );
-  }
-  return <TimelineLoading />;
-}
-
 export function restoreLineOf(earlier: VersionEntry, conflicted: boolean, time: Clock): string {
   const { footer } = restorePlanOf(earlier, conflicted);
-  return conflicted ? footer : `Restores the version from ${whenOf(earlier, time)}. ${footer}`;
+  return `Restores the version from ${whenOf(earlier, time)}. ${footer}`;
 }
 
 const NOTHING_AFTER_RESTORE = (): void => undefined;
@@ -151,7 +124,7 @@ function Settled({
         total={totalText(totalOf(data.entries))}
         now={look.time.now}
       />
-      <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 px-4">
+      <View className={COMPACT_CARD}>
         <CompactTimeline entries={data.entries} look={look} />
       </View>
       <Actions
@@ -191,7 +164,7 @@ export function VersionsTab({
       {data.settled ? (
         <Settled subject={subject} data={data} compare={compare} />
       ) : (
-        <Unloaded pages={data.pages} />
+        <Unloaded pages={data.pages} loading={<CompactTimelineLoading />} />
       )}
       <VersionsSheet
         target={target}

@@ -75,6 +75,10 @@ export class DriveTrashRepository {
     return this.rows.rows(itemId);
   }
 
+  thumbRev(itemId: string): number | null {
+    return this.rows.thumbRev(itemId);
+  }
+
   stashedRoot(itemId: string): StashedRoot {
     return this.rows.root(itemId);
   }

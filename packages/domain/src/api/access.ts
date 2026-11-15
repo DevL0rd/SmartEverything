@@ -57,7 +57,7 @@ export type PairingQr = z.infer<typeof PAIRING_QR>;
 
 export const LIVE_PROTOCOL_PREFIX = 'smarteverything.live.';
 
-export const LIVE_PROTOCOL = `${LIVE_PROTOCOL_PREFIX}v1`;
+export const LIVE_PROTOCOL = `${LIVE_PROTOCOL_PREFIX}v2`;
 
 export const LIVE_PROTOCOL_MISMATCH = { code: 4003, reason: 'protocol_mismatch' } as const;
 

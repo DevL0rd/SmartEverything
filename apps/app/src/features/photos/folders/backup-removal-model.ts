@@ -1,5 +1,5 @@
 import { PHOTO_COPY_KEPT_REASONS, type PhotoCopyKeptReason } from '@smarteverything/domain';
-import type { ConfirmRequest } from '../../../components/confirm-store';
+import type { ChoiceRequest } from '../../../components/confirm-store';
 import { bytes, count } from '../../../format/number';
 import type { FolderCopies } from '../backup/runner/folder-copies';
 import type { LocalPlace } from '../backup/runner/local-copies';
@@ -51,26 +51,30 @@ export function keptLine(plan: RemovalPlan): string | null {
   );
   if (parts.length === 0) return null;
   const total = keptTotal(plan);
-  return `${count(total)} ${total === 1 ? 'stays' : 'stay'} on the Hub: ${parts.join(', ')}.`;
+  return `${count(total)} ${total === 1 ? 'stays' : 'stay'} on the hub: ${parts.join(', ')}.`;
+}
+
+export function subjectOf(names: readonly string[]): string {
+  const [only] = names;
+  return names.length === 1 && only !== undefined ? only : `${count(names.length)} folders`;
 }
 
 export function removalConfirm(
   plan: RemovalPlan,
   names: readonly string[],
   place: LocalPlace,
-): ConfirmRequest {
-  const [only] = names;
-  const subject =
-    names.length === 1 && only !== undefined ? only : `${count(names.length)} folders`;
+): ChoiceRequest {
   const kept = keptLine(plan);
+  const one = plan.itemIds.length === 1;
   return {
-    title: `Stop backing up ${subject}?`,
+    title: `Stop backing up ${subjectOf(names)}?`,
     body: [
-      `${itemsText(plan.itemIds.length)} backed up from ${names.length === 1 ? 'it' : 'them'} ${plan.itemIds.length === 1 ? 'moves' : 'move'} to Recently deleted on the Hub, freeing ${bytes(plan.bytes)}. You can restore ${plan.itemIds.length === 1 ? 'it' : 'them'} there for a year.`,
+      `Removing ${one ? 'the copy' : 'the copies'} moves ${itemsText(plan.itemIds.length)} backed up from ${names.length === 1 ? 'it' : 'them'} to Recently deleted on the hub, freeing ${bytes(plan.bytes)}. You can restore ${one ? 'it' : 'them'} there for a year.`,
       `The files on this ${place} are not touched.`,
       ...(kept === null ? [] : [kept]),
     ].join(' '),
     confirmLabel: 'Stop and remove',
+    alternateLabel: 'Stop and keep copies',
     cancelLabel: 'Keep backing up',
     tone: 'destructive',
   };

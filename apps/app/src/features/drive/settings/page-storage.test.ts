@@ -176,8 +176,9 @@ describe('scrub and backups', () => {
     });
     expect(scrubLineOf({ ...RUNNING, state: 'stopped', checked: 100, corrupt: 1 }, NOW)).toEqual({
       text: `Stopped · started ${moment(RUNNING.startedAt, NOW)} · Scrub now carries on`,
-      tone: 'critical',
+      tone: 'variant',
     });
+    expect(scrubLineOf({ ...RUNNING, checked: 100, corrupt: 1 }, NOW).tone).toBe('variant');
   });
 
   it('says what the last backup report was and how a backup reports in', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sheetFrame } from './sheet-frame';
+import { sheetDrop, sheetFrame } from './sheet-frame';
 
 describe('sheetFrame', () => {
   it('lets the body fill a fixed height sheet so non-scrolling panels keep their content', () => {
@@ -16,5 +16,14 @@ describe('sheetFrame', () => {
       sized: { maxHeight: 800 },
       body: 'min-h-0 shrink',
     });
+  });
+});
+
+describe('sheetDrop', () => {
+  it('moves a sheet with a layout offset so touch handling measures where the sheet really is', () => {
+    expect(sheetDrop(0)).toEqual({ bottom: -0 });
+    expect(sheetDrop(320)).toEqual({ bottom: -320 });
+    expect(sheetDrop(-24)).toEqual({ bottom: 24 });
+    expect(Object.keys(sheetDrop(320))).not.toContain('transform');
   });
 });

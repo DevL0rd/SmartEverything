@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   HUB_REQUEST_TIMEOUT_MS,
+  HUB_WRITE_TIMEOUT_MS_PER_KIB,
   type HubEndpoint,
   type NativeHubCredentialBinding,
   type NativeHubNetwork,
@@ -106,8 +107,27 @@ async function sendBridged(
   });
 }
 
+function bodyBytes(body: NonNullable<RequestInit['body']>): number {
+  if (typeof body === 'string') return body.length;
+  if (body instanceof Blob) return body.size;
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return body.byteLength;
+  if (body instanceof URLSearchParams) return body.toString().length;
+  throw new TypeError('Hub requests carry text, binary or form bodies only.');
+}
+
+export function requestTimeoutMs(init: RequestInit): number {
+  const method = init.method ?? 'GET';
+  if (method === 'GET' || method === 'HEAD' || init.body === undefined || init.body === null) {
+    return HUB_REQUEST_TIMEOUT_MS;
+  }
+  return (
+    HUB_REQUEST_TIMEOUT_MS + Math.ceil(bodyBytes(init.body) / 1024) * HUB_WRITE_TIMEOUT_MS_PER_KIB
+  );
+}
+
 async function directFetch(url: string, init: RequestInit): Promise<Response> {
-  const limit = deadline(HUB_REQUEST_TIMEOUT_MS, init.signal);
+  const timeoutMs = requestTimeoutMs(init);
+  const limit = deadline(timeoutMs, init.signal);
   const startedAt = nowMs();
   try {
     return await fetch(url, { ...init, redirect: 'error', signal: limit.signal });
@@ -119,7 +139,7 @@ async function directFetch(url: string, init: RequestInit): Promise<Response> {
       path: pathShape(url),
       elapsedMs: nowMs() - startedAt,
       timedOut: !outerAborted && limit.signal.aborted,
-      timeoutMs: HUB_REQUEST_TIMEOUT_MS,
+      timeoutMs,
       ...abortFacts(init.signal),
       ...failureFacts(error),
     });

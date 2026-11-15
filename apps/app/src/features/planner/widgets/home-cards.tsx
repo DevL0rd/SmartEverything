@@ -56,17 +56,12 @@ const FRAME = {
 const OPEN = { label: 'Open Planner', href: href.planner.index() } as const;
 const NO_HIDDEN: ReadonlySet<string> = new Set();
 const RING = { size: 18, thickness: 3 } as const;
-const ROW_FADE = ['opacity-100', 'opacity-80', 'opacity-60', 'opacity-45'] as const;
 
 function dotOf(colour: PlannerColourKey | null): string {
   return colour === null ? 'bg-on-surface-variant' : LIST_DOT[colour];
 }
 
-function fadeOf(index: number): string | undefined {
-  return ROW_FADE.at(Math.min(index, ROW_FADE.length - 1));
-}
-
-function Offline(): ReactNode {
+export function WidgetOffline(): ReactNode {
   return (
     <Text variant="caption" tone="warning" numberOfLines={1}>
       Hub offline
@@ -162,6 +157,34 @@ export function useStripModel(day: PlannerDay): DayStripModel {
   });
 }
 
+function DayRow({ line, more }: { readonly line: DayLine; readonly more: number }): ReactNode {
+  return (
+    <View
+      accessible
+      accessibilityLabel={more === 0 ? line.spoken : `${line.spoken}, ${String(more)} more today`}
+      className="flex-row items-center gap-2"
+    >
+      <Text
+        variant="footnote"
+        tone={line.missed ? 'critical' : 'variant'}
+        numberOfLines={1}
+        className="w-16 shrink-0 font-mono tabular"
+      >
+        {line.time}
+      </Text>
+      <View className={cn('size-2 rounded-full', line.dot)} />
+      <Text variant="footnote" numberOfLines={1} className="min-w-0 flex-1">
+        {line.title}
+      </Text>
+      {more === 0 ? null : (
+        <Text variant="footnote" tone="variant" numberOfLines={1} className="shrink-0 tabular-nums">
+          {`+${String(more)}`}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 export function DayRows({
   lines,
   fit,
@@ -173,30 +196,13 @@ export function DayRows({
 }): ReactNode {
   const { shown, more } = rowsShownOf(lines.length, fit);
   if (shown === 0 && more === 0) return null;
+  const trailing = fit === 1 && more > 0;
   return (
     <View className={cn('min-w-0 gap-1', className)}>
       {lines.slice(0, shown).map((line, index) => (
-        <View
-          key={line.key}
-          accessible
-          accessibilityLabel={line.spoken}
-          className="flex-row items-center gap-2"
-        >
-          <Text
-            variant="footnote"
-            tone={line.missed ? 'critical' : 'variant'}
-            numberOfLines={1}
-            className="w-16 shrink-0 font-mono tabular"
-          >
-            {line.time}
-          </Text>
-          <View className={cn('size-2 rounded-full', line.dot, !line.missed && fadeOf(index))} />
-          <Text variant="footnote" numberOfLines={1} className="min-w-0 flex-1">
-            {line.title}
-          </Text>
-        </View>
+        <DayRow key={line.key} line={line} more={trailing && index === shown - 1 ? more : 0} />
       ))}
-      {more === 0 ? null : (
+      {more === 0 || trailing ? null : (
         <Text variant="footnote" tone="variant" numberOfLines={1} className="pl-22 tabular-nums">
           {`+${String(more)} more today`}
         </Text>
@@ -343,7 +349,7 @@ function UpNextDay({
   const next = lensOf(day, NO_HIDDEN);
   const missed = day.missed.length;
   return (
-    <WidgetFrame {...FRAME} badge={offline ? <Offline /> : <DayBadge day={day} />}>
+    <WidgetFrame {...FRAME} badge={offline ? <WidgetOffline /> : <DayBadge day={day} />}>
       <View ref={ref} onLayout={minute.onLayout} className="flex-1">
         {next === null ? (
           <WidgetEmpty

@@ -16,7 +16,6 @@ vi.mock('../../../components/charts/chart-legend', () => ({ ChartLegend: (): nul
 vi.mock('../../../components/charts/empty-graph', () => ({ EmptyGraph: (): null => null }));
 vi.mock('../../../components/text', () => ({ Text: (): null => null }));
 vi.mock('../../../components/use-draw', () => ({ useDraw: (): null => null }));
-vi.mock('../../../components/use-measured-width', () => ({ useMeasuredWidth: (): null => null }));
 vi.mock('../../../design/colour', () => ({
   useColour: (): string => '#000',
   useColourResolver: (): ((role: string) => string) => (role) => role,
@@ -24,6 +23,8 @@ vi.mock('../../../design/colour', () => ({
 vi.mock('../../../design/motion', () => ({ useMotion: (): object => ({ reduced: false }) }));
 
 const { stackShapes } = await import('./activity-chart');
+
+const BOX = { width: 300, height: 150 };
 
 const FILLS = {
   you: 'you',
@@ -42,7 +43,7 @@ function column(key: string, counts: Partial<Record<ActivitySeries, number>>): A
 
 describe('activity chart stacks', () => {
   it('stacks the series bottom up in the fixed order and rounds only the top segment', () => {
-    const shapes = stackShapes([column('a', { outside: 2, you: 3, ai: 1 })], 300, FILLS);
+    const shapes = stackShapes([column('a', { outside: 2, you: 3, ai: 1 })], BOX, FILLS);
     expect(shapes.map((shape) => shape.fill)).toEqual(['you', 'ai', 'outside']);
     expect(shapes.map((shape) => shape.radii.top)).toEqual([0, 0, 3]);
     const [first, second] = shapes;
@@ -53,7 +54,7 @@ describe('activity chart stacks', () => {
   it('fits the tallest column, gaps included, inside the plot', () => {
     const shapes = stackShapes(
       [column('a', { you: 4, people: 4, ai: 4 }), column('b', { you: 1 })],
-      300,
+      BOX,
       FILLS,
     );
     const top = Math.min(...shapes.map((shape) => shape.top));
@@ -62,6 +63,6 @@ describe('activity chart stacks', () => {
   });
 
   it('draws nothing for an empty day', () => {
-    expect(stackShapes([column('a', {})], 300, FILLS)).toEqual([]);
+    expect(stackShapes([column('a', {})], BOX, FILLS)).toEqual([]);
   });
 });

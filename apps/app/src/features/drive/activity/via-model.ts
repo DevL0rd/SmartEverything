@@ -41,15 +41,36 @@ export interface SeriesLook {
   readonly label: string;
   readonly colour: ColourRole;
   readonly fill: string;
+  readonly mark: string;
 }
 
 export const SERIES_LOOK: Readonly<Record<ActivitySeries, SeriesLook>> = {
-  you: { label: 'You', colour: 'viz-blue', fill: 'bg-viz-blue' },
-  people: { label: 'Other people', colour: 'viz-magenta', fill: 'bg-viz-magenta' },
-  ai: { label: 'AI', colour: 'viz-violet', fill: 'bg-viz-violet' },
-  automation: { label: 'Automations', colour: 'viz-green', fill: 'bg-viz-green' },
-  background: { label: 'Sync, mount and scan', colour: 'track', fill: 'bg-track' },
-  outside: { label: 'Outside', colour: 'primary', fill: 'bg-primary' },
+  you: {
+    label: 'You',
+    colour: 'viz-blue',
+    fill: 'bg-viz-blue',
+    mark: 'bg-viz-blue light:bg-viz-6',
+  },
+  people: {
+    label: 'Other people',
+    colour: 'viz-magenta',
+    fill: 'bg-viz-magenta',
+    mark: 'bg-viz-magenta light:bg-viz-4',
+  },
+  ai: { label: 'AI', colour: 'viz-violet', fill: 'bg-viz-violet', mark: 'bg-viz-violet' },
+  automation: {
+    label: 'Automations',
+    colour: 'viz-green',
+    fill: 'bg-viz-green',
+    mark: 'bg-viz-green',
+  },
+  background: {
+    label: 'Sync, mount and scan',
+    colour: 'track',
+    fill: 'bg-track',
+    mark: 'bg-track',
+  },
+  outside: { label: 'Outside', colour: 'primary', fill: 'bg-primary', mark: 'bg-primary' },
 };
 
 export interface ViaLook {

@@ -221,6 +221,44 @@ describe('the live connection after the hub stops answering', () => {
     sync.stop();
   });
 
+  it('reloads once for a change that cannot be applied and then skips that table', async () => {
+    const { sync, store } = await started();
+    subscribed(0);
+    snapshotCalls[0]?.resolve({ data: SNAPSHOT.parse(snapshotWire()), failed: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    const room = store.get().tables.rooms.ids[0];
+    const broken = (seq: number): void => {
+      opened[0]?.handlers.onMessage({
+        kind: 'message',
+        message: {
+          type: 'change',
+          table: 'rooms',
+          operation: 'UPDATE',
+          key: { id: room },
+          set: { position: 'first' },
+          previous: { position: 0 },
+          seq,
+        },
+      });
+    };
+    broken(8);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(snapshotCalls).toHaveLength(2);
+    snapshotCalls[1]?.resolve({ data: SNAPSHOT.parse(snapshotWire()), failed: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.get().sync.status).toBe('live');
+    broken(9);
+    broken(10);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(snapshotCalls).toHaveLength(2);
+    expect(store.get().sync.status).toBe('live');
+    expect(store.get().sync.failed.map((failure) => failure.section)).toStrictEqual([
+      'tables.rooms',
+    ]);
+    expect(store.get().tables.rooms.ids).toHaveLength(1);
+    sync.stop();
+  });
+
   it('asks for an app update when the whole snapshot is unreadable', async () => {
     const { sync, store } = await started();
     subscribed(0);

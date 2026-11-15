@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import type { ColourRole } from '../../design/tokens';
+import { percent } from '../../format/number';
 import { Text } from '../text';
 import { donutArcs, donutSummary, type DonutArc, type DonutSlice } from './donut-model';
 import { arcPath } from './geometry';
@@ -60,7 +61,7 @@ export function DonutLegend({ arcs }: { readonly arcs: readonly DonutArc[] }): R
         <View key={arc.key} className="flex-row items-center gap-2">
           <Swatch colour={arc.colour} shade={arc.shade} />
           <Text variant="caption" tone="variant" className="tabular">
-            {arc.label} {Math.round(arc.share * 100)}%
+            {arc.label} {percent(arc.share)}
           </Text>
         </View>
       ))}

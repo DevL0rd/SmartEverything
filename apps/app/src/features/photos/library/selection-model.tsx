@@ -55,14 +55,13 @@ export function selectedItems(selection: ReadonlySet<string>, tiles: readonly Me
 }
 
 export function shareAction({ media, picked }: PickedProps): SelectionAction {
-  const single = picked.ids.length === 1 ? picked.ids[0] : undefined;
   return {
     id: 'share',
     label: 'Share',
     icon: 'share',
-    disabled: single === undefined,
+    disabled: picked.none,
     onPress: (): void => {
-      if (single !== undefined) media.share(single);
+      media.share(picked.ids);
     },
   };
 }
@@ -111,7 +110,6 @@ export function shown(actions: readonly SelectionAction[]): readonly SelectionAc
   return actions.filter((action) => !action.disabled);
 }
 
-
 export function LocalSelection({ picked }: { readonly picked: Picked }): ReactNode {
   if (picked.localCount === 0) return null;
   return (
@@ -123,4 +121,3 @@ export function LocalSelection({ picked }: { readonly picked: Picked }): ReactNo
     </View>
   );
 }
-

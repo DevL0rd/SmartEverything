@@ -7,7 +7,8 @@ import { backupAccessPort } from './runner/platform-adapters';
 export async function changeBackupEnabled(store: EntityStore, enabled: boolean): Promise<void> {
   const session = store.get().session;
   const paired = connectionState.get();
-  if (paired.status !== 'paired') return;
+  if (paired.status !== 'paired')
+    throw new Error('Photo backup needs this device to be paired with a hub.');
   const connection = paired.connection;
   if (enabled) await backupAccessPort().requestAccess();
   const current = connectionState.get();
@@ -16,7 +17,7 @@ export async function changeBackupEnabled(store: EntityStore, enabled: boolean):
     current.connection !== connection ||
     !sameSessionAuthority(store.get().session, session)
   )
-    return;
+    throw new Error('The hub or the signed-in profile changed while photo access was asked for.');
   const pref = prefOf(store.get(), PREFS.photosBackup);
   if (pref.status === 'invalid') throw new Error(pref.reason);
   savePref(store, PREFS.photosBackup, { ...pref.value, enabled });

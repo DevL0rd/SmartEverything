@@ -204,24 +204,20 @@ export interface WellInput {
   readonly sides: ConflictSides;
   readonly item: Pick<DriveItem, 'rev' | 'modifiedAt' | 'bytes'> | null;
   readonly copy: Pick<DriveItem, 'modifiedAt' | 'bytes'> | null;
+  readonly copyMaker: string | null;
   readonly versions: readonly DriveVersion[];
   readonly time: Clock;
 }
 
 export function copyWellsOf(input: WellInput): readonly [CopyWell, CopyWell] {
-  const { conflict, sides, item, copy, versions, time } = input;
+  const { conflict, sides, item, copy, copyMaker, versions, time } = input;
   const hub =
     item === null ? { at: null, bytes: null } : hubStampOf(item, versions, conflict.hubRev);
   const client =
     copy === null ? { at: null, bytes: null } : { at: copy.modifiedAt, bytes: copy.bytes };
-  const known = sides.client !== UNKNOWN_CLIENT;
   return [
-    { title: HUB_VERSION, name: hubMakerName(sides) ?? 'The hub', detail: detailOf(hub, time) },
-    {
-      title: clientTitleOf(sides),
-      name: known ? sides.client : capitalised(UNKNOWN_CLIENT),
-      detail: detailOf(client, time),
-    },
+    { title: HUB_VERSION, name: hubMakerName(sides) ?? '', detail: detailOf(hub, time) },
+    { title: clientTitleOf(sides), name: copyMaker ?? '', detail: detailOf(client, time) },
   ];
 }
 

@@ -1,5 +1,8 @@
 import { MODEL_SPEC, type ModelSpec } from '@smarteverything/domain';
 import {
+  Box3,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   PerspectiveCamera,
   Sprite,
@@ -11,15 +14,23 @@ import {
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createViewCamera } from '../../../components/models/three/framing';
+import { SILHOUETTE_WIDTH_PX } from '../../../components/models/three/silhouette';
+import { fanSpec as visualFanSpec } from '../visual/visual-fixture';
 import {
-  alphaBounds,
+  passBounds,
+  pixelBounds,
+  projectPoint,
+  projectRect,
+  type CanvasSize,
+  type PixelRect,
+} from './bake-bounds';
+import {
   anchorExtent,
   createBakeRig,
   groupOf,
   layerPlans,
   movingGroups,
   projectAnchors,
-  projectRect,
   renderPass,
   stillPose,
   targetSignals,
@@ -138,7 +149,7 @@ function fanSpec(): ModelSpec {
   });
 }
 
-function fanKey(target: BakeKey['target']): BakeKey {
+function fanKey(target: BakeKey['target'], theme: BakeKey['theme'] = 'dark'): BakeKey {
   return {
     specHash: 'spec',
     bakeVersion: 2,
@@ -149,7 +160,7 @@ function fanKey(target: BakeKey['target']): BakeKey {
     width: 160,
     height: 120,
     dpr: 2,
-    theme: 'dark',
+    theme,
     target,
   };
 }
@@ -284,12 +295,175 @@ describe('bake layers', () => {
     expect(rect.width).toBeCloseTo(50);
     expect(rect.height).toBeCloseTo(50);
   });
+});
 
-  it('finds the bounds of the opaque pixels, or none', () => {
-    const data = new Uint8Array(4 * 4 * 4);
-    expect(alphaBounds(data, 4, 4)).toBeNull();
-    data[(1 * 4 + 2) * 4 + 3] = 10;
-    data[(3 * 4 + 1) * 4 + 3] = 255;
-    expect(alphaBounds(data, 4, 4)).toEqual({ x: 1, y: 1, width: 2, height: 3 });
+const CANVAS: CanvasSize = { width: 320, height: 240, dpr: 2 };
+
+function lampSpec(): ModelSpec {
+  const spec = fanSpec();
+  const halo = {
+    kind: 'emitter',
+    id: 'lamp',
+    parent: 'base',
+    position: [-0.1, 0.05, 0.1],
+    color: '#ffcc66',
+    intensity: 1,
+    radius: 0.03,
+  };
+  return MODEL_SPEC.parse({ ...spec, anchors: [...(spec.anchors ?? []), halo] });
+}
+
+function paintedNodes(frames: (Mesh | Sprite)[][]): PassRenderer {
+  return {
+    render: (scene: Object3D): void => {
+      const found: (Mesh | Sprite)[] = [];
+      scene.traverse((node) => {
+        if (drawn(node) && shown(node) && writes(node.material)) found.push(node);
+      });
+      frames.push(found);
+    },
+  };
+}
+
+interface Reach {
+  readonly point: Vector3;
+  readonly reach: number;
+}
+
+function instanceMatrices(mesh: Mesh): Matrix4[] {
+  if (!(mesh instanceof InstancedMesh)) return [mesh.matrixWorld];
+  return Array.from({ length: mesh.count }, (_, index) => {
+    const local = new Matrix4();
+    mesh.getMatrixAt(index, local);
+    return mesh.matrixWorld.clone().multiply(local);
+  });
+}
+
+function meshReach(mesh: Mesh): Reach[] {
+  const reach = mesh.name.endsWith(':silhouette') ? SILHOUETTE_WIDTH_PX * CANVAS.dpr : 0;
+  const position = mesh.geometry.getAttribute('position');
+  return instanceMatrices(mesh).flatMap((matrix) =>
+    Array.from({ length: position.count }, (_, index) => ({
+      point: new Vector3().fromBufferAttribute(position, index).applyMatrix4(matrix),
+      reach,
+    })),
+  );
+}
+
+function spriteReach(sprite: Sprite, camera: Camera): Reach[] {
+  const centre = sprite.getWorldPosition(new Vector3());
+  const scale = sprite.getWorldScale(new Vector3());
+  const right = new Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  const up = new Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  return [-0.5, 0.5].flatMap((sx) =>
+    [-0.5, 0.5].map((sy) => ({
+      point: centre
+        .clone()
+        .addScaledVector(right, sx * scale.x)
+        .addScaledVector(up, sy * scale.y),
+      reach: 0,
+    })),
+  );
+}
+
+function paintedExtent(nodes: readonly (Mesh | Sprite)[], camera: Camera): PixelRect | null {
+  const reaches = nodes.flatMap((node) =>
+    node instanceof Sprite ? spriteReach(node, camera) : meshReach(node),
+  );
+  if (reaches.length === 0) return null;
+  const at = reaches.map(({ point, reach }) => ({
+    ...projectPoint(point, camera, CANVAS.width, CANVAS.height),
+    reach,
+  }));
+  const x = Math.max(0, Math.floor(Math.min(...at.map((p) => p.x - p.reach))));
+  const y = Math.max(0, Math.floor(Math.min(...at.map((p) => p.y - p.reach))));
+  const right = Math.min(CANVAS.width, Math.ceil(Math.max(...at.map((p) => p.x + p.reach))));
+  const bottom = Math.min(CANVAS.height, Math.ceil(Math.max(...at.map((p) => p.y + p.reach))));
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+function contains(outer: PixelRect, inner: PixelRect): boolean {
+  return (
+    outer.x <= inner.x &&
+    outer.y <= inner.y &&
+    outer.x + outer.width >= inner.x + inner.width &&
+    outer.y + outer.height >= inner.y + inner.height
+  );
+}
+
+function area(rect: PixelRect | null): number {
+  return rect === null ? 0 : rect.width * rect.height;
+}
+
+const FIXTURES = [
+  ['fan', fanSpec],
+  ['lamp', lampSpec],
+  ['visual fan', visualFanSpec],
+] as const;
+
+describe('bake crop rectangles', () => {
+  for (const [name, specOf] of FIXTURES) {
+    for (const theme of ['dark', 'light'] as const) {
+      it(`contains every pixel each layer paints, without reading pixels, for the ${name} in ${theme}`, () => {
+        const key = fanKey({ kind: 'keyframe', state: 'on' }, theme);
+        const rig = createBakeRig(new Texture(), specOf(), key);
+        rig.live.setSignals({ power: true, speed: 0.5, brightness: 80 }, { reduced: true });
+        rig.halos.sync();
+        const camera = cameraFor(rig);
+        const parts = new Set(rig.built.parts.map((part) => part.id));
+        const plans = layerPlans(rig, movingGroups(rig.spec, 'card', parts));
+        const frames: (Mesh | Sprite)[][] = [];
+        for (const plan of plans) {
+          const bounds = passBounds(rig.stage.scene, camera, plan.pass, CANVAS);
+          renderPass(paintedNodes(frames), rig, camera, plan.pass);
+          const truth = paintedExtent(frames.at(-1) ?? [], camera);
+          expect(truth, plan.id).not.toBeNull();
+          expect(bounds, plan.id).not.toBeNull();
+          if (bounds === null || truth === null) continue;
+          expect(contains(bounds, truth), `${plan.id} ${JSON.stringify([bounds, truth])}`).toBe(
+            true,
+          );
+          expect(area(bounds), plan.id).toBeLessThan(CANVAS.width * CANVAS.height);
+        }
+        rig.dispose();
+      });
+    }
+  }
+
+  it('keeps the halo of a lit emitter inside the body crop', () => {
+    const rig = createBakeRig(new Texture(), lampSpec(), fanKey({ kind: 'keyframe', state: 'on' }));
+    rig.live.setSignals({ power: true, speed: 0.5 }, { reduced: true });
+    rig.halos.sync();
+    expect(rig.halos.sprites.some((sprite) => sprite.visible)).toBe(true);
+    const camera = cameraFor(rig);
+    const halo = (node: Object3D): 'show' | 'skip' => (node instanceof Sprite ? 'show' : 'skip');
+    const bounds = passBounds(rig.stage.scene, camera, halo, CANVAS);
+    const truth = paintedExtent(rig.halos.sprites, camera);
+    expect(bounds !== null && truth !== null && contains(bounds, truth)).toBe(true);
+    rig.dispose();
+  });
+
+  it('crops nothing for a pass that draws nothing or draws off the canvas', () => {
+    const rig = rigOf();
+    const camera = cameraFor(rig);
+    expect(passBounds(rig.stage.scene, camera, () => 'skip', CANVAS)).toBeNull();
+    expect(passBounds(rig.stage.scene, camera, () => 'depth', CANVAS)).toBeNull();
+    rig.dispose();
+    const side = new PerspectiveCamera(90, 1, 0.1, 10);
+    side.position.set(0, 0, 1);
+    side.updateMatrixWorld(true);
+    const off = new Box3(new Vector3(5, 5, 0), new Vector3(6, 6, 0));
+    expect(pixelBounds(off, side, CANVAS)).toBeNull();
+  });
+
+  it('rounds outward, pads for the silhouette edge and clamps to the canvas', () => {
+    const camera = new PerspectiveCamera(90, 1, 0.1, 10);
+    camera.position.set(0, 0, 1);
+    camera.updateMatrixWorld(true);
+    const canvas = { width: 100, height: 100, dpr: 2 };
+    const inside = new Box3(new Vector3(-0.105, -0.105, 0), new Vector3(0.105, 0.105, 0));
+    expect(pixelBounds(inside, camera, canvas)).toEqual({ x: 40, y: 40, width: 20, height: 20 });
+    const edge = new Box3(new Vector3(0.5, 0.5, 0), new Vector3(2, 2, 0));
+    expect(pixelBounds(edge, camera, canvas)).toEqual({ x: 71, y: 0, width: 29, height: 29 });
   });
 });

@@ -9,7 +9,7 @@ import { useSyncStatus } from '../../../store/selectors';
 import type { useDriveVersions } from '../data';
 import type { CompareNames } from './diff-model';
 import type { VersionLink } from './version-compare';
-import { TimelineLoading, type TimelineLook } from './version-timeline';
+import type { TimelineLook } from './version-timeline';
 import { captionOf, totalOf, totalText, type VersionEntry } from './versions-model';
 
 type VersionPages = ReturnType<typeof useDriveVersions>;
@@ -47,7 +47,13 @@ export function PickCaptions({
   );
 }
 
-export function Unloaded({ pages }: { readonly pages: VersionPages }): ReactNode {
+export function Unloaded({
+  pages,
+  loading,
+}: {
+  readonly pages: VersionPages;
+  readonly loading: ReactNode;
+}): ReactNode {
   const live = useSyncStatus().status === 'live';
   if (!live) {
     return (
@@ -69,7 +75,7 @@ export function Unloaded({ pages }: { readonly pages: VersionPages }): ReactNode
       />
     );
   }
-  return <TimelineLoading />;
+  return loading;
 }
 
 export function SheetTitle({
@@ -85,13 +91,13 @@ export function SheetTitle({
       <Text variant={large ? 'large-title' : 'title-3'} role="heading" numberOfLines={1}>
         Versions
       </Text>
-      <View className="min-w-0 flex-row items-baseline gap-1.5">
+      <View className="min-w-0 flex-row items-baseline">
         <Text variant={variant} tone="variant" ellipsize="middle" className="min-w-0 shrink">
           {data.item.name}
         </Text>
         {data.settled ? (
           <Text variant={variant} tone="variant" numberOfLines={1} className="tabular shrink-0">
-            {`· ${totalText(totalOf(data.entries))}`}
+            {`\u00a0· ${totalText(totalOf(data.entries))}`}
           </Text>
         ) : null}
       </View>

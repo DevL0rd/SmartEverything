@@ -1,12 +1,21 @@
 import { use, type ReactNode } from 'react';
-import { RefreshControl, View } from 'react-native';
-import Animated, { useAnimatedScrollHandler, type AnimatedRef } from 'react-native-reanimated';
+import { RefreshControl, View, type LayoutChangeEvent } from 'react-native';
+import Animated, {
+  useAnimatedReaction,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type AnimatedRef,
+} from 'react-native-reanimated';
 import { useIsFocused, useScrollToTop } from 'expo-router';
 import { cn } from '../../design/cn';
+import { DURATION, EASING, useMotion } from '../../design/motion';
 import { useBottomChrome } from '../bottom-chrome';
 import { ScreenScrollContext, useScreen } from '../screen-context';
 import { useToastObstacle } from '../toast-obstacles';
 import type { ShellColumn } from './layout';
+import type { ShellFooterHides } from './shell-types';
 import { columnStyle, widthStyle } from './top-shell';
 
 export interface ShellRefresh {
@@ -105,13 +114,66 @@ export function StaticBody({
   );
 }
 
-export function ShellFooter({ children }: { readonly children: ReactNode }): ReactNode {
+function directionOf(now: number, before: number, current: number): number {
+  'worklet';
+  if (now <= 0 || now < before) return 0;
+  return now > before ? 1 : current;
+}
+
+function useScrollAway(): {
+  readonly style: ReturnType<typeof useAnimatedStyle>;
+  readonly measure: (event: LayoutChangeEvent) => void;
+} {
+  const { scrollY } = useScreen();
+  const { reduced } = useMotion();
+  const away = useSharedValue(0);
+  const shown = useSharedValue(1);
+  const height = useSharedValue(0);
+  useAnimatedReaction(
+    () => scrollY.get(),
+    (now, before) => {
+      if (before === null) return;
+      const next = directionOf(now, before, away.get());
+      if (next === away.get()) return;
+      away.set(next);
+      const target = 1 - next;
+      shown.set(
+        reduced
+          ? target
+          : withTiming(target, { duration: DURATION.short, easing: EASING.standard }),
+      );
+    },
+    [reduced],
+  );
+  const style = useAnimatedStyle(() =>
+    height.get() === 0
+      ? { opacity: shown.get() }
+      : { opacity: shown.get(), height: height.get() * shown.get() },
+  );
+  return {
+    style,
+    measure: (event): void => {
+      height.set(event.nativeEvent.layout.height);
+    },
+  };
+}
+
+function FooterFrame({
+  children,
+  onMeasured,
+}: {
+  readonly children: ReactNode;
+  readonly onMeasured?: (event: LayoutChangeEvent) => void;
+}): ReactNode {
   const { attach, onLayout } = useToastObstacle('bottom', useIsFocused());
   const aboveChrome = useBottomChrome();
   return (
     <View
       ref={attach}
-      onLayout={onLayout}
+      onLayout={(event) => {
+        onLayout();
+        onMeasured?.(event);
+      }}
       className={cn(
         'border-t border-outline-variant bg-chrome px-gutter pt-3',
         aboveChrome ? 'pb-3' : 'pb-safe-offset-3',
@@ -119,5 +181,28 @@ export function ShellFooter({ children }: { readonly children: ReactNode }): Rea
     >
       {children}
     </View>
+  );
+}
+
+function ScrollAwayFooter({ children }: { readonly children: ReactNode }): ReactNode {
+  const { style, measure } = useScrollAway();
+  return (
+    <Animated.View style={style} className="overflow-hidden">
+      <FooterFrame onMeasured={measure}>{children}</FooterFrame>
+    </Animated.View>
+  );
+}
+
+export function ShellFooter({
+  hides,
+  children,
+}: {
+  readonly hides?: ShellFooterHides | undefined;
+  readonly children: ReactNode;
+}): ReactNode {
+  return hides === 'scroll' ? (
+    <ScrollAwayFooter>{children}</ScrollAwayFooter>
+  ) : (
+    <FooterFrame>{children}</FooterFrame>
   );
 }

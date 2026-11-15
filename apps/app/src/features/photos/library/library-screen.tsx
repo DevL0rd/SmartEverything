@@ -28,6 +28,7 @@ import type { LibraryHeadProps, ZoomControl } from './library-head';
 import { libraryLine, showsZoomChip } from './library-model';
 import { activeTabOf, hubTabOf, shownTabs, tabChipsOf } from './library-tabs-view';
 import { deviceCountOf } from './local-scope';
+import type { FeedFocus } from './use-library-feed';
 
 function useSourceCount(source: PhotoSource): number | undefined {
   const chips = usePhotoSource(source, null, NO_SOURCE_SEARCH).data?.pages[0]?.chips;
@@ -47,7 +48,8 @@ function useLibrarySubtitle(): string | null {
   const buckets = usePhotoBuckets(PHOTO_ALL).data;
   const size = usePhotoInsights('all_time').data?.bytes;
   const year = Number(useDayKey().slice(0, 4));
-  return buckets === undefined ? null : libraryLine(buckets, size, year);
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
+  return buckets === undefined ? null : libraryLine(buckets, size, year, compact);
 }
 
 function openTab(id: Parameters<typeof tabParamOf>[0]): void {
@@ -61,12 +63,14 @@ function ScopedTab({
   scope,
   zoom,
   grouping,
+  focus,
 }: {
   readonly tab: LibraryTab;
   readonly head: LibraryHeadProps;
   readonly scope: LibraryScope;
   readonly zoom: ZoomControl;
   readonly grouping: MediaGrouping;
+  readonly focus: FeedFocus | null;
 }): ReactNode {
   const subtitle = useLibrarySubtitle();
   if (tab.kind === 'partner') {
@@ -89,6 +93,7 @@ function ScopedTab({
       zoom={zoom}
       grouping={grouping}
       subtitle={subtitle}
+      focus={focus}
     />
   );
 }
@@ -96,9 +101,11 @@ function ScopedTab({
 function LibraryPage({
   q,
   tabParam,
+  month,
 }: {
   readonly q: string;
   readonly tabParam: unknown;
+  readonly month: string | null;
 }): ReactNode {
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const pref = usePref(PREFS.photos);
@@ -135,12 +142,21 @@ function LibraryPage({
       scope={query.scope}
       zoom={zoom}
       grouping={prefs.libraryGroup}
+      focus={month === null ? null : { month, onReached: clearMonth }}
     />
   );
 }
 
+function clearMonth(): void {
+  router.setParams({ month: undefined });
+}
+
+export function monthParamOf(value: unknown): string | null {
+  return typeof value === 'string' && /^\d{4}-\d{2}$/.test(value) ? value : null;
+}
+
 export function LibraryScreen(): ReactNode {
-  const params = useLocalSearchParams<{ tab?: string; q?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; q?: string; month?: string }>();
   const q = params.q ?? '';
-  return <LibraryPage key={q} q={q} tabParam={params.tab} />;
+  return <LibraryPage key={q} q={q} tabParam={params.tab} month={monthParamOf(params.month)} />;
 }

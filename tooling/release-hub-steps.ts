@@ -52,13 +52,13 @@ export function finishRelease(target: ReleaseTarget, name: string): void {
 export function migrationStep(
   target: ReleaseTarget,
   built: string,
-  record: (moved: boolean) => void,
+  record: (from: number, to: number) => void,
 ): Plan {
   return {
     title: 'run the built service migrations twice on a copy of the live database',
     run: (): Promise<void> => {
       const { from, to } = serviceMigrationCheck(process.execPath, built, target.data);
-      record(from !== to);
+      record(from, to);
       log.info('release.migrations_checked', { from, to });
       return Promise.resolve();
     },

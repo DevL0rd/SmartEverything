@@ -5,22 +5,70 @@ import { useValue } from '../design/external-store';
 import { ThemeScope } from '../design/theme-scope';
 import { warningBuzz } from '../platform/haptics';
 import { Button } from './button';
-import { pendingConfirm, settleConfirm, type PendingConfirm } from './confirm-store';
+import {
+  pendingConfirm,
+  settleAlternate,
+  settleConfirm,
+  type PendingConfirm,
+} from './confirm-store';
 import { DialogFrame } from './dialog-frame';
 import { Text } from './text';
 import { TextField } from './text-field';
 
-function Footer({
-  pending,
-  blocked,
-  close,
-  cancel,
-}: {
+interface FooterProps {
   readonly pending: PendingConfirm;
   readonly blocked: boolean;
   readonly close: (accepted: boolean) => void;
   readonly cancel: RefObject<View | null>;
-}): ReactNode {
+}
+
+function ConfirmButton({ pending, blocked, close }: Omit<FooterProps, 'cancel'>): ReactNode {
+  return (
+    <Button
+      label={pending.confirmLabel}
+      variant={pending.tone === 'destructive' ? 'destructive' : 'filled'}
+      disabled={blocked}
+      onPress={() => {
+        close(true);
+      }}
+    />
+  );
+}
+
+function ChoiceFooter({
+  alternate,
+  pending,
+  blocked,
+  close,
+  cancel,
+}: FooterProps & { readonly alternate: string }): ReactNode {
+  return (
+    <View className="flex-1 gap-2">
+      <ConfirmButton pending={pending} blocked={blocked} close={close} />
+      <Button label={alternate} variant="outlined" disabled={blocked} onPress={settleAlternate} />
+      <Button
+        ref={cancel}
+        label={pending.cancelLabel ?? 'Cancel'}
+        variant="text"
+        onPress={() => {
+          close(false);
+        }}
+      />
+    </View>
+  );
+}
+
+function Footer({ pending, blocked, close, cancel }: FooterProps): ReactNode {
+  if (pending.alternateLabel !== undefined)
+    return (
+      <ChoiceFooter
+        alternate={pending.alternateLabel}
+        pending={pending}
+        blocked={blocked}
+        close={close}
+        cancel={cancel}
+      />
+    );
   return (
     <>
       <Button
@@ -31,14 +79,7 @@ function Footer({
           close(false);
         }}
       />
-      <Button
-        label={pending.confirmLabel}
-        variant={pending.tone === 'destructive' ? 'destructive' : 'filled'}
-        disabled={blocked}
-        onPress={() => {
-          close(true);
-        }}
-      />
+      <ConfirmButton pending={pending} blocked={blocked} close={close} />
     </>
   );
 }

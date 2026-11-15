@@ -4,6 +4,7 @@ import type { PlannerPerson } from '../data';
 export interface QuickAddSeed {
   readonly collectionId?: string;
   readonly due?: 'today' | 'tomorrow';
+  readonly text?: string;
 }
 
 export interface PlannerFrameValue {

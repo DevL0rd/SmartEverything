@@ -11,7 +11,6 @@ vi.mock('../../../api/drive', () => ({
   createDriveAlbum: vi.fn(),
   createDriveShare: vi.fn(),
   readDriveItem: vi.fn(),
-  readDriveLinks: vi.fn(),
 }));
 vi.mock('../../assistant', () => ({ attachFiles: vi.fn(), useLastChat: vi.fn() }));
 vi.mock('expo-router', () => ({ router: { push: vi.fn(), navigate: vi.fn() } }));

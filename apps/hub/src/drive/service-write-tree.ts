@@ -31,7 +31,7 @@ import {
   type WriteStore,
 } from './service-write-support';
 import { requireExport } from './sharing/export-guard';
-import { commitRestore, commitTrash } from './trash-purge';
+import { commitRestore, commitTrashes } from './trash-purge';
 import { removeTrashEntry } from './trash';
 
 export interface TreeDeps {
@@ -86,7 +86,7 @@ export class DriveTreeWriter {
       case 'unstar':
         return this.each(ids, (id) => this.star(caller, id, false));
       case 'trash':
-        return this.each(ids, (id) => this.trash(caller, id));
+        return this.trashAll(caller, ids);
       case 'restore':
         return this.each(ids, (id) => this.restore(caller, id));
       case 'delete_now':
@@ -132,11 +132,44 @@ export class DriveTreeWriter {
     return id;
   }
 
-  private async trash(caller: DriveCaller, id: string): Promise<Outcome> {
-    const item = this.deps.read.readItem(caller, id);
-    const root = writableItemRoot(this.deps.store, caller, item);
-    await commitTrash(this.deps.env, root, id, changeActorOf(caller));
-    return null;
+  private async trashAll(caller: DriveCaller, ids: readonly string[]): Promise<DriveChangeResult> {
+    const { env, read, store } = this.deps;
+    const failed: { itemId: string | null; reason: string }[] = [];
+    const byRoot = new Map<string, { root: DriveWriteRoot; items: DriveItem[] }>();
+    for (const itemId of ids) {
+      try {
+        const item = read.readItem(caller, itemId);
+        const root = writableItemRoot(store, caller, item);
+        const group = byRoot.get(root.id) ?? { root, items: [] };
+        group.items.push(item);
+        byRoot.set(root.id, group);
+      } catch (cause) {
+        const reason = refusalReason(cause);
+        if (reason === null) throw cause;
+        failed.push({ itemId, reason });
+      }
+    }
+    const done: { itemId: string; resultItemId: string | null }[] = [];
+    for (const { root, items } of byRoot.values()) {
+      const folders = items.filter((item) => item.kind === 'folder').map((item) => item.relPath);
+      const nested = (item: DriveItem): boolean =>
+        folders.some((folder) => item.relPath.startsWith(`${folder}/`));
+      for (const item of items.filter(nested)) {
+        failed.push({ itemId: item.id, reason: 'There is no such file or folder.' });
+      }
+      const top = items.filter((item) => !nested(item)).map((item) => item.id);
+      const outcomes = await commitTrashes(env, root, top, changeActorOf(caller));
+      for (const { itemId, failure } of outcomes) {
+        if (failure === null) {
+          done.push({ itemId, resultItemId: null });
+          continue;
+        }
+        const reason = refusalReason(failure);
+        if (reason === null) throw failure;
+        failed.push({ itemId, reason });
+      }
+    }
+    return { done, failed, conflicts: [] };
   }
 
   private async restore(caller: DriveCaller, id: string): Promise<Outcome> {

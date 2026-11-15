@@ -51,7 +51,6 @@ function createBakeContext(canvas: HTMLCanvasElement): BakeContext | string {
     renderer,
     environment: rendererEnvironment(renderer),
     view: createViewCamera(),
-    scratch: document.createElement('canvas'),
     dispose: (): void => {
       releaseStageEnvironment(renderer);
       renderer.dispose();

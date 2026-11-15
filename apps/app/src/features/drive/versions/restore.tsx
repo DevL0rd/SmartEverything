@@ -29,7 +29,7 @@ export function restoreConfirmBody(when: string): string {
   return `The version from ${when} becomes the current file. The file you have now is kept in Versions.`;
 }
 
-export async function restoreVersion(
+export async function confirmRestore(
   item: DriveItem,
   versionId: string,
   when: string,
@@ -39,10 +39,11 @@ export async function restoreVersion(
     body: restoreConfirmBody(when),
     confirmLabel: 'Restore',
   });
-  if (!accepted) {
-    log.info('version.restore_cancelled', { itemId: item.id, versionId });
-    return false;
-  }
+  if (!accepted) log.info('version.restore_cancelled', { itemId: item.id, versionId });
+  return accepted;
+}
+
+export async function performRestore(item: DriveItem, versionId: string): Promise<boolean> {
   try {
     const restored = await restoreDriveVersion(item.id, versionId);
     log.info('version.restored', { itemId: item.id, versionId, rev: restored.rev });
@@ -60,15 +61,16 @@ export function useRestore(
   onRestored: () => void,
 ): { readonly busy: boolean; readonly run: (versionId: string, when: string) => void } {
   const [busy, setBusy] = useState(false);
-  const run = (versionId: string, when: string): void => {
+  const restore = async (versionId: string, when: string): Promise<void> => {
+    if (!(await confirmRestore(item, versionId, when))) return;
     setBusy(true);
-    background(
-      restoreVersion(item, versionId, when).then((restored) => {
-        setBusy(false);
-        if (restored) onRestored();
-      }),
-      'drive_version.restore_failed',
-    );
+    const restored = await performRestore(item, versionId);
+    setBusy(false);
+    if (restored) onRestored();
+  };
+  const run = (versionId: string, when: string): void => {
+    if (busy) return;
+    background(restore(versionId, when), 'drive_version.restore_failed');
   };
   return { busy, run };
 }

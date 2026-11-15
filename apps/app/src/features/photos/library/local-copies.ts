@@ -54,7 +54,7 @@ function restoredLine(result: Exclude<LocalCopyResult, { kind: 'none' }>): strin
   if (result.changed === result.asked) return `${copies} ${one ? 'is' : 'are'} back too.`;
   if (result.changed > 0)
     return `${count(result.changed)} of the ${count(result.asked)} copies on this ${result.place} are back. The others had already left its trash.`;
-  return `${copies} had already left its trash, so ${one ? 'it is' : 'they are'} only on the Hub.`;
+  return `${copies} had already left its trash, so ${one ? 'it is' : 'they are'} only on the hub.`;
 }
 
 function restoreLine(result: Exclude<LocalCopyResult, { kind: 'none' }>): string {

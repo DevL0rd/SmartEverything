@@ -84,7 +84,7 @@ const BYTE_UNITS = ['B', 'KB', 'MB', 'GB'] as const;
 export function bytes(value: number): string {
   let size = value;
   let unit = 0;
-  while (size >= 1024 && unit < BYTE_UNITS.length - 1) {
+  while (Math.round(size) >= 1000 && unit < BYTE_UNITS.length - 1) {
     size /= 1024;
     unit += 1;
   }

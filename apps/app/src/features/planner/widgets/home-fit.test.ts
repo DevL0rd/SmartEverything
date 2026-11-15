@@ -180,7 +180,8 @@ describe('Home widget fitting', () => {
     expect(rowsShownOf(3, 4)).toEqual({ shown: 3, more: 0 });
     expect(rowsShownOf(4, 4)).toEqual({ shown: 4, more: 0 });
     expect(rowsShownOf(7, 2)).toEqual({ shown: 1, more: 6 });
-    expect(rowsShownOf(7, 1)).toEqual({ shown: 1, more: 0 });
+    expect(rowsShownOf(7, 1)).toEqual({ shown: 1, more: 6 });
+    expect(rowsShownOf(1, 1)).toEqual({ shown: 1, more: 0 });
     expect(rowsShownOf(3, 0)).toEqual({ shown: 0, more: 0 });
   });
 

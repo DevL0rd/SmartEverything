@@ -1,7 +1,7 @@
 import { BrowserOverlayOwner, coverBrowser } from '../platform/browser-overlays';
 import type { ReactNode, RefObject } from 'react';
 import { use, useEffect, useEffectEvent, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
 import { Logger } from '@smarteverything/logging';
 import { cn } from '../design/cn';
 import { isNative } from '../design/platform';
@@ -135,6 +135,7 @@ function OverlaySurface({
   readonly backdropLabel: string;
 }): ReactNode {
   const panel = useRef<View>(null);
+  const viewport = useWindowDimensions();
   return (
     <KeyboardRoot>
       <KeyboardViewport className="z-0 flex-1">
@@ -142,6 +143,7 @@ function OverlaySurface({
           ref={panel}
           tabIndex={-1}
           pointerEvents="box-none"
+          style={{ maxWidth: viewport.width }}
           className={cn('flex-1 web:outline-none', className)}
         >
           <OverlayShown value={signal}>{children}</OverlayShown>

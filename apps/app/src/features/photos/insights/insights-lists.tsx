@@ -42,8 +42,6 @@ function CardRow({ children }: { readonly children: ReactNode }): ReactNode {
   return <View className="border-t-hairline border-outline-variant">{children}</View>;
 }
 
-const FILL = 'large:flex-1';
-
 export function PlacesCard({
   places,
   className,
@@ -55,13 +53,11 @@ export function PlacesCard({
     countryCode: country.countryCode,
     count: country.items,
   }));
-  const ranked = places.countries.length > 0;
   return (
     <View className={cn('gap-3', className)}>
       <Card
         title="Places"
         padding="card"
-        {...(ranked ? {} : { className: FILL })}
         metadata={
           <Text variant="caption" tone="variant" className="tabular">
             {placesLine(places)}
@@ -77,8 +73,8 @@ export function PlacesCard({
         />
       </Card>
       {places.countries.length === 0 ? null : (
-        <Card title="Countries" className={FILL}>
-          <RankedList inCard entries={countryEntries(places.countries)} />
+        <Card title="Countries">
+          <RankedList inCard ellipsize="end" entries={countryEntries(places.countries)} />
         </Card>
       )}
     </View>
@@ -96,13 +92,13 @@ export function CamerasCard({
   return (
     <View className={cn('gap-3', className)}>
       {insights.cameras.length === 0 ? null : (
-        <Card title="Cameras" {...(insights.lenses.length === 0 ? { className: FILL } : {})}>
-          <RankedList inCard entries={cameraEntries(insights.cameras)} />
+        <Card title="Cameras">
+          <RankedList inCard ellipsize="end" entries={cameraEntries(insights.cameras)} />
         </Card>
       )}
       {insights.lenses.length === 0 ? null : (
-        <Card title="Lenses" className={FILL}>
-          <RankedList inCard entries={lensEntries(insights.lenses)} />
+        <Card title="Lenses">
+          <RankedList inCard ellipsize="end" entries={lensEntries(insights.lenses)} />
         </Card>
       )}
     </View>
@@ -148,12 +144,18 @@ export function CoverageCard({
   );
 }
 
+function RankNumber({ rank }: { readonly rank: number }): ReactNode {
+  return (
+    <Text variant="footnote" tone="variant" align="end" className="tabular w-6">
+      {String(rank)}
+    </Text>
+  );
+}
+
 function RankLead({ rank, itemId }: { readonly rank: number; readonly itemId: string }): ReactNode {
   return (
     <View className="shrink-0 flex-row items-center gap-3">
-      <Text variant="footnote" tone="variant" align="end" className="tabular w-6">
-        {String(rank)}
-      </Text>
+      <RankNumber rank={rank} />
       <Cover itemId={itemId} className="size-10 rounded-sm" />
     </View>
   );
@@ -247,12 +249,23 @@ export function LargestVideos({
 export function BusiestDayRow({
   entry,
   range,
+  rank,
 }: {
   readonly entry: PhotoInsights['busiestDays'][number];
   readonly range: PhotoInsightRange;
+  readonly rank: number;
 }): ReactNode {
   const row = busiestRowOf(entry, range);
-  return <ListRow title={row.title} subtitle={row.note} icon="calendar" />;
+  return (
+    <ListRow
+      title={row.title}
+      value={row.note}
+      leading={<RankNumber rank={rank} />}
+      label={`${row.title}, ${row.note}`}
+      chevron
+      href={href.photos({ month: entry.day.slice(0, 7) })}
+    />
+  );
 }
 
 export function BusiestDays({
@@ -276,9 +289,9 @@ export function BusiestDays({
       }
     >
       <CardRows>
-        {shown.map((entry) => (
+        {shown.map((entry, index) => (
           <CardRow key={entry.day}>
-            <BusiestDayRow entry={entry} range={range} />
+            <BusiestDayRow entry={entry} range={range} rank={index + 1} />
           </CardRow>
         ))}
       </CardRows>
@@ -289,19 +302,27 @@ export function BusiestDays({
 function FolderLine({
   row,
   scale,
+  compact,
 }: {
   readonly row: FolderRow;
   readonly scale: number;
+  readonly compact: boolean;
 }): ReactNode {
+  const note = (
+    <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
+      {row.note}
+    </Text>
+  );
   return (
     <View className="gap-1.5">
       <View className="flex-row items-center gap-2">
-        <Text variant="callout" ellipsize="middle" className="min-w-0 flex-1">
-          {row.label}
-        </Text>
-        <Text variant="caption" tone="variant" className="tabular">
-          {row.note}
-        </Text>
+        <View className="min-w-0 flex-1">
+          <Text variant="callout" ellipsize="middle">
+            {row.label}
+          </Text>
+          {compact ? note : null}
+        </View>
+        {compact ? null : note}
         <Text variant="callout" className="tabular">
           {bytes(row.total)}
         </Text>
@@ -338,9 +359,11 @@ function KindLegend(): ReactNode {
 
 export function FoldersCard({
   roots,
+  compact,
   className,
 }: {
   readonly roots: PhotoInsights['roots'];
+  readonly compact: boolean;
   readonly className: string;
 }): ReactNode {
   const known = useDriveRoots();
@@ -360,7 +383,7 @@ export function FoldersCard({
     >
       <KindLegend />
       {bars.rows.map((row) => (
-        <FolderLine key={row.key} row={row} scale={bars.scale} />
+        <FolderLine key={row.key} row={row} scale={bars.scale} compact={compact} />
       ))}
     </Card>
   );

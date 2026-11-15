@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { z } from 'zod';
 import { useStoreSelector } from '../../store/store-context';
 import { pluginStreamRow } from '../../store/subscriptions';
+import { useSectionFailure } from '../../store/selectors';
+import type { SectionFailure } from '../../store/state';
 import { LogTally } from '../../design/log-tally';
 import { pluginLog } from './plugin-log';
 
@@ -14,6 +16,18 @@ export type PluginStream<T> =
   | { readonly state: 'ready'; readonly value: T; readonly at: string };
 
 const WAITING = { state: 'waiting' } as const;
+
+export const PLUGIN_STREAMS_SECTION = 'tables.plugin_streams';
+
+export function unreadableStream(failure: SectionFailure): {
+  readonly state: 'invalid';
+  readonly reason: string;
+} {
+  return {
+    state: 'invalid',
+    reason: `This app can’t read plugin streams from your server: ${failure.reason}. Update the app.`,
+  };
+}
 
 function issuePath(path: readonly PropertyKey[]): string {
   return path.reduce<string>(
@@ -81,7 +95,12 @@ export function usePluginStream<T>(
     () => (source instanceof StreamParser ? source : new StreamParser(source)),
     [source],
   );
-  const value = parser.read(row);
+  const failure = useSectionFailure(PLUGIN_STREAMS_SECTION);
+  const unreadable = useMemo(
+    () => (failure === null ? null : unreadableStream(failure)),
+    [failure],
+  );
+  const value = enabled && unreadable !== null ? unreadable : parser.read(row);
   useStreamTrace({ pluginId, stream, enabled, row, value });
   return value;
 }

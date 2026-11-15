@@ -288,6 +288,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
   {
     id: 'notifications',
     title: 'Notifications',
+    short: 'Alerts',
     icon: 'bell',
     parent: null,
     group: 'App',

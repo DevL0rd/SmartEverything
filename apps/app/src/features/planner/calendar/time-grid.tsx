@@ -16,7 +16,7 @@ import { PILL_HEIGHT } from './alarm-clusters';
 import type { EventLook } from './calendars-model';
 import { DayColumn, type Drafting } from './day-column';
 import type { SlotRange } from './drag-create';
-import { DayHeads, HourColumn, HourLines, type HeadShape } from './grid-frame';
+import { DayHeads, HourColumn, HourLines, gutterWidthOf, type HeadShape } from './grid-frame';
 import { touchActionOf, useHourZoom, type BlockChange, type MinuteSpan } from './grid-gestures';
 import { NowLine } from './now-line';
 import {
@@ -45,6 +45,7 @@ export interface TimeGridProps {
   readonly startMinute: number;
   readonly readOnlyOf: (occurrence: PlannerOccurrenceView) => boolean;
   readonly lookOf: (occurrence: PlannerOccurrenceView) => EventLook;
+  readonly held: SlotRange | null;
   readonly onCreate: (day: string, span: MinuteSpan) => void;
   readonly onMove: (change: BlockChange) => Promise<unknown>;
 }
@@ -62,19 +63,23 @@ const START_ROOM = PILL_HEIGHT + 4;
 
 const TAPPED_SLOT_MINUTES = 60;
 
+export function firstShownMinuteOf(startMinute: number, pins: readonly Pin[]): number {
+  return pins.reduce((first, pin) => Math.min(first, pin.minute), startMinute);
+}
+
 function useStartScroll(
   scroll: AnimatedRef<Animated.ScrollView>,
-  startMinute: number,
+  firstMinute: number,
   hourHeight: number,
 ): (height: number) => void {
   const [viewport, setViewport] = useState(0);
   useEffect(() => {
     if (viewport === 0) return;
     scroll.current?.scrollTo({
-      y: Math.max(0, yOf(startMinute, hourHeight) - START_ROOM),
+      y: Math.max(0, yOf(firstMinute, hourHeight) - START_ROOM),
       animated: false,
     });
-  }, [scroll, viewport, startMinute, hourHeight]);
+  }, [scroll, viewport, firstMinute, hourHeight]);
   return setViewport;
 }
 
@@ -82,10 +87,13 @@ function slotSpanOf(minute: number): MinuteSpan {
   return { from: minute, to: Math.min(DAY_MINUTES, minute + TAPPED_SLOT_MINUTES) };
 }
 
-function useDrafting(onCreate: (day: string, span: MinuteSpan) => void): Drafting {
+function useDrafting(
+  onCreate: (day: string, span: MinuteSpan) => void,
+  held: SlotRange | null,
+): Drafting {
   const [draft, setDraft] = useState<SlotRange | null>(null);
   return {
-    draft,
+    draft: draft ?? held,
     onDraft: setDraft,
     onCreate: (made): void => {
       setDraft(null);
@@ -131,8 +139,8 @@ function daysAt(view: TimeGridProps, today: string, hourHeight: number): readonl
 
 function GridBody({ pins, view, today, compact, initialHeight }: BodyProps): ReactNode {
   const { hourHeight, settled, scroll, gesture, onViewport } = useHourZoom(initialHeight);
-  const onStart = useStartScroll(scroll, view.startMinute, initialHeight);
-  const drafting = useDrafting(view.onCreate);
+  const onStart = useStartScroll(scroll, firstShownMinuteOf(view.startMinute, pins), initialHeight);
+  const drafting = useDrafting(view.onCreate, view.held);
   const moves = useMoves(view.onMove);
   const tall = useAnimatedStyle(() => ({ height: (DAY_MINUTES / 60) * hourHeight.get() }));
   const days = daysAt(view, today, settled);
@@ -188,11 +196,24 @@ export function TimeGrid(props: TimeGridProps): ReactNode {
     }),
     sameLive,
   );
+  const [width, setWidth] = useState(0);
   const heads = daysAt(props, live.value.today, initialHeight);
-  const shape: HeadShape = { compact, columns: heads.length, allDay: anyAllDay(heads) };
+  const shape: HeadShape = {
+    compact,
+    columns: heads.length,
+    columnWidth: (width - gutterWidthOf(compact)) / heads.length,
+    allDay: anyAllDay(heads),
+  };
   return (
     <Card padding="none" className="flex-1 overflow-hidden">
-      <View ref={ref} onLayout={live.onLayout} className="flex-1">
+      <View
+        ref={ref}
+        onLayout={(event) => {
+          live.onLayout?.();
+          setWidth(event.nativeEvent.layout.width);
+        }}
+        className="flex-1"
+      >
         <DayHeads days={heads} shape={shape} />
         <GridBody
           pins={live.value.pins}

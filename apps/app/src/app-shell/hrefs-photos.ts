@@ -5,12 +5,14 @@ import type { LibraryTabId, PhotosPage } from '../features/photos/model/library-
 export interface PhotosLibraryParams {
   readonly tab?: Exclude<LibraryTabId, 'all'>;
   readonly q?: string;
+  readonly month?: string;
 }
 
 function photosLibraryQuery(params: PhotosLibraryParams): Readonly<Record<string, string>> {
   return {
     ...(params.tab === undefined ? {} : { tab: params.tab }),
     ...(params.q === undefined || params.q === '' ? {} : { q: params.q }),
+    ...(params.month === undefined ? {} : { month: params.month }),
   };
 }
 

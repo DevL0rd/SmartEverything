@@ -41,7 +41,9 @@ import {
 } from './notification-model';
 import { NotificationRow } from './notification-row';
 
-export const OFFLINE_TITLE = 'Showing the last known notifications · reconnecting';
+export const OFFLINE_TITLE = 'Offline · showing the last notifications';
+
+export const OFFLINE_BODY = 'New ones appear when the hub is back.';
 
 type Lookups = Omit<NotificationLookups, 'items'> & {
   readonly items: ReadonlyMap<string, DriveItem>;
@@ -167,7 +169,9 @@ export function NotificationsScreen(): ReactNode {
       subtitle={subtitleOf(rows)}
       scroll={false}
       actions={actions}
-      {...(live ? {} : { banner: <Banner tone="info" title={OFFLINE_TITLE} /> })}
+      {...(live
+        ? {}
+        : { banner: <Banner wrapBody tone="info" title={OFFLINE_TITLE} body={OFFLINE_BODY} /> })}
     >
       {rows.length === 0 ? (
         <View className="flex-1 justify-center">

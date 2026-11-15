@@ -322,16 +322,24 @@ describe('photos summary well', () => {
       ['Videos', 280, 'viz-3'],
     ]);
   });
+
+  it('leaves kinds without bytes out of the library split', () => {
+    const segments = librarySegmentsOf([
+      { kind: 'photo', items: 10, bytes: 300 },
+      { kind: 'raw', items: 0, bytes: 0 },
+    ]);
+    expect(segments.map((segment) => segment.label)).toEqual(['Photos']);
+  });
 });
 
 describe('photos frame', () => {
-  it('puts the section in the page shell with the Photos rail and a blank well before data', () => {
+  it('puts the section in the page shell with the Photos rail and no well before data', () => {
     const markup = render();
     expect(seen.frame?.title).toBe('Insights');
     expect(seen.frame?.sections?.active).toBe('insights');
     expect(seen.frame?.sections?.hrefOf('map')).toEqual({ pathname: '/photos/map', params: {} });
     expect(seen.frame?.onRefresh).toBeTypeOf('function');
-    expect(markup).toBe('<main><aside>Library</aside><p>Body</p></main>');
+    expect(markup).toBe('<main><p>Body</p></main>');
     expect(seen.segments).toBeNull();
   });
 
@@ -356,6 +364,11 @@ describe('photos frame', () => {
     expect(markup).toContain(`data-href="${BACKUP_HREF.replaceAll('"', '&quot;')}"`);
     expect(markup).toContain('This device: 34 left · Backing up');
     expect(seen.segments).toBeNull();
+  });
+
+  it('leaves the refresh out when the frame asks for none', () => {
+    render({ active: 'locked', refresh: false, children: null });
+    expect(seen.frame?.onRefresh).toBeUndefined();
   });
 
   it('leaves the backup link out while nothing is known about backups', () => {

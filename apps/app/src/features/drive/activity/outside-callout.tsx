@@ -39,6 +39,9 @@ export function OutsideCallout({
           <Text variant="callout" tone="variant">
             {outsideBody(summary.count, range)}
           </Text>
+          <Text variant="caption" tone="variant">
+            Seen by the disk watcher, so who made them is unknown.
+          </Text>
         </View>
       </View>
       <View className="flex-row flex-wrap gap-x-2">
@@ -56,14 +59,11 @@ export function OutsideCallout({
           />
         ))}
       </View>
-      <View className="flex-row flex-wrap items-center gap-x-3 gap-y-2">
-        {showingOnly ? null : (
+      {showingOnly ? null : (
+        <View className="flex-row">
           <Button label="Show only these" icon="filter" variant="tonal" onPress={onShowOnly} />
-        )}
-        <Text variant="caption" tone="variant" className="min-w-0 flex-1">
-          Seen by the disk watcher, so who made them is unknown.
-        </Text>
-      </View>
+        </View>
+      )}
     </Card>
   );
 }

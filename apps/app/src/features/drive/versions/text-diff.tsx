@@ -18,7 +18,7 @@ import {
   type LineDiff,
 } from './diff-model';
 
-const FRAME = 'overflow-hidden rounded-md border border-outline-variant bg-surface-1 py-2';
+const FRAME = 'overflow-hidden rounded-md border border-outline-variant bg-surface-1';
 
 function Counts({
   diff,
@@ -66,20 +66,30 @@ function Segment({
   segment,
   language,
   gutter,
+  first,
+  last,
 }: {
   readonly segment: DiffSegment;
   readonly language: string | null;
   readonly gutter: number;
+  readonly first: boolean;
+  readonly last: boolean;
 }): ReactNode {
   if (segment.kind === 'lines') {
     return (
-      <View className="px-3">
+      <View className="px-3 py-2">
         <DiffCode lines={segment.lines} language={language} gutter={gutter} />
       </View>
     );
   }
   return (
-    <View className="my-1 border-y border-outline-variant bg-surface-2 px-3 py-1">
+    <View
+      className={cn(
+        'border-outline-variant bg-surface-2 px-3 py-1',
+        !first && 'border-t',
+        !last && 'border-b',
+      )}
+    >
       <Text variant="caption" tone="faint">
         {unchangedText(segment.count)}
       </Text>
@@ -96,8 +106,16 @@ function Lines({
 }): ReactNode {
   const { diff, language } = compared;
   const gutter = gutterDigits(diff.lines);
-  return segmentsOf(diff.lines, all).map((segment) => (
-    <Segment key={segment.key} segment={segment} language={language} gutter={gutter} />
+  const segments = segmentsOf(diff.lines, all);
+  return segments.map((segment, index) => (
+    <Segment
+      key={segment.key}
+      segment={segment}
+      language={language}
+      gutter={gutter}
+      first={index === 0}
+      last={index === segments.length - 1}
+    />
   ));
 }
 

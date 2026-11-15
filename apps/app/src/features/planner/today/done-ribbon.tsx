@@ -78,14 +78,21 @@ export function ribbonMarksOf(day: PlannerDay): readonly RibbonMark[] {
   return marks.sort(byTime);
 }
 
-export function ribbonLabelOf(marks: readonly RibbonMark[]): {
+export function ribbonLabelOf(
+  marks: readonly RibbonMark[],
+  timeZone: string,
+): {
   readonly done: number;
-  readonly happened: string | null;
+  readonly also: string | null;
 } {
+  const woke = marks.flatMap((mark) =>
+    mark.kind === 'woke' ? [`woke up ${clock(mark.ring.due_at, timeZone)}`] : [],
+  );
   const happened = marks.filter((mark) => mark.kind === 'happened').length;
+  const also = [...woke, ...(happened === 0 ? [] : [`${plural(happened, 'thing')} happened`])];
   return {
-    done: marks.length - happened,
-    happened: happened === 0 ? null : `and ${plural(happened, 'thing')} that happened`,
+    done: marks.filter((mark) => mark.kind === 'done').length,
+    also: also.length === 0 ? null : also.join(' · '),
   };
 }
 
@@ -159,15 +166,15 @@ function Marks({
 export function DoneRibbon({ day }: { readonly day: PlannerDay }): ReactNode {
   const marks = ribbonMarksOf(day);
   if (marks.length === 0) return null;
-  const { done, happened } = ribbonLabelOf(marks);
+  const { done, also } = ribbonLabelOf(marks, day.time_zone);
   return (
     <View className="gap-2">
       <View className="flex-row items-center gap-2">
         <Text variant="label">Done</Text>
         <Badge label={String(done)} tone="positive" />
-        {happened === null ? null : (
-          <Text variant="caption" tone="variant">
-            {happened}
+        {also === null ? null : (
+          <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
+            {also}
           </Text>
         )}
       </View>

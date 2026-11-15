@@ -79,7 +79,8 @@ export interface RowsShown {
 }
 
 export function rowsShownOf(total: number, fit: number): RowsShown {
-  if (total <= fit || fit < 2) return { shown: Math.min(total, fit), more: 0 };
+  if (total <= fit || fit < 1) return { shown: Math.min(total, fit), more: 0 };
+  if (fit === 1) return { shown: 1, more: total - 1 };
   const shown = Math.max(0, fit - 1);
   return { shown, more: total - shown };
 }

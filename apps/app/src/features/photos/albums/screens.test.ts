@@ -70,7 +70,10 @@ describe('albums screens', () => {
   it('keeps New album as the one primary next to New smart album', () => {
     const noop = (): void => undefined;
     expect(
-      albumsActions(noop, noop, true).map((action) => [action.label, action.primary === true]),
+      albumsActions(noop, noop, true, false).map((action) => [
+        action.label,
+        action.primary === true,
+      ]),
     ).toStrictEqual([
       ['New smart album', false],
       ['New album', true],
@@ -79,9 +82,16 @@ describe('albums screens', () => {
 
   it('turns the create actions off while the hub is offline', () => {
     const noop = (): void => undefined;
-    expect(albumsActions(noop, noop, false).map((action) => action.disabled)).toStrictEqual([
+    expect(albumsActions(noop, noop, false, false).map((action) => action.disabled)).toStrictEqual([
       true,
       true,
+    ]);
+  });
+
+  it('leaves New album to the empty state while there are no albums', () => {
+    const noop = (): void => undefined;
+    expect(albumsActions(noop, noop, true, true).map((action) => action.label)).toStrictEqual([
+      'New smart album',
     ]);
   });
 

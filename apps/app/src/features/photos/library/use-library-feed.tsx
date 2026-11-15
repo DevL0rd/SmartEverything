@@ -2,6 +2,7 @@ import type { LibraryBucket } from '@smarteverything/domain';
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react';
 import { background } from '@smarteverything/logging';
 import type { LibraryScope } from '@smarteverything/domain';
+import type { MonthFocus } from '../../../components/media-grid/media-grid';
 import { tilesOfPage, type MediaTile } from '../../../components/media-grid/tiles';
 import { flattenPages } from '../../drive';
 import { usePhotoBuckets, usePhotoMonth } from '../data';
@@ -58,6 +59,7 @@ export interface LibraryFeed {
   readonly onEnd: () => void;
   readonly retry: () => void;
   readonly loadAll: () => void;
+  readonly focus: MonthFocus | null;
 }
 
 const NO_BUCKETS: readonly LibraryBucket[] = [];
@@ -141,37 +143,88 @@ export function scopeKeyOf(scope: LibraryScope): string {
   return JSON.stringify(scope);
 }
 
+export function monthsReady(
+  shown: readonly string[],
+  target: number,
+  feeds: ReadonlyMap<string, MonthFeed>,
+): boolean {
+  return shown.slice(0, target + 1).every((month, index) => {
+    const feed = feeds.get(month);
+    if (feed === undefined || feed.loading) return false;
+    return index === target || !feed.more;
+  });
+}
+
+export interface FeedFocus {
+  readonly month: string;
+  readonly onReached: () => void;
+}
+
 export function useLibraryFeed(scope: LibraryScope): LibraryFeed {
+  return useFocusedLibraryFeed(scope, null);
+}
+
+function targetOf(buckets: readonly LibraryBucket[], wanted: FeedFocus | null): number {
+  if (wanted === null) return -1;
+  return buckets.findIndex((bucket) => bucket.month === wanted.month);
+}
+
+interface FocusInput {
+  readonly wanted: FeedFocus | null;
+  readonly target: number;
+  readonly shown: readonly string[];
+  readonly feeds: ReadonlyMap<string, MonthFeed>;
+  readonly settle: () => void;
+}
+
+function focusOf({ wanted, target, shown, feeds, settle }: FocusInput): MonthFocus | null {
+  if (wanted === null || target < 0 || !monthsReady(shown, target, feeds)) return null;
+  return {
+    month: wanted.month,
+    onFocused: (): void => {
+      settle();
+      wanted.onReached();
+    },
+  };
+}
+
+function stateOf(
+  tiles: readonly MediaTile[],
+  query: ReturnType<typeof usePhotoBuckets>,
+  first: MonthFeed | undefined,
+): FeedState {
+  if (tiles.length > 0) return 'ready';
+  return feedState({ buckets: query.data, bucketsFailed: query.isError, first });
+}
+
+export function useFocusedLibraryFeed(scope: LibraryScope, wanted: FeedFocus | null): LibraryFeed {
   const query = usePhotoBuckets(scope);
   const buckets = query.data ?? NO_BUCKETS;
   const key = scopeKeyOf(scope);
   const { feeds, shownCount, all, showMore, showAll, pagerOf, onFeed } = useFeeds(key);
+  const target = targetOf(buckets, wanted);
+  const count = Math.max(shownCount, target + 1);
   const shown = useMemo(
-    () => (all ? buckets : buckets.slice(0, shownCount)).map((bucket) => bucket.month),
-    [buckets, shownCount, all],
+    () => (all ? buckets : buckets.slice(0, count)).map((bucket) => bucket.month),
+    [buckets, count, all],
   );
+  const settle = (): void => {
+    showMore(count);
+  };
   const hubTiles = useMemo(() => feedTiles(shown, feeds), [shown, feeds]);
   const last = feeds.get(shown.at(-1) ?? '');
   const tiles = useLocalMerge(hubTiles, scope);
-  const firstMonth = shown[0];
   return {
-    state:
-      tiles.length > 0
-        ? 'ready'
-        : feedState({
-            buckets: query.data,
-            bucketsFailed: query.isError,
-            first: firstMonth === undefined ? undefined : feeds.get(firstMonth),
-          }),
+    state: stateOf(tiles, query, feeds.get(shown[0] ?? '')),
     buckets,
     tiles,
     seenAt: query.dataUpdatedAt === 0 ? null : query.dataUpdatedAt,
-    sources: shown.map((month) => (
+    sources: shown.map((month, index) => (
       <MonthSource
         key={`${key}|${month}`}
         month={month}
         scope={scope}
-        all={all}
+        all={all || index < target}
         onFeed={onFeed(key)}
       />
     )),
@@ -179,6 +232,7 @@ export function useLibraryFeed(scope: LibraryScope): LibraryFeed {
     failedMore: query.isError || last?.failed === true,
     complete: query.data !== undefined && feedsComplete(buckets, shown, feeds),
     loadAll: showAll,
+    focus: focusOf({ wanted, target, shown, feeds, settle }),
     onEnd: (): void => {
       const step = endStep(shown, feeds, buckets.length);
       if (step === 'next') showMore(shown.length + 1);

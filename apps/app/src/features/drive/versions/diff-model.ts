@@ -125,6 +125,8 @@ export function diffTexts(before: string, after: string): Promise<LineDiff> {
 
 export const UNCHANGED_CONTEXT = 3;
 
+export const FOLD_MIN = 3;
+
 export type DiffSegment =
   | { readonly kind: 'lines'; readonly key: string; readonly lines: readonly FileDiffLine[] }
   | { readonly kind: 'unchanged'; readonly key: string; readonly count: number };
@@ -142,6 +144,20 @@ function nearChange(lines: readonly FileDiffLine[], context: number): readonly b
     near[index] = near[index] === true || next - index <= context;
   }
   return near;
+}
+
+function unfoldShortRuns(near: readonly boolean[], fold: number): readonly boolean[] {
+  const kept = [...near];
+  let start = 0;
+  near.forEach((shown, index) => {
+    if (shown) {
+      start = index + 1;
+      return;
+    }
+    const last = index === near.length - 1 || near[index + 1] === true;
+    if (last && index - start + 1 < fold) kept.fill(true, start, index + 1);
+  });
+  return kept;
 }
 
 function pushRun(
@@ -163,7 +179,7 @@ export function segmentsOf(
   context = UNCHANGED_CONTEXT,
 ): readonly DiffSegment[] {
   if (showUnchanged) return lines.length === 0 ? [] : [{ kind: 'lines', key: '0', lines }];
-  const near = nearChange(lines, context);
+  const near = unfoldShortRuns(nearChange(lines, context), FOLD_MIN);
   const segments: DiffSegment[] = [];
   let run: FileDiffLine[] = [];
   let start = 0;

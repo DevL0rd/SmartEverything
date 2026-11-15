@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
+import { useIsPhone } from '../design/size-class';
 import { errorText, type ErrorText } from '../format/errors';
 import { Button } from './button';
 import { Icon } from './icon';
@@ -23,7 +24,8 @@ export interface ErrorStateProps {
 
 function textOf(error: unknown, title: string | undefined): ErrorText {
   const reason = errorText(error);
-  return title === undefined ? reason : { title, detail: `${reason.title} ${reason.detail}` };
+  if (title === undefined) return reason;
+  return { title, detail: reason.detail.trim() === '' ? reason.title : reason.detail };
 }
 
 function ErrorActions({
@@ -51,6 +53,29 @@ function ErrorActions({
   );
 }
 
+function PageErrorState({
+  text,
+  actions,
+}: {
+  readonly text: ErrorText;
+  readonly actions: ReactNode;
+}): ReactNode {
+  return (
+    <View accessibilityRole="alert" className="items-center gap-3 self-center px-6 py-12">
+      <View className="size-20 items-center justify-center rounded-full bg-critical/15">
+        <Icon name="alert" size={40} tone="critical" />
+      </View>
+      <Text variant="title-2" align="center">
+        {text.title}
+      </Text>
+      <Text variant="body" tone="variant" align="center" className="max-w-md" selectable>
+        {text.detail}
+      </Text>
+      {actions}
+    </View>
+  );
+}
+
 export function ErrorState({
   error,
   title,
@@ -61,30 +86,29 @@ export function ErrorState({
   wrapDetail,
 }: ErrorStateProps): ReactNode {
   const text = textOf(error, title);
+  const stacked = useIsPhone() && (retry !== undefined || secondary !== undefined);
+  const actions = (
+    <ErrorActions retry={retry} retryLabel={retryLabel} secondary={secondary} page={page} />
+  );
+  if (page) return <PageErrorState text={text} actions={actions} />;
   return (
     <View
       accessibilityRole="alert"
-      className={cn(
-        'gap-2',
-        page ? 'items-center self-center px-6 py-12' : 'flex-row items-start py-2',
-      )}
+      className={cn('flex-row items-start gap-2 py-2', stacked && 'flex-wrap')}
     >
-      <Icon name="alert" size={page ? 40 : 20} tone="critical" />
-      <View className={cn('min-w-0 gap-1', page ? 'items-center' : 'flex-1')}>
-        <Text variant="body-strong" align={page ? 'center' : 'start'}>
-          {text.title}
-        </Text>
+      <Icon name="alert" size={20} tone="critical" />
+      <View className="min-w-0 flex-1 gap-1">
+        <Text variant="body-strong">{text.title}</Text>
         <Text
           variant="footnote"
           tone="variant"
-          align={page ? 'center' : 'start'}
           {...(wrapDetail === true ? {} : { numberOfLines: 3 })}
           selectable
         >
           {text.detail}
         </Text>
       </View>
-      <ErrorActions retry={retry} retryLabel={retryLabel} secondary={secondary} page={page} />
+      {stacked ? <View className="w-full pl-7">{actions}</View> : actions}
     </View>
   );
 }

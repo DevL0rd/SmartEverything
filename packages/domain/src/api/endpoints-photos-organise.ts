@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DRIVE_TRASH_LINK } from '../drive/trash';
 import { LIBRARY_BUCKET, LIBRARY_PAGE, LIBRARY_PAGE_QUERY, LIBRARY_SCOPE } from '../photos/library';
 import {
   LOCKED_PIN_SET,
@@ -12,7 +13,7 @@ import {
 } from '../photos/organise';
 import { NO_BODY, endpoint } from './endpoint';
 import { DRIVE_ITEM_LINK, DRIVE_ITEM_PARAMS } from './endpoints-drive';
-import { DONE, NOTHING } from './primitives';
+import { DONE, ID, NOTHING } from './primitives';
 
 const MONTH_PARAMS = z.strictObject({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) });
 
@@ -138,6 +139,16 @@ export const PHOTOS_ORGANISE_ENDPOINTS = {
     query: LIBRARY_PAGE_QUERY,
     body: NO_BODY,
     response: LIBRARY_PAGE,
+  }),
+  trashLinks: endpoint({
+    method: 'POST',
+    path: '/api/drive/trash/links',
+    access: 'member',
+    summary: 'Short-lived signed paths that show the thumbnails of trashed files',
+    params: NOTHING,
+    query: NOTHING,
+    body: z.strictObject({ itemIds: z.array(ID).min(1) }),
+    response: z.array(DRIVE_TRASH_LINK),
   }),
   readLockedLinks: endpoint({
     method: 'POST',

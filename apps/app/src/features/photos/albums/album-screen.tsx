@@ -206,7 +206,7 @@ function Missing({ known }: { readonly known: boolean }): ReactNode {
       body={
         known ? 'It was deleted or is no longer shared with you.' : 'Open an album from Albums.'
       }
-      action={<Button label="Open Albums" variant="tonal" href={href.photosPage('albums')} />}
+      action={<Button label="Open albums" variant="tonal" href={href.photosPage('albums')} />}
     />
   );
 }

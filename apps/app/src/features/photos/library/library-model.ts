@@ -20,10 +20,12 @@ export function libraryLine(
   buckets: readonly LibraryBucket[],
   size: number | undefined,
   thisYear: number,
+  compact: boolean,
 ): string | null {
   const oldest = buckets.at(-1);
   if (oldest === undefined) return null;
   const total = bucketTotal(buckets);
+  if (compact) return itemCount(total);
   const year = Number(oldest.month.slice(0, 4));
   const span = year >= thisYear ? 'this year' : `${String(year)} to today`;
   const parts = [itemCount(total), size === undefined ? null : bytes(size), span];

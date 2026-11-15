@@ -27,6 +27,8 @@ export interface ListRowProps {
   readonly subtitle?: string;
   readonly caption?: string;
   readonly captionEllipsize?: 'middle';
+  readonly wrapCaption?: boolean;
+  readonly below?: ReactNode;
   readonly subtitleTone?: Tone;
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
@@ -129,6 +131,8 @@ type BodyProps = { readonly passive: boolean; readonly canShrink: boolean } & Pi
   | 'subtitleTone'
   | 'caption'
   | 'captionEllipsize'
+  | 'wrapCaption'
+  | 'below'
   | 'trailing'
   | 'wrapSubtitle'
   | 'destructive'
@@ -178,7 +182,7 @@ function BodyTitle(props: BodyProps): ReactNode {
   );
 }
 
-function BodyCaption({ caption, captionEllipsize }: BodyProps): ReactNode {
+function BodyCaption({ caption, captionEllipsize, wrapCaption }: BodyProps): ReactNode {
   if (caption === undefined) return null;
   if (captionEllipsize === 'middle') {
     return (
@@ -188,7 +192,7 @@ function BodyCaption({ caption, captionEllipsize }: BodyProps): ReactNode {
     );
   }
   return (
-    <Text variant="caption" tone="variant" numberOfLines={2}>
+    <Text variant="caption" tone="variant" {...(wrapCaption === true ? {} : { numberOfLines: 2 })}>
       {caption}
     </Text>
   );
@@ -214,6 +218,7 @@ function Body(props: BodyProps): ReactNode {
       <BodyTitle {...props} />
       <BodySubtitle {...props} />
       <BodyCaption {...props} />
+      {props.below === undefined ? null : <View className="pt-1">{props.below}</View>}
     </View>
   );
 }

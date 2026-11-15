@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { percent } from '../../../format/number';
 import {
   STRIP_COLOURS,
+  alarmPinsOf,
   bookedMinutesOf,
   dayStripOf,
   focusGoalMinutesOf,
@@ -205,6 +206,24 @@ describe('day strip model', () => {
     expect(autumn.segments).toEqual([]);
   });
 
+  it('merges alarm pins closer than one pin into one counted pin', () => {
+    const at = (time: string): number => Date.parse(`2026-11-07T${time}:00.000Z`);
+    const model = {
+      from: strip.from,
+      to: strip.to,
+      timeZone: 'UTC',
+      alarms: [at('06:45'), at('06:30'), at('07:00'), at('12:00')],
+    };
+    const pins = alarmPinsOf(model, 360, 12);
+    expect(pins.map((pin) => [pin.at, pin.count])).toEqual([
+      [at('06:30'), 3],
+      [at('12:00'), 1],
+    ]);
+    expect(pins[0]?.label).toMatch(/^3 alarms 6:30.* to 7:00/);
+    expect(pins[1]?.label).toMatch(/^Alarm 12:00/);
+    expect(alarmPinsOf(model, 4000, 12).map((pin) => pin.count)).toEqual([1, 1, 1, 1]);
+  });
+
   it('shows the now marker only inside the day', () => {
     expect(nowIn(strip, NOW)).toBe(NOW);
     expect(nowIn(strip, strip.to + 1)).toBeNull();
@@ -239,8 +258,9 @@ describe('today rings', () => {
     });
     expect(friday.map((ring) => ring.value)).toEqual(['1 / 3', '0 / 8 h', percent(0.62)]);
     const saturday = todayRingsOf({ day: dayOf(), workingHours: hours, move: null });
-    expect(saturday.map((ring) => ring.value)).toEqual(['1 / 3', '3 h', 'No data']);
+    expect(saturday.map((ring) => ring.value)).toEqual(['1 / 3', '3 h booked', 'No data']);
     expect(saturday[0]?.progress).toBeCloseTo(1 / 3);
+    expect(saturday.slice(1).map((ring) => ring.progress)).toEqual([null, null]);
     expect(saturday.map((ring) => ring.colour)).toEqual(['primary', 'viz-1', 'viz-4']);
   });
 

@@ -274,6 +274,7 @@ export const DRIVE_WINDOW_KINDS = [
   'photo-buckets',
   'photo-rail-counts',
   'photo-cover',
+  'photo-trash-thumb',
   'photo-month',
   'photo-media',
   'photo-processing',

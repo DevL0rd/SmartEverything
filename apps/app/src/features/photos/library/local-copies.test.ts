@@ -34,7 +34,7 @@ describe('what the toast says about the copy on this device', () => {
       '1 of the 2 copies on this phone are back. The others had already left its trash.',
     );
     expect(localCopyLine({ kind: 'done', asked: 1, changed: 0, place: 'phone' }, 'restore')).toBe(
-      'The copy on this phone had already left its trash, so it is only on the Hub.',
+      'The copy on this phone had already left its trash, so it is only on the hub.',
     );
     expect(
       localCopyLine({ kind: 'declined', asked: 1, changed: 0, place: 'phone' }, 'restore'),

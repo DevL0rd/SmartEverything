@@ -6,7 +6,12 @@ import { prefOf, PREFS } from '../../../store/prefs';
 
 const access = vi.hoisted(() => vi.fn());
 const call = vi.hoisted(() => vi.fn(() => Promise.resolve({})));
-const connection = vi.hoisted(() => ({ value: { status: 'paired' as const, connection: {} } }));
+interface ConnectionStub {
+  value: { readonly status: string; readonly connection?: object };
+}
+const connection = vi.hoisted((): ConnectionStub => ({
+  value: { status: 'paired', connection: {} },
+}));
 vi.mock('../../../api/connection/connection', () => ({
   connectionState: { get: (): typeof connection.value => connection.value },
 }));
@@ -55,7 +60,7 @@ describe('backup enable permission intent', () => {
     const enabling = changeBackupEnabled(store, true);
     store.update((state) => ({ ...state, session: null }));
     permission.resolve('all');
-    await enabling;
+    await expect(enabling).rejects.toThrow('signed-in profile changed');
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -66,7 +71,7 @@ describe('backup enable permission intent', () => {
     const enabling = changeBackupEnabled(store, true);
     connection.value = { status: 'paired', connection: {} };
     permission.resolve('all');
-    await enabling;
+    await expect(enabling).rejects.toThrow('The hub or the signed-in profile changed');
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -75,5 +80,13 @@ describe('backup enable permission intent', () => {
     await changeBackupEnabled(store, false);
     expect(access).not.toHaveBeenCalled();
     expect(prefOf(store.get(), PREFS.photosBackup)).toMatchObject({ value: { enabled: false } });
+  });
+
+  it('fails loudly when the device is not paired with a hub', async () => {
+    connection.value = { status: 'unpaired' };
+    await expect(changeBackupEnabled(storeOf(), true)).rejects.toThrow(
+      'Photo backup needs this device to be paired with a hub.',
+    );
+    expect(access).not.toHaveBeenCalled();
   });
 });

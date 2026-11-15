@@ -6,7 +6,6 @@ import { readPlannerSleep } from '../../../api/planner';
 import { SegmentBar, type BarSegment } from '../../../components/charts/segment-bar';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/checkbox';
-import { FilterChip } from '../../../components/filter-chip';
 import { Icon } from '../../../components/icon';
 import { notify } from '../../../components/toast-store';
 import { Text } from '../../../components/text';
@@ -26,6 +25,7 @@ import {
 } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import type { Prefs } from '../settings/preferences';
+import type { SlotRange } from './drag-create';
 import { changedTimes, type BlockChange, type MinuteSpan } from './grid-gestures';
 import { useCalendarLooks } from './calendar-looks';
 import {
@@ -99,7 +99,22 @@ export function TimeStats(props: TimeStatsProps): ReactNode {
     collections: looks.collections,
     timeZone,
   });
-  const change = loadLineOf(totalOf(booked), usePreviousMinutes(props), props.previous);
+  const total = totalOf(booked);
+  const change = loadLineOf(total, usePreviousMinutes(props), props.previous);
+  if (total === 0) {
+    return (
+      <View className="flex-row flex-wrap justify-between gap-x-3">
+        <Text variant="caption" tone="variant">
+          Nothing booked
+        </Text>
+        {change === null ? null : (
+          <Text variant="caption" tone="variant" className="tabular">
+            {change}
+          </Text>
+        )}
+      </View>
+    );
+  }
   return (
     <View className="gap-1.5">
       <View className="flex-row flex-wrap justify-between gap-x-3">
@@ -134,7 +149,7 @@ export function FreeTimeWell({
   return (
     <View className="flex-row flex-wrap items-center gap-3 rounded-md bg-surface-2 px-3 py-2.5">
       <Icon name="users" size={20} tone="variant" />
-      <Text variant="callout" className="min-w-0 flex-1 tabular">
+      <Text variant="callout" className="min-w-0 grow basis-48 tabular">
         {gap === null
           ? 'No shared free time left on this day'
           : `${who} free ${clockOfMinutes(gap.from)} to ${clockOfMinutes(gap.to)}`}
@@ -200,18 +215,22 @@ export function DaySide({ day, occurrences, prefs, onCompose }: DaySideProps): R
       <DueRows tasks={dueOn(occurrences, day, timeZone)} />
       <View className="my-1 h-hairline bg-outline-variant" />
       <Text variant="label">Free</Text>
-      <View className="flex-row flex-wrap gap-1">
-        {gaps.map((gap) => (
-          <FilterChip
-            key={`${String(gap.from)}-${String(gap.to)}`}
-            label="Free"
-            value={`${clockOfMinutes(gap.from)} to ${clockOfMinutes(gap.to)}`}
-            active={false}
-            onPress={() => {
-              onCompose(day, gap);
-            }}
-          />
-        ))}
+      <View className="flex-row flex-wrap gap-2">
+        {gaps.map((gap) => {
+          const range = `${clockOfMinutes(gap.from)} to ${clockOfMinutes(gap.to)}`;
+          return (
+            <Button
+              key={`${String(gap.from)}-${String(gap.to)}`}
+              label={range}
+              spoken={`Add an event in the free time ${range}`}
+              icon="plus"
+              variant="tonal"
+              onPress={() => {
+                onCompose(day, gap);
+              }}
+            />
+          );
+        })}
       </View>
       <Text variant="caption" tone="variant">
         {gaps.length === 0
@@ -233,6 +252,7 @@ export interface TimeInput {
   readonly range: PlannerRange;
   readonly prefs: Prefs;
   readonly calendars: readonly string[] | null;
+  readonly held: SlotRange | null;
   readonly onCompose: (day: string, gap: MinuteSpan) => void;
 }
 
@@ -304,6 +324,7 @@ function TimeGridOf({ input }: { readonly input: TimeInput }): ReactNode {
       startMinute={clockMinutesOf(prefs.general.day_start)}
       readOnlyOf={looks.readOnlyOf}
       lookOf={looks.lookOf}
+      held={input.held}
       onCreate={input.onCompose}
       onMove={move}
     />

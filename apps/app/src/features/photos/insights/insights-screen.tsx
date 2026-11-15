@@ -33,6 +33,8 @@ const STAT_COLUMNS = { compact: 2, medium: 3, expanded: 3 } as const;
 
 const ROW = 'gap-4 large:flex-row';
 
+const TOP_ROW = 'gap-4 large:flex-row large:items-start';
+
 const HALF = 'min-w-0 large:flex-1';
 
 interface Shown {
@@ -75,18 +77,18 @@ function FullInsights({
           />
         </View>
       ) : null}
-      <View className={ROW}>
+      <View className={TOP_ROW}>
         <WeekCard insights={insights} className={HALF} />
         <SeasonCard insights={insights} className={HALF} />
       </View>
-      <View className={ROW}>
+      <View className={TOP_ROW}>
         <PlacesCard places={insights.places} className={HALF} />
         <CamerasCard insights={insights} className={HALF} />
       </View>
       {insights.backupCoverage.length > 0 || owner ? (
         <View className={ROW}>
           <CoverageCard coverage={insights.backupCoverage} className={HALF} />
-          {owner ? <FoldersCard roots={insights.roots} className={HALF} /> : null}
+          {owner ? <FoldersCard roots={insights.roots} compact={compact} className={HALF} /> : null}
         </View>
       ) : null}
     </>

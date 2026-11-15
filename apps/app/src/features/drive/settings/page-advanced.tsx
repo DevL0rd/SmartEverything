@@ -38,7 +38,7 @@ import {
   remountPendingFor,
   tuningAllDefault,
 } from './advanced-model';
-import { TuningRow, useStackedValue, valueLinesOf } from './advanced-row';
+import { TuningRow } from './advanced-row';
 import {
   COMPUTER_GROUPS,
   HUB_ROWS,
@@ -48,6 +48,7 @@ import {
 } from './advanced-rows';
 import { DriveSettingsSection } from './page';
 import { saveDriveSettings } from './page-indexing';
+import { useStackedValue, valueLinesOf } from './value-lines';
 import { SettingsQueryState } from './settings-query-state';
 import { NUMBER_LENGTH } from './page-sharing';
 
@@ -278,6 +279,7 @@ function HubRow(props: HubRowProps): ReactNode {
           hubSubtitleOf(spec),
         )}
         wrapSubtitle
+        wrapCaption
         chevron
         pressRef={opener}
         disabled={props.busy}
@@ -295,6 +297,16 @@ function HubRow(props: HubRowProps): ReactNode {
   );
 }
 
+function HubHeading({ action }: { readonly action: ReactNode }): ReactNode {
+  return (
+    <GroupHeading
+      title="Hub, for every computer"
+      caption="Shared by every computer that mounts the drive."
+      action={action}
+    />
+  );
+}
+
 function HubTuning({ settings }: { readonly settings: DriveSettings }): ReactNode {
   const client = useQueryClient();
   const mutation = useMutationState();
@@ -303,9 +315,7 @@ function HubTuning({ settings }: { readonly settings: DriveSettings }): ReactNod
     saveDriveSettings(client, { [field]: value });
   return (
     <View className="gap-4">
-      <GroupHeading
-        title="Hub, for every computer"
-        caption="Shared by every computer that mounts the drive."
+      <HubHeading
         action={
           Object.keys(reset).length === 0 ? null : (
             <SectionAction
@@ -338,17 +348,18 @@ function HubTuning({ settings }: { readonly settings: DriveSettings }): ReactNod
 
 function HubTuningLoader(): ReactNode {
   const settings = useDriveSettings();
-  if (settings.data === undefined) {
-    return (
+  if (settings.data !== undefined) return <HubTuning settings={settings.data} />;
+  return (
+    <View className="gap-4">
+      <HubHeading action={null} />
       <SettingsQueryState
         query={settings}
         event="drive_settings.tuning_refetch_failed"
         rows={HUB_ROWS.length}
         failed="The Hub settings could not be read"
       />
-    );
-  }
-  return <HubTuning settings={settings.data} />;
+    </View>
+  );
 }
 
 function AdvancedBody(): ReactNode {

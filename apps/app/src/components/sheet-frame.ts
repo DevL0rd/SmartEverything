@@ -15,3 +15,8 @@ export function sheetFrame(detents: readonly Detent[], full: number): SheetFrame
     ? { sized: { maxHeight: full }, body: 'min-h-0 shrink' }
     : { sized: { height: full }, body: 'min-h-0 flex-1' };
 }
+
+export function sheetDrop(offset: number): { readonly bottom: number } {
+  'worklet';
+  return { bottom: -offset };
+}

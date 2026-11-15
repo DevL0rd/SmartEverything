@@ -1,4 +1,4 @@
-import { lstat, mkdir, readdir, readlink, stat } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readlink, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
@@ -55,8 +55,12 @@ beforeEach(async () => {
     now: () => NOW,
     purge: { rearm: (): void => undefined },
   };
-  writer = new DriveTreeWriter({
-    env,
+  writer = new DriveTreeWriter({ ...writerDeps(), env });
+});
+
+function writerDeps(): Omit<ConstructorParameters<typeof DriveTreeWriter>[0], 'env'> {
+  const { store } = opened;
+  return {
     store,
     read: new DriveReadService(store),
     albums: {
@@ -76,8 +80,8 @@ beforeEach(async () => {
         Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
     scan: (): void => undefined,
-  });
-});
+  };
+}
 
 afterEach(async () => {
   await opened.close();
@@ -232,5 +236,63 @@ describe('copying links and special files', () => {
       copiedSpecial === undefined ? undefined : store.driveInodes.ofItem(copiedSpecial.id);
     expect(inode).toMatchObject({ type: 'fifo', mode: 0o600, uid: 1000, gid: 1000 });
     expect(copiedSpecial?.id).not.toBe(SPECIAL_ID);
+  });
+});
+
+describe('trashing a batch', () => {
+  it('moves fifty items with one sync per directory and keeps a missing item as a failure', async () => {
+    const { store } = opened;
+    const drive = opened.layout.person(robinId).drive;
+    const ids: string[] = [];
+    for (let index = 0; index < 50; index += 1) {
+      const id = `0f100000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+      await writeFile(join(drive, `batch-${String(index)}.txt`), 'x');
+      putItem(store, {
+        rootId: ROBIN_DRIVE,
+        id,
+        relPath: `batch-${String(index)}.txt`,
+        kind: 'document',
+      });
+      ids.push(id);
+    }
+    const ghost = '0f200000-0000-4000-8000-000000000001';
+    putItem(store, { rootId: ROBIN_DRIVE, id: ghost, relPath: 'ghost.txt', kind: 'document' });
+    const syncs = { files: 0, directories: 0, durable: 0 };
+    const counting = {
+      ...nodeFiles,
+      syncFile: (path: string): Promise<void> => {
+        syncs.files += 1;
+        return nodeFiles.syncFile(path);
+      },
+      syncDirectory: (path: string): Promise<void> => {
+        syncs.directories += 1;
+        return nodeFiles.syncDirectory(path);
+      },
+      writeDurable: (path: string, temporary: string, text: string): Promise<void> => {
+        syncs.durable += 1;
+        return nodeFiles.writeDurable(path, temporary, text);
+      },
+    };
+    const env: ChangeEnv = {
+      files: counting,
+      store,
+      log: testLogger('drive'),
+      now: () => NOW,
+      purge: { rearm: (): void => undefined },
+    };
+    const batch = new DriveTreeWriter({ ...writerDeps(), env });
+    const result = await batch.apply(callerOf(robinId), {
+      action: 'trash',
+      itemIds: [...ids, ghost],
+    });
+    expect(result.done).toHaveLength(50);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0]?.itemId).toBe(ghost);
+    expect(syncs.durable).toBe(0);
+    expect(syncs.files).toBe(50);
+    expect(syncs.directories).toBeLessThanOrEqual(3);
+    expect(store.driveTrash.find(ids[0] ?? '')).toBeDefined();
+    expect(store.driveIntents.all()).toEqual([]);
+    expect((await readdir(drive)).filter((name) => name.startsWith('batch-'))).toEqual([]);
   });
 });

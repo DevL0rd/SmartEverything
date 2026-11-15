@@ -212,7 +212,9 @@ function StandardShell(props: StandardShellProps): ReactNode {
         {phone ? <PhoneFrame {...frame} /> : <WideFrame {...frame} />}
         {fabAction === undefined ? null : <PrimaryAction {...fabAction} />}
       </View>
-      {!phone || shell.footer === undefined ? null : <ShellFooter>{shell.footer}</ShellFooter>}
+      {!phone || shell.footer === undefined ? null : (
+        <ShellFooter hides={shell.footerHides}>{shell.footer}</ShellFooter>
+      )}
       {shell.aside === undefined || layout.docked ? null : <AsideSheet aside={shell.aside} />}
     </ShellProviders>
   );

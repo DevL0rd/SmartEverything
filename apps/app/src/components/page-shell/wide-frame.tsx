@@ -13,6 +13,7 @@ import {
   type FrameProps,
 } from './shell-frame';
 import { ShellRail } from './shell-sections';
+import { SelectionBar } from './shell-status';
 import type { ShellAside } from './shell-types';
 import {
   AppBar,
@@ -30,7 +31,11 @@ function WideTitle({ frame }: { readonly frame: FrameProps }): ReactNode {
   const { shell, layout } = frame;
   const desktop = layout.header === 'desktop';
   if (selecting(shell)) {
-    return <View style={desktop ? columnStyle(layout.column) : undefined}>{shell.selection}</View>;
+    return (
+      <SelectionBar style={desktop ? columnStyle(layout.column) : undefined}>
+        {shell.selection}
+      </SelectionBar>
+    );
   }
   const row = titleRowOf(shell, frame.icon);
   return desktop ? (
@@ -124,7 +129,9 @@ function BodyRow({ frame }: { readonly frame: FrameProps }): ReactNode {
     <View className="min-h-0 flex-1 flex-row">
       <View className="min-h-0 min-w-0 flex-1">
         <WideBody frame={frame} />
-        {shell.footer === undefined ? null : <ShellFooter>{shell.footer}</ShellFooter>}
+        {shell.footer === undefined ? null : (
+          <ShellFooter hides={shell.footerHides}>{shell.footer}</ShellFooter>
+        )}
       </View>
       {layout.docked && shell.aside !== undefined ? <DockedAside aside={shell.aside} /> : null}
     </View>

@@ -2,7 +2,7 @@ import type { PlannerDay, PlannerItemRow, PlannerOccurrenceView } from '@smartev
 import { background } from '@smarteverything/logging';
 import { createContext, use, useState, type ReactNode } from 'react';
 import { notify } from '../../../components/toast-store';
-import { dayBoundsOf } from '../../../format/time';
+import { clock, dayBoundsOf } from '../../../format/time';
 import {
   usePlannerItems,
   usePlannerTools,
@@ -61,6 +61,12 @@ class NoFreeTimeToday extends Error {
   }
 }
 
+class UnknownOccurrenceItem extends Error {
+  constructor(itemId: string) {
+    super(`The planner item ${itemId} is not loaded, so it cannot be reopened.`);
+  }
+}
+
 async function moveLater(
   input: {
     readonly occurrence: PlannerOccurrenceView;
@@ -69,7 +75,7 @@ async function moveLater(
   },
   tools: PlannerTools,
   writes: PlannerWrites,
-): Promise<void> {
+): Promise<string> {
   const { occurrence, item, day } = input;
   const minutes = Math.ceil(lengthMinutesOf(occurrence, item));
   const from = new Date().toISOString();
@@ -82,9 +88,10 @@ async function moveLater(
     start: slot.from,
     end: sized ? new Date(Date.parse(slot.from) + minutes * MINUTE_MS).toISOString() : null,
   });
+  return slot.from;
 }
 
-function useHiddenKeys(): readonly [ReadonlySet<string>, (key: string, hidden: boolean) => void] {
+function useHiddenKeys(): readonly [ReadonlySet<string>, Hide] {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const hide = (key: string, gone: boolean): void => {
     setHidden(
@@ -95,39 +102,88 @@ function useHiddenKeys(): readonly [ReadonlySet<string>, (key: string, hidden: b
   return [hidden, hide];
 }
 
-function useOccurrenceActions(
-  day: PlannerDay,
-  hide: (key: string, hidden: boolean) => void,
-): OccurrenceActions {
-  const { person } = usePlannerFrame();
-  const writes = usePlannerWrites(person);
-  const tools = usePlannerTools(person);
-  const items = usePlannerItems(person);
-  const run = (key: string, failure: string, work: () => Promise<unknown>): void => {
+type Hide = (key: string, hidden: boolean) => void;
+
+function runOf(hide: Hide) {
+  return <T,>(
+    key: string,
+    failure: string,
+    work: () => Promise<T>,
+    done: (result: T) => void,
+  ): void => {
     hide(key, true);
     background(
-      work().catch((error: unknown) => {
+      work().then(done, (error: unknown) => {
         hide(key, false);
         notify({ message: failure, error, tone: 'critical' });
       }),
       'planner.today_action_failed',
     );
   };
+}
+
+function undoOf(
+  hide: Hide,
+  items: readonly PlannerItemRow[],
+  writes: PlannerWrites,
+): (key: string, occurrence: PlannerOccurrenceView) => () => void {
+  return (key, occurrence) => (): void => {
+    const item = items.find((row) => row.id === occurrence.item_id);
+    background(
+      (item === undefined
+        ? Promise.reject(new UnknownOccurrenceItem(occurrence.item_id))
+        : writes.reopenItem(item, occurrence.occurrence_key)
+      ).then(
+        () => {
+          hide(key, false);
+        },
+        (error: unknown) => {
+          notify({ message: 'Couldn’t undo that', error, tone: 'critical' });
+        },
+      ),
+      'planner.today_undo_failed',
+    );
+  };
+}
+
+function useOccurrenceActions(day: PlannerDay, hide: Hide): OccurrenceActions {
+  const { person } = usePlannerFrame();
+  const writes = usePlannerWrites(person);
+  const tools = usePlannerTools(person);
+  const items = usePlannerItems(person);
+  const run = runOf(hide);
+  const undo = undoOf(hide, items, writes);
   return {
     done: (key, occurrence): void => {
-      run(key, 'Couldn’t mark that done', () =>
-        writes.completeItem(occurrence.item_id, { occurrence_key: occurrence.occurrence_key }),
+      run(
+        key,
+        'Couldn’t mark that done',
+        () =>
+          writes.completeItem(occurrence.item_id, { occurrence_key: occurrence.occurrence_key }),
+        () => {
+          notify({ message: 'Marked done', detail: occurrence.title, undo: undo(key, occurrence) });
+        },
       );
     },
     skip: (key, occurrence): void => {
-      run(key, 'Couldn’t skip that', () =>
-        writes.skipItem(occurrence.item_id, occurrence.occurrence_key),
+      run(
+        key,
+        'Couldn’t skip that',
+        () => writes.skipItem(occurrence.item_id, occurrence.occurrence_key),
+        () => {
+          notify({ message: 'Skipped', detail: occurrence.title, undo: undo(key, occurrence) });
+        },
       );
     },
     later: (key, occurrence): void => {
       const item = items.find((row) => row.id === occurrence.item_id);
-      run(key, 'Couldn’t move that to later', () =>
-        moveLater({ occurrence, item, day }, tools, writes),
+      run(
+        key,
+        'Couldn’t move that to later',
+        () => moveLater({ occurrence, item, day }, tools, writes),
+        (start) => {
+          notify({ message: `Moved to ${clock(start, day.time_zone)}`, detail: occurrence.title });
+        },
       );
     },
   };

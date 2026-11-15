@@ -336,29 +336,38 @@ function PlanCard({
   );
 }
 
+function useWeatherShown(): boolean {
+  const { person } = usePlannerFrame();
+  const forecast = useWeather();
+  const preferences = usePlannerPreferences(person).data;
+  return forecast.kind === 'ready' && preferences?.day_planner.show_weather === true;
+}
+
+function sideIdle(day: PlannerDay, timers: number, prompt: string | null): boolean {
+  return day.next_alarm_at === null && timers === 0 && prompt === null;
+}
+
 export function TodaySideColumn({
   day,
   move,
   layout,
+  withRings,
 }: {
   readonly day: PlannerDay;
   readonly move: number | null;
   readonly layout: SideLayout;
+  readonly withRings: boolean;
 }): ReactNode {
   const { person } = usePlannerFrame();
   const rings = useTodayRings(day, move);
   const timers = liveTimersOf(usePlannerTimers(person));
-  const forecast = useWeather();
-  const preferences = usePlannerPreferences(person).data;
-  const weather = forecast.kind === 'ready' && preferences?.day_planner.show_weather === true;
+  const weather = useWeatherShown();
   const now = useMinute();
   const [planHidden, setPlanHidden] = useState(false);
   const prompt = planHidden ? null : planPromptOf(day, now);
-  const counted = !isOpenDay(day);
+  const counted = withRings && !isOpenDay(day);
   const grid = layout === 'grid';
-  const empty =
-    !counted && !weather && day.next_alarm_at === null && timers.length === 0 && prompt === null;
-  if (empty) return null;
+  if (!counted && !weather && sideIdle(day, timers.length, prompt)) return null;
   return (
     <View className={cn(grid ? 'flex-row flex-wrap gap-3' : 'w-84 gap-4')}>
       {counted ? <RingsCard rings={rings} layout={layout} /> : null}

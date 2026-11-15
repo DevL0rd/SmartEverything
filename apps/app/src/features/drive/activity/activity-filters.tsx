@@ -10,7 +10,7 @@ import { count } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { localDayKey, startOfDayKey } from '../../../format/time';
 import { ChipRow } from '../../../components/chip-row';
-import { HScroller } from '../../../components/h-scroller';
+import { HScroller, type RevealRange } from '../../../components/h-scroller';
 import {
   DRIVE_FILTERS,
   DRIVE_FILTER_LOOK,
@@ -19,8 +19,9 @@ import {
   type DriveChipOf,
   type DriveFilter,
 } from '../model/drive-chip';
+import { groupEdgeOf, type GroupEdge } from '../shared/shared-model';
 import { EVERYONE_VALUE, PersonPicker, YOU_VALUE, type PersonOption } from './person-picker';
-import { ViaChips } from './via-chips';
+import { ViaChips, useViaReveal } from './via-chips';
 import {
   RANGE_LOOK,
   inRange,
@@ -77,6 +78,7 @@ export interface FeedLine {
   readonly kind: 'line';
   readonly key: string;
   readonly entry: ActivityEntry;
+  readonly edge: GroupEdge;
 }
 
 export type FeedRow = FeedHead | FeedLine;
@@ -101,7 +103,12 @@ export function feedRowsOf(
       title: dayText(day, list.length, today).title,
       detail: plural(list.length, 'change'),
     },
-    ...list.map((entry): FeedLine => ({ kind: 'line', key: String(entry.row.seq), entry })),
+    ...list.map((entry, index): FeedLine => ({
+      kind: 'line',
+      key: String(entry.row.seq),
+      entry,
+      edge: groupEdgeOf(index, list.length),
+    })),
   ]);
 }
 
@@ -298,7 +305,7 @@ function PlacePickers({ filter, onChange }: ActivityFiltersProps): ReactNode {
       />
       <ChoiceChip
         label="Kind"
-        icon="layers"
+        icon="fileText"
         options={KIND_OPTIONS}
         value={filter.kind ?? ALL}
         all={ALL}
@@ -324,7 +331,12 @@ function ClearButton({ filter, onChange }: ActivityFiltersProps): ReactNode {
   );
 }
 
-function WhoAndHow(props: ActivityFiltersProps & { readonly children?: ReactNode }): ReactNode {
+function WhoAndHow(
+  props: ActivityFiltersProps & {
+    readonly onRange: (via: DriveVia, range: RevealRange) => void;
+    readonly children?: ReactNode;
+  },
+): ReactNode {
   const { filter, onChange } = props;
   return (
     <>
@@ -345,6 +357,7 @@ function WhoAndHow(props: ActivityFiltersProps & { readonly children?: ReactNode
         onToggle={(via) => {
           onChange(toggledVia(filter, via));
         }}
+        onRange={props.onRange}
       />
     </>
   );
@@ -354,10 +367,11 @@ function PhoneFilters(props: ActivityFiltersProps): ReactNode {
   const placed = props.filter.drive !== 'all' || props.filter.kind !== null;
   const [more, setMore] = useState(placed);
   const open = more || placed;
+  const { reveal, onRange } = useViaReveal(props.filter.vias);
   return (
     <View className="gap-2">
-      <ChipRow label="Activity filters">
-        <WhoAndHow {...props}>
+      <ChipRow label="Activity filters" reveal={reveal}>
+        <WhoAndHow {...props} onRange={onRange}>
           <FilterChip
             label="Filters"
             value="More"
@@ -381,14 +395,14 @@ function PhoneFilters(props: ActivityFiltersProps): ReactNode {
   );
 }
 
-export function ActivityFilters(props: ActivityFiltersProps): ReactNode {
-  if (props.compact) return <PhoneFilters {...props} />;
+function ToolbarFilters(props: ActivityFiltersProps): ReactNode {
+  const { reveal, onRange } = useViaReveal(props.filter.vias);
   return (
     <View className="flex-row items-center gap-2" accessibilityRole="toolbar">
       <View className="min-w-0 flex-1">
-        <HScroller label="Who and how" fade>
+        <HScroller label="Who and how" fade reveal={reveal}>
           <View className="flex-row items-center gap-2">
-            <WhoAndHow {...props} />
+            <WhoAndHow {...props} onRange={onRange} />
           </View>
         </HScroller>
       </View>
@@ -398,4 +412,8 @@ export function ActivityFilters(props: ActivityFiltersProps): ReactNode {
       </View>
     </View>
   );
+}
+
+export function ActivityFilters(props: ActivityFiltersProps): ReactNode {
+  return props.compact ? <PhoneFilters {...props} /> : <ToolbarFilters {...props} />;
 }

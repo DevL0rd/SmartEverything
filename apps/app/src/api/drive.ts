@@ -94,10 +94,6 @@ export function readDriveItem(itemId: string): Call<'readItem'> {
   return api().call(E.readItem, { params: { itemId } });
 }
 
-export function readDriveLinks(itemIds: readonly string[]): Call<'itemLinks'> {
-  return api().call(E.itemLinks, { body: { itemIds: [...itemIds] } });
-}
-
 export function searchDrive(body: DriveQuery): Call<'searchDrive'> {
   return api().call(E.searchDrive, { body });
 }

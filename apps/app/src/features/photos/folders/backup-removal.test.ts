@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriveChangeResult } from '@smarteverything/domain';
+import type { ConfirmOutcome } from '../../../components/confirm-store';
 import type { ToastInput } from '../../../components/toast-store';
 
 const notify = vi.hoisted(() => vi.fn<(input: ToastInput) => number>());
 vi.mock('../../../components/toast-store', () => ({ notify }));
 vi.mock('../../../api/drive', () => ({ changeDrive: vi.fn() }));
-vi.mock('../../../components/confirm-store', () => ({ confirm: vi.fn() }));
+vi.mock('../../../components/confirm-store', () => ({ choose: vi.fn() }));
 
 import { stopFolderBackup, type FoundCopies, type RemovalDeps } from './backup-removal';
 
@@ -19,7 +20,11 @@ interface Rig {
   readonly deps: RemovalDeps;
 }
 
-function rig(found: Omit<FoundCopies, 'forget'> | null, accept: boolean, failed = false): Rig {
+function rig(
+  found: Omit<FoundCopies, 'forget'> | null,
+  answer: ConfirmOutcome,
+  failed = false,
+): Rig {
   const order: string[] = [];
   const forgotten: string[][] = [];
   const trashed: string[][] = [];
@@ -37,9 +42,9 @@ function rig(found: Omit<FoundCopies, 'forget'> | null, accept: boolean, failed 
               },
             },
       ),
-    confirm: () => {
+    choose: () => {
       order.push('confirm');
-      return Promise.resolve(accept);
+      return Promise.resolve(answer);
     },
     trash: (itemIds): Promise<DriveChangeResult> => {
       order.push('trash');
@@ -72,7 +77,7 @@ describe('stopping backup for a folder', () => {
   });
 
   it('asks, turns the folder off, moves its hub copies to Recently deleted and forgets them', async () => {
-    const t = rig(FOUND, true);
+    const t = rig(FOUND, 'confirm');
     const apply = vi.fn(() => {
       t.order.push('apply');
       return Promise.resolve();
@@ -87,7 +92,7 @@ describe('stopping backup for a folder', () => {
   });
 
   it('changes nothing when the confirmation is cancelled', async () => {
-    const t = rig(FOUND, false);
+    const t = rig(FOUND, 'cancel');
     const apply = vi.fn(() => Promise.resolve());
     await expect(stopFolderBackup(['camera'], ['Camera'], apply, t.deps)).resolves.toBe(false);
     expect(apply).not.toHaveBeenCalled();
@@ -96,7 +101,10 @@ describe('stopping backup for a folder', () => {
   });
 
   it('turns the folder off without asking when nothing came only from it', async () => {
-    const t = rig({ place: 'phone', copies: { items: [], kept: new Map([[A, 'album']]) } }, true);
+    const t = rig(
+      { place: 'phone', copies: { items: [], kept: new Map([[A, 'album']]) } },
+      'confirm',
+    );
     const apply = vi.fn(() => Promise.resolve());
     await stopFolderBackup(['camera'], ['Camera'], apply, t.deps);
     expect(apply).toHaveBeenCalledOnce();
@@ -104,20 +112,40 @@ describe('stopping backup for a folder', () => {
   });
 
   it('turns the folder off without removing anything when backup does not run here', async () => {
-    const t = rig(null, true);
+    const t = rig(null, 'confirm');
     const apply = vi.fn(() => Promise.resolve());
     await stopFolderBackup(['camera'], ['Camera'], apply, t.deps);
     expect(apply).toHaveBeenCalledOnce();
     expect(t.order).toEqual([]);
+    expect(notify).toHaveBeenCalledWith({
+      message: 'Stopped backing up Camera',
+      detail: 'Copies already on the hub stay there.',
+    });
+  });
+
+  it('stops and keeps the hub copies when asked to', async () => {
+    const t = rig(FOUND, 'alternate');
+    const apply = vi.fn(() => {
+      t.order.push('apply');
+      return Promise.resolve();
+    });
+    await expect(stopFolderBackup(['camera'], ['Camera'], apply, t.deps)).resolves.toBe(true);
+    expect(t.order).toEqual(['confirm', 'apply']);
+    expect(t.trashed).toEqual([]);
+    expect(t.forgotten).toEqual([]);
+    expect(notify).toHaveBeenCalledWith({
+      message: 'Stopped backing up Camera',
+      detail: 'Copies already on the hub stay there.',
+    });
   });
 
   it('forgets only what the hub removed and reports what stayed', async () => {
-    const t = rig(FOUND, true, true);
+    const t = rig(FOUND, 'confirm', true);
     await stopFolderBackup(['camera'], ['Camera'], () => Promise.resolve(), t.deps);
     expect(t.forgotten).toEqual([['1']]);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: '1 photo or video stayed on the Hub',
+        message: '1 photo or video stayed on the hub',
         detail: 'The item is locked.',
         tone: 'critical',
       }),

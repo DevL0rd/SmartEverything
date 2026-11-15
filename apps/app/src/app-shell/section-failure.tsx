@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Banner } from '../components/banner';
 import type { SectionFailure } from '../store/state';
-import { useSectionFailure } from '../store/selectors';
+import { useSectionFailure, useSyncStatus } from '../store/selectors';
 import { href, UPDATES_SETTINGS_PAGE } from './hrefs';
 
 export function sectionLabel(section: string): string {
@@ -28,5 +28,18 @@ export function SectionFailureBanner({ section }: { readonly section: string }):
         action={{ label: 'Updates', href: href.settings.page(UPDATES_SETTINGS_PAGE) }}
       />
     </View>
+  );
+}
+
+export function UnreadableSections(): ReactNode {
+  const { failed } = useSyncStatus();
+  if (failed.length === 0) return null;
+  return (
+    <Banner
+      tone="warning"
+      title="This app can’t read part of your server"
+      body={`${failed.map(sectionFailureText).join('\n')}\nEverything else works. Install the update to read it.`}
+      wrapBody
+    />
   );
 }

@@ -7,6 +7,7 @@ import { SegmentBar } from '../../../components/charts';
 import { confirm } from '../../../components/confirm-store';
 import type { IconName } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
+import { useStackedValue, valueLinesOf } from './value-lines';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import type { FieldKind } from '../../../components/text-field';
@@ -147,14 +148,15 @@ function CacheRow({
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const request = useCacheRequest(spec, cache, opener);
+  const stacked = useStackedValue();
   return (
     <>
       <ListRow
         title={spec.title}
         icon={spec.icon}
-        subtitle={spec.subtitle}
+        {...valueLinesOf(stacked, spec.value(cache), spec.subtitle)}
         wrapSubtitle
-        value={spec.value(cache)}
+        wrapCaption
         chevron
         pressRef={opener}
         onPress={() => {

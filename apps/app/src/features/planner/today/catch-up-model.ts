@@ -65,7 +65,12 @@ export function catchUpCardsOf(
       alarm: alarmById.get(ring.ref_id) ?? null,
     })),
   ];
-  return cards.filter((card) => !hidden.has(card.key)).sort(byTime);
+  return cards.filter((card) => !hidden.has(card.key)).sort(actionableFirst);
+}
+
+function actionableFirst(left: CatchUpCard, right: CatchUpCard): number {
+  if (left.kind !== right.kind) return left.kind === 'item' ? -1 : 1;
+  return byTime(left, right);
 }
 
 export interface GhostCard {

@@ -102,7 +102,7 @@ const dentist = occurrence('12', 'Call the dentist', {
 const someday = occurrence('13', 'Sort the photos', { status: 'missed' });
 
 describe('the catch-up deck', () => {
-  it('orders missed items and missed alarms by when they were due, undated items last', () => {
+  it('puts missed items before missed alarms, each by when it was due, undated items last', () => {
     const alarm = ring('01', {});
     const cards = catchUpCardsOf(
       day({ missed: [someday, water, dentist], rings: [alarm] }),
@@ -110,10 +110,10 @@ describe('the catch-up deck', () => {
       new Set(),
     );
     expect(cards.map((card) => card.key)).toEqual([
-      `alarm:${alarm.id}`,
       `${dentist.item_id}:single`,
       `${water.item_id}:single`,
       `${someday.item_id}:single`,
+      `alarm:${alarm.id}`,
     ]);
   });
 
@@ -168,8 +168,8 @@ describe('the catch-up deck', () => {
     });
     const today = day({ missed: [overdue], rings: [earlier, yesterday] });
     const cards = catchUpCardsOf(today, [], new Set());
-    const [first, second, third] = cards;
-    if (first?.kind !== 'alarm' || second?.kind !== 'alarm') throw new Error('alarms first');
+    const [third, first, second] = cards;
+    if (first?.kind !== 'alarm' || second?.kind !== 'alarm') throw new Error('items first');
     const time = clock('2026-11-05T08:00:00.000Z', ZONE);
     const thursday = dayLabel('2026-11-05T08:00:00.000Z', Date.parse(today.now), ZONE);
     expect(thursday).not.toBe('Today');
@@ -225,13 +225,16 @@ describe('the done ribbon', () => {
   it('lays done items, the wake-up and what happened out in time order', () => {
     const marks = ribbonMarksOf(day({ done: [bill, brushed], happened: [washer], rings: [woke] }));
     expect(marks.map((mark) => mark.kind)).toEqual(['woke', 'done', 'done', 'happened']);
-    expect(ribbonLabelOf(marks)).toEqual({ done: 3, happened: 'and 1 thing that happened' });
+    expect(ribbonLabelOf(marks, ZONE)).toEqual({
+      done: 2,
+      also: `woke up ${clock('2026-11-07T06:00:00.000Z', ZONE)} · 1 thing happened`,
+    });
   });
 
   it('leaves the happened part out when nothing happened', () => {
-    expect(ribbonLabelOf(ribbonMarksOf(day({ done: [bill] })))).toEqual({
+    expect(ribbonLabelOf(ribbonMarksOf(day({ done: [bill] })), ZONE)).toEqual({
       done: 1,
-      happened: null,
+      also: null,
     });
   });
 });

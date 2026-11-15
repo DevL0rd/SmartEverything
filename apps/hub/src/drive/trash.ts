@@ -1,4 +1,5 @@
 import { dirname, extname, basename } from 'node:path';
+import { messageOf } from '@smarteverything/logging';
 import { DRIVE_TRASH_ENTRY, type DriveTrashEntry } from '@smarteverything/domain';
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import type { Store } from '../store/store';
@@ -12,6 +13,7 @@ import {
   TRASH_DIRECTORY,
   tmpRelPath,
   writeManifest,
+  type DriveFiles,
   type DriveFileStore,
   type DriveWriteRoot,
   type FileEnv,
@@ -50,13 +52,15 @@ export function trashRelPath(itemId: string): string {
 async function dropName(
   env: FileEnv,
   root: DriveWriteRoot,
-  relPath: string,
-  trashRelPath: string,
+  paths: { readonly relPath: string; readonly trashRelPath: string },
+  deferred?: Set<string>,
 ): Promise<void> {
+  const { relPath, trashRelPath } = paths;
   const live = await locate(root, relPath);
   await env.files.clone(live, await locate(root, trashRelPath), await locate(root, tmpRelPath()));
   await env.files.unlink(live);
-  await env.files.syncDirectory(dirname(live));
+  if (deferred === undefined) await env.files.syncDirectory(dirname(live));
+  else deferred.add(dirname(live));
 }
 
 function entryOf(env: FileEnv, root: DriveWriteRoot, request: TrashRequest): DriveTrashEntry {
@@ -101,7 +105,7 @@ export async function moveToTrash(
   try {
     await writeManifest(env.files, root, entry.trashRelPath, entry);
     if (stamp !== null && stamp.nlink > 1 && !stamp.directory && !stamp.symlink) {
-      await dropName(env, root, request.relPath, entry.trashRelPath);
+      await dropName(env, root, { relPath: request.relPath, trashRelPath: entry.trashRelPath });
     } else {
       await moveWithin(env.files, root, {
         from: request.relPath,
@@ -114,6 +118,177 @@ export async function moveToTrash(
     throw cause;
   }
   return { intent, entry };
+}
+
+export interface TrashBatchResult {
+  readonly itemId: string;
+  readonly move: TrashMove | null;
+  readonly failure: Error | null;
+}
+
+function errorOf(cause: unknown): Error {
+  return cause instanceof Error ? cause : new Error(messageOf(cause));
+}
+
+async function writeManifestUnsynced(
+  files: DriveFiles,
+  root: DriveWriteRoot,
+  trashRel: string,
+  entry: unknown,
+): Promise<string> {
+  const target = await locate(root, manifestPath(trashRel));
+  await files.mkdir(dirname(target));
+  await files.writeUnsynced(target, await locate(root, tmpRelPath()), JSON.stringify(entry));
+  return target;
+}
+
+interface TrashPlan {
+  readonly request: TrashRequest;
+  readonly entry: DriveTrashEntry;
+  readonly stamp: Awaited<ReturnType<FileEnv['files']['stamp']>>;
+}
+
+interface Barrier {
+  readonly directories: Set<string>;
+  readonly manifests: string[];
+}
+
+const SYNC_WORKERS = 16;
+
+async function syncBarrier(env: FileEnv, barrier: Barrier): Promise<void> {
+  const queue = [...barrier.manifests];
+  const workers = Array.from({ length: Math.min(SYNC_WORKERS, queue.length) }, async () => {
+    for (let path = queue.pop(); path !== undefined; path = queue.pop()) {
+      await env.files.syncFile(path);
+    }
+  });
+  await Promise.all(workers);
+  for (const directory of barrier.directories) {
+    await env.files.syncDirectory(directory);
+  }
+}
+
+async function planTrashes(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  requests: readonly TrashRequest[],
+  results: Map<string, TrashBatchResult>,
+): Promise<TrashPlan[]> {
+  const plans: TrashPlan[] = [];
+  for (const request of requests) {
+    try {
+      const stamp = request.onDisk
+        ? await env.files.stamp(await locate(root, request.relPath))
+        : null;
+      if (request.onDisk && stamp === null) {
+        throw new DriveWriteError('missing', 'The item to trash does not exist.');
+      }
+      plans.push({ request, entry: entryOf(env, root, request), stamp });
+    } catch (failure) {
+      results.set(request.itemId, {
+        itemId: request.itemId,
+        move: null,
+        failure: errorOf(failure),
+      });
+    }
+  }
+  return plans;
+}
+
+async function moveOne(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  plan: TrashPlan,
+  barrier: Barrier,
+): Promise<void> {
+  const { request, entry, stamp } = plan;
+  const manifest = await writeManifestUnsynced(env.files, root, entry.trashRelPath, entry);
+  if (!request.onDisk) {
+    barrier.manifests.push(manifest);
+    return;
+  }
+  if (stamp !== null && stamp.nlink > 1 && !stamp.directory && !stamp.symlink) {
+    await dropName(
+      env,
+      root,
+      { relPath: request.relPath, trashRelPath: entry.trashRelPath },
+      barrier.directories,
+    );
+  } else {
+    await moveWithin(
+      env.files,
+      root,
+      { from: request.relPath, to: entry.trashRelPath, mode: 'replace' },
+      barrier.directories,
+    );
+  }
+  barrier.manifests.push(manifest);
+}
+
+function openIntents(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  plans: readonly TrashPlan[],
+): (DriveIntent | null)[] {
+  return env.store.write(() =>
+    plans.map((plan) =>
+      plan.request.onDisk
+        ? env.store.driveIntents.open({
+            rootId: root.id,
+            op: 'trash',
+            fromPath: plan.request.relPath,
+            toPath: plan.entry.trashRelPath,
+            versionPath: null,
+          })
+        : null,
+    ),
+  );
+}
+
+export async function moveManyToTrash(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  requests: readonly TrashRequest[],
+): Promise<TrashBatchResult[]> {
+  const results = new Map<string, TrashBatchResult>();
+  const plans = await planTrashes(env, root, requests, results);
+  const intents = openIntents(env, root, plans);
+  const barrier: Barrier = { directories: new Set(), manifests: [] };
+  const moved: { plan: TrashPlan; intent: DriveIntent | null }[] = [];
+  for (const [index, plan] of plans.entries()) {
+    const intent = intents[index] ?? null;
+    try {
+      await moveOne(env, root, plan, barrier);
+      moved.push({ plan, intent });
+    } catch (failure) {
+      if (intent !== null) await abandonIntent(env, root, intent);
+      results.set(plan.request.itemId, {
+        itemId: plan.request.itemId,
+        move: null,
+        failure: errorOf(failure),
+      });
+    }
+  }
+  try {
+    await syncBarrier(env, barrier);
+  } catch (cause) {
+    for (const { intent } of moved) {
+      if (intent !== null) await abandonIntent(env, root, intent);
+    }
+    throw cause;
+  }
+  for (const { plan, intent } of moved) {
+    results.set(plan.request.itemId, {
+      itemId: plan.request.itemId,
+      move: { intent, entry: plan.entry },
+      failure: null,
+    });
+  }
+  return requests.map((request) => {
+    const result = results.get(request.itemId);
+    if (result === undefined) throw new DriveWriteError('corrupt', 'A trashed item has no result.');
+    return result;
+  });
 }
 
 function restoredName(name: string, isFolder: boolean, attempt: number): string {

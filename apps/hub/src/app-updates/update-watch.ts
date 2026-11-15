@@ -5,6 +5,7 @@ import {
   type AppUpdateEntry,
   type AppUpdateNotice,
   type AppUpdateTarget,
+  type ClientRow,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { LiveHub } from '../server/live';
@@ -58,6 +59,15 @@ export class AppUpdateWatch {
     const watcher = this.watcher;
     this.watcher = null;
     await watcher?.stop();
+  }
+
+  noticesFor(client: Pick<ClientRow, 'id' | 'platform'>): readonly AppUpdateNotice[] {
+    return [...this.latest.values()]
+      .filter(
+        ({ notice, clientId }) =>
+          notice.platform === client.platform && (clientId === undefined || clientId === client.id),
+      )
+      .map(({ notice }) => notice);
   }
 
   private async reload(announce: boolean): Promise<void> {

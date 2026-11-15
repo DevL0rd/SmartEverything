@@ -105,7 +105,10 @@ export function List({ inset = false, children, ...section }: ListProps): ReactN
           <Fragment key={row.key ?? index}>
             {index === 0 ? null : (
               <View
-                className={cn('h-hairline bg-outline-variant', separatorInset(row, inset, pointer))}
+                className={cn(
+                  'mr-4 h-hairline bg-outline-variant',
+                  separatorInset(row, inset, pointer),
+                )}
               />
             )}
             {row}

@@ -10,7 +10,8 @@ import {
 import type { IconName } from '../../../components/icon-glyphs';
 import type { Tone } from '../../../components/tone';
 import { plural } from '../../../format/text';
-import { dayLabel, localDayKey } from '../../../format/time';
+import { dayText } from '../../../components/media-grid/day-text';
+import { localDayKey } from '../../../format/time';
 import { groupEdgeOf, type GroupEdge } from '../shared/shared-model';
 
 type Person = Pick<ProfileRow, 'id' | 'name'>;
@@ -187,14 +188,18 @@ export function dayGroupsOf(
   const sorted = [...rows].sort(
     (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
   );
-  const groups: { key: string; label: string; rows: DriveNotification[] }[] = [];
+  const today = localDayKey(now, timeZone);
+  const groups: { key: string; rows: DriveNotification[] }[] = [];
   for (const row of sorted) {
     const key = localDayKey(row.updatedAt, timeZone);
     const last = groups.at(-1);
     if (last?.key === key) last.rows.push(row);
-    else groups.push({ key, label: dayLabel(row.updatedAt, now, timeZone), rows: [row] });
+    else groups.push({ key, rows: [row] });
   }
-  return groups;
+  return groups.map((group) => ({
+    ...group,
+    label: dayText(group.key, group.rows.length, today).title,
+  }));
 }
 
 export function unreadIdsOf(rows: readonly DriveNotification[]): readonly string[] {

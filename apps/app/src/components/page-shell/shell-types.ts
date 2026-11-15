@@ -7,6 +7,8 @@ import type { ShellSearchConfig } from './search-slot';
 import type { ShellAction, ShellEditing } from './shell-actions';
 import type { ShellSections, ShellTabs } from './shell-sections';
 
+export type ShellFooterHides = 'scroll';
+
 export interface ShellAside {
   readonly label: string;
   readonly open: boolean;
@@ -36,6 +38,7 @@ export interface StandardShellProps {
   readonly aside?: ShellAside;
   readonly banner?: ReactNode;
   readonly footer?: ReactNode;
+  readonly footerHides?: ShellFooterHides;
   readonly scroll?: boolean;
   readonly onRefresh?: () => void;
   readonly refreshing?: boolean;
@@ -46,7 +49,6 @@ export interface StandardShellProps {
 export interface VariantShellProps {
   readonly variant: Exclude<ShellVariant, 'page'>;
   readonly title: string;
-  readonly bare?: boolean;
   readonly heading?: ReactNode;
   readonly back?: boolean;
   readonly onBack?: () => void;

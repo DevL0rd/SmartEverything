@@ -6,7 +6,7 @@ import { openNewAlbum } from '../albums/new-album-host';
 import { NO_CHAT_HINT } from '../model/ask-actions';
 import { albumMenuItems } from '../viewer/menus';
 import { addToAlbum, moveToTrash, setFavourite } from './actions';
-import { askAbout, sendToChat, shareLink, showInDrive } from './item-actions';
+import { askAbout, sendToChat, shareLinks, showInDrive } from './item-actions';
 import { saveToDevice } from './save-to-device';
 
 type Ids = readonly string[];
@@ -16,7 +16,7 @@ export interface MediaActions {
   readonly albums: (ids: Ids) => readonly MenuItem[];
   readonly favourite: (ids: Ids, on: boolean) => void;
   readonly toChat: (ids: Ids) => void;
-  readonly share: (itemId: string) => void;
+  readonly share: (itemIds: readonly string[]) => void;
   readonly download: (ids: Ids) => void;
   readonly showInDrive: (itemId: string) => void;
   readonly ask: (itemId: string) => void;
@@ -46,8 +46,8 @@ export function useMediaActions(): MediaActions {
     toChat: (ids): void => {
       if (chatId !== null) background(sendToChat(ids, chatId), 'photos.to_chat_failed');
     },
-    share: (itemId): void => {
-      background(shareLink(itemId), 'photos.share_failed');
+    share: (itemIds): void => {
+      background(shareLinks(itemIds), 'photos.share_failed');
     },
     download: (ids): void => {
       background(saveToDevice(ids), 'photos.save_to_device_failed');

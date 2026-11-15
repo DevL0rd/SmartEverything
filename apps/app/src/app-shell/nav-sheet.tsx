@@ -15,6 +15,7 @@ import {
   floatingSheetFrame,
 } from '../components/compact-panel';
 import { FloatingSheetViewport } from '../components/floating-sheet-viewport';
+import { sheetDrop } from '../components/sheet-frame';
 import { HostedSheetPages, useHostedNativeBack } from '../components/hosted-sheet-pages';
 import { useSheetNavigation } from '../components/sheet-navigation';
 import { KeyboardViewport } from '../components/keyboard-viewport';
@@ -96,9 +97,7 @@ function Panel({
   const scrim = useAnimatedStyle(() => ({
     opacity: interpolate(navSheetLift.get(), [0, stops.half], [0, 1], 'clamp'),
   }));
-  const slide = useAnimatedStyle(() => ({
-    transform: [{ translateY: stops.full - navSheetLift.get() }],
-  }));
+  const slide = useAnimatedStyle(() => sheetDrop(stops.full - navSheetLift.get()));
   const size = { height: stops.full };
   const active = navigation.pages.at(-1);
   const body = useMemo(() => <NavSheetBody stops={stops} />, [stops]);
@@ -120,7 +119,7 @@ function Panel({
           aria-modal
           accessibilityLabel={active?.page.title ?? 'Navigation'}
           style={[size, slide]}
-          className={cn('absolute inset-x-0 bottom-0', CHROME_SURFACE, FLOATING_SHEET_SURFACE)}
+          className={cn('absolute inset-x-0', CHROME_SURFACE, FLOATING_SHEET_SURFACE)}
         >
           <KeyboardViewport className="flex-1">
             <HostedSheetPages navigation={navigation} label="Navigation">

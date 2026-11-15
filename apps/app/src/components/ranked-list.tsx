@@ -21,6 +21,7 @@ export interface RankedListProps {
   readonly onPress?: (key: string) => void;
   readonly bar?: 'kind' | 'info';
   readonly inCard?: true;
+  readonly ellipsize?: 'middle' | 'end';
 }
 
 const MIN_BAR = 3;
@@ -48,22 +49,40 @@ function ShareBar({
   );
 }
 
+function RankedLabel({
+  label,
+  ellipsize,
+}: {
+  readonly label: string;
+  readonly ellipsize: NonNullable<RankedListProps['ellipsize']>;
+}): ReactNode {
+  return ellipsize === 'middle' ? (
+    <Text variant="callout" ellipsize="middle">
+      {label}
+    </Text>
+  ) : (
+    <Text variant="callout" numberOfLines={1}>
+      {label}
+    </Text>
+  );
+}
+
 function RankedRow({
   entry,
   onPress,
   bar,
+  ellipsize,
 }: {
   readonly entry: RankedEntry;
   readonly onPress: RankedListProps['onPress'];
   readonly bar: NonNullable<RankedListProps['bar']>;
+  readonly ellipsize: NonNullable<RankedListProps['ellipsize']>;
 }): ReactNode {
   const spoken = entry.spoken ?? `${entry.label}, ${entry.value}`;
   const content = (
     <>
       <View className="min-w-0 flex-1 pb-1.5">
-        <Text variant="callout" ellipsize="middle">
-          {entry.label}
-        </Text>
+        <RankedLabel label={entry.label} ellipsize={ellipsize} />
       </View>
       <Text variant="callout" tone="variant" className="tabular shrink-0 pb-1.5">
         {entry.value}
@@ -99,13 +118,14 @@ export function RankedList({
   onPress,
   bar = 'kind',
   inCard,
+  ellipsize = 'middle',
 }: RankedListProps): ReactNode {
   if (inCard === true) {
     return (
       <View className="-mx-card-pad">
         {entries.map((entry) => (
           <View key={entry.key} className="border-t-hairline border-outline-variant">
-            <RankedRow entry={entry} onPress={onPress} bar={bar} />
+            <RankedRow entry={entry} onPress={onPress} bar={bar} ellipsize={ellipsize} />
           </View>
         ))}
       </View>
@@ -117,7 +137,7 @@ export function RankedList({
         {entries.map((entry, index) => (
           <Fragment key={entry.key}>
             {index === 0 ? null : <View className="h-hairline bg-outline-variant" />}
-            <RankedRow entry={entry} onPress={onPress} bar={bar} />
+            <RankedRow entry={entry} onPress={onPress} bar={bar} ellipsize={ellipsize} />
           </Fragment>
         ))}
       </View>

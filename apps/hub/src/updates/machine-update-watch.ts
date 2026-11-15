@@ -96,11 +96,16 @@ function watchReleasePaths(
   };
 }
 
+export interface MachineUpdateWatch {
+  readonly current: () => AppUpdateNotice | null;
+  readonly stop: () => Promise<void>;
+}
+
 export function watchMachineUpdates(
   layout: HubLayout,
   folder: ReleaseFolder,
   publish: (notice: AppUpdateNotice) => void,
-): () => Promise<void> {
+): MachineUpdateWatch {
   let announced: AppUpdateNotice | null = null;
   let pending = readNotice(folder)
     .then((notice) => {
@@ -124,8 +129,11 @@ export function watchMachineUpdates(
       })
       .catch(reportFailure);
   });
-  return async (): Promise<void> => {
-    stop();
-    await pending;
+  return {
+    current: () => announced,
+    stop: async (): Promise<void> => {
+      stop();
+      await pending;
+    },
   };
 }

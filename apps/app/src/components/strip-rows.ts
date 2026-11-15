@@ -6,8 +6,8 @@ export interface StripColumns {
   readonly expanded: number;
 }
 
-export function stripColumnsAt(area: number, columns: StripColumns): number {
-  const width = widthClassOf(area);
+export function stripColumnsAt(body: number, columns: StripColumns): number {
+  const width = widthClassOf(body);
   if (width === 'compact') {
     return columns.compact;
   }

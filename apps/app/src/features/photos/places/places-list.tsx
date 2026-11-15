@@ -71,11 +71,11 @@ export function PlaceRowItem({
           <ProgressBar
             progress={share}
             colour="viz-1"
-            label={`${place.name} share of ${place.country}`}
+            label={`${place.name} share of the places in view`}
           />
         )}
       </View>
-      <Text variant="caption" tone="variant" className="tabular-nums">
+      <Text variant="caption" tone="variant" align="end" className="w-14 tabular-nums">
         {count(place.count)}
       </Text>
     </Interactive>

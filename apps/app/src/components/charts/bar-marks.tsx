@@ -4,7 +4,7 @@ import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reani
 import { Path } from 'react-native-svg';
 import { Text } from '../text';
 import { barPath, type BarBox, type BarRadii } from './bar-path';
-import { thinned } from './scale';
+import { thinned, thinnedFromEnd } from './scale';
 
 export interface BarShape extends BarBox {
   readonly key: string;
@@ -64,11 +64,15 @@ export interface BarLabel {
 export function BarLabels({
   bars,
   width,
+  anchor = 'start',
 }: {
   readonly bars: readonly BarLabel[];
   readonly width: number;
+  readonly anchor?: 'start' | 'end';
 }): ReactNode {
-  const shown = new Set(thinned(bars, width, LABEL_GAP).map((bar) => bar.key));
+  const kept =
+    anchor === 'end' ? thinnedFromEnd(bars, width, LABEL_GAP) : thinned(bars, width, LABEL_GAP);
+  const shown = new Set(kept.map((bar) => bar.key));
   return (
     <View className="h-4 flex-row">
       {bars.map((bar) => (

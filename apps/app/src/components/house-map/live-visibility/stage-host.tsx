@@ -2,6 +2,7 @@ import { useIsFocused } from 'expo-router';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -10,6 +11,7 @@ import {
 import { AppState, View } from 'react-native';
 import { Logger } from '@smarteverything/logging';
 import { useOnScreen } from '../../../design/visibility';
+import { pinGeometriesInUse } from '../../models/three/shared-geometry';
 import {
   DEFAULT_QUALITY_CONFIG,
   initialQuality,
@@ -134,10 +136,28 @@ interface LiveLayerProps {
   readonly scaler: Scaler;
   readonly renderLive: (props: StageLiveProps) => ReactNode;
   readonly onUnavailable: () => void;
+  readonly parkGeometry: () => void;
+}
+
+function useGeometryPark(): () => void {
+  const pin = useRef<(() => void) | null>(null);
+  useEffect(
+    () => (): void => {
+      pin.current?.();
+      pin.current = null;
+    },
+    [],
+  );
+  return useCallback((): void => {
+    const previous = pin.current;
+    pin.current = pinGeometriesInUse();
+    previous?.();
+  }, []);
 }
 
 function LiveLayer(props: LiveLayerProps): ReactNode {
-  const { registry, id, scaler } = props;
+  const { registry, id, scaler, parkGeometry } = props;
+  useLayoutEffect(() => parkGeometry, [parkGeometry]);
   const [loaded, setLoaded] = useState(false);
   const onReady = useCallback((): void => {
     setLoaded(true);
@@ -186,6 +206,7 @@ export function StageHost(props: StageHostProps): ReactNode {
   const state = useStageState(registry, id);
   const scaler = useScaler(id, props.qualityConfig ?? DEFAULT_QUALITY_CONFIG);
   const [unavailable, onUnavailable] = useUnavailable(id);
+  const parkGeometry = useGeometryPark();
   const mountLive = state.mounted && !unavailable;
   const stillShown = state.showStill || !mountLive;
   return (
@@ -200,6 +221,7 @@ export function StageHost(props: StageHostProps): ReactNode {
           scaler={scaler}
           renderLive={props.renderLive}
           onUnavailable={onUnavailable}
+          parkGeometry={parkGeometry}
         />
       ) : null}
       {stillShown ? (

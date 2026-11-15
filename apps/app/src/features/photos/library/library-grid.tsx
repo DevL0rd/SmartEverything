@@ -7,7 +7,11 @@ import { centredRect, pointRect, type Rect } from '../../../components/anchor';
 import type { Point } from '../../../components/interactive';
 import type { DayText } from '../../../components/media-grid/day-text';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
-import { MediaGrid, type DayDecor } from '../../../components/media-grid/media-grid';
+import {
+  MediaGrid,
+  type DayDecor,
+  type MonthFocus,
+} from '../../../components/media-grid/media-grid';
 import type { MediaSelectionControls } from '../../../components/media-grid/selection';
 import type { MediaDay, MediaGrouping, MediaTile } from '../../../components/media-grid/tiles';
 import { useZoomSteps } from '../../../components/media-grid/zoom-steps';
@@ -37,6 +41,7 @@ export interface LibraryGridProps {
   readonly viewer?: Readonly<Record<string, string>>;
   readonly header?: ReactElement;
   readonly badgeOf?: TileBadge;
+  readonly focus?: MonthFocus | null;
 }
 
 type MenuMode = 'actions' | 'albums';
@@ -75,7 +80,7 @@ export function menuActionsOf(
       media.toChat([tile.id]);
     },
     share: (tile): void => {
-      media.share(tile.id);
+      media.share([tile.id]);
     },
     download: (tile): void => {
       media.download([tile.id]);
@@ -170,6 +175,7 @@ export function LibraryGrid(props: LibraryGridProps): ReactNode {
           footer={footer}
           {...(props.header === undefined ? {} : { header: props.header })}
           {...(props.badgeOf === undefined ? {} : { badgeOf: props.badgeOf })}
+          focus={props.focus ?? null}
           onEndReached={onEnd}
           probe="photos.library"
           thumbs={libraryThumbs}

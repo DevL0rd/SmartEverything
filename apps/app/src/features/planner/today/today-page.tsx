@@ -62,6 +62,7 @@ function CompactDay({ day, savedAt }: DayProps): ReactNode {
         </DayStripCard>
       )}
       <MainColumn day={day} savedAt={savedAt} />
+      <TodaySideColumn day={day} move={move} layout="grid" withRings={false} />
     </View>
   );
 }
@@ -73,10 +74,10 @@ function Day({ day, savedAt }: DayProps): ReactNode {
   const wide = layout === 'wide';
   return (
     <View className="gap-4">
-      <DayStripCard day={day} compact={false} />
+      {isOpenDay(day) ? null : <DayStripCard day={day} compact={false} />}
       <View className={wide ? 'flex-row items-start gap-4' : 'gap-4'}>
         <MainColumn day={day} savedAt={savedAt} />
-        <TodaySideColumn day={day} move={move} layout={wide ? 'column' : 'grid'} />
+        <TodaySideColumn day={day} move={move} layout={wide ? 'column' : 'grid'} withRings />
       </View>
     </View>
   );

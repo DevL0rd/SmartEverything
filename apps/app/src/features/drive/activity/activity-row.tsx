@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
+import type { DriveVia } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
@@ -8,7 +9,9 @@ import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { initialsOf } from '../../../format/text';
 import { clock } from '../../../format/time';
+import { useProfiles } from '../../../store/people';
 import { useSettings } from '../../../store/selectors';
+import { ProfileAvatar } from '../../profiles';
 import { useDriveRoots } from '../data';
 import { driveLocationHref } from '../model/section-routes';
 import {
@@ -28,6 +31,8 @@ export interface ActivityRowProps {
   readonly itemless?: boolean;
 }
 
+const IMPERSONAL: ReadonlySet<DriveVia> = new Set(['ai', 'automation', 'scan', 'outside']);
+
 type Mark = { readonly initials: string } | { readonly icon: IconName };
 
 export function markOf(entry: ActivityEntry, me: string | null): Mark {
@@ -37,7 +42,7 @@ export function markOf(entry: ActivityEntry, me: string | null): Mark {
   return { icon: VIA_LOOK[entry.row.via].icon };
 }
 
-function Avatar({
+function SeriesAvatar({
   entry,
   me,
   pointer,
@@ -67,6 +72,53 @@ function Avatar({
   );
 }
 
+function Avatar({
+  entry,
+  me,
+  pointer,
+}: {
+  readonly entry: ActivityEntry;
+  readonly me: string | null;
+  readonly pointer: boolean;
+}): ReactNode {
+  const actor = entry.row.actorProfileId;
+  const profile = useProfiles().find((row) => row.id === actor);
+  if (actor === null || profile === undefined || IMPERSONAL.has(entry.row.via)) {
+    return <SeriesAvatar entry={entry} me={me} pointer={pointer} />;
+  }
+  return <ProfileAvatar profile={profile} size={pointer ? 'm' : 'nav'} />;
+}
+
+function PhoneMeta({
+  time,
+  path,
+  badge,
+}: {
+  readonly time: string;
+  readonly path: string;
+  readonly badge: string;
+}): ReactNode {
+  return (
+    <View aria-hidden className="min-w-0 flex-row items-center gap-1">
+      <Text variant="callout" tone="variant" numberOfLines={1} className="tabular shrink-0">
+        {time}
+      </Text>
+      <Text variant="callout" tone="variant" className="shrink-0">
+        ·
+      </Text>
+      <Text variant="callout" tone="variant" ellipsize="middle" className="min-w-0 shrink">
+        {path}
+      </Text>
+      <Text variant="callout" tone="variant" className="shrink-0">
+        ·
+      </Text>
+      <Text variant="callout" tone="variant" numberOfLines={1} className="max-w-1/2 shrink-0">
+        {badge}
+      </Text>
+    </View>
+  );
+}
+
 export const ActivityRow = memo(function ActivityRow({
   entry,
   me,
@@ -86,7 +138,13 @@ export const ActivityRow = memo(function ActivityRow({
       className="h-row-h-2 flex-row items-center gap-3 px-4"
     >
       {pointer ? (
-        <Text variant="footnote" tone="variant" numberOfLines={1} className="tabular w-11">
+        <Text
+          variant="footnote"
+          tone="variant"
+          align="end"
+          numberOfLines={1}
+          className="tabular w-11"
+        >
           {time}
         </Text>
       ) : null}
@@ -95,12 +153,16 @@ export const ActivityRow = memo(function ActivityRow({
         <Text variant="body" numberOfLines={1}>
           {sentence}
         </Text>
-        <Text variant="callout" tone="variant" ellipsize="middle">
-          {pointer ? entry.folderPath : `${time} · ${entry.folderPath} · ${badge}`}
-        </Text>
+        {pointer ? (
+          <Text variant="callout" tone="variant" ellipsize="middle">
+            {entry.folderPath}
+          </Text>
+        ) : (
+          <PhoneMeta time={time} path={entry.folderPath} badge={badge} />
+        )}
       </View>
       {pointer ? (
-        <View className="shrink-0">
+        <View className="min-w-0 max-w-60 shrink flex-row justify-end">
           <Badge label={badge} />
         </View>
       ) : null}

@@ -5,6 +5,7 @@ import type { PartnerShare, PhotoSharing } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
+import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { Skeleton } from '../../../components/skeleton';
@@ -20,43 +21,23 @@ import { draftOfGroup, draftOfShare, newDraft, type PartnerDraft } from './partn
 import { OfflineBanner } from './offline-banner';
 import { PartnerSetup } from './partner-setup';
 import { usePhotoSharing } from './queries';
+import { SectionTitle } from './section-title';
 import { SharedAlbumCard } from './shared-album-card';
-
-function SectionTitle({
-  title,
-  detail,
-}: {
-  readonly title: string;
-  readonly detail?: string | null;
-}): ReactNode {
-  return (
-    <View className="flex-row items-baseline gap-2">
-      <Text variant="title-3" accessibilityRole="header">
-        {title}
-      </Text>
-      {detail === null || detail === undefined ? null : (
-        <Text variant="footnote" tone="primary" className="tabular-nums">
-          {detail}
-        </Text>
-      )}
-    </View>
-  );
-}
 
 function SharedAlbums({ sharing }: { readonly sharing: PhotoSharing }): ReactNode {
   return (
     <View className="gap-3">
       <SectionTitle title="Shared albums" detail={unreadText(sharing.unread)} />
       {sharing.albums.length === 0 ? (
-        <View className="gap-2 rounded-lg border-hairline border-outline-variant bg-surface-1 px-4 py-3">
+        <Card>
           <Text variant="body" tone="variant">
             Open an album and choose Add people to share it. People you add can see it, and the ones
             who can add photos bring their own.
           </Text>
           <View className="flex-row">
-            <Button label="Open Albums" variant="tonal" href={href.photosPage('albums')} />
+            <Button label="Open albums" variant="tonal" href={href.photosPage('albums')} />
           </View>
-        </View>
+        </Card>
       ) : (
         <View className="gap-3 large:flex-row large:flex-wrap">
           {sharing.albums.map((album) => (
@@ -77,13 +58,15 @@ function Activity({ sharing }: { readonly sharing: PhotoSharing }): ReactNode {
   return (
     <View className="gap-3">
       <SectionTitle title="Activity" />
-      {albums.length === 0 ? (
-        <Text variant="body" tone="variant">
-          Photos added, comments and likes in your shared albums show up here.
-        </Text>
-      ) : (
-        <ActivityFeed albums={albums} />
-      )}
+      <Card>
+        {albums.length === 0 ? (
+          <Text variant="body" tone="variant">
+            Photos added, comments and likes in your shared albums show up here.
+          </Text>
+        ) : (
+          <ActivityFeed albums={albums} />
+        )}
+      </Card>
     </View>
   );
 }

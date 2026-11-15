@@ -150,13 +150,13 @@ describe('pairing codes', () => {
 
 describe('live protocols', () => {
   it('name the live protocol and the bearer prefix', () => {
-    expect(LIVE_PROTOCOL).toBe('smarteverything.live.v1');
+    expect(LIVE_PROTOCOL).toBe('smarteverything.live.v2');
     expect(BEARER_PROTOCOL_PREFIX).toBe('bearer.');
   });
 
   it('liveProtocols offers the live protocol and the token as a bearer protocol', () => {
     expect(liveProtocols(TOKEN)).toStrictEqual([
-      'smarteverything.live.v1',
+      'smarteverything.live.v2',
       `bearer.set_${'ab'.repeat(32)}`,
     ]);
   });

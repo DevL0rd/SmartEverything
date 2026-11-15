@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { Button } from '../components/button';
 import { Sheet } from '../components/sheet';
 import { TextField, type FieldKind } from '../components/text-field';
+import { useIdiom } from '../design/platform';
 import { useMutationState, type MutationState } from '../store/mutation';
 
 export interface TextEditRequest {
@@ -47,6 +48,7 @@ function Footer({
   readonly onReset: () => void;
   readonly onClose: () => void;
 }): ReactNode {
+  const touch = useIdiom() === 'touch';
   return (
     <>
       {reset === undefined ? null : (
@@ -60,7 +62,7 @@ function Footer({
           />
         </View>
       )}
-      <Button label="Cancel" variant="text" onPress={onClose} />
+      {touch ? <Button label="Cancel" variant="text" onPress={onClose} /> : null}
       <Button label={label} loading={busy} disabled={!ready} onPress={onSubmit} />
     </>
   );

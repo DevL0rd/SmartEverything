@@ -30,12 +30,12 @@ function Answers({ invitation }: { readonly invitation: Invitation }): ReactNode
   const writes = useGuestWrites(person);
   return (
     <View className="flex-row flex-wrap gap-2">
-      {ANSWER_ORDER.map((answer, index) => (
+      {ANSWER_ORDER.map((answer) => (
         <Button
           key={answer}
           label={ANSWER_LABEL[answer]}
           spoken={`${ANSWER_LABEL[answer]} to ${invitation.item.title}`}
-          variant={index === 0 ? 'tonal' : 'outlined'}
+          variant={invitation.guest.response === answer ? 'tonal' : 'outlined'}
           disabled={offline}
           onPress={() => {
             reported(

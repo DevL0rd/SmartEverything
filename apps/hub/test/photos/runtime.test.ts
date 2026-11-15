@@ -207,6 +207,77 @@ it('serves signed phone photo thumbnails and video range requests, rejecting uns
   }
 });
 
+it('serves the thumbnail of a trashed photo by the revision it was trashed at, and nothing else of it', async () => {
+  await writeFile(
+    join(source, 'phone.jpg'),
+    await sharp({ create: { width: 20, height: 20, channels: 3, background: '#aa22ff' } })
+      .jpeg()
+      .toBuffer(),
+  );
+  seed(PHOTO, 'image', 'phone.jpg', 'image/jpeg');
+  pipeline.start();
+  await pipeline.runner.idle();
+  const item = opened.store.driveItems.byId(PHOTO, null);
+  opened.store.driveTrash.insert({
+    itemId: PHOTO,
+    rootId: ROOT,
+    name: item.name,
+    originalRelPath: item.relPath,
+    trashRelPath: '.smarteverything/trash/photo',
+    isFolder: false,
+    bytes: item.bytes,
+    deletedAt: NOW,
+    purgeAt: '2027-11-08T00:00:00.000Z',
+    deletedBy: null,
+    addedByProfileId: null,
+  });
+  opened.store.driveTrash.stash(PHOTO);
+  opened.store.driveItems.remove(PHOTO);
+  expect(opened.store.driveTrash.thumbRev(PHOTO)).toBe(item.rev);
+  const links = new MediaLinks(() => new Date(NOW));
+  const deps = {
+    store: opened.store,
+    parts: { context: opened.store.context },
+    layout: opened.layout,
+    log: testLogger(),
+    links,
+    now: (): Date => new Date(NOW),
+  };
+  const server = createServer((request, response) => {
+    const url = new URL(request.url ?? '/', 'http://fixture');
+    const size = url.pathname.split('/').at(-1) ?? '';
+    void serveDriveDerived(
+      deps,
+      pipeline,
+      { request, response, url },
+      { itemId: PHOTO, size },
+    ).catch((error: unknown) => {
+      response.writeHead(error instanceof ApiError ? 404 : 500);
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    if (address === null || typeof address === 'string') throw new Error('No fixture port');
+    const base = `http://127.0.0.1:${String(address.port)}`;
+    const thumb = await fetch(base + links.driveThumb(PHOTO, 'thumb', item.rev).url);
+    expect(thumb.status).toBe(200);
+    expect(thumb.headers.get('content-type')).toBe('image/webp');
+    expect((await fetch(base + links.driveThumb(PHOTO, 'preview', item.rev).url)).status).toBe(404);
+    expect((await fetch(base + links.driveThumb(PHOTO, 'thumb', item.rev + 1).url)).status).toBe(
+      404,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => {
+        if (error === undefined) resolve();
+        else reject(error);
+      }),
+    );
+  }
+});
+
 it('rebuilds photo and video derivatives for renamed and replaced revisions through the Drive change feed', async () => {
   await writeFile(
     join(source, 'phone.jpg'),

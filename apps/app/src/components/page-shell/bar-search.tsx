@@ -18,6 +18,8 @@ const TITLE_MIN = 160;
 
 const ROW_GAP = 16;
 
+const TITLE_SHARE = 0.4;
+
 const INLINE_STYLE: ViewStyle = {
   flexGrow: 1,
   flexShrink: 1,
@@ -28,6 +30,10 @@ const INLINE_STYLE: ViewStyle = {
 
 export function searchInlineAt(bar: number, trailing: number): boolean {
   return bar >= TITLE_MIN + SEARCH_WIDTH.min + trailing + ROW_GAP * 2;
+}
+
+export function titleFloorAt(bar: number, need: number): number {
+  return Math.min(need, Math.floor(bar * TITLE_SHARE));
 }
 
 export function useSearchOptionsPlace(): SearchOptionsPlace {
@@ -53,6 +59,8 @@ export interface BarSearch {
   readonly mode: BarSearchMode;
   readonly onBar: (width: number) => void;
   readonly onTrailing: (width: number) => void;
+  readonly onTitle: (width: number) => void;
+  readonly titleStyle: ViewStyle | undefined;
   readonly open: () => void;
   readonly close: () => void;
 }
@@ -60,16 +68,23 @@ export interface BarSearch {
 export function useBarSearch(search: ShellSearchConfig | undefined): BarSearch {
   const [bar, setBar] = useState<number | null>(null);
   const [trailing, setTrailing] = useState(0);
+  const [title, setTitle] = useState(0);
   const [opened, setOpened] = useState(false);
+  const floor = bar === null ? 0 : titleFloorAt(bar, title);
   const modeOf = (): BarSearchMode => {
     if (search === undefined) return 'none';
-    if (bar !== null && searchInlineAt(bar, trailing)) return 'inline';
+    if (bar !== null && searchInlineAt(bar, trailing + Math.max(0, floor - TITLE_MIN))) {
+      return 'inline';
+    }
     return opened || search.value !== '' ? 'open' : 'icon';
   };
+  const mode = modeOf();
   return {
-    mode: modeOf(),
+    mode,
     onBar: setBar,
     onTrailing: setTrailing,
+    onTitle: setTitle,
+    titleStyle: mode === 'inline' && floor > 0 ? { minWidth: floor } : undefined,
     open: (): void => {
       setOpened(true);
     },

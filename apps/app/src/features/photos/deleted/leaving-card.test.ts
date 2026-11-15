@@ -56,12 +56,13 @@ describe('Recently deleted leaving card', () => {
     expect(html).toContain('data-grow="no">Restore all');
   });
 
-  it('leaves the count to the title and stretches the actions on phones', () => {
+  it('leaves the count to the title and stacks the actions on phones', () => {
     const html = render({ compact: true });
     expect(html).not.toContain('In here');
     expect(html).toContain('Leaving for good per month');
-    expect(html).toContain('data-grow="yes">Restore all');
-    expect(html).toContain('data-grow="yes">Delete all now');
+    expect(html).toContain('data-grow="no">Restore all');
+    expect(html).toContain('data-grow="no">Delete all now');
+    expect(html).not.toContain('bg-outline-variant');
   });
 
   it('hides the whole-trash actions while selecting', () => {

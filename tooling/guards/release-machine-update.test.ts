@@ -169,7 +169,7 @@ describe('publishing a desktop release to a hub over the network', () => {
     const zip = await built('SmartEverything-linux-x64-0.4.2.zip', '0.4.2');
     const runtimeVersion = '9724ce88e713205c662d9dfd3284b029';
     const { promise, resolve } = deferred<AppUpdateNotice>();
-    const stop = watchMachineUpdates(hub.layout, hub.folder, resolve);
+    const watch = watchMachineUpdates(hub.layout, hub.folder, resolve);
     try {
       await publishMachineUpdate(target, '0.4.2', [{ ...LINUX, path: zip }], {
         notes: NOTES,
@@ -187,8 +187,9 @@ describe('publishing a desktop release to a hub over the network', () => {
         id: notice.id,
         runtimeVersion,
       });
+      expect(watch.current()).toStrictEqual(await promise);
     } finally {
-      await stop();
+      await watch.stop();
     }
   });
 
@@ -201,7 +202,7 @@ describe('publishing a desktop release to a hub over the network', () => {
     const next = deferred<null>();
     const withdrawn = deferred<null>();
     const ids: (string | null)[] = [];
-    const stop = watchMachineUpdates(hub.layout, hub.folder, (notice) => {
+    const watch = watchMachineUpdates(hub.layout, hub.folder, (notice) => {
       ids.push(notice.id);
       if (ids.length === 1) first.resolve(null);
       if (ids.length === 2) next.resolve(null);
@@ -219,9 +220,10 @@ describe('publishing a desktop release to a hub over the network', () => {
       await withdrawn.promise;
       expect(ids).toHaveLength(3);
       expect(ids[2]).toBeNull();
+      expect(watch.current()).toBeNull();
       expect(await offered()).toBeUndefined();
     } finally {
-      await stop();
+      await watch.stop();
     }
   });
 

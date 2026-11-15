@@ -24,32 +24,38 @@ import { IconButton } from './icon-button';
 function Arrows({
   scrollBy,
   step,
+  edges,
 }: {
   readonly scrollBy: (delta: number) => void;
   readonly step: number;
+  readonly edges: ScrollMetrics['edges'];
 }): ReactNode {
   return (
     <>
-      <View className="absolute inset-y-0 left-0 justify-center">
-        <IconButton
-          icon="chevronLeft"
-          label="Scroll back"
-          variant="tonal"
-          onPress={() => {
-            scrollBy(-step);
-          }}
-        />
-      </View>
-      <View className="absolute inset-y-0 right-0 justify-center">
-        <IconButton
-          icon="chevronRight"
-          label="Scroll forward"
-          variant="tonal"
-          onPress={() => {
-            scrollBy(step);
-          }}
-        />
-      </View>
+      {edges.start ? (
+        <View className="absolute inset-y-0 left-0 justify-center">
+          <IconButton
+            icon="chevronLeft"
+            label="Scroll back"
+            variant="tonal"
+            onPress={() => {
+              scrollBy(-step);
+            }}
+          />
+        </View>
+      ) : null}
+      {edges.end ? (
+        <View className="absolute inset-y-0 right-0 justify-center">
+          <IconButton
+            icon="chevronRight"
+            label="Scroll forward"
+            variant="tonal"
+            onPress={() => {
+              scrollBy(step);
+            }}
+          />
+        </View>
+      ) : null}
     </>
   );
 }
@@ -65,8 +71,9 @@ function useReveal(
   ref: RefObject<ScrollView | null>,
   metrics: RefObject<ScrollMetrics>,
   reveal: RevealRange | null,
-): () => void {
+): { readonly revealPending: () => void; readonly retarget: () => void } {
   const pending = useRef<RevealRange | null>(null);
+  const target = useRef<RevealRange | null>(null);
   const revealPending = (): void => {
     const range = pending.current;
     const { viewport, offset, content } = metrics.current;
@@ -75,14 +82,21 @@ function useReveal(
     const next = revealOffset(range, offset, viewport);
     if (next !== null) ref.current?.scrollTo({ x: next, animated: true });
   };
-  const queue = useEffectEvent((range: RevealRange): void => {
+  const queue = useEffectEvent((range: RevealRange | null): void => {
+    target.current = range;
     pending.current = range;
     revealPending();
   });
   useEffect(() => {
-    if (reveal !== null) queue(reveal);
+    queue(reveal);
   }, [reveal]);
-  return revealPending;
+  return {
+    revealPending,
+    retarget: (): void => {
+      pending.current = target.current;
+      revealPending();
+    },
+  };
 }
 
 function useScrollBy(reveal: RevealRange | null): {
@@ -96,7 +110,7 @@ function useScrollBy(reveal: RevealRange | null): {
   const ref = useRef<ScrollView>(null);
   const [edges, setEdges] = useState({ overflow: false, start: false, end: false });
   const metrics = useRef<ScrollMetrics>({ viewport: 0, content: 0, offset: 0, edges });
-  const revealPending = useReveal(ref, metrics, reveal);
+  const { revealPending, retarget } = useReveal(ref, metrics, reveal);
   const updateEdges = (): void => {
     const current = metrics.current;
     const overflow = current.content > current.viewport + 2;
@@ -118,9 +132,12 @@ function useScrollBy(reveal: RevealRange | null): {
       updateEdges();
     },
     onLayout: (event): void => {
-      metrics.current.viewport = event.nativeEvent.layout.width;
+      const { width } = event.nativeEvent.layout;
+      const resized = width !== metrics.current.viewport;
+      metrics.current.viewport = width;
       updateEdges();
-      revealPending();
+      if (resized) retarget();
+      else revealPending();
     },
     onContentSizeChange: (width): void => {
       metrics.current.content = width;
@@ -194,7 +211,7 @@ function ScrollArrows({
   readonly scrollBy: (delta: number) => void;
 }): ReactNode {
   return arrows && pointerHover && edges.overflow ? (
-    <Arrows scrollBy={scrollBy} step={scrollStep ?? scrollStepOf(snapTo)} />
+    <Arrows scrollBy={scrollBy} step={scrollStep ?? scrollStepOf(snapTo)} edges={edges} />
   ) : null;
 }
 

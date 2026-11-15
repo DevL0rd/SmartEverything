@@ -10,9 +10,9 @@ import {
 } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
-import { FilterChip } from '../../../components/filter-chip';
 import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
+import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
@@ -37,12 +37,19 @@ export const MOST_DAYS = Math.floor(SCHEDULE_LIMITS.horizonSeconds / DAY_SECONDS
 
 export const FIRST_DAYS = 30;
 
-export const SCHEDULE_PRESETS: readonly { readonly days: number; readonly label: string }[] = [
-  { days: 7, label: 'Every week' },
-  { days: 14, label: 'Every 2 weeks' },
-  { days: 30, label: 'Every month' },
-  { days: 91, label: 'Every 3 months' },
+type HowOftenChoice = '7' | '14' | '30' | '91' | 'custom';
+
+const HOW_OFTEN_OPTIONS: readonly SegmentedOption<HowOftenChoice>[] = [
+  { value: '7', label: 'Week', spoken: 'Every week' },
+  { value: '14', label: '2 weeks', spoken: 'Every 2 weeks' },
+  { value: '30', label: 'Month', spoken: 'Every month' },
+  { value: '91', label: '3 months', spoken: 'Every 3 months' },
+  { value: 'custom', label: 'Custom', spoken: 'A custom number of days' },
 ];
+
+function presetOf(days: number): HowOftenChoice | null {
+  return HOW_OFTEN_OPTIONS.find((option) => option.value === String(days))?.value ?? null;
+}
 
 function isScrubStep(step: ScheduleRow['steps'][number]): boolean {
   return step.kind === 'tool' && step.tool === SCRUB_TOOL && step.args['action'] === SCRUB_ACTION;
@@ -118,34 +125,36 @@ function HowOften({
   readonly days: number;
   readonly onChange: (days: number) => void;
 }): ReactNode {
+  const [custom, setCustom] = useState(presetOf(days) === null);
+  const choice = custom ? 'custom' : presetOf(days);
+  if (choice === null) throw new Error(`no schedule preset for ${String(days)} days`);
   return (
     <>
       <Text variant="label" tone="variant">
         How often
       </Text>
-      <View className="flex-row flex-wrap gap-2">
-        {SCHEDULE_PRESETS.map((preset) => (
-          <FilterChip
-            key={preset.days}
-            label="How often"
-            value={preset.label}
-            active={days === preset.days}
-            singleChoice
-            onPress={() => {
-              onChange(preset.days);
-            }}
-          />
-        ))}
-      </View>
-      <NumberStepper
+      <Segmented
         label="How often"
-        value={days}
-        min={1}
-        max={MOST_DAYS}
-        step={1}
-        formatValue={everyText}
-        onChange={onChange}
+        options={HOW_OFTEN_OPTIONS}
+        value={choice}
+        fill
+        compact
+        onChange={(next) => {
+          setCustom(next === 'custom');
+          if (next !== 'custom') onChange(Number(next));
+        }}
       />
+      {custom ? (
+        <NumberStepper
+          label="How often"
+          value={days}
+          min={1}
+          max={MOST_DAYS}
+          step={1}
+          formatValue={everyText}
+          onChange={onChange}
+        />
+      ) : null}
     </>
   );
 }

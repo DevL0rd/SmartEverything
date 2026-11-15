@@ -23,6 +23,7 @@ import {
 import { ShellActions, type ShellAction } from './shell-actions';
 import { ShellFooter } from './shell-body';
 import { ShellBack, ShellTitle, type BackPress } from './shell-parts';
+import { ShellStatus } from './shell-status';
 
 function useBackPress(shell: VariantShellProps): BackPress {
   const routed = useBackAction(shell.back !== false && shell.onBack === undefined);
@@ -66,8 +67,9 @@ function BarRow({ shell }: { readonly shell: VariantShellProps }): ReactNode {
   const bare = back === null && leading.length === 0;
   if (shell.search !== undefined && bar.mode === 'open') {
     return (
-      <View className="min-h-14 flex-row items-center px-1">
+      <View className="min-h-14 flex-row items-center gap-1 px-1">
         <OpenSearch search={shell.search} onClose={bar.close} />
+        <ShellStatus />
       </View>
     );
   }
@@ -160,7 +162,7 @@ export function OverlayShell(props: VariantShellProps): ReactNode {
   return (
     <VariantProviders shell={props} head>
       <VariantBody shell={props} />
-      {props.bare === true ? null : <OverlayTop shell={props} />}
+      <OverlayTop shell={props} />
       {props.footer === undefined ? null : <ShellFooter>{props.footer}</ShellFooter>}
     </VariantProviders>
   );

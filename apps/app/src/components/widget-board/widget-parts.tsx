@@ -109,9 +109,10 @@ export interface WidgetEmptyProps {
   readonly action?: { readonly label: string; readonly href: AppHref };
 }
 
-type EmptyForm = 'stacked' | 'row' | 'short';
+type EmptyForm = 'stacked' | 'row' | 'short' | 'centred';
 
 function emptyFormOf(cls: FrameClass | null, action: boolean): EmptyForm {
+  if (cls === 'l' || cls === 'xl') return 'centred';
   if (!action || cls === null || !oneRowBand(cls)) return 'stacked';
   return cls === 'w' ? 'row' : 'short';
 }
@@ -153,6 +154,17 @@ export function WidgetEmpty({ icon, colour, title, body, action }: WidgetEmptyPr
       </View>
     );
   }
+  if (form === 'centred') {
+    return (
+      <View className="flex-1 justify-center gap-3">
+        <View className="flex-row items-center gap-4">
+          <IconWell icon={icon} colour={colour} size="l" />
+          <EmptyText title={title} body={body} />
+        </View>
+        {button === null ? null : <View className="flex-row pl-16">{button}</View>}
+      </View>
+    );
+  }
   if (form === 'short') {
     return (
       <View className="flex-1 gap-2">
@@ -185,7 +197,7 @@ export function WidgetGone({ icon, title, body }: WidgetGoneProps): ReactNode {
   return (
     <WidgetSurface>
       <View className="flex-1 gap-3 p-card-pad">
-        <View className="flex-row items-center gap-3">
+        <View className="flex-1 flex-row items-center gap-3">
           <IconWell icon={icon} colour="warning" size="m" />
           <View className="min-w-0 flex-1 gap-0.5">
             <Text variant="body-strong" numberOfLines={2}>

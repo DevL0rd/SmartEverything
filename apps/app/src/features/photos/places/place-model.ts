@@ -36,19 +36,23 @@ export function visitsText(value: number): string {
   return plural(value, 'visit', 'visits');
 }
 
-export function libraryLine(countries: readonly PlaceCountry[]): string {
+export function libraryLine(countries: readonly PlaceCountry[], compact: boolean): string {
   const places = countries.reduce((sum, country) => sum + country.places.length, 0);
   const items = countries.reduce((sum, country) => sum + country.count, 0);
+  if (compact) return `${plural(places, 'place', 'places')} · ${plural(items, 'photo', 'photos')}`;
   const where = `${plural(places, 'place', 'places')} in ${plural(countries.length, 'country', 'countries')}`;
   return `${where} · ${plural(items, 'photo has', 'photos have')} a location`;
 }
 
 export function countryGroups(countries: readonly PlaceCountry[]): readonly CountryGroup[] {
+  const top = countries.reduce(
+    (most, country) => country.places.reduce((peak, place) => Math.max(peak, place.count), most),
+    0,
+  );
   return [...countries]
     .sort((a, b) => b.count - a.count)
     .map((country) => {
       const places = [...country.places].sort((a, b) => b.count - a.count);
-      const top = places[0]?.count ?? 0;
       return {
         country,
         rows: places.map((place) => ({ place, share: top > 0 ? place.count / top : 0 })),

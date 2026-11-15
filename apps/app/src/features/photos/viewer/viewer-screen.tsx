@@ -142,6 +142,7 @@ export function ViewerScreen(): ReactNode {
             icon="image"
             title="This photo link is not valid"
             body="Open the photo again from Photos."
+            action={<Button label="Back to Photos" variant="tonal" onPress={closeViewer} />}
           />
         </Frame>
       ) : target.itemId.startsWith('local:') ? (

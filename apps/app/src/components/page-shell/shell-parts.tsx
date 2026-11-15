@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { BackOutcome } from '../back-navigation';
 import { Breadcrumbs, type Crumb } from '../breadcrumbs';
@@ -38,6 +38,7 @@ export interface ShellTitleProps {
   readonly icon?: IconName | null;
   readonly lead?: ReactNode;
   readonly testID?: string;
+  readonly onNeed?: (width: number) => void;
 }
 
 function CrumbLine({
@@ -51,7 +52,7 @@ function CrumbLine({
     return breadcrumbs === undefined ? null : <Breadcrumbs crumbs={breadcrumbs} />;
   }
   return (
-    <View className="flex-row items-center gap-2">
+    <View className="min-w-0 flex-row items-center gap-2">
       {lead}
       {breadcrumbs === undefined ? null : <Breadcrumbs crumbs={breadcrumbs} />}
     </View>
@@ -118,9 +119,57 @@ function FittedTitle({
   );
 }
 
+function TitleNeed({
+  title,
+  subtitle,
+  onNeed,
+}: {
+  readonly title: string;
+  readonly subtitle: string | undefined;
+  readonly onNeed: (width: number) => void;
+}): ReactNode {
+  const [titleWidth, setTitleWidth] = useState(0);
+  const [subtitleWidth, setSubtitleWidth] = useState(0);
+  useEffect(() => {
+    onNeed(Math.max(titleWidth, subtitle === undefined ? 0 : subtitleWidth));
+  }, [onNeed, titleWidth, subtitleWidth, subtitle]);
+  return (
+    <View
+      pointerEvents="none"
+      aria-hidden
+      style={MEASURE_WIDTH}
+      className="absolute left-0 top-0 items-start opacity-0"
+    >
+      <Text
+        variant="title-3"
+        numberOfLines={1}
+        onLayout={(event) => {
+          setTitleWidth(Math.ceil(event.nativeEvent.layout.width));
+        }}
+      >
+        {title}
+      </Text>
+      {subtitle === undefined ? null : (
+        <Text
+          variant="footnote"
+          numberOfLines={1}
+          onLayout={(event) => {
+            setSubtitleWidth(Math.ceil(event.nativeEvent.layout.width));
+          }}
+        >
+          {subtitle}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 export function ShellTitle(props: ShellTitleProps): ReactNode {
   return (
     <View testID={props.testID} className="min-w-0 gap-0.5 overflow-hidden">
+      {props.onNeed === undefined ? null : (
+        <TitleNeed title={props.title} subtitle={props.subtitle} onNeed={props.onNeed} />
+      )}
       {props.size === 'desktop' ? (
         <CrumbLine breadcrumbs={props.breadcrumbs} lead={props.lead} />
       ) : null}
@@ -130,7 +179,7 @@ export function ShellTitle(props: ShellTitleProps): ReactNode {
         <FittedTitle title={props.title} icon={props.icon} />
       )}
       {props.subtitle === undefined ? null : (
-        <Text variant="footnote" tone="variant" numberOfLines={1}>
+        <Text variant="footnote" tone="variant" numberOfLines={2}>
           {props.subtitle}
         </Text>
       )}

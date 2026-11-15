@@ -2,19 +2,11 @@ import type { PlannerRange } from '@smarteverything/domain';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useIsFocused } from 'expo-router';
 import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
-import { Button } from '../../../components/button';
-import { FilterChip } from '../../../components/filter-chip';
-import { IconButton } from '../../../components/icon-button';
-import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
+import type { MenuItem } from '../../../components/menu';
 import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
-import { Segmented } from '../../../components/segmented';
-import { Skeleton } from '../../../components/skeleton';
-import { useMeasuredWidth } from '../../../components/use-measured-width';
-import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { keyPressOf } from '../../../design/keyboard';
-import { isNative, useIdiom } from '../../../design/platform';
+import { isNative } from '../../../design/platform';
 import { browserCovered } from '../../../platform/browser-overlays';
 import { useAreaWidth } from '../../../design/size-class';
 import { joinParts } from '../../../format/text';
@@ -30,13 +22,13 @@ import { PlannerFrame } from '../frame/planner-frame';
 import { QueryBody } from '../frame/query-body';
 import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { Composer } from '../item';
-import { VIEW_OPTIONS } from '../settings/options';
 import type { Prefs } from '../settings/preferences';
 import { AgendaList } from './agenda-list';
 import { bookedLineOf, eventTextOf } from './booked-model';
 import { PREVIOUS, TimeContent } from './calendar-stats';
 import { CalendarsSheet } from './calendars-sheet';
 import { shownCalendarsOf } from './calendars-model';
+import type { SlotRange } from './drag-create';
 import type { MinuteSpan } from './grid-gestures';
 import { MonthGrid } from './month-grid';
 import {
@@ -50,8 +42,9 @@ import {
   type KeyAction,
 } from './calendar-view-model';
 import { openingViewOf } from './opening-view';
-import { addDays } from './month-model';
+import { addDays, dayLabelOf } from './month-model';
 import { PeopleTimeline } from './people-timeline';
+import { Toolbar, ToolbarPlaceholder, type CalendarState } from './calendar-toolbar';
 import { YearHeat } from './year-heat';
 
 function useCalendarKeys(
@@ -77,17 +70,6 @@ function useCalendarKeys(
       document.removeEventListener('keydown', listen);
     };
   }, [active]);
-}
-
-interface CalendarState {
-  readonly view: CalendarView;
-  readonly day: string;
-  readonly views: readonly CalendarView[];
-  readonly setView: (view: CalendarView) => void;
-  readonly setDay: (day: string) => void;
-  readonly previous: () => void;
-  readonly next: () => void;
-  readonly toToday: () => void;
 }
 
 function useCalendarState(prefs: Prefs, compact: boolean): CalendarState {
@@ -123,69 +105,6 @@ function useCalendarState(prefs: Prefs, compact: boolean): CalendarState {
   };
 }
 
-function viewLabelOf(view: CalendarView): string {
-  return VIEW_OPTIONS.find((option) => option.value === view)?.label ?? view;
-}
-
-function ViewMenu({ state }: { readonly state: CalendarState }): ReactNode {
-  const items = state.views.map((view) => ({
-    label: viewLabelOf(view),
-    selected: view === state.view,
-    onPress: (): void => {
-      state.setView(view);
-    },
-  }));
-  const { ref, open, menu } = useAnchoredMenu(items, 'Calendar view');
-  return (
-    <View ref={ref} collapsable={false}>
-      <FilterChip
-        label="Calendar view"
-        value={viewLabelOf(state.view)}
-        active={false}
-        affordance="menu"
-        onPress={open}
-      />
-      {menu}
-    </View>
-  );
-}
-
-function DateNav({ state }: { readonly state: CalendarState }): ReactNode {
-  return (
-    <View className="flex-row items-center gap-1">
-      <IconButton icon="chevronLeft" label="Previous" onPress={state.previous} />
-      <Button label="Today" variant="outlined" onPress={state.toToday} />
-      <IconButton icon="chevronRight" label="Next" onPress={state.next} />
-    </View>
-  );
-}
-
-const SEGMENTED_ROW = { pointer: 680, touch: 840 } as const;
-
-function Toolbar({ state }: { readonly state: CalendarState }): ReactNode {
-  const idiom = useIdiom();
-  const { width, onLayout } = useMeasuredWidth(undefined, useFrameBodyWidth());
-  const segmented = width >= SEGMENTED_ROW[idiom];
-  return (
-    <View
-      onLayout={onLayout}
-      className="min-w-0 flex-1 flex-row items-center justify-between gap-2"
-    >
-      {segmented ? (
-        <Segmented
-          label="Calendar view"
-          options={state.views.map((view) => ({ value: view, label: viewLabelOf(view) }))}
-          value={state.view}
-          onChange={state.setView}
-        />
-      ) : (
-        <ViewMenu state={state} />
-      )}
-      <DateNav state={state} />
-    </View>
-  );
-}
-
 function menuOf(openSheet: () => void): readonly MenuItem[] {
   return [{ id: 'calendars', label: 'Calendars', icon: 'eye', onPress: openSheet }];
 }
@@ -211,6 +130,7 @@ interface BodyProps {
   readonly range: UseQueryResult<PlannerRange>;
   readonly days: readonly string[];
   readonly query: string;
+  readonly held: SlotRange | null;
   readonly onCompose: (day: string, gap: MinuteSpan) => void;
 }
 
@@ -221,6 +141,7 @@ function ViewBody({
   range,
   days,
   query,
+  held,
   onCompose,
 }: BodyProps): ReactNode {
   const { view, day } = state;
@@ -235,7 +156,7 @@ function ViewBody({
       <QueryBody query={range}>
         {(data) => (
           <TimeContent
-            input={{ days, range: data, prefs, calendars, onCompose }}
+            input={{ days, range: data, prefs, calendars, held, onCompose }}
             previous={PREVIOUS[view]}
             side={view === 'day'}
           />
@@ -297,7 +218,12 @@ interface CalendarData {
   readonly time: boolean;
 }
 
-function useCalendarData(state: CalendarState, prefs: Prefs): CalendarData {
+function subtitleOf(state: CalendarState, weekStart: number, compact: boolean): string {
+  if (compact && state.view === 'agenda') return dayLabelOf(state.day, true);
+  return titleOf(state.view, state.day, weekStart);
+}
+
+function useCalendarData(state: CalendarState, prefs: Prefs, compact: boolean): CalendarData {
   const timeZone = useSettings().time_zone;
   const collections = usePlannerCalendars(usePlannerShownPerson());
   const calendars = shownCalendarsOf(collections);
@@ -305,8 +231,9 @@ function useCalendarData(state: CalendarState, prefs: Prefs): CalendarData {
   const time = isTimeView(state.view);
   const days = time ? windowDaysOf(state.view, state.day, weekStart) : [state.day];
   const range = useTimeRange(state, days, calendars);
-  const booked = time ? bookedLineOf(range.data, { collections, days, timeZone }) : null;
-  const subtitle = joinParts([titleOf(state.view, state.day, weekStart), booked]);
+  const booked =
+    time && !compact ? bookedLineOf(range.data, { collections, days, timeZone }) : null;
+  const subtitle = joinParts([subtitleOf(state, weekStart, compact), booked]);
   return { calendars, days, range, subtitle, time };
 }
 
@@ -330,19 +257,29 @@ function useCompactArea(): boolean {
 
 interface ComposerText {
   readonly text: string | null;
+  readonly held: SlotRange | null;
   readonly compose: (day: string, gap: MinuteSpan) => void;
   readonly close: () => void;
 }
 
+interface Composing {
+  readonly text: string;
+  readonly held: SlotRange;
+}
+
 function useComposerText(): ComposerText {
-  const [text, setText] = useState<string | null>(null);
+  const [composing, setComposing] = useState<Composing | null>(null);
   return {
-    text,
+    text: composing === null ? null : composing.text,
+    held: composing === null ? null : composing.held,
     compose: (day, gap): void => {
-      setText(eventTextOf(day, gap));
+      setComposing({
+        text: eventTextOf(day, gap),
+        held: { date: day, from: gap.from, to: gap.to },
+      });
     },
     close: (): void => {
-      setText(null);
+      setComposing(null);
     },
   };
 }
@@ -358,7 +295,7 @@ function CalendarFrame({
   const state = useCalendarState(prefs, compact);
   const composer = useComposerText();
   const [query, setQuery] = useState('');
-  const { calendars, days, range, subtitle, time } = useCalendarData(state, prefs);
+  const { calendars, days, range, subtitle, time } = useCalendarData(state, prefs, compact);
   const agenda = state.view === 'agenda';
   return (
     <PlannerFrame
@@ -378,6 +315,7 @@ function CalendarFrame({
         range={range}
         days={days}
         query={query}
+        held={composer.held}
         onCompose={composer.compose}
       />
       <CalendarsSheet
@@ -389,15 +327,6 @@ function CalendarFrame({
       />
       <CalendarComposer text={composer.text} onClose={composer.close} />
     </PlannerFrame>
-  );
-}
-
-function ToolbarPlaceholder(): ReactNode {
-  return (
-    <View aria-hidden className="min-w-0 flex-1 flex-row items-center justify-between gap-2">
-      <Skeleton shape="line" className="h-8 w-40" />
-      <Skeleton shape="line" className="h-8 w-36" />
-    </View>
   );
 }
 

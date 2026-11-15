@@ -4,6 +4,8 @@ import type {
   BackupHaveResult,
   BackupRegister,
   PhotoFolderCopies,
+  PhotoOrigins,
+  PhotoOriginsRequest,
   PhotoFolderCopiesRequest,
   PhotosBackupPref,
 } from '@smarteverything/domain';
@@ -78,6 +80,7 @@ export interface BackupHubPort {
   checkBackup(input: BackupCheck): Promise<BackupHaveResult>;
   resolveTarget(deviceId: string, takenAt: string): Promise<{ readonly folderId: string }>;
   folderCopies(input: PhotoFolderCopiesRequest): Promise<PhotoFolderCopies>;
+  origins(input: PhotoOriginsRequest): Promise<PhotoOrigins>;
 }
 
 export interface SettingsPort {

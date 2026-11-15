@@ -58,6 +58,7 @@ export interface DriveFrameProps extends DriveHeaderProps {
 interface SectionDef {
   readonly id: DriveSection;
   readonly label: string;
+  readonly short?: string;
   readonly icon: IconName;
 }
 
@@ -81,7 +82,7 @@ export const DRIVE_SECTION_GROUPS: readonly GroupDef[] = [
   {
     title: 'Activity',
     sections: [
-      { id: 'notifications', label: 'Notifications', icon: 'bell' },
+      { id: 'notifications', label: 'Notifications', short: 'Inbox', icon: 'bell' },
       { id: 'activity', label: 'Activity', icon: 'activity' },
     ],
   },
@@ -200,6 +201,7 @@ export function driveSectionGroupsOf(rail: DriveRail): readonly RailGroup[] {
     entries: group.sections.map((def) => ({
       id: def.id,
       label: def.label,
+      short: def.short,
       icon: def.icon,
       missing: null,
       count: countTextOf(rail[def.id] ?? null),

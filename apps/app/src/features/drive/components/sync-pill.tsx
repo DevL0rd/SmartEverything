@@ -4,6 +4,7 @@ import type { DrivePlacement } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
+import { useStatusForm } from '../../../components/page-shell/shell-status';
 import { Text } from '../../../components/text';
 import { bytes, count } from '../../../format/number';
 import { plural } from '../../../format/text';
@@ -147,7 +148,20 @@ export function useDriveSyncSummary(): DriveSyncSummary | null {
 
 export function SyncPill(): ReactNode {
   const summary = useDriveSyncSummary();
+  const form = useStatusForm();
   if (summary === null) return null;
+  if (form === 'icon') {
+    return (
+      <Interactive
+        href={href.drivePage('computers')}
+        label={`${summary.line}, open Computers`}
+        className="size-touch-min items-center justify-center rounded-full"
+        layerClassName="rounded-full"
+      >
+        <Icon name={summary.icon} size={20} tone={summary.tone} />
+      </Interactive>
+    );
+  }
   return (
     <Interactive
       href={href.drivePage('computers')}

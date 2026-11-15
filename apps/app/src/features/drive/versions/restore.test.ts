@@ -44,8 +44,9 @@ const {
   RESTORED_MESSAGE,
   RESTORE_CONFIRM_TITLE,
   RESTORE_FAILED,
+  confirmRestore,
+  performRestore,
   restoreConfirmBody,
-  restoreVersion,
 } = await import('./restore');
 
 const WHEN = 'Yesterday 09:10';
@@ -65,7 +66,7 @@ const ITEM: DriveItem = documentFixture({
   integrity: 'ok',
 });
 
-describe('restoreVersion', () => {
+describe('restoring a version', () => {
   beforeEach(() => {
     seen.restored = [];
     seen.toasts = [];
@@ -75,7 +76,9 @@ describe('restoreVersion', () => {
   });
 
   it('asks first, then restores the version as a new one and says the old copy is kept', async () => {
-    await expect(restoreVersion(ITEM, VERSION_ID, WHEN)).resolves.toBe(true);
+    await expect(confirmRestore(ITEM, VERSION_ID, WHEN)).resolves.toBe(true);
+    expect(seen.restored).toEqual([]);
+    await expect(performRestore(ITEM, VERSION_ID)).resolves.toBe(true);
     expect(seen.asked).toEqual([
       { title: RESTORE_CONFIRM_TITLE, body: restoreConfirmBody(WHEN), confirmLabel: 'Restore' },
     ]);
@@ -88,14 +91,14 @@ describe('restoreVersion', () => {
 
   it('changes nothing when the restore is not confirmed', async () => {
     seen.accept = false;
-    await expect(restoreVersion(ITEM, VERSION_ID, WHEN)).resolves.toBe(false);
+    await expect(confirmRestore(ITEM, VERSION_ID, WHEN)).resolves.toBe(false);
     expect(seen.restored).toEqual([]);
     expect(seen.toasts).toEqual([]);
   });
 
   it('reports a failed restore as critical', async () => {
     seen.fail = true;
-    await expect(restoreVersion(ITEM, VERSION_ID, WHEN)).resolves.toBe(false);
+    await expect(performRestore(ITEM, VERSION_ID)).resolves.toBe(false);
     expect(seen.toasts).toEqual([
       { message: RESTORE_FAILED, error: new Error('hub said no'), tone: 'critical' },
     ]);

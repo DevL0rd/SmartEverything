@@ -6,6 +6,8 @@ import type {
   PhotoFolderCopies,
   PhotoFolderCopiesRequest,
   PhotoFolderOrigin,
+  PhotoOrigins,
+  PhotoOriginsRequest,
 } from '@smarteverything/domain';
 import type { UploadHandle, UploadOutcome } from '../../../drive';
 import type { Conditions, MediaAccess, MediaRow, MediaScope, MediaStat } from '../model/types';
@@ -202,6 +204,10 @@ export class FakeHub implements BackupHubPort {
 
   checkBackup(input: BackupCheck): Promise<BackupHaveResult> {
     this.folders.push(...input.assets.map((asset) => asset.folder));
+    for (const asset of input.assets) {
+      if (asset.folder !== null && this.held.has(asset.sha256))
+        this.known.set(ITEM_ID, asset.folder);
+    }
     return this.answer(input, 'backup');
   }
 
@@ -229,6 +235,16 @@ export class FakeHub implements BackupHubPort {
   folderCopies(input: PhotoFolderCopiesRequest): Promise<PhotoFolderCopies> {
     this.copyAsks.push(input);
     return Promise.resolve(this.copies);
+  }
+
+  readonly known = new Map<string, PhotoFolderOrigin>();
+  readonly originAsks: PhotoOriginsRequest[] = [];
+
+  origins(input: PhotoOriginsRequest): Promise<PhotoOrigins> {
+    this.originAsks.push(input);
+    return Promise.resolve({
+      origins: input.itemIds.map((itemId) => ({ itemId, folder: this.known.get(itemId) ?? null })),
+    });
   }
 }
 

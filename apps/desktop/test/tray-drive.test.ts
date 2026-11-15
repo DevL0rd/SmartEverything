@@ -12,6 +12,7 @@ import { traySyncOf } from '../src/tray-status.js';
 
 const shared = vi.hoisted(() => ({
   menu: new Array<MenuItemConstructorOptions>(),
+  menus: 0,
   stop: vi.fn(),
   destroy: vi.fn(),
 }));
@@ -49,6 +50,7 @@ vi.mock('../src/tray-icon.js', () => ({
       setToolTip: vi.fn(),
       setContextMenu: (menu: MenuItemConstructorOptions[]): void => {
         shared.menu = menu;
+        shared.menus += 1;
       },
       destroy: shared.destroy,
     },
@@ -88,6 +90,7 @@ function click(label: string): void {
 
 beforeEach(() => {
   shared.menu = [];
+  shared.menus = 0;
   shared.stop.mockReset();
   shared.destroy.mockReset();
 });
@@ -218,6 +221,19 @@ describe('drive tray link to the Computer service', () => {
       [{ kind: 'sync-resume' }],
       [{ kind: 'again' }],
     ]);
+  });
+
+  it('rebuilds the tray menu only when what the tray shows changes', () => {
+    const { link, emit } = client(controlState());
+    const tray = createTray(options({ sync: vi.fn(), mount: vi.fn() }));
+    link.follow(driveOf(tray));
+    const built = shared.menus;
+    emit(controlState({ cache: { ...DEFAULT_DESKTOP_DRIVE_CACHE } }));
+    emit(controlState({ fuse: { available: true } }));
+    expect(shared.menus).toBe(built);
+    emit(controlState({ sync: { ...SYNC, pendingOps: 1 } }));
+    expect(shared.menus).toBe(built + 1);
+    expect(labels()).toContain('Drive sync: Syncing');
   });
 
   it('publishes the service state and clears it when the service goes away', () => {

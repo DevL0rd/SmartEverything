@@ -44,6 +44,7 @@ function SubPageRow({ page }: { readonly page: SettingsPageDefinition }): ReactN
       title={page.title}
       icon={page.icon}
       href={pageHref(page)}
+      wrapSubtitle
       {...(page.subtitle === undefined ? {} : { subtitle: page.subtitle })}
       {...(summary === null ? {} : { value: summary })}
     />

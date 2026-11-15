@@ -205,13 +205,14 @@ describe('comparePicksOf', () => {
 });
 
 describe('copyWellsOf', () => {
-  it('shows each copy with its maker, time and size', () => {
+  it('shows each copy with who made it, its time and size', () => {
     expect(
       copyWellsOf({
         conflict: conflict(),
         sides: SIDES,
         item: { rev: 4, modifiedAt: '2026-11-07T12:41:00.000Z', bytes: 88_000 },
         copy: { modifiedAt: '2026-11-07T12:44:00.000Z', bytes: 91_000 },
+        copyMaker: 'Sam',
         versions: HISTORY,
         time: TIME,
       }),
@@ -223,27 +224,32 @@ describe('copyWellsOf', () => {
       },
       {
         title: 'Laptop version',
-        name: 'Laptop',
+        name: 'Sam',
         detail: at('Today', '2026-11-07T12:44:00.000Z', 91_000),
       },
     ]);
   });
 
-  it('calls the hub copy the hub when the same computer made both copies', () => {
+  it('leaves the maker out when it would only repeat the title', () => {
     const [hub, client] = copyWellsOf({
       conflict: conflict(),
       sides: { hub: 'Laptop', client: 'Laptop' },
       item: { rev: 4, modifiedAt: '2026-11-07T12:41:00.000Z', bytes: 88_000 },
       copy: { modifiedAt: '2026-11-07T12:44:00.000Z', bytes: 91_000 },
+      copyMaker: null,
       versions: HISTORY,
       time: TIME,
     });
     expect(hub).toEqual({
       title: 'Hub version',
-      name: 'The hub',
+      name: '',
       detail: at('Today', '2026-11-07T12:41:00.000Z', 88_000),
     });
-    expect(client.name).toBe('Laptop');
+    expect(client).toEqual({
+      title: 'Laptop version',
+      name: '',
+      detail: at('Today', '2026-11-07T12:44:00.000Z', 91_000),
+    });
   });
 
   it('reads the hub copy from Versions once a newer write replaced it', () => {
@@ -252,6 +258,7 @@ describe('copyWellsOf', () => {
       sides: SIDES,
       item: { rev: 5, modifiedAt: '2026-11-07T14:30:00.000Z', bytes: 99_000 },
       copy: null,
+      copyMaker: null,
       versions: HISTORY,
       time: TIME,
     });

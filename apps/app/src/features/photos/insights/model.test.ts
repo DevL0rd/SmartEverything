@@ -91,7 +91,7 @@ describe('Insights stat tiles', () => {
       'Favourites',
       'Backed up',
     ]);
-    expect(items[0]?.caption).toBe('85 photos · 15 videos');
+    expect(items[0]?.caption).toBe('70 photos');
     expect(items[2]?.value).toBe('11 h 40');
     expect(items[3]?.caption).toBe('1 country');
     expect(items[4]).toMatchObject({ value: '2.5\u00a0%', caption: '10 photos' });

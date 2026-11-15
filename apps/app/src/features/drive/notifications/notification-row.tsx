@@ -19,7 +19,6 @@ import {
   sentencePartsOf,
   type NotificationContext,
   type RowAction,
-  type SentenceItem,
 } from './notification-model';
 
 export interface NotificationRowProps {
@@ -87,25 +86,23 @@ function Action({
   return null;
 }
 
-function ItemPart({
-  item,
+function PendingSentence({
+  before,
+  after,
   variant,
 }: {
-  readonly item: SentenceItem;
+  readonly before: string;
+  readonly after: string;
   readonly variant: TextVariant;
 }): ReactNode {
-  if (item.kind === 'none') return null;
-  if (item.kind === 'pending') {
-    return (
+  return (
+    <View aria-hidden className="flex-row flex-wrap items-center gap-x-1">
+      {before === '' ? null : <Text variant={variant}>{before}</Text>}
       <View className="h-6 justify-center">
         <Skeleton shape="text" className="w-28" />
       </View>
-    );
-  }
-  return (
-    <Text variant={variant} ellipsize="middle" className="shrink">
-      {item.name}
-    </Text>
+      {after === '' ? null : <Text variant={variant}>{after}</Text>}
+    </View>
   );
 }
 
@@ -118,14 +115,17 @@ function Sentence({
 }): ReactNode {
   const variant = row.readAt === null ? 'body-strong' : 'body';
   const parts = sentencePartsOf(row, context);
-  const before = parts.before.trim();
-  const after = parts.after.trim();
+  if (parts.item.kind === 'pending') {
+    return (
+      <PendingSentence before={parts.before.trim()} after={parts.after.trim()} variant={variant} />
+    );
+  }
   return (
-    <View aria-hidden className="flex-row flex-wrap items-center gap-x-1">
-      {before === '' ? null : <Text variant={variant}>{before}</Text>}
-      <ItemPart item={parts.item} variant={variant} />
-      {after === '' ? null : <Text variant={variant}>{after}</Text>}
-    </View>
+    <Text aria-hidden variant={variant} numberOfLines={3}>
+      {parts.before}
+      {parts.item.kind === 'none' ? null : <Text variant={variant}>{parts.item.name}</Text>}
+      {parts.after}
+    </Text>
   );
 }
 
@@ -174,21 +174,23 @@ export function NotificationRow({
   const unread = row.readAt === null ? 'Unread. ' : '';
   const place = location === null ? '' : `, in ${location}`;
   return (
-    <View className="gap-2 px-card-pad py-3">
+    <View>
       <Interactive
         role="button"
         label={`${unread}${sentence}${place}, ${relative(row.updatedAt, now)}`}
         onPress={() => {
           onOpen(row, item);
         }}
-        className="flex-row items-start gap-3 rounded-md"
+        className="flex-row items-start gap-3 px-card-pad py-3"
       >
         <Leading row={row} actor={actor} />
         <Summary row={row} context={context} location={location} now={now} />
       </Interactive>
       {action.kind === 'none' ? null : (
-        <View className="pl-11">
-          <Action action={action} context={context} />
+        <View className="-mt-1 px-card-pad pb-3">
+          <View className="pl-11">
+            <Action action={action} context={context} />
+          </View>
         </View>
       )}
     </View>

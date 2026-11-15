@@ -6,6 +6,7 @@ import { freshRows, identityOf, lastModified, removedIds, unknownIds } from '../
 import { patchBackupStatus } from '../model/status';
 import type { MediaRow, MediaScope, MediaStat } from '../model/types';
 import { saveLedger } from './ledger-store';
+import { reportMissingOrigins } from './origin-backfill';
 import { loadLocalTrash, trashedTimes } from './local-trash-store';
 import type { BackupPorts } from './ports';
 import { uploadItem, type HashedItem } from './upload-item';
@@ -74,6 +75,8 @@ export class BackupCycle {
     this.trashed = trashedTimes(await loadLocalTrash(this.ports.storage));
     this.ledger.forget(removedIds(present, this.ledger));
     await this.reconcileIdentities();
+    if (this.interrupted()) return 'interrupted';
+    await reportMissingOrigins(this.ports, this.ledger, present, this.signal);
     if (this.interrupted()) return 'interrupted';
     const from = this.ledger.lastSeen;
     let plan = await this.scan(from);

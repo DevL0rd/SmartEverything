@@ -2,6 +2,8 @@ import { act, createElement, Fragment, useEffect, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@smarteverything/logging';
+import { BufferGeometry } from 'three';
+import { acquireGeometry, releaseGeometry } from '../../models/three/shared-geometry';
 import type { QualityConfig } from './quality-scaler';
 import { createVisibilityRegistry, type VisibilityRegistry } from './registry';
 import type { StageLiveProps, StageStillState } from './stage-host';
@@ -54,6 +56,24 @@ vi.mock('../../../design/visibility', () => ({
 }));
 
 const { StageHost } = await import('./stage-host');
+
+const built: BufferGeometry[] = [];
+
+function GeometryDom({ id, props }: { readonly id: string; readonly props: StageLiveProps }): null {
+  probe.live.set(id, props);
+  useEffect(() => {
+    acquireGeometry(`stage-host-test|${id}`, () => {
+      const made = new BufferGeometry();
+      built.push(made);
+      return made;
+    });
+    return (): void => {
+      probe.live.delete(id);
+      releaseGeometry(`stage-host-test|${id}`);
+    };
+  }, [id]);
+  return null;
+}
 
 function bump(counts: Map<string, number>, id: string): void {
   counts.set(id, (counts.get(id) ?? 0) + 1);
@@ -140,6 +160,7 @@ afterEach(() => {
   probe.live.clear();
   probe.stills.clear();
   probe.unavailable.clear();
+  built.length = 0;
   vi.restoreAllMocks();
 });
 
@@ -232,5 +253,30 @@ describe('stage host', () => {
     expect(probe.live.has('hero')).toBe(false);
     expect(probe.mounts.get('hero')).toBe(1);
     expect(info.mock.calls.filter(([event]) => event === 'stage.unavailable')).toHaveLength(1);
+  });
+
+  it('keeps the live layer geometry for its return and frees it when the stage goes away', () => {
+    const registry = createVisibilityRegistry();
+    const geometry = (): ReactNode =>
+      createElement(StageHost, {
+        id: 'hero',
+        registry,
+        still: null,
+        renderLive: (props: StageLiveProps) => createElement(GeometryDom, { id: 'hero', props }),
+      });
+    render([geometry()]);
+    const [first] = built;
+    const disposed = vi.fn();
+    first?.addEventListener('dispose', disposed);
+    probe.visible = false;
+    render([geometry()]);
+    expect(disposed).toHaveBeenCalledTimes(1);
+    probe.visible = true;
+    render([geometry()]);
+    expect(built).toEqual([first]);
+    render([]);
+    render([geometry()]);
+    expect(built).toHaveLength(2);
+    expect(built[1]).not.toBe(first);
   });
 });

@@ -4,6 +4,7 @@ import type { DriveConflict } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
+import { ErrorState } from '../../../components/error-state';
 import { plural } from '../../../format/text';
 import { flattenPages, useDriveConflicts } from '../data';
 import { ConflictCompare } from '../conflicts/conflict-compare';
@@ -43,10 +44,31 @@ function ShowMore({
   );
 }
 
+export const CONFLICTS_UNREAD = 'Conflicts could not be read';
+
+function ConflictsFailed({
+  pages,
+}: {
+  readonly pages: ReturnType<typeof useDriveConflicts>;
+}): ReactNode {
+  return (
+    <Card title="Conflicts" icon="warning" tone="attention">
+      <ErrorState
+        error={pages.error}
+        title={CONFLICTS_UNREAD}
+        retry={() => {
+          background(pages.refetch(), 'drive.sync.conflicts_refetch_failed');
+        }}
+      />
+    </Card>
+  );
+}
+
 export function ConflictsCard(): ReactNode {
   const pages = useDriveConflicts(null);
   const conflicts = openConflictsOf(flattenPages(pages.data, (page) => page.items));
   const [choice, setChoice] = useState<Choice>(CLOSED);
+  if (pages.isError && conflicts.length === 0) return <ConflictsFailed pages={pages} />;
   if (conflicts.length === 0) return null;
   const close = (): void => {
     setChoice(CLOSED);

@@ -7,14 +7,18 @@ import { ROOT_ID } from '../data/fixtures';
 interface Seen {
   conflicts: readonly DriveConflict[];
   more: boolean;
+  failed: boolean;
 }
 
-const seen = vi.hoisted((): Seen => ({ conflicts: [], more: false }));
+const seen = vi.hoisted((): Seen => ({ conflicts: [], more: false, failed: false }));
 
 vi.mock('../data', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   useDriveConflicts: (): unknown => ({
-    data: { pages: [{ items: seen.conflicts }], pageParams: [null] },
+    data: seen.failed ? undefined : { pages: [{ items: seen.conflicts }], pageParams: [null] },
+    isError: seen.failed,
+    error: seen.failed ? new Error('hub said no') : null,
+    refetch: (): Promise<void> => Promise.resolve(),
     hasNextPage: seen.more,
     isFetchingNextPage: false,
     fetchNextPage: (): Promise<void> => Promise.resolve(),
@@ -32,6 +36,10 @@ vi.mock('../conflicts/conflict-compare', () => ({ ConflictCompare: (): null => n
 vi.mock('../../../components/button', () => ({
   Button: ({ label }: { readonly label: string }): ReactNode => createElement('button', {}, label),
 }));
+vi.mock('../../../components/error-state', () => ({
+  ErrorState: ({ title }: { readonly title: string }): ReactNode =>
+    createElement('p', { role: 'alert' }, title),
+}));
 vi.mock('../../../components/card', () => ({
   Card: ({
     title,
@@ -42,7 +50,7 @@ vi.mock('../../../components/card', () => ({
   }): ReactNode => createElement('article', {}, createElement('h2', {}, title), children),
 }));
 
-const { ConflictsCard, conflictsTitleOf } = await import('./conflicts-card');
+const { CONFLICTS_UNREAD, ConflictsCard, conflictsTitleOf } = await import('./conflicts-card');
 
 function conflict(index: number, relPath: string, resolvedAt: string | null = null): DriveConflict {
   return DRIVE_CONFLICT.parse({
@@ -69,12 +77,18 @@ function render(): string {
 beforeEach(() => {
   seen.conflicts = [];
   seen.more = false;
+  seen.failed = false;
 });
 
 describe('ConflictsCard', () => {
   it('is absent when nothing is in conflict', () => {
     seen.conflicts = [conflict(1, 'Budget.xlsx', '2026-11-07T11:00:00.000Z')];
     expect(render()).toBe('');
+  });
+
+  it('says so when the conflicts could not be read', () => {
+    seen.failed = true;
+    expect(render()).toContain(`<p role="alert">${CONFLICTS_UNREAD}</p>`);
   });
 
   it('lists each open conflict with the edit beats delete row', () => {

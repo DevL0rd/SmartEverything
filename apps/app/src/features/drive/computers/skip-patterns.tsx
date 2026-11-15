@@ -6,6 +6,7 @@ import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
+import { isNative } from '../../../design/platform';
 import { plural } from '../../../format/text';
 
 export const SKIP_TITLE = 'Skip these';
@@ -55,6 +56,13 @@ export function withPattern(patterns: readonly string[], text: string): readonly
 
 export function withoutPattern(patterns: readonly string[], pattern: string): readonly string[] {
   return patterns.filter((one) => one !== pattern);
+}
+
+function revealField(node: View | null): void {
+  if (isNative()) return;
+  const element: unknown = node;
+  if (element instanceof HTMLElement)
+    element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 export const NOTHING_SKIPPED = 'Nothing is skipped';
@@ -113,7 +121,7 @@ function AddPatternField({
     if (problem === null) onAdd(text);
   };
   return (
-    <View className="gap-2 px-4 py-3">
+    <View ref={revealField} className="gap-2 px-4 py-3">
       <TextField
         label="New pattern"
         kind="code"

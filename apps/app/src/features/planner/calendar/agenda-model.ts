@@ -22,6 +22,7 @@ export interface AgendaEntry {
   readonly time: string;
   readonly range: string;
   readonly detail: string;
+  readonly note: string;
   readonly calendar: string | null;
   readonly colour: PlannerColourKey | null;
   readonly google: boolean;
@@ -84,6 +85,7 @@ export function agendaEntryOf(
     until === null ? null : `until ${until}`,
     view.location,
   ]);
+  const note = joinParts([view.kind === 'task' ? 'task' : null, view.location]);
   const google = view.google_state !== null;
   return {
     key: `${view.item_id}:${view.occurrence_key}`,
@@ -91,6 +93,7 @@ export function agendaEntryOf(
     time,
     range: until === null ? time : `${time} to ${until}`,
     detail,
+    note,
     calendar,
     colour: collection?.colour ?? null,
     google,

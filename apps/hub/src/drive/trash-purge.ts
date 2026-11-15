@@ -24,8 +24,15 @@ import {
 } from './intents';
 import { linkDraft, NO_IDENTITY, specialDraft } from './posix/drafts';
 import type { DriveItemDraft } from '../store/repositories/drive-items';
-import type { StashedRoot } from '../store/repositories/drive-trash-rows';
-import { moveToTrash, removeTrashEntry, restoreFromTrash } from './trash';
+import type { StashedRoot, StashedRow } from '../store/repositories/drive-trash-rows';
+import {
+  moveManyToTrash,
+  moveToTrash,
+  removeTrashEntry,
+  restoreFromTrash,
+  type TrashMove,
+  type TrashRequest,
+} from './trash';
 import { purgeVersions } from './versions';
 
 export interface StagedTrash {
@@ -33,15 +40,9 @@ export interface StagedTrash {
   readonly undo: () => Promise<void>;
 }
 
-export async function stageTrash(
-  env: ChangeEnv,
-  root: DriveWriteRoot,
-  itemId: string,
-  actor: ChangeActor,
-): Promise<StagedTrash> {
-  const item = env.store.driveItems.byId(itemId, null);
-  const move = await moveToTrash(env, root, {
-    itemId,
+function trashRequestOf(item: DriveItem, actor: ChangeActor): TrashRequest {
+  return {
+    itemId: item.id,
     relPath: item.relPath,
     name: item.name,
     isFolder: item.kind === 'folder',
@@ -49,7 +50,16 @@ export async function stageTrash(
     bytes: item.bytes,
     deletedBy: actor.actorProfileId,
     addedByProfileId: item.addedByProfileId,
-  });
+  };
+}
+
+function stagedOf(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  staging: { readonly item: DriveItem; readonly move: TrashMove; readonly actor: ChangeActor },
+): StagedTrash {
+  const { item, move, actor } = staging;
+  const itemId = item.id;
   return {
     record: (): void => {
       env.store.driveTrash.insert(move.entry);
@@ -68,6 +78,55 @@ export async function stageTrash(
       await abandonIntent(env, root, move.intent);
     },
   };
+}
+
+export async function stageTrash(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  itemId: string,
+  actor: ChangeActor,
+): Promise<StagedTrash> {
+  const item = env.store.driveItems.byId(itemId, null);
+  const move = await moveToTrash(env, root, trashRequestOf(item, actor));
+  return stagedOf(env, root, { item, move, actor });
+}
+
+export interface TrashedBatch {
+  readonly itemId: string;
+  readonly failure: Error | null;
+}
+
+export async function commitTrashes(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  itemIds: readonly string[],
+  actor: ChangeActor,
+): Promise<TrashedBatch[]> {
+  const items = itemIds.map((id) => env.store.driveItems.byId(id, null));
+  const moved = await moveManyToTrash(
+    env,
+    root,
+    items.map((item) => trashRequestOf(item, actor)),
+  );
+  const staged: { itemId: string; trash: StagedTrash }[] = [];
+  for (const [index, result] of moved.entries()) {
+    const item = items[index];
+    if (item !== undefined && result.move !== null) {
+      staged.push({
+        itemId: item.id,
+        trash: stagedOf(env, root, { item, move: result.move, actor }),
+      });
+    }
+  }
+  try {
+    env.store.write(() => {
+      for (const { trash } of staged) trash.record();
+    });
+  } catch (cause) {
+    for (const { trash } of staged) await trash.undo();
+    throw cause;
+  }
+  return moved.map((result) => ({ itemId: result.itemId, failure: result.failure }));
 }
 
 export async function commitTrash(
@@ -127,6 +186,28 @@ function restoredBase(env: ChangeEnv, root: DriveWriteRoot, input: RestoreInput)
   };
 }
 
+function dropScanRows(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  restored: { readonly rows: readonly StashedRow[]; readonly itemId: string; readonly to: string },
+): void {
+  const items = restored.rows.filter((row) => row.table === 'drive_items');
+  const top = items.find((row) => row.values['id'] === restored.itemId)?.values['rel_path'];
+  const paths = [restored.to];
+  if (typeof top === 'string') {
+    for (const row of items) {
+      const path = row.values['rel_path'];
+      if (row.values['id'] !== restored.itemId && typeof path === 'string') {
+        paths.push(path.startsWith(`${top}/`) ? `${restored.to}${path.slice(top.length)}` : path);
+      }
+    }
+  }
+  for (const path of paths) {
+    const indexed = env.store.driveItems.byPath(root.id, path, null);
+    if (indexed !== undefined) env.store.driveItems.remove(indexed.id);
+  }
+}
+
 function reinstateItem(
   env: ChangeEnv,
   root: DriveWriteRoot,
@@ -135,6 +216,7 @@ function reinstateItem(
 ): DriveItem {
   const { entry, stashed, stamp, relPath, intent } = input;
   const rows = env.store.driveTrash.stashed(entry.itemId);
+  dropScanRows(env, root, { rows, itemId: entry.itemId, to: relPath });
   env.store.driveTrash.remove(entry.itemId);
   env.store.driveTrash.reinstateInodes(rows);
   const base = restoredBase(env, root, input);
@@ -165,7 +247,13 @@ export async function commitRestore(
     throw new DriveWriteError('missing', 'The restored item is missing after the move.');
   }
   const input = { entry, stashed, stamp, relPath: restored.relPath, intent: restored.intent };
-  const item = env.store.write(() => reinstateItem(env, root, input, actor));
+  let item: DriveItem;
+  try {
+    item = env.store.write(() => reinstateItem(env, root, input, actor));
+  } catch (cause) {
+    if (restored.intent !== null) await abandonIntent(env, root, restored.intent);
+    throw cause;
+  }
   env.purge.rearm();
   return { item, rescan: entry.isFolder };
 }

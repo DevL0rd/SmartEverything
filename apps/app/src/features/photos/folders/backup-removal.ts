@@ -1,13 +1,13 @@
 import type { DriveChangeResult } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { changeDrive } from '../../../api/drive';
-import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
+import { choose, type ChoiceRequest, type ConfirmOutcome } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
 import { bytes, count } from '../../../format/number';
 import { backupHandle } from '../backup/handle';
 import type { FolderCopies } from '../backup/runner/folder-copies';
 import type { LocalPlace } from '../backup/runner/local-copies';
-import { planOf, removalConfirm, type RemovalPlan } from './backup-removal-model';
+import { planOf, removalConfirm, subjectOf, type RemovalPlan } from './backup-removal-model';
 
 const log = new Logger('app.photos');
 
@@ -19,7 +19,7 @@ export interface FoundCopies {
 
 export interface RemovalDeps {
   readonly copies: (backupIds: readonly string[]) => Promise<FoundCopies | null>;
-  readonly confirm: (request: ConfirmRequest) => Promise<boolean>;
+  readonly choose: (request: ChoiceRequest) => Promise<ConfirmOutcome>;
   readonly trash: (itemIds: readonly string[]) => Promise<DriveChangeResult>;
 }
 
@@ -28,10 +28,6 @@ export const LIVE_REMOVAL: RemovalDeps = {
     const handle = backupHandle.get();
     if (handle === null) {
       log.warn('photos.folders.backup_stop_without_runner', { folders: backupIds.length });
-      notify({
-        message: 'Backup is not running on this device',
-        detail: 'Copies already on the Hub stay there.',
-      });
       return null;
     }
     const { runner } = handle;
@@ -41,7 +37,7 @@ export const LIVE_REMOVAL: RemovalDeps = {
       forget: (localIds) => runner.forgetFolderCopies(localIds),
     };
   },
-  confirm,
+  choose,
   trash: (itemIds) => changeDrive({ action: 'trash', itemIds }),
 };
 
@@ -71,15 +67,22 @@ async function removeCopies(
   if (removed.size > 0)
     notify({
       message: `Moved ${itemsText(removed.size)} to Recently deleted`,
-      detail: `This frees ${bytes(freed)} on the Hub. They can be restored for a year.`,
+      detail: `This frees ${bytes(freed)} on the hub. They can be restored for a year.`,
     });
   const skipped = plan.itemIds.length - removed.size;
   if (skipped > 0)
     notify({
-      message: `${itemsText(skipped)} stayed on the Hub`,
+      message: `${itemsText(skipped)} stayed on the hub`,
       ...(result.failed[0] === undefined ? {} : { detail: result.failed[0].reason }),
       tone: 'critical',
     });
+}
+
+function notifyKept(names: readonly string[]): void {
+  notify({
+    message: `Stopped backing up ${subjectOf(names)}`,
+    detail: 'Copies already on the hub stay there.',
+  });
 }
 
 export async function stopFolderBackup(
@@ -88,17 +91,29 @@ export async function stopFolderBackup(
   apply: () => Promise<void>,
   deps: RemovalDeps = LIVE_REMOVAL,
 ): Promise<boolean> {
-  const found = backupIds.length === 0 ? null : await deps.copies(backupIds);
-  const plan = found === null ? null : planOf(found.copies);
-  if (found === null || plan === null || plan.itemIds.length === 0) {
+  if (backupIds.length === 0) {
     await apply();
     return true;
   }
-  if (!(await deps.confirm(removalConfirm(plan, names, found.place)))) {
-    log.info('photos.folders.backup_stop_cancelled', { items: plan.itemIds.length });
-    return false;
+  const found = await deps.copies(backupIds);
+  if (found === null) {
+    await apply();
+    notifyKept(names);
+    return true;
   }
+  const plan = planOf(found.copies);
+  if (plan.itemIds.length === 0) {
+    await apply();
+    return true;
+  }
+  const outcome = await deps.choose(removalConfirm(plan, names, found.place));
+  log.info('photos.folders.backup_stop_answered', { outcome, items: plan.itemIds.length });
+  if (outcome === 'cancel') return false;
   await apply();
+  if (outcome === 'alternate') {
+    notifyKept(names);
+    return true;
+  }
   await removeCopies(plan, found, deps);
   return true;
 }

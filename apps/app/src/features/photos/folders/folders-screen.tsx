@@ -145,6 +145,7 @@ export function FoldersScreen(): ReactNode {
             tone="info"
             title="Showing folders from the last sync"
             body="The hub is offline. Hiding and showing folders works again when it is back."
+            wrapBody
           />
         )
       }

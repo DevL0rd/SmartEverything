@@ -16,7 +16,6 @@ import { SwitchTrack } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
-import { useIsPhone } from '../../../design/size-class';
 import { count } from '../../../format/number';
 import { selectionTick } from '../../../platform/haptics';
 import {
@@ -36,6 +35,7 @@ import {
 } from './advanced-model';
 import type { TuningRowSpec } from './advanced-rows';
 import { NUMBER_LENGTH } from './page-sharing';
+import { useStackedValue, valueLinesOf } from './value-lines';
 
 type Readdir = (typeof DESKTOP_DRIVE_READDIR_PLUS)[number];
 
@@ -58,20 +58,6 @@ export interface TuningRowProps {
   readonly subtitle: string;
   readonly apply: (tuning: DesktopDriveTuning) => void;
   readonly save: (tuning: DesktopDriveTuning) => Promise<unknown>;
-}
-
-export interface ValueLines {
-  readonly subtitle: string;
-  readonly value?: string;
-  readonly caption?: string;
-}
-
-export function valueLinesOf(stacked: boolean, value: string, subtitle: string): ValueLines {
-  return stacked ? { subtitle: value, caption: subtitle } : { subtitle, value };
-}
-
-export function useStackedValue(): boolean {
-  return useIsPhone();
 }
 
 function useInset(): string {
@@ -170,6 +156,7 @@ function ReaddirTuningRow(props: TuningRowProps): ReactNode {
           props.subtitle,
         )}
         wrapSubtitle
+        wrapCaption
         chevron
         pressRef={opener}
         disabled={props.busy || props.notOnWindows}
@@ -250,6 +237,7 @@ function TextTuningRow(props: TuningRowProps): ReactNode {
           props.subtitle,
         )}
         wrapSubtitle
+        wrapCaption
         chevron
         pressRef={opener}
         disabled={props.busy || props.notOnWindows}

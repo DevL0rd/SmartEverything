@@ -25,6 +25,7 @@ import {
   hoursMinutes,
   zonedInstant,
 } from '../../../format/time';
+import { eventLegendOf, type StripLegendEntry } from './day-strip-legend';
 
 export type StripState = 'daylight' | 'sleep' | 'event' | PlannerColourKey;
 
@@ -52,10 +53,18 @@ export interface StripSun {
   readonly set: number;
 }
 
+export interface AlarmPin {
+  readonly at: number;
+  readonly count: number;
+  readonly label: string;
+}
+
 export interface DayStripModel {
   readonly from: number;
   readonly to: number;
+  readonly timeZone: string;
   readonly segments: readonly TimelineSegment<StripState>[];
+  readonly eventLegend: readonly StripLegendEntry[];
   readonly alarms: readonly number[];
   readonly marks: readonly StripMark[];
   readonly hours: readonly StripHour[];
@@ -194,7 +203,9 @@ export function dayStripOf(input: DayStripInput): DayStripModel {
   const events = blocksOf(input, 'event', window);
   const model = {
     ...window,
+    timeZone: input.day.time_zone,
     segments: [...daylightOf(sun, window), ...sleep, ...events],
+    eventLegend: eventLegendOf(input.day.strip, input.collections, window),
     alarms: alarmsOf(input.day, window),
     marks: marksOf(input.day, window),
     hours: hoursOf(input.day, window),
@@ -202,6 +213,33 @@ export function dayStripOf(input: DayStripInput): DayStripModel {
     sleepMinutes: Math.round(minutesIn(sleep)),
   };
   return { ...model, label: labelOf(model, events.length, input.day.time_zone) };
+}
+
+function pinOf(first: number, rest: readonly number[], timeZone: string): AlarmPin {
+  const last = rest.at(-1);
+  if (last === undefined) return { at: first, count: 1, label: `Alarm ${clock(first, timeZone)}` };
+  const count = rest.length + 1;
+  return {
+    at: first,
+    count,
+    label: `${String(count)} alarms ${clock(first, timeZone)} to ${clock(last, timeZone)}`,
+  };
+}
+
+export function alarmPinsOf(
+  model: Pick<DayStripModel, 'from' | 'to' | 'alarms' | 'timeZone'>,
+  width: number,
+  pinWidth: number,
+): readonly AlarmPin[] {
+  const span = Math.max(1, model.to - model.from);
+  const reach = width <= 0 ? 0 : (pinWidth / width) * span;
+  const groups: { readonly first: number; readonly rest: number[] }[] = [];
+  for (const at of [...model.alarms].sort((left, right) => left - right)) {
+    const group = groups.at(-1);
+    if (group !== undefined && at - group.first < reach) group.rest.push(at);
+    else groups.push({ first: at, rest: [] });
+  }
+  return groups.map((group) => pinOf(group.first, group.rest, model.timeZone));
 }
 
 export function nowIn(model: Pick<DayStripModel, 'from' | 'to'>, now: number): number | null {
@@ -230,7 +268,7 @@ export type TodayRingKey = 'tasks' | 'focus' | 'move';
 export interface TodayRing {
   readonly key: TodayRingKey;
   readonly label: string;
-  readonly progress: number;
+  readonly progress: number | null;
   readonly value: string;
   readonly brief: string;
   readonly colour: ColourRole;
@@ -268,8 +306,8 @@ function hoursText(minutes: number): string {
   return decimal(minutes / 60, minutes % 60 === 0 ? 0 : 1);
 }
 
-function share(value: number, goal: number | null): number {
-  return goal === null || goal === 0 ? 0 : value / goal;
+function share(value: number, goal: number | null): number | null {
+  return goal === null || goal === 0 ? null : value / goal;
 }
 
 export function todayRingsOf({ day, workingHours, move }: TodayRingsInput): readonly TodayRing[] {
@@ -291,14 +329,16 @@ export function todayRingsOf({ day, workingHours, move }: TodayRingsInput): read
       label: 'Focus',
       progress: share(booked, goal),
       value:
-        goal === null ? `${hoursText(booked)} h` : `${hoursText(booked)} / ${hoursText(goal)} h`,
+        goal === null
+          ? `${hoursText(booked)} h booked`
+          : `${hoursText(booked)} / ${hoursText(goal)} h`,
       brief: `${hoursText(booked)} h`,
       colour: 'viz-1',
     },
     {
       key: 'move',
       label: 'Move',
-      progress: move ?? 0,
+      progress: move,
       value: moved,
       brief: moved,
       colour: 'viz-4',

@@ -11,9 +11,11 @@ import { updateDriveSettings } from '../../../api/drive';
 import { Button } from '../../../components/button';
 import { ProgressBar } from '../../../components/charts/progress-bar';
 import { ListRow } from '../../../components/list-row';
+import { useStackedValue, valueLinesOf } from './value-lines';
 import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { usePausable } from '../../../design/external-store';
+import { useIsPhone } from '../../../design/size-class';
 import { count, percent } from '../../../format/number';
 import { driveKey } from '../../../queries/keys';
 import { useMutationState } from '../../../store/mutation';
@@ -198,18 +200,21 @@ function OcrLanguagesRow({ settings }: { readonly settings: DriveSettings }): Re
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const on = settings.contentIndexing;
+  const stacked = useStackedValue();
   return (
     <>
       <ListRow
         title="Languages for text in pictures"
         icon="globe"
-        subtitle={
+        {...valueLinesOf(
+          stacked,
+          ocrValueOf(settings.ocrLanguages),
           on
             ? 'A new language downloads once to the Hub'
-            : 'Turn on reading text inside files first'
-        }
+            : 'Turn on reading text inside files first',
+        )}
         wrapSubtitle
-        value={ocrValueOf(settings.ocrLanguages)}
+        wrapCaption
         chevron
         disabled={!on}
         pressRef={opener}
@@ -245,16 +250,15 @@ function WatcherRow({ state }: { readonly state: DriveWatcherState }): ReactNode
 }
 
 function ProgressRow({ line }: { readonly line: ProgressLine }): ReactNode {
+  const phone = useIsPhone();
+  const bar = <ProgressBar progress={line.share} colour="info" label={line.subtitle} />;
   return (
     <ListRow
       title={line.title}
       icon="hardDrive"
       subtitle={line.subtitle}
-      trailing={
-        <View className="w-24">
-          <ProgressBar progress={line.share} colour="info" label={line.subtitle} />
-        </View>
-      }
+      wrapSubtitle
+      {...(phone ? { below: bar } : { trailing: <View className="w-24">{bar}</View> })}
     />
   );
 }

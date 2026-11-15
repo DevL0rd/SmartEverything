@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector, type ComposedGesture } from 'react-native-gesture-handler';
 import Animated, {
@@ -175,6 +175,17 @@ function DraftBlock({
   );
 }
 
+function useHeldGhost(ghost: Ghost, held: MinuteSpan | null): void {
+  const { from, to } = ghost;
+  const heldFrom = held === null ? null : held.from;
+  const heldTo = held === null ? null : held.to;
+  useEffect(() => {
+    if (heldFrom === null || heldTo === null) return;
+    from.set(heldFrom);
+    to.set(heldTo);
+  }, [heldFrom, heldTo, from, to]);
+}
+
 export function SlotLayer(props: SlotLayerProps): ReactNode {
   const from = useSharedValue(props.draft?.from ?? 0);
   const to = useSharedValue(props.draft?.to ?? 0);
@@ -182,6 +193,7 @@ export function SlotLayer(props: SlotLayerProps): ReactNode {
   const [active, setActive] = useState(false);
   const gesture = useCreateGesture(props, ghost, setActive);
   const draft = props.draft?.date === props.date ? props.draft : null;
+  useHeldGhost(ghost, active ? null : draft);
   return (
     <GestureDetector gesture={gesture} touchAction={touchActionOf(props.touch)}>
       <View className="absolute inset-0">

@@ -13,7 +13,7 @@ import {
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { HUB_UNIT } from '@smarteverything/domain';
+import { HUB_UNIT, HUB_UPDATE_LEDGER, HUB_UPDATE_LEDGER_FILE } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { HubLayout } from '../../apps/hub/src/data-layout/index.ts';
@@ -318,6 +318,7 @@ describe('the release plan', () => {
       target,
       units: fakeUnits(calls),
       name: 'release18',
+      notes: 'Hub notes',
       built: join(scratch, 'built'),
       url,
       schema: null,
@@ -346,6 +347,7 @@ describe('the release plan', () => {
       target,
       units: fakeUnits(calls),
       name: 'release18',
+      notes: 'Hub notes',
       built,
       url,
       schema: 5,
@@ -383,6 +385,7 @@ describe('the release plan', () => {
       target,
       units: fakeUnits([]),
       name: 'release18',
+      notes: 'Hub notes',
       built: join(scratch, 'nothing-built'),
       url,
       schema: null,
@@ -481,6 +484,7 @@ describe('pruning after a release', () => {
       target,
       units: fakeUnits([]),
       name: 'release18',
+      notes: 'Hub notes',
       built,
       url,
       schema: 5,
@@ -493,6 +497,21 @@ describe('pruning after a release', () => {
     expect(readFileSync(join(data.backups.releases, 'release18-10', 'status'), 'utf8')).toBe(
       'verified',
     );
+    const ledger = HUB_UPDATE_LEDGER.parse(
+      JSON.parse(
+        readFileSync(join(data.system.updates.selfUpdate, HUB_UPDATE_LEDGER_FILE), 'utf8'),
+      ),
+    );
+    expect(ledger.releases.at(-1)).toMatchObject({
+      phase: 'done',
+      notes: 'Hub notes',
+      url,
+      backup: join(data.backups.releases, 'release18-10'),
+      installs: [target.install.directory],
+      failedChecks: [],
+      interrupted: false,
+    });
+    expect(ledger.releases.at(-1)?.finishedAt).not.toBeNull();
     await plan[6]?.run();
     expect(readdirSync(data.backups.releases)).toEqual([]);
     expect(existsSync(`${target.install.service}.old-release18`)).toBe(false);
@@ -520,6 +539,7 @@ describe('the hub unit on release', () => {
       },
       units: fakeUnits(calls),
       name: 'release18',
+      notes: 'Hub notes',
       built,
       url,
       schema: 5,
@@ -549,6 +569,7 @@ describe('the hub unit on release', () => {
       target,
       units: fakeUnits(calls),
       name: 'release18',
+      notes: 'Hub notes',
       built,
       url,
       schema: 5,
@@ -583,6 +604,7 @@ async function failedRelease(name: string, epoch: number): Promise<ReleaseAwaiti
     target,
     units: fakeUnits([]),
     name,
+    notes: 'Hub notes',
     built,
     url,
     schema: 5,
@@ -624,6 +646,7 @@ describe('a failed release', () => {
     database.exec("insert into schema_version values (5000, 'live write', 'now')");
     database.close();
     const failure = await failedRelease('release18', 1);
+    expect(existsSync(join(data.system.updates.selfUpdate, HUB_UPDATE_LEDGER_FILE))).toBe(false);
     expect(failure.rollback).not.toContain('--with-database');
     expect(schemaVersionOf(data.system.database.file)).toBe(5000);
     expect(existsSync(`${data.system.database.file}.rolled-back-1`)).toBe(false);
@@ -735,6 +758,7 @@ describe('same-schema Photos rollback', () => {
       target,
       units: fakeUnits([]),
       name: 'photos',
+      notes: 'Hub notes',
       built,
       url,
       schema: 201,
@@ -773,6 +797,7 @@ describe('same-schema Photos rollback', () => {
       transition: null,
       target,
       name: 'photos',
+      notes: 'Hub notes',
       built,
       url,
       schema: 201,
@@ -810,6 +835,7 @@ describe('same-schema Photos rollback', () => {
       target,
       units: fakeUnits(calls),
       name: 'photos',
+      notes: 'Hub notes',
       built,
       url,
       schema: 201,

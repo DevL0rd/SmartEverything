@@ -8,7 +8,8 @@ import { background, Logger, setBackgroundScope } from '@smarteverything/logging
 import { app, session, type BrowserWindow } from 'electron';
 import { startDesktopAgent } from './agent/desktop-agent.js';
 import { registerDeepLinkScheme } from './deep-link-scheme.js';
-import { currentCaptureMode, DisplayCapture, prepareScreenCapture } from './display-capture.js';
+import { prepareChromium } from './chromium-switches.js';
+import { DisplayCapture } from './display-capture.js';
 import { deepLinkInArguments } from './deep-link.js';
 import { DeepLinkInbox } from './deep-link-inbox.js';
 import { applyFirewall } from './firewall/apply.js';
@@ -404,8 +405,7 @@ function main(): void {
     return;
   }
   if (handleComputerPairingCommand(variant)) return;
-  const captureMode = currentCaptureMode();
-  prepareScreenCapture(captureMode);
+  const captureMode = prepareChromium(process.platform);
   if (app.requestSingleInstanceLock()) {
     log.debug('app.variant_read', { managedBy: variant.managedBy ?? 'self' });
     start(variant, new DisplayCapture(captureMode, variant.startUrl));

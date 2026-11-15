@@ -16,7 +16,7 @@ import type { ShellSections } from '../../../components/page-shell/shell-section
 import type { ShellAside } from '../../../components/page-shell/shell-types';
 import { useIdiom } from '../../../design/platform';
 import { useSizeClass } from '../../../design/size-class';
-import { longDate } from '../../../format/time';
+import { longDate, shortDate, weekdayShort } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useHubOffline } from '../../clock';
 import {
@@ -38,7 +38,7 @@ import { usePersonChoices, usePlannerShownPerson, type PersonChoice } from './pe
 import { PersonPicker } from './person-picker';
 import { plannerMenu } from './planner-menu';
 import { plannerSectionsOf } from './planner-sections';
-import { QuickAddBar, QuickAddComposer, ScrollAwayBar } from './quick-add-bar';
+import { QuickAddBar, QuickAddComposer } from './quick-add-bar';
 import { plannerComposerKindOf, useComposerControl, type ComposerControl } from './quick-add';
 import { plannerSubtitleOf, todaySummaryOf } from './rail-summary';
 import { usePlannerSearchKey, withPlannerSearch } from './search-key';
@@ -82,7 +82,7 @@ function OfflineBanner(): ReactNode {
     <Banner
       tone="info"
       title="Can’t reach the hub"
-      body="Changes wait for the hub. Alarms set on this phone still ring."
+      body="Changes wait for the hub. Alarms set on this device still ring."
       wrapBody
     />
   );
@@ -115,12 +115,17 @@ function refreshPropsOf(
   return shown ? { onRefresh: refresh.onRefresh, refreshing: refresh.refreshing } : {};
 }
 
+function dateOf(now: number, phone: boolean): string {
+  return phone ? `${weekdayShort(now)} ${shortDate(now)}` : longDate(new Date(now));
+}
+
 function useSubtitle(
   section: PlannerSection,
   subtitle: string | undefined,
   counted: boolean,
+  phone: boolean,
 ): string {
-  const date = useMinuteOf((now) => longDate(new Date(now)));
+  const date = useMinuteOf((now) => dateOf(now, phone));
   const summary = usePlannerSummary(usePlannerShownPerson());
   if (subtitle !== undefined) return subtitle;
   return plannerSubtitleOf(date, section === 'index' && counted ? todaySummaryOf(summary) : null);
@@ -136,7 +141,7 @@ function useFrameValue(section: PlannerSection, composer: ComposerControl): Plan
       offline,
       focusQuickAdd: (seed: QuickAddSeed = {}): void => {
         open({
-          text: seed.due === undefined ? '' : `${seed.due} `,
+          text: `${seed.due === undefined ? '' : `${seed.due} `}${seed.text ?? ''}`,
           kind: plannerComposerKindOf(section),
           ...(seed.collectionId === undefined ? {} : { collectionId: seed.collectionId }),
         });
@@ -241,17 +246,13 @@ function PlannerQuickAdd({
   );
 }
 
-function PlannerFooter({
-  section,
-  frame,
-  phone,
-}: {
-  readonly section: PlannerSection;
-  readonly frame: PlannerFrameValue;
-  readonly phone: boolean;
-}): ReactNode {
-  const quickAdd = <PlannerQuickAdd section={section} frame={frame} phone={phone} />;
-  return phone ? <ScrollAwayBar>{quickAdd}</ScrollAwayBar> : quickAdd;
+function footerOf(
+  section: PlannerSection,
+  frame: PlannerFrameValue,
+  phone: boolean,
+): { readonly footer: ReactNode; readonly footerHides?: 'scroll' } {
+  const footer = <PlannerQuickAdd section={section} frame={frame} phone={phone} />;
+  return phone ? { footer, footerHides: 'scroll' } : { footer };
 }
 
 export function PlannerFrame({
@@ -279,7 +280,7 @@ export function PlannerFrame({
       {dockable ? <PanelHost /> : null}
       <PageShell
         title={top.title}
-        subtitle={useSubtitle(section, subtitle, summary)}
+        subtitle={useSubtitle(section, subtitle, summary, phone)}
         back={false}
         actions={top.actions}
         overflow={top.overflow}
@@ -287,7 +288,7 @@ export function PlannerFrame({
         sections={sectionsOf(section, fit, aside.open)}
         scroll={scroll}
         {...refreshPropsOf(refresh, menu === undefined || phone)}
-        footer={<PlannerFooter section={section} frame={frame} phone={phone} />}
+        {...footerOf(section, frame, phone)}
         {...(dockable ? { aside } : {})}
         {...(top.toolbar === undefined ? {} : { toolbar: top.toolbar })}
         {...(search === undefined ? {} : { search })}

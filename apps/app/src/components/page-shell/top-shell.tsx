@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
 import Animated, { interpolate, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { TabsBar } from '../tabs-bar';
-import { BarInline, BarTrailing, OpenSearch, useBarSearch } from './bar-search';
+import { BarInline, BarTrailing, OpenSearch, useBarSearch, type BarSearch } from './bar-search';
 import { barLeadOf, type ShellColumn } from './layout';
 import type { ShellSearchConfig } from './search-slot';
 import { ShellActions, type ShellActionsProps } from './shell-actions';
+import { ShellStatus } from './shell-status';
 import { useBackAction } from '../back-navigation';
 import { ShellBack, ShellTitle, type BackPress, type ShellTitleProps } from './shell-parts';
 import type { ShellTabs } from './shell-sections';
@@ -78,22 +79,23 @@ export function AppBar({
   const bar = useBarSearch(search);
   if (search !== undefined && bar.mode === 'open') {
     return (
-      <View className="h-14 flex-row items-center px-1">
+      <View className="h-14 flex-row items-center gap-1 px-1">
         <OpenSearch search={search} onClose={bar.close} />
+        <ShellStatus />
       </View>
     );
   }
   return (
     <View
-      className="h-14 flex-row items-center gap-1 px-1"
+      className="min-h-14 flex-row items-center gap-1 px-1"
       onLayout={(event) => {
         bar.onBar(event.nativeEvent.layout.width);
       }}
     >
       <View style={widthStyle(barLeadOf(column.left, back !== null))} />
       <ShellBack back={back} />
-      <View className="min-w-0 flex-1 px-1">
-        <ShellTitle {...row.title} size="bar" testID="shell-title" />
+      <View style={bar.titleStyle} className="min-w-0 flex-1 px-1">
+        <ShellTitle {...row.title} size="bar" testID="shell-title" onNeed={bar.onTitle} />
       </View>
       <BarInline search={search} bar={bar} />
       <BarTrailing search={search} bar={bar}>
@@ -107,16 +109,19 @@ export function AppBar({
 function DesktopTitle({
   row,
   back,
+  bar,
 }: {
   readonly row: TitleRowProps;
   readonly back: BackPress;
+  readonly bar: BarSearch;
 }): ReactNode {
   return (
-    <View className="min-w-0 flex-1">
+    <View style={bar.titleStyle} className="min-w-0 flex-1">
       <ShellTitle
         {...row.title}
         size="desktop"
         testID="shell-title"
+        onNeed={bar.onTitle}
         {...(back === null ? {} : { lead: <ShellBack back={back} pointer /> })}
       />
     </View>
@@ -136,8 +141,9 @@ export function DesktopTitleRow({
   const bar = useBarSearch(search);
   if (search !== undefined && bar.mode === 'open') {
     return (
-      <View style={columnStyle(column)} className="min-h-12 flex-row items-center pt-2">
+      <View style={columnStyle(column)} className="min-h-12 flex-row items-center gap-4 pt-2">
         <OpenSearch search={search} onClose={bar.close} />
+        <ShellStatus />
       </View>
     );
   }
@@ -149,7 +155,7 @@ export function DesktopTitleRow({
         bar.onBar(event.nativeEvent.layout.width);
       }}
     >
-      <DesktopTitle row={row} back={back} />
+      <DesktopTitle row={row} back={back} bar={bar} />
       <BarInline search={search} bar={bar} />
       <BarTrailing search={search} bar={bar} wide>
         <ShellControls controls={row.controls} />

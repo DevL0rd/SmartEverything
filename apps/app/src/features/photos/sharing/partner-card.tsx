@@ -26,6 +26,7 @@ import {
   type PartnerSides,
 } from './model';
 import { invalidateSharing } from './queries';
+import { SectionTitle } from './section-title';
 
 function useRefreshAfter(): (
   mutation: MutationState,
@@ -293,33 +294,35 @@ export function PartnerCard({
   const sides = partnerSidesOf(partners, me);
   const live = useLive();
   return (
-    <Card
-      title="Partner sharing"
-      icon="users"
-      action={
-        sidesEmpty(sides) ? undefined : (
-          <Button
-            label="Add partner"
-            icon="plus"
-            variant="text"
-            disabled={!live}
-            onPress={onStart}
-          />
-        )
-      }
-    >
-      <View className="gap-5">
-        <Side title="Offered to you" shares={sides.offered}>
-          {(share) => <Offered key={share.id} share={share} />}
-        </Side>
-        <Side title="Shared with you" shares={sides.receiving}>
-          {(share) => <Receiving key={share.id} share={share} />}
-        </Side>
-        <Side title="You share with" shares={sides.outgoing}>
-          {(share) => <Outgoing key={share.id} share={share} onChange={onChange} />}
-        </Side>
-        {sidesEmpty(sides) ? <NoPartner onStart={onStart} /> : null}
-      </View>
-    </Card>
+    <View className="gap-3">
+      <SectionTitle
+        title="Partner sharing"
+        action={
+          sidesEmpty(sides) ? undefined : (
+            <Button
+              label="Add partner"
+              icon="plus"
+              variant="text"
+              disabled={!live}
+              onPress={onStart}
+            />
+          )
+        }
+      />
+      <Card>
+        <View className="gap-5">
+          <Side title="Offered to you" shares={sides.offered}>
+            {(share) => <Offered key={share.id} share={share} />}
+          </Side>
+          <Side title="Shared with you" shares={sides.receiving}>
+            {(share) => <Receiving key={share.id} share={share} />}
+          </Side>
+          <Side title="You share with" shares={sides.outgoing}>
+            {(share) => <Outgoing key={share.id} share={share} onChange={onChange} />}
+          </Side>
+          {sidesEmpty(sides) ? <NoPartner onStart={onStart} /> : null}
+        </View>
+      </Card>
+    </View>
   );
 }

@@ -23,17 +23,20 @@ function link(id: string, label: string, icon: IconName, target: AppHref): MenuI
 
 const PEOPLE_GROUP = 'Show the planner of';
 
-function personItem(choice: PersonChoice): MenuItem {
+export function personChoiceItem(choice: PersonChoice): MenuItem {
   return {
     id: `person-${choice.person ?? 'me'}`,
     label: choice.name,
     icon: 'user',
     selected: choice.shown,
-    group: PEOPLE_GROUP,
     onPress: (): void => {
       showPlannerPerson(choice.person);
     },
   };
+}
+
+function personItem(choice: PersonChoice): MenuItem {
+  return { ...personChoiceItem(choice), group: PEOPLE_GROUP };
 }
 
 export function plannerMenu({

@@ -32,6 +32,7 @@ import {
   type ModelMaterialParams,
 } from './materials';
 import { patternPixels, patternSize, patternTexture, type PatternPixels } from './patterns';
+import { acquireGeometry, releaseGeometry } from './shared-geometry';
 
 interface PatternEntry {
   readonly pixels: PatternPixels;
@@ -92,7 +93,7 @@ export function createModelResources(): ModelResources {
     materials,
     patterns,
     dispose: (): void => {
-      for (const geometry of geometries.values()) geometry.dispose();
+      for (const key of geometries.keys()) releaseGeometry(key);
       for (const material of materials.values()) material.dispose();
       for (const entry of patterns.values()) entry.texture.dispose();
       geometries.clear();
@@ -171,10 +172,9 @@ interface BuildContext {
 
 function buildPart(part: ModelSpecPart, context: BuildContext): BuiltPart {
   const { lod, params, resources } = context;
-  const geometry = cached(
-    resources.geometries,
-    `${String(lod)}|${context.paramsKey}|${JSON.stringify(part.geometry)}`,
-    () => buildGeometry(part.geometry, lod, params),
+  const key = `${String(lod)}|${context.paramsKey}|${JSON.stringify(part.geometry)}`;
+  const geometry = cached(resources.geometries, key, () =>
+    acquireGeometry(key, () => buildGeometry(part.geometry, lod, params)),
   );
   const material = resolveMaterial(context.spec, part.material, context.finish);
   const surface = partSurface(material, {

@@ -6,12 +6,14 @@ import { StateTimeline } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
+import { useColour } from '../../../design/colour';
 import { clock, hoursMinutes } from '../../../format/time';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerCollections, usePlannerPreferences, useVisibleMinute } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import {
   STRIP_COLOURS,
+  alarmPinsOf,
   dayStripOf,
   nowIn,
   type DayStripModel,
@@ -20,8 +22,6 @@ import {
 } from './day-strip-model';
 
 const TRACK = { compact: 20, wide: 26 } as const;
-
-const AMBIENT: ReadonlySet<StripState> = new Set(['daylight', 'sleep']);
 
 const MARK: Readonly<Record<StripMarkTone, string>> = {
   done: 'bg-positive',
@@ -42,11 +42,25 @@ function leftOf(placed: Placed, at: number, half: number): { readonly left: numb
   return { left: xOf(placed, at) - half };
 }
 
+const PIN_SLOT = 12;
+
 function AlarmPins({ placed }: { readonly placed: Placed }): ReactNode {
   return (
     <View className="relative h-2.5">
-      {placed.model.alarms.map((at) => (
-        <View key={at} style={leftOf(placed, at, 3)} className="absolute top-0 w-1.5 items-center">
+      {alarmPinsOf(placed.model, placed.width, PIN_SLOT).map((pin) => (
+        <View
+          key={pin.at}
+          accessible
+          accessibilityRole="image"
+          accessibilityLabel={pin.label}
+          style={leftOf(placed, pin.at, PIN_SLOT / 2)}
+          className="absolute top-0 w-3 items-center"
+        >
+          {pin.count === 1 ? null : (
+            <Text variant="caption" tone="primary" className="absolute bottom-full tabular-nums">
+              {String(pin.count)}
+            </Text>
+          )}
           <View className="size-1.5 rounded-full bg-primary" />
           <View className="h-1 w-px bg-primary" />
         </View>
@@ -115,6 +129,16 @@ function EmptyTrack({ height }: { readonly height: number }): ReactNode {
   );
 }
 
+function NothingBooked(): ReactNode {
+  return (
+    <View className="items-center">
+      <Text variant="caption" tone="variant">
+        Nothing booked today
+      </Text>
+    </View>
+  );
+}
+
 export function DayStrip({
   model,
   compact,
@@ -156,13 +180,7 @@ export function DayStrip({
         <HourLabels placed={placed} />
         {now === null || width === 0 ? null : <NowMarker placed={placed} now={now} />}
       </View>
-      {empty ? (
-        <View className="items-center">
-          <Text variant="caption" tone="variant">
-            Nothing booked today
-          </Text>
-        </View>
-      ) : null}
+      {empty ? <NothingBooked /> : null}
     </View>
   );
 }
@@ -171,6 +189,24 @@ function LegendDot({ dot, label }: { readonly dot: string; readonly label: strin
   return (
     <View className="flex-row items-center gap-1.5">
       <View className={cn('size-2 rounded-full', dot)} />
+      <Text variant="caption" tone="variant" numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function EventLegendDot({
+  state,
+  label,
+}: {
+  readonly state: StripState;
+  readonly label: string;
+}): ReactNode {
+  const fill = { backgroundColor: useColour(STRIP_COLOURS[state]) };
+  return (
+    <View className="flex-row items-center gap-1.5">
+      <View style={fill} className="size-2 rounded-full" />
       <Text variant="caption" tone="variant" numberOfLines={1}>
         {label}
       </Text>
@@ -203,9 +239,9 @@ function StripHeader({
         {model.sleepMinutes > 0 ? (
           <LegendDot dot="bg-sleep-band" label={`Slept ${hoursMinutes(model.sleepMinutes)}`} />
         ) : null}
-        {model.segments.some((segment) => !AMBIENT.has(segment.state)) ? (
-          <LegendDot dot="bg-viz-3" label="Events" />
-        ) : null}
+        {model.eventLegend.map((entry) => (
+          <EventLegendDot key={entry.key} state={entry.state} label={entry.label} />
+        ))}
         {model.alarms.length > 0 ? <LegendDot dot="bg-primary" label="Alarms" /> : null}
         {model.marks.some((mark) => mark.tone === 'missed') ? (
           <LegendDot dot="bg-critical" label="Missed" />

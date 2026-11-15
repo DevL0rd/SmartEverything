@@ -39,7 +39,12 @@ import type { Store } from '../store/store';
 import { socketClient } from './socket-auth';
 import { issuesOf } from './errors';
 import { projected, seenBy } from './live-visibility';
-import { applySubscription, type LivePrimer, type LiveSubscription } from './live-subscription';
+import {
+  applySubscription,
+  type ClientPrimer,
+  type LivePrimer,
+  type LiveSubscription,
+} from './live-subscription';
 import { liveText } from './live-wire';
 import { ConnectionHeartbeat } from '../network/connection-heartbeat';
 import { pingWhenOpen } from '../network/guarded-socket';
@@ -77,6 +82,7 @@ export class LiveHub {
   private tally = new LiveTally();
   private sequence = 0;
   private readonly primers = new Map<LiveStream, LivePrimer>();
+  readonly clientPrimers = new Set<ClientPrimer>();
   private readonly subscription: LiveSubscription;
   private readonly heartbeat = new ConnectionHeartbeat(LIVE_HEARTBEAT_MS, () => this.beat());
   private readonly unsubscribe: readonly (() => void)[];
@@ -87,6 +93,7 @@ export class LiveHub {
       log: options.log,
       backgrounds: this.backgrounds,
       primers: this.primers,
+      clientPrimers: this.clientPrimers,
       send: this.send.bind(this),
     };
     this.watches = new LiveWatch({

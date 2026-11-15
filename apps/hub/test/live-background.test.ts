@@ -1,10 +1,10 @@
 import { createClientToken, hashClientToken, liveProtocols } from '@smarteverything/domain';
-import type { HubStatus } from '@smarteverything/domain';
+import type { ClientRow, HubStatus } from '@smarteverything/domain';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import WebSocket from 'ws';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LiveHub } from '../src/server/live';
+import { LiveHub, type LiveNotice } from '../src/server/live';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
 import { until } from './support/wait';
@@ -174,5 +174,43 @@ describe('a connection from an app in the background', () => {
     await until(() => rings() > 0, 'the notice to arrive');
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(rings()).toBe(1);
+  });
+});
+
+describe('update notices for an app that was away', () => {
+  const update = {
+    type: 'app_update',
+    platform: 'android',
+    channel: 'release',
+    runtimeVersion: 'runtime-new',
+    id: '2b7b7bba-ccd5-49f4-8f65-e752d82bcce2',
+  } as const;
+
+  it('replays the current notices to the app when it subscribes', async () => {
+    const seen: string[] = [];
+    const primer = (client: ClientRow): readonly LiveNotice[] => {
+      seen.push(client.platform);
+      return client.platform === 'android' ? [update] : [];
+    };
+    hub.clientPrimers.add(primer);
+    try {
+      const back = await phone(undefined);
+      await until(() => back.notices.includes('app_update'), 'the update notice to arrive');
+      expect(seen).toStrictEqual(['android']);
+    } finally {
+      hub.clientPrimers.delete(primer);
+    }
+  });
+
+  it('stops replaying once the primer is removed', async () => {
+    const primer = (): readonly LiveNotice[] => [update];
+    hub.clientPrimers.add(primer);
+    hub.clientPrimers.delete(primer);
+    const own = login();
+    const back = await phone(undefined, own);
+    const notice = { type: 'planner_phone_rings' } as const;
+    expect(await hub.deliver(own.clientId, notice)).toBe(1);
+    await until(() => back.notices.includes('planner_phone_rings'), 'the later notice to arrive');
+    expect(back.notices).not.toContain('app_update');
   });
 });

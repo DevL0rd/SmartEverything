@@ -147,6 +147,7 @@ function Blocks({
 
 function contextOf(props: ColumnProps, width: number): BlockDragContext {
   return {
+    date: props.day.date,
     hourHeight: props.height,
     minHeight: MIN_BLOCK_HEIGHT,
     columnWidth: width,

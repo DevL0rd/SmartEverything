@@ -2,10 +2,10 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { ApiError, type DriveItem } from '@smarteverything/domain';
 import { z } from 'zod';
-import { inLockedFolder } from '../drive/access';
+import { inLockedFolder, lockedTrash } from '../drive/access';
 import { fsCode } from '../fs-code';
 import { isLockedLink, verifyLockedLink } from '../photos/organise/locked-links';
-import { derivedPath, DERIVED_MIME } from '../photos/pipeline/derived-paths';
+import { derivedPath, DERIVED_MIME, type DerivedKey } from '../photos/pipeline/derived-paths';
 import { locatePlayable, playableSource } from '../photos/pipeline/playable';
 import {
   locateMedia,
@@ -43,6 +43,10 @@ export async function serveDriveDerived(
 ): Promise<void> {
   const { itemId } = target;
   const size = SIZE.parse(target.size);
+  if (!isLockedLink(exchange.url) && deps.store.driveItems.find(itemId, null) === undefined) {
+    await serveTrashed(deps, exchange, itemId, size);
+    return;
+  }
   const { item, link } = verified(deps, exchange.url, itemId);
   if (item.rev !== link.rev)
     throw new ApiError('link_expired', 'This file changed; request a new link.');
@@ -54,7 +58,35 @@ export async function serveDriveDerived(
     await serveBytes(playableSource(location), exchange.request, exchange.response);
     return;
   }
-  const path = derivedPath(deps.layout, { itemId, rev: item.rev, size });
+  await serveDerived(deps, exchange, { itemId, rev: item.rev, size }, link);
+}
+
+async function serveTrashed(
+  deps: DerivedDeps,
+  exchange: DriveExchange,
+  itemId: string,
+  size: z.infer<typeof SIZE>,
+): Promise<void> {
+  const link = deps.links.verifyDrive(exchange.url);
+  const entry = deps.store.driveTrash.find(itemId);
+  const rev =
+    entry === undefined || lockedTrash(entry) ? null : deps.store.driveTrash.thumbRev(itemId);
+  if (size !== 'thumb' || rev === null) {
+    throw new ApiError('not_found', 'There is no such file for this caller.');
+  }
+  if (rev !== link.rev)
+    throw new ApiError('link_expired', 'This file changed; request a new link.');
+  await serveDerived(deps, exchange, { itemId, rev, size }, link);
+}
+
+async function serveDerived(
+  deps: DerivedDeps,
+  exchange: DriveExchange,
+  key: DerivedKey,
+  link: VerifiedDriveLink,
+): Promise<void> {
+  const { itemId, size } = key;
+  const path = derivedPath(deps.layout, key);
   const info = await stat(path).catch((cause: unknown) => {
     if (fsCode(cause) === 'ENOENT')
       throw new ApiError('not_found', 'The image preview is not ready.');
@@ -64,7 +96,7 @@ export async function serveDriveDerived(
   await serveBytes(
     {
       size: info.size,
-      etag: `${itemId}-${String(item.rev)}-${size}`,
+      etag: `${itemId}-${String(key.rev)}-${size}`,
       headers: {
         'content-type': DERIVED_MIME,
         'cache-control': `private, max-age=${String(seconds)}, immutable`,

@@ -11,10 +11,10 @@ import { usePlannerPreferences, usePlannerStats } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { onTimeShareOf, todayRingsOf, type TodayRing, type TodayRingKey } from './day-strip-model';
 
-const DOT: Readonly<Record<TodayRingKey, string>> = {
-  tasks: 'bg-primary',
-  focus: 'bg-viz-1',
-  move: 'bg-viz-4',
+const DOT: Readonly<Record<TodayRingKey, { readonly drawn: string; readonly open: string }>> = {
+  tasks: { drawn: 'bg-primary', open: 'border border-primary' },
+  focus: { drawn: 'bg-viz-1', open: 'border border-viz-1' },
+  move: { drawn: 'bg-viz-4', open: 'border border-viz-4' },
 };
 
 const SIZE = { line: 56, grid: 64, card: 112 } as const;
@@ -32,13 +32,29 @@ export function useTodayRings(day: PlannerDay, move: number | null): readonly To
 }
 
 function shown(rings: readonly TodayRing[]): Parameters<typeof Rings>[0]['rings'] {
-  return rings.map((ring) => ({ progress: ring.progress, colour: ring.colour, label: ring.label }));
+  return rings.flatMap((ring) =>
+    ring.progress === null
+      ? []
+      : [{ progress: ring.progress, colour: ring.colour, label: ring.label }],
+  );
+}
+
+function DrawnRings({
+  rings,
+  size,
+}: {
+  readonly rings: readonly TodayRing[];
+  readonly size: number;
+}): ReactNode {
+  const drawn = shown(rings);
+  return drawn.length === 0 ? null : <Rings rings={drawn} size={size} />;
 }
 
 function LegendRow({ ring }: { readonly ring: TodayRing }): ReactNode {
+  const dot = DOT[ring.key];
   return (
     <View className="flex-row items-center gap-2">
-      <View className={cn('size-2 rounded-full', DOT[ring.key])} />
+      <View className={cn('size-2 rounded-full', ring.progress === null ? dot.open : dot.drawn)} />
       <Text variant="footnote" className="min-w-0 flex-1" numberOfLines={1}>
         {ring.label}
       </Text>
@@ -58,7 +74,7 @@ export function TodayRings({
 }): ReactNode {
   return (
     <View className={cn('flex-row items-center', size === 'card' ? 'gap-4' : 'gap-3')}>
-      <Rings rings={shown(rings)} size={SIZE[size]} />
+      <DrawnRings rings={rings} size={SIZE[size]} />
       <View className="min-w-0 flex-1 gap-2">
         {rings.map((ring) => (
           <LegendRow key={ring.key} ring={ring} />
@@ -115,7 +131,7 @@ export function TodayRingsLine({
 }): ReactNode {
   return (
     <View className="flex-row items-center gap-3">
-      <Rings rings={shown(rings)} size={SIZE.line} />
+      <DrawnRings rings={rings} size={SIZE.line} />
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="footnote" numberOfLines={2} className="tabular">
           {summaryOf(rings, moveTracked)}

@@ -65,6 +65,8 @@ export interface DriveFiles {
   readonly remove: (path: string) => Promise<void>;
   readonly stage: (path: string, source: AsyncIterable<Uint8Array>) => Promise<StagedWrite>;
   readonly writeDurable: (path: string, temporary: string, text: string) => Promise<void>;
+  readonly writeUnsynced: (path: string, temporary: string, text: string) => Promise<void>;
+  readonly syncFile: (path: string) => Promise<void>;
   readonly syncDirectory: (path: string) => Promise<void>;
   readonly chmod: (path: string, mode: number) => Promise<void>;
   readonly clone: (from: string, to: string, temporary: string) => Promise<void>;
@@ -152,6 +154,7 @@ export async function moveWithin(
   files: DriveFiles,
   root: DriveWriteRoot,
   move: Move,
+  deferred?: Set<string>,
 ): Promise<void> {
   const from = await locate(root, move.from);
   const to = await locate(root, move.to);
@@ -161,9 +164,10 @@ export async function moveWithin(
   } else {
     await files.rename(from, to);
   }
-  await files.syncDirectory(dirname(to));
-  if (dirname(from) !== dirname(to)) {
-    await files.syncDirectory(dirname(from));
+  const touched = dirname(from) === dirname(to) ? [dirname(to)] : [dirname(to), dirname(from)];
+  for (const directory of touched) {
+    if (deferred === undefined) await files.syncDirectory(directory);
+    else deferred.add(directory);
   }
 }
 

@@ -235,7 +235,7 @@ export const CONFLICT_FOOTER =
 
 export function restorePlanOf(b: VersionEntry | null, conflicted: boolean): RestorePlan {
   return {
-    versionId: b?.versionId ?? null,
+    versionId: conflicted ? null : (b?.versionId ?? null),
     primary: !conflicted,
     footer: conflicted ? CONFLICT_FOOTER : RESTORE_FOOTER,
   };

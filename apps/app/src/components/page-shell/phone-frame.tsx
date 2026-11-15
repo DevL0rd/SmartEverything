@@ -12,6 +12,7 @@ import {
   type FrameProps,
 } from './shell-frame';
 import { ShellRail } from './shell-sections';
+import { SelectionBar } from './shell-status';
 import {
   AppBar,
   SURFACE_AT,
@@ -28,7 +29,7 @@ function PhoneTop({ frame }: { readonly frame: FrameProps }): ReactNode {
     <View testID="shell-top" className="z-10 pt-safe" {...topLayoutOf(frame)}>
       <TopSurface scrollY={scrollY} from={0} to={SURFACE_AT} />
       {selecting(shell) ? (
-        shell.selection
+        <SelectionBar>{shell.selection}</SelectionBar>
       ) : (
         <AppBar
           row={titleRowOf(shell, frame.icon)}

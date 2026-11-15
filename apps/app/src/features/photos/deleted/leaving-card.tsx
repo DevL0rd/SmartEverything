@@ -62,12 +62,11 @@ export interface WholeActions {
 function ActionRow({ actions }: { readonly actions: WholeActions }): ReactNode {
   const { compact } = actions;
   return (
-    <View className="flex-row flex-wrap items-center gap-2">
+    <View className={compact ? 'gap-2' : 'flex-row flex-wrap items-center gap-2'}>
       <Button
         label="Restore all"
         icon="archiveRestore"
         variant="tonal"
-        grow={compact}
         disabled={actions.disabled}
         onPress={actions.onRestoreAll}
       />
@@ -78,7 +77,6 @@ function ActionRow({ actions }: { readonly actions: WholeActions }): ReactNode {
             label="Delete all now"
             icon="trash"
             variant="destructive"
-            grow={compact}
             disabled={actions.disabled}
             onPress={actions.onDeleteAll}
           />

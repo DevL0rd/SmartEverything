@@ -14,7 +14,12 @@ import {
   type ReleaseTarget,
 } from './release-hub-files.ts';
 import { awaitHub, verifyHub, type Units } from './release-hub-verify.ts';
-import { legacyLayoutOf, undoV1, type TransitionEnvironment } from './release-hub-transition.ts';
+import {
+  CROSSING_STEPS,
+  legacyLayoutOf,
+  undoV1,
+  type TransitionEnvironment,
+} from './release-hub-transition.ts';
 import { finishRelease } from './release-hub-steps.ts';
 
 const log = new Logger('tool.release-hub');
@@ -69,4 +74,23 @@ export async function rollbackWith(options: RollbackOptions): Promise<void> {
   );
   finishRelease({ install, data }, stamp);
   log.info('release.rolled_back', { backup: restored, withDatabase: restoreSavedDatabase });
+}
+
+export function rollbackDryRun(
+  target: ReleaseTarget,
+  environment: TransitionEnvironment,
+  backup: string,
+  withDatabase: boolean,
+): void {
+  const { scene, problems } = rollbackPreflight(target, backup, withDatabase, environment);
+  for (const problem of problems) process.stdout.write(`FAIL ${problem}\n`);
+  if (problems.length > 0) {
+    process.exitCode = 1;
+    return;
+  }
+  const steps = scene.undo ? CROSSING_STEPS : [];
+  for (const step of steps) process.stdout.write(`would ${step}\n`);
+  process.stdout.write(
+    `would roll ${target.install.service} back from ${scene.backup}; the backup layout and free space are fine\n`,
+  );
 }

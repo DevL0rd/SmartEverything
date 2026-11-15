@@ -134,7 +134,6 @@ const LIBRARY_SETTINGS: readonly SettingDefinition[] = [
     keywords: ['zoom', 'years', 'months', 'days', 'comfortable', 'library'],
     scope: 'server',
     control: 'select',
-    inline: true,
     options: PHOTOS_ZOOMS.map((value) => ({ value, label: ZOOM_LABELS[value] })),
     read: (state) => photosOf(state).libraryZoom,
     write: (value, context): Promise<void> => {

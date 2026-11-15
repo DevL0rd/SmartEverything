@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import {
@@ -120,9 +120,15 @@ function FolderPage({ folderKey }: { readonly folderKey: PhotoFolderKey }): Reac
       footer={frame.footer}
     >
       {feed.sources}
-      <FolderToggles folder={folder} backup={backup} />
-      {folder.hidden ? <HiddenNote /> : null}
       <FolderGrid
+        head={
+          controls.selection.active ? null : (
+            <>
+              <FolderToggles folder={folder} backup={backup} />
+              {folder.hidden ? <HiddenNote /> : null}
+            </>
+          )
+        }
         drive={folder.kind === 'drive'}
         bucketsError={bucketsError}
         feed={feed}
@@ -137,6 +143,7 @@ function FolderPage({ folderKey }: { readonly folderKey: PhotoFolderKey }): Reac
 }
 
 interface GridProps {
+  readonly head: ReactElement | null;
   readonly drive: boolean;
   readonly bucketsError: Error | null;
   readonly feed: ReturnType<typeof useLibraryFeed>;
@@ -168,6 +175,7 @@ function FeedError({
 }
 
 function FolderGrid({
+  head,
   drive,
   bucketsError,
   feed,
@@ -177,10 +185,18 @@ function FolderGrid({
   media,
   folderKey,
 }: GridProps): ReactNode {
-  if (feed.state === 'error' && feed.tiles.length === 0) {
-    return <FeedError drive={drive} bucketsError={bucketsError} retry={feed.retry} />;
+  if ((feed.state === 'error' || feed.state === 'loading') && feed.tiles.length === 0) {
+    return (
+      <>
+        {head}
+        {feed.state === 'error' ? (
+          <FeedError drive={drive} bucketsError={bucketsError} retry={feed.retry} />
+        ) : (
+          <LibraryLoading />
+        )}
+      </>
+    );
   }
-  if (feed.state === 'loading' && feed.tiles.length === 0) return <LibraryLoading />;
   return (
     <View className="-mx-gutter min-h-0 flex-1">
       <LibraryGrid
@@ -190,6 +206,7 @@ function FolderGrid({
         selection={controls}
         media={media}
         viewer={{ folder: folderKey }}
+        {...(head === null ? {} : { header: <View className="gap-2 px-gutter pb-2">{head}</View> })}
         empty={
           <EmptyState
             icon="folder"

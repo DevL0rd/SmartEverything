@@ -1,5 +1,6 @@
 import {
   splitLiveTables,
+  type ClientRow,
   type LiveMessage,
   type LiveStream,
   type LiveSubscribeMessage,
@@ -12,11 +13,14 @@ import { allowedStreams, allowedTables } from './live-visibility';
 
 export type LivePrimer = (profileId: string) => readonly LiveNotice[];
 
+export type ClientPrimer = (client: ClientRow) => readonly LiveNotice[];
+
 export interface LiveSubscription {
   readonly store: Store;
   readonly log: Logger;
   readonly backgrounds: WeakSet<LoggedConnection>;
   readonly primers: ReadonlyMap<LiveStream, LivePrimer>;
+  readonly clientPrimers: ReadonlySet<ClientPrimer>;
   readonly send: (connection: LoggedConnection, message: LiveMessage) => void;
 }
 
@@ -58,6 +62,15 @@ export function applySubscription(
   streams.forEach((stream) => connection.streams.add(stream));
   context.send(connection, { type: 'subscribed', tables, streams, seq: store.feed.seq });
   primeConnection(context, connection);
+  primeClient(context, connection);
+}
+
+function primeClient(context: LiveSubscription, connection: LoggedConnection): void {
+  for (const primer of context.clientPrimers) {
+    primer(connection.client).forEach((notice) => {
+      context.send(connection, notice);
+    });
+  }
 }
 
 function primeConnection(context: LiveSubscription, connection: LoggedConnection): void {

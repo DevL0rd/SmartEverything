@@ -36,6 +36,12 @@ describe('calendar cells', () => {
     expect(Math.max(...blocks.map((block) => block.columns))).toBeLessThanOrEqual(27);
     expect(blocks[0]?.labels[0]?.text).toBe('Jan');
     expect(blocks[1]?.cells[0]?.column).toBe(0);
+    const texts = blocks.flatMap((block) => block.labels.map((entry) => entry.text));
+    expect(new Set(texts).size).toBe(texts.length);
+    expect(blocks[1]?.labels[0]).toEqual({ column: 0, text: 'Jul' });
+    expect(blocks.every((block) => block.span === Math.max(...blocks.map((b) => b.columns)))).toBe(
+      true,
+    );
     expect(calendarBlocks([], 2)).toEqual([]);
     expect(calendarBlocks(cells, 1)).toHaveLength(1);
   });

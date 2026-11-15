@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { router } from 'expo-router';
+import { useConnection, type ConnectionState } from '../api/transport';
 import { IconButton } from '../components/icon-button';
 import type { IconName } from '../components/icon';
 import { notify } from '../components/toast-store';
@@ -12,8 +13,9 @@ interface SyncNotice {
   readonly label: string;
   readonly detail: string;
   readonly icon: IconName;
-  readonly tone: 'warning' | 'critical';
+  readonly tone: 'positive' | 'warning' | 'critical';
   readonly action: 'server' | 'updates' | null;
+  readonly opens: 'toast' | 'updates';
 }
 
 function failedNotice(failed: readonly SectionFailure[]): SyncNotice {
@@ -23,6 +25,7 @@ function failedNotice(failed: readonly SectionFailure[]): SyncNotice {
     icon: 'download',
     tone: 'warning',
     action: 'updates',
+    opens: 'updates',
   };
 }
 
@@ -34,6 +37,7 @@ function problemNotice(problem: SyncProblem): SyncNotice {
         icon: 'download',
         tone: 'critical',
         action: 'updates',
+        opens: 'toast',
       }
     : {
         label: 'Can’t reach your server',
@@ -41,6 +45,7 @@ function problemNotice(problem: SyncProblem): SyncNotice {
         icon: 'warning',
         tone: 'critical',
         action: 'server',
+        opens: 'toast',
       };
 }
 
@@ -50,13 +55,23 @@ const CONNECTING: SyncNotice = {
   icon: 'wifi',
   tone: 'warning',
   action: null,
+  opens: 'toast',
 };
 
-function useSyncNotice(): SyncNotice | null {
+const CONNECTED: SyncNotice = {
+  label: 'Connected to your server',
+  detail: 'This device is online and gets every change as it happens.',
+  icon: 'wifi',
+  tone: 'positive',
+  action: null,
+  opens: 'toast',
+};
+
+function useSyncNotice(): SyncNotice {
   const sync = useSyncStatus();
   switch (sync.status) {
     case 'live':
-      return sync.failed.length === 0 ? null : failedNotice(sync.failed);
+      return sync.failed.length === 0 ? CONNECTED : failedNotice(sync.failed);
     case 'refused':
       return {
         label: 'Your server refused this device',
@@ -64,6 +79,7 @@ function useSyncNotice(): SyncNotice | null {
         icon: 'warning',
         tone: 'critical',
         action: 'server',
+        opens: 'toast',
       };
     case 'interrupted':
       return sync.problem === null
@@ -73,6 +89,7 @@ function useSyncNotice(): SyncNotice | null {
             icon: 'wifi',
             tone: 'warning',
             action: null,
+            opens: 'toast',
           }
         : problemNotice(sync.problem);
     case 'connecting':
@@ -101,19 +118,62 @@ function explain(notice: SyncNotice): void {
   });
 }
 
-export function SyncIndicator(): ReactNode {
-  const notice = useSyncNotice();
-  if (notice === null) {
-    return null;
+function unpairedNotice(
+  state: Exclude<ConnectionState, { readonly status: 'paired' }>,
+): SyncNotice {
+  switch (state.status) {
+    case 'loading':
+      return CONNECTING;
+    case 'unpaired':
+      return {
+        label: 'Not paired with a server',
+        detail: 'Pair this device with your server to see your home.',
+        icon: 'wifi',
+        tone: 'warning',
+        action: null,
+        opens: 'toast',
+      };
+    case 'unavailable':
+      return {
+        label: 'Can’t read this device’s server connection',
+        detail: state.problem,
+        icon: 'warning',
+        tone: 'critical',
+        action: null,
+        opens: 'toast',
+      };
+    case 'removed':
+      return {
+        label: 'Your server removed this device',
+        detail: `Your server at ${state.url} no longer accepts this device.`,
+        icon: 'warning',
+        tone: 'critical',
+        action: null,
+        opens: 'toast',
+      };
   }
+}
+
+function NoticeButton({ notice }: { readonly notice: SyncNotice }): ReactNode {
   return (
     <IconButton
       icon={notice.icon}
       label={notice.label}
       tone={notice.tone}
       onPress={() => {
-        explain(notice);
+        if (notice.opens === 'updates') router.push(href.settings.page(UPDATES_SETTINGS_PAGE));
+        else explain(notice);
       }}
     />
   );
+}
+
+function PairedIndicator(): ReactNode {
+  return <NoticeButton notice={useSyncNotice()} />;
+}
+
+export function SyncIndicator(): ReactNode {
+  const state = useConnection();
+  if (state.status === 'paired') return <PairedIndicator />;
+  return <NoticeButton notice={unpairedNotice(state)} />;
 }

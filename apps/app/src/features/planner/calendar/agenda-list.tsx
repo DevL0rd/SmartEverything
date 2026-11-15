@@ -79,20 +79,33 @@ function CompactLine({ entry }: { readonly entry: AgendaEntry }): ReactNode {
 }
 
 function WideLine({ entry }: { readonly entry: AgendaEntry }): ReactNode {
+  const tagged = entry.look === 'invited' || entry.look === 'maybe';
   return (
     <>
       <Text variant="caption" tone="variant" numberOfLines={1} className="w-24 font-mono tabular">
         {entry.range}
       </Text>
       <View className={cn('h-6 w-0.75 rounded-full', stripeOf(entry.colour, entry.look))} />
-      <Text variant="label" numberOfLines={1} className="min-w-0 flex-1">
-        {entry.occurrence.title}
-      </Text>
+      <View className="min-w-0 flex-1 flex-row items-baseline gap-2">
+        <Text variant="label" numberOfLines={1} className="min-w-0 shrink">
+          {entry.occurrence.title}
+        </Text>
+        {entry.note === '' ? null : (
+          <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 flex-1">
+            {entry.note}
+          </Text>
+        )}
+      </View>
+      {tagged ? <LookTag look={entry.look} /> : null}
       {entry.calendar === null ? null : (
         <Text variant="caption" tone="variant" numberOfLines={1} className="shrink">
           {entry.calendar}
         </Text>
       )}
+      <View className="min-w-5 flex-row items-center justify-end gap-1">
+        {tagged ? null : <LookMark look={entry.look} />}
+        {entry.google ? <GoogleMark /> : null}
+      </View>
     </>
   );
 }
@@ -116,9 +129,15 @@ function Item({ entry, edge, wide }: AgendaItemProps): ReactNode {
         layerClassName={FRAME[edge]}
         focusInset
       >
-        {wide ? <WideLine entry={entry} /> : <CompactLine entry={entry} />}
-        <LookTag look={entry.look} />
-        {entry.google ? <GoogleMark /> : null}
+        {wide ? (
+          <WideLine entry={entry} />
+        ) : (
+          <>
+            <CompactLine entry={entry} />
+            <LookTag look={entry.look} />
+            {entry.google ? <GoogleMark /> : null}
+          </>
+        )}
       </Interactive>
     </View>
   );

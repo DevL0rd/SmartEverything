@@ -5,6 +5,7 @@ import { Logger, background } from '@smarteverything/logging';
 import { useEffect } from 'react';
 import { ErrorState } from '../components/error-state';
 import { PageShell } from '../components/page-shell/page-shell';
+import type { ShellSections } from '../components/page-shell/shell-sections';
 import { ColourPalette } from '../design/colour-palette';
 import { desktopBridge } from '../design/platform';
 
@@ -56,14 +57,22 @@ export function RouteErrorBoundary(props: ErrorBoundaryProps): ReactNode {
   );
 }
 
+export interface AreaCrashShell {
+  readonly title: string;
+  readonly back: boolean;
+  readonly sections?: ShellSections;
+}
+
 export function AreaRouteErrorBoundary({
   title,
+  back,
+  sections,
   ...props
-}: ErrorBoundaryProps & { readonly title: string }): ReactNode {
+}: ErrorBoundaryProps & AreaCrashShell): ReactNode {
   return (
     <ColourPalette>
       <View className="flex-1 bg-bg">
-        <PageShell title={title}>
+        <PageShell title={title} back={back} {...(sections === undefined ? {} : { sections })}>
           <CrashState {...props} />
         </PageShell>
       </View>

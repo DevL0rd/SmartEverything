@@ -172,6 +172,14 @@ export class DriveTrashRows {
     };
   }
 
+  thumbRev(itemId: string): number | null {
+    const root = this.rows(itemId).find(
+      (row) => row.table === ITEMS && row.values['id'] === itemId,
+    );
+    const rev = root?.values['rev'];
+    return root?.values['thumb_state'] === 'ready' && typeof rev === 'number' ? rev : null;
+  }
+
   reinstateInodes(rows: readonly StashedRow[]): void {
     this.context.write(() => {
       for (const row of rows.filter((one) => INODE_FIRST.includes(one.table))) {

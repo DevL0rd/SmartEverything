@@ -60,7 +60,8 @@ vi.mock('../versions/version-timeline', () => ({
     `timeline:${String(entries.length)}`,
   OneVersion: (): ReactNode => 'one-version',
   SizeOverYear: ({ total }: { readonly total: string }): ReactNode => `size:${total}`,
-  TimelineLoading: (): ReactNode => 'loading',
+  COMPACT_CARD: 'card',
+  CompactTimelineLoading: (): ReactNode => 'loading',
   useTimelineLook: (): object => ({
     time: { now: Date.parse('2026-11-07T12:00:00.000Z'), zone: 'UTC' },
   }),
@@ -152,12 +153,12 @@ describe('versions tab', () => {
     expect(html).toContain(RESTORE_FOOTER);
   });
 
-  it('demotes Restore while a conflict is open', () => {
+  it('turns Restore off while a conflict is open', () => {
     hub.versions = TWO;
     hub.conflicted = true;
     const html = render();
     expect(html).toContain('<button data-variant="filled">Compare</button>');
-    expect(html).toContain('<button data-variant="text">Restore</button>');
+    expect(html).toContain('<button data-variant="text" disabled="">Restore</button>');
     expect(html).toContain(CONFLICT_FOOTER);
   });
 
@@ -184,6 +185,7 @@ describe('versions tab', () => {
     if (earlier === undefined) throw new Error('missing version');
     const time = { now: Date.parse('2026-11-07T12:00:00.000Z'), zone: 'UTC' };
     expect(restoreLineOf(earlier, false, time)).toMatch(/^Restores the version from .+\. /);
-    expect(restoreLineOf(earlier, true, time)).toBe(CONFLICT_FOOTER);
+    expect(restoreLineOf(earlier, true, time)).toMatch(/^Restores the version from .+\. /);
+    expect(restoreLineOf(earlier, true, time).endsWith(CONFLICT_FOOTER)).toBe(true);
   });
 });

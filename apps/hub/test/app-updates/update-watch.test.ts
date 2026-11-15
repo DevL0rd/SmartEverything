@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AppUpdateEntry } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hubLayout } from '../../src/data-layout';
 import { AppUpdateFolder } from '../../src/app-updates/update-folder';
 import { AppUpdateWatch } from '../../src/app-updates/update-watch';
@@ -91,6 +91,28 @@ describe('watching the app update folder', () => {
     await live.announced(1);
     expect(live.notices).toEqual([expect.objectContaining({ id: dev.id })]);
     expect(live.targeted).toMatchObject([{ clientId: target.clientId, notice: { id: target.id } }]);
+  });
+
+  it('replays the latest notices of its platform to a device that subscribes', async () => {
+    await watch.start();
+    const clientId = randomUUID();
+    const target = { ...entry('release', '2026-10-25T09:00:00Z'), clientId };
+    const shared = entry('release', '2026-10-25T09:00:00Z', 'runtime-b');
+    await publish([target], folder.targetedIndexFile);
+    await publish([shared]);
+    await live.announced(1);
+    await vi.waitFor(() => {
+      expect(live.targeted).toHaveLength(1);
+    });
+    const ids = (notices: readonly { readonly id: string | null }[]): readonly (string | null)[] =>
+      notices.map((notice) => notice.id).toSorted();
+    expect(ids(watch.noticesFor({ id: clientId, platform: 'desktop' }))).toStrictEqual(
+      [target.id, shared.id].toSorted(),
+    );
+    expect(watch.noticesFor({ id: randomUUID(), platform: 'desktop' })).toMatchObject([
+      { id: shared.id },
+    ]);
+    expect(watch.noticesFor({ id: clientId, platform: 'android' })).toStrictEqual([]);
   });
   it('creates the folder and announces nothing at start', async () => {
     await watch.start();

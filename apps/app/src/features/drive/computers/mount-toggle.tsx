@@ -118,7 +118,8 @@ export function MountToggle({
   const [target, setTarget] = useState<boolean | null>(null);
   const on = mount?.enabled === true;
   const pending = writes.busy && target !== null;
-  const value = pending ? target : on;
+  const blocked = local?.blocked === true;
+  const value = !blocked && (pending ? target : on);
   const words = pending
     ? pendingWordsOf(target, computer)
     : (local?.words ?? mountToggleWordsOf(computer, mount, detail));
@@ -131,7 +132,7 @@ export function MountToggle({
         wrapSubtitle
         icon="cloud"
         value={value}
-        disabled={!live || local?.blocked === true}
+        disabled={!live || blocked}
         label={`Mount My Drive on ${computer}`}
         onChange={(next) => {
           if (writes.busy) return;

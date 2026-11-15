@@ -36,7 +36,7 @@ import {
 
 const BARS_THAT_FIT = { compact: 3, wide: 4 } as const;
 
-const WIDE_CELL_FROM = 120;
+const WIDE_CELL_FROM = 88;
 
 const WEEK_DAYS = 7;
 
@@ -134,7 +134,7 @@ function More({
 function CompactMore({ cell }: { readonly cell: MonthCell }): ReactNode {
   if (cell.more === 0) return null;
   return (
-    <Text variant="caption" tone="variant" className="tabular">
+    <Text variant="caption" tone="variant" align="center" className="tabular">
       {`+${String(cell.more)}`}
     </Text>
   );
@@ -162,7 +162,7 @@ function cellClassOf(cell: MonthCell, compact: boolean, pointer: boolean): strin
 }
 
 function dateRowOf(compact: boolean, pointer: boolean): string {
-  if (compact) return '';
+  if (compact) return 'items-center';
   return cn('justify-center', pointer ? 'h-8' : 'h-11');
 }
 
@@ -208,8 +208,8 @@ function WeekdayRow({ size }: { readonly size: CellSize }): ReactNode {
           key={row.name}
           variant="caption"
           tone="variant"
-          align="center"
-          className="flex-1 py-1"
+          align={size === 'compact' ? 'center' : 'start'}
+          className={cn('min-w-0 flex-1 py-1', size === 'wide' && 'px-2')}
         >
           {size === 'compact' ? row.short : row.name.slice(0, 3)}
         </Text>

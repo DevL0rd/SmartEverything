@@ -25,7 +25,6 @@ import {
   timerViewsOf,
   useHubOffline,
   useTimerActions,
-  timerNameOf,
   timersSubtitleOf,
   type TimerView,
   TimerDial,
@@ -58,6 +57,8 @@ import {
   ringsInOrderOf,
   rowLineOf,
 } from './home-fit';
+import { WidgetOffline } from './home-cards';
+import { TimerDials, timerTitleOf } from './timer-dials';
 
 const NO_RINGS: readonly PlannerRingRow[] = [];
 
@@ -81,14 +82,6 @@ const DIVIDER = 1;
 
 const GONE_BODY = 'It was deleted, or it belongs to someone else.';
 
-function Offline(): ReactNode {
-  return (
-    <Text variant="caption" tone="warning" numberOfLines={1}>
-      Hub offline
-    </Text>
-  );
-}
-
 function AlarmFace({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
   const offline = useHubOffline();
   const timeZone = useSettings().time_zone;
@@ -97,7 +90,7 @@ function AlarmFace({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
   const minute = useVisibleMinute(ref);
   const label = alarmLabelOf(alarm);
   return (
-    <WidgetFrame {...ALARM_FRAME} badge={offline ? <Offline /> : null}>
+    <WidgetFrame {...ALARM_FRAME} badge={offline ? <WidgetOffline /> : null}>
       <View ref={ref} onLayout={minute.onLayout} className="flex-1 flex-row items-center gap-4">
         <Figure value={alarm.time} size="m" tone={alarm.enabled ? 'default' : 'variant'} />
         <View className="min-w-0 flex-1 gap-0.5">
@@ -170,7 +163,7 @@ function TimerFace({ view }: { readonly view: TimerView }): ReactNode {
       <View className="min-w-0 flex-1 gap-1">
         <View className="flex-row items-center gap-2">
           <Text variant="body-strong" numberOfLines={1} className="min-w-0 shrink">
-            {timerNameOf(view.timer)}
+            {timerTitleOf(view.timer)}
           </Text>
           {view.phase === 'paused' ? <Badge label="Paused" /> : null}
           {view.phase === 'ringing' ? <Badge label="Ringing" tone="primary" icon="bell" /> : null}
@@ -196,7 +189,7 @@ function TimerBody({
     <WidgetEmpty
       icon="timer"
       colour="primary"
-      title={timerNameOf(timer)}
+      title={timerTitleOf(timer)}
       body={timer.state === 'cancelled' ? 'Cancelled' : 'Finished'}
     />
   ) : (
@@ -231,7 +224,7 @@ export function PlannerTimerWidget({ id }: { readonly id: string }): ReactNode {
   return timer === undefined ? (
     <WidgetGone icon="timer" title="This timer is gone" body={GONE_BODY} />
   ) : (
-    <WidgetFrame {...TIMER_FRAME} badge={offline ? <Offline /> : null}>
+    <WidgetFrame {...TIMER_FRAME} badge={offline ? <WidgetOffline /> : null}>
       <TimerRings timer={timer} />
     </WidgetFrame>
   );
@@ -248,9 +241,12 @@ function NextAlarm({
 }): ReactNode {
   if (ring === undefined)
     return (
-      <View className="min-w-0 flex-1 justify-center">
+      <View className="min-w-0 flex-1 justify-center gap-0.5">
         <Text variant="body-strong" numberOfLines={1}>
           No alarm on
+        </Text>
+        <Text variant="caption" tone="variant" numberOfLines={1}>
+          Set one in Clock
         </Text>
       </View>
     );
@@ -263,27 +259,6 @@ function NextAlarm({
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
         {`${dayWordOf(ring.at, now, timeZone)} · in ${countdownOf(ring.at, now)}`}
       </Text>
-    </View>
-  );
-}
-
-function TimerDials({
-  views,
-  count,
-}: {
-  readonly views: readonly TimerView[];
-  readonly count: number;
-}): ReactNode {
-  return (
-    <View className="min-w-0 flex-1 flex-row flex-wrap content-start gap-3">
-      {views.slice(0, count).map((view) => (
-        <View key={view.timer.id} className="w-18 items-center gap-0.5">
-          <TimerDial view={view} size="row" />
-          <Text variant="caption" tone="variant" numberOfLines={1}>
-            {timerNameOf(view.timer)}
-          </Text>
-        </View>
-      ))}
     </View>
   );
 }
@@ -355,17 +330,21 @@ function ClockReport({ next, views, later, now, timeZone }: ClockFaceProps): Rea
     nextAlarmHeightOf(frame.idiom),
     views.length === 0 ? 0 : dialBlockOf(frame.idiom),
   );
-  const room = widgetBodyHeight(frame) - top - 2 * SECTION_GAP - DIVIDER;
+  const body = widgetBodyHeight(frame);
+  const room = body - top - 2 * SECTION_GAP - DIVIDER;
   const lines = linesFit(room, rowLineOf(frame.idiom), LINE_GAP);
-  const dials = linesFit(halfWidthOf(frame.width), DIAL_SIZE, DIAL_GAP);
+  const alone = lines === 0 || later.length === 0;
+  const dials = alone
+    ? dialsFit(halfWidthOf(frame.width), body, frame.idiom)
+    : linesFit(halfWidthOf(frame.width), DIAL_SIZE, DIAL_GAP);
   return (
     <View className="flex-1 gap-3">
-      <View className="flex-row gap-4">
+      <View className={alone ? 'flex-1 flex-row items-start gap-4' : 'flex-row gap-4'}>
         <NextAlarm ring={next} now={now} timeZone={timeZone} />
         {views.length === 0 ? null : <Divider />}
         {views.length === 0 ? null : <TimerDials views={views} count={dials} />}
       </View>
-      {lines === 0 || later.length === 0 ? null : (
+      {alone ? null : (
         <View className="gap-3 border-t border-outline-variant pt-3">
           <LaterAlarms rings={later} count={lines} now={now} timeZone={timeZone} />
         </View>
@@ -375,7 +354,7 @@ function ClockReport({ next, views, later, now, timeZone }: ClockFaceProps): Rea
 }
 
 function badgeOf(offline: boolean, views: readonly TimerView[]): ReactNode {
-  if (offline) return <Offline />;
+  if (offline) return <WidgetOffline />;
   return views.length === 0 ? null : (
     <Text variant="caption" tone="variant" numberOfLines={1}>
       {timersSubtitleOf(views)}

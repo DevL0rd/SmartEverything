@@ -34,6 +34,7 @@ const DRIVE_NAMES = [
   'browseFolder',
   'readItem',
   'itemLinks',
+  'trashLinks',
   'searchDrive',
   'changeDrive',
   'readRecent',

@@ -237,7 +237,14 @@ function openActions(feed: OrganiseFeed, controls: MediaSelectionControls): read
     { icon: 'lock', label: 'Lock', primary: true, onPress: closeLockedSession },
     ...(feed.tiles.length === 0
       ? []
-      : [{ icon: 'circleCheck' as const, label: 'Select', onPress: controls.begin }]),
+      : [
+          {
+            icon: 'circleCheck' as const,
+            label: 'Select',
+            iconOnly: true,
+            onPress: controls.begin,
+          },
+        ]),
   ];
 }
 
@@ -323,7 +330,7 @@ export function LockedScreen(): ReactNode {
   };
   if (changing) {
     return (
-      <PhotosFrame active="locked" subtitle="Private, behind your PIN">
+      <PhotosFrame active="locked" subtitle="Private, behind your PIN" refresh={false}>
         <LockedChangePin
           onDone={() => {
             setChanging(false);
@@ -334,7 +341,7 @@ export function LockedScreen(): ReactNode {
   }
   if (session !== null) return <Opened session={session} onChangePin={changePin} />;
   return (
-    <PhotosFrame active="locked" subtitle="Private, behind your PIN">
+    <PhotosFrame active="locked" subtitle="Private, behind your PIN" refresh={false}>
       <Gate onChangePin={changePin} />
     </PhotosFrame>
   );

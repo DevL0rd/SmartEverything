@@ -185,6 +185,7 @@ export function useMinuteBand(
 }
 
 export interface BlockDragContext {
+  readonly date: string;
   readonly hourHeight: SharedValue<number>;
   readonly minHeight: number;
   readonly columnWidth: number;
@@ -223,6 +224,7 @@ interface PanInput {
   readonly context: BlockDragContext;
   readonly offsets: Offsets;
   readonly reduced: boolean;
+  readonly onShift: (shift: BlockShift | null) => void;
 }
 
 interface PanGeometry {
@@ -251,7 +253,7 @@ export function sameShift(left: BlockShift, right: BlockShift): boolean {
 
 const STILL: BlockShift = { days: 0, start: 0, end: 0 };
 
-function useBlockPan({ mode, block, context, offsets, reduced }: PanInput): PanGesture {
+function useBlockPan({ mode, block, context, offsets, reduced, onShift }: PanInput): PanGesture {
   const target = useSharedValue<BlockShift>(STILL);
   const { touch } = context;
   const geometry: PanGeometry = {
@@ -277,11 +279,13 @@ function useBlockPan({ mode, block, context, offsets, reduced }: PanInput): PanG
       settleTo(offsets.start, next.start, reduced);
       settleTo(offsets.end, next.end, reduced);
       settleTo(offsets.days, next.days, reduced);
+      scheduleOnRN(onShift, sameShift(next, STILL) ? null : next);
       scheduleOnRN(stepFeedback);
     })
     .onEnd(() => {
       const last = target.get();
-      if (!sameShift(last, STILL)) scheduleOnRN(commit, last);
+      if (sameShift(last, STILL)) scheduleOnRN(onShift, null);
+      else scheduleOnRN(commit, last);
     });
 }
 
@@ -316,6 +320,7 @@ export interface MovableBlockProps {
   readonly context: BlockDragContext;
   readonly lane: { readonly left: `${number}%`; readonly width: `${number}%` };
   readonly className: string;
+  readonly onShift: (shift: BlockShift | null) => void;
   readonly children: ReactNode;
 }
 
@@ -324,11 +329,12 @@ export function MovableBlock({
   context,
   lane,
   className,
+  onShift,
   children,
 }: MovableBlockProps): ReactNode {
   const { reduced } = useMotion();
   const offsets = useOffsets(block);
-  const base = { block, context, offsets, reduced };
+  const base = { block, context, offsets, reduced, onShift };
   const move = useBlockPan({ ...base, mode: 'move' });
   const start = useBlockPan({ ...base, mode: 'start' }).blocksExternalGesture(move);
   const end = useBlockPan({ ...base, mode: 'end' }).blocksExternalGesture(move);

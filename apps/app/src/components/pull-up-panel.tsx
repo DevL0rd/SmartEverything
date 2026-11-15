@@ -13,6 +13,7 @@ import { FloatingSheetViewport } from './floating-sheet-viewport';
 import { focusDecisionHeading } from './decision-keyboard';
 import { HostedSheetPages, useHostedNativeBack } from './hosted-sheet-pages';
 import { PullUpHandle, type PullUpHeights } from './pull-up-handle';
+import { sheetDrop } from './sheet-frame';
 import { useSheetNavigation } from './sheet-navigation';
 import { detentHeight, openingDetent, type OpenDetent, type PullUpDetent } from './pull-up-math';
 import { useEscape } from './use-escape';
@@ -184,12 +185,12 @@ function SurfaceContent({
 
 function Surface({ frame, ...content }: SurfaceProps): ReactNode {
   const { host, height } = content.heights;
-  const slide = useAnimatedStyle(() => ({ transform: [{ translateY: host - height.get() }] }));
+  const slide = useAnimatedStyle(() => sheetDrop(host - height.get()));
   const surface = (
     <Animated.View
       style={[{ height: host }, slide]}
       className={cn(
-        'absolute inset-x-0 bottom-0',
+        'absolute inset-x-0',
         frame === null
           ? 'overflow-hidden rounded-t-xl border-hairline border-b-0 border-outline-variant bg-surface-raised elevation-2'
           : cn(CHROME_SURFACE, FLOATING_SHEET_SURFACE),

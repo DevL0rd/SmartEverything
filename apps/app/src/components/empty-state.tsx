@@ -22,7 +22,7 @@ function CompactEmptyState({ icon, title, body, action }: EmptyStateProps): Reac
         <Text variant="callout" tone="variant">
           {body}
         </Text>
-        {action === undefined ? null : <View className="pt-2">{action}</View>}
+        {action === undefined ? null : <View className="items-start pt-2">{action}</View>}
       </View>
     </View>
   );
@@ -41,7 +41,7 @@ export function EmptyState(props: EmptyStateProps): ReactNode {
       <Text variant="title-2" align="center">
         {title}
       </Text>
-      <Text variant="body" tone="variant" align="center" className="max-w-reading">
+      <Text variant="body" tone="variant" align="center" className="max-w-md">
         {body}
       </Text>
       {action === undefined ? null : <View className="pt-2">{action}</View>}

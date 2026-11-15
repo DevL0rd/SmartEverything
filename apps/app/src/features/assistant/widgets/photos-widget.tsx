@@ -106,7 +106,7 @@ function useMonthStrip(month: string): Strip {
     trail: itemsText(bucket.count),
     tiles: flattenPages(pages.data, tilesOfPage),
     total: bucket.count,
-    action: { label: PHOTOS_WIDGET_COPY.openPhotos, href: href.photos() },
+    action: { label: PHOTOS_WIDGET_COPY.openPhotos, href: href.photos({ month }) },
     opens: {},
   };
 }

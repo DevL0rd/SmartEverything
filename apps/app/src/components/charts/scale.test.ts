@@ -9,6 +9,8 @@ import {
   plotModel,
   segmentsOf,
   startOf,
+  thinned,
+  thinnedFromEnd,
   type ChartPoint,
   type ChartRange,
 } from './scale';
@@ -194,5 +196,20 @@ describe('series helpers', () => {
   ])('starts a %s on its first local midnight', (range, moment, month, date) => {
     const start = startOf(moment, range);
     expect([start.getMonth(), start.getDate(), start.getHours()]).toEqual([month, date, 0]);
+  });
+});
+
+describe('thinned labels', () => {
+  const days = Array.from({ length: 30 }, (_, index) => index + 1);
+
+  it('keeps every n-th label from the first one', () => {
+    expect(thinned(days, 300, 40).slice(0, 3)).toEqual([1, 5, 9]);
+  });
+
+  it('always keeps the newest label when counting from the end', () => {
+    const kept = thinnedFromEnd(days, 300, 40);
+    expect(kept.at(-1)).toBe(30);
+    expect(kept.slice(-3)).toEqual([22, 26, 30]);
+    expect(thinnedFromEnd([1, 2, 3], 300, 40)).toEqual([1, 2, 3]);
   });
 });

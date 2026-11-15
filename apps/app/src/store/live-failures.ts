@@ -69,6 +69,14 @@ export class SectionFailures {
     this.store.setSync({ failed: this.all() });
   }
 
+  readable<C extends { readonly table: string }>(changes: readonly C[]): readonly C[] {
+    const readable = changes.filter((change) => !this.fromLive.has(`tables.${change.table}`));
+    if (readable.length !== changes.length) {
+      log.debug('live.failed_changes_skipped', { skipped: changes.length - readable.length });
+    }
+    return readable;
+  }
+
   unappliedChange(table: string, reason: string, error: Error): void {
     log.error('live.change_unreadable', error, { table, reason });
     this.live([{ section: `tables.${table}`, reason }]);

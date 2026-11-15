@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { confirm, pendingConfirm, settleConfirm } from './confirm-store';
+import { choose, confirm, pendingConfirm, settleAlternate, settleConfirm } from './confirm-store';
 
 describe('confirm', () => {
   it('gives two confirms with the same title different ids so the dialog remounts', async () => {
@@ -23,5 +23,15 @@ describe('confirm', () => {
     settleConfirm(true);
     await expect(second).resolves.toBe(true);
     expect(pendingConfirm.get()).toBeNull();
+  });
+
+  it('resolves a three-way choice with the alternate answer', async () => {
+    const choice = choose({ title: 'Stop?', confirmLabel: 'Remove', alternateLabel: 'Keep' });
+    expect(pendingConfirm.get()?.alternateLabel).toBe('Keep');
+    settleAlternate();
+    await expect(choice).resolves.toBe('alternate');
+    const cancelled = choose({ title: 'Stop?', confirmLabel: 'Remove', alternateLabel: 'Keep' });
+    settleConfirm(false);
+    await expect(cancelled).resolves.toBe('cancel');
   });
 });

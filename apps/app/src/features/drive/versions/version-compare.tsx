@@ -94,7 +94,7 @@ function pairKey(item: DriveItem, a: VersionEntry, b: VersionEntry): string {
 
 const TEXT_SKELETON_WIDTHS = ['w-3/5', 'w-4/5', 'w-2/5', 'w-11/12', 'w-1/2', 'w-3/4'] as const;
 
-function TextLoading(): ReactNode {
+export function TextLoading(): ReactNode {
   return (
     <View
       aria-label="Loading the comparison"
@@ -108,6 +108,16 @@ function TextLoading(): ReactNode {
   );
 }
 
+export function CompareLoading({ lines }: { readonly lines: boolean }): ReactNode {
+  return lines ? (
+    <TextLoading />
+  ) : (
+    <View aria-label="Loading the comparison" role="progressbar" className="min-h-48 flex-1">
+      <Skeleton shape="block" className="h-auto flex-1 rounded-md" />
+    </View>
+  );
+}
+
 function LoadedBody<T>({
   loaded,
   lines,
@@ -117,15 +127,7 @@ function LoadedBody<T>({
   readonly lines: boolean;
   readonly children: (value: T) => ReactNode;
 }): ReactNode {
-  if (loaded.state === 'loading') {
-    return lines ? (
-      <TextLoading />
-    ) : (
-      <View aria-label="Loading the comparison" role="progressbar" className="min-h-48 flex-1">
-        <Skeleton shape="block" className="h-auto flex-1 rounded-md" />
-      </View>
-    );
-  }
+  if (loaded.state === 'loading') return <CompareLoading lines={lines} />;
   if (loaded.state === 'failed') {
     return <ErrorState error={loaded.error} retry={loaded.retry} />;
   }

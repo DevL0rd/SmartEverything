@@ -26,7 +26,7 @@ vi.mock('../../design/platform', () => ({
       : null,
 }));
 
-const { pinnedFetch, hubFetch } = await import('./route-platform');
+const { pinnedFetch, hubFetch, requestTimeoutMs } = await import('./route-platform');
 
 const LAN = { kind: 'lan', url: 'https://hub.local:7880' } as const;
 const REMOTE = { kind: 'remote', url: 'https://home.example.com' } as const;
@@ -132,6 +132,34 @@ describe('hubFetch', () => {
     const failure = expect(pending).rejects.toThrow('aborted');
     await vi.advanceTimersByTimeAsync(15_001);
     await failure;
+  });
+
+  it('lets a large write outlast the read timeout and gives up only after its size-based limit', async () => {
+    let aborted = false;
+    globalThis.fetch = (_url, init): Promise<Response> =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(new Error('aborted'));
+        });
+      });
+    const body = JSON.stringify({ ids: 'x'.repeat(2048) });
+    const pending = hubFetch('scope', REMOTE, 'https://home.example.com/x', {
+      method: 'POST',
+      body,
+    });
+    const failure = expect(pending).rejects.toThrow('aborted');
+    await vi.advanceTimersByTimeAsync(15_001 + 20_000);
+    expect(aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(40_000);
+    await failure;
+    expect(aborted).toBe(true);
+  });
+
+  it('keeps reads and body-less requests at the base timeout', () => {
+    expect(requestTimeoutMs({ method: 'GET' })).toBe(15_000);
+    expect(requestTimeoutMs({ method: 'POST' })).toBe(15_000);
+    expect(requestTimeoutMs({ method: 'POST', body: 'x'.repeat(1025) })).toBe(55_000);
   });
 
   it('passes the caller cancellation to a remote fetch', async () => {

@@ -1,3 +1,4 @@
+import { syncDirectory, writeUnsynced } from './unsynced';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import {
@@ -63,15 +64,6 @@ async function stageFile(path: string, source: AsyncIterable<Uint8Array>): Promi
     await handle.close();
   }
   return { bytes, sha256: hash.digest('hex') };
-}
-
-async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(path, 'r');
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 }
 
 async function* readNoFollow(path: string): AsyncGenerator<Uint8Array> {
@@ -181,6 +173,8 @@ export const nodeFiles: DriveFiles = {
   remove: (path) => rm(path, { recursive: true, force: true }),
   stage: stageFile,
   writeDurable,
+  writeUnsynced,
+  syncFile: syncDirectory,
   syncDirectory,
   chmod: chmodNoFollow,
   clone: cloneFile,

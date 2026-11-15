@@ -10,6 +10,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { useScreenPaused } from '../../../design/screen-pause';
+import type { Idiom } from '../../../design/tokens';
 import { clockOfMinutes, shiftDay, zonedStartOfDay } from '../../../format/time';
 import { useRows, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
@@ -35,7 +36,7 @@ interface TimelineRow {
   readonly spans: readonly GridSpan[];
 }
 
-const HOUR_WIDTH_TOUCH = 64;
+const HOUR_WIDTH: Readonly<Record<Idiom, number>> = { touch: 64, pointer: 36 };
 
 function useDayWindow(day: string): { readonly from: string; readonly to: string } {
   const timeZone = useSettings().time_zone;
@@ -201,22 +202,22 @@ function Labels({
   );
 }
 
-export function swipeStartOf(layout: Pick<Layout, 'window' | 'now'>): number {
+export function swipeStartOf(layout: Pick<Layout, 'window' | 'now'>, idiom: Idiom): number {
   if (layout.now === null) return 0;
-  return Math.max(0, ((layout.now - layout.window.from) / 60 - 1) * HOUR_WIDTH_TOUCH);
+  return Math.max(0, ((layout.now - layout.window.from) / 60 - 1) * HOUR_WIDTH[idiom]);
 }
 
 function SwipeTracks(props: GridProps): ReactNode {
   const scroll = useRef<ScrollView>(null);
-  const pointer = useIdiom() === 'pointer';
-  const width = { width: hourMarksOf(props.layout.window).length * HOUR_WIDTH_TOUCH };
+  const idiom = useIdiom();
+  const width = { width: hourMarksOf(props.layout.window).length * HOUR_WIDTH[idiom] };
   return (
     <ScrollView
       ref={scroll}
       horizontal
-      showsHorizontalScrollIndicator={pointer}
+      showsHorizontalScrollIndicator={idiom === 'pointer'}
       onLayout={() => {
-        scroll.current?.scrollTo({ x: swipeStartOf(props.layout), animated: false });
+        scroll.current?.scrollTo({ x: swipeStartOf(props.layout, idiom), animated: false });
       }}
       className="flex-1"
     >
@@ -227,14 +228,15 @@ function SwipeTracks(props: GridProps): ReactNode {
   );
 }
 
-export function swipesAt(width: number, window: MinuteSpan): boolean {
-  return width > 0 && width / hourMarksOf(window).length < HOUR_WIDTH_TOUCH;
+export function swipesAt(width: number, window: MinuteSpan, idiom: Idiom): boolean {
+  return width > 0 && width / hourMarksOf(window).length < HOUR_WIDTH[idiom];
 }
 
 function TimelineGrid(props: GridProps): ReactNode {
   const [width, setWidth] = useState(0);
-  const pointer = useIdiom() === 'pointer';
-  const swipe = swipesAt(width, props.layout.window);
+  const idiom = useIdiom();
+  const pointer = idiom === 'pointer';
+  const swipe = swipesAt(width, props.layout.window, idiom);
   return (
     <>
       <Card padding="none" className="overflow-hidden">

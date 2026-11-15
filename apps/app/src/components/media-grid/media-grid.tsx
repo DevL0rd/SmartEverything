@@ -1,13 +1,19 @@
 import type { ReactElement, ReactNode } from 'react';
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo, useState, type RefObject } from 'react';
 import { View, type ViewStyle } from 'react-native';
-import { FlashList, type FlashListProps, type ListRenderItem } from '@shopify/flash-list';
+import {
+  FlashList,
+  type FlashListProps,
+  type FlashListRef,
+  type ListRenderItem,
+} from '@shopify/flash-list';
 import { useIdiom } from '../../design/platform';
 import { useListProbe } from '../../perf/list-probe';
 import { useMeasuredWidth } from '../use-measured-width';
 import { DRAW_DISTANCE } from '../virtual-list';
 import { RowScope, useRowTracking, type RowVisibility } from '../virtual-list-visibility';
 import { DayHead } from './day-head';
+import { useMonthFocus, type MonthFocus } from './month-focus';
 import { dayText, type DayText } from './day-text';
 import {
   headIndices,
@@ -24,12 +30,15 @@ import {
 import { dayMark, type DayMark, type MediaSelection } from './selection';
 import { MediaTileView, type TileActions } from './tile';
 import { useThumbnailWindow } from './thumbnail-window';
+import { useContentAnchor } from './content-anchor';
 import { groupTiles, type MediaDay, type MediaGrouping, type MediaTile } from './tiles';
 
 export interface DayDecor {
   readonly placeOf: (day: MediaDay) => string | null;
   readonly textOf?: (day: MediaDay) => DayText;
 }
+
+export type { MonthFocus } from './month-focus';
 
 export interface MediaGridProps extends TileActions {
   readonly tiles: readonly MediaTile[];
@@ -45,6 +54,7 @@ export interface MediaGridProps extends TileActions {
   readonly onPrefetchTiles?: (tiles: readonly MediaTile[]) => void;
   readonly selection?: MediaSelection;
   readonly onDay?: (ids: readonly string[]) => void;
+  readonly focus?: MonthFocus | null;
 }
 
 interface Picking {
@@ -225,15 +235,18 @@ function useGridRows(
   return useStableRows(next);
 }
 
-function useProbeProps(
+function useScrollProps(
   name: string | undefined,
   total: number,
+  step: MediaZoomStep,
 ): Partial<FlashListProps<MediaGridRow>> {
   const probe = useListProbe(name, total);
+  const anchor = useContentAnchor(step);
   return probe.cell === undefined
-    ? {}
+    ? anchor
     : {
-        onScroll: probe.scrollWith(),
+        ...anchor,
+        onScroll: probe.scrollWith(anchor.onScroll),
         onLayout: probe.onLayout,
         onContentSizeChange: probe.onContentSizeChange,
         CellRendererComponent: probe.cell,
@@ -257,16 +270,26 @@ function useTileActions({ thumbs, onOpen, onMenu, badgeOf }: TileActions): TileA
   );
 }
 
+interface LaidOut {
+  readonly gridRows: readonly MediaGridRow[];
+  readonly sticky: number[];
+  readonly list: RefObject<FlashListRef<MediaGridRow> | null>;
+}
+
 function useLaidOut(
-  tiles: readonly MediaTile[],
-  step: MediaZoomStep,
+  props: {
+    readonly tiles: readonly MediaTile[];
+    readonly step: MediaZoomStep;
+    readonly focus: MonthFocus | null | undefined;
+  },
   grouping: MediaGrouping,
   width: number,
-): { readonly gridRows: readonly MediaGridRow[]; readonly sticky: number[] } {
+): LaidOut {
+  const { tiles, step, focus } = props;
   const gridRows = useGridRows(tiles, step, grouping, width);
   const pack = packsDays(step, grouping);
   const sticky = useMemo(() => (pack ? [] : headIndices(gridRows)), [gridRows, pack]);
-  return { gridRows, sticky };
+  return { gridRows, sticky, list: useMonthFocus(gridRows, focus) };
 }
 
 interface RowRendering {
@@ -304,6 +327,18 @@ function useTracked(
   return useRowTracking(useThumbnailWindow(gridRows, DRAW_DISTANCE, onPrefetchTiles));
 }
 
+function WidthProbe({
+  onLayout,
+}: {
+  readonly onLayout: ReturnType<typeof useMeasuredWidth>['onLayout'];
+}): ReactNode {
+  return (
+    <View pointerEvents="none" className="px-gutter">
+      <View onLayout={onLayout} />
+    </View>
+  );
+}
+
 export function MediaGrid({
   tiles,
   step,
@@ -318,10 +353,11 @@ export function MediaGrid({
   onPrefetchTiles,
   selection,
   onDay,
+  focus,
   ...tileActions
 }: MediaGridProps): ReactNode {
   const measured = useMeasuredWidth();
-  const { gridRows, sticky } = useLaidOut(tiles, step, grouping, measured.width);
+  const { gridRows, sticky, list } = useLaidOut({ tiles, step, focus }, grouping, measured.width);
   const { rows, pairs } = useTracked(gridRows, onPrefetchTiles);
   const { renderRow, picking } = useRowRenderer({
     rows,
@@ -332,16 +368,15 @@ export function MediaGrid({
   });
   return (
     <View className="flex-1">
-      <View pointerEvents="none" className="px-gutter">
-        <View onLayout={measured.onLayout} />
-      </View>
+      <WidthProbe onLayout={measured.onLayout} />
       <FlashList<MediaGridRow>
+        ref={list}
         data={gridRows}
         keyExtractor={rowKeyOf}
         getItemType={rowTypeOf}
         renderItem={renderRow}
         viewabilityConfigCallbackPairs={pairs}
-        {...useProbeProps(probe, gridRows.length)}
+        {...useScrollProps(probe, gridRows.length, step)}
         stickyHeaderIndices={sticky}
         extraData={picking}
         drawDistance={DRAW_DISTANCE}

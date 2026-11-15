@@ -100,19 +100,19 @@ export async function scrubNow(client: QueryClient): Promise<DriveScrubState> {
 }
 
 export function scrubLineOf(scrub: DriveScrubState, now: number): StatusLine {
-  const tone: Tone = scrub.corrupt === 0 ? 'variant' : 'critical';
   if (scrub.state === 'running') {
     return {
       text: `Reading every file back from the disk · started ${moment(scrub.startedAt, now)}`,
-      tone,
+      tone: 'variant',
     };
   }
   if (scrub.state === 'stopped') {
     return {
       text: `Stopped · started ${moment(scrub.startedAt, now)} · Scrub now carries on`,
-      tone,
+      tone: 'variant',
     };
   }
+  const tone: Tone = scrub.corrupt === 0 ? 'variant' : 'critical';
   if (scrub.lastFinishedAt === null) {
     return { text: `Not checked yet · ${SCRUB_EXPLAINER.toLowerCase()}`, tone: 'variant' };
   }
@@ -170,17 +170,26 @@ export function useQuotaRequest(
   };
 }
 
-function QuotaBar({ line }: { readonly line: QuotaLine }): ReactNode {
-  if (line.share === null) return null;
+function QuotaBar({
+  line,
+  share,
+}: {
+  readonly line: QuotaLine;
+  readonly share: number;
+}): ReactNode {
   return (
-    <View className="w-24">
-      <ProgressBar
-        progress={line.share}
-        colour={line.tone === 'critical' ? 'critical' : 'primary'}
-        label={line.subtitle}
-      />
-    </View>
+    <ProgressBar
+      progress={share}
+      colour={line.tone === 'critical' ? 'critical' : 'primary'}
+      label={line.subtitle}
+    />
   );
+}
+
+function quotaBarOf(line: QuotaLine, below: boolean): { below?: ReactNode; trailing?: ReactNode } {
+  if (line.share === null) return {};
+  const bar = <QuotaBar line={line} share={line.share} />;
+  return below ? { below: bar } : { trailing: <View className="w-24">{bar}</View> };
 }
 
 function QuotaRow({
@@ -193,6 +202,7 @@ function QuotaRow({
   const opener = useRef<View>(null);
   const [open, setOpen] = useState(false);
   const request = useQuotaRequest(line, opener);
+  const phone = useIsPhone();
   return (
     <>
       <ListRow
@@ -200,7 +210,8 @@ function QuotaRow({
         icon="user"
         subtitle={line.subtitle}
         subtitleTone={line.tone}
-        trailing={<QuotaBar line={line} />}
+        wrapSubtitle
+        {...quotaBarOf(line, phone)}
         chevron={editable}
         pressRef={opener}
         {...(editable
@@ -263,14 +274,13 @@ function ScrubTrailing({
 }): ReactNode {
   const client = useQueryClient();
   const mutation = useMutationState();
-  if (!owner) return null;
+  if (!owner || scrub.state === 'running') return null;
   return (
     <Button
       label="Scrub now"
       icon="shield"
       variant="tonal"
       loading={mutation.busy}
-      disabled={scrub.state === 'running'}
       onPress={() => {
         mutation.run(() => scrubNow(client), {
           failure: 'The check did not start',
@@ -303,7 +313,9 @@ function ScrubRow({
         wrapSubtitle
         {...(stacked ? {} : { trailing: action })}
       />
-      {stacked && owner ? <View className="flex-row pb-3 pl-18 pr-4">{action}</View> : null}
+      {stacked && owner && scrub.state !== 'running' ? (
+        <View className="flex-row pb-3 pl-18 pr-4">{action}</View>
+      ) : null}
       {scrub.state === 'idle' ? null : (
         <View className="px-4 pb-3">
           <ScrubProgress scrub={scrub} />

@@ -154,7 +154,9 @@ function OfflineBanner(): ReactNode {
 }
 
 function selectAction(view: DeletedView, start: () => void): readonly ShellAction[] {
-  return view.items.length === 0 ? [] : [{ icon: 'circleCheck', label: 'Select', onPress: start }];
+  return view.items.length === 0
+    ? []
+    : [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: start }];
 }
 
 function SelectionBar({

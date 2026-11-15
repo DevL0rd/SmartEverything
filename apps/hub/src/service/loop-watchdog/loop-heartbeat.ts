@@ -1,12 +1,10 @@
-import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
+import { performance } from 'node:perf_hooks';
 import { cpuUsage, getActiveResourcesInfo, memoryUsage } from 'node:process';
 import { getHeapStatistics } from 'node:v8';
 import type { Logger } from '@smarteverything/logging';
 import { BEAT_SEQUENCE, HEALTH_EVERY_TICKS, LAG_WARN_MS } from './settings';
 
-const NS_PER_MS = 1_000_000;
 const BYTES_PER_MB = 1_048_576;
-const DELAY_RESOLUTION_MS = 10;
 
 const megabytes = (bytes: number): number => Math.round(bytes / BYTES_PER_MB);
 
@@ -19,13 +17,13 @@ function activeResources(): Readonly<Record<string, number>> {
 }
 
 export class LoopHeartbeat {
-  private readonly delay = monitorEventLoopDelay({ resolution: DELAY_RESOLUTION_MS });
   private timer: NodeJS.Timeout | null = null;
   private expectedAt = 0;
   private ticks = 0;
   private windowMaxMs = 0;
   private cpu = cpuUsage();
   private utilisation = performance.eventLoopUtilization();
+  private window = performance.eventLoopUtilization();
 
   constructor(
     private readonly beat: Int32Array,
@@ -35,7 +33,7 @@ export class LoopHeartbeat {
   ) {}
 
   start(): void {
-    this.delay.enable();
+    this.window = performance.eventLoopUtilization();
     this.expectedAt = performance.now() + this.tickMs;
     this.timer = setInterval(() => {
       this.tick();
@@ -48,7 +46,6 @@ export class LoopHeartbeat {
       clearInterval(this.timer);
       this.timer = null;
     }
-    this.delay.disable();
   }
 
   private tick(): void {
@@ -56,8 +53,9 @@ export class LoopHeartbeat {
     const now = performance.now();
     const lateMs = Math.max(0, now - this.expectedAt);
     this.expectedAt = now + this.tickMs;
-    const blockedMs = this.delay.max / NS_PER_MS;
-    this.delay.reset();
+    const window = performance.eventLoopUtilization(this.window);
+    this.window = performance.eventLoopUtilization();
+    const blockedMs = window.active;
     this.windowMaxMs = Math.max(this.windowMaxMs, lateMs, blockedMs);
     const busy = this.busy();
     if (Math.max(lateMs, blockedMs) >= LAG_WARN_MS) {

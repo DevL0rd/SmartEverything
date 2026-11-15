@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { memo } from 'react';
-import { View } from 'react-native';
+import { memo, useState } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Line } from 'react-native-svg';
 import { Card } from '../../../components/card';
@@ -11,7 +11,6 @@ import type { ChartSeries } from '../../../components/charts/chart-model';
 import { EmptyGraph } from '../../../components/charts/empty-graph';
 import { Text } from '../../../components/text';
 import { useDraw } from '../../../components/use-draw';
-import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useColour, useColourResolver } from '../../../design/colour';
 import { useMotion } from '../../../design/motion';
 import { count } from '../../../format/number';
@@ -38,18 +37,27 @@ const PLOT_HEIGHT = 150;
 const SEGMENT_GAP = 2;
 const RADIUS = 3;
 const GAP_SHARE = 0.25;
-const PLOT_BOX = { height: PLOT_HEIGHT } as const;
+const PLOT_MIN = { minHeight: PLOT_HEIGHT } as const;
+
+interface PlotBox {
+  readonly width: number;
+  readonly height: number;
+}
 
 type Fills = Readonly<Record<ActivitySeries, string>>;
 
 function columnShapes(
   column: ActivityColumn,
   slot: { readonly x: number; readonly width: number },
-  { unit, fills }: { readonly unit: number; readonly fills: Fills },
+  {
+    unit,
+    fills,
+    height,
+  }: { readonly unit: number; readonly fills: Fills; readonly height: number },
 ): BarShape[] {
   const present = ACTIVITY_SERIES.filter((series) => column.counts[series] > 0);
   const last = present.at(-1);
-  let bottom = PLOT_HEIGHT - 1;
+  let bottom = height - 1;
   return present.map((series) => {
     const top = Math.min(bottom - 1, bottom - column.counts[series] * unit);
     const shape: BarShape = {
@@ -68,7 +76,7 @@ function columnShapes(
 
 export function stackShapes(
   columns: readonly ActivityColumn[],
-  width: number,
+  { width, height }: PlotBox,
   fills: Fills,
 ): BarShape[] {
   const peak = Math.max(1, ...columns.map((column) => column.total));
@@ -76,11 +84,11 @@ export function stackShapes(
     (column) => ACTIVITY_SERIES.filter((series) => column.counts[series] > 0).length,
   );
   const gaps = Math.max(0, ...present.map((segments) => segments - 1)) * SEGMENT_GAP;
-  const unit = (PLOT_HEIGHT - 1 - gaps) / peak;
+  const unit = (height - 1 - gaps) / peak;
   const slots = barSlots(columns.length, width, { gap: GAP_SHARE, min: 1 });
   return columns.flatMap((column, index) => {
     const slot = slots[index];
-    return slot === undefined ? [] : columnShapes(column, slot, { unit, fills });
+    return slot === undefined ? [] : columnShapes(column, slot, { unit, fills, height });
   });
 }
 
@@ -98,24 +106,28 @@ function useFills(): Fills {
 
 function Reveal({
   grow,
+  height,
   children,
 }: {
   readonly grow: SharedValue<number>;
+  readonly height: number;
   readonly children: ReactNode;
 }): ReactNode {
-  const clip = useAnimatedStyle(() => ({ height: PLOT_HEIGHT * grow.get() }), [grow]);
+  const clip = useAnimatedStyle(() => ({ height: height * grow.get() }), [grow, height]);
+  const sized = { height };
   return (
     <Animated.View style={clip} className="absolute inset-x-0 bottom-0 overflow-hidden">
-      <View style={PLOT_BOX} className="absolute inset-x-0 bottom-0">
+      <View style={sized} className="absolute inset-x-0 bottom-0">
         {children}
       </View>
     </Animated.View>
   );
 }
 
-function Scale({ peak }: { readonly peak: number }): ReactNode {
+function Scale({ peak, height }: { readonly peak: number; readonly height: number }): ReactNode {
+  const sized = { height };
   return (
-    <View style={PLOT_BOX} className="items-end justify-between">
+    <View style={sized} className="items-end justify-between">
       <Text variant="caption" tone="variant" className="tabular -mt-2">
         {count(peak)}
       </Text>
@@ -126,11 +138,11 @@ function Scale({ peak }: { readonly peak: number }): ReactNode {
   );
 }
 
-function Gridline({ width }: { readonly width: number }): ReactNode {
+function Gridline({ width, height }: PlotBox): ReactNode {
   const grid = useColour('outline-variant');
   return (
     <View className="absolute inset-0">
-      <Svg width={width} height={PLOT_HEIGHT}>
+      <Svg width={width} height={height}>
         <Line
           x1={0}
           x2={width}
@@ -145,6 +157,17 @@ function Gridline({ width }: { readonly width: number }): ReactNode {
   );
 }
 
+function usePlotBox(): PlotBox & { readonly onLayout: (event: LayoutChangeEvent) => void } {
+  const [box, setBox] = useState<PlotBox>({ width: 0, height: PLOT_HEIGHT });
+  return {
+    ...box,
+    onLayout: (event): void => {
+      const { width, height } = event.nativeEvent.layout;
+      setBox((held) => (held.width === width && held.height === height ? held : { width, height }));
+    },
+  };
+}
+
 function Plot({
   columns,
   peak,
@@ -152,25 +175,28 @@ function Plot({
   readonly columns: readonly ActivityColumn[];
   readonly peak: number;
 }): ReactNode {
-  const { width, onLayout } = useMeasuredWidth();
+  const { width, height, onLayout } = usePlotBox();
   const fills = useFills();
   const baseline = useColour('outline');
   const grow = useDraw(1, !useMotion().reduced);
   return (
-    <View aria-hidden className="flex-row gap-2">
-      <Scale peak={peak} />
+    <View aria-hidden className="flex-row gap-2 large:flex-1">
+      <Scale peak={peak} height={height} />
       <View className="min-w-0 flex-1 gap-1">
-        <View style={PLOT_BOX} onLayout={onLayout}>
-          {width > 0 ? <Gridline width={width} /> : null}
+        <View style={PLOT_MIN} className="large:flex-1" onLayout={onLayout}>
+          {width > 0 ? <Gridline width={width} height={height} /> : null}
           {width > 0 ? (
-            <Reveal grow={grow}>
-              <Svg width={width} height={PLOT_HEIGHT}>
-                <BarMarks shapes={stackShapes(columns, width, fills)} fill={fills.you} />
+            <Reveal grow={grow} height={height}>
+              <Svg width={width} height={height}>
+                <BarMarks
+                  shapes={stackShapes(columns, { width, height }, fills)}
+                  fill={fills.you}
+                />
                 <Line
                   x1={0}
                   x2={width}
-                  y1={PLOT_HEIGHT - 0.5}
-                  y2={PLOT_HEIGHT - 0.5}
+                  y1={height - 0.5}
+                  y2={height - 0.5}
                   stroke={baseline}
                   strokeWidth={1}
                 />
@@ -178,7 +204,7 @@ function Plot({
             </Reveal>
           ) : null}
         </View>
-        <BarLabels bars={columns} width={width} />
+        <BarLabels bars={columns} width={width} anchor="end" />
       </View>
     </View>
   );
@@ -240,12 +266,12 @@ export const ActivityChart = memo(function ActivityChart({
   const busiest = busiestOf(columns);
   const look = RANGE_LOOK[range];
   return (
-    <Card>
+    <Card className="large:flex-1">
       <View
         accessible
         accessibilityRole="image"
         accessibilityLabel={chartSummary(columns, range, labels)}
-        className="gap-3"
+        className="gap-3 large:flex-1"
       >
         <ChartHead unit={look.unit} busiest={busiest} />
         {busiest === null ? (

@@ -1,5 +1,6 @@
 import type { PlannerCollectionRow } from '@smarteverything/domain';
-import type { ReactNode } from 'react';
+import { Logger } from '@smarteverything/logging';
+import { useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { PlannerParse } from '../../../api/planner';
 import { Button } from '../../../components/button';
@@ -13,14 +14,21 @@ import {
   type WillAddChip,
 } from './parse-preview';
 
+const log = new Logger('app.planner');
+
 export interface Status {
   readonly text: string | null;
   readonly problem: boolean;
+  readonly detail: string | null;
   readonly retry: (() => void) | null;
   readonly asTask: (() => void) | null;
 }
 
 export function StatusLine({ status }: { readonly status: Status }): ReactNode {
+  const { detail } = status;
+  useEffect(() => {
+    if (detail !== null) log.warn('planner.parse_failed', { detail });
+  }, [detail]);
   if (status.text === null) return null;
   return (
     <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
@@ -59,10 +67,12 @@ export function statusOf({ plan, problem, next, kind, retry, choose }: StatusInp
         }
       : null;
   if (problem !== null) {
-    return { text: `Couldn’t read that. ${problem}`, problem: true, retry, asTask };
+    return { text: 'Couldn’t read that.', problem: true, detail: problem, retry, asTask };
   }
-  if (plan?.kind === 'missing') return { text: plan.reason, problem: true, retry: null, asTask };
-  return { text: next, problem: false, retry: null, asTask: null };
+  if (plan?.kind === 'missing') {
+    return { text: plan.reason, problem: true, detail: null, retry: null, asTask };
+  }
+  return { text: next, problem: false, detail: null, retry: null, asTask: null };
 }
 
 export function chipsOf(

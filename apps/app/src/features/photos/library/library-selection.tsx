@@ -5,7 +5,10 @@ import type { IconName } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import type { MediaSelectionControls } from '../../../components/media-grid/selection';
 import type { MediaTile } from '../../../components/media-grid/tiles';
-import { useAnchoredMenu } from '../../../components/menu';
+import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
+import { useIdiom } from '../../../design/platform';
+import { useAreaWidth } from '../../../design/size-class';
 import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
 import { offersSelectAll, pickedText, type SelectionScope } from './library-model';
@@ -186,13 +189,98 @@ function SendGroup(input: PickedProps): ReactNode {
   );
 }
 
-function DeskActions({
+function menuItemOf(action: SelectionAction): MenuItem {
+  return { id: action.id, label: action.label, icon: action.icon, onPress: action.onPress };
+}
+
+function extraItemOf(extra: SelectionExtra, ids: readonly string[]): MenuItem {
+  return {
+    id: extra.id,
+    label: extra.label,
+    icon: extra.icon,
+    onPress: (): void => {
+      extra.onPress(ids);
+    },
+  };
+}
+
+function MoreButton({
   media,
   picked,
   onTrashed,
   extras,
 }: PickedProps & { readonly extras: readonly SelectionExtra[] }): ReactNode {
+  const actions = useOrganiseActions();
+  const touch = useIdiom() === 'touch';
+  const input = { media, picked, onTrashed };
+  const { ref, open, menu } = useAnchoredMenu(
+    [
+      ...shown(sendActions(input)).map(menuItemOf),
+      ...shown(keepActions(input)).map(menuItemOf),
+      ...organiseMenuItems({
+        actions,
+        itemIds: picked.ids,
+        current: null,
+        archived: false,
+        onGone: onTrashed,
+        onSaved: onTrashed,
+      }),
+      ...extras.filter((extra) => !extra.disabled).map((extra) => extraItemOf(extra, picked.ids)),
+    ],
+    'More actions',
+  );
+  return (
+    <View ref={ref} collapsable={false}>
+      <IconButton
+        icon={touch ? 'ellipsisVertical' : 'ellipsis'}
+        label="More actions"
+        tone="onPrimaryContainer"
+        onPress={open}
+      />
+      {menu}
+    </View>
+  );
+}
+
+function TightActions({
+  media,
+  picked,
+  onTrashed,
+  extras,
+}: PickedProps & { readonly extras: readonly SelectionExtra[] }): ReactNode {
+  return (
+    <SelectionActions>
+      <LocalSelection picked={picked} />
+      <SelectionGroup>
+        <AlbumButton media={media} picked={picked} onTrashed={onTrashed} />
+        <Button
+          label="Move to trash"
+          icon="trash"
+          variant="destructive"
+          onPress={() => {
+            media.trash(picked.ids, onTrashed);
+          }}
+        />
+        <MoreButton media={media} picked={picked} onTrashed={onTrashed} extras={extras} />
+      </SelectionGroup>
+    </SelectionActions>
+  );
+}
+
+function DeskActions({
+  media,
+  picked,
+  onTrashed,
+  extras,
+  tight,
+}: PickedProps & {
+  readonly extras: readonly SelectionExtra[];
+  readonly tight: boolean;
+}): ReactNode {
   if (picked.none) return <LocalSelection picked={picked} />;
+  if (tight) {
+    return <TightActions media={media} picked={picked} onTrashed={onTrashed} extras={extras} />;
+  }
   return (
     <SelectionActions>
       <LocalSelection picked={picked} />
@@ -205,6 +293,7 @@ function DeskActions({
 
 export function LibrarySelection(props: LibrarySelectionProps): ReactNode {
   const { controls, media, extras = NO_EXTRAS } = props;
+  const tight = shellLayoutOf(useAreaWidth()) === 'icon';
   useEscape(controls.selection.active, controls.clear);
   return (
     <SelectionSurface>
@@ -214,6 +303,7 @@ export function LibrarySelection(props: LibrarySelectionProps): ReactNode {
         picked={pickedOf(props)}
         onTrashed={controls.clear}
         extras={extras}
+        tight={tight}
       />
     </SelectionSurface>
   );

@@ -7,7 +7,10 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import type { FolderBackup } from './backup';
 import { FolderCover } from './folder-cover';
-import { FolderToggles } from './folder-toggles';
+import { FolderToggles, ShownPill } from './folder-toggles';
+import { cn } from '../../../design/cn';
+import { shellLayoutOf } from '../../../components/page-shell/layout';
+import { useAreaWidth } from '../../../design/size-class';
 import { backedUpShare, countLineOf, folderParamOf, type FolderView } from './model';
 
 const KIND_ICON: Readonly<Record<FolderView['kind'], IconName>> = {
@@ -27,7 +30,13 @@ export function HiddenBadge(): ReactNode {
   );
 }
 
-function FolderText({ folder }: { readonly folder: FolderView }): ReactNode {
+function FolderText({
+  folder,
+  backsUp,
+}: {
+  readonly folder: FolderView;
+  readonly backsUp: boolean;
+}): ReactNode {
   const share = backedUpShare(folder);
   return (
     <View className="min-w-0 flex-1 gap-1">
@@ -43,19 +52,9 @@ function FolderText({ folder }: { readonly folder: FolderView }): ReactNode {
         {folder.place}
       </Text>
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
-        {countLineOf(folder)}
+        {countLineOf(folder, backsUp)}
       </Text>
-      {folder.backupId === null && folder.kind !== 'drive' ? (
-        <View className="flex-row items-center gap-1">
-          <View className="shrink-0">
-            <Icon name="cloud" size={12} tone="variant" />
-          </View>
-          <Text variant="caption" tone="variant" numberOfLines={1} className="min-w-0 shrink">
-            On the hub
-          </Text>
-        </View>
-      ) : null}
-      {share === null ? null : (
+      {share === null || !backsUp ? null : (
         <ProgressBar progress={share} colour="primary" label={`${folder.name} backed up`} />
       )}
     </View>
@@ -69,12 +68,20 @@ export function FolderCard({
   readonly folder: FolderView;
   readonly backup: FolderBackup;
 }): ReactNode {
+  const pair = folder.backupId !== null;
+  const compact = shellLayoutOf(useAreaWidth()) === 'compact';
+  const backsUp = folder.backupId !== null && backup.on(folder.backupId);
   return (
-    <View className="gap-2 rounded-lg border-hairline border-outline-variant bg-surface-1 p-2">
+    <View
+      className={cn(
+        'rounded-lg border-hairline border-outline-variant bg-surface-1 p-2',
+        pair ? 'gap-2' : 'flex-row items-center gap-2',
+      )}
+    >
       <Interactive
         href={href.photosFolder(folderParamOf(folder.key))}
-        label={`${folder.name}, ${folder.place}, ${countLineOf(folder)}${folder.hidden ? ', hidden' : ''}`}
-        className="min-w-0 flex-row items-center gap-3 rounded-md p-1"
+        label={`${folder.name}, ${folder.place}, ${countLineOf(folder, backsUp)}${folder.hidden ? ', hidden' : ''}`}
+        className={cn('min-w-0 flex-row items-center gap-3 rounded-md p-1', !pair && 'flex-1')}
         layerClassName="rounded-md"
       >
         <View className="h-18 w-24 overflow-hidden rounded-md">
@@ -87,9 +94,13 @@ export function FolderCard({
             </View>
           ) : null}
         </View>
-        <FolderText folder={folder} />
+        <FolderText folder={folder} backsUp={backsUp} />
       </Interactive>
-      <FolderToggles folder={folder} backup={backup} />
+      {pair ? (
+        <FolderToggles folder={folder} backup={backup} />
+      ) : (
+        <ShownPill folder={folder} fill={false} iconOnly={compact} />
+      )}
     </View>
   );
 }

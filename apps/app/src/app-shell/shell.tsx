@@ -6,7 +6,6 @@ import { Tabs, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { usePrewarmChat } from '../features/assistant/screens/open-last-chat';
 import { APP_UPDATES_PATH, AppUpdateBanner } from '../features/app-updates';
 import { HubUpdateBanner } from '../features/hub-updates';
-import { HeaderStatusProvider } from '../components/header-status';
 import { UpdateDetailsFallbackFocus } from '../components/update-details-focus';
 import { useColour } from '../design/colour';
 import { isNative } from '../design/platform';
@@ -20,15 +19,12 @@ import { useNavOrder, usePinLeaves } from './nav-layout';
 import { NavSheetHost } from './nav-sheet';
 import { PagePinHost } from './page-pin-host';
 import { ShellGate } from './shell-gate';
-import { SyncIndicator } from './sync-indicator';
 import { TAB_NAMES } from './tab-names';
 import { useTabPrewarm } from './tab-prewarm';
 import { anchorTabRoots, shellTabBackBehavior } from './tab-router';
 import { useTabReplacement } from './tab-replacement-host';
 
 const log = new Logger('app.nav');
-
-const SYNC_INDICATOR = <SyncIndicator />;
 
 function TabPrewarm(props: BottomTabBarProps): ReactNode {
   useTabPrewarm({
@@ -85,7 +81,7 @@ function ShellTabs(): ReactNode {
   }, []);
   const scene = { backgroundColor: useColour('bg') };
   return (
-    <HeaderStatusProvider value={SYNC_INDICATOR}>
+    <>
       <ShellUpdateNotices />
       <PagePinHost>
         <Tabs
@@ -109,7 +105,7 @@ function ShellTabs(): ReactNode {
       <NavigationEffects />
       {nav === 'bar' ? <NavSheetHost /> : null}
       <GlobalHosts />
-    </HeaderStatusProvider>
+    </>
   );
 }
 

@@ -25,6 +25,9 @@ describe('numbers with units', () => {
     expect(percent(0.5)).toBe(`50${NBSP}%`);
     expect(bytes(2048)).toBe(`2.0${NBSP}KB`);
     expect(bytes(512)).toBe(`512${NBSP}B`);
+    expect(bytes(1013 * 1024 * 1024)).toBe(`1.0${NBSP}GB`);
+    expect(bytes(999)).toBe(`999${NBSP}B`);
+    expect(bytes(1000)).toBe(`1.0${NBSP}KB`);
   });
 
   it('attaches percent and degree units directly and drops a missing unit', () => {

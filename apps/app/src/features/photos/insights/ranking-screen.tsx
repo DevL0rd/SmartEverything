@@ -28,19 +28,25 @@ const LOADING_ROWS = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
 interface EmptyCopy {
   readonly icon: IconName;
   readonly title: string;
+  readonly allTitle: string;
   readonly body: string;
+  readonly rangeBody: string;
 }
 
 const EMPTY: Readonly<Record<RankingId, EmptyCopy>> = {
   'largest-videos': {
     icon: 'film',
     title: 'No videos in this range',
+    allTitle: 'No videos yet',
     body: 'Videos you back up show up here.',
+    rangeBody: 'Pick a longer range to see your largest videos.',
   },
   'busiest-days': {
     icon: 'calendar',
     title: 'No photos were taken in this range',
+    allTitle: 'No photos yet',
     body: 'Photos you back up show up here.',
+    rangeBody: 'Pick a longer range to see your busiest days.',
   },
 };
 
@@ -93,8 +99,8 @@ function RankingEmpty({
   return (
     <EmptyState
       icon={empty.icon}
-      title={empty.title}
-      body={range === 'all_time' ? empty.body : 'A longer range may have some.'}
+      title={range === 'all_time' ? empty.allTitle : empty.title}
+      body={range === 'all_time' ? empty.body : empty.rangeBody}
       {...(range === 'all_time'
         ? {}
         : {
@@ -154,8 +160,8 @@ function LargestVideosPaged({ range }: { readonly range: PhotoInsightRange }): R
 
 function BusiestDaysPaged({ range }: { readonly range: PhotoInsightRange }): ReactNode {
   const pages = usePhotoBusiestDays(range);
-  const rows = flattenPages(pages.data, (page) => page.items).map((entry) => (
-    <BusiestDayRow key={entry.day} entry={entry} range={range} />
+  const rows = flattenPages(pages.data, (page) => page.items).map((entry, index) => (
+    <BusiestDayRow key={entry.day} entry={entry} range={range} rank={index + 1} />
   ));
   return <RankingBody ranking="busiest-days" range={range} pages={pages} rows={rows} />;
 }

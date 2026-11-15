@@ -19,6 +19,8 @@ import {
   type ConflictEnv,
 } from '../../src/drive/conflicts';
 import { itemFeed, rootFeed, staleCursor } from '../../src/drive/feed';
+import { refusalReason } from '../../src/drive/service-write-support';
+import { StoreConflictError } from '../../src/store/sql';
 import { recoverIntents, type DriveWriteRoot } from '../../src/drive/intents';
 import { ScanCommitter } from '../../src/drive/scanner-commit';
 import type { WalkEntry } from '../../src/drive/scanner-walk';
@@ -142,6 +144,56 @@ async function reconcile(relPath: string): Promise<void> {
   );
   committer.apply([await walkEntry(relPath)]);
   committer.finish([]);
+}
+
+async function scanTree(): Promise<void> {
+  const committer = new ScanCommitter(
+    {
+      items: opened.store.driveItems,
+      inodes: opened.store.driveInodes,
+      write: <T>(work: () => T): T => opened.store.write(work),
+      now: (): Date => START,
+      newId: randomUUID,
+    },
+    opened.store.driveRoots.byId(root.id),
+  );
+  const folder = await walkEntry('d');
+  const entries: WalkEntry[] = [];
+  if ((await text('d/x.txt')) !== null) entries.push(await walkEntry('d/x.txt'));
+  committer.apply([
+    { ...folder, kind: 'folder', childCount: entries.length },
+    ...entries.map((entry) => ({ ...entry, parentRelPath: 'd' })),
+  ]);
+  committer.finish([]);
+}
+
+function indexedId(relPath: string): string {
+  const found = opened.store.driveItems.byPath(root.id, relPath, null);
+  if (found === undefined) throw new Error(`${relPath} is not indexed`);
+  return found.id;
+}
+
+function racingEnv(
+  watched: string,
+  scan: () => Promise<void>,
+): { readonly env: ChangeEnv; readonly fired: () => boolean } {
+  let armed = true;
+  return {
+    fired: (): boolean => !armed,
+    env: {
+      ...env(),
+      files: {
+        ...nodeFiles,
+        syncDirectory: async (directory: string): Promise<void> => {
+          await nodeFiles.syncDirectory(directory);
+          if (armed && (await text(watched)) !== null) {
+            armed = false;
+            await scan();
+          }
+        },
+      },
+    },
+  };
 }
 
 beforeEach(async () => {
@@ -315,6 +367,58 @@ describe('trash and restore', () => {
     expect(opened.store.driveFeed.ofItem(created.item.id, 0, 10).rows.map((row) => row.op)).toEqual(
       ['create', 'trash', 'restore'],
     );
+  });
+});
+
+describe('restoring while a scan indexes the moved file', () => {
+  it('takes over the path from the scan row and keeps the trashed id', async () => {
+    const created = await write('hello', 'a.txt');
+    await commitTrash(env(), root, created.item.id, actor());
+    const race = racingEnv('a.txt', async () => reconcile('a.txt'));
+    const restored = await commitRestore(race.env, root, created.item.id, actor());
+    expect(race.fired()).toBe(true);
+    expect(restored.item.id).toBe(created.item.id);
+    expect(restored.item.relPath).toBe('a.txt');
+    expect(opened.store.driveItems.byPath(root.id, 'a.txt', null)?.id).toBe(created.item.id);
+    expect(opened.store.driveTrash.find(created.item.id)).toBeUndefined();
+    expect(opened.store.driveIntents.all()).toEqual([]);
+  });
+
+  it('takes over every path under a restored folder from the scan rows', async () => {
+    await mkdir(join(dir, 'd'));
+    await writeFile(join(dir, 'd', 'x.txt'), 'inside');
+    await scanTree();
+    const folderId = indexedId('d');
+    const childId = indexedId('d/x.txt');
+    await commitTrash(env(), root, folderId, actor());
+    expect(opened.store.driveItems.byPath(root.id, 'd/x.txt', null)).toBeUndefined();
+    const race = racingEnv('d/x.txt', scanTree);
+    const restored = await commitRestore(race.env, root, folderId, actor());
+    expect(race.fired()).toBe(true);
+    expect(restored.item.id).toBe(folderId);
+    expect(indexedId('d')).toBe(folderId);
+    expect(indexedId('d/x.txt')).toBe(childId);
+    expect(opened.store.driveTrash.find(folderId)).toBeUndefined();
+  });
+
+  it('puts the file back into the trash when the index refuses the restore', async () => {
+    const created = await write('hello', 'a.txt');
+    await commitTrash(env(), root, created.item.id, actor());
+    vi.spyOn(opened.store, 'write').mockImplementationOnce(() => {
+      throw new StoreConflictError('create the drive item', new Error('constraint failed'));
+    });
+    await expect(commitRestore(env(), root, created.item.id, actor())).rejects.toBeInstanceOf(
+      StoreConflictError,
+    );
+    expect(await text('a.txt')).toBeNull();
+    expect(opened.store.driveTrash.find(created.item.id)).toBeDefined();
+    expect(await text(`.smarteverything/trash/${created.item.id}`)).toBe('hello');
+    expect(opened.store.driveIntents.all()).toEqual([]);
+  });
+
+  it('reports a store refusal as one failed item instead of failing the batch', () => {
+    const cause = new StoreConflictError('create the drive item', new Error('constraint failed'));
+    expect(refusalReason(cause)).toBe(cause.message);
   });
 });
 

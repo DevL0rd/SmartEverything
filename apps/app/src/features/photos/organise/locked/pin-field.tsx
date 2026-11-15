@@ -26,8 +26,8 @@ export function PinField({
 }: PinFieldProps): ReactNode {
   const ref = useFocusOnMount(!disabled);
   return (
-    <View className="w-full max-w-90 gap-2 self-center">
-      <Text variant="footnote" tone="variant" align="center">
+    <View className="w-full max-w-90 gap-2 self-start">
+      <Text variant="footnote" tone="variant">
         {label}
       </Text>
       <TextInput
@@ -56,7 +56,6 @@ export function PinField({
       <Text
         variant="footnote"
         tone={error === null ? 'variant' : 'critical'}
-        align="center"
         accessibilityLiveRegion="polite"
       >
         {error ?? helper}

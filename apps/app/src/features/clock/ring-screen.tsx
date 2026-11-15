@@ -198,8 +198,8 @@ function Ringing({ shown, day }: { readonly shown: Shown; readonly day: RingDay 
       className="flex-1"
       contentContainerClassName={
         challenged
-          ? 'grow gap-4 self-center w-full max-w-reading px-gutter pt-safe-offset-6 pb-safe-offset-4'
-          : 'grow gap-6 self-center w-full max-w-reading px-gutter pt-safe-offset-12 pb-safe-offset-8'
+          ? 'grow gap-4 self-center w-full max-w-reading px-gutter pt-safe-offset-16 pb-safe-offset-4'
+          : 'grow gap-6 self-center w-full max-w-reading px-gutter pt-safe-offset-16 pb-safe-offset-8'
       }
     >
       <View className="gap-3">
@@ -269,7 +269,7 @@ function Quiet({ state }: { readonly state: Exclude<RingState, Live>['kind'] }):
   return (
     <ScrollView
       className="flex-1 bg-bg"
-      contentContainerClassName="grow justify-center self-center w-full max-w-reading px-gutter pt-safe-offset-8 pb-safe-offset-8"
+      contentContainerClassName="grow justify-center self-center w-full max-w-reading px-gutter pt-safe-offset-16 pb-safe-offset-8"
     >
       <EmptyState
         icon={copy.icon}
@@ -293,13 +293,13 @@ export function RingScreen(): ReactNode {
   useHoldBack(isLive(state));
   if (!isLive(state)) {
     return (
-      <PageShell variant="overlay" title="Clock" back={false} bare>
+      <PageShell variant="overlay" title="Clock" back={false}>
         <Quiet state={state.kind} />
       </PageShell>
     );
   }
   return (
-    <PageShell variant="overlay" title="Clock" back={false} bare>
+    <PageShell variant="overlay" title="Clock" back={false}>
       <View className="flex-1 bg-bg">
         <Glow colour="primary" breathing x="50%" y="100%" radius="70%" strength={0.38} />
         <Ringing shown={shownOf(state, live)} day={day} />

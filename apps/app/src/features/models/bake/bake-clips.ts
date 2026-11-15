@@ -2,14 +2,14 @@ import type { ModelSpecShot } from '@smarteverything/domain';
 import type { ChannelSignals } from '../../../components/models/channels';
 import { planClip } from '../model/impostor-plan';
 import { framedShot, shotProgress } from '../../../components/models/three/framing';
+import { passBounds, type PassRole, type PixelRect } from './bake-bounds';
 import {
   aimCamera,
+  canvasPixels,
   cssRect,
-  readBounds,
   renderPass,
   type BakeContext,
   type BakeRig,
-  type PixelRect,
 } from './bake-layers';
 import type { BakeKey, BakeView, ClipResult } from './bake-protocol';
 
@@ -171,6 +171,8 @@ export interface ClipBake {
   readonly key: BakeKey;
 }
 
+const SHOW_ALL = (): PassRole => 'show';
+
 async function drawFrames(
   { context, rig, key }: ClipBake,
   run: {
@@ -187,8 +189,9 @@ async function drawFrames(
     rig.halos.sync();
     const frame = { view: key.view, aspect: key.width / key.height, shot: run.shot, ...time };
     const camera = aimCamera(context, framedShot(rig.built, rig.spec, frame), size);
-    renderPass(context.renderer, rig, camera, () => 'show');
-    frames.push(cropFrame(context.renderer.domElement, readBounds(context), canvas2d));
+    renderPass(context.renderer, rig, camera, SHOW_ALL);
+    const bounds = passBounds(rig.stage.scene, camera, SHOW_ALL, canvasPixels(context, key.dpr));
+    frames.push(cropFrame(context.renderer.domElement, bounds, canvas2d));
     await pause();
   }
   return frames;

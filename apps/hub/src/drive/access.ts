@@ -1,4 +1,10 @@
-import type { DriveAlbum, DriveGrantRole, DriveItem, DriveRoot } from '@smarteverything/domain';
+import type {
+  DriveAlbum,
+  DriveGrantRole,
+  DriveItem,
+  DriveRoot,
+  DriveTrashEntry,
+} from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import type { SqlFilter } from '../store/sql';
 
@@ -97,6 +103,12 @@ export const LOCKED_FOLDER = '.locked';
 
 export function inLockedFolder(item: Pick<DriveItem, 'relPath'>): boolean {
   return item.relPath === LOCKED_FOLDER || item.relPath.startsWith(`${LOCKED_FOLDER}/`);
+}
+
+export function lockedTrash(entry: Pick<DriveTrashEntry, 'originalRelPath'>): boolean {
+  return (
+    entry.originalRelPath === LOCKED_FOLDER || entry.originalRelPath.startsWith(`${LOCKED_FOLDER}/`)
+  );
 }
 
 export function lockedFolderSql(item = 'i'): string {

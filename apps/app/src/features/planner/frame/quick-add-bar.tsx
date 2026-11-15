@@ -1,18 +1,10 @@
 import { useIsFocused } from 'expo-router';
 import { useEffect, useEffectEvent, type ReactNode } from 'react';
 import { View } from 'react-native';
-import Animated, {
-  useAnimatedReaction,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
-import { useScreen } from '../../../components/screen-context';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { DURATION, EASING, useMotion } from '../../../design/motion';
 import { isNative, useIdiom } from '../../../design/platform';
 import type { PlannerPerson } from '../data';
 import { Composer } from '../item/composer';
@@ -113,51 +105,5 @@ export function QuickAddComposer({
       {...(opening?.collectionId === undefined ? {} : { collectionId: opening.collectionId })}
       disabled={disabled}
     />
-  );
-}
-
-function directionOf(now: number, before: number, current: number): number {
-  'worklet';
-  if (now <= 0 || now < before) return 0;
-  return now > before ? 1 : current;
-}
-
-export function ScrollAwayBar({ children }: { readonly children: ReactNode }): ReactNode {
-  const { scrollY } = useScreen();
-  const { reduced } = useMotion();
-  const away = useSharedValue(0);
-  const shown = useSharedValue(1);
-  const height = useSharedValue(0);
-  useAnimatedReaction(
-    () => scrollY.get(),
-    (now, before) => {
-      if (before === null) return;
-      const next = directionOf(now, before, away.get());
-      if (next === away.get()) return;
-      away.set(next);
-      const target = 1 - next;
-      shown.set(
-        reduced
-          ? target
-          : withTiming(target, { duration: DURATION.short, easing: EASING.standard }),
-      );
-    },
-    [reduced],
-  );
-  const style = useAnimatedStyle(() =>
-    height.get() === 0
-      ? { opacity: shown.get() }
-      : { opacity: shown.get(), height: height.get() * shown.get() },
-  );
-  return (
-    <Animated.View style={style} className="overflow-hidden">
-      <View
-        onLayout={(event) => {
-          height.set(event.nativeEvent.layout.height);
-        }}
-      >
-        {children}
-      </View>
-    </Animated.View>
   );
 }

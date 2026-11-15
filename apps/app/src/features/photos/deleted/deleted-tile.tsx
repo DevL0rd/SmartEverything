@@ -1,5 +1,6 @@
 import { memo, useState, type ReactNode } from 'react';
-import { View, type ViewStyle } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import Svg, { Circle } from 'react-native-svg';
 import { FileGlyph } from '../../../components/files/file-glyph';
 import { Icon } from '../../../components/icon';
@@ -10,6 +11,7 @@ import { cn } from '../../../design/cn';
 import { useColour } from '../../../design/colour';
 import { ThemeScope } from '../../../design/theme-scope';
 import { leftText, tileLabelOf, type DeletedItem } from './model';
+import { useTrashThumb } from './trash-thumb';
 
 export interface TileHandlers {
   readonly onPress: (item: DeletedItem) => void;
@@ -72,6 +74,20 @@ export function CountdownRing({
 }
 
 function Face({ item }: { readonly item: DeletedItem }): ReactNode {
+  const url = useTrashThumb(item.id, !item.isFolder);
+  if (url !== null) {
+    return (
+      <View className="absolute inset-0 overflow-hidden bg-surface-2">
+        <Image
+          source={{ uri: url }}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          style={StyleSheet.absoluteFill}
+          accessible={false}
+        />
+      </View>
+    );
+  }
   return (
     <View className="absolute inset-0 items-center justify-center gap-1 overflow-hidden bg-surface-2 px-2 pb-9 pt-2">
       <FileGlyph kind={item.isFolder ? 'folder' : 'file'} name={item.name} well="m" />

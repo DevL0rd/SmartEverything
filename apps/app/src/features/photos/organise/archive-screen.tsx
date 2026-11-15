@@ -176,7 +176,7 @@ function selectAction(
 ): readonly ShellAction[] {
   return !live || feed.tiles.length === 0
     ? []
-    : [{ icon: 'circleCheck', label: 'Select', onPress: begin }];
+    : [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: begin }];
 }
 
 function OfflineBanner(): ReactNode {
@@ -209,7 +209,7 @@ export function ArchiveScreen(): ReactNode {
     },
   };
   const active = controls.selection.active;
-  const subtitle = archiveSubtitle(feed.state === 'loading' ? null : feed.total);
+  const subtitle = archiveSubtitle(feed.state === 'loading' ? null : feed.total, compact);
   return (
     <PhotosFrame
       active="archive"

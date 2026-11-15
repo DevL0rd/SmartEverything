@@ -61,8 +61,11 @@ describe('album model', () => {
   });
 
   it('counts albums and smart albums in the header line', () => {
-    expect(albumsLine([TOKYO, AUTUMN, LISBON])).toBe('3 albums · 1 smart album fills itself');
-    expect(albumsLine([TOKYO])).toBe('1 album');
+    expect(albumsLine([TOKYO, AUTUMN, LISBON], false)).toBe(
+      '3 albums · 1 smart album fills itself',
+    );
+    expect(albumsLine([TOKYO, AUTUMN, LISBON], true)).toBe('3 albums · 1 smart');
+    expect(albumsLine([TOKYO], false)).toBe('1 album');
   });
 
   it('names who sees an album with the copy used everywhere', () => {

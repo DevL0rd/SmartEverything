@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AppHref } from './app-href';
-import { useSizeClass } from '../design/size-class';
+import { useFrameBodyWidth } from './page-shell/body-width';
 import { Sparkline } from './charts/sparkline';
 import type { ChartPoint } from './charts/scale';
 import { Figure } from './figure';
@@ -65,7 +65,7 @@ function TileText({
         {tone === 'warning' ? <Icon name="warning" size={16} tone="warning" /> : null}
       </View>
       {caption === undefined || dense ? null : (
-        <Text variant="caption" tone={stale ? 'warning' : 'variant'} numberOfLines={1}>
+        <Text variant="caption" tone={stale ? 'warning' : 'variant'} numberOfLines={2}>
           {caption}
         </Text>
       )}
@@ -131,7 +131,7 @@ function MetricTile({
 }
 
 export function MetricStrip({ items, columns, dense = false }: MetricStripProps): ReactNode {
-  const fitted = stripColumnsAt(useSizeClass().area, columns);
+  const fitted = stripColumnsAt(useFrameBodyWidth(), columns);
   const per = dense ? items.length : fitted;
   return (
     <View className="gap-2">

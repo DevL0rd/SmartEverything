@@ -53,10 +53,11 @@ export function albumGroups(albums: readonly DriveAlbum[], sort: AlbumSort): Alb
   };
 }
 
-export function albumsLine(albums: readonly DriveAlbum[]): string {
+export function albumsLine(albums: readonly DriveAlbum[], compact: boolean): string {
   const smart = albums.filter((album) => album.kind === 'smart').length;
   const all = plural(albums.length, 'album', 'albums');
   if (smart === 0) return all;
+  if (compact) return `${all} · ${count(smart)} smart`;
   return `${all} · ${plural(smart, 'smart album fills itself', 'smart albums fill themselves')}`;
 }
 

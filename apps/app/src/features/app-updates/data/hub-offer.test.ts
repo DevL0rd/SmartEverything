@@ -44,3 +44,40 @@ it('refreshes an Android installer offer published during the first read', async
     client.clear();
   }
 });
+
+it('reads the Android installer offer again only when a replayed notice names a new release', async () => {
+  const client = new QueryClient();
+  const route = noticeRouter([APP_UPDATE_NOTICES], { client, store: new EntityStore() });
+  const queryFn = vi.fn<() => Promise<string | null>>().mockResolvedValue('installer');
+  const observer = new QueryObserver(client, { queryKey: APK_QUERY_KEY, queryFn });
+  const unsubscribe = observer.subscribe(() => undefined);
+  const notice = (id: string): ReturnType<typeof APP_UPDATE_NOTICE.parse> =>
+    APP_UPDATE_NOTICE.parse({
+      type: 'app_update',
+      id,
+      platform: 'android',
+      channel: 'release',
+      runtimeVersion: 'apk-replay',
+    });
+  try {
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledOnce();
+    });
+    route(notice('2b7b7bba-ccd5-49f4-8f65-e752d82bcce2'), true);
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+    route(notice('2b7b7bba-ccd5-49f4-8f65-e752d82bcce2'), true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    route(notice('fce9dc2e-a83e-4e3f-8c39-0e10ac091480'), true);
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(3);
+    });
+    await client.cancelQueries();
+    expect(queryFn).toHaveBeenCalledTimes(3);
+  } finally {
+    unsubscribe();
+    client.clear();
+  }
+});

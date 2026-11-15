@@ -3,6 +3,7 @@ import type {
   DesktopTalkCommand,
   DesktopTalkTray,
 } from '@smarteverything/domain';
+import { isDeepStrictEqual } from 'node:util';
 import { Logger } from '@smarteverything/logging';
 import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import { talkMenuItems } from './talk/talk-tray.js';
@@ -192,16 +193,19 @@ function menuOf(
 }
 
 function driveTrayHandlers(
+  shown: Readonly<ShownState>,
   show: (change: Partial<ShownState>) => void,
   render: () => void,
 ): DriveTrayState {
   return {
     sync: (state): void => {
+      if (isDeepStrictEqual(shown.driveSync, state)) return;
       show({ driveSync: state });
       log.debug('tray.drive_sync_changed', { paused: state?.paused ?? null });
       render();
     },
     mount: (state): void => {
+      if (isDeepStrictEqual(shown.driveMount, state)) return;
       show({ driveMount: state });
       log.debug('tray.drive_mount_changed', { mounted: state?.mounted ?? null });
       render();
@@ -216,9 +220,13 @@ function registerDriveTray(
 ): Pick<DesktopTray, 'drive'> {
   if (commands === undefined) return {};
   return {
-    drive: driveTrayHandlers((change) => {
-      Object.assign(shown, change);
-    }, render),
+    drive: driveTrayHandlers(
+      shown,
+      (change) => {
+        Object.assign(shown, change);
+      },
+      render,
+    ),
   };
 }
 

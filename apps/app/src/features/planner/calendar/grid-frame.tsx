@@ -12,7 +12,7 @@ export interface Geometry {
 
 const LABEL_HALF = 8;
 
-const LETTER_FROM = 4;
+const NAME_FROM = 56;
 
 interface HourLabel {
   readonly hour: number;
@@ -29,13 +29,20 @@ export function hourLabelsOf(compact: boolean): readonly HourLabel[] {
 
 const GUTTER = { compact: 'w-10', wide: 'w-13' } as const;
 
+const GUTTER_WIDTH = { compact: 40, wide: 52 } as const;
+
 export function gutterOf(compact: boolean): string {
   return compact ? GUTTER.compact : GUTTER.wide;
+}
+
+export function gutterWidthOf(compact: boolean): number {
+  return compact ? GUTTER_WIDTH.compact : GUTTER_WIDTH.wide;
 }
 
 export interface HeadShape {
   readonly compact: boolean;
   readonly columns: number;
+  readonly columnWidth: number;
   readonly allDay: boolean;
 }
 
@@ -45,7 +52,7 @@ function DayName({ day, shape }: { readonly day: GridDay; readonly shape: HeadSh
     return (
       <View className="items-center">
         <Text variant="caption" tone="variant" numberOfLines={1}>
-          {shape.columns >= LETTER_FROM ? day.letter : day.weekday}
+          {shape.columnWidth < NAME_FROM ? day.letter : day.weekday}
         </Text>
         <Text variant="title-3" tone={tone} className="tabular">
           {day.number}

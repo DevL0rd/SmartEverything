@@ -3,6 +3,7 @@ import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { WEEKDAY_ROWS, heatSummary, type HeatDay } from '../../../components/charts/heatmap-model';
 import { Interactive } from '../../../components/interactive';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
@@ -17,7 +18,7 @@ import { monthDaysOf, yearHeatOf, yearWindowOf, type HeatMonth } from './month-m
 import { useCalendarWide } from './pane-width';
 
 const LEVEL_FILL: readonly string[] = [
-  'bg-outline-variant/50',
+  'bg-outline-variant',
   'bg-primary/30',
   'bg-primary/50',
   'bg-primary/75',
@@ -70,17 +71,33 @@ function WeekdayCue(): ReactNode {
   );
 }
 
+const SIX_ACROSS_FROM = 800;
+
+type Spread = 'narrow' | 'wide' | 'full';
+
+const MONTH_WIDTH: Readonly<Record<Spread, string>> = {
+  narrow: 'w-1/3 p-1',
+  wide: 'w-1/4 p-2',
+  full: 'w-1/6 p-2',
+};
+
+function spreadOf(wide: boolean, bodyWidth: number): Spread {
+  if (!wide) return 'narrow';
+  return bodyWidth >= SIX_ACROSS_FROM ? 'full' : 'wide';
+}
+
 interface MonthProps {
   readonly month: HeatMonth;
   readonly today: string;
-  readonly wide: boolean;
+  readonly spread: Spread;
   readonly onOpenMonth: (day: string) => void;
 }
 
-function Month({ month, today, wide, onOpenMonth }: MonthProps): ReactNode {
+function Month({ month, today, spread, onOpenMonth }: MonthProps): ReactNode {
   const heat = new Map(month.days.map((day) => [day.day, day] as const));
+  const wide = spread !== 'narrow';
   return (
-    <View className={cn(wide ? 'w-1/4 p-2' : 'w-1/3 p-1')}>
+    <View className={MONTH_WIDTH[spread]}>
       <Interactive
         label={`Open ${month.name}. Booked hours: ${heatSummary(month.days, 'hours')}`}
         onPress={() => {
@@ -134,6 +151,7 @@ function YearBody({ range, year, onOpenMonth }: YearBodyProps): ReactNode {
   const timeZone = useSettings().time_zone;
   const today = useMinuteOf(dayKeyOf);
   const wide = useCalendarWide();
+  const spread = spreadOf(wide, useFrameBodyWidth());
   const verb = useIdiom() === 'pointer' ? 'Click' : 'Tap';
   const heat = yearHeatOf(year, range.occurrences, timeZone);
   return (
@@ -144,7 +162,7 @@ function YearBody({ range, year, onOpenMonth }: YearBodyProps): ReactNode {
             key={month.month}
             month={month}
             today={today}
-            wide={wide}
+            spread={spread}
             onOpenMonth={onOpenMonth}
           />
         ))}

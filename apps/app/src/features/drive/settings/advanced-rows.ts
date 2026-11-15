@@ -122,7 +122,7 @@ export const KERNEL_ROWS: readonly TuningRowSpec[] = [
   spec({
     field: 'parallelDirops',
     title: 'Parallel folder changes',
-    icon: 'folder',
+    icon: 'folderSync',
     kind: 'switch',
     origin: 'like go-fuse',
     keywords: ['parallel dirops', 'folder operations', 'directory operations'],
@@ -168,7 +168,7 @@ export const CACHE_ROWS: readonly TuningRowSpec[] = [
   spec({
     field: 'prefetchSmallFiles',
     title: 'Fetch small files in opened folders',
-    icon: 'box',
+    icon: 'zap',
     kind: 'switch',
     origin: 'like NFS and rclone',
     keywords: ['prefetch', 'small files', 'warm cache'],
@@ -213,7 +213,7 @@ export const UPLOAD_ROWS: readonly TuningRowSpec[] = [
   spec({
     field: 'uploadFramesInFlight',
     title: 'Upload pieces in flight',
-    icon: 'layers',
+    icon: 'boxes',
     kind: 'count',
     label: 'Pieces',
     origin: 'like NFS',

@@ -6,6 +6,7 @@ import type { DriveConflict, DriveConflictResolution } from '@smarteverything/do
 import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
 import { cn } from '../../../design/cn';
+import { useSizeClass } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
 import { conflictActionsOf, type ConflictSides } from './conflict-model';
 import { resolveConflict } from './resolve';
@@ -51,8 +52,15 @@ export function ConflictActions({
 }: ConflictActionsProps): ReactNode {
   const resolving = useResolving(conflict, sides, onResolved);
   const live = useSyncStatus().status === 'live';
+  const compact = useSizeClass().width === 'compact';
+  const stacked = !pointer && compact;
   return (
-    <View className={cn(pointer ? 'flex-row flex-wrap items-center justify-end gap-2' : 'gap-2')}>
+    <View
+      className={cn(
+        pointer && 'flex-row flex-wrap items-center justify-end gap-2',
+        !pointer && (stacked ? 'gap-2' : 'flex-row flex-wrap gap-2'),
+      )}
+    >
       {conflictActionsOf(sides, pointer).map((action) => (
         <Button
           key={action.resolution}
@@ -60,6 +68,7 @@ export function ConflictActions({
           variant={action.variant}
           size={pointer ? 'md' : 'lg'}
           wrap={!pointer}
+          grow={!pointer && !stacked}
           loading={resolving.busy === action.resolution}
           disabled={!live || (resolving.busy !== null && resolving.busy !== action.resolution)}
           onPress={() => {

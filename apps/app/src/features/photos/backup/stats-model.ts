@@ -43,7 +43,7 @@ export function storageOf(
   stats: Pick<DriveStats, 'space'>,
   insights: Pick<PhotoInsights, 'kinds'>,
 ): StorageView {
-  const library = librarySegmentsOf(insights.kinds).filter((segment) => segment.value > 0);
+  const library = librarySegmentsOf(insights.kinds);
   const libraryBytes = library.reduce((sum, segment) => sum + segment.value, 0);
   const { totalBytes, freeBytes } = stats.space;
   const other = Math.max(0, totalBytes - freeBytes - libraryBytes);

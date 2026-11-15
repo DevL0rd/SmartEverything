@@ -37,13 +37,15 @@ describe('turning off backup for a folder', () => {
     expect(request).toMatchObject({
       title: 'Stop backing up Camera?',
       confirmLabel: 'Stop and remove',
+      alternateLabel: 'Stop and keep copies',
+      cancelLabel: 'Keep backing up',
       tone: 'destructive',
     });
     expect(request.body).toContain('2 photos and videos');
     expect(request.body).toContain('2.0\u00a0MB');
     expect(request.body).toContain('The files on this phone are not touched.');
     expect(keptLine(planOf(copies))).toBe(
-      '2 stay on the Hub: 1 also came from another device, 1 is in albums.',
+      '2 stay on the hub: 1 also came from another device, 1 is in albums.',
     );
   });
 
@@ -52,7 +54,7 @@ describe('turning off backup for a folder', () => {
     const request = removalConfirm(plan, ['Camera', 'Saved'], 'computer');
     expect(request.title).toBe('Stop backing up 2 folders?');
     expect(keptLine(plan)).toBeNull();
-    expect(request.body).not.toContain('stay on the Hub');
+    expect(request.body).not.toContain('stay on the hub');
   });
 
   it('finds every folder a change stops, including when backup covered all folders', () => {

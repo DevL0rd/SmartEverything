@@ -11,7 +11,6 @@ import { ErrorState } from '../../../components/error-state';
 import { Segmented } from '../../../components/segmented';
 import { Text } from '../../../components/text';
 import { DRAW_DISTANCE } from '../../../components/virtual-list';
-import { cn } from '../../../design/cn';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { atLeast, useSizeClass } from '../../../design/size-class';
 import { localDayKey } from '../../../format/time';
@@ -23,7 +22,6 @@ import { driveLocationHref } from '../model/section-routes';
 import { flattenPages } from '../data/pages';
 import { DriveFrame } from '../components/drive-frame';
 import { GroupFrame } from '../shared/group-frame';
-import { groupEdgeOf } from '../shared/shared-model';
 import { ActivityChart } from './activity-chart';
 import { ActivityLoading } from './activity-loading';
 import {
@@ -156,7 +154,7 @@ function Overview({ view, viewer, wide, setFilter }: Parts): ReactNode {
   const openFolder = useOpenFolder();
   const outside = outsideOf(calloutItems(view.ranged, filter, viewer.me).map((item) => item.entry));
   return (
-    <View className="gap-4 large:flex-row large:items-start">
+    <View className="gap-4 large:flex-row large:items-stretch">
       <View className="min-w-0 large:flex-3">
         <ActivityChart
           columns={activityColumns(view.shown, range, viewer)}
@@ -204,7 +202,7 @@ function Controls(parts: Parts): ReactNode {
         onChange={parts.setFilter}
         people={profiles.map((profile) => ({ id: profile.id, name: profile.name }))}
         me={parts.viewer.me}
-        compact={compact}
+        compact={!parts.wide}
       />
     </View>
   );
@@ -236,11 +234,9 @@ function Feed({
   const rows = feedRowsOf(view.shown, viewer.zone, viewer.today);
   const line = (item: FeedRow): ReactElement =>
     item.kind === 'head' ? <Head row={item} /> : <ActivityRow entry={item.entry} me={viewer.me} />;
-  const renderRow: ListRenderItem<FeedRow> = ({ item, index }) =>
-    parts.wide ? (
-      <GroupFrame edge={groupEdgeOf(index, rows.length)}>
-        <View className={cn(index === rows.length - 1 && 'pb-2')}>{line(item)}</View>
-      </GroupFrame>
+  const renderRow: ListRenderItem<FeedRow> = ({ item }) =>
+    parts.wide && item.kind === 'line' ? (
+      <GroupFrame edge={item.edge}>{line(item)}</GroupFrame>
     ) : (
       line(item)
     );
@@ -319,19 +315,22 @@ function Unloaded({
   readonly live: boolean;
   readonly parts: Parts;
 }): ReactNode {
-  if (loaded.status === 'loading')
-    return <ActivityLoading compact={parts.compact} wide={parts.wide} />;
-  return (
-    <View className="flex-1 justify-center">
-      {live ? (
-        <ErrorState page error={loaded.error} retry={loaded.retry} />
-      ) : (
+  if (!live) {
+    return (
+      <View className="flex-1 justify-center">
         <EmptyState
           icon="wifiOff"
           title="The hub is offline"
           body="Activity comes back when the hub reconnects. Your files stay on the hub as they are."
         />
-      )}
+      </View>
+    );
+  }
+  if (loaded.status === 'loading')
+    return <ActivityLoading compact={parts.compact} wide={parts.wide} />;
+  return (
+    <View className="flex-1 justify-center">
+      <ErrorState page title="Activity could not load" error={loaded.error} retry={loaded.retry} />
     </View>
   );
 }
@@ -396,7 +395,7 @@ export function ActivityScreen(): ReactNode {
       section="activity"
       title="Activity"
       scroll={false}
-      {...(ready ? { subtitle: subtitleOf(view.ranged, range) } : {})}
+      {...(ready && loaded.items.length > 0 ? { subtitle: subtitleOf(view.ranged, range) } : {})}
       {...(ready && !live ? { banner: <StaleBanner /> } : {})}
     >
       <Body loaded={loaded} live={live} parts={parts} />

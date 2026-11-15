@@ -45,12 +45,21 @@ import type {
   BakeView,
   LayersResult,
 } from './bake-protocol';
+import {
+  drawnNodes,
+  passBounds,
+  projectPoint,
+  projectRect,
+  type CanvasSize,
+  type Pass,
+  type PassRole,
+  type PixelRect,
+} from './bake-bounds';
 
 export interface BakeContext {
   readonly renderer: WebGLRenderer;
   readonly environment: Texture;
   readonly view: ViewCamera;
-  readonly scratch: HTMLCanvasElement;
   readonly dispose: () => void;
 }
 
@@ -102,12 +111,6 @@ export function targetSignals(spec: ModelSpec, target: BakeTarget): ChannelSigna
   return states.find((state) => activeShot(spec.shots, state)?.id === target.shotId) ?? null;
 }
 
-export interface CanvasSize {
-  readonly width: number;
-  readonly height: number;
-  readonly dpr: number;
-}
-
 export function aimCamera(context: BakeContext, pose: CameraPose, size: CanvasSize): Camera {
   context.renderer.setPixelRatio(size.dpr);
   context.renderer.setSize(size.width, size.height, false);
@@ -116,31 +119,15 @@ export function aimCamera(context: BakeContext, pose: CameraPose, size: CanvasSi
   return context.view.camera;
 }
 
-export type PassRole = 'show' | 'depth' | 'white' | 'skip';
-
-export type Pass = (node: Object3D) => PassRole;
-
 const SKIP = new MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false });
 
 const DEPTH = new MeshBasicMaterial({ colorWrite: false, side: DoubleSide });
 
 const WHITE = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false, side: DoubleSide });
 
-function isRenderable(node: Object3D): node is Mesh | Sprite {
-  return node instanceof Mesh || node instanceof Sprite;
-}
-
 function passMaterial(role: PassRole): Material {
   if (role === 'depth') return DEPTH;
   return role === 'white' ? WHITE : SKIP;
-}
-
-function drawnNodes(root: Object3D): (Mesh | Sprite)[] {
-  const found: (Mesh | Sprite)[] = [];
-  root.traverse((node) => {
-    if (isRenderable(node)) found.push(node);
-  });
-  return found;
 }
 
 export type PassRenderer = Pick<WebGLRenderer, 'render'>;
@@ -169,51 +156,6 @@ export function renderPass(renderer: PassRenderer, rig: BakeRig, camera: Camera,
   for (const undo of restore) undo();
 }
 
-export interface PixelRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-export function alphaBounds(
-  data: ArrayLike<number>,
-  width: number,
-  height: number,
-): PixelRect | null {
-  let minX = width;
-  let minY = height;
-  let maxX = -1;
-  let maxY = -1;
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      if ((data[(y * width + x) * 4 + 3] ?? 0) === 0) continue;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-  }
-  if (maxX < 0) return null;
-  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
-}
-
-export function readBounds(context: BakeContext): PixelRect | null {
-  const source = context.renderer.domElement;
-  const { scratch } = context;
-  scratch.width = source.width;
-  scratch.height = source.height;
-  const draw = scratch.getContext('2d', { willReadFrequently: true });
-  if (draw === null) return null;
-  draw.clearRect(0, 0, scratch.width, scratch.height);
-  draw.drawImage(source, 0, 0);
-  return alphaBounds(
-    draw.getImageData(0, 0, scratch.width, scratch.height).data,
-    scratch.width,
-    scratch.height,
-  );
-}
-
 export function encodeRegion(source: HTMLCanvasElement, rect: PixelRect): string {
   const crop = document.createElement('canvas');
   crop.width = rect.width;
@@ -227,28 +169,9 @@ export function cssRect(rect: PixelRect, dpr: number): BakeRect {
   return { x: rect.x / dpr, y: rect.y / dpr, width: rect.width / dpr, height: rect.height / dpr };
 }
 
-export function projectPoint(
-  point: Vector3,
-  camera: Camera,
-  width: number,
-  height: number,
-): BakePoint {
-  const ndc = point.clone().project(camera);
-  return { x: ((ndc.x + 1) / 2) * width, y: ((1 - ndc.y) / 2) * height };
-}
-
-export function projectRect(
-  points: readonly Vector3[],
-  camera: Camera,
-  width: number,
-  height: number,
-): BakeRect {
-  const shown = points.map((point) => projectPoint(point, camera, width, height));
-  const xs = shown.map((point) => point.x);
-  const ys = shown.map((point) => point.y);
-  const x = Math.min(...xs);
-  const y = Math.min(...ys);
-  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+export function canvasPixels(context: BakeContext, dpr: number): CanvasSize {
+  const { width, height } = context.renderer.domElement;
+  return { width, height, dpr };
 }
 
 function box(half: Point3): Point3[] {
@@ -418,11 +341,12 @@ export function bakeLayers(
   const size = { width: key.width, height: key.height, dpr: key.dpr };
   const camera = aimCamera(context, stillPose(rig, key), size);
   const groups = movingGroups(rig.spec, key.view, new Set(rig.built.parts.map((part) => part.id)));
+  const canvas = canvasPixels(context, key.dpr);
   const layers: BakeLayer[] = [];
   for (const plan of layerPlans(rig, groups)) {
-    renderPass(context.renderer, rig, camera, plan.pass);
-    const bounds = readBounds(context);
+    const bounds = passBounds(rig.stage.scene, camera, plan.pass, canvas);
     if (bounds === null) continue;
+    renderPass(context.renderer, rig, camera, plan.pass);
     layers.push({
       id: plan.id,
       role: plan.role,

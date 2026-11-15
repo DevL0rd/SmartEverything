@@ -7,7 +7,6 @@ import { Button } from '../../../components/button';
 import { CardGrid } from '../../../components/card-grid';
 import { ChoiceChip } from '../../../components/choice-chip';
 import { EmptyState } from '../../../components/empty-state';
-import { FlatChoice } from '../../../components/flat-choice';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
@@ -16,7 +15,6 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { useLoaded, useSyncStatus } from '../../../store/selectors';
-import { ChipRow } from '../../../components/chip-row';
 import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoInsights, usePhotoTrips } from '../data';
@@ -82,31 +80,6 @@ function StarterCard({
   );
 }
 
-function StarterChip({
-  starter,
-  onOpen,
-}: {
-  readonly starter: Starter;
-  readonly onOpen: Open;
-}): ReactNode {
-  const { ref, open, menu } = useStarterMenu(starter, onOpen);
-  return (
-    <View ref={ref} collapsable={false}>
-      <FlatChoice
-        label={starter.title}
-        spoken={`${starter.title}, ${starter.line}`}
-        icon={starter.icon}
-        trailing="chevronDown"
-        active={false}
-        menu
-        role="button"
-        onPress={open}
-      />
-      {menu}
-    </View>
-  );
-}
-
 function Starters({
   compact,
   onOpen,
@@ -126,19 +99,11 @@ function Starters({
           </Text>
         )}
       </View>
-      {compact ? (
-        <ChipRow label="Smart album starters">
-          {starters.map((starter) => (
-            <StarterChip key={starter.id} starter={starter} onOpen={onOpen} />
-          ))}
-        </ChipRow>
-      ) : (
-        <View className="flex-row flex-wrap gap-3">
-          {starters.map((starter) => (
-            <StarterCard key={starter.id} starter={starter} onOpen={onOpen} />
-          ))}
-        </View>
-      )}
+      <View className="flex-row flex-wrap gap-3">
+        {starters.map((starter) => (
+          <StarterCard key={starter.id} starter={starter} onOpen={onOpen} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -282,10 +247,21 @@ export function albumsActions(
   openSmart: () => void,
   openNew: () => void,
   live: boolean,
+  empty: boolean,
 ): readonly ShellAction[] {
   return [
     { icon: 'sparkles', label: 'New smart album', disabled: !live, onPress: openSmart },
-    { icon: 'plus', label: 'New album', primary: true, disabled: !live, onPress: openNew },
+    ...(empty
+      ? []
+      : [
+          {
+            icon: 'plus' as const,
+            label: 'New album',
+            primary: true,
+            disabled: !live,
+            onPress: openNew,
+          },
+        ]),
   ];
 }
 
@@ -304,8 +280,8 @@ export function AlbumsScreen(): ReactNode {
   return (
     <PhotosFrame
       active="albums"
-      {...(loaded && albums.length > 0 ? { subtitle: albumsLine(albums) } : {})}
-      actions={albumsActions(openSmart, openNew, live)}
+      {...(loaded && albums.length > 0 ? { subtitle: albumsLine(albums, compact) } : {})}
+      actions={albumsActions(openSmart, openNew, live, loaded && albums.length === 0)}
       banner={live ? null : <OfflineBanner />}
     >
       <View className="gap-section-gap">

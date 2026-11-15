@@ -1,4 +1,10 @@
-import { API_ENDPOINTS as E, ApiError, MEDIA_PATHS } from '@smarteverything/domain';
+import {
+  API_ENDPOINTS as E,
+  ApiError,
+  MEDIA_PATHS,
+  type AppUpdateNotice,
+  type ClientRow,
+} from '@smarteverything/domain';
 import { createReadStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -77,18 +83,26 @@ export function machineUpdatesExtension(): ServerExtension {
     const folder = new ReleaseFolder(context.layout);
     const updates = new MachineUpdates(folder, context.links);
     const publisher = new MachineUpdatePublisher(context.layout, folder);
-    const stop = watchMachineUpdates(context.layout, folder, (notice) => {
+    const watch = watchMachineUpdates(context.layout, folder, (notice) => {
       for (const client of context.store.clients.list()) {
         if (client.platform === 'desktop') context.live.toClient(client.id, notice);
       }
     });
+    const primer = (client: ClientRow): readonly AppUpdateNotice[] => {
+      const notice = client.platform === 'desktop' ? watch.current() : null;
+      return notice === null ? [] : [notice];
+    };
+    context.live.clientPrimers.add(primer);
     return {
       endpoints: machineUpdateEndpoints(updates, publisher),
       routes: [
         machineUpdateRoute(context.links, updates),
         machineUpdateUploadRoute(context.store, publisher),
       ],
-      stop,
+      stop: async (): Promise<void> => {
+        context.live.clientPrimers.delete(primer);
+        await watch.stop();
+      },
     };
   };
 }

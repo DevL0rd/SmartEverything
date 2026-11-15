@@ -10,7 +10,6 @@ export {
   type QuickAddBarProps,
   type QuickAddTarget,
   QuickAddComposer,
-  ScrollAwayBar,
 } from './frame/quick-add-bar';
 export { usePlannerShownPerson } from './frame/person';
 export { usePlannerMissedCount } from './frame/missed-count';

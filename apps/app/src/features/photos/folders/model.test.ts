@@ -66,7 +66,7 @@ describe('the Folders page model', () => {
       backupId: 'album-camera',
       cover: { kind: 'local', localId: 'b', video: false },
     });
-    expect(camera === undefined ? null : countLineOf(camera)).toBe('2 items · 1 backed up');
+    expect(camera === undefined ? null : countLineOf(camera, true)).toBe('2 items · 1 backed up');
     expect(camera === undefined ? null : backedUpShare(camera)).toBe(0.5);
     expect(groups[1]?.folders.map((folder) => folder.key)).toEqual(['computer:/home/me/Pictures']);
     expect(hiddenCountOf(groups)).toBe(1);
@@ -74,7 +74,7 @@ describe('the Folders page model', () => {
 
   it('describes folders that only live on the hub', () => {
     const drive = groups[2]?.folders[0];
-    expect(drive === undefined ? null : countLineOf(drive)).toBe('7 items');
+    expect(drive === undefined ? null : countLineOf(drive, false)).toBe('7 items');
     expect(drive === undefined ? null : backedUpShare(drive)).toBeNull();
     expect(drive?.backupId).toBeNull();
     expect(backupIdsOf(groups)).toEqual(['album-camera']);

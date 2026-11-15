@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FilterChip } from '../../../components/filter-chip';
+import { Checkbox } from '../../../components/checkbox';
 import { CALENDAR_SHOWS, type CalendarShowKey } from '../settings/options';
 import { useSavePrefs, type Prefs } from '../settings/preferences';
 
@@ -32,15 +32,15 @@ export function ShowChips({
 }): ReactNode {
   const flip = useFlipShow();
   return CALENDAR_SHOWS.filter((show) => keys.includes(show.key)).map((show) => (
-    <FilterChip
+    <Checkbox
       key={show.key}
-      label="Show on the calendar"
-      value={show.title}
+      label={show.title}
       icon={show.icon}
-      active={prefs.calendar[show.key]}
-      onPress={() => {
+      checked={prefs.calendar[show.key]}
+      onChange={() => {
         flip(show.key);
       }}
+      className="pr-3"
     />
   ));
 }

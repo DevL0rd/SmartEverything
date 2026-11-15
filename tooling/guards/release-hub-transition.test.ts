@@ -141,6 +141,7 @@ function options(units: Units): ReleaseOptions {
       await hubMigrates();
     },
     name: NAME,
+    notes: 'Hub notes',
     built: join(scratch, 'built'),
     url,
     schema: null,

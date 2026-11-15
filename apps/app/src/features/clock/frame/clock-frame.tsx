@@ -5,13 +5,7 @@ import { PageShell } from '../../../components/page-shell/page-shell';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import type { ShellAside } from '../../../components/page-shell/shell-types';
 import { useSizeClass } from '../../../design/size-class';
-import {
-  usePlannerReload,
-  useComposerControl,
-  QuickAddBar,
-  QuickAddComposer,
-  ScrollAwayBar,
-} from '../../planner';
+import { usePlannerReload, useComposerControl, QuickAddBar, QuickAddComposer } from '../../planner';
 import type { ClockSection } from '../model/section-routes';
 import { clockMenu, clockSettingsHref } from './clock-menu';
 import { clockSectionsOf } from './clock-sections';
@@ -80,7 +74,8 @@ export function ClockFrame({
       scroll={scroll}
       onRefresh={refresh.onRefresh}
       refreshing={refresh.refreshing}
-      footer={phone ? <ScrollAwayBar>{quickAdd}</ScrollAwayBar> : quickAdd}
+      footer={quickAdd}
+      {...(phone ? { footerHides: 'scroll' as const } : {})}
       {...(subtitle === undefined ? {} : { subtitle })}
       {...(aside === undefined ? {} : { aside })}
       {...(offline ? { banner: <OfflineBanner body={clockSectionOf(section).offline} /> } : {})}

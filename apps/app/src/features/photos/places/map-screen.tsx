@@ -291,7 +291,7 @@ export function MapScreen(): ReactNode {
     <PhotosFrame
       active="map"
       settings={MAP_SETTINGS}
-      {...(some ? { subtitle: libraryLine(countries) } : {})}
+      {...(some ? { subtitle: libraryLine(countries, compact) } : {})}
       {...(some ? { search: { value: text, onChange: setText, placeholder: MAP_COPY.find } } : {})}
       scroll={!(compact && mode === 'map' && some)}
     >

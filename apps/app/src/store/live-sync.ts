@@ -65,13 +65,8 @@ export class LiveSync {
   }
 
   private ids(): Record<string, unknown> {
-    return {
-      phase: this.phase,
-      socketRun: this.socketRun,
-      snapshotRun: this.snapshotRun,
-      attempt: this.attempt,
-      buffered: this.buffer.length,
-    };
+    const { phase, socketRun, snapshotRun, attempt } = this;
+    return { phase, socketRun, snapshotRun, attempt, buffered: this.buffer.length };
   }
 
   private enter(next: Phase): void {
@@ -310,7 +305,8 @@ export class LiveSync {
     this.applyAll(changes);
   }
 
-  private applyAll(changes: readonly LiveWireChange[]): ReturnType<EntityStore['apply']> {
+  private applyAll(received: readonly LiveWireChange[]): ReturnType<EntityStore['apply']> {
+    const changes = this.failures.readable(received);
     try {
       const resolved = this.store.apply(changes);
       this.hooks.onChanges(resolved, changes);

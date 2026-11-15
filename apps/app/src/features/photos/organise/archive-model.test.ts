@@ -25,9 +25,10 @@ describe('archive summary', () => {
   });
 
   it('says what is archived', () => {
-    expect(archiveSubtitle(null)).toBeNull();
-    expect(archiveSubtitle(0)).not.toBeNull();
-    expect(archiveSubtitle(1)).toContain('1 item');
-    expect(archiveSubtitle(5)).toContain('5 items');
+    expect(archiveSubtitle(null, false)).toBeNull();
+    expect(archiveSubtitle(0, false)).not.toBeNull();
+    expect(archiveSubtitle(1, false)).toContain('1 item');
+    expect(archiveSubtitle(5, false)).toContain('5 items');
+    expect(archiveSubtitle(18, true)).toBe('18 hidden');
   });
 });

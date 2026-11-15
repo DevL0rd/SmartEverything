@@ -47,27 +47,53 @@ function PinnedRow({ line }: { readonly line: PhoneRowLine }): ReactNode {
   );
 }
 
-function KeptActions({ storage }: { readonly storage: PhoneStorage }): ReactNode {
+function RemoveAllRow({ storage }: { readonly storage: PhoneStorage }): ReactNode {
   return (
-    <View className="flex-row flex-wrap justify-between gap-2 pt-1">
-      <Button
-        label="Remove all"
-        icon="trash"
-        variant="destructive"
-        loading={storage.clearing}
-        disabled={storage.clearing}
-        onPress={() => {
-          confirm({
-            title: 'Remove every offline file?',
-            body: 'They stay in your drive. Only the copies on this phone go.',
-            confirmLabel: 'Remove all',
-            tone: 'destructive',
-          }).then((accepted) => {
-            if (accepted) storage.removeAll();
-          }, notifyFailure('The offline files were not removed.'));
-        }}
-      />
-      <Button label="Copy now" icon="refresh" variant="tonal" onPress={storage.syncNow} />
+    <ListRow
+      title="Remove all"
+      icon="trash"
+      destructive
+      subtitle="Only the copies on this phone go. Everything stays in your drive."
+      wrapSubtitle
+      disabled={storage.clearing}
+      onPress={() => {
+        confirm({
+          title: 'Remove every offline file?',
+          body: 'They stay in your drive. Only the copies on this phone go.',
+          confirmLabel: 'Remove all',
+          tone: 'destructive',
+        }).then((accepted) => {
+          if (accepted) storage.removeAll();
+        }, notifyFailure('The offline files were not removed.'));
+      }}
+    />
+  );
+}
+
+function KeptUsage({
+  storage,
+  segments,
+}: {
+  readonly storage: PhoneStorage;
+  readonly segments: ReturnType<typeof phoneSegmentsOf>;
+}): ReactNode {
+  return (
+    <View className="gap-2 px-4 pb-3 pt-4">
+      <Text variant="body-strong" className="tabular">
+        {phoneSummaryOf(storage.rows, storage.status?.usedBytes ?? null)}
+      </Text>
+      {segments.length === 0 ? null : (
+        <SegmentBar
+          segments={segments}
+          label="Space on this phone by item"
+          format={bytes}
+          size="thin"
+          legend
+        />
+      )}
+      <View className="flex-row pt-1">
+        <Button label="Copy now" icon="refresh" variant="tonal" onPress={storage.syncNow} />
+      </View>
     </View>
   );
 }
@@ -82,20 +108,10 @@ function Kept({ storage }: { readonly storage: PhoneStorage }): ReactNode {
   const segments = phoneSegmentsOf(storage.rows, (itemId) => names.get(itemId) ?? itemId);
   return (
     <View className="gap-3">
-      <View className="gap-2 rounded-lg border-hairline border-outline-variant bg-surface-1 p-4">
-        <Text variant="body-strong" className="tabular">
-          {phoneSummaryOf(storage.rows, storage.status?.usedBytes ?? null)}
-        </Text>
-        {segments.length === 0 ? null : (
-          <SegmentBar
-            segments={segments}
-            label="Space on this phone by item"
-            format={bytes}
-            legend
-          />
-        )}
-        <KeptActions storage={storage} />
-      </View>
+      <List inset>
+        <KeptUsage storage={storage} segments={segments} />
+        <RemoveAllRow storage={storage} />
+      </List>
       <List inset title="Kept on this phone" footer={FILES_APP_LINE}>
         {lines.map((line) => (
           <PinnedRow key={line.itemId} line={line} />

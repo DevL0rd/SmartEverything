@@ -58,6 +58,7 @@ export function StaleBanner(): ReactNode {
       tone="info"
       title="Showing the last insights"
       body="The hub is offline. These numbers update when it is back."
+      wrapBody
     />
   );
 }

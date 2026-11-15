@@ -220,7 +220,7 @@ describe('an Android installer release', () => {
   it('announces shared installers to everyone and scoped installers only to their pairing', async () => {
     const announce = vi.fn();
     const toClient = vi.fn();
-    const stop = await watchAndroidApks(folder, { announce, toClient }, log);
+    const watch = await watchAndroidApks(folder, { announce, toClient }, log);
     try {
       await store(RELEASE);
       await store({ ...RELEASE, id: CLIENT.id, clientId: CLIENT.id });
@@ -245,8 +245,18 @@ describe('an Android installer release', () => {
         id: CLIENT.id,
         runtimeVersion: RELEASE.runtimeVersion,
       });
+      expect(
+        watch
+          .noticesFor(CLIENT)
+          .map((notice) => notice.id)
+          .toSorted(),
+      ).toStrictEqual([RELEASE.id, CLIENT.id].toSorted());
+      expect(
+        watch.noticesFor({ ...CLIENT, id: RELEASE.id }).map((notice) => notice.id),
+      ).toStrictEqual([RELEASE.id]);
+      expect(watch.noticesFor({ ...CLIENT, platform: 'desktop' })).toStrictEqual([]);
     } finally {
-      await stop();
+      await watch.stop();
     }
   });
 });

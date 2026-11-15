@@ -17,6 +17,7 @@ export interface CalendarCell {
 export interface CalendarBlock {
   readonly cells: readonly CalendarCell[];
   readonly columns: number;
+  readonly span: number;
   readonly labels: readonly { readonly column: number; readonly text: string }[];
 }
 
@@ -95,25 +96,46 @@ function labelsOf(cells: readonly CalendarCell[]): CalendarBlock['labels'] {
   return labels;
 }
 
+function nearestTo(ideal: number, candidates: readonly number[]): number | null {
+  return candidates.reduce<number | null>(
+    (best, column) =>
+      best === null || Math.abs(column - ideal) < Math.abs(best - ideal) ? column : best,
+    null,
+  );
+}
+
+function cutsOf(cells: readonly CalendarCell[], columns: number, parts: number): readonly number[] {
+  const starts = monthStarts(cells).map((cell) => cell.column);
+  const cuts = [0];
+  for (let part = 1; part < parts; part += 1) {
+    const previous = cuts.at(-1) ?? 0;
+    const ideal = Math.round((part * columns) / parts);
+    const nearest = nearestTo(
+      ideal,
+      starts.filter((column) => column > previous && column < columns),
+    );
+    cuts.push(nearest ?? Math.max(previous + 1, ideal));
+  }
+  return [...cuts, columns];
+}
+
 export function calendarBlocks(
   cells: readonly CalendarCell[],
   parts: number,
 ): readonly CalendarBlock[] {
   const last = cells.at(-1);
   if (last === undefined) return [];
-  const columns = last.column + 1;
-  const perPart = Math.ceil(columns / parts);
-  return Array.from({ length: parts }, (_, part) => {
-    const from = part * perPart;
-    const members = cells
-      .filter((cell) => cell.column >= from && cell.column < from + perPart)
-      .map((cell) => ({ ...cell, column: cell.column - from }));
-    return {
-      cells: members,
-      columns: Math.min(perPart, columns - from),
-      labels: labelsOf(members),
-    };
-  }).filter((block) => block.cells.length > 0);
+  const cuts = cutsOf(cells, last.column + 1, parts);
+  const ranges = cuts.slice(1).map((to, index) => ({ from: cuts[index] ?? 0, to }));
+  const span = Math.max(...ranges.map((range) => range.to - range.from));
+  return ranges
+    .map(({ from, to }) => {
+      const members = cells
+        .filter((cell) => cell.column >= from && cell.column < to)
+        .map((cell) => ({ ...cell, column: cell.column - from }));
+      return { cells: members, columns: to - from, span, labels: labelsOf(members) };
+    })
+    .filter((block) => block.cells.length > 0);
 }
 
 export function heatSummary(days: readonly HeatDay[], unit: string): string {

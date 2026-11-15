@@ -1,6 +1,7 @@
 import { ApiError, type DriveItem, type DriveVia } from '@smarteverything/domain';
 import { messageOf } from '@smarteverything/logging';
 import { DriveAlbumKindError } from '../store/repositories/drive-albums';
+import { StoreConflictError } from '../store/sql';
 import type { Store } from '../store/store';
 import { DriveAlbumAccessError, DriveAlbumItemError } from './albums';
 import type { ChangeActor } from './changes';
@@ -89,6 +90,7 @@ const REFUSALS = [
   DriveAlbumKindError,
   RootMarkerError,
   DataSpaceError,
+  StoreConflictError,
 ] as const;
 
 export function refusalReason(cause: unknown): string | null {

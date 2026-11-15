@@ -19,6 +19,7 @@ import type {
 } from './hub-native-resources';
 export {
   HUB_REQUEST_TIMEOUT_MS,
+  HUB_WRITE_TIMEOUT_MS_PER_KIB,
   HUB_STREAM_IDLE_TIMEOUT_MS,
   HUB_ROUTE_PROBE_TIMEOUT_MS,
   HUB_ROUTE_DOCUMENT_BYTES,

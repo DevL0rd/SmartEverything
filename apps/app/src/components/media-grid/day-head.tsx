@@ -85,6 +85,9 @@ function Head({ title, detail, place, mark, packed, onMark }: DayHeadProps): Rea
         <Text variant="title-3" accessibilityRole="header" numberOfLines={1} className="shrink-0">
           {title}
         </Text>
+        <Text variant="callout" tone="variant" aria-hidden className="shrink-0">
+          ·
+        </Text>
         <Text variant="callout" tone="variant" numberOfLines={1} className="shrink-0 tabular-nums">
           {detail}
         </Text>

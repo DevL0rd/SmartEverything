@@ -42,15 +42,21 @@ const COUNTRIES: readonly PlaceCountry[] = [
 
 describe('places model', () => {
   it('sums the library line', () => {
-    expect(libraryLine(COUNTRIES)).toBe('3 places in 2 countries · 1,592 photos have a location');
+    expect(libraryLine(COUNTRIES, false)).toBe(
+      '3 places in 2 countries · 1,592 photos have a location',
+    );
+    expect(libraryLine(COUNTRIES, true)).toBe('3 places · 1,592 photos');
   });
 
-  it('groups by country with the busiest first and shares against its top place', () => {
+  it('groups by country with the busiest first and shares against the busiest place in view', () => {
     const groups = countryGroups(COUNTRIES);
     expect(groups.map((group) => group.country.country)).toEqual(['Portugal', 'Japan']);
     expect(groups[0]?.rows.map((row) => [row.place.name, row.share])).toEqual([
       ['Lisbon', 1],
       ['Porto', 238 / 842],
+    ]);
+    expect(groups[1]?.rows.map((row) => [row.place.name, row.share])).toEqual([
+      ['Tokyo', 512 / 842],
     ]);
   });
 

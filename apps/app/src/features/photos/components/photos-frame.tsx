@@ -68,6 +68,8 @@ const TOP: readonly PhotosRailId[] = ['library', 'people', 'albums', 'sharing', 
 
 const MANAGE: readonly PhotosRailId[] = ['folders', 'archive', 'locked', 'insights', 'deleted'];
 
+export const PHOTOS_RAIL_IDS: readonly PhotosRailId[] = [...TOP, ...MANAGE];
+
 type Count = number | null;
 
 type Amount = number | null | undefined;
@@ -203,7 +205,7 @@ export function librarySegmentsOf(kinds: PhotoInsights['kinds']): readonly BarSe
       .filter((kind) => KIND_GROUP[kind.kind] === group)
       .reduce((sum, kind) => sum + kind.bytes, 0),
     colour: KIND_COLOUR[group],
-  }));
+  })).filter((segment) => segment.value > 0);
 }
 
 export interface SummaryProps {
@@ -238,18 +240,17 @@ function backupLineOf(lines: BackupLines): string | null {
 
 export function RailSummary({ insights, lines }: SummaryProps): ReactNode {
   const line = backupLineOf(lines);
+  if (insights === undefined) return null;
   return (
     <SummaryWell
       title="Library"
       trailing={
-        insights === undefined ? null : (
-          <Text variant="footnote" className="tabular font-sans-medium">
-            {bytes(insights.bytes)}
-          </Text>
-        )
+        <Text variant="footnote" className="tabular font-sans-medium">
+          {bytes(insights.bytes)}
+        </Text>
       }
     >
-      {insights === undefined || insights.bytes === 0 ? null : (
+      {insights.bytes === 0 ? null : (
         <SegmentBar
           segments={librarySegmentsOf(insights.kinds)}
           label="Library size by kind"
@@ -300,6 +301,7 @@ export interface PhotosFrameProps {
   readonly footer?: ReactNode;
   readonly primaryAction?: PrimaryActionProps;
   readonly scroll?: boolean;
+  readonly refresh?: boolean;
   readonly children: ReactNode;
 }
 
@@ -399,8 +401,9 @@ export function PhotosFrame({ active, title, ...frame }: PhotosFrameProps): Reac
             ),
           }
         : {})}
-      onRefresh={refresh.refresh}
-      refreshing={refresh.refreshing}
+      {...(frame.refresh === false
+        ? {}
+        : { onRefresh: refresh.refresh, refreshing: refresh.refreshing })}
       {...headOf(frame)}
       {...restOf(frame)}
     >

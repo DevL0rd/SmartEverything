@@ -90,11 +90,13 @@ export function KindsCard({
 }): ReactNode {
   return (
     <Card title="Kinds" className={className}>
-      <Donut slices={kindSlices(insights)} size={112} label="Kinds by number of items">
-        <Text variant="title-3" className="tabular">
-          {photoShare(insights)}
-        </Text>
-      </Donut>
+      <View className="flex-1 items-center justify-center">
+        <Donut slices={kindSlices(insights)} size={112} label="Kinds by number of items">
+          <Text variant="title-3" className="tabular">
+            {photoShare(insights)}
+          </Text>
+        </Donut>
+      </View>
     </Card>
   );
 }
@@ -110,8 +112,10 @@ export function CalendarCard({
   readonly today: string;
   readonly compact: boolean;
 }): ReactNode {
+  const busiest = <Caption text={busiestLine(insights.busiestDays)} />;
   return (
-    <Card title="Photos per day" metadata={<Caption text={busiestLine(insights.busiestDays)} />}>
+    <Card title="Photos per day" {...(compact ? {} : { metadata: busiest })}>
+      {compact ? busiest : null}
       <CalendarHeatmap
         days={heatDays(insights.perDay, calendarFrom(range, today), today)}
         today={today}

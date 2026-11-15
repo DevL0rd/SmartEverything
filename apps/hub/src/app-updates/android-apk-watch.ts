@@ -1,4 +1,4 @@
-import type { AppUpdateNotice } from '@smarteverything/domain';
+import type { AppUpdateNotice, ClientRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { readdir } from 'node:fs/promises';
 import type { LiveHub } from '../server/live';
@@ -35,11 +35,26 @@ function send(live: Pick<LiveHub, 'announce' | 'toClient'>, { notice, clientId }
   else live.toClient(clientId, notice);
 }
 
+function noticesOf(
+  latest: Latest,
+  client: Pick<ClientRow, 'id' | 'platform'>,
+): readonly AppUpdateNotice[] {
+  if (client.platform !== 'android') return [];
+  return [...latest.values()]
+    .filter(({ clientId }) => clientId === null || clientId === client.id)
+    .map(({ notice }) => notice);
+}
+
+export interface AndroidApkWatch {
+  readonly noticesFor: (client: Pick<ClientRow, 'id' | 'platform'>) => readonly AppUpdateNotice[];
+  readonly stop: () => Promise<void>;
+}
+
 export async function watchAndroidApks(
   folder: AndroidApkFolder,
   live: Pick<LiveHub, 'announce' | 'toClient'>,
   log: Logger,
-): Promise<() => Promise<void>> {
+): Promise<AndroidApkWatch> {
   let latest: Latest = new Map();
   const read = async (previous: Latest): Promise<Map<string, Announced>> => {
     const next = new Map<string, Announced>();
@@ -77,5 +92,5 @@ export async function watchAndroidApks(
     reloadFailed: 'android_apk.notice_failed',
     watchFailed: 'android_apk.watch_failed',
   });
-  return () => watch.stop();
+  return { noticesFor: (client) => noticesOf(latest, client), stop: () => watch.stop() };
 }

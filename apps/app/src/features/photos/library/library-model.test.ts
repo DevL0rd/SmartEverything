@@ -44,19 +44,20 @@ describe('library library line', () => {
       { month: '2026-11', count: 48_000 },
       { month: '2014-03', count: 213 },
     ];
-    expect(libraryLine(buckets, 698 * 1024 ** 3, 2026)).toBe(
+    expect(libraryLine(buckets, 698 * 1024 ** 3, 2026, false)).toBe(
       `${count(48_213)} items · ${bytes(698 * 1024 ** 3)} · 2014 to today`,
     );
+    expect(libraryLine(buckets, 698 * 1024 ** 3, 2026, true)).toBe(`${count(48_213)} items`);
   });
 
   it('leaves out an unknown size and says this year for a new library', () => {
-    expect(libraryLine([{ month: '2026-02', count: 1 }], undefined, 2026)).toBe(
+    expect(libraryLine([{ month: '2026-02', count: 1 }], undefined, 2026, false)).toBe(
       '1 item · this year',
     );
   });
 
   it('is absent without months', () => {
-    expect(libraryLine([], 10, 2026)).toBeNull();
+    expect(libraryLine([], 10, 2026, false)).toBeNull();
   });
 });
 

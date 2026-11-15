@@ -25,7 +25,7 @@ import { focusView } from './focus-request';
 import { Overlay, useOverlayShown } from './overlay';
 import { SheetHandle, useSheetHeading, type SheetBackAction } from './sheet-header';
 import { SheetNavigationProvider, useSheetNavigation } from './sheet-navigation';
-import { sheetFrame, type SheetMeasurement } from './sheet-frame';
+import { sheetDrop, sheetFrame, type SheetMeasurement } from './sheet-frame';
 import { EscapeScopeVisible } from './escape-scope';
 
 export type Detent = 'fit' | 'half' | 'full';
@@ -180,7 +180,7 @@ function SheetPanel(props: PanelProps): ReactNode {
     page,
     titleFocus,
   });
-  const slide = useAnimatedStyle(() => ({ transform: [{ translateY: offset.get() }] }));
+  const slide = useAnimatedStyle(() => sheetDrop(offset.get()));
   const extent = useSharedValue(full);
   const pan = useDragToDismiss(offset, { stops, extent, onClose, onSettle: onExpanded });
   const onLayout = ({ nativeEvent }: LayoutChangeEvent): void => {
@@ -192,22 +192,24 @@ function SheetPanel(props: PanelProps): ReactNode {
   };
   const { sized, body } = sheetFrame(detents, full);
   return (
-    <Animated.View
-      onLayout={onLayout}
-      style={[sized, slide]}
-      className={cn('min-h-0 w-full shrink', CHROME_SURFACE, FLOATING_SHEET_SURFACE)}
-    >
-      <GestureDetector gesture={pan}>
-        <SheetHandle
-          title={title}
-          onClose={onClose}
-          compact={compact}
-          back={back}
-          action={props.headerAction}
-          titleFocus={titleFocus}
-        />
-      </GestureDetector>
-      {props.children(body, rest)}
+    <Animated.View style={slide} className="min-h-0 w-full shrink">
+      <View
+        onLayout={onLayout}
+        style={sized}
+        className={cn('min-h-0 w-full shrink', CHROME_SURFACE, FLOATING_SHEET_SURFACE)}
+      >
+        <GestureDetector gesture={pan}>
+          <SheetHandle
+            title={title}
+            onClose={onClose}
+            compact={compact}
+            back={back}
+            action={props.headerAction}
+            titleFocus={titleFocus}
+          />
+        </GestureDetector>
+        {props.children(body, rest)}
+      </View>
     </Animated.View>
   );
 }

@@ -3,13 +3,13 @@ import { View } from 'react-native';
 import { router } from 'expo-router';
 import type { AppHref } from '../app-href';
 import { Button } from '../button';
-import { useHeaderStatus } from '../header-status';
 import { useSizeClass } from '../../design/size-class';
 import type { IconName } from '../icon';
 import { IconButton } from '../icon-button';
 import type { MenuItem } from '../menu';
 import { PageMenu, type PageSettingsLink } from '../page-menu';
 import { usePrimaryActionPlacement, type PrimaryActionProps } from '../primary-action';
+import { ShellStatus, StatusFormProvider } from './shell-status';
 
 export interface ShellAction {
   readonly icon: IconName;
@@ -193,6 +193,7 @@ function PointerActions({
 function EditBar({ editing }: { readonly editing: ShellEditing }): ReactNode {
   return (
     <View className="flex-row items-center gap-2">
+      <ShellStatus />
       <Button label="Cancel" variant="text" onPress={editing.onCancel} />
       <Button label="Done" onPress={editing.onDone} />
     </View>
@@ -200,7 +201,6 @@ function EditBar({ editing }: { readonly editing: ShellEditing }): ReactNode {
 }
 
 export function ShellActions(props: ShellActionsProps): ReactNode {
-  const status = useHeaderStatus();
   const pulls = useSizeClass().header === 'large';
   if (props.editing !== undefined && props.editing !== null) {
     return <EditBar editing={props.editing} />;
@@ -210,7 +210,9 @@ export function ShellActions(props: ShellActionsProps): ReactNode {
   const refresh = pulls || props.refresh === undefined ? null : props.refresh;
   return (
     <View testID="shell-actions" className="shrink-0 flex-row items-center gap-1">
-      {status}
+      <StatusFormProvider value={props.kind === 'touch' ? 'icon' : 'chip'}>
+        <ShellStatus />
+      </StatusFormProvider>
       {props.kind === 'pointer' ? (
         <PointerActions
           actions={actions}

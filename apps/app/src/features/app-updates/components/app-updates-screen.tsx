@@ -1,6 +1,7 @@
 import { useRef, type ReactNode, type RefObject } from 'react';
 import { background } from '@smarteverything/logging';
 import { View } from 'react-native';
+import { UnreadableSections } from '../../../app-shell/section-failure';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
@@ -149,6 +150,7 @@ export function UpdateStatusCard({
         <Text variant="footnote" tone="variant">
           {`Running · ${runningLabel(view.running)}`}
         </Text>
+        <UnreadableSections />
         <OfferBlock offer={offer}>
           <MainAction state={view.state} offer={offer} actions={actions} />
         </OfferBlock>

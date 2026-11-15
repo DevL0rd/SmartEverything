@@ -244,9 +244,9 @@ describe('restore', () => {
     });
   });
 
-  it('demotes restore and says why while a conflict is open', () => {
+  it('turns restore off and says why while a conflict is open', () => {
     expect(restorePlanOf(entryOf(entries, idOf(2)), true)).toEqual({
-      versionId: idOf(2),
+      versionId: null,
       primary: false,
       footer: CONFLICT_FOOTER,
     });

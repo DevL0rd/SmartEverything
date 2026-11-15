@@ -104,7 +104,7 @@ describe('backup runner', () => {
     expect(t.upload.started).toEqual([]);
     expect((await ledger()).find('a')).toMatchObject({ itemId: ITEM_ID, uploadedAt });
     expect((await ledger()).lastSeen).toBe(5000);
-    expect(t.hub.checkPurposes).toEqual(['lookup']);
+    expect(t.hub.checkPurposes).toEqual(['lookup', 'backup']);
     expect(backupStatus.get()).toMatchObject({ done: 0, total: 0, bytesLeft: 0 });
     t.hub.checks.length = 0;
     await new BackupRunner(t.ports).request();

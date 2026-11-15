@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applicationRoutes, applicationSource, filesUnder, insideApp } from './repository-files';
 import { rendersSearch, routesReaching, searchesOutsideTheShell } from './search-placement';
+import { barGaps, indicatorGaps, providerGaps, selectionGaps } from './shell-status';
 
 const DELETED_SHELLS = [
   'src/components/screen.tsx',
@@ -160,6 +161,21 @@ describe('the page shell', () => {
     expect(
       sources.filter((source) => LARGE_SHELL_TITLE.test(source.text)).map((source) => source.path),
     ).toEqual([]);
+  });
+
+  it('draws the connection and update indicator in every top bar form, on every route', () => {
+    const appRoot = dirname(applicationSource);
+    const read = (path: string): string => readFileSync(join(appRoot, path), 'utf8');
+    expect(barGaps(read)).toEqual([]);
+    expect(selectionGaps(read)).toEqual([]);
+    expect(
+      providerGaps(
+        read,
+        sources.map((source) => source.path),
+      ),
+    ).toEqual([]);
+    expect(indicatorGaps(read)).toEqual([]);
+    expect(routes.filter((route) => !route.file.startsWith(applicationRoutes))).toEqual([]);
   });
 
   it('draws every section sidebar with the one shared section rail', () => {

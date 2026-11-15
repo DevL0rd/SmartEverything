@@ -37,7 +37,12 @@ import { ResultLine } from './result-line';
 import { UploadPanel } from './upload-panel';
 import { uploadFiles } from './uploads';
 import { useClearOnChange } from './use-clear-on-change';
-import { scopeKeyOf, useLibraryFeed, type LibraryFeed } from './use-library-feed';
+import {
+  scopeKeyOf,
+  useFocusedLibraryFeed,
+  type FeedFocus,
+  type LibraryFeed,
+} from './use-library-feed';
 import { useMediaActions, type MediaActions } from './use-media-actions';
 
 const log = new Logger('app.photos');
@@ -109,6 +114,7 @@ export interface HubTabProps {
   readonly grouping: MediaGrouping;
   readonly zoom: ZoomControl;
   readonly subtitle: string | null;
+  readonly focus: FeedFocus | null;
 }
 
 function VideoTop({
@@ -225,6 +231,7 @@ function Body({ page, feed, controls, media, localLoading }: BodyProps): ReactNo
           </View>
         }
         onEnd={feed.onEnd}
+        focus={feed.focus}
       />
     </View>
   );
@@ -262,7 +269,7 @@ export function HubTab(props: HubTabProps): ReactNode {
   const { head, tab } = props;
   const [bucket, setBucket] = useState<DriveDurationBucket | null>(null);
   const scope = scopeWith(props.scope, tab, bucket);
-  const feed = useLibraryFeed(scope);
+  const feed = useFocusedLibraryFeed(scope, props.focus);
   const local = useLocalLibrary();
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));
   useClearOnChange(scopeKeyOf(scope), controls.clear);

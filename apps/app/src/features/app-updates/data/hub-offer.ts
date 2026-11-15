@@ -3,6 +3,7 @@ import {
   type AndroidAppBuildReport,
   type AppUpdateChannel,
   type AppUpdateKeyReply,
+  type AppUpdateNotice,
   type AppUpdateOffer,
   type AppUpdateOutcome,
   type AppUpdatePlatform,
@@ -41,7 +42,17 @@ export async function reportAppUpdateOutcome(outcome: AppUpdateOutcome): Promise
   await api().call(E.reportAppUpdate, { body: outcome });
 }
 
+const handledNotices = new Map<string, string | null>();
+
+export function freshNotice(notice: AppUpdateNotice): boolean {
+  const key = `${notice.platform}:${notice.channel}:${notice.runtimeVersion}`;
+  if (handledNotices.has(key) && handledNotices.get(key) === notice.id) return false;
+  handledNotices.set(key, notice.id);
+  return true;
+}
+
 export const APP_UPDATE_NOTICES = noticeHandler(['app_update'], (message, { client }) => {
+  if (!freshNotice(message)) return;
   activeUpdateController.get()?.receiveNotice(message);
   if (message.platform === 'desktop' && message.channel === RELEASE_UPDATE_CHANNEL)
     installerNotice.update((sequence) => sequence + 1);

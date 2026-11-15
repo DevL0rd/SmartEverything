@@ -53,6 +53,7 @@ export function SettingsQueryState<T>({
         <ErrorState
           title={failed}
           error={query.error}
+          wrapDetail
           retry={() => {
             background(query.refetch(), event);
           }}

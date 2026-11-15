@@ -64,7 +64,7 @@ describe('a live socket opened with another live protocol version', () => {
   it('is closed with the protocol mismatch code and reason', async () => {
     const [, bearer] = liveProtocols(memberToken());
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/live`, [
-      `${LIVE_PROTOCOL_PREFIX}v0`,
+      `${LIVE_PROTOCOL_PREFIX}v1`,
       bearer,
     ]);
     sockets.push(socket);
@@ -77,7 +77,7 @@ describe('a live socket opened with another live protocol version', () => {
       code: LIVE_PROTOCOL_MISMATCH.code,
       reason: LIVE_PROTOCOL_MISMATCH.reason,
     });
-    expect(socket.protocol).toBe(`${LIVE_PROTOCOL_PREFIX}v0`);
+    expect(socket.protocol).toBe(`${LIVE_PROTOCOL_PREFIX}v1`);
   });
 
   it('still opens with the current protocol', async () => {

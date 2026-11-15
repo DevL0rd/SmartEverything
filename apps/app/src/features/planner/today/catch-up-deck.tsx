@@ -149,16 +149,18 @@ function AlarmFace({
     card.ring.missed_reason !== 'hub_down' && (card.alarm?.wake_automation_id ?? null) !== null;
   return (
     <View className="gap-2">
-      <View className="flex-row items-center justify-between gap-2">
+      <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
         <Badge label={missedAlarmTitleOf(card, day)} tone="critical" icon="alarmClock" />
-        <Text variant="caption" tone="variant">
+        <Text variant="caption" tone="variant" numberOfLines={1}>
           {missedReasonOf(card.ring)}
         </Text>
       </View>
       <Text variant="label">{card.alarm?.label ?? 'Alarm'}</Text>
-      <Text variant="caption" tone="variant">
-        {`Clock doesn’t ring alarms late, so this one is marked missed.${hubRan ? ' Your wake routine still ran from the hub.' : ''}`}
-      </Text>
+      {hubRan ? (
+        <Text variant="caption" tone="variant">
+          Your wake routine still ran from the hub.
+        </Text>
+      ) : null}
       <View className="flex-row gap-2">
         <Button label="Edit alarm" icon="pencil" variant="outlined" href={href.clock.alarms()} />
       </View>
@@ -234,23 +236,31 @@ function Ghosts({ stack }: { readonly stack: GhostStack }): ReactNode {
 function Header({ cards }: { readonly cards: readonly CatchUpCard[] }): ReactNode {
   const { offline } = usePlannerFrame();
   const prompt = fitPromptOf(cards);
+  const alarms = cards.some((card) => card.kind === 'alarm');
   return (
-    <View className="flex-row items-center justify-between gap-2">
-      <View className="flex-row items-center gap-2">
-        <Text variant="label">Missed</Text>
-        <Badge label={String(cards.length)} tone="critical" />
+    <View className="gap-1">
+      <View className="flex-row items-center justify-between gap-2">
+        <View className="flex-row items-center gap-2">
+          <Text variant="label">Missed</Text>
+          <Badge label={String(cards.length)} tone="critical" />
+        </View>
+        {prompt === null ? null : (
+          <Button
+            label="Fit into today"
+            icon="sparkles"
+            variant="tonal"
+            disabled={offline}
+            onPress={() => {
+              askAssistantWith(prompt);
+            }}
+          />
+        )}
       </View>
-      {prompt === null ? null : (
-        <Button
-          label="Fit into today"
-          icon="sparkles"
-          variant="tonal"
-          disabled={offline}
-          onPress={() => {
-            askAssistantWith(prompt);
-          }}
-        />
-      )}
+      {alarms ? (
+        <Text variant="caption" tone="variant">
+          Clock doesn’t ring alarms late, so a missed alarm stays marked missed.
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -275,6 +285,7 @@ function MoreButton({
         label={fanned ? 'Show less' : `${String(cards.length - 1)} more · ${title}`}
         icon={fanned ? 'chevronUp' : 'chevronDown'}
         variant="text"
+        wrap
         onPress={onPress}
       />
     </View>

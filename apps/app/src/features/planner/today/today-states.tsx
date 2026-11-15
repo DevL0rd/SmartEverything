@@ -13,8 +13,6 @@ import { useAreaWidth } from '../../../design/size-class';
 import { plural } from '../../../format/text';
 import { useGoogleAccount, usePlannerAlarms } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { useComposerControl } from '../frame/quick-add';
-import { QuickAddComposer } from '../frame/quick-add-bar';
 
 const TASK_STARTERS: readonly string[] = [
   'Brush teeth every day 07:30 and 22:00',
@@ -48,16 +46,8 @@ function WatchAlarmsRow(): ReactNode {
 }
 
 function StartRows(): ReactNode {
-  const { offline, focusQuickAdd } = usePlannerFrame();
   return (
     <List title="Get started">
-      <ListRow
-        icon="plus"
-        title="Add a task"
-        subtitle="Try: brush teeth every day 07:30"
-        onPress={focusQuickAdd}
-        disabled={offline}
-      />
       <ListRow
         icon="alarmClock"
         title="Set an alarm"
@@ -71,27 +61,23 @@ function StartRows(): ReactNode {
 }
 
 function StarterIdeas(): ReactNode {
-  const { person, offline } = usePlannerFrame();
-  const composer = useComposerControl();
+  const { offline, focusQuickAdd } = usePlannerFrame();
   const start = (text: string) => (): void => {
-    composer.open({ text, kind: 'task' });
+    focusQuickAdd({ text });
   };
   return (
-    <>
-      <List title="Starter ideas" caption="Tap one to add it">
-        {TASK_STARTERS.map((text) => (
-          <ListRow key={text} icon="plus" title={text} onPress={start(text)} disabled={offline} />
-        ))}
-        <ListRow
-          icon="alarmClock"
-          title="Wake up 07:00 on weekdays"
-          subtitle="Opens Clock"
-          href={href.clock.alarms()}
-          chevron
-        />
-      </List>
-      <QuickAddComposer control={composer} target="planner" person={person} disabled={offline} />
-    </>
+    <List title="Starter ideas" caption="Tap one to add it">
+      {TASK_STARTERS.map((text) => (
+        <ListRow key={text} icon="plus" title={text} onPress={start(text)} disabled={offline} />
+      ))}
+      <ListRow
+        icon="alarmClock"
+        title="Wake up 07:00 on weekdays"
+        subtitle="Opens Clock"
+        href={href.clock.alarms()}
+        chevron
+      />
+    </List>
   );
 }
 

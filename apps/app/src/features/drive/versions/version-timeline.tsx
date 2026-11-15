@@ -17,7 +17,7 @@ import { useIdiom } from '../../../design/platform';
 import { bytes } from '../../../format/number';
 import { initialsOf } from '../../../format/text';
 import { useMinute } from '../../../store/clock';
-import { useActiveProfile } from '../../../store/people';
+import { useActiveProfile, useProfiles } from '../../../store/people';
 import { sameJson } from '../../../store/same-json';
 import { useSettings } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
@@ -44,10 +44,16 @@ export interface TimelineLook {
   readonly time: Clock;
   readonly me: string | null;
   readonly pointer: boolean;
+  readonly profileName: (profileId: string | null) => string | null;
 }
 
 function deviceLabelsIn(state: StoreState, deviceIds: readonly string[]): readonly string[] {
   return deviceIds.map((deviceId) => state.tables.devices.byId[deviceId]?.label ?? '');
+}
+
+function useProfileName(): TimelineLook['profileName'] {
+  const names = new Map(useProfiles().map((profile) => [profile.id, profile.name] as const));
+  return (profileId) => (profileId === null ? null : (names.get(profileId) ?? null));
 }
 
 function useDeviceName(entries: readonly VersionEntry[]): Namers['deviceName'] {
@@ -74,6 +80,7 @@ export function useTimelineLook(entries: readonly VersionEntry[]): TimelineLook 
     time: { now, zone },
     me: useActiveProfile()?.id ?? null,
     pointer: useIdiom() === 'pointer',
+    profileName: useProfileName(),
   };
 }
 
@@ -111,12 +118,12 @@ function AuthorMark({
   readonly look: TimelineLook;
 }): ReactNode {
   const series = whoSeriesOf(entry, look.me);
-  const name = look.namers.byName(entry.authorId);
+  const name = look.profileName(entry.authorId);
   const person = series === 'you' || series === 'people';
   return (
     <View
       aria-hidden
-      className={cn('size-5 items-center justify-center rounded-full', SERIES_LOOK[series].fill)}
+      className={cn('size-5 items-center justify-center rounded-full', SERIES_LOOK[series].mark)}
     >
       {person && name !== null ? (
         <Text variant="caption" tone="onPrimary">
@@ -151,9 +158,11 @@ function ViaDot({
 function WhenLine({
   entry,
   look,
+  badge,
 }: {
   readonly entry: VersionEntry;
   readonly look: TimelineLook;
+  readonly badge: string | null;
 }): ReactNode {
   return (
     <View className="min-w-0 flex-row items-center gap-2">
@@ -161,14 +170,21 @@ function WhenLine({
         {whenOf(entry, look.time)}
       </Text>
       {entry.key === CURRENT ? <Badge label="Current" tone="positive" /> : null}
+      {badge === null ? null : <Badge label={badge} tone="info" />}
     </View>
   );
 }
 
-function spokenOf(entry: VersionEntry, look: TimelineLook, slot: PickSlot | null): string {
+function spokenOf(
+  entry: VersionEntry,
+  look: TimelineLook,
+  slot: PickSlot | null,
+  badge: string | null,
+): string {
   const parts = [
     whenOf(entry, look.time),
     entry.key === CURRENT ? 'current' : null,
+    badge,
     byOf(entry, look.namers),
     bytes(entry.bytes),
     slot === null ? null : `picked as ${slot.toUpperCase()}`,
@@ -176,11 +192,17 @@ function spokenOf(entry: VersionEntry, look: TimelineLook, slot: PickSlot | null
   return parts.filter((part) => part !== null).join(', ');
 }
 
+function hintOf(slot: PickSlot | null, badge: string | null): string {
+  if (badge !== null) return 'Compares this copy as B';
+  return slot === 'b' ? 'Makes this version A' : 'Picks this version as B';
+}
+
 interface RowProps {
   readonly entry: VersionEntry;
   readonly slot: PickSlot | null;
   readonly look: TimelineLook;
   readonly onPick: (key: string) => void;
+  readonly badge: string | null;
 }
 
 export const TimelineRow = memo(function TimelineRow({
@@ -188,11 +210,12 @@ export const TimelineRow = memo(function TimelineRow({
   slot,
   look,
   onPick,
+  badge,
 }: RowProps): ReactNode {
   return (
     <Interactive
-      label={spokenOf(entry, look, slot)}
-      hint={slot === 'b' ? 'Makes this version A' : 'Picks this version as B'}
+      label={spokenOf(entry, look, slot, badge)}
+      hint={hintOf(slot, badge)}
       selected={slot !== null}
       onPress={() => {
         onPick(entry.key);
@@ -205,7 +228,7 @@ export const TimelineRow = memo(function TimelineRow({
     >
       <PickKey slot={slot} pointer={look.pointer} />
       <View className="min-w-0 flex-1 gap-0.5">
-        <WhenLine entry={entry} look={look} />
+        <WhenLine entry={entry} look={look} badge={badge} />
         <View className="min-w-0 flex-row items-center gap-1.5">
           <AuthorMark entry={entry} look={look} />
           <Text variant="callout" tone="variant" numberOfLines={1} className="min-w-0 shrink">
@@ -230,11 +253,11 @@ export function CompactRow({
   return (
     <View
       accessible
-      accessibilityLabel={spokenOf(entry, look, null)}
+      accessibilityLabel={spokenOf(entry, look, null, null)}
       className="h-row-h-2 flex-row items-center gap-3"
     >
       <View className="min-w-0 flex-1 gap-0.5">
-        <WhenLine entry={entry} look={look} />
+        <WhenLine entry={entry} look={look} badge={null} />
         <View className="min-w-0 flex-row items-center gap-2">
           <ViaDot entry={entry} me={look.me} />
           <Text variant="callout" tone="variant" numberOfLines={1} className="min-w-0 shrink">
@@ -255,7 +278,7 @@ export function SizeOverYear({
   now,
 }: {
   readonly entries: readonly VersionEntry[];
-  readonly total: string;
+  readonly total: string | null;
   readonly now: number;
 }): ReactNode {
   const points = sizePoints(entries, now);
@@ -265,9 +288,11 @@ export function SizeOverYear({
         <Text variant="footnote" tone="variant">
           Size over the last year
         </Text>
-        <Text variant="footnote" tone="variant" className="tabular">
-          {total}
-        </Text>
+        {total === null ? null : (
+          <Text variant="footnote" tone="variant" className="tabular">
+            {total}
+          </Text>
+        )}
       </View>
       {points.length < 2 ? null : (
         <View
@@ -282,8 +307,14 @@ export function SizeOverYear({
   );
 }
 
+export interface PinnedEntry {
+  readonly entry: VersionEntry;
+  readonly badge: string;
+}
+
 export interface VersionTimelineProps {
   readonly entries: readonly VersionEntry[];
+  readonly pinned?: PinnedEntry | null;
   readonly picks: VersionPicks;
   readonly onPick: (key: string) => void;
   readonly look: TimelineLook;
@@ -293,6 +324,7 @@ export interface VersionTimelineProps {
 
 export function VersionTimeline({
   entries,
+  pinned = null,
   picks,
   onPick,
   look,
@@ -300,11 +332,17 @@ export function VersionTimeline({
   footer,
 }: VersionTimelineProps): ReactNode {
   const renderRow: ListRenderItem<VersionEntry> = ({ item }) => (
-    <TimelineRow entry={item} slot={slotOf(picks, item.key)} look={look} onPick={onPick} />
+    <TimelineRow
+      entry={item}
+      slot={slotOf(picks, item.key)}
+      look={look}
+      onPick={onPick}
+      badge={pinned !== null && pinned.entry.key === item.key ? pinned.badge : null}
+    />
   );
   return (
     <FlashList<VersionEntry>
-      data={entries}
+      data={pinned === null ? entries : [pinned.entry, ...entries]}
       extraData={picks}
       keyExtractor={(entry) => entry.key}
       renderItem={renderRow}
@@ -314,6 +352,9 @@ export function VersionTimeline({
     />
   );
 }
+
+export const COMPACT_CARD =
+  'overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 px-4';
 
 export function CompactTimeline({
   entries,
@@ -345,6 +386,31 @@ export function TimelineLoading(): ReactNode {
             <Skeleton shape="text" className="w-32" />
             <Skeleton shape="text" />
           </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export function CompactTimelineLoading(): ReactNode {
+  return (
+    <View aria-label="Loading versions" className={COMPACT_CARD}>
+      {SKELETON_ROWS.map((key, index) => (
+        <View
+          key={key}
+          className={cn(
+            'h-row-h-2 flex-row items-center gap-3',
+            index > 0 && 'border-t border-outline-variant',
+          )}
+        >
+          <View className="min-w-0 flex-1 gap-2">
+            <Skeleton shape="text" className="w-32" />
+            <View className="flex-row items-center gap-2">
+              <Skeleton shape="circle" className="size-2" />
+              <Skeleton shape="text" className="min-w-0 flex-1" />
+            </View>
+          </View>
+          <Skeleton shape="text" className="w-12" />
         </View>
       ))}
     </View>

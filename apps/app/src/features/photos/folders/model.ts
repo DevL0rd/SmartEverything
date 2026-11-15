@@ -125,9 +125,10 @@ export function itemsLine(total: number): string {
   return total === 1 ? '1 item' : `${count(total)} items`;
 }
 
-export function countLineOf(folder: FolderView): string {
+export function countLineOf(folder: FolderView, backsUp: boolean): string {
   if (folder.local === 0) return itemsLine(folder.backedUp);
-  if (folder.backedUp === 0) return `${itemsLine(folder.local)} · not backed up`;
+  if (folder.backedUp === 0)
+    return `${itemsLine(folder.local)} · ${backsUp ? 'waiting to back up' : 'not backed up'}`;
   return `${itemsLine(folder.local)} · ${count(Math.min(folder.backedUp, folder.local))} backed up`;
 }
 

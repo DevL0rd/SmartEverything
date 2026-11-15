@@ -3,6 +3,7 @@ import type { DriveItem } from '@smarteverything/domain';
 import { FOLDER_ID, ROOT_ID, documentFixture, imageFixture } from '../data/fixtures';
 import {
   SWIPE_STEP,
+  FOLD_MIN,
   UNCHANGED_CONTEXT,
   changeSummary,
   clampSplit,
@@ -152,7 +153,17 @@ describe('unchanged runs', () => {
     const before = numbered(20);
     const after = before.replace('line 5', 'five').replace('line 10', 'ten');
     const segments = segmentsOf((await diffTexts(before, after)).lines, false);
-    expect(shape(segments)).toEqual(['skip 1', 'lines 14', 'skip 7']);
+    expect(shape(segments)).toEqual(['lines 15', 'skip 7']);
+  });
+
+  it('shows runs shorter than a fold as lines', async () => {
+    const before = numbered(20);
+    const after = before.replace('line 3', 'three').replace('line 12', 'twelve');
+    const segments = segmentsOf((await diffTexts(before, after)).lines, false);
+    expect(shape(segments)).toEqual(['lines 17', 'skip 5']);
+    expect(
+      segments.some((segment) => segment.kind === 'unchanged' && segment.count < FOLD_MIN),
+    ).toBe(false);
   });
 
   it('keeps short unchanged runs at the edges inside the block', async () => {

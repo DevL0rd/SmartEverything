@@ -113,14 +113,13 @@ export function statItems(
   insights: PhotoInsights,
   counts: PhotoRailCounts | undefined,
 ): readonly MetricItem[] {
-  const photos = insights.items - kindItems(insights, 'video');
   const added = addedLine(insights.growth);
   const fixed: readonly MetricItem[] = [
     {
       key: 'items',
       label: 'Items',
       value: count(insights.items),
-      caption: `${count(photos)} photos · ${count(insights.videoTotals.items)} videos`,
+      caption: `${count(kindItems(insights, 'photo'))} photos`,
     },
     {
       key: 'size',

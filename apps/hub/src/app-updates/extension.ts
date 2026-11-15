@@ -2,7 +2,9 @@ import {
   API_ENDPOINTS as E,
   ApiError,
   MEDIA_PATHS,
+  type AppUpdateNotice,
   type AppUpdateOutcome,
+  type ClientRow,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { createReadStream } from 'node:fs';
@@ -131,7 +133,12 @@ export function appUpdatesExtension(): ServerExtension {
     const watch = new AppUpdateWatch(folder, context.live, log);
     await watch.start();
     const signer = await ManifestSigner.start(folder.directory, log);
-    const stopApkWatch = await watchAndroidApks(apkFolder, context.live, log);
+    const apkWatch = await watchAndroidApks(apkFolder, context.live, log);
+    const primer = (client: ClientRow): readonly AppUpdateNotice[] => [
+      ...watch.noticesFor(client),
+      ...apkWatch.noticesFor(client),
+    ];
+    context.live.clientPrimers.add(primer);
     return {
       endpoints: appUpdateEndpoints({ context, folder, apkFolder, updates, builds, publisher }),
       routes: [
@@ -141,7 +148,8 @@ export function appUpdatesExtension(): ServerExtension {
         expoManifestRoute({ store: context.store, links: context.links, folder, signer, log }),
       ],
       stop: async (): Promise<void> => {
-        await Promise.all([watch.stop(), stopApkWatch()]);
+        context.live.clientPrimers.delete(primer);
+        await Promise.all([watch.stop(), apkWatch.stop()]);
       },
     };
   };
