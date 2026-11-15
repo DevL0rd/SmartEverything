@@ -59,6 +59,9 @@ importers:
       '@smarteverything/flow':
         specifier: workspace:*
         version: link:packages/flow
+      '@smarteverything/ipp':
+        specifier: workspace:*
+        version: link:packages/ipp
       '@smarteverything/logging':
         specifier: workspace:*
         version: link:packages/logging

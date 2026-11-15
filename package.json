@@ -44,6 +44,7 @@
     "@eslint/js": "10.0.1",
     "@smarteverything/domain": "workspace:*",
     "@smarteverything/flow": "workspace:*",
+    "@smarteverything/ipp": "workspace:*",
     "@smarteverything/logging": "workspace:*",
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
