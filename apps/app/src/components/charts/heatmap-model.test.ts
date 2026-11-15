@@ -3,6 +3,7 @@ import {
   WEEKDAY_ROWS,
   calendarBlocks,
   calendarCells,
+  calendarLabels,
   heatSummary,
   hourCells,
   hourSummary,
@@ -34,11 +35,12 @@ describe('calendar cells', () => {
     expect(blocks).toHaveLength(2);
     expect(blocks.reduce((sum, block) => sum + block.cells.length, 0)).toBe(365);
     expect(Math.max(...blocks.map((block) => block.columns))).toBeLessThanOrEqual(27);
-    expect(blocks[0]?.labels[0]?.text).toBe('Jan');
+    const labelled = calendarLabels(blocks, 17);
+    expect(labelled[0]?.labels[0]?.text).toBe('Jan');
     expect(blocks[1]?.cells[0]?.column).toBe(0);
-    const texts = blocks.flatMap((block) => block.labels.map((entry) => entry.text));
+    const texts = labelled.flatMap((entry) => entry.labels.map((label) => label.text));
     expect(new Set(texts).size).toBe(texts.length);
-    expect(blocks[1]?.labels[0]).toEqual({ column: 0, text: 'Jul' });
+    expect(labelled[1]?.labels[0]).toEqual({ column: 0, text: 'Jul' });
     expect(blocks.every((block) => block.span === Math.max(...blocks.map((b) => b.columns)))).toBe(
       true,
     );
@@ -47,15 +49,42 @@ describe('calendar cells', () => {
   });
 
   it('names the year when the weeks cross one and keeps month labels apart', () => {
-    const [block] = calendarBlocks(calendarCells(days('2025-10-27', 112), '2026-02-15'), 1);
-    expect(block?.labels.map((label) => label.text)).toEqual([
+    const blocks = calendarBlocks(calendarCells(days('2025-10-27', 112), '2026-02-15'), 1);
+    expect(calendarLabels(blocks, 17)[0]?.labels.map((label) => label.text)).toEqual([
       'Nov 2025',
       'Dec',
       'Jan 2026',
       'Feb',
     ]);
-    const [plain] = calendarBlocks(calendarCells(days('2026-03-02', 70), '2026-05-10'), 1);
-    expect(plain?.labels.map((label) => label.text)).toEqual(['Mar', 'Apr', 'May']);
+    const plain = calendarBlocks(calendarCells(days('2026-03-02', 70), '2026-05-10'), 1);
+    expect(calendarLabels(plain, 17)[0]?.labels.map((label) => label.text)).toEqual([
+      'Mar',
+      'Apr',
+      'May',
+    ]);
+  });
+
+  it('measures label room in pixels, so small cells drop a month that would run into a year label', () => {
+    const blocks = calendarBlocks(calendarCells(days('2025-11-17', 365), '2026-11-16'), 1);
+    const [entry] = calendarLabels(blocks, 10);
+    const labels = entry?.labels ?? [];
+    expect(labels.map((label) => label.text)).toContain('Jan 2026');
+    expect(labels.map((label) => label.text)).not.toContain('Feb');
+    labels.slice(1).forEach((label, index) => {
+      const previous = labels[index];
+      if (previous === undefined) throw new Error('missing label');
+      expect((label.column - previous.column) * 10).toBeGreaterThanOrEqual(
+        previous.text.length * 7 + 8,
+      );
+    });
+  });
+
+  it('does not repeat a month at the start of the next block', () => {
+    const blocks = calendarBlocks(calendarCells(days('2025-11-17', 365), '2026-11-16'), 2);
+    const labelled = calendarLabels(blocks, 14);
+    const lastOfFirst = labelled[0]?.labels.at(-1)?.text;
+    const firstOfSecond = labelled[1]?.labels[0]?.text;
+    expect(firstOfSecond?.slice(0, 3)).not.toBe(lastOfFirst?.slice(0, 3));
   });
 
   it('describes the year in words with the days that were not recorded', () => {

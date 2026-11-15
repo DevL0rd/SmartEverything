@@ -162,6 +162,8 @@ describe('the planner search results', () => {
     expect(matchedTextOf(['title', 'notes'])).toBeNull();
     expect(matchedTextOf(['notes'])).toBe('Found in notes');
     expect(matchedTextOf(['guest', 'location'])).toBe('Found in guests and place');
+    expect(matchedTextOf(['calendar'])).toBeNull();
+    expect(matchedTextOf(['calendar', 'notes'])).toBe('Found in notes');
   });
 
   it('counts the matches and marks that more pages wait', () => {
@@ -185,7 +187,16 @@ describe('the planner search filters', () => {
     expect(toggledCollection(one, HOME, all)).toBeNull();
     expect(calendarChipTextOf(null, [work, home])).toBe('All calendars');
     expect(calendarChipTextOf([WORK], [work, home])).toBe('Work');
-    expect(calendarChipTextOf([WORK, HOME], [work, home])).toBe('2 calendars');
+    expect(calendarChipTextOf([WORK, HOME], [work, home])).toBe('All calendars');
+    const family = collection('00000000-0000-4000-8000-000000000023', 'Family', 'calendar');
+    const gym = collection('00000000-0000-4000-8000-000000000024', 'Gym', 'calendar');
+    expect(calendarChipTextOf([HOME, family.id, gym.id], [work, home, family, gym])).toBe(
+      'All but Work',
+    );
+    expect(calendarChipTextOf([HOME, gym.id], [work, home, family, gym])).toBe('2 of 4 calendars');
+    expect(() => calendarChipTextOf(['00000000-0000-4000-8000-000000000099'], [work])).toThrow(
+      /not known/u,
+    );
   });
 
   it('maps the kind choice to the query kinds and back', () => {

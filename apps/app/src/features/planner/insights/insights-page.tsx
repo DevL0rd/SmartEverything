@@ -39,7 +39,7 @@ function Pair({
   readonly compact: boolean;
   readonly children: ReactNode;
 }): ReactNode {
-  return <View className={compact ? 'gap-4' : 'flex-row items-start gap-4'}>{children}</View>;
+  return <View className={compact ? 'gap-4' : 'flex-row items-stretch gap-4'}>{children}</View>;
 }
 
 function Cell({
@@ -148,7 +148,7 @@ export function InsightsPage(): ReactNode {
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const query = usePlannerStats(usePlannerShownPerson(), range);
   const today = useMinuteOf(dayKeyOf);
-  const subtitle = rangeLabelOf(rangeSpanOf(range, today));
+  const subtitle = rangeLabelOf(rangeSpanOf(range, today), compact ? 'compact' : 'full');
   return (
     <PlannerFrame
       section="insights"

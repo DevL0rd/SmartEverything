@@ -227,6 +227,7 @@ describe('the live connection after the hub stops answering', () => {
     snapshotCalls[0]?.resolve({ data: SNAPSHOT.parse(snapshotWire()), failed: [] });
     await vi.advanceTimersByTimeAsync(0);
     const room = store.get().tables.rooms.ids[0];
+    if (room === undefined) throw new Error('the snapshot has no room');
     const broken = (seq: number): void => {
       opened[0]?.handlers.onMessage({
         kind: 'message',

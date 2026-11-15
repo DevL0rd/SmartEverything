@@ -7,7 +7,9 @@ import { AxisLabel } from './axis-label';
 import {
   calendarBlocks,
   calendarCells,
+  calendarLabels,
   heatSummary,
+  type BlockLabel,
   type CalendarBlock,
   type CalendarCell,
   type HeatDay,
@@ -104,17 +106,18 @@ function WeekdayLabels({ step }: { readonly step: number }): ReactNode {
 
 function BlockView({
   block,
-  width,
+  labels,
+  size,
   hatch,
   weekdays,
 }: {
   readonly block: CalendarBlock;
-  readonly width: number;
+  readonly labels: readonly BlockLabel[];
+  readonly size: number;
   readonly hatch: string;
   readonly weekdays: boolean;
 }): ReactNode {
   const inset = weekdays ? WEEKDAY_WIDTH : 0;
-  const size = cellSizeOf(width - inset, block.span);
   const step = size + GAP;
   const faint = useColour('on-surface-faint');
   const shift = { marginLeft: inset };
@@ -134,7 +137,7 @@ function BlockView({
         </Defs>
         <Cells block={block} size={size} hatch={hatch} />
       </Svg>
-      {block.labels.map((entry) => (
+      {labels.map((entry) => (
         <AxisLabel
           key={`${entry.text}-${String(entry.column)}`}
           left={inset + entry.column * step}
@@ -158,6 +161,9 @@ export function CalendarHeatmap({
   const { width, onLayout } = useMeasuredWidth();
   const hatch = `heat${useId().replace(/[^a-zA-Z0-9]/gu, '')}`;
   const blocks = calendarBlocks(calendarCells(days, today), split);
+  const span = Math.max(0, ...blocks.map((block) => block.span));
+  const size = cellSizeOf(width - (weekdays ? WEEKDAY_WIDTH : 0), span);
+  const labelled = calendarLabels(blocks, size + GAP);
   return (
     <View
       accessible
@@ -167,11 +173,12 @@ export function CalendarHeatmap({
       className="gap-2"
     >
       {width > 0
-        ? blocks.map((block, index) => (
+        ? labelled.map(({ block, labels }, index) => (
             <BlockView
               key={index}
               block={block}
-              width={width}
+              labels={labels}
+              size={size}
               hatch={`${hatch}${String(index)}`}
               weekdays={weekdays}
             />

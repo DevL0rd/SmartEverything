@@ -95,6 +95,7 @@ export function AlarmSummary({ stats }: { readonly stats: PlannerStats }): React
     <Card
       title="Alarms"
       icon="alarmClock"
+      className="grow"
       action={<Button label="Wake chart" variant="text" href={href.clock.alarms()} />}
     >
       {hasAlarmData(summary) ? (

@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import { rangeIn } from '../../../search/match';
+import type { TextRange } from '../../../components/highlighted';
 import { Text } from '../../../components/text';
 import type { ListRowProps } from '../../../components/list-row';
 import { Icon } from '../../../components/icon';
@@ -78,9 +79,22 @@ function HitLeading({
           </Text>
         </>
       )}
-      <View className={cn('absolute right-0.5 top-0.5 size-2 rounded-full', dot)} />
+      <View className={cn('absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full', dot)} />
     </View>
   );
+}
+
+function calendarRangeOf(
+  hit: PlannerSearchHit,
+  calendar: PlannerCollectionRow | null,
+  subtitle: string,
+  tokens: readonly string[],
+): TextRange | null {
+  if (calendar === null || !hit.matched.includes('calendar')) return null;
+  const range = rangeIn(calendar.name, tokens);
+  if (range === null) return null;
+  const offset = subtitle.length - calendar.name.length;
+  return { start: range.start + offset, end: range.end + offset };
 }
 
 export interface HitRowModel {
@@ -103,6 +117,7 @@ export function useHitRows(
       const calendar = calendarOf(collections, occurrence.collection_id);
       const time = hitTimeOf(occurrence, HIT_FORMAT, clockNow);
       const subtitle = joinParts([time.text, calendar?.name]);
+      const subtitleHighlight = calendarRangeOf(hit, calendar, subtitle, tokens);
       const caption = matchedTextOf(hit.matched) ?? occurrence.location;
       const link = href.planner.item(occurrence.item_id, occurrence.occurrence_key);
       const props: ListRowProps = {
@@ -110,7 +125,7 @@ export function useHitRows(
         titleHighlight: rangeIn(occurrence.title, tokens),
         leading: <HitLeading hit={hit} time={time} calendar={calendar} />,
         label: joinParts([`Open ${occurrence.title}`, subtitle]),
-        ...(subtitle === '' ? {} : { subtitle }),
+        ...(subtitle === '' ? {} : { subtitle, subtitleHighlight }),
         ...(caption === null ? {} : { caption }),
       };
       return { key: `${occurrence.item_id}:${occurrence.occurrence_key}`, props, link };

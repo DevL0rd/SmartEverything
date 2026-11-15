@@ -5,7 +5,7 @@ import { TabsBar } from '../tabs-bar';
 import { BarInline, BarTrailing, OpenSearch, useBarSearch, type BarSearch } from './bar-search';
 import { barLeadOf, type ShellColumn } from './layout';
 import type { ShellSearchConfig } from './search-slot';
-import { ShellActions, type ShellActionsProps } from './shell-actions';
+import { ShellActions, ShellOverflow, type ShellActionsProps } from './shell-actions';
 import { ShellStatus } from './shell-status';
 import { useBackAction } from '../back-navigation';
 import { ShellBack, ShellTitle, type BackPress, type ShellTitleProps } from './shell-parts';
@@ -79,9 +79,15 @@ export function AppBar({
   const bar = useBarSearch(search);
   if (search !== undefined && bar.mode === 'open') {
     return (
-      <View className="h-14 flex-row items-center gap-1 px-1">
-        <OpenSearch search={search} onClose={bar.close} />
+      <View
+        className="h-14 flex-row items-center gap-1 px-1"
+        onLayout={(event) => {
+          bar.onBar(event.nativeEvent.layout.width);
+        }}
+      >
+        <OpenSearch search={search} onClose={bar.close} back={back} />
         <ShellStatus />
+        <ShellOverflow {...row.actions} kind="touch" />
       </View>
     );
   }
@@ -141,9 +147,16 @@ export function DesktopTitleRow({
   const bar = useBarSearch(search);
   if (search !== undefined && bar.mode === 'open') {
     return (
-      <View style={columnStyle(column)} className="min-h-12 flex-row items-center gap-4 pt-2">
-        <OpenSearch search={search} onClose={bar.close} />
+      <View
+        style={columnStyle(column)}
+        className="min-h-12 flex-row items-center gap-4 pt-2"
+        onLayout={(event) => {
+          bar.onBar(event.nativeEvent.layout.width);
+        }}
+      >
+        <OpenSearch search={search} onClose={bar.close} back={back} />
         <ShellStatus />
+        <ShellOverflow {...row.actions} kind="pointer" />
       </View>
     );
   }

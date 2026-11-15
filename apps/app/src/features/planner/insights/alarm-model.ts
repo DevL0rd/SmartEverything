@@ -14,6 +14,7 @@ export interface AlarmSummary {
 
 interface DayTally {
   snoozes: number;
+  missed: number;
   rang: boolean;
   snoozed: boolean;
 }
@@ -34,8 +35,9 @@ function tallyByDay(rings: readonly PlannerRingRow[]): ReadonlyMap<string, DayTa
   for (const ring of rings) {
     if (ring.kind !== 'alarm') continue;
     const day = dayKeyOf(Date.parse(ring.due_at));
-    const tally = days.get(day) ?? { snoozes: 0, rang: false, snoozed: false };
+    const tally = days.get(day) ?? { snoozes: 0, missed: 0, rang: false, snoozed: false };
     tally.snoozes += ring.snoozes;
+    if (ring.outcome === 'missed') tally.missed += 1;
     if (ring.outcome === 'rang') tally.rang = true;
     if (ring.outcome !== 'rang' || ring.snoozes > 0) tally.snoozed = true;
     days.set(day, tally);
@@ -67,8 +69,8 @@ export function alarmSummaryOf(
   const shown = [...tallies.values()];
   return {
     spread: spreadOf(stats),
-    snoozes: stats.alarms.reduce((sum, alarm) => sum + alarm.snoozes, 0),
-    missed: stats.alarms.reduce((sum, alarm) => sum + alarm.missed, 0),
+    snoozes: shown.reduce((sum, tally) => sum + tally.snoozes, 0),
+    missed: shown.reduce((sum, tally) => sum + tally.missed, 0),
     upOnTime: shown.filter((tally) => tally.rang && !tally.snoozed).length,
     ringDays: shown.length,
     snoozeBars: snoozeBarsOf(stats, tallies),

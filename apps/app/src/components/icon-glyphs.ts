@@ -102,6 +102,8 @@ import BatteryGlyph from 'lucide-react-native/icons/battery';
 import SignalGlyph from 'lucide-react-native/icons/signal';
 import ShowerHeadGlyph from 'lucide-react-native/icons/shower-head';
 import PawPrintGlyph from 'lucide-react-native/icons/paw-print';
+import CatGlyph from 'lucide-react-native/icons/cat';
+import DogGlyph from 'lucide-react-native/icons/dog';
 import BoxGlyph from 'lucide-react-native/icons/box';
 import FootprintsGlyph from 'lucide-react-native/icons/footprints';
 import FlameGlyph from 'lucide-react-native/icons/flame';
@@ -289,6 +291,8 @@ export const GLYPHS = {
   signal: SignalGlyph,
   leak: ShowerHeadGlyph,
   dog: PawPrintGlyph,
+  cat: CatGlyph,
+  dogFace: DogGlyph,
   box: BoxGlyph,
   smartphone: SmartphoneGlyph,
   footprints: FootprintsGlyph,

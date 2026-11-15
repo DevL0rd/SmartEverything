@@ -41,7 +41,7 @@ function streakItem(stats: PlannerStats): MetricItem {
   const { current, longest } = stats.streaks;
   return {
     key: 'streak',
-    label: 'Longest streak',
+    label: 'Best streak',
     value: String(longest),
     unit: longest === 1 ? 'day' : 'days',
     caption: current === 0 ? 'no streak now' : `${plural(current, 'day', 'days')} now`,
@@ -56,7 +56,7 @@ function devicesItem(stats: PlannerStats): MetricItem {
     label: 'Done by devices',
     value: shareText(share),
     stale: share === null,
-    caption: `${String(byDevice)} checked by a device`,
+    caption: `${String(byDevice)} by a device`,
   };
 }
 
@@ -110,5 +110,5 @@ export function changeTitleOf(stats: PlannerStats): string {
 }
 
 export function changePromptOf(stats: PlannerStats): string {
-  return `Compare my planner for this ${stats.range} (${rangeLabelOf(stats)}) with the ${stats.range} before: what changed in what I finished, when I finished it, what ran late and which habits slipped? Suggest one change and don't add anything until I accept.`;
+  return `Compare my planner for this ${stats.range} (${rangeLabelOf(stats, 'full')}) with the ${stats.range} before: what changed in what I finished, when I finished it, what ran late and which habits slipped? Suggest one change and don't add anything until I accept.`;
 }

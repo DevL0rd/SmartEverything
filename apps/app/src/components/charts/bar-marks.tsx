@@ -4,7 +4,7 @@ import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reani
 import { Path } from 'react-native-svg';
 import { Text } from '../text';
 import { barPath, type BarBox, type BarRadii } from './bar-path';
-import { thinned, thinnedFromEnd } from './scale';
+import { barLabelPlacesOf } from './scale';
 
 export interface BarShape extends BarBox {
   readonly key: string;
@@ -16,7 +16,6 @@ export interface BarShape extends BarBox {
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 export const BAR_STUB = 3;
-const LABEL_GAP = 40;
 
 function GrowingBar({
   shape,
@@ -70,22 +69,35 @@ export function BarLabels({
   readonly width: number;
   readonly anchor?: 'start' | 'end';
 }): ReactNode {
-  const kept =
-    anchor === 'end' ? thinnedFromEnd(bars, width, LABEL_GAP) : thinned(bars, width, LABEL_GAP);
-  const shown = new Set(kept.map((bar) => bar.key));
+  const places = barLabelPlacesOf(
+    bars.map((bar) => bar.label),
+    width,
+    anchor,
+  );
   return (
-    <View className="h-4 flex-row">
-      {bars.map((bar) => (
-        <View key={bar.key} className="flex-1 items-center">
-          {shown.has(bar.key) && bar.label !== undefined ? (
-            <View className="absolute -inset-x-5 top-0 items-center">
-              <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-                {bar.label}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      ))}
+    <View className="h-4">
+      {places.map((place) => {
+        const bar = bars[place.index];
+        if (bar?.label === undefined)
+          throw new Error(`Bar label ${String(place.index)} is missing`);
+        return (
+          <View
+            key={bar.key}
+            className="absolute top-0"
+            style={{ left: place.left, width: place.width }}
+          >
+            <Text
+              variant="caption"
+              tone="variant"
+              align={place.align}
+              numberOfLines={1}
+              className="tabular"
+            >
+              {bar.label}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }

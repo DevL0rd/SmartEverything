@@ -56,11 +56,16 @@ function Swatch({
 
 export function DonutLegend({ arcs }: { readonly arcs: readonly DonutArc[] }): ReactNode {
   return (
-    <View className="gap-1">
+    <View className="min-w-0 flex-1 gap-1">
       {arcs.map((arc) => (
         <View key={arc.key} className="flex-row items-center gap-2">
           <Swatch colour={arc.colour} shade={arc.shade} />
-          <Text variant="caption" tone="variant" className="tabular">
+          <Text
+            variant="caption"
+            tone="variant"
+            className="tabular min-w-0 shrink"
+            numberOfLines={2}
+          >
             {arc.label} {percent(arc.share)}
           </Text>
         </View>

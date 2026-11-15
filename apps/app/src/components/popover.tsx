@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ScrollView, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import { useWindowSize } from '../design/size-class';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -6,6 +6,7 @@ import { cn } from '../design/cn';
 import { entering, useMotion } from '../design/motion';
 import { placeAbove, placeFitted, placeNear, type Rect } from './anchor';
 import { CHROME_SURFACE, COMPACT_PANEL_INSET } from './compact-panel';
+import type { FocusTarget } from './focus-request';
 import { Overlay, useOverlayShown } from './overlay';
 
 export interface PopoverProps {
@@ -19,6 +20,7 @@ export interface PopoverProps {
   readonly placement?: 'auto' | 'above';
   readonly className?: string;
   readonly chrome?: boolean;
+  readonly initialFocus?: RefObject<FocusTarget | null> | undefined;
   readonly children: ReactNode;
 }
 
@@ -117,6 +119,7 @@ export interface PopoverFrameProps {
   readonly align?: 'top' | 'bottom';
   readonly className?: string;
   readonly chrome?: boolean;
+  readonly initialFocus?: RefObject<FocusTarget | null> | undefined;
   readonly children: ReactNode;
 }
 
@@ -136,6 +139,7 @@ export function PopoverFrame({
   align = scrim ? 'top' : 'bottom',
   className,
   chrome = false,
+  initialFocus,
   children,
 }: PopoverFrameProps): ReactNode {
   const window = useWindowSize();
@@ -144,7 +148,7 @@ export function PopoverFrame({
     : { top: frame.y, height: frame.height };
   const style = { left: frame.x, width: frame.width, ...vertical };
   return (
-    <Overlay open={open} onClose={onClose} label={label} scrim={scrim}>
+    <Overlay open={open} onClose={onClose} label={label} scrim={scrim} initialFocus={initialFocus}>
       <PopoverPanel frame={style} className={className} chrome={chrome} scroll={scroll}>
         {children}
       </PopoverPanel>
@@ -183,6 +187,7 @@ export function Popover({
   placement = 'auto',
   className,
   chrome = false,
+  initialFocus,
   children,
 }: PopoverProps): ReactNode {
   const window = useWindowSize();
@@ -200,7 +205,7 @@ export function Popover({
     ...(height === undefined ? {} : { height: Math.min(height, place.maxHeight) }),
   };
   return (
-    <Overlay open={open} onClose={onClose} label={label} scrim={false}>
+    <Overlay open={open} onClose={onClose} label={label} scrim={false} initialFocus={initialFocus}>
       <PopoverPanel
         frame={frame}
         className={className}

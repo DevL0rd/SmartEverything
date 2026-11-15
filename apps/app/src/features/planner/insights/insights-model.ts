@@ -5,9 +5,10 @@ import type {
 } from '@smarteverything/domain';
 import type { Bar, ChartPoint, DonutSlice, HeatDay } from '../../../components/charts';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
-import { rounded } from '../../../format/number';
+import { rounded, withUnit } from '../../../format/number';
 import {
   clockOfMinutes,
+  monthShort,
   shiftDay,
   shortDate,
   startOfDayKey,
@@ -148,7 +149,7 @@ export function calendarSlicesOf(
 }
 
 export function hoursOf(minutes: number): string {
-  return `${rounded(minutes / 60, 1)} h`;
+  return withUnit(rounded(minutes / 60, 1), 'h');
 }
 
 export interface LoadBucket {
@@ -236,7 +237,7 @@ export function doneTrendOf(stats: PlannerStats): readonly ChartPoint[] {
     stats.range === 'year' ? monthsOf(days) : bucketsOf(days, (day) => day, stats.range);
   return chunks.map((chunk, index) => ({
     t: index,
-    v: chunk.reduce((sum, day) => sum + (done.get(day) ?? 0), 0),
+    v: chunk.reduce((sum, day) => sum + (done.get(day) ?? 0), 0) / chunk.length,
   }));
 }
 
@@ -249,9 +250,14 @@ export function rangeSpanOf(range: PlannerStatsRange, today: string): RangeSpan 
   return { from: shiftDay(today, 1 - RANGE_DAYS[range]), to: today };
 }
 
-export function rangeLabelOf(span: RangeSpan): string {
-  const from = shortDate(startOfDayKey(span.from));
-  const to = shortDate(startOfDayKey(span.to));
-  if (yearOf(span.from) === yearOf(span.to)) return `${from} to ${to}`;
-  return `${from} ${yearOf(span.from)} to ${to} ${yearOf(span.to)}`;
+export type RangeLabelForm = 'full' | 'compact';
+
+export function rangeLabelOf(span: RangeSpan, form: RangeLabelForm): string {
+  const from = startOfDayKey(span.from);
+  const to = startOfDayKey(span.to);
+  if (yearOf(span.from) === yearOf(span.to)) return `${shortDate(from)} to ${shortDate(to)}`;
+  if (form === 'compact') {
+    return `${monthShort(from)} ${yearOf(span.from)} to ${monthShort(to)} ${yearOf(span.to)}`;
+  }
+  return `${shortDate(from)} ${yearOf(span.from)} to ${shortDate(to)} ${yearOf(span.to)}`;
 }

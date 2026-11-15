@@ -19,7 +19,7 @@ export function ChangeCard({
     askAssistantWith(changePromptOf(stats));
   };
   return (
-    <Card title={changeTitleOf(stats)} icon="sparkles">
+    <Card title={changeTitleOf(stats)} icon="sparkles" className="grow">
       <Text variant="footnote" tone="variant">
         {changeFactsOf(stats, slices)}
       </Text>

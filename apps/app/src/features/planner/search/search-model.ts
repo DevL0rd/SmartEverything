@@ -125,17 +125,20 @@ export function hitTimeOf(
   };
 }
 
-const FIELD_TEXT: Readonly<Record<PlannerSearchField, string>> = {
+type CaptionField = Exclude<PlannerSearchField, 'calendar'>;
+
+const FIELD_TEXT: Readonly<Record<CaptionField, string>> = {
   title: 'title',
   notes: 'notes',
   location: 'place',
   guest: 'guests',
-  calendar: 'calendar name',
 };
 
 export function matchedTextOf(matched: readonly PlannerSearchField[]): string | null {
   if (matched.includes('title')) return null;
-  const fields = matched.map((field) => FIELD_TEXT[field]);
+  const fields = matched
+    .filter((field): field is CaptionField => field !== 'calendar')
+    .map((field) => FIELD_TEXT[field]);
   return fields.length === 0 ? null : `Found in ${fields.join(' and ')}`;
 }
 
@@ -172,13 +175,27 @@ export function isCollectionChosen(chosen: readonly string[] | null, id: string)
   return chosen === null || chosen.includes(id);
 }
 
+function nameOf(collections: readonly PlannerCollectionRow[], id: string): string {
+  const calendar = calendarOf(collections, id);
+  if (calendar === null) throw new Error(`Calendar ${id} is not known`);
+  return calendar.name;
+}
+
 export function calendarChipTextOf(
   chosen: readonly string[] | null,
   collections: readonly PlannerCollectionRow[],
 ): string {
   if (chosen === null) return 'All calendars';
-  if (chosen.length === 1) return calendarOf(collections, chosen[0] ?? '')?.name ?? '1 calendar';
-  return `${String(chosen.length)} calendars`;
+  const known = new Set(collections.map((collection) => collection.id));
+  const unknown = chosen.filter((id) => !known.has(id));
+  if (unknown.length > 0) throw new Error(`Chosen calendars ${unknown.join(', ')} are not known`);
+  const excluded = collections.filter((collection) => !chosen.includes(collection.id));
+  const [only] = chosen;
+  if (excluded.length === 0) return 'All calendars';
+  if (only !== undefined && chosen.length === 1) return nameOf(collections, only);
+  const [left] = excluded;
+  if (left !== undefined && excluded.length === 1) return `All but ${left.name}`;
+  return `${String(chosen.length)} of ${String(collections.length)} calendars`;
 }
 
 export const WHEN_TEXT: Readonly<Record<PlannerSearchWhen, string>> = {

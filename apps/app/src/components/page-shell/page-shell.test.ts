@@ -10,7 +10,7 @@ import {
 import type { RailEntry } from './section-rail';
 import { pageMenuOf } from '../page-menu';
 import { touchMenuItemsOf, type ShellAction } from './shell-actions';
-import { barOptionsOf, searchInlineAt } from './bar-search';
+import { barOptionsOf, barSearchModeOf, searchInlineAt, searchOpenedAtStart } from './bar-search';
 import { bodyOf } from './shell-frame';
 import { railFormOf, type ShellSections } from './shell-sections';
 
@@ -151,5 +151,33 @@ describe('top bar search', () => {
     expect(barOptionsOf(search, 'below')).toBe('O');
     expect(barOptionsOf(search, 'inside')).toBeUndefined();
     expect(barOptionsOf(undefined, 'below')).toBeUndefined();
+  });
+
+  it('settles a search handed over with a query to inline on a wide bar once the bar is measured', () => {
+    const search = { value: 'kitchen', onChange: (): void => undefined, placeholder: 'Find' };
+    const at = (bar: number | null) =>
+      barSearchModeOf({ search, bar, trailing: 96, floor: 0, opened: false });
+    expect(at(null)).toBe('open');
+    expect(at(1200)).toBe('inline');
+    expect(at(360)).toBe('open');
+    expect(
+      barSearchModeOf({ search: undefined, bar: 1200, trailing: 0, floor: 0, opened: false }),
+    ).toBe('none');
+  });
+
+  it('starts a search-first page with its field open', () => {
+    const base = { value: '', onChange: (): void => undefined, placeholder: 'Find' };
+    expect(searchOpenedAtStart({ ...base, focusOnMount: true })).toBe(true);
+    expect(searchOpenedAtStart(base)).toBe(false);
+    expect(searchOpenedAtStart(undefined)).toBe(false);
+    expect(
+      barSearchModeOf({
+        search: base,
+        bar: 360,
+        trailing: 96,
+        floor: 0,
+        opened: searchOpenedAtStart({ ...base, focusOnMount: true }),
+      }),
+    ).toBe('open');
   });
 });

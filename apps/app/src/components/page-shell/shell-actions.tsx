@@ -190,6 +190,21 @@ function PointerActions({
   );
 }
 
+export function ShellOverflow({
+  kind,
+  actions,
+  overflow,
+  settings,
+}: Pick<ShellActionsProps, 'kind' | 'actions' | 'overflow' | 'settings'>): ReactNode {
+  const items = overflow ?? NO_ITEMS;
+  return (
+    <PageMenu
+      items={kind === 'touch' ? touchMenuItemsOf(actions ?? NO_ACTIONS, items) : items}
+      settings={settings}
+    />
+  );
+}
+
 function EditBar({ editing }: { readonly editing: ShellEditing }): ReactNode {
   return (
     <View className="flex-row items-center gap-2">

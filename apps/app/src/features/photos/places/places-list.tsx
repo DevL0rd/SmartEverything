@@ -14,10 +14,10 @@ function placeLabel(place: PhotoPlace): string {
   return `${place.name}, ${place.country}, ${photosText(place.count)}`;
 }
 
-function detailLine(place: PhotoPlace): string {
-  return place.admin === null
-    ? photosText(place.count)
-    : `${photosText(place.count)} · ${place.admin}`;
+function regionLine(place: PhotoPlace): string {
+  return place.admin === null || place.admin === place.name
+    ? place.country
+    : `${place.admin}, ${place.country}`;
 }
 
 export function PlaceCard({ place }: { readonly place: PhotoPlace }): ReactNode {
@@ -34,10 +34,10 @@ export function PlaceCard({ place }: { readonly place: PhotoPlace }): ReactNode 
           {place.name}
         </Text>
         <Text variant="caption" tone="variant" numberOfLines={1}>
-          {place.country}
+          {regionLine(place)}
         </Text>
         <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
-          {detailLine(place)}
+          {photosText(place.count)}
         </Text>
       </View>
     </Interactive>
@@ -65,7 +65,7 @@ export function PlaceRowItem({
         </Text>
         {share === null ? (
           <Text variant="caption" tone="variant" numberOfLines={1}>
-            {place.country}
+            {regionLine(place)}
           </Text>
         ) : (
           <ProgressBar
@@ -75,7 +75,7 @@ export function PlaceRowItem({
           />
         )}
       </View>
-      <Text variant="caption" tone="variant" align="end" className="w-14 tabular-nums">
+      <Text variant="caption" tone="variant" align="end" className="w-14 shrink-0 tabular-nums">
         {count(place.count)}
       </Text>
     </Interactive>

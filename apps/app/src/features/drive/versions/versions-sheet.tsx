@@ -1,154 +1,43 @@
 import type { ReactElement, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
-import type { DriveConflict, DriveItem } from '@smarteverything/domain';
 import { FileGlyph } from '../../../components/files/file-glyph';
 import { IconButton } from '../../../components/icon-button';
 import { Overlay, useOverlayShown } from '../../../components/overlay';
 import { Text } from '../../../components/text';
-import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { useSizeClass } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
-import {
-  flattenPages,
-  useDriveConflicts,
-  useDriveItem,
-  useDriveOf,
-  useDriveVersions,
-} from '../data';
+import { useDriveOf } from '../data';
 import { entryKindOf } from '../model/item-content';
 import { canWrite } from '../model/drive-access';
-import { VERSION_NAMES, compareKindOf, type CompareNames } from './diff-model';
+import { compareKindOf } from './diff-model';
 import { RestoreButtons } from './restore';
 import { CompareLoading, VersionCompare } from './version-compare';
-import { driveVersionLink } from './version-link';
-import {
-  PickCaptions,
-  SheetTitle,
-  TouchFooter,
-  Unloaded,
-  type ComparedPair,
-} from './versions-sheet-parts';
+import { PickCaptions, SheetTitle, TouchFooter, Unloaded } from './versions-sheet-parts';
+import { OneVersion, TimelineLoading } from './version-placeholders';
 import {
   COMPACT_CARD,
   CompactRow,
-  OneVersion,
   SizeOverYear,
-  TimelineLoading,
   VersionTimeline,
   useTimelineLook,
-  type PinnedEntry,
-  type TimelineLook,
 } from './version-timeline';
+import { pickOf, type VersionEntry } from './versions-model';
 import {
-  copyEntryOf,
-  entriesOf,
-  entryOf,
-  initialPicks,
-  openConflictOf,
-  pickOf,
-  restorePlanOf,
-  settlePicks,
-  type VersionEntry,
-  type VersionPicks,
-} from './versions-model';
-
-export interface VersionsVersus {
-  readonly copy: DriveItem;
-  readonly deviceId: string;
-  readonly names: CompareNames;
-}
-
-export interface VersionsTarget {
-  readonly versionsKept: boolean | null;
-  readonly item: DriveItem;
-  readonly picks?: VersionPicks;
-  readonly versus?: VersionsVersus;
-}
-
-export interface VersionsSlots {
-  readonly conflict?: (conflict: DriveConflict) => ReactNode;
-}
-
-interface VersionsData {
-  readonly item: DriveItem;
-  readonly entries: readonly VersionEntry[];
-  readonly settled: boolean;
-  readonly pages: ReturnType<typeof useDriveVersions>;
-  readonly conflict: DriveConflict | null;
-}
-
-function useVersionsData(target: VersionsTarget): VersionsData {
-  const live = useDriveItem(target.item.id, target.item.rootId).data;
-  const item = live ?? target.item;
-  const pages = useDriveVersions(item.id, item.rootId);
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = pages;
-  useEffect(() => {
-    if (!hasNextPage || isFetchingNextPage) return;
-    fetchNextPage().catch(notifyFailure('Earlier versions could not be read.'));
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-  const conflicts = flattenPages(useDriveConflicts(item.rootId).data, (page) => page.items);
-  const versions = flattenPages(pages.data, (page) => page.items);
-  return {
-    item,
-    entries: entriesOf(item, versions),
-    settled: pages.data !== undefined && !hasNextPage,
-    pages,
-    conflict: openConflictOf(conflicts, item.id),
-  };
-}
-
-function usePicks(
-  initial: VersionPicks | undefined,
-  entries: readonly VersionEntry[],
-): readonly [VersionPicks, (next: VersionPicks | null) => void] {
-  const [chosen, choose] = useState<VersionPicks | null>(initial ?? null);
-  return [settlePicks(chosen ?? initialPicks(entries), entries), choose];
-}
-
-interface PanelParts {
-  readonly target: VersionsTarget;
-  readonly data: VersionsData;
-  readonly picks: VersionPicks;
-  readonly versus: VersionsVersus | null;
-  readonly pinned: PinnedEntry | null;
-  readonly look: TimelineLook;
-  readonly slots: VersionsSlots;
-  readonly onPick: (key: string) => void;
-  readonly reset: () => void;
-}
-
-type BodyState = 'loading' | 'unloaded' | 'one' | 'many';
-
-function bodyStateOf(parts: PanelParts, live: boolean): BodyState {
-  const { data, pinned } = parts;
-  if (!data.settled) return !live || data.pages.isError ? 'unloaded' : 'loading';
-  return data.entries.length + (pinned === null ? 0 : 1) < 2 ? 'one' : 'many';
-}
-
-function pairOf(parts: PanelParts): ComparedPair | null {
-  const { data, picks, versus, pinned } = parts;
-  const a = entryOf(data.entries, picks.a);
-  if (a === null) return null;
-  const item = data.item;
-  if (versus !== null && pinned !== null) {
-    const b = pinned.entry;
-    return {
-      a,
-      b,
-      names: versus.names,
-      link: (entry) => driveVersionLink(entry.key === b.key ? versus.copy : item, entry),
-    };
-  }
-  const b = entryOf(data.entries, picks.b);
-  if (b === null) return null;
-  return { a, b, names: VERSION_NAMES, link: (entry) => driveVersionLink(item, entry) };
-}
-
-function restorableOf(parts: PanelParts): VersionEntry | null {
-  return parts.versus === null ? entryOf(parts.data.entries, parts.picks.b) : null;
-}
+  bodyStateOf,
+  footerOf,
+  pairOf,
+  pinnedOf,
+  restorableOf,
+  timelinePicksOf,
+  usePicks,
+  useVersionsData,
+  type BodyState,
+  type PanelParts,
+  type VersionsSlots,
+  type VersionsTarget,
+} from './versions-panel';
 
 function CompareArea({ parts }: { readonly parts: PanelParts }): ReactNode {
   const { data, look } = parts;
@@ -193,19 +82,10 @@ function Restore({
   );
 }
 
-function footerOf(parts: PanelParts, b: VersionEntry): string {
-  return restorePlanOf(b, parts.data.conflict !== null).footer;
-}
-
 function ConflictSlot({ parts }: { readonly parts: PanelParts }): ReactNode {
   const { conflict } = parts.data;
   if (conflict === null || parts.slots.conflict === undefined) return null;
   return <View className="px-5 pb-3">{parts.slots.conflict(conflict)}</View>;
-}
-
-function timelinePicksOf(parts: PanelParts): VersionPicks {
-  const { versus, pinned, picks } = parts;
-  return versus === null || pinned === null ? picks : { a: picks.a, b: pinned.entry.key };
 }
 
 function Timeline({
@@ -399,11 +279,6 @@ function TouchPanel({
       ) : null}
     </View>
   );
-}
-
-function pinnedOf(versus: VersionsVersus | undefined): PinnedEntry | null {
-  if (versus === undefined) return null;
-  return { entry: copyEntryOf(versus.copy, versus.deviceId), badge: versus.names.b };
 }
 
 function Panel({

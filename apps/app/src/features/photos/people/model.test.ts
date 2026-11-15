@@ -11,11 +11,13 @@ import {
   faceCropOf,
   faceScanTextOf,
   groupingTextOf,
+  groupingProgressOf,
   faceProgressOf,
   groupLabelOf,
   groupCaptionOf,
   groupTitleOf,
   mergeCandidatesOf,
+  mergeSubtitleOf,
   mergeTargetsOf,
   nameDraftOf,
   pairLineOf,
@@ -128,9 +130,11 @@ describe('the people page sections', () => {
     expect(namingLineOf({ people: 0, pets: 0, total: 0 })).toBe('People and pets');
   });
 
-  it('offers merge targets of the same kind and species only', () => {
-    expect(mergeTargetsOf(anna, all)).toEqual([bo, hidden, big, once]);
+  it('offers merge targets of the same kind and species only, hidden groups last', () => {
+    expect(mergeTargetsOf(anna, all)).toEqual([bo, big, once, hidden]);
     expect(mergeTargetsOf(tom, all)).toEqual([stray]);
+    expect(mergeSubtitleOf(hidden)).toBe(`${String(hidden.count)} photos · Hidden`);
+    expect(mergeSubtitleOf(once)).toBe('1 photo');
   });
 
   it('pairs merge suggestions with the stronger group first', () => {
@@ -210,6 +214,10 @@ describe('the people page state', () => {
     expect(groupingTextOf(found)).toBe(
       '61 faces found in 635 photos are being sorted into people.',
     );
+    expect(faceProgressOf(found)).toBe(1);
+    expect(groupingProgressOf(found)).toBe(0);
+    expect(groupingProgressOf(status({ people: { faces: 8, grouped: 2 } }))).toBe(0.25);
+    expect(groupingProgressOf(status({ people: { faces: 0, grouped: 0 } }))).toBe(0);
   });
 
   it('says why nothing is grouped once the scan is done', () => {

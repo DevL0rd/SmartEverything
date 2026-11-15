@@ -13,7 +13,7 @@ import { Figure } from '../../../components/figure';
 import { MetricStrip } from '../../../components/metric-strip';
 import { Skeleton } from '../../../components/skeleton';
 import { stripChunks, stripColumnsAt } from '../../../components/strip-rows';
-import { useSizeClass } from '../../../design/size-class';
+import { useFrameBodyWidth } from '../../../components/page-shell/body-width';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { dayKeyOf, shortDate, startOfDayKey } from '../../../format/time';
@@ -47,7 +47,7 @@ export function KpiStrip({ stats }: { readonly stats: PlannerStats }): ReactNode
 }
 
 export function KpiSkeleton(): ReactNode {
-  const per = stripColumnsAt(useSizeClass().area, KPI_COLUMNS);
+  const per = stripColumnsAt(useFrameBodyWidth(), KPI_COLUMNS);
   return (
     <View className="gap-2">
       {stripChunks(KPI_KEYS, per).map((row) => (
@@ -128,7 +128,7 @@ export function DoneHeatCard({ stats }: { readonly stats: PlannerStats }): React
 export function HoursCard({ stats }: { readonly stats: PlannerStats }): ReactNode {
   const peak = peakHourOf(stats);
   return (
-    <Card title="When you get things done">
+    <Card title="When you get things done" className="grow">
       <Caption text={peak === null ? 'Nothing done yet' : `Best ${hourWindowOf(peak)}`} />
       <Bars
         bars={hourBarsOf(stats)}
@@ -147,7 +147,7 @@ export function HoursCard({ stats }: { readonly stats: PlannerStats }): ReactNod
 export function CalendarCard({ slices }: { readonly slices: readonly DonutSlice[] }): ReactNode {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
   return (
-    <Card title="Time by calendar">
+    <Card title="Time by calendar" className="grow">
       {total === 0 ? (
         <Caption text="No events with a time yet" />
       ) : (
@@ -171,7 +171,7 @@ export function LoadCard({ stats }: { readonly stats: PlannerStats }): ReactNode
   const buckets = loadBucketsOf(stats);
   const last = buckets.at(-1);
   return (
-    <Card title={stats.range === 'week' ? 'Daily load' : 'Weekly load'}>
+    <Card title={stats.range === 'week' ? 'Daily load' : 'Weekly load'} className="grow">
       <Caption text={loadCaption(stats, buckets)} />
       <Bars
         bars={loadBarsOf(buckets)}

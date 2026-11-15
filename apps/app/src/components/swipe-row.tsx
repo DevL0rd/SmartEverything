@@ -211,7 +211,7 @@ export function SwipeRow({
           ref.current?.close();
         }}
       >
-        <View className={swiping ? SURFACE[surface] : undefined}>{children}</View>
+        <View className={swiping ? SURFACE[surface] : ''}>{children}</View>
       </ReanimatedSwipeable>
     </View>
   );

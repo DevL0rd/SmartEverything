@@ -25,6 +25,7 @@ export interface ListRowProps {
   readonly wrapTitle?: boolean;
   readonly titleEllipsize?: 'middle' | 'end';
   readonly subtitle?: string;
+  readonly subtitleHighlight?: TextRange | null;
   readonly caption?: string;
   readonly captionEllipsize?: 'middle';
   readonly wrapCaption?: boolean;
@@ -128,6 +129,7 @@ type BodyProps = { readonly passive: boolean; readonly canShrink: boolean } & Pi
   | 'wrapTitle'
   | 'titleEllipsize'
   | 'subtitle'
+  | 'subtitleHighlight'
   | 'subtitleTone'
   | 'caption'
   | 'captionEllipsize'
@@ -139,7 +141,13 @@ type BodyProps = { readonly passive: boolean; readonly canShrink: boolean } & Pi
   | 'compact'
 >;
 
-function BodySubtitle({ subtitle, subtitleTone, compact, wrapSubtitle }: BodyProps): ReactNode {
+function BodySubtitle({
+  subtitle,
+  subtitleHighlight,
+  subtitleTone,
+  compact,
+  wrapSubtitle,
+}: BodyProps): ReactNode {
   if (subtitle === undefined) return null;
   return (
     <Text
@@ -147,7 +155,7 @@ function BodySubtitle({ subtitle, subtitleTone, compact, wrapSubtitle }: BodyPro
       tone={subtitleTone ?? 'variant'}
       {...(compact === true || wrapSubtitle === true ? {} : { numberOfLines: 2 })}
     >
-      {subtitle}
+      <Highlighted text={subtitle} range={subtitleHighlight ?? null} />
     </Text>
   );
 }

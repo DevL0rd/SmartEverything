@@ -194,6 +194,11 @@ export function faceProgressOf(status: PhotoAiStatus): number {
   return total === 0 ? 0 : done / total;
 }
 
+export function groupingProgressOf(status: PhotoAiStatus): number {
+  const { faces, grouped } = status.people;
+  return faces === 0 ? 0 : Math.min(1, grouped / faces);
+}
+
 export function mergeCandidatesOf(
   suggestions: readonly PhotoMergeSuggestion[],
   groups: readonly PhotoGroup[],
@@ -217,7 +222,7 @@ export function mergeTargetsOf(
   group: PhotoGroup,
   groups: readonly PhotoGroup[],
 ): readonly PhotoGroup[] {
-  return sorted(
+  const matching = sorted(
     groups.filter(
       (other) =>
         other.id !== group.id &&
@@ -225,6 +230,14 @@ export function mergeTargetsOf(
         (group.kind === 'person' || other.species === group.species),
     ),
   );
+  return [
+    ...matching.filter((other) => !other.hidden),
+    ...matching.filter((other) => other.hidden),
+  ];
+}
+
+export function mergeSubtitleOf(group: PhotoGroup): string {
+  return group.hidden ? `${photosText(group.count)} · Hidden` : photosText(group.count);
 }
 
 export function nameDraftOf(raw: string): string | null {

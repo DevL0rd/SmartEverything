@@ -5,6 +5,7 @@ import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Arc, SegmentBar } from '../../../components/charts';
 import { FilterChip } from '../../../components/filter-chip';
+import type { IconName } from '../../../components/icon-glyphs';
 import { Text } from '../../../components/text';
 import { count, percent } from '../../../format/number';
 import { sentenceCase } from '../../../format/text';
@@ -13,6 +14,7 @@ import { FaceAvatar } from './face-avatar';
 import { GroupGrid } from './group-tile';
 import {
   faceProgressOf,
+  groupingProgressOf,
   mergeCandidatesOf,
   namingLineOf,
   pairLineOf,
@@ -22,18 +24,19 @@ import {
 } from './model';
 
 export function FaceRing({
-  status,
+  progress,
+  label,
   size,
 }: {
-  readonly status: PhotoAiStatus;
+  readonly progress: number;
+  readonly label: string;
   readonly size: number;
 }): ReactNode {
-  const progress = faceProgressOf(status);
   const frame = { width: size, height: size };
   return (
     <View
       accessible
-      accessibilityLabel={`Faces found in ${percent(progress)} of photos`}
+      accessibilityLabel={label}
       style={frame}
       className="items-center justify-center"
     >
@@ -50,6 +53,40 @@ export function FaceRing({
         {percent(progress)}
       </Text>
     </View>
+  );
+}
+
+export function ScanRing({
+  status,
+  size,
+}: {
+  readonly status: PhotoAiStatus;
+  readonly size: number;
+}): ReactNode {
+  const progress = faceProgressOf(status);
+  return (
+    <FaceRing
+      progress={progress}
+      label={`Faces found in ${percent(progress)} of photos`}
+      size={size}
+    />
+  );
+}
+
+export function GroupingRing({
+  status,
+  size,
+}: {
+  readonly status: PhotoAiStatus;
+  readonly size: number;
+}): ReactNode {
+  const progress = groupingProgressOf(status);
+  return (
+    <FaceRing
+      progress={progress}
+      label={`${percent(progress)} of faces sorted into people`}
+      size={size}
+    />
   );
 }
 
@@ -91,7 +128,7 @@ export function PeopleHeader({
               : 'Grouped on your home hub. Names stay private to you.'}
           </Text>
         </View>
-        {indexing ? <FaceRing status={status} size={56} /> : null}
+        {indexing ? <ScanRing status={status} size={56} /> : null}
       </View>
       <View className="pt-3">
         <NamingBar naming={naming} />
@@ -100,28 +137,22 @@ export function PeopleHeader({
   );
 }
 
-interface PairProps {
-  readonly pair: readonly [PhotoGroup, PhotoGroup];
-  readonly live: boolean;
-}
-
-function MergeButtons({ pair, live }: PairProps): ReactNode {
+function MergeButtons({ pair }: { readonly pair: readonly [PhotoGroup, PhotoGroup] }): ReactNode {
   const actions = usePeopleActions();
-  const disabled = !live || actions.busy;
   return (
-    <View className="flex-row gap-2">
+    <View className="flex-row items-center justify-end gap-2">
       <Button
         label="Not now"
         variant="text"
-        disabled={disabled}
+        disabled={actions.busy}
         onPress={() => {
           actions.dismissMerge(pair);
         }}
       />
       <Button
         label="Merge"
-        variant="filled"
-        disabled={disabled}
+        variant="tonal"
+        disabled={actions.busy}
         onPress={() => {
           actions.merge(pair[0], [pair[1]]);
         }}
@@ -130,12 +161,12 @@ function MergeButtons({ pair, live }: PairProps): ReactNode {
   );
 }
 
-function MergeCard({ pair, live }: PairProps): ReactNode {
+function MergeCard({ pair }: { readonly pair: readonly [PhotoGroup, PhotoGroup] }): ReactNode {
   const [first, second] = pair;
   const noun = first.kind === 'pet' ? 'pet' : 'person';
   return (
     <Card className="min-w-72 flex-1">
-      <View className="flex-row flex-wrap items-center gap-3">
+      <View className="flex-row items-start gap-3">
         <View className="flex-row">
           <FaceAvatar itemId={first.coverItemId} box={first.coverBox} kind={first.kind} size={48} />
           <FaceAvatar
@@ -146,32 +177,28 @@ function MergeCard({ pair, live }: PairProps): ReactNode {
             className="-ml-3 border-2 border-surface-1"
           />
         </View>
-        <View className="min-w-32 flex-1">
-          <Text variant="body-strong">{`Same ${noun}?`}</Text>
-          <Text variant="footnote" tone="variant" numberOfLines={2}>
-            {pairLineOf(first, second)}
-          </Text>
+        <View className="min-w-0 flex-1 gap-1">
+          <View>
+            <Text variant="body-strong">{`Same ${noun}?`}</Text>
+            <Text variant="footnote" tone="variant" numberOfLines={2}>
+              {pairLineOf(first, second)}
+            </Text>
+          </View>
+          <MergeButtons pair={pair} />
         </View>
-        <MergeButtons pair={pair} live={live} />
       </View>
     </Card>
   );
 }
 
-export function MergeSuggestions({
-  people,
-  live,
-}: {
-  readonly people: PhotoPeople;
-  readonly live: boolean;
-}): ReactNode {
+export function MergeSuggestions({ people }: { readonly people: PhotoPeople }): ReactNode {
   const pairs = mergeCandidatesOf(people.mergeSuggestions, people.groups);
   if (pairs.length === 0) return null;
   return (
     <View className="flex-row flex-wrap gap-3">
       {pairs.map((pair) => {
         const key = suggestionKey({ groupIds: [pair[0].id, pair[1].id], similarity: 0 });
-        return <MergeCard key={key} pair={pair} live={live} />;
+        return <MergeCard key={key} pair={pair} />;
       })}
     </View>
   );
@@ -221,6 +248,12 @@ export function GroupSection({
   );
 }
 
+function speciesIconOf(species: string): IconName {
+  if (species === 'cat') return 'cat';
+  if (species === 'dog') return 'dogFace';
+  return 'dog';
+}
+
 export function PetsSection({
   all,
   pets,
@@ -244,6 +277,7 @@ export function PetsSection({
           <FilterChip
             label="Pets"
             value="All pets"
+            icon="dog"
             active={species === null}
             singleChoice
             onPress={() => {
@@ -255,7 +289,7 @@ export function PetsSection({
               key={chip.species}
               label="Pets"
               value={sentenceCase(chip.species)}
-              icon="dog"
+              icon={speciesIconOf(chip.species)}
               count={chip.count}
               active={species === chip.species}
               singleChoice

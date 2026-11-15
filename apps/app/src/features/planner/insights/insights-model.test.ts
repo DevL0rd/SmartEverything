@@ -6,7 +6,7 @@ import {
   type PlannerStatsRange,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { shiftDay, shortDate, startOfDayKey } from '../../../format/time';
+import { monthShort, shiftDay, shortDate, startOfDayKey } from '../../../format/time';
 import {
   bestDayOf,
   bucketsOf,
@@ -195,15 +195,28 @@ describe('the load buckets', () => {
     expect(weeks.map((week) => week.length)).toEqual([7, 3]);
   });
 
-  it('sums the done sparkline per day, per week for a month and per month for a year', () => {
+  it('plots the done sparkline per day, per week for a month and per month for a year', () => {
     const week = statsOf('week', { list_trends: [trend(WORK, { [LAST]: 3 }, 'week')] });
     expect(doneTrendOf(week)).toHaveLength(7);
+    expect(doneTrendOf(week).at(-1)).toEqual({ t: 6, v: 3 });
     const month = statsOf('month', { list_trends: [trend(WORK, { [LAST]: 3 }, 'month')] });
     expect(doneTrendOf(month)).toHaveLength(4);
-    const year = statsOf('year', { list_trends: [trend(WORK, { [LAST]: 3 }, 'year')] });
+    const year = statsOf('year', { list_trends: [trend(WORK, { [LAST]: 16 }, 'year')] });
     const points = doneTrendOf(year);
     expect(points).toHaveLength(12);
-    expect(points.at(-1)).toEqual({ t: 11, v: 3 });
+    expect(points.at(-1)).toEqual({ t: 11, v: 2 });
+  });
+
+  it('averages each chunk over its days, so a short current week or month does not look like a drop', () => {
+    const steady = (range: PlannerStatsRange): PlannerStats =>
+      statsOf(range, {
+        list_trends: [
+          trend(WORK, Object.fromEntries(daysOf(range).map((day) => [day, 2])), range),
+        ],
+      });
+    for (const range of ['month', 'year'] as const) {
+      expect(new Set(doneTrendOf(steady(range)).map((point) => point.v))).toEqual(new Set([2]));
+    }
   });
 });
 
@@ -219,7 +232,7 @@ describe('the KPI strip', () => {
     expect(items.map((item) => [item.label, item.value])).toEqual([
       ['Done', '23'],
       ['On time', '83 %'],
-      ['Longest streak', '14'],
+      ['Best streak', '14'],
       ['Done by devices', '39 %'],
       ['Missed', '4'],
     ]);
@@ -244,7 +257,7 @@ describe('the what changed card', () => {
     const slices = [{ key: WORK, value: 90, label: 'Work', colour: 'viz-6' as const }];
     expect(changeTitleOf(stats)).toBe('What changed this month');
     expect(changeFactsOf(stats, slices)).toBe(
-      '20 of 25 done, on time 75 %. Most done from 08:00 to 09:00. Work took the most time, 1.5 h.',
+      '20 of 25 done, on time 75 %. Most done from 08:00 to 09:00. Work took the most time, 1.5\u00A0h.',
     );
     expect(changePromptOf(stats)).toContain('with the month before');
     expect(changePromptOf(stats)).toContain("don't add anything until I accept");
@@ -270,7 +283,16 @@ describe('the range line', () => {
 
   it('names the years only when the range crosses one', () => {
     const date = (day: string): string => shortDate(startOfDayKey(day));
-    expect(rangeLabelOf(statsOf('week'))).toBe(`${date('2026-11-02')} to ${date(LAST)}`);
-    expect(rangeLabelOf(statsOf('year'))).toBe(`${date('2025-11-09')} 2025 to ${date(LAST)} 2026`);
+    expect(rangeLabelOf(statsOf('week'), 'full')).toBe(`${date('2026-11-02')} to ${date(LAST)}`);
+    expect(rangeLabelOf(statsOf('year'), 'full')).toBe(
+      `${date('2025-11-09')} 2025 to ${date(LAST)} 2026`,
+    );
+    expect(rangeLabelOf(statsOf('week'), 'compact')).toBe(
+      `${date('2026-11-02')} to ${date(LAST)}`,
+    );
+    const month = (day: string): string => monthShort(startOfDayKey(day));
+    expect(rangeLabelOf(statsOf('year'), 'compact')).toBe(
+      `${month('2025-11-09')} 2025 to ${month(LAST)} 2026`,
+    );
   });
 });

@@ -132,9 +132,19 @@ export function dragActivation(touch: boolean): PanGesture {
   return touch ? pan.activateAfterLongPress(HOLD_MS) : pan.minDistance(MIN_DISTANCE);
 }
 
+function holdScroll(event: Event): void {
+  event.preventDefault();
+}
+
 export function liftFeedback(touch: boolean): void {
   if (touch) heavyThud();
-  if (!isNative()) swallowNextClick(document);
+  if (isNative()) return;
+  swallowNextClick(document);
+  if (touch) document.addEventListener('touchmove', holdScroll, { passive: false });
+}
+
+export function dropFeedback(): void {
+  if (!isNative()) document.removeEventListener('touchmove', holdScroll);
 }
 
 export function stepFeedback(): void {
@@ -286,6 +296,9 @@ function useBlockPan({ mode, block, context, offsets, reduced, onShift }: PanInp
       const last = target.get();
       if (sameShift(last, STILL)) scheduleOnRN(onShift, null);
       else scheduleOnRN(commit, last);
+    })
+    .onFinalize(() => {
+      scheduleOnRN(dropFeedback);
     });
 }
 

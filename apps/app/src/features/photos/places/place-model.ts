@@ -39,9 +39,13 @@ export function visitsText(value: number): string {
 export function libraryLine(countries: readonly PlaceCountry[], compact: boolean): string {
   const places = countries.reduce((sum, country) => sum + country.places.length, 0);
   const items = countries.reduce((sum, country) => sum + country.count, 0);
-  if (compact) return `${plural(places, 'place', 'places')} · ${plural(items, 'photo', 'photos')}`;
-  const where = `${plural(places, 'place', 'places')} in ${plural(countries.length, 'country', 'countries')}`;
-  return `${where} · ${plural(items, 'photo has', 'photos have')} a location`;
+  return [
+    plural(places, 'place', 'places'),
+    compact ? null : plural(countries.length, 'country', 'countries'),
+    photosText(items),
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
 }
 
 export function countryGroups(countries: readonly PlaceCountry[]): readonly CountryGroup[] {
@@ -149,7 +153,7 @@ export function clusterLine(
   span: string | null,
   places: string | null,
 ): string {
-  return [`${count(cluster.count)} ${cluster.count === 1 ? 'item' : 'items'}`, span, places]
+  return [photosText(cluster.count), span, places]
     .filter((part): part is string => part !== null)
     .join(' · ');
 }

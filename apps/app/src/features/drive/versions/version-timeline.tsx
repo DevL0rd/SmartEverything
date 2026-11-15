@@ -2,14 +2,10 @@ import type { ReactElement, ReactNode } from 'react';
 import { memo } from 'react';
 import { View } from 'react-native';
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
-import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
-import { Button } from '../../../components/button';
 import { Sparkline } from '../../../components/charts';
-import { EmptyState } from '../../../components/empty-state';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
-import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { DRAW_DISTANCE } from '../../../components/virtual-list';
 import { cn } from '../../../design/cn';
@@ -22,7 +18,6 @@ import { sameJson } from '../../../store/same-json';
 import { useSettings } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
-import { DRIVE_PAGE } from '../../../settings/tree-drive';
 import { SERIES_LOOK, VIA_LOOK } from '../activity/via-model';
 import { useByName } from '../components/use-by-name';
 import {
@@ -371,87 +366,5 @@ export function CompactTimeline({
         </View>
       ))}
     </View>
-  );
-}
-
-const SKELETON_ROWS = ['a', 'b', 'c', 'd'] as const;
-
-export function TimelineLoading(): ReactNode {
-  return (
-    <View aria-label="Loading versions" className="gap-2 p-3">
-      {SKELETON_ROWS.map((key) => (
-        <View key={key} className="h-row-h-2 flex-row items-center gap-3">
-          <Skeleton shape="circle" className="size-6 rounded-xs" />
-          <View className="flex-1 gap-2">
-            <Skeleton shape="text" className="w-32" />
-            <Skeleton shape="text" />
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-export function CompactTimelineLoading(): ReactNode {
-  return (
-    <View aria-label="Loading versions" className={COMPACT_CARD}>
-      {SKELETON_ROWS.map((key, index) => (
-        <View
-          key={key}
-          className={cn(
-            'h-row-h-2 flex-row items-center gap-3',
-            index > 0 && 'border-t border-outline-variant',
-          )}
-        >
-          <View className="min-w-0 flex-1 gap-2">
-            <Skeleton shape="text" className="w-32" />
-            <View className="flex-row items-center gap-2">
-              <Skeleton shape="circle" className="size-2" />
-              <Skeleton shape="text" className="min-w-0 flex-1" />
-            </View>
-          </View>
-          <Skeleton shape="text" className="w-12" />
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function VersionsSettingsButton(): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  return (
-    <Button
-      label="Open Drive settings"
-      icon="settings"
-      variant="tonal"
-      size={pointer ? 'md' : 'lg'}
-      href={href.settings.focus(DRIVE_PAGE.drives, 'drive.drives.versions')}
-    />
-  );
-}
-
-const ONE_VERSION_BODY = 'When this file changes, the old copy is kept here for a year.';
-
-export function OneVersion({ kept }: { readonly kept: boolean | null }): ReactNode {
-  if (kept === null) {
-    return (
-      <EmptyState
-        compact
-        icon="layers"
-        title="One version so far"
-        body="Earlier copies show here when this file changes and its drive keeps versions."
-      />
-    );
-  }
-  return kept ? (
-    <EmptyState compact icon="layers" title="One version so far" body={ONE_VERSION_BODY} />
-  ) : (
-    <EmptyState
-      compact
-      icon="layers"
-      title="Versions are off"
-      body="Earlier copies of files in this drive are not kept. Versions in Drive settings keeps them, and they use space."
-      action={<VersionsSettingsButton />}
-    />
   );
 }

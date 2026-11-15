@@ -1,5 +1,5 @@
 import { use, type ReactNode } from 'react';
-import { RefreshControl, View, type LayoutChangeEvent } from 'react-native';
+import { RefreshControl, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedReaction,
   useAnimatedScrollHandler,
@@ -121,7 +121,7 @@ function directionOf(now: number, before: number, current: number): number {
 }
 
 function useScrollAway(): {
-  readonly style: ReturnType<typeof useAnimatedStyle>;
+  readonly style: ReturnType<typeof useAnimatedStyle<ViewStyle>>;
   readonly measure: (event: LayoutChangeEvent) => void;
 } {
   const { scrollY } = useScreen();
@@ -145,7 +145,7 @@ function useScrollAway(): {
     },
     [reduced],
   );
-  const style = useAnimatedStyle(() =>
+  const style = useAnimatedStyle((): ViewStyle =>
     height.get() === 0
       ? { opacity: shown.get() }
       : { opacity: shown.get(), height: height.get() * shown.get() },

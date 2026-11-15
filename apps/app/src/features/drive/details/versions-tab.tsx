@@ -8,16 +8,16 @@ import { notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { flattenPages, useDriveConflicts, useDriveVersions } from '../data';
 import { useRestore } from '../versions/restore';
+import { CompactTimelineLoading, OneVersion } from '../versions/version-placeholders';
 import {
   COMPACT_CARD,
   CompactTimeline,
-  CompactTimelineLoading,
-  OneVersion,
   SizeOverYear,
   useTimelineLook,
 } from '../versions/version-timeline';
 import { Unloaded } from '../versions/versions-sheet-parts';
-import { VersionsSheet, type VersionsSlots, type VersionsTarget } from '../versions/versions-sheet';
+import { VersionsSheet } from '../versions/versions-sheet';
+import type { VersionsSlots, VersionsTarget } from '../versions/versions-panel';
 import {
   entriesOf,
   initialPicks,

@@ -343,7 +343,7 @@ function useWeatherShown(): boolean {
   return forecast.kind === 'ready' && preferences?.day_planner.show_weather === true;
 }
 
-function sideIdle(day: PlannerDay, timers: number, prompt: string | null): boolean {
+function sideIdle(day: PlannerDay, timers: number, prompt: PlanPrompt | null): boolean {
   return day.next_alarm_at === null && timers === 0 && prompt === null;
 }
 

@@ -75,7 +75,7 @@ function FlowBar({
   if (search !== undefined && bar.mode === 'open') {
     return (
       <View className={className}>
-        <OpenSearch search={search} onClose={bar.close} />
+        <OpenSearch search={search} onClose={bar.close} back={null} />
         <ShellStatus />
       </View>
     );

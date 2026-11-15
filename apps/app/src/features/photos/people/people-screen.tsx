@@ -16,6 +16,7 @@ import { useAreaWidth } from '../../../design/size-class';
 import { useMutationState } from '../../../store/mutation';
 import { useSyncStatus } from '../../../store/selectors';
 import { PhotosFrame } from '../components/photos-frame';
+import { HUB_OFFLINE_TITLE, OFFLINE_BODY, SNAPSHOT_TITLE } from '../model/offline-copy';
 import { setPhotoAiSettings } from '../smart/api';
 import { usePhotoAiStatus, storeAiStatus } from '../smart/queries';
 import { PHOTOS_SMART_PAGE } from '../smart/page';
@@ -32,11 +33,12 @@ import {
   type ScanState,
 } from './model';
 import {
-  FaceRing,
+  GroupingRing,
   GroupSection,
   MergeSuggestions,
   PeopleHeader,
   PetsSection,
+  ScanRing,
 } from './people-parts';
 import { usePhotoPeople } from './queries';
 
@@ -82,7 +84,7 @@ function Indexing({ status }: { readonly status: PhotoAiStatus }): ReactNode {
   return (
     <Card>
       <View className="flex-row flex-wrap items-center gap-4">
-        <FaceRing status={status} size={88} />
+        <ScanRing status={status} size={88} />
         <View className="min-w-48 flex-1 gap-1">
           <Text variant="title-3">Looking for faces</Text>
           <Text variant="body" className="tabular-nums">
@@ -101,7 +103,7 @@ function Grouping({ status }: { readonly status: PhotoAiStatus }): ReactNode {
   return (
     <Card>
       <View className="flex-row flex-wrap items-center gap-4">
-        <FaceRing status={status} size={88} />
+        <GroupingRing status={status} size={88} />
         <View className="min-w-48 flex-1 gap-1">
           <Text variant="title-3">Sorting faces into people</Text>
           <Text variant="body" className="tabular-nums">
@@ -168,7 +170,7 @@ function Ready({
   return (
     <View className="gap-section-gap">
       <PeopleHeader status={status} naming={namingOf(people.groups)} />
-      <MergeSuggestions people={people} live={live} />
+      {live ? <MergeSuggestions people={people} /> : null}
       <GroupSection title="People" groups={sections.people} size={size} />
       <PetsSection
         all={people.groups}
@@ -219,7 +221,7 @@ function StateBody({
       return (
         <EmptyState
           icon="wifiOff"
-          title="The hub is offline"
+          title={HUB_OFFLINE_TITLE}
           body="People and pets come back when your home hub answers."
         />
       );
@@ -252,8 +254,8 @@ export function PeopleScreen(): ReactNode {
             banner: (
               <Banner
                 tone="info"
-                title="Offline · showing the last snapshot"
-                body="Names and merges wait for your home hub."
+                title={SNAPSHOT_TITLE}
+                body={OFFLINE_BODY.people}
                 wrapBody
               />
             ),

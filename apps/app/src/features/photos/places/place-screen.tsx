@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import {
@@ -10,14 +10,18 @@ import {
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
+import { measureAnchor, type Rect } from '../../../components/anchor';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
+import { FilterChip } from '../../../components/filter-chip';
 import { FlatChoice } from '../../../components/flat-choice';
 import type { MediaZoomStep } from '../../../components/media-grid/justify';
 import { useMediaSelection } from '../../../components/media-grid/selection';
 import { shellLayoutOf } from '../../../components/page-shell/layout';
+import type { ShellAction } from '../../../components/page-shell/shell-actions';
+import { SelectPicker, type SelectOption } from '../../../components/select-picker';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
@@ -33,7 +37,7 @@ import { useLibraryFeed, type LibraryFeed } from '../library/use-library-feed';
 import { useMediaActions } from '../library/use-media-actions';
 import { viewerParamsOf } from '../viewer/params';
 import { MiniMap } from '../world-map';
-import { monthScopeOf, totalOf, visitChips } from './place-model';
+import { monthScopeOf, photosText, totalOf, visitChips } from './place-model';
 import { monthLabel, monthsOf } from './time-range';
 
 type KindFilter = 'all' | 'videos' | 'favourites';
@@ -51,11 +55,11 @@ export function placeIdOf(raw: unknown): number | null {
 
 function Stat({ value, label }: { readonly value: string; readonly label: string }): ReactNode {
   return (
-    <View className="min-w-20 gap-0.5">
+    <View className="w-1/2 gap-0.5 py-1.5 pr-3 medium:w-1/4">
       <Text variant="title-2" className="tabular-nums">
         {value}
       </Text>
-      <Text variant="caption" tone="variant">
+      <Text variant="caption" tone="variant" numberOfLines={1}>
         {label}
       </Text>
     </View>
@@ -89,22 +93,19 @@ function StatsCard({
         label={`Map around ${place.name}`}
         className="h-36 medium:h-45 medium:w-90"
       />
-      <View className="flex-1 flex-row flex-wrap items-center gap-6 p-4 medium:px-6">
-        <Stat value={count(place.count)} label={itemsLabel(place.count)} />
-        <Stat value={count(months.length)} label={months.length === 1 ? 'visit' : 'visits'} />
-        <Stat value={figure(videos)} label="videos" />
-        <Stat value={figure(favourites)} label="favourites" />
+      <View className="flex-1 justify-center gap-2 p-4 medium:px-6">
+        <View className="flex-row flex-wrap">
+          <Stat value={count(place.count)} label={itemsLabel(place.count)} />
+          <Stat value={count(months.length)} label={months.length === 1 ? 'month' : 'months'} />
+          <Stat value={figure(videos)} label="videos" />
+          <Stat value={figure(favourites)} label="favourites" />
+        </View>
         {first === undefined || latest === undefined ? null : (
-          <View className="gap-0.5">
-            <Text variant="footnote" className="tabular-nums">
-              {first === latest
-                ? monthLabel(first)
-                : `${monthLabel(first)} to ${monthLabel(latest)}`}
-            </Text>
-            <Text variant="caption" tone="variant">
-              first and latest
-            </Text>
-          </View>
+          <Text variant="footnote" tone="variant" className="tabular-nums">
+            {first === latest
+              ? `Taken in ${monthLabel(first)}`
+              : `First ${monthLabel(first)} · latest ${monthLabel(latest)}`}
+          </Text>
         )}
       </View>
     </View>
@@ -122,63 +123,77 @@ interface ChipsProps {
   readonly onChoice: (choice: Choice) => void;
 }
 
-function VisitChips({ buckets, choice, onChoice }: ChipsProps): ReactNode {
+const ALL_MONTHS = 'all';
+
+function sumOf(buckets: readonly LibraryBucket[]): number {
+  return buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+}
+
+function monthOptionsOf(buckets: readonly LibraryBucket[]): readonly SelectOption<string>[] {
+  return [
+    { value: ALL_MONTHS, label: 'All months', description: photosText(sumOf(buckets)) },
+    ...visitChips(buckets).map((chip) => ({
+      value: chip.month,
+      label: chip.label,
+      description: photosText(chip.count),
+    })),
+  ];
+}
+
+function MonthChip({ buckets, choice, onChoice }: ChipsProps): ReactNode {
+  const ref = useRef<View>(null);
+  const opener = useRef<View>(null);
+  const [anchor, setAnchor] = useState<Rect | null>(null);
   return (
-    <ChipRow label="Visits">
-      <FlatChoice
-        label="All visits"
-        count={totalOf(buckets) ?? undefined}
-        active={choice.month === null}
-        role="radio"
+    <>
+      <FilterChip
+        affordance="menu"
+        expanded={anchor !== null}
+        anchorRef={ref}
+        pressRef={opener}
+        label="Month"
+        value={choice.month === null ? 'All months' : monthLabel(choice.month)}
+        icon="calendar"
+        active={choice.month !== null}
         onPress={() => {
-          onChoice({ ...choice, month: null });
+          measureAnchor(ref, setAnchor);
         }}
       />
-      {visitChips(buckets).map((chip) => (
-        <FlatChoice
-          key={chip.month}
-          label={chip.label}
-          count={chip.count}
-          active={choice.month === chip.month}
-          role="radio"
-          onPress={() => {
-            onChoice({ ...choice, month: chip.month });
-          }}
-        />
-      ))}
-    </ChipRow>
+      <SelectPicker
+        label="Month"
+        options={monthOptionsOf(buckets)}
+        value={choice.month ?? ALL_MONTHS}
+        anchor={anchor}
+        opener={opener}
+        onClose={() => {
+          setAnchor(null);
+        }}
+        onPick={(month) => {
+          onChoice({ ...choice, month: month === ALL_MONTHS ? null : month });
+        }}
+      />
+    </>
   );
 }
 
-function KindChips({ choice, onChoice }: Omit<ChipsProps, 'buckets'>): ReactNode {
+function Chips(chips: ChipsProps): ReactNode {
+  const { choice, onChoice } = chips;
   return (
-    <ChipRow label="Kinds">
-      {KINDS.map((kind) => (
-        <FlatChoice
-          key={kind.value}
-          label={kind.label}
-          active={choice.kind === kind.value}
-          role="radio"
-          onPress={() => {
-            onChoice({ month: null, kind: kind.value });
-          }}
-        />
-      ))}
-    </ChipRow>
-  );
-}
-
-function Chips({ name, ...chips }: ChipsProps & { readonly name: string }): ReactNode {
-  return (
-    <View className="gap-2 pt-section-gap">
-      <Text variant="caption" tone="variant">
-        Photos per visit
-      </Text>
-      <VisitChips {...chips} />
-      <KindChips choice={chips.choice} onChoice={chips.onChoice} />
-      <Text variant="footnote" tone="variant">
-        {`The Library, only photos taken within ${name}`}
-      </Text>
+    <View className="pt-section-gap">
+      <ChipRow label="Filters">
+        {KINDS.map((kind) => (
+          <FlatChoice
+            key={kind.value}
+            label={kind.label}
+            active={choice.kind === kind.value}
+            role="radio"
+            onPress={() => {
+              onChoice({ ...choice, kind: kind.value });
+            }}
+          />
+        ))}
+        {chips.buckets.length > 1 ? <MonthChip {...chips} /> : null}
+      </ChipRow>
     </View>
   );
 }
@@ -229,7 +244,7 @@ const NO_MATCH = (
   <EmptyState
     icon="image"
     title="No photos match"
-    body="Choose All visits and All to see every photo from here."
+    body="Choose All and All months to see every photo from here."
   />
 );
 
@@ -285,11 +300,14 @@ function PlaceFeed({
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));
   const media = useMediaActions();
   const frame = selectionFrameOf(compact, { controls, tiles: feed.tiles, media });
+  const select: readonly ShellAction[] =
+    controls.selection.active || feed.tiles.length === 0
+      ? []
+      : [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: controls.begin }];
   const header = (
     <View className="gap-2 px-gutter pb-2">
       <StatsCard place={place} buckets={buckets} />
       <Chips
-        name={place.name}
         buckets={buckets}
         choice={choice}
         onChoice={(next) => {
@@ -304,6 +322,7 @@ function PlaceFeed({
       active="map"
       title={place.name}
       breadcrumbs={crumbsOf(place)}
+      actions={select}
       scroll={false}
       selection={frame.selection}
       footer={frame.footer}
@@ -324,9 +343,36 @@ function PlaceBody({ place }: { readonly place: PhotoPlace }): ReactNode {
       {all.isError ? (
         <Unavailable error={all.error} retry={all.refetch} />
       ) : (
-        <Skeleton shape="block" className="h-45 w-full" />
+        <PlaceLoading />
       )}
     </PhotosFrame>
+  );
+}
+
+function PlaceLoading(): ReactNode {
+  return (
+    <View aria-busy accessibilityLabel="Loading this place">
+      <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 medium:flex-row">
+        <Skeleton shape="block" className="h-36 rounded-none medium:h-45 medium:w-90" />
+        <View className="flex-1 justify-center gap-2 p-4 medium:px-6">
+          <View className="flex-row flex-wrap">
+            {['items', 'months', 'videos', 'favourites'].map((key) => (
+              <View key={key} className="w-1/2 gap-1.5 py-1.5 pr-3 medium:w-1/4">
+                <Skeleton shape="line" className="h-6 w-14" />
+                <Skeleton shape="line" className="h-3 w-20" />
+              </View>
+            ))}
+          </View>
+          <Skeleton shape="line" className="h-3 w-48" />
+        </View>
+      </View>
+      <View className="flex-row gap-2 pt-section-gap">
+        {['all', 'videos', 'favourites', 'month'].map((key) => (
+          <Skeleton key={key} shape="line" className="h-8 w-20" />
+        ))}
+      </View>
+      <LibraryLoading />
+    </View>
   );
 }
 
@@ -363,7 +409,7 @@ function PlaceState({
     );
   }
   if (isMissing(query.error)) return GONE;
-  if (!query.isError) return <Skeleton shape="block" className="h-45 w-full" />;
+  if (!query.isError) return <PlaceLoading />;
   return <Unavailable error={query.error} retry={query.refetch} />;
 }
 

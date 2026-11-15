@@ -117,19 +117,71 @@ function windowOf(range: ChartRange, times: Extent): Extent {
   return { min: start.getTime(), max: endOf(start, range) };
 }
 
-function thinStep(count: number, width: number, minGap: number): number {
-  return Math.max(1, Math.ceil((count * minGap) / Math.max(width, 1)));
+const CAPTION_CHAR = 7;
+
+const CAPTION_SLACK = 12;
+
+const LABEL_MIN_GAP = 8;
+
+export function captionWidthOf(text: string): number {
+  return text.length * CAPTION_CHAR;
 }
 
-export function thinned<T>(items: readonly T[], width: number, minGap: number): T[] {
-  const every = thinStep(items.length, width, minGap);
-  return items.filter((_, index) => index % every === 0);
+export type LabelAlign = 'start' | 'center' | 'end';
+
+export interface LabelPlace {
+  readonly index: number;
+  readonly left: number;
+  readonly width: number;
+  readonly align: LabelAlign;
+  readonly from: number;
+  readonly to: number;
 }
 
-export function thinnedFromEnd<T>(items: readonly T[], width: number, minGap: number): T[] {
-  const every = thinStep(items.length, width, minGap);
-  const last = items.length - 1;
-  return items.filter((_, index) => (last - index) % every === 0);
+function placeOf(index: number, text: string, centre: number, width: number): LabelPlace {
+  const need = captionWidthOf(text);
+  const box = need + CAPTION_SLACK;
+  if (centre - need / 2 < 0) {
+    return { index, left: 0, width: box, align: 'start', from: 0, to: need };
+  }
+  if (centre + need / 2 > width) {
+    return { index, left: width - box, width: box, align: 'end', from: width - need, to: width };
+  }
+  return {
+    index,
+    left: centre - box / 2,
+    width: box,
+    align: 'center',
+    from: centre - need / 2,
+    to: centre + need / 2,
+  };
+}
+
+function apart(places: readonly LabelPlace[]): boolean {
+  return places.every((place, index) => {
+    const previous = places[index - 1];
+    return previous === undefined || place.from - previous.to >= LABEL_MIN_GAP;
+  });
+}
+
+export function barLabelPlacesOf(
+  labels: readonly (string | undefined)[],
+  width: number,
+  anchor: 'start' | 'end',
+): readonly LabelPlace[] {
+  const slot = width / Math.max(labels.length, 1);
+  const last = labels.length - 1;
+  const places = labels.map((text, index) =>
+    text === undefined ? null : placeOf(index, text, (index + 0.5) * slot, width),
+  );
+  for (let every = 1; every <= labels.length; every += 1) {
+    const picked = places.filter(
+      (place, index): place is LabelPlace =>
+        place !== null && (anchor === 'end' ? last - index : index) % every === 0,
+    );
+    if (apart(picked)) return picked;
+  }
+  return [];
 }
 
 function spaced(

@@ -20,7 +20,7 @@ import {
   useBarSearch,
   useSearchOptionsPlace,
 } from './bar-search';
-import { ShellActions, type ShellAction } from './shell-actions';
+import { ShellActions, ShellOverflow, type ShellAction } from './shell-actions';
 import { ShellFooter } from './shell-body';
 import { ShellBack, ShellTitle, type BackPress } from './shell-parts';
 import { ShellStatus } from './shell-status';
@@ -67,9 +67,20 @@ function BarRow({ shell }: { readonly shell: VariantShellProps }): ReactNode {
   const bare = back === null && leading.length === 0;
   if (shell.search !== undefined && bar.mode === 'open') {
     return (
-      <View className="min-h-14 flex-row items-center gap-1 px-1">
-        <OpenSearch search={shell.search} onClose={bar.close} />
+      <View
+        className="min-h-14 flex-row items-center gap-1 px-1"
+        onLayout={(event) => {
+          bar.onBar(event.nativeEvent.layout.width);
+        }}
+      >
+        <OpenSearch search={shell.search} onClose={bar.close} back={back} />
         <ShellStatus />
+        <ShellOverflow
+          kind={pointer ? 'pointer' : 'touch'}
+          actions={shell.actions}
+          overflow={shell.overflow}
+          settings={shell.settings}
+        />
       </View>
     );
   }

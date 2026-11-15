@@ -109,7 +109,7 @@ export function HabitSummary({ stats }: { readonly stats: PlannerStats }): React
     rangeDaysOf(stats),
   );
   return (
-    <Card title="Habits" icon="flame">
+    <Card title="Habits" icon="flame" className="grow">
       {habits.length === 0 ? (
         <Text variant="footnote" tone="variant">
           Tasks that repeat show up here with their streak.

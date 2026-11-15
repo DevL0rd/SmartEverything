@@ -6,6 +6,7 @@ import { isNative, useIdiom } from '../../design/platform';
 import { useSizeClass } from '../../design/size-class';
 import { IconButton } from '../icon-button';
 import { SEARCH_WIDTH } from './layout';
+import { ShellBack, type BackPress } from './shell-parts';
 import {
   ShellSearch,
   searchOptionsPlaceOf,
@@ -55,6 +56,30 @@ function inBar(search: ShellSearchConfig, place: SearchOptionsPlace): ShellSearc
 
 export type BarSearchMode = 'none' | 'inline' | 'icon' | 'open';
 
+export function searchOpenedAtStart(search: ShellSearchConfig | undefined): boolean {
+  return search?.focusOnMount === true;
+}
+
+export function barSearchModeOf({
+  search,
+  bar,
+  trailing,
+  floor,
+  opened,
+}: {
+  readonly search: ShellSearchConfig | undefined;
+  readonly bar: number | null;
+  readonly trailing: number;
+  readonly floor: number;
+  readonly opened: boolean;
+}): BarSearchMode {
+  if (search === undefined) return 'none';
+  if (bar !== null && searchInlineAt(bar, trailing + Math.max(0, floor - TITLE_MIN))) {
+    return 'inline';
+  }
+  return opened || search.value !== '' ? 'open' : 'icon';
+}
+
 export interface BarSearch {
   readonly mode: BarSearchMode;
   readonly onBar: (width: number) => void;
@@ -69,16 +94,9 @@ export function useBarSearch(search: ShellSearchConfig | undefined): BarSearch {
   const [bar, setBar] = useState<number | null>(null);
   const [trailing, setTrailing] = useState(0);
   const [title, setTitle] = useState(0);
-  const [opened, setOpened] = useState(false);
+  const [opened, setOpened] = useState(searchOpenedAtStart(search));
   const floor = bar === null ? 0 : titleFloorAt(bar, title);
-  const modeOf = (): BarSearchMode => {
-    if (search === undefined) return 'none';
-    if (bar !== null && searchInlineAt(bar, trailing + Math.max(0, floor - TITLE_MIN))) {
-      return 'inline';
-    }
-    return opened || search.value !== '' ? 'open' : 'icon';
-  };
-  const mode = modeOf();
+  const mode = barSearchModeOf({ search, bar, trailing, floor, opened });
   return {
     mode,
     onBar: setBar,
@@ -139,14 +157,20 @@ function SearchToggle({
 export function OpenSearch({
   search,
   onClose,
+  back,
 }: {
   readonly search: ShellSearchConfig;
   readonly onClose: () => void;
+  readonly back: BackPress;
 }): ReactNode {
   const place = useSearchOptionsPlace();
   return (
     <View className="min-w-0 flex-1 flex-row items-center gap-1">
-      <IconButton icon="arrowLeft" label="Close search" onPress={onClose} />
+      {search.focusOnMount === true && back !== null ? (
+        <ShellBack back={back} />
+      ) : (
+        <IconButton icon="arrowLeft" label="Close search" onPress={onClose} />
+      )}
       <View testID="shell-search" className="min-w-0 flex-1">
         <ShellSearch search={{ ...inBar(search, place), focusOnMount: true }} />
       </View>

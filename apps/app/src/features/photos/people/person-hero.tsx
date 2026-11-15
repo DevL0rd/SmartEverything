@@ -12,8 +12,9 @@ import { TextField } from '../../../components/text-field';
 import { useProfiles } from '../../../store/people';
 import { usePeopleActions, notThisText } from './actions';
 import { FaceAvatar } from './face-avatar';
-import { nameDraftOf, photosText } from './model';
+import { mergeTargetsOf, nameDraftOf, photosText } from './model';
 import type { PersonSheet } from './person-sheets';
+import { usePhotoPeople } from './queries';
 
 function NameField({
   group,
@@ -111,9 +112,11 @@ export function usePersonMenu(
       actions.update(group, { hidden: !group.hidden });
     },
   };
+  const people = usePhotoPeople().data;
+  const mergeable = people !== undefined && mergeTargetsOf(group, people.groups).length > 0;
   const items = [
     group.kind === 'person' ? sheetItem('link', 'Link to a person', disabled, onSheet) : null,
-    sheetItem('merge', 'Merge', disabled, onSheet),
+    mergeable ? sheetItem('merge', 'Merge', disabled, onSheet) : null,
     hide,
     shareItem(group, disabled),
   ];

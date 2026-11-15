@@ -16,6 +16,7 @@ import { eventFill } from './event-look';
 import {
   SNAP_MINUTES,
   dragActivation,
+  dropFeedback,
   liftFeedback,
   minuteAt,
   pixelsOf,
@@ -117,6 +118,9 @@ function useCreateGesture(
     .onEnd((event, success) => {
       const span = spanBetween(anchor.get(), minuteAt(event.y, hourHeight.get()));
       scheduleOnRN(finish, success ? span : null);
+    })
+    .onFinalize(() => {
+      scheduleOnRN(dropFeedback);
     });
   const tap = Gesture.Tap()
     .maxDistance(TAP_SLOP)

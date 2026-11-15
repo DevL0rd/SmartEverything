@@ -28,9 +28,9 @@ const CELL_TONE: Readonly<Record<HourTone, string>> = {
 };
 
 const SLIM_TONE: Readonly<Record<HourTone, string>> = {
-  work: 'bg-primary-container',
+  work: 'bg-primary/40',
   day: 'bg-surface-3',
-  night: 'border-hairline border-outline-variant bg-surface-2',
+  night: 'bg-surface-2',
 };
 
 const LABEL_EVERY_CELL = 28;
@@ -107,15 +107,20 @@ function CellRow({
 }): ReactNode {
   return (
     <View className={cn('justify-center', slim ? 'h-6' : 'h-7')}>
-      <View className={cn('flex-row', slim ? 'h-2.5 gap-px' : 'h-7 gap-0.5')}>
+      <View
+        className={cn(
+          'flex-row',
+          slim
+            ? 'h-2.5 overflow-hidden rounded-full border-hairline border-outline-variant'
+            : 'h-7 gap-0.5',
+        )}
+      >
         {cells.map((cell) => (
           <View
             key={cell.hour}
             className={cn(
               'flex-1 items-center justify-center',
-              slim
-                ? cn('rounded-xs', SLIM_TONE[cell.tone])
-                : cn('rounded-sm', CELL_TONE[cell.tone]),
+              slim ? SLIM_TONE[cell.tone] : cn('rounded-sm', CELL_TONE[cell.tone]),
             )}
           >
             {slim || !labelShown(cell, sparse) ? null : (

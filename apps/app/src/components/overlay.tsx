@@ -1,10 +1,11 @@
 import { BrowserOverlayOwner, coverBrowser } from '../platform/browser-overlays';
 import type { ReactNode, RefObject } from 'react';
 import { use, useEffect, useEffectEvent, useRef, useState } from 'react';
-import { Pressable, View, useWindowDimensions } from 'react-native';
+import { Pressable, View, type ViewStyle } from 'react-native';
 import { Logger } from '@smarteverything/logging';
 import { cn } from '../design/cn';
 import { isNative } from '../design/platform';
+import { useWindowSize } from '../design/size-class';
 import { focusView, type FocusTarget } from './focus-request';
 import { KeyboardRoot, KeyboardViewport } from './keyboard-viewport';
 import { ToastModal } from './toast-modal';
@@ -118,6 +119,10 @@ function Backdrop({
   );
 }
 
+function viewportStyle(width: number): ViewStyle {
+  return { maxWidth: width };
+}
+
 function OverlaySurface({
   className,
   signal,
@@ -135,7 +140,7 @@ function OverlaySurface({
   readonly backdropLabel: string;
 }): ReactNode {
   const panel = useRef<View>(null);
-  const viewport = useWindowDimensions();
+  const viewport = useWindowSize();
   return (
     <KeyboardRoot>
       <KeyboardViewport className="z-0 flex-1">
@@ -143,7 +148,7 @@ function OverlaySurface({
           ref={panel}
           tabIndex={-1}
           pointerEvents="box-none"
-          style={{ maxWidth: viewport.width }}
+          style={viewportStyle(viewport.width)}
           className={cn('flex-1 web:outline-none', className)}
         >
           <OverlayShown value={signal}>{children}</OverlayShown>

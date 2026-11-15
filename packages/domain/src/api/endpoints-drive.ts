@@ -24,7 +24,7 @@ import { DRIVE_RECENT_FILTERS, DRIVE_RECENT_PAGE } from '../drive/recent';
 import { DRIVE_ROOT } from '../drive/root';
 import { DRIVE_SHORTCUT } from '../drive/shortcut';
 import { DRIVE_STATS } from '../drive/stats';
-import { DRIVE_TRASH_ENTRY } from '../drive/trash';
+import { DRIVE_TRASH_ENTRY, DRIVE_TRASH_LINK } from '../drive/trash';
 import { NO_BODY, endpoint } from './endpoint';
 import { MEDIA_LINK } from './endpoints-media';
 import { COUNT, DONE, ID, NOTHING, somethingToChange } from './primitives';
@@ -217,6 +217,16 @@ export const DRIVE_LIBRARY_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: DRIVE_ITEM,
+  }),
+  trashLinks: endpoint({
+    method: 'POST',
+    path: '/api/drive/trash/links',
+    access: 'member',
+    summary: 'Short-lived signed paths that show the thumbnails of trashed files',
+    params: NOTHING,
+    query: NOTHING,
+    body: z.strictObject({ itemIds: z.array(ID).min(1) }),
+    response: z.array(DRIVE_TRASH_LINK),
   }),
   itemLinks: endpoint({
     method: 'POST',

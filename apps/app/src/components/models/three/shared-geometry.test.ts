@@ -1,11 +1,7 @@
 import type { ModelSpec } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  buildModel,
-  createModelResources,
-  type BuiltModel,
-} from '../../apps/app/src/components/models/three/build-model.ts';
-import { pinGeometriesInUse } from '../../apps/app/src/components/models/three/shared-geometry.ts';
+import { buildModel, createModelResources, type BuiltModel } from './build-model';
+import { pinGeometriesInUse } from './shared-geometry';
 
 const VIEW = { yaw: 30, pitch: 18, fov: 28, padding: 0.1 } as const;
 

@@ -43,19 +43,13 @@ function CardHeader({
 }): ReactNode {
   const hasAction = action !== undefined && action !== null && typeof action !== 'boolean';
   return (
-    <View
-      className={cn(
-        'flex-row items-center gap-2',
-        hasAction && 'min-h-touch-min',
-        !padded && 'px-card-pad pt-card-pad',
-      )}
-    >
+    <View className={cn('flex-row items-center gap-2', !padded && 'px-card-pad pt-card-pad')}>
       {icon === undefined ? null : <Icon name={icon} size={20} />}
       <Text variant="title-3" className="min-w-0 flex-1">
         {title}
       </Text>
       {metadata}
-      {action}
+      {hasAction ? <View className="-my-3">{action}</View> : null}
     </View>
   );
 }

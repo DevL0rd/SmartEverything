@@ -1,6 +1,6 @@
 import type { ReactNode, RefObject } from 'react';
-import { useDeferredValue, useState } from 'react';
-import { View } from 'react-native';
+import { useDeferredValue, useRef, useState } from 'react';
+import { View, type TextInput } from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
 import { useWindowSize } from '../design/size-class';
@@ -132,6 +132,7 @@ function Options<T extends string>({
   value,
   searchable,
   searchPlaceholder,
+  search,
   touch,
   pick,
 }: {
@@ -140,6 +141,7 @@ function Options<T extends string>({
   readonly value: T | null;
   readonly searchable: boolean;
   readonly searchPlaceholder: string;
+  readonly search: RefObject<TextInput | null>;
   readonly touch: boolean;
   readonly pick: (value: T) => void;
 }): ReactNode {
@@ -153,6 +155,7 @@ function Options<T extends string>({
             value={query}
             onChange={setQuery}
             placeholder={searchPlaceholder}
+            inputRef={search}
             focusOnMount={!touch}
           />
         </View>
@@ -184,6 +187,7 @@ export function SelectPicker<T extends string>({
   width,
 }: SelectPickerProps<T>): ReactNode {
   const touch = useIdiom() === 'touch';
+  const search = useRef<TextInput>(null);
   const close = (): void => {
     onClose();
     if (!(subpage && touch) && opener !== undefined) {
@@ -197,7 +201,7 @@ export function SelectPicker<T extends string>({
     onPick(picked);
   };
   const body = (
-    <Options {...{ label, options, value, searchable, searchPlaceholder, touch, pick }} />
+    <Options {...{ label, options, value, searchable, searchPlaceholder, search, touch, pick }} />
   );
   const subpage = useSheetSubpage(touch && anchor !== null, {
     title: label,
@@ -208,7 +212,11 @@ export function SelectPicker<T extends string>({
   });
   if (subpage && touch) return null;
   return (
-    <SelectSurface {...{ touch, anchor, label, width, presentation }} onClose={close}>
+    <SelectSurface
+      {...{ touch, anchor, label, width, presentation }}
+      initialFocus={searchable && !touch ? search : undefined}
+      onClose={close}
+    >
       {body}
     </SelectSurface>
   );
@@ -223,11 +231,13 @@ function dialogRectOf(window: { readonly width: number; readonly height: number 
 function DialogSurface({
   open,
   label,
+  initialFocus,
   onClose,
   children,
 }: {
   readonly open: boolean;
   readonly label: string;
+  readonly initialFocus: RefObject<TextInput | null> | undefined;
   readonly onClose: () => void;
   readonly children: ReactNode;
 }): ReactNode {
@@ -241,30 +251,27 @@ function DialogSurface({
       scrim
       fitContent
       align="top"
+      initialFocus={initialFocus}
     >
       {children}
     </PopoverFrame>
   );
 }
 
-function SelectSurface({
-  touch,
-  anchor,
-  label,
-  width,
-  presentation,
-  onClose,
-  children,
-}: {
+interface SurfaceProps {
   readonly touch: boolean;
   readonly anchor: Rect | null;
   readonly label: string;
   readonly width: number | undefined;
   readonly presentation: SelectPresentation;
+  readonly initialFocus: RefObject<TextInput | null> | undefined;
   readonly onClose: () => void;
   readonly children: ReactNode;
-}): ReactNode {
-  if (touch) {
+}
+
+function SelectSurface(props: SurfaceProps): ReactNode {
+  const { anchor, label, initialFocus, onClose, children } = props;
+  if (props.touch) {
     return (
       <BottomSheet
         open={anchor !== null}
@@ -278,9 +285,14 @@ function SelectSurface({
       </BottomSheet>
     );
   }
-  if (presentation === 'dialog') {
+  if (props.presentation === 'dialog') {
     return (
-      <DialogSurface open={anchor !== null} label={label} onClose={onClose}>
+      <DialogSurface
+        open={anchor !== null}
+        label={label}
+        initialFocus={initialFocus}
+        onClose={onClose}
+      >
         {children}
       </DialogSurface>
     );
@@ -291,7 +303,8 @@ function SelectSurface({
       onClose={onClose}
       anchor={anchor}
       label={label}
-      width={width ?? Math.max(240, anchor?.width ?? 0)}
+      width={props.width ?? Math.max(240, anchor?.width ?? 0)}
+      initialFocus={initialFocus}
     >
       {children}
     </Popover>

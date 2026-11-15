@@ -10,7 +10,7 @@ import {
   type MakeCanvas,
   type StagingCanvas,
 } from './bake-clips';
-import type { PixelRect } from './bake-layers';
+import type { PixelRect } from './bake-bounds';
 
 interface FakeCanvas {
   readonly name: string;

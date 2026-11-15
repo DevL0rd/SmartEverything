@@ -55,13 +55,16 @@ vi.mock('../versions/restore', () => ({
   useRestore: (): object => ({ busy: false, run: (): void => undefined }),
 }));
 vi.mock('../versions/versions-sheet', () => ({ VersionsSheet: (): null => null }));
+vi.mock('../versions/version-placeholders', () => ({
+  CompactTimelineLoading: (): ReactNode => 'loading',
+  OneVersion: (): ReactNode => 'one-version',
+  TimelineLoading: (): ReactNode => 'loading',
+}));
 vi.mock('../versions/version-timeline', () => ({
   CompactTimeline: ({ entries }: { readonly entries: readonly unknown[] }): ReactNode =>
     `timeline:${String(entries.length)}`,
-  OneVersion: (): ReactNode => 'one-version',
   SizeOverYear: ({ total }: { readonly total: string }): ReactNode => `size:${total}`,
   COMPACT_CARD: 'card',
-  CompactTimelineLoading: (): ReactNode => 'loading',
   useTimelineLook: (): object => ({
     time: { now: Date.parse('2026-11-07T12:00:00.000Z'), zone: 'UTC' },
   }),

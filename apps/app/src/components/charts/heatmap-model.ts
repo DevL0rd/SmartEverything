@@ -1,3 +1,5 @@
+import { captionWidthOf } from './scale';
+
 export interface HeatDay {
   readonly day: string;
   readonly pages: number;
@@ -18,7 +20,8 @@ export interface CalendarBlock {
   readonly cells: readonly CalendarCell[];
   readonly columns: number;
   readonly span: number;
-  readonly labels: readonly { readonly column: number; readonly text: string }[];
+  readonly starts: readonly MonthStart[];
+  readonly crosses: boolean;
 }
 
 const MONTHS = [
@@ -55,14 +58,25 @@ export function calendarCells(days: readonly HeatDay[], today: string): readonly
   }));
 }
 
-type BlockLabel = CalendarBlock['labels'][number];
-
-const LABEL_COLUMNS = { month: 3, year: 4 } as const;
-
-function monthLabelOf(cell: CalendarCell, withYear: boolean): BlockLabel {
-  const month = MONTHS[Number(cell.day.slice(5, 7)) - 1] ?? '';
-  return { column: cell.column, text: withYear ? `${month} ${cell.day.slice(0, 4)}` : month };
+export interface MonthStart {
+  readonly column: number;
+  readonly key: string;
+  readonly month: string;
+  readonly year: string;
+  readonly january: boolean;
 }
+
+export interface BlockLabel {
+  readonly column: number;
+  readonly text: string;
+}
+
+interface KeyedLabel extends BlockLabel {
+  readonly start: MonthStart;
+  readonly year: boolean;
+}
+
+const LABEL_GAP = 8;
 
 function monthStarts(cells: readonly CalendarCell[]): readonly CalendarCell[] {
   const seen = new Set<string>();
@@ -74,26 +88,82 @@ function monthStarts(cells: readonly CalendarCell[]): readonly CalendarCell[] {
   });
 }
 
-function crowds(previous: BlockLabel | undefined, label: BlockLabel): boolean {
-  if (previous === undefined) return false;
-  const room = previous.text.includes(' ') ? LABEL_COLUMNS.year : LABEL_COLUMNS.month;
-  return label.column - previous.column < room;
+function startOf(cell: CalendarCell): MonthStart {
+  const index = Number(cell.day.slice(5, 7)) - 1;
+  const month = MONTHS[index];
+  if (month === undefined) throw new Error(`Calendar day ${cell.day} has no month`);
+  return {
+    column: cell.column,
+    key: cell.day.slice(0, 7),
+    month,
+    year: cell.day.slice(0, 4),
+    january: index === 0,
+  };
 }
 
-function labelsOf(cells: readonly CalendarCell[]): CalendarBlock['labels'] {
-  const crosses = new Set(cells.map((cell) => cell.day.slice(0, 4))).size > 1;
-  const labels: BlockLabel[] = [];
-  for (const cell of monthStarts(cells)) {
-    const previous = labels.at(-1);
-    const withYear = crosses && (previous === undefined || cell.day.slice(5, 7) === '01');
-    const label = monthLabelOf(cell, withYear);
-    if (!crowds(previous, label)) {
-      labels.push(label);
-      continue;
-    }
-    labels[labels.length - 1] = labels.length === 1 && crosses ? monthLabelOf(cell, true) : label;
+function labelOf(start: MonthStart, year: boolean): KeyedLabel {
+  return {
+    column: start.column,
+    start,
+    year,
+    text: year ? `${start.month} ${start.year}` : start.month,
+  };
+}
+
+function crowds(previous: KeyedLabel, label: KeyedLabel, step: number): boolean {
+  return (label.column - previous.column) * step < captionWidthOf(previous.text) + LABEL_GAP;
+}
+
+function placeLabel(labels: KeyedLabel[], label: KeyedLabel, step: number): void {
+  const previous = labels.at(-1);
+  if (previous === undefined || !crowds(previous, label, step)) {
+    labels.push(label);
+    return;
+  }
+  if (labels.length === 1 && previous.column === 0 && !label.year) {
+    labels[0] = labelOf(label.start, previous.year);
+    return;
+  }
+  if (!label.year) return;
+  labels.pop();
+  const short = labelOf(previous.start, false);
+  if (previous.year && !crowds(short, label, step)) {
+    labels.push(short, label);
+    return;
+  }
+  placeLabel(labels, label, step);
+}
+
+function blockLabelsOf(
+  block: CalendarBlock,
+  step: number,
+  carried: string | undefined,
+): readonly KeyedLabel[] {
+  const labels: KeyedLabel[] = [];
+  for (const start of block.starts) {
+    if (labels.length === 0 && start.key === carried) continue;
+    const label = labelOf(start, block.crosses && (labels.length === 0 || start.january));
+    placeLabel(labels, label, step);
   }
   return labels;
+}
+
+export interface LabelledBlock {
+  readonly block: CalendarBlock;
+  readonly labels: readonly BlockLabel[];
+}
+
+export function calendarLabels(
+  blocks: readonly CalendarBlock[],
+  step: number,
+): readonly LabelledBlock[] {
+  let carried: string | undefined;
+  return blocks.map((block) => {
+    const labels = blockLabelsOf(block, step, carried);
+    const last = labels.at(-1);
+    if (last !== undefined) carried = last.start.key;
+    return { block, labels: labels.map(({ column, text }) => ({ column, text })) };
+  });
 }
 
 function nearestTo(ideal: number, candidates: readonly number[]): number | null {
@@ -133,7 +203,13 @@ export function calendarBlocks(
       const members = cells
         .filter((cell) => cell.column >= from && cell.column < to)
         .map((cell) => ({ ...cell, column: cell.column - from }));
-      return { cells: members, columns: to - from, span, labels: labelsOf(members) };
+      return {
+        cells: members,
+        columns: to - from,
+        span,
+        starts: monthStarts(members).map(startOf),
+        crosses: new Set(members.map((cell) => cell.day.slice(0, 4))).size > 1,
+      };
     })
     .filter((block) => block.cells.length > 0);
 }

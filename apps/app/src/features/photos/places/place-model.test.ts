@@ -42,9 +42,7 @@ const COUNTRIES: readonly PlaceCountry[] = [
 
 describe('places model', () => {
   it('sums the library line', () => {
-    expect(libraryLine(COUNTRIES, false)).toBe(
-      '3 places in 2 countries · 1,592 photos have a location',
-    );
+    expect(libraryLine(COUNTRIES, false)).toBe('3 places · 2 countries · 1,592 photos');
     expect(libraryLine(COUNTRIES, true)).toBe('3 places · 1,592 photos');
   });
 
@@ -145,7 +143,7 @@ describe('places model', () => {
     expect(clusterCovers(cluster, [], [])).toEqual([first]);
   });
 
-  it('writes the cluster line with items, span and places', () => {
+  it('writes the cluster line with photos, span and places', () => {
     const cluster = {
       geohash: 'e',
       lat: 38.7,
@@ -155,9 +153,9 @@ describe('places model', () => {
       placeId: 1,
     };
     expect(clusterLine(cluster, '2021 to 2026 · 5 visits', null)).toBe(
-      '1,284 items · 2021 to 2026 · 5 visits',
+      '1,284 photos · 2021 to 2026 · 5 visits',
     );
-    expect(clusterLine({ ...cluster, count: 1 }, null, '2 places')).toBe('1 item · 2 places');
+    expect(clusterLine({ ...cluster, count: 1 }, null, '2 places')).toBe('1 photo · 2 places');
   });
 
   it('makes newest first visit chips and the span line', () => {

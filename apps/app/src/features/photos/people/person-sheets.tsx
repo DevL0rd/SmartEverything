@@ -10,7 +10,7 @@ import { Text } from '../../../components/text';
 import { useProfiles } from '../../../store/people';
 import { usePeopleActions } from './actions';
 import { FaceAvatar } from './face-avatar';
-import { groupTitleOf, mergeTargetsOf, photosText } from './model';
+import { groupTitleOf, mergeSubtitleOf, mergeTargetsOf } from './model';
 import { usePhotoPeople } from './queries';
 
 export type PersonSheet = 'link' | 'merge' | null;
@@ -91,7 +91,7 @@ function MergeRow({
   return (
     <ListRow
       title={groupTitleOf(group)}
-      subtitle={photosText(group.count)}
+      subtitle={mergeSubtitleOf(group)}
       leading={
         <FaceAvatar itemId={group.coverItemId} box={group.coverBox} kind={group.kind} size={40} />
       }
@@ -203,7 +203,7 @@ function MergeSheet({
       open={open}
       onClose={close}
       title={`Merge into ${groupTitleOf(group)}`}
-      detents={['half', 'full']}
+      detents={['fit', 'full']}
       footer={
         targets.length === 0 ? undefined : (
           <MergeFooter
@@ -246,7 +246,7 @@ export function PersonSheets({
         open={sheet === 'link'}
         onClose={onClose}
         title="Link to a person"
-        detents={['half', 'full']}
+        detents={['fit', 'full']}
       >
         {sheet === 'link' ? <LinkSheet group={group} onClose={onClose} /> : null}
       </Sheet>

@@ -276,7 +276,7 @@ function Loading({ places }: { readonly places: PlacesQuery }): ReactNode {
 function OfflineNote(): ReactNode {
   const offline = useSyncStatus().status === 'interrupted';
   return offline ? (
-    <Banner tone="warning" title={MAP_COPY.offline.title} body={MAP_COPY.offline.body} wrapBody />
+    <Banner tone="info" title={MAP_COPY.offline.title} body={MAP_COPY.offline.body} wrapBody />
   ) : null;
 }
 

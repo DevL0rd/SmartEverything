@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   areaPath,
+  barLabelPlacesOf,
   extentOf,
   extremaOf,
   hitsAt,
@@ -9,8 +10,6 @@ import {
   plotModel,
   segmentsOf,
   startOf,
-  thinned,
-  thinnedFromEnd,
   type ChartPoint,
   type ChartRange,
 } from './scale';
@@ -199,17 +198,27 @@ describe('series helpers', () => {
   });
 });
 
-describe('thinned labels', () => {
-  const days = Array.from({ length: 30 }, (_, index) => index + 1);
+describe('bar axis labels', () => {
+  const days = Array.from({ length: 31 }, (_, index) => `${String(index + 1)} Oct`);
 
-  it('keeps every n-th label from the first one', () => {
-    expect(thinned(days, 300, 40).slice(0, 3)).toEqual([1, 5, 9]);
+  it('keeps the edge labels inside the plot and at least 8 px apart', () => {
+    const places = barLabelPlacesOf(days, 300, 'start');
+    const first = places[0];
+    const last = places.at(-1);
+    expect(first).toMatchObject({ index: 0, align: 'start', from: 0 });
+    expect(last?.to).toBeLessThanOrEqual(300);
+    places.slice(1).forEach((place, index) => {
+      const previous = places[index];
+      if (previous === undefined) throw new Error('missing place');
+      expect(place.from - previous.to).toBeGreaterThanOrEqual(8);
+    });
   });
 
-  it('always keeps the newest label when counting from the end', () => {
-    const kept = thinnedFromEnd(days, 300, 40);
-    expect(kept.at(-1)).toBe(30);
-    expect(kept.slice(-3)).toEqual([22, 26, 30]);
-    expect(thinnedFromEnd([1, 2, 3], 300, 40)).toEqual([1, 2, 3]);
+  it('ends an end-anchored axis on the newest label, aligned to the right edge', () => {
+    const places = barLabelPlacesOf(days, 300, 'end');
+    expect(places.at(-1)).toMatchObject({ index: 30, align: 'end', to: 300 });
+    expect(barLabelPlacesOf(['a', undefined, 'c'], 300, 'start').map((p) => p.index)).toEqual([
+      0, 2,
+    ]);
   });
 });
