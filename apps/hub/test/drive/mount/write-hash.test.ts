@@ -222,20 +222,20 @@ describe('a mounted commit', () => {
     await rig.close();
   });
 
+  function covered(parts: readonly (readonly [number, string])[]): number {
+    const marked = new Set<number>();
+    for (const [offset, value] of parts) {
+      for (let at = offset; at < offset + Buffer.byteLength(value); at += 1) marked.add(at);
+    }
+    return marked.size;
+  }
+
   async function written(
     name: string,
     parts: readonly (readonly [number, string])[],
     size: number,
   ): Promise<{ item: { sha256: string | null } | undefined; content: Buffer }> {
-    const entry = await mine.client.call('CREATE', {
-      parent: mine.root,
-      name,
-      mode: 0o644,
-      uid: null,
-      gid: null,
-      exclusive: true,
-      opKey: opKey(),
-    });
+    const entry = await mine.client.created(mine.root, name);
     const { commit } = await mine.client.call('BEGIN', {
       ino: entry.ino,
       baseRev: entry.attr.rev,
@@ -247,6 +247,7 @@ describe('a mounted commit', () => {
     await mine.client.call('END', {
       commit,
       size,
+      length: covered(parts),
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),

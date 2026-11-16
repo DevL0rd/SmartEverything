@@ -1,9 +1,9 @@
 import type { DriveChangeResult } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { changeDrive } from '../../../api/drive';
 import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
-import { useMutationState } from '../../../store/mutation';
+import { keptLine, useBulkRunning } from '../../../store/bulk-run';
+import { changeDriveInBatches, type DriveBulk, type DriveChanger } from '../../../store/drive-bulk';
 import { restoreLocalCopiesWithNotice } from '../library/local-copies';
 import {
   deleteAllConfirm,
@@ -38,40 +38,76 @@ export function restoreLocalOf(result: DriveChangeResult): void {
   background(restoreLocalCopiesWithNotice(restored), 'photos.deleted.local_restore_failed');
 }
 
-export function useDeletedActions(onDone: () => void): DeletedActions {
-  const mutation = useMutationState();
-  const settled =
-    (verb: DeletedVerb) =>
-    (result: DriveChangeResult): void => {
-      reportSkipped(result, verb);
-      onDone();
-    };
-  const restore = (items: readonly DeletedItem[]): void => {
-    if (items.length === 0) return;
-    mutation.run(() => changeDrive({ action: 'restore', itemIds: idsOf(items) }), {
-      failure: 'Nothing was restored',
+interface DeletedRun {
+  readonly bulk: DriveBulk;
+  readonly verb: DeletedVerb;
+  readonly failure: string;
+  readonly onDone: () => void;
+}
+
+export async function runDeleted(
+  run: DeletedRun,
+  change?: DriveChanger,
+): Promise<DriveChangeResult | null> {
+  try {
+    const { result, outcome } = await changeDriveInBatches(run.bulk, change);
+    reportSkipped(result, run.verb);
+    if (outcome.reason !== null && outcome.kept.length > result.failed.length) {
+      notify({ message: run.failure, detail: keptLine(outcome, outcome.reason), tone: 'critical' });
+    }
+    run.onDone();
+    return result;
+  } catch (error) {
+    notify({ message: run.failure, error, tone: 'critical' });
+    return null;
+  }
+}
+
+async function restoreNow(items: readonly DeletedItem[], onDone: () => void): Promise<void> {
+  const result = await runDeleted({
+    bulk: {
       label: 'photos.deleted.restore',
-      onDone: (result): void => {
-        settled('restored')(result);
-        restoreLocalOf(result);
-      },
-    });
-  };
-  const remove = async (items: readonly DeletedItem[], request: ConfirmRequest): Promise<void> => {
-    if (!(await confirm(request))) return;
-    mutation.run(() => changeDrive({ action: 'delete_now', itemIds: idsOf(items) }), {
-      failure: 'Nothing was deleted',
+      verb: 'Restoring',
+      ids: idsOf(items),
+      body: (batch) => ({ action: 'restore', itemIds: batch }),
+    },
+    verb: 'restored',
+    failure: 'Not everything was restored',
+    onDone,
+  });
+  if (result !== null) restoreLocalOf(result);
+}
+
+async function removeNow(
+  items: readonly DeletedItem[],
+  request: ConfirmRequest,
+  onDone: () => void,
+): Promise<void> {
+  if (!(await confirm(request))) return;
+  await runDeleted({
+    bulk: {
       label: 'photos.deleted.delete_now',
-      onDone: settled('deleted'),
-    });
-  };
+      verb: 'Deleting',
+      ids: idsOf(items),
+      body: (batch) => ({ action: 'delete_now', itemIds: batch }),
+    },
+    verb: 'deleted',
+    failure: 'Not everything was deleted',
+    onDone,
+  });
+}
+
+export function useDeletedActions(onDone: () => void): DeletedActions {
   const confirmed = (items: readonly DeletedItem[], request: ConfirmRequest): void => {
     if (items.length === 0) return;
-    background(remove(items, request), 'photos.deleted.delete_failed');
+    background(removeNow(items, request, onDone), 'photos.deleted.delete_failed');
   };
   return {
-    busy: mutation.busy,
-    restore,
+    busy: useBulkRunning(),
+    restore: (items): void => {
+      if (items.length === 0) return;
+      background(restoreNow(items, onDone), 'photos.deleted.restore_failed');
+    },
     deleteNow: (items): void => {
       confirmed(items, deleteNowConfirm(totalsOf(items)));
     },

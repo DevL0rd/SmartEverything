@@ -100,7 +100,7 @@ func (s *session) copyLocked(ctx context.Context, from copySource, srcOff, dstOf
 		return 0, wire.Attr{}, commit, errors.Join(err, w.abortCommit(ctx, commit))
 	}
 	end, err := w.caller.Call(ctx, wire.OpEnd, wire.Meta{
-		wire.KeyCommit: commit, wire.KeySize: max(s.size, dstOff+copied), wire.KeyMtimeNs: time.Now().UnixNano(),
+		wire.KeyCommit: commit, wire.KeySize: max(s.size, dstOff+copied), wire.KeyLength: copied, wire.KeyMtimeNs: time.Now().UnixNano(),
 		wire.KeyFsync: false, wire.KeyOpKey: wire.NewOpKey(),
 	}, nil)
 	if err != nil {

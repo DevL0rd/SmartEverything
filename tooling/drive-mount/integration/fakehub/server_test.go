@@ -19,6 +19,8 @@ func (r *recorder) Resume() wire.Resume { return wire.Resume{} }
 
 func (r *recorder) Established(context.Context, wire.Caller, bool) error { return nil }
 
+func (r *recorder) Offline() {}
+
 func (r *recorder) Changed(c wire.Changed) {
 	r.mu.Lock()
 	r.changes = append(r.changes, c)
@@ -69,7 +71,12 @@ func TestTheWireServerCreatesWritesAndReadsBack(t *testing.T) {
 	h := New(t)
 	c, _ := connect(t, h)
 	root := attach(t, c)
-	created := call(t, c, wire.OpCreate, wire.Meta{wire.KeyParent: root.Ino, wire.KeyName: "a.txt", wire.KeyMode: uint64(0o644), wire.KeyUid: nil, wire.KeyGid: nil, wire.KeyExclusive: true, wire.KeyOpKey: wire.NewOpKey()}, nil)
+	lease := call(t, c, wire.OpLease, wire.Meta{wire.KeyCount: uint64(4)}, nil)
+	start, err := lease.Meta.Uint(wire.KeyStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := call(t, c, wire.OpCreate, wire.Meta{wire.KeyParent: root.Ino, wire.KeyName: "a.txt", wire.KeyIno: start, wire.KeyMode: uint64(0o644), wire.KeyUid: nil, wire.KeyGid: nil, wire.KeyMtimeNs: int64(1), wire.KeyFsync: false, wire.KeyOpKey: wire.NewOpKey()}, []byte{})
 	entry, err := wire.ParseEntry(created.Meta)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +104,12 @@ func TestTheWireServerPushesOtherSessionsChangesOnly(t *testing.T) {
 	b, recB := connect(t, h)
 	root := attach(t, a)
 	attach(t, b)
-	call(t, a, wire.OpMkdir, wire.Meta{wire.KeyParent: root.Ino, wire.KeyName: "d", wire.KeyMode: uint64(0o755), wire.KeyUid: nil, wire.KeyGid: nil, wire.KeyOpKey: wire.NewOpKey()}, nil)
+	lease := call(t, a, wire.OpLease, wire.Meta{wire.KeyCount: uint64(1)}, nil)
+	start, err := lease.Meta.Uint(wire.KeyStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(t, a, wire.OpMkdir, wire.Meta{wire.KeyParent: root.Ino, wire.KeyName: "d", wire.KeyIno: start, wire.KeyMode: uint64(0o755), wire.KeyUid: nil, wire.KeyGid: nil, wire.KeyMtimeNs: int64(1), wire.KeyOpKey: wire.NewOpKey()}, nil)
 	select {
 	case <-recB.wake:
 	case <-time.After(5 * time.Second):

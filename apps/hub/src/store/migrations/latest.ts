@@ -1,5 +1,7 @@
 import { PHOTO_VISION_REFUSED_RETRY_MIGRATION } from './photo-vision-refused-retry';
 import { PHOTOS_THUMBHASH_DROP_MIGRATION } from './photos-thumbhash-drop';
+import { DRIVE_TEXT_SEARCH_ROWID_MIGRATION } from './drive-text-search-rowid';
+import { DRIVE_INODE_LEASES_MIGRATION } from './drive-inode-leases';
 import { DRIVE_ROOT_MOUNT_MIGRATION } from './drive-root-mount';
 import { DRIVE_MOUNT_TUNING_MIGRATION } from './drive-mount-tuning';
 import { DRIVE_MEMBER_AREA_MIGRATION } from './drive-member-area';
@@ -195,4 +197,6 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   DRIVE_ROOT_MOUNT_MIGRATION,
   PHOTO_VISION_REFUSED_RETRY_MIGRATION,
   PHOTOS_THUMBHASH_DROP_MIGRATION,
+  DRIVE_TEXT_SEARCH_ROWID_MIGRATION,
+  DRIVE_INODE_LEASES_MIGRATION,
 ];

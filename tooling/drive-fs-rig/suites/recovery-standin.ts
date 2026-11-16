@@ -124,7 +124,7 @@ export async function startStandin(
   await sendControl(name, routeLine(started, name, options.route));
   const point = files.mountPoint(name);
   await mkdir(point, { recursive: true, mode: 0o755 });
-  const id = started.computers[name].placements.owner;
+  const id = started.computers[name].placement;
   await sendControl(name, { op: 'mount', mount: id, root: started.ownerRoot, point });
   await awaitMounted(name, id);
   return replaceComputer(started, name, {

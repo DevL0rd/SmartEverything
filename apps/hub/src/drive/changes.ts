@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname } from 'node:path';
 import type { DriveFeedOp, DriveItem, DriveVersion, DriveVia } from '@smarteverything/domain';
-import type { DriveIntent } from '../store/repositories/drive-intents';
 import type { DriveInodePatch } from '../store/repositories/drive-item-inodes';
 import type { DriveItemDraft, DriveItemIdentity } from '../store/repositories/drive-items';
 import type { Store } from '../store/store';
@@ -18,8 +17,7 @@ import { classify } from './scanner-commit';
 import { onlyFile, type FileItem } from './file-item';
 import { discardUndo, type CommittedBytes } from './patch-commit';
 import { carryBlocks, namesSharing } from './shared-names';
-import { statSyncOf } from './disk-stamp';
-import { commitBytes, newVersion, recordOutsideVersion, type StagedBytes } from './versions';
+import { commitBytes, newVersion, type StagedBytes } from './versions';
 
 export interface ChangeActor {
   readonly actorProfileId: string | null;
@@ -205,6 +203,7 @@ export interface ContentWrite {
   readonly relPath: string;
   readonly actor: ChangeActor;
   readonly mode?: number | undefined;
+  readonly inode?: DriveInodePatch | undefined;
   readonly alongside?: (item: DriveItem) => void;
 }
 
@@ -245,6 +244,7 @@ export interface Settle {
   readonly actor: ChangeActor;
   readonly alongside: ((item: DriveItem) => void) | undefined;
   readonly mode: number | undefined;
+  readonly inode?: DriveInodePatch | undefined;
   readonly existing: FileItem | undefined;
   readonly parent: DriveItem | null;
   readonly before: FileStamp | null;
@@ -308,7 +308,11 @@ function updateNames(settle: Settle, existing: FileItem, inode: DriveInodePatch)
 export function settleContent(settle: Settle): ContentResult {
   const { env, root, actor, existing, committed, mode } = settle;
   const version = captureRow(settle);
-  const inode = { mtimeNs: committed.stamp.mtimeNs, ...(mode === undefined ? {} : { mode }) };
+  const inode = {
+    mtimeNs: committed.stamp.mtimeNs,
+    ...(mode === undefined ? {} : { mode }),
+    ...settle.inode,
+  };
   const identity = identityOf(committed.stamp);
   const written = env.store.driveItems.write({ item: writtenDraft(settle), identity, inode });
   if (written.changed) {
@@ -354,7 +358,16 @@ export async function finishContent(
   return result;
 }
 
-export async function commitContent(env: ChangeEnv, write: ContentWrite): Promise<ContentResult> {
+export interface PreparedContent {
+  readonly committed: CommittedBytes;
+  readonly settle: () => ContentResult;
+}
+
+export async function prepareContent(
+  env: ChangeEnv,
+  write: ContentWrite,
+  deferred?: Set<string>,
+): Promise<PreparedContent> {
   const { root, relPath, actor } = write;
   const { existing, before } = await locateExisting(env, root, relPath);
   const parent = parentOf(env, root.id, relPath);
@@ -364,70 +377,17 @@ export async function commitContent(env: ChangeEnv, write: ContentWrite): Promis
     relPath,
     previousSha256: trustedSha(existing, before),
     mode: write.mode,
+    deferred,
   });
   const alongside = write.alongside;
-  const settle = { env, root, relPath, actor, alongside, mode: write.mode };
-  return finishContent(env, root, committed, () =>
-    settleContent({ ...settle, existing, parent, before, committed }),
-  );
-}
-
-const OUTSIDE: ChangeActor = { actorProfileId: null, via: 'outside', deviceId: null };
-
-interface Finished {
-  readonly env: ChangeEnv;
-  readonly root: DriveWriteRoot;
-  readonly intent: DriveIntent;
-  readonly existing: FileItem | undefined;
-  readonly stamp: FileStamp;
-}
-
-function finishedDraft({ env, root, intent, existing, stamp }: Finished): DriveItemDraft {
-  if (existing === undefined) {
-    const added = {
-      rootId: root.id,
-      parentId: parentOf(env, root.id, intent.toPath)?.id ?? null,
-      relPath: intent.toPath,
-      modifiedAt: isoOf(stamp.mtimeNs),
-      addedAt: env.now().toISOString(),
-      outside: true,
-      addedByProfileId: null,
-    };
-    return fileDraft(added, { bytes: stamp.size, sha256: null });
-  }
+  const settle = { env, root, relPath, actor, alongside, mode: write.mode, inode: write.inode };
   return {
-    ...existing,
-    bytes: stamp.size,
-    modifiedAt: isoOf(stamp.mtimeNs),
-    sha256: null,
-    integrity: 'unknown',
-    thumb: { state: 'none' },
-    outside: true,
+    committed,
+    settle: () => settleContent({ ...settle, existing, parent, before, committed }),
   };
 }
 
-export function finishCommitFromDisk(
-  env: ChangeEnv,
-): (intent: DriveIntent, root: DriveWriteRoot) => void {
-  return (intent, root) => {
-    const stamp = statSyncOf(join(root.path, intent.toPath));
-    const existing = onlyFile(env.store.driveItems.byPath(root.id, intent.toPath, null));
-    env.store.write(() => {
-      if (intent.versionPath !== null && existing !== undefined) {
-        recordOutsideVersion(env, root.id, { item: existing, versionPath: intent.versionPath });
-      }
-      const inode = { mtimeNs: stamp.mtimeNs };
-      const identity = identityOf(stamp);
-      const names = existing === undefined ? [] : [existing, ...namesSharing(env.store, existing)];
-      const touched = (names.length === 0 ? [undefined] : names).map((name) => {
-        const item = finishedDraft({ env, root, intent, existing: name, stamp });
-        const written = env.store.driveItems.write({ item, identity, inode }).item;
-        appendFeed(env, written, name === undefined ? 'create' : 'update', OUTSIDE);
-        return written;
-      });
-      env.store.driveIntents.clear(intent.id);
-      announce(env, root.id, touched[0]?.parentId ?? null, touched);
-    });
-    env.purge.rearm();
-  };
+export async function commitContent(env: ChangeEnv, write: ContentWrite): Promise<ContentResult> {
+  const prepared = await prepareContent(env, write);
+  return finishContent(env, write.root, prepared.committed, prepared.settle);
 }

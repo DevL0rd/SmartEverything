@@ -238,6 +238,19 @@ export function directoryEntry(path: string): Entry {
   return { path, type: 'dir', size: 0, sha256: null, mode: 0, linkTarget: null };
 }
 
+async function reachableView(
+  state: RigState,
+  name: ComputerName,
+  relative: string,
+): Promise<readonly Entry[] | null> {
+  try {
+    return await walkMounted(state.computers[name], mountPath(name, relative));
+  } catch (cause) {
+    if (cause instanceof Error && cause.message.includes('ENETUNREACH')) return null;
+    throw cause;
+  }
+}
+
 export async function awaitView(
   state: RigState,
   name: ComputerName,
@@ -247,15 +260,10 @@ export async function awaitView(
   let last = '';
   let changedAt = Date.now();
   for (;;) {
-    const report = compare(
-      expected,
-      await walkMounted(state.computers[name], mountPath(name, relative)),
-      {
-        modes: false,
-      },
-    );
-    if (ok(report)) return;
-    const key = summary(report);
+    const view = await reachableView(state, name, relative);
+    const report = view === null ? null : compare(expected, view, { modes: false });
+    if (report !== null && ok(report)) return;
+    const key = report === null ? `${name} is still reconnecting to the Hub` : summary(report);
     if (key !== last) {
       last = key;
       changedAt = Date.now();

@@ -5,6 +5,7 @@ import { IconButton } from '../../../components/icon-button';
 import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { BulkProgressShown, useBulkRunning } from '../../../store/bulk-run';
 import type { FileBrowserHandle } from './browser-types';
 import { endsOf, fittingCount } from './fit-model';
 import type { MenuSpec } from './menu-specs';
@@ -56,11 +57,16 @@ function useFit(specs: readonly MenuSpec[]): Fit {
   };
 }
 
-function menuItemsOf<O>(browser: FileBrowserHandle<O>, specs: readonly MenuSpec[]): MenuItem[] {
+function menuItemsOf<O>(
+  browser: FileBrowserHandle<O>,
+  specs: readonly MenuSpec[],
+  locked: boolean,
+): MenuItem[] {
   return specs.map((spec) => ({
     id: spec.id,
     label: spec.label,
     icon: spec.icon,
+    disabled: locked,
     ...(spec.destructive ? { destructive: true } : {}),
     onPress: (): void => {
       browser.commands.menu(spec.id, browser.picked);
@@ -73,12 +79,14 @@ function Action<O>({
   spec,
   lead,
   divided,
+  locked,
   onLayout,
 }: {
   readonly browser: FileBrowserHandle<O>;
   readonly spec: MenuSpec;
   readonly lead: boolean;
   readonly divided: boolean;
+  readonly locked: boolean;
   readonly onLayout: (event: LayoutChangeEvent) => void;
 }): ReactNode {
   return (
@@ -88,6 +96,7 @@ function Action<O>({
           label={spec.label}
           icon={spec.icon}
           variant={spec.destructive ? 'destructive' : 'tonal'}
+          disabled={locked}
           onPress={() => {
             browser.commands.menu(spec.id, browser.picked);
           }}
@@ -104,6 +113,7 @@ export function SelectionActions<O>({
 }): ReactNode {
   const specs = [...browser.barActions.actions, ...browser.barActions.danger];
   const fit = useFit(specs);
+  const locked = useBulkRunning();
   const hidden = specs.slice(fit.shown);
   return (
     <View onLayout={fit.onRoom} className="min-w-0 flex-1 flex-row items-center overflow-hidden">
@@ -114,6 +124,7 @@ export function SelectionActions<O>({
           spec={spec}
           lead={index === 0}
           divided={spec.destructive ? specs[index - 1]?.destructive !== true : false}
+          locked={locked}
           onLayout={fit.onWidth(spec.id)}
         />
       ))}
@@ -129,7 +140,7 @@ export function SelectionActions<O>({
       ) : null}
       {hidden.length === 0 ? null : (
         <View className={cn('shrink-0', fit.shown > 0 && 'pl-2')}>
-          <OverflowButton items={menuItemsOf(browser, hidden)} label="More actions" />
+          <OverflowButton items={menuItemsOf(browser, hidden, locked)} label="More actions" />
         </View>
       )}
     </View>
@@ -143,15 +154,18 @@ export function SelectionRow<O>({
 }): ReactNode {
   const { picked, order, commands } = browser;
   return (
-    <View className="flex-row items-center gap-2 pb-1">
-      <IconButton icon="close" label="Clear the selection" onPress={commands.clearSelection} />
-      <Text variant="body-strong" numberOfLines={1} className="shrink-0">
-        {selectionLabelOf(picked.length)}
-      </Text>
-      {picked.length < order.length ? (
-        <Button label="Select all" variant="text" onPress={commands.selectAll} />
-      ) : null}
-      <SelectionActions browser={browser} />
+    <View className="gap-1 pb-1">
+      <View className="flex-row items-center gap-2">
+        <IconButton icon="close" label="Clear the selection" onPress={commands.clearSelection} />
+        <Text variant="body-strong" numberOfLines={1} className="shrink-0">
+          {selectionLabelOf(picked.length)}
+        </Text>
+        {picked.length < order.length ? (
+          <Button label="Select all" variant="text" onPress={commands.selectAll} />
+        ) : null}
+        <SelectionActions browser={browser} />
+      </View>
+      <BulkProgressShown onContainer={false} />
     </View>
   );
 }

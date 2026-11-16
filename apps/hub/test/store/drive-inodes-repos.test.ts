@@ -19,9 +19,9 @@ import {
 import {
   DriveMountCommitsRepository,
   coversRanges,
-  mergeRanges,
 } from '../../src/store/repositories/drive-mount-commits';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
+import { addRange } from '../../src/drive/mount/commits';
 import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
 import {
   DriveXattrsRepository,
@@ -544,12 +544,11 @@ describe('mount commits', () => {
     expect(first).toMatchObject({ state: 'open', ranges: [], size: null, resultRev: null });
   });
 
-  it('records received ranges merged, finishes and aborts', () => {
+  it('stores received ranges, finishes and aborts', () => {
     const open = { placementId: placement, nodeId: node, inodeId: inode, baseRev: 1 };
     const commit = commits.begin({ ...open, opKey: opKey(1) });
-    commits.received(commit.id, [0, 100]);
-    commits.received(commit.id, [200, 300]);
-    expect(commits.received(commit.id, [100, 200]).ranges).toEqual([[0, 300]]);
+    commits.setRanges(commit.id, [[0, 300]]);
+    expect(commits.byId(commit.id).ranges).toEqual([[0, 300]]);
     const done = commits.finish(commit.id, 300, 2);
     expect(done).toMatchObject({ state: 'done', size: 300, resultRev: 2 });
     const second = commits.begin({ ...open, opKey: opKey(2) });
@@ -598,12 +597,39 @@ describe('mount commits', () => {
   });
 
   it('merges ranges and knows when they cover a size', () => {
-    expect(mergeRanges([[0, 5]], [5, 9])).toEqual([[0, 9]]);
-    expect(mergeRanges([[0, 5]], [7, 9])).toEqual([
+    const merged = (start: [number, number][], added: [number, number]): [number, number][] => {
+      addRange(start, added[0], added[1]);
+      return start;
+    };
+    expect(merged([[0, 5]], [5, 9])).toEqual([[0, 9]]);
+    expect(merged([[0, 5]], [7, 9])).toEqual([
       [0, 5],
       [7, 9],
     ]);
-    expect(mergeRanges([[10, 20]], [0, 30])).toEqual([[0, 30]]);
+    expect(merged([[10, 20]], [0, 30])).toEqual([[0, 30]]);
+    expect(
+      merged(
+        [
+          [0, 2],
+          [4, 6],
+          [8, 10],
+          [12, 14],
+        ],
+        [5, 9],
+      ),
+    ).toEqual([
+      [0, 2],
+      [4, 10],
+      [12, 14],
+    ]);
+    expect(merged([[4, 6]], [0, 1])).toEqual([
+      [0, 1],
+      [4, 6],
+    ]);
+    expect(merged([[4, 6]], [8, 9])).toEqual([
+      [4, 6],
+      [8, 9],
+    ]);
     expect(coversRanges([[0, 9]], 9)).toBe(true);
     expect(
       coversRanges(

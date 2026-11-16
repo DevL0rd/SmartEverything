@@ -59,6 +59,7 @@ function push(code: number): PushOp {
 export const REQUEST_OP_NAMES = [
   'HELLO',
   'ATTACH',
+  'LEASE',
   'LOOKUP',
   'GETATTR',
   'READDIR',
@@ -108,6 +109,7 @@ export type PushName = (typeof PUSH_OP_NAMES)[number];
 export const REQUEST_OPS = {
   HELLO: request(0x01, 'session'),
   ATTACH: request(0x02, 'session'),
+  LEASE: request(0x03, 'concurrent'),
   LOOKUP: request(0x10, 'concurrent'),
   GETATTR: request(0x11, 'concurrent'),
   READDIR: request(0x12, 'concurrent'),
@@ -115,7 +117,7 @@ export const REQUEST_OPS = {
   STATFS: request(0x14, 'concurrent'),
   READLINK: request(0x15, 'concurrent'),
   MKDIR: request(0x20, 'mutation'),
-  CREATE: request(0x21, 'mutation'),
+  CREATE: request(0x21, 'mutation', true),
   MKNOD: request(0x22, 'mutation'),
   SYMLINK: request(0x23, 'mutation'),
   LINK: request(0x24, 'mutation'),

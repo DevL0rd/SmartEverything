@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { save } from '../posix/posix-rig';
 import { ListingCache } from '../../../src/drive/mount/listing-cache';
-import { attachTo, opKey, openMountRig, until, type Attached, type MountRig } from './mount-rig';
+import { attachTo, openMountRig, until, type Attached, type MountRig } from './mount-rig';
 
 let rig: MountRig;
 let writer: Attached;
@@ -48,15 +48,7 @@ describe('listing cache', () => {
     const pump = vi.spyOn(rig.mount.services.push, 'pump').mockImplementation(() => {
       sizes.push(rig.mount.services.listings.size);
     });
-    await reader.client.call('CREATE', {
-      parent: reader.root,
-      name: 'theirs.txt',
-      mode: 0o644,
-      uid: null,
-      gid: null,
-      exclusive: true,
-      opKey: opKey(),
-    });
+    await reader.client.created(reader.root, 'theirs.txt');
     await until(() => sizes.length > 0, 'a push pass');
     expect(sizes[0]).toBe(0);
     pump.mockRestore();

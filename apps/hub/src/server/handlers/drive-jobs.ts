@@ -1,9 +1,10 @@
 import type { Logger } from '@smarteverything/logging';
-import { textHandler, type TextEnvironment } from '../../drive/content/text-job';
+import { textHandler, type TextCursors, type TextEnvironment } from '../../drive/content/text-job';
 import { hashHandler } from '../../drive/hasher';
 import { jobKey, runnerOf, scanHandler, type DriveJob } from '../../drive/jobs';
 import { metadataHandler } from '../../drive/metadata';
 import type { RootAvailability } from '../../drive/root-marker';
+import type { DriveRootLanes } from '../../drive/root-lanes';
 import type { StoreContext } from '../../store/context';
 import { DriveMediaRepository } from '../../store/repositories/drive-media';
 import type { Store } from '../../store/store';
@@ -17,6 +18,8 @@ export interface DriveJobDeps {
   readonly scannerScript: string;
   readonly hasherScript: string;
   readonly text: TextEnvironment;
+  readonly textCursors: TextCursors;
+  readonly lanes: DriveRootLanes;
 }
 
 export interface DriveJobRunner {
@@ -39,6 +42,7 @@ export function driveJobHandlers(deps: DriveJobDeps): DriveJobRunner {
         mounted: (rootId) => mountedRoot(store, rootId),
         workerScript: deps.scannerScript,
         log,
+        lanes: deps.lanes,
       }),
       hash: hashHandler({ store, availability, workerScript: deps.hasherScript, log }),
       metadata: metadataHandler({
@@ -47,7 +51,7 @@ export function driveJobHandlers(deps: DriveJobDeps): DriveJobRunner {
         availability,
         log,
       }),
-      text: textHandler(deps.text),
+      text: textHandler(deps.text, deps.textCursors),
     }),
   };
 }

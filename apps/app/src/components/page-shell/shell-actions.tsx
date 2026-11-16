@@ -208,7 +208,6 @@ export function ShellOverflow({
 function EditBar({ editing }: { readonly editing: ShellEditing }): ReactNode {
   return (
     <View className="flex-row items-center gap-2">
-      <ShellStatus />
       <Button label="Cancel" variant="text" onPress={editing.onCancel} />
       <Button label="Done" onPress={editing.onDone} />
     </View>

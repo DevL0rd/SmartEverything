@@ -153,13 +153,13 @@ function seedCommits(store: Store, context: FilesContext): number {
     });
     const size = rng.int(2_000, 90_000);
     if (index % 3 === 0) {
-      store.driveMountCommits.received(commit.id, [0, size]);
+      store.driveMountCommits.setRanges(commit.id, [[0, size]]);
       store.driveMountCommits.finish(commit.id, size, 2);
     } else if (index % 3 === 1) {
-      store.driveMountCommits.received(commit.id, [0, Math.floor(size / 2)]);
+      store.driveMountCommits.setRanges(commit.id, [[0, Math.floor(size / 2)]]);
       store.driveMountCommits.abort(commit.id);
     } else {
-      store.driveMountCommits.received(commit.id, [0, Math.floor(size / 3)]);
+      store.driveMountCommits.setRanges(commit.id, [[0, Math.floor(size / 3)]]);
     }
     count += 1;
   });

@@ -2,6 +2,7 @@ import { LEASE_MS } from '@smarteverything/domain/drive-mount';
 import { background, type Logger } from '@smarteverything/logging';
 import type { Store } from '../../store/store';
 import type { DriveActivity } from '../activity';
+import type { DriveRootLanes } from '../root-lanes';
 import type { PosixChangeEnv, PosixEnv } from '../posix/env';
 import { DrivePosix } from '../posix/service';
 import { MountCommits } from './commits';
@@ -30,6 +31,7 @@ export interface MountEnv {
   readonly guard: PosixEnv['guard'];
   readonly space: PosixEnv['space'];
   readonly activity: DriveActivity;
+  readonly lanes: DriveRootLanes;
   readonly log: Logger;
   readonly leaseMs?: number;
   readonly hashWorker?: string;
@@ -42,16 +44,21 @@ function journalOf(store: Store): () => string | null {
   };
 }
 
+function posixOf(env: MountEnv, held: HeldInodes): DrivePosix {
+  return new DrivePosix({
+    change: env.change,
+    guard: env.guard,
+    space: env.space,
+    holds: (inodeId): boolean => held.holds(inodeId),
+    lanes: env.lanes,
+  });
+}
+
 function servicesOf(env: MountEnv): MountServices {
   const { store, change } = env;
   const leaseMs = env.leaseMs ?? LEASE_MS;
   const held = new HeldInodes();
-  const posix = new DrivePosix({
-    change,
-    guard: env.guard,
-    space: env.space,
-    holds: (inodeId): boolean => held.holds(inodeId),
-  });
+  const posix = posixOf(env, held);
   const handles = new HandleTable({ posix, files: change.files, store }, held);
   let pool: HashPool | null = null;
   const hashes = (): HashPool => {

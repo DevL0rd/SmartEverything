@@ -1,6 +1,6 @@
 import type { RequestMetaInput } from '@smarteverything/domain/drive-mount';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { attachTo, opKey, openMountRig, until, type Attached, type MountRig } from './mount-rig';
+import { attachTo, openMountRig, until, type Attached, type MountRig } from './mount-rig';
 
 let rig: MountRig;
 let first: Attached;
@@ -17,15 +17,7 @@ beforeEach(async () => {
   const who = { nodeId: rig.posix.node, profileId: rig.posix.ownerId };
   first = await attachTo(rig, who, rig.posix.mine.id);
   second = await attachTo(rig, who, rig.posix.mine.id);
-  const entry = await first.client.call('CREATE', {
-    parent: first.root,
-    name: 'locked.db',
-    mode: 0o644,
-    uid: null,
-    gid: null,
-    exclusive: true,
-    opKey: opKey(),
-  });
+  const entry = await first.client.created(first.root, 'locked.db');
   ino = entry.ino;
 });
 

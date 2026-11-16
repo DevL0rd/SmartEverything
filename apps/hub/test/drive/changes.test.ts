@@ -7,11 +7,11 @@ import { type DriveConflict, type DriveConflictResolution } from '@smarteverythi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   commitContent,
-  finishCommitFromDisk,
   recordItem,
   type ChangeActor,
   type ChangeEnv,
 } from '../../src/drive/changes';
+import { finishCommitFromDisk } from '../../src/drive/commit-recovery';
 import {
   commitConflictCopy,
   conflictName,

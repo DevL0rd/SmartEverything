@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import type { DriveItem } from '@smarteverything/domain';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DrivePathError, ORPHAN_DIRECTORY, resolveInRoot } from '../../src/drive/paths';
 import { DriveInodesRepository, type DriveInode } from '../../src/store/repositories/drive-inodes';
 import { testLogger } from '../support/logs';
@@ -68,6 +69,7 @@ function environment(): ScanEnvironment {
     availability: () => Promise.resolve('online'),
     mounted: (): boolean => false,
     workerScript,
+    lanes: new DriveRootLanes(),
     log: testLogger(),
   };
 }

@@ -16,10 +16,11 @@ import (
 )
 
 type helper struct {
-	t     *testing.T
-	cmd   *exec.Cmd
-	in    *os.File
-	point string
+	t      *testing.T
+	cmd    *exec.Cmd
+	in     *os.File
+	point  string
+	status string
 }
 
 func buildHelper(t *testing.T) string {
@@ -70,7 +71,7 @@ func startHelper(t *testing.T, hub *fakehub.Hub) *helper {
 	stdinRead.Close()
 	tokenWrite.WriteString(fakehub.Token + "\n")
 	tokenWrite.Close()
-	h := &helper{t: t, cmd: cmd, in: stdinWrite, point: filepath.Join(work, "mnt")}
+	h := &helper{t: t, cmd: cmd, in: stdinWrite, point: filepath.Join(work, "mnt"), status: stdout.Name()}
 	if err := os.Mkdir(h.point, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,21 @@ func (h *helper) stop() {
 	case <-done:
 	case <-time.After(15 * time.Second):
 		h.cmd.Process.Kill()
-		exec.Command("fusermount3", "-u", "-z", h.point).Run()
 		<-done
+	}
+	h.unmount()
+}
+
+func (h *helper) unmount() {
+	mounts, err := os.ReadFile("/proc/self/mounts")
+	if err != nil {
+		h.t.Errorf("reading the mount table: %v", err)
+		return
+	}
+	if !strings.Contains(string(mounts), " "+h.point+" ") {
+		return
+	}
+	if out, err := exec.Command("fusermount3", "-u", "-z", h.point).CombinedOutput(); err != nil {
+		h.t.Errorf("unmounting %s: %v %s", h.point, err, out)
 	}
 }

@@ -88,7 +88,7 @@ export async function ensureArchives(): Promise<Archives> {
   await run('git', ['-C', mirror, 'archive', '--format=zip', prefix, '-o', archives.zipfile, tag], {
     env: environment,
   });
-  await run('tar', ['xzf', archives.tarball, '-C', archives.tarReference]);
+  await run('tar', ['xzf', archives.tarball, '--same-permissions', '-C', archives.tarReference]);
   await run('unzip', ['-q', archives.zipfile, '-d', archives.zipReference]);
   await run('touch', [join(root, 'complete')]);
   return archives;

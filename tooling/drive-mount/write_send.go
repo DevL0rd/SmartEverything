@@ -61,6 +61,9 @@ func (w *writeBack) nextSession() *session {
 }
 
 func (s *session) claim() bool {
+	if s.w.ns.blocks(s.ino()) {
+		return false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sending || s.gone {
@@ -74,6 +77,12 @@ type turn struct {
 	unit      *unitRecord
 	fsyncOnly bool
 	target    uint64
+	times     *timesTurn
+}
+
+type timesTurn struct {
+	atime *int64
+	mtime *int64
 }
 
 func (w *writeBack) process(s *session) {
@@ -83,6 +92,12 @@ func (w *writeBack) process(s *session) {
 		if !ok {
 			s.finishIfIdle()
 			return
+		}
+		if t.times != nil {
+			if !w.sendTimes(s, t.times) {
+				return
+			}
+			continue
 		}
 		if t.fsyncOnly {
 			if err := w.fsyncRemote(w.ctx, s.ino(), false); err != nil {
@@ -128,8 +143,12 @@ func (s *session) takeTurn() (turn, bool) {
 		unit := &unitRecord{
 			Ranges: slices.Clone(s.ranges.spans), Zeros: slices.Clone(s.zeros.spans), Size: s.size,
 			BeginKey: newKeyHex(), EndKey: newKeyHex(), Fsync: s.wanted > s.served,
-			WrittenNs: s.touched,
+			WrittenNs: s.touched, AtimeNs: s.atime,
 		}
+		if s.mtime != nil {
+			unit.WrittenNs = *s.mtime
+		}
+		s.atime, s.mtime = nil, nil
 		s.unitSync = s.wanted
 		s.forced = false
 		s.sealed = false
@@ -140,6 +159,14 @@ func (s *session) takeTurn() (turn, bool) {
 			logJournal(s.rec.Ino, err)
 		}
 		return turn{unit: unit}, true
+	case s.hasTimes() && !s.needsCommit():
+		times := &timesTurn{atime: s.atime, mtime: s.mtime}
+		s.atime, s.mtime = nil, nil
+		s.sending = true
+		if err := s.saveLocked(false); err != nil {
+			logJournal(s.rec.Ino, err)
+		}
+		return turn{times: times}, true
 	case s.wanted > s.served:
 		s.sending = true
 		return turn{fsyncOnly: true, target: s.wanted}, true
@@ -183,10 +210,12 @@ func (w *writeBack) sendUnit(s *session, unit *unitRecord) (wire.Attr, error) {
 		if err := w.window.acquire(w.ctx); err != nil {
 			return wire.Attr{}, err
 		}
-		reply, err := w.caller.Call(w.ctx, wire.OpPut, wire.Meta{
+		meta := wire.Meta{
 			wire.KeyIno: ino, wire.KeyBaseRev: baseRev, wire.KeySize: unit.Size,
 			wire.KeyMtimeNs: unit.WrittenNs, wire.KeyFsync: unit.Fsync, wire.KeyOpKey: keyBytes(unit.EndKey),
-		}, payload)
+		}
+		unit.stampAtime(meta)
+		reply, err := w.caller.Call(w.ctx, wire.OpPut, meta, payload)
 		w.window.release()
 		if err != nil {
 			return wire.Attr{}, err
@@ -202,22 +231,85 @@ func (w *writeBack) sendUnit(s *session, unit *unitRecord) (wire.Attr, error) {
 	if err := w.sendWrites(s, unit.Commit, missing.spans); err != nil {
 		return wire.Attr{}, err
 	}
+	bulk := wire.WithBulk(w.ctx)
 	for _, span := range zeros.spans {
-		if _, err := w.caller.Call(w.ctx, wire.OpAllocate, wire.Meta{
+		if _, err := w.caller.Call(bulk, wire.OpAllocate, wire.Meta{
 			wire.KeyCommit: unit.Commit, wire.KeyMode: uint64(wire.AllocateZeroRange),
 			wire.KeyOffset: span[0], wire.KeyLength: span[1] - span[0],
 		}, nil); err != nil {
 			return wire.Attr{}, err
 		}
 	}
-	reply, err := w.caller.Call(w.ctx, wire.OpEnd, wire.Meta{
-		wire.KeyCommit: unit.Commit, wire.KeySize: unit.Size, wire.KeyMtimeNs: unit.WrittenNs,
-		wire.KeyFsync: unit.Fsync, wire.KeyOpKey: keyBytes(unit.EndKey),
-	}, nil)
+	meta := wire.Meta{
+		wire.KeyCommit: unit.Commit, wire.KeySize: unit.Size, wire.KeyLength: all.total(),
+		wire.KeyMtimeNs: unit.WrittenNs, wire.KeyFsync: unit.Fsync, wire.KeyOpKey: keyBytes(unit.EndKey),
+	}
+	unit.stampAtime(meta)
+	reply, err := w.caller.Call(bulk, wire.OpEnd, meta, nil)
 	if err != nil {
 		return wire.Attr{}, err
 	}
 	return committedAttr(reply)
+}
+
+func (u *unitRecord) stampAtime(meta wire.Meta) {
+	if u.AtimeNs != nil {
+		meta[wire.KeyAtimeNs] = *u.AtimeNs
+	}
+}
+
+func (w *writeBack) sendTimes(s *session, times *timesTurn) bool {
+	ino := s.ino()
+	valid := uint64(0)
+	meta := wire.Meta{wire.KeyIno: ino}
+	if times.atime != nil {
+		valid |= wire.SetattrValidAtime
+		meta[wire.KeyAtime] = *times.atime
+	}
+	if times.mtime != nil {
+		valid |= wire.SetattrValidMtime
+		meta[wire.KeyMtime] = *times.mtime
+	}
+	meta[wire.KeyValid] = valid
+	reply, err := w.mutate(w.ctx, wire.OpSetattr, meta, nil)
+	if err == nil {
+		attr, perr := reply.Meta.Attr(wire.KeyAttr)
+		if perr == nil {
+			w.noteHubAttr(attr)
+			s.mu.Lock()
+			s.attr = attr
+			s.mu.Unlock()
+			w.broadcast()
+			return true
+		}
+		err = perr
+	}
+	transient := w.ctx.Err() != nil || isTransient(err)
+	s.mu.Lock()
+	if transient {
+		if s.atime == nil {
+			s.atime = times.atime
+		}
+		if s.mtime == nil && times.mtime != nil && s.shown == *times.mtime {
+			s.mtime = times.mtime
+		}
+	} else {
+		s.failure = err
+	}
+	s.sending = false
+	if serr := s.saveLocked(false); serr != nil {
+		logJournal(s.rec.Ino, serr)
+	}
+	s.mu.Unlock()
+	fmt.Fprintln(os.Stderr, "times:", ino, err)
+	w.broadcast()
+	if transient && w.ctx.Err() == nil {
+		w.retryLater(s)
+	}
+	if !transient {
+		s.finishIfIdle()
+	}
+	return false
 }
 
 func committedAttr(reply wire.Reply) (wire.Attr, error) {
@@ -317,9 +409,12 @@ feed:
 					fail(err)
 					return
 				}
-				if _, err := w.caller.Call(ctx, wire.OpWrite, wire.Meta{wire.KeyCommit: commit, wire.KeyOffset: off}, buf); err != nil {
+				posted, err := w.caller.Post(ctx, wire.OpWrite, wire.Meta{wire.KeyCommit: commit, wire.KeyOffset: off}, buf)
+				if err != nil {
 					fail(err)
+					return
 				}
+				posted.Forget()
 			}(off, n)
 			off += n
 		}
@@ -461,7 +556,7 @@ func (w *writeBack) ack(s *session, unit *unitRecord, attr wire.Attr) bool {
 	s.served = max(s.served, s.unitSync)
 	s.failure = nil
 	s.retireBaseLocked()
-	more := s.sealed && s.needsCommit()
+	more := (s.sealed && s.needsCommit()) || s.hasTimes()
 	if !more {
 		s.sending = s.wanted > s.served
 	}

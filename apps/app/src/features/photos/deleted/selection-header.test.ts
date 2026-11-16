@@ -85,9 +85,11 @@ describe('Recently deleted selection bar', () => {
     expect(html).not.toContain('Delete now');
   });
 
-  it('leaves the actions out with nothing picked or the hub away', () => {
+  it('leaves the actions out with nothing picked and keeps them, locked, while busy', () => {
     expect(render({ picked: { count: 0, bytes: 0 } })).not.toContain('Restore');
-    expect(render({ disabled: true })).not.toContain('Delete now');
+    const busy = render({ disabled: true });
+    expect(busy).toContain('Delete now');
+    expect(busy).toContain('Restore');
   });
 });
 

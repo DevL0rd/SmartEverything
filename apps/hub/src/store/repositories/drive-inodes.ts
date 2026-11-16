@@ -1,3 +1,4 @@
+import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
 import { found, type StoreContext } from '../context';
 import { flag } from '../sql';
@@ -46,6 +47,7 @@ export interface DriveInode {
 }
 
 export interface DriveInodeDraft {
+  readonly id?: number | undefined;
   readonly rootId: string;
   readonly type: DriveInodeType;
   readonly mode?: number | undefined;
@@ -166,6 +168,29 @@ export function writeInodeTimes(
   });
 }
 
+function ownerValues(draft: DriveInodeDraft): Record<string, SQLInputValue> {
+  return {
+    id: draft.id ?? null,
+    rootId: draft.rootId,
+    type: draft.type,
+    mode: draft.mode ?? defaultModeOf(draft.type),
+    uid: draft.uid ?? null,
+    gid: draft.gid ?? null,
+    rdev: draft.rdev ?? null,
+    linkTarget: draft.linkTarget ?? null,
+  };
+}
+
+function timeValues(draft: DriveInodeDraft, now: bigint): Record<string, SQLInputValue> {
+  const mtime = draft.mtimeNs ?? now;
+  return {
+    atime: draft.atimeNs ?? mtime,
+    mtime,
+    ctime: draft.ctimeNs ?? mtime,
+    btime: draft.btimeNs ?? now,
+  };
+}
+
 export class DriveInodesRepository {
   constructor(private readonly context: StoreContext) {}
 
@@ -214,28 +239,14 @@ export class DriveInodesRepository {
 
   create(draft: DriveInodeDraft): DriveInode {
     return this.context.write(() => {
-      const now = nsOfMoment(this.context.now());
-      const mtime = draft.mtimeNs ?? now;
       const id = this.context.sql.get(
         ID,
-        `insert into drive_inodes (root_id, is_root, type, mode, uid, gid, rdev, link_target,
+        `insert into drive_inodes (id, root_id, is_root, type, mode, uid, gid, rdev, link_target,
             atime_ns, mtime_ns, ctime_ns, btime_ns, orphan)
-          values ($rootId, 0, $type, $mode, $uid, $gid, $rdev, $linkTarget,
+          values ($id, $rootId, 0, $type, $mode, $uid, $gid, $rdev, $linkTarget,
             $atime, $mtime, $ctime, $btime, 0)
           returning id`,
-        {
-          rootId: draft.rootId,
-          type: draft.type,
-          mode: draft.mode ?? defaultModeOf(draft.type),
-          uid: draft.uid ?? null,
-          gid: draft.gid ?? null,
-          rdev: draft.rdev ?? null,
-          linkTarget: draft.linkTarget ?? null,
-          atime: draft.atimeNs ?? mtime,
-          mtime,
-          ctime: draft.ctimeNs ?? mtime,
-          btime: draft.btimeNs ?? now,
-        },
+        { ...ownerValues(draft), ...timeValues(draft, nsOfMoment(this.context.now())) },
       );
       return this.byId(found(id, 'drive inode', 'new').id);
     });

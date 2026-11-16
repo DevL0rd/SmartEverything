@@ -6,6 +6,7 @@ import { background, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
 import type { Store } from '../../store/store';
 import { TMP_DIRECTORY, locate, type DriveFiles } from '../intents';
+import type { DriveMountCommit } from '../../store/repositories/drive-mount-commits';
 import type { MountCommits } from './commits';
 import type { HandleTable } from './handles';
 import type { MountSession } from './session';
@@ -78,26 +79,26 @@ export class MountCopy {
       request.dstOffset === 0 &&
       source.size > 0 &&
       request.length >= source.size &&
-      row.ranges.length === 0 &&
+      this.env.commits.rangesOf(row).length === 0 &&
       source.rootId === scope.drive.id;
     if (whole && (await this.reflinkCapable(scope.drive.id))) {
       await this.env.staging.clone(
         { rootId: scope.drive.id, commitId: row.id },
         `/proc/self/fd/${String(source.fd.fd)}`,
       );
-      this.env.store.driveMountCommits.received(row.id, [0, source.size]);
+      this.env.commits.receive(row, [0, source.size]);
       return { copied: source.size };
     }
-    return this.streamed(session, request, row.id, scope.drive.id);
+    return this.streamed(session, request, row, scope.drive.id);
   }
 
   private async streamed(
     session: MountSession,
     request: RequestMeta<'COPY'>,
-    commitId: number,
+    row: DriveMountCommit,
     rootId: string,
   ): Promise<ReplyMeta<'COPY'>> {
-    const target = { rootId, commitId };
+    const target = { rootId, commitId: row.id };
     let copied = 0;
     while (copied < request.length) {
       const wanted = Math.min(COPY_CHUNK_BYTES, request.length - copied);
@@ -110,10 +111,7 @@ export class MountCopy {
       copied += chunk.length;
     }
     if (copied > 0)
-      this.env.store.driveMountCommits.received(commitId, [
-        request.dstOffset,
-        request.dstOffset + copied,
-      ]);
+      this.env.commits.receive(row, [request.dstOffset, request.dstOffset + copied]);
     return { copied };
   }
 }

@@ -116,7 +116,11 @@ export class PlacementLifecycle {
   private onNotice(notice: CommittedNotice): void {
     if (notice.type !== 'drive_changed') return;
     for (const rootId of notice.rootIds) {
-      this.reconcile(this.deps.store.drivePlacements.forRoot(rootId));
+      this.reconcile(
+        this.deps.store.drivePlacements
+          .forRoot(rootId)
+          .filter((placement) => placement.folderItemId !== null),
+      );
     }
   }
 

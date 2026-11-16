@@ -55,11 +55,13 @@ type LockLost struct {
 type Caller interface {
 	Call(ctx context.Context, op Op, meta Meta, payload []byte) (Reply, error)
 	Do(ctx context.Context, op Op, meta Meta, payload []byte) ([]Reply, error)
+	Post(ctx context.Context, op Op, meta Meta, payload []byte) (Posted, error)
 }
 
 type Handler interface {
 	Resume() Resume
 	Established(ctx context.Context, c Caller, resumed bool) error
+	Offline()
 	Changed(Changed)
 	Reset(Reset)
 	LockLost(LockLost)
@@ -68,6 +70,20 @@ type Handler interface {
 type Reply struct {
 	Meta    Meta
 	Payload []byte
+}
+
+type Settled struct {
+	Reply Reply
+	Err   error
+}
+
+func (s Settled) Wait(context.Context) (Reply, error) { return s.Reply, s.Err }
+
+func (Settled) Forget() {}
+
+func PostByCall(ctx context.Context, c Caller, op Op, meta Meta, payload []byte) (Posted, error) {
+	reply, err := c.Call(ctx, op, meta, payload)
+	return Settled{Reply: reply, Err: err}, nil
 }
 
 func NewOpKey() []byte {

@@ -31,7 +31,7 @@ function failNextWrite(): void {
 
 describe('a failure in the index after the disk changed', () => {
   it('removes the new link name from the disk', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     failNextWrite();
     await expect(
       rig.posix.link(rig.scope, linkRequest(file.ino, rig.rootIno, 'b')),
@@ -59,13 +59,13 @@ describe('a failure in the index after the disk changed', () => {
   });
 
   it('puts a held file back under its name when the index cannot record the unlink', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     await save(rig, rig.mine, 'a', 'open');
     rig.held.add(file.ino);
     vi.spyOn(rig.opened.store.driveInodes, 'setOrphan').mockImplementationOnce(() => {
       throw new Error('the index refused the orphan');
     });
-    await expect(rig.posix.unlink(rig.scope, removal('a', rig.rootIno))).rejects.toThrow(
+    await expect(rig.posix.unlink(rig.scope, await removal(rig, rig.scope, 'a', rig.rootIno))).rejects.toThrow(
       'the index refused the orphan',
     );
     expect(await diskText(rig.mine, 'a')).toBe('open');

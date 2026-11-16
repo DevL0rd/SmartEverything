@@ -31,16 +31,19 @@ export function routeLine(state: RigState, name: ComputerName, route: RouteChoic
 
 export function rootFor(state: RigState, placement: string): string {
   if (placement === 'test') return state.ownerRoot;
-  if (placement === 'scratch') return state.homeRoot;
+  if (placement === 'scratch')
+    throw new Error(
+      'The scratch drive belongs to its own rig computer; only xfstests mounts it, through mount.fuse.smarteverything.',
+    );
   if (UUID.test(placement)) return placement;
-  throw new Error(`The placement must be test, scratch or a drive root id, got ${placement}.`);
+  throw new Error(`The placement must be test or a drive root id, got ${placement}.`);
 }
 
 export function placementFor(state: RigState, name: ComputerName, root: string): string {
-  const { placements } = state.computers[name];
-  if (root === state.ownerRoot) return placements.owner;
-  if (root === state.homeRoot) return placements.home;
-  throw new Error(`Computer ${name} has no placement of the drive root ${root}.`);
+  if (root === state.ownerRoot) return state.computers[name].placement;
+  throw new Error(
+    `Computer ${name} mounts only the owner's My Drive (${state.ownerRoot}), not ${root}.`,
+  );
 }
 
 export function isId(value: string): boolean {

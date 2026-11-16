@@ -57,6 +57,7 @@ export const REQUEST_SAMPLES = {
     commits: [5, 6],
   },
   ATTACH: { placementId: PLACEMENT },
+  LEASE: { count: 4096 },
   LOOKUP: { parent: 3, name: 'notes.txt' },
   GETATTR: { ino: 42 },
   READDIR: { ino: 3, cursor: 0 },
@@ -77,8 +78,8 @@ export const REQUEST_SAMPLES = {
   },
   STATFS: { ino: 3 },
   READLINK: { ino: 44 },
-  MKDIR: NAMED,
-  CREATE: { ...NAMED, exclusive: true },
+  MKDIR: { ...NAMED, ino: 43, mtimeNs: 1_763_100_002_000_000_000n },
+  CREATE: { ...NAMED, ino: 44, mtimeNs: 1_763_100_003_000_000_000n, fsync: false },
   MKNOD: { ...NAMED, name: 'pipe', type: INODE_TYPES.fifo, rdev: 0 },
   SYMLINK: {
     parent: 3,
@@ -89,8 +90,8 @@ export const REQUEST_SAMPLES = {
     opKey: bytes(3),
   },
   LINK: { ino: 42, parent: 3, name: 'second-name', opKey: bytes(4) },
-  UNLINK: { parent: 3, name: 'old.txt', opKey: bytes(5) },
-  RMDIR: { parent: 3, name: 'old-folder', opKey: bytes(6) },
+  UNLINK: { parent: 3, name: 'old.txt', ino: 45, opKey: bytes(5) },
+  RMDIR: { parent: 3, name: 'old-folder', ino: 46, opKey: bytes(6) },
   RENAME: {
     parent: 3,
     name: 'draft.tmp',
@@ -117,6 +118,7 @@ export const REQUEST_SAMPLES = {
   END: {
     commit: 5,
     size: 5_368_709_120,
+    length: 4096,
     mtimeNs: 1_700_000_000_123_456_789n,
     fsync: true,
     opKey: bytes(13),
@@ -149,6 +151,7 @@ export const REQUEST_PAYLOADS: Readonly<Record<string, Uint8Array>> = {
   SETXATTR: new TextEncoder().encode('reviewed'),
   WRITE: Uint8Array.from({ length: 300 }, (_, index) => index & 0xff),
   PUT: new TextEncoder().encode('hello world'),
+  CREATE: new TextEncoder().encode('new file'),
 };
 
 export const REPLY_SAMPLES = {
@@ -159,6 +162,7 @@ export const REPLY_SAMPLES = {
     frameLimit: 1_048_576 + 262_144 + 16,
   },
   ATTACH: { root: ROOT, ino: 3, attr: DIRECTORY_ATTR, seq: 811 },
+  LEASE: { start: 100_000, count: 4096 },
   LOOKUP: ENTRY,
   GETATTR: { attr: ATTR },
   READDIR: {

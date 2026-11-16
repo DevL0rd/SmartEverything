@@ -51,10 +51,6 @@ export interface SaveTally {
   readonly failed: number;
 }
 
-export function progressLine(done: number, total: number): string {
-  return total === 1 ? 'Saving to this device' : `Saving ${count(done + 1)} of ${count(total)}`;
-}
-
 function things(total: number): string {
   return total === 1 ? 'photo' : 'photos';
 }

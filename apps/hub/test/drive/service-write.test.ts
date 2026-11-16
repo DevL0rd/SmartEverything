@@ -19,6 +19,7 @@ import type { ConflictEnv } from '../../src/drive/conflicts';
 import { DriveReadService } from '../../src/drive/service-read';
 import { ensureDrives, personalDrive, sharedDrive } from '../../src/drive/spaces';
 import { DriveWriteService } from '../../src/drive/service-write';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import type { DriveCaller } from '../../src/drive/service-write-support';
 import { DriveShares } from '../../src/drive/shares';
 import { stageBytes, fileEnv, nodeFiles } from '../../src/drive/versions';
@@ -193,6 +194,7 @@ beforeEach(async () => {
     scan: (rootId): void => {
       scans.push(rootId);
     },
+    lanes: new DriveRootLanes(),
   });
 });
 

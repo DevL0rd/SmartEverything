@@ -13,7 +13,6 @@ import {
   type FrameProps,
 } from './shell-frame';
 import { ShellRail } from './shell-sections';
-import { SelectionBar } from './shell-status';
 import type { ShellAside } from './shell-types';
 import {
   AppBar,
@@ -31,11 +30,7 @@ function WideTitle({ frame }: { readonly frame: FrameProps }): ReactNode {
   const { shell, layout } = frame;
   const desktop = layout.header === 'desktop';
   if (selecting(shell)) {
-    return (
-      <SelectionBar style={desktop ? columnStyle(layout.column) : undefined}>
-        {shell.selection}
-      </SelectionBar>
-    );
+    return <View style={desktop ? columnStyle(layout.column) : undefined}>{shell.selection}</View>;
   }
   const row = titleRowOf(shell, frame.icon);
   return desktop ? (

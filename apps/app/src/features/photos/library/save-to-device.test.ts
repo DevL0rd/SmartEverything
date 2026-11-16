@@ -28,6 +28,7 @@ vi.mock('../../../platform/file-actions', () => ({ saveFile: vi.fn() }));
 vi.mock('../../drive', () => ({ driveLinks: { resolve: vi.fn() } }));
 vi.mock('../backup/handle', () => ({ backupHandle: { get: vi.fn() } }));
 
+import { bulkProgress } from '../../../store/bulk-run';
 import { saveToDevice, type SaveDeps } from './save-to-device';
 import { saveTargetOf, type SavePlatform } from './save-target';
 
@@ -63,6 +64,8 @@ interface Fake extends SaveDeps {
   readonly revealed: string[];
 }
 
+const bulkSeen: string[] = [];
+
 function fake(
   items: readonly DriveItem[],
   options: {
@@ -88,6 +91,9 @@ function fake(
     fileUrl: (entry) => Promise.resolve(`u/${entry.name}`),
     restore: (url, request): Promise<NativeHubResourceRestored> => {
       restored.push({ url, request });
+      const progress = bulkProgress();
+      if (progress !== null)
+        bulkSeen.push(`${progress.verb} ${String(progress.done)} of ${String(progress.total)}`);
       const result = options.results?.[request.name];
       if (result instanceof Error) return Promise.reject(result);
       return Promise.resolve(result ?? { result: 'saved', location: `content://${request.name}` });
@@ -109,6 +115,7 @@ function lastNotice(): ToastInput | undefined {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bulkSeen.length = 0;
 });
 
 describe('choosing where a photo goes back to', () => {
@@ -156,10 +163,8 @@ describe('saving photos to this device', () => {
       },
     ]);
     expect(deps.restored[1]?.request.target).toEqual({ kind: 'restored' });
-    expect(toast.notify.mock.calls[0]?.[0]).toMatchObject({ message: 'Saving 1 of 2' });
-    expect(toast.holdToast).toHaveBeenCalledWith(7, 'work');
-    expect(toast.updateToast).toHaveBeenLastCalledWith(7, { message: 'Saving 2 of 2' });
-    expect(toast.dismissToast).toHaveBeenCalledWith(7);
+    expect(bulkSeen).toEqual(['Saving 0 of 2', 'Saving 1 of 2']);
+    expect(bulkProgress()).toBeNull();
     const done = lastNotice();
     expect(done).toMatchObject({ message: 'Saved 2 photos', tone: 'positive' });
     done?.action?.onPress();

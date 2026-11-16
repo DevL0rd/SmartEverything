@@ -1,5 +1,4 @@
 import type { Attr, ReplyMeta, RequestMeta } from '@smarteverything/domain/drive-mount';
-import { CommandLanes } from '../../commands/lanes';
 import { posix, guarded } from './errors';
 import { PosixCreate } from './create';
 import { PosixLink } from './link';
@@ -8,7 +7,7 @@ import { PosixOpen, type OpenTarget } from './open';
 import { PosixReads, type DirectoryPage, type Entry } from './reads';
 import { PosixRemove } from './remove';
 import { PosixRename, type RenameRequest } from './rename';
-import { PosixSetattr, type SetattrRequest } from './setattr';
+import { PosixSetattr, type SetattrRequest, type WrittenTimes } from './setattr';
 import { statfsOf, type StatfsReply } from './statfs';
 import { PosixXattrs } from './xattr';
 import { PosixScope, type PosixCaller, type PosixEnv } from './env';
@@ -31,7 +30,6 @@ export class DrivePosix {
   private readonly renames: PosixRename;
   private readonly xattrs: PosixXattrs;
   private readonly opens: PosixOpen;
-  private readonly lanes = new CommandLanes();
 
   constructor(private readonly env: PosixEnv) {
     this.nodes = new PosixNodes(env);
@@ -76,11 +74,15 @@ export class DrivePosix {
   }
 
   private mutate<T>(rootId: string, operation: () => Promise<T> | T): Promise<T> {
-    return this.lanes.run(rootId, () => guarded(operation));
+    return this.env.lanes.run([rootId], () => guarded(operation));
   }
 
   lane<T>(rootId: string, operation: () => Promise<T>): Promise<T> {
     return this.mutate(rootId, operation);
+  }
+
+  landing<T>(rootId: string, ino: number, operation: () => Promise<T>): Promise<T> {
+    return this.env.lanes.shared(rootId, ino, () => guarded(operation));
   }
 
   lookup(scope: PosixScope, request: RequestMeta<'LOOKUP'>): Promise<Entry> {
@@ -111,8 +113,8 @@ export class DrivePosix {
     return this.mutate(scope.drive.id, () => this.creates.mkdir(scope, request));
   }
 
-  create(scope: PosixScope, request: RequestMeta<'CREATE'>): Promise<Entry> {
-    return this.mutate(scope.drive.id, () => this.creates.create(scope, request));
+  create(scope: PosixScope, request: RequestMeta<'CREATE'>, content: Uint8Array): Promise<Entry> {
+    return guarded(() => this.creates.create(scope, request, content));
   }
 
   mknod(scope: PosixScope, request: RequestMeta<'MKNOD'>): Promise<Entry> {
@@ -132,7 +134,7 @@ export class DrivePosix {
   }
 
   unlink(scope: PosixScope, request: RequestMeta<'UNLINK'>): Promise<void> {
-    return this.mutate(scope.drive.id, () => this.removes.unlink(scope, request));
+    return guarded(() => this.removes.unlink(scope, request));
   }
 
   rmdir(scope: PosixScope, request: RequestMeta<'RMDIR'>): Promise<void> {
@@ -178,7 +180,7 @@ export class DrivePosix {
     });
   }
 
-  stampWrite(scope: PosixScope, ino: number, writtenNs: bigint): Promise<void> {
-    return guarded(() => this.setattrs.stampWrite(scope, ino, writtenNs));
+  stampWrite(scope: PosixScope, ino: number, written: WrittenTimes): Promise<void> {
+    return guarded(() => this.setattrs.stampWrite(scope, ino, written));
   }
 }

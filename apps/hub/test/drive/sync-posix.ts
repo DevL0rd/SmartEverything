@@ -1,5 +1,6 @@
 import { DriveReadService } from '../../src/drive/service-read';
 import { DrivePosix } from '../../src/drive/posix/service';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { fileEnv } from '../../src/drive/versions';
 import { testLogger } from '../support/logs';
 import type { TestStore } from '../support/store';
@@ -24,6 +25,7 @@ export function syncPosixOf(store: TestStore['store'], now: () => Date): DrivePo
       inodes: () => Promise.resolve({ files: 1000, free: 900 }),
     },
     holds: (): boolean => false,
+    lanes: new DriveRootLanes(),
   });
 }
 

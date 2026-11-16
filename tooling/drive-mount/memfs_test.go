@@ -210,7 +210,11 @@ func (w *memWrite) Close() error {
 }
 
 func (m *memFS) Create(_ context.Context, a CreateArgs) (Entry, InodeWriteHandle, error) {
-	e, err := m.model.Create(m.by, a.Parent, a.Name, a.Mode, a.UID, a.GID, a.Exclusive)
+	if found, err := m.model.Lookup(a.Parent, a.Name); err == nil && !a.Exclusive {
+		m.opens.Add(1)
+		return found, &memWrite{m: m, ino: found.Ino}, nil
+	}
+	e, err := m.model.Create(m.by, fakehub.Made{Parent: a.Parent, Name: a.Name, Mode: a.Mode, UID: a.UID, GID: a.GID})
 	if err != nil {
 		return Entry{}, nil, err
 	}
@@ -241,7 +245,7 @@ func (m *memFS) Tmpfile(_ context.Context, a CreateArgs) (Entry, InodeWriteHandl
 }
 
 func (m *memFS) Mkdir(_ context.Context, a CreateArgs) (Entry, error) {
-	return m.model.Mkdir(m.by, a.Parent, a.Name, a.Mode, a.UID, a.GID)
+	return m.model.Mkdir(m.by, fakehub.Made{Parent: a.Parent, Name: a.Name, Mode: a.Mode, UID: a.UID, GID: a.GID})
 }
 
 func (m *memFS) Mknod(_ context.Context, a CreateArgs) (Entry, error) {
@@ -257,11 +261,11 @@ func (m *memFS) Link(_ context.Context, ino, parent uint64, name string) (Attr, 
 }
 
 func (m *memFS) Unlink(_ context.Context, parent uint64, name string) error {
-	return m.model.Unlink(m.by, parent, name)
+	return m.model.UnlinkName(m.by, parent, name)
 }
 
 func (m *memFS) Rmdir(_ context.Context, parent uint64, name string) error {
-	return m.model.Rmdir(m.by, parent, name)
+	return m.model.RmdirName(m.by, parent, name)
 }
 
 func (m *memFS) Rename(_ context.Context, a RenameArgs) error {
@@ -330,6 +334,8 @@ func (m *memFS) Unlock(_ context.Context, a UnlockArgs) error {
 }
 
 func (m *memFS) Pending(string) int64 { return 0 }
+
+func (m *memFS) OnPending(func()) {}
 
 func (m *memFS) SetReachable(bool) {}
 

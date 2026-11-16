@@ -314,7 +314,7 @@ func TestAnErrorFromTheHubReachesTheWriterAsItsErrno(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	if err := model.Unlink("test", model.Root(), "f"); err != nil {
+	if err := model.UnlinkName("test", model.Root(), "f"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(m.path("sub", "x")); !errors.Is(err, syscall.ENOENT) {

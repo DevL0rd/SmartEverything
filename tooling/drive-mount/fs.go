@@ -46,13 +46,39 @@ var (
 	_ fs.NodeOnForgetter    = (*node)(nil)
 )
 
-var negativeLifetime time.Duration
+var negativeLifetime atomic.Int64
 
 func init() {
 	live.subscribe(func(f liveFields) { setNegativeLifetime(f.negative.duration()) })
 }
 
-func setNegativeLifetime(d time.Duration) { atomic.StoreInt64((*int64)(&negativeLifetime), int64(d)) }
+func setNegativeLifetime(d time.Duration) { negativeLifetime.Store(int64(d)) }
+
+type negativeEntries struct {
+	fuse.RawFileSystem
+}
+
+func (n negativeEntries) Lookup(cancel <-chan struct{}, header *fuse.InHeader, name string, out *fuse.EntryOut) fuse.Status {
+	status := n.RawFileSystem.Lookup(cancel, header, name, out)
+	if status != fuse.ENOENT {
+		return status
+	}
+	*out = fuse.EntryOut{}
+	out.SetEntryTimeout(time.Duration(negativeLifetime.Load()))
+	return fuse.OK
+}
+
+func mountNodes(point string, root fs.InodeEmbedder, options *fs.Options) (*fuse.Server, error) {
+	server, err := fuse.NewServer(negativeEntries{fs.NewNodeFS(root, options)}, point, &options.MountOptions)
+	if err != nil {
+		return nil, err
+	}
+	go server.Serve()
+	if err := server.WaitMount(); err != nil {
+		return nil, err
+	}
+	return server, nil
+}
 
 func (n *node) ino() uint64 { return n.StableAttr().Ino }
 

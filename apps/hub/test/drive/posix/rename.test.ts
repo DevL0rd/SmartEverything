@@ -55,7 +55,7 @@ describe('rename to a free name', () => {
   it('moves a folder with everything in it to another folder', async () => {
     const dir = await rig.posix.mkdir(rig.scope, mkdir('d', rig.rootIno));
     const inner = await rig.posix.mkdir(rig.scope, mkdir('inner', dir.ino));
-    const deep = await rig.posix.create(rig.scope, create('deep.txt', inner.ino));
+    const deep = await rig.posix.create(rig.scope, create('deep.txt', inner.ino), new Uint8Array());
     const target = await rig.posix.mkdir(rig.scope, mkdir('t', rig.rootIno));
     await rig.posix.rename(rig.scope, moving([rig.rootIno, 'd'], [target.ino, 'moved']));
     expect(
@@ -208,10 +208,10 @@ describe('rename over an existing name', () => {
 
   it('replaces an empty folder with a folder and refuses a folder that has content', async () => {
     const from = await rig.posix.mkdir(rig.scope, mkdir('from', rig.rootIno));
-    await rig.posix.create(rig.scope, create('x', from.ino));
+    await rig.posix.create(rig.scope, create('x', from.ino), new Uint8Array());
     await rig.posix.mkdir(rig.scope, mkdir('empty', rig.rootIno));
     const full = await rig.posix.mkdir(rig.scope, mkdir('full', rig.rootIno));
-    await rig.posix.create(rig.scope, create('y', full.ino));
+    await rig.posix.create(rig.scope, create('y', full.ino), new Uint8Array());
     expect(
       await refusal(
         rig.posix.rename(rig.scope, moving([rig.rootIno, 'from'], [rig.rootIno, 'full'])),
@@ -283,7 +283,7 @@ describe('rename errors', () => {
   });
 
   it('refuses a destination parent that is a file and a view-only person', async () => {
-    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno), new Uint8Array());
     await named('g', 'x');
     expect(
       await refusal(rig.posix.rename(rig.scope, moving([rig.rootIno, 'g'], [file.ino, 'x']))),
@@ -332,9 +332,9 @@ describe('exchange', () => {
 
   it('swaps a folder and a file across folders and rewrites the paths inside the folder', async () => {
     const dir = await rig.posix.mkdir(rig.scope, mkdir('d', rig.rootIno));
-    await rig.posix.create(rig.scope, create('in.txt', dir.ino));
+    await rig.posix.create(rig.scope, create('in.txt', dir.ino), new Uint8Array());
     const other = await rig.posix.mkdir(rig.scope, mkdir('o', rig.rootIno));
-    await rig.posix.create(rig.scope, create('f', other.ino));
+    await rig.posix.create(rig.scope, create('f', other.ino), new Uint8Array());
     await rig.posix.rename(
       rig.scope,
       moving([rig.rootIno, 'd'], [other.ino, 'f'], RENAME_FLAGS.exchange),

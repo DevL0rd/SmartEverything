@@ -5,6 +5,7 @@ import type { StoredDrive } from '../store/repositories/drive-roots';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { MARKER_DIRECTORY } from './root-marker';
+import type { DriveRootLanes } from './root-lanes';
 import { ScanCommitter, type CommitDependencies } from './scanner-commit';
 import {
   CallClock,
@@ -84,6 +85,7 @@ export interface ScanEnvironment {
   readonly mounted: (rootId: string) => boolean;
   readonly workerScript: string;
   readonly log: Logger;
+  readonly lanes: DriveRootLanes;
   readonly newId?: () => string;
 }
 
@@ -265,7 +267,7 @@ async function scanRoot(env: ScanEnvironment, rootId: string, signal: AbortSigna
   env.store.driveRoots.update(rootId, { state: 'scanning', stateReason: null });
   const startedAt = performance.now();
   try {
-    await commitScan(env, root, signal, startedAt);
+    await env.lanes.run([root.id], () => commitScan(env, root, signal, startedAt));
   } catch (cause) {
     env.log.error('drive.scan_failed', cause, { rootId });
     env.store.driveRoots.update(rootId, { state: 'error', stateReason: messageOf(cause) });

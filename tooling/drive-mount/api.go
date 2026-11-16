@@ -133,6 +133,7 @@ type InodeWriter interface {
 	Setlk(ctx context.Context, args LockArgs) error
 	Unlock(ctx context.Context, args UnlockArgs) error
 	Pending(root string) int64
+	OnPending(fn func())
 }
 
 type InodeFilesystem interface {

@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { NODE_PROTOCOL_VERSION } from '../../packages/domain/src/node/frames.ts';
-import { files, type ComputerName } from './paths.ts';
+import { files } from './paths.ts';
 import { waitFor } from './processes.ts';
 
 const LOOPBACK = '127.0.0.1';
@@ -40,9 +40,12 @@ const BROWSE = z.object({
 
 export interface DriveRoots {
   readonly owner: string;
-  readonly home: string;
   readonly ownerFolder: string;
-  readonly homeFolder: string;
+}
+
+export interface PersonDrive {
+  readonly root: string;
+  readonly folder: string;
 }
 
 export interface PairedComputer {
@@ -87,30 +90,85 @@ export async function hubIdentity(
   return { serverName: identity.tls.serverName, pin: identity.tls.publicKeySha256 };
 }
 
-export async function driveRoots(http: number, token: string): Promise<DriveRoots> {
+async function personDrive(
+  http: number,
+  token: string,
+  profileId: string | null,
+): Promise<PersonDrive | undefined> {
   const roots = await call(ROOTS, `${httpUrl(http)}/api/drive/roots`, { token });
-  const owner = roots.find((root) => root.scope === 'person');
-  const home = roots.find((root) => root.scope === 'home');
-  if (owner?.ownerProfileId === undefined || owner.ownerProfileId === null || home === undefined)
-    throw new Error('The test Hub has no personal or shared drive root.');
-  return {
-    owner: owner.id,
-    home: home.id,
-    ownerFolder: join(files.data, 'people', owner.ownerProfileId, 'drive'),
-    homeFolder: join(files.data, 'home', 'drive'),
-  };
+  const found = roots.find(
+    (root) =>
+      root.scope === 'person' && (profileId === null || root.ownerProfileId === profileId),
+  );
+  if (found?.ownerProfileId === undefined || found.ownerProfileId === null) return undefined;
+  return { root: found.id, folder: join(files.data, 'people', found.ownerProfileId, 'drive') };
 }
 
-export async function createMember(http: number, token: string): Promise<string> {
+export async function driveRoots(http: number, token: string): Promise<DriveRoots> {
+  const drive = await personDrive(http, token, null);
+  if (drive === undefined) throw new Error('The test Hub has no personal drive root.');
+  return { owner: drive.root, ownerFolder: drive.folder };
+}
+
+export function driveOf(http: number, token: string, profileId: string): Promise<PersonDrive> {
+  return waitFor(
+    `the My Drive of ${profileId}`,
+    () => personDrive(http, token, profileId),
+    INDEX_TIMEOUT_MS,
+    200,
+  );
+}
+
+export async function createPerson(http: number, token: string, name: string): Promise<string> {
   const profile = await call(ID_ONLY, `${httpUrl(http)}/api/profiles`, {
     method: 'POST',
     token,
-    body: { name: 'Rig Member' },
+    body: { name },
   });
   return profile.id;
 }
 
-function hello(name: ComputerName, machineId: string): object {
+export async function makeOwner(http: number, token: string, profileId: string): Promise<void> {
+  await call(z.unknown(), `${httpUrl(http)}/api/access/people/${profileId}`, {
+    method: 'PATCH',
+    token,
+    body: { role: 'owner' },
+  });
+}
+
+const CLIENTS = z.array(
+  z.looseObject({ id: z.string().min(1), role: z.string(), profile_id: z.uuid() }),
+);
+
+export interface OwnerClient {
+  readonly id: string;
+  readonly profileId: string;
+}
+
+export async function ownerClient(http: number, token: string): Promise<OwnerClient> {
+  const owners = (await call(CLIENTS, `${httpUrl(http)}/api/clients`, { token })).filter(
+    (client) => client.role === 'owner',
+  );
+  const [only] = owners;
+  if (only === undefined || owners.length !== 1)
+    throw new Error(`The test Hub has ${String(owners.length)} owner clients; the rig expects one.`);
+  return { id: only.id, profileId: only.profile_id };
+}
+
+export async function actAs(
+  http: number,
+  token: string,
+  client: string,
+  profileId: string,
+): Promise<void> {
+  await call(z.unknown(), `${httpUrl(http)}/api/clients/${client}`, {
+    method: 'PATCH',
+    token,
+    body: { profile_id: profileId },
+  });
+}
+
+function hello(name: string, machineId: string): object {
   return {
     protocol: NODE_PROTOCOL_VERSION,
     machineId,
@@ -126,13 +184,13 @@ function hello(name: ComputerName, machineId: string): object {
 
 export async function pairComputer(
   http: number,
-  ownerKey: string,
-  name: ComputerName,
+  creator: string,
+  name: string,
 ): Promise<PairedComputer> {
   const machineId = randomBytes(16).toString('hex');
   const pairing = await call(PAIRING, `${httpUrl(http)}/api/nodes/pairing`, {
     method: 'POST',
-    token: ownerKey,
+    token: creator,
     body: { url: 'https://rig-hub.test:7882' },
   });
   const paired = await call(PAIRED, `${httpUrl(http)}/api/nodes/pairing/claim`, {
@@ -140,27 +198,6 @@ export async function pairComputer(
     body: { code: pairing.code, hello: hello(name, machineId) },
   });
   return { deviceId: paired.device_id, machineId, token: paired.token };
-}
-
-export async function placeDrive(
-  http: number,
-  token: string,
-  placement: { readonly deviceId: string; readonly rootId: string; readonly mountName: string },
-): Promise<string> {
-  const placed = await call(ID_ONLY, `${httpUrl(http)}/api/drive/placements`, {
-    method: 'PUT',
-    token,
-    body: {
-      deviceId: placement.deviceId,
-      rootId: placement.rootId,
-      folderItemId: null,
-      mode: 'mounted',
-      localPath: null,
-      mountName: placement.mountName,
-      enabled: true,
-    },
-  });
-  return placed.id;
 }
 
 export async function mountDrive(http: number, token: string, deviceId: string): Promise<string> {

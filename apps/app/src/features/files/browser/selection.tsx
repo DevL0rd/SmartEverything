@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { BulkProgressShown } from '../../../store/bulk-run';
 import { Button } from '../../../components/button';
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
@@ -23,6 +24,7 @@ function Docked<O>({ browser }: { readonly browser: FileBrowserHandle<O> }): Rea
       <View className="flex-row px-3">
         <SelectionActions browser={browser} />
       </View>
+      <BulkProgressShown onContainer={false} />
     </View>
   );
 }

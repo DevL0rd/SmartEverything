@@ -1,33 +1,74 @@
 import { appendFeed, announce } from '../changes';
 import { moveWithin, orphanRelPath } from '../intents';
 import { dropOrphan, holdOrphan } from '../orphans';
-import { stageTrash, type StagedTrash } from '../trash-purge';
+import { stageTrash, stageTrashDeferred, type StagedTrash } from '../trash-purge';
+import type { Barrier } from '../trash';
+import { NameBatches, reserve, type BatchSlot, type Landed } from './name-batches';
 import { posix } from './errors';
 import { actorOf, touchChange, touchDirectory } from './records';
 import type { PosixEnv, PosixScope } from './env';
-import type { PosixChild, PosixNodes } from './nodes';
+import type { PosixChild, PosixNode, PosixNodes } from './nodes';
+
+export interface NamedRemove {
+  readonly parent: number;
+  readonly name: string;
+  readonly ino: number;
+}
 
 export class PosixRemove {
+  private readonly batches: NameBatches<undefined>;
+
   constructor(
     private readonly env: PosixEnv,
     private readonly nodes: PosixNodes,
-  ) {}
-
-  async unlink(scope: PosixScope, request: { parent: number; name: string }): Promise<void> {
-    const parent = this.nodes.directory(scope, request.parent);
-    this.nodes.writable(parent);
-    const child = this.nodes.childOf(scope, parent, request.name);
-    if (child === undefined) throw posix('ENOENT', `${request.name} does not exist.`);
-    if (child.inode.type === 'dir') throw posix('EISDIR', `${request.name} is a folder.`);
-    await this.drop(scope, child);
-    touchDirectory(this.env.change, parent);
+  ) {
+    this.batches = new NameBatches({
+      lanes: env.lanes,
+      files: env.change.files,
+      write: <R>(work: () => R): R => env.change.store.write(work),
+      settled: (): void => {
+        env.change.purge.rearm();
+      },
+      log: env.change.log,
+    });
   }
 
-  async rmdir(scope: PosixScope, request: { parent: number; name: string }): Promise<void> {
+  private named(scope: PosixScope, request: NamedRemove): { parent: PosixNode; child: PosixChild } {
     const parent = this.nodes.directory(scope, request.parent);
     this.nodes.writable(parent);
     const child = this.nodes.childOf(scope, parent, request.name);
     if (child === undefined) throw posix('ENOENT', `${request.name} does not exist.`);
+    if (child.inode.id !== request.ino) {
+      throw posix('ESTALE', `${request.name} now names another item than the one removed.`);
+    }
+    return { parent, child };
+  }
+
+  async unlink(scope: PosixScope, request: NamedRemove): Promise<void> {
+    await this.batches.add(scope.drive.id, (slot) => this.landUnlink(scope, request, slot));
+  }
+
+  private async landUnlink(
+    scope: PosixScope,
+    request: NamedRemove,
+    slot: BatchSlot,
+  ): Promise<Landed<undefined>> {
+    const { parent, child } = this.named(scope, request);
+    if (child.inode.type === 'dir') throw posix('EISDIR', `${request.name} is a folder.`);
+    reserve(slot, child.item.relPath, `ino:${String(child.inode.id)}`);
+    const dropped = await this.stage(scope, child, slot.barrier);
+    return {
+      settle: (): void => {
+        dropped.record();
+        touchDirectory(this.env.change, parent);
+      },
+      abandon: dropped.undo,
+      reply: (): Promise<undefined> => Promise.resolve(undefined),
+    };
+  }
+
+  async rmdir(scope: PosixScope, request: NamedRemove): Promise<void> {
+    const { parent, child } = this.named(scope, request);
     if (child.inode.type !== 'dir') throw posix('ENOTDIR', `${request.name} is not a folder.`);
     this.requireEmpty(scope, child);
     await this.drop(scope, child);
@@ -55,7 +96,7 @@ export class PosixRemove {
     }
   }
 
-  async stage(scope: PosixScope, child: PosixChild): Promise<StagedTrash> {
+  async stage(scope: PosixScope, child: PosixChild, barrier?: Barrier): Promise<StagedTrash> {
     const { change } = this.env;
     const last = change.store.driveInodes.names(child.inode.id).length <= 1;
     const touch = (): void => {
@@ -73,12 +114,12 @@ export class PosixRemove {
     if (last && child.inode.type === 'file' && this.env.holds(child.inode.id)) {
       return this.hold(scope, child);
     }
-    const staged = await stageTrash(
-      change,
-      this.nodes.root(scope),
-      child.item.id,
-      actorOf(scope.caller),
-    );
+    const root = this.nodes.root(scope);
+    const actor = actorOf(scope.caller);
+    const staged =
+      barrier === undefined
+        ? await stageTrash(change, root, child.item.id, actor)
+        : await stageTrashDeferred(change, root, { itemId: child.item.id, actor, barrier });
     return {
       record: (): void => {
         staged.record();

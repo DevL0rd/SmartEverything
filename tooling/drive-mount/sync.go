@@ -18,7 +18,7 @@ func (s *session) syncSession() error {
 			s.mu.Unlock()
 			return err
 		}
-		if !s.needsCommit() && !s.sending && s.resume == nil && s.wanted == s.served {
+		if !s.needsCommit() && !s.hasTimes() && !s.sending && s.resume == nil && s.wanted == s.served {
 			ino := s.rec.Ino
 			s.mu.Unlock()
 			return w.fsyncRemote(w.ctx, ino, false)
@@ -58,8 +58,11 @@ func (s *session) syncLocal() error {
 	if err := s.data.Sync(); err != nil {
 		return err
 	}
+	if err := s.w.ns.sync(); err != nil {
+		return err
+	}
 	s.mu.Lock()
-	if !s.needsCommit() && s.resume == nil {
+	if !s.needsCommit() && s.resume == nil && !s.hasTimes() {
 		s.mu.Unlock()
 		return nil
 	}
@@ -87,8 +90,18 @@ func (w *writeBack) Fsync(ctx context.Context, ino uint64, directory bool) error
 			return s.syncSession()
 		}
 		if !live.load().fsyncWaitsForHub {
-			return nil
+			return w.ns.sync()
 		}
+	}
+	if !w.online.Load() {
+		return w.ns.sync()
+	}
+	if directory {
+		if err := w.ns.drain(ctx); err != nil {
+			return err
+		}
+	} else if err := w.ns.settle(ctx, ino); err != nil {
+		return err
 	}
 	return w.fsyncRemote(ctx, ino, directory)
 }
@@ -96,7 +109,7 @@ func (w *writeBack) Fsync(ctx context.Context, ino uint64, directory bool) error
 func (w *writeBack) awaitCommits(ctx context.Context, ino uint64) error {
 	if s := w.sessionOf(ino); s != nil {
 		s.mu.Lock()
-		ready := s.sealed && !s.sending && (s.needsCommit() || s.resume != nil)
+		ready := !s.sending && ((s.sealed && s.needsCommit()) || s.resume != nil || s.hasTimes())
 		s.mu.Unlock()
 		if ready {
 			w.enqueue(s)

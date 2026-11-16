@@ -28,8 +28,10 @@ import type { StashedRoot, StashedRow } from '../store/repositories/drive-trash-
 import {
   moveManyToTrash,
   moveToTrash,
+  moveToTrashDeferred,
   removeTrashEntry,
   restoreFromTrash,
+  type Barrier,
   type TrashMove,
   type TrashRequest,
 } from './trash';
@@ -89,6 +91,21 @@ export async function stageTrash(
   const item = env.store.driveItems.byId(itemId, null);
   const move = await moveToTrash(env, root, trashRequestOf(item, actor));
   return stagedOf(env, root, { item, move, actor });
+}
+
+export async function stageTrashDeferred(
+  env: ChangeEnv,
+  root: DriveWriteRoot,
+  staging: { readonly itemId: string; readonly actor: ChangeActor; readonly barrier: Barrier },
+): Promise<StagedTrash> {
+  const item = env.store.driveItems.byId(staging.itemId, null);
+  const move = await moveToTrashDeferred(
+    env,
+    root,
+    trashRequestOf(item, staging.actor),
+    staging.barrier,
+  );
+  return stagedOf(env, root, { item, move, actor: staging.actor });
 }
 
 export interface TrashedBatch {

@@ -21,6 +21,7 @@ import type {
 } from '@smarteverything/domain';
 import type { ConflictEnv } from './conflicts';
 import type { DriveWriteGuard } from './quotas';
+import type { DriveRootLanes } from './root-lanes';
 import type { DriveReadService } from './service-read';
 import { DriveAlbumWriter, type AlbumEditing } from './service-write-albums';
 import { DriveAdmin } from './service-write-drives';
@@ -38,6 +39,7 @@ export interface DriveWriteDeps {
   readonly backups: StorageDeps['backups'];
   readonly guard: DriveWriteGuard;
   readonly scan: (rootId: string) => void;
+  readonly lanes: DriveRootLanes;
 }
 
 export class DriveWriteService {

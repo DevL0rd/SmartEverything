@@ -73,7 +73,7 @@ describe('mkdir', () => {
   });
 
   it('refuses a parent that is a file or a bad name', async () => {
-    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno), new Uint8Array());
     expect(await refusal(rig.posix.mkdir(rig.scope, mkdir('x', file.ino)))).toBe('ENOTDIR');
     expect(await refusal(rig.posix.mkdir(rig.scope, mkdir('é'.repeat(128), rig.rootIno)))).toBe(
       'ENAMETOOLONG',
@@ -95,46 +95,89 @@ describe('mkdir', () => {
   });
 });
 
+async function stagedLeft(directory: string): Promise<readonly string[]> {
+  try {
+    return await readdir(directory);
+  } catch (cause) {
+    if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return [];
+    throw cause;
+  }
+}
+
 describe('create', () => {
   it('makes an empty file with the given mode and owner', async () => {
-    const entry = await rig.posix.create(rig.scope, {
-      ...create('a.txt', rig.rootIno, { mode: 0o4755 }),
-      uid: 5,
-      gid: 6,
-    });
+    const entry = await rig.posix.create(
+      rig.scope,
+      {
+        ...create('a.txt', rig.rootIno, { mode: 0o4755 }),
+        uid: 5,
+        gid: 6,
+      },
+      new Uint8Array(),
+    );
     expect(entry.attr).toMatchObject({ type: 1, mode: 0o4755, uid: 5, gid: 6, size: 0, nlink: 1 });
     expect(await diskText(rig.mine, 'a.txt')).toBe('');
     expect(await diskMode(rig.mine, 'a.txt')).toBe(0o755);
     expect(rig.opened.store.driveItems.byPath(rig.mine.id, 'a.txt', null)?.kind).toBe('document');
   });
 
-  it('refuses an existing name when exclusive and returns the same file when not', async () => {
-    const first = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+  it('refuses an existing name and keeps the first file', async () => {
+    const first = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     expect(
-      await refusal(rig.posix.create(rig.scope, create('a', rig.rootIno, { exclusive: true }))),
+      await refusal(rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array())),
     ).toBe('EEXIST');
-    const again = await rig.posix.create(rig.scope, create('a', rig.rootIno));
-    expect(again.ino).toBe(first.ino);
+    expect((await rig.posix.lookup(rig.scope, { parent: rig.rootIno, name: 'a' })).ino).toBe(
+      first.ino,
+    );
+  });
+
+  it('creates the file with its leased inode number, content and times in one step', async () => {
+    const request = { ...create('made.txt', rig.rootIno), mtimeNs: 1_763_200_000_123_456_789n };
+    const entry = await rig.posix.create(rig.scope, request, new TextEncoder().encode('hello'));
+    expect(entry.ino).toBe(request.ino);
+    expect(entry.attr).toMatchObject({ size: 5, mtimeNs: 1_763_200_000_123_456_789n });
+    expect(await diskText(rig.mine, 'made.txt')).toBe('hello');
+    expect(
+      await refusal(
+        rig.posix.create(
+          rig.scope,
+          { ...create('other.txt', rig.rootIno), ino: request.ino },
+          new Uint8Array(),
+        ),
+      ),
+    ).toBe('EEXIST');
   });
 
   it('refuses a folder or a link in the way, and a file the index does not know', async () => {
     await rig.posix.mkdir(rig.scope, mkdir('d', rig.rootIno));
     await rig.posix.symlink(rig.scope, symlinkRequest('l', rig.rootIno, 'x'));
-    expect(await refusal(rig.posix.create(rig.scope, create('d', rig.rootIno)))).toBe('EISDIR');
-    expect(await refusal(rig.posix.create(rig.scope, create('l', rig.rootIno)))).toBe('EEXIST');
+    expect(
+      await refusal(rig.posix.create(rig.scope, create('d', rig.rootIno), new Uint8Array())),
+    ).toBe('EEXIST');
+    expect(
+      await refusal(rig.posix.create(rig.scope, create('l', rig.rootIno), new Uint8Array())),
+    ).toBe('EEXIST');
     await putOnDisk(rig.mine, 'stray', 'x');
-    expect(await refusal(rig.posix.create(rig.scope, create('stray', rig.rootIno)))).toBe('EEXIST');
-    expect(await readdir(join(rig.mine.path, '.smarteverything', 'tmp'))).toEqual([]);
+    expect(
+      await refusal(rig.posix.create(rig.scope, create('stray', rig.rootIno), new Uint8Array())),
+    ).toBe('EEXIST');
+    expect(await stagedLeft(join(rig.mine.path, '.smarteverything', 'tmp'))).toEqual([]);
   });
 
   it('refuses a reserved name, a view-only person and a parent that is a file', async () => {
-    expect(await refusal(rig.posix.create(rig.scope, create('.se-orphans', rig.rootIno)))).toBe(
-      'EPERM',
-    );
+    expect(
+      await refusal(
+        rig.posix.create(rig.scope, create('.se-orphans', rig.rootIno), new Uint8Array()),
+      ),
+    ).toBe('EPERM');
     const scope = await rig.granted('view');
-    expect(await refusal(rig.posix.create(scope, create('x', scope.rootInode)))).toBe('EACCES');
-    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno));
-    expect(await refusal(rig.posix.create(rig.scope, create('x', file.ino)))).toBe('ENOTDIR');
+    expect(
+      await refusal(rig.posix.create(scope, create('x', scope.rootInode), new Uint8Array())),
+    ).toBe('EACCES');
+    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno), new Uint8Array());
+    expect(
+      await refusal(rig.posix.create(rig.scope, create('x', file.ino), new Uint8Array())),
+    ).toBe('ENOTDIR');
   });
 });
 
@@ -219,7 +262,7 @@ describe('tmpfile', () => {
       opKey: new Uint8Array(16),
     };
     expect(await refusal(rig.posix.tmpfile(scope, request))).toBe('EACCES');
-    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno), new Uint8Array());
     expect(await refusal(rig.posix.tmpfile(rig.scope, { ...request, parent: file.ino }))).toBe(
       'ENOTDIR',
     );
@@ -228,17 +271,17 @@ describe('tmpfile', () => {
 
 describe('names and concurrency', () => {
   it('refuses a name that is not in Unicode normal form C', async () => {
-    expect(await refusal(rig.posix.create(rig.scope, create('e\u0301', rig.rootIno)))).toBe(
-      'EILSEQ',
-    );
-    await rig.posix.create(rig.scope, create('\u00e9', rig.rootIno));
+    expect(
+      await refusal(rig.posix.create(rig.scope, create('e\u0301', rig.rootIno), new Uint8Array())),
+    ).toBe('EILSEQ');
+    await rig.posix.create(rig.scope, create('\u00e9', rig.rootIno), new Uint8Array());
     expect(await diskNames(rig.mine)).toEqual(['\u00e9']);
   });
 
-  it('lets only one of two exclusive creations of a name win', async () => {
+  it('lets only one of two creations of a name win', async () => {
     const results = await Promise.all([
-      refusal(rig.posix.create(rig.scope, create('same', rig.rootIno, { exclusive: true }))),
-      refusal(rig.posix.create(rig.scope, create('same', rig.rootIno, { exclusive: true }))),
+      refusal(rig.posix.create(rig.scope, create('same', rig.rootIno), new Uint8Array())),
+      refusal(rig.posix.create(rig.scope, create('same', rig.rootIno), new Uint8Array())),
       refusal(rig.posix.mkdir(rig.scope, mkdir('same', rig.rootIno))),
     ]);
     expect(results.filter((code) => code === 'no error')).toHaveLength(1);
@@ -278,7 +321,11 @@ describe('creation racing the scanner', () => {
 
   it('keeps the row the scanner indexed when a file is created at the same moment', async () => {
     const raced = scannerIndexes('raced.txt', false);
-    const entry = await rig.posix.create(rig.scope, create('raced.txt', rig.rootIno));
+    const entry = await rig.posix.create(
+      rig.scope,
+      create('raced.txt', rig.rootIno),
+      new Uint8Array(),
+    );
     expect(raced.id()).not.toBeNull();
     const item = rig.opened.store.driveItems.byPath(rig.mine.id, 'raced.txt', null);
     expect(item?.id).toBe(raced.id());
@@ -292,5 +339,47 @@ describe('creation racing the scanner', () => {
     expect(raced.id()).not.toBeNull();
     expect(rig.opened.store.driveItems.byPath(rig.mine.id, 'racedir', null)?.id).toBe(raced.id());
     expect(entry.attr.type).toBe(2);
+  });
+});
+
+describe('many files made at once', () => {
+  it('lands them together with one sync of their folder and one write to the index', async () => {
+    const { files } = rig.env.change;
+    const synced: string[] = [];
+    const sync = files.syncDirectory.bind(files);
+    Object.assign(files, {
+      syncDirectory: async (path: string): Promise<void> => {
+        synced.push(path);
+        await sync(path);
+      },
+    });
+    const store = rig.opened.store;
+    const write = store.write.bind(store);
+    let writes = 0;
+    Object.assign(store, {
+      write: <T>(work: () => T): T => {
+        writes += 1;
+        return write(work);
+      },
+    });
+    const names = Array.from({ length: 12 }, (_, index) => `f${String(index)}.txt`);
+    const made = await Promise.all(
+      names.map((name) =>
+        rig.posix.create(rig.scope, create(name, rig.rootIno), new TextEncoder().encode(name)),
+      ),
+    );
+    expect(new Set(made.map((entry) => entry.ino)).size).toBe(names.length);
+    for (const name of names) expect(await diskText(rig.mine, name)).toBe(name);
+    expect(synced.length).toBeLessThan(names.length);
+    expect(writes).toBeLessThan(names.length * 2);
+  });
+
+  it('refuses the second of two files made with one name in one batch', async () => {
+    const outcomes = await Promise.all([
+      refusal(rig.posix.create(rig.scope, create('same.txt', rig.rootIno), new Uint8Array())),
+      refusal(rig.posix.create(rig.scope, create('same.txt', rig.rootIno), new Uint8Array())),
+    ]);
+    expect(outcomes.sort()).toEqual(['EEXIST', 'no error']);
+    expect(await diskNames(rig.mine, '')).toContain('same.txt');
   });
 });

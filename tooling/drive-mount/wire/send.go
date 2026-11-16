@@ -100,5 +100,8 @@ func (s *sender) run() {
 			_ = s.conn.Close()
 			return
 		}
+		if item.pending != nil {
+			item.pending.sent()
+		}
 	}
 }

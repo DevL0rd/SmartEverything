@@ -8,7 +8,7 @@ import {
   type Frame,
   type RequestOpName,
 } from '@smarteverything/domain/drive-mount';
-import { background, messageOf, type Logger } from '@smarteverything/logging';
+import { messageOf, type Logger } from '@smarteverything/logging';
 import { PosixError, posixErrorOf } from '../posix/errors';
 import type { DriveActivity } from '../activity';
 import { BenchProbe } from './bench-probe';
@@ -81,7 +81,7 @@ export class Dispatch {
     );
   }
 
-  handle(session: MountSession, link: MountLink, frame: Frame): void {
+  handle(session: MountSession, link: MountLink, frame: Frame): Promise<void> {
     const arrived = performance.now();
     const name = opNameOf(frame.op);
     if (frame.type !== 'request' || name === undefined || !isRequestName(name)) {
@@ -91,7 +91,7 @@ export class Dispatch {
           message: 'That is not a request.',
         }),
       );
-      return;
+      return Promise.resolve();
     }
     const executor = this.executors[name];
     if (executor === undefined || REQUEST_OPS[name].requestPayload !== (frame.payload !== null)) {
@@ -101,17 +101,13 @@ export class Dispatch {
           message: `${name} cannot be answered this way.`,
         }),
       );
-      return;
+      return Promise.resolve();
     }
     const call: Call = { session, link, frame, name, executor, arrived };
-    if (isMutation(name)) {
-      this.ordered(call, name);
-    } else {
-      background(this.execute(call, null), 'drive_mount.operation_failed');
-    }
+    return isMutation(name) ? this.ordered(call, name) : this.execute(call, null);
   }
 
-  private ordered(call: Call, name: MutationName): void {
+  private ordered(call: Call, name: MutationName): Promise<void> {
     const resolver = this.resolvers(call.session);
     let claim: Claim;
     try {
@@ -122,10 +118,11 @@ export class Dispatch {
         call.link,
         errorFrame(call.frame.op, call.frame.requestId, failureOf(cause, this.log, name)),
       );
-      return;
+      return Promise.resolve();
     }
-    background(
-      call.session.lanes.run(claim.hold, (earlier) =>
+    return call.session.lanes.run(
+      claim.hold,
+      (earlier) =>
         this.activity.around(() =>
           this.execute(
             call,
@@ -134,8 +131,7 @@ export class Dispatch {
               : (): Promise<void> => this.awaitChildren(claim, resolver, earlier),
           ),
         ),
-      ),
-      'drive_mount.operation_failed',
+      claim.shared,
     );
   }
 

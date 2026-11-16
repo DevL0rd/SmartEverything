@@ -14,7 +14,7 @@ import {
   type LayoutEnvironment,
 } from '../data-layout';
 import { lockDataDirectory } from '../data-lock';
-import { finishCommitFromDisk } from '../drive/changes';
+import { finishCommitFromDisk } from '../drive/commit-recovery';
 import { recoverIntents, type DriveFiles } from '../drive/intents';
 import { nodeFiles } from '../drive/versions';
 import { assertPhotosFolderPrepared, migratePhotosFolder } from '../photos/folder-migration';

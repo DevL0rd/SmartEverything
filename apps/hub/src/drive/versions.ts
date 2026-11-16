@@ -1,19 +1,8 @@
-import { syncDirectory, writeUnsynced } from './unsynced';
-import { createHash, randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
-import {
-  copyFile,
-  link,
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  rename,
-  rm,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { stageEmptyFile, syncDirectory, writeUnsynced } from './unsynced';
+import { chmodNoFollow, cloneFile, readNoFollow, stageFile, writeDurable } from './file-ops';
+import { randomUUID } from 'node:crypto';
+import { link, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
 import { isMissing } from '../fs-util';
@@ -46,82 +35,7 @@ import {
   type DriveFiles,
   type DriveFileStore,
   type FileStamp,
-  type StagedWrite,
 } from './intents';
-
-async function stageFile(path: string, source: AsyncIterable<Uint8Array>): Promise<StagedWrite> {
-  const hash = createHash('sha256');
-  const handle = await open(path, 'wx', 0o600);
-  let bytes = 0;
-  try {
-    for await (const chunk of source) {
-      await handle.write(chunk);
-      hash.update(chunk);
-      bytes += chunk.byteLength;
-    }
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  return { bytes, sha256: hash.digest('hex') };
-}
-
-async function* readNoFollow(path: string): AsyncGenerator<Uint8Array> {
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    yield* handle.createReadStream({ autoClose: false });
-  } finally {
-    await handle.close();
-  }
-}
-
-async function chmodNoFollow(path: string, mode: number): Promise<void> {
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  try {
-    await handle.chmod(mode);
-  } finally {
-    await handle.close();
-  }
-}
-
-async function cloneFile(from: string, to: string, temporary: string): Promise<void> {
-  await mkdir(dirname(temporary), { recursive: true, mode: 0o700 });
-  await mkdir(dirname(to), { recursive: true, mode: 0o700 });
-  const source = await open(from, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    await copyFile(
-      `/proc/self/fd/${String(source.fd)}`,
-      temporary,
-      constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL,
-    );
-    const copied = await open(temporary, 'r');
-    try {
-      await copied.sync();
-    } finally {
-      await copied.close();
-    }
-    await rename(temporary, to);
-    await syncDirectory(dirname(to));
-  } catch (cause) {
-    await rm(temporary, { force: true });
-    throw cause;
-  } finally {
-    await source.close();
-  }
-}
-
-async function writeDurable(path: string, temporary: string, text: string): Promise<void> {
-  await mkdir(dirname(temporary), { recursive: true, mode: 0o700 });
-  await writeFile(temporary, text, { mode: 0o600, flag: 'wx' });
-  const handle = await open(temporary, 'r');
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await rename(temporary, path);
-  await syncDirectory(dirname(path));
-}
 
 export const nodeFiles: DriveFiles = {
   stamp: async (path) => {
@@ -172,6 +86,7 @@ export const nodeFiles: DriveFiles = {
   unlink,
   remove: (path) => rm(path, { recursive: true, force: true }),
   stage: stageFile,
+  stageEmpty: stageEmptyFile,
   writeDurable,
   writeUnsynced,
   syncFile: syncDirectory,
@@ -239,10 +154,33 @@ export interface CommitRequest {
   readonly relPath: string;
   readonly previousSha256: string | null;
   readonly mode?: number | undefined;
+  readonly deferred?: Set<string> | undefined;
 }
 
 function sharesInode(existing: FileStamp | null): existing is FileStamp {
   return existing !== null && !existing.directory && !existing.symlink && existing.nlink > 1;
+}
+
+async function moveIntoPlace(
+  env: FileEnv,
+  request: CommitRequest,
+  versionPath: string | null,
+): Promise<void> {
+  const { root, staged, relPath, deferred } = request;
+  if (versionPath !== null) {
+    await moveWithin(
+      env.files,
+      root,
+      { from: relPath, to: versionPath, mode: 'replace' },
+      deferred,
+    );
+  }
+  await moveWithin(
+    env.files,
+    root,
+    { from: staged.relPath, to: relPath, mode: 'replace' },
+    deferred,
+  );
 }
 
 async function replaceFile(
@@ -270,10 +208,7 @@ async function replaceFile(
     versionPath,
   });
   try {
-    if (versionPath !== null) {
-      await moveWithin(env.files, root, { from: relPath, to: versionPath, mode: 'replace' });
-    }
-    await moveWithin(env.files, root, { from: staged.relPath, to: relPath, mode: 'replace' });
+    await moveIntoPlace(env, request, versionPath);
   } catch (cause) {
     await abandonIntent(env, root, intent);
     throw cause;

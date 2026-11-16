@@ -18,8 +18,8 @@ options_json=$(printf '%s' "$options" | awk -v RS=, 'BEGIN { printf "[" } NF { p
 
 placement=${source#//smarteverything/}
 case "$placement" in
-  test) root=$SE_RIG_ROOT_TEST; mount_id=$SE_RIG_PLACEMENT_TEST ;;
-  scratch) root=$SE_RIG_ROOT_SCRATCH; mount_id=$SE_RIG_PLACEMENT_SCRATCH ;;
+  test) root=$SE_RIG_ROOT_TEST; mount_id=$SE_RIG_PLACEMENT_TEST; token_file=$SE_RIG_TOKEN_FILE ;;
+  scratch) root=$SE_RIG_ROOT_SCRATCH; mount_id=$SE_RIG_PLACEMENT_SCRATCH; token_file=$SE_RIG_SCRATCH_TOKEN_FILE ;;
   *) echo "mount.fuse.smarteverything: unknown source $source" >&2; exit 2 ;;
 esac
 
@@ -30,7 +30,7 @@ mkdir -p "$launch/cache"
 
 SE_DRIVE_MOUNT_RIG=allow_other,direct_mount setsid nohup sh -c '
   exec "$0" -cache "$1/cache" 3<"$2" <>"$1/control" >"$1/status" 2>"$1/helper.log"
-' "$SE_RIG_HELPER" "$launch" "$SE_RIG_TOKEN_FILE" >/dev/null 2>&1 &
+' "$SE_RIG_HELPER" "$launch" "$token_file" >/dev/null 2>&1 &
 helper=$!
 echo "$helper" >"$launch/pid"
 

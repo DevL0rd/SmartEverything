@@ -38,7 +38,7 @@ function versionsOfA(): number {
 }
 
 async function fileWith(text: string): Promise<number> {
-  const entry = await rig.posix.create(rig.scope, create('a.txt', rig.rootIno));
+  const entry = await rig.posix.create(rig.scope, create('a.txt', rig.rootIno), new Uint8Array());
   await save(rig, rig.mine, 'a.txt', text);
   return entry.ino;
 }
@@ -107,7 +107,7 @@ describe('times', () => {
     );
     expect(attr.mtimeNs).toBe(mtime);
     expect(attr.atimeNs).toBe(1_600_000_000_000_000_000n);
-    expect((await stat(join(rig.mine.path, 'a.txt'))).mtimeMs).toBe(1_700_000_000_123);
+    expect(Math.floor((await stat(join(rig.mine.path, 'a.txt'))).mtimeMs)).toBe(1_700_000_000_123);
     const disk = await stat(join(rig.mine.path, 'a.txt'), { bigint: true });
     expect(rig.opened.store.driveItems.byPath(rig.mine.id, 'a.txt', null)?.modifiedAt).toBe(
       new Date(Number(disk.mtimeMs)).toISOString(),

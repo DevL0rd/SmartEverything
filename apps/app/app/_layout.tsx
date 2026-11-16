@@ -16,8 +16,7 @@ import {
 import { isNative } from '../src/design/platform';
 import { BackRulesProvider } from '../src/components/back-navigation';
 import { BACK_RULES } from '../src/app-shell/back-host';
-import { SyncIndicator } from '../src/app-shell/sync-indicator';
-import { HeaderStatusProvider } from '../src/components/header-status';
+import { ConnectionNoticeHost } from '../src/app-shell/connection-notice';
 import { KeyboardRoot } from '../src/components/keyboard-viewport';
 import { AppRoot } from '../src/features/root/app-root';
 import { LogShipHost } from '../src/features/root/log-ship-host';
@@ -32,8 +31,6 @@ import '../src/features/photos/backup/runner/task-startup';
 import '../global.css';
 
 const ROOT_OPTIONS = { headerShown: false, animation: isNative() ? 'default' : 'fade' } as const;
-
-const SYNC_INDICATOR = <SyncIndicator />;
 
 const SEE_THROUGH = { ...DarkTheme, colors: { ...DarkTheme.colors, background: 'transparent' } };
 
@@ -71,28 +68,27 @@ export default function RootLayout(): ReactNode {
         <ThemeProvider value={SEE_THROUGH}>
           <RootProfiler>
             <BackRulesProvider value={BACK_RULES}>
-              <HeaderStatusProvider value={SYNC_INDICATOR}>
-                <Stack screenLayout={probedScreen} screenOptions={ROOT_OPTIONS}>
-                  <Stack.Screen name="(app)" />
-                  <Stack.Screen name="pair" />
-                  <Stack.Screen name="search" options={{ presentation: SEARCH_PRESENTATION }} />
-                  <Stack.Screen
-                    name="ring/[ringId]"
-                    options={{
-                      presentation: RING_PRESENTATION,
-                      animation: 'fade',
-                      gestureEnabled: false,
-                    }}
-                  />
-                  <Stack.Screen
-                    name="(flows)"
-                    options={{
-                      presentation: FLOWS_PRESENTATION,
-                      animation: isNative() ? 'slide_from_bottom' : 'fade',
-                    }}
-                  />
-                </Stack>
-              </HeaderStatusProvider>
+              <ConnectionNoticeHost />
+              <Stack screenLayout={probedScreen} screenOptions={ROOT_OPTIONS}>
+                <Stack.Screen name="(app)" />
+                <Stack.Screen name="pair" />
+                <Stack.Screen name="search" options={{ presentation: SEARCH_PRESENTATION }} />
+                <Stack.Screen
+                  name="ring/[ringId]"
+                  options={{
+                    presentation: RING_PRESENTATION,
+                    animation: 'fade',
+                    gestureEnabled: false,
+                  }}
+                />
+                <Stack.Screen
+                  name="(flows)"
+                  options={{
+                    presentation: FLOWS_PRESENTATION,
+                    animation: isNative() ? 'slide_from_bottom' : 'fade',
+                  }}
+                />
+              </Stack>
             </BackRulesProvider>
           </RootProfiler>
         </ThemeProvider>

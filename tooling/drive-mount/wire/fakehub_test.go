@@ -18,6 +18,7 @@ type recordingHandler struct {
 	reset       []Reset
 	lost        []LockLost
 	established []bool
+	offline     int
 	onReady     func(ctx context.Context, c Caller, resumed bool) error
 	pushed      chan struct{}
 }
@@ -37,6 +38,12 @@ func (h *recordingHandler) Established(ctx context.Context, c Caller, resumed bo
 		return hook(ctx, c, resumed)
 	}
 	return nil
+}
+
+func (h *recordingHandler) Offline() {
+	h.mu.Lock()
+	h.offline++
+	h.mu.Unlock()
 }
 
 func (h *recordingHandler) notify() {

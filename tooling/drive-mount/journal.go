@@ -129,6 +129,7 @@ type unitRecord struct {
 	Commit    uint64      `json:"commit"`
 	Fsync     bool        `json:"fsync"`
 	WrittenNs int64       `json:"writtenNs"`
+	AtimeNs   *int64      `json:"atimeNs,omitempty"`
 }
 
 type journalRecord struct {
@@ -150,6 +151,9 @@ type journalRecord struct {
 	Since      [][2]uint64 `json:"since"`
 	Forced     bool        `json:"forced"`
 	Unit       *unitRecord `json:"unit,omitempty"`
+	Touched    int64       `json:"touched,omitempty"`
+	Atime      *int64      `json:"atime,omitempty"`
+	Mtime      *int64      `json:"mtime,omitempty"`
 }
 
 type journal struct {

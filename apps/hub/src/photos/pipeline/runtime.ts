@@ -82,7 +82,7 @@ export class PhotoPipeline {
     try {
       const candidates = this.deps.parts.context.sql.all(
         CANDIDATE,
-        `select i.id from drive_items i join drive_media m on m.item_id = i.id
+        `select i.id from drive_media m cross join drive_items i on i.id = m.item_id
        where (i.kind = 'image' and m.preview_state = 'none' and not exists
          (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'preview'))
           or (i.kind = 'video' and ((m.poster_state = 'none' and not exists

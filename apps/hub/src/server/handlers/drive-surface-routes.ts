@@ -3,6 +3,7 @@ import { ApiError } from '@smarteverything/domain';
 import type { ConflictEnv } from '../../drive/conflicts';
 import { nodeInodeProbe } from '../../drive/fs-space';
 import type { DriveActivity } from '../../drive/activity';
+import type { DriveRootLanes } from '../../drive/root-lanes';
 import { DriveMount } from '../../drive/mount/service';
 import { DriveMountSocket } from '../../drive/mount/socket';
 import { createDriveSync } from '../../drive/sync/server-push';
@@ -13,6 +14,7 @@ import type { DriveWriteService } from '../../drive/service-write';
 import type { DataSpaceProbe } from '../../drive/data-space';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import type { Store } from '../../store/store';
+import { fileIoThreadsStart } from '../../service/file-io-threads';
 import { CLASS2_METHODS, createDavHandler } from '../dav';
 import type { DavDeps } from '../dav/dav-auth';
 import type { DriveFiles } from '../drive-files';
@@ -35,6 +37,7 @@ export interface DriveSurfaceServices {
 export interface DriveSurfaceInputs {
   readonly store: Store;
   readonly activity: DriveActivity;
+  readonly lanes: DriveRootLanes;
   readonly env: ConflictEnv;
   readonly services: DriveSurfaceServices;
   readonly nodes: ComputerNodeAccess;
@@ -125,6 +128,7 @@ function mountEnvOf(inputs: DriveSurfaceInputs): ConstructorParameters<typeof Dr
     guard: { status: quota, space: services.probe.space },
     space: { read: services.read, store, quota, probe: services.probe, inodes: nodeInodeProbe },
     activity: inputs.activity,
+    lanes: inputs.lanes,
     log: inputs.log,
   };
 }
@@ -148,7 +152,10 @@ export function createDriveSurfaces(inputs: DriveSurfaceInputs): DriveSurfaces {
   const mount = new DriveMount(mountEnvOf(inputs));
   const parts = createDriveSync(syncEnvOf(inputs, mount.services.posix));
   const server = new DriveSyncServer(store, inputs.nodes, parts.operations, inputs.log);
-  const mountSocket = new DriveMountSocket(store, inputs.nodes, mount, inputs.log);
+  const mountSocket = new DriveMountSocket(store, inputs.nodes, mount, {
+    log: inputs.log,
+    writeSlots: (): number => fileIoThreadsStart().threads,
+  });
   return {
     routes: [
       ...syncRoutes(server, parts),

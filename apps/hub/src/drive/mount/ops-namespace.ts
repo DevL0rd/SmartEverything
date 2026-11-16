@@ -1,5 +1,6 @@
 import type { ReplyMetaInput, RequestMeta } from '@smarteverything/domain/drive-mount';
 import type { PosixScope } from '../posix/env';
+import { posix as posixError } from '../posix/errors';
 import { encodedOperation, operation, type Executors } from './operation';
 import type { MountServices } from './services';
 
@@ -20,8 +21,14 @@ type Mutation =
 interface Target<Name extends Mutation> {
   readonly name: Name;
   readonly anchor: (meta: RequestMeta<Name>) => number;
-  readonly run: (scope: PosixScope, meta: RequestMeta<Name>) => Promise<ReplyMetaInput<Name>>;
+  readonly run: (
+    scope: PosixScope,
+    meta: RequestMeta<Name>,
+    payload: Uint8Array,
+  ) => Promise<ReplyMetaInput<Name>>;
 }
+
+const NO_PAYLOAD = new Uint8Array();
 
 function mutation<Name extends Mutation>(services: MountServices, target: Target<Name>): Executors {
   return {
@@ -30,7 +37,7 @@ function mutation<Name extends Mutation>(services: MountServices, target: Target
       return services.dedupe.onceEncoded(
         scope.placementId,
         { name: target.name, key: call.meta.opKey },
-        () => target.run(scope, call.meta),
+        () => target.run(scope, call.meta, call.payload ?? NO_PAYLOAD),
       );
     }),
   };
@@ -58,18 +65,30 @@ function reads(services: MountServices): Executors {
   };
 }
 
+function leased(services: MountServices, scope: PosixScope, ino: number): void {
+  if (!services.store.driveInodeLeases.holds(scope.caller.nodeId, ino)) {
+    throw posixError('EINVAL', `The inode ${String(ino)} is not leased to this computer.`);
+  }
+}
+
 function creations(services: MountServices): Executors {
   const { posix } = services;
   return {
     ...mutation(services, {
       name: 'MKDIR',
       anchor: (meta) => meta.parent,
-      run: (scope, meta) => posix.mkdir(scope, meta),
+      run: (scope, meta) => {
+        leased(services, scope, meta.ino);
+        return posix.mkdir(scope, meta);
+      },
     }),
     ...mutation(services, {
       name: 'CREATE',
       anchor: (meta) => meta.parent,
-      run: (scope, meta) => posix.create(scope, meta),
+      run: (scope, meta, payload) => {
+        leased(services, scope, meta.ino);
+        return posix.create(scope, meta, payload);
+      },
     }),
     ...mutation(services, {
       name: 'MKNOD',

@@ -22,15 +22,7 @@ afterEach(async () => {
 });
 
 async function outOfOrderWrite(name: string): Promise<void> {
-  const entry = await writer.client.call('CREATE', {
-    parent: writer.root,
-    name,
-    mode: 0o644,
-    uid: null,
-    gid: null,
-    exclusive: true,
-    opKey: opKey(),
-  });
+  const entry = await writer.client.created(writer.root, name);
   const { commit } = await writer.client.call('BEGIN', {
     ino: entry.ino,
     baseRev: entry.attr.rev,
@@ -41,6 +33,7 @@ async function outOfOrderWrite(name: string): Promise<void> {
   await writer.client.call('END', {
     commit,
     size: 7,
+    length: 7,
     mtimeNs: 1_763_100_000_123_456_789n,
     fsync: false,
     opKey: opKey(),

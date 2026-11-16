@@ -25,12 +25,80 @@ type Config struct {
 type pending struct {
 	id       uint64
 	op       Op
+	frameMu  sync.Mutex
 	frame    []byte
 	recovery bool
 	bulk     bool
 	replies  []Reply
 	err      error
 	done     chan struct{}
+	written  chan struct{}
+	wrote    sync.Once
+	once     bool
+}
+
+func (p *pending) markWritten() {
+	p.wrote.Do(func() { close(p.written) })
+}
+
+func (p *pending) bytes() []byte {
+	p.frameMu.Lock()
+	defer p.frameMu.Unlock()
+	return p.frame
+}
+
+func (p *pending) sent() {
+	p.markWritten()
+	if p.once {
+		p.frameMu.Lock()
+		p.frame = nil
+		p.frameMu.Unlock()
+	}
+}
+
+func (p *pending) wasWritten() bool {
+	select {
+	case <-p.written:
+		return true
+	default:
+		return false
+	}
+}
+
+type Posted interface {
+	Wait(ctx context.Context) (Reply, error)
+	Forget()
+}
+
+type posted struct {
+	c *Client
+	p *pending
+}
+
+func (p posted) Wait(ctx context.Context) (Reply, error) {
+	replies, err := p.c.await(ctx, p.p)
+	return single(p.p.op, replies, err)
+}
+
+func (p posted) Forget() {
+	p.c.mu.Lock()
+	_, held := p.c.table[p.p.id]
+	delete(p.c.table, p.p.id)
+	live := p.c.out
+	p.c.mu.Unlock()
+	if held && live != nil {
+		live.remove(p.p)
+	}
+}
+
+func single(op Op, replies []Reply, err error) (Reply, error) {
+	if err != nil {
+		return Reply{}, err
+	}
+	if len(replies) != 1 {
+		return Reply{}, fmt.Errorf("%w: %s answered %d replies", ErrUnexpected, op.Name(), len(replies))
+	}
+	return replies[0], nil
 }
 
 type Client struct {
@@ -54,6 +122,15 @@ type Client struct {
 	nextID      uint64
 	table       map[uint64]*pending
 	closed      bool
+	offline     bool
+	grace       *time.Timer
+	pingDead    bool
+}
+
+var softOps = map[Op]bool{
+	OpAttach: true, OpLookup: true, OpGetattr: true, OpReaddir: true, OpStatfs: true, OpReadlink: true,
+	OpGetxattr: true, OpListxattr: true, OpOpen: true, OpRead: true, OpSeek: true, OpAccess: true,
+	OpState: true, OpGetlk: true,
 }
 
 var sessionScoped = map[Op]bool{
@@ -101,6 +178,13 @@ func NewClient(cfg Config) (*Client, error) {
 		liveChanged: make(chan struct{}),
 	}
 	c.routeCtx, c.routeCancel = context.WithCancel(ctx)
+	c.mu.Lock()
+	if cfg.Route.Empty() {
+		c.offline = true
+	} else {
+		c.startGraceLocked()
+	}
+	c.mu.Unlock()
 	go c.pushes.run()
 	go c.supervise()
 	return c, nil
@@ -178,14 +262,53 @@ func (c *Client) SwitchRoute(route Route) error {
 	old := c.routeCancel
 	c.route = route
 	c.routeCtx, c.routeCancel = context.WithCancel(c.ctx)
-	var dropped []*pending
-	if route.Empty() {
-		dropped = c.takeLocked(func(p *pending) bool { return !p.recovery })
+	if !route.Empty() {
+		c.offline = false
 	}
+	c.startGraceLocked()
 	c.mu.Unlock()
 	old()
-	finish(dropped, ErrNoRoute)
 	return nil
+}
+
+func (c *Client) Offline() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.offline
+}
+
+func (c *Client) startGraceLocked() {
+	if c.offline || c.grace != nil || c.closed {
+		return
+	}
+	c.grace = time.AfterFunc(c.dead, c.graceEnded)
+}
+
+func (c *Client) stopGraceLocked() {
+	if c.grace != nil {
+		c.grace.Stop()
+		c.grace = nil
+	}
+}
+
+func (c *Client) graceEnded() {
+	c.mu.Lock()
+	c.grace = nil
+	if c.offline || c.closed || c.out != nil || c.recoverOut != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.goOffline()
+}
+
+func (c *Client) goOffline() {
+	c.offline = true
+	c.stopGraceLocked()
+	dropped := c.takeLocked(func(p *pending) bool { return !p.recovery && softOps[p.op] })
+	c.mu.Unlock()
+	finish(dropped, ErrNoRoute)
+	c.log("drive_mount.offline", nil)
+	c.cfg.Handler.Offline()
 }
 
 func (c *Client) Connected() bool {
@@ -207,6 +330,7 @@ func (c *Client) Close() error {
 		return nil
 	}
 	c.closed = true
+	c.stopGraceLocked()
 	c.mu.Unlock()
 	c.cancel()
 	<-c.stopped
@@ -238,13 +362,29 @@ func finish(list []*pending, err error) {
 
 func (c *Client) Call(ctx context.Context, op Op, meta Meta, payload []byte) (Reply, error) {
 	replies, err := c.Do(ctx, op, meta, payload)
+	return single(op, replies, err)
+}
+
+func (c *Client) Post(ctx context.Context, op Op, meta Meta, payload []byte) (Posted, error) {
+	return c.post(ctx, op, meta, payload, false)
+}
+
+func (c *Client) post(ctx context.Context, op Op, meta Meta, payload []byte, recovery bool) (Posted, error) {
+	p, err := c.start(WithBulk(ctx), op, meta, payload, recovery, true)
 	if err != nil {
-		return Reply{}, err
+		return nil, err
 	}
-	if len(replies) != 1 {
-		return Reply{}, fmt.Errorf("%w: %s answered %d replies", ErrUnexpected, op.Name(), len(replies))
+	select {
+	case <-p.written:
+		return posted{c: c, p: p}, nil
+	case <-p.done:
+		return posted{c: c, p: p}, nil
+	case <-ctx.Done():
 	}
-	return replies[0], nil
+	if _, err := c.await(ctx, p); err != nil {
+		return nil, err
+	}
+	return posted{c: c, p: p}, nil
 }
 
 func (c *Client) Do(ctx context.Context, op Op, meta Meta, payload []byte) ([]Reply, error) {
@@ -255,13 +395,11 @@ type recoveryCaller struct{ c *Client }
 
 func (r recoveryCaller) Call(ctx context.Context, op Op, meta Meta, payload []byte) (Reply, error) {
 	replies, err := r.c.do(ctx, op, meta, payload, true)
-	if err != nil {
-		return Reply{}, err
-	}
-	if len(replies) != 1 {
-		return Reply{}, fmt.Errorf("%w: %s answered %d replies", ErrUnexpected, op.Name(), len(replies))
-	}
-	return replies[0], nil
+	return single(op, replies, err)
+}
+
+func (r recoveryCaller) Post(ctx context.Context, op Op, meta Meta, payload []byte) (Posted, error) {
+	return r.c.post(ctx, op, meta, payload, true)
 }
 
 func (r recoveryCaller) Do(ctx context.Context, op Op, meta Meta, payload []byte) ([]Reply, error) {
@@ -285,6 +423,14 @@ func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recov
 	if probe != nil {
 		defer probe.record(op, time.Now())
 	}
+	p, err := c.start(ctx, op, meta, payload, recovery, false)
+	if err != nil {
+		return nil, err
+	}
+	return c.await(ctx, p)
+}
+
+func (c *Client) start(ctx context.Context, op Op, meta Meta, payload []byte, recovery, once bool) (*pending, error) {
 	metaBytes, err := EncodeMeta(meta)
 	if err != nil {
 		return nil, err
@@ -304,12 +450,12 @@ func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recov
 			c.mu.Unlock()
 			return nil, ErrConnLost
 		}
-	} else if c.route.Empty() {
+	} else if c.offline && (c.route.Empty() || softOps[op]) {
 		c.mu.Unlock()
 		return nil, ErrNoRoute
 	}
 	c.nextID++
-	p := &pending{id: c.nextID, op: op, recovery: recovery, bulk: isBulk(ctx, op), done: make(chan struct{})}
+	p := &pending{id: c.nextID, op: op, recovery: recovery, bulk: isBulk(ctx, op), done: make(chan struct{}), written: make(chan struct{}), once: once}
 	p.frame, err = EncodeFrame(Frame{Type: FrameRequest, Op: op, RequestID: p.id, Meta: metaBytes, Payload: payload})
 	if err != nil {
 		c.mu.Unlock()
@@ -318,8 +464,12 @@ func (c *Client) do(ctx context.Context, op Op, meta Meta, payload []byte, recov
 	c.table[p.id] = p
 	c.mu.Unlock()
 	if out != nil {
-		out.enqueue(p.frame, p.bulk, p)
+		out.enqueue(p.bytes(), p.bulk, p)
 	}
+	return p, nil
+}
+
+func (c *Client) await(ctx context.Context, p *pending) ([]Reply, error) {
 	select {
 	case <-p.done:
 		return p.replies, p.err
@@ -375,6 +525,7 @@ func (c *Client) supervise() {
 		if routeCtx.Err() != nil {
 			continue
 		}
+		c.linkLost()
 		c.log("drive_mount.wire_lost", err)
 		if established {
 			backoff = c.cfg.BackoffMin
@@ -387,6 +538,18 @@ func (c *Client) supervise() {
 		}
 		backoff = min(backoff*2, c.cfg.BackoffMax)
 	}
+}
+
+func (c *Client) linkLost() {
+	c.mu.Lock()
+	if c.pingDead && !c.offline && c.out == nil && c.recoverOut == nil {
+		c.pingDead = false
+		c.goOffline()
+		return
+	}
+	c.pingDead = false
+	c.startGraceLocked()
+	c.mu.Unlock()
 }
 
 type helloReply struct {
@@ -475,6 +638,10 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 	c.mu.Lock()
 	c.session = greeting.session
 	c.recoverOut = out
+	c.pingDead = false
+	wasOffline := c.offline
+	c.offline = false
+	c.stopGraceLocked()
 	hadSession := c.hadSession
 	c.hadSession = true
 	var lost []*pending
@@ -495,6 +662,7 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 	if err != nil {
 		c.mu.Lock()
 		c.session = nil
+		c.offline = wasOffline
 		c.mu.Unlock()
 		c.dropRecovery()
 		return true, err
@@ -502,8 +670,14 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 	c.mu.Lock()
 	c.out = out
 	ids := make([]uint64, 0, len(c.table))
+	var stale []*pending
 	for id, p := range c.table {
-		if !p.recovery {
+		switch {
+		case p.recovery:
+		case p.once && p.wasWritten():
+			delete(c.table, id)
+			stale = append(stale, p)
+		default:
 			p.replies = nil
 			ids = append(ids, id)
 		}
@@ -514,8 +688,9 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 		resend = append(resend, c.table[id])
 	}
 	c.mu.Unlock()
+	finish(stale, ErrConnLost)
 	for _, p := range resend {
-		out.enqueue(p.frame, p.bulk, p)
+		out.enqueue(p.bytes(), p.bulk, p)
 	}
 	select {
 	case err = <-readFailed:
@@ -524,7 +699,10 @@ func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
 	}
 	c.mu.Lock()
 	c.out = nil
+	c.startGraceLocked()
+	sent := c.takeLocked(func(p *pending) bool { return p.once && !p.recovery && p.wasWritten() })
 	c.mu.Unlock()
+	finish(sent, ErrConnLost)
 	c.dropRecovery()
 	return true, err
 }
@@ -632,6 +810,9 @@ func (c *Client) pingLoop(ctx context.Context, cancel context.CancelFunc, conn C
 		if err != nil {
 			if ctx.Err() == nil {
 				c.log("drive_mount.ping_failed", err)
+				c.mu.Lock()
+				c.pingDead = true
+				c.mu.Unlock()
 			}
 			cancel()
 			_ = conn.Close()

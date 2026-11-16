@@ -79,7 +79,7 @@ function HitLeading({
           </Text>
         </>
       )}
-      <View className={cn('absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full', dot)} />
+      <View className={cn('absolute bottom-2 left-0 top-2 w-1 rounded-r-full', dot)} />
     </View>
   );
 }

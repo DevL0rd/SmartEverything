@@ -16,6 +16,7 @@ import type { OpenTarget } from '../../src/drive/posix/open';
 import { DrivePosix } from '../../src/drive/posix/service';
 import { DriveReadService } from '../../src/drive/service-read';
 import { DriveWriteService } from '../../src/drive/service-write';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveShares } from '../../src/drive/shares';
 import { ensureDrives, personalDrive, sharedDrive } from '../../src/drive/spaces';
 import { fileEnv, nodeFiles, stageBytes } from '../../src/drive/versions';
@@ -93,6 +94,7 @@ function serviceOf(opened: TestStore, read: DriveReadService): DriveWriteService
         Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
     scan: (): void => undefined,
+    lanes: new DriveRootLanes(),
   });
 }
 
@@ -167,6 +169,7 @@ function posixOf(opened: TestStore, changeEnv: () => ConflictEnv): DrivePosix {
       inodes: () => Promise.resolve({ files: 1000, free: 900 }),
     },
     holds: () => false,
+    lanes: new DriveRootLanes(),
   };
   return new DrivePosix(env);
 }

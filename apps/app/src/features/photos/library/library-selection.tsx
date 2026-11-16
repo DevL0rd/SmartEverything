@@ -11,6 +11,7 @@ import { useIdiom } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { Text } from '../../../components/text';
 import { useEscape } from '../../../components/use-escape';
+import { useBulkRunning } from '../../../store/bulk-run';
 import { offersSelectAll, pickedText, type SelectionScope } from './library-model';
 import type { MediaActions } from './use-media-actions';
 import { organiseMenuItems, useOrganiseActions } from '../organise/actions';
@@ -25,6 +26,7 @@ import {
   keepActions,
   LocalSelection,
   NO_EXTRAS,
+  lockedWhile,
   pickedOf,
   sendActions,
   shown,
@@ -52,13 +54,20 @@ export interface LibrarySelectionProps {
   readonly scope?: SelectionScope;
 }
 
-function ActionButtons({ actions }: { readonly actions: readonly SelectionAction[] }): ReactNode {
+function ActionButtons({
+  actions,
+  locked,
+}: {
+  readonly actions: readonly SelectionAction[];
+  readonly locked: boolean;
+}): ReactNode {
   return shown(actions).map((action) => (
     <Button
       key={action.id}
       label={action.label}
       icon={action.icon}
       variant="outlined"
+      disabled={locked}
       onPress={action.onPress}
     />
   ));
@@ -68,7 +77,13 @@ function AlbumButton({ media, picked }: PickedProps): ReactNode {
   const { ref, open, menu } = useAnchoredMenu(media.albums(picked.ids), 'Add to album');
   return (
     <View ref={ref} collapsable={false}>
-      <Button label="Add to album" icon="layers" variant="tonal" onPress={open} />
+      <Button
+        label="Add to album"
+        icon="layers"
+        variant="tonal"
+        disabled={picked.locked}
+        onPress={open}
+      />
       {menu}
     </View>
   );
@@ -93,7 +108,13 @@ function OrganiseButton({ picked, onTrashed }: PickedProps): ReactNode {
   const { ref, open, menu } = useOrganiseMenu(picked, onTrashed);
   return (
     <View ref={ref} collapsable={false}>
-      <Button label="Organise" icon="archive" variant="outlined" onPress={open} />
+      <Button
+        label="Organise"
+        icon="archive"
+        variant="outlined"
+        disabled={picked.locked}
+        onPress={open}
+      />
       {menu}
     </View>
   );
@@ -153,6 +174,7 @@ function ManageGroup({
             label={extra.label}
             icon={extra.icon}
             variant="outlined"
+            disabled={picked.locked}
             onPress={() => {
               extra.onPress(picked.ids);
             }}
@@ -162,6 +184,7 @@ function ManageGroup({
         label="Move to trash"
         icon="trash"
         variant="destructive"
+        disabled={picked.locked}
         onPress={() => {
           media.trash(picked.ids, onTrashed);
         }}
@@ -174,7 +197,7 @@ function KeepGroup({ media, picked, onTrashed }: PickedProps): ReactNode {
   return (
     <SelectionGroup>
       <AlbumButton media={media} picked={picked} onTrashed={onTrashed} />
-      <ActionButtons actions={keepActions({ media, picked, onTrashed })} />
+      <ActionButtons actions={keepActions({ media, picked, onTrashed })} locked={picked.locked} />
     </SelectionGroup>
   );
 }
@@ -184,7 +207,7 @@ function SendGroup(input: PickedProps): ReactNode {
   if (send.length === 0) return null;
   return (
     <SelectionGroup>
-      <ActionButtons actions={send} />
+      <ActionButtons actions={send} locked={input.picked.locked} />
     </SelectionGroup>
   );
 }
@@ -235,6 +258,7 @@ function MoreButton({
         icon={touch ? 'ellipsisVertical' : 'ellipsis'}
         label="More actions"
         tone="onPrimaryContainer"
+        disabled={picked.locked}
         onPress={open}
       />
       {menu}
@@ -257,6 +281,7 @@ function TightActions({
           label="Move to trash"
           icon="trash"
           variant="destructive"
+          disabled={picked.locked}
           onPress={() => {
             media.trash(picked.ids, onTrashed);
           }}
@@ -294,13 +319,14 @@ function DeskActions({
 export function LibrarySelection(props: LibrarySelectionProps): ReactNode {
   const { controls, media, extras = NO_EXTRAS } = props;
   const tight = shellLayoutOf(useAreaWidth()) === 'icon';
+  const running = useBulkRunning();
   useEscape(controls.selection.active, controls.clear);
   return (
     <SelectionSurface>
       <Summary {...props} />
       <DeskActions
         media={media}
-        picked={pickedOf(props)}
+        picked={lockedWhile(pickedOf(props), running)}
         onTrashed={controls.clear}
         extras={extras}
         tight={tight}

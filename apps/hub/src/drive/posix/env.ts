@@ -4,6 +4,7 @@ import type { DriveActor } from '../access';
 import type { ChangeEnv, ChangeStore } from '../changes';
 import type { FsStatfsEnv } from '../fs-space';
 import type { DriveWriteGuard } from '../quotas';
+import type { DriveRootLanes } from '../root-lanes';
 
 export type PosixStore = ChangeStore & Pick<Store, 'driveXattrs'>;
 
@@ -16,6 +17,7 @@ export interface PosixEnv {
   readonly guard: DriveWriteGuard;
   readonly space: FsStatfsEnv;
   readonly holds: (inodeId: number) => boolean;
+  readonly lanes: DriveRootLanes;
 }
 
 export interface PosixCaller extends DriveActor {

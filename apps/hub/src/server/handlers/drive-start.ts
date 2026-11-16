@@ -1,5 +1,5 @@
 import { assertPhotosFolderPrepared } from '../../photos/folder-migration';
-import { finishCommitFromDisk } from '../../drive/changes';
+import { finishCommitFromDisk } from '../../drive/commit-recovery';
 import { textTrigger } from '../../drive/content/text-job';
 import { recoverIntents } from '../../drive/intents';
 import { sweepOrphansAtStart } from '../../drive/orphans';

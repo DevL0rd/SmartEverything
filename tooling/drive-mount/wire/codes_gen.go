@@ -45,6 +45,7 @@ const (
 const (
 	OpHello       Op = 0x01
 	OpAttach      Op = 0x02
+	OpLease       Op = 0x03
 	OpLookup      Op = 0x10
 	OpGetattr     Op = 0x11
 	OpReaddir     Op = 0x12
@@ -155,7 +156,7 @@ const (
 	KeyBsize       = 34
 	KeyNamelen     = 35
 	KeyTarget      = 36
-	KeyExclusive   = 37
+	KeyCount       = 37
 	KeyRdev        = 38
 	KeyType        = 39
 	KeyNlink       = 40

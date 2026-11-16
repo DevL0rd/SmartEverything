@@ -15,3 +15,8 @@ export async function syncDirectory(path: string): Promise<void> {
     await handle.close();
   }
 }
+
+export async function stageEmptyFile(path: string): Promise<void> {
+  const handle = await open(path, 'wx', 0o600);
+  await handle.close();
+}

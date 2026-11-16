@@ -3,11 +3,22 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } 
 import { background } from '@smarteverything/logging';
 import type { LibraryScope } from '@smarteverything/domain';
 import type { MonthFocus } from '../../../components/media-grid/media-grid';
+import type { MediaSelectionControls } from '../../../components/media-grid/selection';
 import { tilesOfPage, type MediaTile } from '../../../components/media-grid/tiles';
 import { flattenPages } from '../../drive';
 import { usePhotoBuckets, usePhotoMonth } from '../data';
+import type { LibrarySelectionProps, SelectionExtra } from './library-selection';
 import { useLocalMerge } from './phone-merge';
-import { endStep, feedState, feedTiles, type FeedState, type MonthFeed } from './library-model';
+import type { MediaActions } from './use-media-actions';
+import {
+  endStep,
+  feedState,
+  feedTiles,
+  scopeTotal,
+  type FeedState,
+  type MonthFeed,
+  type SelectionScope,
+} from './library-model';
 
 interface Pager {
   readonly more: () => void;
@@ -135,7 +146,7 @@ export function feedsComplete(
   if (shown.length < buckets.length) return false;
   return shown.every((month) => {
     const feed = feeds.get(month);
-    return feed !== undefined && !feed.more && !feed.loading;
+    return feed !== undefined && !feed.more && (!feed.loading || feed.tiles.length > 0);
   });
 }
 
@@ -158,6 +169,32 @@ export function monthsReady(
 export interface FeedFocus {
   readonly month: string;
   readonly onReached: () => void;
+}
+
+export function selectAllScopeOf(feed: LibraryFeed, selectAll: () => void): SelectionScope {
+  return {
+    total: scopeTotal(feed.buckets, feed.tiles.length, feed.complete),
+    complete: feed.complete,
+    onAll: (): void => {
+      feed.loadAll();
+      selectAll();
+    },
+  };
+}
+
+export function feedSelectionOf(
+  feed: LibraryFeed,
+  controls: MediaSelectionControls,
+  media: MediaActions,
+  extras: readonly SelectionExtra[] = [],
+): LibrarySelectionProps {
+  return {
+    controls,
+    tiles: feed.tiles,
+    media,
+    extras,
+    scope: selectAllScopeOf(feed, controls.all),
+  };
 }
 
 export function useLibraryFeed(scope: LibraryScope): LibraryFeed {

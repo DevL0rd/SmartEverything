@@ -15,6 +15,9 @@ func (w *writeBack) lookup(ctx context.Context, parent uint64, name string) (Ent
 }
 
 func (w *writeBack) Rename(ctx context.Context, args RenameArgs) error {
+	if err := w.ns.drain(ctx); err != nil {
+		return err
+	}
 	source, err := w.lookup(ctx, args.Parent, args.Name)
 	if err != nil {
 		return err
@@ -67,6 +70,9 @@ func (w *writeBack) orphaned(ino uint64) {
 }
 
 func (w *writeBack) Link(ctx context.Context, ino, parent uint64, name string) (Attr, error) {
+	if err := w.ns.drain(ctx); err != nil {
+		return Attr{}, err
+	}
 	if err := w.flushWait(ctx, ino); err != nil {
 		return Attr{}, err
 	}

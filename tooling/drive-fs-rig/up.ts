@@ -4,12 +4,15 @@ import { stdout } from 'node:process';
 import { parseArgs } from 'node:util';
 import { buildBinaries, netcutCommand, writeEnvironment } from './helper.ts';
 import {
-  createMember,
+  createPerson,
+  driveOf,
   driveRoots,
   hubIdentity,
+  actAs,
+  makeOwner,
+  mountDrive,
+  ownerClient,
   pairComputer,
-  placeDrive,
-  type DriveRoots,
 } from './hub-api.ts';
 import {
   buildService,
@@ -92,37 +95,59 @@ async function startTestHub(ports: HubPorts, service: string | undefined): Promi
   return pid;
 }
 
+async function tokenFileOf(name: string, token: string): Promise<string> {
+  const tokenFile = join(files.keys, `${name}.token`);
+  await writeFile(tokenFile, `${token}\n`, { mode: 0o600 });
+  await chmod(tokenFile, 0o600);
+  return tokenFile;
+}
+
 async function pair(
-  hub: { readonly http: number; readonly key: string; readonly roots: DriveRoots },
+  hub: { readonly http: number; readonly key: string },
   name: ComputerName,
   listens: Listens,
 ): Promise<ComputerState> {
-  const { http, key, roots } = hub;
+  const { http, key } = hub;
   const paired = await pairComputer(http, key, name);
-  const tokenFile = join(files.keys, `${name}.token`);
-  await writeFile(tokenFile, `${paired.token}\n`, { mode: 0o600 });
-  await chmod(tokenFile, 0o600);
-  const owner = await placeDrive(http, key, {
-    deviceId: paired.deviceId,
-    rootId: roots.owner,
-    mountName: `rig-${name}`,
-  });
-  const home = await placeDrive(http, key, {
-    deviceId: paired.deviceId,
-    rootId: roots.home,
-    mountName: `rig-${name}-scratch`,
-  });
   return {
     deviceId: paired.deviceId,
     machineId: paired.machineId,
-    placements: { owner, home },
-    tokenFile,
+    placement: await mountDrive(http, key, paired.deviceId),
+    tokenFile: await tokenFileOf(name, paired.token),
     listenLan: listens.lan,
     listenPublic: listens.public,
     helperPid: null,
     holderPid: null,
     mount: null,
   };
+}
+
+interface ScratchDrive {
+  readonly state: RigState['scratch'];
+  readonly folder: string;
+}
+
+async function scratchDrive(http: number, key: string): Promise<ScratchDrive> {
+  const profileId = await createPerson(http, key, 'Rig Scratch');
+  await makeOwner(http, key, profileId);
+  const client = await ownerClient(http, key);
+  await actAs(http, key, client.id, profileId);
+  try {
+    const drive = await driveOf(http, key, profileId);
+    const paired = await pairComputer(http, key, 'scratch');
+    return {
+      folder: drive.folder,
+      state: {
+        profileId,
+        root: drive.root,
+        deviceId: paired.deviceId,
+        placement: await mountDrive(http, key, paired.deviceId),
+        tokenFile: await tokenFileOf('scratch', paired.token),
+      },
+    };
+  } finally {
+    await actAs(http, key, client.id, client.profileId);
+  }
 }
 
 async function startNetcut(allocation: Allocation): Promise<number> {
@@ -166,10 +191,10 @@ export async function up(args: readonly string[]): Promise<void> {
   const key = await ownerToken();
   const identity = await hubIdentity(allocation.ports.http);
   const roots = await driveRoots(allocation.ports.http, key);
-  const memberProfile = await createMember(allocation.ports.http, key);
+  const scratch = await scratchDrive(allocation.ports.http, key);
   const [a, b] = await Promise.all(
     COMPUTER_NAMES.map((name) =>
-      pair({ http: allocation.ports.http, key, roots }, name, allocation.listens[name]),
+      pair({ http: allocation.ports.http, key }, name, allocation.listens[name]),
     ),
   );
   if (a === undefined || b === undefined) throw new Error('Pairing did not return both computers.');
@@ -183,9 +208,8 @@ export async function up(args: readonly string[]): Promise<void> {
     serverName: identity.serverName,
     pin: identity.pin,
     ownerRoot: roots.owner,
-    homeRoot: roots.home,
-    memberProfile,
-    driveFolders: { test: roots.ownerFolder, scratch: roots.homeFolder },
+    scratch: scratch.state,
+    driveFolders: { test: roots.ownerFolder, scratch: scratch.folder },
     computers: { A: a, B: b },
   };
   await saveState(state);

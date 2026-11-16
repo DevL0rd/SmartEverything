@@ -21,6 +21,7 @@ import {
   DriveBackups,
 } from '../../src/drive/backups';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import {
   DriveScrubber,
   type FileHasher,
@@ -126,6 +127,7 @@ async function indexAndHash(): Promise<void> {
     availability: () => Promise.resolve('online'),
     mounted: (): boolean => false,
     workerScript: scannerScript,
+    lanes: new DriveRootLanes(),
     log: testLogger(),
   };
   await scanHandler(scanEnv)({ kind: 'scan', rootId: ROOT }, signal());

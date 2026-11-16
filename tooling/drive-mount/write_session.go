@@ -33,6 +33,10 @@ type session struct {
 	attr       wire.Attr
 	forced     bool
 	touched    int64
+	shown      int64
+	changed    int64
+	atime      *int64
+	mtime      *int64
 	base       *baseRef
 	baseGen    uint64
 	handles    int
@@ -49,9 +53,20 @@ type session struct {
 }
 
 func newSession(w *writeBack, rec journalRecord, data *os.File) *session {
-	return &session{
+	s := &session{
 		w: w, rec: rec, data: data, size: rec.Size, baseSize: rec.BaseSize, cleanLimit: rec.CleanLimit,
+		touched: rec.Touched, atime: rec.Atime, mtime: rec.Mtime,
 	}
+	switch {
+	case rec.Mtime != nil:
+		s.shown = *rec.Mtime
+	case rec.Unit != nil:
+		s.shown = rec.Unit.WrittenNs
+	default:
+		s.shown = rec.Touched
+	}
+	s.changed = max(s.shown, rec.Touched)
+	return s
 }
 
 func (s *session) ino() uint64 {
@@ -76,10 +91,16 @@ func (s *session) needsCommit() bool {
 	return !s.ranges.empty() || !s.zeros.empty() || s.size != s.baseSize || s.forced
 }
 
+func (s *session) hasTimes() bool { return s.atime != nil || s.mtime != nil }
+
+func (s *session) busyLocked() bool {
+	return s.sending || s.resume != nil || s.needsCommit() || s.hasTimes()
+}
+
 func (s *session) busy() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.sending || s.resume != nil || s.needsCommit()
+	return s.busyLocked()
 }
 
 func (s *session) inFlight() (bool, error) {
@@ -88,7 +109,7 @@ func (s *session) inFlight() (bool, error) {
 	if s.failure != nil {
 		return false, s.failure
 	}
-	return s.sending || s.resume != nil || (s.sealed && s.needsCommit()), nil
+	return s.sending || s.resume != nil || (s.sealed && s.needsCommit()) || s.hasTimes(), nil
 }
 
 func (s *session) closeFiles() {
@@ -114,6 +135,7 @@ func (s *session) recordLocked() journalRecord {
 	rec := s.rec
 	rec.BaseSize, rec.CleanLimit, rec.Size = s.baseSize, s.cleanLimit, s.size
 	rec.Ranges, rec.Zeros, rec.Since, rec.Forced = s.ranges.spans, s.zeros.spans, s.since.spans, s.forced
+	rec.Touched, rec.Atime, rec.Mtime = s.touched, s.atime, s.mtime
 	switch {
 	case s.unit != nil:
 		rec.Unit = s.unit
@@ -136,7 +158,57 @@ func (s *session) saveLocked(durable bool) error {
 	return s.w.journal.save(rec)
 }
 
-func (s *session) touchLocked() { s.touched = time.Now().UnixNano() }
+func (s *session) touchLocked() {
+	s.touched = time.Now().UnixNano()
+	s.shown, s.changed = s.touched, s.touched
+	s.mtime = nil
+}
+
+func (s *session) overlayLocked(attr *wire.Attr) {
+	attr.Size = s.size
+	if s.shown != 0 {
+		attr.MtimeNs = s.shown
+	}
+	if s.atime != nil {
+		attr.AtimeNs = *s.atime
+	}
+	attr.CtimeNs = max(attr.CtimeNs, s.changed)
+}
+
+func timeOf(spec TimeSpec, now int64) int64 {
+	if spec.Now {
+		return now
+	}
+	return spec.At.UnixNano()
+}
+
+func (s *session) foldTimes(atime, mtime TimeSpec) bool {
+	s.mu.Lock()
+	if s.gone || !s.busyLocked() {
+		s.mu.Unlock()
+		return false
+	}
+	now := time.Now().UnixNano()
+	if atime.Set {
+		value := timeOf(atime, now)
+		s.atime = &value
+	}
+	if mtime.Set {
+		value := timeOf(mtime, now)
+		s.mtime = &value
+		s.shown = value
+	}
+	s.changed = max(s.changed, now)
+	if err := s.saveLocked(false); err != nil {
+		logJournal(s.rec.Ino, err)
+	}
+	queue := !s.sending
+	s.mu.Unlock()
+	if queue {
+		s.w.enqueue(s)
+	}
+	return true
+}
 
 func (s *session) markZeroLocked(lo, hi uint64) {
 	if lo >= hi {
@@ -421,6 +493,22 @@ func (s *session) releaseBase(ref *baseRef) {
 	}
 }
 
+func (s *session) rebase(attr wire.Attr) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gone || s.busyLocked() || attr.Rev == s.rec.BaseRev {
+		return
+	}
+	s.attr = attr
+	s.rec.BaseRev = attr.Rev
+	s.baseSize, s.size, s.cleanLimit = attr.Size, attr.Size, attr.Size
+	s.shown, s.changed = attr.MtimeNs, attr.CtimeNs
+	s.retireBaseLocked()
+	if err := s.saveLocked(false); err != nil {
+		logJournal(s.rec.Ino, err)
+	}
+}
+
 func (s *session) retireBaseLocked() {
 	s.baseGen++
 	if s.base == nil {
@@ -491,7 +579,7 @@ func (s *session) release() error {
 
 func (s *session) finishIfIdle() {
 	s.mu.Lock()
-	if s.gone || s.handles > 0 || s.sending || s.resume != nil || s.needsCommit() {
+	if s.gone || s.handles > 0 || s.busyLocked() {
 		s.mu.Unlock()
 		return
 	}

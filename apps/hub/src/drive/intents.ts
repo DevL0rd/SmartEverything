@@ -4,6 +4,7 @@ import { messageOf, type Logger } from '@smarteverything/logging';
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import type { Store } from '../store/store';
 import { rollbackExchangeState } from './exchange-files';
+import { committedElsewhere } from './intent-owners';
 import type { ContentPatch } from './patch-files';
 import { locateInRoot, ORPHAN_DIRECTORY } from './paths';
 import { MARKER_DIRECTORY } from './root-marker';
@@ -66,6 +67,7 @@ export interface DriveFiles {
   readonly stage: (path: string, source: AsyncIterable<Uint8Array>) => Promise<StagedWrite>;
   readonly writeDurable: (path: string, temporary: string, text: string) => Promise<void>;
   readonly writeUnsynced: (path: string, temporary: string, text: string) => Promise<void>;
+  readonly stageEmpty: (path: string) => Promise<void>;
   readonly syncFile: (path: string) => Promise<void>;
   readonly syncDirectory: (path: string) => Promise<void>;
   readonly chmod: (path: string, mode: number) => Promise<void>;
@@ -339,6 +341,10 @@ export async function rollbackIntent(
   root: DriveWriteRoot,
   intent: DriveIntent,
 ): Promise<boolean> {
+  if (committedElsewhere(env.store, intent)) {
+    env.log.warn('drive.intent_owned_elsewhere', { rootId: root.id, op: intent.op });
+    return true;
+  }
   if (intent.op === 'trash') {
     await rollbackTrash(env, root, intent);
   } else if (intent.op === 'restore') {

@@ -76,15 +76,7 @@ const reader = (): Parameters<typeof firstOutside>[0] => ({
 });
 
 async function created(name: string): Promise<{ ino: number; rev: number }> {
-  const entry = await mine.client.call('CREATE', {
-    parent: mine.root,
-    name,
-    mode: 0o644,
-    uid: null,
-    gid: null,
-    exclusive: true,
-    opKey: opKey(),
-  });
+  const entry = await mine.client.created(mine.root, name);
   return { ino: entry.ino, rev: entry.attr.rev };
 }
 
@@ -119,6 +111,7 @@ describe('a file written through the mount', () => {
     await mine.client.call('END', {
       commit,
       size: 5,
+      length: 5,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),

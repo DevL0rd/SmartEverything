@@ -13,19 +13,19 @@ import { up } from './up.ts';
 
 const USAGE = `rig <command>
 
-  up [--service <built service folder>]   build the Hub service, start the test Hub and netcut, pair computers A and B
+  up [--service <built service folder>]   build the Hub service, start the test Hub and netcut, pair computers A and B (each mounts the owner's My Drive) and a scratch computer whose own person's My Drive is the xfstests scratch drive
   lock <owner id>                         take tmp/locks/drive-rig.lock; every other command then needs SE_RIG_LOCK_OWNER=<owner id>
   unlock <owner id>                       release the lock
   down                                    stop everything and delete ${SCRATCH}
   status                                  show the rig state as JSON
-  mount <A|B> [--placement test|scratch|<root id>] [--folder <id or name>] [--route lan|public|none]
+  mount <A|B> [--placement test|<root id>] [--folder <id or name>] [--route lan|public|none]
   unmount <A|B>
   route <A|B> <lan|public|none>           send the helper its route control line
   net <A|B|all> <cut|cutreply|stall|reset|restore> [lan|public]
   net status
   kill <A|B> [--signal KILL|TERM|...]     signal the helper (default KILL)
   exec <A|B> -- <command...>              run a command inside the namespace of that computer's helper
-  posix <pjd|fsx|xfstests> [--only <test>]... [--computer A|B]   run a POSIX suite on the whole-drive mount of that computer (default A, B uses the scratch drive) and write its result under tmp/drive-mount-fs/results
+  posix <pjd|fsx|xfstests> [--only <test>]... [--computer A|B]   run a POSIX suite on the My Drive mount of that computer (default A; xfstests mounts the scratch drive itself) and write its result under tmp/drive-mount-fs/results
   workloads [--case <name>]... [--repeat N] [--list]
   two [--case <name>]... [--repeat N] [--list]
   crash [--case <substring>]... [--repeat 3] [--list]      crash and dropped-connection suite

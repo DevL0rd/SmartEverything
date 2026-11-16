@@ -15,6 +15,7 @@ import {
   type HashEnvironment,
 } from '../../src/drive/hasher';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { updateDriveSettings } from '../../src/drive/settings';
 import { testLogger } from '../support/logs';
@@ -99,6 +100,7 @@ async function scan(): Promise<void> {
     availability: () => Promise.resolve('online'),
     mounted: (): boolean => false,
     workerScript: scannerScript,
+    lanes: new DriveRootLanes(),
     log: testLogger(),
   };
   await scanHandler(env)({ kind: 'scan', rootId: ROOT }, signal());

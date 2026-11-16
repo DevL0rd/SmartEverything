@@ -20,18 +20,42 @@ afterEach(async () => {
   await rig.close();
 });
 
-function mkdirMeta(name: string, parent = mine.root, key = opKey()): RequestMetaInput<'MKDIR'> {
-  return { parent, name, mode: 0o755, uid: null, gid: null, opKey: key };
+const MADE_NS = 1_763_100_000_000_000_000n;
+
+async function mkdirMeta(
+  name: string,
+  parent = mine.root,
+  key = opKey(),
+): Promise<RequestMetaInput<'MKDIR'>> {
+  const ino = await mine.client.ino();
+  return { parent, name, ino, mode: 0o755, uid: null, gid: null, mtimeNs: MADE_NS, opKey: key };
 }
 
-function createMeta(name: string, parent = mine.root, key = opKey()): RequestMetaInput<'CREATE'> {
-  return { parent, name, mode: 0o644, uid: null, gid: null, exclusive: true, opKey: key };
+async function createMeta(
+  name: string,
+  parent = mine.root,
+  key = opKey(),
+): Promise<RequestMetaInput<'CREATE'>> {
+  const ino = await mine.client.ino();
+  return {
+    parent,
+    name,
+    ino,
+    mode: 0o644,
+    uid: null,
+    gid: null,
+    mtimeNs: MADE_NS,
+    fsync: false,
+    opKey: key,
+  };
 }
+
+const EMPTY = new Uint8Array();
 
 describe('namespace over the socket', () => {
   it('makes, finds and lists a folder and a file', async () => {
-    const folder = await mine.client.call('MKDIR', mkdirMeta('docs'));
-    const file = await mine.client.call('CREATE', createMeta('note.txt', folder.ino));
+    const folder = await mine.client.call('MKDIR', await mkdirMeta('docs'));
+    const file = await mine.client.call('CREATE', await createMeta('note.txt', folder.ino), EMPTY);
     const found = await mine.client.call('LOOKUP', { parent: folder.ino, name: 'note.txt' });
     expect(found.ino).toBe(file.ino);
     const page = await mine.client.call('READDIR', { ino: folder.ino, cursor: 0 });
@@ -49,16 +73,16 @@ describe('namespace over the socket', () => {
     ).rejects.toMatchObject({
       code: 'ENAMETOOLONG',
     });
-    await expect(mine.client.call('MKDIR', mkdirMeta(long))).rejects.toMatchObject({
+    await expect(mine.client.call('MKDIR', await mkdirMeta(long))).rejects.toMatchObject({
       code: 'ENAMETOOLONG',
     });
-    await expect(mine.client.call('CREATE', createMeta(long))).rejects.toMatchObject({
+    await expect(mine.client.call('CREATE', await createMeta(long), EMPTY)).rejects.toMatchObject({
       code: 'ENAMETOOLONG',
     });
   });
 
   it('changes modes, links, symbolic links and names', async () => {
-    const file = await mine.client.call('CREATE', createMeta('a.txt'));
+    const file = await mine.client.call('CREATE', await createMeta('a.txt'), EMPTY);
     const changed = await mine.client.call('SETATTR', {
       ino: file.ino,
       valid: 1,
@@ -91,14 +115,19 @@ describe('namespace over the socket', () => {
       opKey: opKey(),
     });
     expect(await readlink(join(rig.posix.mine.path, 's'))).toBe('a.txt');
-    await mine.client.call('UNLINK', { parent: mine.root, name: 'c.txt', opKey: opKey() });
+    await mine.client.call('UNLINK', {
+      parent: mine.root,
+      name: 'c.txt',
+      ino: file.ino,
+      opKey: opKey(),
+    });
     await expect(
       mine.client.call('LOOKUP', { parent: mine.root, name: 'c.txt' }),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('answers statfs and extended attributes', async () => {
-    const file = await mine.client.call('CREATE', createMeta('x.txt'));
+    const file = await mine.client.call('CREATE', await createMeta('x.txt'), EMPTY);
     const space = await mine.client.call('STATFS', { ino: mine.root });
     expect(space.bsize).toBeGreaterThan(0);
     await mine.client.call(
@@ -140,11 +169,31 @@ describe('namespace over the socket', () => {
   });
 });
 
+describe('leased inode numbers', () => {
+  it('creates with the leased number and refuses one leased to nobody', async () => {
+    const meta = await createMeta('leased.txt');
+    const made = await mine.client.call('CREATE', meta, new TextEncoder().encode('hi'));
+    expect(made.ino).toBe(meta.ino);
+    expect(made.attr.size).toBe(2);
+    await expect(
+      mine.client.call('CREATE', { ...(await createMeta('stray.txt')), ino: meta.ino + 1_000_000 }, EMPTY),
+    ).rejects.toMatchObject({ code: 'EINVAL' });
+  });
+
+  it('removes a name only while it still names the inode the computer saw', async () => {
+    const first = await mine.client.call('CREATE', await createMeta('swap.txt'), EMPTY);
+    await expect(
+      mine.client.call('UNLINK', { parent: mine.root, name: 'swap.txt', ino: first.ino + 1, opKey: opKey() }),
+    ).rejects.toMatchObject({ code: 'ESTALE' });
+    await mine.client.call('UNLINK', { parent: mine.root, name: 'swap.txt', ino: first.ino, opKey: opKey() });
+  });
+});
+
 describe('resending an operation with the same key', () => {
   it('makes one folder and answers the same entry twice', async () => {
     const key = opKey();
-    const first = await mine.client.call('MKDIR', mkdirMeta('once', mine.root, key));
-    const second = await mine.client.call('MKDIR', mkdirMeta('once', mine.root, key));
+    const first = await mine.client.call('MKDIR', await mkdirMeta('once', mine.root, key));
+    const second = await mine.client.call('MKDIR', await mkdirMeta('once', mine.root, key));
     expect(second.ino).toBe(first.ino);
     const page = await mine.client.call('READDIR', { ino: mine.root, cursor: 0 });
     expect(page.entries.filter(([name]) => name === 'once')).toHaveLength(1);
@@ -152,8 +201,8 @@ describe('resending an operation with the same key', () => {
 
   it('answers a create, a symlink and a link again without a second effect', async () => {
     const createKey = opKey();
-    const first = await mine.client.call('CREATE', createMeta('f', mine.root, createKey));
-    const again = await mine.client.call('CREATE', createMeta('f', mine.root, createKey));
+    const first = await mine.client.call('CREATE', await createMeta('f', mine.root, createKey), EMPTY);
+    const again = await mine.client.call('CREATE', await createMeta('f', mine.root, createKey), EMPTY);
     expect(again.ino).toBe(first.ino);
     const linkKey = opKey();
     const link = { ino: first.ino, parent: mine.root, name: 'g', opKey: linkKey };
@@ -175,7 +224,7 @@ describe('resending an operation with the same key', () => {
   });
 
   it('answers an unlink, a rename and a rmdir again after they were done', async () => {
-    const file = await mine.client.call('CREATE', createMeta('r'));
+    const file = await mine.client.call('CREATE', await createMeta('r'), EMPTY);
     const rename = {
       parent: mine.root,
       name: 'r',
@@ -186,18 +235,18 @@ describe('resending an operation with the same key', () => {
     };
     await mine.client.call('RENAME', rename);
     await mine.client.call('RENAME', rename);
-    const unlink = { parent: mine.root, name: 'r2', opKey: opKey() };
+    const unlink = { parent: mine.root, name: 'r2', ino: file.ino, opKey: opKey() };
     await mine.client.call('UNLINK', unlink);
     await mine.client.call('UNLINK', unlink);
-    const folder = await mine.client.call('MKDIR', mkdirMeta('d'));
-    const rmdir = { parent: mine.root, name: 'd', opKey: opKey() };
+    const folder = await mine.client.call('MKDIR', await mkdirMeta('d'));
+    const rmdir = { parent: mine.root, name: 'd', ino: folder.ino, opKey: opKey() };
     await mine.client.call('RMDIR', rmdir);
     await mine.client.call('RMDIR', rmdir);
     expect(folder.ino).toBeGreaterThan(file.ino);
   });
 
   it('answers a setattr, an xattr write and an xattr removal again', async () => {
-    const file = await mine.client.call('CREATE', createMeta('s'));
+    const file = await mine.client.call('CREATE', await createMeta('s'), EMPTY);
     const setattr = { ino: file.ino, valid: 1, mode: 0o640, opKey: opKey() };
     await mine.client.call('SETATTR', setattr);
     expect((await mine.client.call('SETATTR', setattr)).attr.mode).toBe(0o640);
@@ -211,9 +260,9 @@ describe('resending an operation with the same key', () => {
 
   it('refuses the same key for another operation', async () => {
     const key = opKey();
-    await mine.client.call('MKDIR', mkdirMeta('k', mine.root, key));
+    await mine.client.call('MKDIR', await mkdirMeta('k', mine.root, key));
     await expect(
-      mine.client.call('CREATE', createMeta('k2', mine.root, key)),
+      mine.client.call('CREATE', await createMeta('k2', mine.root, key), EMPTY),
     ).rejects.toMatchObject({
       code: 'EINVAL',
     });
@@ -221,13 +270,13 @@ describe('resending an operation with the same key', () => {
 
   it('remembers the outcome for a later connection', async () => {
     const key = opKey();
-    const first = await mine.client.call('MKDIR', mkdirMeta('later', mine.root, key));
+    const first = await mine.client.call('MKDIR', await mkdirMeta('later', mine.root, key));
     const other = await attachTo(
       rig,
       { nodeId: rig.posix.node, profileId: rig.posix.ownerId },
       rig.posix.mine.id,
     );
-    const second = await other.client.call('MKDIR', mkdirMeta('later', mine.root, key));
+    const second = await other.client.call('MKDIR', await mkdirMeta('later', mine.root, key));
     expect(second.ino).toBe(first.ino);
     expect((await stat(join(rig.posix.mine.path, 'later'))).isDirectory()).toBe(true);
   });

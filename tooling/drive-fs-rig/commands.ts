@@ -30,7 +30,7 @@ async function folderOf(
     state.http,
     await ownerToken(),
     {
-      rootId: placement === 'test' ? state.ownerRoot : state.homeRoot,
+      rootId: placement === 'test' ? state.ownerRoot : state.scratch.root,
       directory: state.driveFolders[placement],
     },
     name,

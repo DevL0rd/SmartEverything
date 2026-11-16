@@ -120,6 +120,35 @@ export async function moveToTrash(
   return { intent, entry };
 }
 
+export async function moveToTrashDeferred(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  request: TrashRequest,
+  barrier: Barrier,
+): Promise<TrashMove> {
+  const stamp = request.onDisk ? await env.files.stamp(await locate(root, request.relPath)) : null;
+  if (request.onDisk && stamp === null) {
+    throw new DriveWriteError('missing', 'The item to trash does not exist.');
+  }
+  const plan: TrashPlan = { request, entry: entryOf(env, root, request), stamp };
+  const intent = request.onDisk
+    ? env.store.driveIntents.open({
+        rootId: root.id,
+        op: 'trash',
+        fromPath: request.relPath,
+        toPath: plan.entry.trashRelPath,
+        versionPath: null,
+      })
+    : null;
+  try {
+    await moveOne(env, root, plan, barrier);
+  } catch (cause) {
+    if (intent !== null) await abandonIntent(env, root, intent);
+    throw cause;
+  }
+  return { intent, entry: plan.entry };
+}
+
 export interface TrashBatchResult {
   readonly itemId: string;
   readonly move: TrashMove | null;
@@ -148,7 +177,7 @@ interface TrashPlan {
   readonly stamp: Awaited<ReturnType<FileEnv['files']['stamp']>>;
 }
 
-interface Barrier {
+export interface Barrier {
   readonly directories: Set<string>;
   readonly manifests: string[];
 }

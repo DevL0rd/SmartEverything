@@ -234,8 +234,11 @@ function itemUndoOf(op: DriveFileOp, raw: DriveChangeResult, env: DriveOpsEnv): 
   if (op.kind !== 'move') return null;
   const back = movesBackOf(op.nodes, new Set(raw.done.map((entry) => entry.itemId)));
   if (back === null || back.length === 0) return null;
-  return async (): Promise<OpResult> =>
-    merged(await Promise.all(back.map((change) => applied(change, env))));
+  return async (): Promise<OpResult> => {
+    const results: OpResult[] = [];
+    for (const change of back) results.push(await applied(change, env));
+    return merged(results);
+  };
 }
 
 function withNodes(op: DriveFileOp, nodes: readonly DriveNode[]): DriveFileOp | null {

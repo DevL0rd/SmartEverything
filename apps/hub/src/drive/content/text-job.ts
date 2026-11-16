@@ -19,14 +19,14 @@ type FileItem = Exclude<DriveItem, { readonly kind: 'folder' | 'link' | 'special
 export interface TextEnvironment {
   readonly store: Pick<
     Store,
-    'driveRoots' | 'driveItems' | 'driveItemText' | 'settingsKv' | 'feed' | 'write'
+    'driveRoots' | 'driveItems' | 'driveItemText' | 'driveFeed' | 'settingsKv' | 'feed' | 'write'
   >;
   readonly media: Pick<DriveMediaRepository, 'find'>;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly workerScript: string;
   readonly previewPath: (itemId: string, rev: number) => string;
   readonly languageDirectory: string;
-  readonly icons: Pick<FolderIconRefresher, 'refreshRoot'>;
+  readonly icons: Pick<FolderIconRefresher, 'refreshRoot' | 'refreshFolder'>;
   readonly log: Logger;
 }
 
@@ -39,6 +39,34 @@ export interface TextBacklog {
   readonly work: readonly TextWork[];
   readonly files: number;
   readonly settled: number;
+  readonly waiting: readonly string[];
+}
+
+type Folder = Extract<DriveItem, { readonly kind: 'folder' }>;
+
+class Tally {
+  readonly work: TextWork[] = [];
+  readonly waiting: string[] = [];
+  files = 0;
+  settled = 0;
+
+  constructor(private readonly env: Pick<TextEnvironment, 'store' | 'media'>) {}
+
+  add(item: DriveItem): void {
+    if (!isFile(item)) return;
+    this.files += 1;
+    if (this.env.store.driveItemText.find(item.id)?.rev === item.rev) {
+      this.settled += 1;
+      return;
+    }
+    const next = workFor(this.env.media, item);
+    if (next === 'wait') this.waiting.push(item.id);
+    else this.work.push(next);
+  }
+
+  backlog(): TextBacklog {
+    return { work: this.work, files: this.files, settled: this.settled, waiting: this.waiting };
+  }
 }
 
 function isFile(item: DriveItem): item is FileItem {
@@ -63,9 +91,7 @@ export function collectTextBacklog(
   env: Pick<TextEnvironment, 'store' | 'media'>,
   root: StoredDrive,
 ): TextBacklog {
-  const work: TextWork[] = [];
-  let files = 0;
-  let settled = 0;
+  const tally = new Tally(env);
   const pending: (string | null)[] = [null];
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     let after: string | null = null;
@@ -78,23 +104,65 @@ export function collectTextBacklog(
         viewer: null,
       });
       for (const { item } of window.entries) {
-        if (item.kind === 'folder') {
-          pending.push(item.id);
-          continue;
-        }
-        if (!isFile(item)) continue;
-        files += 1;
-        if (env.store.driveItemText.find(item.id)?.rev === item.rev) {
-          settled += 1;
-          continue;
-        }
-        const next = workFor(env.media, item);
-        if (next !== 'wait') work.push(next);
+        if (item.kind === 'folder') pending.push(item.id);
+        else tally.add(item);
       }
       after = window.next;
     } while (after !== null);
   }
-  return { work, files, settled };
+  return tally.backlog();
+}
+
+interface Changes {
+  readonly items: readonly DriveItem[];
+  readonly folders: readonly Folder[];
+}
+
+export function changesSince(
+  env: Pick<TextEnvironment, 'store'>,
+  rootId: string,
+  after: number,
+): Changes {
+  const ids = new Set<string>();
+  for (let cursor: number | null = after; cursor !== null; ) {
+    const window = env.store.driveFeed.sinceInRoot(rootId, cursor, WINDOW_ROWS);
+    for (const row of window.rows) ids.add(row.itemId);
+    cursor = window.next;
+  }
+  const items: DriveItem[] = [];
+  const folders = new Map<string, Folder>();
+  const folder = (id: string | null): void => {
+    if (id === null || folders.has(id)) return;
+    const found = env.store.driveItems.find(id, null);
+    if (found?.kind === 'folder') folders.set(found.id, found);
+  };
+  for (const id of ids) {
+    const item = env.store.driveItems.find(id, null);
+    if (item === undefined) continue;
+    items.push(item);
+    if (item.kind === 'folder') folder(item.id);
+    folder(item.parentId);
+  }
+  return { items, folders: [...folders.values()] };
+}
+
+function changedBacklog(
+  env: Pick<TextEnvironment, 'store' | 'media'>,
+  changes: Changes,
+  waiting: readonly string[],
+): TextBacklog {
+  const tally = new Tally(env);
+  const seen = new Set<string>();
+  for (const item of changes.items) {
+    seen.add(item.id);
+    tally.add(item);
+  }
+  for (const id of waiting) {
+    if (seen.has(id)) continue;
+    const item = env.store.driveItems.find(id, null);
+    if (item !== undefined) tally.add(item);
+  }
+  return tally.backlog();
 }
 
 function written(
@@ -207,7 +275,46 @@ class TextRun {
   }
 }
 
-async function textRoot(env: TextEnvironment, rootId: string, signal: AbortSignal): Promise<void> {
+export class TextCursors {
+  readonly icons = new Map<string, number>();
+  readonly text = new Map<string, TextCursor>();
+
+  forget(rootId: string): void {
+    this.icons.delete(rootId);
+    this.text.delete(rootId);
+  }
+}
+
+interface TextCursor {
+  readonly seq: number;
+  readonly waiting: readonly string[];
+}
+
+async function refreshIcons(
+  env: TextEnvironment,
+  cursors: TextCursors,
+  root: StoredDrive,
+  signal: AbortSignal,
+): Promise<void> {
+  const mark = env.store.driveFeed.latestSeqInRoot(root.id);
+  const from = cursors.icons.get(root.id);
+  if (from === undefined) {
+    await env.icons.refreshRoot(root, signal);
+  } else {
+    for (const folder of changesSince(env, root.id, from).folders) {
+      if (signal.aborted) return;
+      await env.icons.refreshFolder(root, folder);
+    }
+  }
+  if (!signal.aborted) cursors.icons.set(root.id, mark);
+}
+
+async function textRoot(
+  env: TextEnvironment,
+  cursors: TextCursors,
+  rootId: string,
+  signal: AbortSignal,
+): Promise<void> {
   const root = env.store.driveRoots.find(rootId);
   if (root === undefined) {
     env.log.warn('drive.text_skipped_root', { rootId, reason: 'no such drive' });
@@ -219,16 +326,22 @@ async function textRoot(env: TextEnvironment, rootId: string, signal: AbortSigna
     return;
   }
   if ((await env.availability(root)) !== 'online') return;
-  await env.icons.refreshRoot(root, signal);
+  await refreshIcons(env, cursors, root, signal);
   if (!settings.contentIndexing) {
     env.log.info('drive.text_off', { rootId });
     return;
   }
-  const backlog = collectTextBacklog(env, root);
-  if (backlog.work.length === 0) return;
+  const mark = env.store.driveFeed.latestSeqInRoot(rootId);
+  const from = cursors.text.get(rootId);
+  const backlog =
+    from === undefined
+      ? collectTextBacklog(env, root)
+      : changedBacklog(env, changesSince(env, rootId, from.seq), from.waiting);
   const startedAt = performance.now();
-  await new TextRun(env, root, backlog).run(signal);
+  if (backlog.work.length > 0) await new TextRun(env, root, backlog).run(signal);
   if (signal.aborted) return;
+  cursors.text.set(rootId, { seq: mark, waiting: backlog.waiting });
+  if (backlog.work.length === 0) return;
   env.log.info('drive.text_done', {
     rootId,
     files: backlog.files,
@@ -237,8 +350,11 @@ async function textRoot(env: TextEnvironment, rootId: string, signal: AbortSigna
   });
 }
 
-export function textHandler(env: TextEnvironment): DriveJobHandlers['text'] {
-  return (job, signal) => textRoot(env, job.rootId, signal);
+export function textHandler(
+  env: TextEnvironment,
+  cursors: TextCursors,
+): DriveJobHandlers['text'] {
+  return (job, signal) => textRoot(env, cursors, job.rootId, signal);
 }
 
 export function textTrigger(

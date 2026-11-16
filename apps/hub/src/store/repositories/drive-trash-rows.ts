@@ -106,11 +106,18 @@ function ownRows(): readonly (readonly [string, string])[] {
 }
 
 export class DriveTrashRows {
+  private dependents: Map<string, string[]> | null = null;
+
   constructor(private readonly context: StoreContext) {}
+
+  private dependentTables(): Map<string, string[]> {
+    this.dependents ??= dependentTables(this.context);
+    return this.dependents;
+  }
 
   stash(itemId: string): void {
     const ids = jsonText(subtreeIds(this.context, itemId));
-    const dependents = dependentTables(this.context);
+    const dependents = this.dependentTables();
     let seq = 0;
     const keep = (table: string, rows: readonly z.output<typeof READ_ROW>[]): void => {
       for (const row of rows) {

@@ -15,6 +15,7 @@ export interface Picked {
   readonly none: boolean;
   readonly favourite: boolean;
   readonly localCount: number;
+  readonly locked: boolean;
 }
 
 export interface PickedProps {
@@ -33,14 +34,24 @@ export interface SelectionAction {
   readonly onPress: () => void;
 }
 
-export const NONE_PICKED: Picked = { ids: [], none: true, favourite: false, localCount: 0 };
+export const PENDING_ALL: Picked = {
+  ids: [],
+  none: false,
+  favourite: false,
+  localCount: 0,
+  locked: true,
+};
 
 export function pendingAll(props: LibrarySelectionProps): boolean {
   return props.controls.everything && props.scope?.complete === false;
 }
 
+export function lockedWhile(picked: Picked, running: boolean): Picked {
+  return running && !picked.locked ? { ...picked, locked: true } : picked;
+}
+
 export function pickedOf(props: LibrarySelectionProps): Picked {
-  return pendingAll(props) ? NONE_PICKED : selectedItems(props.controls.selection.ids, props.tiles);
+  return pendingAll(props) ? PENDING_ALL : selectedItems(props.controls.selection.ids, props.tiles);
 }
 
 export function selectedItems(selection: ReadonlySet<string>, tiles: readonly MediaTile[]): Picked {
@@ -51,6 +62,7 @@ export function selectedItems(selection: ReadonlySet<string>, tiles: readonly Me
     none: ids.length === 0,
     favourite: allFavourite(new Set(ids), tiles),
     localCount: selected.filter((tile) => tile.local).length,
+    locked: false,
   };
 }
 

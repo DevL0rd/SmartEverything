@@ -1,5 +1,5 @@
 import { truncate } from 'node:fs/promises';
-import type { DriveItem } from '@smarteverything/domain';
+import type { DriveFeedOp, DriveItem } from '@smarteverything/domain';
 import { commitContent, type ChangeActor } from '../changes';
 import { locate, type DriveWriteRoot } from '../intents';
 import { commitPatchContent } from '../patch-content';
@@ -10,9 +10,15 @@ import { coversRanges } from '../../store/repositories/drive-mount-commits';
 
 const PAGE = 100;
 
+const SAME_CONTENT: ReadonlySet<DriveFeedOp> = new Set(['rename', 'move', 'star', 'unstar']);
+
 export function changedElsewhere(
-  env: PosixChangeEnv,
-  item: DriveItem,
+  env: {
+    readonly store: {
+      readonly driveFeed: Pick<PosixChangeEnv['store']['driveFeed'], 'recentOfItem'>;
+    };
+  },
+  item: Pick<DriveItem, 'id' | 'rev'>,
   nodeId: string,
   baseRev: number,
 ): boolean {
@@ -22,6 +28,7 @@ export function changedElsewhere(
     const window = env.store.driveFeed.recentOfItem(item.id, before, PAGE);
     for (const row of window.rows) {
       if (row.rev <= baseRev) return false;
+      if (SAME_CONTENT.has(row.op)) continue;
       if (row.via !== 'mount' || row.deviceId !== nodeId) return true;
     }
     if (window.next === null) return false;

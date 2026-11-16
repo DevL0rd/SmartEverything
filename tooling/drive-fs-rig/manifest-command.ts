@@ -125,5 +125,11 @@ export async function manifest(args: readonly string[]): Promise<number> {
 }
 
 export async function printWalk(folder: string | undefined): Promise<void> {
-  stdout.write(`${JSON.stringify(await walk(folder ?? ''))}\n`);
+  const text = `${JSON.stringify(await walk(folder ?? ''))}\n`;
+  await new Promise<void>((resolve, reject) => {
+    stdout.write(text, (cause) => {
+      if (cause === undefined || cause === null) resolve();
+      else reject(cause);
+    });
+  });
 }

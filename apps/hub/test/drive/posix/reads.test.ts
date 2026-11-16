@@ -47,7 +47,7 @@ describe('attach', () => {
     const item = rig.opened.store.driveItems.byPath(rig.mine.id, 'docs', null);
     const scope = await rig.attach(rig.node, rig.ownerId, rig.mine, item?.id);
     expect(scope.rootInode).toBe(docs.ino);
-    const inside = await rig.posix.create(scope, create('a.txt', docs.ino));
+    const inside = await rig.posix.create(scope, create('a.txt', docs.ino), new Uint8Array());
     expect(rig.opened.store.driveItems.byPath(rig.mine.id, 'docs/a.txt', null)).toBeDefined();
     expect((await rig.posix.lookup(scope, { parent: docs.ino, name: 'a.txt' })).ino).toBe(
       inside.ino,
@@ -57,7 +57,7 @@ describe('attach', () => {
 
 describe('lookup and getattr', () => {
   it('finds a name, answers ENOENT for a missing one and ENOTDIR under a file', async () => {
-    const file = await rig.posix.create(rig.scope, create('a.txt', rig.rootIno, { mode: 0o640 }));
+    const file = await rig.posix.create(rig.scope, create('a.txt', rig.rootIno, { mode: 0o640 }), new Uint8Array());
     const found = await rig.posix.lookup(rig.scope, { parent: rig.rootIno, name: 'a.txt' });
     expect(found.ino).toBe(file.ino);
     expect(found.attr).toMatchObject({ mode: 0o640, nlink: 1, type: 1, uid: null, gid: null });
@@ -81,7 +81,7 @@ describe('lookup and getattr', () => {
   it('answers ESTALE for an inode that does not exist or belongs to another drive', async () => {
     const other = await rig.posix.create(
       rig.memberScope,
-      create('m.txt', rig.memberScope.rootInode),
+      create('m.txt', rig.memberScope.rootInode), new Uint8Array(),
     );
     expect(await refusal(rig.posix.getattr(rig.scope, 99_999))).toBe('ESTALE');
     expect(await refusal(rig.posix.getattr(rig.scope, other.ino))).toBe('ESTALE');
@@ -100,13 +100,13 @@ describe('lookup and getattr', () => {
     const parent = await rig.posix.mkdir(rig.scope, mkdir('p', rig.rootIno));
     await rig.posix.mkdir(rig.scope, mkdir('c1', parent.ino));
     await rig.posix.mkdir(rig.scope, mkdir('c2', parent.ino));
-    await rig.posix.create(rig.scope, create('f', parent.ino));
+    await rig.posix.create(rig.scope, create('f', parent.ino), new Uint8Array());
     expect((await rig.posix.getattr(rig.scope, parent.ino)).nlink).toBe(4);
     expect((await rig.posix.getattr(rig.scope, rig.rootIno)).nlink).toBe(3);
   });
 
   it('gives the item revision and etag', async () => {
-    const file = await rig.posix.create(rig.scope, create('a.txt', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a.txt', rig.rootIno), new Uint8Array());
     const item = rig.opened.store.driveItems.byPath(rig.mine.id, 'a.txt', null);
     expect(file.attr.rev).toBe(item?.rev);
     expect(file.attr.etag).toBe(item?.etag);
@@ -144,8 +144,8 @@ describe('readdir', () => {
 
   it('lists a folder in name order with full attributes', async () => {
     const dir = await rig.posix.mkdir(rig.scope, mkdir('d', rig.rootIno));
-    await rig.posix.create(rig.scope, create('b', dir.ino));
-    await rig.posix.create(rig.scope, create('a', dir.ino));
+    await rig.posix.create(rig.scope, create('b', dir.ino), new Uint8Array());
+    await rig.posix.create(rig.scope, create('a', dir.ino), new Uint8Array());
     await rig.posix.symlink(rig.scope, {
       parent: dir.ino,
       name: 'c',
@@ -178,7 +178,7 @@ describe('readdir', () => {
     expect(names).toHaveLength(total);
     expect(new Set(names).size).toBe(total);
     expect(names).toEqual([...names].sort());
-    const file = await rig.posix.create(rig.scope, create('zz', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('zz', rig.rootIno), new Uint8Array());
     expect(await refusal(rig.posix.readdir(rig.scope, { ino: file.ino, cursor: 0 }))).toBe(
       'ENOTDIR',
     );
@@ -200,7 +200,7 @@ describe('readdir', () => {
   });
 
   it('refuses a cursor past the end', async () => {
-    await rig.posix.create(rig.scope, create('only', rig.rootIno));
+    await rig.posix.create(rig.scope, create('only', rig.rootIno), new Uint8Array());
     expect(await refusal(rig.posix.readdir(rig.scope, { ino: rig.rootIno, cursor: 5 }))).toBe(
       'EINVAL',
     );
@@ -218,7 +218,7 @@ describe('readlink', () => {
       opKey: new Uint8Array(16),
     });
     expect(await rig.posix.readlink(rig.scope, link.ino)).toBe('../outside/file');
-    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('f', rig.rootIno), new Uint8Array());
     expect(await refusal(rig.posix.readlink(rig.scope, file.ino))).toBe('EINVAL');
   });
 });
@@ -237,7 +237,7 @@ describe('access', () => {
   it('lets a member of the home use the Shared Drive', async () => {
     const entry = await rig.posix.create(
       rig.sharedScope,
-      create('shared.txt', rig.sharedScope.rootInode),
+      create('shared.txt', rig.sharedScope.rootInode), new Uint8Array(),
     );
     expect((await rig.posix.getattr(rig.sharedScope, entry.ino)).size).toBe(0);
   });

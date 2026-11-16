@@ -11,6 +11,7 @@ import { itemAccess } from './access';
 import { DriveWriteError, locate, moveWithin, type DriveWriteRoot } from './intents';
 import { isInside, normalizeRelativePath } from './paths';
 import type { DriveWriteGuard } from './quotas';
+import type { DriveRootLanes } from './root-lanes';
 import { DRIVE_PAGE_SIZE, type DriveReadService } from './service-read';
 import {
   copyFile,
@@ -31,7 +32,8 @@ import {
   type WriteStore,
 } from './service-write-support';
 import { requireExport } from './sharing/export-guard';
-import { commitRestore, commitTrashes } from './trash-purge';
+import { commitRestore } from './trash-purge';
+import { trashItems } from './service-write-trash';
 import { removeTrashEntry } from './trash';
 
 export interface TreeDeps {
@@ -41,6 +43,7 @@ export interface TreeDeps {
   readonly albums: AlbumEditing;
   readonly guard: DriveWriteGuard;
   readonly scan: (rootId: string) => void;
+  readonly lanes: DriveRootLanes;
 }
 
 type ItemChange = Extract<DriveChange, { readonly itemIds: readonly string[] }>;
@@ -65,12 +68,16 @@ export class DriveTreeWriter {
     switch (change.action) {
       case 'new_folder':
         return this.each([placeIdOf(change.parent)], () =>
-          this.newFolder(caller, change.parent, change.name),
+          this.inRoots([this.placeRootOf(caller, change.parent)], () =>
+            this.newFolder(caller, change.parent, change.name),
+          ),
         );
       case 'rename':
-        return this.each([change.itemId], () => this.rename(caller, change.itemId, change.name));
+        return this.each([change.itemId], (id) =>
+          this.inRoots([this.itemRootOf(caller, id)], () => this.rename(caller, id, change.name)),
+        );
       case 'keep_source_item':
-        return this.each([change.itemId], (id) => this.copy(caller, id, change.toFolderId));
+        return this.each([change.itemId], (id) => this.lockedCopy(caller, id, change.toFolderId));
     }
   }
 
@@ -78,19 +85,27 @@ export class DriveTreeWriter {
     const ids = change.itemIds;
     switch (change.action) {
       case 'move':
-        return this.each(ids, (id) => this.move(caller, id, change.toFolderId));
+        return this.each(ids, (id) =>
+          this.inRoots([this.itemRootOf(caller, id)], () =>
+            this.move(caller, id, change.toFolderId),
+          ),
+        );
       case 'copy':
-        return this.each(ids, (id) => this.copy(caller, id, change.toFolderId));
+        return this.each(ids, (id) => this.lockedCopy(caller, id, change.toFolderId));
       case 'star':
         return this.each(ids, (id) => this.star(caller, id, true));
       case 'unstar':
         return this.each(ids, (id) => this.star(caller, id, false));
       case 'trash':
-        return this.trashAll(caller, ids);
+        return trashItems(this.deps, caller, ids);
       case 'restore':
-        return this.each(ids, (id) => this.restore(caller, id));
+        return this.each(ids, (id) =>
+          this.inRoots([this.trashRootOf(id)], () => this.restore(caller, id)),
+        );
       case 'delete_now':
-        return this.each(ids, (id) => this.deleteNow(caller, id));
+        return this.each(ids, (id) =>
+          this.inRoots([this.trashRootOf(id)], () => this.deleteNow(caller, id)),
+        );
       case 'album_add':
         return this.each(ids, (id) => this.albumAdd(caller, change.albumId, id));
       case 'album_remove':
@@ -132,44 +147,30 @@ export class DriveTreeWriter {
     return id;
   }
 
-  private async trashAll(caller: DriveCaller, ids: readonly string[]): Promise<DriveChangeResult> {
-    const { env, read, store } = this.deps;
-    const failed: { itemId: string | null; reason: string }[] = [];
-    const byRoot = new Map<string, { root: DriveWriteRoot; items: DriveItem[] }>();
-    for (const itemId of ids) {
-      try {
-        const item = read.readItem(caller, itemId);
-        const root = writableItemRoot(store, caller, item);
-        const group = byRoot.get(root.id) ?? { root, items: [] };
-        group.items.push(item);
-        byRoot.set(root.id, group);
-      } catch (cause) {
-        const reason = refusalReason(cause);
-        if (reason === null) throw cause;
-        failed.push({ itemId, reason });
-      }
+  private inRoots<T>(rootIds: readonly string[], work: () => Promise<T> | T): Promise<T> {
+    return this.deps.lanes.run(rootIds, async () => work());
+  }
+
+  private itemRootOf(caller: DriveCaller, id: string): string {
+    return this.deps.read.readItem(caller, id).rootId;
+  }
+
+  private placeRootOf(caller: DriveCaller, place: DriveFolderPlace): string {
+    return place.kind === 'drive' ? place.rootId : this.itemRootOf(caller, place.folderId);
+  }
+
+  private trashRootOf(id: string): string {
+    const entry = this.deps.store.driveTrash.find(id);
+    if (entry === undefined) {
+      throw new ApiError('not_found', 'There is no such item in the trash.');
     }
-    const done: { itemId: string; resultItemId: string | null }[] = [];
-    for (const { root, items } of byRoot.values()) {
-      const folders = items.filter((item) => item.kind === 'folder').map((item) => item.relPath);
-      const nested = (item: DriveItem): boolean =>
-        folders.some((folder) => item.relPath.startsWith(`${folder}/`));
-      for (const item of items.filter(nested)) {
-        failed.push({ itemId: item.id, reason: 'There is no such file or folder.' });
-      }
-      const top = items.filter((item) => !nested(item)).map((item) => item.id);
-      const outcomes = await commitTrashes(env, root, top, changeActorOf(caller));
-      for (const { itemId, failure } of outcomes) {
-        if (failure === null) {
-          done.push({ itemId, resultItemId: null });
-          continue;
-        }
-        const reason = refusalReason(failure);
-        if (reason === null) throw failure;
-        failed.push({ itemId, reason });
-      }
-    }
-    return { done, failed, conflicts: [] };
+    return entry.rootId;
+  }
+
+  private lockedCopy(caller: DriveCaller, id: string, toFolderId: string): Promise<Outcome> {
+    return this.inRoots([this.itemRootOf(caller, id), this.itemRootOf(caller, toFolderId)], () =>
+      this.copy(caller, id, toFolderId),
+    );
   }
 
   private async restore(caller: DriveCaller, id: string): Promise<Outcome> {

@@ -67,25 +67,14 @@ const COUNT = z.strictObject({ count: z.number() });
 const COLUMNS = `id, placement_id, node_id, inode_id, op_key, base_rev, size, ranges, state,
   result_rev, created_at`;
 
-export function mergeRanges(ranges: readonly ByteRange[], added: ByteRange): readonly ByteRange[] {
-  const sorted = [...ranges, added].sort((left, right) => left[0] - right[0]);
-  const merged: [number, number][] = [];
-  let current: [number, number] | undefined;
-  for (const [start, end] of sorted) {
-    if (start > (current?.[1] ?? -1)) {
-      current = [start, end];
-      merged.push(current);
-    } else if (current !== undefined) {
-      current[1] = Math.max(current[1], end);
-    }
-  }
-  return merged;
-}
-
 export function coversRanges(ranges: readonly ByteRange[], size: number): boolean {
   if (size === 0) return true;
   const [first] = ranges;
   return ranges.length === 1 && first?.[0] === 0 && first[1] >= size;
+}
+
+export function coveredBytes(ranges: readonly ByteRange[]): number {
+  return ranges.reduce((sum, [start, end]) => sum + (end - start), 0);
 }
 
 export class DriveMountCommitsRepository {
@@ -140,16 +129,12 @@ export class DriveMountCommitsRepository {
     });
   }
 
-  received(id: number, range: ByteRange): DriveMountCommit {
-    return this.context.write(() => {
-      const commit = this.byId(id);
-      this.context.sql.run(
-        'record the received range of the mount commit',
-        `update drive_mount_commits set ranges = $ranges where id = $id and state = 'open'`,
-        { id, ranges: jsonText(mergeRanges(commit.ranges, range)) },
-      );
-      return this.byId(id);
-    });
+  setRanges(id: number, ranges: readonly ByteRange[]): void {
+    this.context.sql.run(
+      'record the received ranges of the mount commit',
+      `update drive_mount_commits set ranges = $ranges where id = $id and state = 'open'`,
+      { id, ranges: jsonText(ranges) },
+    );
   }
 
   finish(id: number, size: number, resultRev: number): DriveMountCommit {

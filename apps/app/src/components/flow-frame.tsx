@@ -23,7 +23,6 @@ import {
 } from './page-shell/bar-search';
 import type { ShellSearchConfig } from './page-shell/search-slot';
 import { ShellTitle } from './page-shell/shell-parts';
-import { ShellStatus } from './page-shell/shell-status';
 import { SURFACE_AT, TopSurface } from './page-shell/top-shell';
 import { ProgressSteps, type ProgressStep } from './progress-steps';
 import { useEscape } from './use-escape';
@@ -76,7 +75,6 @@ function FlowBar({
     return (
       <View className={className}>
         <OpenSearch search={search} onClose={bar.close} back={null} />
-        <ShellStatus />
       </View>
     );
   }
@@ -92,7 +90,6 @@ function FlowBar({
       </View>
       <BarInline search={search} bar={bar} />
       <BarTrailing search={search} bar={bar}>
-        <ShellStatus />
         {close}
       </BarTrailing>
     </View>

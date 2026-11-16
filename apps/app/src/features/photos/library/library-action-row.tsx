@@ -5,12 +5,14 @@ import { Interactive } from '../../../components/interactive';
 import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
+import { useBulkRunning } from '../../../store/bulk-run';
 import { organiseMenuItems, useOrganiseActions } from '../organise/actions';
 import type { LibrarySelectionProps, SelectionExtra } from './library-selection';
 import {
   keepActions,
   LocalSelection,
   NO_EXTRAS,
+  lockedWhile,
   pickedOf,
   sendActions,
   shown,
@@ -53,7 +55,7 @@ function BarAlbum({ media, picked }: PickedProps): ReactNode {
   const { ref, open, menu } = useAnchoredMenu(media.albums(picked.ids), 'Add to album');
   return (
     <View ref={ref} collapsable={false} className="flex-1">
-      <BarAction icon="layers" label="Album" disabled={false} onPress={open} />
+      <BarAction icon="layers" label="Album" disabled={picked.locked} onPress={open} />
       {menu}
     </View>
   );
@@ -82,7 +84,7 @@ function BarOrganise(input: PickedProps): ReactNode {
   );
   return (
     <View ref={ref} collapsable={false} className="flex-1">
-      <BarAction icon="more" label="More" disabled={false} onPress={open} />
+      <BarAction icon="more" label="More" disabled={picked.locked} onPress={open} />
       {menu}
     </View>
   );
@@ -94,7 +96,7 @@ function BarSend(input: PickedProps): ReactNode {
       key={action.id}
       icon={action.icon}
       label={action.label}
-      disabled={false}
+      disabled={input.picked.locked}
       onPress={action.onPress}
     />
   ));
@@ -121,7 +123,7 @@ function BarActions({
             key={extra.id}
             icon={extra.icon}
             label={extra.short}
-            disabled={false}
+            disabled={picked.locked}
             onPress={() => {
               extra.onPress(picked.ids);
             }}
@@ -131,7 +133,7 @@ function BarActions({
         icon="trash"
         label="Trash"
         tone="critical"
-        disabled={false}
+        disabled={picked.locked}
         onPress={() => {
           media.trash(picked.ids, onTrashed);
         }}
@@ -142,7 +144,7 @@ function BarActions({
 
 export function LibraryActionRow(props: LibrarySelectionProps): ReactNode {
   const { controls, media, extras = NO_EXTRAS } = props;
-  const picked = pickedOf(props);
+  const picked = lockedWhile(pickedOf(props), useBulkRunning());
   const input: PickedProps = { media, picked, onTrashed: controls.clear };
   return (
     <View className="gap-2">
@@ -151,4 +153,3 @@ export function LibraryActionRow(props: LibrarySelectionProps): ReactNode {
     </View>
   );
 }
-

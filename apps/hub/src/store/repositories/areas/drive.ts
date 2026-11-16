@@ -24,6 +24,7 @@ import { DriveIntentsRepository } from '../drive-intents';
 import { DriveInodesRepository } from '../drive-inodes';
 import { DriveItemsRepository } from '../drive-items';
 import { DriveMountCommitsRepository } from '../drive-mount-commits';
+import { DriveInodeLeasesRepository } from '../drive-inode-leases';
 import { DriveXattrsRepository } from '../drive-xattrs';
 import { DrivePlacementsRepository } from '../drive-placements';
 import { DriveQuotasRepository } from '../drive-quotas';
@@ -43,6 +44,7 @@ export interface DriveRepositories {
   readonly driveInodes: DriveInodesRepository;
   readonly driveXattrs: DriveXattrsRepository;
   readonly driveMountCommits: DriveMountCommitsRepository;
+  readonly driveInodeLeases: DriveInodeLeasesRepository;
   readonly driveAlbums: DriveAlbumsRepository;
   readonly driveTrash: DriveTrashRepository;
   readonly driveDays: DriveDaysRepository;
@@ -87,6 +89,7 @@ export function driveRepositories(
     driveInodes: new DriveInodesRepository(context),
     driveXattrs: new DriveXattrsRepository(context),
     driveMountCommits: new DriveMountCommitsRepository(context),
+    driveInodeLeases: new DriveInodeLeasesRepository(context),
     driveAlbums: new DriveAlbumsRepository(context),
     driveTrash: new DriveTrashRepository(context),
     driveDays: new DriveDaysRepository(context),

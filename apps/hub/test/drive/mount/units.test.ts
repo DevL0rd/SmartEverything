@@ -182,15 +182,7 @@ describe('the wire rules', () => {
 
 describe('an END that finds its staging file gone', () => {
   it('treats the commit as applied and answers with the current file', async () => {
-    const entry = await mine.client.call('CREATE', {
-      parent: mine.root,
-      name: 'crash.txt',
-      mode: 0o644,
-      uid: null,
-      gid: null,
-      exclusive: true,
-      opKey: opKey(),
-    });
+    const entry = await mine.client.created(mine.root, 'crash.txt');
     const { commit } = await mine.client.call('BEGIN', {
       ino: entry.ino,
       baseRev: entry.attr.rev,
@@ -200,6 +192,7 @@ describe('an END that finds its staging file gone', () => {
     const done = await mine.client.call('END', {
       commit,
       size: 0,
+      length: 0,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -211,15 +204,7 @@ describe('an END that finds its staging file gone', () => {
 
 describe('the staging file of a commit written in parallel', () => {
   it('is opened once however many writes arrive before the first open finishes', async () => {
-    const entry = await mine.client.call('CREATE', {
-      parent: mine.root,
-      name: 'parallel.bin',
-      mode: 0o644,
-      uid: null,
-      gid: null,
-      exclusive: true,
-      opKey: opKey(),
-    });
+    const entry = await mine.client.created(mine.root, 'parallel.bin');
     const { commit } = await mine.client.call('BEGIN', {
       ino: entry.ino,
       baseRev: entry.attr.rev,

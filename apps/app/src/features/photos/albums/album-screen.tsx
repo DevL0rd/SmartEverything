@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -27,6 +27,7 @@ import { useMutationState, type MutationState } from '../../../store/mutation';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { useLoaded, useSyncStatus } from '../../../store/selectors';
 import { PhotosFrame } from '../components/photos-frame';
+import type { SelectionScope } from '../library/library-model';
 import { selectionFrameOf, type SelectionExtra } from '../library/library-selection';
 import { useMediaActions, type MediaActions } from '../library/use-media-actions';
 import {
@@ -72,6 +73,7 @@ interface AlbumView {
   readonly media: MediaActions;
   readonly share: AlbumShare;
   readonly compact: boolean;
+  readonly scope: SelectionScope;
   readonly onOpen: (opened: AlbumOpened) => void;
 }
 
@@ -277,6 +279,30 @@ function useOverflow(
   return compact ? albumMenuOf(album, share, onOpen, leaving.leave) : [];
 }
 
+function useAlbumScope(
+  album: DriveAlbum,
+  pages: AlbumView['pages'],
+  loaded: AlbumView['loaded'],
+  controls: MediaSelectionControls,
+): SelectionScope {
+  const [all, setAll] = useState(false);
+  const { hasNextPage, isFetching, isError, fetchNextPage } = pages;
+  useEffect(() => {
+    if (!all || !hasNextPage || isFetching || isError) return;
+    background(fetchNextPage(), 'photos.album_page_failed', { albumId: album.id });
+  }, [all, album.id, hasNextPage, isFetching, isError, fetchNextPage]);
+  const items = loaded === null ? 0 : loaded.items.length;
+  const complete = loaded?.complete === true;
+  return {
+    total: complete ? items : Math.max(album.itemCount, items),
+    complete,
+    onAll: (): void => {
+      setAll(true);
+      controls.all();
+    },
+  };
+}
+
 function useAlbumView(album: DriveAlbum): AlbumView & { readonly opened: AlbumOpened } {
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const pages = usePhotoAlbumItems(album.id);
@@ -285,8 +311,20 @@ function useAlbumView(album: DriveAlbum): AlbumView & { readonly opened: AlbumOp
   const controls = useMediaSelection(tiles.map((tile) => tile.id));
   const media = useMediaActions();
   const share = useAlbumShare(album);
+  const scope = useAlbumScope(album, pages, loaded, controls);
   const [opened, setOpened] = useState<AlbumOpened>(null);
-  return { pages, loaded, tiles, controls, media, share, compact, opened, onOpen: setOpened };
+  return {
+    pages,
+    loaded,
+    tiles,
+    controls,
+    media,
+    share,
+    compact,
+    scope,
+    opened,
+    onOpen: setOpened,
+  };
 }
 
 function AlbumPage({
@@ -303,7 +341,7 @@ function AlbumPage({
   const view = useAlbumView(album);
   const { compact, tiles, controls, media, share } = view;
   const extras = useRemoveExtra(album, share, view.loaded, controls);
-  const frame = selectionFrameOf(compact, { controls, tiles, media, extras });
+  const frame = selectionFrameOf(compact, { controls, tiles, media, extras, scope: view.scope });
   const overflow = useOverflow(album, share, compact, view.onOpen);
   const active = controls.selection.active;
   return (

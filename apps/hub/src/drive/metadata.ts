@@ -28,7 +28,7 @@ const WINDOW_ROWS = 1000;
 export interface MetadataEnvironment {
   readonly store: Pick<
     Store,
-    'driveRoots' | 'driveItems' | 'settingsKv' | 'write' | 'photoMetaOverrides'
+    'driveRoots' | 'driveItems' | 'settingsKv' | 'write' | 'photoMetaOverrides' | 'feed' | 'driveFeed'
   >;
   readonly media: Pick<DriveMediaRepository, 'find' | 'save' | 'update'>;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
@@ -293,6 +293,16 @@ async function readRoot(
   const run = new MetadataRun(env, root);
   const startedAt = performance.now();
   await run.run(candidates, signal);
+  if (run.done > 0) {
+    env.store.feed.notice({
+      type: 'drive_changed',
+      rootIds: [rootId],
+      folderIds: [],
+      albumIds: [],
+      months: [],
+      cursor: env.store.driveFeed.latestSeq(),
+    });
+  }
   env.log.info('drive.metadata_done', {
     rootId,
     unread: candidates.length,

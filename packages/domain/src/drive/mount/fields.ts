@@ -39,7 +39,7 @@ export const META_KEYS = {
   bsize: 34,
   namelen: 35,
   target: 36,
-  exclusive: 37,
+  count: 37,
   rdev: 38,
   type: 39,
   nlink: 40,

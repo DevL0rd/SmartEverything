@@ -43,6 +43,7 @@ type mountSet struct {
 func newMountSet(source InodeFilesystem, report *reporter) *mountSet {
 	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}, tuning: newTuningState(report)}
 	source.OnChange(set.sourceChanged)
+	source.OnPending(coalesced(set.publishAll))
 	return set
 }
 
@@ -96,7 +97,7 @@ func (s *mountSet) mount(id string, root mountRoot, point string, options mountO
 	active := &activeMount{id: id, root: root, hubRoot: attached.Root, rootIno: attached.Ino, top: top, mount: fm, open: open, done: make(chan struct{})}
 	open.changed = func() { s.publish(active) }
 	fm.nodes.Store(attached.Ino, top.EmbeddedInode())
-	server, err := fs.Mount(point, top, serverOptions(point, attached.Ino, options, tuned))
+	server, err := mountNodes(point, top, serverOptions(point, attached.Ino, options, tuned))
 	if err != nil {
 		return s.fail(id, err)
 	}
@@ -128,6 +129,18 @@ func (s *mountSet) tune(t tuning) error {
 		s.report.applied(active.id, &active.applied, live.load())
 	}
 	return nil
+}
+
+func (s *mountSet) publishAll() {
+	s.mu.Lock()
+	mounted := make([]*activeMount, 0, len(s.mounts))
+	for _, active := range s.mounts {
+		mounted = append(mounted, active)
+	}
+	s.mu.Unlock()
+	for _, active := range mounted {
+		s.publish(active)
+	}
 }
 
 func (s *mountSet) publish(active *activeMount) {
@@ -175,7 +188,6 @@ func serverOptions(point string, rootIno uint64, options mountOptions, t tuning)
 		congestion = int(t.congestionThreshold)
 	}
 	return &fs.Options{
-		NegativeTimeout: &negativeLifetime,
 		NullPermissions: true,
 		RootStableAttr:  &fs.StableAttr{Ino: rootIno},
 		MountOptions: fuse.MountOptions{

@@ -56,10 +56,12 @@ export function checkDriveQuota(status: DriveQuotaSource, request: DriveWriteReq
   if (request.profileId === null) {
     return;
   }
-  const { quota, usage } = status(request.profileId);
+  const current = status(request.profileId);
+  const { quota } = current;
   if (quota === null) {
     return;
   }
+  const { usage } = current;
   const used = usage.live + usage.versions + usage.trash;
   const growth = request.addBytes - request.releasedBytes;
   if (growth > 0 && used + growth > quota) {

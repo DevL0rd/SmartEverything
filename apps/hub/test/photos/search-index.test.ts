@@ -48,6 +48,18 @@ async function settle(): Promise<number> {
   return done;
 }
 
+function changed(itemId: string, op: 'update' | 'delete'): void {
+  kit.store.driveFeed.append({
+    rootId: kit.aliceRoot,
+    itemId,
+    op,
+    rev: 2,
+    actorProfileId: null,
+    via: 'outside',
+    deviceId: null,
+  });
+}
+
 function find(words: string): string[] {
   return kit.store.database
     .prepare('select item_id from drive_items_search where drive_items_search match ?')
@@ -78,6 +90,7 @@ describe('the Photos search index', () => {
     kit.store.database
       .prepare('update drive_items set taken_at = ? where id = ?')
       .run('2026-07-01T10:00:00.000Z', id);
+    changed(id, 'update');
     expect(await settle()).toBe(1);
     expect(held()).toMatchObject([{ item_id: id, dates: '2026 July', labels: 'dog beach' }]);
   });
@@ -86,8 +99,48 @@ describe('the Photos search index', () => {
     const id = kit.seed({ n: 1, takenAt: '2026-03-01T10:00:00.000Z' });
     await settle();
     kit.store.database.prepare('delete from drive_items where id = ?').run(id);
+    changed(id, 'delete');
     expect(await settle()).toBe(1);
     expect(held()).toEqual([]);
+  });
+
+  it('after the first pass reads only the photos the feed names', async () => {
+    const first = kit.seed({ n: 1, takenAt: '2026-03-01T10:00:00.000Z', name: 'one.jpg' });
+    const second = kit.seed({ n: 2, takenAt: '2026-03-01T10:00:00.000Z', name: 'two.jpg' });
+    await settle();
+    kit.store.database
+      .prepare('update drive_items set taken_at = ? where id in (?, ?)')
+      .run('2026-08-01T10:00:00.000Z', first, second);
+    changed(second, 'update');
+    expect(await settle()).toBe(1);
+    expect(held()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item_id: first, dates: '2026 March' }),
+        expect.objectContaining({ item_id: second, dates: '2026 August' }),
+      ]),
+    );
+  });
+
+  it('reads every photo again after a change that adds no feed rows', async () => {
+    const id = kit.seed({ n: 1, takenAt: '2026-03-01T10:00:00.000Z' });
+    indexer.start();
+    deferred.splice(0).forEach((work) => {
+      work();
+    });
+    await settle();
+    kit.store.database
+      .prepare('update drive_items set taken_at = ? where id = ?')
+      .run('2026-09-01T10:00:00.000Z', id);
+    kit.store.feed.notice({
+      type: 'drive_changed',
+      rootIds: [kit.aliceRoot],
+      folderIds: [],
+      albumIds: [],
+      months: [],
+      cursor: kit.store.driveFeed.latestSeq(),
+    });
+    expect(await settle()).toBe(1);
+    expect(held()).toMatchObject([{ item_id: id, dates: '2026 September' }]);
   });
 
   it('runs once for a burst of drive changes and stops listening when stopped', async () => {

@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DriveActivity } from '../../src/drive/activity';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import {
   DriveWatchers,
@@ -323,6 +324,7 @@ describe('a hub write seen again by the watcher', () => {
       availability: () => Promise.resolve('online'),
       mounted: (): boolean => false,
       workerScript,
+      lanes: new DriveRootLanes(),
       log: testLogger(),
     };
     const queue = new WorkQueue<string>({

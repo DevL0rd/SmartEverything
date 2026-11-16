@@ -24,7 +24,7 @@ import { OFFLINE_BODY, SNAPSHOT_TITLE } from '../model/offline-copy';
 import { LibraryGrid } from '../library/library-grid';
 import { LibraryError, LibraryLoading } from '../library/library-states';
 import { selectionFrameOf, type SelectionExtra } from '../library/library-selection';
-import { useLibraryFeed, type LibraryFeed } from '../library/use-library-feed';
+import { feedSelectionOf, useLibraryFeed, type LibraryFeed } from '../library/use-library-feed';
 import { useMediaActions, type MediaActions } from '../library/use-media-actions';
 import { notThisText, usePeopleActions } from './actions';
 import { groupTitleOf } from './model';
@@ -122,12 +122,7 @@ function PersonBody({
   const [sheet, setSheet] = useState<PersonSheet>(null);
   const notThis = useNotThis(group, controls, !live);
   const overflow = usePersonMenu(group, live, setSheet);
-  const frame = selectionFrameOf(compact, {
-    controls,
-    tiles: feed.tiles,
-    media,
-    extras: [notThis],
-  });
+  const frame = selectionFrameOf(compact, feedSelectionOf(feed, controls, media, [notThis]));
   const hero = controls.selection.active ? null : (
     <PersonHero group={group} live={live} onReview={controls.begin} />
   );

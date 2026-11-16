@@ -8,8 +8,10 @@ import { build } from 'esbuild';
 import sharp from 'sharp';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../../src/drive/jobs';
+import { DriveRootLanes } from '../../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../../src/store/repositories/drive-inodes';
 import {
+  TextCursors,
   collectTextBacklog,
   textHandler,
   textTrigger,
@@ -145,6 +147,7 @@ async function scan(): Promise<void> {
     availability: () => Promise.resolve('online'),
     mounted: (): boolean => false,
     workerScript: scannerScript,
+    lanes: new DriveRootLanes(),
     log: testLogger(),
   };
   await scanHandler(env)({ kind: 'scan', rootId: ROOT }, signal());
@@ -166,6 +169,7 @@ function textEnvironment(): TextEnvironment {
       driveRoots: fixture.roots,
       driveItems: fixture.items,
       driveItemText: texts,
+      driveFeed,
       settingsKv: fixture.settings,
       feed: fixture.feed,
       write: (work) => fixture.context.write(work),
@@ -181,7 +185,7 @@ function textEnvironment(): TextEnvironment {
 }
 
 async function readText(): Promise<void> {
-  await textHandler(textEnvironment())({ kind: 'text', rootId: ROOT }, signal());
+  await textHandler(textEnvironment(), new TextCursors())({ kind: 'text', rootId: ROOT }, signal());
 }
 
 async function readyPreview(path: string, words: string): Promise<void> {
@@ -329,6 +333,60 @@ describe('reading the text of a drive', () => {
     expect(searchFor('first')).toEqual([]);
   });
 
+  it('walks the drive once and then reads only what the drive feed says changed', async () => {
+    put('a/one.txt', 'alpha words');
+    put('b/two.txt', 'beta words');
+    put('b/three.png', await pngOf(8, 8, solid(8, 8, [255, 255, 255, 255])));
+    await scan();
+    const env = textEnvironment();
+    let listed = 0;
+    const items = env.store.driveItems;
+    const counted: TextEnvironment = {
+      ...env,
+      store: {
+        ...env.store,
+        driveItems: new Proxy(items, {
+          get(target, key, receiver): unknown {
+            if (key === 'children') listed += 1;
+            const value: unknown = Reflect.get(target, key, receiver);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        }),
+      },
+    };
+    const cursors = new TextCursors();
+    const run = textHandler(counted, cursors);
+    await run({ kind: 'text', rootId: ROOT }, signal());
+    expect(searchFor('alpha')).toEqual(['one.txt']);
+    const walked = listed;
+    expect(walked).toBeGreaterThan(0);
+    put('b/two.txt', 'gamma words now');
+    utimesSync(
+      join(tree, 'b/two.txt'),
+      new Date('2026-11-08T00:00:00Z'),
+      new Date('2026-11-08T00:00:00Z'),
+    );
+    await scan();
+    const two = indexed('b/two.txt');
+    driveFeed.append({
+      rootId: ROOT,
+      itemId: two.id,
+      op: 'update',
+      rev: two.rev,
+      actorProfileId: null,
+      via: 'outside',
+      deviceId: null,
+    });
+    await readyPreview('b/three.png', 'HELLO');
+    await run({ kind: 'text', rootId: ROOT }, signal());
+    expect(listed).toBe(walked);
+    expect(searchFor('gamma')).toEqual(['two.txt']);
+    expect(texts.find(indexed('b/three.png').id)?.source).toBe('image');
+    cursors.forget(ROOT);
+    await run({ kind: 'text', rootId: ROOT }, signal());
+    expect(listed).toBeGreaterThan(walked);
+  });
+
   it('starts nothing when content indexing is off and keeps the index it has', async () => {
     put('old.txt', 'kept words');
     await scan();
@@ -423,7 +481,7 @@ describe('folder icons during the job', () => {
     put('trips/folder.png', await pngOf(8, 8, solid(8, 8, [0, 0, 255, 255])));
     await scan();
     const environment = textEnvironment();
-    await textHandler(environment)({ kind: 'text', rootId: ROOT }, signal());
+    await textHandler(environment, new TextCursors())({ kind: 'text', rootId: ROOT }, signal());
     const folder = indexed('trips');
     const first = icons.find(folder.id);
     put('trips/folder.png', await pngOf(8, 8, solid(8, 8, [255, 255, 0, 255])));
@@ -432,7 +490,7 @@ describe('folder icons during the job', () => {
       new Date('2026-11-10T00:00:00Z'),
       new Date('2026-11-10T00:00:00Z'),
     );
-    await textHandler(environment)({ kind: 'text', rootId: ROOT }, signal());
+    await textHandler(environment, new TextCursors())({ kind: 'text', rootId: ROOT }, signal());
     const second = icons.find(folder.id);
     expect(second?.imageSha256).not.toBe(first?.imageSha256);
     expect(

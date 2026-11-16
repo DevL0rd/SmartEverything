@@ -27,7 +27,7 @@ import { useLocalLibrary } from '../local/use-local-library';
 import { LibraryGrid } from '../library/library-grid';
 import { selectionFrameOf } from '../library/library-selection';
 import { LibraryError, LibraryLoading, LoadError } from '../library/library-states';
-import { useLibraryFeed } from '../library/use-library-feed';
+import { feedSelectionOf, useLibraryFeed } from '../library/use-library-feed';
 import { useMediaActions } from '../library/use-media-actions';
 import { useFolderBackup } from './backup';
 import { useHiddenFolderKeys, usePhotoFolders } from './data';
@@ -104,7 +104,7 @@ function FolderPage({ folderKey }: { readonly folderKey: PhotoFolderKey }): Reac
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));
   const media = useMediaActions();
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
-  const frame = selectionFrameOf(compact, { controls, tiles: feed.tiles, media });
+  const frame = selectionFrameOf(compact, feedSelectionOf(feed, controls, media));
   const pref = usePref(PREFS.photos);
   const [step, setStep] = useState<MediaZoomStep | null>(null);
   const opened = step ?? (pref.status === 'ready' ? pref.value.libraryZoom : 'days');

@@ -189,6 +189,10 @@ func (s *sizeSpy) Call(ctx context.Context, op wire.Op, meta wire.Meta, payload 
 	return s.Caller.Call(ctx, op, meta, payload)
 }
 
+func (s *sizeSpy) Post(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) (wire.Posted, error) {
+	return wire.PostByCall(ctx, s, op, meta, payload)
+}
+
 func (s *sizeSpy) sizes() []int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

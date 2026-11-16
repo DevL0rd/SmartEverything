@@ -34,6 +34,8 @@ import { bundleWorker } from '../drive-fixture';
 import { insertMount } from '../placement-fixture';
 import { openPosixRig, type PosixRig } from '../posix/posix-rig';
 
+const WRITE_SLOTS = 8;
+
 export class MountFailure extends Error {
   constructor(
     readonly code: string,
@@ -144,6 +146,40 @@ export class TestClient {
     });
     this.socket.send(wire, { binary: true });
     return { id, sent };
+  }
+
+  private leased: { next: number; end: number } = { next: 0, end: 0 };
+
+  async ino(): Promise<number> {
+    if (this.leased.next >= this.leased.end) {
+      const lease = await this.call('LEASE', { count: 256 });
+      this.leased = { next: lease.start, end: lease.start + lease.count };
+    }
+    const ino = this.leased.next;
+    this.leased.next += 1;
+    return ino;
+  }
+
+  async created(
+    parent: number,
+    name: string,
+    content: Uint8Array = new Uint8Array(),
+  ): Promise<ReplyMeta<'CREATE'>> {
+    return this.call(
+      'CREATE',
+      {
+        parent,
+        name,
+        ino: await this.ino(),
+        mode: 0o644,
+        uid: null,
+        gid: null,
+        mtimeNs: 1_763_100_000_000_000_000n,
+        fsync: false,
+        opKey: new Uint8Array(randomBytes(16)),
+      },
+      content,
+    );
   }
 
   async call<Name extends RequestOpName>(
@@ -279,11 +315,15 @@ export async function openMountRig(leaseMs = 90_000, history = false): Promise<M
     guard: posix.env.guard,
     space: posix.env.space,
     activity,
+    lanes: posix.env.lanes,
     log: testLogger('drive'),
     leaseMs,
     hashWorker,
   });
-  const socket = new DriveMountSocket(posix.opened.store, access, mount, testLogger('drive'));
+  const socket = new DriveMountSocket(posix.opened.store, access, mount, {
+    log: testLogger('drive'),
+    writeSlots: (): number => WRITE_SLOTS,
+  });
   const { server, port } = await listen(socket);
   const clients: TestClient[] = [];
   return {

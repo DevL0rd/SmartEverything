@@ -110,6 +110,13 @@ export class DriveQuotasRepository {
   }
 
   status(profileId: string): DriveQuotaStatus {
-    return { quota: this.find(profileId)?.bytes ?? null, usage: this.usage(profileId) };
+    const quota = this.find(profileId)?.bytes ?? null;
+    const usage = (): DriveUsage => this.usage(profileId);
+    return {
+      quota,
+      get usage(): DriveUsage {
+        return usage();
+      },
+    };
   }
 }

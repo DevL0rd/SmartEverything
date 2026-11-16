@@ -2,11 +2,13 @@ package fakehub
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -395,11 +397,14 @@ func (h *Hub) dispatch(ctx context.Context, c *conn, f wire.Frame, meta wire.Met
 	case wire.OpReadlink:
 		target, err := h.Model.Readlink(a.u(wire.KeyIno))
 		return wire.Meta{wire.KeyTarget: target}, nil, err
+	case wire.OpLease:
+		count := a.u(wire.KeyCount)
+		return wire.Meta{wire.KeyStart: h.Model.Lease(count), wire.KeyCount: count}, nil, a.err
 	case wire.OpMkdir:
-		e, err := h.Model.Mkdir(by, a.u(wire.KeyParent), a.s(wire.KeyName), uint32(a.u(wire.KeyMode)), a.owner(wire.KeyUid), a.owner(wire.KeyGid))
+		e, err := h.Model.Mkdir(by, a.made(nil))
 		return entryOrErr(e, err, a)
 	case wire.OpCreate:
-		e, err := h.Model.Create(by, a.u(wire.KeyParent), a.s(wire.KeyName), uint32(a.u(wire.KeyMode)), a.owner(wire.KeyUid), a.owner(wire.KeyGid), a.b(wire.KeyExclusive))
+		e, err := h.Model.Create(by, a.made(framePayload(f)))
 		return entryOrErr(e, err, a)
 	case wire.OpMknod:
 		e, err := h.Model.Mknod(by, a.u(wire.KeyParent), a.s(wire.KeyName), uint8(a.u(wire.KeyType)), uint32(a.u(wire.KeyMode)), uint32(a.u(wire.KeyRdev)), a.owner(wire.KeyUid), a.owner(wire.KeyGid))
@@ -411,9 +416,9 @@ func (h *Hub) dispatch(ctx context.Context, c *conn, f wire.Frame, meta wire.Met
 		attr, err := h.Model.Link(by, a.u(wire.KeyIno), a.u(wire.KeyParent), a.s(wire.KeyName))
 		return attrOrErr(attr, err, a)
 	case wire.OpUnlink:
-		return empty(h.Model.Unlink(by, a.u(wire.KeyParent), a.s(wire.KeyName)), a)
+		return empty(h.Model.Unlink(by, a.u(wire.KeyParent), a.s(wire.KeyName), a.u(wire.KeyIno)), a)
 	case wire.OpRmdir:
-		return empty(h.Model.Rmdir(by, a.u(wire.KeyParent), a.s(wire.KeyName)), a)
+		return empty(h.Model.Rmdir(by, a.u(wire.KeyParent), a.s(wire.KeyName), a.u(wire.KeyIno)), a)
 	case wire.OpRename:
 		return empty(h.Model.Rename(by, a.u(wire.KeyParent), a.s(wire.KeyName), a.u(wire.KeyNewParent), a.s(wire.KeyNewName), uint32(a.u(wire.KeyFlags))), a)
 	case wire.OpTmpfile:
@@ -641,8 +646,12 @@ func (h *Hub) end(by string, s *session, a *args) (wire.Meta, []byte, error) {
 		return nil, nil, err
 	}
 	size := a.u(wire.KeySize)
+	length := a.u(wire.KeyLength)
 	if a.err != nil {
 		return nil, nil, a.err
+	}
+	if covered(cm.ranges) != length {
+		return nil, nil, fail(wire.ErrEAGAIN)
 	}
 	attr, err := h.Model.Commit(by, cm.ino, cm.baseRev, size, cm.writes)
 	if err != nil {
@@ -652,4 +661,32 @@ func (h *Hub) end(by string, s *session, a *args) (wire.Meta, []byte, error) {
 	delete(s.commits, a.u(wire.KeyCommit))
 	s.mu.Unlock()
 	return wire.Meta{wire.KeyAttr: attrMeta(attr), wire.KeyRev: attr.Rev}, nil, nil
+}
+
+func covered(spans [][2]uint64) uint64 {
+	sorted := slices.Clone(spans)
+	slices.SortFunc(sorted, func(x, y [2]uint64) int { return cmp.Compare(x[0], y[0]) })
+	var total, reach uint64
+	for _, span := range sorted {
+		start := max(span[0], reach)
+		if span[1] > start {
+			total += span[1] - start
+			reach = span[1]
+		}
+	}
+	return total
+}
+
+func (a *args) stamp(key uint64) int64 {
+	if v := a.ns(key, func() int64 { return 0 }); v != nil {
+		return *v
+	}
+	return 0
+}
+
+func (a *args) made(content []byte) Made {
+	return Made{
+		Ino: a.u(wire.KeyIno), Parent: a.u(wire.KeyParent), Name: a.s(wire.KeyName), Mode: uint32(a.u(wire.KeyMode)),
+		UID: a.owner(wire.KeyUid), GID: a.owner(wire.KeyGid), MtimeNs: a.stamp(wire.KeyMtimeNs), Content: bytes.Clone(content),
+	}
 }

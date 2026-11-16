@@ -114,24 +114,21 @@ function crowds(previous: KeyedLabel, label: KeyedLabel, step: number): boolean 
   return (label.column - previous.column) * step < captionWidthOf(previous.text) + LABEL_GAP;
 }
 
-function placeLabel(labels: KeyedLabel[], label: KeyedLabel, step: number): void {
+function placeLabel(
+  labels: readonly KeyedLabel[],
+  label: KeyedLabel,
+  step: number,
+): readonly KeyedLabel[] {
   const previous = labels.at(-1);
-  if (previous === undefined || !crowds(previous, label, step)) {
-    labels.push(label);
-    return;
-  }
+  if (previous === undefined || !crowds(previous, label, step)) return [...labels, label];
   if (labels.length === 1 && previous.column === 0 && !label.year) {
-    labels[0] = labelOf(label.start, previous.year);
-    return;
+    return [labelOf(label.start, previous.year)];
   }
-  if (!label.year) return;
-  labels.pop();
+  if (!label.year) return labels;
+  const before = labels.slice(0, -1);
   const short = labelOf(previous.start, false);
-  if (previous.year && !crowds(short, label, step)) {
-    labels.push(short, label);
-    return;
-  }
-  placeLabel(labels, label, step);
+  if (previous.year && !crowds(short, label, step)) return [...before, short, label];
+  return placeLabel(before, label, step);
 }
 
 function blockLabelsOf(
@@ -139,13 +136,11 @@ function blockLabelsOf(
   step: number,
   carried: string | undefined,
 ): readonly KeyedLabel[] {
-  const labels: KeyedLabel[] = [];
-  for (const start of block.starts) {
-    if (labels.length === 0 && start.key === carried) continue;
+  return block.starts.reduce<readonly KeyedLabel[]>((labels, start) => {
+    if (labels.length === 0 && start.key === carried) return labels;
     const label = labelOf(start, block.crosses && (labels.length === 0 || start.january));
-    placeLabel(labels, label, step);
-  }
-  return labels;
+    return placeLabel(labels, label, step);
+  }, []);
 }
 
 export interface LabelledBlock {

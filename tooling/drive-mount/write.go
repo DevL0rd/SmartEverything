@@ -15,11 +15,24 @@ import (
 
 type baseSource interface {
 	Open(ctx context.Context, ino uint64) (ReadHandle, error)
+	Getattr(ctx context.Context, ino uint64) (wire.Attr, error)
+	Lookup(ctx context.Context, parent uint64, name string) (Entry, error)
+	Readdir(ctx context.Context, ino, cursor uint64) (DirPage, error)
+}
+
+type nameCache interface {
+	NoteLocal(parent uint64, name string, entry wire.Entry)
+	NoteLocalDir(ino uint64)
+	NoteLocalGone(parent uint64, name string, ino uint64)
+	NoteName(parent uint64, name string)
+	NoteChanged(ino uint64)
+	RootIno(root string) (uint64, bool)
 }
 
 type writeConfig struct {
 	Caller wire.Caller
 	Base   baseSource
+	Names  nameCache
 	Dir    string
 	NameOf func(ino uint64) (parent uint64, name string, ok bool)
 	RootOf func(ino uint64) string
@@ -28,6 +41,8 @@ type writeConfig struct {
 type writeBack struct {
 	caller    wire.Caller
 	base      baseSource
+	names     nameCache
+	ns        *namespaceLog
 	journal   *journal
 	nameOf    func(ino uint64) (uint64, string, bool)
 	rootOf    func(ino uint64) string
@@ -42,6 +57,7 @@ type writeBack struct {
 	forgets   []uint64
 	committed func(ino uint64, attr wire.Attr)
 	created   func(parent uint64, name string)
+	pending   func()
 	changed   chan struct{}
 	locks     lockBook
 	window    *frameWindow
@@ -56,16 +72,30 @@ func newWriteBack(cfg writeConfig) (*writeBack, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	if cfg.Names == nil {
+		cancel()
+		return nil, errors.New("the write-back needs the name cache")
+	}
 	w := &writeBack{
-		caller: cfg.Caller, base: cfg.Base, journal: j, nameOf: cfg.NameOf, rootOf: cfg.RootOf,
+		caller: cfg.Caller, base: cfg.Base, names: cfg.Names, journal: j, nameOf: cfg.NameOf, rootOf: cfg.RootOf,
 		ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1),
 		sessions: map[uint64]*session{}, changed: make(chan struct{}), resized: make(chan struct{}),
 		window: newFrameWindow(live.load().uploadFramesInFlight),
 	}
-	if err := w.replay(); err != nil {
+	ns, err := openNamespaceLog(w, cfg.Dir)
+	if err != nil {
 		cancel()
 		return nil, err
 	}
+	w.ns = ns
+	if err := w.replay(); err != nil {
+		cancel()
+		ns.close()
+		return nil, err
+	}
+	w.workers.Add(1)
+	go ns.run()
+	ns.signal()
 	w.applyLive(live.load())
 	live.subscribe(w.applyLive)
 	return w, nil
@@ -94,6 +124,7 @@ func (w *writeBack) Close() {
 	w.cancel()
 	w.mu.Unlock()
 	w.workers.Wait()
+	w.ns.close()
 	w.mu.Lock()
 	sessions := make([]*session, 0, len(w.sessions))
 	for _, s := range w.sessions {
@@ -110,6 +141,9 @@ func (w *writeBack) Drain(ctx context.Context) error {
 	return w.waitUntil(ctx, func() error {
 		if !w.online.Load() {
 			return nil
+		}
+		if !w.ns.idle() {
+			return errPending
 		}
 		w.mu.Lock()
 		defer w.mu.Unlock()
@@ -129,8 +163,11 @@ func (w *writeBack) SetReachable(reachable bool) {
 	w.broadcast()
 	if reachable {
 		w.signal()
+		w.ns.reachable()
 	}
 }
+
+func (w *writeBack) cache() nameCache { return w.names }
 
 func (w *writeBack) SetCommitted(fn func(ino uint64, attr wire.Attr)) {
 	w.mu.Lock()
@@ -155,6 +192,16 @@ func (w *writeBack) broadcast() {
 	w.mu.Lock()
 	close(w.changed)
 	w.changed = make(chan struct{})
+	hook := w.pending
+	w.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+}
+
+func (w *writeBack) OnPending(fn func()) {
+	w.mu.Lock()
+	w.pending = fn
 	w.mu.Unlock()
 }
 
@@ -181,6 +228,10 @@ func (w *writeBack) waitUntil(ctx context.Context, done func() error) error {
 }
 
 func (w *writeBack) enqueue(s *session) {
+	if w.ns.blocks(s.ino()) {
+		w.ns.signal()
+		return
+	}
 	w.mu.Lock()
 	if !s.queued {
 		s.queued = true
@@ -212,7 +263,7 @@ func (w *writeBack) expedite() {
 	w.mu.Unlock()
 	for _, s := range sessions {
 		s.mu.Lock()
-		ready := s.sealed && !s.sending && (s.needsCommit() || s.resume != nil)
+		ready := !s.sending && ((s.sealed && s.needsCommit()) || s.resume != nil || s.hasTimes())
 		s.mu.Unlock()
 		if ready {
 			w.enqueue(s)
@@ -302,11 +353,18 @@ func (w *writeBack) CommitIDs() []uint64 {
 }
 
 func (w *writeBack) Pending(root string) int64 {
+	held := w.ns.pendingIn(root)
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	var held int64
+	sessions := make(map[uint64]*session, len(w.sessions))
 	for ino, s := range w.sessions {
-		if s.busy() && w.inRoot(ino, root) {
+		sessions[ino] = s
+	}
+	w.mu.Unlock()
+	for ino, s := range sessions {
+		if !s.busy() {
+			continue
+		}
+		if counted, elsewhere := w.ns.counted(root, ino); !counted && !elsewhere && w.inRoot(ino, root) {
 			held++
 		}
 	}
@@ -355,7 +413,7 @@ func (w *writeBack) OpenWrite(ctx context.Context, ino uint64, truncate bool) (I
 			yieldOnce()
 			continue
 		}
-		attr, err := w.fetchAttr(ctx, ino)
+		attr, err := w.startAttr(ctx, ino)
 		if err != nil {
 			return nil, err
 		}
@@ -375,6 +433,21 @@ func (w *writeBack) OpenWrite(ctx context.Context, ino uint64, truncate bool) (I
 }
 
 var errSessionExists = errors.New("session exists")
+
+func (w *writeBack) startAttr(ctx context.Context, ino uint64) (wire.Attr, error) {
+	if p := w.ns.made(ino); p != nil {
+		return w.ns.attrOf(p), nil
+	}
+	return w.base.Getattr(ctx, ino)
+}
+
+func (w *writeBack) lookupBase(ctx context.Context, parent uint64, name string) (Entry, error) {
+	return w.base.Lookup(ctx, parent, name)
+}
+
+func (w *writeBack) listBase(ctx context.Context, ino uint64) (DirPage, error) {
+	return w.base.Readdir(ctx, ino, 0)
+}
 
 func (w *writeBack) startSession(ino uint64, attr wire.Attr, orphan bool) (*session, error) {
 	id, err := newSessionID()
@@ -415,25 +488,36 @@ func (w *writeBack) startSession(ino uint64, attr wire.Attr, orphan bool) (*sess
 }
 
 func (w *writeBack) Create(ctx context.Context, args CreateArgs) (Entry, InodeWriteHandle, error) {
-	reply, err := w.mutate(ctx, wire.OpCreate, wire.Meta{
-		wire.KeyParent: args.Parent, wire.KeyName: args.Name, wire.KeyMode: uint64(args.Mode),
-		wire.KeyUid: optID(args.UID), wire.KeyGid: optID(args.GID), wire.KeyExclusive: args.Exclusive,
-	}, nil)
+	e, err := w.ns.draft(nameCreate, args, w.rootOfDir(args.Parent))
 	if err != nil {
 		return Entry{}, nil, err
 	}
-	entry, err := wire.ParseEntry(reply.Meta)
-	if err != nil {
-		return Entry{}, nil, err
-	}
+	entry := Entry{Ino: e.Ino, Attr: w.ns.attrOf(&pendingName{nameEntry: e})}
 	h, err := w.handleFor(entry, args, false)
 	if err != nil {
+		return Entry{}, nil, err
+	}
+	if _, err := w.ns.add(e); err != nil {
+		h.Close()
 		return Entry{}, nil, err
 	}
 	return entry, h, nil
 }
 
+func (w *writeBack) rootOfDir(parent uint64) string {
+	if p := w.ns.made(parent); p != nil {
+		return p.Root
+	}
+	if w.rootOf == nil {
+		return ""
+	}
+	return w.rootOf(parent)
+}
+
 func (w *writeBack) Tmpfile(ctx context.Context, args CreateArgs) (Entry, InodeWriteHandle, error) {
+	if err := w.ns.settle(ctx, args.Parent); err != nil {
+		return Entry{}, nil, err
+	}
 	reply, err := w.mutate(ctx, wire.OpTmpfile, wire.Meta{
 		wire.KeyParent: args.Parent, wire.KeyMode: uint64(args.Mode),
 		wire.KeyUid: optID(args.UID), wire.KeyGid: optID(args.GID),

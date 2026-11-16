@@ -38,7 +38,7 @@ func TestFsyncReturnsTheFailureOfItsCommit(t *testing.T) {
 	_, h := r.create("x")
 	wbPut(t, h, 0, "data")
 	r.hub.before = func(op wire.Op, _ wire.Meta) error {
-		if op == wire.OpPut {
+		if op == wire.OpPut || op == wire.OpCreate {
 			return wbRemote(wire.ErrEIO)
 		}
 		return nil

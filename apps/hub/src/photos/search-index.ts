@@ -7,6 +7,8 @@ const log = new Logger('hub.photos');
 
 const WRITE_BATCH = 500;
 
+const FEED_WINDOW = 1000;
+
 const MONTHS = [
   'January',
   'February',
@@ -86,20 +88,32 @@ type Change =
   | { readonly kind: 'update'; readonly itemId: string; readonly words: Words }
   | { readonly kind: 'remove'; readonly itemId: string };
 
+const PHOTO_COLUMNS = `select i.id, i.name, i.rel_path, coalesce(i.taken_at, i.modified_at) as moment,
+    i.camera_make as make, i.camera_model as model, i.camera_lens as lens,
+    (select group_concat(al.title, ' ' order by al.title) from drive_album_items ai
+      join drive_albums al on al.id = ai.album_id
+      where ai.item_id = i.id) as albums
+  from drive_items i where i.kind in ('image', 'video')`;
+
 export class PhotoSearchIndexer {
   private stops: (() => void)[] = [];
   private pending = false;
   private running = false;
+  private cursor: number | null = null;
 
   constructor(
-    private readonly store: Pick<Store, 'context' | 'feed'>,
+    private readonly store: Pick<Store, 'context' | 'feed' | 'driveFeed'>,
     private readonly defer: (work: () => void) => void = setImmediate,
   ) {}
 
   start(): void {
     this.stops.push(
       this.store.feed.subscribeNotices((notice) => {
-        if (notice.type === 'drive_changed') this.schedule();
+        if (notice.type !== 'drive_changed') return;
+        if (notice.albumIds.length > 0 || (this.cursor !== null && notice.cursor <= this.cursor)) {
+          this.cursor = null;
+        }
+        this.schedule();
       }),
     );
     this.schedule();
@@ -112,7 +126,10 @@ export class PhotoSearchIndexer {
 
   async reconcile(): Promise<number> {
     const { context } = this.store;
-    const changes = this.changes(context);
+    const head = this.store.driveFeed.latestSeq();
+    const after = this.cursor;
+    this.cursor = head;
+    const changes = after === null ? this.changes(context) : this.changedSince(context, after, head);
     for (let start = 0; start < changes.length; start += WRITE_BATCH) {
       context.write(() => {
         for (const change of changes.slice(start, start + WRITE_BATCH)) this.apply(context, change);
@@ -141,6 +158,7 @@ export class PhotoSearchIndexer {
     this.running = true;
     this.reconcile()
       .catch((cause: unknown) => {
+        this.cursor = null;
         log.error('photos_search.index_failed', cause);
       })
       .finally(() => {
@@ -154,16 +172,42 @@ export class PhotoSearchIndexer {
         .all(HELD, 'select item_id, name, path, camera, albums, dates from drive_items_search')
         .map((row) => [row.item_id, row]),
     );
-    const changes: Change[] = [];
-    for (const row of context.sql.all(
+    return this.compare(held, context.sql.all(WANTED, PHOTO_COLUMNS));
+  }
+
+  private changedSince(context: StoreContext, after: number, head: number): Change[] {
+    const ids = new Set<string>();
+    for (let cursor: number | null = after; cursor !== null && cursor < head; ) {
+      const window = this.store.driveFeed.since(cursor, FEED_WINDOW);
+      for (const row of window.rows) if (row.seq <= head) ids.add(row.itemId);
+      cursor = window.next;
+    }
+    if (ids.size === 0) return [];
+    const list = { ids: JSON.stringify([...ids]) };
+    const held = new Map(
+      context.sql
+        .all(
+          HELD,
+          `select item_id, name, path, camera, albums, dates from drive_items_search
+            where item_id in (select value from json_each($ids))`,
+          list,
+        )
+        .map((row) => [row.item_id, row]),
+    );
+    const wanted = context.sql.all(
       WANTED,
-      `select i.id, i.name, i.rel_path, coalesce(i.taken_at, i.modified_at) as moment,
-          i.camera_make as make, i.camera_model as model, i.camera_lens as lens,
-          (select group_concat(al.title, ' ' order by al.title) from drive_album_items ai
-            join drive_albums al on al.id = ai.album_id
-            where ai.item_id = i.id) as albums
-        from drive_items i where i.kind in ('image', 'video')`,
-    )) {
+      `${PHOTO_COLUMNS} and i.id in (select value from json_each($ids))`,
+      list,
+    );
+    return this.compare(held, wanted);
+  }
+
+  private compare(
+    held: Map<string, z.output<typeof HELD>>,
+    wanted: readonly z.output<typeof WANTED>[],
+  ): Change[] {
+    const changes: Change[] = [];
+    for (const row of wanted) {
       const words = wordsOf(row);
       const current = held.get(row.id);
       held.delete(row.id);

@@ -16,7 +16,8 @@ import {
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeActor, ChangeEnv } from '../../src/drive/changes';
-import { commitContent, finishCommitFromDisk } from '../../src/drive/changes';
+import { commitContent } from '../../src/drive/changes';
+import { finishCommitFromDisk } from '../../src/drive/commit-recovery';
 import { exchangeWithin, settleExchange } from '../../src/drive/exchange';
 import {
   mountStagingRelPath,
@@ -609,7 +610,10 @@ describe('trashing one name of a file with several names', () => {
       opened.store.driveTrash.insert(move.entry);
       if (move.intent !== null) opened.store.driveIntents.clear(move.intent.id);
     });
-    const restored = await restoreFromTrash(restoreEnv(), made.root, { entry: move.entry, onDisk: true });
+    const restored = await restoreFromTrash(restoreEnv(), made.root, {
+      entry: move.entry,
+      onDisk: true,
+    });
     expect(await text(join(made.dir, restored.relPath))).toBe('shared bytes');
   });
 

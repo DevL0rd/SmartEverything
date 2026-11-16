@@ -100,13 +100,15 @@ export class DriveItemTextRepository {
       );
       this.context.sql.run(
         'drop the old searchable text of the drive item',
-        'delete from drive_item_text_search where item_id = $itemId',
+        `delete from drive_item_text_search
+          where rowid = (select rowid from drive_item_text where item_id = $itemId)`,
         { itemId: input.itemId },
       );
       if (input.state === 'ok') {
         this.context.sql.run(
           'index the text of the drive item',
-          'insert into drive_item_text_search (item_id, body) values ($itemId, $body)',
+          `insert into drive_item_text_search (rowid, item_id, body)
+            values ((select rowid from drive_item_text where item_id = $itemId), $itemId, $body)`,
           { itemId: input.itemId, body },
         );
       }

@@ -62,7 +62,7 @@ func TestServerOptionsFollowTheTuning(t *testing.T) {
 	if m.ExtraCapabilities != fuse.CAP_ATOMIC_O_TRUNC|fuse.CAP_WRITEBACK_CACHE|fuse.CAP_READDIRPLUS_AUTO || m.DisabledCapabilities != 0 {
 		t.Fatalf("extra %x disabled %x", m.ExtraCapabilities, m.DisabledCapabilities)
 	}
-	if opts.EntryTimeout != nil || opts.AttrTimeout != nil || *opts.NegativeTimeout != untilInvalidated {
+	if opts.EntryTimeout != nil || opts.AttrTimeout != nil || opts.NegativeTimeout != nil || time.Duration(negativeLifetime.Load()) != untilInvalidated {
 		t.Fatal("entry and attribute timeouts are set per reply and the negative one starts as until changed")
 	}
 
@@ -83,7 +83,8 @@ func TestServerOptionsFollowTheTuning(t *testing.T) {
 		t.Fatalf("extra %x disabled %x", m.ExtraCapabilities, m.DisabledCapabilities)
 	}
 	x.live.negative = lifetime{seconds: 60}
-	if *serverOptions("/mnt/d", 7, mountOptions{}, x).NegativeTimeout != time.Minute {
+	serverOptions("/mnt/d", 7, mountOptions{}, x)
+	if time.Duration(negativeLifetime.Load()) != time.Minute {
 		t.Fatal("negative must be 60 seconds")
 	}
 

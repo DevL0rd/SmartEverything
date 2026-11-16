@@ -12,21 +12,16 @@ import {
 } from '../../../api/connection/media-resources';
 import { readDriveItem } from '../../../api/drive';
 import { readPhotoOrigins } from '../../../api/photos';
-import {
-  dismissToast,
-  holdToast,
-  notify,
-  notifyFailure,
-  updateToast,
-} from '../../../components/toast-store';
+import { notify, notifyFailure } from '../../../components/toast-store';
 import { appPlatform } from '../../../design/platform';
+import { rawErrorText } from '../../../format/errors';
 import { saveFile } from '../../../platform/file-actions';
+import { runBulk } from '../../../store/bulk-run';
 import { driveLinks } from '../../drive';
 import { backupHandle } from '../backup/handle';
 import {
   doneLine,
   failedLine,
-  progressLine,
   saveTargetOf,
   type SavePlatform,
   type SaveTally,
@@ -146,23 +141,33 @@ function announce(tally: SaveTally, last: string | null, deps: SaveDeps): void {
 }
 
 async function saveAll(items: readonly MediaFile[], plan: Plan, deps: SaveDeps): Promise<void> {
-  const progress = notify({ message: progressLine(0, items.length) });
-  holdToast(progress, 'work');
   const tally = { saved: 0, present: 0, failed: 0 };
   let last: string | null = null;
   let firstError: unknown = null;
-  for (const [index, item] of items.entries()) {
-    updateToast(progress, { message: progressLine(index, items.length) });
-    try {
-      const result = await saveOne(item, plan, deps);
-      tally[result.result === 'saved' ? 'saved' : 'present'] += 1;
-      last = result.location;
-    } catch (error) {
-      tally.failed += 1;
-      if (firstError === null) firstError = error;
-    }
-  }
-  dismissToast(progress);
+  const byId = new Map(items.map((item) => [item.id, item]));
+  await runBulk({
+    label: 'photos.save_to_device',
+    verb: 'Saving',
+    ids: items.map((item) => item.id),
+    batch: 1,
+    send: async (batch) => {
+      const failed: { readonly itemId: string; readonly reason: string }[] = [];
+      for (const id of batch) {
+        const item = byId.get(id);
+        if (item === undefined) throw new Error(`No photo ${id} to save`);
+        try {
+          const result = await saveOne(item, plan, deps);
+          tally[result.result === 'saved' ? 'saved' : 'present'] += 1;
+          last = result.location;
+        } catch (error) {
+          tally.failed += 1;
+          if (firstError === null) firstError = error;
+          failed.push({ itemId: id, reason: rawErrorText(error) });
+        }
+      }
+      return { failed };
+    },
+  });
   log.info('photos.saved_to_device', { ...tally, platform: plan.platform });
   announce(tally, last, deps);
   if (tally.failed > 0)

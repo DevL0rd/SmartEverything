@@ -1,7 +1,10 @@
-import { lstat, mkdir, readdir, readlink, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, readlink, stat, writeFile } from 'node:fs/promises';
+import { setImmediate } from 'node:timers/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
+import { abandonIntent, manifestPath, TRASH_DIRECTORY } from '../../src/drive/intents';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveReadService } from '../../src/drive/service-read';
 import { linkDraft, NO_IDENTITY, specialDraft } from '../../src/drive/posix/drafts';
 import { DriveTreeWriter } from '../../src/drive/service-write-tree';
@@ -62,6 +65,7 @@ function writerDeps(): Omit<ConstructorParameters<typeof DriveTreeWriter>[0], 'e
   const { store } = opened;
   return {
     store,
+    lanes: new DriveRootLanes(),
     read: new DriveReadService(store),
     albums: {
       create: noAlbums,
@@ -294,5 +298,87 @@ describe('trashing a batch', () => {
     expect(store.driveTrash.find(ids[0] ?? '')).toBeDefined();
     expect(store.driveIntents.all()).toEqual([]);
     expect((await readdir(drive)).filter((name) => name.startsWith('batch-'))).toEqual([]);
+  });
+
+  it('trashes once when three identical batches arrive together and changes nothing twice', async () => {
+    const { store } = opened;
+    const drive = opened.layout.person(robinId).drive;
+    const ids: string[] = [];
+    for (let index = 0; index < 20; index += 1) {
+      const id = `0f300000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+      await writeFile(join(drive, `same-${String(index)}.jpg`), `photo ${String(index)}`);
+      putItem(store, { rootId: ROBIN_DRIVE, id, relPath: `same-${String(index)}.jpg`, kind: 'document' });
+      ids.push(id);
+    }
+    const yielding = {
+      ...nodeFiles,
+      rename: async (from: string, to: string): Promise<void> => {
+        await setImmediate();
+        await nodeFiles.rename(from, to);
+      },
+      stamp: async (path: string): ReturnType<typeof nodeFiles.stamp> => {
+        await setImmediate();
+        return nodeFiles.stamp(path);
+      },
+    };
+    const env: ChangeEnv = {
+      files: yielding,
+      store,
+      log: testLogger('drive'),
+      now: () => NOW,
+      purge: { rearm: (): void => undefined },
+    };
+    const lanes = new DriveRootLanes();
+    const batch = new DriveTreeWriter({ ...writerDeps(), lanes, env });
+    const seen: { live: number; trashed: number }[] = [];
+    const scan = lanes.run([ROBIN_DRIVE], () => setImmediate());
+    const first = batch.apply(callerOf(robinId), { action: 'trash', itemIds: ids });
+    const second = batch.apply(callerOf(robinId), { action: 'trash', itemIds: ids });
+    const check = lanes.run([ROBIN_DRIVE], () => {
+      const live = ids.filter((id) => store.driveItems.find(id, null) !== undefined).length;
+      const trashed = ids.filter((id) => store.driveTrash.find(id) !== undefined).length;
+      seen.push({ live, trashed });
+      return Promise.resolve();
+    });
+    const third = batch.apply(callerOf(robinId), { action: 'trash', itemIds: ids });
+    const answers = await Promise.all([first, second, third]);
+    await Promise.all([scan, check]);
+    expect(answers.map((result) => result.done.length)).toEqual([20, 0, 0]);
+    for (const repeat of answers.slice(1)) {
+      expect(repeat.failed).toEqual(
+        ids.map((itemId) => ({ itemId, reason: 'It is already in the trash.' })),
+      );
+    }
+    expect(seen).toEqual([{ live: 0, trashed: 20 }]);
+    expect(store.driveIntents.all()).toEqual([]);
+    expect((await readdir(drive)).filter((name) => name.startsWith('same-'))).toEqual([]);
+    for (const [index, id] of ids.entries()) {
+      expect(store.driveTrash.find(id)).toBeDefined();
+      expect(store.driveItems.byPath(ROBIN_DRIVE, `same-${String(index)}.jpg`, null)).toBeUndefined();
+      expect(await readFile(join(drive, TRASH_DIRECTORY, id), 'utf8')).toBe(`photo ${String(index)}`);
+    }
+  });
+
+  it('leaves a trashed file in the trash when a stale trash intent for it is rolled back', async () => {
+    const { store } = opened;
+    const drive = opened.layout.person(robinId).drive;
+    const id = '0f400000-0000-4000-8000-000000000001';
+    await writeFile(join(drive, 'kept.jpg'), 'kept');
+    putItem(store, { rootId: ROBIN_DRIVE, id, relPath: 'kept.jpg', kind: 'document' });
+    await writer.apply(callerOf(robinId), { action: 'trash', itemIds: [id] });
+    const root = { id: ROBIN_DRIVE, path: drive, versions: false };
+    const stale = store.driveIntents.open({
+      rootId: ROBIN_DRIVE,
+      op: 'trash',
+      fromPath: 'kept.jpg',
+      toPath: `${TRASH_DIRECTORY}/${id}`,
+      versionPath: null,
+    });
+    const env = { files: nodeFiles, store, log: testLogger('drive'), now: (): Date => NOW };
+    await abandonIntent(env, root, stale);
+    expect(await readFile(join(drive, TRASH_DIRECTORY, id), 'utf8')).toBe('kept');
+    expect(await readFile(join(drive, manifestPath(`${TRASH_DIRECTORY}/${id}`)), 'utf8')).toContain(id);
+    await expect(stat(join(drive, 'kept.jpg'))).rejects.toThrow();
+    expect(store.driveIntents.all()).toEqual([]);
   });
 });

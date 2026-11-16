@@ -43,7 +43,7 @@ const MOUNT = z.strictObject({
 const COMPUTER = z.strictObject({
   deviceId: z.uuid(),
   machineId: z.string().regex(/^[0-9a-f]{32}$/u),
-  placements: z.strictObject({ owner: z.uuid(), home: z.uuid() }),
+  placement: z.uuid(),
   tokenFile: z.string().min(1),
   listenLan: PORT,
   listenPublic: PORT,
@@ -61,8 +61,13 @@ export const STATE = z.strictObject({
   serverName: z.string().min(1),
   pin: z.string().regex(/^[0-9a-f]{64}$/u),
   ownerRoot: z.uuid(),
-  homeRoot: z.uuid(),
-  memberProfile: z.uuid(),
+  scratch: z.strictObject({
+    profileId: z.uuid(),
+    root: z.uuid(),
+    deviceId: z.uuid(),
+    placement: z.uuid(),
+    tokenFile: z.string().min(1),
+  }),
   driveFolders: z.strictObject({ test: z.string().min(1), scratch: z.string().min(1) }),
   computers: z.strictObject({ A: COMPUTER, B: COMPUTER }),
 });

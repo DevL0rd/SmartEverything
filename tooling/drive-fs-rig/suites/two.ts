@@ -167,9 +167,13 @@ async function missedPush(context: Context): Promise<void> {
     await seedShared(prepared, name, Buffer.from(`${name}\n`));
   await netcut('cut B');
   try {
-    await mustRun(state.computers.A, 'A changes the folder', ['sh', '-c', CHANGES], {
-      cwd: mountPath('A', relative),
-    });
+    await mustRun(state.computers.A, 'A changes the folder', [
+      'sh',
+      '-c',
+      `cd "$1" && ${CHANGES}`,
+      'sh',
+      mountPath('A', relative),
+    ]);
     const isolated = await inside(state.computers.B, [
       'test',
       '-e',
@@ -188,7 +192,7 @@ async function missedPush(context: Context): Promise<void> {
 }
 
 const INTEGRITY =
-  'pragma integrity_check; select count(*), count(distinct who || ":" || number) from rows';
+  "pragma integrity_check; select count(*), count(distinct who || ':' || number) from rows";
 
 async function sqliteReport(state: RigState, name: ComputerName, file: string): Promise<string> {
   return (

@@ -3,7 +3,8 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { isMissing } from '../errors.ts';
-import { BENCH_FOLDER, NAS, bench } from './paths.ts';
+import { NODE_PROTOCOL_VERSION } from '../../../packages/domain/src/node/frames.ts';
+import { NAS, bench } from './paths.ts';
 import { remote } from './ssh.ts';
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -64,7 +65,7 @@ async function ownerKey(): Promise<string> {
 
 function hello(machineId: string): object {
   return {
-    protocol: 1,
+    protocol: NODE_PROTOCOL_VERSION,
     machineId,
     hostname: 'se-bench',
     os: { name: 'linux', kernel: 'bench' },
@@ -91,18 +92,10 @@ export async function pairBenchComputer(): Promise<Production> {
     method: 'POST',
     body: { code: pairing.code, hello: hello(randomBytes(16).toString('hex')) },
   });
-  const placement = await call(PLACEMENT, '/api/drive/placements', {
+  const placement = await call(PLACEMENT, '/api/drive/mount', {
     method: 'PUT',
     token: key,
-    body: {
-      deviceId: paired.device_id,
-      rootId: person.id,
-      folderItemId: null,
-      mode: 'mount',
-      localPath: null,
-      mountName: BENCH_FOLDER,
-      enabled: true,
-    },
+    body: { deviceId: paired.device_id, enabled: true },
   });
   await mkdir(dirname(bench.token), { recursive: true, mode: 0o700 });
   await writeFile(bench.token, paired.token, { mode: 0o600 });

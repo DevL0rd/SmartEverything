@@ -123,7 +123,7 @@ async function mounted(name: ComputerName): Promise<ComputerState> {
       `${name} has a helper with a different mount; run "rig unmount ${name}" first.`,
     );
   const started = await mountComputer(state, name, {
-    placement: name === 'A' ? 'test' : 'scratch',
+    placement: 'test',
     folder: null,
     route: 'lan',
   });

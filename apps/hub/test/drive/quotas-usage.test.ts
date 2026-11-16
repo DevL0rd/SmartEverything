@@ -161,6 +161,22 @@ describe('quota check', () => {
     }).not.toThrow();
   });
 
+  it('sums the usage only for a writer who has a quota', () => {
+    let summed = 0;
+    const counting = (profileId: string): DriveQuotaStatus => {
+      const found = quotas.status(profileId);
+      return {
+        quota: found.quota,
+        get usage(): DriveQuotaStatus['usage'] {
+          summed += 1;
+          return found.usage;
+        },
+      };
+    };
+    checkDriveQuota(counting, { profileId: robin, addBytes: 10, releasedBytes: 0 });
+    expect(summed).toBe(0);
+  });
+
   it('refuses a write that would cross the limit and counts versions and trash as used', () => {
     const a = file(HOME, robin, 50);
     version(a, HOME, robin, 30);

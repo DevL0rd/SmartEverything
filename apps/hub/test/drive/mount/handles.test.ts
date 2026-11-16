@@ -27,15 +27,7 @@ const decode = (bytes: Uint8Array | null): string =>
   new TextDecoder().decode(bytes ?? new Uint8Array());
 
 async function filled(name: string, content: string): Promise<number> {
-  const entry = await mine.client.call('CREATE', {
-    parent: mine.root,
-    name,
-    mode: 0o644,
-    uid: null,
-    gid: null,
-    exclusive: true,
-    opKey: opKey(),
-  });
+  const entry = await mine.client.created(mine.root, name);
   await mine.client.call(
     'PUT',
     {
@@ -99,7 +91,7 @@ describe('open files', () => {
   it('keeps an unlinked open file readable and frees it at release', async () => {
     const ino = await filled('temp.txt', 'still here');
     const { handle } = await mine.client.call('OPEN', { ino });
-    await mine.client.call('UNLINK', { parent: mine.root, name: 'temp.txt', opKey: opKey() });
+    await mine.client.call('UNLINK', { parent: mine.root, name: 'temp.txt', ino, opKey: opKey() });
     expect(await orphans()).toEqual([String(ino)]);
     const read = await mine.client.request('READ', { handle, offset: 0, length: 20 }).sent;
     expect(decode(read.payload)).toBe('still here');
@@ -111,7 +103,7 @@ describe('open files', () => {
   it('frees the held files of a session whose lease ran out', async () => {
     const ino = await filled('held.txt', 'held');
     await mine.client.call('OPEN', { ino });
-    await mine.client.call('UNLINK', { parent: mine.root, name: 'held.txt', opKey: opKey() });
+    await mine.client.call('UNLINK', { parent: mine.root, name: 'held.txt', ino, opKey: opKey() });
     expect(await orphans()).toEqual([String(ino)]);
     mine.client.close();
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -122,7 +114,7 @@ describe('open files', () => {
     const ino = await filled('two.txt', 'two');
     const first = await mine.client.call('OPEN', { ino });
     const second = await mine.client.call('OPEN', { ino });
-    await mine.client.call('UNLINK', { parent: mine.root, name: 'two.txt', opKey: opKey() });
+    await mine.client.call('UNLINK', { parent: mine.root, name: 'two.txt', ino, opKey: opKey() });
     await mine.client.call('RELEASE', { handle: first.handle });
     expect(await orphans()).toEqual([String(ino)]);
     await mine.client.call('RELEASE', { handle: second.handle });

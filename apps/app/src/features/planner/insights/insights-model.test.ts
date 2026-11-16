@@ -210,9 +210,7 @@ describe('the load buckets', () => {
   it('averages each chunk over its days, so a short current week or month does not look like a drop', () => {
     const steady = (range: PlannerStatsRange): PlannerStats =>
       statsOf(range, {
-        list_trends: [
-          trend(WORK, Object.fromEntries(daysOf(range).map((day) => [day, 2])), range),
-        ],
+        list_trends: [trend(WORK, Object.fromEntries(daysOf(range).map((day) => [day, 2])), range)],
       });
     for (const range of ['month', 'year'] as const) {
       expect(new Set(doneTrendOf(steady(range)).map((point) => point.v))).toEqual(new Set([2]));
@@ -287,9 +285,7 @@ describe('the range line', () => {
     expect(rangeLabelOf(statsOf('year'), 'full')).toBe(
       `${date('2025-11-09')} 2025 to ${date(LAST)} 2026`,
     );
-    expect(rangeLabelOf(statsOf('week'), 'compact')).toBe(
-      `${date('2026-11-02')} to ${date(LAST)}`,
-    );
+    expect(rangeLabelOf(statsOf('week'), 'compact')).toBe(`${date('2026-11-02')} to ${date(LAST)}`);
     const month = (day: string): string => monthShort(startOfDayKey(day));
     expect(rangeLabelOf(statsOf('year'), 'compact')).toBe(
       `${month('2025-11-09')} 2025 to ${month(LAST)} 2026`,

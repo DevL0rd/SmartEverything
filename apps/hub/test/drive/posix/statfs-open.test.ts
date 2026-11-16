@@ -90,7 +90,7 @@ describe('access time on read', () => {
     (await rig.posix.access(rig.scope, { ino, strict })).atimeNs;
 
   it('updates under relatime when the access time is not newer than the modify or change time and not otherwise', async () => {
-    const entry = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const entry = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     rig.clock.current = new Date(Date.now() + 10_000);
     const first = await access(entry.ino, false);
     const attr = await rig.posix.getattr(rig.scope, entry.ino);
@@ -101,7 +101,7 @@ describe('access time on read', () => {
   });
 
   it('updates again under relatime when the access time is a day old', async () => {
-    const entry = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const entry = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     const first = Date.now() + 10_000;
     const day = Number(RELATIME_WINDOW_NS / 1_000_000n);
     rig.clock.current = new Date(first);
@@ -113,7 +113,7 @@ describe('access time on read', () => {
   });
 
   it('updates on every access under strictatime', async () => {
-    const entry = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const entry = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     rig.clock.current = new Date(Date.now() + 10_000);
     const first = await access(entry.ino, true);
     rig.clock.current = new Date(rig.clock.current.getTime() + 1000);

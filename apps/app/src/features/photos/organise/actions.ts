@@ -5,7 +5,7 @@ import { confirm } from '../../../components/confirm-store';
 import type { MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
 import { count } from '../../../format/number';
-import { useMutationState } from '../../../store/mutation';
+import { BULK_BATCH, keptLine, runBulk, useBulkRunning } from '../../../store/bulk-run';
 import { archivePhotos, moveIntoLockedFolder, readLockedState, unarchivePhotos } from './api';
 import { openMetaEdit, type MetaCurrent } from './meta/meta-request';
 
@@ -49,45 +49,93 @@ async function lockable(): Promise<boolean> {
   return false;
 }
 
-export function useOrganiseActions(): OrganiseActions {
-  const mutation = useMutationState();
-  const lockNow = async (itemIds: readonly string[], onDone?: () => void): Promise<void> => {
-    if (!(await lockable()) || !(await confirm(lockConfirmOf(itemIds.length)))) return;
-    mutation.run(() => moveIntoLockedFolder(itemIds), {
-      failure: 'Nothing moved to the Locked folder',
-      label: 'photos.organise.lock',
-      onDone: (changed) => {
-        notify({ message: `${itemsText(changed.count)} moved to the Locked folder` });
-        onDone?.();
+interface Counted {
+  readonly label: string;
+  readonly verb: string;
+  readonly failure: string;
+  readonly ids: readonly string[];
+  readonly call: (batch: readonly string[]) => Promise<{ readonly count: number }>;
+}
+
+async function runCounted(work: Counted): Promise<number | null> {
+  let changed = 0;
+  try {
+    const outcome = await runBulk({
+      label: work.label,
+      verb: work.verb,
+      ids: work.ids,
+      batch: BULK_BATCH,
+      send: async (batch) => {
+        changed += (await work.call(batch)).count;
+        return { failed: [] };
       },
     });
-  };
+    if (outcome.reason === null) return changed;
+    notify({
+      message: work.failure,
+      detail: keptLine(outcome, outcome.reason),
+      tone: 'critical',
+    });
+    return null;
+  } catch (error) {
+    notify({ message: work.failure, error, tone: 'critical' });
+    return null;
+  }
+}
+
+async function archiveNow(itemIds: readonly string[], onDone?: () => void): Promise<void> {
+  const changed = await runCounted({
+    label: 'photos.organise.archive',
+    verb: 'Archiving',
+    failure: 'Not everything was archived',
+    ids: itemIds,
+    call: archivePhotos,
+  });
+  if (changed === null) return;
+  notify({
+    message: `${itemsText(changed)} archived`,
+    undo: () => {
+      restoreArchived(itemIds);
+    },
+  });
+  onDone?.();
+}
+
+async function unarchiveNow(itemIds: readonly string[], onDone?: () => void): Promise<void> {
+  const changed = await runCounted({
+    label: 'photos.organise.unarchive',
+    verb: 'Moving back to the library',
+    failure: 'Not everything left Archive',
+    ids: itemIds,
+    call: unarchivePhotos,
+  });
+  if (changed === null) return;
+  notify({ message: `${itemsText(changed)} back in the library` });
+  onDone?.();
+}
+
+async function lockNow(itemIds: readonly string[], onDone?: () => void): Promise<void> {
+  if (!(await lockable()) || !(await confirm(lockConfirmOf(itemIds.length)))) return;
+  const changed = await runCounted({
+    label: 'photos.organise.lock',
+    verb: 'Moving to the Locked folder',
+    failure: 'Not everything moved to the Locked folder',
+    ids: itemIds,
+    call: moveIntoLockedFolder,
+  });
+  if (changed === null) return;
+  notify({ message: `${itemsText(changed)} moved to the Locked folder` });
+  onDone?.();
+}
+
+export function useOrganiseActions(): OrganiseActions {
   return {
-    busy: mutation.busy,
+    busy: useBulkRunning(),
     archive: (itemIds, onDone): void => {
-      mutation.run(() => archivePhotos(itemIds), {
-        failure: 'Nothing was archived',
-        label: 'photos.organise.archive',
-        onDone: (changed) => {
-          notify({
-            message: `${itemsText(changed.count)} archived`,
-            undo: () => {
-              restoreArchived(itemIds);
-            },
-          });
-          onDone?.();
-        },
-      });
+      background(archiveNow(itemIds, onDone), 'photos.organise.archive_failed');
     },
     unarchive: (itemIds, onDone): void => {
-      mutation.run(() => unarchivePhotos(itemIds), {
-        failure: 'Nothing left Archive',
-        label: 'photos.organise.unarchive',
-        onDone: (changed) => {
-          notify({ message: `${itemsText(changed.count)} back in the library` });
-          onDone?.();
-        },
-      });
+      background(unarchiveNow(itemIds, onDone), 'photos.organise.unarchive_failed');
     },
     lock: (itemIds, onDone): void => {
       background(lockNow(itemIds, onDone), 'photos.organise.lock_failed');

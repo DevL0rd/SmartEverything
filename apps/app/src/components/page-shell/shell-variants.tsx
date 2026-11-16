@@ -19,11 +19,12 @@ import {
   barOptionsOf,
   useBarSearch,
   useSearchOptionsPlace,
+  type BarSearch,
 } from './bar-search';
+import type { ShellSearchConfig } from './search-slot';
 import { ShellActions, ShellOverflow, type ShellAction } from './shell-actions';
 import { ShellFooter } from './shell-body';
 import { ShellBack, ShellTitle, type BackPress } from './shell-parts';
-import { ShellStatus } from './shell-status';
 
 function useBackPress(shell: VariantShellProps): BackPress {
   const routed = useBackAction(shell.back !== false && shell.onBack === undefined);
@@ -59,6 +60,36 @@ function SearchOptionsRow({ shell }: { readonly shell: VariantShellProps }): Rea
   );
 }
 
+function OpenBarRow({
+  shell,
+  search,
+  bar,
+  back,
+}: {
+  readonly shell: VariantShellProps;
+  readonly search: ShellSearchConfig;
+  readonly bar: BarSearch;
+  readonly back: BackPress;
+}): ReactNode {
+  const pointer = useIdiom() === 'pointer';
+  return (
+    <View
+      className="min-h-14 flex-row items-center gap-1 px-1"
+      onLayout={(event) => {
+        bar.onBar(event.nativeEvent.layout.width);
+      }}
+    >
+      <OpenSearch search={search} onClose={bar.close} back={back} />
+      <ShellOverflow
+        kind={pointer ? 'pointer' : 'touch'}
+        actions={shell.actions}
+        overflow={shell.overflow}
+        settings={shell.settings}
+      />
+    </View>
+  );
+}
+
 function BarRow({ shell }: { readonly shell: VariantShellProps }): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const bar = useBarSearch(shell.search);
@@ -66,23 +97,7 @@ function BarRow({ shell }: { readonly shell: VariantShellProps }): ReactNode {
   const leading = shell.leading ?? [];
   const bare = back === null && leading.length === 0;
   if (shell.search !== undefined && bar.mode === 'open') {
-    return (
-      <View
-        className="min-h-14 flex-row items-center gap-1 px-1"
-        onLayout={(event) => {
-          bar.onBar(event.nativeEvent.layout.width);
-        }}
-      >
-        <OpenSearch search={shell.search} onClose={bar.close} back={back} />
-        <ShellStatus />
-        <ShellOverflow
-          kind={pointer ? 'pointer' : 'touch'}
-          actions={shell.actions}
-          overflow={shell.overflow}
-          settings={shell.settings}
-        />
-      </View>
-    );
+    return <OpenBarRow shell={shell} search={shell.search} bar={bar} back={back} />;
   }
   return (
     <View

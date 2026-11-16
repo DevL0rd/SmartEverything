@@ -43,7 +43,7 @@ function owner(): { actorProfileId: string; via: 'mount'; deviceId: string } {
 
 describe('extended attribute changes reach the feed', () => {
   it('writes a feed row for every name when an attribute is set and when it is removed', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     await rig.posix.link(rig.scope, linkRequest(file.ino, rig.rootIno, 'b'));
     const { driveFeed } = rig.opened.store;
     const before = driveFeed.latestSeq();
@@ -63,7 +63,7 @@ describe('extended attribute changes reach the feed', () => {
   });
 
   it('writes nothing when the attribute is refused', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     const mark = rig.opened.store.driveFeed.latestSeq();
     await expect(
       rig.posix.removexattr(rig.scope, { ino: file.ino, name: 'user.none', opKey: KEY }),
@@ -74,7 +74,7 @@ describe('extended attribute changes reach the feed', () => {
 
 describe('hard links and their blocks', () => {
   it('gives the new name the blocks of the source', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     const source = await save(rig, rig.mine, 'a', 'content');
     const { driveBlocks } = rig.opened.store;
     driveBlocks.put({
@@ -92,7 +92,7 @@ describe('hard links and their blocks', () => {
   });
 
   it('refreshes bytes, revision and blocks on every name when the content is saved', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     await rig.posix.link(rig.scope, linkRequest(file.ino, rig.rootIno, 'b'));
     await rig.posix.link(rig.scope, linkRequest(file.ino, rig.rootIno, 'c'));
     const first = await save(rig, rig.mine, 'a', 'twelve bytes!');
@@ -143,7 +143,7 @@ describe('special files and links in the trash', () => {
   it('trashes and restores a symlink as a symlink with its target', async () => {
     const link = await rig.posix.symlink(rig.scope, symlinkRequest('l', rig.rootIno, 'where/to'));
     const item = itemAt('l');
-    await rig.posix.unlink(rig.scope, { parent: rig.rootIno, name: 'l', opKey: KEY });
+    await rig.posix.unlink(rig.scope, { parent: rig.rootIno, name: 'l', ino: link.ino, opKey: KEY });
     const root = rig.opened.store.driveRoots.byId(rig.mine.id);
     const restored = await commitRestore(rig.env.change, root, item.id, owner());
     expect(restored.item).toMatchObject({ kind: 'link', linkTarget: 'where/to' });
@@ -157,15 +157,15 @@ describe('special files and links in the trash', () => {
 describe('restoring a trashed folder', () => {
   it('gives the folder its own inode, mode and attributes back', async () => {
     const dir = await rig.posix.mkdir(rig.scope, mkdir('d', rig.rootIno, 0o700));
-    await rig.posix.create(rig.scope, create('inner', dir.ino));
+    const inner = await rig.posix.create(rig.scope, create('inner', dir.ino), new Uint8Array());
     await rig.posix.setxattr(
       rig.scope,
       { ino: dir.ino, name: 'user.tag', flags: 0, opKey: KEY },
       bytes(2),
     );
     const item = itemAt('d');
-    await rig.posix.unlink(rig.scope, { parent: dir.ino, name: 'inner', opKey: KEY });
-    await rig.posix.rmdir(rig.scope, { parent: rig.rootIno, name: 'd', opKey: KEY });
+    await rig.posix.unlink(rig.scope, { parent: dir.ino, name: 'inner', ino: inner.ino, opKey: KEY });
+    await rig.posix.rmdir(rig.scope, { parent: rig.rootIno, name: 'd', ino: dir.ino, opKey: KEY });
     const root = rig.opened.store.driveRoots.byId(rig.mine.id);
     const restored = await commitRestore(rig.env.change, root, item.id, owner());
     expect(restored.item.kind).toBe('folder');
@@ -180,7 +180,7 @@ describe('restoring a trashed folder', () => {
 
 describe('renaming over a link or special file', () => {
   it('replaces a special file in one step', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     await save(rig, rig.mine, 'a', 'kept');
     await rig.posix.mknod(rig.scope, mknodRequest('p', rig.rootIno, 4));
     const target = itemAt('p');
@@ -194,7 +194,7 @@ describe('renaming over a link or special file', () => {
   });
 
   it('replaces a symlink in one step', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     await save(rig, rig.mine, 'a', 'kept');
     await rig.posix.symlink(rig.scope, symlinkRequest('l', rig.rootIno, 'elsewhere'));
     const target = itemAt('l');
@@ -207,7 +207,7 @@ describe('renaming over a link or special file', () => {
   });
 
   it('leaves the target untouched when the move fails after the target was set aside', async () => {
-    await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     await save(rig, rig.mine, 'a', 'source');
     await rig.posix.symlink(rig.scope, symlinkRequest('l', rig.rootIno, 'elsewhere'));
     const target = itemAt('l');

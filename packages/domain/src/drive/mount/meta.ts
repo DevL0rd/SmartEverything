@@ -84,6 +84,12 @@ const CREATE_SHAPE = {
 
 const NAMED_CREATE_SHAPE = { ...CREATE_SHAPE, name: ENTRY_NAME } as const;
 
+const LEASED_SHAPE = { ...NAMED_CREATE_SHAPE, ino: INO, mtimeNs: NS } as const;
+
+const NAMED_REMOVE = z
+  .strictObject({ parent: INO, name: ENTRY_NAME, ino: INO, opKey: OP_KEY })
+  .readonly();
+
 const SEQUENCES = z.array(z.strictObject({ root: UUID, seq: COUNT }).readonly()).readonly();
 
 const LOCK_REQUEST_SHAPE = { ino: INO, owner: U64, ...LOCK_SHAPE } as const;
@@ -114,14 +120,17 @@ export const REQUEST_META = {
     })
     .readonly(),
   ATTACH: z.strictObject({ placementId: UUID }).readonly(),
+  LEASE: z.strictObject({ count: COUNT.positive() }).readonly(),
   LOOKUP: z.strictObject({ parent: INO, name: ENTRY_NAME }).readonly(),
   GETATTR: z.strictObject({ ino: INO }).readonly(),
   READDIR: z.strictObject({ ino: INO, cursor: COUNT }).readonly(),
   SETATTR,
   STATFS: z.strictObject({ ino: INO }).readonly(),
   READLINK: z.strictObject({ ino: INO }).readonly(),
-  MKDIR: z.strictObject(NAMED_CREATE_SHAPE).readonly(),
-  CREATE: z.strictObject({ ...NAMED_CREATE_SHAPE, exclusive: FLAG }).readonly(),
+  MKDIR: z.strictObject(LEASED_SHAPE).readonly(),
+  CREATE: z
+    .strictObject({ ...LEASED_SHAPE, atimeNs: NS.optional(), fsync: FLAG })
+    .readonly(),
   MKNOD: z.strictObject({ ...NAMED_CREATE_SHAPE, type: SPECIAL_TYPE, rdev: UINT32 }).readonly(),
   SYMLINK: z
     .strictObject({
@@ -134,8 +143,8 @@ export const REQUEST_META = {
     })
     .readonly(),
   LINK: z.strictObject({ ino: INO, parent: INO, name: ENTRY_NAME, opKey: OP_KEY }).readonly(),
-  UNLINK: z.strictObject({ parent: INO, name: ENTRY_NAME, opKey: OP_KEY }).readonly(),
-  RMDIR: z.strictObject({ parent: INO, name: ENTRY_NAME, opKey: OP_KEY }).readonly(),
+  UNLINK: NAMED_REMOVE,
+  RMDIR: NAMED_REMOVE,
   RENAME: rename,
   TMPFILE: z.strictObject(CREATE_SHAPE).readonly(),
   GETXATTR: z.strictObject({ ino: INO, name: XATTR_NAME }).readonly(),
@@ -171,7 +180,15 @@ export const REQUEST_META = {
     .readonly(),
   STATE: z.strictObject({ commit: COMMIT }).readonly(),
   END: z
-    .strictObject({ commit: COMMIT, size: COUNT, mtimeNs: NS, fsync: FLAG, opKey: OP_KEY })
+    .strictObject({
+      commit: COMMIT,
+      size: COUNT,
+      length: COUNT,
+      mtimeNs: NS,
+      atimeNs: NS.optional(),
+      fsync: FLAG,
+      opKey: OP_KEY,
+    })
     .readonly(),
   PUT: z
     .strictObject({
@@ -179,6 +196,7 @@ export const REQUEST_META = {
       baseRev: COUNT,
       size: COUNT,
       mtimeNs: NS,
+      atimeNs: NS.optional(),
       fsync: FLAG,
       opKey: OP_KEY,
     })
@@ -210,6 +228,7 @@ export const REPLY_META = {
       frameLimit: z.int().min(MAX_FRAME_BYTES).max(MAX_FRAME_BYTES),
     })
     .readonly(),
+  LEASE: z.strictObject({ start: INO, count: COUNT.positive() }).readonly(),
   ATTACH: z
     .strictObject({ root: UUID, ino: INO, attr: ATTR, seq: COUNT })
     .refine((value) => value.ino === value.attr.ino, 'ino must match attr.ino')

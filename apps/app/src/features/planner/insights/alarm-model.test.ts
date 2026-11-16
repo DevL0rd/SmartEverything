@@ -105,9 +105,7 @@ describe('the insights alarm card', () => {
     const summary = alarmSummaryOf(stats, rings);
     expect(summary).toMatchObject({ snoozes: 3, missed: 1, upOnTime: 1, ringDays: 3 });
     expect(summary.snoozeBars.map((bar) => bar.value)).toEqual([0, 3, 0, 0, 0, 0, 0]);
-    expect(summary.snoozes).toBe(
-      summary.snoozeBars.reduce((sum, bar) => sum + bar.value, 0),
-    );
+    expect(summary.snoozes).toBe(summary.snoozeBars.reduce((sum, bar) => sum + bar.value, 0));
     expect(hasAlarmData(summary)).toBe(true);
   });
 

@@ -39,7 +39,10 @@ func TestRequestShapesMatchTheHubSchemas(t *testing.T) {
 		shapes.record(op, meta)
 		return nil
 	}
-	_, small := r.create("small")
+	_, fresh := r.make("fresh")
+	wbPut(t, fresh, 0, "new")
+	fresh.Close()
+	small := r.openExisting(r.hub.addFile(1, "small", "old"), true)
 	wbPut(t, small, 0, "tiny")
 	small.Close()
 	_, big := r.create("big")
@@ -58,8 +61,11 @@ func TestRequestShapesMatchTheHubSchemas(t *testing.T) {
 		wire.OpBegin:    sortedKeys(wire.KeyIno, wire.KeyBaseRev, wire.KeyOpKey),
 		wire.OpWrite:    sortedKeys(wire.KeyCommit, wire.KeyOffset),
 		wire.OpAllocate: sortedKeys(wire.KeyCommit, wire.KeyMode, wire.KeyOffset, wire.KeyLength),
-		wire.OpEnd:      sortedKeys(wire.KeyCommit, wire.KeySize, wire.KeyMtimeNs, wire.KeyFsync, wire.KeyOpKey),
-		wire.OpForget:   sortedKeys(wire.KeyCommits),
+		wire.OpEnd:      sortedKeys(wire.KeyCommit, wire.KeySize, wire.KeyLength, wire.KeyMtimeNs, wire.KeyFsync, wire.KeyOpKey),
+		wire.OpCreate: sortedKeys(wire.KeyParent, wire.KeyName, wire.KeyIno, wire.KeyMode, wire.KeyUid, wire.KeyGid,
+			wire.KeyMtimeNs, wire.KeyFsync, wire.KeyOpKey),
+		wire.OpLease:  sortedKeys(wire.KeyCount),
+		wire.OpForget: sortedKeys(wire.KeyCommits),
 	}
 	shapes.mu.Lock()
 	defer shapes.mu.Unlock()
@@ -239,7 +245,10 @@ func TestCommitsCarryTheLastWriteTime(t *testing.T) {
 		return nil
 	}
 	before := time.Now().UnixNano()
-	_, small := r.create("small")
+	_, fresh := r.make("fresh")
+	wbPut(t, fresh, 0, "new")
+	fresh.Close()
+	small := r.openExisting(r.hub.addFile(1, "small", "old"), true)
 	wbPut(t, small, 0, "tiny")
 	small.Close()
 	_, big := r.create("big")

@@ -18,7 +18,7 @@ import type { MountDedupe } from './dedupe';
 import type { GroupFsync } from './fsync';
 import type { SettleGroup } from './settle-group';
 import type { MountSession } from './session';
-import { coversRanges } from '../../store/repositories/drive-mount-commits';
+import { coveredBytes, coversRanges } from '../../store/repositories/drive-mount-commits';
 
 export interface FinishEnv extends CommitEnv {
   readonly guard: DriveWriteGuard;
@@ -41,6 +41,7 @@ interface Content {
   readonly baseRev: number;
   readonly fsync: boolean;
   readonly writtenNs: bigint;
+  readonly atimeNs: bigint | undefined;
   readonly digest: () => Promise<string>;
   readonly settle: (rev: number) => void;
 }
@@ -102,10 +103,13 @@ export class MountFinish {
     content: Content,
   ): Promise<number> {
     const { scope, ino } = target;
-    const landed = await this.env.posix.lane(scope.drive.id, async () => {
+    const landed = await this.env.posix.landing(scope.drive.id, ino, async () => {
       const landing = await this.landing(scope, ino);
       const rev = await this.apply(session, landing, content);
-      await this.env.posix.stampWrite(scope, ino, content.writtenNs);
+      await this.env.posix.stampWrite(scope, ino, {
+        mtimeNs: content.writtenNs,
+        atimeNs: content.atimeNs,
+      });
       return { landing, rev };
     });
     if (content.fsync) {
@@ -145,6 +149,7 @@ export class MountFinish {
   async end(session: MountSession, request: RequestMeta<'END'>): Promise<ReplyMeta<'END'>> {
     const row = this.commits.commitOf(session, request.commit);
     const scope = this.commits.scopeOf(session, row);
+    await this.commits.drained(row.id);
     return this.env.dedupe.once(row.placementId, { name: 'END', key: request.opKey }, () =>
       this.complete(session, scope, row, request),
     );
@@ -159,6 +164,10 @@ export class MountFinish {
     const current = this.change.store.driveMountCommits.byId(row.id);
     if (current.state === 'aborted') throw posix('ESTALE', 'That commit was aborted.');
     if (current.state === 'done') return this.reply(scope, row.inodeId, current.resultRev);
+    const ranges = this.commits.rangesOf(current);
+    if (coveredBytes(ranges) !== request.length) {
+      throw posix('EAGAIN', 'Some written ranges of this commit have not arrived yet.');
+    }
     if (!(await this.env.staging.exists(scope.drive.id, row.id))) {
       const attr = await this.env.posix.getattr(scope, row.inodeId);
       this.change.store.driveMountCommits.finish(row.id, request.size, attr.rev);
@@ -169,17 +178,19 @@ export class MountFinish {
       { scope, ino: row.inodeId },
       {
         staged: this.env.staging.relPath(row.id),
-        ranges: current.ranges,
+        ranges,
         size: request.size,
         baseRev: row.baseRev,
         fsync: request.fsync,
         writtenNs: request.mtimeNs,
+        atimeNs: request.atimeNs,
         digest: () => this.env.staging.digest(scope.drive.id, row.id, request.size),
         settle: (written) => {
           this.change.store.driveMountCommits.finish(row.id, request.size, written);
         },
       },
     );
+    this.commits.settled(row.id);
     await this.env.staging.release(row.id);
     return this.reply(scope, row.inodeId, rev);
   }
@@ -214,6 +225,7 @@ export class MountFinish {
           baseRev: request.baseRev,
           fsync: request.fsync,
           writtenNs: request.mtimeNs,
+          atimeNs: request.atimeNs,
           digest: () => Promise.resolve(staged.sha256),
           settle: (): void => undefined,
         },

@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../../src/drive/jobs';
+import { DriveRootLanes } from '../../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../../src/store/repositories/drive-inodes';
+import { DriveFeedRepository } from '../../../src/store/repositories/drive-feed';
 import { metadataHandler, type MetadataEnvironment } from '../../../src/drive/metadata';
 import type { MediaFacts } from '../../../src/drive/metadata-read';
 import { overrideFacts } from '../../../src/photos/organise/override';
@@ -69,6 +71,7 @@ async function scanAndRead(): Promise<void> {
     availability: () => Promise.resolve('online'),
     mounted: (): boolean => false,
     workerScript: scannerScript,
+    lanes: new DriveRootLanes(),
     log: testLogger(),
   };
   await scanHandler(scan)({ kind: 'scan', rootId: ROOT }, new AbortController().signal);
@@ -79,6 +82,8 @@ async function scanAndRead(): Promise<void> {
       settingsKv: drive.settings,
       photoMetaOverrides: overrides,
       write: (work) => drive.context.write(work),
+      feed: drive.feed,
+      driveFeed: new DriveFeedRepository(drive.context),
     },
     media,
     availability: () => Promise.resolve('online'),

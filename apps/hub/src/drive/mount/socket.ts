@@ -13,7 +13,7 @@ import {
   decodeMeta,
   type Frame,
 } from '@smarteverything/domain/drive-mount';
-import { messageOf, type Logger } from '@smarteverything/logging';
+import { background, messageOf, type Logger } from '@smarteverything/logging';
 import { WebSocketServer, type WebSocket, type RawData } from 'ws';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import { ConnectionHeartbeat } from '../../network/connection-heartbeat';
@@ -36,12 +36,33 @@ const REASON_LIMIT = 120;
 class Connection {
   private bound: MountSession | null = null;
   private pong = Date.now();
+  private writes = 0;
+  private paused = false;
 
   constructor(
     readonly socket: WebSocket,
     readonly caller: PosixCaller,
     readonly link: MountLink,
+    private readonly writeSlots: number,
   ) {}
+
+  holdWrite(done: Promise<void>): void {
+    this.writes += 1;
+    if (!this.paused && this.writes >= this.writeSlots) {
+      this.paused = true;
+      this.socket.pause();
+    }
+    background(
+      done.finally(() => {
+        this.writes -= 1;
+        if (this.paused && this.writes < this.writeSlots) {
+          this.paused = false;
+          this.socket.resume();
+        }
+      }),
+      'drive_mount.operation_failed',
+    );
+  }
 
   get session(): MountSession | null {
     return this.bound;
@@ -77,7 +98,7 @@ export class DriveMountSocket {
     private readonly store: Store,
     private readonly access: MountAccess,
     private readonly mount: DriveMount,
-    private readonly log: Logger,
+    private readonly options: { readonly log: Logger; readonly writeSlots: () => number },
   ) {
     this.server = new WebSocketServer({
       noServer: true,
@@ -109,7 +130,7 @@ export class DriveMountSocket {
     try {
       return this.access.authenticate(bearerOf(request));
     } catch (cause) {
-      this.log.warn('drive_mount.refused_upgrade', { reason: messageOf(cause) });
+      this.options.log.warn('drive_mount.refused_upgrade', { reason: messageOf(cause) });
       throw cause;
     }
   }
@@ -143,7 +164,7 @@ export class DriveMountSocket {
         },
       },
       (failure): void => {
-        this.log.warn('drive_mount.send_failed', { reason: messageOf(failure) });
+        this.options.log.warn('drive_mount.send_failed', { reason: messageOf(failure) });
       },
       getDefaultHighWaterMark(false),
     );
@@ -155,7 +176,7 @@ export class DriveMountSocket {
         socket.close(code, reason);
       },
     };
-    const connection = new Connection(socket, caller, link);
+    const connection = new Connection(socket, caller, link, this.options.writeSlots());
     this.connections.add(connection);
     this.heartbeat.start();
     socket.on('message', (raw: RawData, binary: boolean) => {
@@ -165,7 +186,7 @@ export class DriveMountSocket {
       connection.ponged();
     });
     socket.on('error', (cause: Error) => {
-      this.log.warn('drive_mount.socket_error', { reason: messageOf(cause) });
+      this.options.log.warn('drive_mount.socket_error', { reason: messageOf(cause) });
     });
     socket.on('close', () => {
       outbox.stop();
@@ -192,12 +213,14 @@ export class DriveMountSocket {
     } else if (connection.session === null) {
       connection.socket.close(CLOSE_POLICY, 'Say hello before sending anything else.');
     } else {
-      this.mount.dispatch.handle(connection.session, connection.link, frame);
+      const done = this.mount.dispatch.handle(connection.session, connection.link, frame);
+      if (frame.op === OPS.WRITE.code) connection.holdWrite(done);
+      else background(done, 'drive_mount.operation_failed');
     }
   }
 
   private refuse(connection: Connection, cause: unknown): void {
-    this.log.warn('drive_mount.refused_frame', { reason: messageOf(cause) });
+    this.options.log.warn('drive_mount.refused_frame', { reason: messageOf(cause) });
     const reason = cause instanceof FrameError ? cause.fault : 'invalid frame';
     connection.socket.close(CLOSE_POLICY, reason.slice(0, REASON_LIMIT));
   }
@@ -218,7 +241,7 @@ export class DriveMountSocket {
       connection.link.send(replyFrame('HELLO', frame.requestId, greeting.reply, null));
       this.afterHello(greeting.session, greeting.lost, greeting.reply.resumed);
     } catch (cause) {
-      this.log.warn('drive_mount.refused_hello', { reason: messageOf(cause) });
+      this.options.log.warn('drive_mount.refused_hello', { reason: messageOf(cause) });
       connection.link.send(
         errorFrame(frame.op, frame.requestId, { code: 'EINVAL', message: messageOf(cause) }),
       );

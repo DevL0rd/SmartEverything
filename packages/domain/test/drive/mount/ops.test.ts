@@ -94,7 +94,7 @@ describe('op table', () => {
       const definition = OPS[name];
       return !definition.push && definition.replyPayload;
     });
-    expect(request.sort()).toEqual(['PUT', 'SETXATTR', 'WRITE']);
+    expect(request.sort()).toEqual(['CREATE', 'PUT', 'SETXATTR', 'WRITE']);
     expect(reply.sort()).toEqual(['GETXATTR', 'READ']);
   });
 });

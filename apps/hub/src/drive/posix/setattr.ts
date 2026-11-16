@@ -1,23 +1,24 @@
-import { lutimes } from 'node:fs/promises';
-import { Readable } from 'node:stream';
 import { SETATTR_VALID, type Attr, type RequestMeta } from '@smarteverything/domain/drive-mount';
 import type { DriveDiskStat, DriveInodeTimes } from '../../store/repositories/drive-inodes';
 import { diskModeOf, locate } from '../intents';
 import { commitPatchContent } from '../patch-content';
 import { checkDriveWrite } from '../quotas';
-import { stageBytes } from '../versions';
+import { stageEmpty } from '../stage-empty';
 import { posix } from './errors';
 import { actorOf, recordOp } from './records';
-import { after, nowNs } from './times';
+import { after, nowNs, stampDiskTimes } from './times';
 import type { PosixEnv, PosixScope } from './env';
 import type { PosixNode, PosixNodes } from './nodes';
 import type { PosixReads } from './reads';
 
 export type SetattrRequest = RequestMeta<'SETATTR'>;
 
-const PERMISSION_BITS = 0o777;
+export interface WrittenTimes {
+  readonly mtimeNs: bigint;
+  readonly atimeNs: bigint | undefined;
+}
 
-const NS_PER_MS = 1_000_000n;
+const PERMISSION_BITS = 0o777;
 
 function wants(request: SetattrRequest, bit: number): boolean {
   return (request.valid & bit) !== 0;
@@ -48,14 +49,14 @@ export class PosixSetattr {
     return this.reads.attr(scope, this.nodes.node(scope, request.ino));
   }
 
-  async stampWrite(scope: PosixScope, ino: number, writtenNs: bigint): Promise<void> {
+  async stampWrite(scope: PosixScope, ino: number, written: WrittenTimes): Promise<void> {
     const node = this.nodes.node(scope, ino);
-    const disk = await this.mirror(scope, node, {
-      mode: undefined,
-      atimeNs: undefined,
-      mtimeNs: writtenNs,
-    });
-    this.writeTimes(node, { mtimeNs: writtenNs, ctimeNs: writtenNs }, disk);
+    const disk = await this.mirror(scope, node, { mode: undefined, ...written });
+    this.writeTimes(
+      node,
+      { atimeNs: written.atimeNs, mtimeNs: written.mtimeNs, ctimeNs: written.mtimeNs },
+      disk,
+    );
   }
 
   private writeTimes(node: PosixNode, times: DriveInodeTimes, disk: DriveDiskStat | null): void {
@@ -118,11 +119,7 @@ export class PosixSetattr {
   ): Promise<DriveDiskStat> {
     const stamp = await this.env.change.files.stamp(path);
     if (stamp === null) throw posix('ENOENT', 'The item is missing from disk.');
-    await lutimes(
-      path,
-      new Date(Number((change.atimeNs ?? inode.atimeNs) / NS_PER_MS)),
-      new Date(Number((change.mtimeNs ?? stamp.mtimeNs) / NS_PER_MS)),
-    );
+    await stampDiskTimes(path, change.atimeNs ?? inode.atimeNs, change.mtimeNs ?? stamp.mtimeNs);
     const landed = await this.env.change.files.stamp(path);
     if (landed === null) throw posix('ENOENT', 'The item left the disk while its times were set.');
     return { mtimeNs: landed.mtimeNs, bytes: inode.type === 'file' ? landed.size : null };
@@ -140,7 +137,7 @@ export class PosixSetattr {
       releasedBytes: item.bytes,
       path: root.path,
     });
-    const staged = await stageBytes(this.env.change, root, Readable.from([]));
+    const staged = await stageEmpty(this.env.change, root);
     await commitPatchContent(this.env.change, {
       root,
       staged,

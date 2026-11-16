@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import type { DriveRoot } from '@smarteverything/domain';
 import {
-  changeDrive,
   createDriveShortcut,
   readDriveItem,
   removeDriveShortcut,
@@ -9,6 +8,7 @@ import {
   setDriveOffline,
   updateDriveShortcut,
 } from '../../../api/drive';
+import { changeDriveBatched } from '../../../store/drive-bulk';
 import { useSession, useSyncStatus } from '../../../store/selectors';
 import type { FileSource } from '../../files';
 import { router } from 'expo-router';
@@ -92,7 +92,7 @@ export function useDriveSource(): FileSource<DriveOrigin> {
     clientId: useSession().client.id,
     online: useSyncStatus().status === 'live',
     phone: nativeDriveProvider.linked(),
-    change: changeDrive,
+    change: changeDriveBatched,
     setOffline: setDriveOffline,
     setLock: setDriveItemLock,
     removeShortcut: removeDriveShortcut,

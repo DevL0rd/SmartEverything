@@ -324,32 +324,129 @@ func TestRouteSwitchBackToTheSameHubResumesTheSession(t *testing.T) {
 	}
 }
 
-func TestNoRouteAnswersAtOnceAndDropsWhatWaits(t *testing.T) {
+func TestNoRouteWithinTheDeadAfterWindowKeepsCallsWaiting(t *testing.T) {
 	hub := newFakeHub(t)
-	client := startClient(t, hub.route(), &recordingHandler{}, nil)
+	handler := &recordingHandler{}
+	client := startClient(t, hub.route(), handler, func(c *Config) {
+		c.PingInterval = 50 * time.Millisecond
+		c.PongTimeout = 5 * time.Second
+	})
 	conn := hub.accept(t)
 	hub.handshake(t, conn)
-	waiting := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "n"}, nil)
+	waitConnected(t, client)
+	waiting := callAsync(within(t), client, OpRead, Meta{KeyHandle: uint64(1), KeyOffset: uint64(0), KeyLength: uint64(4)}, nil)
 	conn.read(t)
 	if err := client.SwitchRoute(Route{}); err != nil {
 		t.Fatal(err)
 	}
-	if r := await(t, waiting); !errors.Is(r.err, ErrNoRoute) {
-		t.Fatalf("waiting call err = %v", r.err)
+	later := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "n"}, nil)
+	time.Sleep(50 * time.Millisecond)
+	if client.Offline() {
+		t.Fatal("a short disconnect must not take the mount offline")
+	}
+	if err := client.SwitchRoute(hub.route()); err != nil {
+		t.Fatal(err)
+	}
+	next := hub.accept(t)
+	if resumed, _ := hub.handshake(t, next); !resumed {
+		t.Fatal("the session resumes")
+	}
+	for range 2 {
+		req, _ := next.read(t)
+		next.reply(t, req, Meta{}, []byte("data"))
+	}
+	if r := await(t, waiting); r.err != nil {
+		t.Fatalf("the read across the disconnect failed: %v", r.err)
+	}
+	if r := await(t, later); r.err != nil {
+		t.Fatalf("the lookup sent while disconnected failed: %v", r.err)
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if handler.offline != 0 {
+		t.Fatal("the handler must not hear offline for a short disconnect")
+	}
+}
+
+func TestNoRoutePastTheDeadAfterWindowGoesOffline(t *testing.T) {
+	hub := newFakeHub(t)
+	handler := &recordingHandler{}
+	client := startClient(t, hub.route(), handler, func(c *Config) {
+		c.PingInterval = 20 * time.Millisecond
+		c.PongTimeout = 150 * time.Millisecond
+	})
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	waitConnected(t, client)
+	lookup := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "n"}, nil)
+	conn.read(t)
+	mkdir := callAsync(within(t), client, OpMkdir, Meta{KeyParent: uint64(1), KeyName: "d"}, nil)
+	conn.read(t)
+	if err := client.SwitchRoute(Route{}); err != nil {
+		t.Fatal(err)
+	}
+	if r := await(t, lookup); !errors.Is(r.err, ErrNoRoute) {
+		t.Fatalf("the lookup must fail once offline, err = %v", r.err)
+	}
+	if !client.Offline() {
+		t.Fatal("the client is offline after the dead-after window")
 	}
 	if _, err := client.Call(within(t), OpGetattr, Meta{KeyIno: uint64(1)}, nil); !errors.Is(err, ErrNoRoute) {
-		t.Fatalf("err = %v", err)
+		t.Fatalf("a read-only call while offline answers at once, err = %v", err)
 	}
 	if err := client.SwitchRoute(hub.route()); err != nil {
 		t.Fatal(err)
 	}
 	next := hub.accept(t)
 	hub.handshake(t, next)
-	done := callAsync(within(t), client, OpGetattr, Meta{KeyIno: uint64(1)}, nil)
 	req, _ := next.read(t)
+	if req.Op != OpMkdir {
+		t.Fatalf("the mutation is resent after the reconnect, got %s", req.Op.Name())
+	}
 	next.reply(t, req, Meta{}, nil)
-	if r := await(t, done); r.err != nil {
-		t.Fatal(r.err)
+	if r := await(t, mkdir); r.err != nil {
+		t.Fatalf("the mutation must survive the offline spell, err = %v", r.err)
+	}
+	waitOnline(t, client)
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if handler.offline != 1 {
+		t.Fatalf("the handler heard offline %d times, want 1", handler.offline)
+	}
+}
+
+func TestSilentlyDeadLinkGoesOfflineWhenThePingFails(t *testing.T) {
+	hub := newFakeHub(t)
+	handler := &recordingHandler{}
+	dialer := &stallingDialer{inner: WebsocketDialer{}, all: true}
+	client := startClient(t, hub.route(), handler, func(c *Config) {
+		c.Dialer = dialer
+		c.PingInterval = 20 * time.Millisecond
+		c.PongTimeout = 100 * time.Millisecond
+	})
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	waitConnected(t, client)
+	lookup := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "n"}, nil)
+	conn.read(t)
+	if r := await(t, lookup); !errors.Is(r.err, ErrNoRoute) {
+		t.Fatalf("a lookup on a silently dead link fails once the ping fails, err = %v", r.err)
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if handler.offline != 1 {
+		t.Fatalf("the handler heard offline %d times, want 1", handler.offline)
+	}
+}
+
+func waitOnline(t *testing.T, client *Client) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for client.Offline() {
+		if time.Now().After(deadline) {
+			t.Fatal("the client never came back online")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -371,6 +468,7 @@ func TestCallsWaitWhileTheSocketReconnects(t *testing.T) {
 
 type stallingDialer struct {
 	inner Dialer
+	all   bool
 	mu    sync.Mutex
 	conns []*stallingConn
 }
@@ -388,7 +486,7 @@ func (d *stallingDialer) Dial(ctx context.Context, route Route, token string) (C
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	wrapped := &stallingConn{Conn: conn, pings: make(chan struct{}, 64), stalls: len(d.conns) == 0}
+	wrapped := &stallingConn{Conn: conn, pings: make(chan struct{}, 64), stalls: d.all || len(d.conns) == 0}
 	d.conns = append(d.conns, wrapped)
 	return wrapped, nil
 }
@@ -738,5 +836,59 @@ func TestLivenessRefusesDeadAfterNotAbovePing(t *testing.T) {
 	}
 	if _, err := NewClient(Config{Route: hub.route(), Handler: &recordingHandler{}, PingInterval: time.Second, PongTimeout: time.Second}); err == nil {
 		t.Fatal("NewClient must refuse dead-after not above the ping interval")
+	}
+}
+
+func TestPostedFramesReturnOnceWrittenAndAreNotResentAfterTheLinkDrops(t *testing.T) {
+	hub := newFakeHub(t)
+	client := startClient(t, hub.route(), &recordingHandler{}, nil)
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	waitConnected(t, client)
+	posted, err := client.Post(within(t), OpWrite, Meta{KeyCommit: uint64(1), KeyOffset: uint64(0)}, []byte("data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := conn.read(t)
+	if req.Op != OpWrite {
+		t.Fatalf("first frame %s", req.Op.Name())
+	}
+	conn.close()
+	if _, err := posted.Wait(within(t)); !errors.Is(err, ErrConnLost) {
+		t.Fatalf("a written post fails when its link drops, err = %v", err)
+	}
+	next := hub.accept(t)
+	hub.handshake(t, next)
+	marker := callAsync(within(t), client, OpGetattr, Meta{KeyIno: uint64(1)}, nil)
+	frame, _ := next.read(t)
+	if frame.Op != OpGetattr {
+		t.Fatalf("the written post was resent as %s", frame.Op.Name())
+	}
+	next.reply(t, frame, Meta{}, nil)
+	if r := await(t, marker); r.err != nil {
+		t.Fatal(r.err)
+	}
+}
+
+func TestARouteGivenWhileOfflineMakesCallsWaitForTheConnection(t *testing.T) {
+	hub := newFakeHub(t)
+	client, err := NewClient(Config{Token: "computer-token", Handler: &recordingHandler{}, BackoffMin: 5 * time.Millisecond, BackoffMax: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	if !client.Offline() {
+		t.Fatal("a client without a route starts offline")
+	}
+	if err := client.SwitchRoute(hub.route()); err != nil {
+		t.Fatal(err)
+	}
+	attach := callAsync(within(t), client, OpAttach, Meta{KeyPlacementId: "p"}, nil)
+	conn := hub.accept(t)
+	hub.handshake(t, conn)
+	req, _ := conn.read(t)
+	conn.reply(t, req, Meta{}, nil)
+	if r := await(t, attach); r.err != nil {
+		t.Fatalf("a call made right after the route arrives waits for the connection, err = %v", r.err)
 	}
 }

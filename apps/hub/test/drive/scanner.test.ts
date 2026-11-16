@@ -25,6 +25,7 @@ import {
   type DriveJob,
   type ScanEnvironment,
 } from '../../src/drive/jobs';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import {
   CallClock,
   CONTROL_CALL,
@@ -141,6 +142,7 @@ function environment(script = workerScript): ScanEnvironment {
     availability: () => Promise.resolve(availability),
     mounted: () => mountedRoot,
     workerScript: script,
+    lanes: new DriveRootLanes(),
     log: testLogger(),
   };
 }

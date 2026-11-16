@@ -12,6 +12,7 @@ import {
 export type SpecialInodeType = Extract<DriveInodeType, 'fifo' | 'socket' | 'char' | 'block'>;
 
 export interface DriveInodePatch {
+  readonly id?: number | undefined;
   readonly specialType?: SpecialInodeType | undefined;
   readonly rdev?: number | null | undefined;
   readonly mode?: number | undefined;
@@ -82,6 +83,7 @@ export class DriveItemInodes {
 
   create(item: DriveItem, patch: DriveInodePatch): number {
     return this.inodes.create({
+      id: patch.id,
       rootId: item.rootId,
       type: typeOf(item, patch),
       mode: patch.mode,

@@ -10,7 +10,7 @@ import { DriveBackups } from '../../drive/backups';
 import { hashRequested, type HashResponse } from '../../drive/blocks';
 import type { ConflictEnv, DriveConflictStore } from '../../drive/conflicts';
 import { readDataSpace, type DataSpaceProbe } from '../../drive/data-space';
-import type { TextEnvironment } from '../../drive/content/text-job';
+import { TextCursors, type TextEnvironment } from '../../drive/content/text-job';
 import { DriveGrants } from '../../drive/grants';
 import { DriveHealthReader } from '../../drive/health';
 import { BUNDLED_HASH_WORKER, BUNDLED_SCANNER_WORKER, type DriveJob } from '../../drive/jobs';
@@ -33,6 +33,7 @@ import type { MediaLinks } from '../media-links';
 import { availabilityOf } from './drive-availability';
 import { driveJobHandlers, mountedRoot } from './drive-jobs';
 import { DriveActivity } from '../../drive/activity';
+import { DriveRootLanes } from '../../drive/root-lanes';
 import { extrasOf, iconsOf, placementsOf, textOf, type DriveExtras } from './drive-extras';
 import { actorOf, type DriveListings, type DriveServices } from './drive-services';
 import { photoBackupService } from './photos-hub';
@@ -66,6 +67,7 @@ export interface DriveDeps {
 
 export interface DriveRuntime {
   readonly activity: DriveActivity;
+  readonly lanes: DriveRootLanes;
   readonly media: PhotoPipeline;
   readonly services: DriveServices;
   readonly env: ConflictEnv;
@@ -85,6 +87,7 @@ interface Core {
   readonly watchers: DriveWatchers;
   readonly scrubber: DriveScrubber;
   readonly backups: DriveBackups;
+  readonly lanes: DriveRootLanes;
 }
 
 const MEMBER_ROW = z.object({ id: z.string(), at: z.number() });
@@ -156,8 +159,9 @@ function queueOf(
   deps: DriveDeps,
   availability: DriveRuntime['availability'],
   media: PhotoPipeline,
-  text: TextEnvironment,
+  jobs: { readonly text: TextEnvironment; readonly lanes: DriveRootLanes },
 ): WorkQueue<DriveJob> {
+  const textCursors = new TextCursors();
   const handlers = driveJobHandlers({
     store: deps.store,
     context: deps.parts.context,
@@ -165,7 +169,9 @@ function queueOf(
     log: deps.log.forArea('hub.drive-jobs'),
     scannerScript: deps.scannerScript ?? BUNDLED_SCANNER_WORKER,
     hasherScript: deps.hasherScript ?? BUNDLED_HASH_WORKER,
-    text,
+    text: jobs.text,
+    textCursors,
+    lanes: jobs.lanes,
   });
   const queue: WorkQueue<DriveJob> = new WorkQueue<DriveJob>({
     concurrency: defaultConcurrency(),
@@ -174,6 +180,7 @@ function queueOf(
       await handlers.run(job, signal);
       if (job.kind === 'metadata' && !signal.aborted) {
         media.reconcile();
+        textCursors.forget(job.rootId);
         queue.enqueue({ kind: 'text', rootId: job.rootId });
       }
       if (job.kind === 'scan' && !signal.aborted) followUps(queue, job.rootId);
@@ -262,6 +269,7 @@ function writeOf(
     scan: (rootId): void => {
       core.queue.enqueue({ kind: 'scan', rootId });
     },
+    lanes: core.lanes,
   });
 }
 
@@ -323,6 +331,14 @@ function uploadsOf(deps: DriveDeps, env: ConflictEnv): TusUploads {
   return new TusUploads(tus);
 }
 
+function backupsOf(deps: DriveDeps): DriveBackups {
+  return new DriveBackups({
+    database: deps.parts.database,
+    store: deps.store,
+    log: deps.log.forArea('hub.drive'),
+  });
+}
+
 export function createDrive(deps: DriveDeps): DriveRuntime {
   const availability = availabilityOf();
   const purge: PurgeTimer = new PurgeTimer(
@@ -333,23 +349,25 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
   const env = conflictEnvOf(deps, purge.rearm);
   const media = new PhotoPipeline(deps);
   const icons = iconsOf(deps);
-  const queue = queueOf(deps, availability, media, textOf(deps, availability, icons));
+  const lanes = new DriveRootLanes();
+  const queue = queueOf(deps, availability, media, {
+    text: textOf(deps, availability, icons),
+    lanes,
+  });
   const activity = new DriveActivity();
   const core: Core = {
     env,
     queue,
     watchers: watchersOf(deps, queue, activity),
     scrubber: scrubberOf(deps, availability),
-    backups: new DriveBackups({
-      database: deps.parts.database,
-      store: deps.store,
-      log: deps.log.forArea('hub.drive'),
-    }),
+    backups: backupsOf(deps),
+    lanes,
   };
   const services = servicesOf(deps, core);
   const placements = placementsOf(deps);
   return {
     activity,
+    lanes,
     env,
     media,
     queue,

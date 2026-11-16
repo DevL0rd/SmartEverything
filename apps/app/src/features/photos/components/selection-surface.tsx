@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { BulkProgressShown } from '../../../store/bulk-run';
 
 export function SelectionSurface({ children }: { readonly children: ReactNode }): ReactNode {
   return (
@@ -8,6 +9,7 @@ export function SelectionSurface({ children }: { readonly children: ReactNode })
       className="min-h-14 flex-row flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-primary-container py-1.5 pl-1 pr-2"
     >
       {children}
+      <BulkProgressShown onContainer />
     </View>
   );
 }

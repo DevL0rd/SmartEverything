@@ -6,7 +6,6 @@ import { BarInline, BarTrailing, OpenSearch, useBarSearch, type BarSearch } from
 import { barLeadOf, type ShellColumn } from './layout';
 import type { ShellSearchConfig } from './search-slot';
 import { ShellActions, ShellOverflow, type ShellActionsProps } from './shell-actions';
-import { ShellStatus } from './shell-status';
 import { useBackAction } from '../back-navigation';
 import { ShellBack, ShellTitle, type BackPress, type ShellTitleProps } from './shell-parts';
 import type { ShellTabs } from './shell-sections';
@@ -86,7 +85,6 @@ export function AppBar({
         }}
       >
         <OpenSearch search={search} onClose={bar.close} back={back} />
-        <ShellStatus />
         <ShellOverflow {...row.actions} kind="touch" />
       </View>
     );
@@ -155,7 +153,6 @@ export function DesktopTitleRow({
         }}
       >
         <OpenSearch search={search} onClose={bar.close} back={back} />
-        <ShellStatus />
         <ShellOverflow {...row.actions} kind="pointer" />
       </View>
     );

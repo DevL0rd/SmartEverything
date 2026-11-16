@@ -82,10 +82,14 @@ func (s *session) keepBoth(ctx context.Context) error {
 	now := time.Now()
 	for attempt := 0; ; attempt++ {
 		copyName := conflictName(name, now, attempt)
+		ino, err := w.ns.inode()
+		if err != nil {
+			return err
+		}
 		reply, err := w.mutate(ctx, wire.OpCreate, wire.Meta{
-			wire.KeyParent: parent, wire.KeyName: copyName, wire.KeyMode: uint64(mode),
-			wire.KeyUid: optID(uid), wire.KeyGid: optID(gid), wire.KeyExclusive: true,
-		}, nil)
+			wire.KeyParent: parent, wire.KeyName: copyName, wire.KeyIno: ino, wire.KeyMode: uint64(mode),
+			wire.KeyUid: optID(uid), wire.KeyGid: optID(gid), wire.KeyMtimeNs: now.UnixNano(), wire.KeyFsync: false,
+		}, []byte{})
 		if code, ok := wire.CodeOf(err); ok && code == wire.ErrEEXIST {
 			continue
 		}

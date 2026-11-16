@@ -260,6 +260,7 @@ export async function startDriveHub(
   const surfaces = createDriveSurfaces({
     store,
     activity: drive.runtime.activity,
+    lanes: drive.runtime.lanes,
     env,
     services,
     nodes: context.computerNodes,

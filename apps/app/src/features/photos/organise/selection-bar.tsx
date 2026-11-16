@@ -64,11 +64,10 @@ function Summary({ bar }: { readonly bar: PickBarProps }): ReactNode {
 const VARIANT = { primary: 'filled', plain: 'outlined', destructive: 'destructive' } as const;
 
 export function PickBar(props: PickBarProps): ReactNode {
-  const off = props.disabled || props.picked === 0;
   return (
     <SelectionSurface>
       <Summary bar={props} />
-      {off ? null : (
+      {props.picked === 0 ? null : (
         <SelectionActions>
           <SelectionGroup>
             {props.actions.map((action) => (
@@ -77,6 +76,7 @@ export function PickBar(props: PickBarProps): ReactNode {
                 label={action.label}
                 icon={action.icon}
                 variant={VARIANT[action.look]}
+                disabled={props.disabled}
                 onPress={action.onPress}
               />
             ))}

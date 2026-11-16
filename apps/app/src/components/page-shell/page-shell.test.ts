@@ -155,7 +155,7 @@ describe('top bar search', () => {
 
   it('settles a search handed over with a query to inline on a wide bar once the bar is measured', () => {
     const search = { value: 'kitchen', onChange: (): void => undefined, placeholder: 'Find' };
-    const at = (bar: number | null) =>
+    const at = (bar: number | null): string =>
       barSearchModeOf({ search, bar, trailing: 96, floor: 0, opened: false });
     expect(at(null)).toBe('open');
     expect(at(1200)).toBe('inline');

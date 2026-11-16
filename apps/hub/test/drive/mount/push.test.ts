@@ -27,15 +27,7 @@ afterEach(async () => {
 });
 
 function create(name: string, parent = writer.root): Promise<ReplyMeta<'CREATE'>> {
-  return writer.client.call('CREATE', {
-    parent,
-    name,
-    mode: 0o644,
-    uid: null,
-    gid: null,
-    exclusive: true,
-    opKey: opKey(),
-  });
+  return writer.client.created(parent, name);
 }
 
 async function settled(): Promise<void> {
@@ -60,9 +52,11 @@ describe('change pushes', () => {
     const own = await writer.client.call('MKDIR', {
       parent: writer.root,
       name: 'own',
+      ino: await writer.client.ino(),
       mode: 0o755,
       uid: null,
       gid: null,
+      mtimeNs: 1_763_100_000_000_000_000n,
       opKey: opKey(),
     });
     await until(() => seen(reader).length > 0, 'a push');
@@ -94,7 +88,12 @@ describe('change pushes', () => {
     const file = await create('gone.txt');
     await until(() => seen(reader).length > 0, 'the create');
     const before = seen(reader).length;
-    await writer.client.call('UNLINK', { parent: writer.root, name: 'gone.txt', opKey: opKey() });
+    await writer.client.call('UNLINK', {
+      parent: writer.root,
+      name: 'gone.txt',
+      ino: file.ino,
+      opKey: opKey(),
+    });
     await until(() => seen(reader).length > before, 'the removal');
     const pushed = seen(reader).slice(before);
     expect(pushed.flatMap((push) => push.entries)).toContainEqual([writer.root, 'gone.txt']);

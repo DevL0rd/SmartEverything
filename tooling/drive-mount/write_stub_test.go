@@ -19,6 +19,7 @@ type wbNode struct {
 	mode  uint32
 	nlink uint32
 	mtime int64
+	atime int64
 	names map[string]uint64
 }
 
@@ -116,12 +117,16 @@ func (h *wbHub) attr(n *wbNode) wire.Meta {
 	return wire.Meta{
 		wire.KeyIno: n.ino, wire.KeyType: uint64(n.typ), wire.KeyMode: uint64(n.mode), wire.KeyNlink: uint64(n.nlink),
 		wire.KeyUid: nil, wire.KeyGid: nil, wire.KeySize: uint64(len(n.data)), wire.KeyBlocks: uint64(0),
-		wire.KeyAtimeNs: n.mtime, wire.KeyMtimeNs: n.mtime, wire.KeyCtimeNs: n.mtime, wire.KeyBtimeNs: n.mtime,
+		wire.KeyAtimeNs: n.atime, wire.KeyMtimeNs: n.mtime, wire.KeyCtimeNs: n.mtime, wire.KeyBtimeNs: n.mtime,
 		wire.KeyRdev: uint64(0), wire.KeyRev: n.rev, wire.KeyEtag: fmt.Sprint(n.ino, ":", n.rev),
 	}
 }
 
 func wbRemote(code wire.ErrorCode) error { return &wire.RemoteError{Code: code} }
+
+func (h *wbHub) Post(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) (wire.Posted, error) {
+	return wire.PostByCall(ctx, h, op, meta, payload)
+}
 
 func (h *wbHub) Do(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) ([]wire.Reply, error) {
 	r, err := h.Call(ctx, op, meta, payload)
@@ -186,23 +191,17 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 			return wire.Reply{}, wbRemote(wire.ErrENOENT)
 		}
 		return wire.Reply{Meta: wire.Meta{wire.KeyIno: ino, wire.KeyAttr: h.attr(h.nodes[ino])}}, nil
-	case wire.OpCreate, wire.OpTmpfile:
-		parent, _ := meta.Uint(wire.KeyParent)
-		name, _ := meta.String(wire.KeyName)
-		if op == wire.OpCreate {
-			if _, taken := h.nodes[parent].names[name]; taken {
-				return wire.Reply{}, wbRemote(wire.ErrEEXIST)
-			}
-		}
+	case wire.OpLease:
+		count, _ := meta.Uint(wire.KeyCount)
+		start := h.next + 1
+		h.next += count
+		return wire.Reply{Meta: wire.Meta{wire.KeyStart: start, wire.KeyCount: count}}, nil
+	case wire.OpCreate, wire.OpMkdir:
+		return h.made(op, meta, payload)
+	case wire.OpTmpfile:
 		h.next++
-		n := &wbNode{ino: h.next, typ: wire.InodeTypeFile, rev: 1, mode: 0o644, nlink: 1, mtime: h.tick()}
-		if op == wire.OpTmpfile {
-			n.nlink = 0
-		}
+		n := &wbNode{ino: h.next, typ: wire.InodeTypeFile, rev: 1, mode: 0o644, nlink: 0, mtime: h.tick()}
 		h.nodes[n.ino] = n
-		if op == wire.OpCreate {
-			h.nodes[parent].names[name] = n.ino
-		}
 		return wire.Reply{Meta: wire.Meta{wire.KeyIno: n.ino, wire.KeyAttr: h.attr(n)}}, nil
 	case wire.OpPut:
 		key := wbKeyOf(meta)
@@ -223,7 +222,7 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 		}
 		n.data = bytes.Clone(payload)
 		h.written += uint64(len(payload))
-		return h.finish(key, n), nil
+		return h.finish(key, n, meta), nil
 	case wire.OpBegin:
 		key := wbKeyOf(meta)
 		if done, ok := h.dedupe[key]; ok {
@@ -282,6 +281,13 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 		if c == nil {
 			return wire.Reply{}, wbRemote(wire.ErrESTALE)
 		}
+		covered := c.got.clone()
+		for _, z := range c.zeros.spans {
+			covered.add(z[0], z[1])
+		}
+		if length, _ := meta.Uint(wire.KeyLength); covered.total() != length {
+			return wire.Reply{}, wbRemote(wire.ErrEAGAIN)
+		}
 		n := h.nodes[c.ino]
 		if c.base != n.rev {
 			return wire.Reply{}, &wire.RemoteError{Code: wire.ErrESTALE, Rev: n.rev, HasRev: true}
@@ -303,7 +309,7 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 			}
 		}
 		n.data = data[:size]
-		return h.finish(key, n), nil
+		return h.finish(key, n, meta), nil
 	case wire.OpForget:
 		ids, _ := meta.Array(wire.KeyCommits)
 		for _, id := range ids {
@@ -334,6 +340,9 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 				n.mtime = v
 			}
 		}
+		if v, ok := meta[wire.KeyAtime].(int64); ok {
+			n.atime = v
+		}
 		if meta.Has(wire.KeyMode) {
 			mode, _ := meta.Uint(wire.KeyMode)
 			n.mode = uint32(mode)
@@ -352,12 +361,19 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 	case wire.OpSetlk, wire.OpUnlock:
 		h.lockCalls = append(h.lockCalls, meta)
 		return wire.Reply{Meta: wire.Meta{}}, nil
-	case wire.OpUnlink:
+	case wire.OpUnlink, wire.OpRmdir:
 		parent, _ := meta.Uint(wire.KeyParent)
 		name, _ := meta.String(wire.KeyName)
+		want, _ := meta.Uint(wire.KeyIno)
 		ino, ok := h.nodes[parent].names[name]
 		if !ok {
 			return wire.Reply{}, wbRemote(wire.ErrENOENT)
+		}
+		if ino != want {
+			return wire.Reply{}, wbRemote(wire.ErrESTALE)
+		}
+		if op == wire.OpRmdir && len(h.nodes[ino].names) > 0 {
+			return wire.Reply{}, wbRemote(wire.ErrENOTEMPTY)
 		}
 		delete(h.nodes[parent].names, name)
 		h.nodes[ino].nlink--
@@ -370,9 +386,45 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 	return wire.Reply{}, nil
 }
 
-func (h *wbHub) finish(key string, n *wbNode) wire.Reply {
+func (h *wbHub) made(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, error) {
+	key := wbKeyOf(meta)
+	if done, ok := h.dedupe[key]; ok {
+		return done, nil
+	}
+	parent, _ := meta.Uint(wire.KeyParent)
+	name, _ := meta.String(wire.KeyName)
+	ino, _ := meta.Uint(wire.KeyIno)
+	mode, _ := meta.Uint(wire.KeyMode)
+	dir := h.nodes[parent]
+	if dir == nil || dir.typ != wire.InodeTypeDirectory {
+		return wire.Reply{}, wbRemote(wire.ErrENOENT)
+	}
+	if _, taken := dir.names[name]; taken {
+		return wire.Reply{}, wbRemote(wire.ErrEEXIST)
+	}
+	if _, taken := h.nodes[ino]; taken || ino > h.next {
+		return wire.Reply{}, wbRemote(wire.ErrEINVAL)
+	}
+	mtime, _ := meta[wire.KeyMtimeNs].(int64)
+	n := &wbNode{ino: ino, typ: wire.InodeTypeFile, rev: 1, mode: uint32(mode), nlink: 1, mtime: mtime, data: bytes.Clone(payload)}
+	if op == wire.OpMkdir {
+		n.typ, n.nlink, n.names = wire.InodeTypeDirectory, 2, map[string]uint64{}
+	}
+	h.nodes[ino] = n
+	dir.names[name] = ino
+	h.written += uint64(len(payload))
+	reply := wire.Reply{Meta: wire.Meta{wire.KeyIno: ino, wire.KeyAttr: h.attr(n)}}
+	h.dedupe[key] = reply
+	return reply, nil
+}
+
+func (h *wbHub) finish(key string, n *wbNode, meta wire.Meta) wire.Reply {
 	n.rev++
-	n.mtime = h.tick()
+	h.tick()
+	n.mtime = meta[wire.KeyMtimeNs].(int64)
+	if v, ok := meta[wire.KeyAtimeNs].(int64); ok {
+		n.atime = v
+	}
 	reply := wire.Reply{Meta: wire.Meta{wire.KeyAttr: h.attr(n), wire.KeyRev: n.rev}}
 	h.dedupe[key] = reply
 	return reply
@@ -394,6 +446,45 @@ func (b wbBase) Open(_ context.Context, ino uint64) (ReadHandle, error) {
 	}
 	return &wbRead{data: bytes.Clone(n.data)}, nil
 }
+
+func (b wbBase) Getattr(ctx context.Context, ino uint64) (wire.Attr, error) {
+	reply, err := b.hub.Call(ctx, wire.OpGetattr, wire.Meta{wire.KeyIno: ino}, nil)
+	if err != nil {
+		return wire.Attr{}, err
+	}
+	return reply.Meta.Attr(wire.KeyAttr)
+}
+
+func (b wbBase) Lookup(ctx context.Context, parent uint64, name string) (Entry, error) {
+	reply, err := b.hub.Call(ctx, wire.OpLookup, wire.Meta{wire.KeyParent: parent, wire.KeyName: name}, nil)
+	if err != nil {
+		return Entry{}, err
+	}
+	return wire.ParseEntry(reply.Meta)
+}
+
+func (b wbBase) Readdir(_ context.Context, ino, _ uint64) (DirPage, error) {
+	b.hub.mu.Lock()
+	defer b.hub.mu.Unlock()
+	n := b.hub.nodes[ino]
+	if n == nil {
+		return DirPage{}, wbRemote(wire.ErrENOENT)
+	}
+	var page DirPage
+	for name, child := range n.names {
+		page.Entries = append(page.Entries, wire.DirEntry{Name: name, Entry: Entry{Ino: child}})
+	}
+	return page, nil
+}
+
+type wbNames struct{}
+
+func (wbNames) NoteLocal(uint64, string, wire.Entry) {}
+func (wbNames) NoteLocalDir(uint64)                  {}
+func (wbNames) NoteLocalGone(uint64, string, uint64) {}
+func (wbNames) NoteName(uint64, string)              {}
+func (wbNames) NoteChanged(uint64)                   {}
+func (wbNames) RootIno(string) (uint64, bool)        { return 1, true }
 
 func (r *wbRead) ReadAt(_ context.Context, dst []byte, off int64) (int, error) {
 	if off >= int64(len(r.data)) {
@@ -422,7 +513,7 @@ func newWbRig(t *testing.T) *wbRig {
 
 func (r *wbRig) open() *writeBack {
 	r.t.Helper()
-	w, err := newWriteBack(writeConfig{Caller: r.hub, Base: wbBase{r.hub}, Dir: r.dir})
+	w, err := newWriteBack(writeConfig{Caller: r.hub, Base: wbBase{r.hub}, Names: wbNames{}, Dir: r.dir})
 	if err != nil {
 		r.t.Fatal(err)
 	}

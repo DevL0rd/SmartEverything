@@ -16,7 +16,7 @@ describe('smoke', () => {
     const root = await rig.posix.getattr(rig.scope, rig.rootIno);
     expect(root.nlink).toBe(2);
     const dir = await rig.posix.mkdir(rig.scope, mkdir('docs', rig.rootIno));
-    const file = await rig.posix.create(rig.scope, create('a.txt', dir.ino));
+    const file = await rig.posix.create(rig.scope, create('a.txt', dir.ino), new Uint8Array());
     expect(file.attr.size).toBe(0);
     const page = await rig.posix.readdir(rig.scope, { ino: dir.ino, cursor: 0 });
     expect(page.entries.map(([name]) => name)).toEqual(['a.txt']);

@@ -54,7 +54,7 @@ export function SelectionHeader({
   onDeleteNow,
   inline,
 }: SelectionHeaderProps): ReactNode {
-  const off = !inline || disabled || picked.count === 0;
+  const off = !inline || picked.count === 0;
   return (
     <SelectionSurface>
       <SelectionSummary>
@@ -72,9 +72,21 @@ export function SelectionHeader({
       {off ? null : (
         <SelectionActions>
           <SelectionGroup>
-            <Button label="Restore" icon="archiveRestore" variant="tonal" onPress={onRestore} />
+            <Button
+              label="Restore"
+              icon="archiveRestore"
+              variant="tonal"
+              disabled={disabled}
+              onPress={onRestore}
+            />
             {onDeleteNow === null ? null : (
-              <Button label="Delete now" icon="trash" variant="destructive" onPress={onDeleteNow} />
+              <Button
+                label="Delete now"
+                icon="trash"
+                variant="destructive"
+                disabled={disabled}
+                onPress={onDeleteNow}
+              />
             )}
           </SelectionGroup>
         </SelectionActions>

@@ -29,7 +29,6 @@ import {
   type LibrarySelectionProps,
 } from './library-selection';
 import { LibraryEmpty, LibraryError, LibraryLoading, OfflineBanner } from './library-states';
-import { scopeTotal } from './library-model';
 import { resultLineOf, type HubTabId } from './library-tabs-view';
 import { LocalLibraryStatus } from './local-library-status';
 import { matchLineOf } from '../search/match-line';
@@ -39,6 +38,7 @@ import { uploadFiles } from './uploads';
 import { useClearOnChange } from './use-clear-on-change';
 import {
   scopeKeyOf,
+  feedSelectionOf,
   useFocusedLibraryFeed,
   type FeedFocus,
   type LibraryFeed,
@@ -245,26 +245,6 @@ function scopeWith(
   return tab === 'videos' && bucket !== null ? { ...scope, duration: bucket } : scope;
 }
 
-function selectionOf(
-  feed: LibraryFeed,
-  controls: MediaSelectionControls,
-  media: MediaActions,
-): LibrarySelectionProps {
-  return {
-    controls,
-    tiles: feed.tiles,
-    media,
-    scope: {
-      total: scopeTotal(feed.buckets, feed.tiles.length, feed.complete),
-      complete: feed.complete,
-      onAll: (): void => {
-        feed.loadAll();
-        controls.all();
-      },
-    },
-  };
-}
-
 export function HubTab(props: HubTabProps): ReactNode {
   const { head, tab } = props;
   const [bucket, setBucket] = useState<DriveDurationBucket | null>(null);
@@ -275,7 +255,7 @@ export function HubTab(props: HubTabProps): ReactNode {
   useClearOnChange(scopeKeyOf(scope), controls.clear);
   const media = useMediaActions();
   const offline = isOffline(useSyncStatus().status);
-  const selection = selectionOf(feed, controls, media);
+  const selection = feedSelectionOf(feed, controls, media);
   const localLoading = tab === 'all' && local.state === 'loading';
   const filled = feed.tiles.length > 0;
   return (

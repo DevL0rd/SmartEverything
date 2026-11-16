@@ -55,22 +55,6 @@ func (n noteWrites) made(parent uint64, name string, entry Entry) {
 	n.cache.NoteChanged(parent)
 }
 
-func (n noteWrites) Create(ctx context.Context, args CreateArgs) (Entry, InodeWriteHandle, error) {
-	entry, handle, err := n.InodeWriter.Create(ctx, args)
-	if err == nil {
-		n.made(args.Parent, args.Name, entry)
-	}
-	return entry, handle, err
-}
-
-func (n noteWrites) Mkdir(ctx context.Context, args CreateArgs) (Entry, error) {
-	entry, err := n.InodeWriter.Mkdir(ctx, args)
-	if err == nil {
-		n.made(args.Parent, args.Name, entry)
-	}
-	return entry, err
-}
-
 func (n noteWrites) Mknod(ctx context.Context, args CreateArgs) (Entry, error) {
 	entry, err := n.InodeWriter.Mknod(ctx, args)
 	if err == nil {
@@ -102,26 +86,6 @@ func (n noteWrites) victim(ctx context.Context, parent uint64, name string) uint
 		return 0
 	}
 	return entry.Ino
-}
-
-func (n noteWrites) Unlink(ctx context.Context, parent uint64, name string) error {
-	ino := n.victim(ctx, parent, name)
-	err := n.InodeWriter.Unlink(ctx, parent, name)
-	if err == nil {
-		n.cache.NoteGone(parent, name, ino)
-		n.cache.NoteChanged(parent)
-	}
-	return err
-}
-
-func (n noteWrites) Rmdir(ctx context.Context, parent uint64, name string) error {
-	ino := n.victim(ctx, parent, name)
-	err := n.InodeWriter.Rmdir(ctx, parent, name)
-	if err == nil {
-		n.cache.NoteGone(parent, name, ino)
-		n.cache.NoteChanged(parent)
-	}
-	return err
 }
 
 func (n noteWrites) Rename(ctx context.Context, args RenameArgs) error {

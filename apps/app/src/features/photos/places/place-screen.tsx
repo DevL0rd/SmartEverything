@@ -33,7 +33,7 @@ import { usePhotoBuckets, usePhotoPlace } from '../data';
 import { LibraryGrid } from '../library/library-grid';
 import { selectionFrameOf } from '../library/library-selection';
 import { LibraryError, LibraryLoading } from '../library/library-states';
-import { useLibraryFeed, type LibraryFeed } from '../library/use-library-feed';
+import { feedSelectionOf, useLibraryFeed, type LibraryFeed } from '../library/use-library-feed';
 import { useMediaActions } from '../library/use-media-actions';
 import { viewerParamsOf } from '../viewer/params';
 import { MiniMap } from '../world-map';
@@ -299,7 +299,7 @@ function PlaceFeed({
   const feed = useLibraryFeed(scope);
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));
   const media = useMediaActions();
-  const frame = selectionFrameOf(compact, { controls, tiles: feed.tiles, media });
+  const frame = selectionFrameOf(compact, feedSelectionOf(feed, controls, media));
   const select: readonly ShellAction[] =
     controls.selection.active || feed.tiles.length === 0
       ? []
@@ -340,11 +340,7 @@ function PlaceBody({ place }: { readonly place: PhotoPlace }): ReactNode {
   if (all.data !== undefined) return <PlaceFeed place={place} buckets={all.data} />;
   return (
     <PhotosFrame active="map" title={place.name} breadcrumbs={crumbsOf(place)}>
-      {all.isError ? (
-        <Unavailable error={all.error} retry={all.refetch} />
-      ) : (
-        <PlaceLoading />
-      )}
+      {all.isError ? <Unavailable error={all.error} retry={all.refetch} /> : <PlaceLoading />}
     </PhotosFrame>
   );
 }

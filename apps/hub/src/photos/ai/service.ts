@@ -229,7 +229,8 @@ export class PhotoAi {
     }
     const text = context.sql.get(
       BODY,
-      'select body from drive_item_text_search where item_id = $itemId',
+      `select s.body from drive_item_text t
+        join drive_item_text_search s on s.rowid = t.rowid where t.item_id = $itemId`,
       { itemId },
     );
     return PHOTO_ANALYSIS.parse({

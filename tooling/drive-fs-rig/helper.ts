@@ -59,9 +59,10 @@ export async function writeEnvironment(state: RigState): Promise<void> {
     `SE_RIG_SERVER=${state.serverName}`,
     `SE_RIG_PIN=${state.pin}`,
     `SE_RIG_ROOT_TEST=${state.ownerRoot}`,
-    `SE_RIG_ROOT_SCRATCH=${state.homeRoot}`,
-    `SE_RIG_PLACEMENT_TEST=${state.computers.A.placements.owner}`,
-    `SE_RIG_PLACEMENT_SCRATCH=${state.computers.A.placements.home}`,
+    `SE_RIG_ROOT_SCRATCH=${state.scratch.root}`,
+    `SE_RIG_PLACEMENT_TEST=${state.computers.A.placement}`,
+    `SE_RIG_PLACEMENT_SCRATCH=${state.scratch.placement}`,
+    `SE_RIG_SCRATCH_TOKEN_FILE=${state.scratch.tokenFile}`,
   ];
   await writeFile(files.env, `${lines.join('\n')}\n`, { mode: 0o600 });
 }

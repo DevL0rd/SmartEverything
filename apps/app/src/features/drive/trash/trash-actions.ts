@@ -1,9 +1,9 @@
 import type { DriveChangeResult } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { changeDrive } from '../../../api/drive';
 import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
-import { useMutationState } from '../../../store/mutation';
+import { keptLine, useBulkRunning } from '../../../store/bulk-run';
+import { changeDriveInBatches } from '../../../store/drive-bulk';
 import {
   deleteConfirmOf,
   skippedDetail,
@@ -29,25 +29,37 @@ function idsOf(items: readonly TrashItem[]): readonly string[] {
   return items.map((item) => item.id);
 }
 
-export function useTrashActions(onDone: () => void): TrashActions {
-  const mutation = useMutationState();
-  const remove = async (items: readonly TrashItem[], request: ConfirmRequest): Promise<void> => {
-    if (!(await confirm(request))) return;
-    mutation.run(() => changeDrive({ action: 'delete_now', itemIds: idsOf(items) }), {
-      failure: 'Nothing was deleted',
+async function removeNow(
+  items: readonly TrashItem[],
+  request: ConfirmRequest,
+  onDone: () => void,
+): Promise<void> {
+  if (!(await confirm(request))) return;
+  const failure = 'Not everything was deleted';
+  try {
+    const { result, outcome } = await changeDriveInBatches({
       label: 'drive.trash.delete_now',
-      onDone: (result) => {
-        reportSkipped(result, 'deleted');
-        onDone();
-      },
+      verb: 'Deleting',
+      ids: idsOf(items),
+      body: (batch) => ({ action: 'delete_now', itemIds: batch }),
     });
-  };
+    reportSkipped(result, 'deleted');
+    if (outcome.reason !== null && outcome.kept.length > result.failed.length) {
+      notify({ message: failure, detail: keptLine(outcome, outcome.reason), tone: 'critical' });
+    }
+    onDone();
+  } catch (error) {
+    notify({ message: failure, error, tone: 'critical' });
+  }
+}
+
+export function useTrashActions(onDone: () => void): TrashActions {
   return {
-    busy: mutation.busy,
+    busy: useBulkRunning(),
     deleteAll: (items, scope): void => {
       if (items.length === 0) return;
       background(
-        remove(items, deleteConfirmOf(scope, totalsOf(items))),
+        removeNow(items, deleteConfirmOf(scope, totalsOf(items)), onDone),
         'drive_trash.delete_failed',
       );
     },

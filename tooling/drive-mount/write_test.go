@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,16 @@ import (
 var wbCtx = context.Background()
 
 func (r *wbRig) create(name string) (Entry, InodeWriteHandle) {
+	r.t.Helper()
+	ino := r.hub.addFile(1, name, "")
+	attr, err := wbBase{r.hub}.Getattr(wbCtx, ino)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return Entry{Ino: ino, Attr: attr}, r.openExisting(ino, false)
+}
+
+func (r *wbRig) make(name string) (Entry, InodeWriteHandle) {
 	r.t.Helper()
 	entry, h, err := r.w.Create(wbCtx, CreateArgs{Parent: 1, Name: name, Mode: 0o644})
 	if err != nil {
@@ -59,7 +70,12 @@ func wbJournalFiles(t *testing.T, dir string) []string {
 	}
 	var out []string
 	for _, n := range names {
-		out = append(out, n.Name())
+		if n.Name() != namesDir {
+			out = append(out, n.Name())
+		}
+	}
+	if info, err := os.Stat(filepath.Join(dir, namesDir, namesFile)); err == nil && info.Size() > 0 {
+		out = append(out, namesFile)
 	}
 	return out
 }
@@ -172,6 +188,18 @@ type wbCountingBase struct {
 func (c wbCountingBase) Open(ctx context.Context, ino uint64) (ReadHandle, error) {
 	*c.count++
 	return c.inner.Open(ctx, ino)
+}
+
+func (c wbCountingBase) Getattr(ctx context.Context, ino uint64) (wire.Attr, error) {
+	return c.inner.Getattr(ctx, ino)
+}
+
+func (c wbCountingBase) Lookup(ctx context.Context, parent uint64, name string) (Entry, error) {
+	return c.inner.Lookup(ctx, parent, name)
+}
+
+func (c wbCountingBase) Readdir(ctx context.Context, ino, cursor uint64) (DirPage, error) {
+	return c.inner.Readdir(ctx, ino, cursor)
 }
 
 func TestTruncateShrinkThenGrowZeroesTheOldTail(t *testing.T) {
@@ -357,14 +385,12 @@ func TestUtimesAfterCloseSurviveTheCommit(t *testing.T) {
 	wbPut(t, h, 0, "x")
 	h.Close()
 	stamp := time.Unix(1_000_000, 0)
-	if _, err := r.w.Setattr(wbCtx, SetattrArgs{Ino: entry.Ino, Mtime: TimeSpec{Set: true, At: stamp}}); err != nil {
+	attr, err := r.w.Setattr(wbCtx, SetattrArgs{Ino: entry.Ino, Mtime: TimeSpec{Set: true, At: stamp}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	r.hub.mu.Lock()
-	got := r.hub.nodes[entry.Ino].mtime
-	r.hub.mu.Unlock()
-	if got != stamp.UnixNano() {
-		t.Fatalf("mtime %d", got)
+	if attr.MtimeNs != stamp.UnixNano() {
+		t.Fatalf("mtime shown %d", attr.MtimeNs)
 	}
 	r.drain()
 	if m := r.hub.nodes[entry.Ino].mtime; m != stamp.UnixNano() {

@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applicationRoutes, applicationSource, filesUnder, insideApp } from './repository-files';
 import { rendersSearch, routesReaching, searchesOutsideTheShell } from './search-placement';
-import { barGaps, indicatorGaps, providerGaps, selectionGaps } from './shell-status';
+import { barStatusGaps, noticeHostGaps, quietNoticeGaps } from './shell-status';
 
 const DELETED_SHELLS = [
   'src/components/screen.tsx',
@@ -163,19 +163,15 @@ describe('the page shell', () => {
     ).toEqual([]);
   });
 
-  it('draws the connection and update indicator in every top bar form, on every route', () => {
+  it('shows connection problems only in the one notice at the top of the app, never in a bar', () => {
     const appRoot = dirname(applicationSource);
     const read = (path: string): string => readFileSync(join(appRoot, path), 'utf8');
-    expect(barGaps(read)).toEqual([]);
-    expect(selectionGaps(read)).toEqual([]);
-    expect(
-      providerGaps(
-        read,
-        sources.map((source) => source.path),
-      ),
-    ).toEqual([]);
-    expect(indicatorGaps(read)).toEqual([]);
-    expect(routes.filter((route) => !route.file.startsWith(applicationRoutes))).toEqual([]);
+    const layouts = filesUnder(applicationRoutes)
+      .filter((file) => file.endsWith('.tsx'))
+      .map((file) => ({ path: insideApp(file), text: readFileSync(file, 'utf8') }));
+    expect(noticeHostGaps(read, [...sources, ...layouts])).toEqual([]);
+    expect(barStatusGaps(sources)).toEqual([]);
+    expect(quietNoticeGaps(read)).toEqual([]);
   });
 
   it('draws every section sidebar with the one shared section rail', () => {

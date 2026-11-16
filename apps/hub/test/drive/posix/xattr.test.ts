@@ -34,7 +34,7 @@ const bytes = (...values: number[]): Uint8Array => new Uint8Array(values);
 
 describe('extended attributes', () => {
   it('stores, reads, lists and removes a value and moves the change time', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     const before = await rig.posix.getattr(rig.scope, file.ino);
     await rig.posix.setxattr(rig.scope, set(file.ino, 'user.note'), bytes(1, 2, 3));
     await rig.posix.setxattr(rig.scope, set(file.ino, 'security.tag'), bytes(9));
@@ -67,7 +67,7 @@ describe('extended attributes', () => {
   });
 
   it('answers ENODATA for a missing value on read and remove', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     expect(await refusal(rig.posix.getxattr(rig.scope, { ino: file.ino, name: 'user.none' }))).toBe(
       'ENODATA',
     );
@@ -79,7 +79,7 @@ describe('extended attributes', () => {
   });
 
   it('does not support ACL or other namespaces so the kernel uses the mode bits', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     expect(
       await refusal(
         rig.posix.setxattr(rig.scope, set(file.ino, 'system.posix_acl_access'), bytes(1)),
@@ -96,7 +96,7 @@ describe('extended attributes', () => {
   });
 
   it('answers ERANGE for an empty name or prefix only, E2BIG for a value over 65536 bytes', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     expect(await refusal(rig.posix.setxattr(rig.scope, set(file.ino, 'user.'), bytes(1)))).toBe(
       'ERANGE',
     );
@@ -110,7 +110,7 @@ describe('extended attributes', () => {
   });
 
   it('answers ENOSPC when the names of one file would pass 65536 bytes', async () => {
-    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno));
+    const file = await rig.posix.create(rig.scope, create('a', rig.rootIno), new Uint8Array());
     const long = (index: number): string =>
       `user.${String(index).padStart(3, '0')}${'x'.repeat(247)}`;
     for (let index = 0; index < 256; index += 1) {

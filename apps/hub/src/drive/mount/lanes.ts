@@ -33,8 +33,11 @@ export interface Entry {
   readonly name: string;
 }
 
+export type LaneKey = number | string;
+
 export interface Claim {
-  readonly hold: readonly number[];
+  readonly hold: readonly LaneKey[];
+  readonly shared: readonly LaneKey[];
   readonly children: readonly Entry[];
 }
 
@@ -64,14 +67,22 @@ export function resolversOf(
 }
 
 function held(...keys: readonly number[]): Claim {
-  return { hold: keys, children: [] };
+  return { hold: keys, shared: [], children: [] };
+}
+
+function nameKey(parent: number, name: string): string {
+  return `${String(parent)}/${name}`;
+}
+
+function inFolder(made: {
+  readonly parent: number;
+  readonly name: string;
+  readonly ino: number;
+}): Claim {
+  return { hold: [made.ino, nameKey(made.parent, made.name)], shared: [made.parent], children: [] };
 }
 
 type Claimer = (meta: Uint8Array, resolver: Resolver) => Claim;
-
-function named(entry: Entry): Claim {
-  return { hold: [entry.parent], children: [{ parent: entry.parent, name: entry.name }] };
-}
 
 const CLAIMS: Readonly<Record<MutationName, Claimer>> = {
   SETATTR: (meta) => held(decodeKeyed(REQUEST_META, 'SETATTR', meta).ino),
@@ -82,8 +93,8 @@ const CLAIMS: Readonly<Record<MutationName, Claimer>> = {
   PUT: (meta) => held(decodeKeyed(REQUEST_META, 'PUT', meta).ino),
   END: (meta, resolver) =>
     held(resolver.commitInode(decodeKeyed(REQUEST_META, 'END', meta).commit)),
-  MKDIR: (meta) => held(decodeKeyed(REQUEST_META, 'MKDIR', meta).parent),
-  CREATE: (meta) => held(decodeKeyed(REQUEST_META, 'CREATE', meta).parent),
+  MKDIR: (meta) => inFolder(decodeKeyed(REQUEST_META, 'MKDIR', meta)),
+  CREATE: (meta) => inFolder(decodeKeyed(REQUEST_META, 'CREATE', meta)),
   MKNOD: (meta) => held(decodeKeyed(REQUEST_META, 'MKNOD', meta).parent),
   SYMLINK: (meta) => held(decodeKeyed(REQUEST_META, 'SYMLINK', meta).parent),
   TMPFILE: (meta) => held(decodeKeyed(REQUEST_META, 'TMPFILE', meta).parent),
@@ -91,12 +102,13 @@ const CLAIMS: Readonly<Record<MutationName, Claimer>> = {
     const link = decodeKeyed(REQUEST_META, 'LINK', meta);
     return held(link.parent, link.ino);
   },
-  UNLINK: (meta) => named(decodeKeyed(REQUEST_META, 'UNLINK', meta)),
-  RMDIR: (meta) => named(decodeKeyed(REQUEST_META, 'RMDIR', meta)),
+  UNLINK: (meta) => inFolder(decodeKeyed(REQUEST_META, 'UNLINK', meta)),
+  RMDIR: (meta) => inFolder(decodeKeyed(REQUEST_META, 'RMDIR', meta)),
   RENAME: (meta) => {
     const rename = decodeKeyed(REQUEST_META, 'RENAME', meta);
     return {
       hold: [rename.parent, rename.newParent],
+      shared: [],
       children: [
         { parent: rename.parent, name: rename.name },
         { parent: rename.newParent, name: rename.newName },
@@ -121,33 +133,43 @@ export function claimOf(name: MutationName, meta: Uint8Array, resolver: Resolver
 
 interface Slot {
   readonly arrival: number;
+  readonly shared: boolean;
   readonly done: Promise<void>;
 }
 
-export type Earlier = (keys: readonly number[]) => Promise<void>;
+export type Earlier = (keys: readonly LaneKey[]) => Promise<void>;
 
 export class Lanes {
   private arrivals = 0;
-  private readonly queues = new Map<number, Slot[]>();
+  private readonly queues = new Map<LaneKey, Slot[]>();
 
-  run(hold: readonly number[], work: (earlier: Earlier) => Promise<void>): Promise<void> {
+  run(
+    hold: readonly LaneKey[],
+    work: (earlier: Earlier) => Promise<void>,
+    shared: readonly LaneKey[] = [],
+  ): Promise<void> {
     this.arrivals += 1;
     const arrival = this.arrivals;
-    const keys = [...new Set(hold)];
+    const exclusive = new Set(hold);
+    const keys = [...exclusive, ...new Set(shared.filter((key) => !exclusive.has(key)))];
     const before: Promise<void>[] = [];
     for (const key of keys) {
-      const tail = this.queues.get(key)?.at(-1);
-      if (tail !== undefined) before.push(tail.done);
+      for (const slot of this.queues.get(key) ?? []) {
+        if (exclusive.has(key) || !slot.shared) before.push(slot.done);
+      }
     }
     let release = (): void => undefined;
     const done = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const slot: Slot = { arrival, done };
-    for (const key of keys) this.queueOf(key).push(slot);
+    const slots = keys.map((key) => ({
+      key,
+      slot: { arrival, shared: !exclusive.has(key), done },
+    }));
+    for (const { key, slot } of slots) this.queueOf(key).push(slot);
     const earlier: Earlier = (others) => this.before(others, arrival);
     const finished = (): void => {
-      for (const key of keys) this.leave(key, slot);
+      for (const { key, slot } of slots) this.leave(key, slot);
       release();
     };
     return Promise.all(before)
@@ -159,18 +181,17 @@ export class Lanes {
     return this.queues.size;
   }
 
-  private before(keys: readonly number[], arrival: number): Promise<void> {
+  private before(keys: readonly LaneKey[], arrival: number): Promise<void> {
     const waits: Promise<void>[] = [];
     for (const key of new Set(keys)) {
-      const queue = this.queues.get(key);
-      if (queue === undefined) continue;
-      const prior = queue.findLast((slot) => slot.arrival < arrival);
-      if (prior !== undefined) waits.push(prior.done);
+      for (const slot of this.queues.get(key) ?? []) {
+        if (slot.arrival < arrival) waits.push(slot.done);
+      }
     }
     return Promise.all(waits).then(() => undefined);
   }
 
-  private queueOf(key: number): Slot[] {
+  private queueOf(key: LaneKey): Slot[] {
     let queue = this.queues.get(key);
     if (queue === undefined) {
       queue = [];
@@ -179,7 +200,7 @@ export class Lanes {
     return queue;
   }
 
-  private leave(key: number, slot: Slot): void {
+  private leave(key: LaneKey, slot: Slot): void {
     const queue = this.queues.get(key);
     if (queue === undefined) return;
     const index = queue.indexOf(slot);

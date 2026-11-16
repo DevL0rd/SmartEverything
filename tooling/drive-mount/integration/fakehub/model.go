@@ -1,6 +1,7 @@
 package fakehub
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path"
@@ -89,8 +90,21 @@ func (m *Model) Root() uint64 { return m.root }
 func (m *Model) now() int64 { return time.Now().UnixNano() }
 
 func (m *Model) add(typ uint8, mode uint32, uid, gid *uint32) *inode {
-	n := &inode{ino: m.next, typ: typ, mode: mode & 0o7777, uid: uid, gid: gid, rev: 1, xattrs: map[string][]byte{}}
+	ino := m.next
 	m.next++
+	return m.addAt(ino, typ, mode, uid, gid)
+}
+
+func (m *Model) Lease(count uint64) uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	start := m.next
+	m.next += count
+	return start
+}
+
+func (m *Model) addAt(ino uint64, typ uint8, mode uint32, uid, gid *uint32) *inode {
+	n := &inode{ino: ino, typ: typ, mode: mode & 0o7777, uid: uid, gid: gid, rev: 1, xattrs: map[string][]byte{}}
 	n.atime, n.mtime, n.ctime, n.btime = m.now(), m.now(), m.now(), m.now()
 	if typ == wire.InodeTypeDirectory {
 		n.names = map[string]uint64{}
@@ -273,17 +287,45 @@ func (m *Model) Readlink(ino uint64) (string, error) {
 }
 
 func (m *Model) create(by string, parent uint64, name string, typ uint8, mode uint32, uid, gid *uint32) (*inode, *inode, error) {
-	p, err := m.dir(parent)
+	return m.createAt(by, Made{Parent: parent, Name: name, Mode: mode, UID: uid, GID: gid}, typ)
+}
+
+type Made struct {
+	Ino     uint64
+	Parent  uint64
+	Name    string
+	Mode    uint32
+	UID     *uint32
+	GID     *uint32
+	MtimeNs int64
+	Content []byte
+}
+
+func (m *Model) createAt(by string, made Made, typ uint8) (*inode, *inode, error) {
+	p, err := m.dir(made.Parent)
 	if err != nil {
 		return nil, nil, err
 	}
+	name := made.Name
 	if err := checkName(name); err != nil {
 		return nil, nil, err
 	}
 	if _, exists := p.names[name]; exists {
 		return nil, nil, fail(wire.ErrEEXIST)
 	}
-	n := m.add(typ, mode, uid, gid)
+	var n *inode
+	if made.Ino == 0 {
+		n = m.add(typ, made.Mode, made.UID, made.GID)
+	} else {
+		if _, taken := m.inodes[made.Ino]; taken || made.Ino >= m.next {
+			return nil, nil, fail(wire.ErrEINVAL)
+		}
+		n = m.addAt(made.Ino, typ, made.Mode, made.UID, made.GID)
+		if made.MtimeNs != 0 {
+			n.atime, n.mtime = made.MtimeNs, made.MtimeNs
+		}
+		n.data = bytes.Clone(made.Content)
+	}
 	n.links = 1
 	if typ == wire.InodeTypeDirectory {
 		n.parent = p.ino
@@ -294,29 +336,23 @@ func (m *Model) create(by string, parent uint64, name string, typ uint8, mode ui
 	return p, n, nil
 }
 
-func (m *Model) Mkdir(by string, parent uint64, name string, mode uint32, uid, gid *uint32) (wire.Entry, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, n, err := m.create(by, parent, name, wire.InodeTypeDirectory, mode, uid, gid)
-	if err != nil {
-		return wire.Entry{}, err
-	}
-	return wire.Entry{Ino: n.ino, Attr: m.attr(n)}, nil
+func (m *Model) Mkdir(by string, made Made) (wire.Entry, error) {
+	return m.made(by, made, wire.InodeTypeDirectory)
 }
 
-func (m *Model) Create(by string, parent uint64, name string, mode uint32, uid, gid *uint32, exclusive bool) (wire.Entry, error) {
+func (m *Model) Create(by string, made Made) (wire.Entry, error) {
+	return m.made(by, made, wire.InodeTypeFile)
+}
+
+func (m *Model) made(by string, made Made, typ uint8) (wire.Entry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if p, err := m.dir(parent); err == nil && !exclusive && checkName(name) == nil {
-		if existing, ok := p.names[name]; ok {
-			n := m.inodes[existing]
-			if n.typ == wire.InodeTypeDirectory {
-				return wire.Entry{}, fail(wire.ErrEISDIR)
-			}
+	if n := m.inodes[made.Ino]; n != nil {
+		if p, err := m.dir(made.Parent); err == nil && p.names[made.Name] == n.ino {
 			return wire.Entry{Ino: n.ino, Attr: m.attr(n)}, nil
 		}
 	}
-	_, n, err := m.create(by, parent, name, wire.InodeTypeFile, mode, uid, gid)
+	_, n, err := m.createAt(by, made, typ)
 	if err != nil {
 		return wire.Entry{}, err
 	}
@@ -421,16 +457,37 @@ func (m *Model) remove(by string, parent uint64, name string, dir bool) error {
 	return nil
 }
 
-func (m *Model) Unlink(by string, parent uint64, name string) error {
+func (m *Model) Unlink(by string, parent uint64, name string, ino uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.names(parent, name, ino); err != nil {
+		return err
+	}
 	return m.remove(by, parent, name, false)
 }
 
-func (m *Model) Rmdir(by string, parent uint64, name string) error {
+func (m *Model) Rmdir(by string, parent uint64, name string, ino uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.names(parent, name, ino); err != nil {
+		return err
+	}
 	return m.remove(by, parent, name, true)
+}
+
+func (m *Model) names(parent uint64, name string, ino uint64) error {
+	p, err := m.dir(parent)
+	if err != nil {
+		return err
+	}
+	found, ok := p.names[name]
+	switch {
+	case !ok:
+		return fail(wire.ErrENOENT)
+	case found != ino:
+		return fail(wire.ErrESTALE)
+	}
+	return nil
 }
 
 func (m *Model) isAncestor(ancestor, of uint64) bool {
@@ -999,4 +1056,16 @@ func (m *Model) Commit(by string, ino, baseRev, size uint64, writes []Write) (wi
 	m.modified(n)
 	m.emit(by, Change{Inodes: []uint64{n.ino}})
 	return m.attr(n), nil
+}
+
+func (m *Model) UnlinkName(by string, parent uint64, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.remove(by, parent, name, false)
+}
+
+func (m *Model) RmdirName(by string, parent uint64, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.remove(by, parent, name, true)
 }

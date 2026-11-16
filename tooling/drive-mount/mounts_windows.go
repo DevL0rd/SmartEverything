@@ -41,6 +41,7 @@ type mountSet struct {
 func newMountSet(source InodeFilesystem, report *reporter) *mountSet {
 	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}, tuning: newTuningState(report)}
 	source.OnChange(set.sourceChanged)
+	source.OnPending(coalesced(set.publishAll))
 	return set
 }
 
@@ -177,6 +178,18 @@ func (s *mountSet) tune(t tuning) error {
 		s.report.applied(active.id, nil, live.load())
 	}
 	return nil
+}
+
+func (s *mountSet) publishAll() {
+	s.mu.Lock()
+	mounted := make([]*activeMount, 0, len(s.mounts))
+	for _, active := range s.mounts {
+		mounted = append(mounted, active)
+	}
+	s.mu.Unlock()
+	for _, active := range mounted {
+		s.publish(active)
+	}
 }
 
 func (s *mountSet) publish(active *activeMount) {

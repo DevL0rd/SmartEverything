@@ -34,6 +34,7 @@ import { nodeCaller } from '../../src/drive/node-caller';
 import { DrivePlacements } from '../../src/drive/placements';
 import { DriveShares } from '../../src/drive/shares';
 import { DriveWriteService } from '../../src/drive/service-write';
+import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveReadService } from '../../src/drive/service-read';
 import { MOUNT_SUBPROTOCOL } from '@smarteverything/domain/drive-mount';
 import { DRIVE_SYNC_PROTOCOL } from '../../src/drive/sync/server-socket';
@@ -178,6 +179,7 @@ beforeEach(async () => {
   surfaces = createDriveSurfaces({
     store,
     activity: new DriveActivity(),
+    lanes: new DriveRootLanes(),
     env: {
       files: nodeFiles,
       store,
@@ -401,6 +403,7 @@ function driveServices(): DriveServices {
       backups,
       guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
       scan: (): void => undefined,
+      lanes: new DriveRootLanes(),
     }),
     albums,
     shares,

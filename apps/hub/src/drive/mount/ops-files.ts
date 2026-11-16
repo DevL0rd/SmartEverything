@@ -27,7 +27,7 @@ async function durable(
 }
 
 function attachment(services: MountServices): Executors {
-  const { posix, store, push, staging } = services;
+  const { posix, store, push, staging, commits } = services;
   return {
     ATTACH: operation('ATTACH', async (call) => {
       const { session: active } = call;
@@ -39,7 +39,7 @@ function attachment(services: MountServices): Executors {
       store.driveMountCommits.sweep(call.meta.placementId, [...active.journal]);
       for (const commit of store.driveMountCommits.open(call.meta.placementId)) {
         if (commit.nodeId !== active.nodeId || active.journal.has(commit.id)) continue;
-        store.driveMountCommits.abort(commit.id);
+        commits.abortRow(commit.id);
         await staging.remove(attached.root, commit.id);
       }
       setImmediate(() => {
@@ -52,6 +52,9 @@ function attachment(services: MountServices): Executors {
       });
       return { root: attached.root, ino: attached.ino, attr: attached.attr, seq: attached.seq };
     }),
+    LEASE: operation('LEASE', (call) =>
+      Promise.resolve(store.driveInodeLeases.grant(call.session.nodeId, call.meta.count)),
+    ),
     CANCEL: operation('CANCEL', (call) => {
       call.session.inflight.get(call.meta.requestId)?.cancel();
       return Promise.resolve({});

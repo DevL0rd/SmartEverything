@@ -30,15 +30,7 @@ function patterned(size: number): Buffer {
 }
 
 async function put(name: string, content: Uint8Array): Promise<number> {
-  const entry = await mine.client.call('CREATE', {
-    parent: mine.root,
-    name,
-    mode: 0o644,
-    uid: null,
-    gid: null,
-    exclusive: true,
-    opKey: opKey(),
-  });
+  const entry = await mine.client.created(mine.root, name);
   await mine.client.call(
     'PUT',
     {
@@ -59,10 +51,11 @@ async function begin(ino: number): Promise<number> {
   return (await mine.client.call('BEGIN', { ino, baseRev: rev, opKey: opKey() })).commit;
 }
 
-async function finish(commit: number, size: number): Promise<void> {
+async function finish(commit: number, size: number, length = size): Promise<void> {
   await mine.client.call('END', {
     commit,
     size,
+    length,
     mtimeNs: WRITTEN_NS,
     fsync: false,
     opKey: opKey(),
@@ -146,7 +139,7 @@ describe('server-side copy', () => {
       dstOffset: 0,
       length: content.length,
     });
-    await finish(commit, 300_000);
+    await finish(commit, 300_000, 200_010);
     const expected = Buffer.alloc(300_000, 7);
     content.copy(expected, 0);
     Buffer.alloc(10, 9).copy(expected, 250_000);

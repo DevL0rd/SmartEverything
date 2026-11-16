@@ -154,6 +154,10 @@ func normalise(m wire.Meta) (wire.Meta, error) {
 	return wire.DecodeMeta(raw)
 }
 
+func (h *fakeHub) Post(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) (wire.Posted, error) {
+	return wire.PostByCall(ctx, h, op, meta, payload)
+}
+
 func (h *fakeHub) Do(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) ([]wire.Reply, error) {
 	reply, err := h.Call(ctx, op, meta, payload)
 	if err != nil {

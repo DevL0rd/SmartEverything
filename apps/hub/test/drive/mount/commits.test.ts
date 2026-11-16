@@ -10,6 +10,7 @@ import {
   opKey,
   type Attached,
   type MountRig,
+  until,
 } from './mount-rig';
 
 const WRITTEN_NS = 1_763_100_000_123_456_789n;
@@ -33,15 +34,7 @@ afterEach(async () => {
 const text = (value: string): Uint8Array => new TextEncoder().encode(value);
 
 async function created(name: string): Promise<{ ino: number; rev: number }> {
-  const entry = await mine.client.call('CREATE', {
-    parent: mine.root,
-    name,
-    mode: 0o644,
-    uid: null,
-    gid: null,
-    exclusive: true,
-    opKey: opKey(),
-  });
+  const entry = await mine.client.created(mine.root, name);
   return { ino: entry.ino, rev: entry.attr.rev };
 }
 
@@ -89,6 +82,7 @@ describe('a commit built of ranges', () => {
     const done = await mine.client.call('END', {
       commit,
       size: 11,
+      length: 11,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -100,6 +94,43 @@ describe('a commit built of ranges', () => {
     expect(done.attr.ctimeNs).toBe(WRITTEN_NS);
   });
 
+  it('takes thousands of scattered frames in flight and keeps their ranges for resume', async () => {
+    const ino = await put('scatter.bin', 'x'.repeat(4096 * 64));
+    const commit = await begin(ino);
+    const offsets = Array.from({ length: 2000 }, (_, index) => ((index * 37) % 64) * 4096 + (index % 7));
+    await Promise.all(
+      offsets.map((offset) => mine.client.call('WRITE', { commit, offset }, text('y'))),
+    );
+    const state = await mine.client.call('STATE', { commit });
+    const expected = [...new Set(offsets)].sort((left, right) => left - right);
+    const covered = (state.ranges ?? []).flatMap(([start, length]) =>
+      Array.from({ length }, (_, index) => start + index),
+    );
+    expect(covered).toEqual(expected);
+    await until(
+      () =>
+        rig.posix.opened.store.driveMountCommits.byId(commit).ranges.length ===
+        (state.ranges ?? []).length,
+      'the ranges to reach the database',
+    );
+    const done = await mine.client.call('END', {
+      commit,
+      size: 4096 * 64,
+      length: new Set(offsets).size,
+      mtimeNs: WRITTEN_NS,
+      atimeNs: WRITTEN_NS - 5n,
+      fsync: false,
+      opKey: opKey(),
+    });
+    expect(done.attr.atimeNs).toBe(WRITTEN_NS - 5n);
+    const body = await onDisk('scatter.bin');
+    for (const offset of expected) expect(body[offset]).toBe('y');
+    const untouched = Array.from({ length: 4096 }, (_, index) => index).find(
+      (index) => !expected.includes(index),
+    );
+    expect(body[untouched ?? -1]).toBe('x');
+  });
+
   it('patches only the written range into a larger file and keeps the version', async () => {
     const ino = await put('patch.txt', '0123456789');
     const commit = await begin(ino);
@@ -107,6 +138,7 @@ describe('a commit built of ranges', () => {
     const done = await mine.client.call('END', {
       commit,
       size: 10,
+      length: 3,
       mtimeNs: WRITTEN_NS,
       fsync: true,
       opKey: opKey(),
@@ -128,6 +160,7 @@ describe('a commit built of ranges', () => {
     await mine.client.call('END', {
       commit: shrink,
       size: 4,
+      length: 2,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -138,6 +171,7 @@ describe('a commit built of ranges', () => {
     await mine.client.call('END', {
       commit: grow,
       size: 6,
+      length: 1,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -155,6 +189,7 @@ describe('a commit built of ranges', () => {
     await mine.client.call('END', {
       commit,
       size: 4,
+      length: 4,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -175,6 +210,7 @@ describe('a commit built of ranges', () => {
     const first = await mine.client.call('END', {
       commit,
       size: 2,
+      length: 2,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: key,
@@ -182,6 +218,7 @@ describe('a commit built of ranges', () => {
     const second = await mine.client.call('END', {
       commit,
       size: 2,
+      length: 2,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: key,
@@ -190,6 +227,7 @@ describe('a commit built of ranges', () => {
     const another = await mine.client.call('END', {
       commit,
       size: 2,
+      length: 2,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -207,12 +245,54 @@ describe('a commit built of ranges', () => {
     await mine.client.call('END', {
       commit,
       size: 1,
+      length: 1,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
     });
     const staged = await readdir(join(rig.posix.mine.path, '.se', 'tmp')).catch(() => []);
     expect(staged.filter((name) => name.startsWith('commit-'))).toEqual([]);
+  });
+});
+
+describe('an END that does not cover what the computer sent', () => {
+  it('refuses with EAGAIN until the missing range arrives and then applies it', async () => {
+    const { ino } = await created('gap.txt');
+    const commit = await begin(ino);
+    await mine.client.call('WRITE', { commit, offset: 0 }, text('ab'));
+    const end = {
+      commit,
+      size: 4,
+      length: 4,
+      mtimeNs: WRITTEN_NS,
+      fsync: false,
+      opKey: opKey(),
+    };
+    await expect(mine.client.call('END', end)).rejects.toMatchObject({ code: 'EAGAIN' });
+    expect(await onDisk('gap.txt')).toBe('');
+    await mine.client.call('WRITE', { commit, offset: 2 }, text('cd'));
+    await mine.client.call('END', end);
+    expect(await onDisk('gap.txt')).toBe('abcd');
+  });
+
+  it('waits for writes still landing when the END arrives right behind them', async () => {
+    const { ino } = await created('behind.txt');
+    const commit = await begin(ino);
+    const parts = Array.from({ length: 64 }, (_, index) => index);
+    const writes = parts.map((index) =>
+      mine.client.call('WRITE', { commit, offset: index * 1024 }, Buffer.alloc(1024, index)),
+    );
+    const done = mine.client.call('END', {
+      commit,
+      size: 64 * 1024,
+      length: 64 * 1024,
+      mtimeNs: WRITTEN_NS,
+      fsync: false,
+      opKey: opKey(),
+    });
+    await Promise.all([...writes, done]);
+    const body = await readFile(join(rig.posix.mine.path, 'behind.txt'));
+    for (const index of parts) expect(body[index * 1024]).toBe(index);
   });
 });
 
@@ -237,6 +317,7 @@ describe('resuming a commit', () => {
     await mine.client.call('END', {
       commit,
       size: 9,
+      length: 9,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -265,7 +346,7 @@ describe('resuming a commit', () => {
     const reply = await next.hello({ session });
     expect(reply.resumed).toBe(true);
     await next.call('WRITE', { commit, offset: 2 }, text('cd'));
-    await next.call('END', { commit, size: 4, mtimeNs: WRITTEN_NS, fsync: false, opKey: opKey() });
+    await next.call('END', { commit, size: 4, length: 4, mtimeNs: WRITTEN_NS, fsync: false, opKey: opKey() });
     expect(await onDisk('across.txt')).toBe('abcd');
   });
 
@@ -295,7 +376,7 @@ describe('conflicts and small files', () => {
     await mine.client.call('WRITE', { commit, offset: 0 }, text('mine'));
     await save(rig.posix, rig.posix.mine, 'base.txt', 'theirs');
     const failure = await mine.client
-      .call('END', { commit, size: 4, mtimeNs: WRITTEN_NS, fsync: false, opKey: opKey() })
+      .call('END', { commit, size: 4, length: 4, mtimeNs: WRITTEN_NS, fsync: false, opKey: opKey() })
       .catch((cause: unknown) => cause);
     expect(failure).toBeInstanceOf(MountFailure);
     expect(failure).toMatchObject({ code: 'ESTALE' });
@@ -312,6 +393,7 @@ describe('conflicts and small files', () => {
     await mine.client.call('END', {
       commit,
       size: 2,
+      length: 2,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -383,6 +465,7 @@ describe('abort, forget, allocate and copy', () => {
     await mine.client.call('END', {
       commit,
       size: 1,
+      length: 1,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -400,6 +483,7 @@ describe('abort, forget, allocate and copy', () => {
     await mine.client.call('END', {
       commit,
       size: 10,
+      length: 3,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -425,6 +509,7 @@ describe('abort, forget, allocate and copy', () => {
     await mine.client.call('END', {
       commit,
       size: 10,
+      length: 4,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),
@@ -497,6 +582,7 @@ describe('landing in the drive lane', () => {
     const pending = mine.client.call('END', {
       commit,
       size: 3,
+      length: 3,
       mtimeNs: WRITTEN_NS,
       fsync: false,
       opKey: opKey(),

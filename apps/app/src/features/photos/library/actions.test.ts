@@ -7,6 +7,7 @@ const notify = vi.hoisted(() => vi.fn<(input: ToastInput) => number>());
 vi.mock('../../../components/toast-store', () => ({ notify }));
 vi.mock('../../../api/drive', () => ({ changeDrive: vi.fn() }));
 
+import type { BulkAnswer, BulkFailure } from '../../../store/bulk-run';
 import type { LocalCopyResult } from '../backup/runner/local-copies';
 import { addToAlbum, moveToTrash, setFavourite, type Change } from './actions';
 import type { LocalCopies } from './local-copies';
@@ -37,11 +38,11 @@ function localCopies(
   };
 }
 
-function recorder(failed: readonly unknown[] = []): { calls: DriveChange[]; change: Change } {
+function recorder(failed: readonly BulkFailure[] = []): { calls: DriveChange[]; change: Change } {
   const calls: DriveChange[] = [];
   return {
     calls,
-    change: (body): Promise<{ failed: readonly unknown[] }> => {
+    change: (body): Promise<BulkAnswer> => {
       calls.push(body);
       return Promise.resolve({ failed });
     },
@@ -83,7 +84,7 @@ describe('library actions', () => {
     await expect(moveToTrash([A], change)).resolves.toBe(false);
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Could not move to trash', tone: 'critical' }),
+      expect.objectContaining({ message: 'Could not move everything to trash', tone: 'critical' }),
     );
   });
 

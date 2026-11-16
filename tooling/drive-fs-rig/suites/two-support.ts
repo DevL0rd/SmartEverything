@@ -51,6 +51,12 @@ export async function setup(context: Context, suffix: string): Promise<Setup> {
     '-p',
     mountPath('A', relative),
   ]);
+  await pollUntil(
+    `B to see ${relative}`,
+    async () =>
+      (await inside(state.computers.B, ['test', '-d', mountPath('B', relative)]).done).code === 0,
+    VISIBLE_LIMIT_MS,
+  );
   return { state, relative, signals };
 }
 

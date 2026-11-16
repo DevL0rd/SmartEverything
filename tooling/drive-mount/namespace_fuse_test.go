@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smarteverything/drive-mount/integration/fakehub"
 	"golang.org/x/sys/unix"
 )
 
@@ -282,7 +283,7 @@ func TestOwnerAndGroupAreThePersonUnlessAnotherNumberIsStored(t *testing.T) {
 		t.Fatalf("a file made by the mounting user stored owner %v:%v", attr.UID, attr.GID)
 	}
 	other := uint32(4242)
-	if _, err := model.Mkdir("t", model.Root(), "theirs", 0o755, &other, &other); err != nil {
+	if _, err := model.Mkdir("t", fakehub.Made{Parent: model.Root(), Name: "theirs", Mode: 0o755, UID: &other, GID: &other}); err != nil {
 		t.Fatal(err)
 	}
 	st := inodeOf(t, m.path("theirs"))
@@ -490,7 +491,7 @@ func TestStaleInodesAnswerESTALEAfterTheHubForgetsThem(t *testing.T) {
 	if _, err := os.Stat(m.path("a.txt")); err != nil {
 		t.Fatal(err)
 	}
-	if err := model.Unlink("test", model.Root(), "a.txt"); err != nil {
+	if err := model.UnlinkName("test", model.Root(), "a.txt"); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "the removal to be seen", func() bool {

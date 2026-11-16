@@ -106,9 +106,9 @@ function rigOf(entries: ReadonlyMap<string, number>, commits: ReadonlyMap<number
       requestId: nextId,
       more: false,
       meta: encodeMeta(REQUEST_META[name], meta),
-      payload: name === 'PUT' ? new Uint8Array([1]) : null,
+      payload: name === 'PUT' || name === 'CREATE' ? new Uint8Array([1]) : null,
     };
-    dispatch.handle(session, link, frame);
+    void dispatch.handle(session, link, frame);
   };
   return { dispatch, session, link, log, gates, send };
 }
@@ -157,7 +157,7 @@ describe('the keyed mutation lanes', () => {
     rig.gates.set('end a', gate());
     rig.send(
       'END',
-      { commit: COMMIT_A, size: 1, mtimeNs: 1n, fsync: false, opKey: key() },
+      { commit: COMMIT_A, size: 1, length: 1, mtimeNs: 1n, fsync: false, opKey: key() },
       'end a',
     );
     rig.send(
@@ -170,10 +170,12 @@ describe('the keyed mutation lanes', () => {
       {
         parent: ROOT,
         name: 'c',
+        ino: 77,
         mode: 0o644,
         uid: null,
         gid: null,
-        exclusive: true,
+        mtimeNs: 1n,
+        fsync: false,
         opKey: key(),
       },
       'create',
@@ -206,7 +208,7 @@ describe('the keyed mutation lanes', () => {
     rig.gates.set('end b', gate());
     rig.send(
       'END',
-      { commit: COMMIT_B, size: 1, mtimeNs: 1n, fsync: false, opKey: key() },
+      { commit: COMMIT_B, size: 1, length: 1, mtimeNs: 1n, fsync: false, opKey: key() },
       'end b',
     );
     rig.send(
@@ -232,7 +234,7 @@ describe('the keyed mutation lanes', () => {
     });
     const link = rig.session.link;
     if (link === null) throw new Error('The session has no link.');
-    rig.dispatch.handle(rig.session, link, {
+    void rig.dispatch.handle(rig.session, link, {
       type: 'request',
       op: OPS.END.code,
       requestId: 7n,
@@ -240,6 +242,7 @@ describe('the keyed mutation lanes', () => {
       meta: encodeMeta(REQUEST_META.END, {
         commit: COMMIT_A,
         size: 1,
+        length: 1,
         mtimeNs: 1n,
         fsync: false,
         opKey: key(),
@@ -258,6 +261,82 @@ describe('the keyed mutation lanes', () => {
     const recorded = rig.dispatch.latency.snapshot()['PUT'];
     expect(recorded?.run.count).toBe(2);
     expect(recorded?.wait.count).toBe(2);
+  });
+});
+
+function made(name: string, ino: number, parent = ROOT): RequestMetaInput<'CREATE'> {
+  return {
+    parent,
+    name,
+    ino,
+    mode: 0o644,
+    uid: null,
+    gid: null,
+    mtimeNs: 1n,
+    fsync: false,
+    opKey: key(),
+  };
+}
+
+describe('new and removed names in one folder', () => {
+  it('lands creates of different names in one folder together', async () => {
+    const rig = rigOf(new Map(), new Map());
+    rig.gates.set('create a', gate());
+    rig.send('CREATE', made('a', 50), 'create a');
+    rig.send('CREATE', made('b', 51), 'create b');
+    await settle();
+    expect(rig.log).toEqual(['start create a', 'start create b', 'end create b']);
+    rig.gates.get('create a')?.open();
+    await settle();
+    expect(rig.log.at(-1)).toBe('end create a');
+  });
+
+  it('keeps a remove and a create of the same name in arrival order', async () => {
+    const rig = rigOf(new Map(), new Map());
+    rig.gates.set('unlink a', gate());
+    rig.send('UNLINK', { parent: ROOT, name: 'a', ino: 50, opKey: key() }, 'unlink a');
+    rig.send('CREATE', made('a', 51), 'create a');
+    await settle();
+    expect(rig.log).toEqual(['start unlink a']);
+    rig.gates.get('unlink a')?.open();
+    await settle();
+    expect(rig.log).toEqual(['start unlink a', 'end unlink a', 'start create a', 'end create a']);
+  });
+
+  it('makes a rename in the folder wait for the creates before it and the creates after it wait for the rename', async () => {
+    const rig = rigOf(new Map(), new Map());
+    rig.gates.set('create a', gate());
+    rig.send('CREATE', made('a', 50), 'create a');
+    rig.send(
+      'RENAME',
+      { parent: ROOT, name: 'x', newParent: ROOT, newName: 'y', flags: 0, opKey: key() },
+      'rename',
+    );
+    rig.send('CREATE', made('b', 51), 'create b');
+    await settle();
+    expect(rig.log).toEqual(['start create a']);
+    rig.gates.get('create a')?.open();
+    await settle();
+    expect(rig.log).toEqual([
+      'start create a',
+      'end create a',
+      'start rename',
+      'end rename',
+      'start create b',
+      'end create b',
+    ]);
+  });
+
+  it('lands a file inside a folder only after the folder change before it', async () => {
+    const rig = rigOf(new Map(), new Map());
+    rig.gates.set('link', gate());
+    rig.send('LINK', { ino: FILE_A, parent: 60, name: 'l', opKey: key() }, 'link');
+    rig.send('CREATE', made('inner', 61, 60), 'create inner');
+    await settle();
+    expect(rig.log).toEqual(['start link']);
+    rig.gates.get('link')?.open();
+    await settle();
+    expect(rig.log).toEqual(['start link', 'end link', 'start create inner', 'end create inner']);
   });
 });
 

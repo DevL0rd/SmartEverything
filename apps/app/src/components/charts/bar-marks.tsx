@@ -4,7 +4,7 @@ import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reani
 import { Path } from 'react-native-svg';
 import { Text } from '../text';
 import { barPath, type BarBox, type BarRadii } from './bar-path';
-import { barLabelPlacesOf } from './scale';
+import { barLabelPlacesOf, type LabelPlace } from './scale';
 
 export interface BarShape extends BarBox {
   readonly key: string;
@@ -60,6 +60,29 @@ export interface BarLabel {
   readonly label?: string;
 }
 
+function PlacedLabel({
+  place,
+  text,
+}: {
+  readonly place: LabelPlace;
+  readonly text: string;
+}): ReactNode {
+  const box = { left: place.left, width: place.width };
+  return (
+    <View className="absolute top-0" style={box}>
+      <Text
+        variant="caption"
+        tone="variant"
+        align={place.align}
+        numberOfLines={1}
+        className="tabular"
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}
+
 export function BarLabels({
   bars,
   width,
@@ -80,23 +103,7 @@ export function BarLabels({
         const bar = bars[place.index];
         if (bar?.label === undefined)
           throw new Error(`Bar label ${String(place.index)} is missing`);
-        return (
-          <View
-            key={bar.key}
-            className="absolute top-0"
-            style={{ left: place.left, width: place.width }}
-          >
-            <Text
-              variant="caption"
-              tone="variant"
-              align={place.align}
-              numberOfLines={1}
-              className="tabular"
-            >
-              {bar.label}
-            </Text>
-          </View>
-        );
+        return <PlacedLabel key={bar.key} place={place} text={bar.label} />;
       })}
     </View>
   );

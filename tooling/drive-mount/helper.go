@@ -34,6 +34,14 @@ func (l *lateCaller) Do(ctx context.Context, op wire.Op, meta wire.Meta, payload
 	return client.Do(ctx, op, meta, payload)
 }
 
+func (l *lateCaller) Post(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) (wire.Posted, error) {
+	client := l.client.Load()
+	if client == nil {
+		return nil, errNoWire
+	}
+	return client.Post(ctx, op, meta, payload)
+}
+
 type helperFS struct {
 	InodeSource
 	InodeWriter
@@ -52,6 +60,7 @@ func newFilesystem(spec routeSpec, token, cacheDir, journalDir string) (*helperF
 	writes, err := newWriteBack(writeConfig{
 		Caller: late,
 		Base:   cache,
+		Names:  cache,
 		Dir:    journalDir,
 		NameOf: cache.NameOf,
 		RootOf: cache.RootOf,
@@ -102,7 +111,6 @@ func (f *helperFS) wireEvent(event string, err error) {
 	if event != wireLostEvent {
 		return
 	}
-	f.SetReachable(false)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "wire:", err)
 	}
@@ -114,10 +122,11 @@ func (f *helperFS) SetReachable(reachable bool) {
 }
 
 func (f *helperFS) SwitchRoute(route wire.Route) error {
-	f.SetReachable(!route.Empty())
 	if err := f.client.SwitchRoute(route); err != nil {
-		f.SetReachable(false)
 		return err
+	}
+	if !route.Empty() {
+		f.SetReachable(true)
 	}
 	return nil
 }
@@ -146,8 +155,11 @@ func (h helperHandler) Established(ctx context.Context, call wire.Caller, resume
 		return err
 	}
 	h.fs.SetReachable(true)
+	go h.fs.writes.ns.ensureLeases(h.fs.writes.ctx)
 	return nil
 }
+
+func (h helperHandler) Offline() { h.fs.SetReachable(false) }
 
 func (h helperHandler) Changed(change wire.Changed) { h.fs.cache.Changed(change) }
 
