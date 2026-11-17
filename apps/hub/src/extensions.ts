@@ -15,6 +15,7 @@ import type { LiveHub } from './server/live';
 import type { Operations } from './server/operations';
 import type { ComputerNodeSockets } from './server/node-socket';
 import type { ReleasePublications } from './self-update/release-publications';
+import type { SessionPlacementSource } from './computers/placements-slot';
 import type { Store } from './store/store';
 import type { MediaNotes } from './transcripts/media-notes';
 
@@ -22,6 +23,7 @@ export interface ExtensionContext {
   readonly store: Store;
   readonly computerAi: ComputerAiDirectory;
   readonly computerEars: EarsRelay;
+  readonly computerPlacements: SessionPlacementSource;
   readonly nodeSockets: ComputerNodeSockets;
   readonly hub: RunningHub;
   readonly secrets: SecretStore;

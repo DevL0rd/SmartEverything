@@ -122,6 +122,7 @@ export function addLabels(itemId: string, labels: readonly string[]): void {
     state: 'done',
     caption: null,
     scene: null,
+    text: null,
     labels,
     pets: [],
     error: null,

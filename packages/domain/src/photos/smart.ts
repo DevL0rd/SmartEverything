@@ -86,6 +86,12 @@ export const PHOTO_AI_PEOPLE = z.strictObject({ faces: COUNT, grouped: COUNT }).
 
 export type PhotoAiPeople = z.infer<typeof PHOTO_AI_PEOPLE>;
 
+export const PHOTO_FACE_DEVICE = z
+  .strictObject({ state: z.enum(['starting', 'gpu', 'cpu', 'failed']), reason: z.string() })
+  .readonly();
+
+export type PhotoFaceDevice = z.infer<typeof PHOTO_FACE_DEVICE>;
+
 export const PHOTO_AI_STATUS = z
   .strictObject({
     smartSearch: z.boolean(),
@@ -99,6 +105,7 @@ export const PHOTO_AI_STATUS = z
     spentMicros: COUNT,
     estimateMicros: COUNT,
     models: PHOTO_AI_MODELS,
+    faceDevice: PHOTO_FACE_DEVICE,
   })
   .readonly();
 

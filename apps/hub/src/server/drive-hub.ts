@@ -240,6 +240,7 @@ function startPhotoServices(
 export interface RunningDriveHub {
   readonly routes: RunningDrive['routes'] & DrivePlacementRoutes & PhotoHubRoutes;
   readonly rawRoutes: readonly RawRoute[];
+  readonly placements: DrivePlacements;
   readonly revoke: (deviceId: string) => void;
   readonly stop: () => Promise<void>;
 }
@@ -275,6 +276,7 @@ export async function startDriveHub(
   return {
     routes,
     rawRoutes,
+    placements: placed.placements,
     revoke: surfaces.revoke,
     stop: async (): Promise<void> => {
       surfaces.stop();

@@ -9,6 +9,7 @@ import {
   NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { NO_PLACEMENTS } from '../support/session-rig';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerSession } from '../../src/computers/computer-session';
 import type { EarHostSend, SessionEarHosts } from '../../src/listening/ear-hosts';
@@ -102,6 +103,7 @@ function rig(): Rig {
     deviceIdOf: (): string => 'device-1',
     scopesOf: (): typeof DEFAULT_COMPUTER_SCOPES => DEFAULT_COMPUTER_SCOPES,
     directory: new ComputerDirectory(null),
+    placements: NO_PLACEMENTS,
     earHosts,
     recordAppTime: (): void => undefined,
     signals: { emit: (): void => undefined },

@@ -1,3 +1,4 @@
+import { PHOTO_ANALYSIS_TEXT_MIGRATION } from './photo-analysis-text';
 import { PHOTO_VISION_REFUSED_RETRY_MIGRATION } from './photo-vision-refused-retry';
 import { PHOTOS_THUMBHASH_DROP_MIGRATION } from './photos-thumbhash-drop';
 import { DRIVE_TEXT_SEARCH_ROWID_MIGRATION } from './drive-text-search-rowid';
@@ -205,4 +206,5 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   DRIVE_ITEM_REFERENCE_INDEXES_MIGRATION,
   DRIVE_ITEM_BACKLOG_INDEXES_MIGRATION,
   DRIVE_MISSING_MIGRATION,
+  PHOTO_ANALYSIS_TEXT_MIGRATION,
 ];

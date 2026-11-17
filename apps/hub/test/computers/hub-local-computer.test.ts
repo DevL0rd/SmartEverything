@@ -8,6 +8,7 @@ import {
   type DiscoveredDevice,
 } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
+import { NO_PLACEMENTS } from '../support/session-rig';
 import { computerDriver, type ComputerDriverOptions } from '../../src/computers/computer-driver';
 import { HUB_EXTERNAL_ID } from '../../src/computers/computer-device';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
@@ -86,6 +87,7 @@ describe('the local hub computer', () => {
       deviceIdOf,
       scopesOf: () => DEFAULT_COMPUTER_SCOPES,
       directory,
+      placements: NO_PLACEMENTS,
       records: {
         originOf: () => ({ source: 'app', client: null, clientId: null }),
         visibleTo: () => true,

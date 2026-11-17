@@ -20,6 +20,7 @@ import { runComputerCommand, type ComputerCommandRecords } from './computer-comm
 import { COMPUTER_DRIVER, HUB_EXTERNAL_ID, describeHub, type HubMachine } from './computer-device';
 import type { ComputerDirectory } from './computer-directory';
 import { ComputerOfflineError } from './computer-errors';
+import type { SessionPlacementSource } from './placements-slot';
 import { ComputerSession } from './computer-session';
 import { startLocalComputer, type LocalComputerFactory } from './local-computer';
 
@@ -40,6 +41,7 @@ export interface ComputerDriverOptions {
   readonly bindHubDevice: (deviceId: string) => void;
   readonly ears?: SessionEars;
   readonly earHosts?: SessionEarHosts;
+  readonly placements: SessionPlacementSource;
   readonly now: () => Date;
   readonly log: Logger;
 }

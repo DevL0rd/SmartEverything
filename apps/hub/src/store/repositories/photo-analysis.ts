@@ -10,7 +10,7 @@ import { storedRow } from '../codec';
 import type { StoreContext } from '../context';
 import { inList, jsonText } from '../sql';
 
-const COLUMNS = 'item_id, rev, model, state, caption, scene, labels, pets, error, analysed_at';
+const COLUMNS = 'item_id, rev, model, state, caption, scene, labels, text, pets, error, analysed_at';
 
 const PET = z.strictObject({ species: z.string().min(1), box: PHOTO_BOX });
 
@@ -22,6 +22,7 @@ const ANALYSIS_COLUMNS = z.strictObject({
   caption: z.string().nullable(),
   scene: z.string().nullable(),
   labels: z.array(PHOTO_LABEL),
+  text: z.string().nullable(),
   pets: z.array(PET),
   error: z.string().nullable(),
   analysed_at: z.string(),
@@ -40,6 +41,7 @@ export interface PhotoAnalysisRow {
   readonly caption: string | null;
   readonly scene: string | null;
   readonly labels: readonly string[];
+  readonly text: string | null;
   readonly pets: readonly PhotoPet[];
   readonly error: string | null;
   readonly analysedAt: string;
@@ -54,6 +56,7 @@ const STORED_ANALYSIS = storedRow(
     caption: row.caption,
     scene: row.scene,
     labels: row.labels,
+    text: row.text,
     pets: row.pets,
     error: row.error,
     analysedAt: row.analysed_at,
@@ -90,10 +93,10 @@ export class PhotoAnalysisRepository {
       this.context.sql.run(
         'save the photo analysis',
         `insert into photo_analysis (${COLUMNS})
-          values ($itemId, $rev, $model, $state, $caption, $scene, $labels, $pets, $error, $now)
+          values ($itemId, $rev, $model, $state, $caption, $scene, $labels, $text, $pets, $error, $now)
           on conflict (item_id) do update set rev = excluded.rev, model = excluded.model,
             state = excluded.state, caption = excluded.caption, scene = excluded.scene,
-            labels = excluded.labels, pets = excluded.pets, error = excluded.error,
+            labels = excluded.labels, text = excluded.text, pets = excluded.pets, error = excluded.error,
             analysed_at = excluded.analysed_at`,
         {
           itemId: analysis.itemId,
@@ -103,6 +106,7 @@ export class PhotoAnalysisRepository {
           caption: analysis.caption,
           scene: analysis.scene,
           labels: jsonText(analysis.labels),
+          text: analysis.text,
           pets: jsonText(analysis.pets),
           error: analysis.error,
           now: this.context.now(),

@@ -9,6 +9,7 @@ const BEACH: Answer = {
   caption: 'A dog runs on a beach.',
   scene: 'beach',
   labels: ['dog', 'sand', 'sea'],
+  text: '',
   pets: [],
 };
 
@@ -16,6 +17,7 @@ const CAKE: Answer = {
   caption: 'A birthday cake with candles.',
   scene: 'birthday party',
   labels: ['cake', 'candles'],
+  text: '',
   pets: [],
 };
 

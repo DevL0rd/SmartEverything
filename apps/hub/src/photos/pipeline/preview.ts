@@ -7,6 +7,7 @@ import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
 import type { Store } from '../../store/store';
 import { DERIVED_LONG_EDGE, pruneDerived, writeDerived, type DerivedLayout } from './derived-paths';
 import type { JobHandler } from './jobs';
+import type { GpuOutcome } from './vaapi-decode';
 import { UNLIMITED_PIXELS } from '../../media/sharp-input';
 
 export const PREVIEW_QUALITY = 82;
@@ -109,6 +110,11 @@ export async function renderDerived(source: DecodedSource): Promise<RenderedDeri
   };
 }
 
+export interface GpuDecoder {
+  readonly accepts: (file: PreviewFile) => boolean;
+  readonly decode: (file: PreviewFile, signal: AbortSignal) => Promise<GpuOutcome>;
+}
+
 export type DerivedOutcome =
   | { readonly state: 'ready' }
   | { readonly state: 'failed' | 'unsupported'; readonly reason: string };
@@ -122,6 +128,7 @@ export interface PreviewEnvironment {
   };
   readonly writeThumb: ThumbWriter;
   readonly decoders: PreviewDecoders;
+  readonly gpu?: GpuDecoder | undefined;
   readonly locate: (item: DriveItem) => Promise<string>;
   readonly layout: DerivedLayout;
   readonly log: Logger;
@@ -140,7 +147,7 @@ function mediaPatchOf(outcome: DerivedOutcome): Parameters<DriveMediaRepository[
 }
 
 export class PreviewHandler implements JobHandler {
-  readonly resource = 'cpu';
+  readonly resource = 'image';
 
   constructor(private readonly env: PreviewEnvironment) {}
 
@@ -148,12 +155,8 @@ export class PreviewHandler implements JobHandler {
     const item = this.current(job);
     if (item === undefined) return;
     const file = { path: await this.env.locate(item), mime: item.mime, name: item.name };
-    const decoder = this.env.decoders.find(file);
-    if (decoder === undefined) {
-      this.record(job, { state: 'unsupported', reason: `no decoder reads ${item.mime}` });
-      return;
-    }
-    const decoded = await decoder.decode(file, signal);
+    const decoded = await this.decode(job, file, signal);
+    if (decoded === undefined) return;
     if (decoded.kind === 'unsupported') {
       this.record(job, { state: 'unsupported', reason: decoded.reason });
       return;
@@ -176,6 +179,29 @@ export class PreviewHandler implements JobHandler {
 
   fail(job: DriveMediaJob, cause: unknown): void {
     this.record(job, { state: 'failed', reason: messageOf(cause) });
+  }
+
+  private async decode(
+    job: DriveMediaJob,
+    file: PreviewFile,
+    signal: AbortSignal,
+  ): Promise<DecodeOutcome | undefined> {
+    const gpu = this.env.gpu;
+    if (gpu?.accepts(file) === true) {
+      const outcome = await gpu.decode(file, signal);
+      if (outcome.kind === 'decoded') return outcome;
+      this.env.log.info('photos.preview_decoded_on_cpu', {
+        itemId: job.item_id,
+        mime: file.mime,
+        reason: outcome.reason,
+      });
+    }
+    const decoder = this.env.decoders.find(file);
+    if (decoder === undefined) {
+      this.record(job, { state: 'unsupported', reason: `no decoder reads ${file.mime}` });
+      return undefined;
+    }
+    return decoder.decode(file, signal);
   }
 
   private current(job: DriveMediaJob): Extract<DriveItem, { readonly kind: 'image' }> | undefined {

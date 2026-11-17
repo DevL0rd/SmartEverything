@@ -55,6 +55,15 @@ export function driveMatchOf(text: string): string | null {
   return words.length === 0 ? null : words.map((word) => `"${word}"*`).join(' ');
 }
 
+export function searchWordsOf(text: string): string[] {
+  return [...new Set((text.match(WORD) ?? []).map((word) => word.toLowerCase()))];
+}
+
+export function driveAnyMatchOf(text: string): string | null {
+  const words = searchWordsOf(text);
+  return words.length === 0 ? null : words.map((word) => `"${word}"*`).join(' OR ');
+}
+
 const MONTHS = [
   'January',
   'February',

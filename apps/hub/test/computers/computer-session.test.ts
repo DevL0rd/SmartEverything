@@ -12,6 +12,7 @@ import {
   NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { NO_PLACEMENTS } from '../support/session-rig';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerSession } from '../../src/computers/computer-session';
 import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
@@ -129,6 +130,7 @@ function start(
     deviceIdOf: (): string => 'device-1',
     scopesOf: (): ComputerScopes => options.scopes ?? DEFAULT_COMPUTER_SCOPES,
     directory: new ComputerDirectory(options.hubMachine === true ? HELLO.machineId : null),
+    placements: NO_PLACEMENTS,
     recordAppTime: (): void => undefined,
     signals: { emit: (): void => undefined },
     personOf: (): null => null,
@@ -192,6 +194,7 @@ describe('computer session', () => {
     const history = DEFAULT_HISTORY_POLICY;
     expect(recorded.demands).toEqual([
       { type: 'demand', demand: { topics: {}, history } },
+      { type: 'placements', placements: [] },
       {
         type: 'demand',
         demand: { topics: { cpu: 1000, processes: 1000 }, processes: WINDOW, history },

@@ -21,6 +21,7 @@ const GOOD = {
   caption: 'A dog runs on a beach.',
   scene: 'beach',
   labels: ['dog', 'sand', 'sea'],
+  text: '',
   pets: [{ species: 'Dog', box: [100, 200, 600, 700] }],
 };
 
@@ -110,8 +111,8 @@ describe('the photo vision client', () => {
     expect(outcome.state).toBe('done');
   });
 
-  it('never asks for text in the picture or for who anyone is', () => {
-    expect(VISION_PROMPT).not.toMatch(/\bocr\b|verbatim|readable text/iu);
+  it('asks for the text in the picture and never for who anyone is', () => {
+    expect(VISION_PROMPT).toMatch(/visible text/iu);
     expect(VISION_PROMPT).toMatch(/never name or identify/iu);
   });
 
@@ -215,8 +216,8 @@ describe('reading the answer', () => {
   it.each([
     ['null content', null],
     ['text that is not JSON', 'sorry'],
-    ['a missing field', JSON.stringify({ caption: 'x', scene: 'y', labels: [] })],
-    ['an extra field', JSON.stringify({ ...GOOD, text: 'hello' })],
+    ['a missing field', JSON.stringify({ caption: 'x', scene: 'y', labels: [], text: '' })],
+    ['an extra field', JSON.stringify({ ...GOOD, notes: 'hello' })],
     ['a label with a comma', JSON.stringify({ ...GOOD, labels: ['a, b'] })],
     ['an empty caption', JSON.stringify({ ...GOOD, caption: ' ' })],
     [
@@ -240,6 +241,7 @@ describe('reading the answer', () => {
       caption: GOOD.caption,
       scene: 'beach',
       labels: [],
+      text: null,
       pets: [],
     });
   });

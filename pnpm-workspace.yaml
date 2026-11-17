@@ -36,6 +36,7 @@ allowBuilds:
   ffmpeg-static: true
   koffi: true
   node-pty: true
+  openvino-node: true
   protobufjs: false
   ssh2: false
   tesseract.js: false

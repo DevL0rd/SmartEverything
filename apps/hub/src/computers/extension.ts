@@ -86,6 +86,7 @@ function driverOptions({
     personOf: (deviceId) => store.computerNodes.personOf(deviceId),
     ears: context.computerEars,
     earHosts: context.computerEars,
+    placements: context.computerPlacements,
     hub: { hostname: hostname(), osName: osType() },
     createLocal: localComputerFactory({ machineId, now, log: context.log }),
     bindHubDevice: (deviceId): void => {

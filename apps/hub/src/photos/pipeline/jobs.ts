@@ -2,6 +2,7 @@ import { availableParallelism } from 'node:os';
 import type { DriveItem } from '@smarteverything/domain';
 import { background, messageOf, type Logger } from '@smarteverything/logging';
 import sharp from 'sharp';
+import { vaapiDevice } from '../../media/ffmpeg-path';
 import type {
   DriveMediaJob,
   DriveMediaJobKind,
@@ -9,12 +10,15 @@ import type {
   DriveMediaJobsRepository,
 } from '../../store/repositories/drive-media-jobs';
 
-export type PipelineResource = 'cpu' | 'io';
+export type PipelineResource = 'image' | 'video' | 'io' | 'accelerator';
+
+type LimitedResource = Exclude<PipelineResource, 'accelerator'>;
 
 export interface JobHandler {
   readonly resource: PipelineResource;
   readonly run: (job: DriveMediaJob, signal: AbortSignal) => Promise<void>;
   readonly fail: (job: DriveMediaJob, cause: unknown) => void;
+  readonly capacity?: () => number;
   readonly settled?: (job: DriveMediaJob) => void;
 }
 
@@ -31,7 +35,7 @@ export interface PipelineProgress {
 
 export type ProgressEmitter = (progress: PipelineProgress) => void;
 
-export type ResourceLimits = Readonly<Record<PipelineResource, number>>;
+export type ResourceLimits = Readonly<Record<LimitedResource, number>>;
 
 export type JobStore = Pick<
   DriveMediaJobsRepository,
@@ -51,17 +55,27 @@ export interface RunnerEnvironment {
   readonly log: Logger;
 }
 
+export const QUICK_SYNC_SESSIONS = 3;
+
+export function backgroundThreads(): number {
+  return Math.max(1, Math.floor(availableParallelism() / 2));
+}
+
 export function defaultLimits(): ResourceLimits {
   const cores = availableParallelism();
-  return { cpu: Math.max(1, Math.floor(cores / 2)), io: Math.max(1, Math.floor(cores / 4)) };
+  return {
+    image: cores,
+    video: vaapiDevice() === null ? backgroundThreads() : QUICK_SYNC_SESSIONS,
+    io: Math.max(1, Math.floor(cores / 4)),
+  };
 }
 
 let sharpConfigured = false;
 
-export function configureSharp(concurrency: number): void {
+export function configureSharp(): void {
   if (sharpConfigured) return;
   sharpConfigured = true;
-  sharp.concurrency(concurrency);
+  sharp.concurrency(1);
 }
 
 function progressKindOf(kind: DriveMediaJobKind): ProgressKind | undefined {
@@ -102,19 +116,26 @@ class ProgressTally {
 
 export class MediaJobRunner {
   private readonly handlers = new Map<DriveMediaJobKind, JobHandler>();
-  private readonly running: Record<PipelineResource, number> = { cpu: 0, io: 0 };
+  private readonly running: Record<PipelineResource, number> = {
+    image: 0,
+    video: 0,
+    io: 0,
+    accelerator: 0,
+  };
   private readonly tallies = new Map<ProgressKind, ProgressTally>();
   private readonly waiting: (() => void)[] = [];
   private readonly abort = new AbortController();
   private started = false;
 
   constructor(private readonly env: RunnerEnvironment) {
-    configureSharp(env.limits.cpu);
+    configureSharp();
   }
 
   register(kind: DriveMediaJobKind, handler: JobHandler): void {
     if (this.handlers.has(kind))
       throw new Error(`the media job kind ${kind} is already registered`);
+    if (handler.resource === 'accelerator' && handler.capacity === undefined)
+      throw new Error(`the accelerator job kind ${kind} has no capacity`);
     this.handlers.set(kind, handler);
   }
 
@@ -157,7 +178,7 @@ export class MediaJobRunner {
   }
 
   private busy(): number {
-    return this.running.cpu + this.running.io;
+    return this.running.image + this.running.video + this.running.io + this.running.accelerator;
   }
 
   private tallyOf(kind: DriveMediaJobKind): ProgressTally | undefined {
@@ -176,11 +197,21 @@ export class MediaJobRunner {
       .map(([kind]) => kind);
   }
 
+  private limitOf(resource: PipelineResource): number {
+    if (resource !== 'accelerator') return this.env.limits[resource];
+    const capacities = [...this.handlers.values()].flatMap((handler) =>
+      handler.resource === 'accelerator' && handler.capacity !== undefined
+        ? [handler.capacity()]
+        : [],
+    );
+    return Math.min(...capacities);
+  }
+
   private pump(): void {
     if (!this.started || this.abort.signal.aborted) return;
-    for (const resource of ['cpu', 'io'] as const) {
+    for (const resource of ['image', 'video', 'io', 'accelerator'] as const) {
       const kinds = this.kindsOf(resource);
-      while (kinds.length > 0 && this.running[resource] < this.env.limits[resource]) {
+      while (kinds.length > 0 && this.running[resource] < this.limitOf(resource)) {
         const job = this.env.jobs.claim(kinds);
         if (job === undefined) break;
         this.launch(resource, job);

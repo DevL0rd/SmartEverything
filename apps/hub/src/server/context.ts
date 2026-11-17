@@ -37,6 +37,7 @@ import type { WatchCaptureStore } from '../watch-captures/capture-store';
 import type { DeveloperDevices } from '../watch-captures/developer-devices';
 import type { IrApplianceService } from '../infrared/appliance-service';
 import type { HomeMapRuntime } from '../home-map/home-map-hub';
+import type { ComputerPlacementsSlot } from '../computers/placements-slot';
 import type { ReleasePublications } from '../self-update/release-publications';
 
 export interface ServerContext {
@@ -48,6 +49,7 @@ export interface ServerContext {
   readonly computerAi: ComputerAiDirectory;
   readonly computerNodes: ComputerNodeAccess;
   readonly computerEars: EarsRelay;
+  readonly computerPlacements: ComputerPlacementsSlot;
   readonly harnessSockets: ComputerHarnessSockets;
   readonly nodeSockets: ComputerNodeSockets;
   readonly hub: RunningHub;

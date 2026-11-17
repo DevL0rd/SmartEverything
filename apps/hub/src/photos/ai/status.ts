@@ -1,4 +1,9 @@
-import type { PhotoAiPeople, PhotoAiStageProgress, PhotoAiStatus } from '@smarteverything/domain';
+import type {
+  PhotoAiPeople,
+  PhotoAiStageProgress,
+  PhotoAiStatus,
+  PhotoFaceDevice,
+} from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Ledger } from '../../ledger/ledger';
 import { found, type StoreContext } from '../../store/context';
@@ -30,6 +35,7 @@ export interface StatusEnvironment {
   readonly ownerIds: () => readonly string[];
   readonly homeOwner: () => string;
   readonly hasKey: () => boolean;
+  readonly faceDevice: () => PhotoFaceDevice;
   readonly now: () => Date;
 }
 
@@ -95,6 +101,7 @@ export class PhotoAiStatusReader {
       spentMicros: this.spent(profileId, owner),
       estimateMicros: this.remaining(subjects) * unit,
       models: this.env.models.read(),
+      faceDevice: this.env.faceDevice(),
     };
   }
 

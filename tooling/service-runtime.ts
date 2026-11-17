@@ -30,7 +30,7 @@ export interface RuntimeCopyOptions {
   readonly roots: readonly string[];
   readonly everyTargetRoots: readonly string[];
   readonly omit?: (name: string) => boolean;
-  readonly omitPath?: (path: string) => boolean;
+  readonly omitPath?: (path: string, name: string) => boolean;
   readonly platform: string;
   readonly arch: string;
 }
@@ -113,7 +113,7 @@ function place(directory: string, manifest: Manifest, walk: Walk): string | unde
     dereference: true,
     filter: (path) =>
       path !== join(directory, 'node_modules') &&
-      walk.options.omitPath?.(relative(directory, path).split(sep).join('/')) !== true,
+      walk.options.omitPath?.(relative(directory, path).split(sep).join('/'), name) !== true,
   });
   return destination;
 }

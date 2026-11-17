@@ -293,7 +293,7 @@ async function toSrgb(pixels: HeicPixels, profile: Buffer): Promise<DecodedSourc
   };
 }
 
-async function sourceOf(path: string, pixels: HeicPixels): Promise<DecodedSource> {
+export async function sourceWithProfile(path: string, pixels: HeicPixels): Promise<DecodedSource> {
   const { icc } = await sharp(path, UNLIMITED_PIXELS).metadata();
   if (icc === undefined) {
     return { kind: 'pixels', data: pixels.data, width: pixels.width, height: pixels.height };
@@ -308,7 +308,7 @@ export function heicDecoder(pool: HeicPool): PreviewDecoder {
     decode: async (file, signal): Promise<DecodeOutcome> => {
       const outcome = await pool.decode(new Uint8Array(await readFile(file.path)), signal);
       if (outcome.kind === 'unsupported') return outcome;
-      return { kind: 'decoded', source: await sourceOf(file.path, outcome) };
+      return { kind: 'decoded', source: await sourceWithProfile(file.path, outcome) };
     },
   };
 }

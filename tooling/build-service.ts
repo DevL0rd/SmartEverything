@@ -24,7 +24,7 @@ import {
 import { UPDATE_ENTRY_DIRECTORY } from './hub-install-layout.ts';
 import { UPDATE_ENTRIES } from './self-update-files.ts';
 import { HUB_SERVICE_VERSION_FILE, readReleaseVersion } from './release-version.ts';
-import { PLACES_DATASET } from './service-target.ts';
+import { OPENVINO_PACKAGE, PLACES_DATASET } from './service-target.ts';
 import { stageVisionModels } from './vision-models.ts';
 import {
   copyRuntimePackages,
@@ -68,6 +68,11 @@ const WS_MASKING = join(hub, 'src', 'server', 'ws-masking.ts');
 const SERVICE_BANNER =
   'import { createRequire as createServiceRequire } from "node:module"; import { fileURLToPath as serviceFileUrlToPath } from "node:url"; import { dirname as serviceDirname } from "node:path"; const require = createServiceRequire(import.meta.url); const __filename = serviceFileUrlToPath(import.meta.url); const __dirname = serviceDirname(__filename);';
 const OPTIONAL_UNSHIPPED = ['x11', 'usocket', 'cpu-features'];
+const OPENVINO_LINK_COPIES = [
+  /^bin\/pkgconfig(?:\/|$)/u,
+  /^bin\/lib(?:openvino|openvino_c|openvino_\w+_frontend|tbb\w*|hwloc)\.so$/u,
+  /^bin\/lib\w+\.so\.\d+\.\d+(?:\.\d+)?$/u,
+];
 const EVERY_TARGET_ROOTS = ['@anthropic-ai/claude-agent-sdk'];
 const LOADED_AT_RUNTIME = [
   /createLazyRequire\w*\(\s*"([^"]+)"/gu,
@@ -148,7 +153,7 @@ const BUNDLES: readonly Bundle[] = [
   {
     entry: join(hub, 'src', 'vision', 'faces', 'worker.ts'),
     file: 'faces-worker.mjs',
-    external: [],
+    external: [OPENVINO_PACKAGE],
     banner: SERVICE_BANNER,
   },
   ...UPDATE_ENTRIES.map(({ entry, file }): Bundle => ({
@@ -311,7 +316,9 @@ function copyPackages(stage: string, names: readonly string[], target: ServiceTa
     modules: join(stage, 'node_modules'),
     roots: [...names, SHARP_WASM],
     omit: (name) => SHARP_NATIVE.test(name) || name.startsWith(VOICE_ASSET_PREFIX),
-    omitPath: (path) => otherTargetPrebuild(path, platform, arch),
+    omitPath: (path, name) =>
+      otherTargetPrebuild(path, platform, arch) ||
+      (name === OPENVINO_PACKAGE && OPENVINO_LINK_COPIES.some((pattern) => pattern.test(path))),
     everyTargetRoots: EVERY_TARGET_ROOTS,
     platform,
     arch,

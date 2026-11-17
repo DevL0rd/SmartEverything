@@ -1,6 +1,7 @@
 import type { PhotoBox, PhotoPoint } from '@smarteverything/domain';
-import type * as OnnxModule from 'onnxruntime-web/wasm';
+import type { InferRequest, Tensor } from 'openvino-node';
 import { FACE_EMBEDDING_SIZE, type FaceModelBytes } from '../models';
+import { compileFaceModels, type FaceDevice, InferPool, tensorOf } from '../runtime';
 import { ALIGNED_SIZE, alignFace } from './align';
 import { RGB_CHANNELS, type RgbImage } from './image';
 import { faceQuality } from './quality';
@@ -25,25 +26,19 @@ export class FaceModelShapeError extends Error {
   override readonly name = 'FaceModelShapeError';
 }
 
-const SESSION_OPTIONS = { logSeverityLevel: 3 } as const;
-
-type Runtime = typeof OnnxModule;
-type Session = OnnxModule.InferenceSession;
-
 function clamp01(value: number): number {
   return Math.min(Math.max(value, 0), 1);
 }
 
-function outputsOf(result: Record<string, OnnxModule.Tensor>): YunetOutputs {
+function float32Of(tensor: Tensor, what: string): Float32Array {
+  const { data } = tensor;
+  if (!(data instanceof Float32Array)) throw new FaceModelShapeError(`${what} is not float32.`);
+  return data;
+}
+
+function outputsOf(request: InferRequest): YunetOutputs {
   const read = (names: readonly string[]): Float32Array[] =>
-    names.map((name) => {
-      const tensor = result[name];
-      if (tensor === undefined)
-        throw new FaceModelShapeError(`The detector has no output ${name}.`);
-      if (!(tensor.data instanceof Float32Array))
-        throw new FaceModelShapeError(`The detector output ${name} is not float32.`);
-      return tensor.data;
-    });
+    names.map((name) => float32Of(request.getTensor(name), `The detector output ${name}`));
   return {
     cls: read(YUNET_OUTPUTS.cls),
     obj: read(YUNET_OUTPUTS.obj),
@@ -70,47 +65,38 @@ export function normalised(vector: Float32Array): Float32Array<ArrayBuffer> {
 
 export class FaceEngine {
   private constructor(
-    private readonly runtime: Runtime,
-    private readonly detector: Session,
-    private readonly recognizer: Session,
+    readonly device: FaceDevice,
+    private readonly detector: InferPool,
+    private readonly recognizer: InferPool,
   ) {}
 
-  static async load(runtime: Runtime, models: FaceModelBytes): Promise<FaceEngine> {
-    const [detector, recognizer] = await Promise.all([
-      runtime.InferenceSession.create(models.detector, SESSION_OPTIONS),
-      runtime.InferenceSession.create(models.recognizer, SESSION_OPTIONS),
-    ]);
-    return new FaceEngine(runtime, detector, recognizer);
+  static async load(models: FaceModelBytes, threads: number): Promise<FaceEngine> {
+    const compiled = await compileFaceModels(models, threads);
+    return new FaceEngine(
+      compiled.device,
+      new InferPool(compiled.detector, 'face detector'),
+      new InferPool(compiled.recognizer, 'face recognizer'),
+    );
+  }
+
+  get requests(): number {
+    return this.detector.size;
   }
 
   async analyse(image: RgbImage): Promise<DetectedFace[]> {
     const box = letterboxOf(image);
-    const input = new this.runtime.Tensor('float32', yunetInput(image, box), [
-      1,
-      3,
-      YUNET_INPUT,
-      YUNET_INPUT,
-    ]);
-    const result = await this.detector.run({ input });
-    const candidates = decodeYunet(outputsOf(result), box);
-    const faces: DetectedFace[] = [];
-    for (const candidate of candidates) faces.push(await this.describe(image, candidate));
-    return faces;
+    const input = tensorOf([1, 3, YUNET_INPUT, YUNET_INPUT], yunetInput(image, box));
+    const outputs = await this.detector.run([input], outputsOf);
+    const candidates = decodeYunet(outputs, box);
+    return Promise.all(candidates.map((candidate) => this.describe(image, candidate)));
   }
 
   async embed(aligned: RgbImage): Promise<Float32Array<ArrayBuffer>> {
-    const tensor = new this.runtime.Tensor('float32', recognizerInput(aligned), [
-      1,
-      3,
-      ALIGNED_SIZE,
-      ALIGNED_SIZE,
-    ]);
-    const [name] = this.recognizer.inputNames;
-    if (name === undefined) throw new FaceModelShapeError('The recognizer has no input.');
-    const result = await this.recognizer.run({ [name]: tensor });
-    const [output] = Object.values(result);
-    const data = output?.data;
-    if (!(data instanceof Float32Array) || data.length !== FACE_EMBEDDING_SIZE)
+    const input = tensorOf([1, 3, ALIGNED_SIZE, ALIGNED_SIZE], recognizerInput(aligned));
+    const data = await this.recognizer.run([input], (request) =>
+      float32Of(request.getOutputTensor(), 'The recognizer output'),
+    );
+    if (data.length !== FACE_EMBEDDING_SIZE)
       throw new FaceModelShapeError(
         `The recognizer did not return ${String(FACE_EMBEDDING_SIZE)} float32 values.`,
       );

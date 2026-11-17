@@ -1,5 +1,6 @@
 import { DEFAULT_COMPUTER_SCOPES, COMPUTER_ROLE_MODELS } from '@smarteverything/domain';
 import type { DiscoveredDevice } from '@smarteverything/domain';
+import { NO_PLACEMENTS } from '../support/session-rig';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { computerDriver, type ComputerDriverOptions } from '../../src/computers/computer-driver';
 import { HUB_EXTERNAL_ID } from '../../src/computers/computer-device';
@@ -40,6 +41,7 @@ function options(bound: string[]): ComputerDriverOptions {
     deviceIdOf,
     scopesOf: () => DEFAULT_COMPUTER_SCOPES,
     directory: new ComputerDirectory(),
+    placements: NO_PLACEMENTS,
     records: {
       originOf: () => ({ source: 'app', client: null, clientId: null }),
       visibleTo: () => true,

@@ -2,6 +2,7 @@ import type { LibraryBucket, LibraryPage, LibraryScope } from '@smarteverything/
 import type { Logger } from '@smarteverything/logging';
 import { messageOf } from '@smarteverything/logging';
 import type { DriveActor } from '../../drive/access';
+import { searchWordsOf } from '../../drive/search';
 import type { MeaningHit } from '../ai/index';
 import type { LibraryReader, PageQuery } from '../library';
 
@@ -49,9 +50,12 @@ export class PhotoSearch {
       if (now - entry.at >= MEANING_CACHE_MS) this.cache.delete(stale);
     const hit = this.cache.get(key);
     if (hit !== undefined && now - hit.at < MEANING_CACHE_MS) return hit.ids;
-    const ids = this.meaning
-      .meaning(actor, text, MEANING_MIN_SCORE)
-      .then((hits) => hits.map((found) => found.itemId))
+    const words = searchWordsOf(text);
+    const queries = words.length > 1 ? [text, ...words] : [text];
+    const ids = Promise.all(
+      queries.map((query) => this.meaning.meaning(actor, query, MEANING_MIN_SCORE)),
+    )
+      .then((found) => [...new Set(found.flat().map((hit) => hit.itemId))])
       .catch((cause: unknown) => {
         this.cache.delete(key);
         this.log.warn('search.meaning_failed', { reason: messageOf(cause) });

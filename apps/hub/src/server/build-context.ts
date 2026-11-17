@@ -5,6 +5,7 @@ import { BrowserService } from '../browser/service';
 import { createImageRuntime, type ImageRuntime } from './image-wiring';
 import { ComputerAiDirectory } from '../computers/ai-directory';
 import { EarsRelay } from '../computers/ears-relay';
+import { ComputerPlacementsSlot } from '../computers/placements-slot';
 import { HarnessService } from '../harness/service';
 import { HarnessRoutes } from '../harness/routes';
 import { harnessTransport, type HarnessTransportPorts } from '../harness/transport';
@@ -261,7 +262,10 @@ function machineApprovalsOf(options: BuildOptions, push: PushCommandChannel): Ma
 function computerServicesOf(
   options: BuildOptions,
   live: LiveHub,
-): Pick<ServerContext, 'computerAi' | 'computerNodes' | 'nodeSockets' | 'computerEars'> {
+): Pick<
+  ServerContext,
+  'computerAi' | 'computerNodes' | 'nodeSockets' | 'computerEars' | 'computerPlacements'
+> {
   const log = options.log.forArea('hub.computers');
   const computerAi = new ComputerAiDirectory(options.store, log);
   computerAi.onChange((status) => {
@@ -277,7 +281,13 @@ function computerServicesOf(
     { directory: computerAi, setOnline: options.core.hub.setDeviceOnline },
     log,
   );
-  return { computerAi, computerNodes, nodeSockets, computerEars: new EarsRelay() };
+  return {
+    computerAi,
+    computerNodes,
+    nodeSockets,
+    computerEars: new EarsRelay(),
+    computerPlacements: new ComputerPlacementsSlot(),
+  };
 }
 
 function harnessOf(

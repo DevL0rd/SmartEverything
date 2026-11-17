@@ -22,6 +22,7 @@ export interface Answer {
   readonly caption: string;
   readonly scene: string;
   readonly labels: readonly string[];
+  readonly text: string;
   readonly pets: readonly { readonly species: string; readonly box: readonly number[] }[];
 }
 
@@ -225,11 +226,15 @@ function partsOf(opened: TestStore): Parts {
   const log = testLogger('photos-ai');
   const runner = new MediaJobRunner({
     jobs: new DriveMediaJobsRepository(store.context),
-    limits: { cpu: 2, io: 2 },
+    limits: { image: 2, video: 2, io: 2 },
     log,
     progress: (): void => undefined,
   });
-  const detector: FaceDetector = { analyse: () => Promise.resolve(faces.current) };
+  const detector: FaceDetector = {
+    analyse: () => Promise.resolve(faces.current),
+    device: () => ({ state: 'cpu', reason: 'test detector' }),
+    capacity: () => 1,
+  };
   const ai = new PhotoAi({
     store,
     layout: opened.layout,

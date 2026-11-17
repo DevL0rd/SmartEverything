@@ -387,6 +387,7 @@ export async function startExtensions(
         store: options.store,
         computerAi: context.computerAi,
         computerEars: context.computerEars,
+        computerPlacements: context.computerPlacements,
         nodeSockets: context.nodeSockets,
         hub: options.core.hub,
         secrets: options.secrets,

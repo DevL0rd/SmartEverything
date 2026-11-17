@@ -224,7 +224,7 @@ interface Gate {
   readonly handler: JobHandler;
 }
 
-function gated(resource: 'cpu' | 'io', failing: ReadonlySet<string> = new Set()): Gate {
+function gated(resource: 'image' | 'io', failing: ReadonlySet<string> = new Set()): Gate {
   const started: string[] = [];
   const waiting: (() => void)[] = [];
   const handler: JobHandler = {
@@ -246,7 +246,7 @@ function gated(resource: 'cpu' | 'io', failing: ReadonlySet<string> = new Set())
 }
 
 function runnerOf(
-  limits: { cpu: number; io: number },
+  limits: { image: number; video: number; io: number },
   progress: PipelineProgress[] = [],
 ): MediaJobRunner {
   return new MediaJobRunner({
@@ -259,8 +259,8 @@ function runnerOf(
 
 describe('job runner', () => {
   it('starts visible requests before older queued work', async () => {
-    const gate = gated('cpu');
-    const runner = runnerOf({ cpu: 1, io: 1 });
+    const gate = gated('image');
+    const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', gate.handler);
     const first = job('preview', 1);
     const background = job('preview', 2);
@@ -281,8 +281,8 @@ describe('job runner', () => {
   });
 
   it('turns a queued job visible when the item is requested', async () => {
-    const gate = gated('cpu');
-    const runner = runnerOf({ cpu: 1, io: 1 });
+    const gate = gated('image');
+    const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', gate.handler);
     runner.start();
     const early = runner.request({ kind: 'preview', itemId: seedItem(1), rev: 1 });
@@ -301,9 +301,9 @@ describe('job runner', () => {
   });
 
   it('bounds each resource on its own', async () => {
-    const cpu = gated('cpu');
+    const cpu = gated('image');
     const io = gated('io');
-    const runner = runnerOf({ cpu: 2, io: 1 });
+    const runner = runnerOf({ image: 2, video: 2, io: 1 });
     runner.register('preview', cpu.handler);
     runner.register('poster', io.handler);
     for (const n of [1, 2, 3]) job('preview', n);
@@ -325,8 +325,8 @@ describe('job runner', () => {
 
   it('records a failure with its reason and keeps going', async () => {
     const failing = seedItem(1);
-    const gate = gated('cpu', new Set([failing]));
-    const runner = runnerOf({ cpu: 1, io: 1 });
+    const gate = gated('image', new Set([failing]));
+    const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', gate.handler);
     runner.request({ kind: 'preview', itemId: failing, rev: 1 });
     const fine = runner.request({ kind: 'preview', itemId: seedItem(2), rev: 1 });
@@ -344,9 +344,9 @@ describe('job runner', () => {
   });
 
   it('reports progress per kind and starts a new count when the work drains', async () => {
-    const gate = gated('cpu');
+    const gate = gated('image');
     const progress: PipelineProgress[] = [];
-    const runner = runnerOf({ cpu: 1, io: 1 }, progress);
+    const runner = runnerOf({ image: 1, video: 1, io: 1 }, progress);
     runner.register('preview', gate.handler);
     runner.start();
     runner.request({ kind: 'preview', itemId: seedItem(1), rev: 1 });
@@ -372,8 +372,8 @@ describe('job runner', () => {
   });
 
   it('queues interrupted jobs again at start and drops jobs of older revisions', async () => {
-    const gate = gated('cpu');
-    const runner = runnerOf({ cpu: 1, io: 1 });
+    const gate = gated('image');
+    const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', gate.handler);
     const interrupted = job('preview', 1);
     jobs.claim(['preview']);
@@ -393,11 +393,11 @@ describe('job runner', () => {
   });
 
   it('rejects two handlers for one kind', () => {
-    const runner = runnerOf({ cpu: 1, io: 1 });
-    runner.register('preview', gated('cpu').handler);
+    const runner = runnerOf({ image: 1, video: 1, io: 1 });
+    runner.register('preview', gated('image').handler);
 
     expect(() => {
-      runner.register('preview', gated('cpu').handler);
+      runner.register('preview', gated('image').handler);
     }).toThrow(/already registered/u);
   });
 });
@@ -499,7 +499,7 @@ describe('preview handler', () => {
     const queued = await pending(1);
     await writeFile(join(directory, '1.jpg'), 'not an image');
     const handler = handlerWith(sharpDecoders());
-    const runner = runnerOf({ cpu: 1, io: 1 });
+    const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', handler);
     runner.start();
     runner.request({ kind: 'preview', itemId: queued.item_id, rev: 1 });

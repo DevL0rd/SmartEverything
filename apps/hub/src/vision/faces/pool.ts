@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { messageOf } from '@smarteverything/logging';
+import type { PhotoFaceDevice } from '@smarteverything/domain';
+import { type Logger, messageOf } from '@smarteverything/logging';
 import type { DetectedFace } from './engine';
 import type { RgbImage } from './image';
 import { FACE_REPLY, type FaceInit, type FaceReply } from './protocol';
@@ -18,15 +19,39 @@ interface Pending {
 
 export interface FacePoolOptions extends FaceInit {
   readonly script: string;
+  readonly log: Logger;
 }
+
+const PREPARED_PER_REQUEST = 2;
+
+const STARTING: PhotoFaceDevice = {
+  state: 'starting',
+  reason: 'The face models have not loaded yet.',
+};
 
 export class FacePool {
   private worker: Worker | undefined;
   private ready: Promise<Worker> | undefined;
   private readonly pending = new Map<number, Pending>();
   private next = 0;
+  private current: PhotoFaceDevice = STARTING;
+  private requests = 1;
 
   constructor(private readonly options: FacePoolOptions) {}
+
+  device(): PhotoFaceDevice {
+    return this.current;
+  }
+
+  capacity(): number {
+    return this.requests * PREPARED_PER_REQUEST;
+  }
+
+  warm(ready: () => void): void {
+    this.start().then(ready, (cause: unknown) => {
+      this.options.log.error('vision.faces_start_failed', cause);
+    });
+  }
 
   async analyse(image: RgbImage, signal?: AbortSignal): Promise<DetectedFace[]> {
     signal?.throwIfAborted();
@@ -69,10 +94,12 @@ export class FacePool {
 
   private spawn(): Promise<Worker> {
     const { script, directory, threads } = this.options;
+    this.current = STARTING;
     const worker = new Worker(script, { workerData: { directory, threads } });
     this.worker = worker;
     return new Promise((resolve, reject) => {
       const lost = (cause: Error): void => {
+        if (this.worker === worker) this.chose('failed', cause.message);
         this.worker = undefined;
         this.ready = undefined;
         this.fail(cause);
@@ -80,8 +107,11 @@ export class FacePool {
       };
       worker.on('message', (raw: unknown) => {
         const reply = FACE_REPLY.parse(raw);
-        if (reply.kind === 'ready') resolve(worker);
-        else this.settle(reply, reject);
+        if (reply.kind === 'ready') {
+          this.requests = reply.requests;
+          this.chose(reply.device === 'GPU' ? 'gpu' : 'cpu', reply.reason);
+          resolve(worker);
+        } else this.settle(reply, reject);
       });
       worker.on('error', (cause: Error) => {
         lost(new FaceWorkerError(messageOf(cause)));
@@ -101,10 +131,20 @@ export class FacePool {
       return;
     }
     if (reply.id === null) {
+      this.chose('failed', reply.message);
       rejectStart(new FaceWorkerError(reply.message));
       return;
     }
     this.take(reply.id)?.reject(new FaceWorkerError(reply.message));
+  }
+
+  private chose(state: PhotoFaceDevice['state'], reason: string): void {
+    this.current = { state, reason };
+    this.options.log.info('vision.faces_device', {
+      device: state,
+      reason,
+      requests: this.requests,
+    });
   }
 
   private take(id: number): Pending | undefined {

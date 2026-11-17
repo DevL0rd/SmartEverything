@@ -12,6 +12,7 @@ export const VISION_PROMPT = [
   'scene: the kind of place or occasion in one to three words, such as "beach", "kitchen", "birthday party".',
   'labels: every distinct object, animal, food, activity, landmark and setting a person would search for, each one to three lowercase words, no commas, most prominent first.',
   'pets: one entry for each cat, dog or other pet, with its species in lowercase and its box as [ymin, xmin, ymax, xmax] in whole numbers from 0 to 1000 relative to the picture.',
+  'text: all visible text in the picture, verbatim, in its original language, with no translation; an empty string when there is none.',
   'Never name or identify any person.',
 ].join(' ');
 
@@ -38,6 +39,7 @@ const ANALYSIS_WIRE = z.strictObject({
   caption: NAME,
   scene: NAME,
   labels: z.array(LABEL),
+  text: z.string(),
   pets: z.array(z.strictObject({ species: NAME, box: PET_BOX })),
 });
 
@@ -50,6 +52,7 @@ export interface VisionAnalysis {
   readonly caption: string;
   readonly scene: string;
   readonly labels: readonly string[];
+  readonly text: string | null;
   readonly pets: readonly VisionPet[];
 }
 
@@ -88,11 +91,12 @@ const RESPONSE_FORMAT = {
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['caption', 'scene', 'labels', 'pets'],
+      required: ['caption', 'scene', 'labels', 'text', 'pets'],
       properties: {
         caption: { type: 'string' },
         scene: { type: 'string' },
         labels: { type: 'array', items: { type: 'string', pattern: '^[^,]+$' } },
+        text: { type: 'string' },
         pets: {
           type: 'array',
           items: {
@@ -145,6 +149,7 @@ export function readVisionAnswer(content: string | null): VisionAnalysis {
     caption: parsed.data.caption,
     scene: parsed.data.scene,
     labels: parsed.data.labels,
+    text: parsed.data.text.trim() === '' ? null : parsed.data.text.trim(),
     pets: parsed.data.pets.map((pet) => ({
       species: pet.species.toLowerCase(),
       box: boxOf(pet.box),

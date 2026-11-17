@@ -1,7 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { messageOf } from '@smarteverything/logging';
 import { readFaceModels } from '../models';
-import { onnxRuntime } from '../runtime';
 import { FaceEngine } from './engine';
 import { FACE_INIT, FACE_REQUEST, type FaceReply } from './protocol';
 
@@ -12,12 +11,17 @@ function send(reply: FaceReply): void {
 }
 
 const engine = readFaceModels(init.directory).then((models) =>
-  FaceEngine.load(onnxRuntime(init.threads), models),
+  FaceEngine.load(models, init.threads),
 );
 
 engine.then(
-  () => {
-    send({ kind: 'ready' });
+  (loaded) => {
+    send({
+      kind: 'ready',
+      device: loaded.device.name,
+      reason: loaded.device.reason,
+      requests: loaded.requests,
+    });
   },
   (cause: unknown) => {
     send({ kind: 'failed', id: null, message: messageOf(cause) });

@@ -73,6 +73,7 @@ export class VisionHandler implements JobHandler {
       caption: null,
       scene: null,
       labels: [],
+      text: null,
       pets: [],
       error: messageOf(cause),
     });
@@ -110,6 +111,7 @@ export class VisionHandler implements JobHandler {
           caption: null,
           scene: null,
           labels: [],
+          text: null,
           pets: [],
         });
         return false;

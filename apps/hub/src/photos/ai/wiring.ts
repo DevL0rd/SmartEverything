@@ -4,7 +4,7 @@ import type { OpenRouterPlatform } from '../../openrouter/platform';
 import type { Store } from '../../store/store';
 import { BUNDLED_FACES_WORKER, FacePool } from '../../vision/faces/pool';
 import { visionAssetDirectory } from '../../vision/models';
-import { defaultLimits } from '../pipeline/jobs';
+import { backgroundThreads } from '../pipeline/jobs';
 import type { PhotoPipeline } from '../pipeline/runtime';
 import { locateMedia } from '../pipeline/runtime';
 import { PhotoAi, openRouterClients } from './service';
@@ -27,7 +27,11 @@ export function startPhotoAi(wiring: PhotoAiWiring): RunningPhotoAi {
   const pool = new FacePool({
     script: BUNDLED_FACES_WORKER,
     directory: visionAssetDirectory(),
-    threads: defaultLimits().cpu,
+    threads: backgroundThreads(),
+    log,
+  });
+  pool.warm(() => {
+    pipeline.runner.resume();
   });
   const clients = openRouterClients(openRouter.client, store, layout.tmp);
   const ai = new PhotoAi({

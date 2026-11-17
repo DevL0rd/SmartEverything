@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { DriveItem, PhotoAiStatus, PhotoAnalysis } from '@smarteverything/domain';
+import type {
+  DriveItem,
+  PhotoAiStatus,
+  PhotoAnalysis,
+  PhotoFaceDevice,
+} from '@smarteverything/domain';
 import { ApiError, PHOTO_ANALYSIS } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
@@ -94,6 +99,7 @@ export class PhotoAi {
       ownerIds: (): readonly string[] => store.personAccess.ownerIds(),
       homeOwner: (): string => store.personAccess.homeOwner(),
       hasKey: (): boolean => options.keys.current() !== null,
+      faceDevice: (): PhotoFaceDevice => options.detector.device(),
       now: store.now,
     });
     this.scheduler = new PhotoAiScheduler({

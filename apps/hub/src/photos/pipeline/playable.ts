@@ -294,7 +294,7 @@ type PlayableOutcome =
 export const PLAYABLE_KINDS = { primary: 'playable', source: 'playable_source' } as const;
 
 export class PlayableHandler implements JobHandler {
-  readonly resource = 'cpu';
+  readonly resource = 'video';
 
   constructor(
     private readonly env: PlayableEnvironment,

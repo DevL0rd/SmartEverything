@@ -7,10 +7,12 @@ import type { DriveDeps } from '../../server/handlers/drive-wiring';
 import { announcePhotosProgress } from '../progress';
 import { HeicPool, heicDecoder, heicPoolEnvironment } from './heic';
 import { MediaJobRunner, defaultLimits } from './jobs';
+import { vaapiDevice } from '../../media/ffmpeg-path';
 import { PlayableHandler } from './playable';
 import { PosterHandler } from './poster';
-import { PreviewDecoders, PreviewHandler, SHARP_DECODER } from './preview';
+import { PreviewDecoders, PreviewHandler, SHARP_DECODER, type PreviewFile } from './preview';
 import { RAW_DECODER } from './raw';
+import { decodeOnGpu } from './vaapi-decode';
 
 export type PhotoPipelineDeps = Pick<DriveDeps, 'store' | 'layout' | 'log'> & {
   readonly parts: Pick<DriveDeps['parts'], 'context'>;
@@ -55,7 +57,15 @@ export class PhotoPipeline {
         this.writeThumb(itemId, thumb);
       },
     };
-    this.runner.register('preview', new PreviewHandler({ ...env, decoders: this.decoders }));
+    const gpu =
+      vaapiDevice() === null
+        ? undefined
+        : {
+            accepts: (file: PreviewFile): boolean =>
+              file.mime.startsWith('image/') && !RAW_DECODER.accepts(file),
+            decode: decodeOnGpu,
+          };
+    this.runner.register('preview', new PreviewHandler({ ...env, decoders: this.decoders, gpu }));
     this.runner.register('poster', new PosterHandler(env));
     const playable = { ...env, jobs, request: this.runner.request.bind(this.runner) };
     this.runner.register('playable', new PlayableHandler(playable, 'primary'));

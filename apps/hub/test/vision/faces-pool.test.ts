@@ -5,6 +5,7 @@ import { build } from 'esbuild';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FacePool, FaceWorkerError } from '../../src/vision/faces/pool';
 import { visionAssetDirectory } from '../../src/vision/models';
+import { testLogger } from '../support/logs';
 import { blankImage, fixtureImage } from './fixtures';
 
 const BANNER =
@@ -15,7 +16,12 @@ let script = '';
 const pools: FacePool[] = [];
 
 function poolOf(directory: string, scriptPath = script): FacePool {
-  const pool = new FacePool({ script: scriptPath, directory, threads: 1 });
+  const pool = new FacePool({
+    script: scriptPath,
+    directory,
+    threads: 1,
+    log: testLogger('faces'),
+  });
   pools.push(pool);
   return pool;
 }
@@ -33,6 +39,7 @@ beforeAll(async () => {
     format: 'esm',
     target: 'node24',
     banner: { js: BANNER },
+    external: ['openvino-node'],
     logLevel: 'silent',
   });
 }, 60_000);

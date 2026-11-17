@@ -35,6 +35,12 @@ const TARGETS: Readonly<Record<ServiceTargetName, ServiceTarget>> = {
 export const OLDEST_SUPPORTED_GLIBC: GlibcVersion = [2, 31];
 
 const CLAUDE_SDK = '@anthropic-ai/claude-agent-sdk';
+export const OPENVINO_PACKAGE = 'openvino-node';
+const OPENVINO_FILES = [
+  'ov_node_addon.node',
+  'libopenvino_intel_cpu_plugin.so',
+  'libopenvino_intel_gpu_plugin.so',
+];
 export const SHARP_WASM = '@img/sharp-wasm32';
 export const SHARP_NATIVE = /^@img\/sharp-(?!wasm32$)/u;
 const WAKE_MODEL_FILES = ['bpe.vocab'];
@@ -112,6 +118,9 @@ function requiredNativeFiles(directory: string, target: ServiceTarget): string[]
       directory,
       join('node_modules', `${CLAUDE_SDK}-${target.platform}-${target.arch}`, 'claude'),
       target,
+    ),
+    ...OPENVINO_FILES.flatMap((file) =>
+      requiredFile(directory, join('node_modules', OPENVINO_PACKAGE, 'bin', file), target),
     ),
   ];
 }
@@ -208,6 +217,7 @@ const SMOKE_SCRIPT = `
   const { DatabaseSync } = await import('node:sqlite');
   new DatabaseSync(':memory:').close();
   if (native) require('@snazzah/davey');
+  if (native && new (require('openvino-node').addon.Core)().getAvailableDevices().length === 0) throw new Error('OpenVINO found no device');
 `;
 
 export function smokeLoadedPackages(directory: string, target: ServiceTarget): void {

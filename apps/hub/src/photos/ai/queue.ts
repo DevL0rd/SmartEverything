@@ -117,6 +117,7 @@ export class PhotoAiQueue {
   tracked(handler: JobHandler): JobHandler {
     return {
       resource: handler.resource,
+      ...(handler.capacity === undefined ? {} : { capacity: handler.capacity.bind(handler) }),
       run: async (job, signal): Promise<void> => {
         this.started(job);
         await handler.run(job, signal);

@@ -1,4 +1,5 @@
 import { mkdir, readFile } from 'node:fs/promises';
+import type { PhotoFaceDevice } from '@smarteverything/domain';
 import { messageOf } from '@smarteverything/logging';
 import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
 import type { PhotoFaceRow } from '../../store/repositories/photo-faces';
@@ -6,6 +7,8 @@ import { cosine } from '../../vision/cluster';
 import type { DetectedFace } from '../../vision/faces/engine';
 import type { RgbImage } from '../../vision/faces/image';
 import { rgbOf, sceneFrames } from '../../vision/faces/source';
+import { vaapiDevice } from '../../media/ffmpeg-path';
+import { rgbOnGpu } from '../pipeline/vaapi-decode';
 import { FACE_MATCH_THRESHOLD } from '../../vision/models';
 import { derivedPath } from '../pipeline/derived-paths';
 import type { JobHandler } from '../pipeline/jobs';
@@ -15,6 +18,8 @@ import { float32Bytes } from './vectors';
 
 export interface FaceDetector {
   readonly analyse: (image: RgbImage, signal?: AbortSignal) => Promise<DetectedFace[]>;
+  readonly device: () => PhotoFaceDevice;
+  readonly capacity: () => number;
 }
 
 export function distinctFaces(faces: readonly DetectedFace[]): DetectedFace[] {
@@ -29,13 +34,17 @@ export function distinctFaces(faces: readonly DetectedFace[]): DetectedFace[] {
 }
 
 export class FacesHandler implements JobHandler {
-  readonly resource = 'cpu';
+  readonly resource = 'accelerator';
 
   constructor(
     private readonly env: AiEnvironment,
     private readonly detector: FaceDetector,
     private readonly touched: (profileId: string) => void,
   ) {}
+
+  capacity(): number {
+    return this.detector.capacity();
+  }
 
   async run(job: DriveMediaJob, signal: AbortSignal): Promise<void> {
     const item = currentItem(this.env, job);
@@ -44,7 +53,7 @@ export class FacesHandler implements JobHandler {
     if (!this.env.consent.faceGrouping(subject)) return;
     const detected: DetectedFace[] = [];
     for (const frame of await this.frames(item, signal))
-      detected.push(...(await this.detector.analyse(await rgbOf(frame), signal)));
+      detected.push(...(await this.detector.analyse(frame, signal)));
     const faces = item.kind === 'video' ? distinctFaces(detected) : detected;
     if (this.record(job, item, subject, faces))
       this.env.log.debug('faces.detected', { itemId: item.id, faces: faces.length });
@@ -54,14 +63,22 @@ export class FacesHandler implements JobHandler {
     this.env.log.warn('faces.failed', { itemId: job.item_id, reason: messageOf(cause) });
   }
 
-  private async frames(item: MediaItem, signal: AbortSignal): Promise<Buffer[]> {
+  private async frames(item: MediaItem, signal: AbortSignal): Promise<RgbImage[]> {
+    if (item.kind === 'image' && vaapiDevice() !== null) {
+      const decoded = await rgbOnGpu(
+        { path: await this.env.locate(item), mime: item.mime, name: item.name },
+        signal,
+      );
+      if ('data' in decoded) return [decoded];
+      this.env.log.info('faces.decoded_on_cpu', { itemId: item.id, reason: decoded.declined });
+    }
     const poster = await readFile(
       derivedPath(this.env.layout, { itemId: item.id, rev: item.rev, size: 'preview' }),
     );
-    if (item.kind === 'image') return [poster];
+    if (item.kind === 'image') return [await rgbOf(poster)];
     await mkdir(this.env.layout.tmp, { recursive: true });
     const scenes = await sceneFrames(await this.env.locate(item), this.env.layout.tmp, signal);
-    return [poster, ...scenes];
+    return Promise.all([poster, ...scenes].map((frame) => rgbOf(frame)));
   }
 
   private record(

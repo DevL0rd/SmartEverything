@@ -32,7 +32,12 @@ export const FACE_WIRE = z.strictObject({
 });
 
 export const FACE_REPLY = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('ready') }),
+  z.strictObject({
+    kind: z.literal('ready'),
+    device: z.enum(['GPU', 'CPU']),
+    reason: z.string(),
+    requests: z.int().positive(),
+  }),
   z.strictObject({
     kind: z.literal('faces'),
     id: z.int().nonnegative(),

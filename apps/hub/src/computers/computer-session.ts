@@ -37,6 +37,8 @@ import { ComputerOfflineError } from './computer-errors';
 import { MergedParts, visibleParts } from './computer-view';
 import { HeadlineRecorder, headlineCapabilities } from './headlines';
 import { NodeCalls } from './node-calls';
+import { SessionPlacements } from './computer-placements';
+import type { SessionPlacementSource } from './placements-slot';
 import { RelayStreams } from './relay-streams';
 import { sessionCapabilities, sessionReadings } from './session-readings';
 
@@ -52,6 +54,7 @@ export interface ComputerSessionOptions
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly scopesOf: (deviceId: string) => ComputerScopes;
   readonly directory: Pick<ComputerDirectory, 'isHubMachine'>;
+  readonly placements: SessionPlacementSource;
   readonly recordAppTime: (time: AppTime) => void;
   readonly now: () => Date;
   readonly log: Logger;
@@ -84,6 +87,7 @@ export class ComputerSession {
   private readonly calls: NodeCalls;
   readonly relay: RelayStreams;
   private readonly fresh: FreshRead;
+  private readonly drivePlacements: SessionPlacements;
   private readonly stops: (() => void)[] = [];
   private unfollow: (() => void) | null = null;
 
@@ -91,6 +95,13 @@ export class ComputerSession {
     this.calls = new NodeCalls(options.link.send);
     this.relay = new RelayStreams(options.link.send);
     this.fresh = new FreshRead(options.viewers);
+    this.drivePlacements = new SessionPlacements({
+      placements: options.placements,
+      send: options.link.send,
+      mountsDemanded: (deviceId) =>
+        demandedTopics(options.viewers.demand(deviceTarget(deviceId))).has('drive_mounts'),
+      log: options.log,
+    });
     this.focus = new AppFocusTracker(options.recordAppTime);
     this.presence = new AppPresence(options, { view: (): ComputerView | null => this.view() });
     this.counter = new FrameCounter(options.log);
@@ -121,6 +132,7 @@ export class ComputerSession {
     });
     this.focus.end(this.options.now());
     this.presence.end();
+    this.drivePlacements.close();
     this.calls.close();
     this.relay.close();
     this.known = null;
@@ -233,9 +245,7 @@ export class ComputerSession {
         this.replied(data.id, data.result);
         return;
       case 'placement_state':
-        this.options.log.debug('computer.placement_state_unhandled', {
-          placementId: data.placementId,
-        });
+        this.drivePlacements.received(data);
         return;
       case 'report':
         return;
@@ -288,6 +298,7 @@ export class ComputerSession {
     }
     this.allow(this.options.scopesOf(this.deviceId));
     this.earsOnline(this.deviceId);
+    this.drivePlacements.open(this.deviceId);
   }
 
   private earsOffline(): void {
@@ -394,6 +405,7 @@ export class ComputerSession {
     this.allow(this.options.scopesOf(deviceId));
     this.follow(deviceId);
     this.earsOnline(deviceId);
+    this.drivePlacements.open(deviceId);
     return deviceId;
   }
 

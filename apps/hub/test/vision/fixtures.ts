@@ -5,7 +5,6 @@ import { FaceEngine } from '../../src/vision/faces/engine';
 import type { RgbImage } from '../../src/vision/faces/image';
 import { rgbOf } from '../../src/vision/faces/source';
 import { readFaceModels, visionAssetDirectory } from '../../src/vision/models';
-import { onnxRuntime } from '../../src/vision/runtime';
 
 export type FaceFixture = 'obama1' | 'obama2' | 'biden1' | 'pair';
 
@@ -27,5 +26,5 @@ export async function blankImage(width: number, height: number): Promise<RgbImag
 }
 
 export async function loadEngine(): Promise<FaceEngine> {
-  return FaceEngine.load(onnxRuntime(1), await readFaceModels(visionAssetDirectory()));
+  return FaceEngine.load(await readFaceModels(visionAssetDirectory()), 1);
 }

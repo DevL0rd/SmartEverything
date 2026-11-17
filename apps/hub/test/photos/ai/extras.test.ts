@@ -23,7 +23,7 @@ const run = promisify(execFile);
 
 let rig: Rig;
 
-const ANSWER: Answer = { caption: 'A clip.', scene: 'street', labels: ['car'], pets: [] };
+const ANSWER: Answer = { caption: 'A clip.', scene: 'street', labels: ['car'], text: '', pets: [] };
 
 beforeEach(async () => {
   rig = await makeRig();
@@ -211,7 +211,7 @@ describe('faces idle', () => {
     const job = jobs.claim(['faces']);
     if (job === undefined) throw new Error('the second face job was not queued');
     const tracked = queue.tracked({
-      resource: 'cpu',
+      resource: 'image',
       run: () => Promise.resolve(),
       fail: () => undefined,
     });

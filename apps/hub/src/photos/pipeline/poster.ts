@@ -3,12 +3,12 @@ import { mkdir, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { DriveItem, DriveThumb } from '@smarteverything/domain';
-import { messageOf } from '@smarteverything/logging';
+import { messageOf, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
-import { ffmpegPath } from '../../media/ffmpeg-path';
+import { ffmpegPath, vaapiDevice } from '../../media/ffmpeg-path';
 import type { DriveMediaRepository } from '../../store/repositories/drive-media';
 import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
-import { derivedDirectory, pruneDerived, writeDerived } from './derived-paths';
+import { DERIVED_LONG_EDGE, derivedDirectory, pruneDerived, writeDerived } from './derived-paths';
 import type { JobHandler } from './jobs';
 import { probeVideo, type VideoProbe } from './probe';
 import { renderDerived, type DerivedOutcome, type PreviewEnvironment } from './preview';
@@ -52,6 +52,34 @@ export function posterArguments(
   ];
 }
 
+export function posterVaapiArguments(
+  source: string,
+  probe: Pick<VideoProbe, 'durationSeconds'>,
+  target: string,
+  device: string,
+): readonly string[] {
+  return [
+    '-y',
+    '-v',
+    'error',
+    ...['-init_hw_device', `vaapi=va:${device}`, '-hwaccel', 'vaapi', '-hwaccel_device', 'va'],
+    ...['-hwaccel_output_format', 'vaapi'],
+    '-ss',
+    posterSeconds(probe.durationSeconds).toFixed(3),
+    '-i',
+    source,
+    '-frames:v',
+    '1',
+    '-vf',
+    `scale_vaapi=w=${String(DERIVED_LONG_EDGE.preview)}:h=${String(DERIVED_LONG_EDGE.preview)}:force_original_aspect_ratio=decrease:format=nv12,hwdownload,format=nv12`,
+    '-q:v',
+    FRAME_QUALITY,
+    '-f',
+    'image2',
+    target,
+  ];
+}
+
 async function frameBytes(target: string): Promise<number> {
   try {
     return (await stat(target)).size;
@@ -65,9 +93,23 @@ export async function extractPoster(
   source: string,
   probe: Pick<VideoProbe, 'durationSeconds' | 'transfer'>,
   target: string,
-  signal: AbortSignal,
+  { signal, log }: { readonly signal: AbortSignal; readonly log: Logger },
 ): Promise<void> {
-  await run(ffmpegPath(), [...posterArguments(source, probe, target)], { signal });
+  const device = vaapiDevice();
+  const gpu = device !== null && probe.transfer === null;
+  if (gpu) {
+    try {
+      await run(ffmpegPath(), [...posterVaapiArguments(source, probe, target, device)], {
+        signal,
+      });
+    } catch (cause) {
+      if (signal.aborted) throw cause;
+      log.info('photos.poster_decoded_on_cpu', { reason: messageOf(cause) });
+    }
+  }
+  if (!gpu || (await frameBytes(target)) === 0) {
+    await run(ffmpegPath(), [...posterArguments(source, probe, target)], { signal });
+  }
   if ((await frameBytes(target)) === 0) {
     throw new Error(
       `ffmpeg wrote no frame at ${posterSeconds(probe.durationSeconds).toFixed(3)} s of a ${probe.durationSeconds.toFixed(3)} s clip`,
@@ -98,7 +140,7 @@ function thumbOf(outcome: DerivedOutcome): DriveThumb {
 }
 
 export class PosterHandler implements JobHandler {
-  readonly resource = 'cpu';
+  readonly resource = 'image';
 
   constructor(private readonly env: PosterEnvironment) {}
 
@@ -117,7 +159,7 @@ export class PosterHandler implements JobHandler {
     );
     await mkdir(dirname(frame), { recursive: true });
     try {
-      await extractPoster(path, probe, frame, signal);
+      await extractPoster(path, probe, frame, { signal, log: this.env.log });
       const rendered = await renderDerived({ kind: 'encoded', path: frame });
       const key = { itemId: job.item_id, rev: job.rev };
       await writeDerived(this.env.layout, { ...key, size: 'preview' }, rendered.preview);

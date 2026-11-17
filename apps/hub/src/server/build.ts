@@ -278,6 +278,7 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
   const operations = new Operations(context.log, context.store);
   const extensions = await startExtensions(options, context, operations);
   const drive = await startDriveHub(options, context);
+  context.computerPlacements.attach(drive.placements);
   const served = serve(options, context, operations, { extensions, drive });
   const harness = await startHubHarness(options, context, served.tools);
   if (harness !== null) context.assistant.attachHarness(context.harness, harness);

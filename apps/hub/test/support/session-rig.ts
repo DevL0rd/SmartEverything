@@ -10,6 +10,7 @@ import {
   type NodeHello,
   NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
+import type { SessionPlacementSource } from '../../src/computers/placements-slot';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import type { AppTime } from '../../src/computers/app-focus';
 import { ComputerSession, type ComputerSessionOptions } from '../../src/computers/computer-session';
@@ -90,6 +91,7 @@ export function sessionRig(deviceId: string, options: SessionRigOptions = {}): S
     deviceIdOf: (): string => deviceId,
     scopesOf: (): ComputerScopes => options.scopes ?? DEFAULT_COMPUTER_SCOPES,
     directory: options.directory ?? new ComputerDirectory(),
+    placements: NO_PLACEMENTS,
     recordAppTime: options.appTime ?? ((): void => undefined),
     signals: { emit: (signal): void => options.signal?.(signal) },
     personOf: (): string | null => options.personId ?? null,
@@ -104,3 +106,9 @@ export function sessionRig(deviceId: string, options: SessionRigOptions = {}): S
   deliver({ type: 'hello', hello: options.hello ?? HELLO });
   return { session, viewers, sent, deliver };
 }
+
+export const NO_PLACEMENTS: SessionPlacementSource = {
+  activeFor: () => [],
+  onDeviceChanged: () => () => undefined,
+  writeStatus: () => undefined,
+};
