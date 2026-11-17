@@ -25,9 +25,8 @@ export class ComputerPlacementsSlot implements SessionPlacementSource {
   onDeviceChanged: SessionPlacementSource['onDeviceChanged'] = (listener) =>
     this.started().onDeviceChanged(listener);
 
-  writeStatus: SessionPlacementSource['writeStatus'] = (deviceId, placementId, status) => {
+  writeStatus: SessionPlacementSource['writeStatus'] = (deviceId, placementId, status) =>
     this.started().writeStatus(deviceId, placementId, status);
-  };
 
   private started(): SessionPlacementSource {
     if (this.source === null) throw new DrivePlacementsNotStartedError();

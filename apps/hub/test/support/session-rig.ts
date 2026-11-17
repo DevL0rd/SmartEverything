@@ -110,5 +110,7 @@ export function sessionRig(deviceId: string, options: SessionRigOptions = {}): S
 export const NO_PLACEMENTS: SessionPlacementSource = {
   activeFor: () => [],
   onDeviceChanged: () => () => undefined,
-  writeStatus: () => undefined,
+  writeStatus: () => {
+    throw new Error('the session rig has no drive placements to write a status to');
+  },
 };
