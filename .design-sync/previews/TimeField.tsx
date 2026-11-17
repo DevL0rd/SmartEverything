@@ -7,8 +7,8 @@ function Demo(): ReactElement {
   const [b, setB] = useState({ hour: 7, minute: 5 });
   return (
     <Col gap={16}>
-      <TimeField label="Start time" value={a} onChange={setA} hour12 />
-      <TimeField label="Wake up (24 hour)" value={b} onChange={setB} hour12={false} />
+      <TimeField label="Start time" value={a} onChange={setA} hour24={false} />
+      <TimeField label="Wake up (24 hour)" value={b} onChange={setB} hour24 />
     </Col>
   );
 }
