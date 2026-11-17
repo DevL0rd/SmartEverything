@@ -23,6 +23,7 @@ export const EMPTY_LATER_TABLES = {
   planner_guests: [],
   planner_booking_pages: [],
   google_accounts: [],
+  drive_placements: [],
 } as const;
 
 export function snapshotWire(firewall: unknown = READABLE_FIREWALL): Record<string, unknown> {

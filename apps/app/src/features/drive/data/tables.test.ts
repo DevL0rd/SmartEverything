@@ -45,7 +45,7 @@ describe('drive table rules', () => {
       return { byId: {}, ids: [], rows: [], version: 0 };
     };
     const root = rootRow(ROOT_ID, 'ready');
-    driveTablesOf({ drive_roots: [root] }, next);
+    driveTablesOf({ drive_roots: [root], drive_placements: [] }, next);
     expect(calls).toEqual([
       'drive_roots:1',
       'drive_albums:0',

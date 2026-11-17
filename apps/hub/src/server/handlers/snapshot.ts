@@ -10,6 +10,7 @@ import {
   type EventRow,
   type OwnerSnapshotTables,
   type DriveGrant,
+  type DrivePlacement,
   type DriveRoot,
   type SnapshotTables,
 } from '@smarteverything/domain';
@@ -62,6 +63,15 @@ function visibleDriveRoots(store: Store, { profileId }: Viewer): DriveRoot[] {
     .list()
     .filter((root) => rootVisible(store, { profileId }, root))
     .map(({ path: _path, ...root }) => root);
+}
+
+export function ownDrivePlacements(
+  store: Pick<Store, 'drivePlacements' | 'computerNodes'>,
+  { profileId }: Pick<Viewer, 'profileId'>,
+): DrivePlacement[] {
+  return store.drivePlacements
+    .list()
+    .filter((placement) => store.computerNodes.personOf(placement.deviceId) === profileId);
 }
 
 function visibleDriveGrants(store: Store, { profileId }: Viewer): DriveGrant[] {
@@ -192,6 +202,7 @@ function unfilteredTablesOf(
     plugin_ui: store.plugins.ui(),
     drive_roots: visibleDriveRoots(store, { client, profileId }),
     drive_grants: visibleDriveGrants(store, { client, profileId }),
+    drive_placements: ownDrivePlacements(store, { profileId }),
     model_assets: store.modelAssets.all(),
     model_catalog: store.modelCatalog.all(),
     model_overrides: store.modelOverrides.all(),

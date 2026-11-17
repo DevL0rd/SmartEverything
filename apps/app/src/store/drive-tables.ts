@@ -83,15 +83,16 @@ export const DRIVE_TABLE_RULES: DriveTableRules = {
   },
 };
 
-export function driveTablesOf(
-  tables: { readonly [K in keyof DriveTables]?: readonly RowOf<K>[] | undefined },
-  next: NextTable,
-): DriveTables {
+type SnapshotDriveTables = {
+  readonly [K in Exclude<keyof DriveTables, 'drive_placements'>]?: readonly RowOf<K>[] | undefined;
+} & { readonly drive_placements: readonly RowOf<'drive_placements'>[] };
+
+export function driveTablesOf(tables: SnapshotDriveTables, next: NextTable): DriveTables {
   return {
     drive_roots: next('drive_roots', tables.drive_roots ?? []),
     drive_albums: next('drive_albums', tables.drive_albums ?? []),
     drive_grants: next('drive_grants', tables.drive_grants ?? []),
-    drive_placements: next('drive_placements', tables.drive_placements ?? []),
+    drive_placements: next('drive_placements', tables.drive_placements),
     drive_notifications: next('drive_notifications', tables.drive_notifications ?? []),
     drive_access_requests: next('drive_access_requests', tables.drive_access_requests ?? []),
     drive_file_requests: next('drive_file_requests', tables.drive_file_requests ?? []),
