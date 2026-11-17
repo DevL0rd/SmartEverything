@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import { clockText, dndRingOf, dndWindowText, encodeDndWindow, readDndWindow } from './dnd-model';
 
@@ -11,7 +12,12 @@ describe('do not disturb window', () => {
   it('reads and writes the plugin example 22:00 to 08:00', () => {
     const window = readDndWindow(369100800);
     expect(window).toStrictEqual({ startHour: 22, startMinute: 0, endHour: 8, endMinute: 0 });
-    expect(window === null ? '' : dndWindowText(window)).toBe('22:00 to 08:00');
+    expect(window === null ? '' : dndWindowText(window, clockFormatOf(true))).toBe(
+      '22:00 to 08:00',
+    );
+    expect(window === null ? '' : dndWindowText(window, clockFormatOf(false))).toMatch(
+      /^10:00\s\S+ to 8:00\s\S+$/u,
+    );
     expect(window === null ? 0 : encodeDndWindow(window)).toBe(369100800);
   });
 

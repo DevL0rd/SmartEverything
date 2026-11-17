@@ -38,7 +38,7 @@ export const GENERAL: readonly SettingDefinition[] = [
       title: 'Day runs',
       icon: 'sun',
       href: subHref('day'),
-      value: (prefs) => spanText(prefs.general.day_start, prefs.general.day_end),
+      value: (prefs, format) => spanText(prefs.general.day_start, prefs.general.day_end, format),
     },
     ['day start', 'day end', 'morning', 'bedtime'],
   ),
@@ -49,8 +49,8 @@ export const GENERAL: readonly SettingDefinition[] = [
       title: 'Working hours',
       icon: 'clock',
       href: subHref('working-hours'),
-      value: (prefs) =>
-        spanText(prefs.general.working_hours.start, prefs.general.working_hours.end),
+      value: (prefs, format) =>
+        spanText(prefs.general.working_hours.start, prefs.general.working_hours.end, format),
     },
     ['work', 'office', 'work days'],
   ),

@@ -1,15 +1,5 @@
 import { z } from 'zod';
 
-export const OCR_LANGUAGE = z.string().regex(/^[a-z]{3}(?:_[a-z]+)?$/);
-
-const OCR_LANGUAGES = z
-  .array(OCR_LANGUAGE)
-  .min(1)
-  .refine((languages) => new Set(languages).size === languages.length, {
-    message: 'name each language once',
-  })
-  .readonly();
-
 export const MAX_FILE_IO_THREADS = 1024;
 
 const SHAPE = {
@@ -18,7 +8,6 @@ const SHAPE = {
   duplicatesHashing: z.boolean(),
   indexingPaused: z.boolean(),
   contentIndexing: z.boolean(),
-  ocrLanguages: OCR_LANGUAGES,
   fileIoThreads: z.int().min(1).max(MAX_FILE_IO_THREADS),
   cpuWorkers: z.int().positive(),
   listingCacheSeconds: z.int().nonnegative(),
@@ -35,7 +24,6 @@ export const DRIVE_SETTINGS_UPDATE = z
     duplicatesHashing: SHAPE.duplicatesHashing.optional(),
     indexingPaused: SHAPE.indexingPaused.optional(),
     contentIndexing: SHAPE.contentIndexing.optional(),
-    ocrLanguages: SHAPE.ocrLanguages.optional(),
     fileIoThreads: SHAPE.fileIoThreads.optional(),
     cpuWorkers: SHAPE.cpuWorkers.optional(),
     listingCacheSeconds: SHAPE.listingCacheSeconds.optional(),

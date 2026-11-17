@@ -179,7 +179,14 @@ function writeDataset(rows: readonly (readonly string[])[]): string {
 }
 
 function service(path: string): PlacesService {
-  return new PlacesService({ context, datasetPath: path, log: testLogger() });
+  return new PlacesService({
+    context,
+    reader: {
+      all: (schema, text, parameters) => Promise.resolve(context.sql.all(schema, text, parameters)),
+    },
+    datasetPath: path,
+    log: testLogger(),
+  });
 }
 
 function assignAll(places: PlacesService, numbers: readonly number[]): void {
@@ -234,24 +241,35 @@ describe('the nearest place', () => {
   }
 
   it('answers across the antimeridian from either side', () => {
-    const index = new PlaceIndex();
-    index.replace([
+    const repository = new DrivePlacesRepository(context);
+    repository.replaceAll([
       { id: 'east', name: 'East', admin: null, country: 'FJ', lat: -17, lon: 179.9 },
       { id: 'west', name: 'West', admin: null, country: 'WS', lat: -17, lon: -179 },
     ]);
+    const index = new PlaceIndex(context.sql);
     expect(index.nearest(-17, -179.9)?.id).toBe('east');
     expect(index.nearest(-17, 179.5)?.id).toBe('east');
     expect(index.nearest(-17, -179.2)?.id).toBe('west');
   });
 
   it('names the nearest place for a point far out at sea and has none for an empty index', () => {
-    const index = new PlaceIndex();
-    index.replace(rows());
+    const repository = new DrivePlacesRepository(context);
+    repository.replaceAll(rows());
+    const index = new PlaceIndex(context.sql);
     expect(index.nearest(30, -40)?.id).toBe('1001');
     expect(index.nearest(-17.9, 178.9)?.name).toBe('Suva');
-    index.replace([]);
+    repository.replaceAll([]);
     expect(index.nearest(0, 0)).toBeUndefined();
-    expect(index.size).toBe(0);
+  });
+
+  it('keeps the spatial index in step when a place moves', () => {
+    const repository = new DrivePlacesRepository(context);
+    repository.replaceAll(rows());
+    repository.replaceAll(
+      rows().map((row) => (row.id === '1004' ? { ...row, lat: 40.5, lon: -3.8 } : row)),
+    );
+    expect(new PlaceIndex(context.sql).nearest(40.5, -3.8)?.id).toBe('1004');
+    expect(new PlaceIndex(context.sql).nearest(-18, 178.4)?.id).not.toBe('1004');
   });
 });
 

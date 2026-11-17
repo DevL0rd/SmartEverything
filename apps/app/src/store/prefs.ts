@@ -31,6 +31,7 @@ export const PREFS = {
   callRing: CLIENT_PREFS.call_ring,
   cameraNotifications: CLIENT_PREFS.camera_notifications,
   cameras: CLIENT_PREFS.cameras,
+  clockFormat: CLIENT_PREFS.clock_format,
   deviceAlerts: CLIENT_PREFS.device_alerts,
   driveHints: CLIENT_PREFS.drive_hints,
   driveNotifications: CLIENT_PREFS.drive_notifications,

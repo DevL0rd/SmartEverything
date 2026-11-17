@@ -80,6 +80,7 @@ function mimeOf(item: DriveItem): string | null {
 }
 
 function sizeOf(item: DriveItem): number | null {
+  if (item.kind === 'folder') return item.totalBytes;
   return item.kind === 'link' || item.kind === 'special' ? null : item.bytes;
 }
 
@@ -112,6 +113,7 @@ export function driveNodeOf(item: DriveItem, context: DriveNodeContext): DriveNo
     mime: mimeOf(item),
     size: sizeOf(item),
     childCount: item.kind === 'folder' ? item.childCount : null,
+    files: item.kind === 'folder' ? item.totalFiles : null,
     modifiedAt: item.modifiedAt,
     hidden: item.name.startsWith('.'),
     byProfileId: item.addedByProfileId,
@@ -135,6 +137,7 @@ export function shortcutNodeOf(shortcut: DriveShortcut, context: DriveNodeContex
       mime: null,
       size: null,
       childCount: null,
+      files: null,
       modifiedAt: shortcut.createdAt,
       hidden: shortcut.name.startsWith('.'),
       byProfileId: shortcut.createdBy,
@@ -190,6 +193,7 @@ export function trashNodeOf(entry: DriveTrashEntry, rights: TrashRights): DriveN
     mime: null,
     size: entry.isFolder ? null : entry.bytes,
     childCount: null,
+    files: null,
     modifiedAt: entry.deletedAt,
     hidden: entry.name.startsWith('.'),
     byProfileId: entry.addedByProfileId,

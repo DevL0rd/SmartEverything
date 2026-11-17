@@ -35,6 +35,7 @@ import {
   type ParseState,
   type WillAddChip,
 } from './parse-preview';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 export interface ComposerProps {
   readonly open: boolean;
@@ -255,7 +256,7 @@ function useComposer(props: ComposerProps): ComposerState {
   });
   const plan = fallback ?? composerPlanOf({ kind, text, parsed, timeZone });
   const suggestion = suggestionOf(kind, preview.suggestions);
-  const today = { now, timeZone };
+  const today = { now, timeZone, format: useClockFormat() };
   const next = plan === null ? null : nextLineOf(plan, parsed, today);
   const sending = useSubmit(props, {
     plan,

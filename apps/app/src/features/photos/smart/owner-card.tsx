@@ -18,7 +18,7 @@ import { MODEL_ROWS, modelOptionsOf, photosLine } from './model';
 import { invalidateAiStatus, usePhotoAiModels } from './queries';
 
 export const MODELS_NOTE =
-  'One set of models serves the whole home so search stays consistent. A new model applies to new photos; Re-analyse library redoes the rest.';
+  'One set of models serves the whole home so search stays consistent. A new model applies to new photos; Re-analyse library redoes the rest, and Re-analyse every photo also redoes photos the current model already analysed.';
 
 function ModelRow({
   id,
@@ -109,7 +109,15 @@ function ModelRows({
 export function reanalyseConfirmOf(
   status: PhotoAiStatus,
   money: Money,
+  everything: boolean,
 ): Parameters<typeof confirm>[0] {
+  if (everything) {
+    return {
+      title: 'Re-analyse every photo?',
+      body: `Every photo with Smart search on is analysed again with the current vision model, including photos it already analysed, so older photos get its tags, captions and the text it reads. This costs about ${money.cost(status.everythingMicros)}.`,
+      confirmLabel: 'Re-analyse all',
+    };
+  }
   if (status.estimateMicros === 0) {
     return {
       title: 'Redo search and pet matching?',
@@ -124,14 +132,18 @@ export function reanalyseConfirmOf(
   };
 }
 
-function useReanalyse(status: PhotoAiStatus, mutation: MutationState): () => void {
+function useReanalyse(
+  status: PhotoAiStatus,
+  mutation: MutationState,
+): (everything: boolean) => void {
   const money = useMoney();
   const client = useQueryClient();
-  return (): void => {
+  return (everything): void => {
+    const estimateMicros = everything ? status.everythingMicros : status.estimateMicros;
     background(
-      confirm(reanalyseConfirmOf(status, money)).then((accepted) => {
+      confirm(reanalyseConfirmOf(status, money, everything)).then((accepted) => {
         if (!accepted) return;
-        mutation.run(() => reanalysePhotos(status.estimateMicros), {
+        mutation.run(() => reanalysePhotos({ estimateMicros, everything }), {
           failure: 'The library was not re-analysed',
           label: 'photos.smart.reanalyse',
           onDone: (result) => {
@@ -168,7 +180,18 @@ export function OwnerCard({
             icon="refresh"
             variant="outlined"
             disabled={disabled || !status.hasKey}
-            onPress={reanalyse}
+            onPress={() => {
+              reanalyse(false);
+            }}
+          />
+          <Button
+            label="Re-analyse every photo"
+            icon="refresh"
+            variant="outlined"
+            disabled={disabled || !status.hasKey}
+            onPress={() => {
+              reanalyse(true);
+            }}
           />
           {status.hasKey ? null : (
             <Text variant="footnote" tone="variant" className="min-w-0 flex-1">

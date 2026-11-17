@@ -22,6 +22,8 @@ import {
   withNightTimes,
 } from './schedule-model';
 
+const AS_STORED = (time: string): string => time;
+
 const ZONE = 'Europe/Berlin';
 
 const SCHOOL = { days: [0, 1, 2, 3, 4], bed: '22:45', wake: '06:30' } as const;
@@ -157,14 +159,14 @@ describe('tonight', () => {
 
   it('says what comes next tonight', () => {
     const next = nextNightOf(BEDTIME, saturdayMorning, ZONE);
-    expect(tonightLineOf(next, saturdayMorning)).toBe('Bedtime in 12 h 45 min');
-    expect(tonightLineOf(next, Date.parse('2026-11-14T22:10:00Z'))).toBe(
+    expect(tonightLineOf(next, saturdayMorning, AS_STORED)).toBe('Bedtime in 12 h 45 min');
+    expect(tonightLineOf(next, Date.parse('2026-11-14T22:10:00Z'), AS_STORED)).toBe(
       'Wind-down · bed at 23:45',
     );
-    expect(tonightLineOf(next, Date.parse('2026-11-15T01:00:00Z'))).toBe(
+    expect(tonightLineOf(next, Date.parse('2026-11-15T01:00:00Z'), AS_STORED)).toBe(
       'Sleep time · wake at 08:00',
     );
-    expect(tonightLineOf(null, saturdayMorning)).toBe('No bedtime set');
+    expect(tonightLineOf(null, saturdayMorning, AS_STORED)).toBe('No bedtime set');
   });
 
   it('offers reminder and wind-down leads with the current one kept', () => {

@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import {
   alarmClustersOf,
@@ -19,6 +20,9 @@ function pin(minute: number, label: string | null = null): AlarmPin {
     label,
   };
 }
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('alarm clusters', () => {
   it('keeps pins apart when their pills fit between them', () => {
@@ -42,11 +46,15 @@ describe('alarm clusters', () => {
     const [one] = alarmClustersOf([pin(375, 'Run')], 44);
     const [many] = alarmClustersOf([pin(375, 'Run'), pin(390), pin(405)], 44);
     if (one === undefined || many === undefined) throw new Error('no cluster');
-    expect(clusterText(one, false)).toBe('06:15 Run');
-    expect(clusterText(one, true)).toBe('06:15');
-    expect(clusterText(many, false)).toBe('06:15 +2 more');
-    expect(clusterText(many, true)).toBe('06:15 +2');
-    expect(clusterLabel(many)).toBe('Alarms 06:15 Run, 06:30, 06:45, opens Clock');
+    expect(clusterText(one, false, H24)).toBe('06:15 Run');
+    expect(clusterText(one, true, H24)).toBe('06:15');
+    expect(clusterText(many, false, H24)).toBe('06:15 +2 more');
+    expect(clusterText(many, true, H24)).toBe('06:15 +2');
+    expect(clusterLabel(many, H24)).toBe('Alarms 06:15 Run, 06:30, 06:45, opens Clock');
+    expect(clusterText(one, false, H12)).toBe(`${H12.text('06:15')} Run`);
+    expect(clusterLabel(many, H12)).toMatch(
+      /^Alarms 6:15\s\S+ Run, 6:30\s\S+, 6:45\s\S+, opens Clock$/u,
+    );
   });
 
   it('moves only the blocks that share a pill band out of its lane', () => {

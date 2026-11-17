@@ -9,7 +9,7 @@ import type { EditorNotice } from './mount-edit';
 
 export const WEBGL_NOTICE = '3D is not available on this device. Edit with the list.';
 
-export const PAUSED_NOTICE = 'Offline · editing is paused';
+export const PAUSED_NOTICE = 'Editing is paused';
 
 export interface StageNoticeFacts {
   readonly unavailable: boolean;

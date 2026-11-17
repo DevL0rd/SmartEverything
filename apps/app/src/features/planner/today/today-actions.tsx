@@ -2,7 +2,8 @@ import type { PlannerDay, PlannerItemRow, PlannerOccurrenceView } from '@smartev
 import { background } from '@smarteverything/logging';
 import { createContext, use, useState, type ReactNode } from 'react';
 import { notify } from '../../../components/toast-store';
-import { clock, dayBoundsOf } from '../../../format/time';
+import { dayBoundsOf } from '../../../format/time';
+import { useInstantClock } from '../../clock/format/clock-format';
 import {
   usePlannerItems,
   usePlannerTools,
@@ -151,6 +152,7 @@ function useOccurrenceActions(day: PlannerDay, hide: Hide): OccurrenceActions {
   const writes = usePlannerWrites(person);
   const tools = usePlannerTools(person);
   const items = usePlannerItems(person);
+  const instant = useInstantClock();
   const run = runOf(hide);
   const undo = undoOf(hide, items, writes);
   return {
@@ -182,7 +184,10 @@ function useOccurrenceActions(day: PlannerDay, hide: Hide): OccurrenceActions {
         'Couldn’t move that to later',
         () => moveLater({ occurrence, item, day }, tools, writes),
         (start) => {
-          notify({ message: `Moved to ${clock(start, day.time_zone)}`, detail: occurrence.title });
+          notify({
+            message: `Moved to ${instant(start, day.time_zone)}`,
+            detail: occurrence.title,
+          });
         },
       );
     },

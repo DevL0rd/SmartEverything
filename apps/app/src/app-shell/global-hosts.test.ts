@@ -30,6 +30,7 @@ vi.mock('../features/assistant', () => ({
 vi.mock('../features/app-updates', () => ({ AppUpdateHost: hosts.none }));
 vi.mock('../features/automations', () => ({ ScheduleSheetHost: hosts.none }));
 vi.mock('../features/cameras', () => ({ CallHost: hosts.none }));
+vi.mock('../features/clock/format/clock-format', () => ({ ClockFormatHost: hosts.none }));
 vi.mock('../features/clipboard', () => ({ ClipboardSyncHost: hosts.none }));
 vi.mock('../features/connections', () => ({ ConsentHost: hosts.none }));
 vi.mock('../features/devices', () => ({ QuickControlsHost: hosts.none }));

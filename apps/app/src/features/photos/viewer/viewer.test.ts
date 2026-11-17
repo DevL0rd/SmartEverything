@@ -52,6 +52,7 @@ describe('photo viewer', () => {
       burstId: null,
       stackId: null,
       placeId: null,
+      description: null,
       ...states,
     };
     expect(photoLookOf({ ...media, preview: { state: 'ready' } })).toBe('image');

@@ -4,8 +4,8 @@ import { View } from 'react-native';
 import { Button } from '../../components/button';
 import { Sheet } from '../../components/sheet';
 import { twoDigits } from '../../format/number';
-import { TimeField, localeUsesHour12, type TimeOfDay } from '../../components/time-field';
-import { clock } from '../../format/time';
+import { TimeField, type TimeOfDay } from '../../components/time-field';
+import { useHour24 } from '../../store/clock-format';
 
 export function timeOf(text: string): TimeOfDay {
   const [hour = 0, minute = 0] = text.split(':').map(Number);
@@ -14,11 +14,6 @@ export function timeOf(text: string): TimeOfDay {
 
 export function clockText({ hour, minute }: TimeOfDay): string {
   return `${twoDigits(hour)}:${twoDigits(minute)}`;
-}
-
-export function timeLabel(text: string): string {
-  const { hour, minute } = timeOf(text);
-  return clock(new Date(2000, 0, 1, hour, minute));
 }
 
 export interface TimeSheetField {
@@ -37,6 +32,7 @@ export function TimeSheet({
   readonly onSave: (values: readonly string[]) => void;
   readonly onClose: () => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const [values, setValues] = useState(fields.map((field) => field.value));
   return (
     <Sheet
@@ -60,10 +56,10 @@ export function TimeSheet({
       <View className="gap-4">
         {fields.map((field, index) => (
           <TimeField
+            hour24={hour24}
             key={field.label}
             label={field.label}
             value={timeOf(values[index] ?? field.value)}
-            hour12={localeUsesHour12()}
             onChange={(time) => {
               setValues(values.map((value, at) => (at === index ? clockText(time) : value)));
             }}

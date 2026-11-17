@@ -12,6 +12,7 @@ import { Text } from '../../components/text';
 import { ValueStore, useValue } from '../../design/external-store';
 import { jsonText } from '../../format/json-text';
 import { usePlannerAlarms } from '../planner';
+import { useClockLabel } from './format/clock-format';
 
 const log = new Logger('app.clock');
 
@@ -79,10 +80,11 @@ function dismiss(arrivals: readonly Arrival[]): void {
 }
 
 function ArrivalTimes({ arrivals }: { readonly arrivals: readonly Arrival[] }): ReactNode {
+  const clockLabel = useClockLabel();
   return (
     <View className="flex-row flex-wrap gap-2">
       {arrivals.map((alarm) => (
-        <Badge key={alarm.id} label={alarm.time} icon="alarmClock" tone="primary" />
+        <Badge key={alarm.id} label={clockLabel(alarm.time)} icon="alarmClock" tone="primary" />
       ))}
     </View>
   );

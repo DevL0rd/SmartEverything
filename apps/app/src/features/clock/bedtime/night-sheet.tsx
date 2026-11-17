@@ -8,6 +8,7 @@ import { clockOfMinutes } from '../../../format/time';
 import { DayDots, timeOfClockText } from '../../planner';
 import { sleepLengthText, sleepMinutesOf, wrapMinute, type DialTimes } from './dial-model';
 import { daysTextOf } from './schedule-model';
+import { useHour24 } from '../../../store/clock-format';
 
 export interface NightDraft {
   readonly index: number | null;
@@ -41,12 +42,14 @@ function TimeColumn({
   readonly minute: number;
   readonly onChange: (minute: number) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   return (
     <View className="min-w-0 grow basis-36 items-start gap-2">
       <Text variant="caption" tone="variant">
         {label}
       </Text>
       <TimeField
+        hour24={hour24}
         label={label}
         value={timeOfClockText(clockOfMinutes(minute))}
         onChange={(time) => {

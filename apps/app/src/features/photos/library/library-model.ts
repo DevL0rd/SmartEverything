@@ -32,11 +32,6 @@ export function libraryLine(
   return parts.filter((part): part is string => part !== null).join(' · ');
 }
 
-export function offlineBody(seenClock: string | null): string {
-  const cached = seenClock === null ? 'any cached hub photos' : `hub photos cached at ${seenClock}`;
-  return `Local photos and videos remain available alongside ${cached}. Uploads wait until the hub is back.`;
-}
-
 export interface MonthFeed {
   readonly tiles: readonly MediaTile[];
   readonly more: boolean;

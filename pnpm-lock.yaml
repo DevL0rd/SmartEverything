@@ -466,6 +466,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
+      '@photostructure/tz-lookup':
+        specifier: 11.8.0
+        version: 11.8.0
       '@ricky0123/vad-web':
         specifier: 0.0.31
         version: 0.0.31
@@ -505,9 +508,6 @@ importers:
       '@smarteverything/xiaomi':
         specifier: workspace:*
         version: link:../../packages/xiaomi
-      '@tesseract.js-data/eng':
-        specifier: 1.0.0
-        version: 1.0.0
       bonjour-service:
         specifier: 1.4.4
         version: 1.4.4
@@ -592,9 +592,6 @@ importers:
       ssh2:
         specifier: 1.17.0
         version: 1.17.0
-      tesseract.js:
-        specifier: 7.0.0
-        version: 7.0.0
       ts-json-schema-generator:
         specifier: 2.9.0
         version: 2.9.0
@@ -4978,6 +4975,9 @@ packages:
     resolution: {integrity: sha512-C2Xj8FZ0uHWeCXXqX5B4/gVFQmtSkiuOolzAgutjTfseNOHT3pUjljDZsTSxXFGgio54bCzVFqmEOUrIVk8RDA==}
     engines: {node: '>=20.0.0'}
 
+  '@photostructure/tz-lookup@11.8.0':
+    resolution: {integrity: sha512-RvTkAjjWAfgvoaHVXugwi9XOw4rwyrL8wuqox4PwRLW9FZwpmPhNUY31MgY7k5avK6sbD9S7i1/rUtM4A310/g==}
+
   '@playwright/mcp@0.0.80':
     resolution: {integrity: sha512-FOPXHm2SvFhAQylm10jMZ35B/SR2TaMLVkavAlwoG4N2qCb5RqbvhQYcu3zmXNyxR2DW0Ooxe+9XPVt5UjKRCQ==}
     engines: {node: '>=18'}
@@ -5713,9 +5713,6 @@ packages:
     resolution: {integrity: sha512-TYBea4OuXWD7MhaSHq069TWbFe7rcwWN6kzT7JF0OKi1K6c1gTv2IzD6A6ExJsCMozdkqBWeuIUZmu4KQg0O5A==}
     peerDependencies:
       react: ^18 || ^19
-
-  '@tesseract.js-data/eng@1.0.0':
-    resolution: {integrity: sha512-mbTumm6KQPUHyzTPQaF3ObXYnx0SqqfV2nabqFVQBwD6Kl7PhGSLSzOlfFTWy0P3BjghaSKA2W9GB19Jk+ZcTg==}
 
   '@tokenizer/inflate@0.4.1':
     resolution: {integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==}
@@ -6461,9 +6458,6 @@ packages:
 
   bl@6.1.6:
     resolution: {integrity: sha512-jLsPgN/YSvPUg9UX0Kd73CXpm2Psg9FxMeCSXnk3WBO3CMT10JMwijubhGfHCnFu6TPn1ei3b975dxv7K2pWVg==}
-
-  bmp-js@0.1.0:
-    resolution: {integrity: sha512-vHdS19CnY3hwiNdkaqk93DvjVLfbEcI8mys4UjuWrlX1haDmroo8o4xCzh4wD6DGV6HxRCyauwhHRqMTfERtjw==}
 
   body-parser@2.3.0:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
@@ -8734,9 +8728,6 @@ packages:
   is-unsafe@2.0.2:
     resolution: {integrity: sha512-HgbIHPBH0KHHCcjLfGsCvhtPTVxjaAZlXjwdz7/GQC40SjSe4sfQsar8J5VFo8JOSbarkpV0OLG95bbaNd9aAQ==}
 
-  is-url@1.2.4:
-    resolution: {integrity: sha512-ITvGim8FhRiYe4IQ5uHSkj7pVaPDrCTkNd3yq3cV7iZAcJdHTUMPMEHcqSOy9xZ9qFenQCvi+2wjH9a1nXqHww==}
-
   is-weakmap@2.0.2:
     resolution: {integrity: sha512-K5pXYOm9wqY1RgjpL3YTkF39tni1XajUIkawTLUo9EZEVUFga5gSQJF8nNS7ZwJQ02y+1YCNYcMh+HIf1ZqE+w==}
     engines: {node: '>= 0.4'}
@@ -10008,10 +9999,6 @@ packages:
       zod:
         optional: true
 
-  opencollective-postinstall@2.0.3:
-    resolution: {integrity: sha512-8AV/sCtuzUeTo8gQK5qDZzARrulB3egtLzFgteqB2tcT4Mw7B8Kt7JcDHmltjz6FOAHsvTevk70gZEbhM4ZS9Q==}
-    hasBin: true
-
   openrgb-sdk@0.6.0:
     resolution: {integrity: sha512-DXY341jLmvldF4ikZp/f4zES4fhSgADOmuTAoO///7bcWglv5xLnmyZrAYI4qbE9eD7UhQaLwcEm8RYJkwQ2bQ==}
     engines: {node: '>=8.3'}
@@ -11170,12 +11157,6 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  tesseract.js-core@7.0.0:
-    resolution: {integrity: sha512-WnNH518NzmbSq9zgTPeoF8c+xmilS8rFIl1YKbk/ptuuc7p6cLNELNuPAzcmsYw450ca6bLa8j3t0VAtq435Vw==}
-
-  tesseract.js@7.0.0:
-    resolution: {integrity: sha512-exPBkd+z+wM1BuMkx/Bjv43OeLBxhL5kKWsz/9JY+DXcXdiBjiAch0V49QR3oAJqCaL5qURE0vx9Eo+G5YE7mA==}
-
   text-decoder@1.2.7:
     resolution: {integrity: sha512-vlLytXkeP4xvEq2otHeJfSQIRyWxo/oZGEbXrtEEF9Hnmrdly59sUbzZ/QgyWuLYHctCHxFF4tRQZNQ9k60ExQ==}
 
@@ -11684,9 +11665,6 @@ packages:
   warn-once@0.1.1:
     resolution: {integrity: sha512-VkQZJbO8zVImzYFteBXvBOZEl1qL175WH8VmZcxF2fZAoudNhNDvHi+doCaAEdU2l2vtcIwa2zn0QK5+I1HQ3Q==}
 
-  wasm-feature-detect@1.10.1:
-    resolution: {integrity: sha512-+wz9+WpMKgQ7H1tm41nJbFwAvwX4DqY0jNY8Blw5Qe6hHg1yhCJ+AqU0R4lgX7p3pyo8irYIl1+mMNoBwSj2Zg==}
-
   wcwidth@1.0.1:
     resolution: {integrity: sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg==}
 
@@ -11917,9 +11895,6 @@ packages:
 
   yoga-layout@3.2.1:
     resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
-
-  zlibjs@0.3.1:
-    resolution: {integrity: sha512-+J9RrgTKOmlxFSDHo0pI1xM6BLVUv+o0ZT9ANtCxGkjIVCCUdx9alUF8Gm+dGLKbkkkidWIHFDZHDMpfITt4+w==}
 
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
@@ -16579,6 +16554,8 @@ snapshots:
       tslib: 2.8.1
       tsyringe: 4.10.0
 
+  '@photostructure/tz-lookup@11.8.0': {}
+
   '@playwright/mcp@0.0.80':
     dependencies:
       playwright: 1.63.0-alpha-2026-08-31
@@ -17381,8 +17358,6 @@ snapshots:
     dependencies:
       '@tanstack/query-core': 5.102.8
       react: 19.2.3
-
-  '@tesseract.js-data/eng@1.0.0': {}
 
   '@tokenizer/inflate@0.4.1':
     dependencies:
@@ -18249,8 +18224,6 @@ snapshots:
       buffer: 6.0.3
       inherits: 2.0.4
       readable-stream: 4.7.0
-
-  bmp-js@0.1.0: {}
 
   body-parser@2.3.0:
     dependencies:
@@ -20986,8 +20959,6 @@ snapshots:
 
   is-unsafe@2.0.2: {}
 
-  is-url@1.2.4: {}
-
   is-weakmap@2.0.2: {}
 
   is-weakref@1.1.1:
@@ -22547,8 +22518,6 @@ snapshots:
       ws: 8.22.0
       zod: 4.4.3
 
-  opencollective-postinstall@2.0.3: {}
-
   openrgb-sdk@0.6.0(patch_hash=e293b4043af467faf598a45d2688a5bc97c201a7452d3341210961dfa9dd39c3):
     dependencies:
       bufferpack: 0.0.6
@@ -24050,22 +24019,6 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  tesseract.js-core@7.0.0: {}
-
-  tesseract.js@7.0.0:
-    dependencies:
-      bmp-js: 0.1.0
-      idb-keyval: 6.3.0
-      is-url: 1.2.4
-      node-fetch: 2.7.0
-      opencollective-postinstall: 2.0.3
-      regenerator-runtime: 0.13.11
-      tesseract.js-core: 7.0.0
-      wasm-feature-detect: 1.10.1
-      zlibjs: 0.3.1
-    transitivePeerDependencies:
-      - encoding
-
   text-decoder@1.2.7:
     dependencies:
       b4a: 1.9.0
@@ -24509,8 +24462,6 @@ snapshots:
 
   warn-once@0.1.1: {}
 
-  wasm-feature-detect@1.10.1: {}
-
   wcwidth@1.0.1:
     dependencies:
       defaults: 1.0.4
@@ -24744,8 +24695,6 @@ snapshots:
   yoctocolors@2.2.0: {}
 
   yoga-layout@3.2.1: {}
-
-  zlibjs@0.3.1: {}
 
   zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:

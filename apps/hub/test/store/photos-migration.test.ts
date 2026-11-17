@@ -260,7 +260,7 @@ it('allows one job per item revision and kind and requires an error on a failed 
 it('serves the next queued job from the queue index and the state tally from the state index', () => {
   const queue = database
     .prepare(
-      "explain query plan select id from drive_media_jobs where state = 'queued' order by visible desc, queued_at, id limit 1",
+      "explain query plan select id from drive_media_jobs where state = 'queued' and kind = 'preview' order by visible desc, queued_at, id limit 1",
     )
     .all()
     .map((row) => String(row['detail']))

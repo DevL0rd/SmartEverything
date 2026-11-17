@@ -251,7 +251,7 @@ function runnerOf(
 ): MediaJobRunner {
   return new MediaJobRunner({
     jobs,
-    limits,
+    limits: { ...limits, cloud: 1 },
     progress: (entry) => progress.push(entry),
     log: testLogger(),
   });

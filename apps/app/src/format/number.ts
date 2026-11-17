@@ -79,7 +79,13 @@ export function times(factor: number): string {
   return `${decimal(factor, 1)}×`;
 }
 
-const BYTE_UNITS = ['B', 'KB', 'MB', 'GB'] as const;
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'] as const;
+
+function byteUnit(index: number): string {
+  const unit = BYTE_UNITS[index];
+  if (unit === undefined) throw new RangeError(`There is no byte unit at ${String(index)}.`);
+  return unit;
+}
 
 export function bytes(value: number): string {
   let size = value;
@@ -88,5 +94,5 @@ export function bytes(value: number): string {
     size /= 1024;
     unit += 1;
   }
-  return `${decimal(size, unit === 0 || size >= 10 ? 0 : 1)}${NO_BREAK_SPACE}${BYTE_UNITS[unit] ?? 'GB'}`;
+  return `${decimal(size, unit === 0 || size >= 10 ? 0 : 1)}${NO_BREAK_SPACE}${byteUnit(unit)}`;
 }

@@ -5,6 +5,7 @@ import {
   type BottleQuiet,
   type BottleReminder,
 } from '@smarteverything/domain';
+import type { ClockFormat } from '../../../format/clock-text';
 
 const DIAL_STEP_MIN = 15;
 
@@ -62,21 +63,21 @@ export function moved(window: Window, handle: Handle, minutes: number): Window {
   return handle === 'from' ? { from: clock, to: window.to } : { from: window.from, to: clock };
 }
 
-export function windowText(window: Window): string {
-  return `${window.from} to ${window.to}`;
+export function windowText(window: Window, format: ClockFormat): string {
+  return `${format.text(window.from)} to ${format.text(window.to)}`;
 }
 
-export function reminderLine(reminder: BottleReminder | null): string {
+export function reminderLine(reminder: BottleReminder | null, format: ClockFormat): string {
   if (reminder === null) {
     return 'Not read from the bottle yet';
   }
   if (reminder.state === 'off') {
     return 'Off';
   }
-  return `Every ${String(reminder.intervalMin)} min, ${windowText(reminder)}`;
+  return `Every ${String(reminder.intervalMin)} min, ${windowText(reminder, format)}`;
 }
 
-export function quietLine(quiet: BottleQuiet | null): string {
+export function quietLine(quiet: BottleQuiet | null, format: ClockFormat): string {
   if (quiet === null) {
     return 'Not read from the bottle yet';
   }
@@ -84,9 +85,9 @@ export function quietLine(quiet: BottleQuiet | null): string {
     case 'off':
       return 'Off';
     case 'auto':
-      return `Automatic, ${windowText(quiet)}`;
+      return `Automatic, ${windowText(quiet, format)}`;
     default:
-      return `On, ${windowText(quiet)}`;
+      return `On, ${windowText(quiet, format)}`;
   }
 }
 

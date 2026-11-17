@@ -184,6 +184,16 @@ describe('the hub copies one folder on one device backed up', () => {
     ]);
   });
 
+  it('keeps a copy whose description was written by hand, not one read from the file', () => {
+    const written = photo(1);
+    const read = photo(2);
+    backedUp(PHONE, 'local-1', written, CAMERA);
+    backedUp(PHONE, 'local-2', read, CAMERA);
+    insert('photo_descriptions', { item_id: written, text: 'Ours', source: 'manual', set_at: NOW });
+    insert('photo_descriptions', { item_id: read, text: 'Camera', source: 'file', set_at: NOW });
+    expect(copies(['local-1', 'local-2']).kept).toEqual([{ itemId: written, reason: 'edited' }]);
+  });
+
   it('keeps a copy that was put in an album', () => {
     const kept = photo(1);
     backedUp(PHONE, 'local-1', kept, CAMERA);

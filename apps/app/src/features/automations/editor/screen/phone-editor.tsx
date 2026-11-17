@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { EditorBody } from './editor-body';
-import { EditorBanners, EditorShell, EditorShortcuts } from './editor-chrome';
+import { EditorShell, EditorShortcuts } from './editor-chrome';
 import { InspectorHost, PaletteHost, ProblemsPhone } from './editor-panes';
 import { BottomBar } from './bottom-bar';
 import { LayoutPhone } from './layout-phone';
@@ -10,7 +10,7 @@ export function PhoneEditor({ model }: { readonly model: EditorModel }): ReactNo
   return (
     <EditorShell model={model}>
       <LayoutPhone
-        banner={<EditorBanners model={model} />}
+        banner={model.props.notice}
         body={<EditorBody model={model} />}
         inset={model.inset}
         bottom={<BottomBar items={model.items} onItem={model.onBottomItem} />}

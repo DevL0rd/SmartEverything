@@ -13,6 +13,7 @@ import { useIdiom } from '../../../design/platform';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
+import { useInstantClock } from '../../clock/format/clock-format';
 import { usePlannerRange } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { QueryBody } from '../frame/query-body';
@@ -267,6 +268,7 @@ function SelectedDay({ days, day }: { readonly days: DayMap; readonly day: strin
   const timeZone = useSettings().time_zone;
   const today = useMinuteOf(dayKeyOf);
   const looks = useCalendarLooks(person);
+  const instant = useInstantClock();
   const rows = agendaRowsOf({
     days,
     window: [day, day],
@@ -275,6 +277,7 @@ function SelectedDay({ days, day }: { readonly days: DayMap; readonly day: strin
     timeZone,
     query: '',
     lookOf: looks.lookOf,
+    instant,
   });
   if (rows.length === 0) {
     return (

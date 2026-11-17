@@ -26,6 +26,7 @@ function mediaWith(playable: MediaState): MediaInfo {
     burstId: null,
     stackId: null,
     placeId: null,
+    description: null,
     preview: { state: 'ready' },
     poster: { state: 'ready' },
     playable,

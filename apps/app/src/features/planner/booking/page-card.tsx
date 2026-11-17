@@ -13,7 +13,7 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { joinParts, plural } from '../../../format/text';
-import { clockOfMinutes } from '../../../format/time';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { weekdayLetterOf } from '../clock/alarm-text';
 import type { BookingWrites } from '../data';
 import { bookingDayLabelOf } from './booking-lists';
@@ -95,6 +95,7 @@ function WeekStrip({
   label,
 }: Pick<PageCardProps, 'page' | 'order'> & { readonly label: string }): ReactNode {
   const span = hourSpanOf(page.availability);
+  const format = useClockFormat();
   return (
     <View
       className="flex-row items-stretch gap-2"
@@ -104,10 +105,10 @@ function WeekStrip({
     >
       <View className="justify-between pb-5">
         <Text variant="caption" tone="faint" className="tabular">
-          {clockOfMinutes(span.from)}
+          {format.minutes(span.from)}
         </Text>
         <Text variant="caption" tone="faint" className="tabular">
-          {span.to === DAY_MINUTES ? '24:00' : clockOfMinutes(span.to)}
+          {span.to === DAY_MINUTES && format.hour24 ? '24:00' : format.minutes(span.to)}
         </Text>
       </View>
       <View className="min-w-0 flex-1 flex-row gap-1">
@@ -247,6 +248,7 @@ function EnabledSwitch({ page, writes }: Pick<PageCardProps, 'page' | 'writes'>)
 
 export function PageCard(props: PageCardProps): ReactNode {
   const { page, link, calendar, order, week, dayName, writes, onEdit } = props;
+  const format = useClockFormat();
   return (
     <Card title={page.title} icon="share" action={<EnabledSwitch page={page} writes={writes} />}>
       <Text variant="footnote" tone="variant">
@@ -255,7 +257,7 @@ export function PageCard(props: PageCardProps): ReactNode {
       <WeekStrip
         page={page}
         order={order}
-        label={`Open times: ${availabilitySummaryOf(page.availability, order, dayName)}`}
+        label={`Open times: ${availabilitySummaryOf(page.availability, order, dayName, format)}`}
       />
       <PageBookings title={page.title} week={week} />
       {page.enabled ? <LinkRow link={link} title={page.title} /> : null}

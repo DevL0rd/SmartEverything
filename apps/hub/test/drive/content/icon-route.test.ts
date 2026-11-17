@@ -46,6 +46,8 @@ function folderItem(rev: number): DriveItem {
     kind: 'folder',
     childCount: 0,
     bytes: 0,
+    totalBytes: 0,
+    totalFiles: 0,
   };
 }
 

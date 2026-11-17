@@ -1,18 +1,15 @@
 import { Logger } from '@smarteverything/logging';
 import type { PlannerPreferences } from '@smarteverything/domain';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { notify } from '../../../components/toast-store';
-import { errorFields } from '../../../design/log-tally';
-import { plannerKeys } from '../../../queries/keys';
-import { usePlannerPreferences, usePlannerTools } from '../data';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { usePlannerPreferences } from '../data';
+import { plannerTools } from '../data/clock-writes';
+import { OWN_PREFS_KEY, prefsSaves, type PrefsSave } from './prefs-saves';
 
 export type Prefs = PlannerPreferences;
 
 export type PrefsChange = { readonly [G in keyof Prefs]?: Partial<Prefs[G]> };
 
 const log = new Logger('app.planner');
-
-const KEY = plannerKeys.preferences(null);
 
 export function mergedPrefs(prefs: Prefs, change: PrefsChange): Prefs {
   return {
@@ -32,33 +29,25 @@ export function useOwnPrefs(): Prefs | undefined {
   return usePlannerPreferences(null).data;
 }
 
+const queues = new WeakMap<QueryClient, (save: PrefsSave) => void>();
+
+function savesOf(client: QueryClient): (save: PrefsSave) => void {
+  const known = queues.get(client);
+  if (known !== undefined) return known;
+  const tools = plannerTools(null);
+  const saves = prefsSaves(client, tools.writePreferences);
+  queues.set(client, saves);
+  return saves;
+}
+
 export function useSavePrefs(title: string): (edit: (prefs: Prefs) => PrefsChange) => void {
   const client = useQueryClient();
-  const tools = usePlannerTools(null);
-  const mutation = useMutation({
-    networkMode: 'always',
-    mutationFn: (next: Prefs) => tools.writePreferences(next),
-    onMutate: async (next: Prefs): Promise<Prefs | undefined> => {
-      await client.cancelQueries({ queryKey: KEY });
-      const before = client.getQueryData<Prefs>(KEY);
-      client.setQueryData(KEY, next);
-      return before;
-    },
-    onSuccess: (saved): void => {
-      client.setQueryData(KEY, saved);
-    },
-    onError: (error, _next, before): void => {
-      if (before !== undefined) {
-        client.setQueryData(KEY, before);
-      }
-      log.warn('preferences_write.failed', { title, ...errorFields(error) });
-      notify({ message: `${title} was not changed`, error, tone: 'critical' });
-    },
-  });
   return (edit) => {
-    const current = client.getQueryData<Prefs>(KEY);
-    if (current !== undefined) {
-      mutation.mutate(mergedPrefs(current, edit(current)));
+    const current = client.getQueryData<Prefs>(OWN_PREFS_KEY);
+    if (current === undefined) {
+      log.warn('preferences_write.unloaded', { title });
+      return;
     }
+    savesOf(client)({ prefs: mergedPrefs(current, edit(current)), title });
   };
 }

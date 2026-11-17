@@ -17,7 +17,7 @@ import { assistantStatus } from '../model/assistant-status';
 import { ASSISTANTS } from '../model/assistants';
 import { toolsSummary } from '../model/tools';
 import { SettingsFrame } from '../../../settings/settings-frame';
-import { confirmRevoke, useHubLive, useOfflineBanner } from './revoke-access';
+import { confirmRevoke, useHubLive } from './revoke-access';
 
 import { trackConnection } from '../connections-log';
 import { background } from '@smarteverything/logging';
@@ -168,9 +168,8 @@ function More(): ReactNode {
 }
 
 export function AssistantsScreen(): ReactNode {
-  const banner = useOfflineBanner();
   return (
-    <SettingsFrame page="integrations" {...(banner === undefined ? {} : { banner })}>
+    <SettingsFrame page="integrations">
       <View className="gap-section-gap web:flex-row web:flex-wrap web:items-start">
         <Waiting />
         <Assistants />

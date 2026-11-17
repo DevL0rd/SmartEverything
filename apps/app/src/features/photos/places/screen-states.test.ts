@@ -146,12 +146,13 @@ describe('map and places states', () => {
     state.sync = 'live';
   });
 
-  it('explains an empty map and keeps the last places when the hub goes offline', () => {
+  it('explains an empty map and keeps it without a page banner when the hub goes offline', () => {
     state.places = query<readonly PlaceCountry[]>([]);
     expect(map()).toContain(MAP_COPY.empty.title);
-    expect(map()).not.toContain(MAP_COPY.offline.body);
     state.sync = 'interrupted';
-    expect(map()).toContain(MAP_COPY.offline.title);
+    const markup = map();
+    expect(markup).toContain(MAP_COPY.empty.title);
+    expect(markup).not.toContain('Offline');
     state.sync = 'live';
   });
 });

@@ -25,8 +25,6 @@ import { DriveFolderColours } from '../../drive/social/folder-colours';
 import { DriveInbox } from '../../drive/social/notifications';
 import { DriveShortcuts } from '../../drive/social/shortcuts';
 import { DriveSuggestions } from '../../drive/social/suggestions';
-import { derivedPath } from '../../photos/pipeline/derived-paths';
-import { DriveMediaRepository } from '../../store/repositories/drive-media';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import type { DriveDeps } from './drive-wiring';
 import type { DriveSharingServices } from './drive-sharing';
@@ -62,14 +60,11 @@ export function textOf(
   icons: FolderIconRefresher,
   activity: DriveActivity,
 ): TextEnvironment {
-  const { store, layout } = deps;
+  const { store } = deps;
   return {
     store,
-    media: new DriveMediaRepository(deps.parts.context),
     availability,
     workerScript: deps.contentScript ?? BUNDLED_CONTENT_WORKER,
-    previewPath: (itemId, rev) => derivedPath(layout, { itemId, rev, size: 'preview' }),
-    languageDirectory: layout.cache.ocr,
     icons,
     activity,
     log: deps.log.forArea('hub.drive-text'),

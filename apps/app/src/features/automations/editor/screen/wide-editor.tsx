@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { anchorOf, dockedOpen } from '../palette/armed-insert';
 import { EditorBody } from './editor-body';
-import { EditorBanners, EditorShell, EditorShortcuts } from './editor-chrome';
+import { EditorShell, EditorShortcuts } from './editor-chrome';
 import {
   InspectorDock,
   PaletteDock,
@@ -20,7 +20,7 @@ export function WideEditor({ model }: { readonly model: EditorModel }): ReactNod
     <EditorShell model={model}>
       <LayoutWide
         sentence={<SentenceStrip text={model.props.sentence} />}
-        banner={<EditorBanners model={model} />}
+        banner={model.props.notice}
         left={
           wide ? (
             <PaletteDock

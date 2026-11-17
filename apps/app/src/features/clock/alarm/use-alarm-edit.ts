@@ -5,6 +5,8 @@ import { confirm } from '../../../components/confirm-store';
 import { notifyFailure } from '../../../components/toast-store';
 import {
   alarmLabelOf,
+  useAlarmSaves,
+  type AlarmChange,
   usePlannerClockWrites,
   usePlannerWrites,
   type PlannerPerson,
@@ -17,6 +19,7 @@ import {
   type AlarmDraft,
   type AlarmEdit,
 } from './alarm-draft';
+import { useClockLabel } from '../format/clock-format';
 
 export interface AlarmEditing {
   readonly draft: AlarmDraft;
@@ -60,28 +63,39 @@ function useRunner(): Runner {
   };
 }
 
-async function confirmedDelete(alarm: PlannerAlarmRow): Promise<boolean> {
+async function confirmedDelete(alarm: PlannerAlarmRow, time: string): Promise<boolean> {
   return confirm({
-    title: `Delete ${alarm.time} ${alarmLabelOf(alarm)}?`,
+    title: `Delete ${time} ${alarmLabelOf(alarm)}?`,
     body: 'It stops ringing on every device it was set for.',
     confirmLabel: 'Delete alarm',
     tone: 'destructive',
   });
 }
 
+function useEditedAlarm(target: AlarmEditTarget): {
+  readonly alarm: PlannerAlarmRow | null;
+  readonly save: (change: AlarmChange) => void;
+} {
+  const { unsaved, save } = useAlarmSaves(target.person, target.alarm?.id ?? null);
+  const alarm = target.alarm;
+  return { alarm: alarm === null || unsaved === null ? alarm : { ...alarm, ...unsaved }, save };
+}
+
 export function useAlarmEdit(target: AlarmEditTarget): AlarmEditing {
-  const { person, alarm, fresh, onCreated, onDeleted } = target;
+  const { person, fresh, onCreated, onDeleted } = target;
   const writes = usePlannerWrites(person);
   const clock = usePlannerClockWrites(person);
   const [draft, setDraft] = useState(fresh);
   const { busy, run } = useRunner();
+  const { alarm, save } = useEditedAlarm(target);
+  const clockLabel = useClockLabel();
   const change = (edit: AlarmEdit): void => {
     if (alarm === null) {
       setDraft((current) => appliedEdit(current, edit));
       return;
     }
     const body = changeOf(alarm, edit);
-    if (body !== null) run('Couldn’t change that alarm', () => writes.updateAlarm(alarm, body));
+    if (body !== null) save(body);
   };
   return {
     draft: alarm === null ? draft : draftOf(alarm),
@@ -95,14 +109,12 @@ export function useAlarmEdit(target: AlarmEditTarget): AlarmEditing {
       if (alarm !== null) run('Couldn’t skip that alarm', () => clock.skipNextAlarm(alarm.id));
     },
     ringNextAgain: (): void => {
-      if (alarm !== null) {
-        run('Couldn’t change that alarm', () => writes.updateAlarm(alarm, { skip_on: null }));
-      }
+      if (alarm !== null) save({ skip_on: null });
     },
     remove: (): void => {
       if (alarm === null) return;
       run('Couldn’t delete that alarm', async () => {
-        if (!(await confirmedDelete(alarm))) return;
+        if (!(await confirmedDelete(alarm, clockLabel(alarm.time)))) return;
         await writes.deleteAlarm(alarm);
         onDeleted();
       });

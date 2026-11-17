@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_COLLECTION_ROW,
   PLANNER_DAY,
@@ -205,12 +206,16 @@ function input(day: PlannerDay, hidden: ReadonlySet<string> = new Set()): RiverI
     lens: lensOf(day),
     guests: [],
     me: PROFILE,
+    instant: H24.instant,
   };
 }
 
 function titles(occurrences: readonly { readonly title: string }[]): readonly string[] {
   return occurrences.map((occurrence) => occurrence.title);
 }
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('riverOccurrencesOf', () => {
   it('leaves out the item the now lens shows and orders the rest of the day by time', () => {
@@ -282,25 +287,34 @@ describe('riverRowsOf', () => {
 
 describe('riverTimeOf and riverSubtitleOf', () => {
   it('shows the start, all day or any time in the time column', () => {
-    expect(riverTimeOf(DENTIST_VIEW, ZONE)).toBe('15:30');
+    expect(riverTimeOf(DENTIST_VIEW, ZONE, H24.instant)).toBe('15:30');
     expect(
-      riverTimeOf(view(COOK, 'Cook', null, { due_at: '2026-11-07T07:05:00.000Z' }), ZONE),
+      riverTimeOf(
+        view(COOK, 'Cook', null, { due_at: '2026-11-07T07:05:00.000Z' }),
+        ZONE,
+        H24.instant,
+      ),
     ).toBe('08:05');
-    expect(riverTimeOf(BIRTHDAY_VIEW, ZONE)).toBe('All day');
-    expect(riverTimeOf(ANYTIME_VIEW, ZONE)).toBe('Anytime');
+    expect(riverTimeOf(BIRTHDAY_VIEW, ZONE, H24.instant)).toBe('All day');
+    expect(riverTimeOf(DENTIST_VIEW, ZONE, H12.instant)).toMatch(/^3:30\s\S+$/u);
+    expect(riverTimeOf(ANYTIME_VIEW, ZONE, H24.instant)).toBe('Anytime');
     expect(
-      riverTimeOf(view(COOK, 'Cook', null, { due_at: '2026-11-07T17:00:00.000Z' }), ZONE),
+      riverTimeOf(
+        view(COOK, 'Cook', null, { due_at: '2026-11-07T17:00:00.000Z' }),
+        ZONE,
+        H24.instant,
+      ),
     ).toBe(clock24('2026-11-07T17:00:00.000Z', ZONE));
   });
 
   it('says until when, the estimate and the place', () => {
-    expect(riverSubtitleOf(DENTIST_VIEW, undefined, ZONE)).toBe(
+    expect(riverSubtitleOf(DENTIST_VIEW, undefined, ZONE, H24.instant)).toBe(
       `Until ${clock24('2026-11-07T15:15:00.000Z', ZONE)} · Smile Dental`,
     );
-    expect(riverSubtitleOf(COOK_VIEW, item(COOK, 45), ZONE)).toBe('45 min');
-    expect(riverSubtitleOf(COOK_VIEW, item(COOK, 90), ZONE)).toBe('1h 30m');
-    expect(riverSubtitleOf(BRUSH_VIEW, undefined, ZONE)).toBeNull();
-    expect(riverSubtitleOf(BIRTHDAY_VIEW, undefined, ZONE)).toBeNull();
+    expect(riverSubtitleOf(COOK_VIEW, item(COOK, 45), ZONE, H24.instant)).toBe('45 min');
+    expect(riverSubtitleOf(COOK_VIEW, item(COOK, 90), ZONE, H24.instant)).toBe('1h 30m');
+    expect(riverSubtitleOf(BRUSH_VIEW, undefined, ZONE, H24.instant)).toBeNull();
+    expect(riverSubtitleOf(BIRTHDAY_VIEW, undefined, ZONE, H24.instant)).toBeNull();
   });
 });
 
@@ -341,18 +355,45 @@ describe('sameSteps', () => {
 
 describe('riverCaptionOf', () => {
   it('counts what is left and the booked time', () => {
-    expect(riverCaptionOf({ left: 5, bookedMinutes: 165, savedAt: null, timeZone: ZONE })).toBe(
-      '5 left · 2h 45m booked',
-    );
-    expect(riverCaptionOf({ left: 1, bookedMinutes: 0, savedAt: null, timeZone: ZONE })).toBe(
-      '1 left',
-    );
+    expect(
+      riverCaptionOf({
+        left: 5,
+        bookedMinutes: 165,
+        savedAt: null,
+        timeZone: ZONE,
+        instant: H24.instant,
+      }),
+    ).toBe('5 left · 2h 45m booked');
+    expect(
+      riverCaptionOf({
+        left: 1,
+        bookedMinutes: 0,
+        savedAt: null,
+        timeZone: ZONE,
+        instant: H24.instant,
+      }),
+    ).toBe('1 left');
   });
 
   it('says when the day was saved while the hub is offline', () => {
-    expect(riverCaptionOf({ left: 3, bookedMinutes: 90, savedAt: NOW, timeZone: ZONE })).toBe(
-      `as saved ${clock24(NOW, ZONE)}`,
-    );
+    expect(
+      riverCaptionOf({
+        left: 3,
+        bookedMinutes: 90,
+        savedAt: NOW,
+        timeZone: ZONE,
+        instant: H24.instant,
+      }),
+    ).toBe(`as saved ${clock24(NOW, ZONE)}`);
+    expect(
+      riverCaptionOf({
+        left: 3,
+        bookedMinutes: 90,
+        savedAt: NOW,
+        timeZone: ZONE,
+        instant: H12.instant,
+      }),
+    ).toBe(`as saved ${H12.instant(NOW, ZONE)}`);
   });
 });
 

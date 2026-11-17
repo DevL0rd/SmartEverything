@@ -15,7 +15,6 @@ import {
   carriesFile,
   carriesLink,
   identityKey,
-  indexedOf,
   isoOf,
   kindOf,
   linked,
@@ -23,10 +22,8 @@ import {
   sameContent,
   sameIdentity,
   specialPatch,
-  totalsOf,
   under,
   type Indexed,
-  type ScanTotals,
 } from './scanner-index';
 import { isFileItem } from './file-item';
 import {
@@ -37,6 +34,7 @@ import {
   withHash,
   type Unknown,
 } from './scanner-reuse';
+import { indexedAt, indexedChildren, parentPathOf, ScanOrderError } from './scanner-scope';
 import { WALK_BATCH_ROWS, type WalkEntry } from './scanner-walk';
 
 export interface CommitDependencies {
@@ -64,14 +62,6 @@ const DOCUMENT_MIMES: readonly string[] = [
   'application/vnd.oasis.opendocument',
 ];
 
-export class ScanOrderError extends Error {
-  override readonly name = 'ScanOrderError';
-
-  constructor(readonly relPath: string) {
-    super(`The scan reached ${relPath} before its folder.`);
-  }
-}
-
 export function classify(name: string): FileType {
   const found = mime.lookup(name);
   const type = found === false ? OCTET_STREAM : found;
@@ -96,12 +86,13 @@ export class ScanCommitter {
   constructor(
     private readonly deps: CommitDependencies,
     private readonly root: DriveRoot,
+    private readonly scopes: readonly string[] | null,
   ) {
     deps.missing.expire(root.id, deps.now().toISOString());
     this.reuse = new ReuseIndex(deps.missing.ofRoot(root.id));
     this.load();
     this.count = this.live.size;
-    this.known = this.count > 0;
+    this.known = scopes !== null || this.count > 0;
   }
 
   get previous(): number {
@@ -114,7 +105,7 @@ export class ScanCommitter {
     });
   }
 
-  async finish(unreadable: readonly string[]): Promise<ScanTotals> {
+  async finish(unreadable: readonly string[]): Promise<void> {
     this.deps.write(() => {
       for (const entry of this.deferred.splice(0)) this.settle(entry);
     });
@@ -135,7 +126,6 @@ export class ScanCommitter {
         for (const indexed of gone.slice(from, from + WALK_BATCH_ROWS)) this.sweep(indexed);
       });
     }
-    return totalsOf(this.live.values());
   }
 
   private unseen(unreadable: readonly string[]): Indexed[] {
@@ -172,43 +162,52 @@ export class ScanCommitter {
   }
 
   private load(): void {
-    const pending: (string | null)[] = [null];
+    if (this.scopes === null) {
+      this.loadBelow(null);
+      return;
+    }
+    for (const scope of this.scopes) this.loadScope(scope);
+  }
+
+  private loadBelow(start: string | null): void {
+    const pending: (string | null)[] = [start];
     for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
       pending.push(...this.loadChildren(parent));
     }
   }
 
+  private loadScope(scope: string): void {
+    const parent = parentPathOf(scope);
+    if (parent !== null) {
+      const anchor = indexedAt(this.deps, this.root.id, parent);
+      if (anchor?.kind !== 'folder') throw new ScanOrderError(scope);
+      this.live.set(anchor.relPath, anchor);
+      this.seen.add(anchor.id);
+    }
+    const indexed = indexedAt(this.deps, this.root.id, scope);
+    if (indexed === undefined) return;
+    this.note(indexed);
+    if (indexed.kind === 'folder') this.loadBelow(indexed.id);
+  }
+
+  private note(indexed: Indexed): void {
+    this.live.set(indexed.relPath, indexed);
+    const key = identityKey(indexed.dev, indexed.ino);
+    const known = this.byIdentity.get(key);
+    if (known === undefined) this.byIdentity.set(key, [indexed]);
+    else known.push(indexed);
+    if (indexed.kind === 'file' && !this.inodeOfIdentity.has(key)) {
+      this.inodeOfIdentity.set(key, indexed.inodeId);
+    }
+    this.reuse.noteLive(indexed);
+  }
+
   private loadChildren(parent: string | null): readonly string[] {
     const folders: string[] = [];
-    let after: string | null = null;
-    do {
-      const window = this.deps.items.children({
-        rootId: this.root.id,
-        parentId: parent,
-        after,
-        limit: WALK_BATCH_ROWS,
-        viewer: null,
-      });
-      const inodes = new Map(
-        this.deps.inodes
-          .findMany(window.entries.map((entry) => entry.inodeId))
-          .map((inode) => [inode.id, inode]),
-      );
-      for (const entry of window.entries) {
-        const indexed = indexedOf(entry, inodes.get(entry.inodeId));
-        this.live.set(indexed.relPath, indexed);
-        const key = identityKey(indexed.dev, indexed.ino);
-        const known = this.byIdentity.get(key);
-        if (known === undefined) this.byIdentity.set(key, [indexed]);
-        else known.push(indexed);
-        if (indexed.kind === 'file' && !this.inodeOfIdentity.has(key)) {
-          this.inodeOfIdentity.set(key, indexed.inodeId);
-        }
-        if (indexed.kind === 'folder') folders.push(indexed.id);
-        this.reuse.noteLive(indexed);
-      }
-      after = window.next;
-    } while (after !== null);
+    for (const indexed of indexedChildren(this.deps, this.root.id, parent)) {
+      this.note(indexed);
+      if (indexed.kind === 'folder') folders.push(indexed.id);
+    }
     return folders;
   }
 

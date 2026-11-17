@@ -5,11 +5,12 @@ import { Button } from '../../../../components/button';
 import { Interactive } from '../../../../components/interactive';
 import { Sheet } from '../../../../components/sheet';
 import { Text } from '../../../../components/text';
-import { TimeField, localeUsesHour12, type TimeOfDay } from '../../../../components/time-field';
+import { TimeField, type TimeOfDay } from '../../../../components/time-field';
 import { cn } from '../../../../design/cn';
 import { clockText } from './dnd-model';
 import { toggleRoom, type RoomSelection } from '../model/room-selection';
 import { CLEAN_MODE_LABELS, EVERY_DAY, WEEK } from '../model/schedule-text';
+import { useHour24 } from '../../../../store/clock-format';
 
 export interface ScheduleRoom {
   readonly id: number;
@@ -216,6 +217,7 @@ export function ScheduleSheet({
   readonly onSave: (choice: ScheduleChoice) => void;
   readonly onClose: () => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const [time, setTime] = useState(START);
   const [days, setDays] = useState(EVERY_DAY);
   const [chosen, setChosen] = useState<RoomSelection>([]);
@@ -238,7 +240,7 @@ export function ScheduleSheet({
       footer={<Footer saving={saving} valid={days.length > 0} onSave={save} onClose={onClose} />}
     >
       <View className="gap-5 px-4 pb-4">
-        <TimeField label="Time" value={time} onChange={setTime} hour12={localeUsesHour12()} />
+        <TimeField hour24={hour24} label="Time" value={time} onChange={setTime} />
         <DaysField days={days} onChange={setDays} />
         <RoomsField rooms={rooms} chosen={chosen} onChange={setChosen} />
         {chosen.length === 0 ? (

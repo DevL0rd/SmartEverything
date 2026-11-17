@@ -60,7 +60,15 @@ vi.mock('../components/drive-frame', () => ({
     readonly banner?: ReactNode;
     readonly subtitle?: string;
     readonly primary?: { readonly label: string };
-  }): ReactNode => createElement('main', {}, primary?.label, subtitle, banner, children),
+  }): ReactNode =>
+    createElement(
+      'main',
+      {},
+      primary?.label,
+      subtitle,
+      banner === undefined ? null : 'page banner',
+      children,
+    ),
 }));
 vi.mock('../model/item-commands', () => ({ runChange: (): void => undefined }));
 vi.mock('./save-smart-folder', () => ({
@@ -110,7 +118,6 @@ vi.mock('./starred-states', () => ({
   StarredEmpty: ({ live }: { readonly live: boolean }): ReactNode =>
     createElement('p', {}, live ? 'nothing starred' : 'offline'),
   StarredFooter: (): null => null,
-  StarredStaleBanner: (): ReactNode => createElement('aside', {}, 'stale'),
   loadMoreStarred: (): void => undefined,
 }));
 vi.mock('../../../components/filter-chip', () => ({
@@ -216,14 +223,14 @@ describe('StarredScreen', () => {
     seen.pages = pagesOf([], null);
     const html = await render();
     expect(html).toContain('nothing starred');
-    expect(html).not.toContain('stale');
+    expect(html).not.toContain('page banner');
   });
 
-  it('keeps the loaded stars under an offline banner when the hub drops', async () => {
+  it('keeps the loaded stars without a page banner when the hub drops', async () => {
     seen.status = 'offline';
     seen.pages = pagesOf([DOC], null);
     const html = await render();
-    expect(html).toContain('stale');
+    expect(html).not.toContain('page banner');
     expect(html).toContain('Budget 2027.xlsx');
   });
 });

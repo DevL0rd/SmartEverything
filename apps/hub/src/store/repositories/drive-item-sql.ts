@@ -9,3 +9,10 @@ export const OPEN_COMMENTS = `(select count(*) from drive_comments c
 
 export const ICON_HINT =
   'exists (select 1 from drive_folder_icons f where f.folder_item_id = i.id)';
+
+export const FOLDER_CHAIN = `with recursive chain(id) as (
+  select $id
+  union all
+  select up.parent_id from drive_items up join chain on up.id = chain.id
+    where up.parent_id is not null
+) select id from chain`;

@@ -15,6 +15,8 @@ import {
   type BookingCells,
   type HourSpan,
 } from './booking-model';
+import { useClockFormat } from '../../clock/format/clock-format';
+import type { ClockFormat } from '../../../format/clock-text';
 
 const ROW_PX = 12;
 
@@ -57,14 +59,21 @@ function labelsOf(span: HourSpan): readonly number[] {
   );
 }
 
-function dayLabelOf(windows: readonly PlannerBookingWindow[], day: number): string {
+function dayLabelOf(
+  windows: readonly PlannerBookingWindow[],
+  day: number,
+  format: ClockFormat,
+): string {
   const open = windows.filter((window) => window.day === day);
-  const text = open.map((window) => `${window.start} to ${window.end}`).join(', ');
+  const text = open
+    .map((window) => `${format.text(window.start)} to ${format.text(window.end)}`)
+    .join(', ');
   return `${weekdayNameOf(day)}: ${text === '' ? 'closed' : text}`;
 }
 
 function HourGutter({ span }: { readonly span: HourSpan }): ReactNode {
   const size = { height: heightOf(span) };
+  const format = useClockFormat();
   return (
     <View className="w-7" style={size}>
       {labelsOf(span).map((minute) => {
@@ -72,7 +81,7 @@ function HourGutter({ span }: { readonly span: HourSpan }): ReactNode {
         return (
           <View key={minute} className="absolute right-1" style={place}>
             <Text variant="caption" tone="faint" className="tabular">
-              {String(minute / 60).padStart(2, '0')}
+              {format.shortHour(minute / 60)}
             </Text>
           </View>
         );
@@ -130,6 +139,7 @@ function DayColumn({ day, windows, cells, span, onStroke }: ColumnProps): ReactN
     null,
   );
   const size = { height: heightOf(span) };
+  const format = useClockFormat();
   const move = (event: GestureResponderEvent, commit: boolean): void => {
     if (start === null) return;
     onStroke({ from: start.cell, to: { day, slot: slotAt(event, span) }, on: start.on }, commit);
@@ -138,7 +148,7 @@ function DayColumn({ day, windows, cells, span, onStroke }: ColumnProps): ReactN
   return (
     <View
       accessible
-      accessibilityLabel={dayLabelOf(windows, day)}
+      accessibilityLabel={dayLabelOf(windows, day, format)}
       className="min-w-0 flex-1 overflow-hidden rounded-xs bg-surface-2"
       style={size}
       onStartShouldSetResponder={() => true}

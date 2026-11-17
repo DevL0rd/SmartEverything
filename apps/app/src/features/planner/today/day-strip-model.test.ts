@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_COLLECTION_ROW,
   PLANNER_DAY,
@@ -14,7 +15,6 @@ import { describe, expect, it } from 'vitest';
 import { percent } from '../../../format/number';
 import {
   STRIP_COLOURS,
-  alarmPinsOf,
   bookedMinutesOf,
   dayStripOf,
   focusGoalMinutesOf,
@@ -27,6 +27,7 @@ import {
   timerLeftMs,
   todayRingsOf,
 } from './day-strip-model';
+import { alarmPinsOf } from './day-strip-pins';
 
 const PROFILE = 'a1b2c3d4-0000-4000-8000-000000000001';
 const WORK = 'a1b2c3d4-0000-4000-8000-000000000002';
@@ -148,18 +149,31 @@ function dayOf(overrides: Partial<PlannerDay> = {}): PlannerDay {
   });
 }
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('day strip model', () => {
-  const strip = dayStripOf({
+  const STRIP_INPUT = {
     day: dayOf(),
     collections: COLLECTIONS,
     place: BERLIN,
     showSleep: true,
-  });
+    format: H24,
+  };
+  const strip = dayStripOf(STRIP_INPUT);
 
   it('spans the local day of the planner time zone', () => {
     expect(new Date(strip.from).toISOString()).toBe('2026-11-06T23:00:00.000Z');
     expect(new Date(strip.to).toISOString()).toBe('2026-11-07T23:00:00.000Z');
     expect(strip.hours.map((hour) => hour.label)).toEqual(['00', '06', '12', '18', '24']);
+    const twelve = dayStripOf({ ...STRIP_INPUT, format: H12 });
+    expect(twelve.hours.map((hour) => hour.label.split(' ')[0])).toEqual([
+      '12',
+      '6',
+      '12',
+      '6',
+      '12',
+    ]);
     expect(new Date(strip.hours[1]?.at ?? 0).toISOString()).toBe('2026-11-07T05:00:00.000Z');
   });
 
@@ -188,6 +202,7 @@ describe('day strip model', () => {
       collections: COLLECTIONS,
       place: null,
       showSleep: false,
+      format: H24,
     });
     expect(plain.segments.map((block) => block.state)).toEqual(['work', 'event']);
     expect(plain.sleepMinutes).toBe(0);
@@ -200,6 +215,7 @@ describe('day strip model', () => {
       collections: [],
       place: null,
       showSleep: true,
+      format: H24,
     });
     expect((autumn.to - autumn.from) / 3_600_000).toBe(25);
     expect(new Date(autumn.hours[1]?.at ?? 0).toISOString()).toBe('2026-10-25T05:00:00.000Z');
@@ -214,14 +230,16 @@ describe('day strip model', () => {
       timeZone: 'UTC',
       alarms: [at('06:45'), at('06:30'), at('07:00'), at('12:00')],
     };
-    const pins = alarmPinsOf(model, 360, 12);
+    const pins = alarmPinsOf(model, 360, 12, H24.instant);
     expect(pins.map((pin) => [pin.at, pin.count])).toEqual([
       [at('06:30'), 3],
       [at('12:00'), 1],
     ]);
-    expect(pins[0]?.label).toMatch(/^3 alarms 6:30.* to 7:00/);
-    expect(pins[1]?.label).toMatch(/^Alarm 12:00/);
-    expect(alarmPinsOf(model, 4000, 12).map((pin) => pin.count)).toEqual([1, 1, 1, 1]);
+    expect(pins[0]?.label).toBe('3 alarms 06:30 to 07:00');
+    expect(pins[1]?.label).toBe('Alarm 12:00');
+    const twelve = alarmPinsOf(model, 360, 12, H12.instant);
+    expect(twelve[0]?.label).toMatch(/^3 alarms 6:30\s\S+ to 7:00\s\S+$/u);
+    expect(alarmPinsOf(model, 4000, 12, H24.instant).map((pin) => pin.count)).toEqual([1, 1, 1, 1]);
   });
 
   it('shows the now marker only inside the day', () => {

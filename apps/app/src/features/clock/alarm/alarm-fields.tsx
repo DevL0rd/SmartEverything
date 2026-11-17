@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { DateNav } from '../../../components/date-nav';
-import { Figure } from '../../../components/figure';
 import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { ListRow } from '../../../components/list-row';
@@ -9,6 +8,7 @@ import { NumberStepper } from '../../../components/number-stepper';
 import { SelectRow, SwitchRow } from '../../../components/rows';
 import { List, Section } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
+import { Text } from '../../../components/text';
 import { TimeField } from '../../../components/time-field';
 import { dayKeyOf, startOfDayKey } from '../../../format/time';
 import {
@@ -17,6 +17,7 @@ import {
   DayDots,
   MINUTES_IN_HOUR,
   clockTextOf,
+  nextRingTextOf,
   rampOptions,
   timeOfClockText,
 } from '../../planner';
@@ -31,8 +32,11 @@ import {
   type AlarmDraft,
   type AlarmEdit,
 } from './alarm-draft';
+import { ClockFigure } from '../format/clock-figure';
+import { useClockLabel } from '../format/clock-format';
 import { minutesText, REPEAT_OPTIONS, snoozeLimitText } from './alarm-options';
 import { SoundPicker } from './sound-picker';
+import { useHour24 } from '../../../store/clock-format';
 
 export interface AlarmFieldProps {
   readonly draft: AlarmDraft;
@@ -40,36 +44,62 @@ export interface AlarmFieldProps {
   readonly now: number;
   readonly timeZone: string;
   readonly weekStart: number;
+  readonly skipOn: string | null;
   readonly disabled: boolean;
   readonly onChange: (edit: AlarmEdit) => void;
 }
 
-export function AlarmTime({ draft, weekStart, disabled, onChange }: AlarmFieldProps): ReactNode {
+function AlarmCountdown({ draft, now, timeZone, skipOn }: AlarmFieldProps): ReactNode {
+  if (!draft.enabled) return null;
+  return (
+    <Text variant="footnote" tone="variant" className="tabular text-center">
+      {nextRingTextOf({ ...draft, skip_on: skipOn }, now, timeZone)}
+    </Text>
+  );
+}
+
+function AlarmTimePicker({
+  draft,
+  onChange,
+  onDone,
+}: {
+  readonly draft: AlarmDraft;
+  readonly onChange: (edit: AlarmEdit) => void;
+  readonly onDone: () => void;
+}): ReactNode {
+  const hour24 = useHour24();
+  return (
+    <View className="min-h-touch-min flex-row items-center gap-2">
+      <TimeField
+        hour24={hour24}
+        label="Alarm time"
+        value={timeOfClockText(draft.time)}
+        onChange={(time) => {
+          onChange({ time: clockTextOf(time) });
+        }}
+      />
+      <IconButton icon="check" label="Done changing the time" variant="tonal" onPress={onDone} />
+    </View>
+  );
+}
+
+export function AlarmTime(props: AlarmFieldProps): ReactNode {
+  const { draft, weekStart, disabled, onChange } = props;
   const [open, setOpen] = useState(false);
-  const picking = open && !disabled;
+  const clockLabel = useClockLabel();
   return (
     <View className="items-center gap-3">
-      {picking ? (
-        <View className="min-h-touch-min flex-row items-center gap-2">
-          <TimeField
-            label="Alarm time"
-            value={timeOfClockText(draft.time)}
-            onChange={(time) => {
-              onChange({ time: clockTextOf(time) });
-            }}
-          />
-          <IconButton
-            icon="check"
-            label="Done changing the time"
-            variant="tonal"
-            onPress={() => {
-              setOpen(false);
-            }}
-          />
-        </View>
+      {open && !disabled ? (
+        <AlarmTimePicker
+          draft={draft}
+          onChange={onChange}
+          onDone={() => {
+            setOpen(false);
+          }}
+        />
       ) : (
         <Interactive
-          label={`Change the time, ${draft.time}`}
+          label={`Change the time, ${clockLabel(draft.time)}`}
           expanded={false}
           disabled={disabled}
           onPress={() => {
@@ -78,9 +108,10 @@ export function AlarmTime({ draft, weekStart, disabled, onChange }: AlarmFieldPr
           className="min-h-touch-min items-center justify-center px-4"
           layerClassName="rounded-md"
         >
-          <Figure value={draft.time} size="xl" tone={draft.enabled ? 'default' : 'variant'} />
+          <ClockFigure time={draft.time} size="xl" tone={draft.enabled ? 'default' : 'variant'} />
         </Interactive>
       )}
+      <AlarmCountdown {...props} />
       <DayDots
         days={draft.days}
         weekStart={weekStart}

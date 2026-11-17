@@ -107,6 +107,7 @@ export const DRIVE_EDIT_ACTIONS = [
   'photo_erase',
   'video_edit',
   'photo_meta',
+  'photo_description',
   'archive',
   'unarchive',
   'locked_move_in',

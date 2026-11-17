@@ -15,6 +15,7 @@ import { useLogFood } from '../data/log-food';
 import { MEAL_INFO, type Meal } from '../model/meals';
 import type { PortionTarget } from '../model/target';
 import { NutrientPreview } from './nutrient-preview';
+import { useHour24 } from '../../../store/clock-format';
 
 type Unit = 'serving' | 'base';
 
@@ -175,6 +176,7 @@ function PortionBody({
   readonly values: PortionValues;
   readonly set: PortionSetters;
 }): ReactNode {
+  const hour24 = useHour24();
   const { amount, day, meal, time } = values;
   const subtitle = joinParts([target.food.brand, portionLabel(target.food, amount)]);
   return (
@@ -194,7 +196,7 @@ function PortionBody({
         <DateNav value={day} range="day" max={new Date()} onChange={set.setDay} />
       </Field>
       <Field label="Time">
-        <TimeField label="Time" value={time} onChange={set.setTime} />
+        <TimeField hour24={hour24} label="Time" value={time} onChange={set.setTime} />
       </Field>
     </View>
   );

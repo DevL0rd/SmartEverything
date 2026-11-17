@@ -30,6 +30,7 @@ import {
   type StartDraft,
 } from './scenario-model';
 import { TimelineRows } from './timeline-rows';
+import { useHour24 } from '../../../../store/clock-format';
 
 export interface ScenarioSheetProps {
   readonly open: boolean;
@@ -53,6 +54,7 @@ function StartFields({
   readonly disabled: boolean;
   readonly onChange: (start: StartDraft) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   return (
     <View className="gap-3">
       <Text variant="body-strong">Start</Text>
@@ -70,6 +72,7 @@ function StartFields({
         }}
       />
       <TimeField
+        hour24={hour24}
         label="Start time"
         value={timeOfClock(start.clock)}
         onChange={(time) => {

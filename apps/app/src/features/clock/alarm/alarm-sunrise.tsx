@@ -1,4 +1,5 @@
 import type { PlannerSunrise } from '@smarteverything/domain';
+import type { ClockFormat } from '../../../format/clock-text';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { ListRow } from '../../../components/list-row';
@@ -7,6 +8,7 @@ import { SwitchRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useRows } from '../../../store/selectors';
+import { useClockFormat } from '../format/clock-format';
 import type { AlarmDraft, AlarmEdit } from './alarm-draft';
 import { minutesText } from './alarm-options';
 import {
@@ -41,15 +43,16 @@ function SunrisePreview({
   readonly sunrise: PlannerSunrise;
   readonly time: string;
 }): ReactNode {
+  const format = useClockFormat();
   return (
-    <View className="gap-1" accessibilityLabel={sunriseSummaryOf(sunrise, time)}>
+    <View className="gap-1" accessibilityLabel={sunriseSummaryOf(sunrise, time, format)}>
       <View className={cn('h-6 rounded-full', sunriseGradientOf(sunrise.colour))} />
       <View className="flex-row justify-between">
         <Text variant="caption" tone="variant" className="tabular">
-          {`${sunriseStartOf(sunrise, time)} lights on`}
+          {`${sunriseStartOf(sunrise, time, format)} lights on`}
         </Text>
         <Text variant="caption" tone="variant" className="tabular">
-          {`${time} full`}
+          {`${format.text(time)} full`}
         </Text>
       </View>
     </View>
@@ -160,23 +163,29 @@ function SunriseFields({
   );
 }
 
-function sunriseHintOf(none: boolean, sunrise: PlannerSunrise | null, time: string): string {
+function sunriseHintOf(
+  none: boolean,
+  sunrise: PlannerSunrise | null,
+  time: string,
+  format: ClockFormat,
+): string {
   if (none) return 'Add a light to the home to wake with a sunrise';
   return sunrise === null
     ? 'Lights brighten slowly before the alarm rings'
-    : sunriseSummaryOf(sunrise, time);
+    : sunriseSummaryOf(sunrise, time, format);
 }
 
 export function AlarmSunrise(props: SunriseProps): ReactNode {
   const { draft, compact, disabled, onChange } = props;
   const lights = useHomeLights();
+  const format = useClockFormat();
   const sunrise = draft.sunrise;
   const none = lights.length === 0 && sunrise === null;
   return (
     <View>
       <SwitchRow
         title="Sunrise"
-        subtitle={sunriseHintOf(none, sunrise, draft.time)}
+        subtitle={sunriseHintOf(none, sunrise, draft.time, format)}
         wrapSubtitle
         icon="sunrise"
         compact={compact}

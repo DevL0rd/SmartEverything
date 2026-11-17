@@ -20,16 +20,10 @@ import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { decimal, percent } from '../../../format/number';
-import {
-  MINUTE_MS,
-  clock,
-  dayBoundsOf,
-  dayLabel,
-  hoursMinutes,
-  playTime,
-} from '../../../format/time';
+import { MINUTE_MS, dayBoundsOf, dayLabel, hoursMinutes, playTime } from '../../../format/time';
 import { useMinute, useSecondOf } from '../../../store/clock';
 import { askAssistantWith } from '../../assistant';
+import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
 import { useWeather, conditionIcon, degrees } from '../../weather';
 import {
   usePlannerClockWrites,
@@ -129,14 +123,14 @@ function RingsCard({
   );
 }
 
-function changeOf(forecast: WeatherForecast, now: number): string | null {
+function changeOf(forecast: WeatherForecast, now: number, instant: InstantClock): string | null {
   const nowWet = WET.has(weatherKindOf(forecast.now.code));
   const next = forecast.hourly.find(
     (hour) => Date.parse(hour.at) > now && WET.has(weatherKindOf(hour.code)) !== nowWet,
   );
   if (next === undefined) return null;
   const label = nowWet ? 'Dry' : weatherLabelOf(next.code);
-  return `${label} from ${clock(next.at, forecast.timeZone)}`;
+  return `${label} from ${instant(next.at, forecast.timeZone)}`;
 }
 
 function RainBars({
@@ -171,9 +165,10 @@ function WeatherCard({
 }): ReactNode {
   const view = useWeather();
   const now = useMinute();
+  const instant = useInstantClock();
   if (view.kind !== 'ready') return null;
   const { forecast } = view;
-  const change = changeOf(forecast, now);
+  const change = changeOf(forecast, now, instant);
   return (
     <Cell grid={grid}>
       <Card href={href.weather()} label="Open weather" className={cn(grid && FILL)}>
@@ -201,6 +196,7 @@ function WeatherCard({
 
 function AlarmCard({ day, grid }: { readonly day: PlannerDay; readonly grid: boolean }): ReactNode {
   const now = useMinute();
+  const instant = useInstantClock();
   if (day.next_alarm_at === null) return null;
   const at = day.next_alarm_at;
   const minutes = Math.max(0, Math.round((Date.parse(at) - now) / MINUTE_MS));
@@ -210,7 +206,7 @@ function AlarmCard({ day, grid }: { readonly day: PlannerDay; readonly grid: boo
         <View className="flex-row items-center gap-3">
           <IconWell icon="alarmClock" colour="primary" />
           <View className="min-w-0 flex-1">
-            <Figure value={clock(at, day.time_zone)} size="s" />
+            <Figure value={instant(at, day.time_zone)} size="s" />
             <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
               {`${dayLabel(at, now, day.time_zone)} · in ${hoursMinutes(minutes)}`}
             </Text>
@@ -295,10 +291,10 @@ function TimerCard({
   );
 }
 
-function planText(prompt: PlanPrompt, timeZone: string): string {
+function planText(prompt: PlanPrompt, timeZone: string, instant: InstantClock): string {
   const tasks = `${String(prompt.tasks)} open ${prompt.tasks === 1 ? 'task' : 'tasks'}`;
   const slots = `${String(prompt.slots)} free ${prompt.slots === 1 ? 'slot' : 'slots'}`;
-  return `${tasks} and ${slots} before ${clock(prompt.until, timeZone)}. Nothing moves until you accept.`;
+  return `${tasks} and ${slots} before ${instant(prompt.until, timeZone)}. Nothing moves until you accept.`;
 }
 
 function PlanCard({
@@ -312,9 +308,10 @@ function PlanCard({
   readonly grid: boolean;
   readonly onHide: () => void;
 }): ReactNode {
+  const instant = useInstantClock();
   const ask = (): void => {
     askAssistantWith(
-      `Plan the rest of today: propose times for my ${String(prompt.tasks)} open tasks in my free slots before ${clock(prompt.until, day.time_zone)}. Only propose; don't book anything until I accept.`,
+      `Plan the rest of today: propose times for my ${String(prompt.tasks)} open tasks in my free slots before ${instant(prompt.until, day.time_zone)}. Only propose; don't book anything until I accept.`,
     );
   };
   return (
@@ -325,7 +322,7 @@ function PlanCard({
           <Text variant="label">Plan the rest of today</Text>
         </View>
         <Text variant="footnote" tone="variant">
-          {planText(prompt, day.time_zone)}
+          {planText(prompt, day.time_zone, instant)}
         </Text>
         <View className="flex-row flex-wrap gap-2">
           <Button label="Show plan" variant="tonal" onPress={ask} />

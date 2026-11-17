@@ -620,7 +620,7 @@ describe('the 100k index', () => {
       now: () => new Date(NOW),
       newId: randomUUID,
     };
-    const committer = new ScanCommitter(dependencies, roots.byId(ROOT));
+    const committer = new ScanCommitter(dependencies, roots.byId(ROOT), null);
     expect(committer.previous).toBe(FOLDERS + FILES);
   });
 });
@@ -649,6 +649,7 @@ describe('the work queue', () => {
     let peak = 0;
     const order: string[] = [];
     const queue = new WorkQueue<Job>({
+      merge: (_queued, next): Job => next,
       concurrency: 2,
       keyOf: (job): string => job.key,
       run: async (job): Promise<void> => {
@@ -678,6 +679,7 @@ describe('the work queue', () => {
     const first = gate();
     const seen: string[] = [];
     const queue = new WorkQueue<Job>({
+      merge: (_queued, next): Job => next,
       concurrency: 1,
       keyOf: (job): string => job.key,
       run: async (job): Promise<void> => {
@@ -700,6 +702,7 @@ describe('the work queue', () => {
     const failures: string[] = [];
     const ran: string[] = [];
     const queue = new WorkQueue<Job>({
+      merge: (_queued, next): Job => next,
       concurrency: 1,
       keyOf: (job): string => job.key,
       run: (job): Promise<void> => {
@@ -720,6 +723,7 @@ describe('the work queue', () => {
   it('aborts running work and drops the rest when stopped', async () => {
     const aborted: boolean[] = [];
     const queue = new WorkQueue<Job>({
+      merge: (_queued, next): Job => next,
       concurrency: 1,
       keyOf: (job): string => job.key,
       run: (_job, signal): Promise<void> =>
@@ -754,6 +758,7 @@ describe('the job table', () => {
       hash: () => Promise.resolve(),
       metadata: () => Promise.resolve(),
       text: () => Promise.resolve(),
+      reflect: () => Promise.resolve(),
     });
     await run(job, new AbortController().signal);
     expect(handled).toEqual([ROOT]);

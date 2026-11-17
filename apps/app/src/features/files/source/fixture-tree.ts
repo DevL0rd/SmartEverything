@@ -60,6 +60,7 @@ export function nodeOfEntry(entry: FixtureEntry): FixtureNode {
     mime,
     size: sizeOf(entry, kind),
     childCount: null,
+    files: null,
     modifiedAt: entry.modifiedAt ?? FIXTURE_TIME,
     hidden: entry.hidden ?? entry.name.startsWith('.'),
     byProfileId: entry.byProfileId ?? null,

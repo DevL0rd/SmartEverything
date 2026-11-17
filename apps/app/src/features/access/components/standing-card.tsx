@@ -15,6 +15,7 @@ import {
   type Standing,
 } from '../model/standing';
 import { DayWindowBar } from './day-window-bar';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 const MINUTES_PER_DAY = 1440;
 
@@ -30,6 +31,7 @@ function Limits({
   readonly zone: string;
 }): ReactNode {
   const { schedule } = access.conditions;
+  const format = useClockFormat();
   if (standing.kind === 'ended' && access.expires_at !== null) {
     return (
       <Text variant="footnote" tone="variant">
@@ -44,7 +46,9 @@ function Limits({
         nowShare={localClock(new Date(now), zone).minuteOfDay / MINUTES_PER_DAY}
       />
       <Text variant="footnote" tone="variant">
-        {schedule === null ? 'Not paused at any hour' : `Paused ${windowText(schedule)}, home time`}
+        {schedule === null
+          ? 'Not paused at any hour'
+          : `Paused ${windowText(schedule, format)}, home time`}
       </Text>
     </>
   );

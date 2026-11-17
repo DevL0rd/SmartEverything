@@ -113,9 +113,6 @@ vi.mock('../../../components/empty-state', () => ({
   EmptyState: ({ title }: { readonly title: string }): ReactNode =>
     createElement('section', {}, title),
 }));
-vi.mock('../../../components/banner', () => ({
-  Banner: ({ title }: { readonly title: string }): ReactNode => createElement('aside', {}, title),
-}));
 vi.mock('../../../components/chip-row', () => ({
   ChipRow: ({ children }: { readonly children: ReactNode }): ReactNode =>
     createElement('nav', {}, children),
@@ -152,7 +149,7 @@ vi.mock('../library/library-head', () => ({
     readonly children: ReactNode;
   }): ReactNode => {
     seen.frame = frame;
-    return createElement('main', {}, frame.banner, frame.selection, children);
+    return createElement('main', {}, frame.selection, children);
   },
 }));
 vi.mock('../search/save-smart-album', () => ({ SaveSmartAlbum: (): null => null }));
@@ -257,7 +254,7 @@ describe('Cameras and Made with AI', () => {
     expect(ai).toContain('Keep');
   });
 
-  it('shows the empty, loading, error and offline states', () => {
+  it('shows the empty, loading and error states and leaves the hub being offline to the app notice', () => {
     seen.view = viewOf([]);
     expect(render('cameras')).toContain('No camera clips yet');
     expect(seen.frame?.actions).toEqual([]);
@@ -268,7 +265,7 @@ describe('Cameras and Made with AI', () => {
     expect(render('cameras')).toContain('error');
     seen.view = viewOf([TILE]);
     seen.live = false;
-    expect(render('cameras')).toContain('The hub is offline');
+    expect(render('cameras')).not.toContain('offline');
   });
 
   it('narrows the source by the search and offers Clear search with the loaded count', () => {

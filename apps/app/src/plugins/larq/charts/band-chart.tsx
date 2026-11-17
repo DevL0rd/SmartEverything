@@ -4,11 +4,11 @@ import type { ReactNode } from 'react';
 import Svg, { Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { rounded } from '../../../features/device-visuals';
-import { clockOfMinutes } from '../../../format/time';
 import { WATER_COLOUR } from '../model/bottle-colours';
 import { bandOf } from '../model/stats-model';
 import { ChartBox } from './chart-box';
 import { ChartLabel } from './chart-label';
+import { useClockFormat } from '../../../features/clock/format/clock-format';
 
 const HEIGHT = 96;
 const LABEL_BAND = 20;
@@ -23,6 +23,7 @@ function Plot({
   readonly width: number;
 }): ReactNode {
   const water = useColour(WATER_COLOUR);
+  const format = useClockFormat();
   const band = bandOf(daily);
   const lowest = Math.min(...band.map((entry) => entry.from), DEFAULT_FROM);
   const highest = Math.max(...band.map((entry) => entry.to), DEFAULT_TO);
@@ -53,7 +54,7 @@ function Plot({
         left={0}
         top={HEIGHT - LABEL_BAND + 2}
         width={width}
-        text={`earliest ${clockOfMinutes(Math.min(...band.map((entry) => entry.from), highest))}, latest ${clockOfMinutes(Math.max(...band.map((entry) => entry.to), lowest))}`}
+        text={`earliest ${format.minutes(Math.min(...band.map((entry) => entry.from), highest))}, latest ${format.minutes(Math.max(...band.map((entry) => entry.to), lowest))}`}
         tone="variant"
       />
     </>

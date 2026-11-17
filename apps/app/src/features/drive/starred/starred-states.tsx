@@ -15,17 +15,6 @@ import { nothingStarredBody, type StarredChip } from './starred-model';
 
 export type StarredPages = DrivePages<DriveSearchPage>;
 
-export function StarredStaleBanner(): ReactNode {
-  return (
-    <Banner
-      wrapBody
-      tone="info"
-      title="Offline · showing the last starred files"
-      body="Stars and smart folders change again when the hub is back."
-    />
-  );
-}
-
 function StarredOffline(): ReactNode {
   return (
     <EmptyState

@@ -21,8 +21,6 @@ export interface DriveBannerInput {
   readonly quota: QuotaLevel;
 }
 
-export const OFFLINE_TITLE = 'Showing the last known files · reconnecting';
-
 function nameOf(root: DriveRoot): string {
   return root.scope === 'home' ? 'The Shared Drive' : 'Your drive';
 }
@@ -49,15 +47,7 @@ function stateBanner(root: DriveRoot, mayRescan: boolean): DriveBannerModel | nu
 }
 
 export function driveBannerOf(input: DriveBannerInput): DriveBannerModel | null {
-  if (!input.online) {
-    return {
-      key: 'offline',
-      tone: 'info',
-      title: OFFLINE_TITLE,
-      body: 'Uploads, renames and moves wait until the hub answers again.',
-      action: null,
-    };
-  }
+  if (!input.online) return null;
   const state = input.root === null ? null : stateBanner(input.root, input.mayRescan);
   if (state !== null) return state;
   return quotaBanner(input.quota);

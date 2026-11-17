@@ -18,7 +18,6 @@ import { ActivityFeed } from './activity-feed';
 import { feedOf, sharingStateOf, unreadText, type SharingState } from './model';
 import { PartnerCard } from './partner-card';
 import { draftOfGroup, draftOfShare, newDraft, type PartnerDraft } from './partner-draft';
-import { OfflineBanner } from './offline-banner';
 import { PartnerSetup } from './partner-setup';
 import { usePhotoSharing } from './queries';
 import { SectionTitle } from './section-title';
@@ -140,14 +139,7 @@ export function SharingScreen(): ReactNode {
   );
   const state = sharingStateOf({ data: query.data, failed: query.isError, live });
   return (
-    <PhotosFrame
-      active="sharing"
-      {...(live || query.data === undefined
-        ? {}
-        : {
-            banner: <OfflineBanner />,
-          })}
-    >
+    <PhotosFrame active="sharing">
       <Body
         state={state}
         sharing={query.data}

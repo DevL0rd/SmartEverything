@@ -1,5 +1,5 @@
 import type { WatchActionRequest, WatchPhase } from '@smarteverything/domain';
-import { clock } from '../../format/time';
+import type { MomentText } from '../../format/clock-text';
 import { count } from '../../format/number';
 import type { HeartView } from './watch-heart';
 
@@ -33,9 +33,13 @@ export function onWristNow(
   return facts.worn === true && lastSeen === null && !facts.charging;
 }
 
-export function headlineOf(facts: WatchFacts, lastSeen: number | null): Headline {
+export function headlineOf(
+  facts: WatchFacts,
+  lastSeen: number | null,
+  instant: MomentText,
+): Headline {
   if (lastSeen !== null) {
-    return { tone: 'neutral', label: `Last seen ${clock(lastSeen)}` };
+    return { tone: 'neutral', label: `Last seen ${instant(lastSeen)}` };
   }
   if (facts.charging) {
     return { tone: 'positive', label: 'Charging' };
@@ -54,16 +58,17 @@ export interface StateLineInput {
   readonly lastSeen: number | null;
   readonly owner: string | null;
   readonly ringing: boolean;
+  readonly instant: MomentText;
 }
 
-function syncedText(facts: WatchFacts): string | null {
+function syncedText(facts: WatchFacts, instant: MomentText): string | null {
   if (facts.syncing) {
     return 'Syncing…';
   }
-  return facts.syncedAt === null ? null : `Synced ${clock(facts.syncedAt)}`;
+  return facts.syncedAt === null ? null : `Synced ${instant(facts.syncedAt)}`;
 }
 
-export function stateLineOf({ facts, lastSeen, owner, ringing }: StateLineInput): string {
+export function stateLineOf({ facts, lastSeen, owner, ringing, instant }: StateLineInput): string {
   if (ringing) {
     return 'Ringing… tap Stop ringing';
   }
@@ -76,7 +81,7 @@ export function stateLineOf({ facts, lastSeen, owner, ringing }: StateLineInput)
       : lowBattery(facts)
         ? 'Charge soon'
         : `Battery ${count(facts.battery)} %`;
-  return [battery, syncedText(facts)].filter((part) => part !== null).join(' · ');
+  return [battery, syncedText(facts, instant)].filter((part) => part !== null).join(' · ');
 }
 
 export interface SyncControl {
@@ -128,11 +133,11 @@ export function findControlOf(
   };
 }
 
-export function heartCaption(view: HeartView | null): string | null {
+export function heartCaption(view: HeartView | null, instant: MomentText): string | null {
   if (view === null) {
     return null;
   }
-  return view.fresh ? 'Heart now' : `Heart ${clock(view.at)}`;
+  return view.fresh ? 'Heart now' : `Heart ${instant(view.at)}`;
 }
 
 export interface Goal {

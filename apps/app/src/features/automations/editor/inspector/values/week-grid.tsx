@@ -18,6 +18,7 @@ import {
   weekBlocks,
   type WeekBlock,
 } from './moment-model';
+import { useHour24 } from '../../../../../store/clock-format';
 
 function DayChip({
   name,
@@ -63,11 +64,13 @@ function BlockRow({
   readonly onChange: (block: WeekBlock) => void;
   readonly onRemove: () => void;
 }): ReactNode {
+  const hour24 = useHour24();
   return (
     <View className="gap-2 rounded-md border-hairline border-outline-variant p-3">
       <View className="flex-row items-center gap-2">
         <View className="min-w-0 flex-1">
           <TimeField
+            hour24={hour24}
             label={`${label} start time`}
             value={timeOfDayParts(block.at)}
             onChange={(next) => {

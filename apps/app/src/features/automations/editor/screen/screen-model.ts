@@ -14,11 +14,6 @@ export const EMPTY_PUBLISH_REASON = 'Add the first step to publish';
 
 export const EMPTY_TEST_REASON = 'Add what starts it and a step to test';
 
-export const OFFLINE_BANNER = {
-  title: 'Can’t reach the Home Hub',
-  body: 'Your last change is not saved. Reconnect to publish.',
-} as const;
-
 export const SHEET_HALF_SHARE = 0.5;
 
 export function hasNoSteps(program: ProgramV4, kinds: NodeKindLookup): boolean {

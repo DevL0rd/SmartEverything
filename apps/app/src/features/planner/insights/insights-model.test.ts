@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_COLLECTION_ROW,
   PLANNER_STATS,
@@ -92,6 +93,9 @@ function collection(id: string, name: string, colour: 'work' | 'family'): Planne
   });
 }
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('the insights done heatmap', () => {
   it('sums every list per day and scales the busiest day to the top level', () => {
     const stats = statsOf('week', {
@@ -130,17 +134,19 @@ describe('the best hours', () => {
       best_hours: Array.from({ length: 24 }, (_, hour) => ({ hour, done: done[hour] ?? 0 })),
     });
     expect(peakHourOf(stats)).toBe(9);
-    expect(hourWindowOf(9)).toBe('09:00 to 10:00');
-    const bars = hourBarsOf(stats);
+    expect(hourWindowOf(9, H24)).toBe('09:00 to 10:00');
+    expect(hourWindowOf(21, H12)).toMatch(/^9:00\s\S+ to 10:00\s\S+$/u);
+    expect(hourBarsOf(stats, H12).map((bar) => bar.label)).toEqual(['8', '9', '10', '11', '12']);
+    const bars = hourBarsOf(stats, H24);
     expect(bars.map((bar) => bar.label)).toEqual(['08', '09', '10', '11', '12']);
     expect(bars.map((bar) => bar.value)).toEqual([2, 5, 0, 0, 1]);
-    expect(hourBarsOf(statsOf('week', { best_hours: [{ hour: 17, done: 3 }] }))).toEqual([
+    expect(hourBarsOf(statsOf('week', { best_hours: [{ hour: 17, done: 3 }] }), H24)).toEqual([
       { key: '17', value: 3, label: '17' },
     ]);
   });
 
   it('shows the waking hours empty before anything is done', () => {
-    const bars = hourBarsOf(statsOf('week'));
+    const bars = hourBarsOf(statsOf('week'), H24);
     expect(bars.at(0)?.label).toBe('06');
     expect(bars.at(-1)?.label).toBe('23');
     expect(bars.every((bar) => bar.value === 0)).toBe(true);
@@ -254,7 +260,7 @@ describe('the what changed card', () => {
     });
     const slices = [{ key: WORK, value: 90, label: 'Work', colour: 'viz-6' as const }];
     expect(changeTitleOf(stats)).toBe('What changed this month');
-    expect(changeFactsOf(stats, slices)).toBe(
+    expect(changeFactsOf(stats, slices, H24)).toBe(
       '20 of 25 done, on time 75 %. Most done from 08:00 to 09:00. Work took the most time, 1.5\u00A0h.',
     );
     expect(changePromptOf(stats)).toContain('with the month before');

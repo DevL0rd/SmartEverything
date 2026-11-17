@@ -1,4 +1,5 @@
 import type { JsonValue } from '@smarteverything/domain';
+import type { ClockFormat } from '../../../../format/clock-text';
 
 const BYTE = 256;
 const HOUR_MAX = 23;
@@ -50,8 +51,9 @@ export function encodeDndWindow(window: DndWindow): number | null {
   return ((startHour * BYTE + startMinute) * BYTE + endHour) * BYTE + endMinute;
 }
 
-export function dndWindowText(window: DndWindow): string {
-  return `${clockText(window.startHour, window.startMinute)} to ${clockText(window.endHour, window.endMinute)}`;
+export function dndWindowText(window: DndWindow, format: ClockFormat): string {
+  const start = format.text(clockText(window.startHour, window.startMinute));
+  return `${start} to ${format.text(clockText(window.endHour, window.endMinute))}`;
 }
 
 export interface DndRing {

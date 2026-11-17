@@ -29,11 +29,15 @@ function failureOf(failure: RuntimeLogRecord['failure']): Pick<LogRecord, 'failu
 }
 
 function asLogRecord(record: RuntimeLogRecord, source: LogSourceInfo): LogRecord {
+  return { ...logRecordOf(record), runtime: source.runtime, platform: source.platform };
+}
+
+export function logRecordOf(record: RuntimeLogRecord): LogRecord {
   return {
     timestamp: record.timestamp,
     level: record.level,
-    runtime: source.runtime,
-    platform: source.platform,
+    runtime: record.runtime,
+    platform: record.platform,
     scope: record.scope,
     event: record.event,
     payload: record.payload ?? {},

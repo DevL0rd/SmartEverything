@@ -11,7 +11,8 @@ import { notify } from '../../../components/toast-store';
 import { Text } from '../../../components/text';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
 import { useIdiom } from '../../../design/platform';
-import { clock24, clockOfMinutes, localDayKey, zonedStartOfDay } from '../../../format/time';
+import { localDayKey, zonedStartOfDay } from '../../../format/time';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { PLANNER_PREFIX } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useMinuteOf } from '../../../store/clock';
@@ -146,13 +147,14 @@ export function FreeTimeWell({
   readonly who: string;
   readonly onCreate: (gap: MinuteSpan) => void;
 }): ReactNode {
+  const format = useClockFormat();
   return (
     <View className="flex-row flex-wrap items-center gap-3 rounded-md bg-surface-2 px-3 py-2.5">
       <Icon name="users" size={20} tone="variant" />
       <Text variant="callout" className="min-w-0 grow basis-48 tabular">
         {gap === null
           ? 'No shared free time left on this day'
-          : `${who} free ${clockOfMinutes(gap.from)} to ${clockOfMinutes(gap.to)}`}
+          : `${who} free ${format.minutes(gap.from)} to ${format.minutes(gap.to)}`}
       </Text>
       {gap === null ? null : (
         <Button
@@ -178,6 +180,7 @@ export interface DaySideProps {
 function DueRows({ tasks }: { readonly tasks: readonly PlannerOccurrenceView[] }): ReactNode {
   const writes = usePlannerWrites(usePlannerFrame().person);
   const timeZone = useSettings().time_zone;
+  const format = useClockFormat();
   if (tasks.length === 0) {
     return (
       <Text variant="footnote" tone="variant">
@@ -191,7 +194,7 @@ function DueRows({ tasks }: { readonly tasks: readonly PlannerOccurrenceView[] }
       checked={task.status === 'done'}
       disabled={task.status === 'done'}
       label={task.title}
-      caption={task.due_at === null ? 'Any time' : clock24(task.due_at, timeZone)}
+      caption={task.due_at === null ? 'Any time' : format.instant(task.due_at, timeZone)}
       onChange={() => {
         writes
           .completeItem(task.item_id, { occurrence_key: task.occurrence_key })
@@ -207,6 +210,7 @@ export function DaySide({ day, occurrences, prefs, onCompose }: DaySideProps): R
   const timeZone = useSettings().time_zone;
   const now = useNowMinute(day);
   const verb = useIdiom() === 'pointer' ? 'Click' : 'Tap';
+  const format = useClockFormat();
   const busy = timedSpansOn(busyOf(occurrences), day, timeZone);
   const gaps = freeGapsOf(busy, openWindowOf(dayWindowOf(prefs.general), now));
   return (
@@ -217,7 +221,7 @@ export function DaySide({ day, occurrences, prefs, onCompose }: DaySideProps): R
       <Text variant="label">Free</Text>
       <View className="flex-row flex-wrap gap-2">
         {gaps.map((gap) => {
-          const range = `${clockOfMinutes(gap.from)} to ${clockOfMinutes(gap.to)}`;
+          const range = `${format.minutes(gap.from)} to ${format.minutes(gap.to)}`;
           return (
             <Button
               key={`${String(gap.from)}-${String(gap.to)}`}

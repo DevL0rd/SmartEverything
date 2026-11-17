@@ -117,9 +117,16 @@ describe('Insights screen states', () => {
     expect(parts()).toContain('offline');
   });
 
-  it('keeps the last insights under a banner when the hub drops', () => {
+  it('keeps the last insights under a banner when a read fails', () => {
     state.query = { data: FULL, isError: true, error: new Error('gone') };
     expect(parts()[0]).toBe('stale');
+    expect(parts()).toContain('growth');
+  });
+
+  it('keeps the last insights without a page banner while the hub is offline', () => {
+    state.query = { data: FULL, isError: true, error: new Error('gone') };
+    state.live = false;
+    expect(parts()).not.toContain('stale');
     expect(parts()).toContain('growth');
   });
 

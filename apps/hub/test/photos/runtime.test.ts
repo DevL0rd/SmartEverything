@@ -81,7 +81,7 @@ it('catches up existing phone photos and processes newly indexed phone video wit
   await writeFile(join(source, 'phone.jpg'), image);
   seed(PHOTO, 'image', 'phone.jpg', 'image/jpeg');
   pipeline.start();
-  await pipeline.runner.idle();
+  await pipeline.idle();
   const media = new DriveMediaRepository(opened.store.context);
   expect(media.byId(PHOTO).preview_state).toBe('ready');
   expect(thumbState(PHOTO)).toBe('ready');
@@ -109,11 +109,11 @@ it('catches up existing phone photos and processes newly indexed phone video wit
     join(source, 'phone.mp4'),
   ]);
   seed(VIDEO, 'video', 'phone.mp4', 'video/mp4');
-  pipeline.reconcile();
-  await pipeline.runner.idle();
+  await pipeline.reconcile();
+  await pipeline.idle();
   expect(media.byId(VIDEO)).toMatchObject({ poster_state: 'ready', playable_state: 'ready' });
   expect(thumbState(VIDEO)).toBe('ready');
-  pipeline.reconcile();
+  await pipeline.reconcile();
   expect(new DriveMediaJobsRepository(opened.store.context).forItem(VIDEO)).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ kind: 'poster', attempts: 1 }),
@@ -156,7 +156,7 @@ it('serves signed phone photo thumbnails and video range requests, rejecting uns
   ]);
   seed(VIDEO, 'video', 'phone.mp4', 'video/mp4');
   pipeline.start();
-  await pipeline.runner.idle();
+  await pipeline.idle();
   const links = new MediaLinks(() => new Date(NOW));
   const deps = {
     store: opened.store,
@@ -216,7 +216,7 @@ it('serves the thumbnail of a trashed photo by the revision it was trashed at, a
   );
   seed(PHOTO, 'image', 'phone.jpg', 'image/jpeg');
   pipeline.start();
-  await pipeline.runner.idle();
+  await pipeline.idle();
   const item = opened.store.driveItems.byId(PHOTO, null);
   opened.store.driveTrash.insert({
     itemId: PHOTO,
@@ -313,7 +313,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
   await generateVideo('phone.mp4', 'blue');
   seed(VIDEO, 'video', 'phone.mp4', 'video/mp4');
   pipeline.start();
-  await pipeline.runner.idle();
+  await pipeline.idle();
   const env = {
     ...fileEnv(opened.store, testLogger(), () => new Date(NOW)),
     store: opened.store,
@@ -343,7 +343,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
       });
     };
     write();
-    await pipeline.runner.idle();
+    await pipeline.idle();
     const renamed = opened.store.driveItems.byId(id, null);
     expect(renamed.rev).toBeGreaterThan(before.rev);
     expect(
@@ -371,7 +371,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
       );
     else await generateVideo(name, 'red');
     write();
-    await pipeline.runner.idle();
+    await pipeline.idle();
     const replaced = opened.store.driveItems.byId(id, null);
     expect(replaced.rev).toBeGreaterThan(renamed.rev);
     expect(media.byId(id).preview_state).toBe('ready');

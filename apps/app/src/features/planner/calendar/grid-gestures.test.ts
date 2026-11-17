@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import { draftTimeOf, slotMinute, spanBetween } from './drag-create';
 import {
@@ -48,7 +49,10 @@ describe('drag to create', () => {
   });
 
   it('labels the dashed block with its times', () => {
-    expect(draftTimeOf({ from: 16 * 60, to: 17 * 60 })).toBe('16:00 to 17:00');
+    expect(draftTimeOf({ from: 16 * 60, to: 17 * 60 }, clockFormatOf(true))).toBe('16:00 to 17:00');
+    expect(draftTimeOf({ from: 16 * 60, to: 17 * 60 }, clockFormatOf(false))).toMatch(
+      /^4:00\s\S+ to 5:00\s\S+$/u,
+    );
   });
 });
 

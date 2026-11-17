@@ -22,6 +22,7 @@ import { ResponseBadge } from '../item/guest-row';
 import { LIST_DOT } from '../item/composer-tokens';
 import { useItemPress } from '../item/item-menu-host';
 import { bookedMinutesOf } from './day-strip-model';
+import { useInstantClock } from '../../clock/format/clock-format';
 import { lensOf } from './now-lens';
 import {
   fadeStepsOf,
@@ -237,6 +238,7 @@ function useRiverRows(day: PlannerDay, hidden: ReadonlySet<string>): readonly Ri
     lens: lensOf(day, hidden),
     guests: useRows('planner_guests'),
     me: usePlannerProfile(person),
+    instant: useInstantClock(),
   });
 }
 
@@ -253,12 +255,14 @@ export function DayRiver({
   const rows = useRiverRows(day, hidden);
   const ref = useRef<View>(null);
   const steps = useVisibleMinuteOf(ref, (now) => fadeStepsOf(rows, now, fade), sameSteps);
+  const instant = useInstantClock();
   if (rows.length === 0) return null;
   const caption = riverCaptionOf({
     left: rows.length,
     bookedMinutes: savedAt === null ? bookedMinutesOf(day) : 0,
     savedAt,
     timeZone: day.time_zone,
+    instant,
   });
   return (
     <View ref={ref} onLayout={steps.onLayout} className="gap-1">

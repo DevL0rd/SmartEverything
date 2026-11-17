@@ -93,6 +93,11 @@ describe('a new alarm draft', () => {
     });
   });
 
+  it('is created switched on, in the app draft and in the shared create contract', () => {
+    expect(createBodyOf(newDraftOf(CLOCK, '06:30')).enabled).toBe(true);
+    expect(PLANNER_ALARM_CREATE.parse({ time: '06:30' }).enabled).toBe(true);
+  });
+
   it('starts the preferred wake scene with the default lead so both are set together', () => {
     const draft = newDraftOf({ ...CLOCK, wake_automation_id: SCENE }, '06:30');
     expect(draft.wake_automation_id).toBe(SCENE);

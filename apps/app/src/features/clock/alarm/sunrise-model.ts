@@ -1,6 +1,6 @@
 import { minuteOfClock, type PlannerSunrise } from '@smarteverything/domain';
 import { plural } from '../../../format/text';
-import { clockOfMinutes } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
 
 export const FIRST_SUNRISE_MINUTES = 20;
 
@@ -26,19 +26,28 @@ export function toggledSunriseLight(
   return lights.length === 0 ? null : { ...sunrise, lights };
 }
 
-export function sunriseStartOf(sunrise: Pick<PlannerSunrise, 'minutes'>, time: string): string {
-  return clockOfMinutes(minuteOfClock(time) - sunrise.minutes);
+export function sunriseStartOf(
+  sunrise: Pick<PlannerSunrise, 'minutes'>,
+  time: string,
+  format: ClockFormat,
+): string {
+  return format.minutes(minuteOfClock(time) - sunrise.minutes);
 }
 
 export function sunriseTextOf(sunrise: PlannerSunrise): string {
   return `Sunrise ${String(sunrise.minutes)} min`;
 }
 
-export function sunriseSummaryOf(sunrise: PlannerSunrise, time: string): string {
+export function sunriseSummaryOf(
+  sunrise: PlannerSunrise,
+  time: string,
+  format: ClockFormat,
+): string {
   const lights = plural(sunrise.lights.length, 'light');
   const colour = sunrise.colour ? ', warm to daylight' : '';
   const verb = sunrise.lights.length === 1 ? 'brightens' : 'brighten';
-  return `${lights} ${verb} from ${sunriseStartOf(sunrise, time)} to full at ${time}${colour}.`;
+  const start = sunriseStartOf(sunrise, time, format);
+  return `${lights} ${verb} from ${start} to full at ${format.text(time)}${colour}.`;
 }
 
 export function sunriseGradientOf(colour: boolean): string {

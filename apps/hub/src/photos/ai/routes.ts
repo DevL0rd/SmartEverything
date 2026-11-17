@@ -34,7 +34,7 @@ export function photoAiRoutes(
       await catalogue.require(body);
       return ai.models.update(body);
     }),
-    reanalysePhotos: bound(E.reanalysePhotos, ({ body }) => ai.reanalyse(body.estimateMicros)),
+    reanalysePhotos: bound(E.reanalysePhotos, ({ body }) => ai.reanalyse(body)),
     retryFailedPhotoAi: bound(E.retryFailedPhotoAi, ({ caller }) =>
       ai.retryFailed(photoActor(store, caller)),
     ),

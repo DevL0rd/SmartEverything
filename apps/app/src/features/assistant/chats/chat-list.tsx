@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, type TextInput } from 'react-native';
 import { useIsFocused, useLocalSearchParams, router } from 'expo-router';
 import { mainPageSettings } from '../../../app-shell/main-pages';
-import { Banner } from '../../../components/banner';
 import { KeyboardList } from '../../../components/keyboard-list';
 import type { PageSettingsLink } from '../../../components/page-menu';
 import { PageShell } from '../../../components/page-shell/page-shell';
@@ -239,12 +238,6 @@ function searchOf(view: ListView, focus: boolean): ShellSearchConfig {
   };
 }
 
-function bannerOf(area: AreaStatus): { readonly banner?: ReactNode } {
-  return area.kind === 'offline-cached'
-    ? { banner: <Banner tone="info" title="Offline · showing saved chats" /> }
-    : {};
-}
-
 function isBare(view: ListView): boolean {
   return !view.loading && view.model.total === 0 && view.filter === 'all' && view.query === '';
 }
@@ -267,7 +260,6 @@ export function ChatList(props: ChatListProps): ReactNode {
       {...(settings === undefined ? {} : { settings })}
       {...(bare ? {} : { search: searchOf(view, props.focusSearch === true) })}
       {...(pinned && filters !== null ? { toolbar: filters } : {})}
-      {...bannerOf(view.area)}
     >
       {pinned || filters === null ? null : <View className="pt-1">{filters}</View>}
       <KeyboardList

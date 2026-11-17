@@ -7,7 +7,7 @@ import {
   type DriveShortcut,
   type DriveSort,
 } from '@smarteverything/domain';
-import { bytes } from '../../../format/number';
+import { bytes, count } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import {
   filterWordsOf,
@@ -148,11 +148,20 @@ function kindValueOf(node: DriveNode, item: DriveItem): string {
   return isEntryItem(item) ? ENTRY_LABEL[item.kind] : kindTextOf(node);
 }
 
+function contentsRowsOf(node: DriveNode): readonly InfoRow[] {
+  if (node.kind !== 'folder') return [];
+  const files =
+    node.files === null ? [] : [{ key: 'files', label: 'All files', value: count(node.files) }];
+  const direct =
+    node.childCount === null
+      ? []
+      : [{ key: 'direct', label: 'Directly inside', value: itemsLine(node.childCount) }];
+  return [...files, ...direct];
+}
+
 function sizeRowsOf(node: DriveNode): readonly InfoRow[] {
   if (node.size === null) return [];
-  const items =
-    node.kind === 'folder' && node.childCount !== null ? itemsLine(node.childCount) : null;
-  return [{ key: 'size', label: 'Size', value: joinParts([bytes(node.size), items]) }];
+  return [{ key: 'size', label: 'Size', value: bytes(node.size) }, ...contentsRowsOf(node)];
 }
 
 export function infoRowsOf(

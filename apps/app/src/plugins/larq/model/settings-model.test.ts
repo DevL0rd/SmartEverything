@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import {
   angleOfMinutes,
@@ -16,6 +17,9 @@ import {
   windowText,
 } from './settings-model';
 import { settingsOf } from './fixtures';
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('settings dial', () => {
   it('turns a clock into minutes and back, with midnight as zero', () => {
@@ -62,17 +66,23 @@ describe('settings dial', () => {
 describe('settings wording', () => {
   it('describes the reminder and the quiet hours', () => {
     const view = settingsOf();
-    expect(reminderLine(view.reminder)).toBe('Every 45 min, 08:00 to 21:00');
+    expect(reminderLine(view.reminder, H24)).toBe('Every 45 min, 08:00 to 21:00');
+    expect(reminderLine(view.reminder, H12)).toBe(
+      `Every 45 min, ${H12.text('08:00')} to ${H12.text('21:00')}`,
+    );
     expect(
-      reminderLine({
-        ...(view.reminder ?? { intervalMin: 0, from: '08:00', to: '21:00', colour: '#ffffff' }),
-        state: 'off',
-      }),
+      reminderLine(
+        {
+          ...(view.reminder ?? { intervalMin: 0, from: '08:00', to: '21:00', colour: '#ffffff' }),
+          state: 'off',
+        },
+        H24,
+      ),
     ).toBe('Off');
-    expect(reminderLine(null)).toBe('Not read from the bottle yet');
-    expect(quietLine(view.quiet)).toBe('Automatic, 22:00 to 07:00');
-    expect(quietLine(null)).toBe('Not read from the bottle yet');
-    expect(windowText({ from: '01:00', to: '02:00' })).toBe('01:00 to 02:00');
+    expect(reminderLine(null, H24)).toBe('Not read from the bottle yet');
+    expect(quietLine(view.quiet, H24)).toBe('Automatic, 22:00 to 07:00');
+    expect(quietLine(null, H24)).toBe('Not read from the bottle yet');
+    expect(windowText({ from: '01:00', to: '02:00' }, H24)).toBe('01:00 to 02:00');
   });
 
   it('names the colour of the ring and falls back to white', () => {

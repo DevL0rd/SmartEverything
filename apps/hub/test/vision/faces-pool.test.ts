@@ -6,7 +6,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FacePool, FaceWorkerError } from '../../src/vision/faces/pool';
 import { visionAssetDirectory } from '../../src/vision/models';
 import { testLogger } from '../support/logs';
-import { blankImage, fixtureImage } from './fixtures';
+import { readFile } from 'node:fs/promises';
+import type { RgbImage } from '../../src/vision/faces/image';
+import type { FaceImage } from '../../src/vision/faces/protocol';
+import { blankImage, fixtureImage, fixturePath } from './fixtures';
+
+function rgb(image: RgbImage): FaceImage {
+  return { kind: 'rgb', ...image };
+}
 
 const BANNER =
   'import { createRequire as createServiceRequire } from "node:module"; const require = createServiceRequire(import.meta.url);';
@@ -39,7 +46,7 @@ beforeAll(async () => {
     format: 'esm',
     target: 'node24',
     banner: { js: BANNER },
-    external: ['openvino-node'],
+    external: ['openvino-node', 'sharp'],
     logLevel: 'silent',
   });
 }, 60_000);
@@ -53,9 +60,9 @@ describe('the face worker pool', () => {
   it('finds faces in a worker thread, in order, for several requests at once', async () => {
     const pool = poolOf(visionAssetDirectory());
     const [portrait, pair, blank] = await Promise.all([
-      pool.analyse(await fixtureImage('obama1')),
-      pool.analyse(await fixtureImage('pair')),
-      pool.analyse(await blankImage(640, 480)),
+      pool.analyse(rgb(await fixtureImage('obama1'))),
+      pool.analyse(rgb(await fixtureImage('pair'))),
+      pool.analyse(rgb(await blankImage(640, 480))),
     ]);
     expect(portrait).toHaveLength(1);
     expect(pair).toHaveLength(2);
@@ -63,17 +70,26 @@ describe('the face worker pool', () => {
     expect(portrait[0]?.embedding).toHaveLength(128);
   }, 120_000);
 
+  it('decodes an encoded picture inside the worker', async () => {
+    const pool = poolOf(visionAssetDirectory());
+    const pair = await pool.analyse({
+      kind: 'encoded',
+      bytes: await readFile(fixturePath('pair')),
+    });
+    expect(pair).toHaveLength(2);
+  }, 120_000);
+
   it('refuses a request whose signal is already aborted', async () => {
     const pool = poolOf(visionAssetDirectory());
     await expect(
-      pool.analyse(await blankImage(64, 64), AbortSignal.abort(new Error('stop'))),
+      pool.analyse(rgb(await blankImage(64, 64)), AbortSignal.abort(new Error('stop'))),
     ).rejects.toThrow('stop');
   });
 
   it('rejects an abort that arrives while a request waits', async () => {
     const pool = poolOf(visionAssetDirectory());
     const controller = new AbortController();
-    const waiting = pool.analyse(await fixtureImage('pair'), controller.signal);
+    const waiting = pool.analyse(rgb(await fixtureImage('pair')), controller.signal);
     controller.abort(new Error('cancelled'));
     await expect(waiting).rejects.toThrow('cancelled');
   }, 120_000);
@@ -81,19 +97,19 @@ describe('the face worker pool', () => {
   it('reports models that are missing instead of hanging', async () => {
     const empty = mkdtempSync(join(bundleFolder, 'empty-'));
     const pool = poolOf(empty);
-    await expect(pool.analyse(await blankImage(64, 64))).rejects.toThrow(FaceWorkerError);
+    await expect(pool.analyse(rgb(await blankImage(64, 64)))).rejects.toThrow(FaceWorkerError);
   }, 60_000);
 
   it('reports a worker that cannot start', async () => {
     const broken = join(bundleFolder, 'broken.mjs');
     writeFileSync(broken, 'throw new Error("no start");');
     const pool = poolOf(visionAssetDirectory(), broken);
-    await expect(pool.analyse(await blankImage(64, 64))).rejects.toThrow('no start');
+    await expect(pool.analyse(rgb(await blankImage(64, 64)))).rejects.toThrow('no start');
   });
 
   it('fails waiting requests when it is closed', async () => {
     const pool = poolOf(visionAssetDirectory());
-    const waiting = pool.analyse(await fixtureImage('pair'));
+    const waiting = pool.analyse(rgb(await fixtureImage('pair')));
     await pool.close();
     await expect(waiting).rejects.toThrow(FaceWorkerError);
   }, 120_000);

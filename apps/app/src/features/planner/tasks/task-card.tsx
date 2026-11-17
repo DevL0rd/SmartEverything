@@ -13,6 +13,7 @@ import { AssigneeMark } from './assignee-mark';
 import { PriorityFlag, priorityOf } from './priority-flag';
 import { TaskCheck, useTaskActions } from './task-check';
 import { dueLabelOf, isOverdue, stepsLabelOf, type TaskEntry } from './task-grouping';
+import { useInstantClock } from '../../clock/format/clock-format';
 
 function DevicePill({ entry }: { readonly entry: TaskEntry }): ReactNode {
   const attached = entry.item.attachments.find((attachment) => attachment.kind === 'device');
@@ -29,10 +30,11 @@ function CardMeta({
   readonly today: string;
 }): ReactNode {
   const overdue = useMinuteOf((now) => isOverdue(entry, now, today));
+  const instant = useInstantClock();
   const steps = stepsLabelOf(entry.steps);
   return (
     <View className="flex-row flex-wrap items-center gap-1.5 pl-9">
-      <Badge label={dueLabelOf(entry, today)} tone={overdue ? 'critical' : 'neutral'} />
+      <Badge label={dueLabelOf(entry, today, instant)} tone={overdue ? 'critical' : 'neutral'} />
       <DevicePill entry={entry} />
       {entry.item.rrule === null ? null : (
         <View accessible accessibilityLabel="Repeats">

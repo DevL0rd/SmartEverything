@@ -1,6 +1,5 @@
 import { useMemo, useReducer, useState, type ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { IconButton } from '../../../components/icon-button';
 import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
@@ -61,14 +60,9 @@ function stepOf(key: string): number {
   return key === 'ArrowUp' ? -1 : 0;
 }
 
-export function panelOpenOf(
-  state: SearchState,
-  browsing: boolean,
-  start: boolean,
-  offline: boolean,
-): boolean {
+export function panelOpenOf(state: SearchState, browsing: boolean, start: boolean): boolean {
   if (isTyping(state)) return true;
-  return browsing && (start || offline);
+  return browsing && start;
 }
 
 interface SuggestionView {
@@ -118,7 +112,7 @@ export function useLibrarySearch(q: string): LibrarySearch {
     offline,
     recent: recent.recent,
     chips,
-    open: panelOpenOf(state, browsing, hasStart(chips, recent.recent), offline),
+    open: panelOpenOf(state, browsing, hasStart(chips, recent.recent)),
     act,
     submit: (): void => {
       const picked = flat[highlight];
@@ -249,14 +243,6 @@ export function LibrarySearchPanel({ search }: { readonly search: LibrarySearch 
       className="min-h-0 flex-1"
       contentContainerClassName="w-full gap-section-gap pb-section-gap pt-2"
     >
-      {search.offline ? (
-        <Banner
-          tone="info"
-          title="The hub is offline"
-          body="Recent searches and suggestions still work. New results need your home hub."
-          wrapBody
-        />
-      ) : null}
       <Matches search={search} />
       <SearchStart
         chips={search.chips}

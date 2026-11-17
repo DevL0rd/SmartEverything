@@ -8,6 +8,7 @@ import type { Store } from '../store/store';
 import type { PromptFacts, StableFacts } from './conversation/prompt';
 import { interruptionNote } from './interruption';
 import { senderNote } from './sender-note';
+import { personHour24 } from '../clock/person-clock';
 
 function boardsOf(store: Store, tools: ToolHub | null): readonly string[] {
   return tools?.list().some((tool) => tool.name === 'widget_show') === true
@@ -46,6 +47,7 @@ export function facts(
     profileName: store.profiles.byId(chat.profile_id).name,
     role: roleOf(store, chat.profile_id),
     timeZone: store.settings.read().time_zone,
+    hour24: personHour24(store, chat.profile_id),
     now: turn.now,
     boardTypes: boardsOf(store, tools),
     interruption: interruptionNote(store, chat.id),

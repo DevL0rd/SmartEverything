@@ -1,15 +1,13 @@
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { StoreContext } from '../store/context';
+import { Coalesced } from '../store/reader';
+import { inSlices } from '../store/slices';
 import type { Store } from '../store/store';
 
 const log = new Logger('hub.photos');
 
-const WRITE_BATCH = 500;
-
-const FEED_WINDOW = 1000;
-
-const MONTHS = [
+const MONTH_NAMES = [
   'January',
   'February',
   'March',
@@ -24,216 +22,128 @@ const MONTHS = [
   'December',
 ] as const;
 
-const WANTED = z.strictObject({
-  id: z.string(),
-  name: z.string(),
-  rel_path: z.string(),
-  moment: z.string(),
-  make: z.string().nullable(),
-  model: z.string().nullable(),
-  lens: z.string().nullable(),
-  albums: z.string().nullable(),
-});
+const MONTH_CASE = `case cast(month as integer) ${MONTH_NAMES.map(
+  (name, index) => `when ${String(index + 1)} then ' ${name}'`,
+).join(' ')} else '' end`;
 
-const HELD = z.strictObject({
+const WANTED = `select item_id, name, path, camera, albums, year || ${MONTH_CASE} as dates
+  from (select item_id, name, path, camera, albums,
+      case when instr(moment, '-') = 0 then moment else substr(moment, 1, instr(moment, '-') - 1) end as year,
+      case when instr(rest, '-') = 0 then rest else substr(rest, 1, instr(rest, '-') - 1) end as month
+    from (select i.id as item_id, i.name,
+        rtrim(rtrim(i.rel_path, replace(i.rel_path, '/', '')), '/') as path,
+        concat_ws(' ', i.camera_make, i.camera_model, i.camera_lens) as camera,
+        coalesce((select group_concat(al.title, ' ' order by al.title) from drive_album_items ai
+          join drive_albums al on al.id = ai.album_id where ai.item_id = i.id), '') as albums,
+        coalesce(i.taken_at, i.modified_at) as moment,
+        case when instr(coalesce(i.taken_at, i.modified_at), '-') = 0 then ''
+          else substr(coalesce(i.taken_at, i.modified_at), instr(coalesce(i.taken_at, i.modified_at), '-') + 1)
+        end as rest
+      from drive_items i where i.kind in ('image', 'video')))`;
+
+const STALE = `with wanted as materialized (${WANTED}),
+    held as materialized (select rowid as row_id, item_id, name, path, camera, albums, dates
+      from drive_items_search)
+  select w.item_id, w.name, w.path, w.camera, w.albums, w.dates, h.row_id
+  from wanted w left join held h on h.item_id = w.item_id
+  where h.row_id is null or h.name is not w.name or h.path is not w.path
+    or h.camera is not w.camera or h.albums is not w.albums or h.dates is not w.dates`;
+
+const GONE = `select s.rowid as row_id from drive_items_search s
+  where not exists (select 1 from drive_items i
+    where i.id = s.item_id and i.kind in ('image', 'video'))`;
+
+const STALE_ROW = z.strictObject({
   item_id: z.string(),
   name: z.string(),
   path: z.string(),
   camera: z.string(),
   albums: z.string(),
   dates: z.string(),
+  row_id: z.int().nullable(),
 });
 
-interface Words {
-  readonly name: string;
-  readonly path: string;
-  readonly camera: string;
-  readonly albums: string;
-  readonly dates: string;
-}
-
-function directoryOf(relPath: string): string {
-  const slash = relPath.lastIndexOf('/');
-  return slash < 0 ? '' : relPath.slice(0, slash);
-}
-
-function dateWords(moment: string): string {
-  const [year = '', month = ''] = moment.split('-');
-  const named = MONTHS[Number(month) - 1];
-  return named === undefined ? year : `${year} ${named}`;
-}
-
-function wordsOf(row: z.output<typeof WANTED>): Words {
-  return {
-    name: row.name,
-    path: directoryOf(row.rel_path),
-    camera: [row.make, row.model, row.lens].filter((part) => part !== null).join(' '),
-    albums: row.albums ?? '',
-    dates: dateWords(row.moment),
-  };
-}
-
-function sameWords(held: z.output<typeof HELD>, wanted: Words): boolean {
-  return (
-    held.name === wanted.name &&
-    held.path === wanted.path &&
-    held.camera === wanted.camera &&
-    held.albums === wanted.albums &&
-    held.dates === wanted.dates
-  );
-}
+const GONE_ROW = z.strictObject({ row_id: z.int() });
 
 type Change =
-  | { readonly kind: 'insert'; readonly itemId: string; readonly words: Words }
-  | { readonly kind: 'update'; readonly itemId: string; readonly words: Words }
-  | { readonly kind: 'remove'; readonly itemId: string };
-
-const PHOTO_COLUMNS = `select i.id, i.name, i.rel_path, coalesce(i.taken_at, i.modified_at) as moment,
-    i.camera_make as make, i.camera_model as model, i.camera_lens as lens,
-    (select group_concat(al.title, ' ' order by al.title) from drive_album_items ai
-      join drive_albums al on al.id = ai.album_id
-      where ai.item_id = i.id) as albums
-  from drive_items i where i.kind in ('image', 'video')`;
+  | { readonly kind: 'write'; readonly row: z.output<typeof STALE_ROW> }
+  | { readonly kind: 'remove'; readonly rowId: number };
 
 export class PhotoSearchIndexer {
   private stops: (() => void)[] = [];
-  private pending = false;
-  private running = false;
-  private cursor: number | null = null;
+  private readonly pass: Coalesced;
 
   constructor(
-    private readonly store: Pick<Store, 'context' | 'feed' | 'driveFeed'>,
+    private readonly store: Pick<Store, 'context' | 'feed' | 'reader'>,
     private readonly defer: (work: () => void) => void = setImmediate,
-  ) {}
+  ) {
+    this.pass = new Coalesced(
+      async () => {
+        await this.reconcile();
+      },
+      (cause) => {
+        log.error('photos_search.index_failed', cause);
+      },
+    );
+  }
 
   start(): void {
     this.stops.push(
       this.store.feed.subscribeNotices((notice) => {
-        if (notice.type !== 'drive_changed') return;
-        if (notice.albumIds.length > 0 || (this.cursor !== null && notice.cursor <= this.cursor)) {
-          this.cursor = null;
-        }
-        this.schedule();
+        if (notice.type === 'drive_changed') this.pass.trigger();
       }),
     );
-    this.schedule();
+    this.pass.trigger();
   }
 
-  stop(): void {
+  idle(): Promise<void> {
+    return this.pass.idle();
+  }
+
+  async stop(): Promise<void> {
     for (const stop of this.stops) stop();
     this.stops = [];
+    await this.pass.stop();
   }
 
   async reconcile(): Promise<number> {
-    const { context } = this.store;
-    const head = this.store.driveFeed.latestSeq();
-    const after = this.cursor;
-    this.cursor = head;
-    const changes = after === null ? this.changes(context) : this.changedSince(context, after, head);
-    for (let start = 0; start < changes.length; start += WRITE_BATCH) {
-      context.write(() => {
-        for (const change of changes.slice(start, start + WRITE_BATCH)) this.apply(context, change);
-      });
-      await new Promise<void>((resolve) => {
-        this.defer(resolve);
-      });
-    }
+    const { context, reader } = this.store;
+    const [stale, gone] = await Promise.all([
+      reader.all(STALE_ROW, STALE),
+      reader.all(GONE_ROW, GONE),
+    ]);
+    const changes: Change[] = [
+      ...stale.map((row): Change => ({ kind: 'write', row })),
+      ...gone.map((row): Change => ({ kind: 'remove', rowId: row.row_id })),
+    ];
+    await inSlices(
+      context,
+      changes,
+      (change) => {
+        this.apply(context, change);
+      },
+      this.defer,
+    );
     return changes.length;
-  }
-
-  private schedule(): void {
-    if (this.pending) return;
-    this.pending = true;
-    this.defer(() => {
-      this.pending = false;
-      this.run();
-    });
-  }
-
-  private run(): void {
-    if (this.running) {
-      this.schedule();
-      return;
-    }
-    this.running = true;
-    this.reconcile()
-      .catch((cause: unknown) => {
-        this.cursor = null;
-        log.error('photos_search.index_failed', cause);
-      })
-      .finally(() => {
-        this.running = false;
-      });
-  }
-
-  private changes(context: StoreContext): Change[] {
-    const held = new Map(
-      context.sql
-        .all(HELD, 'select item_id, name, path, camera, albums, dates from drive_items_search')
-        .map((row) => [row.item_id, row]),
-    );
-    return this.compare(held, context.sql.all(WANTED, PHOTO_COLUMNS));
-  }
-
-  private changedSince(context: StoreContext, after: number, head: number): Change[] {
-    const ids = new Set<string>();
-    for (let cursor: number | null = after; cursor !== null && cursor < head; ) {
-      const window = this.store.driveFeed.since(cursor, FEED_WINDOW);
-      for (const row of window.rows) if (row.seq <= head) ids.add(row.itemId);
-      cursor = window.next;
-    }
-    if (ids.size === 0) return [];
-    const list = { ids: JSON.stringify([...ids]) };
-    const held = new Map(
-      context.sql
-        .all(
-          HELD,
-          `select item_id, name, path, camera, albums, dates from drive_items_search
-            where item_id in (select value from json_each($ids))`,
-          list,
-        )
-        .map((row) => [row.item_id, row]),
-    );
-    const wanted = context.sql.all(
-      WANTED,
-      `${PHOTO_COLUMNS} and i.id in (select value from json_each($ids))`,
-      list,
-    );
-    return this.compare(held, wanted);
-  }
-
-  private compare(
-    held: Map<string, z.output<typeof HELD>>,
-    wanted: readonly z.output<typeof WANTED>[],
-  ): Change[] {
-    const changes: Change[] = [];
-    for (const row of wanted) {
-      const words = wordsOf(row);
-      const current = held.get(row.id);
-      held.delete(row.id);
-      if (current === undefined) changes.push({ kind: 'insert', itemId: row.id, words });
-      else if (!sameWords(current, words)) changes.push({ kind: 'update', itemId: row.id, words });
-    }
-    for (const itemId of held.keys()) changes.push({ kind: 'remove', itemId });
-    return changes;
   }
 
   private apply(context: StoreContext, change: Change): void {
     if (change.kind === 'remove') {
       context.sql.run(
         'remove the search entry of a photo that is gone',
-        'delete from drive_items_search where item_id = $itemId',
-        { itemId: change.itemId },
+        'delete from drive_items_search where rowid = $rowId',
+        { rowId: change.rowId },
       );
       return;
     }
-    const { itemId, words } = change;
-    if (change.kind === 'insert') {
+    const { row_id: rowId, item_id: itemId, name, path, camera, albums, dates } = change.row;
+    const words = { itemId, name, path, camera, albums, dates };
+    if (rowId === null) {
       context.sql.run(
         'index the photo for search',
         `insert into drive_items_search (item_id, name, path, camera, albums, dates, labels)
           values ($itemId, $name, $path, $camera, $albums, $dates, '')`,
-        { itemId, ...words },
+        words,
       );
       return;
     }
@@ -241,8 +151,8 @@ export class PhotoSearchIndexer {
       'update the search entry of the photo',
       `update drive_items_search
         set name = $name, path = $path, camera = $camera, albums = $albums, dates = $dates
-        where item_id = $itemId`,
-      { itemId, ...words },
+        where rowid = $rowId and item_id = $itemId`,
+      { ...words, rowId },
     );
   }
 }

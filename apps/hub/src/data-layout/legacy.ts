@@ -79,7 +79,6 @@ export const LEGACY_NAMES: LayoutNames = {
     smartthingsCapabilities: 'providers/smartthings/capabilities',
     codexInputs: 'codex/inputs',
     buildHost: 'build-host',
-    ocr: 'ocr',
   },
   backups: { releases: 'release-backups', manual: 'backups', legacyDatabase: '' },
   provider: (id) => `providers/${id}`,

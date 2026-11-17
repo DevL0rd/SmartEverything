@@ -6,7 +6,6 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
-import { Banner } from '../../../components/banner';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
@@ -18,7 +17,7 @@ import { DriveFrame } from '../components/drive-frame';
 import { DriveColumnHead } from '../components/drive-columns';
 import { folderTrailOf, type DriveChipOf } from '../model/drive-chip';
 import { placeColumns } from '../model/drive-columns';
-import { DriveRowsSkeleton, recentStale } from '../recent/recent-states';
+import { DriveRowsSkeleton } from '../recent/recent-states';
 import { RuleBadges, usePlaceOf } from './rule-chip-view';
 import { ruleSummary } from './rule-labels';
 import { useSaveSmartFolder } from './save-smart-folder';
@@ -138,17 +137,6 @@ function Body({
   return <Matches pages={pages} />;
 }
 
-function SmartStaleBanner(): ReactNode {
-  return (
-    <Banner
-      wrapBody
-      tone="info"
-      title="Offline · showing the last matches"
-      body="New matching files appear when the hub is back."
-    />
-  );
-}
-
 function Opened({ folder }: { readonly folder: SmartFolder }): ReactNode {
   const pages = useDriveAlbumItems(folder.id);
   const online = useSyncStatus().status === 'live';
@@ -172,7 +160,6 @@ function Opened({ folder }: { readonly folder: SmartFolder }): ReactNode {
         },
       )}
       scroll={false}
-      {...(recentStale(pages.data !== undefined, online) ? { banner: <SmartStaleBanner /> } : {})}
     >
       <View className="pb-3">
         <RuleBadges rule={folder.rule} />

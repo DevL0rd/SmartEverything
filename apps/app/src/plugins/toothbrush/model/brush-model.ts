@@ -11,6 +11,7 @@ import {
 } from '@smarteverything/domain';
 import { relative } from '../../../format/time';
 import { BRAND_TEXT } from './brand-text';
+import type { ClockFormat } from '../../../format/clock-text';
 
 export const INTENSITY_RAMP: Readonly<Record<BrushIntensity, number>> = {
   low: 0.4,
@@ -62,8 +63,8 @@ export function signalWord(rssi: number | null): string {
   return rssi >= GOOD_RSSI ? 'Good' : 'Weak';
 }
 
-export function hourText(hour: number): string {
-  return `${String(hour).padStart(2, '0')}:00`;
+export function hourText(hour: number, format: ClockFormat): string {
+  return format.minutes(hour * 60);
 }
 
 export function modeLabel(mode: BrushMode | null): string {

@@ -75,6 +75,7 @@ describe('the Locked folder routes', () => {
     expect(Object.keys(routes).sort()).toEqual(
       [
         'editPhotoMeta',
+        'setPhotoDescription',
         'archivePhotos',
         'unarchivePhotos',
         'readPhotoArchived',

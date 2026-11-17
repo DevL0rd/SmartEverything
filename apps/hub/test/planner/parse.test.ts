@@ -27,6 +27,7 @@ function parse(
     timeZone: ZONE,
     now: NOW,
     previewCount: 4,
+    hour24: true,
     ...overrides,
   });
 }
@@ -71,6 +72,9 @@ describe('quick add parser', () => {
     expect(result.draft.rrule).toBe('FREQ=WEEKLY;BYDAY=MO,WE,FR');
     expect(result.draft.start_local).toBe('2026-11-09T18:00:00');
     expect(result.repeat_text).toBe('Every week on Mon, Wed, Fri at 18:00');
+    expect(parse('gym every mon, wed and fri 18:00', { hour24: false }).repeat_text).toBe(
+      'Every week on Mon, Wed, Fri at 6:00 PM',
+    );
   });
 
   it('turns weekdays into a spoken label', () => {

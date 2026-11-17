@@ -6,10 +6,10 @@ import { Icon } from '../../../components/icon';
 import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { clock24 } from '../../../format/time';
 import type { WorldCity } from './cities';
 import { dayShareOf, daylightLineOf, daylightOf, type Daylight } from './daylight';
 import { DaylightBar } from './daylight-bar';
+import type { InstantClock } from '../format/clock-format';
 import { dayWordOf, offsetToHomeOf, type DayWord } from './world-time';
 
 export interface CityView {
@@ -21,13 +21,18 @@ export interface CityView {
   readonly now: number;
 }
 
-export function cityViewOf(city: WorldCity, now: number, homeZone: string): CityView {
+export function cityViewOf(
+  city: WorldCity,
+  now: number,
+  homeZone: string,
+  instant: InstantClock,
+): CityView {
   return {
     city,
-    time: clock24(now, city.zone),
+    time: instant(now, city.zone),
     offset: city.home ? 'Home' : offsetToHomeOf(now, city.zone, homeZone),
     day: dayWordOf(now, city.zone, homeZone),
-    daylight: daylightOf(now, city.zone, city.point),
+    daylight: daylightOf(now, city.zone, city.point, instant),
     now: dayShareOf(now, city.zone),
   };
 }

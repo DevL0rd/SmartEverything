@@ -19,6 +19,7 @@ import { suggestCompletions } from '../../planner/suggest-completion';
 import type { Caller } from '../auth';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
 import { plannerProfileOf, type PlannerContext } from './planner-items';
+import { personHour24 } from '../../clock/person-clock';
 
 export interface PlannerCoreDependencies {
   readonly now: () => Date;
@@ -144,6 +145,7 @@ function parseRoute(
       timeZone: body.time_zone ?? zoneOf(context),
       now: deps.now(),
       previewCount: PREVIEW_COUNT,
+      hour24: personHour24(context.store, profileId),
     });
   });
 }

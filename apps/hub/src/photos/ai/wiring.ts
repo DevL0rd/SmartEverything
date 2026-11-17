@@ -49,7 +49,7 @@ export function startPhotoAi(wiring: PhotoAiWiring): RunningPhotoAi {
   return {
     ai,
     stop: async (): Promise<void> => {
-      ai.stop();
+      await ai.stop();
       await pool.close();
     },
   };

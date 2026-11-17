@@ -39,7 +39,6 @@ allowBuilds:
   openvino-node: true
   protobufjs: false
   ssh2: false
-  tesseract.js: false
   usocket: false
 
 overrides:

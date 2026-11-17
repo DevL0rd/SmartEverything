@@ -18,6 +18,7 @@ import {
 import { reported } from '../item/item-actions';
 import { PersonBadge } from '../item/person-badge';
 import { useItemOpen } from '../item/selection';
+import { useInstantClock } from '../../clock/format/clock-format';
 
 const ANSWER_LABEL: Readonly<Record<PlannerRsvpAnswer, string>> = {
   yes: 'Yes',
@@ -86,6 +87,7 @@ export function InvitationsCard(): ReactNode {
   const { person } = usePlannerFrame();
   const now = useMinute();
   const timeZone = useSettings().time_zone;
+  const instant = useInstantClock();
   const shown = openInvitationsOf(useMyInvitations(person), now);
   if (shown.length === 0) return null;
   return (
@@ -95,7 +97,7 @@ export function InvitationsCard(): ReactNode {
           <InvitationRow
             key={invitation.guest.id}
             invitation={invitation}
-            when={invitationWhenOf(invitation.item, now, timeZone)}
+            when={invitationWhenOf(invitation.item, now, timeZone, instant)}
           />
         ))}
       </View>

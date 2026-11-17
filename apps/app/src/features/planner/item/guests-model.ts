@@ -8,7 +8,8 @@ import {
   type ProfileRow,
 } from '@smarteverything/domain';
 import { compareText, plural } from '../../../format/text';
-import { clock, dayLabel } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
+import { dayLabel } from '../../../format/time';
 import type { Invitation } from '../data/guests';
 
 export function guestKeyOf(guest: PlannerGuestEntry | PlannerGuestRow): string {
@@ -220,9 +221,14 @@ export function invitationsTitleOf(count: number): string {
   return plural(count, 'invitation', 'invitations');
 }
 
-export function invitationWhenOf(item: Invitation['item'], now: number, timeZone: string): string {
+export function invitationWhenOf(
+  item: Invitation['item'],
+  now: number,
+  timeZone: string,
+  instant: MomentText,
+): string {
   if (item.start === null) return 'No time set';
   const day = dayLabel(item.start, now, item.all_day ? null : timeZone);
   if (item.all_day) return `${day} · All day`;
-  return `${day} · ${clock(item.start, timeZone)}`;
+  return `${day} · ${instant(item.start, timeZone)}`;
 }

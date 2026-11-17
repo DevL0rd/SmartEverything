@@ -15,6 +15,7 @@ import type { Device } from '../../../store/state';
 import type { ViewOf } from '../data/printer-api';
 import { usePrinterView } from '../data/use-printer-view';
 import { streakLine } from '../model/stats-view';
+import { useClockFormat } from '../../../features/clock/format/clock-format';
 
 const STRIP_DAYS = 28;
 const STRIP_STEP = 10;
@@ -100,12 +101,14 @@ function Maps({
   readonly today: string;
   readonly calendar: boolean;
 }): ReactNode {
+  const format = useClockFormat();
   const hours = (
     <HourHeatmap
       matrix={view.stats.weekdayHour}
       rows={WEEKDAY_ROWS}
       unit="pages printed"
       label="Pages printed by weekday and hour"
+      format={format}
     />
   );
   return (

@@ -10,7 +10,7 @@ import type {
   DriveMediaJobsRepository,
 } from '../../store/repositories/drive-media-jobs';
 
-export type PipelineResource = 'image' | 'video' | 'io' | 'accelerator';
+export type PipelineResource = 'image' | 'video' | 'io' | 'cloud' | 'accelerator';
 
 type LimitedResource = Exclude<PipelineResource, 'accelerator'>;
 
@@ -57,6 +57,8 @@ export interface RunnerEnvironment {
 
 export const QUICK_SYNC_SESSIONS = 3;
 
+export const CLOUD_REQUESTS = 16;
+
 export function backgroundThreads(): number {
   return Math.max(1, Math.floor(availableParallelism() / 2));
 }
@@ -67,6 +69,7 @@ export function defaultLimits(): ResourceLimits {
     image: cores,
     video: vaapiDevice() === null ? backgroundThreads() : QUICK_SYNC_SESSIONS,
     io: Math.max(1, Math.floor(cores / 4)),
+    cloud: CLOUD_REQUESTS,
   };
 }
 
@@ -120,6 +123,7 @@ export class MediaJobRunner {
     image: 0,
     video: 0,
     io: 0,
+    cloud: 0,
     accelerator: 0,
   };
   private readonly tallies = new Map<ProgressKind, ProgressTally>();
@@ -178,7 +182,13 @@ export class MediaJobRunner {
   }
 
   private busy(): number {
-    return this.running.image + this.running.video + this.running.io + this.running.accelerator;
+    return (
+      this.running.image +
+      this.running.video +
+      this.running.io +
+      this.running.cloud +
+      this.running.accelerator
+    );
   }
 
   private tallyOf(kind: DriveMediaJobKind): ProgressTally | undefined {
@@ -209,7 +219,7 @@ export class MediaJobRunner {
 
   private pump(): void {
     if (!this.started || this.abort.signal.aborted) return;
-    for (const resource of ['image', 'video', 'io', 'accelerator'] as const) {
+    for (const resource of ['image', 'video', 'io', 'cloud', 'accelerator'] as const) {
       const kinds = this.kindsOf(resource);
       while (kinds.length > 0 && this.running[resource] < this.limitOf(resource)) {
         const job = this.env.jobs.claim(kinds);

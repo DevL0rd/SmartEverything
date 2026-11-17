@@ -1,7 +1,7 @@
-import { ApiError, type PhotoAiReanalysed } from '@smarteverything/domain';
+import { ApiError, type PhotoAiReanalyse, type PhotoAiReanalysed } from '@smarteverything/domain';
 import type { StoreContext } from '../../store/context';
 import type { PhotoConsent } from './consent';
-import { itemsIn } from './scope';
+import { itemsIn, type SubjectScope } from './scope';
 import type { PhotoAiModelStore } from './settings';
 import type { PhotoAiStatusReader } from './status';
 
@@ -11,23 +11,22 @@ export interface ReanalysisEnvironment {
   readonly models: PhotoAiModelStore;
   readonly status: PhotoAiStatusReader;
   readonly owner: () => string;
-  readonly reconcile: () => number;
+  readonly reconcile: () => Promise<number>;
 }
 
 export class PhotoAiReanalysis {
   constructor(private readonly env: ReanalysisEnvironment) {}
 
-  estimate(): { readonly subjects: number; readonly micros: number } {
-    const subjects = this.env.status.subjects(this.env.owner(), true);
-    return {
-      subjects: subjects.length,
-      micros: this.env.status.remaining(subjects) * this.env.status.unitMicros(),
-    };
+  estimate(everything: boolean): { readonly subjects: number; readonly micros: number } {
+    const { status } = this.env;
+    const subjects = status.subjects(this.env.owner(), true);
+    const photos = everything ? status.analysable(subjects) : status.remaining(subjects);
+    return { subjects: subjects.length, micros: photos * status.unitMicros() };
   }
 
-  run(confirmedMicros: number): PhotoAiReanalysed {
-    const current = this.estimate();
-    if (current.micros !== confirmedMicros) {
+  async run(request: PhotoAiReanalyse): Promise<PhotoAiReanalysed> {
+    const current = this.estimate(request.everything);
+    if (current.micros !== request.estimateMicros) {
       throw new ApiError(
         'conflict',
         'The estimate changed since it was shown, so nothing was started.',
@@ -40,15 +39,22 @@ export class PhotoAiReanalysis {
       for (const subject of subjects) {
         if (!this.env.consent.smartSearch(subject.profileId)) continue;
         this.forget(subject.scope, models);
+        if (request.everything) this.forgetAnalysed(subject.scope);
       }
     });
-    return { queued: this.env.reconcile(), estimateMicros: current.micros };
+    return { queued: await this.env.reconcile(), estimateMicros: current.micros };
   }
 
-  private forget(
-    scope: ReturnType<PhotoAiStatusReader['subjects']>[number]['scope'],
-    models: ReturnType<PhotoAiModelStore['read']>,
-  ): void {
+  private forgetAnalysed(scope: SubjectScope): void {
+    this.env.context.sql.run(
+      'forget the vision jobs of photos analysed by the current model',
+      `delete from drive_media_jobs where kind = 'vision' and state not in ('queued', 'running')
+        and item_id in (${itemsIn(scope)})`,
+      scope.parameters,
+    );
+  }
+
+  private forget(scope: SubjectScope, models: ReturnType<PhotoAiModelStore['read']>): void {
     const items = itemsIn(scope);
     const parameters = { ...scope.parameters };
     const run = (label: string, text: string, extra: Record<string, string> = {}): void => {

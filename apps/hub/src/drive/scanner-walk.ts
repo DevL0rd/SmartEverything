@@ -61,6 +61,7 @@ export type WalkEntry = z.infer<typeof WALK_ENTRY>;
 
 export const WALK_DATA = z.strictObject({
   path: z.string().min(1),
+  base: z.string(),
   includeHidden: z.boolean(),
   skip: z.array(z.string().min(1)).readonly(),
   reserved: z.array(z.string().min(1)).readonly(),
@@ -172,15 +173,41 @@ class Walker {
   }
 
   run(): WalkResult {
-    const rootStats = this.clock.around(() => lstatSync(this.data.path, { bigint: true }));
-    const pending: Folder[] = [
-      { relPath: '', absolute: this.data.path, parentRelPath: null, stats: rootStats },
-    ];
+    const start = this.data.base === '' ? this.rootFolder() : this.scopeFolder(this.data.base);
+    const pending: Folder[] = start === null ? [] : [start];
     for (let folder = pending.pop(); folder !== undefined; folder = pending.pop()) {
       pending.push(...[...this.visit(folder)].reverse());
     }
     this.flush();
     return { skipped: this.skippedUnknown };
+  }
+
+  private rootFolder(): Folder {
+    const stats = this.clock.around(() => lstatSync(this.data.path, { bigint: true }));
+    return { relPath: '', absolute: this.data.path, parentRelPath: null, stats };
+  }
+
+  private scopeFolder(base: string): Folder | null {
+    const absolute = join(this.data.path, base);
+    const stats = this.stat(absolute, base);
+    if (stats === null) return null;
+    const slash = base.lastIndexOf('/');
+    const parentRelPath = slash === -1 ? null : base.slice(0, slash);
+    if (stats.isDirectory()) return { relPath: base, absolute, parentRelPath, stats };
+    const parent: Folder = {
+      relPath: parentRelPath ?? '',
+      absolute: join(this.data.path, parentRelPath ?? ''),
+      parentRelPath: null,
+      stats,
+    };
+    const name = base.slice(slash + 1);
+    if (stats.isFile()) this.add(this.fileEntry(parent, name, base, stats));
+    else {
+      const entry = this.otherEntry(parent, name, base, stats);
+      if (entry === null) this.skippedUnknown += 1;
+      else this.add(entry);
+    }
+    return null;
   }
 
   private visit(folder: Folder): readonly Folder[] {

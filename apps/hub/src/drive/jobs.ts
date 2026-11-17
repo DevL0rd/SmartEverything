@@ -44,7 +44,13 @@ export interface TextJob {
   readonly rootId: string;
 }
 
-export type DriveJob = ScanJob | HashJob | MetadataJob | TextJob;
+export interface ReflectJob {
+  readonly kind: 'reflect';
+  readonly rootId: string;
+  readonly paths: readonly string[];
+}
+
+export type DriveJob = ScanJob | ReflectJob | HashJob | MetadataJob | TextJob;
 
 export type DriveJobKind = DriveJob['kind'];
 
@@ -61,6 +67,11 @@ export function jobKey(job: DriveJob): string {
   return `${job.kind}:${job.rootId}`;
 }
 
+export function mergeJobs(queued: DriveJob, next: DriveJob): DriveJob {
+  if (queued.kind !== 'reflect' || next.kind !== 'reflect') return next;
+  return { ...next, paths: [...new Set([...queued.paths, ...next.paths])] };
+}
+
 export function runnerOf(
   handlers: DriveJobHandlers,
 ): (job: DriveJob, signal: AbortSignal) => Promise<void> {
@@ -68,6 +79,8 @@ export function runnerOf(
     switch (job.kind) {
       case 'scan':
         return handlers.scan(job, signal);
+      case 'reflect':
+        return handlers.reflect(job, signal);
       case 'hash':
         return handlers.hash(job, signal);
       case 'metadata':
@@ -125,7 +138,12 @@ export function watchHang(
   };
 }
 
-class ScanRun {
+export interface WalkScope {
+  readonly base: string;
+  readonly full: boolean;
+}
+
+export class ScanRun {
   private readonly control = new SharedArrayBuffer(CONTROL_SLOTS * Int32Array.BYTES_PER_ELEMENT);
   private readonly acks = new Int32Array(this.control);
   private readonly origin = Date.now();
@@ -136,6 +154,7 @@ class ScanRun {
     private readonly env: ScanEnvironment,
     private readonly root: StoredDrive,
     private readonly committer: ScanCommitter,
+    private readonly scope: WalkScope,
   ) {}
 
   walk(signal: AbortSignal): Promise<WalkOutcome> {
@@ -189,6 +208,7 @@ class ScanRun {
   private data(): WalkData {
     return {
       path: this.root.path,
+      base: this.scope.base,
       includeHidden: this.root.includeHidden || this.env.mounted(this.root.id),
       skip: this.root.skipPatterns,
       reserved: [MARKER_DIRECTORY],
@@ -229,6 +249,7 @@ class ScanRun {
   }
 
   private progress(): void {
+    if (!this.scope.full) return;
     this.env.store.feed.notice({
       type: 'drive_progress',
       rootId: this.root.id,
@@ -246,8 +267,14 @@ class ScanRun {
       this.root.id,
       stuck
         ? { state: 'unresponsive', stateReason: 'The storage stopped answering.' }
-        : { state: 'scanning', stateReason: null },
+        : this.calm(),
     );
+  }
+
+  private calm(): Pick<StoredDrive, 'state' | 'stateReason'> {
+    return this.scope.full
+      ? { state: 'scanning', stateReason: null }
+      : { state: this.root.state, stateReason: this.root.stateReason };
   }
 }
 
@@ -298,13 +325,8 @@ async function hashForReuse(
   return null;
 }
 
-async function commitScan(
-  env: ScanEnvironment,
-  root: StoredDrive,
-  signal: AbortSignal,
-  startedAt: number,
-): Promise<void> {
-  const dependencies: CommitDependencies = {
+export function commitDependencies(env: ScanEnvironment, root: StoredDrive): CommitDependencies {
+  return {
     items: env.store.driveItems,
     inodes: env.store.driveInodes,
     missing: env.store.driveMissing,
@@ -313,20 +335,28 @@ async function commitScan(
     now: env.store.now,
     newId: env.newId ?? randomUUID,
   };
-  const committer = new ScanCommitter(dependencies, root);
-  const outcome = await new ScanRun(env, root, committer).walk(signal);
+}
+
+async function commitScan(
+  env: ScanEnvironment,
+  root: StoredDrive,
+  signal: AbortSignal,
+  startedAt: number,
+): Promise<void> {
+  const dependencies = commitDependencies(env, root);
+  const committer = new ScanCommitter(dependencies, root, null);
+  const outcome = await new ScanRun(env, root, committer, { base: '', full: true }).walk(signal);
   if (outcome.cancelled) {
     env.log.info('drive.scan_cancelled', { rootId: root.id });
     return;
   }
-  const totals = await committer.finish(outcome.unreadable);
-  env.store.driveRoots.update(root.id, {
+  await committer.finish(outcome.unreadable);
+  const ready = env.store.driveRoots.update(root.id, {
     state: 'ready',
     stateReason: null,
     scannedAt: env.store.now().toISOString(),
-    ...totals,
   });
-  const entries = totals.items + totals.folders;
+  const entries = ready.items + ready.folders;
   env.store.feed.notice({
     type: 'drive_progress',
     rootId: root.id,
@@ -336,7 +366,9 @@ async function commitScan(
   });
   env.log.info('drive.scan_done', {
     rootId: root.id,
-    ...totals,
+    items: ready.items,
+    folders: ready.folders,
+    bytes: ready.bytes,
     unreadable: outcome.unreadable.length,
     skippedUnknown: outcome.skipped,
     durationMs: Math.round(performance.now() - startedAt),

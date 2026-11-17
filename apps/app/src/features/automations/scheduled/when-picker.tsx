@@ -14,6 +14,7 @@ import {
   minutesLabel,
   type When,
 } from './when';
+import { useHour24 } from '../../../store/clock-format';
 
 type Mode = When['kind'];
 type Preset = string;
@@ -82,6 +83,7 @@ export function WhenPicker({
   readonly value: When;
   readonly onChange: (when: When) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const now = useMinute();
   return (
     <View className="gap-4">
@@ -97,6 +99,7 @@ export function WhenPicker({
         <InPicker minutes={value.minutes} onChange={onChange} />
       ) : (
         <TimeField
+          hour24={hour24}
           label="Time"
           value={value.time}
           onChange={(time) => {

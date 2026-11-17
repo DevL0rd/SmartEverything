@@ -100,3 +100,39 @@ describe('the change feed', () => {
     expect(commits).toBe(2);
   });
 });
+
+describe('progress held inside one write', () => {
+  it('delivers only the latest progress of each kind and keeps item progress and other notices', () => {
+    const feed = new ChangeFeed(testLogger());
+    const seen: string[] = [];
+    feed.subscribeNotices((notice) => {
+      if (notice.type === 'photos_progress')
+        seen.push(
+          `${notice.kind} ${String(notice.done)}/${String(notice.total)}${notice.itemId === undefined ? '' : ' item'}`,
+        );
+      else if (notice.type === 'photos_ai') seen.push(`ai ${notice.stage} ${String(notice.total)}`);
+    });
+    feed.hold();
+    feed.notice({ type: 'photos_progress', kind: 'preview', done: 0, total: 1 });
+    feed.notice({ type: 'photos_progress', kind: 'preview', done: 0, total: 2 });
+    feed.notice({ type: 'photos_progress', kind: 'poster', done: 0, total: 1 });
+    feed.notice({
+      type: 'photos_progress',
+      kind: 'playable',
+      itemId: '0e000000-0000-4000-8000-000000000001',
+      done: 1,
+      total: 1,
+    });
+    feed.notice({ type: 'photos_progress', kind: 'preview', done: 0, total: 3 });
+    feed.release();
+    feed.notice({ type: 'photos_progress', kind: 'preview', done: 1, total: 3 });
+    feed.notice({ type: 'photos_progress', kind: 'preview', done: 2, total: 3 });
+    expect(seen).toEqual([
+      'poster 0/1',
+      'playable 1/1 item',
+      'preview 0/3',
+      'preview 1/3',
+      'preview 2/3',
+    ]);
+  });
+});

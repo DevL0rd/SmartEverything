@@ -76,27 +76,12 @@ export function recentStateOf(input: RecentStateInput): RecentState {
   return input.isError ? 'error' : 'empty';
 }
 
-export function recentStale(hasData: boolean, live: boolean): boolean {
-  return hasData && !live;
-}
-
 function RecentOffline(): ReactNode {
   return (
     <EmptyState
       icon="wifiOff"
       title="The hub is offline"
       body="Recent files come back when the hub reconnects. Your files stay on the hub as they are."
-    />
-  );
-}
-
-export function RecentStaleBanner(): ReactNode {
-  return (
-    <Banner
-      wrapBody
-      tone="info"
-      title="Offline · showing the last recent files"
-      body="New opens and changes appear when the hub is back."
     />
   );
 }

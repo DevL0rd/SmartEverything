@@ -56,6 +56,7 @@ const screen: AlarmScreen = {
     timeZone: 'UTC',
     weekStart: 1,
     disabled: false,
+    skipOn: null,
     onChange: vi.fn(),
   },
 };

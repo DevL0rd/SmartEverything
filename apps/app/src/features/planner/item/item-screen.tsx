@@ -3,7 +3,6 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { closeFlow } from '../../../app-shell/close-flow';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { twoFrameColumnsAt } from '../../../components/page-shell/layout';
@@ -34,17 +33,6 @@ function leaveItem(item: PlannerItemRow): void {
 function kindTitleOf(item: PlannerItemRow): string {
   if (item.parent_id !== null) return 'Step';
   return item.kind === 'event' ? 'Event' : 'Task';
-}
-
-function OfflineBanner(): ReactNode {
-  return (
-    <Banner
-      tone="info"
-      title="Can’t reach the hub"
-      body="Edits are paused until the hub is back."
-      wrapBody
-    />
-  );
 }
 
 interface OpenItemScreenProps {
@@ -85,7 +73,6 @@ function OpenItemScreen({ item, target, onLeave }: OpenItemScreenProps): ReactNo
     <PageShell
       title={kindTitleOf(item)}
       overflow={menu.items}
-      {...(offline ? { banner: <OfflineBanner /> } : {})}
       {...(editor.bar === null ? {} : { footer: editor.bar })}
     >
       <ItemBody

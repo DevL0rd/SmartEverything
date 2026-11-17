@@ -10,6 +10,7 @@ import { cn } from '../../../design/cn';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
+import { useInstantClock } from '../../clock/format/clock-format';
 import { usePlannerRange } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { QueryBody } from '../frame/query-body';
@@ -211,6 +212,7 @@ function useAgendaRows(range: PlannerRange, day: string, query: string): readonl
   const timeZone = useSettings().time_zone;
   const window = agendaDaysOf(day);
   const looks = useCalendarLooks(person);
+  const instant = useInstantClock();
   return agendaRowsOf({
     days: dayMapOf(range.occurrences, timeZone, window),
     window,
@@ -219,6 +221,7 @@ function useAgendaRows(range: PlannerRange, day: string, query: string): readonl
     timeZone,
     query,
     lookOf: looks.lookOf,
+    instant,
   });
 }
 

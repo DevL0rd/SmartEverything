@@ -5,6 +5,7 @@ import {
   type MediaProcessing,
   type MediaState,
   type MediaTimeSource,
+  type PhotoDescription,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { DriveActor } from '../drive/access';
@@ -20,6 +21,7 @@ import {
   type DriveMediaJobKind,
 } from '../store/repositories/drive-media-jobs';
 import { DriveMediaRepository, type DriveMediaRow } from '../store/repositories/drive-media';
+import type { StoredPhotoDescription } from '../store/repositories/photo-descriptions';
 import { inList } from '../store/sql';
 import type { Store } from '../store/store';
 import { placeNumber } from './places-routes';
@@ -79,7 +81,16 @@ function stateOf(row: DriveMediaRow, derived: Derived, jobs: readonly DriveMedia
   return { state };
 }
 
-function emptyInfo(itemId: string, jobs: readonly DriveMediaJob[]): MediaInfo {
+function describedBy(stored: StoredPhotoDescription | undefined): PhotoDescription | null {
+  if (stored === undefined) return null;
+  return stored.text === null ? null : { text: stored.text, source: stored.source };
+}
+
+function emptyInfo(
+  itemId: string,
+  jobs: readonly DriveMediaJob[],
+  description: PhotoDescription | null,
+): MediaInfo {
   const pending = (derived: Derived): MediaState =>
     busy(jobs, derived) ? { state: 'processing' } : { state: 'none' };
   return {
@@ -91,13 +102,18 @@ function emptyInfo(itemId: string, jobs: readonly DriveMediaJob[]): MediaInfo {
     burstId: null,
     stackId: null,
     placeId: null,
+    description,
     preview: pending('preview'),
     poster: pending('poster'),
     playable: pending('playable'),
   };
 }
 
-function infoOf(row: DriveMediaRow, jobs: readonly DriveMediaJob[]): MediaInfo {
+function infoOf(
+  row: DriveMediaRow,
+  jobs: readonly DriveMediaJob[],
+  description: PhotoDescription | null,
+): MediaInfo {
   return {
     itemId: row.item_id,
     timeSource: TIME_SOURCES[row.time_source],
@@ -107,6 +123,7 @@ function infoOf(row: DriveMediaRow, jobs: readonly DriveMediaJob[]): MediaInfo {
     burstId: row.burst_id,
     stackId: row.stack_id,
     placeId: row.place_id === null ? null : placeNumber(row.place_id),
+    description,
     preview: stateOf(row, 'preview', jobs),
     poster: stateOf(row, 'poster', jobs),
     playable: stateOf(row, 'playable', jobs),
@@ -138,7 +155,7 @@ export class PhotoMedia {
   constructor(
     private readonly context: StoreContext,
     private readonly read: DriveReadService,
-    private readonly store: Pick<Store, 'driveItems'>,
+    private readonly store: Pick<Store, 'driveItems' | 'photoDescriptions'>,
   ) {
     this.media = new DriveMediaRepository(context);
     this.jobs = new DriveMediaJobsRepository(context);
@@ -148,7 +165,10 @@ export class PhotoMedia {
     this.read.readItem(actor, itemId);
     const jobs = this.jobs.forItem(itemId);
     const row = this.media.find(itemId);
-    return row === undefined ? emptyInfo(itemId, jobs) : infoOf(row, jobs);
+    const description = describedBy(this.store.photoDescriptions.find(itemId));
+    return row === undefined
+      ? emptyInfo(itemId, jobs, description)
+      : infoOf(row, jobs, description);
   }
 
   processing(actor: DriveActor): MediaProcessing {

@@ -122,28 +122,6 @@ function Loading(): ReactNode {
   );
 }
 
-function Banners({
-  live,
-  phase,
-}: {
-  readonly live: boolean;
-  readonly phase: PhaseBannerProps | null;
-}): ReactNode {
-  return (
-    <View className="gap-2">
-      {live ? null : (
-        <Banner
-          tone="info"
-          title="Offline · showing the last snapshot"
-          body="Switches and progress come back when your home hub answers."
-          wrapBody
-        />
-      )}
-      {phase === null ? null : <Banner {...phase} wrapBody />}
-    </View>
-  );
-}
-
 export function SmartFeaturesScreen(): ReactNode {
   const query = usePhotoAiStatus();
   const live = useSyncStatus().status === 'live';
@@ -156,7 +134,7 @@ export function SmartFeaturesScreen(): ReactNode {
     <SettingsFrame
       page={PHOTOS_SMART_PAGE}
       actions={OPEN_PEOPLE}
-      {...(live && phase === null ? {} : { banner: <Banners live={live} phase={phase} /> })}
+      {...(phase === null ? {} : { banner: <Banner {...phase} wrapBody /> })}
     >
       {status !== undefined ? <Body status={status} live={live} /> : null}
       {status === undefined && query.isError ? (

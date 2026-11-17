@@ -3,7 +3,6 @@ import { ScrollView, View, type ViewStyle } from 'react-native';
 import type { PlaceCluster, PlaceCountry } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -273,13 +272,6 @@ function Loading({ places }: { readonly places: PlacesQuery }): ReactNode {
   );
 }
 
-function OfflineNote(): ReactNode {
-  const offline = useSyncStatus().status === 'interrupted';
-  return offline ? (
-    <Banner tone="info" title={MAP_COPY.offline.title} body={MAP_COPY.offline.body} wrapBody />
-  ) : null;
-}
-
 export function MapScreen(): ReactNode {
   const [mode, setMode] = useState<MapMode>('map');
   const [text, setText] = useState('');
@@ -297,7 +289,7 @@ export function MapScreen(): ReactNode {
     >
       <View className="min-h-0 flex-1 gap-section-gap">
         {some ? <Segmented options={MODES} value={mode} onChange={setMode} label="View" /> : null}
-        {countries === undefined ? <Loading places={places} /> : <OfflineNote />}
+        {countries === undefined ? <Loading places={places} /> : null}
         {countries === undefined ? null : <Body mode={mode} countries={countries} text={text} />}
       </View>
     </PhotosFrame>

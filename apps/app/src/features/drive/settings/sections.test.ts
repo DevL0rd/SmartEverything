@@ -67,14 +67,13 @@ describe('Drive settings sections', () => {
     const rows = visibleRows(OWNER_DESKTOP);
     expect(rows).toContain('drive.storage.quotas');
     expect(rows).toContain('drive.indexing.contents');
-    expect(rows).toContain('drive.indexing.ocr');
     expect(rows).not.toContain('drive.phone.space');
     expect(rows).toContain('drive.sync-mount.mount');
     expect(rows).toContain('drive.sync-mount.cache-age');
     expect(rows).not.toContain('drive.storage.mine');
   });
 
-  it('keeps content reading and picture languages for the owner only', () => {
+  it('keeps content reading for the owner only', () => {
     const memberDesktop = { owner: false, platform: 'desktop' } as const;
     const rows = DRIVE_SETTINGS_SECTIONS.flatMap((section) =>
       section.rows
@@ -82,7 +81,6 @@ describe('Drive settings sections', () => {
         .map((row) => row.settingId),
     );
     expect(rows).not.toContain('drive.indexing.contents');
-    expect(rows).not.toContain('drive.indexing.ocr');
   });
 
   it('lists every advanced mount row for a desktop and the Hub rows for the owner only', () => {

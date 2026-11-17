@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DriveItem } from '@smarteverything/domain';
 import { build } from 'esbuild';
-import sharp from 'sharp';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../../src/drive/jobs';
 import { DriveRootLanes } from '../../../src/drive/root-lanes';
@@ -28,7 +27,6 @@ import { updateDriveSettings } from '../../../src/drive/settings';
 import { DriveFeedRepository } from '../../../src/store/repositories/drive-feed';
 import { DriveFolderIconsRepository } from '../../../src/store/repositories/drive-folder-icons';
 import { DriveItemTextRepository } from '../../../src/store/repositories/drive-item-text';
-import { DriveMediaRepository } from '../../../src/store/repositories/drive-media';
 import { testLogger } from '../../support/logs';
 import { driveRoot, NOW, openDriveFixture, type DriveFixture } from '../drive-fixture';
 import { zipOf, pngOf, solid } from './builders';
@@ -54,13 +52,10 @@ let bundleFolder = '';
 let scannerScript = '';
 let contentScript = '';
 let tree = '';
-let previews = '';
 let derived = '';
-let languages = '';
 let fixture: DriveFixture;
 let texts: DriveItemTextRepository;
 let icons: DriveFolderIconsRepository;
-let media: DriveMediaRepository;
 let driveFeed: DriveFeedRepository;
 let progress: string[];
 let changed: number;
@@ -86,7 +81,7 @@ beforeAll(async () => {
     platform: 'node',
     format: 'esm',
     target: 'node24',
-    external: ['sharp', 'tesseract.js'],
+    external: [],
     banner: { js: BUNDLE_BANNER },
     logLevel: 'silent',
   });
@@ -98,14 +93,11 @@ afterAll(() => {
 
 beforeEach(() => {
   tree = mkdtempSync(join(tmpdir(), 'text-tree-'));
-  previews = mkdtempSync(join(tmpdir(), 'text-previews-'));
   derived = mkdtempSync(join(tmpdir(), 'text-derived-'));
-  languages = mkdtempSync(join(tmpdir(), 'text-languages-'));
   fixture = openDriveFixture();
   fixture.addDrive(driveRoot(ROOT), tree);
   texts = new DriveItemTextRepository(fixture.context);
   icons = new DriveFolderIconsRepository(fixture.context);
-  media = new DriveMediaRepository(fixture.context);
   driveFeed = new DriveFeedRepository(fixture.context);
   progress = [];
   changed = 0;
@@ -118,8 +110,7 @@ beforeEach(() => {
 
 afterEach(() => {
   fixture.database.close();
-  for (const path of [tree, previews, derived, languages])
-    rmSync(path, { recursive: true, force: true });
+  for (const path of [tree, derived]) rmSync(path, { recursive: true, force: true });
 });
 
 function put(path: string, content: string | Buffer): void {
@@ -177,11 +168,8 @@ function textEnvironment(): TextEnvironment {
       feed: fixture.feed,
       write: (work) => fixture.context.write(work),
     },
-    media,
     availability: () => Promise.resolve('online'),
     workerScript: contentScript,
-    previewPath: (itemId, rev) => join(previews, `${itemId}-${String(rev)}.png`),
-    languageDirectory: languages,
     activity: new DriveActivity(),
     icons: refresher,
     log: testLogger(),
@@ -190,31 +178,6 @@ function textEnvironment(): TextEnvironment {
 
 async function readText(): Promise<void> {
   await textHandler(textEnvironment(), new TextCursors())({ kind: 'text', rootId: ROOT }, signal());
-}
-
-async function readyPreview(path: string, words: string): Promise<void> {
-  const item = indexed(path);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="220"><rect width="900" height="220" fill="white"/><text x="20" y="140" font-size="80" font-family="DejaVu Sans" fill="black">${words}</text></svg>`;
-  await sharp(Buffer.from(svg))
-    .png()
-    .toFile(join(previews, `${item.id}-${String(item.rev)}.png`));
-  media.save({
-    item_id: item.id,
-    time_source: 'modified',
-    tz_offset_min: null,
-    preview_state: 'ready',
-    preview_reason: null,
-    poster_state: 'none',
-    poster_reason: null,
-    playable_state: 'none',
-    playable_reason: null,
-    motion_clip_id: null,
-    live_id: null,
-    burst_id: null,
-    stem_key: null,
-    stack_id: null,
-    place_id: null,
-  });
 }
 
 function stateOf(path: string): string | undefined {
@@ -254,60 +217,29 @@ describe('reading the text of a drive', () => {
         { name: 'word/document.xml', data: '<w:p><w:r><w:t>harbour budget</w:t></w:r></w:p>' },
       ]),
     );
-    put('clip.mp4', 'not really a video');
     put('blank.txt', '   ');
     put('broken.pdf', 'not a pdf');
     await scan();
     await readText();
     expect(stateOf('notes.txt')).toBe('document:ok');
     expect(stateOf('letter.docx')).toBe('document:ok');
-    expect(stateOf('clip.mp4')).toBe('document:unsupported');
     expect(stateOf('blank.txt')).toBe('document:empty');
     expect(stateOf('broken.pdf')).toBe('document:failed');
     expect(searchFor('lighthouse')).toEqual(['notes.txt']);
     expect(searchFor('harbour')).toEqual(['letter.docx']);
-    expect(progress.at(-1)).toBe('text:5/5');
+    expect(progress.at(-1)).toBe('text:4/4');
   });
 
-  it('reads the words in a picture from its preview, and waits while there is no preview', async () => {
-    const image = await sharp({
-      create: { width: 10, height: 10, channels: 3, background: 'white' },
-    })
-      .png()
-      .toBuffer();
-    put('sign.png', image);
+  it('leaves pictures and videos to the vision model', async () => {
+    put('sign.png', await pngOf(8, 8, solid(8, 8, [255, 255, 255, 255])));
+    put('clip.mp4', 'not really a video');
+    put('notes.txt', 'harbour words');
     await scan();
     await readText();
     expect(stateOf('sign.png')).toBeUndefined();
-    await readyPreview('sign.png', 'Invoice lighthouse');
-    await readText();
-    expect(stateOf('sign.png')).toBe('image:ok');
-    expect(searchFor('lighthouse')).toEqual(['sign.png']);
-  }, 60_000);
-
-  it('records a picture whose preview failed as unsupported', async () => {
-    put('bad.png', 'not an image');
-    await scan();
-    const item = indexed('bad.png');
-    media.save({
-      item_id: item.id,
-      time_source: 'modified',
-      tz_offset_min: null,
-      preview_state: 'failed',
-      preview_reason: 'bad image',
-      poster_state: 'none',
-      poster_reason: null,
-      playable_state: 'none',
-      playable_reason: null,
-      motion_clip_id: null,
-      live_id: null,
-      burst_id: null,
-      stem_key: null,
-      stack_id: null,
-      place_id: null,
-    });
-    await readText();
-    expect(stateOf('bad.png')).toBe('document:unsupported');
+    expect(stateOf('clip.mp4')).toBeUndefined();
+    expect(stateOf('notes.txt')).toBe('document:ok');
+    expect(progress.at(-1)).toBe('text:1/1');
   });
 
   it('reads a file again only after its revision changes', async () => {
@@ -316,7 +248,7 @@ describe('reading the text of a drive', () => {
     await readText();
     const before = texts.find(indexed('notes.txt').id);
     expect(
-      collectTextBacklog({ store: textEnvironment().store, media }, fixture.roots.byId(ROOT)).work,
+      collectTextBacklog({ store: textEnvironment().store }, fixture.roots.byId(ROOT)).work,
     ).toEqual([]);
     put('notes.txt', 'second words here');
     utimesSync(
@@ -325,11 +257,8 @@ describe('reading the text of a drive', () => {
       new Date('2026-11-08T00:00:00Z'),
     );
     await scan();
-    const stale = collectTextBacklog(
-      { store: textEnvironment().store, media },
-      fixture.roots.byId(ROOT),
-    );
-    expect(stale.work.map((work) => work.item.name)).toEqual(['notes.txt']);
+    const stale = collectTextBacklog({ store: textEnvironment().store }, fixture.roots.byId(ROOT));
+    expect(stale.work.map((item) => item.name)).toEqual(['notes.txt']);
     await readText();
     const after = texts.find(indexed('notes.txt').id);
     expect(after?.rev).toBeGreaterThan(before?.rev ?? 0);
@@ -381,11 +310,10 @@ describe('reading the text of a drive', () => {
       via: 'outside',
       deviceId: null,
     });
-    await readyPreview('b/three.png', 'HELLO');
     await run({ kind: 'text', rootId: ROOT }, signal());
     expect(listed).toBe(walked);
     expect(searchFor('gamma')).toEqual(['two.txt']);
-    expect(texts.find(indexed('b/three.png').id)?.source).toBe('image');
+    expect(texts.find(indexed('b/three.png').id)).toBeUndefined();
     cursors.forget(ROOT);
     await run({ kind: 'text', rootId: ROOT }, signal());
     expect(listed).toBeGreaterThan(walked);

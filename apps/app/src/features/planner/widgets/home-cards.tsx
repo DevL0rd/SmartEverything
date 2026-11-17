@@ -1,9 +1,4 @@
-import type {
-  PlannerColourKey,
-  PlannerDay,
-  PlannerItemRow,
-  PlannerOccurrenceView,
-} from '@smarteverything/domain';
+import type { PlannerDay, PlannerItemRow, PlannerOccurrenceView } from '@smarteverything/domain';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
@@ -16,22 +11,13 @@ import { useWidgetFace } from '../../../components/widget-board/use-widget-face'
 import { cn } from '../../../design/cn';
 import { plural } from '../../../format/text';
 import { useDayKey } from '../../../store/clock';
-import { useRows, useSettings } from '../../../store/selectors';
 import { useHubOffline } from '../../clock';
 import { DeviceFace } from '../../devices';
-import { usePlannerProfile } from '../data/assignment';
-import {
-  usePlannerCollections,
-  usePlannerDay,
-  usePlannerItems,
-  usePlannerPreferences,
-  useVisibleMinute,
-} from '../data';
-import { LIST_DOT } from '../item/composer-tokens';
+import { usePlannerDay, usePlannerItems, useVisibleMinute } from '../data';
 import { DayStrip } from '../today/day-strip';
-import { dayStripOf, type DayStripModel } from '../today/day-strip-model';
 import { lensOf } from '../today/now-lens';
-import { occurrenceKeyOf, riverRowsOf, riverTimeOf } from '../today/river-model';
+import { useInstantClock } from '../../clock/format/clock-format';
+import { NO_HIDDEN, useDayLines, useStripModel, type DayLine } from './day-lines';
 import {
   SECTION_GAP,
   STRIP_HEIGHT,
@@ -54,12 +40,7 @@ const FRAME = {
 } as const;
 
 const OPEN = { label: 'Open Planner', href: href.planner.index() } as const;
-const NO_HIDDEN: ReadonlySet<string> = new Set();
 const RING = { size: 18, thickness: 3 } as const;
-
-function dotOf(colour: PlannerColourKey | null): string {
-  return colour === null ? 'bg-on-surface-variant' : LIST_DOT[colour];
-}
 
 export function WidgetOffline(): ReactNode {
   return (
@@ -100,61 +81,6 @@ export function DayBadge({ day }: { readonly day: PlannerDay }): ReactNode {
       )}
     </View>
   );
-}
-
-export interface DayLine {
-  readonly key: string;
-  readonly time: string;
-  readonly title: string;
-  readonly dot: string;
-  readonly missed: boolean;
-  readonly spoken: string;
-}
-
-function missedLineOf(occurrence: PlannerOccurrenceView, timeZone: string): DayLine {
-  const time = riverTimeOf(occurrence, timeZone);
-  return {
-    key: `missed:${occurrenceKeyOf(occurrence)}`,
-    time,
-    title: occurrence.title,
-    dot: 'bg-critical',
-    missed: true,
-    spoken: `Missed, ${time}, ${occurrence.title}`,
-  };
-}
-
-export function useDayLines(
-  day: PlannerDay,
-  lens: PlannerOccurrenceView | null,
-): readonly DayLine[] {
-  const items = usePlannerItems(null);
-  const collections = usePlannerCollections(null);
-  const guests = useRows('planner_guests');
-  const me = usePlannerProfile(null);
-  const rows = riverRowsOf({ day, collections, items, hidden: NO_HIDDEN, lens, guests, me });
-  return [
-    ...day.missed.map((occurrence) => missedLineOf(occurrence, day.time_zone)),
-    ...rows.map((row): DayLine => ({
-      key: row.key,
-      time: row.time,
-      title: row.title,
-      dot: dotOf(row.colour),
-      missed: false,
-      spoken: row.spoken,
-    })),
-  ];
-}
-
-export function useStripModel(day: PlannerDay): DayStripModel {
-  const collections = usePlannerCollections(null);
-  const preferences = usePlannerPreferences(null).data;
-  const { latitude, longitude } = useSettings();
-  return dayStripOf({
-    day,
-    collections,
-    place: latitude === null || longitude === null ? null : { latitude, longitude },
-    showSleep: preferences?.day_planner.show_sleep === true,
-  });
 }
 
 function DayRow({ line, more }: { readonly line: DayLine; readonly more: number }): ReactNode {
@@ -233,13 +159,14 @@ function Lead({
 }): ReactNode {
   const devices = deviceIdsOf(occurrence);
   const item = itemOf(usePlannerItems(null), occurrence);
+  const instant = useInstantClock();
   return (
     <View className={cn('min-w-0 gap-1', split && 'flex-1')}>
       <Text variant="body-strong" numberOfLines={report ? 2 : 1}>
         {occurrence.title}
       </Text>
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
-        {leadWhenOf(occurrence, day.time_zone, now)}
+        {leadWhenOf(occurrence, day.time_zone, now, instant)}
       </Text>
       {report && occurrence.location !== null ? (
         <View className="flex-row items-center gap-1">

@@ -7,6 +7,7 @@ import { hourText } from '../model/brush-model';
 import { Anchored } from './anchored';
 import { StepperRow } from './rows';
 import type { SettingsProps } from './settings-props';
+import { useClockFormat } from '../../../features/clock/format/clock-format';
 
 const HOURS = { min: 0, max: 23, step: 1 } as const;
 const MINIMUM = { min: 30, max: 300, step: 10 } as const;
@@ -36,11 +37,12 @@ function WindowRow({
   readonly goal: BrushingGoal;
 }): ReactNode {
   const change = useGoalChange(deviceId);
+  const format = useClockFormat();
   return (
     <Anchored deviceId={deviceId} id={id} label={title}>
       <StepperRow
         title={title}
-        subtitle={`Currently ${hourText(goal[field])}`}
+        subtitle={`Currently ${hourText(goal[field], format)}`}
         value={goal[field]}
         range={HOURS}
         unit="h"

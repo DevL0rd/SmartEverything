@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DriveRoot } from '@smarteverything/domain';
 import { build } from 'esbuild';
@@ -116,4 +118,37 @@ export async function bundleWorker(source: string, outfile: string): Promise<voi
     target: 'node24',
     logLevel: 'silent',
   });
+}
+
+const REPOSITORY_TMP = fileURLToPath(new URL('../../../../tmp/', import.meta.url));
+
+const ESM_BANNER =
+  'import { createRequire as createServiceRequire } from "node:module"; import { fileURLToPath as serviceFileUrlToPath } from "node:url"; import { dirname as serviceDirname } from "node:path"; const require = createServiceRequire(import.meta.url); const __filename = serviceFileUrlToPath(import.meta.url); const __dirname = serviceDirname(__filename);';
+
+export interface BundledWorker {
+  readonly script: string;
+  readonly dispose: () => void;
+}
+
+export async function bundleMetadataWorker(): Promise<BundledWorker> {
+  mkdirSync(REPOSITORY_TMP, { recursive: true });
+  const folder = mkdtempSync(join(REPOSITORY_TMP, 'hub-metadata-worker-'));
+  const script = join(folder, 'metadata-worker.mjs');
+  await build({
+    entryPoints: [fileURLToPath(new URL('../../src/drive/metadata-worker.ts', import.meta.url))],
+    outfile: script,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node24',
+    external: ['mediainfo.js'],
+    banner: { js: ESM_BANNER },
+    logLevel: 'silent',
+  });
+  return {
+    script,
+    dispose: (): void => {
+      rmSync(folder, { recursive: true, force: true });
+    },
+  };
 }

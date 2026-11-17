@@ -49,7 +49,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-function start(): void {
+async function start(): Promise<void> {
   fixture.addDrive(driveRoot(ROOT), root);
   watchers = new DriveWatchers({
     roots: fixture.roots,
@@ -68,6 +68,9 @@ function start(): void {
     enqueueScan: (): void => {
       asked('scan');
     },
+    enqueueReflect: (): void => {
+      asked('reflect');
+    },
     enqueueFollowUps: (): void => {
       asked('follow-ups');
     },
@@ -75,7 +78,7 @@ function start(): void {
     settleMs: SETTLE_MS,
     log: testLogger(),
   });
-  watchers.start(fixture.roots.byId(ROOT));
+  await watchers.start(fixture.roots.byId(ROOT));
   requests.splice(0);
 }
 
@@ -127,7 +130,7 @@ function nextRequest(): Promise<string> {
 
 describe('the watcher after a change the hub made itself', () => {
   it('asks only for the follow-up jobs when every touched item already matches the index', async () => {
-    start();
+    await start();
     mkdirSync(join(root, 'made'));
     writeFileSync(join(root, 'made/one.txt'), 'one');
     writeFileSync(join(root, 'top.txt'), 'top');
@@ -144,7 +147,7 @@ describe('the watcher after a change the hub made itself', () => {
   });
 
   it('waits for a running hub operation to finish before judging what it touched', async () => {
-    start();
+    await start();
     await activity.around(async () => {
       writeFileSync(join(root, 'slow.txt'), 'slow');
       await new Promise((resolve) => setTimeout(resolve, SETTLE_MS * 4));
@@ -155,44 +158,44 @@ describe('the watcher after a change the hub made itself', () => {
     expect(requests).toEqual(['follow-ups']);
   });
 
-  it('scans the root for a change the index does not hold', async () => {
+  it('reflects only the changed path the index does not hold', async () => {
     mkdirSync(join(root, 'kept'));
-    start();
+    await start();
     writeFileSync(join(root, 'kept/outside.txt'), 'outside');
-    await expect(nextRequest()).resolves.toBe('scan');
+    await expect(nextRequest()).resolves.toBe('reflect');
   });
 
-  it('scans for an item that changed again after the hub indexed it', async () => {
-    start();
+  it('reflects an item that changed again after the hub indexed it', async () => {
+    await start();
     writeFileSync(join(root, 'doc.txt'), 'one');
     indexAsHub('doc.txt');
     await expect(nextRequest()).resolves.toBe('follow-ups');
     writeFileSync(join(root, 'doc.txt'), 'one and more');
-    await expect(nextRequest()).resolves.toBe('scan');
+    await expect(nextRequest()).resolves.toBe('reflect');
   });
 
   it('checks what a new folder already held when its watch was attached', async () => {
-    start();
+    await start();
     mkdirSync(join(root, 'fresh'));
     writeFileSync(join(root, 'fresh/early.txt'), 'early');
     indexAsHub('fresh');
-    await expect(nextRequest()).resolves.toBe('scan');
+    await expect(nextRequest()).resolves.toBe('reflect');
   });
 
   it('ignores the orphan folder and checks hidden names while the drive is mounted', async () => {
     mounted = true;
-    start();
+    await start();
     mkdirSync(join(root, '.se-orphans'));
     writeFileSync(join(root, '.se-orphans/7'), 'held open');
     writeFileSync(join(root, '.hidden'), 'hidden');
     indexAsHub('.hidden');
     await expect(nextRequest()).resolves.toBe('follow-ups');
     writeFileSync(join(root, '.other'), 'other');
-    await expect(nextRequest()).resolves.toBe('scan');
+    await expect(nextRequest()).resolves.toBe('reflect');
   });
 
   it('reads the mount state once and again only when a placement of its root changes', async () => {
-    start();
+    await start();
     writeFileSync(join(root, 'a.txt'), 'a');
     writeFileSync(join(root, 'b.txt'), 'b');
     indexAsHub('a.txt');
@@ -205,11 +208,11 @@ describe('the watcher after a change the hub made itself', () => {
     placementChanged(ROOT);
     expect(mountedReads).toBe(2);
     writeFileSync(join(root, '.later'), 'later');
-    await expect(nextRequest()).resolves.toBe('scan');
+    await expect(nextRequest()).resolves.toBe('reflect');
   });
 
-  it('stops listening for placement changes once the watch closes', () => {
-    start();
+  it('stops listening for placement changes once the watch closes', async () => {
+    await start();
     expect(placementListeners).toHaveLength(1);
     watchers?.close();
     expect(placementListeners).toHaveLength(0);

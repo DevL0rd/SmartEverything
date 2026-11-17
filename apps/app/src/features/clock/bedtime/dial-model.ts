@@ -1,4 +1,5 @@
 import { minuteOfClock, type PlannerBedtimeNight } from '@smarteverything/domain';
+import type { ClockFormat } from '../../../format/clock-text';
 import { clockOfMinutes } from '../../../format/time';
 
 export const DAY_MINUTES = 24 * 60;
@@ -68,11 +69,11 @@ export function windDownArcOf(times: DialTimes, minutes: number | null): DialArc
   };
 }
 
-export function dialTicks(): readonly DialTick[] {
+export function dialTicks(format: ClockFormat): readonly DialTick[] {
   return Array.from({ length: 24 }, (_, hour) => ({
     minute: hour * 60,
     angle: (hour / 24) * FULL_TURN,
-    label: hour % 6 === 0 ? String(hour).padStart(2, '0') : null,
+    label: hour % 6 === 0 ? format.hour(hour) : null,
   }));
 }
 
@@ -107,6 +108,6 @@ export function sleepLengthText(minutes: number): string {
   return rest === 0 ? `${String(hours)} h` : `${String(hours)} h ${String(rest)} min`;
 }
 
-export function dialSpokenOf(times: DialTimes): string {
-  return `Bed ${clockOfMinutes(times.bed)}, wake ${clockOfMinutes(times.wake)}, ${sleepLengthText(sleepMinutesOf(times))} in bed`;
+export function dialSpokenOf(times: DialTimes, format: ClockFormat): string {
+  return `Bed ${format.minutes(times.bed)}, wake ${format.minutes(times.wake)}, ${sleepLengthText(sleepMinutesOf(times))} in bed`;
 }

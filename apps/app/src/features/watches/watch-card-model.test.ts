@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clock } from '../../format/time';
+import { clockFormatOf } from '../../format/clock-text';
 import {
   findControlOf,
   findRequestOf,
@@ -23,48 +23,53 @@ const FACTS: WatchFacts = {
   onThisPhone: true,
 };
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('the headline chip of a watch', () => {
   it('says on wrist while worn', () => {
-    expect(headlineOf(FACTS, null)).toEqual({ tone: 'positive', label: 'On wrist' });
+    expect(headlineOf(FACTS, null, H24.instant)).toEqual({ tone: 'positive', label: 'On wrist' });
   });
 
   it('says off wrist in a neutral tone', () => {
-    expect(headlineOf({ ...FACTS, worn: false }, null)).toEqual({
+    expect(headlineOf({ ...FACTS, worn: false }, null, H24.instant)).toEqual({
       tone: 'neutral',
       label: 'Off wrist',
     });
   });
 
   it('says charging before anything else but a stale relay', () => {
-    expect(headlineOf({ ...FACTS, charging: true, battery: 10 }, null).label).toBe('Charging');
+    expect(headlineOf({ ...FACTS, charging: true, battery: 10 }, null, H24.instant).label).toBe(
+      'Charging',
+    );
   });
 
   it('warns at 20 percent or less when not charging', () => {
-    expect(headlineOf({ ...FACTS, battery: 20 }, null)).toEqual({
+    expect(headlineOf({ ...FACTS, battery: 20 }, null, H24.instant)).toEqual({
       tone: 'warning',
       label: 'Low battery',
     });
-    expect(headlineOf({ ...FACTS, battery: 21 }, null).label).toBe('On wrist');
+    expect(headlineOf({ ...FACTS, battery: 21 }, null, H24.instant).label).toBe('On wrist');
   });
 
   it('gives the time it was last seen when the relay is stale', () => {
     const seen = Date.parse('2026-10-16T13:20:00Z');
-    expect(headlineOf(FACTS, seen)).toEqual({
+    expect(headlineOf(FACTS, seen, H24.instant)).toEqual({
       tone: 'neutral',
-      label: `Last seen ${clock(seen)}`,
+      label: `Last seen ${H24.instant(seen)}`,
     });
   });
 
   it('does not claim a wrist state it does not know', () => {
-    expect(headlineOf({ ...FACTS, worn: null }, null).label).toBe('Not reporting');
+    expect(headlineOf({ ...FACTS, worn: null }, null, H24.instant).label).toBe('Not reporting');
   });
 });
 
 describe('the state line of a watch', () => {
-  const input = { facts: FACTS, lastSeen: null, owner: null, ringing: false };
+  const input = { facts: FACTS, lastSeen: null, owner: null, ringing: false, instant: H24.instant };
 
   it('gives battery and sync time', () => {
-    expect(stateLineOf(input)).toBe(`Battery 55 % · Synced ${clock(FACTS.syncedAt ?? '')}`);
+    expect(stateLineOf(input)).toBe(`Battery 55 % · Synced ${H24.instant(FACTS.syncedAt ?? '')}`);
   });
 
   it('says syncing while it syncs', () => {
@@ -141,9 +146,14 @@ describe('the find control', () => {
 describe('the heart caption', () => {
   it('says now for a live reading and the time for an old one', () => {
     const at = Date.parse('2026-10-16T14:02:00Z');
-    expect(heartCaption({ bpm: 80, at, fresh: true })).toBe('Heart now');
-    expect(heartCaption({ bpm: 80, at, fresh: false })).toBe(`Heart ${clock(at)}`);
-    expect(heartCaption(null)).toBeNull();
+    expect(heartCaption({ bpm: 80, at, fresh: true }, H24.instant)).toBe('Heart now');
+    expect(heartCaption({ bpm: 80, at, fresh: false }, H24.instant)).toBe(
+      `Heart ${H24.instant(at)}`,
+    );
+    expect(heartCaption({ bpm: 80, at, fresh: false }, H12.instant)).toBe(
+      `Heart ${H12.instant(at)}`,
+    );
+    expect(heartCaption(null, H24.instant)).toBeNull();
   });
 });
 

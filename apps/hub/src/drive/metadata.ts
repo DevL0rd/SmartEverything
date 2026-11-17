@@ -1,23 +1,15 @@
-import type { FileHandle } from 'node:fs/promises';
 import type { DriveItem } from '@smarteverything/domain';
 import type { StoredDrive } from '../store/repositories/drive-roots';
-import { messageOf, type Logger } from '@smarteverything/logging';
-import { fsCode } from '../fs-code';
+import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import type { DriveMediaRepository } from '../store/repositories/drive-media';
 import { modifiedIso } from './hasher';
 import type { DriveJobHandlers } from './jobs';
-import {
-  NOTHING,
-  readStill,
-  readTimed,
-  routeOf,
-  TimedProbe,
-  type MediaFacts,
-  type Moment,
-} from './metadata-read';
+import { MetadataWorker } from './metadata-client';
+import type { MetadataOutcome } from './metadata-protocol';
+import type { MediaFacts, Moment } from './metadata-read';
+import { inZone, isZoneless, waitsForDevice, type ZonePicker } from './metadata-zone';
 import { overrideFacts } from '../photos/organise/override';
-import { DrivePathError, openResolved, resolveInRoot } from './paths';
 import { readDriveSettings } from './settings';
 import type { RootAvailability } from './root-marker';
 
@@ -31,11 +23,14 @@ export interface MetadataEnvironment {
     | 'settingsKv'
     | 'write'
     | 'photoMetaOverrides'
+    | 'photoDescriptions'
     | 'feed'
     | 'driveFeed'
   >;
   readonly media: Pick<DriveMediaRepository, 'find' | 'save' | 'update'>;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
+  readonly zones: ZonePicker;
+  readonly workerScript: string;
   readonly log: Logger;
 }
 
@@ -53,6 +48,18 @@ export function collectUnread(
   return items.lookups
     .unreadMedia(rootId)
     .map(({ id, relPath, dev, ino }): Candidate => ({ id, relPath, dev, ino }));
+}
+
+export function collectPending(
+  store: Pick<MetadataEnvironment['store'], 'driveItems' | 'photoDescriptions'>,
+  rootId: string,
+): readonly Candidate[] {
+  const unread = collectUnread(store.driveItems, rootId);
+  const known = new Set(unread.map((candidate) => candidate.id));
+  const described = store.photoDescriptions
+    .pending(rootId)
+    .filter((candidate) => !known.has(candidate.id));
+  return [...unread, ...described];
 }
 
 export function isMedia(item: DriveItem): item is MediaItem {
@@ -90,8 +97,6 @@ interface Reading {
   readonly modifiedMs: number;
 }
 
-const HEAD_BYTES = 12;
-
 function mediaRowFor(
   itemId: string,
   moment: Pick<Moment, 'offsetMin'> & { readonly source: Moment['source'] | 'manual' },
@@ -116,8 +121,9 @@ function mediaRowFor(
 }
 
 class MetadataRun {
-  private readonly probe = new TimedProbe();
+  private worker: MetadataWorker | null = null;
   private recorded = 0;
+  private readonly waiting: { readonly candidate: Candidate; readonly reading: Reading }[] = [];
 
   constructor(
     private readonly env: MetadataEnvironment,
@@ -134,82 +140,55 @@ class MetadataRun {
         if (signal.aborted) return;
         await this.one(candidate);
       }
+      for (const { candidate, reading } of this.waiting) {
+        if (signal.aborted) return;
+        this.settle(candidate, reading);
+      }
     } finally {
-      this.probe.close();
+      await this.worker?.close();
     }
+  }
+
+  private started(): MetadataWorker {
+    this.worker ??= new MetadataWorker(this.env.workerScript);
+    return this.worker;
   }
 
   private async one(candidate: Candidate): Promise<void> {
-    let reading: Reading | null;
-    try {
-      reading = await this.read(candidate);
-    } catch (cause) {
-      this.env.log.warn('drive.metadata_skipped', {
-        rootId: this.root.id,
-        relPath: candidate.relPath,
-        reason:
-          cause instanceof DrivePathError ? cause.failure : (fsCode(cause) ?? messageOf(cause)),
-      });
+    const outcome = await this.started().read({
+      rootPath: this.root.path,
+      relPath: candidate.relPath,
+      dev: candidate.dev,
+      ino: candidate.ino,
+    });
+    const reading = this.readingOf(candidate, outcome);
+    if (reading === null) return;
+    if (waitsForDevice(reading.facts)) {
+      this.waiting.push({ candidate, reading });
       return;
     }
-    if (reading !== null && this.record(candidate, reading)) this.recorded += 1;
+    this.settle(candidate, reading);
   }
 
-  private async read(candidate: Candidate): Promise<Reading | null> {
-    const handle = await openResolved(
-      await resolveInRoot(this.root.path, candidate.relPath),
-      'read',
-    );
-    try {
-      const before = await handle.stat({ bigint: true });
-      if (
-        !before.isFile() ||
-        before.dev.toString() !== candidate.dev ||
-        before.ino.toString() !== candidate.ino
-      ) {
-        return this.changed(candidate, 'identity');
-      }
-      const bytes = Number(before.size);
-      const facts = await this.extract(handle, bytes, candidate);
-      const after = await handle.stat({ bigint: true });
-      if (after.size !== before.size || after.mtimeNs !== before.mtimeNs) {
-        return this.changed(candidate, 'modified');
-      }
-      return { facts, bytes, modifiedMs: Number(before.mtimeMs) };
-    } finally {
-      await handle.close();
+  private readingOf(candidate: Candidate, outcome: MetadataOutcome): Reading | null {
+    const where = { rootId: this.root.id, relPath: candidate.relPath };
+    switch (outcome.kind) {
+      case 'skipped':
+        this.env.log.warn('drive.metadata_skipped', { ...where, reason: outcome.reason });
+        return null;
+      case 'changed':
+        this.env.log.info('drive.metadata_changed', { ...where, reason: outcome.reason });
+        return null;
+      case 'read':
+        if (outcome.unreadable !== null) {
+          this.env.log.warn('drive.metadata_unreadable', { ...where, reason: outcome.unreadable });
+        }
+        return { facts: outcome.facts, bytes: outcome.bytes, modifiedMs: outcome.modifiedMs };
     }
   }
 
-  private changed(candidate: Candidate, reason: string): null {
-    this.env.log.info('drive.metadata_changed', {
-      rootId: this.root.id,
-      relPath: candidate.relPath,
-      reason,
-    });
-    return null;
-  }
-
-  private async extract(
-    handle: FileHandle,
-    bytes: number,
-    candidate: Candidate,
-  ): Promise<MediaFacts> {
-    const head = Buffer.alloc(HEAD_BYTES);
-    const { bytesRead } = await handle.read(head, 0, HEAD_BYTES, 0);
-    try {
-      return routeOf(head.subarray(0, bytesRead)) === 'still'
-        ? readStill(await handle.readFile())
-        : readTimed(await this.probe.analyze(handle, bytes));
-    } catch (cause) {
-      if (fsCode(cause) !== undefined) throw cause;
-      this.env.log.warn('drive.metadata_unreadable', {
-        rootId: this.root.id,
-        relPath: candidate.relPath,
-        reason: messageOf(cause),
-      });
-      return NOTHING;
-    }
+  private settle(candidate: Candidate, reading: Reading): void {
+    if (this.record(candidate, reading)) this.recorded += 1;
   }
 
   private record(candidate: Candidate, reading: Reading): boolean {
@@ -218,16 +197,18 @@ class MetadataRun {
       if (
         current === undefined ||
         !isMedia(current) ||
-        current.takenAt !== null ||
         current.bytes !== reading.bytes ||
         current.modifiedAt !== modifiedIso(reading.modifiedMs)
       ) {
         return false;
       }
+      this.env.store.photoDescriptions.fromFile(current.id, reading.facts.description);
+      if (current.takenAt !== null) return true;
       const identity = this.env.store.driveItems.identityOf(current.id);
       if (identity === null) return false;
       const override = this.env.store.photoMetaOverrides.find(candidate.id);
-      const facts = overrideFacts(reading.facts, override);
+      const facts = overrideFacts(this.zoned(candidate, reading.facts), override);
+      this.env.zones.keep(current.id, reading.facts);
       const written = this.env.store.driveItems.write({
         item: itemWith(current, facts),
         identity,
@@ -241,6 +222,19 @@ class MetadataRun {
       }
       return true;
     });
+  }
+
+  private zoned(candidate: Candidate, facts: MediaFacts): MediaFacts {
+    if (!isZoneless(facts.takenAt)) return facts;
+    const local = this.env.zones.pick(candidate.id, facts);
+    const takenAt = inZone(facts.takenAt, local);
+    this.env.log.info('drive.metadata_zone', {
+      rootId: this.root.id,
+      relPath: candidate.relPath,
+      zone: local.zone,
+      source: local.source,
+    });
+    return { ...facts, takenAt };
   }
 
   private keepTime(itemId: string, moment: Moment | null, edited: boolean): void {
@@ -269,7 +263,7 @@ async function readRoot(
     return;
   }
   if ((await env.availability(root)) !== 'online') return;
-  const candidates = collectUnread(env.store.driveItems, rootId);
+  const candidates = collectPending(env.store, rootId);
   const run = new MetadataRun(env, root);
   const startedAt = performance.now();
   await run.run(candidates, signal);

@@ -48,15 +48,7 @@ export function ExtensionReadStatus({
 }): ReactNode {
   const sync = useSyncStatus();
   const noun = kind === 'skill' ? 'skills' : 'extensions';
-  if (sync.status !== 'live')
-    return (
-      <Banner
-        tone="info"
-        title="Offline · showing last known status"
-        body="Changes, updates and the catalogue need your home hub."
-        wrapBody
-      />
-    );
+  if (sync.status !== 'live') return null;
   if (error !== null)
     return (
       <Banner

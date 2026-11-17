@@ -126,8 +126,8 @@ export function offlineBodyOf(summary: MountSummary): string {
       : `${bytes(summary.pinnedBytes)} kept offline still opens.`;
   const writes =
     summary.pendingUploads === 0
-      ? 'Changes wait on this computer and upload when it is back.'
-      : `${plural(summary.pendingUploads, 'change')} ${summary.pendingUploads === 1 ? 'waits' : 'wait'} to upload when it is back.`;
+      ? 'Changes wait on this computer and upload when the Hub is back.'
+      : `${plural(summary.pendingUploads, 'change')} ${summary.pendingUploads === 1 ? 'waits' : 'wait'} to upload when the Hub is back.`;
   return `${reads} ${writes}`;
 }
 

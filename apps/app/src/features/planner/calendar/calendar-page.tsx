@@ -13,6 +13,7 @@ import { joinParts } from '../../../format/text';
 import { dayKeyOf, zonedStartOfDay } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useMinuteOf } from '../../../store/clock';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { useIsOwner, useSettings } from '../../../store/selectors';
 import { rangeQuery, usePlannerPreferences } from '../data';
 import { usePlannerCalendars } from '../data/sharing';
@@ -269,12 +270,13 @@ interface Composing {
 
 function useComposerText(): ComposerText {
   const [composing, setComposing] = useState<Composing | null>(null);
+  const format = useClockFormat();
   return {
     text: composing === null ? null : composing.text,
     held: composing === null ? null : composing.held,
     compose: (day, gap): void => {
       setComposing({
-        text: eventTextOf(day, gap),
+        text: eventTextOf(day, gap, format),
         held: { date: day, from: gap.from, to: gap.to },
       });
     },

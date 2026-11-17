@@ -19,6 +19,7 @@ import {
   weekMatrix,
 } from './heat-model';
 import { growthSeries, growthTicks, kindSlices, photoShare, type GrowthSeries } from './model';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 function Caption({ text }: { readonly text: string | null }): ReactNode {
   return text === null ? null : (
@@ -136,6 +137,7 @@ export function WeekCard({
   readonly className: string;
 }): ReactNode {
   const matrix = weekMatrix(insights.weekdayByHour);
+  const format = useClockFormat();
   return (
     <Card title="Weekday by hour" className={className}>
       <HourHeatmap
@@ -144,6 +146,7 @@ export function WeekCard({
         rows={WEEK_ROWS}
         unit="photos"
         label="Photos by weekday and hour"
+        format={format}
       />
       <Caption text={weekLine(matrix)} />
     </Card>
@@ -158,6 +161,7 @@ export function SeasonCard({
   readonly className: string;
 }): ReactNode {
   const matrix = seasonMatrix(insights.seasonByHour);
+  const format = useClockFormat();
   return (
     <Card title="Season by hour" className={className}>
       <HourHeatmap
@@ -166,8 +170,9 @@ export function SeasonCard({
         rows={SEASON_ROWS}
         unit="photos"
         label="Photos by season and hour"
+        format={format}
       />
-      <Caption text={seasonLine(matrix)} />
+      <Caption text={seasonLine(matrix, format)} />
     </Card>
   );
 }

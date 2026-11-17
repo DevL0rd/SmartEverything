@@ -5,7 +5,8 @@ import { useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { clock24 } from '../../../format/time';
+import { useHour24 } from '../../../store/clock-format';
+import { useInstantClock } from '../format/clock-format';
 import { selectionTick } from '../../../platform/haptics';
 import type { WorldCity } from './cities';
 import { percentOf } from './percent';
@@ -162,12 +163,13 @@ function PickedTimes({
   readonly at: number;
   readonly slim: boolean;
 }): ReactNode {
+  const instant = useInstantClock();
   return (
-    <View className="w-12 gap-1">
+    <View className="min-w-12 gap-1">
       {cities.map((city) => (
         <View key={city.key} className={cn('items-end justify-center', slim ? 'h-6' : 'h-7')}>
           <Text variant="caption" tone="variant" className="tabular">
-            {clock24(at, city.zone)}
+            {instant(at, city.zone)}
           </Text>
         </View>
       ))}
@@ -199,6 +201,7 @@ function Cells({
   onWidth,
 }: HourGridProps & { readonly onWidth: (width: number) => void }): ReactNode {
   const [width, setWidth] = useState(0);
+  const hour24 = useHour24();
   const sparse = width / DAY_HOURS < LABEL_EVERY_CELL;
   return (
     <View
@@ -221,7 +224,7 @@ function Cells({
       {cities.map((city) => (
         <CellRow
           key={city.key}
-          cells={hourCellsOf(city.zone, home, plan)}
+          cells={hourCellsOf(city.zone, home, plan, hour24)}
           slim={slim}
           sparse={sparse}
         />

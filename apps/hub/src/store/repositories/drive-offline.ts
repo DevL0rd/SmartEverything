@@ -37,13 +37,21 @@ const STORED_OFFLINE = storedRow(
   {},
 );
 
-const HOLDER = z.strictObject({ client_id: z.string(), profile_id: z.string() });
+const HELD_ITEM = z.strictObject({
+  item_id: z.string(),
+  client_id: z.string(),
+  profile_id: z.string(),
+});
 
 const HELD = z.strictObject({ held: z.union([z.literal(0), z.literal(1)]) });
 
 export interface DriveOfflineHolder {
   readonly clientId: string;
   readonly profileId: string;
+}
+
+export interface DriveOfflineHeld extends DriveOfflineHolder {
+  readonly itemId: string;
 }
 
 export interface DriveOfflineKey {
@@ -106,20 +114,20 @@ export class DriveOfflineRepository {
     );
   }
 
-  holdersOf(itemId: string): DriveOfflineHolder[] {
+  holdersOfEach(itemIds: readonly string[]): readonly DriveOfflineHeld[] {
     return this.context.sql
       .all(
-        HOLDER,
-        `select distinct o.client_id, o.profile_id
+        HELD_ITEM,
+        `select distinct i.id as item_id, o.client_id, o.profile_id
           from drive_offline_items o
-          join drive_items p on p.id = o.item_id
-          join drive_items i on i.id = $itemId
-          where p.id = i.id or (p.kind = 'folder' and p.root_id = i.root_id
-            and i.rel_path >= p.rel_path || '/' and i.rel_path < p.rel_path || '0')
-          order by o.client_id, o.profile_id`,
-        { itemId },
+          cross join drive_items p on p.id = o.item_id
+          cross join drive_items i on i.id in (select value from json_each($itemIds))
+          where (p.id = i.id or (p.kind = 'folder' and p.root_id = i.root_id
+              and i.rel_path >= p.rel_path || '/' and i.rel_path < p.rel_path || '0'))
+          order by i.id, o.client_id, o.profile_id`,
+        { itemIds: JSON.stringify(itemIds) },
       )
-      .map((row) => ({ clientId: row.client_id, profileId: row.profile_id }));
+      .map((row) => ({ itemId: row.item_id, clientId: row.client_id, profileId: row.profile_id }));
   }
 
   set(clientId: string, itemId: string, profileId: string, on: boolean): void {

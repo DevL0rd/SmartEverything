@@ -180,7 +180,6 @@ describe('migrating Drive to wave 2', () => {
       duplicatesHashing: true,
       indexingPaused: false,
       contentIndexing: true,
-      ocrLanguages: ['eng'],
       fileIoThreads: 8,
       cpuWorkers: availableParallelism(),
       listingCacheSeconds: 300,

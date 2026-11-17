@@ -3,6 +3,7 @@ import type { HeatDay } from '../../../components/charts';
 import type { HeatRow } from '../../../components/charts/heatmap-model';
 import { count } from '../../../format/number';
 import { shiftDay, shortDate, startOfDayKey } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
 
 const LEVELS = 4;
 
@@ -124,10 +125,13 @@ export function weekLine(matrix: readonly (readonly number[])[]): string | null 
   return `Most photos on ${WEEK_ROWS[peak.row]?.name ?? ''} ${partOfDay(peak.hour)}`;
 }
 
-export function seasonLine(matrix: readonly (readonly number[])[]): string | null {
+export function seasonLine(
+  matrix: readonly (readonly number[])[],
+  format: ClockFormat,
+): string | null {
   const peak = peakOf(matrix);
   if (peak.items === 0) return null;
-  const hour = `${String(peak.hour).padStart(2, '0')}:00`;
+  const hour = format.minutes(peak.hour * 60);
   return `Most photos around ${hour} in ${SEASON_ROWS[peak.row]?.name ?? ''}`;
 }
 

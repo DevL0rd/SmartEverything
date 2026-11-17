@@ -101,6 +101,9 @@ export const PHOTO_EDIT_FIELDS = {
   longitude: z.number().min(-180).max(180).optional().describe('Set the place, for photo_meta'),
   locationLabel: TEXT.nullable().optional().describe('A name for the place, for photo_meta'),
   clearLocation: z.literal(true).optional().describe('Remove the place, for photo_meta'),
+  text: TEXT.nullable()
+    .optional()
+    .describe('The new description of one photo; null clears it, for photo_description'),
   smartSearch: z
     .boolean()
     .optional()
@@ -113,5 +116,13 @@ export const PHOTO_EDIT_FIELDS = {
     .int()
     .nonnegative()
     .optional()
-    .describe('The estimate from drive_read view smart_status, for smart_reanalyse (owner only)'),
+    .describe(
+      'The estimate from drive_read view smart_status, for smart_reanalyse (owner only): estimateMicros when everything is false, everythingMicros when it is true',
+    ),
+  everything: z
+    .boolean()
+    .optional()
+    .describe(
+      'For smart_reanalyse: true also redoes photos already analysed by the current vision model, so older photos get its text; false redoes only photos without its analysis',
+    ),
 } as const;

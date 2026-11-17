@@ -94,14 +94,15 @@ async function outsideAt(
   return drift(indexed, entry);
 }
 
-export async function firstOutside(
+export async function outsideOf(
   reader: IndexReader,
   root: StoredDrive,
   relPaths: Iterable<string>,
-): Promise<OutsideChange | null> {
+): Promise<OutsideChange[]> {
+  const found: OutsideChange[] = [];
   for (const relPath of relPaths) {
     const reason = await outsideAt(reader, root, relPath);
-    if (reason !== null) return { relPath, reason };
+    if (reason !== null) found.push({ relPath, reason });
   }
-  return null;
+  return found;
 }

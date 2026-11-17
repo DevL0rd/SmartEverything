@@ -80,7 +80,7 @@ export function modifiedIso(modifiedMs: number): string {
   return new Date(modifiedMs).toISOString();
 }
 
-class HashWorker {
+export class HashWorker {
   private readonly worker: Worker;
   private readonly pending = new Map<
     number,
@@ -88,6 +88,7 @@ class HashWorker {
   >();
   private next = 0;
   private closed = false;
+  private exited = false;
 
   constructor(script: string) {
     this.worker = new Worker(script);
@@ -98,6 +99,7 @@ class HashWorker {
       this.fail(cause instanceof Error ? cause : new Error(String(cause)));
     });
     this.worker.on('exit', (code) => {
+      this.exited = true;
       if (!this.closed) this.fail(new Error(`The hash worker stopped with code ${String(code)}.`));
     });
   }
@@ -109,6 +111,14 @@ class HashWorker {
       this.pending.set(id, { resolve, reject });
       this.worker.postMessage({ ...fields, id });
     });
+  }
+
+  get alive(): boolean {
+    return !this.exited;
+  }
+
+  unref(): void {
+    this.worker.unref();
   }
 
   async close(): Promise<void> {
@@ -126,6 +136,50 @@ class HashWorker {
   private fail(cause: Error): void {
     for (const waiting of this.pending.values()) waiting.reject(cause);
     this.pending.clear();
+  }
+}
+
+export class FileHashSkippedError extends Error {
+  override readonly name = 'FileHashSkippedError';
+
+  constructor(
+    readonly relPath: string,
+    readonly reason: string,
+  ) {
+    super(`The file ${relPath} could not be hashed: ${reason}.`);
+  }
+}
+
+export interface HashedFile {
+  readonly rootPath: string;
+  readonly relPath: string;
+  readonly dev: bigint;
+  readonly ino: bigint;
+}
+
+export class ContentHasher {
+  private worker: HashWorker | null = null;
+
+  constructor(private readonly script: string) {}
+
+  async sha256(file: HashedFile): Promise<string> {
+    const response = await this.started().request({
+      rootPath: file.rootPath,
+      relPath: file.relPath,
+      dev: file.dev.toString(),
+      ino: file.ino.toString(),
+      withBlocks: false,
+    });
+    if (response.kind === 'skipped') throw new FileHashSkippedError(file.relPath, response.reason);
+    return response.sha256;
+  }
+
+  private started(): HashWorker {
+    if (this.worker?.alive === true) return this.worker;
+    const worker = new HashWorker(this.script);
+    worker.unref();
+    this.worker = worker;
+    return worker;
   }
 }
 

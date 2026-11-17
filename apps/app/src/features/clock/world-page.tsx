@@ -7,13 +7,13 @@ import { EmptyState } from '../../components/empty-state';
 import type { ShellAction } from '../../components/page-shell/shell-actions';
 import { useAreaWidth, useWindowSize } from '../../design/size-class';
 import { useSettings } from '../../store/selectors';
-import { clock24 } from '../../format/time';
 import { useVisibleMinute, Composer, QueryBody } from '../planner';
 import { ClockFrame } from './frame/clock-frame';
 import { shellLayoutOf } from '../../components/page-shell/layout';
 import { AddCityPicker } from './world/add-city';
 import { CityCard, CityRow, cityViewOf } from './world/city-card';
 import { FindATimeCard, FindATimePhone } from './world/find-a-time-card';
+import { useClockFormat, useInstantClock } from './format/clock-format';
 import { eventTextAt } from './world/find-a-time';
 import type { PlannerPreferences } from '@smarteverything/domain';
 import { useHourPick, useWorld, type WorldModel } from './world/use-world';
@@ -55,7 +55,8 @@ function slotKeyOf(slot: CitySlot): string {
 }
 
 function Cities({ world, now, columns }: CitiesProps): ReactNode {
-  const views = world.cities.map((city) => cityViewOf(city, now, world.home.zone));
+  const instant = useInstantClock();
+  const views = world.cities.map((city) => cityViewOf(city, now, world.home.zone, instant));
   const empty = world.clocks.length === 0;
   if (columns === null) {
     return (
@@ -112,6 +113,7 @@ function FindATime({
   readonly onCreate: (text: string) => void;
 }): ReactNode {
   const pick = useHourPick(now, world);
+  const format = useClockFormat();
   const props = {
     cities: world.cities,
     home: world.home,
@@ -119,7 +121,7 @@ function FindATime({
     pick,
     disabled: world.offline,
     onCreate: (): void => {
-      onCreate(eventTextAt(pick.hour, world.home));
+      onCreate(eventTextAt(pick.hour, world.home, format));
     },
   };
   return compact ? <FindATimePhone {...props} /> : <FindATimeCard {...props} />;
@@ -169,6 +171,7 @@ export function WorldPage(): ReactNode {
   const [anchor, setAnchor] = useState<Rect | null>(null);
   const [event, setEvent] = useState<string | null>(null);
   const zone = useSettings().time_zone;
+  const instant = useInstantClock();
   const loaded = world.query.data !== undefined;
   const openAdd = (): void => {
     setAnchor(centredRect(window));
@@ -176,7 +179,7 @@ export function WorldPage(): ReactNode {
   return (
     <ClockFrame
       section="world"
-      subtitle={subtitleOf(world.query.data, `Home ${clock24(now, zone)}`, columns === null)}
+      subtitle={subtitleOf(world.query.data, `Home ${instant(now, zone)}`, columns === null)}
       actions={addActionOf(openAdd, world.offline || !loaded)}
     >
       <View ref={ref} onLayout={onLayout}>

@@ -5,7 +5,8 @@ import type {
   PlannerRingRow,
 } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
-import { clock, dayLabel, zonedStartOfDay } from '../../../format/time';
+import { clockFormatOf } from '../../../format/clock-text';
+import { dayLabel, zonedStartOfDay } from '../../../format/time';
 
 vi.mock('../../assistant', () => ({ askAssistantWith: vi.fn() }));
 vi.mock('../../devices', () => ({ DeviceFace: (): null => null }));
@@ -25,6 +26,8 @@ const { occurrenceKeyOf } = await import('./river-model');
 
 const ME = '00000000-0000-4000-8000-000000000001';
 const ZONE = 'Europe/Berlin';
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 function occurrence(
   id: string,
@@ -170,26 +173,31 @@ describe('the catch-up deck', () => {
     const cards = catchUpCardsOf(today, [], new Set());
     const [third, first, second] = cards;
     if (first?.kind !== 'alarm' || second?.kind !== 'alarm') throw new Error('items first');
-    const time = clock('2026-11-05T08:00:00.000Z', ZONE);
+    const time = H24.instant('2026-11-05T08:00:00.000Z', ZONE);
     const thursday = dayLabel('2026-11-05T08:00:00.000Z', Date.parse(today.now), ZONE);
     expect(thursday).not.toBe('Today');
-    expect(missedAlarmTitleOf(first, today)).toBe(`Missed alarm ${thursday} ${time}`);
-    expect(missedAlarmTitleOf(second, today)).toBe(
-      `Missed alarm yesterday ${clock('2026-11-06T08:00:00.000Z', ZONE)}`,
+    expect(missedAlarmTitleOf(first, today, H24.instant)).toBe(`Missed alarm ${thursday} ${time}`);
+    expect(missedAlarmTitleOf(second, today, H24.instant)).toBe(
+      `Missed alarm yesterday ${H24.instant('2026-11-06T08:00:00.000Z', ZONE)}`,
     );
-    expect(missedAlarmNameOf(first, today)).toBe(`Alarm · ${thursday} ${time}`);
-    expect(third?.kind === 'item' && occurrenceWhenOf(third.occurrence, today)).toBe(
+    expect(missedAlarmNameOf(first, today, H24.instant)).toBe(`Alarm · ${thursday} ${time}`);
+    expect(third?.kind === 'item' && occurrenceWhenOf(third.occurrence, today, H24.instant)).toBe(
       `Due ${dayLabel(zonedStartOfDay('2026-11-05', ZONE), Date.parse(today.now), ZONE)}`,
     );
-    expect(occurrenceWhenOf({ ...overdue, due_date: '2026-11-07' }, today)).toBe('Due today');
+    expect(occurrenceWhenOf({ ...overdue, due_date: '2026-11-07' }, today, H24.instant)).toBe(
+      'Due today',
+    );
   });
 
   it('names a missed alarm by its time and says why it did not ring', () => {
     const [card] = catchUpCardsOf(day({ rings: [ring('05', {})] }), [], new Set());
     expect(card?.kind).toBe('alarm');
     if (card?.kind !== 'alarm') return;
-    expect(missedAlarmTitleOf(card, day({}))).toBe(
-      `Missed alarm ${clock('2026-11-07T07:30:00.000Z', ZONE)}`,
+    expect(missedAlarmTitleOf(card, day({}), H24.instant)).toBe(
+      `Missed alarm ${H24.instant('2026-11-07T07:30:00.000Z', ZONE)}`,
+    );
+    expect(missedAlarmTitleOf(card, day({}), H12.instant)).toBe(
+      `Missed alarm ${H12.instant('2026-11-07T07:30:00.000Z', ZONE)}`,
     );
     expect(missedReasonOf(card.ring)).toBe('phone was off');
     expect(missedReasonOf({ ...card.ring, missed_reason: 'hub_down' })).toBe('hub was off');
@@ -225,14 +233,17 @@ describe('the done ribbon', () => {
   it('lays done items, the wake-up and what happened out in time order', () => {
     const marks = ribbonMarksOf(day({ done: [bill, brushed], happened: [washer], rings: [woke] }));
     expect(marks.map((mark) => mark.kind)).toEqual(['woke', 'done', 'done', 'happened']);
-    expect(ribbonLabelOf(marks, ZONE)).toEqual({
+    expect(ribbonLabelOf(marks, ZONE, H24.instant)).toEqual({
       done: 2,
-      also: `woke up ${clock('2026-11-07T06:00:00.000Z', ZONE)} · 1 thing happened`,
+      also: `woke up ${H24.instant('2026-11-07T06:00:00.000Z', ZONE)} · 1 thing happened`,
     });
+    expect(ribbonLabelOf(marks, ZONE, H12.instant).also).toBe(
+      `woke up ${H12.instant('2026-11-07T06:00:00.000Z', ZONE)} · 1 thing happened`,
+    );
   });
 
   it('leaves the happened part out when nothing happened', () => {
-    expect(ribbonLabelOf(ribbonMarksOf(day({ done: [bill] })), ZONE)).toEqual({
+    expect(ribbonLabelOf(ribbonMarksOf(day({ done: [bill] })), ZONE, H24.instant)).toEqual({
       done: 1,
       also: null,
     });

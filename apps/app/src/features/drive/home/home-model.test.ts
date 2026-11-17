@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bytes, percent } from '../../../format/number';
 import { MEMBER_ID, OTHER_ROOT_ID, ROOT_ID, personalRootRow, rootRow } from '../data/fixtures';
-import { OFFLINE_TITLE, driveBannerOf, mayRescanOf } from './banner-model';
+import { driveBannerOf, mayRescanOf } from './banner-model';
 import {
   myDriveHeroOf,
   phaseLinesOf,
@@ -119,8 +119,8 @@ describe('drive banner', () => {
   const ready = { online: true, root: MINE, mayRescan: true, quota: ROOM };
   const full = { kind: 'full' } as const;
 
-  it('puts offline first, then a broken drive, then a full one', () => {
-    expect(driveBannerOf({ ...ready, online: false, quota: full })?.title).toBe(OFFLINE_TITLE);
+  it('leaves the hub being offline to the app notice, then puts a broken drive before a full one', () => {
+    expect(driveBannerOf({ ...ready, online: false, quota: full })).toBeNull();
     const broken = { ...MINE, state: 'error', stateReason: 'The marker is missing.' } as const;
     expect(driveBannerOf({ ...ready, root: broken, quota: full })).toMatchObject({
       tone: 'critical',

@@ -48,6 +48,7 @@ import { ItemTitle } from './item-title';
 import { PanelAttachments } from './panel-parts';
 import { RsvpBar } from './rsvp-bar';
 import { OUTDENT_CHANGE, canHoldSteps, type StepMove } from './steps-model';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 const selectViewer = (state: StoreState): string | null => state.session?.client.profile_id ?? null;
 
@@ -133,7 +134,7 @@ function useBodyData(item: PlannerItemRow, person: PlannerPerson): BodyData {
   const collections =
     current === null || writable.includes(current) ? writable : [current, ...writable];
   const rows = useTaskRows(person, usePlannerItems(person), usePlannerOccurrences(person));
-  const today = { now, timeZone };
+  const today = { now, timeZone, format: useClockFormat() };
   return {
     today,
     collections,
@@ -228,13 +229,13 @@ export interface ItemLock {
   readonly actions: boolean;
 }
 
-export function lockOf(role: ItemRole | null, item: PlannerItemRow, busy: boolean): ItemLock {
+export function lockOf(role: ItemRole | null, item: PlannerItemRow, offline: boolean): ItemLock {
   const readOnly = role === null || role === 'view' || role === 'guest';
   const assignedTask = role === 'assignee' && item.parent_id === null;
   return {
-    fields: busy || readOnly || assignedTask,
-    notes: busy || readOnly,
-    actions: busy || readOnly,
+    fields: offline || readOnly || assignedTask,
+    notes: offline || readOnly,
+    actions: offline || readOnly,
   };
 }
 
@@ -351,9 +352,9 @@ function SidePart({ item, editor, target, offline, data, lock }: PartProps): Rea
 }
 
 export function ItemBody(props: ItemBodyProps): ReactNode {
-  const { item, editor, target, focus, offline } = props;
+  const { item, target, focus, offline } = props;
   const data = useBodyData(item, target.person);
-  const lock = lockOf(useItemRole(target.person, item), item, offline || editor.busy);
+  const lock = lockOf(useItemRole(target.person, item), item, offline);
   const parts = { ...props, data, lock, focused: focus === null ? 'none' : String(focus.at) };
   return (
     <Columns

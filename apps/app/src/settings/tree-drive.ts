@@ -88,7 +88,7 @@ export const DRIVE_PAGES: readonly SettingsPageDefinition[] = [
     parent: DRIVE_PAGE.root,
     group: null,
     subtitle: 'Duplicates, text inside files and change watching',
-    keywords: ['index', 'scan', 'duplicates', 'ocr', 'search inside files'],
+    keywords: ['index', 'scan', 'duplicates', 'search inside files'],
   },
   {
     id: DRIVE_PAGE.storage,

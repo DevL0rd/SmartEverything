@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 import { Logger, background } from '@smarteverything/logging';
-import { readSharedClipboard, writeSharedClipboard } from '../../../api/shared-clipboard';
+import { writeSharedClipboard } from '../../../api/shared-clipboard';
 import { desktopBridge, isNative } from '../../../design/platform';
 import { onLocalCopy } from '../../../components/local-copies';
 import { PREFS, usePref } from '../../../store/prefs';
@@ -17,7 +17,6 @@ function newSync(clipboard: LocalClipboard): ClipboardSync {
     {
       readLocal: () => clipboard.read(),
       writeLocal: (text) => clipboard.write(text),
-      readRemote: readSharedClipboard,
       sendRemote: writeSharedClipboard,
     },
     log,
@@ -49,11 +48,11 @@ function watchLocal(sync: ClipboardSync, clipboard: LocalClipboard): () => void 
 export function ClipboardSyncHost(): null {
   const pref = usePref(PREFS.sharedClipboard);
   const live = useSyncStatus().status === 'live';
-  const enabled = live && pref.status === 'ready' && pref.value.enabled;
+  const shared = pref.status === 'ready' && pref.value.enabled;
+  const clipboard = useMemo(() => localClipboard(desktopBridge()?.clipboard ?? null), []);
+  const sync = useMemo(() => (shared ? newSync(clipboard) : null), [shared, clipboard]);
   useEffect(() => {
-    if (!enabled) return undefined;
-    const clipboard = localClipboard(desktopBridge()?.clipboard ?? null);
-    const sync = newSync(clipboard);
+    if (sync === null || !live) return undefined;
     const stopWatching = watchLocal(sync, clipboard);
     const detach = attachSharedClipReceiver((clip) => {
       background(sync.received(clip), 'clipboard.receive_failed');
@@ -63,6 +62,6 @@ export function ClipboardSyncHost(): null {
       stopWatching();
       detach();
     };
-  }, [enabled]);
+  }, [sync, live, clipboard]);
   return null;
 }

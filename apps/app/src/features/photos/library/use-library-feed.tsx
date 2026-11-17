@@ -62,7 +62,6 @@ export interface LibraryFeed {
   readonly state: FeedState;
   readonly buckets: readonly LibraryBucket[];
   readonly tiles: readonly MediaTile[];
-  readonly seenAt: number | null;
   readonly sources: ReactNode;
   readonly loadingMore: boolean;
   readonly failedMore: boolean;
@@ -255,7 +254,6 @@ export function useFocusedLibraryFeed(scope: LibraryScope, wanted: FeedFocus | n
     state: stateOf(tiles, query, feeds.get(shown[0] ?? '')),
     buckets,
     tiles,
-    seenAt: query.dataUpdatedAt === 0 ? null : query.dataUpdatedAt,
     sources: shown.map((month, index) => (
       <MonthSource
         key={`${key}|${month}`}

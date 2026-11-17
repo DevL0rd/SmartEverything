@@ -41,7 +41,6 @@ const { EmptyAutomations } = await import('./empty-automations');
 const { EmptyRuns } = await import('./empty-runs');
 const { EmptyNodes } = await import('./empty-nodes');
 const { NewCanvasSlots } = await import('./new-canvas-slots');
-const { OfflineBanner } = await import('./offline-banner');
 const { MissingKindCard } = await import('./missing-kind-card');
 const { RemovedRefChip } = await import('./removed-ref-chip');
 const { CanvasReopening } = await import('./canvas-reopening');
@@ -114,15 +113,6 @@ describe('automation states', () => {
     const slots = seen.filter((entry) => entry.kind === 'Interactive').map((entry) => entry.props);
     expect(slots.map((slot) => slot['onPress'])).toEqual([onAddTrigger, onAddStep]);
     expect(slots[0]?.['label']).toBe('Add a trigger. What starts it?');
-  });
-
-  it('says whether a change is unsaved while the hub is unreachable', () => {
-    render(createElement(OfflineBanner, { unsavedChanges: true }));
-    expect(firstOf('Banner')['title']).toBe('Can’t reach the Home Hub');
-    expect(String(firstOf('Banner')['body'])).toContain('Your last change is not saved');
-    render(createElement(OfflineBanner, { unsavedChanges: false }));
-    expect(String(firstOf('Banner')['body'])).not.toContain('not saved');
-    expect(firstOf('Banner')['action']).toBeUndefined();
   });
 
   it('names the missing kind and wires Replace and Delete', () => {

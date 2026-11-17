@@ -11,7 +11,9 @@ import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { useScreenPaused } from '../../../design/screen-pause';
 import type { Idiom } from '../../../design/tokens';
-import { clockOfMinutes, shiftDay, zonedStartOfDay } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
+import { shiftDay, zonedStartOfDay } from '../../../format/time';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { useRows, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { ProfileAvatar } from '../../profiles';
@@ -95,10 +97,10 @@ function useCalendarRows(
   }));
 }
 
-function rowLabelOf(row: TimelineRow): string {
+function rowLabelOf(row: TimelineRow, format: ClockFormat): string {
   if (row.spans.length === 0) return `${row.name}: free all day`;
   const parts = row.spans.map(
-    (span) => `${span.occurrence.title} ${clockOfMinutes(span.from)} to ${clockOfMinutes(span.to)}`,
+    (span) => `${span.occurrence.title} ${format.minutes(span.from)} to ${format.minutes(span.to)}`,
   );
   return `${row.name}: ${parts.join(', ')}`;
 }
@@ -110,12 +112,13 @@ interface Layout {
 }
 
 function HourHead({ layout }: { readonly layout: Layout }): ReactNode {
+  const format = useClockFormat();
   return (
     <View aria-hidden className="h-7 flex-row border-b border-outline-variant">
       {hourMarksOf(layout.window).map((hour) => (
         <View key={hour} className="flex-1 justify-center border-l border-outline-variant pl-1">
           <Text variant="caption" tone="faint" className="font-mono tabular">
-            {String(hour).padStart(2, '0')}
+            {format.shortHour(hour)}
           </Text>
         </View>
       ))}
@@ -146,6 +149,7 @@ interface GridProps {
 
 function Tracks({ rows, gaps, layout }: GridProps): ReactNode {
   const rowHeight = layout.compact ? 'h-10' : 'h-11';
+  const format = useClockFormat();
   return (
     <View className="relative">
       <HourHead layout={layout} />
@@ -153,7 +157,7 @@ function Tracks({ rows, gaps, layout }: GridProps): ReactNode {
         <View
           key={row.key}
           accessible
-          accessibilityLabel={rowLabelOf(row)}
+          accessibilityLabel={rowLabelOf(row, format)}
           className={cn('relative border-b border-outline-variant', rowHeight)}
         >
           <TrackLines window={layout.window} />

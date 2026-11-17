@@ -5,12 +5,14 @@ import { useColour } from '../../design/colour';
 import { useMeasuredWidth } from '../use-measured-width';
 import { AxisLabel } from './axis-label';
 import { hourCells, hourSummary, type HeatRow, type HourCell } from './heatmap-model';
+import type { ClockFormat } from '../../format/clock-text';
 
 export interface HourHeatmapProps {
   readonly matrix: readonly (readonly number[])[];
   readonly rows: readonly HeatRow[];
   readonly unit: string;
   readonly label: string;
+  readonly format: ClockFormat;
   readonly fill?: boolean;
 }
 
@@ -116,6 +118,7 @@ export function HourHeatmap({
   rows,
   unit,
   label,
+  format,
   fill = false,
 }: HourHeatmapProps): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
@@ -124,7 +127,7 @@ export function HourHeatmap({
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={`${label}: ${hourSummary(matrix, rows, unit)}`}
+      accessibilityLabel={`${label}: ${hourSummary(matrix, rows, unit, format)}`}
       onLayout={onLayout}
     >
       {width > 0 ? (

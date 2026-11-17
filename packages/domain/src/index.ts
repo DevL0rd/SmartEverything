@@ -55,6 +55,7 @@ export type { ClockWindow, LocalClock } from './zoned-clock';
 export * from './weather/index';
 export * from './exchange-rates';
 export * from './region';
+export * from './clock-format';
 
 export { PLACE, PLACES, PLACE_NAME, placeLabel, shortPlaceLabel } from './places';
 export type { PlaceMatch, Places } from './places';

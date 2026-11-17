@@ -1,5 +1,6 @@
 import { localClock, sunEventOn, type CalendarDate, type GeoPoint } from '@smarteverything/domain';
-import { clock24, HOUR_MS } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
+import { HOUR_MS } from '../../../format/time';
 
 const DAY_MINUTES = 1440;
 
@@ -52,7 +53,12 @@ function polarDayOn(date: CalendarDate, point: GeoPoint): boolean {
   return set.getTime() - rise.getTime() > HALF_DAY_MS;
 }
 
-export function daylightOf(at: number, zone: string, point: GeoPoint | null): Daylight {
+export function daylightOf(
+  at: number,
+  zone: string,
+  point: GeoPoint | null,
+  instant: MomentText,
+): Daylight {
   if (point === null) return UNKNOWN_DAYLIGHT;
   const today = localClock(new Date(at), zone);
   const rise = sunEventOn('sunrise', today, point);
@@ -64,8 +70,8 @@ export function daylightOf(at: number, zone: string, point: GeoPoint | null): Da
   }
   return {
     kind: 'sun',
-    rise: clock24(rise, zone),
-    set: clock24(set, zone),
+    rise: instant(rise, zone),
+    set: instant(set, zone),
     spans: spansOf(dayShareOf(rise.getTime(), zone), dayShareOf(set.getTime(), zone)),
   };
 }

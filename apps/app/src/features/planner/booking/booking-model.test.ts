@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import type {
   PlannerBookingPageRow,
   PlannerCollectionRow,
@@ -142,6 +143,9 @@ function guest(itemId: string, patch: Partial<PlannerGuestRow> = {}): PlannerGue
   };
 }
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('the availability grid', () => {
   it('turns windows into half hour cells and back, merging touching runs', () => {
     const windows = [
@@ -182,7 +186,10 @@ describe('the availability grid', () => {
 
   it('summarises the week by runs of days with the same times', () => {
     const weekdays = workingWindowsOf({ days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' });
-    expect(availabilitySummaryOf(weekdays, MONDAY_FIRST, name)).toBe('Mon–Fri 09:00–17:00');
+    expect(availabilitySummaryOf(weekdays, MONDAY_FIRST, name, H24)).toBe('Mon–Fri 09:00–17:00');
+    expect(availabilitySummaryOf(weekdays, MONDAY_FIRST, name, H12)).toBe(
+      `Mon–Fri ${H12.text('09:00')}–${H12.text('17:00')}`,
+    );
     expect(
       availabilitySummaryOf(
         [
@@ -191,9 +198,10 @@ describe('the availability grid', () => {
         ],
         MONDAY_FIRST,
         name,
+        H24,
       ),
     ).toBe('Tue 10:00–11:00 · Thu 10:00–11:00');
-    expect(availabilitySummaryOf([], MONDAY_FIRST, name)).toBe('No open times');
+    expect(availabilitySummaryOf([], MONDAY_FIRST, name, H24)).toBe('No open times');
   });
 });
 

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { notify } from '../../../components/toast-store';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerWrites, type PlannerPerson, type PlannerWrites } from '../data';
+import { useItemSaves, withoutSent } from '../data/item-saves';
 import { itemWith, type ItemChange } from '../data/writes';
 import { itemAtDay, occurrenceDayOf, seriesChangesOf } from './item-history';
 import {
@@ -25,7 +26,6 @@ export interface ItemEditor {
   readonly shown: PlannerItemRow;
   readonly change: (changes: ItemChanges) => void;
   readonly bar: ReactNode;
-  readonly busy: boolean;
 }
 
 function failed(error: unknown): void {
@@ -34,19 +34,25 @@ function failed(error: unknown): void {
 
 interface Sender {
   readonly busy: boolean;
-  readonly send: (change: ItemChange, then: () => void) => void;
+  readonly send: (change: ItemChange, sent: ItemChanges) => void;
 }
 
-function useSend(writes: PlannerWrites, item: PlannerItemRow): Sender {
+function useSend(
+  writes: PlannerWrites,
+  item: PlannerItemRow,
+  setChanges: (update: (current: ItemChanges) => ItemChanges) => void,
+): Sender {
   const [busy, setBusy] = useState(false);
   return {
     busy,
-    send: (change, then): void => {
+    send: (change, sent): void => {
       setBusy(true);
       background(
         writes
           .updateItem(item, change)
-          .then(then)
+          .then(() => {
+            setChanges((current) => withoutSent(current, sent));
+          })
           .catch(failed)
           .finally(() => {
             setBusy(false);
@@ -66,6 +72,17 @@ function scopedChanges(
   return scope === 'all' ? seriesChangesOf(changes, item, day) : changes;
 }
 
+function useSavedItem(
+  item: PlannerItemRow,
+  person: PlannerPerson,
+): {
+  readonly saved: PlannerItemRow;
+  readonly save: (changes: ItemChanges) => void;
+} {
+  const { unsaved, save } = useItemSaves(person, item.id);
+  return { saved: unsaved === null ? item : itemWith(item, { changes: unsaved }), save };
+}
+
 export function useItemEditor(
   item: PlannerItemRow,
   target: ItemTarget,
@@ -75,17 +92,15 @@ export function useItemEditor(
   const timeZone = useSettings().time_zone;
   const [changes, setChanges] = useState<ItemChanges>({});
   const [chosen, setScope] = useState<PlannerItemScope>('this');
-  const { busy, send } = useSend(writes, item);
+  const { saved, save } = useSavedItem(item, target.person);
+  const { busy, send } = useSend(writes, item, setChanges);
   const recurring = item.rrule !== null;
   const day = recurring ? occurrenceDayOf(target.occurrenceKey, timeZone) : null;
   const choices = scopeChoicesOf({ occurrenceKey: target.occurrenceKey, changes });
   const scope = scopeIn(chosen, choices);
-  const clear = (): void => {
-    setChanges({});
-  };
   const change = (next: ItemChanges): void => {
     if (recurring) setChanges((current) => ({ ...current, ...next }));
-    else send(patchOf('all', null, next), clear);
+    else save(next);
   };
   const bar = scopeBarShown(item, changes) ? (
     <RepeatScopeBar
@@ -94,15 +109,18 @@ export function useItemEditor(
       scope={scope}
       onScope={setScope}
       onSave={() => {
-        send(patchOf(scope, target.occurrenceKey, scopedChanges(scope, changes, item, day)), clear);
+        const sent = scopedChanges(scope, changes, item, day);
+        send(patchOf(scope, target.occurrenceKey, sent), changes);
       }}
-      onCancel={clear}
+      onCancel={() => {
+        setChanges({});
+      }}
       busy={busy}
       disabled={offline}
     />
   ) : null;
-  const shown = recurring ? itemWith(itemAtDay(item, day), { changes }) : item;
-  return { shown, change, bar, busy };
+  const shown = recurring ? itemWith(itemAtDay(item, day), { changes }) : saved;
+  return { shown, change, bar };
 }
 
 export function itemIn(items: readonly PlannerItemRow[], itemId: string): PlannerItemRow | null {

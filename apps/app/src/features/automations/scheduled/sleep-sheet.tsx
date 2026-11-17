@@ -15,6 +15,7 @@ import { cancelScheduled, saveScheduled } from './actions';
 import { SLEEP_MINUTES, sleepSave, sleepTimerOf } from './sleep-save';
 import { useHomeZone } from './use-scheduled';
 import { minutesLabel, whenLabel, type When } from './when';
+import { useHour24 } from '../../../store/clock-format';
 
 const WALL_ZONE = 'UTC';
 
@@ -66,10 +67,11 @@ function TimeChoice({
   readonly busy: boolean;
   readonly onSet: (when: When) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const [time, setTime] = useState<TimeOfDay>(EVENING);
   return (
     <View className="gap-3">
-      <TimeField label="Turn off at" value={time} onChange={setTime} />
+      <TimeField hour24={hour24} label="Turn off at" value={time} onChange={setTime} />
       <Button
         label={`Set for ${wallClock(time)}`}
         loading={busy}

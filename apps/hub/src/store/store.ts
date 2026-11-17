@@ -5,6 +5,8 @@ import { z } from 'zod';
 import type { Logger } from '@smarteverything/logging';
 import { StoreContext } from './context';
 import { ChangeFeed } from './feed';
+import { StoreCheckpoints } from './checkpoints';
+import { StoreReader } from './reader';
 import { migrate } from './migrate';
 import { discardMigrationBackups } from './migration-backup';
 import type { DrivePathOf } from './repositories/drive-roots';
@@ -50,6 +52,7 @@ function openDatabase(path: string): DatabaseSync {
   database.exec('pragma journal_mode = wal');
   database.exec('pragma synchronous = normal');
   database.exec('pragma foreign_keys = on');
+  database.exec('pragma wal_autocheckpoint = 0');
   return database;
 }
 
@@ -107,6 +110,7 @@ export type Store = ReturnType<typeof repositoriesOf> & {
   readonly context: StoreContext;
   readonly database: DatabaseSync;
   readonly feed: ChangeFeed;
+  readonly reader: StoreReader;
   readonly settings: SettingsRepository;
   readonly ledger: Ledger;
   readonly now: () => Date;
@@ -146,6 +150,25 @@ function retentionOf(sql: Sql, options: StoreOptions): { start: () => void; stop
   };
 }
 
+function checkpointsOf(sql: Sql, options: StoreOptions): () => void {
+  const checkpoints = new StoreCheckpoints({ ...options, busyTimeoutMs: BUSY_TIMEOUT_MS });
+  const stop = sql.onCommit(() => {
+    checkpoints.trigger();
+  });
+  return (): void => {
+    stop();
+    checkpoints.close();
+  };
+}
+
+function summaryOf(feed: ChangeFeed, log: Logger): NodeJS.Timeout {
+  const timer = setInterval(() => {
+    log.debug('change.summary', () => ({ ...feed.drain(), windowMs: FEED_SUMMARY_MS }));
+  }, FEED_SUMMARY_MS);
+  timer.unref();
+  return timer;
+}
+
 export function openStore(options: StoreOptions): Store {
   options.log.debug('store.opening', () => ({ file: basename(options.path) }));
   const database = openDatabase(options.path);
@@ -158,11 +181,10 @@ export function openStore(options: StoreOptions): Store {
   const settings = new SettingsRepository(context);
   settings.ensure();
   startTimeZone(settings, options);
-  const feedSummary = setInterval(() => {
-    options.log.debug('change.summary', () => ({ ...feed.drain(), windowMs: FEED_SUMMARY_MS }));
-  }, FEED_SUMMARY_MS);
-  feedSummary.unref();
+  const feedSummary = summaryOf(feed, options.log);
   const retention = retentionOf(sql, options);
+  const reader = new StoreReader({ ...options, busyTimeoutMs: BUSY_TIMEOUT_MS });
+  const stopCheckpoints = checkpointsOf(sql, options);
   options.log.info('store.opened', { version });
   options.log.debug('store.open_timed', () => ({
     file: basename(options.path),
@@ -172,6 +194,7 @@ export function openStore(options: StoreOptions): Store {
     context,
     database,
     feed,
+    reader,
     settings,
     ...repositoriesOf(context, options.log, options.drivePathOf),
     ledger: new Ledger(context, () => settings.read().time_zone),
@@ -182,6 +205,8 @@ export function openStore(options: StoreOptions): Store {
     close: (): void => {
       clearInterval(feedSummary);
       retention.stop();
+      stopCheckpoints();
+      reader.close();
       stop();
       try {
         database.close();

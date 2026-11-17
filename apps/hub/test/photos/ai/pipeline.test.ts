@@ -188,7 +188,7 @@ describe('the Photos analysis jobs', () => {
     rig.ai.start();
     await rig.settle();
     expect(chatCalls()).toBe(1);
-    rig.ai.scheduler.reconcile();
+    await rig.ai.scheduler.reconcile();
     await rig.settle();
     expect(chatCalls()).toBe(1);
     const jobs = rig.opened.store.database
@@ -251,13 +251,12 @@ describe('the Photos analysis jobs', () => {
     rig.answers.set(home, BEACH);
     rig.answers.set(own, BEACH);
     const calls = chatCalls();
-    const member = rig.ai.retryFailed({ profileId: rig.member });
-    expect(member.tags.queued).toBe(1);
+    await rig.ai.retryFailed({ profileId: rig.member });
     await rig.settle();
     expect(chatCalls()).toBe(calls + 1);
     expect(rig.opened.store.photoAnalysis.find(own)?.state).toBe('done');
     expect(rig.opened.store.photoAnalysis.find(home)?.state).toBe('failed');
-    rig.ai.retryFailed({ profileId: rig.owner });
+    await rig.ai.retryFailed({ profileId: rig.owner });
     await rig.settle();
     expect(chatCalls()).toBe(calls + 2);
     expect(rig.opened.store.photoAnalysis.find(home)?.state).toBe('done');
@@ -273,7 +272,7 @@ describe('the Photos analysis jobs', () => {
     setSwitches(rig.member, { smartSearch: false });
     await rig.settle();
     const calls = rig.sent.length;
-    rig.ai.retryFailed({ profileId: rig.member });
+    await rig.ai.retryFailed({ profileId: rig.member });
     await rig.settle();
     expect(rig.sent).toHaveLength(calls);
   });
@@ -365,17 +364,53 @@ describe('Smart features status and models', () => {
     rig.ai.start();
     await rig.settle();
     rig.ai.models.update({ vision: 'qwen/qwen3-vl-8b-instruct' });
-    rig.ai.scheduler.reconcile();
+    await rig.ai.scheduler.reconcile();
     await rig.settle();
     expect(chatCalls()).toBe(1);
     const estimate = rig.ai.statusOf({ profileId: rig.owner }).estimateMicros;
     expect(estimate).toBeGreaterThan(0);
-    expect(() => rig.ai.reanalyse(estimate + 1)).toThrow(/estimate changed/u);
-    expect(rig.ai.reanalyse(estimate)).toEqual({ queued: 1, estimateMicros: estimate });
+    await expect(
+      rig.ai.reanalyse({ estimateMicros: estimate + 1, everything: false }),
+    ).rejects.toThrow(/estimate changed/u);
+    expect(await rig.ai.reanalyse({ estimateMicros: estimate, everything: false })).toEqual({
+      queued: 1,
+      estimateMicros: estimate,
+    });
     await rig.settle();
     expect(chatCalls()).toBe(2);
     expect(rig.opened.store.photoAnalysis.find(id)?.model).toBe('qwen/qwen3-vl-8b-instruct');
     expect(rig.ai.statusOf({ profileId: rig.owner }).estimateMicros).toBe(0);
+  });
+
+  it('re-runs photos already analysed by the current model only when everything is confirmed', async () => {
+    const id = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });
+    await rig.photo({ n: 2, root: rig.memberRoot, colour: '#443322', answer: CAKE });
+    rig.ai.start();
+    await rig.settle();
+    expect(chatCalls()).toBe(1);
+    const status = rig.ai.statusOf({ profileId: rig.owner });
+    expect(status.estimateMicros).toBe(0);
+    expect(status.everythingMicros).toBeGreaterThan(0);
+    expect(await rig.ai.reanalyse({ estimateMicros: 0, everything: false })).toEqual({
+      queued: 0,
+      estimateMicros: 0,
+    });
+    await rig.settle();
+    expect(chatCalls()).toBe(1);
+    await expect(
+      rig.ai.reanalyse({ estimateMicros: status.estimateMicros, everything: true }),
+    ).rejects.toThrow(/estimate changed/u);
+    rig.answers.set(id, { ...BEACH, text: 'HAPPY BIRTHDAY' });
+    const embeds = rig.sent.filter((call) => call.path.endsWith('/embeddings')).length;
+    expect(
+      await rig.ai.reanalyse({ estimateMicros: status.everythingMicros, everything: true }),
+    ).toEqual({ queued: 1, estimateMicros: status.everythingMicros });
+    await rig.settle();
+    expect(chatCalls()).toBe(2);
+    expect(rig.opened.store.photoAnalysis.find(id)?.text).toBe('HAPPY BIRTHDAY');
+    expect(rig.sent.filter((call) => call.path.endsWith('/embeddings')).length).toBeGreaterThan(
+      embeds,
+    );
   });
 
   it('stores the Smart switches in the Photos preferences of the person', () => {

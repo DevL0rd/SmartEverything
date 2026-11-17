@@ -3,6 +3,7 @@ import { PhotoAlbumActivityRepository } from '../photo-album-activity';
 import { PhotoAlbumMembersRepository } from '../photo-album-members';
 import { PhotoAnalysisRepository } from '../photo-analysis';
 import { PhotoArchiveRepository } from '../photo-archive';
+import { PhotoDescriptionsRepository } from '../photo-descriptions';
 import { PhotoEditsRepository } from '../photo-edits';
 import { PhotoEmbeddingsRepository } from '../photo-embeddings';
 import { PhotoFacesRepository } from '../photo-faces';
@@ -18,6 +19,7 @@ export interface PhotoRepositories {
   readonly photoGroups: PhotoGroupsRepository;
   readonly photoEdits: PhotoEditsRepository;
   readonly photoMetaOverrides: PhotoMetaOverridesRepository;
+  readonly photoDescriptions: PhotoDescriptionsRepository;
   readonly photoArchive: PhotoArchiveRepository;
   readonly photoLocked: PhotoLockedRepository;
   readonly photoAlbumMembers: PhotoAlbumMembersRepository;
@@ -33,6 +35,7 @@ export function photoRepositories(context: StoreContext): PhotoRepositories {
     photoGroups: new PhotoGroupsRepository(context),
     photoEdits: new PhotoEditsRepository(context),
     photoMetaOverrides: new PhotoMetaOverridesRepository(context),
+    photoDescriptions: new PhotoDescriptionsRepository(context),
     photoArchive: new PhotoArchiveRepository(context),
     photoLocked: new PhotoLockedRepository(context),
     photoAlbumMembers: new PhotoAlbumMembersRepository(context),

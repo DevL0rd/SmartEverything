@@ -5,15 +5,9 @@ import type {
 } from '@smarteverything/domain';
 import type { Bar, ChartPoint, DonutSlice, HeatDay } from '../../../components/charts';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
+import type { ClockFormat } from '../../../format/clock-text';
 import { rounded, withUnit } from '../../../format/number';
-import {
-  clockOfMinutes,
-  monthShort,
-  shiftDay,
-  shortDate,
-  startOfDayKey,
-  weekdayShort,
-} from '../../../format/time';
+import { monthShort, shiftDay, shortDate, startOfDayKey, weekdayShort } from '../../../format/time';
 
 const TOP_LEVEL = 4;
 const WEEK = 7;
@@ -105,7 +99,7 @@ function hourSpanOf(stats: PlannerStats): readonly [number, number] {
   return [Math.min(...active), Math.max(...active)];
 }
 
-export function hourBarsOf(stats: PlannerStats): readonly Bar[] {
+export function hourBarsOf(stats: PlannerStats, format: ClockFormat): readonly Bar[] {
   const [first, last] = hourSpanOf(stats);
   const done = new Map(stats.best_hours.map((entry) => [entry.hour, entry.done]));
   return Array.from({ length: last - first + 1 }, (_, index) => {
@@ -113,7 +107,7 @@ export function hourBarsOf(stats: PlannerStats): readonly Bar[] {
     return {
       key: String(hour),
       value: done.get(hour) ?? 0,
-      label: String(hour).padStart(2, '0'),
+      label: format.shortHour(hour),
     };
   });
 }
@@ -126,8 +120,8 @@ export function peakHourOf(stats: PlannerStats): number | null {
   return peak?.hour ?? null;
 }
 
-export function hourWindowOf(hour: number): string {
-  return `${clockOfMinutes(hour * 60)} to ${clockOfMinutes((hour + 1) * 60)}`;
+export function hourWindowOf(hour: number, format: ClockFormat): string {
+  return `${format.minutes(hour * 60)} to ${format.minutes((hour + 1) * 60)}`;
 }
 
 const OTHER_CALENDAR = 'Other calendar';

@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_COLLECTION_ROW,
   PLANNER_ITEM_ROW,
@@ -107,7 +108,7 @@ function localAt(day: string, hours: number): string {
   return new Date(startOfDayKey(day) + hours * 3_600_000).toISOString();
 }
 
-const at = { now: NOW, today: TODAY, window: WINDOW };
+const at = { now: NOW, today: TODAY, window: WINDOW, instant: clockFormatOf(true).instant };
 
 describe('the timeline window', () => {
   it('maps the window start to 0 and its end to 1', () => {

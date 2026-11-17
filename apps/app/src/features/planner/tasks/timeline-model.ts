@@ -12,6 +12,7 @@ import {
   type TaskEntry,
   type TaskFilter,
 } from './task-grouping';
+import type { MomentText } from '../../../format/clock-text';
 
 export interface TimelineWindow {
   readonly from: string;
@@ -51,6 +52,7 @@ export interface TimelineInput {
   readonly today: string;
   readonly now: number;
   readonly window: TimelineWindow;
+  readonly instant: MomentText;
 }
 
 interface Span {
@@ -102,7 +104,7 @@ function clamp01(value: number): number {
 
 export function timelineBarOf(
   entry: TaskEntry,
-  { now, today, window }: Pick<TimelineInput, 'now' | 'today' | 'window'>,
+  { now, today, window, instant }: Pick<TimelineInput, 'now' | 'today' | 'window' | 'instant'>,
 ): TimelineBar {
   const span = spanOf(entry, now, today);
   const left = fractionOf(span.start, window);
@@ -111,7 +113,7 @@ export function timelineBarOf(
     left: clamp01(left),
     right: clamp01(right),
     tone: span.tone,
-    label: dueLabelOf(entry, today),
+    label: dueLabelOf(entry, today, instant),
     before: right < 0,
     after: left > 1,
     draggable: entry.open && entry.item.rrule === null && right >= 0 && left <= 1,

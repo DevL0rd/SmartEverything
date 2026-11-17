@@ -113,7 +113,7 @@ describe('takenMonths', () => {
         openComments: 0,
       };
       return draft.kind === 'folder'
-        ? { ...draft, ...derived, colour: null, iconHint: false }
+        ? { ...draft, ...derived, colour: null, iconHint: false, totalBytes: 0, totalFiles: 0 }
         : { ...draft, ...derived };
     });
   }

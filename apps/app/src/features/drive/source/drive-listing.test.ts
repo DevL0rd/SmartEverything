@@ -193,9 +193,18 @@ describe('info rows', () => {
   });
 
   it('gives a folder its size and how many items it holds', () => {
-    const folder = folderFixture({ id: idOf(10), name: 'Projects', bytes: 4096, childCount: 46 });
+    const folder = folderFixture({
+      id: idOf(10),
+      name: 'Projects',
+      bytes: 4096,
+      childCount: 46,
+      totalBytes: 81_920,
+      totalFiles: 300,
+    });
     const rows = infoRowsOf(driveNodeOf(folder, worldContext()), facts);
-    expect(rows.find((row) => row.key === 'size')?.value).toBe(`${bytes(4096)} · 46 items`);
+    expect(rows.find((row) => row.key === 'size')?.value).toBe(bytes(81_920));
+    expect(rows.find((row) => row.key === 'files')?.value).toBe('300');
+    expect(rows.find((row) => row.key === 'direct')?.value).toBe('46 items');
   });
 
   it('names a link and its target and a special file by its kind', () => {

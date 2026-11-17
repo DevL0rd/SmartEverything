@@ -5,6 +5,7 @@ import type {
   PlannerGuestRow,
   PlannerItemRow,
 } from '@smarteverything/domain';
+import type { ClockFormat } from '../../../format/clock-text';
 import { compareText } from '../../../format/text';
 
 export const SLOT_MINUTES = 30;
@@ -111,10 +112,14 @@ export function weeklyMinutesOf(windows: readonly PlannerBookingWindow[]): numbe
   );
 }
 
-function dayTextOf(windows: readonly PlannerBookingWindow[], day: number): string {
+function dayTextOf(
+  windows: readonly PlannerBookingWindow[],
+  day: number,
+  format: ClockFormat,
+): string {
   return windows
     .filter((window) => window.day === day)
-    .map((window) => `${window.start}–${window.end}`)
+    .map((window) => `${format.text(window.start)}–${format.text(window.end)}`)
     .join(', ');
 }
 
@@ -131,10 +136,11 @@ export function availabilitySummaryOf(
   windows: readonly PlannerBookingWindow[],
   order: readonly number[],
   name: (day: number) => string,
+  format: ClockFormat,
 ): string {
   const groups: { text: string; days: number[] }[] = [];
   for (const day of order) {
-    const text = dayTextOf(windows, day);
+    const text = dayTextOf(windows, day, format);
     const group = groups.at(-1);
     if (text === '') continue;
     const previous = group?.days.at(-1);

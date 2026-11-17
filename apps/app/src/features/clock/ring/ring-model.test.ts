@@ -10,7 +10,7 @@ import {
   type WeatherForecast,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { clock } from '../../../format/time';
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   briefingLinesOf,
   clockPartsOf,
@@ -37,6 +37,8 @@ const DUE = '2026-11-08T06:00:00.000Z';
 const NOW = Date.parse('2026-11-08T06:00:30.000Z');
 const STAMP = '2026-11-01T00:00:00.000Z';
 const ZONE = 'Europe/Berlin';
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 function ring(overrides: Partial<PlannerRingRow> = {}): PlannerRingRow {
   return PLANNER_RING_ROW.parse({
@@ -302,11 +304,11 @@ describe('finished timer line', () => {
 
 describe('today list', () => {
   it('puts all-day items first, then the rest by time, with list colours', () => {
-    const rows = todayRowsOf(dayOf(), new Map([[HOME, 'home']]));
+    const rows = todayRowsOf(dayOf(), new Map([[HOME, 'home']]), H12.instant);
     expect(rows.map((row) => [row.time, row.title, row.colour])).toEqual([
       ['All day', 'Ana’s birthday', 'home'],
-      [clock('2026-11-08T06:30:00.000Z', ZONE), 'Brush teeth', 'home'],
-      [clock('2026-11-08T10:00:00.000Z', ZONE), 'Call parents', 'home'],
+      [H12.instant('2026-11-08T06:30:00.000Z', ZONE), 'Brush teeth', 'home'],
+      [H12.instant('2026-11-08T10:00:00.000Z', ZONE), 'Call parents', 'home'],
     ]);
   });
 });
@@ -356,9 +358,10 @@ describe('weather line', () => {
   });
 
   it('reads the temperature, the sky and the sunrise of today', () => {
-    expect(weatherLineOf(forecast, '2026-11-08')).toBe(
-      `9° clear · sunrise ${clock('2026-11-08T06:14:00.000Z', ZONE)}`,
+    expect(weatherLineOf(forecast, '2026-11-08', H24.instant)).toBe(
+      `9° clear · sunrise ${H24.instant('2026-11-08T06:14:00.000Z', ZONE)}`,
     );
-    expect(weatherLineOf(forecast, '2026-11-09')).toBe('9° clear');
+    expect(weatherLineOf(forecast, '2026-11-08', H12.instant)).toMatch(/sunrise 7:14\s\S+$/u);
+    expect(weatherLineOf(forecast, '2026-11-09', H24.instant)).toBe('9° clear');
   });
 });

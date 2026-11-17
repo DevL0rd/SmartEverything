@@ -21,6 +21,7 @@ import { Anchored } from './anchored';
 import { ClockStepper } from './clock-stepper';
 import { ReminderSwatches } from './reminder-swatches';
 import { WindowDial, type DialWindow } from './window-dial';
+import { useClockFormat } from '../../../features/clock/format/clock-format';
 
 const DIAL = 232;
 
@@ -173,6 +174,7 @@ function ColourRow({ view }: Props): ReactNode {
 
 function QuietRow({ view }: Props): ReactNode {
   const { act } = useBottleAct(view.deviceId);
+  const format = useClockFormat();
   const state =
     view.quiet?.state === 'on' || view.quiet?.state === 'auto' ? view.quiet.state : 'off';
   return (
@@ -180,7 +182,7 @@ function QuietRow({ view }: Props): ReactNode {
       <View className="gap-2 px-4 py-3">
         <Text variant="body">Quiet hours</Text>
         <Text variant="footnote" tone="variant">
-          {quietLine(view.quiet)}
+          {quietLine(view.quiet, format)}
         </Text>
         <Segmented
           label="Quiet hours"
@@ -195,7 +197,10 @@ function QuietRow({ view }: Props): ReactNode {
           }}
         />
         {view.quiet === null ? null : (
-          <Text variant="caption" tone="faint">{`Quiet window ${windowText(view.quiet)}`}</Text>
+          <Text
+            variant="caption"
+            tone="faint"
+          >{`Quiet window ${windowText(view.quiet, format)}`}</Text>
         )}
       </View>
     </Anchored>
@@ -205,6 +210,7 @@ function QuietRow({ view }: Props): ReactNode {
 export function RemindersList({ view }: Props): ReactNode {
   const { act } = useBottleAct(view.deviceId);
   const reminder = view.reminder;
+  const format = useClockFormat();
   const pending = view.pending.reminder !== null || view.pending.quiet !== null;
   return (
     <List
@@ -216,7 +222,7 @@ export function RemindersList({ view }: Props): ReactNode {
         <SwitchRow
           icon="bell"
           title="Drink reminders"
-          subtitle={reminderLine(reminder)}
+          subtitle={reminderLine(reminder, format)}
           value={reminder !== null && reminder.state !== 'off'}
           disabled={!view.mayEdit || reminder === null}
           onChange={(on) => {

@@ -1,4 +1,5 @@
 import { captionWidthOf } from './scale';
+import type { ClockFormat } from '../../format/clock-text';
 
 export interface HeatDay {
   readonly day: string;
@@ -264,6 +265,7 @@ export function hourSummary(
   matrix: readonly (readonly number[])[],
   rows: readonly HeatRow[],
   unit: string,
+  format: ClockFormat,
 ): string {
   let best = { row: 0, column: 0, pages: 0 };
   matrix.forEach((row, rowIndex) => {
@@ -272,7 +274,7 @@ export function hourSummary(
     });
   });
   if (best.pages === 0) return `No ${unit} by hour yet`;
-  const hour = String(best.column).padStart(2, '0');
+  const hour = format.minutes(best.column * 60);
   const name = rows[best.row]?.name ?? '';
-  return `Busiest time ${name} ${hour}:00 with ${String(best.pages)} ${unit}`;
+  return `Busiest time ${name} ${hour} with ${String(best.pages)} ${unit}`;
 }

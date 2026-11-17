@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Banner } from '../../../components/banner';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { useSectionParam } from '../../../components/use-section-param';
 import { useAreaWidth } from '../../../design/size-class';
 import { SHELL_BREAKPOINTS } from '../../../components/page-shell/layout';
 import { useMinute } from '../../../store/clock';
-import { useSyncStatus } from '../../../store/selectors';
 import { flattenPages, useSharedByMe, useSharedWithMe } from '../data';
 import { DriveFrame } from '../components/drive-frame';
 import { useShareSheet } from '../share';
@@ -26,8 +24,6 @@ const VIEW_OPTIONS: readonly SegmentedOption<SharedView>[] = [
   { value: 'by-me', label: 'By me' },
 ];
 
-export const OFFLINE_TITLE = 'Showing the last known shares · reconnecting';
-
 function useSubtitle(view: SharedView): string | undefined {
   const withMe = useSharedWithMe().data;
   const byMe = useSharedByMe().data;
@@ -45,7 +41,6 @@ export function SharedScreen(): ReactNode {
   const [param, setParam] = useSectionParam('view');
   const view = sharedViewOf(param);
   const compact = useAreaWidth() < SHELL_BREAKPOINTS.compactMax;
-  const live = useSyncStatus().status === 'live';
   const subtitle = useSubtitle(view);
   const sheet = useShareSheet();
   return (
@@ -54,7 +49,6 @@ export function SharedScreen(): ReactNode {
       title="Shared"
       scroll={false}
       {...(subtitle === undefined ? {} : { subtitle })}
-      {...(live ? {} : { banner: <Banner tone="info" title={OFFLINE_TITLE} /> })}
     >
       <View className="flex-1 gap-4">
         <Segmented

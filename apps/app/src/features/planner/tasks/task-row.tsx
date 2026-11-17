@@ -15,6 +15,7 @@ import { AssigneeMark } from './assignee-mark';
 import { TaskCheck, useTaskActions } from './task-check';
 import { dueLabelOf, isOverdue, stepsLabelOf, type TaskEntry } from './task-grouping';
 import type { RowEdge } from './task-rows';
+import { useInstantClock } from '../../clock/format/clock-format';
 
 export interface TaskRowProps {
   readonly entry: TaskEntry;
@@ -71,10 +72,11 @@ function DeviceName({ entry }: { readonly entry: TaskEntry }): ReactNode {
 
 function TaskMeta({ entry, today, overdue }: ShownTask): ReactNode {
   const steps = stepsLabelOf(entry.steps);
+  const instant = useInstantClock();
   return (
     <View className="min-w-0 flex-row items-center gap-2">
       <Text variant="caption" tone={overdue ? 'critical' : 'variant'} className="tabular">
-        {dueLabelOf(entry, today)}
+        {dueLabelOf(entry, today, instant)}
       </Text>
       <DeviceName entry={entry} />
       {steps === null ? null : (

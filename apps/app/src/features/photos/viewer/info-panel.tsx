@@ -6,6 +6,7 @@ import { Text } from '../../../components/text';
 import { Button } from '../../../components/button';
 import { openMetaEdit } from '../organise/meta/meta-request';
 import { ItemSmartRows } from '../smart/item-rows';
+import { DescriptionSection } from './description-section';
 import { InfoActions, InfoRows, type InfoContent } from './info-rows';
 import { metaCurrentOf } from './use-viewer-controls';
 
@@ -47,6 +48,7 @@ export function InfoPanel({
         <IconButton icon="close" label="Close info" onPress={onClose} shortcut="I" />
       </View>
       <ScrollView contentContainerClassName="px-5 pb-5">
+        <DescriptionSection itemId={content.item.id} media={content.media} />
         <MetaEntry content={content} />
         <InfoRows content={content} />
         <ItemSmartRows itemId={content.item.id} />
@@ -74,6 +76,7 @@ export function InfoSheet({
       detents={INFO_DETENTS}
       scroll
     >
+      <DescriptionSection itemId={content.item.id} media={content.media} />
       <MetaEntry content={content} onOpened={onClose} />
       <InfoRows content={content} />
       <ItemSmartRows itemId={content.item.id} onOpened={onClose} />

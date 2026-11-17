@@ -25,6 +25,7 @@ import { ListRow } from '../../../components/list-row';
 import { SelectRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { PREFS, usePref } from '../../../store/prefs';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 function cooldownValue(pref: CameraNotificationsPref, deviceId: string): string {
   const own = cameraNotificationOverride(pref, deviceId).cooldownMinutes;
@@ -84,6 +85,7 @@ function TimingRows({
   readonly deviceId: string;
   readonly save: (next: CameraNotificationsPref) => void;
 }): ReactNode {
+  const format = useClockFormat();
   return (
     <>
       <SelectRow
@@ -100,7 +102,7 @@ function TimingRows({
       <SelectRow
         title="Quiet hours"
         icon="moon"
-        options={quietOptions(cameraQuietHours(pref, deviceId), pref.quiet)}
+        options={quietOptions(cameraQuietHours(pref, deviceId), pref.quiet, format)}
         value={quietChoice(pref, deviceId)}
         onChange={(choice) => {
           save(withQuietChoice(pref, deviceId, choice));

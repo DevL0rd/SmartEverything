@@ -4,9 +4,11 @@ import { nextSystemAlarm, plannerLinked } from '../../../../modules/health-conne
 import { Badge } from '../../../components/badge';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { MINUTE_MS, clockOfMinutes, localDayKey, zonedStartOfDay } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
+import { MINUTE_MS, localDayKey, zonedStartOfDay } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { dayWordOf } from '../../planner';
+import { useClockFormat } from '../format/clock-format';
 
 const SYSTEM_ALARM_KEY = ['clock', 'system-alarm'] as const;
 
@@ -19,10 +21,10 @@ function useSystemAlarm(): string | null {
   return query.data ?? null;
 }
 
-function systemAlarmTextOf(at: string, now: number, timeZone: string): string {
+function systemAlarmTextOf(at: string, now: number, timeZone: string, format: ClockFormat): string {
   const moment = Date.parse(at);
   const minute = (moment - zonedStartOfDay(localDayKey(moment, timeZone), timeZone)) / MINUTE_MS;
-  return `${clockOfMinutes(minute)} ${dayWordOf(moment, now, timeZone)}`;
+  return `${format.minutes(minute)} ${dayWordOf(moment, now, timeZone)}`;
 }
 
 export function SystemAlarmRow({
@@ -35,8 +37,9 @@ export function SystemAlarmRow({
   readonly compact: boolean;
 }): ReactNode {
   const at = useSystemAlarm();
+  const format = useClockFormat();
   if (at === null) return null;
-  const when = systemAlarmTextOf(at, now, timeZone);
+  const when = systemAlarmTextOf(at, now, timeZone, format);
   return (
     <View className="flex-row items-center gap-3 rounded-md border border-dashed border-outline-variant px-4 py-2.5">
       <Icon name="phone" size={compact ? 16 : 18} tone="variant" />

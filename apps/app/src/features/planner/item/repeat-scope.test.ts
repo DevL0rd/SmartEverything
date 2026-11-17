@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_COLLECTION_ROW,
   PLANNER_ITEM_PATCH,
@@ -47,7 +48,11 @@ const CALENDAR = '00000000-0000-4000-8000-000000000003';
 const ITEM = '00000000-0000-4000-8000-000000000010';
 const STAMP = '2026-11-07T08:00:00.000Z';
 const KEY = '2026-11-10T13:30:00.000Z';
-const TODAY = { now: Date.parse('2026-11-07T10:00:00Z'), timeZone: 'UTC' };
+const TODAY = {
+  now: Date.parse('2026-11-07T10:00:00Z'),
+  timeZone: 'UTC',
+  format: clockFormatOf(true),
+};
 
 let counter = 100;
 
@@ -393,6 +398,9 @@ describe('item fields', () => {
 
   it('words the when row', () => {
     expect(whenTextOf(walk(), TODAY)).toBe('Today 14:30 to 15:00');
+    expect(whenTextOf(walk(), { ...TODAY, format: clockFormatOf(false) })).toMatch(
+      /^Today 2:30\s\S+ to 3:00\s\S+$/u,
+    );
     expect(whenTextOf(item(), TODAY)).toBe('No date');
     expect(whenTextOf(item({ due_date: '2026-11-08' }), TODAY)).toBe('Tomorrow');
   });

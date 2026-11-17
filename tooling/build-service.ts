@@ -145,15 +145,27 @@ const BUNDLES: readonly Bundle[] = [
     external: [],
   },
   {
+    entry: join(hub, 'src', 'drive', 'metadata-worker.ts'),
+    file: 'metadata-worker.mjs',
+    external: ['mediainfo.js'],
+    banner: SERVICE_BANNER,
+  },
+  {
     entry: join(hub, 'src', 'drive', 'content', 'content-worker.ts'),
     file: 'content-worker.mjs',
-    external: ['tesseract.js', 'sharp'],
+    external: [],
+    banner: SERVICE_BANNER,
+  },
+  {
+    entry: join(hub, 'src', 'computers', 'local-computer-worker.ts'),
+    file: 'local-computer-worker.mjs',
+    external: SERVICE_EXTERNALS,
     banner: SERVICE_BANNER,
   },
   {
     entry: join(hub, 'src', 'vision', 'faces', 'worker.ts'),
     file: 'faces-worker.mjs',
-    external: [OPENVINO_PACKAGE],
+    external: [OPENVINO_PACKAGE, 'sharp'],
     banner: SERVICE_BANNER,
   },
   ...UPDATE_ENTRIES.map(({ entry, file }): Bundle => ({

@@ -13,12 +13,17 @@ import type { MediaFacts } from '../../../src/drive/metadata-read';
 import { overrideFacts } from '../../../src/photos/organise/override';
 import { DriveMediaRepository } from '../../../src/store/repositories/drive-media';
 import { PhotoMetaOverridesRepository } from '../../../src/store/repositories/photo-meta-overrides';
+import { PhotoDescriptionsRepository } from '../../../src/store/repositories/photo-descriptions';
+import { zonePicker } from '../../../src/drive/metadata-zone';
+import { PhotoDeviceZonesRepository } from '../../../src/store/repositories/photo-device-zones';
 import { testLogger } from '../../support/logs';
 import {
+  bundleMetadataWorker,
   bundleWorker,
   driveRoot,
   NOW,
   openDriveFixture,
+  type BundledWorker,
   type DriveFixture,
 } from '../../drive/drive-fixture';
 
@@ -29,6 +34,7 @@ const fixture = (name: string): string =>
 
 let bundleFolder = '';
 let scannerScript = '';
+let metadataWorker: BundledWorker;
 let tree = '';
 let drive: DriveFixture;
 let media: DriveMediaRepository;
@@ -38,10 +44,12 @@ beforeAll(async () => {
   bundleFolder = mkdtempSync(join(tmpdir(), 'override-bundle-'));
   scannerScript = join(bundleFolder, 'scanner-worker.mjs');
   await bundleWorker('scanner-worker.ts', scannerScript);
+  metadataWorker = await bundleMetadataWorker();
 });
 
 afterAll(() => {
   rmSync(bundleFolder, { recursive: true, force: true });
+  metadataWorker.dispose();
 });
 
 beforeEach(() => {
@@ -83,12 +91,15 @@ async function scanAndRead(): Promise<void> {
       driveItems: drive.items,
       settingsKv: drive.settings,
       photoMetaOverrides: overrides,
+      photoDescriptions: new PhotoDescriptionsRepository(drive.context),
       write: (work) => drive.context.write(work),
       feed: drive.feed,
       driveFeed: new DriveFeedRepository(drive.context),
     },
     media,
     availability: () => Promise.resolve('online'),
+    zones: zonePicker(new PhotoDeviceZonesRepository(drive.context), () => 'Asia/Bangkok'),
+    workerScript: metadataWorker.script,
     log: testLogger(),
   };
   await metadataHandler(read)({ kind: 'metadata', rootId: ROOT }, new AbortController().signal);
@@ -179,6 +190,7 @@ describe('overrideFacts', () => {
     exposure: null,
     place: { lat: 3, lon: 4 },
     durationMs: null,
+    description: null,
   };
 
   it('returns the file facts untouched without an override', () => {

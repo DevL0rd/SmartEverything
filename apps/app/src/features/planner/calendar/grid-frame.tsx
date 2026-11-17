@@ -2,6 +2,9 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import type { ClockFormat } from '../../../format/clock-text';
+import { useHour24 } from '../../../store/clock-format';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { AllDayChip } from './event-block';
 import { topStyle, yOf, type GridDay } from './time-grid-layout';
 
@@ -19,24 +22,33 @@ interface HourLabel {
   readonly label: string;
 }
 
-export function hourLabelsOf(compact: boolean): readonly HourLabel[] {
+export function hourLabelsOf(compact: boolean, format: ClockFormat): readonly HourLabel[] {
   return Array.from({ length: 23 }, (_, index) => {
     const hour = index + 1;
-    const label = String(hour).padStart(2, '0');
+    if (!format.hour24) return { hour, label: format.hour(hour) };
+    const label = format.shortHour(hour);
     return { hour, label: compact ? label : `${label}:00` };
   });
 }
 
-const GUTTER = { compact: 'w-10', wide: 'w-13' } as const;
+const GUTTER = {
+  hour24: { compact: 'w-10', wide: 'w-13' },
+  hour12: { compact: 'w-12', wide: 'w-14' },
+} as const;
 
-const GUTTER_WIDTH = { compact: 40, wide: 52 } as const;
+const GUTTER_WIDTH = {
+  hour24: { compact: 40, wide: 52 },
+  hour12: { compact: 48, wide: 56 },
+} as const;
 
-export function gutterOf(compact: boolean): string {
-  return compact ? GUTTER.compact : GUTTER.wide;
+export function gutterOf(compact: boolean, hour24: boolean): string {
+  const gutter = hour24 ? GUTTER.hour24 : GUTTER.hour12;
+  return compact ? gutter.compact : gutter.wide;
 }
 
-export function gutterWidthOf(compact: boolean): number {
-  return compact ? GUTTER_WIDTH.compact : GUTTER_WIDTH.wide;
+export function gutterWidthOf(compact: boolean, hour24: boolean): number {
+  const width = hour24 ? GUTTER_WIDTH.hour24 : GUTTER_WIDTH.hour12;
+  return compact ? width.compact : width.wide;
 }
 
 export interface HeadShape {
@@ -105,10 +117,11 @@ export function DayHeads({
   readonly days: readonly GridDay[];
   readonly shape: HeadShape;
 }): ReactNode {
+  const hour24 = useHour24();
   if (shape.columns === 1 && !shape.allDay) return null;
   return (
     <View className="flex-row border-b border-outline-variant">
-      <View className={gutterOf(shape.compact)} />
+      <View className={gutterOf(shape.compact, hour24)} />
       {days.map((day) => (
         <DayHead key={day.date} day={day} shape={shape} />
       ))}
@@ -117,9 +130,10 @@ export function DayHeads({
 }
 
 export function HourColumn({ geometry }: { readonly geometry: Geometry }): ReactNode {
+  const format = useClockFormat();
   return (
-    <View aria-hidden className={cn('relative', gutterOf(geometry.compact))}>
-      {hourLabelsOf(geometry.compact).map((hour) => (
+    <View aria-hidden className={cn('relative', gutterOf(geometry.compact, format.hour24))}>
+      {hourLabelsOf(geometry.compact, format).map((hour) => (
         <View
           key={hour.hour}
           style={topStyle(yOf(hour.hour * 60, geometry.hourHeight) - LABEL_HALF)}
@@ -134,10 +148,14 @@ export function HourColumn({ geometry }: { readonly geometry: Geometry }): React
   );
 }
 
+const HOUR_LINES: readonly { readonly hour: number }[] = Array.from({ length: 23 }, (_, index) => ({
+  hour: index + 1,
+}));
+
 export function HourLines({ hourHeight }: { readonly hourHeight: number }): ReactNode {
   return (
     <View aria-hidden pointerEvents="none" className="absolute inset-0">
-      {hourLabelsOf(true).map((hour) => (
+      {HOUR_LINES.map((hour) => (
         <View
           key={hour.hour}
           style={topStyle(yOf(hour.hour * 60, hourHeight))}

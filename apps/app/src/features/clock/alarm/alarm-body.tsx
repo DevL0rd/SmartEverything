@@ -69,7 +69,8 @@ export function useAlarmScreen(
       now,
       timeZone,
       weekStart: prefs.general.week_start,
-      disabled: offline || editing.busy,
+      skipOn: editing.alarm === null ? null : editing.alarm.skip_on,
+      disabled: offline || (editing.alarm === null && editing.busy),
       onChange: editing.change,
     },
   };
@@ -92,7 +93,7 @@ export function AlarmSkip({ screen }: { readonly screen: AlarmScreen }): ReactNo
       label={label}
       icon={alarm.skip_on === null ? 'skipForward' : 'undo'}
       variant="outlined"
-      disabled={fields.disabled}
+      disabled={fields.disabled || editing.busy}
       onPress={alarm.skip_on === null ? editing.skipNext : editing.ringNextAgain}
     />
   );
@@ -160,7 +161,7 @@ function AlarmDelete({ screen }: { readonly screen: AlarmScreen }): ReactNode {
         label="Delete alarm"
         icon="trash"
         variant="destructive"
-        disabled={screen.fields.disabled}
+        disabled={screen.fields.disabled || screen.editing.busy}
         onPress={screen.editing.remove}
       />
     </View>
@@ -184,7 +185,7 @@ export function AlarmCreateBar({
         icon="plus"
         grow
         loading={editing.busy}
-        disabled={fields.disabled}
+        disabled={fields.disabled || editing.busy}
         onPress={editing.create}
       />
     </View>

@@ -53,7 +53,7 @@ export async function readableSpeechSources(
         reason:
           'Video notes combine speech and visual descriptions; a speech-only commit is unavailable.',
       },
-      { kind: 'image', reason: 'Image descriptions and OCR are not speech.' },
+      { kind: 'image', reason: 'Image descriptions and the text read from images are not speech.' },
     ],
   };
 }

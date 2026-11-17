@@ -206,10 +206,10 @@ describe('Recently deleted screen', () => {
     expect(seen.whole?.disabled).toBe(true);
   });
 
-  it('shows the offline banner and turns the actions off while the hub is away', () => {
+  it('turns the actions off while the hub is away and leaves the offline notice to the app', () => {
     seen.live = false;
     const html = render();
-    expect(html).toContain('Offline · showing the last snapshot');
+    expect(html).not.toContain('Offline');
     expect(seen.whole?.disabled).toBe(true);
     expect(seen.grid?.disabled).toBe(true);
     expect(seen.grid?.onDeleteNow).not.toBeNull();

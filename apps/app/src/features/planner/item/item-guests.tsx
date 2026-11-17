@@ -17,6 +17,7 @@ import { useRows } from '../../../store/selectors';
 import type { PlannerPerson } from '../data';
 import { usePlannerProfile } from '../data/assignment';
 import { useGuestSuggestions, useGuestWrites, useItemGuests } from '../data/guests';
+import { useGuestSaves } from '../data/item-saves';
 import { GuestRow } from './guest-row';
 import {
   countsTextOf,
@@ -57,7 +58,6 @@ function ResponseBar({ counts }: { readonly counts: ResponseCounts }): ReactNode
 
 interface GuestEditor {
   readonly entries: readonly PlannerGuestEntry[];
-  readonly busy: boolean;
   readonly save: (next: readonly PlannerGuestEntry[]) => void;
   readonly resend: (view: GuestView) => void;
   readonly copyLink: (view: GuestView) => void;
@@ -69,19 +69,11 @@ function useGuestEditor(
   rows: ReturnType<typeof useItemGuests>,
 ): GuestEditor {
   const writes = useGuestWrites(person);
-  const [busy, setBusy] = useState(false);
-  const entries = entriesOf(rows);
+  const { unsaved, save } = useGuestSaves(person, itemId);
   return {
-    entries,
-    busy,
+    entries: unsaved === null ? entriesOf(rows) : unsaved.entries,
     save: (next): void => {
-      setBusy(true);
-      reported(
-        writes.setGuests(itemId, next).finally(() => {
-          setBusy(false);
-        }),
-        'Couldn’t change the guests',
-      );
+      save({ entries: next });
     },
     resend: (view): void => {
       reported(writes.resend(view.row), `Couldn’t send the invitation to ${view.name}`);
@@ -307,7 +299,6 @@ export function ItemGuests({ item, person, disabled }: ItemGuestsProps): ReactNo
   if (!organiser && rows.length === 0) return null;
   const counts = responseCountsOf(rows);
   const caption = countsTextOf(counts);
-  const locked = disabled || editor.busy;
   const emailed = organiser && rows.some((row) => row.kind === 'email');
   return (
     <Section title="Guests" {...(caption === null ? {} : { caption })}>
@@ -319,7 +310,7 @@ export function ItemGuests({ item, person, disabled }: ItemGuestsProps): ReactNo
           viewer={me}
           editor={editor}
           organiser={organiser}
-          disabled={locked}
+          disabled={disabled}
         />
         {organiser ? (
           <OrganiserTools
@@ -327,7 +318,7 @@ export function ItemGuests({ item, person, disabled }: ItemGuestsProps): ReactNo
             person={person}
             profiles={profiles}
             editor={editor}
-            disabled={locked}
+            disabled={disabled}
           />
         ) : null}
         {emailed ? (

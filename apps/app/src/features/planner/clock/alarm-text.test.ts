@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_ALARM_ROW,
   PLANNER_RING_ROW,
@@ -6,6 +7,7 @@ import {
   type PlannerWatchLink,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
+import { clockLabelOf } from '../../../format/clock-text';
 import { zonedInstant } from '../../../format/time';
 import {
   alarmsInRingOrder,
@@ -35,6 +37,8 @@ const NOW = zonedInstant('2026-11-07', 14 * 60 + 20, ZONE);
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+const AS_STORED = (time: string): string => time;
+const TWELVE_HOUR = (time: string): string => clockLabelOf(time, false);
 
 let next = 0;
 
@@ -92,6 +96,9 @@ function ringOf(change: Partial<PlannerRingRow>): PlannerRingRow {
 function linkOf(change: Partial<PlannerWatchLink>): PlannerWatchLink {
   return { deviceId: WATCH, alarmId: 3, hash: 'h', state: 'synced', detail: null, ...change };
 }
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('nextRingOf', () => {
   it('finds the next repeat day after now', () => {
@@ -189,11 +196,14 @@ describe('soonest alarm', () => {
   });
 
   it('writes the page subtitle', () => {
-    expect(alarmsSubtitleOf([wake, gym, off], NOW, ZONE)).toBe(
+    expect(alarmsSubtitleOf([wake, gym, off], NOW, ZONE, AS_STORED)).toBe(
       'Next alarm 07:00 · Tomorrow, in 16 h 40 min · 2 on',
     );
-    expect(alarmsSubtitleOf([off], NOW, ZONE)).toBe('No alarms on');
-    expect(alarmsSubtitleOf([], NOW, ZONE)).toBeNull();
+    expect(alarmsSubtitleOf([wake, gym, off], NOW, ZONE, TWELVE_HOUR)).toMatch(
+      /^Next alarm 7:00\s?am · Tomorrow, in 16 h 40 min · 2 on$/iu,
+    );
+    expect(alarmsSubtitleOf([off], NOW, ZONE, AS_STORED)).toBe('No alarms on');
+    expect(alarmsSubtitleOf([], NOW, ZONE, AS_STORED)).toBeNull();
   });
 
   it('orders cards by next ring with alarms that are off last', () => {
@@ -220,15 +230,16 @@ describe('skipDayOf', () => {
 
 describe('wakeRoutineTimeOf', () => {
   it('starts the routine its lead before the alarm', () => {
-    expect(wakeRoutineTimeOf(alarmOf({ wake_automation_id: SCENE, wake_lead_minutes: 20 }))).toBe(
-      '06:40',
-    );
+    const routine = alarmOf({ wake_automation_id: SCENE, wake_lead_minutes: 20 });
+    expect(wakeRoutineTimeOf(routine, H24)).toBe('06:40');
+    expect(wakeRoutineTimeOf(routine, H12)).toBe(H12.text('06:40'));
     expect(
       wakeRoutineTimeOf(
         alarmOf({ time: '00:10', wake_automation_id: SCENE, wake_lead_minutes: 20 }),
+        H24,
       ),
     ).toBe('23:50');
-    expect(wakeRoutineTimeOf(alarmOf({}))).toBeNull();
+    expect(wakeRoutineTimeOf(alarmOf({}), H24)).toBeNull();
   });
 });
 
@@ -281,8 +292,12 @@ describe('missed alarms', () => {
     const ring = ringOf({});
     expect(missedPillOf(ring.due_at, NOW, ZONE)).toBe('Missed today');
     expect(missedPillOf(ring.due_at, NOW + DAY, ZONE)).toBe('Missed yesterday');
-    expect(missedStoryOf(ring, ZONE)).toMatch(
-      /^The phone was off at .+\. Clock doesn’t ring alarms late, so this one is marked missed\.$/,
+    expect(missedStoryOf(ring, ZONE, H24.instant)).toBe(
+      `The phone was off at ${H24.instant(ring.due_at, ZONE)}. Clock doesn’t ring alarms late, so this one is marked missed.`,
     );
+    expect(missedStoryOf(ring, ZONE, H12.instant)).toContain(
+      `at ${H12.instant(ring.due_at, ZONE)}.`,
+    );
+    expect(H12.instant(ring.due_at, ZONE)).not.toBe(H24.instant(ring.due_at, ZONE));
   });
 });

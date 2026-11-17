@@ -55,27 +55,30 @@ function entryOf(itemId: string, rootId: string, relPath: string): DriveTrashEnt
   };
 }
 
-function trashFolder(itemId: string, rootId: string, relPath: string): void {
+async function trashFolder(itemId: string, rootId: string, relPath: string): Promise<void> {
   world.store.context.write(() => {
     world.store.driveTrash.insert(entryOf(itemId, rootId, relPath));
     world.store.driveItems.remove(itemId);
     announce(rootId);
   });
+  await lifecycle.settled();
 }
 
-function restoreFolder(itemId: string, rootId: string, relPath: string): void {
+async function restoreFolder(itemId: string, rootId: string, relPath: string): Promise<void> {
   world.store.context.write(() => {
     world.store.driveTrash.remove(itemId);
     putItem(world.store, { rootId, id: itemId, relPath, kind: 'folder' });
     announce(rootId);
   });
+  await lifecycle.settled();
 }
 
-function purgeFolder(itemId: string): void {
+async function purgeFolder(itemId: string): Promise<void> {
   world.store.context.write(() => {
     world.store.driveTrash.remove(itemId);
     announce(HOME_DRIVE, ROBIN_DRIVE, IDA_DRIVE);
   });
+  await lifecycle.settled();
 }
 
 function share(itemId: string, profileId: string, role: 'view' | 'edit'): void {
@@ -99,51 +102,51 @@ afterEach(async () => {
 });
 
 describe('trash', () => {
-  it('holds a placement whose folder is trashed and clears the hold on restore', () => {
+  it('holds a placement whose folder is trashed and clears the hold on restore', async () => {
     const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
-    trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    await trashFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(current(placed.id)).toMatchObject({
       hold: 'trashed',
       status: { state: 'stopped', reason: 'Folder is in the trash' },
     });
-    restoreFolder(ROMS, HOME_DRIVE, 'Roms');
+    await restoreFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(current(placed.id)).toMatchObject({
       hold: null,
       status: { state: 'starting', reason: null },
     });
   });
 
-  it('holds a placement whose ancestor is trashed', () => {
+  it('holds a placement whose ancestor is trashed', async () => {
     const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS_INNER });
-    trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    await trashFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(world.store.driveItems.find(ROMS_INNER, null)).toBeUndefined();
     expect(current(placed.id)).toMatchObject({ hold: 'trashed' });
     expect(current(placed.id).status.reason).toBe(HOLD_REASONS.trashed);
   });
 
-  it('keeps the other placements of the drive untouched', () => {
+  it('keeps the other placements of the drive untouched', async () => {
     const music = place(world, world.owner, world.ownerDesk, {
       folderItemId: MUSIC,
       mountName: 'Music',
     });
     place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
-    trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    await trashFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(current(music.id).hold).toBeNull();
   });
 });
 
 describe('purge', () => {
-  it('removes the row of a placement whose folder was purged from the trash', () => {
+  it('removes the row of a placement whose folder was purged from the trash', async () => {
     const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
-    trashFolder(ROMS, HOME_DRIVE, 'Roms');
-    purgeFolder(ROMS);
+    await trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    await purgeFolder(ROMS);
     expect(world.store.drivePlacements.find(placed.id)).toBeUndefined();
   });
 
-  it('removes the row of a nested placement when its trashed ancestor is purged', () => {
+  it('removes the row of a nested placement when its trashed ancestor is purged', async () => {
     const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS_INNER });
-    trashFolder(ROMS, HOME_DRIVE, 'Roms');
-    purgeFolder(ROMS);
+    await trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    await purgeFolder(ROMS);
     expect(world.store.drivePlacements.find(placed.id)).toBeUndefined();
   });
 });
@@ -166,7 +169,7 @@ describe('access', () => {
     expect(current(placed.id)).toMatchObject({ hold: null, status: { state: 'starting' } });
   });
 
-  it('holds a placement on an item moved out of the shared folder', () => {
+  it('holds a placement on an item moved out of the shared folder', async () => {
     share(ROBIN_TRIP, world.ida.profileId, 'view');
     const placed = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
@@ -184,6 +187,7 @@ describe('access', () => {
       });
       announce(ROBIN_DRIVE);
     });
+    await lifecycle.settled();
     expect(current(placed.id)).toMatchObject({ hold: 'no_access' });
   });
 });
@@ -234,10 +238,11 @@ describe('computer', () => {
 });
 
 describe('copies', () => {
-  it('leaves the placement on the original when a copy appears in another drive', () => {
+  it('leaves the placement on the original when a copy appears in another drive', async () => {
     const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
     putItem(world.store, { rootId: ROBIN_DRIVE, id: COPY, relPath: 'Roms', kind: 'folder' });
     announce(HOME_DRIVE, ROBIN_DRIVE);
+    await lifecycle.settled();
     expect(current(placed.id)).toMatchObject({
       rootId: HOME_DRIVE,
       folderItemId: ROMS,
@@ -248,15 +253,15 @@ describe('copies', () => {
 });
 
 describe('held rows', () => {
-  it('are not in activeFor while held and return when released', () => {
+  it('are not in activeFor while held and return when released', async () => {
     const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
     expect(world.placements.activeFor(world.ownerDesk).map((one) => one.id)).toEqual([placed.id]);
-    trashFolder(ROMS, HOME_DRIVE, 'Roms');
+    await trashFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(world.placements.activeFor(world.ownerDesk)).toEqual([]);
     expect(world.store.drivePlacements.forDevice(world.ownerDesk).map((one) => one.id)).toEqual([
       placed.id,
     ]);
-    restoreFolder(ROMS, HOME_DRIVE, 'Roms');
+    await restoreFolder(ROMS, HOME_DRIVE, 'Roms');
     expect(world.placements.activeFor(world.ownerDesk).map((one) => one.id)).toEqual([placed.id]);
   });
 });

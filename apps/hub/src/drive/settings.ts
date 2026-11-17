@@ -33,12 +33,18 @@ export class DriveSettingsMissingError extends Error {
   }
 }
 
+const PARSED = new WeakMap<object, DriveSettings>();
+
 export function readDriveSettings(store: Pick<Store, 'settingsKv'>): DriveSettings {
   const saved = store.settingsKv.read(DRIVE_SETTINGS_KEY);
   if (saved === null) {
     throw new DriveSettingsMissingError();
   }
-  return DRIVE_SETTINGS.parse(saved);
+  const known = PARSED.get(saved);
+  if (known !== undefined) return known;
+  const parsed = DRIVE_SETTINGS.parse(saved);
+  PARSED.set(saved, parsed);
+  return parsed;
 }
 
 export function updateDriveSettings(

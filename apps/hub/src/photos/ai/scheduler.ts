@@ -1,6 +1,8 @@
 import type { CommittedNotice, LiveChange } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ChangeFeed } from '../../store/feed';
+import { Coalesced } from '../../store/reader';
+import { inSlices } from '../../store/slices';
 import type { Store } from '../../store/store';
 import { candidatesOf } from './candidates';
 import type { ConsentSwitches, PhotoConsent } from './consent';
@@ -11,7 +13,7 @@ import type { PhotoAiModelStore } from './settings';
 import type { PhotoVectorIndex } from './index';
 
 export interface SchedulerEnvironment {
-  readonly store: Pick<Store, 'context' | 'personAccess'>;
+  readonly store: Pick<Store, 'context' | 'personAccess' | 'reader'>;
   readonly feed: Pick<ChangeFeed, 'subscribe' | 'subscribeNotices'>;
   readonly keys: { readonly onChange: (listener: () => void) => () => void };
   readonly queue: PhotoAiQueue;
@@ -43,11 +45,19 @@ function layoutOwnerOf(change: LiveChange): string | null {
 export class PhotoAiScheduler {
   private readonly known = new Map<string, ConsentSwitches>();
   private readonly purge: PhotoAiPurge;
-  private scheduled = false;
+  private readonly pass: Coalesced;
   private stops: (() => void)[] = [];
 
   constructor(private readonly env: SchedulerEnvironment) {
     this.purge = new PhotoAiPurge(env.store.context, env.index);
+    this.pass = new Coalesced(
+      async () => {
+        await this.reconcile();
+      },
+      (cause) => {
+        env.log.error('schedule.failed', cause);
+      },
+    );
   }
 
   start(): void {
@@ -67,12 +77,17 @@ export class PhotoAiScheduler {
     this.defer();
   }
 
-  stop(): void {
-    for (const stop of this.stops) stop();
-    this.stops = [];
+  idle(): Promise<void> {
+    return this.pass.idle();
   }
 
-  reconcile(): number {
+  async stop(): Promise<void> {
+    for (const stop of this.stops) stop();
+    this.stops = [];
+    await this.pass.stop();
+  }
+
+  async reconcile(): Promise<number> {
     const models = this.env.models.read();
     const versions: Readonly<Record<PhotoAiKind, string>> = {
       faces: 'sface',
@@ -88,12 +103,13 @@ export class PhotoAiScheduler {
       return known;
     };
     for (const kind of ORDER) {
-      for (const candidate of candidatesOf(this.env.store.context, kind)) {
+      const candidates = await candidatesOf(this.env.store.reader, kind);
+      await inSlices(this.env.store.context, candidates, (candidate) => {
         const subject = candidate.owner ?? this.env.store.personAccess.homeOwner();
         const switches = switchesOf(subject);
-        if (kind === 'faces' ? !switches.faceGrouping : !switches.smartSearch) continue;
+        if (kind === 'faces' ? !switches.faceGrouping : !switches.smartSearch) return;
         if (this.env.queue.request(kind, candidate.id, candidate.rev, versions[kind])) queued += 1;
-      }
+      });
     }
     return queued;
   }
@@ -101,7 +117,7 @@ export class PhotoAiScheduler {
   resumeAfterKey(): void {
     for (const statement of NEEDS_KEY_RESUME)
       this.env.store.context.sql.run('queue the photo AI work that waited for a key', statement);
-    this.reconcile();
+    this.defer();
   }
 
   consentChanged(profileId: string): void {
@@ -129,15 +145,6 @@ export class PhotoAiScheduler {
   }
 
   private defer(): void {
-    if (this.scheduled) return;
-    this.scheduled = true;
-    setImmediate(() => {
-      this.scheduled = false;
-      try {
-        this.reconcile();
-      } catch (cause) {
-        this.env.log.error('schedule.failed', cause);
-      }
-    });
+    this.pass.trigger();
   }
 }

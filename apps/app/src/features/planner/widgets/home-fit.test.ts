@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_ALARM_ROW,
   type PlannerAlarmRow,
@@ -103,6 +104,9 @@ function alarmOf(id: string, change: Partial<PlannerAlarmRow>): PlannerAlarmRow 
 
 const at = (minutes: number): string => new Date(NOW + minutes * MINUTE).toISOString();
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('Up next counts', () => {
   it('counts missed, left and done and the done share of the whole day', () => {
     const counts = dayCountsOf(
@@ -124,17 +128,22 @@ describe('Up next counts', () => {
 describe('Up next lead line', () => {
   it('counts down to the next start and shows its span', () => {
     const next = occurrence('01', { start: at(10), end: at(40) });
-    expect(leadWhenOf(next, ZONE, NOW)).toBe('In 10 min · 14:10 to 14:40');
+    expect(leadWhenOf(next, ZONE, NOW, H24.instant)).toBe('In 10 min · 14:10 to 14:40');
+    expect(leadWhenOf(next, ZONE, NOW, H12.instant)).toMatch(
+      /^In 10 min · 2:10\s\S+ to 2:40\s\S+$/u,
+    );
   });
 
   it('shows the time left of something running now', () => {
     const now = occurrence('01', { start: at(-20), end: at(25) });
-    expect(leadWhenOf(now, ZONE, NOW)).toBe('Now · 25 min left');
+    expect(leadWhenOf(now, ZONE, NOW, H24.instant)).toBe('Now · 25 min left');
   });
 
   it('marks a due task that is due now and keeps an untimed task as any time', () => {
-    expect(leadWhenOf(occurrence('01', { due_at: at(-5) }), ZONE, NOW)).toBe('Now · 13:55');
-    expect(leadWhenOf(occurrence('02'), ZONE, NOW)).toBe('Anytime');
+    expect(leadWhenOf(occurrence('01', { due_at: at(-5) }), ZONE, NOW, H24.instant)).toBe(
+      'Now · 13:55',
+    );
+    expect(leadWhenOf(occurrence('02'), ZONE, NOW, H24.instant)).toBe('Anytime');
   });
 
   it('keeps only device attachments as live chips', () => {

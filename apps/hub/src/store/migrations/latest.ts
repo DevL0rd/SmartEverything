@@ -1,4 +1,9 @@
 import { PHOTO_ANALYSIS_TEXT_MIGRATION } from './photo-analysis-text';
+import { QUEUE_ORDER_INDEXES_MIGRATION } from './queue-order-indexes';
+import { DRIVE_PLACES_RTREE_MIGRATION } from './drive-places-rtree';
+import { PHOTO_ZONELESS_TIMES_MIGRATION } from './photo-zoneless-times';
+import { PHOTO_DESCRIPTIONS_MIGRATION } from './photo-descriptions';
+import { PHOTO_TEXT_FROM_VISION_MIGRATION } from './photo-text-from-vision';
 import { PHOTO_VISION_REFUSED_RETRY_MIGRATION } from './photo-vision-refused-retry';
 import { PHOTOS_THUMBHASH_DROP_MIGRATION } from './photos-thumbhash-drop';
 import { DRIVE_TEXT_SEARCH_ROWID_MIGRATION } from './drive-text-search-rowid';
@@ -6,6 +11,7 @@ import { DRIVE_INODE_LEASES_MIGRATION } from './drive-inode-leases';
 import { DRIVE_ITEM_REFERENCE_INDEXES_MIGRATION } from './drive-item-reference-indexes';
 import { DRIVE_ITEM_BACKLOG_INDEXES_MIGRATION } from './drive-item-backlog-indexes';
 import { DRIVE_MISSING_MIGRATION } from './drive-missing';
+import { DRIVE_FOLDER_TREE_MIGRATION } from './drive-folder-tree';
 import { DRIVE_ROOT_MOUNT_MIGRATION } from './drive-root-mount';
 import { DRIVE_MOUNT_TUNING_MIGRATION } from './drive-mount-tuning';
 import { DRIVE_MEMBER_AREA_MIGRATION } from './drive-member-area';
@@ -207,4 +213,10 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   DRIVE_ITEM_BACKLOG_INDEXES_MIGRATION,
   DRIVE_MISSING_MIGRATION,
   PHOTO_ANALYSIS_TEXT_MIGRATION,
+  DRIVE_FOLDER_TREE_MIGRATION,
+  PHOTO_TEXT_FROM_VISION_MIGRATION,
+  PHOTO_ZONELESS_TIMES_MIGRATION,
+  PHOTO_DESCRIPTIONS_MIGRATION,
+  QUEUE_ORDER_INDEXES_MIGRATION,
+  DRIVE_PLACES_RTREE_MIGRATION,
 ];

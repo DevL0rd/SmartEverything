@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clockTextOfTime, timeOfClockText } from './clock-text';
+import { clockLabelOf, clockPartsOf, clockTextOfTime, timeOfClockText } from './clock-text';
 
 describe('clock text', () => {
   it('reads the hour and the minute out of a clock time', () => {
@@ -17,5 +17,16 @@ describe('clock text', () => {
       const time = { hour: Math.floor(minute / 60), minute: minute % 60 };
       expect(timeOfClockText(clockTextOfTime(time))).toEqual(time);
     }
+  });
+
+  it('shows a stored time on the 24-hour clock or as 12-hour time with AM and PM', () => {
+    expect(clockPartsOf('07:05', true)).toEqual({ value: '07:05', period: null });
+    expect(clockPartsOf('00:00', false).value).toBe('12:00');
+    expect(clockPartsOf('12:00', false).value).toBe('12:00');
+    expect(clockPartsOf('23:59', false).value).toBe('11:59');
+    expect(clockPartsOf('00:00', false).period).not.toBe(clockPartsOf('12:00', false).period);
+    expect(clockPartsOf('23:59', false).period).toBe(clockPartsOf('12:00', false).period);
+    expect(clockLabelOf('23:59', true)).toBe('23:59');
+    expect(clockLabelOf('07:05', false)).toMatch(/^7:05 \S+/u);
   });
 });

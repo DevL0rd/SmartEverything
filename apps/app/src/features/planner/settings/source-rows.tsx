@@ -14,6 +14,7 @@ import { mayChangeLook } from '../calendar/calendar-edit';
 import { sourceText } from '../calendar/calendars-model';
 import { useGoogleAccount, usePlannerCollections } from '../data';
 import { usePlannerSharing, useViewerCalendars, type ViewerLook } from '../data/sharing';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { weekOrderOf } from '../clock/alarm-text';
 import {
   COLOUR_OPTIONS,
@@ -41,12 +42,13 @@ function useOwnProfileId(): string | null {
 
 export function GoogleRow(): ReactNode {
   const view = useGoogleAccount();
+  const format = useClockFormat();
   return (
     <NavRow
       title="Google"
       icon="link"
       href={href.settings.page('connections/google')}
-      subtitle={googleRowText(view)}
+      subtitle={googleRowText(view, format)}
       subtitleTone={view.needsAttention ? 'critical' : 'variant'}
     />
   );

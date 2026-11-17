@@ -21,6 +21,7 @@ import {
 import { storedRow } from '../store/codec';
 import type { StoreContext } from '../store/context';
 import { jsonText } from '../store/sql';
+import { SAVED_SETTINGS } from '../store/repositories/settings-kv';
 
 const ARRAYS = [
   'input_modalities',
@@ -267,6 +268,7 @@ export class AiModelsRepository {
   }
 
   private saveSetting(key: string, value: unknown): void {
+    SAVED_SETTINGS.forget(this.context);
     this.context.write(() =>
       this.context.sql.run(
         `save the ${key} AI settings`,

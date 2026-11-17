@@ -5,6 +5,7 @@ import type { MenuItem } from '../../../components/menu';
 import { localDayKey } from '../../../format/time';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerPreferences, useSavePrefs } from '../../planner';
+import { useClockFormat } from '../format/clock-format';
 import { useHubOffline } from '../frame/hub-status';
 import {
   addedClock,
@@ -91,10 +92,11 @@ export function useWorld(now: number): WorldData {
 
 export function useHourPick(now: number, world: WorldModel): HourPick {
   const [chosen, setChosen] = useState<number | null>(null);
+  const format = useClockFormat();
   const hour = chosen ?? nextHourOf(now, world.home.zone);
   return {
     hour,
-    summary: markerSummaryOf(world.cities, hour, world.home),
+    summary: markerSummaryOf(world.cities, hour, world.home, format),
     onHour: setChosen,
   };
 }

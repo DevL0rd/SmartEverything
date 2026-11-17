@@ -7,6 +7,7 @@ import { useRow } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceIcon } from '../../device-visuals';
 import type { AlarmDefaults } from './alarm-chips';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { wakeRoutineTimeOf } from './alarm-text';
 import { useWatchName } from './watch-state-line';
 
@@ -76,7 +77,7 @@ function RingTargetChip({
 
 function WakeRoutineChip({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
   const automation = useRow('automations', alarm.wake_automation_id);
-  const at = wakeRoutineTimeOf(alarm);
+  const at = wakeRoutineTimeOf(alarm, useClockFormat());
   if (automation === null || at === null) return null;
   return <TargetChip icon="automations" label={`${automation.name} ${at}`} />;
 }

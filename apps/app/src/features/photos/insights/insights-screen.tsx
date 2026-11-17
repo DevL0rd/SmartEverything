@@ -169,7 +169,7 @@ export function InsightsScreen(): ReactNode {
   const live = useSyncStatus().status === 'live';
   const query = usePhotoInsights(range);
   const library = usePhotoRailCounts().data?.library;
-  const stale = query.data !== undefined && (query.isError || !live);
+  const stale = live && query.data !== undefined && query.isError;
   const empty =
     query.data !== undefined && library !== undefined && phaseOf(query.data, library) === 'empty';
   return (

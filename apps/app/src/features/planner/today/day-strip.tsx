@@ -7,19 +7,21 @@ import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
 import { useColour } from '../../../design/colour';
-import { clock, hoursMinutes } from '../../../format/time';
+import { hoursMinutes } from '../../../format/time';
+import { useHour24 } from '../../../store/clock-format';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerCollections, usePlannerPreferences, useVisibleMinute } from '../data';
+import { useClockFormat, useInstantClock } from '../../clock/format/clock-format';
 import { usePlannerFrame } from '../frame/frame-context';
 import {
   STRIP_COLOURS,
-  alarmPinsOf,
   dayStripOf,
   nowIn,
   type DayStripModel,
   type StripMarkTone,
   type StripState,
 } from './day-strip-model';
+import { alarmPinsOf } from './day-strip-pins';
 
 const TRACK = { compact: 20, wide: 26 } as const;
 
@@ -45,9 +47,10 @@ function leftOf(placed: Placed, at: number, half: number): { readonly left: numb
 const PIN_SLOT = 12;
 
 function AlarmPins({ placed }: { readonly placed: Placed }): ReactNode {
+  const instant = useInstantClock();
   return (
     <View className="relative h-2.5">
-      {alarmPinsOf(placed.model, placed.width, PIN_SLOT).map((pin) => (
+      {alarmPinsOf(placed.model, placed.width, PIN_SLOT, instant).map((pin) => (
         <View
           key={pin.at}
           accessible
@@ -83,22 +86,29 @@ function TaskMarks({ placed }: { readonly placed: Placed }): ReactNode {
   );
 }
 
+const HOUR_LABEL = {
+  hour24: { width: 'w-8', half: 16 },
+  hour12: { width: 'w-12', half: 24 },
+} as const;
+
 function HourLabels({ placed }: { readonly placed: Placed }): ReactNode {
   const last = placed.model.hours.length - 1;
+  const box = useHour24() ? HOUR_LABEL.hour24 : HOUR_LABEL.hour12;
   return (
     <View className="relative h-4">
       {placed.model.hours.map((hour, index) => (
         <View
-          key={hour.label}
-          style={index === 0 || index === last ? undefined : leftOf(placed, hour.at, 16)}
+          key={hour.at}
+          style={index === 0 || index === last ? undefined : leftOf(placed, hour.at, box.half)}
           className={cn(
-            'absolute top-0 w-8',
+            'absolute top-0',
+            box.width,
             index === 0 && 'left-0 items-start',
             index === last && 'right-0 items-end',
             index !== 0 && index !== last && 'items-center',
           )}
         >
-          <Text variant="caption" tone="faint" className="tabular">
+          <Text variant="caption" tone="faint" className="tabular" numberOfLines={1}>
             {hour.label}
           </Text>
         </View>
@@ -221,10 +231,11 @@ function StripHeader({
   readonly model: DayStripModel;
   readonly timeZone: string;
 }): ReactNode {
+  const instant = useInstantClock();
   const sun =
     model.sun === null
       ? null
-      : `Sunrise ${clock(model.sun.rise, timeZone)} · Sunset ${clock(model.sun.set, timeZone)}`;
+      : `Sunrise ${instant(model.sun.rise, timeZone)} · Sunset ${instant(model.sun.set, timeZone)}`;
   return (
     <View className="flex-row flex-wrap items-center justify-between gap-x-4 gap-y-1">
       <View className="flex-row items-baseline gap-3">
@@ -265,6 +276,7 @@ export function useDayStrip(day: PlannerDay): DayStripModel {
     collections,
     place: placeOf(latitude, longitude),
     showSleep: preferences?.day_planner.show_sleep === true,
+    format: useClockFormat(),
   });
 }
 

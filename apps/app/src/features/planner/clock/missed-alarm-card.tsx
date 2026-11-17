@@ -8,9 +8,10 @@ import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
-import { clock24, dayBoundsOf, localDayKey } from '../../../format/time';
+import { dayBoundsOf, localDayKey } from '../../../format/time';
 import { usePlannerRings, type PlannerPerson } from '../data';
 import { alarmLabelOf, missedAlarmsOf, missedPillOf, missedStoryOf } from './alarm-text';
+import { useInstantClock } from '../../clock/format/clock-format';
 
 export interface MissedAlarmCardProps {
   readonly ring: PlannerRingRow;
@@ -27,18 +28,19 @@ export function MissedAlarmCard({
   timeZone,
   onDismiss,
 }: MissedAlarmCardProps): ReactNode {
+  const instant = useInstantClock();
   return (
     <Card tone="critical">
       <View className="flex-row items-center justify-between gap-2">
         <Badge label={missedPillOf(ring.due_at, now, timeZone)} tone="critical" icon="warning" />
       </View>
       <View className="flex-row flex-wrap items-baseline gap-3">
-        <Figure value={clock24(ring.due_at, timeZone)} size="l" />
+        <Figure value={instant(ring.due_at, timeZone)} size="l" />
         <Text variant="footnote" tone="variant" numberOfLines={1}>
           {alarm === null ? 'Alarm' : alarmLabelOf(alarm)}
         </Text>
       </View>
-      <Text variant="footnote">{missedStoryOf(ring, timeZone)}</Text>
+      <Text variant="footnote">{missedStoryOf(ring, timeZone, instant)}</Text>
       <View className="flex-row flex-wrap gap-2">
         <Button label="Got it" icon="check" variant="outlined" onPress={onDismiss} />
         <Button

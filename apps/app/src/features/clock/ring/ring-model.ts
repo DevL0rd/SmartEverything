@@ -14,7 +14,8 @@ import {
 } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 import { compareText } from '../../../format/text';
-import { clock, duration, hourOf, longDate, relative } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
+import { duration, hourOf, longDate, relative } from '../../../format/time';
 import { ringPhaseOf } from '../../planner';
 import { degrees } from '../../weather';
 import type { PhoneRingKind } from './ring-keys';
@@ -192,24 +193,29 @@ export function timerDoneLineOf(
 export function todayRowsOf(
   day: PlannerDay,
   colours: ReadonlyMap<string, PlannerColourKey>,
+  instant: MomentText,
 ): readonly TodayRow[] {
   return [...aheadOf(day)].sort(byStart).map((view) => {
     const start = startOf(view);
     return {
       key: `${view.item_id}:${view.occurrence_key}`,
-      time: view.all_day || start === null ? 'All day' : clock(start, day.time_zone),
+      time: view.all_day || start === null ? 'All day' : instant(start, day.time_zone),
       title: view.title,
       colour: colours.get(view.collection_id) ?? null,
     };
   });
 }
 
-export function weatherLineOf(forecast: WeatherForecast, today: string): string {
+export function weatherLineOf(
+  forecast: WeatherForecast,
+  today: string,
+  instant: MomentText,
+): string {
   const parts = [
     `${degrees(forecast.now.temperatureC)} ${weatherLabelOf(forecast.now.code).toLowerCase()}`,
   ];
   const sunrise = forecast.daily.find((day) => day.day === today)?.sunrise ?? null;
-  if (sunrise !== null) parts.push(`sunrise ${clock(sunrise, forecast.timeZone)}`);
+  if (sunrise !== null) parts.push(`sunrise ${instant(sunrise, forecast.timeZone)}`);
   return parts.join(' · ');
 }
 

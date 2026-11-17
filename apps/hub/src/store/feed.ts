@@ -44,10 +44,20 @@ function mergedChange(first: DriveChangedNotice, second: DriveChangedNotice): Dr
   };
 }
 
+function progressKeyOf(notice: CommittedNotice): string | null {
+  if (notice.type === 'photos_ai') return `photos_ai:${notice.stage}`;
+  if (notice.type === 'drive_progress') return `drive_progress:${notice.rootId}:${notice.phase}`;
+  if (notice.type !== 'photos_progress') return null;
+  return notice.itemId === undefined && notice.deviceId === undefined
+    ? `photos_progress:${notice.kind}`
+    : null;
+}
+
 export class ChangeFeed {
   private readonly emitter = new EventEmitter<FeedEvents>();
   private pending: Delivery[] | null = null;
   private heldChange: HeldChange | null = null;
+  private readonly heldProgress = new Map<string, { superseded: boolean }>();
   private delivered = 0;
   private counts = { rows: 0, notices: 0, speech: 0, commits: 0, discards: 0, maxHeld: 0 };
 
@@ -137,10 +147,28 @@ export class ChangeFeed {
       this.holdChange(this.pending, notice);
       return;
     }
+    const key = progressKeyOf(notice);
+    if (key !== null && this.pending !== null) {
+      this.holdProgress(this.pending, key, notice);
+      return;
+    }
     this.dispatch(() => {
       this.counts.notices += 1;
       this.emitter.emit('notice', notice);
     });
+  }
+
+  private holdProgress(pending: Delivery[], key: string, notice: CommittedNotice): void {
+    const held = this.heldProgress.get(key);
+    if (held !== undefined) held.superseded = true;
+    const entry = { superseded: false };
+    this.heldProgress.set(key, entry);
+    pending.push(() => {
+      if (entry.superseded) return;
+      this.counts.notices += 1;
+      this.emitter.emit('notice', notice);
+    });
+    this.counts.maxHeld = Math.max(this.counts.maxHeld, pending.length);
   }
 
   private holdChange(pending: Delivery[], notice: DriveChangedNotice): void {
@@ -198,12 +226,14 @@ export class ChangeFeed {
   hold(): void {
     this.pending = [];
     this.heldChange = null;
+    this.heldProgress.clear();
   }
 
   release(): void {
     const deliveries = this.pending ?? [];
     this.pending = null;
     this.heldChange = null;
+    this.heldProgress.clear();
     for (const delivery of deliveries) delivery();
   }
 
@@ -214,6 +244,7 @@ export class ChangeFeed {
     }
     this.pending = null;
     this.heldChange = null;
+    this.heldProgress.clear();
   }
 
   private dispatch(delivery: Delivery): void {

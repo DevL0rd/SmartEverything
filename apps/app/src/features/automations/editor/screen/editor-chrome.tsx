@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react';
-import { Banner } from '../../../../components/banner';
 import { PageShell } from '../../../../components/page-shell/page-shell';
-import { OFFLINE_BANNER } from './screen-model';
 import { ShortcutSheet } from './shortcut-sheet';
 import { TopBarActions, TopBarTitle, type TopBarProps } from './top-bar';
 import type { EditorModel } from './use-editor-model';
@@ -50,21 +48,6 @@ export function EditorShell({
     >
       {children}
     </PageShell>
-  );
-}
-
-export function OfflineBanner({ online }: { readonly online: boolean }): ReactNode {
-  return online ? null : (
-    <Banner tone="warning" title={OFFLINE_BANNER.title} body={OFFLINE_BANNER.body} wrapBody />
-  );
-}
-
-export function EditorBanners({ model }: { readonly model: EditorModel }): ReactNode {
-  return (
-    <>
-      <OfflineBanner online={model.props.online} />
-      {model.props.notice}
-    </>
   );
 }
 

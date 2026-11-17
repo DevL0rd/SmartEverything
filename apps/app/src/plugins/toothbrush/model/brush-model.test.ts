@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { readFileSync } from 'node:fs';
 import { BRUSH_INTENSITIES, ORALB_MODES, SONICARE_MODES } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
@@ -20,6 +21,9 @@ import { ORALB_MODE_COLOUR } from './oralb-mode-colour';
 
 const NOW = Date.parse('2026-10-18T07:30:00.000Z');
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('time text', () => {
   it('writes a clock for the brushing timer', () => {
     expect(clockText(0)).toBe('0:00');
@@ -33,8 +37,9 @@ describe('time text', () => {
   });
 
   it('pads the hour of a goal window', () => {
-    expect(hourText(4)).toBe('04:00');
-    expect(hourText(17)).toBe('17:00');
+    expect(hourText(4, H24)).toBe('04:00');
+    expect(hourText(17, H24)).toBe('17:00');
+    expect(hourText(17, H12)).toBe(H12.text('17:00'));
   });
 });
 

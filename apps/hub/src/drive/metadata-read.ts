@@ -4,6 +4,7 @@ import type { DriveItem } from '@smarteverything/domain';
 import ExifReader from 'exifreader';
 import mediaInfoFactory, { type MediaInfo } from 'mediainfo.js';
 import { z } from 'zod';
+import { gifXmpDate, isGif } from './metadata-xmp';
 
 type Visual = Extract<DriveItem, { readonly kind: 'image' }>;
 type TimeSource = 'metadata' | 'container' | 'modified';
@@ -23,6 +24,7 @@ export interface MediaFacts {
   readonly exposure: Visual['exposure'];
   readonly place: Visual['place'];
   readonly durationMs: number | null;
+  readonly description: string | null;
 }
 
 const STILL_BRANDS: readonly string[] = [
@@ -57,6 +59,8 @@ const STILL_TAGS = z.looseObject({
   file: TAG_GROUP.optional(),
   pngFile: TAG_GROUP.optional(),
   gps: z.looseObject({ Latitude: z.unknown(), Longitude: z.unknown() }).optional(),
+  xmp: z.looseObject({ description: TAG.optional() }).optional(),
+  iptc: z.looseObject({ 'Caption/Abstract': TAG.optional() }).optional(),
 });
 type Group = z.infer<typeof TAG_GROUP>;
 
@@ -78,6 +82,7 @@ export const NOTHING: MediaFacts = {
   exposure: null,
   place: null,
   durationMs: null,
+  description: null,
 };
 
 function text(value: unknown): string | null {
@@ -180,18 +185,27 @@ function placeOf(latitude: unknown, longitude: unknown): MediaFacts['place'] {
   return lat.success && lon.success ? { lat: lat.data, lon: lon.data } : null;
 }
 
+function stillDescription(tags: z.infer<typeof STILL_TAGS>): string | null {
+  return (
+    text(tags.xmp?.description?.description) ??
+    text(tags.exif?.['ImageDescription']?.description) ??
+    text(tags.iptc?.['Caption/Abstract']?.description)
+  );
+}
+
 export function readStill(data: Buffer): MediaFacts {
   const tags = STILL_TAGS.parse(ExifReader.load(data, { expanded: true }));
   const exif = tags.exif ?? {};
   const orientation = ORIENTATION.safeParse(numeric(exif['Orientation']?.value));
   return {
     ...NOTHING,
-    takenAt: stillMoment(exif),
+    takenAt: stillMoment(exif) ?? (isGif(data) ? momentOf(gifXmpDate(data), 'metadata') : null),
     ...stillSize({ ...tags.pngFile, ...tags.file }, exif),
     orientation: orientation.success ? orientation.data : null,
     camera: stillCamera(exif),
     exposure: stillExposure(exif),
     place: tags.gps === undefined ? null : placeOf(tags.gps.Latitude, tags.gps.Longitude),
+    description: stillDescription(tags),
   };
 }
 

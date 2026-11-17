@@ -16,6 +16,7 @@ import {
   type ShiftDraft,
   type WallDraft,
 } from './meta-model';
+import { useHour24 } from '../../../../store/clock-format';
 
 type DateMode = DateDraft['kind'];
 
@@ -52,6 +53,7 @@ function SetControls({
   readonly wall: WallDraft;
   readonly onWall: (wall: WallDraft) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   return (
     <View className="gap-3">
       <View className="flex-row flex-wrap items-center gap-3">
@@ -64,6 +66,7 @@ function SetControls({
           }}
         />
         <TimeField
+          hour24={hour24}
           label="Time taken"
           value={{ hour: Math.floor(wall.minute / 60), minute: wall.minute % 60 }}
           onChange={(time) => {

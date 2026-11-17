@@ -13,7 +13,8 @@ import { Arc } from '../../../components/charts/arc';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { plural } from '../../../format/text';
-import { clock, dayBoundsOf } from '../../../format/time';
+import { dayBoundsOf } from '../../../format/time';
+import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
 import { DeviceFace } from '../../devices';
 import { usePlannerCollections, usePlannerItems, useVisibleMinute } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
@@ -146,10 +147,14 @@ function Devices({ occurrence }: { readonly occurrence: PlannerOccurrenceView })
   );
 }
 
-export function rangeOf(occurrence: PlannerOccurrenceView, timeZone: string): string | null {
+export function rangeOf(
+  occurrence: PlannerOccurrenceView,
+  timeZone: string,
+  instant: InstantClock,
+): string | null {
   if (occurrence.start === null) return null;
-  const start = clock(occurrence.start, timeZone);
-  return occurrence.end === null ? start : `${start} to ${clock(occurrence.end, timeZone)}`;
+  const start = instant(occurrence.start, timeZone);
+  return occurrence.end === null ? start : `${start} to ${instant(occurrence.end, timeZone)}`;
 }
 
 function Heading({
@@ -165,7 +170,7 @@ function Heading({
   const collection = usePlannerCollections(person).find(
     (row) => row.id === occurrence.collection_id,
   );
-  const range = rangeOf(occurrence, day.time_zone);
+  const range = rangeOf(occurrence, day.time_zone, useInstantClock());
   const subtitle = [collection?.name ?? null, occurrence.location]
     .filter((part) => part !== null)
     .join(' · ');

@@ -12,6 +12,7 @@ import {
 import { background, type Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../../clock';
 import type { OwnerAlert } from '../../extensions/owner-alerts';
+import { personClockText } from '../../clock/person-clock';
 import type { Store } from '../../store/store';
 import type { AutomationRunner } from '../wake-routine';
 import type { SleepSoundControl } from '../sleep-sound';
@@ -30,7 +31,7 @@ export interface BedtimeChannel {
   readonly push: (alert: OwnerAlert) => void;
 }
 
-export type BedtimeStore = Pick<Store, 'clients' | 'profiles' | 'settings'>;
+export type BedtimeStore = Pick<Store, 'clients' | 'profiles' | 'settings' | 'personal'>;
 
 export interface BedtimeDeskOptions {
   readonly store: BedtimeStore;
@@ -126,7 +127,7 @@ export class BedtimeDesk {
     this.tellPhones(profileId, notice);
     this.options.channel.push({
       title: 'Bedtime is coming up',
-      body: `Time to get ready for bed at ${this.localTime(bedAt)}.`,
+      body: `Time to get ready for bed at ${this.localTime(bedAt, profileId)}.`,
       data: { kind: 'planner_bedtime', bedAt },
       person: profileId,
     });
@@ -205,10 +206,8 @@ export class BedtimeDesk {
     );
   }
 
-  private localTime(iso: string): string {
-    return Temporal.Instant.from(iso)
-      .toZonedDateTimeISO(this.options.store.settings.read().time_zone)
-      .toPlainTime()
-      .toString({ smallestUnit: 'minute' });
+  private localTime(iso: string, profileId: string): string {
+    const { store } = this.options;
+    return personClockText(store, profileId, iso, store.settings.read().time_zone);
   }
 }

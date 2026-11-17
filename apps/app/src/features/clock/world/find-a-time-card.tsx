@@ -5,6 +5,7 @@ import { Card } from '../../../components/card';
 import { IconButton } from '../../../components/icon-button';
 import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
+import { useClockFormat } from '../format/clock-format';
 import type { WorldCity } from './cities';
 import { DAY_HOURS, hourTimeOf, hourShiftedBy, type HomeDay, type HourPlan } from './find-a-time';
 import { HourGrid, type HourPick } from './hour-grid';
@@ -69,6 +70,7 @@ function HourSteps({ pick }: { readonly pick: HourPick }): ReactNode {
 
 export function FindATimeCard(props: FindATimeProps): ReactNode {
   const { pick } = props;
+  const format = useClockFormat();
   return (
     <Card>
       <View className="flex-row flex-wrap items-center justify-between gap-3">
@@ -78,10 +80,10 @@ export function FindATimeCard(props: FindATimeProps): ReactNode {
             Working hours are tinted, night is dim. Drag the marker.
           </Text>
         </View>
-        <Pill text={`${hourTimeOf(pick.hour, props.home)} here`} />
+        <Pill text={`${hourTimeOf(pick.hour, props.home, format)} here`} />
         <HourSteps pick={pick} />
         <CreateButton
-          time={hourTimeOf(pick.hour, props.home)}
+          time={hourTimeOf(pick.hour, props.home, format)}
           disabled={props.disabled}
           onCreate={props.onCreate}
         />
@@ -99,11 +101,12 @@ export function FindATimeCard(props: FindATimeProps): ReactNode {
 
 export function FindATimePhone(props: FindATimeProps): ReactNode {
   const { pick, home } = props;
+  const format = useClockFormat();
   return (
     <Card>
       <View className="flex-row items-center justify-between gap-3">
         <Text variant="label">Find a time</Text>
-        <Pill text={`${hourTimeOf(pick.hour, home)} here`} />
+        <Pill text={`${hourTimeOf(pick.hour, home, format)} here`} />
       </View>
       <HourGrid cities={props.cities} home={home} plan={props.plan} pick={pick} slim />
       <Slider
@@ -112,13 +115,13 @@ export function FindATimePhone(props: FindATimeProps): ReactNode {
         max={DAY_HOURS - 1}
         step={1}
         label="Time at home"
-        formatValue={(hour) => hourTimeOf(hour, home)}
+        formatValue={(hour) => hourTimeOf(hour, home, format)}
         onChange={pick.onHour}
         onCommit={pick.onHour}
       />
       <View className="items-start">
         <CreateButton
-          time={hourTimeOf(pick.hour, props.home)}
+          time={hourTimeOf(pick.hour, props.home, format)}
           disabled={props.disabled}
           onCreate={props.onCreate}
         />

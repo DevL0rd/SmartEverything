@@ -130,6 +130,19 @@ function photoMeta(): Selection {
   });
 }
 
+function photoDescription(): Selection {
+  return selection({
+    input: z.strictObject({ itemId: ID, text: TEXT.nullable() }),
+    run: (context, input, as) =>
+      operate(
+        context,
+        'setPhotoDescription',
+        { params: { itemId: input.itemId }, body: { text: input.text } },
+        as,
+      ),
+  });
+}
+
 function itemsOf(name: 'archivePhotos' | 'unarchivePhotos' | 'moveIntoLockedFolder'): Selection {
   return selection({
     input: z.strictObject({ itemIds: ITEM_IDS }),
@@ -143,6 +156,7 @@ export const PHOTO_MEDIA_EDITS: Readonly<Record<string, Selection>> = {
   photo_erase: photoErase(),
   video_edit: videoEdit(),
   photo_meta: photoMeta(),
+  photo_description: photoDescription(),
   archive: itemsOf('archivePhotos'),
   unarchive: itemsOf('unarchivePhotos'),
   locked_move_in: itemsOf('moveIntoLockedFolder'),

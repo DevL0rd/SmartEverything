@@ -18,10 +18,10 @@ export interface TimeFieldProps {
   readonly value: TimeOfDay;
   readonly onChange: (value: TimeOfDay) => void;
   readonly label: string;
-  readonly hour12?: boolean;
+  readonly hour24: boolean;
 }
 
-type Period = 'am' | 'pm';
+export type Period = 'am' | 'pm';
 
 class DayPeriodError extends Error {
   override readonly name = 'DayPeriodError';
@@ -32,13 +32,6 @@ class DayPeriodError extends Error {
 }
 
 const PERIOD_FORMAT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', hour12: true });
-
-const LOCALE_HOUR12 =
-  new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 === true;
-
-export function localeUsesHour12(): boolean {
-  return LOCALE_HOUR12;
-}
 
 const PERIOD_LABELS = new Map<number, string>();
 
@@ -60,6 +53,23 @@ function periodLabel(hour: number): string {
 function wrapped(value: number, min: number, max: number): number {
   const span = max - min + 1;
   return ((((value - min) % span) + span) % span) + min;
+}
+
+export function periodOf(hour: number): Period {
+  return hour < 12 ? 'am' : 'pm';
+}
+
+export function shownHourOf(hour: number, hour12: boolean): number {
+  return hour12 ? wrapped(hour, 1, 12) : hour;
+}
+
+export function hourOfShown(shown: number, period: Period, hour12: boolean): number {
+  if (!hour12) return shown;
+  return (shown % 12) + (period === 'pm' ? 12 : 0);
+}
+
+export function hourInPeriod(hour: number, period: Period): number {
+  return (hour % 12) + (period === 'pm' ? 12 : 0);
 }
 
 interface PartProps {
@@ -153,17 +163,11 @@ function PeriodToggle({
   return <Segmented options={options} value={period} onChange={onChange} label={label} />;
 }
 
-export function TimeField({
-  value,
-  onChange,
-  label,
-  hour12 = LOCALE_HOUR12,
-}: TimeFieldProps): ReactNode {
-  const period: Period = value.hour < 12 ? 'am' : 'pm';
-  const offset = period === 'pm' ? 12 : 0;
-  const shownHour = hour12 ? wrapped(value.hour, 1, 12) : value.hour;
+export function TimeField({ value, onChange, label, hour24 }: TimeFieldProps): ReactNode {
+  const hour12 = !hour24;
+  const period = periodOf(value.hour);
   const setHour = (hour: number): void => {
-    onChange({ hour: hour12 ? (hour % 12) + offset : hour, minute: value.minute });
+    onChange({ hour: hourOfShown(hour, period, hour12), minute: value.minute });
   };
   return (
     <View
@@ -172,7 +176,7 @@ export function TimeField({
       className="flex-row items-center gap-2"
     >
       <TimePart
-        value={shownHour}
+        value={shownHourOf(value.hour, hour12)}
         min={hour12 ? 1 : 0}
         max={hour12 ? 12 : 23}
         label={`${label} hour`}
@@ -191,13 +195,15 @@ export function TimeField({
         }}
       />
       {hour12 ? (
-        <PeriodToggle
-          period={period}
-          label={`${label} AM or PM`}
-          onChange={(next) => {
-            onChange({ hour: (value.hour % 12) + (next === 'pm' ? 12 : 0), minute: value.minute });
-          }}
-        />
+        <View>
+          <PeriodToggle
+            period={period}
+            label={`${label} AM or PM`}
+            onChange={(next) => {
+              onChange({ hour: hourInPeriod(value.hour, next), minute: value.minute });
+            }}
+          />
+        </View>
       ) : null}
     </View>
   );

@@ -4,7 +4,8 @@ import type {
   PlannerRange,
 } from '@smarteverything/domain';
 import { rounded } from '../../../format/number';
-import { clockOfMinutes, localDayKey } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
+import { localDayKey } from '../../../format/time';
 import type { Prefs } from '../settings/preferences';
 import type { MinuteSpan } from './grid-gestures';
 import { dayLabelOf } from './month-model';
@@ -96,8 +97,8 @@ export function dueOn(
   );
 }
 
-export function eventTextOf(day: string, gap: MinuteSpan): string {
-  return `${dayLabelOf(day, true)} ${clockOfMinutes(gap.from)} to ${clockOfMinutes(gap.to)}`;
+export function eventTextOf(day: string, gap: MinuteSpan, format: ClockFormat): string {
+  return `${dayLabelOf(day, true)} ${format.minutes(gap.from)} to ${format.minutes(gap.to)}`;
 }
 
 export function hoursText(minutes: number): string {

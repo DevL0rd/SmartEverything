@@ -11,6 +11,8 @@ import { Card } from '../../../components/card';
 import { notify } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { localDayKey } from '../../../format/time';
+import { useHour24 } from '../../../store/clock-format';
+import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
 import { useVisibleMinuteOf } from '../data';
 import { PILL_HEIGHT } from './alarm-clusters';
 import type { EventLook } from './calendars-model';
@@ -133,8 +135,13 @@ interface BodyProps {
   readonly initialHeight: number;
 }
 
-function daysAt(view: TimeGridProps, today: string, hourHeight: number): readonly GridDay[] {
-  return gridDaysOf({ ...view, today, minMinutes: minMinutesFor(hourHeight) });
+function daysAt(
+  view: TimeGridProps,
+  today: string,
+  hourHeight: number,
+  instant: InstantClock,
+): readonly GridDay[] {
+  return gridDaysOf({ ...view, today, minMinutes: minMinutesFor(hourHeight), instant });
 }
 
 function GridBody({ pins, view, today, compact, initialHeight }: BodyProps): ReactNode {
@@ -143,7 +150,7 @@ function GridBody({ pins, view, today, compact, initialHeight }: BodyProps): Rea
   const drafting = useDrafting(view.onCreate, view.held);
   const moves = useMoves(view.onMove);
   const tall = useAnimatedStyle(() => ({ height: (DAY_MINUTES / 60) * hourHeight.get() }));
-  const days = daysAt(view, today, settled);
+  const days = daysAt(view, today, settled, useInstantClock());
   const geometry = { compact, hourHeight: settled };
   return (
     <GestureDetector gesture={gesture} touchAction={touchActionOf(compact)}>
@@ -197,11 +204,12 @@ export function TimeGrid(props: TimeGridProps): ReactNode {
     sameLive,
   );
   const [width, setWidth] = useState(0);
-  const heads = daysAt(props, live.value.today, initialHeight);
+  const heads = daysAt(props, live.value.today, initialHeight, useInstantClock());
+  const hour24 = useHour24();
   const shape: HeadShape = {
     compact,
     columns: heads.length,
-    columnWidth: (width - gutterWidthOf(compact)) / heads.length,
+    columnWidth: (width - gutterWidthOf(compact, hour24)) / heads.length,
     allDay: anyAllDay(heads),
   };
   return (

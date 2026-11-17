@@ -55,7 +55,7 @@ export function announce(
   env.store.feed.notice({
     type: 'drive_changed',
     rootIds: [rootId],
-    folderIds: parentId === null ? [] : [parentId],
+    folderIds: parentId === null ? [] : env.store.driveItems.folderChainOf(parentId),
     albumIds: [],
     months: takenMonths(touched),
     cursor: env.store.driveFeed.latestSeq(),

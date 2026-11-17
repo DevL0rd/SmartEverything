@@ -113,7 +113,7 @@ function StaleBanner(): ReactNode {
       wrapBody
       tone="info"
       title="Showing the last storage numbers"
-      body="The hub is offline. These numbers update when it is back."
+      body="The newest numbers did not load."
     />
   );
 }
@@ -148,7 +148,7 @@ export function StorageScreen(): ReactNode {
   const live = useSyncStatus().status === 'live';
   const query = useDriveStats();
   const actions = useScrubActions(owner);
-  const stale = query.data !== undefined && (query.isError || !live);
+  const stale = live && query.data !== undefined && query.isError;
   const subtitle = storageSubtitleOf(query.data);
   return (
     <DriveFrame

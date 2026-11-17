@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { ApiError, type LibraryScope, type PhotoGroup } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -20,7 +19,6 @@ import { Skeleton } from '../../../components/skeleton';
 import { useAreaWidth } from '../../../design/size-class';
 import { useSyncStatus } from '../../../store/selectors';
 import { PhotosFrame } from '../components/photos-frame';
-import { OFFLINE_BODY, SNAPSHOT_TITLE } from '../model/offline-copy';
 import { LibraryGrid } from '../library/library-grid';
 import { LibraryError, LibraryLoading } from '../library/library-states';
 import { selectionFrameOf, type SelectionExtra } from '../library/library-selection';
@@ -103,10 +101,6 @@ function useNotThis(
   };
 }
 
-const OFFLINE_BANNER = (
-  <Banner tone="info" title={SNAPSHOT_TITLE} body={OFFLINE_BODY.person} wrapBody />
-);
-
 function PersonBody({
   group,
   live,
@@ -140,7 +134,6 @@ function PersonBody({
       scroll={false}
       selection={frame.selection}
       footer={frame.footer}
-      {...(live ? {} : { banner: OFFLINE_BANNER })}
     >
       {feed.sources}
       <Grid feed={feed} controls={controls} media={media} hero={hero} />

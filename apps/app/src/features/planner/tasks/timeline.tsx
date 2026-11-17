@@ -39,6 +39,7 @@ import {
   type TimelineRow,
   type TimelineWindow,
 } from './timeline-model';
+import { useInstantClock } from '../../clock/format/clock-format';
 
 const HANDLE = 16;
 const NARROW_DAY = 48;
@@ -380,7 +381,8 @@ export function TaskTimeline({ entries, today, filter, header }: TaskTimelinePro
   const [width, setWidth] = useState(0);
   const window = { from: today, days: windowDaysOf(width) };
   const geometry: Geometry = { compact, touch, width, window };
-  const rows = timelineRowsOf({ entries, filter, collections, today, now, window });
+  const instant = useInstantClock();
+  const rows = timelineRowsOf({ entries, filter, collections, today, now, window, instant });
   const renderItem = (row: TimelineRow): ReactElement => (
     <RowView row={row} geometry={geometry} now={now} />
   );

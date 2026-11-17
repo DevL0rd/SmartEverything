@@ -48,6 +48,19 @@ export class PersonalRepository {
     return definition.decode(this.layout(owner, definition.storageKey)?.layout);
   }
 
+  profilePref<T>(definition: ClientPrefDefinition<T>, profileId: string): ClientPrefRead<T> {
+    const page = definition.storageKey;
+    if (layoutScopeOf(page) !== 'profile') {
+      throw new Error(`The ${page} preference belongs to a client, not to a person.`);
+    }
+    const row = this.context.sql.get(
+      STORED_LAYOUT,
+      `select ${LAYOUT_COLUMNS} from layouts where profile_id = $owner and page = $page`,
+      { owner: profileId, page },
+    );
+    return definition.decode(row?.layout);
+  }
+
   layouts(owner: LayoutOwner): LayoutRow[] {
     return this.context.sql
       .all(

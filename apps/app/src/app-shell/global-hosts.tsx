@@ -17,6 +17,7 @@ import {
 import { AppUpdateHost } from '../features/app-updates';
 import { ScheduleSheetHost } from '../features/automations';
 import { CallHost } from '../features/cameras';
+import { ClockFormatHost } from '../features/clock/format/clock-format';
 import { ClipboardSyncHost } from '../features/clipboard';
 import { ConsentHost } from '../features/connections';
 import { QuickControlsHost } from '../features/devices';
@@ -98,6 +99,7 @@ export function GlobalHosts(): ReactNode {
   return (
     <>
       <BrowserRuntimeHost />
+      <ClockFormatHost />
       <SearchPopover />
       <PinPickerHost />
       <QuickControlsHost />

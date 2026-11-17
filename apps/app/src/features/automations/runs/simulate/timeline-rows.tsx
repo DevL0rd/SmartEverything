@@ -10,6 +10,7 @@ import { TimeField } from '../../../../components/time-field';
 import { clockOfTime, timeOfClock } from './clock-text';
 import { dayAndClock, type EventRow, type EventWhen } from './scenario-model';
 import { ValueField } from './value-field';
+import { useHour24 } from '../../../../store/clock-format';
 
 export interface TimelineRowsProps {
   readonly rows: readonly EventRow[];
@@ -32,6 +33,7 @@ function WhenField({
   readonly disabled: boolean;
   readonly onChange: (when: EventWhen) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   return (
     <View className="gap-2">
       <Segmented
@@ -48,6 +50,7 @@ function WhenField({
       />
       {when.kind === 'at' ? (
         <TimeField
+          hour24={hour24}
           label="At"
           value={timeOfClock(when.clock)}
           onChange={(time) => {

@@ -289,27 +289,38 @@ function buildFolders(random: Random, files: number): readonly FolderNode[] {
   return nodes;
 }
 
+interface FolderTally {
+  children: number;
+  bytes: number;
+  files: number;
+}
+
+function addTo(
+  tally: Map<string, FolderTally>,
+  parentId: string | null,
+  share: Omit<FolderTally, 'children'>,
+): void {
+  const entry = parentId === null ? undefined : tally.get(parentId);
+  if (entry === undefined) return;
+  entry.children += 1;
+  entry.bytes += share.bytes;
+  entry.files += share.files;
+}
+
 function folderTotals(
   nodes: readonly FolderNode[],
   files: readonly FileItem[],
-): ReadonlyMap<string, { children: number; bytes: number }> {
-  const tally = new Map<string, { children: number; bytes: number }>();
+): ReadonlyMap<string, FolderTally> {
+  const tally = new Map<string, FolderTally>();
   for (const node of nodes) {
-    tally.set(node.id, { children: 0, bytes: 0 });
+    tally.set(node.id, { children: 0, bytes: 0, files: 0 });
   }
   for (const file of files) {
-    const entry = file.parentId === null ? undefined : tally.get(file.parentId);
-    if (entry) {
-      entry.children += 1;
-      entry.bytes += file.bytes;
-    }
+    addTo(tally, file.parentId, { bytes: file.bytes, files: 1 });
   }
   for (const node of nodes) {
-    const parent = node.parentId === null ? undefined : tally.get(node.parentId);
-    if (parent) {
-      parent.children += 1;
-      parent.bytes += tally.get(node.id)?.bytes ?? 0;
-    }
+    const own = tally.get(node.id);
+    addTo(tally, node.parentId, { bytes: own?.bytes ?? 0, files: own?.files ?? 0 });
   }
   return tally;
 }
@@ -322,7 +333,7 @@ function folderItems(
 ): readonly DriveItem[] {
   const tally = folderTotals(nodes, files);
   return nodes.map((node, index): DriveItem => {
-    const totals = tally.get(node.id) ?? { children: 0, bytes: 0 };
+    const totals = tally.get(node.id) ?? { children: 0, bytes: 0, files: 0 };
     const place = { parentId: node.parentId, relPath: node.relPath, name: node.name, rev: 1 };
     return {
       ...baseFields(random, plan, place, index),
@@ -330,6 +341,8 @@ function folderItems(
       kind: 'folder',
       childCount: totals.children,
       bytes: totals.bytes,
+      totalBytes: totals.bytes,
+      totalFiles: totals.files,
       colour: null,
       iconHint: false,
     };

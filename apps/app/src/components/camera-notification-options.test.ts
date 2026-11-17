@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../format/clock-text';
 import { CAMERA_NOTIFICATION_KINDS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import {
@@ -9,6 +10,9 @@ import {
   quietOptions,
   quietValue,
 } from './camera-notification-options';
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('camera notification options', () => {
   it('gives every kind an icon', () => {
@@ -25,9 +29,9 @@ describe('camera notification options', () => {
   });
 
   it('names the quiet hours a camera follows', () => {
-    expect(quietOptions(null, null)[0]?.label).toBe('Default · None');
-    expect(quietOptions(null, { from: '22:00', to: '07:00' })[0]?.label).toBe(
-      'Default · 22:00 to 07:00',
+    expect(quietOptions(null, null, H24)[0]?.label).toBe('Default · None');
+    expect(quietOptions(null, { from: '22:00', to: '07:00' }, H12)[0]?.label).toBe(
+      `Default · ${H12.text('22:00')} to ${H12.text('07:00')}`,
     );
   });
 
@@ -41,10 +45,12 @@ describe('camera notification options', () => {
 
   it('keeps a quiet window the AI set in the list so the row can show it', () => {
     const custom = { from: '20:15', to: '05:45' };
-    expect(quietOptions(null, null).map((option) => option.value)).not.toContain(
+    expect(quietOptions(null, null, H24).map((option) => option.value)).not.toContain(
       quietValue(custom),
     );
-    expect(quietOptions(custom, null).map((option) => option.value)).toContain(quietValue(custom));
+    expect(quietOptions(custom, null, H24).map((option) => option.value)).toContain(
+      quietValue(custom),
+    );
     expect(quietFromValue(quietValue(custom))).toEqual(custom);
   });
 });

@@ -433,8 +433,10 @@ describe('offline pins', () => {
       false,
     ).id;
     store.driveOffline.set(phone, TRIP, sam, true);
-    expect(store.driveOffline.holdersOf(TRIP_FILE)).toEqual([{ clientId: phone, profileId: sam }]);
-    expect(store.driveOffline.holdersOf(TRIPOD_FILE)).toEqual([]);
+    expect(store.driveOffline.holdersOfEach([TRIP_FILE, TRIPOD_FILE])).toEqual([
+      { itemId: TRIP_FILE, clientId: phone, profileId: sam },
+    ]);
+    expect(store.driveOffline.holdersOfEach([TRIPOD_FILE])).toEqual([]);
     store.driveOffline.report(phone, [{ itemId: TRIP, state: 'ready', bytes: 10, rev: 1 }]);
     expect(store.driveOffline.find(phone, TRIP)).toMatchObject({ state: 'ready', syncedRev: 1 });
     store.driveOffline.set(phone, TRIP, sam, false);

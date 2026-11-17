@@ -9,7 +9,8 @@ import type {
   PlannerPreferences,
 } from '@smarteverything/domain';
 import { plural } from '../../../format/text';
-import { MINUTE_MS, clock24, hoursMinutes } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
+import { MINUTE_MS, hoursMinutes } from '../../../format/time';
 
 export type FadeStrength = PlannerPreferences['day_planner']['fade'];
 
@@ -48,6 +49,7 @@ export interface RiverInput {
   readonly lens: PlannerOccurrenceView | null;
   readonly guests: readonly PlannerGuestRow[];
   readonly me: string | null;
+  readonly instant: MomentText;
 }
 
 function momentOf(value: string | null): number | null {
@@ -89,24 +91,29 @@ function durationOf(minutes: number): string {
   return minutes < 60 ? plural(minutes, 'min', 'min') : hoursMinutes(minutes);
 }
 
-export function riverTimeOf(occurrence: PlannerOccurrenceView, timeZone: string): string {
+export function riverTimeOf(
+  occurrence: PlannerOccurrenceView,
+  timeZone: string,
+  instant: MomentText,
+): string {
   if (occurrence.all_day) return 'All day';
   const at = occurrence.start ?? occurrence.due_at;
-  return at === null ? 'Anytime' : clock24(at, timeZone);
+  return at === null ? 'Anytime' : instant(at, timeZone);
 }
 
 export function riverSubtitleOf(
   occurrence: PlannerOccurrenceView,
   item: PlannerItemRow | undefined,
   timeZone: string,
+  instant: MomentText,
 ): string | null {
   const estimate = item?.estimate_minutes ?? null;
   const parts = [
     occurrence.end === null || occurrence.all_day
       ? null
-      : `Until ${clock24(occurrence.end, timeZone)}`,
+      : `Until ${instant(occurrence.end, timeZone)}`,
     occurrence.start !== null && occurrence.due_at !== null
-      ? `Due ${clock24(occurrence.due_at, timeZone)}`
+      ? `Due ${instant(occurrence.due_at, timeZone)}`
       : null,
     occurrence.end === null && estimate !== null ? durationOf(estimate) : null,
     occurrence.location,
@@ -166,9 +173,9 @@ function rowOf(
     occurrence,
     at: anchorOf(occurrence),
     now: current.has(occurrence),
-    time: riverTimeOf(occurrence, day.time_zone),
+    time: riverTimeOf(occurrence, day.time_zone, input.instant),
     title: occurrence.title,
-    subtitle: riverSubtitleOf(occurrence, item, day.time_zone),
+    subtitle: riverSubtitleOf(occurrence, item, day.time_zone, input.instant),
     calendar: collection?.name ?? null,
     colour: collection?.colour ?? null,
     google: occurrence.google_state !== null,
@@ -219,8 +226,9 @@ export function riverCaptionOf(input: {
   readonly bookedMinutes: number;
   readonly savedAt: number | null;
   readonly timeZone: string;
+  readonly instant: MomentText;
 }): string {
-  if (input.savedAt !== null) return `as saved ${clock24(input.savedAt, input.timeZone)}`;
+  if (input.savedAt !== null) return `as saved ${input.instant(input.savedAt, input.timeZone)}`;
   const left = `${String(input.left)} left`;
   return input.bookedMinutes > 0 ? `${left} · ${hoursMinutes(input.bookedMinutes)} booked` : left;
 }

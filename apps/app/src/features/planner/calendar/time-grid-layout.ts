@@ -6,12 +6,12 @@ import {
   type PlannerOccurrenceView,
   type PlannerPreferences,
 } from '@smarteverything/domain';
+import type { MomentText } from '../../../format/clock-text';
 import { zonedDateFormat } from '../../../format/locale';
 import type { EventLook } from './calendars-model';
 import { compareText } from '../../../format/text';
 import {
   HOUR_MS,
-  clock24,
   clockOfMinutes,
   dayBoundsOf,
   localDayKey,
@@ -106,6 +106,7 @@ export interface GridInput {
   readonly readOnlyOf: (occurrence: PlannerOccurrenceView) => boolean;
   readonly lookOf: (occurrence: PlannerOccurrenceView) => EventLook;
   readonly minMinutes: number;
+  readonly instant: MomentText;
 }
 
 export function wallMinuteOf(at: number, timeZone: string): number {
@@ -227,13 +228,17 @@ export function laneSpans(spans: readonly GridSpan[], minMinutes: number): reado
   });
 }
 
-export function blockTimeOf(occurrence: PlannerOccurrenceView, timeZone: string): string {
+export function blockTimeOf(
+  occurrence: PlannerOccurrenceView,
+  timeZone: string,
+  instant: MomentText,
+): string {
   const begin = startOf(occurrence);
   if (begin === null) return '';
-  const from = clock24(begin, timeZone);
+  const from = instant(begin, timeZone);
   return occurrence.end === null || occurrence.end === begin
     ? from
-    : `${from} to ${clock24(occurrence.end, timeZone)}`;
+    : `${from} to ${instant(occurrence.end, timeZone)}`;
 }
 
 function coloursOf(
@@ -307,7 +312,7 @@ function gridDayOf(input: GridInput, date: string): GridDay {
     blocks: spans.map((span) => ({
       ...span,
       colour: colourOf(span.occurrence),
-      time: blockTimeOf(span.occurrence, input.timeZone),
+      time: blockTimeOf(span.occurrence, input.timeZone, input.instant),
       proposed: span.occurrence.status === 'proposed',
       readOnly: input.readOnlyOf(span.occurrence),
       look: input.lookOf(span.occurrence),

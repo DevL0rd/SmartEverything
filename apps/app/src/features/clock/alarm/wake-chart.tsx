@@ -11,7 +11,7 @@ import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
 import { useColour } from '../../../design/colour';
-import { clockOfMinutes } from '../../../format/time';
+import { useClockFormat } from '../format/clock-format';
 import {
   usePlannerRings,
   usePlannerStats,
@@ -100,15 +100,16 @@ function AxisLabels({
   readonly height: number;
 }): ReactNode {
   const y = scaleLinear([scale.from, scale.to], [PAD, height - PAD]);
+  const format = useClockFormat();
   const box = { height };
   return (
-    <View style={box} className="w-11">
+    <View style={box} className={format.hour24 ? 'w-11' : 'w-16'}>
       {scale.ticks.map((tick) => {
         const place = { top: y(tick) - LABEL_LIFT };
         return (
           <View key={tick} className="absolute left-0" style={place}>
             <Text variant="caption" tone="variant" className="tabular">
-              {clockOfMinutes(tick)}
+              {format.minutes(tick)}
             </Text>
           </View>
         );
@@ -127,7 +128,8 @@ function WakeChart({
   const { width, onLayout } = useMeasuredWidth();
   const scale = wakeScaleOf(buckets);
   const plot = Math.max(0, width - AXIS);
-  const spoken = buckets.map((bucket) => wakeSpokenOf(bucket, clockOfMinutes)).join('. ');
+  const format = useClockFormat();
+  const spoken = buckets.map((bucket) => wakeSpokenOf(bucket, format.minutes)).join('. ');
   const box = { height };
   return (
     <View

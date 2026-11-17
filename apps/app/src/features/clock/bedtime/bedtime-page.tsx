@@ -16,6 +16,7 @@ import {
   useSleepSoundLive,
   type BedtimeSaves,
 } from './bedtime-data';
+import { useClockLabel } from '../format/clock-format';
 import { nextNightOf, startedBedtime, tonightLineOf } from './schedule-model';
 import { SleepChartCard } from './sleep-chart';
 import { driveItemIdOf } from './sleep-sound-model';
@@ -129,11 +130,18 @@ function BedtimeBody({ view }: { readonly view: BedtimeView }): ReactNode {
   );
 }
 
-function subtitleOf(prefs: PlannerPreferences | undefined, now: number, zone: string): string {
+interface SubtitleInputs {
+  readonly now: number;
+  readonly zone: string;
+  readonly clockLabel: (time: string) => string;
+}
+
+function subtitleOf(prefs: PlannerPreferences | undefined, inputs: SubtitleInputs): string {
   if (prefs === undefined) return 'Bed, wind-down and sleep sounds';
   if (!prefs.bedtime.enabled) return 'Off';
   if (prefs.bedtime.schedule.length === 0) return 'No nights planned';
-  return tonightLineOf(nextNightOf(prefs.bedtime, now, zone), now);
+  const { now, zone, clockLabel } = inputs;
+  return tonightLineOf(nextNightOf(prefs.bedtime, now, zone), now, clockLabel);
 }
 
 export function BedtimePage(): ReactNode {
@@ -146,7 +154,10 @@ export function BedtimePage(): ReactNode {
   const offline = useHubOffline();
   const saves = useBedtimeSaves();
   return (
-    <ClockFrame section="bedtime" subtitle={subtitleOf(prefs.data, now, zone)}>
+    <ClockFrame
+      section="bedtime"
+      subtitle={subtitleOf(prefs.data, { now, zone, clockLabel: useClockLabel() })}
+    >
       <View ref={ref} onLayout={onLayout}>
         <QueryBody query={prefs}>
           {(loaded) => (

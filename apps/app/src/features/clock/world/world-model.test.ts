@@ -25,6 +25,7 @@ import {
   type HourPlan,
 } from './find-a-time';
 import { zonePointOf } from './zone-points';
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   dayWordOf,
   offsetMinutesAt,
@@ -43,6 +44,9 @@ const PLAN: HourPlan = {
 const LONDON_FRIDAY = { day: '2026-11-13', zone: 'Europe/London' };
 const clocks = (...zones: readonly string[]): readonly WorldClock[] =>
   zones.map((time_zone) => ({ time_zone, label: null }));
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('world time', () => {
   it('reads a zone offset from UTC in minutes, including half hours', () => {
@@ -70,7 +74,7 @@ describe('world time', () => {
 
 describe('daylight', () => {
   it('places sunrise and sunset of the city on its own day', () => {
-    const london = daylightOf(SATURDAY, 'Europe/London', zonePointOf('Europe/London'));
+    const london = daylightOf(SATURDAY, 'Europe/London', zonePointOf('Europe/London'), H24.instant);
     expect(london.kind).toBe('sun');
     if (london.kind !== 'sun') return;
     expect(london.rise).toBe('07:15');
@@ -79,22 +83,24 @@ describe('daylight', () => {
     expect(span?.from).toBeGreaterThan(0.29);
     expect(span?.to).toBeLessThan(0.7);
     expect(daylightLineOf(london)).toBe(`Sunrise ${london.rise}, sunset ${london.set}`);
+    const twelve = daylightOf(SATURDAY, 'Europe/London', zonePointOf('Europe/London'), H12.instant);
+    expect(twelve.kind === 'sun' ? twelve.set : null).toMatch(/^4:14\s\S+/u);
   });
 
   it('tells polar night from polar day', () => {
     const svalbard = zonePointOf('Arctic/Longyearbyen');
-    expect(daylightOf(SATURDAY, 'Arctic/Longyearbyen', svalbard)).toEqual({
+    expect(daylightOf(SATURDAY, 'Arctic/Longyearbyen', svalbard, H24.instant)).toEqual({
       kind: 'polar_night',
       spans: [],
     });
-    expect(daylightOf(JUNE, 'Arctic/Longyearbyen', svalbard)).toEqual({
+    expect(daylightOf(JUNE, 'Arctic/Longyearbyen', svalbard, H24.instant)).toEqual({
       kind: 'polar_day',
       spans: [{ from: 0, to: 1 }],
     });
   });
 
   it('shows no sun line without a location', () => {
-    expect(daylightOf(SATURDAY, 'Europe/London', null)).toBe(UNKNOWN_DAYLIGHT);
+    expect(daylightOf(SATURDAY, 'Europe/London', null, H24.instant)).toBe(UNKNOWN_DAYLIGHT);
     expect(daylightLineOf(UNKNOWN_DAYLIGHT)).toBeNull();
   });
 
@@ -109,7 +115,7 @@ describe('daylight', () => {
 
 describe('find a time', () => {
   it('tints working hours on working days, dims the night', () => {
-    const cells = hourCellsOf('Europe/London', LONDON_FRIDAY, PLAN);
+    const cells = hourCellsOf('Europe/London', LONDON_FRIDAY, PLAN, true);
     expect(cells).toHaveLength(24);
     expect(cells[9]).toEqual({ hour: 9, label: '9', tone: 'work' });
     expect(cells[8]?.tone).toBe('day');
@@ -119,12 +125,14 @@ describe('find a time', () => {
   });
 
   it('reads each city at its own local hour and weekday', () => {
-    const tokyo = hourCellsOf('Asia/Tokyo', LONDON_FRIDAY, PLAN);
+    const tokyo = hourCellsOf('Asia/Tokyo', LONDON_FRIDAY, PLAN, true);
     expect(tokyo[0]).toEqual({ hour: 0, label: '9', tone: 'work' });
     expect(tokyo[16]).toEqual({ hour: 16, label: '1', tone: 'night' });
+    expect(hourCellsOf('Europe/London', LONDON_FRIDAY, PLAN, false)[15]?.label).toBe('3');
+    expect(hourCellsOf('Europe/London', LONDON_FRIDAY, PLAN, false)[0]?.label).toBe('12');
     const saturday = Date.parse('2026-11-14T01:00:00Z');
     expect(toneAt(saturday, 'Asia/Tokyo', PLAN)).toBe('day');
-    expect(hourCellsOf('Asia/Kolkata', LONDON_FRIDAY, PLAN)[0]?.label).toBe('5');
+    expect(hourCellsOf('Asia/Kolkata', LONDON_FRIDAY, PLAN, true)[0]?.label).toBe('5');
     expect(minutePastOf('Asia/Kolkata', LONDON_FRIDAY)).toBe(':30');
     expect(minutePastOf('Asia/Tokyo', LONDON_FRIDAY)).toBeNull();
   });
@@ -135,16 +143,26 @@ describe('find a time', () => {
       { name: 'New York', zone: 'America/New_York', home: false },
       { name: 'Tokyo', zone: 'Asia/Tokyo', home: false },
     ];
-    expect(markerSummaryOf(places, 16, LONDON_FRIDAY)).toBe(
+    expect(markerSummaryOf(places, 16, LONDON_FRIDAY, H24)).toBe(
       '16:00 Home · 11:00 New York · 01:00 Tokyo, Saturday',
     );
-    expect(hourTimeOf(16, LONDON_FRIDAY)).toBe('16:00');
+    expect(hourTimeOf(16, LONDON_FRIDAY, H24)).toBe('16:00');
+    expect(hourTimeOf(16, LONDON_FRIDAY, H12)).toBe(
+      H12.instant(Date.parse('2026-11-13T16:00:00Z'), 'Europe/London'),
+    );
+    expect(hourTimeOf(16, LONDON_FRIDAY, H12)).toMatch(/^4:00\s\S+/u);
+    expect(markerSummaryOf(places, 16, LONDON_FRIDAY, H12)).toMatch(
+      /^4:00\s\S+ Home · 11:00\s\S+ New York/u,
+    );
   });
 
   it('writes an hour long event the composer reads in the home zone', () => {
     const day = dayLabelOf('2026-11-13', true);
-    expect(eventTextAt(16, LONDON_FRIDAY)).toBe(`${day} 16:00 to 17:00`);
-    expect(eventTextAt(23, LONDON_FRIDAY)).toBe(`${day} 23:00 to 00:00`);
+    expect(eventTextAt(16, LONDON_FRIDAY, H24)).toBe(`${day} 16:00 to 17:00`);
+    expect(eventTextAt(23, LONDON_FRIDAY, H24)).toBe(`${day} 23:00 to 00:00`);
+    expect(eventTextAt(16, LONDON_FRIDAY, H12)).toBe(
+      `${day} ${H12.text('16:00')} to ${H12.text('17:00')}`,
+    );
   });
 
   it('starts at the next full home hour and stays inside the day', () => {

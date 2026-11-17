@@ -175,7 +175,14 @@ const FIXTURE_MEDIA = {
 function kindFields(kind: DriveItemKind): Readonly<Record<string, unknown>> {
   switch (kind) {
     case 'folder':
-      return { childCount: 0, bytes: 0, colour: null, iconHint: false };
+      return {
+        childCount: 0,
+        bytes: 0,
+        totalBytes: 0,
+        totalFiles: 0,
+        colour: null,
+        iconHint: false,
+      };
     case 'image':
       return { ...FIXTURE_FILE, ...FIXTURE_MEDIA, mime: FIXTURE_MIME.image };
     case 'video':

@@ -44,7 +44,7 @@ import {
   type DriveNodeContext,
   type DriveOrigin,
 } from '../source/drive-node';
-import { RecentEmpty, RecentFooter, RecentStaleBanner, recentStale } from './recent-states';
+import { RecentEmpty, RecentFooter } from './recent-states';
 import { loadMore, useRecentFeed, type RecentFeed } from './use-recent-feed';
 
 const log = new Logger('app.drive');
@@ -251,9 +251,6 @@ export function RecentScreen(): ReactNode {
       title="Recent"
       subtitle="What you opened, added or changed in your drives, newest first"
       scroll={false}
-      {...(recentStale(feed.pages.data !== undefined, live)
-        ? { banner: <RecentStaleBanner /> }
-        : {})}
     >
       <RecentLines
         filter={filter}

@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { PHOTO_INSIGHTS, type PhotoInsights } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { bytes } from '../../../format/number';
@@ -79,6 +80,9 @@ const COUNTS = {
   sharing: 0,
   archive: 0,
 };
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('Insights stat tiles', () => {
   it('shows the six tiles with their notes once rail counts are known', () => {
@@ -192,7 +196,8 @@ describe('Insights heatmaps', () => {
     expect(weekLine(week)).toBe('Most photos on Saturday afternoons');
     const seasons = seasonMatrix([{ season: 'summer', hour: 19, items: 4 }]);
     expect(seasons[2]?.[19]).toBe(4);
-    expect(seasonLine(seasons)).toBe('Most photos around 19:00 in summer');
+    expect(seasonLine(seasons, H24)).toBe('Most photos around 19:00 in summer');
+    expect(seasonLine(seasons, H12)).toBe(`Most photos around ${H12.text('19:00')} in summer`);
     expect(weekLine(weekMatrix([]))).toBeNull();
   });
 

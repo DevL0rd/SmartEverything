@@ -53,6 +53,7 @@ import {
   usePlannerSelection,
   type PlannerSelection,
 } from './selection';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 export const PLANNER_ITEM_PANEL = 'Item details';
 
@@ -141,7 +142,7 @@ function Facts({
   readonly item: PlannerItemRow;
   readonly data: PanelData;
 }): ReactNode {
-  const today = { now: data.now, timeZone: data.timeZone };
+  const today = { now: data.now, timeZone: data.timeZone, format: useClockFormat() };
   return (
     <View className="gap-2">
       <FactRow icon="clock" text={whenLineOf(item, data.view, today)} />
@@ -210,7 +211,6 @@ function ViewBody({
   const shown = editor.shown;
   const bar = data.view === null ? null : dayBarOf(data.views, data.view, data.now);
   const proposal = data.view === null ? null : proposalNear(data.views, data.view);
-  const locked = offline || editor.busy;
   return (
     <View className="gap-4 px-4 pb-5">
       <ViewHead item={item} shown={shown} data={data} />
@@ -220,12 +220,12 @@ function ViewBody({
         item={shown}
         person={person}
         personName={useOwnerName(item)}
-        disabled={locked}
+        disabled={offline}
         onChange={editor.change}
       />
       <PanelAttachments
         item={shown}
-        disabled={locked}
+        disabled={offline}
         picking={selection.intent === 'attach'}
         onChange={editor.change}
       />

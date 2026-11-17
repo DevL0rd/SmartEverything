@@ -68,10 +68,10 @@ describe('this computer’s mount summary', () => {
     const away = (status: Parameters<typeof placement>[1]): string =>
       offlineBodyOf(mountSummaryOf(WORKSTATION, [placement({}, { state: 'offline', ...status })]));
     expect(away({})).toBe(
-      'Files already cached still open. Changes wait on this computer and upload when it is back.',
+      'Files already cached still open. Changes wait on this computer and upload when the Hub is back.',
     );
     expect(away({ pinnedBytes: 2e9, pendingUploads: 1 })).toBe(
-      `${bytes(2e9)} kept offline still opens. 1 change waits to upload when it is back.`,
+      `${bytes(2e9)} kept offline still opens. 1 change waits to upload when the Hub is back.`,
     );
     expect(away({ pendingUploads: 3 })).toContain('3 changes wait to upload');
   });

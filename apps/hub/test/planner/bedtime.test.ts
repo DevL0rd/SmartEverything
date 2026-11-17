@@ -1,5 +1,11 @@
-import { PLANNER_SIGNAL, type PlannerBedtime, type SignalInput } from '@smarteverything/domain';
+import {
+  CLIENT_PREFS,
+  PLANNER_SIGNAL,
+  type PlannerBedtime,
+  type SignalInput,
+} from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clockTextIn } from '../../src/clock/person-clock';
 import { SimulatedClock } from '../../src/clock/simulated';
 import { BedtimeDesk, type BedtimeDelivery } from '../../src/planner/bedtime/desk';
 import { momentsOf, upcomingWindows, windowOn } from '../../src/planner/bedtime/schedule';
@@ -107,6 +113,14 @@ let scenes: string[];
 let reachable: boolean;
 let sleepSound: SleepSoundControl;
 
+function setClockFormat(hour24: boolean): void {
+  test.store.personal.saveLayout(
+    { clientId: person.client.id, profileId: person.profileId },
+    CLIENT_PREFS.clock_format.storageKey,
+    CLIENT_PREFS.clock_format.encode({ hour24 }),
+  );
+}
+
 function setBedtime(change: Partial<PlannerBedtime>): void {
   const current = plannerPreferencesOf(test.store, person.profileId);
   test.store.plannerPreferences.put(person.profileId, { ...current, bedtime: bedtime(change) });
@@ -178,8 +192,20 @@ describe('bedtime desk', () => {
     expect(clock.pending()).toEqual([]);
   });
 
+  it('writes the reminder time on the person’s 12-hour clock', async () => {
+    setBedtime({});
+    setClockFormat(false);
+    desk.start();
+    await advance('2026-11-09T22:00:00.000Z');
+    expect(pushes.map((push) => push.body)).toEqual([
+      `Time to get ready for bed at ${clockTextIn('2026-11-09T22:30:00Z', test.store.settings.read().time_zone, false)}.`,
+    ]);
+    expect(pushes[0]?.body).toMatch(/ PM\.$/u);
+  });
+
   it('sends the reminder to the phones, pushes it and raises the signal', async () => {
     setBedtime({});
+    setClockFormat(true);
     desk.start();
     await advance('2026-11-09T22:00:00.000Z');
     expect(delivered.filter((entry) => entry.notice.type === 'planner_bedtime')).toEqual([

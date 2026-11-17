@@ -34,7 +34,7 @@ interface Target {
 }
 
 export class EmbedHandler implements JobHandler {
-  readonly resource = 'io';
+  readonly resource = 'cloud';
   readonly fail = ignoreFailure;
 
   constructor(

@@ -14,3 +14,16 @@ export function invalidateDerivedRevision(context: StoreContext, itemId: string)
     { itemId },
   );
 }
+
+interface Content {
+  readonly kind: string;
+  readonly bytes: number;
+  readonly modifiedAt: string;
+}
+
+export function newContent(existing: Content, next: Content): boolean {
+  return (
+    existing.kind === next.kind &&
+    (existing.bytes !== next.bytes || existing.modifiedAt !== next.modifiedAt)
+  );
+}

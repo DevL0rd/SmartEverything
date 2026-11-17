@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DrivePlacement } from '@smarteverything/domain';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
@@ -166,16 +165,6 @@ export function ComputersScreen(): ReactNode {
       section="computers"
       title="Computers"
       actions={pairActionsOf({ owner, computers: computers.length, live }, pair)}
-      banner={
-        loaded && !live ? (
-          <Banner
-            wrapBody
-            tone="info"
-            title="Showing the last known state"
-            body="The Hub is offline. Computers update, and you can change them again, when it is back."
-          />
-        ) : null
-      }
       {...(subtitle === undefined ? {} : { subtitle })}
     >
       <ComputersBody loaded={loaded} computers={computers} owner={owner} pair={pair} />

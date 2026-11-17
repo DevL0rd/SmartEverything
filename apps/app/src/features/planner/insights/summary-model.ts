@@ -1,6 +1,7 @@
 import type { PlannerStats } from '@smarteverything/domain';
 import type { ChartPoint, DonutSlice } from '../../../components/charts';
 import type { MetricItem } from '../../../components/metric-strip';
+import type { ClockFormat } from '../../../format/clock-text';
 import { percent } from '../../../format/number';
 import { hourWindowOf, hoursOf, peakHourOf, rangeLabelOf, shareOf } from './insights-model';
 
@@ -89,9 +90,9 @@ function doneSentence(stats: PlannerStats): string {
   return `${String(done)} of ${String(due)} done${timing}.`;
 }
 
-function hourSentence(stats: PlannerStats): string | null {
+function hourSentence(stats: PlannerStats, format: ClockFormat): string | null {
   const peak = peakHourOf(stats);
-  return peak === null ? null : `Most done from ${hourWindowOf(peak)}.`;
+  return peak === null ? null : `Most done from ${hourWindowOf(peak, format)}.`;
 }
 
 function calendarSentence(slices: readonly DonutSlice[]): string | null {
@@ -99,8 +100,12 @@ function calendarSentence(slices: readonly DonutSlice[]): string | null {
   return top === undefined ? null : `${top.label} took the most time, ${hoursOf(top.value)}.`;
 }
 
-export function changeFactsOf(stats: PlannerStats, slices: readonly DonutSlice[]): string {
-  return [doneSentence(stats), hourSentence(stats), calendarSentence(slices)]
+export function changeFactsOf(
+  stats: PlannerStats,
+  slices: readonly DonutSlice[],
+  format: ClockFormat,
+): string {
+  return [doneSentence(stats), hourSentence(stats, format), calendarSentence(slices)]
     .filter((sentence): sentence is string => sentence !== null)
     .join(' ');
 }

@@ -25,14 +25,6 @@ export function summaryText(items: number | null, devices: number | null): strin
   return parts.every((part) => part === null) ? null : joinParts(parts);
 }
 
-const OFFLINE_CHANGES = 'Changing these settings needs your home hub.';
-
-export function offlineText(local: boolean): string {
-  return local
-    ? `${OFFLINE_CHANGES} Backup on this device keeps going and catches up when the hub is back.`
-    : OFFLINE_CHANGES;
-}
-
 export const ALL_PHONE_MEDIA = 'All photos and videos';
 
 export function albumsText(albumIds: readonly string[], kind: 'album' | 'folder'): string {

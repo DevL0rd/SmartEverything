@@ -2,7 +2,8 @@ import type { PlannerAlarmRow, PlannerDay, PlannerOccurrenceView } from '@smarte
 import type { FrameClass } from '../../../components/widget-board';
 import { TYPE_SCALE, type Idiom } from '../../../design/tokens';
 import { zonedDateFormat } from '../../../format/locale';
-import { clock24, daysBetween, localDayKey } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
+import { daysBetween, localDayKey } from '../../../format/time';
 import { countdownOf, nextRingOf, type NextRing } from '../clock/alarm-text';
 import { anchorOf, riverTimeOf } from '../today/river-model';
 
@@ -92,18 +93,19 @@ export function dayTokenOf(at: number, now: number, timeZone: string): string {
   return `${String(noon.getUTCDate())} ${MONTH_SHORT('UTC').format(noon)}`;
 }
 
-function spanOf(occurrence: PlannerOccurrenceView, timeZone: string): string {
-  const start = riverTimeOf(occurrence, timeZone);
+function spanOf(occurrence: PlannerOccurrenceView, timeZone: string, instant: MomentText): string {
+  const start = riverTimeOf(occurrence, timeZone, instant);
   if (occurrence.all_day || occurrence.start === null || occurrence.end === null) return start;
-  return `${start} to ${clock24(occurrence.end, timeZone)}`;
+  return `${start} to ${instant(occurrence.end, timeZone)}`;
 }
 
 export function leadWhenOf(
   occurrence: PlannerOccurrenceView,
   timeZone: string,
   now: number,
+  instant: MomentText,
 ): string {
-  const span = spanOf(occurrence, timeZone);
+  const span = spanOf(occurrence, timeZone, instant);
   const start = anchorOf(occurrence);
   if (start === null) return span;
   if (start > now) return `In ${countdownOf(start, now)} · ${span}`;

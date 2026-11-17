@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveItem, DriveNotification, ProfileRow } from '@smarteverything/domain';
-import { Banner } from '../../../components/banner';
 import { EmptyState } from '../../../components/empty-state';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Text } from '../../../components/text';
@@ -40,10 +39,6 @@ import {
   type NotificationLookups,
 } from './notification-model';
 import { NotificationRow } from './notification-row';
-
-export const OFFLINE_TITLE = 'Offline · showing the last notifications';
-
-export const OFFLINE_BODY = 'New ones appear when the hub is back.';
 
 type Lookups = Omit<NotificationLookups, 'items'> & {
   readonly items: ReadonlyMap<string, DriveItem>;
@@ -158,7 +153,6 @@ function useRowEnv(rows: readonly DriveNotification[]): RowEnv {
 export function NotificationsScreen(): ReactNode {
   const rows = useDriveNotificationRows();
   const timeZone = useSettings().time_zone;
-  const live = useSyncStatus().status === 'live';
   const env = useRowEnv(rows);
   const { actions, problem } = useHeaderActions(rows.length, unreadIdsOf(rows).length);
   const header = <Problem text={problem} />;
@@ -169,9 +163,6 @@ export function NotificationsScreen(): ReactNode {
       subtitle={subtitleOf(rows)}
       scroll={false}
       actions={actions}
-      {...(live
-        ? {}
-        : { banner: <Banner wrapBody tone="info" title={OFFLINE_TITLE} body={OFFLINE_BODY} /> })}
     >
       {rows.length === 0 ? (
         <View className="flex-1 justify-center">

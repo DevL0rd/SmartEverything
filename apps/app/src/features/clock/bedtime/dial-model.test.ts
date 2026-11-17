@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import {
   angleOfMinute,
@@ -16,6 +17,9 @@ import {
 } from './dial-model';
 
 const NIGHT = dialTimesOf({ bed: '22:45', wake: '06:30' });
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('the bedtime dial', () => {
   it('puts midnight at the top and noon at the bottom of a 24 hour face', () => {
@@ -62,9 +66,14 @@ describe('the bedtime dial', () => {
   });
 
   it('labels every sixth hour and speaks the whole night', () => {
-    const labelled = dialTicks().filter((tick) => tick.label !== null);
-    expect(dialTicks()).toHaveLength(24);
+    const labelled = dialTicks(H24).filter((tick) => tick.label !== null);
+    expect(dialTicks(H24)).toHaveLength(24);
     expect(labelled.map((tick) => tick.label)).toEqual(['00', '06', '12', '18']);
-    expect(dialSpokenOf(NIGHT)).toBe('Bed 22:45, wake 06:30, 7 h 45 min in bed');
+    expect(dialSpokenOf(NIGHT, H24)).toBe('Bed 22:45, wake 06:30, 7 h 45 min in bed');
+    const twelve = dialTicks(H12).filter((tick) => tick.label !== null);
+    expect(twelve.map((tick) => tick.label?.split(' ')[0])).toEqual(['12', '6', '12', '6']);
+    expect(dialSpokenOf(NIGHT, H12)).toMatch(
+      /^Bed 10:45\s\S+, wake 6:30\s\S+, 7 h 45 min in bed$/u,
+    );
   });
 });

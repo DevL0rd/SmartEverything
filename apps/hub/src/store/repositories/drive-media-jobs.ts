@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { inList } from '../sql';
 import { found, type StoreContext } from '../context';
 
 export const PHOTO_AI_JOB_KINDS = ['faces', 'vision', 'embed', 'pet_embed'] as const;
@@ -63,6 +62,11 @@ const COLUMNS =
 
 const SELECT = `select ${COLUMNS} from drive_media_jobs`;
 
+function queueHead(index: number): string {
+  return `select * from (${SELECT} where state = 'queued' and kind = $kind${String(index)}
+    order by visible desc, queued_at, id limit 1)`;
+}
+
 export class DriveMediaJobsRepository {
   constructor(private readonly context: StoreContext) {}
 
@@ -123,13 +127,13 @@ export class DriveMediaJobsRepository {
   }
 
   claim(kinds: readonly DriveMediaJobKind[]): DriveMediaJob | undefined {
+    if (kinds.length === 0) return undefined;
     return this.context.write(() => {
-      const filter = inList('kind', 'kinds', kinds);
       const next = this.context.sql.get(
         STORED_JOB,
-        `${SELECT} where state = 'queued' and ${filter.text}
+        `select * from (${kinds.map((_, index) => queueHead(index)).join(' union all ')})
          order by visible desc, (kind = 'playable_source'), queued_at, id limit 1`,
-        filter.parameters,
+        Object.fromEntries(kinds.map((kind, index) => [`kind${String(index)}`, kind])),
       );
       if (next === undefined) {
         return undefined;

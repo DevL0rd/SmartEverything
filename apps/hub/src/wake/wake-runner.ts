@@ -72,6 +72,7 @@ export class WakeRunner {
       signal: origin.signal,
       instruction: action.instruction,
       at: this.options.clock.now(),
+      profileId: action.profileId,
     });
     if (refusal !== null) {
       if (refusal.recorded) {

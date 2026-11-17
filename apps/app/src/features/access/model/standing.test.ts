@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import { TEMPLATE_SCOPES, NO_CONDITIONS, type PersonAccess } from '@smarteverything/domain';
 import {
@@ -30,6 +31,9 @@ function person(change: Partial<PersonAccess> = {}): PersonAccess {
     ...change,
   };
 }
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('standingOf', () => {
   it('shows an owner as full access whatever the conditions say', () => {
@@ -90,10 +94,23 @@ describe('timeLeftText', () => {
 });
 
 describe('conditionsText', () => {
+  it('writes the paused window on the chosen clock', () => {
+    const conditions = {
+      home_only: false,
+      schedule: { from: '22:00', to: '07:00', urgent: false },
+    };
+    expect(conditionsText(conditions, H12)).toBe(
+      `Paused ${H12.text('22:00')}–${H12.text('07:00')}`,
+    );
+  });
+
   it('lists every limit that is on', () => {
-    expect(conditionsText(NO_CONDITIONS)).toBe('No limits');
+    expect(conditionsText(NO_CONDITIONS, H24)).toBe('No limits');
     expect(
-      conditionsText({ home_only: true, schedule: { from: '22:00', to: '07:00', urgent: false } }),
+      conditionsText(
+        { home_only: true, schedule: { from: '22:00', to: '07:00', urgent: false } },
+        H24,
+      ),
     ).toBe('Home network only · Paused 22:00–07:00');
   });
 });

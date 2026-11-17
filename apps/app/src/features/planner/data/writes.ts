@@ -186,16 +186,24 @@ function collectionWrites(store: EntityStore, who: string | undefined): Collecti
   };
 }
 
+export function keptAlarm(store: EntityStore): (row: PlannerAlarmRow) => PlannerAlarmRow {
+  return (row) => {
+    store.update(alarmEdit(row, row).apply);
+    return row;
+  };
+}
+
 function alarmWrites(store: EntityStore, who: string | undefined): AlarmWrites {
+  const keep = keptAlarm(store);
   return {
-    createAlarm: (body) => createPlannerAlarm(who, body),
+    createAlarm: (body) => createPlannerAlarm(who, body).then(keep),
     updateAlarm: (row, change) =>
       writeOptimistically(
         store,
         'planner_alarm.update',
         [alarmEdit(row, { ...row, ...change })],
         () => updatePlannerAlarm(who, row.id, change),
-      ),
+      ).then(keep),
     deleteAlarm: (row) =>
       writeOptimistically(store, 'planner_alarm.delete', [alarmEdit(row, null)], () =>
         deletePlannerAlarm(who, row.id),

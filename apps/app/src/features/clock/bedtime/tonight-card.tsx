@@ -9,8 +9,8 @@ import { Segmented } from '../../../components/segmented';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { clock24 } from '../../../format/time';
 import { DayDots } from '../../planner';
+import { useClockLabel, useInstantClock } from '../format/clock-format';
 import { BedtimeDial } from './bedtime-dial';
 import { dialTimesOf, sleepLengthText, sleepMinutesOf, type DialTimes } from './dial-model';
 import { NightSheet, type NightDraft } from './night-sheet';
@@ -64,22 +64,24 @@ function TonightFacts({
   readonly now: number;
   readonly zone: string;
 }): ReactNode {
+  const clockLabel = useClockLabel();
+  const instant = useInstantClock();
   return (
     <View className="min-w-0 flex-1 gap-4">
       <View className="flex-row items-center gap-2 rounded-md bg-surface-2 px-3 py-2">
         <Icon name="bed" size={18} colour="sleep-core" />
         <Text variant="body-strong" className="flex-1">
-          {tonightLineOf(next, now)}
+          {tonightLineOf(next, now, clockLabel)}
         </Text>
       </View>
       {next === null ? null : (
         <View className="flex-row flex-wrap gap-x-8 gap-y-3">
           <Fact
             label="Wind-down"
-            value={next.windDownAt === next.bedAt ? 'Off' : clock24(next.windDownAt, zone)}
+            value={next.windDownAt === next.bedAt ? 'Off' : instant(next.windDownAt, zone)}
           />
-          <Fact label="Go to bed" value={next.night.bed} />
-          <Fact label="Wake up" value={next.night.wake} />
+          <Fact label="Go to bed" value={clockLabel(next.night.bed)} />
+          <Fact label="Wake up" value={clockLabel(next.night.wake)} />
         </View>
       )}
     </View>
@@ -87,10 +89,11 @@ function TonightFacts({
 }
 
 function NightSpan({ night }: { readonly night: PlannerBedtimeNight }): ReactNode {
+  const clockLabel = useClockLabel();
   return (
     <View className="min-w-0 flex-row items-baseline gap-3">
       <Text variant="body-strong" numberOfLines={1} className="shrink-0 tabular">
-        {`${night.bed} – ${night.wake}`}
+        {`${clockLabel(night.bed)} – ${clockLabel(night.wake)}`}
       </Text>
       <Text variant="footnote" tone="variant" numberOfLines={1} className="shrink-0 tabular">
         {sleepLengthText(sleepMinutesOf(dialTimesOf(night)))}
@@ -115,9 +118,11 @@ function NightRow({
   readonly onPress: () => void;
 }): ReactNode {
   const span = <NightSpan night={night} />;
+  const clockLabel = useClockLabel();
+  const times = `bed ${clockLabel(night.bed)}, wake ${clockLabel(night.wake)}`;
   return (
     <Interactive
-      label={`${daysTextOf(night.days, weekStart)}, bed ${night.bed}, wake ${night.wake}. Change`}
+      label={`${daysTextOf(night.days, weekStart)}, ${times}. Change`}
       disabled={disabled}
       selected={selected}
       onPress={onPress}

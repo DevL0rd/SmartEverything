@@ -114,7 +114,6 @@ describe('ComputersScreen', () => {
     expect(html.indexOf('Workstation')).toBeLessThan(html.indexOf('Office PC'));
     expect(seen.actions).toEqual(['Pair a computer']);
     expect(seen.subtitle).toBe('2 computers · Office PC offline');
-    expect(html).not.toContain('Showing the last known state');
   });
 
   it('gives a member the cards without the pairing action', () => {
@@ -124,10 +123,10 @@ describe('ComputersScreen', () => {
     expect(seen.actions).toEqual([]);
   });
 
-  it('keeps the cards with a banner while the hub is offline', () => {
+  it('keeps the cards without a page banner while the hub is offline', () => {
     seen.status = 'offline';
     const html = render();
-    expect(html).toContain('Showing the last known state');
+    expect(html).not.toContain('<aside>');
     expect(html).toContain('Office PC');
     expect(seen.disabled).toEqual([true]);
   });

@@ -69,7 +69,8 @@ class RootFollower {
   async watch(root: StoredDrive): Promise<void> {
     if (this.watched.has(root.id)) return;
     this.watched.add(root.id);
-    if ((await this.runtime.availability(root)) === 'online') this.runtime.watchers.start(root);
+    if ((await this.runtime.availability(root)) === 'online')
+      await this.runtime.watchers.start(root);
     else this.runtime.queue.enqueue({ kind: 'scan', rootId: root.id });
   }
 

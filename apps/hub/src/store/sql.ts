@@ -53,6 +53,7 @@ export class Sql {
   private executed = 0;
   private spentMs = 0;
   private slowCount = 0;
+  private readonly commitListeners = new Set<() => void>();
 
   constructor(
     readonly database: DatabaseSync,
@@ -111,6 +112,7 @@ export class Sql {
     if (row === undefined) throw new Error(`${operation} returned no row.`);
     this.changed += 1;
     this.timed('run', text, startedAt, 1);
+    if (this.depth === 0) this.committed(1);
     return schema.parse(row);
   }
 
@@ -120,6 +122,7 @@ export class Sql {
       const { changes } = this.prepared(text).run(parameters);
       this.changed += Number(changes);
       this.timed('run', text, startedAt, Number(changes));
+      if (this.depth === 0) this.committed(Number(changes));
       return Number(changes);
     } catch (cause) {
       if (isConstraintFailure(cause)) {
@@ -131,6 +134,18 @@ export class Sql {
 
   get mutations(): number {
     return this.changed;
+  }
+
+  onCommit(listener: () => void): () => void {
+    this.commitListeners.add(listener);
+    return (): void => {
+      this.commitListeners.delete(listener);
+    };
+  }
+
+  private committed(changes: number): void {
+    if (changes === 0) return;
+    for (const listener of this.commitListeners) listener();
   }
 
   transaction<T>(work: () => T): T {
@@ -150,6 +165,8 @@ export class Sql {
         performance.now() - startedAt,
         this.changed - changedBefore,
       );
+      this.depth = 0;
+      this.committed(this.changed - changedBefore);
       return result;
     } catch (cause) {
       this.database.exec('rollback');

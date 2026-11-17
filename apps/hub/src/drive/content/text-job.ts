@@ -1,7 +1,6 @@
 import type { DriveActivity } from '../activity';
 import type { DriveItem } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { DriveMediaRepository } from '../../store/repositories/drive-media';
 import type { DriveItemTextWrite } from '../../store/repositories/drive-item-text';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import type { Store } from '../../store/store';
@@ -22,75 +21,55 @@ export interface TextEnvironment {
     Store,
     'driveRoots' | 'driveItems' | 'driveItemText' | 'driveFeed' | 'settingsKv' | 'feed' | 'write'
   >;
-  readonly media: Pick<DriveMediaRepository, 'find'>;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly workerScript: string;
-  readonly previewPath: (itemId: string, rev: number) => string;
-  readonly languageDirectory: string;
   readonly icons: Pick<FolderIconRefresher, 'refreshRoot' | 'refreshFolder'>;
   readonly activity: Pick<DriveActivity, 'quiet'>;
   readonly log: Logger;
 }
 
-export type TextWork =
-  | { readonly kind: 'document'; readonly item: FileItem }
-  | { readonly kind: 'image'; readonly item: FileItem }
-  | { readonly kind: 'unsupported'; readonly item: FileItem; readonly reason: string };
-
 export interface TextBacklog {
-  readonly work: readonly TextWork[];
+  readonly work: readonly FileItem[];
   readonly files: number;
   readonly settled: number;
-  readonly waiting: readonly string[];
 }
 
 type Folder = Extract<DriveItem, { readonly kind: 'folder' }>;
 
 class Tally {
-  readonly work: TextWork[] = [];
-  readonly waiting: string[] = [];
+  readonly work: FileItem[] = [];
   files = 0;
   settled = 0;
 
-  constructor(private readonly env: Pick<TextEnvironment, 'store' | 'media'>) {}
+  constructor(private readonly env: Pick<TextEnvironment, 'store'>) {}
 
   add(item: DriveItem): void {
-    if (!isFile(item)) return;
+    if (!isDocument(item)) return;
     this.files += 1;
     if (this.env.store.driveItemText.find(item.id)?.rev === item.rev) {
       this.settled += 1;
       return;
     }
-    const next = workFor(this.env.media, item);
-    if (next === 'wait') this.waiting.push(item.id);
-    else this.work.push(next);
+    this.work.push(item);
   }
 
   backlog(): TextBacklog {
-    return { work: this.work, files: this.files, settled: this.settled, waiting: this.waiting };
+    return { work: this.work, files: this.files, settled: this.settled };
   }
 }
 
-function isFile(item: DriveItem): item is FileItem {
-  return item.kind !== 'folder' && item.kind !== 'link' && item.kind !== 'special';
-}
-
-function workFor(media: TextEnvironment['media'], item: FileItem): TextWork | 'wait' {
-  if (item.kind !== 'image') return { kind: 'document', item };
-  const preview = media.find(item.id)?.preview_state;
-  if (preview === 'ready') return { kind: 'image', item };
-  if (preview === 'failed' || preview === 'unsupported') {
-    return {
-      kind: 'unsupported',
-      item,
-      reason: 'No preview could be made, so there is nothing to read.',
-    };
-  }
-  return 'wait';
+function isDocument(item: DriveItem): item is FileItem {
+  return (
+    item.kind !== 'folder' &&
+    item.kind !== 'link' &&
+    item.kind !== 'special' &&
+    item.kind !== 'image' &&
+    item.kind !== 'video'
+  );
 }
 
 export function collectTextBacklog(
-  env: Pick<TextEnvironment, 'store' | 'media'>,
+  env: Pick<TextEnvironment, 'store'>,
   root: StoredDrive,
 ): TextBacklog {
   const tally = new Tally(env);
@@ -148,31 +127,14 @@ export function changesSince(
   return { items, folders: [...folders.values()] };
 }
 
-function changedBacklog(
-  env: Pick<TextEnvironment, 'store' | 'media'>,
-  changes: Changes,
-  waiting: readonly string[],
-): TextBacklog {
+function changedBacklog(env: Pick<TextEnvironment, 'store'>, changes: Changes): TextBacklog {
   const tally = new Tally(env);
-  const seen = new Set<string>();
-  for (const item of changes.items) {
-    seen.add(item.id);
-    tally.add(item);
-  }
-  for (const id of waiting) {
-    if (seen.has(id)) continue;
-    const item = env.store.driveItems.find(id, null);
-    if (item !== undefined) tally.add(item);
-  }
+  for (const item of changes.items) tally.add(item);
   return tally.backlog();
 }
 
-function written(
-  item: FileItem,
-  source: 'document' | 'image',
-  result: ContentResponse['result'],
-): DriveItemTextWrite {
-  const base = { itemId: item.id, rev: item.rev, source };
+function written(item: FileItem, result: ContentResponse['result']): DriveItemTextWrite {
+  const base = { itemId: item.id, rev: item.rev, source: 'document' as const };
   switch (result.state) {
     case 'ok':
       return { ...base, state: 'ok', body: result.body };
@@ -211,15 +173,10 @@ class TextRun {
     }
   }
 
-  private async one(worker: ContentWorker, work: TextWork): Promise<boolean> {
-    const { item } = work;
-    if (work.kind === 'unsupported') {
-      this.record(item, 'document', { state: 'unsupported', reason: work.reason });
-      return true;
-    }
+  private async one(worker: ContentWorker, item: FileItem): Promise<boolean> {
     try {
-      const response = await this.request(worker, work);
-      this.record(item, work.kind, response.result);
+      const response = await this.request(worker, item);
+      this.record(item, response.result);
       return true;
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : String(cause);
@@ -228,42 +185,25 @@ class TextRun {
         relPath: item.relPath,
         reason,
       });
-      this.record(item, work.kind, { state: 'failed', reason });
+      this.record(item, { state: 'failed', reason });
       return cause instanceof DrivePathError;
     }
   }
 
-  private async request(
-    worker: ContentWorker,
-    work: Exclude<TextWork, { readonly kind: 'unsupported' }>,
-  ): Promise<ContentResponse> {
-    const { item } = work;
-    if (work.kind === 'image') {
-      return worker.request({
-        kind: 'image',
-        path: this.env.previewPath(item.id, item.rev),
-        languages: [...readDriveSettings(this.env.store).ocrLanguages],
-        languageDirectory: this.env.languageDirectory,
-      });
-    }
+  private async request(worker: ContentWorker, item: FileItem): Promise<ContentResponse> {
     const resolved = await resolveInRoot(this.root.path, item.relPath);
     return worker.request({
-      kind: 'document',
       path: resolved.absolute,
       name: item.name,
       mime: item.mime,
     });
   }
 
-  private record(
-    item: FileItem,
-    source: 'document' | 'image',
-    result: ContentResponse['result'],
-  ): void {
+  private record(item: FileItem, result: ContentResponse['result']): void {
     const recorded = this.env.store.write(() => {
       const current = this.env.store.driveItems.find(item.id, null);
       if (current?.rev !== item.rev) return false;
-      this.env.store.driveItemText.put(written(item, source, result));
+      this.env.store.driveItemText.put(written(item, result));
       return true;
     });
     if (!recorded) return;
@@ -280,17 +220,12 @@ class TextRun {
 
 export class TextCursors {
   readonly icons = new Map<string, number>();
-  readonly text = new Map<string, TextCursor>();
+  readonly text = new Map<string, number>();
 
   forget(rootId: string): void {
     this.icons.delete(rootId);
     this.text.delete(rootId);
   }
-}
-
-interface TextCursor {
-  readonly seq: number;
-  readonly waiting: readonly string[];
 }
 
 async function refreshIcons(
@@ -340,11 +275,11 @@ async function textRoot(
   const backlog =
     from === undefined
       ? collectTextBacklog(env, root)
-      : changedBacklog(env, changesSince(env, rootId, from.seq), from.waiting);
+      : changedBacklog(env, changesSince(env, rootId, from));
   const startedAt = performance.now();
   if (backlog.work.length > 0) await new TextRun(env, root, backlog).run(signal);
   if (signal.aborted) return;
-  cursors.text.set(rootId, { seq: mark, waiting: backlog.waiting });
+  cursors.text.set(rootId, mark);
   if (backlog.work.length === 0) return;
   env.log.info('drive.text_done', {
     rootId,

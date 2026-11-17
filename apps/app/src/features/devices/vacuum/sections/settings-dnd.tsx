@@ -10,7 +10,7 @@ import { ListRow } from '../../../../components/list-row';
 import { SwitchRow } from '../../../../components/rows';
 import { Sheet } from '../../../../components/sheet';
 import { Text } from '../../../../components/text';
-import { TimeField, localeUsesHour12, type TimeOfDay } from '../../../../components/time-field';
+import { TimeField, type TimeOfDay } from '../../../../components/time-field';
 import { slotOf } from '../../../../store/command-ledger';
 import type { Device } from '../../../../store/state';
 import { useVacuum } from '../data/use-vacuum';
@@ -23,6 +23,8 @@ import {
   readDndWindow,
   type DndWindow,
 } from './dnd-model';
+import { useHour24 } from '../../../../store/clock-format';
+import { useClockFormat } from '../../../clock/format/clock-format';
 
 const RING = 64;
 const DEFAULT_WINDOW: DndWindow = { startHour: 22, startMinute: 0, endHour: 8, endMinute: 0 };
@@ -112,6 +114,7 @@ function WindowSheet({
   readonly onSave: (window: DndWindow) => void;
   readonly onClose: () => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const [start, setStart] = useState(timeOf(initial.startHour, initial.startMinute));
   const [end, setEnd] = useState(timeOf(initial.endHour, initial.endMinute));
   const draft: DndWindow = {
@@ -121,7 +124,6 @@ function WindowSheet({
     endMinute: end.minute,
   };
   const valid = encodeDndWindow(draft) !== null;
-  const hour12 = localeUsesHour12();
   return (
     <Sheet
       open
@@ -139,8 +141,8 @@ function WindowSheet({
       }
     >
       <View className="gap-4 px-4 pb-4">
-        <TimeField label="Quiet hours start" value={start} onChange={setStart} hour12={hour12} />
-        <TimeField label="Quiet hours end" value={end} onChange={setEnd} hour12={hour12} />
+        <TimeField hour24={hour24} label="Quiet hours start" value={start} onChange={setStart} />
+        <TimeField hour24={hour24} label="Quiet hours end" value={end} onChange={setEnd} />
         {valid ? null : (
           <Text variant="footnote" tone="warning" accessibilityLiveRegion="polite">
             The start and the end must be different times.
@@ -161,13 +163,14 @@ function WindowRow({
   readonly onEdit: () => void;
 }): ReactNode {
   const ring = window === null ? null : dndRingOf(window);
+  const format = useClockFormat();
   return (
     <View className="flex-row items-center gap-4 px-4 py-3">
       <View
         accessible
         accessibilityRole="image"
         accessibilityLabel={
-          window === null ? 'Quiet hours not set' : `Quiet hours ${dndWindowText(window)}`
+          window === null ? 'Quiet hours not set' : `Quiet hours ${dndWindowText(window, format)}`
         }
         className="size-16 items-center justify-center"
       >
@@ -185,7 +188,7 @@ function WindowRow({
       </View>
       <View className="min-w-0 flex-1 gap-1">
         <Text variant="body-strong" className="tabular">
-          {window === null ? 'Not set' : dndWindowText(window)}
+          {window === null ? 'Not set' : dndWindowText(window, format)}
         </Text>
         <Text variant="footnote" tone="variant">
           The robot stays quiet in this window.

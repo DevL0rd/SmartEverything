@@ -91,7 +91,9 @@ function Stopped({
 function Offline({ summary }: { readonly summary: MountSummary }): ReactNode {
   if (summary.health !== 'offline') return null;
   return (
-    <Banner tone="warning" title="The Hub is out of reach" body={offlineBodyOf(summary)} wrapBody />
+    <Text variant="footnote" tone="variant">
+      {offlineBodyOf(summary)}
+    </Text>
   );
 }
 

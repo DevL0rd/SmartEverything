@@ -8,8 +8,9 @@ import {
   type BottleStats,
   type BottleStatsRange,
 } from '@smarteverything/domain';
-import { clockOfMinutes, monthShort, startOfDayKey, weekdayShort } from '../../../format/time';
+import { monthShort, startOfDayKey, weekdayShort } from '../../../format/time';
 import { decimal, millilitres } from '../../../format/number';
+import type { ClockFormat } from '../../../format/clock-text';
 
 export const RANGE_OPTIONS: readonly {
   readonly value: BottleStatsRange;
@@ -189,7 +190,7 @@ export function rhythmRows(rhythm: BottleStats['rhythm']): readonly RhythmRow[] 
   }));
 }
 
-export function rhythmSummary(rhythm: BottleStats['rhythm']): string {
+export function rhythmSummary(rhythm: BottleStats['rhythm'], format: ClockFormat): string {
   const rows = rhythmRows(rhythm);
   let best = { name: '', hour: 0, share: 0 };
   for (const row of rows) {
@@ -201,7 +202,7 @@ export function rhythmSummary(rhythm: BottleStats['rhythm']): string {
   }
   return best.share === 0
     ? 'No drinking pattern yet.'
-    : `Busiest time: ${best.name} around ${clockOfMinutes(best.hour * 60)}.`;
+    : `Busiest time: ${best.name} around ${format.minutes(best.hour * 60)}.`;
 }
 
 interface SizeBin {

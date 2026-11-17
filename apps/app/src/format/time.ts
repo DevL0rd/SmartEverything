@@ -27,6 +27,16 @@ export function clock24(moment: Date | string | number, timeZone: string | null 
   return CLOCK_24(timeZone).format(new Date(moment));
 }
 
+const CLOCK_12 = zonedDateFormat({ hour: 'numeric', minute: '2-digit', hour12: true });
+
+export function clockIn(
+  hour24: boolean,
+  moment: Date | string | number,
+  timeZone: string | null = null,
+): string {
+  return hour24 ? clock24(moment, timeZone) : CLOCK_12(timeZone).format(new Date(moment));
+}
+
 function deviceDayKey(at: Date): string {
   if (Number.isNaN(at.getTime())) {
     throw new RangeError(`Cannot name the day of an invalid date: ${String(at)}`);

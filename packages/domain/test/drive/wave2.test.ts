@@ -87,6 +87,8 @@ const FOLDER = {
   kind: 'folder',
   childCount: 2,
   bytes: 10,
+  totalBytes: 10,
+  totalFiles: 2,
   colour: null,
   iconHint: false,
 };
@@ -105,6 +107,8 @@ const FILE = {
   colour: undefined,
   iconHint: undefined,
   childCount: undefined,
+  totalBytes: undefined,
+  totalFiles: undefined,
 };
 
 const FILE_ITEM = Object.fromEntries(
@@ -274,30 +278,23 @@ describe('search inside files', () => {
     ).toBe(true);
   });
 
-  it('lets the owner turn content indexing off and choose Tesseract languages', () => {
+  it('lets the owner turn content indexing off and has no OCR languages', () => {
     const settings = {
       uploadExpiryDays: 7,
       membersMayShare: false,
       duplicatesHashing: true,
       indexingPaused: false,
       contentIndexing: true,
-      ocrLanguages: ['eng', 'chi_sim'],
       fileIoThreads: 8,
       cpuWorkers: 4,
       listingCacheSeconds: 300,
     };
     expect(DRIVE_SETTINGS.safeParse(settings).success).toBe(true);
-    expect(DRIVE_SETTINGS.safeParse({ ...settings, ocrLanguages: [] }).success).toBe(false);
-    expect(DRIVE_SETTINGS.safeParse({ ...settings, ocrLanguages: ['eng', 'eng'] }).success).toBe(
-      false,
-    );
-    expect(DRIVE_SETTINGS.safeParse({ ...settings, ocrLanguages: ['English'] }).success).toBe(
-      false,
-    );
+    expect(DRIVE_SETTINGS.safeParse({ ...settings, ocrLanguages: ['eng'] }).success).toBe(false);
     const { contentIndexing: _indexing, ...without } = settings;
     expect(DRIVE_SETTINGS.safeParse(without).success).toBe(false);
     expect(DRIVE_SETTINGS_UPDATE.safeParse({ contentIndexing: false }).success).toBe(true);
-    expect(DRIVE_SETTINGS_UPDATE.safeParse({ ocrLanguages: ['deu'] }).success).toBe(true);
+    expect(DRIVE_SETTINGS_UPDATE.safeParse({ ocrLanguages: ['deu'] }).success).toBe(false);
   });
 
   it('reports the text phase of the background work', () => {

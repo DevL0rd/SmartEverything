@@ -8,9 +8,10 @@ import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { joinParts, plural } from '../../../format/text';
-import { clock, startOfDayKey, weekdayShort } from '../../../format/time';
+import { startOfDayKey, weekdayShort } from '../../../format/time';
 import { weekdayLetterOf } from '../clock/alarm-text';
 import { bookerNameOf, type BookingDay, type UpcomingBooking } from './booking-model';
+import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
 
 export function bookingDayLabelOf(day: BookingDay): string {
   const date = new Date(startOfDayKey(day.day));
@@ -25,10 +26,11 @@ export function BookingWeekCard({
   readonly next: UpcomingBooking | null;
 }): ReactNode {
   const total = week.reduce((sum, day) => sum + day.count, 0);
+  const instant = useInstantClock();
   const nextText =
     next === null
       ? null
-      : `Next ${weekdayShort(next.start)} ${clock(next.start)} · ${bookerNameOf(next)}`;
+      : `Next ${weekdayShort(next.start)} ${instant(next.start)} · ${bookerNameOf(next)}`;
   return (
     <Card title="Bookings, next 7 days" icon="calendar">
       <Bars
@@ -64,9 +66,9 @@ function DateBlock({ start }: { readonly start: number }): ReactNode {
   );
 }
 
-function bookingTimeOf(booking: UpcomingBooking): string {
-  const end = booking.item.end === null ? null : clock(booking.item.end);
-  return end === null ? clock(booking.start) : `${clock(booking.start)}–${end}`;
+function bookingTimeOf(booking: UpcomingBooking, instant: InstantClock): string {
+  const end = booking.item.end === null ? null : instant(booking.item.end);
+  return end === null ? instant(booking.start) : `${instant(booking.start)}–${end}`;
 }
 
 function emailCaptionOf(
@@ -83,6 +85,7 @@ export function UpcomingBookings({
   readonly bookings: readonly UpcomingBooking[];
   readonly calendars: readonly PlannerCollectionRow[];
 }): ReactNode {
+  const instant = useInstantClock();
   return (
     <List title="Upcoming bookings" caption={plural(bookings.length, 'booking')}>
       {bookings.map((booking) => (
@@ -91,7 +94,7 @@ export function UpcomingBookings({
           leading={<DateBlock start={booking.start} />}
           title={bookerNameOf(booking)}
           subtitle={joinParts([
-            bookingTimeOf(booking),
+            bookingTimeOf(booking, instant),
             calendars.find((calendar) => calendar.id === booking.item.collection_id)?.name,
           ])}
           {...emailCaptionOf(booking)}

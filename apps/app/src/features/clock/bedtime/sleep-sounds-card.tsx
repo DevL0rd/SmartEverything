@@ -10,8 +10,8 @@ import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
-import { clock24 } from '../../../format/time';
 import type { SleepSoundState } from '../../../../modules/health-connect';
+import { useInstantClock, type InstantClock } from '../format/clock-format';
 import { NoiseSpectrum } from './noise-spectrum';
 import { OFF } from './schedule-model';
 import { SleepSoundPicker } from './sleep-sound-picker';
@@ -92,12 +92,21 @@ function SoundTile({
   );
 }
 
-function liveLineOf(live: SleepSoundState | null, here: boolean): string {
+function liveLineOf(live: SleepSoundState | null, here: boolean, instant: InstantClock): string {
   if (live?.playing === true) {
-    const until = live.endsAt === null ? 'until you stop it' : `until ${clock24(live.endsAt)}`;
+    const until = live.endsAt === null ? 'until you stop it' : `until ${instant(live.endsAt)}`;
     return `Playing ${live.title ?? 'now'} ${until}`;
   }
   return here ? 'Plays on this phone' : 'Plays on your phone';
+}
+
+function LiveLine({ card }: { readonly card: SleepSoundsProps }): ReactNode {
+  const instant = useInstantClock();
+  return (
+    <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
+      {liveLineOf(card.live, card.control.here, instant)}
+    </Text>
+  );
 }
 
 function PlayRow({ card }: { readonly card: SleepSoundsProps }): ReactNode {
@@ -120,9 +129,7 @@ function PlayRow({ card }: { readonly card: SleepSoundsProps }): ReactNode {
     <View className="flex-row flex-wrap items-center gap-3">
       <View className="min-w-0 grow basis-48 flex-row items-center gap-2">
         <View className={cn('size-2 rounded-full', playing ? 'bg-positive' : 'bg-outline')} />
-        <Text variant="footnote" tone="variant" className="min-w-0 flex-1">
-          {liveLineOf(card.live, card.control.here)}
-        </Text>
+        <LiveLine card={card} />
       </View>
       {playing ? null : (
         <Button

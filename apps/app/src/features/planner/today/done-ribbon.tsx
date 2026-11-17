@@ -12,7 +12,8 @@ import { HScroller } from '../../../components/h-scroller';
 import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { compareText, plural } from '../../../format/text';
-import { clock } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
+import { useInstantClock } from '../../clock/format/clock-format';
 import { useRow } from '../../../store/selectors';
 import { deviceIcon } from '../../device-visuals';
 import { HappenedChip, MarkChip } from './happened-chip';
@@ -81,12 +82,13 @@ export function ribbonMarksOf(day: PlannerDay): readonly RibbonMark[] {
 export function ribbonLabelOf(
   marks: readonly RibbonMark[],
   timeZone: string,
+  instant: MomentText,
 ): {
   readonly done: number;
   readonly also: string | null;
 } {
   const woke = marks.flatMap((mark) =>
-    mark.kind === 'woke' ? [`woke up ${clock(mark.ring.due_at, timeZone)}`] : [],
+    mark.kind === 'woke' ? [`woke up ${instant(mark.ring.due_at, timeZone)}`] : [],
   );
   const happened = marks.filter((mark) => mark.kind === 'happened').length;
   const also = [...woke, ...(happened === 0 ? [] : [`${plural(happened, 'thing')} happened`])];
@@ -109,8 +111,9 @@ function DoneChip({
 }): ReactNode {
   const device = useRow('devices', occurrence.evidence?.deviceId ?? null);
   const label = occurrence.evidence?.summary ?? occurrence.title;
+  const instant = useInstantClock();
   const time =
-    occurrence.completed_at === null ? undefined : clock(occurrence.completed_at, timeZone);
+    occurrence.completed_at === null ? undefined : instant(occurrence.completed_at, timeZone);
   return (
     <MarkChip
       icon={device === null ? 'check' : deviceIcon(device)}
@@ -130,6 +133,7 @@ function Mark({
   readonly mark: RibbonMark;
   readonly timeZone: string;
 }): ReactNode {
+  const instant = useInstantClock();
   if (mark.kind === 'done') return <DoneChip occurrence={mark.occurrence} timeZone={timeZone} />;
   if (mark.kind === 'happened')
     return <HappenedChip happened={mark.happened} timeZone={timeZone} />;
@@ -137,7 +141,7 @@ function Mark({
     <MarkChip
       icon="alarmClock"
       iconTone="positive"
-      time={clock(mark.ring.due_at, timeZone)}
+      time={instant(mark.ring.due_at, timeZone)}
       label={wokeLabel(mark.ring)}
       dashed={false}
     />
@@ -165,8 +169,9 @@ function Marks({
 
 export function DoneRibbon({ day }: { readonly day: PlannerDay }): ReactNode {
   const marks = ribbonMarksOf(day);
+  const instant = useInstantClock();
   if (marks.length === 0) return null;
-  const { done, also } = ribbonLabelOf(marks, day.time_zone);
+  const { done, also } = ribbonLabelOf(marks, day.time_zone, instant);
   return (
     <View className="gap-2">
       <View className="flex-row items-center gap-2">

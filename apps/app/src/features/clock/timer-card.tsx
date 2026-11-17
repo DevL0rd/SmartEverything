@@ -20,9 +20,10 @@ import { loopStyle } from '../../design/loops';
 import type { ColourRole } from '../../design/tokens';
 import { useVisibleLive } from '../../design/use-visible-live';
 import { useScopeVisible } from '../../design/visibility';
-import { HOUR_MS, MINUTE_MS, clock } from '../../format/time';
+import { HOUR_MS, MINUTE_MS } from '../../format/time';
 import { useDevice, useRow } from '../../store/selectors';
 import { usePlannerClockWrites } from '../planner';
+import { useInstantClock, type InstantClock } from './format/clock-format';
 import { useHubOffline } from './frame/hub-status';
 import { lengthText, timerNameOf, timerSourceOf, type TimerView } from './lap-model';
 import { TickingTime, useTickingMs, type FaceSize } from './stopwatch-face';
@@ -65,22 +66,22 @@ export function useTimerActions(timer: PlannerTimerRow): TimerActions {
   };
 }
 
-export function timerEndOf(view: TimerView): string {
+export function timerEndOf(view: TimerView, instant: InstantClock): string {
   if (view.phase === 'running' && view.timer.ends_at !== null) {
-    return `ends ${clock(view.timer.ends_at)}`;
+    return `ends ${instant(view.timer.ends_at)}`;
   }
-  if (view.phase === 'paused') return `paused at ${clock(view.timer.updated_at)}`;
-  return `ended ${clock(view.ring?.rang_at ?? view.ring?.due_at ?? view.timer.updated_at)}`;
+  if (view.phase === 'paused') return `paused at ${instant(view.timer.updated_at)}`;
+  return `ended ${instant(view.ring?.rang_at ?? view.ring?.due_at ?? view.timer.updated_at)}`;
 }
 
-export function timerLineOf(view: TimerView): string {
-  return `${lengthText(view.timer.duration_ms)} · ${timerEndOf(view)}`;
+export function timerLineOf(view: TimerView, instant: InstantClock): string {
+  return `${lengthText(view.timer.duration_ms)} · ${timerEndOf(view, instant)}`;
 }
 
-export function timerLabelOf(view: TimerView): string {
+export function timerLabelOf(view: TimerView, instant: InstantClock): string {
   const name = timerNameOf(view.timer);
   if (view.phase === 'ringing') return `${name} timer finished`;
-  return `${name}, ${timerLineOf(view)}`;
+  return `${name}, ${timerLineOf(view, instant)}`;
 }
 
 const DIAL_COLOUR: Readonly<Record<TimerView['phase'], ColourRole>> = {
@@ -129,6 +130,7 @@ export function TimerDial({ view, size: dial, caption }: TimerDialProps): ReactN
   const share = useDerivedValue(() => (ringing ? 1 : Math.min(1, ms.get() / total)));
   const stroke = useColour(DIAL_COLOUR[view.phase]);
   const track = useColour('surface-3');
+  const instant = useInstantClock();
   const ring = { cx: size / 2, cy: size / 2, r: (size - thickness) / 2 };
   const d = arcPath(ring, 0, 360);
   return (
@@ -137,7 +139,7 @@ export function TimerDial({ view, size: dial, caption }: TimerDialProps): ReactN
       onLayout={onLayout}
       accessible
       accessibilityRole="timer"
-      accessibilityLabel={timerLabelOf(view)}
+      accessibilityLabel={timerLabelOf(view, instant)}
       className={cn('items-center justify-center', frame)}
     >
       <Svg width={size} height={size} aria-hidden style={StyleSheet.absoluteFill}>
@@ -289,6 +291,7 @@ export function TimerCard({
   readonly dial?: Exclude<DialSize, 'hero'>;
 }): ReactNode {
   const ringing = view.phase === 'ringing';
+  const instant = useInstantClock();
   return (
     <View className="relative">
       <Card>
@@ -298,7 +301,7 @@ export function TimerCard({
             {ringing ? <Badge label="Ringing" tone="primary" icon="bell" /> : null}
             <CardTitle view={view} />
             <Text variant="caption" tone="variant" numberOfLines={2} className="tabular">
-              {timerLineOf(view)}
+              {timerLineOf(view, instant)}
             </Text>
             {view.phase === 'running' ? <TargetChips targets={view.timer.targets} /> : null}
           </View>

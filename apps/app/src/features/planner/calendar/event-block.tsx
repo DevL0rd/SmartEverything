@@ -6,7 +6,9 @@ import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
 import { percentOf } from '../../../format/percent';
+import type { ClockFormat } from '../../../format/clock-text';
 import { HOUR_MS, shiftDay, startOfDayKey, weekdayShort } from '../../../format/time';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { useItemPress } from '../item/item-menu-host';
 import type { EventLook } from './calendars-model';
 import { Hatch, LookMark, eventFill, lookWords } from './event-look';
@@ -92,8 +94,13 @@ export function blockBandOf(
   return { top, bottom: top + Math.max(minHeight, yOf(block.to, hourHeight) - top) };
 }
 
-export function movedTimeOf(block: GridBlock, shift: BlockShift, date: string): string {
-  const time = draftTimeOf({ from: block.from + shift.start, to: block.to + shift.end });
+export function movedTimeOf(
+  block: GridBlock,
+  shift: BlockShift,
+  date: string,
+  format: ClockFormat,
+): string {
+  const time = draftTimeOf({ from: block.from + shift.start, to: block.to + shift.end }, format);
   if (shift.days === 0) return time;
   return `${weekdayShort(startOfDayKey(shiftDay(date, shift.days)) + 12 * HOUR_MS)} ${time}`;
 }
@@ -140,8 +147,13 @@ function innerPadOf(mode: TextMode, compact: boolean): string {
   return mode === 'full' && !compact ? 'px-2 py-1' : INNER_PAD[mode];
 }
 
-function subtitleOf(block: GridBlock, shift: BlockShift | null, date: string): string {
-  if (shift !== null) return movedTimeOf(block, shift, date);
+function subtitleOf(
+  block: GridBlock,
+  shift: BlockShift | null,
+  date: string,
+  format: ClockFormat,
+): string {
+  if (shift !== null) return movedTimeOf(block, shift, date, format);
   return block.proposed ? 'Proposed' : block.time;
 }
 
@@ -176,10 +188,10 @@ export function EventBlock({
   readonly hourHeight: number;
   readonly inset: number;
 }): ReactNode {
-  const title = block.occurrence.title;
   const height = blockBandOf(block, hourHeight, context.minHeight);
   const press = useItemPress(block.occurrence.item_id, block.occurrence.occurrence_key);
   const moving = useMoving(block);
+  const format = useClockFormat();
   const compact = context.touch;
   const width = laneWidthOf(block, context.columnWidth) - inset;
   const mode = blockTextOf(width);
@@ -195,7 +207,7 @@ export function EventBlock({
         <Interactive
           {...press.open}
           onContextMenu={press.onContextMenu}
-          label={eventLabel(block, title)}
+          label={eventLabel(block, block.occurrence.title)}
           className={cn(
             'flex-1 overflow-hidden rounded-sm',
             innerPadOf(mode, compact),
@@ -207,7 +219,7 @@ export function EventBlock({
             mode={mode}
             width={width}
             tall={height.bottom - height.top >= SUBTITLE_FROM}
-            subtitle={subtitleOf(block, moving.shift, context.date)}
+            subtitle={subtitleOf(block, moving.shift, context.date, format)}
           />
           {press.menu}
         </Interactive>

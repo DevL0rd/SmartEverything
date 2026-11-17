@@ -53,6 +53,7 @@ export interface FileNode<O = unknown> {
   readonly mime: string | null;
   readonly size: number | null;
   readonly childCount: number | null;
+  readonly files: number | null;
   readonly modifiedAt: string | null;
   readonly hidden: boolean;
   readonly byProfileId: string | null;

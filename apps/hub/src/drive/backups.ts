@@ -1,6 +1,7 @@
 import { mkdir, open, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { backup, DatabaseSync } from 'node:sqlite';
+import { backup, type DatabaseSync } from 'node:sqlite';
+import { integrityOf } from '../store/integrity';
 import {
   DRIVE_ROOT_SCOPES,
   type DriveBackupReport,
@@ -151,18 +152,6 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-function integrityOf(path: string): string {
-  const copy = new DatabaseSync(path, { readOnly: true });
-  try {
-    const row = z
-      .object({ integrity_check: z.string() })
-      .parse(copy.prepare('pragma integrity_check').get());
-    return row.integrity_check;
-  } finally {
-    copy.close();
-  }
-}
-
 export class DriveBackups {
   constructor(private readonly env: BackupEnvironment) {}
 
@@ -212,7 +201,7 @@ export class DriveBackups {
         this.env.log.debug('drive.backup_progress', { totalPages, remainingPages });
       },
     });
-    const verdict = integrityOf(target);
+    const verdict = await integrityOf(target);
     if (verdict !== 'ok') {
       await rm(target, { force: true });
       throw new BackupCopyError(`The database copy failed its integrity check: ${verdict}`);

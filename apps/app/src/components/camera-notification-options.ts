@@ -7,6 +7,7 @@ import {
 import type { IconName } from './icon';
 import type { SelectOption } from './select-picker';
 import { plural } from '../format/text';
+import type { ClockFormat } from '../format/clock-text';
 
 export const CAMERA_NOTIFICATION_ICONS: Readonly<Record<CameraNotificationKind, IconName>> = {
   motion: 'motion',
@@ -68,20 +69,24 @@ export function quietFromValue(value: string): CameraQuietHours | null {
   return from === undefined || to === undefined ? null : { from, to };
 }
 
-function quietLabel(quiet: CameraQuietHours): string {
-  return `${quiet.from} to ${quiet.to}`;
+function quietLabel(quiet: CameraQuietHours, format: ClockFormat): string {
+  return `${format.text(quiet.from)} to ${format.text(quiet.to)}`;
 }
 
 export function quietOptions(
   current: CameraQuietHours | null,
   follow: CameraQuietHours | null,
+  format: ClockFormat,
 ): readonly SelectOption<string>[] {
   const custom =
     current !== null && !QUIET_PRESETS.some((preset) => quietValue(preset) === quietValue(current));
   const presets = custom ? [current, ...QUIET_PRESETS] : QUIET_PRESETS;
   return [
-    { value: FOLLOW_DEFAULT, label: followLabel(follow === null ? 'None' : quietLabel(follow)) },
+    {
+      value: FOLLOW_DEFAULT,
+      label: followLabel(follow === null ? 'None' : quietLabel(follow, format)),
+    },
     { value: NO_QUIET_HOURS, label: 'None' },
-    ...presets.map((quiet) => ({ value: quietValue(quiet), label: quietLabel(quiet) })),
+    ...presets.map((quiet) => ({ value: quietValue(quiet), label: quietLabel(quiet, format) })),
   ];
 }

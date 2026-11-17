@@ -5,7 +5,7 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
 import { cn } from '../../../design/cn';
-import { clock } from '../../../format/time';
+import { useInstantClock } from '../../clock/format/clock-format';
 import { useRow } from '../../../store/selectors';
 import { deviceIcon } from '../../device-visuals';
 
@@ -57,7 +57,7 @@ export function HappenedChip({
   readonly timeZone: string;
 }): ReactNode {
   const device = useRow('devices', happened.deviceId);
-  const time = clock(happened.at, timeZone);
+  const time = useInstantClock()(happened.at, timeZone);
   return (
     <MarkChip
       icon={device === null ? 'activity' : deviceIcon(device)}

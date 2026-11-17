@@ -9,7 +9,8 @@ import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { percentOf } from '../../../format/percent';
-import { clock, dayBoundsOf, localDayKey } from '../../../format/time';
+import { dayBoundsOf, localDayKey } from '../../../format/time';
+import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
 import { usePlannerTools, usePlannerWrites, type PlannerPerson } from '../data';
 import { AttachmentChips, useAttachmentNames, withoutAttachment } from './attachment-chips';
 import { AttachmentPicker } from './attachment-picker';
@@ -33,9 +34,9 @@ export function whenLineOf(
   const span = view === null ? null : spanOf(view);
   if (span === null) return whenTextOf(item, today);
   const day = dayLabelOf(localDayKey(span.from, today.timeZone), today);
-  const start = clock(span.from, today.timeZone);
+  const start = today.format.instant(span.from, today.timeZone);
   if (span.to === span.from) return `${day}, ${start}`;
-  return `${day}, ${start} to ${clock(span.to, today.timeZone)}`;
+  return `${day}, ${start} to ${today.format.instant(span.to, today.timeZone)}`;
 }
 
 export function FactRow({
@@ -82,13 +83,14 @@ function nowAt(bar: DayBar, now: number): { readonly left: `${number}%` } {
   return { left: percentOf(fractionIn(bar, now)) };
 }
 
-function freeTextOf(free: Span, timeZone: string): string {
-  return `free ${clock(free.from, timeZone)} to ${clock(free.to, timeZone)}`;
+function freeTextOf(free: Span, timeZone: string, instant: InstantClock): string {
+  return `free ${instant(free.from, timeZone)} to ${instant(free.to, timeZone)}`;
 }
 
-function barSpokenOf(bar: DayBar, timeZone: string): string {
+function barSpokenOf(bar: DayBar, timeZone: string, instant: InstantClock): string {
   const busy = bar.blocks.filter((block) => block.kind === 'busy').length;
-  const free = bar.free === null ? 'no free time just before it' : freeTextOf(bar.free, timeZone);
+  const free =
+    bar.free === null ? 'no free time just before it' : freeTextOf(bar.free, timeZone, instant);
   return `Around it: ${String(busy)} other booked, ${free}`;
 }
 
@@ -99,11 +101,12 @@ function BarTrack({
   readonly bar: DayBar;
   readonly timeZone: string;
 }): ReactNode {
+  const instant = useInstantClock();
   return (
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={barSpokenOf(bar, timeZone)}
+      accessibilityLabel={barSpokenOf(bar, timeZone, instant)}
       className="h-8 justify-center"
     >
       <View className="relative h-5 overflow-hidden rounded-sm bg-surface-3">
@@ -138,23 +141,24 @@ export function DayBarWell({
   readonly bar: DayBar;
   readonly timeZone: string;
 }): ReactNode {
+  const instant = useInstantClock();
   return (
     <View className="gap-2 rounded-lg bg-surface-2 p-3">
       <View className="flex-row items-center justify-between gap-2">
         <Text variant="label">Around it</Text>
         {bar.free === null ? null : (
           <Text variant="caption" tone="variant" className="tabular">
-            {freeTextOf(bar.free, timeZone)}
+            {freeTextOf(bar.free, timeZone, instant)}
           </Text>
         )}
       </View>
       <BarTrack bar={bar} timeZone={timeZone} />
       <View className="flex-row justify-between">
         <Text variant="caption" tone="faint" className="tabular">
-          {clock(bar.from, timeZone)}
+          {instant(bar.from, timeZone)}
         </Text>
         <Text variant="caption" tone="faint" className="tabular">
-          {clock(bar.to, timeZone)}
+          {instant(bar.to, timeZone)}
         </Text>
       </View>
     </View>
@@ -218,10 +222,11 @@ export function PlanAroundCard(props: PlanInput & { readonly offline: boolean })
   const { proposal, timeZone, offline } = props;
   const actions = usePlanActions(props);
   const span = spanOf(proposal);
+  const instant = useInstantClock();
   const when =
     span === null
       ? 'fits later that day'
-      : `fits ${clock(span.from, timeZone)} to ${clock(span.to, timeZone)}`;
+      : `fits ${instant(span.from, timeZone)} to ${instant(span.to, timeZone)}`;
   return (
     <View className="gap-2 rounded-lg border-hairline border-outline-variant bg-primary/6 p-3">
       <View className="flex-row items-center gap-2">

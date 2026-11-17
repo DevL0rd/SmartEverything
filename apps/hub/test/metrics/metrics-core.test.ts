@@ -1,6 +1,7 @@
 import type { DeviceCapability } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MetricHistory } from '../../src/metrics/history';
+import type { MetricRowInsert } from '../../src/store/repositories/device-metrics';
 import { MinuteAccumulator } from '../../src/metrics/minute';
 import { MetricRing } from '../../src/metrics/ring';
 import { Viewers } from '../../src/metrics/viewers';
@@ -178,5 +179,32 @@ describe('metric history', () => {
         last: 13,
       },
     ]);
+  });
+});
+
+describe('pruning old minutes', () => {
+  it('drops the old minutes a slice at a time and keeps the recent ones', () => {
+    const deviceId = computerId();
+    const minuteAt = (at: number): MetricRowInsert => ({
+      deviceId,
+      capability: 'cpu_load',
+      bucketStart: new Date(at).toISOString(),
+      average: 1,
+      minimum: 1,
+      maximum: 1,
+      count: 1,
+    });
+    opened.store.deviceMetrics.saveMinutes([
+      ...Array.from({ length: 2500 }, (_, index) => minuteAt(START - (index + 1) * 60_000)),
+      minuteAt(START),
+    ]);
+    const before = new Date(START).toISOString();
+    const slices = [1000, 1000, 1000].map((rows) =>
+      opened.store.deviceMetrics.prune('minute', before, rows),
+    );
+    expect(slices).toEqual([1000, 1000, 500]);
+    expect(
+      opened.store.deviceMetrics.series(deviceId, 'cpu_load', 'minute', '2000-01-01T00:00:00.000Z'),
+    ).toHaveLength(1);
   });
 });

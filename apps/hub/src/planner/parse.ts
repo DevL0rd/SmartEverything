@@ -18,6 +18,7 @@ import {
   type RepeatToken,
   type RruleWeekday,
 } from './parse-tokens';
+import { wallClockText } from '../clock/person-clock';
 
 export type PlannerParseResult = ResponseOf<'parsePlannerText'>;
 
@@ -33,6 +34,7 @@ export interface ParseInput {
   readonly timeZone: string;
   readonly now: Date;
   readonly previewCount: number;
+  readonly hour24: boolean;
 }
 
 interface Schedule {
@@ -214,6 +216,7 @@ function rruleOf(repeat: RepeatToken, times: readonly ClockTime[]): string {
 function repeatText(
   repeat: RepeatToken,
   clocks: { readonly times: readonly ClockTime[]; readonly range: boolean },
+  hour24: boolean,
 ): string {
   const { times, range } = clocks;
   const unit = FREQUENCY_UNITS[repeat.freq];
@@ -226,7 +229,9 @@ function repeatText(
   else if (weekend) head = 'Every weekend';
   else if (days.length > 0) head = `${every} on ${days.map((day) => DAY_LABELS[day]).join(', ')}`;
   if (times.length === 0) return head;
-  const spoken = times.map(clockText).join(range ? ' to ' : ' and ');
+  const spoken = times
+    .map((time) => wallClockText(time.hour, time.minute, hour24))
+    .join(range ? ' to ' : ' and ');
   return `${head} ${range ? 'from' : 'at'} ${spoken}`;
 }
 
@@ -314,6 +319,6 @@ export function parsePlannerText(input: ParseInput): PlannerParseResult {
   return {
     draft,
     next_occurrences: occurrenceInstants(timing, input.previewCount, input.now),
-    repeat_text: repeat === null ? null : repeatText(repeat, clocks),
+    repeat_text: repeat === null ? null : repeatText(repeat, clocks, input.hour24),
   };
 }

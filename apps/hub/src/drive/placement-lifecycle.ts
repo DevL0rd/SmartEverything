@@ -4,9 +4,11 @@ import type {
   DrivePlacement,
   DrivePlacementHold,
   DrivePlacementStatus,
+  DriveRoot,
   LiveChange,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
+import { Coalesced } from '../store/reader';
 import type { Store } from '../store/store';
 import { mayExport } from './access';
 import { placementAccess } from './placement-access';
@@ -61,10 +63,46 @@ function restarting(status: DrivePlacementStatus, at: string): DrivePlacementSta
   return { ...status, state: 'starting', reason: null, mountPoint: null, reportedAt: at };
 }
 
+type RootChange = Extract<LiveChange, { readonly table: 'drive_roots' }>;
+
+function withoutTotals(root: DriveRoot): string {
+  const { items: _items, folders: _folders, bytes: _bytes, ...rest } = root;
+  return JSON.stringify(rest);
+}
+
+function totalsOnly(change: RootChange): boolean {
+  const { record, oldRecord } = change;
+  return (
+    change.operation === 'UPDATE' &&
+    record !== null &&
+    oldRecord !== null &&
+    withoutTotals(record) === withoutTotals(oldRecord)
+  );
+}
+
+function nextTurn(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
 export class PlacementLifecycle {
   private readonly lineages = new Map<string, readonly string[]>();
+  private readonly changedRoots = new Set<string>();
+  private readonly pass: Coalesced;
 
-  constructor(private readonly deps: PlacementLifecycleDeps) {}
+  constructor(private readonly deps: PlacementLifecycleDeps) {
+    this.pass = new Coalesced(
+      () => this.reconcileChangedRoots(),
+      (cause) => {
+        deps.log.error('drive.placement_lifecycle_failed', cause);
+      },
+    );
+  }
+
+  settled(): Promise<void> {
+    return this.pass.idle();
+  }
 
   start(): () => void {
     this.reconcile(this.deps.store.drivePlacements.list());
@@ -77,6 +115,7 @@ export class PlacementLifecycle {
     return (): void => {
       stopRows();
       stopNotices();
+      background(this.pass.stop(), 'drive.placement_lifecycle_stop_failed');
     };
   }
 
@@ -88,7 +127,7 @@ export class PlacementLifecycle {
     const { drivePlacements } = this.deps.store;
     if (change.table === 'drive_roots') {
       const root = change.record ?? change.oldRecord;
-      if (root !== null) this.reconcile(drivePlacements.forRoot(root.id));
+      if (root !== null && !totalsOnly(change)) this.reconcile(drivePlacements.forRoot(root.id));
     } else if (change.table === 'drive_grants') {
       this.onGrant(change.record ?? change.oldRecord);
     } else if (change.table === 'profiles') {
@@ -115,7 +154,15 @@ export class PlacementLifecycle {
 
   private onNotice(notice: CommittedNotice): void {
     if (notice.type !== 'drive_changed') return;
-    for (const rootId of notice.rootIds) {
+    for (const rootId of notice.rootIds) this.changedRoots.add(rootId);
+    this.pass.trigger();
+  }
+
+  private async reconcileChangedRoots(): Promise<void> {
+    await nextTurn();
+    const roots = [...this.changedRoots];
+    this.changedRoots.clear();
+    for (const rootId of roots) {
       this.reconcile(
         this.deps.store.drivePlacements
           .forRoot(rootId)

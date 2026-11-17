@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_CHALLENGE,
   PLANNER_MATHS_DIFFICULTIES,
@@ -25,6 +26,9 @@ import {
 
 const LAMP = 'a1b2c3d4-0000-4000-8000-000000000041';
 const HALL = 'a1b2c3d4-0000-4000-8000-000000000042';
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('dismiss challenges', () => {
   it('switches kinds to a challenge the hub contract accepts', () => {
@@ -105,13 +109,17 @@ describe('sunrise', () => {
   });
 
   it('begins the given minutes before the ring, across midnight too', () => {
-    expect(sunriseStartOf({ minutes: 30 }, '07:00')).toBe('06:30');
-    expect(sunriseStartOf({ minutes: 20 }, '00:10')).toBe('23:50');
-    expect(sunriseSummaryOf({ lights: [LAMP, HALL], minutes: 15, colour: false }, '07:00')).toBe(
-      '2 lights brighten from 06:45 to full at 07:00.',
-    );
-    expect(sunriseSummaryOf({ lights: [LAMP], minutes: 20, colour: true }, '06:30')).toBe(
+    expect(sunriseStartOf({ minutes: 30 }, '07:00', H24)).toBe('06:30');
+    expect(sunriseStartOf({ minutes: 20 }, '00:10', H24)).toBe('23:50');
+    expect(sunriseStartOf({ minutes: 20 }, '00:10', H12)).toBe(H12.text('23:50'));
+    expect(
+      sunriseSummaryOf({ lights: [LAMP, HALL], minutes: 15, colour: false }, '07:00', H24),
+    ).toBe('2 lights brighten from 06:45 to full at 07:00.');
+    expect(sunriseSummaryOf({ lights: [LAMP], minutes: 20, colour: true }, '06:30', H24)).toBe(
       '1 light brightens from 06:10 to full at 06:30, warm to daylight.',
+    );
+    expect(sunriseSummaryOf({ lights: [LAMP], minutes: 20, colour: false }, '18:30', H12)).toMatch(
+      /^1 light brightens from 6:10\s\S+ to full at 6:30\s\S+\.$/u,
     );
   });
 

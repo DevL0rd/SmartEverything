@@ -8,32 +8,14 @@ import { useAllowedCameras, useHubOffline, useListeningView } from './listening-
 
 const LISTENING_PAGE = 'assistant/listening';
 
-function Notices({
-  offline,
-  owner,
-}: {
-  readonly offline: boolean;
-  readonly owner: boolean;
-}): ReactNode {
+function MemberNotice(): ReactNode {
   return (
-    <>
-      {offline ? (
-        <Banner
-          tone="info"
-          title="Offline · showing saved state"
-          body="Changes need a connection to your hub. Levels are not available."
-          wrapBody
-        />
-      ) : null}
-      {owner ? null : (
-        <Banner
-          tone="info"
-          title="Your devices only"
-          body="Cameras, Discord and walkie channels are managed by the owner. You can change your own phones and computers."
-          wrapBody
-        />
-      )}
-    </>
+    <Banner
+      tone="info"
+      title="Your devices only"
+      body="Cameras, Discord and walkie channels are managed by the owner. You can change your own phones and computers."
+      wrapBody
+    />
   );
 }
 
@@ -43,7 +25,7 @@ export function ListeningScreen(): ReactNode {
   const offline = useHubOffline();
   const owner = useIsOwner();
   return (
-    <SettingsFrame page={LISTENING_PAGE} banner={<Notices offline={offline} owner={owner} />}>
+    <SettingsFrame page={LISTENING_PAGE} {...(owner ? {} : { banner: <MemberNotice /> })}>
       <LoadedQuery query={query}>
         {(view) => <ListeningBody view={view} allowed={allowed} offline={offline} />}
       </LoadedQuery>

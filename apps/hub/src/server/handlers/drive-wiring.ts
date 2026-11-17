@@ -7,16 +7,17 @@ import type { Logger } from '@smarteverything/logging';
 import type { HubLayout } from '../../data-layout';
 import { DriveAlbumsService, type SmartMemberRow, type SmartQueryRunner } from '../../drive/albums';
 import { DriveBackups } from '../../drive/backups';
-import { hashRequested, type HashResponse } from '../../drive/blocks';
 import type { ConflictEnv, DriveConflictStore } from '../../drive/conflicts';
 import { readDataSpace, type DataSpaceProbe } from '../../drive/data-space';
 import { TextCursors, type TextEnvironment } from '../../drive/content/text-job';
 import { DriveGrants } from '../../drive/grants';
 import { DriveHealthReader } from '../../drive/health';
+import { ContentHasher, HashWorker } from '../../drive/hasher';
 import { BUNDLED_HASH_WORKER, BUNDLED_SCANNER_WORKER, type DriveJob } from '../../drive/jobs';
+import { BUNDLED_METADATA_WORKER } from '../../drive/metadata-client';
 import { nodeCaller } from '../../drive/node-caller';
 import type { DrivePlacements } from '../../drive/placements';
-import { DriveScrubber, type FileHasher, type ScrubCorruption } from '../../drive/scrub';
+import { DriveScrubber, type ScrubCorruption } from '../../drive/scrub';
 import { DriveReadService } from '../../drive/service-read';
 import { DriveWriteService } from '../../drive/service-write';
 import { DriveShares, shareOriginOf, type ShareOrigin } from '../../drive/shares';
@@ -62,6 +63,7 @@ export interface DriveDeps {
   readonly watchSettleMs: number;
   readonly scannerScript?: string;
   readonly hasherScript?: string;
+  readonly metadataScript?: string;
   readonly contentScript?: string;
 }
 
@@ -107,17 +109,6 @@ function smartRunnerOf(context: StoreContext): SmartQueryRunner {
   };
 }
 
-function inProcessHasher(): () => FileHasher {
-  let next = 0;
-  return (): FileHasher => ({
-    request: (fields): Promise<HashResponse> => {
-      next += 1;
-      return hashRequested({ ...fields, id: next });
-    },
-    close: (): Promise<void> => Promise.resolve(),
-  });
-}
-
 function scrubberOf(deps: DriveDeps, availability: DriveRuntime['availability']): DriveScrubber {
   const { store, parts, log } = deps;
   return new DriveScrubber({
@@ -140,7 +131,7 @@ function scrubberOf(deps: DriveDeps, availability: DriveRuntime['availability'])
       },
     },
     availability,
-    openHasher: inProcessHasher(),
+    openHasher: () => new HashWorker(deps.hasherScript ?? BUNDLED_HASH_WORKER),
     notifyOwner: parts.notifyCorruption,
     log: log.forArea('hub.drive-scrub'),
   });
@@ -173,6 +164,7 @@ function queueOf(
     log: deps.log.forArea('hub.drive-jobs'),
     scannerScript: deps.scannerScript ?? BUNDLED_SCANNER_WORKER,
     hasherScript: deps.hasherScript ?? BUNDLED_HASH_WORKER,
+    metadataScript: deps.metadataScript ?? BUNDLED_METADATA_WORKER,
     text: jobs.text,
     textCursors,
     lanes: jobs.lanes,
@@ -180,15 +172,17 @@ function queueOf(
   const queue: WorkQueue<DriveJob> = new WorkQueue<DriveJob>({
     concurrency: defaultConcurrency(),
     keyOf: handlers.keyOf,
+    merge: handlers.merge,
     run: async (job, signal): Promise<void> => {
       if (job.kind === 'hash' || job.kind === 'metadata') await jobs.activity.quiet();
       await handlers.run(job, signal);
       if (job.kind === 'metadata' && !signal.aborted) {
-        media.reconcile();
+        media.refresh();
         textCursors.forget(job.rootId);
         queue.enqueue({ kind: 'text', rootId: job.rootId });
       }
-      if (job.kind === 'scan' && !signal.aborted) followUps(queue, job.rootId);
+      if ((job.kind === 'scan' || job.kind === 'reflect') && !signal.aborted)
+        followUps(queue, job.rootId);
     },
     failed: (job, cause): void => {
       deps.log.error('drive.job_failed', cause, { kind: job.kind, rootId: job.rootId });
@@ -222,6 +216,9 @@ function watchersOf(
       }),
     enqueueScan: (rootId): void => {
       queue.enqueue({ kind: 'scan', rootId });
+    },
+    enqueueReflect: (rootId, paths): void => {
+      queue.enqueue({ kind: 'reflect', rootId, paths });
     },
     enqueueFollowUps: (rootId): void => {
       followUps(queue, rootId);
@@ -322,7 +319,7 @@ function servicesOf(deps: DriveDeps, core: Core): DriveServices {
   };
 }
 
-function uploadsOf(deps: DriveDeps, env: ConflictEnv): TusUploads {
+function uploadsOf(deps: DriveDeps, env: ConflictEnv, activity: DriveActivity): TusUploads {
   const backup = photoBackupService({ store: deps.store, env });
   const tus: TusEnv = {
     ...env,
@@ -331,7 +328,9 @@ function uploadsOf(deps: DriveDeps, env: ConflictEnv): TusUploads {
     completed: (item): void => {
       backup.settleItem(item);
     },
+    activity,
     authenticate: tusAuthentication(deps.store, deps.nodes),
+    hasher: new ContentHasher(deps.hasherScript ?? BUNDLED_HASH_WORKER),
   };
   return new TusUploads(tus);
 }
@@ -381,7 +380,7 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
     scrubber: core.scrubber,
     services,
     purge,
-    uploads: uploadsOf(deps, env),
+    uploads: uploadsOf(deps, env, activity),
     availability,
     placements,
     extras: extrasOf(deps, {

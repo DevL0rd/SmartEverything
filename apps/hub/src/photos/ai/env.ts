@@ -13,6 +13,7 @@ import type { PhotoAiModelStore } from './settings';
 export type AiStore = Pick<
   Store,
   | 'driveItems'
+  | 'driveItemText'
   | 'driveRoots'
   | 'photoAnalysis'
   | 'photoEmbeddings'

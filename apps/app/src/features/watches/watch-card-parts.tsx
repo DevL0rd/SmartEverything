@@ -18,6 +18,7 @@ import { goalRingsOf, heartCaption, type SyncControl } from './watch-card-model'
 import type { HeartView } from './watch-heart';
 import { useDayFacts, useHeartToday } from './watch-health-data';
 import { background } from '@smarteverything/logging';
+import { useInstantClock } from '../clock/format/clock-format';
 
 const EMPTY_LINE = 16;
 
@@ -90,7 +91,7 @@ export function HeartFigure({
   readonly view: HeartView;
   readonly stale: boolean;
 }): ReactNode {
-  const caption = heartCaption(view);
+  const caption = heartCaption(view, useInstantClock());
   return (
     <WideFigure
       value={String(view.bpm)}

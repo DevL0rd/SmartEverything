@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { StoreConflictError, jsonText } from '../sql';
+import { ACTIVE_PROFILES } from './active-profiles';
 import { PersonAccessRepository, insertPersonAccess } from './person-access';
 
 const STORED_PROFILE = storedRow(PROFILE_ROW, { json: ['fitness_goals'] });
@@ -19,6 +20,10 @@ const COLUMNS =
   'id, name, colour, sex, birth_date, height_cm, scale_user, fitness_goals, max_heart_rate, position, created_at, updated_at';
 
 const POSITION = z.object({ next: z.number() });
+
+const ACTIVE_PROFILE = `select ${COLUMNS.split(', ')
+  .map((column) => `p.${column}`)
+  .join(', ')} from clients c join profiles p on p.id = c.profile_id where c.id = $clientId`;
 
 export class ProfilesRepository {
   private readonly access: PersonAccessRepository;
@@ -49,14 +54,13 @@ export class ProfilesRepository {
   }
 
   activeOf(clientId: string): ProfileRow {
-    const row = this.context.sql.get(
-      STORED_PROFILE,
-      `select ${COLUMNS.split(', ')
-        .map((column) => `p.${column}`)
-        .join(', ')} from clients c join profiles p on p.id = c.profile_id where c.id = $clientId`,
-      { clientId },
+    return ACTIVE_PROFILES.value(this.context, clientId, () =>
+      found(
+        this.context.sql.get(STORED_PROFILE, ACTIVE_PROFILE, { clientId }),
+        'active profile of the client',
+        clientId,
+      ),
     );
-    return found(row, 'active profile of the client', clientId);
   }
 
   create(profile: NewProfile): ProfileRow {
@@ -87,6 +91,7 @@ export class ProfilesRepository {
       );
       insertPersonAccess(this.context, id, 'member', 'adult');
       const row = this.byId(id);
+      ACTIVE_PROFILES.forget(this.context);
       this.context.changed('profiles', 'INSERT', row, null);
       return row;
     });
@@ -167,6 +172,7 @@ export class ProfilesRepository {
         { heir: heir.id, id },
       );
       this.context.sql.run('remove the profile', 'delete from profiles where id = $id', { id });
+      ACTIVE_PROFILES.forget(this.context);
       this.context.changed('profiles', 'DELETE', null, before);
     });
   }
@@ -183,6 +189,7 @@ export class ProfilesRepository {
         id,
       });
       const after = this.byId(id);
+      ACTIVE_PROFILES.forget(this.context);
       this.context.changed('profiles', 'UPDATE', after, before);
       return after;
     });

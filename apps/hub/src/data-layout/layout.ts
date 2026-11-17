@@ -55,7 +55,7 @@ export interface LayoutNames {
   readonly migration: Paths<'journal' | 'orphans' | 'staging'>;
   readonly home: Paths<'drive' | 'talk' | 'homeMapScans'>;
   readonly cache: Paths<
-    'harness' | 'voiceSamples' | 'smartthingsCapabilities' | 'codexInputs' | 'buildHost' | 'ocr'
+    'harness' | 'voiceSamples' | 'smartthingsCapabilities' | 'codexInputs' | 'buildHost'
   >;
   readonly backups: Paths<'releases' | 'manual' | 'legacyDatabase'>;
   readonly provider: (id: string) => string;
@@ -143,7 +143,6 @@ export const V1_NAMES: LayoutNames = {
     smartthingsCapabilities: 'cache/smartthings-capabilities',
     codexInputs: 'cache/codex-inputs',
     buildHost: 'cache/build-host',
-    ocr: 'cache/ocr',
   },
   backups: {
     releases: 'backups/releases',
@@ -227,7 +226,6 @@ export interface HubLayout {
     readonly smartthingsCapabilities: string;
     readonly codexInputs: string;
     readonly buildHost: string;
-    readonly ocr: string;
   };
   readonly backups: LayoutNames['backups'];
 }
@@ -388,7 +386,6 @@ export function layoutFromNames(
       smartthingsCapabilities: at(cache.smartthingsCapabilities),
       codexInputs: at(cache.codexInputs),
       buildHost: at(cache.buildHost),
-      ocr: at(cache.ocr),
     },
     backups: {
       releases: at(backups.releases),

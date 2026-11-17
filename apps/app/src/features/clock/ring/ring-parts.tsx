@@ -5,10 +5,10 @@ import { Card } from '../../../components/card';
 import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { clock } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { LIST_DOT } from '../../planner';
 import { useWeather } from '../../weather';
+import { useInstantClock } from '../format/clock-format';
 import type { SoundLine } from './ring-lines';
 import {
   briefingLinesOf,
@@ -19,6 +19,7 @@ import {
   weatherLineOf,
   type TodayRow,
 } from './ring-model';
+import { useHour24 } from '../../../store/clock-format';
 
 const RING_TIME = 'font-mono-medium tracking-tighter tabular';
 
@@ -26,7 +27,8 @@ const RING_PERIOD = 'font-mono-medium text-figure-m tabular';
 
 function useWeatherLine(today: string): string | null {
   const weather = useWeather();
-  return weather.kind === 'ready' ? weatherLineOf(weather.forecast, today) : null;
+  const instant = useInstantClock();
+  return weather.kind === 'ready' ? weatherLineOf(weather.forecast, today, instant) : null;
 }
 
 export function RingHeading({
@@ -44,7 +46,8 @@ export function RingHeading({
 }): ReactNode {
   const now = useMinute();
   const weather = useWeatherLine(today);
-  const time = clockPartsOf(clock(now));
+  const instant = useInstantClock();
+  const time = clockPartsOf(instant(now));
   return (
     <View className="items-center gap-1">
       <View className="flex-row items-center gap-2">
@@ -53,7 +56,7 @@ export function RingHeading({
           {label}
         </Text>
       </View>
-      <View role="timer" aria-label={clock(now)} className="flex-row items-baseline gap-2">
+      <View role="timer" aria-label={instant(now)} className="flex-row items-baseline gap-2">
         <Text
           className={cn(RING_TIME, compact ? 'text-figure-xl' : 'text-display')}
           numberOfLines={1}
@@ -133,9 +136,15 @@ function dotOf(colour: PlannerColourKey | null): string {
 }
 
 function TodayLine({ row }: { readonly row: TodayRow }): ReactNode {
+  const width = useHour24() ? 'w-12' : 'w-16';
   return (
     <View className="min-h-8 flex-row items-center gap-3">
-      <Text variant="caption" tone="variant" className="w-12 font-mono tabular" numberOfLines={1}>
+      <Text
+        variant="caption"
+        tone="variant"
+        className={cn(width, 'font-mono tabular')}
+        numberOfLines={1}
+      >
         {row.time}
       </Text>
       <View aria-hidden className={cn('size-2 rounded-full', dotOf(row.colour))} />
@@ -153,7 +162,7 @@ export function TodayList({
   readonly day: PlannerDay;
   readonly colours: ReadonlyMap<string, PlannerColourKey>;
 }): ReactNode {
-  const rows = todayRowsOf(day, colours);
+  const rows = todayRowsOf(day, colours, useInstantClock());
   if (rows.length === 0) return null;
   return (
     <View className="gap-2">

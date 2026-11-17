@@ -40,7 +40,9 @@ const COPIES_SQL = `select a.local_id, a.item_id, i.bytes,
         and (g.folder_key is null or g.folder_key <> $folderKey)) as other_folder,
     (r.scope = 'home' or r.owner_profile_id is not $profileId) as shared,
     (exists (select 1 from photo_edits e where e.item_id = a.item_id)
-      or exists (select 1 from photo_meta_overrides v where v.item_id = a.item_id)) as edited,
+      or exists (select 1 from photo_meta_overrides v where v.item_id = a.item_id)
+      or exists (select 1 from photo_descriptions d
+        where d.item_id = a.item_id and d.source = 'manual')) as edited,
     exists (select 1 from drive_album_items m where m.item_id = a.item_id) as album
   from drive_backup_assets a
   join photo_asset_folders f on f.backup_device_id = a.backup_device_id and f.local_id = a.local_id

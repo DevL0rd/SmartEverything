@@ -165,6 +165,7 @@ const FACTS: PromptFacts = {
   role: 'owner',
   homeName: 'Home',
   timeZone: 'UTC',
+  hour24: true,
   now: new Date('2026-10-10T10:00:00.000Z'),
   boardTypes: [],
   instructions: '',

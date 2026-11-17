@@ -5,8 +5,8 @@ import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
 import type { PhotoFaceRow } from '../../store/repositories/photo-faces';
 import { cosine } from '../../vision/cluster';
 import type { DetectedFace } from '../../vision/faces/engine';
-import type { RgbImage } from '../../vision/faces/image';
-import { rgbOf, sceneFrames } from '../../vision/faces/source';
+import type { FaceImage } from '../../vision/faces/protocol';
+import { sceneFrames } from '../../vision/faces/source';
 import { vaapiDevice } from '../../media/ffmpeg-path';
 import { rgbOnGpu } from '../pipeline/vaapi-decode';
 import { FACE_MATCH_THRESHOLD } from '../../vision/models';
@@ -17,7 +17,7 @@ import { currentItem, type AiEnvironment, type MediaItem } from './env';
 import { float32Bytes } from './vectors';
 
 export interface FaceDetector {
-  readonly analyse: (image: RgbImage, signal?: AbortSignal) => Promise<DetectedFace[]>;
+  readonly analyse: (image: FaceImage, signal?: AbortSignal) => Promise<DetectedFace[]>;
   readonly device: () => PhotoFaceDevice;
   readonly capacity: () => number;
 }
@@ -63,22 +63,22 @@ export class FacesHandler implements JobHandler {
     this.env.log.warn('faces.failed', { itemId: job.item_id, reason: messageOf(cause) });
   }
 
-  private async frames(item: MediaItem, signal: AbortSignal): Promise<RgbImage[]> {
+  private async frames(item: MediaItem, signal: AbortSignal): Promise<FaceImage[]> {
     if (item.kind === 'image' && vaapiDevice() !== null) {
       const decoded = await rgbOnGpu(
         { path: await this.env.locate(item), mime: item.mime, name: item.name },
         signal,
       );
-      if ('data' in decoded) return [decoded];
+      if ('data' in decoded) return [{ kind: 'rgb', ...decoded }];
       this.env.log.info('faces.decoded_on_cpu', { itemId: item.id, reason: decoded.declined });
     }
     const poster = await readFile(
       derivedPath(this.env.layout, { itemId: item.id, rev: item.rev, size: 'preview' }),
     );
-    if (item.kind === 'image') return [await rgbOf(poster)];
+    if (item.kind === 'image') return [{ kind: 'encoded', bytes: poster }];
     await mkdir(this.env.layout.tmp, { recursive: true });
     const scenes = await sceneFrames(await this.env.locate(item), this.env.layout.tmp, signal);
-    return Promise.all([poster, ...scenes].map((frame) => rgbOf(frame)));
+    return [poster, ...scenes].map((frame) => ({ kind: 'encoded', bytes: frame }));
   }
 
   private record(

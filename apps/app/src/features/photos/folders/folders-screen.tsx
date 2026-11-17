@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { CardGrid } from '../../../components/card-grid';
 import { EmptyState } from '../../../components/empty-state';
@@ -12,7 +11,6 @@ import { Text } from '../../../components/text';
 import { isNative } from '../../../design/platform';
 import { useAreaWidth } from '../../../design/size-class';
 import { count } from '../../../format/number';
-import { useSyncStatus } from '../../../store/selectors';
 import { PHOTOS_BACKUP_SETTINGS_HREF, PhotosFrame } from '../components/photos-frame';
 import { localMediaSource } from '../local/source';
 import { useLocalLibrary } from '../local/use-local-library';
@@ -133,23 +131,9 @@ function useFolderGroups(): {
 
 export function FoldersScreen(): ReactNode {
   const { groups, error, retry } = useFolderGroups();
-  const live = useSyncStatus().status === 'live';
   const line = groups === null ? null : foldersLineOf(groups);
   return (
-    <PhotosFrame
-      active="folders"
-      {...(line === null ? {} : { subtitle: line })}
-      banner={
-        live ? null : (
-          <Banner
-            tone="info"
-            title="Showing folders from the last sync"
-            body="The hub is offline. Hiding and showing folders works again when it is back."
-            wrapBody
-          />
-        )
-      }
-    >
+    <PhotosFrame active="folders" {...(line === null ? {} : { subtitle: line })}>
       <View className="gap-section-gap">
         {error === null && groups !== null && groups.length > 0 ? (
           <Text variant="footnote" tone="variant">

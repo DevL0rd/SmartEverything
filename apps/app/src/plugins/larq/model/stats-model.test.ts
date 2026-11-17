@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import { statsOf } from './fixtures';
 import {
@@ -18,6 +19,9 @@ import {
 } from './stats-model';
 
 const plain = (text: string): string => text.replaceAll(' ', ' ');
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('stats deltas', () => {
   it('words a rise, a fall and no change', () => {
@@ -96,10 +100,11 @@ describe('stats rhythm, sizes, multiples and bests', () => {
     const rows = rhythmRows(statsOf().rhythm);
     expect(rows.map((row) => row.name)[0]).toBe('Mon');
     expect(Math.max(...rows.flatMap((row) => row.shares))).toBe(1);
-    expect(rhythmSummary(statsOf().rhythm)).toMatch(/^Busiest time: \w{3} around \d\d:00\.$/);
+    expect(rhythmSummary(statsOf().rhythm, H24)).toMatch(/^Busiest time: \w{3} around \d\d:00\.$/);
     expect(
       rhythmSummary(
         statsOf({ rhythm: Array.from({ length: 7 }, () => Array<number>(24).fill(0)) }).rhythm,
+        H12,
       ),
     ).toBe('No drinking pattern yet.');
   });

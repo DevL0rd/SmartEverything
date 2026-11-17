@@ -17,6 +17,19 @@ export const MEDIA_STATE = z
 
 export type MediaState = z.infer<typeof MEDIA_STATE>;
 
+export const PHOTO_DESCRIPTION_SOURCES = ['file', 'manual'] as const;
+
+export const PHOTO_DESCRIPTION = z
+  .strictObject({
+    text: z.string().min(1),
+    source: z
+      .enum(PHOTO_DESCRIPTION_SOURCES)
+      .describe('file: read from the photo’s own metadata; manual: written in Photos'),
+  })
+  .readonly();
+
+export type PhotoDescription = z.infer<typeof PHOTO_DESCRIPTION>;
+
 export const MEDIA_INFO = z
   .strictObject({
     itemId: ID,
@@ -27,6 +40,7 @@ export const MEDIA_INFO = z
     burstId: z.string().min(1).nullable(),
     stackId: ID.nullable(),
     placeId: PLACE_ID.nullable(),
+    description: PHOTO_DESCRIPTION.nullable(),
     preview: MEDIA_STATE,
     poster: MEDIA_STATE,
     playable: MEDIA_STATE,

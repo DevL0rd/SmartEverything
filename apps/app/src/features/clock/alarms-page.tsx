@@ -20,6 +20,7 @@ import {
   alarmsSubtitleOf,
 } from '../planner';
 import { AlarmEditor } from './alarm/alarm-editor';
+import { useClockLabel } from './format/clock-format';
 import { ALARM_INSPECTOR_WIDTH, AlarmInspector } from './alarm/alarm-inspector';
 import { SystemAlarmRow } from './alarm/system-alarm-row';
 import { WakeInsightsCard } from './alarm/wake-chart';
@@ -168,8 +169,9 @@ export function AlarmsPage(): ReactNode {
   const [chosen, setChosen] = useState<Chosen>({ kind: 'next' });
   const [editor, setEditor] = useState<EditorState>({ open: false, alarmId: null });
   const inspected = docked ? chosenAlarmOf(view, chosen) : undefined;
+  if (chosen.kind === 'next' && inspected) setChosen({ kind: 'alarm', id: inspected.id });
   const aside = inspectorAsideOf(inspected, setChosen);
-  const subtitle = alarmsSubtitleOf(view.alarms, view.now, view.timeZone);
+  const subtitle = alarmsSubtitleOf(view.alarms, view.now, view.timeZone, useClockLabel());
   const newAlarm: ShellAction = {
     icon: 'plus',
     label: 'New alarm',

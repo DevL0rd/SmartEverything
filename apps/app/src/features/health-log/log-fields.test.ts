@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { logFormOf } from './forms';
@@ -8,9 +8,13 @@ vi.mock('react-native', () => ({ View: 'div' }));
 vi.mock('../../components/date-nav', () => ({ DateNav: (): null => null }));
 vi.mock('../../components/number-stepper', () => ({ NumberStepper: (): null => null }));
 vi.mock('../../components/select', () => ({ Select: (): null => null }));
-vi.mock('../../components/text', () => ({ Text: 'span' }));
+vi.mock('../../components/text', () => ({
+  Text: ({ children }: { readonly children: ReactNode }): ReactNode =>
+    createElement('span', null, children),
+}));
 vi.mock('../../components/text-field', () => ({ TextField: (): null => null }));
 vi.mock('../../components/time-field', () => ({ TimeField: (): null => null }));
+vi.mock('../../store/clock-format', () => ({ useHour24: (): boolean => true }));
 
 function fieldsOf(type: string): string {
   const form = logFormOf(type);

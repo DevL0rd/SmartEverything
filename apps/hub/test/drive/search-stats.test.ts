@@ -630,7 +630,6 @@ describe('stats', () => {
   }
 
   it('totals the live, version and trash bytes and splits live items by kind', async () => {
-    roots.update(HOME, { items: 3, folders: 1, bytes: 1110 });
     put(photo(1, 'a.jpg'));
     put(video(2, 'b.mp4', 1000));
     put(document(3, 'c.txt', { bytes: 10 }));
@@ -752,9 +751,12 @@ describe('stats', () => {
   });
 
   it('counts only the drives the person can open', async () => {
-    roots.update(HOME, { items: 1, bytes: 10 });
-    roots.update(ROBIN_ROOT, { items: 2, bytes: 20 });
-    roots.update(SAM_ROOT, { items: 4, bytes: 40 });
+    put(document(1, 'home.txt', { bytes: 10 }));
+    put(document(2, 'robin one.txt', { rootId: ROBIN_ROOT, bytes: 10 }));
+    put(document(3, 'robin two.txt', { rootId: ROBIN_ROOT, bytes: 10 }));
+    for (let index = 4; index < 8; index += 1) {
+      put(document(index, `sam ${String(index)}.txt`, { rootId: SAM_ROOT, bytes: 10 }));
+    }
     trash(id(8), SAM_ROOT, 99, '2026-12-01T00:00:00.000Z');
     const stats = await new DriveStatsReader(context).read(owner, probe);
     expect(stats).toMatchObject({ items: 3, liveBytes: 30, trashBytes: 0 });

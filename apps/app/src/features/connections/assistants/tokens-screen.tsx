@@ -25,7 +25,7 @@ import { useMinute } from '../../../store/clock';
 import { useRows } from '../../../store/selectors';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { useMutationState } from '../../../store/mutation';
-import { confirmRevoke, useHubLive, useOfflineBanner } from './revoke-access';
+import { confirmRevoke, useHubLive } from './revoke-access';
 
 import { trackConnection } from '../connections-log';
 import { background } from '@smarteverything/logging';
@@ -223,11 +223,9 @@ export function TokensScreen(): ReactNode {
   const tokens = useRows('mcp_tokens').filter((token) => token.revoked_at === null);
   const now = useMinute();
   const [creating, setCreating] = useState(false);
-  const banner = useOfflineBanner();
   return (
     <SettingsFrame
       page="integrations/tokens"
-      {...(banner === undefined ? {} : { banner })}
       primaryAction={{
         label: 'New token',
         icon: 'plus',

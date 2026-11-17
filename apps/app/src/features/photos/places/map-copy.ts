@@ -1,13 +1,9 @@
-import { HUB_OFFLINE_TITLE, OFFLINE_BODY, SNAPSHOT_TITLE } from '../model/offline-copy';
+import { HUB_OFFLINE_TITLE } from '../model/offline-copy';
 
 export const MAP_COPY = {
   empty: {
     title: 'Photos with a location show up here',
     body: "Turn on location in your phone's camera. Photos without one stay in the Library.",
-  },
-  offline: {
-    title: SNAPSHOT_TITLE,
-    body: OFFLINE_BODY.map,
   },
   unreachable: {
     title: HUB_OFFLINE_TITLE,

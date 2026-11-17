@@ -29,8 +29,6 @@ const OPEN_PHOTOS: readonly ShellAction[] = [
   { icon: 'image', label: 'Open Photos', href: href.photos() },
 ];
 
-const OFFLINE_BODY = 'Keep best and Not duplicates need your home hub.';
-
 const INDEXING_HREF = href.settings.focus('drive/indexing', 'drive.indexing');
 
 function NoDuplicates(): ReactNode {
@@ -233,17 +231,7 @@ function DuplicatesBody(props: BodyProps): ReactNode {
 }
 
 function bannerOf(connected: boolean, data: DuplicatesData): ReactNode {
-  if (!connected) {
-    return (
-      <Banner
-        tone="info"
-        title="Offline · showing the last snapshot"
-        body={OFFLINE_BODY}
-        wrapBody
-      />
-    );
-  }
-  if (data.hashing === true && data.hashedShare < 1) {
+  if (connected && data.hashing === true && data.hashedShare < 1) {
     return <ScanningBanner share={data.hashedShare} />;
   }
   return undefined;

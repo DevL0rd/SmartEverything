@@ -39,6 +39,7 @@ import { background } from '@smarteverything/logging';
 export type { HubParts };
 
 export interface RunningHub {
+  readonly providersStarted: Promise<void>;
   readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
   readonly recordEvent: (event: Omit<EventInsert, 'occurredAt'>) => Promise<string>;
   readonly endDeviceEffect: (id: string) => Promise<void>;
@@ -241,6 +242,18 @@ function sharedParts(
   };
 }
 
+async function resumeAfterProviders(
+  parts: HubParts,
+  core: Core,
+  local: LocalDevices,
+  readings: ScaleReadings,
+): Promise<void> {
+  await local.start();
+  readings.recomputeOutdated();
+  await core.effects.recover();
+  await caughtUp(parts, core);
+}
+
 async function caughtUp(parts: HubParts, core: Core): Promise<void> {
   const count = await core.executor.catchUp();
   areaOf(parts, 'commands').info('commands.caught_up', { count });
@@ -287,14 +300,14 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   core.engine.sync();
   core.engine.boot();
   const unsubscribe = parts.store.feed.subscribe(reacting(parts, core));
-  await core.providers.startLinked();
   const { local, watches, readings, phones } = startLocal(parts, core);
-  await local.start();
   const drivers = startDrivers(parts, core);
-  readings.recomputeOutdated();
-  await core.effects.recover();
-  await caughtUp(parts, core);
+  const providersStarted = core.providers
+    .startLinked()
+    .then(() => resumeAfterProviders(parts, core, local, readings));
+  background(providersStarted, 'hub.resume_failed');
   return {
+    providersStarted,
     endDeviceEffect: (id) => core.effects.end(id, () => undefined),
     submit: (commands): CommandRow[] => {
       const rows = parts.store.commands.insert(commands);
@@ -317,7 +330,7 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     vacuums: core.vacuums.routes(),
     phones,
     ...sharedParts(parts, core),
-    stop: () => stopHub(parts, core, unsubscribe, drivers),
+    stop: () => stopHub(parts, core, unsubscribe, { drivers, providersStarted }),
   };
 }
 
@@ -325,15 +338,16 @@ async function stopHub(
   parts: HubParts,
   core: Core,
   unsubscribe: () => void,
-  drivers: RunningDrivers,
+  running: { readonly drivers: RunningDrivers; readonly providersStarted: Promise<void> },
 ): Promise<void> {
+  await Promise.allSettled([running.providersStarted]);
   quiet(parts, core, unsubscribe);
   core.engine.shutdown();
   await core.engine.driver.settled();
   await core.effects.stop();
   core.automationAi.stop();
   core.automationIntegration.stop();
-  await drivers.stop();
+  await running.drivers.stop();
   await core.vacuums.stop();
   await core.providers.stopAll();
   await flushWrites(core, true);

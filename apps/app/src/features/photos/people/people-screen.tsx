@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { PhotoAiStatus, PhotoPeople } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
@@ -16,7 +15,7 @@ import { useAreaWidth } from '../../../design/size-class';
 import { useMutationState } from '../../../store/mutation';
 import { useSyncStatus } from '../../../store/selectors';
 import { PhotosFrame } from '../components/photos-frame';
-import { HUB_OFFLINE_TITLE, OFFLINE_BODY, SNAPSHOT_TITLE } from '../model/offline-copy';
+import { HUB_OFFLINE_TITLE } from '../model/offline-copy';
 import { setPhotoAiSettings } from '../smart/api';
 import { usePhotoAiStatus, storeAiStatus } from '../smart/queries';
 import { PHOTOS_SMART_PAGE } from '../smart/page';
@@ -248,18 +247,6 @@ export function PeopleScreen(): ReactNode {
       active="people"
       settings={PEOPLE_SETTINGS}
       {...(subtitle === null ? {} : { subtitle })}
-      {...(live || people.data === undefined
-        ? {}
-        : {
-            banner: (
-              <Banner
-                tone="info"
-                title={SNAPSHOT_TITLE}
-                body={OFFLINE_BODY.people}
-                wrapBody
-              />
-            ),
-          })}
     >
       <View className="gap-section-gap">
         <StateBody

@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { Arc, Bars, CalendarHeatmap, HourHeatmap, WEEKDAY_ROWS } from '../../../components/charts';
 import { Card } from '../../../components/card';
 import { Text } from '../../../components/text';
+import { useClockFormat } from '../../../features/clock/format/clock-format';
 
 export function Calendar({
   view,
@@ -26,6 +27,7 @@ export function Calendar({
 }
 
 export function WeekdayHours({ view }: { readonly view: PrinterStatsView }): ReactNode {
+  const format = useClockFormat();
   return view.stats.weekdayHour.every((row) => row.every((value) => value === 0)) ? null : (
     <Card title="Busy hours" icon="clock">
       <HourHeatmap
@@ -33,6 +35,7 @@ export function WeekdayHours({ view }: { readonly view: PrinterStatsView }): Rea
         rows={WEEKDAY_ROWS}
         unit="pages printed"
         label="Pages printed by weekday and hour"
+        format={format}
       />
     </Card>
   );

@@ -6,15 +6,17 @@ import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { SwitchRow } from '../../../components/rows';
 import { Sheet } from '../../../components/sheet';
-import { TimeField, localeUsesHour12 } from '../../../components/time-field';
-import { clockTextOfTime, timeOfClockText } from '../../../format/clock-text';
+import { TimeField } from '../../../components/time-field';
+import { clockTextOfTime, timeOfClockText, type ClockFormat } from '../../../format/clock-text';
 import { useReachUpdate } from './reach-data';
 import { ReachLoaded, unsaved } from './reach-loaded';
+import { useHour24 } from '../../../store/clock-format';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 const STANDARD: QuietHours = { from: '22:00', to: '07:00', urgent: true };
 
-function quietSummary(quiet: QuietHours | null): string {
-  return quiet === null ? 'Off' : `${quiet.from}–${quiet.to}`;
+function quietSummary(quiet: QuietHours | null, format: ClockFormat): string {
+  return quiet === null ? 'Off' : `${format.text(quiet.from)}–${format.text(quiet.to)}`;
 }
 
 interface SheetProps {
@@ -29,21 +31,21 @@ function QuietFields({
   readonly quiet: QuietHours;
   readonly onChange: (quiet: QuietHours) => void;
 }): ReactNode {
-  const hour12 = localeUsesHour12();
+  const hour24 = useHour24();
   return (
     <View className="gap-4 py-2">
       <TimeField
+        hour24={hour24}
         label="From"
         value={timeOfClockText(quiet.from)}
-        hour12={hour12}
         onChange={(time) => {
           onChange({ ...quiet, from: clockTextOfTime(time) });
         }}
       />
       <TimeField
+        hour24={hour24}
         label="To"
         value={timeOfClockText(quiet.to)}
-        hour12={hour12}
         onChange={(time) => {
           onChange({ ...quiet, to: clockTextOfTime(time) });
         }}
@@ -89,6 +91,7 @@ function QuietSheet({ initial, onClose }: SheetProps): ReactNode {
 
 export function QuietHoursRow(): ReactNode {
   const [open, setOpen] = useState(false);
+  const format = useClockFormat();
   return (
     <ReachLoaded>
       {(settings) => (
@@ -97,7 +100,7 @@ export function QuietHoursRow(): ReactNode {
             title="Quiet hours"
             subtitle="No calls or notifications from the AI"
             icon="moon"
-            value={quietSummary(settings.quiet)}
+            value={quietSummary(settings.quiet, format)}
             chevron
             onPress={() => {
               setOpen(true);

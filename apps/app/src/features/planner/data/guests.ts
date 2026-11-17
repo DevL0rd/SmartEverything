@@ -108,6 +108,19 @@ function guestAccess(id: string): RowAccess<PlannerGuestRow> {
   };
 }
 
+export function keptGuests(
+  state: StoreState,
+  itemId: string,
+  rows: readonly PlannerGuestRow[],
+): StoreState {
+  const kept = new Set(rows.map((row) => row.id));
+  const gone = rowsOf(state.tables.planner_guests).filter(
+    (row) => row.item_id === itemId && !kept.has(row.id),
+  );
+  const dropped = gone.reduce((current, row) => guestAccess(row.id).drop(current, row), state);
+  return rows.reduce((current, row) => guestAccess(row.id).put(current, row), dropped);
+}
+
 export interface RsvpChoice {
   readonly response: PlannerRsvpAnswer;
   readonly note: string | null;
@@ -139,7 +152,11 @@ export interface GuestWrites {
 export function guestWrites(store: EntityStore, person: PlannerPerson): GuestWrites {
   const who = apiPerson(person);
   return {
-    setGuests: (itemId, guests) => setPlannerGuests(who, itemId, { guests: [...guests] }),
+    setGuests: (itemId, guests) =>
+      setPlannerGuests(who, itemId, { guests: [...guests] }).then((rows) => {
+        store.update((state) => keptGuests(state, itemId, rows));
+        return rows;
+      }),
     respond: (guest, choice) =>
       writeOptimistically(
         store,

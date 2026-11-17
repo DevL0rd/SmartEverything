@@ -4,6 +4,7 @@ import {
   type DriveItemLink,
   type LibraryScope,
   type LockedPinSet,
+  type PhotoDescriptionSet,
   type PhotoMetaPatch,
 } from '@smarteverything/domain';
 import type { PhotosResult } from '../../../api/photos';
@@ -22,6 +23,13 @@ function tokenHeaders(token: string): Readonly<Record<string, string>> {
 
 export function editPhotoMeta(body: PhotoMetaPatch): Call<'editPhotoMeta'> {
   return api().call(P.editPhotoMeta, { body });
+}
+
+export function setPhotoDescription(
+  itemId: string,
+  body: PhotoDescriptionSet,
+): Call<'setPhotoDescription'> {
+  return api().call(P.setPhotoDescription, { params: { itemId }, body });
 }
 
 export function archivePhotos(itemIds: readonly string[]): Call<'archivePhotos'> {

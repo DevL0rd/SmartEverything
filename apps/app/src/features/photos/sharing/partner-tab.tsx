@@ -187,7 +187,6 @@ export function PartnerTab(props: PartnerTabProps): ReactNode {
         selection: controls.selection.active ? (
           <SelectionBar shareId={props.shareId} controls={controls} />
         ) : null,
-        banner: null,
       }}
     >
       <AutoSaveRow share={share} name={props.name} />

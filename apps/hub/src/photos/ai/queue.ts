@@ -138,7 +138,7 @@ export class PhotoAiQueue {
       this.context.sql.get(
         PRESENT,
         `select 1 as found from drive_media_jobs
-          where state in ('queued', 'running') and ${filter.text} limit 1`,
+          where state <> 'done' and state in ('queued', 'running') and ${filter.text} limit 1`,
         filter.parameters,
       ) !== undefined
     );

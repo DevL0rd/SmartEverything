@@ -84,6 +84,7 @@ const PREFERENCE_OPERATIONS: Readonly<Record<ClientPrefKey, PreferenceOperations
   photos_backup: operations(CLIENT_PREFS.photos_backup),
   drive_hints: operations(CLIENT_PREFS.drive_hints),
   drive_notifications: operations(CLIENT_PREFS.drive_notifications),
+  clock_format: operations(CLIENT_PREFS.clock_format),
 };
 export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs): Promise<unknown> {
   return PREFERENCE_OPERATIONS[key].read(context, as);

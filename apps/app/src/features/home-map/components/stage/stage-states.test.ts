@@ -128,8 +128,8 @@ describe('stage phases', () => {
 });
 
 describe('stage notices', () => {
-  it('shows the offline chip over the last map and dims the live overlays', () => {
-    expect(texts(status({ connected: false }))).toEqual(['Offline · showing the last map']);
+  it('leaves the hub being offline to the app notice and dims the live overlays', () => {
+    expect(texts(status({ connected: false }))).toEqual([]);
     expect(stageDimmed('map', false)).toBe(true);
     expect(stageDimmed('map', true)).toBe(false);
   });

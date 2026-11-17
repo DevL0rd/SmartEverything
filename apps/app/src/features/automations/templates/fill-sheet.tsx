@@ -13,6 +13,7 @@ import { TextField } from '../../../components/text-field';
 import { TimeField } from '../../../components/time-field';
 import type { Slot, SlotValues, Template } from '../model/templates/parameters';
 import { clockOf, clockText } from '../model/templates/preview';
+import { useHour24 } from '../../../store/clock-format';
 
 export interface FillSheetProps {
   readonly entry: Template | null;
@@ -71,8 +72,10 @@ function PickMany({ slot, value, onChange }: FieldProps): ReactNode {
 }
 
 function PickTime({ slot, value, onChange }: FieldProps): ReactNode {
+  const hour24 = useHour24();
   return (
     <TimeField
+      hour24={hour24}
       label={slot.label}
       value={clockOf(textOf(value)) ?? MIDNIGHT}
       onChange={(clock) => {

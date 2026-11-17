@@ -1,4 +1,5 @@
-import { lstatSync, readdirSync, statSync, watch as fsWatch, type Dirent } from 'node:fs';
+import { watch as fsWatch, type Dirent } from 'node:fs';
+import { lstat, readdir, stat } from 'node:fs/promises';
 import { join, matchesGlob } from 'node:path';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import { background, type Logger } from '@smarteverything/logging';
@@ -8,7 +9,7 @@ import { MARKER_DIRECTORY } from './root-marker';
 import { LOCKED_FOLDER } from './access';
 import { ORPHAN_DIRECTORY } from './paths';
 import type { DriveActivity } from './activity';
-import { firstOutside, type IndexReader, type OutsideChange } from './watch-reflect';
+import { outsideOf, type IndexReader, type OutsideChange } from './watch-reflect';
 
 export interface WatchHandle {
   readonly close: () => void;
@@ -38,6 +39,7 @@ export interface WatchEnvironment {
   readonly mounted: (rootId: string) => boolean;
   readonly onPlacementChange: (listener: (rootId: string) => void) => () => void;
   readonly enqueueScan: (rootId: string) => void;
+  readonly enqueueReflect: (rootId: string, relPaths: readonly string[]) => void;
   readonly enqueueFollowUps: (rootId: string) => void;
   readonly watch: WatchFactory;
   readonly settleMs: number;
@@ -61,12 +63,14 @@ const PROBLEM_TEXT: Readonly<Record<string, string>> = {
     'The system limit on open files is reached, so changes are found only when you open or rescan.',
 };
 
-function folderInode(path: string, root: string): number | undefined {
-  const stats =
-    path === root
-      ? statSync(path, { throwIfNoEntry: false })
-      : lstatSync(path, { throwIfNoEntry: false });
-  return stats?.isDirectory() === true ? stats.ino : undefined;
+async function folderInode(path: string, root: string): Promise<number | undefined> {
+  try {
+    const stats = path === root ? await stat(path) : await lstat(path);
+    return stats.isDirectory() ? stats.ino : undefined;
+  } catch (cause) {
+    if (fsCode(cause) === 'ENOENT') return undefined;
+    throw cause;
+  }
 }
 
 function ignoredByRoot(root: StoredDrive, relPath: string, includeHidden: boolean): boolean {
@@ -95,7 +99,7 @@ class RootWatch {
   >();
   private readonly unreadable = new Set<string>();
   private touched = new Set<string>();
-  private unknown = false;
+  private unknown = new Set<string>();
   private opened = false;
   private mounted: boolean;
   private readonly unsubscribe: () => void;
@@ -115,8 +119,8 @@ class RootWatch {
     });
   }
 
-  open(): void {
-    this.attach(this.root.path);
+  async open(): Promise<void> {
+    await this.attach(this.root.path);
     this.opened = true;
     this.env.log.info('drive.watch_started', {
       rootId: this.root.id,
@@ -146,22 +150,23 @@ class RootWatch {
     return this.problem;
   }
 
-  private attach(directory: string): void {
-    if (this.exhausted || this.watched.has(directory)) return;
+  private async attach(directory: string): Promise<void> {
+    if (this.closed || this.exhausted || this.watched.has(directory)) return;
     try {
-      const ino = folderInode(directory, this.root.path);
-      if (ino === undefined) return;
+      const ino = await folderInode(directory, this.root.path);
+      if (ino === undefined || this.stopped() || this.watched.has(directory)) return;
       this.add(directory, ino);
-      for (const child of readdirSync(directory, { withFileTypes: true })) this.child(child);
+      for (const child of await readdir(directory, { withFileTypes: true }))
+        await this.child(child);
     } catch (cause) {
       this.refused(directory, cause);
     }
   }
 
-  private child(entry: Dirent): void {
+  private async child(entry: Dirent): Promise<void> {
     const absolute = join(entry.parentPath, entry.name);
     if (this.opened) this.touch(this.relOf(absolute));
-    if (entry.isDirectory()) this.attach(absolute);
+    if (entry.isDirectory()) await this.attach(absolute);
   }
 
   private add(directory: string, ino: number): void {
@@ -210,31 +215,33 @@ class RootWatch {
     this.env.enqueueScan(this.root.id);
   }
 
-  private follow(absolute: string): void {
-    const known = this.watched.get(absolute);
+  private async follow(absolute: string): Promise<void> {
     let ino: number | undefined;
     try {
-      ino = folderInode(absolute, this.root.path);
+      ino = await folderInode(absolute, this.root.path);
     } catch (cause) {
       this.refused(absolute, cause);
       return;
     }
+    if (this.closed) return;
+    const known = this.watched.get(absolute);
     if (known !== undefined && known.ino !== ino) this.detach(absolute);
-    if (ino !== undefined) this.attach(absolute);
+    if (ino !== undefined) await this.attach(absolute);
   }
 
   private changed(base: string, name: string): void {
     if (this.closed) return;
     if (name === '') {
-      if (this.ignored(this.relOf(base))) return;
-      this.unknown = true;
+      const relPath = this.relOf(base);
+      if (this.ignored(relPath)) return;
+      this.unknown.add(relPath);
       this.arm();
       return;
     }
     const absolute = join(base, name);
     const relPath = this.relOf(absolute);
     if (this.ignored(relPath)) return;
-    this.follow(absolute);
+    background(this.follow(absolute), 'drive.watch_follow_crashed', { rootId: this.root.id });
     this.touch(relPath);
   }
 
@@ -264,9 +271,13 @@ class RootWatch {
     const touched = this.touched;
     const unknown = this.unknown;
     this.touched = new Set();
-    this.unknown = false;
-    if (unknown) {
-      this.env.enqueueScan(this.root.id);
+    this.unknown = new Set();
+    if (unknown.size > 0) {
+      this.env.log.info('drive.watch_unnamed_change', {
+        rootId: this.root.id,
+        folders: unknown.size,
+      });
+      this.env.enqueueReflect(this.root.id, [...unknown, ...touched]);
       return;
     }
     background(this.check([...touched]), 'drive.watch_check_crashed', {
@@ -283,29 +294,41 @@ class RootWatch {
       const generation = activity.generation;
       const outside = await this.outside(remaining);
       if (outside === 'failed' || this.stopped()) return;
-      if (outside === null) {
+      if (outside.length === 0) {
         this.env.enqueueFollowUps(this.root.id);
         return;
       }
       if (activity.quietSince(generation)) {
-        this.env.log.info('drive.watch_outside_change', { rootId: this.root.id, ...outside });
-        this.env.enqueueScan(this.root.id);
+        this.reflect(outside);
         return;
       }
-      remaining = remaining.slice(remaining.indexOf(outside.relPath));
+      remaining = outside.map((change) => change.relPath);
     }
+  }
+
+  private reflect(outside: readonly OutsideChange[]): void {
+    const [first] = outside;
+    this.env.log.info('drive.watch_outside_change', {
+      rootId: this.root.id,
+      paths: outside.length,
+      ...first,
+    });
+    this.env.enqueueReflect(
+      this.root.id,
+      outside.map((change) => change.relPath),
+    );
   }
 
   private stopped(): boolean {
     return this.closed;
   }
 
-  private async outside(touched: readonly string[]): Promise<OutsideChange | null | 'failed'> {
+  private async outside(touched: readonly string[]): Promise<OutsideChange[] | 'failed'> {
     try {
-      return await firstOutside(this.env.index, this.root, touched);
+      return await outsideOf(this.env.index, this.root, touched);
     } catch (cause) {
       this.env.log.error('drive.watch_check_failed', cause, { rootId: this.root.id });
-      this.env.enqueueScan(this.root.id);
+      this.env.enqueueReflect(this.root.id, touched);
       return 'failed';
     }
   }
@@ -316,24 +339,29 @@ export class DriveWatchers {
 
   constructor(private readonly env: WatchEnvironment) {}
 
-  start(root: StoredDrive): void {
+  start(root: StoredDrive): Promise<void> {
     this.stop(root.id);
     const watch = new RootWatch(this.env, root, (reason) => {
       this.show(root.id, reason);
     });
     this.watches.set(root.id, watch);
-    watch.open();
-    this.show(root.id, watch.reason);
-    this.env.enqueueScan(root.id);
+    return this.opened(root.id, watch);
   }
 
-  remounted(rootId: string): void {
+  private async opened(rootId: string, watch: RootWatch): Promise<void> {
+    await watch.open();
+    if (this.watches.get(rootId) !== watch) return;
+    this.show(rootId, watch.reason);
+    this.env.enqueueScan(rootId);
+  }
+
+  async remounted(rootId: string): Promise<void> {
     const root = this.env.roots.find(rootId);
     if (root === undefined) {
       this.stop(rootId);
       return;
     }
-    this.start(root);
+    await this.start(root);
   }
 
   reconcile(rootId: string): void {

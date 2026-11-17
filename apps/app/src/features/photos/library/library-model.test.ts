@@ -10,7 +10,6 @@ import {
   feedTiles,
   libraryLine,
   offersSelectAll,
-  offlineBody,
   pickedText,
   scopeTotal,
   type MonthFeed,
@@ -23,20 +22,6 @@ function feedOf(tiles: readonly MediaTile[], extra: Partial<MonthFeed> = {}): Mo
 const A = fixtureTile(0, 5);
 const B = fixtureTile(1, 5);
 const C = fixtureTile(2, 5);
-
-describe('library offline note', () => {
-  it('says when the shown photos were last loaded', () => {
-    expect(offlineBody('14:02')).toBe(
-      'Local photos and videos remain available alongside hub photos cached at 14:02. Uploads wait until the hub is back.',
-    );
-  });
-
-  it('leaves the time out before anything has loaded', () => {
-    expect(offlineBody(null)).toBe(
-      'Local photos and videos remain available alongside any cached hub photos. Uploads wait until the hub is back.',
-    );
-  });
-});
 
 describe('library library line', () => {
   it('counts every month, the library size and the first year', () => {

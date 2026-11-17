@@ -8,6 +8,7 @@ import { TextField } from '../../components/text-field';
 import { TimeField, type TimeOfDay } from '../../components/time-field';
 import type { LogTime, LogValue, LogValues } from './form-values';
 import type { LogField, LogForm } from './forms';
+import { useHour24 } from '../../store/clock-format';
 
 const DAY_MINUTES = 1440;
 
@@ -169,6 +170,7 @@ export function LogTimeFields({
   readonly time: LogTime;
   readonly onChange: (time: LogTime) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const start = new Date(time.start);
   return (
     <View className="gap-4">
@@ -182,6 +184,7 @@ export function LogTimeFields({
         }}
       />
       <TimeField
+        hour24={hour24}
         label={form.timing === 'instant' ? 'Time' : 'Started'}
         value={{ hour: start.getHours(), minute: start.getMinutes() }}
         onChange={(value) => {

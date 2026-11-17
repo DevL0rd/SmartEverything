@@ -8,9 +8,12 @@ import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
 import { NavRow, SelectRow, SwitchRow } from '../../../components/rows';
 import { Sheet } from '../../../components/sheet';
-import { TimeField, localeUsesHour12 } from '../../../components/time-field';
+import { TimeField } from '../../../components/time-field';
 import { MINUTES_IN_HOUR, clockTextOf, timeOfClockText, type Option } from './options';
 import { useOwnPrefs, useSavePrefs, type Prefs, type PrefsChange } from './preferences';
+import type { ClockFormat } from '../../../format/clock-text';
+import { useHour24 } from '../../../store/clock-format';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 export interface RowSpec {
   readonly title: string;
@@ -30,7 +33,7 @@ export interface ValueSpec extends RowSpec {
 
 export interface LinkSpec extends RowSpec {
   readonly href: AppHref;
-  readonly value: (prefs: Prefs) => string;
+  readonly value: (prefs: Prefs, format: ClockFormat) => string;
 }
 
 interface RowBase {
@@ -131,11 +134,12 @@ export function PrefMinutesRow({
 
 export function PrefLinkRow({ spec }: { readonly spec: LinkSpec }): ReactNode {
   const prefs = useOwnPrefs();
+  const format = useClockFormat();
   return (
     <NavRow
       {...baseOf(spec)}
       href={spec.href}
-      {...(prefs === undefined ? {} : { value: spec.value(prefs) })}
+      {...(prefs === undefined ? {} : { value: spec.value(prefs, format) })}
     />
   );
 }
@@ -153,6 +157,7 @@ function TimeSheet({
   readonly onSave: (value: string) => void;
   readonly onClose: () => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const [time, setTime] = useState(() => timeOfClockText(initial));
   return (
     <Sheet
@@ -174,7 +179,7 @@ function TimeSheet({
         </>
       }
     >
-      <TimeField label={title} value={time} onChange={setTime} hour12={localeUsesHour12()} />
+      <TimeField hour24={hour24} label={title} value={time} onChange={setTime} />
     </Sheet>
   );
 }
@@ -182,6 +187,7 @@ function TimeSheet({
 export function PrefTimeRow({ spec }: { readonly spec: ValueSpec }): ReactNode {
   const prefs = useOwnPrefs();
   const save = useSavePrefs(spec.title);
+  const format = useClockFormat();
   const [open, setOpen] = useState(false);
   const opener = useRef<View>(null);
   if (prefs === undefined) {
@@ -192,7 +198,7 @@ export function PrefTimeRow({ spec }: { readonly spec: ValueSpec }): ReactNode {
       <ListRow
         {...baseOf(spec)}
         pressRef={opener}
-        value={spec.get(prefs)}
+        value={format.text(spec.get(prefs))}
         chevron
         onPress={() => {
           setOpen(true);

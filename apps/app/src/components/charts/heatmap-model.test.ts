@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../format/clock-text';
 import { describe, expect, it } from 'vitest';
 import {
   WEEKDAY_ROWS,
@@ -19,6 +20,9 @@ function days(from: string, count: number): HeatDay[] {
     covered: index !== 4,
   }));
 }
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 describe('calendar cells', () => {
   it('puts Monday in the first row and starts a new column each week', () => {
@@ -119,10 +123,10 @@ describe('weekday by hour cells', () => {
   });
 
   it('names the busiest time in words', () => {
-    expect(hourSummary(matrix, WEEKDAY_ROWS, 'pages printed')).toBe(
+    expect(hourSummary(matrix, WEEKDAY_ROWS, 'pages printed', H24)).toBe(
       'Busiest time Wednesday 18:00 with 20 pages printed',
     );
-    expect(hourSummary([[0]], WEEKDAY_ROWS, 'photos')).toBe('No photos by hour yet');
+    expect(hourSummary([[0]], WEEKDAY_ROWS, 'photos', H12)).toBe('No photos by hour yet');
     expect(WEEKDAY_ROWS).toHaveLength(7);
   });
 });

@@ -1,7 +1,9 @@
-import { PLANNER_COLOUR_KEYS } from '@smarteverything/domain';
+import { CLIENT_PREFS, PLANNER_COLOUR_KEYS } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
+import { clockFormatOf } from '../../../format/clock-text';
 import type { Availability } from '../../../store/selectors';
-import { emptyState } from '../../../store/state';
+import { applyChange } from '../../../store/live-reducers';
+import { emptyState, type StoreState } from '../../../store/state';
 import { UNLINKED } from '../data';
 import {
   COLOUR_OPTIONS,
@@ -11,6 +13,7 @@ import {
   rampText,
   reminderOptions,
   shownCount,
+  spanText,
   timeOfClockText,
   clockTextOf,
 } from './options';
@@ -18,6 +21,9 @@ import { mergedPrefs, type Prefs } from './preferences';
 
 const { SETTINGS, PLANNER_CLOCK_SETTING, PLANNER_SETTINGS_PAGE } = await import('../settings');
 const { settingsPage } = await import('../../../settings/tree');
+
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
 
 const PREFS: Prefs = {
   general: {
@@ -93,6 +99,28 @@ describe('planner settings', () => {
     ]);
   });
 
+  it('offers a findable 24-hour time switch in the Clock settings that follows the saved choice', () => {
+    const setting = SETTINGS.find((entry) => entry.id === 'planner.clock.hour24');
+    expect(setting).toMatchObject({ section: 'Clock', control: 'switch' });
+    expect(setting?.keywords).toEqual(expect.arrayContaining(['24-hour', 'am pm']));
+    const withFormat = (hour24: boolean): StoreState =>
+      applyChange(emptyState(), {
+        type: 'change',
+        table: 'layouts',
+        operation: 'UPDATE',
+        record: {
+          client_id: null,
+          profile_id: 'a1b2c3d4-0000-4000-8000-000000000001',
+          page: CLIENT_PREFS.clock_format.storageKey,
+          layout: { ...CLIENT_PREFS.clock_format.encode({ hour24 }) },
+          updated_at: '2026-11-17T08:00:00.000Z',
+        },
+        oldRecord: null,
+      });
+    expect(setting?.control === 'switch' && setting.read(withFormat(false))).toBe(false);
+    expect(setting?.control === 'switch' && setting.read(withFormat(true))).toBe(true);
+  });
+
   it('points the Clock entry at the first Clock row', () => {
     const clock = SETTINGS.find((setting) => setting.section === 'Clock');
     expect(clock?.id).toBe(PLANNER_CLOCK_SETTING);
@@ -129,20 +157,30 @@ function emptyAvailability(): Availability {
 
 describe('planner settings text', () => {
   it('names the Google link in one vocabulary', () => {
-    expect(googleRowText(UNLINKED)).toBe('Not linked');
-    expect(googleRowText({ ...UNLINKED, needsAttention: true, status: 'needs_attention' })).toBe(
-      'Needs attention',
-    );
+    expect(googleRowText(UNLINKED, H24)).toBe('Not linked');
+    expect(
+      googleRowText({ ...UNLINKED, needsAttention: true, status: 'needs_attention' }, H24),
+    ).toBe('Needs attention');
     const linked = {
       ...UNLINKED,
       linked: true,
       status: 'linked' as const,
       email: 'me@example.com',
     };
-    expect(googleRowText(linked)).toBe('Linked as me@example.com');
-    expect(googleRowText({ ...linked, lastSyncAt: '2026-11-07T14:02:00.000Z' })).toMatch(
-      /^Linked as me@example\.com · synced /,
+    expect(googleRowText(linked, H24)).toBe('Linked as me@example.com');
+    const synced = { ...linked, lastSyncAt: '2026-11-07T14:02:00.000Z' };
+    expect(googleRowText(synced, H24)).toBe(
+      `Linked as me@example.com · synced ${H24.instant(synced.lastSyncAt)}`,
     );
+    expect(googleRowText(synced, H12)).toBe(
+      `Linked as me@example.com · synced ${H12.instant(synced.lastSyncAt)}`,
+    );
+  });
+
+  it('writes the day and working hour spans on the chosen clock', () => {
+    expect(spanText('06:00', '23:00', H24)).toBe('06:00–23:00');
+    expect(spanText('06:00', '23:00', H12)).toBe(`${H12.text('06:00')}–${H12.text('23:00')}`);
+    expect(spanText('06:00', '23:00', H12)).toMatch(/^6:00\s\S+–11:00\s\S+$/u);
   });
 
   it('words reminders and the gentle volume', () => {

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type {
@@ -11,7 +11,6 @@ import { updateDriveSettings } from '../../../api/drive';
 import { Button } from '../../../components/button';
 import { ProgressBar } from '../../../components/charts/progress-bar';
 import { ListRow } from '../../../components/list-row';
-import { useStackedValue, valueLinesOf } from './value-lines';
 import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { usePausable } from '../../../design/external-store';
@@ -31,8 +30,6 @@ import {
 } from '../data';
 import { driveLabelOf } from '../model/drive-access';
 import { DriveSettingsSection } from './page';
-import { OcrLanguageSheet } from './ocr-language-sheet';
-import { ocrValueOf } from './ocr-languages';
 import { SettingsQueryState } from './settings-query-state';
 import { watcherLineOf } from './watcher-line';
 
@@ -170,8 +167,7 @@ function DuplicatesRow({
   );
 }
 
-export const CONTENT_LINE_ON =
-  'Search finds words inside documents and text in pictures. Nothing leaves the Hub.';
+export const CONTENT_LINE_ON = 'Search finds words inside documents. Nothing leaves the Hub.';
 
 export const CONTENT_LINE_OFF = 'Search finds names only. Turn this on to read text inside files.';
 
@@ -193,45 +189,6 @@ function ContentRow({ settings }: { readonly settings: DriveSettings }): ReactNo
         });
       }}
     />
-  );
-}
-
-function OcrLanguagesRow({ settings }: { readonly settings: DriveSettings }): ReactNode {
-  const opener = useRef<View>(null);
-  const [open, setOpen] = useState(false);
-  const on = settings.contentIndexing;
-  const stacked = useStackedValue();
-  return (
-    <>
-      <ListRow
-        title="Languages for text in pictures"
-        icon="globe"
-        {...valueLinesOf(
-          stacked,
-          ocrValueOf(settings.ocrLanguages),
-          on
-            ? 'A new language downloads once to the Hub'
-            : 'Turn on reading text inside files first',
-        )}
-        wrapSubtitle
-        wrapCaption
-        chevron
-        disabled={!on}
-        pressRef={opener}
-        onPress={() => {
-          setOpen(true);
-        }}
-      />
-      {open ? (
-        <OcrLanguageSheet
-          settings={settings}
-          opener={opener}
-          onClose={() => {
-            setOpen(false);
-          }}
-        />
-      ) : null}
-    </>
   );
 }
 
@@ -273,7 +230,6 @@ function IndexingBody({ settings }: { readonly settings: DriveSettings }): React
         <PauseRow settings={settings} working={working} />
         <DuplicatesRow settings={settings} hashedShare={health?.hashedShare} />
         <ContentRow settings={settings} />
-        <OcrLanguagesRow settings={settings} />
         {health === undefined ? null : <WatcherRow state={health.watcher} />}
       </List>
       {lines.length === 0 ? null : (

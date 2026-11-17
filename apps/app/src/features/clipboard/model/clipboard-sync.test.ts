@@ -1,7 +1,7 @@
 import type { ClipboardClip } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { describe, expect, it, vi } from 'vitest';
-import { ClipboardSync, decideSync } from './clipboard-sync';
+import { ClipboardSync } from './clipboard-sync';
 
 const FROM = '3f0a1d52-6a37-4c0e-9d3c-8a1c5f7e2b10';
 
@@ -11,34 +11,10 @@ const clip = (text: string): ClipboardClip => ({
   at: '2026-10-18T10:00:00.000Z',
 });
 
-describe('deciding what to do with two clipboards', () => {
-  it('takes the shared text on first contact, since the local text has no known age', () => {
-    expect(decideSync('local', clip('shared'), null)).toBe('apply');
-  });
-
-  it('sends the local text on first contact when nothing is shared yet', () => {
-    expect(decideSync('local', null, null)).toBe('send');
-  });
-
-  it('prefers what was copied here since the last sync', () => {
-    expect(decideSync('new here', clip('old shared'), 'old shared')).toBe('send');
-  });
-
-  it('takes what was copied elsewhere when this one did not change', () => {
-    expect(decideSync('same', clip('elsewhere'), 'same')).toBe('apply');
-  });
-
-  it('does nothing when both already agree or the local one is empty', () => {
-    expect(decideSync('same', clip('same'), null)).toBe('none');
-    expect(decideSync('', null, null)).toBe('none');
-    expect(decideSync('', clip('shared'), 'shared')).toBe('none');
-  });
-});
-
 class Bench {
   local = '';
-  shared: ClipboardClip | null = null;
   readonly sent: string[] = [];
+  readonly written: string[] = [];
   failSend = false;
   readable = true;
   failRead: Error | null = null;
@@ -52,14 +28,13 @@ class Bench {
             ? Promise.resolve(this.readable ? this.local : null)
             : Promise.reject(this.failRead),
         writeLocal: (text): Promise<void> => {
+          this.written.push(text);
           this.local = text;
           return Promise.resolve();
         },
-        readRemote: (): Promise<ClipboardClip | null> => Promise.resolve(this.shared),
         sendRemote: (text): Promise<void> => {
           if (this.failSend) return Promise.reject(new Error('offline'));
           this.sent.push(text);
-          this.shared = clip(text);
           return Promise.resolve();
         },
       },
@@ -101,14 +76,35 @@ describe('keeping two clipboards in step', () => {
     expect(bench.local).toBe('typed since');
   });
 
-  it('catches up when the app comes to the front', async () => {
+  it('never touches this clipboard when the app opens, resumes or reconnects', async () => {
     const bench = new Bench();
-    bench.shared = clip('copied while away');
+    bench.local = 'what the owner copied before opening the app';
     await bench.sync.foreground();
-    expect(bench.local).toBe('copied while away');
+    await bench.sync.foreground();
+    expect(bench.local).toBe('what the owner copied before opening the app');
+    expect(bench.written).toEqual([]);
+    expect(bench.sent).toEqual([]);
+  });
+
+  it('sends what was copied in another app while the app was in the background', async () => {
+    const bench = new Bench();
+    bench.local = 'already there on open';
+    await bench.sync.foreground();
     bench.local = 'copied in another app';
     await bench.sync.foreground();
+    await bench.sync.foreground();
     expect(bench.sent).toEqual(['copied in another app']);
+    expect(bench.written).toEqual([]);
+  });
+
+  it('does not send back a received clip when the app resumes', async () => {
+    const bench = new Bench();
+    bench.local = 'mine';
+    await bench.sync.foreground();
+    await bench.sync.received(clip('from the laptop'));
+    await bench.sync.foreground();
+    expect(bench.written).toEqual(['from the laptop']);
+    expect(bench.sent).toEqual([]);
   });
 
   it('keeps working after a send fails, and sends the same text again next time', async () => {
@@ -126,7 +122,6 @@ describe('keeping two clipboards in step', () => {
     const log = new Logger('app.clipboard');
     const error = vi.spyOn(log, 'error');
     const bench = new Bench(log);
-    bench.shared = clip('elsewhere');
     bench.readable = false;
     await bench.sync.foreground();
     await bench.sync.localChanged();

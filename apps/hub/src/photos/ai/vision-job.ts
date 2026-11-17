@@ -35,7 +35,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 export class VisionHandler implements JobHandler {
-  readonly resource = 'io';
+  readonly resource = 'cloud';
 
   constructor(
     private readonly env: AiEnvironment,
@@ -117,6 +117,11 @@ export class VisionHandler implements JobHandler {
         return false;
       }
       this.env.store.photoAnalysis.save({ ...base, state: 'done', ...analysis });
+      this.env.store.driveItemText.put(
+        analysis.text === null
+          ? { itemId: item.id, rev: item.rev, source: 'image', state: 'empty' }
+          : { itemId: item.id, rev: item.rev, source: 'image', state: 'ok', body: analysis.text },
+      );
       this.env.labels.write(now, searchWords(analysis));
       if (analysis.pets.length === 0)
         this.env.store.photoFaces.replaceKindForItem(item.id, 'pet', []);

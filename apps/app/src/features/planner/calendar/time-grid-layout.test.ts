@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_ALARM_ROW,
   PLANNER_COLLECTION_ROW,
@@ -10,6 +11,7 @@ import {
   DAY_MINUTES,
   alarmPinsOf,
   allDayOn,
+  blockTimeOf,
   gridDaysOf,
   laneSpans,
   nowPlaceOf,
@@ -129,6 +131,9 @@ function lanesByKey(spans: readonly GridSpan[], minMinutes = 0): Record<string, 
   );
 }
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('overlap lanes', () => {
   it('gives events that do not touch the full width', () => {
     expect(lanesByKey([span('a', 540, 600), span('b', 600, 660)])).toEqual({
@@ -227,6 +232,7 @@ describe('grid days', () => {
       readOnlyOf: (occurrence) => occurrence.item_id === birthday.item_id,
       lookOf: () => 'plain',
       minMinutes: 0,
+      instant: H24.instant,
     });
     expect(day?.today).toBe(true);
     expect(
@@ -237,6 +243,7 @@ describe('grid days', () => {
     ]);
     expect(day?.blocks[0]?.colour).toBe('work');
     expect(day?.blocks[0]?.time).toBe('11:00 to 12:00');
+    expect(blockTimeOf(birthday, ZONE, H12.instant)).toMatch(/^11:00\s\S+ to 12:00\s\S+$/u);
   });
 
   it('renders only the days it is given', () => {
@@ -251,6 +258,7 @@ describe('grid days', () => {
       readOnlyOf: () => false,
       lookOf: () => 'plain',
       minMinutes: 0,
+      instant: H24.instant,
     });
     expect(days.map((day) => day.date)).toEqual([SATURDAY, SUNDAY, MONDAY]);
   });
@@ -277,6 +285,7 @@ describe('grid days', () => {
       readOnlyOf: () => false,
       lookOf: (occurrence) => looks.get(occurrence.item_id) ?? 'plain',
       minMinutes: 0,
+      instant: H24.instant,
     });
     expect(day?.blocks.map((block) => [block.occurrence.title, block.look])).toEqual([
       ['Brunch', 'invited'],

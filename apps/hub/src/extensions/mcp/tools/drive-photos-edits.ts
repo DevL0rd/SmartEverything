@@ -219,7 +219,7 @@ function smartRetryFailed(): Selection {
 
 function smartReanalyse(): Selection {
   return selection({
-    input: z.strictObject({ estimateMicros: z.int().nonnegative() }),
+    input: z.strictObject({ estimateMicros: z.int().nonnegative(), everything: z.boolean() }),
     run: (context, input, as) => operate(context, 'reanalysePhotos', { body: input }, as),
   });
 }

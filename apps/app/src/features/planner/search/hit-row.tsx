@@ -11,19 +11,22 @@ import type { ListRowProps } from '../../../components/list-row';
 import { Icon } from '../../../components/icon';
 import { cn } from '../../../design/cn';
 import { joinParts } from '../../../format/text';
-import { clock, dayKeyOf, shortDate, startOfDayKey, weekdayShort } from '../../../format/time';
+import { dayKeyOf, shortDate, startOfDayKey, weekdayShort } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { LIST_DOT } from '../item/composer-tokens';
 import { calendarOf, hitTimeOf, matchedTextOf, type HitFormat, type HitTime } from './search-model';
+import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
 
-export const HIT_FORMAT: HitFormat = {
-  day: (moment) => `${weekdayShort(moment)} ${shortDate(moment)}`,
-  date: (day) => {
-    const moment = startOfDayKey(day);
-    return `${weekdayShort(moment)} ${shortDate(moment)}`;
-  },
-  time: (moment) => clock(moment),
-};
+function hitFormatOf(instant: InstantClock): HitFormat {
+  return {
+    day: (moment) => `${weekdayShort(moment)} ${shortDate(moment)}`,
+    date: (day): string => {
+      const moment = startOfDayKey(day);
+      return `${weekdayShort(moment)} ${shortDate(moment)}`;
+    },
+    time: (moment) => instant(moment),
+  };
+}
 
 type TileTone = 'past' | 'overdue' | 'ahead';
 
@@ -109,13 +112,15 @@ export function useHitRows(
   query: string,
 ): readonly HitRowModel[] {
   const now = useMinute();
+  const instant = useInstantClock();
   return useMemo(() => {
+    const format = hitFormatOf(instant);
     const tokens = tokensOf(query);
     const clockNow = { now, today: dayKeyOf(now) };
     return hits.map((hit) => {
       const { occurrence } = hit;
       const calendar = calendarOf(collections, occurrence.collection_id);
-      const time = hitTimeOf(occurrence, HIT_FORMAT, clockNow);
+      const time = hitTimeOf(occurrence, format, clockNow);
       const subtitle = joinParts([time.text, calendar?.name]);
       const subtitleHighlight = calendarRangeOf(hit, calendar, subtitle, tokens);
       const caption = matchedTextOf(hit.matched) ?? occurrence.location;
@@ -130,5 +135,5 @@ export function useHitRows(
       };
       return { key: `${occurrence.item_id}:${occurrence.occurrence_key}`, props, link };
     });
-  }, [hits, collections, query, now]);
+  }, [hits, collections, query, now, instant]);
 }

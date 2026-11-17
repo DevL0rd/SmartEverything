@@ -316,13 +316,12 @@ describe('Shared screen', () => {
     expect(seen.subtitle).toBe('1 item · 1 active link');
   });
 
-  it('shows the offline banner and keeps the actions off while the hub is away', () => {
+  it('keeps the actions off without a page banner while the hub is away', () => {
     seen.live = false;
     seen.view = 'by-me';
     seen.byMe = [{ item: folder(ITEM, 'Holiday'), grants: [], links: [] }];
     const markup = render();
-    expect(seen.banner).toBe(true);
-    expect(markup).toContain('Showing the last known shares · reconnecting');
+    expect(seen.banner).toBe(false);
     expect(markup).toContain('<button disabled="">Stop sharing</button>');
   });
 

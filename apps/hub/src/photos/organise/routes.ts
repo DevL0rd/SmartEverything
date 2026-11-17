@@ -11,6 +11,7 @@ import { ArchiveService } from './archive';
 import { LockedService } from './locked';
 import { LockedLinks } from './locked-links';
 import { LockedMover } from './locked-move';
+import { DescriptionEditor } from './description';
 import { MetaEditor } from './meta';
 import { OrganisePages } from './pages';
 
@@ -18,6 +19,7 @@ const E = PHOTOS_ENDPOINTS;
 
 type RouteName =
   | 'editPhotoMeta'
+  | 'setPhotoDescription'
   | 'archivePhotos'
   | 'unarchivePhotos'
   | 'readPhotoArchived'
@@ -38,6 +40,7 @@ export type PhotoOrganiseRoutes = { readonly [N in RouteName]: Bound<(typeof E)[
 
 export interface OrganiseServices {
   readonly meta: MetaEditor;
+  readonly description: DescriptionEditor;
   readonly archive: ArchiveService;
   readonly pages: OrganisePages;
   readonly locked: LockedService;
@@ -57,6 +60,7 @@ export function organiseServices(inputs: OrganiseInputs): OrganiseServices {
   const { store, now } = inputs;
   return {
     meta: new MetaEditor(store),
+    description: new DescriptionEditor(store),
     archive: new ArchiveService(store),
     pages: new OrganisePages(store.context, inputs.timeZone),
     locked: new LockedService({ locked: store.photoLocked, now }),
@@ -80,6 +84,7 @@ function tokenOf(headers: IncomingHttpHeaders): string | undefined {
 
 type PageRouteName =
   | 'editPhotoMeta'
+  | 'setPhotoDescription'
   | 'archivePhotos'
   | 'unarchivePhotos'
   | 'readPhotoArchived'
@@ -95,6 +100,9 @@ function pageRoutes(
   return {
     editPhotoMeta: bound(E.editPhotoMeta, ({ body, caller }) =>
       services.meta.edit(photoActor(store, caller), body),
+    ),
+    setPhotoDescription: bound(E.setPhotoDescription, ({ params, body, caller }) =>
+      services.description.set(photoActor(store, caller), params.itemId, body),
     ),
     archivePhotos: bound(E.archivePhotos, ({ body, caller }) =>
       services.archive.archive(photoActor(store, caller), body),

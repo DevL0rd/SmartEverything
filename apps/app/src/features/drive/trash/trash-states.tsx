@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -78,16 +77,5 @@ export function TrashEmpty({
       />
       <TrashNote owner={owner} />
     </View>
-  );
-}
-
-export function OfflineBanner(): ReactNode {
-  return (
-    <Banner
-      tone="info"
-      title="Offline · showing the last snapshot"
-      body="Restoring and deleting need your home hub."
-      wrapBody
-    />
   );
 }

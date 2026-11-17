@@ -88,8 +88,20 @@ function describeContext(deps: ProgramReadDeps): DescribeContext {
   };
 }
 
-function json(value: unknown): Record<string, z.infer<typeof JSON_VALUE>> {
+type JsonObject = Record<string, z.infer<typeof JSON_VALUE>>;
+
+function json(value: unknown): JsonObject {
   return OBJECT.parse(JSON.parse(JSON.stringify(value)));
+}
+
+const PORT_JSON = new WeakMap<object, JsonObject>();
+
+function portJson(port: object): JsonObject {
+  const known = PORT_JSON.get(port);
+  if (known !== undefined) return known;
+  const converted = json(port);
+  PORT_JSON.set(port, converted);
+  return converted;
 }
 
 function functionEntry(
@@ -170,8 +182,8 @@ function nodeEntry(deps: ProgramReadDeps, listed: Listed, owner: boolean): Catal
     kind: kind.id,
     group: kind.category,
     meaning: kind.description,
-    inputs: kind.inputs.map(json),
-    outputs: kind.outputs.map(json),
+    inputs: kind.inputs.map(portJson),
+    outputs: kind.outputs.map(portJson),
     ...(kind.origin === undefined
       ? {}
       : {

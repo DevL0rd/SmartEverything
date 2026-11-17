@@ -32,6 +32,7 @@ import {
   type TimerPreset,
   type TimerView,
 } from './lap-model';
+import { useInstantClock } from './format/clock-format';
 import { TimerCard, TimerDial, timerEndOf, useTimerActions } from './timer-card';
 import { TimerUseCard } from './timer-use';
 
@@ -156,13 +157,14 @@ function HeroActions({ view }: { readonly view: TimerView }): ReactNode {
 }
 
 function TimerHero({ view }: { readonly view: TimerView }): ReactNode {
+  const instant = useInstantClock();
   return (
     <Card>
       <View className="items-center gap-4 py-2">
         <Text variant="title-3" align="center" numberOfLines={2}>
           {timerNameOf(view.timer)}
         </Text>
-        <TimerDial view={view} size="hero" caption={timerEndOf(view)} />
+        <TimerDial view={view} size="hero" caption={timerEndOf(view, instant)} />
         <HeroActions view={view} />
       </View>
     </Card>

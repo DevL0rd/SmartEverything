@@ -20,6 +20,7 @@ import {
   standingText,
   standingTone,
 } from '../model/standing';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 function PersonRow({
   access,
@@ -31,6 +32,7 @@ function PersonRow({
   const profile = useProfiles().find((entry) => entry.id === access.profile_id);
   const now = useMinute();
   const standing = standingOf(access, now, useSettings().time_zone);
+  const format = useClockFormat();
   if (profile === undefined) {
     return null;
   }
@@ -39,7 +41,7 @@ function PersonRow({
       title={profile.name}
       subtitle={joinParts([
         standingText(standing, now),
-        access.role === 'owner' ? null : conditionsText(access.conditions),
+        access.role === 'owner' ? null : conditionsText(access.conditions, format),
         plural(devices, 'device'),
       ])}
       wrapSubtitle

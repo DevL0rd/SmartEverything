@@ -276,13 +276,7 @@ const INDEXING: DriveSettingsSectionSpec = {
     row(
       'drive.indexing.contents',
       'Read text inside files',
-      ['search inside files', 'content search', 'full text', 'document text', 'ocr'],
-      'owner',
-    ),
-    row(
-      'drive.indexing.ocr',
-      'Languages for text in pictures',
-      ['ocr', 'text in images', 'languages', 'scanned text', 'photos text'],
+      ['search inside files', 'content search', 'full text', 'document text'],
       'owner',
     ),
     row(

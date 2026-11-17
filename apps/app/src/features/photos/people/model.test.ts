@@ -65,6 +65,7 @@ function status(patch: Partial<PhotoAiStatus> = {}): PhotoAiStatus {
     people: { faces: 0, grouped: 0 },
     spentMicros: 0,
     estimateMicros: 0,
+    everythingMicros: 0,
     models: { vision: 'v', embedding: 'e', petEmbedding: 'p', eraser: 'x' },
     faceDevice: { state: 'cpu', reason: 'test' },
     ...patch,

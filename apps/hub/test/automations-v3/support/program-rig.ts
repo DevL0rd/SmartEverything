@@ -41,6 +41,7 @@ import { AutomationProgramsRepository } from '../../../src/store/repositories/au
 import { AutomationRevisionsRepository } from '../../../src/store/repositories/automation-revisions';
 import { durableSessionWrite } from '../../../src/store/repositories/dsh-session-durability';
 import { SettingsRepository } from '../../../src/store/repositories/settings';
+import { StoreReader } from '../../../src/store/reader';
 import { Sql } from '../../../src/store/sql';
 import type { Store } from '../../../src/store/store';
 import { testLogger } from '../../support/logs';
@@ -82,6 +83,7 @@ function composeStore(context: StoreContext, feed: ChangeFeed, database: Databas
     context,
     database,
     feed,
+    reader: new StoreReader({ path: ':memory:', busyTimeoutMs: 0, log }),
     settings,
     ledger: new Ledger(context, () => settings.read().time_zone),
     now: () => NOW,

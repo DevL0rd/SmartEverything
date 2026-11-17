@@ -78,10 +78,8 @@ beforeEach(async () => {
   b = addPerson(opened, 'Bob', 'member');
   const { store } = opened;
   store.driveRoots.insert(sharedDriveRoot(HOME));
-  store.driveRoots.insert(personalDriveRoot(OWNER_DRIVE, owner.profileId, { items: 1, bytes: 10 }));
-  store.driveRoots.insert(
-    personalDriveRoot(A_DRIVE, a.profileId, { items: 5, folders: 2, bytes: 50 }),
-  );
+  store.driveRoots.insert(personalDriveRoot(OWNER_DRIVE, owner.profileId));
+  store.driveRoots.insert(personalDriveRoot(A_DRIVE, a.profileId));
   store.driveRoots.insert(personalDriveRoot(B_DRIVE, b.profileId));
   putItem(store, {
     rootId: A_DRIVE,
@@ -279,9 +277,9 @@ describe('totals only for the hub owner', () => {
     const stats = new DriveStatsReader(opened.store.context);
     const ownerStats = await stats.read(actorOf(owner), () => Promise.resolve(SPACE));
     expect(ownerStats.roots.map((row) => row.rootId).sort()).toEqual([HOME, OWNER_DRIVE].sort());
-    expect(ownerStats.items).toBe(1);
+    expect(ownerStats.items).toBe(2);
     const annStats = await stats.read(actorOf(a), () => Promise.resolve(SPACE));
-    expect(annStats.items).toBe(5);
+    expect(annStats.items).toBe(4);
     const health = new DriveHealthReader(opened.store.context, {
       roots: (): StoredDrive[] => opened.store.driveRoots.list(),
       watcher: (): WatchStatus => WATCHING,

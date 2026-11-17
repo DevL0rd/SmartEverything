@@ -29,7 +29,6 @@ import {
   type DriveChipOf,
   type DriveFilter,
 } from '../model/drive-chip';
-import { recentStale } from '../recent/recent-states';
 import { useSaveSmartFolder } from './save-smart-folder';
 import { SectionHead } from './section-head';
 import { useSmartFolders } from './smart-data';
@@ -45,13 +44,7 @@ import {
   type StarredChip,
 } from './starred-model';
 import { StarredFileRow, starredColumnsOf, type StarredColumns } from './starred-look';
-import {
-  StarredEmpty,
-  StarredFooter,
-  StarredStaleBanner,
-  loadMoreStarred,
-  type StarredPages,
-} from './starred-states';
+import { StarredEmpty, StarredFooter, loadMoreStarred, type StarredPages } from './starred-states';
 
 const log = new Logger('app.drive');
 
@@ -269,9 +262,6 @@ export function StarredScreen(): ReactNode {
         saver.open({ rule: null, title: '', matches: null });
       })}
       scroll={false}
-      {...(recentStale(feed.pages.data !== undefined, live)
-        ? { banner: <StarredStaleBanner /> }
-        : {})}
     >
       <StarredList
         feed={feed}

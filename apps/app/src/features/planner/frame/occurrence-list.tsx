@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
-import { clock, dayLabel, zonedStartOfDay } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
+import { dayLabel, zonedStartOfDay } from '../../../format/time';
+import { useInstantClock } from '../../clock/format/clock-format';
 
 export type DayContext = Pick<PlannerDay, 'date' | 'time_zone' | 'now'>;
 
@@ -13,8 +15,13 @@ function otherDayOf(moment: string | number, day: DayContext, leading: boolean):
   return label === 'Yesterday' && !leading ? 'yesterday' : label;
 }
 
-export function momentWhenOf(moment: string, day: DayContext, leading: boolean): string {
-  const time = clock(moment, day.time_zone);
+export function momentWhenOf(
+  moment: string,
+  day: DayContext,
+  leading: boolean,
+  instant: MomentText,
+): string {
+  const time = instant(moment, day.time_zone);
   const other = otherDayOf(moment, day, leading);
   return other === null ? time : `${other} ${time}`;
 }
@@ -25,10 +32,16 @@ function dueDateOf(dueDate: string, day: DayContext): string {
   return other === null ? 'Due today' : `Due ${other}`;
 }
 
-export function occurrenceWhenOf(occurrence: PlannerOccurrenceView, day: DayContext): string {
+export function occurrenceWhenOf(
+  occurrence: PlannerOccurrenceView,
+  day: DayContext,
+  instant: MomentText,
+): string {
   if (occurrence.all_day) return 'All day';
-  if (occurrence.start !== null) return momentWhenOf(occurrence.start, day, true);
-  if (occurrence.due_at !== null) return `Due ${momentWhenOf(occurrence.due_at, day, false)}`;
+  if (occurrence.start !== null) return momentWhenOf(occurrence.start, day, true, instant);
+  if (occurrence.due_at !== null) {
+    return `Due ${momentWhenOf(occurrence.due_at, day, false, instant)}`;
+  }
   return occurrence.due_date === null ? 'Any time' : dueDateOf(occurrence.due_date, day);
 }
 
@@ -41,6 +54,7 @@ export function OccurrenceList({
   readonly occurrences: readonly PlannerOccurrenceView[];
   readonly day: DayContext;
 }): ReactNode {
+  const instant = useInstantClock();
   if (occurrences.length === 0) return null;
   return (
     <List title={title}>
@@ -49,7 +63,7 @@ export function OccurrenceList({
           key={`${occurrence.item_id}:${occurrence.occurrence_key}`}
           icon={occurrence.kind === 'event' ? 'calendar' : 'circleCheck'}
           title={occurrence.title}
-          subtitle={occurrenceWhenOf(occurrence, day)}
+          subtitle={occurrenceWhenOf(occurrence, day, instant)}
           href={href.planner.item(occurrence.item_id, occurrence.occurrence_key)}
           chevron
         />

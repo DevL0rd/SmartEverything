@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   DriveItem,
+  PhotoAiReanalyse,
   PhotoAiStatus,
   PhotoAnalysis,
   PhotoFaceDevice,
@@ -36,7 +37,7 @@ import { PhotoAiStatusReader } from './status';
 import { VisionHandler, type VisionClient } from './vision-job';
 
 export type PhotoAiStore = AiStore &
-  Pick<Store, 'feed' | 'ledger' | 'personal' | 'personAccess' | 'settingsKv' | 'now'>;
+  Pick<Store, 'feed' | 'ledger' | 'personal' | 'personAccess' | 'settingsKv' | 'now' | 'reader'>;
 
 export interface PhotoAiOptions {
   readonly store: PhotoAiStore;
@@ -118,14 +119,14 @@ export class PhotoAi {
       models: this.models,
       status: this.status,
       owner: (): string => store.personAccess.homeOwner(),
-      reconcile: (): number => this.scheduler.reconcile(),
+      reconcile: (): Promise<number> => this.scheduler.reconcile(),
     });
     this.retry = new PhotoAiRetry({
       context: store.context,
       consent: this.consent,
       status: this.status,
       ownerIds: (): readonly string[] => store.personAccess.ownerIds(),
-      reconcile: (): number => this.scheduler.reconcile(),
+      reconcile: (): Promise<number> => this.scheduler.reconcile(),
     });
   }
 
@@ -151,8 +152,8 @@ export class PhotoAi {
     this.scheduler.start();
   }
 
-  stop(): void {
-    this.scheduler.stop();
+  stop(): Promise<void> {
+    return this.scheduler.stop();
   }
 
   onFacesIdle(listener: (profileId: string) => void): () => void {
@@ -180,12 +181,12 @@ export class PhotoAi {
     return this.status.read(actor.profileId);
   }
 
-  reanalyse(confirmedMicros: number): ReturnType<PhotoAiReanalysis['run']> {
-    return this.reanalysis.run(confirmedMicros);
+  reanalyse(request: PhotoAiReanalyse): ReturnType<PhotoAiReanalysis['run']> {
+    return this.reanalysis.run(request);
   }
 
-  retryFailed(actor: DriveActor): PhotoAiStatus {
-    this.retry.run(actor.profileId);
+  async retryFailed(actor: DriveActor): Promise<PhotoAiStatus> {
+    await this.retry.run(actor.profileId);
     return this.status.read(actor.profileId);
   }
 

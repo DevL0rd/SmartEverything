@@ -7,7 +7,8 @@ import { SelectRow, SwitchRow, ValueRow } from '../../components/rows';
 import { List } from '../../components/section';
 import type { WatchCommand } from './watch-config';
 import { WatchGoalRows } from './watch-goal-rows';
-import { TimeSheet, timeLabel } from './watch-time';
+import { TimeSheet } from './watch-time';
+import { useClockFormat } from '../clock/format/clock-format';
 
 const ICONS: readonly (readonly [string, IconName])[] = [
   ['heart.', 'heartPulse'],
@@ -55,6 +56,7 @@ function TimeRow({
   readonly command: WatchCommand;
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const format = useClockFormat();
   const first = settings[0];
   if (first === undefined) {
     return null;
@@ -63,7 +65,7 @@ function TimeRow({
     <>
       <ListRow
         title={title}
-        value={settings.map((setting) => timeLabel(setting.value)).join(' – ')}
+        value={settings.map((setting) => format.text(setting.value)).join(' – ')}
         icon={iconOf(first.key)}
         chevron
         disabled={command.busy}

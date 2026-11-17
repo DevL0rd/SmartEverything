@@ -10,7 +10,6 @@ import {
   devicesLineOf,
   duplicatesCardOf,
   folderOf,
-  offlineText,
   summaryText,
 } from './model';
 
@@ -52,11 +51,6 @@ describe('photos settings model', () => {
     expect(summaryText(null, null)).toBeNull();
     expect(summaryText(48213, null)).toMatch(/^48\D?213 items$/);
     expect(summaryText(1, 1)).toBe('1 item · 1 device backing up');
-  });
-
-  it('says what still works while the hub is offline', () => {
-    expect(offlineText(false)).toBe('Changing these settings needs your home hub.');
-    expect(offlineText(true)).toContain('Backup on this device keeps going');
   });
 
   it('names the chosen albums and toggles them', () => {

@@ -33,7 +33,6 @@ export interface ShellFrame {
   readonly subtitle: string | null;
   readonly actions: readonly ShellAction[];
   readonly selection: ReactElement | null;
-  readonly banner: ReactNode;
   readonly footer?: ReactNode;
 }
 
@@ -158,7 +157,6 @@ export function LibraryShell({
       {...(frame.subtitle === null ? {} : { subtitle: frame.subtitle })}
       actions={frame.actions}
       selection={frame.selection}
-      {...(frame.banner === null ? {} : { banner: frame.banner })}
       {...(frame.footer === undefined ? {} : { footer: frame.footer })}
     >
       {children}

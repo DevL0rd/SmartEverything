@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DriveWatchers, systemWatch } from '../../../src/drive/watcher';
-import { firstOutside } from '../../../src/drive/watch-reflect';
+import { outsideOf } from '../../../src/drive/watch-reflect';
 import { testLogger } from '../../support/logs';
 import { attachTo, openMountRig, opKey, type Attached, type MountRig } from './mount-rig';
 
@@ -54,6 +54,9 @@ beforeEach(async () => {
     enqueueScan: (): void => {
       asked('scan');
     },
+    enqueueReflect: (): void => {
+      asked('reflect');
+    },
     enqueueFollowUps: (): void => {
       asked('follow-ups');
     },
@@ -61,7 +64,7 @@ beforeEach(async () => {
     settleMs: SETTLE_MS,
     log: testLogger(),
   });
-  watchers.start(rig.posix.mine);
+  await watchers.start(rig.posix.mine);
   requests.splice(0);
 });
 
@@ -70,7 +73,7 @@ afterEach(async () => {
   await rig.close();
 });
 
-const reader = (): Parameters<typeof firstOutside>[0] => ({
+const reader = (): Parameters<typeof outsideOf>[0] => ({
   items: rig.posix.opened.store.driveItems,
   inodes: rig.posix.opened.store.driveInodes,
 });
@@ -95,7 +98,7 @@ describe('a file written through the mount', () => {
       },
       new Uint8Array([1, 2, 3, 4]),
     );
-    expect(await firstOutside(reader(), rig.posix.mine, ['put.bin'])).toBeNull();
+    expect(await outsideOf(reader(), rig.posix.mine, ['put.bin'])).toEqual([]);
     await expect(nextRequest()).resolves.toBe('follow-ups');
     expect(requests).not.toContain('scan');
   });
@@ -116,7 +119,7 @@ describe('a file written through the mount', () => {
       fsync: false,
       opKey: opKey(),
     });
-    expect(await firstOutside(reader(), rig.posix.mine, ['end.txt'])).toBeNull();
+    expect(await outsideOf(reader(), rig.posix.mine, ['end.txt'])).toEqual([]);
     await expect(nextRequest()).resolves.toBe('follow-ups');
     expect(requests).not.toContain('scan');
   });

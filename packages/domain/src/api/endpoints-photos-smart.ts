@@ -64,7 +64,7 @@ export const PHOTOS_SMART_ENDPOINTS = {
     path: '/api/drive/photos/ai/reanalyse',
     access: 'owner',
     summary:
-      'Analyse the whole library again with the current models, confirming the estimated cost',
+      'Analyse the library again with the current models, confirming the estimated cost; everything also redoes photos already analysed by the current vision model',
     params: NOTHING,
     query: NOTHING,
     body: PHOTO_AI_REANALYSE,

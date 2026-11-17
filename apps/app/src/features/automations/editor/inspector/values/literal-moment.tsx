@@ -13,6 +13,7 @@ import {
 } from './literal-model';
 import type { LiteralProps } from './literal-scalar';
 import type { FieldControl } from '../schema-fields';
+import { useHour24 } from '../../../../../store/clock-format';
 
 type MomentControl = Extract<FieldControl, { t: 'moment' }>;
 
@@ -23,6 +24,7 @@ export function MomentLiteral({
   disabled,
   onChange,
 }: LiteralProps<MomentControl>): ReactNode {
+  const hour24 = useHour24();
   const showsDay = control.of !== 'timeOfDay';
   const showsTime = control.of !== 'date';
   const time =
@@ -43,6 +45,7 @@ export function MomentLiteral({
       ) : null}
       {showsTime ? (
         <TimeField
+          hour24={hour24}
           label={label}
           value={timeOfDayParts(time)}
           onChange={(next) => {

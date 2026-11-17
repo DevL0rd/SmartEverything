@@ -10,7 +10,8 @@ import { commitContent, type ChangeEnv } from './changes';
 import { locate, TMP_DIRECTORY, type DriveWriteRoot } from './intents';
 import { checkDriveFreeSpace, checkDriveQuota } from './quotas';
 import { readDriveSettings } from './settings';
-import { stagedUpload } from './uploads-tus-content';
+import type { DriveActivity } from './activity';
+import { stagedUpload, type StagedEnv } from './uploads-tus-content';
 import { destinationOf, relPathOf } from './uploads-tus-target';
 import {
   absent,
@@ -38,10 +39,11 @@ import {
 } from './uploads-tus-wire';
 import type { DataSpaceProbe } from './data-space';
 
-export interface TusEnv extends ChangeEnv {
+export interface TusEnv extends StagedEnv {
   readonly store: ChangeEnv['store'] & Pick<Store, 'driveUploads' | 'driveQuotas' | 'settingsKv'>;
   readonly space: DataSpaceProbe['space'];
   readonly completed: (item: DriveItem) => void;
+  readonly activity: Pick<DriveActivity, 'around'>;
   readonly authenticate: (request: IncomingMessage) => TusCaller | null;
 }
 
@@ -302,7 +304,7 @@ export class TusUploads {
     const { upload, offset, claim } = write;
     const root = this.rootOf(upload);
     const handle = await open(await locate(root, tmpPath(upload.id)), 'r+');
-    const hash = createHash('sha256');
+    const hash = claim === undefined ? null : createHash('sha256');
     try {
       const chunks: AsyncIterable<Uint8Array> = request;
       let written = 0;
@@ -312,10 +314,10 @@ export class TusUploads {
           throw new TusError(413, 'The chunk passes the declared upload length.');
         }
         await this.writeAt(handle, chunk, offset + written);
-        hash.update(chunk);
+        hash?.update(chunk);
         written += chunk.byteLength;
       }
-      if (claim !== undefined && claim !== hash.digest('hex')) {
+      if (hash !== null && claim !== hash.digest('hex')) {
         await handle.truncate(offset);
         throw new TusError(460, 'The checksum does not match the received bytes.');
       }
@@ -349,7 +351,14 @@ export class TusUploads {
     this.env.log.info('drive_upload.interrupted', { uploadId: upload.id, offset: size });
   }
 
-  private async commit(
+  private commit(
+    upload: DriveUpload,
+    caller: TusCaller,
+  ): Promise<Readonly<Record<string, string>>> {
+    return this.env.activity.around(() => this.settle(upload, caller));
+  }
+
+  private async settle(
     upload: DriveUpload,
     caller: TusCaller,
   ): Promise<Readonly<Record<string, string>>> {

@@ -9,9 +9,8 @@ import {
 import type { StatusTone, Tone } from '../../../components/tone';
 import { zonedDateFormat } from '../../../format/locale';
 import { compareText } from '../../../format/text';
+import type { ClockFormat, MomentText } from '../../../format/clock-text';
 import {
-  clock24,
-  clockOfMinutes,
   DAY_MS,
   daysBetween,
   HOUR_MS,
@@ -181,13 +180,14 @@ export function alarmsSubtitleOf(
   alarms: readonly PlannerAlarmRow[],
   now: number,
   timeZone: string,
+  clockLabel: (time: string) => string,
 ): string | null {
   if (alarms.length === 0) return null;
   const soonest = soonestAlarmOf(alarms, now, timeZone);
   if (soonest === null) return 'No alarms on';
   const on = alarms.filter((alarm) => alarm.enabled).length;
   const when = `${dayWordOf(soonest.at, now, timeZone)}, in ${countdownOf(soonest.at, now)}`;
-  return `Next alarm ${soonest.alarm.time} · ${when} · ${String(on)} on`;
+  return `Next alarm ${clockLabel(soonest.alarm.time)} · ${when} · ${String(on)} on`;
 }
 
 function orderKeyOf(alarm: PlannerAlarmRow, now: number, timeZone: string): number {
@@ -209,9 +209,9 @@ export function alarmsInRingOrder(
   return keyed.map((entry) => entry.alarm);
 }
 
-export function wakeRoutineTimeOf(alarm: PlannerAlarmRow): string | null {
+export function wakeRoutineTimeOf(alarm: PlannerAlarmRow, format: ClockFormat): string | null {
   if (alarm.wake_lead_minutes === null) return null;
-  return clockOfMinutes(minuteOfClock(alarm.time) - alarm.wake_lead_minutes);
+  return format.minutes(minuteOfClock(alarm.time) - alarm.wake_lead_minutes);
 }
 
 export function watchLineOf(link: PlannerWatchLink, watch: string): WatchLine {
@@ -249,8 +249,9 @@ export function missedPillOf(dueAt: string, now: number, timeZone: string): stri
 export function missedStoryOf(
   ring: Pick<PlannerRingRow, 'missed_reason' | 'due_at'>,
   timeZone: string,
+  instant: MomentText,
 ): string {
-  const at = clock24(ring.due_at, timeZone);
+  const at = instant(ring.due_at, timeZone);
   const what =
     ring.missed_reason === null
       ? `It did not ring at ${at}.`

@@ -19,12 +19,14 @@ import {
   type DriveItem,
   type DriveUploadTarget,
 } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { commitContent, folderDraft, recordItem, type ChangeEnv } from '../../src/drive/changes';
 import type { DriveWriteRoot } from '../../src/drive/intents';
 import { updateDriveSettings } from '../../src/drive/settings';
+import { ContentHasher } from '../../src/drive/hasher';
 import { TusUploads, type TusEnv } from '../../src/drive/uploads-tus';
+import { bundleWorker } from './drive-fixture';
 import {
   writeAtPosition,
   type PositionalWrite,
@@ -38,6 +40,7 @@ import { captureLogs, testLogger } from '../support/logs';
 import type { TestStore } from '../support/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 import { driveTestStore } from './spaces-fixture';
+import { DriveActivity } from '../../src/drive/activity';
 
 const START = new Date('2026-11-07T00:00:00.000Z');
 const DAY_MS = 86_400_000;
@@ -53,9 +56,12 @@ let owner = '';
 let robin = '';
 let sam = '';
 let server: http.Server;
+let activity: DriveActivity;
 let origin = '';
 let nextIno = 1;
 let callers: Map<string, TusCaller>;
+let hasherFolder = '';
+let hasher: ContentHasher;
 
 const sha = (text: string): string =>
   Buffer.from(createHash('sha256').update(text).digest()).toString('base64');
@@ -83,6 +89,8 @@ async function startServer(
     ...changeEnv(),
     store: opened.store,
     completed,
+    activity,
+    hasher,
     space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
     authenticate: (request) => {
       const token = /^Bearer (\S+)$/.exec(request.headers.authorization ?? '')?.[1] ?? '';
@@ -261,8 +269,20 @@ function registeredBackup(): { readonly service: BackupService; readonly phoneId
   return { service, phoneId: phone.id };
 }
 
+beforeAll(async () => {
+  hasherFolder = await mkdtemp(join(tmpdir(), 'hub-upload-hasher-'));
+  const script = join(hasherFolder, 'hasher-worker.mjs');
+  await bundleWorker('hasher-worker.ts', script);
+  hasher = new ContentHasher(script);
+}, 60_000);
+
+afterAll(async () => {
+  await rm(hasherFolder, { recursive: true, force: true });
+});
+
 beforeEach(async () => {
   captureLogs();
+  activity = new DriveActivity();
   clock = START;
   opened = await driveTestStore();
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-uploads-')));
@@ -354,6 +374,15 @@ describe('creating and completing an upload', () => {
     expect(resumed.headers.get('upload-item-name')).toBe('a.txt');
     expect(opened.store.driveUploads.byId(idOf(location)).state).toBe('complete');
     expect(await tmpFiles()).toEqual([]);
+  });
+
+  it('settles the commit as hub activity so the folder watch never takes it for an outside change', async () => {
+    await startServer();
+    const location = await open(10);
+    expect(activity.generation).toBe(0);
+    expect((await patch(location, 0, '0123456789')).status).toBe(204);
+    expect(activity.generation).toBe(1);
+    expect(activity.quietSince(1)).toBe(true);
   });
 
   it('commits a file at the top of the drive', async () => {
@@ -772,6 +801,8 @@ describe('quota and free space', () => {
       ...changeEnv(),
       store: opened.store,
       completed: (): void => undefined,
+      activity,
+      hasher,
       space: () => Promise.resolve({ totalBytes: 100, freeBytes: 5 }),
       authenticate: () => callers.get('robin') ?? null,
     };
@@ -825,6 +856,8 @@ describe('quota and free space', () => {
       ...failing,
       store: opened.store,
       completed: (): void => undefined,
+      activity,
+      hasher,
       space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
       authenticate: () => callers.get('robin') ?? null,
     };

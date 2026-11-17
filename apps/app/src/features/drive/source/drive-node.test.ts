@@ -140,12 +140,18 @@ describe('node fields', () => {
     });
   });
 
-  it('gives folders a child count and the bytes they hold', () => {
+  it('gives folders a child count and the recursive files and bytes they hold', () => {
     const node = driveNodeOf(
-      folderFixture({ id: idOf(21), childCount: 4, bytes: 12_000 }),
+      folderFixture({
+        id: idOf(21),
+        childCount: 4,
+        bytes: 12_000,
+        totalBytes: 9_000_000,
+        totalFiles: 340,
+      }),
       worldContext(),
     );
-    expect(node).toMatchObject({ kind: 'folder', childCount: 4, size: 12_000 });
+    expect(node).toMatchObject({ kind: 'folder', childCount: 4, files: 340, size: 9_000_000 });
   });
 
   it('maps every mark', () => {

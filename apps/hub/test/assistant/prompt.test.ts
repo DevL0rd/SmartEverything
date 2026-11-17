@@ -15,6 +15,7 @@ function facts(change: Partial<PromptFacts>): PromptFacts {
     role: 'owner',
     homeName: 'Home',
     timeZone: 'Europe/Berlin',
+    hour24: true,
     now: new Date('2026-10-10T08:00:00.000Z'),
     boardTypes: [],
     interruption: null,
@@ -60,6 +61,14 @@ describe('the per-turn prompt', () => {
     expect(text).toContain('Person: Sam, the owner of the home.');
     expect(text).toContain('chatId chat-1');
     expect(text).toContain('Europe/Berlin');
+  });
+
+  it('shows the local time on the person’s chosen clock', () => {
+    const afternoon = new Date('2026-10-10T14:00:00.000Z');
+    expect(turnPrompt(facts({ now: afternoon }))).toContain('16:00');
+    const twelve = turnPrompt(facts({ now: afternoon, hour24: false }));
+    expect(twelve).toContain('4:00');
+    expect(twelve).not.toContain('16:00');
   });
 
   it('names the plugin board types of the home, and nothing when there are none', () => {

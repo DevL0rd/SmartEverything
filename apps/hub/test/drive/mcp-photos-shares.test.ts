@@ -244,6 +244,16 @@ describe('Photos editing and organising edits', () => {
     ]);
   });
 
+  it('writes and clears the description of one photo', async () => {
+    await edit('photo_description', { itemId: ITEM, text: 'Sunset at the harbour' });
+    await edit('photo_description', { itemId: ITEM, text: null });
+    expect(calls.map((call) => [call.name, call.params, call.body])).toEqual([
+      ['setPhotoDescription', { itemId: ITEM }, { text: 'Sunset at the harbour' }],
+      ['setPhotoDescription', { itemId: ITEM }, { text: null }],
+    ]);
+    expect(selected(DRIVE_EDIT, 'photo_description').issues({ itemId: ITEM })).not.toBeNull();
+  });
+
   it.each([
     ['nothing to change', { itemIds: [ITEM] }],
     [

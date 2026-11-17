@@ -1,6 +1,7 @@
 import {
   PHOTOS_ENDPOINTS as P,
   type PhotoAiModelsUpdate,
+  type PhotoAiReanalyse,
   type PhotoAiSettings,
 } from '@smarteverything/domain';
 import type { PhotosResult } from '../../../api/photos';
@@ -24,8 +25,8 @@ export function setPhotoAiModels(body: PhotoAiModelsUpdate): Call<'setPhotoAiMod
   return api().call(P.setPhotoAiModels, { body });
 }
 
-export function reanalysePhotos(estimateMicros: number): Call<'reanalysePhotos'> {
-  return api().call(P.reanalysePhotos, { body: { estimateMicros } });
+export function reanalysePhotos(body: PhotoAiReanalyse): Call<'reanalysePhotos'> {
+  return api().call(P.reanalysePhotos, { body });
 }
 
 export function retryFailedPhotoAi(): Call<'retryFailedPhotoAi'> {

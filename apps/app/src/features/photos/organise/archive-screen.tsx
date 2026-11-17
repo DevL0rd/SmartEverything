@@ -1,6 +1,5 @@
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
@@ -179,17 +178,6 @@ function selectAction(
     : [{ icon: 'circleCheck', label: 'Select', iconOnly: true, onPress: begin }];
 }
 
-function OfflineBanner(): ReactNode {
-  return (
-    <Banner
-      tone="info"
-      title="Offline · showing the last snapshot"
-      body="Unarchiving and moving need your home hub."
-      wrapBody
-    />
-  );
-}
-
 export function ArchiveScreen(): ReactNode {
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const live = useSyncStatus().status === 'live';
@@ -217,7 +205,6 @@ export function ArchiveScreen(): ReactNode {
       scroll={false}
       actions={active ? [] : selectAction(feed, live, controls.begin)}
       {...pickSlotsOf(bar, active, compact)}
-      {...(live ? {} : { banner: <OfflineBanner /> })}
     >
       {feed.sources}
       <Body feed={feed} controls={controls} />

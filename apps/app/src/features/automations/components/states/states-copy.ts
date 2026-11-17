@@ -24,12 +24,6 @@ export const STATES_COPY = {
     triggerHint: 'Opens the palette to choose what starts this automation',
     stepHint: 'Opens the palette to choose what happens',
   },
-  offline: {
-    title: 'Can’t reach the Home Hub',
-    unsaved: 'Your last change is not saved. It saves when the connection returns.',
-    paused: 'Editing is paused until the connection returns.',
-    retry: 'Try again',
-  },
   missingKind: {
     title: (name: string): string => `Missing node: ${name}`,
     body: 'This node is no longer available, so the automation can’t be published.',

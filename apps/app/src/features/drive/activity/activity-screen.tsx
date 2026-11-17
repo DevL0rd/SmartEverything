@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -348,17 +347,6 @@ function NoActivity(): ReactNode {
   );
 }
 
-function StaleBanner(): ReactNode {
-  return (
-    <Banner
-      wrapBody
-      tone="info"
-      title="Offline · showing the last activity"
-      body="New changes appear when the hub is back."
-    />
-  );
-}
-
 function Body({
   loaded,
   live,
@@ -396,7 +384,6 @@ export function ActivityScreen(): ReactNode {
       title="Activity"
       scroll={false}
       {...(ready && loaded.items.length > 0 ? { subtitle: subtitleOf(view.ranged, range) } : {})}
-      {...(ready && !live ? { banner: <StaleBanner /> } : {})}
     >
       <Body loaded={loaded} live={live} parts={parts} />
     </DriveFrame>

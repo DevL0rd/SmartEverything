@@ -12,7 +12,7 @@ import type { SelectOption } from '../../../components/select-picker';
 import type { TimeOfDay } from '../../../components/time-field';
 import { twoDigits } from '../../../format/number';
 import { plural } from '../../../format/text';
-import { shortClock } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
 import type { GoogleAccountView } from '../data';
 
 export type Option = SelectOption<string>;
@@ -169,8 +169,8 @@ export function clockTextOf(time: TimeOfDay): string {
   return `${twoDigits(time.hour)}:${twoDigits(time.minute)}`;
 }
 
-export function spanText(start: string, end: string): string {
-  return `${start} to ${end}`;
+export function spanText(start: string, end: string, format: ClockFormat): string {
+  return `${format.text(start)}–${format.text(end)}`;
 }
 
 export function shownCount(shown: number, all: number): string {
@@ -186,9 +186,11 @@ export function ringsOnClient(target: PlannerRingTarget, clientId: string): bool
   return target.kind === 'client' && target.clientId === clientId;
 }
 
-export function googleRowText(view: GoogleAccountView): string {
+export function googleRowText(view: GoogleAccountView, format: ClockFormat): string {
   if (view.needsAttention) return 'Needs attention';
   if (!view.linked) return 'Not linked';
   const linked = view.email === null ? 'Linked' : `Linked as ${view.email}`;
-  return view.lastSyncAt === null ? linked : `${linked} · synced ${shortClock(view.lastSyncAt)}`;
+  return view.lastSyncAt === null
+    ? linked
+    : `${linked} · synced ${format.instant(view.lastSyncAt)}`;
 }

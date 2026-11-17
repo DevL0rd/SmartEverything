@@ -1,7 +1,6 @@
 import {
   ApiError,
   type DriveFeedOp,
-  type DriveFeedRow,
   type DriveItem,
   type DriveOfflineItem,
   type DriveOfflineReport,
@@ -11,6 +10,7 @@ import { z } from 'zod';
 import { background, type Logger } from '@smarteverything/logging';
 import type { PushCommandChannel } from '../extensions/push/commands';
 import type { DriveOfflineKey } from '../store/repositories/drive-offline';
+import { Coalesced } from '../store/reader';
 import type { Store } from '../store/store';
 import { canRead, itemAccess, mayExport, type DriveActor } from './access';
 import { decodeCursor, encodeCursor } from './search';
@@ -64,12 +64,17 @@ function cursorOf(key: DriveOfflineKey | null): string | null {
 
 export class DriveOffline {
   private seen: number;
-  private busy = false;
-  private again = false;
+  private readonly pass: Coalesced;
   private stopFeed: (() => void) | undefined;
 
   constructor(private readonly env: OfflineEnv) {
     this.seen = env.store.driveFeed.latestSeq();
+    this.pass = new Coalesced(
+      () => this.drain(),
+      (cause) => {
+        env.log.error('drive.offline_catch_up_failed', cause);
+      },
+    );
   }
 
   start(): () => void {
@@ -79,6 +84,7 @@ export class DriveOffline {
     return (): void => {
       this.stopFeed?.();
       this.stopFeed = undefined;
+      background(this.pass.stop(), 'drive.offline_stop_failed');
     };
   }
 
@@ -129,27 +135,10 @@ export class DriveOffline {
   }
 
   private catchUp(): void {
-    if (this.busy) {
-      this.again = true;
-      return;
-    }
-    this.busy = true;
-    try {
-      do {
-        this.drain();
-      } while (this.repeat());
-    } finally {
-      this.busy = false;
-    }
+    this.pass.trigger();
   }
 
-  private repeat(): boolean {
-    const repeat = this.again;
-    this.again = false;
-    return repeat;
-  }
-
-  private drain(): void {
+  private async drain(): Promise<void> {
     const { store } = this.env;
     if (!store.driveOffline.held()) {
       this.seen = store.driveFeed.latestSeq();
@@ -157,30 +146,32 @@ export class DriveOffline {
     }
     const changed = new Map<string, Set<string>>();
     for (;;) {
-      const window = this.env.store.driveFeed.since(this.seen, FEED_BATCH);
-      for (const row of window.rows) {
-        this.seen = row.seq;
-        this.gather(row, changed);
-      }
+      const window = store.driveFeed.since(this.seen, FEED_BATCH);
+      const last = window.rows.at(-1);
+      if (last !== undefined) this.seen = last.seq;
+      this.gather(
+        window.rows.filter((row) => CHANGING.has(row.op)).map((row) => row.itemId),
+        changed,
+      );
       if (window.next === null) break;
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
     }
     for (const [clientId, itemIds] of changed) {
       this.send(clientId, [...itemIds]);
     }
   }
 
-  private gather(row: DriveFeedRow, changed: Map<string, Set<string>>): void {
-    if (!CHANGING.has(row.op)) return;
+  private gather(itemIds: readonly string[], changed: Map<string, Set<string>>): void {
+    if (itemIds.length === 0) return;
     const { store } = this.env;
-    const holders = store.driveOffline.holdersOf(row.itemId);
-    if (holders.length === 0) return;
-    const item = store.driveItems.find(row.itemId, null);
-    if (item === undefined) return;
-    for (const holder of holders) {
-      if (!this.holds(holder.profileId, item)) continue;
-      const ids = changed.get(holder.clientId) ?? new Set<string>();
+    for (const held of store.driveOffline.holdersOfEach([...new Set(itemIds)])) {
+      const item = store.driveItems.find(held.itemId, null);
+      if (item === undefined || !this.holds(held.profileId, item)) continue;
+      const ids = changed.get(held.clientId) ?? new Set<string>();
       ids.add(item.id);
-      changed.set(holder.clientId, ids);
+      changed.set(held.clientId, ids);
     }
   }
 

@@ -5,6 +5,7 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { useClockFormat } from '../../clock/format/clock-format';
 import {
   ICON_PILL,
   clusterLabel,
@@ -36,6 +37,14 @@ export function PinLines({
   ));
 }
 
+function PillText({ text }: { readonly text: string }): ReactNode {
+  return (
+    <Text variant="caption" tone="onPrimaryContainer" numberOfLines={1} className="tabular shrink">
+      {text}
+    </Text>
+  );
+}
+
 function ClusterPill({
   cluster,
   hourHeight,
@@ -47,6 +56,7 @@ function ClusterPill({
   readonly text: boolean;
   readonly onWidth: (key: string, width: number) => void;
 }): ReactNode {
+  const format = useClockFormat();
   return (
     <View
       pointerEvents="box-none"
@@ -62,7 +72,7 @@ function ClusterPill({
       >
         <Interactive
           href={href.clock.alarms()}
-          label={clusterLabel(cluster)}
+          label={clusterLabel(cluster, format)}
           hitSlop={PILL_SLOP}
           className={cn(
             'flex-row items-center rounded-full bg-primary-container',
@@ -71,16 +81,7 @@ function ClusterPill({
           layerClassName="rounded-full"
         >
           <Icon name="alarmClock" size={text ? 16 : 14} tone="onPrimaryContainer" />
-          {text ? (
-            <Text
-              variant="caption"
-              tone="onPrimaryContainer"
-              numberOfLines={1}
-              className="tabular shrink"
-            >
-              {clusterText(cluster, false)}
-            </Text>
-          ) : null}
+          {text ? <PillText text={clusterText(cluster, false, format)} /> : null}
         </Interactive>
       </View>
     </View>

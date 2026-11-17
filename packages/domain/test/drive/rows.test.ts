@@ -165,6 +165,8 @@ describe('DRIVE_ITEM', () => {
         kind: 'folder',
         childCount: 2,
         bytes: 3,
+        totalBytes: 3,
+        totalFiles: 2,
         colour: null,
         iconHint: false,
       }).success,

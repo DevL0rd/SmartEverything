@@ -37,6 +37,7 @@ import {
   type LoadBucket,
 } from './insights-model';
 import { kpisOf } from './summary-model';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 const KPI_COLUMNS = { compact: 2, medium: 3, expanded: 5 } as const;
 const DONUT_SIZE = 112;
@@ -127,14 +128,17 @@ export function DoneHeatCard({ stats }: { readonly stats: PlannerStats }): React
 
 export function HoursCard({ stats }: { readonly stats: PlannerStats }): ReactNode {
   const peak = peakHourOf(stats);
+  const format = useClockFormat();
   return (
     <Card title="When you get things done" className="grow">
-      <Caption text={peak === null ? 'Nothing done yet' : `Best ${hourWindowOf(peak)}`} />
+      <Caption text={peak === null ? 'Nothing done yet' : `Best ${hourWindowOf(peak, format)}`} />
       <Bars
-        bars={hourBarsOf(stats)}
+        bars={hourBarsOf(stats, format)}
         colour="primary"
         label={
-          peak === null ? 'Done by hour, nothing yet' : `Done by hour, best ${hourWindowOf(peak)}`
+          peak === null
+            ? 'Done by hour, nothing yet'
+            : `Done by hour, best ${hourWindowOf(peak, format)}`
         }
         height={72}
         {...(peak === null ? {} : { highlightKey: String(peak) })}

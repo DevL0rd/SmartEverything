@@ -66,7 +66,6 @@ vi.mock('../../../store/mutation', () => ({
 vi.mock('./read-only-row', () => ({ ReadOnlyRow: (): null => null }));
 vi.mock('./revoke-access', () => ({
   useHubLive: (): boolean => fixture.live,
-  useOfflineBanner: (): undefined => undefined,
 }));
 
 const { TokensScreen } = await import('./tokens-screen');

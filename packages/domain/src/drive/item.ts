@@ -118,8 +118,10 @@ export const DRIVE_ITEM = z
     z.strictObject({
       ...BASE,
       kind: z.literal('folder'),
-      childCount: COUNT,
-      bytes: COUNT,
+      childCount: COUNT.describe('Entries directly inside the folder'),
+      bytes: COUNT.describe('Bytes of the files directly inside the folder'),
+      totalBytes: COUNT.describe('Bytes of every file in the folder and all its subfolders'),
+      totalFiles: COUNT.describe('Files in the folder and all its subfolders'),
       colour: DRIVE_FOLDER_COLOUR.nullable().describe('The viewer’s own colour for the folder'),
       iconHint: z.boolean().describe('The folder holds an icon file the folder glyph shows'),
     }),

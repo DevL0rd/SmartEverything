@@ -65,7 +65,7 @@ vi.mock('../components/drive-frame', () => ({
   }: {
     readonly children: ReactNode;
     readonly banner?: ReactNode;
-  }): ReactNode => createElement('main', {}, banner, children),
+  }): ReactNode => createElement('main', {}, banner === undefined ? null : 'page banner', children),
 }));
 vi.mock('../../../components/segmented', () => ({ Segmented: (): null => null }));
 vi.mock('../components/drive-chip', () => ({
@@ -111,8 +111,6 @@ vi.mock('./recent-states', () => ({
   RecentEmpty: ({ live }: { readonly live: boolean }): ReactNode =>
     createElement('p', {}, live ? 'empty' : 'offline'),
   RecentFooter: (): null => null,
-  RecentStaleBanner: (): ReactNode => createElement('aside', {}, 'stale'),
-  recentStale: (hasData: boolean, live: boolean): boolean => hasData && !live,
 }));
 vi.mock('../../../components/virtual-list', () => ({
   VirtualList: <T>(props: {
@@ -236,10 +234,10 @@ describe('RecentScreen', () => {
     const html = await render();
     expect(html).toContain('empty');
     expect(html).not.toContain('chart');
-    expect(html).not.toContain('stale');
+    expect(html).not.toContain('page banner');
   });
 
-  it('keeps the loaded files under an offline banner when the hub drops', async () => {
+  it('keeps the loaded files without a page banner when the hub drops', async () => {
     seen.status = 'offline';
     seen.pages = pagesOf(
       [
@@ -252,7 +250,7 @@ describe('RecentScreen', () => {
       null,
     );
     const html = await render();
-    expect(html).toContain('stale');
+    expect(html).not.toContain('page banner');
     expect(html).toContain('Opened');
   });
 
@@ -261,7 +259,7 @@ describe('RecentScreen', () => {
     seen.pages = { ...pagesOf([], null), data: undefined, isPending: true };
     const html = await render();
     expect(html).toContain('offline');
-    expect(html).not.toContain('stale');
+    expect(html).not.toContain('page banner');
   });
 
   it('shows a member their own writes as theirs and the owner by name', async () => {

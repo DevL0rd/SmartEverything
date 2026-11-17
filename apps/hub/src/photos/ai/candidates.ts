@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { StoreContext } from '../../store/context';
+import type { StoreReader } from '../../store/reader';
 import { librarySubjectScope } from './scope';
 import type { PhotoAiKind } from './queue';
 
@@ -26,8 +26,11 @@ const EXTRA: Readonly<Record<PhotoAiKind, string>> = {
   pet_embed: `${ANALYSED} and json_array_length(a.pets) > 0) and ${VISION_PENDING}`,
 };
 
-export function candidatesOf(context: StoreContext, kind: PhotoAiKind): Candidate[] {
-  return context.sql.all(
+export function candidatesOf(
+  reader: Pick<StoreReader, 'all'>,
+  kind: PhotoAiKind,
+): Promise<Candidate[]> {
+  return reader.all(
     CANDIDATE,
     `select i.id, i.rev, r.owner_profile_id as owner
       from drive_media m cross join drive_items i on i.id = m.item_id

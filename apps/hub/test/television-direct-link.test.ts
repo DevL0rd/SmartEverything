@@ -81,6 +81,12 @@ function addTelevision(
 }
 
 async function startHubWithoutAccounts(): Promise<RunningHub> {
+  const hub = await bootHubWithoutAccounts();
+  await hub.providersStarted;
+  return hub;
+}
+
+async function bootHubWithoutAccounts(): Promise<RunningHub> {
   const secrets = await SecretStore.open(join(opened.directory, 'secrets'), Buffer.alloc(32, 5));
   return startHub({
     store: opened.store,

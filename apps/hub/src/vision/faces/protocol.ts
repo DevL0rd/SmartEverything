@@ -3,6 +3,8 @@ import { FACE_EMBEDDING_SIZE } from '../models';
 
 const FRACTION = z.number().min(0).max(1);
 
+const BYTES = z.custom<Uint8Array>((value) => value instanceof Uint8Array);
+
 export const FACE_INIT = z.strictObject({
   directory: z.string().min(1),
   threads: z.int().positive(),
@@ -10,11 +12,21 @@ export const FACE_INIT = z.strictObject({
 
 export type FaceInit = z.infer<typeof FACE_INIT>;
 
+export const FACE_IMAGE = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('rgb'),
+    width: z.int().positive(),
+    height: z.int().positive(),
+    data: BYTES,
+  }),
+  z.strictObject({ kind: z.literal('encoded'), bytes: BYTES }),
+]);
+
+export type FaceImage = z.infer<typeof FACE_IMAGE>;
+
 export const FACE_REQUEST = z.strictObject({
   id: z.int().nonnegative(),
-  width: z.int().positive(),
-  height: z.int().positive(),
-  data: z.instanceof(Uint8Array),
+  image: FACE_IMAGE,
 });
 
 export type FaceRequest = z.infer<typeof FACE_REQUEST>;

@@ -132,8 +132,19 @@ export function captionOf(node: FileNode): string | null {
   const unavailable = node.marks.shortcut?.unavailable ?? null;
   if (unavailable !== null) return unavailable;
   if (node.entry !== null) return node.entry.line;
-  if (node.kind === 'folder') return node.childCount === null ? null : itemsLine(node.childCount);
+  if (node.kind === 'folder') return folderCaptionOf(node);
   return node.size === null ? null : bytes(node.size);
+}
+
+export function filesLine(files: number): string {
+  return `${count(files)} ${files === 1 ? 'file' : 'files'}`;
+}
+
+function folderCaptionOf(node: FileNode): string | null {
+  if (node.files !== null) {
+    return joinParts([filesLine(node.files), node.size === null ? null : bytes(node.size)]);
+  }
+  return node.childCount === null ? null : itemsLine(node.childCount);
 }
 
 export function detailLineOf(node: FileNode): string {

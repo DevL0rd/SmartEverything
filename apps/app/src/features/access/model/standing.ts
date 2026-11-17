@@ -14,6 +14,7 @@ import {
 import { joinParts } from '../../../format/text';
 import { DAY_MS, HOUR_MS, MINUTE_MS, relative } from '../../../format/time';
 import type { BadgeTone } from '../../../components/badge';
+import type { ClockFormat } from '../../../format/clock-text';
 
 export const PERSON_ROLE_LABEL: Readonly<Record<PersonRole, string>> = {
   owner: 'Owner',
@@ -120,14 +121,16 @@ export function standingTone(standing: Standing): BadgeTone {
   }
 }
 
-export function windowText(schedule: QuietHours | null): string {
-  return schedule === null ? 'Never paused' : `${schedule.from}–${schedule.to}`;
+export function windowText(schedule: QuietHours | null, format: ClockFormat): string {
+  return schedule === null
+    ? 'Never paused'
+    : `${format.text(schedule.from)}–${format.text(schedule.to)}`;
 }
 
-export function conditionsText(conditions: AccessConditions): string {
+export function conditionsText(conditions: AccessConditions, format: ClockFormat): string {
   const text = joinParts([
     conditions.home_only ? 'Home network only' : null,
-    conditions.schedule === null ? null : `Paused ${windowText(conditions.schedule)}`,
+    conditions.schedule === null ? null : `Paused ${windowText(conditions.schedule, format)}`,
   ]);
   return text === '' ? 'No limits' : text;
 }

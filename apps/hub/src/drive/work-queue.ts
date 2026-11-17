@@ -4,6 +4,7 @@ import { background } from '@smarteverything/logging';
 export interface WorkQueueOptions<J> {
   readonly concurrency: number;
   readonly keyOf: (job: J) => string;
+  readonly merge: (queued: J, next: J) => J;
   readonly run: (job: J, signal: AbortSignal) => Promise<void>;
   readonly failed: (job: J, cause: unknown) => void;
 }
@@ -24,11 +25,9 @@ export class WorkQueue<J> {
   enqueue(job: J): void {
     if (this.abort.signal.aborted) return;
     const key = this.options.keyOf(job);
-    if (this.running.has(key)) {
-      this.again.set(key, job);
-      return;
-    }
-    this.queued.set(key, job);
+    const waiting = this.running.has(key) ? this.again : this.queued;
+    const known = waiting.get(key);
+    waiting.set(key, known === undefined ? job : this.options.merge(known, job));
     this.pump();
   }
 

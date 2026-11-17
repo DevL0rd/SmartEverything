@@ -28,7 +28,3 @@ export const SOURCE_COPY: Readonly<Record<PhotoSource, SourceCopy>> = {
     keepFailure: 'The images were not kept',
   },
 };
-
-export const SOURCES_OFFLINE_TITLE = 'The hub is offline';
-
-export const SOURCES_OFFLINE_BODY = 'Showing what you saw last. Keeping needs your home hub.';

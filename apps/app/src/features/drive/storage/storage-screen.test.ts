@@ -144,9 +144,14 @@ describe('Storage screen states', () => {
     expect(parts()).toEqual(['offline']);
   });
 
-  it('keeps the last numbers under a banner when the hub drops', () => {
-    state.query = { data: STATS, isError: false, error: null };
+  it('keeps the last numbers without a page banner when the hub drops', () => {
+    state.query = { data: STATS, isError: true, error: new Error('gone') };
     state.live = false;
+    expect(parts()).toEqual(['columns-owner']);
+  });
+
+  it('keeps the last numbers under a banner when a read fails', () => {
+    state.query = { data: STATS, isError: true, error: new Error('gone') };
     expect(parts()).toEqual(['stale', 'columns-owner']);
   });
 

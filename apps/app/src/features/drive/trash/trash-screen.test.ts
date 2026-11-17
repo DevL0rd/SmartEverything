@@ -284,10 +284,10 @@ describe('Trash screen', () => {
     expect(seen.top?.deleteAll?.disabled).toBe(true);
   });
 
-  it('shows the offline banner and turns the actions off while the hub is away', () => {
+  it('turns the actions off while the hub is away and leaves the offline notice to the app', () => {
     seen.live = false;
     const html = render();
-    expect(html).toContain('Offline · showing the last snapshot');
+    expect(html).not.toContain('Offline');
     expect(seen.top?.deleteAll?.disabled).toBe(true);
   });
 

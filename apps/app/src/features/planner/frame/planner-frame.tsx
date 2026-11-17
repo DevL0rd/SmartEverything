@@ -4,7 +4,6 @@ import { router, useIsFocused } from 'expo-router';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { mainPageSettings } from '../../../app-shell/main-pages';
-import { Banner } from '../../../components/banner';
 import type { MenuItem } from '../../../components/menu';
 import { PANE_HANDLE_WIDTH } from '../../../components/docked-pane';
 import { asideFitOf, type AsideFit } from '../../../components/page-shell/layout';
@@ -75,17 +74,6 @@ function refreshItemOf(refresh: Refresh): MenuItem {
     disabled: refresh.refreshing,
     onPress: refresh.onRefresh,
   };
-}
-
-function OfflineBanner(): ReactNode {
-  return (
-    <Banner
-      tone="info"
-      title="Can’t reach the hub"
-      body="Changes wait for the hub. Alarms set on this device still ring."
-      wrapBody
-    />
-  );
 }
 
 interface Refresh {
@@ -292,7 +280,6 @@ export function PlannerFrame({
         {...(dockable ? { aside } : {})}
         {...(top.toolbar === undefined ? {} : { toolbar: top.toolbar })}
         {...(search === undefined ? {} : { search })}
-        {...(frame.offline ? { banner: <OfflineBanner /> } : {})}
       >
         {children}
         <QuickAddComposer

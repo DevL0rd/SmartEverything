@@ -10,6 +10,7 @@ import { useMinute } from '../../../store/clock';
 import type { AccessActions } from '../data/access-data';
 import { END_PRESETS, endAfter, endsText, windowText } from '../model/standing';
 import { PausedWindowSheet } from './paused-window-sheet';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 const NEVER = 'never';
 
@@ -64,6 +65,7 @@ export function HomeOnlyRow({ access, actions }: RowProps): ReactNode {
 
 export function PausedRow({ access, actions }: RowProps): ReactNode {
   const [open, setOpen] = useState(false);
+  const format = useClockFormat();
   return (
     <>
       <ListRow
@@ -71,7 +73,7 @@ export function PausedRow({ access, actions }: RowProps): ReactNode {
         subtitle="Hours when this person cannot use the home"
         wrapSubtitle
         icon="moon"
-        value={windowText(access.conditions.schedule)}
+        value={windowText(access.conditions.schedule, format)}
         chevron
         onPress={() => {
           setOpen(true);

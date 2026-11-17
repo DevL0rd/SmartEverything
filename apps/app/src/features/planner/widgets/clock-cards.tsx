@@ -1,15 +1,14 @@
 import type { PlannerAlarmRow, PlannerRingRow, PlannerTimerRow } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
-import { Figure } from '../../../components/figure';
+import { ClockFigure } from '../../clock/format/clock-figure';
+import { useClockLabel, useInstantClock } from '../../clock/format/clock-format';
 import { IconButton } from '../../../components/icon-button';
 import { Skeleton } from '../../../components/skeleton';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
-import { notifyFailure } from '../../../components/toast-store';
 import {
   WidgetEmpty,
   WidgetFrame,
@@ -40,7 +39,7 @@ import {
   ringsQuery,
   usePlannerAlarms,
   usePlannerTimers,
-  usePlannerWrites,
+  useShownAlarm,
   useVisibleMinute,
 } from '../data';
 import {
@@ -82,17 +81,18 @@ const DIVIDER = 1;
 
 const GONE_BODY = 'It was deleted, or it belongs to someone else.';
 
-function AlarmFace({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
+function AlarmFace({ alarm: row }: { readonly alarm: PlannerAlarmRow }): ReactNode {
   const offline = useHubOffline();
   const timeZone = useSettings().time_zone;
-  const writes = usePlannerWrites(null);
+  const { alarm, save } = useShownAlarm(null, row);
   const ref = useRef<View>(null);
   const minute = useVisibleMinute(ref);
+  const clockLabel = useClockLabel();
   const label = alarmLabelOf(alarm);
   return (
     <WidgetFrame {...ALARM_FRAME} badge={offline ? <WidgetOffline /> : null}>
       <View ref={ref} onLayout={minute.onLayout} className="flex-1 flex-row items-center gap-4">
-        <Figure value={alarm.time} size="m" tone={alarm.enabled ? 'default' : 'variant'} />
+        <ClockFigure time={alarm.time} size="m" tone={alarm.enabled ? 'default' : 'variant'} />
         <View className="min-w-0 flex-1 gap-0.5">
           <Text variant="body-strong" numberOfLines={1}>
             {label}
@@ -104,14 +104,9 @@ function AlarmFace({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
         <Switch
           value={alarm.enabled}
           onChange={(enabled) => {
-            background(
-              writes
-                .updateAlarm(alarm, { enabled })
-                .catch(notifyFailure('Couldn’t change that alarm')),
-              'clock.alarm_widget_failed',
-            );
+            save({ enabled });
           }}
-          label={`Alarm ${alarm.time} ${label}`}
+          label={`Alarm ${clockLabel(alarm.time)} ${label}`}
           disabled={offline}
         />
       </View>
@@ -157,6 +152,7 @@ function TimerButton({ view }: { readonly view: TimerView }): ReactNode {
 }
 
 function TimerFace({ view }: { readonly view: TimerView }): ReactNode {
+  const instant = useInstantClock();
   return (
     <View className="flex-1 flex-row items-center gap-4">
       <TimerDial view={view} size="row" />
@@ -169,7 +165,7 @@ function TimerFace({ view }: { readonly view: TimerView }): ReactNode {
           {view.phase === 'ringing' ? <Badge label="Ringing" tone="primary" icon="bell" /> : null}
         </View>
         <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-          {timerLineOf(view)}
+          {timerLineOf(view, instant)}
         </Text>
       </View>
       <TimerButton view={view} />
@@ -255,7 +251,7 @@ function NextAlarm({
       <Text variant="caption" tone="variant" numberOfLines={1}>
         {`Next alarm · ${alarmLabelOf(ring.alarm)}`}
       </Text>
-      <Figure value={ring.alarm.time} size="m" />
+      <ClockFigure time={ring.alarm.time} size="m" />
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
         {`${dayWordOf(ring.at, now, timeZone)} · in ${countdownOf(ring.at, now)}`}
       </Text>
@@ -274,12 +270,13 @@ function LaterAlarms({
   readonly now: number;
   readonly timeZone: string;
 }): ReactNode {
+  const clockLabel = useClockLabel();
   return (
     <View className="min-w-0 flex-1 gap-1">
       {rings.slice(0, count).map((ring) => (
         <View key={ring.alarm.id} className="flex-row items-center gap-2">
-          <Text variant="footnote" className="w-11 shrink-0 font-mono tabular">
-            {ring.alarm.time}
+          <Text variant="footnote" className="min-w-11 shrink-0 font-mono tabular">
+            {clockLabel(ring.alarm.time)}
           </Text>
           <Text variant="footnote" tone="variant" className="min-w-9 shrink-0">
             {dayTokenOf(ring.at, now, timeZone)}

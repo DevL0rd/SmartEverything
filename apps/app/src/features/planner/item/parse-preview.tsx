@@ -8,7 +8,8 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { clock, clock24, duration, localDayKey } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
+import { clock24, duration, localDayKey } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { usePlannerTools, type PlannerPerson, type PlannerTools } from '../data';
 import type { QuickAddTarget } from '../frame/quick-add-bar';
@@ -179,6 +180,7 @@ function repeatChips(repeat: string): readonly WillAddChip[] {
 export interface Today {
   readonly now: number;
   readonly timeZone: string;
+  readonly format: ClockFormat;
 }
 
 function whenChip(draft: Draft, today: Today): WillAddChip | null {
@@ -187,13 +189,13 @@ function whenChip(draft: Draft, today: Today): WillAddChip | null {
     const day = dayLabelOf(start.slice(0, 10), today);
     const end = draft.end_local?.slice(11, 16);
     const span = start.includes('T')
-      ? ` ${start.slice(11, 16)}${end === undefined ? '' : ` to ${end}`}`
+      ? ` ${today.format.text(start.slice(11, 16))}${end === undefined ? '' : ` to ${today.format.text(end)}`}`
       : '';
     return chip('when', `${day}${span}`, 'clock');
   }
   if (draft.due_at !== null) {
     const day = dayLabelOf(localDayKey(draft.due_at, today.timeZone), today);
-    return chip('when', `${day} ${clock(draft.due_at, today.timeZone)}`, 'clock');
+    return chip('when', `${day} ${today.format.instant(draft.due_at, today.timeZone)}`, 'clock');
   }
   return draft.due_date === null ? null : chip('when', dayLabelOf(draft.due_date, today), 'clock');
 }
@@ -234,7 +236,7 @@ function alarmChips(bodies: readonly AlarmDraft[], today: Today): readonly WillA
   if (first === undefined) return [];
   return [
     chip('kind', bodies.length === 1 ? 'Alarm' : `${String(bodies.length)} alarms`, 'alarmClock'),
-    chip('time', bodies.map((alarm) => alarm.time).join(' and '), 'clock'),
+    chip('time', bodies.map((alarm) => today.format.text(alarm.time)).join(' and '), 'clock'),
     chip('repeat', alarmDaysText(first, today), 'repeat'),
     ...(first.label === null ? [] : [chip('label', first.label, 'pencil')]),
   ];
@@ -274,7 +276,7 @@ export function nextLineOf(
   const [next] = parsed.next_occurrences;
   if (next === undefined) return null;
   const day = dayLabelOf(localDayKey(next, today.timeZone), today);
-  return `Next: ${day} ${clock(next, today.timeZone)}`;
+  return `Next: ${day} ${today.format.instant(next, today.timeZone)}`;
 }
 
 export function readingOf(

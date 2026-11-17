@@ -80,14 +80,16 @@ export class DeviceMetricsRepository {
     });
   }
 
-  prune(resolution: StoredResolution, before: string): void {
-    this.context.write(() => {
+  prune(resolution: StoredResolution, before: string, rows: number): number {
+    return this.context.write(() =>
       this.context.sql.run(
         'drop old device metrics',
-        'delete from device_metrics where resolution = $resolution and bucket_start < $before',
-        { resolution, before },
-      );
-    });
+        `delete from device_metrics where (device_id, capability, resolution, bucket_start) in
+           (select device_id, capability, resolution, bucket_start from device_metrics
+             where resolution = $resolution and bucket_start < $before order by bucket_start limit $rows)`,
+        { resolution, before, rows },
+      ),
+    );
   }
 
   series(

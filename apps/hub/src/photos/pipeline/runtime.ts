@@ -4,6 +4,8 @@ import { resolveInRoot } from '../../drive/paths';
 import { DriveMediaRepository } from '../../store/repositories/drive-media';
 import { DriveMediaJobsRepository } from '../../store/repositories/drive-media-jobs';
 import type { DriveDeps } from '../../server/handlers/drive-wiring';
+import { Coalesced } from '../../store/reader';
+import { inSlices } from '../../store/slices';
 import { announcePhotosProgress } from '../progress';
 import { HeicPool, heicDecoder, heicPoolEnvironment } from './heic';
 import { MediaJobRunner, defaultLimits } from './jobs';
@@ -30,7 +32,7 @@ export class PhotoPipeline {
   readonly decoders = new PreviewDecoders();
   private readonly media: DriveMediaRepository;
   private readonly pool: HeicPool;
-  private reconciling = false;
+  private readonly pass: Coalesced;
   private unsubscribe: (() => void) | null = null;
 
   constructor(private readonly deps: PhotoPipelineDeps) {
@@ -38,6 +40,12 @@ export class PhotoPipeline {
     const jobs = new DriveMediaJobsRepository(deps.parts.context);
     this.media = new DriveMediaRepository(deps.parts.context);
     this.pool = new HeicPool(heicPoolEnvironment(log));
+    this.pass = new Coalesced(
+      () => this.reconcile(),
+      (cause) => {
+        log.error('photos.reconcile_failed', cause);
+      },
+    );
     this.runner = new MediaJobRunner({
       jobs,
       limits: defaultLimits(),
@@ -74,44 +82,54 @@ export class PhotoPipeline {
 
   start(): void {
     this.unsubscribe = this.deps.store.feed.subscribeNotices((notice) => {
-      if (notice.type === 'drive_changed') this.reconcile();
+      if (notice.type === 'drive_changed') this.refresh();
     });
-    this.reconcile();
+    this.refresh();
     this.runner.start();
   }
 
   async stop(): Promise<void> {
     this.unsubscribe?.();
+    await this.pass.stop();
     await this.runner.stop();
     await this.pool.close();
   }
 
-  reconcile(): void {
-    if (this.reconciling) return;
-    this.reconciling = true;
-    try {
-      const candidates = this.deps.parts.context.sql.all(
-        CANDIDATE,
-        `select i.id from drive_media m cross join drive_items i on i.id = m.item_id
+  refresh(): void {
+    this.pass.trigger();
+  }
+
+  async idle(): Promise<void> {
+    do {
+      await this.pass.idle();
+      await this.runner.idle();
+    } while (this.pass.busy);
+  }
+
+  async reconcile(): Promise<void> {
+    const candidates = await this.deps.store.reader.all(
+      CANDIDATE,
+      `select i.id from drive_media m cross join drive_items i on i.id = m.item_id
        where (i.kind = 'image' and m.preview_state = 'none' and not exists
          (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'preview'))
           or (i.kind = 'video' and ((m.poster_state = 'none' and not exists
          (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'poster'))
           or (m.playable_state = 'none' and not exists
          (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'playable'))))`,
-      );
-      for (const { id } of candidates) {
-        const item = this.deps.store.driveItems.byId(id, null);
-        const media = this.media.byId(id);
-        this.runner.itemChanged(item);
-        if (item.kind === 'image' && media.preview_state === 'none') this.request(item, 'preview');
-        if (item.kind === 'video' && media.poster_state === 'none') this.request(item, 'poster');
-        if (item.kind === 'video' && media.playable_state === 'none')
-          this.request(item, 'playable');
-      }
-    } finally {
-      this.reconciling = false;
-    }
+    );
+    await inSlices(this.deps.parts.context, candidates, ({ id }) => {
+      this.requestFor(id);
+    });
+  }
+
+  private requestFor(id: string): void {
+    const item = this.deps.store.driveItems.find(id, null);
+    const media = this.media.find(id);
+    if (item === undefined || media === undefined) return;
+    this.runner.itemChanged(item);
+    if (item.kind === 'image' && media.preview_state === 'none') this.request(item, 'preview');
+    if (item.kind === 'video' && media.poster_state === 'none') this.request(item, 'poster');
+    if (item.kind === 'video' && media.playable_state === 'none') this.request(item, 'playable');
   }
 
   private request(item: DriveItem, kind: 'preview' | 'poster' | 'playable'): void {

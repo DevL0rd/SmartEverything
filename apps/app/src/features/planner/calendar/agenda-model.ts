@@ -4,7 +4,7 @@ import type {
   PlannerOccurrenceView,
 } from '@smarteverything/domain';
 import { joinParts } from '../../../format/text';
-import { clock24 } from '../../../format/time';
+import type { MomentText } from '../../../format/clock-text';
 import { LOOK_WORDS, type EventLook } from './calendars-model';
 import {
   countsOf,
@@ -49,17 +49,18 @@ function timesOf(
   view: PlannerOccurrenceView,
   day: string,
   timeZone: string,
+  instant: MomentText,
 ): { readonly time: string; readonly until: string | null } {
   if (view.all_day) return { time: 'All day', until: null };
   if (view.start === null) {
     return {
-      time: view.due_at === null ? 'Any time' : clock24(view.due_at, timeZone),
+      time: view.due_at === null ? 'Any time' : instant(view.due_at, timeZone),
       until: null,
     };
   }
   const [first, last] = timedSpanOf(view.start, view.end, timeZone);
-  const until = view.end === null || last !== day ? null : clock24(view.end, timeZone);
-  if (first === day) return { time: clock24(view.start, timeZone), until };
+  const until = view.end === null || last !== day ? null : instant(view.end, timeZone);
+  if (first === day) return { time: instant(view.start, timeZone), until };
   return until === null
     ? { time: 'All day', until: null }
     : { time: `Until ${until}`, until: null };
@@ -69,15 +70,16 @@ export interface EntryContext {
   readonly collections: readonly PlannerCollectionRow[];
   readonly timeZone: string;
   readonly look: EventLook;
+  readonly instant: MomentText;
 }
 
 export function agendaEntryOf(
   view: PlannerOccurrenceView,
   day: string,
-  { collections, timeZone, look }: EntryContext,
+  { collections, timeZone, look, instant }: EntryContext,
 ): AgendaEntry {
   const collection = collections.find((row) => row.id === view.collection_id);
-  const { time, until } = timesOf(view, day, timeZone);
+  const { time, until } = timesOf(view, day, timeZone, instant);
   const calendar = collection?.name ?? null;
   const detail = joinParts([
     calendar,
@@ -124,6 +126,7 @@ export interface AgendaInput {
   readonly timeZone: string;
   readonly query: string;
   readonly lookOf: (view: PlannerOccurrenceView) => EventLook;
+  readonly instant: MomentText;
 }
 
 function headOf(day: string, input: AgendaInput, entries: readonly AgendaEntry[]): AgendaHead {
@@ -145,6 +148,7 @@ export function agendaRowsOf(input: AgendaInput): readonly AgendaRow[] {
           collections: input.collections,
           timeZone: input.timeZone,
           look: input.lookOf(view),
+          instant: input.instant,
         }),
       )
       .filter((entry) => matchesQuery(entry, input.query));

@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -119,6 +118,34 @@ function Loading(): ReactNode {
   );
 }
 
+function Unloaded({
+  query,
+  live,
+}: {
+  readonly query: ReturnType<typeof useDriveSuggested>;
+  readonly live: boolean;
+}): ReactNode {
+  if (!live) {
+    return (
+      <EmptyState
+        icon="wifiOff"
+        title="The hub is offline"
+        body="Suggestions come back when the hub reconnects. Your files stay on the hub as they are."
+      />
+    );
+  }
+  if (!query.isError) return <Loading />;
+  return (
+    <ErrorState
+      error={query.error}
+      page
+      retry={() => {
+        background(query.refetch(), 'drive.priority_refetch_failed');
+      }}
+    />
+  );
+}
+
 function Suggestions({
   query,
   groups,
@@ -128,27 +155,7 @@ function Suggestions({
   readonly groups: readonly SuggestionGroup[];
   readonly live: boolean;
 }): ReactNode {
-  if (query.data === undefined) {
-    if (!live) {
-      return (
-        <EmptyState
-          icon="wifiOff"
-          title="The hub is offline"
-          body="Suggestions come back when the hub reconnects. Your files stay on the hub as they are."
-        />
-      );
-    }
-    if (!query.isError) return <Loading />;
-    return (
-      <ErrorState
-        error={query.error}
-        page
-        retry={() => {
-          background(query.refetch(), 'drive.priority_refetch_failed');
-        }}
-      />
-    );
-  }
+  if (query.data === undefined) return <Unloaded query={query} live={live} />;
   if (groups.length === 0) {
     return (
       <EmptyState
@@ -180,17 +187,6 @@ function Suggestions({
   );
 }
 
-function PriorityStaleBanner(): ReactNode {
-  return (
-    <Banner
-      wrapBody
-      tone="info"
-      title="Offline · showing the last suggestions"
-      body="New suggestions appear when the hub is back."
-    />
-  );
-}
-
 export function PriorityScreen(): ReactNode {
   const query = useDriveSuggested();
   const now = useMinute();
@@ -215,7 +211,6 @@ export function PriorityScreen(): ReactNode {
       section="priority"
       title="Priority"
       {...(subtitle === undefined ? {} : { subtitle })}
-      {...(!live && query.data !== undefined ? { banner: <PriorityStaleBanner /> } : {})}
     >
       <View className="gap-6">
         <Waiting tiles={tiles} />

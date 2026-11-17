@@ -14,6 +14,7 @@ import { matrixOf, type QuadrantKey, type QuadrantModel } from './matrix-model';
 import { AssigneeMark } from './assignee-mark';
 import { TaskCheck, useTaskActions } from './task-check';
 import { dueLabelOf, isOverdue, type TaskEntry, type TaskFilter } from './task-grouping';
+import { useInstantClock } from '../../clock/format/clock-format';
 
 const TITLE_TONE: Readonly<Record<QuadrantKey, Tone>> = {
   now: 'critical',
@@ -38,6 +39,7 @@ const MatrixTask = memo(function MatrixTask({
 }): ReactNode {
   const actions = useTaskActions(entry);
   const overdue = useMinuteOf((now) => isOverdue(entry, now, today));
+  const instant = useInstantClock();
   const press = useItemPress(entry.item.id, entry.occurrenceKey);
   const touch = useIdiom() === 'touch';
   return (
@@ -58,7 +60,7 @@ const MatrixTask = memo(function MatrixTask({
           {entry.item.title}
         </Text>
         <Text variant="caption" tone={overdue ? 'critical' : 'variant'} className="tabular">
-          {dueLabelOf(entry, today)}
+          {dueLabelOf(entry, today, instant)}
         </Text>
         {press.menu}
       </Interactive>

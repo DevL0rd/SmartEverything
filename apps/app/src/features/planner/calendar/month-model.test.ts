@@ -5,6 +5,7 @@ import {
   type PlannerOccurrenceView,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
+import { clockFormatOf } from '../../../format/clock-text';
 import { clock24 } from '../../../format/time';
 import { agendaRowsOf, type AgendaRow } from './agenda-model';
 import type { EventLook } from './calendars-model';
@@ -238,6 +239,7 @@ describe('the agenda', () => {
       timeZone: ZONE,
       query,
       lookOf,
+      instant: clockFormatOf(true).instant,
     });
 
   it('runs one month from the shown day', () => {

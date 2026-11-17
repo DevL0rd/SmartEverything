@@ -181,12 +181,13 @@ describe('Photos people and smart edits', () => {
 
   it('turns Smart features on and off and re-analyses with the estimate', async () => {
     await edit('smart_settings', { smartSearch: true });
-    await edit('smart_reanalyse', { estimateMicros: 1200 });
+    await edit('smart_reanalyse', { estimateMicros: 1200, everything: true });
     expect(callsOf()).toEqual([
       ['setPhotoAiSettings', { smartSearch: true }],
-      ['reanalysePhotos', { estimateMicros: 1200 }],
+      ['reanalysePhotos', { estimateMicros: 1200, everything: true }],
     ]);
     expect(selected(DRIVE_EDIT, 'smart_settings').issues({})).not.toBeNull();
+    expect(selected(DRIVE_EDIT, 'smart_reanalyse').issues({ estimateMicros: 1200 })).not.toBeNull();
   });
 });
 

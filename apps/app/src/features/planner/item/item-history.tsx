@@ -10,8 +10,8 @@ import { Text } from '../../../components/text';
 import type { TimeOfDay } from '../../../components/time-field';
 import { cn } from '../../../design/cn';
 import type { ItemChanges } from './repeat-scope-bar';
+import type { ClockFormat } from '../../../format/clock-text';
 import {
-  clock,
   clock24,
   daysBetween,
   localDayKey,
@@ -24,6 +24,7 @@ import {
 export interface FieldsToday {
   readonly now: number;
   readonly timeZone: string;
+  readonly format: ClockFormat;
 }
 
 export function dayLabelOf(day: string, today: FieldsToday): string {
@@ -34,22 +35,22 @@ export function dayLabelOf(day: string, today: FieldsToday): string {
   return longDate(`${day}T12:00:00Z`, 'UTC');
 }
 
-function spanOf(start: string, end: string | null): string {
+function spanOf(start: string, end: string | null, format: ClockFormat): string {
   if (!start.includes('T')) return end === null || end === start ? '' : ` to ${end}`;
-  const from = start.slice(11, 16);
+  const from = format.text(start.slice(11, 16));
   if (end === null) return ` ${from}`;
   const sameDay = end.slice(0, 10) === start.slice(0, 10);
-  return ` ${from} to ${sameDay ? '' : `${end.slice(0, 10)} `}${end.slice(11, 16)}`;
+  return ` ${from} to ${sameDay ? '' : `${end.slice(0, 10)} `}${format.text(end.slice(11, 16))}`;
 }
 
 export function whenTextOf(item: PlannerItemRow, today: FieldsToday): string {
   const start = item.start_local;
   if (start !== null) {
-    return `${dayLabelOf(start.slice(0, 10), today)}${spanOf(start, item.end_local)}`;
+    return `${dayLabelOf(start.slice(0, 10), today)}${spanOf(start, item.end_local, today.format)}`;
   }
   if (item.due_at !== null) {
     const day = dayLabelOf(localDayKey(item.due_at, today.timeZone), today);
-    return `${day} ${clock(item.due_at, today.timeZone)}`;
+    return `${day} ${today.format.instant(item.due_at, today.timeZone)}`;
   }
   return item.due_date === null ? 'No date' : dayLabelOf(item.due_date, today);
 }

@@ -69,6 +69,7 @@ describe('node marks and lines', () => {
       childCount: 1,
     };
     expect(captionOf(folder)).toBe('1 item');
+    expect(captionOf({ ...folder, files: 1234, size: 2048 })).toBe(`1,234 files · ${bytes(2048)}`);
     expect(captionOf(nodeOfEntry({ key: 'f', parentKey: 'p', name: 'a.txt', size: 0 }))).toBe(
       bytes(0),
     );

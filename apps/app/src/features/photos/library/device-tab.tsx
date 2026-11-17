@@ -227,8 +227,7 @@ function deviceSelectionFrame(
   const props = { controls, tiles, items: library.items, compact };
   return {
     head: <DeviceSelection {...props} />,
-    footer:
-      compact && controls.selection.ids.size > 0 ? <DeviceActionBar {...props} /> : null,
+    footer: compact && controls.selection.ids.size > 0 ? <DeviceActionBar {...props} /> : null,
   };
 }
 
@@ -251,7 +250,6 @@ export function DeviceTab(props: DeviceTabProps): ReactNode {
             : null,
         actions: deviceActions(ready, controls),
         selection: selection.head,
-        banner: null,
         footer: selection.footer,
       }}
     >

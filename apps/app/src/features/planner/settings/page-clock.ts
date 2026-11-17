@@ -1,8 +1,10 @@
 import { createElement } from 'react';
 import { PLANNER_BRIEFINGS, PLANNER_CALENDAR_VIEWS } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import type { SettingDefinition } from '../../../settings/types';
+import type { SettingContext, SettingDefinition } from '../../../settings/types';
+import { PREFS, savePref } from '../../../store/prefs';
 import { rowsOf, type StoreState } from '../../../store/state';
+import { hour24Of } from '../../../store/clock-format';
 import { at, choose, custom, link, subHref, toggle } from './define';
 import {
   BRIEFING_OPTIONS,
@@ -89,6 +91,30 @@ export const CLOCK: readonly SettingDefinition[] = [
     title: 'Alarm sound',
     render: () => createElement(DefaultSoundRow),
   }),
+  {
+    id: 'planner.clock.hour24',
+    ...at('Clock'),
+    title: '24-hour time',
+    description: 'Off shows times as 12-hour with AM and PM',
+    icon: 'clock',
+    keywords: [
+      'planner',
+      '24-hour',
+      '24 hour',
+      '12-hour',
+      '12 hour',
+      'am pm',
+      'time format',
+      'clock format',
+    ],
+    scope: 'server',
+    control: 'switch',
+    read: hour24Of,
+    write: (hour24: boolean, context: SettingContext): Promise<void> => {
+      savePref(context.store, PREFS.clockFormat, { hour24 });
+      return Promise.resolve();
+    },
+  },
   choose(
     'clock.ramp',
     at('Clock'),

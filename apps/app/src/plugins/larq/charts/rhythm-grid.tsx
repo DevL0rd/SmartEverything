@@ -7,6 +7,7 @@ import { WATER_COLOUR } from '../model/bottle-colours';
 import { rhythmRows, rhythmSummary } from '../model/stats-model';
 import { ChartBox } from './chart-box';
 import { ChartLabel } from './chart-label';
+import { useClockFormat } from '../../../features/clock/format/clock-format';
 
 const LEFT = 32;
 const TOP = 16;
@@ -82,8 +83,9 @@ function Plot({
 }
 
 export function RhythmGrid({ rhythm }: { readonly rhythm: BottleStats['rhythm'] }): ReactNode {
+  const format = useClockFormat();
   return (
-    <ChartBox label={rhythmSummary(rhythm)} height={HEIGHT}>
+    <ChartBox label={rhythmSummary(rhythm, format)} height={HEIGHT}>
       {(width) => <Plot rhythm={rhythm} width={width} />}
     </ChartBox>
   );

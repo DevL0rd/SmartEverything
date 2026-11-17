@@ -55,7 +55,7 @@ async function crops(preview: Buffer, boxes: readonly PhotoBox[]): Promise<Embed
 }
 
 export class PetEmbedHandler implements JobHandler {
-  readonly resource = 'io';
+  readonly resource = 'cloud';
   readonly fail = ignoreFailure;
 
   constructor(

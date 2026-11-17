@@ -218,6 +218,7 @@ function startPhotoServices(
   });
   const places = new PlacesService({
     context: store.context,
+    reader: store.reader,
     datasetPath: placesDatasetPath(),
     log,
   });
@@ -231,7 +232,7 @@ function startPhotoServices(
     shared: { ai: photoAi.ai, places, sharing },
     stop: async (): Promise<void> => {
       sharing.autoSaver.stop();
-      searchIndex.stop();
+      await searchIndex.stop();
       await photoAi.stop();
     },
   };

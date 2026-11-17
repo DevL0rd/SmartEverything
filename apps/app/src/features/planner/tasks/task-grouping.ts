@@ -10,7 +10,6 @@ import {
 import type { ChartPoint } from '../../../components/charts';
 import type { IconName } from '../../../components/icon';
 import {
-  clock,
   daysBetween,
   localDayKey,
   shiftDay,
@@ -20,6 +19,7 @@ import {
 } from '../../../format/time';
 import { compareText } from '../../../format/text';
 import type { StepView } from '../item/item-steps';
+import type { MomentText } from '../../../format/clock-text';
 
 export type SmartList = (typeof PLANNER_SMART_LISTS)[number];
 
@@ -279,10 +279,11 @@ function dayWordOf(day: string, today: string): string {
 export function dueLabelOf(
   entry: Pick<TaskEntry, 'dueDay' | 'dueAt' | 'item'>,
   today: string,
+  instant: MomentText,
 ): string {
   if (entry.dueDay === null) return entry.item.rrule === null ? 'No date' : 'Not due today';
   const word = dayWordOf(entry.dueDay, today);
-  return entry.dueAt === null ? word : `${word} ${clock(entry.dueAt)}`;
+  return entry.dueAt === null ? word : `${word} ${instant(entry.dueAt)}`;
 }
 
 export function isOverdue(entry: TaskEntry, now: number, today: string): boolean {

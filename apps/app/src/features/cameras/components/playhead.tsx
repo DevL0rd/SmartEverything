@@ -6,6 +6,7 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { eventLook } from '../../activity';
 import { fractionTime, nearest, type TrackItem } from '../logic/timeline-track';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 const HANDLE = 24;
 
@@ -27,6 +28,7 @@ function placeOf(left: number): { readonly left: number } {
 
 export function Playhead({ fraction, width, onMove, onRelease }: PlayheadProps): ReactNode {
   const start = useSharedValue(0);
+  const format = useClockFormat();
   const drag = Gesture.Pan()
     .runOnJS(true)
     .onBegin(() => {
@@ -48,7 +50,7 @@ export function Playhead({ fraction, width, onMove, onRelease }: PlayheadProps):
         <View
           accessible
           accessibilityRole="adjustable"
-          accessibilityLabel={`Playhead at ${fractionTime(fraction)}`}
+          accessibilityLabel={`Playhead at ${format.text(fractionTime(fraction))}`}
           className="size-6 rounded-full border-2 border-critical bg-surface-raised"
         />
       </GestureDetector>
@@ -64,6 +66,7 @@ export function ScrubPreview({
   readonly fraction: number;
 }): ReactNode {
   const item = nearest(items, fraction);
+  const format = useClockFormat();
   return (
     <View className="flex-row items-center gap-3 rounded-lg bg-surface-2 p-2">
       <View className="aspect-video w-24 items-center justify-center overflow-hidden rounded-sm bg-surface-3">
@@ -85,7 +88,7 @@ export function ScrubPreview({
       <View className="min-w-0 flex-1">
         <Text variant="body-strong" numberOfLines={1}>
           {item === null
-            ? fractionTime(fraction)
+            ? format.text(fractionTime(fraction))
             : `${eventLook(item.kind, item.details).label} · ${item.time}`}
         </Text>
         <Text variant="footnote" tone="variant" numberOfLines={1}>

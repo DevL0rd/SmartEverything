@@ -1,29 +1,15 @@
 import type { ClipboardClip } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 
-export type SyncDecision = 'send' | 'apply' | 'none';
-
-export function decideSync(
-  local: string,
-  remote: ClipboardClip | null,
-  synced: string | null,
-): SyncDecision {
-  const localNew = local !== '' && local !== synced && local !== remote?.text;
-  const remoteNew = remote !== null && remote.text !== synced && remote.text !== local;
-  const firstContact = synced === null;
-  if (localNew && !(firstContact && remoteNew)) return 'send';
-  return remoteNew ? 'apply' : 'none';
-}
-
 export interface ClipboardPorts {
   readonly readLocal: () => Promise<string | null>;
   readonly writeLocal: (text: string) => Promise<void>;
-  readonly readRemote: () => Promise<ClipboardClip | null>;
   readonly sendRemote: (text: string) => Promise<void>;
 }
 
 export class ClipboardSync {
   private synced: string | null = null;
+  private seen: string | null = null;
   private tail: Promise<void> = Promise.resolve();
 
   constructor(
@@ -33,6 +19,7 @@ export class ClipboardSync {
 
   copied(text: string): Promise<void> {
     return this.queue('copied', async () => {
+      this.seen = text;
       await this.send(text);
     });
   }
@@ -40,7 +27,9 @@ export class ClipboardSync {
   localChanged(): Promise<void> {
     return this.queue('local_changed', async () => {
       const local = await this.ports.readLocal();
-      if (local !== null && local !== '' && local !== this.synced) await this.send(local);
+      if (local === null) return;
+      this.seen = local;
+      if (local !== '') await this.send(local);
     });
   }
 
@@ -48,11 +37,13 @@ export class ClipboardSync {
     return this.queue('foreground', async () => {
       const local = await this.ports.readLocal();
       if (local === null) return;
-      const remote = await this.ports.readRemote();
-      const decision = decideSync(local, remote, this.synced);
-      if (decision === 'send') await this.send(local);
-      if (decision === 'apply' && remote !== null) await this.apply(remote.text);
-      if (decision === 'none' && remote?.text === local) this.synced = local;
+      if (this.seen === null) {
+        this.seen = local;
+        return;
+      }
+      if (local === this.seen) return;
+      if (local !== '') await this.send(local);
+      this.seen = local;
     });
   }
 
@@ -72,6 +63,7 @@ export class ClipboardSync {
   private async apply(text: string): Promise<void> {
     await this.ports.writeLocal(text);
     this.synced = text;
+    this.seen = text;
     this.log.info('clipboard.received', { length: text.length });
   }
 

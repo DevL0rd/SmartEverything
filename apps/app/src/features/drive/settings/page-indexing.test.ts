@@ -16,7 +16,6 @@ const SETTINGS: DriveSettings = {
   duplicatesHashing: true,
   indexingPaused: false,
   contentIndexing: true,
-  ocrLanguages: ['eng'],
   fileIoThreads: 8,
   cpuWorkers: 4,
   listingCacheSeconds: 300,

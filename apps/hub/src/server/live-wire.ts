@@ -41,8 +41,20 @@ export function wireText(message: LiveMessage): string {
   return JSON.stringify(message.type === 'change' ? wireFrame(message) : message);
 }
 
-export function liveText(role: ClientRow['role'], message: LiveMessage): string | null {
+const TEXTS = new WeakMap<LiveMessage, Map<ClientRow['role'], string | null>>();
+
+function textFor(role: ClientRow['role'], message: LiveMessage): string | null {
   if (role === 'owner') return wireText(message);
   if (OWNER_NOTICES.has(message.type)) return null;
   return wireText(message.type === 'change' ? memberEngineChange(message) : message);
+}
+
+export function liveText(role: ClientRow['role'], message: LiveMessage): string | null {
+  const known = TEXTS.get(message) ?? new Map<ClientRow['role'], string | null>();
+  const cached = known.get(role);
+  if (cached !== undefined) return cached;
+  const text = textFor(role, message);
+  known.set(role, text);
+  TEXTS.set(message, known);
+  return text;
 }

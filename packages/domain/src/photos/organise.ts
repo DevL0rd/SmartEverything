@@ -37,6 +37,12 @@ export const PHOTO_META_PATCH = z
 
 export type PhotoMetaPatch = z.infer<typeof PHOTO_META_PATCH>;
 
+export const PHOTO_DESCRIPTION_SET = z.strictObject({
+  text: z.string().trim().min(1).nullable().describe('The new description; null clears it'),
+});
+
+export type PhotoDescriptionSet = z.infer<typeof PHOTO_DESCRIPTION_SET>;
+
 const PIN = z.string().regex(/^\d{4,}$/, 'a PIN is at least four digits');
 
 export const LOCKED_PIN_SET = z.strictObject({ pin: PIN, currentPin: PIN.nullable() });

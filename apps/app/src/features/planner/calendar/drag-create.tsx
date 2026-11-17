@@ -11,7 +11,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { SPRING, useMotion } from '../../../design/motion';
-import { clockOfMinutes } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
+import { useClockFormat } from '../../clock/format/clock-format';
 import { eventFill } from './event-look';
 import {
   SNAP_MINUTES,
@@ -52,8 +53,8 @@ export function spanBetween(anchor: number, minute: number): MinuteSpan {
   return { from: slotMinute(minute), to: first + SNAP_MINUTES };
 }
 
-export function draftTimeOf(span: MinuteSpan): string {
-  return `${clockOfMinutes(span.from)} to ${clockOfMinutes(span.to)}`;
+export function draftTimeOf(span: MinuteSpan, format: ClockFormat): string {
+  return `${format.minutes(span.from)} to ${format.minutes(span.to)}`;
 }
 
 export interface SlotLayerProps {
@@ -142,6 +143,7 @@ function DraftBlock({
   readonly layer: SlotLayerProps;
 }): ReactNode {
   const { hourHeight, minHeight, touch } = layer;
+  const format = useClockFormat();
   const placed = useAnimatedStyle<ViewStyle>(() => {
     const hour = hourHeight.get();
     return {
@@ -149,7 +151,7 @@ function DraftBlock({
       height: Math.max(minHeight, pixelsOf(ghost.to.get() - ghost.from.get(), hour)),
     };
   });
-  const time = draftTimeOf(draft);
+  const time = draftTimeOf(draft, format);
   const subtitle = active && touch ? 'Drag to set the end' : time;
   return (
     <Animated.View

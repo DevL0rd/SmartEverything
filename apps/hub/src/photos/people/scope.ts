@@ -109,6 +109,15 @@ function analysisArm(words: readonly string[]): ScopeStatement {
   };
 }
 
+function descriptionArm(words: readonly string[]): ScopeStatement {
+  const texts = containing(words, 'descriptionText', ['lower(pd.text)']);
+  return {
+    text: `select pd.item_id from photo_descriptions pd
+      where pd.text is not null and (${texts.text})`,
+    parameters: texts.parameters,
+  };
+}
+
 function groupArm(words: readonly string[], profileId: string): ScopeStatement {
   const names = containing(words, 'groupLike', [
     "lower(coalesce(gg.name, ''))",
@@ -163,6 +172,7 @@ function meaningStatement(
           { text: `${NAME_AND_LABEL_WORDS} $meaningMatch`, parameters: { meaningMatch: match } },
           { text: `${PHOTO_TEXT_WORDS} $meaningMatch`, parameters: {} },
           analysisArm(words),
+          descriptionArm(words),
           groupArm(words, profileId),
           placeArm(words),
           ...dayArms(words),

@@ -104,6 +104,7 @@ export const PHOTO_AI_STATUS = z
     people: PHOTO_AI_PEOPLE,
     spentMicros: COUNT,
     estimateMicros: COUNT,
+    everythingMicros: COUNT,
     models: PHOTO_AI_MODELS,
     faceDevice: PHOTO_FACE_DEVICE,
   })
@@ -111,7 +112,9 @@ export const PHOTO_AI_STATUS = z
 
 export type PhotoAiStatus = z.infer<typeof PHOTO_AI_STATUS>;
 
-export const PHOTO_AI_REANALYSE = z.strictObject({ estimateMicros: COUNT }).readonly();
+export const PHOTO_AI_REANALYSE = z
+  .strictObject({ estimateMicros: COUNT, everything: z.boolean() })
+  .readonly();
 
 export type PhotoAiReanalyse = z.infer<typeof PHOTO_AI_REANALYSE>;
 

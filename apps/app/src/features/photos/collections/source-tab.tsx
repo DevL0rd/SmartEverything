@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import { router } from 'expo-router';
 import type { PhotoSource } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -29,7 +28,7 @@ import { useClearOnChange } from '../library/use-clear-on-change';
 import { removeLastOf } from '../search/library-search';
 import { isSearching } from '../search/query';
 import { NoResults } from '../search/no-results';
-import { SOURCE_COPY, SOURCES_OFFLINE_BODY, SOURCES_OFFLINE_TITLE } from './source-copy';
+import { SOURCE_COPY } from './source-copy';
 import { SourceNote } from './source-note';
 import { useSourceActions, type SourceActions } from './source-actions';
 import { SourceGrid } from './source-grid';
@@ -199,12 +198,6 @@ function selectionBar({
   );
 }
 
-function OfflineBanner(): ReactNode {
-  return (
-    <Banner tone="warning" title={SOURCES_OFFLINE_TITLE} body={SOURCES_OFFLINE_BODY} wrapBody />
-  );
-}
-
 function SourceTop({
   source,
   view,
@@ -267,7 +260,6 @@ export function SourceTab({ head, source, search }: SourceTabProps): ReactNode {
         subtitle: subtitleOf(source, view.total, view.chips.length),
         actions: selection.active ? [] : selectAction(view, start),
         selection: selectionBar({ source, view, selection, actions, live, clear }),
-        banner: live ? null : <OfflineBanner />,
       }}
     >
       <Body

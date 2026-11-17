@@ -158,6 +158,7 @@ async function reconcile(relPath: string): Promise<void> {
   const committer = new ScanCommitter(
     commitDependencies(),
     opened.store.driveRoots.byId(root.id),
+    null,
   );
   committer.apply([await walkEntry(relPath)]);
   await committer.finish([]);
@@ -167,6 +168,7 @@ async function scanTree(): Promise<void> {
   const committer = new ScanCommitter(
     commitDependencies(),
     opened.store.driveRoots.byId(root.id),
+    null,
   );
   const folder = await walkEntry('d');
   const entries: WalkEntry[] = [];

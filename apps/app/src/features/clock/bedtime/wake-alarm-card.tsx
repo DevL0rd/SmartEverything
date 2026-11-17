@@ -8,8 +8,9 @@ import { Interactive } from '../../../components/interactive';
 import { notifyFailure } from '../../../components/toast-store';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
-import { nextRingTextOf, usePlannerWrites } from '../../planner';
+import { nextRingTextOf, usePlannerWrites, useShownAlarm } from '../../planner';
 import { AlarmEditor } from '../alarm/alarm-editor';
+import { useClockLabel } from '../format/clock-format';
 import { daysTextOf, wakeAlarmBodyOf, wakeAlarmOf, wakeDaysOf } from './schedule-model';
 
 export interface WakeAlarmProps {
@@ -22,7 +23,7 @@ export interface WakeAlarmProps {
 }
 
 function LinkedAlarm({
-  alarm,
+  alarm: row,
   night,
   card,
   onOpen,
@@ -32,11 +33,12 @@ function LinkedAlarm({
   readonly card: WakeAlarmProps;
   readonly onOpen: (alarmId: string) => void;
 }): ReactNode {
-  const writes = usePlannerWrites(null);
+  const { alarm, save } = useShownAlarm(null, row);
+  const clockLabel = useClockLabel();
   return (
     <View className="flex-row items-center gap-3 rounded-md bg-surface-2 pr-3">
       <Interactive
-        label={`Wake alarm ${alarm.time}, ${daysTextOf(wakeDaysOf(night), card.weekStart)}. Open`}
+        label={`Wake alarm ${clockLabel(alarm.time)}, ${daysTextOf(wakeDaysOf(night), card.weekStart)}. Open`}
         onPress={() => {
           onOpen(alarm.id);
         }}
@@ -46,7 +48,7 @@ function LinkedAlarm({
         <Icon name="alarmClock" size={20} tone={alarm.enabled ? 'primary' : 'variant'} />
         <View className="min-w-0 flex-1">
           <Text variant="body-strong" className="tabular">
-            {`${alarm.time} · ${daysTextOf(wakeDaysOf(night), card.weekStart)}`}
+            {`${clockLabel(alarm.time)} · ${daysTextOf(wakeDaysOf(night), card.weekStart)}`}
           </Text>
           <Text variant="caption" tone="variant" numberOfLines={1}>
             {nextRingTextOf(alarm, card.now, card.zone)}
@@ -54,11 +56,11 @@ function LinkedAlarm({
         </View>
       </Interactive>
       <Switch
-        label={`Wake alarm ${alarm.time}`}
+        label={`Wake alarm ${clockLabel(alarm.time)}`}
         value={alarm.enabled}
         disabled={card.offline}
         onChange={(enabled) => {
-          writes.updateAlarm(alarm, { enabled }).catch(notifyFailure('The alarm was not changed'));
+          save({ enabled });
         }}
       />
     </View>
@@ -75,12 +77,13 @@ function MissingAlarm({
   const writes = usePlannerWrites(null);
   const [busy, setBusy] = useState(false);
   const body = wakeAlarmBodyOf(night);
+  const clockLabel = useClockLabel();
   return (
     <View className="flex-row flex-wrap items-center gap-3 rounded-md border-hairline border-outline-variant px-3 py-2">
       <View className="min-w-0 grow basis-48 flex-row items-center gap-3">
         <Icon name="alarmClock" size={20} />
         <Text variant="callout" tone="variant" className="min-w-0 flex-1">
-          {`No alarm at ${night.wake} on ${daysTextOf(body.days, card.weekStart)}`}
+          {`No alarm at ${clockLabel(night.wake)} on ${daysTextOf(body.days, card.weekStart)}`}
         </Text>
       </View>
       <Button

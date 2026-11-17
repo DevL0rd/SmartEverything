@@ -86,15 +86,8 @@ vi.mock('../settings', () => ({ PHOTOS_PAGE: 'photos' }));
 vi.mock('./model', () => ({
   backingUpOf: (state: BackupDevices): number =>
     state.devices.filter((entry) => entry.device.settings.enabled).length,
-  offlineText: (local: boolean): string =>
-    local
-      ? 'Changing these settings needs your home hub. Backup on this device keeps going.'
-      : 'Changing these settings needs your home hub.',
   summaryText: (items: number | null, devices: number | null): string | null =>
     items === null ? null : `${String(items)} items · ${String(devices)} devices backing up`,
-}));
-vi.mock('../local/source', () => ({
-  localMediaSource: (): object | null => (harness.native ? {} : null),
 }));
 vi.mock('./link-cards', () => ({
   BackupLinkCard: (): ReactNode => createElement('a', null, 'Backup card'),
@@ -152,18 +145,12 @@ describe('Photos settings screen', () => {
     }
   });
 
-  it('says the page is a snapshot while the hub is offline', () => {
-    expect(render()).not.toContain('<aside>');
+  it('leaves the hub being offline to the app notice', () => {
     harness.live = false;
     try {
-      expect(render()).toContain(
-        '<aside>Offline · showing the last snapshot: Changing these settings needs your home hub.</aside>',
-      );
-      harness.native = true;
-      expect(render()).toContain('Backup on this device keeps going');
+      expect(render()).not.toContain('<aside>');
     } finally {
       harness.live = true;
-      harness.native = false;
     }
   });
 });

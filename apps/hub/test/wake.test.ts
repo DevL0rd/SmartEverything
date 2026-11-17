@@ -1,10 +1,12 @@
-import { type RowChange, type SignalInput } from '@smarteverything/domain';
+import { CLIENT_PREFS, type RowChange, type SignalInput } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ActionOrigin } from '../src/automations/automation-ai';
 import { SignalBus } from '../src/signals/bus';
 import { feedSignals } from '../src/signals/sources/feed';
 import { feedContextOf } from '../src/signals/sources/feed-context';
+import { clockTextIn } from '../src/clock/person-clock';
 import { WAKE_GATHER_MS, WakeRunner, type WakeTurnInput } from '../src/wake/wake-runner';
+import { WakeText } from '../src/wake/wake-text';
 import { FakeClock } from './support/fake-clock';
 import { node, saveAutomation, trigger } from './support/automation-fixture';
 import { testLogger } from './support/logs';
@@ -219,5 +221,30 @@ describe('feed signals', () => {
   it('turns only today’s health totals into signals', () => {
     expect(feedSignals(daily('2026-10-08'), context)).toHaveLength(1);
     expect(feedSignals(daily('2026-10-07'), context)).toHaveLength(0);
+  });
+});
+
+describe('WakeText', () => {
+  it('writes the wake time on the person’s chosen clock', () => {
+    const { store } = current.opened;
+    const zone = store.settings.read().time_zone;
+    const occasion = {
+      automationName: 'Baby monitor',
+      signal: null,
+      instruction: 'Check on the baby',
+      at: new Date('2026-10-08T15:05:00.000Z'),
+      profileId: current.profileId,
+    };
+    const text = new WakeText(store);
+    for (const hour24 of [true, false]) {
+      store.personal.saveLayout(
+        { clientId: CAMERA, profileId: current.profileId },
+        CLIENT_PREFS.clock_format.storageKey,
+        CLIENT_PREFS.clock_format.encode({ hour24 }),
+      );
+      expect(text.lines(occasion).headline).toBe(
+        `Baby monitor · ${clockTextIn(occasion.at, zone, hour24)}`,
+      );
+    }
   });
 });

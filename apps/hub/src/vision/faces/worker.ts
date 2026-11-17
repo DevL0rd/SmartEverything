@@ -3,6 +3,7 @@ import { messageOf } from '@smarteverything/logging';
 import { readFaceModels } from '../models';
 import { FaceEngine } from './engine';
 import { FACE_INIT, FACE_REQUEST, type FaceReply } from './protocol';
+import { rgbOf } from './source';
 
 const init = FACE_INIT.parse(workerData);
 
@@ -38,9 +39,9 @@ parentPort?.on('message', (raw: unknown) => {
     });
     return;
   }
-  const { id, width, height, data } = parsed.data;
-  engine
-    .then((loaded) => loaded.analyse({ width, height, data }))
+  const { id, image } = parsed.data;
+  Promise.all([engine, image.kind === 'rgb' ? image : rgbOf(image.bytes)])
+    .then(([loaded, rgb]) => loaded.analyse(rgb))
     .then(
       (faces) => {
         send({ kind: 'faces', id, faces });

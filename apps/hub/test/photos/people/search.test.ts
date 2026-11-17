@@ -41,6 +41,15 @@ function ids(actor: DriveActor, scope: Parameters<LibraryReader['page']>[2]): re
   return reader().page(actor, MARCH, scope).ids;
 }
 
+function addDescription(itemId: string, text: string | null, source: 'file' | 'manual'): void {
+  database
+    .prepare(
+      `insert into photo_descriptions (item_id, text, source, set_by, set_at)
+        values (?, ?, ?, null, '2026-11-17T10:00:00.000Z')`,
+    )
+    .run(itemId, text, source);
+}
+
 function photo(n: number, root?: string): string {
   return seed({
     n,
@@ -134,6 +143,21 @@ describe('words, text in photos and meaning', () => {
       { month: MARCH, count: 3 },
     ]);
     expect(asked).toHaveLength(1);
+  });
+
+  it('finds descriptions by partial words in any case, each word on its own', () => {
+    const [a, b, c] = [photo(1), photo(2), photo(3)];
+    const secret = photo(4, BOB_ROOT);
+    addDescription(a, 'Sunset at the HARBOUR', 'file');
+    addDescription(b, 'Grandma’s birthday cake', 'manual');
+    addDescription(c, null, 'manual');
+    addDescription(secret, 'harbour at night', 'file');
+    const found = (text: string): readonly string[] => ids(alice, { filter: 'all', meaning: text });
+    expect(found('harb')).toEqual([a]);
+    expect(found('sunSET')).toEqual([a]);
+    expect(found('cake harbour')).toEqual([b, a]);
+    expect(found('100%')).toEqual([]);
+    expect(ids(bob, { filter: 'all', meaning: 'harbour' })).toEqual([secret, a]);
   });
 
   it('falls back to words when meaning cannot be computed and asks again afterwards', async () => {

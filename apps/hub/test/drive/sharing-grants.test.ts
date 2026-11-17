@@ -199,7 +199,7 @@ describe('view only protection of placements', () => {
     expect(placed.hold).toBeNull();
   });
 
-  it('puts an existing placement on the no access hold when the folder is locked and frees it again', () => {
+  it('puts an existing placement on the no access hold when the folder is locked and frees it again', async () => {
     grant(ROBIN_TRIP, world.ida.profileId, 'view', null);
     const placed = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
@@ -207,8 +207,12 @@ describe('view only protection of placements', () => {
     });
     expect(current(placed.id).hold).toBeNull();
     lockTrip(true);
+    await vi.advanceTimersByTimeAsync(0);
+    await lifecycle.settled();
     expect(current(placed.id)).toMatchObject({ hold: 'no_access' });
     lockTrip(false);
+    await vi.advanceTimersByTimeAsync(0);
+    await lifecycle.settled();
     expect(current(placed.id)).toMatchObject({ hold: null });
   });
 

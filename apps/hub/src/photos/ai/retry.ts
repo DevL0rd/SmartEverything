@@ -9,7 +9,7 @@ export interface RetryEnvironment {
   readonly consent: PhotoConsent;
   readonly status: PhotoAiStatusReader;
   readonly ownerIds: () => readonly string[];
-  readonly reconcile: () => number;
+  readonly reconcile: () => Promise<number>;
 }
 
 const FACE_KINDS: readonly PhotoAiKind[] = ['faces'];
@@ -19,7 +19,7 @@ const SMART_KINDS: readonly PhotoAiKind[] = ['vision', 'embed', 'pet_embed'];
 export class PhotoAiRetry {
   constructor(private readonly env: RetryEnvironment) {}
 
-  run(profileId: string): number {
+  run(profileId: string): Promise<number> {
     const owner = this.env.ownerIds().includes(profileId);
     const subjects = this.env.status.subjects(profileId, owner);
     this.env.context.write(() => {

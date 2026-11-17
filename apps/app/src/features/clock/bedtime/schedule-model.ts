@@ -202,10 +202,14 @@ export function nextNightOf(bedtime: PlannerBedtime, now: number, zone: string):
   return null;
 }
 
-export function tonightLineOf(next: NextNight | null, now: number): string {
+export function tonightLineOf(
+  next: NextNight | null,
+  now: number,
+  clockLabel: (time: string) => string,
+): string {
   if (next === null) return 'No bedtime set';
-  if (now >= next.bedAt) return `Sleep time · wake at ${next.night.wake}`;
-  if (now >= next.windDownAt) return `Wind-down · bed at ${next.night.bed}`;
+  if (now >= next.bedAt) return `Sleep time · wake at ${clockLabel(next.night.wake)}`;
+  if (now >= next.windDownAt) return `Wind-down · bed at ${clockLabel(next.night.bed)}`;
   return `Bedtime in ${countdownOf(next.bedAt, now)}`;
 }
 

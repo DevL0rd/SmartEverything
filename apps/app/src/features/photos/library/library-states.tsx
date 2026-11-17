@@ -4,10 +4,8 @@ import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Skeleton } from '../../../components/skeleton';
-import { clock } from '../../../format/time';
 import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
 import { localMediaSource } from '../local/source';
-import { offlineBody } from './library-model';
 import { TAB_EMPTY, type HubTabId } from './library-tabs-view';
 
 const ROWS: readonly (readonly string[])[] = [
@@ -107,17 +105,6 @@ export function LibraryError({ onRetry }: { readonly onRetry: () => void }): Rea
       title="The library did not load"
       body={libraryErrorBody(localMediaSource() !== null)}
       onRetry={onRetry}
-    />
-  );
-}
-
-export function OfflineBanner({ seenAt }: { readonly seenAt: number | null }): ReactNode {
-  return (
-    <Banner
-      tone="warning"
-      title="The hub is offline"
-      body={offlineBody(seenAt === null ? null : clock(seenAt))}
-      wrapBody
     />
   );
 }

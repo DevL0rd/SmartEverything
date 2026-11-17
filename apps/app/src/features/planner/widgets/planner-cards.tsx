@@ -33,7 +33,9 @@ import {
 } from '../tasks/task-grouping';
 import { DayStrip } from '../today/day-strip';
 import { isOpenDay } from '../today/today-states';
-import { DayBadge, DayRows, WidgetOffline, useDayLines, useStripModel } from './home-cards';
+import { useDayLines, useStripModel } from './day-lines';
+import { DayBadge, DayRows, WidgetOffline } from './home-cards';
+import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
 import { LINE_GAP, SECTION_GAP, STRIP_HEIGHT, leadWhenOf, linesFit, rowLineOf } from './home-fit';
 
 const OPEN = { label: 'Open Planner', href: href.planner.index() } as const;
@@ -123,11 +125,12 @@ function TaskMeta({
   readonly today: string;
 }): ReactNode {
   const overdue = useMinuteOf((now) => isOverdue(entry, now, today));
+  const instant = useInstantClock();
   const steps = stepsLabelOf(entry.steps);
   if (entry.done) return <Badge label="Done" tone="positive" />;
   return (
     <View className="flex-row items-center gap-1.5">
-      <Badge label={dueLabelOf(entry, today)} tone={overdue ? 'critical' : 'neutral'} />
+      <Badge label={dueLabelOf(entry, today, instant)} tone={overdue ? 'critical' : 'neutral'} />
       {steps === null ? null : (
         <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
           {steps}
@@ -167,8 +170,13 @@ function useNotesFit(occurrence: boolean): boolean {
   return type.body[1] + caption + TIGHT_GAP + type.footnote[1] <= widgetBodyHeight(frame);
 }
 
-function captionOf(occurrence: PlannerOccurrenceView, timeZone: string, now: number): string {
-  const when = leadWhenOf(occurrence, timeZone, now);
+function captionOf(
+  occurrence: PlannerOccurrenceView,
+  timeZone: string,
+  now: number,
+  instant: InstantClock,
+): string {
+  const when = leadWhenOf(occurrence, timeZone, now, instant);
   return occurrence.location === null ? when : `${when} · ${occurrence.location}`;
 }
 
@@ -181,6 +189,7 @@ function PlainFace({
 }): ReactNode {
   const timeZone = useSettings().time_zone;
   const now = useMinute();
+  const instant = useInstantClock();
   const fits = useNotesFit(occurrence !== null);
   const notes = item.notes !== '' && fits;
   return (
@@ -196,7 +205,7 @@ function PlainFace({
         </Text>
         {occurrence === null ? null : (
           <Text variant="caption" tone="variant" numberOfLines={1} className="tabular-nums">
-            {captionOf(occurrence, timeZone, now)}
+            {captionOf(occurrence, timeZone, now, instant)}
           </Text>
         )}
         {!notes ? null : (

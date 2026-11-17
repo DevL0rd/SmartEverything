@@ -144,14 +144,12 @@ describe('drives', () => {
     const updated = roots.update(ROOT, {
       state: 'unresponsive',
       stateReason: 'the scan timed out',
-      items: 5,
       versions: false,
       skipPatterns: ['*.tmp'],
       includeHidden: true,
       health: { ...health, corrupt: 2, lastScrubAt: LATER },
     });
     expect(updated.state).toBe('unresponsive');
-    expect(updated.items).toBe(5);
     expect(updated.versions).toBe(false);
     expect(updated.skipPatterns).toEqual(['*.tmp']);
     expect(updated.includeHidden).toBe(true);

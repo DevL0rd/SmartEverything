@@ -1,7 +1,6 @@
 import {
   SIGNAL_SOURCES,
   kindSpecOf,
-  localClock,
   type JsonValue,
   type SignalInput,
   type SignalKindSpec,
@@ -9,14 +8,21 @@ import {
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { unlessGone } from './unless-gone';
+import { personClockText } from '../clock/person-clock';
 
 const VALUE_TEXT_MAX = 300;
 const DETAILS_TEXT_MAX = 600;
-const MINUTES_PER_HOUR = 60;
 
 export type WakeNameStore = Pick<
   Store,
-  'devices' | 'profiles' | 'aiChats' | 'schedules' | 'automations' | 'automationValues' | 'settings'
+  | 'devices'
+  | 'profiles'
+  | 'aiChats'
+  | 'schedules'
+  | 'automations'
+  | 'automationValues'
+  | 'settings'
+  | 'personal'
 >;
 
 export interface WakeOccasion {
@@ -24,6 +30,7 @@ export interface WakeOccasion {
   readonly signal: SignalInput | null;
   readonly instruction: string;
   readonly at: Date;
+  readonly profileId: string;
 }
 
 export interface WakeLines {
@@ -39,17 +46,12 @@ function valueText(value: JsonValue): string {
   return clipped(typeof value === 'string' ? value : JSON.stringify(value), VALUE_TEXT_MAX);
 }
 
-function clockText(at: Date, timeZone: string): string {
-  const minute = localClock(at, timeZone).minuteOfDay;
-  const hours = Math.floor(minute / MINUTES_PER_HOUR);
-  return `${String(hours).padStart(2, '0')}:${String(minute % MINUTES_PER_HOUR).padStart(2, '0')}`;
-}
-
 export class WakeText {
   constructor(private readonly store: WakeNameStore) {}
 
   lines(occasion: WakeOccasion): WakeLines {
-    const time = clockText(occasion.at, this.store.settings.read().time_zone);
+    const zone = this.store.settings.read().time_zone;
+    const time = personClockText(this.store, occasion.profileId, occasion.at, zone);
     const signal = occasion.signal;
     const headline =
       signal === null

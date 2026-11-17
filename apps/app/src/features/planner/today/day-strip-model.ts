@@ -15,12 +15,12 @@ import {
 import type { Bar, TimelineSegment } from '../../../components/charts';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
 import type { ColourRole } from '../../../design/tokens';
-import { decimal, percent } from '../../../format/number';
+import type { ClockFormat, MomentText } from '../../../format/clock-text';
+import { decimal, percent, twoDigits } from '../../../format/number';
 import {
   DAY_MS,
   HOUR_MS,
   MINUTE_MS,
-  clock,
   dayBoundsOf,
   hoursMinutes,
   zonedInstant,
@@ -53,12 +53,6 @@ export interface StripSun {
   readonly set: number;
 }
 
-export interface AlarmPin {
-  readonly at: number;
-  readonly count: number;
-  readonly label: string;
-}
-
 export interface DayStripModel {
   readonly from: number;
   readonly to: number;
@@ -78,6 +72,7 @@ export interface DayStripInput {
   readonly collections: readonly PlannerCollectionRow[];
   readonly place: GeoPoint | null;
   readonly showSleep: boolean;
+  readonly format: ClockFormat;
 }
 
 interface Window {
@@ -165,10 +160,10 @@ function alarmsOf(day: PlannerDay, window: Window): number[] {
   });
 }
 
-function hoursOf(day: PlannerDay, window: Window): StripHour[] {
+function hoursOf(day: PlannerDay, window: Window, format: ClockFormat): StripHour[] {
   return HOUR_LABELS.map((hour) => ({
     at: hour === 24 ? window.to : zonedInstant(day.date, hour * 60, day.time_zone),
-    label: String(hour).padStart(2, '0'),
+    label: format.hour24 ? twoDigits(hour) : format.hour(hour),
   }));
 }
 
@@ -180,7 +175,12 @@ function plural(count: number, one: string, many: string): string {
   return `${String(count)} ${count === 1 ? one : many}`;
 }
 
-function labelOf(model: Omit<DayStripModel, 'label'>, events: number, timeZone: string): string {
+function labelOf(
+  model: Omit<DayStripModel, 'label'>,
+  events: number,
+  timeZone: string,
+  instant: MomentText,
+): string {
   const missed = model.marks.filter((mark) => mark.tone === 'missed').length;
   const parts = [
     plural(events, 'event', 'events'),
@@ -190,7 +190,9 @@ function labelOf(model: Omit<DayStripModel, 'label'>, events: number, timeZone: 
     ...(model.sleepMinutes > 0 ? [`slept ${hoursMinutes(model.sleepMinutes)}`] : []),
     ...(model.sun === null
       ? []
-      : [`sunrise ${clock(model.sun.rise, timeZone)}, sunset ${clock(model.sun.set, timeZone)}`]),
+      : [
+          `sunrise ${instant(model.sun.rise, timeZone)}, sunset ${instant(model.sun.set, timeZone)}`,
+        ]),
   ];
   return `Your day: ${parts.join(', ')}`;
 }
@@ -208,38 +210,14 @@ export function dayStripOf(input: DayStripInput): DayStripModel {
     eventLegend: eventLegendOf(input.day.strip, input.collections, window),
     alarms: alarmsOf(input.day, window),
     marks: marksOf(input.day, window),
-    hours: hoursOf(input.day, window),
+    hours: hoursOf(input.day, window, input.format),
     sun,
     sleepMinutes: Math.round(minutesIn(sleep)),
   };
-  return { ...model, label: labelOf(model, events.length, input.day.time_zone) };
-}
-
-function pinOf(first: number, rest: readonly number[], timeZone: string): AlarmPin {
-  const last = rest.at(-1);
-  if (last === undefined) return { at: first, count: 1, label: `Alarm ${clock(first, timeZone)}` };
-  const count = rest.length + 1;
   return {
-    at: first,
-    count,
-    label: `${String(count)} alarms ${clock(first, timeZone)} to ${clock(last, timeZone)}`,
+    ...model,
+    label: labelOf(model, events.length, input.day.time_zone, input.format.instant),
   };
-}
-
-export function alarmPinsOf(
-  model: Pick<DayStripModel, 'from' | 'to' | 'alarms' | 'timeZone'>,
-  width: number,
-  pinWidth: number,
-): readonly AlarmPin[] {
-  const span = Math.max(1, model.to - model.from);
-  const reach = width <= 0 ? 0 : (pinWidth / width) * span;
-  const groups: { readonly first: number; readonly rest: number[] }[] = [];
-  for (const at of [...model.alarms].sort((left, right) => left - right)) {
-    const group = groups.at(-1);
-    if (group !== undefined && at - group.first < reach) group.rest.push(at);
-    else groups.push({ first: at, rest: [] });
-  }
-  return groups.map((group) => pinOf(group.first, group.rest, model.timeZone));
 }
 
 export function nowIn(model: Pick<DayStripModel, 'from' | 'to'>, now: number): number | null {

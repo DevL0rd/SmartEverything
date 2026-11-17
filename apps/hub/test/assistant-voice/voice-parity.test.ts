@@ -43,6 +43,7 @@ const CONTEXT: PromptFacts = {
   profileName: 'Sam',
   role: 'member',
   timeZone: 'Europe/Berlin',
+  hour24: true,
   now: new Date('2026-10-10T08:00:00.000Z'),
   boardTypes: [],
   interruption: null,

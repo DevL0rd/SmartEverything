@@ -100,6 +100,7 @@ export class PhotoAiStatusReader {
       people: this.people(profileId, subjects),
       spentMicros: this.spent(profileId, owner),
       estimateMicros: this.remaining(subjects) * unit,
+      everythingMicros: this.analysable(subjects) * unit,
       models: this.env.models.read(),
       faceDevice: this.env.faceDevice(),
     };
@@ -112,6 +113,14 @@ export class PhotoAiStatusReader {
       remaining += this.stale(subject.scope);
     }
     return remaining;
+  }
+
+  analysable(subjects: readonly Subject[]): number {
+    let count = 0;
+    for (const subject of subjects) {
+      if (this.env.consent.smartSearch(subject.profileId)) count += this.count(subject.scope);
+    }
+    return count;
   }
 
   stale(scope: SubjectScope): number {

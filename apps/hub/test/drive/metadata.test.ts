@@ -15,8 +15,19 @@ import { momentOf, readStill, readTimed, routeOf, TimedProbe } from '../../src/d
 import { updateDriveSettings } from '../../src/drive/settings';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { PhotoMetaOverridesRepository } from '../../src/store/repositories/photo-meta-overrides';
+import { PhotoDescriptionsRepository } from '../../src/store/repositories/photo-descriptions';
+import { zonePicker } from '../../src/drive/metadata-zone';
+import { PhotoDeviceZonesRepository } from '../../src/store/repositories/photo-device-zones';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
-import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import {
+  bundleMetadataWorker,
+  bundleWorker,
+  driveRoot,
+  NOW,
+  openDriveFixture,
+  type BundledWorker,
+  type DriveFixture,
+} from './drive-fixture';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 
@@ -47,6 +58,7 @@ describe('reading stills', () => {
       exposure: { iso: 400, aperture: 2.8, shutter: 0.004, focal: 35 },
       place: { lat: 13.7563, lon: 100.5018 },
       durationMs: null,
+      description: 'probe',
     });
   });
 
@@ -169,6 +181,7 @@ describe('routing by the first bytes', () => {
 
 let bundleFolder = '';
 let scannerScript = '';
+let metadataWorker: BundledWorker;
 let tree = '';
 let drive: DriveFixture;
 let media: DriveMediaRepository;
@@ -178,10 +191,12 @@ beforeAll(async () => {
   bundleFolder = mkdtempSync(join(tmpdir(), 'metadata-bundle-'));
   scannerScript = join(bundleFolder, 'scanner-worker.mjs');
   await bundleWorker('scanner-worker.ts', scannerScript);
+  metadataWorker = await bundleMetadataWorker();
 });
 
 afterAll(() => {
   rmSync(bundleFolder, { recursive: true, force: true });
+  metadataWorker.dispose();
 });
 
 beforeEach(() => {
@@ -229,12 +244,15 @@ function environment(): MetadataEnvironment {
       driveItems: drive.items,
       settingsKv: drive.settings,
       photoMetaOverrides: new PhotoMetaOverridesRepository(drive.context),
+      photoDescriptions: new PhotoDescriptionsRepository(drive.context),
       write: (work) => drive.context.write(work),
       feed: drive.feed,
       driveFeed: new DriveFeedRepository(drive.context),
     },
     media,
     availability: () => Promise.resolve('online'),
+    zones: zonePicker(new PhotoDeviceZonesRepository(drive.context), () => 'Asia/Bangkok'),
+    workerScript: metadataWorker.script,
     log: testLogger(),
   };
 }
@@ -330,6 +348,21 @@ describe('the metadata job', () => {
     expect(collectUnread(drive.items, ROOT)).toEqual([]);
     await read();
     expect(indexed('exif-full.jpg').rev).toBe(rev);
+  });
+
+  it('reads the metadata again when a new version changes the content', async () => {
+    place('exif-full.jpg');
+    await scan();
+    await read();
+    const read1 = indexed('exif-full.jpg');
+    const identity = drive.items.identityOf(read1.id);
+    if (identity === null) throw new Error('no identity');
+    drive.items.write({ item: { ...read1, bytes: read1.bytes + 1 }, identity });
+    const changed = indexed('exif-full.jpg');
+    expect(changed.kind === 'image' ? changed.takenAt : 'kind').toBeNull();
+    expect(collectUnread(drive.items, ROOT).map((one) => one.id)).toEqual([read1.id]);
+    drive.items.write({ item: { ...changed, name: 'renamed.jpg' }, identity });
+    expect(collectUnread(drive.items, ROOT)).toHaveLength(1);
   });
 
   it('reads a replaced file again after the scan resets it', async () => {

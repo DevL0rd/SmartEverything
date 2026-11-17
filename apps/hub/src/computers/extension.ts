@@ -21,7 +21,7 @@ import { ComputerThumbs } from './file-thumbs';
 import { computerZipEntryRoute } from './zip-entry-route';
 import { computerDriver, type ComputerDriverOptions } from './computer-driver';
 import { computerMachineId } from '../node/identity';
-import { localComputerFactory } from './local-computer';
+import { BUNDLED_LOCAL_COMPUTER_WORKER, localComputerFactory } from './local-computer';
 import type { HubLayout } from '../data-layout';
 import type { RawRoute } from '../server/http-server';
 
@@ -88,7 +88,11 @@ function driverOptions({
     earHosts: context.computerEars,
     placements: context.computerPlacements,
     hub: { hostname: hostname(), osName: osType() },
-    createLocal: localComputerFactory({ machineId, now, log: context.log }),
+    createLocal: localComputerFactory({
+      script: BUNDLED_LOCAL_COMPUTER_WORKER,
+      machineId,
+      log: context.log,
+    }),
     bindHubDevice: (deviceId): void => {
       context.computerAi.bindLocalDevice(deviceId);
     },

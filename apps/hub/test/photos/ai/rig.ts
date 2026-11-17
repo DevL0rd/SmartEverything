@@ -226,7 +226,7 @@ function partsOf(opened: TestStore): Parts {
   const log = testLogger('photos-ai');
   const runner = new MediaJobRunner({
     jobs: new DriveMediaJobsRepository(store.context),
-    limits: { image: 2, video: 2, io: 2 },
+    limits: { image: 2, video: 2, io: 2, cloud: 2 },
     log,
     progress: (): void => undefined,
   });
@@ -288,11 +288,12 @@ export async function makeRig(): Promise<Rig> {
         await new Promise<void>((resolve) => {
           setImmediate(resolve);
         });
+        await ai.scheduler.idle();
         await runner.idle();
       }
     },
     close: async (): Promise<void> => {
-      ai.stop();
+      await ai.stop();
       await runner.stop();
       await opened.close();
     },

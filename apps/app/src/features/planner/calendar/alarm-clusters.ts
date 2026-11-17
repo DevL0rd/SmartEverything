@@ -1,3 +1,4 @@
+import type { ClockFormat } from '../../../format/clock-text';
 import { yOf, type AlarmPin } from './time-grid-layout';
 
 export const PILL_HEIGHT = 20;
@@ -35,19 +36,20 @@ export function alarmClustersOf(
   });
 }
 
-export function clusterText(cluster: AlarmCluster, compact: boolean): string {
+export function clusterText(cluster: AlarmCluster, compact: boolean, format: ClockFormat): string {
   const [first] = cluster.pins;
   if (first === undefined) return '';
+  const time = format.text(first.time);
   if (cluster.pins.length === 1) {
-    return compact || first.label === null ? first.time : `${first.time} ${first.label}`;
+    return compact || first.label === null ? time : `${time} ${first.label}`;
   }
   const more = `+${String(cluster.pins.length - 1)}`;
-  return compact ? `${first.time} ${more}` : `${first.time} ${more} more`;
+  return compact ? `${time} ${more}` : `${time} ${more} more`;
 }
 
-export function clusterLabel(cluster: AlarmCluster): string {
+export function clusterLabel(cluster: AlarmCluster, format: ClockFormat): string {
   const names = cluster.pins.map(
-    (pin) => `${pin.time}${pin.label === null ? '' : ` ${pin.label}`}`,
+    (pin) => `${format.text(pin.time)}${pin.label === null ? '' : ` ${pin.label}`}`,
   );
   const noun = cluster.pins.length === 1 ? 'Alarm' : 'Alarms';
   return `${noun} ${names.join(', ')}, opens Clock`;

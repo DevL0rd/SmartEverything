@@ -18,7 +18,6 @@ import { useLoaded, useSyncStatus } from '../../../store/selectors';
 import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { PhotosFrame } from '../components/photos-frame';
 import { usePhotoInsights, usePhotoTrips } from '../data';
-import { OfflineBanner } from '../sharing/offline-banner';
 import { usePhotoAlbums } from './album-data';
 import { AlbumSheet, type AlbumSheetRequest } from './album-sheet';
 import { AlbumTile } from './album-tile';
@@ -282,7 +281,6 @@ export function AlbumsScreen(): ReactNode {
       active="albums"
       {...(loaded && albums.length > 0 ? { subtitle: albumsLine(albums, compact) } : {})}
       actions={albumsActions(openSmart, openNew, live, loaded && albums.length === 0)}
-      banner={live ? null : <OfflineBanner />}
     >
       <View className="gap-section-gap">
         {live ? <Starters compact={compact} onOpen={setRequest} /> : null}

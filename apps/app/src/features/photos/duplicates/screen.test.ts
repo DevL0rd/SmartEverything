@@ -263,7 +263,7 @@ describe('the Duplicates settings page', () => {
     seen.stats.data = STATS;
     seen.pages.data = { pages: [{ items: [group('a')], next: null }] };
     const html = render();
-    expect(html).toContain('Offline · showing the last snapshot');
+    expect(html).not.toContain('Offline');
     expect(html).not.toContain('Still checking files');
     expect(html).toContain('group a off');
   });

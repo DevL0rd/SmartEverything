@@ -18,6 +18,7 @@ import { useRow } from '../../../store/selectors';
 import { askAssistantWith } from '../../assistant';
 import { usePlannerAlarms } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
+import { useInstantClock } from '../../clock/format/clock-format';
 import { occurrenceWhenOf } from '../frame/occurrence-list';
 import { useItemPress } from '../item/item-menu-host';
 import type { ItemOpen } from '../item/selection';
@@ -106,7 +107,12 @@ function ItemFace({
   const device = useDeviceNameOf(card.occurrence);
   const measured = useMeasuredWidth();
   const stacked = measured.width < STACK_BELOW;
-  const subtitle = [occurrenceWhenOf(card.occurrence, day), device, card.occurrence.location]
+  const instant = useInstantClock();
+  const subtitle = [
+    occurrenceWhenOf(card.occurrence, day, instant),
+    device,
+    card.occurrence.location,
+  ]
     .filter((part) => part !== null)
     .join(' · ');
   return (
@@ -145,12 +151,13 @@ function AlarmFace({
   readonly card: AlarmCard;
   readonly day: PlannerDay;
 }): ReactNode {
+  const instant = useInstantClock();
   const hubRan =
     card.ring.missed_reason !== 'hub_down' && (card.alarm?.wake_automation_id ?? null) !== null;
   return (
     <View className="gap-2">
       <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-        <Badge label={missedAlarmTitleOf(card, day)} tone="critical" icon="alarmClock" />
+        <Badge label={missedAlarmTitleOf(card, day, instant)} tone="critical" icon="alarmClock" />
         <Text variant="caption" tone="variant" numberOfLines={1}>
           {missedReasonOf(card.ring)}
         </Text>
@@ -277,8 +284,10 @@ function MoreButton({
   readonly onPress: () => void;
 }): ReactNode {
   const next = cards[1];
+  const instant = useInstantClock();
   if (next === undefined) return null;
-  const title = next.kind === 'item' ? next.occurrence.title : missedAlarmNameOf(next, day);
+  const title =
+    next.kind === 'item' ? next.occurrence.title : missedAlarmNameOf(next, day, instant);
   return (
     <View className="flex-row">
       <Button

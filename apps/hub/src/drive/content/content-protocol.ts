@@ -1,24 +1,13 @@
 import { z } from 'zod';
-import { OCR_LANGUAGE } from '@smarteverything/domain';
 
 const COUNT = z.int().nonnegative();
 
-export const CONTENT_REQUEST = z.discriminatedUnion('kind', [
-  z.strictObject({
-    kind: z.literal('document'),
-    id: COUNT,
-    path: z.string().min(1),
-    name: z.string().min(1),
-    mime: z.string().min(1),
-  }),
-  z.strictObject({
-    kind: z.literal('image'),
-    id: COUNT,
-    path: z.string().min(1),
-    languages: z.array(OCR_LANGUAGE).min(1),
-    languageDirectory: z.string().min(1),
-  }),
-]);
+export const CONTENT_REQUEST = z.strictObject({
+  id: COUNT,
+  path: z.string().min(1),
+  name: z.string().min(1),
+  mime: z.string().min(1),
+});
 
 export type ContentRequest = z.infer<typeof CONTENT_REQUEST>;
 

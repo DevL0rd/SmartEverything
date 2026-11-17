@@ -66,21 +66,28 @@ export class DrivePlacesRepository {
 
   replaceAll(places: readonly DrivePlaceRow[]): void {
     this.context.write(() => {
-      const rows = places.map((place) => DRIVE_PLACE_ROW.parse(place));
-      for (const row of rows) {
-        this.context.sql.run(
-          'save the place',
-          `insert into drive_places (${COLUMNS}) values ($id, $name, $admin, $country, $lat, $lon)
-           on conflict (id) do update set name = excluded.name, admin = excluded.admin,
-             country = excluded.country, lat = excluded.lat, lon = excluded.lon`,
-          { ...row },
-        );
-      }
+      for (const place of places) this.save(place);
+      this.keepOnly(places.map((place) => place.id));
+    });
+  }
+
+  save(place: DrivePlaceRow): void {
+    this.context.sql.run(
+      'save the place',
+      `insert into drive_places (${COLUMNS}) values ($id, $name, $admin, $country, $lat, $lon)
+       on conflict (id) do update set name = excluded.name, admin = excluded.admin,
+         country = excluded.country, lat = excluded.lat, lon = excluded.lon`,
+      { ...DRIVE_PLACE_ROW.parse(place) },
+    );
+  }
+
+  keepOnly(ids: readonly string[]): void {
+    this.context.write(() =>
       this.context.sql.run(
         'drop the places missing from the dataset',
         `delete from drive_places where id not in (select value from json_each($ids))`,
-        { ids: jsonText(rows.map((row) => row.id)) },
-      );
-    });
+        { ids: jsonText(ids) },
+      ),
+    );
   }
 }

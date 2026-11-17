@@ -37,6 +37,7 @@ import { FindWatchButton } from './watch-find';
 import { useWatchGlance, type WatchGlance } from './watch-glance';
 import { beatingBpm, type HeartView } from './watch-heart';
 import { useRinging } from './watch-ringing';
+import { useInstantClock } from '../clock/format/clock-format';
 
 const HEART_HEIGHT: Readonly<Record<WideClass, number>> = { m: 34, w: 52, l: 120, xl: 120 };
 
@@ -62,14 +63,15 @@ function useWatchCardData(device: Device): WatchCardData {
   const ringing = useRinging(device.id);
   const owner = useRow('profiles', textOf(device.details['profileId']))?.name ?? null;
   const state = useWatchVisualState(device, { ...live, heartRate: beatingBpm(heart) });
+  const instant = useInstantClock();
   return {
     glance,
     heart,
     lastSeen,
     state,
-    headline: headlineOf(glance, lastSeen),
+    headline: headlineOf(glance, lastSeen, instant),
     sync: syncControlOf(glance, owner),
-    line: stateLineOf({ facts: glance, lastSeen, owner, ringing }),
+    line: stateLineOf({ facts: glance, lastSeen, owner, ringing, instant }),
     neverReported: !glance.onThisPhone && textOf(device.details['reportedAt']) === null,
     ringing,
   };

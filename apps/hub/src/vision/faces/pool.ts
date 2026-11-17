@@ -3,8 +3,13 @@ import { Worker } from 'node:worker_threads';
 import type { PhotoFaceDevice } from '@smarteverything/domain';
 import { type Logger, messageOf } from '@smarteverything/logging';
 import type { DetectedFace } from './engine';
-import type { RgbImage } from './image';
-import { FACE_REPLY, type FaceInit, type FaceReply } from './protocol';
+import {
+  FACE_REPLY,
+  type FaceImage,
+  type FaceInit,
+  type FaceReply,
+  type FaceRequest,
+} from './protocol';
 
 export const BUNDLED_FACES_WORKER = fileURLToPath(new URL('./faces-worker.mjs', import.meta.url));
 
@@ -53,7 +58,7 @@ export class FacePool {
     });
   }
 
-  async analyse(image: RgbImage, signal?: AbortSignal): Promise<DetectedFace[]> {
+  async analyse(image: FaceImage, signal?: AbortSignal): Promise<DetectedFace[]> {
     signal?.throwIfAborted();
     const worker = await this.start();
     signal?.throwIfAborted();
@@ -75,7 +80,8 @@ export class FacePool {
           reject(cause);
         },
       });
-      worker.postMessage({ id, width: image.width, height: image.height, data: image.data });
+      const request: FaceRequest = { id, image };
+      worker.postMessage(request);
     });
   }
 

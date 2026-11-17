@@ -1,16 +1,15 @@
 import type { PlannerAlarmRow } from '@smarteverything/domain';
-import { background } from '@smarteverything/logging';
 import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Badge } from '../../../components/badge';
 import { Card } from '../../../components/card';
-import { Figure } from '../../../components/figure';
 import { Interactive } from '../../../components/interactive';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
-import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
-import { usePlannerWrites, useVisibleMinute, type PlannerPerson } from '../data';
+import { ClockFigure } from '../../clock/format/clock-figure';
+import { useClockLabel } from '../../clock/format/clock-format';
+import { useShownAlarm, useVisibleMinute, type PlannerPerson } from '../data';
 import {
   alarmLabelOf,
   alarmsInRingOrder,
@@ -47,8 +46,8 @@ const PASSIVE = { pointerEvents: 'none' } as const;
 
 const THROUGH = { pointerEvents: 'box-none' } as const;
 
-function openLabelOf(alarm: PlannerAlarmRow): string {
-  return `Edit alarm ${alarm.time} ${alarmLabelOf(alarm)}`;
+function openLabelOf(alarm: PlannerAlarmRow, clockLabel: (time: string) => string): string {
+  return `Edit alarm ${clockLabel(alarm.time)} ${alarmLabelOf(alarm)}`;
 }
 
 function AlarmName({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
@@ -63,11 +62,12 @@ function AlarmName({ alarm }: { readonly alarm: PlannerAlarmRow }): ReactNode {
 }
 
 function AlarmSwitch({ alarm, disabled, onToggle }: AlarmCardProps): ReactNode {
+  const clockLabel = useClockLabel();
   return (
     <Switch
       value={alarm.enabled}
       onChange={onToggle}
-      label={`Alarm ${alarm.time} ${alarmLabelOf(alarm)}`}
+      label={`Alarm ${clockLabel(alarm.time)} ${alarmLabelOf(alarm)}`}
       disabled={disabled ?? false}
     />
   );
@@ -83,12 +83,13 @@ function OpenCard({
   readonly children: ReactNode;
 }): ReactNode {
   const { alarm, selected = false, onOpen } = card;
+  const clockLabel = useClockLabel();
   const passive = onOpen === undefined ? {} : THROUGH;
   return (
     <Card className={cn('relative', className, selected && SELECTED)}>
       {onOpen === undefined ? null : (
         <Interactive
-          label={openLabelOf(alarm)}
+          label={openLabelOf(alarm, clockLabel)}
           selected={selected}
           onPress={onOpen}
           className="absolute inset-0"
@@ -136,8 +137,8 @@ function WideCard(props: AlarmCardProps): ReactNode {
     <OpenCard card={props}>
       <View {...THROUGH} className="flex-row items-start gap-4">
         <Passive className="w-36 gap-0.5">
-          <Figure
-            value={alarm.time}
+          <ClockFigure
+            time={alarm.time}
             size="l"
             tone={alarm.enabled ? (selected ? 'primary' : 'default') : 'variant'}
           />
@@ -186,7 +187,7 @@ function HeroCard(props: AlarmCardProps): ReactNode {
       </View>
       <Passive className="gap-3">
         <View className="flex-row flex-wrap items-baseline gap-3">
-          <Figure value={alarm.time} size="xl" />
+          <ClockFigure time={alarm.time} size="xl" />
           <AlarmName alarm={alarm} />
         </View>
         <Text variant="footnote" tone="variant" className="tabular">
@@ -218,7 +219,7 @@ function CompactCard(props: AlarmCardProps): ReactNode {
       <View {...THROUGH} className="flex-row items-center gap-3">
         <Passive className="min-w-0 flex-1 gap-0.5">
           <View className="flex-row flex-wrap items-baseline gap-2">
-            <Figure value={alarm.time} size="m" tone={alarm.enabled ? 'default' : 'variant'} />
+            <ClockFigure time={alarm.time} size="m" tone={alarm.enabled ? 'default' : 'variant'} />
             <AlarmName alarm={alarm} />
           </View>
           <Text variant="footnote" tone="variant" className="tabular">
@@ -256,22 +257,35 @@ export interface AlarmListProps {
   readonly onOpen?: (alarm: PlannerAlarmRow) => void;
 }
 
-function run(failure: string, work: () => Promise<unknown>): void {
-  background(work().catch(notifyFailure(failure)), 'clock.alarm_card_failed');
+interface ListedAlarmProps extends Omit<AlarmCardProps, 'onToggle' | 'onOpen'> {
+  readonly person: PlannerPerson;
+  readonly onOpen: ((alarm: PlannerAlarmRow) => void) | undefined;
 }
 
-function useToggle(person: PlannerPerson): (alarm: PlannerAlarmRow, enabled: boolean) => void {
-  const writes = usePlannerWrites(person);
-  return (alarm, enabled): void => {
-    run('Couldn’t change that alarm', () => writes.updateAlarm(alarm, { enabled }));
-  };
+function ListedAlarm({ person, onOpen, ...card }: ListedAlarmProps): ReactNode {
+  const { alarm, save } = useShownAlarm(person, card.alarm);
+  return (
+    <AlarmCard
+      {...card}
+      alarm={alarm}
+      onToggle={(enabled) => {
+        save({ enabled });
+      }}
+      {...(onOpen === undefined
+        ? {}
+        : {
+            onOpen: (): void => {
+              onOpen(alarm);
+            },
+          })}
+    />
+  );
 }
 
 export function AlarmList(props: AlarmListProps): ReactNode {
   const { person, alarms, timeZone, layout, offline, selectedId = null, onOpen } = props;
   const frame = useRef<View>(null);
   const { value: now, onLayout } = useVisibleMinute(frame);
-  const toggle = useToggle(person);
   const ordered = alarmsInRingOrder(alarms, now, timeZone);
   const first = ordered[0];
   const heroId = first?.enabled === true ? first.id : null;
@@ -279,8 +293,9 @@ export function AlarmList(props: AlarmListProps): ReactNode {
     <View ref={frame} onLayout={onLayout} className="gap-3">
       <MissedAlarms person={person} alarms={alarms} now={now} timeZone={timeZone} />
       {ordered.map((alarm) => (
-        <AlarmCard
+        <ListedAlarm
           key={alarm.id}
+          person={person}
           alarm={alarm}
           now={now}
           timeZone={timeZone}
@@ -290,16 +305,7 @@ export function AlarmList(props: AlarmListProps): ReactNode {
           selected={alarm.id === selectedId}
           hero={alarm.id === heroId}
           disabled={offline}
-          onToggle={(enabled) => {
-            toggle(alarm, enabled);
-          }}
-          {...(onOpen === undefined
-            ? {}
-            : {
-                onOpen: (): void => {
-                  onOpen(alarm);
-                },
-              })}
+          onOpen={onOpen}
         />
       ))}
     </View>

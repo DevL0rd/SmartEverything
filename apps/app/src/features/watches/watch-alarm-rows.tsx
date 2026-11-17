@@ -11,9 +11,11 @@ import { List } from '../../components/section';
 import { Segmented } from '../../components/segmented';
 import { Sheet } from '../../components/sheet';
 import { Switch } from '../../components/switch';
-import { TimeField, localeUsesHour12 } from '../../components/time-field';
+import { TimeField } from '../../components/time-field';
 import type { WatchCommand } from './watch-config';
-import { clockText, timeLabel, timeOf } from './watch-time';
+import { clockText, timeOf } from './watch-time';
+import { useHour24 } from '../../store/clock-format';
+import { useClockFormat } from '../clock/format/clock-format';
 
 type Day = WatchAlarm['days'][number];
 
@@ -59,12 +61,13 @@ function AlarmFields({
   readonly draft: Draft;
   readonly onChange: (draft: Draft) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   return (
     <View className="gap-4">
       <TimeField
+        hour24={hour24}
         label="Time"
         value={timeOf(draft.time)}
-        hour12={localeUsesHour12()}
         onChange={(time) => {
           onChange({ ...draft, time: clockText(time) });
         }}
@@ -144,6 +147,13 @@ export function alarmKey(alarm: WatchAlarm, index: number): string {
   return alarm.id === null ? `${alarm.time}-${String(index)}` : String(alarm.id);
 }
 
+function AlarmFigure({ alarm }: { readonly alarm: WatchAlarm }): ReactNode {
+  const format = useClockFormat();
+  return (
+    <Figure value={format.text(alarm.time)} size="l" tone={alarm.enabled ? 'default' : 'faint'} />
+  );
+}
+
 function AlarmRow({
   alarm,
   command,
@@ -154,18 +164,17 @@ function AlarmRow({
   readonly onEdit: () => void;
 }): ReactNode {
   const id = alarm.id;
+  const format = useClockFormat();
   return (
     <ListRow
-      leading={
-        <Figure value={timeLabel(alarm.time)} size="l" tone={alarm.enabled ? 'default' : 'faint'} />
-      }
+      leading={<AlarmFigure alarm={alarm} />}
       title={daysText(alarm.days)}
       {...(alarm.smart ? { subtitle: 'Smart wake' } : {})}
       disabled={command.busy}
       onPress={onEdit}
       trailing={
         <Switch
-          label={`Alarm at ${timeLabel(alarm.time)}`}
+          label={`Alarm at ${format.text(alarm.time)}`}
           value={alarm.enabled}
           disabled={command.busy}
           onChange={(enabled) => {
@@ -224,9 +233,7 @@ export function shownStateOf(alarm: Pick<WatchAlarm, 'enabled' | 'smart'>): stri
 function ShownAlarmRow({ alarm }: { readonly alarm: WatchAlarm }): ReactNode {
   return (
     <ListRow
-      leading={
-        <Figure value={timeLabel(alarm.time)} size="l" tone={alarm.enabled ? 'default' : 'faint'} />
-      }
+      leading={<AlarmFigure alarm={alarm} />}
       title={daysText(alarm.days)}
       subtitle={shownStateOf(alarm)}
     />

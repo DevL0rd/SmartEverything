@@ -28,7 +28,7 @@ import { deleteLabelOf, subtitleOf, type DeleteScope } from './trash-copy';
 import { wasInOf, type TrashItem } from './trash-model';
 import { summaryWideOf, trashLayoutOf, trashSnap, type TrashLayout } from './trash-layout';
 import { TrashRow } from './trash-row';
-import { OfflineBanner, TrashEmpty, TrashNote } from './trash-states';
+import { TrashEmpty, TrashNote } from './trash-states';
 import { DeleteAllButton, TableTop, type DeleteAll } from './trash-table';
 import { useTrash, type TrashView } from './use-trash';
 
@@ -133,12 +133,7 @@ function useTrashLog(view: TrashView): void {
   }, [shown]);
 }
 
-interface TrashBody {
-  readonly body: Body;
-  readonly live: boolean;
-}
-
-function useTrashBody(layout: TrashLayout, wide: boolean): TrashBody {
+function useTrashBody(layout: TrashLayout, wide: boolean): Body {
   const owner = useIsOwner();
   const live = useSyncStatus().status === 'live';
   const view = useTrash();
@@ -154,21 +149,18 @@ function useTrashBody(layout: TrashLayout, wide: boolean): TrashBody {
   const disabled = !live || actions.busy;
   useTrashLog(view);
   return {
-    body: {
-      view,
-      shown,
-      filter,
-      setFilter,
-      owner,
-      driveOf,
-      layout,
-      wide,
-      disabled,
-      browser,
-      nodes,
-      actions,
-    },
-    live,
+    view,
+    shown,
+    filter,
+    setFilter,
+    owner,
+    driveOf,
+    layout,
+    wide,
+    disabled,
+    browser,
+    nodes,
+    actions,
   };
 }
 
@@ -212,7 +204,7 @@ export function TrashScreen(): ReactNode {
   const compact = useAreaWidth() < SHELL_BREAKPOINTS.compactMax;
   const { width, onLayout } = useMeasuredWidth(trashSnap);
   const layout = trashLayoutOf(compact, width);
-  const { body, live } = useTrashBody(layout, summaryWideOf(layout, width));
+  const body = useTrashBody(layout, summaryWideOf(layout, width));
   const { view } = body;
   const search = trashSearchOf(body);
   return (
@@ -224,7 +216,6 @@ export function TrashScreen(): ReactNode {
         compact || search !== undefined,
       )}
       scroll={false}
-      {...(live ? {} : { banner: <OfflineBanner /> })}
       {...(search === undefined ? {} : { search })}
     >
       <DriveListFrame browser={body.browser} inlineSelection>

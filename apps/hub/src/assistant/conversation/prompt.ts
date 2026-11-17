@@ -31,6 +31,7 @@ export interface PromptFacts extends StableFacts {
   readonly profileName: string;
   readonly role: Role;
   readonly timeZone: string;
+  readonly hour24: boolean;
   readonly now: Date;
   readonly boardTypes: readonly string[];
   readonly interruption: string | null;
@@ -46,7 +47,14 @@ function localTime(facts: PromptFacts): string {
     timeZone: facts.timeZone,
     dateStyle: 'full',
     timeStyle: 'short',
+    hourCycle: facts.hour24 ? 'h23' : 'h12',
   }).format(facts.now);
+}
+
+function clockLine(facts: PromptFacts): string {
+  return facts.hour24
+    ? 'Write and say clock times on the 24-hour clock.'
+    : 'Write and say clock times on the 12-hour clock with AM and PM.';
 }
 
 function chatLine(facts: PromptFacts): string {
@@ -164,6 +172,7 @@ export function contextLines(
     chatLine(facts),
     facts.sender === undefined ? '' : `From: ${facts.sender}.`,
     `Local time: ${localTime(facts)} (${facts.timeZone}).`,
+    clockLine(facts),
     boardsLine(facts),
     facts.interruption === null ? '' : `Note: ${facts.interruption}`,
     mode === 'standard'

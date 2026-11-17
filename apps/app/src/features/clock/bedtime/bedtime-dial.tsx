@@ -9,7 +9,7 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
-import { clockOfMinutes } from '../../../format/time';
+import { useClockFormat } from '../format/clock-format';
 import { selectionTick } from '../../../platform/haptics';
 import {
   angleOfMinute,
@@ -78,15 +78,19 @@ function innerRingOf(geometry: Geometry): Ring {
 
 const LABEL_BOX = { width: 24, height: 16 };
 
+const PERIOD_LABEL_BOX = { width: 44, height: 16 };
+
 function HourLabels({ geometry }: { readonly geometry: Geometry }): ReactNode {
+  const format = useClockFormat();
+  const box = format.hour24 ? LABEL_BOX : PERIOD_LABEL_BOX;
   const text = { ...innerRingOf(geometry), r: innerRingOf(geometry).r - 14 };
-  return dialTicks().map((entry) => {
+  return dialTicks(format).map((entry) => {
     if (entry.label === null) return null;
     const at = pointOn(text, entry.angle);
     const place = {
-      left: at.x - LABEL_BOX.width / 2,
-      top: at.y - LABEL_BOX.height / 2,
-      width: LABEL_BOX.width,
+      left: at.x - box.width / 2,
+      top: at.y - box.height / 2,
+      width: box.width,
     };
     return (
       <View key={entry.minute} pointerEvents="none" className="absolute items-center" style={place}>
@@ -100,10 +104,11 @@ function HourLabels({ geometry }: { readonly geometry: Geometry }): ReactNode {
 
 function Ticks({ geometry }: { readonly geometry: Geometry }): ReactNode {
   const tick = useColour('outline');
+  const format = useClockFormat();
   const inner = innerRingOf(geometry);
   return (
     <G>
-      {dialTicks().map((entry) => {
+      {dialTicks(format).map((entry) => {
         const major = entry.label !== null;
         const from = pointOn(inner, entry.angle);
         const to = pointOn({ ...inner, r: inner.r - (major ? 6 : 3) }, entry.angle);
@@ -215,6 +220,7 @@ function DialCentre({
   readonly times: DialTimes;
   readonly small: boolean;
 }): ReactNode {
+  const format = useClockFormat();
   return (
     <View pointerEvents="none" className="items-center gap-0.5">
       <Text variant="caption" tone="variant">
@@ -222,7 +228,7 @@ function DialCentre({
       </Text>
       <Figure value={sleepLengthText(sleepMinutesOf(times))} size={small ? 's' : 'm'} />
       <Text variant="footnote" tone="variant" className="tabular">
-        {`${clockOfMinutes(times.bed)} – ${clockOfMinutes(times.wake)}`}
+        {`${format.minutes(times.bed)} – ${format.minutes(times.wake)}`}
       </Text>
     </View>
   );
@@ -270,6 +276,7 @@ export function BedtimeDial(props: BedtimeDialProps): ReactNode {
   const [drag, setDrag] = useState<DialDrag | null>(null);
   const shown = drag?.times ?? props.times;
   const pan = useDialDrag(props, geometry, drag, setDrag);
+  const format = useClockFormat();
   const box = { width: props.size, height: props.size };
   const face = (
     <View style={box} className="items-center justify-center">
@@ -293,7 +300,7 @@ export function BedtimeDial(props: BedtimeDialProps): ReactNode {
         <View
           accessible
           accessibilityRole="image"
-          accessibilityLabel={`${dialSpokenOf(shown)}. Drag the moon or the sun to change it.`}
+          accessibilityLabel={`${dialSpokenOf(shown, format)}. Drag the moon or the sun to change it.`}
           accessibilityState={{ disabled: props.disabled }}
           className={props.disabled ? 'opacity-40' : 'cursor-pointer'}
         >
@@ -304,7 +311,7 @@ export function BedtimeDial(props: BedtimeDialProps): ReactNode {
   }
   return (
     <Interactive
-      label={`${dialSpokenOf(shown)}. Change the times`}
+      label={`${dialSpokenOf(shown, format)}. Change the times`}
       disabled={props.disabled}
       onPress={props.onEdit}
       layerClassName="rounded-full"

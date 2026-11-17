@@ -23,27 +23,6 @@ export interface Indexed {
   readonly sha256: string | null;
 }
 
-export interface ScanTotals {
-  readonly items: number;
-  readonly folders: number;
-  readonly bytes: number;
-}
-
-export function totalsOf(live: Iterable<Indexed>): ScanTotals {
-  let items = 0;
-  let folders = 0;
-  let bytes = 0;
-  for (const indexed of live) {
-    if (indexed.kind === 'folder') {
-      folders += 1;
-    } else {
-      items += 1;
-      if (indexed.kind === 'file') bytes += indexed.bytes;
-    }
-  }
-  return { items, folders, bytes };
-}
-
 export function identityKey(dev: string | null, ino: string | null): string {
   return `${dev ?? ''}:${ino ?? ''}`;
 }

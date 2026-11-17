@@ -27,6 +27,7 @@ beforeEach(async () => {
   );
   places = new PlacesService({
     context: kit.store.context,
+    reader: kit.store.reader,
     datasetPath: dataset,
     log: testLogger(),
   });

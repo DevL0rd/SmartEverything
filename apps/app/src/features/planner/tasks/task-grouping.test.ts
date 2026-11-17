@@ -1,3 +1,4 @@
+import { clockFormatOf } from '../../../format/clock-text';
 import {
   PLANNER_DAY,
   PLANNER_ITEM_ROW,
@@ -9,7 +10,7 @@ import {
   type PlannerStats,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { clock, shiftDay, shortDate, startOfDayKey, weekdayShort } from '../../../format/time';
+import { shiftDay, shortDate, startOfDayKey, weekdayShort } from '../../../format/time';
 import {
   dueLabelOf,
   isOverdue,
@@ -153,6 +154,9 @@ function smart(listName: Extract<TaskFilter, { kind: 'smart' }>['list']): TaskFi
   return { kind: 'smart', list: listName };
 }
 
+const H24 = clockFormatOf(true);
+const H12 = clockFormatOf(false);
+
 describe('taskEntriesOf and the smart lists', () => {
   const dueToday = task('Take out the recycling', { due_date: TODAY });
   const late = task('Call the dentist', { due_date: shiftDay(TODAY, -1), priority: 1 });
@@ -238,7 +242,7 @@ describe('repeating tasks', () => {
     expect(titlesIn(entries, smart('someday'))).toEqual([]);
     const [entry] = entries;
     expect(entry?.occurrenceKey).toBeNull();
-    expect(entry === undefined ? '' : dueLabelOf(entry, TODAY)).toBe('Not due today');
+    expect(entry === undefined ? '' : dueLabelOf(entry, TODAY, H24.instant)).toBe('Not due today');
   });
 });
 
@@ -258,7 +262,7 @@ describe('dueLabelOf and isOverdue', () => {
 
   it('names the day in words near today', () => {
     const label = (dueDay: string | null): string =>
-      dueLabelOf({ item: base, dueDay, dueAt: null }, TODAY);
+      dueLabelOf({ item: base, dueDay, dueAt: null }, TODAY, H24.instant);
     expect(label(TODAY)).toBe('Today');
     expect(label(shiftDay(TODAY, 1))).toBe('Tomorrow');
     expect(label(shiftDay(TODAY, -1))).toBe('Yesterday');
@@ -274,7 +278,12 @@ describe('dueLabelOf and isOverdue', () => {
       occurrences: [],
       day: undefined,
     })[0];
-    expect(entry === undefined ? '' : dueLabelOf(entry, TODAY)).toBe(`Today ${clock(dueAt)}`);
+    expect(entry === undefined ? '' : dueLabelOf(entry, TODAY, H24.instant)).toBe(
+      `Today ${H24.instant(dueAt)}`,
+    );
+    expect(entry === undefined ? '' : dueLabelOf(entry, TODAY, H12.instant)).toBe(
+      `Today ${H12.instant(dueAt)}`,
+    );
     expect(entry === undefined ? null : isOverdue(entry, Date.parse(dueAt) - 1, TODAY)).toBe(false);
     expect(entry === undefined ? null : isOverdue(entry, Date.parse(dueAt) + 1, TODAY)).toBe(true);
   });

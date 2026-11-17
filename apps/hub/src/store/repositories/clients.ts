@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { StoreConflictError } from '../sql';
+import { ACTIVE_PROFILES } from './active-profiles';
 
 const STORED_CLIENT = storedRow(CLIENT_ROW, { flags: ['built_in'] });
 
@@ -114,6 +115,7 @@ export class ClientsRepository {
         },
       );
       const row = this.byId(id);
+      ACTIVE_PROFILES.forget(this.context);
       this.context.changed('clients', 'INSERT', row, null);
       return row;
     });
@@ -139,6 +141,7 @@ export class ClientsRepository {
         id,
       });
       const after = this.byId(id);
+      ACTIVE_PROFILES.forget(this.context);
       this.context.changed('clients', 'UPDATE', after, before);
       return after;
     });
@@ -159,6 +162,7 @@ export class ClientsRepository {
         { id, profileId },
       );
       const after = this.byId(id);
+      ACTIVE_PROFILES.forget(this.context);
       this.context.changed('clients', 'UPDATE', after, before);
       return after;
     });
@@ -171,6 +175,7 @@ export class ClientsRepository {
         throw new StoreConflictError('remove the client', 'the desktop owner cannot be unpaired');
       }
       this.context.sql.run('remove the client', 'delete from clients where id = $id', { id });
+      ACTIVE_PROFILES.forget(this.context);
       this.context.changed('clients', 'DELETE', null, before);
     });
   }

@@ -95,12 +95,67 @@ function insertParameters(root: DriveRoot, now: string): Record<string, SQLInput
   };
 }
 
+function findDriveRootRow(context: StoreContext, id: string): DriveRoot | undefined {
+  return context.sql.get(STORED_ROOT, `select ${COLUMNS} from drive_roots where id = $id`, { id });
+}
+
 export function driveRootRow(context: StoreContext, id: string): DriveRoot {
-  return found(
-    context.sql.get(STORED_ROOT, `select ${COLUMNS} from drive_roots where id = $id`, { id }),
-    'drive',
-    id,
-  );
+  return found(findDriveRootRow(context, id), 'drive', id);
+}
+
+type TotalsSettled = (rootId: string) => void;
+
+function sameTotals(left: DriveRoot, right: DriveRoot): boolean {
+  return left.items === right.items && left.folders === right.folders && left.bytes === right.bytes;
+}
+
+export class DriveRootTotals {
+  private readonly before = new Map<string, DriveRoot>();
+  private readonly listeners = new Set<TotalsSettled>();
+
+  constructor(private readonly context: StoreContext) {
+    context.enlist(() => {
+      this.flush();
+    });
+  }
+
+  changing(rootId: string): void {
+    if (!this.before.has(rootId)) this.before.set(rootId, driveRootRow(this.context, rootId));
+    this.settle(rootId);
+  }
+
+  announced(row: DriveRoot): void {
+    if (this.before.has(row.id)) this.before.set(row.id, row);
+  }
+
+  onSettled(listener: TotalsSettled): void {
+    this.listeners.add(listener);
+  }
+
+  private flush(): void {
+    const pending = [...this.before];
+    this.before.clear();
+    for (const [rootId, before] of pending) {
+      this.settle(rootId);
+      const after = findDriveRootRow(this.context, rootId);
+      if (after === undefined || sameTotals(before, after)) continue;
+      this.context.changed('drive_roots', 'UPDATE', after, before);
+    }
+  }
+
+  private settle(rootId: string): void {
+    for (const listener of this.listeners) listener(rootId);
+  }
+}
+
+const TOTALS = new WeakMap<StoreContext, DriveRootTotals>();
+
+export function driveRootTotals(context: StoreContext): DriveRootTotals {
+  const known = TOTALS.get(context);
+  if (known !== undefined) return known;
+  const created = new DriveRootTotals(context);
+  TOTALS.set(context, created);
+  return created;
 }
 
 export interface DriveRootPatch {
@@ -108,9 +163,6 @@ export interface DriveRootPatch {
   readonly indexId?: string;
   readonly state?: DriveRoot['state'];
   readonly stateReason?: string | null;
-  readonly items?: number;
-  readonly folders?: number;
-  readonly bytes?: number;
   readonly scannedAt?: string | null;
   readonly health?: DriveRootHealth;
   readonly skipPatterns?: readonly string[] | undefined;
@@ -123,9 +175,6 @@ function patchColumns(patch: DriveRootPatch): Record<string, SQLInputValue | und
     index_id: patch.indexId,
     state: patch.state,
     state_reason: patch.stateReason,
-    items: patch.items,
-    folders: patch.folders,
-    bytes: patch.bytes,
     scanned_at: patch.scannedAt,
     skip_patterns: whenDefined(patch.skipPatterns, jsonText),
     include_hidden: whenDefined(patch.includeHidden, flag),
@@ -139,11 +188,17 @@ function patchColumns(patch: DriveRootPatch): Record<string, SQLInputValue | und
 
 export class DriveRootsRepository {
   private readonly cached = new Map<string, DriveRoot>();
+  private readonly totals: DriveRootTotals;
 
   constructor(
     private readonly context: StoreContext,
     private readonly drivePathOf: DrivePathOf,
-  ) {}
+  ) {
+    this.totals = driveRootTotals(context);
+    this.totals.onSettled((rootId) => {
+      this.cached.delete(rootId);
+    });
+  }
 
   list(): StoredDrive[] {
     return this.context.sql
@@ -199,14 +254,13 @@ export class DriveRootsRepository {
       );
       const row = this.rowOf(id);
       this.context.changed('drive_roots', 'UPDATE', row, before);
+      this.totals.announced(row);
       return this.stored(row);
     });
   }
 
   private row(id: string): DriveRoot | undefined {
-    return this.context.sql.get(STORED_ROOT, `select ${COLUMNS} from drive_roots where id = $id`, {
-      id,
-    });
+    return findDriveRootRow(this.context, id);
   }
 
   private rowOf(id: string): DriveRoot {

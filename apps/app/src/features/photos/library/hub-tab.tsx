@@ -11,7 +11,6 @@ import type { MediaDay, MediaGrouping } from '../../../components/media-grid/til
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { notify } from '../../../components/toast-store';
 import { pickFiles, PickerMissingError, type PickedBlob } from '../../../platform/pick-files';
-import { useSyncStatus } from '../../../store/selectors';
 import { DurationChips, VideoStatsRow } from '../collections/video-header';
 import { bucketMonthTotal, videoMonthText } from '../collections/video-model';
 import { usePhotoInsights } from '../data';
@@ -28,7 +27,7 @@ import {
   LibrarySelectionHead,
   type LibrarySelectionProps,
 } from './library-selection';
-import { LibraryEmpty, LibraryError, LibraryLoading, OfflineBanner } from './library-states';
+import { LibraryEmpty, LibraryError, LibraryLoading } from './library-states';
 import { resultLineOf, type HubTabId } from './library-tabs-view';
 import { LocalLibraryStatus } from './local-library-status';
 import { matchLineOf } from '../search/match-line';
@@ -101,10 +100,6 @@ export function selectionHeadOf(
 ): ReactElement | null {
   if (!props.controls.selection.active) return null;
   return compact ? <LibrarySelectionHead {...props} /> : <LibrarySelection {...props} />;
-}
-
-export function isOffline(status: ReturnType<typeof useSyncStatus>['status']): boolean {
-  return status === 'interrupted' || status === 'refused';
 }
 
 export interface HubTabProps {
@@ -254,7 +249,6 @@ export function HubTab(props: HubTabProps): ReactNode {
   const controls = useMediaSelection(feed.tiles.map((tile) => tile.id));
   useClearOnChange(scopeKeyOf(scope), controls.clear);
   const media = useMediaActions();
-  const offline = isOffline(useSyncStatus().status);
   const selection = feedSelectionOf(feed, controls, media);
   const localLoading = tab === 'all' && local.state === 'loading';
   const filled = feed.tiles.length > 0;
@@ -268,7 +262,6 @@ export function HubTab(props: HubTabProps): ReactNode {
           select: filled,
         }),
         selection: selectionHeadOf(head.compact, selection),
-        banner: offline ? <OfflineBanner seenAt={feed.seenAt} /> : null,
         footer:
           head.compact && controls.selection.ids.size > 0 ? (
             <LibraryActionRow {...selection} />

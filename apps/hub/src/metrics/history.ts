@@ -4,13 +4,15 @@ import {
   type MetricRange,
   type MetricSeries,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type {
   DeviceMetricsRepository,
   MetricRowInsert,
 } from '../store/repositories/device-metrics';
 import { HOUR_MS, MinuteAccumulator, startOf, type MinuteSummary } from './minute';
 import { MetricRing } from './ring';
+
+export const PRUNE_SLICE_ROWS = 1000;
 
 const RING_SECONDS = 600;
 const MINUTE_RETENTION_MS = 24 * HOUR_MS;
@@ -122,10 +124,21 @@ export class MetricHistory {
     this.rolledHour = hour;
     try {
       this.options.store.rollHours(iso(hour - ROLLED_WINDOW_MS), iso(hour));
-      this.options.store.prune('minute', iso(at - MINUTE_RETENTION_MS));
-      this.options.store.prune('hour', iso(at - HOUR_RETENTION_MS));
     } catch (cause) {
       this.options.log.error('metrics.hours_not_rolled', cause, { hour: iso(hour) });
+    }
+    background(this.prune(at), 'metrics.prune_failed', { hour: iso(hour) });
+  }
+
+  private async prune(at: number): Promise<void> {
+    for (const [resolution, before] of [
+      ['minute', iso(at - MINUTE_RETENTION_MS)],
+      ['hour', iso(at - HOUR_RETENTION_MS)],
+    ] as const) {
+      while (this.options.store.prune(resolution, before, PRUNE_SLICE_ROWS) === PRUNE_SLICE_ROWS)
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
     }
   }
 }

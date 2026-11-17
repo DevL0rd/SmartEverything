@@ -1,5 +1,6 @@
 import { insideClockWindow, localClock, type PlannerPreferences } from '@smarteverything/domain';
-import { clock24, clockOfMinutes, localDayKey, zonedInstant } from '../../../format/time';
+import type { ClockFormat } from '../../../format/clock-text';
+import { localDayKey, zonedInstant } from '../../../format/time';
 import { dayLabelOf } from '../../planner';
 import { weekdayNameOf } from './world-time';
 
@@ -53,8 +54,10 @@ export function toneAt(at: number, zone: string, plan: HourPlan): HourTone {
     : 'night';
 }
 
-function cellLabelOf(at: number, zone: string): string {
-  return String(Math.floor(localClock(new Date(at), zone).minuteOfDay / HOUR_MINUTES));
+function cellLabelOf(at: number, zone: string, hour24: boolean): string {
+  const hour = Math.floor(localClock(new Date(at), zone).minuteOfDay / HOUR_MINUTES);
+  if (hour24) return String(hour);
+  return String(hour % 12 === 0 ? 12 : hour % 12);
 }
 
 export function minutePastOf(zone: string, home: HomeDay): string | null {
@@ -62,10 +65,15 @@ export function minutePastOf(zone: string, home: HomeDay): string | null {
   return minute === 0 ? null : `:${String(minute).padStart(2, '0')}`;
 }
 
-export function hourCellsOf(zone: string, home: HomeDay, plan: HourPlan): readonly HourCell[] {
+export function hourCellsOf(
+  zone: string,
+  home: HomeDay,
+  plan: HourPlan,
+  hour24: boolean,
+): readonly HourCell[] {
   return HOURS.map((hour) => {
     const at = instantAt(home, hour);
-    return { hour, label: cellLabelOf(at, zone), tone: toneAt(at, zone, plan) };
+    return { hour, label: cellLabelOf(at, zone, hour24), tone: toneAt(at, zone, plan) };
   });
 }
 
@@ -74,25 +82,35 @@ export function nextHourOf(now: number, zone: string): number {
   return Math.min(DAY_HOURS - 1, hour + 1);
 }
 
-export function placeTimeOf(place: PlaceAt, at: number, home: HomeDay): string {
-  const time = clock24(at, place.zone);
+export function placeTimeOf(
+  place: PlaceAt,
+  at: number,
+  home: HomeDay,
+  format: ClockFormat,
+): string {
+  const time = format.instant(at, place.zone);
   const name = place.home ? 'Home' : place.name;
   const sameDay = localDayKey(at, place.zone) === home.day;
   return sameDay ? `${time} ${name}` : `${time} ${name}, ${weekdayNameOf(at, place.zone)}`;
 }
 
-export function markerSummaryOf(places: readonly PlaceAt[], hour: number, home: HomeDay): string {
+export function markerSummaryOf(
+  places: readonly PlaceAt[],
+  hour: number,
+  home: HomeDay,
+  format: ClockFormat,
+): string {
   const at = instantAt(home, hour);
-  return places.map((place) => placeTimeOf(place, at, home)).join(' · ');
+  return places.map((place) => placeTimeOf(place, at, home, format)).join(' · ');
 }
 
-export function hourTimeOf(hour: number, home: HomeDay): string {
-  return clock24(instantAt(home, hour), home.zone);
+export function hourTimeOf(hour: number, home: HomeDay, format: ClockFormat): string {
+  return format.instant(instantAt(home, hour), home.zone);
 }
 
-export function eventTextAt(hour: number, home: HomeDay): string {
-  const from = clockOfMinutes(hour * HOUR_MINUTES);
-  const to = clockOfMinutes((hour + 1) * HOUR_MINUTES);
+export function eventTextAt(hour: number, home: HomeDay, format: ClockFormat): string {
+  const from = format.minutes(hour * HOUR_MINUTES);
+  const to = format.minutes((hour + 1) * HOUR_MINUTES);
   return `${dayLabelOf(home.day, true)} ${from} to ${to}`;
 }
 

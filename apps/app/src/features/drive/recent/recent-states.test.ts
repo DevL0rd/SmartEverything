@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recentStale, recentStateOf } from './recent-states';
+import { recentStateOf } from './recent-states';
 
 const LIVE = { hasData: false, isPending: false, isError: false, live: true } as const;
 
@@ -20,13 +20,5 @@ describe('recentStateOf', () => {
   it('shows the empty state when a loaded page has nothing', () => {
     expect(recentStateOf({ ...LIVE, hasData: true })).toBe('empty');
     expect(recentStateOf({ ...LIVE, hasData: true, live: false })).toBe('empty');
-  });
-});
-
-describe('recentStale', () => {
-  it('marks loaded files as stale only while the hub is not live', () => {
-    expect(recentStale(true, false)).toBe(true);
-    expect(recentStale(true, true)).toBe(false);
-    expect(recentStale(false, false)).toBe(false);
   });
 });

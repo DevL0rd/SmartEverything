@@ -14,7 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DriveActivity } from '../../src/drive/activity';
-import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
+import { scanHandler, type DriveJob, type ScanEnvironment } from '../../src/drive/jobs';
+import { reflectHandler } from '../../src/drive/reflect';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
@@ -55,7 +56,7 @@ afterEach(() => {
   rmSync(base, { recursive: true, force: true });
 });
 
-function nextOf(list: readonly string[], what: string): Promise<void> {
+function nextOf(list: readonly unknown[], what: string): Promise<void> {
   const seen = list.length;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -83,8 +84,13 @@ function watchersOver(
   folder: string,
   factory: WatchFactory = systemWatch,
   enqueue: (rootId: string) => void = (rootId) => scans.push(rootId),
-  skipPatterns: readonly string[] = [],
+  extra: {
+    readonly skipPatterns?: readonly string[];
+    readonly reflect?: (rootId: string, relPaths: readonly string[]) => void;
+  } = {},
 ): DriveWatchers {
+  const skipPatterns = extra.skipPatterns ?? [];
+  const reflect = extra.reflect ?? enqueue;
   fixture.addDrive(driveRoot(ROOT, { skipPatterns }), folder);
   const environment: WatchEnvironment = {
     roots,
@@ -93,6 +99,7 @@ function watchersOver(
     mounted: (): boolean => false,
     onPlacementChange: (): (() => void) => (): undefined => undefined,
     enqueueScan: enqueue,
+    enqueueReflect: reflect,
     enqueueFollowUps: (rootId): void => {
       followUps.push(rootId);
     },
@@ -118,7 +125,7 @@ describe('the root watcher', () => {
     const deepest = join(base, 'a/b/c/d/e');
     mkdirSync(deepest, { recursive: true });
     const pool = watchersOver(base);
-    pool.start(roots.byId(ROOT));
+    await pool.start(roots.byId(ROOT));
     expect(scans).toEqual([ROOT]);
     writeFileSync(join(deepest, 'one.txt'), '1');
     writeFileSync(join(deepest, 'two.txt'), '2');
@@ -133,7 +140,7 @@ describe('the root watcher', () => {
     const root = join(base, 'root');
     mkdirSync(root);
     const pool = watchersOver(root);
-    pool.start(roots.byId(ROOT));
+    await pool.start(roots.byId(ROOT));
     mkdirSync(join(root, 'n1/n2/n3'), { recursive: true });
     await nextScan();
     writeFileSync(join(root, 'n1/n2/n3/late.txt'), 'y');
@@ -149,8 +156,10 @@ describe('the root watcher', () => {
     const root = join(base, 'ignored');
     mkdirSync(join(root, '.smarteverything/tmp'), { recursive: true });
     mkdirSync(join(root, 'cache'));
-    const pool = watchersOver(root, systemWatch, (rootId) => scans.push(rootId), ['cache/**']);
-    pool.start(roots.byId(ROOT));
+    const pool = watchersOver(root, systemWatch, (rootId) => scans.push(rootId), {
+      skipPatterns: ['cache/**'],
+    });
+    await pool.start(roots.byId(ROOT));
     writeFileSync(join(root, '.smarteverything/tmp/x'), '1');
     writeFileSync(join(root, '.hidden'), '1');
     writeFileSync(join(root, 'cache/y'), '1');
@@ -166,7 +175,7 @@ describe('the root watcher', () => {
     const locked = lockedTree(root);
     try {
       const pool = watchersOver(root);
-      pool.start(roots.byId(ROOT));
+      await pool.start(roots.byId(ROOT));
       expect(pool.status(ROOT)).toEqual({ watching: true, unreadable: [locked], problem: null });
       writeFileSync(join(root, 'ok/open/deeper/a.txt'), '1');
       await nextScan();
@@ -184,7 +193,7 @@ describe('the root watcher', () => {
     const locked = lockedTree(root);
     try {
       const pool = watchersOver(root);
-      pool.start(roots.byId(ROOT));
+      await pool.start(roots.byId(ROOT));
       mkdirSync(join(root, 'ok/fresh/inner'), { recursive: true });
       await nextScan();
       writeFileSync(join(root, 'ok/fresh/inner/late.txt'), '1');
@@ -199,7 +208,7 @@ describe('the root watcher', () => {
     const root = join(base, 'again');
     mkdirSync(join(root, 'work/inner'), { recursive: true });
     const pool = watchersOver(root);
-    pool.start(roots.byId(ROOT));
+    await pool.start(roots.byId(ROOT));
     rmSync(join(root, 'work'), { recursive: true });
     await nextOf(followUps, 'follow-up');
     mkdirSync(join(root, 'work/inner'), { recursive: true });
@@ -216,7 +225,7 @@ describe('the root watcher', () => {
     mkdirSync(root);
     const name = 'n'.repeat(200);
     const pool = watchersOver(root);
-    pool.start(roots.byId(ROOT));
+    await pool.start(roots.byId(ROOT));
     let directory = root;
     let held = openSync(root, 'r');
     try {
@@ -237,7 +246,7 @@ describe('the root watcher', () => {
     expect(pool.status(ROOT)).toMatchObject({ watching: true, problem: null });
   });
 
-  it('shows an exhausted watch limit on the root and stops adding watches', () => {
+  it('shows an exhausted watch limit on the root and stops adding watches', async () => {
     mkdirSync(join(base, 'a'));
     let attempts = 0;
     const refusing: WatchFactory = (directory) => {
@@ -245,7 +254,7 @@ describe('the root watcher', () => {
       throw Object.assign(new Error('limit'), { code: 'ENOSPC', path: directory });
     };
     const pool = watchersOver(base, refusing);
-    pool.start(roots.byId(ROOT));
+    await pool.start(roots.byId(ROOT));
     const status = pool.status(ROOT);
     expect(status.watching).toBe(false);
     expect(status.problem).toMatch(/limit on watched folders/);
@@ -254,7 +263,7 @@ describe('the root watcher', () => {
     expect(scans).toEqual([ROOT]);
   });
 
-  it('closes on a watch error, shows it, asks for one reconcile and does not restart', () => {
+  it('closes on a watch error, shows it, asks for one reconcile and does not restart', async () => {
     let fail: (cause: Error) => void = () => undefined;
     let closed = 0;
     const factory: WatchFactory = () => ({
@@ -266,7 +275,7 @@ describe('the root watcher', () => {
       },
     });
     const pool = watchersOver(base, factory);
-    pool.start(roots.byId(ROOT));
+    await pool.start(roots.byId(ROOT));
     fail(Object.assign(new Error('boom'), { code: 'EIO' }));
     expect(closed).toBe(1);
     expect(scans).toEqual([ROOT, ROOT]);
@@ -274,17 +283,17 @@ describe('the root watcher', () => {
     expect(roots.byId(ROOT).stateReason).toMatch(/\(EIO\)/);
   });
 
-  it('starts again with a reconcile after a remount, and clears a shown problem', () => {
+  it('starts again with a reconcile after a remount, and clears a shown problem', async () => {
     let refuse = true;
     const factory: WatchFactory = (directory, onEvent) => {
       if (refuse) throw Object.assign(new Error('limit'), { code: 'ENOSPC' });
       return systemWatch(directory, onEvent);
     };
     const pool = watchersOver(base, factory);
-    pool.start(roots.byId(ROOT));
+    await pool.start(roots.byId(ROOT));
     expect(roots.byId(ROOT).stateReason).not.toBeNull();
     refuse = false;
-    pool.remounted(ROOT);
+    await pool.remounted(ROOT);
     expect(scans).toEqual([ROOT, ROOT]);
     expect(pool.status(ROOT)).toMatchObject({ watching: true, problem: null });
     expect(roots.byId(ROOT).stateReason).toBeNull();
@@ -312,7 +321,7 @@ describe('a hub write seen again by the watcher', () => {
     rmSync(bundleFolder, { recursive: true, force: true });
   });
 
-  it('asks for no scan when the stored post-rename stat matches, and scans an outside edit', async () => {
+  it('asks for no scan when the stored post-rename stat matches, and reflects only an outside edit', async () => {
     const environment: ScanEnvironment = {
       store: {
         driveRoots: roots,
@@ -329,20 +338,34 @@ describe('a hub write seen again by the watcher', () => {
       lanes: new DriveRootLanes(),
       log: testLogger(),
     };
-    const queue = new WorkQueue<string>({
+    const reflected: (readonly string[])[] = [];
+    const queue = new WorkQueue<DriveJob>({
+      merge: (_queued, next): DriveJob => next,
       concurrency: 1,
-      keyOf: (rootId): string => rootId,
-      run: (rootId, signal): Promise<void> =>
-        scanHandler(environment)({ kind: 'scan', rootId }, signal),
-      failed: (_rootId, cause): never => {
+      keyOf: (job): string => job.kind,
+      run: (job, signal): Promise<void> =>
+        job.kind === 'reflect'
+          ? reflectHandler(environment)(job, signal)
+          : scanHandler(environment)({ kind: 'scan', rootId: job.rootId }, signal),
+      failed: (_job, cause): never => {
         throw cause;
       },
     });
-    const pool = watchersOver(base, systemWatch, (rootId) => {
-      scans.push(rootId);
-      queue.enqueue(rootId);
-    });
-    pool.start(roots.byId(ROOT));
+    const pool = watchersOver(
+      base,
+      systemWatch,
+      (rootId) => {
+        scans.push(rootId);
+        queue.enqueue({ kind: 'scan', rootId });
+      },
+      {
+        reflect: (rootId, relPaths) => {
+          reflected.push(relPaths);
+          queue.enqueue({ kind: 'reflect', rootId, paths: relPaths });
+        },
+      },
+    );
+    await pool.start(roots.byId(ROOT));
     await queue.idle();
     const file = join(base, 'doc.txt');
     writeFileSync(file, 'hello');
@@ -376,8 +399,10 @@ describe('a hub write seen again by the watcher', () => {
     expect(scans).toEqual([ROOT]);
     expect(items.byPath(ROOT, 'doc.txt', null)).toMatchObject({ id, rev: 1, outside: false });
     writeFileSync(file, 'hello world');
-    await nextScan();
+    await nextOf(reflected, 'reflect');
     await queue.idle();
+    expect(reflected).toEqual([['doc.txt']]);
+    expect(scans).toEqual([ROOT]);
     expect(items.byPath(ROOT, 'doc.txt', null)).toMatchObject({ id, rev: 2, bytes: 11 });
   });
 });

@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
-import { Banner } from '../../../components/banner';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { appPlatform, isNative } from '../../../design/platform';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { SettingsPageBody } from '../../../settings/settings-page';
-import { useSyncStatus } from '../../../store/selectors';
 import { usePhotoBackupState } from '../data';
 import { localMediaSource } from '../local/source';
 import { PHOTOS_BACKUP_PAGE } from '../settings';
@@ -23,10 +21,6 @@ import { ThisPhoneCard } from './this-phone-card';
 const OPEN_PHOTOS: readonly ShellAction[] = [
   { icon: 'image', label: 'Open Photos', href: href.photos() },
 ];
-
-const OFFLINE_HUB = 'Backup state comes back when your home hub answers.';
-
-const OFFLINE_LOCAL = 'Backup on this device keeps going and catches up when the hub is back.';
 
 function HubCards({
   live,
@@ -80,25 +74,9 @@ function LocalBackup({ live }: { readonly live: LiveProgress }): ReactNode {
 
 export function BackupSettingsScreen(): ReactNode {
   const live = useLiveProgress();
-  const connected = useSyncStatus().status === 'live';
   const local = localMediaSource() !== null;
   return (
-    <SettingsFrame
-      page={PHOTOS_BACKUP_PAGE}
-      actions={OPEN_PHOTOS}
-      {...(connected
-        ? {}
-        : {
-            banner: (
-              <Banner
-                tone="info"
-                title="Offline · showing the last snapshot"
-                body={local ? OFFLINE_LOCAL : OFFLINE_HUB}
-                wrapBody
-              />
-            ),
-          })}
-    >
+    <SettingsFrame page={PHOTOS_BACKUP_PAGE} actions={OPEN_PHOTOS}>
       {local ? <LocalBackup live={live} /> : <HubBackup live={live} />}
     </SettingsFrame>
   );

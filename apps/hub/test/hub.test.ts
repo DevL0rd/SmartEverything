@@ -61,10 +61,20 @@ async function until(condition: () => boolean): Promise<void> {
   }
 }
 
-async function start(before: (store: Store) => void = () => undefined): Promise<Started> {
+async function start(
+  before: (store: Store) => void = () => undefined,
+  gate: Promise<void> | null = null,
+): Promise<Started> {
   const store = opened.store;
   const fake = fakeModule();
   fake.adapter.devices = [LAMP, CAMERA];
+  if (gate !== null) {
+    const devices = fake.adapter.devices;
+    fake.adapter.discover = async (): Promise<typeof devices> => {
+      await gate;
+      return devices;
+    };
+  }
   const secrets = await SecretStore.open(join(opened.directory, 'secrets'), Buffer.alloc(32, 5));
   await secrets.saveAccount('xiaomi', { label: 'me', secrets: {} });
   before(store);
@@ -87,6 +97,9 @@ async function start(before: (store: Store) => void = () => undefined): Promise<
     clock: new FakeClock('2026-10-08T10:00:00.000Z'),
     logFor: (area) => testLogger(area),
   });
+  if (gate === null) {
+    await hub.providersStarted;
+  }
   return { store, fake, hub, go2rtcCalls, accountChanges };
 }
 
@@ -138,6 +151,21 @@ describe('hub core on the SQLite store', () => {
         .map((record) => record.payload),
     ).toStrictEqual([{ count: 0 }, { count: 1 }]);
     await restarted.hub.stop();
+  });
+
+  it('is ready while a slow provider discovery is still pending, then catches up once it finishes', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { store, hub } = await start(undefined, gate);
+    expect(store.devices.list()).toHaveLength(0);
+    expect(logs.records.filter((record) => record.event === 'commands.caught_up')).toHaveLength(0);
+    release();
+    await hub.providersStarted;
+    expect(store.providers.find('xiaomi')).toMatchObject({ status: 'linked', device_count: 2 });
+    expect(logs.records.filter((record) => record.event === 'commands.caught_up')).toHaveLength(1);
+    await hub.stop();
   });
 
   it('tells the started signal how long the hub was off after a clean stop and forgets the mark', async () => {

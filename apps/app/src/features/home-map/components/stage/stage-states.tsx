@@ -151,10 +151,7 @@ function connectionNotice(
   facts: StageStatusFacts,
   actions: StageStatusActions,
 ): StageNotice | null {
-  if (!facts.connected && facts.phase !== 'no-map') {
-    return { icon: 'cloud', text: 'Offline · showing the last map' };
-  }
-  if (facts.loadFailed && facts.phase === 'skeleton') {
+  if (facts.connected && facts.loadFailed && facts.phase === 'skeleton') {
     return { icon: 'warning', text: "Couldn't load the map · Retry", onPress: actions.onRetryLoad };
   }
   return null;

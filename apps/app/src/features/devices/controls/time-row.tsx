@@ -5,10 +5,12 @@ import type { ClockText, PresentedCapability } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { Sheet } from '../../../components/sheet';
-import { TimeField, localeUsesHour12, type TimeOfDay } from '../../../components/time-field';
+import { TimeField, type TimeOfDay } from '../../../components/time-field';
 import type { Control } from '../../../store/control';
 import { clockLabel, clockTextOf, parseClockText } from '../model/clock-text';
 import { background } from '@smarteverything/logging';
+import { useHour24 } from '../../../store/clock-format';
+import { useClockFormat } from '../../clock/format/clock-format';
 
 const MIDNIGHT: TimeOfDay = { hour: 0, minute: 0 };
 
@@ -27,6 +29,7 @@ function TimeSheet({
   readonly opener: RefObject<View | null>;
   readonly onClose: () => void;
 }): ReactNode {
+  const hour24 = useHour24();
   const [time, setTime] = useState(initial);
   return (
     <Sheet
@@ -48,12 +51,7 @@ function TimeSheet({
         </>
       }
     >
-      <TimeField
-        label={presented.label}
-        value={time}
-        onChange={setTime}
-        hour12={localeUsesHour12()}
-      />
+      <TimeField hour24={hour24} label={presented.label} value={time} onChange={setTime} />
     </Sheet>
   );
 }
@@ -71,6 +69,7 @@ export function TimeRow({
 }): ReactNode {
   const [open, setOpen] = useState(false);
   const opener = useRef<View>(null);
+  const format = useClockFormat();
   const text = typeof control.value === 'string' ? control.value : null;
   const time = text === null ? null : parseClockText(text);
   const unreadable = text !== null && time === null;
@@ -79,7 +78,7 @@ export function TimeRow({
       <ListRow
         pressRef={opener}
         title={presented.label}
-        value={time === null ? 'Not set' : clockLabel(time)}
+        value={time === null ? 'Not set' : format.text(clockLabel(time))}
         {...(unreadable ? { subtitle: `Unreadable time “${text}”`, subtitleTone: 'warning' } : {})}
         chevron
         disabled={disabled}

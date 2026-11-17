@@ -18,6 +18,7 @@ import {
   withStartDay,
   withStartTime,
 } from './item-history';
+import { useHour24 } from '../../../store/clock-format';
 
 export type WhenRowProps = Pick<
   ItemFieldsProps,
@@ -37,12 +38,13 @@ function TimeColumn({
   readonly value: TimeOfDay;
   readonly onChange: (value: TimeOfDay) => void;
 }): ReactNode {
+  const hour24 = useHour24();
   return (
     <View className="items-center gap-1">
       <Text variant="caption" tone="variant">
         {caption}
       </Text>
-      <TimeField label={caption} value={value} onChange={onChange} />
+      <TimeField hour24={hour24} label={caption} value={value} onChange={onChange} />
     </View>
   );
 }
