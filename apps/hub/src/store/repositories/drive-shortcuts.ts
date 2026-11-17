@@ -167,6 +167,7 @@ export class DriveShortcutsRepository {
         `delete from drive_shortcuts
           where target_item_id not in (select id from drive_items)
             and target_item_id not in (select item_id from drive_trash)
+            and target_item_id not in (select item_id from drive_missing)
             and target_item_id not in (
               select json_extract(row, '$.id') from drive_trash_rows where table_name = 'drive_items'
             )`,

@@ -28,6 +28,46 @@ export class DriveSyncOpsRepository {
     });
   }
 
+  claim(claim: { readonly placementId: string; readonly opId: string; readonly action: string }): void {
+    this.context.sql.run(
+      'claim the drive sync operation',
+      `insert into drive_sync_ops (placement_id, op_id, result, at)
+        values ($placementId, $opId, $result, $at)
+        on conflict (placement_id, op_id) do nothing`,
+      {
+        placementId: claim.placementId,
+        opId: claim.opId,
+        result: jsonText({ action: claim.action, reply: null }),
+        at: this.context.now(),
+      },
+    );
+  }
+
+  rememberAll(
+    entries: readonly {
+      readonly placementId: string;
+      readonly opId: string;
+      readonly result: Readonly<Record<string, unknown>>;
+    }[],
+  ): void {
+    this.context.write(() => {
+      for (const entry of entries) {
+        this.context.sql.run(
+          'save the drive mount operation reply',
+          `insert into drive_sync_ops (placement_id, op_id, result, at)
+            values ($placementId, $opId, $result, $at)
+            on conflict (placement_id, op_id) do update set result = excluded.result`,
+          {
+            placementId: entry.placementId,
+            opId: entry.opId,
+            result: jsonText(entry.result),
+            at: this.context.now(),
+          },
+        );
+      }
+    });
+  }
+
   forgetBefore(at: string): number {
     return this.context.write(() =>
       this.context.sql.run(

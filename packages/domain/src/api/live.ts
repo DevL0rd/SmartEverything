@@ -331,7 +331,7 @@ const NOTICES = [
   ...PLANNER_LIVE_NOTICES,
 ] as const;
 
-export const LIVE_NOTICE = z.union(NOTICES);
+export const LIVE_NOTICE = z.discriminatedUnion('type', NOTICES);
 export type CommittedNotice = z.output<typeof LIVE_NOTICE>;
 
 const READY = z.strictObject({

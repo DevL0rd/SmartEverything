@@ -8,6 +8,19 @@ export type DriveMountCommitState = (typeof DRIVE_MOUNT_COMMIT_STATES)[number];
 
 export type ByteRange = readonly [start: number, end: number];
 
+export interface DriveMountCommitHead {
+  readonly id: number;
+  readonly placementId: string;
+  readonly nodeId: string;
+  readonly inodeId: number;
+  readonly opKey: Uint8Array;
+  readonly baseRev: number;
+  readonly size: number | null;
+  readonly state: DriveMountCommitState;
+  readonly resultRev: number | null;
+  readonly createdAt: string;
+}
+
 export interface DriveMountCommit {
   readonly id: number;
   readonly placementId: string;
@@ -32,21 +45,21 @@ export interface DriveMountCommitOpen {
 
 const RANGES = z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()]));
 
-const COMMIT_ROW = z
-  .strictObject({
-    id: z.number(),
-    placement_id: z.string(),
-    node_id: z.string(),
-    inode_id: z.number(),
-    op_key: z.instanceof(Uint8Array),
-    base_rev: z.number(),
-    size: z.number().nullable(),
-    ranges: SQL_JSON.pipe(RANGES),
-    state: z.enum(DRIVE_MOUNT_COMMIT_STATES),
-    result_rev: z.number().nullable(),
-    created_at: z.string(),
-  })
-  .transform((row): DriveMountCommit => ({
+const HEAD_SHAPE = {
+  id: z.number(),
+  placement_id: z.string(),
+  node_id: z.string(),
+  inode_id: z.number(),
+  op_key: z.instanceof(Uint8Array),
+  base_rev: z.number(),
+  size: z.number().nullable(),
+  state: z.enum(DRIVE_MOUNT_COMMIT_STATES),
+  result_rev: z.number().nullable(),
+  created_at: z.string(),
+};
+
+function headOf(row: z.output<z.ZodObject<typeof HEAD_SHAPE>>): DriveMountCommitHead {
+  return {
     id: row.id,
     placementId: row.placement_id,
     nodeId: row.node_id,
@@ -54,18 +67,28 @@ const COMMIT_ROW = z
     opKey: row.op_key,
     baseRev: row.base_rev,
     size: row.size,
-    ranges: row.ranges,
     state: row.state,
     resultRev: row.result_rev,
     createdAt: row.created_at,
-  }));
+  };
+}
+
+const HEAD_ROW = z.strictObject(HEAD_SHAPE).transform(headOf);
+
+const COMMIT_ROW = z
+  .strictObject({ ...HEAD_SHAPE, ranges: SQL_JSON.pipe(RANGES) })
+  .transform((row): DriveMountCommit => ({ ...headOf(row), ranges: row.ranges }));
+
+const RANGES_ROW = z.strictObject({ ranges: SQL_JSON.pipe(RANGES) });
 
 const ID = z.strictObject({ id: z.number() });
 
 const COUNT = z.strictObject({ count: z.number() });
 
-const COLUMNS = `id, placement_id, node_id, inode_id, op_key, base_rev, size, ranges, state,
+const HEAD_COLUMNS = `id, placement_id, node_id, inode_id, op_key, base_rev, size, state,
   result_rev, created_at`;
+
+const COLUMNS = `${HEAD_COLUMNS}, ranges`;
 
 export function coversRanges(ranges: readonly ByteRange[], size: number): boolean {
   if (size === 0) return true;
@@ -86,6 +109,24 @@ export class DriveMountCommitsRepository {
       `select ${COLUMNS} from drive_mount_commits where id = $id`,
       { id },
     );
+  }
+
+  head(id: number): DriveMountCommitHead | undefined {
+    return this.context.sql.get(
+      HEAD_ROW,
+      `select ${HEAD_COLUMNS} from drive_mount_commits where id = $id`,
+      { id },
+    );
+  }
+
+  ranges(id: number): readonly ByteRange[] {
+    return found(
+      this.context.sql.get(RANGES_ROW, 'select ranges from drive_mount_commits where id = $id', {
+        id,
+      }),
+      'drive mount commit',
+      String(id),
+    ).ranges;
   }
 
   byId(id: number): DriveMountCommit {

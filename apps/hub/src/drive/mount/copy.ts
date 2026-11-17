@@ -6,7 +6,7 @@ import { background, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
 import type { Store } from '../../store/store';
 import { TMP_DIRECTORY, locate, type DriveFiles } from '../intents';
-import type { DriveMountCommit } from '../../store/repositories/drive-mount-commits';
+import type { DriveMountCommitHead } from '../../store/repositories/drive-mount-commits';
 import type { MountCommits } from './commits';
 import type { HandleTable } from './handles';
 import type { MountSession } from './session';
@@ -95,7 +95,7 @@ export class MountCopy {
   private async streamed(
     session: MountSession,
     request: RequestMeta<'COPY'>,
-    row: DriveMountCommit,
+    row: DriveMountCommitHead,
     rootId: string,
   ): Promise<ReplyMeta<'COPY'>> {
     const target = { rootId, commitId: row.id };

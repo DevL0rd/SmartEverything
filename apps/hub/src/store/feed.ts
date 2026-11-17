@@ -3,6 +3,7 @@ import {
   LIVE_NOTICE,
   ROW_CHANGE,
   type CommittedNotice,
+  type DriveChangedNotice,
   type LiveChange,
 } from '@smarteverything/domain';
 import type { CommittedSpeech } from '../transcripts/speech';
@@ -23,9 +24,30 @@ interface FeedEvents {
 
 type Delivery = () => void;
 
+interface HeldChange {
+  readonly notice: DriveChangedNotice;
+  superseded: boolean;
+}
+
+function union<T>(first: readonly T[], second: readonly T[]): readonly T[] {
+  return [...new Set([...first, ...second])];
+}
+
+function mergedChange(first: DriveChangedNotice, second: DriveChangedNotice): DriveChangedNotice {
+  return {
+    type: 'drive_changed',
+    rootIds: union(first.rootIds, second.rootIds),
+    folderIds: union(first.folderIds, second.folderIds),
+    albumIds: union(first.albumIds, second.albumIds),
+    months: union(first.months, second.months),
+    cursor: Math.max(first.cursor, second.cursor),
+  };
+}
+
 export class ChangeFeed {
   private readonly emitter = new EventEmitter<FeedEvents>();
   private pending: Delivery[] | null = null;
+  private heldChange: HeldChange | null = null;
   private delivered = 0;
   private counts = { rows: 0, notices: 0, speech: 0, commits: 0, discards: 0, maxHeld: 0 };
 
@@ -111,10 +133,30 @@ export class ChangeFeed {
 
   notice(raw: unknown): void {
     const notice = LIVE_NOTICE.parse(raw);
+    if (notice.type === 'drive_changed' && this.pending !== null) {
+      this.holdChange(this.pending, notice);
+      return;
+    }
     this.dispatch(() => {
       this.counts.notices += 1;
       this.emitter.emit('notice', notice);
     });
+  }
+
+  private holdChange(pending: Delivery[], notice: DriveChangedNotice): void {
+    const held = this.heldChange;
+    if (held !== null) held.superseded = true;
+    const entry: HeldChange = {
+      notice: held === null ? notice : mergedChange(held.notice, notice),
+      superseded: false,
+    };
+    this.heldChange = entry;
+    pending.push(() => {
+      if (entry.superseded) return;
+      this.counts.notices += 1;
+      this.emitter.emit('notice', entry.notice);
+    });
+    this.counts.maxHeld = Math.max(this.counts.maxHeld, pending.length);
   }
 
   speech(speech: CommittedSpeech): void {
@@ -155,11 +197,13 @@ export class ChangeFeed {
 
   hold(): void {
     this.pending = [];
+    this.heldChange = null;
   }
 
   release(): void {
     const deliveries = this.pending ?? [];
     this.pending = null;
+    this.heldChange = null;
     for (const delivery of deliveries) delivery();
   }
 
@@ -169,6 +213,7 @@ export class ChangeFeed {
       this.log.debug('change.discarded', { held: this.pending.length });
     }
     this.pending = null;
+    this.heldChange = null;
   }
 
   private dispatch(delivery: Delivery): void {

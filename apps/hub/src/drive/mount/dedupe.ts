@@ -6,13 +6,19 @@ import {
   type ReplyMetaInput,
   type RequestOpName,
 } from '@smarteverything/domain/drive-mount';
+import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { PosixError } from '../posix/errors';
+import { claimed, currentClaim } from '../replay-claims';
 import type { DriveSyncOpsRepository } from '../../store/repositories/drive-sync';
 
-const MEMORY = z.strictObject({ action: z.string(), reply: z.string() });
+const MEMORY = z.strictObject({ action: z.string(), reply: z.string().nullable() });
 
-export type MountOpMemory = Pick<DriveSyncOpsRepository, 'recall' | 'remember'>;
+export type MountOpMemory = Pick<DriveSyncOpsRepository, 'recall' | 'rememberAll' | 'claim'>;
+
+export type Enlist = (hook: () => void) => () => void;
+
+export type Replay<Name extends RequestOpName> = () => Promise<ReplyMetaInput<Name> | null>;
 
 export function opKeyText(key: Uint8Array): string {
   return Buffer.from(key).toString('hex');
@@ -23,23 +29,43 @@ interface Pending {
   readonly outcome: Promise<Uint8Array>;
 }
 
+interface Remembered {
+  readonly placementId: string;
+  readonly opId: string;
+  readonly result: { readonly action: string; readonly reply: string };
+}
+
 export class MountDedupe {
   private readonly running = new Map<string, Pending>();
+  private readonly unsaved = new Map<string, Remembered>();
+  private flushQueued = false;
+  readonly stop: () => void;
 
-  constructor(private readonly memory: MountOpMemory) {}
+  constructor(
+    private readonly memory: MountOpMemory,
+    enlist: Enlist,
+    private readonly log: Logger,
+  ) {
+    this.stop = enlist(() => {
+      const claim = currentClaim();
+      if (claim !== undefined) this.memory.claim(claim);
+    });
+  }
 
   async once<Name extends RequestOpName>(
     placementId: string,
     op: { readonly name: Name; readonly key: Uint8Array },
     run: () => Promise<ReplyMetaInput<Name>>,
+    replay: Replay<Name>,
   ): Promise<ReplyMeta<Name>> {
-    return decodeKeyed(REPLY_META, op.name, await this.onceEncoded(placementId, op, run));
+    return decodeKeyed(REPLY_META, op.name, await this.onceEncoded(placementId, op, run, replay));
   }
 
   async onceEncoded<Name extends RequestOpName>(
     placementId: string,
     op: { readonly name: Name; readonly key: Uint8Array },
     run: () => Promise<ReplyMetaInput<Name>>,
+    replay: Replay<Name>,
   ): Promise<Uint8Array> {
     const id = opKeyText(op.key);
     const slot = `${placementId}\0${id}`;
@@ -47,17 +73,22 @@ export class MountDedupe {
     if (pending !== undefined) {
       return this.matching(pending, op.name, await pending.outcome);
     }
-    const stored = this.memory.recall(placementId, id);
+    const unsaved = this.unsaved.get(slot);
+    const stored = unsaved === undefined ? this.memory.recall(placementId, id) : unsaved.result;
+    let replayed = false;
     if (stored !== undefined) {
       const memory = MEMORY.parse(stored);
       this.agree(memory.action, op.name);
-      return new Uint8Array(Buffer.from(memory.reply, 'base64'));
+      if (memory.reply !== null) return new Uint8Array(Buffer.from(memory.reply, 'base64'));
+      replayed = true;
     }
-    const outcome = run().then((reply) => {
+    const claim = { placementId, opId: id, action: op.name };
+    const outcome = claimed(claim, () => this.attempt(replayed, run, replay)).then((reply) => {
       const encoded = encodeMeta(REPLY_META[op.name], reply);
-      this.memory.remember(placementId, id, {
-        action: op.name,
-        reply: Buffer.from(encoded).toString('base64'),
+      this.remember(slot, {
+        placementId,
+        opId: id,
+        result: { action: op.name, reply: Buffer.from(encoded).toString('base64') },
       });
       return encoded;
     });
@@ -67,6 +98,36 @@ export class MountDedupe {
     } finally {
       this.running.delete(slot);
     }
+  }
+
+  private async attempt<Name extends RequestOpName>(
+    replayed: boolean,
+    run: () => Promise<ReplyMetaInput<Name>>,
+    replay: Replay<Name>,
+  ): Promise<ReplyMetaInput<Name>> {
+    if (!replayed) return run();
+    const reply = await replay();
+    if (reply !== null) {
+      this.log.info('drive_mount.replay_rebuilt', {});
+      return reply;
+    }
+    return run();
+  }
+
+  private remember(slot: string, entry: Remembered): void {
+    this.unsaved.set(slot, entry);
+    if (this.flushQueued) return;
+    this.flushQueued = true;
+    setImmediate(() => {
+      this.flushQueued = false;
+      const entries = [...this.unsaved.values()];
+      this.unsaved.clear();
+      try {
+        this.memory.rememberAll(entries);
+      } catch (cause) {
+        this.log.error('drive_mount.replay_memory_failed', cause, { entries: entries.length });
+      }
+    });
   }
 
   private matching(pending: Pending, action: string, encoded: Uint8Array): Uint8Array {

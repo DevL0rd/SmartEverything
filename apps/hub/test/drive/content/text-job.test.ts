@@ -1,3 +1,4 @@
+import { DriveActivity } from '../../../src/drive/activity';
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { scanHandler, type ScanEnvironment } from '../../../src/drive/jobs';
 import { DriveRootLanes } from '../../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../../src/store/repositories/drive-missing';
 import {
   TextCursors,
   collectTextBacklog,
@@ -140,6 +142,7 @@ async function scan(): Promise<void> {
       driveRoots: fixture.roots,
       driveItems: fixture.items,
       driveInodes: new DriveInodesRepository(fixture.context),
+      driveMissing: new DriveMissingRepository(fixture.context),
       feed: fixture.feed,
       write: (work) => fixture.context.write(work),
       now: () => new Date(NOW),
@@ -179,6 +182,7 @@ function textEnvironment(): TextEnvironment {
     workerScript: contentScript,
     previewPath: (itemId, rev) => join(previews, `${itemId}-${String(rev)}.png`),
     languageDirectory: languages,
+    activity: new DriveActivity(),
     icons: refresher,
     log: testLogger(),
   };

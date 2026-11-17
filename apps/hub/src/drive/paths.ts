@@ -261,10 +261,36 @@ export async function resolveInRoot(rootPath: string, input: string): Promise<Re
   }
 }
 
+const WALK_DECIDES = new Set(['ENOENT', 'ENOTDIR', 'ELOOP', 'EACCES', 'EPERM', 'ENAMETOOLONG']);
+
+async function resolvedOrWalk(path: string): Promise<string | null> {
+  try {
+    return await realpath(path);
+  } catch (cause) {
+    const code = fsCode(cause);
+    if (code !== undefined && WALK_DECIDES.has(code)) return null;
+    throw cause;
+  }
+}
+
+async function plainRoot(rootPath: string, folders: readonly string[]): Promise<string | null> {
+  if (folders.length === 0) return rootOf(rootPath);
+  const lexical = join(rootPath, ...folders);
+  const resolved = await resolvedOrWalk(`${lexical}/.`);
+  if (resolved === lexical) return join(rootPath);
+  const root = await rootOf(rootPath);
+  return resolved === join(root, ...folders) ? root : null;
+}
+
 export async function locateInRoot(rootPath: string, input: string): Promise<string> {
   const normalized = normalizeRelativePath(input);
-  const root = await rootOf(rootPath);
   const segments = normalized === '' ? [] : normalized.split('/');
+  const plain = await plainRoot(rootPath, segments.slice(0, -1));
+  if (plain !== null) {
+    const lexical = segments.length === 0 ? plain : join(plain, ...segments);
+    if (fits(lexical)) return lexical;
+  }
+  const root = plain ?? (await rootOf(rootPath));
   const walked = await walkFolders(root, segments.slice(0, -1));
   let held = false;
   try {

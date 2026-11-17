@@ -159,7 +159,11 @@ function queueOf(
   deps: DriveDeps,
   availability: DriveRuntime['availability'],
   media: PhotoPipeline,
-  jobs: { readonly text: TextEnvironment; readonly lanes: DriveRootLanes },
+  jobs: {
+    readonly text: TextEnvironment;
+    readonly lanes: DriveRootLanes;
+    readonly activity: DriveActivity;
+  },
 ): WorkQueue<DriveJob> {
   const textCursors = new TextCursors();
   const handlers = driveJobHandlers({
@@ -177,6 +181,7 @@ function queueOf(
     concurrency: defaultConcurrency(),
     keyOf: handlers.keyOf,
     run: async (job, signal): Promise<void> => {
+      if (job.kind === 'hash' || job.kind === 'metadata') await jobs.activity.quiet();
       await handlers.run(job, signal);
       if (job.kind === 'metadata' && !signal.aborted) {
         media.reconcile();
@@ -350,11 +355,12 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
   const media = new PhotoPipeline(deps);
   const icons = iconsOf(deps);
   const lanes = new DriveRootLanes();
-  const queue = queueOf(deps, availability, media, {
-    text: textOf(deps, availability, icons),
-    lanes,
-  });
   const activity = new DriveActivity();
+  const queue = queueOf(deps, availability, media, {
+    text: textOf(deps, availability, icons, activity),
+    lanes,
+    activity,
+  });
   const core: Core = {
     env,
     queue,

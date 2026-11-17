@@ -37,6 +37,7 @@ import { DriveOpensRepository } from '../../src/store/repositories/drive-opens';
 import { DrivePlacementsRepository } from '../../src/store/repositories/drive-placements';
 import { DriveBlocksRepository } from '../../src/store/repositories/drive-blocks';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { DriveScrubRepository } from '../../src/store/repositories/drive-scrub';
@@ -120,6 +121,7 @@ async function indexAndHash(): Promise<void> {
       driveRoots: roots,
       driveItems: items,
       driveInodes: new DriveInodesRepository(context),
+      driveMissing: new DriveMissingRepository(context),
       feed,
       write: (w) => context.write(w),
       now: clock,

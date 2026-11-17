@@ -1,10 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,12 +26,49 @@ type pendingName struct {
 	attempt int
 	hub     *wire.Attr
 	victim  wire.Attr
+	folded  []*pendingName
+	landed  chan struct{}
+}
+
+const treeInodeLimit = (wire.MaxMetaBytes - 4096) / 9
+
+func isRemoval(kind string) bool { return kind == nameUnlink || kind == nameRmdir }
+
+func (p *pendingName) at() nameKey {
+	if p.Kind == nameRename {
+		return nameKey{p.NewParent, p.NewName}
+	}
+	return nameKey{p.Parent, p.Name}
+}
+
+func treeSize(p *pendingName) int {
+	size := 0
+	for _, c := range p.folded {
+		size += 1 + treeSize(c)
+	}
+	return size
+}
+
+func treeInodes(p *pendingName, out []any) []any {
+	for _, c := range p.folded {
+		out = append(out, c.Ino)
+		out = treeInodes(c, out)
+	}
+	return out
+}
+
+func eachFolded(p *pendingName, visit func(*pendingName)) {
+	for _, c := range p.folded {
+		visit(c)
+		eachFolded(c, visit)
+	}
 }
 
 type namespaceLog struct {
 	w         *writeBack
 	refilling sync.Mutex
 	urgent    atomic.Int64
+	awaiting  atomic.Bool
 	journal   *nameJournal
 	leases    *leasePool
 	mu        sync.Mutex
@@ -39,6 +78,7 @@ type namespaceLog struct {
 	byIno     map[uint64]*pendingName
 	removed   map[nameKey]*pendingName
 	inRoot    map[string]map[uint64]int
+	inflight  int
 	wake      chan struct{}
 }
 
@@ -51,7 +91,7 @@ func openNamespaceLog(w *writeBack, journalDir string) (*namespaceLog, error) {
 	if err != nil {
 		return nil, err
 	}
-	journal, entries, err := openNameJournal(dir)
+	journal, contents, err := openNameJournal(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +100,12 @@ func openNamespaceLog(w *writeBack, journalDir string) (*namespaceLog, error) {
 		created: map[nameKey]*pendingName{}, byIno: map[uint64]*pendingName{}, removed: map[nameKey]*pendingName{},
 		inRoot: map[string]map[uint64]int{},
 	}
-	for _, e := range entries {
+	for _, ino := range contents.leased {
+		leases.consumed(ino)
+	}
+	for _, e := range contents.live {
 		n.track(&pendingName{nameEntry: e})
 		n.nextSeq = max(n.nextSeq, e.Seq)
-		if e.Kind == nameCreate || e.Kind == nameMkdir {
-			leases.consumed(e.Ino)
-		}
 	}
 	return n, nil
 }
@@ -89,16 +129,88 @@ func (n *namespaceLog) track(p *pendingName) {
 	n.order = append(n.order, p)
 	n.count(p, 1)
 	key := nameKey{p.Parent, p.Name}
+	if p.landed == nil {
+		p.landed = make(chan struct{})
+	}
 	switch p.Kind {
-	case nameCreate, nameMkdir:
+	case nameCreate, nameMkdir, nameSymlink, nameMknod:
 		n.created[key] = p
 		n.byIno[p.Ino] = p
 		delete(n.removed, key)
+	case nameRename:
+		if made := n.created[key]; made != nil && made.Ino == p.Ino {
+			delete(n.created, key)
+		}
+		n.removed[key] = p
+		target := p.at()
+		n.created[target] = p
+		delete(n.removed, target)
 	default:
 		if made := n.created[key]; made != nil && made.Ino == p.Ino {
 			delete(n.created, key)
 		}
 		n.removed[key] = p
+		if p.Kind == nameRmdir {
+			n.foldLocked(p)
+		}
+	}
+}
+
+func (n *namespaceLog) foldLocked(p *pendingName) {
+	var picked []*pendingName
+	total := 0
+	for _, q := range n.order {
+		if q == p {
+			break
+		}
+		if q.Parent != p.Ino {
+			continue
+		}
+		if !isRemoval(q.Kind) {
+			picked, total = nil, 0
+			continue
+		}
+		if q.posted || q.failed != nil {
+			continue
+		}
+		size := 1 + treeSize(q)
+		if total+size > treeInodeLimit {
+			break
+		}
+		picked = append(picked, q)
+		total += size
+	}
+	if len(picked) == 0 {
+		return
+	}
+	taken := make(map[*pendingName]bool, len(picked))
+	for _, q := range picked {
+		taken[q] = true
+	}
+	kept := make([]*pendingName, 0, len(n.order)-len(picked))
+	for _, q := range n.order {
+		if !taken[q] {
+			kept = append(kept, q)
+		}
+	}
+	n.order = kept
+	p.folded = picked
+}
+
+func (n *namespaceLog) unfold(p *pendingName) {
+	n.mu.Lock()
+	n.unpostLocked(p)
+	n.order = append(n.order, p.folded...)
+	p.folded = nil
+	slices.SortFunc(n.order, func(a, b *pendingName) int { return cmp.Compare(a.Seq, b.Seq) })
+	n.mu.Unlock()
+	n.signal()
+}
+
+func (n *namespaceLog) unpostLocked(p *pendingName) {
+	if p.posted {
+		n.inflight--
+		p.posted = false
 	}
 }
 
@@ -172,8 +284,17 @@ func (n *namespaceLog) removedAttr(ino uint64) (wire.Attr, bool) {
 	defer n.mu.Unlock()
 	for i := len(n.order) - 1; i >= 0; i-- {
 		p := n.order[i]
-		if p.Ino == ino && (p.Kind == nameUnlink || p.Kind == nameRmdir) {
+		if p.Ino == ino && isRemoval(p.Kind) {
 			return p.victim, true
+		}
+		var found *pendingName
+		eachFolded(p, func(c *pendingName) {
+			if c.Ino == ino {
+				found = c
+			}
+		})
+		if found != nil {
+			return found.victim, true
 		}
 	}
 	return wire.Attr{}, false
@@ -222,13 +343,30 @@ func (n *namespaceLog) cancel(p *pendingName) bool {
 		return false
 	}
 	n.dropLocked(p)
+	close(p.landed)
 	if err := n.journal.done(p.Seq); err != nil {
 		logJournal(p.Ino, err)
 	}
 	return true
 }
 
+func (n *namespaceLog) pendingParent(p *pendingName) *pendingName {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if parent := n.byIno[p.Parent]; parent != nil && parent != p && parent.Kind == nameMkdir {
+		return parent
+	}
+	return nil
+}
+
 func (n *namespaceLog) dropLocked(p *pendingName) {
+	n.unpostLocked(p)
+	eachFolded(p, func(c *pendingName) {
+		n.count(c, -1)
+		if key := (nameKey{c.Parent, c.Name}); n.removed[key] == c {
+			delete(n.removed, key)
+		}
+	})
 	for i, q := range n.order {
 		if q == p {
 			n.order = append(n.order[:i:i], n.order[i+1:]...)
@@ -238,12 +376,19 @@ func (n *namespaceLog) dropLocked(p *pendingName) {
 	}
 	key := nameKey{p.Parent, p.Name}
 	switch p.Kind {
-	case nameCreate, nameMkdir:
+	case nameCreate, nameMkdir, nameSymlink, nameMknod:
 		if n.created[key] == p {
 			delete(n.created, key)
 		}
 		if n.byIno[p.Ino] == p {
 			delete(n.byIno, p.Ino)
+		}
+	case nameRename:
+		if n.removed[key] == p {
+			delete(n.removed, key)
+		}
+		if target := p.at(); n.created[target] == p {
+			delete(n.created, target)
 		}
 	default:
 		if n.removed[key] == p {
@@ -278,7 +423,7 @@ func (n *namespaceLog) children(parent uint64) []*pendingName {
 	defer n.mu.Unlock()
 	var out []*pendingName
 	for _, p := range n.order {
-		if (p.Kind == nameCreate || p.Kind == nameMkdir) && p.Parent == parent && n.created[nameKey{p.Parent, p.Name}] == p {
+		if at := p.at(); (isCreation(p.Kind) || p.Kind == nameRename) && at.parent == parent && n.created[at] == p {
 			out = append(out, p)
 		}
 	}
@@ -341,6 +486,19 @@ func (n *namespaceLog) settle(ctx context.Context, inos ...uint64) error {
 	})
 }
 
+func (n *namespaceLog) settleName(ctx context.Context, parent uint64, name string) error {
+	defer n.hurry()()
+	return n.w.waitUntil(ctx, func() error {
+		if n.madeAt(parent, name) == nil && !n.goneAt(parent, name) && !n.blocks(parent) {
+			return nil
+		}
+		if !n.w.online.Load() {
+			return wire.ErrNoRoute
+		}
+		return errPending
+	})
+}
+
 func (n *namespaceLog) attrOf(p *pendingName) wire.Attr {
 	n.mu.Lock()
 	hub := p.hub
@@ -348,15 +506,33 @@ func (n *namespaceLog) attrOf(p *pendingName) wire.Attr {
 	if hub != nil {
 		return *hub
 	}
+	if p.Kind == nameRename {
+		return *p.Moved
+	}
 	attr := wire.Attr{
 		Ino: p.Ino, Type: wire.InodeTypeFile, Mode: p.Mode, Nlink: 1, UID: p.UID, GID: p.GID,
 		AtimeNs: p.MtimeNs, MtimeNs: p.MtimeNs, CtimeNs: p.MtimeNs, BtimeNs: p.MtimeNs,
 		Etag: fmt.Sprintf("local-%d", p.Ino),
 	}
-	if p.Kind == nameMkdir {
+	switch p.Kind {
+	case nameMkdir:
 		attr.Type, attr.Nlink = wire.InodeTypeDirectory, 2
+	case nameSymlink:
+		attr.Type, attr.Mode, attr.Size = wire.InodeTypeSymlink, symlinkMode, uint64(len(p.Target))
+	case nameMknod:
+		attr.Type, attr.Rdev = p.Type, p.Rdev
 	}
 	return attr
+}
+
+func (n *namespaceLog) linkTarget(ino uint64) (string, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	p := n.byIno[ino]
+	if p == nil || p.Kind != nameSymlink {
+		return "", false
+	}
+	return p.Target, true
 }
 
 func (n *namespaceLog) foldMode(args SetattrArgs) bool {

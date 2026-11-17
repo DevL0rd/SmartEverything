@@ -15,6 +15,10 @@ export interface NamedRemove {
   readonly ino: number;
 }
 
+export interface TreeRemove extends NamedRemove {
+  readonly inodes: readonly number[];
+}
+
 export class PosixRemove {
   private readonly batches: NameBatches<undefined>;
 
@@ -28,6 +32,12 @@ export class PosixRemove {
       write: <R>(work: () => R): R => env.change.store.write(work),
       settled: (): void => {
         env.change.purge.rearm();
+      },
+      claim: (claim): void => {
+        env.change.store.driveSyncOps.claim(claim);
+      },
+      touch: (folders): void => {
+        for (const folder of folders) touchDirectory(env.change, folder);
       },
       log: env.change.log,
     });
@@ -73,6 +83,29 @@ export class PosixRemove {
     this.requireEmpty(scope, child);
     await this.drop(scope, child);
     touchDirectory(this.env.change, parent);
+  }
+
+  async rmtree(scope: PosixScope, request: TreeRemove): Promise<void> {
+    const { parent, child } = this.named(scope, request);
+    if (child.inode.type !== 'dir') throw posix('ENOTDIR', `${request.name} is not a folder.`);
+    this.requireTree(child, request.inodes);
+    await this.drop(scope, child);
+    touchDirectory(this.env.change, parent);
+  }
+
+  private requireTree(folder: PosixChild, inodes: readonly number[]): void {
+    const below = this.env.change.store.driveInodes.below(folder.item.id);
+    const removed = new Set(inodes);
+    const same =
+      below.length === inodes.length &&
+      removed.size === inodes.length &&
+      below.every((entry) => removed.has(entry.inodeId) && entry.names === 1);
+    if (!same) {
+      throw posix('ESTALE', `${folder.item.name} no longer holds exactly the removed items.`);
+    }
+    if (below.some((entry) => this.env.holds(entry.inodeId))) {
+      throw posix('ESTALE', `${folder.item.name} holds a file that is still open.`);
+    }
   }
 
   requireEmpty(scope: PosixScope, folder: PosixChild): void {

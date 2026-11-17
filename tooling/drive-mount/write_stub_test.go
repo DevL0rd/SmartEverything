@@ -73,6 +73,52 @@ func (h *wbHub) addFile(parent uint64, name string, content string) uint64 {
 	return n.ino
 }
 
+func (h *wbHub) addDir(parent uint64, name string) uint64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.next++
+	n := &wbNode{ino: h.next, typ: wire.InodeTypeDirectory, rev: 1, mode: 0o755, nlink: 2, mtime: h.tick(), names: map[string]uint64{}}
+	h.nodes[n.ino] = n
+	h.nodes[parent].names[name] = n.ino
+	return n.ino
+}
+
+func (h *wbHub) below(ino uint64, out map[uint64]bool) {
+	for _, child := range h.nodes[ino].names {
+		out[child] = true
+		if h.nodes[child].names != nil {
+			h.below(child, out)
+		}
+	}
+}
+
+func (h *wbHub) removeTree(meta wire.Meta) (wire.Reply, error) {
+	parent, _ := meta.Uint(wire.KeyParent)
+	name, _ := meta.String(wire.KeyName)
+	want, _ := meta.Uint(wire.KeyIno)
+	listed, _ := meta.Array(wire.KeyInodes)
+	ino, ok := h.nodes[parent].names[name]
+	if !ok {
+		return wire.Reply{}, wbRemote(wire.ErrENOENT)
+	}
+	found := map[uint64]bool{}
+	h.below(ino, found)
+	if ino != want || len(found) != len(listed) {
+		return wire.Reply{}, wbRemote(wire.ErrESTALE)
+	}
+	for _, item := range listed {
+		if !found[item.(uint64)] {
+			return wire.Reply{}, wbRemote(wire.ErrESTALE)
+		}
+	}
+	for gone := range found {
+		delete(h.nodes, gone)
+	}
+	delete(h.nodes, ino)
+	delete(h.nodes[parent].names, name)
+	return wire.Reply{Meta: wire.Meta{}}, nil
+}
+
 func (h *wbHub) change(ino uint64, content string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -196,7 +242,7 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 		start := h.next + 1
 		h.next += count
 		return wire.Reply{Meta: wire.Meta{wire.KeyStart: start, wire.KeyCount: count}}, nil
-	case wire.OpCreate, wire.OpMkdir:
+	case wire.OpCreate, wire.OpMkdir, wire.OpSymlink, wire.OpMknod:
 		return h.made(op, meta, payload)
 	case wire.OpTmpfile:
 		h.next++
@@ -361,6 +407,8 @@ func (h *wbHub) handle(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, 
 	case wire.OpSetlk, wire.OpUnlock:
 		h.lockCalls = append(h.lockCalls, meta)
 		return wire.Reply{Meta: wire.Meta{}}, nil
+	case wire.OpRmtree:
+		return h.removeTree(meta)
 	case wire.OpUnlink, wire.OpRmdir:
 		parent, _ := meta.Uint(wire.KeyParent)
 		name, _ := meta.String(wire.KeyName)
@@ -407,8 +455,15 @@ func (h *wbHub) made(op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, er
 	}
 	mtime, _ := meta[wire.KeyMtimeNs].(int64)
 	n := &wbNode{ino: ino, typ: wire.InodeTypeFile, rev: 1, mode: uint32(mode), nlink: 1, mtime: mtime, data: bytes.Clone(payload)}
-	if op == wire.OpMkdir {
+	switch op {
+	case wire.OpMkdir:
 		n.typ, n.nlink, n.names = wire.InodeTypeDirectory, 2, map[string]uint64{}
+	case wire.OpSymlink:
+		target, _ := meta.String(wire.KeyTarget)
+		n.typ, n.mode, n.data = wire.InodeTypeSymlink, 0o777, []byte(target)
+	case wire.OpMknod:
+		typ, _ := meta.Uint(wire.KeyType)
+		n.typ = uint8(typ)
 	}
 	h.nodes[ino] = n
 	dir.names[name] = ino
@@ -482,6 +537,7 @@ type wbNames struct{}
 func (wbNames) NoteLocal(uint64, string, wire.Entry) {}
 func (wbNames) NoteLocalDir(uint64)                  {}
 func (wbNames) NoteLocalGone(uint64, string, uint64) {}
+func (wbNames) NoteMoved(RenameArgs, uint64, uint64) {}
 func (wbNames) NoteName(uint64, string)              {}
 func (wbNames) NoteChanged(uint64)                   {}
 func (wbNames) RootIno(string) (uint64, bool)        { return 1, true }

@@ -82,7 +82,7 @@ export class DriveItemInodes {
   }
 
   create(item: DriveItem, patch: DriveInodePatch): number {
-    return this.inodes.create({
+    return this.inodes.insert({
       id: patch.id,
       rootId: item.rootId,
       type: typeOf(item, patch),
@@ -95,7 +95,7 @@ export class DriveItemInodes {
       atimeNs: patch.atimeNs,
       ctimeNs: patch.ctimeNs,
       btimeNs: patch.btimeNs ?? nsOfMoment(item.addedAt),
-    }).id;
+    });
   }
 
   changes(stored: DriveInode, patch: DriveInodePatch, item: DriveItem): DriveInodeChanges | null {

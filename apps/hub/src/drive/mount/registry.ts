@@ -4,6 +4,7 @@ import {
   type RequestMeta,
 } from '@smarteverything/domain/drive-mount';
 import { background } from '@smarteverything/logging';
+import type { DriveFeedRepository } from '../../store/repositories/drive-feed';
 import type { PosixCaller } from '../posix/env';
 import type { DrivePosix } from '../posix/service';
 import type { HandleTable } from './handles';
@@ -16,6 +17,7 @@ export interface RegistryEnv {
   readonly posix: DrivePosix;
   readonly handles: HandleTable;
   readonly locks: LockService;
+  readonly feed: Pick<DriveFeedRepository, 'latestSeq'>;
 }
 
 export interface Greeting {
@@ -47,6 +49,7 @@ export class MountRegistry {
     const known = existing?.nodeId === caller.nodeId ? existing : undefined;
     const session = known ?? new MountSession(caller.nodeId, caller);
     const resumed = known !== undefined;
+    if (!resumed) session.echoOwnThrough = this.env.feed.latestSeq();
     session.bind(link)?.close(CLOSE_REPLACED, 'Replaced by a new connection');
     session.expireIn(null);
     this.remember(session, request);

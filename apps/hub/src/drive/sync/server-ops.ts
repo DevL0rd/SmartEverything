@@ -43,6 +43,7 @@ export interface SyncEnv extends ConflictEnv {
       | 'devices'
       | 'driveInodes'
       | 'driveXattrs'
+      | 'driveInodeLeases'
     >;
   readonly posix: SyncPosix;
   readonly space: DataSpaceProbe['space'];

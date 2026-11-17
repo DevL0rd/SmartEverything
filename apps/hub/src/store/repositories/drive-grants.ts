@@ -190,7 +190,8 @@ export class DriveGrantsRepository {
         STORED_GRANT,
         `select ${COLUMNS} from drive_grants
           where item_id not in (select id from drive_items)
-            and item_id not in (select item_id from drive_trash)`,
+            and item_id not in (select item_id from drive_trash)
+            and item_id not in (select item_id from drive_missing)`,
         {},
       );
       for (const grant of orphans) {

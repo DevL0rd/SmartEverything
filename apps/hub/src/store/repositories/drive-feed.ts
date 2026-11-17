@@ -6,7 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { storedRow } from '../codec';
-import { found, type StoreContext } from '../context';
+import type { StoreContext } from '../context';
 import { inList } from '../sql';
 
 const COLUMNS = 'seq, root_id, item_id, op, rev, at, actor_profile_id, via, device_id';
@@ -73,13 +73,14 @@ export class DriveFeedRepository {
 
   append(entry: DriveFeedAppend): DriveFeedRow {
     return this.context.write(() => {
-      this.context.sql.run(
+      return this.context.sql.returning(
         'append to the drive feed',
+        STORED_ROW,
         `insert into drive_feed (root_id, item_id, op, rev, at, actor_profile_id, via, device_id)
-          values ($rootId, $itemId, $op, $rev, $at, $actorProfileId, $via, $deviceId)`,
+          values ($rootId, $itemId, $op, $rev, $at, $actorProfileId, $via, $deviceId)
+          returning ${COLUMNS}`,
         { ...entry, at: this.context.now() },
       );
-      return this.rowAt(this.latestSeq());
     });
   }
 
@@ -171,15 +172,5 @@ export class DriveFeedRepository {
       },
     );
     return windowOf(rows, request.limit);
-  }
-
-  private rowAt(seq: number): DriveFeedRow {
-    return found(
-      this.context.sql.get(STORED_ROW, `select ${COLUMNS} from drive_feed where seq = $seq`, {
-        seq,
-      }),
-      'drive feed row',
-      String(seq),
-    );
   }
 }

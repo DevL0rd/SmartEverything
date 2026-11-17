@@ -35,6 +35,7 @@ import { DriveScrubRepository } from '../drive-scrub';
 import { DriveSharesRepository } from '../drive-shares';
 import { DriveSyncOpsRepository } from '../drive-sync';
 import { DriveTrashRepository } from '../drive-trash';
+import { DriveMissingRepository } from '../drive-missing';
 import { DriveUploadsRepository } from '../drive-uploads';
 import { DriveVersionsRepository } from '../drive-versions';
 
@@ -47,6 +48,7 @@ export interface DriveRepositories {
   readonly driveInodeLeases: DriveInodeLeasesRepository;
   readonly driveAlbums: DriveAlbumsRepository;
   readonly driveTrash: DriveTrashRepository;
+  readonly driveMissing: DriveMissingRepository;
   readonly driveDays: DriveDaysRepository;
   readonly driveFeed: DriveFeedRepository;
   readonly driveVersions: DriveVersionsRepository;
@@ -92,6 +94,7 @@ export function driveRepositories(
     driveInodeLeases: new DriveInodeLeasesRepository(context),
     driveAlbums: new DriveAlbumsRepository(context),
     driveTrash: new DriveTrashRepository(context),
+    driveMissing: new DriveMissingRepository(context),
     driveDays: new DriveDaysRepository(context),
     driveFeed: new DriveFeedRepository(context),
     driveVersions: new DriveVersionsRepository(context),

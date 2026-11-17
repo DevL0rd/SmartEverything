@@ -8,11 +8,11 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DriveRoot } from '@smarteverything/domain';
+import type { DriveItem, DriveRoot } from '@smarteverything/domain';
 import { build } from 'esbuild';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -38,8 +38,11 @@ import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
+import { DriveStarsRepository } from '../../src/store/repositories/drive-stars';
+import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
 
@@ -55,6 +58,7 @@ const HEALTH = {
 
 let bundleFolder = '';
 let workerScript = '';
+let clock = NOW;
 let tree = '';
 let database: DatabaseSync;
 let roots: DriveRootsRepository;
@@ -121,6 +125,7 @@ beforeEach(() => {
   });
   availability = 'online';
   mountedRoot = false;
+  clock = NOW;
   roots.insert(driveRoot());
 });
 
@@ -135,9 +140,10 @@ function environment(script = workerScript): ScanEnvironment {
       driveRoots: roots,
       driveItems: items,
       driveInodes: new DriveInodesRepository(context),
+      driveMissing: new DriveMissingRepository(context),
       feed,
       write: (work) => context.write(work),
-      now: () => new Date(NOW),
+      now: () => new Date(clock),
     },
     availability: () => Promise.resolve(availability),
     mounted: () => mountedRoot,
@@ -364,6 +370,147 @@ describe('scanning a root', () => {
   });
 });
 
+describe('a file that went missing and came back', () => {
+  let profile = '';
+  let stars: DriveStarsRepository;
+
+  const digest = (text: string): string => createHash('sha256').update(text).digest('hex');
+
+  beforeEach(() => {
+    profile = new ProfilesRepository(context).create({ name: 'Robin' }).id;
+    stars = new DriveStarsRepository(context);
+  });
+
+  function at(relPath: string): DriveItem {
+    const item = items.byPath(ROOT, relPath, null);
+    if (item === undefined) throw new Error(`${relPath} is not indexed`);
+    return item;
+  }
+
+  function hashed(relPath: string, text: string): DriveItem {
+    const item = at(relPath);
+    const identity = items.identityOf(item.id);
+    if (identity === null || item.kind !== 'image') throw new Error(`${relPath} is not a photo`);
+    return items.write({ item: { ...item, sha256: digest(text), integrity: 'ok' }, identity }).item;
+  }
+
+  function missingIds(): unknown[] {
+    return database
+      .prepare('select item_id from drive_missing order by rel_path')
+      .all()
+      .map((row) => row['item_id']);
+  }
+
+  async function lose(...paths: readonly string[]): Promise<void> {
+    for (const path of paths) rmSync(join(tree, path));
+    await scan();
+  }
+
+  it('keeps the id, star and hash of a photo copied elsewhere and removed in the same scan', async () => {
+    put('a/one.jpg', 'alpha');
+    await scan();
+    const before = hashed('a/one.jpg', 'alpha');
+    stars.star(profile, before.id);
+    rmSync(join(tree, 'a/one.jpg'));
+    put('b/one.jpg', 'alpha');
+    await scan();
+    const after = at('b/one.jpg');
+    expect(after.id).toBe(before.id);
+    expect(after).toMatchObject({ sha256: digest('alpha'), integrity: 'ok' });
+    expect(stars.isStarred(profile, after.id)).toBe(true);
+    expect(pathsInIndex()).not.toContain('a/one.jpg');
+    expect(missingIds()).toEqual([]);
+  });
+
+  it('remembers a missing photo and gives its id and star back when it returns elsewhere', async () => {
+    put('x.jpg', 'bravo');
+    await scan();
+    const before = hashed('x.jpg', 'bravo');
+    stars.star(profile, before.id);
+    await lose('x.jpg');
+    expect(pathsInIndex()).toEqual([]);
+    expect(missingIds()).toEqual([before.id]);
+    put('back/x.jpg', 'bravo');
+    await scan();
+    const after = at('back/x.jpg');
+    expect(after.id).toBe(before.id);
+    expect(after).toMatchObject({ sha256: digest('bravo') });
+    expect(stars.isStarred(profile, after.id)).toBe(true);
+    expect(missingIds()).toEqual([]);
+  });
+
+  it('remembers every photo of a folder that went missing', async () => {
+    put('trip/a.jpg', 'one');
+    put('trip/b.jpg', 'two');
+    await scan();
+    const a = hashed('trip/a.jpg', 'one');
+    const b = hashed('trip/b.jpg', 'two');
+    rmSync(join(tree, 'trip'), { recursive: true });
+    await scan();
+    expect(new Set(missingIds())).toEqual(new Set([a.id, b.id]));
+    put('again/b.jpg', 'two');
+    await scan();
+    expect(at('again/b.jpg').id).toBe(b.id);
+  });
+
+  it('gives the id to the match at the old path and makes a new item while still ambiguous', async () => {
+    put('p/1.jpg', 'same');
+    put('q/2.jpg', 'same');
+    await scan();
+    const first = hashed('p/1.jpg', 'same');
+    const second = hashed('q/2.jpg', 'same');
+    await lose('p/1.jpg', 'q/2.jpg');
+    put('r/3.jpg', 'same');
+    await scan();
+    const third = at('r/3.jpg');
+    expect([first.id, second.id]).not.toContain(third.id);
+    put('q/2.jpg', 'same');
+    await scan();
+    expect(at('q/2.jpg').id).toBe(second.id);
+    expect(missingIds()).toEqual([first.id]);
+  });
+
+  it('makes a new item when no missing file has the same content or path', async () => {
+    put('kept.jpg', 'xxxxx');
+    await scan();
+    const gone = hashed('kept.jpg', 'xxxxx');
+    await lose('kept.jpg');
+    put('new.jpg', 'yyyyy');
+    await scan();
+    expect(at('new.jpg').id).not.toBe(gone.id);
+    expect(at('new.jpg')).toMatchObject({ sha256: digest('yyyyy') });
+    expect(missingIds()).toEqual([gone.id]);
+  });
+
+  it('keeps the id of an edited photo that comes back at its old path, as a new version', async () => {
+    put('edit.jpg', 'first');
+    await scan();
+    const before = hashed('edit.jpg', 'first');
+    stars.star(profile, before.id);
+    await lose('edit.jpg');
+    put('edit.jpg', 'second take');
+    await scan();
+    const after = at('edit.jpg');
+    expect(after.id).toBe(before.id);
+    expect(after.bytes).toBe(11);
+    expect(after).toMatchObject({ sha256: null });
+    expect(after.rev).toBeGreaterThan(before.rev);
+    expect(stars.isStarred(profile, after.id)).toBe(true);
+  });
+
+  it('forgets a missing photo once its keep time has passed', async () => {
+    put('old.jpg', 'charlie');
+    await scan();
+    const before = hashed('old.jpg', 'charlie');
+    await lose('old.jpg');
+    clock = '2027-11-08T00:00:00.000Z';
+    put('elsewhere.jpg', 'charlie');
+    await scan();
+    expect(at('elsewhere.jpg').id).not.toBe(before.id);
+    expect(missingIds()).toEqual([]);
+  });
+});
+
 describe('classification', () => {
   it('maps extensions to kinds and falls back to octet-stream', () => {
     expect(classify('x.png').kind).toBe('image');
@@ -467,6 +614,8 @@ describe('the 100k index', () => {
     const dependencies: CommitDependencies = {
       items,
       inodes: new DriveInodesRepository(context),
+      missing: new DriveMissingRepository(context),
+      hash: () => Promise.reject(new Error('A rescan that only loads hashes nothing.')),
       write: (work) => context.write(work),
       now: () => new Date(NOW),
       newId: randomUUID,

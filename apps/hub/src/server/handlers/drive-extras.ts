@@ -1,3 +1,4 @@
+import type { DriveActivity } from '../../drive/activity';
 import { randomUUID } from 'node:crypto';
 import { FolderIconRefresher } from '../../drive/content/folder-icon/refresh';
 import type { FolderIconServing } from '../../drive/content/folder-icon/icon-route';
@@ -59,6 +60,7 @@ export function textOf(
   deps: DriveDeps,
   availability: (root: StoredDrive) => Promise<RootAvailability>,
   icons: FolderIconRefresher,
+  activity: DriveActivity,
 ): TextEnvironment {
   const { store, layout } = deps;
   return {
@@ -69,6 +71,7 @@ export function textOf(
     previewPath: (itemId, rev) => derivedPath(layout, { itemId, rev, size: 'preview' }),
     languageDirectory: layout.cache.ocr,
     icons,
+    activity,
     log: deps.log.forArea('hub.drive-text'),
   };
 }

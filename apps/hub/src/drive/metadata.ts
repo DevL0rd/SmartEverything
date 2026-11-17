@@ -23,12 +23,16 @@ import type { RootAvailability } from './root-marker';
 
 type MediaItem = Extract<DriveItem, { readonly kind: 'image' | 'video' | 'audio' }>;
 
-const WINDOW_ROWS = 1000;
-
 export interface MetadataEnvironment {
   readonly store: Pick<
     Store,
-    'driveRoots' | 'driveItems' | 'settingsKv' | 'write' | 'photoMetaOverrides' | 'feed' | 'driveFeed'
+    | 'driveRoots'
+    | 'driveItems'
+    | 'settingsKv'
+    | 'write'
+    | 'photoMetaOverrides'
+    | 'feed'
+    | 'driveFeed'
   >;
   readonly media: Pick<DriveMediaRepository, 'find' | 'save' | 'update'>;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
@@ -43,36 +47,12 @@ interface Candidate {
 }
 
 export function collectUnread(
-  items: Pick<MetadataEnvironment['store']['driveItems'], 'children'>,
+  items: Pick<MetadataEnvironment['store']['driveItems'], 'lookups'>,
   rootId: string,
 ): readonly Candidate[] {
-  const candidates: Candidate[] = [];
-  const pending: (string | null)[] = [null];
-  for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
-    let after: string | null = null;
-    do {
-      const window = items.children({
-        rootId,
-        parentId: parent,
-        after,
-        limit: WINDOW_ROWS,
-        viewer: null,
-      });
-      for (const { item, identity } of window.entries) {
-        if (item.kind === 'folder') pending.push(item.id);
-        else if (identity !== null && isMedia(item) && item.takenAt === null) {
-          candidates.push({
-            id: item.id,
-            relPath: item.relPath,
-            dev: identity.dev,
-            ino: identity.ino,
-          });
-        }
-      }
-      after = window.next;
-    } while (after !== null);
-  }
-  return candidates;
+  return items.lookups
+    .unreadMedia(rootId)
+    .map(({ id, relPath, dev, ino }): Candidate => ({ id, relPath, dev, ino }));
 }
 
 export function isMedia(item: DriveItem): item is MediaItem {

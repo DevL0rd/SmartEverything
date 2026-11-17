@@ -90,6 +90,16 @@ const NAMED_REMOVE = z
   .strictObject({ parent: INO, name: ENTRY_NAME, ino: INO, opKey: OP_KEY })
   .readonly();
 
+const TREE_REMOVE = z
+  .strictObject({
+    parent: INO,
+    name: ENTRY_NAME,
+    ino: INO,
+    opKey: OP_KEY,
+    inodes: z.array(INO).min(1).readonly(),
+  })
+  .readonly();
+
 const SEQUENCES = z.array(z.strictObject({ root: UUID, seq: COUNT }).readonly()).readonly();
 
 const LOCK_REQUEST_SHAPE = { ino: INO, owner: U64, ...LOCK_SHAPE } as const;
@@ -131,11 +141,14 @@ export const REQUEST_META = {
   CREATE: z
     .strictObject({ ...LEASED_SHAPE, atimeNs: NS.optional(), fsync: FLAG })
     .readonly(),
-  MKNOD: z.strictObject({ ...NAMED_CREATE_SHAPE, type: SPECIAL_TYPE, rdev: UINT32 }).readonly(),
+  MKNOD: z
+    .strictObject({ ...NAMED_CREATE_SHAPE, ino: INO, type: SPECIAL_TYPE, rdev: UINT32 })
+    .readonly(),
   SYMLINK: z
     .strictObject({
       parent: INO,
       name: ENTRY_NAME,
+      ino: INO,
       target: LINK_TARGET,
       uid: UID,
       gid: UID,
@@ -145,6 +158,7 @@ export const REQUEST_META = {
   LINK: z.strictObject({ ino: INO, parent: INO, name: ENTRY_NAME, opKey: OP_KEY }).readonly(),
   UNLINK: NAMED_REMOVE,
   RMDIR: NAMED_REMOVE,
+  RMTREE: TREE_REMOVE,
   RENAME: rename,
   TMPFILE: z.strictObject(CREATE_SHAPE).readonly(),
   GETXATTR: z.strictObject({ ino: INO, name: XATTR_NAME }).readonly(),
@@ -258,6 +272,7 @@ export const REPLY_META = {
   LINK: z.strictObject({ attr: ATTR }).readonly(),
   UNLINK: EMPTY,
   RMDIR: EMPTY,
+  RMTREE: EMPTY,
   RENAME: EMPTY,
   TMPFILE: ENTRY,
   GETXATTR: EMPTY,

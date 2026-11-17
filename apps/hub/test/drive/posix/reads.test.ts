@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { READDIR_PAGE } from '../../../src/drive/posix/reads';
 import { PosixScope } from '../../../src/drive/posix/env';
-import { create, mkdir, openPosixRig, refusal, type PosixRig } from './posix-rig';
+import { create, mkdir, openPosixRig, refusal, symlinkRequest, type PosixRig } from './posix-rig';
 
 let rig: PosixRig;
 
@@ -147,11 +147,7 @@ describe('readdir', () => {
     await rig.posix.create(rig.scope, create('b', dir.ino), new Uint8Array());
     await rig.posix.create(rig.scope, create('a', dir.ino), new Uint8Array());
     await rig.posix.symlink(rig.scope, {
-      parent: dir.ino,
-      name: 'c',
-      target: 'a',
-      uid: null,
-      gid: null,
+      ...symlinkRequest('c', dir.ino, 'a'),
       opKey: new Uint8Array(16),
     });
     const page = await rig.posix.readdir(rig.scope, { ino: dir.ino, cursor: 0 });
@@ -210,11 +206,7 @@ describe('readdir', () => {
 describe('readlink', () => {
   it('returns the target of a link and refuses anything else', async () => {
     const link = await rig.posix.symlink(rig.scope, {
-      parent: rig.rootIno,
-      name: 'l',
-      target: '../outside/file',
-      uid: null,
-      gid: null,
+      ...symlinkRequest('l', rig.rootIno, '../outside/file'),
       opKey: new Uint8Array(16),
     });
     expect(await rig.posix.readlink(rig.scope, link.ino)).toBe('../outside/file');

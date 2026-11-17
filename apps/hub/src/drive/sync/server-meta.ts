@@ -91,6 +91,7 @@ export async function createSymlink(
   await call.env.posix.symlink(posixScopeOf(call), {
     parent: parentInodeOf(call, drivePath),
     name: basename(drivePath),
+    ino: call.env.store.driveInodeLeases.grant(call.origin.deviceId, 1).start,
     target,
     uid: null,
     gid: null,

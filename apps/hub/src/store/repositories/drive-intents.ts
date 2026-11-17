@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { found, type StoreContext } from '../context';
+import { StoreNotFoundError, type StoreContext } from '../context';
 
 export const DRIVE_INTENT_OPS = [
   'trash',
@@ -82,10 +82,12 @@ export class DriveIntentsRepository {
 
   clear(id: string): void {
     this.context.write(() => {
-      found(this.find(id), 'drive intent', id);
-      this.context.sql.run('clear the drive intent', 'delete from drive_intents where id = $id', {
-        id,
-      });
+      const cleared = this.context.sql.run(
+        'clear the drive intent',
+        'delete from drive_intents where id = $id',
+        { id },
+      );
+      if (cleared === 0) throw new StoreNotFoundError('drive intent', id);
     });
   }
 

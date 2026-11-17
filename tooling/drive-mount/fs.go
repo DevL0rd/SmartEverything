@@ -69,7 +69,7 @@ func (n negativeEntries) Lookup(cancel <-chan struct{}, header *fuse.InHeader, n
 }
 
 func mountNodes(point string, root fs.InodeEmbedder, options *fs.Options) (*fuse.Server, error) {
-	server, err := fuse.NewServer(negativeEntries{fs.NewNodeFS(root, options)}, point, &options.MountOptions)
+	server, err := fuse.NewServer(timed(negativeEntries{fs.NewNodeFS(root, options)}), point, &options.MountOptions)
 	if err != nil {
 		return nil, err
 	}

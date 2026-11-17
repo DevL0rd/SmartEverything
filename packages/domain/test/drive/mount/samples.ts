@@ -80,10 +80,11 @@ export const REQUEST_SAMPLES = {
   READLINK: { ino: 44 },
   MKDIR: { ...NAMED, ino: 43, mtimeNs: 1_763_100_002_000_000_000n },
   CREATE: { ...NAMED, ino: 44, mtimeNs: 1_763_100_003_000_000_000n, fsync: false },
-  MKNOD: { ...NAMED, name: 'pipe', type: INODE_TYPES.fifo, rdev: 0 },
+  MKNOD: { ...NAMED, name: 'pipe', ino: 47, type: INODE_TYPES.fifo, rdev: 0 },
   SYMLINK: {
     parent: 3,
     name: 'latest',
+    ino: 48,
     target: '../releases/2026-11',
     uid: 1000,
     gid: 1000,
@@ -92,6 +93,7 @@ export const REQUEST_SAMPLES = {
   LINK: { ino: 42, parent: 3, name: 'second-name', opKey: bytes(4) },
   UNLINK: { parent: 3, name: 'old.txt', ino: 45, opKey: bytes(5) },
   RMDIR: { parent: 3, name: 'old-folder', ino: 46, opKey: bytes(6) },
+  RMTREE: { parent: 3, name: 'old-tree', ino: 47, opKey: bytes(7), inodes: [48, 49, 50] },
   RENAME: {
     parent: 3,
     name: 'draft.tmp',
@@ -190,6 +192,7 @@ export const REPLY_SAMPLES = {
   LINK: { attr: ATTR },
   UNLINK: {},
   RMDIR: {},
+  RMTREE: {},
   RENAME: {},
   TMPFILE: ENTRY,
   GETXATTR: {},

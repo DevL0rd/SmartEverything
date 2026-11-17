@@ -151,6 +151,25 @@ describe('replay after a gap', () => {
     expect(next.pushed('CHANGED')[0]?.entries).toContainEqual([writer.root, 'while-away.txt']);
   });
 
+  it('replays its own changes to a restarted computer whose cache may be behind', async () => {
+    const seq = rig.posix.opened.store.driveFeed.latestSeqInRoot(rig.posix.shared.id);
+    await create('own-before-crash.txt');
+    writer.client.close();
+    const next = await rig.connect(rig.posix.node);
+    const reply = await next.hello({ session: null, seqs: [{ root: rig.posix.shared.id, seq }] });
+    expect(reply.resumed).toBe(false);
+    await next.call('ATTACH', { placementId: writer.placementId });
+    await until(() => next.pushed('CHANGED').length > 0, 'the replay of its own change');
+    expect(next.pushed('CHANGED')[0]?.entries).toContainEqual([
+      writer.root,
+      'own-before-crash.txt',
+    ]);
+    await next.created(writer.root, 'own-after-restart.txt');
+    await settled();
+    const names = next.pushed('CHANGED').flatMap((push) => push.entries.map(([, name]) => name));
+    expect(names).not.toContain('own-after-restart.txt');
+  });
+
   it('resets when the computer is ahead of the Hub', async () => {
     const next = await rig.connect(rig.posix.memberNode);
     const seq = rig.posix.opened.store.driveFeed.latestSeqInRoot(rig.posix.shared.id) + 500;

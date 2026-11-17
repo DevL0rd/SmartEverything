@@ -73,6 +73,7 @@ describe('op table', () => {
         'LINK',
         'UNLINK',
         'RMDIR',
+        'RMTREE',
         'RENAME',
         'TMPFILE',
         'SETXATTR',

@@ -145,7 +145,7 @@ describe('create', () => {
           new Uint8Array(),
         ),
       ),
-    ).toBe('EEXIST');
+    ).toBe('EINVAL');
   });
 
   it('refuses a folder or a link in the way, and a file the index does not know', async () => {
@@ -343,14 +343,14 @@ describe('creation racing the scanner', () => {
 });
 
 describe('many files made at once', () => {
-  it('lands them together with one sync of their folder and one write to the index', async () => {
+  it('lands them together with one disk sync and one write to the index', async () => {
     const { files } = rig.env.change;
-    const synced: string[] = [];
-    const sync = files.syncDirectory.bind(files);
+    const synced: (readonly string[])[] = [];
+    const sync = files.syncFilesystems.bind(files);
     Object.assign(files, {
-      syncDirectory: async (path: string): Promise<void> => {
-        synced.push(path);
-        await sync(path);
+      syncFilesystems: async (paths: readonly string[]): Promise<void> => {
+        synced.push(paths);
+        await sync(paths);
       },
     });
     const store = rig.opened.store;
@@ -370,6 +370,7 @@ describe('many files made at once', () => {
     );
     expect(new Set(made.map((entry) => entry.ino)).size).toBe(names.length);
     for (const name of names) expect(await diskText(rig.mine, name)).toBe(name);
+    expect(synced.length).toBeGreaterThan(0);
     expect(synced.length).toBeLessThan(names.length);
     expect(writes).toBeLessThan(names.length * 2);
   });

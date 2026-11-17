@@ -60,6 +60,8 @@ export function found<T>(row: T | undefined, what: string, key: string): T {
 }
 
 export class StoreContext {
+  private readonly enlisted = new Set<() => void>();
+
   constructor(
     readonly sql: Sql,
     private readonly feed: ChangeFeed,
@@ -81,7 +83,11 @@ export class StoreContext {
     this.feed.hold();
     try {
       const before = this.sql.mutations;
-      const value = this.sql.transaction(work);
+      const value = this.sql.transaction(() => {
+        const result = work();
+        if (this.sql.mutations !== before) for (const hook of this.enlisted) hook();
+        return result;
+      });
       const mutated = this.sql.mutations !== before;
       this.feed.release();
       if (mutated) this.feed.committed();
@@ -90,6 +96,13 @@ export class StoreContext {
       this.feed.discard();
       throw cause;
     }
+  }
+
+  enlist(hook: () => void): () => void {
+    this.enlisted.add(hook);
+    return (): void => {
+      this.enlisted.delete(hook);
+    };
   }
 
   speech(speech: CommittedSpeech): void {

@@ -288,7 +288,7 @@ export function symlinkRequest(
   parent: number,
   target: string,
 ): RequestMeta<'SYMLINK'> {
-  return { parent, name, target, uid: null, gid: null, opKey: key() };
+  return { parent, name, ino: leasedIno(), target, uid: null, gid: null, opKey: key() };
 }
 
 export function mknodRequest(
@@ -297,7 +297,17 @@ export function mknodRequest(
   type: 4 | 5 | 6 | 7,
   rdev = 0,
 ): RequestMeta<'MKNOD'> {
-  return { parent, name, type, rdev, mode: 0o644, uid: null, gid: null, opKey: key() };
+  return {
+    parent,
+    name,
+    ino: leasedIno(),
+    type,
+    rdev,
+    mode: 0o644,
+    uid: null,
+    gid: null,
+    opKey: key(),
+  };
 }
 
 export function linkRequest(ino: number, parent: number, name: string): RequestMeta<'LINK'> {

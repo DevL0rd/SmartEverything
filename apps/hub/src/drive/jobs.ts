@@ -14,8 +14,10 @@ import {
   UNRESPONSIVE_AFTER_MS,
   WALK_MESSAGE,
   type WalkData,
+  type WalkEntry,
   type WalkMessage,
 } from './scanner-walk';
+import { hashRequested } from './blocks';
 import type { RootAvailability } from './root-marker';
 
 export const BUNDLED_SCANNER_WORKER = fileURLToPath(
@@ -79,7 +81,7 @@ export function runnerOf(
 export interface ScanEnvironment {
   readonly store: Pick<
     Store,
-    'driveRoots' | 'driveItems' | 'driveInodes' | 'feed' | 'write' | 'now'
+    'driveRoots' | 'driveItems' | 'driveInodes' | 'driveMissing' | 'feed' | 'write' | 'now'
   >;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly mounted: (rootId: string) => boolean;
@@ -274,6 +276,28 @@ async function scanRoot(env: ScanEnvironment, rootId: string, signal: AbortSigna
   }
 }
 
+async function hashForReuse(
+  env: ScanEnvironment,
+  root: StoredDrive,
+  entry: WalkEntry,
+): Promise<string | null> {
+  const response = await hashRequested({
+    id: 1,
+    rootPath: root.path,
+    relPath: entry.relPath,
+    dev: entry.dev,
+    ino: entry.ino,
+    withBlocks: false,
+  });
+  if (response.kind === 'hashed' && response.bytes === entry.bytes) return response.sha256;
+  env.log.warn('drive.scan_reuse_hash_skipped', {
+    rootId: root.id,
+    relPath: entry.relPath,
+    reason: response.kind === 'hashed' ? 'changed' : response.reason,
+  });
+  return null;
+}
+
 async function commitScan(
   env: ScanEnvironment,
   root: StoredDrive,
@@ -283,6 +307,8 @@ async function commitScan(
   const dependencies: CommitDependencies = {
     items: env.store.driveItems,
     inodes: env.store.driveInodes,
+    missing: env.store.driveMissing,
+    hash: (entry) => hashForReuse(env, root, entry),
     write: (work) => env.store.write(work),
     now: env.store.now,
     newId: env.newId ?? randomUUID,
@@ -293,7 +319,7 @@ async function commitScan(
     env.log.info('drive.scan_cancelled', { rootId: root.id });
     return;
   }
-  const totals = committer.finish(outcome.unreadable);
+  const totals = await committer.finish(outcome.unreadable);
   env.store.driveRoots.update(root.id, {
     state: 'ready',
     stateReason: null,

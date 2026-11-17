@@ -16,29 +16,24 @@ func (w *writeBack) Mkdir(ctx context.Context, args CreateArgs) (Entry, error) {
 }
 
 func (w *writeBack) Mknod(ctx context.Context, args CreateArgs) (Entry, error) {
-	return w.makeEntry(ctx, wire.OpMknod, wire.Meta{
-		wire.KeyParent: args.Parent, wire.KeyName: args.Name, wire.KeyMode: uint64(args.Mode),
-		wire.KeyType: uint64(args.Type), wire.KeyRdev: uint64(args.Rdev),
-		wire.KeyUid: optID(args.UID), wire.KeyGid: optID(args.GID),
-	})
+	return w.makeEntry(nameMknod, args)
 }
 
 func (w *writeBack) Symlink(ctx context.Context, args CreateArgs) (Entry, error) {
-	return w.makeEntry(ctx, wire.OpSymlink, wire.Meta{
-		wire.KeyParent: args.Parent, wire.KeyName: args.Name, wire.KeyTarget: args.Target,
-		wire.KeyUid: optID(args.UID), wire.KeyGid: optID(args.GID),
-	})
+	return w.makeEntry(nameSymlink, args)
 }
 
-func (w *writeBack) makeEntry(ctx context.Context, op wire.Op, meta wire.Meta) (Entry, error) {
-	if err := w.ns.drain(ctx); err != nil {
-		return Entry{}, err
-	}
-	reply, err := w.mutate(ctx, op, meta, nil)
+func (w *writeBack) makeEntry(kind string, args CreateArgs) (Entry, error) {
+	e, err := w.ns.draft(kind, args, w.rootOfDir(args.Parent))
 	if err != nil {
 		return Entry{}, err
 	}
-	return wire.ParseEntry(reply.Meta)
+	e.Target, e.Type, e.Rdev = args.Target, args.Type, args.Rdev
+	p, err := w.ns.add(e)
+	if err != nil {
+		return Entry{}, err
+	}
+	return Entry{Ino: p.Ino, Attr: w.ns.attrOf(p)}, nil
 }
 
 func (w *writeBack) victim(ctx context.Context, parent uint64, name string) (Entry, error) {
@@ -65,7 +60,7 @@ func (w *writeBack) Unlink(ctx context.Context, parent uint64, name string) erro
 	if victim.Attr.Nlink <= 1 {
 		w.orphaned(victim.Ino)
 	}
-	if made := w.ns.madeAt(parent, name); made != nil && made.Ino == victim.Ino && w.ns.cancel(made) {
+	if made := w.ns.madeAt(parent, name); made != nil && isCreation(made.Kind) && made.Ino == victim.Ino && w.ns.cancel(made) {
 		w.broadcast()
 		return nil
 	}
@@ -83,7 +78,7 @@ func (w *writeBack) Rmdir(ctx context.Context, parent uint64, name string) error
 	if err := w.requireEmpty(ctx, victim.Ino); err != nil {
 		return err
 	}
-	if made := w.ns.madeAt(parent, name); made != nil && made.Ino == victim.Ino && w.ns.cancel(made) {
+	if made := w.ns.madeAt(parent, name); made != nil && isCreation(made.Kind) && made.Ino == victim.Ino && w.ns.cancel(made) {
 		w.broadcast()
 		return nil
 	}

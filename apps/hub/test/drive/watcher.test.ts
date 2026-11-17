@@ -17,6 +17,7 @@ import { DriveActivity } from '../../src/drive/activity';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import {
   DriveWatchers,
   systemWatch,
@@ -317,6 +318,7 @@ describe('a hub write seen again by the watcher', () => {
         driveRoots: roots,
         driveItems: items,
         driveInodes: new DriveInodesRepository(context),
+        driveMissing: new DriveMissingRepository(context),
         feed: fixture.feed,
         write: (work) => context.write(work),
         now: () => new Date(NOW),

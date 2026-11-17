@@ -280,32 +280,76 @@ func TestCancelledCallSendsCancelAndReturnsTheContextError(t *testing.T) {
 	}
 }
 
-func TestRouteSwitchClosesTheSocketDialsTheNewRouteAndResends(t *testing.T) {
+func TestRouteSwitchKeepsTheOldSocketUntilTheNewRouteSaidHelloAndResends(t *testing.T) {
 	hubA, hubB := newFakeHub(t), newFakeHub(t)
 	client := startClient(t, hubA.route(), &recordingHandler{}, nil)
 	connA := hubA.accept(t)
 	hubA.handshake(t, connA)
-	call := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "n"}, nil)
+	waitConnected(t, client)
+	first := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "n"}, nil)
 	reqA, _ := connA.read(t)
 	if err := client.SwitchRoute(hubB.route()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := connA.tryRead(); err == nil {
-		t.Fatal("the old socket must be closed")
-	}
 	connB := hubB.accept(t)
+	second := callAsync(within(t), client, OpLookup, Meta{KeyParent: uint64(1), KeyName: "m"}, nil)
+	during, _ := connA.read(t)
+	if during.Op != OpLookup || during.RequestID == reqA.RequestID {
+		t.Fatalf("a call made during the switch went out as %s %d on the old socket", during.Op.Name(), during.RequestID)
+	}
 	resumed, hello := hubB.handshake(t, connB)
 	if resumed || hello[KeySession] == nil {
 		t.Fatalf("the new hub does not know the session: resumed %v, hello session %v", resumed, hello[KeySession])
 	}
-	reqB, _ := connB.read(t)
-	if reqB.RequestID != reqA.RequestID || reqB.Op != OpLookup {
-		t.Fatalf("resend = %s %d, want %d", reqB.Op.Name(), reqB.RequestID, reqA.RequestID)
+	if _, _, err := connA.tryRead(); err == nil {
+		t.Fatal("the old socket must close once the new route said hello")
 	}
-	connB.reply(t, reqB, Meta{KeyIno: uint64(9)}, nil)
-	if r := await(t, call); r.err != nil || r.reply.Meta[KeyIno] != uint64(9) {
-		t.Fatalf("lookup = %+v", r)
+	resent := map[uint64]bool{}
+	for range 2 {
+		req, _ := connB.read(t)
+		resent[req.RequestID] = true
+		connB.reply(t, req, Meta{KeyIno: req.RequestID}, nil)
 	}
+	if !resent[reqA.RequestID] || !resent[during.RequestID] {
+		t.Fatalf("resent %v, want %d and %d", resent, reqA.RequestID, during.RequestID)
+	}
+	if r := await(t, first); r.err != nil || r.reply.Meta[KeyIno] != reqA.RequestID {
+		t.Fatalf("first lookup = %+v", r)
+	}
+	if r := await(t, second); r.err != nil || r.reply.Meta[KeyIno] != during.RequestID {
+		t.Fatalf("second lookup = %+v", r)
+	}
+}
+
+func TestRouteSwitchWhoseHandshakeNeverAnswersKeepsSendingOnTheOldSocket(t *testing.T) {
+	hubA, hubB := newFakeHub(t), newFakeHub(t)
+	client := startClient(t, hubA.route(), &recordingHandler{}, nil)
+	connA := hubA.accept(t)
+	hubA.handshake(t, connA)
+	waitConnected(t, client)
+	if err := client.SwitchRoute(hubB.route()); err != nil {
+		t.Fatal(err)
+	}
+	silent := hubB.accept(t)
+	if frame, _ := silent.read(t); frame.Op != OpHello {
+		t.Fatalf("the new route got %s first, want HELLO", frame.Op.Name())
+	}
+	for index := range 3 {
+		call := callAsync(within(t), client, OpWrite, Meta{KeyCommit: uint64(1), KeyOffset: uint64(index)}, []byte{byte(index)})
+		req, _ := connA.read(t)
+		if req.Op != OpWrite {
+			t.Fatalf("the old socket got %s, want WRITE", req.Op.Name())
+		}
+		connA.reply(t, req, Meta{}, nil)
+		if r := await(t, call); r.err != nil {
+			t.Fatalf("write %d = %v", index, r.err)
+		}
+	}
+	connA.close()
+	silent.close()
+	connB := hubB.accept(t)
+	hubB.handshake(t, connB)
+	waitConnected(t, client)
 }
 
 func TestRouteSwitchBackToTheSameHubResumesTheSession(t *testing.T) {

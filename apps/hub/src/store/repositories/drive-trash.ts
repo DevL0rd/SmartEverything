@@ -4,7 +4,12 @@ import { lockedTrashSql } from '../../drive/access';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { flag } from '../sql';
-import { DriveTrashRows, type StashedRoot, type StashedRow } from './drive-trash-rows';
+import {
+  DriveTrashRows,
+  TRASH_LEDGER,
+  type StashedRoot,
+  type StashedRow,
+} from './drive-trash-rows';
 
 const COLUMNS = `item_id, root_id, name, original_rel_path, trash_rel_path, is_folder, bytes,
   deleted_at, purge_at, deleted_by, added_by_profile_id`;
@@ -64,7 +69,7 @@ export class DriveTrashRepository {
   private readonly rows: DriveTrashRows;
 
   constructor(private readonly context: StoreContext) {
-    this.rows = new DriveTrashRows(context);
+    this.rows = new DriveTrashRows(context, TRASH_LEDGER);
   }
 
   stash(itemId: string): void {

@@ -3,6 +3,7 @@ import { open, rename, rm } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
+import { defaultConcurrency } from './work-queue';
 
 export type ByteRange = readonly [start: number, end: number];
 
@@ -46,6 +47,38 @@ async function copyRange(source: FileHandle, target: FileHandle, span: Span): Pr
     }
     done += bytesRead;
   }
+}
+
+async function copyAll(
+  source: FileHandle,
+  target: FileHandle,
+  spans: readonly Span[],
+): Promise<void> {
+  const queue = [...spans];
+  const failures: unknown[] = [];
+  const lane = async (): Promise<void> => {
+    for (let span = queue.shift(); span !== undefined; span = queue.shift()) {
+      if (failures.length > 0) return;
+      try {
+        await copyRange(source, target, span);
+      } catch (cause) {
+        failures.push(cause);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(spans.length, defaultConcurrency()) }, lane));
+  const [first] = failures;
+  if (failures.length > 0) throw first;
+}
+
+function packed(entries: readonly (readonly [number, number])[], first: number): Span[] {
+  const spans: Span[] = [];
+  let position = first;
+  for (const [start, length] of entries) {
+    spans.push({ from: start, to: position, length });
+    position += length;
+  }
+  return spans;
 }
 
 export function undoEntries(
@@ -94,11 +127,7 @@ async function writeUndoBody(
   const header: Header = { size: originalSize, entries: entries.map(([s, n]) => [s, n]) };
   const head = Buffer.from(`${MAGIC}${JSON.stringify(header)}\n`);
   await target.write(head, 0, head.length, 0);
-  let position = head.length;
-  for (const [start, length] of entries) {
-    await copyRange(source, target, { from: start, to: position, length });
-    position += length;
-  }
+  await copyAll(source, target, packed(entries, head.length));
   await target.sync();
 }
 
@@ -165,11 +194,12 @@ export async function restoreUndoLog(live: string, undo: string): Promise<void> 
     const { header, offset } = await readHeader(log);
     const target = await open(live, constants.O_WRONLY | NOFOLLOW);
     try {
-      let position = offset;
-      for (const [start, length] of header.entries) {
-        await copyRange(log, target, { from: position, to: start, length });
-        position += length;
-      }
+      const spans = packed(header.entries, offset).map(({ from, to, length }) => ({
+        from: to,
+        to: from,
+        length,
+      }));
+      await copyAll(log, target, spans);
       await target.truncate(header.size);
       await target.sync();
     } finally {
@@ -185,9 +215,11 @@ export async function applyPatch(live: string, staged: string, patch: ContentPat
   try {
     const target = await open(live, constants.O_RDWR | NOFOLLOW);
     try {
-      for (const [start, end] of patch.ranges) {
-        await copyRange(source, target, { from: start, to: start, length: end - start });
-      }
+      await copyAll(
+        source,
+        target,
+        patch.ranges.map(([start, end]) => ({ from: start, to: start, length: end - start })),
+      );
       await target.truncate(patch.size);
       await target.sync();
     } finally {

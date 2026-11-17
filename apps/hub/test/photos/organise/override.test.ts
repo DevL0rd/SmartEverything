@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { scanHandler, type ScanEnvironment } from '../../../src/drive/jobs';
 import { DriveRootLanes } from '../../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../../src/store/repositories/drive-missing';
 import { DriveFeedRepository } from '../../../src/store/repositories/drive-feed';
 import { metadataHandler, type MetadataEnvironment } from '../../../src/drive/metadata';
 import type { MediaFacts } from '../../../src/drive/metadata-read';
@@ -64,6 +65,7 @@ async function scanAndRead(): Promise<void> {
       driveRoots: drive.roots,
       driveItems: drive.items,
       driveInodes: new DriveInodesRepository(drive.context),
+      driveMissing: new DriveMissingRepository(drive.context),
       feed: drive.feed,
       write: (work) => drive.context.write(work),
       now: () => new Date(NOW),

@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline';
 import type { DriveItem } from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
-import { ffmpegPath } from '../../media/ffmpeg-path';
+import { ffmpegPath, vaapiDevice } from '../../media/ffmpeg-path';
 import type { ByteSource } from '../../server/file-serve';
 import type { DriveItemsRepository } from '../../store/repositories/drive-items';
 import type { DriveMediaRepository, DriveMediaRow } from '../../store/repositories/drive-media';
@@ -45,6 +45,12 @@ const BT709_TAGS = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color
 
 const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'];
 
+const H264_VAAPI = ['-c:v', 'h264_vaapi', '-qp', '23'];
+
+const VAAPI_TONE_MAP = 'tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709';
+
+const VAAPI_NAME = 'va';
+
 export type PlayablePlan =
   | { readonly mode: 'original' }
   | { readonly mode: 'remux' }
@@ -58,8 +64,9 @@ export type PlayableVariant = 'primary' | 'source';
 export interface PlayableInput {
   readonly source: string;
   readonly plan: PlayablePlan;
-  readonly probe: Pick<VideoProbe, 'width' | 'height' | 'rotation'>;
+  readonly probe: Pick<VideoProbe, 'width' | 'height' | 'rotation' | 'transfer'>;
   readonly copy: PlayableCopy;
+  readonly vaapiDevice: string | null;
 }
 
 export type PlayableVideo = Extract<DriveItem, { readonly kind: 'video' }>;
@@ -109,14 +116,20 @@ function fullHdSize(edges: Edges): Edges {
     : { width: FULL_HD, height: evenEdge(edges.height * scale) };
 }
 
+function outputSize(
+  probe: Pick<VideoProbe, 'width' | 'height' | 'rotation'>,
+  copy: PlayableCopy,
+): Edges | null {
+  const edges = displayEdges(probe);
+  return copy === 'fullHd' && edges !== null ? fullHdSize(edges) : null;
+}
+
 function videoFilters(
   probe: Pick<VideoProbe, 'width' | 'height' | 'rotation'>,
   toneMap: boolean,
   copy: PlayableCopy,
 ): string {
-  const edges = displayEdges(probe);
-  const smaller = copy === 'fullHd' && edges !== null;
-  const size = smaller ? fullHdSize(edges) : null;
+  const size = outputSize(probe, copy);
   const scale =
     size === null
       ? []
@@ -128,21 +141,44 @@ function videoFilters(
   return [...scale, ...(toneMap ? [TONE_MAP] : [])].join(',');
 }
 
-function codecArguments(
-  plan: PlayablePlan,
-  probe: Pick<VideoProbe, 'width' | 'height' | 'rotation'>,
+function vaapiFilters(
+  probe: Pick<VideoProbe, 'width' | 'height' | 'rotation' | 'transfer'>,
+  toneMap: boolean,
   copy: PlayableCopy,
-): readonly string[] {
+): string {
+  const size = outputSize(probe, copy);
+  if (toneMap && probe.transfer === 'HLG') {
+    return `hwdownload,format=p010le,${videoFilters(probe, true, copy)},format=nv12,hwupload`;
+  }
+  const scale =
+    size === null
+      ? 'scale_vaapi=format=nv12'
+      : `scale_vaapi=w=${String(size.width)}:h=${String(size.height)}:format=nv12`;
+  return [...(toneMap ? [VAAPI_TONE_MAP] : []), scale].join(',');
+}
+
+function transcodeArguments(input: PlayableInput, toneMap: boolean): readonly string[] {
+  if (input.vaapiDevice !== null) {
+    return ['-vf', vaapiFilters(input.probe, toneMap, input.copy), ...H264_VAAPI];
+  }
+  const filters = videoFilters(input.probe, toneMap, input.copy);
+  return [...(filters === '' ? [] : ['-vf', filters]), ...X264, ...(toneMap ? BT709_TAGS : [])];
+}
+
+function codecArguments(input: PlayableInput): readonly string[] {
+  const { plan } = input;
   if (plan.mode === 'remux') return ['-c', 'copy'];
   if (plan.mode === 'audio') return ['-c:v', 'copy', '-c:a', 'aac'];
   if (plan.mode === 'original') throw new Error('an original that plays as it is has no copy');
-  const filters = videoFilters(probe, plan.toneMap, copy);
+  return [...transcodeArguments(input, plan.toneMap), '-c:a', 'aac'];
+}
+
+function decodeArguments(input: PlayableInput): readonly string[] {
+  if (input.vaapiDevice === null || input.plan.mode !== 'transcode') return [];
   return [
-    ...(filters === '' ? [] : ['-vf', filters]),
-    ...X264,
-    ...(plan.toneMap ? BT709_TAGS : []),
-    '-c:a',
-    'aac',
+    ...['-init_hw_device', `vaapi=${VAAPI_NAME}:${input.vaapiDevice}`],
+    ...['-hwaccel', 'vaapi', '-hwaccel_device', VAAPI_NAME],
+    ...['-hwaccel_output_format', 'vaapi', '-filter_hw_device', VAAPI_NAME],
   ];
 }
 
@@ -154,13 +190,14 @@ export function playableArguments(input: PlayableInput, target: string): readonl
     '-nostats',
     '-progress',
     'pipe:1',
+    ...decodeArguments(input),
     '-i',
     input.source,
     '-map',
     '0:v:0',
     '-map',
     '0:a:0?',
-    ...codecArguments(input.plan, input.probe, input.copy),
+    ...codecArguments(input),
     '-movflags',
     '+faststart',
     '-f',
@@ -209,7 +246,7 @@ function runFfmpeg(
   });
 }
 
-export interface PlayableConversion extends PlayableInput {
+export interface PlayableConversion extends Omit<PlayableInput, 'vaapiDevice'> {
   readonly probe: VideoProbe;
   readonly target: string;
   readonly onProgress: (progress: number) => void;
@@ -223,7 +260,7 @@ export async function convertPlayable(
   await mkdir(dirname(conversion.target), { recursive: true });
   try {
     await runFfmpeg(
-      playableArguments(conversion, staged),
+      playableArguments({ ...conversion, vaapiDevice: vaapiDevice() }, staged),
       conversion.probe.durationSeconds,
       conversion.onProgress,
       signal,

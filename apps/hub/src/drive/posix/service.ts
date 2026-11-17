@@ -110,7 +110,7 @@ export class DrivePosix {
   }
 
   mkdir(scope: PosixScope, request: RequestMeta<'MKDIR'>): Promise<Entry> {
-    return this.mutate(scope.drive.id, () => this.creates.mkdir(scope, request));
+    return guarded(() => this.creates.mkdir(scope, request));
   }
 
   create(scope: PosixScope, request: RequestMeta<'CREATE'>, content: Uint8Array): Promise<Entry> {
@@ -139,6 +139,10 @@ export class DrivePosix {
 
   rmdir(scope: PosixScope, request: RequestMeta<'RMDIR'>): Promise<void> {
     return this.mutate(scope.drive.id, () => this.removes.rmdir(scope, request));
+  }
+
+  rmtree(scope: PosixScope, request: RequestMeta<'RMTREE'>): Promise<void> {
+    return this.mutate(scope.drive.id, () => this.removes.rmtree(scope, request));
   }
 
   rename(scope: PosixScope, request: RenameRequest): Promise<void> {

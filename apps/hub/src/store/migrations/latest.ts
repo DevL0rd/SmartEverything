@@ -2,6 +2,9 @@ import { PHOTO_VISION_REFUSED_RETRY_MIGRATION } from './photo-vision-refused-ret
 import { PHOTOS_THUMBHASH_DROP_MIGRATION } from './photos-thumbhash-drop';
 import { DRIVE_TEXT_SEARCH_ROWID_MIGRATION } from './drive-text-search-rowid';
 import { DRIVE_INODE_LEASES_MIGRATION } from './drive-inode-leases';
+import { DRIVE_ITEM_REFERENCE_INDEXES_MIGRATION } from './drive-item-reference-indexes';
+import { DRIVE_ITEM_BACKLOG_INDEXES_MIGRATION } from './drive-item-backlog-indexes';
+import { DRIVE_MISSING_MIGRATION } from './drive-missing';
 import { DRIVE_ROOT_MOUNT_MIGRATION } from './drive-root-mount';
 import { DRIVE_MOUNT_TUNING_MIGRATION } from './drive-mount-tuning';
 import { DRIVE_MEMBER_AREA_MIGRATION } from './drive-member-area';
@@ -199,4 +202,7 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   PHOTOS_THUMBHASH_DROP_MIGRATION,
   DRIVE_TEXT_SEARCH_ROWID_MIGRATION,
   DRIVE_INODE_LEASES_MIGRATION,
+  DRIVE_ITEM_REFERENCE_INDEXES_MIGRATION,
+  DRIVE_ITEM_BACKLOG_INDEXES_MIGRATION,
+  DRIVE_MISSING_MIGRATION,
 ];

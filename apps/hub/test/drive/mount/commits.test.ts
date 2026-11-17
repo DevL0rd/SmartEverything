@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat, truncate } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TMP_DIRECTORY } from '../../../src/drive/intents';
@@ -97,7 +97,10 @@ describe('a commit built of ranges', () => {
   it('takes thousands of scattered frames in flight and keeps their ranges for resume', async () => {
     const ino = await put('scatter.bin', 'x'.repeat(4096 * 64));
     const commit = await begin(ino);
-    const offsets = Array.from({ length: 2000 }, (_, index) => ((index * 37) % 64) * 4096 + (index % 7));
+    const offsets = Array.from(
+      { length: 2000 },
+      (_, index) => ((index * 37) % 64) * 4096 + (index % 7),
+    );
     await Promise.all(
       offsets.map((offset) => mine.client.call('WRITE', { commit, offset }, text('y'))),
     );
@@ -346,7 +349,14 @@ describe('resuming a commit', () => {
     const reply = await next.hello({ session });
     expect(reply.resumed).toBe(true);
     await next.call('WRITE', { commit, offset: 2 }, text('cd'));
-    await next.call('END', { commit, size: 4, length: 4, mtimeNs: WRITTEN_NS, fsync: false, opKey: opKey() });
+    await next.call('END', {
+      commit,
+      size: 4,
+      length: 4,
+      mtimeNs: WRITTEN_NS,
+      fsync: false,
+      opKey: opKey(),
+    });
     expect(await onDisk('across.txt')).toBe('abcd');
   });
 
@@ -376,7 +386,14 @@ describe('conflicts and small files', () => {
     await mine.client.call('WRITE', { commit, offset: 0 }, text('mine'));
     await save(rig.posix, rig.posix.mine, 'base.txt', 'theirs');
     const failure = await mine.client
-      .call('END', { commit, size: 4, length: 4, mtimeNs: WRITTEN_NS, fsync: false, opKey: opKey() })
+      .call('END', {
+        commit,
+        size: 4,
+        length: 4,
+        mtimeNs: WRITTEN_NS,
+        fsync: false,
+        opKey: opKey(),
+      })
       .catch((cause: unknown) => cause);
     expect(failure).toBeInstanceOf(MountFailure);
     expect(failure).toMatchObject({ code: 'ESTALE' });
@@ -490,6 +507,62 @@ describe('abort, forget, allocate and copy', () => {
     });
     expect(Buffer.from(await readFile(join(rig.posix.mine.path, 'zero.txt')))).toEqual(
       Buffer.from('ab\0\0\0fgh\0\0'),
+    );
+  });
+
+  it('keeps writes past a zeroed range that land while it extends the staged file', async () => {
+    const { ino } = await created('zero-race.bin');
+    const commit = await begin(ino);
+    const parts = Array.from({ length: 64 }, (_, index) => index);
+    const zeroed = mine.client.call('ALLOCATE', { commit, mode: 3, offset: 0, length: 64 * 1024 });
+    const writes = parts.map((index) =>
+      mine.client.call(
+        'WRITE',
+        { commit, offset: (64 + index) * 1024 },
+        Buffer.alloc(1024, index + 1),
+      ),
+    );
+    await Promise.all([zeroed, ...writes]);
+    await mine.client.call('END', {
+      commit,
+      size: 128 * 1024,
+      length: 128 * 1024,
+      mtimeNs: WRITTEN_NS,
+      fsync: false,
+      opKey: opKey(),
+    });
+    const body = await readFile(join(rig.posix.mine.path, 'zero-race.bin'));
+    expect(body.length).toBe(128 * 1024);
+    expect(body.subarray(0, 64 * 1024).every((byte) => byte === 0)).toBe(true);
+    for (const index of parts) {
+      expect(body.subarray((64 + index) * 1024, (65 + index) * 1024)).toEqual(
+        Buffer.alloc(1024, index + 1),
+      );
+    }
+  });
+
+  it('asks again for received ranges missing from a short staged file and then lands them', async () => {
+    const { ino } = await created('short.bin');
+    const commit = await begin(ino);
+    await mine.client.call('WRITE', { commit, offset: 0 }, Buffer.alloc(4096, 1));
+    await mine.client.call('WRITE', { commit, offset: 4096 }, Buffer.alloc(4096, 2));
+    const folder = join(rig.posix.mine.path, TMP_DIRECTORY);
+    const [staged] = (await readdir(folder)).filter((name) => name.startsWith('commit-'));
+    await truncate(join(folder, staged ?? 'missing'), 4096);
+    const end = {
+      commit,
+      size: 8192,
+      length: 8192,
+      mtimeNs: WRITTEN_NS,
+      fsync: false,
+      opKey: opKey(),
+    };
+    await expect(mine.client.call('END', end)).rejects.toMatchObject({ code: 'EAGAIN' });
+    expect((await mine.client.call('STATE', { commit })).ranges).toEqual([[0, 4096]]);
+    await mine.client.call('WRITE', { commit, offset: 4096 }, Buffer.alloc(4096, 2));
+    await mine.client.call('END', end);
+    expect(await readFile(join(rig.posix.mine.path, 'short.bin'))).toEqual(
+      Buffer.concat([Buffer.alloc(4096, 1), Buffer.alloc(4096, 2)]),
     );
   });
 

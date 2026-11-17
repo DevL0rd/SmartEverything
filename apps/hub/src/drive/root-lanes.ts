@@ -3,8 +3,10 @@ import { background } from '@smarteverything/logging';
 interface RootState {
   exclusive: Promise<void>;
   readonly shared: Set<Promise<void>>;
-  readonly keys: Map<number, Promise<void>>;
+  readonly keys: Map<LaneKey, Promise<void>>;
 }
+
+export type LaneKey = number | string;
 
 function settled(work: Promise<unknown>): Promise<void> {
   return work.then(
@@ -33,17 +35,35 @@ export class DriveRootLanes {
     return result;
   }
 
-  shared<T>(rootId: string, key: number, work: () => Promise<T>): Promise<T> {
+  shared<T>(rootId: string, key: LaneKey, work: () => Promise<T>): Promise<T> {
+    return this.staged(rootId, key, () => work());
+  }
+
+  staged<T>(
+    rootId: string,
+    key: LaneKey,
+    work: (handoff: () => void) => Promise<T>,
+  ): Promise<T> {
     const state = this.stateOf(rootId);
     const before = Promise.all([state.exclusive, state.keys.get(key)]);
-    const result = before.then(work);
+    let handoff = (): void => undefined;
+    const handed = new Promise<void>((resolve) => {
+      handoff = resolve;
+    });
+    const result = before.then(() => work(handoff));
     const done = settled(result);
+    const keyed = Promise.race([handed, done]);
     state.shared.add(done);
-    state.keys.set(key, done);
+    state.keys.set(key, keyed);
+    background(
+      keyed.then(() => {
+        if (state.keys.get(key) === keyed) state.keys.delete(key);
+      }),
+      'drive.lane_release_failed',
+    );
     background(
       done.then(() => {
         state.shared.delete(done);
-        if (state.keys.get(key) === done) state.keys.delete(key);
       }),
       'drive.lane_release_failed',
     );

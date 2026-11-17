@@ -93,7 +93,7 @@ export function caseMatrix(): readonly CaseSpec[] {
 }
 
 export function triggerFraction(workload: Workload, disturbance: Disturbance): number {
-  if (disturbance.kind === 'reply-loss') return workload === 'big' ? 0.9 : 0.5;
+  if (disturbance.kind === 'reply-loss') return 0.5;
   return workload === 'big' ? 0.3 : 0.1;
 }
 

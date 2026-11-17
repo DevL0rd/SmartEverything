@@ -62,6 +62,14 @@ func (o *writeOverlay) Lookup(ctx context.Context, parent uint64, name string) (
 }
 
 func (o *writeOverlay) Readdir(ctx context.Context, ino, cursor uint64) (DirPage, error) {
+	pending := o.w.ns.children(ino)
+	local := make([]wire.DirEntry, 0, len(pending))
+	names := make(map[string]bool, len(pending))
+	for _, p := range pending {
+		name := p.at().name
+		local = append(local, wire.DirEntry{Name: name, Entry: Entry{Ino: p.Ino, Attr: o.w.ns.attrOf(p)}})
+		names[name] = true
+	}
 	var entries []wire.DirEntry
 	if o.w.ns.made(ino) == nil {
 		page, err := o.InodeSource.Readdir(ctx, ino, 0)
@@ -69,14 +77,12 @@ func (o *writeOverlay) Readdir(ctx context.Context, ino, cursor uint64) (DirPage
 			return page, err
 		}
 		for _, e := range page.Entries {
-			if !o.w.ns.goneAt(ino, e.Name) && o.w.ns.madeAt(ino, e.Name) == nil {
+			if !names[e.Name] && !o.w.ns.goneAt(ino, e.Name) && o.w.ns.madeAt(ino, e.Name) == nil {
 				entries = append(entries, e)
 			}
 		}
 	}
-	for _, p := range o.w.ns.children(ino) {
-		entries = append(entries, wire.DirEntry{Name: p.Name, Entry: Entry{Ino: p.Ino, Attr: o.w.ns.attrOf(p)}})
-	}
+	entries = append(entries, local...)
 	if cursor >= uint64(len(entries)) {
 		return DirPage{}, nil
 	}
@@ -85,6 +91,13 @@ func (o *writeOverlay) Readdir(ctx context.Context, ino, cursor uint64) (DirPage
 		o.w.overlayAttr(&entries[i].Attr)
 	}
 	return DirPage{Entries: entries}, nil
+}
+
+func (o *writeOverlay) Readlink(ctx context.Context, ino uint64) (string, error) {
+	if target, ok := o.w.ns.linkTarget(ino); ok {
+		return target, nil
+	}
+	return o.InodeSource.Readlink(ctx, ino)
 }
 
 func (o *writeOverlay) Getxattr(ctx context.Context, ino uint64, name string) ([]byte, error) {

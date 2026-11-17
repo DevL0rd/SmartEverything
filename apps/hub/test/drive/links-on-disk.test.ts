@@ -20,6 +20,7 @@ import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DrivePathError, ORPHAN_DIRECTORY, resolveInRoot } from '../../src/drive/paths';
 import { DriveInodesRepository, type DriveInode } from '../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
@@ -62,6 +63,7 @@ function environment(): ScanEnvironment {
       driveRoots: fixture.roots,
       driveItems: fixture.items,
       driveInodes: inodes,
+      driveMissing: new DriveMissingRepository(fixture.context),
       feed: fixture.feed,
       write: (work) => fixture.context.write(work),
       now: () => new Date(NOW),

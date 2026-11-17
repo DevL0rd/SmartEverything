@@ -84,6 +84,7 @@ export class MountSession {
   readonly handles = new Map<number, OpenHandle>();
   readonly inflight = new Map<bigint, Cancellable>();
   readonly helperSeqs = new Map<string, number>();
+  echoOwnThrough = 0;
   private ledger = new Set<number>();
   readonly lanes = new Lanes();
   private handleCounter = 0;

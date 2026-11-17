@@ -1,3 +1,4 @@
+import type { DriveActivity } from '../activity';
 import type { DriveItem } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { DriveMediaRepository } from '../../store/repositories/drive-media';
@@ -27,6 +28,7 @@ export interface TextEnvironment {
   readonly previewPath: (itemId: string, rev: number) => string;
   readonly languageDirectory: string;
   readonly icons: Pick<FolderIconRefresher, 'refreshRoot' | 'refreshFolder'>;
+  readonly activity: Pick<DriveActivity, 'quiet'>;
   readonly log: Logger;
 }
 
@@ -124,7 +126,7 @@ export function changesSince(
   after: number,
 ): Changes {
   const ids = new Set<string>();
-  for (let cursor: number | null = after; cursor !== null; ) {
+  for (let cursor: number | null = after; cursor !== null;) {
     const window = env.store.driveFeed.sinceInRoot(rootId, cursor, WINDOW_ROWS);
     for (const row of window.rows) ids.add(row.itemId);
     cursor = window.next;
@@ -197,6 +199,7 @@ class TextRun {
     let worker = new ContentWorker(this.env.workerScript);
     try {
       for (const work of this.backlog.work) {
+        await this.env.activity.quiet();
         if (signal.aborted) return;
         if (!(await this.one(worker, work))) {
           await worker.close();
@@ -326,6 +329,7 @@ async function textRoot(
     return;
   }
   if ((await env.availability(root)) !== 'online') return;
+  await env.activity.quiet();
   await refreshIcons(env, cursors, root, signal);
   if (!settings.contentIndexing) {
     env.log.info('drive.text_off', { rootId });
@@ -350,10 +354,7 @@ async function textRoot(
   });
 }
 
-export function textHandler(
-  env: TextEnvironment,
-  cursors: TextCursors,
-): DriveJobHandlers['text'] {
+export function textHandler(env: TextEnvironment, cursors: TextCursors): DriveJobHandlers['text'] {
   return (job, signal) => textRoot(env, cursors, job.rootId, signal);
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	leaseBatch  = 4096
+	leaseBatch  = 65536
 	leaseRefill = leaseBatch / 2
 	leasesFile  = "leases.json"
 )

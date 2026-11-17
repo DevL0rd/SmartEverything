@@ -390,6 +390,8 @@ func (w *writeBack) sendWrites(s *session, commit uint64, spans [][2]uint64) err
 			cancel()
 		})
 	}
+	turn := make(chan struct{})
+	close(turn)
 feed:
 	for _, span := range spans {
 		for off := span[0]; off < span[1]; {
@@ -398,9 +400,11 @@ feed:
 				break feed
 			}
 			wg.Add(1)
-			go func(off, n uint64) {
+			mine := make(chan struct{})
+			go func(off, n uint64, before <-chan struct{}, sent chan<- struct{}) {
 				defer wg.Done()
 				defer w.window.release()
+				defer close(sent)
 				if ctx.Err() != nil {
 					return
 				}
@@ -409,13 +413,19 @@ feed:
 					fail(err)
 					return
 				}
+				select {
+				case <-before:
+				case <-ctx.Done():
+					return
+				}
 				posted, err := w.caller.Post(ctx, wire.OpWrite, wire.Meta{wire.KeyCommit: commit, wire.KeyOffset: off}, buf)
 				if err != nil {
 					fail(err)
 					return
 				}
 				posted.Forget()
-			}(off, n)
+			}(off, n, turn, mine)
+			turn = mine
 			off += n
 		}
 	}

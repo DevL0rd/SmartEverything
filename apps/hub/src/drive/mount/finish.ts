@@ -2,8 +2,9 @@ import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
 import { rename, truncate } from 'node:fs/promises';
 import type { DriveItem } from '@smarteverything/domain';
+import type { Logger } from '@smarteverything/logging';
 import type { ReplyMeta, RequestMeta } from '@smarteverything/domain/drive-mount';
-import type { DriveMountCommit } from '../../store/repositories/drive-mount-commits';
+import type { DriveMountCommitHead } from '../../store/repositories/drive-mount-commits';
 import { locate, type DriveWriteRoot } from '../intents';
 import type { OpenTarget } from '../posix/open';
 import type { PosixChangeEnv, PosixScope } from '../posix/env';
@@ -25,6 +26,7 @@ export interface FinishEnv extends CommitEnv {
   readonly fsync: GroupFsync;
   readonly settle: SettleGroup;
   readonly dedupe: MountDedupe;
+  readonly log: Logger;
 }
 
 interface Landing {
@@ -150,15 +152,30 @@ export class MountFinish {
     const row = this.commits.commitOf(session, request.commit);
     const scope = this.commits.scopeOf(session, row);
     await this.commits.drained(row.id);
-    return this.env.dedupe.once(row.placementId, { name: 'END', key: request.opKey }, () =>
-      this.complete(session, scope, row, request),
+    return this.env.dedupe.once(
+      row.placementId,
+      { name: 'END', key: request.opKey },
+      () => this.complete(session, scope, row, request),
+      () => Promise.resolve(null),
     );
+  }
+
+  private async stagedSize(
+    scope: PosixScope,
+    row: DriveMountCommitHead,
+    reach: number,
+  ): Promise<number | null> {
+    const staged = await this.env.staging.size(scope.drive.id, row.id);
+    if (staged === null || staged >= reach) return staged;
+    this.env.log.warn('drive_mount.commit_short', { commit: row.id, staged, reach });
+    this.commits.cutReceived(row, staged);
+    throw posix('EAGAIN', 'Some received ranges of this commit are missing from its staged file.');
   }
 
   private async complete(
     session: MountSession,
     scope: PosixScope,
-    row: DriveMountCommit,
+    row: DriveMountCommitHead,
     request: RequestMeta<'END'>,
   ): Promise<ReplyMeta<'END'>> {
     const current = this.change.store.driveMountCommits.byId(row.id);
@@ -168,7 +185,12 @@ export class MountFinish {
     if (coveredBytes(ranges) !== request.length) {
       throw posix('EAGAIN', 'Some written ranges of this commit have not arrived yet.');
     }
-    if (!(await this.env.staging.exists(scope.drive.id, row.id))) {
+    const staged = await this.stagedSize(
+      scope,
+      current,
+      Math.min(ranges.at(-1)?.[1] ?? 0, request.size),
+    );
+    if (staged === null) {
       const attr = await this.env.posix.getattr(scope, row.inodeId);
       this.change.store.driveMountCommits.finish(row.id, request.size, attr.rev);
       return { attr, rev: attr.rev };
@@ -201,8 +223,14 @@ export class MountFinish {
     payload: Uint8Array,
   ): Promise<ReplyMeta<'PUT'>> {
     const scope = session.scopeOf(this.change.store, request.ino);
-    return this.env.dedupe.once(scope.placementId, { name: 'PUT', key: request.opKey }, () =>
-      this.putBytes(session, scope, request, payload),
+    return this.env.dedupe.once(
+      scope.placementId,
+      { name: 'PUT', key: request.opKey },
+      () => this.putBytes(session, scope, request, payload),
+      async () => {
+        const attr = await this.env.posix.getattr(scope, request.ino);
+        return attr.rev === request.baseRev ? null : { attr, rev: attr.rev };
+      },
     );
   }
 

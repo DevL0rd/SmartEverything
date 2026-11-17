@@ -22,7 +22,8 @@ import { itemFeed, rootFeed, staleCursor } from '../../src/drive/feed';
 import { refusalReason } from '../../src/drive/service-write-support';
 import { StoreConflictError } from '../../src/store/sql';
 import { recoverIntents, type DriveWriteRoot } from '../../src/drive/intents';
-import { ScanCommitter } from '../../src/drive/scanner-commit';
+import { hashRequested } from '../../src/drive/blocks';
+import { ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
 import type { WalkEntry } from '../../src/drive/scanner-walk';
 import {
   commitRestore,
@@ -131,30 +132,40 @@ async function walkEntry(relPath: string): Promise<WalkEntry> {
   };
 }
 
+function commitDependencies(): CommitDependencies {
+  return {
+    items: opened.store.driveItems,
+    inodes: opened.store.driveInodes,
+    missing: opened.store.driveMissing,
+    hash: async (entry): Promise<string | null> => {
+      const response = await hashRequested({
+        id: 1,
+        rootPath: opened.store.driveRoots.byId(root.id).path,
+        relPath: entry.relPath,
+        dev: entry.dev,
+        ino: entry.ino,
+        withBlocks: false,
+      });
+      return response.kind === 'hashed' ? response.sha256 : null;
+    },
+    write: <T>(work: () => T): T => opened.store.write(work),
+    now: (): Date => START,
+    newId: randomUUID,
+  };
+}
+
 async function reconcile(relPath: string): Promise<void> {
   const committer = new ScanCommitter(
-    {
-      items: opened.store.driveItems,
-      inodes: opened.store.driveInodes,
-      write: <T>(work: () => T): T => opened.store.write(work),
-      now: (): Date => START,
-      newId: randomUUID,
-    },
+    commitDependencies(),
     opened.store.driveRoots.byId(root.id),
   );
   committer.apply([await walkEntry(relPath)]);
-  committer.finish([]);
+  await committer.finish([]);
 }
 
 async function scanTree(): Promise<void> {
   const committer = new ScanCommitter(
-    {
-      items: opened.store.driveItems,
-      inodes: opened.store.driveInodes,
-      write: <T>(work: () => T): T => opened.store.write(work),
-      now: (): Date => START,
-      newId: randomUUID,
-    },
+    commitDependencies(),
     opened.store.driveRoots.byId(root.id),
   );
   const folder = await walkEntry('d');
@@ -164,7 +175,7 @@ async function scanTree(): Promise<void> {
     { ...folder, kind: 'folder', childCount: entries.length },
     ...entries.map((entry) => ({ ...entry, parentRelPath: 'd' })),
   ]);
-  committer.finish([]);
+  await committer.finish([]);
 }
 
 function indexedId(relPath: string): string {

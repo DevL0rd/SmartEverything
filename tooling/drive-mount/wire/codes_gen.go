@@ -61,6 +61,7 @@ const (
 	OpRmdir       Op = 0x26
 	OpRename      Op = 0x27
 	OpTmpfile     Op = 0x28
+	OpRmtree      Op = 0x29
 	OpGetxattr    Op = 0x30
 	OpSetxattr    Op = 0x31
 	OpListxattr   Op = 0x32

@@ -22,6 +22,7 @@ func (c *blockCache) NoteLocal(parent uint64, name string, entry wire.Entry) {
 		dir.dir.order = append(dir.dir.order, name)
 	}
 	dir.dir.names[name] = nameSlot{ino: entry.Ino, epoch: epoch}
+	c.noteDuringFetchLocked(parent, localNote{name: name, ino: entry.Ino})
 	dir.dir.snap = nil
 	c.applyAttrLocked(dir.root, entry.Attr, epoch).markListed(parent)
 	c.touchRoot(dir.root)
@@ -53,6 +54,7 @@ func (c *blockCache) NoteLocalGone(parent uint64, name string, ino uint64) {
 		dir.dir = &dirMeta{names: map[string]nameSlot{}}
 	}
 	dir.dir.names[name] = nameSlot{epoch: c.epochLocked(dir.root)}
+	c.noteDuringFetchLocked(parent, localNote{name: name})
 	dir.dir.snap = nil
 	if in := c.inodes[ino]; in != nil {
 		delete(in.listed, parent)
@@ -71,4 +73,39 @@ func (c *blockCache) RootIno(root string) (uint64, bool) {
 		return 0, false
 	}
 	return rs.ino, true
+}
+
+func (c *blockCache) noteDuringFetchLocked(parent uint64, note localNote) {
+	if notes, ok := c.fetching[parent]; ok {
+		c.fetching[parent] = append(notes, note)
+	}
+}
+
+func (d *dirMeta) replayLocal(notes []localNote) {
+	for _, note := range notes {
+		if note.ino == 0 {
+			delete(d.names, note.name)
+			d.order = slices.DeleteFunc(d.order, func(name string) bool { return name == note.name })
+			continue
+		}
+		if _, known := d.names[note.name]; !known {
+			d.order = append(d.order, note.name)
+		}
+		d.names[note.name] = nameSlot{ino: note.ino, epoch: d.epoch}
+	}
+}
+
+func (c *blockCache) NoteMoved(args RenameArgs, source, target uint64) {
+	if c.NoteRenamed(args, source, target) {
+		return
+	}
+	c.NoteName(args.Parent, args.Name)
+	c.NoteName(args.NewParent, args.NewName)
+	c.NoteChanged(args.Parent)
+	c.NoteChanged(args.NewParent)
+	for _, ino := range []uint64{source, target} {
+		if ino != 0 {
+			c.NoteChanged(ino)
+		}
+	}
 }

@@ -63,6 +63,8 @@ const root = join(import.meta.dirname, '..');
 
 const hub = join(root, 'apps', 'hub');
 
+const WS_MASKING = join(hub, 'src', 'server', 'ws-masking.ts');
+
 const SERVICE_BANNER =
   'import { createRequire as createServiceRequire } from "node:module"; import { fileURLToPath as serviceFileUrlToPath } from "node:url"; import { dirname as serviceDirname } from "node:path"; const require = createServiceRequire(import.meta.url); const __filename = serviceFileUrlToPath(import.meta.url); const __dirname = serviceDirname(__filename);';
 const OPTIONAL_UNSHIPPED = ['x11', 'usocket', 'cpu-features'];
@@ -177,6 +179,7 @@ export async function bundle(item: Bundle, out: string): Promise<Found> {
     external: [...item.external],
     banner: item.banner === undefined ? {} : { js: item.banner },
     define: { ...item.define },
+    alias: { bufferutil: WS_MASKING },
     metafile: true,
     logLevel: 'warning',
   });

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
 import type { WalkEntry } from '../../src/drive/scanner-walk';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 
@@ -22,6 +23,11 @@ let context: DriveFixture['context'];
 let roots: DriveFixture['roots'];
 let items: DriveFixture['items'];
 let profileId = '';
+const hashes = new Map<string, string>();
+
+beforeEach(() => {
+  hashes.clear();
+});
 
 beforeEach(() => {
   fixture = openDriveFixture();
@@ -38,6 +44,8 @@ function dependencies(): CommitDependencies {
   return {
     items,
     inodes: new DriveInodesRepository(context),
+    missing: new DriveMissingRepository(context),
+    hash: (entry) => Promise.resolve(hashes.get(entry.relPath) ?? null),
     write: (work) => context.write(work),
     now: () => new Date(NOW),
     newId: randomUUID,
@@ -88,10 +96,10 @@ function folderEntry(
   };
 }
 
-function scanned(entries: readonly WalkEntry[]): ScanCommitter {
+async function scanned(entries: readonly WalkEntry[]): Promise<ScanCommitter> {
   const scan = committer();
   scan.apply(entries);
-  scan.finish([]);
+  await scan.finish([]);
   return scan;
 }
 
@@ -169,15 +177,15 @@ function folderRow(relPath: string): string {
 }
 
 describe('committing a scan over a changing index', () => {
-  it('adopts a row created after the committer loaded instead of inserting a second one', () => {
-    scanned([fileEntry('existing.txt', { ino: '1' })]);
+  it('adopts a row created after the committer loaded instead of inserting a second one', async () => {
+    await scanned([fileEntry('existing.txt', { ino: '1' })]);
     const racing = committer();
     const uploaded = uploadRow();
     racing.apply([
       fileEntry('existing.txt', { ino: '1' }),
       fileEntry('uploaded.txt', { ino: '4' }),
     ]);
-    const totals = racing.finish([]);
+    const totals = await racing.finish([]);
     expect(rowsAt('uploaded.txt')).toEqual([{ id: uploaded }]);
     expect(items.byPath(ROOT, 'uploaded.txt', null)).toMatchObject({
       id: uploaded,
@@ -195,14 +203,14 @@ describe('committing a scan over a changing index', () => {
     expect(totals).toEqual({ items: 2, folders: 0, bytes: 10 });
   });
 
-  it('adopts a post-load folder row and its children under the adopted id', () => {
+  it('adopts a post-load folder row and its children under the adopted id', async () => {
     const racing = committer();
     const uploaded = folderRow('incoming');
     racing.apply([
       folderEntry('incoming'),
       fileEntry('incoming/a.txt', { parentRelPath: 'incoming' }),
     ]);
-    const totals = racing.finish([]);
+    const totals = await racing.finish([]);
     expect(rowsAt('incoming')).toEqual([{ id: uploaded }]);
     expect(items.byPath(ROOT, 'incoming', null)).toMatchObject({
       id: uploaded,
@@ -218,8 +226,8 @@ describe('committing a scan over a changing index', () => {
     expect(totals).toEqual({ items: 1, folders: 1, bytes: 5 });
   });
 
-  it('adopts the row now holding a path when the loaded row moved away', () => {
-    scanned([fileEntry('a.txt', { ino: '1' })]);
+  it('adopts the row now holding a path when the loaded row moved away', async () => {
+    await scanned([fileEntry('a.txt', { ino: '1' })]);
     const keeper = rowAt('a.txt');
     const racing = committer();
     items.write({
@@ -228,15 +236,15 @@ describe('committing a scan over a changing index', () => {
     });
     const arriving = uploadRow('a.txt');
     racing.apply([fileEntry('a.txt', { ino: '5' })]);
-    racing.finish([]);
+    await racing.finish([]);
     expect(rowsAt('a.txt')).toEqual([{ id: arriving }]);
     expect(paths()).toEqual(['a.txt', 'moved.txt']);
     expect(items.byPath(ROOT, 'a.txt', null)?.id).toBe(arriving);
     expect(items.byPath(ROOT, 'moved.txt', null)?.id).toBe(keeper.id);
   });
 
-  it('prefers the row at the path over a repathed row with the same identity', () => {
-    scanned([fileEntry('a.txt', { ino: '1' })]);
+  it('prefers the row at the path over a repathed row with the same identity', async () => {
+    await scanned([fileEntry('a.txt', { ino: '1' })]);
     const loaded = rowAt('a.txt');
     const racing = committer();
     items.write({
@@ -245,43 +253,43 @@ describe('committing a scan over a changing index', () => {
     });
     const occupant = uploadRow('a.txt');
     racing.apply([fileEntry('a.txt', { ino: '1', bytes: 9 })]);
-    racing.finish([]);
+    await racing.finish([]);
     expect(rowsAt('a.txt')).toEqual([{ id: occupant }]);
     expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ bytes: 9 });
     expect(items.byPath(ROOT, 'b.txt', null)?.id).toBe(loaded.id);
     expect(paths()).toEqual(['a.txt', 'b.txt']);
   });
 
-  it('adopts the row at the path when the loaded row was deleted', () => {
-    scanned([fileEntry('a.txt', { ino: '1' })]);
+  it('adopts the row at the path when the loaded row was deleted', async () => {
+    await scanned([fileEntry('a.txt', { ino: '1' })]);
     const loaded = rowAt('a.txt');
     const racing = committer();
     items.remove(loaded.id);
     const occupant = uploadRow('a.txt');
     racing.apply([fileEntry('a.txt', { ino: '1', bytes: 9 })]);
-    racing.finish([]);
+    await racing.finish([]);
     expect(rowsAt('a.txt')).toEqual([{ id: occupant }]);
     expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ id: occupant, bytes: 9 });
   });
 
-  it('leaves an unchanged path alone on a later scan', () => {
-    scanned([fileEntry('keep.txt')]);
+  it('leaves an unchanged path alone on a later scan', async () => {
+    await scanned([fileEntry('keep.txt')]);
     const before = items.byPath(ROOT, 'keep.txt', null);
     const again = committer();
     expect(again.previous).toBe(1);
     again.apply([fileEntry('keep.txt')]);
     expect(items.byPath(ROOT, 'keep.txt', null)).toEqual(before);
-    expect(again.finish([])).toEqual({ items: 1, folders: 0, bytes: 5 });
+    expect(await again.finish([])).toEqual({ items: 1, folders: 0, bytes: 5 });
   });
 
-  it('evicts a post-load row occupying the destination of a move', () => {
-    scanned([fileEntry('old.txt')]);
+  it('evicts a post-load row occupying the destination of a move', async () => {
+    await scanned([fileEntry('old.txt')]);
     const mover = rowAt('old.txt');
     const racing = committer();
     const occupant = uploadRow('new.txt');
     expect(rowsAt('new.txt')).toEqual([{ id: occupant }]);
     racing.apply([fileEntry('new.txt')]);
-    const totals = racing.finish([]);
+    const totals = await racing.finish([]);
     expect(rowsAt('new.txt')).toEqual([{ id: mover.id }]);
     expect(items.find(occupant, null)).toBeUndefined();
     expect(items.byPath(ROOT, 'new.txt', null)).toMatchObject({ id: mover.id, relPath: 'new.txt' });
@@ -289,24 +297,24 @@ describe('committing a scan over a changing index', () => {
     expect(totals).toEqual({ items: 1, folders: 0, bytes: 5 });
   });
 
-  it('moves a row whose identity matches a new path instead of duplicating it', () => {
-    scanned([fileEntry('old.txt')]);
+  it('moves a row whose identity matches a new path instead of duplicating it', async () => {
+    await scanned([fileEntry('old.txt')]);
     const moved = rowAt('old.txt');
     const again = committer();
     expect(again.previous).toBe(1);
     again.apply([fileEntry('new.txt')]);
-    expect(again.finish([])).toEqual({ items: 1, folders: 0, bytes: 5 });
+    expect(await again.finish([])).toEqual({ items: 1, folders: 0, bytes: 5 });
     expect(paths()).toEqual(['new.txt']);
     expect(items.byPath(ROOT, 'new.txt', null)).toMatchObject({ id: moved.id, relPath: 'new.txt' });
   });
 
-  it('keeps the owning fields when a rescan writes changed facts', () => {
+  it('keeps the owning fields when a rescan writes changed facts', async () => {
     uploadRow('edited.txt', { dev: '7', ino: '8' });
     const seeded = rowAt('edited.txt');
     fixture.opens.record(profileId, seeded.id, OPENED_AT);
     const scan = committer();
     scan.apply([fileEntry('edited.txt')]);
-    const totals = scan.finish([]);
+    const totals = await scan.finish([]);
     expect(items.byPath(ROOT, 'edited.txt', profileId)?.openedAt).toBe(OPENED_AT);
     expect(items.byPath(ROOT, 'edited.txt', null)).toMatchObject({
       id: seeded.id,
@@ -320,15 +328,15 @@ describe('committing a scan over a changing index', () => {
     expect(totals).toEqual({ items: 1, folders: 0, bytes: 5 });
   });
 
-  it('reports the same totals for an unchanged scan', () => {
+  it('reports the same totals for an unchanged scan', async () => {
     const folder = folderEntry('docs', { ino: '2' });
     const first = committer();
     first.apply([folder, fileEntry('docs/a.txt', { parentRelPath: 'docs' })]);
-    const totals = first.finish([]);
+    const totals = await first.finish([]);
     expect(totals).toEqual({ items: 1, folders: 1, bytes: 5 });
     const second = committer();
     expect(second.previous).toBe(2);
     second.apply([folder, fileEntry('docs/a.txt', { parentRelPath: 'docs' })]);
-    expect(second.finish([])).toEqual(totals);
+    expect(await second.finish([])).toEqual(totals);
   });
 });

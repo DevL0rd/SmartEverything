@@ -128,6 +128,13 @@ const ID = z.strictObject({ id: z.number() });
 
 const NAME = z.strictObject({ id: z.string() });
 
+const SUBTREE_INODE = z.strictObject({ inodeId: z.number(), names: z.number() });
+
+export interface SubtreeInode {
+  readonly inodeId: number;
+  readonly names: number;
+}
+
 const LINKS = `case when n.type = 'dir' then 2 + (
     select count(*) from drive_items c
     where c.kind = 'folder' and c.root_id = n.root_id
@@ -238,6 +245,10 @@ export class DriveInodesRepository {
   }
 
   create(draft: DriveInodeDraft): DriveInode {
+    return this.context.write(() => this.byId(this.insert(draft)));
+  }
+
+  insert(draft: DriveInodeDraft): number {
     return this.context.write(() => {
       const id = this.context.sql.get(
         ID,
@@ -248,7 +259,7 @@ export class DriveInodesRepository {
           returning id`,
         { ...ownerValues(draft), ...timeValues(draft, nsOfMoment(this.context.now())) },
       );
-      return this.byId(found(id, 'drive inode', 'new').id);
+      return found(id, 'drive inode', 'new').id;
     });
   }
 
@@ -357,8 +368,32 @@ export class DriveInodesRepository {
       .map((row) => row.id);
   }
 
+  below(itemId: string): SubtreeInode[] {
+    return this.context.sql.all(
+      SUBTREE_INODE,
+      `with recursive subtree (id, inode_id) as (
+         select id, inode_id from drive_items where parent_id = $itemId
+         union all
+         select child.id, child.inode_id from drive_items child
+           join subtree parent on child.parent_id = parent.id
+       )
+       select s.inode_id as inodeId,
+         (select count(*) from drive_items i where i.inode_id = s.inode_id) as names
+       from subtree s`,
+      { itemId },
+    );
+  }
+
   linkCount(id: number): number {
-    return this.linkCounts([id]).get(id) ?? 0;
+    return found(
+      this.context.sql.get(
+        COUNT,
+        `select n.id, ${LINKS} as links from drive_inodes n where n.id = $id`,
+        { id },
+      ),
+      'drive inode',
+      String(id),
+    ).links;
   }
 
   linkCounts(ids: readonly number[]): Map<number, number> {

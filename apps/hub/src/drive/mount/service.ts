@@ -74,10 +74,11 @@ function servicesOf(env: MountEnv): MountServices {
   const staging = new Staging({ files: change.files, store, hashes });
   const settle = new SettleGroup(store, env.log);
   const fsync = new GroupFsync(journalOf(store));
-  const dedupe = new MountDedupe(store.driveSyncOps);
+  const dedupe = new MountDedupe(store.driveSyncOps, (hook) => store.context.enlist(hook), env.log);
   const locks = new LockService(leaseMs);
-  const commits = new MountCommits({ posix, change, staging, handles });
-  const finishing = { posix, change, staging, handles, guard: env.guard, fsync, settle, dedupe };
+  const shared = { posix, change, staging, handles };
+  const commits = new MountCommits(shared);
+  const finishing = { ...shared, guard: env.guard, fsync, settle, dedupe, log: env.log };
   return {
     store,
     posix,
@@ -96,7 +97,7 @@ function servicesOf(env: MountEnv): MountServices {
     },
     listings,
     push: new PushPump(store),
-    registry: new MountRegistry({ leaseMs, posix, handles, locks }),
+    registry: new MountRegistry({ leaseMs, posix, handles, locks, feed: store.driveFeed }),
   };
 }
 
@@ -159,6 +160,7 @@ export class DriveMount {
     this.unsubscribeSettings();
     this.services.registry.stop();
     this.services.listings.clear();
+    this.services.dedupe.stop();
     background(this.services.stopHashes(), 'drive_mount.hash_pool_stop_failed');
   }
 }

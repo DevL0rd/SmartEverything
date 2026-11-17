@@ -62,8 +62,9 @@ export class Staging {
     }
   }
 
-  async exists(rootId: string, commitId: number): Promise<boolean> {
-    return (await this.env.files.stamp(await this.path(rootId, commitId))) !== null;
+  async size(rootId: string, commitId: number): Promise<number | null> {
+    const stamp = await this.env.files.stamp(await this.path(rootId, commitId));
+    return stamp === null ? null : stamp.size;
   }
 
   private fd(rootId: string, commitId: number): Promise<FileHandle> {
@@ -171,7 +172,13 @@ export class Staging {
       const { bytesWritten } = await fd.write(zeros, 0, wanted, at);
       at += bytesWritten;
     }
-    if (end > size) await fd.truncate(end);
+    if (end > size && range.length > 0) await this.extend(fd, end);
+  }
+
+  private async extend(fd: FileHandle, end: number): Promise<void> {
+    const { bytesWritten } = await fd.write(Buffer.alloc(1), 0, 1, end - 1);
+    if (bytesWritten !== 1)
+      throw new Error(`The staged file did not extend to ${String(end)} bytes.`);
   }
 
   async close(commitId: number): Promise<void> {

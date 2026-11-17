@@ -31,6 +31,7 @@ interface Bulk {
   readonly ids: readonly string[];
   readonly body: (batch: readonly string[]) => DriveChange;
   readonly failure: string;
+  readonly onBatch?: (landed: readonly string[]) => void;
 }
 
 async function run(change: Change, bulk: Bulk): Promise<BulkOutcome | null> {
@@ -41,6 +42,7 @@ async function run(change: Change, bulk: Bulk): Promise<BulkOutcome | null> {
       ids: bulk.ids,
       batch: BULK_BATCH,
       send: (batch) => change(bulk.body(batch)),
+      ...(bulk.onBatch === undefined ? {} : { onBatch: bulk.onBatch }),
     });
     if (outcome.reason === null) return outcome;
     notify({
@@ -96,6 +98,7 @@ export async function addToAlbum(
 
 export async function moveToTrash(
   itemIds: readonly string[],
+  landed: (itemIds: readonly string[]) => void,
   change: Change = changeDrive,
   local: LocalCopies = LIVE_LOCAL_COPIES,
 ): Promise<boolean> {
@@ -105,6 +108,7 @@ export async function moveToTrash(
     ids: itemIds,
     body: (batch) => ({ action: 'trash', itemIds: batch }),
     failure: 'Could not move everything to trash',
+    onBatch: landed,
   });
   if (outcome === null || outcome.landed.length === 0) return false;
   const moved = outcome.landed;

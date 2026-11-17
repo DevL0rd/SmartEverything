@@ -1,5 +1,5 @@
-import { stageEmptyFile, syncDirectory, writeUnsynced } from './unsynced';
-import { chmodNoFollow, cloneFile, readNoFollow, stageFile, writeDurable } from './file-ops';
+import { stageEmptyFile, syncDirectory, syncFilesystems, writeUnsynced } from './unsynced';
+import { chmodNoFollow, cloneFile, readNoFollow, stageFile, stageFileUnsynced, writeDurable } from './file-ops';
 import { randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import type { DriveVersionEntry, DriveVersionFile } from '../store/repositories/
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import type { FileItem } from './file-item';
 import { applyPatch, restoreUndoLog, writeUndoLog } from './patch-files';
+import { openIntent } from './intent-batch';
 import {
   commitPatch,
   hashOf,
@@ -86,11 +87,13 @@ export const nodeFiles: DriveFiles = {
   unlink,
   remove: (path) => rm(path, { recursive: true, force: true }),
   stage: stageFile,
+  stageUnsynced: stageFileUnsynced,
   stageEmpty: stageEmptyFile,
   writeDurable,
   writeUnsynced,
   syncFile: syncDirectory,
   syncDirectory,
+  syncFilesystems,
   chmod: chmodNoFollow,
   clone: cloneFile,
   writeUndo: writeUndoLog,
@@ -121,12 +124,15 @@ export async function stageBytes(
   env: FileEnv,
   root: DriveWriteRoot,
   source: AsyncIterable<Uint8Array>,
+  durable = true,
 ): Promise<StagedBytes> {
   const relPath = tmpRelPath();
   const path = await locate(root, relPath);
   await env.files.mkdir(await locate(root, TMP_DIRECTORY));
   try {
-    const written = await env.files.stage(path, source);
+    const written = durable
+      ? await env.files.stage(path, source)
+      : await env.files.stageUnsynced(path, source);
     return { relPath, ...written };
   } catch (cause) {
     await env.files.remove(path);
@@ -200,7 +206,7 @@ async function replaceFile(
     await locate(root, staged.relPath),
     diskModeOf(request.mode ?? existing?.mode ?? FILE_DEFAULT_MODE, false),
   );
-  const intent = env.store.driveIntents.open({
+  const intent = await openIntent(env.store, {
     rootId: root.id,
     op: 'commit',
     fromPath: staged.relPath,

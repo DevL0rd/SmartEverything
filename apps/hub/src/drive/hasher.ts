@@ -4,13 +4,10 @@ import { isFileItem, type FileItem } from './file-item';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import type { Store } from '../store/store';
-import type { DriveItemEntry } from '../store/repositories/drive-items';
 import { HASH_RESPONSE, type HashRequest, type HashResponse } from './blocks';
 import type { DriveJobHandlers } from './jobs';
 import { readDriveSettings } from './settings';
 import type { RootAvailability } from './root-marker';
-
-const WINDOW_ROWS = 1000;
 
 type HashedResponse = Extract<HashResponse, { readonly kind: 'hashed' }>;
 
@@ -57,25 +54,6 @@ export function byPriority(left: HashCandidate, right: HashCandidate): number {
   return left.relPath < right.relPath ? -1 : 1;
 }
 
-function candidateOf(
-  entry: DriveItemEntry,
-  openedAt: string | null,
-  needed: boolean,
-  wantBlocks: boolean,
-): HashCandidate | null {
-  const { item, identity } = entry;
-  if (!isFileItem(item) || identity === null || !needed) return null;
-  return {
-    id: item.id,
-    relPath: item.relPath,
-    bytes: item.bytes,
-    openedAt,
-    dev: identity.dev,
-    ino: identity.ino,
-    wantBlocks,
-  };
-}
-
 export function syncsBlocks(
   store: Pick<HashEnvironment['store'], 'drivePlacements'>,
   rootId: string,
@@ -84,50 +62,18 @@ export function syncsBlocks(
 }
 
 export function collectBacklog(
-  store: Pick<
-    HashEnvironment['store'],
-    'driveItems' | 'driveBlocks' | 'drivePlacements' | 'driveOpens'
-  >,
+  store: Pick<HashEnvironment['store'], 'driveItems' | 'drivePlacements' | 'driveOpens'>,
   root: StoredDrive,
 ): HashBacklog {
   const synced = syncsBlocks(store, root.id);
   const opened = store.driveOpens.latestInDrive(root.id);
-  const candidates: HashCandidate[] = [];
-  let files = 0;
-  let hashed = 0;
-  const pending: (string | null)[] = [null];
-  for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
-    let after: string | null = null;
-    do {
-      const window = store.driveItems.children({
-        rootId: root.id,
-        parentId: parent,
-        after,
-        limit: WINDOW_ROWS,
-        viewer: null,
-      });
-      for (const entry of window.entries) {
-        if (entry.item.kind === 'folder') {
-          pending.push(entry.item.id);
-          continue;
-        }
-        if (!isFileItem(entry.item)) continue;
-        files += 1;
-        const hasBlocks =
-          !synced || store.driveBlocks.find(entry.item.id, entry.item.rev) !== undefined;
-        const found = candidateOf(
-          entry,
-          opened.get(entry.item.id) ?? null,
-          entry.item.sha256 === null || !hasBlocks,
-          synced,
-        );
-        if (found === null) hashed += 1;
-        else candidates.push(found);
-      }
-      after = window.next;
-    } while (after !== null);
-  }
-  return { candidates: candidates.sort(byPriority), files, hashed };
+  const { files, rows } = store.driveItems.lookups.hashBacklog(root.id, synced);
+  const candidates = rows.map((row): HashCandidate => ({
+    ...row,
+    openedAt: opened.get(row.id) ?? null,
+    wantBlocks: synced,
+  }));
+  return { candidates: candidates.sort(byPriority), files, hashed: files - candidates.length };
 }
 
 export function modifiedIso(modifiedMs: number): string {

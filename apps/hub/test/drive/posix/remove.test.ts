@@ -225,7 +225,7 @@ describe('rmdir', () => {
 });
 
 describe('many files removed at once', () => {
-  it('moves them to the trash together with one sync of their folder and one write to the index', async () => {
+  it('moves them to the trash together with one disk sync and one write to the index', async () => {
     const names = Array.from({ length: 10 }, (_, index) => `r${String(index)}.txt`);
     for (const name of names) {
       await rig.posix.create(rig.scope, create(name, rig.rootIno), new TextEncoder().encode(name));
@@ -234,12 +234,12 @@ describe('many files removed at once', () => {
       names.map((name) => removal(rig, rig.scope, name, rig.rootIno)),
     );
     const { files } = rig.env.change;
-    const synced: string[] = [];
-    const sync = files.syncDirectory.bind(files);
+    const synced: (readonly string[])[] = [];
+    const sync = files.syncFilesystems.bind(files);
     Object.assign(files, {
-      syncDirectory: async (path: string): Promise<void> => {
-        synced.push(path);
-        await sync(path);
+      syncFilesystems: async (paths: readonly string[]): Promise<void> => {
+        synced.push(paths);
+        await sync(paths);
       },
     });
     await Promise.all(removals.map((request) => rig.posix.unlink(rig.scope, request)));
@@ -247,6 +247,7 @@ describe('many files removed at once', () => {
     expect(rig.opened.store.driveTrash.inRoot(rig.mine.id, null, 100).entries).toHaveLength(
       names.length,
     );
+    expect(synced.length).toBeGreaterThan(0);
     expect(synced.length).toBeLessThan(names.length);
   });
 });

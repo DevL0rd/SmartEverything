@@ -17,6 +17,7 @@ import {
   rcloneTarget,
   smbTarget,
   sshfsTarget,
+  passthroughTarget,
   type LocalTarget,
 } from './local-targets.ts';
 import type { LocalConfig, Probed, Session } from './local-types.ts';
@@ -31,6 +32,7 @@ export const LOCAL_KINDS = [
   'nfs',
   'smb',
   'sshfs',
+  'passthrough',
   'rclone-sftp-off',
   'rclone-sftp-full',
   'rclone-dav-off',
@@ -51,6 +53,7 @@ const OTHERS: Readonly<Record<string, () => LocalTarget>> = {
   nfs: nfsTarget,
   smb: smbTarget,
   sshfs: sshfsTarget,
+  passthrough: passthroughTarget,
   'rclone-sftp-off': () => rcloneTarget('sftp', 'off'),
   'rclone-sftp-full': () => rcloneTarget('sftp', 'full'),
   'rclone-dav-off': () => rcloneTarget('dav', 'off'),

@@ -70,9 +70,21 @@ func wbJournalFiles(t *testing.T, dir string) []string {
 	}
 	var out []string
 	for _, n := range names {
-		if n.Name() != namesDir {
+		if n.Name() != namesDir && !strings.HasPrefix(n.Name(), sessionsFile) && !strings.HasSuffix(n.Name(), ".data") {
 			out = append(out, n.Name())
 		}
+	}
+	j, err := openJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := j.load()
+	j.close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rec := range live {
+		out = append(out, rec.ID)
 	}
 	if info, err := os.Stat(filepath.Join(dir, namesDir, namesFile)); err == nil && info.Size() > 0 {
 		out = append(out, namesFile)

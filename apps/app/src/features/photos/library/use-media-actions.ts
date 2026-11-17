@@ -1,7 +1,9 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { background } from '@smarteverything/logging';
 import type { MenuItem } from '../../../components/menu';
 import { useLastChat } from '../../assistant';
 import { useDriveAlbums, useDriveRoots } from '../../drive';
+import { dropPhotoItems } from '../data';
 import { openNewAlbum } from '../albums/new-album-host';
 import { NO_CHAT_HINT } from '../model/ask-actions';
 import { albumMenuItems } from '../viewer/menus';
@@ -27,6 +29,7 @@ export function useMediaActions(): MediaActions {
   const albums = useDriveAlbums('photos');
   const roots = useDriveRoots();
   const last = useLastChat();
+  const client = useQueryClient();
   const chatId = last.kind === 'open' ? last.chatId : null;
   return {
     chatHint: chatId === null ? NO_CHAT_HINT : null,
@@ -60,7 +63,9 @@ export function useMediaActions(): MediaActions {
     },
     trash: (ids, onMoved): void => {
       background(
-        moveToTrash(ids).then((moved) => {
+        moveToTrash(ids, (landed) => {
+          dropPhotoItems(client, landed);
+        }).then((moved) => {
           if (moved) onMoved();
         }),
         'photos.trash_failed',

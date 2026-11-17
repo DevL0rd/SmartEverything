@@ -1,10 +1,9 @@
 import type { ChangeActor, ChangeEnv, ContentResult } from './changes';
-import { finishContent, locateExisting, settleContent, trustedSha } from './changes';
+import { finishContent, locateExisting, parentIdOf, settleContent, trustedSha } from './changes';
 import type { DriveItem } from '@smarteverything/domain';
 import { DriveWriteError, type DriveWriteRoot } from './intents';
 import { commitPatch } from './patch-commit';
 import type { ContentPatch } from './patch-files';
-import { parentOf } from './changes';
 
 export interface PatchWrite {
   readonly root: DriveWriteRoot;
@@ -24,7 +23,7 @@ export async function commitPatchContent(
   if (existing === undefined) {
     throw new DriveWriteError('missing', 'The file to patch is not in the index.');
   }
-  const parent = parentOf(env, root.id, relPath);
+  const parentId = parentIdOf(env, root.id, relPath);
   const committed = await commitPatch(env, {
     root,
     staged: write.staged,
@@ -34,6 +33,6 @@ export async function commitPatchContent(
   });
   const settle = { env, root, relPath, actor, alongside: write.alongside, mode: undefined };
   return finishContent(env, root, committed, () =>
-    settleContent({ ...settle, existing, parent, before, committed }),
+    settleContent({ ...settle, existing, parentId, before, committed }),
   );
 }

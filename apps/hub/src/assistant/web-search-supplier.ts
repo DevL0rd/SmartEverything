@@ -1,7 +1,5 @@
 import {
   ApiError,
-  AI_EFFORT,
-  type AiEffort,
   WEB_SOURCES_EMBED,
   type AiChatRow,
   type WebSource,
@@ -78,13 +76,10 @@ async function search(
   signal: AbortSignal | undefined,
 ): Promise<HomeSearchAnswer> {
   const { sessionId, query } = request;
-  const { routeId, model, effort } = searchAdmission(service, sessionId);
+  const { routeId, model } = searchAdmission(service, sessionId);
   const citations = new SearchCitations();
   const content = await withSearchCitations(citations, () =>
-    complete(
-      { provider: routeId, model, sessionId, system: SEARCH_SYSTEM, input: query, effort },
-      signal,
-    ),
+    complete({ provider: routeId, model, sessionId, system: SEARCH_SYSTEM, input: query }, signal),
   );
   const sources = citations.sources();
   rememberSources(service, sessionId, sources);
@@ -97,7 +92,6 @@ const SEARCH_SYSTEM =
 interface SearchAdmission {
   readonly routeId: string;
   readonly model: string;
-  readonly effort: AiEffort | null;
 }
 
 function searchAdmission(service: HarnessService, sessionId: string): SearchAdmission {
@@ -110,7 +104,6 @@ function searchAdmission(service: HarnessService, sessionId: string): SearchAdmi
   return {
     routeId: chat.engine.model_route_id,
     model: chat.engine.model,
-    effort: AI_EFFORT.nullable().parse(chat.engine.effort),
   };
 }
 

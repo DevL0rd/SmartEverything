@@ -67,7 +67,7 @@ export interface NewRecord {
 }
 
 function adopted(env: PosixChangeEnv, draft: DriveItemDraft): DriveItemDraft {
-  const taken = env.store.driveItems.byPath(draft.rootId, draft.relPath, null);
+  const taken = env.store.driveItems.lookups.placed(draft.rootId, draft.relPath);
   if (taken?.kind !== draft.kind) return draft;
   return { ...draft, id: taken.id, addedAt: taken.addedAt };
 }

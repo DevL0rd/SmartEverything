@@ -8,6 +8,7 @@ import type {
 import type { LogPayload, Logger } from '@smarteverything/logging';
 import type { DeviceRecord, HubDatabase } from '../database/port';
 import type { RecordedEvent } from '../state/event-router';
+import { vaapiDevice } from '../media/ffmpeg-path';
 import { cameraSourceOf } from '../state/inventory';
 import type { CameraRefusals } from './camera-health';
 import { FrameCache } from './frame-cache';
@@ -43,7 +44,7 @@ export interface CameraServiceOptions {
 }
 
 function h264Transcode(stream: string): string {
-  return `ffmpeg:${stream}#video=h264`;
+  return `ffmpeg:${stream}#video=h264${vaapiDevice() === null ? '' : '#hardware=vaapi'}`;
 }
 
 export async function registerStream(

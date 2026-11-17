@@ -11,6 +11,11 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 const ROOT = 'root';
 
+function deferredGate(): { readonly open: () => void; readonly opened: Promise<void> } {
+  const { promise, resolve } = deferred();
+  return { open: resolve, opened: promise };
+}
+
 describe('the drive root lanes', () => {
   it('runs landings of different inodes together and one inode in order', async () => {
     const lanes = new DriveRootLanes();
@@ -100,5 +105,56 @@ describe('changes across drives', () => {
     first.resolve();
     await Promise.all([both, reversed, landing]);
     expect(log).toEqual(['both start', 'other drive', 'both end', 'reversed', 'landing']);
+  });
+});
+
+describe('staged work on a drive', () => {
+  it('starts the next staged work of a key at the handoff and holds exclusive work until both end', async () => {
+    const lanes = new DriveRootLanes();
+    const order: string[] = [];
+    const firstEnds = deferredGate();
+    const secondEnds = deferredGate();
+    const first = lanes.staged('r', 'k', async (handoff) => {
+      order.push('first lands');
+      handoff();
+      await firstEnds.opened;
+      order.push('first ends');
+    });
+    const second = lanes.staged('r', 'k', async () => {
+      order.push('second lands');
+      await secondEnds.opened;
+      order.push('second ends');
+    });
+    const exclusive = lanes.run(['r'], () => {
+      order.push('exclusive');
+      return Promise.resolve();
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(order).toEqual(['first lands', 'second lands']);
+    secondEnds.open();
+    await second;
+    expect(order).not.toContain('exclusive');
+    firstEnds.open();
+    await Promise.all([first, exclusive]);
+    expect(order).toEqual(['first lands', 'second lands', 'second ends', 'first ends', 'exclusive']);
+  });
+
+  it('keeps a staged work that never hands off in order with the next one', async () => {
+    const lanes = new DriveRootLanes();
+    const order: string[] = [];
+    const firstEnds = deferredGate();
+    const first = lanes.staged('r', 'k', async () => {
+      await firstEnds.opened;
+      order.push('first');
+    });
+    const second = lanes.staged('r', 'k', () => {
+      order.push('second');
+      return Promise.resolve();
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(order).toEqual([]);
+    firstEnds.open();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['first', 'second']);
   });
 });

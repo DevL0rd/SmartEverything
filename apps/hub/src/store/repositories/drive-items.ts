@@ -1,19 +1,15 @@
-import {
-  DRIVE_INTEGRITY,
-  DRIVE_ITEM,
-  DRIVE_FOLDER_COLOURS,
-  DRIVE_ITEM_KINDS,
-  type DriveItem,
-} from '@smarteverything/domain';
+import { DRIVE_ITEM, DRIVE_ITEM_KINDS, type DriveItem } from '@smarteverything/domain';
 import { z } from 'zod';
 import { lockedSql } from '../../drive/access';
 import { invalidateDerivedRevision } from './drive-media-revision';
-import { storedRow } from '../codec';
+import { builtRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { itemColumns, sameStored } from './drive-item-columns';
 import { folderColourOf } from './drive-folder-colours';
 import { momentOfNs } from './drive-inodes';
 import { DriveInodeError, DriveItemInodes, type DriveInodePatch } from './drive-item-inodes';
+import { DriveItemLookups } from './drive-item-lookups';
+import { ICON_HINT, OPEN_COMMENTS, SHARED } from './drive-item-sql';
 import { openedAtBy } from './drive-opens';
 import { starredBy } from './drive-stars';
 import {
@@ -22,6 +18,14 @@ import {
   type DriveSortedChildrenQuery,
   type DriveSortedWindow,
 } from './drive-item-sort';
+
+const SUBTREE_ROW = z.strictObject({ id: z.string(), depth: z.int().nonnegative() });
+
+const SUBTREE = `with recursive subtree(id, depth) as (
+  select id, 0 from drive_items where id = $id
+  union all
+  select child.id, subtree.depth + 1 from drive_items child join subtree on child.parent_id = subtree.id
+) select id, depth from subtree`;
 
 export interface DriveItemIdentity {
   readonly dev: string;
@@ -71,17 +75,6 @@ const COLUMNS = `id, root_id, parent_id, inode_id, rel_path, name, kind, mime, b
   orientation, camera_make, camera_model, camera_lens, exposure_iso, exposure_aperture,
   exposure_shutter, exposure_focal, place_lat, place_lon, duration_ms`;
 
-const SHARED = `(exists (select 1 from drive_grants g where g.item_id = i.id)
-  or exists (select 1 from drive_shares s where s.item_id = i.id and s.revoked_at is null
-    and (s.expires_at is null or s.expires_at > $now)))`;
-
-const OPEN_COMMENTS = `(select count(*) from drive_comments c
-  where c.item_id = i.id and c.parent_id is null and c.resolved_at is null
-    and (c.deleted_at is null or exists (select 1 from drive_comments r
-      where r.parent_id = c.id and r.deleted_at is null)))`;
-
-const ICON_HINT = 'exists (select 1 from drive_folder_icons f where f.folder_item_id = i.id)';
-
 const SELECT = `select ${COLUMNS}, ${openedAtBy('$viewer')} as opened_at,
   ${starredBy('$viewer')} as starred, ${SHARED} as shared, ${lockedSql('i')} as locked,
   exists (select 1 from drive_item_locks h where h.item_id = i.id) as locked_here,
@@ -92,97 +85,50 @@ const SELECT = `select ${COLUMNS}, ${openedAtBy('$viewer')} as opened_at,
   from drive_items i`;
 
 const TEXT = z.string().nullable();
-const NUMBER = z.number().nullable();
 
-const ITEM_COLUMNS = z.strictObject({
-  id: z.string(),
-  root_id: z.string(),
-  parent_id: TEXT,
-  inode_id: z.number(),
-  rel_path: z.string(),
-  name: z.string(),
-  kind: z.enum(DRIVE_ITEM_KINDS),
-  mime: TEXT,
-  bytes: z.number(),
-  child_count: NUMBER,
-  sha256: TEXT,
-  integrity: z.enum(DRIVE_INTEGRITY),
-  dev: TEXT,
-  ino: TEXT,
-  modified_at: z.string(),
-  added_at: z.string(),
-  opened_at: TEXT,
-  starred: z.boolean(),
-  shared: z.boolean(),
-  locked: z.boolean(),
-  locked_here: z.boolean(),
-  open_comments: z.number(),
-  colour: z.enum(DRIVE_FOLDER_COLOURS).nullable(),
-  icon_hint: z.boolean(),
-  link_target: TEXT,
-  rev: z.number(),
-  etag: z.string(),
-  outside: z.boolean(),
-  added_by_profile_id: TEXT,
-  remote_id: TEXT,
-  remote_rev: TEXT,
-  thumb_state: z.enum(['none', 'ready', 'failed', 'unsupported']),
-  thumb_reason: TEXT,
-  taken_at: TEXT,
-  width: NUMBER,
-  height: NUMBER,
-  orientation: NUMBER,
-  camera_make: TEXT,
-  camera_model: TEXT,
-  camera_lens: TEXT,
-  exposure_iso: NUMBER,
-  exposure_aperture: NUMBER,
-  exposure_shutter: NUMBER,
-  exposure_focal: NUMBER,
-  place_lat: NUMBER,
-  place_lon: NUMBER,
-  duration_ms: NUMBER,
-});
+const LOCKED = z.object({ locked: z.int() });
 
-type ItemColumns = z.output<typeof ITEM_COLUMNS>;
+const ITEM_PLACE = z.object({ inode_id: z.number(), dev: TEXT, ino: TEXT });
+
+type ItemColumns = Readonly<Record<string, unknown>>;
 
 function baseOf(row: ItemColumns): Record<string, unknown> {
   return {
-    id: row.id,
-    rootId: row.root_id,
-    parentId: row.parent_id,
-    relPath: row.rel_path,
-    name: row.name,
-    kind: row.kind,
-    modifiedAt: row.modified_at,
-    addedAt: row.added_at,
-    openedAt: row.opened_at,
-    starred: row.starred,
-    shared: row.shared,
-    locked: row.locked,
-    lockedHere: row.locked_here,
-    openComments: row.open_comments,
-    rev: row.rev,
-    etag: row.etag,
-    outside: row.outside,
-    addedByProfileId: row.added_by_profile_id,
-    remoteId: row.remote_id,
-    remoteRev: row.remote_rev,
+    id: row['id'],
+    rootId: row['root_id'],
+    parentId: row['parent_id'],
+    relPath: row['rel_path'],
+    name: row['name'],
+    kind: row['kind'],
+    modifiedAt: row['modified_at'],
+    addedAt: row['added_at'],
+    openedAt: row['opened_at'],
+    starred: row['starred'],
+    shared: row['shared'],
+    locked: row['locked'],
+    lockedHere: row['locked_here'],
+    openComments: row['open_comments'],
+    rev: row['rev'],
+    etag: row['etag'],
+    outside: row['outside'],
+    addedByProfileId: row['added_by_profile_id'],
+    remoteId: row['remote_id'],
+    remoteRev: row['remote_rev'],
   };
 }
 
 function thumbOf(row: ItemColumns): Record<string, unknown> {
-  return row.thumb_reason === null
-    ? { state: row.thumb_state }
-    : { state: row.thumb_state, reason: row.thumb_reason };
+  return row['thumb_reason'] === null
+    ? { state: row['thumb_state'] }
+    : { state: row['thumb_state'], reason: row['thumb_reason'] };
 }
 
 function fileOf(row: ItemColumns): Record<string, unknown> {
   return {
-    mime: row.mime,
-    bytes: row.bytes,
-    sha256: row.sha256,
-    integrity: row.integrity,
+    mime: row['mime'],
+    bytes: row['bytes'],
+    sha256: row['sha256'],
+    integrity: row['integrity'],
     thumb: thumbOf(row),
   };
 }
@@ -192,70 +138,71 @@ function allNull(values: readonly unknown[]): boolean {
 }
 
 function mediaOf(row: ItemColumns): Record<string, unknown> {
-  const camera = [row.camera_make, row.camera_model, row.camera_lens];
+  const camera = [row['camera_make'], row['camera_model'], row['camera_lens']];
   const exposure = [
-    row.exposure_iso,
-    row.exposure_aperture,
-    row.exposure_shutter,
-    row.exposure_focal,
+    row['exposure_iso'],
+    row['exposure_aperture'],
+    row['exposure_shutter'],
+    row['exposure_focal'],
   ];
   return {
-    takenAt: row.taken_at,
-    width: row.width,
-    height: row.height,
-    orientation: row.orientation,
+    takenAt: row['taken_at'],
+    width: row['width'],
+    height: row['height'],
+    orientation: row['orientation'],
     camera: allNull(camera)
       ? null
-      : { make: row.camera_make, model: row.camera_model, lens: row.camera_lens },
+      : { make: row['camera_make'], model: row['camera_model'], lens: row['camera_lens'] },
     exposure: allNull(exposure)
       ? null
       : {
-          iso: row.exposure_iso,
-          aperture: row.exposure_aperture,
-          shutter: row.exposure_shutter,
-          focal: row.exposure_focal,
+          iso: row['exposure_iso'],
+          aperture: row['exposure_aperture'],
+          shutter: row['exposure_shutter'],
+          focal: row['exposure_focal'],
         },
     place:
-      row.place_lat === null || row.place_lon === null
+      row['place_lat'] === null || row['place_lon'] === null
         ? null
-        : { lat: row.place_lat, lon: row.place_lon },
+        : { lat: row['place_lat'], lon: row['place_lon'] },
   };
 }
 
 function kindFieldsOf(row: ItemColumns): Record<string, unknown> {
-  switch (row.kind) {
+  switch (z.enum(DRIVE_ITEM_KINDS).parse(row['kind'])) {
     case 'folder':
       return {
-        childCount: row.child_count,
-        bytes: row.bytes,
-        colour: row.colour,
-        iconHint: row.icon_hint,
+        childCount: row['child_count'],
+        bytes: row['bytes'],
+        colour: row['colour'],
+        iconHint: row['icon_hint'],
       };
     case 'image':
       return { ...fileOf(row), ...mediaOf(row) };
     case 'video':
-      return { ...fileOf(row), ...mediaOf(row), durationMs: row.duration_ms };
+      return { ...fileOf(row), ...mediaOf(row), durationMs: row['duration_ms'] };
     case 'audio':
-      return { ...fileOf(row), takenAt: row.taken_at, durationMs: row.duration_ms };
+      return { ...fileOf(row), takenAt: row['taken_at'], durationMs: row['duration_ms'] };
     case 'document':
     case 'other':
       return fileOf(row);
     case 'link':
-      return { bytes: row.bytes, linkTarget: row.link_target };
+      return { bytes: row['bytes'], linkTarget: row['link_target'] };
     case 'special':
-      return { bytes: row.bytes };
+      return { bytes: row['bytes'] };
   }
 }
 
 function storedItemOf(row: ItemColumns): DriveItemEntry {
+  const place = ITEM_PLACE.parse(row);
   return {
     item: DRIVE_ITEM.parse({ ...baseOf(row), ...kindFieldsOf(row) }),
-    identity: row.dev === null || row.ino === null ? null : { dev: row.dev, ino: row.ino },
-    inodeId: row.inode_id,
+    identity: place.dev === null || place.ino === null ? null : { dev: place.dev, ino: place.ino },
+    inodeId: place.inode_id,
   };
 }
 
-const STORED_ITEM = storedRow(ITEM_COLUMNS.transform(storedItemOf), {
+const STORED_ITEM = builtRow(storedItemOf, {
   flags: ['starred', 'shared', 'locked', 'locked_here', 'icon_hint', 'outside'],
 });
 
@@ -269,9 +216,11 @@ export function driveEtag(rev: number, item: DriveItemDraft): string {
 
 export class DriveItemsRepository {
   private readonly inodes: DriveItemInodes;
+  readonly lookups: DriveItemLookups;
 
   constructor(private readonly context: StoreContext) {
     this.inodes = new DriveItemInodes(context);
+    this.lookups = new DriveItemLookups(context);
   }
 
   find(id: string, viewer: string | null): DriveItem | undefined {
@@ -328,22 +277,36 @@ export class DriveItemsRepository {
   write(request: DriveItemWrite): DriveItemWriteResult {
     return this.context.write(() => {
       const input = this.aligned(request);
-      const existing = this.stored(input.item.id, null);
-      if (existing === undefined) {
+      if (!this.lookups.exists(input.item.id)) {
         const created = this.candidate(input, 1);
         this.save(true, created, input.identity, this.inodeFor(input, created));
-        return { item: this.byId(created.id, null), changed: true };
+        return {
+          item:
+            input.shareInode === undefined ? this.inserted(created) : this.byId(created.id, null),
+          changed: true,
+        };
       }
-      return this.update(input, existing);
+      return this.update(input, found(this.stored(input.item.id, null), 'item', input.item.id));
     });
   }
 
   remove(id: string): void {
     this.context.write(() => {
       this.byId(id, null);
-      this.context.sql.run('remove the drive item', 'delete from drive_items where id = $id', {
-        id,
-      });
+      const levels = new Map<number, string[]>();
+      for (const row of this.context.sql.all(SUBTREE_ROW, SUBTREE, { id })) {
+        const level = levels.get(row.depth);
+        if (level === undefined) levels.set(row.depth, [row.id]);
+        else level.push(row.id);
+      }
+      const deepestFirst = [...levels.entries()].sort(([a], [b]) => b - a);
+      for (const [, ids] of deepestFirst) {
+        this.context.sql.run(
+          'remove the drive items of one folder level',
+          'delete from drive_items where id in (select value from json_each($ids))',
+          { ids: JSON.stringify(ids) },
+        );
+      }
     });
   }
 
@@ -374,6 +337,19 @@ export class DriveItemsRepository {
       invalidateDerivedRevision(this.context, bumped.id);
     }
     return { item: this.byId(bumped.id, null), changed: true };
+  }
+
+  private inserted(item: DriveItem): DriveItem {
+    const row = found(
+      this.context.sql.get(
+        LOCKED,
+        `select ${lockedSql('i')} as locked from drive_items i where i.id = $id`,
+        { id: item.id },
+      ),
+      'drive item',
+      item.id,
+    );
+    return { ...item, starred: false, shared: false, locked: row.locked === 1 };
   }
 
   private inodeFor(input: DriveItemWrite, item: DriveItem): number {

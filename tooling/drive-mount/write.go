@@ -24,6 +24,7 @@ type nameCache interface {
 	NoteLocal(parent uint64, name string, entry wire.Entry)
 	NoteLocalDir(ino uint64)
 	NoteLocalGone(parent uint64, name string, ino uint64)
+	NoteMoved(args RenameArgs, source, target uint64)
 	NoteName(parent uint64, name string)
 	NoteChanged(ino uint64)
 	RootIno(root string) (uint64, bool)
@@ -125,6 +126,9 @@ func (w *writeBack) Close() {
 	w.mu.Unlock()
 	w.workers.Wait()
 	w.ns.close()
+	if err := w.journal.close(); err != nil {
+		logJournal(0, err)
+	}
 	w.mu.Lock()
 	sessions := make([]*session, 0, len(w.sessions))
 	for _, s := range w.sessions {
@@ -196,6 +200,9 @@ func (w *writeBack) broadcast() {
 	w.mu.Unlock()
 	if hook != nil {
 		hook()
+	}
+	if w.ns.awaiting.Load() {
+		w.ns.signal()
 	}
 }
 

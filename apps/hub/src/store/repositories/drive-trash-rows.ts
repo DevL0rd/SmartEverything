@@ -7,13 +7,13 @@ const IDENTIFIER = z.string().regex(/^[a-z_][a-z0-9_]*$/);
 
 const DEPENDENT = z.object({ table_name: IDENTIFIER, column_name: IDENTIFIER });
 
+const PRESENT = z.object({ table_name: IDENTIFIER });
+
 const CURRENT_INODE = z.object({ inode_id: z.number() });
 
 const SUBTREE_ID = z.object({ id: z.string() });
 
-const COLUMN_VALUE = z.union([z.null(), z.number(), z.string(), z.instanceof(Uint8Array)]);
-
-const READ_ROW = z.record(z.string(), COLUMN_VALUE);
+const COLUMN = z.object({ name: IDENTIFIER });
 
 const STORED_VALUE = z.union([
   z.null(),
@@ -39,19 +39,41 @@ const INODE_COLUMNS = `n.id, n.root_id, n.is_root, n.type, n.mode, n.uid, n.gid,
   cast(n.atime_ns as text) as atime_ns, cast(n.mtime_ns as text) as mtime_ns,
   cast(n.ctime_ns as text) as ctime_ns, cast(n.btime_ns as text) as btime_ns, 0 as orphan`;
 
+const INODE_FIELDS = [
+  'id',
+  'root_id',
+  'is_root',
+  'type',
+  'mode',
+  'uid',
+  'gid',
+  'rdev',
+  'link_target',
+  'atime_ns',
+  'mtime_ns',
+  'ctime_ns',
+  'btime_ns',
+  'orphan',
+];
+
 export interface StashedRoot {
   readonly kind: string;
   readonly inodeId: number | null;
   readonly linkTarget: string | null;
 }
 
+export interface StashLedger {
+  readonly table: 'drive_trash_rows' | 'drive_missing_rows';
+  readonly key: 'trash_item_id' | 'missing_item_id';
+}
+
+export const TRASH_LEDGER: StashLedger = { table: 'drive_trash_rows', key: 'trash_item_id' };
+
+export const MISSING_LEDGER: StashLedger = { table: 'drive_missing_rows', key: 'missing_item_id' };
+
 export interface StashedRow {
   readonly table: string;
   readonly values: Readonly<Record<string, SQLInputValue>>;
-}
-
-function stored(value: z.output<typeof COLUMN_VALUE>): z.output<typeof STORED_VALUE> {
-  return value instanceof Uint8Array ? { blob: Buffer.from(value).toString('hex') } : value;
 }
 
 function revived(value: z.output<typeof STORED_VALUE>): SQLInputValue {
@@ -75,6 +97,10 @@ function dependentTables(context: StoreContext): Map<string, string[]> {
   return tables;
 }
 
+function matching(columns: readonly string[]): string {
+  return columns.map((column) => `"${column}" in (select value from json_each($ids))`).join(' or ');
+}
+
 function subtreeIds(context: StoreContext, itemId: string): string[] {
   return context.sql
     .all(
@@ -90,25 +116,44 @@ function subtreeIds(context: StoreContext, itemId: string): string[] {
     .map((row) => row.id);
 }
 
-function ownRows(): readonly (readonly [string, string])[] {
+function ownRows(): readonly (readonly [string, string, string])[] {
   const named = `select i.inode_id from drive_items i join json_each($ids) j on j.value = i.id`;
   return [
-    [INODES, `select ${INODE_COLUMNS} from drive_inodes n where n.id in (${named}) order by n.id`],
+    [
+      INODES,
+      `select ${INODE_COLUMNS} from drive_inodes n where n.id in (${named})`,
+      'order by t.id',
+    ],
     [
       XATTRS,
-      `select x.* from drive_xattrs x where x.inode_id in (${named}) order by x.inode_id, x.name`,
+      `select x.* from drive_xattrs x where x.inode_id in (${named})`,
+      'order by t.inode_id, t.name',
     ],
     [
       ITEMS,
-      `select i.* from drive_items i join json_each($ids) j on j.value = i.id order by j.key`,
+      `select i.*, j.key as stash_order from drive_items i join json_each($ids) j on j.value = i.id`,
+      'order by t.stash_order',
     ],
   ];
 }
 
+function fieldsOf(columns: readonly string[]): string {
+  return columns
+    .map(
+      (column) =>
+        `'${column}', case when typeof(t."${column}") = 'blob' then json_object('blob', lower(hex(t."${column}"))) else t."${column}" end`,
+    )
+    .join(', ');
+}
+
 export class DriveTrashRows {
   private dependents: Map<string, string[]> | null = null;
+  private readonly columns = new Map<string, readonly string[]>();
 
-  constructor(private readonly context: StoreContext) {}
+  constructor(
+    private readonly context: StoreContext,
+    private readonly ledger: StashLedger,
+  ) {}
 
   private dependentTables(): Map<string, string[]> {
     this.dependents ??= dependentTables(this.context);
@@ -117,43 +162,60 @@ export class DriveTrashRows {
 
   stash(itemId: string): void {
     const ids = jsonText(subtreeIds(this.context, itemId));
-    const dependents = this.dependentTables();
     let seq = 0;
-    const keep = (table: string, rows: readonly z.output<typeof READ_ROW>[]): void => {
-      for (const row of rows) {
-        this.context.sql.run(
-          'stash a row of the trashed item',
-          `insert into drive_trash_rows (trash_item_id, seq, table_name, row)
-           values ($itemId, $seq, $table, $row)`,
-          {
-            itemId,
-            seq,
-            table,
-            row: jsonText(Object.fromEntries(Object.entries(row).map(([k, v]) => [k, stored(v)]))),
-          },
-        );
-        seq += 1;
-      }
-    };
-    for (const [table, text] of ownRows()) {
-      keep(table, this.context.sql.all(READ_ROW, text, { ids }));
-    }
-    for (const [table, columns] of dependents) {
-      const matches = columns
-        .map((column) => `"${column}" in (select value from json_each($ids))`)
-        .join(' or ');
-      keep(
-        table,
-        this.context.sql.all(READ_ROW, `select * from "${table}" where ${matches}`, { ids }),
+    const keep = (
+      table: string,
+      select: string,
+      columns: readonly string[],
+      order: string,
+    ): void => {
+      seq += this.context.sql.run(
+        'stash the rows of the trashed item',
+        `insert into ${this.ledger.table} (${this.ledger.key}, seq, table_name, row)
+         select $itemId, $seq + row_number() over (${order}) - 1, '${table}', json_object(${fieldsOf(columns)})
+         from (${select}) t`,
+        { itemId, seq, ids },
       );
+    };
+    for (const [table, select, order] of ownRows()) {
+      keep(table, select, table === INODES ? INODE_FIELDS : this.columnsOf(table), order);
     }
+    const present = this.present(ids);
+    for (const [table, columns] of this.dependentTables()) {
+      if (!present.has(table)) continue;
+      keep(table, `select * from "${table}" where ${matching(columns)}`, this.columnsOf(table), '');
+    }
+  }
+
+  private columnsOf(table: string): readonly string[] {
+    let columns = this.columns.get(table);
+    if (columns === undefined) {
+      columns = this.context.sql
+        .all(COLUMN, `select name from pragma_table_info('${table}') order by cid`)
+        .map((row) => row.name);
+      this.columns.set(table, columns);
+    }
+    return columns;
+  }
+
+  private present(ids: string): Set<string> {
+    const probes = [...this.dependentTables()].map(
+      ([table, columns]) =>
+        `select '${table}' as table_name where exists (select 1 from "${table}" where ${matching(columns)})`,
+    );
+    if (probes.length === 0) return new Set();
+    return new Set(
+      this.context.sql
+        .all(PRESENT, probes.join(' union all '), { ids })
+        .map((row) => row.table_name),
+    );
   }
 
   rows(itemId: string): StashedRow[] {
     return this.context.sql
       .all(
         STORED_ROW,
-        'select table_name, row from drive_trash_rows where trash_item_id = $itemId order by seq',
+        `select table_name, row from ${this.ledger.table} where ${this.ledger.key} = $itemId order by seq`,
         { itemId },
       )
       .map((row) => ({
@@ -226,12 +288,18 @@ export class DriveTrashRows {
     });
   }
 
+  restore(rows: readonly StashedRow[]): void {
+    this.context.write(() => {
+      for (const row of rows) this.insert(row, null);
+    });
+  }
+
   photoIds(itemId: string): string[] {
     return this.context.sql
       .all(
         z.object({ id: z.string() }),
-        `select json_extract(row, '$.id') as id from drive_trash_rows
-         where trash_item_id = $itemId and table_name = '${ITEMS}'`,
+        `select json_extract(row, '$.id') as id from ${this.ledger.table}
+         where ${this.ledger.key} = $itemId and table_name = '${ITEMS}'`,
         { itemId },
       )
       .map((row) => row.id);

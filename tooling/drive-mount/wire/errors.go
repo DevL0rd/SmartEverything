@@ -83,7 +83,7 @@ func parseRemoteError(m Meta) (*RemoteError, error) {
 var opNames = map[Op]string{
 	OpHello: "HELLO", OpAttach: "ATTACH", OpLookup: "LOOKUP", OpGetattr: "GETATTR", OpReaddir: "READDIR",
 	OpSetattr: "SETATTR", OpStatfs: "STATFS", OpReadlink: "READLINK", OpMkdir: "MKDIR", OpCreate: "CREATE",
-	OpMknod: "MKNOD", OpSymlink: "SYMLINK", OpLink: "LINK", OpUnlink: "UNLINK", OpRmdir: "RMDIR",
+	OpMknod: "MKNOD", OpSymlink: "SYMLINK", OpLink: "LINK", OpUnlink: "UNLINK", OpRmdir: "RMDIR", OpRmtree: "RMTREE",
 	OpRename: "RENAME", OpTmpfile: "TMPFILE", OpGetxattr: "GETXATTR", OpSetxattr: "SETXATTR",
 	OpListxattr: "LISTXATTR", OpRemovexattr: "REMOVEXATTR", OpOpen: "OPEN", OpRead: "READ",
 	OpRelease: "RELEASE", OpSeek: "SEEK", OpCopy: "COPY", OpBegin: "BEGIN", OpWrite: "WRITE",

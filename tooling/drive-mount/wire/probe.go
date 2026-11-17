@@ -92,3 +92,15 @@ func (p *callProbe) dump() error {
 	}
 	return os.Rename(staged, final)
 }
+
+func Probing() bool { return probe != nil }
+
+func RecordOperation(name string, started time.Time) {
+	if probe == nil {
+		return
+	}
+	took := time.Since(started)
+	probe.mu.Lock()
+	probe.samples[name] = append(probe.samples[name], took)
+	probe.mu.Unlock()
+}

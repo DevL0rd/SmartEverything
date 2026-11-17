@@ -150,6 +150,11 @@ export class DriveOffline {
   }
 
   private drain(): void {
+    const { store } = this.env;
+    if (!store.driveOffline.held()) {
+      this.seen = store.driveFeed.latestSeq();
+      return;
+    }
     const changed = new Map<string, Set<string>>();
     for (;;) {
       const window = this.env.store.driveFeed.since(this.seen, FEED_BATCH);
@@ -167,9 +172,11 @@ export class DriveOffline {
   private gather(row: DriveFeedRow, changed: Map<string, Set<string>>): void {
     if (!CHANGING.has(row.op)) return;
     const { store } = this.env;
+    const holders = store.driveOffline.holdersOf(row.itemId);
+    if (holders.length === 0) return;
     const item = store.driveItems.find(row.itemId, null);
     if (item === undefined) return;
-    for (const holder of store.driveOffline.holdersOf(item.id)) {
+    for (const holder of holders) {
       if (!this.holds(holder.profileId, item)) continue;
       const ids = changed.get(holder.clientId) ?? new Set<string>();
       ids.add(item.id);

@@ -19,5 +19,5 @@ export async function stageContent(
   content: Uint8Array,
 ): Promise<StagedBytes> {
   if (content.length === 0) return stageEmpty(env, root);
-  return stageBytes(env, root, Readable.from([Buffer.from(content)]));
+  return stageBytes(env, root, Readable.from([Buffer.from(content)]), false);
 }

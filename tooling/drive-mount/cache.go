@@ -108,6 +108,11 @@ type xattrSlot struct {
 	absent bool
 }
 
+type localNote struct {
+	name string
+	ino  uint64
+}
+
 type dirMeta struct {
 	names    map[string]nameSlot
 	order    []string
@@ -164,6 +169,7 @@ type blockCache struct {
 	tasks      sync.WaitGroup
 	mu         sync.Mutex
 	inodes     map[uint64]*inodeMeta
+	fetching   map[uint64][]localNote
 	roots      map[string]*rootState
 	flights    map[flightKey]*flight
 	files      map[string]*cachedFile
@@ -190,7 +196,7 @@ func newBlockCache(call wire.Caller, dir string) *blockCache {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &blockCache{
 		dir: dir, call: call, ctx: ctx, cancel: cancel,
-		inodes: map[uint64]*inodeMeta{}, roots: map[string]*rootState{}, flights: map[flightKey]*flight{},
+		inodes: map[uint64]*inodeMeta{}, fetching: map[uint64][]localNote{}, roots: map[string]*rootState{}, flights: map[flightKey]*flight{},
 		files: map[string]*cachedFile{}, byIno: map[uint64]*cachedFile{}, lru: newPool(), blocks: map[blockID]*flight{},
 		policy: defaultPolicy, held: map[uint64]int{}, wires: map[*wireHandle]struct{}{},
 		released: map[string]bool{}, dirtyRoots: map[string]bool{}, dirty: make(chan struct{}, 1),

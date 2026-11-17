@@ -256,11 +256,11 @@ describe('the playable rule', () => {
 });
 
 describe('ffmpeg arguments', () => {
-  const probe = { width: 3840, height: 2160, rotation: 0 };
+  const probe = { width: 3840, height: 2160, rotation: 0, transfer: null };
 
   it('scales before the tone map of an HDR source for the 1080p copy', () => {
     const args = playableArguments(
-      { source: 'in', plan: { mode: 'transcode', toneMap: true }, probe, copy: 'fullHd' },
+      { source: 'in', plan: { mode: 'transcode', toneMap: true }, probe, copy: 'fullHd', vaapiDevice: null },
       'out',
     );
     const filters = args[args.indexOf('-vf') + 1] ?? '';
@@ -274,11 +274,11 @@ describe('ffmpeg arguments', () => {
 
   it('keeps the source size for the full copy and never tone maps an SDR source', () => {
     const full = playableArguments(
-      { source: 'in', plan: { mode: 'transcode', toneMap: false }, probe, copy: 'full' },
+      { source: 'in', plan: { mode: 'transcode', toneMap: false }, probe, copy: 'full', vaapiDevice: null },
       'out',
     );
     const small = playableArguments(
-      { source: 'in', plan: { mode: 'transcode', toneMap: false }, probe, copy: 'fullHd' },
+      { source: 'in', plan: { mode: 'transcode', toneMap: false }, probe, copy: 'fullHd', vaapiDevice: null },
       'out',
     );
 
@@ -291,13 +291,14 @@ describe('ffmpeg arguments', () => {
       {
         source: 'in',
         plan: { mode: 'transcode', toneMap: false },
-        probe: { width: 2160, height: 3840, rotation: 0 },
+        probe: { width: 2160, height: 3840, rotation: 0, transfer: null },
         copy: 'fullHd',
+        vaapiDevice: null,
       },
       'out',
     );
     const remux = playableArguments(
-      { source: 'in', plan: { mode: 'remux' }, probe, copy: 'full' },
+      { source: 'in', plan: { mode: 'remux' }, probe, copy: 'full', vaapiDevice: null },
       'out',
     );
 

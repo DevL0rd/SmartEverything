@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"syscall"
 
 	"github.com/smarteverything/drive-mount/wire"
 )
@@ -15,7 +16,78 @@ func (w *writeBack) lookup(ctx context.Context, parent uint64, name string) (Ent
 }
 
 func (w *writeBack) Rename(ctx context.Context, args RenameArgs) error {
-	if err := w.ns.drain(ctx); err != nil {
+	if args.Flags&wire.RenameFlagExchange == 0 {
+		queued, err := w.queueRename(ctx, args)
+		if err != nil || queued {
+			return err
+		}
+	}
+	return w.renameNow(ctx, args)
+}
+
+func (w *writeBack) queueRename(ctx context.Context, args RenameArgs) (bool, error) {
+	source, err := w.victim(ctx, args.Parent, args.Name)
+	if err != nil {
+		return false, err
+	}
+	if source.Attr.Type == wire.InodeTypeDirectory {
+		return false, nil
+	}
+	target, targetErr := w.victim(ctx, args.NewParent, args.NewName)
+	if code, _ := wire.CodeOf(targetErr); targetErr != nil && code != wire.ErrENOENT {
+		return false, targetErr
+	}
+	replaced := targetErr == nil
+	if replaced && target.Attr.Type == wire.InodeTypeDirectory {
+		return false, nil
+	}
+	if replaced && args.Flags&wire.RenameFlagNoReplace != 0 {
+		return false, syscall.EEXIST
+	}
+	if replaced && target.Ino == source.Ino {
+		return true, nil
+	}
+	if s := w.sessionOf(source.Ino); s != nil {
+		if err := s.seal(); err != nil {
+			return false, err
+		}
+	}
+	moved := source.Attr
+	entry := nameEntry{
+		Kind: nameRename, Ino: source.Ino, Parent: args.Parent, Name: args.Name, Root: w.rootOfDir(args.Parent),
+		NewParent: args.NewParent, NewName: args.NewName, Flags: args.Flags, Moved: &moved,
+	}
+	if replaced {
+		entry.Replaced = target.Ino
+	}
+	if _, err := w.ns.add(entry); err != nil {
+		return false, err
+	}
+	w.renamed(source.Ino, args.Parent, args.Name, args.NewParent, args.NewName)
+	if replaced && target.Attr.Nlink <= 1 {
+		w.orphaned(target.Ino)
+	}
+	return true, nil
+}
+
+func (w *writeBack) contentFlying(ino uint64) bool {
+	s := w.sessionOf(ino)
+	if s == nil {
+		return false
+	}
+	flying, err := s.inFlight()
+	return err == nil && flying
+}
+
+func (p *pendingName) renameArgs() RenameArgs {
+	return RenameArgs{Parent: p.Parent, Name: p.Name, NewParent: p.NewParent, NewName: p.NewName, Flags: p.Flags}
+}
+
+func (w *writeBack) renameNow(ctx context.Context, args RenameArgs) error {
+	if err := w.ns.settleName(ctx, args.Parent, args.Name); err != nil {
+		return err
+	}
+	if err := w.ns.settleName(ctx, args.NewParent, args.NewName); err != nil {
 		return err
 	}
 	source, err := w.lookup(ctx, args.Parent, args.Name)
@@ -70,7 +142,10 @@ func (w *writeBack) orphaned(ino uint64) {
 }
 
 func (w *writeBack) Link(ctx context.Context, ino, parent uint64, name string) (Attr, error) {
-	if err := w.ns.drain(ctx); err != nil {
+	if err := w.ns.settle(ctx, ino); err != nil {
+		return Attr{}, err
+	}
+	if err := w.ns.settleName(ctx, parent, name); err != nil {
 		return Attr{}, err
 	}
 	if err := w.flushWait(ctx, ino); err != nil {

@@ -486,3 +486,36 @@ func TestParallelReadersOfOneBlockFetchItOnce(t *testing.T) {
 		t.Fatalf("block fetched %d times", hub.count(wire.OpRead))
 	}
 }
+
+func TestANameNotedLocallyDuringAListingFetchIsKept(t *testing.T) {
+	hub := newFakeHub()
+	dir := hub.dir(hub.rootIno, "d")
+	hub.file(dir, "first.txt", pattern(10))
+	c, _ := attached(t, hub, cacheDirFor(t))
+	lookup(t, c, hub.rootIno, "d")
+	const late = 9000
+	var once sync.Once
+	hub.readHook = func(op wire.Op, meta wire.Meta) error {
+		if op == wire.OpReaddir {
+			once.Do(func() {
+				c.NoteLocal(dir, "late.txt", wire.Entry{Ino: late, Attr: wire.Attr{Ino: late, Type: wire.InodeTypeFile, Mode: 0o644, Nlink: 1}})
+				c.NoteLocalGone(dir, "first.txt", 0)
+			})
+		}
+		return nil
+	}
+	page, err := c.Readdir(context.Background(), dir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, entry := range page.Entries {
+		names[entry.Name] = true
+	}
+	if !names["late.txt"] {
+		t.Fatalf("the name noted while the listing was in flight was dropped: %v", names)
+	}
+	if names["first.txt"] {
+		t.Fatalf("the name removed while the listing was in flight came back: %v", names)
+	}
+}

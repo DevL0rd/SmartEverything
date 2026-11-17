@@ -6,7 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { storedRow } from '../codec';
-import type { StoreContext } from '../context';
+import { found, type StoreContext } from '../context';
 
 const COLUMNS = 'client_id, item_id, profile_id, state, bytes, synced_rev, error, updated_at';
 
@@ -38,6 +38,8 @@ const STORED_OFFLINE = storedRow(
 );
 
 const HOLDER = z.strictObject({ client_id: z.string(), profile_id: z.string() });
+
+const HELD = z.strictObject({ held: z.union([z.literal(0), z.literal(1)]) });
 
 export interface DriveOfflineHolder {
   readonly clientId: string;
@@ -92,6 +94,16 @@ export class DriveOfflineRepository {
           ? { clientId: last.clientId, itemId: last.itemId }
           : null,
     };
+  }
+
+  held(): boolean {
+    return (
+      found(
+        this.context.sql.get(HELD, 'select exists (select 1 from drive_offline_items) as held'),
+        'drive offline count',
+        'all',
+      ).held === 1
+    );
   }
 
   holdersOf(itemId: string): DriveOfflineHolder[] {

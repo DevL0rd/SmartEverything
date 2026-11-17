@@ -50,10 +50,9 @@ export interface FileStamp {
   readonly symlink: boolean;
 }
 
-export interface StagedWrite {
-  readonly bytes: number;
-  readonly sha256: string;
-}
+export interface StagedWrite { readonly bytes: number; readonly sha256: string }
+
+export type StageFile = (path: string, source: AsyncIterable<Uint8Array>) => Promise<StagedWrite>;
 
 export interface DriveFiles {
   readonly stamp: (path: string) => Promise<FileStamp | null>;
@@ -64,12 +63,14 @@ export interface DriveFiles {
   readonly link: (from: string, to: string) => Promise<void>;
   readonly unlink: (path: string) => Promise<void>;
   readonly remove: (path: string) => Promise<void>;
-  readonly stage: (path: string, source: AsyncIterable<Uint8Array>) => Promise<StagedWrite>;
+  readonly stage: StageFile;
+  readonly stageUnsynced: StageFile;
   readonly writeDurable: (path: string, temporary: string, text: string) => Promise<void>;
   readonly writeUnsynced: (path: string, temporary: string, text: string) => Promise<void>;
   readonly stageEmpty: (path: string) => Promise<void>;
   readonly syncFile: (path: string) => Promise<void>;
   readonly syncDirectory: (path: string) => Promise<void>;
+  readonly syncFilesystems: (paths: readonly string[]) => Promise<void>;
   readonly chmod: (path: string, mode: number) => Promise<void>;
   readonly clone: (from: string, to: string, temporary: string) => Promise<void>;
   readonly writeUndo: (

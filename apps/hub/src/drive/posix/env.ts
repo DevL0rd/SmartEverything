@@ -6,7 +6,7 @@ import type { FsStatfsEnv } from '../fs-space';
 import type { DriveWriteGuard } from '../quotas';
 import type { DriveRootLanes } from '../root-lanes';
 
-export type PosixStore = ChangeStore & Pick<Store, 'driveXattrs'>;
+export type PosixStore = ChangeStore & Pick<Store, 'driveXattrs' | 'driveSyncOps'>;
 
 export interface PosixChangeEnv extends ChangeEnv {
   readonly store: PosixStore;

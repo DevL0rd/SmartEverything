@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import sharp from 'sharp';
-import { ffmpegPath } from '../../media/ffmpeg-path';
+import { ffmpegPath, vaapiDevice } from '../../media/ffmpeg-path';
 import { DERIVED_LONG_EDGE } from '../../photos/pipeline/derived-paths';
 import { RGB_CHANNELS, type RgbImage } from './image';
 
@@ -25,6 +25,20 @@ export async function rgbOf(bytes: Uint8Array): Promise<RgbImage> {
   return { width: info.width, height: info.height, data: new Uint8Array(data) };
 }
 
+export function sceneArguments(
+  videoPath: string,
+  pattern: string,
+  device: string | null,
+): readonly string[] {
+  const hardware = device === null ? [] : ['-hwaccel', 'vaapi', '-hwaccel_device', device];
+  const select = `select='gt(scene,${String(SCENE_CHANGE_THRESHOLD)})'`;
+  return [
+    ...['-hide_banner', '-loglevel', 'error', ...hardware, '-i', videoPath, '-an'],
+    ...['-vf', device === null ? select : `${select},format=yuvj420p`],
+    ...['-fps_mode', 'vfr', '-q:v', '3', pattern],
+  ];
+}
+
 export async function sceneFrames(
   videoPath: string,
   scratch: string,
@@ -34,11 +48,7 @@ export async function sceneFrames(
   try {
     await run(
       ffmpegPath(),
-      [
-        ...['-hide_banner', '-loglevel', 'error', '-i', videoPath],
-        ...['-vf', `select='gt(scene,${String(SCENE_CHANGE_THRESHOLD)})'`],
-        ...['-fps_mode', 'vfr', '-q:v', '3', join(directory, 'scene-%06d.jpg')],
-      ],
+      [...sceneArguments(videoPath, join(directory, 'scene-%06d.jpg'), vaapiDevice())],
       { signal },
     );
     const files = (await readdir(directory)).toSorted();

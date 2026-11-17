@@ -1,4 +1,4 @@
-import { readdirSync, statSync, watch as fsWatch, type Dirent } from 'node:fs';
+import { lstatSync, readdirSync, statSync, watch as fsWatch, type Dirent } from 'node:fs';
 import { join, matchesGlob } from 'node:path';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import { background, type Logger } from '@smarteverything/logging';
@@ -61,8 +61,11 @@ const PROBLEM_TEXT: Readonly<Record<string, string>> = {
     'The system limit on open files is reached, so changes are found only when you open or rescan.',
 };
 
-function folderInode(path: string): number | undefined {
-  const stats = statSync(path, { throwIfNoEntry: false });
+function folderInode(path: string, root: string): number | undefined {
+  const stats =
+    path === root
+      ? statSync(path, { throwIfNoEntry: false })
+      : lstatSync(path, { throwIfNoEntry: false });
   return stats?.isDirectory() === true ? stats.ino : undefined;
 }
 
@@ -146,7 +149,7 @@ class RootWatch {
   private attach(directory: string): void {
     if (this.exhausted || this.watched.has(directory)) return;
     try {
-      const ino = folderInode(directory);
+      const ino = folderInode(directory, this.root.path);
       if (ino === undefined) return;
       this.add(directory, ino);
       for (const child of readdirSync(directory, { withFileTypes: true })) this.child(child);
@@ -211,7 +214,7 @@ class RootWatch {
     const known = this.watched.get(absolute);
     let ino: number | undefined;
     try {
-      ino = folderInode(absolute);
+      ino = folderInode(absolute, this.root.path);
     } catch (cause) {
       this.refused(absolute, cause);
       return;
@@ -229,8 +232,10 @@ class RootWatch {
       return;
     }
     const absolute = join(base, name);
+    const relPath = this.relOf(absolute);
+    if (this.ignored(relPath)) return;
     this.follow(absolute);
-    this.touch(this.relOf(absolute));
+    this.touch(relPath);
   }
 
   private relOf(absolute: string): string {

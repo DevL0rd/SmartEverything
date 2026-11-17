@@ -138,6 +138,8 @@ function patchColumns(patch: DriveRootPatch): Record<string, SQLInputValue | und
 }
 
 export class DriveRootsRepository {
+  private readonly cached = new Map<string, DriveRoot>();
+
   constructor(
     private readonly context: StoreContext,
     private readonly drivePathOf: DrivePathOf,
@@ -150,8 +152,10 @@ export class DriveRootsRepository {
   }
 
   find(id: string): StoredDrive | undefined {
-    const root = this.row(id);
-    return root === undefined ? undefined : this.stored(root);
+    const root = this.cached.get(id) ?? this.row(id);
+    if (root === undefined) return undefined;
+    if (!this.context.sql.inTransaction()) this.cached.set(id, root);
+    return this.stored(root);
   }
 
   byId(id: string): StoredDrive {
@@ -168,6 +172,7 @@ export class DriveRootsRepository {
   }
 
   insert(root: DriveRoot): StoredDrive {
+    this.cached.delete(root.id);
     return this.context.write(() => {
       this.context.sql.run(
         'create the drive',
@@ -183,6 +188,7 @@ export class DriveRootsRepository {
   }
 
   update(id: string, patch: DriveRootPatch): StoredDrive {
+    this.cached.delete(id);
     return this.context.write(() => {
       const before = this.rowOf(id);
       const changes = assignments({ ...patchColumns(patch), updated_at: this.context.now() });

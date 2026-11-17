@@ -17,6 +17,7 @@ import {
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
+import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { updateDriveSettings } from '../../src/drive/settings';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
@@ -93,6 +94,7 @@ async function scan(): Promise<void> {
       driveRoots: roots,
       driveItems: items,
       driveInodes: new DriveInodesRepository(context),
+      driveMissing: new DriveMissingRepository(context),
       feed,
       write: (work) => context.write(work),
       now: () => new Date(NOW),
@@ -365,7 +367,6 @@ describe('the backlog order', () => {
     const backlog = collectBacklog(
       {
         driveItems: items,
-        driveBlocks: blocks,
         drivePlacements: fixture.placements,
         driveOpens: fixture.opens,
       },
@@ -391,7 +392,6 @@ describe('the backlog order', () => {
     const backlog = collectBacklog(
       {
         driveItems: items,
-        driveBlocks: blocks,
         drivePlacements: fixture.placements,
         driveOpens: fixture.opens,
       },

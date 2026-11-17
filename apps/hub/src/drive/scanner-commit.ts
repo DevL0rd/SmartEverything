@@ -3,6 +3,7 @@ import mime from 'mime-types';
 import type { DriveInode, DriveInodesRepository } from '../store/repositories/drive-inodes';
 import type { DriveInodePatch } from '../store/repositories/drive-item-inodes';
 import type { DriveItemDraft, DriveItemsRepository } from '../store/repositories/drive-items';
+import type { DriveMissingRepository } from '../store/repositories/drive-missing';
 import {
   freshDraft,
   ownersOf,
@@ -22,9 +23,20 @@ import {
   sameContent,
   sameIdentity,
   specialPatch,
+  totalsOf,
   under,
   type Indexed,
+  type ScanTotals,
 } from './scanner-index';
+import { isFileItem } from './file-item';
+import {
+  filesBySize,
+  missingRecords,
+  reclaimPlace,
+  ReuseIndex,
+  withHash,
+  type Unknown,
+} from './scanner-reuse';
 import { WALK_BATCH_ROWS, type WalkEntry } from './scanner-walk';
 
 export interface CommitDependencies {
@@ -33,15 +45,11 @@ export interface CommitDependencies {
     'byPath' | 'children' | 'find' | 'identityOf' | 'remove' | 'write'
   >;
   readonly inodes: Pick<DriveInodesRepository, 'findMany' | 'names' | 'ofItem'>;
+  readonly missing: Pick<DriveMissingRepository, 'expire' | 'ofRoot' | 'reclaim' | 'record'>;
+  readonly hash: (entry: WalkEntry) => Promise<string | null>;
   readonly write: <T>(work: () => T) => T;
   readonly now: () => Date;
   readonly newId: () => string;
-}
-
-export interface ScanTotals {
-  readonly items: number;
-  readonly folders: number;
-  readonly bytes: number;
 }
 
 const OCTET_STREAM = 'application/octet-stream';
@@ -80,6 +88,8 @@ export class ScanCommitter {
   private readonly inodeOfIdentity = new Map<string, number>();
   private readonly seen = new Set<string>();
   private readonly deferred: WalkEntry[] = [];
+  private readonly unknown: WalkEntry[] = [];
+  private readonly reuse: ReuseIndex;
   private readonly known: boolean;
   private readonly count: number;
 
@@ -87,6 +97,8 @@ export class ScanCommitter {
     private readonly deps: CommitDependencies,
     private readonly root: DriveRoot,
   ) {
+    deps.missing.expire(root.id, deps.now().toISOString());
+    this.reuse = new ReuseIndex(deps.missing.ofRoot(root.id));
     this.load();
     this.count = this.live.size;
     this.known = this.count > 0;
@@ -102,24 +114,61 @@ export class ScanCommitter {
     });
   }
 
-  finish(unreadable: readonly string[]): ScanTotals {
+  async finish(unreadable: readonly string[]): Promise<ScanTotals> {
     this.deps.write(() => {
       for (const entry of this.deferred.splice(0)) this.settle(entry);
     });
-    const gone = [...this.live.values()]
-      .filter(
-        (indexed) =>
-          indexed.kind !== 'special' &&
-          !this.seen.has(indexed.id) &&
-          !unreadable.some((path) => under(indexed.relPath, path)),
-      )
-      .sort((left, right) => left.relPath.length - right.relPath.length);
+    const sized = filesBySize(this.unseen(unreadable));
+    const unknown: Unknown[] = [];
+    for (const entry of this.unknown.splice(0)) {
+      const hashed = this.reuse.wantsHash(entry, this.open(sized, entry));
+      unknown.push({ entry, sha256: hashed ? await this.deps.hash(entry) : null });
+    }
+    this.deps.write(() => {
+      for (const found of unknown) this.place(found, this.open(sized, found.entry));
+    });
+    const gone = this.unseen(unreadable).sort(
+      (left, right) => left.relPath.length - right.relPath.length,
+    );
     for (let from = 0; from < gone.length; from += WALK_BATCH_ROWS) {
       this.deps.write(() => {
         for (const indexed of gone.slice(from, from + WALK_BATCH_ROWS)) this.sweep(indexed);
       });
     }
-    return this.totals();
+    return totalsOf(this.live.values());
+  }
+
+  private unseen(unreadable: readonly string[]): Indexed[] {
+    return [...this.live.values()].filter(
+      (indexed) =>
+        indexed.kind !== 'special' &&
+        !this.seen.has(indexed.id) &&
+        !unreadable.some((path) => under(indexed.relPath, path)),
+    );
+  }
+
+  private open(sized: ReadonlyMap<number, readonly Indexed[]>, entry: WalkEntry): Indexed[] {
+    return (sized.get(entry.bytes) ?? []).filter(
+      (indexed) => !this.seen.has(indexed.id) && this.live.get(indexed.relPath)?.id === indexed.id,
+    );
+  }
+
+  private place(found: Unknown, open: readonly Indexed[]): void {
+    const reuse = this.reuse.chosen(found, open);
+    const { entry, sha256 } = found;
+    if (reuse?.kind === 'live') {
+      this.live.delete(reuse.indexed.relPath);
+      this.save(reuse.indexed, entry, sha256);
+      return;
+    }
+    if (reuse?.kind === 'missing') {
+      this.reuse.take(reuse.item);
+      this.deps.missing.reclaim(
+        reuse.item.itemId,
+        reclaimPlace(found, reuse.item, this.parentOf(entry)),
+      );
+    }
+    this.save(null, entry, sha256);
   }
 
   private load(): void {
@@ -156,6 +205,7 @@ export class ScanCommitter {
           this.inodeOfIdentity.set(key, indexed.inodeId);
         }
         if (indexed.kind === 'folder') folders.push(indexed.id);
+        this.reuse.noteLive(indexed);
       }
       after = window.next;
     } while (after !== null);
@@ -171,13 +221,18 @@ export class ScanCommitter {
     const mover = linked(entry) ? undefined : this.mover(entry);
     if (mover !== undefined) {
       this.move(mover, entry, hit);
-    } else if (
-      linked(entry) ||
-      (hit !== undefined && hit.kind !== 'folder' && entry.kind === 'file')
-    ) {
+      return;
+    }
+    this.unmatched(hit, entry);
+  }
+
+  private unmatched(hit: Indexed | undefined, entry: WalkEntry): void {
+    if (linked(entry) || (hit !== undefined && hit.kind !== 'folder' && entry.kind === 'file')) {
       this.deferred.push(entry);
+    } else if (hit === undefined && this.reuse.mayReuse(entry)) {
+      this.unknown.push(entry);
     } else {
-      this.save(hit ?? null, entry);
+      this.save(hit ?? null, entry, null);
     }
   }
 
@@ -188,7 +243,7 @@ export class ScanCommitter {
       this.move(mover, entry, hit);
       return;
     }
-    this.save(hit !== undefined && !this.seen.has(hit.id) ? hit : null, entry);
+    this.save(hit !== undefined && !this.seen.has(hit.id) ? hit : null, entry, null);
   }
 
   private mover(entry: WalkEntry): Indexed | undefined {
@@ -209,7 +264,7 @@ export class ScanCommitter {
       this.seen.add(hit.id);
       return;
     }
-    this.save(hit, entry);
+    this.save(hit, entry, null);
   }
 
   private move(mover: Indexed, entry: WalkEntry, occupant: Indexed | undefined): void {
@@ -217,17 +272,18 @@ export class ScanCommitter {
     const occupied = this.deps.items.byPath(this.root.id, entry.relPath, null);
     if (occupied !== undefined && occupied.id !== mover.id) this.evict(occupied.id, entry.relPath);
     this.live.delete(mover.relPath);
-    this.save(mover, entry);
+    this.save(mover, entry, null);
   }
 
-  private save(previous: Indexed | null, entry: WalkEntry): void {
+  private save(previous: Indexed | null, entry: WalkEntry, sha256: string | null): void {
     const base = this.reusable(this.base(previous, entry), previous, entry);
     const resolved = resolveUnreadable(entry, base);
     const common = this.common(base?.id ?? this.deps.newId(), resolved, base);
     const carried = base !== null && this.carries(base, resolved);
-    const draft = carried
-      ? { ...base, ...common }
-      : freshDraft(common, resolved, classify(resolved.name));
+    const draft = withHash(
+      carried ? { ...base, ...common } : freshDraft(common, resolved, classify(resolved.name)),
+      sha256,
+    );
     const written = this.store(draft, resolved, base, carried);
     this.seen.add(written.id);
     this.remember(written, entry);
@@ -356,11 +412,16 @@ export class ScanCommitter {
       ino: entry.ino,
       inodeId: inode?.id ?? 0,
       mode: inode?.mode ?? entry.mode,
+      sha256: isFileItem(item) ? item.sha256 : null,
     };
   }
 
   private sweep(indexed: Indexed): void {
     if (this.live.get(indexed.relPath)?.id !== indexed.id) return;
+    const at = this.deps.now().toISOString();
+    for (const record of missingRecords(this.root.id, indexed, this.live.values(), at)) {
+      if (!this.seen.has(record.itemId)) this.deps.missing.record(record);
+    }
     this.evict(indexed.id, indexed.relPath);
   }
 
@@ -369,20 +430,5 @@ export class ScanCommitter {
     for (const path of [...this.live.keys()]) {
       if (under(path, relPath)) this.live.delete(path);
     }
-  }
-
-  private totals(): ScanTotals {
-    let items = 0;
-    let folders = 0;
-    let bytes = 0;
-    for (const indexed of this.live.values()) {
-      if (indexed.kind === 'folder') {
-        folders += 1;
-      } else {
-        items += 1;
-        if (indexed.kind === 'file') bytes += indexed.bytes;
-      }
-    }
-    return { items, folders, bytes };
   }
 }

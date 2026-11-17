@@ -84,8 +84,8 @@ describe('the home web search provider', () => {
       model: 'model-a',
       sessionId,
       input: 'weather today',
-      effort: null,
     });
+    expect(seen[0]).not.toHaveProperty('effort');
     expect(seen[0]?.system).toContain('web search query');
   });
 

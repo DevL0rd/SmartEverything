@@ -3,14 +3,8 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"sort"
-	"strings"
-	"time"
 )
 
 const (
@@ -156,147 +150,10 @@ type journalRecord struct {
 	Mtime      *int64      `json:"mtime,omitempty"`
 }
 
-type journal struct {
-	dir string
-}
-
-func openJournal(dir string) (*journal, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
-	}
-	return &journal{dir: dir}, nil
-}
-
 func newSessionID() (string, error) {
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(raw), nil
-}
-
-func (j *journal) recordPath(id string) string { return filepath.Join(j.dir, id+".json") }
-
-func (j *journal) dataPath(id string) string { return filepath.Join(j.dir, id+".data") }
-
-func (j *journal) openData(id string) (*os.File, error) {
-	return os.OpenFile(j.dataPath(id), os.O_RDWR|os.O_CREATE, 0o600)
-}
-
-func (j *journal) save(rec journalRecord) error {
-	return writeRecord(j.recordPath(rec.ID), rec, false)
-}
-
-func (j *journal) saveDurable(rec journalRecord) error {
-	return writeRecord(j.recordPath(rec.ID), rec, true)
-}
-
-func (j *journal) remove(id string) error {
-	if err := os.Remove(j.recordPath(id)); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if err := os.Remove(j.dataPath(id)); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return syncDir(j.dir)
-}
-
-func (j *journal) load() ([]journalRecord, error) {
-	names, err := filepath.Glob(filepath.Join(j.dir, "*.json"))
-	if err != nil {
-		return nil, err
-	}
-	slices.SortFunc(names, func(a, b string) int { return recordTime(a).Compare(recordTime(b)) })
-	out := make([]journalRecord, 0, len(names))
-	for _, name := range names {
-		rec, err := readRecord(name)
-		if err != nil {
-			return nil, fmt.Errorf("journal %s: %w", filepath.Base(name), err)
-		}
-		if rec.ID != strings.TrimSuffix(filepath.Base(name), ".json") {
-			return nil, fmt.Errorf("journal %s: record names another session", filepath.Base(name))
-		}
-		out = append(out, rec)
-	}
-	return out, nil
-}
-
-func (j *journal) sweepOrphans(known map[string]bool) error {
-	names, err := filepath.Glob(filepath.Join(j.dir, "*.data"))
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		id := strings.TrimSuffix(filepath.Base(name), ".data")
-		if !known[id] {
-			if err := os.Remove(name); err != nil {
-				return err
-			}
-		}
-	}
-	temps, err := filepath.Glob(filepath.Join(j.dir, "*.tmp"))
-	if err != nil {
-		return err
-	}
-	for _, name := range temps {
-		if err := os.Remove(name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func writeRecord(target string, rec journalRecord, durable bool) error {
-	raw, err := json.Marshal(rec)
-	if err != nil {
-		return err
-	}
-	temp := target + ".tmp"
-	f, err := os.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(raw); err != nil {
-		f.Close()
-		return err
-	}
-	if durable {
-		if err := f.Sync(); err != nil {
-			f.Close()
-			return err
-		}
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temp, target); err != nil {
-		return err
-	}
-	if durable {
-		return syncDir(filepath.Dir(target))
-	}
-	return nil
-}
-
-func recordTime(name string) time.Time {
-	info, err := os.Stat(name)
-	if err != nil {
-		return time.Time{}
-	}
-	return info.ModTime()
-}
-
-func readRecord(name string) (journalRecord, error) {
-	raw, err := os.ReadFile(name)
-	if err != nil {
-		return journalRecord{}, err
-	}
-	var rec journalRecord
-	if err := json.Unmarshal(raw, &rec); err != nil {
-		return journalRecord{}, err
-	}
-	if rec.Unit != nil && rec.Unit.WrittenNs <= 0 {
-		return journalRecord{}, fmt.Errorf("journal record %s: its unit has no write time", name)
-	}
-	return rec, nil
 }

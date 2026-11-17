@@ -92,6 +92,28 @@ export class Sql {
     return parsed;
   }
 
+  returning<T>(
+    operation: string,
+    schema: z.ZodType<T>,
+    text: string,
+    parameters: SqlParameters = {},
+  ): T {
+    const startedAt = performance.now();
+    let row: unknown;
+    try {
+      row = this.prepared(text).get(parameters);
+    } catch (cause) {
+      if (isConstraintFailure(cause)) {
+        throw new StoreConflictError(operation, cause);
+      }
+      throw cause;
+    }
+    if (row === undefined) throw new Error(`${operation} returned no row.`);
+    this.changed += 1;
+    this.timed('run', text, startedAt, 1);
+    return schema.parse(row);
+  }
+
   run(operation: string, text: string, parameters: SqlParameters = {}): number {
     const startedAt = performance.now();
     try {

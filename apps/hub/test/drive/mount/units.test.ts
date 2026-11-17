@@ -7,6 +7,7 @@ import { MountDedupe, opKeyText } from '../../../src/drive/mount/dedupe';
 import { GroupFsync, syncPath } from '../../../src/drive/mount/fsync';
 import { PosixError } from '../../../src/drive/posix/errors';
 import { attachTo, opKey, openMountRig, type Attached, type MountRig } from './mount-rig';
+import { testLogger } from '../../support/logs';
 
 const WRITTEN_NS = 1_763_100_000_123_456_789n;
 
@@ -55,12 +56,31 @@ describe('the group fsync', () => {
 
 describe('the operation memory', () => {
   const memory = new Map<string, Record<string, unknown>>();
-  const dedupe = new MountDedupe({
-    recall: (placement, id): Record<string, unknown> | undefined => memory.get(`${placement}${id}`),
-    remember: (placement, id, result): void => {
-      memory.set(`${placement}${id}`, result);
+  const hooks = new Set<() => void>();
+  const transact = (): void => {
+    for (const hook of hooks) hook();
+  };
+  const dedupe = new MountDedupe(
+    {
+      recall: (placement, id): Record<string, unknown> | undefined =>
+        memory.get(`${placement}${id}`),
+      rememberAll: (entries): void => {
+        for (const entry of entries) memory.set(`${entry.placementId}${entry.opId}`, entry.result);
+      },
+      claim: (claim): void => {
+        const slot = `${claim.placementId}${claim.opId}`;
+        if (!memory.has(slot)) memory.set(slot, { action: claim.action, reply: null });
+      },
     },
-  });
+    (hook) => {
+      hooks.add(hook);
+      return (): void => {
+        hooks.delete(hook);
+      };
+    },
+    testLogger('drive'),
+  );
+  const RERUN = (): Promise<null> => Promise.resolve(null);
 
   it('runs a concurrent resend once and answers both the same', async () => {
     const key = opKey();
@@ -71,27 +91,86 @@ describe('the operation memory', () => {
       return {};
     };
     const [a, b] = await Promise.all([
-      dedupe.once('p', { name: 'UNLINK', key }, run),
-      dedupe.once('p', { name: 'UNLINK', key }, run),
+      dedupe.once('p', { name: 'UNLINK', key }, run, RERUN),
+      dedupe.once('p', { name: 'UNLINK', key }, run, RERUN),
     ]);
     expect(runs).toBe(1);
     expect(a).toEqual(b);
+    await new Promise((resolve) => setImmediate(resolve));
     expect(memory.has(`p${opKeyText(key)}`)).toBe(true);
   });
 
   it('does not remember a failure and keeps keys apart per placement', async () => {
     const key = opKey();
     await expect(
-      dedupe.once('p', { name: 'UNLINK', key }, () => Promise.reject(new PosixError('EIO', 'x'))),
+      dedupe.once(
+        'p',
+        { name: 'UNLINK', key },
+        () => Promise.reject(new PosixError('EIO', 'x')),
+        RERUN,
+      ),
     ).rejects.toMatchObject({ code: 'EIO' });
     let runs = 0;
     const run = (): Promise<Record<string, never>> => {
       runs += 1;
       return Promise.resolve({});
     };
-    await dedupe.once('p', { name: 'UNLINK', key }, run);
-    await dedupe.once('q', { name: 'UNLINK', key }, run);
+    await dedupe.once('p', { name: 'UNLINK', key }, run, RERUN);
+    await dedupe.once('q', { name: 'UNLINK', key }, run, RERUN);
     expect(runs).toBe(2);
+  });
+
+  it('claims the key inside the operation transaction, before the reply is saved', async () => {
+    const key = opKey();
+    const slot = `p${opKeyText(key)}`;
+    let seen: unknown;
+    await dedupe.once(
+      'p',
+      { name: 'UNLINK', key },
+      async () => {
+        await Promise.resolve();
+        transact();
+        seen = memory.get(slot);
+        return {};
+      },
+      RERUN,
+    );
+    expect(seen).toEqual({ action: 'UNLINK', reply: null });
+    transact();
+    expect(memory.get(slot)).toEqual({ action: 'UNLINK', reply: null });
+  });
+
+  it('rebuilds the reply of a claimed operation whose reply was lost, without running it again', async () => {
+    const key = opKey();
+    memory.set(`p${opKeyText(key)}`, { action: 'UNLINK', reply: null });
+    let runs = 0;
+    const reply = await dedupe.once(
+      'p',
+      { name: 'UNLINK', key },
+      () => {
+        runs += 1;
+        return Promise.resolve({});
+      },
+      () => Promise.resolve({}),
+    );
+    expect(reply).toEqual({});
+    expect(runs).toBe(0);
+  });
+
+  it('runs a claimed operation again when its effect is not there', async () => {
+    const key = opKey();
+    memory.set(`p${opKeyText(key)}`, { action: 'UNLINK', reply: null });
+    let runs = 0;
+    await dedupe.once(
+      'p',
+      { name: 'UNLINK', key },
+      () => {
+        runs += 1;
+        return Promise.resolve({});
+      },
+      RERUN,
+    );
+    expect(runs).toBe(1);
   });
 });
 

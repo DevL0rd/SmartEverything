@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -12,9 +13,8 @@ import (
 )
 
 const (
-	execLimit   = 10 * time.Minute
-	drainPoll   = 100 * time.Millisecond
-	drainSteady = 3
+	execLimit = 10 * time.Minute
+	drainPoll = 100 * time.Millisecond
 )
 
 type counters struct {
@@ -40,27 +40,74 @@ func syncTree(dir string) error {
 	return nil
 }
 
-func lastCounters(path, mount string) (counters, bool, error) {
+type statusTail struct {
+	file    *os.File
+	events  *os.File
+	partial []byte
+	mount   string
+	last    counters
+	found   bool
+}
+
+func openTail(path, mount string) (*statusTail, error) {
+	fd, err := syscall.InotifyInit1(syscall.IN_NONBLOCK | syscall.IN_CLOEXEC)
+	if err != nil {
+		return nil, fmt.Errorf("watching the status log %s: %w", path, err)
+	}
+	events := os.NewFile(uintptr(fd), "inotify")
+	if _, err := syscall.InotifyAddWatch(fd, path, syscall.IN_MODIFY); err != nil {
+		events.Close()
+		return nil, fmt.Errorf("watching the status log %s: %w", path, err)
+	}
 	file, err := os.Open(path)
 	if err != nil {
-		return counters{}, false, err
+		events.Close()
+		return nil, err
 	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 1<<16), 1<<24)
-	var last counters
-	found := false
-	for scanner.Scan() {
-		var line counters
-		if json.Unmarshal(scanner.Bytes(), &line) != nil {
-			continue
+	return &statusTail{file: file, events: events, mount: mount}, nil
+}
+
+func (t *statusTail) Close() {
+	t.file.Close()
+	t.events.Close()
+}
+
+func (t *statusTail) read() error {
+	chunk := make([]byte, 1<<16)
+	for {
+		n, err := t.file.Read(chunk)
+		t.partial = append(t.partial, chunk[:n]...)
+		for {
+			end := bytes.IndexByte(t.partial, '\n')
+			if end < 0 {
+				break
+			}
+			var line counters
+			if json.Unmarshal(t.partial[:end], &line) == nil && line.Type == "counters" && line.Mount == t.mount {
+				t.last = line
+				t.found = true
+			}
+			t.partial = t.partial[end+1:]
 		}
-		if line.Type == "counters" && line.Mount == mount {
-			last = line
-			found = true
+		if errors.Is(err, io.EOF) || n == 0 {
+			return nil
+		}
+		if err != nil {
+			return err
 		}
 	}
-	return last, found, scanner.Err()
+}
+
+func (t *statusTail) wait(until time.Time) (bool, error) {
+	if err := t.events.SetReadDeadline(until); err != nil {
+		return false, err
+	}
+	buffer := make([]byte, 4096)
+	_, err := t.events.Read(buffer)
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 var mutating = map[string]bool{
@@ -102,33 +149,34 @@ func drain(d Drain, name string) error {
 	if d.StatusLog == "" {
 		return nil
 	}
-	steady := 0
+	tail, err := openTail(d.StatusLog, d.Mount)
+	if err != nil {
+		return err
+	}
+	defer tail.Close()
 	progressAt := time.Now()
 	var previous counters
 	for {
-		now, found, err := lastCounters(d.StatusLog, d.Mount)
-		if err != nil {
+		if err := tail.read(); err != nil {
 			return err
+		}
+		now := tail.last
+		if !tail.found || (now.Pending == 0 && now.Open == 0) {
+			return nil
 		}
 		if now != previous {
 			previous = now
 			progressAt = time.Now()
-			steady = 0
 		}
-		if !found || (now.Pending == 0 && now.Open == 0) {
-			steady++
-			if steady >= drainSteady {
-				return nil
-			}
-		} else {
-			steady = 0
+		changed, err := tail.wait(progressAt.Add(d.IdleLimit))
+		if err != nil {
+			return err
 		}
-		if time.Since(progressAt) > d.IdleLimit {
+		if !changed {
 			if d.Tolerate {
 				return &stalledError{pending: now.Pending, since: progressAt}
 			}
 			return fmt.Errorf("the helper made no upload progress for %s with %d uploads pending", d.IdleLimit, now.Pending)
 		}
-		time.Sleep(drainPoll)
 	}
 }

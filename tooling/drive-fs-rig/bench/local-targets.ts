@@ -130,6 +130,46 @@ export function smbTarget(): LocalTarget {
   };
 }
 
+const PASSTHROUGH_SOURCE = join(import.meta.dirname, 'passthrough');
+
+export function passthroughTarget(): LocalTarget {
+  const mountPoint = point('passthrough');
+  const binary = join(BENCH, 'passthrough');
+  let pid: number | null = null;
+  return {
+    kind: 'passthrough',
+    root: mountPoint,
+    async setup(): Promise<void> {
+      await run('go', ['build', '-o', binary, '.'], { cwd: PASSTHROUGH_SOURCE });
+    },
+    async teardown(): Promise<void> {
+      await unmountFuse(mountPoint);
+      await rm(binary, { force: true });
+    },
+    async mount(): Promise<void> {
+      await mkdir(mountPoint, { recursive: true });
+      pid = await startDetached({
+        command: binary,
+        args: [serveFolder, mountPoint],
+        log: join(BENCH, 'logs', 'passthrough.log'),
+      });
+      await waitFor(
+        'the passthrough mount',
+        async () => ((await isMounted(mountPoint)) ? true : undefined),
+        START_TIMEOUT_MS,
+      );
+    },
+    async unmount(): Promise<void> {
+      await unmountFuse(mountPoint);
+      if (pid !== null) await stopProcess(pid, STOP_MS);
+      pid = null;
+    },
+    wrap: plainWrap,
+    drain: () => [],
+    roles: () => ({ client: pid === null ? [] : [pid], server: [] }),
+  };
+}
+
 export function sshfsTarget(): LocalTarget {
   const mountPoint = point('sshfs');
   return {

@@ -2,7 +2,7 @@ import type { DriveItem } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { StoreContext } from '../../src/store/context';
+import { StoreContext, StoreNotFoundError } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
@@ -288,13 +288,13 @@ describe('inode attributes and counts', () => {
     expect(inodes.linkCount(inodes.rootOf(OTHER_ROOT).id)).toBe(2);
   });
 
-  it('counts many inodes at once and an unknown one as zero', () => {
+  it('counts many inodes at once and refuses to count an unknown one', () => {
     write(file(1, 'a.txt'));
     write(file(2, 'b.txt'), { shareInode: inodeIdOf(itemId(1)) });
     const counts = inodes.linkCounts([inodeIdOf(itemId(1)), 999999]);
     expect(counts.get(inodeIdOf(itemId(1)))).toBe(2);
     expect(counts.has(999999)).toBe(false);
-    expect(inodes.linkCount(999999)).toBe(0);
+    expect(() => inodes.linkCount(999999)).toThrow(StoreNotFoundError);
   });
 
   it('has exactly one root inode per drive and never removes it', () => {

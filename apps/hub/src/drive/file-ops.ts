@@ -5,9 +5,10 @@ import { dirname } from 'node:path';
 import type { StagedWrite } from './intents';
 import { syncDirectory } from './unsynced';
 
-export async function stageFile(
+async function writeStaged(
   path: string,
   source: AsyncIterable<Uint8Array>,
+  durable: boolean,
 ): Promise<StagedWrite> {
   const hash = createHash('sha256');
   const handle = await open(path, 'wx', 0o600);
@@ -18,11 +19,22 @@ export async function stageFile(
       hash.update(chunk);
       bytes += chunk.byteLength;
     }
-    await handle.sync();
+    if (durable) await handle.sync();
   } finally {
     await handle.close();
   }
   return { bytes, sha256: hash.digest('hex') };
+}
+
+export function stageFile(path: string, source: AsyncIterable<Uint8Array>): Promise<StagedWrite> {
+  return writeStaged(path, source, true);
+}
+
+export function stageFileUnsynced(
+  path: string,
+  source: AsyncIterable<Uint8Array>,
+): Promise<StagedWrite> {
+  return writeStaged(path, source, false);
 }
 
 export async function* readNoFollow(path: string): AsyncGenerator<Uint8Array> {

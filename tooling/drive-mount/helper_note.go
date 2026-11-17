@@ -1,6 +1,11 @@
 package main
 
-import "context"
+import (
+	"context"
+	"slices"
+
+	"github.com/smarteverything/drive-mount/wire"
+)
 
 func (c *blockCache) RootOf(ino uint64) string {
 	c.mu.Lock()
@@ -55,22 +60,6 @@ func (n noteWrites) made(parent uint64, name string, entry Entry) {
 	n.cache.NoteChanged(parent)
 }
 
-func (n noteWrites) Mknod(ctx context.Context, args CreateArgs) (Entry, error) {
-	entry, err := n.InodeWriter.Mknod(ctx, args)
-	if err == nil {
-		n.made(args.Parent, args.Name, entry)
-	}
-	return entry, err
-}
-
-func (n noteWrites) Symlink(ctx context.Context, args CreateArgs) (Entry, error) {
-	entry, err := n.InodeWriter.Symlink(ctx, args)
-	if err == nil {
-		n.made(args.Parent, args.Name, entry)
-	}
-	return entry, err
-}
-
 func (n noteWrites) Link(ctx context.Context, ino, parent uint64, name string) (Attr, error) {
 	attr, err := n.InodeWriter.Link(ctx, ino, parent, name)
 	if err == nil {
@@ -94,6 +83,10 @@ func (n noteWrites) Rename(ctx context.Context, args RenameArgs) error {
 	if err := n.InodeWriter.Rename(ctx, args); err != nil {
 		return err
 	}
+	if args.Flags&wire.RenameFlagExchange == 0 && source != 0 {
+		n.cache.NoteMoved(args, source, target)
+		return nil
+	}
 	n.cache.NoteName(args.Parent, args.Name)
 	n.cache.NoteName(args.NewParent, args.NewName)
 	n.cache.NoteChanged(args.Parent)
@@ -104,6 +97,36 @@ func (n noteWrites) Rename(ctx context.Context, args RenameArgs) error {
 		}
 	}
 	return nil
+}
+
+func (c *blockCache) NoteRenamed(args RenameArgs, source, target uint64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	from, to := c.inodes[args.Parent], c.inodes[args.NewParent]
+	if from == nil || to == nil || from.dir == nil || to.dir == nil || from.root == "" || from.root != to.root {
+		return false
+	}
+	epoch := c.epochLocked(from.root)
+	from.dir.names[args.Name] = nameSlot{epoch: epoch}
+	c.noteDuringFetchLocked(args.Parent, localNote{name: args.Name})
+	if prior, known := to.dir.names[args.NewName]; !known || (prior.ino == 0 && !slices.Contains(to.dir.order, args.NewName)) {
+		to.dir.order = append(to.dir.order, args.NewName)
+	}
+	to.dir.names[args.NewName] = nameSlot{ino: source, epoch: epoch}
+	c.noteDuringFetchLocked(args.NewParent, localNote{name: args.NewName, ino: source})
+	from.dir.snap, to.dir.snap = nil, nil
+	from.attrEpoch, to.attrEpoch = 0, 0
+	if in := c.inodes[target]; in != nil && target != source {
+		delete(in.listed, args.NewParent)
+		in.attrEpoch = 0
+	}
+	if in := c.inodes[source]; in != nil {
+		delete(in.listed, args.Parent)
+		in.markListed(args.NewParent)
+		in.attrEpoch = 0
+	}
+	c.touchRoot(from.root)
+	return true
 }
 
 func (n noteWrites) Setattr(ctx context.Context, args SetattrArgs) (Attr, error) {

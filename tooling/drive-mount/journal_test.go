@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRangeSetMatchesABitmapModel(t *testing.T) {
@@ -82,6 +86,7 @@ func TestJournalRecordsSurviveAReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer j.close()
 	id, _ := newSessionID()
 	rec := journalRecord{ID: id, Ino: 7, Phase: phaseSealed, Ranges: [][2]uint64{{1, 5}}, Unit: &unitRecord{Commit: 9, BeginKey: "aa", EndKey: "bb", WrittenNs: 1_763_100_000_123_456_789}}
 	if err := j.save(rec); err != nil {
@@ -107,11 +112,77 @@ func TestJournalRefusesAUnitWithoutAWriteTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer j.close()
 	id, _ := newSessionID()
 	if err := j.save(journalRecord{ID: id, Ino: 7, Phase: phaseSealed, Unit: &unitRecord{Commit: 9, BeginKey: "aa", EndKey: "bb"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := j.load(); err == nil || !strings.Contains(err.Error(), "no write time") {
 		t.Fatalf("load: %v, want a refusal naming the missing write time", err)
+	}
+}
+
+func TestTheSessionLogIgnoresATornLastLineAndMovesOldRecordFilesIn(t *testing.T) {
+	dir := t.TempDir()
+	old, _ := newSessionID()
+	raw, _ := json.Marshal(journalRecord{ID: old, Ino: 3, Phase: phaseSealed})
+	if err := os.WriteFile(filepath.Join(dir, old+".json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j, err := openJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := newSessionID()
+	if err := j.save(journalRecord{ID: id, Ino: 4, Phase: phaseSealed}); err != nil {
+		t.Fatal(err)
+	}
+	j.close()
+	if _, err := os.Stat(filepath.Join(dir, old+".json")); !os.IsNotExist(err) {
+		t.Fatal("the old record file was kept beside the log")
+	}
+	f, err := os.OpenFile(filepath.Join(dir, sessionsFile), os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString(`{"op":"set","rec":{"id":"torn`)
+	f.Close()
+	j, err = openJournal(dir)
+	if err != nil {
+		t.Fatalf("a torn last line must not stop the helper: %v", err)
+	}
+	defer j.close()
+	got, err := j.load()
+	if err != nil || len(got) != 2 || got[0].ID != old || got[1].ID != id {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+func TestRemovedSessionsCompactTheLog(t *testing.T) {
+	dir := t.TempDir()
+	j, err := openJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.close()
+	for range compactLines {
+		id, _ := newSessionID()
+		if err := j.save(journalRecord{ID: id, Ino: 1, Phase: phaseSealed}); err != nil {
+			t.Fatal(err)
+		}
+		if err := j.remove(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		info, err := os.Stat(filepath.Join(dir, sessionsFile))
+		if err == nil && info.Size() == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the log kept %d bytes for no live session", info.Size())
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

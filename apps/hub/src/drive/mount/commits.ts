@@ -4,7 +4,7 @@ import {
   type RequestMeta,
 } from '@smarteverything/domain/drive-mount';
 import { messageOf } from '@smarteverything/logging';
-import type { ByteRange, DriveMountCommit } from '../../store/repositories/drive-mount-commits';
+import type { ByteRange, DriveMountCommitHead } from '../../store/repositories/drive-mount-commits';
 import type { PosixChangeEnv, PosixScope } from '../posix/env';
 import { posix } from '../posix/errors';
 import type { DrivePosix } from '../posix/service';
@@ -54,14 +54,17 @@ export class MountCommits {
 
   constructor(private readonly env: CommitEnv) {}
 
-  rangesOf(row: DriveMountCommit): readonly ByteRange[] {
-    return this.received.get(row.id)?.ranges ?? row.ranges;
+  rangesOf(row: DriveMountCommitHead): readonly ByteRange[] {
+    return this.received.get(row.id)?.ranges ?? this.repo.ranges(row.id);
   }
 
-  receive(row: DriveMountCommit, range: ByteRange): void {
+  receive(row: DriveMountCommitHead, range: ByteRange): void {
     let entry = this.received.get(row.id);
     if (entry === undefined) {
-      entry = { ranges: row.ranges.map(([start, end]) => [start, end]), dirty: false };
+      entry = {
+        ranges: this.repo.ranges(row.id).map(([start, end]) => [start, end]),
+        dirty: false,
+      };
       this.received.set(row.id, entry);
     }
     addRange(entry.ranges, range[0], range[1]);
@@ -71,6 +74,16 @@ export class MountCommits {
     setImmediate(() => {
       this.flushQueued = false;
       this.flush();
+    });
+  }
+
+  cutReceived(row: DriveMountCommitHead, size: number): void {
+    const kept = this.rangesOf(row).flatMap(([start, end]): [number, number][] =>
+      start < size ? [[start, Math.min(end, size)]] : [],
+    );
+    this.received.set(row.id, { ranges: kept, dirty: false });
+    this.env.change.store.write(() => {
+      this.repo.setRanges(row.id, kept);
     });
   }
 
@@ -94,14 +107,14 @@ export class MountCommits {
     return this.env.change.store.driveMountCommits;
   }
 
-  commitOf(session: MountSession, id: number): DriveMountCommit {
-    const row = this.repo.find(id);
+  commitOf(session: MountSession, id: number): DriveMountCommitHead {
+    const row = this.repo.head(id);
     if (row?.nodeId !== session.nodeId)
       throw posix('ESTALE', `The commit ${String(id)} is unknown.`);
     return row;
   }
 
-  openCommit(session: MountSession, id: number): DriveMountCommit {
+  openCommit(session: MountSession, id: number): DriveMountCommitHead {
     const row = this.commitOf(session, id);
     if (row.state !== 'open') throw posix('ESTALE', `The commit ${String(id)} is not open.`);
     return row;
@@ -213,7 +226,7 @@ export class MountCommits {
     }
   }
 
-  scopeOf(session: MountSession, row: DriveMountCommit): PosixScope {
+  scopeOf(session: MountSession, row: DriveMountCommitHead): PosixScope {
     return session.scopeOfPlacement(row.placementId);
   }
 }

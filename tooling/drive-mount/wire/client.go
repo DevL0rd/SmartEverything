@@ -125,6 +125,15 @@ type Client struct {
 	offline     bool
 	grace       *time.Timer
 	pingDead    bool
+	retire      context.CancelFunc
+	preparing   chan struct{}
+	standby     *standby
+}
+
+type standby struct {
+	ctx      context.Context
+	conn     Conn
+	greeting helloReply
 }
 
 var softOps = map[Op]bool{
@@ -266,9 +275,97 @@ func (c *Client) SwitchRoute(route Route) error {
 		c.offline = false
 	}
 	c.startGraceLocked()
+	ready := c.standby
+	c.standby = nil
+	if route.Empty() || c.out == nil {
+		retire := c.retire
+		c.retire = nil
+		c.mu.Unlock()
+		closeStandby(ready)
+		old()
+		if retire != nil {
+			retire()
+		}
+		return nil
+	}
+	if c.retire == nil {
+		c.retire = old
+	} else {
+		old()
+	}
+	done := make(chan struct{})
+	c.preparing = done
+	ctx := c.routeCtx
 	c.mu.Unlock()
-	old()
+	closeStandby(ready)
+	go c.prepare(ctx, route, done)
 	return nil
+}
+
+func closeStandby(ready *standby) {
+	if ready != nil {
+		_ = ready.conn.Close()
+	}
+}
+
+func (c *Client) prepare(ctx context.Context, route Route, done chan struct{}) {
+	defer func() {
+		c.mu.Lock()
+		if c.preparing == done {
+			c.preparing = nil
+		}
+		c.mu.Unlock()
+		close(done)
+	}()
+	backoff := c.cfg.BackoffMin
+	for ctx.Err() == nil {
+		conn, greeting, err := c.greet(ctx, route, false)
+		if err == nil {
+			c.mu.Lock()
+			if ctx.Err() != nil {
+				c.mu.Unlock()
+				_ = conn.Close()
+				return
+			}
+			c.standby = &standby{ctx: ctx, conn: conn, greeting: greeting}
+			retire := c.retire
+			c.retire = nil
+			c.mu.Unlock()
+			if retire != nil {
+				retire()
+			}
+			return
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		c.log("drive_mount.switch_failed", err)
+		timer := time.NewTimer(backoff)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+		}
+		backoff = min(backoff*2, c.cfg.BackoffMax)
+	}
+}
+
+func (c *Client) greet(ctx context.Context, route Route, forgetSession bool) (Conn, helloReply, error) {
+	conn, err := c.cfg.Dialer.Dial(ctx, route, c.cfg.Token)
+	if err != nil {
+		return nil, helloReply{}, err
+	}
+	greeting, err := c.hello(ctx, conn)
+	if err != nil {
+		_ = conn.Close()
+		if forgetSession {
+			c.mu.Lock()
+			c.session = nil
+			c.mu.Unlock()
+		}
+		return nil, helloReply{}, err
+	}
+	return conn, greeting, nil
 }
 
 func (c *Client) Offline() bool {
@@ -508,19 +605,36 @@ func (c *Client) sendCancel(out *sender, target uint64) {
 
 func (c *Client) supervise() {
 	defer close(c.stopped)
+	defer c.dropStandby()
 	backoff := c.cfg.BackoffMin
 	for c.ctx.Err() == nil {
 		c.mu.Lock()
-		route, routeCtx := c.route, c.routeCtx
+		route, routeCtx, preparing := c.route, c.routeCtx, c.preparing
+		var ready *standby
+		if preparing == nil {
+			ready = c.standby
+			c.standby = nil
+		}
 		c.mu.Unlock()
-		if route.Empty() {
-			<-routeCtx.Done()
+		if preparing != nil {
+			select {
+			case <-preparing:
+			case <-c.ctx.Done():
+			}
 			continue
 		}
-		conn, err := c.cfg.Dialer.Dial(routeCtx, route, c.cfg.Token)
-		established := false
-		if err == nil {
-			established, err = c.serve(routeCtx, conn)
+		var established bool
+		var err error
+		switch {
+		case ready != nil && ready.ctx == routeCtx:
+			established, err = c.serve(routeCtx, ready.conn, ready.greeting)
+		case route.Empty():
+			closeStandby(ready)
+			<-routeCtx.Done()
+			continue
+		default:
+			closeStandby(ready)
+			established, err = c.connect(routeCtx, route)
 		}
 		if routeCtx.Err() != nil {
 			continue
@@ -530,6 +644,9 @@ func (c *Client) supervise() {
 		if established {
 			backoff = c.cfg.BackoffMin
 		}
+		if c.switching() {
+			continue
+		}
 		timer := time.NewTimer(backoff)
 		select {
 		case <-timer.C:
@@ -538,6 +655,28 @@ func (c *Client) supervise() {
 		}
 		backoff = min(backoff*2, c.cfg.BackoffMax)
 	}
+}
+
+func (c *Client) switching() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.preparing != nil
+}
+
+func (c *Client) dropStandby() {
+	c.mu.Lock()
+	ready := c.standby
+	c.standby = nil
+	c.mu.Unlock()
+	closeStandby(ready)
+}
+
+func (c *Client) connect(ctx context.Context, route Route) (bool, error) {
+	conn, greeting, err := c.greet(ctx, route, true)
+	if err != nil {
+		return false, err
+	}
+	return c.serve(ctx, conn, greeting)
 }
 
 func (c *Client) linkLost() {
@@ -621,17 +760,11 @@ func (c *Client) hello(ctx context.Context, conn Conn) (helloReply, error) {
 	return out, nil
 }
 
-func (c *Client) serve(parent context.Context, conn Conn) (bool, error) {
+func (c *Client) serve(parent context.Context, conn Conn, greeting helloReply) (bool, error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	defer conn.Close()
-	greeting, err := c.hello(ctx, conn)
-	if err != nil {
-		c.mu.Lock()
-		c.session = nil
-		c.mu.Unlock()
-		return false, err
-	}
+	var err error
 	readFailed := make(chan error, 1)
 	out := newSender(ctx, conn, c.deadAfter)
 	go out.run()

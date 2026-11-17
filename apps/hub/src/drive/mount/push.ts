@@ -2,6 +2,7 @@ import type { DriveFeedRow, DriveItem } from '@smarteverything/domain';
 import { itemAccess } from '../access';
 import type { PosixScope } from '../posix/env';
 import type { Store } from '../../store/store';
+import type { DriveItemSpot } from '../../store/repositories/drive-item-lookups';
 import { pushFrame } from './frames';
 import type { Attachment, MountSession } from './session';
 
@@ -82,14 +83,24 @@ function inside(base: string | null, relPath: string): boolean {
 
 interface Resolved {
   readonly rootId: string;
-  readonly item: DriveItem | undefined;
+  readonly itemId: string;
+  readonly parentId: string | null;
   readonly spot: Spot | undefined;
   readonly previous: Spot | undefined;
 }
 
+function spotOf(placed: DriveItemSpot): Spot {
+  return { ino: placed.ino, parent: placed.parent, name: placed.name, relPath: placed.relPath };
+}
+
+function ownSince(session: MountSession, row: DriveFeedRow): boolean {
+  return row.via === 'mount' && row.deviceId === session.nodeId && row.seq > session.echoOwnThrough;
+}
+
 export class PushPump {
   readonly ledger: PushLedger;
-  private readonly memo = new Map<number, Resolved>();
+  private readonly memo = new Map<string, Map<number, Resolved>>();
+  private readonly settledUpTo = new Map<string, number>();
   private readonly repathed = new Map<string, { readonly rootId: string; readonly seq: number }>();
 
   constructor(private readonly store: PushStore) {
@@ -102,27 +113,50 @@ export class PushPump {
       : (this.store.driveItems.find(scope.baseId, null)?.relPath ?? null);
   }
 
+  private memoOf(rootId: string): Map<number, Resolved> {
+    let memo = this.memo.get(rootId);
+    if (memo === undefined) {
+      memo = new Map();
+      this.memo.set(rootId, memo);
+    }
+    return memo;
+  }
+
   private resolve(row: DriveFeedRow): Resolved {
-    const known = this.memo.get(row.seq);
+    const memo = this.memoOf(row.rootId);
+    const known = memo.get(row.seq);
     if (known !== undefined) return known;
-    const item = this.store.driveItems.find(row.itemId, null);
-    const spot = item === undefined ? undefined : this.ledger.spotOf(item);
-    const resolved = {
-      rootId: row.rootId,
-      item,
-      spot,
-      previous: this.ledger.swap(row.itemId, spot),
-    };
-    this.memo.set(row.seq, resolved);
-    if (item?.kind === 'folder' && (row.op === 'rename' || row.op === 'move')) {
-      this.repathed.set(item.id, { rootId: row.rootId, seq: row.seq });
+    const placed = this.store.driveItems.lookups.spot(row.itemId);
+    const resolved = this.placedRow(row, placed);
+    const settled = this.settledUpTo.get(row.rootId);
+    if (settled === undefined || row.seq > settled) memo.set(row.seq, resolved);
+    if (placed?.kind === 'folder' && (row.op === 'rename' || row.op === 'move')) {
+      this.repathed.set(row.itemId, { rootId: row.rootId, seq: row.seq });
     }
     return resolved;
   }
 
+  private placedRow(row: DriveFeedRow, placed: DriveItemSpot | undefined): Resolved {
+    const spot = placed === undefined ? undefined : spotOf(placed);
+    return {
+      rootId: row.rootId,
+      itemId: row.itemId,
+      parentId: placed === undefined ? null : placed.parentId,
+      spot,
+      previous: this.ledger.swap(row.itemId, spot),
+    };
+  }
+
   settle(rootId: string, upTo: number): void {
-    for (const [seq, resolved] of this.memo) {
-      if (resolved.rootId === rootId && seq <= upTo) this.memo.delete(seq);
+    const settled = this.settledUpTo.get(rootId);
+    if (settled === undefined || upTo > settled) this.settledUpTo.set(rootId, upTo);
+    const memo = this.memo.get(rootId);
+    if (memo !== undefined) {
+      for (const seq of memo.keys()) {
+        if (seq > upTo) break;
+        memo.delete(seq);
+      }
+      if (memo.size === 0) this.memo.delete(rootId);
     }
     for (const [itemId, mark] of this.repathed) {
       if (mark.rootId === rootId && mark.seq <= upTo) this.repathed.delete(itemId);
@@ -134,16 +168,16 @@ export class PushPump {
     const base = this.baseOf(scope);
     const root = this.store.driveRoots.byId(scope.drive.id);
     for (const row of rows) {
-      const own = row.via === 'mount' && row.deviceId === session.nodeId;
-      const { item, spot, previous } = this.resolve(row);
-      if (own || SKIPPED.has(row.op)) continue;
+      const { itemId, parentId, spot, previous } = this.resolve(row);
+      if (ownSince(session, row) || SKIPPED.has(row.op)) continue;
+      const item = spot === undefined ? undefined : this.store.driveItems.find(itemId, null);
       if (item === undefined || spot === undefined) {
         this.gone(change, previous, base);
       } else if (
         inside(base, spot.relPath) &&
         itemAccess(this.store, scope.caller, root, item) !== 'none'
       ) {
-        const inherited = item.parentId !== null && this.repathed.has(item.parentId);
+        const inherited = parentId !== null && this.repathed.has(parentId);
         this.live(change, {
           spot,
           previous,

@@ -15,6 +15,10 @@ import type { LocalCopies } from './local-copies';
 const A = '00000000-0000-4000-8000-0000000000a1';
 const B = '00000000-0000-4000-8000-0000000000b1';
 
+function ignoreLanded(): void {
+  return;
+}
+
 function localCopies(
   trash: LocalCopyResult,
   restore: LocalCopyResult,
@@ -67,7 +71,7 @@ describe('library actions', () => {
 
   it('moves to trash with an undo that restores the same items', async () => {
     const { calls, change } = recorder();
-    await expect(moveToTrash([A, B], change)).resolves.toBe(true);
+    await expect(moveToTrash([A, B], ignoreLanded, change)).resolves.toBe(true);
     const toast = notify.mock.calls[0]?.[0];
     expect(toast?.message).toBe('Moved 2 photos to trash');
     toast?.undo?.();
@@ -79,9 +83,16 @@ describe('library actions', () => {
     });
   });
 
+  it('hands each landed batch over as it lands, leaving refused items out', async () => {
+    const { change } = recorder([{ itemId: A, reason: 'locked' }]);
+    const landed: (readonly string[])[] = [];
+    await moveToTrash([A, B], (ids) => landed.push(ids), change);
+    expect(landed).toEqual([[B]]);
+  });
+
   it('reports items the hub could not change and offers no undo', async () => {
     const { change } = recorder([{ itemId: A, reason: 'locked' }]);
-    await expect(moveToTrash([A], change)).resolves.toBe(false);
+    await expect(moveToTrash([A], ignoreLanded, change)).resolves.toBe(false);
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Could not move everything to trash', tone: 'critical' }),
@@ -108,7 +119,7 @@ describe('library actions', () => {
     const { change } = recorder();
     const done = { asked: 2, changed: 2, place: 'phone' } as const;
     const { calls, local } = localCopies({ kind: 'done', ...done }, { kind: 'done', ...done });
-    await expect(moveToTrash([A, B], change, local)).resolves.toBe(true);
+    await expect(moveToTrash([A, B], ignoreLanded, change, local)).resolves.toBe(true);
     const toast = notify.mock.calls[0]?.[0];
     expect(toast).toMatchObject({
       message: 'Moved 2 photos to trash',
@@ -132,7 +143,7 @@ describe('library actions', () => {
       { kind: 'declined', asked: 1, changed: 0, place: 'phone' },
       { kind: 'none' },
     );
-    await moveToTrash([A], change, local);
+    await moveToTrash([A], ignoreLanded, change, local);
     expect(notify.mock.calls[0]?.[0]).toMatchObject({
       detail: 'The copy on this phone was kept.',
     });
@@ -141,14 +152,14 @@ describe('library actions', () => {
   it('adds no local line for items that exist only on the hub', async () => {
     const { change } = recorder();
     const { local } = localCopies({ kind: 'none' }, { kind: 'none' });
-    await moveToTrash([A], change, local);
+    await moveToTrash([A], ignoreLanded, change, local);
     expect(notify.mock.calls[0]?.[0]).not.toHaveProperty('detail');
   });
 
   it('never touches the local copy when the hub refused the delete', async () => {
     const { change } = recorder([{ itemId: A, reason: 'locked' }]);
     const { calls, local } = localCopies({ kind: 'none' }, { kind: 'none' });
-    await moveToTrash([A], change, local);
+    await moveToTrash([A], ignoreLanded, change, local);
     expect(calls).toEqual([]);
   });
 
@@ -158,7 +169,7 @@ describe('library actions', () => {
       trash: () => Promise.reject(new Error('no activity')),
       restore: () => Promise.resolve({ kind: 'none' }),
     };
-    await expect(moveToTrash([A], change, local)).resolves.toBe(true);
+    await expect(moveToTrash([A], ignoreLanded, change, local)).resolves.toBe(true);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({
         message: 'The copies on this device were not moved to its trash',

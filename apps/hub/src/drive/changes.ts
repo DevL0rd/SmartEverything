@@ -14,7 +14,7 @@ import {
 } from './intents';
 import { takenMonths } from './changes-months';
 import { classify } from './scanner-commit';
-import { onlyFile, type FileItem } from './file-item';
+import { onlyFile, onlyFilePlaced, type FileItem } from './file-item';
 import { discardUndo, type CommittedBytes } from './patch-commit';
 import { carryBlocks, namesSharing } from './shared-names';
 import { commitBytes, newVersion, type StagedBytes } from './versions';
@@ -179,6 +179,18 @@ export function parentOf(env: ChangeEnv, rootId: string, relPath: string): Drive
   return parent;
 }
 
+export function parentIdOf(env: ChangeEnv, rootId: string, relPath: string): string | null {
+  const folder = dirname(relPath);
+  if (folder === '.') {
+    return null;
+  }
+  const parent = env.store.driveItems.lookups.placed(rootId, folder);
+  if (parent?.kind !== 'folder') {
+    throw new DriveWriteError('missing', 'The folder is not in the index.');
+  }
+  return parent.id;
+}
+
 export interface ItemRecord {
   readonly draft: DriveItemDraft;
   readonly identity: DriveItemIdentity;
@@ -246,7 +258,7 @@ export interface Settle {
   readonly mode: number | undefined;
   readonly inode?: DriveInodePatch | undefined;
   readonly existing: FileItem | undefined;
-  readonly parent: DriveItem | null;
+  readonly parentId: string | null;
   readonly before: FileStamp | null;
   readonly committed: CommittedBytes;
 }
@@ -272,14 +284,14 @@ function captureRow(settle: Settle): DriveVersion | null {
 }
 
 function writtenDraft(settle: Settle): DriveItemDraft {
-  const { env, root, actor, existing, parent, committed, relPath } = settle;
+  const { env, root, actor, existing, parentId, committed, relPath } = settle;
   if (existing !== undefined) {
     return replacedDraft(existing, committed.stamp, committed.sha256);
   }
-  const scanned = onlyFile(env.store.driveItems.byPath(root.id, relPath, null));
+  const scanned = onlyFilePlaced(env.store.driveItems.lookups.placed(root.id, relPath));
   const added = {
     rootId: root.id,
-    parentId: parent?.id ?? null,
+    parentId,
     relPath,
     modifiedAt: isoOf(committed.stamp.mtimeNs),
     addedAt: scanned?.addedAt ?? env.now().toISOString(),
@@ -337,7 +349,10 @@ export async function locateExisting(
   relPath: string,
 ): Promise<Located> {
   const before = await env.files.stamp(await locate(root, relPath));
-  const existing = onlyFile(env.store.driveItems.byPath(root.id, relPath, null));
+  const existing =
+    env.store.driveItems.lookups.placed(root.id, relPath) === undefined
+      ? undefined
+      : onlyFile(env.store.driveItems.byPath(root.id, relPath, null));
   if (existing === undefined && before !== null) {
     throw new DriveWriteError('exists', 'The file is not in the index yet; scan the root first.');
   }
@@ -370,7 +385,7 @@ export async function prepareContent(
 ): Promise<PreparedContent> {
   const { root, relPath, actor } = write;
   const { existing, before } = await locateExisting(env, root, relPath);
-  const parent = parentOf(env, root.id, relPath);
+  const parentId = parentIdOf(env, root.id, relPath);
   const committed = await commitBytes(env, {
     root,
     staged: write.staged,
@@ -383,7 +398,7 @@ export async function prepareContent(
   const settle = { env, root, relPath, actor, alongside, mode: write.mode, inode: write.inode };
   return {
     committed,
-    settle: () => settleContent({ ...settle, existing, parent, before, committed }),
+    settle: () => settleContent({ ...settle, existing, parentId, before, committed }),
   };
 }
 

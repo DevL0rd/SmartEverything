@@ -409,7 +409,13 @@ func (c *blockCache) fetchListing(ctx context.Context, ino uint64) error {
 			gen = dir.dir.gen
 		}
 	}
+	c.fetching[ino] = []localNote{}
 	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		delete(c.fetching, ino)
+		c.mu.Unlock()
+	}()
 	var entries []wire.DirEntry
 	cursor := uint64(0)
 	for {
@@ -444,6 +450,7 @@ func (c *blockCache) fetchListing(ctx context.Context, ino uint64) error {
 	}
 	dir.dir.complete = true
 	dir.dir.epoch = slotEpoch
+	dir.dir.replayLocal(c.fetching[ino])
 	c.touchRoot(dir.root)
 	return nil
 }

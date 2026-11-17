@@ -19,6 +19,7 @@ export type MutationName =
   | 'LINK'
   | 'UNLINK'
   | 'RMDIR'
+  | 'RMTREE'
   | 'RENAME'
   | 'TMPFILE'
   | 'SETXATTR'
@@ -95,8 +96,8 @@ const CLAIMS: Readonly<Record<MutationName, Claimer>> = {
     held(resolver.commitInode(decodeKeyed(REQUEST_META, 'END', meta).commit)),
   MKDIR: (meta) => inFolder(decodeKeyed(REQUEST_META, 'MKDIR', meta)),
   CREATE: (meta) => inFolder(decodeKeyed(REQUEST_META, 'CREATE', meta)),
-  MKNOD: (meta) => held(decodeKeyed(REQUEST_META, 'MKNOD', meta).parent),
-  SYMLINK: (meta) => held(decodeKeyed(REQUEST_META, 'SYMLINK', meta).parent),
+  MKNOD: (meta) => inFolder(decodeKeyed(REQUEST_META, 'MKNOD', meta)),
+  SYMLINK: (meta) => inFolder(decodeKeyed(REQUEST_META, 'SYMLINK', meta)),
   TMPFILE: (meta) => held(decodeKeyed(REQUEST_META, 'TMPFILE', meta).parent),
   LINK: (meta) => {
     const link = decodeKeyed(REQUEST_META, 'LINK', meta);
@@ -104,6 +105,11 @@ const CLAIMS: Readonly<Record<MutationName, Claimer>> = {
   },
   UNLINK: (meta) => inFolder(decodeKeyed(REQUEST_META, 'UNLINK', meta)),
   RMDIR: (meta) => inFolder(decodeKeyed(REQUEST_META, 'RMDIR', meta)),
+  RMTREE: (meta) => {
+    const tree = decodeKeyed(REQUEST_META, 'RMTREE', meta);
+    const folder = inFolder(tree);
+    return { ...folder, hold: [...folder.hold, ...tree.inodes] };
+  },
   RENAME: (meta) => {
     const rename = decodeKeyed(REQUEST_META, 'RENAME', meta);
     return {

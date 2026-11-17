@@ -56,6 +56,9 @@ const HUB_SERVICE_CONFIG = z.strictObject({
   port: PORT.default(DEFAULT_SERVER_PORT),
   host: z.string().min(1).default('0.0.0.0'),
   go2rtcBinary: ABSOLUTE_PATH,
+  ffmpeg: z
+    .strictObject({ binary: ABSOLUTE_PATH, vaapiDevice: ABSOLUTE_PATH.optional() })
+    .optional(),
   go2rtcApiPort: PORT.default(1984),
   webrtcPort: PORT.default(8555),
   logLevel: z.enum(LOG_LEVELS).default('info'),
