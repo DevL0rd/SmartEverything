@@ -225,7 +225,7 @@ export class HelperProcess implements HelperPort {
   }
 
   private fail(mount: string, reason: string): void {
-    const raw = JSON.stringify({ type: 'status', mount, state: 'failed', reason });
+    const raw = JSON.stringify({ type: 'status', mount, state: 'failed', reason, readOnly: false });
     for (const listener of this.listeners) listener(raw);
   }
 }

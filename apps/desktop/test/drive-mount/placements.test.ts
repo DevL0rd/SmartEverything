@@ -311,15 +311,21 @@ describe('PlacementsController', () => {
     await settle();
     expect(h.reports.at(-1)?.mountPoint).toBeNull();
     expect(h.places).toEqual([]);
-    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    h.helper(
+      JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted', readOnly: false }),
+    );
     expect(h.reports.at(-1)).toMatchObject({ state: 'mounted', mountPoint: `${AREA}/Roms 1` });
     expect(h.places.at(-1)).toEqual([
       { placementId: placement(1).id, point: `${AREA}/Roms 1`, name: 'Roms 1' },
     ]);
-    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'stopped' }));
+    h.helper(
+      JSON.stringify({ type: 'status', mount: placement(1).id, state: 'stopped', readOnly: false }),
+    );
     expect(h.reports.at(-1)).toMatchObject({ state: 'stopped', mountPoint: null });
     expect(h.places.at(-1)).toEqual([]);
-    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    h.helper(
+      JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted', readOnly: false }),
+    );
     h.pushPlacements([]);
     await settle();
     expect(h.places.at(-1)).toEqual([]);
@@ -332,16 +338,20 @@ describe('PlacementsController', () => {
     const before = h.reports.length;
     h.pushPlacements([placement(1)]);
     await settle();
-    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    h.helper(
+      JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted', readOnly: false }),
+    );
     const afterMounted = h.reports.length;
     expect(afterMounted).toBe(before + 1);
     expect(h.reports.at(-1)).toMatchObject({
       state: 'mounted',
       tier: 'full',
       route: 'local',
-      readOnly: true,
+      readOnly: false,
     });
-    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    h.helper(
+      JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted', readOnly: false }),
+    );
     expect(h.reports).toHaveLength(afterMounted);
   });
 
@@ -349,7 +359,9 @@ describe('PlacementsController', () => {
     const h = harness();
     h.pushPlacements([placement(1)]);
     await settle();
-    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    h.helper(
+      JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted', readOnly: false }),
+    );
     const base = h.reports.length;
     const counters = {
       type: 'counters',
@@ -375,11 +387,43 @@ describe('PlacementsController', () => {
     const h = harness();
     h.pushPlacements([placement(1)]);
     await settle();
-    h.helper(JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted' }));
+    h.helper(
+      JSON.stringify({ type: 'status', mount: placement(1).id, state: 'mounted', readOnly: false }),
+    );
     h.setRoute({ endpoint: null });
     expect(h.reports.at(-1)).toMatchObject({ state: 'offline', route: null });
     h.setRoute({ endpoint: { kind: 'remote' } });
     expect(h.reports.at(-1)).toMatchObject({ state: 'mounted', route: 'remote' });
+  });
+
+  it('takes the exact status lines the mount helper writes and reports what they say', async () => {
+    const h = harness();
+    h.pushPlacements([placement(1), placement(2)]);
+    await settle();
+    const first = placement(1).id;
+    const second = placement(2).id;
+    h.helper(`{"type":"status","mount":"${first}","state":"mounted","readOnly":false}`);
+    expect(h.reports.at(-1)).toMatchObject({
+      placementId: first,
+      state: 'mounted',
+      readOnly: false,
+      mountPoint: `${AREA}/Roms 1`,
+    });
+    h.helper(`{"type":"status","mount":"${second}","state":"mounted","readOnly":true}`);
+    expect(h.reports.at(-1)).toMatchObject({
+      placementId: second,
+      state: 'mounted',
+      readOnly: true,
+    });
+    h.helper(
+      `{"type":"status","mount":"${first}","state":"failed","reason":"no route","readOnly":false}`,
+    );
+    expect(h.reports.at(-1)).toMatchObject({
+      placementId: first,
+      state: 'failed',
+      reason: 'no route',
+      mountPoint: null,
+    });
   });
 
   it('records a helper failure with its reason', async () => {

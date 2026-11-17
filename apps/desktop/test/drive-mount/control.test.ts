@@ -222,6 +222,7 @@ describe('mount helper process', () => {
         mount: 'p1',
         state: 'failed',
         reason: 'The mount helper stopped (SIGKILL)',
+        readOnly: false,
       },
     ]);
     helper.restart();
@@ -357,7 +358,9 @@ describe('mount controller', () => {
     await until(() => restarts.length === 1);
     helper.crash();
     await until(() => restarts.length === 2);
-    helper.pushLine(JSON.stringify({ type: 'status', mount: FIXTURE_ID, state: 'mounted' }));
+    helper.pushLine(
+      JSON.stringify({ type: 'status', mount: FIXTURE_ID, state: 'mounted', readOnly: false }),
+    );
     helper.crash();
     await until(() => restarts.length === 3);
     expect(sleeps).toEqual([1000, 2000, 1000]);
@@ -392,6 +395,24 @@ describe('mount controller', () => {
       'Mounted · 1 upload pending',
       'Mounted',
     ]);
+  });
+
+  it('names the reason a mount failed in the tray status', async () => {
+    const { controller, tray, links } = build();
+    await controller.start();
+    links[0]?.report({
+      ...FIXTURE_STATUS,
+      placementId: FIXTURE_ID,
+      state: 'failed',
+      tier: 'full',
+      route: 'local',
+      reason: 'fusermount3: mount failed: Operation not permitted',
+    });
+    expect(tray.at(-1)).toEqual({
+      status: 'Mount failed: fusermount3: mount failed: Operation not permitted',
+      mounted: false,
+      points: [],
+    });
   });
 
   const LIMITS = {
@@ -466,7 +487,9 @@ describe('mount controller', () => {
         },
       },
     ]);
-    helper.pushLine(JSON.stringify({ type: 'status', mount: FIXTURE_ID, state: 'stopped' }));
+    helper.pushLine(
+      JSON.stringify({ type: 'status', mount: FIXTURE_ID, state: 'stopped', readOnly: false }),
+    );
     expect(controller.tuning(DEFAULT_DESKTOP_DRIVE_TUNING).applied).toEqual([]);
   });
 

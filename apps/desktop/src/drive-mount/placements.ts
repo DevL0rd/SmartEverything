@@ -5,7 +5,9 @@ import type { MountLocations } from './mount-location.js';
 import type { MountPlace } from './mount-places.js';
 import { pathRefusal, type PathFacts } from './placement-paths.js';
 import {
+  HELPER_STARTING,
   PlacementStates,
+  heardOf,
   inOrder,
   isActive,
   mountFields,
@@ -279,17 +281,12 @@ export class PlacementsController {
   }
 
   private beginSynced(placement: DrivePlacement): void {
-    this.running.set(placement.id, {
-      placement,
-      point: null,
-      helperState: 'starting',
-      reason: null,
-    });
+    this.running.set(placement.id, { placement, point: null, ...HELPER_STARTING });
     this.states.set(placement.id, { state: 'starting', route: this.route, mountPoint: null });
   }
 
   private beginMount(placement: DrivePlacement, point: string): void {
-    const running: Running = { placement, point, helperState: 'starting', reason: null };
+    const running: Running = { placement, point, ...HELPER_STARTING };
     this.running.set(placement.id, running);
     this.states.set(placement.id, mountFields(running, this.route));
     this.subscribe(placement.id);
@@ -361,8 +358,7 @@ export class PlacementsController {
       }
       return;
     }
-    running.helperState = line.type === 'error' ? 'failed' : line.state;
-    running.reason = line.reason ?? null;
+    Object.assign(running, heardOf(line));
     this.states.set(line.mount, mountFields(running, this.route));
     this.showPlaces();
   }

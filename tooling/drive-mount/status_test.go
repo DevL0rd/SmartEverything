@@ -10,19 +10,36 @@ import (
 func TestStatusOnChangeOnly(t *testing.T) {
 	out := &bytes.Buffer{}
 	r := newReporter(out)
-	r.status("a", stateMounted, "")
-	r.status("a", stateMounted, "")
-	r.status("b", stateMounted, "")
-	r.status("a", stateFailed, "gone")
-	r.status("a", stateFailed, "gone")
+	r.status("a", stateMounted, "", false)
+	r.status("a", stateMounted, "", false)
+	r.status("b", stateMounted, "", false)
+	r.status("a", stateFailed, "gone", false)
+	r.status("a", stateFailed, "gone", false)
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("lines %v", lines)
 	}
 	r.forget("a")
-	r.status("a", stateFailed, "gone")
+	r.status("a", stateFailed, "gone", false)
 	if got := strings.Count(out.String(), "\n"); got != 4 {
 		t.Fatalf("after forget %d lines", got)
+	}
+}
+
+func TestStatusLineIsTheLineTheDesktopReads(t *testing.T) {
+	out := &bytes.Buffer{}
+	r := newReporter(out)
+	r.status("a", stateMounted, "", false)
+	r.status("b", stateMounted, "", true)
+	r.status("a", stateFailed, "no route\n", false)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	want := []string{
+		`{"type":"status","mount":"a","state":"mounted","readOnly":false}`,
+		`{"type":"status","mount":"b","state":"mounted","readOnly":true}`,
+		`{"type":"status","mount":"a","state":"failed","reason":"no route","readOnly":false}`,
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("lines %v, want %v", lines, want)
 	}
 }
 
@@ -44,7 +61,7 @@ func TestUsageLineIsTheCountersLineTheDesktopReads(t *testing.T) {
 
 func TestFailureLineNamesTheMountAndTheReason(t *testing.T) {
 	out := &bytes.Buffer{}
-	newReporter(out).failure("a", errors.New("no route"))
+	newReporter(out).failure("a", errors.New("no route\n"))
 	if got := strings.TrimSpace(out.String()); got != `{"type":"error","mount":"a","reason":"no route"}` {
 		t.Fatalf("line %s", got)
 	}

@@ -109,7 +109,7 @@ func (s *mountSet) mount(id string, root mountRoot, point string, options mountO
 	s.mounts[id] = active
 	s.mu.Unlock()
 	go s.watch(active)
-	s.report.status(id, stateMounted, "")
+	s.report.status(id, stateMounted, "", options.readOnly)
 	s.report.applied(id, &active.applied, live.load())
 	s.publish(active)
 	return nil
@@ -152,7 +152,7 @@ func (s *mountSet) cache(policy cachePolicy) error {
 }
 
 func (s *mountSet) fail(id string, err error) error {
-	s.report.status(id, stateFailed, err.Error())
+	s.report.status(id, stateFailed, err.Error(), false)
 	return err
 }
 
@@ -234,7 +234,7 @@ func (s *mountSet) watch(active *activeMount) {
 	s.mu.Lock()
 	if s.mounts[active.id] == active {
 		delete(s.mounts, active.id)
-		s.report.status(active.id, stateStopped, "unmounted outside the helper")
+		s.report.status(active.id, stateStopped, "unmounted outside the helper", false)
 	}
 	s.mu.Unlock()
 	close(active.done)
@@ -262,7 +262,7 @@ func (s *mountSet) unmount(id string) error {
 	}
 	err := active.server.Unmount()
 	<-active.done
-	s.report.status(id, stateStopped, "")
+	s.report.status(id, stateStopped, "", false)
 	s.report.forget(id)
 	return err
 }

@@ -10,6 +10,8 @@ export type PlacementReport = Omit<PlacementStateFrame, 'type'>;
 export class PlacementLink {
   private latest: readonly DrivePlacement[] | null = null;
   private demanded = false;
+  private greeted = false;
+  private readonly held = new Map<string, PlacementReport>();
   private readonly placementListeners = new Listeners<readonly DrivePlacement[]>();
   private readonly demandListeners = new Listeners<boolean>();
 
@@ -27,6 +29,10 @@ export class PlacementLink {
       return false;
     }
     this.latest = frame.placements;
+    const known = new Set(frame.placements.map((placement) => placement.id));
+    for (const id of [...this.held.keys()]) {
+      if (!known.has(id)) this.held.delete(id);
+    }
     this.placementListeners.emit(frame.placements);
     return true;
   }
@@ -44,10 +50,17 @@ export class PlacementLink {
   }
 
   report(report: PlacementReport): void {
-    this.send({ type: 'placement_state', ...report });
+    this.held.set(report.placementId, report);
+    if (this.greeted) this.send({ type: 'placement_state', ...report });
+  }
+
+  helloSent(): void {
+    this.greeted = true;
+    for (const report of this.held.values()) this.send({ type: 'placement_state', ...report });
   }
 
   stop(): void {
+    this.greeted = false;
     this.latest = null;
     this.setDemanded(false);
   }

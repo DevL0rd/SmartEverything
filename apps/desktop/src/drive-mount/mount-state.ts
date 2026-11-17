@@ -35,8 +35,13 @@ function pendingWord(count: number): string {
   return `${String(count)} ${count === 1 ? 'upload' : 'uploads'} pending`;
 }
 
+function troubleOf(state: MountState, reports: readonly PlacementReport[]): string {
+  const reason = reports.find((report) => report.state === state && report.reason !== null)?.reason;
+  return reason === undefined || reason === null ? `Mount ${state}` : `Mount ${state}: ${reason}`;
+}
+
 function statusOf(state: MountState, reports: readonly PlacementReport[], pending: number): string {
-  if (state !== 'mounted') return `Mount ${state}`;
+  if (state !== 'mounted') return troubleOf(state, reports);
   const parts = ['Mounted'];
   if (reports.some((report) => report.readOnly)) parts.push('read only');
   if (pending > 0) parts.push(pendingWord(pending));

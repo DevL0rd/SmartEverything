@@ -65,7 +65,7 @@ func (s *mountSet) route(spec routeSpec) error {
 }
 
 func (s *mountSet) fail(id string, err error) error {
-	s.report.status(id, stateFailed, err.Error())
+	s.report.status(id, stateFailed, err.Error(), false)
 	return err
 }
 
@@ -158,7 +158,7 @@ func (s *mountSet) mount(id string, root mountRoot, point string, options mountO
 	s.mounts[id] = active
 	s.mu.Unlock()
 	go s.watch(active, finished)
-	s.report.status(id, stateMounted, "")
+	s.report.status(id, stateMounted, "", options.readOnly)
 	s.report.applied(id, nil, live.load())
 	s.publish(active)
 	return nil
@@ -206,7 +206,7 @@ func (s *mountSet) watch(active *activeMount, finished <-chan error) {
 		if err != nil {
 			reason = err.Error()
 		}
-		s.report.status(active.id, stateStopped, reason)
+		s.report.status(active.id, stateStopped, reason, false)
 	}
 	s.mu.Unlock()
 	close(active.done)
@@ -238,7 +238,7 @@ func (s *mountSet) unmount(id string) error {
 		err = fmt.Errorf("mount %q: WinFsp refused the unmount", id)
 	}
 	<-active.done
-	s.report.status(id, stateStopped, "")
+	s.report.status(id, stateStopped, "", false)
 	s.report.forget(id)
 	return err
 }

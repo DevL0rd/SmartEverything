@@ -188,6 +188,7 @@ export class ComputerNode {
     });
     this.hello = complete;
     link.send({ type: 'hello', hello: complete });
+    this.placements.helloSent();
     this.sync();
     this.watchMachine();
     this.watchTiling();

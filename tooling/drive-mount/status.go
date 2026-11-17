@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -120,8 +121,8 @@ func newReporter(out io.Writer) *reporter {
 	return &reporter{enc: json.NewEncoder(out), last: map[string]statusLine{}, seen: map[string]usageLine{}, app: map[string]string{}}
 }
 
-func (r *reporter) status(mount, state, reason string) {
-	line := statusLine{Type: "status", Mount: mount, State: state, Reason: reason}
+func (r *reporter) status(mount, state, reason string, readOnly bool) {
+	line := statusLine{Type: "status", Mount: mount, State: state, Reason: strings.TrimSpace(reason), ReadOnly: readOnly}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if previous, ok := r.last[mount]; ok && previous == line {
@@ -193,5 +194,5 @@ func (r *reporter) applied(mount string, remount *remountApplied, f liveFields) 
 func (r *reporter) failure(mount string, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.enc.Encode(errorLine{Type: "error", Mount: mount, Reason: err.Error()})
+	r.enc.Encode(errorLine{Type: "error", Mount: mount, Reason: strings.TrimSpace(err.Error())})
 }

@@ -17,6 +17,7 @@ const HELPER_LINE = z.discriminatedUnion('type', [
     mount: z.string().min(1),
     state: z.enum(['mounted', 'stopped', 'failed']),
     reason: z.string().optional(),
+    readOnly: z.boolean(),
   }),
   z.strictObject({
     type: z.literal('error'),
@@ -171,10 +172,28 @@ export interface Running {
   readonly point: string | null;
   helperState: HelperState;
   reason: string | null;
+  readOnly: boolean;
+}
+
+type HelperHeard = Pick<Running, 'helperState' | 'reason' | 'readOnly'>;
+
+export const HELPER_STARTING: HelperHeard = {
+  helperState: 'starting',
+  reason: null,
+  readOnly: false,
+};
+
+export function heardOf(
+  line: Extract<HelperLine, { readonly type: 'status' | 'error' }>,
+): HelperHeard {
+  return {
+    helperState: line.type === 'error' ? 'failed' : line.state,
+    reason: line.reason ?? null,
+    readOnly: line.type === 'status' && line.readOnly,
+  };
 }
 
 const OFFLINE_REASON = 'The hub cannot be reached';
-const MOUNT_READ_ONLY = true;
 
 export function specOf(placement: DrivePlacement): string {
   return JSON.stringify([
@@ -195,7 +214,7 @@ export function inOrder(first: DrivePlacement, second: DrivePlacement): number {
 }
 
 export function mountFields(running: Running, route: RouteKind): PlacementFields {
-  const base = { tier: 'full', basicLimits: null, readOnly: MOUNT_READ_ONLY, route } as const;
+  const base = { tier: 'full', basicLimits: null, readOnly: running.readOnly, route } as const;
   switch (running.helperState) {
     case 'starting':
       return { ...base, state: 'starting', reason: null, mountPoint: null };

@@ -117,6 +117,7 @@ describe('PlacementLink', () => {
 
   it('sends placement_state with the reported fields', () => {
     const { placements, sent } = link();
+    placements.helloSent();
     placements.report({ placementId: IDS.placement, ...STATUS, state: 'mounted', tier: 'full' });
     expect(sent).toEqual([
       {
@@ -127,6 +128,51 @@ describe('PlacementLink', () => {
         tier: 'full',
       },
     ]);
+  });
+
+  it('holds reports made before the hello and sends the latest of each after it', () => {
+    const { placements, sent } = link();
+    placements.handle({ type: 'placements', placements: [PLACEMENT] });
+    placements.report({ placementId: IDS.placement, ...STATUS, state: 'starting' });
+    placements.report({ placementId: IDS.placement, ...STATUS, state: 'mounted', tier: 'full' });
+    expect(sent).toEqual([]);
+    placements.helloSent();
+    expect(sent).toEqual([
+      {
+        type: 'placement_state',
+        placementId: IDS.placement,
+        ...STATUS,
+        state: 'mounted',
+        tier: 'full',
+      },
+    ]);
+  });
+
+  it('sends the latest reports again after the hello of a new connection', () => {
+    const { placements, sent } = link();
+    placements.handle({ type: 'placements', placements: [PLACEMENT] });
+    placements.helloSent();
+    placements.report({ placementId: IDS.placement, ...STATUS, state: 'mounted', tier: 'full' });
+    placements.stop();
+    placements.report({ placementId: IDS.placement, ...STATUS, state: 'offline', tier: 'full' });
+    expect(sent).toHaveLength(1);
+    placements.helloSent();
+    expect(sent.at(-1)).toEqual({
+      type: 'placement_state',
+      placementId: IDS.placement,
+      ...STATUS,
+      state: 'offline',
+      tier: 'full',
+    });
+  });
+
+  it('stops holding the report of a placement the hub no longer lists', () => {
+    const { placements, sent } = link();
+    placements.handle({ type: 'placements', placements: [PLACEMENT] });
+    placements.report({ placementId: IDS.placement, ...STATUS, state: 'mounted' });
+    placements.handle({ type: 'placements', placements: [] });
+    placements.helloSent();
+    expect(sent).toEqual([]);
   });
 
   it('tells when drive_mounts is demanded and only on a change', () => {
@@ -177,6 +223,10 @@ describe('ComputerNode placements', () => {
     links.hub.send({ type: 'demand', demand: { topics: { drive_mounts: 1 } } });
     expect(node.placements.mountsDemanded).toBe(true);
     node.placements.report({ placementId: IDS.placement, ...STATUS });
-    expect(sent).toContainEqual({ type: 'placement_state', placementId: IDS.placement, ...STATUS });
+    expect(sent).not.toContainEqual({
+      type: 'placement_state',
+      placementId: IDS.placement,
+      ...STATUS,
+    });
   });
 });
