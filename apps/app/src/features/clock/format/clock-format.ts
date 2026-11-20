@@ -1,6 +1,6 @@
 import { localeClockFormat } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import {
   clockFormatOf,
   clockLabelOf,
@@ -45,8 +45,14 @@ export function ClockFormatHost(): ReactNode {
   const store = useEntityStore();
   const live = useSyncStatus().status === 'live';
   const missing = useStoreSelector(formatMissing);
+  const attempted = useRef(false);
   useEffect(() => {
-    if (!live || !missing) return;
+    if (!live) {
+      attempted.current = false;
+      return;
+    }
+    if (!missing || attempted.current) return;
+    attempted.current = true;
     const format = localeClockFormat();
     log.info('clock.format_created', { hour24: format.hour24 });
     savePref(store, PREFS.clockFormat, format);

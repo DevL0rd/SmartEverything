@@ -267,6 +267,7 @@ function TimerCard({
               size={40}
               thickness={4}
               colour="primary"
+              ticking
             />
           </View>
           <View className="min-w-0 flex-1">

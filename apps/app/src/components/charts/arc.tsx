@@ -32,6 +32,7 @@ export interface ArcProps {
   readonly tinted?: boolean;
   readonly ticks?: readonly ArcTick[];
   readonly overlay?: boolean;
+  readonly ticking?: boolean;
 }
 
 function ArcStroke({
@@ -186,11 +187,12 @@ export function Arc({
   tinted = false,
   ticks = [],
   overlay = false,
+  ticking = false,
 }: ArcProps): ReactNode {
   const centre = size / 2;
   const radius = (size - thickness) / 2;
   const target = Math.min(1, Math.max(0, value));
-  const drawn = useDraw(target, !useMotion().reduced);
+  const drawn = useDraw(target, !useMotion().reduced, ticking);
   const ring = { cx: centre, cy: centre, r: radius };
   const path = arcPath(ring, startAngle, startAngle + sweep);
   return (
