@@ -34,7 +34,7 @@ interface Ready<T> {
 
 export interface BatchEnv {
   readonly lanes: DriveRootLanes;
-  readonly files: Pick<DriveFiles, 'syncFilesystems'>;
+  readonly files: Pick<DriveFiles, 'syncPaths'>;
   readonly write: <R>(work: () => R) => R;
   readonly settled: () => void;
   readonly claim: (claim: ReplayClaim) => void;
@@ -80,7 +80,7 @@ export class NameBatches<T> {
     const queue = this.queues.get(rootId) ?? [];
     this.queues.delete(rootId);
     const slot: BatchSlot = {
-      barrier: { directories: new Set(), manifests: [] },
+      barrier: { paths: new Set(), manifests: [] },
       reserved: new Set(),
       folders: new Map(),
       touched: new Map(),
@@ -118,10 +118,7 @@ export class NameBatches<T> {
     turn: Promise<void> | undefined,
   ): Promise<void> {
     try {
-      await this.env.files.syncFilesystems([
-        ...slot.barrier.manifests,
-        ...slot.barrier.directories,
-      ]);
+      await this.env.files.syncPaths([...slot.barrier.manifests, ...slot.barrier.paths]);
     } catch (cause) {
       await turn;
       for (const { waiting, landed } of ready) {

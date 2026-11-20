@@ -346,9 +346,9 @@ describe('many files made at once', () => {
   it('lands them together with one disk sync and one write to the index', async () => {
     const { files } = rig.env.change;
     const synced: (readonly string[])[] = [];
-    const sync = files.syncFilesystems.bind(files);
+    const sync = files.syncPaths.bind(files);
     Object.assign(files, {
-      syncFilesystems: async (paths: readonly string[]): Promise<void> => {
+      syncPaths: async (paths: readonly string[]): Promise<void> => {
         synced.push(paths);
         await sync(paths);
       },
@@ -372,6 +372,8 @@ describe('many files made at once', () => {
     for (const name of names) expect(await diskText(rig.mine, name)).toBe(name);
     expect(synced.length).toBeGreaterThan(0);
     expect(synced.length).toBeLessThan(names.length);
+    for (const name of names)
+      expect(synced.flat().some((path) => path.endsWith(`/${name}`))).toBe(true);
     expect(writes).toBeLessThan(names.length * 2);
   });
 

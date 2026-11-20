@@ -235,9 +235,9 @@ describe('many files removed at once', () => {
     );
     const { files } = rig.env.change;
     const synced: (readonly string[])[] = [];
-    const sync = files.syncFilesystems.bind(files);
+    const sync = files.syncPaths.bind(files);
     Object.assign(files, {
-      syncFilesystems: async (paths: readonly string[]): Promise<void> => {
+      syncPaths: async (paths: readonly string[]): Promise<void> => {
         synced.push(paths);
         await sync(paths);
       },

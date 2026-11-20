@@ -11,9 +11,21 @@ export async function writeUnsynced(path: string, temporary: string, text: strin
 
 const run = promisify(execFile);
 
-export async function syncFilesystems(paths: readonly string[]): Promise<void> {
-  if (paths.length === 0) return;
-  await run('sync', ['-f', '--', ...new Set(paths)]);
+export const PARALLEL_SYNCS = 16;
+
+async function syncEach(paths: readonly string[]): Promise<void> {
+  await Promise.all(paths.map((path) => syncDirectory(path)));
+}
+
+async function syncFilesystemsOf(paths: readonly string[]): Promise<void> {
+  await run('sync', ['-f', '--', ...new Set(paths.map((path) => dirname(path)))]);
+}
+
+export async function syncPaths(paths: readonly string[]): Promise<void> {
+  const distinct = [...new Set(paths)];
+  if (distinct.length === 0) return;
+  if (distinct.length <= PARALLEL_SYNCS) await syncEach(distinct);
+  else await syncFilesystemsOf(distinct);
 }
 
 export async function syncDirectory(path: string): Promise<void> {

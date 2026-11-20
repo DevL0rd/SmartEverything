@@ -178,23 +178,12 @@ interface TrashPlan {
 }
 
 export interface Barrier {
-  readonly directories: Set<string>;
+  readonly paths: Set<string>;
   readonly manifests: string[];
 }
 
-const SYNC_WORKERS = 16;
-
-async function syncBarrier(env: FileEnv, barrier: Barrier): Promise<void> {
-  const queue = [...barrier.manifests];
-  const workers = Array.from({ length: Math.min(SYNC_WORKERS, queue.length) }, async () => {
-    for (let path = queue.pop(); path !== undefined; path = queue.pop()) {
-      await env.files.syncFile(path);
-    }
-  });
-  await Promise.all(workers);
-  for (const directory of barrier.directories) {
-    await env.files.syncDirectory(directory);
-  }
+function syncBarrier(env: FileEnv, barrier: Barrier): Promise<void> {
+  return env.files.syncPaths([...barrier.manifests, ...barrier.paths]);
 }
 
 async function planTrashes(
@@ -241,14 +230,14 @@ async function moveOne(
       env,
       root,
       { relPath: request.relPath, trashRelPath: entry.trashRelPath },
-      barrier.directories,
+      barrier.paths,
     );
   } else {
     await moveWithin(
       env.files,
       root,
       { from: request.relPath, to: entry.trashRelPath, mode: 'replace' },
-      barrier.directories,
+      barrier.paths,
     );
   }
   barrier.manifests.push(manifest);
@@ -282,7 +271,7 @@ export async function moveManyToTrash(
   const results = new Map<string, TrashBatchResult>();
   const plans = await planTrashes(env, root, requests, results);
   const intents = openIntents(env, root, plans);
-  const barrier: Barrier = { directories: new Set(), manifests: [] };
+  const barrier: Barrier = { paths: new Set(), manifests: [] };
   const moved: { plan: TrashPlan; intent: DriveIntent | null }[] = [];
   for (const [index, plan] of plans.entries()) {
     const intent = intents[index] ?? null;

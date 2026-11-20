@@ -169,7 +169,7 @@ export class PosixCreate {
       await files.remove(path);
       throw cause;
     }
-    slot.barrier.directories.add(dirname(path));
+    slot.barrier.paths.add(path).add(dirname(path));
     const made = stamp;
     let entry: Entry | null = null;
     return {
@@ -259,7 +259,7 @@ export class PosixCreate {
           mtimeNs: request.mtimeNs,
         },
       },
-      slot.barrier.directories,
+      slot.barrier.paths,
     );
     let entry: Entry | null = null;
     return {

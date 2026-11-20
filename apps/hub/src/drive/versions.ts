@@ -1,5 +1,12 @@
-import { stageEmptyFile, syncDirectory, syncFilesystems, writeUnsynced } from './unsynced';
-import { chmodNoFollow, cloneFile, readNoFollow, stageFile, stageFileUnsynced, writeDurable } from './file-ops';
+import { stageEmptyFile, syncDirectory, syncPaths, writeUnsynced } from './unsynced';
+import {
+  chmodNoFollow,
+  cloneFile,
+  readNoFollow,
+  stageFile,
+  stageFileUnsynced,
+  writeDurable,
+} from './file-ops';
 import { randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -91,9 +98,8 @@ export const nodeFiles: DriveFiles = {
   stageEmpty: stageEmptyFile,
   writeDurable,
   writeUnsynced,
-  syncFile: syncDirectory,
   syncDirectory,
-  syncFilesystems,
+  syncPaths,
   chmod: chmodNoFollow,
   clone: cloneFile,
   writeUndo: writeUndoLog,
@@ -187,6 +193,7 @@ async function moveIntoPlace(
     { from: staged.relPath, to: relPath, mode: 'replace' },
     deferred,
   );
+  deferred?.add(await locate(root, relPath));
 }
 
 async function replaceFile(

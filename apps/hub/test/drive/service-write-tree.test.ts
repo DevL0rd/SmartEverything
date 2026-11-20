@@ -244,7 +244,7 @@ describe('copying links and special files', () => {
 });
 
 describe('trashing a batch', () => {
-  it('moves fifty items with one sync per directory and keeps a missing item as a failure', async () => {
+  it('moves fifty items behind one durability barrier and keeps a missing item as a failure', async () => {
     const { store } = opened;
     const drive = opened.layout.person(robinId).drive;
     const ids: string[] = [];
@@ -261,12 +261,12 @@ describe('trashing a batch', () => {
     }
     const ghost = '0f200000-0000-4000-8000-000000000001';
     putItem(store, { rootId: ROBIN_DRIVE, id: ghost, relPath: 'ghost.txt', kind: 'document' });
-    const syncs = { files: 0, directories: 0, durable: 0 };
+    const syncs = { barriers: new Array<readonly string[]>(), directories: 0, durable: 0 };
     const counting = {
       ...nodeFiles,
-      syncFile: (path: string): Promise<void> => {
-        syncs.files += 1;
-        return nodeFiles.syncFile(path);
+      syncPaths: (paths: readonly string[]): Promise<void> => {
+        syncs.barriers.push(paths);
+        return nodeFiles.syncPaths(paths);
       },
       syncDirectory: (path: string): Promise<void> => {
         syncs.directories += 1;
@@ -293,8 +293,13 @@ describe('trashing a batch', () => {
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0]?.itemId).toBe(ghost);
     expect(syncs.durable).toBe(0);
-    expect(syncs.files).toBe(50);
-    expect(syncs.directories).toBeLessThanOrEqual(3);
+    expect(syncs.barriers).toHaveLength(1);
+    const synced = new Set(syncs.barriers[0]);
+    for (const id of ids) {
+      expect([...synced].some((path) => path.endsWith(`${id}.json`))).toBe(true);
+    }
+    expect(synced.has(drive)).toBe(true);
+    expect(syncs.directories).toBe(0);
     expect(store.driveTrash.find(ids[0] ?? '')).toBeDefined();
     expect(store.driveIntents.all()).toEqual([]);
     expect((await readdir(drive)).filter((name) => name.startsWith('batch-'))).toEqual([]);
@@ -307,7 +312,12 @@ describe('trashing a batch', () => {
     for (let index = 0; index < 20; index += 1) {
       const id = `0f300000-0000-4000-8000-${String(index).padStart(12, '0')}`;
       await writeFile(join(drive, `same-${String(index)}.jpg`), `photo ${String(index)}`);
-      putItem(store, { rootId: ROBIN_DRIVE, id, relPath: `same-${String(index)}.jpg`, kind: 'document' });
+      putItem(store, {
+        rootId: ROBIN_DRIVE,
+        id,
+        relPath: `same-${String(index)}.jpg`,
+        kind: 'document',
+      });
       ids.push(id);
     }
     const yielding = {
@@ -354,8 +364,12 @@ describe('trashing a batch', () => {
     expect((await readdir(drive)).filter((name) => name.startsWith('same-'))).toEqual([]);
     for (const [index, id] of ids.entries()) {
       expect(store.driveTrash.find(id)).toBeDefined();
-      expect(store.driveItems.byPath(ROBIN_DRIVE, `same-${String(index)}.jpg`, null)).toBeUndefined();
-      expect(await readFile(join(drive, TRASH_DIRECTORY, id), 'utf8')).toBe(`photo ${String(index)}`);
+      expect(
+        store.driveItems.byPath(ROBIN_DRIVE, `same-${String(index)}.jpg`, null),
+      ).toBeUndefined();
+      expect(await readFile(join(drive, TRASH_DIRECTORY, id), 'utf8')).toBe(
+        `photo ${String(index)}`,
+      );
     }
   });
 
@@ -377,7 +391,9 @@ describe('trashing a batch', () => {
     const env = { files: nodeFiles, store, log: testLogger('drive'), now: (): Date => NOW };
     await abandonIntent(env, root, stale);
     expect(await readFile(join(drive, TRASH_DIRECTORY, id), 'utf8')).toBe('kept');
-    expect(await readFile(join(drive, manifestPath(`${TRASH_DIRECTORY}/${id}`)), 'utf8')).toContain(id);
+    expect(await readFile(join(drive, manifestPath(`${TRASH_DIRECTORY}/${id}`)), 'utf8')).toContain(
+      id,
+    );
     await expect(stat(join(drive, 'kept.jpg'))).rejects.toThrow();
     expect(store.driveIntents.all()).toEqual([]);
   });
