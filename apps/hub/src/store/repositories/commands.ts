@@ -10,7 +10,7 @@ import {
 import type { CommandOutcome } from '../../database/port';
 import { storedRow } from '../codec';
 import { found, moment, type StoreContext } from '../context';
-import { inList, jsonText } from '../sql';
+import { allOf, inList, jsonText } from '../sql';
 
 const STORED_COMMAND = storedRow(COMMAND_ROW, { json: ['value', 'result'] });
 
@@ -61,22 +61,23 @@ export class CommandsRepository {
       readonly limit?: number | undefined;
     },
   ): CommandRow[] {
-    const named = inList('capability', 'capabilities', window.capabilities ?? []);
+    const filter = allOf([
+      { text: 'device_id = $deviceId', parameters: { deviceId, limit: window.limit ?? -1 } },
+      ...(window.from === undefined
+        ? []
+        : [{ text: 'created_at >= $from', parameters: { from: moment(window.from) } }]),
+      ...(window.to === undefined
+        ? []
+        : [{ text: 'created_at < $to', parameters: { to: moment(window.to) } }]),
+      ...(window.capabilities === undefined
+        ? []
+        : [inList('capability', 'capabilities', window.capabilities)]),
+    ]);
     return this.context.sql.all(
       STORED_COMMAND,
-      `select ${COLUMNS} from commands
-       where device_id = $deviceId and ($from is null or created_at >= $from)
-         and ($to is null or created_at < $to)
-         and ($filtered = 0 or ${named.text})
+      `select ${COLUMNS} from commands where ${filter.text}
        order by created_at desc, rowid desc limit $limit`,
-      {
-        ...named.parameters,
-        deviceId,
-        from: window.from === undefined ? null : moment(window.from),
-        to: window.to === undefined ? null : moment(window.to),
-        filtered: window.capabilities === undefined ? 0 : 1,
-        limit: window.limit ?? -1,
-      },
+      filter.parameters,
     );
   }
 

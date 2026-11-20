@@ -1,6 +1,6 @@
 import type { PluginLogLine, RuntimeLogRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { Store } from '../store/store';
+import type { LogStore } from '../logs/log-store';
 
 const PLUGIN_LOG_PAGE = 500;
 
@@ -24,8 +24,11 @@ function logLine(row: RuntimeLogRow): PluginLogLine {
   return { at: row.at, line };
 }
 
-export function readPluginLines(store: Store, id: string): readonly PluginLogLine[] {
-  const page = store.runtimeLogs.search(
+export function readPluginLines(
+  logs: Pick<LogStore, 'search'>,
+  id: string,
+): readonly PluginLogLine[] {
+  const page = logs.search(
     { owner: true, profileId: null },
     { source: pluginSource(id), limit: PLUGIN_LOG_PAGE },
   );

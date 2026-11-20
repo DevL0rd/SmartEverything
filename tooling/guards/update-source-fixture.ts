@@ -17,6 +17,7 @@ export function writeUpdateSource(
     file,
     JSON.stringify({
       go2rtcBinary: '/opt/go2rtc',
+      database: data,
       updateSource: { repository: 'owner/repo', remote: 'origin', branch: 'main', ...source },
     }),
   );

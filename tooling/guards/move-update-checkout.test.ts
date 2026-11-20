@@ -71,7 +71,7 @@ beforeEach(async () => {
   data = (await testLayout(join(scratch, 'data'))).root;
   const file = dataLayoutOf(data).system.config.service;
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ go2rtcBinary: '/opt/go2rtc' }));
+  writeFileSync(file, JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: data }));
   await configureUpdateSource({ checkout, data });
 });
 

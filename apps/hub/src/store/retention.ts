@@ -1,6 +1,5 @@
 import { DAY_MS } from '../metrics/minute';
 import { sweepBottleRetention } from './bottle-retention';
-import { sweepRuntimeLogs } from './runtime-log-retention';
 import { sweepAutomationRetention } from './retention-automations';
 import type { Sql } from './sql';
 
@@ -29,7 +28,6 @@ export function sweepRetention(sql: Sql, now: Date): Record<string, number> {
     ...swept,
     ...sweepBottleRetention(sql, now),
     ...sweepAutomationRetention(sql, now),
-    ...sweepRuntimeLogs(sql, now),
     photo_unlocks: sql.run(
       'drop the expired Locked folder sessions',
       'delete from photo_unlocks where expires_at <= $now',

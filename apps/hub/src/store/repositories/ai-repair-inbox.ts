@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 import type { StoreContext } from '../context';
 import { SQL_JSON, jsonText, type SqlParameters } from '../sql';
+import type { RepairEvidence } from '../../logs/writes';
 
 const STORED_GROUP = AI_REPAIR_GROUP.extend({
   admission: SQL_JSON.pipe(AI_REPAIR_ADMISSION).nullable(),
@@ -62,20 +63,36 @@ export class AiRepairInboxRepository {
     );
   }
 
+  observe(evidence: RepairEvidence): void {
+    const { record, fingerprint, component, logId } = evidence;
+    this.context.write(() => {
+      this.context.sql.run(
+        'group the repair evidence of a stored runtime log',
+        `insert into ai_repair_groups (
+           fingerprint, component, event, first_at, last_at, observations, latest_log_id
+         )
+         values ($fingerprint, $component, $event, $at, $at, 1, $logId)
+         on conflict (fingerprint) do update set
+           first_at = min(ai_repair_groups.first_at, excluded.first_at),
+           last_at = max(ai_repair_groups.last_at, excluded.last_at),
+           observations = ai_repair_groups.observations + 1,
+           latest_log_id = case when excluded.last_at >= ai_repair_groups.last_at
+             or ai_repair_groups.latest_log_id is null then excluded.latest_log_id
+             else ai_repair_groups.latest_log_id end`,
+        { fingerprint, component, event: record.event, at: record.at, logId },
+      );
+    });
+  }
+
   pendingAutomatic(retryFailed = false): readonly {
     readonly fingerprint: string;
     readonly logId: number;
-    readonly clientId: string | null;
   }[] {
     return this.context.sql.all(
-      z.object({
-        fingerprint: z.string(),
-        logId: z.int().positive(),
-        clientId: z.string().nullable(),
-      }),
-      `select g.fingerprint, g.latest_log_id as logId, l.client_id as clientId
-       from ai_repair_groups g join runtime_logs l on l.id = g.latest_log_id
-       where ${VISIBLE} and ($retryFailed = 1 or g.failed_event_id is null) and not exists (
+      z.object({ fingerprint: z.string(), logId: z.int().positive() }),
+      `select g.fingerprint, g.latest_log_id as logId
+       from ai_repair_groups g
+       where g.latest_log_id is not null and ${VISIBLE} and ($retryFailed = 1 or g.failed_event_id is null) and not exists (
          select 1 from assistant_events e
          where e.id = json_extract(g.admission, '$.eventId')
        ) and (g.automatic_admitted = 0 or json_extract(g.admission, '$.kind') = 'held')

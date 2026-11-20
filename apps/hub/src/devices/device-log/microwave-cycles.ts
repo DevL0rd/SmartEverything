@@ -18,6 +18,7 @@ import type { DeviceLogSource, LogRequest, LogStore } from './types';
 
 const BEGINNING = new Date(0).toISOString();
 const EVENTS_PER_CYCLE = 5;
+const CYCLE_EVENT_KIND = 'activity';
 const SETTLE_MS = 5000;
 const NO_DURATION = '00:00:00';
 const START_COMMANDS: ReadonlySet<string> = new Set([
@@ -41,7 +42,7 @@ function capabilityOf(event: EventRow): unknown {
 function isCycleEvent(event: EventRow): boolean {
   const capability = capabilityOf(event);
   return (
-    event.kind === 'activity' &&
+    event.kind === CYCLE_EVENT_KIND &&
     typeof capability === 'string' &&
     CYCLE_CAPABILITIES.has(capability)
   );
@@ -155,8 +156,11 @@ function programText(program: Readonly<Record<string, JsonValue>>): string | und
 function readCycles(store: LogStore, request: LogRequest): readonly DeviceLogEntry[] {
   const { device, limit } = request;
   if (presentDevice(device).family !== 'microwave') return [];
-  const events = eventsWhere(store, { ...request, limit: limit * EVENTS_PER_CYCLE }, (event) =>
-    isCycleEvent(event),
+  const events = eventsWhere(
+    store,
+    { ...request, limit: limit * EVENTS_PER_CYCLE },
+    (event) => isCycleEvent(event),
+    { kinds: [CYCLE_EVENT_KIND] },
   );
   const before = request.to === undefined ? Number.POSITIVE_INFINITY : Date.parse(request.to);
   const cycles = cyclesOf(events)
@@ -192,6 +196,7 @@ function readCycles(store: LogStore, request: LogRequest): readonly DeviceLogEnt
 export function microwaveCyclesSource(): DeviceLogSource {
   return {
     claims: (device, event) => isCycleEvent(event) && presentDevice(device).family === 'microwave',
+    claimedKinds: [],
     read: readCycles,
   };
 }

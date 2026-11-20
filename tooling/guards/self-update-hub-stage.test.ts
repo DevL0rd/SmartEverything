@@ -61,9 +61,11 @@ function serviceFiles(migration: string): Record<string, string> {
   return {
     'service.mjs': 'export {};\n',
     'voice-worker.mjs': 'export {};\n',
+    'service-main.mjs': 'export {};\n',
     'loop-watchdog.mjs': 'export {};\n',
     'hook-helper.mjs': 'export {};\n',
     'raster-worker.mjs': 'export {};\n',
+    'log-worker.mjs': 'export {};\n',
     'go2rtc/go2rtc': '#!/bin/sh\nexit 0\n',
     'update/hub-command.mjs': 'export {};\n',
     'update/watchdog.mjs': 'export {};\n',

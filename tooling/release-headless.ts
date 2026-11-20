@@ -40,6 +40,7 @@ const ROOT = join(import.meta.dirname, '..');
 
 const DATA_DIRECTORY = '.config/SmartEverything';
 const BOOTSTRAP_NAME = 'SmartEverything-Hub';
+const HUB_DATABASE_DIRECTORY = 'SmartEverything-Hub/db';
 const INSTALL_DATA_FILE = 'install-data.mjs';
 const LAYOUT_PROBE = '/layout-probe';
 const NODE_VERSION_HEADER = join('include', 'node', 'node_version.h');
@@ -74,7 +75,6 @@ export function unitFile(): string {
 function layoutDirectories(): readonly string[] {
   const layout = layoutFromNames(LAYOUT_PROBE, V1_NAMES, {});
   const files = [
-    ...Object.values(layout.system.database),
     ...Object.values(layout.system.keys),
     ...Object.values(layout.system.config),
     ...Object.values(layout.system.run),
@@ -101,7 +101,7 @@ export function installDataScript(): string {
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 const C = ${JSON.stringify(constants)};
-const [bootstrap, data, defaultData, binary, manifest, repository, branch] = process.argv.slice(2);
+const [bootstrap, data, defaultData, binary, manifest, repository, branch, database] = process.argv.slice(2);
 const fail = (message) => { process.stderr.write(message + '\\n'); process.exit(1); };
 const read = (file) => {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch (error) {
@@ -129,14 +129,21 @@ const rootId = pointer?.rootId ?? marker?.rootId ?? randomUUID();
 const configFile = join(data, legacy ? C.legacyService : C.service);
 const config = read(configFile);
 if (config !== undefined && (config === null || typeof config !== 'object' || (config.role !== undefined && config.role !== 'hub') || config.go2rtcBinary !== binary)) fail('Existing service.json must describe a hub using the standalone camera engine.');
+if (config !== undefined && config.database !== database) fail(configFile + (config.database === undefined ? ' does not name the database folder; set "database" to ' + database + ' after moving the database there.' : ' keeps the database in ' + String(config.database) + '; pass --database ' + String(config.database) + '.'));
+mkdirSync(database, { recursive: true, mode: 0o700 });
 if (!legacy) for (const directory of C.directories) mkdirSync(join(data, directory), { recursive: true });
 if (!legacy && marker === undefined) create(join(data, C.marker), { version: 1, rootId, createdAt: new Date().toISOString(), state: 'active' });
 if (repository !== '' && !/^[a-z0-9][a-z0-9._-]*\\/[a-z0-9._-]+$/u.test(repository)) fail('The repository must look like owner/name in lower case.');
 if (repository !== '' && config !== undefined) fail(configFile + ' already exists; run tooling/configure-update-source.ts --repository from a checkout to change the update source.');
-if (config === undefined) create(configFile, { lan: { host: '0.0.0.0' }, go2rtcBinary: binary, ...(repository === '' ? {} : { updateSource: { repository, branch } }) });
+if (config === undefined) create(configFile, { database, lan: { host: '0.0.0.0' }, go2rtcBinary: binary, ...(repository === '' ? {} : { updateSource: { repository, branch } }) });
 if (pointer === undefined) create(pointerFile, { root: data, rootId, state: legacy ? 'pending-v1' : 'active' });
 `;
 }
+
+const DEFAULT_DATABASE = `case "\${XDG_DATA_HOME:-}" in
+  /*) database="$XDG_DATA_HOME/${HUB_DATABASE_DIRECTORY}" ;;
+  *) database="$HOME/.local/share/${HUB_DATABASE_DIRECTORY}" ;;
+esac`;
 
 const INSTALL_ROLLBACK = `clean_up() {
   status=$?
@@ -169,12 +176,13 @@ const CONFIGURE_SOURCE = `if [ -n "$update_source" ]; then
 fi`;
 
 const CHOSEN_FOLDER = `usage() {
-  echo "Usage: ./install.sh [--data <absolute path of the hub data folder>] [--repository <owner/name> [--branch <branch>]] [--update-source <absolute path of a SmartEverything checkout, for the hub build source only>]" >&2
+  echo "Usage: ./install.sh [--data <absolute path of the hub data folder>] [--database <absolute folder for the hub database, on fast local storage>] [--repository <owner/name> [--branch <branch>]] [--update-source <absolute path of a SmartEverything checkout, for the hub build source only>]" >&2
   exit 1
 }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --data) [ "$#" -ge 2 ] || usage; data="$2"; shift 2 ;;
+    --database) [ "$#" -ge 2 ] || usage; database="$2"; shift 2 ;;
     --repository) [ "$#" -ge 2 ] || usage; repository="$2"; shift 2 ;;
     --branch) [ "$#" -ge 2 ] || usage; branch="$2"; shift 2 ;;
     --update-source) [ "$#" -ge 2 ] || usage; update_source="$2"; shift 2 ;;
@@ -188,6 +196,10 @@ fi
 case "$data" in
   /*) ;;
   *) echo "Give the hub data folder as an absolute path." >&2; exit 1 ;;
+esac
+case "$database" in
+  /*) ;;
+  *) echo "Give the hub database folder as an absolute path." >&2; exit 1 ;;
 esac
 if [ -n "$update_source" ]; then
   case "$update_source" in
@@ -209,6 +221,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 install="$HOME/${HUB_INSTALL_DIRECTORY}"
 default_data="$HOME/${DATA_DIRECTORY}"
 data="$default_data"
+${DEFAULT_DATABASE}
 update_source=
 repository=
 branch=main
@@ -235,7 +248,7 @@ defined=no
 enabled=no
 ${INSTALL_ROLLBACK}
 trap clean_up EXIT
-"$here/node/bin/node" "$here/${INSTALL_DATA_FILE}" "$bootstrap" "$data" "$default_data" "$install/resources/go2rtc/go2rtc" "$manifest" "$repository" "$branch"
+"$here/node/bin/node" "$here/${INSTALL_DATA_FILE}" "$bootstrap" "$data" "$default_data" "$install/resources/go2rtc/go2rtc" "$manifest" "$repository" "$branch" "$database"
 ${CONFIGURE_SOURCE}
 ${PUBLISH_INSTALL}
 unit_stage=$(mktemp "$units/.smarteverything.XXXXXX")

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { z } from 'zod';
 import { hubLayout, writeMarker, type HubLayout } from '../src/data-layout';
@@ -85,8 +85,12 @@ afterEach(async () => {
 
 it('prepares the explicit target root without consulting another Hub bootstrap', async () => {
   const { layout } = await fixture();
+  await expect(preparationLayout(layout.root, {})).rejects.toThrow(/service configuration/);
+  const elsewhere = join(layout.root, 'elsewhere');
+  await mkdir(elsewhere);
+  await writeFile(layout.system.config.service, JSON.stringify({ database: elsewhere }));
   expect((await preparationLayout(layout.root, {})).system.database.file).toBe(
-    layout.system.database.file,
+    join(elsewhere, basename(layout.system.database.file)),
   );
   await expect(preparationLayout('relative', {})).rejects.toThrow(/absolute/);
 });

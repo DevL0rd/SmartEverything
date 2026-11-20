@@ -1,64 +1,41 @@
-import process, { argv, env, exit } from 'node:process';
+import { extname } from 'node:path';
+import { argv, env, exit } from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { Logger } from '@smarteverything/logging';
-import { layoutForLocation, resolveHubRootSync, type Location } from './data-layout';
-import {
-  PREPARE_DATA_ARGUMENT,
-  preparationLayout,
-  prepareHubData,
-} from './service/data-preparation';
+import { configuredLayout, layoutForLocation, resolveHubRootSync } from './data-layout';
 import { applyFileIoThreads } from './service/file-io-threads';
-import { runService } from './service/runner';
 
 const STARTUP_FAILED = 1;
 
-async function prepare(
-  layout: Awaited<ReturnType<typeof preparationLayout>>,
-  location?: Pick<Location, 'rootId' | 'state'>,
-): Promise<void> {
-  const abort = new AbortController();
-  const stop = (): void => {
-    abort.abort(new Error('Hub data preparation was interrupted.'));
-  };
-  process.once('SIGTERM', stop);
-  process.once('SIGINT', stop);
-  try {
-    await prepareHubData(layout, new Logger('hub.data-preparation'), {
-      signal: abort.signal,
-      ...(location === undefined ? {} : { location }),
-    });
-  } finally {
-    process.removeListener('SIGTERM', stop);
-    process.removeListener('SIGINT', stop);
-  }
+interface ServiceMain {
+  readonly startService: () => Promise<void>;
 }
 
-async function start(): Promise<void> {
-  if (argv[2] === PREPARE_DATA_ARGUMENT && argv.length === 4) {
-    const root = argv[3];
-    if (root === undefined) throw new Error('The data preparation root is missing.');
-    await prepare(await preparationLayout(root, env));
-    return;
-  }
-  if (argv.length > 2)
-    throw new Error('Use --prepare-data <absolute data root> or no service arguments.');
-  const location = resolveHubRootSync(env);
-  const layout = layoutForLocation(location, env);
-  const fileIoThreads = applyFileIoThreads(
-    location.state === 'pending-v1' ? null : layout.system.database.file,
+function isServiceMain(module: unknown): module is ServiceMain {
+  return (
+    typeof module === 'object' &&
+    module !== null &&
+    'startService' in module &&
+    typeof module.startService === 'function'
   );
-  await prepare(layout, location);
-  await runService({
-    layout,
-    pointer: location,
-    fileIoThreads,
-    exit,
-    onSignal: (signal, handler) => {
-      process.once(signal, handler);
-    },
-  });
 }
 
-start().catch((cause: unknown) => {
+async function launch(): Promise<void> {
+  if (argv.length === 2) {
+    const location = resolveHubRootSync(env);
+    const layout = configuredLayout(layoutForLocation(location, env));
+    applyFileIoThreads(location.state === 'pending-v1' ? null : layout.system.database.file);
+  }
+  const extension = extname(fileURLToPath(import.meta.url));
+  const main: unknown = await import(
+    fileURLToPath(new URL(`./service-main${extension}`, import.meta.url))
+  );
+  if (!isServiceMain(main))
+    throw new Error('The service main module does not export startService.');
+  await main.startService();
+}
+
+launch().catch((cause: unknown) => {
   Logger.reset();
   Logger.configure({ style: 'plain' });
   new Logger('hub.service').exception('service.start_failed', cause);

@@ -48,6 +48,7 @@ import { listenWhileStarting } from './service/starting-listener';
 import type { LogLines } from './service/log-lines';
 import { startCore, type Core } from './services';
 import { openStore, type Store } from './store/store';
+import { LogStore } from './logs/log-store';
 import { HUB_VERSION } from './version';
 
 export const DEFAULT_ORIGINS: readonly string[] = ['app://smarteverything'];
@@ -69,6 +70,7 @@ export interface ServerOptions {
   readonly webrtcPort?: number;
   readonly log: Logger;
   readonly logLines: LogLines;
+  readonly logWorkerScript: string;
   readonly fatal: (cause: Error) => void;
   readonly modules?: ModuleRegistry;
   readonly allowedOrigins?: readonly string[];
@@ -92,6 +94,7 @@ export interface RunningServer {
 interface Started {
   readonly lock: DataLock;
   readonly store: Store;
+  readonly logs: LogStore;
   readonly core: Core;
   readonly built: BuiltServer;
   readonly extensions: readonly RunningExtension[];
@@ -163,6 +166,7 @@ async function stopAll(
   started.core.firewall.stop();
   started.core.cameraHealth.stop();
   await stopGo2rtcForShutdown(started.core.supervisor, go2rtcLog);
+  await started.logs.close();
   started.store.close();
   await started.lock.release();
 }
@@ -222,6 +226,17 @@ function openHubStore(options: ServerOptions, clock: Clock): Store {
   });
 }
 
+function openHubLogs(options: ServerOptions, store: Store): LogStore {
+  return LogStore.open({
+    path: options.layout.system.logs.runtimeLogs,
+    workerScript: options.logWorkerScript,
+    repairs: store.aiRepairInbox,
+    now: store.now,
+    log: options.log.forArea('hub.logs'),
+    fatal: options.fatal,
+  });
+}
+
 async function boot(
   options: ServerOptions,
   clock: Clock,
@@ -233,6 +248,8 @@ async function boot(
   const secrets = await openSecretStore(options.layout.system.keys, options.log);
   const store = openHubStore(options, clock);
   undo.push(store.close);
+  const logs = openHubLogs(options, store);
+  undo.push(() => logs.close());
   const outbound = options.fetch ?? fetch;
   const smartthings = smartThingsWiring({ secrets, fetch: outbound, now: clock.now });
   const core = await startCore(coreOptions(options, clock, smartthings.module), store, secrets);
@@ -249,6 +266,7 @@ async function boot(
   const built = await buildServer({
     connections,
     store,
+    logs,
     secrets,
     core,
     layout: options.layout,
@@ -264,7 +282,7 @@ async function boot(
     alerts,
   });
   rememberBuilt(built, undo);
-  return { lock, store, core, built, extensions: built.extensions };
+  return { lock, store, logs, core, built, extensions: built.extensions };
 }
 
 interface ResumeWatch {

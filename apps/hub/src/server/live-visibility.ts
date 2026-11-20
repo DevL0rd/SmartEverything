@@ -402,3 +402,21 @@ export function traceAllowed(
   const automationId = parsed.kind === 'run' ? owners.automationOfRun(parsed.id) : parsed.id;
   return automationId !== null && traceVisible(client, owners.authorOf(automationId), store);
 }
+
+export type LiveView = (
+  connection: Hearing,
+  message: LiveMessage,
+  store: LiveStore,
+) => LiveMessage | null;
+
+export function driveNoticeView(): LiveView {
+  const shownTo = new Map<string, LiveMessage | null>();
+  return (connection, message, store) => {
+    const profileId = store.profiles.activeOf(connection.client.id).id;
+    const known = shownTo.get(profileId);
+    if (known !== undefined) return known;
+    const shown = seenBy(connection, message, store);
+    shownTo.set(profileId, shown);
+    return shown;
+  };
+}

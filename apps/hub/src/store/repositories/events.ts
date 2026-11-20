@@ -23,7 +23,21 @@ interface SignalRowFilter {
 
 export interface EventListWindow extends TimeWindow {
   readonly kinds?: readonly EventKind[] | undefined;
+  readonly exceptKinds?: readonly EventKind[] | undefined;
   readonly signal?: SignalRowFilter | undefined;
+}
+
+function kindsClause(
+  prefix: string,
+  operator: 'in' | 'not in',
+  kinds: readonly EventKind[],
+): SqlFilter {
+  const named = kinds.map((kind, index) => [`${prefix}${String(index)}`, kind] as const);
+  const names = named.map(([name]) => `$${name}`);
+  return {
+    text: names.length === 0 ? '' : ` and kind ${operator} (${names.join(', ')})`,
+    parameters: Object.fromEntries(named),
+  };
 }
 
 function signalFilterOf(signal: SignalRowFilter | undefined): SqlFilter | undefined {
@@ -55,12 +69,10 @@ export class EventsRepository {
 
   list(window: EventListWindow): EventRow[] {
     const filter = windowFilter('occurred_at', window);
-    const kinds = window.kinds ?? [];
-    const names = kinds.map((kind, index) => {
-      filter.parameters[`kind${String(index)}`] = kind;
-      return `$kind${String(index)}`;
-    });
-    const kindClause = names.length === 0 ? '' : ` and kind in (${names.join(', ')})`;
+    const included = kindsClause('kind', 'in', window.kinds ?? []);
+    const excluded = kindsClause('except', 'not in', window.exceptKinds ?? []);
+    const kindClause = included.text + excluded.text;
+    Object.assign(filter.parameters, included.parameters, excluded.parameters);
     const signal = signalFilterOf(window.signal);
     const signalClause = signal === undefined ? '' : ` and ${signal.text}`;
     Object.assign(filter.parameters, signal?.parameters);

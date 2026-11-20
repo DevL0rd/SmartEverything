@@ -15,8 +15,7 @@ import {
   type RuntimeLogSource,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { StoreContext } from '../context';
-import { allOf, inList, type SqlFilter, type SqlParameters } from '../sql';
+import { allOf, inList, type Sql, type SqlFilter, type SqlParameters } from '../sql';
 import type { LogAccess, LogAround, LogSearch } from './runtime-log-types';
 
 const STORED = z.object({
@@ -135,6 +134,8 @@ const WORDS = /[\p{L}\p{N}]+/gu;
 
 const SEARCH = 'runtime_logs_search';
 
+const CLIENT_ROW = z.object({ client_id: z.string().nullable() });
+
 function rowOf(stored: z.output<typeof STORED>): RuntimeLogRow {
   const failure = stored.failure === null ? null : FAILURE.parse(JSON.parse(stored.failure));
   return {
@@ -245,7 +246,7 @@ function searchFilter(search: LogSearch): SqlFilter {
 }
 
 export class RuntimeLogReads {
-  constructor(protected readonly context: StoreContext) {}
+  constructor(private readonly sql: Sql) {}
 
   search(access: LogAccess, search: LogSearch): z.output<typeof RUNTIME_LOG_PAGE> {
     const filter = allOf([readFilter(access), searchFilter(search)]);
@@ -284,7 +285,7 @@ export class RuntimeLogReads {
 
   sources(access: LogAccess): z.output<typeof RUNTIME_LOG_SOURCES> {
     const filter = readFilter(access);
-    const rows = this.context.sql.all(
+    const rows = this.sql.all(
       SOURCE_ROW,
       `select source, runtime, platform, device_id, first_at, last_at, records, dropped
        from runtime_log_sources where ${filter.text} order by last_at desc`,
@@ -299,7 +300,7 @@ export class RuntimeLogReads {
     levels: readonly string[],
   ): z.output<typeof RUNTIME_LOG_COMPONENTS> {
     const filter = allOf([readFilter(access), { text: 'at >= $since', parameters: { since } }]);
-    const rows = this.context.sql.all(
+    const rows = this.sql.all(
       COMPONENT_ROW,
       `select component, runtime, max(at) as last_at, count(*) as records,
          sum(case when signature is not null then 1 else 0 end) as failures,
@@ -326,7 +327,7 @@ export class RuntimeLogReads {
     component: string | undefined,
   ): z.output<typeof RUNTIME_LOG_SIGNATURES> {
     const filter = signatureQuery(access, since, component);
-    const rows = this.context.sql.all(
+    const rows = this.sql.all(
       SIGNATURE_ROW,
       `select signature, component, event, failure, count(*) as occurrences, min(at) as first_at,
          max(at) as last_at, max(id) as last_id
@@ -338,7 +339,7 @@ export class RuntimeLogReads {
 
   platforms(access: LogAccess): z.output<typeof RUNTIME_LOG_PLATFORMS> {
     const filter = readFilter(access);
-    const rows = this.context.sql.all(
+    const rows = this.sql.all(
       z.object({ platform: STORED.shape.platform }),
       `select distinct platform from runtime_log_sources where ${filter.text} order by platform`,
       filter.parameters,
@@ -348,7 +349,7 @@ export class RuntimeLogReads {
 
   gaps(access: LogAccess): z.output<typeof RUNTIME_LOG_GAPS> {
     const filter = readFilter(access);
-    const gaps = this.context.sql.all(
+    const gaps = this.sql.all(
       GAP_ROW,
       `select first_at, last_at from runtime_log_gaps where ${filter.text}
        order by last_at desc limit 50`,
@@ -357,23 +358,18 @@ export class RuntimeLogReads {
     return { gaps: gaps.map((row) => ({ firstAt: row.first_at, lastAt: row.last_at })) };
   }
 
-  drop(access: LogAccess, before: string | undefined): number {
-    const filter = allOf([
-      readFilter(access),
-      ...(before === undefined ? [] : [{ text: 'at < $before', parameters: { before } }]),
-    ]);
-    return this.context.sql.run(
-      'forget runtime logs',
-      `delete from runtime_logs where ${filter.text}`,
-      filter.parameters,
-    );
+  clientOf(id: number): { readonly clientId: string | null } | null {
+    const row = this.sql.get(CLIENT_ROW, 'select client_id from runtime_logs where id = $id', {
+      id,
+    });
+    return row === undefined ? null : { clientId: row.client_id };
   }
 
   private anchor(access: LogAccess, around: LogAround): RuntimeLogRow | null {
     const filter = readFilter(access);
     if (around.id !== undefined) {
       const byId = allOf([filter, { text: 'id = $id', parameters: { id: around.id } }]);
-      const found = this.context.sql.all(
+      const found = this.sql.all(
         STORED,
         `select ${COLUMNS} from runtime_logs where ${byId.text}`,
         byId.parameters,
@@ -400,7 +396,7 @@ export class RuntimeLogReads {
   }
 
   private rows(clause: string, parameters: SqlParameters): RuntimeLogRow[] {
-    return this.context.sql
+    return this.sql
       .all(STORED, `select ${COLUMNS} from runtime_logs where ${clause} limit ${LIMIT}`, parameters)
       .map(rowOf);
   }

@@ -28,7 +28,11 @@ export class DriveSyncOpsRepository {
     });
   }
 
-  claim(claim: { readonly placementId: string; readonly opId: string; readonly action: string }): void {
+  claim(claim: {
+    readonly placementId: string;
+    readonly opId: string;
+    readonly action: string;
+  }): void {
     this.context.sql.run(
       'claim the drive sync operation',
       `insert into drive_sync_ops (placement_id, op_id, result, at)
@@ -66,15 +70,5 @@ export class DriveSyncOpsRepository {
         );
       }
     });
-  }
-
-  forgetBefore(at: string): number {
-    return this.context.write(() =>
-      this.context.sql.run(
-        'forget the old drive sync operations',
-        'delete from drive_sync_ops where at < $at',
-        { at },
-      ),
-    );
   }
 }

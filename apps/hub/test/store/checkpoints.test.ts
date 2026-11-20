@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StoreCheckpoints } from '../../src/store/checkpoints';
-import { testLogger } from '../support/logs';
+import { captureLogs, testLogger } from '../support/logs';
 
 let folder: string;
 let database: DatabaseSync;
@@ -17,7 +17,7 @@ beforeEach(async () => {
   database.exec('pragma journal_mode = wal');
   database.exec('pragma wal_autocheckpoint = 0');
   database.exec('create table notes (id integer primary key, text text)');
-  checkpoints = new StoreCheckpoints({ path, busyTimeoutMs: 1000, log: testLogger() });
+  checkpoints = new StoreCheckpoints({ path, busyTimeoutMs: 1000, frames: 100, log: testLogger() });
 });
 
 afterEach(async () => {
@@ -41,6 +41,21 @@ describe('write-ahead log checkpoints on their own thread', () => {
     const frames = walFrames();
     expect(frames.log).toBeGreaterThan(0);
     expect(frames.checkpointed).toBe(frames.log);
+  });
+
+  it('leaves a short log for later and copies it once enough frames wait', async () => {
+    const logs = captureLogs();
+    const insert = database.prepare('insert into notes (text) values (?)');
+    insert.run('x'.repeat(500));
+    checkpoints.trigger();
+    await checkpoints.settled();
+    expect(logs.events()).toContain('store.checkpoint_deferred');
+    logs.records.length = 0;
+    for (let index = 0; index < 200; index += 1) insert.run('x'.repeat(500));
+    checkpoints.trigger();
+    await checkpoints.settled();
+    expect(logs.events()).not.toContain('store.checkpoint_deferred');
+    expect(logs.events()).not.toContain('store.checkpoint_failed');
   });
 
   it('is settled at once when nothing was triggered', async () => {

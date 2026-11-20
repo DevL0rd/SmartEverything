@@ -52,18 +52,26 @@ function loggableOf(device: DeviceRow, tier: PhoneTier | null): Loggable {
   };
 }
 
+function newestFirst(left: HistoryRow, right: HistoryRow): number {
+  if (left.observed_at !== right.observed_at) return left.observed_at < right.observed_at ? 1 : -1;
+  return right.id - left.id;
+}
+
 function changeRows(store: LogStore, request: LogRequest, keys: readonly string[]): HistoryRow[] {
   const { device, to, limit } = request;
   const first = store.state.firstHistoryIds(device.id, keys);
-  return store.state
-    .history({
-      capabilities: keys,
-      deviceIds: [device.id],
-      from: BEGINNING,
-      to,
-      order: 'desc',
-      limit: limit + keys.length,
-    })
+  return keys
+    .flatMap((capability) =>
+      store.state.history({
+        capabilities: [capability],
+        deviceIds: [device.id],
+        from: BEGINNING,
+        to,
+        order: 'desc',
+        limit: limit + 1,
+      }),
+    )
+    .sort(newestFirst)
     .filter((row) => !first.has(row.id) && row.value !== null)
     .slice(0, limit);
 }
@@ -101,5 +109,5 @@ function readChanges(store: LogStore, request: LogRequest): readonly DeviceLogEn
 }
 
 export function changesSource(): DeviceLogSource {
-  return { claims: () => false, read: readChanges };
+  return { claims: () => false, claimedKinds: [], read: readChanges };
 }

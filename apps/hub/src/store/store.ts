@@ -5,7 +5,8 @@ import { z } from 'zod';
 import type { Logger } from '@smarteverything/logging';
 import { StoreContext } from './context';
 import { ChangeFeed } from './feed';
-import { StoreCheckpoints } from './checkpoints';
+import { CHECKPOINT_FRAMES, StoreCheckpoints } from './checkpoints';
+import { DriveSyncRetention } from './drive-sync-retention';
 import { StoreReader } from './reader';
 import { migrate } from './migrate';
 import { discardMigrationBackups } from './migration-backup';
@@ -151,13 +152,42 @@ function retentionOf(sql: Sql, options: StoreOptions): { start: () => void; stop
 }
 
 function checkpointsOf(sql: Sql, options: StoreOptions): () => void {
-  const checkpoints = new StoreCheckpoints({ ...options, busyTimeoutMs: BUSY_TIMEOUT_MS });
+  const checkpoints = new StoreCheckpoints({
+    ...options,
+    busyTimeoutMs: BUSY_TIMEOUT_MS,
+    frames: CHECKPOINT_FRAMES,
+  });
   const stop = sql.onCommit(() => {
     checkpoints.trigger();
   });
   return (): void => {
     stop();
     checkpoints.close();
+  };
+}
+
+function backgroundWorkOf(sql: Sql, options: StoreOptions): () => void {
+  const stopSyncOpRetention = syncOpRetentionOf(sql, options);
+  const stopCheckpoints = checkpointsOf(sql, options);
+  return (): void => {
+    stopSyncOpRetention();
+    stopCheckpoints();
+  };
+}
+
+function syncOpRetentionOf(sql: Sql, options: StoreOptions): () => void {
+  const retention = new DriveSyncRetention({
+    path: options.path,
+    busyTimeoutMs: BUSY_TIMEOUT_MS,
+    now: options.now,
+    log: options.log,
+  });
+  const stop = sql.onCommit(() => {
+    retention.observe();
+  });
+  return (): void => {
+    stop();
+    retention.close();
   };
 }
 
@@ -184,7 +214,7 @@ export function openStore(options: StoreOptions): Store {
   const feedSummary = summaryOf(feed, options.log);
   const retention = retentionOf(sql, options);
   const reader = new StoreReader({ ...options, busyTimeoutMs: BUSY_TIMEOUT_MS });
-  const stopCheckpoints = checkpointsOf(sql, options);
+  const stopBackground = backgroundWorkOf(sql, options);
   options.log.info('store.opened', { version });
   options.log.debug('store.open_timed', () => ({
     file: basename(options.path),
@@ -205,7 +235,7 @@ export function openStore(options: StoreOptions): Store {
     close: (): void => {
       clearInterval(feedSummary);
       retention.stop();
-      stopCheckpoints();
+      stopBackground();
       reader.close();
       stop();
       try {

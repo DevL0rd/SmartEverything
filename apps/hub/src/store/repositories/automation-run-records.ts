@@ -96,13 +96,19 @@ export class AutomationRunRecordsRepository {
   }
 
   summaries(automationId: string | null, limit: number): AutomationRunSummary[] {
-    return this.context.sql
-      .all(
-        STORED_RECORD,
-        `select ${COLUMNS} from automation_runs where ($automationId is null or automation_id=$automationId) order by created_at desc, rowid desc limit $limit`,
-        { automationId, limit },
-      )
-      .map(summaryOf);
+    const rows =
+      automationId === null
+        ? this.context.sql.all(
+            STORED_RECORD,
+            `select ${COLUMNS} from automation_runs order by created_at desc, rowid desc limit $limit`,
+            { limit },
+          )
+        : this.context.sql.all(
+            STORED_RECORD,
+            `select ${COLUMNS} from automation_runs where automation_id=$automationId order by created_at desc, rowid desc limit $limit`,
+            { automationId, limit },
+          );
+    return rows.map(summaryOf);
   }
 
   summariesOf(automationIds: readonly string[], limit: number): AutomationRunSummary[] {

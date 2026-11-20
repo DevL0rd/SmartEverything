@@ -117,7 +117,7 @@ export function starting(
 ): () => Promise<void> {
   const unfollowLive = subscribeLive(options, context.live);
   const stopOwnLogs = ingestOwnLogs(options);
-  void storeStartupJournal(options.store, options.log).catch((cause: unknown) => {
+  void storeStartupJournal(options.store, options.logs, options.log).catch((cause: unknown) => {
     options.log.warn('journal.read_failed', {
       reason: cause instanceof Error ? cause.name : 'unknown',
     });

@@ -16,6 +16,7 @@ function baseOf(name: string): string {
 
 export function isDatabaseEntry(name: string): boolean {
   const base = baseOf(name);
+  if (base === LEGACY_NAMES.logs.runtimeLogs) return false;
   return (
     base === LEGACY_NAMES.database.file ||
     base.startsWith(`${LEGACY_NAMES.database.file}.`) ||

@@ -376,7 +376,7 @@ describe('job runner', () => {
     const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', gate.handler);
     const interrupted = job('preview', 1);
-    jobs.claim(['preview']);
+    jobs.claim(['preview'], 1);
     expect(jobs.byId(interrupted.id).state).toBe('running');
     runner.start();
     await Promise.resolve();
@@ -387,7 +387,7 @@ describe('job runner', () => {
 
     database.prepare('update drive_items set rev = 2 where id = ?').run(interrupted.item_id);
     const changed = items.byId(interrupted.item_id, null);
-    runner.itemChanged(changed);
+    runner.itemChanged(changed.id, changed.rev);
 
     expect(jobs.forItem(interrupted.item_id)).toEqual([]);
   });

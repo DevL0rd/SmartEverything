@@ -3,6 +3,7 @@ import { dirname, isAbsolute } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import {
+  configuredLayout,
   hubLayout,
   layoutFromNames,
   LEGACY_NAMES,
@@ -36,7 +37,9 @@ export async function preparationLayout(
   const marker = await readMarker(hubLayout(absolute, environment));
   if (marker?.state === 'moved')
     throw new Error('The Hub data root has moved; use its current location.');
-  return layoutFromNames(absolute, marker === undefined ? LEGACY_NAMES : V1_NAMES, environment);
+  return configuredLayout(
+    layoutFromNames(absolute, marker === undefined ? LEGACY_NAMES : V1_NAMES, environment),
+  );
 }
 
 interface PreparationOptions {

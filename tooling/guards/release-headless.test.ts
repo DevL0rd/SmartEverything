@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { dataLayoutOf } from '../release-hub-files.ts';
+import { configuredLayout } from '../../apps/hub/src/data-layout/index.ts';
 import {
   HeadlessPackageError,
   installDataScript,
@@ -178,10 +179,13 @@ describe('the systemd unit', () => {
     expect(install().status).toBe(0);
     expect(readFileSync(canary, 'utf8')).toBe('desktop');
     expect(readFileSync(unit, 'utf8')).toBe(unitFile());
+    const database = join(home, '.local', 'share', 'SmartEverything-Hub', 'db');
     expect(readJson(config)).toStrictEqual({
+      database,
       lan: { host: '0.0.0.0' },
       go2rtcBinary: join(installed, 'resources', 'go2rtc', 'go2rtc'),
     });
+    expect(statSync(database).isDirectory()).toBe(true);
     expect(statSync(config).mode & 0o777).toBe(0o600);
     const rootId = readJson(marker)['rootId'];
     expect(readJson(marker)).toMatchObject({ version: 1, state: 'active' });
@@ -190,13 +194,12 @@ describe('the systemd unit', () => {
       rootId,
       state: 'active',
     });
-    const layout = dataLayoutOf(data);
+    const layout = configuredLayout(dataLayoutOf(data));
     expect(layout.system.config.service).toBe(config);
-    expect(layout.system.database.file).toBe(
-      join(data, 'system', 'database', 'smarteverything.db'),
-    );
+    expect(layout.system.database.file).toBe(join(database, 'smarteverything.db'));
     expect(layout.backups.releases).toBe(join(data, 'backups', 'releases'));
-    for (const directory of ['system/database', 'system/keys', 'system/run', 'tmp'])
+    expect(existsSync(join(data, 'system', 'database'))).toBe(false);
+    for (const directory of ['system/keys', 'system/run', 'tmp'])
       expect(statSync(join(data, directory)).isDirectory()).toBe(true);
     expect(existsSync(`${unit}.d`)).toBe(false);
     expect(install().status).toBe(1);
@@ -384,6 +387,7 @@ describe('the systemd unit', () => {
     mkdirSync(join(data, 'system', 'config'), { recursive: true });
     const saved = JSON.stringify({
       role: 'hub',
+      database: join(home, '.local', 'share', 'SmartEverything-Hub', 'db'),
       port: 7881,
       go2rtcBinary: join(installed, 'resources', 'go2rtc', 'go2rtc'),
     });

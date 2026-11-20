@@ -428,7 +428,7 @@ describe('playable copies', () => {
       original(jobId, progress);
     };
 
-    await handler().run(jobs.claim(['playable']) ?? job, NO_ABORT);
+    await handler().run(jobs.claim(['playable'], 1)[0] ?? job, NO_ABORT);
 
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((value) => value >= 0 && value <= 1)).toBe(true);

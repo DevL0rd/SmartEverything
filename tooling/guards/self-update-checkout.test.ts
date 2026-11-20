@@ -120,7 +120,7 @@ describe('synced checkout', () => {
     mkdirSync(empty);
     writeFileSync(
       dataLayoutOf(empty).system.config.service,
-      JSON.stringify({ go2rtcBinary: '/opt/go2rtc' }),
+      JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: empty }),
     );
     await expect(
       syncedCheckout(dataLayoutOf(empty), checkout, { ports: { install } }),

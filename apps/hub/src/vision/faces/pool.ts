@@ -29,6 +29,13 @@ export interface FacePoolOptions extends FaceInit {
 
 const PREPARED_PER_REQUEST = 2;
 
+function ownedBuffer(data: Uint8Array): ArrayBuffer {
+  const { buffer } = data;
+  if (!(buffer instanceof ArrayBuffer) || buffer.byteLength !== data.byteLength)
+    throw new FaceWorkerError('A decoded face image must own its whole pixel buffer.');
+  return buffer;
+}
+
 const STARTING: PhotoFaceDevice = {
   state: 'starting',
   reason: 'The face models have not loaded yet.',
@@ -81,7 +88,7 @@ export class FacePool {
         },
       });
       const request: FaceRequest = { id, image };
-      worker.postMessage(request);
+      worker.postMessage(request, image.kind === 'rgb' ? [ownedBuffer(image.data)] : []);
     });
   }
 

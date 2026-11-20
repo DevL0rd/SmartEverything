@@ -15,6 +15,7 @@ import type { FoodLookup } from '../foods/food-lookup';
 import type { RunningHub } from '../hub';
 import type { SecretStore } from '../secrets/store';
 import type { Store } from '../store/store';
+import type { LogStore } from '../logs/log-store';
 import type { AccessService } from './access';
 import type { WatchActionBroker } from '../local/watch-actions';
 import type { MachineApprovals } from '../machines/approval';
@@ -46,6 +47,7 @@ export interface ServerContext {
   readonly imageRuntime: ImageRuntime;
   readonly harness: HarnessService;
   readonly store: Store;
+  readonly logs: LogStore;
   readonly computerAi: ComputerAiDirectory;
   readonly computerNodes: ComputerNodeAccess;
   readonly computerEars: EarsRelay;

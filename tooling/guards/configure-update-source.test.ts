@@ -76,10 +76,14 @@ it('writes the source into service.json and keeps every other field', async () =
   const layout = await testLayout(join(scratch, 'data'));
   const file = dataLayoutOf(layout.root).system.config.service;
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ go2rtcBinary: '/opt/go2rtc', port: 7881 }));
+  writeFileSync(
+    file,
+    JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: layout.root, port: 7881 }),
+  );
   await configureUpdateSource({ checkout, data: layout.root });
   expect(JSON.parse(readFileSync(file, 'utf8'))).toStrictEqual({
     go2rtcBinary: '/opt/go2rtc',
+    database: layout.root,
     port: 7881,
     updateSource: { repository: 'owner/repo', checkout, remote: 'origin', branch: 'main' },
   });
@@ -89,10 +93,11 @@ it('writes a repository-only source with no checkout', async () => {
   const layout = await testLayout(join(scratch, 'repository-data'));
   const file = dataLayoutOf(layout.root).system.config.service;
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ go2rtcBinary: '/opt/go2rtc' }));
+  writeFileSync(file, JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: layout.root }));
   saveUpdateSource(layout.root, repositorySourceOf('Owner/Repo', 'main'));
   expect(JSON.parse(readFileSync(file, 'utf8'))).toStrictEqual({
     go2rtcBinary: '/opt/go2rtc',
+    database: layout.root,
     updateSource: { repository: 'owner/repo', branch: 'main' },
   });
 });

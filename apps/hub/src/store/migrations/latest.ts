@@ -1,6 +1,9 @@
 import { PHOTO_ANALYSIS_TEXT_MIGRATION } from './photo-analysis-text';
 import { QUEUE_ORDER_INDEXES_MIGRATION } from './queue-order-indexes';
 import { DRIVE_PLACES_RTREE_MIGRATION } from './drive-places-rtree';
+import { STORE_HOT_PATH_COUNTERS_MIGRATION } from './store-hot-path-counters';
+import { DEVICE_PATH_INDEXES_MIGRATION } from './device-path-indexes';
+import { RUNTIME_LOGS_OUT_MIGRATION } from './runtime-logs-out';
 import { PHOTO_ZONELESS_TIMES_MIGRATION } from './photo-zoneless-times';
 import { PHOTO_DESCRIPTIONS_MIGRATION } from './photo-descriptions';
 import { PHOTO_TEXT_FROM_VISION_MIGRATION } from './photo-text-from-vision';
@@ -219,4 +222,7 @@ export const LATEST_MIGRATIONS: readonly Migration[] = [
   PHOTO_DESCRIPTIONS_MIGRATION,
   QUEUE_ORDER_INDEXES_MIGRATION,
   DRIVE_PLACES_RTREE_MIGRATION,
+  STORE_HOT_PATH_COUNTERS_MIGRATION,
+  DEVICE_PATH_INDEXES_MIGRATION,
+  RUNTIME_LOGS_OUT_MIGRATION,
 ];

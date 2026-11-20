@@ -5,7 +5,7 @@ import {
   type NodeLogsFrame,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { Store } from '../store/store';
+import type { LogStore } from '../logs/log-store';
 
 class NodeLogBatchSizeError extends Error {
   override readonly name = 'NodeLogBatchSizeError';
@@ -15,17 +15,22 @@ class NodeLogBatchSizeError extends Error {
   }
 }
 
-export function ingestNodeLogs(
-  store: Pick<Store, 'runtimeLogs' | 'now'>,
+export interface NodeLogSink {
+  readonly now: () => Date;
+  readonly logs: Pick<LogStore, 'ingest'>;
+}
+
+export async function ingestNodeLogs(
+  sink: NodeLogSink,
   log: Logger,
   identity: ComputerNodeRow,
   frame: NodeLogsFrame,
-): HubLogReceipt {
+): Promise<HubLogReceipt> {
   const deviceId = identity.device_id;
   try {
     const bytes = Buffer.byteLength(JSON.stringify(frame.batch.records));
     if (bytes > NODE_LOG_BATCH_BYTES) throw new NodeLogBatchSizeError(bytes);
-    store.runtimeLogs.ingest({
+    await sink.logs.ingest({
       access: { owner: true, profileId: null },
       batch: frame.batch,
       source: {
@@ -36,7 +41,7 @@ export function ingestNodeLogs(
         clientId: null,
       },
       deviceId,
-      now: store.now().toISOString(),
+      now: sink.now().toISOString(),
     });
     return { type: 'log_receipt', id: frame.id, stored: true };
   } catch (cause) {

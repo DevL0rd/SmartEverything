@@ -31,7 +31,10 @@ export async function prepareData(): Promise<void> {
 }
 
 export async function writeServiceConfig(ports: HubPorts): Promise<void> {
+  const database = join(dirname(files.data), 'database');
+  await mkdir(database, { recursive: true, mode: 0o700 });
   const config = {
+    database,
     port: ports.http,
     host: LOOPBACK,
     lan: { port: ports.lan, host: LOOPBACK, advertise: false },

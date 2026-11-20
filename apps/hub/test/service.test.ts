@@ -15,6 +15,7 @@ import {
 import { runService } from '../src/service/runner';
 import { HUB_VERSION } from '../src/version';
 import { captureLogs } from './support/logs';
+import { bundledLogWorker } from './support/log-worker';
 import { fakeGo2rtcServer, freePort, temporaryDirectory } from './support/server';
 import { testLayout } from './support/test-layout';
 
@@ -22,6 +23,7 @@ let directory: { path: string; remove: () => Promise<void> };
 let layout: HubLayout;
 let pointer: Pick<Location, 'rootId' | 'state'>;
 let originalTemporary: string | undefined;
+let logWorkerScript: string;
 
 beforeAll(async () => {
   await import('../src/start');
@@ -32,6 +34,7 @@ beforeEach(async () => {
   originalTemporary = env['TMPDIR'];
   directory = await temporaryDirectory();
   layout = await testLayout(directory.path);
+  logWorkerScript = await bundledLogWorker(directory.path);
   const marker = await readMarker(layout);
   pointer = { rootId: marker?.rootId ?? '', state: 'active' };
 });
@@ -47,6 +50,7 @@ async function writeConfig(extra: Readonly<Record<string, unknown>> = {}): Promi
   await writeFile(
     layout.system.config.service,
     JSON.stringify({
+      database: directory.path,
       port: await freePort(),
       host: '127.0.0.1',
       go2rtcBinary: await fakeGo2rtcServer(directory.path),
@@ -74,6 +78,7 @@ function host(): Host & { readonly value: Parameters<typeof runService>[0] } {
       layout,
       pointer,
       fileIoThreads: { threads: 8, source: 'saved' },
+      logWorkerScript,
       exit: (code): void => {
         exited(code);
       },
@@ -109,13 +114,17 @@ describe('service configuration', () => {
     await expect(readServiceConfig(layout.system.config.service)).rejects.toThrow(/it is not JSON/);
     await writeFile(
       layout.system.config.service,
-      JSON.stringify({ go2rtcBinary: 'go2rtc', extra: 1 }),
+      JSON.stringify({ go2rtcBinary: 'go2rtc', database: '/var/lib/hub', extra: 1 }),
     );
     await expect(readServiceConfig(layout.system.config.service)).rejects.toThrow(
       /service\.json is unusable: go2rtcBinary: must be an absolute path; value: Unrecognized key/,
     );
-    await writeFile(layout.system.config.service, JSON.stringify({ go2rtcBinary: '/opt/go2rtc' }));
+    await writeFile(
+      layout.system.config.service,
+      JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: '/var/lib/hub' }),
+    );
     expect(await readServiceConfig(layout.system.config.service)).toStrictEqual({
+      database: '/var/lib/hub',
       port: 7880,
       host: '0.0.0.0',
       go2rtcBinary: '/opt/go2rtc',

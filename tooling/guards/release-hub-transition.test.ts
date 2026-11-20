@@ -18,6 +18,7 @@ import {
   LOCATION_FILE,
   readLocation,
   V1_NAMES,
+  withDatabase,
   writeMarker,
   type HubLayout,
 } from '../../apps/hub/src/data-layout/index.ts';
@@ -56,6 +57,7 @@ const UNIT_SPEC = {
 
 let scratch = '';
 let root = '';
+let databaseFolder = '';
 let after: HubLayout;
 let legacy: HubLayout;
 let target: ReleaseTarget;
@@ -169,11 +171,17 @@ beforeEach(async () => {
   for (const name of ['smarteverything.db-wal', 'smarteverything.db-shm'])
     rmSync(join(root, name), { force: true });
   rmSync(join(root, 'smarteverything.db'));
-  writeDatabase(join(root, 'smarteverything.db'), [7]);
+  databaseFolder = join(scratch, 'database');
+  mkdirSync(databaseFolder);
+  writeDatabase(join(databaseFolder, 'smarteverything.db'), [7]);
+  writeFileSync(
+    join(root, 'service.json'),
+    JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: databaseFolder }),
+  );
   writeFileSync(join(root, 'owner-token'), 'secret-token\n');
   writeFileSync(join(root, 'service.log'), '');
-  legacy = legacyLayoutOf(root);
-  after = layoutFromNames(root, V1_NAMES, {});
+  legacy = withDatabase(legacyLayoutOf(root), databaseFolder);
+  after = withDatabase(layoutFromNames(root, V1_NAMES, {}), databaseFolder);
   environment = {
     bootstrap: join(scratch, 'hub-home'),
     unitDirectory: join(scratch, 'units'),
@@ -218,7 +226,7 @@ describe('choosing the release scene', () => {
   it('plans a transition on the pre-v1 layout when the data folder has no marker', () => {
     const scene = releaseSceneOf('/install', root);
     expect(scene.transition).not.toBeNull();
-    expect(scene.target.data.system.database.file).toBe(join(root, 'smarteverything.db'));
+    expect(scene.target.data.system.database.file).toBe(join(databaseFolder, 'smarteverything.db'));
     expect(scene.transition?.unit.install).toBe('/install');
   });
 
@@ -229,6 +237,8 @@ describe('choosing the release scene', () => {
       createdAt: new Date().toISOString(),
       state: 'active',
     });
+    mkdirSync(join(root, 'system', 'config'), { recursive: true });
+    writeFileSync(after.system.config.service, JSON.stringify({ database: databaseFolder }));
     expect(releaseSceneOf('/install', root).transition).toBeNull();
   });
 });
@@ -281,7 +291,9 @@ describe('rolling back across v1', () => {
     expect(existsSync(backup)).toBe(false);
     await rollback(backup, true);
     expect(events).toEqual(['stop', 'reload', 'start']);
-    for (const entry of HUB_ENTRIES.filter((one) => !/-(wal|shm)$/u.test(one.legacy))) {
+    for (const entry of HUB_ENTRIES.filter(
+      (one) => !/-(wal|shm)$/u.test(one.legacy) && one.legacy !== 'smarteverything.db',
+    )) {
       expect(existsSync(join(root, ...entry.legacy.split('/')))).toBe(true);
       expect(existsSync(join(root, ...entry.v1.split('/')))).toBe(false);
     }
@@ -305,7 +317,7 @@ describe('rolling back across v1', () => {
   it('accepts the backup at its v1 location as well', async () => {
     await released();
     await rollback(join(after.backups.releases, `${NAME}-${String(EPOCH)}`), true);
-    expect(existsSync(join(root, 'smarteverything.db'))).toBe(true);
+    expect(existsSync(legacy.system.database.file)).toBe(true);
     expect(existsSync(environment.bootstrap)).toBe(false);
   });
 

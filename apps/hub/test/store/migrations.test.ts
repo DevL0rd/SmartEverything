@@ -335,6 +335,7 @@ describe('migrating a schema-84 database to unbounded text', () => {
       'assistant_messages_by_chat',
       'assistant_messages_by_client_message',
       'assistant_messages_by_profile',
+      'assistant_messages_working',
       'transcript_lines_added',
       'transcript_lines_removed',
       'transcript_lines_session',

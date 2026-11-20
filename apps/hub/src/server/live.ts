@@ -38,7 +38,7 @@ import { z } from 'zod';
 import type { Store } from '../store/store';
 import { socketClient } from './socket-auth';
 import { issuesOf } from './errors';
-import { projected, seenBy } from './live-visibility';
+import { projected, seenBy, driveNoticeView, type LiveView } from './live-visibility';
 import {
   applySubscription,
   type ClientPrimer,
@@ -220,8 +220,9 @@ export class LiveHub {
   }
 
   private driveNotice(notice: LiveNotice): void {
+    const view = driveNoticeView();
     for (const connection of this.connections) {
-      if (!this.backgrounds.has(connection)) this.send(connection, notice);
+      if (!this.backgrounds.has(connection)) this.send(connection, notice, view);
     }
   }
 
@@ -380,7 +381,7 @@ export class LiveHub {
     }
   }
 
-  private send(connection: LiveConnection, message: LiveMessage): void {
+  private send(connection: LiveConnection, message: LiveMessage, view: LiveView = seenBy): void {
     if (connection.socket.readyState !== connection.socket.OPEN) return;
     const buffered = connection.socket.bufferedAmount;
     connection.stats.buffered(buffered);
@@ -391,7 +392,7 @@ export class LiveHub {
       return;
     }
     watchBacklog(this.options.log, connection, buffered, message.type);
-    const shown = seenBy(connection, message, this.options.store);
+    const shown = view(connection, message, this.options.store);
     const text = shown === null ? null : liveText(connection.client.role, shown);
     if (text === null) {
       connection.stats.skipped();

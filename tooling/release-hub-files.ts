@@ -18,6 +18,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 
 import {
+  configuredLayout,
   layoutFromNames,
   LEGACY_NAMES,
   V1_NAMES,
@@ -48,10 +49,12 @@ export const BACKUP_DATABASE_FILE = 'smarteverything.db';
 export const SERVICE_ENTRY = HUB_SERVICE_ENTRY;
 export const SERVICE_FILES = [
   SERVICE_ENTRY,
+  'service-main.mjs',
   'voice-worker.mjs',
   'loop-watchdog.mjs',
   'hook-helper.mjs',
   'raster-worker.mjs',
+  'log-worker.mjs',
 ] as const;
 
 const FREE_SPACE_FACTOR = 3;
@@ -94,11 +97,11 @@ export interface ReleaseScene {
 }
 
 export function releaseSceneOf(install: string, root: string): ReleaseScene {
-  const after = dataLayoutOf(root);
+  const after = configuredLayout(dataLayoutOf(root));
   if (hasV1Marker(root))
     return { target: { install: hubInstall(install), data: after }, transition: null };
   return {
-    target: { install: hubInstall(install), data: legacyLayoutOf(root) },
+    target: { install: hubInstall(install), data: configuredLayout(legacyLayoutOf(root)) },
     transition: { after, unit: hubUnitSpec(install) },
   };
 }

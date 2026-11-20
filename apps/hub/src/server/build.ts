@@ -18,6 +18,7 @@ import type { SecretStore } from '../secrets/store';
 import type { LogLines } from '../service/log-lines';
 import type { Core } from '../services';
 import type { Store } from '../store/store';
+import type { LogStore } from '../logs/log-store';
 import type { AccessService } from './access';
 import { CameraSockets } from './camera-socket';
 import type { ServerContext } from './context';
@@ -67,6 +68,7 @@ import { startDriveHub, type RunningDriveHub } from './drive-hub';
 export interface BuildOptions {
   readonly connections?: HubConnections;
   readonly store: Store;
+  readonly logs: LogStore;
   readonly secrets: SecretStore;
   readonly core: Core;
   readonly layout: HubLayout;

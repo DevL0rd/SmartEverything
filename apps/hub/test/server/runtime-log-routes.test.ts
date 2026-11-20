@@ -12,6 +12,8 @@ import { clientRoutes } from '../../src/server/handlers/client-settings';
 import { runtimeLogRoutes } from '../../src/server/handlers/runtime-logs';
 import type { Bound } from '../../src/server/router';
 import { testLogger } from '../support/logs';
+import type { LogStore } from '../../src/logs/log-store';
+import { testLogStore } from '../support/log-worker';
 import { testStore, type TestStore } from '../support/store';
 
 const NOW = '2026-11-05T06:00:00.000Z';
@@ -27,6 +29,7 @@ const RECORD = {
 };
 
 let opened: TestStore;
+let logs: LogStore;
 let owner: ClientRow;
 let member: ClientRow;
 let routes: ReturnType<typeof runtimeLogRoutes>;
@@ -41,10 +44,12 @@ beforeEach(async () => {
     { name: 'Member', platform: 'android', role: 'member', tokenHash: 'b'.repeat(64) },
     false,
   );
-  routes = runtimeLogRoutes({ store: opened.store }, () => new Date(END));
+  logs = await testLogStore(opened.directory, opened.store);
+  routes = runtimeLogRoutes({ store: opened.store, logs }, () => new Date(END));
 });
 
 afterEach(async () => {
+  await logs.close();
   await opened.close();
 });
 

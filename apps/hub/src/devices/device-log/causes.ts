@@ -91,12 +91,24 @@ export function causesFor(store: LogStore, commands: readonly CommandRow[]): Cau
   const runs = store.automationRuns.runsOfCommands(commands.map((command) => command.id));
   const person = (clientId: string | null): string | undefined =>
     clientId === null ? undefined : people.get(clientId);
+  const automations = new Map<string, StoredAutomationRow | undefined>();
+  const automationOf = (id: string): StoredAutomationRow | undefined => {
+    if (!automations.has(id)) automations.set(id, store.automations.find(id));
+    return automations.get(id);
+  };
+  const ofRuns = new Map<string, DeviceLogCause>();
   const ofAutomation = (command: CommandRow): DeviceLogCause => {
     const run = runs.get(command.id);
-    const automation = run === undefined ? undefined : store.automations.find(run.automation_id);
-    return run === undefined || automation === undefined
-      ? { kind: 'automation' }
-      : automationCause(store, automation, run.created_at);
+    if (run === undefined) return { kind: 'automation' };
+    const known = ofRuns.get(run.id);
+    if (known !== undefined) return known;
+    const automation = automationOf(run.automation_id);
+    const cause =
+      automation === undefined
+        ? { kind: 'automation' as const }
+        : automationCause(store, automation, run.created_at);
+    ofRuns.set(run.id, cause);
+    return cause;
   };
   return {
     person,

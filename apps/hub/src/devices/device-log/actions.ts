@@ -3,7 +3,7 @@ import { causesFor } from './causes';
 import type { DeviceLogSource, LogRequest, LogStore } from './types';
 
 export function actionsSource(): DeviceLogSource {
-  return { claims: () => false, read: readActions };
+  return { claims: () => false, claimedKinds: [], read: readActions };
 }
 
 function readActions(store: LogStore, request: LogRequest): readonly DeviceLogEntry[] {

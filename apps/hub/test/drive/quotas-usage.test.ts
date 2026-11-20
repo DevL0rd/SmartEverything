@@ -148,6 +148,32 @@ describe('usage per member', () => {
   });
 });
 
+describe('usage totals kept by the store', () => {
+  it('follows resized, reassigned and removed files, versions and trash', () => {
+    const a = file(HOME, robin, 100);
+    const b = file(HOME, robin, 20);
+    version(a, HOME, robin, 40);
+    trash('gone-robin', HOME, robin, 5);
+    fixture.database.prepare('update drive_items set bytes = 60 where id = ?').run(a);
+    fixture.database
+      .prepare('update drive_items set added_by_profile_id = ? where id = ?')
+      .run(sam, b);
+    fixture.database.prepare('update drive_versions set bytes = 25 where item_id = ?').run(a);
+    fixture.database.prepare('delete from drive_trash where item_id = ?').run('gone-robin');
+    expect(quotas.usage(robin)).toMatchObject({ items: 1, live: 60, versions: 25, trash: 0 });
+    expect(quotas.usage(sam)).toMatchObject({ items: 1, live: 20 });
+    fixture.database.prepare('delete from drive_items where id = ?').run(b);
+    expect(readDriveUsage(quotas, { role: 'owner' }).map((u) => u.profileId)).toEqual([robin]);
+  });
+
+  it("moves a removed person's files to the unattributed total", () => {
+    file(HOME, sam, 9);
+    fixture.database.prepare('delete from profiles where id = ?').run(sam);
+    expect(quotas.usage(null)).toMatchObject({ items: 1, live: 9 });
+    expect(readDriveUsage(quotas, { role: 'owner' }).map((u) => u.profileId)).toEqual([null]);
+  });
+});
+
 describe('quota check', () => {
   const status = (profileId: string): DriveQuotaStatus => quotas.status(profileId);
 

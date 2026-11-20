@@ -1,5 +1,4 @@
 import { availableParallelism } from 'node:os';
-import type { DriveItem } from '@smarteverything/domain';
 import { background, messageOf, type Logger } from '@smarteverything/logging';
 import sharp from 'sharp';
 import { vaapiDevice } from '../../media/ffmpeg-path';
@@ -128,6 +127,7 @@ export class MediaJobRunner {
   };
   private readonly tallies = new Map<ProgressKind, ProgressTally>();
   private readonly waiting: (() => void)[] = [];
+  private readonly touchListeners = new Set<(itemId: string) => void>();
   private readonly abort = new AbortController();
   private started = false;
 
@@ -156,8 +156,19 @@ export class MediaJobRunner {
     return job;
   }
 
-  itemChanged(item: DriveItem): void {
-    this.env.jobs.removeOlderRevisions(item.id, item.rev);
+  onTouched(listener: (itemId: string) => void): () => void {
+    this.touchListeners.add(listener);
+    return (): void => {
+      this.touchListeners.delete(listener);
+    };
+  }
+
+  touched(itemId: string): void {
+    for (const listener of this.touchListeners) listener(itemId);
+  }
+
+  itemChanged(itemId: string, rev: number): void {
+    this.env.jobs.removeOlderRevisions(itemId, rev);
   }
 
   prioritise(itemId: string): void {
@@ -221,11 +232,8 @@ export class MediaJobRunner {
     if (!this.started || this.abort.signal.aborted) return;
     for (const resource of ['image', 'video', 'io', 'cloud', 'accelerator'] as const) {
       const kinds = this.kindsOf(resource);
-      while (kinds.length > 0 && this.running[resource] < this.limitOf(resource)) {
-        const job = this.env.jobs.claim(kinds);
-        if (job === undefined) break;
-        this.launch(resource, job);
-      }
+      const free = this.limitOf(resource) - this.running[resource];
+      for (const job of this.env.jobs.claim(kinds, free)) this.launch(resource, job);
     }
   }
 
@@ -256,6 +264,7 @@ export class MediaJobRunner {
       handler.settled?.(job);
       this.pump();
       this.release();
+      this.touched(job.item_id);
     }
   }
 

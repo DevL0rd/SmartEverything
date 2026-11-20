@@ -20,7 +20,20 @@ export type PhotoPipelineDeps = Pick<DriveDeps, 'store' | 'layout' | 'log'> & {
   readonly parts: Pick<DriveDeps['parts'], 'context'>;
 };
 
-const CANDIDATE = z.strictObject({ id: z.string() });
+const CANDIDATE = z.strictObject({
+  id: z.string(),
+  rev: z.int().positive(),
+  kind: z.enum(['preview', 'poster', 'playable']),
+});
+
+const CURRENT = z.strictObject({ found: z.literal(1) });
+
+function missing(kind: 'preview' | 'poster' | 'playable', needs: string): string {
+  return `select i.id, i.rev, '${kind}' as kind
+    from drive_media m cross join drive_items i on i.id = m.item_id
+    where ${needs} and not exists (select 1 from drive_media_jobs j
+      where j.item_id = i.id and j.rev = i.rev and j.kind = '${kind}')`;
+}
 
 export async function locateMedia(deps: PhotoPipelineDeps, item: DriveItem): Promise<string> {
   const root = deps.store.driveRoots.byId(item.rootId);
@@ -109,33 +122,25 @@ export class PhotoPipeline {
   async reconcile(): Promise<void> {
     const candidates = await this.deps.store.reader.all(
       CANDIDATE,
-      `select i.id from drive_media m cross join drive_items i on i.id = m.item_id
-       where (i.kind = 'image' and m.preview_state = 'none' and not exists
-         (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'preview'))
-          or (i.kind = 'video' and ((m.poster_state = 'none' and not exists
-         (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'poster'))
-          or (m.playable_state = 'none' and not exists
-         (select 1 from drive_media_jobs j where j.item_id = i.id and j.rev = i.rev and j.kind = 'playable'))))`,
+      `${missing('preview', "i.kind = 'image' and m.preview_state = 'none'")}
+       union all ${missing('poster', "i.kind = 'video' and m.poster_state = 'none'")}
+       union all ${missing('playable', "i.kind = 'video' and m.playable_state = 'none'")}`,
     );
-    await inSlices(this.deps.parts.context, candidates, ({ id }) => {
-      this.requestFor(id);
+    await inSlices(this.deps.parts.context, candidates, (candidate) => {
+      if (!this.current(candidate.id, candidate.rev)) return;
+      this.runner.itemChanged(candidate.id, candidate.rev);
+      this.runner.request({ kind: candidate.kind, itemId: candidate.id, rev: candidate.rev });
     });
   }
 
-  private requestFor(id: string): void {
-    const item = this.deps.store.driveItems.find(id, null);
-    const media = this.media.find(id);
-    if (item === undefined || media === undefined) return;
-    this.runner.itemChanged(item);
-    if (item.kind === 'image' && media.preview_state === 'none') this.request(item, 'preview');
-    if (item.kind === 'video' && media.poster_state === 'none') this.request(item, 'poster');
-    if (item.kind === 'video' && media.playable_state === 'none') this.request(item, 'playable');
-  }
-
-  private request(item: DriveItem, kind: 'preview' | 'poster' | 'playable'): void {
-    const jobs = new DriveMediaJobsRepository(this.deps.parts.context);
-    if (jobs.forItem(item.id).some((job) => job.kind === kind && job.rev === item.rev)) return;
-    this.runner.request({ kind, itemId: item.id, rev: item.rev });
+  private current(itemId: string, rev: number): boolean {
+    return (
+      this.deps.parts.context.sql.get(
+        CURRENT,
+        'select 1 as found from drive_items where id = $itemId and rev = $rev',
+        { itemId, rev },
+      ) !== undefined
+    );
   }
 
   private writeThumb(itemId: string, thumb: DriveThumb): void {
@@ -147,6 +152,7 @@ export class PhotoPipeline {
       'update drive_items set thumb_state = $state, thumb_reason = $reason where id = $itemId',
       { itemId, state: thumb.state, reason: 'reason' in thumb ? thumb.reason : null },
     );
+    this.runner.touched(itemId);
     this.deps.store.feed.notice({
       type: 'drive_changed',
       rootIds: [item.rootId],

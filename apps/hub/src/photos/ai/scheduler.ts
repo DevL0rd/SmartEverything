@@ -1,10 +1,12 @@
 import type { CommittedNotice, LiveChange } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import { z } from 'zod';
 import type { ChangeFeed } from '../../store/feed';
 import { Coalesced } from '../../store/reader';
 import { inSlices } from '../../store/slices';
 import type { Store } from '../../store/store';
-import { candidatesOf } from './candidates';
+import type { MediaJobRunner } from '../pipeline/jobs';
+import { candidatesOf, type CandidateScope } from './candidates';
 import type { ConsentSwitches, PhotoConsent } from './consent';
 import { PhotoAiPurge } from './purge';
 import type { PhotoAiKind, PhotoAiQueue } from './queue';
@@ -13,8 +15,9 @@ import type { PhotoAiModelStore } from './settings';
 import type { PhotoVectorIndex } from './index';
 
 export interface SchedulerEnvironment {
-  readonly store: Pick<Store, 'context' | 'personAccess' | 'reader'>;
-  readonly feed: Pick<ChangeFeed, 'subscribe' | 'subscribeNotices'>;
+  readonly store: Pick<Store, 'context' | 'personAccess' | 'reader' | 'driveFeed'>;
+  readonly feed: Pick<ChangeFeed, 'subscribe' | 'subscribeNotices' | 'afterCommit'>;
+  readonly media: Pick<MediaJobRunner, 'onTouched'>;
   readonly keys: { readonly onChange: (listener: () => void) => () => void };
   readonly queue: PhotoAiQueue;
   readonly consent: PhotoConsent;
@@ -22,6 +25,8 @@ export interface SchedulerEnvironment {
   readonly index: PhotoVectorIndex;
   readonly log: Logger;
 }
+
+const OWNER = z.strictObject({ id: z.string() });
 
 const ORDER: readonly PhotoAiKind[] = ['faces', 'vision', 'embed', 'pet_embed'];
 
@@ -46,13 +51,18 @@ export class PhotoAiScheduler {
   private readonly known = new Map<string, ConsentSwitches>();
   private readonly purge: PhotoAiPurge;
   private readonly pass: Coalesced;
+  private readonly dirty = new Set<string>();
+  private touchedThisTurn = false;
+  private wholeLibrary = true;
+  private seenSeq = 0;
+  private cursor: number | null = null;
   private stops: (() => void)[] = [];
 
   constructor(private readonly env: SchedulerEnvironment) {
     this.purge = new PhotoAiPurge(env.store.context, env.index);
     this.pass = new Coalesced(
       async () => {
-        await this.reconcile();
+        await this.cycle();
       },
       (cause) => {
         env.log.error('schedule.failed', cause);
@@ -73,6 +83,9 @@ export class PhotoAiScheduler {
       keys.onChange(() => {
         this.resumeAfterKey();
       }),
+      this.env.media.onTouched((itemId) => {
+        this.touched(itemId);
+      }),
     ];
     this.defer();
   }
@@ -88,6 +101,31 @@ export class PhotoAiScheduler {
   }
 
   async reconcile(): Promise<number> {
+    const upTo = this.env.store.driveFeed.latestSeq();
+    const queued = await this.schedule({ items: null, feedAfter: null, feedUpTo: upTo });
+    this.cursor = Math.max(this.cursor ?? 0, upTo);
+    return queued;
+  }
+
+  private async cycle(): Promise<void> {
+    if (this.wholeLibrary || this.cursor === null) {
+      this.wholeLibrary = false;
+      this.dirty.clear();
+      await this.reconcile();
+      return;
+    }
+    const items = [...this.dirty];
+    this.dirty.clear();
+    const feedAfter = this.cursor;
+    const feedUpTo = this.env.store.driveFeed.latestSeq();
+    if (items.length === 0 && feedUpTo <= feedAfter) return;
+    await this.schedule({ items, feedAfter, feedUpTo });
+    this.cursor = Math.max(this.cursor, feedUpTo);
+  }
+
+  private async schedule(
+    scope: Pick<CandidateScope, 'items' | 'feedAfter' | 'feedUpTo'>,
+  ): Promise<number> {
     const models = this.env.models.read();
     const versions: Readonly<Record<PhotoAiKind, string>> = {
       faces: 'sface',
@@ -95,23 +133,38 @@ export class PhotoAiScheduler {
       embed: models.embedding,
       pet_embed: models.petEmbedding,
     };
+    const homeOwner = this.env.store.personAccess.homeOwner();
+    const subjects = this.subjects(homeOwner);
     let queued = 0;
-    const allowed = new Map<string, ConsentSwitches>();
-    const switchesOf = (profileId: string): ConsentSwitches => {
-      const known = allowed.get(profileId) ?? this.env.consent.switches(profileId);
-      allowed.set(profileId, known);
-      return known;
-    };
     for (const kind of ORDER) {
-      const candidates = await candidatesOf(this.env.store.reader, kind);
+      const allowed = subjects
+        .filter(({ switches }) => (kind === 'faces' ? switches.faceGrouping : switches.smartSearch))
+        .map(({ profileId }) => profileId);
+      if (allowed.length === 0) continue;
+      const candidates = await candidatesOf(this.env.store.reader, kind, {
+        ...scope,
+        allowed,
+        homeOwner,
+      });
       await inSlices(this.env.store.context, candidates, (candidate) => {
-        const subject = candidate.owner ?? this.env.store.personAccess.homeOwner();
-        const switches = switchesOf(subject);
-        if (kind === 'faces' ? !switches.faceGrouping : !switches.smartSearch) return;
         if (this.env.queue.request(kind, candidate.id, candidate.rev, versions[kind])) queued += 1;
       });
     }
     return queued;
+  }
+
+  private subjects(
+    homeOwner: string,
+  ): readonly { readonly profileId: string; readonly switches: ConsentSwitches }[] {
+    const owners = this.env.store.context.sql.all(
+      OWNER,
+      'select distinct owner_profile_id as id from drive_roots where owner_profile_id is not null',
+    );
+    const profileIds = new Set([homeOwner, ...owners.map(({ id }) => id)]);
+    return [...profileIds].map((profileId) => ({
+      profileId,
+      switches: this.env.consent.switches(profileId),
+    }));
   }
 
   resumeAfterKey(): void {
@@ -141,10 +194,26 @@ export class PhotoAiScheduler {
   }
 
   private noticed(notice: CommittedNotice): void {
-    if (notice.type === 'drive_changed') this.defer();
+    if (notice.type !== 'drive_changed') return;
+    const latest = this.env.store.driveFeed.latestSeq();
+    if (latest <= this.seenSeq && !this.touchedThisTurn) this.wholeLibrary = true;
+    this.seenSeq = Math.max(this.seenSeq, latest);
+    this.pass.trigger();
+  }
+
+  private touched(itemId: string): void {
+    this.dirty.add(itemId);
+    this.touchedThisTurn = true;
+    queueMicrotask(() => {
+      this.touchedThisTurn = false;
+    });
+    this.env.feed.afterCommit(() => {
+      this.pass.trigger();
+    });
   }
 
   private defer(): void {
+    this.wholeLibrary = true;
     this.pass.trigger();
   }
 }

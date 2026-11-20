@@ -8,8 +8,11 @@ import type { Engine } from '../../src/assistant/engines/engine';
 import {
   RepairDispatch,
   repairEvidenceOf,
+  retainedLogOf,
   type RepairRequest,
 } from '../../src/assistant/repair-dispatch';
+import type { LogStore } from '../../src/logs/log-store';
+import { testLogStore } from '../support/log-worker';
 import { repairSourceDigest } from '../../src/assistant/repair-source';
 import {
   admitExecutionTool,
@@ -27,6 +30,7 @@ import { testStore, type TestStore } from '../support/store';
 const CRASH_STACK = `at example (file.ts:2:1)${'x'.repeat(9000)}`;
 
 let opened: TestStore;
+let logs: LogStore;
 let profileId: string;
 let chat: AiChatRow;
 let fallback: AiChatRow;
@@ -52,6 +56,7 @@ beforeEach(async () => {
   vi.useFakeTimers();
   opened = await testStore();
   const { store } = opened;
+  logs = await testLogStore(opened.directory, store);
   const owner = store.clients.create(
     { name: 'Owner', platform: 'android', role: 'owner', tokenHash: 'owner' },
     true,
@@ -81,12 +86,14 @@ beforeEach(async () => {
       event: 'promise.unhandled',
       failure: { name: 'Error', message: 'example' },
     }),
+    retained: null,
     recipient: { active: null, previousChatId: chat.id },
   };
 });
 
 afterEach(async () => {
   vi.useRealTimers();
+  await logs.close();
   await opened.close();
 });
 
@@ -124,10 +131,26 @@ function delivery(registry: EngineRegistry): AssistantDelivery {
   });
 }
 
-function evidence(): {
+function retainedRequest(fingerprint: string): RepairRequest {
+  return {
+    ...request,
+    fingerprint,
+    retained: retainedLogOf(opened.store, logs, fingerprint, profileId),
+  };
+}
+
+const HUB_SOURCE = {
+  source: 'hub:service',
+  runtime: 'hub',
+  platform: 'server',
+  deviceId: null,
+  clientId: 'hub',
+} as const;
+
+async function evidence(): Promise<{
   readonly record: NonNullable<ReturnType<typeof storedFromLog>>;
   readonly group: AiRepairGroup;
-} {
+}> {
   const { store } = opened;
   const record = storedFromLog(
     {
@@ -142,7 +165,7 @@ function evidence(): {
     { source: 'hub:service', clientId: 'hub', deviceId: null, now: store.now().toISOString() },
   );
   if (record === null) throw new Error('Missing fixture log');
-  store.runtimeLogs.append([record], 'hub');
+  await logs.append([record], HUB_SOURCE, store.now().toISOString());
   const group = store.aiRepairInbox.list({ limit: 1 }).groups[0];
   if (group === undefined) throw new Error('Missing fixture group');
   return { record, group };
@@ -156,8 +179,8 @@ describe('repair through the selected chat engine', () => {
       chat = newChat(native);
       fallback = chat;
       request = { ...request, recipient: { active: null, previousChatId: chat.id } };
-      const { group } = evidence();
-      expect(repair.admit({ ...request, fingerprint: group.fingerprint })).toMatchObject({
+      const { group } = await evidence();
+      expect(repair.admit(retainedRequest(group.fingerprint))).toMatchObject({
         kind: 'queued',
         chatId: chat.id,
       });
@@ -289,12 +312,12 @@ describe('repair through the selected chat engine', () => {
     ).toThrow(/snapshot changed/u);
   });
 
-  it('deduplicates automatic requests and leaves independent errors queued normally', () => {
+  it('deduplicates automatic requests and leaves independent errors queued normally', async () => {
     const { store } = opened;
     expect(repair.admit({ ...request, kind: 'automatic' })).toMatchObject({ reason: 'disabled' });
     store.settingsKv.save('ai-repair', { enabled: true });
-    const { group } = evidence();
-    const automatic = { ...request, kind: 'automatic' as const, fingerprint: group.fingerprint };
+    const { group } = await evidence();
+    const automatic = { ...retainedRequest(group.fingerprint), kind: 'automatic' as const };
     expect(repair.admit(automatic)).toMatchObject({ kind: 'queued' });
     expect(repair.admit(automatic)).toMatchObject({ kind: 'existing' });
     expect(repair.admit({ ...automatic, id: randomUUID() })).toMatchObject({
@@ -362,24 +385,28 @@ describe('repair through the selected chat engine', () => {
     );
   });
 
-  it('rejects dismissed evidence and accepts a new observation without duplicating the old request', () => {
+  it('rejects dismissed evidence and accepts a new observation without duplicating the old request', async () => {
     const { store } = opened;
-    const { record, group } = evidence();
-    const input = { ...request, fingerprint: group.fingerprint };
+    const { record, group } = await evidence();
+    const input = retainedRequest(group.fingerprint);
     repair.admit(input);
     store.assistantEvents.mark(request.id, 'answered_at');
     store.aiRepairInbox.dismiss({ kind: 'inactive' });
     expect(repair.admit(input)).toMatchObject({ kind: 'existing' });
     const next = { ...input, id: randomUUID() };
     expect(repair.admit(next)).toMatchObject({ reason: 'evidence' });
-    store.runtimeLogs.append([{ ...record, at: '2026-10-08T10:00:00.000Z' }], 'hub');
+    await logs.append(
+      [{ ...record, at: '2026-10-08T10:00:00.000Z' }],
+      HUB_SOURCE,
+      store.now().toISOString(),
+    );
     expect(repair.admit(next)).toMatchObject({ kind: 'queued' });
   });
 
   it('uses normal retry and stop behavior and records the visible failure in the inbox', async () => {
     const { store } = opened;
-    const { group } = evidence();
-    repair.admit({ ...request, fingerprint: group.fingerprint });
+    const { group } = await evidence();
+    repair.admit(retainedRequest(group.fingerprint));
     const registry = new EngineRegistry(store);
     const deliver = vi.fn<Engine['deliver']>(() =>
       Promise.reject(new Error('Engine disconnected')),

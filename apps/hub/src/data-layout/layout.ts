@@ -39,6 +39,7 @@ export interface LayoutNames {
     | 'perfSamples'
     | 'wakeDiagnostics'
     | 'hubUpdateWatchdog'
+    | 'runtimeLogs'
   >;
   readonly journal: string;
   readonly ai: Paths<'assistant' | 'claude' | 'codex' | 'harness' | 'claudeHome' | 'codexHome'>;
@@ -111,6 +112,7 @@ export const V1_NAMES: LayoutNames = {
     perfSamples: 'system/logs/perf-samples.jsonl',
     wakeDiagnostics: 'system/logs/wake-diagnostics',
     hubUpdateWatchdog: 'system/logs/hub-update-watchdog.log',
+    runtimeLogs: 'system/logs/runtime-logs.db',
   },
   journal: 'system/journal',
   ai: {
@@ -279,6 +281,7 @@ function logsOf(names: LayoutNames, at: At): LayoutNames['logs'] {
     perfSamples: at(logs.perfSamples),
     wakeDiagnostics: at(logs.wakeDiagnostics),
     hubUpdateWatchdog: at(logs.hubUpdateWatchdog),
+    runtimeLogs: at(logs.runtimeLogs),
   };
 }
 

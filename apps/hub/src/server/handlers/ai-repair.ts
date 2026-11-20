@@ -11,8 +11,11 @@ import { z } from 'zod';
 import {
   repairEventId,
   repairEvidenceOf,
+  retainedLogOf,
   type RepairDispatch,
+  type RetainedLog,
 } from '../../assistant/repair-dispatch';
+import type { LogStore } from '../../logs/log-store';
 import { sealRepairSource } from '../../assistant/repair-source';
 import type { HubLayout } from '../../data-layout';
 import type { Store } from '../../store/store';
@@ -51,21 +54,25 @@ type RepairRoute =
 type RepairPort = Pick<RepairDispatch, 'admit' | 'available' | 'existing'> &
   Partial<Pick<RepairDispatch, 'existingPatch'>>;
 
+type RepairLogs = Pick<LogStore, 'around'>;
+
 function retainedError(
   store: Store,
+  logs: RepairLogs,
   fingerprint: string,
   profileId: string,
 ): {
   readonly component: string;
   readonly evidence: ReturnType<typeof repairEvidenceOf>;
+  readonly retained: RetainedLog;
 } {
-  const id = store.aiRepairInbox.latestLogId(fingerprint);
-  const retained =
-    id === null
-      ? null
-      : store.runtimeLogs.around({ owner: true, profileId }, { id, before: 0, after: 0 });
+  const retained = retainedLogOf(store, logs, fingerprint, profileId);
   if (retained === null) throw new ApiError('not_found', 'The error details have expired.');
-  return { component: retained.anchor.component, evidence: repairEvidenceOf(retained.anchor) };
+  return {
+    component: retained.anchor.component,
+    evidence: repairEvidenceOf(retained.anchor),
+    retained,
+  };
 }
 
 async function proposePatch(
@@ -73,10 +80,12 @@ async function proposePatch(
   repair: RepairPort | undefined,
   caller: Caller,
   {
+    logs,
     layout,
     fingerprint,
     request,
   }: {
+    readonly logs: RepairLogs;
     readonly layout: HubLayout;
     readonly fingerprint: string;
     readonly request: AiRepairPatchRequest;
@@ -88,7 +97,7 @@ async function proposePatch(
   const id = repairEventId(`patch:${fingerprint}`, request.requestId);
   const existing = repair.existingPatch(id, profileId, request);
   if (existing !== undefined) return existing;
-  const error = retainedError(store, fingerprint, profileId);
+  const error = retainedError(store, logs, fingerprint, profileId);
   const patch = await sealRepairSource(layout, request);
   return (
     repair.existingPatch(id, profileId, request) ??
@@ -116,6 +125,7 @@ function saveRepairSettings<T extends { readonly enabled: boolean }>(store: Stor
 
 export function aiRepairRoutes(
   store: Store,
+  logs: RepairLogs,
   layout: HubLayout,
   repair?: RepairPort,
 ): Routes<RepairRoute> {
@@ -146,7 +156,7 @@ export function aiRepairRoutes(
         id: eventId,
         fingerprint: params.fingerprint,
         profileId,
-        ...retainedError(store, params.fingerprint, profileId),
+        ...retainedError(store, logs, params.fingerprint, profileId),
         kind: 'manual',
         origin: 'ordinary',
         recipient: { active: null, previousChatId: null },
@@ -154,6 +164,7 @@ export function aiRepairRoutes(
     }),
     proposeAiRepairPatch: bound(E.proposeAiRepairPatch, ({ params, body, caller }) =>
       proposePatch(store, repair, caller, {
+        logs,
         layout,
         fingerprint: params.fingerprint,
         request: body,

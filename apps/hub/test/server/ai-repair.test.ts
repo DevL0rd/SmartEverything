@@ -14,7 +14,9 @@ import { ConversationLog } from '../../src/assistant/conversation-log';
 import { RepairDispatch } from '../../src/assistant/repair-dispatch';
 import { startRepair } from '../../src/server/repair-wiring';
 import { hubLayout } from '../../src/data-layout';
-import { repairEventId } from '../../src/assistant/repair-dispatch';
+import { repairEventId, retainedLogOf } from '../../src/assistant/repair-dispatch';
+import type { LogStore } from '../../src/logs/log-store';
+import { testLogStore } from '../support/log-worker';
 import type { Bound } from '../../src/server/router';
 import type {
   LogSourceInfo,
@@ -30,6 +32,7 @@ const EARLIER = '2026-11-05T09:59:00.000Z';
 const log = testLogger('ai-repair');
 
 let opened: TestStore;
+let logs: LogStore;
 let owner: ClientRow;
 let member: ClientRow;
 let routes: ReturnType<typeof aiRepairRoutes>;
@@ -45,10 +48,12 @@ beforeEach(async () => {
     { name: 'Member', platform: 'android', role: 'member', tokenHash: 'b'.repeat(64) },
     false,
   );
-  routes = aiRepairRoutes(opened.store, hubLayout(opened.directory, {}));
+  logs = await testLogStore(opened.directory, opened.store);
+  routes = aiRepairRoutes(opened.store, logs, hubLayout(opened.directory, {}));
 });
 
 afterEach(async () => {
+  await logs.close();
   await opened.close();
 });
 
@@ -77,7 +82,7 @@ function record(
   };
 }
 
-function ingest(client: ClientRow, ...records: readonly RuntimeLogRecord[]): number {
+async function ingest(client: ClientRow, ...records: readonly RuntimeLogRecord[]): Promise<number> {
   const source: LogSourceInfo = {
     source: `app:${client.id}`,
     runtime: 'app',
@@ -85,13 +90,14 @@ function ingest(client: ClientRow, ...records: readonly RuntimeLogRecord[]): num
     deviceId: client.id,
     clientId: opened.store.profiles.activeOf(client.id).id,
   };
-  return opened.store.runtimeLogs.ingest({
+  const ack = await logs.ingest({
     access: { owner: client.role === 'owner', profileId: source.clientId },
     batch: RUNTIME_LOG_BATCH.parse({ records }),
     source,
     deviceId: client.id,
     now: NOW,
-  }).accepted;
+  });
+  return ack.accepted;
 }
 
 it('defaults off and allows only the paired owner to change the setting', async () => {
@@ -118,11 +124,11 @@ it('defaults off and allows only the paired owner to change the setting', async 
 it('groups accepted owner errors, retains distinct failures at the same moment, and ignores replays', async () => {
   const timeout = record('Request 1 timed out');
   const refused = record('Connection refused');
-  expect(ingest(owner, timeout, refused)).toBe(2);
-  expect(ingest(owner, timeout, refused)).toBe(0);
-  expect(ingest(owner, record('Request 2 timed out', EARLIER))).toBe(1);
-  expect(ingest(owner, record('Warning', NOW, 'warn'))).toBe(1);
-  expect(ingest(member, record('Member private failure'))).toBe(1);
+  expect(await ingest(owner, timeout, refused)).toBe(2);
+  expect(await ingest(owner, timeout, refused)).toBe(0);
+  expect(await ingest(owner, record('Request 2 timed out', EARLIER))).toBe(1);
+  expect(await ingest(owner, record('Warning', NOW, 'warn'))).toBe(1);
+  expect(await ingest(member, record('Member private failure'))).toBe(1);
 
   const first = AI_REPAIR_PAGE.parse(await call(routes.listAiRepairGroups, owner, { limit: 1 }));
   expect(first.groups).toHaveLength(1);
@@ -150,7 +156,7 @@ it('groups accepted owner errors, retains distinct failures at the same moment, 
     ]),
   );
   const repeated = groups.find((group) => group.observations === 2);
-  const evidence = opened.store.runtimeLogs.around(
+  const evidence = logs.around(
     { owner: true, profileId: owner.id },
     { id: repeated?.latestLogId ?? 0, before: 0, after: 0 },
   );
@@ -160,9 +166,12 @@ it('groups accepted owner errors, retains distinct failures at the same moment, 
   });
 });
 
-it('keeps its grouped evidence across an independent database open and clears removed log links', () => {
-  expect(ingest(owner, record('Request timed out'))).toBe(1);
-  opened.store.runtimeLogs.drop({ owner: true, profileId: owner.id }, undefined);
+it('keeps its grouped evidence across an independent database open after its log records are dropped', async () => {
+  expect(await ingest(owner, record('Request timed out'))).toBe(1);
+  await logs.drop({ owner: true, profileId: owner.id }, undefined);
+  const [group] = opened.store.aiRepairInbox.list({ limit: 1 }).groups;
+  if (group === undefined) throw new Error('Expected a retained group.');
+  expect(retainedLogOf(opened.store, logs, group.fingerprint, owner.id)).toBeNull();
   const reader = openStore({
     path: join(opened.directory, 'test.db'),
     log,
@@ -172,7 +181,7 @@ it('keeps its grouped evidence across an independent database open and clears re
   });
   try {
     expect(reader.aiRepairInbox.list({ limit: 100 }).groups).toMatchObject([
-      { observations: 1, latestLogId: null },
+      { observations: 1, latestLogId: group.latestLogId },
     ]);
     expect(reader.settingsKv.read('ai-repair')).toBeNull();
   } finally {
@@ -189,24 +198,16 @@ it('offers every committed owner error until the first automatic admission', asy
         store.aiRepairInbox.markAutomaticAdmitted(fingerprint);
       });
   });
-  const stop = opened.store.runtimeLogs.onRepairEvidence(observed);
+  const stop = logs.onRepairEvidence(observed);
   const crash = {
     ...record('App crashed', NOW, 'exception'),
     event: 'error.uncaught',
     scope: 'app.crash-guard',
   };
-  expect(() =>
-    opened.store.write(() => {
-      expect(ingest(owner, crash)).toBe(1);
-      throw new Error('Rolled back');
-    }),
-  ).toThrow('Rolled back');
-  await Promise.resolve();
-  expect(observed).not.toHaveBeenCalled();
-  expect(ingest(member, crash)).toBe(1);
-  expect(ingest(owner, record('Other owner error'))).toBe(1);
-  expect(ingest(owner, crash)).toBe(1);
-  expect(ingest(owner, crash)).toBe(0);
+  expect(await ingest(member, crash)).toBe(1);
+  expect(await ingest(owner, record('Other owner error'))).toBe(1);
+  expect(await ingest(owner, crash)).toBe(1);
+  expect(await ingest(owner, crash)).toBe(0);
   await Promise.resolve();
   expect(observed).toHaveBeenCalledTimes(2);
   expect(observed).toHaveBeenCalledWith(
@@ -214,10 +215,10 @@ it('offers every committed owner error until the first automatic admission', asy
     expect.stringMatching(/^[a-f\d]{64}$/u),
   );
   accept = true;
-  expect(ingest(owner, { ...crash, timestamp: EARLIER })).toBe(1);
+  expect(await ingest(owner, { ...crash, timestamp: EARLIER })).toBe(1);
   await Promise.resolve();
   expect(observed).toHaveBeenCalledTimes(3);
-  expect(ingest(owner, { ...crash, timestamp: '2026-11-05T10:00:01.000Z' })).toBe(1);
+  expect(await ingest(owner, { ...crash, timestamp: '2026-11-05T10:00:01.000Z' })).toBe(1);
   await Promise.resolve();
   expect(observed).toHaveBeenCalledTimes(3);
   stop();
@@ -225,7 +226,7 @@ it('offers every committed owner error until the first automatic admission', asy
 
 it('answers a repeated manual request even after its log evidence is purged', async () => {
   const { store } = opened;
-  expect(ingest(owner, record('Request failed'))).toBe(1);
+  expect(await ingest(owner, record('Request failed'))).toBe(1);
   const group = store.aiRepairInbox.list({ limit: 1 }).groups[0];
   if (group === undefined) throw new Error('Expected a retained group.');
   const requestId = randomUUID();
@@ -233,12 +234,12 @@ it('answers a repeated manual request even after its log evidence is purged', as
   const chatId = randomUUID();
   const existing = vi.fn(() => ({ kind: 'existing', eventId, chatId }) as const);
   const admit = vi.fn();
-  const { diagnoseAiRepairGroup } = aiRepairRoutes(store, hubLayout(opened.directory, {}), {
+  const { diagnoseAiRepairGroup } = aiRepairRoutes(store, logs, hubLayout(opened.directory, {}), {
     admit,
     existing,
     available: () => true,
   });
-  store.runtimeLogs.drop({ owner: true, profileId: owner.id }, undefined);
+  await logs.drop({ owner: true, profileId: owner.id }, undefined);
   await expect(
     diagnoseAiRepairGroup.run(
       { kind: 'client', client: owner, profileId: owner.id },
@@ -256,8 +257,8 @@ it('answers a repeated manual request even after its log evidence is purged', as
   expect(admit).not.toHaveBeenCalled();
 });
 
-function observedGroup(message: string): AiRepairGroup {
-  expect(ingest(owner, record(message))).toBe(1);
+async function observedGroup(message: string): Promise<AiRepairGroup> {
+  expect(await ingest(owner, record(message))).toBe(1);
   const group = opened.store.aiRepairInbox.list({ limit: 1 }).groups[0];
   if (group === undefined) throw new Error('Expected an error group.');
   return group;
@@ -293,7 +294,7 @@ function addInvestigation(fingerprint: string): {
 
 it('dismisses only the observed version of an error and keeps its diagnostic evidence', async () => {
   const { store } = opened;
-  const { fingerprint, observations, latestLogId } = observedGroup('Request failed');
+  const { fingerprint, observations, latestLogId } = await observedGroup('Request failed');
   const dismissal = { kind: 'group', fingerprint, observations };
   await expect(call(routes.dismissAiRepairGroups, member, {}, dismissal)).rejects.toMatchObject({
     code: 'forbidden',
@@ -305,13 +306,11 @@ it('dismisses only the observed version of an error and keeps its diagnostic evi
   expect(store.aiRepairInbox.list({ limit: 1 }).groups).toEqual([]);
   expect(store.aiRepairInbox.mayAutoAdmit(fingerprint)).toBe(false);
   expect(
-    store.runtimeLogs.around(
-      { owner: true, profileId: owner.id },
-      { id: latestLogId ?? 0, before: 0, after: 0 },
-    )?.anchor.id,
+    logs.around({ owner: true, profileId: owner.id }, { id: latestLogId ?? 0, before: 0, after: 0 })
+      ?.anchor.id,
   ).toBe(latestLogId);
 
-  expect(ingest(owner, record('Request failed', EARLIER))).toBe(1);
+  expect(await ingest(owner, record('Request failed', EARLIER))).toBe(1);
   await expect(call(routes.dismissAiRepairGroups, owner, {}, dismissal)).resolves.toEqual({
     dismissed: 0,
   });
@@ -322,9 +321,9 @@ it('dismisses only the observed version of an error and keeps its diagnostic evi
 
 it('clears inactive groups while leaving queued and running work visible and intact', async () => {
   const { store } = opened;
-  const group = observedGroup('Needs repair');
+  const group = await observedGroup('Needs repair');
   const { chatId, eventId } = addInvestigation(group.fingerprint);
-  expect(ingest(owner, record('Discarded error', EARLIER))).toBe(1);
+  expect(await ingest(owner, record('Discarded error', EARLIER))).toBe(1);
   const page = AI_REPAIR_PAGE.parse(await call(routes.listAiRepairGroups, owner, { limit: 1 }));
   expect(page).toMatchObject({
     groups: [{ fingerprint: group.fingerprint, progress: 'queued' }],
@@ -355,7 +354,7 @@ it('recovers visible unadmitted and legacy held errors once at startup without r
   const { store } = opened;
   store.settingsKv.save('ai-repair', { enabled: true });
   store.settingsKv.save('ai-repair-enabled-at', { at: EARLIER });
-  const held = observedGroup('Legacy held work');
+  const held = await observedGroup('Legacy held work');
   store.aiRepairInbox.recordAdmission(held.fingerprint, { kind: 'held', reason: 'budget' });
   store.aiRepairInbox.markAutomaticAdmitted(held.fingerprint);
   const profileId = store.profiles.activeOf(owner.id).id;
@@ -374,7 +373,7 @@ it('recovers visible unadmitted and legacy held errors once at startup without r
     repairChat: (): AiChatRow => chat,
     added: (): undefined => undefined,
   });
-  const context = { store, log, assistant: { repair } };
+  const context = { store, logs, log, assistant: { repair } };
   const layout = hubLayout(opened.directory, {});
   let stop = startRepair(context, layout);
   expect(store.assistantEvents.pending()).toHaveLength(1);
@@ -383,12 +382,14 @@ it('recovers visible unadmitted and legacy held errors once at startup without r
   stop = startRepair(context, layout);
   expect(store.assistantEvents.pending()).toHaveLength(1);
   for (let index = 0; index < 216; index += 1)
-    ingest(owner, record('Legacy held work', new Date(Date.parse(NOW) + index + 1).toISOString()));
-  await Promise.resolve();
+    await ingest(
+      owner,
+      record('Legacy held work', new Date(Date.parse(NOW) + index + 1).toISOString()),
+    );
   expect(store.assistantEvents.pending()).toHaveLength(1);
-  expect(ingest(owner, { ...record('New error during repair'), event: 'arbitrary.failed' })).toBe(
-    1,
-  );
+  expect(
+    await ingest(owner, { ...record('New error during repair'), event: 'arbitrary.failed' }),
+  ).toBe(1);
   await Promise.resolve();
   expect(store.assistantEvents.pending()).toHaveLength(2);
   expect(store.assistantEvents.pending().every((event) => event.chat_id === chat.id)).toBe(true);

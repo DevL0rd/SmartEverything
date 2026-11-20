@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { found, type StoreContext } from '../context';
+import { inList } from '../sql';
 
 export const PHOTO_AI_JOB_KINDS = ['faces', 'vision', 'embed', 'pet_embed'] as const;
 
@@ -62,9 +63,11 @@ const COLUMNS =
 
 const SELECT = `select ${COLUMNS} from drive_media_jobs`;
 
+const CLAIMED = z.strictObject({ id: z.string().min(1) });
+
 function queueHead(index: number): string {
   return `select * from (${SELECT} where state = 'queued' and kind = $kind${String(index)}
-    order by visible desc, queued_at, id limit 1)`;
+    order by visible desc, queued_at, id limit $count)`;
 }
 
 export class DriveMediaJobsRepository {
@@ -126,25 +129,36 @@ export class DriveMediaJobsRepository {
     });
   }
 
-  claim(kinds: readonly DriveMediaJobKind[]): DriveMediaJob | undefined {
-    if (kinds.length === 0) return undefined;
+  claim(kinds: readonly DriveMediaJobKind[], count: number): DriveMediaJob[] {
+    if (kinds.length === 0 || count < 1) return [];
     return this.context.write(() => {
-      const next = this.context.sql.get(
-        STORED_JOB,
-        `select * from (${kinds.map((_, index) => queueHead(index)).join(' union all ')})
-         order by visible desc, (kind = 'playable_source'), queued_at, id limit 1`,
-        Object.fromEntries(kinds.map((kind, index) => [`kind${String(index)}`, kind])),
+      const next = this.context.sql.all(
+        CLAIMED,
+        `select id from (${kinds.map((_, index) => queueHead(index)).join(' union all ')})
+         order by visible desc, (kind = 'playable_source'), queued_at, id limit $count`,
+        {
+          ...Object.fromEntries(kinds.map((kind, index) => [`kind${String(index)}`, kind])),
+          count,
+        },
       );
-      if (next === undefined) {
-        return undefined;
-      }
+      if (next.length === 0) return [];
+      const ids = inList(
+        'id',
+        'ids',
+        next.map(({ id }) => id),
+      );
       this.context.sql.run(
-        'start the media job',
+        'start the media jobs',
         `update drive_media_jobs set state = 'running', attempts = attempts + 1, error = null
-         where id = $id`,
-        { id: next.id },
+         where ${ids.text}`,
+        ids.parameters,
       );
-      return this.byId(next.id);
+      const started = new Map(
+        this.context.sql
+          .all(STORED_JOB, `${SELECT} where ${ids.text}`, ids.parameters)
+          .map((job) => [job.id, job]),
+      );
+      return next.map(({ id }) => found(started.get(id), 'media job', id));
     });
   }
 

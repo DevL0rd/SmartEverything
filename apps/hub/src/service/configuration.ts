@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path';
 import { HUB_UPDATE_SOURCE_CHECK } from '@smarteverything/domain';
 import { LOG_LEVELS, messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
+import { DATABASE_FOLDER } from '../data-layout/database';
 
 export { OWNER_TOKEN_FILE } from '../owner-token-file';
 
@@ -53,6 +54,7 @@ const HUB_SERVICE_CONFIG = z.strictObject({
       advertise: z.boolean().default(true),
     })
     .optional(),
+  database: DATABASE_FOLDER,
   port: PORT.default(DEFAULT_SERVER_PORT),
   host: z.string().min(1).default('0.0.0.0'),
   go2rtcBinary: ABSOLUTE_PATH,

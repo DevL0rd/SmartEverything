@@ -25,6 +25,8 @@ export const SELECT = `select ${COLUMNS}, ${openedAtBy('$viewer')} as opened_at,
 
 const TEXT = z.string().nullable();
 
+const KIND = z.enum(DRIVE_ITEM_KINDS);
+
 const ITEM_PLACE = z.object({ inode_id: z.number(), dev: TEXT, ino: TEXT });
 
 type ItemColumns = Readonly<Record<string, unknown>>;
@@ -106,7 +108,7 @@ function mediaOf(row: ItemColumns): Record<string, unknown> {
 }
 
 function kindFieldsOf(row: ItemColumns): Record<string, unknown> {
-  switch (z.enum(DRIVE_ITEM_KINDS).parse(row['kind'])) {
+  switch (KIND.parse(row['kind'])) {
     case 'folder':
       return {
         childCount: row['child_count'],

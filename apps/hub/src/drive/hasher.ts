@@ -4,7 +4,7 @@ import { isFileItem, type FileItem } from './file-item';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import type { Store } from '../store/store';
-import { HASH_RESPONSE, type HashRequest, type HashResponse } from './blocks';
+import { HASH_RESPONSE, type BlockHashes, type HashRequest, type HashResponse } from './blocks';
 import type { DriveJobHandlers } from './jobs';
 import { readDriveSettings } from './settings';
 import type { RootAvailability } from './root-marker';
@@ -157,21 +157,26 @@ export interface HashedFile {
   readonly ino: bigint;
 }
 
+export interface ContentHash {
+  readonly sha256: string;
+  readonly blocks: BlockHashes | null;
+}
+
 export class ContentHasher {
   private worker: HashWorker | null = null;
 
   constructor(private readonly script: string) {}
 
-  async sha256(file: HashedFile): Promise<string> {
+  async hash(file: HashedFile, withBlocks: boolean): Promise<ContentHash> {
     const response = await this.started().request({
       rootPath: file.rootPath,
       relPath: file.relPath,
       dev: file.dev.toString(),
       ino: file.ino.toString(),
-      withBlocks: false,
+      withBlocks,
     });
     if (response.kind === 'skipped') throw new FileHashSkippedError(file.relPath, response.reason);
-    return response.sha256;
+    return { sha256: response.sha256, blocks: response.blocks };
   }
 
   private started(): HashWorker {

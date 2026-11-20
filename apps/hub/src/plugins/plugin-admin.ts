@@ -27,12 +27,14 @@ import type { PluginPeople } from './plugin-people';
 import type { PluginSecrets } from './plugin-secrets';
 import type { SettingsAuthor } from './plugin-settings';
 import { pluginLogger, readPluginLines } from './plugin-logs';
+import type { LogStore } from '../logs/log-store';
 import { Logger } from '@smarteverything/logging';
 
 const log = new Logger('hub.plugins');
 
 export interface PluginAdminOptions {
   readonly store: Store;
+  readonly logs: Pick<LogStore, 'search'>;
   readonly secrets: PluginSecrets;
   readonly host: () => PluginHost;
   readonly inbox: () => PluginInbox;
@@ -168,7 +170,7 @@ export class PluginAdmin {
 
   log(id: string): readonly PluginLogLine[] {
     this.options.store.plugins.byId(id);
-    return readPluginLines(this.options.store, id);
+    return readPluginLines(this.options.logs, id);
   }
 
   data(id: string, stream: string | undefined, limit: number): PluginDataPoint[] {

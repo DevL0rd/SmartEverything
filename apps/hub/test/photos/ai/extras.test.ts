@@ -208,7 +208,7 @@ describe('faces idle', () => {
     rig.opened.store.database
       .prepare("delete from drive_media_jobs where item_id = ? and kind = 'faces'")
       .run(first);
-    const job = jobs.claim(['faces']);
+    const [job] = jobs.claim(['faces'], 1);
     if (job === undefined) throw new Error('the second face job was not queued');
     const tracked = queue.tracked({
       resource: 'image',

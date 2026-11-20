@@ -9,7 +9,7 @@ import {
   type HubFrame,
   type HubRuntimeControl,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
@@ -18,6 +18,7 @@ import { RemoteComputerRuntimeHost } from '../computers/remote-runtime-host';
 import { HUB_COMPUTER_FRAME, NODE_COMPUTER_FRAME } from '../node/computer-channel';
 import { pipeLink, type HubLink } from '../node/link';
 import type { Store } from '../store/store';
+import type { LogStore } from '../logs/log-store';
 import { ComputerOutages } from './computer-outages';
 import { ComputerConnection, ComputerSockets } from './computer-socket';
 import { ingestNodeLogs } from './node-logs';
@@ -73,6 +74,7 @@ class NodeSocketConnection extends ComputerConnection {
 export interface NodeSocketServices {
   readonly directory: ComputerAiDirectory;
   readonly setOnline: (deviceId: string, online: boolean) => Promise<void>;
+  readonly logs: Pick<LogStore, 'ingest'>;
 }
 
 export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
@@ -124,7 +126,17 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
     if (!connection.welcomed)
       throw new ApiError('forbidden', 'The computer must complete its hello first.');
     if (frame.type === 'logs') {
-      connection.send(ingestNodeLogs(this.store, this.log, connection.identity, frame));
+      background(
+        ingestNodeLogs(
+          { now: () => this.store.now(), logs: this.services.logs },
+          this.log,
+          connection.identity,
+          frame,
+        ).then((receipt) => {
+          connection.send(receipt);
+        }),
+        'computer.logs_receipt_failed',
+      );
       return;
     }
     if (frame.type !== 'computer') {

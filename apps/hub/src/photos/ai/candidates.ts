@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import type { StoreReader } from '../../store/reader';
+import type { SqlFilter } from '../../store/sql';
 import { librarySubjectScope } from './scope';
 import type { PhotoAiKind } from './queue';
 
 const CANDIDATE = z.strictObject({
   id: z.string(),
   rev: z.int().positive(),
-  owner: z.string().nullable(),
 });
 
 export type Candidate = z.output<typeof CANDIDATE>;
@@ -26,19 +26,54 @@ const EXTRA: Readonly<Record<PhotoAiKind, string>> = {
   pet_embed: `${ANALYSED} and json_array_length(a.pets) > 0) and ${VISION_PENDING}`,
 };
 
+export interface CandidateScope {
+  readonly allowed: readonly string[];
+  readonly homeOwner: string;
+  readonly items: readonly string[] | null;
+  readonly feedAfter: number | null;
+  readonly feedUpTo: number;
+}
+
+function sourceOf(scope: CandidateScope): SqlFilter {
+  const whole = 'drive_media m cross join drive_items i on i.id = m.item_id';
+  if (scope.items === null) return { text: whole, parameters: {} };
+  const named = 'select value as id from json_each($items)';
+  const items = { items: JSON.stringify(scope.items) };
+  const touched =
+    scope.feedAfter === null
+      ? named
+      : `${named} union select item_id from drive_feed where seq > $feedAfter and seq <= $feedUpTo`;
+  return {
+    text: `(${touched}) s cross join drive_items i on i.id = s.id
+      cross join drive_media m on m.item_id = i.id`,
+    parameters:
+      scope.feedAfter === null
+        ? items
+        : { ...items, feedAfter: scope.feedAfter, feedUpTo: scope.feedUpTo },
+  };
+}
+
 export function candidatesOf(
   reader: Pick<StoreReader, 'all'>,
   kind: PhotoAiKind,
+  scope: CandidateScope,
 ): Promise<Candidate[]> {
+  const source = sourceOf(scope);
   return reader.all(
     CANDIDATE,
-    `select i.id, i.rev, r.owner_profile_id as owner
-      from drive_media m cross join drive_items i on i.id = m.item_id
+    `select i.id, i.rev
+      from ${source.text}
         join drive_roots r on r.id = i.root_id
       where ${librarySubjectScope()} and ${READY} and ${EXTRA[kind]}
+        and coalesce(r.owner_profile_id, $homeOwner) in (select value from json_each($allowed))
         and not exists (select 1 from drive_media_jobs j
           where j.item_id = i.id and j.rev = i.rev and j.kind = $kind)
       order by i.id`,
-    { kind },
+    {
+      kind,
+      allowed: JSON.stringify(scope.allowed),
+      homeOwner: scope.homeOwner,
+      ...source.parameters,
+    },
   );
 }

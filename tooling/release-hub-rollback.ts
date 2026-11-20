@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { HUB_UNIT } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { clearPhotoFolderReceipts, restorePhotoFolders } from './release-photo-folders.ts';
@@ -13,6 +13,7 @@ import {
   schemaVersionOf,
   type ReleaseTarget,
 } from './release-hub-files.ts';
+import { withDatabase as databaseIn } from '../apps/hub/src/data-layout/index.ts';
 import { awaitHub, verifyHub, type Units } from './release-hub-verify.ts';
 import {
   CROSSING_STEPS,
@@ -40,7 +41,9 @@ export async function rollbackWith(options: RollbackOptions): Promise<void> {
   const { scene, problems } = rollbackPreflight(target, backup, withDatabase, environment);
   if (problems.length > 0) throw new ReleaseStepError('rollback preflight', problems.join('; '));
   units.stop(HUB_UNIT);
-  const data = scene.undo ? legacyLayoutOf(target.data.root) : target.data;
+  const data = scene.undo
+    ? databaseIn(legacyLayoutOf(target.data.root), dirname(target.data.system.database.file))
+    : target.data;
   const restoration = await withHubDataLock(target.data.root, async () => {
     const restored = scene.undo ? await undoV1(data.root, scene.backup, environment) : scene.backup;
     const savedDatabase = join(restored, 'smarteverything.db');

@@ -182,6 +182,48 @@ describe('Smart search consent', () => {
   });
 });
 
+describe('the incremental photo AI scheduler', () => {
+  it('queues the work of a touched item without a whole-library pass', async () => {
+    rig.ai.start();
+    await rig.settle();
+    const id = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });
+    const other = await rig.photo({ n: 2, root: rig.homeRoot, answer: CAKE });
+    rig.runner.touched(id);
+    await rig.settle();
+    expect(rig.opened.store.photoAnalysis.find(id)).toMatchObject({ state: 'done' });
+    expect(rig.opened.store.photoAnalysis.find(other)).toBeUndefined();
+  });
+
+  it('runs a whole-library pass for a drive change that touched no item', async () => {
+    rig.ai.start();
+    await rig.settle();
+    const id = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });
+    rig.opened.store.feed.notice({
+      type: 'drive_changed',
+      rootIds: [rig.homeRoot],
+      folderIds: [],
+      albumIds: [],
+      months: [],
+      cursor: 1,
+    });
+    await rig.settle();
+    expect(rig.opened.store.photoAnalysis.find(id)).toMatchObject({ state: 'done' });
+  });
+
+  it('never returns the photos of a person whose consent is off', async () => {
+    setSwitches(rig.owner, { smartSearch: false, faceGrouping: false });
+    const id = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });
+    rig.ai.start();
+    await rig.settle();
+    const queued = rig.opened.store.database
+      .prepare(
+        "select count(*) as total from drive_media_jobs where item_id = ? and kind in ('faces', 'vision', 'embed', 'pet_embed')",
+      )
+      .get(id);
+    expect(COUNT.parse(queued).total).toBe(0);
+  });
+});
+
 describe('the Photos analysis jobs', () => {
   it('queues one job per kind and revision and runs a new revision again', async () => {
     const id = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { env as processEnvironment } from 'node:process';
 import { assertLoopback, REPO, SENTINEL, type ScratchPaths } from './guard.ts';
+import { databaseFolderOf } from './layout.ts';
 
 const execute = promisify(execFile);
 const LOOPBACK = '127.0.0.1';
@@ -103,11 +104,14 @@ export async function prepareFolders(paths: ScratchPaths): Promise<void> {
 export async function writeServiceConfig(paths: ScratchPaths, ports: Ports): Promise<void> {
   assertLoopback(LOOPBACK);
   const file = join(paths.data, 'system', 'config', 'service.json');
+  const database = databaseFolderOf(paths);
   await mkdir(join(paths.data, 'system', 'config'), { recursive: true, mode: 0o700 });
+  await mkdir(database, { recursive: true, mode: 0o700 });
   await writeFile(
     file,
     `${JSON.stringify(
       {
+        database,
         port: ports.http,
         host: LOOPBACK,
         lan: { port: ports.lan, host: LOOPBACK, advertise: false },

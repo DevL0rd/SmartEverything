@@ -193,7 +193,7 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
   const pushCommands = pushChannelOf(live);
   return {
     ...connectionContext(options),
-    store: options.store,
+    ...storesOf(options),
     harness,
     browser: new BrowserService(options.store, assistant.projects),
     harnessSockets: harnessSocketsOf(options, computers.computerNodes, {
@@ -278,7 +278,7 @@ function computerServicesOf(
   const nodeSockets = new ComputerNodeSockets(
     options.store,
     computerNodes,
-    { directory: computerAi, setOnline: options.core.hub.setDeviceOnline },
+    { directory: computerAi, setOnline: options.core.hub.setDeviceOnline, logs: options.logs },
     log,
   );
   return {
@@ -346,6 +346,10 @@ function harnessSocketsOf(
     },
     options.log.forArea('hub.harness-socket'),
   );
+}
+
+function storesOf(options: BuildOptions): Pick<ServerContext, 'store' | 'logs'> {
+  return { store: options.store, logs: options.logs };
 }
 
 function connectionContext(

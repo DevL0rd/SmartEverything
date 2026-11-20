@@ -17,9 +17,11 @@ import { PluginSecrets } from '../../src/plugins/plugin-secrets';
 import { readPluginLines } from '../../src/plugins/plugin-logs';
 import { SecretStore } from '../../src/secrets/store';
 import { ingestOwnLogs } from '../../src/server/hub-log-sink';
+import type { LogStore } from '../../src/logs/log-store';
 import { Transcripts } from '../../src/transcripts/transcript-service';
 import type { Store } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
+import { testLogStore } from '../support/log-worker';
 import { testStore, type TestStore } from '../support/store';
 import { writeFakePlugin } from './fake-plugin';
 
@@ -51,6 +53,7 @@ interface Rig {
 }
 
 let opened: TestStore | null = null;
+let runtimeLogs: LogStore | null = null;
 let rig: Rig | null = null;
 let logs: CapturedLogs;
 let stopLogs: () => void;
@@ -60,6 +63,13 @@ function storeOf(): Store {
     throw new Error('no store');
   }
   return opened.store;
+}
+
+function runtimeLogsOf(): LogStore {
+  if (runtimeLogs === null) {
+    throw new Error('no runtime logs');
+  }
+  return runtimeLogs;
 }
 
 function statusOf(id: string): PluginStatus {
@@ -164,16 +174,23 @@ async function rigged(): Promise<Rig> {
 
 beforeEach(async () => {
   opened = await testStore();
+  runtimeLogs = await testLogStore(opened.directory, opened.store);
   logs = captureLogs();
-  stopLogs = ingestOwnLogs({ store: opened.store, log: testLogger('service') });
+  stopLogs = ingestOwnLogs({
+    store: opened.store,
+    logs: runtimeLogs,
+    log: testLogger('service'),
+  });
   rig = await rigged();
 });
 
 afterEach(async () => {
   await rig?.host.shutdown();
   stopLogs();
+  await runtimeLogs?.close();
   await opened?.close();
   rig = null;
+  runtimeLogs = null;
   opened = null;
 });
 
@@ -214,10 +231,10 @@ describe('plugin host', () => {
     const id = await addPlugin(false);
     await hostOf().host.launch(id);
     await expect
-      .poll(() => readPluginLines(storeOf(), id).map((entry) => entry.line))
+      .poll(() => readPluginLines(runtimeLogsOf(), id).map((entry) => entry.line))
       .toContain('ready');
     await hostOf().host.halt(id);
-    expect(readPluginLines(storeOf(), id).map((entry) => entry.line)).toContain('ready');
+    expect(readPluginLines(runtimeLogsOf(), id).map((entry) => entry.line)).toContain('ready');
     expect(hostOf().messages).toStrictEqual([]);
   });
 

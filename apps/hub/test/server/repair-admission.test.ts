@@ -8,17 +8,21 @@ import { RepairDispatch } from '../../src/assistant/repair-dispatch';
 import { startRepair } from '../../src/server/repair-wiring';
 import { runtimeLogRoutes } from '../../src/server/handlers/runtime-logs';
 import { hubLogSink } from '../../src/server/hub-log-sink';
+import type { LogStore } from '../../src/logs/log-store';
+import { testLogStore } from '../support/log-worker';
 import { testStore, type TestStore } from '../support/store';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
 
 const NOW = '2026-10-08T10:00:00.000Z';
 let opened: TestStore;
+let logs: LogStore;
 let stop: () => void;
 
 beforeEach(async () => {
   Logger.reset();
   opened = await testStore(() => new Date(NOW));
+  logs = await testLogStore(opened.directory, opened.store);
   opened.store.clients.create(
     { name: 'Owner', platform: 'android', role: 'owner', tokenHash: 'owner' },
     true,
@@ -31,6 +35,7 @@ beforeEach(async () => {
 afterEach(async () => {
   stop();
   Logger.reset();
+  await logs.close();
   await opened.close();
 });
 
@@ -53,7 +58,7 @@ function start(chats: ChatDirectory): void {
     added: (): undefined => undefined,
   });
   stop = startRepair(
-    { store: opened.store, log: testLogger('repair'), assistant: { repair } },
+    { store: opened.store, logs, log: testLogger('repair'), assistant: { repair } },
     opened.layout,
   );
 }
@@ -71,7 +76,7 @@ it('routes app evidence by its authenticated profile identity with two owners', 
   });
   const chats = directory();
   start(chats);
-  const routes = runtimeLogRoutes({ store }, () => new Date(NOW));
+  const routes = runtimeLogRoutes({ store, logs }, () => new Date(NOW));
   await routes.ingestRuntimeLogs.run(
     { kind: 'client', client, profileId: profile.id },
     {
@@ -98,7 +103,7 @@ it('routes app evidence by its authenticated profile identity with two owners', 
     },
     testLogger('test'),
   );
-  await Promise.resolve();
+  await logs.settled();
   const events = store.assistantEvents.pending();
   expect(events).toHaveLength(1);
   expect(events[0]).toMatchObject({
@@ -114,7 +119,7 @@ it('retains failed automatic attempts finitely and retries only after a committe
   const chats = directory();
   const records: LogRecord[] = [];
   const failed = vi.fn();
-  const owned = hubLogSink({ store, failed });
+  const owned = hubLogSink({ store, logs, failed });
   let sequence = 0;
   Logger.configure({
     level: 'error',
@@ -128,7 +133,7 @@ it('retains failed automatic attempts finitely and retries only after a committe
   testLogger('sample').error('request.failed', new Error('Initial application error'));
   for (let turn = 0; turn < 6; turn += 1) {
     owned.flush();
-    await Promise.resolve();
+    await logs.settled();
   }
   expect(failed).not.toHaveBeenCalled();
   expect(records.filter((record) => record.event === 'repair.admission_failed')).toHaveLength(2);
@@ -154,7 +159,7 @@ it('retains failed automatic attempts finitely and retries only after a committe
   const chat = chats.repairChat(store.personAccess.homeOwner());
   expect(store.assistantEvents.pending().every((event) => event.chat_id === chat.id)).toBe(true);
   owned.flush();
-  await Promise.resolve();
+  await logs.settled();
   expect(records.filter((record) => record.event === 'repair.admission_failed')).toHaveLength(2);
 });
 
@@ -169,7 +174,10 @@ it('keeps the durable queued admission when waking delivery fails after enqueue'
       throw new Error('Delivery wake failed');
     },
   });
-  stop = startRepair({ store, log: testLogger('repair'), assistant: { repair } }, opened.layout);
+  stop = startRepair(
+    { store, logs, log: testLogger('repair'), assistant: { repair } },
+    opened.layout,
+  );
   const source = {
     source: 'hub:service',
     clientId: 'hub',
@@ -177,7 +185,7 @@ it('keeps the durable queued admission when waking delivery fails after enqueue'
     runtime: 'hub' as const,
     platform: 'server' as const,
   };
-  store.runtimeLogs.ingest({
+  await logs.ingest({
     access: { owner: true, profileId: null },
     source,
     deviceId: null,
@@ -197,7 +205,6 @@ it('keeps the durable queued admission when waking delivery fails after enqueue'
       ],
     },
   });
-  await Promise.resolve();
   expect(store.assistantEvents.pending()).toHaveLength(1);
   expect(store.aiRepairInbox.list({ limit: 10 }).groups[0]).toMatchObject({
     progress: 'queued',

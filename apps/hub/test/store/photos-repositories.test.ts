@@ -246,20 +246,34 @@ describe('DriveMediaJobsRepository', () => {
     const jobs = new DriveMediaJobsRepository(context);
     const old = jobs.enqueue(request(first()));
     const visible = jobs.enqueue(request(second(), 'preview', true));
-    expect(jobs.claim(['preview'])).toMatchObject({
-      id: visible.id,
-      state: 'running',
-      attempts: 1,
-    });
-    expect(jobs.claim(['preview'])?.id).toBe(old.id);
-    expect(jobs.claim(['preview'])).toBeUndefined();
+    expect(jobs.claim(['preview'], 1)).toMatchObject([
+      { id: visible.id, state: 'running', attempts: 1 },
+    ]);
+    expect(jobs.claim(['preview'], 1).map((job) => job.id)).toEqual([old.id]);
+    expect(jobs.claim(['preview'], 1)).toEqual([]);
+  });
+
+  it('claims a batch in queue order in one call and never more than asked', () => {
+    const jobs = new DriveMediaJobsRepository(context);
+    const old = jobs.enqueue(request(first()));
+    const poster = jobs.enqueue(request(first(), 'poster'));
+    const visible = jobs.enqueue(request(second(), 'preview', true));
+    const batch = jobs.claim(['preview', 'poster'], 2);
+    expect(batch.map((job) => job.id)[0]).toBe(visible.id);
+    expect(batch.map((job) => job.state)).toEqual(['running', 'running']);
+    const rest = jobs.claim(['preview', 'poster'], 5);
+    expect([...batch, ...rest].map((job) => job.id).toSorted()).toEqual(
+      [old.id, poster.id, visible.id].toSorted(),
+    );
+    expect(rest).toHaveLength(1);
+    expect(jobs.claim(['preview', 'poster'], 0)).toEqual([]);
   });
 
   it('claims only the requested kinds', () => {
     const jobs = new DriveMediaJobsRepository(context);
     jobs.enqueue(request(first(), 'poster'));
-    expect(jobs.claim(['preview'])).toBeUndefined();
-    expect(jobs.claim(['poster'])?.kind).toBe('poster');
+    expect(jobs.claim(['preview'], 1)).toEqual([]);
+    expect(jobs.claim(['poster'], 1).map((job) => job.kind)).toEqual(['poster']);
   });
 
   it('makes the queued jobs of an item visible', () => {
@@ -267,13 +281,13 @@ describe('DriveMediaJobsRepository', () => {
     jobs.enqueue(request(first()));
     jobs.enqueue(request(second()));
     expect(jobs.makeVisible(second())).toBe(1);
-    expect(jobs.claim(['preview'])?.item_id).toBe(second());
+    expect(jobs.claim(['preview'], 1).map((job) => job.item_id)).toEqual([second()]);
   });
 
   it('records progress, completion and failure with its reason, and retries a failed job', () => {
     const jobs = new DriveMediaJobsRepository(context);
     const queued = jobs.enqueue(request(first()));
-    jobs.claim(['preview']);
+    jobs.claim(['preview'], 1);
     jobs.report(queued.id, 0.5);
     expect(jobs.byId(queued.id).progress).toBe(0.5);
     jobs.fail(queued.id, 'decoder crashed');
@@ -284,7 +298,7 @@ describe('DriveMediaJobsRepository', () => {
     });
     expect(jobs.failures().map((job) => job.id)).toEqual([queued.id]);
     jobs.retry(queued.id);
-    expect(jobs.claim(['preview'])).toMatchObject({ id: queued.id, attempts: 2, error: null });
+    expect(jobs.claim(['preview'], 1)).toMatchObject([{ id: queued.id, attempts: 2, error: null }]);
     jobs.complete(queued.id);
     expect(jobs.byId(queued.id).state).toBe('done');
     expect(jobs.tally()).toEqual([]);
@@ -293,7 +307,7 @@ describe('DriveMediaJobsRepository', () => {
   it('queues interrupted jobs again and drops jobs of older revisions', () => {
     const jobs = new DriveMediaJobsRepository(context);
     const queued = jobs.enqueue(request(first()));
-    jobs.claim(['preview']);
+    jobs.claim(['preview'], 1);
     expect(jobs.requeueRunning()).toBe(1);
     expect(jobs.byId(queued.id).state).toBe('queued');
     jobs.enqueue({ kind: 'preview', itemId: first(), rev: 2 });
@@ -306,7 +320,7 @@ describe('DriveMediaJobsRepository', () => {
     jobs.enqueue(request(first()));
     jobs.enqueue(request(second()));
     jobs.enqueue(request(first(), 'poster'));
-    jobs.claim(['poster']);
+    jobs.claim(['poster'], 1);
     expect(jobs.tally()).toEqual([
       { kind: 'poster', state: 'running', total: 1 },
       { kind: 'preview', state: 'queued', total: 2 },

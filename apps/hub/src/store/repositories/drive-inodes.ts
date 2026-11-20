@@ -343,11 +343,10 @@ export class DriveInodesRepository {
     });
   }
 
-  orphans(rootId: string | null): DriveInode[] {
+  orphans(rootId: string): DriveInode[] {
     return this.context.sql.all(
       STORED_INODE,
-      `select ${COLUMNS} from drive_inodes
-        where orphan = 1 and ($rootId is null or root_id = $rootId) order by id`,
+      `select ${COLUMNS} from drive_inodes where orphan = 1 and root_id = $rootId order by id`,
       { rootId },
     );
   }
@@ -410,12 +409,14 @@ export class DriveInodesRepository {
   }
 
   inodeCount(rootId: string): number {
-    return (
+    return found(
       this.context.sql.get(
-        z.strictObject({ count: z.number() }),
-        'select count(*) as count from drive_inodes where root_id = $rootId',
+        z.strictObject({ inodes: z.number() }),
+        'select inodes from drive_roots where id = $rootId',
         { rootId },
-      )?.count ?? 0
-    );
+      ),
+      'drive root',
+      rootId,
+    ).inodes;
   }
 }

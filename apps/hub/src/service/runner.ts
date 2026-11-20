@@ -26,6 +26,7 @@ export interface ServiceHost {
   readonly layout: HubLayout;
   readonly pointer: Pick<Location, 'rootId' | 'state'>;
   readonly fileIoThreads: FileIoThreadsStart;
+  readonly logWorkerScript: string;
   readonly exit: (code: number) => void;
   readonly onSignal: (signal: 'SIGTERM' | 'SIGINT', handler: () => void) => void;
 }
@@ -77,6 +78,7 @@ function serverOptions(
   return {
     layout: host.layout,
     logLines: lifecycle.files.logFile.lines,
+    logWorkerScript: host.logWorkerScript,
     port: config.port,
     ...(config.lan === undefined ? {} : { lan: config.lan }),
     host: config.host,

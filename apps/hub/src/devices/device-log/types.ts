@@ -1,4 +1,10 @@
-import type { DeviceLogEntry, DeviceRow, EventRow, PhoneTier } from '@smarteverything/domain';
+import type {
+  DeviceLogEntry,
+  DeviceRow,
+  EventKind,
+  EventRow,
+  PhoneTier,
+} from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 
 export type LogStore = Pick<
@@ -22,5 +28,6 @@ export interface LogRequest {
 
 export interface DeviceLogSource {
   readonly claims: (device: DeviceRow, event: EventRow) => boolean;
+  readonly claimedKinds: readonly EventKind[];
   readonly read: (store: LogStore, request: LogRequest) => readonly DeviceLogEntry[];
 }

@@ -8,6 +8,7 @@ import { LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
 import { PUBLIC_URL, tunnel, xiaomiWithCameraLogin } from './support/booted';
 import { testLayout } from './support/test-layout';
+import { bundledLogWorker } from './support/log-worker';
 import {
   call,
   changedColumns,
@@ -37,6 +38,7 @@ async function boot(): Promise<RunningServer> {
     modules: xiaomiWithCameraLogin(fake),
     fetch: tunnel(() => base),
     logLines: new LogLines(),
+    logWorkerScript: await bundledLogWorker(directory.path),
   });
   base = server.url;
   return server;

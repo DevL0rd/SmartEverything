@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { env } from 'node:process';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -36,16 +37,42 @@ function savedThreads(databaseFile: string): number | null {
   }
 }
 
-export function applyFileIoThreads(databaseFile: string | null): FileIoThreadsStart {
-  if (started !== null) {
-    throw new Error('The file I/O threads were already applied in this process.');
-  }
+function configuredThreads(databaseFile: string | null): FileIoThreadsStart {
   const saved = databaseFile === null ? null : savedThreads(databaseFile);
-  const result: FileIoThreadsStart =
-    saved === null
-      ? { threads: DEFAULT_FILE_IO_THREADS, source: 'unseeded' }
-      : { threads: saved, source: 'saved' };
+  return saved === null
+    ? { threads: DEFAULT_FILE_IO_THREADS, source: 'unseeded' }
+    : { threads: saved, source: 'saved' };
+}
+
+export function applyFileIoThreads(databaseFile: string | null): FileIoThreadsStart {
+  const result = configuredThreads(databaseFile);
   env['UV_THREADPOOL_SIZE'] = String(result.threads);
+  return result;
+}
+
+const POOL_THREAD_NAME = 'libuv-worker';
+
+function poolThreads(): number {
+  const tasks = readdirSync('/proc/self/task');
+  return tasks.filter(
+    (task) => readFileSync(`/proc/self/task/${task}/comm`, 'utf8').trim() === POOL_THREAD_NAME,
+  ).length;
+}
+
+export async function confirmFileIoThreads(
+  databaseFile: string | null,
+): Promise<FileIoThreadsStart> {
+  if (started !== null) {
+    throw new Error('The file I/O threads were already confirmed in this process.');
+  }
+  const result = configuredThreads(databaseFile);
+  await stat('/');
+  const effective = poolThreads();
+  if (env['UV_THREADPOOL_SIZE'] !== String(result.threads) || effective !== result.threads) {
+    throw new Error(
+      `The libuv file I/O thread pool has ${String(effective)} threads (UV_THREADPOOL_SIZE=${env['UV_THREADPOOL_SIZE'] ?? 'unset'}) but the configured value is ${String(result.threads)}. The pool was created before the service launcher set its size.`,
+    );
+  }
   started = result;
   return result;
 }

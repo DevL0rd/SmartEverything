@@ -93,13 +93,15 @@ export const SERVICE_EXTERNALS = [
   'mediainfo.js',
   ...VOICE_EXTERNALS,
 ];
+const serviceBundle = (name: string): Bundle => ({
+  entry: join(hub, 'src', `${name}.ts`),
+  file: `${name}.mjs`,
+  external: SERVICE_EXTERNALS,
+  banner: SERVICE_BANNER,
+});
 const BUNDLES: readonly Bundle[] = [
-  {
-    entry: join(hub, 'src', 'service.ts'),
-    file: 'service.mjs',
-    external: SERVICE_EXTERNALS,
-    banner: SERVICE_BANNER,
-  },
+  serviceBundle('service'),
+  serviceBundle('service-main'),
   {
     entry: join(hub, 'src', 'plugins', 'builtin', 'discord', 'voice', 'isolated', 'worker.ts'),
     file: 'voice-worker.mjs',
@@ -133,6 +135,12 @@ const BUNDLES: readonly Bundle[] = [
     entry: join(hub, 'src', 'drive', 'scanner-worker.ts'),
     file: 'scanner-worker.mjs',
     external: [],
+  },
+  {
+    entry: join(hub, 'src', 'logs', 'worker.ts'),
+    file: 'log-worker.mjs',
+    external: [],
+    banner: SERVICE_BANNER,
   },
   {
     entry: join(hub, 'src', 'drive', 'mount', 'hash-worker.ts'),

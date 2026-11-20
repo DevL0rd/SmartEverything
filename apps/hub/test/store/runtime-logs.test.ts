@@ -1,25 +1,21 @@
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RUNTIME_LOG_BATCH, type LOG_RECORD } from '@smarteverything/domain';
 import { errorSignature } from '@smarteverything/logging';
 import { z } from 'zod';
-import { StoreContext } from '../../src/store/context';
-import { ChangeFeed } from '../../src/store/feed';
-import { migrate } from '../../src/store/migrate';
-import { MIGRATIONS } from '../../src/store/migrations';
 import {
   PER_RUNTIME_BYTES,
   PER_RUNTIME_ROWS,
-  RUNTIME_LOG_RETENTION_BYTES,
+  RUNTIME_LOG_KEEP_MS,
+  RUNTIME_LOG_SWEEP_SLACK_MS,
   SERVICE_LOG_LINE_BYTES,
-  readLogFootprint,
   sweepRuntimeLogs,
-} from '../../src/store/runtime-log-retention';
+} from '../../src/logs/retention';
+import { openLogWriter } from '../../src/logs/schema';
+import { checkIngestAccess, LogWrites, type IngestRequest } from '../../src/logs/writes';
+import { RuntimeLogReads } from '../../src/store/repositories/runtime-log-reads';
 import type { LogSourceInfo } from '../../src/store/repositories/runtime-log-types';
-import { RuntimeLogsRepository } from '../../src/store/repositories/runtime-logs';
 import { Sql } from '../../src/store/sql';
-import { captureLogs, testLogger } from '../support/logs';
-import { removeStarterNodes } from '../support/starter-nodes';
+import { captureLogs } from '../support/logs';
 
 const NOW = '2026-11-05T09:00:00.000Z';
 
@@ -61,16 +57,30 @@ const LINE = {
 
 let sql: Sql;
 
-let logs: RuntimeLogsRepository;
+class TestLogs extends RuntimeLogReads {
+  private readonly writes: LogWrites;
+
+  constructor(held: Sql) {
+    super(held);
+    this.writes = new LogWrites(held, () => NOW);
+  }
+
+  ingest(request: IngestRequest): ReturnType<LogWrites['ingest']>['ack'] {
+    checkIngestAccess(request);
+    return this.writes.ingest(request).ack;
+  }
+
+  recordGap(source: LogSourceInfo, firstSentAt: string, lastSentAt: string): number {
+    return this.writes.recordGap(source, firstSentAt, lastSentAt);
+  }
+}
+
+let logs: TestLogs;
 
 function build(): void {
   captureLogs();
-  sql = new Sql(new DatabaseSync(':memory:'));
-  migrate(sql, MIGRATIONS, NOW, testLogger());
-  removeStarterNodes(sql);
-  logs = new RuntimeLogsRepository(
-    new StoreContext(sql, new ChangeFeed(testLogger()), () => new Date(NOW)),
-  );
+  sql = new Sql(openLogWriter(':memory:'));
+  logs = new TestLogs(sql);
 }
 
 function batchOf(
@@ -194,7 +204,7 @@ describe('runtime log store', () => {
   it('keeps a source out of the list once it has sent nothing for a day', () => {
     logs.ingest({ access: OWNER, batch: batchOf([LINE]), source: HUB, deviceId: null, now: NOW });
     const sweep = sweepRuntimeLogs(sql, new Date('2026-11-07T09:00:00.000Z'));
-    expect(sweep['runtime_log_sources']).toBe(1);
+    expect(sweep.removed['runtime_log_sources']).toBe(1);
     expect(logs.sources(OWNER).sources).toEqual([]);
   });
 
@@ -392,7 +402,45 @@ describe('runtime log retention', () => {
     expect(SERVICE_LOG_LINE_BYTES).toBe(410);
     expect(PER_RUNTIME_ROWS).toBe(108_000);
     expect(PER_RUNTIME_BYTES).toBe(PER_RUNTIME_ROWS * SERVICE_LOG_LINE_BYTES);
-    expect(RUNTIME_LOG_RETENTION_BYTES).toBe(PER_RUNTIME_BYTES * 3);
+  });
+
+  it('forgets records and gaps older than the kept window and drops them from search', () => {
+    const old = new Date(Date.parse(NOW) - RUNTIME_LOG_KEEP_MS - 1000).toISOString();
+    logs.ingest({
+      access: OWNER,
+      batch: batchOf([
+        { ...LINE, timestamp: old, payload: { detail: 'ancient' } },
+        { ...LINE, payload: { detail: 'recent' } },
+      ]),
+      source: HUB,
+      deviceId: null,
+      now: NOW,
+    });
+    sql.run('age a gap', 'insert into runtime_log_gaps values ($s, null, $at, $at, $at)', {
+      s: 'hub:service',
+      at: old,
+    });
+    const sweep = sweepRuntimeLogs(sql, new Date(NOW));
+    expect(sweep.removed['runtime_logs']).toBe(1);
+    expect(sweep.removed['runtime_log_gaps']).toBe(1);
+    expect(logs.search(OWNER, { text: 'ancient', limit: 10 }).rows).toHaveLength(0);
+    expect(logs.search(OWNER, { text: 'recent', limit: 10 }).rows).toHaveLength(1);
+    expect(sweep.dueAt).toBe(Date.parse(NOW) + RUNTIME_LOG_KEEP_MS + RUNTIME_LOG_SWEEP_SLACK_MS);
+  });
+
+  it('finds a resent record through an index that does not hold the payload', () => {
+    const plan = sql.database
+      .prepare(
+        "explain query plan select 1 from runtime_logs where source = 'a' and at = 'b' and event = 'c' and scope = 'd' and payload = '{}'",
+      )
+      .all()
+      .map((row) => JSON.stringify(row));
+    expect(plan.join(' ')).toContain('runtime_logs_once');
+    const columns = sql.database
+      .prepare("select name from pragma_index_info('runtime_logs_once')")
+      .all()
+      .map((row) => JSON.stringify(row));
+    expect(columns.join(' ')).not.toContain('payload');
   });
 
   it('keeps the newest PER_RUNTIME_ROWS records of a runtime and forgets the rest', () => {
@@ -407,7 +455,7 @@ describe('runtime log retention', () => {
       });
     }
     expect(stored()).toBe(PER_RUNTIME_ROWS + 4100);
-    expect(sweepRuntimeLogs(sql, new Date(NOW))['runtime_logs']).toBe(4100);
+    expect(sweepRuntimeLogs(sql, new Date(NOW)).removed['runtime_logs']).toBe(4100);
     expect(stored()).toBe(PER_RUNTIME_ROWS);
     expect(logs.search(OWNER, { limit: 1 }).rows[0]?.at).toBe(at(1));
     expect(logs.search(OWNER, { limit: 100 }).rows.at(-1)?.at).toBe(at(100));
@@ -422,25 +470,5 @@ describe('runtime log retention', () => {
       .map((row) => JSON.stringify(row));
     expect(plan.join(' ')).toContain('runtime_logs_runtime_at');
     expect(plan.join(' ')).not.toContain('TEMP B-TREE');
-  });
-
-  it('measures how much room its kept records really take', () => {
-    const records = many(60_000);
-    for (let start = 0; start < records.length; start += 2000) {
-      logs.ingest({
-        access: OWNER,
-        batch: batchOf(records.slice(start, start + 2000)),
-        source: HUB,
-        deviceId: null,
-        now: NOW,
-      });
-    }
-    sweepRuntimeLogs(sql, new Date(NOW));
-    const footprint = readLogFootprint(sql);
-    expect(footprint.rows).toBe(60_000);
-    expect(footprint.lineBytes).toBeGreaterThan(0);
-    expect(footprint.lineBytes * footprint.rows).toBeLessThanOrEqual(RUNTIME_LOG_RETENTION_BYTES);
-    expect(footprint.bytes).toBeGreaterThan(0);
-    expect(footprint.measuredAt).toBe(NOW);
   });
 });

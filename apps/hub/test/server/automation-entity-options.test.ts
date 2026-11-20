@@ -23,7 +23,9 @@ import type { Caller } from '../../src/server/auth';
 import { automationEntityOptionsRoutes } from '../../src/server/handlers/automation-entity-options';
 import { SecretStore } from '../../src/secrets/store';
 import { Transcripts } from '../../src/transcripts/transcript-service';
+import type { LogStore } from '../../src/logs/log-store';
 import { testLogger } from '../support/logs';
+import { testLogStore } from '../support/log-worker';
 import { testStore, type TestStore } from '../support/store';
 import { writeFakeListsPlugin } from '../plugins/fake-lists-plugin';
 import { hubLayout } from '../../src/data-layout';
@@ -80,6 +82,7 @@ const ENTITIES = [
 ] as const;
 
 let opened: TestStore;
+let runtimeLogs: LogStore;
 let host: PluginHost;
 let routes: ReturnType<typeof automationEntityOptionsRoutes>;
 let drivers: DriverNodes;
@@ -178,6 +181,7 @@ async function addListsPlugin(store: TestStore['store'], directory: string): Pro
 beforeEach(async () => {
   opened = await testStore();
   const { store, directory } = opened;
+  runtimeLogs = await testLogStore(directory, store);
   owner = store.clients.create(
     { name: 'Owner', platform: 'desktop', role: 'owner', tokenHash: 'a'.repeat(64) },
     true,
@@ -190,6 +194,7 @@ beforeEach(async () => {
   host = await rigged(store, directory);
   const admin = new PluginAdmin({
     store,
+    logs: runtimeLogs,
     secrets: new PluginSecrets(await SecretStore.open(join(directory, 'admin'), randomBytes(32))),
     host: (): PluginHost => host,
     inbox: unused,
@@ -209,6 +214,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await host.shutdown();
+  await runtimeLogs.close();
   await opened.close();
 });
 

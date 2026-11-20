@@ -38,7 +38,7 @@ function writeConfig(extra: Readonly<Record<string, unknown>>): void {
   mkdirSync(dirname(layout.system.config.service), { recursive: true });
   writeFileSync(
     layout.system.config.service,
-    JSON.stringify({ go2rtcBinary: '/opt/go2rtc', ...extra }),
+    JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: layout.root, ...extra }),
   );
 }
 

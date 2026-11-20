@@ -47,6 +47,7 @@ export const LEGACY_NAMES: LayoutNames = {
     perfSamples: 'perf-samples.jsonl',
     wakeDiagnostics: 'wake-diagnostics',
     hubUpdateWatchdog: 'hub-update-watchdog.log',
+    runtimeLogs: 'runtime-logs.db',
   },
   journal: '',
   ai: {

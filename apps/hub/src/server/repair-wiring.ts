@@ -1,6 +1,7 @@
 import {
   repairEventId,
   repairEvidenceOf,
+  retainedLogOf,
   type RepairRequest,
   type RepairDispatch,
 } from '../assistant/repair-dispatch';
@@ -13,7 +14,7 @@ import type { ServerContext } from './context';
 import { repairComponent } from '../store/repositories/repair-fingerprint';
 import { readAiRepairSettings, repairEnabledAt } from './handlers/ai-repair';
 
-type RepairContext = Pick<ServerContext, 'store' | 'log'> & {
+type RepairContext = Pick<ServerContext, 'store' | 'logs' | 'log'> & {
   readonly assistant: { readonly repair: Pick<RepairDispatch, 'admit'> };
 };
 
@@ -57,6 +58,7 @@ function observe(context: RepairContext, record: StoredLogRecord, fingerprint: s
         kind: 'automatic',
         origin: repairLogOrigin(record),
         evidence: repairEvidenceOf(record),
+        retained: retainedLogOf(context.store, context.logs, fingerprint, profileId),
       }),
     );
     if (result.kind === 'held' && result.reason !== 'disabled')
@@ -91,16 +93,18 @@ function retainedRecord(record: RuntimeLogRow, clientId: string | null): StoredL
 }
 
 function catchUp(context: RepairContext, profileId?: string): void {
-  const { store } = context;
+  const { store, logs } = context;
   if (!readAiRepairSettings(store).enabled) return;
   const since = repairEnabledAt(store);
-  for (const { fingerprint, logId, clientId } of store.aiRepairInbox.pendingAutomatic(true)) {
-    const retained = store.runtimeLogs.around(
+  for (const { fingerprint, logId } of store.aiRepairInbox.pendingAutomatic(true)) {
+    const retained = logs.around(
       { owner: true, profileId: null },
       { id: logId, before: 0, after: 0 },
     );
-    if (retained === null || (since !== null && retained.anchor.at < since)) continue;
-    const record = retainedRecord(retained.anchor, clientId);
+    const client = logs.clientOf(logId);
+    if (retained === null || client === null || (since !== null && retained.anchor.at < since))
+      continue;
+    const record = retainedRecord(retained.anchor, client.clientId);
     if (profileId !== undefined && profileOf(context, record) !== profileId) continue;
     store.aiRepairInbox.retryAutomaticFailure(fingerprint);
     observe(context, record, fingerprint);
@@ -110,7 +114,7 @@ function catchUp(context: RepairContext, profileId?: string): void {
 export function startRepair(context: RepairContext, _layout: HubLayout): () => void {
   const { store } = context;
   let active = true;
-  const unobserve = store.runtimeLogs.onRepairEvidence((record, fingerprint) => {
+  const unobserve = context.logs.onRepairEvidence((record, fingerprint) => {
     const enabledAt = repairEnabledAt(store);
     if (!readAiRepairSettings(store).enabled || (enabledAt !== null && record.at < enabledAt))
       return;

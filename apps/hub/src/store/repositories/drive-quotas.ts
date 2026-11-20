@@ -33,27 +33,11 @@ const USAGE_COLUMNS = z
     }),
   );
 
-function usageQuery(itemFilter: string, adderFilter: string): string {
-  return `select profile_id, sum(items) as items, sum(folders) as folders, sum(live) as live,
-    sum(versions) as versions, sum(trash) as trash from (
-    select added_by_profile_id as profile_id, sum(kind <> 'folder') as items,
-      sum(kind = 'folder') as folders,
-      sum(case when kind <> 'folder' then bytes else 0 end) as live, 0 as versions, 0 as trash
-      from drive_items ${itemFilter} group by added_by_profile_id
-    union all
-    select added_by_profile_id, 0, 0, 0, sum(bytes), 0 from drive_versions ${adderFilter}
-      group by added_by_profile_id
-    union all
-    select added_by_profile_id, 0, 0, 0, 0, sum(bytes) from drive_trash ${adderFilter}
-      group by added_by_profile_id
-  ) group by profile_id order by profile_id`;
-}
+const USAGE = `select profile_id, items, folders, live, versions, trash from drive_usage_totals
+  where entries > 0`;
 
-const ALL_USAGE = usageQuery('', '');
-const ONE_USAGE = usageQuery(
-  'where added_by_profile_id is $profileId',
-  'where added_by_profile_id is $profileId',
-);
+const ALL_USAGE = `${USAGE} order by profile_id`;
+const ONE_USAGE = `${USAGE} and profile_id is $profileId`;
 
 export interface DriveQuotaStatus {
   readonly quota: number | null;

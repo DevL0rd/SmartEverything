@@ -41,6 +41,8 @@ import type { TestStore } from '../support/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 import { driveTestStore } from './spaces-fixture';
 import { DriveActivity } from '../../src/drive/activity';
+import { WriteBatch } from '../../src/drive/write-batch';
+import { status } from './placement-fixture';
 
 const START = new Date('2026-11-07T00:00:00.000Z');
 const DAY_MS = 86_400_000;
@@ -57,6 +59,7 @@ let robin = '';
 let sam = '';
 let server: http.Server;
 let activity: DriveActivity;
+let batch: WriteBatch;
 let origin = '';
 let nextIno = 1;
 let callers: Map<string, TusCaller>;
@@ -91,6 +94,7 @@ async function startServer(
     completed,
     activity,
     hasher,
+    settle: batch.write,
     space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
     authenticate: (request) => {
       const token = /^Bearer (\S+)$/.exec(request.headers.authorization ?? '')?.[1] ?? '';
@@ -285,6 +289,7 @@ beforeEach(async () => {
   activity = new DriveActivity();
   clock = START;
   opened = await driveTestStore();
+  batch = new WriteBatch(opened.store, testLogger());
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-uploads-')));
   dir = opened.layout.home.drive;
   await mkdir(join(dir, 'Uploads'), { recursive: true });
@@ -383,6 +388,48 @@ describe('creating and completing an upload', () => {
     expect((await patch(location, 0, '0123456789')).status).toBe(204);
     expect(activity.generation).toBe(1);
     expect(activity.quietSince(1)).toBe(true);
+  });
+
+  it('keeps the block hashes of a synced drive with the committed upload, so nothing hashes it again', async () => {
+    const [device] = opened.store.devices.upsert([
+      {
+        provider: 'local',
+        externalId: 'computer:uploads:1',
+        parentId: null,
+        kind: 'computer',
+        name: 'Robin desk',
+        model: 'model',
+        manufacturer: 'Maker',
+        providerRoom: null,
+        roomId: null,
+        online: true,
+        capabilities: [],
+        details: { os: 'CachyOS' },
+      },
+    ]);
+    if (device === undefined) throw new Error('the device was not stored');
+    opened.store.drivePlacements.insert({
+      id: randomUUID(),
+      deviceId: device.id,
+      rootId: root.id,
+      folderItemId: null,
+      mode: 'synced',
+      localPath: '/sync/robin',
+      mountName: null,
+      enabled: true,
+      createdBy: robin,
+      excluded: [],
+      ignorePatterns: [],
+      conflictCopies: true,
+      status: status({ state: 'starting', tier: null, route: null }),
+    });
+    await startServer();
+    const location = await open(10);
+    expect((await patch(location, 0, '0123456789')).status).toBe(204);
+    const item = opened.store.driveItems.byPath(root.id, 'Uploads/a.txt', null);
+    if (item === undefined) throw new Error('the upload was not committed');
+    expect(opened.store.driveBlocks.find(item.id, item.rev)?.blockSize).toBeGreaterThan(0);
+    expect(opened.store.driveItems.lookups.hashBacklog(root.id, true).rows).toEqual([]);
   });
 
   it('commits a file at the top of the drive', async () => {
@@ -803,6 +850,7 @@ describe('quota and free space', () => {
       completed: (): void => undefined,
       activity,
       hasher,
+      settle: batch.write,
       space: () => Promise.resolve({ totalBytes: 100, freeBytes: 5 }),
       authenticate: () => callers.get('robin') ?? null,
     };
@@ -858,6 +906,7 @@ describe('quota and free space', () => {
       completed: (): void => undefined,
       activity,
       hasher,
+      settle: batch.write,
       space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
       authenticate: () => callers.get('robin') ?? null,
     };

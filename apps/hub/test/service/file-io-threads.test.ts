@@ -38,12 +38,11 @@ async function module(): Promise<typeof FileIoThreads> {
 }
 
 describe('the file I/O threads at start', () => {
-  it('sets the libuv pool size from the saved value and reports it as running', async () => {
+  it('sets the libuv pool size from the saved value', async () => {
     seed({ fileIoThreads: 24 });
-    const { applyFileIoThreads, runningFileIoThreads } = await module();
+    const { applyFileIoThreads } = await module();
     expect(applyFileIoThreads(file)).toEqual({ threads: 24, source: 'saved' });
     expect(env['UV_THREADPOOL_SIZE']).toBe('24');
-    expect(runningFileIoThreads()).toEqual({ fileIoThreads: 24 });
   });
 
   it('uses the default and says so while the tuning migration has not seeded the row', async () => {
@@ -69,10 +68,14 @@ describe('the file I/O threads at start', () => {
     expect(() => applyFileIoThreads(file)).toThrow();
   });
 
-  it('applies once and refuses to report before it was applied', async () => {
-    const { applyFileIoThreads, runningFileIoThreads } = await module();
+  it('refuses to report before the pool was confirmed', async () => {
+    const { runningFileIoThreads } = await module();
     expect(() => runningFileIoThreads()).toThrow(/not applied/);
-    applyFileIoThreads(null);
-    expect(() => applyFileIoThreads(null)).toThrow(/already applied/);
+  });
+
+  it('fails loudly when the running pool differs from the configured value', async () => {
+    seed({ fileIoThreads: 3 });
+    const { confirmFileIoThreads } = await module();
+    await expect(confirmFileIoThreads(file)).rejects.toThrow(/thread pool has \d+ threads/);
   });
 });

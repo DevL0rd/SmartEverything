@@ -7,6 +7,7 @@ import {
   type EventRow,
 } from '@smarteverything/domain';
 import { causeOfDetails, peopleByClient } from './causes';
+import type { EventListWindow } from '../../store/repositories/events';
 import type { DeviceLogSource, LogRequest, LogStore } from './types';
 
 function titleOf(event: EventRow): string {
@@ -21,13 +22,14 @@ export function eventsWhere(
   store: LogStore,
   request: LogRequest,
   wanted: (event: EventRow) => boolean,
+  narrowed: Pick<EventListWindow, 'kinds' | 'exceptKinds'>,
 ): EventRow[] {
   const { device, limit } = request;
   const picked = new Map<string, EventRow>();
   const seen = new Set<string>();
   let cursor = request.to;
   while (picked.size < limit) {
-    const page = store.events.list({ deviceIds: [device.id], to: cursor, limit });
+    const page = store.events.list({ ...narrowed, deviceIds: [device.id], to: cursor, limit });
     const fresh = page.filter((event) => !seen.has(event.id));
     const oldest = page.at(-1);
     if (fresh.length === 0 || oldest === undefined) break;
@@ -50,19 +52,21 @@ function claimedBy(
 export function eventsSource(others: readonly DeviceLogSource[]): DeviceLogSource {
   return {
     claims: () => false,
+    claimedKinds: [],
     read: (store: LogStore, request: LogRequest): readonly DeviceLogEntry[] => {
       const claimed = claimedBy(request.device, others);
       const people = peopleByClient(store);
       const shown = (event: EventRow): EventRow | null =>
         request.tier === null ? event : phoneEventFor(event, request.tier);
-      return eventsWhere(store, request, (event) => !claimed(event) && shown(event) !== null).map(
-        (event): DeviceLogEntry => ({
-          at: event.occurred_at,
-          kind: 'event',
-          title: titleOf(event),
-          cause: causeOfDetails(people, event.details) ?? { kind: 'device' },
-        }),
-      );
+      const exceptKinds = others.flatMap((source) => source.claimedKinds);
+      return eventsWhere(store, request, (event) => !claimed(event) && shown(event) !== null, {
+        exceptKinds,
+      }).map((event): DeviceLogEntry => ({
+        at: event.occurred_at,
+        kind: 'event',
+        title: titleOf(event),
+        cause: causeOfDetails(people, event.details) ?? { kind: 'device' },
+      }));
     },
   };
 }

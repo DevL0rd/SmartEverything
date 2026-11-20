@@ -6,7 +6,7 @@ import { fsCode } from '../fs-code';
 import type { DriveItem, DriveUpload } from '@smarteverything/domain';
 import type { DriveUploadOwner } from '../store/repositories/drive-uploads';
 import type { Store } from '../store/store';
-import { commitContent, type ChangeEnv } from './changes';
+import { commitContent } from './changes';
 import { locate, TMP_DIRECTORY, type DriveWriteRoot } from './intents';
 import { checkDriveFreeSpace, checkDriveQuota } from './quotas';
 import { readDriveSettings } from './settings';
@@ -37,14 +37,16 @@ import {
   type Reply,
   type TusCaller,
 } from './uploads-tus-wire';
+import type { BlockHashes } from './blocks';
 import type { DataSpaceProbe } from './data-space';
 
 export interface TusEnv extends StagedEnv {
-  readonly store: ChangeEnv['store'] & Pick<Store, 'driveUploads' | 'driveQuotas' | 'settingsKv'>;
+  readonly store: StagedEnv['store'] & Pick<Store, 'driveUploads' | 'driveQuotas' | 'settingsKv'>;
   readonly space: DataSpaceProbe['space'];
   readonly completed: (item: DriveItem) => void;
   readonly activity: Pick<DriveActivity, 'around'>;
   readonly authenticate: (request: IncomingMessage) => TusCaller | null;
+  readonly settle: <T>(work: () => T) => Promise<T>;
 }
 
 export class TusUploads {
@@ -172,13 +174,13 @@ export class TusUploads {
     upload: DriveUpload,
     expectedSha256: string | null,
   ): Promise<void> {
-    const { files, store } = this.env;
+    const { files, store, settle } = this.env;
     const path = await locate(root, tmpPath(upload.id));
     await files.mkdir(await locate(root, TMP_DIRECTORY));
     const created = await open(path, 'wx', 0o600);
     await created.close();
     try {
-      store.driveUploads.insert(upload, expectedSha256);
+      await settle(() => store.driveUploads.insert(upload, expectedSha256));
     } catch (cause) {
       await files.remove(path);
       throw cause;
@@ -324,7 +326,9 @@ export class TusUploads {
       await handle.sync();
       const days = readDriveSettings(this.env.store).uploadExpiryDays;
       const expiresAt = new Date(this.env.now().getTime() + days * DAY_MS).toISOString();
-      return this.env.store.driveUploads.setOffset(upload.id, offset + written, expiresAt);
+      return await this.env.settle(() =>
+        this.env.store.driveUploads.setOffset(upload.id, offset + written, expiresAt),
+      );
     } catch (cause) {
       await this.afterInterruption(cause, handle, upload);
       throw cause;
@@ -363,7 +367,7 @@ export class TusUploads {
     caller: TusCaller,
   ): Promise<Readonly<Record<string, string>>> {
     const { driveUploads } = this.env.store;
-    driveUploads.transition(upload.id, 'open', 'committing', null);
+    await this.env.settle(() => driveUploads.transition(upload.id, 'open', 'committing', null));
     try {
       const destination = destinationOf(this.env.store, upload.target, caller);
       checkDriveQuota((profileId) => this.env.store.driveQuotas.status(profileId), {
@@ -371,7 +375,7 @@ export class TusUploads {
         addBytes: upload.length,
         releasedBytes: destination.item?.bytes ?? 0,
       });
-      const staged = await stagedUpload(
+      const { staged, blocks } = await stagedUpload(
         this.env,
         destination.root,
         upload,
@@ -384,6 +388,7 @@ export class TusUploads {
         relPath,
         actor: actorOf(upload),
         alongside: (item): void => {
+          if (blocks !== null) this.keepBlocks(item, blocks);
           driveUploads.complete(upload.id, item);
           this.env.completed(item);
         },
@@ -394,6 +399,12 @@ export class TusUploads {
       this.fail(upload, 'committing', messageOf(cause));
       throw cause;
     }
+  }
+
+  private keepBlocks(item: DriveItem, blocks: BlockHashes): void {
+    const { driveBlocks } = this.env.store;
+    driveBlocks.put({ itemId: item.id, rev: item.rev, ...blocks });
+    driveBlocks.removeBefore(item.id, item.rev);
   }
 
   private fail(upload: DriveUpload, from: DriveUpload['state'], reason: string): void {

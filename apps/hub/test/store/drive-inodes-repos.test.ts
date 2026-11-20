@@ -355,6 +355,10 @@ describe('inode lifecycle', () => {
   it('counts the inodes of a drive', () => {
     write(file(1, 'a.txt'));
     expect(inodes.inodeCount(ROOT)).toBe(2);
+    const lone = inodes.create({ rootId: ROOT, type: 'file' });
+    expect(inodes.inodeCount(ROOT)).toBe(3);
+    inodes.remove(lone.id);
+    expect(inodes.inodeCount(ROOT)).toBe(2);
   });
 
   it('removes the inodes with the drive', () => {

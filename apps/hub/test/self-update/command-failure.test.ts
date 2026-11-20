@@ -36,6 +36,7 @@ beforeEach(async () => {
     layout.system.config.service,
     JSON.stringify({
       go2rtcBinary: join(scratch, 'go2rtc'),
+      database: scratch,
       updateSource: {
         repository: 'owner/name',
         branch: 'main',

@@ -12,7 +12,7 @@ function layoutWith(data: string, updateSource: unknown): ReturnType<typeof hubL
   mkdirSync(dirname(layout.system.config.service), { recursive: true });
   writeFileSync(
     layout.system.config.service,
-    JSON.stringify({ go2rtcBinary: '/opt/go2rtc', updateSource }),
+    JSON.stringify({ go2rtcBinary: '/opt/go2rtc', database: data, updateSource }),
   );
   return layout;
 }

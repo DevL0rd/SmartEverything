@@ -96,6 +96,7 @@ function adminOf(
   const { host, inbox, secrets, people } = parts;
   return new PluginAdmin({
     store: options.store,
+    logs: options.logs,
     secrets,
     host: (): PluginHost => host,
     inbox: (): PluginInbox => inbox,

@@ -37,13 +37,16 @@ import { PhotoAiStatusReader } from './status';
 import { VisionHandler, type VisionClient } from './vision-job';
 
 export type PhotoAiStore = AiStore &
-  Pick<Store, 'feed' | 'ledger' | 'personal' | 'personAccess' | 'settingsKv' | 'now' | 'reader'>;
+  Pick<
+    Store,
+    'feed' | 'ledger' | 'personal' | 'personAccess' | 'settingsKv' | 'now' | 'reader' | 'driveFeed'
+  >;
 
 export interface PhotoAiOptions {
   readonly store: PhotoAiStore;
   readonly layout: Pick<HubLayout, 'cache' | 'tmp'>;
   readonly log: Logger;
-  readonly runner: Pick<MediaJobRunner, 'register' | 'request'>;
+  readonly runner: Pick<MediaJobRunner, 'register' | 'request' | 'onTouched'>;
   readonly keys: Pick<OpenRouterKeys, 'current' | 'onChange'>;
   readonly locate: (item: DriveItem) => Promise<string>;
   readonly detector: FaceDetector;
@@ -106,6 +109,7 @@ export class PhotoAi {
     this.scheduler = new PhotoAiScheduler({
       store,
       feed: store.feed,
+      media: options.runner,
       keys: options.keys,
       queue: this.queue,
       consent: this.consent,

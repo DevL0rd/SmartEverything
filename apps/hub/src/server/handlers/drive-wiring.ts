@@ -23,6 +23,7 @@ import { DriveWriteService } from '../../drive/service-write';
 import { DriveShares, shareOriginOf, type ShareOrigin } from '../../drive/shares';
 import { PurgeTimer } from '../../drive/trash-purge';
 import { TusUploads, type TusEnv } from '../../drive/uploads-tus';
+import { WriteBatch } from '../../drive/write-batch';
 import { fileEnv } from '../../drive/versions';
 import { DriveWatchers, systemWatch } from '../../drive/watcher';
 import { WorkQueue, defaultConcurrency } from '../../drive/work-queue';
@@ -331,6 +332,7 @@ function uploadsOf(deps: DriveDeps, env: ConflictEnv, activity: DriveActivity): 
     activity,
     authenticate: tusAuthentication(deps.store, deps.nodes),
     hasher: new ContentHasher(deps.hasherScript ?? BUNDLED_HASH_WORKER),
+    settle: new WriteBatch(deps.store, deps.log.forArea('hub.drive')).write,
   };
   return new TusUploads(tus);
 }

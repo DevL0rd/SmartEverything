@@ -11,6 +11,7 @@ import { testLayout } from './test-layout';
 import { CAMERA, LAMP, fakeModule, type FakeModule } from './fake-provider';
 import { captureLogs, testLogger } from './logs';
 import { LogLines } from '../../src/service/log-lines';
+import { bundledLogWorker } from './log-worker';
 import {
   call,
   changedTo,
@@ -77,6 +78,7 @@ export async function bootServer(
     fetch: tunnel(() => base),
     clock,
     logLines: new LogLines(),
+    logWorkerScript: await bundledLogWorker(directory),
     ...extra,
   });
   base = server.url;

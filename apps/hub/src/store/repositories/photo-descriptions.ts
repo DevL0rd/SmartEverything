@@ -72,7 +72,7 @@ export class PhotoDescriptionsRepository {
     return this.context.sql.all(
       PENDING,
       `select i.id, i.rel_path, i.dev, i.ino from photo_description_backlog b
-        join drive_items i on i.id = b.item_id
+        cross join drive_items i on i.id = b.item_id
         where i.root_id = $rootId and i.dev is not null and i.ino is not null
         order by i.id`,
       { rootId },

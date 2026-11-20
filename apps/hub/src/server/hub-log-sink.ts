@@ -1,11 +1,13 @@
 import { Logger, messageOf, type LogRecord, type LogSink } from '@smarteverything/logging';
 import { currentExecutionAuthority, withExecutionAuthority } from '../assistant/turn-authority';
 import type { Store } from '../store/store';
+import type { LogStore } from '../logs/log-store';
 import { storedFromLog, type StoredLogRecord } from '../store/repositories/runtime-log-types';
 import { isHubServiceFatal } from '../store/repositories/repair-fingerprint';
 
 export interface HubLogSinkOptions {
-  readonly store: Pick<Store, 'runtimeLogs' | 'now'>;
+  readonly store: Pick<Store, 'now'>;
+  readonly logs: Pick<LogStore, 'append'>;
   readonly failed: (cause: unknown) => void;
   readonly hubBootRunId?: string;
 }
@@ -52,9 +54,10 @@ function repairEvidence(
   return record === null || repairOrigin === undefined ? record : { ...record, repairOrigin };
 }
 
-function write(options: HubLogSinkOptions, records: readonly CapturedLog[]): void {
-  const { store, hubBootRunId } = options;
+function write(options: HubLogSinkOptions, records: readonly CapturedLog[]): Promise<void> {
+  const { store, logs, hubBootRunId } = options;
   const now = store.now().toISOString();
+  const writes: Promise<number>[] = [];
   for (const [source, group] of bySource(records)) {
     const stored = group
       .map(({ record, repairOrigin }) =>
@@ -68,20 +71,33 @@ function write(options: HubLogSinkOptions, records: readonly CapturedLog[]): voi
       )
       .filter((record) => record !== null);
     if (stored.length === 0) continue;
-    const kept = store.runtimeLogs.append(stored, HUB_CLIENT);
-    store.runtimeLogs.touch(
-      { source, runtime: 'hub', platform: 'server', deviceId: null, clientId: HUB_CLIENT },
-      now,
-      kept,
-      0,
+    writes.push(
+      logs.append(
+        stored,
+        { source, runtime: 'hub', platform: 'server', deviceId: null, clientId: HUB_CLIENT },
+        now,
+      ),
     );
   }
+  return Promise.all(writes).then(() => undefined);
 }
 
 export function hubLogSink(options: HubLogSinkOptions): HubLogSink {
   let pending: CapturedLog[] = [];
   let writing = false;
+  let reporting = false;
   let scheduled: NodeJS.Immediate | null = null;
+
+  const report = (cause: unknown): void => {
+    reporting = true;
+    try {
+      options.failed(
+        new Error(`The hub could not store its own logs: ${messageOf(cause)}`, { cause }),
+      );
+    } finally {
+      reporting = false;
+    }
+  };
 
   const flush = (): void => {
     if (scheduled !== null) clearImmediate(scheduled);
@@ -91,20 +107,16 @@ export function hubLogSink(options: HubLogSinkOptions): HubLogSink {
     pending = [];
     writing = true;
     try {
-      withExecutionAuthority(undefined, () => {
-        write(options, batch);
-      });
+      withExecutionAuthority(undefined, () => write(options, batch)).catch(report);
     } catch (cause) {
-      options.failed(
-        new Error(`The hub could not store its own logs: ${messageOf(cause)}`, { cause }),
-      );
+      report(cause);
     } finally {
       writing = false;
     }
   };
 
   const sink: LogSink = (record): void => {
-    if (writing) return;
+    if (writing || reporting) return;
     pending.push({ record, repairOrigin: currentExecutionAuthority()?.repair_origin });
     if (pending.length >= BATCH) {
       flush();
@@ -128,12 +140,14 @@ export function insideLogSink(existing: LogSink, added: LogSink): LogSink {
 }
 
 export function ingestOwnLogs(options: {
-  readonly store: Pick<Store, 'runtimeLogs' | 'now'>;
+  readonly store: Pick<Store, 'now'>;
+  readonly logs: Pick<LogStore, 'append'>;
   readonly log: Logger;
   readonly hubBootRunId?: string;
 }): () => void {
   const owned = hubLogSink({
     store: options.store,
+    logs: options.logs,
     ...(options.hubBootRunId === undefined ? {} : { hubBootRunId: options.hubBootRunId }),
     failed: (cause) => {
       options.log.error('logs.not_stored', cause);

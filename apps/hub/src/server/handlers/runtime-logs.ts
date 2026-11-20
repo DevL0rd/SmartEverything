@@ -12,7 +12,7 @@ const WEEK_MS = 7 * DAY_MS;
 
 const FAILURE_LEVELS = ['warn', 'error', 'exception'] as const;
 
-type RuntimeLogContext = Pick<ServerContext, 'store'>;
+type RuntimeLogContext = Pick<ServerContext, 'store' | 'logs'>;
 type WriteName =
   'ingestRuntimeLogs' | 'ingestDesktopRuntimeLogs' | 'reportRuntimeLogGap' | 'dropRuntimeLogs';
 type ReadName =
@@ -82,7 +82,7 @@ function guarded<T>(operation: () => T): T {
 }
 
 function writeRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<WriteName> {
-  const logs = context.store.runtimeLogs;
+  const logs = context.logs;
   return {
     ingestDesktopRuntimeLogs: bound(E.ingestDesktopRuntimeLogs, ({ body, caller }) => {
       const source = desktopSourceOf(caller);
@@ -113,19 +113,22 @@ function writeRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<Wri
       );
     }),
     reportRuntimeLogGap: bound(E.reportRuntimeLogGap, ({ body, caller }) =>
-      guarded(() => {
-        logs.recordGap(sourceOf(context, caller), body.firstSentAt, body.lastSentAt);
-        return DONE_REPLY;
-      }),
+      guarded(() =>
+        logs
+          .recordGap(sourceOf(context, caller), body.firstSentAt, body.lastSentAt)
+          .then(() => DONE_REPLY),
+      ),
     ),
     dropRuntimeLogs: bound(E.dropRuntimeLogs, ({ query, caller }) =>
-      guarded(() => ({ dropped: logs.drop(accessOf(context, caller), query.before) })),
+      guarded(() =>
+        logs.drop(accessOf(context, caller), query.before).then((dropped) => ({ dropped })),
+      ),
     ),
   };
 }
 
 function readRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<ReadName> {
-  const logs = context.store.runtimeLogs;
+  const logs = context.logs;
   return {
     searchRuntimeLogs: bound(E.searchRuntimeLogs, ({ query, caller }) =>
       guarded(() => logs.search(accessOf(context, caller), query)),

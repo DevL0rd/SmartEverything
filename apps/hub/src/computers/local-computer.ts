@@ -3,7 +3,7 @@ import { Worker } from 'node:worker_threads';
 import type { AdapterSink, HubFrame } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { pipeLink, type Link } from '../node/link';
-import { logRecordOf } from '../store/repositories/runtime-logs';
+import { logRecordOf } from '../logs/record';
 import { HUB_VERSION } from '../version';
 import { HUB_EXTERNAL_ID } from './computer-device';
 import type { ComputerDriverOptions } from './computer-driver';

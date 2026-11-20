@@ -512,14 +512,4 @@ describe('sync operations', () => {
     }).toThrow(StoreConflictError);
     expect(ops.recall(PLACEMENT, 'op-1')).toEqual({ status: 'accepted', rev: 4 });
   });
-
-  it('forgets only operations older than the cutoff', () => {
-    const ops = repositories.driveSyncOps;
-    ops.remember(PLACEMENT, 'old', { status: 'accepted' });
-    clock = '2026-11-20T00:00:00.000Z';
-    ops.remember(PLACEMENT, 'new', { status: 'accepted' });
-    expect(ops.forgetBefore('2026-11-10T00:00:00.000Z')).toBe(1);
-    expect(ops.recall(PLACEMENT, 'old')).toBeUndefined();
-    expect(ops.recall(PLACEMENT, 'new')).toBeDefined();
-  });
 });

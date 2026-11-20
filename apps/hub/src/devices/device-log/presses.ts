@@ -99,5 +99,9 @@ function readPresses(store: LogStore, request: LogRequest): readonly DeviceLogEn
 }
 
 export function pressesSource(): DeviceLogSource {
-  return { claims: (_, event) => event.kind === 'button', read: readPresses };
+  return {
+    claims: (_, event) => event.kind === 'button',
+    claimedKinds: ['button'],
+    read: readPresses,
+  };
 }

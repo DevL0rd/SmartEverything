@@ -80,7 +80,9 @@ export class Sql {
 
   all<T>(schema: z.ZodType<T>, text: string, parameters: SqlParameters = {}): T[] {
     const startedAt = performance.now();
-    const rows = z.array(schema).parse(this.prepared(text).all(parameters));
+    const rows = this.prepared(text)
+      .all(parameters)
+      .map((row) => schema.parse(row));
     this.timed('all', text, startedAt, rows.length);
     return rows;
   }
