@@ -85,7 +85,9 @@ describe('drive control channel', () => {
         run: (command): Promise<void> => {
           if (command.kind === 'pin') return Promise.reject(new Error('Pinning needs a mount'));
           commands.push(command);
-          current = state({ mount: { status: 'Mounted', mounted: true, points: [] } });
+          current = state({
+            mount: { status: 'Mounted', mounted: true, points: [], syncing: null },
+          });
           return Promise.resolve();
         },
         onChange: (listener): (() => void) => {
@@ -107,10 +109,10 @@ describe('drive control channel', () => {
     expect(await client.state()).toEqual(state());
     const after = await client.run({ kind: 'again' });
     expect(commands).toEqual([{ kind: 'again' }]);
-    expect(after.mount).toEqual({ status: 'Mounted', mounted: true, points: [] });
+    expect(after.mount).toEqual({ status: 'Mounted', mounted: true, points: [], syncing: null });
 
     current = state({
-      sync: { placements: 1, paused: false, needBytes: 0, pendingOps: 0, failures: 0 },
+      sync: { placements: 1, paused: false, needBytes: 0, pendingOps: 0, failures: 0, folders: [] },
     });
     for (const listener of listeners) listener();
     await until(() => client?.current?.sync?.placements === 1);
@@ -366,7 +368,7 @@ describe('mount controller', () => {
     expect(sleeps).toEqual([1000, 2000, 1000]);
   });
 
-  it('shows journal replay as pending uploads in the tray status', async () => {
+  it('shows the uploads still on their way to the Hub in the tray status', async () => {
     const { controller, helper, tray, links } = build();
     await controller.start();
     links[0]?.report({
@@ -377,24 +379,41 @@ describe('mount controller', () => {
       route: 'local',
       mountPoint: '/home/u/Drive',
     });
-    const counters = (pendingUploads: number): string =>
-      JSON.stringify({
-        type: 'counters',
-        mount: FIXTURE_ID,
-        cacheBytes: 0,
-        pinnedBytes: 0,
-        openFiles: 0,
-        pendingUploads,
-      });
-    helper.pushLine(counters(3));
-    helper.pushLine(counters(1));
-    helper.pushLine(counters(0));
+    const uploads = (files: number, bytes: number, sentFiles: number, sentBytes: number): string =>
+      JSON.stringify({ type: 'uploads', files, bytes, sentFiles, sentBytes });
+    helper.pushLine(uploads(0, 0, 4, 9000));
+    helper.pushLine(uploads(3, 3000, 4, 9000));
+    helper.pushLine(uploads(1, 1000, 6, 11_000));
+    helper.pushLine(uploads(0, 0, 7, 12_000));
     expect(tray.map((state) => state?.status)).toEqual([
       'Mounted',
-      'Mounted · 3 uploads pending',
-      'Mounted · 1 upload pending',
+      'Mounted · Syncing 3 files (3.0 kB) to the Hub',
+      'Mounted · Syncing 1 file (1.0 kB) to the Hub',
       'Mounted',
     ]);
+    expect(tray.map((state) => state?.syncing ?? null)).toEqual([
+      null,
+      { files: 3, bytes: 3000, sentFiles: 0, sentBytes: 0, bytesPerSecond: null },
+      expect.objectContaining({ files: 1, bytes: 1000, sentFiles: 2, sentBytes: 2000 }),
+      null,
+    ]);
+  });
+
+  it('starts the sent count over when a restarted helper counts from zero', async () => {
+    const { controller, helper, tray, links } = build();
+    await controller.start();
+    links[0]?.report({ ...FIXTURE_STATUS, placementId: FIXTURE_ID, state: 'mounted' });
+    const uploads = (files: number, sentFiles: number): string =>
+      JSON.stringify({ type: 'uploads', files, bytes: 0, sentFiles, sentBytes: 0 });
+    helper.pushLine(uploads(5, 40));
+    helper.pushLine(uploads(4, 1));
+    expect(tray.at(-1)?.syncing).toEqual({
+      files: 4,
+      bytes: 0,
+      sentFiles: 0,
+      sentBytes: 0,
+      bytesPerSecond: null,
+    });
   });
 
   it('names the reason a mount failed in the tray status', async () => {
@@ -412,6 +431,7 @@ describe('mount controller', () => {
       status: 'Mount failed: fusermount3: mount failed: Operation not permitted',
       mounted: false,
       points: [],
+      syncing: null,
     });
   });
 
@@ -484,6 +504,7 @@ describe('mount controller', () => {
           congestionThreshold: 48,
           readAheadBytes: 7,
           attrSeconds: 60,
+          closeWaitsForUpload: false,
         },
       },
     ]);

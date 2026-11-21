@@ -1,5 +1,10 @@
+import { basename } from 'node:path';
+import type { DesktopDriveFolderSyncing } from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { SyncEnginePort, SyncTarget, SyncWaiting } from '../drive-sync/service.js';
+import type { EngineSink } from '../drive-sync/engine.js';
+import { FolderActivity } from './sync-activity.js';
+import { engineSinkOf } from './sync-sink.js';
 
 export interface EngineHandle {
   readonly start: () => Promise<void>;
@@ -10,7 +15,7 @@ export interface EngineHandle {
   readonly failures: () => number;
 }
 
-export type EngineFactory = (target: SyncTarget, changed: () => void) => EngineHandle;
+export type EngineFactory = (target: SyncTarget, sink: EngineSink) => EngineHandle;
 
 export interface SyncSummary {
   readonly placements: number;
@@ -18,6 +23,7 @@ export interface SyncSummary {
   readonly needBytes: number;
   readonly pendingOps: number;
   readonly failures: number;
+  readonly folders: readonly DesktopDriveFolderSyncing[];
 }
 
 export interface SyncEngineHostOptions {
@@ -29,6 +35,7 @@ export interface SyncEngineHostOptions {
 
 export class SyncEngineHost implements SyncEnginePort {
   private readonly running = new Map<string, EngineHandle>();
+  private readonly activities = new Map<string, FolderActivity>();
   private readonly listeners = new Set<() => void>();
   private paused = false;
   private timer: NodeJS.Timeout | null = null;
@@ -37,11 +44,18 @@ export class SyncEngineHost implements SyncEnginePort {
 
   async start(target: SyncTarget): Promise<void> {
     await this.options.prepare(target);
-    const handle = this.options.create(target, () => {
+    const { placementId, localPath } = target;
+    const activity = new FolderActivity(placementId, basename(localPath), Date.now);
+    const changed = (): void => {
       this.touch();
-    });
+    };
+    const handle = this.options.create(
+      target,
+      engineSinkOf(placementId, activity, changed, this.options.log),
+    );
     await handle.start();
-    this.running.set(target.placementId, handle);
+    this.running.set(placementId, handle);
+    this.activities.set(placementId, activity);
     if (this.paused) await handle.pause();
     this.touch();
   }
@@ -50,6 +64,7 @@ export class SyncEngineHost implements SyncEnginePort {
     const handle = this.running.get(placementId);
     if (handle === undefined) return;
     this.running.delete(placementId);
+    this.activities.delete(placementId);
     await handle.stop();
     this.touch();
   }
@@ -76,13 +91,23 @@ export class SyncEngineHost implements SyncEnginePort {
     let needBytes = 0;
     let pendingOps = 0;
     let failures = 0;
-    for (const handle of this.running.values()) {
+    const folders: DesktopDriveFolderSyncing[] = [];
+    for (const [placementId, handle] of this.running) {
       const waiting = await handle.waiting();
       needBytes += waiting.needBytes;
       pendingOps += waiting.pendingOps;
       failures += handle.failures();
+      const folder = this.activities.get(placementId)?.look(waiting);
+      if (folder !== undefined && folder !== null) folders.push(folder);
     }
-    return { placements: this.running.size, paused: this.paused, needBytes, pendingOps, failures };
+    return {
+      placements: this.running.size,
+      paused: this.paused,
+      needBytes,
+      pendingOps,
+      failures,
+      folders,
+    };
   }
 
   onChange(listener: () => void): () => void {
@@ -97,6 +122,7 @@ export class SyncEngineHost implements SyncEnginePort {
     this.timer = null;
     await this.each((handle) => handle.stop());
     this.running.clear();
+    this.activities.clear();
   }
 
   private async each(work: (handle: EngineHandle) => Promise<void>): Promise<void> {

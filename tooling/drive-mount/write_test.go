@@ -327,22 +327,17 @@ func TestRenameWaitsForCommitsInFlight(t *testing.T) {
 	entry, h := r.create("tmp")
 	wbPut(t, h, 0, "saved")
 	h.Close()
-	done := make(chan error, 1)
-	go func() {
-		done <- r.w.Rename(wbCtx, RenameArgs{Parent: 1, Name: "tmp", NewParent: 1, NewName: "final"})
-	}()
-	select {
-	case <-done:
-		t.Fatal("rename returned before the commit was acknowledged")
-	case <-time.After(150 * time.Millisecond):
-	}
-	if r.hub.count("RENAME") != 0 {
-		t.Fatal("rename reached the hub early")
-	}
-	close(gate)
-	if err := <-done; err != nil {
+	if err := r.w.Rename(wbCtx, RenameArgs{Parent: 1, Name: "tmp", NewParent: 1, NewName: "final"}); err != nil {
+		close(gate)
 		t.Fatal(err)
 	}
+	time.Sleep(150 * time.Millisecond)
+	if r.hub.count("RENAME") != 0 {
+		close(gate)
+		t.Fatal("rename reached the hub before the commit was acknowledged")
+	}
+	close(gate)
+	r.drain()
 	if r.hub.content(entry.Ino) != "saved" {
 		t.Fatal("rename overtook the content")
 	}

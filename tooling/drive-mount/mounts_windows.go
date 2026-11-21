@@ -42,6 +42,7 @@ func newMountSet(source InodeFilesystem, report *reporter) *mountSet {
 	set := &mountSet{source: source, report: report, mounts: map[string]*activeMount{}, tuning: newTuningState(report)}
 	source.OnChange(set.sourceChanged)
 	source.OnPending(coalesced(set.publishAll))
+	source.OnProgress(coalesced(set.publishUploads))
 	return set
 }
 
@@ -190,6 +191,11 @@ func (s *mountSet) publishAll() {
 	for _, active := range mounted {
 		s.publish(active)
 	}
+	s.publishUploads()
+}
+
+func (s *mountSet) publishUploads() {
+	s.report.uploads(s.source.Uploads())
 }
 
 func (s *mountSet) publish(active *activeMount) {

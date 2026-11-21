@@ -6,13 +6,24 @@ import {
 import { BrowserWindow, type MenuItemConstructorOptions } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { SyncJobEnd, SyncJobProgress, SyncJobs, SyncJobsStatus } from '../src/kde-jobs.js';
 import { createTray, type DesktopTray, type TrayOptions } from '../src/tray.js';
 import { trayDriveOf } from '../src/tray-service.js';
 import { traySyncOf } from '../src/tray-status.js';
 
+interface FakeJob {
+  readonly progress: SyncJobProgress[];
+  end: SyncJobEnd | null;
+}
+
 const shared = vi.hoisted(() => ({
   menu: new Array<MenuItemConstructorOptions>(),
   menus: 0,
+  tip: '',
+  jobs: new Array<FakeJob>(),
+  jobStatus: new Array<SyncJobsStatus>({ state: 'ready' }),
+  jobListeners: new Array<(status: SyncJobsStatus) => void>(),
+  progress: new Array<number>(),
   stop: vi.fn(),
   destroy: vi.fn(),
 }));
@@ -20,7 +31,7 @@ const shared = vi.hoisted(() => ({
 interface TrayIconFixture {
   readonly tray: {
     readonly on: () => void;
-    readonly setToolTip: () => void;
+    readonly setToolTip: (tip: string) => void;
     readonly setContextMenu: (menu: MenuItemConstructorOptions[]) => void;
     readonly destroy: () => void;
   };
@@ -32,6 +43,10 @@ vi.mock('electron', () => ({
   BrowserWindow: class {
     readonly isVisible = (): boolean => false;
     readonly isFocused = (): boolean => false;
+    readonly isDestroyed = (): boolean => false;
+    readonly setProgressBar = (progress: number): void => {
+      shared.progress.push(progress);
+    };
     readonly hide = vi.fn();
   },
   Menu: {
@@ -47,7 +62,9 @@ vi.mock('../src/tray-icon.js', () => ({
   themedTray: (): TrayIconFixture => ({
     tray: {
       on: vi.fn(),
-      setToolTip: vi.fn(),
+      setToolTip: (tip: string): void => {
+        shared.tip = tip;
+      },
       setContextMenu: (menu: MenuItemConstructorOptions[]): void => {
         shared.menu = menu;
         shared.menus += 1;
@@ -58,6 +75,34 @@ vi.mock('../src/tray-icon.js', () => ({
     stop: shared.stop,
   }),
 }));
+
+const fakeJobs: SyncJobs = {
+  status: () => {
+    const status = shared.jobStatus.at(-1);
+    if (status === undefined) throw new Error('Expected a job progress status');
+    return status;
+  },
+  onStatus: (listener): void => {
+    shared.jobListeners.push(listener);
+  },
+  open: (progress) => {
+    const job: FakeJob = { progress: [progress], end: null };
+    shared.jobs.push(job);
+    return {
+      update: (next): void => {
+        job.progress.push(next);
+      },
+      finish: (end): void => {
+        job.end = end;
+      },
+    };
+  },
+  stop: vi.fn(),
+};
+
+function driveCommands(): NonNullable<TrayOptions['drive']> {
+  return { jobs: fakeJobs, sync: vi.fn(), mount: vi.fn() };
+}
 
 function options(drive?: TrayOptions['drive']): TrayOptions {
   return {
@@ -91,6 +136,11 @@ function click(label: string): void {
 beforeEach(() => {
   shared.menu = [];
   shared.menus = 0;
+  shared.tip = '';
+  shared.jobs = [];
+  shared.jobStatus = [{ state: 'ready' }];
+  shared.jobListeners = [];
+  shared.progress = [];
   shared.stop.mockReset();
   shared.destroy.mockReset();
 });
@@ -117,13 +167,13 @@ describe('optional Drive tray module', () => {
   });
 
   it('registers both state publishers and delegates sync and mount commands', () => {
-    const commands = { sync: vi.fn(), mount: vi.fn() };
+    const commands = driveCommands();
     const tray = createTray(options(commands));
     const drive = driveOf(tray);
     tray.show(null);
     expect(labels()).not.toContain('Mount again');
     drive.sync({ status: 'Working', paused: false });
-    drive.mount({ status: 'Stopped', mounted: false });
+    drive.mount({ status: 'Stopped', mounted: false, syncing: null });
     click('Pause sync');
     click('Mount again');
     expect(commands.sync).toHaveBeenCalledWith({ kind: 'pause' });
@@ -134,11 +184,11 @@ describe('optional Drive tray module', () => {
   });
 
   it('disables retry for mounted drives and clears each module state independently', () => {
-    const tray = createTray(options({ sync: vi.fn(), mount: vi.fn() }));
+    const tray = createTray(options(driveCommands()));
     const drive = driveOf(tray);
     tray.show(null);
     drive.sync({ status: 'Paused', paused: true });
-    drive.mount({ status: 'Mounted', mounted: true });
+    drive.mount({ status: 'Mounted', mounted: true, syncing: null });
     expect(shared.menu.find((item) => item.label === 'Mount again')?.enabled).toBe(false);
     drive.sync(null);
     expect(labels()).not.toContain('Resume sync');
@@ -154,7 +204,14 @@ describe('optional Drive tray module', () => {
   });
 });
 
-const SYNC = { placements: 2, paused: false, needBytes: 0, pendingOps: 0, failures: 0 } as const;
+const SYNC = {
+  placements: 2,
+  paused: false,
+  needBytes: 0,
+  pendingOps: 0,
+  failures: 0,
+  folders: [],
+} as const;
 
 function controlState(change: Partial<DesktopDriveState> = {}): DesktopDriveState {
   return {
@@ -166,6 +223,123 @@ function controlState(change: Partial<DesktopDriveState> = {}): DesktopDriveStat
     ...change,
   };
 }
+
+describe('drive mount syncing in the tray', () => {
+  const SYNCING = {
+    files: 3,
+    bytes: 3000,
+    sentFiles: 1,
+    sentBytes: 1000,
+    bytesPerSecond: 2000,
+  } as const;
+
+  it('shows the progress while files are on their way and tells when all are on the Hub', () => {
+    const tray = createTray(options(driveCommands()));
+    const drive = driveOf(tray);
+    tray.show(null);
+    drive.mount({ status: 'Mounted · Syncing', mounted: true, syncing: SYNCING });
+    expect(labels()).toContain('25% sent');
+    expect(shared.tip).toContain('Syncing 3 files');
+    expect(shared.tip).toContain('25%');
+    expect(shared.progress.at(-1)).toBe(0.25);
+    expect(shared.jobs).toHaveLength(1);
+    expect(shared.jobs[0]?.progress[0]).toEqual({
+      title: 'Syncing My Drive',
+      percent: 25,
+      processedBytes: 1000,
+      totalBytes: 4000,
+      processedFiles: 1,
+      totalFiles: 4,
+      bytesPerSecond: 2000,
+      current: null,
+      info: '3 files left',
+    });
+    drive.mount({
+      status: 'Mounted · Syncing',
+      mounted: true,
+      syncing: { ...SYNCING, sentBytes: 1500, bytes: 2500 },
+    });
+    expect(shared.jobs).toHaveLength(1);
+    expect(shared.jobs[0]?.progress.at(-1)?.processedBytes).toBe(1500);
+    drive.mount({ status: 'Mounted', mounted: true, syncing: null });
+    expect(labels()).not.toContain('25% sent');
+    expect(shared.tip).not.toContain('Syncing');
+    expect(shared.progress.at(-1)).toBe(-1);
+    expect(shared.jobs[0]?.end).toEqual({ kind: 'done' });
+  });
+
+  it('does not claim the changes reached the Hub when the mount went offline', () => {
+    const tray = createTray(options(driveCommands()));
+    const drive = driveOf(tray);
+    drive.mount({ status: 'Mounted · Syncing', mounted: true, syncing: SYNCING });
+    drive.mount({ status: 'Mount offline', mounted: false, syncing: null });
+    drive.mount(null);
+    expect(shared.jobs).toHaveLength(1);
+    expect(shared.jobs[0]?.end).toEqual({ kind: 'failed', message: 'My Drive went offline' });
+  });
+
+  it('shows a synced folder with its current file and tells when it is up to date', () => {
+    const tray = createTray(options(driveCommands()));
+    const drive = driveOf(tray);
+    const folder = {
+      placementId: 'p1',
+      name: 'Projects',
+      files: 2,
+      bytes: 500,
+      sentFiles: 2,
+      sentBytes: 500,
+      bytesPerSecond: 100,
+      current: 'src/main.ts',
+    } as const;
+    drive.folders({ ...SYNC, pendingOps: 2, folders: [folder] });
+    expect(labels()).toContain('Projects: 50% · 2 files left');
+    expect(shared.progress.at(-1)).toBe(0.5);
+    expect(shared.jobs[0]?.progress[0]).toMatchObject({
+      title: 'Syncing Projects',
+      current: 'src/main.ts',
+      bytesPerSecond: 100,
+    });
+    drive.folders(SYNC);
+    expect(shared.progress.at(-1)).toBe(-1);
+    expect(shared.jobs[0]?.end).toEqual({ kind: 'done' });
+  });
+
+  it('ends folder jobs as paused or failed with the reason', () => {
+    const tray = createTray(options(driveCommands()));
+    const drive = driveOf(tray);
+    const folder = {
+      placementId: 'p1',
+      name: 'Projects',
+      files: 1,
+      bytes: 10,
+      sentFiles: 0,
+      sentBytes: 0,
+      bytesPerSecond: null,
+      current: null,
+    } as const;
+    drive.folders({ ...SYNC, pendingOps: 1, folders: [folder] });
+    drive.folders({ ...SYNC, paused: true, pendingOps: 1, folders: [folder] });
+    expect(shared.jobs[0]?.end).toEqual({ kind: 'paused' });
+    drive.folders({ ...SYNC, pendingOps: 1, folders: [folder] });
+    drive.folders({ ...SYNC, failures: 1 });
+    expect(shared.jobs[1]?.end).toEqual({ kind: 'failed', message: '1 file needs attention' });
+  });
+
+  it('says in the tray when job progress is unavailable on this desktop', () => {
+    const tray = createTray(options(driveCommands()));
+    tray.show(null);
+    expect(labels().some((label) => label?.startsWith('Sync progress') === true)).toBe(false);
+    const unavailable: SyncJobsStatus = {
+      state: 'unavailable',
+      reason: 'this desktop has no org.kde.JobViewServer service',
+    };
+    shared.jobStatus.push(unavailable);
+    for (const listener of shared.jobListeners) listener(unavailable);
+    expect(labels()).toContain(
+      'Sync progress in notifications is unavailable: this desktop has no org.kde.JobViewServer service',
+    );
+  });
+});
 
 describe('drive tray status', () => {
   it('words the sync summary for the tray', () => {
@@ -192,16 +366,19 @@ describe('drive tray link to the Computer service', () => {
   } {
     const run = vi.fn((): Promise<DesktopDriveState> => Promise.resolve(controlState()));
     let listener: (state: DesktopDriveState | null) => void = (): void => undefined;
-    const link = trayDriveOf({
-      run,
-      current,
-      onState: (next): (() => void) => {
-        listener = next;
-        return (): void => {
-          listener = (): void => undefined;
-        };
+    const link = trayDriveOf(
+      {
+        run,
+        current,
+        onState: (next): (() => void) => {
+          listener = next;
+          return (): void => {
+            listener = (): void => undefined;
+          };
+        },
       },
-    });
+      fakeJobs,
+    );
     return {
       link,
       run,
@@ -225,7 +402,7 @@ describe('drive tray link to the Computer service', () => {
 
   it('rebuilds the tray menu only when what the tray shows changes', () => {
     const { link, emit } = client(controlState());
-    const tray = createTray(options({ sync: vi.fn(), mount: vi.fn() }));
+    const tray = createTray(options(driveCommands()));
     link.follow(driveOf(tray));
     const built = shared.menus;
     emit(controlState({ cache: { ...DEFAULT_DESKTOP_DRIVE_CACHE } }));
@@ -240,12 +417,14 @@ describe('drive tray link to the Computer service', () => {
     const { link, emit } = client(controlState());
     const sync = vi.fn();
     const mount = vi.fn();
-    const stop = link.follow({ sync, mount });
+    const folders = vi.fn();
+    const stop = link.follow({ sync, mount, folders });
     expect(sync).toHaveBeenLastCalledWith({ status: 'Up to date', paused: false });
     expect(mount).toHaveBeenLastCalledWith(null);
-    emit(controlState({ mount: { status: 'Mounted', mounted: true, points: [] }, sync: null }));
+    const mounted = { status: 'Mounted', mounted: true, points: [], syncing: null } as const;
+    emit(controlState({ mount: mounted, sync: null }));
     expect(sync).toHaveBeenLastCalledWith(null);
-    expect(mount).toHaveBeenLastCalledWith({ status: 'Mounted', mounted: true, points: [] });
+    expect(mount).toHaveBeenLastCalledWith(mounted);
     emit(null);
     expect(sync).toHaveBeenLastCalledWith(null);
     expect(mount).toHaveBeenLastCalledWith(null);

@@ -25,11 +25,20 @@ const HELPER_LINE = z.discriminatedUnion('type', [
     reason: z.string(),
   }),
   z.strictObject({ type: z.literal('counters'), mount: z.string().min(1), ...HELPER_COUNTERS }),
+  z.strictObject({
+    type: z.literal('uploads'),
+    files: COUNT,
+    bytes: COUNT,
+    sentFiles: COUNT,
+    sentBytes: COUNT,
+  }),
   HELPER_LIMITS_LINE,
   HELPER_APPLIED_LINE,
 ]);
 
 export type HelperLine = z.infer<typeof HELPER_LINE>;
+
+export type HelperUploads = Omit<Extract<HelperLine, { type: 'uploads' }>, 'type'>;
 
 export function parseHelperLine(raw: string): HelperLine {
   return HELPER_LINE.parse(JSON.parse(raw));

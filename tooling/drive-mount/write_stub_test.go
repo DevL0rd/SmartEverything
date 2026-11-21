@@ -33,23 +33,25 @@ type wbCommit struct {
 }
 
 type wbHub struct {
-	t         *testing.T
-	mu        sync.Mutex
-	nodes     map[uint64]*wbNode
-	next      uint64
-	commits   map[uint64]*wbCommit
-	nextID    uint64
-	dedupe    map[string]wire.Reply
-	ops       []string
-	before    func(op wire.Op, meta wire.Meta) error
-	after     func(op wire.Op, meta wire.Meta) error
-	written   uint64
-	inflight  int
-	peak      int
-	forgot    []uint64
-	fsyncs    int
-	lockCalls []wire.Meta
-	clock     int64
+	t          *testing.T
+	mu         sync.Mutex
+	nodes      map[uint64]*wbNode
+	next       uint64
+	commits    map[uint64]*wbCommit
+	nextID     uint64
+	dedupe     map[string]wire.Reply
+	ops        []string
+	before     func(op wire.Op, meta wire.Meta) error
+	after      func(op wire.Op, meta wire.Meta) error
+	written    uint64
+	inflight   int
+	peak       int
+	forgot     []uint64
+	fsyncs     int
+	lockCalls  []wire.Meta
+	clock      int64
+	posting    map[uint64]*sync.WaitGroup
+	lastPosted <-chan struct{}
 }
 
 func newWbHub(t *testing.T) *wbHub {
@@ -155,7 +157,11 @@ func (h *wbHub) count(op string) int {
 func (h *wbHub) lookupName(parent uint64, name string) (uint64, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	ino, ok := h.nodes[parent].names[name]
+	node, ok := h.nodes[parent]
+	if !ok {
+		return 0, false
+	}
+	ino, ok := node.names[name]
 	return ino, ok
 }
 
@@ -170,8 +176,63 @@ func (h *wbHub) attr(n *wbNode) wire.Meta {
 
 func wbRemote(code wire.ErrorCode) error { return &wire.RemoteError{Code: code} }
 
+type wbPosted struct {
+	done  chan struct{}
+	reply wire.Reply
+	err   error
+}
+
+func (p *wbPosted) Wait(ctx context.Context) (wire.Reply, error) {
+	select {
+	case <-p.done:
+		return p.reply, p.err
+	case <-ctx.Done():
+		return wire.Reply{}, ctx.Err()
+	}
+}
+
+func (*wbPosted) Forget() {}
+
 func (h *wbHub) Post(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) (wire.Posted, error) {
-	return wire.PostByCall(ctx, h, op, meta, payload)
+	pending := &sync.WaitGroup{}
+	if op == wire.OpWrite {
+		commit, _ := meta.Uint(wire.KeyCommit)
+		h.mu.Lock()
+		if h.posting == nil {
+			h.posting = map[uint64]*sync.WaitGroup{}
+		}
+		if h.posting[commit] == nil {
+			h.posting[commit] = &sync.WaitGroup{}
+		}
+		pending = h.posting[commit]
+		h.mu.Unlock()
+	}
+	pending.Add(1)
+	h.mu.Lock()
+	prev := h.lastPosted
+	mine := make(chan struct{})
+	h.lastPosted = mine
+	h.mu.Unlock()
+	p := &wbPosted{done: make(chan struct{})}
+	go func() {
+		defer pending.Done()
+		defer close(p.done)
+		p.reply, p.err = h.call(op, meta, payload, prev, mine)
+	}()
+	return p, nil
+}
+
+func (h *wbHub) landPosted(op wire.Op, meta wire.Meta) {
+	if op != wire.OpEnd {
+		return
+	}
+	commit, _ := meta.Uint(wire.KeyCommit)
+	h.mu.Lock()
+	pending := h.posting[commit]
+	h.mu.Unlock()
+	if pending != nil {
+		pending.Wait()
+	}
 }
 
 func (h *wbHub) Do(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) ([]wire.Reply, error) {
@@ -179,11 +240,22 @@ func (h *wbHub) Do(ctx context.Context, op wire.Op, meta wire.Meta, payload []by
 	return []wire.Reply{r}, err
 }
 
-func (h *wbHub) Call(ctx context.Context, op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, error) {
+func (h *wbHub) Call(_ context.Context, op wire.Op, meta wire.Meta, payload []byte) (wire.Reply, error) {
+	h.landPosted(op, meta)
+	return h.call(op, meta, payload, nil, nil)
+}
+
+func (h *wbHub) call(op wire.Op, meta wire.Meta, payload []byte, prev <-chan struct{}, mine chan<- struct{}) (wire.Reply, error) {
+	if mine != nil {
+		defer close(mine)
+	}
 	if h.before != nil {
 		if err := h.before(op, meta); err != nil {
 			return wire.Reply{}, err
 		}
+	}
+	if prev != nil {
+		<-prev
 	}
 	h.mu.Lock()
 	h.ops = append(h.ops, op.Name())

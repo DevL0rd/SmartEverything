@@ -7,6 +7,8 @@ import {
   DESKTOP_DRIVE_CACHE,
   DESKTOP_DRIVE_COMMAND,
   DESKTOP_DRIVE_STATE,
+  syncingProgress,
+  syncingWords,
 } from '../src/desktop-drive';
 
 const UNTUNED = { saved: DEFAULT_DESKTOP_DRIVE_TUNING, applied: [], limits: null };
@@ -58,6 +60,7 @@ describe('desktop drive bridge contract', () => {
       status: 'Mounted',
       mounted: true,
       points: [{ placementId: 'p', point: '/run/user/1000/smarteverything/Photos' }],
+      syncing: null,
     };
     const state = {
       mount,
@@ -88,7 +91,7 @@ describe('desktop drive bridge contract', () => {
       readAheadBytes: 16_777_216,
       readdirPlus: 'auto',
       entrySeconds: 'changed',
-      closeWaitsForUpload: false,
+      closeWaitsForUpload: true,
       fsyncWaitsForHub: true,
       uploadFiles: 4,
       uploadFramesInFlight: 64,
@@ -128,5 +131,39 @@ describe('desktop drive bridge contract', () => {
         },
       }).applied,
     ).toHaveLength(1);
+  });
+});
+
+describe('drive mount syncing', () => {
+  it('names what is still on its way to the Hub', () => {
+    expect(
+      syncingWords({ files: 1, bytes: 0, sentFiles: 0, sentBytes: 0, bytesPerSecond: null }),
+    ).toBe('Syncing 1 file to the Hub');
+    expect(
+      syncingWords({ files: 12, bytes: 3000, sentFiles: 0, sentBytes: 0, bytesPerSecond: null }),
+    ).toBe('Syncing 12 files (3.0 kB) to the Hub');
+  });
+
+  it('measures progress by bytes, and by files when nothing has bytes', () => {
+    expect(
+      syncingProgress({ files: 2, bytes: 300, sentFiles: 1, sentBytes: 100, bytesPerSecond: null }),
+    ).toBe(0.25);
+    expect(
+      syncingProgress({ files: 3, bytes: 0, sentFiles: 1, sentBytes: 0, bytesPerSecond: null }),
+    ).toBe(0.25);
+  });
+
+  it('never reports a sync with no file left', () => {
+    const mount = { status: 'Mounted', mounted: true, points: [] };
+    const state = {
+      sync: null,
+      fuse: { available: true },
+      cache: DEFAULT_DESKTOP_DRIVE_CACHE,
+      tuning: UNTUNED,
+    };
+    const syncing = { files: 0, bytes: 0, sentFiles: 4, sentBytes: 10, bytesPerSecond: null };
+    expect(DESKTOP_DRIVE_STATE.safeParse({ ...state, mount: { ...mount, syncing } }).success).toBe(
+      false,
+    );
   });
 });

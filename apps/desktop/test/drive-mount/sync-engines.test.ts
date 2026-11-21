@@ -44,8 +44,10 @@ function host(
 ): { readonly created: SyncEngineHost; readonly changes: (() => void)[] } {
   const changes: (() => void)[] = [];
   const created = new SyncEngineHost({
-    create: (next, changed): EngineHandle => {
-      changes.push(changed);
+    create: (next, sink): EngineHandle => {
+      changes.push(() => {
+        sink.skipped([]);
+      });
       return handle(calls, next.placementId, needs[next.placementId] ?? 0);
     },
     prepare: (next): Promise<void> => {
@@ -76,6 +78,18 @@ describe('SyncEngineHost', () => {
       needBytes: 4096,
       pendingOps: 1,
       failures: 0,
+      folders: [
+        {
+          placementId: 'a',
+          name: 'a',
+          files: 1,
+          bytes: 4096,
+          sentFiles: 0,
+          sentBytes: 0,
+          bytesPerSecond: null,
+          current: null,
+        },
+      ],
     });
   });
 

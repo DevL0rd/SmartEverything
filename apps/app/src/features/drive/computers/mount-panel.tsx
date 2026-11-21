@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import * as Linking from 'expo-linking';
-import type { DesktopPlatform } from '@smarteverything/domain';
+import {
+  DESKTOP_DRIVE_ALL_ON_HUB,
+  type DesktopDriveSyncing,
+  type DesktopPlatform,
+} from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { Badge } from '../../../components/badge';
 import { Banner } from '../../../components/banner';
@@ -24,25 +28,43 @@ import {
   type MountSetup,
   type MountSummary,
 } from './mount-summary';
+import { MountSyncBar } from './mount-sync';
 import { basicLimitsOf, WINFSP_URL } from './placement-words';
 import type { DesktopDriveView } from './this-computer';
 
 const TILE_COLUMNS = { compact: 2, medium: 2, expanded: 2 } as const;
 
-export function mountTilesOf(summary: MountSummary): readonly MetricItem[] {
+function uploadsTileOf(summary: MountSummary, syncing: DesktopDriveSyncing | null): MetricItem {
+  if (syncing !== null) {
+    return {
+      key: 'uploads',
+      label: 'Syncing to the Hub',
+      value: count(syncing.files),
+      unit: syncing.files === 1 ? 'file' : 'files',
+      tone: 'info',
+      caption: `${bytes(syncing.bytes)} left`,
+    };
+  }
+  return {
+    key: 'uploads',
+    label: 'Waiting to upload',
+    value: count(summary.pendingUploads),
+    ...(summary.pendingUploads === 0
+      ? { caption: DESKTOP_DRIVE_ALL_ON_HUB }
+      : {
+          tone: summary.health === 'ready' ? 'info' : 'warning',
+          caption: uploadWaitOf(summary.health),
+        }),
+  };
+}
+
+export function mountTilesOf(
+  summary: MountSummary,
+  syncing: DesktopDriveSyncing | null,
+): readonly MetricItem[] {
   return [
     { key: 'open', label: 'Open now', value: count(summary.openFiles), unit: 'files' },
-    {
-      key: 'uploads',
-      label: 'Waiting to upload',
-      value: count(summary.pendingUploads),
-      ...(summary.pendingUploads === 0
-        ? { caption: 'Everything is on the Hub' }
-        : {
-            tone: summary.health === 'ready' ? 'info' : 'warning',
-            caption: uploadWaitOf(summary.health),
-          }),
-    },
+    uploadsTileOf(summary, syncing),
   ];
 }
 
@@ -217,6 +239,7 @@ export function MountPanel({
   readonly summary: MountSummary;
   readonly drive: DesktopDriveView;
 }): ReactNode {
+  const syncing = drive.state?.mount?.syncing ?? null;
   return (
     <View className="gap-3">
       {summary.placements.length === 0 ? null : (
@@ -225,8 +248,9 @@ export function MountPanel({
           <Stopped summary={summary} drive={drive} />
           <Offline summary={summary} />
           {summary.active ? <CacheBar summary={summary} /> : null}
+          {summary.active ? <MountSyncBar syncing={syncing} /> : null}
           {summary.active ? (
-            <MetricStrip items={mountTilesOf(summary)} columns={TILE_COLUMNS} />
+            <MetricStrip items={mountTilesOf(summary, syncing)} columns={TILE_COLUMNS} />
           ) : null}
           <View className="flex-row flex-wrap gap-2">
             <Button

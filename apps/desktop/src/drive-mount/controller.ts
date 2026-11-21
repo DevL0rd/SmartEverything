@@ -63,7 +63,7 @@ export class MountHasOpenFilesError extends Error {
 }
 
 export class MountController {
-  private readonly summary = new MountSummary();
+  private readonly summary = new MountSummary(Date.now);
   private readonly tuningReport = new TuningReport();
   private readonly listeners = new Set<(raw: string) => void>();
   private placements: MountPlacements | null = null;
@@ -200,7 +200,11 @@ export class MountController {
         this.ports.tuningChanged();
         return;
       case 'counters':
-        this.summary.counters(line.mount, line.pendingUploads, line.openFiles);
+        this.summary.counters(line.mount, line.openFiles);
+        this.publish();
+        return;
+      case 'uploads':
+        this.summary.uploads(line);
         this.publish();
     }
   }

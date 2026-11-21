@@ -1,4 +1,6 @@
 import type {
+  DesktopDriveState,
+  DesktopDriveSyncing,
   DesktopServiceStatus,
   DesktopTalkCommand,
   DesktopTalkTray,
@@ -9,6 +11,14 @@ import { Menu, type BrowserWindow, type MenuItemConstructorOptions } from 'elect
 import { talkMenuItems } from './talk/talk-tray.js';
 import { themedTray } from './tray-icon.js';
 import { trayHealthLabel } from './tray-status.js';
+import type { SyncJobs } from './kde-jobs.js';
+import {
+  DriveSyncNotices,
+  folderProgressLabel,
+  jobProgressLabel,
+  syncProgressLabel,
+  syncTipOf,
+} from './tray-drive-sync.js';
 import { revealWindow } from './window.js';
 
 const log = new Logger('desktop.tray');
@@ -23,6 +33,7 @@ export type DriveSyncCommand = { readonly kind: 'pause' } | { readonly kind: 're
 export interface DriveMountTray {
   readonly status: string;
   readonly mounted: boolean;
+  readonly syncing: DesktopDriveSyncing | null;
 }
 
 export interface DriveMountCommand {
@@ -36,6 +47,7 @@ interface TrayServiceControls {
 }
 
 export interface DriveTrayCommands {
+  readonly jobs: SyncJobs;
   readonly sync: (command: DriveSyncCommand) => void;
   readonly mount: (command: DriveMountCommand) => void;
 }
@@ -43,6 +55,7 @@ export interface DriveTrayCommands {
 export interface DriveTrayState {
   readonly sync: (state: DriveSyncTray | null) => void;
   readonly mount: (state: DriveMountTray | null) => void;
+  readonly folders: (state: DesktopDriveState['sync']) => void;
 }
 
 export interface TrayOptions {
@@ -111,6 +124,9 @@ export function driveMountMenuItems(
   }
   return [
     { label: `Drive mount: ${state.status}`, enabled: false },
+    ...(state.syncing === null
+      ? []
+      : [{ label: syncProgressLabel(state.syncing), enabled: false }]),
     {
       label: 'Mount again',
       enabled: !state.mounted,
@@ -156,6 +172,7 @@ interface ShownState {
   talk: DesktopTalkTray | null;
   driveSync: DriveSyncTray | null;
   driveMount: DriveMountTray | null;
+  driveFolders: DesktopDriveState['sync'];
 }
 
 function driveMenuItems(
@@ -163,7 +180,15 @@ function driveMenuItems(
   shown: ShownState,
 ): MenuItemConstructorOptions[] {
   if (commands === undefined) return [];
+  const jobs = jobProgressLabel(commands.jobs.status());
   return [
+    ...(jobs === null ? [] : [{ label: jobs, enabled: false }]),
+    ...(shown.driveFolders === null
+      ? []
+      : shown.driveFolders.folders.map((folder): MenuItemConstructorOptions => ({
+          label: folderProgressLabel(folder),
+          enabled: false,
+        }))),
     ...driveSyncMenuItems(shown.driveSync, commands.sync),
     ...driveMountMenuItems(shown.driveMount, commands.mount),
   ];
@@ -193,6 +218,7 @@ function menuOf(
 }
 
 function driveTrayHandlers(
+  notices: DriveSyncNotices,
   shown: Readonly<ShownState>,
   show: (change: Partial<ShownState>) => void,
   render: () => void,
@@ -206,21 +232,31 @@ function driveTrayHandlers(
     },
     mount: (state): void => {
       if (isDeepStrictEqual(shown.driveMount, state)) return;
+      notices.mount(state);
       show({ driveMount: state });
       log.debug('tray.drive_mount_changed', { mounted: state?.mounted ?? null });
       render();
+    },
+    folders: (state): void => {
+      if (isDeepStrictEqual(shown.driveFolders, state)) return;
+      notices.folders(state);
+      const listed = !isDeepStrictEqual(shown.driveFolders?.folders, state?.folders);
+      show({ driveFolders: state });
+      if (listed) render();
     },
   };
 }
 
 function registerDriveTray(
-  commands: DriveTrayCommands | undefined,
+  options: TrayOptions,
   shown: ShownState,
   render: () => void,
 ): Pick<DesktopTray, 'drive'> {
-  if (commands === undefined) return {};
+  if (options.drive === undefined) return {};
+  options.drive.jobs.onStatus(render);
   return {
     drive: driveTrayHandlers(
+      new DriveSyncNotices(options.window, options.drive.jobs),
       shown,
       (change) => {
         Object.assign(shown, change);
@@ -235,12 +271,13 @@ export function createTray(options: TrayOptions): DesktopTray {
   const { tray } = icon;
   log.info('tray.created', { managedBy: options.managedBy ?? 'self' });
   let service: MenuItemConstructorOptions[] = [];
-  const shown: ShownState = { talk: null, driveSync: null, driveMount: null };
+  const shown: ShownState = { talk: null, driveSync: null, driveMount: null, driveFolders: null };
   let health = trayHealthLabel(null);
   const render = (): void => {
     const { talk } = shown;
     log.trace('tray.rendered', { health, talking: talk !== null });
-    tray.setToolTip(`SmartEverything: ${talk === null ? health : `${health} · ${talk.status}`}`);
+    const parts = [health, talk?.status ?? null, syncTipOf(shown.driveMount)];
+    tray.setToolTip(`SmartEverything: ${parts.filter((part) => part !== null).join(' · ')}`);
     tray.setContextMenu(menuOf(options, service, shown));
   };
   tray.on('click', () => {
@@ -266,7 +303,7 @@ export function createTray(options: TrayOptions): DesktopTray {
       icon.show(state.activity);
       render();
     },
-    ...registerDriveTray(options.drive, shown, render),
+    ...registerDriveTray(options, shown, render),
     refresh: render,
     destroy: (): void => {
       log.info('tray.destroyed');

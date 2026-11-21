@@ -32,6 +32,11 @@ type usageLine struct {
 	Pending int64  `json:"pendingUploads"`
 }
 
+type uploadsLine struct {
+	Type string `json:"type"`
+	uploads
+}
+
 type limitsLine struct {
 	Type              string `json:"type"`
 	Platform          string `json:"platform"`
@@ -115,6 +120,7 @@ type reporter struct {
 	seen map[string]usageLine
 	lim  string
 	app  map[string]string
+	up   *uploads
 }
 
 func newReporter(out io.Writer) *reporter {
@@ -141,6 +147,16 @@ func (r *reporter) usage(mount string, cache, pinned, open, pending int64) {
 	}
 	r.seen[mount] = line
 	r.enc.Encode(line)
+}
+
+func (r *reporter) uploads(now uploads) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.up != nil && *r.up == now {
+		return
+	}
+	r.up = &now
+	r.enc.Encode(uploadsLine{Type: "uploads", uploads: now})
 }
 
 func (r *reporter) forget(mount string) {

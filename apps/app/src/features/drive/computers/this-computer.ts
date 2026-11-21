@@ -65,6 +65,10 @@ function useDriveState(drive: DesktopDrive | undefined): DesktopDriveState | nul
   return state;
 }
 
+export function useDesktopDriveState(): DesktopDriveState | null {
+  return useDriveState(desktopBridge()?.drive);
+}
+
 export interface DesktopDriveView {
   readonly state: DesktopDriveState | null;
   readonly busy: boolean;

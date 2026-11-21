@@ -350,7 +350,7 @@ export class PlacementsController {
       }
       return;
     }
-    if (line.type === 'limits' || line.type === 'applied') return;
+    if (line.type === 'limits' || line.type === 'applied' || line.type === 'uploads') return;
     const running = line.mount === undefined ? undefined : this.running.get(line.mount);
     if (line.mount === undefined || running === undefined) {
       if (line.type === 'error') {

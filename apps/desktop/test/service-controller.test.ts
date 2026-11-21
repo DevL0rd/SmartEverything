@@ -388,20 +388,17 @@ describe('ServiceController.config', () => {
     });
   }
 
-  it('migrates a configuration that still carries role node once, before it is read', async () => {
-    const controller = await onDisk(JSON.stringify({ role: 'node', ...NODE_SETTINGS }));
+  it('reads a configuration and leaves the file as it was', async () => {
+    const text = JSON.stringify(NODE_SETTINGS);
+    const controller = await onDisk(text);
     expect((await controller.config())?.node.device_id).toBe(DEVICE);
-    const file = join(directory, 'service.json');
-    expect(JSON.parse(await readFile(file, 'utf8'))).toStrictEqual(NODE_SETTINGS);
-    const migrated = await readFile(file, 'utf8');
-    expect((await controller.config())?.node.device_id).toBe(DEVICE);
-    expect(await readFile(file, 'utf8')).toBe(migrated);
+    expect(await readFile(join(directory, 'service.json'), 'utf8')).toBe(text);
   });
 
-  it('refuses a configuration with any other role and leaves the file as it was', async () => {
-    const text = JSON.stringify({ role: 'hub', ...NODE_SETTINGS });
+  it('refuses a configuration that still carries a role and leaves the file as it was', async () => {
+    const text = JSON.stringify({ role: 'node', ...NODE_SETTINGS });
     const controller = await onDisk(text);
-    await expect(controller.config()).rejects.toThrow(/role must be node/u);
+    await expect(controller.config()).rejects.toThrow(/unrecognized_keys[\s\S]*"role"/u);
     expect(await readFile(join(directory, 'service.json'), 'utf8')).toBe(text);
   });
 });

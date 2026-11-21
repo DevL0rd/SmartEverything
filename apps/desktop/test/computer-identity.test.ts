@@ -8,7 +8,6 @@ import { desktopComputerIdentity } from '../src/service/computer-identity.js';
 
 const DEVICE_ID = '5b2f6c0e-4a4e-4c1a-9a4e-3d1f0e9b7a11';
 const NODE_CONFIG = JSON.stringify({
-  role: 'node',
   node: {
     hub_url: 'https://hub.example:8788',
     node_token: `sen_${'a'.repeat(43)}`,

@@ -59,12 +59,14 @@ type writeBack struct {
 	committed func(ino uint64, attr wire.Attr)
 	created   func(parent uint64, name string)
 	pending   func()
+	progress  func()
 	changed   chan struct{}
 	locks     lockBook
 	window    *frameWindow
 	target    int64
 	running   int64
 	resized   chan struct{}
+	sent      sentTotals
 }
 
 func newWriteBack(cfg writeConfig) (*writeBack, error) {

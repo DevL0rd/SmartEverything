@@ -104,7 +104,11 @@ describe('two engines on one root', () => {
     expect(lab.hub.itemRev('during.txt')).toBeUndefined();
     lab.transport.routeChanged();
     await sees(laptop, { 'before.txt': 'before', 'during.txt': 'written while down' });
-    expect((await desk.engine.waiting()).pendingOps).toBe(0);
+    await until(
+      async () => (await desk.engine.waiting()).pendingOps === 0,
+      'the push acknowledged to the desk',
+      CONVERGE_MS,
+    );
   });
 
   it('survives the hub cutting the sockets mid-run', async () => {

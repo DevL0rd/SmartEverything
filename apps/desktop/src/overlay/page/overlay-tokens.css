@@ -28,11 +28,11 @@
   --color-surface-raised: #ffffff;
   --color-on-surface: #18171b;
   --color-on-surface-variant: #5d5952;
-  --color-on-surface-faint: #8d887f;
+  --color-on-surface-faint: #5d5952;
   --color-outline: rgba(0, 0, 0, 0.14);
-  --color-primary: #a9620a;
+  --color-primary: #955607;
   --color-on-primary: #ffffff;
-  --color-primary-container: rgba(169, 98, 10, 0.14);
+  --color-primary-container: rgba(149, 86, 7, 0.14);
   --color-on-primary-container: #8a4f07;
   --color-orb-shine: #ffffff;
   --color-critical: #c8321e;

@@ -228,6 +228,7 @@ func (w *writeBack) sendUnit(s *session, unit *unitRecord) (wire.Attr, error) {
 	}
 	missing := ranges.clone()
 	missing.subtract(received)
+	s.startUnit(ranges.total() - missing.total())
 	if err := w.sendWrites(s, unit.Commit, missing.spans); err != nil {
 		return wire.Attr{}, err
 	}
@@ -404,26 +405,16 @@ feed:
 			go func(off, n uint64, before <-chan struct{}, sent chan<- struct{}) {
 				defer wg.Done()
 				defer w.window.release()
-				defer close(sent)
-				if ctx.Err() != nil {
-					return
-				}
-				buf := make([]byte, n)
-				if err := readData(s.data, buf, off); err != nil {
-					fail(err)
-					return
-				}
-				select {
-				case <-before:
-				case <-ctx.Done():
-					return
-				}
-				posted, err := w.caller.Post(ctx, wire.OpWrite, wire.Meta{wire.KeyCommit: commit, wire.KeyOffset: off}, buf)
+				posted, err := w.postWrite(ctx, s, commit, off, n, before, sent)
 				if err != nil {
 					fail(err)
 					return
 				}
-				posted.Forget()
+				if _, err := posted.Wait(ctx); err != nil {
+					fail(err)
+					return
+				}
+				s.noteSent(n)
 			}(off, n, turn, mine)
 			turn = mine
 			off += n
@@ -434,6 +425,23 @@ feed:
 		return first
 	}
 	return w.ctx.Err()
+}
+
+func (w *writeBack) postWrite(ctx context.Context, s *session, commit, off, n uint64, before <-chan struct{}, sent chan<- struct{}) (wire.Posted, error) {
+	defer close(sent)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	buf := make([]byte, n)
+	if err := readData(s.data, buf, off); err != nil {
+		return nil, err
+	}
+	select {
+	case <-before:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return w.caller.Post(ctx, wire.OpWrite, wire.Meta{wire.KeyCommit: commit, wire.KeyOffset: off}, buf)
 }
 
 func isTransient(err error) bool {
@@ -552,6 +560,7 @@ func (w *writeBack) settleFailure(s *session, unit *unitRecord, err error) {
 
 func (w *writeBack) ack(s *session, unit *unitRecord, attr wire.Attr) bool {
 	w.noteHubAttr(attr)
+	w.noteLanded(s, unit)
 	s.mu.Lock()
 	ino := s.rec.Ino
 	s.attr = attr

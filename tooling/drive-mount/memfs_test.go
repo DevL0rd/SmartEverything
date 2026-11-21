@@ -335,6 +335,10 @@ func (m *memFS) Unlock(_ context.Context, a UnlockArgs) error {
 
 func (m *memFS) Pending(string) int64 { return 0 }
 
+func (m *memFS) Uploads() uploads { return uploads{} }
+
+func (m *memFS) OnProgress(func()) {}
+
 func (m *memFS) OnPending(func()) {}
 
 func (m *memFS) SetReachable(bool) {}

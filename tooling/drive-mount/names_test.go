@@ -370,7 +370,7 @@ func TestHeldRemovalsFoldAgainAfterACrash(t *testing.T) {
 	}
 }
 
-func TestARenameWaitsOnlyForTheNamesItTouches(t *testing.T) {
+func TestARenameReturnsWhileAnUnrelatedCreateIsHeld(t *testing.T) {
 	r := newWbRig(t)
 	r.hub.addFile(1, "old", "x")
 	r.online()
@@ -390,11 +390,14 @@ func TestARenameWaitsOnlyForTheNamesItTouches(t *testing.T) {
 	if err := r.w.Rename(wbCtx, RenameArgs{Parent: 1, Name: "old", NewParent: 1, NewName: "new"}); err != nil {
 		t.Fatal(err)
 	}
+	close(gate)
+	r.drain()
 	if _, ok := r.hub.lookupName(1, "new"); !ok {
 		t.Fatal("the rename did not reach the Hub")
 	}
-	close(gate)
-	r.drain()
+	if _, ok := r.hub.lookupName(1, "slow"); !ok {
+		t.Fatal("the create did not reach the Hub")
+	}
 }
 
 func TestInodesTheHubAlreadyHoldsAreNotLeasedAgainAfterACrash(t *testing.T) {

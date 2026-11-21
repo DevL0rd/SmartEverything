@@ -46,6 +46,7 @@ type session struct {
 	unit       *unitRecord
 	resume     *unitRecord
 	unitSync   uint64
+	unitSent   uint64
 	wanted     uint64
 	served     uint64
 	failure    error

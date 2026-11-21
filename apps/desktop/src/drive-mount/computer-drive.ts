@@ -17,7 +17,7 @@ import {
   openDriveSyncDatabase,
   type DriveSyncDatabase,
 } from '../drive-sync/db/index.js';
-import { DriveSyncEngine } from '../drive-sync/engine.js';
+import { DriveSyncEngine, type EngineSink } from '../drive-sync/engine.js';
 import { createMetaPort, type MetaPort } from '../drive-sync/meta-port.js';
 import { SyncPlacementIntake, type SyncTarget } from '../drive-sync/service.js';
 import { SyncSocket, type SyncSocketTransport } from '../drive-sync/socket.js';
@@ -60,7 +60,6 @@ import {
 import { PlacementRelay, type PlacementFeed } from './relay-link.js';
 import { SocketRouter } from './socket-router.js';
 import { SyncEngineHost, type EngineHandle } from './sync-engines.js';
-import { engineSinkOf } from './sync-sink.js';
 
 const NOTIFY_QUIET_MS = 250;
 const PLACEMENT_CACHE_FILE = 'drive-placements.json';
@@ -148,7 +147,7 @@ export class ComputerDrive implements ComputerDriveRuntime {
     this.hasher = createBlockHasher({ workerFile: bundledBlockWorker(), log });
     this.meta = createMetaPort({ binary: bundledDriveMountHelper(), platform: this.platform, log });
     this.host = new SyncEngineHost({
-      create: (target, changed): EngineHandle => this.engineOf(target, changed),
+      create: (target, sink): EngineHandle => this.engineOf(target, sink),
       prepare: async (target): Promise<void> => {
         await mkdir(target.localPath, { recursive: true });
       },
@@ -361,7 +360,7 @@ export class ComputerDrive implements ComputerDriveRuntime {
     };
   }
 
-  private engineOf(target: SyncTarget, changed: () => void): EngineHandle {
+  private engineOf(target: SyncTarget, sink: EngineSink): EngineHandle {
     const { database } = this;
     if (database === null) throw new DriveSyncNotStartedError();
     const { node, transport, log } = this.context;
@@ -382,7 +381,7 @@ export class ComputerDrive implements ComputerDriveRuntime {
       uploader: new HubBlockUploader(hub),
       ignore: ignoreMatcherOf(target.ignorePatterns, this.platform),
       timings: ENGINE_TIMINGS,
-      sink: engineSinkOf(target.placementId, changed, log),
+      sink,
       log,
     });
     return this.handleOf(target.placementId, engine);

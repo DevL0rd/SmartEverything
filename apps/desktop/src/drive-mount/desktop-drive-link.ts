@@ -1,5 +1,6 @@
 import { Logger } from '@smarteverything/logging';
 import type { DesktopTray } from '../tray.js';
+import { KdeSyncJobs } from '../kde-jobs.js';
 import { trayDriveOf, type DriveTrayLink } from '../tray-service.js';
 import { DriveControlClient } from './control-client.js';
 import { driveControlAddress } from './control-protocol.js';
@@ -9,6 +10,7 @@ const RETRY_MS = 2000;
 export class DesktopDriveLink {
   readonly client: DriveControlClient;
   readonly tray: DriveTrayLink;
+  private readonly jobs = new KdeSyncJobs(process.platform);
   private unfollow: (() => void) | null = null;
 
   constructor(dataDirectory: string) {
@@ -17,7 +19,7 @@ export class DesktopDriveLink {
       retryMs: RETRY_MS,
       log: new Logger('desktop.drive'),
     });
-    this.tray = trayDriveOf(this.client);
+    this.tray = trayDriveOf(this.client, this.jobs);
     this.client.start();
   }
 
@@ -29,5 +31,6 @@ export class DesktopDriveLink {
     this.unfollow?.();
     this.unfollow = null;
     this.client.stop();
+    this.jobs.stop();
   }
 }

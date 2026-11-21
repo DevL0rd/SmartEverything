@@ -36,7 +36,7 @@ function record(event: string, scope = 'desktop.test'): LogRecord {
     level: 'warn',
     scope,
     event,
-    payload: { nested: { detail: 'Authorization: Bearer fixture-secret' } },
+    payload: { nested: { authorization: 'Bearer fixture-secret' } },
   };
 }
 

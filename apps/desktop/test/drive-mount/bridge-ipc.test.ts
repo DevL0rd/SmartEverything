@@ -43,6 +43,7 @@ const STATE: DesktopDriveState = {
     status: 'Mounted',
     mounted: true,
     points: [{ placementId: MOUNT, point: '/run/user/1000/smarteverything/Photos' }],
+    syncing: null,
   },
   sync: null,
   fuse: { available: true },

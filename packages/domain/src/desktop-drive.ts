@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_PAYLOAD_BYTES } from './drive/mount/ops';
+import { formatByteRate, formatBytes } from './value-format';
 
 const COUNT = z.int().nonnegative();
 const POSITIVE = z.int().positive();
@@ -81,7 +82,7 @@ export const DEFAULT_DESKTOP_DRIVE_TUNING: DesktopDriveTuning = {
   entrySeconds: DESKTOP_DRIVE_UNTIL_CHANGED,
   attrSeconds: DESKTOP_DRIVE_UNTIL_CHANGED,
   negativeSeconds: DESKTOP_DRIVE_UNTIL_CHANGED,
-  closeWaitsForUpload: false,
+  closeWaitsForUpload: true,
   uploadDelaySeconds: 0,
   fsyncWaitsForHub: true,
   uploadFiles: 4,
@@ -167,6 +168,66 @@ const FUSE = z.discriminatedUnion('available', [
 
 export type DesktopDriveFuse = z.infer<typeof FUSE>;
 
+export const DESKTOP_DRIVE_SYNCING = z
+  .strictObject({
+    files: POSITIVE,
+    bytes: COUNT,
+    sentFiles: COUNT,
+    sentBytes: COUNT,
+    bytesPerSecond: z.number().nonnegative().nullable(),
+  })
+  .readonly();
+
+export type DesktopDriveSyncing = z.infer<typeof DESKTOP_DRIVE_SYNCING>;
+
+export function syncingProgress(syncing: DesktopDriveSyncing): number {
+  const bytes = syncing.sentBytes + syncing.bytes;
+  if (bytes > 0) return syncing.sentBytes / bytes;
+  return syncing.sentFiles / (syncing.sentFiles + syncing.files);
+}
+
+export function syncingWords(syncing: DesktopDriveSyncing): string {
+  const files = `${String(syncing.files)} ${syncing.files === 1 ? 'file' : 'files'}`;
+  const size = syncing.bytes === 0 ? '' : ` (${formatBytes(syncing.bytes)})`;
+  return `Syncing ${files}${size} to the Hub`;
+}
+
+function timeLeftOf(seconds: number): string {
+  if (seconds < 60) return 'less than a minute';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `about ${String(minutes)} min`;
+  return `about ${String(Math.floor(minutes / 60))} h ${String(minutes % 60)} min`;
+}
+
+export function syncingSpeedWords(syncing: DesktopDriveSyncing): string | null {
+  const rate = syncing.bytesPerSecond;
+  if (rate === null || rate === 0) return null;
+  return `${formatByteRate(rate)} · ${timeLeftOf(syncing.bytes / rate)} left`;
+}
+
+export const DESKTOP_DRIVE_ALL_ON_HUB = 'All changes are on the Hub';
+
+export const DESKTOP_DRIVE_FOLDER_SYNCING = z
+  .strictObject({
+    placementId: NAME,
+    name: NAME,
+    files: POSITIVE,
+    bytes: COUNT,
+    sentFiles: COUNT,
+    sentBytes: COUNT,
+    bytesPerSecond: z.number().nonnegative().nullable(),
+    current: NAME.nullable(),
+  })
+  .readonly();
+
+export type DesktopDriveFolderSyncing = z.infer<typeof DESKTOP_DRIVE_FOLDER_SYNCING>;
+
+export function folderSyncingWords(folder: DesktopDriveFolderSyncing): string {
+  const files = `${String(folder.files)} ${folder.files === 1 ? 'file' : 'files'}`;
+  const size = folder.bytes === 0 ? '' : ` (${formatBytes(folder.bytes)})`;
+  return `Syncing ${files}${size} in ${folder.name}`;
+}
+
 export const DESKTOP_DRIVE_STATE = z
   .strictObject({
     mount: z
@@ -174,6 +235,7 @@ export const DESKTOP_DRIVE_STATE = z
         status: NAME,
         mounted: z.boolean(),
         points: z.array(z.strictObject({ placementId: NAME, point: NAME }).readonly()).readonly(),
+        syncing: DESKTOP_DRIVE_SYNCING.nullable(),
       })
       .nullable(),
     sync: z
@@ -183,6 +245,7 @@ export const DESKTOP_DRIVE_STATE = z
         needBytes: COUNT,
         pendingOps: COUNT,
         failures: COUNT,
+        folders: z.array(DESKTOP_DRIVE_FOLDER_SYNCING).readonly(),
       })
       .nullable(),
     fuse: FUSE,

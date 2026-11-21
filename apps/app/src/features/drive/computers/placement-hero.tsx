@@ -11,8 +11,10 @@ import { bytes, count, percent } from '../../../format/number';
 import { sentenceCase } from '../../../format/text';
 import { moment } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
+import { FolderSyncBar } from './mount-sync';
 import { PlacementLocation, type PlacedFolder } from './placement-row';
 import { sentenceOf, syncedShareOf, type PlacementWords } from './placement-words';
+import { useDesktopDriveState } from './this-computer';
 
 const RING_SIZE = 96;
 const TILE_COLUMNS = { compact: 2, medium: 4, expanded: 4 } as const;
@@ -115,6 +117,7 @@ function Ring({
         thickness={10}
         colour={words.tone ?? 'track'}
         overlay
+        ticking={false}
       />
       {centre.kind === 'share' ? (
         <Text variant="title-3" tone={toneOf(words)} className="tabular">
@@ -137,6 +140,8 @@ export function Hero({
   readonly words: PlacementWords;
 }): ReactNode {
   const now = useMinute();
+  const local = useDesktopDriveState();
+  const folder = local?.sync?.folders.find((entry) => entry.placementId === placement.id);
   return (
     <Card>
       <View className="flex-row flex-wrap items-center gap-4">
@@ -151,6 +156,7 @@ export function Hero({
           <PlacementLocation placement={placement} />
         </View>
       </View>
+      <FolderSyncBar folder={folder ?? null} />
       <MetricStrip items={heroTilesOf(placement, placed, now)} columns={TILE_COLUMNS} />
       {words.notes.map((note) => (
         <Text key={note} variant="footnote" tone="variant">

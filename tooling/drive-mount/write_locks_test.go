@@ -84,6 +84,16 @@ func TestRenameFlushesTheOpenWritesOfTheInodeFirst(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("rename never finished")
 	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, ok := r.hub.lookupName(1, "final"); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the rename never reached the Hub")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	if r.hub.content(entry.Ino) != "still open" {
 		t.Fatal("rename overtook the content of a file that was still open")
 	}

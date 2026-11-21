@@ -3,6 +3,7 @@ import { Logger } from '@smarteverything/logging';
 import { reportFailure } from './failure.js';
 import type { ServiceController } from './service/controller.js';
 import type { DriveControlClient } from './drive-mount/control-client.js';
+import type { SyncJobs } from './kde-jobs.js';
 
 import type { DriveTrayCommands, DriveTrayState, TrayOptions } from './tray.js';
 import { traySyncOf } from './tray-status.js';
@@ -38,13 +39,14 @@ export interface DriveTrayLink {
   readonly follow: (tray: DriveTrayState) => () => void;
 }
 
-export function trayDriveOf(client: DriveTrayClient): DriveTrayLink {
+export function trayDriveOf(client: DriveTrayClient, jobs: SyncJobs): DriveTrayLink {
   const send = (command: DesktopDriveCommand): void => {
     log.info('tray.drive_requested', { kind: command.kind });
     void client.run(command).catch(logControlFailure);
   };
   return {
     commands: {
+      jobs,
       sync: (command): void => {
         send({ kind: command.kind === 'pause' ? 'sync-pause' : 'sync-resume' });
       },
@@ -56,6 +58,7 @@ export function trayDriveOf(client: DriveTrayClient): DriveTrayLink {
       const show = (state: DesktopDriveState | null): void => {
         tray.sync(state === null ? null : traySyncOf(state.sync));
         tray.mount(state === null ? null : state.mount);
+        tray.folders(state === null ? null : state.sync);
       };
       show(client.current);
       return client.onState(show);
